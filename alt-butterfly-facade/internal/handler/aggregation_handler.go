@@ -3,6 +3,7 @@ package handler
 
 import (
 	"bytes"
+	"crypto/ed25519"
 	"encoding/json"
 	"errors"
 	"html"
@@ -78,10 +79,10 @@ type AggregationHandler struct {
 }
 
 // NewAggregationHandler creates a new aggregation handler.
-func NewAggregationHandler(fetcher QueryFetcher, secret []byte, issuer, audience string, logger *slog.Logger) *AggregationHandler {
+func NewAggregationHandler(fetcher QueryFetcher, key ed25519.PublicKey, issuer, audience string, logger *slog.Logger) *AggregationHandler {
 	return &AggregationHandler{
 		fetcher:         fetcher,
-		authInterceptor: middleware.NewAuthInterceptor(logger, secret, issuer, audience),
+		authInterceptor: middleware.NewAuthInterceptor(logger, key, issuer, audience),
 		logger:          logger,
 	}
 }

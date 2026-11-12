@@ -2,6 +2,7 @@
 package handler
 
 import (
+	"crypto/ed25519"
 	"encoding/binary"
 	"log/slog"
 	"net/http"
@@ -50,7 +51,7 @@ func (h *disabledTTSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func NewTTSHandler(
 	enabled bool,
 	ttsClient *client.BackendClient,
-	secret []byte,
+	key ed25519.PublicKey,
 	issuer, audience string,
 	logger *slog.Logger,
 	streamingTimeout time.Duration,
@@ -63,7 +64,7 @@ func NewTTSHandler(
 	}
 	return NewProxyHandler(
 		ttsClient,
-		secret,
+		key,
 		issuer,
 		audience,
 		logger,

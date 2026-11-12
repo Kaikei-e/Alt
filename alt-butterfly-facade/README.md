@@ -40,7 +40,8 @@ docker build -t alt-butterfly-facade .
 docker run -p 9250:9250 \
   -e BFF_PORT=9250 \
   -e BACKEND_CONNECT_URL=http://alt-backend:9101 \
-  -e BACKEND_TOKEN_SECRET=your-secret \
+  -v ./backend_token_verify_key.pem:/run/secrets/backend_token_verify_key:ro \
+  -e BACKEND_TOKEN_VERIFY_KEY_FILE=/run/secrets/backend_token_verify_key \
   alt-butterfly-facade
 ```
 

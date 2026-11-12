@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"crypto/ed25519"
 	"io"
 	"log/slog"
 	"net/http"
@@ -25,14 +26,14 @@ type RESTProxyHandler struct {
 // NewRESTProxyHandler creates a new REST proxy handler.
 func NewRESTProxyHandler(
 	backendClient *client.BackendClient,
-	secret []byte,
+	key ed25519.PublicKey,
 	issuer, audience string,
 	logger *slog.Logger,
 	requestTimeout time.Duration,
 ) *RESTProxyHandler {
 	return &RESTProxyHandler{
 		backendClient:   backendClient,
-		authInterceptor: middleware.NewAuthInterceptor(logger, secret, issuer, audience),
+		authInterceptor: middleware.NewAuthInterceptor(logger, key, issuer, audience),
 		logger:          logger,
 		requestTimeout:  requestTimeout,
 	}

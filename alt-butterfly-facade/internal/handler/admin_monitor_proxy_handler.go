@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"crypto/ed25519"
 	"io"
 	"log/slog"
 	"net/http"
@@ -32,14 +33,14 @@ type AdminMonitorProxyHandler struct {
 
 func NewAdminMonitorProxyHandler(
 	backendClient *client.BackendClient,
-	secret []byte,
+	key ed25519.PublicKey,
 	issuer, audience string,
 	serviceSecret string,
 	logger *slog.Logger,
 ) *AdminMonitorProxyHandler {
 	return &AdminMonitorProxyHandler{
 		backendClient:   backendClient,
-		authInterceptor: middleware.NewAuthInterceptor(logger, secret, issuer, audience),
+		authInterceptor: middleware.NewAuthInterceptor(logger, key, issuer, audience),
 		serviceSecret:   serviceSecret,
 		logger:          logger,
 	}

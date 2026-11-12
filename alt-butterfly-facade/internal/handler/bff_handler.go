@@ -4,6 +4,7 @@ package handler
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"errors"
 	"fmt"
 	"html"
@@ -139,14 +140,14 @@ func (n *nonCriticalBreakers) stats() resilience.CircuitBreakerStats {
 // NewBFFHandler creates a new BFF handler with all features.
 func NewBFFHandler(
 	backendClient *client.BackendClient,
-	secret []byte,
+	key ed25519.PublicKey,
 	issuer, audience string,
 	logger *slog.Logger,
 	config BFFConfig,
 ) *BFFHandler {
 	h := &BFFHandler{
 		backendClient:    backendClient,
-		authInterceptor:  middleware.NewAuthInterceptor(logger, secret, issuer, audience),
+		authInterceptor:  middleware.NewAuthInterceptor(logger, key, issuer, audience),
 		logger:           logger,
 		config:           config,
 		defaultTimeout:   backendClient.DefaultTimeout(),

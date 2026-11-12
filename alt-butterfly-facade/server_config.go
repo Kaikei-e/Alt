@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/ed25519"
 	"log/slog"
 	"net/http"
 
@@ -12,7 +13,7 @@ import (
 )
 
 // buildServerConfig converts the loaded application config plus the
-// resolved backend URLs/secret into the server.Config that main() hands to
+// resolved backend URLs/verify key into the server.Config that main() hands to
 // server.NewServerWithTransports. It exists as its own function so that
 // mapping can be exercised by main_test.go: main() itself blocks on
 // signal.Notify and os.Exit()s on every failure path, so it can't be driven
@@ -29,7 +30,7 @@ func buildServerConfig(
 	cfg *config.Config,
 	backendURL, internalBackendURL, acolyteURL string,
 	ttsTransport http.RoundTripper,
-	secret []byte,
+	key ed25519.PublicKey,
 	operatorToken string,
 ) server.Config {
 	return server.Config{
@@ -37,7 +38,7 @@ func buildServerConfig(
 		BackendInternalURL:   internalBackendURL,
 		BackendRESTURL:       cfg.BackendRESTURL,
 		BackendOperatorToken: operatorToken,
-		Secret:               secret,
+		TokenVerifyKey:       key,
 		Issuer:               cfg.BackendTokenIssuer,
 		Audience:             cfg.BackendTokenAudience,
 		RequestTimeout:       cfg.RequestTimeout,

@@ -117,10 +117,10 @@ func main() {
 		_ = pki.ShutdownOps(shutdownCtx, opsSrv)
 	}()
 
-	// Load backend token secret
-	secret, err := cfg.LoadBackendTokenSecret()
+	// Load backend token verify key
+	verifyKey, err := cfg.LoadBackendTokenVerifyKey()
 	if err != nil {
-		slog.ErrorContext(ctx, "failed to load backend token secret", "error", err)
+		slog.ErrorContext(ctx, "failed to load backend token verify key", "error", err)
 		os.Exit(1)
 	}
 
@@ -185,7 +185,7 @@ func main() {
 	}
 
 	// Create server configuration
-	serverCfg := buildServerConfig(cfg, backendURL, internalBackendURL, acolyteURL, ttsTransport, secret, operatorToken)
+	serverCfg := buildServerConfig(cfg, backendURL, internalBackendURL, acolyteURL, ttsTransport, verifyKey, operatorToken)
 
 	// Connect-RPC uses the mTLS transport when enforcement is on; REST
 	// proxies always stay on the default plaintext transport so that
