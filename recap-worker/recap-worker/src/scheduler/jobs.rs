@@ -201,6 +201,7 @@ pub struct Scheduler {
     /// nightly batch (or repeated manual triggers) could run the full
     /// LLM/clustering pipeline multiple times at once.
     run_lock: Arc<Semaphore>,
+    morning_run_lock: Arc<Semaphore>,
 }
 
 impl Scheduler {
@@ -218,6 +219,7 @@ impl Scheduler {
             recap_dao,
             subworker_client,
             run_lock: Arc::new(Semaphore::new(1)),
+            morning_run_lock: Arc::new(Semaphore::new(1)),
         }
     }
 
@@ -243,6 +245,10 @@ impl Scheduler {
 
     pub(crate) fn try_acquire_run_permit(&self) -> Option<tokio::sync::OwnedSemaphorePermit> {
         Arc::clone(&self.run_lock).try_acquire_owned().ok()
+    }
+
+    pub(crate) fn try_acquire_morning_permit(&self) -> Option<tokio::sync::OwnedSemaphorePermit> {
+        Arc::clone(&self.morning_run_lock).try_acquire_owned().ok()
     }
 
     pub(crate) async fn run_job(&self, context: JobContext) -> Result<()> {
@@ -573,6 +579,20 @@ impl Scheduler {
     }
 
     pub(crate) async fn run_morning_update(&self, context: JobContext) -> Result<Uuid> {
+        let permit = self.try_acquire_morning_permit().ok_or_else(|| {
+            anyhow!(
+                "morning update {} rejected: another morning update is already in progress",
+                context.job_id
+            )
+        })?;
+        self.run_morning_update_locked(context, permit).await
+    }
+
+    pub(crate) async fn run_morning_update_locked(
+        &self,
+        context: JobContext,
+        _permit: tokio::sync::OwnedSemaphorePermit,
+    ) -> Result<Uuid> {
         tracing::info!(job_id = %context.job_id, "running morning update job");
         // `execute_update`'s fetch stage creates the `recap_jobs` row with the
         // schema default `status='pending'`. Unlike the batch pipeline, the

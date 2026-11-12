@@ -1660,13 +1660,23 @@ mod tests {
         let dao2 = Arc::clone(&dao);
         let (resp1, resp2) = tokio::join!(
             async move {
-                regenerate_morning_letter_impl(state1.scheduler(), dao1.as_ref(), budget, Utc::now())
-                    .await
+                regenerate_morning_letter_impl(
+                    state1.scheduler(),
+                    dao1.as_ref(),
+                    budget,
+                    Utc::now(),
+                )
+                .await
             },
             async move {
                 tokio::time::sleep(Duration::from_millis(30)).await;
-                regenerate_morning_letter_impl(state2.scheduler(), dao2.as_ref(), budget, Utc::now())
-                    .await
+                regenerate_morning_letter_impl(
+                    state2.scheduler(),
+                    dao2.as_ref(),
+                    budget,
+                    Utc::now(),
+                )
+                .await
             }
         );
 
@@ -2414,13 +2424,23 @@ pub(crate) async fn regenerate_morning_letter_impl(
 ) -> axum::response::Response {
     use crate::scheduler::JobContext;
 
+    let Some(permit) = scheduler.try_acquire_morning_permit() else {
+        return (
+            StatusCode::CONFLICT,
+            Json(ErrorResponse {
+                error: "Morning Letter regeneration is already in progress".to_string(),
+            }),
+        )
+            .into_response();
+    };
+
     let job_id = uuid::Uuid::new_v4();
     // Morning regenerate: tag the row with trigger_source='morning' so a
     // later crash can't cause boot-time find_resumable_job to mis-resume
     // this as a full batch Recap pipeline.
     let context = JobContext::new_morning_update(job_id);
 
-    let letter_id = match scheduler.run_morning_update(context).await {
+    let letter_id = match scheduler.run_morning_update_locked(context, permit).await {
         Ok(id) => id,
         Err(e) => {
             error!(job_id = %job_id, "morning regenerate pipeline failed: {}", e);
