@@ -57,6 +57,15 @@ type stubArticleSummarizer struct {
 	summaries map[string]string
 }
 
+func (s *stubArticleSummarizer) GetCachedSummary(_ context.Context, articleID string) (string, bool) {
+	v, ok := s.summaries[articleID]
+	return v, ok
+}
+
+type allowAllSummarizeQuota struct{}
+
+func (allowAllSummarizeQuota) ChargeSummarization(context.Context) error { return nil }
+
 func (s *stubArticleSummarizer) EnsureSummary(_ context.Context, articleID, _, _ string) (string, bool, error) {
 	return s.summaries[articleID], true, nil
 }
@@ -291,7 +300,7 @@ func TestRestHandleFetchArticleSummary(t *testing.T) {
 				"art-101": "Concise AI summary of Article 101",
 			},
 		}
-		uc := fetch_article_summaries_usecase.NewUsecase(repo, &stubArticleBatchFetcher{}, summarizer)
+		uc := fetch_article_summaries_usecase.NewUsecase(repo, &stubArticleBatchFetcher{}, summarizer, allowAllSummarizeQuota{})
 		container := &di.ApplicationComponents{
 			FetchArticleSummariesUsecase: uc,
 		}

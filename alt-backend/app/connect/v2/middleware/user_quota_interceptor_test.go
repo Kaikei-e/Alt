@@ -29,6 +29,7 @@ import (
 	"alt/gen/proto/alt/feeds/v2/feedsv2connect"
 	morningletterv2 "alt/gen/proto/alt/morning_letter/v2"
 	"alt/gen/proto/alt/morning_letter/v2/morningletterv2connect"
+	"alt/orchestrator/port/summarize_quota_port"
 )
 
 func testUserCtx(id uuid.UUID) context.Context {
@@ -903,4 +904,82 @@ func TestUserQuotaInterceptor_ArticleTagsStreamIsRateLimited(t *testing.T) {
 	require.Error(t, lastErr)
 	assert.Equal(t, connect.CodeResourceExhausted, connect.CodeOf(lastErr))
 	assert.Equal(t, int32(2), articleSvc.tagCalls.Load())
+}
+
+func TestUserQuotaLimiter_ChargeSummarizationSpendsTokensWithoutHoldingASlot(t *testing.T) {
+	cfg := testQuotaConfig(3, 1, 16)
+	limiter, err := NewUserQuotaLimiter(cfg, newFakeClock().Now, discardLogger())
+	require.NoError(t, err)
+
+	ctx := testUserCtx(uuid.New())
+	for i := 0; i < 3; i++ {
+		require.NoError(t, limiter.ChargeSummarization(ctx))
+	}
+	err = limiter.ChargeSummarization(ctx)
+	require.ErrorIs(t, err, summarize_quota_port.ErrBudgetExhausted)
+
+	_, err = limiter.Acquire(ctx, OpSummarize)
+	var qErr *QuotaExceededError
+	require.ErrorAs(t, err, &qErr)
+	assert.Equal(t, QuotaReasonRate, qErr.Reason, "the batch charges drained the shared summarize bucket")
+
+	other := testUserCtx(uuid.New())
+	require.NoError(t, limiter.ChargeSummarization(other))
+}
+
+func TestUserQuotaLimiter_ChargeSummarizationRequiresAuthentication(t *testing.T) {
+	limiter, err := NewUserQuotaLimiter(testQuotaConfig(3, 1, 16), time.Now, discardLogger())
+	require.NoError(t, err)
+
+	err = limiter.ChargeSummarization(context.Background())
+	assert.ErrorIs(t, err, ErrQuotaUnauthenticated)
+	assert.NotErrorIs(t, err, summarize_quota_port.ErrBudgetExhausted)
+}
+
+func TestEchoUserInFlightMiddleware_CapsConcurrencyWithoutSpendingTokens(t *testing.T) {
+	limiter, err := NewUserQuotaLimiter(testQuotaConfig(1, 1, 16), newFakeClock().Now, discardLogger())
+	require.NoError(t, err)
+
+	user := uuid.New()
+	e := echo.New()
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	var calls atomic.Int32
+	e.POST("/batch", func(c echo.Context) error {
+		if calls.Add(1) == 1 {
+			close(entered)
+			<-release
+		}
+		return c.String(http.StatusOK, "ok")
+	}, EchoUserInFlightMiddleware(limiter, OpSummarize))
+
+	do := func(ctx context.Context) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/batch", strings.NewReader("{}")).WithContext(ctx)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+		return rec
+	}
+
+	done := make(chan *httptest.ResponseRecorder, 1)
+	go func() { done <- do(testUserCtx(user)) }()
+	<-entered
+
+	rejected := do(testUserCtx(user))
+	assert.Equal(t, http.StatusTooManyRequests, rejected.Code)
+	assert.NotEmpty(t, rejected.Header().Get("Retry-After"))
+	assert.Equal(t, http.StatusOK, do(testUserCtx(uuid.New())).Code)
+
+	close(release)
+	assert.Equal(t, http.StatusOK, (<-done).Code)
+
+	for i := 0; i < 4; i++ {
+		assert.Equal(t, http.StatusOK, do(testUserCtx(user)).Code, "entry alone never spends the rate budget")
+	}
+
+	unauth := do(context.Background())
+	assert.Equal(t, http.StatusUnauthorized, unauth.Code)
+}
+
+func TestEchoUserInFlightMiddleware_NilLimiterPanicsAtConstruction(t *testing.T) {
+	assert.Panics(t, func() { EchoUserInFlightMiddleware(nil, OpSummarize) })
 }

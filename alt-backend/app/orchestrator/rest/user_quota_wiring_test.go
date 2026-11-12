@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -210,7 +211,15 @@ func (s *stubQuotaPreProcessor) GetSummarizeStatus(_ context.Context, _ string) 
 }
 
 type stubQuotaBatchSummarizer struct {
-	calls int
+	calls  int
+	cached bool
+}
+
+func (s *stubQuotaBatchSummarizer) GetCachedSummary(_ context.Context, _ string) (string, bool) {
+	if s.cached {
+		return "cached batch summary", true
+	}
+	return "", false
 }
 
 func (s *stubQuotaBatchSummarizer) EnsureSummary(_ context.Context, _, _, _ string) (string, bool, error) {
@@ -224,7 +233,7 @@ func newSummarizeQuotaTestServer(t *testing.T, pub ed25519.PublicKey, limiter *c
 	preproc := &stubQuotaPreProcessor{}
 	batchSummarizer := &stubQuotaBatchSummarizer{}
 	summarizeUC := summarize_article_usecase.NewUsecase(repo, preproc, nil)
-	batchSummariesUC := fetch_article_summaries_usecase.NewUsecase(repo, nil, batchSummarizer)
+	batchSummariesUC := fetch_article_summaries_usecase.NewUsecase(repo, nil, batchSummarizer, limiter)
 
 	container := &di.ApplicationComponents{
 		UserQuotaLimiter:             limiter,
@@ -273,15 +282,6 @@ func TestNonStreamingSummarizeRoutes_EnforcePerUserQuotaAndIsolateUsers(t *testi
 			okStatus: http.StatusAccepted,
 			countCalls: func(p *stubQuotaPreProcessor, _ *stubQuotaBatchSummarizer) int {
 				return p.queueCalls
-			},
-		},
-		{
-			name:     "POST /v1/feeds/fetch/summary",
-			path:     "/v1/feeds/fetch/summary",
-			body:     `{"feed_urls":["https://example.com/a"]}`,
-			okStatus: http.StatusOK,
-			countCalls: func(_ *stubQuotaPreProcessor, b *stubQuotaBatchSummarizer) int {
-				return b.calls
 			},
 		},
 	}
@@ -366,8 +366,8 @@ func TestSummarizeRoutes_ShareSinglePerUserBudgetAcrossStreamingAndNonStreaming(
 	assert.Equal(t, 0, preproc.queueCalls)
 
 	batchRec := doPost("/v1/feeds/fetch/summary", `{"feed_urls":["https://example.com/a"]}`, userAToken)
-	assert.Equal(t, http.StatusTooManyRequests, batchRec.Code)
-	assert.NotEmpty(t, batchRec.Header().Get("Retry-After"))
+	assert.Equal(t, http.StatusOK, batchRec.Code, "the batch route reports exhausted items as not available instead of refusing")
+	assert.Contains(t, batchRec.Body.String(), `"total_matched":0`)
 	assert.Equal(t, 0, batchSummarizer.calls)
 
 	otherUserQueueRec := doPost("/v1/feeds/summarize/queue", `{"feed_url":"https://example.com/a"}`, userBToken)
@@ -436,4 +436,50 @@ func TestRESTRoutes_RetrieveContextIsGatedByItsOwnClass(t *testing.T) {
 	unauthRec := httptest.NewRecorder()
 	e.ServeHTTP(unauthRec, unauth)
 	assert.Equal(t, http.StatusUnauthorized, unauthRec.Code)
+}
+
+func TestFetchSummaryRoute_ChargesOneTokenPerGeneratedSummary(t *testing.T) {
+	logger.InitLogger()
+	t.Setenv("FEED_ALLOWED_HOSTS", "example.com")
+	pub, priv := newRESTTestKeyPair(t)
+
+	quota := config.DefaultUserQuotaConfig()
+	quota.Summarize = config.OperationQuotaConfig{Rate: 10, Burst: 10, Window: time.Hour, MaxInFlight: 2}
+	limiter, err := connectmiddleware.NewUserQuotaLimiter(quota, time.Now, slog.New(slog.DiscardHandler))
+	require.NoError(t, err)
+
+	e, _, batchSummarizer := newSummarizeQuotaTestServer(t, pub, limiter)
+	token := signRESTTestJWT(t, priv, uuid.New())
+
+	urls := make([]string, 0, 50)
+	for i := 0; i < 50; i++ {
+		urls = append(urls, fmt.Sprintf("%q", fmt.Sprintf("https://example.com/a%d", i)))
+	}
+	body := `{"feed_urls":[` + strings.Join(urls, ",") + `]}`
+
+	post := func() *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/v1/feeds/fetch/summary", strings.NewReader(body))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		req.Header.Set("X-Alt-Backend-Token", token)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+		return rec
+	}
+
+	rec := post()
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, 10, batchSummarizer.calls)
+	assert.Contains(t, rec.Body.String(), `"total_matched":10`)
+	assert.Contains(t, rec.Body.String(), `"requested_count":50`)
+
+	rec = post()
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, 10, batchSummarizer.calls, "a drained budget generates nothing")
+	assert.Contains(t, rec.Body.String(), `"total_matched":0`)
+
+	batchSummarizer.cached = true
+	rec = post()
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, 10, batchSummarizer.calls)
+	assert.Contains(t, rec.Body.String(), `"total_matched":50`, "cached summaries are served without a token")
 }
