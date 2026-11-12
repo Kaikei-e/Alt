@@ -45,15 +45,15 @@ type userBucket struct {
 	userID     uuid.UUID
 	tokens     float64
 	lastUpdate time.Time
+	inFlight   int
 }
 
 type operationLimiter struct {
 	mu              sync.Mutex
 	burst           float64
 	refillPerSec    float64
-	maxConcurrent   int
+	maxInFlight     int
 	maxTrackedUsers int
-	inFlight        int
 	buckets         map[uuid.UUID]*list.Element
 	lru             *list.List
 }
@@ -62,7 +62,7 @@ func newOperationLimiter(cfg config.OperationQuotaConfig, maxTrackedUsers int) *
 	return &operationLimiter{
 		burst:           float64(cfg.Burst),
 		refillPerSec:    float64(cfg.Rate) / cfg.Window.Seconds(),
-		maxConcurrent:   cfg.MaxConcurrent,
+		maxInFlight:     cfg.MaxInFlight,
 		maxTrackedUsers: maxTrackedUsers,
 		buckets:         make(map[uuid.UUID]*list.Element),
 		lru:             list.New(),
@@ -73,14 +73,14 @@ func (o *operationLimiter) acquire(userID uuid.UUID, now time.Time) (func(), err
 	o.mu.Lock()
 	defer o.mu.Unlock()
 
-	if o.inFlight >= o.maxConcurrent {
-		return nil, &QuotaExceededError{RetryAfter: time.Second}
-	}
-
 	b := o.getOrCreateBucketLocked(userID, now)
 	if elapsed := now.Sub(b.lastUpdate); elapsed > 0 {
 		b.tokens = math.Min(o.burst, b.tokens+elapsed.Seconds()*o.refillPerSec)
 		b.lastUpdate = now
+	}
+
+	if b.inFlight >= o.maxInFlight {
+		return nil, &QuotaExceededError{RetryAfter: time.Second}
 	}
 
 	if b.tokens < 1.0 {
@@ -93,13 +93,16 @@ func (o *operationLimiter) acquire(userID uuid.UUID, now time.Time) (func(), err
 	}
 
 	b.tokens -= 1.0
-	o.inFlight++
+	b.inFlight++
 
 	var once sync.Once
 	return func() {
 		once.Do(func() {
 			o.mu.Lock()
-			o.inFlight--
+			if b.inFlight > 0 {
+				b.inFlight--
+			}
+			o.evictIdleAboveLocked(o.maxTrackedUsers)
 			o.mu.Unlock()
 		})
 	}, nil
@@ -110,13 +113,7 @@ func (o *operationLimiter) getOrCreateBucketLocked(userID uuid.UUID, now time.Ti
 		o.lru.MoveToFront(elem)
 		return elem.Value.(*userBucket)
 	}
-	if len(o.buckets) >= o.maxTrackedUsers {
-		if tail := o.lru.Back(); tail != nil {
-			evicted := tail.Value.(*userBucket)
-			delete(o.buckets, evicted.userID)
-			o.lru.Remove(tail)
-		}
-	}
+	o.evictIdleAboveLocked(o.maxTrackedUsers - 1)
 	b := &userBucket{
 		userID:     userID,
 		tokens:     o.burst,
@@ -125,6 +122,18 @@ func (o *operationLimiter) getOrCreateBucketLocked(userID uuid.UUID, now time.Ti
 	elem := o.lru.PushFront(b)
 	o.buckets[userID] = elem
 	return b
+}
+
+func (o *operationLimiter) evictIdleAboveLocked(maxLen int) {
+	for elem := o.lru.Back(); elem != nil && len(o.buckets) > maxLen; {
+		prev := elem.Prev()
+		b := elem.Value.(*userBucket)
+		if b.inFlight == 0 {
+			delete(o.buckets, b.userID)
+			o.lru.Remove(elem)
+		}
+		elem = prev
+	}
 }
 
 func (o *operationLimiter) trackedUsers() int {

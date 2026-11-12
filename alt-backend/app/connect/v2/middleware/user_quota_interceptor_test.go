@@ -28,7 +28,11 @@ import (
 )
 
 func testUserCtx(id uuid.UUID) context.Context {
-	return domain.SetUserContext(context.Background(), &domain.UserContext{
+	return testUserCtxWithParent(context.Background(), id)
+}
+
+func testUserCtxWithParent(parent context.Context, id uuid.UUID) context.Context {
+	return domain.SetUserContext(parent, &domain.UserContext{
 		UserID:    id,
 		TenantID:  id,
 		Email:     "reader@example.com",
@@ -377,7 +381,6 @@ func TestUserQuotaInterceptor_PerUserConcurrencyCapIsolatesUsersAndReleases(t *t
 	close(userABlockCh)
 	wg.Wait()
 
-	feedSvc.blockCh = nil
 	afterReq := connect.NewRequest(&feedsv2.StreamSummarizeRequest{})
 	afterReq.Header().Set("X-Test-UID", userA.String())
 	afterStream, afterErr := client.StreamSummarize(context.Background(), afterReq)
@@ -583,50 +586,79 @@ func TestUserQuotaInterceptor_ReleasesOnPanicAndStreamCancel(t *testing.T) {
 	e.ServeHTTP(recAfterPanic, reqAfterPanic)
 	assert.Equal(t, http.StatusOK, recAfterPanic.Code)
 
-	// 2. Client cancellation of a Connect stream releases the per-user in-flight slot.
-	blockCh := make(chan struct{})
-	enteredCh := make(chan struct{}, 2)
-	feedSvc := &fakeFeedSummarizeService{blockCh: blockCh, enteredCh: enteredCh}
+	stopCh := make(chan struct{})
+	var closeStop sync.Once
+	defer closeStop.Do(func() { close(stopCh) })
+	enteredCh := make(chan struct{}, 4)
+	exitedCh := make(chan struct{}, 4)
+	feedSvc := &cancelTestFeedService{
+		stopCh:    stopCh,
+		enteredCh: enteredCh,
+		exitedCh:  exitedCh,
+	}
 	inject := &ctxInjectMiddleware{
-		ctx: func(_ *http.Request) context.Context { return testUserCtx(userA) },
+		ctx: func(r *http.Request) context.Context { return testUserCtxWithParent(r.Context(), userA) },
 	}
 	opts := connect.WithInterceptors(NewUserQuotaInterceptor(limiter).Interceptor())
 	mux := http.NewServeMux()
 	p, h := feedsv2connect.NewFeedServiceHandler(feedSvc, opts)
 	mux.Handle(p, h)
-	srv := httptest.NewServer(inject.wrap(mux))
+	srv := httptest.NewUnstartedServer(inject.wrap(mux))
+	srv.EnableHTTP2 = true
+	srv.StartTLS()
 	defer srv.Close()
 
 	client := feedsv2connect.NewFeedServiceClient(srv.Client(), srv.URL)
 	cancelCtx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		st, sErr := client.StreamSummarize(cancelCtx, connect.NewRequest(&feedsv2.StreamSummarizeRequest{}))
-		if sErr == nil {
-			for st.Receive() {
-			}
-			_ = st.Close()
+	st, sErr := client.StreamSummarize(cancelCtx, connect.NewRequest(&feedsv2.StreamSummarizeRequest{}))
+	require.NoError(t, sErr)
+	require.True(t, st.Receive())
+	<-enteredCh
+
+	cancel()
+	_ = st.Close()
+	<-exitedCh
+
+	closeStop.Do(func() { close(stopCh) })
+	stAfter, afterErr := client.StreamSummarize(context.Background(), connect.NewRequest(&feedsv2.StreamSummarizeRequest{}))
+	require.NoError(t, afterErr)
+	for stAfter.Receive() {
+	}
+	require.NoError(t, stAfter.Err())
+	_ = stAfter.Close()
+}
+
+type cancelTestFeedService struct {
+	feedsv2connect.UnimplementedFeedServiceHandler
+	stopCh    <-chan struct{}
+	enteredCh chan<- struct{}
+	exitedCh  chan<- struct{}
+}
+
+func (f *cancelTestFeedService) StreamSummarize(
+	ctx context.Context,
+	_ *connect.Request[feedsv2.StreamSummarizeRequest],
+	stream *connect.ServerStream[feedsv2.StreamSummarizeResponse],
+) error {
+	if err := stream.Send(&feedsv2.StreamSummarizeResponse{ArticleId: "chunk-1"}); err != nil {
+		return err
+	}
+	select {
+	case f.enteredCh <- struct{}{}:
+	default:
+	}
+	defer func() {
+		select {
+		case f.exitedCh <- struct{}{}:
+		default:
 		}
 	}()
-
-	<-enteredCh
-	cancel()
-	<-done
-
-	feedSvc.blockCh = nil
-	// Wait briefly for server handler goroutine to unwind after client cancel.
-	require.Eventually(t, func() bool {
-		st, sErr := client.StreamSummarize(context.Background(), connect.NewRequest(&feedsv2.StreamSummarizeRequest{}))
-		if sErr != nil {
-			return false
-		}
-		for st.Receive() {
-		}
-		err := st.Err()
-		_ = st.Close()
-		return err == nil
-	}, 2*time.Second, 10*time.Millisecond)
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-f.stopCh:
+		return stream.Send(&feedsv2.StreamSummarizeResponse{ArticleId: "chunk-final", IsFinal: true})
+	}
 }
 
 func TestUserQuota_NilLimiterPanicsInBusinessPath(t *testing.T) {

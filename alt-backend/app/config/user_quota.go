@@ -12,54 +12,54 @@ import (
 const (
 	UserQuotaMaxTrackedUsersEnv = "USER_QUOTA_MAX_TRACKED_USERS"
 
-	UserQuotaSummarizeRateEnv          = "USER_QUOTA_SUMMARIZE_RATE"
-	UserQuotaSummarizeBurstEnv         = "USER_QUOTA_SUMMARIZE_BURST"
-	UserQuotaSummarizeWindowEnv        = "USER_QUOTA_SUMMARIZE_WINDOW"
-	UserQuotaSummarizeMaxConcurrentEnv = "USER_QUOTA_SUMMARIZE_MAX_CONCURRENT"
+	UserQuotaSummarizeRateEnv        = "USER_QUOTA_SUMMARIZE_RATE"
+	UserQuotaSummarizeBurstEnv       = "USER_QUOTA_SUMMARIZE_BURST"
+	UserQuotaSummarizeWindowEnv      = "USER_QUOTA_SUMMARIZE_WINDOW"
+	UserQuotaSummarizeMaxInFlightEnv = "USER_QUOTA_SUMMARIZE_MAX_IN_FLIGHT"
 
-	UserQuotaAugurChatRateEnv          = "USER_QUOTA_AUGUR_CHAT_RATE"
-	UserQuotaAugurChatBurstEnv         = "USER_QUOTA_AUGUR_CHAT_BURST"
-	UserQuotaAugurChatWindowEnv        = "USER_QUOTA_AUGUR_CHAT_WINDOW"
-	UserQuotaAugurChatMaxConcurrentEnv = "USER_QUOTA_AUGUR_CHAT_MAX_CONCURRENT"
+	UserQuotaAugurChatRateEnv        = "USER_QUOTA_AUGUR_CHAT_RATE"
+	UserQuotaAugurChatBurstEnv       = "USER_QUOTA_AUGUR_CHAT_BURST"
+	UserQuotaAugurChatWindowEnv      = "USER_QUOTA_AUGUR_CHAT_WINDOW"
+	UserQuotaAugurChatMaxInFlightEnv = "USER_QUOTA_AUGUR_CHAT_MAX_IN_FLIGHT"
 
-	UserQuotaMorningChatRateEnv          = "USER_QUOTA_MORNING_CHAT_RATE"
-	UserQuotaMorningChatBurstEnv         = "USER_QUOTA_MORNING_CHAT_BURST"
-	UserQuotaMorningChatWindowEnv        = "USER_QUOTA_MORNING_CHAT_WINDOW"
-	UserQuotaMorningChatMaxConcurrentEnv = "USER_QUOTA_MORNING_CHAT_MAX_CONCURRENT"
+	UserQuotaMorningChatRateEnv        = "USER_QUOTA_MORNING_CHAT_RATE"
+	UserQuotaMorningChatBurstEnv       = "USER_QUOTA_MORNING_CHAT_BURST"
+	UserQuotaMorningChatWindowEnv      = "USER_QUOTA_MORNING_CHAT_WINDOW"
+	UserQuotaMorningChatMaxInFlightEnv = "USER_QUOTA_MORNING_CHAT_MAX_IN_FLIGHT"
 
-	UserQuotaMorningRegenerateRateEnv          = "USER_QUOTA_MORNING_REGENERATE_RATE"
-	UserQuotaMorningRegenerateBurstEnv         = "USER_QUOTA_MORNING_REGENERATE_BURST"
-	UserQuotaMorningRegenerateWindowEnv        = "USER_QUOTA_MORNING_REGENERATE_WINDOW"
-	UserQuotaMorningRegenerateMaxConcurrentEnv = "USER_QUOTA_MORNING_REGENERATE_MAX_CONCURRENT"
+	UserQuotaMorningRegenerateRateEnv        = "USER_QUOTA_MORNING_REGENERATE_RATE"
+	UserQuotaMorningRegenerateBurstEnv       = "USER_QUOTA_MORNING_REGENERATE_BURST"
+	UserQuotaMorningRegenerateWindowEnv      = "USER_QUOTA_MORNING_REGENERATE_WINDOW"
+	UserQuotaMorningRegenerateMaxInFlightEnv = "USER_QUOTA_MORNING_REGENERATE_MAX_IN_FLIGHT"
 
 	DefaultUserQuotaMaxTrackedUsers = 10000
 
-	DefaultUserQuotaSummarizeRate          = 20
-	DefaultUserQuotaSummarizeBurst         = 10
-	DefaultUserQuotaSummarizeWindow        = time.Minute
-	DefaultUserQuotaSummarizeMaxConcurrent = 4
+	DefaultUserQuotaSummarizeRate        = 20
+	DefaultUserQuotaSummarizeBurst       = 10
+	DefaultUserQuotaSummarizeWindow      = time.Minute
+	DefaultUserQuotaSummarizeMaxInFlight = 2
 
-	DefaultUserQuotaAugurChatRate          = 12
-	DefaultUserQuotaAugurChatBurst         = 6
-	DefaultUserQuotaAugurChatWindow        = time.Minute
-	DefaultUserQuotaAugurChatMaxConcurrent = 2
+	DefaultUserQuotaAugurChatRate        = 12
+	DefaultUserQuotaAugurChatBurst       = 6
+	DefaultUserQuotaAugurChatWindow      = time.Minute
+	DefaultUserQuotaAugurChatMaxInFlight = 1
 
-	DefaultUserQuotaMorningChatRate          = 12
-	DefaultUserQuotaMorningChatBurst         = 6
-	DefaultUserQuotaMorningChatWindow        = time.Minute
-	DefaultUserQuotaMorningChatMaxConcurrent = 2
+	DefaultUserQuotaMorningChatRate        = 12
+	DefaultUserQuotaMorningChatBurst       = 6
+	DefaultUserQuotaMorningChatWindow      = time.Minute
+	DefaultUserQuotaMorningChatMaxInFlight = 1
 
-	DefaultUserQuotaMorningRegenerateRate          = 2
-	DefaultUserQuotaMorningRegenerateBurst         = 2
-	DefaultUserQuotaMorningRegenerateWindow        = time.Hour
-	DefaultUserQuotaMorningRegenerateMaxConcurrent = 1
+	DefaultUserQuotaMorningRegenerateRate        = 2
+	DefaultUserQuotaMorningRegenerateBurst       = 2
+	DefaultUserQuotaMorningRegenerateWindow      = time.Hour
+	DefaultUserQuotaMorningRegenerateMaxInFlight = 1
 )
 
 type OperationQuotaConfig struct {
-	Rate          int
-	Burst         int
-	Window        time.Duration
-	MaxConcurrent int
+	Rate        int
+	Burst       int
+	Window      time.Duration
+	MaxInFlight int
 }
 
 type UserQuotaConfig struct {
@@ -74,28 +74,28 @@ func DefaultUserQuotaConfig() UserQuotaConfig {
 	return UserQuotaConfig{
 		MaxTrackedUsers: DefaultUserQuotaMaxTrackedUsers,
 		Summarize: OperationQuotaConfig{
-			Rate:          DefaultUserQuotaSummarizeRate,
-			Burst:         DefaultUserQuotaSummarizeBurst,
-			Window:        DefaultUserQuotaSummarizeWindow,
-			MaxConcurrent: DefaultUserQuotaSummarizeMaxConcurrent,
+			Rate:        DefaultUserQuotaSummarizeRate,
+			Burst:       DefaultUserQuotaSummarizeBurst,
+			Window:      DefaultUserQuotaSummarizeWindow,
+			MaxInFlight: DefaultUserQuotaSummarizeMaxInFlight,
 		},
 		AugurChat: OperationQuotaConfig{
-			Rate:          DefaultUserQuotaAugurChatRate,
-			Burst:         DefaultUserQuotaAugurChatBurst,
-			Window:        DefaultUserQuotaAugurChatWindow,
-			MaxConcurrent: DefaultUserQuotaAugurChatMaxConcurrent,
+			Rate:        DefaultUserQuotaAugurChatRate,
+			Burst:       DefaultUserQuotaAugurChatBurst,
+			Window:      DefaultUserQuotaAugurChatWindow,
+			MaxInFlight: DefaultUserQuotaAugurChatMaxInFlight,
 		},
 		MorningChat: OperationQuotaConfig{
-			Rate:          DefaultUserQuotaMorningChatRate,
-			Burst:         DefaultUserQuotaMorningChatBurst,
-			Window:        DefaultUserQuotaMorningChatWindow,
-			MaxConcurrent: DefaultUserQuotaMorningChatMaxConcurrent,
+			Rate:        DefaultUserQuotaMorningChatRate,
+			Burst:       DefaultUserQuotaMorningChatBurst,
+			Window:      DefaultUserQuotaMorningChatWindow,
+			MaxInFlight: DefaultUserQuotaMorningChatMaxInFlight,
 		},
 		MorningRegenerate: OperationQuotaConfig{
-			Rate:          DefaultUserQuotaMorningRegenerateRate,
-			Burst:         DefaultUserQuotaMorningRegenerateBurst,
-			Window:        DefaultUserQuotaMorningRegenerateWindow,
-			MaxConcurrent: DefaultUserQuotaMorningRegenerateMaxConcurrent,
+			Rate:        DefaultUserQuotaMorningRegenerateRate,
+			Burst:       DefaultUserQuotaMorningRegenerateBurst,
+			Window:      DefaultUserQuotaMorningRegenerateWindow,
+			MaxInFlight: DefaultUserQuotaMorningRegenerateMaxInFlight,
 		},
 	}
 }
@@ -112,7 +112,7 @@ func LoadUserQuotaConfig() (UserQuotaConfig, error) {
 		UserQuotaSummarizeRateEnv,
 		UserQuotaSummarizeBurstEnv,
 		UserQuotaSummarizeWindowEnv,
-		UserQuotaSummarizeMaxConcurrentEnv,
+		UserQuotaSummarizeMaxInFlightEnv,
 	); err != nil {
 		return UserQuotaConfig{}, err
 	}
@@ -121,7 +121,7 @@ func LoadUserQuotaConfig() (UserQuotaConfig, error) {
 		UserQuotaAugurChatRateEnv,
 		UserQuotaAugurChatBurstEnv,
 		UserQuotaAugurChatWindowEnv,
-		UserQuotaAugurChatMaxConcurrentEnv,
+		UserQuotaAugurChatMaxInFlightEnv,
 	); err != nil {
 		return UserQuotaConfig{}, err
 	}
@@ -130,7 +130,7 @@ func LoadUserQuotaConfig() (UserQuotaConfig, error) {
 		UserQuotaMorningChatRateEnv,
 		UserQuotaMorningChatBurstEnv,
 		UserQuotaMorningChatWindowEnv,
-		UserQuotaMorningChatMaxConcurrentEnv,
+		UserQuotaMorningChatMaxInFlightEnv,
 	); err != nil {
 		return UserQuotaConfig{}, err
 	}
@@ -139,7 +139,7 @@ func LoadUserQuotaConfig() (UserQuotaConfig, error) {
 		UserQuotaMorningRegenerateRateEnv,
 		UserQuotaMorningRegenerateBurstEnv,
 		UserQuotaMorningRegenerateWindowEnv,
-		UserQuotaMorningRegenerateMaxConcurrentEnv,
+		UserQuotaMorningRegenerateMaxInFlightEnv,
 	); err != nil {
 		return UserQuotaConfig{}, err
 	}
@@ -173,8 +173,8 @@ func ValidateUserQuotaConfig(cfg UserQuotaConfig) error {
 		if c.op.Window <= 0 {
 			return fmt.Errorf("user quota %s window must be > 0, got %s", c.name, c.op.Window)
 		}
-		if c.op.MaxConcurrent <= 0 {
-			return fmt.Errorf("user quota %s max_concurrent must be > 0, got %d", c.name, c.op.MaxConcurrent)
+		if c.op.MaxInFlight <= 0 {
+			return fmt.Errorf("user quota %s max_in_flight must be > 0, got %d", c.name, c.op.MaxInFlight)
 		}
 	}
 	return nil
@@ -190,25 +190,25 @@ func LogUserQuotaConfig(logger *slog.Logger, cfg UserQuotaConfig) {
 		"summarize_rate", cfg.Summarize.Rate,
 		"summarize_burst", cfg.Summarize.Burst,
 		"summarize_window", cfg.Summarize.Window.String(),
-		"summarize_max_concurrent", cfg.Summarize.MaxConcurrent,
+		"summarize_max_in_flight", cfg.Summarize.MaxInFlight,
 		"augur_chat_rate", cfg.AugurChat.Rate,
 		"augur_chat_burst", cfg.AugurChat.Burst,
 		"augur_chat_window", cfg.AugurChat.Window.String(),
-		"augur_chat_max_concurrent", cfg.AugurChat.MaxConcurrent,
+		"augur_chat_max_in_flight", cfg.AugurChat.MaxInFlight,
 		"morning_chat_rate", cfg.MorningChat.Rate,
 		"morning_chat_burst", cfg.MorningChat.Burst,
 		"morning_chat_window", cfg.MorningChat.Window.String(),
-		"morning_chat_max_concurrent", cfg.MorningChat.MaxConcurrent,
+		"morning_chat_max_in_flight", cfg.MorningChat.MaxInFlight,
 		"morning_regenerate_rate", cfg.MorningRegenerate.Rate,
 		"morning_regenerate_burst", cfg.MorningRegenerate.Burst,
 		"morning_regenerate_window", cfg.MorningRegenerate.Window.String(),
-		"morning_regenerate_max_concurrent", cfg.MorningRegenerate.MaxConcurrent,
+		"morning_regenerate_max_in_flight", cfg.MorningRegenerate.MaxInFlight,
 	)
 }
 
 func loadOperationQuotaEnv(
 	defaults OperationQuotaConfig,
-	rateEnv, burstEnv, windowEnv, maxConcEnv string,
+	rateEnv, burstEnv, windowEnv, maxInFlightEnv string,
 ) (OperationQuotaConfig, error) {
 	out := defaults
 	var err error
@@ -221,7 +221,7 @@ func loadOperationQuotaEnv(
 	if out.Window, err = loadPositiveDurationEnv(windowEnv, out.Window); err != nil {
 		return OperationQuotaConfig{}, err
 	}
-	if out.MaxConcurrent, err = loadPositiveIntEnv(maxConcEnv, out.MaxConcurrent); err != nil {
+	if out.MaxInFlight, err = loadPositiveIntEnv(maxInFlightEnv, out.MaxInFlight); err != nil {
 		return OperationQuotaConfig{}, err
 	}
 	return out, nil
