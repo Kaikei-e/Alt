@@ -11,20 +11,20 @@
     "noUncheckedIndexedAccess": true
   },
   "imports": {
-    "@std/encoding/base64": "jsr:@std/encoding@^1.0.10/base64",
-    "@std/encoding/hex": "jsr:@std/encoding@^1.0.10/hex",
+    "@std/encoding/base64": "jsr:@std/encoding@^1.0.11/base64",
+    "@std/encoding/hex": "jsr:@std/encoding@^1.0.11/hex",
     "@std/log": "jsr:@std/log@^0.224.14",
     "@std/datetime": "jsr:@std/datetime@^0.225.7",
-    "@std/testing/asserts": "jsr:@std/assert@^1.0.18",
-    "@std/testing/bdd": "jsr:@std/testing@^1.0.17/bdd",
-    "@std/testing/mock": "jsr:@std/testing@^1.0.17/mock",
-    "@opentelemetry/api": "npm:@opentelemetry/api@1.9.0",
-    "@opentelemetry/api-logs": "npm:@opentelemetry/api-logs@0.221.0",
+    "@std/testing/asserts": "jsr:@std/assert@^1.0.19",
+    "@std/testing/bdd": "jsr:@std/testing@^1.0.21/bdd",
+    "@std/testing/mock": "jsr:@std/testing@^1.0.21/mock",
+    "@opentelemetry/api": "npm:@opentelemetry/api@1.10.0",
+    "@opentelemetry/api-logs": "npm:@opentelemetry/api-logs@0.223.0",
     "@opentelemetry/sdk-logs": "npm:@opentelemetry/sdk-logs@0.221.0",
-    "@opentelemetry/exporter-logs-otlp-proto": "npm:@opentelemetry/exporter-logs-otlp-proto@0.221.0",
-    "@opentelemetry/exporter-trace-otlp-proto": "npm:@opentelemetry/exporter-trace-otlp-proto@0.221.0",
-    "@opentelemetry/sdk-trace-base": "npm:@opentelemetry/sdk-trace-base@^2.10.0",
+    "@opentelemetry/exporter-logs-otlp-proto": "npm:@opentelemetry/exporter-logs-otlp-proto@0.300.0",
+    "@opentelemetry/exporter-trace-otlp-proto": "npm:@opentelemetry/exporter-trace-otlp-proto@0.300.0",
+    "@opentelemetry/sdk-trace-base": "npm:@opentelemetry/sdk-trace-base@^2.12.0",
     "@opentelemetry/resources": "npm:@opentelemetry/resources@2.10.0",
-    "@opentelemetry/semantic-conventions": "npm:@opentelemetry/semantic-conventions@1.39.0"
+    "@opentelemetry/semantic-conventions": "npm:@opentelemetry/semantic-conventions@1.44.0"
   }
 }
