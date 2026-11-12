@@ -122,6 +122,93 @@ mod tests {
     }
 
     #[test]
+    fn eval_listener_outside_peer_guard_decision_covers_all_four_combinations_and_warns_once() {
+        use crate::config::{EvalListenerConfig, PeerIdentityConfig};
+        use std::net::SocketAddr;
+        use std::sync::{Arc, Mutex};
+
+        #[derive(Clone, Default)]
+        struct BufWriter(Arc<Mutex<Vec<u8>>>);
+        impl std::io::Write for BufWriter {
+            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(buf);
+                Ok(buf.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let listen_addr: SocketAddr = "127.0.0.1:9006".parse().unwrap();
+        let peer_disabled = PeerIdentityConfig::Disabled;
+        let peer_enabled = PeerIdentityConfig::Enabled {
+            allowed_peers: vec!["alt-backend".to_string()],
+        };
+        let eval_disabled = EvalListenerConfig::Disabled;
+        let eval_enabled = EvalListenerConfig::Enabled {
+            listen_addr,
+            admin_token: "test-admin-token-0123456789".to_string(),
+        };
+
+        assert_eq!(
+            super::eval_listener_outside_peer_guard_addr(&peer_disabled, &eval_disabled),
+            None
+        );
+        assert_eq!(
+            super::eval_listener_outside_peer_guard_addr(&peer_disabled, &eval_enabled),
+            None
+        );
+        assert_eq!(
+            super::eval_listener_outside_peer_guard_addr(&peer_enabled, &eval_disabled),
+            None
+        );
+        assert_eq!(
+            super::eval_listener_outside_peer_guard_addr(&peer_enabled, &eval_enabled),
+            Some(listen_addr)
+        );
+
+        let buf = BufWriter::default();
+        let writer = buf.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::WARN)
+            .without_time()
+            .with_writer(move || writer.clone())
+            .finish();
+
+        tracing::subscriber::with_default(subscriber, || {
+            assert_eq!(
+                super::log_eval_listener_outside_peer_guard(&peer_disabled, &eval_disabled),
+                None
+            );
+            assert_eq!(
+                super::log_eval_listener_outside_peer_guard(&peer_disabled, &eval_enabled),
+                None
+            );
+            assert_eq!(
+                super::log_eval_listener_outside_peer_guard(&peer_enabled, &eval_disabled),
+                None
+            );
+            assert_eq!(
+                super::log_eval_listener_outside_peer_guard(&peer_enabled, &eval_enabled),
+                Some(listen_addr)
+            );
+        });
+
+        let captured = String::from_utf8(buf.0.lock().unwrap().clone()).expect("utf8");
+        let lines: Vec<&str> = captured.lines().collect();
+        assert_eq!(
+            lines.len(),
+            1,
+            "expected exactly one WARN line across all four combinations, got: {captured}"
+        );
+        assert!(captured.contains("WARN"));
+        assert!(captured.contains("eval_listener_outside_peer_guard"));
+        assert!(captured.contains("127.0.0.1:9006"));
+        assert!(captured.contains("/v1/eval/*"));
+        assert!(captured.contains("bearer"));
+    }
+
+    #[test]
     fn fires_when_startup_never_completes() {
         let fired = Arc::new(AtomicBool::new(false));
         let flag = Arc::clone(&fired);
