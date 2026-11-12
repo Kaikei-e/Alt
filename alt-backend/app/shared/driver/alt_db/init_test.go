@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"alt/utils/logger"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -119,10 +121,11 @@ func TestInitDBConnectionPool_RejectsMissingAuthOrSSLModeBeforeConnect(t *testin
 func TestGetDBConnectionString_LogsSingleConfiguredSSLMode(t *testing.T) {
 	for _, allowedMode := range []string{"disable", "require", "verify-ca", "verify-full"} {
 		t.Run("mode_"+allowedMode, func(t *testing.T) {
+			require.NotNil(t, logger.Logger)
 			var logBuf bytes.Buffer
-			prevLogger := slog.Default()
-			slog.SetDefault(slog.New(slog.NewTextHandler(&logBuf, nil)))
-			t.Cleanup(func() { slog.SetDefault(prevLogger) })
+			prevLogger := logger.Logger
+			logger.Logger = slog.New(slog.NewTextHandler(&logBuf, nil))
+			t.Cleanup(func() { logger.Logger = prevLogger })
 
 			t.Setenv("DB_HOST", "testhost")
 			t.Setenv("DB_PASSWORD", "testpass")

@@ -3,8 +3,6 @@ package alt_db
 import (
 	"context"
 	"fmt"
-	"log/slog"
-	"os"
 	"time"
 
 	"alt/utils/logger"
@@ -20,7 +18,7 @@ func InitDBConnectionPool(ctx context.Context) (*pgxpool.Pool, error) {
 		return nil, fmt.Errorf("invalid pool size config: %w", err)
 	}
 
-	connStr, err := getDBConnectionString()
+	dbConfig, connStr, err := loadDBConnectionConfig(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build connection string: %w", err)
 	}
@@ -81,13 +79,12 @@ func InitDBConnectionPool(ctx context.Context) (*pgxpool.Pool, error) {
 		}
 		cancel()
 
-		// 成功ログ（SSL情報削除）
-		logger.Logger.InfoContext(ctx, "Database connection established via Linkerd mTLS",
-			"database", os.Getenv("DB_NAME"),
+		logger.Logger.InfoContext(ctx, "Database connection pool established",
+			"database", dbConfig.DBName,
+			"ssl_mode", dbConfig.SSLMode,
 			"attempt", i+1,
 			"max_conns", pool.Config().MaxConns,
-			"min_conns", pool.Config().MinConns,
-			"transport", "HTTP-over-mTLS")
+			"min_conns", pool.Config().MinConns)
 
 		return pool, nil
 	}
@@ -108,18 +105,23 @@ func waitOrCancel(ctx context.Context, delay time.Duration) error {
 }
 
 func getDBConnectionString() (string, error) {
+	_, connStr, err := loadDBConnectionConfig(context.Background())
+	return connStr, err
+}
+
+func loadDBConnectionConfig(ctx context.Context) (*DatabaseConfig, string, error) {
 	config, err := LoadDatabaseConfigFromEnv()
 	if err != nil {
-		return "", err
+		return nil, "", err
 	}
 
-	slog.InfoContext(context.Background(), "Database configuration",
+	logger.Logger.InfoContext(ctx, "Database configuration",
 		"host", config.Host,
 		"port", config.Port,
 		"database", config.DBName,
 		"ssl_mode", config.SSLMode)
 
-	return config.BuildConnectionString(), nil
+	return config, config.BuildConnectionString(), nil
 }
 
 func envChecker(env string, variable string) (string, error) {
