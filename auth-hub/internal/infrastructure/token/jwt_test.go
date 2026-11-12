@@ -23,6 +23,29 @@ func generateTestKeyPair(t *testing.T) (ed25519.PublicKey, ed25519.PrivateKey) {
 	return pub, priv
 }
 
+func TestNewJWTIssuer_PanicsOnInvalidPrivateKey(t *testing.T) {
+	t.Run("panics on short key", func(t *testing.T) {
+		assert.Panics(t, func() {
+			NewJWTIssuer(JWTConfig{
+				PrivateKey: ed25519.PrivateKey("short-key"),
+				Issuer:     "auth-hub",
+				Audience:   "alt-backend",
+				TTL:        5 * time.Minute,
+			})
+		})
+	})
+
+	t.Run("panics on nil key", func(t *testing.T) {
+		assert.Panics(t, func() {
+			NewJWTIssuer(JWTConfig{
+				Issuer:   "auth-hub",
+				Audience: "alt-backend",
+				TTL:      5 * time.Minute,
+			})
+		})
+	})
+}
+
 func TestJWTIssuer_IssueBackendToken(t *testing.T) {
 	pub, priv := generateTestKeyPair(t)
 	issuer := NewJWTIssuer(JWTConfig{
