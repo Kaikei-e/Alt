@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -87,29 +86,6 @@ func (u *FetchTagCloudUsecase) ExecuteCountsOnly(ctx context.Context, limit int)
 	items, err := u.fetchTagCloudPort.FetchTagCloud(ctx, limit)
 	if err != nil {
 		logger.Logger.ErrorContext(ctx, "failed to fetch tag cloud", "error", err)
-		return nil, err
-	}
-
-	return items, nil
-}
-
-// ExecuteCountsOnlyForUser is ExecuteCountsOnly over one user's articles. It
-// is uncached: the cache holds the single instance-wide cloud.
-func (u *FetchTagCloudUsecase) ExecuteCountsOnlyForUser(ctx context.Context, userID uuid.UUID, limit int) ([]*domain.TagCloudItem, error) {
-	if userID == uuid.Nil {
-		return nil, errors.New("user id is required")
-	}
-	if limit <= 0 {
-		limit = 300
-	}
-	if limit > 500 {
-		logger.Logger.ErrorContext(ctx, "invalid limit: cannot exceed 500", "limit", limit)
-		return nil, errors.New("limit cannot exceed 500")
-	}
-
-	items, err := u.fetchTagCloudPort.FetchTagCloudForUser(ctx, userID, limit)
-	if err != nil {
-		logger.Logger.ErrorContext(ctx, "failed to fetch user tag cloud", "error", err)
 		return nil, err
 	}
 

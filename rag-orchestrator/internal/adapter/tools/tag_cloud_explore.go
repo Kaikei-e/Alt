@@ -36,7 +36,7 @@ func (t *TagCloudExploreTool) Execute(ctx context.Context, params map[string]str
 
 	userID := strings.TrimSpace(domain.UserIDFromContext(ctx))
 	if userID == "" {
-		return &domain.ToolResult{Success: false, Error: "user_id is required"}, fmt.Errorf("user_id is required")
+		return &domain.ToolResult{ToolName: t.Name(), Success: false, Error: "user_id is required"}, fmt.Errorf("user_id is required")
 	}
 
 	tags, err := t.client.FetchTagCloud(ctx, userID, 300)

@@ -3244,10 +3244,6 @@ func (x *GetEmptyFeedIDResponse) GetFeedId() string {
 }
 
 // FetchTagCloudRequest is the request for FetchTagCloud.
-// Wire-identical to
-// services.backend.v1.BackendInternalServiceFetchTagCloudRequest — the legacy
-// name carried the service name because that package already had a
-// FetchTagCloud pair belonging to a different service.
 type FetchTagCloudRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Maximum number of tags to return (default: 300, max: 500)

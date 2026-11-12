@@ -16,8 +16,6 @@ import (
 	"alt/shared/port/event_publisher_port"
 	"alt/shared/port/knowledge_event_port"
 	"alt/shared/usecase/create_summary_version_usecase"
-
-	"github.com/google/uuid"
 )
 
 // HandlerOption configures optional ports on the Handler.
@@ -349,7 +347,6 @@ func WithTagTrailCapabilities(
 // fetchTagCloudPort is the port interface for fetching tag cloud data.
 type fetchTagCloudPort interface {
 	ExecuteCountsOnly(ctx context.Context, limit int) ([]*domain.TagCloudItem, error)
-	ExecuteCountsOnlyForUser(ctx context.Context, userID uuid.UUID, limit int) ([]*domain.TagCloudItem, error)
 }
 
 // fetchArticlesByTagPort is the port interface for fetching articles by tag name.

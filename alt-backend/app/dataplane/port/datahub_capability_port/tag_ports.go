@@ -29,6 +29,9 @@ type TagReadPort interface {
 	// SearchByPrefix is the global search box's tag section, limited to tags
 	// on one user's articles.
 	SearchByPrefix(ctx context.Context, prefix string, userID uuid.UUID, limit int) ([]domain.GlobalTagHit, error)
+	// TagCloud returns tag names with article counts over one user's
+	// articles, most used first.
+	TagCloud(ctx context.Context, userID uuid.UUID, limit int) ([]*domain.TagCloudItem, error)
 	// ArticleCounts counts one user's tagged articles since a timestamp.
 	// Counts, not trending tags: which of them is a surge is arithmetic the
 	// caller owns.

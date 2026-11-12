@@ -283,10 +283,6 @@ const maxBatchGetTagsArticleIDs = 1000
 
 // FetchTagCloud returns tag cloud data for topic exploration.
 func (h *Handler) FetchTagCloud(ctx context.Context, req *connect.Request[datahubv1.FetchTagCloudRequest]) (*connect.Response[datahubv1.FetchTagCloudResponse], error) {
-	if h.fetchTagCloudPort == nil {
-		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("FetchTagCloud not configured"))
-	}
-
 	limit := int(req.Msg.Limit)
 	if limit <= 0 {
 		limit = 300
@@ -302,8 +298,11 @@ func (h *Handler) FetchTagCloud(ctx context.Context, req *connect.Request[datahu
 		if idErr != nil {
 			return nil, idErr
 		}
-		items, err = h.fetchTagCloudPort.ExecuteCountsOnlyForUser(ctx, userID, limit)
+		items, err = h.tagRead.TagCloud(ctx, userID, limit)
 	} else {
+		if h.fetchTagCloudPort == nil {
+			return nil, connect.NewError(connect.CodeUnimplemented, errors.New("FetchTagCloud not configured"))
+		}
 		items, err = h.fetchTagCloudPort.ExecuteCountsOnly(ctx, limit)
 	}
 	if err != nil {

@@ -141,27 +141,6 @@ func (g *TagGateway) FetchTagCloud(ctx context.Context, limit int) ([]*domain.Ta
 	return items, nil
 }
 
-// FetchTagCloudForUser is FetchTagCloud limited to one user's articles.
-func (g *TagGateway) FetchTagCloudForUser(ctx context.Context, userID uuid.UUID, limit int) ([]*domain.TagCloudItem, error) {
-	scope := userID.String()
-	resp, err := g.client.FetchTagCloud(ctx, connect.NewRequest(&datahubv1.FetchTagCloudRequest{
-		Limit:  safeconv.Int32(limit),
-		UserId: &scope,
-	}))
-	if err != nil {
-		return nil, fmt.Errorf("fetch user tag cloud: %w", err)
-	}
-
-	items := make([]*domain.TagCloudItem, 0, len(resp.Msg.GetTags()))
-	for _, it := range resp.Msg.GetTags() {
-		items = append(items, &domain.TagCloudItem{
-			TagName:      it.GetTagName(),
-			ArticleCount: int(it.GetArticleCount()),
-		})
-	}
-	return items, nil
-}
-
 func (g *TagGateway) FetchTagCooccurrences(ctx context.Context, tagNames []string) ([]*domain.TagCooccurrence, error) {
 	if len(tagNames) == 0 {
 		return nil, nil
