@@ -34,8 +34,11 @@ Production compose に **新しい host ファイルを載せるときの決ま�
 `create_host_path: false` を付けられず、欠落した source が空ディレクトリになる
 ([[PM-2026-036]])。
 
-`pre_start` は Compose **v5.5.0** で実機 green
+`pre_start` は Compose **v5.6.1** で実機 green
 (`scripts/compose-feature-gate.report.json` の `pre_start.ok`)。
+全 capability を落としたサービスの chown フックは自前の `cap_add` を持つ。
+v5.5.0 はフックの `cap_add` をスキーマで拒否し、v5.6 以降はフックがサービスの
+`cap_drop` を引き継ぐので、ホストの Compose は v5.6.1 以上が必要。
 Wave 1b は chown-only の 2 本
 (`news-creator-backend`, `knowledge-embedder-local`) を `pre_start` に移した。
 Wave 4 は 14 親の cert ディレクトリ chown を同じく消費者 `pre_start` に置く
@@ -50,8 +53,9 @@ Docker は **存在しないファイル** を短形式 bind すると、warning
 healthy のまま分類を返さなかった ([[PM-2026-036]])。
 
 Wave 0 の実機測定 (`docs/review/compose-p2-wave0-feature-gate-2026-08-18.md`)
-は Compose v5.0.0 で `pre_start` を reject した。**再測定は v5.5.0**:
-`pre_start.ok=true` かつ `create_host_path_false.ok=true`。
+は Compose v5.0.0 で `pre_start` を reject した。**再測定は v5.5.0、その後 v5.6.1**:
+どちらも `pre_start.ok=true` かつ `create_host_path_false.ok=true`
+（v5.6.1 の測定はフックに `cap_add` を持たせた形）。
 
 - `create_host_path: false` は **効く**。欠落ファイルも欠落ディレクトリも
   daemon が refuse し、空ディレクトリは作られない
