@@ -757,3 +757,41 @@ func TestPolicyAuth_WrapStreamingHandler_WatchProjectorEvents(t *testing.T) {
 		cancel()
 	})
 }
+
+func TestNewPolicyAuthInterceptor_PanicsWhenUserTokenRequiredWithoutVerifier(t *testing.T) {
+	polWithUserToken := &config.AuthPolicy{
+		Services: []config.ServicePolicy{
+			{
+				Name:             "alt-backend",
+				Token:            "backend-secret-token-long-enough-1234",
+				RequireUserToken: true,
+			},
+		},
+	}
+	polWithoutUserToken := &config.AuthPolicy{
+		Services: []config.ServicePolicy{
+			{
+				Name:             "recap-worker",
+				Token:            "recap-secret-token-long-enough-5678",
+				RequireUserToken: false,
+			},
+		},
+	}
+
+	assert.Panics(t, func() {
+		NewPolicyAuthInterceptor(polWithUserToken, nil, true)
+	})
+
+	var typedNilVerifier *config.LocalUserJWTVerifier
+	assert.Panics(t, func() {
+		NewPolicyAuthInterceptor(polWithUserToken, typedNilVerifier, true)
+	})
+
+	assert.NotPanics(t, func() {
+		NewPolicyAuthInterceptor(polWithUserToken, nil, false)
+	})
+
+	assert.NotPanics(t, func() {
+		NewPolicyAuthInterceptor(polWithoutUserToken, nil, true)
+	})
+}

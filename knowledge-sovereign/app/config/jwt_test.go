@@ -93,6 +93,26 @@ func TestLoadLocalUserJWTVerifier(t *testing.T) {
 		require.Error(t, err)
 	})
 
+	t.Run("fails when key file has leading non-whitespace bytes before PEM header", func(t *testing.T) {
+		_, _, spkiPEM := generateTestEd25519KeyPair(t)
+
+		withLeadingJunk := append([]byte("leading-text\n"), spkiPEM...)
+		t.Setenv("BACKEND_TOKEN_VERIFY_KEY_FILE", writeTestVerifyKeyFile(t, withLeadingJunk))
+		_, err := LoadLocalUserJWTVerifier()
+		require.Error(t, err)
+
+		withLeadingComment := append([]byte("# comment before header\n"), spkiPEM...)
+		t.Setenv("BACKEND_TOKEN_VERIFY_KEY_FILE", writeTestVerifyKeyFile(t, withLeadingComment))
+		_, err = LoadLocalUserJWTVerifier()
+		require.Error(t, err)
+
+		withLeadingWhitespace := append([]byte("  \t\r\n"), spkiPEM...)
+		t.Setenv("BACKEND_TOKEN_VERIFY_KEY_FILE", writeTestVerifyKeyFile(t, withLeadingWhitespace))
+		v, err := LoadLocalUserJWTVerifier()
+		require.NoError(t, err)
+		require.NotNil(t, v)
+	})
+
 	t.Run("loads SPKI Ed25519 public key with default and custom issuer/audience", func(t *testing.T) {
 		pub, _, spkiPEM := generateTestEd25519KeyPair(t)
 		keyPath := writeTestVerifyKeyFile(t, spkiPEM)
