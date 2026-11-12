@@ -363,6 +363,8 @@ services:
       # ephemeral staging slice runs with the Bearer gate off. Production
       # supplies ADMIN_TOKEN_FILE (compose/sovereign.yaml); an unset token
       # is a startup failure there, never an open surface.
+      # The service refuses disabled auth modes unless the environment is explicitly non-production.
+      - APP_ENV=staging
       - ADMIN_AUTH=disabled
       - EVENT_AUTH=disabled
       # The binary refuses an unset mode. Staging runs no step-ca and gives

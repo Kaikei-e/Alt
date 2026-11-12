@@ -1110,6 +1110,28 @@ class TestGroup1Security(unittest.TestCase):
                 self.assertTrue(hardened, f"{fname}:{name} is repo-built but keeps default capabilities")
         self.assertEqual(seen_unhardened, set(self.UNHARDENED))
 
+    def test_knowledge_sovereign_auth_modes_and_app_env(self):
+        def env_map(svc):
+            env = svc.get("environment") or []
+            if isinstance(env, dict):
+                return {k: str(v) for k, v in env.items()}
+            return dict(e.split("=", 1) for e in env if "=" in e)
+
+        main = self._load_yaml_lenient(REPO_ROOT / "compose" / "sovereign.yaml")["services"]["knowledge-sovereign"]
+        self.assertNotIn("env_file", main)
+        env = env_map(main)
+        self.assertNotEqual(env.get("ADMIN_AUTH"), "disabled")
+        self.assertNotEqual(env.get("EVENT_AUTH"), "disabled")
+        checked = 0
+        for fname, name, svc in self._all_stack_services():
+            if name != "knowledge-sovereign":
+                continue
+            env = env_map(svc)
+            if "disabled" in (env.get("ADMIN_AUTH"), env.get("EVENT_AUTH")):
+                checked += 1
+                self.assertIn(env.get("APP_ENV"), ("development", "test", "staging"), f"{fname}:{name}")
+        self.assertGreater(checked, 0)
+
     def test_registration_closed_by_default(self):
         import re
         text = (REPO_ROOT / "kratos" / "kratos_template.yml").read_text()
