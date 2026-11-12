@@ -12,6 +12,7 @@ import (
 	summarizeuc "pre-processor/usecase/summarize"
 	apperrors "pre-processor/utils/errors"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
 
@@ -288,16 +289,25 @@ func (h *SummarizeHandler) HandleSummarizeQueue(c echo.Context) error {
 			nil,
 		)
 	}
+	parsedArticleID, err := uuid.Parse(req.ArticleID)
+	if err != nil {
+		return apperrors.NewValidationContextError(
+			"article_id must be a valid UUID",
+			"handler", "SummarizeHandler", "HandleSummarizeQueue",
+			map[string]interface{}{"article_id": req.ArticleID},
+		)
+	}
+	articleID := parsedArticleID.String()
 
-	h.logger.InfoContext(ctx, "queueing summarization job", "article_id", req.ArticleID)
+	h.logger.InfoContext(ctx, "queueing summarization job", "article_id", articleID)
 
-	shouldQueue, reason, err := service.ShouldQueueSummarizeJob(ctx, req.ArticleID, h.summaryRepo, h.jobRepo, h.logger)
+	shouldQueue, reason, err := service.ShouldQueueSummarizeJob(ctx, articleID, h.summaryRepo, h.jobRepo, h.logger)
 	if err != nil {
 		return apperrors.NewDatabaseContextError(
 			"failed to evaluate summarization job creation",
 			"handler", "SummarizeHandler", "HandleSummarizeQueue",
 			err,
-			map[string]interface{}{"article_id": req.ArticleID},
+			map[string]interface{}{"article_id": articleID},
 		)
 	}
 	if !shouldQueue {
@@ -309,17 +319,17 @@ func (h *SummarizeHandler) HandleSummarizeQueue(c echo.Context) error {
 	}
 
 	// Create job in queue
-	jobID, err := h.jobRepo.CreateJob(ctx, req.ArticleID)
+	jobID, err := h.jobRepo.CreateJob(ctx, articleID)
 	if err != nil {
 		return apperrors.NewDatabaseContextError(
 			"failed to queue summarization job",
 			"handler", "SummarizeHandler", "HandleSummarizeQueue",
 			err,
-			map[string]interface{}{"article_id": req.ArticleID},
+			map[string]interface{}{"article_id": articleID},
 		)
 	}
 
-	h.logger.InfoContext(ctx, "summarization job queued successfully", "job_id", jobID, "article_id", req.ArticleID)
+	h.logger.InfoContext(ctx, "summarization job queued successfully", "job_id", jobID, "article_id", articleID)
 
 	// Return 202 Accepted with job ID
 	response := SummarizeQueueResponse{
