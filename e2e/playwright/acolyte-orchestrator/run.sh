@@ -31,7 +31,6 @@ suite_init acolyte-orchestrator
 # Search uses mTLS for its business listener and outbound introspection client.
 # Acolyte queries the business listener on :9443.
 suite_pki auth-hub search-indexer acolyte-orchestrator
-suite_token_keys
 mint_staging_leaf "$SUITE_PKI_DIR" search-indexer serverAuth,clientAuth
 chmod 0644 "$SUITE_PKI_DIR"/*.pem
 

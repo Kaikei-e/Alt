@@ -120,6 +120,11 @@ suite_init() {
   # shellcheck source=./install-suite-deps.sh
   source "$ROOT/e2e/playwright/_lib/install-suite-deps.sh"
 
+  # compose.staging.yaml interpolates STAGING_TOKEN_KEY_DIR into its top-level
+  # secrets on every render, so every suite needs it, not only the ones that
+  # start a service mounting the key.
+  suite_token_keys
+
   trap suite_cleanup EXIT
 }
 
@@ -173,8 +178,9 @@ suite_pki() {
 #
 # Mints a throwaway Ed25519 key pair for the backend token and exports
 # STAGING_TOKEN_KEY_DIR for compose to bind-mount. Nothing is committed: the
-# directory is gitignored and recreated on every run. Like suite_pki it must
-# run before `suite_up`. The files are 0644 for the same reason the PKI leaves
+# directory is ignored by version control and recreated on every run.
+# suite_init calls it, so no run.sh does; it has to happen before any compose
+# render. The files are 0644 for the same reason the PKI leaves
 # are: the service containers run as a non-root user.
 suite_token_keys() {
   SUITE_TOKEN_KEY_DIR="$ROOT/e2e/fixtures/$SUITE_NAME/token-keys"

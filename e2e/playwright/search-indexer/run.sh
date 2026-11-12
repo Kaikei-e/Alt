@@ -54,7 +54,6 @@ suite_image_tags SEARCH_INDEXER_IMAGE_TAG
 suite_pki auth-hub search-indexer alt-backend denied-peer
 mint_staging_leaf "$SUITE_PKI_DIR" search-indexer serverAuth,clientAuth
 chmod 0644 "$SUITE_PKI_DIR"/*.pem
-suite_token_keys
 suite_endpoint BACKEND_TOKEN_SIGNING_KEY_FILE "$SUITE_TOKEN_KEY_DIR/backend_token_signing_key.txt"
 
 # Business REST and Connect-RPC are served on mTLS :9443 with alt-backend peer identity.

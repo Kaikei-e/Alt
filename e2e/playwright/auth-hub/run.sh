@@ -59,7 +59,6 @@ suite_endpoint TLS_CLIENT_CERT_FILE "$SUITE_PKI_DIR/alt-data-hub.pem"
 suite_endpoint TLS_CLIENT_KEY_FILE "$SUITE_PKI_DIR/alt-data-hub-key.pem"
 suite_endpoint PLAINTEXT_URL "http://auth-hub:8888"
 
-suite_token_keys
 
 suite_endpoint BASE_URL          "https://auth-hub:8443"
 suite_endpoint KRATOS_PUBLIC_URL "http://kratos:4433"

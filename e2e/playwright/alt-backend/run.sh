@@ -37,7 +37,6 @@ suite_endpoint BASE_URL     "http://alt-backend:9000"
 suite_endpoint CONNECT_URL  "http://alt-backend:9101"
 suite_endpoint INTERNAL_URL "http://alt-backend:9102"
 suite_endpoint OPS_URL      "http://alt-backend:9110"
-suite_token_keys
 suite_mint_jwt "$SUITE_TOKEN_KEY_DIR/backend_token_signing_key.txt" \
   '{"sub":"00000000-0000-0000-0000-000000000001","tenant_id":"00000000-0000-0000-0000-000000000001","email":"e2e-test@alt-staging.invalid","role":"admin","sid":"00000000-0000-0000-0000-0000000000ff","iss":"alt-staging-auth-hub","aud":"alt-backend","exp":4070908800,"iat":1700000000}' \
   "$SUITE_TOKEN_KEY_DIR/test-jwt.txt"

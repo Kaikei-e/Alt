@@ -68,32 +68,17 @@ COMPOSE_BUILD = re.compile(
 )
 
 
-TOKEN_KEY_SECRET = re.compile(r"^backend_token_(signing|verify)_key$")
-TOKEN_KEYS_CALL = re.compile(r"^[ \t]*suite_token_keys\b", re.MULTILINE)
+SUITE_INIT_BODY = re.compile(r"^suite_init\(\)\s*\{(.*?)^\}", re.MULTILINE | re.DOTALL)
 
 
-def token_key_services(services: dict) -> set[str]:
-    """Compose services that mount a backend token key secret."""
-    found: set[str] = set()
-    for name, svc in services.items():
-        for entry in svc.get("secrets") or []:
-            source = entry.get("source") if isinstance(entry, dict) else entry
-            if source and TOKEN_KEY_SECRET.match(str(source)):
-                found.add(name)
-    return found
-
-
-def token_key_problems(
-    name: str, profile_services: list[str], token_services: set[str], run_code: str
-) -> list[str]:
-    """A profile that starts a token-key service needs run.sh to mint the keys."""
-    mounting = sorted(set(profile_services) & token_services)
-    if mounting and not TOKEN_KEYS_CALL.search(run_code):
-        return [
-            f"{name}: profile starts {mounting}, which mount a backend token key, but run.sh "
-            f"never calls suite_token_keys — STAGING_TOKEN_KEY_DIR would be unset"
-        ]
-    return []
+def suite_init_mints_token_keys(suite_lib_text: str) -> bool:
+    """compose.staging.yaml needs STAGING_TOKEN_KEY_DIR on every render, so
+    suite_init (which every suite calls) has to mint the keys."""
+    body = SUITE_INIT_BODY.search(suite_lib_text)
+    if body is None:
+        return False
+    code = "\n".join(l for l in body.group(1).splitlines() if not l.strip().startswith("#"))
+    return re.search(r"^\s*suite_token_keys\b", code, re.MULTILINE) is not None
 
 
 def main() -> int:
@@ -120,6 +105,12 @@ def main() -> int:
             profiles.setdefault(profile, []).append(name)
 
     problems: list[str] = []
+
+    if not suite_init_mints_token_keys((PW_ROOT / "_lib" / "suite.sh").read_text()):
+        problems.append(
+            "_lib/suite.sh: suite_init does not call suite_token_keys, so a suite would render "
+            "compose.staging.yaml without STAGING_TOKEN_KEY_DIR"
+        )
 
     # (3) suites.yaml and the directory tree must agree.
     on_disk = {
@@ -240,10 +231,6 @@ def main() -> int:
                     "rag-orchestrator: run.sh must build exactly ['rag-db', 'rag-db-migrator'] "
                     f"via docker compose build before suite_up (got {sorted(built_services)})"
                 )
-
-        problems.extend(
-            token_key_problems(name, profiles.get(name, []), token_key_services(services), run_code)
-        )
 
         # (2) every taggable image in the profile is either forwarded or
         #     recorded as deliberately left on `:main`.
