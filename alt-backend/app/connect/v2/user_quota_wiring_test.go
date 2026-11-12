@@ -22,12 +22,6 @@ func TestSetupConnectHandlers_WiresUserQuotaLimiterBeforeUsecase(t *testing.T) {
 		Summarize:       config.OperationQuotaConfig{Rate: 1, Burst: 1, Window: time.Minute, MaxInFlight: 1},
 		AugurChat:       config.OperationQuotaConfig{Rate: 1, Burst: 1, Window: time.Minute, MaxInFlight: 1},
 		MorningChat:     config.OperationQuotaConfig{Rate: 1, Burst: 1, Window: time.Minute, MaxInFlight: 1},
-		MorningRegenerate: config.OperationQuotaConfig{
-			Rate:        1,
-			Burst:       1,
-			Window:      time.Hour,
-			MaxInFlight: 1,
-		},
 	})
 	require.NoError(t, err)
 	container.UserQuotaLimiter = limiter
@@ -39,18 +33,18 @@ func TestSetupConnectHandlers_WiresUserQuotaLimiterBeforeUsecase(t *testing.T) {
 	// 1st call consumes the single token (reaching the nil MorningLetterUsecase and panicking).
 	func() {
 		defer func() { _ = recover() }()
-		req1 := httptest.NewRequest(http.MethodPost, morningletterv2connect.MorningLetterReadServiceRegenerateLatestProcedure, strings.NewReader("{}"))
-		req1.Header.Set("Content-Type", "application/json")
+		req1 := httptest.NewRequest(http.MethodPost, morningletterv2connect.MorningLetterServiceStreamChatProcedure, strings.NewReader("\x00\x00\x00\x00\x02{}"))
+		req1.Header.Set("Content-Type", "application/connect+json")
 		req1.Header.Set("X-Alt-Backend-Token", token)
 		mux.ServeHTTP(httptest.NewRecorder(), req1)
 	}()
 
-	// 2nd call for the same user must be rejected by the quota interceptor (HTTP 429 / resource_exhausted)
+	// 2nd call for the same user must be rejected by the quota interceptor (resource_exhausted end-of-stream error)
 	// before reaching MorningLetterUsecase (no panic).
-	req2 := httptest.NewRequest(http.MethodPost, morningletterv2connect.MorningLetterReadServiceRegenerateLatestProcedure, strings.NewReader("{}"))
-	req2.Header.Set("Content-Type", "application/json")
+	req2 := httptest.NewRequest(http.MethodPost, morningletterv2connect.MorningLetterServiceStreamChatProcedure, strings.NewReader("\x00\x00\x00\x00\x02{}"))
+	req2.Header.Set("Content-Type", "application/connect+json")
 	req2.Header.Set("X-Alt-Backend-Token", token)
 	rec2 := httptest.NewRecorder()
 	mux.ServeHTTP(rec2, req2)
-	assert.Equal(t, http.StatusTooManyRequests, rec2.Code)
+	assert.Contains(t, rec2.Body.String(), "resource_exhausted")
 }

@@ -30,11 +30,6 @@ func TestLoadUserQuotaConfig_Defaults(t *testing.T) {
 	assert.Equal(t, DefaultUserQuotaMorningChatBurst, cfg.MorningChat.Burst)
 	assert.Equal(t, DefaultUserQuotaMorningChatWindow, cfg.MorningChat.Window)
 	assert.Equal(t, 1, cfg.MorningChat.MaxInFlight)
-
-	assert.Equal(t, DefaultUserQuotaMorningRegenerateRate, cfg.MorningRegenerate.Rate)
-	assert.Equal(t, DefaultUserQuotaMorningRegenerateBurst, cfg.MorningRegenerate.Burst)
-	assert.Equal(t, DefaultUserQuotaMorningRegenerateWindow, cfg.MorningRegenerate.Window)
-	assert.Equal(t, 1, cfg.MorningRegenerate.MaxInFlight)
 }
 
 func TestLoadUserQuotaConfig_OverridesAndRejectsInvalid(t *testing.T) {
@@ -69,7 +64,7 @@ func TestLoadUserQuotaConfig_OverridesAndRejectsInvalid(t *testing.T) {
 	})
 
 	t.Run("rejects malformed integer", func(t *testing.T) {
-		t.Setenv(UserQuotaMorningRegenerateMaxInFlightEnv, "abc")
+		t.Setenv(UserQuotaMorningChatMaxInFlightEnv, "abc")
 		_, err := LoadUserQuotaConfig()
 		require.Error(t, err)
 	})
@@ -87,6 +82,6 @@ func TestLogUserQuotaConfig_EmitsStructuredValues(t *testing.T) {
 	assert.Contains(t, out, `"summarize_max_in_flight":2`)
 	assert.Contains(t, out, `"augur_chat_max_in_flight":1`)
 	assert.Contains(t, out, `"morning_chat_max_in_flight":1`)
-	assert.Contains(t, out, `"morning_regenerate_max_in_flight":1`)
+	assert.NotContains(t, out, `morning_regenerate`)
 	assert.NotContains(t, out, `max_concurrent`)
 }

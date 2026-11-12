@@ -325,63 +325,32 @@ func TestRegenerateLatest_RateLimited(t *testing.T) {
 	assert.Greater(t, retryAfter, time.Duration(0))
 }
 
-func TestRegenerateLatest_FailureConsumesCooldown(t *testing.T) {
+func TestRegenerateLatest_FailureClearsCooldown(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	repo := mocks.NewMockMorningLetterRepository(ctrl)
 	feedPort := mocks.NewMockUserFeedPort(ctrl)
 
-	cached := &domain.MorningLetterDocument{ID: "cached-id"}
+	doc := &domain.MorningLetterDocument{ID: "new-id"}
+	// Error on first attempt should not arm the cooldown; second attempt regenerates.
 	repo.EXPECT().RegenerateLatest(gomock.Any(), gomock.Any()).Return(nil, assert.AnError).Times(1)
-	repo.EXPECT().GetLatestLetter(gomock.Any()).Return(cached, nil).Times(1)
+	repo.EXPECT().RegenerateLatest(gomock.Any(), gomock.Any()).Return(doc, nil).Times(1)
 
 	uc := NewMorningLetterUsecase(repo, feedPort)
 	_, _, _, err := uc.RegenerateLatest(context.Background(), "user-1", "Asia/Tokyo")
 	require.Error(t, err)
 
-	got, regenerated, retryAfter, err := uc.RegenerateLatest(context.Background(), "user-1", "Asia/Tokyo")
+	got, regenerated, _, err := uc.RegenerateLatest(context.Background(), "user-1", "Asia/Tokyo")
 	require.NoError(t, err)
-	assert.False(t, regenerated)
-	assert.Equal(t, "cached-id", got.ID)
-	assert.Greater(t, retryAfter, time.Duration(0))
+	assert.True(t, regenerated)
+	assert.Equal(t, "new-id", got.ID)
 }
 
-func TestRegenerateLatest_RejectsConcurrentAttempt(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	repo := mocks.NewMockMorningLetterRepository(ctrl)
-	feedPort := mocks.NewMockUserFeedPort(ctrl)
-
-	entered := make(chan struct{})
-	release := make(chan struct{})
-	doc := &domain.MorningLetterDocument{ID: "new-id"}
-
-	repo.EXPECT().RegenerateLatest(gomock.Any(), "Asia/Tokyo").DoAndReturn(
-		func(_ context.Context, _ string) (*domain.MorningLetterDocument, error) {
-			close(entered)
-			<-release
-			return doc, nil
-		},
-	).Times(1)
-
-	uc := NewMorningLetterUsecase(repo, feedPort)
-
-	firstDone := make(chan error, 1)
-	go func() {
-		_, _, _, err := uc.RegenerateLatest(context.Background(), "user-1", "Asia/Tokyo")
-		firstDone <- err
-	}()
-
-	<-entered
-
-	_, regenerated, _, secondErr := uc.RegenerateLatest(context.Background(), "user-2", "Asia/Tokyo")
-	require.Error(t, secondErr)
-	assert.False(t, regenerated)
-
-	close(release)
-	require.NoError(t, <-firstDone)
-
-	repo.EXPECT().RegenerateLatest(gomock.Any(), "Asia/Tokyo").Return(doc, nil).Times(1)
-	got, regeneratedAfter, _, thirdErr := uc.RegenerateLatest(context.Background(), "user-3", "Asia/Tokyo")
-	require.NoError(t, thirdErr)
-	assert.True(t, regeneratedAfter)
-	assert.Equal(t, "new-id", got.ID)
+func TestRegenerateLatest_BoundsCooldownEntries(t *testing.T) {
+	now := time.Now()
+	entries := make(map[string]time.Time, maxRegenCooldownEntries)
+	for i := 0; i < maxRegenCooldownEntries; i++ {
+		entries[uuid.NewString()] = now.Add(-time.Duration(i) * time.Millisecond)
+	}
+	evictRegenCooldownLocked(entries, now)
+	assert.Less(t, len(entries), maxRegenCooldownEntries)
 }

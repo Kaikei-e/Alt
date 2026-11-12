@@ -49,11 +49,10 @@ func testQuotaConfig(burst, maxInFlight, maxUsers int) config.UserQuotaConfig {
 		MaxInFlight: maxInFlight,
 	}
 	return config.UserQuotaConfig{
-		MaxTrackedUsers:   maxUsers,
-		Summarize:         opCfg,
-		AugurChat:         opCfg,
-		MorningChat:       opCfg,
-		MorningRegenerate: opCfg,
+		MaxTrackedUsers: maxUsers,
+		Summarize:       opCfg,
+		AugurChat:       opCfg,
+		MorningChat:     opCfg,
 	}
 }
 
@@ -281,15 +280,13 @@ func TestUserQuotaInterceptor_PerUserTokenBucketAndIsolation(t *testing.T) {
 	assert.Equal(t, connect.CodeResourceExhausted, connect.CodeOf(mErr))
 	assert.Equal(t, int32(2), morningSvc.chatCalls.Load())
 
+	// MorningLetterReadService/RegenerateLatest relies on its usecase cooldown, not a quota class.
 	mlReadClient := morningletterv2connect.NewMorningLetterReadServiceClient(srv.Client(), srv.URL)
-	for i := 0; i < 2; i++ {
+	for i := 0; i < 3; i++ {
 		_, rErr := mlReadClient.RegenerateLatest(context.Background(), connect.NewRequest(&morningletterv2.RegenerateLatestRequest{}))
 		require.NoError(t, rErr)
 	}
-	_, rErr := mlReadClient.RegenerateLatest(context.Background(), connect.NewRequest(&morningletterv2.RegenerateLatestRequest{}))
-	require.Error(t, rErr)
-	assert.Equal(t, connect.CodeResourceExhausted, connect.CodeOf(rErr))
-	assert.Equal(t, int32(2), morningSvc.regenCalls.Load())
+	assert.Equal(t, int32(3), morningSvc.regenCalls.Load())
 }
 
 func TestUserQuotaInterceptor_PerUserConcurrencyCapIsolatesUsersAndReleases(t *testing.T) {
@@ -455,12 +452,6 @@ func TestUserQuotaInterceptor_RejectsUnauthenticated(t *testing.T) {
 	require.Error(t, sErr)
 	assert.Equal(t, connect.CodeUnauthenticated, connect.CodeOf(sErr))
 	assert.Equal(t, int32(0), feedSvc.summarizeCalls.Load())
-
-	mlReadClient := morningletterv2connect.NewMorningLetterReadServiceClient(srv.Client(), srv.URL)
-	_, rErr := mlReadClient.RegenerateLatest(context.Background(), connect.NewRequest(&morningletterv2.RegenerateLatestRequest{}))
-	require.Error(t, rErr)
-	assert.Equal(t, connect.CodeUnauthenticated, connect.CodeOf(rErr))
-	assert.Equal(t, int32(0), morningSvc.regenCalls.Load())
 }
 
 func TestEchoUserQuotaMiddleware_RateConcurrencyAndUnauthenticated(t *testing.T) {
