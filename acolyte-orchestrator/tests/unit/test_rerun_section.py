@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import nullcontext
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
@@ -169,7 +170,7 @@ def _make_repo_with_report() -> tuple[FakeRepo, UUID]:
 async def test_rerun_section_generates_new_body() -> None:
     repo, rid = _make_repo_with_report()
     llm = FakeLLM("New summary content.")
-    uc = RerunSectionUsecase(repo, llm)
+    uc = RerunSectionUsecase(repo, llm, generation_slot=nullcontext())
 
     await uc.execute(rid, "summary", user_id=TEST_USER_ID)
 
@@ -183,7 +184,7 @@ async def test_rerun_section_generates_new_body() -> None:
 async def test_rerun_section_bumps_report_version() -> None:
     repo, rid = _make_repo_with_report()
     llm = FakeLLM()
-    uc = RerunSectionUsecase(repo, llm)
+    uc = RerunSectionUsecase(repo, llm, generation_slot=nullcontext())
 
     new_v = await uc.execute(rid, "summary", user_id=TEST_USER_ID)
 
@@ -201,7 +202,7 @@ async def test_rerun_section_pins_think_false_for_cjk_safety() -> None:
     """
     repo, rid = _make_repo_with_report()
     llm = FakeLLM()
-    uc = RerunSectionUsecase(repo, llm)
+    uc = RerunSectionUsecase(repo, llm, generation_slot=nullcontext())
 
     await uc.execute(rid, "summary", user_id=TEST_USER_ID)
 
@@ -218,7 +219,7 @@ async def test_rerun_section_uses_longform_mode() -> None:
     """
     repo, rid = _make_repo_with_report()
     llm = FakeLLM()
-    uc = RerunSectionUsecase(repo, llm)
+    uc = RerunSectionUsecase(repo, llm, generation_slot=nullcontext())
 
     await uc.execute(rid, "summary", user_id=TEST_USER_ID)
 
@@ -228,7 +229,7 @@ async def test_rerun_section_uses_longform_mode() -> None:
 @pytest.mark.asyncio
 async def test_rerun_section_not_found_raises() -> None:
     repo, rid = _make_repo_with_report()
-    uc = RerunSectionUsecase(repo, FakeLLM())
+    uc = RerunSectionUsecase(repo, FakeLLM(), generation_slot=nullcontext())
 
     with pytest.raises(ValueError, match="Section"):
         await uc.execute(rid, "nonexistent", user_id=TEST_USER_ID)
@@ -237,7 +238,7 @@ async def test_rerun_section_not_found_raises() -> None:
 @pytest.mark.asyncio
 async def test_rerun_section_report_not_found_raises() -> None:
     repo = FakeRepo()
-    uc = RerunSectionUsecase(repo, FakeLLM())
+    uc = RerunSectionUsecase(repo, FakeLLM(), generation_slot=nullcontext())
 
     with pytest.raises(ValueError, match="Report"):
         await uc.execute(uuid4(), "summary", user_id=TEST_USER_ID)

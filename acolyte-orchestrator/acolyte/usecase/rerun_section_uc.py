@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from contextlib import nullcontext
 from typing import TYPE_CHECKING
 from uuid import UUID
 
@@ -40,13 +39,13 @@ class RerunSectionUsecase:
         self,
         repo: ReportRepositoryPort,
         llm: LLMProviderPort,
-        generation_slot: AbstractAsyncContextManager[object] | None = None,
+        generation_slot: AbstractAsyncContextManager[object],
     ) -> None:
-        """*generation_slot* brackets only the writer call, so ownership and
-        active-run rejections are answered without queueing behind other work."""
+        """*generation_slot* is required and brackets only the writer call, so
+        ownership and active-run rejections are answered without queueing."""
         self._repo = repo
         self._llm = llm
-        self._generation_slot = generation_slot if generation_slot is not None else nullcontext()
+        self._generation_slot = generation_slot
 
     async def execute(self, report_id: UUID, section_key: str, user_id: UUID) -> int:
         """Rerun a single section. Returns new report version number."""

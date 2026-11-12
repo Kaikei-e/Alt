@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import nullcontext
 from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
@@ -147,7 +148,7 @@ async def test_rerun_section_scoped_to_owner() -> None:
 
     report = await repo.create_report("Owner's Report", "weekly_briefing", user_id=owner_id)
     await repo.create_section(report.report_id, "sec1", 0)
-    uc = RerunSectionUsecase(repo, llm)
+    uc = RerunSectionUsecase(repo, llm, generation_slot=nullcontext())
 
     # Other user gets ValueError (which maps to NotFound in handler)
     with pytest.raises(ValueError):
