@@ -21,6 +21,8 @@ import (
 
 	"alt/config"
 	"alt/domain"
+	articlesv2 "alt/gen/proto/alt/articles/v2"
+	"alt/gen/proto/alt/articles/v2/articlesv2connect"
 	augurv2 "alt/gen/proto/alt/augur/v2"
 	"alt/gen/proto/alt/augur/v2/augurv2connect"
 	feedsv2 "alt/gen/proto/alt/feeds/v2"
@@ -55,6 +57,8 @@ func testQuotaConfig(burst, maxInFlight, maxUsers int) config.UserQuotaConfig {
 		Summarize:       opCfg,
 		AugurChat:       opCfg,
 		MorningChat:     opCfg,
+		AugurRetrieve:   opCfg,
+		ArticleTags:     opCfg,
 	}
 }
 
@@ -98,7 +102,39 @@ func (f *fakeFeedSummarizeService) GetFeedStats(
 
 type fakeAugurService struct {
 	augurv2connect.UnimplementedAugurServiceHandler
-	streamCalls atomic.Int32
+	streamCalls   atomic.Int32
+	retrieveCalls atomic.Int32
+}
+
+func (f *fakeAugurService) RetrieveContext(
+	_ context.Context,
+	_ *connect.Request[augurv2.RetrieveContextRequest],
+) (*connect.Response[augurv2.RetrieveContextResponse], error) {
+	f.retrieveCalls.Add(1)
+	return connect.NewResponse(&augurv2.RetrieveContextResponse{}), nil
+}
+
+type fakeArticleTagsService struct {
+	articlesv2connect.UnimplementedArticleServiceHandler
+	tagCalls  atomic.Int32
+	fetchCall atomic.Int32
+}
+
+func (f *fakeArticleTagsService) StreamArticleTags(
+	_ context.Context,
+	_ *connect.Request[articlesv2.StreamArticleTagsRequest],
+	stream *connect.ServerStream[articlesv2.StreamArticleTagsResponse],
+) error {
+	f.tagCalls.Add(1)
+	return stream.Send(&articlesv2.StreamArticleTagsResponse{})
+}
+
+func (f *fakeArticleTagsService) FetchArticleTags(
+	_ context.Context,
+	_ *connect.Request[articlesv2.FetchArticleTagsRequest],
+) (*connect.Response[articlesv2.FetchArticleTagsResponse], error) {
+	f.fetchCall.Add(1)
+	return connect.NewResponse(&articlesv2.FetchArticleTagsResponse{}), nil
 }
 
 func (f *fakeAugurService) StreamChat(
@@ -781,4 +817,90 @@ func TestUserQuotaLimiter_MissingUserIsAuthenticationError(t *testing.T) {
 	nilUser := domain.SetUserContext(context.Background(), &domain.UserContext{UserID: uuid.Nil})
 	_, err = limiter.Acquire(nilUser, OpSummarize)
 	assert.ErrorIs(t, err, ErrQuotaUnauthenticated)
+}
+
+func TestUserQuotaInterceptor_GatesRetrieveContextAndArticleTagsPerClass(t *testing.T) {
+	limiter, err := NewUserQuotaLimiter(testQuotaConfig(2, 4, 100), time.Now, discardLogger())
+	require.NoError(t, err)
+
+	augurSvc := &fakeAugurService{}
+	articleSvc := &fakeArticleTagsService{}
+	inject := &ctxInjectMiddleware{
+		ctx: func(r *http.Request) context.Context {
+			return testUserCtxWithParent(r.Context(), uuid.MustParse(r.Header.Get("X-Test-User")))
+		},
+	}
+	opts := connect.WithInterceptors(NewUserQuotaInterceptor(limiter).Interceptor())
+	mux := http.NewServeMux()
+	p1, h1 := augurv2connect.NewAugurServiceHandler(augurSvc, opts)
+	p2, h2 := articlesv2connect.NewArticleServiceHandler(articleSvc, opts)
+	mux.Handle(p1, h1)
+	mux.Handle(p2, h2)
+	srv := httptest.NewServer(inject.wrap(mux))
+	defer srv.Close()
+
+	userA, userB := uuid.New(), uuid.New()
+	withUser := func(id uuid.UUID) connect.ClientOption {
+		return connect.WithInterceptors(connect.UnaryInterceptorFunc(func(next connect.UnaryFunc) connect.UnaryFunc {
+			return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
+				req.Header().Set("X-Test-User", id.String())
+				return next(ctx, req)
+			}
+		}))
+	}
+	augurA := augurv2connect.NewAugurServiceClient(srv.Client(), srv.URL, withUser(userA))
+	augurB := augurv2connect.NewAugurServiceClient(srv.Client(), srv.URL, withUser(userB))
+
+	for i := 0; i < 2; i++ {
+		_, rErr := augurA.RetrieveContext(context.Background(), connect.NewRequest(&augurv2.RetrieveContextRequest{Query: "q"}))
+		require.NoError(t, rErr)
+	}
+	_, rErr := augurA.RetrieveContext(context.Background(), connect.NewRequest(&augurv2.RetrieveContextRequest{Query: "q"}))
+	require.Error(t, rErr)
+	assert.Equal(t, connect.CodeResourceExhausted, connect.CodeOf(rErr))
+	assert.Equal(t, int32(2), augurSvc.retrieveCalls.Load())
+
+	_, rErr = augurB.RetrieveContext(context.Background(), connect.NewRequest(&augurv2.RetrieveContextRequest{Query: "q"}))
+	require.NoError(t, rErr)
+
+	// Unary tag reads stay outside the generation class.
+	articlesA := articlesv2connect.NewArticleServiceClient(srv.Client(), srv.URL, withUser(userA))
+	for i := 0; i < 5; i++ {
+		_, fErr := articlesA.FetchArticleTags(context.Background(), connect.NewRequest(&articlesv2.FetchArticleTagsRequest{}))
+		require.NoError(t, fErr)
+	}
+	assert.Equal(t, int32(5), articleSvc.fetchCall.Load())
+}
+
+func TestUserQuotaInterceptor_ArticleTagsStreamIsRateLimited(t *testing.T) {
+	limiter, err := NewUserQuotaLimiter(testQuotaConfig(2, 4, 100), time.Now, discardLogger())
+	require.NoError(t, err)
+
+	articleSvc := &fakeArticleTagsService{}
+	user := uuid.New()
+	inject := &ctxInjectMiddleware{
+		ctx: func(r *http.Request) context.Context { return testUserCtxWithParent(r.Context(), user) },
+	}
+	opts := connect.WithInterceptors(NewUserQuotaInterceptor(limiter).Interceptor())
+	mux := http.NewServeMux()
+	p, h := articlesv2connect.NewArticleServiceHandler(articleSvc, opts)
+	mux.Handle(p, h)
+	srv := httptest.NewServer(inject.wrap(mux))
+	defer srv.Close()
+
+	client := articlesv2connect.NewArticleServiceClient(srv.Client(), srv.URL)
+	var lastErr error
+	for i := 0; i < 3; i++ {
+		st, sErr := client.StreamArticleTags(context.Background(), connect.NewRequest(&articlesv2.StreamArticleTagsRequest{}))
+		if sErr == nil {
+			for st.Receive() {
+			}
+			sErr = st.Err()
+			_ = st.Close()
+		}
+		lastErr = sErr
+	}
+	require.Error(t, lastErr)
+	assert.Equal(t, connect.CodeResourceExhausted, connect.CodeOf(lastErr))
+	assert.Equal(t, int32(2), articleSvc.tagCalls.Load())
 }

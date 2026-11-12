@@ -30,6 +30,9 @@ func TestLoadUserQuotaConfig_Defaults(t *testing.T) {
 	assert.Equal(t, DefaultUserQuotaMorningChatBurst, cfg.MorningChat.Burst)
 	assert.Equal(t, DefaultUserQuotaMorningChatWindow, cfg.MorningChat.Window)
 	assert.Equal(t, 1, cfg.MorningChat.MaxInFlight)
+
+	assert.Equal(t, OperationQuotaConfig{Rate: 30, Burst: 15, Window: time.Minute, MaxInFlight: 2}, cfg.AugurRetrieve)
+	assert.Equal(t, OperationQuotaConfig{Rate: 120, Burst: 60, Window: time.Minute, MaxInFlight: 40}, cfg.ArticleTags)
 }
 
 func TestLoadUserQuotaConfig_OverridesAndRejectsInvalid(t *testing.T) {
@@ -49,6 +52,22 @@ func TestLoadUserQuotaConfig_OverridesAndRejectsInvalid(t *testing.T) {
 			Window:      30 * time.Second,
 			MaxInFlight: 4,
 		}, cfg.Summarize)
+	})
+
+	t.Run("overrides retrieve and tag classes", func(t *testing.T) {
+		t.Setenv("USER_QUOTA_AUGUR_RETRIEVE_RATE", "7")
+		t.Setenv("USER_QUOTA_AUGUR_RETRIEVE_BURST", "3")
+		t.Setenv("USER_QUOTA_AUGUR_RETRIEVE_WINDOW", "2m")
+		t.Setenv("USER_QUOTA_AUGUR_RETRIEVE_MAX_IN_FLIGHT", "5")
+		t.Setenv("USER_QUOTA_ARTICLE_TAGS_RATE", "9")
+		t.Setenv("USER_QUOTA_ARTICLE_TAGS_BURST", "8")
+		t.Setenv("USER_QUOTA_ARTICLE_TAGS_WINDOW", "30s")
+		t.Setenv("USER_QUOTA_ARTICLE_TAGS_MAX_IN_FLIGHT", "6")
+
+		cfg, err := LoadUserQuotaConfig()
+		require.NoError(t, err)
+		assert.Equal(t, OperationQuotaConfig{Rate: 7, Burst: 3, Window: 2 * time.Minute, MaxInFlight: 5}, cfg.AugurRetrieve)
+		assert.Equal(t, OperationQuotaConfig{Rate: 9, Burst: 8, Window: 30 * time.Second, MaxInFlight: 6}, cfg.ArticleTags)
 	})
 
 	t.Run("rejects zero or negative values", func(t *testing.T) {
@@ -82,6 +101,8 @@ func TestLogUserQuotaConfig_EmitsStructuredValues(t *testing.T) {
 	assert.Contains(t, out, `"summarize_max_in_flight":2`)
 	assert.Contains(t, out, `"augur_chat_max_in_flight":1`)
 	assert.Contains(t, out, `"morning_chat_max_in_flight":1`)
+	assert.Contains(t, out, `"augur_retrieve_max_in_flight":2`)
+	assert.Contains(t, out, `"article_tags_max_in_flight":40`)
 	assert.NotContains(t, out, `morning_regenerate`)
 	assert.NotContains(t, out, `max_concurrent`)
 }
@@ -95,6 +116,8 @@ func TestLoadUserQuotaConfig_RejectsSetButEmptyValues(t *testing.T) {
 		UserQuotaSummarizeMaxInFlightEnv,
 		UserQuotaAugurChatRateEnv,
 		UserQuotaMorningChatWindowEnv,
+		"USER_QUOTA_AUGUR_RETRIEVE_BURST",
+		"USER_QUOTA_ARTICLE_TAGS_MAX_IN_FLIGHT",
 	} {
 		for _, value := range []string{"", "   "} {
 			t.Run(name+"="+value, func(t *testing.T) {

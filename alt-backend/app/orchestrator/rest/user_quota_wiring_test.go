@@ -71,12 +71,12 @@ func signRESTTestJWT(t *testing.T, priv ed25519.PrivateKey, uid uuid.UUID) strin
 func TestRESTRoutes_EnforceUserQuotaWith429AndRetryAfter(t *testing.T) {
 	logger.InitLogger()
 	pub, priv := newRESTTestKeyPair(t)
-	limiter, err := connectmiddleware.NewUserQuotaLimiter(config.UserQuotaConfig{
+	limiter, err := connectmiddleware.NewUserQuotaLimiter(withDefaultRetrieveAndTagClasses(config.UserQuotaConfig{
 		MaxTrackedUsers: 32,
 		Summarize:       config.OperationQuotaConfig{Rate: 1, Burst: 1, Window: time.Minute, MaxInFlight: 1},
 		AugurChat:       config.OperationQuotaConfig{Rate: 1, Burst: 1, Window: time.Minute, MaxInFlight: 1},
 		MorningChat:     config.OperationQuotaConfig{Rate: 1, Burst: 1, Window: time.Minute, MaxInFlight: 1},
-	}, time.Now, slog.New(slog.DiscardHandler))
+	}), time.Now, slog.New(slog.DiscardHandler))
 	require.NoError(t, err)
 
 	answerUC := &stubQuotaAnswerUsecase{}
@@ -288,12 +288,12 @@ func TestNonStreamingSummarizeRoutes_EnforcePerUserQuotaAndIsolateUsers(t *testi
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			limiter, err := connectmiddleware.NewUserQuotaLimiter(config.UserQuotaConfig{
+			limiter, err := connectmiddleware.NewUserQuotaLimiter(withDefaultRetrieveAndTagClasses(config.UserQuotaConfig{
 				MaxTrackedUsers: 32,
 				Summarize:       config.OperationQuotaConfig{Rate: 2, Burst: 2, Window: time.Hour, MaxInFlight: 2},
 				AugurChat:       config.OperationQuotaConfig{Rate: 1, Burst: 1, Window: time.Minute, MaxInFlight: 1},
 				MorningChat:     config.OperationQuotaConfig{Rate: 1, Burst: 1, Window: time.Minute, MaxInFlight: 1},
-			}, time.Now, slog.New(slog.DiscardHandler))
+			}), time.Now, slog.New(slog.DiscardHandler))
 			require.NoError(t, err)
 
 			e, preproc, batchSummarizer := newSummarizeQuotaTestServer(t, pub, limiter)
@@ -333,12 +333,12 @@ func TestSummarizeRoutes_ShareSinglePerUserBudgetAcrossStreamingAndNonStreaming(
 	t.Setenv("FEED_ALLOWED_HOSTS", "example.com")
 	pub, priv := newRESTTestKeyPair(t)
 
-	limiter, err := connectmiddleware.NewUserQuotaLimiter(config.UserQuotaConfig{
+	limiter, err := connectmiddleware.NewUserQuotaLimiter(withDefaultRetrieveAndTagClasses(config.UserQuotaConfig{
 		MaxTrackedUsers: 32,
 		Summarize:       config.OperationQuotaConfig{Rate: 2, Burst: 2, Window: time.Hour, MaxInFlight: 2},
 		AugurChat:       config.OperationQuotaConfig{Rate: 1, Burst: 1, Window: time.Minute, MaxInFlight: 1},
 		MorningChat:     config.OperationQuotaConfig{Rate: 1, Burst: 1, Window: time.Minute, MaxInFlight: 1},
-	}, time.Now, slog.New(slog.DiscardHandler))
+	}), time.Now, slog.New(slog.DiscardHandler))
 	require.NoError(t, err)
 
 	e, preproc, batchSummarizer := newSummarizeQuotaTestServer(t, pub, limiter)
@@ -382,4 +382,58 @@ func TestSummarizeRoutes_PanicAtRegistrationWhenLimiterNil(t *testing.T) {
 	assert.Panics(t, func() {
 		newSummarizeQuotaTestServer(t, pub, nil)
 	})
+}
+
+func withDefaultRetrieveAndTagClasses(c config.UserQuotaConfig) config.UserQuotaConfig {
+	d := config.DefaultUserQuotaConfig()
+	c.AugurRetrieve = d.AugurRetrieve
+	c.ArticleTags = d.ArticleTags
+	return c
+}
+
+func TestRESTRoutes_RetrieveContextIsGatedByItsOwnClass(t *testing.T) {
+	logger.InitLogger()
+	pub, priv := newRESTTestKeyPair(t)
+	cfgQuota := config.DefaultUserQuotaConfig()
+	cfgQuota.AugurRetrieve = config.OperationQuotaConfig{Rate: 1, Burst: 1, Window: time.Minute, MaxInFlight: 1}
+	limiter, err := connectmiddleware.NewUserQuotaLimiter(cfgQuota, time.Now, slog.New(slog.DiscardHandler))
+	require.NoError(t, err)
+
+	retrieveUC := &stubRetrieveContextUsecase{}
+	container := &di.ApplicationComponents{
+		UserQuotaLimiter:       limiter,
+		RetrieveContextUsecase: retrieveUC,
+		AnswerChatUsecase:      &stubQuotaAnswerUsecase{},
+	}
+	cfg := &config.Config{
+		Auth: config.AuthConfig{
+			BackendTokenPublicKey: pub,
+			BackendTokenIssuer:    "auth-hub",
+			BackendTokenAudience:  "alt-backend",
+		},
+	}
+	e := echo.New()
+	v1 := e.Group("/v1")
+	RegisterAugurRoutes(e, v1, container, cfg.Auth)
+
+	get := func(token string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodGet, "/v1/rag/context?q=ai", nil)
+		req.Header.Set("X-Alt-Backend-Token", token)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+		return rec
+	}
+
+	tokenA := signRESTTestJWT(t, priv, uuid.New())
+	assert.Equal(t, http.StatusOK, get(tokenA).Code)
+	rec := get(tokenA)
+	assert.Equal(t, http.StatusTooManyRequests, rec.Code)
+	assert.NotEmpty(t, rec.Header().Get("Retry-After"))
+
+	assert.Equal(t, http.StatusOK, get(signRESTTestJWT(t, priv, uuid.New())).Code, "another account keeps working")
+
+	unauth := httptest.NewRequest(http.MethodGet, "/v1/rag/context?q=ai", nil)
+	unauthRec := httptest.NewRecorder()
+	e.ServeHTTP(unauthRec, unauth)
+	assert.Equal(t, http.StatusUnauthorized, unauthRec.Code)
 }
