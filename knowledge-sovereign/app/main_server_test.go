@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"go/ast"
 	"go/parser"
@@ -13,10 +14,13 @@ import (
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"knowledge-sovereign/config"
+	sovereignv1 "knowledge-sovereign/gen/proto/services/sovereign/v1"
+	"knowledge-sovereign/gen/proto/services/sovereign/v1/sovereignv1connect"
 )
 
 func TestNewHTTPServer(t *testing.T) {
@@ -60,6 +64,43 @@ func TestBuildRPCMux_HealthEndpoint(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Errorf("expected 200 for health endpoint, got %d", rec.Code)
 	}
+}
+
+type recordingAppendHandler struct {
+	sovereignv1connect.UnimplementedKnowledgeSovereignServiceHandler
+	called bool
+}
+
+func (h *recordingAppendHandler) AppendKnowledgeEvent(
+	_ context.Context,
+	_ *connect.Request[sovereignv1.AppendKnowledgeEventRequest],
+) (*connect.Response[sovereignv1.AppendKnowledgeEventResponse], error) {
+	h.called = true
+	return connect.NewResponse(&sovereignv1.AppendKnowledgeEventResponse{EventSeq: 1}), nil
+}
+
+func TestBuildRPCMux_RejectsOversizedRequestWithResourceExhausted(t *testing.T) {
+	const token = "test-event-token"
+	cfg := &config.Config{
+		EventToken:       token,
+		EventAuthEnabled: true,
+	}
+	stub := &recordingAppendHandler{}
+	srv := httptest.NewServer(buildRPCMux(stub, cfg))
+	t.Cleanup(srv.Close)
+
+	client := sovereignv1connect.NewKnowledgeSovereignServiceClient(srv.Client(), srv.URL)
+	req := connect.NewRequest(&sovereignv1.AppendKnowledgeEventRequest{
+		Event: &sovereignv1.KnowledgeEvent{
+			Payload: bytes.Repeat([]byte("a"), 2<<20),
+		},
+	})
+	req.Header().Set("Authorization", "Bearer "+token)
+
+	_, err := client.AppendKnowledgeEvent(context.Background(), req)
+	require.Error(t, err)
+	assert.Equal(t, connect.CodeResourceExhausted, connect.CodeOf(err))
+	assert.False(t, stub.called, "oversized request must be rejected before decoding or invoking the handler")
 }
 
 func TestLogUserTokenVerifierStatus(t *testing.T) {
