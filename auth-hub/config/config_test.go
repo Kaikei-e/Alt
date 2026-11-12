@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"encoding/pem"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"testing"
@@ -34,8 +35,20 @@ func writeEd25519SigningKeyFile(t *testing.T) (string, ed25519.PrivateKey) {
 	return keyPath, priv
 }
 
+func mustTrustedCIDRs(t *testing.T, cidrs ...string) []netip.Prefix {
+	t.Helper()
+	out := make([]netip.Prefix, 0, len(cidrs))
+	for _, s := range cidrs {
+		p, err := netip.ParsePrefix(s)
+		require.NoError(t, err)
+		out = append(out, p.Masked())
+	}
+	return out
+}
+
 func TestLoad(t *testing.T) {
 	keyFile, _ := writeEd25519SigningKeyFile(t)
+	t.Setenv("TRUSTED_PROXY_CIDRS", "172.18.0.0/16")
 
 	tests := []struct {
 		name        string
@@ -230,6 +243,7 @@ func TestLoad_BackendTokenSigningKeyFile(t *testing.T) {
 		t.Helper()
 		t.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
 		t.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
+		t.Setenv("TRUSTED_PROXY_CIDRS", "172.18.0.0/16")
 	}
 
 	t.Run("loads valid PKCS8 Ed25519 private key", func(t *testing.T) {
@@ -315,8 +329,73 @@ func TestLoad_BackendTokenSigningKeyFile(t *testing.T) {
 	})
 }
 
+func TestLoad_TrustedProxyCIDRs(t *testing.T) {
+	keyFile, _ := writeEd25519SigningKeyFile(t)
+	setBaseEnv := func(t *testing.T) {
+		t.Helper()
+		t.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
+		t.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
+		t.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
+	}
+
+	t.Run("parses comma-separated CIDRs", func(t *testing.T) {
+		setBaseEnv(t)
+		t.Setenv("TRUSTED_PROXY_CIDRS", "172.18.0.0/16, 10.10.0.5/32, fd00::/8")
+
+		cfg, err := Load()
+		require.NoError(t, err)
+		assert.Equal(t, mustTrustedCIDRs(t, "172.18.0.0/16", "10.10.0.5/32", "fd00::/8"), cfg.TrustedProxyCIDRs)
+	})
+
+	t.Run("fails when TRUSTED_PROXY_CIDRS is unset", func(t *testing.T) {
+		setBaseEnv(t)
+		os.Unsetenv("TRUSTED_PROXY_CIDRS")
+
+		_, err := Load()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "TRUSTED_PROXY_CIDRS")
+	})
+
+	t.Run("fails when TRUSTED_PROXY_CIDRS is whitespace", func(t *testing.T) {
+		setBaseEnv(t)
+		t.Setenv("TRUSTED_PROXY_CIDRS", "   ")
+
+		_, err := Load()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "TRUSTED_PROXY_CIDRS")
+	})
+
+	t.Run("fails when TRUSTED_PROXY_CIDRS contains unparsable CIDR", func(t *testing.T) {
+		setBaseEnv(t)
+		t.Setenv("TRUSTED_PROXY_CIDRS", "172.18.0.0/16,not-a-cidr")
+
+		_, err := Load()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "TRUSTED_PROXY_CIDRS")
+	})
+
+	t.Run("fails when TRUSTED_PROXY_CIDRS contains bare IP without prefix length", func(t *testing.T) {
+		setBaseEnv(t)
+		t.Setenv("TRUSTED_PROXY_CIDRS", "172.18.0.5")
+
+		_, err := Load()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "TRUSTED_PROXY_CIDRS")
+	})
+
+	t.Run("fails when TRUSTED_PROXY_CIDRS has empty comma segment", func(t *testing.T) {
+		setBaseEnv(t)
+		t.Setenv("TRUSTED_PROXY_CIDRS", "172.18.0.0/16,")
+
+		_, err := Load()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "TRUSTED_PROXY_CIDRS")
+	})
+}
+
 func TestLoad_KratosAdminURL_Default(t *testing.T) {
 	keyFile, _ := writeEd25519SigningKeyFile(t)
+	t.Setenv("TRUSTED_PROXY_CIDRS", "172.18.0.0/16")
 	os.Unsetenv("KRATOS_ADMIN_URL")
 	os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
 	os.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
@@ -334,6 +413,7 @@ func TestLoad_KratosAdminURL_Default(t *testing.T) {
 
 func TestLoad_KratosAdminURL_EnvOverride(t *testing.T) {
 	keyFile, _ := writeEd25519SigningKeyFile(t)
+	t.Setenv("TRUSTED_PROXY_CIDRS", "172.18.0.0/16")
 	os.Setenv("KRATOS_ADMIN_URL", "http://custom-kratos-admin:4434")
 	os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
 	os.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
@@ -352,6 +432,7 @@ func TestLoad_KratosAdminURL_EnvOverride(t *testing.T) {
 
 func TestLoad_ValidateRateLimit_Default(t *testing.T) {
 	keyFile, _ := writeEd25519SigningKeyFile(t)
+	t.Setenv("TRUSTED_PROXY_CIDRS", "172.18.0.0/16")
 	os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
 	os.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
 	os.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
@@ -369,6 +450,7 @@ func TestLoad_ValidateRateLimit_Default(t *testing.T) {
 
 func TestLoad_ValidateRateLimit_EnvOverride(t *testing.T) {
 	keyFile, _ := writeEd25519SigningKeyFile(t)
+	t.Setenv("TRUSTED_PROXY_CIDRS", "172.18.0.0/16")
 	os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
 	os.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
 	os.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
@@ -387,6 +469,7 @@ func TestLoad_ValidateRateLimit_EnvOverride(t *testing.T) {
 
 func TestLoad_ValidateRateLimit_Invalid(t *testing.T) {
 	keyFile, _ := writeEd25519SigningKeyFile(t)
+	t.Setenv("TRUSTED_PROXY_CIDRS", "172.18.0.0/16")
 	os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
 	os.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
 	os.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
@@ -405,6 +488,7 @@ func TestLoad_ValidateRateLimit_Invalid(t *testing.T) {
 
 func TestLoad_CSRFRateLimit_Default(t *testing.T) {
 	keyFile, _ := writeEd25519SigningKeyFile(t)
+	t.Setenv("TRUSTED_PROXY_CIDRS", "172.18.0.0/16")
 	os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
 	os.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
 	os.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
@@ -422,6 +506,7 @@ func TestLoad_CSRFRateLimit_Default(t *testing.T) {
 
 func TestLoad_CSRFRateLimit_EnvOverride(t *testing.T) {
 	keyFile, _ := writeEd25519SigningKeyFile(t)
+	t.Setenv("TRUSTED_PROXY_CIDRS", "172.18.0.0/16")
 	os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
 	os.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
 	os.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
@@ -440,6 +525,7 @@ func TestLoad_CSRFRateLimit_EnvOverride(t *testing.T) {
 
 func TestLoad_CSRFRateLimit_Invalid(t *testing.T) {
 	keyFile, _ := writeEd25519SigningKeyFile(t)
+	t.Setenv("TRUSTED_PROXY_CIDRS", "172.18.0.0/16")
 	os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
 	os.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
 	os.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
@@ -458,6 +544,7 @@ func TestLoad_CSRFRateLimit_Invalid(t *testing.T) {
 
 func TestConfig_Validate(t *testing.T) {
 	validKey := generateTestEd25519Key(t)
+	trustedCIDRs := mustTrustedCIDRs(t, "172.18.0.0/16")
 
 	tests := []struct {
 		name        string
@@ -475,6 +562,7 @@ func TestConfig_Validate(t *testing.T) {
 				CSRFSecret:             "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
 				BackendTokenSigningKey: validKey,
 				InternalAuthSecret:     "this-is-a-distinct-internal-auth-secret-32-chars",
+				TrustedProxyCIDRs:      trustedCIDRs,
 			},
 			wantErr: false,
 		},
@@ -488,6 +576,7 @@ func TestConfig_Validate(t *testing.T) {
 				CSRFSecret:             "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
 				BackendTokenSigningKey: validKey,
 				InternalAuthSecret:     "this-is-a-distinct-internal-auth-secret-32-chars",
+				TrustedProxyCIDRs:      trustedCIDRs,
 			},
 			wantErr:     true,
 			errContains: "KRATOS_URL",
@@ -502,6 +591,7 @@ func TestConfig_Validate(t *testing.T) {
 				CSRFSecret:             "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
 				BackendTokenSigningKey: validKey,
 				InternalAuthSecret:     "this-is-a-distinct-internal-auth-secret-32-chars",
+				TrustedProxyCIDRs:      trustedCIDRs,
 			},
 			wantErr:     true,
 			errContains: "PORT",
@@ -516,6 +606,7 @@ func TestConfig_Validate(t *testing.T) {
 				CSRFSecret:             "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
 				BackendTokenSigningKey: validKey,
 				InternalAuthSecret:     "this-is-a-distinct-internal-auth-secret-32-chars",
+				TrustedProxyCIDRs:      trustedCIDRs,
 			},
 			wantErr:     true,
 			errContains: "CACHE_TTL",
@@ -530,6 +621,7 @@ func TestConfig_Validate(t *testing.T) {
 				CSRFSecret:             "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
 				BackendTokenSigningKey: validKey,
 				InternalAuthSecret:     "this-is-a-distinct-internal-auth-secret-32-chars",
+				TrustedProxyCIDRs:      trustedCIDRs,
 			},
 			wantErr:     true,
 			errContains: "CACHE_TTL",
@@ -544,6 +636,7 @@ func TestConfig_Validate(t *testing.T) {
 				CSRFSecret:             "",
 				BackendTokenSigningKey: validKey,
 				InternalAuthSecret:     "this-is-a-distinct-internal-auth-secret-32-chars",
+				TrustedProxyCIDRs:      trustedCIDRs,
 			},
 			wantErr:     true,
 			errContains: "CSRF_SECRET",
@@ -558,6 +651,7 @@ func TestConfig_Validate(t *testing.T) {
 				CSRFSecret:             "short-secret",
 				BackendTokenSigningKey: validKey,
 				InternalAuthSecret:     "this-is-a-distinct-internal-auth-secret-32-chars",
+				TrustedProxyCIDRs:      trustedCIDRs,
 			},
 			wantErr:     true,
 			errContains: "CSRF_SECRET must be at least 32 characters",
@@ -572,6 +666,7 @@ func TestConfig_Validate(t *testing.T) {
 				CSRFSecret:             "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
 				BackendTokenSigningKey: validKey,
 				InternalAuthSecret:     "this-is-a-distinct-internal-auth-secret-32-chars",
+				TrustedProxyCIDRs:      trustedCIDRs,
 			},
 			wantErr: false,
 		},
@@ -585,6 +680,7 @@ func TestConfig_Validate(t *testing.T) {
 				CSRFSecret:             "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
 				BackendTokenSigningKey: nil,
 				InternalAuthSecret:     "this-is-a-distinct-internal-auth-secret-32-chars",
+				TrustedProxyCIDRs:      trustedCIDRs,
 			},
 			wantErr:     true,
 			errContains: "BACKEND_TOKEN_SIGNING_KEY_FILE",
@@ -599,9 +695,25 @@ func TestConfig_Validate(t *testing.T) {
 				CSRFSecret:             "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
 				BackendTokenSigningKey: ed25519.PrivateKey("short"),
 				InternalAuthSecret:     "this-is-a-distinct-internal-auth-secret-32-chars",
+				TrustedProxyCIDRs:      trustedCIDRs,
 			},
 			wantErr:     true,
 			errContains: "BACKEND_TOKEN_SIGNING_KEY_FILE",
+		},
+		{
+			name: "missing trusted proxy CIDRs",
+			config: &Config{
+				KratosURL:              "http://kratos:4433",
+				Port:                   "8888",
+				CacheTTL:               60 * time.Second,
+				BackendTokenTTL:        5 * time.Minute,
+				CSRFSecret:             "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
+				BackendTokenSigningKey: validKey,
+				InternalAuthSecret:     "this-is-a-distinct-internal-auth-secret-32-chars",
+				TrustedProxyCIDRs:      nil,
+			},
+			wantErr:     true,
+			errContains: "TRUSTED_PROXY_CIDRS",
 		},
 	}
 
@@ -623,6 +735,8 @@ func TestConfig_Validate(t *testing.T) {
 
 func TestConfig_BoundedSessionCacheAndJWT(t *testing.T) {
 	keyFile, validKey := writeEd25519SigningKeyFile(t)
+	trustedCIDRs := mustTrustedCIDRs(t, "172.18.0.0/16")
+	t.Setenv("TRUSTED_PROXY_CIDRS", "172.18.0.0/16")
 
 	t.Run("Load caps CACHE_TTL to 60s", func(t *testing.T) {
 		os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
@@ -722,6 +836,7 @@ func TestConfig_BoundedSessionCacheAndJWT(t *testing.T) {
 				CSRFSecret:             "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
 				BackendTokenSigningKey: validKey,
 				InternalAuthSecret:     "this-is-a-distinct-internal-auth-secret-32-chars",
+				TrustedProxyCIDRs:      trustedCIDRs,
 			}
 		}
 

@@ -1,8 +1,12 @@
 package main
 
 import (
+	"bytes"
+	"context"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"testing"
 
 	"auth-hub/config"
@@ -116,4 +120,40 @@ func TestBuildPlaintextHandler_ExplicitDevPermitsRoutes(t *testing.T) {
 	handler.ServeHTTP(rec, req)
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Equal(t, "dev-session-data", rec.Body.String())
+}
+
+func TestConfigureTrustedProxies_WiresExtractorAndLogsAtStartup(t *testing.T) {
+	assert.Panics(t, func() {
+		configureTrustedProxies(context.Background(), echo.New(), nil, slog.Default())
+	})
+
+	var logBuf bytes.Buffer
+	log := slog.New(slog.NewJSONHandler(&logBuf, nil))
+	e := echo.New()
+	cidrs := []netip.Prefix{
+		netip.MustParsePrefix("172.18.0.5/32"),
+	}
+
+	configureTrustedProxies(context.Background(), e, cidrs, log)
+
+	assert.Contains(t, logBuf.String(), "trusted_proxy_cidrs")
+	assert.Contains(t, logBuf.String(), "172.18.0.5/32")
+
+	e.GET("/ip", func(c echo.Context) error {
+		return c.String(http.StatusOK, c.RealIP())
+	})
+
+	trustedReq := httptest.NewRequest(http.MethodGet, "/ip", nil)
+	trustedReq.RemoteAddr = "172.18.0.5:44444"
+	trustedReq.Header.Set("X-Forwarded-For", "203.0.113.1, 198.51.100.77")
+	trustedRec := httptest.NewRecorder()
+	e.ServeHTTP(trustedRec, trustedReq)
+	assert.Equal(t, "198.51.100.77", trustedRec.Body.String())
+
+	untrustedReq := httptest.NewRequest(http.MethodGet, "/ip", nil)
+	untrustedReq.RemoteAddr = "172.18.0.99:44444"
+	untrustedReq.Header.Set("X-Forwarded-For", "198.51.100.77")
+	untrustedRec := httptest.NewRecorder()
+	e.ServeHTTP(untrustedRec, untrustedReq)
+	assert.Equal(t, "172.18.0.99", untrustedRec.Body.String())
 }

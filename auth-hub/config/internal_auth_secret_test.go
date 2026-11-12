@@ -19,6 +19,7 @@ func baseValidConfig(t *testing.T) *Config {
 		CSRFSecret:             "this-is-a-valid-csrf-secret-that-is-at-least-32-chars",
 		BackendTokenSigningKey: generateTestEd25519Key(t),
 		InternalAuthSecret:     "this-is-a-distinct-internal-auth-secret-32-chars",
+		TrustedProxyCIDRs:      mustTrustedCIDRs(t, "172.18.0.0/16"),
 	}
 }
 
@@ -69,13 +70,10 @@ func TestConfig_Validate_InternalAuthSecret(t *testing.T) {
 
 func TestLoad_InternalAuthSecret_HasNoDefault(t *testing.T) {
 	keyFile, _ := writeEd25519SigningKeyFile(t)
-	os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
-	os.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
+	t.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
+	t.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
+	t.Setenv("TRUSTED_PROXY_CIDRS", "172.18.0.0/16")
 	os.Unsetenv("INTERNAL_AUTH_SECRET")
-	defer func() {
-		os.Unsetenv("CSRF_SECRET")
-		os.Unsetenv("BACKEND_TOKEN_SIGNING_KEY_FILE")
-	}()
 
 	_, err := Load()
 
@@ -85,14 +83,10 @@ func TestLoad_InternalAuthSecret_HasNoDefault(t *testing.T) {
 
 func TestLoad_InternalAuthSecret_FromEnv(t *testing.T) {
 	keyFile, _ := writeEd25519SigningKeyFile(t)
-	os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
-	os.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
-	os.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
-	defer func() {
-		os.Unsetenv("CSRF_SECRET")
-		os.Unsetenv("BACKEND_TOKEN_SIGNING_KEY_FILE")
-		os.Unsetenv("INTERNAL_AUTH_SECRET")
-	}()
+	t.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
+	t.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
+	t.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
+	t.Setenv("TRUSTED_PROXY_CIDRS", "172.18.0.0/16")
 
 	cfg, err := Load()
 
