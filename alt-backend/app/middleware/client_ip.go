@@ -3,43 +3,68 @@ package middleware
 import (
 	"net"
 	"net/http"
+	"net/netip"
 	"strings"
 
 	"github.com/labstack/echo/v4"
 )
 
-// extractClientIP extracts client IP address from HTTP headers and connection remote address.
-func extractClientIP(header http.Header, remoteAddr string, trustForwarded bool) string {
-	if trustForwarded && header != nil {
-		if ip := header.Get("X-Real-IP"); ip != "" {
-			if net.ParseIP(ip) != nil {
-				return ip
-			}
-		}
-		if xff := header.Get("X-Forwarded-For"); xff != "" {
-			for _, raw := range strings.Split(xff, ",") {
-				ip := strings.TrimSpace(raw)
-				if net.ParseIP(ip) != nil {
-					return ip
-				}
-			}
-		}
+func NewTrustedProxyIPExtractor(trustedProxies []netip.Prefix) echo.IPExtractor {
+	return func(req *http.Request) string {
+		return ExtractClientIP(req, trustedProxies)
 	}
-
-	if ip, _, err := net.SplitHostPort(remoteAddr); err == nil {
-		if net.ParseIP(ip) != nil {
-			return ip
-		}
-	}
-	return ""
 }
 
-// getClientIPWithTrust returns the client IP. When trustForwardedHeaders is
-// true, X-Real-IP and the leftmost X-Forwarded-For entry are honoured (use
-// only when behind a controlled reverse proxy that overwrites those headers).
-// When false, headers are ignored and only the connection peer is returned —
-// this prevents IP spoofing for rate-limit bypass when alt-backend is reached
-// directly (M-007).
-func getClientIPWithTrust(c echo.Context, trustForwardedHeaders bool) string {
-	return extractClientIP(c.Request().Header, c.Request().RemoteAddr, trustForwardedHeaders)
+func ExtractClientIP(req *http.Request, trustedProxies []netip.Prefix) string {
+	if req == nil {
+		return ""
+	}
+	rawPeer := strings.TrimSpace(req.RemoteAddr)
+	host, _, err := net.SplitHostPort(rawPeer)
+	if err != nil {
+		host = rawPeer
+	}
+	peerAddr, err := netip.ParseAddr(host)
+	if err != nil {
+		return ""
+	}
+	peerAddr = peerAddr.Unmap()
+
+	if !isTrustedAddr(peerAddr, trustedProxies) {
+		return peerAddr.String()
+	}
+
+	xffValues := req.Header.Values("X-Forwarded-For")
+	if len(xffValues) == 0 {
+		return peerAddr.String()
+	}
+
+	var entries []string
+	for _, raw := range xffValues {
+		for _, part := range strings.Split(raw, ",") {
+			entries = append(entries, part)
+		}
+	}
+
+	for i := len(entries) - 1; i >= 0; i-- {
+		candidate, err := netip.ParseAddr(strings.TrimSpace(entries[i]))
+		if err != nil {
+			return peerAddr.String()
+		}
+		candidate = candidate.Unmap()
+		if !isTrustedAddr(candidate, trustedProxies) {
+			return candidate.String()
+		}
+	}
+
+	return peerAddr.String()
+}
+
+func isTrustedAddr(addr netip.Addr, trustedProxies []netip.Prefix) bool {
+	for _, prefix := range trustedProxies {
+		if prefix.Contains(addr) {
+			return true
+		}
+	}
+	return false
 }

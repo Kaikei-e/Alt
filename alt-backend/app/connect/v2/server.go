@@ -40,9 +40,6 @@ import (
 	"alt/orchestrator/connect/v2/rss"
 )
 
-// ConnectReadMaxBytes bounds per-message Connect reads to fit StreamSummarizeRequest article bodies plus framing.
-const ConnectReadMaxBytes = 2 * 1024 * 1024
-
 // SetupConnectHandlers registers the browser-facing Connect-RPC handlers with
 // the HTTP mux. Every service registered here runs behind the JWT auth
 // interceptor. Service-to-service and admin surfaces belong on the internal
@@ -67,7 +64,7 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 	}
 	opts := connect.WithOptions(
 		connect.WithInterceptors(interceptors...),
-		connect.WithReadMaxBytes(ConnectReadMaxBytes),
+		connect.WithReadMaxBytes(config.MaxRequestBodyBytes),
 	)
 
 	// Register Feed service
@@ -253,9 +250,12 @@ func SetupOperatorConnectHandlers(mux *http.ServeMux, container *di.ApplicationC
 	// boundary contracts (e.g. 72-admin-emit-article-url-backfill.hurl)
 	// assert that every field of the response envelope round-trips,
 	// which is impossible if the wire encoder strips zero values.
-	adminOpts := connect.WithInterceptors(
-		cancelInterceptor.Interceptor(),
-		operatorAuthInterceptor.Interceptor(),
+	adminOpts := connect.WithOptions(
+		connect.WithInterceptors(
+			cancelInterceptor.Interceptor(),
+			operatorAuthInterceptor.Interceptor(),
+		),
+		connect.WithReadMaxBytes(config.MaxRequestBodyBytes),
 	)
 	khAdminHandler := knowledge_home_admin.NewHandler(
 		container.KnowledgeBackfillUsecase,

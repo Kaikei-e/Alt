@@ -8,16 +8,20 @@ import (
 	"strings"
 )
 
-const TrustedProxyCIDRsEnv = "TRUSTED_PROXY_CIDRS"
+// MaxRequestBodyBytes bounds REST request bodies and Connect messages (1 MB OPML import plus multipart overhead; 1 MiB HTML-extracted article cap).
+const MaxRequestBodyBytes = 2 << 20
 
-const TrustedProxyCIDRsNone = "none"
+const (
+	trustedProxyCIDRsEnv  = "TRUSTED_PROXY_CIDRS"
+	trustedProxyCIDRsNone = "none"
+)
 
 func ParseTrustedProxyCIDRs(raw string) ([]netip.Prefix, error) {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
-		return nil, fmt.Errorf("backend config: %s is required (comma-separated CIDRs or %q)", TrustedProxyCIDRsEnv, TrustedProxyCIDRsNone)
+		return nil, fmt.Errorf("backend config: %s is required (comma-separated CIDRs or %q)", trustedProxyCIDRsEnv, trustedProxyCIDRsNone)
 	}
-	if strings.EqualFold(trimmed, TrustedProxyCIDRsNone) {
+	if strings.EqualFold(trimmed, trustedProxyCIDRsNone) {
 		return nil, nil
 	}
 
@@ -26,11 +30,11 @@ func ParseTrustedProxyCIDRs(raw string) ([]netip.Prefix, error) {
 	for _, part := range parts {
 		token := strings.TrimSpace(part)
 		if token == "" {
-			return nil, fmt.Errorf("backend config: empty CIDR entry in %s", TrustedProxyCIDRsEnv)
+			return nil, fmt.Errorf("backend config: empty CIDR entry in %s", trustedProxyCIDRsEnv)
 		}
 		prefix, err := netip.ParsePrefix(token)
 		if err != nil {
-			return nil, fmt.Errorf("backend config: invalid CIDR %q in %s: %w", token, TrustedProxyCIDRsEnv, err)
+			return nil, fmt.Errorf("backend config: invalid CIDR %q in %s: %w", token, trustedProxyCIDRsEnv, err)
 		}
 		prefixes = append(prefixes, prefix.Masked())
 	}
@@ -38,35 +42,26 @@ func ParseTrustedProxyCIDRs(raw string) ([]netip.Prefix, error) {
 }
 
 func LoadTrustedProxyCIDRs() ([]netip.Prefix, error) {
-	prefixes, err := ParseTrustedProxyCIDRs(os.Getenv(TrustedProxyCIDRsEnv))
+	raw, ok := os.LookupEnv(trustedProxyCIDRsEnv)
+	if !ok {
+		return nil, fmt.Errorf("backend config: %s is not set (set comma-separated CIDRs or %q)", trustedProxyCIDRsEnv, trustedProxyCIDRsNone)
+	}
+	return ParseTrustedProxyCIDRs(raw)
+}
+
+func ValidateEdgeTrust() error {
+	prefixes, err := LoadTrustedProxyCIDRs()
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if len(prefixes) == 0 {
-		slog.Warn("trusted_proxy_cidrs_disabled", "binary", "backend", "trusted_proxy_cidrs", TrustedProxyCIDRsNone)
-		return nil, nil
+		slog.Warn("trusted_proxy_cidrs_disabled", "binary", "backend", "trusted_proxy_cidrs", trustedProxyCIDRsNone)
+		return nil
 	}
 	canonical := make([]string, len(prefixes))
 	for i, p := range prefixes {
 		canonical[i] = p.String()
 	}
 	slog.Info("trusted_proxy_cidrs_loaded", "binary", "backend", "trusted_proxy_cidrs", strings.Join(canonical, ","))
-	return prefixes, nil
-}
-
-func TrustedProxyCIDRsFromEnv() []netip.Prefix {
-	raw := strings.TrimSpace(os.Getenv(TrustedProxyCIDRsEnv))
-	if raw == "" {
-		return nil
-	}
-	prefixes, err := ParseTrustedProxyCIDRs(raw)
-	if err != nil {
-		return nil
-	}
-	return prefixes
-}
-
-func ValidateEdgeTrust() error {
-	_, err := LoadTrustedProxyCIDRs()
-	return err
+	return nil
 }

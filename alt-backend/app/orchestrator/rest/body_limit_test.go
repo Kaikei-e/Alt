@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"testing"
 	"time"
 
@@ -23,7 +24,7 @@ func (stubCSRFGateway) GenerateToken(context.Context) (string, error)       { re
 func (stubCSRFGateway) ValidateToken(context.Context, string) (bool, error) { return true, nil }
 func (stubCSRFGateway) InvalidateToken(context.Context, string) error       { return nil }
 
-func buildRegisteredEcho(t *testing.T, mutate func(*config.Config)) *echo.Echo {
+func buildRegisteredEcho(t *testing.T, mutate func(*config.Config), trustedProxies ...netip.Prefix) *echo.Echo {
 	t.Helper()
 	logger.InitLogger()
 	e := echo.New()
@@ -44,14 +45,13 @@ func buildRegisteredEcho(t *testing.T, mutate func(*config.Config)) *echo.Echo {
 	}
 	RegisterRoutes(context.Background(), e, &di.ApplicationComponents{
 		CSRFTokenUsecase: csrf_token_usecase.NewCSRFTokenUsecase(stubCSRFGateway{}),
-	}, cfg)
+	}, cfg, trustedProxies...)
 	return e
 }
 
 func TestBodyLimit_EnforcesTwoMiBByteBoundary(t *testing.T) {
-	const twoMiB = 2 << 20
+	const twoMiB = config.MaxRequestBodyBytes
 
-	t.Setenv("TRUSTED_PROXY_CIDRS", "10.0.0.0/8")
 	e := buildRegisteredEcho(t, nil)
 	e.POST("/v1/test-body-boundary", func(c echo.Context) error {
 		_, err := io.ReadAll(c.Request().Body)
@@ -94,7 +94,6 @@ func TestBodyLimit_EnforcesTwoMiBByteBoundary(t *testing.T) {
 }
 
 func TestBodyLimit_RejectsOversizedBodyOnStreamingRoutes(t *testing.T) {
-	t.Setenv("TRUSTED_PROXY_CIDRS", "10.0.0.0/8")
 	e := buildRegisteredEcho(t, nil)
 	e.POST("/sse/test-chunked", func(c echo.Context) error {
 		_, err := io.ReadAll(c.Request().Body)
@@ -128,7 +127,8 @@ func TestBodyLimit_RejectsOversizedBodyOnStreamingRoutes(t *testing.T) {
 }
 
 func TestRegisterRoutes_TrustedProxyCIDRs(t *testing.T) {
-	t.Setenv("TRUSTED_PROXY_CIDRS", "10.0.0.0/8, 172.16.0.0/12")
+	trusted, err := config.ParseTrustedProxyCIDRs("10.0.0.0/8, 172.16.0.0/12")
+	require.NoError(t, err)
 	e := buildRegisteredEcho(t, func(cfg *config.Config) {
 		cfg.RateLimit.DOSProtection = config.DOSProtectionConfig{
 			Enabled:       true,
@@ -137,7 +137,7 @@ func TestRegisterRoutes_TrustedProxyCIDRs(t *testing.T) {
 			WindowSize:    time.Minute,
 			BlockDuration: time.Minute,
 		}
-	})
+	}, trusted...)
 	e.GET("/v1/echo-ip", func(c echo.Context) error {
 		return c.String(http.StatusOK, c.RealIP())
 	})
