@@ -18,6 +18,7 @@ import (
 
 	"alt/config"
 	"alt/domain"
+	"alt/gen/proto/alt/articles/v2/articlesv2connect"
 	"alt/gen/proto/alt/augur/v2/augurv2connect"
 	"alt/gen/proto/alt/feeds/v2/feedsv2connect"
 	"alt/gen/proto/alt/morning_letter/v2/morningletterv2connect"
@@ -26,9 +27,11 @@ import (
 type OperationClass string
 
 const (
-	OpSummarize   OperationClass = "summarize"
-	OpAugurChat   OperationClass = "augur_chat"
-	OpMorningChat OperationClass = "morning_chat"
+	OpSummarize     OperationClass = "summarize"
+	OpAugurChat     OperationClass = "augur_chat"
+	OpMorningChat   OperationClass = "morning_chat"
+	OpAugurRetrieve OperationClass = "augur_retrieve"
+	OpArticleTags   OperationClass = "article_tags"
 )
 
 var ErrQuotaUnauthenticated = errors.New("authentication required")
@@ -166,9 +169,11 @@ func NewUserQuotaLimiter(cfg config.UserQuotaConfig, now func() time.Time, logge
 	}
 	return &UserQuotaLimiter{
 		ops: map[OperationClass]*operationLimiter{
-			OpSummarize:   newOperationLimiter(cfg.Summarize, cfg.MaxTrackedUsers),
-			OpAugurChat:   newOperationLimiter(cfg.AugurChat, cfg.MaxTrackedUsers),
-			OpMorningChat: newOperationLimiter(cfg.MorningChat, cfg.MaxTrackedUsers),
+			OpSummarize:     newOperationLimiter(cfg.Summarize, cfg.MaxTrackedUsers),
+			OpAugurChat:     newOperationLimiter(cfg.AugurChat, cfg.MaxTrackedUsers),
+			OpMorningChat:   newOperationLimiter(cfg.MorningChat, cfg.MaxTrackedUsers),
+			OpAugurRetrieve: newOperationLimiter(cfg.AugurRetrieve, cfg.MaxTrackedUsers),
+			OpArticleTags:   newOperationLimiter(cfg.ArticleTags, cfg.MaxTrackedUsers),
 		},
 		now:    now,
 		logger: logger,
@@ -210,6 +215,8 @@ func (l *UserQuotaLimiter) TrackedUsers(op OperationClass) int {
 var connectProcedureClasses = map[string]OperationClass{
 	feedsv2connect.FeedServiceStreamSummarizeProcedure:             OpSummarize,
 	augurv2connect.AugurServiceStreamChatProcedure:                 OpAugurChat,
+	augurv2connect.AugurServiceRetrieveContextProcedure:            OpAugurRetrieve,
+	articlesv2connect.ArticleServiceStreamArticleTagsProcedure:     OpArticleTags,
 	morningletterv2connect.MorningLetterServiceStreamChatProcedure: OpMorningChat,
 }
 

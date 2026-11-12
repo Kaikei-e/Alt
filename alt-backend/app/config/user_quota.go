@@ -27,6 +27,16 @@ const (
 	UserQuotaMorningChatWindowEnv      = "USER_QUOTA_MORNING_CHAT_WINDOW"
 	UserQuotaMorningChatMaxInFlightEnv = "USER_QUOTA_MORNING_CHAT_MAX_IN_FLIGHT"
 
+	UserQuotaAugurRetrieveRateEnv        = "USER_QUOTA_AUGUR_RETRIEVE_RATE"
+	UserQuotaAugurRetrieveBurstEnv       = "USER_QUOTA_AUGUR_RETRIEVE_BURST"
+	UserQuotaAugurRetrieveWindowEnv      = "USER_QUOTA_AUGUR_RETRIEVE_WINDOW"
+	UserQuotaAugurRetrieveMaxInFlightEnv = "USER_QUOTA_AUGUR_RETRIEVE_MAX_IN_FLIGHT"
+
+	UserQuotaArticleTagsRateEnv        = "USER_QUOTA_ARTICLE_TAGS_RATE"
+	UserQuotaArticleTagsBurstEnv       = "USER_QUOTA_ARTICLE_TAGS_BURST"
+	UserQuotaArticleTagsWindowEnv      = "USER_QUOTA_ARTICLE_TAGS_WINDOW"
+	UserQuotaArticleTagsMaxInFlightEnv = "USER_QUOTA_ARTICLE_TAGS_MAX_IN_FLIGHT"
+
 	DefaultUserQuotaMaxTrackedUsers = 10000
 
 	DefaultUserQuotaSummarizeRate        = 20
@@ -43,6 +53,18 @@ const (
 	DefaultUserQuotaMorningChatBurst       = 6
 	DefaultUserQuotaMorningChatWindow      = time.Minute
 	DefaultUserQuotaMorningChatMaxInFlight = 1
+
+	DefaultUserQuotaAugurRetrieveRate        = 30
+	DefaultUserQuotaAugurRetrieveBurst       = 15
+	DefaultUserQuotaAugurRetrieveWindow      = time.Minute
+	DefaultUserQuotaAugurRetrieveMaxInFlight = 2
+
+	// One tag-trail page view opens a tag stream for each of its 20 articles at
+	// once, and loading a second page before the first settles doubles that.
+	DefaultUserQuotaArticleTagsRate        = 120
+	DefaultUserQuotaArticleTagsBurst       = 60
+	DefaultUserQuotaArticleTagsWindow      = time.Minute
+	DefaultUserQuotaArticleTagsMaxInFlight = 40
 )
 
 type OperationQuotaConfig struct {
@@ -57,6 +79,8 @@ type UserQuotaConfig struct {
 	Summarize       OperationQuotaConfig
 	AugurChat       OperationQuotaConfig
 	MorningChat     OperationQuotaConfig
+	AugurRetrieve   OperationQuotaConfig
+	ArticleTags     OperationQuotaConfig
 }
 
 func DefaultUserQuotaConfig() UserQuotaConfig {
@@ -79,6 +103,18 @@ func DefaultUserQuotaConfig() UserQuotaConfig {
 			Burst:       DefaultUserQuotaMorningChatBurst,
 			Window:      DefaultUserQuotaMorningChatWindow,
 			MaxInFlight: DefaultUserQuotaMorningChatMaxInFlight,
+		},
+		AugurRetrieve: OperationQuotaConfig{
+			Rate:        DefaultUserQuotaAugurRetrieveRate,
+			Burst:       DefaultUserQuotaAugurRetrieveBurst,
+			Window:      DefaultUserQuotaAugurRetrieveWindow,
+			MaxInFlight: DefaultUserQuotaAugurRetrieveMaxInFlight,
+		},
+		ArticleTags: OperationQuotaConfig{
+			Rate:        DefaultUserQuotaArticleTagsRate,
+			Burst:       DefaultUserQuotaArticleTagsBurst,
+			Window:      DefaultUserQuotaArticleTagsWindow,
+			MaxInFlight: DefaultUserQuotaArticleTagsMaxInFlight,
 		},
 	}
 }
@@ -117,6 +153,24 @@ func LoadUserQuotaConfig() (UserQuotaConfig, error) {
 	); err != nil {
 		return UserQuotaConfig{}, err
 	}
+	if cfg.AugurRetrieve, err = loadOperationQuotaEnv(
+		cfg.AugurRetrieve,
+		UserQuotaAugurRetrieveRateEnv,
+		UserQuotaAugurRetrieveBurstEnv,
+		UserQuotaAugurRetrieveWindowEnv,
+		UserQuotaAugurRetrieveMaxInFlightEnv,
+	); err != nil {
+		return UserQuotaConfig{}, err
+	}
+	if cfg.ArticleTags, err = loadOperationQuotaEnv(
+		cfg.ArticleTags,
+		UserQuotaArticleTagsRateEnv,
+		UserQuotaArticleTagsBurstEnv,
+		UserQuotaArticleTagsWindowEnv,
+		UserQuotaArticleTagsMaxInFlightEnv,
+	); err != nil {
+		return UserQuotaConfig{}, err
+	}
 
 	if err := ValidateUserQuotaConfig(cfg); err != nil {
 		return UserQuotaConfig{}, err
@@ -135,6 +189,8 @@ func ValidateUserQuotaConfig(cfg UserQuotaConfig) error {
 		{"summarize", cfg.Summarize},
 		{"augur_chat", cfg.AugurChat},
 		{"morning_chat", cfg.MorningChat},
+		{"augur_retrieve", cfg.AugurRetrieve},
+		{"article_tags", cfg.ArticleTags},
 	}
 	for _, c := range checks {
 		if c.op.Rate <= 0 {
@@ -172,6 +228,14 @@ func LogUserQuotaConfig(logger *slog.Logger, cfg UserQuotaConfig) {
 		"morning_chat_burst", cfg.MorningChat.Burst,
 		"morning_chat_window", cfg.MorningChat.Window.String(),
 		"morning_chat_max_in_flight", cfg.MorningChat.MaxInFlight,
+		"augur_retrieve_rate", cfg.AugurRetrieve.Rate,
+		"augur_retrieve_burst", cfg.AugurRetrieve.Burst,
+		"augur_retrieve_window", cfg.AugurRetrieve.Window.String(),
+		"augur_retrieve_max_in_flight", cfg.AugurRetrieve.MaxInFlight,
+		"article_tags_rate", cfg.ArticleTags.Rate,
+		"article_tags_burst", cfg.ArticleTags.Burst,
+		"article_tags_window", cfg.ArticleTags.Window.String(),
+		"article_tags_max_in_flight", cfg.ArticleTags.MaxInFlight,
 	)
 }
 

@@ -270,7 +270,7 @@ func RegisterAugurRoutes(e *echo.Echo, g *echo.Group, container *di.ApplicationC
 	handler := NewAugurHandler(container.RetrieveContextUsecase, container.AnswerChatUsecase)
 
 	rag := g.Group("/rag", authMiddleware.RequireAuth())
-	rag.GET("/context", handler.RetrieveContext)
+	rag.GET("/context", handler.RetrieveContext, connectmiddleware.EchoUserQuotaMiddleware(container.UserQuotaLimiter, connectmiddleware.OpAugurRetrieve))
 
 	// The streaming answer keeps its root-mounted /sse/v1/... path and takes
 	// RequireAuth as per-route middleware instead: the BodyLimit, Timeout and
