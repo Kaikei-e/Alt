@@ -54,9 +54,13 @@ elif [ -f "$SIGNING_KEY" ] || [ -f "$VERIFY_KEY" ]; then
     echo "ERROR: only one of backend_token_signing_key.txt and backend_token_verify_key.txt exists; remove it or restore the other" >&2
     exit 1
 else
-    openssl genpkey -algorithm ED25519 -out "$SIGNING_KEY"
-    openssl pkey -in "$SIGNING_KEY" -pubout -out "$VERIFY_KEY"
-    chmod 644 "$SIGNING_KEY" "$VERIFY_KEY"
+    if ! openssl genpkey -algorithm ED25519 -out "$SIGNING_KEY" ||
+        ! openssl pkey -in "$SIGNING_KEY" -pubout -out "$VERIFY_KEY" ||
+        ! chmod 644 "$SIGNING_KEY" "$VERIFY_KEY"; then
+        rm -f "$SIGNING_KEY" "$VERIFY_KEY"
+        echo "ERROR: could not generate the backend token Ed25519 key pair (is OpenSSL 1.1.1 or newer installed?)" >&2
+        exit 1
+    fi
     echo "Generated backend token key pair"
 fi
 
