@@ -135,6 +135,7 @@ func TestLoad_VerifyKeyStartupBehaviour(t *testing.T) {
 		}`
 		policyFile := writeTempTokenFile(t, "policy.json", policyJSON)
 
+		t.Setenv("APP_ENV", "test")
 		t.Setenv("DATABASE_URL", "postgres://test:test@localhost:5432/test")
 		t.Setenv("ADMIN_AUTH", "disabled")
 		t.Setenv("EVENT_AUTH", "")

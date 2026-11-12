@@ -121,6 +121,7 @@ func TestEventAuth_ExplicitlyDisabledPassesThrough(t *testing.T) {
 }
 
 func TestEventAuth_StartupFailureWhenNeitherSet(t *testing.T) {
+	t.Setenv("APP_ENV", "test")
 	t.Setenv("DATABASE_URL", "postgres://test:test@localhost:5432/test")
 	t.Setenv("ADMIN_AUTH", "disabled")
 	t.Setenv("EVENT_TOKEN", "")
