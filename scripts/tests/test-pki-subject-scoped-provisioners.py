@@ -391,6 +391,24 @@ with tempfile.TemporaryDirectory() as tmp:
             f"last={lines[-1:]!r} cert={cert.exists()} key={key.exists()}",
         )
 
+print("provisioner claims and revocation prerequisites")
+check(
+    "bootstrap sets explicit default and max leaf durations on every provisioner",
+    "--x509-default-dur" in bootstrap and "--x509-max-dur" in bootstrap,
+)
+check(
+    "bootstrap does not disable renewal or allow renewal after expiry",
+    "--disable-renewal" not in bootstrap and "--allow-renewal-after-expiry" not in bootstrap,
+)
+check(
+    "bootstrap treats a provisioner without the explicit durations as out of date",
+    "defaultTLSCertDuration" in bootstrap and "maxTLSCertDuration" in bootstrap,
+)
+check(
+    "bootstrap fails when ca.json has no certificate database configured",
+    ".db.type" in bootstrap and "revocation" in bootstrap,
+)
+
 print("compose-audit path coverage for provisioner scripts")
 from compose_include import load_yaml  # noqa: E402
 
