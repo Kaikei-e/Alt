@@ -2,6 +2,7 @@ package morning_letter
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"testing"
 	"time"
@@ -177,4 +178,37 @@ func TestGetLetterSources_EmptyLetterID(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+}
+
+func TestRegenerateLatest_InFlightRunIsReportedAsRetryLater(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockUC := mocks.NewMockMorningLetterUsecase(ctrl)
+	mockChat := mocks.NewMockStreamChatPort(ctrl)
+
+	mockUC.EXPECT().RegenerateLatest(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(nil, false, time.Duration(0), fmt.Errorf("regenerate failed: %w", domain.ErrMorningRegenerationInFlight))
+
+	h := NewHandler(mockChat, mockUC, slog.Default())
+	_, err := h.RegenerateLatest(testCtxWithUser(), connect.NewRequest(&morningletterv2.RegenerateLatestRequest{}))
+
+	require.Error(t, err)
+	assert.Equal(t, connect.CodeResourceExhausted, connect.CodeOf(err))
+	var cErr *connect.Error
+	require.ErrorAs(t, err, &cErr)
+	assert.NotEmpty(t, cErr.Meta().Get("Retry-After"))
+}
+
+func TestRegenerateLatest_OtherFailuresStayInternal(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockUC := mocks.NewMockMorningLetterUsecase(ctrl)
+	mockChat := mocks.NewMockStreamChatPort(ctrl)
+
+	mockUC.EXPECT().RegenerateLatest(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(nil, false, time.Duration(0), fmt.Errorf("regenerate failed: %w", assert.AnError))
+
+	h := NewHandler(mockChat, mockUC, slog.Default())
+	_, err := h.RegenerateLatest(testCtxWithUser(), connect.NewRequest(&morningletterv2.RegenerateLatestRequest{}))
+
+	require.Error(t, err)
+	assert.Equal(t, connect.CodeInternal, connect.CodeOf(err))
 }

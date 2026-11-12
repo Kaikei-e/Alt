@@ -354,3 +354,22 @@ func TestRegenerateLatest_BoundsCooldownEntries(t *testing.T) {
 	evictRegenCooldownLocked(entries, now)
 	assert.Less(t, len(entries), maxRegenCooldownEntries)
 }
+
+func TestRegenerateLatest_InFlightConflictDoesNotArmCooldown(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	repo := mocks.NewMockMorningLetterRepository(ctrl)
+	feedPort := mocks.NewMockUserFeedPort(ctrl)
+
+	doc := &domain.MorningLetterDocument{ID: "new-id"}
+	repo.EXPECT().RegenerateLatest(gomock.Any(), gomock.Any()).Return(nil, domain.ErrMorningRegenerationInFlight).Times(1)
+	repo.EXPECT().RegenerateLatest(gomock.Any(), gomock.Any()).Return(doc, nil).Times(1)
+
+	uc := NewMorningLetterUsecase(repo, feedPort)
+	_, _, _, err := uc.RegenerateLatest(context.Background(), "user-1", "Asia/Tokyo")
+	require.ErrorIs(t, err, domain.ErrMorningRegenerationInFlight)
+
+	got, regenerated, _, err := uc.RegenerateLatest(context.Background(), "user-1", "Asia/Tokyo")
+	require.NoError(t, err)
+	assert.True(t, regenerated)
+	assert.Equal(t, "new-id", got.ID)
+}
