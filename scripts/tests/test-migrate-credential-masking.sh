@@ -32,7 +32,8 @@ while [ $# -gt 0 ]; do
   [ "$1" = "--url" ] && url="$2"
   shift
 done
-[ -n "$url" ] && echo "Error: failed to connect using $url" >&2
+[ -z "$url" ] && exit 0
+echo "Error: failed to connect using $url" >&2
 exit 1
 ATLAS
 printf '#!/bin/sh\nexit 0\n' >"$work/bin/nc"

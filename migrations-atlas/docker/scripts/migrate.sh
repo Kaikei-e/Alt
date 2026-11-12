@@ -3,6 +3,7 @@
 # Kubernetes-native database migration management
 
 set -euo pipefail
+set +x
 
 # Configuration
 DATABASE_URL="${DATABASE_URL:-}"
@@ -15,6 +16,21 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
+
+# Redact credentials in any URL-shaped text before it reaches the log.
+mask_secrets() {
+    sed -E 's#([A-Za-z][A-Za-z0-9+.-]*://[^:/@ ]*:)[^ ]*@#\1****@#g'
+}
+
+# Run atlas with its combined output masked; atlas may echo the connection URL.
+run_atlas() {
+    local out rc=0
+    out=$(atlas "$@" 2>&1) || rc=$?
+    if [ -n "$out" ]; then
+        printf '%s\n' "$out" | mask_secrets
+    fi
+    return "$rc"
+}
 
 # Logging functions
 log_info() {
@@ -95,7 +111,7 @@ baseline_existing_schema() {
 
     log_warn "Existing schema detected; applying Atlas baseline to version $baseline_version"
 
-    atlas migrate set "$baseline_version" \
+    run_atlas migrate set "$baseline_version" \
         --url "$DATABASE_URL" \
         --dir "file://$MIGRATION_DIR" \
         --revisions-schema "${ATLAS_REVISIONS_SCHEMA:-public}" || {
@@ -134,7 +150,7 @@ migration_status() {
             baseline_existing_schema
             log_info "Re-running migration status after baseline..."
 
-            atlas migrate status \
+            run_atlas migrate status \
                 --url "$DATABASE_URL" \
                 --dir "file://$MIGRATION_DIR" \
                 --revisions-schema "${ATLAS_REVISIONS_SCHEMA:-public}" || {
@@ -180,7 +196,7 @@ apply_migrations() {
 
     # Dry run first for safety
     log_info "Performing dry run..."
-    atlas migrate apply \
+    run_atlas migrate apply \
         --url "$apply_url" \
         --dir "file://$MIGRATION_DIR" \
         --revisions-schema "${ATLAS_REVISIONS_SCHEMA:-public}" \
@@ -193,7 +209,7 @@ apply_migrations() {
 
     # Apply actual migrations
     log_info "Applying migrations to database..."
-    atlas migrate apply \
+    run_atlas migrate apply \
         --url "$apply_url" \
         --dir "file://$MIGRATION_DIR" \
         --revisions-schema "${ATLAS_REVISIONS_SCHEMA:-public}" || {
