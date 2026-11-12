@@ -18,8 +18,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - name: Checkout gate script from the base revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          path: gate-base
           persist-credentials: false
           fetch-depth: 1
           sparse-checkout: |
@@ -31,4 +34,4 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           RUN_ID: ${{ github.run_id }}
-        run: python3 .github/workflows/scripts/ci-gate.py --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$RUN_ID"
+        run: python3 gate-base/.github/workflows/scripts/ci-gate.py --repo "$GITHUB_REPOSITORY" --sha "$HEAD_SHA" --run-id "$RUN_ID"
