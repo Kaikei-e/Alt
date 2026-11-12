@@ -130,8 +130,8 @@ check(
     gate.committed_report_violations(COMMITTED) == [],
 )
 check(
-    "committed report is the v5.5 measured contract",
-    tuple(COMMITTED["compose_version_tuple"]) >= (5, 5, 0)
+    "committed report was measured on a Compose whose hooks accept cap_add",
+    tuple(COMMITTED["compose_version_tuple"]) >= (5, 6, 1)
     and COMMITTED["pre_start"]["ok"] is True
     and COMMITTED["create_host_path_false"]["ok"] is True
     and COMMITTED["create_host_path_false"]["noop"] is False
