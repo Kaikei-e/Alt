@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 )
 
@@ -264,6 +265,308 @@ func TestRequirePeerProcedure_Denials(t *testing.T) {
 
 			if rr.Code != tt.wantStatus {
 				t.Errorf("got status %d, want %d", rr.Code, tt.wantStatus)
+			}
+		})
+	}
+}
+
+func TestRequirePeerProcedure_ExactPeerAllowlist(t *testing.T) {
+	handler := RequirePeerProcedure(nil, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	expected := map[string]struct {
+		allowed []string
+		denied  []string
+	}{
+		"alt-backend": {
+			allowed: []string{
+				"AddFavoriteFeed",
+				"ArchiveArticle",
+				"BatchGetArticlesByIDs",
+				"BatchGetArticlesByURLs",
+				"BatchGetFeedTitlesByIDs",
+				"BatchGetOgImageURLs",
+				"BulkRegisterFeedLinks",
+				"CountBackfillArticles",
+				"CreateSummaryVersion",
+				"DeleteFeedLink",
+				"DeletePushSubscription",
+				"FetchTagCloud",
+				"GetAllReadFeedIDs",
+				"GetArticleByURL",
+				"GetArticleContentByID",
+				"GetArticleHead",
+				"GetArticleSummaryByArticleID",
+				"GetArticleTags",
+				"GetArticleTitleAndLink",
+				"GetFeedAmount",
+				"GetFeedID",
+				"GetFeedOgImageTargets",
+				"GetFeedSummary",
+				"GetFeedTags",
+				"GetFeedURLsByArticleIDs",
+				"GetImageProxyCache",
+				"GetInoreaderSummariesByURLs",
+				"GetLatestArticleByFeedID",
+				"GetPushSubscription",
+				"GetRandomFeed",
+				"GetReadFeedIDs",
+				"GetScrapingDomainByDomain",
+				"GetScrapingDomainByID",
+				"GetSingleFeed",
+				"GetSummarizedArticlesCount",
+				"GetTagArticleCounts",
+				"GetTagCooccurrences",
+				"GetTodayUnreadArticlesCount",
+				"GetTotalArticlesCount",
+				"GetTrendStats",
+				"GetUnsummarizedArticlesCount",
+				"GetUserSubscribedFeedLinkIDs",
+				"IsDomainDeclined",
+				"ListArticleIDsCursor",
+				"ListArticlesByTagID",
+				"ListArticlesByTagName",
+				"ListArticlesCursor",
+				"ListBackfillArticles",
+				"ListFeedLinkDomains",
+				"ListFeedLinks",
+				"ListFeedLinksForExport",
+				"ListFeedLinksWithHealth",
+				"ListFeedsByFeedLinkID",
+				"ListFeedsCursor",
+				"ListFeedsLimit",
+				"ListFeedsPage",
+				"ListRSSFeedURLs",
+				"ListScrapingDomains",
+				"ListSubscriptions",
+				"ListUserFeedIDs",
+				"LookupArticleURL",
+				"MarkArticleRead",
+				"MarkFeedRead",
+				"MarkSummaryVersionSuperseded",
+				"PutImageProxyCache",
+				"RegisterFeedLink",
+				"RegisterFeeds",
+				"RemoveFavoriteFeed",
+				"ResetFeedLinkFailures",
+				"ResolveFeedLinkIDByURL",
+				"SaveArticleHead",
+				"SaveArticleSummary",
+				"SaveDeclinedDomain",
+				"SaveFeedOgImage",
+				"SaveScrapingDomain",
+				"SearchFeedsByTitle",
+				"SearchTagsByPrefix",
+				"Subscribe",
+				"Unsubscribe",
+				"UpdatePushSubscriptionPreferences",
+				"UpdateScrapingDomainPolicy",
+				"UpsertArticleTags",
+				"UpsertPushSubscription",
+			},
+			denied: []string{
+				"ClaimNotificationBatch",
+				"ClaimOutboxBatch",
+				"PruneOutboxEvents",
+				"PurgeExpiredArticleHeads",
+				"PurgeExpiredFeedOgImages",
+				"PurgeImageProxyCacheOlderThan",
+				"EnqueueNotification",
+				"MarkOutboxProcessed",
+				"ReleaseOutboxEvent",
+				"CreateArticle",
+				"ListUntaggedArticles",
+				"ListArticlesWithTags",
+				"ListRecapArticles",
+			},
+		},
+		"alt-harvester": {
+			allowed: []string{
+				"ClaimOutboxBatch",
+				"EnqueueNotification",
+				"EvictExpiredImageProxyCache",
+				"GetImageProxyCache",
+				"GetScrapingDomainByDomain",
+				"GetScrapingDomainByID",
+				"ListFeedLinkDomains",
+				"ListRSSFeedURLs",
+				"ListScrapingDomains",
+				"ListUnwarmedOgImageURLs",
+				"MarkOutboxProcessed",
+				"PruneOutboxEvents",
+				"PurgeExpiredArticleHeads",
+				"PurgeExpiredFeedOgImages",
+				"PurgeImageProxyCacheOlderThan",
+				"PutImageProxyCache",
+				"RecordFeedLinkFailure",
+				"RegisterFeeds",
+				"ReleaseOutboxEvent",
+				"ResetFeedLinkFailures",
+				"SaveScrapingDomain",
+			},
+			denied: []string{"ClaimNotificationBatch", "ArchiveArticle"},
+		},
+		"alt-notifier": {
+			allowed: []string{
+				"ClaimNotificationBatch",
+				"DeletePushSubscription",
+				"GetNotificationBacklogAge",
+				"MarkNotificationDead",
+				"MarkNotificationSent",
+				"ReleaseNotification",
+			},
+			denied: []string{"ClaimOutboxBatch", "UpsertPushSubscription"},
+		},
+		"pre-processor": {
+			allowed: []string{
+				"CheckArticleExists",
+				"CheckArticleSummaryExists",
+				"CreateArticle",
+				"DeleteArticleSummary",
+				"EnqueueNotification",
+				"FindArticlesWithSummaries",
+				"GetArticleContent",
+				"GetEmptyFeedID",
+				"GetFeedID",
+				"GetSystemUser",
+				"HasUnsummarizedArticles",
+				"ListFeedURLs",
+				"ListUnsummarizedArticles",
+				"SaveArticleSummary",
+			},
+			denied: []string{"ClaimOutboxBatch", "PurgeExpiredArticleHeads"},
+		},
+		"search-indexer": {
+			allowed: []string{
+				"GetArticleByID",
+				"GetLatestArticleTimestamp",
+				"ListArticlesWithTags",
+				"ListArticlesWithTagsForward",
+				"ListDeletedArticles",
+			},
+			denied: []string{"CreateArticle", "ClaimNotificationBatch"},
+		},
+		"tag-generator": {
+			allowed: []string{
+				"BatchUpsertArticleTags",
+				"GetArticleContent",
+				"ListUntaggedArticles",
+				"UpsertArticleTags",
+			},
+			denied: []string{"DeleteArticleSummary", "ClaimOutboxBatch"},
+		},
+		"recap-worker": {
+			allowed: []string{
+				"BatchGetTagsByArticleIDs",
+				"EnqueueNotification",
+				"GetAllReadFeedIDs",
+				"ListFeedsInWindow",
+				"ListRecapArticles",
+			},
+			denied: []string{"CreateArticle", "DeletePushSubscription"},
+		},
+		"rag-orchestrator": {
+			allowed: []string{
+				"FetchArticlesByTag",
+				"FetchTagCloud",
+				"ListRecentArticles",
+			},
+			denied: []string{"SaveArticleSummary", "ClaimNotificationBatch"},
+		},
+		"acolyte-orchestrator": {
+			allowed: []string{
+				"EnqueueNotification",
+			},
+			denied: []string{"ClaimNotificationBatch", "GetArticleContentByID"},
+		},
+	}
+
+	if len(defaultPeerProcedures) != len(expected) {
+		t.Fatalf("peer count = %d, want %d", len(defaultPeerProcedures), len(expected))
+	}
+
+	for peer, tc := range expected {
+		t.Run(peer, func(t *testing.T) {
+			actualSet, ok := defaultPeerProcedures[peer]
+			if !ok {
+				t.Fatalf("missing peer %q in defaultPeerProcedures", peer)
+			}
+			actual := make([]string, 0, len(actualSet))
+			for proc := range actualSet {
+				actual = append(actual, proc)
+			}
+			slices.Sort(actual)
+			want := slices.Clone(tc.allowed)
+			slices.Sort(want)
+
+			if !slices.Equal(actual, want) {
+				t.Fatalf("peer %s allowlist mismatch:\ngot (%d):  %v\nwant (%d): %v", peer, len(actual), actual, len(want), want)
+			}
+
+			for _, proc := range want {
+				req := httptest.NewRequest(http.MethodPost, "/services.datahub.v1.DataHubService/"+proc, nil)
+				req.TLS = &tls.ConnectionState{
+					VerifiedChains: [][]*x509.Certificate{{{Subject: pkix.Name{CommonName: peer}}}},
+				}
+				rr := httptest.NewRecorder()
+				handler.ServeHTTP(rr, req)
+				if rr.Code != http.StatusOK {
+					t.Errorf("peer %s allowed proc %s: got %d, want %d", peer, proc, rr.Code, http.StatusOK)
+				}
+			}
+
+			for _, proc := range tc.denied {
+				req := httptest.NewRequest(http.MethodPost, "/services.datahub.v1.DataHubService/"+proc, nil)
+				req.TLS = &tls.ConnectionState{
+					VerifiedChains: [][]*x509.Certificate{{{Subject: pkix.Name{CommonName: peer}}}},
+				}
+				rr := httptest.NewRecorder()
+				handler.ServeHTTP(rr, req)
+				if rr.Code != http.StatusForbidden {
+					t.Errorf("peer %s denied proc %s: got %d, want %d", peer, proc, rr.Code, http.StatusForbidden)
+				}
+			}
+		})
+	}
+}
+
+func TestRequirePeerProcedure_BackendLeastPrivilegeAndBackgroundClaims(t *testing.T) {
+	handler := RequirePeerProcedure(nil, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	tests := []struct {
+		name       string
+		peer       string
+		procedure  string
+		wantStatus int
+	}{
+		{name: "backend_denied_ClaimNotificationBatch", peer: "alt-backend", procedure: "ClaimNotificationBatch", wantStatus: http.StatusForbidden},
+		{name: "backend_denied_ClaimOutboxBatch", peer: "alt-backend", procedure: "ClaimOutboxBatch", wantStatus: http.StatusForbidden},
+		{name: "backend_denied_PruneOutboxEvents", peer: "alt-backend", procedure: "PruneOutboxEvents", wantStatus: http.StatusForbidden},
+		{name: "backend_denied_PurgeExpiredArticleHeads", peer: "alt-backend", procedure: "PurgeExpiredArticleHeads", wantStatus: http.StatusForbidden},
+		{name: "backend_denied_PurgeExpiredFeedOgImages", peer: "alt-backend", procedure: "PurgeExpiredFeedOgImages", wantStatus: http.StatusForbidden},
+		{name: "backend_denied_PurgeImageProxyCacheOlderThan", peer: "alt-backend", procedure: "PurgeImageProxyCacheOlderThan", wantStatus: http.StatusForbidden},
+		{name: "backend_allowed_ArchiveArticle", peer: "alt-backend", procedure: "ArchiveArticle", wantStatus: http.StatusOK},
+		{name: "backend_allowed_GetArticleContentByID", peer: "alt-backend", procedure: "GetArticleContentByID", wantStatus: http.StatusOK},
+		{name: "backend_allowed_ListFeedsCursor", peer: "alt-backend", procedure: "ListFeedsCursor", wantStatus: http.StatusOK},
+		{name: "backend_allowed_MarkFeedRead", peer: "alt-backend", procedure: "MarkFeedRead", wantStatus: http.StatusOK},
+		{name: "backend_allowed_UpsertPushSubscription", peer: "alt-backend", procedure: "UpsertPushSubscription", wantStatus: http.StatusOK},
+		{name: "harvester_allowed_ClaimOutboxBatch", peer: "alt-harvester", procedure: "ClaimOutboxBatch", wantStatus: http.StatusOK},
+		{name: "notifier_allowed_ClaimNotificationBatch", peer: "alt-notifier", procedure: "ClaimNotificationBatch", wantStatus: http.StatusOK},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/services.datahub.v1.DataHubService/"+tt.procedure, nil)
+			req.TLS = &tls.ConnectionState{
+				VerifiedChains: [][]*x509.Certificate{{{Subject: pkix.Name{CommonName: tt.peer}}}},
+			}
+			rr := httptest.NewRecorder()
+			handler.ServeHTTP(rr, req)
+			if rr.Code != tt.wantStatus {
+				t.Fatalf("peer %s calling %s: got %d, want %d", tt.peer, tt.procedure, rr.Code, tt.wantStatus)
 			}
 		})
 	}
