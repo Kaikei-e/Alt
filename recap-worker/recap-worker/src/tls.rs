@@ -468,6 +468,55 @@ mod tests {
             rcgen::CertificateParams::new(vec!["untrusted-peer".to_string()]).unwrap();
         let denied_key = rcgen::KeyPair::generate().unwrap();
         let denied_cert = denied_params.self_signed(&denied_key).unwrap();
-        assert!(verifier.verify_peer_identity(denied_cert.der()).is_err());
+        let err = verifier
+            .verify_peer_identity(denied_cert.der())
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("MTLS_ALLOWED_PEERS"),
+            "error must name MTLS_ALLOWED_PEERS, got: {err}"
+        );
+    }
+
+    #[test]
+    fn verify_cert_peer_identity_covers_cn_match_case_sensitivity_and_multi_san_match() {
+        let mut cn_only_params =
+            rcgen::CertificateParams::new(vec!["non-matching.internal".to_string()]).unwrap();
+        let mut cn_dn = rcgen::DistinguishedName::new();
+        cn_dn.push(rcgen::DnType::CommonName, "alt-backend");
+        cn_only_params.distinguished_name = cn_dn;
+        let cn_key = rcgen::KeyPair::generate().unwrap();
+        let cn_cert = cn_only_params.self_signed(&cn_key).unwrap();
+        assert!(
+            verify_cert_peer_identity(cn_cert.der(), &["alt-backend".to_string()]).is_ok(),
+            "certificate whose Subject CN matches when no SAN matches must be accepted"
+        );
+
+        let mut wrong_case_params =
+            rcgen::CertificateParams::new(vec!["ALT-BACKEND".to_string()]).unwrap();
+        let mut wrong_case_dn = rcgen::DistinguishedName::new();
+        wrong_case_dn.push(rcgen::DnType::CommonName, "Alt-Backend");
+        wrong_case_params.distinguished_name = wrong_case_dn;
+        let wrong_case_key = rcgen::KeyPair::generate().unwrap();
+        let wrong_case_cert = wrong_case_params.self_signed(&wrong_case_key).unwrap();
+        let case_err =
+            verify_cert_peer_identity(wrong_case_cert.der(), &["alt-backend".to_string()])
+                .unwrap_err();
+        assert!(case_err.to_string().contains("MTLS_ALLOWED_PEERS"));
+
+        let mut multi_san_params = rcgen::CertificateParams::new(vec![
+            "localhost".to_string(),
+            "other-service".to_string(),
+            "search-indexer".to_string(),
+        ])
+        .unwrap();
+        let mut multi_dn = rcgen::DistinguishedName::new();
+        multi_dn.push(rcgen::DnType::CommonName, "unrelated-cn");
+        multi_san_params.distinguished_name = multi_dn;
+        let multi_key = rcgen::KeyPair::generate().unwrap();
+        let multi_cert = multi_san_params.self_signed(&multi_key).unwrap();
+        assert!(
+            verify_cert_peer_identity(multi_cert.der(), &["search-indexer".to_string()]).is_ok(),
+            "certificate with several SANs where one matches must be accepted"
+        );
     }
 }
