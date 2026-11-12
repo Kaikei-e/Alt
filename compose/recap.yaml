@@ -123,6 +123,9 @@ services:
       - SUBWORKER_BASE_URL=https://recap-subworker:9443
       - ALT_BACKEND_BASE_URL=${ALT_BACKEND_BASE_URL}
       - MTLS_ENFORCE=${RECAP_WORKER_MTLS_ENFORCE:-true}
+      # `disabled` until every caller uses the mTLS listener: a peer list makes the
+      # plaintext listener answer 401 on all non-health routes, and callers still use it.
+      - MTLS_ALLOWED_PEERS=${RECAP_WORKER_MTLS_ALLOWED_PEERS:-disabled}
       - MTLS_CERT_FILE=/certs/svc-cert.pem
       - MTLS_KEY_FILE=/certs/svc-key.pem
       - MTLS_CA_FILE=/trust/ca-bundle.pem

@@ -1065,24 +1065,50 @@ class TestGroup1Security(unittest.TestCase):
         self.assertNotIn("BACKEND_TOKEN_VERIFY_KEY_FILE", env_map(sov))
         self.assertIn("USER_JWT_INTROSPECTION_URL", env_map(sov))
 
-    def test_trusted_proxy_cidrs_only_on_gateway_and_user_facing_backend(self):
-        holders = []
+    def test_trusted_proxy_cidrs_wiring(self):
+        """alt-backend requires an operator value; auth-hub trusts no forwarder unless told otherwise."""
+        holders = {}
         for fname, name, svc in self._all_stack_services():
             if fname in ("dev.yaml", "compose.dev.yaml") or "staging" in fname:
                 continue
             env = svc.get("environment") or []
             items = env if isinstance(env, list) else [f"{k}={v}" for k, v in env.items()]
-            if any(str(e).startswith("TRUSTED_PROXY_CIDRS=") for e in items):
-                holders.append(name)
-                self.assertTrue(
-                    any(str(e).startswith("TRUSTED_PROXY_CIDRS=${TRUSTED_PROXY_CIDRS:?") for e in items),
-                    f"{name} must require TRUSTED_PROXY_CIDRS without a default",
-                )
+            for e in items:
+                if str(e).startswith("TRUSTED_PROXY_CIDRS="):
+                    holders[name] = str(e).split("=", 1)[1]
             self.assertFalse(
                 any(str(e).startswith("NOTIFICATION_USER_ID") for e in items),
                 f"{name} still sets NOTIFICATION_USER_ID",
             )
         self.assertEqual(sorted(holders), ["alt-backend", "auth-hub"])
+        self.assertTrue(holders["alt-backend"].startswith("${TRUSTED_PROXY_CIDRS:?"))
+        self.assertEqual(holders["auth-hub"], "${AUTH_HUB_TRUSTED_PROXY_CIDRS:-none}")
+
+    # Repo-built services in the production stack set that deliberately keep default capabilities.
+    UNHARDENED = {
+        "dashboard": "GPU device reservation, not verifiable without starting it",
+        "recap-subworker": "GPU device reservation",
+        "knowledge-embedder-local": "image runs as root and drops privilege with gosu; nvidia runtime",
+        "news-creator-backend": "entrypoint re-execs from root with chown/setpriv; nvidia runtime",
+        "rag-db": "upstream postgres entrypoint (gosu) with AppArmor profile",
+        "recap-db": "upstream postgres entrypoint (gosu) with AppArmor profile",
+        "restic-backup": "image has no USER directive and reads host data as root",
+    }
+
+    def test_repo_built_services_drop_capabilities_unless_allow_listed(self):
+        """Covers profile-gated services too: the YAML is read directly, not through a default render."""
+        included = self._load_yaml(REPO_ROOT / "compose" / "compose.yaml")["include"]
+        seen_unhardened = set()
+        for fname, name, svc in self._all_stack_services():
+            if fname not in included or not svc.get("build"):
+                continue
+            hardened = "ALL" in (svc.get("cap_drop") or []) and "no-new-privileges:true" in (svc.get("security_opt") or [])
+            if name in self.UNHARDENED:
+                seen_unhardened.add(name)
+                self.assertFalse(hardened, f"{name} is hardened now; remove it from UNHARDENED")
+            else:
+                self.assertTrue(hardened, f"{fname}:{name} is repo-built but keeps default capabilities")
+        self.assertEqual(seen_unhardened, set(self.UNHARDENED))
 
     def test_registration_closed_by_default(self):
         import re

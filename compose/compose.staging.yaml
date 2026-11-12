@@ -866,6 +866,7 @@ services:
       # talks HTTP/1.1 + JSON to every alias of recap-pipeline-stub on
       # port 80. ALT_BACKEND_BASE_URL drives Connect-RPC over JSON
       # (alt_backend.rs:64-78) which the stub serves at the FQSN path.
+      - MTLS_ALLOWED_PEERS=disabled
       - MTLS_ENFORCE=false
       - MTLS_LISTEN=false
       - PEER_IDENTITY_TRUSTED=off
@@ -1205,6 +1206,7 @@ services:
       - DB_USER=alt_db_user
       - DB_PASSWORD=alt-staging-test-postgres-password
       - DB_NAME=alt
+      - DB_SSL_MODE=disable
       - SERVER_PORT=9000
       - CONNECT_PORT=9101
       # render-slice.sh strips every `ports:` key, so the test container
