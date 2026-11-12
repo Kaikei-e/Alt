@@ -456,23 +456,53 @@ leaf の更新は現行 leaf を提示する `/rekey` で行われるため、�
 前提: step-ca の `ca.json` に `db` セクションがあること（無いと失効を記録できない）。
 `bash pki-agent/scripts/bootstrap-pki-provisioner.sh` は db が無いと失敗する。
 
+### 既存環境で bootstrap を再実行する前に
+
+bootstrap は provisioner ごとに明示的な leaf 期間（default 24h / max 24h）を設定するようになった。
+これは現行の step-ca 既定値と同じなので、`ca.json` の global claims に他の値を設定していない
+場合に限り挙動が変わらない。再実行前に既存の設定を確認する。
+
+```bash
+docker exec -u 0 alt-step-ca-1 jq '.authority.claims, [.authority.provisioners[] | {name, claims}]' /home/step/config/ca.json
+```
+
+global claims に 24h 以外の値がある、または provisioner 個別の claims がある場合は、
+その値を保つかどうかを決めてから実行する。最初の再実行は全 provisioner を 1 回ずつ update し、
+その後 step-ca へ SIGHUP を送る。2 回目以降は何もしない。
+
+### 確認済みの点と、実行前に確認する点
+
+ソース（step-ca v0.30.2）から確認済み:
+- 更新（renew / rekey）の認可で失効済み serial は拒否される（`authorizeRenew` が
+  `certificate has been revoked` の Unauthorized を返す）。
+- DB が無い CA での失効は `no persistence layer configured` で失敗する。
+
+未確認（ピン留めした CLI / CA に対して運用者が先に確認する）:
+- `step ca revoke` の引数形式（serial を 10 進で渡すか、`--reasonCode` の値）:
+  `docker exec alt-step-ca-1 step ca revoke --help`
+- bootstrap provisioner で失効 token を取れるか、提示するフラグ名:
+  `docker exec alt-step-ca-1 step ca token --help`
+- 更新拒否時の HTTP status と CLI 上の表示（下記は 401 と上記文言を想定）。
+- `step ca renew --force` で再現できるか: `docker exec alt-step-ca-1 step ca renew --help`
+
 ```bash
 # 1. 失効させる leaf の serial を控える（親の cert volume 内の svc-cert.pem から）
 openssl x509 -in <svc-cert.pem のコピー> -noout -serial -enddate
-# serial は 16 進。step ca revoke には 10 進を渡す
+# serial は 16 進。10 進が必要かどうかは revoke --help で確認してから変換する
 printf '%d\n' 0x<SERIAL>
 
 # 2. step-ca コンテナ内で失効（bootstrap provisioner で token を取る）
-docker exec -u 0 alt-step-ca-1 step ca revoke <10進 serial> \
+docker exec -u 0 alt-step-ca-1 step ca revoke <serial> \
   --ca-url https://localhost:9000 --root /home/step/certs/root_ca.crt \
   --provisioner bootstrap \
   --provisioner-password-file /run/secrets/step_ca_root_password \
   --reason "key compromise" --reasonCode 1
 ```
 
-更新が拒否されることの確認: 該当 leaf と key を使い、複製側から `/rekey` を呼ぶ（または
-`step ca renew --force <cert> <key>`）と `certificate has been revoked` で 401 になる。
-CA ログにも同じ文言が出る: `docker compose -f compose/compose.yaml -p alt logs step-ca --tail 50`。
+更新が拒否されることの確認: 該当 leaf と key を使い、複製側から `/rekey` を呼ぶ
+（または `step ca renew --force <cert> <key>`）。拒否されれば失効が効いている。
+CA ログに `certificate has been revoked` が出るはず:
+`docker compose -f compose/compose.yaml -p alt logs step-ca --tail 50`。
 
 サービスの再 enroll: 正規の親プロセスは更新に失敗すると失効済み leaf のままになるので、
 cert volume 上の `svc-cert.pem` / `svc-key.pem` を再 enroll で置き換える。
