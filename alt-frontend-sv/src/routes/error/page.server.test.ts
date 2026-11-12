@@ -16,7 +16,36 @@ describe("error +page.server load", () => {
 		vi.clearAllMocks();
 	});
 
-	it("reports closed registration when Kratos says registration is disabled", async () => {
+	it("reports closed registration from the stable Kratos error id", async () => {
+		getFlowError.mockResolvedValue({
+			data: {
+				id: "err-0",
+				error: { id: "self_service_flow_disabled", code: 400, reason: "x" },
+			},
+		});
+
+		const result = await callLoad("?id=err-0");
+
+		expect(result).toEqual({ errorId: "err-0", registrationClosed: true });
+	});
+
+	it("does not trust the message when a different stable id is present", async () => {
+		getFlowError.mockResolvedValue({
+			data: {
+				id: "err-4",
+				error: {
+					id: "session_refresh_required",
+					reason: "Registration is not allowed because it was disabled.",
+				},
+			},
+		});
+
+		const result = await callLoad("?id=err-4");
+
+		expect(result).toEqual({ errorId: "err-4", registrationClosed: false });
+	});
+
+	it("falls back to the message when the error carries no id", async () => {
 		getFlowError.mockResolvedValue({
 			data: {
 				id: "err-1",
