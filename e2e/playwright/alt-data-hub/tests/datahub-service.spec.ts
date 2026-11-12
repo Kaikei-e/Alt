@@ -33,9 +33,13 @@ const SVC = "/services.datahub.v1.DataHubService";
 
 test.describe("DataHubService reads", () => {
 	test("GetLatestArticleTimestamp answers an empty envelope on an empty table", { tag: "@contract" }, async ({
-		dataHub,
+		peers,
 	}) => {
-		const response = await callUnary(dataHub, `${SVC}/GetLatestArticleTimestamp`, {});
+		const response = await callUnary(
+			peers["search-indexer"],
+			`${SVC}/GetLatestArticleTimestamp`,
+			{},
+		);
 		const body = await expectJsonStatus(response, 200, latestArticleTimestampSchema);
 		expectHeaderContains(response, "Content-Type", "application/json");
 
@@ -51,9 +55,9 @@ test.describe("DataHubService reads", () => {
 		).toBeUndefined();
 	});
 
-	test("ListArticlesWithTags pages an empty table", { tag: "@contract" }, async ({ dataHub }) => {
+	test("ListArticlesWithTags pages an empty table", { tag: "@contract" }, async ({ peers }) => {
 		const body = await expectJsonStatus(
-			await callUnary(dataHub, `${SVC}/ListArticlesWithTags`, { limit: 10 }),
+			await callUnary(peers["search-indexer"], `${SVC}/ListArticlesWithTags`, { limit: 10 }),
 			200,
 			articlesWithTagsPageSchema,
 		);
@@ -64,13 +68,13 @@ test.describe("DataHubService reads", () => {
 	});
 
 	test("ListArticlesWithTagsForward accepts an incremental mark", { tag: "@contract" }, async ({
-		dataHub,
+		peers,
 	}) => {
 		// This is alt-harvester's / search-indexer's forward scan. The mark is a
 		// required timestamp on the wire; sending one far in the past is the
 		// request shape those callers use on a cold index.
 		const body = await expectJsonStatus(
-			await callUnary(dataHub, `${SVC}/ListArticlesWithTagsForward`, {
+			await callUnary(peers["search-indexer"], `${SVC}/ListArticlesWithTagsForward`, {
 				incrementalMark: "2020-01-01T00:00:00Z",
 				limit: 10,
 			}),
@@ -80,13 +84,13 @@ test.describe("DataHubService reads", () => {
 		expect(body.nextCreatedAt).toBeUndefined();
 	});
 
-	test("ListDeletedArticles pages the tombstones", { tag: "@contract" }, async ({ dataHub }) => {
+	test("ListDeletedArticles pages the tombstones", { tag: "@contract" }, async ({ peers }) => {
 		// search-indexer's deletion feed. Its envelope has a *different* cursor
 		// field (`next_deleted_at`) from the two above, and a schema is the only
 		// way that difference stays visible — `jsonpath "$" exists` was true of
 		// either shape and of `{"code":"internal"}` too.
 		const body = await expectJsonStatus(
-			await callUnary(dataHub, `${SVC}/ListDeletedArticles`, { limit: 10 }),
+			await callUnary(peers["search-indexer"], `${SVC}/ListDeletedArticles`, { limit: 10 }),
 			200,
 			deletedArticlesPageSchema,
 		);
@@ -94,14 +98,18 @@ test.describe("DataHubService reads", () => {
 	});
 
 	test("ListRecentArticles reports its window even when the window is empty", { tag: "@contract" }, async ({
-		dataHub,
+		peers,
 	}) => {
 		// rag-orchestrator's reader, absorbed from `GET /v1/internal/articles/
 		// recent` by ADR-000954 D6. `since`/`until` are formatted strings the
 		// codec cannot omit, so they are present on every answer — which makes
 		// them the assertion that survives an empty database. The old REST route
 		// and the Hurl port of it could only say "200".
-		const response = await callUnary(dataHub, `${SVC}/ListRecentArticles`, {});
+		const response = await callUnary(
+			peers["rag-orchestrator"],
+			`${SVC}/ListRecentArticles`,
+			{},
+		);
 		// Ports `04-datahub-service.hurl`'s Content-Type assertion, which was
 		// the one entry whose header check did not carry over. It matters here
 		// for the same reason it does on the sibling procedures: the JSON codec
@@ -115,9 +123,12 @@ test.describe("DataHubService reads", () => {
 		).toBeGreaterThanOrEqual(Date.parse(body.since));
 	});
 
-	test("ListRecentArticles honours an explicit window", { tag: "@contract" }, async ({ dataHub }) => {
+	test("ListRecentArticles honours an explicit window", { tag: "@contract" }, async ({ peers }) => {
 		const body = await expectJsonStatus(
-			await callUnary(dataHub, `${SVC}/ListRecentArticles`, { withinHours: 24, limit: 10 }),
+			await callUnary(peers["rag-orchestrator"], `${SVC}/ListRecentArticles`, {
+				withinHours: 24,
+				limit: 10,
+			}),
 			200,
 			recentArticlesSchema,
 		);
@@ -131,7 +142,7 @@ test.describe("DataHubService reads", () => {
 	});
 
 	test("ListRecentArticles treats limit=0 as 'time window only'", { tag: "@contract" }, async ({
-		dataHub,
+		peers,
 	}) => {
 		// An explicit zero is a legitimate request, distinct from the field
 		// being absent — the REST route it replaced had the same meaning. The
@@ -139,7 +150,7 @@ test.describe("DataHubService reads", () => {
 		// apart; with proto3 implicit presence it could not, and this 200 is
 		// what says the explicit-presence declaration is still there.
 		await expectJsonStatus(
-			await callUnary(dataHub, `${SVC}/ListRecentArticles`, { limit: 0 }),
+			await callUnary(peers["rag-orchestrator"], `${SVC}/ListRecentArticles`, { limit: 0 }),
 			200,
 			recentArticlesSchema,
 		);
@@ -148,7 +159,7 @@ test.describe("DataHubService reads", () => {
 
 test.describe("DataHubService write path", () => {
 	test("CheckArticleExists answers false for a URL nobody stored", { tag: "@contract" }, async ({
-		dataHub,
+		peers,
 		token,
 	}) => {
 		// pre-processor's dedupe probe — the one procedure on this surface whose
@@ -160,7 +171,7 @@ test.describe("DataHubService write path", () => {
 		// is doing. The Hurl file used `{{run_id}}`, which was unique per
 		// dispatch — enough only because `--jobs 1` meant one request at a time.
 		const body = await expectJsonStatus(
-			await callUnary(dataHub, `${SVC}/CheckArticleExists`, {
+			await callUnary(peers["pre-processor"], `${SVC}/CheckArticleExists`, {
 				url: probeArticleURL(token),
 				feedId: ZERO_UUID,
 			}),

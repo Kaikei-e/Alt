@@ -42,9 +42,17 @@ test.describe("the procedure gate denies the retired Connect namespace", () => {
 
 test.describe("the ADR-000955 transitional alias", () => {
 	// Deployed legacy consumers use the same exact procedure capabilities.
-	test("the legacy name answers like the current one", { tag: "@contract" }, async ({ dataHub }) => {
-		await expectJsonStatus(await callUnary(dataHub, `${LEGACY_DATAHUB_SVC}/GetLatestArticleTimestamp`, {}), 200, latestArticleTimestampSchema);
-		await expectJsonStatus(await callUnary(dataHub, `${LEGACY_DATAHUB_SVC}/GetSystemUser`, {}), 200, systemUserSchema);
+	test("the legacy name answers like the current one", { tag: "@contract" }, async ({ peers }) => {
+		await expectJsonStatus(
+			await callUnary(peers["search-indexer"], `${LEGACY_DATAHUB_SVC}/GetLatestArticleTimestamp`, {}),
+			200,
+			latestArticleTimestampSchema,
+		);
+		await expectJsonStatus(
+			await callUnary(peers["pre-processor"], `${LEGACY_DATAHUB_SVC}/GetSystemUser`, {}),
+			200,
+			systemUserSchema,
+		);
 	});
 	test("the alias does not grant an unknown procedure", { tag: "@authz" }, async ({ dataHub }) => {
 		const response = await callUnary(dataHub, `${LEGACY_DATAHUB_SVC}/NoSuchProcedureExists`, {});

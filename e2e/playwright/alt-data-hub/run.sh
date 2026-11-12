@@ -58,11 +58,24 @@ suite_image_tags ALT_DATA_HUB_IMAGE_TAG ALT_BACKEND_DEPS_STUB_IMAGE_TAG
 export ALLOWED_PEER DENIED_PEER
 
 # One CA, a server leaf for alt-data-hub (also copied to svc-cert.pem /
-# svc-key.pem, the production filenames compose mounts at /certs), and two
-# client leaves: one on the allowlist and one deliberately off it. The second
-# is the whole point — it proves the boundary rejects a *valid chain* with the
-# wrong identity, which is the failure a shared internal CA makes possible.
-suite_pki alt-data-hub "$ALLOWED_PEER" "$DENIED_PEER" pre-processor
+# svc-key.pem, the production filenames compose mounts at /certs), client
+# leaves for every DataHubService peer exercised by the suite, and one leaf
+# deliberately off DATAHUB_ALLOWED_PEERS to prove handshake-level rejection.
+suite_peers=(
+  alt-backend
+  alt-harvester
+  alt-notifier
+  pre-processor
+  search-indexer
+  tag-generator
+  recap-worker
+  rag-orchestrator
+)
+extra_peers=()
+if [[ " ${suite_peers[*]} " != *" ${ALLOWED_PEER} "* ]]; then
+  extra_peers+=("$ALLOWED_PEER")
+fi
+suite_pki alt-data-hub "${suite_peers[@]}" "${extra_peers[@]}" "$DENIED_PEER"
 
 suite_endpoint DATA_HUB_URL "https://alt-data-hub:9443"
 suite_endpoint OPS_URL      "http://alt-data-hub:9110"

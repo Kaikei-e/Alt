@@ -1,4 +1,5 @@
 import { test, expect } from "../src/fixtures.js";
+import type { SuitePeer } from "../src/env.js";
 import { callUnary, expectProcedureMounted } from "../../_shared/connect.js";
 import { expectJson } from "../../_shared/http.js";
 import { systemUserSchema } from "../src/schemas.js";
@@ -58,117 +59,120 @@ const SVC = "/services.datahub.v1.DataHubService";
  * `group` names the `With…` option in server.go that wires it. When one of
  * these fails, that is the line to look at.
  */
-const CAPABILITY_GROUPS = [
-	// The five required constructor arguments — no option, no nil guard.
-	{ group: "NewHandler(listArticles)", procedure: "ListArticlesWithTags" },
-	{ group: "NewHandler(listArticlesForward)", procedure: "ListArticlesWithTagsForward" },
-	{ group: "NewHandler(listDeleted)", procedure: "ListDeletedArticles" },
-	{ group: "NewHandler(getLatestTimestamp)", procedure: "GetLatestArticleTimestamp" },
-	{ group: "NewHandler(getArticleByID)", procedure: "GetArticleByID" },
+const CAPABILITY_GROUPS: ReadonlyArray<{
+	group: string;
+	procedure: string;
+	peer: SuitePeer;
+}> = [
+	// The five required constructor arguments — search-indexer's reads.
+	{ group: "NewHandler(listArticles)", procedure: "ListArticlesWithTags", peer: "search-indexer" },
+	{ group: "NewHandler(listArticlesForward)", procedure: "ListArticlesWithTagsForward", peer: "search-indexer" },
+	{ group: "NewHandler(listDeleted)", procedure: "ListDeletedArticles", peer: "search-indexer" },
+	{ group: "NewHandler(getLatestTimestamp)", procedure: "GetLatestArticleTimestamp", peer: "search-indexer" },
+	{ group: "NewHandler(getArticleByID)", procedure: "GetArticleByID", peer: "search-indexer" },
 
 	// WithPhase2Ports — pre-processor's write path.
-	{ group: "WithPhase2Ports(checkArticleExists)", procedure: "CheckArticleExists" },
-	{ group: "WithPhase2Ports(createArticle)", procedure: "CreateArticle" },
-	{ group: "WithPhase2Ports(saveArticleSummary)", procedure: "SaveArticleSummary" },
-	{ group: "WithPhase2Ports(getFeedID)", procedure: "GetFeedID" },
-	{ group: "WithPhase2Ports(listFeedURLs)", procedure: "ListFeedURLs" },
+	{ group: "WithPhase2Ports(checkArticleExists)", procedure: "CheckArticleExists", peer: "pre-processor" },
+	{ group: "WithPhase2Ports(createArticle)", procedure: "CreateArticle", peer: "pre-processor" },
+	{ group: "WithPhase2Ports(saveArticleSummary)", procedure: "SaveArticleSummary", peer: "pre-processor" },
+	{ group: "WithPhase2Ports(getFeedID)", procedure: "GetFeedID", peer: "pre-processor" },
+	{ group: "WithPhase2Ports(listFeedURLs)", procedure: "ListFeedURLs", peer: "pre-processor" },
 
-	// WithPhase3Ports — tag-generator's inbox.
-	{ group: "WithPhase3Ports(listUntaggedArticles)", procedure: "ListUntaggedArticles" },
-	{ group: "WithBatchGetTagsPort", procedure: "BatchGetTagsByArticleIDs" },
+	// WithPhase3Ports — tag-generator's inbox and recap-worker's batch tag read.
+	{ group: "WithPhase3Ports(listUntaggedArticles)", procedure: "ListUntaggedArticles", peer: "tag-generator" },
+	{ group: "WithBatchGetTagsPort", procedure: "BatchGetTagsByArticleIDs", peer: "recap-worker" },
 
 	// WithPhase4Ports — the summary quality checker.
-	{ group: "WithPhase4Ports(checkArticleSummaryExists)", procedure: "CheckArticleSummaryExists" },
-	{ group: "WithPhase4Ports(findArticlesWithSummaries)", procedure: "FindArticlesWithSummaries" },
+	{ group: "WithPhase4Ports(checkArticleSummaryExists)", procedure: "CheckArticleSummaryExists", peer: "pre-processor" },
+	{ group: "WithPhase4Ports(findArticlesWithSummaries)", procedure: "FindArticlesWithSummaries", peer: "pre-processor" },
 
-	// WithSummarizationPorts / WithBackfillPorts — news-creator's queue.
-	{ group: "WithSummarizationPorts(hasUnsummarized)", procedure: "HasUnsummarizedArticles" },
-	{ group: "WithSummarizationPorts(listUnsummarized)", procedure: "ListUnsummarizedArticles" },
-	{ group: "WithBackfillPorts(getEmptyFeedID)", procedure: "GetEmptyFeedID" },
+	// WithSummarizationPorts / WithBackfillPorts — pre-processor's queue.
+	{ group: "WithSummarizationPorts(hasUnsummarized)", procedure: "HasUnsummarizedArticles", peer: "pre-processor" },
+	{ group: "WithSummarizationPorts(listUnsummarized)", procedure: "ListUnsummarizedArticles", peer: "pre-processor" },
+	{ group: "WithBackfillPorts(getEmptyFeedID)", procedure: "GetEmptyFeedID", peer: "pre-processor" },
 
 	// WithRAGToolPorts — rag-orchestrator's two tools (ADR-000617).
-	{ group: "WithRAGToolPorts(fetchTagCloud)", procedure: "FetchTagCloud" },
-	{ group: "WithRAGToolPorts(fetchArticlesByTag)", procedure: "FetchArticlesByTag" },
+	{ group: "WithRAGToolPorts(fetchTagCloud)", procedure: "FetchTagCloud", peer: "rag-orchestrator" },
+	{ group: "WithRAGToolPorts(fetchArticlesByTag)", procedure: "FetchArticlesByTag", peer: "rag-orchestrator" },
 
-	// WithRecapArticlesUsecase — recap-worker's window read.
-	{ group: "WithRecapArticlesUsecase", procedure: "ListRecapArticles" },
-	{ group: "WithFeedsInWindowUsecase", procedure: "ListFeedsInWindow" },
+	// WithRecapArticlesUsecase — recap-worker's window reads.
+	{ group: "WithRecapArticlesUsecase", procedure: "ListRecapArticles", peer: "recap-worker" },
+	{ group: "WithFeedsInWindowUsecase", procedure: "ListFeedsInWindow", peer: "recap-worker" },
 
-	// ADR-000954 D6: the two absorbed /v1/internal REST routes. Required
-	// constructor arguments — SetupConnectHandlers panics on a nil one — so a
-	// 501 here would mean the panic guard itself regressed.
-	{ group: "D6 recentArticles (was GET /v1/internal/articles/recent)", procedure: "ListRecentArticles" },
+	// ADR-000954 D6: absorbed /v1/internal REST route.
+	{ group: "D6 recentArticles (was GET /v1/internal/articles/recent)", procedure: "ListRecentArticles", peer: "rag-orchestrator" },
 
 	// Wave 3 batch 1 — outbox, article heads, image cache, scraping policy.
-	//
-	// ClaimOutboxBatch is the only probe in this table that can write: it marks
-	// rows in-flight. The staging slice's outbox is empty and nothing in this
-	// suite appends to it, so it claims nothing — and even if a row appeared,
-	// claiming is what its owner does anyway. Every other entry is a read or a
-	// request the handler rejects before touching the database.
-	{ group: "WithWave3Capabilities(outbox)", procedure: "ClaimOutboxBatch" },
-	{ group: "WithWave3Capabilities(ogImage)", procedure: "GetArticleHead" },
-	{ group: "WithWave3Capabilities(imageProxyCache)", procedure: "GetImageProxyCache" },
-	{ group: "WithWave3Capabilities(scrapingPolicy)", procedure: "ListScrapingDomains" },
-	{ group: "WithWave3Capabilities(autoFulltext)", procedure: "IsDomainDeclined" },
+	{ group: "WithWave3Capabilities(outbox)", procedure: "ClaimOutboxBatch", peer: "alt-harvester" },
+	{ group: "WithWave3Capabilities(ogImage)", procedure: "GetArticleHead", peer: "alt-backend" },
+	{ group: "WithWave3Capabilities(imageProxyCache)", procedure: "GetImageProxyCache", peer: "alt-backend" },
+	{ group: "WithWave3Capabilities(scrapingPolicy)", procedure: "ListScrapingDomains", peer: "alt-backend" },
+	{ group: "WithWave3Capabilities(autoFulltext)", procedure: "IsDomainDeclined", peer: "alt-backend" },
 
 	// Wave 3 batch 2 — after this batch alt-backend has no article pool at all.
-	{ group: "WithWave3Batch2Capabilities(articleWrite)", procedure: "ArchiveArticle" },
-	{ group: "WithWave3Batch2Capabilities(articleRead)", procedure: "ListArticlesCursor" },
-	{ group: "WithWave3Batch2Capabilities(articleRead/byURL)", procedure: "GetArticleByURL" },
-	{ group: "WithWave3Batch2Capabilities(knowledgeBackfill)", procedure: "CountBackfillArticles" },
+	{ group: "WithWave3Batch2Capabilities(articleWrite)", procedure: "ArchiveArticle", peer: "alt-backend" },
+	{ group: "WithWave3Batch2Capabilities(articleRead)", procedure: "ListArticlesCursor", peer: "alt-backend" },
+	{ group: "WithWave3Batch2Capabilities(articleRead/byURL)", procedure: "GetArticleByURL", peer: "alt-backend" },
+	{ group: "WithWave3Batch2Capabilities(knowledgeBackfill)", procedure: "CountBackfillArticles", peer: "alt-backend" },
 
 	// Wave 3 batch 3 — feed_links, availability, feeds.
-	{ group: "WithWave3Batch3Capabilities(feedLink)", procedure: "ListFeedLinks" },
-	{ group: "WithWave3Batch3Capabilities(feedLink/domains)", procedure: "ListFeedLinkDomains" },
-	{ group: "WithWave3Batch3Capabilities(feedLinkAvailability)", procedure: "RecordFeedLinkFailure" },
-	{ group: "WithWave3Batch3Capabilities(feed)", procedure: "ListFeedsCursor" },
+	{ group: "WithWave3Batch3Capabilities(feedLink)", procedure: "ListFeedLinks", peer: "alt-backend" },
+	{ group: "WithWave3Batch3Capabilities(feedLink/domains)", procedure: "ListFeedLinkDomains", peer: "alt-backend" },
+	{ group: "WithWave3Batch3Capabilities(feedLinkAvailability)", procedure: "RecordFeedLinkFailure", peer: "alt-harvester" },
+	{ group: "WithWave3Batch3Capabilities(feed)", procedure: "ListFeedsCursor", peer: "alt-backend" },
 
 	// Wave 3 batch 4 — read state and tags.
-	{ group: "WithWave3Batch4Capabilities(readState)", procedure: "GetReadFeedIDs" },
-	{ group: "WithWave3Batch4Capabilities(tagRead)", procedure: "GetArticleTags" },
-	{ group: "WithWave3Batch4Capabilities(tagRead/prefix)", procedure: "SearchTagsByPrefix" },
+	{ group: "WithWave3Batch4Capabilities(readState)", procedure: "GetReadFeedIDs", peer: "alt-backend" },
+	{ group: "WithWave3Batch4Capabilities(tagRead)", procedure: "GetArticleTags", peer: "alt-backend" },
+	{ group: "WithWave3Batch4Capabilities(tagRead/prefix)", procedure: "SearchTagsByPrefix", peer: "alt-backend" },
 
 	// Wave 3 batch 5 — versioned artifacts and the dashboard counts.
-	{ group: "WithWave3Batch5Capabilities(summaryVersion)", procedure: "GetLatestSummaryVersion" },
-	{ group: "WithWave3Batch5Capabilities(tagSetVersion)", procedure: "GetTagSetVersionByID" },
-	{ group: "WithWave3Batch5Capabilities(stats)", procedure: "GetFeedAmount" },
+	// Note: tagSetVersion procedures have no external peer caller (tag-set versions
+	// are produced in-process on data-hub), so GetTagSetVersionByID is asserted 403
+	// in peer-capabilities.spec.ts instead.
+	{ group: "WithVersionAndStatsCapabilities(summaryVersion)", procedure: "CreateSummaryVersion", peer: "alt-backend" },
+	{ group: "WithVersionAndStatsCapabilities(stats)", procedure: "GetFeedAmount", peer: "alt-backend" },
 
 	// Wave 3 batch 6 — the Tag Trail's paged reads and the recall fallback.
-	{ group: "WithWave3Batch6Capabilities(tagTrail)", procedure: "ListArticlesByTagID" },
-	{ group: "WithWave3Batch6Capabilities(articleRef)", procedure: "GetArticleTitleAndLink" },
+	{ group: "WithWave3Batch6Capabilities(tagTrail)", procedure: "ListArticlesByTagID", peer: "alt-backend" },
+	{ group: "WithWave3Batch6Capabilities(articleRef)", procedure: "GetArticleTitleAndLink", peer: "alt-backend" },
 
 	// WithPushCapabilities — Web Push subscriptions and delivery queue.
-	{ group: "WithPushCapabilities(pushDeliveries)", procedure: "GetNotificationBacklogAge" },
-	{ group: "WithPushCapabilities(pushSubscriptions)", procedure: "ListPushSubscriptionsForUser" },
-] as const;
+	{ group: "WithPushCapabilities(pushDeliveries)", procedure: "GetNotificationBacklogAge", peer: "alt-notifier" },
+	{ group: "WithPushCapabilities(pushSubscriptions)", procedure: "GetPushSubscription", peer: "alt-backend" },
+];
 
 test.describe("DataHubService capability wiring", () => {
-	for (const { group, procedure } of CAPABILITY_GROUPS) {
-		test(`${procedure} is mounted and wired (${group})`, { tag: "@contract" }, async ({ dataHub }) => {
-			// See the file header for why [200, 400] and why 404/501/500 are all
-			// findings rather than variations.
-			await expectProcedureMounted(dataHub, `${SVC}/${procedure}`, [200, 400]);
+	for (const { group, procedure, peer } of CAPABILITY_GROUPS) {
+		test(`${procedure} is mounted and wired for ${peer} (${group})`, { tag: "@contract" }, async ({
+			peers,
+		}) => {
+			await expectProcedureMounted(peers[peer], `${SVC}/${procedure}`, [200, 400]);
 		});
 	}
 
-	test("GetSystemUser answers from the verified identity fixture", { tag: "@contract" }, async ({ dataHub }) => {
-		const response = await callUnary(dataHub, `${SVC}/GetSystemUser`, {});
+	test("GetSystemUser answers from the verified identity fixture", { tag: "@contract" }, async ({
+		peers,
+	}) => {
+		const response = await callUnary(peers["pre-processor"], `${SVC}/GetSystemUser`, {});
 		expect(response.status()).toBe(200);
 		await expectJson(response, systemUserSchema);
 	});
 
-	test("an unknown procedure is denied before Connect dispatch", { tag: "@contract" }, async ({ dataHub }) => {
-		const response = await callUnary(dataHub, `${SVC}/NoSuchProcedureExists`, {});
+	test("an unknown procedure is denied before Connect dispatch", { tag: "@contract" }, async ({
+		peers,
+	}) => {
+		const response = await callUnary(peers["alt-backend"], `${SVC}/NoSuchProcedureExists`, {});
 		expect(response.status()).toBe(403);
 		expect(await response.text()).toContain("forbidden: peer not authorized for this procedure");
 	});
 
-	test("a malformed JSON body is rejected without a 500", { tag: "@contract" }, async ({ dataHub }) => {
-		const response = await dataHub.post(`${SVC}/ListArticlesWithTags`, {
+	test("a malformed JSON body is rejected without a 500", { tag: "@contract" }, async ({ peers }) => {
+		const response = await peers["search-indexer"].post(`${SVC}/ListArticlesWithTags`, {
 			headers: { "Content-Type": "application/json" },
 			data: "{ this is not json",
 		});
+		expect(response.status()).not.toBe(403);
 		expect(response.status()).toBeGreaterThanOrEqual(400);
 		expect(response.status()).toBeLessThan(500);
 	});
