@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -162,8 +161,6 @@ func (s *articleSyncService) recordBackfillProgress(ctx context.Context, scanned
 	s.logger.InfoContext(ctx, "backfill cursor advanced", "cursor", s.backfillCursor())
 }
 
-var ErrArticleSyncDisabled = errors.New("article sync is disabled by INOREADER_SYNC=disabled")
-
 type disabledArticleSyncService struct{}
 
 func NewDisabledArticleSyncService() ArticleSyncService {
@@ -171,11 +168,11 @@ func NewDisabledArticleSyncService() ArticleSyncService {
 }
 
 func (disabledArticleSyncService) SyncArticles(context.Context) error {
-	return ErrArticleSyncDisabled
+	panic("disabledArticleSyncService.SyncArticles called while INOREADER_SYNC=disabled (lifecycle gating bypassed)")
 }
 
 func (disabledArticleSyncService) BackfillEmptyFeeds(context.Context) error {
-	return ErrArticleSyncDisabled
+	panic("disabledArticleSyncService.BackfillEmptyFeeds called while INOREADER_SYNC=disabled (lifecycle gating bypassed)")
 }
 
 // NewArticleSyncService creates a new article sync service.
