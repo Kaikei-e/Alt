@@ -11,7 +11,7 @@ import (
 	morningletterv2 "alt/gen/proto/alt/morning_letter/v2"
 	"alt/gen/proto/alt/morning_letter/v2/morningletterv2connect"
 	"alt/orchestrator/port/morning_letter_port"
-	"alt/shared/domain/authcontext"
+	"alt/utils/authcontext"
 )
 
 // Verify interface compliance at compile time.

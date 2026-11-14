@@ -31,7 +31,7 @@ REST ════⇒ Domain ════⇒ Usecase ════⇒ Port ══�
 (DTOパース)   (語彙流通)   (業務規則)   (抽象呼出)   (型写像)     (生I/O)
 
 【ソースコード（import）依存 — 矢印は「import する」】
-REST     → Usecase, Domain
+REST     → Usecase, Port, Domain
 Usecase  → Port, Domain
 Port     → Domain
 Gateway  → Port（実装する）, Driver, Domain
@@ -42,12 +42,14 @@ Composition Root → すべて（配線専用）
 
 | レイヤー | 責務 | import してよい対象 | import 禁止対象 |
 |---|---|---|---|
-| REST | 入力パース、認証、ステータス/エラー変換 | Usecase, Domain | Gateway, Driver |
+| REST | 入力パース、認証、ステータス/エラー変換 | Usecase, Port, Domain | Gateway, Driver |
 | Usecase | 単一の業務意図のオーケストレーション | Port, Domain | REST, Gateway, Driver, 生I/O |
 | Port | Usecase が要求する外部ケイパビリティの抽象契約 | Domain のみ | すべての具象レイヤー |
 | Gateway | Port の実装。腐敗防止層（ACL）、ドメイン ↔ Driver 型変換 | Port, Driver, Domain | REST, Usecase |
 | Driver | 外部ライブラリを用いた生 I/O（SQL, HTTP, Redis, LLM） | 外部ライブラリのみ | Domain, Port（直接実装すると Gateway を飛ばすことになる）, Usecase, Gateway, REST |
 | Domain | コア語彙、純粋なビジネスルール、不変条件、ドメインエラー | 標準ライブラリのみ | すべての層 |
+
+REST が Port を直接呼んでよいのは、業務判断を伴わない素通しの 1 呼び出し（単純な読み書き、ストリームの中継）に限る。複数 Port の調整、業務規則による分岐、トランザクション境界が要る処理は Usecase に置く。Port パッケージが定義する入出力型・エラー型を REST が参照することも同じく許される。
 
 Dependency Rule 上は内向きだが、Alt では Driver は自前の row 型だけを持ち、Domain との写像は Gateway が一手に担う（Driver が Domain 型を返すと Gateway の腐敗防止層（ACL）の責務が I/O コードに混入し、スキーマや API 変更が Domain 語彙へ直接漏洩するため、Alt では推奨ではなく違反として強制される）。
 

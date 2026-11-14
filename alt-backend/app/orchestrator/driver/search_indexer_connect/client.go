@@ -13,8 +13,8 @@ import (
 
 	searchv2 "alt/gen/proto/services/search/v2"
 	"alt/gen/proto/services/search/v2/searchv2connect"
-	"alt/shared/domain/authcontext"
 	"alt/tlsutil"
+	"alt/utils/authcontext"
 	"alt/utils/safeconv"
 )
 

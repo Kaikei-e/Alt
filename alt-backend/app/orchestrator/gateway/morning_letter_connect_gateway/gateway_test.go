@@ -13,7 +13,7 @@ import (
 
 	"alt/domain"
 	morningletterv2 "alt/gen/proto/alt/morning_letter/v2"
-	"alt/shared/domain/authcontext"
+	"alt/utils/authcontext"
 )
 
 func TestGateway_StreamChat_PropagatesIdentityHeaders(t *testing.T) {

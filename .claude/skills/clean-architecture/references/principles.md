@@ -108,7 +108,7 @@ Source: [Humble Object](https://martinfowler.com/bliki/HumbleObject.html) (Marti
 
 The Humble Object pattern separates logic that is difficult to test (such as UI widgets, network sockets, or asynchronous event loops) into a very thin layer with virtually no logic, delegating all actual decision-making to a testable collaborator.
 
-**Alt Application**: Handlers in Alt (`rest/`, `handler/`) and Drivers (`driver/`) are Humble Objects. A handler only unpacks requests, checks syntactic validation, calls the Usecase, and maps the response. It contains no branching business rules, ensuring that nearly all application logic can be tested in fast, deterministic unit tests without spin-up overhead.
+**Alt Application**: Handlers in Alt (`rest/`, `handler/`) and Drivers (`driver/`) are Humble Objects. A handler only unpacks requests, checks syntactic validation, calls the Usecase (or makes a single pass-through Port call), and maps the response. It contains no branching business rules, ensuring that nearly all application logic can be tested in fast, deterministic unit tests without spin-up overhead.
 
 ### Avoiding Anemic Domain Models
 Source: [Anemic Domain Model](https://martinfowler.com/bliki/AnemicDomainModel.html) (Martin Fowler)

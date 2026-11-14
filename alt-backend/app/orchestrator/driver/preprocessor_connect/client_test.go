@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"alt/shared/domain/authcontext"
+	"alt/utils/authcontext"
 )
 
 func TestConnectPreProcessorClient_PropagatesJWTHeader(t *testing.T) {

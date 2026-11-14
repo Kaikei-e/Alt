@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"alt/shared/domain/authcontext"
+	"alt/utils/authcontext"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

@@ -14,8 +14,8 @@ import (
 
 	ppv2 "alt/gen/proto/services/preprocessor/v2"
 	"alt/gen/proto/services/preprocessor/v2/preprocessorv2connect"
-	"alt/shared/domain/authcontext"
 	"alt/tlsutil"
+	"alt/utils/authcontext"
 )
 
 // SummarizeStatus represents the status of a summarization job.

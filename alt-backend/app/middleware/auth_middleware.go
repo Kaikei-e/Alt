@@ -9,7 +9,7 @@ import (
 
 	"alt/config"
 	"alt/domain"
-	"alt/shared/domain/authcontext"
+	"alt/utils/authcontext"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"

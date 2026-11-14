@@ -18,8 +18,8 @@ import (
 	"alt/orchestrator/usecase/answer_chat_usecase"
 	"alt/orchestrator/usecase/morning_usecase"
 	"alt/orchestrator/usecase/retrieve_context_usecase"
-	"alt/shared/domain/authcontext"
 	"alt/tlsutil"
+	"alt/utils/authcontext"
 )
 
 // RAGModule holds all RAG-domain components.

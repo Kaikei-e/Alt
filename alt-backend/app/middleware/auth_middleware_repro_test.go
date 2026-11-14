@@ -3,7 +3,7 @@ package middleware_test
 import (
 	"alt/config"
 	"alt/middleware"
-	"alt/shared/domain/authcontext"
+	"alt/utils/authcontext"
 	"crypto/ed25519"
 	"crypto/rand"
 	"io"

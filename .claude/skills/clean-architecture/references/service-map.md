@@ -22,7 +22,7 @@ Different languages and frameworks across Alt use localized directory naming con
 
 | Alt Layer | Service Directory Names / Conventions | Roles & Types Contained |
 |---|---|---|
-| **REST** | `rest/`, `handler/`, `api/`, `routers/`, `internal/adapter/connect/` | HTTP Echo/FastAPI handlers, Connect-RPC services, Redis stream event consumers. Parses DTOs, validates syntax, calls Usecases. |
+| **REST** | `rest/`, `handler/`, `api/`, `routers/`, `internal/adapter/connect/` | HTTP Echo/FastAPI handlers, Connect-RPC services, Redis stream event consumers. Parses DTOs, validates syntax, calls Usecases, or a Port directly for a single pass-through call. |
 | **Usecase** | `usecase/`, `service/`, `pipeline/` | Pure business workflow orchestration. Free of I/O, SQL, or transport protocols. |
 | **Port** | `port/`, repository interfaces (`repository/interfaces.go`), stage traits (`pipeline/dispatch.rs`) | Consumer-owned interface contracts specifying what external capabilities or pipeline seams the Usecase needs. Concrete client calls in services without ports. |
 | **Gateway** | `gateway/`, `internal/adapter/repository/`, client adapters | Anti-Corruption Layer (ACL). Implements Ports, translates Domain models ↔ Driver rows/payloads. |
