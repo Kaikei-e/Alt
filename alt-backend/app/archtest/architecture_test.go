@@ -158,7 +158,8 @@ func TestDriverDoesNotImportDomain(t *testing.T) {
 
 			for _, imp := range fileNode.Imports {
 				importPath := strings.Trim(imp.Path.Value, `"`)
-				if importPath == "alt/domain" || strings.HasPrefix(importPath, "alt/domain/") {
+				if importPath == "alt/domain" || strings.HasPrefix(importPath, "alt/domain/") ||
+					importPath == "alt/shared/domain" || strings.HasPrefix(importPath, "alt/shared/domain/") {
 					relPath, _ := filepath.Rel(moduleRoot, path)
 					if pkg, why, ok := getKnownViolation(relPath); ok {
 						t.Logf("KNOWN VIOLATION in %s (%s): %s imports domain package %q", pkg, why, relPath, importPath)

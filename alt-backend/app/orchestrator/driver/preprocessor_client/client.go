@@ -20,8 +20,8 @@ import (
 	"strings"
 	"time"
 
-	"alt/shared/domain/authcontext"
 	"alt/tlsutil"
+	"alt/utils/authcontext"
 )
 
 // SummarizeStatus represents the status of an asynchronous summarization job.

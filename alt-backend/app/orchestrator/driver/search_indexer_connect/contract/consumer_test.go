@@ -25,7 +25,7 @@ import (
 
 	searchv2 "alt/gen/proto/services/search/v2"
 	"alt/orchestrator/driver/search_indexer_connect"
-	"alt/shared/domain/authcontext"
+	"alt/utils/authcontext"
 )
 
 const pactDir = "../../../../../pacts"

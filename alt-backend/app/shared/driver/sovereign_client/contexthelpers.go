@@ -1,7 +1,7 @@
 package sovereign_client
 
 import (
-	"alt/shared/domain/authcontext"
+	"alt/utils/authcontext"
 	"context"
 )
 
