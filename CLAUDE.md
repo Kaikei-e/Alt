@@ -21,7 +21,7 @@ Each service has its own `CLAUDE.md` with service-specific guidance. See `docs/s
 
 - **TDD-first**: Write failing test → make it pass → refactor. Quality through tests, not hope.
 - **Compose-first**: Docker Compose is the single source of truth. No K8s.
-- **Clean Architecture**: `Handler → Usecase → Port → Gateway → Driver` in every service.
+- **Clean Architecture**: call flow is `Handler → Usecase → Port → Gateway → Driver` in every service. Imports point inward (Gateway implements Port; Driver never imports Domain); the rules live in the `clean-architecture` skill and `check_layers.sh --changed` checks them.
 
 ## HOW
 
