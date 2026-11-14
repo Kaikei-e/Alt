@@ -17,6 +17,7 @@ Alt の全サービスは 5 つのレイヤー（REST, Usecase, Port, Gateway, D
 - [references/service-map.md](references/service-map.md) — サービス別の実ディレクトリ名・リクエスト追跡パス・命名対応表
 - [references/anti-patterns.md](references/anti-patterns.md) — 実際に観測されたアンチパターン、理由、解消例
 - [scripts/check_layers.sh](scripts/check_layers.sh) — レイヤー境界検証スクリプト（実行用: `bash ${CLAUDE_SKILL_DIR}/scripts/check_layers.sh <service-dir>`）
+- [scripts/known_violations.tsv](scripts/known_violations.tsv) — 記録済み負債・文書化済み縮退構成の台帳（エントリの追加には既存の CI 免除設定またはサービス `CLAUDE.md` の明記が根拠として必須）
 
 ## 1. レイヤー構造と依存モデル
 
@@ -125,14 +126,18 @@ Alt では 3 つのモデルを明確に分離する:
    - Domain モデルに `json:` や `db:` タグを付けていないか。
    - Port は論理的に Usecase 側で狭く定義され、Composition Root で配線されているか（[.claude/rules/di-wiring.md](../../rules/di-wiring.md)）。
 2. [ ] **レイヤー自動検証（Validate / Run）**:
-   対象サービスディレクトリに対して検証スクリプトを実行する（Go および Python のみ対応。Rust / TS の変更は `layer-checker` サブエージェントを使用）:
+   編集後のデフォルト検証として `--changed` を実行する（Go および Python のみ対応。Rust / TS の変更は `layer-checker` サブエージェントを使用）。サービス全体を一括走査する場合は `<service-dir>` を指定する:
    ```bash
+   bash ${CLAUDE_SKILL_DIR}/scripts/check_layers.sh --changed
+   # サービス全体の走査:
    bash ${CLAUDE_SKILL_DIR}/scripts/check_layers.sh <service-dir>
    ```
 3. [ ] **修正（Fix）**:
-   - 出力に `VIOLATION` がある場合、逆 import や層越境を解消する（Driver → Domain の直接 import、REST → Gateway/Driver の直接呼出等）。
+   - `VIOLATION`: 修正必須。併せて出力される `FIX <rule>: ...` 行の指示に従い、逆 import や層越境を解消する（Driver → Domain の直接 import、REST → Gateway/Driver の直接呼出等）。
+   - `KNOWN`: `scripts/known_violations.tsv` に記録済みの負債または文書化済み縮退構成。現タスクの修正対象ではないが、件数を増やしてはならない。
    - `WARN`（Usecase の otel import のみ。driver→domain は VIOLATION）はレビューのための注意喚起であり失敗ではない。
 4. [ ] **再検証（Repeat / Re-run）**:
-   - 再び `bash ${CLAUDE_SKILL_DIR}/scripts/check_layers.sh <service-dir>` を実行し、VIOLATION が 0 件になるまで修正・再実行を繰り返す。
+   - 再び `bash ${CLAUDE_SKILL_DIR}/scripts/check_layers.sh --changed` を実行し、`VIOLATION` が 0 件になるまで修正・再実行を繰り返す。
+   - `KNOWN` と `WARN` は `<service-dir>` モードでのみ表示されるため、`scripts/known_violations.tsv` の対象ディレクトリ内を変更した場合は完了前にサービス全体の走査を 1 度実行し、`KNOWN` の件数が増えていないことを確認する。
 5. [ ] **横断走査**:
    - 複数層にまたがる大規模変更やリファクタリング時は、走査用サブエージェント `layer-checker` を実行する。

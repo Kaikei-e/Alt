@@ -1,0 +1,9 @@
+# rule	path-prefix	line-substring	reason
+# Recorded debt and documented reduced shapes. Each entry mirrors an exemption that already exists
+# in a CI architecture test or a service CLAUDE.md. Adding an entry needs the same kind of source.
+driver-imports-domain	alt-backend/app/shared/driver/alt_db/	"alt/domain	pending refactor: driver still returns domain types (knownViolations in alt-backend/app/archtest/architecture_test.go)
+driver-imports-domain	alt-backend/app/shared/driver/sovereign_client/	"alt/domain	pending refactor: driver still returns domain types (knownViolations in alt-backend/app/archtest/architecture_test.go)
+driver-implements-port-skips-gateway	alt-backend/app/shared/driver/sovereign_client/	*	pending refactor: driver still returns domain types (knownViolations in alt-backend/app/archtest/architecture_test.go)
+rest-imports-driver-gateway-or-pgx	knowledge-sovereign/app/handler/	"knowledge-sovereign/driver/sovereign_db"	documented reduced shape: handler imports driver/sovereign_db directly (knowledge-sovereign/app/CLAUDE.md)
+usecase-imports-forbidden-layers-or-sql	knowledge-sovereign/app/usecase/	"knowledge-sovereign/driver/sovereign_db"	documented reduced shape: usecase imports driver/sovereign_db directly (knowledge-sovereign/app/CLAUDE.md)
+driver-imports-upward	knowledge-sovereign/app/driver/contract/	knowledge-sovereign/handler	Pact provider harness under go:build contract, excluded by knowledge-sovereign/app/archtest/architecture_test.go
