@@ -128,31 +128,47 @@ func TestShouldQueueSummarizeJob(t *testing.T) {
 		}
 	})
 
-	t.Run("skips permanently and logs info when invalidated completed jobs reach limit", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
+	t.Run("skips permanently and logs debug only when invalidated completed jobs reach limit", func(t *testing.T) {
+		for _, tc := range []struct {
+			name     string
+			level    slog.Level
+			wantLogs bool
+		}{
+			{name: "no info log", level: slog.LevelInfo, wantLogs: false},
+			{name: "debug log emitted", level: slog.LevelDebug, wantLogs: true},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
 
-		mockSummaryRepo := mocks.NewMockSummaryRepository(ctrl)
-		mockJobRepo := mocks.NewMockSummarizeJobRepository(ctrl)
+				mockSummaryRepo := mocks.NewMockSummaryRepository(ctrl)
+				mockJobRepo := mocks.NewMockSummarizeJobRepository(ctrl)
 
-		mockSummaryRepo.EXPECT().Exists(gomock.Any(), "article-low-score").Return(false, nil)
-		mockJobRepo.EXPECT().HasRecentSuccessfulJob(gomock.Any(), "article-low-score", gomock.Any()).Return(false, nil)
-		mockJobRepo.EXPECT().HasInFlightJob(gomock.Any(), "article-low-score", gomock.Any()).Return(false, nil)
-		mockJobRepo.EXPECT().HasDeadLetterJob(gomock.Any(), "article-low-score").Return(false, nil)
-		mockJobRepo.EXPECT().HasRecentFailedJob(gomock.Any(), "article-low-score", gomock.Any()).Return(false, nil)
-		mockJobRepo.EXPECT().CountInvalidatedCompletedJobs(gomock.Any(), "article-low-score").Return(3, nil)
+				mockSummaryRepo.EXPECT().Exists(gomock.Any(), "article-low-score").Return(false, nil)
+				mockJobRepo.EXPECT().HasRecentSuccessfulJob(gomock.Any(), "article-low-score", gomock.Any()).Return(false, nil)
+				mockJobRepo.EXPECT().HasInFlightJob(gomock.Any(), "article-low-score", gomock.Any()).Return(false, nil)
+				mockJobRepo.EXPECT().HasDeadLetterJob(gomock.Any(), "article-low-score").Return(false, nil)
+				mockJobRepo.EXPECT().HasRecentFailedJob(gomock.Any(), "article-low-score", gomock.Any()).Return(false, nil)
+				mockJobRepo.EXPECT().CountInvalidatedCompletedJobs(gomock.Any(), "article-low-score").Return(3, nil)
 
-		var logBuf bytes.Buffer
-		infoLogger := slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelInfo}))
+				var logBuf bytes.Buffer
+				logger := slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: tc.level}))
 
-		shouldQueue, reason, err := service.ShouldQueueSummarizeJob(context.Background(), "article-low-score", mockSummaryRepo, mockJobRepo, infoLogger)
+				shouldQueue, reason, err := service.ShouldQueueSummarizeJob(context.Background(), "article-low-score", mockSummaryRepo, mockJobRepo, logger)
 
-		require.NoError(t, err)
-		require.False(t, shouldQueue)
-		require.Equal(t, "low_quality_retries_exhausted", reason)
-		assert.Contains(t, logBuf.String(), "level=INFO")
-		assert.Contains(t, logBuf.String(), "article-low-score")
-		assert.Contains(t, logBuf.String(), "low_quality_retries_exhausted")
+				require.NoError(t, err)
+				require.False(t, shouldQueue)
+				require.Equal(t, "low_quality_retries_exhausted", reason)
+				if tc.wantLogs {
+					assert.Contains(t, logBuf.String(), "level=DEBUG")
+					assert.Contains(t, logBuf.String(), "skipping summarize job creation: low quality re-attempts exhausted")
+					assert.Contains(t, logBuf.String(), "article-low-score")
+					assert.Contains(t, logBuf.String(), "low_quality_retries_exhausted")
+				} else {
+					assert.Empty(t, logBuf.String())
+				}
+			})
+		}
 	})
 
 	// DEFECT: an article whose model call the LLM can never process
@@ -178,6 +194,47 @@ func TestShouldQueueSummarizeJob(t *testing.T) {
 		require.NoError(t, err)
 		require.False(t, shouldQueue)
 		require.Equal(t, "dead_letter_exists", reason)
+	})
+
+	t.Run("logs dead_letter_exists skip at debug and not info", func(t *testing.T) {
+		for _, tc := range []struct {
+			name     string
+			level    slog.Level
+			wantLogs bool
+		}{
+			{name: "no info log", level: slog.LevelInfo, wantLogs: false},
+			{name: "debug log emitted", level: slog.LevelDebug, wantLogs: true},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
+
+				mockSummaryRepo := mocks.NewMockSummaryRepository(ctrl)
+				mockJobRepo := mocks.NewMockSummarizeJobRepository(ctrl)
+
+				mockSummaryRepo.EXPECT().Exists(gomock.Any(), "article-dead-log").Return(false, nil)
+				mockJobRepo.EXPECT().HasRecentSuccessfulJob(gomock.Any(), "article-dead-log", gomock.Any()).Return(false, nil)
+				mockJobRepo.EXPECT().HasInFlightJob(gomock.Any(), "article-dead-log", gomock.Any()).Return(false, nil)
+				mockJobRepo.EXPECT().HasDeadLetterJob(gomock.Any(), "article-dead-log").Return(true, nil)
+
+				var logBuf bytes.Buffer
+				logger := slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: tc.level}))
+
+				shouldQueue, reason, err := service.ShouldQueueSummarizeJob(context.Background(), "article-dead-log", mockSummaryRepo, mockJobRepo, logger)
+
+				require.NoError(t, err)
+				require.False(t, shouldQueue)
+				require.Equal(t, "dead_letter_exists", reason)
+				if tc.wantLogs {
+					assert.Contains(t, logBuf.String(), "level=DEBUG")
+					assert.Contains(t, logBuf.String(), "skipping summarize job creation: article has a dead-lettered job")
+					assert.Contains(t, logBuf.String(), "article-dead-log")
+					assert.Contains(t, logBuf.String(), "dead_letter_exists")
+				} else {
+					assert.Empty(t, logBuf.String())
+				}
+			})
+		}
 	})
 
 	// Guards the failedJobCooldownWindow split from dead_letter: a job that

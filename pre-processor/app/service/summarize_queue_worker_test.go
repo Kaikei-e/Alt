@@ -1,9 +1,11 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -14,6 +16,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func noRefill(context.Context) (bool, error) {
@@ -787,11 +790,15 @@ func (m *stubSummaryRepoWithExists) Create(_ context.Context, _ *domain.ArticleS
 // stubJobRepoWithEnqueue supports guard checks and CreateJob.
 type stubJobRepoWithEnqueue struct {
 	repository.SummarizeJobRepository
-	jobs             []*domain.SummarizeJob
-	recentSuccessMap map[string]bool
-	createJobCalls   []string // article IDs passed to CreateJob
-	dequeueCalls     int
-	getErr           error
+	jobs                 []*domain.SummarizeJob
+	recentSuccessMap     map[string]bool
+	inFlightMap          map[string]bool
+	deadLetterMap        map[string]bool
+	invalidatedCountMap  map[string]int
+	markInFlightOnCreate bool
+	createJobCalls       []string // article IDs passed to CreateJob
+	dequeueCalls         int
+	getErr               error
 }
 
 func (m *stubJobRepoWithEnqueue) GetPendingJobs(_ context.Context, _ int) ([]*domain.SummarizeJob, error) {
@@ -811,24 +818,30 @@ func (m *stubJobRepoWithEnqueue) HasRecentSuccessfulJob(_ context.Context, artic
 	return m.recentSuccessMap[articleID], nil
 }
 
-func (m *stubJobRepoWithEnqueue) HasInFlightJob(_ context.Context, _ string, _ time.Time) (bool, error) {
-	return false, nil
+func (m *stubJobRepoWithEnqueue) HasInFlightJob(_ context.Context, articleID string, _ time.Time) (bool, error) {
+	return m.inFlightMap[articleID], nil
 }
 
-func (m *stubJobRepoWithEnqueue) HasDeadLetterJob(_ context.Context, _ string) (bool, error) {
-	return false, nil
+func (m *stubJobRepoWithEnqueue) HasDeadLetterJob(_ context.Context, articleID string) (bool, error) {
+	return m.deadLetterMap[articleID], nil
 }
 
 func (m *stubJobRepoWithEnqueue) HasRecentFailedJob(_ context.Context, _ string, _ time.Time) (bool, error) {
 	return false, nil
 }
 
-func (m *stubJobRepoWithEnqueue) CountInvalidatedCompletedJobs(_ context.Context, _ string) (int, error) {
-	return 0, nil
+func (m *stubJobRepoWithEnqueue) CountInvalidatedCompletedJobs(_ context.Context, articleID string) (int, error) {
+	return m.invalidatedCountMap[articleID], nil
 }
 
 func (m *stubJobRepoWithEnqueue) CreateJob(_ context.Context, articleID string) (string, error) {
 	m.createJobCalls = append(m.createJobCalls, articleID)
+	if m.markInFlightOnCreate {
+		if m.inFlightMap == nil {
+			m.inFlightMap = make(map[string]bool)
+		}
+		m.inFlightMap[articleID] = true
+	}
 	return uuid.New().String(), nil
 }
 
@@ -1001,6 +1014,388 @@ func TestEnqueueUnsummarizedBatch_HasMore(t *testing.T) {
 
 		assert.NoError(t, err)
 		assert.True(t, result.HasMore)
+	})
+}
+
+type pagedFindResponse struct {
+	articles []*domain.Article
+	cursor   *domain.Cursor
+	err      error
+}
+
+type stubArticleRepoPaged struct {
+	repository.ArticleRepository
+	pages       map[string][]pagedFindResponse // keyed by cursor LastID ("" for nil); pops head if len > 1
+	pageFunc    func(call int, cursor *domain.Cursor, limit int) ([]*domain.Article, *domain.Cursor, error)
+	cursorOrder []*domain.Cursor
+	findCalls   int
+}
+
+func (m *stubArticleRepoPaged) FindForSummarization(_ context.Context, cursor *domain.Cursor, limit int) ([]*domain.Article, *domain.Cursor, error) {
+	m.findCalls++
+	m.cursorOrder = append(m.cursorOrder, cursor)
+	if m.pageFunc != nil {
+		return m.pageFunc(m.findCalls, cursor, limit)
+	}
+	key := ""
+	if cursor != nil {
+		key = cursor.LastID
+	}
+	queue := m.pages[key]
+	if len(queue) == 0 {
+		return nil, nil, nil
+	}
+	resp := queue[0]
+	if len(queue) > 1 {
+		m.pages[key] = queue[1:]
+	}
+	return resp.articles, resp.cursor, resp.err
+}
+
+func (m *stubArticleRepoPaged) FindByID(_ context.Context, id string) (*domain.Article, error) {
+	return &domain.Article{ID: id, Title: "Test", Content: "Test content"}, nil
+}
+
+func makeTestArticles(prefix string, count int) []*domain.Article {
+	articles := make([]*domain.Article, count)
+	for i := range count {
+		articles[i] = &domain.Article{ID: fmt.Sprintf("%s-%d", prefix, i+1), Title: "Title"}
+	}
+	return articles
+}
+
+func TestEnqueueUnsummarizedBatch_SkipsRejectedPagesAndEnqueuesLaterEligible(t *testing.T) {
+	t.Run("continues past guard-rejected pages and enqueues eligible articles in one call", func(t *testing.T) {
+		ctx := context.Background()
+		p1 := makeTestArticles("p1", 10)
+		p2 := makeTestArticles("p2", 10)
+		p3 := makeTestArticles("p3", 5)
+
+		articleRepo := &stubArticleRepoPaged{
+			pages: map[string][]pagedFindResponse{
+				"":      {{articles: p1, cursor: &domain.Cursor{LastID: "p1-10"}}},
+				"p1-10": {{articles: p2, cursor: &domain.Cursor{LastID: "p2-10"}}},
+				"p2-10": {{articles: p3, cursor: nil}},
+			},
+		}
+		invalidated := make(map[string]int)
+		for _, a := range p1 {
+			invalidated[a.ID] = 3
+		}
+		for _, a := range p2 {
+			invalidated[a.ID] = 3
+		}
+
+		summaryRepo := &stubSummaryRepoWithExists{existsMap: map[string]bool{}}
+		jobRepo := &stubJobRepoWithEnqueue{
+			recentSuccessMap:    map[string]bool{},
+			invalidatedCountMap: invalidated,
+		}
+
+		var logBuf bytes.Buffer
+		logger := slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelInfo}))
+		worker := NewSummarizeQueueWorker(jobRepo, articleRepo, nil, summaryRepo, logger)
+
+		result, err := worker.EnqueueUnsummarizedBatch(ctx, 10)
+
+		require.NoError(t, err)
+		assert.Equal(t, 25, result.Found)
+		assert.Equal(t, 5, result.Enqueued)
+		assert.Equal(t, 20, result.Skipped)
+		assert.Equal(t, 0, result.Errors)
+		assert.False(t, result.HasMore)
+		assert.Equal(t, 3, articleRepo.findCalls)
+		assert.Equal(t, []string{"p3-1", "p3-2", "p3-3", "p3-4", "p3-5"}, jobRepo.createJobCalls)
+
+		logs := logBuf.String()
+		assert.Contains(t, logs, "batch enqueue completed")
+		assert.Contains(t, logs, "pages=3")
+		assert.Contains(t, logs, "low_quality_retries_exhausted:20")
+		assert.NotContains(t, logs, "batch enqueue skipped by guard")
+	})
+}
+
+func TestEnqueueUnsummarizedBatch_NeverExceedsBatchSizeAndResumesMidPage(t *testing.T) {
+	t.Run("stops at batchSize mid-page and next call examines remaining articles", func(t *testing.T) {
+		ctx := context.Background()
+		p1 := makeTestArticles("p1", 4)
+		p2 := makeTestArticles("p2", 4)
+
+		articleRepo := &stubArticleRepoPaged{
+			pages: map[string][]pagedFindResponse{
+				"":     {{articles: p1, cursor: &domain.Cursor{LastID: "p1-4"}}},
+				"p1-4": {{articles: p2, cursor: nil}},
+			},
+		}
+		jobRepo := &stubJobRepoWithEnqueue{
+			recentSuccessMap: map[string]bool{},
+			invalidatedCountMap: map[string]int{
+				"p1-1": 3,
+				"p1-2": 3,
+			},
+			markInFlightOnCreate: true,
+		}
+		summaryRepo := &stubSummaryRepoWithExists{existsMap: map[string]bool{}}
+		worker := NewSummarizeQueueWorker(jobRepo, articleRepo, nil, summaryRepo, testLogger())
+
+		result1, err := worker.EnqueueUnsummarizedBatch(ctx, 4)
+		require.NoError(t, err)
+		assert.Equal(t, 4, result1.Enqueued)
+		assert.True(t, result1.HasMore, "unexamined articles remain on page 2")
+		assert.Equal(t, []string{"p1-3", "p1-4", "p2-1", "p2-2"}, jobRepo.createJobCalls)
+
+		result2, err := worker.EnqueueUnsummarizedBatch(ctx, 4)
+		require.NoError(t, err)
+		assert.Equal(t, 2, result2.Enqueued)
+		assert.False(t, result2.HasMore, "all articles on final page now examined")
+		assert.Equal(t, []string{"p1-3", "p1-4", "p2-1", "p2-2", "p2-3", "p2-4"}, jobRepo.createJobCalls)
+		require.GreaterOrEqual(t, len(articleRepo.cursorOrder), 3)
+		require.NotNil(t, articleRepo.cursorOrder[2])
+		assert.Equal(t, "p1-4", articleRepo.cursorOrder[2].LastID, "second sweep should resume at page 2 cursor")
+	})
+}
+
+func TestEnqueueUnsummarizedBatch_AggregatesToEndOfList(t *testing.T) {
+	t.Run("aggregates counts across multiple pages until end of list", func(t *testing.T) {
+		ctx := context.Background()
+		p1 := makeTestArticles("p1", 5)
+		p2 := makeTestArticles("p2", 3)
+
+		articleRepo := &stubArticleRepoPaged{
+			pages: map[string][]pagedFindResponse{
+				"":     {{articles: p1, cursor: &domain.Cursor{LastID: "p1-5"}}},
+				"p1-5": {{articles: p2, cursor: nil}},
+			},
+		}
+		jobRepo := &stubJobRepoWithEnqueue{
+			recentSuccessMap: map[string]bool{
+				"p1-1": true,
+				"p2-1": true,
+			},
+			deadLetterMap: map[string]bool{
+				"p1-2": true,
+			},
+			invalidatedCountMap: map[string]int{
+				"p1-3": 3,
+				"p2-2": 4,
+			},
+		}
+		summaryRepo := &stubSummaryRepoWithExists{existsMap: map[string]bool{}}
+		worker := NewSummarizeQueueWorker(jobRepo, articleRepo, nil, summaryRepo, testLogger())
+
+		result, err := worker.EnqueueUnsummarizedBatch(ctx, 5)
+		require.NoError(t, err)
+		assert.Equal(t, 8, result.Found)
+		assert.Equal(t, 3, result.Enqueued)
+		assert.Equal(t, 5, result.Skipped)
+		assert.Equal(t, 0, result.Errors)
+		assert.False(t, result.HasMore)
+		assert.Equal(t, []string{"p1-4", "p1-5", "p2-3"}, jobRepo.createJobCalls)
+	})
+}
+
+func TestEnqueueUnsummarizedBatch_StopsAtPageBoundWithWarn(t *testing.T) {
+	t.Run("stops at page-count safety bound while more remain and logs WARN", func(t *testing.T) {
+		ctx := context.Background()
+		const testCap = 500
+		invalidated := make(map[string]int)
+
+		articleRepo := &stubArticleRepoPaged{
+			pageFunc: func(call int, _ *domain.Cursor, limit int) ([]*domain.Article, *domain.Cursor, error) {
+				if call > testCap {
+					return nil, nil, fmt.Errorf("exceeded test safety cap %d", testCap)
+				}
+				arts := makeTestArticles(fmt.Sprintf("pg%d", call), limit)
+				for _, a := range arts {
+					invalidated[a.ID] = 3
+				}
+				return arts, &domain.Cursor{LastID: arts[len(arts)-1].ID}, nil
+			},
+		}
+		jobRepo := &stubJobRepoWithEnqueue{
+			recentSuccessMap:    map[string]bool{},
+			invalidatedCountMap: invalidated,
+		}
+		summaryRepo := &stubSummaryRepoWithExists{existsMap: map[string]bool{}}
+
+		var logBuf bytes.Buffer
+		logger := slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelInfo}))
+		worker := NewSummarizeQueueWorker(jobRepo, articleRepo, nil, summaryRepo, logger)
+
+		result, err := worker.EnqueueUnsummarizedBatch(ctx, 10)
+		require.NoError(t, err)
+		assert.True(t, result.HasMore)
+		assert.GreaterOrEqual(t, result.Found, 1000, "bound must cover at least 1000 articles at batchSize 10")
+		assert.Equal(t, 0, result.Enqueued)
+		assert.Equal(t, result.Found, result.Skipped)
+		assert.Less(t, articleRepo.findCalls, testCap)
+
+		logs := logBuf.String()
+		assert.Contains(t, logs, "level=WARN")
+		assert.Contains(t, logs, fmt.Sprintf("found=%d", result.Found))
+		assert.Contains(t, logs, fmt.Sprintf("skipped=%d", result.Skipped))
+	})
+}
+
+func TestEnqueueUnsummarizedBatch_LaterPageErrorKeepsCursor(t *testing.T) {
+	t.Run("returns wrapped error on later page and keeps cursor reached so far", func(t *testing.T) {
+		ctx := context.Background()
+		p1 := makeTestArticles("p1", 5)
+		p2 := makeTestArticles("p2", 2)
+		pageErr := errors.New("backend timeout")
+
+		articleRepo := &stubArticleRepoPaged{
+			pages: map[string][]pagedFindResponse{
+				"": {{articles: p1, cursor: &domain.Cursor{LastID: "p1-5"}}},
+				"p1-5": {
+					{err: pageErr},
+					{articles: p2, cursor: nil},
+				},
+			},
+		}
+		jobRepo := &stubJobRepoWithEnqueue{
+			recentSuccessMap: map[string]bool{},
+			invalidatedCountMap: map[string]int{
+				"p1-1": 3,
+				"p1-2": 3,
+				"p1-3": 3,
+			},
+		}
+		summaryRepo := &stubSummaryRepoWithExists{existsMap: map[string]bool{}}
+		worker := NewSummarizeQueueWorker(jobRepo, articleRepo, nil, summaryRepo, testLogger())
+
+		_, err := worker.EnqueueUnsummarizedBatch(ctx, 5)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, pageErr)
+
+		result2, err := worker.EnqueueUnsummarizedBatch(ctx, 5)
+		require.NoError(t, err)
+		assert.Equal(t, 2, result2.Enqueued)
+		assert.False(t, result2.HasMore)
+		require.GreaterOrEqual(t, len(articleRepo.cursorOrder), 3)
+		require.NotNil(t, articleRepo.cursorOrder[2])
+		assert.Equal(t, "p1-5", articleRepo.cursorOrder[2].LastID)
+		assert.Equal(t, []string{"p1-4", "p1-5", "p2-1", "p2-2"}, jobRepo.createJobCalls)
+	})
+}
+
+func TestEnqueueUnsummarizedBatch_ContextCancelledMidPageKeepsCursor(t *testing.T) {
+	t.Run("stops on context cancellation mid-page and keeps cursor before partial page", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		p1 := makeTestArticles("p1", 3)
+		p2 := makeTestArticles("p2", 3)
+
+		articleRepo := &stubArticleRepoPaged{
+			pages: map[string][]pagedFindResponse{
+				"":     {{articles: p1, cursor: &domain.Cursor{LastID: "p1-3"}}},
+				"p1-3": {{articles: p2, cursor: nil}},
+			},
+		}
+		summaryRepo := &stubSummaryRepoWithExists{existsMap: map[string]bool{}}
+		jobRepo := &stubJobRepoCancellingOnArticle{
+			stubJobRepoWithEnqueue: stubJobRepoWithEnqueue{
+				recentSuccessMap: map[string]bool{},
+				invalidatedCountMap: map[string]int{
+					"p1-1": 3,
+					"p1-2": 3,
+				},
+				markInFlightOnCreate: true,
+			},
+			cancelOnID: "p2-1",
+			cancelFunc: cancel,
+		}
+		worker := NewSummarizeQueueWorker(jobRepo, articleRepo, nil, summaryRepo, testLogger())
+
+		result1, err := worker.EnqueueUnsummarizedBatch(ctx, 5)
+		require.NoError(t, err)
+		assert.Equal(t, 2, result1.Enqueued)
+		assert.True(t, result1.HasMore)
+
+		result2, err := worker.EnqueueUnsummarizedBatch(context.Background(), 5)
+		require.NoError(t, err)
+		assert.Equal(t, 2, result2.Enqueued)
+		assert.False(t, result2.HasMore)
+		require.GreaterOrEqual(t, len(articleRepo.cursorOrder), 3)
+		require.NotNil(t, articleRepo.cursorOrder[2])
+		assert.Equal(t, "p1-3", articleRepo.cursorOrder[2].LastID)
+	})
+}
+
+type stubJobRepoCancellingOnArticle struct {
+	stubJobRepoWithEnqueue
+	cancelOnID string
+	cancelFunc context.CancelFunc
+}
+
+func (m *stubJobRepoCancellingOnArticle) CreateJob(ctx context.Context, articleID string) (string, error) {
+	id, err := m.stubJobRepoWithEnqueue.CreateJob(ctx, articleID)
+	if articleID == m.cancelOnID && m.cancelFunc != nil {
+		m.cancelFunc()
+	}
+	return id, err
+}
+
+func TestEnqueueUnsummarizedBatch_PerArticleSkipLoggedAtDebug(t *testing.T) {
+	t.Run("logs per-article guard skip at DEBUG and per-reason counts at INFO", func(t *testing.T) {
+		ctx := context.Background()
+		articles := makeTestArticles("a", 2)
+
+		articleRepo := &stubArticleRepoWithFind{articles: articles}
+		summaryRepo := &stubSummaryRepoWithExists{existsMap: map[string]bool{"a-1": true}}
+		jobRepo := &stubJobRepoWithEnqueue{recentSuccessMap: map[string]bool{}}
+
+		var logBuf bytes.Buffer
+		logger := slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+		worker := NewSummarizeQueueWorker(jobRepo, articleRepo, nil, summaryRepo, logger)
+
+		_, err := worker.EnqueueUnsummarizedBatch(ctx, 10)
+		require.NoError(t, err)
+
+		logs := logBuf.String()
+		assert.Contains(t, logs, "level=DEBUG msg=\"batch enqueue skipped by guard\"")
+		assert.Contains(t, logs, "level=INFO msg=\"batch enqueue completed\"")
+		assert.Contains(t, logs, "pages=1")
+		assert.Contains(t, logs, "summary_exists:1")
+	})
+}
+
+func TestEnqueueUnsummarizedBatch_ContextCancelledBeforeFirstPage(t *testing.T) {
+	t.Run("returns context error without resetting stored cursor when cancelled before first page", func(t *testing.T) {
+		p1 := makeTestArticles("p1", 2)
+		p2 := makeTestArticles("p2", 2)
+
+		articleRepo := &stubArticleRepoPaged{
+			pages: map[string][]pagedFindResponse{
+				"":     {{articles: p1, cursor: &domain.Cursor{LastID: "p1-2"}}},
+				"p1-2": {{articles: p2, cursor: nil}},
+			},
+		}
+		jobRepo := &stubJobRepoWithEnqueue{recentSuccessMap: map[string]bool{}}
+		summaryRepo := &stubSummaryRepoWithExists{existsMap: map[string]bool{}}
+		worker := NewSummarizeQueueWorker(jobRepo, articleRepo, nil, summaryRepo, testLogger())
+
+		// Advance stored cursor to p1-2 on an initial sweep.
+		result1, err := worker.EnqueueUnsummarizedBatch(context.Background(), 2)
+		require.NoError(t, err)
+		require.True(t, result1.HasMore)
+
+		// Pre-cancelled context before fetching the next sweep's first page.
+		cancelledCtx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		result2, err := worker.EnqueueUnsummarizedBatch(cancelledCtx, 2)
+		require.ErrorIs(t, err, context.Canceled)
+		assert.Nil(t, result2)
+		assert.Equal(t, 1, articleRepo.findCalls, "cancelled pre-first-page sweep must not call FindForSummarization")
+
+		// Subsequent non-cancelled sweep must still resume from the stored cursor p1-2.
+		result3, err := worker.EnqueueUnsummarizedBatch(context.Background(), 2)
+		require.NoError(t, err)
+		assert.Equal(t, 2, result3.Enqueued)
+		assert.False(t, result3.HasMore)
+		require.Len(t, articleRepo.cursorOrder, 2)
+		require.NotNil(t, articleRepo.cursorOrder[1])
+		assert.Equal(t, "p1-2", articleRepo.cursorOrder[1].LastID)
 	})
 }
 
