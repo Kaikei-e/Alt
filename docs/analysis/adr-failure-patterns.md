@@ -76,8 +76,9 @@
 - [[000306]] は要約保存が 6 時間で 287 件失敗・成功 0。`user_id` が proto に無く、ジョブは完了扱いになり得た。
 - [[000865]] を [[000867]] が置換。再投影のあと記事リンクが空になり、live の producer は `url` ではなく `link` を書き続けていた。
 - [[000942]] は admin JSON が PascalCase のまま、altctl が零値で成功した。
+- [[000327]] が pgx の SimpleProtocol を入れたあと、[[000328]] は `[]byte` を JSON 列へ bytea hex として送り、[[000379]] は `[]uuid.UUID` が OID 0 になり `FetchArticlesCursor` の 96% が失敗した。ドライバのモード変更が、呼び出し側の Go 型を全部テキスト互換にしないと本番で初めて落ちる。
 
-広がり: `missing_contract` 184、`api_contract_break` 84、`boundary_mismatch` 94。帰結は 404、401、FK 違反、空リンク、別記事の表示。影響は alt-backend、pre-processor、proto、knowledge-sovereign、BFF。
+広がり: `missing_contract` 184、`api_contract_break` 84、`boundary_mismatch` 94。帰結は 404、401、FK 違反、空リンク、別記事の表示、クエリのエンコード拒否。影響は alt-backend、pre-processor、proto、knowledge-sovereign、BFF。
 
 ### 3.4 投影がイベント以外を見る
 
@@ -88,7 +89,7 @@ read model がペイロードではなく最新行、`time.Now()`、後続 upser
 - [[000447]] `SummaryVersionCreated` が `summary_version_id` を無視し `GetLatestSummaryVersion` を見ていた。過去イベントを再投影すると最新本文で上書きされる。
 - [[000457]] 後続 upsert が `dismissed_at` を NULL に戻し、dismiss したカードが戻る。
 - [[000468]] projector の `time.Now()` が再投影を非決定にし、Recall の `next_suggest_at` がすべて未来になった。
-- [[000598]] swap 後に checkpoint をリセットせず、Home から 326 記事が欠け、1947 件の `summary_state` が古いままだった。
+- [[000598]] は swap 時に checkpoint がリセットされず、Home から 326 記事が欠け、1,947 件の `summary_state` が古いままだった、と書いている。同じ 326 件について [[000967]] は、TRUNCATE と checkpoint reset が別操作だった隙間で走行中の projector が checkpoint を進めた競合だと書き、compare-and-set で閉じている。
 - [[000922]] recall スコアが再投影のたびに時刻で変わり、同じ event log から別の行が出る。
 - [[000869]] ArticleCreated の dedupe が URL backfill を `success=true / event_seq=0` の no-op にした。
 
@@ -111,21 +112,24 @@ read model がペイロードではなく最新行、`time.Now()`、後続 upser
 
 広がり: `config_drift` 104、`schema_migration` 63、`dependency_upgrade` 37。帰結は無音フォールバック、全件削除、起動はするが仕事をしないプロセス。影響は compose、alt-backend、news-creator、pre-processor-sidecar、マイグレーション。
 
-### 3.6 rolling deploy と cheap health が障害を healthy に変える
+### 3.6 緑のコンテナのまま仕事が止まる
 
-per-service の `compose up --no-deps` は init container を起動しない。healthcheck はプロセスか証明書の鮮度だけを見て、モデルファイル、netns、配送先を見ない。
+ここには二つの別の仕組みがある。混ぜると原因が一つに見える。
 
-本文で確認した例:
+init container を rolling が起動しない例:
 
-- [[000826]] `--no-deps` は `depends_on` の init container を起動も create もしない。compose 上は healthy で、volume は空。同 ADR が deploy-model のセルフチェックを ADR 雛形へ入れた。
-- [[000825]] は同じ空ディレクトリで 2026-04-14 から 8 日間 Recap が失敗し、コンテナは healthy だった。初期の init container 案は rolling と非互換なため host 直 bind に戻している。
-- [[000784]] を [[000802]] が置換。loopback probe と自己 exit では sidecar の netns 孤立を治せなかった。
-- [[000782]] 親の force-recreate のあと sidecar が旧 netns に残り、acolyte が 502 になった。
-- [[000980]] `/health` の 200 が依存の死と旅程の破壊を page から隠した。
-- [[000969]] アラートは firing したが配送先が無く、証明書失効の検知に 7 時間 21 分かかった。
-- [[000871]] migrator の apk 取得でデプロイが 73 分 hang した。
+- [[000826]] `--no-deps` は `depends_on` の init container を起動も create もしない。compose 上は healthy で、名前付き volume は空。同 ADR が deploy-model のセルフチェックを ADR 雛形へ入れた。
+- [[000825]] の本文は、欠落した host ファイルの bind が空ディレクトリになり、`Up (healthy)` と `/health` 200 のまま分類が止まった、と書いている。追記は、その対策として入れた init container が同じ `--no-deps` で起動されず、空 volume が再発した、と書いている。8 日間 healthy のまま分類不能だった事実は [[000979]] と [[000980]] が [[PM-2026-036]] として引いている。
 
-広がり: `deploy_order` 37、`orchestration` 62。帰結は「緑のコンテナのまま機能が数日止まる」。影響は recap-worker、pki-agent、acolyte、compose、監視。
+healthcheck が見ているものが仕事の前提ではない例:
+
+- [[000784]] は証明書の鮮度だけを見て healthy のまま、sidecar が古い netns で `:9443` を拒否した。[[000802]] は loopback probe が孤立した netns でも自分の listener に成功し、自己 exit では復旧しない、と書いてこれを置換している。
+- [[000757]] と [[000782]] は、親の `--force-recreate` のあと `pki-agent` が旧 netns に残り、acolyte が 502 になった。
+- [[000980]] は、recap-subworker の `/health` 200 が 8 日間の分類不能を隠したこと、および news-creator の cheap `/health` は Ollama が落ちていても 200 を返し得ることを、deep check を分ける理由にしている。
+
+デプロイが止まる別型として、[[000871]] は apk 取得の hang で knowledge-sovereign の migrator が 1 時間 13 分停止した。コンテナが healthy に見えた型ではない。アラートが firing しても配送先が無かった [[000969]] は 3.8 に置く。
+
+広がり: `deploy_order` 37、`orchestration` 62。このタグは hang や起動順も含むので、緑のまま止まる型そのものの件数ではない。帰結は分類不能と 502 が、外形監視では異常にならないこと。影響は recap-subworker、pki-agent、acolyte、compose。
 
 ### 3.7 テストが本番の経路を見ない
 
@@ -152,7 +156,7 @@ TraceId がゼロ、アラートの UID が実体と違う、ルールは firing
 - [[000134]] と [[000135]] は pre-processor と search-indexer で TraceID がゼロのまま、後者は約 322 箇所が残ったと本文が数えている。
 - [[000286]] Grafana の統合アラートが UID とテーブル名の不一致で全滅した。
 - [[000895]] の 3 日凍結（3.5）。誰も気付かなかったことが、この ADR の主題である。
-- [[000969]] の未配送アラート（3.6）。
+- [[000969]] は mTLS 証明書の失効から検知まで 7 時間 21 分かかり、その間 page 相当のルールは 3 本 firing していた。原因はルールの欠如ではなく Alertmanager の配送経路が無いこと。
 
 広がり: `observability_gap` 103。失敗対応ノートとの共起では `silent_fallback` と 51 件重なる。帰結は原因調査がログの不在から始まること。影響は rask、Grafana、pre-processor、search-indexer。
 
@@ -210,7 +214,7 @@ TraceId がゼロ、アラートの UID が実体と違う、ルールは firing
 優先は、すでに本文が「次も同じ形で壊れる」と書いており、かつ検知が利用者依存になっているものから。
 
 1. **無音の成功を起動時とテストで別物にする。** 未配線の依存は `*_enabled` / `*_disabled` の起動ログを出し、業務経路で nil のまま呼ばれたら panic する。空配列を「無効」と「0 件」の両方に使わない。`|| true`、失敗を握る `.ok()`、side effect 失敗後の checkpoint 進行を CI で禁止する。対象は [[000928]] [[000535]] [[000616]] [[001004]]。
-2. **health は仕事の前提を見る。** プロセス生存、TLS の鮮度だけでは pass にしない。モデルファイルの非空、sidecar の netns、アラートの配送先、外部トークンの非空を probe にする。`restart: "no"` の init container を `--no-deps` の rolling と組み合わせない。[[000826]] の deploy-model セルフチェックを、compose を変える ADR の必須項目として空欄のまま merge しない。対象は [[000825]] [[000826]] [[000802]] [[000980]] [[000969]]。
+2. **health は仕事の前提を見る。** プロセス生存、証明書の鮮度、loopback への接続だけでは pass にしない。モデルファイルが空ディレクトリでないこと、sidecar が親の netns にいることを deep check で見る。compose の healthcheck 自体は [[000980]] が言うとおり `/health/deep` へ向けず、restart loop を避ける。`restart: "no"` の init container を `--no-deps` の rolling と組み合わせない。[[000826]] の deploy-model セルフチェックを、compose を変える ADR の必須項目として空欄のまま merge しない。対象は [[000825]] [[000826]] [[000784]] [[000802]] [[000980]]。firing したアラートの配送先が無い問題は healthcheck とは別に、[[000969]] の経路を起動時に確認する。
 3. **投影の再実行テストを、projector を触る変更の入口にする。** 同じ event log を二度投影して行が一致すること。`time.Now()` と `GetLatest*` を projector から排除すること。checkpoint は永続化が成功したあとだけ進めること。dismiss や URL などの列を、後続 upsert のゼロ値で消さないこと。対象は [[000447]] [[000457]] [[000468]] [[000598]] [[000922]]。
 4. **境界の ID は型と CDC で固定する。** `feed_id` と `feed_link_id`、`url` と `link`、記事 URL と RSS URL を同じ関数の戻り値にしない。producer がフィールドを足す変更は、Pact の失敗テストを producer の実装より先に入れる。「proto が生成できた」と「DI が渡している」を同じ緑にしない。[[000928]] 型の回帰は、nil を許すテストではなく、配線されたコンテナで 1 件 emit されるテストにする。対象は [[000300]] [[000306]] [[000867]] [[000942]]。
 5. **実行中の設定を起動ログに 1 行で出す。** 採用したモデル名、secret の有無（値は出さない）、バイナリの revision、マイグレーション版。`.env` が compose の既定を上書きしたら、そのキー名を起動失敗か明示ログにする。未設定の必須 secret は exit 非ゼロ。Go と Rust の変更は再ビルド無しでデプロイしない。対象は [[000499]] [[000571]] [[000614]] [[000189]] [[000059]]。
@@ -224,4 +228,4 @@ TraceId がゼロ、アラートの UID が実体と違う、ルールは firing
 
 状態の内訳、`supersedes` 110 辺、置換先 107 件は frontmatter の機械抽出と一致する。[[000940]] の 60 件、[[000957]] の 11 件、[[001007]] の 5 件、[[000533]] と [[000743]] の各 3 件、[[001011]] と [[001012]] の各 1 件は frontmatter を数えた結果である。
 
-パターンの引用のうち、[[000928]] [[000273]] [[000300]] [[000447]] [[000059]] [[000616]] [[000826]] [[001004]] [[000940]] [[001011]] [[001012]] は本文を直接確認した。その他の番号は、バッチ全文読解のノートにあり、抜粋した引用を本文と照合して一致したものである。
+パターンの引用のうち、[[000928]] [[000273]] [[000300]] [[000327]] [[000328]] [[000379]] [[000447]] [[000059]] [[000598]] [[000616]] [[000825]] [[000826]] [[000967]] [[000980]] [[001004]] [[000940]] [[001011]] [[001012]] は本文を直接確認した。その他の番号は、バッチ全文読解のノートにあり、抜粋した引用を本文と照合して一致したものである。[[000969]] と [[000871]] は障害の記録ではあるが、緑のコンテナの型には入れていない。
