@@ -22,6 +22,7 @@ const (
 	placeholderTooShort     = "本文が短すぎるため要約できませんでした。"
 	placeholderTooLong      = "本文が長すぎるため要約できませんでした。"
 	defaultIdlePollInterval = 1 * time.Second
+	maxEnqueuePagesPerSweep = 100
 )
 
 // EnqueueResult represents the result of enqueuing unsummarized articles.
@@ -552,57 +553,123 @@ func (w *SummarizeQueueWorker) recheckSummaryExistsBeforeExhausting(ctx context.
 // enqueues them into the job queue via the standard guard + CreateJob path.
 // This replaces the old batch safety-net that called the LLM directly.
 func (w *SummarizeQueueWorker) EnqueueUnsummarizedBatch(ctx context.Context, batchSize int) (*EnqueueResult, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("enqueue unsummarized batch cancelled: %w", err)
+	}
+
 	w.mu.Lock()
 	cursor := w.enqueueCursor
 	w.mu.Unlock()
 
-	articles, newCursor, err := w.articleRepo.FindForSummarization(ctx, cursor, batchSize)
-	if err != nil {
-		return nil, fmt.Errorf("failed to find unsummarized articles: %w", err)
-	}
+	result := &EnqueueResult{}
+	skipReasons := make(map[string]int)
+	pages := 0
+	hitPageBound := false
 
-	result := &EnqueueResult{
-		Found:   len(articles),
-		HasMore: newCursor != nil,
-	}
-
-	for _, article := range articles {
+	for pages < maxEnqueuePagesPerSweep {
 		if ctx.Err() != nil {
 			break
 		}
 
-		shouldQueue, reason, guardErr := ShouldQueueSummarizeJob(ctx, article.ID, w.summaryRepo, w.jobRepo, w.logger)
-		if guardErr != nil {
-			w.logger.ErrorContext(ctx, "guard check failed", "article_id", article.ID, "error", guardErr)
-			result.Errors++
-			continue
-		}
-		if !shouldQueue {
-			w.logger.InfoContext(ctx, "batch enqueue skipped by guard", "article_id", article.ID, "reason", reason)
-			result.Skipped++
-			continue
+		articles, newCursor, err := w.articleRepo.FindForSummarization(ctx, cursor, batchSize)
+		if err != nil {
+			if pages > 0 {
+				w.mu.Lock()
+				w.enqueueCursor = cursor
+				w.mu.Unlock()
+			}
+			return nil, fmt.Errorf("failed to find unsummarized articles: %w", err)
 		}
 
-		jobID, createErr := w.jobRepo.CreateJob(ctx, article.ID)
-		if createErr != nil {
-			w.logger.ErrorContext(ctx, "failed to create job", "article_id", article.ID, "error", createErr)
-			result.Errors++
-			continue
+		pages++
+		result.Found += len(articles)
+
+		if len(articles) == 0 {
+			result.HasMore = newCursor != nil
+			if newCursor != nil {
+				cursor = newCursor
+			}
+			break
 		}
 
-		if jobID == "" {
-			// Duplicate: pending/running job already exists
-			result.Skipped++
-			continue
+		stoppedMidPage := false
+		for i, article := range articles {
+			if ctx.Err() != nil || result.Enqueued >= batchSize {
+				stoppedMidPage = true
+				break
+			}
+
+			shouldQueue, reason, guardErr := ShouldQueueSummarizeJob(ctx, article.ID, w.summaryRepo, w.jobRepo, w.logger)
+			if guardErr != nil {
+				w.logger.ErrorContext(ctx, "guard check failed", "article_id", article.ID, "error", guardErr)
+				result.Errors++
+				continue
+			}
+			if !shouldQueue {
+				w.logger.DebugContext(ctx, "batch enqueue skipped by guard", "article_id", article.ID, "reason", reason)
+				result.Skipped++
+				skipReasons[reason]++
+				continue
+			}
+
+			jobID, createErr := w.jobRepo.CreateJob(ctx, article.ID)
+			if createErr != nil {
+				w.logger.ErrorContext(ctx, "failed to create job", "article_id", article.ID, "error", createErr)
+				result.Errors++
+				continue
+			}
+
+			if jobID == "" {
+				// Duplicate: pending/running job already exists
+				result.Skipped++
+				skipReasons["duplicate_job"]++
+				continue
+			}
+
+			result.Enqueued++
+			if result.Enqueued >= batchSize {
+				if i < len(articles)-1 {
+					stoppedMidPage = true
+				}
+				break
+			}
 		}
 
-		result.Enqueued++
+		if stoppedMidPage {
+			// Keep cursor before this page so unexamined articles are not skipped until the next wrap.
+			result.HasMore = true
+			break
+		}
+
+		cursor = newCursor
+		result.HasMore = newCursor != nil
+
+		if result.Enqueued >= batchSize || newCursor == nil {
+			break
+		}
+
+		if pages == maxEnqueuePagesPerSweep {
+			hitPageBound = true
+			break
+		}
 	}
 
-	if newCursor != nil {
+	if cursor != nil {
 		w.mu.Lock()
-		w.enqueueCursor = newCursor
+		w.enqueueCursor = cursor
 		w.mu.Unlock()
+	}
+
+	if hitPageBound {
+		w.logger.WarnContext(ctx, "batch enqueue stopped at page bound",
+			"max_pages", maxEnqueuePagesPerSweep,
+			"pages", pages,
+			"found", result.Found,
+			"enqueued", result.Enqueued,
+			"skipped", result.Skipped,
+			"errors", result.Errors,
+			"has_more", result.HasMore,
+			"skip_reasons", skipReasons)
 	}
 
 	w.logger.InfoContext(ctx, "batch enqueue completed",
@@ -610,7 +677,9 @@ func (w *SummarizeQueueWorker) EnqueueUnsummarizedBatch(ctx context.Context, bat
 		"enqueued", result.Enqueued,
 		"skipped", result.Skipped,
 		"errors", result.Errors,
-		"has_more", result.HasMore)
+		"has_more", result.HasMore,
+		"pages", pages,
+		"skip_reasons", skipReasons)
 
 	return result, nil
 }
