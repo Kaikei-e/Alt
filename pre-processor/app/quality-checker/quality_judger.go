@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"pre-processor/config"
+	"pre-processor/domain"
 	"pre-processor/driver"
 	"pre-processor/repository"
 	"pre-processor/utils"
@@ -46,13 +47,6 @@ var (
 	// with its own admission control and concurrency is bounded by the
 	// summarize worker pool.
 	rateLimitHost = "http://news-creator:11434"
-
-	// knownPlaceholders are placeholder summaries saved when content is too short/long.
-	// These must NOT be quality-checked: deleting them causes an infinite summarize→delete loop.
-	knownPlaceholders = []string{
-		"本文が短すぎるため要約できませんでした。",
-		"本文が長すぎるため要約できませんでした。",
-	}
 )
 
 // Configure overrides the quality checker's news-creator endpoint, model,
@@ -91,19 +85,6 @@ func Configure(cfg *config.Config, client *http.Client) {
 	if cfg.QualityChecker.Timeout > 0 {
 		qualityCheckerHTTPTimeout = cfg.QualityChecker.Timeout
 	}
-}
-
-// isPlaceholderSummary returns true if the summary is a known placeholder message.
-// Placeholder summaries are generated when article content is too short or too long
-// for summarization. Quality-checking these would always yield low scores, causing
-// deletion and re-summarization in an infinite loop.
-func isPlaceholderSummary(summary string) bool {
-	for _, placeholder := range knownPlaceholders {
-		if summary == placeholder {
-			return true
-		}
-	}
-	return false
 }
 
 type judgePrompt struct {
@@ -476,7 +457,7 @@ func JudgeArticleQuality(ctx context.Context, summaryRepo repository.SummaryRepo
 	}
 
 	// プレースホルダーサマリーはLLM評価不要 - 削除すると無限ループになる
-	if isPlaceholderSummary(articleWithSummary.SummaryJapanese) {
+	if domain.IsPlaceholderSummary(articleWithSummary.SummaryJapanese) {
 		logger.Logger.InfoContext(ctx, "Skipping quality check: placeholder summary",
 			"articleID", articleWithSummary.ArticleID)
 		return nil

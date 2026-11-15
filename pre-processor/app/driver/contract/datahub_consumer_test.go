@@ -34,8 +34,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"pre-processor/domain"
+	backend_api "pre-processor/driver/backend_api"
 	datahubv1 "pre-processor/gen/proto/services/datahub/v1"
 	"pre-processor/gen/proto/services/datahub/v1/datahubv1connect"
+	"pre-processor/repository"
 )
 
 // dataHubProcedurePrefix is the namespace ADR-000954 D7 moves this contract to.
@@ -310,6 +313,49 @@ func TestDataHubSaveArticleSummaryContract(t *testing.T) {
 				return fmt.Errorf("SaveArticleSummary failed: %w", err)
 			}
 			return nil
+		})
+	require.NoError(t, err)
+}
+
+// TestDataHubSaveArticleSummarySkipVersioningContract pins terminal placeholder
+// writes that must suppress summary_versions creation and SummaryVersionCreated
+// event emission via summaryVersioning: "SUMMARY_VERSIONING_SKIP".
+func TestDataHubSaveArticleSummarySkipVersioningContract(t *testing.T) {
+	mockProvider := newDataHubPact(t)
+
+	err := mockProvider.
+		AddInteraction().
+		Given("an article exists with id art-001").
+		UponReceiving("a SaveArticleSummary request with summary versioning skipped").
+		WithCompleteRequest(consumer.Request{
+			Method: "POST",
+			Path:   matchers.String(dataHubProcedure("SaveArticleSummary")),
+			Headers: matchers.MapMatcher{
+				"Content-Type": matchers.String("application/json"),
+			},
+			Body: matchers.MapMatcher{
+				"articleId":         matchers.Like("art-001"),
+				"summary":           matchers.Like(domain.PlaceholderDeadLetter),
+				"language":          matchers.String("ja"),
+				"userId":            matchers.Like("user-001"),
+				"summaryVersioning": matchers.String("SUMMARY_VERSIONING_SKIP"),
+			},
+		}).
+		WithCompleteResponse(consumer.Response{
+			Status: 200,
+			Headers: matchers.MapMatcher{
+				"Content-Type": matchers.String("application/json"),
+			},
+			Body: matchers.MapMatcher{},
+		}).
+		ExecuteTest(t, func(config consumer.MockServerConfig) error {
+			repo := repository.NewSummaryRepository(backend_api.NewClientWithService(newDataHubClient(config)))
+			return repo.Create(context.Background(), &domain.ArticleSummary{
+				ArticleID:       "art-001",
+				UserID:          "user-001",
+				SummaryJapanese: domain.PlaceholderDeadLetter,
+				SkipVersioning:  true,
+			})
 		})
 	require.NoError(t, err)
 }

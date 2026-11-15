@@ -19,6 +19,24 @@ type Article struct {
 	FeedURL     string    `db:"-"`            // Transient field for sync
 }
 
+// Placeholder summaries persisted when an article cannot be summarized.
+const (
+	PlaceholderTooShort            = "本文が短すぎるため要約できませんでした。"
+	PlaceholderTooLong             = "本文が長すぎるため要約できませんでした。"
+	PlaceholderDeadLetter          = "本文をモデルが処理できなかったため要約できませんでした。"
+	PlaceholderLowQualityExhausted = "品質基準を満たす要約を生成できなかったため要約できませんでした。"
+)
+
+// IsPlaceholderSummary reports whether summary is one of the known placeholder texts.
+func IsPlaceholderSummary(summary string) bool {
+	switch summary {
+	case PlaceholderTooShort, PlaceholderTooLong, PlaceholderDeadLetter, PlaceholderLowQualityExhausted:
+		return true
+	default:
+		return false
+	}
+}
+
 // ArticleSummary represents a summary of an article.
 type ArticleSummary struct {
 	CreatedAt       time.Time `db:"created_at"`
@@ -27,6 +45,7 @@ type ArticleSummary struct {
 	UserID          string    `db:"user_id"`
 	ArticleTitle    string    `db:"article_title"`
 	SummaryJapanese string    `db:"summary_japanese"`
+	SkipVersioning  bool      `db:"-"`
 }
 
 // ArticleWithSummary represents an article with its summary for quality checking.

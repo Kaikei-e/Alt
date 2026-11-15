@@ -794,6 +794,7 @@ type stubJobRepoWithEnqueue struct {
 	recentSuccessMap     map[string]bool
 	inFlightMap          map[string]bool
 	deadLetterMap        map[string]bool
+	recentFailedMap      map[string]bool
 	invalidatedCountMap  map[string]int
 	markInFlightOnCreate bool
 	createJobCalls       []string // article IDs passed to CreateJob
@@ -826,8 +827,8 @@ func (m *stubJobRepoWithEnqueue) HasDeadLetterJob(_ context.Context, articleID s
 	return m.deadLetterMap[articleID], nil
 }
 
-func (m *stubJobRepoWithEnqueue) HasRecentFailedJob(_ context.Context, _ string, _ time.Time) (bool, error) {
-	return false, nil
+func (m *stubJobRepoWithEnqueue) HasRecentFailedJob(_ context.Context, articleID string, _ time.Time) (bool, error) {
+	return m.recentFailedMap[articleID], nil
 }
 
 func (m *stubJobRepoWithEnqueue) CountInvalidatedCompletedJobs(_ context.Context, articleID string) (int, error) {
@@ -1457,6 +1458,7 @@ func TestSummarizeQueueWorker_ProcessQueue_ContentTooShort_SavesPlaceholder(t *t
 		assert.Equal(t, "user-1", summaryRepo.lastSummary.UserID)
 		assert.Equal(t, "本文が短すぎるため要約できませんでした。", summaryRepo.lastSummary.SummaryJapanese,
 			"should save the known placeholder for short content")
+		assert.False(t, summaryRepo.lastSummary.SkipVersioning, "too-short placeholder must preserve default versioning")
 	})
 
 	t.Run("should still complete job even if placeholder save fails", func(t *testing.T) {
@@ -1508,6 +1510,7 @@ func TestSummarizeQueueWorker_ProcessQueue_ContentTooLong_SavesPlaceholder(t *te
 		assert.Equal(t, "article-long", summaryRepo.lastSummary.ArticleID)
 		assert.Equal(t, "本文が長すぎるため要約できませんでした。", summaryRepo.lastSummary.SummaryJapanese,
 			"should save the known placeholder for long content")
+		assert.False(t, summaryRepo.lastSummary.SkipVersioning, "too-long placeholder must preserve default versioning")
 
 		// Should be marked completed, not dead_letter
 		assert.Equal(t, 1, len(jobRepo.updateCalls))
@@ -1757,5 +1760,171 @@ func TestSummarizeQueueWorker_ProcessQueue_ContentNotProcessable(t *testing.T) {
 		assert.Equal(t, 1, len(jobRepo.updateCalls), "should update status exactly once")
 		assert.Equal(t, domain.SummarizeJobStatusCompleted, jobRepo.updateCalls[0].status,
 			"should mark as Completed when upstream summary is already persisted")
+	})
+}
+
+type stubSummaryRepoTerminalTracking struct {
+	repository.SummaryRepository
+	existsMap    map[string]bool
+	createErrMap map[string]error
+	createdItems []*domain.ArticleSummary
+}
+
+func (m *stubSummaryRepoTerminalTracking) Exists(_ context.Context, articleID string) (bool, error) {
+	return m.existsMap[articleID], nil
+}
+
+func (m *stubSummaryRepoTerminalTracking) Create(_ context.Context, s *domain.ArticleSummary) error {
+	if err := m.createErrMap[s.ArticleID]; err != nil {
+		return err
+	}
+	m.createdItems = append(m.createdItems, s)
+	return nil
+}
+
+func TestEnqueueUnsummarizedBatch_TerminalPlaceholders(t *testing.T) {
+	t.Run("saves dead-letter placeholder once with SkipVersioning=true and no job created", func(t *testing.T) {
+		articles := []*domain.Article{
+			{ID: "art-dead", UserID: "user-1", Title: "Dead Letter Article"},
+		}
+		articleRepo := &stubArticleRepoWithFind{articles: articles}
+		summaryRepo := &stubSummaryRepoTerminalTracking{existsMap: map[string]bool{}}
+		jobRepo := &stubJobRepoWithEnqueue{
+			deadLetterMap: map[string]bool{"art-dead": true},
+		}
+
+		var logBuf bytes.Buffer
+		logger := slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelInfo}))
+		worker := NewSummarizeQueueWorker(jobRepo, articleRepo, nil, summaryRepo, logger)
+
+		result, err := worker.EnqueueUnsummarizedBatch(context.Background(), 10)
+		require.NoError(t, err)
+		assert.Equal(t, 1, result.Found)
+		assert.Equal(t, 0, result.Enqueued)
+		assert.Equal(t, 1, result.Skipped)
+		assert.Equal(t, 0, result.Errors)
+		assert.Empty(t, jobRepo.createJobCalls)
+
+		require.Len(t, summaryRepo.createdItems, 1)
+		saved := summaryRepo.createdItems[0]
+		assert.Equal(t, "art-dead", saved.ArticleID)
+		assert.Equal(t, "user-1", saved.UserID)
+		assert.Equal(t, "Dead Letter Article", saved.ArticleTitle)
+		assert.Equal(t, domain.PlaceholderDeadLetter, saved.SummaryJapanese)
+		assert.True(t, saved.SkipVersioning)
+
+		logs := logBuf.String()
+		assert.Contains(t, logs, "batch enqueue completed")
+		assert.Contains(t, logs, "dead_letter_exists:1")
+		assert.Contains(t, logs, "terminal_placeholders=1")
+	})
+
+	t.Run("saves low-quality-exhausted placeholder once with SkipVersioning=true and no job created", func(t *testing.T) {
+		articles := []*domain.Article{
+			{ID: "art-lq", UserID: "user-2", Title: "Low Quality Article"},
+		}
+		articleRepo := &stubArticleRepoWithFind{articles: articles}
+		summaryRepo := &stubSummaryRepoTerminalTracking{existsMap: map[string]bool{}}
+		jobRepo := &stubJobRepoWithEnqueue{
+			invalidatedCountMap: map[string]int{"art-lq": 3},
+		}
+
+		var logBuf bytes.Buffer
+		logger := slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelInfo}))
+		worker := NewSummarizeQueueWorker(jobRepo, articleRepo, nil, summaryRepo, logger)
+
+		result, err := worker.EnqueueUnsummarizedBatch(context.Background(), 10)
+		require.NoError(t, err)
+		assert.Equal(t, 1, result.Found)
+		assert.Equal(t, 0, result.Enqueued)
+		assert.Equal(t, 1, result.Skipped)
+		assert.Equal(t, 0, result.Errors)
+		assert.Empty(t, jobRepo.createJobCalls)
+
+		require.Len(t, summaryRepo.createdItems, 1)
+		saved := summaryRepo.createdItems[0]
+		assert.Equal(t, "art-lq", saved.ArticleID)
+		assert.Equal(t, "user-2", saved.UserID)
+		assert.Equal(t, "Low Quality Article", saved.ArticleTitle)
+		assert.Equal(t, domain.PlaceholderLowQualityExhausted, saved.SummaryJapanese)
+		assert.True(t, saved.SkipVersioning)
+
+		logs := logBuf.String()
+		assert.Contains(t, logs, "batch enqueue completed")
+		assert.Contains(t, logs, "low_quality_retries_exhausted:1")
+		assert.Contains(t, logs, "terminal_placeholders=1")
+	})
+
+	t.Run("does not save placeholders for non-terminal skip reasons", func(t *testing.T) {
+		articles := []*domain.Article{
+			{ID: "art-exists", UserID: "u1", Title: "Exists"},
+			{ID: "art-recent-ok", UserID: "u1", Title: "Recent Success"},
+			{ID: "art-inflight", UserID: "u1", Title: "In Flight"},
+			{ID: "art-cooldown", UserID: "u1", Title: "Cooldown"},
+		}
+		articleRepo := &stubArticleRepoWithFind{articles: articles}
+		summaryRepo := &stubSummaryRepoTerminalTracking{
+			existsMap: map[string]bool{"art-exists": true},
+		}
+		jobRepo := &stubJobRepoWithEnqueue{
+			recentSuccessMap: map[string]bool{"art-recent-ok": true},
+			inFlightMap:      map[string]bool{"art-inflight": true},
+			recentFailedMap:  map[string]bool{"art-cooldown": true},
+		}
+
+		var logBuf bytes.Buffer
+		logger := slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelInfo}))
+		worker := NewSummarizeQueueWorker(jobRepo, articleRepo, nil, summaryRepo, logger)
+
+		result, err := worker.EnqueueUnsummarizedBatch(context.Background(), 10)
+		require.NoError(t, err)
+		assert.Equal(t, 4, result.Found)
+		assert.Equal(t, 0, result.Enqueued)
+		assert.Equal(t, 4, result.Skipped)
+		assert.Equal(t, 0, result.Errors)
+		assert.Empty(t, summaryRepo.createdItems)
+		assert.Empty(t, jobRepo.createJobCalls)
+
+		logs := logBuf.String()
+		assert.Contains(t, logs, "batch enqueue completed")
+		assert.Contains(t, logs, "terminal_placeholders=0")
+	})
+
+	t.Run("counts failing placeholder save in Errors and continues sweep", func(t *testing.T) {
+		articles := []*domain.Article{
+			{ID: "art-dead-fail", UserID: "u1", Title: "Dead Fail"},
+			{ID: "art-lq-ok", UserID: "u2", Title: "LQ Ok"},
+			{ID: "art-eligible", UserID: "u3", Title: "Eligible"},
+		}
+		articleRepo := &stubArticleRepoWithFind{articles: articles}
+		summaryRepo := &stubSummaryRepoTerminalTracking{
+			existsMap:    map[string]bool{},
+			createErrMap: map[string]error{"art-dead-fail": errors.New("rpc unavailable")},
+		}
+		jobRepo := &stubJobRepoWithEnqueue{
+			deadLetterMap:       map[string]bool{"art-dead-fail": true},
+			invalidatedCountMap: map[string]int{"art-lq-ok": 3},
+		}
+
+		var logBuf bytes.Buffer
+		logger := slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelInfo}))
+		worker := NewSummarizeQueueWorker(jobRepo, articleRepo, nil, summaryRepo, logger)
+
+		result, err := worker.EnqueueUnsummarizedBatch(context.Background(), 10)
+		require.NoError(t, err)
+		assert.Equal(t, 3, result.Found)
+		assert.Equal(t, 1, result.Enqueued)
+		assert.Equal(t, 2, result.Skipped)
+		assert.Equal(t, 1, result.Errors)
+		assert.Equal(t, []string{"art-eligible"}, jobRepo.createJobCalls)
+
+		require.Len(t, summaryRepo.createdItems, 1)
+		assert.Equal(t, "art-lq-ok", summaryRepo.createdItems[0].ArticleID)
+		assert.True(t, summaryRepo.createdItems[0].SkipVersioning)
+
+		logs := logBuf.String()
+		assert.Contains(t, logs, "level=ERROR")
+		assert.Contains(t, logs, "batch enqueue completed")
+		assert.Contains(t, logs, "terminal_placeholders=1")
 	})
 }

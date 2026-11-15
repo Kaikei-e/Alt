@@ -38,6 +38,9 @@ func (r *summaryRepository) Create(ctx context.Context, summary *domain.ArticleS
 		Language:  "ja",
 		UserId:    summary.UserID,
 	}
+	if summary.SkipVersioning {
+		protoReq.SummaryVersioning = datahubv1.SummaryVersioning_SUMMARY_VERSIONING_SKIP
+	}
 
 	req := connect.NewRequest(protoReq)
 	r.client.AddAuth(req)

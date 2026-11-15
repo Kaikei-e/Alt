@@ -243,8 +243,8 @@ func (s *articleSummarizerService) pruneExpiredFailuresLocked(now time.Time) {
 
 // placeholderMessages maps content-length errors to Japanese placeholder messages.
 var placeholderMessages = map[error]string{
-	domain.ErrContentTooShort: "本文が短すぎるため要約できませんでした。",
-	domain.ErrContentTooLong:  "本文が長すぎるため要約できませんでした。",
+	domain.ErrContentTooShort: domain.PlaceholderTooShort,
+	domain.ErrContentTooLong:  domain.PlaceholderTooLong,
 }
 
 // placeholderMessage returns the placeholder message for a content-length error, or empty if not applicable.

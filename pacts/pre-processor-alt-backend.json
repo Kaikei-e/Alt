@@ -451,6 +451,63 @@
         },
         "status": 200
       }
+    },
+    {
+      "description": "a SaveArticleSummary request with summary versioning skipped",
+      "providerStates": [
+        {
+          "name": "an article exists with id art-001"
+        }
+      ],
+      "request": {
+        "body": {
+          "articleId": "art-001",
+          "language": "ja",
+          "summary": "本文をモデルが処理できなかったため要約できませんでした。",
+          "summaryVersioning": "SUMMARY_VERSIONING_SKIP",
+          "userId": "user-001"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.articleId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.summary": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.userId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/services.datahub.v1.DataHubService/SaveArticleSummary"
+      },
+      "response": {
+        "body": {},
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "status": 200
+      }
     }
   ],
   "metadata": {
