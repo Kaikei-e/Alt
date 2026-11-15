@@ -178,7 +178,7 @@
 
 ### 2.6 デプロイ単位が実行時の依存を外す
 
-**説明.** Compose 単体では正しいパターンが、サービス単位の rolling deploy（`docker compose up <service>` に相当し、依存を起動しない）では一度も動かない。init container、名前付き volume の populate、restart policy 無し、死んだ netns を掴む sidecar、マウントされていないルールファイルが、この型に入る。
+**説明.** Compose 単体では正しいパターンが、サービス単位の rolling deploy（`000826` が書く `docker compose up <service> --no-deps` 相当。`--no-deps` は `depends_on` の相手を起動も create もしない）では一度も動かない。フラグの無い `docker compose up <service>` は依存を起動するので、この経路とは別である。init container、名前付き volume の populate、restart policy 無し、死んだ netns を掴む sidecar、マウントされていないルールファイルが、この型に入る。
 
 **混入フェーズ.** 設計と配備。単体の compose レンダリングと unit test は通る。
 
