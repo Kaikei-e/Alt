@@ -60,6 +60,19 @@ def _render_adr(
     return f"{header}{affected_services_block}\n{body}"
 
 
+def _binding_row(
+    adr_id: str,
+    title: str,
+    affected_services: list[str],
+) -> dict[str, object]:
+    return {
+        "id": adr_id,
+        "title": title,
+        "path": f"docs/ADR/{adr_id}.md",
+        "affected_services": affected_services,
+    }
+
+
 class AdrPreflightTests(unittest.TestCase):
     """Hermetic tests against a temporary git repository and stub docdag."""
 
@@ -144,10 +157,22 @@ class AdrPreflightTests(unittest.TestCase):
         self._git("add", ".")
         self._git("commit", "-q", "-m", "initial fixture")
 
-        self._binding_rows: list[list[str]] = [
-            ["000001", "Backend baseline architecture", "docs/ADR/000001.md"],
-            ["000002", "Harvester and MQ hub contract", "docs/ADR/000002.md"],
-            ["000003", "Tag generator pipeline rules", "docs/ADR/000003.md"],
+        self._binding_rows: list[dict[str, object]] = [
+            _binding_row(
+                "000001",
+                "Backend baseline architecture",
+                ["alt-backend"],
+            ),
+            _binding_row(
+                "000002",
+                "Harvester and MQ hub contract",
+                ["alt-harvester", "mq-hub"],
+            ),
+            _binding_row(
+                "000003",
+                "Tag generator pipeline rules",
+                ["tag-generator"],
+            ),
         ]
         self.configure_docdag()
         self._write_docdag_stub()
@@ -169,7 +194,8 @@ class AdrPreflightTests(unittest.TestCase):
         validate_stderr: str = "",
         query_exit: int = 0,
         query_stderr: str = "",
-        binding_rows: list[list[str]] | None = None,
+        binding_rows: list[dict[str, object]] | None = None,
+        report_fields: bool = True,
     ) -> None:
         if binding_rows is not None:
             self._binding_rows = binding_rows
@@ -180,6 +206,7 @@ class AdrPreflightTests(unittest.TestCase):
             "query_exit": query_exit,
             "query_stderr": query_stderr,
             "binding_rows": self._binding_rows,
+            "report_fields": report_fields,
         }
         self.docdag_config.write_text(json.dumps(payload), encoding="utf-8")
 
@@ -212,15 +239,27 @@ class AdrPreflightTests(unittest.TestCase):
                     sys.stderr.write(err)
                 sys.exit(int(cfg.get("validate_exit", 0)))
 
-            if "query" in args and "--binding" in args:
+            if args == ["query", "--binding", "--format", "json"]:
                 q_exit = int(cfg.get("query_exit", 0))
                 if q_exit != 0:
                     q_err = cfg.get("query_stderr", "query failed\\n")
                     if q_err:
                         sys.stderr.write(q_err)
                     sys.exit(q_exit)
+                records = []
                 for row in cfg.get("binding_rows", []):
-                    sys.stdout.write("\\t".join(row) + "\\n")
+                    record = {{
+                        "id": row["id"],
+                        "title": row["title"],
+                        "status": "accepted",
+                        "path": row["path"],
+                    }}
+                    if cfg.get("report_fields", True):
+                        record["fields"] = {{
+                            "affected_services": row["affected_services"],
+                        }}
+                    records.append(record)
+                sys.stdout.write(json.dumps(records))
                 sys.exit(0)
 
             sys.stderr.write(f"unexpected stub docdag args: {{args!r}}\\n")
@@ -234,23 +273,24 @@ class AdrPreflightTests(unittest.TestCase):
         self,
         adr_id: str,
         title: str,
-        affected_services_inline: str,
+        affected_services: list[str],
         *,
         commit: bool = True,
     ) -> None:
-        rel_path = f"docs/ADR/{adr_id}.md"
+        row = _binding_row(adr_id, title, affected_services)
+        rel_path = str(row["path"])
         (self.repo / rel_path).write_text(
             _render_adr(
                 adr_id,
                 title,
-                f"affected_services: {affected_services_inline}",
+                f"affected_services: [{', '.join(affected_services)}]",
             ),
             encoding="utf-8",
         )
         if commit:
             self._git("add", rel_path)
             self._git("commit", "-q", "-m", f"add {adr_id}")
-        self._binding_rows.append([adr_id, title, rel_path])
+        self._binding_rows.append(row)
         self.configure_docdag()
 
     def docdag_invocations(self) -> list[dict[str, object]]:
@@ -672,7 +712,7 @@ class AdrPreflightTests(unittest.TestCase):
         self.assertEqual(second.stderr, "")
 
     def test_14_github_directory_uses_ci_cd_alias(self) -> None:
-        self.add_binding_adr("000005", "CI workflow pinning policy", "[ci-cd]")
+        self.add_binding_adr("000005", "CI workflow pinning policy", ["ci-cd"])
         res = self.run_preflight(
             "--hook",
             stdin_data=self.make_pretool_payload(
@@ -811,7 +851,7 @@ class AdrPreflightTests(unittest.TestCase):
             self.add_binding_adr(
                 adr_id,
                 title,
-                "[search-indexer]",
+                ["search-indexer"],
                 commit=False,
             )
         self._git("add", "docs/ADR")
@@ -1075,17 +1115,15 @@ class AdrPreflightTests(unittest.TestCase):
         )
         self.assertIn("code edits will be blocked until it is fixed", res.stdout)
 
-    def test_30_service_missing_adr_file_does_not_misreport_missing_docdag(
+    def test_30_service_stale_docdag_does_not_misreport_missing_docdag(
         self,
     ) -> None:
-        self.configure_docdag(
-            binding_rows=[
-                ["000999", "Ghost ADR", "docs/ADR/000999.md"],
-            ]
-        )
-        bad_file = self.run_preflight("--service", "alt-backend")
-        self.assertEqual(bad_file.returncode, 2, msg=bad_file.stderr)
-        self.assertNotIn("docdag is not on PATH", bad_file.stderr)
+        self.configure_docdag(report_fields=False)
+        stale = self.run_preflight("--service", "alt-backend")
+        self.assertEqual(stale.returncode, 2, msg=stale.stderr)
+        self.assertNotIn("docdag is not on PATH", stale.stderr)
+        self.assertIn("older than v0.6.0", stale.stderr)
+        self.assertIn("go install github.com/Kaikei-e/DocDag", stale.stderr)
 
         no_docdag_path = self.build_path_without_docdag()
         missing_bin = self.run_preflight(
@@ -1104,7 +1142,7 @@ class AdrPreflightTests(unittest.TestCase):
                 adr_counter += 1
                 adr_id = f"{adr_counter:06d}"
                 title = f"Scope {scope} item {item} " + ("x" * 135)
-                self.add_binding_adr(adr_id, title, f"[{scope}]", commit=False)
+                self.add_binding_adr(adr_id, title, [scope], commit=False)
         self._git("add", "docs/ADR")
         self._git("commit", "-q", "-m", "add 96 ADRs across 12 scopes")
 

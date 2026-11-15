@@ -30,6 +30,11 @@ sections:
   level: 2
   ordered: true
 
+# `docdag query --format json` carries only the frontmatter keys declared here.
+# The adr-preflight harness reads affected_services from that output.
+fields:
+  affected_services: {}
+
 # Strict: every finding that defaults to warn is raised to error, so a record
 # that is not a well-formed node of the graph never lands.
 structural:
