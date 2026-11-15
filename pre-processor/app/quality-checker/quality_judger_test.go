@@ -896,7 +896,7 @@ func TestMaxQualityCheckContentLengthConstant(t *testing.T) {
 	assert.Greater(t, maxQualityCheckContentLength, 0, "maxQualityCheckContentLength should be positive")
 }
 
-// TestIsPlaceholderSummary tests the isPlaceholderSummary function
+// TestIsPlaceholderSummary tests the domain.IsPlaceholderSummary predicate.
 func TestIsPlaceholderSummary(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -911,6 +911,16 @@ func TestIsPlaceholderSummary(t *testing.T) {
 		{
 			name:     "placeholder_too_long",
 			summary:  "本文が長すぎるため要約できませんでした。",
+			expected: true,
+		},
+		{
+			name:     "placeholder_dead_letter",
+			summary:  "本文をモデルが処理できなかったため要約できませんでした。",
+			expected: true,
+		},
+		{
+			name:     "placeholder_low_quality_exhausted",
+			summary:  "品質基準を満たす要約を生成できなかったため要約できませんでした。",
 			expected: true,
 		},
 		{
@@ -937,7 +947,7 @@ func TestIsPlaceholderSummary(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			result := isPlaceholderSummary(tc.summary)
+			result := domain.IsPlaceholderSummary(tc.summary)
 			assert.Equal(t, tc.expected, result)
 		})
 	}
@@ -951,25 +961,42 @@ func TestJudgeArticleQualitySkipsPlaceholder(t *testing.T) {
 	}{
 		{
 			name:    "too_short_placeholder",
-			summary: "本文が短すぎるため要約できませんでした。",
+			summary: domain.PlaceholderTooShort,
 		},
 		{
 			name:    "too_long_placeholder",
-			summary: "本文が長すぎるため要約できませんでした。",
+			summary: domain.PlaceholderTooLong,
+		},
+		{
+			name:    "dead_letter_placeholder",
+			summary: domain.PlaceholderDeadLetter,
+		},
+		{
+			name:    "low_quality_exhausted_placeholder",
+			summary: domain.PlaceholderLowQualityExhausted,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			withMockTransport(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				t.Fatalf("LLM endpoint should not be called for placeholder %q", tc.name)
+			}))
+
+			originalURL := qualityCheckerAPIURL
+			qualityCheckerAPIURL = testQualityCheckerURL
+			t.Cleanup(func() { qualityCheckerAPIURL = originalURL })
+
+			repo := &deleteTrackingSummaryRepo{}
 			article := &driver.ArticleWithSummary{
 				ArticleID:       "test-placeholder-article",
 				Content:         "Short",
 				SummaryJapanese: tc.summary,
 			}
 
-			// No mock server needed - should return nil without making any HTTP calls
-			err := JudgeArticleQuality(context.Background(), nil, nil, article)
+			err := JudgeArticleQuality(context.Background(), repo, nil, article)
 			require.NoError(t, err, "Placeholder summary should be skipped without error")
+			assert.False(t, repo.deleteCalled, "Placeholder summary must never be deleted")
 		})
 	}
 }
