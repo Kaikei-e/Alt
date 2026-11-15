@@ -1,0 +1,30 @@
+{
+  "description": "ADR preflight gate: validates the DocDag ADR graph at session start and shows binding ADRs before the first edit in each top-level directory.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/.claude/skills/adr-preflight/scripts/adr_preflight.py\" --hook",
+            "timeout": 30,
+            "statusMessage": "Validating the ADR graph"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "apply_patch|Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/.claude/skills/adr-preflight/scripts/adr_preflight.py\" --hook",
+            "timeout": 30,
+            "statusMessage": "Running ADR preflight"
+          }
+        ]
+      }
+    ]
+  }
+}

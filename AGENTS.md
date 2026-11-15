@@ -92,6 +92,10 @@
 - **rask-log-forwarder** – Rust sidecar tailing Docker logs with SIMD parsing, lock-free buffers, disk fallback. Tests cover parsers, collectors, full pipeline with `wiremock`.
 - **rask-log-aggregator** – Rust Axum API ingesting logs into ClickHouse. Uses mock traits for unit tests, `axum-test` for handlers, `criterion` for hot paths.
 
+## ADR Preflight Guardrail
+- Workflow, hook behavior, and CLI flags live in `.agents/skills/adr-preflight/SKILL.md` (the same files as `.claude/skills/adr-preflight/`). Before changing code without edit hooks, run `python3 .agents/skills/adr-preflight/scripts/adr_preflight.py <paths you will change>`.
+- Exit `1` means the ADR graph is unsound (`docdag validate` failed or `docdag` is missing from `PATH`) and must be fixed first. Read the listed binding ADRs (`docdag context <id> --depth 2 --budget 1500`) before editing; a change that contradicts one stops and goes through a superseding ADR (`alt-adr-writer`).
+
 ## Clean Architecture Guardrail
 - Import rules, the placement flow, and per-service exceptions live in `.agents/skills/clean-architecture/SKILL.md` (the same files as `.claude/skills/clean-architecture/`). Read it before adding an endpoint, usecase, port, gateway, or driver.
 - After editing Go or Python layer code, run `bash .agents/skills/clean-architecture/scripts/check_layers.sh --changed` and fix every `VIOLATION`; each one comes with a `FIX` line. `KNOWN` lines are recorded debt, not part of your task, and must not grow. They are printed only by the whole-service form, `check_layers.sh <service-dir>`.

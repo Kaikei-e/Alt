@@ -65,6 +65,7 @@ curl http://localhost:7700/health       # Meilisearch
 ### DocDag (`docdag`)
 - **What**: Typed directed graph validator, rule linter, and query CLI (`docdag`, configured in `docdag.yaml`) enforcing DAG invariants and section structure across `docs/ADR/`.
 - **Use when / Commands**:
+  - Starting any code change (feature, bug fix, refactor): where wired (see `.claude/skills/adr-preflight/SKILL.md` section 6), the `adr-preflight` hook holds the first edit per top-level directory until `docdag validate` passes and shows that directory's binding ADRs; on a host without the hook, run `python3 .claude/skills/adr-preflight/scripts/adr_preflight.py <paths>` before the first edit.
   - Exploring ADR context, prerequisites, or blast radius before planning or reviewing (query the graph instead of grepping `docs/ADR/`): `docdag context <id> --depth 2 --budget 1500`, `docdag query --binding --fields id,title,status,path`, `docdag query <id>`, `docdag query <id> --ancestors`, `docdag resolve <id>`.
   - Creating an ADR: allocate the next 6-digit ID via `docdag new "<title>" --dry-run --format json`, write `docs/ADR/NNNNNN.md` with `docs/ADR/template.md` headings (`## Status` → `## Context` → `## Decision` → `## Consequences`), and check incrementally with `docdag validate --touching docs/ADR/NNNNNN.md`.
   - Modifying `docs/ADR/**` or `docdag.yaml`: settled ADRs are append-only (`--immutable-since origin/main`); only frontmatter `status: superseded` may be updated on a superseded ADR.

@@ -74,17 +74,17 @@ docdag resolve 000929   # → 000940 （葉 = 現行後継を確認。後継が 
 docdag validate         # status / stub / cycle（supersedes+depends-on の和集合も）/ dangling
 ```
 
-キーワードや影響サービスで**入口の ADR を探す**ときだけテキスト検索を使う:
+影響サービスやキーワードで**入口の ADR を探す**とき:
 
 ```bash
-grep -l -- "- <service>" docs/ADR/*.md | sort | tail -10   # affected_services はブロックリスト
+# 影響サービスから現行契約（binding ADR）を引く（インライン・ブロックリスト両表記を解釈、id<TAB>title<TAB>path、新しい順）
+python3 .claude/skills/adr-preflight/scripts/adr_preflight.py --service <name>
+
+# キーワードで全文検索するときだけテキスト検索を使う
 grep -rl "<keyword>" docs/ADR/ | sort | tail -10
 ```
 
-`grep -rl "affected_services:.*<service>"` は使わない。`affected_services` はほぼ全 ADR で
-ブロックリスト（`affected_services:` の次行から `- ...`）なので、同一行にサービス名が来る
-インライン形式しか拾えず、実際に該当する ADR の 3 割弱を静かに取りこぼす。
-`tags:` も同じ理由で行内 grep が効かないため、タグでの絞り込みは諦めて上のグラフ問い合わせを使う。
+サービス名での探索に `grep` は使わない（`adr_preflight.py --service <name>` が `docdag` の binding 集合を読み、`affected_services` のインライン表記とブロックリスト表記の両方を解釈する）。
 
 各 ADR から拾うのは 3 点だけ — なぜその判断が必要だったか / 何を固定したか / 今回の計画に効く制約。
 
