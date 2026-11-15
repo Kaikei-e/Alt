@@ -105,84 +105,11 @@ def derive_scope_from_relpath(rel_path: Path, *, is_dir: bool = False) -> str | 
     return parts[0]
 
 
-def _strip_yaml_comment(text: str) -> str:
-    in_single = False
-    in_double = False
-    for idx, ch in enumerate(text):
-        if ch == "'" and not in_double:
-            in_single = not in_single
-        elif ch == '"' and not in_single:
-            in_double = not in_double
-        elif ch == "#" and not in_single and not in_double:
-            if idx == 0 or text[idx - 1].isspace():
-                return text[:idx]
-    return text
-
-
 def _unquote_yaml_scalar(raw: str) -> str:
     val = raw.strip()
     if len(val) >= 2 and val[0] == val[-1] and val[0] in ('"', "'"):
         return val[1:-1].strip()
     return val
-
-
-def parse_affected_services(markdown_text: str) -> list[str]:
-    cleaned_text = markdown_text.lstrip("\ufeff")
-    lines = cleaned_text.splitlines()
-    if not lines or lines[0].strip() != "---":
-        return []
-
-    end_idx: int | None = None
-    for idx in range(1, len(lines)):
-        if lines[idx].strip() in ("---", "..."):
-            end_idx = idx
-            break
-    if end_idx is None:
-        return []
-
-    fm_lines = lines[1:end_idx]
-    idx = 0
-    while idx < len(fm_lines):
-        line = fm_lines[idx]
-        if line.startswith("affected_services:"):
-            rest = _strip_yaml_comment(line[len("affected_services:") :]).strip()
-            if rest.startswith("["):
-                while "]" not in rest and idx + 1 < len(fm_lines):
-                    idx += 1
-                    rest += " " + _strip_yaml_comment(fm_lines[idx]).strip()
-                if "]" not in rest:
-                    return []
-                inner = rest[1 : rest.index("]")]
-                return [
-                    item
-                    for part in inner.split(",")
-                    if (item := _unquote_yaml_scalar(part))
-                ]
-            if rest == "":
-                items: list[str] = []
-                idx += 1
-                while idx < len(fm_lines):
-                    sub = fm_lines[idx]
-                    stripped = sub.strip()
-                    if not stripped or stripped.startswith("#"):
-                        idx += 1
-                        continue
-                    if stripped.startswith("-") and (
-                        len(stripped) == 1 or stripped[1].isspace()
-                    ):
-                        val = _unquote_yaml_scalar(_strip_yaml_comment(stripped[1:]))
-                        if val:
-                            items.append(val)
-                        idx += 1
-                        continue
-                    break
-                return items
-            scalar = _unquote_yaml_scalar(rest)
-            if scalar and scalar not in ("null", "~"):
-                return [scalar]
-            return []
-        idx += 1
-    return []
 
 
 def extract_patch_paths(command_text: str) -> list[str]:
@@ -432,7 +359,7 @@ def run_docdag_validate(root: Path) -> ValidateResult:
 def load_binding_adrs(root: Path) -> list[BindingAdr]:
     try:
         res = subprocess.run(
-            ["docdag", "query", "--binding", "--fields", "id,title,path"],
+            ["docdag", "query", "--binding", "--format", "json"],
             cwd=root,
             capture_output=True,
             text=True,
@@ -445,26 +372,32 @@ def load_binding_adrs(root: Path) -> list[BindingAdr]:
         detail = (res.stderr or res.stdout).strip()
         raise RuntimeError(f"docdag query failed (exit {res.returncode}): {detail}")
 
+    try:
+        rows = json.loads(res.stdout)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"docdag query returned malformed JSON: {exc}") from exc
+
     records: list[BindingAdr] = []
-    for raw_line in res.stdout.splitlines():
-        if not raw_line.strip():
-            continue
-        cols = raw_line.split("\t")
-        if len(cols) < 3:
-            raise RuntimeError(f"malformed docdag query row: {raw_line!r}")
-        adr_id, title, rel_path = (
-            cols[0].strip(),
-            cols[1].strip(),
-            cols[2].strip(),
-        )
-        markdown = (root / rel_path).read_text(encoding="utf-8", errors="replace")
-        services = tuple(parse_affected_services(markdown))
+    for row in rows:
+        fields = row.get("fields")
+        if not isinstance(fields, dict) or "affected_services" not in fields:
+            raise RuntimeError(
+                f"docdag query reported no affected_services for {row.get('id')}: "
+                "docdag is older than v0.6.0, or docdag.yaml does not declare "
+                "affected_services under fields:. "
+                f"{format_missing_docdag_fix(root)}"
+            )
+        services = fields["affected_services"]
+        if services is None:
+            services = []
+        elif isinstance(services, str):
+            services = [services]
         records.append(
             BindingAdr(
-                adr_id=adr_id,
-                title=title,
-                rel_path=rel_path,
-                affected_services=services,
+                adr_id=row["id"],
+                title=row["title"],
+                rel_path=row["path"],
+                affected_services=tuple(services),
             )
         )
     records.sort(key=lambda item: item.adr_id, reverse=True)
