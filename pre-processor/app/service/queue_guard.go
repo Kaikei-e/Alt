@@ -24,8 +24,10 @@ const (
 	// from re-creating a job every tick against a still-broken dependency,
 	// while still giving the article a path back to retry once the outage
 	// clears — a permanent block would not.
-	failedJobCooldownWindow = 1 * time.Hour
-	maxLowQualityReattempts = 2
+	failedJobCooldownWindow              = 1 * time.Hour
+	maxLowQualityReattempts              = 2
+	skipReasonDeadLetterExists           = "dead_letter_exists"
+	skipReasonLowQualityRetriesExhausted = "low_quality_retries_exhausted"
 )
 
 // ShouldQueueSummarizeJob applies idempotency checks before creating a new job.
@@ -94,9 +96,9 @@ func ShouldQueueSummarizeJob(
 	}
 	if hasDeadLetter {
 		if logger != nil {
-			logger.DebugContext(ctx, "skipping summarize job creation: article has a dead-lettered job", "article_id", articleID, "reason", "dead_letter_exists")
+			logger.DebugContext(ctx, "skipping summarize job creation: article has a dead-lettered job", "article_id", articleID, "reason", skipReasonDeadLetterExists)
 		}
-		return false, "dead_letter_exists", nil
+		return false, skipReasonDeadLetterExists, nil
 	}
 
 	// A recently retry-exhausted job ('failed') covers any error, including
@@ -125,9 +127,9 @@ func ShouldQueueSummarizeJob(
 				"article_id", articleID,
 				"invalidated_count", invalidatedCount,
 				"max_reattempts", maxLowQualityReattempts,
-				"reason", "low_quality_retries_exhausted")
+				"reason", skipReasonLowQualityRetriesExhausted)
 		}
-		return false, "low_quality_retries_exhausted", nil
+		return false, skipReasonLowQualityRetriesExhausted, nil
 	}
 
 	return true, "", nil

@@ -15,15 +15,15 @@ import (
 	"pre-processor/utils/html_parser"
 )
 
-// Placeholder summaries saved when content cannot be summarized.
-// These must match the knownPlaceholders in quality-checker/quality_judger.go
-// so that the quality checker does not attempt to delete them.
 const (
-	placeholderTooShort     = "本文が短すぎるため要約できませんでした。"
-	placeholderTooLong      = "本文が長すぎるため要約できませんでした。"
 	defaultIdlePollInterval = 1 * time.Second
 	maxEnqueuePagesPerSweep = 100
 )
+
+var terminalPlaceholdersByReason = map[string]string{
+	skipReasonDeadLetterExists:           domain.PlaceholderDeadLetter,
+	skipReasonLowQualityRetriesExhausted: domain.PlaceholderLowQualityExhausted,
+}
 
 // EnqueueResult represents the result of enqueuing unsummarized articles.
 type EnqueueResult struct {
@@ -361,7 +361,7 @@ func (w *SummarizeQueueWorker) processJob(ctx context.Context, job *domain.Summa
 				"job_id", job.JobID,
 				"article_id", job.ArticleID,
 				"duration_ms", summarizeDuration.Milliseconds())
-			w.savePlaceholderSummary(ctx, job.ArticleID, article.UserID, article.Title, placeholderTooShort)
+			_ = w.savePlaceholderSummary(ctx, job.ArticleID, article.UserID, article.Title, domain.PlaceholderTooShort, false)
 			if updateErr := w.jobRepo.UpdateJobStatus(ctx, job.JobID.String(), domain.SummarizeJobStatusCompleted, "", "skipped: content too short for summarization"); updateErr != nil {
 				w.logger.ErrorContext(ctx, "failed to update job status", "error", updateErr, "job_id", job.JobID)
 			}
@@ -373,7 +373,7 @@ func (w *SummarizeQueueWorker) processJob(ctx context.Context, job *domain.Summa
 				"job_id", job.JobID,
 				"article_id", job.ArticleID,
 				"duration_ms", summarizeDuration.Milliseconds())
-			w.savePlaceholderSummary(ctx, job.ArticleID, article.UserID, article.Title, placeholderTooLong)
+			_ = w.savePlaceholderSummary(ctx, job.ArticleID, article.UserID, article.Title, domain.PlaceholderTooLong, false)
 			if updateErr := w.jobRepo.UpdateJobStatus(ctx, job.JobID.String(), domain.SummarizeJobStatusCompleted, "", "skipped: content too long for summarization"); updateErr != nil {
 				w.logger.ErrorContext(ctx, "failed to update job status", "error", updateErr, "job_id", job.JobID)
 			}
@@ -491,10 +491,8 @@ func (w *SummarizeQueueWorker) processJob(ctx context.Context, job *domain.Summa
 	return nil
 }
 
-// savePlaceholderSummary saves a placeholder summary for articles that cannot be
-// summarized (content too short or too long). This prevents the article from being
-// re-enqueued indefinitely and removes it from the Unsummarized count in Stats.
-func (w *SummarizeQueueWorker) savePlaceholderSummary(ctx context.Context, articleID, userID, title, placeholder string) {
+// savePlaceholderSummary persists a placeholder summary so unsummarizable articles leave the queue.
+func (w *SummarizeQueueWorker) savePlaceholderSummary(ctx context.Context, articleID, userID, title, placeholder string, skipVersioning bool) error {
 	if title == "" {
 		title = "Untitled"
 	}
@@ -503,17 +501,19 @@ func (w *SummarizeQueueWorker) savePlaceholderSummary(ctx context.Context, artic
 		UserID:          userID,
 		ArticleTitle:    title,
 		SummaryJapanese: placeholder,
+		SkipVersioning:  skipVersioning,
 	}
 	if err := w.summaryRepo.Create(ctx, summary); err != nil {
 		w.logger.ErrorContext(ctx, "failed to save placeholder summary",
 			"error", err,
 			"article_id", articleID,
 			"placeholder", placeholder)
-	} else {
-		w.logger.InfoContext(ctx, "placeholder summary saved",
-			"article_id", articleID,
-			"placeholder", placeholder)
+		return err
 	}
+	w.logger.InfoContext(ctx, "placeholder summary saved",
+		"article_id", articleID,
+		"placeholder", placeholder)
+	return nil
 }
 
 // recheckSummaryExistsBeforeExhausting closes the job as Completed if upstream
@@ -563,6 +563,7 @@ func (w *SummarizeQueueWorker) EnqueueUnsummarizedBatch(ctx context.Context, bat
 
 	result := &EnqueueResult{}
 	skipReasons := make(map[string]int)
+	terminalPlaceholders := 0
 	pages := 0
 	hitPageBound := false
 
@@ -609,6 +610,15 @@ func (w *SummarizeQueueWorker) EnqueueUnsummarizedBatch(ctx context.Context, bat
 				w.logger.DebugContext(ctx, "batch enqueue skipped by guard", "article_id", article.ID, "reason", reason)
 				result.Skipped++
 				skipReasons[reason]++
+				if placeholder, ok := terminalPlaceholdersByReason[reason]; ok {
+					// Permanent guard rejections leave the article out of future sweeps via a
+					// versionless placeholder; a failed write is retried on the next sweep.
+					if saveErr := w.savePlaceholderSummary(ctx, article.ID, article.UserID, article.Title, placeholder, true); saveErr != nil {
+						result.Errors++
+					} else {
+						terminalPlaceholders++
+					}
+				}
 				continue
 			}
 
@@ -679,7 +689,8 @@ func (w *SummarizeQueueWorker) EnqueueUnsummarizedBatch(ctx context.Context, bat
 		"errors", result.Errors,
 		"has_more", result.HasMore,
 		"pages", pages,
-		"skip_reasons", skipReasons)
+		"skip_reasons", skipReasons,
+		"terminal_placeholders", terminalPlaceholders)
 
 	return result, nil
 }
