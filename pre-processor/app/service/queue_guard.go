@@ -94,7 +94,7 @@ func ShouldQueueSummarizeJob(
 	}
 	if hasDeadLetter {
 		if logger != nil {
-			logger.InfoContext(ctx, "skipping summarize job creation: article has a dead-lettered job", "article_id", articleID, "reason", "dead_letter_exists")
+			logger.DebugContext(ctx, "skipping summarize job creation: article has a dead-lettered job", "article_id", articleID, "reason", "dead_letter_exists")
 		}
 		return false, "dead_letter_exists", nil
 	}
@@ -121,7 +121,7 @@ func ShouldQueueSummarizeJob(
 	}
 	if invalidatedCount > maxLowQualityReattempts {
 		if logger != nil {
-			logger.InfoContext(ctx, "skipping summarize job creation: low quality re-attempts exhausted",
+			logger.DebugContext(ctx, "skipping summarize job creation: low quality re-attempts exhausted",
 				"article_id", articleID,
 				"invalidated_count", invalidatedCount,
 				"max_reattempts", maxLowQualityReattempts,

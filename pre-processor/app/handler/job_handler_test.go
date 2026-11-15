@@ -641,6 +641,18 @@ func makeArticles(n int) []*domain.Article {
 	return out
 }
 
+func makeRepeatedFindCalls(n int, perPage int) []scriptedFindCall {
+	calls := make([]scriptedFindCall, 0, n+1)
+	for i := range n {
+		calls = append(calls, scriptedFindCall{
+			articles: makeArticles(perPage),
+			cursor:   &domain.Cursor{LastID: fmt.Sprintf("page-%d", i+1)},
+		})
+	}
+	calls = append(calls, scriptedFindCall{articles: makeArticles(3), cursor: nil})
+	return calls
+}
+
 func TestProcessSummarizationBatch_RefillStateMachine(t *testing.T) {
 	tests := []struct {
 		name              string
@@ -664,15 +676,12 @@ func TestProcessSummarizationBatch_RefillStateMachine(t *testing.T) {
 			wantRefillLogged:  true,
 		},
 		{
-			name: "{HasMore true, Enqueued 0} does not refill",
-			findCalls: []scriptedFindCall{
-				{articles: makeArticles(10), cursor: &domain.Cursor{LastID: "article-10"}},
-				{articles: makeArticles(3), cursor: nil},
-			},
+			name:              "{HasMore true, Enqueued 0} does not refill",
+			findCalls:         makeRepeatedFindCalls(100, 10),
 			createJobToken:    "",
 			pendingOnTick:     nil,
 			wantFirstSweepErr: false,
-			wantTotalSweeps:   1,
+			wantTotalSweeps:   100,
 			wantRefillLogged:  false,
 		},
 		{
@@ -1011,14 +1020,18 @@ func TestProcessQueueTick_ConcurrentDrainedWorkersDoNotTriggerDuplicateSweeps(t 
 			case 1:
 				return []*domain.Article{
 					{ID: "init-1", Title: "I1"},
-				}, &domain.Cursor{LastID: "init-1"}, nil
+					{ID: "init-2", Title: "I2"},
+					{ID: "init-3", Title: "I3"},
+				}, &domain.Cursor{LastID: "init-3"}, nil
 			case 2:
 				return []*domain.Article{
 					{ID: "refill-1", Title: "R1"},
-				}, &domain.Cursor{LastID: "refill-1"}, nil
+					{ID: "refill-2", Title: "R2"},
+					{ID: "refill-3", Title: "R3"},
+				}, &domain.Cursor{LastID: "refill-3"}, nil
 			case 3:
 				// Enqueues 0 despite HasMore=true -> must terminate refill loop.
-				return []*domain.Article{}, &domain.Cursor{LastID: "refill-1"}, nil
+				return []*domain.Article{}, &domain.Cursor{LastID: "refill-3"}, nil
 			default:
 				t.Errorf("duplicate refill sweep triggered")
 				return nil, nil, nil
@@ -1038,7 +1051,7 @@ func TestProcessQueueTick_ConcurrentDrainedWorkersDoNotTriggerDuplicateSweeps(t 
 		j := &domain.SummarizeJob{JobID: uuid.New(), ArticleID: articleID, MaxRetries: 3}
 		pending = append(pending, j)
 		return j.JobID.String(), nil
-	}).Times(2)
+	}).Times(6)
 
 	jobRepo.EXPECT().GetPendingJobs(gomock.Any(), 1).DoAndReturn(func(_ context.Context, _ int) ([]*domain.SummarizeJob, error) {
 		queueMu.Lock()
@@ -1175,7 +1188,7 @@ func TestProcessQueueTick_WorkerDoesNotExitWhileRefillStillNeeded(t *testing.T) 
 					t.Error("timed out waiting for second empty dequeue")
 				}
 				time.Sleep(100 * time.Millisecond) // let the second drained worker block on sweepMu
-				return []*domain.Article{{ID: "r1"}}, &domain.Cursor{LastID: "y"}, nil
+				return []*domain.Article{{ID: "r1"}, {ID: "r1b"}}, &domain.Cursor{LastID: "y"}, nil
 			case 3:
 				return []*domain.Article{{ID: "r2"}, {ID: "r3"}}, nil, nil
 			default:
@@ -1284,7 +1297,7 @@ func TestProcessQueueTick_WorkerDoesNotExitWhileRefillStillNeeded(t *testing.T) 
 	log := testJobHandlerLogger()
 	worker := service.NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, log)
 	worker.SetConcurrency(3)
-	h := &jobHandler{queueWorker: worker, logger: log, jobGroup: orchestrator.NewJobGroup(ctx, log), batchSize: 3, lastBatchSweep: time.Now(), batchSweepForceInterval: 30 * time.Minute}
+	h := &jobHandler{queueWorker: worker, logger: log, jobGroup: orchestrator.NewJobGroup(ctx, log), batchSize: 2, lastBatchSweep: time.Now(), batchSweepForceInterval: 30 * time.Minute}
 	require.NoError(t, h.processSummarizationBatch(ctx))
 
 	done := make(chan error, 1)
