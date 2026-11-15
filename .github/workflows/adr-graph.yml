@@ -9,11 +9,13 @@ on:
     paths:
       - "docs/ADR/**"
       - "docdag.yaml"
+      - ".claude/skills/adr-preflight/**"
       - ".github/workflows/adr-graph.yml"
   pull_request:
     paths:
       - "docs/ADR/**"
       - "docdag.yaml"
+      - ".claude/skills/adr-preflight/**"
       - ".github/workflows/adr-graph.yml"
   workflow_dispatch:
 
@@ -62,6 +64,8 @@ jobs:
       - name: Config lint
         # docdag.yaml itself: contradictory, vacuous or duplicated rules fail the job.
         run: docdag lint --strict --format github
+      - name: ADR preflight gate tests
+        run: python3 .claude/skills/adr-preflight/scripts/test_adr_preflight.py
       - name: Full report
         if: always()
         # The complete finding list, past the ten-annotation cap. Reporting only:

@@ -30,6 +30,8 @@ Bundled material, read when the phase calls for it:
 - `templates/go_usecase_test.go.tmpl`, `templates/python_handler_test.py.tmpl`,
   `templates/typescript_component_test.ts.tmpl`, `templates/deno_unit_test.ts.tmpl` — Phase 2 starting shapes
 
+**Before Phase 0 — ADR preflight:** Run `python3 .claude/skills/adr-preflight/scripts/adr_preflight.py <paths>` on the paths you will change, read the listed binding ADRs (`docdag context <id> --depth 2 --budget 1500`), and stop if the change contradicts one.
+
 ## Phase 0: E2E first
 
 Write the outermost failing acceptance test:
