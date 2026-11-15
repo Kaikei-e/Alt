@@ -5,6 +5,10 @@ id_width: 6
 # ADRs are bare NNNNNN.md, so `docdag new` must not append a title slug.
 filename: "{id}.md"
 
+# Restrict status to the four lifecycle states used across Alt ADRs so typos
+# or non-standard values fail validation.
+status_values: [proposed, accepted, superseded, withdrawn]
+
 # Report a cycle that only the union of the acyclic edge types closes,
 # not just one that closes within a single edge type. supersedes and
 # depends-on are both declared on the newer ADR and point at older ones.
@@ -32,8 +36,13 @@ sections:
 
 # `docdag query --format json` carries only the frontmatter keys declared here.
 # The adr-preflight harness reads affected_services from that output.
+# Require scalar fields title and date so every ADR carries a title and date.
 fields:
   affected_services: {}
+  title:
+    required: true
+  date:
+    required: true
 
 # Strict: every finding that defaults to warn is raised to error, so a record
 # that is not a well-formed node of the graph never lands.
@@ -60,3 +69,15 @@ rules:
       attr:
         status: { eq: superseded }
     message: "status is superseded but no document supersedes it"
+  # An accepted ADR cannot depend on a withdrawn ADR, because a binding
+  # decision must not rest on a retracted premise.
+  - name: accepted_depends_on_withdrawn
+    severity: error
+    when:
+      attr:
+        status: { eq: accepted }
+      via:
+        edge: depends-on
+        attr:
+          status: { eq: withdrawn }
+    message: "accepted document depends on a withdrawn document"
