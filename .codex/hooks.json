@@ -11,6 +11,16 @@
             "statusMessage": "Validating the ADR graph"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/agent-harness/harness_selfcheck.py\" --hook",
+            "timeout": 30,
+            "statusMessage": "Running agent harness self-check"
+          }
+        ]
       }
     ],
     "PreToolUse": [
@@ -44,6 +54,17 @@
             "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/agent-harness/guard_event_time.py\"",
             "timeout": 10,
             "statusMessage": "Checking projector event-time invariants"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/agent-harness/guard_ops_commands.py\" --on-match deny",
+            "timeout": 10,
+            "statusMessage": "Checking container and compose commands"
           }
         ]
       }

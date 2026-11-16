@@ -21,10 +21,52 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
+
+      - name: Fetch base branch
+        env:
+          BASE_REF: ${{ github.base_ref || 'main' }}
+        run: git fetch --no-tags origin "$BASE_REF"
 
       - name: Run agent harness tests
         run: python3 scripts/tests/test-agent-harness.py
 
       - name: Run agent harness self-check
         run: python3 scripts/agent-harness/harness_selfcheck.py
+
+      - name: Run postmortem ledger tests
+        run: python3 scripts/tests/test-postmortem-ledger.py
+
+      - name: Run postmortem ledger gate
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          EVENT_BEFORE: ${{ github.event.before }}
+        run: |
+          if [ -n "$BASE_REF" ]; then
+            BASE="origin/$BASE_REF"
+          elif [ -z "$EVENT_BEFORE" ] || [ "$EVENT_BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            echo "Note: added-file gate has no base for this push; running against origin/main."
+            BASE="origin/main"
+          else
+            BASE="$EVENT_BEFORE"
+          fi
+          python3 scripts/agent-harness/postmortem_ledger.py --check --base "$BASE"
+
+      - name: Run migration destructive gate tests
+        run: python3 scripts/tests/test-migration-destructive-gate.py
+
+      - name: Run migration destructive gate
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          EVENT_BEFORE: ${{ github.event.before }}
+        run: |
+          if [ -n "$BASE_REF" ]; then
+            BASE="origin/$BASE_REF"
+          elif [ -z "$EVENT_BEFORE" ] || [ "$EVENT_BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            echo "Note: added-file gate has no base for this push; running against origin/main."
+            BASE="origin/main"
+          else
+            BASE="$EVENT_BEFORE"
+          fi
+          python3 scripts/agent-harness/migration_destructive_gate.py --base "$BASE"

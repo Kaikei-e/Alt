@@ -94,6 +94,7 @@ services:
       - alt-network
     profiles:
       - backup
+    restart: unless-stopped
     labels:
       rask.group: backup
     logging:

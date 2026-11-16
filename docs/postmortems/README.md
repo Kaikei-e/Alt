@@ -11,6 +11,8 @@ Alt のポストモーテム（事後検証記録）リポジトリです。各�
 
 横断的な構造的傾向や再発パターンの分析については、[[postmortem-structural-analysis-2026-08-16]] を参照してください。
 
+未完了や持ち越しのアクションアイテムは `python3 scripts/agent-harness/postmortem_ledger.py --open --match <keyword>` で横断照会でき、新規ポストモーテムの記述規約（`## 失敗の型と再発` の必須項目、完了根拠、`--check` ゲート）は `docs/CLAUDE.md` に定めています。
+
 ## インシデント一覧
 
 | インシデント | 発生日 | 重大度 | 影響サービス | 根本原因 |
