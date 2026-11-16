@@ -38,6 +38,7 @@ on:
       - 'scripts/compose-init-edge-audit.py'
       - 'scripts/compose-pre-start-audit.py'
       - 'scripts/compose-ops-surface-audit.py'
+      - 'scripts/compose-restart-policy-audit.py'
       - 'scripts/compose-feature-gate.py'
       - 'scripts/compose-reachability-audit.py'
       - 'scripts/ci-install-compose.sh'
@@ -52,6 +53,7 @@ on:
       - 'scripts/tests/test-compose-init-edge-audit.py'
       - 'scripts/tests/test-compose-pre-start-audit.py'
       - 'scripts/tests/test-compose-ops-surface-audit.py'
+      - 'scripts/tests/test-compose-restart-policy-audit.py'
       - 'scripts/tests/test-compose-feature-gate.py'
       - 'scripts/tests/test-compose-reachability-audit.py'
       - 'scripts/tests/test_compose_wiring.sh'
@@ -136,6 +138,7 @@ on:
       - 'scripts/compose-init-edge-audit.py'
       - 'scripts/compose-pre-start-audit.py'
       - 'scripts/compose-ops-surface-audit.py'
+      - 'scripts/compose-restart-policy-audit.py'
       - 'scripts/compose-feature-gate.py'
       - 'scripts/compose-reachability-audit.py'
       - 'scripts/ci-install-compose.sh'
@@ -150,6 +153,7 @@ on:
       - 'scripts/tests/test-compose-init-edge-audit.py'
       - 'scripts/tests/test-compose-pre-start-audit.py'
       - 'scripts/tests/test-compose-ops-surface-audit.py'
+      - 'scripts/tests/test-compose-restart-policy-audit.py'
       - 'scripts/tests/test-compose-feature-gate.py'
       - 'scripts/tests/test-compose-reachability-audit.py'
       - 'scripts/tests/test_compose_wiring.sh'
@@ -511,6 +515,28 @@ jobs:
 
       - name: Assert production compose inventory and P2-14 budget hold
         run: python3 scripts/compose-ops-surface-audit.py
+
+  restart-policy-invariant:
+    # PM-2026-023 / ADR-000703: a long-running service without a restart policy
+    # (or with restart: "no") stays absent indefinitely after stopping or
+    # container removal. Every long-running service in the production compose
+    # chain must declare a non-"no" restart policy; ephemeral one-shots and
+    # profiled opt-in services are exempt.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install PyYAML
+        run: pip install --quiet 'pyyaml==6.*'
+
+      - name: Pin the restart-policy parser
+        run: python3 scripts/tests/test-compose-restart-policy-audit.py
+
+      - name: Assert every long-running service declares a restart policy
+        run: python3 scripts/compose-restart-policy-audit.py
 
   compose-feature-gate:
     # Records whether this runner's Compose can host pre_start / whether

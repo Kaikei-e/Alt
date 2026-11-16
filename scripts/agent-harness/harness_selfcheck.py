@@ -27,6 +27,31 @@ SHARED_MARKER_RE = re.compile(
 )
 MAX_CLAUDE_MD_LINES = 200
 MAX_AGENTS_MD_BYTES = 32768
+FAILURE_PATTERNS_REL = ".claude/skills/failure-pattern-review/references/patterns.md"
+FAILURE_SKILL_REL = ".claude/skills/failure-pattern-review/SKILL.md"
+REQUIRED_FP_LEADINS: tuple[str, ...] = (
+    "**機構.**",
+    "**先例.**",
+    "**問い.**",
+    "**確認コマンド.**",
+    "**機械的に見ているもの.**",
+)
+FP_SECTION_HEADING_RE = re.compile(r"^##\s+FP-(\d{2})\s+(.+?)\s*$")
+H2_HEADING_RE = re.compile(r"^##(?:\s|$)")
+ADR_PRECEDENT_RE = re.compile(r"(?<![A-Za-z0-9-])ADR-(\d{6})(?![0-9])")
+PM_PRECEDENT_RE = re.compile(r"(?<![A-Za-z0-9-])PM-(\d{4}-\d{3})(?![0-9])")
+FP_TABLE_ID_RE = re.compile(r"(?<![A-Za-z0-9-])FP-(\d+)(?![0-9])")
+ABBREV_PRECEDENT_RE = re.compile(
+    r"(?<![A-Za-z0-9-])(?:ADR-\d{6}|PM-\d{4}-\d{3})"
+    r"(?:\s*[/、]\s*(?:ADR-\d{6}|PM-\d{4}-\d{3}))*"
+    r"\s*[/、]\s*(\d{3,6})(?![0-9])"
+)
+REPO_PATH_TOKEN_RE = re.compile(
+    r"(?<![A-Za-z0-9_./-])((?:scripts|\.github|\.claude/skills)/[^\s`'\"()（）,、。]+)"
+)
+LEADIN_BREAK_RE = re.compile(
+    r"\*\*(?:機構|先例|問い|確認コマンド|機械的に見ているもの)\.\*\*"
+)
 
 
 @dataclass(frozen=True)
@@ -392,6 +417,323 @@ def _extract_shared_blocks(
     return blocks
 
 
+def _non_fenced_lines(lines: list[str]) -> list[tuple[int, str]]:
+    """Return (0-based line index, line) pairs outside ``` fenced code blocks."""
+    result: list[tuple[int, str]] = []
+    in_fence = False
+    for idx, line in enumerate(lines):
+        if line.lstrip().startswith("```"):
+            in_fence = not in_fence
+            continue
+        if not in_fence:
+            result.append((idx, line))
+    return result
+
+
+def _check_failure_pattern_catalog(
+    root: Path, findings: list[Finding]
+) -> None:
+    """H10: verify failure-pattern catalog structure, precedents, paths, and routing table."""
+    patterns_path = root / FAILURE_PATTERNS_REL
+    skill_path = root / FAILURE_SKILL_REL
+
+    if not patterns_path.is_file():
+        findings.append(
+            Finding("H10", FAILURE_PATTERNS_REL, f"{FAILURE_PATTERNS_REL} is missing")
+        )
+        if not skill_path.is_file():
+            findings.append(
+                Finding("H10", FAILURE_SKILL_REL, f"{FAILURE_SKILL_REL} is missing")
+            )
+        return
+
+    patterns_text = patterns_path.read_text(encoding="utf-8", errors="replace")
+    lines = patterns_text.splitlines()
+    non_fence_lines = _non_fenced_lines(lines)
+
+    all_h2: list[tuple[int, str]] = [
+        (idx, line)
+        for idx, line in non_fence_lines
+        if H2_HEADING_RE.match(line) is not None
+    ]
+
+    parsed_sections: list[tuple[int, str, int, int]] = []
+    for pos, (idx, line) in enumerate(all_h2):
+        end_idx = all_h2[pos + 1][0] if pos + 1 < len(all_h2) else len(lines)
+        m = FP_SECTION_HEADING_RE.match(line)
+        if m is None:
+            findings.append(
+                Finding(
+                    "H10",
+                    FAILURE_PATTERNS_REL,
+                    f"invalid section heading '{line}' (expected '## FP-NN <name>')",
+                )
+            )
+            continue
+        nn_str = m.group(1)
+        parsed_sections.append((int(nn_str), nn_str, idx, end_idx))
+
+    if not parsed_sections:
+        findings.append(
+            Finding(
+                "H10",
+                FAILURE_PATTERNS_REL,
+                "no '## FP-NN <name>' sections found",
+            )
+        )
+    else:
+        seen_nums: set[int] = set()
+        prev_num = 0
+        out_of_order_reported = False
+        for num, nn_str, _, _ in parsed_sections:
+            if num < 1:
+                findings.append(
+                    Finding(
+                        "H10",
+                        FAILURE_PATTERNS_REL,
+                        f"invalid section number 'FP-{nn_str}' (numbering must start at FP-01)",
+                    )
+                )
+                continue
+            if num in seen_nums:
+                findings.append(
+                    Finding(
+                        "H10",
+                        FAILURE_PATTERNS_REL,
+                        f"duplicate section 'FP-{nn_str}'",
+                    )
+                )
+            else:
+                seen_nums.add(num)
+            if num < prev_num and not out_of_order_reported:
+                findings.append(
+                    Finding(
+                        "H10",
+                        FAILURE_PATTERNS_REL,
+                        f"section 'FP-{nn_str}' is out of order",
+                    )
+                )
+                out_of_order_reported = True
+            prev_num = num
+
+        if seen_nums:
+            for expected_num in range(1, max(seen_nums) + 1):
+                if expected_num not in seen_nums:
+                    findings.append(
+                        Finding(
+                            "H10",
+                            FAILURE_PATTERNS_REL,
+                            f"missing section 'FP-{expected_num:02d}' (sections must be contiguous from FP-01)",
+                        )
+                    )
+
+        last_nn = parsed_sections[-1][1]
+        expected_range = f"FP-01 \u301c FP-{last_nn}"
+        first_line = lines[0] if lines else ""
+        title_range_re = re.compile(
+            rf"(?<![A-Za-z0-9-]){re.escape(expected_range)}(?![0-9])"
+        )
+        if title_range_re.search(first_line) is None:
+            findings.append(
+                Finding(
+                    "H10",
+                    FAILURE_PATTERNS_REL,
+                    f"first-line title must contain '{expected_range}'",
+                )
+            )
+
+        for _, nn_str, start_idx, end_idx in parsed_sections:
+            body_text = "\n".join(
+                ln for idx, ln in non_fence_lines if start_idx < idx < end_idx
+            )
+            positions: list[tuple[int, str]] = []
+            all_counts_ok = True
+            for leadin in REQUIRED_FP_LEADINS:
+                matches = [
+                    m.start() for m in re.finditer(re.escape(leadin), body_text)
+                ]
+                if not matches:
+                    findings.append(
+                        Finding(
+                            "H10",
+                            FAILURE_PATTERNS_REL,
+                            f"FP-{nn_str} is missing lead-in {leadin}",
+                        )
+                    )
+                    all_counts_ok = False
+                elif len(matches) > 1:
+                    findings.append(
+                        Finding(
+                            "H10",
+                            FAILURE_PATTERNS_REL,
+                            f"FP-{nn_str} contains lead-in {leadin} {len(matches)} times (expected 1)",
+                        )
+                    )
+                    all_counts_ok = False
+                else:
+                    positions.append((matches[0], leadin))
+            if all_counts_ok and [
+                leadin for _, leadin in sorted(positions)
+            ] != list(REQUIRED_FP_LEADINS):
+                findings.append(
+                    Finding(
+                        "H10",
+                        FAILURE_PATTERNS_REL,
+                        f"FP-{nn_str} lead-ins are out of order",
+                    )
+                )
+
+            senrei_pos = body_text.find("**先例.**")
+            if senrei_pos != -1:
+                after_senrei = body_text[senrei_pos + len("**先例.**") :]
+                next_leadin = LEADIN_BREAK_RE.search(after_senrei)
+                senrei_block = (
+                    after_senrei[: next_leadin.start()]
+                    if next_leadin is not None
+                    else after_senrei
+                )
+                for abbrev_m in ABBREV_PRECEDENT_RE.finditer(senrei_block):
+                    findings.append(
+                        Finding(
+                            "H10",
+                            FAILURE_PATTERNS_REL,
+                            f"FP-{nn_str} 先例 contains abbreviated id '{abbrev_m.group(1)}'; write each ADR/PM id in full",
+                        )
+                    )
+
+    for digits in dict.fromkeys(ADR_PRECEDENT_RE.findall(patterns_text)):
+        adr_rel = f"docs/ADR/{digits}.md"
+        if not (root / adr_rel).is_file():
+            findings.append(
+                Finding(
+                    "H10",
+                    FAILURE_PATTERNS_REL,
+                    f"precedent ADR-{digits} has no file {adr_rel}",
+                )
+            )
+
+    pm_dir = root / "docs" / "postmortems"
+    for pm_suffix in dict.fromkeys(PM_PRECEDENT_RE.findall(patterns_text)):
+        pm_id = f"PM-{pm_suffix}"
+        pm_matches = (
+            sorted(p for p in pm_dir.glob(f"{pm_id}-*.md") if p.is_file())
+            if pm_dir.is_dir()
+            else []
+        )
+        if not pm_matches:
+            findings.append(
+                Finding(
+                    "H10",
+                    FAILURE_PATTERNS_REL,
+                    f"precedent {pm_id} has no file matching docs/postmortems/{pm_id}-*.md",
+                )
+            )
+        elif len(pm_matches) > 1:
+            rels = ", ".join(p.relative_to(root).as_posix() for p in pm_matches)
+            findings.append(
+                Finding(
+                    "H10",
+                    FAILURE_PATTERNS_REL,
+                    f"precedent {pm_id} matches multiple files: {rels}",
+                )
+            )
+
+    seen_candidates: set[str] = set()
+    for m in REPO_PATH_TOKEN_RE.finditer(patterns_text):
+        candidate = m.group(1).rstrip(".,;:")
+        if any(ch in candidate for ch in "<>*"):
+            continue
+        if candidate in seen_candidates:
+            continue
+        seen_candidates.add(candidate)
+        if not (root / candidate).exists():
+            findings.append(
+                Finding(
+                    "H10",
+                    FAILURE_PATTERNS_REL,
+                    f"referenced path '{candidate}' does not exist",
+                )
+            )
+
+    if not skill_path.is_file():
+        findings.append(
+            Finding("H10", FAILURE_SKILL_REL, f"{FAILURE_SKILL_REL} is missing")
+        )
+        return
+
+    skill_lines = skill_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    skill_non_fence = _non_fenced_lines(skill_lines)
+    route_start: int | None = None
+    route_end = len(skill_lines)
+    for idx, line in skill_non_fence:
+        if route_start is None:
+            if line.strip() == "## 経路表":
+                route_start = idx
+        elif H2_HEADING_RE.match(line):
+            route_end = idx
+            break
+
+    if route_start is None:
+        findings.append(
+            Finding("H10", FAILURE_SKILL_REL, "missing '## 経路表' heading")
+        )
+        return
+
+    route_lines = [
+        ln.strip()
+        for idx, ln in skill_non_fence
+        if route_start < idx < route_end and ln.strip().startswith("|")
+    ]
+    data_rows: list[str] = []
+    seen_sep = False
+    for row in route_lines:
+        if not seen_sep:
+            if re.match(r"^\|\s*:?-{2,}", row):
+                seen_sep = True
+            continue
+        data_rows.append(row)
+
+    if not data_rows:
+        findings.append(
+            Finding(
+                "H10",
+                FAILURE_SKILL_REL,
+                "no routing table rows found under '## 経路表'",
+            )
+        )
+        return
+
+    table_fps: list[str] = []
+    seen_table_fps: set[str] = set()
+    for row in data_rows:
+        for digits in FP_TABLE_ID_RE.findall(row):
+            fp_id = f"FP-{digits}"
+            if fp_id not in seen_table_fps:
+                seen_table_fps.add(fp_id)
+                table_fps.append(fp_id)
+
+    pattern_fps = list(dict.fromkeys(f"FP-{nn_str}" for _, nn_str, _, _ in parsed_sections))
+    pattern_fp_set = set(pattern_fps)
+    for fp_id in table_fps:
+        if fp_id not in pattern_fp_set:
+            findings.append(
+                Finding(
+                    "H10",
+                    FAILURE_SKILL_REL,
+                    f"routing table references '{fp_id}' which has no section in patterns.md",
+                )
+            )
+    for fp_id in pattern_fps:
+        if fp_id not in seen_table_fps:
+            findings.append(
+                Finding(
+                    "H10",
+                    FAILURE_SKILL_REL,
+                    f"section '{fp_id}' in patterns.md does not appear in '## 経路表'",
+                )
+            )
+
+
 def run_selfcheck(root: Path) -> tuple[list[Finding], dict[str, Any]]:
     findings: list[Finding] = []
     tracked_files = _git_ls_files(root)
@@ -532,6 +874,9 @@ def run_selfcheck(root: Path) -> tuple[list[Finding], dict[str, Any]]:
                         "entry under .agents/skills does not resolve to a directory containing SKILL.md",
                     )
                 )
+
+    # H10: failure-pattern catalog consistency and precedent existence
+    _check_failure_pattern_catalog(root, findings)
 
     meta = {
         "claude_present": claude_present,
