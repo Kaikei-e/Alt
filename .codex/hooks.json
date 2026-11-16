@@ -24,6 +24,28 @@
             "statusMessage": "Running ADR preflight"
           }
         ]
+      },
+      {
+        "matcher": "apply_patch|Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/agent-harness/guard_protected_paths.py\"",
+            "timeout": 10,
+            "statusMessage": "Checking protected paths"
+          }
+        ]
+      },
+      {
+        "matcher": "apply_patch|Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/agent-harness/guard_event_time.py\"",
+            "timeout": 10,
+            "statusMessage": "Checking projector event-time invariants"
+          }
+        ]
       }
     ]
   }

@@ -95,6 +95,7 @@ jobs:
           echo "GOCACHE=${gocache}"
           echo "GOMODCACHE=${gomodcache}"
           echo "github.workspace=${{ github.workspace }}"
+          # swallow-ok: diagnostic directory listing must not fail the job
           ls -la "$GITHUB_WORKSPACE/$WORKING_DIRECTORY" || true
 
       - name: Restore Go test cache

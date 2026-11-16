@@ -49,6 +49,11 @@ Checks:
      its own workflow file and every local reusable workflow it calls via
      `uses: ./.github/workflows/<file>` at job level, without a later `!`
      negation excluding them.
+ 12. Every swallowed failure (`|| true`, `|| :`, `|| echo`, `|| exit 0`, or
+     `continue-on-error: true`) on a non-comment line carries a
+     `# swallow-ok: <reason>` comment (with at least 10 characters after the
+     colon) either at the end of the same line or on the nearest previous
+     non-blank line.
 """
 from __future__ import annotations
 
@@ -98,6 +103,15 @@ PROJECT_FLAG_RE = re.compile(r"--project(?:=|\s+)([A-Za-z0-9:_.-]+)")
 COMMAND_SPLIT_RE = re.compile(r"&&|\|\||;|\n|\|")
 GLOB_CHAR_RE = re.compile(r"[*?+[]")
 UNSUPPORTED_PATH_GLOB_RE = re.compile(r"[?+\[]")
+
+# --- Check 12 constants ------------------------------------------------
+SWALLOW_RE = re.compile(
+    r"(?:\|\|\s*(?:true\b|:(?=\s|$|[;#)])|echo\b|exit\s+0\b)"
+    r"|\bcontinue-on-error\s*:\s*(?:['\"]true['\"]|true)\b)"
+)
+SWALLOW_OK_COMMENT_RE = re.compile(r"^#\s*swallow-ok:(.*)$")
+SWALLOW_OK_SAME_LINE_RE = re.compile(r"(?:^|\s)#\s*swallow-ok:(.*)$")
+MIN_SWALLOW_REASON_LEN = 10
 
 
 def resolve_path_filter_target(entry: str) -> str:
@@ -555,6 +569,49 @@ def check_workflow_doc(path: str, doc: Mapping[str, Any]) -> list[str]:
     return errors
 
 
+def _has_swallow_ok_reason(lines: list[str], idx: int) -> bool:
+    """Return True if line `idx` has a valid `# swallow-ok:` reason."""
+    same_line = SWALLOW_OK_SAME_LINE_RE.search(lines[idx].rstrip())
+    if same_line and len(same_line.group(1).strip()) >= MIN_SWALLOW_REASON_LEN:
+        return True
+
+    prev_idx = idx - 1
+    while prev_idx >= 0 and not lines[prev_idx].strip():
+        prev_idx -= 1
+    if prev_idx >= 0:
+        prev_match = SWALLOW_OK_COMMENT_RE.match(lines[prev_idx].strip())
+        if prev_match and len(prev_match.group(1).strip()) >= MIN_SWALLOW_REASON_LEN:
+            return True
+    return False
+
+
+def _check_workflow_text_details(path: str, text: str) -> tuple[list[str], int]:
+    """Return (errors, failure_count) for raw-text checks (rule 12)."""
+    errors: list[str] = []
+    bad = 0
+    lines = text.splitlines()
+    for idx, raw_line in enumerate(lines):
+        stripped = raw_line.lstrip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if SWALLOW_RE.search(raw_line) and not _has_swallow_ok_reason(lines, idx):
+            lineno = idx + 1
+            errors.append(
+                f"::error file={path},line={lineno}::{path}:{lineno}: "
+                f"swallowed failure without a reason. Add '# swallow-ok: "
+                f"<why ignoring this exit code is safe>' on the line above, "
+                f"or let the step fail."
+            )
+            bad += 1
+    return errors, bad
+
+
+def check_workflow_text(path: str, text: str) -> list[str]:
+    """Return error annotations for raw-text checks on a single workflow file."""
+    errors, _ = _check_workflow_text_details(path, text)
+    return errors
+
+
 def main() -> int:
     files = sorted(
         glob.glob(".github/workflows/*.yml")
@@ -568,15 +625,22 @@ def main() -> int:
 
     for path in files:
         with open(path) as fh:
-            try:
-                doc = yaml.safe_load(fh)
-            except yaml.YAMLError as e:
-                print(
-                    f"::error file={path}::failed to parse YAML: {e}",
-                    file=sys.stderr,
-                )
-                bad += 1
-                continue
+            raw_text = fh.read()
+
+        text_errors, text_bad = _check_workflow_text_details(path, raw_text)
+        for error in text_errors:
+            print(error, file=sys.stderr)
+        bad += text_bad
+
+        try:
+            doc = yaml.safe_load(raw_text)
+        except yaml.YAMLError as e:
+            print(
+                f"::error file={path}::failed to parse YAML: {e}",
+                file=sys.stderr,
+            )
+            bad += 1
+            continue
 
         if not isinstance(doc, dict):
             continue
@@ -646,7 +710,8 @@ def main() -> int:
         "declared, checkouts credential-free, no untrusted context in run "
         "bodies, every action SHA-pinned, path filters resolve (rule 8) and "
         "match own and called reusable workflows (rule 11), every "
-        "container/service image digest-pinned, and job timeouts declared."
+        "container/service image digest-pinned, job timeouts declared, and "
+        "swallowed failures carry reasons (rule 12)."
     )
     print(
         "OK: client vitest project is run by "

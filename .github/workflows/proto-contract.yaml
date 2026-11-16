@@ -392,6 +392,7 @@ jobs:
       - name: Wait for Pact Broker database connection
         run: |
           for i in {1..30}; do
+            # swallow-ok: curl fails while Pact Broker starts; retry loop exits 1 after 30 attempts
             RESPONSE=$(curl -sS -u "pact:pact" http://localhost:9292/diagnostic/status/dependencies 2>/dev/null || echo '{}')
             if echo "$RESPONSE" | jq -e '.database.ok == true' > /dev/null 2>&1; then
               echo "Pact Broker ready."
@@ -574,6 +575,7 @@ jobs:
       - name: Wait for Pact Broker database connection
         run: |
           for i in {1..30}; do
+            # swallow-ok: curl fails while Pact Broker starts; retry loop exits 1 after 30 attempts
             RESPONSE=$(curl -sS -u "pact:pact" http://localhost:9292/diagnostic/status/dependencies 2>/dev/null || echo '{}')
             if echo "$RESPONSE" | jq -e '.database.ok == true' > /dev/null 2>&1; then
               echo "Pact Broker ready."

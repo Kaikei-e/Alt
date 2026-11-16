@@ -104,6 +104,7 @@ jobs:
       - name: fmt check
         working-directory: ${{ inputs.working-directory }}
         run: |
+          # swallow-ok: grep -v exits 1 when zero unformatted files remain; checked on next line
           files=$(gofmt -l . | grep -v '^gen/' | grep -v '^$' || true)
           if [ -n "$files" ]; then
             printf '::error title=gofmt::Run gofmt -w on these files:%%0A%s\n' "${files//$'\n'/%0A}"
@@ -170,7 +171,7 @@ jobs:
             sed "s|${RUNNER_TEMP}|***|g" | \
             sed "s|/home/runner|***|g" | \
             sed "s|${USER}|***|g" | \
-            sed "s|$(whoami)|***|g") || true
+            sed "s|$(whoami)|***|g") || true  # swallow-ok: gosec exits 1 on findings; SARIF existence and issue_count are gated below
           if [ ! -s ./_reports/gosec.sarif ]; then
             echo "::error title=gosec::gosec did not produce ./_reports/gosec.sarif"
             exit 1

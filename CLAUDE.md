@@ -82,6 +82,7 @@ to recursively delegate work or launch this MCP server.
 
 ## Critical Rules
 
+<!-- shared:critical-rules:start -->
 1. **IMPORTANT: TDD First** — Write the failing test BEFORE writing implementation code. RED → GREEN → REFACTOR.
 2. **IMPORTANT: Rate Limiting** — 5-second minimum intervals between external API calls.
 3. **IMPORTANT: Rebuild compiled services** — Go/Rust/TS changes require `--build`. Without it, old binaries keep running silently.
@@ -92,6 +93,7 @@ to recursively delegate work or launch this MCP server.
 8. **No silent fallback for unwired dependencies** — Optional dependencies (DI options, feature flags, future hooks) must surface their wiring state with a loud `*_enabled` / `*_disabled` startup log AND `panic` when the unwired branch is taken inside business code. Defensive `if x == nil { return nil }` in producer / projector / resolver paths is forbidden — it makes "DI forgot to wire" indistinguishable from "intentionally disabled" (PM-2026-045 / ADR-000928 root cause). Details: `.claude/rules/di-wiring.md`.
 9. **Fail-fast startup config** — Missing required config (secrets, upstream URLs, auth tokens) = exit non-zero at startup. Never warn-and-limp. "Disabled" must be an explicit config value with a startup log, never inferred from an unset variable.
 10. **Stream consumers: ACK after durable write + reclaim loop** — XACK only after the side effect is durable (not on buffer-in). Every XREADGROUP consumer MUST run an XAUTOCLAIM reclaim loop, or crashed-consumer messages are lost forever and DLQ conditions never fire. Details: `.claude/rules/event-stream-consumer.md`.
+<!-- shared:critical-rules:end -->
 
 ## Planning
 
@@ -100,10 +102,12 @@ before designing; it loads the canonical contracts and searches `docs/ADR/` dire
 
 ## Immutable Data Model Invariants
 
+<!-- shared:immutable-invariants:start -->
 - **Append-first**: State via events, not mutable flags. `knowledge_events` is INSERT-only.
 - **Reproject-safe**: Projectors use event payload only, never latest state queries.
 - **Versioned artifacts**: Summaries/tags use `summary_versions`/`tag_set_versions`.
 - **Why as first-class**: Home items and Trail branches must explain why they were surfaced / proposed.
 - **Disposable projections**: Read models (`knowledge_trail_footprints`, `knowledge_trail_branches`, `knowledge_home_items`, `today_digest_view`, `recall_candidate_view`) can be rebuilt from the event log.
+<!-- shared:immutable-invariants:end -->
 
 Before planning, run `/plan-context-loader` to load the relevant ADRs first.
