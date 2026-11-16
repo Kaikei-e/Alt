@@ -11,6 +11,7 @@ import importlib.util
 import json
 import os
 import pathlib
+import re
 import subprocess
 import sys
 import tempfile
@@ -19,6 +20,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 HARNESS_DIR = ROOT / "scripts" / "agent-harness"
 PROTECTED_SCRIPT = HARNESS_DIR / "guard_protected_paths.py"
 EVENT_TIME_SCRIPT = HARNESS_DIR / "guard_event_time.py"
+OPS_COMMANDS_SCRIPT = HARNESS_DIR / "guard_ops_commands.py"
 SELFCHECK_SCRIPT = HARNESS_DIR / "harness_selfcheck.py"
 
 PASS = 0
@@ -49,10 +51,25 @@ def run_script(
     script: pathlib.Path,
     *,
     stdin_text: str | None = None,
+    stdin_bytes: bytes | None = None,
     args: list[str] | None = None,
     cwd: pathlib.Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
     cmd = [sys.executable, str(script), *(args or [])]
+    if stdin_bytes is not None:
+        raw_res = subprocess.run(
+            cmd,
+            input=stdin_bytes,
+            capture_output=True,
+            cwd=str(cwd) if cwd else None,
+            check=False,
+        )
+        return subprocess.CompletedProcess(
+            args=raw_res.args,
+            returncode=raw_res.returncode,
+            stdout=raw_res.stdout.decode("utf-8", errors="replace"),
+            stderr=raw_res.stderr.decode("utf-8", errors="replace"),
+        )
     return subprocess.run(
         cmd,
         input=stdin_text,
@@ -103,6 +120,16 @@ def codex_patch(patch_text: str) -> str:
             "hook_event_name": "PreToolUse",
             "tool_name": "apply_patch",
             "tool_input": {"command": patch_text},
+        }
+    )
+
+
+def bash_payload(command: str, tool_name: str = "Bash") -> str:
+    return json.dumps(
+        {
+            "hook_event_name": "PreToolUse",
+            "tool_name": tool_name,
+            "tool_input": {"command": command},
         }
     )
 
@@ -187,6 +214,39 @@ def build_clean_selfcheck_repo(repo: pathlib.Path) -> pathlib.Path:
     write_and_track(repo, "CLAUDE.md", shared)
     write_and_track(repo, "AGENTS.md", shared)
     write_and_track(repo, ".agents/skills/sample-skill/SKILL.md", "---\nname: sample-skill\n---\n")
+    write_and_track(repo, "docs/ADR/000928.md", "# ADR-000928\n")
+    write_and_track(repo, "docs/postmortems/PM-2026-031-sample.md", "# PM-2026-031\n")
+    write_and_track(
+        repo,
+        ".claude/skills/failure-pattern-review/references/patterns.md",
+        (
+            "# 失敗の型（FP-01 〜 FP-02）\n\n"
+            "## FP-01 Silent failure\n\n"
+            "**機構.** Something fails silently.\n\n"
+            "**先例.**\n- ADR-000928 — example precedent.\n\n"
+            "**問い.**\n1. Is it checked?\n\n"
+            "**確認コマンド.**\n```bash\nrg -n 'foo' <dir>/\n```\n\n"
+            "**機械的に見ているもの.** `scripts/agent-harness/guard_event_time.py`\n\n"
+            "## FP-02 Contract drift\n\n"
+            "**機構.** One side changes.\n\n"
+            "**先例.**\n- PM-2026-031 — example precedent.\n\n"
+            "**問い.**\n1. Are both sides updated?\n\n"
+            "**確認コマンド.**\n```bash\nrg -n 'bar' <dir>/\n```\n\n"
+            "**機械的に見ているもの.** `scripts/agent-harness/guard_protected_paths.py`\n"
+        ),
+    )
+    write_and_track(
+        repo,
+        ".claude/skills/failure-pattern-review/SKILL.md",
+        (
+            "# Failure Pattern Review\n\n"
+            "## 経路表\n\n"
+            "| 差分が触るもの | 読む型 |\n"
+            "|---|---|\n"
+            "| DI | FP-01 |\n"
+            "| proto | FP-02 |\n"
+        ),
+    )
     git(repo, "commit", "-m", "initial clean fixture")
     return repo
 
@@ -600,20 +660,572 @@ with tempfile.TemporaryDirectory() as tmp:
     res = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
     check("H9 detected on broken symlink", res.returncode == 1 and "H9 " in res.stdout, res.stdout)
 
-# Real repository check: expect no findings other than H7 while shared markers are missing.
+# ---------------------------------------------------------------------------
+# 4. Selfcheck H10 fixtures (failure-pattern catalog consistency)
+# ---------------------------------------------------------------------------
+print("harness_selfcheck: H10 catalog fixtures")
+
+PATTERNS_REL = ".claude/skills/failure-pattern-review/references/patterns.md"
+SKILL_REL = ".claude/skills/failure-pattern-review/SKILL.md"
+
+
+def make_fp_section(
+    fp_id: str,
+    title: str,
+    precedent: str,
+    cmd_note: str = "`scripts/agent-harness/guard_event_time.py`",
+    check_cmd: str = "rg -n 'foo' <dir>/",
+) -> str:
+    return (
+        f"## {fp_id} {title}\n\n"
+        "**機構.** Something fails silently.\n\n"
+        f"**先例.**\n- {precedent} — example precedent.\n\n"
+        "**問い.**\n1. Is it checked?\n\n"
+        f"**確認コマンド.**\n```bash\n{check_cmd}\n```\n\n"
+        f"**機械的に見ているもの.** {cmd_note}\n"
+    )
+
+
+def build_h10_catalog_repo(
+    repo: pathlib.Path,
+    *,
+    patterns_text: str | None = None,
+    skill_text: str | None = None,
+    extra_tracked: dict[str, str] | None = None,
+) -> pathlib.Path:
+    build_clean_selfcheck_repo(repo)
+    if extra_tracked:
+        for rel, body in extra_tracked.items():
+            write_and_track(repo, rel, body)
+
+    if patterns_text is None:
+        patterns_text = (
+            "# 失敗の型（FP-01 〜 FP-02）\n\n---\n\n"
+            + make_fp_section(
+                "FP-01",
+                "Silent failure",
+                "ADR-000928",
+                "`scripts/agent-harness/guard_event_time.py --check` と `scripts/<svc>/placeholder.py`",
+            )
+            + "\n---\n\n"
+            + make_fp_section(
+                "FP-02",
+                "Contract drift",
+                "PM-2026-031",
+                "`scripts/agent-harness/guard_protected_paths.py`",
+            )
+        )
+    if skill_text is None:
+        skill_text = (
+            "# Failure Pattern Review\n\n"
+            "## 経路表\n\n"
+            "| 差分が触るもの | 読む型 |\n"
+            "|---|---|\n"
+            "| DI | FP-01 |\n"
+            "| proto | FP-02 |\n"
+        )
+    write_and_track(repo, PATTERNS_REL, patterns_text)
+    write_and_track(repo, SKILL_REL, skill_text)
+    git(repo, "commit", "--allow-empty", "-m", "update failure-pattern catalog fixture")
+    return repo
+
+
+def h10_findings(stdout: str) -> list[str]:
+    return [ln for ln in stdout.splitlines() if ln.startswith("H10 ")]
+
+
+with tempfile.TemporaryDirectory() as tmp:
+    repo = build_h10_catalog_repo(pathlib.Path(tmp))
+    res = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
+    check("H10 clean two-section catalog passes", res.returncode == 0, res.stdout + res.stderr)
+
+# H10: patterns.md absent
+with tempfile.TemporaryDirectory() as tmp:
+    repo = build_h10_catalog_repo(pathlib.Path(tmp))
+    (repo / PATTERNS_REL).unlink()
+    res = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
+    lines = h10_findings(res.stdout)
+    check(
+        "H10 detects missing patterns.md",
+        res.returncode == 1 and len(lines) == 1 and "patterns.md" in lines[0] and "missing" in lines[0],
+        res.stdout,
+    )
+    res_hook = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo), "--hook"])
+    hook_lines = [ln for ln in res_hook.stdout.splitlines() if ln.strip()]
+    check(
+        "H10 --hook mentions H10 when H10 fails",
+        res_hook.returncode == 0
+        and len(hook_lines) == 1
+        and hook_lines[0].startswith("agent_harness_selfcheck_FAILED:")
+        and "H10" in hook_lines[0],
+        res_hook.stdout,
+    )
+
+# H10: SKILL.md absent
+with tempfile.TemporaryDirectory() as tmp:
+    repo = build_h10_catalog_repo(pathlib.Path(tmp))
+    (repo / SKILL_REL).unlink()
+    res = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
+    lines = h10_findings(res.stdout)
+    check(
+        "H10 detects missing SKILL.md",
+        res.returncode == 1 and len(lines) == 1 and "SKILL.md" in lines[0] and "missing" in lines[0],
+        res.stdout,
+    )
+
+# H10 rule 1a: section gap (FP-01, FP-03)
+with tempfile.TemporaryDirectory() as tmp:
+    p_gap = (
+        "# 失敗の型（FP-01 〜 FP-03）\n\n"
+        + make_fp_section("FP-01", "First", "ADR-000928")
+        + "\n"
+        + make_fp_section("FP-03", "Third", "PM-2026-031")
+    )
+    s_gap = "# Skill\n\n## 経路表\n\n| A | B |\n|---|---|\n| a | FP-01 |\n| b | FP-03 |\n"
+    repo = build_h10_catalog_repo(pathlib.Path(tmp), patterns_text=p_gap, skill_text=s_gap)
+    res = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
+    lines = h10_findings(res.stdout)
+    check(
+        "H10 detects section gap",
+        res.returncode == 1 and len(lines) == 1 and "missing section 'FP-02'" in lines[0],
+        res.stdout,
+    )
+
+# H10 rule 1b: duplicate section heading
+with tempfile.TemporaryDirectory() as tmp:
+    p_dup = (
+        "# 失敗の型（FP-01 〜 FP-02）\n\n"
+        + make_fp_section("FP-01", "First", "ADR-000928")
+        + "\n"
+        + make_fp_section("FP-02", "Second", "PM-2026-031")
+        + "\n"
+        + make_fp_section("FP-02", "Duplicate", "PM-2026-031")
+    )
+    repo = build_h10_catalog_repo(pathlib.Path(tmp), patterns_text=p_dup)
+    res = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
+    lines = h10_findings(res.stdout)
+    check(
+        "H10 detects duplicate section",
+        res.returncode == 1 and len(lines) == 1 and "duplicate section 'FP-02'" in lines[0],
+        res.stdout,
+    )
+
+# H10 rule 1c: invalid section heading (single finding)
+with tempfile.TemporaryDirectory() as tmp:
+    p_bad_head = (
+        "# 失敗の型（FP-01 〜 FP-02）\n\n"
+        + make_fp_section("FP-01", "First", "ADR-000928")
+        + "\n"
+        + make_fp_section("FP-02", "Second", "PM-2026-031")
+        + "\n## FP-1 Bad\n\nExtra text.\n"
+    )
+    repo = build_h10_catalog_repo(pathlib.Path(tmp), patterns_text=p_bad_head)
+    res = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
+    lines = h10_findings(res.stdout)
+    check(
+        "H10 detects bad heading format",
+        res.returncode == 1 and len(lines) == 1 and "invalid section heading '## FP-1 Bad'" in lines[0],
+        res.stdout,
+    )
+
+# H10 rule 1d: FP-00 rejected (must start at 01)
+with tempfile.TemporaryDirectory() as tmp:
+    p_fp00 = (
+        "# 失敗の型（FP-01 〜 FP-02）\n\n"
+        + make_fp_section("FP-00", "Zero", "ADR-000928")
+        + "\n"
+        + make_fp_section("FP-01", "First", "ADR-000928")
+        + "\n"
+        + make_fp_section("FP-02", "Second", "PM-2026-031")
+    )
+    s_fp00 = (
+        "# Skill\n\n## 経路表\n\n| A | B |\n|---|---|\n| a | FP-00 |\n| b | FP-01 |\n| c | FP-02 |\n"
+    )
+    repo = build_h10_catalog_repo(pathlib.Path(tmp), patterns_text=p_fp00, skill_text=s_fp00)
+    res = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
+    lines = h10_findings(res.stdout)
+    check(
+        "H10 rejects FP-00 section",
+        res.returncode == 1 and len(lines) == 1 and "FP-00" in lines[0] and "start at FP-01" in lines[0],
+        res.stdout,
+    )
+
+# H10 rule 2: title range mismatch (including prefix trap FP-01 〜 FP-020)
+with tempfile.TemporaryDirectory() as tmp:
+    p_title = (
+        "# 失敗の型（FP-01 〜 FP-020）\n\n"
+        + make_fp_section("FP-01", "First", "ADR-000928")
+        + "\n"
+        + make_fp_section("FP-02", "Second", "PM-2026-031")
+    )
+    repo = build_h10_catalog_repo(pathlib.Path(tmp), patterns_text=p_title)
+    res = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
+    lines = h10_findings(res.stdout)
+    check(
+        "H10 detects title range mismatch (prefix trap)",
+        res.returncode == 1 and len(lines) == 1 and "first-line title must contain 'FP-01 〜 FP-02'" in lines[0],
+        res.stdout,
+    )
+
+# H10 rule 3a: missing lead-in
+with tempfile.TemporaryDirectory() as tmp:
+    p_miss_lead = (
+        "# 失敗の型（FP-01 〜 FP-02）\n\n"
+        + make_fp_section("FP-01", "First", "ADR-000928").replace("**問い.**\n1. Is it checked?\n\n", "")
+        + "\n"
+        + make_fp_section("FP-02", "Second", "PM-2026-031")
+    )
+    repo = build_h10_catalog_repo(pathlib.Path(tmp), patterns_text=p_miss_lead)
+    res = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
+    lines = h10_findings(res.stdout)
+    check(
+        "H10 detects missing lead-in",
+        res.returncode == 1 and len(lines) == 1 and "FP-01 is missing lead-in **問い.**" in lines[0],
+        res.stdout,
+    )
+
+# H10 rule 3c: duplicate lead-in
+with tempfile.TemporaryDirectory() as tmp:
+    p_dup_lead = (
+        "# 失敗の型（FP-01 〜 FP-02）\n\n"
+        + make_fp_section("FP-01", "First", "ADR-000928").replace(
+            "**機構.** Something fails silently.",
+            "**機構.** Something fails silently.\n\n**機構.** Duplicate lead-in.",
+        )
+        + "\n"
+        + make_fp_section("FP-02", "Second", "PM-2026-031")
+    )
+    repo = build_h10_catalog_repo(pathlib.Path(tmp), patterns_text=p_dup_lead)
+    res = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
+    lines = h10_findings(res.stdout)
+    check(
+        "H10 detects duplicate lead-in",
+        res.returncode == 1 and len(lines) == 1 and "FP-01 contains lead-in **機構.** 2 times" in lines[0],
+        res.stdout,
+    )
+
+# H10 rule 3b: out-of-order lead-ins
+with tempfile.TemporaryDirectory() as tmp:
+    swapped_sec = (
+        "## FP-01 Swapped\n\n"
+        "**先例.**\n- ADR-000928 — precedent.\n\n"
+        "**機構.** Mechanism after precedent.\n\n"
+        "**問い.**\n1. Question?\n\n"
+        "**確認コマンド.**\n```bash\nrg -n x\n```\n\n"
+        "**機械的に見ているもの.** `scripts/agent-harness/guard_event_time.py`\n"
+    )
+    p_order = (
+        "# 失敗の型（FP-01 〜 FP-02）\n\n"
+        + swapped_sec
+        + "\n"
+        + make_fp_section("FP-02", "Second", "PM-2026-031")
+    )
+    repo = build_h10_catalog_repo(pathlib.Path(tmp), patterns_text=p_order)
+    res = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
+    lines = h10_findings(res.stdout)
+    check(
+        "H10 detects out-of-order lead-ins",
+        res.returncode == 1 and len(lines) == 1 and "FP-01 lead-ins are out of order" in lines[0],
+        res.stdout,
+    )
+
+# H10 rule 4a: missing ADR-000NNN precedent file (adjacent to Japanese text)
+with tempfile.TemporaryDirectory() as tmp:
+    p_adr = (
+        "# 失敗の型（FP-01 〜 FP-02）\n\n"
+        + make_fp_section("FP-01", "First", "ADR-000999は失敗例")
+        + "\n"
+        + make_fp_section("FP-02", "Second", "PM-2026-031")
+    )
+    repo = build_h10_catalog_repo(pathlib.Path(tmp), patterns_text=p_adr)
+    res = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
+    lines = h10_findings(res.stdout)
+    check(
+        "H10 detects missing ADR precedent file adjacent to Japanese text",
+        res.returncode == 1 and len(lines) == 1 and "ADR-000999" in lines[0] and "docs/ADR/000999.md" in lines[0],
+        res.stdout,
+    )
+
+# H10 rule 4b: missing PM-YYYY-NNN precedent file (adjacent to Japanese text)
+with tempfile.TemporaryDirectory() as tmp:
+    p_pm = (
+        "# 失敗の型（FP-01 〜 FP-02）\n\n"
+        + make_fp_section("FP-01", "First", "ADR-000928")
+        + "\n"
+        + make_fp_section("FP-02", "Second", "PM-2026-999で再発")
+    )
+    repo = build_h10_catalog_repo(pathlib.Path(tmp), patterns_text=p_pm)
+    res = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
+    lines = h10_findings(res.stdout)
+    check(
+        "H10 detects missing PM precedent file adjacent to Japanese text",
+        res.returncode == 1 and len(lines) == 1 and "PM-2026-999" in lines[0],
+        res.stdout,
+    )
+
+# H10 rule 4c: duplicate PM-YYYY-NNN precedent files
+with tempfile.TemporaryDirectory() as tmp:
+    repo = build_h10_catalog_repo(
+        pathlib.Path(tmp),
+        extra_tracked={"docs/postmortems/PM-2026-031-duplicate.md": "# dup\n"},
+    )
+    res = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
+    lines = h10_findings(res.stdout)
+    check(
+        "H10 detects duplicate PM precedent file",
+        res.returncode == 1 and len(lines) == 1 and "PM-2026-031" in lines[0] and "multiple" in lines[0],
+        res.stdout,
+    )
+
+# H10 rule 4d: abbreviated id in 先例 block
+with tempfile.TemporaryDirectory() as tmp:
+    p_abbrev = (
+        "# 失敗の型（FP-01 〜 FP-02）\n\n"
+        + make_fp_section("FP-01", "First", "ADR-000928")
+        + "\n"
+        + make_fp_section("FP-02", "Second", "PM-2026-031 / 999")
+    )
+    repo = build_h10_catalog_repo(pathlib.Path(tmp), patterns_text=p_abbrev)
+    res = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
+    lines = h10_findings(res.stdout)
+    check(
+        "H10 detects abbreviated precedent id in 先例",
+        res.returncode == 1 and len(lines) == 1 and "999" in lines[0] and "full" in lines[0].lower(),
+        res.stdout,
+    )
+
+# H10 rule 5a: missing backticked repository path behind command word
+with tempfile.TemporaryDirectory() as tmp:
+    p_path = (
+        "# 失敗の型（FP-01 〜 FP-02）\n\n"
+        + make_fp_section("FP-01", "First", "ADR-000928", "`python3 scripts/no_such_tool.py verify`")
+        + "\n"
+        + make_fp_section("FP-02", "Second", "PM-2026-031")
+    )
+    repo = build_h10_catalog_repo(pathlib.Path(tmp), patterns_text=p_path)
+    res = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
+    lines = h10_findings(res.stdout)
+    check(
+        "H10 detects missing path behind python3",
+        res.returncode == 1 and len(lines) == 1 and "scripts/no_such_tool.py" in lines[0],
+        res.stdout,
+    )
+
+# H10 rule 5b: missing repository path inside fenced code block
+with tempfile.TemporaryDirectory() as tmp:
+    p_fenced = (
+        "# 失敗の型（FP-01 〜 FP-02）\n\n"
+        + make_fp_section(
+            "FP-01",
+            "First",
+            "ADR-000928",
+            check_cmd="python3 scripts/missing_in_fence.py --check",
+        )
+        + "\n"
+        + make_fp_section("FP-02", "Second", "PM-2026-031")
+    )
+    repo = build_h10_catalog_repo(pathlib.Path(tmp), patterns_text=p_fenced)
+    res = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
+    lines = h10_findings(res.stdout)
+    check(
+        "H10 detects missing path inside fenced block",
+        res.returncode == 1 and len(lines) == 1 and "scripts/missing_in_fence.py" in lines[0],
+        res.stdout,
+    )
+
+# H10 rule 6a: SKILL.md routing table references non-existent FP id (adjacent to Japanese)
+with tempfile.TemporaryDirectory() as tmp:
+    s_extra = "# Skill\n\n## 経路表\n\n| A | B |\n|---|---|\n| a | FP-01 |\n| b | FP-02, FP-99と他 |\n"
+    repo = build_h10_catalog_repo(pathlib.Path(tmp), skill_text=s_extra)
+    res = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
+    lines = h10_findings(res.stdout)
+    check(
+        "H10 detects unknown FP id in SKILL.md table adjacent to Japanese",
+        res.returncode == 1 and len(lines) == 1 and "FP-99" in lines[0],
+        res.stdout,
+    )
+
+# H10 rule 6b: patterns.md section omitted from SKILL.md routing table
+with tempfile.TemporaryDirectory() as tmp:
+    s_missing = "# Skill\n\n## 経路表\n\n| A | B |\n|---|---|\n| a | FP-01 |\n"
+    repo = build_h10_catalog_repo(pathlib.Path(tmp), skill_text=s_missing)
+    res = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
+    lines = h10_findings(res.stdout)
+    check(
+        "H10 detects patterns.md section missing from SKILL.md table",
+        res.returncode == 1 and len(lines) == 1 and "FP-02" in lines[0] and "does not appear" in lines[0],
+        res.stdout,
+    )
+
+# Real repository check: require clean exit 0 and zero findings.
 print("harness_selfcheck: real repository check")
 res_real = run_script(SELFCHECK_SCRIPT, args=["--root", str(ROOT)])
 finding_lines = [
     ln
     for ln in res_real.stdout.splitlines()
-    if len(ln) >= 3 and ln[0] == "H" and ln[1].isdigit() and ln[2] == " "
+    if re.match(r"^H\d+ ", ln)
 ]
-non_h7 = [ln for ln in finding_lines if not ln.startswith("H7 ")]
 check(
-    "real repo has no findings other than H7",
-    non_h7 == [] and res_real.returncode in (0, 1),
+    "real repo exits 0 with no findings",
+    res_real.returncode == 0 and finding_lines == [],
     f"rc={res_real.returncode}, output={res_real.stdout}",
 )
+
+# ---------------------------------------------------------------------------
+# 5. Ops commands guard tests (O1..O4, G1..G5, negatives, unreadable)
+# ---------------------------------------------------------------------------
+print("guard_ops_commands: O1..O4 ask rules, G1..G5, negatives, and unreadable payloads")
+
+OPS_ASK_CASES = [
+    # O1: prune, volume/image/network rm|remove, rmi, buildx prune
+    ("O1 system prune with global flag", "docker --context default system prune -af", "O1", "PM-2026-054"),
+    ("O1 image prune after chained cmd", "docker ps && sudo docker image prune -a -f", "O1", "PM-2026-054"),
+    ("O1 volume rm and rmi", "docker volume rm old_certs; docker rmi alt-backend:old", "O1", "PM-2026-046"),
+    ("O1 image rm with env", "DOCKER_HOST=unix:///var/run/docker.sock docker image rm myimg", "O1", "PM-2026-054"),
+    ("O1 network prune", "docker network prune -f", "O1", "PM-2026-046"),
+    ("O1 builder prune", "docker builder prune --all", "O1", "PM-2026-054"),
+    ("O1 G2 docker network rm", "docker network rm alt-net", "O1", "PM-2026-046"),
+    ("O1 G2 docker image remove", "docker image remove myimg:old", "O1", "PM-2026-054"),
+    ("O1 G2 docker volume remove", "docker volume remove old_certs", "O1", "PM-2026-046"),
+    ("O1 G2 docker buildx prune", "docker buildx prune -f", "O1", "PM-2026-054"),
+    ("O1 G1 sh -c double quotes", 'sh -c "docker system prune -af"', "O1", "PM-2026-054"),
+    # O2: rm, stop, kill, container rm|remove|stop|kill, compose stop|kill
+    ("O2 docker rm with flag", "docker -l debug rm -f pki-agent", "O2", "PM-2026-028"),
+    ("O2 chained docker container stop", "echo checking && docker container stop -t 5 alt-backend", "O2", "PM-2026-028"),
+    ("O2 docker kill", "sudo -E docker kill alt-data-hub", "O2", "PM-2026-054"),
+    ("O2 docker container rm", "docker container rm alt-backend", "O2", "PM-2026-028"),
+    ("O2 G2 docker container remove", "docker container remove alt-backend", "O2", "PM-2026-028"),
+    ("O2 G2 docker compose stop", "docker compose -f compose/compose.yaml -p alt stop alt-backend", "O2", "PM-2026-028"),
+    ("O2 G2 docker compose kill", "docker compose kill alt-backend", "O2", "PM-2026-028"),
+    ("O2 G1 for loop", "for c in $(docker ps -aq --filter name=alt-staging-); do docker rm -f $c; done", "O2", "PM-2026-028"),
+    ("O2 G1 while read loop", "while read c; do docker stop $c; done < ids.txt", "O2", "PM-2026-028"),
+    ("O2 G1 pipe xargs -r", "docker ps -q --filter name=alt-staging- | xargs -r docker rm -f", "O2", "PM-2026-028"),
+    ("O2 G1 bare xargs", "xargs docker rm", "O2", "PM-2026-028"),
+    ("O2 G1 braces block", "{ docker rm x; }", "O2", "PM-2026-028"),
+    ("O2 G1 command substitution in double quotes", 'echo "$(docker rm x)"', "O2", "PM-2026-028"),
+    ("O2 G1 sudo -iu root", "sudo -iu root docker rm x", "O2", "PM-2026-028"),
+    # O3: docker compose / docker-compose up|down|rm on prod, default, or unresolved ($) project
+    ("O3 compose up with -f and default project", "docker compose -f compose/compose.yaml up -d alt-backend", "O3", "PM-2026-001"),
+    ("O3 compose down with -p alt", "docker compose -f compose/compose.yaml -p alt down", "O3", "PM-2026-005"),
+    ("O3 compose rm with COMPOSE_PROJECT_NAME=alt", "COMPOSE_PROJECT_NAME=alt docker-compose rm -f", "O3", "PM-2026-001"),
+    ("O3 chained compose up --project-name alt", "git status || docker compose --project-name alt up -d", "O3", "PM-2026-005"),
+    ("O3 G1 if then fi", "if true; then docker compose -p alt down; fi", "O3", "PM-2026-001"),
+    ("O3 G1 bash -c single quotes", "bash -c 'docker compose -p alt down'", "O3", "PM-2026-001"),
+    ("O3 G1 time prefix", "time docker compose -p alt down", "O3", "PM-2026-001"),
+    ("O3 G3 -p $PROJ", "docker compose -p $PROJ down", "O3", "PM-2026-001"),
+    ("O3 G3 -p $COMPOSE_PROJECT_NAME", 'docker compose -p "$COMPOSE_PROJECT_NAME" up -d', "O3", "PM-2026-001"),
+    # O4: docker compose ... up with --build or --force-recreate on O3 project
+    ("O4 compose up --build", "docker compose up --build -d alt-backend", "O4", "PM-2026-031"),
+    ("O4 compose -f -p alt up --force-recreate", "docker compose -f compose/compose.yaml -p alt up -d --no-deps --force-recreate alt-backend", "O4", "PM-2026-031"),
+    ("O4 chained docker-compose up --build", "echo start\nCOMPOSE_PROJECT_NAME=alt docker-compose -f compose/compose.yaml up --build -d", "O4", "PM-2026-031"),
+    ("O4 G1 timeout prefix", "timeout 300 docker compose -f compose/compose.yaml -p alt up -d --build alt-backend", "O4", "PM-2026-031"),
+    ("O4 G1 nohup background", "nohup docker compose -p alt up -d --build &", "O4", "PM-2026-031"),
+]
+
+for label, cmd, expected_rule, expected_pm in OPS_ASK_CASES:
+    res = run_script(OPS_COMMANDS_SCRIPT, stdin_text=bash_payload(cmd))
+    parsed = None
+    try:
+        parsed = json.loads(res.stdout) if res.stdout.strip() else None
+    except ValueError:
+        parsed = None
+    hook_out = parsed.get("hookSpecificOutput", {}) if isinstance(parsed, dict) else {}
+    reason = hook_out.get("permissionDecisionReason", "")
+    ok = (
+        res.returncode == 0
+        and isinstance(parsed, dict)
+        and hook_out.get("hookEventName") == "PreToolUse"
+        and hook_out.get("permissionDecision") == "ask"
+        and expected_rule in reason
+        and expected_pm in reason
+    )
+    if expected_rule == "O4":
+        ok = ok and "release path" in reason and "contract gate" in reason
+    check(f"ops ask {label}", ok, f"rc={res.returncode} out={res.stdout!r} err={res.stderr!r}")
+
+# G5: list (argv) form tests
+res_g5_bash_lc = run_script(
+    OPS_COMMANDS_SCRIPT,
+    stdin_text=json.dumps(
+        {
+            "hook_event_name": "PreToolUse",
+            "tool_name": "Bash",
+            "tool_input": {"command": ["bash", "-lc", "docker compose -p alt down"]},
+        }
+    ),
+)
+parsed_g5 = json.loads(res_g5_bash_lc.stdout) if res_g5_bash_lc.stdout.strip() else {}
+hook_g5 = parsed_g5.get("hookSpecificOutput", {}) if isinstance(parsed_g5, dict) else {}
+check(
+    "ops ask G5 argv bash -lc",
+    res_g5_bash_lc.returncode == 0
+    and hook_g5.get("hookEventName") == "PreToolUse"
+    and hook_g5.get("permissionDecision") == "ask"
+    and "O3" in hook_g5.get("permissionDecisionReason", ""),
+    f"rc={res_g5_bash_lc.returncode} out={res_g5_bash_lc.stdout!r}",
+)
+
+OPS_ALLOW_CASES = [
+    ("read-only docker ps", bash_payload("docker ps -a")),
+    ("read-only docker logs", bash_payload("docker logs --tail 50 alt-backend")),
+    ("read-only docker inspect", bash_payload("docker inspect alt-backend")),
+    ("read-only docker images", bash_payload("docker images")),
+    ("read-only docker version", bash_payload("docker version")),
+    ("read-only docker exec", bash_payload("docker exec alt-backend /alt-backend healthcheck")),
+    ("read-only compose config", bash_payload("docker compose -f compose/compose.yaml config")),
+    ("read-only compose ps", bash_payload("docker compose -f compose/compose.yaml -p alt ps")),
+    ("read-only compose logs", bash_payload("docker compose -p alt logs -f alt-backend")),
+    ("different project -p alt-test", bash_payload("docker compose -f compose/compose.yaml -p alt-test up --build -d")),
+    ("different project -p after subcmd", bash_payload("docker compose -f compose/compose.yaml up --build -d -p alt-test")),
+    ("different project --project-name=e2e", bash_payload("docker compose --project-name=e2e down")),
+    ("different project COMPOSE_PROJECT_NAME=staging", bash_payload("COMPOSE_PROJECT_NAME=staging docker compose up --force-recreate -d")),
+    ("cli -p overrides COMPOSE_PROJECT_NAME=alt", bash_payload("COMPOSE_PROJECT_NAME=alt docker compose -p test-proj up -d")),
+    ("different project compose stop", bash_payload("docker compose -p alt-test stop alt-backend")),
+    ("words inside echo double quotes", bash_payload('echo "docker system prune -af && docker compose up --build"')),
+    ("words inside git commit message", bash_payload("git commit -m 'PM-2026-031: never run docker compose up --build -d alt-backend'")),
+    ("G5 argv echo with semicolon", json.dumps({"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": ["echo", "a; docker rm x"]}})),
+    ("empty command", bash_payload("")),
+    ("whitespace command", bash_payload("   \n  ")),
+    ("non-shell tool payload", json.dumps({"tool_name": "Read", "tool_input": {"file_path": ".env"}})),
+]
+
+for label, raw_stdin in OPS_ALLOW_CASES:
+    res = run_script(OPS_COMMANDS_SCRIPT, stdin_text=raw_stdin)
+    check(
+        f"ops allows {label}",
+        res.returncode == 0 and res.stdout == "" and res.stderr == "",
+        f"rc={res.returncode} out={res.stdout!r} err={res.stderr!r}",
+    )
+
+OPS_UNREADABLE_CASES: list[tuple[str, str | None, bytes | None]] = [
+    ("empty stdin", "", None),
+    ("invalid json", "{bad", None),
+    ("json array", "[]", None),
+    ("empty object", "{}", None),
+    ("Bash missing tool_input", json.dumps({"tool_name": "Bash"}), None),
+    ("Bash missing command", json.dumps({"tool_name": "Bash", "tool_input": {}}), None),
+    ("Bash non-string command", json.dumps({"tool_name": "Bash", "tool_input": {"command": 42}}), None),
+    ("G4 invalid UTF-8 bytes", None, b"\xff\xfe"),
+    ("G4 deeply nested JSON", ("[" * 2000) + ("]" * 2000), None),
+]
+
+for label, raw_stdin, raw_bytes in OPS_UNREADABLE_CASES:
+    res = run_script(OPS_COMMANDS_SCRIPT, stdin_text=raw_stdin, stdin_bytes=raw_bytes)
+    parsed = None
+    try:
+        parsed = json.loads(res.stdout) if res.stdout.strip() else None
+    except ValueError:
+        parsed = None
+    hook_out = parsed.get("hookSpecificOutput", {}) if isinstance(parsed, dict) else {}
+    reason = hook_out.get("permissionDecisionReason", "")
+    ok = (
+        res.returncode == 0
+        and isinstance(parsed, dict)
+        and hook_out.get("hookEventName") == "PreToolUse"
+        and hook_out.get("permissionDecision") == "ask"
+        and ("unreadable" in reason.lower() or "could not be analysed" in reason.lower())
+    )
+    check(f"ops unreadable asks on {label}", ok, f"rc={res.returncode} out={res.stdout!r} err={res.stderr!r}")
 
 print(f"\n{PASS} passed, {FAIL} failed")
 sys.exit(1 if FAIL else 0)
