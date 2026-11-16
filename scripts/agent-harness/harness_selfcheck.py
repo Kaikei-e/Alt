@@ -85,21 +85,36 @@ def _git_ls_files(root: Path) -> list[str]:
     return [entry for entry in raw.split("\x00") if entry]
 
 
-def _iter_hook_objects(entries: Any) -> list[dict[str, Any]]:
-    result: list[dict[str, Any]] = []
+def _iter_hook_objects_with_matchers(entries: Any) -> list[tuple[Any, dict[str, Any]]]:
+    result: list[tuple[Any, dict[str, Any]]] = []
     if not isinstance(entries, list):
         return result
     for group in entries:
         if not isinstance(group, dict):
             continue
+        matcher = group.get("matcher")
         nested = group.get("hooks")
         if isinstance(nested, list):
             for hook in nested:
                 if isinstance(hook, dict):
-                    result.append(hook)
+                    result.append((matcher, hook))
         elif "type" in group or "command" in group:
-            result.append(group)
+            result.append((matcher, group))
     return result
+
+
+def _matcher_matches_tool(matcher: Any, tool_name: str) -> bool:
+    if matcher is None:
+        return True
+    if not isinstance(matcher, str):
+        return False
+    pat = matcher.strip()
+    if pat in ("", "*"):
+        return True
+    try:
+        return re.fullmatch(pat, tool_name) is not None
+    except re.error:
+        return pat == tool_name
 
 
 def _load_hook_config(
@@ -131,9 +146,10 @@ def _check_hook_file(
 
     total_commands = 0
     pre_tool_commands: list[str] = []
+    codex_bash_ops_found = False
 
     for event_name, entries in hooks_map.items():
-        for hook in _iter_hook_objects(entries):
+        for matcher, hook in _iter_hook_objects_with_matchers(entries):
             if hook.get("type") != "command":
                 continue
             total_commands += 1
@@ -150,6 +166,17 @@ def _check_hook_file(
                             'PreToolUse command hook lacks "onFailure": "block"',
                         )
                     )
+                if not is_claude and "guard_ops_commands.py" in cmd_str:
+                    if "--on-match deny" not in cmd_str:
+                        findings.append(
+                            Finding(
+                                "H4",
+                                rel_label,
+                                'PreToolUse guard_ops_commands.py entry must pass "--on-match deny" because Codex does not support the ask decision and the call would go through',
+                            )
+                        )
+                    if _matcher_matches_tool(matcher, "Bash"):
+                        codex_bash_ops_found = True
 
             for var in BAD_ENV_VARS:
                 if var in cmd_str:
@@ -181,6 +208,15 @@ def _check_hook_file(
                     f"PreToolUse hooks do not reference {required_guard}",
                 )
             )
+
+    if not is_claude and not codex_bash_ops_found:
+        findings.append(
+            Finding(
+                "H4",
+                rel_label,
+                'PreToolUse hooks do not reference guard_ops_commands.py with a matcher matching "Bash"',
+            )
+        )
 
     return total_commands
 

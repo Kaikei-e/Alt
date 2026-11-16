@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import re
 import sys
@@ -97,6 +98,13 @@ UNREADABLE_REASON = (
     "execution manually before proceeding."
 )
 
+DENY_GUIDANCE_SENTENCE = (
+    "Do not retry or rephrase the command to get around the guard; instead tell "
+    "the user which command is needed and why so the user can run it, or quote "
+    "the flagged words if they are literal text such as a search pattern rather "
+    "than a command."
+)
+
 RULE_PRIORITY: dict[str, int] = {"O4": 4, "O1": 3, "O2": 2, "O3": 1}
 MAX_RECURSION_DEPTH = 32
 
@@ -107,11 +115,11 @@ class Token:
     quoted: bool
 
 
-def _ask_decision(reason: str) -> dict[str, Any]:
+def _decision(permission_decision: str, reason: str) -> dict[str, Any]:
     return {
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
-            "permissionDecision": "ask",
+            "permissionDecision": permission_decision,
             "permissionDecisionReason": reason,
         }
     }
@@ -515,7 +523,19 @@ def parse_shell_hook_stdin(raw: str) -> str | list[str] | None:
     raise HookPayloadError(f"missing or invalid command for {tool_name}")
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="PreToolUse guard for risky Docker and Compose commands."
+    )
+    parser.add_argument(
+        "--on-match",
+        choices=("ask", "deny"),
+        default="ask",
+        help="Permission decision emitted when a command matches or payload is unreadable.",
+    )
+    args = parser.parse_args(argv)
+    on_match: str = args.on_match
+
     try:
         raw_bytes = sys.stdin.buffer.read()
         raw = raw_bytes.decode("utf-8")
@@ -527,11 +547,14 @@ def main() -> int:
         else:
             rule = classify_command(command)
     except (HookPayloadError, UnicodeDecodeError, RecursionError, Exception):
-        print(json.dumps(_ask_decision(UNREADABLE_REASON)))
+        print(json.dumps(_decision(on_match, UNREADABLE_REASON)))
         return 0
 
     if rule is not None:
-        print(json.dumps(_ask_decision(RULE_REASONS[rule])))
+        reason = RULE_REASONS[rule]
+        if on_match == "deny":
+            reason = f"{reason} {DENY_GUIDANCE_SENTENCE}"
+        print(json.dumps(_decision(on_match, reason)))
     return 0
 
 

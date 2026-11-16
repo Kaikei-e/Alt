@@ -56,6 +56,17 @@
             "statusMessage": "Checking projector event-time invariants"
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/agent-harness/guard_ops_commands.py\" --on-match deny",
+            "timeout": 10,
+            "statusMessage": "Checking container and compose commands"
+          }
+        ]
       }
     ]
   }

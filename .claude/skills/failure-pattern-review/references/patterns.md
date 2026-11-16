@@ -568,7 +568,7 @@ rg -n 'prune|network rm|docker rm|compose down' scripts/ e2e/ deploy/
 rg -n 'writeFile|WriteFile|rename|fsync' auth-token-manager/ scripts/
 ```
 
-**機械的に見ているもの.** `scripts/agent-harness/guard_ops_commands.py`（フックが設定された環境でコーディングエージェントが発行するシェルコマンドだけを見て、確認を求めるのみで拒否はしない。スクリプト内や人間が直接実行するコマンドは見ない）。掃除スクリプト内部の広すぎる prefix 条件や、一回きり移行スクリプトの鮮度・権限検証までは見ていない。
+**機械的に見ているもの.** `scripts/agent-harness/guard_ops_commands.py`（コーディングエージェントが発行するシェルコマンドだけを対象とし、Codex では `.codex/hooks.json` に登録されて該当コマンドを拒否し、Claude Code では利用者のローカル設定に登録されている場合にのみ確認を求める。スクリプト内のコマンドや人間が直接入力するコマンドは見ない）。掃除スクリプト内部の広すぎる prefix 条件や、一回きり移行スクリプトの鮮度・権限検証までは見ていない。
 
 ---
 
