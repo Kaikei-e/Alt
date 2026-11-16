@@ -162,6 +162,7 @@ def build_clean_selfcheck_repo(repo: pathlib.Path) -> pathlib.Path:
     init_git_repo(repo)
     write_and_track(repo, "scripts/agent-harness/guard_protected_paths.py", "#!/usr/bin/env python3\n")
     write_and_track(repo, "scripts/agent-harness/guard_event_time.py", "#!/usr/bin/env python3\n")
+    write_and_track(repo, "scripts/agent-harness/guard_ops_commands.py", "#!/usr/bin/env python3\n")
     write_and_track(repo, ".claude/skills/adr-preflight/scripts/adr_preflight.py", "#!/usr/bin/env python3\n")
     write_and_track(
         repo,
@@ -199,7 +200,18 @@ def build_clean_selfcheck_repo(repo: pathlib.Path) -> pathlib.Path:
                             "statusMessage": "Checking event time",
                         },
                     ],
-                }
+                },
+                {
+                    "matcher": "Bash",
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": 'python3 "$(git rev-parse --show-toplevel)/scripts/agent-harness/guard_ops_commands.py" --on-match deny',
+                            "timeout": 10,
+                            "statusMessage": "Checking container and compose commands",
+                        },
+                    ],
+                },
             ]
         }
     }
@@ -602,6 +614,50 @@ with tempfile.TemporaryDirectory() as tmp:
     (repo / ".codex" / "hooks.json").write_text(json.dumps(cfg), encoding="utf-8")
     res = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
     check("H4 detected", res.returncode == 1 and "H4 " in res.stdout, res.stdout)
+
+# H4: guard_ops_commands.py missing from .codex/hooks.json PreToolUse
+with tempfile.TemporaryDirectory() as tmp:
+    repo = build_clean_selfcheck_repo(pathlib.Path(tmp))
+    cfg = json.loads((repo / ".codex" / "hooks.json").read_text(encoding="utf-8"))
+    cfg["hooks"]["PreToolUse"] = [cfg["hooks"]["PreToolUse"][0]]
+    (repo / ".codex" / "hooks.json").write_text(json.dumps(cfg), encoding="utf-8")
+    res = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
+    check(
+        "H4 detected when guard_ops_commands.py missing from Codex PreToolUse",
+        res.returncode == 1 and "H4 " in res.stdout and "guard_ops_commands.py" in res.stdout,
+        res.stdout,
+    )
+
+# H4: guard_ops_commands.py in .codex/hooks.json without --on-match deny
+with tempfile.TemporaryDirectory() as tmp:
+    repo = build_clean_selfcheck_repo(pathlib.Path(tmp))
+    cfg = json.loads((repo / ".codex" / "hooks.json").read_text(encoding="utf-8"))
+    cfg["hooks"]["PreToolUse"][1]["hooks"][0]["command"] = (
+        'python3 "$(git rev-parse --show-toplevel)/scripts/agent-harness/guard_ops_commands.py"'
+    )
+    (repo / ".codex" / "hooks.json").write_text(json.dumps(cfg), encoding="utf-8")
+    res = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
+    check(
+        "H4 detected when Codex guard_ops_commands.py lacks --on-match deny",
+        res.returncode == 1
+        and "H4 " in res.stdout
+        and "--on-match deny" in res.stdout
+        and "ask" in res.stdout.lower(),
+        res.stdout,
+    )
+
+# H4: guard_ops_commands.py in .codex/hooks.json with matcher not matching Bash
+with tempfile.TemporaryDirectory() as tmp:
+    repo = build_clean_selfcheck_repo(pathlib.Path(tmp))
+    cfg = json.loads((repo / ".codex" / "hooks.json").read_text(encoding="utf-8"))
+    cfg["hooks"]["PreToolUse"][1]["matcher"] = "Edit|Write"
+    (repo / ".codex" / "hooks.json").write_text(json.dumps(cfg), encoding="utf-8")
+    res = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
+    check(
+        "H4 detected when Codex guard_ops_commands.py matcher does not match Bash",
+        res.returncode == 1 and "H4 " in res.stdout and "Bash" in res.stdout,
+        res.stdout,
+    )
 
 # H5: GUARDED_GLOBS entry matches no tracked non-test file
 with tempfile.TemporaryDirectory() as tmp:
@@ -1226,6 +1282,86 @@ for label, raw_stdin, raw_bytes in OPS_UNREADABLE_CASES:
         and ("unreadable" in reason.lower() or "could not be analysed" in reason.lower())
     )
     check(f"ops unreadable asks on {label}", ok, f"rc={res.returncode} out={res.stdout!r} err={res.stderr!r}")
+
+# --on-match deny mode tests (O1..O4, unreadable, benign, default ask, unknown arg)
+OPS_DENY_RULE_CASES = [
+    ("O1", "docker system prune -af"),
+    ("O2", "docker rm -f alt-backend"),
+    ("O3", "docker compose -p alt down"),
+    ("O4", "docker compose -p alt up --build -d alt-backend"),
+]
+
+for expected_rule, cmd in OPS_DENY_RULE_CASES:
+    res_deny = run_script(
+        OPS_COMMANDS_SCRIPT,
+        stdin_text=bash_payload(cmd),
+        args=["--on-match", "deny"],
+    )
+    parsed_deny = json.loads(res_deny.stdout) if res_deny.stdout.strip() else {}
+    hook_deny = parsed_deny.get("hookSpecificOutput", {}) if isinstance(parsed_deny, dict) else {}
+    reason_deny = hook_deny.get("permissionDecisionReason", "")
+    check(
+        f"ops --on-match deny blocks {expected_rule}",
+        res_deny.returncode == 0
+        and hook_deny.get("hookEventName") == "PreToolUse"
+        and hook_deny.get("permissionDecision") == "deny"
+        and expected_rule in reason_deny
+        and "retry" in reason_deny.lower()
+        and "user" in reason_deny.lower()
+        and "quote" in reason_deny.lower(),
+        f"rc={res_deny.returncode} out={res_deny.stdout!r} err={res_deny.stderr!r}",
+    )
+
+    res_default = run_script(OPS_COMMANDS_SCRIPT, stdin_text=bash_payload(cmd))
+    parsed_default = json.loads(res_default.stdout) if res_default.stdout.strip() else {}
+    hook_default = parsed_default.get("hookSpecificOutput", {}) if isinstance(parsed_default, dict) else {}
+    check(
+        f"ops default mode still asks on {expected_rule}",
+        res_default.returncode == 0
+        and hook_default.get("hookEventName") == "PreToolUse"
+        and hook_default.get("permissionDecision") == "ask"
+        and expected_rule in hook_default.get("permissionDecisionReason", ""),
+        f"rc={res_default.returncode} out={res_default.stdout!r}",
+    )
+
+res_deny_unreadable = run_script(
+    OPS_COMMANDS_SCRIPT,
+    stdin_text="{bad",
+    args=["--on-match", "deny"],
+)
+parsed_du = json.loads(res_deny_unreadable.stdout) if res_deny_unreadable.stdout.strip() else {}
+hook_du = parsed_du.get("hookSpecificOutput", {}) if isinstance(parsed_du, dict) else {}
+check(
+    "ops --on-match deny blocks unreadable payload",
+    res_deny_unreadable.returncode == 0
+    and hook_du.get("hookEventName") == "PreToolUse"
+    and hook_du.get("permissionDecision") == "deny"
+    and "unreadable" in hook_du.get("permissionDecisionReason", "").lower(),
+    f"rc={res_deny_unreadable.returncode} out={res_deny_unreadable.stdout!r}",
+)
+
+for mode_label, extra_args in [("default", []), ("--on-match deny", ["--on-match", "deny"])]:
+    res_benign = run_script(
+        OPS_COMMANDS_SCRIPT,
+        stdin_text=bash_payload("docker ps -a"),
+        args=extra_args,
+    )
+    check(
+        f"ops benign command silent in {mode_label}",
+        res_benign.returncode == 0 and res_benign.stdout == "" and res_benign.stderr == "",
+        f"rc={res_benign.returncode} out={res_benign.stdout!r} err={res_benign.stderr!r}",
+    )
+
+res_bad_flag = run_script(
+    OPS_COMMANDS_SCRIPT,
+    stdin_text=bash_payload("docker ps -a"),
+    args=["--on-match", "block"],
+)
+check(
+    "ops unknown --on-match exits 2 with usage on stderr",
+    res_bad_flag.returncode == 2 and "usage" in res_bad_flag.stderr.lower(),
+    f"rc={res_bad_flag.returncode} out={res_bad_flag.stdout!r} err={res_bad_flag.stderr!r}",
+)
 
 print(f"\n{PASS} passed, {FAIL} failed")
 sys.exit(1 if FAIL else 0)
