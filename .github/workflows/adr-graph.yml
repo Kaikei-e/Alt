@@ -10,12 +10,16 @@ on:
       - "docs/ADR/**"
       - "docdag.yaml"
       - ".claude/skills/adr-preflight/**"
+      - "scripts/agent-harness/adr_supersede_gate.py"
+      - "scripts/tests/test-adr-supersede-gate.py"
       - ".github/workflows/adr-graph.yml"
   pull_request:
     paths:
       - "docs/ADR/**"
       - "docdag.yaml"
       - ".claude/skills/adr-preflight/**"
+      - "scripts/agent-harness/adr_supersede_gate.py"
+      - "scripts/tests/test-adr-supersede-gate.py"
       - ".github/workflows/adr-graph.yml"
   workflow_dispatch:
 
@@ -61,11 +65,17 @@ jobs:
           BASE_REF: ${{ github.base_ref || 'main' }}
         # Annotates the diff inline; GitHub renders at most ten per step.
         run: docdag validate --format github --immutable-since "origin/$BASE_REF"
+      - name: Supersede body-reference gate
+        env:
+          BASE_REF: ${{ github.base_ref || 'main' }}
+        run: python3 scripts/agent-harness/adr_supersede_gate.py --base "origin/$BASE_REF"
       - name: Config lint
         # docdag.yaml itself: contradictory, vacuous or duplicated rules fail the job.
         run: docdag lint --strict --format github
       - name: ADR preflight gate tests
         run: python3 .claude/skills/adr-preflight/scripts/test_adr_preflight.py
+      - name: ADR supersede gate tests
+        run: python3 scripts/tests/test-adr-supersede-gate.py
       - name: Full report
         if: always()
         # The complete finding list, past the ten-annotation cap. Reporting only:
@@ -74,6 +84,7 @@ jobs:
           {
             echo '## docdag validate'
             echo '```'
+            # swallow-ok: reporting-only step; the Corpus check step above is the gate
             docdag validate || true
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"

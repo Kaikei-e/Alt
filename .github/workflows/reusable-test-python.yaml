@@ -120,6 +120,7 @@ jobs:
         run: |
           uv python list
           echo "github.workspace=$GITHUB_WORKSPACE"
+          # swallow-ok: diagnostic directory listing must not fail the job
           ls -la "$GITHUB_WORKSPACE/$WORKING_DIRECTORY" || true
 
       # Job-specific actions based on job type

@@ -92,6 +92,31 @@
 - **rask-log-forwarder** – Rust sidecar tailing Docker logs with SIMD parsing, lock-free buffers, disk fallback. Tests cover parsers, collectors, full pipeline with `wiremock`.
 - **rask-log-aggregator** – Rust Axum API ingesting logs into ClickHouse. Uses mock traits for unit tests, `axum-test` for handlers, `criterion` for hot paths.
 
+## Critical Rules
+These rules and the invariants below are the same text as root `CLAUDE.md`; `scripts/agent-harness/harness_selfcheck.py` fails when the two copies differ.
+
+<!-- shared:critical-rules:start -->
+1. **IMPORTANT: TDD First** — Write the failing test BEFORE writing implementation code. RED → GREEN → REFACTOR.
+2. **IMPORTANT: Rate Limiting** — 5-second minimum intervals between external API calls.
+3. **IMPORTANT: Rebuild compiled services** — Go/Rust/TS changes require `--build`. Without it, old binaries keep running silently.
+4. **No Secrets in Code** — Use `.env` and Docker secrets. Never hardcode credentials.
+5. **Service-specific rules** — Always check `<service>/CLAUDE.md` before modifying a service.
+6. **Reload canonical context before repair PRs** — Before starting a repair / regression-fix PR that touches the Knowledge Trail, Knowledge Home, or any append-first projection path, re-read `docs/plan/knowledge-trail-core-concept.md` and the affected canonical contract via `/plan-context-loader`. Long-running sessions silently lose the invariants ("context rot") and bug fixes regress to single-axis collapses. Knowledge Loop contracts are historical only ([[000940]]).
+7. **Producer wiring PRs require CDC RED first** — Any PR that adds or modifies a cross-service event producer (new event type, new payload field, new RPC) must land a Pact CDC RED test before the producer GREEN. "Proto compiled + E2E green" is not enough — the silent-fallback failure mode (ADR-000928) hides DI/wiring gaps that defensive nil-guards swallow.
+8. **No silent fallback for unwired dependencies** — Optional dependencies (DI options, feature flags, future hooks) must surface their wiring state with a loud `*_enabled` / `*_disabled` startup log AND `panic` when the unwired branch is taken inside business code. Defensive `if x == nil { return nil }` in producer / projector / resolver paths is forbidden — it makes "DI forgot to wire" indistinguishable from "intentionally disabled" (PM-2026-045 / ADR-000928 root cause). Details: `.claude/rules/di-wiring.md`.
+9. **Fail-fast startup config** — Missing required config (secrets, upstream URLs, auth tokens) = exit non-zero at startup. Never warn-and-limp. "Disabled" must be an explicit config value with a startup log, never inferred from an unset variable.
+10. **Stream consumers: ACK after durable write + reclaim loop** — XACK only after the side effect is durable (not on buffer-in). Every XREADGROUP consumer MUST run an XAUTOCLAIM reclaim loop, or crashed-consumer messages are lost forever and DLQ conditions never fire. Details: `.claude/rules/event-stream-consumer.md`.
+<!-- shared:critical-rules:end -->
+
+## Immutable Data Model Invariants
+<!-- shared:immutable-invariants:start -->
+- **Append-first**: State via events, not mutable flags. `knowledge_events` is INSERT-only.
+- **Reproject-safe**: Projectors use event payload only, never latest state queries.
+- **Versioned artifacts**: Summaries/tags use `summary_versions`/`tag_set_versions`.
+- **Why as first-class**: Home items and Trail branches must explain why they were surfaced / proposed.
+- **Disposable projections**: Read models (`knowledge_trail_footprints`, `knowledge_trail_branches`, `knowledge_home_items`, `today_digest_view`, `recall_candidate_view`) can be rebuilt from the event log.
+<!-- shared:immutable-invariants:end -->
+
 ## ADR Preflight Guardrail
 - Workflow, hook behavior, and CLI flags live in `.agents/skills/adr-preflight/SKILL.md` (the same files as `.claude/skills/adr-preflight/`). Before changing code without edit hooks, run `python3 .agents/skills/adr-preflight/scripts/adr_preflight.py <paths you will change>`.
 - Exit `1` means the ADR graph is unsound (`docdag validate` failed or `docdag` is missing from `PATH`) and must be fixed first. Read the listed binding ADRs (`docdag context <id> --depth 2 --budget 1500`) before editing; a change that contradicts one stops and goes through a superseding ADR (`alt-adr-writer`).

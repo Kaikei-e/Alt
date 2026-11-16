@@ -216,7 +216,12 @@ jobs:
             BASE="${PR_BASE_SHA}"
             HEAD="${PR_HEAD_SHA}"
             if [[ -n "$BASE" && -n "$HEAD" && "$BASE" != "$HEAD" ]]; then
-              CHANGED_FILES=$(git diff --name-only "$BASE...$HEAD" 2>/dev/null || true)
+              # An unreadable diff is not "nothing changed": treat it like a
+              # missing history and build everything.
+              if ! CHANGED_FILES=$(git diff --name-only "$BASE...$HEAD" 2>/dev/null); then
+                echo "::warning title=change detection::git diff failed for the pull request range; building all services."
+                BUILD_ALL=true
+              fi
             fi
           else
             BEFORE="${PUSH_BEFORE}"
@@ -224,7 +229,10 @@ jobs:
             if [[ "$BEFORE" == "$ZERO_SHA" || -z "$BEFORE" ]]; then
               BUILD_ALL=true    # first push to branch — no historical diff
             elif [[ "$BEFORE" != "$AFTER" ]]; then
-              CHANGED_FILES=$(git diff --name-only "$BEFORE..$AFTER" 2>/dev/null || true)
+              if ! CHANGED_FILES=$(git diff --name-only "$BEFORE..$AFTER" 2>/dev/null); then
+                echo "::warning title=change detection::git diff failed for the pushed range; building all services."
+                BUILD_ALL=true
+              fi
             fi
           fi
 

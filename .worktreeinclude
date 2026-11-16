@@ -1,0 +1,6 @@
+# The local Claude Code harness is gitignored (.claude/* except skills), so a
+# fresh worktree has no hooks, deny rules, path-scoped rules or subagents.
+# Claude Code copies the paths listed here into every worktree it creates.
+.claude/settings.json
+.claude/rules/
+.claude/agents/

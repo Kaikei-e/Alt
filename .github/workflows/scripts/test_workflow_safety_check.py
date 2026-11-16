@@ -362,6 +362,115 @@ class TestWorkflowSafetyCheckHardening(unittest.TestCase):
                     f"Expected unsupported glob error for {bad_pat!r}, got: {errs}",
                 )
 
+    def test_swallowed_failure_requires_reason(self) -> None:
+        # 1) Unannotated `|| true` fails with file:line and guidance.
+        unannotated_true = (
+            "jobs:\n"
+            "  test:\n"
+            "    steps:\n"
+            "      - run: grep -q foo bar || true\n"
+        )
+        errors = self.mod.check_workflow_text("sample.yaml", unannotated_true)
+        self.assertEqual(len(errors), 1)
+        self.assertIn("sample.yaml:4: swallowed failure without a reason.", errors[0])
+        self.assertIn("# swallow-ok:", errors[0])
+
+        # 2) Same-line annotation passes.
+        same_line_ok = (
+            "jobs:\n"
+            "  test:\n"
+            "    steps:\n"
+            "      - run: grep -q foo bar || true  # swallow-ok: grep exits 1 when no match\n"
+        )
+        self.assertEqual(self.mod.check_workflow_text("sample.yaml", same_line_ok), [])
+
+        # 3) Previous-line annotation passes (even across blank lines).
+        prev_line_ok = (
+            "jobs:\n"
+            "  test:\n"
+            "    steps:\n"
+            "      - run: |\n"
+            "          # swallow-ok: grep exits 1 when nothing matches\n"
+            "\n"
+            "          matches=$(grep foo bar || true)\n"
+        )
+        self.assertEqual(self.mod.check_workflow_text("sample.yaml", prev_line_ok), [])
+
+        # 4) Reason shorter than 10 characters after the colon fails.
+        short_same_line = (
+            "jobs:\n"
+            "  test:\n"
+            "    steps:\n"
+            "      - run: grep -q foo bar || true  # swallow-ok: too short\n"
+        )
+        self.assertEqual(len(self.mod.check_workflow_text("sample.yaml", short_same_line)), 1)
+
+        short_prev_line = (
+            "jobs:\n"
+            "  test:\n"
+            "    steps:\n"
+            "      - run: |\n"
+            "          # swallow-ok: short\n"
+            "          grep -q foo bar || true\n"
+        )
+        self.assertEqual(len(self.mod.check_workflow_text("sample.yaml", short_prev_line)), 1)
+
+        # 5) `continue-on-error: true` without annotation fails and with annotation passes.
+        coe_unannotated = (
+            "jobs:\n"
+            "  test:\n"
+            "    steps:\n"
+            "      - name: Upload report\n"
+            "        continue-on-error:  true\n"
+            "        run: echo upload\n"
+        )
+        coe_errors = self.mod.check_workflow_text("sample.yaml", coe_unannotated)
+        self.assertEqual(len(coe_errors), 1)
+        self.assertIn("sample.yaml:5: swallowed failure without a reason.", coe_errors[0])
+
+        coe_annotated = (
+            "jobs:\n"
+            "  test:\n"
+            "    steps:\n"
+            "      - name: Upload report\n"
+            "        # swallow-ok: optional telemetry upload must not block CI\n"
+            "        continue-on-error: true\n"
+            "        run: echo upload\n"
+        )
+        self.assertEqual(self.mod.check_workflow_text("sample.yaml", coe_annotated), [])
+
+        # `continue-on-error: false` is not a swallow.
+        coe_false = (
+            "jobs:\n"
+            "  test:\n"
+            "    steps:\n"
+            "      - continue-on-error: false\n"
+        )
+        self.assertEqual(self.mod.check_workflow_text("sample.yaml", coe_false), [])
+
+        # 6) Commented-out line containing `|| true` is ignored.
+        commented_out = (
+            "jobs:\n"
+            "  test:\n"
+            "    steps:\n"
+            "      # - run: grep foo bar || true\n"
+            "      - run: |\n"
+            "          # old command: foo || true\n"
+            "          echo ok\n"
+        )
+        self.assertEqual(self.mod.check_workflow_text("sample.yaml", commented_out), [])
+
+        # 7) `|| echo`, `|| exit 0`, and `|| :` (with flexible whitespace) are detected.
+        for snippet in (
+            "      - run: curl -fsS http://localhost || echo '{}'\n",
+            "      - run: some-cmd ||  exit 0\n",
+            "      - run: some-cmd || :\n",
+        ):
+            with self.subTest(snippet=snippet):
+                errs = self.mod.check_workflow_text("sample.yaml", snippet)
+                self.assertEqual(len(errs), 1)
+                self.assertIn("sample.yaml:1: swallowed failure without a reason.", errs[0])
+
 
 if __name__ == "__main__":
     unittest.main()

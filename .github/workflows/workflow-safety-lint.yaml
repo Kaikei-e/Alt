@@ -26,7 +26,11 @@
 #  (11) an `on.push.paths` / `on.pull_request.paths` filter does not match the
 #       workflow's own file and every local reusable workflow it calls via
 #       `uses: ./.github/workflows/<file>` at job level (or excludes them via a
-#       subsequent `!` negation).
+#       subsequent `!` negation), or
+#  (12) a non-comment line swallows a failure (`|| true`, `|| :`, `|| echo`,
+#       `|| exit 0`, or `continue-on-error: true`) without a `# swallow-ok: <reason>`
+#       comment (at least 10 characters after the colon) on the same line or the
+#       nearest previous non-blank line.
 #   (4)-(7) and (9)-(10) are the GitHub Actions hardening guide's baseline,
 #   and (8) and (11) prevent dead or non-self-triggering path filters — all
 #   made structural so a new workflow or directory deletion cannot quietly
@@ -92,6 +96,7 @@ jobs:
           shopt -s nullglob
           violations=0
           for f in .github/workflows/*.yml .github/workflows/*.yaml; do
+            # swallow-ok: grep exits 1 when nothing matches; result is checked on next line
             matches=$(grep -nE '^[[:space:]]*(pull_request_target|workflow_run)[[:space:]]*:' "$f" || true)
             if [ -n "$matches" ]; then
               while IFS= read -r line; do
