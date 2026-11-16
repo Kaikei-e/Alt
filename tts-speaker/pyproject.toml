@@ -28,7 +28,7 @@ dev = [
 ]
 
 [tool.uv]
-constraint-dependencies = ["certifi>=2026.10.19"]
+constraint-dependencies = ["certifi>=2026.10.19", "opentelemetry-api>=1.45.2"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

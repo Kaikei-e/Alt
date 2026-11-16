@@ -38,10 +38,10 @@ dependencies = [
     "structlog>=25.1.0",
 
     # OpenTelemetry
-    "opentelemetry-sdk>=1.29.0",
-    "opentelemetry-exporter-otlp-proto-http>=1.29.0",
-    "opentelemetry-instrumentation-logging>=0.50b0",
-    "opentelemetry-instrumentation-fastapi>=0.50b0",
+    "opentelemetry-sdk>=1.45.2",
+    "opentelemetry-exporter-otlp-proto-http>=1.45.2",
+    "opentelemetry-instrumentation-logging>=0.66b2",
+    "opentelemetry-instrumentation-fastapi>=0.66b2",
 
     # Scheduling
     "apscheduler>=3.10.0",
