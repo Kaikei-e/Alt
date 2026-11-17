@@ -123,6 +123,7 @@ on:
       - 'deploy/desired-env.lkal'
       - 'scripts/kisage-env.py'
       - 'scripts/tests/test-kisage-env.py'
+      - 'scripts/tests/test-rag-orchestrator-callers.py'
       - 'tests/scripts/test_kisage_clean_checkout.py'
       - 'docs/runbooks/kisage-env.md'
       - 'Makefile'
@@ -223,6 +224,7 @@ on:
       - 'deploy/desired-env.lkal'
       - 'scripts/kisage-env.py'
       - 'scripts/tests/test-kisage-env.py'
+      - 'scripts/tests/test-rag-orchestrator-callers.py'
       - 'tests/scripts/test_kisage_clean_checkout.py'
       - 'docs/runbooks/kisage-env.md'
       - 'Makefile'
@@ -668,6 +670,9 @@ jobs:
 
       - name: Run kisage & LKAL acceptance and isolation suite
         run: python3 scripts/tests/test-kisage-env.py
+
+      - name: Assert every rag-orchestrator mTLS caller is allowlisted
+        run: python3 scripts/tests/test-rag-orchestrator-callers.py
 
       - name: Run clean-checkout & host-config audit regression tests
         run: python3 -m unittest discover -s tests/scripts -p 'test_kisage_clean_checkout.py'
