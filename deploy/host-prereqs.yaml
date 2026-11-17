@@ -438,7 +438,7 @@ env_allowlists:
   - key: PRE_PROCESSOR_MTLS_ALLOWED_PEERS
     required: [alt-backend]
   - key: RAG_ORCHESTRATOR_ALLOWED_PEERS
-    required: [alt-backend]
+    required: [alt-backend, alt-harvester]
   - key: RECAP_SUBWORKER_MTLS_ALLOWED_PEERS
     required: [recap-worker]
   - key: SEARCH_INDEXER_MTLS_ALLOWED_PEERS

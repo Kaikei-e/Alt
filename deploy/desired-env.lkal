@@ -44,7 +44,7 @@ mtls_allowlists {
     "pre-processor",
   ]
   PRE_PROCESSOR_MTLS_ALLOWED_PEERS = ["alt-backend"]
-  RAG_ORCHESTRATOR_ALLOWED_PEERS = ["alt-backend"]
+  RAG_ORCHESTRATOR_ALLOWED_PEERS = ["alt-backend", "alt-harvester"]
   RECAP_SUBWORKER_MTLS_ALLOWED_PEERS = ["recap-worker"]
   SEARCH_INDEXER_MTLS_ALLOWED_PEERS = [
     "alt-backend",

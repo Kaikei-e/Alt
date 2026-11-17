@@ -575,10 +575,8 @@ services:
       # --- upstreams the jobs call --------------------------------------
       SOVEREIGN_URL: http://knowledge-sovereign:9500
       SOVEREIGN_HARVESTER_TOKEN_FILE: /run/secrets/sovereign_harvester_token
-      # https makes alt-harvester present its leaf cert; rag-orchestrator
-      # terminates mTLS on :9011 (PEER_IDENTITY_MODE=mtls in rag.yaml). Its
-      # PEER_IDENTITY_ALLOWED_PEERS must name alt-harvester once outbox-worker
-      # runs here — see the wave 2 map in the split plan.
+      # outbox-worker runs in alt-harvester and calls rag-orchestrator :9010 over mTLS via
+      # RAG_ORCHESTRATOR_URL; rag-orchestrator's PEER_IDENTITY_ALLOWED_PEERS names alt-harvester.
       RAG_ORCHESTRATOR_CONNECT_URL: ${RAG_ORCHESTRATOR_CONNECT_URL:-https://rag-orchestrator:9011}
       RAG_API_TOKEN_FILE: /run/secrets/rag_api_token
       RAG_API_AUTH: ${RAG_API_AUTH:-}

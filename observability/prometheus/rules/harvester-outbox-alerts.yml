@@ -1,0 +1,60 @@
+# Prometheus alerting rules for alt-harvester article outbox delivery.
+#
+# Context:
+# alt-harvester runs outbox-worker every 5s to deliver ARTICLE_UPSERT rows from
+# alt-db outbox_events to rag-orchestrator (UpsertIndex) and knowledge-sovereign
+# (ArticleCreated). When rag-orchestrator rejects requests with HTTP 4xx (such
+# as 403 Forbidden from peer-identity allowlist mismatch) or transient errors
+# exhaust their retry budget, outbox-worker marks the row terminally FAILED and
+# never retries it. Without an alert on terminal FAILED transitions, RAG index
+# registration can stall silently while alt-harvester and rag-orchestrator both
+# report healthy on /health and up{}.
+#
+# Metric source and pipeline:
+#   - alt_harvester_outbox_events_failed_total{reason}
+#     Defined via otel.Meter("alt-harvester.outbox-worker") in
+#     alt-backend/app/orchestrator/job/outbox_metrics.go and incremented in
+#     alt-backend/app/orchestrator/job/outbox_worker.go with reason in:
+#       non_retryable_error, retries_exhausted,
+#       article_created_retries_exhausted, missing_user_id, unmarshal_error,
+#       unknown_event_type.
+#     Exported in-process by go.opentelemetry.io/otel/exporters/prometheus
+#     (alt-backend/app/utils/otel/metrics.go) on alt-harvester's :9110/metrics
+#     ops listener and scraped every 15s by job="alt-harvester" in
+#     observability/prometheus/prometheus.yml (adding job, instance, service,
+#     and otel_scope_name="alt-harvester.outbox-worker").
+#   - Scrape-target liveness for alt-harvester (:9110) is already paged by
+#     PkiEnrollmentOpsDown in observability/prometheus/rules/pki-agent-alerts.yml.
+#
+# Routing convention:
+#   - severity: warning routes through observability/alertmanager/alertmanager.yml
+#     (severity=~"warning|ticket") to pushover-ticket (Normal priority 0,
+#     respecting quiet hours). Requiring >= 3 failed events over 1h held for
+#     15m avoids firing on a single isolated bad payload or one exhausted
+#     retry budget while still catching a sustained indexing stall.
+#   - The counter is created on its first increment, so its series is absent
+#     on a process that has never failed an event; absence is the healthy state.
+
+groups:
+  - name: harvester_outbox_alerts
+    interval: 30s
+    rules:
+      - alert: HarvesterOutboxEventsFailing
+        expr: sum(increase(alt_harvester_outbox_events_failed_total[1h])) >= 3
+        for: 15m
+        labels:
+          severity: warning
+          service: alt-harvester
+          stack: rag
+        annotations:
+          summary: "alt-harvester marked {{ $value | humanize }} outbox events FAILED in the last hour"
+          description: |
+            alt_harvester_outbox_events_failed_total increased by {{ $value | humanize }} over the last 1h.
+            Outbox events marked FAILED are terminal and are never retried automatically, so RAG index registration or ArticleCreated delivery is dropping articles.
+            1. Break down by failure reason:
+               sum by (reason) (increase(alt_harvester_outbox_events_failed_total[1h]))
+               (non_retryable_error indicates HTTP 4xx from rag-orchestrator such as 403 Forbidden; retries_exhausted indicates persistent 5xx or transport errors; article_created_retries_exhausted indicates knowledge-sovereign append errors.)
+            2. Inspect terminal FAILED rows in alt-db outbox_events:
+               SELECT status, error_message, count(*), max(created_at) FROM outbox_events WHERE status = 'FAILED' GROUP BY status, error_message;
+            3. Verify rag-orchestrator mTLS peer allowlist (PEER_IDENTITY_ALLOWED_PEERS / RAG_ORCHESTRATOR_ALLOWED_PEERS in compose/rag.yaml, deploy/desired-env.lkal, and deploy/host-prereqs.yaml) includes alt-harvester, and check logs:
+               docker compose -f compose/compose.yaml -p alt logs alt-harvester rag-orchestrator

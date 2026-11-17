@@ -1,0 +1,149 @@
+# promtool unit tests for alt-harvester outbox failure alerts.
+#
+#   ./scripts/observability-validate.sh
+#   # or:
+#   promtool test rules observability/prometheus/tests/harvester-outbox-alerts_test.yml
+#
+# Kept outside /etc/prometheus/rules: prometheus.yml globs *.yml there, and a
+# test file parsed as a rule group is a fatal config error, not a skip.
+#
+# What these pin:
+#   - sustained non_retryable_error failures (the HTTP 403 peer-allowlist
+#     rejection shape) stay pending inside the 15m hold window and fire once
+#     sustained
+#   - failures split across multiple reason series aggregate to fire
+#   - a single failure (and two isolated failures below the >= 3 threshold)
+#     never fire
+#   - a healthy deployment where the lazy OTel failed counter has never been
+#     incremented stays quiet
+#   - the alert resolves once failures stop and age out of the 1h window
+
+rule_files:
+  - ../rules/harvester-outbox-alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  # Sustained HTTP 403 / permanent rejections (reason="non_retryable_error").
+  # Reaches >= 3 at t=3m; still pending at t=10m (<15m hold), firing by t=20m.
+  - interval: 1m
+    input_series:
+      - series: 'alt_harvester_outbox_events_failed_total{job="alt-harvester",service="alt-harvester",otel_scope_name="alt-harvester.outbox-worker",reason="non_retryable_error"}'
+        values: '0+1x60'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: HarvesterOutboxEventsFailing
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: HarvesterOutboxEventsFailing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: alt-harvester
+              stack: rag
+            exp_annotations:
+              summary: "alt-harvester marked 20 outbox events FAILED in the last hour"
+              description: |
+                alt_harvester_outbox_events_failed_total increased by 20 over the last 1h.
+                Outbox events marked FAILED are terminal and are never retried automatically, so RAG index registration or ArticleCreated delivery is dropping articles.
+                1. Break down by failure reason:
+                   sum by (reason) (increase(alt_harvester_outbox_events_failed_total[1h]))
+                   (non_retryable_error indicates HTTP 4xx from rag-orchestrator such as 403 Forbidden; retries_exhausted indicates persistent 5xx or transport errors; article_created_retries_exhausted indicates knowledge-sovereign append errors.)
+                2. Inspect terminal FAILED rows in alt-db outbox_events:
+                   SELECT status, error_message, count(*), max(created_at) FROM outbox_events WHERE status = 'FAILED' GROUP BY status, error_message;
+                3. Verify rag-orchestrator mTLS peer allowlist (PEER_IDENTITY_ALLOWED_PEERS / RAG_ORCHESTRATOR_ALLOWED_PEERS in compose/rag.yaml, deploy/desired-env.lkal, and deploy/host-prereqs.yaml) includes alt-harvester, and check logs:
+                   docker compose -f compose/compose.yaml -p alt logs alt-harvester rag-orchestrator
+
+  # Failures split across multiple reason labels sum to >= 3 and fire after 15m.
+  - interval: 1m
+    input_series:
+      - series: 'alt_harvester_outbox_events_failed_total{job="alt-harvester",service="alt-harvester",otel_scope_name="alt-harvester.outbox-worker",reason="retries_exhausted"}'
+        values: '0 0 1 1 2 2x40'
+      - series: 'alt_harvester_outbox_events_failed_total{job="alt-harvester",service="alt-harvester",otel_scope_name="alt-harvester.outbox-worker",reason="article_created_retries_exhausted"}'
+        values: '0 0 0 1 1 2x40'
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: HarvesterOutboxEventsFailing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: alt-harvester
+              stack: rag
+            exp_annotations:
+              summary: "alt-harvester marked 4 outbox events FAILED in the last hour"
+              description: |
+                alt_harvester_outbox_events_failed_total increased by 4 over the last 1h.
+                Outbox events marked FAILED are terminal and are never retried automatically, so RAG index registration or ArticleCreated delivery is dropping articles.
+                1. Break down by failure reason:
+                   sum by (reason) (increase(alt_harvester_outbox_events_failed_total[1h]))
+                   (non_retryable_error indicates HTTP 4xx from rag-orchestrator such as 403 Forbidden; retries_exhausted indicates persistent 5xx or transport errors; article_created_retries_exhausted indicates knowledge-sovereign append errors.)
+                2. Inspect terminal FAILED rows in alt-db outbox_events:
+                   SELECT status, error_message, count(*), max(created_at) FROM outbox_events WHERE status = 'FAILED' GROUP BY status, error_message;
+                3. Verify rag-orchestrator mTLS peer allowlist (PEER_IDENTITY_ALLOWED_PEERS / RAG_ORCHESTRATOR_ALLOWED_PEERS in compose/rag.yaml, deploy/desired-env.lkal, and deploy/host-prereqs.yaml) includes alt-harvester, and check logs:
+                   docker compose -f compose/compose.yaml -p alt logs alt-harvester rag-orchestrator
+
+  # Single failure must not fire or page.
+  - interval: 1m
+    input_series:
+      - series: 'alt_harvester_outbox_events_failed_total{job="alt-harvester",service="alt-harvester",otel_scope_name="alt-harvester.outbox-worker",reason="retries_exhausted"}'
+        values: '0x5 1x60'
+      - series: 'alt_harvester_outbox_events_processed_total{job="alt-harvester",service="alt-harvester",otel_scope_name="alt-harvester.outbox-worker"}'
+        values: '0+5x65'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: HarvesterOutboxEventsFailing
+        exp_alerts: []
+      - eval_time: 60m
+        alertname: HarvesterOutboxEventsFailing
+        exp_alerts: []
+
+  # Two isolated failures in an hour stay below the >= 3 threshold.
+  - interval: 1m
+    input_series:
+      - series: 'alt_harvester_outbox_events_failed_total{job="alt-harvester",service="alt-harvester",otel_scope_name="alt-harvester.outbox-worker",reason="unmarshal_error"}'
+        values: '0x5 1x5 2x60'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: HarvesterOutboxEventsFailing
+        exp_alerts: []
+
+  # Healthy steady state: failed counter has never been incremented, so its
+  # series is absent while processed events advance.
+  - interval: 1m
+    input_series:
+      - series: 'alt_harvester_outbox_events_processed_total{job="alt-harvester",service="alt-harvester",otel_scope_name="alt-harvester.outbox-worker"}'
+        values: '0+2x60'
+    alert_rule_test:
+      - eval_time: 45m
+        alertname: HarvesterOutboxEventsFailing
+        exp_alerts: []
+
+  # Recovery: 20 failures occur in the first 20m, then stop once remediated.
+  # Fires while inside the 1h window (t=35m) and resolves once aged out (t=85m).
+  - interval: 1m
+    input_series:
+      - series: 'alt_harvester_outbox_events_failed_total{job="alt-harvester",service="alt-harvester",otel_scope_name="alt-harvester.outbox-worker",reason="non_retryable_error"}'
+        values: '0+1x20 20x80'
+    alert_rule_test:
+      - eval_time: 35m
+        alertname: HarvesterOutboxEventsFailing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: alt-harvester
+              stack: rag
+            exp_annotations:
+              summary: "alt-harvester marked 20 outbox events FAILED in the last hour"
+              description: |
+                alt_harvester_outbox_events_failed_total increased by 20 over the last 1h.
+                Outbox events marked FAILED are terminal and are never retried automatically, so RAG index registration or ArticleCreated delivery is dropping articles.
+                1. Break down by failure reason:
+                   sum by (reason) (increase(alt_harvester_outbox_events_failed_total[1h]))
+                   (non_retryable_error indicates HTTP 4xx from rag-orchestrator such as 403 Forbidden; retries_exhausted indicates persistent 5xx or transport errors; article_created_retries_exhausted indicates knowledge-sovereign append errors.)
+                2. Inspect terminal FAILED rows in alt-db outbox_events:
+                   SELECT status, error_message, count(*), max(created_at) FROM outbox_events WHERE status = 'FAILED' GROUP BY status, error_message;
+                3. Verify rag-orchestrator mTLS peer allowlist (PEER_IDENTITY_ALLOWED_PEERS / RAG_ORCHESTRATOR_ALLOWED_PEERS in compose/rag.yaml, deploy/desired-env.lkal, and deploy/host-prereqs.yaml) includes alt-harvester, and check logs:
+                   docker compose -f compose/compose.yaml -p alt logs alt-harvester rag-orchestrator
+      - eval_time: 85m
+        alertname: HarvesterOutboxEventsFailing
+        exp_alerts: []
