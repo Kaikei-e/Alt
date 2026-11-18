@@ -124,41 +124,36 @@ func TestMapTodayDigestRow_Pure(t *testing.T) {
 		raw       rawTodayDigestRow
 		wantTags  []string
 		wantRecap bool
-		wantPulse bool
 	}{
 		{
 			name: "valid top tags",
 			raw: rawTodayDigestRow{
-				UserID:                userID,
-				DigestDate:            date,
-				NewArticles:           12,
-				SummarizedArticles:    10,
-				UnsummarizedArticles:  2,
-				TopTagsJSON:           []byte(`["golang", "architecture"]`),
-				UpdatedAt:             updatedAt,
-				WeeklyRecapAvailable:  true,
-				EveningPulseAvailable: false,
+				UserID:               userID,
+				DigestDate:           date,
+				NewArticles:          12,
+				SummarizedArticles:   10,
+				UnsummarizedArticles: 2,
+				TopTagsJSON:          []byte(`["golang", "architecture"]`),
+				UpdatedAt:            updatedAt,
+				WeeklyRecapAvailable: true,
 			},
 			wantTags:  []string{"golang", "architecture"},
 			wantRecap: true,
-			wantPulse: false,
 		},
 		{
 			name: "empty tags json",
 			raw: rawTodayDigestRow{
-				UserID:                userID,
-				DigestDate:            date,
-				NewArticles:           3,
-				SummarizedArticles:    3,
-				UnsummarizedArticles:  0,
-				TopTagsJSON:           nil,
-				UpdatedAt:             updatedAt,
-				WeeklyRecapAvailable:  false,
-				EveningPulseAvailable: true,
+				UserID:               userID,
+				DigestDate:           date,
+				NewArticles:          3,
+				SummarizedArticles:   3,
+				UnsummarizedArticles: 0,
+				TopTagsJSON:          nil,
+				UpdatedAt:            updatedAt,
+				WeeklyRecapAvailable: false,
 			},
 			wantTags:  nil,
 			wantRecap: false,
-			wantPulse: true,
 		},
 	}
 
@@ -172,7 +167,6 @@ func TestMapTodayDigestRow_Pure(t *testing.T) {
 			assert.Equal(t, tc.raw.UnsummarizedArticles, digest.UnsummarizedArticles)
 			assert.Equal(t, tc.wantTags, digest.TopTags)
 			assert.Equal(t, tc.wantRecap, digest.WeeklyRecapAvailable)
-			assert.Equal(t, tc.wantPulse, digest.EveningPulseAvailable)
 			assert.Equal(t, tc.raw.UpdatedAt, digest.UpdatedAt)
 		})
 	}
@@ -185,8 +179,10 @@ func TestGetTodayDigest(t *testing.T) {
 	updatedAt := time.Date(2026, 9, 1, 18, 0, 0, 0, time.UTC)
 
 	t.Run("returns digest when row exists", func(t *testing.T) {
+		var scannedSQL string
 		mock := &mockPgx{
-			queryRowFunc: func(_ context.Context, _ string, _ ...interface{}) pgx.Row {
+			queryRowFunc: func(_ context.Context, sql string, _ ...interface{}) pgx.Row {
+				scannedSQL = sql
 				return &mockRow{
 					scanFunc: func(dest ...interface{}) error {
 						*dest[0].(*uuid.UUID) = userID
@@ -197,7 +193,6 @@ func TestGetTodayDigest(t *testing.T) {
 						*dest[5].(*[]byte) = []byte(`["rust","postgres"]`)
 						*dest[6].(*time.Time) = updatedAt
 						*dest[7].(*bool) = true
-						*dest[8].(*bool) = true
 						return nil
 					},
 				}
@@ -208,13 +203,13 @@ func TestGetTodayDigest(t *testing.T) {
 		got, err := repo.GetTodayDigest(ctx, userID, date)
 		require.NoError(t, err)
 		require.NotNil(t, got)
+		assert.NotContains(t, scannedSQL, "evening_pulse_available")
 		assert.Equal(t, userID, got.UserID)
 		assert.Equal(t, 8, got.NewArticles)
 		assert.Equal(t, 6, got.SummarizedArticles)
 		assert.Equal(t, 2, got.UnsummarizedArticles)
 		assert.Equal(t, []string{"rust", "postgres"}, got.TopTags)
 		assert.True(t, got.WeeklyRecapAvailable)
-		assert.True(t, got.EveningPulseAvailable)
 	})
 
 	t.Run("returns nil on ErrNoRows", func(t *testing.T) {

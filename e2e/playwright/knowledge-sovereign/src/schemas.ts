@@ -318,7 +318,6 @@ export const todayDigestSchema = z
 		topTags: z.array(z.string()).optional(),
 		updatedAt: timestampSchema,
 		weeklyRecapAvailable: z.boolean().optional(),
-		eveningPulseAvailable: z.boolean().optional(),
 	})
 	.passthrough();
 
