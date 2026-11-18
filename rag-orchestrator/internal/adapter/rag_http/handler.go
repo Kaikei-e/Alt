@@ -27,12 +27,13 @@ type EmbedderFactory func(url string, model string, timeout int) domain.VectorEn
 type IndexUsecaseFactory func(encoder domain.VectorEncoder) usecase.IndexArticleUsecase
 
 type Handler struct {
-	retrieveUsecase      usecase.RetrieveContextUsecase
-	answerUsecase        usecase.AnswerWithRAGUsecase
-	indexUsecase         usecase.IndexArticleUsecase
-	jobRepo              domain.RagJobRepository
-	morningLetterUsecase usecase.MorningLetterUsecase
-	logger               *slog.Logger
+	retrieveUsecase            usecase.RetrieveContextUsecase
+	answerUsecase              usecase.AnswerWithRAGUsecase
+	indexUsecase               usecase.IndexArticleUsecase
+	jobRepo                    domain.RagJobRepository
+	morningLetterUsecase       usecase.MorningLetterUsecase
+	candidateSimilarityUsecase usecase.CandidateSimilarityUsecase
+	logger                     *slog.Logger
 
 	// For hyper-boost support
 	embedderFactory     EmbedderFactory
@@ -104,6 +105,13 @@ func mapAnswerRequestToInput(req openapi.AnswerRequest) usecase.AnswerWithRAGInp
 
 // HandlerOption configures the Handler.
 type HandlerOption func(*Handler)
+
+// WithCandidateSimilarity wires the candidate-set similarity usecase.
+func WithCandidateSimilarity(uc usecase.CandidateSimilarityUsecase) HandlerOption {
+	return func(h *Handler) {
+		h.candidateSimilarityUsecase = uc
+	}
+}
 
 // WithEmbedderOverride enables X-Embedder-URL header support for hyper-boost.
 // allowedOrigins is the static allowlist (config.EmbedderConfig.AllowedOverrideOrigins)
@@ -834,4 +842,90 @@ func ptrSliceIfNotEmpty(s []string) *[]string {
 		return nil
 	}
 	return &s
+}
+
+// CandidateSimilarityRequest is the JSON body for POST /internal/rag/candidate-similarity.
+type CandidateSimilarityRequest struct {
+	SeedArticleID       string   `json:"seed_article_id"`
+	CandidateArticleIDs []string `json:"candidate_article_ids"`
+	Representation      string   `json:"representation"`
+	UserID              string   `json:"user_id,omitempty"`
+}
+
+// CandidateSimilarityItem is a single scored candidate article.
+type CandidateSimilarityItem struct {
+	ArticleID  string  `json:"article_id"`
+	Similarity float64 `json:"similarity"`
+}
+
+// CandidateSimilarityResponse is the JSON response for POST /internal/rag/candidate-similarity.
+type CandidateSimilarityResponse struct {
+	SeedIndexed                bool                      `json:"seed_indexed"`
+	CandidatesWithoutEmbedding int                       `json:"candidates_without_embedding"`
+	Results                    []CandidateSimilarityItem `json:"results"`
+}
+
+// CandidateSimilarity computes similarity between a seed article and a caller-provided
+// candidate article set under a chosen embedding representation.
+// (POST /internal/rag/candidate-similarity)
+func (h *Handler) CandidateSimilarity(ctx echo.Context) error {
+	if h.candidateSimilarityUsecase == nil {
+		panic("rag_http: candidateSimilarityUsecase is not wired")
+	}
+
+	var req CandidateSimilarityRequest
+	if err := bindBoundedJSON(ctx, &req); err != nil {
+		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
+	}
+
+	userID := strings.TrimSpace(req.UserID)
+	if userID == "" {
+		userID = strings.TrimSpace(ctx.Request().Header.Get("X-Alt-User-Id"))
+	}
+	if userID == "" {
+		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "user_id is required"})
+	}
+	parsedUserID, err := uuid.Parse(userID)
+	if err != nil || parsedUserID == uuid.Nil {
+		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid user_id"})
+	}
+
+	if strings.TrimSpace(req.SeedArticleID) == "" {
+		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "seed_article_id is required"})
+	}
+	if _, ok := domain.ParseSimilarityRepresentation(req.Representation); !ok {
+		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid representation"})
+	}
+
+	output, err := h.candidateSimilarityUsecase.Execute(wrapAuthContext(ctx), usecase.CandidateSimilarityInput{
+		UserID:              parsedUserID.String(),
+		SeedArticleID:       req.SeedArticleID,
+		CandidateArticleIDs: req.CandidateArticleIDs,
+		Representation:      req.Representation,
+	})
+	if err != nil {
+		if errors.Is(err, usecase.ErrEmptyUserID) ||
+			errors.Is(err, usecase.ErrInvalidUserID) ||
+			errors.Is(err, usecase.ErrBlankSeedArticleID) ||
+			errors.Is(err, usecase.ErrInvalidRepresentation) ||
+			errors.Is(err, usecase.ErrTooManyCandidates) {
+			return ctx.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
+		h.logger.Error("failed to compute candidate similarity", "error", err)
+		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to compute candidate similarity"})
+	}
+
+	items := make([]CandidateSimilarityItem, 0, len(output.Results))
+	for _, r := range output.Results {
+		items = append(items, CandidateSimilarityItem{
+			ArticleID:  r.ArticleID,
+			Similarity: r.Similarity,
+		})
+	}
+
+	return ctx.JSON(http.StatusOK, CandidateSimilarityResponse{
+		SeedIndexed:                output.SeedIndexed,
+		CandidatesWithoutEmbedding: output.CandidatesWithoutEmbedding,
+		Results:                    items,
+	})
 }

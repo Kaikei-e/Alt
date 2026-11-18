@@ -507,8 +507,60 @@ type Config struct {
 	SovereignEventAuth      string
 }
 
+// LoadDBConfig loads database settings using the same environment variables
+// as Load(), returning an explicit error instead of panicking when required
+// credentials are missing.
+func LoadDBConfig() (DBConfig, error) {
+	password, err := loadSecret("DB_PASSWORD", "DB_PASSWORD_FILE")
+	if err != nil {
+		return DBConfig{}, err
+	}
+	if strings.TrimSpace(password) == "" {
+		return DBConfig{}, errors.New("config: DB_PASSWORD or DB_PASSWORD_FILE must be non-empty")
+	}
+	cfg := DBConfig{
+		Host:     getEnv("DB_HOST", "rag-db"),
+		Port:     getEnv("DB_PORT", "5432"),
+		User:     getEnv("DB_USER", "rag_user"),
+		Password: password,
+		Name:     getEnv("DB_NAME", "rag_db"),
+		SSLMode:  getEnv("DB_SSL_MODE", "disable"),
+		MaxConns: getEnvInt32("DB_MAX_CONNS", defaultDBMaxConns),
+		MinConns: getEnvInt32("DB_MIN_CONNS", defaultDBMinConns),
+	}
+	if strings.TrimSpace(cfg.Host) == "" || strings.TrimSpace(cfg.Port) == "" ||
+		strings.TrimSpace(cfg.User) == "" || strings.TrimSpace(cfg.Name) == "" {
+		return DBConfig{}, errors.New("config: DB_HOST, DB_PORT, DB_USER, and DB_NAME must be non-empty")
+	}
+	return cfg, nil
+}
+
+// LoadEmbedderConfig loads embedder settings and inference bearer credentials
+// using the same environment variables as Load().
+func LoadEmbedderConfig() (EmbedderConfig, error) {
+	inferenceAuth, err := LoadInferenceAuth()
+	if err != nil {
+		return EmbedderConfig{}, err
+	}
+	return EmbedderConfig{
+		URL:                    EmbedderExternalURL(),
+		Model:                  getEnv("EMBEDDING_MODEL", "bge-m3"),
+		Timeout:                getEnvInt("EMBEDDER_TIMEOUT", 30),
+		InferenceToken:         inferenceAuth.Token,
+		AllowedOverrideOrigins: getEnvCSV("RAG_EMBEDDER_ALLOWED_OVERRIDE_URLS", []string{"http://backfill-hyperboost:11434"}),
+	}, nil
+}
+
 func Load() *Config {
 	inferenceAuth, err := LoadInferenceAuth()
+	if err != nil {
+		panic(err.Error())
+	}
+	dbCfg, err := LoadDBConfig()
+	if err != nil {
+		panic(err.Error())
+	}
+	embedderCfg, err := LoadEmbedderConfig()
 	if err != nil {
 		panic(err.Error())
 	}
@@ -520,23 +572,8 @@ func Load() *Config {
 			Port:        getEnv("PORT", "9010"),
 			ConnectPort: getEnv("CONNECT_PORT", "9011"),
 		},
-		DB: DBConfig{
-			Host:     getEnv("DB_HOST", "rag-db"),
-			Port:     getEnv("DB_PORT", "5432"),
-			User:     getEnv("DB_USER", "rag_user"),
-			Password: requireSecret("DB_PASSWORD", "DB_PASSWORD_FILE"),
-			Name:     getEnv("DB_NAME", "rag_db"),
-			SSLMode:  getEnv("DB_SSL_MODE", "disable"),
-			MaxConns: getEnvInt32("DB_MAX_CONNS", defaultDBMaxConns),
-			MinConns: getEnvInt32("DB_MIN_CONNS", defaultDBMinConns),
-		},
-		Embedder: EmbedderConfig{
-			URL:                    EmbedderExternalURL(),
-			Model:                  getEnv("EMBEDDING_MODEL", "bge-m3"),
-			Timeout:                getEnvInt("EMBEDDER_TIMEOUT", 30),
-			InferenceToken:         inferenceAuth.Token,
-			AllowedOverrideOrigins: getEnvCSV("RAG_EMBEDDER_ALLOWED_OVERRIDE_URLS", []string{"http://backfill-hyperboost:11434"}),
-		},
+		DB:       dbCfg,
+		Embedder: embedderCfg,
 		Augur: AugurConfig{
 			URL:             getEnvWithAlt("AUGUR_EXTERNAL", "AUGUR_EXTERNAL_URL", "https://news-creator:9443"),
 			EndpointPurpose: getEnv("AUGUR_ENDPOINT_PURPOSE", ""),
@@ -617,22 +654,31 @@ func getEnv(key, fallback string) string {
 	return fallback
 }
 
-// requireSecret loads a required secret from envKey or the file referenced by
-// fileEnvKey. There is no fallback value: a missing secret is a fail-fast
-// startup error, never a known-weak default (CLAUDE.md rule 4).
-func requireSecret(envKey, fileEnvKey string) string {
+func loadSecret(envKey, fileEnvKey string) (string, error) {
 	if value, ok := os.LookupEnv(envKey); ok {
-		return value
+		return value, nil
 	}
 
 	if filePath, ok := os.LookupEnv(fileEnvKey); ok {
 		content, err := os.ReadFile(filePath) //nolint:gosec // G304: path from trusted env var
-		if err == nil {
-			return strings.TrimSpace(string(content))
+		if err != nil {
+			return "", fmt.Errorf("config: read %s %s: %w", fileEnvKey, filePath, err)
 		}
+		return strings.TrimSpace(string(content)), nil
 	}
 
-	panic(fmt.Sprintf("config: %s or %s must be set (no fallback permitted)", envKey, fileEnvKey))
+	return "", fmt.Errorf("config: %s or %s must be set (no fallback permitted)", envKey, fileEnvKey)
+}
+
+// requireSecret loads a required secret from envKey or the file referenced by
+// fileEnvKey. There is no fallback value: a missing secret is a fail-fast
+// startup error, never a known-weak default (CLAUDE.md rule 4).
+func requireSecret(envKey, fileEnvKey string) string {
+	val, err := loadSecret(envKey, fileEnvKey)
+	if err != nil {
+		panic(err.Error())
+	}
+	return val
 }
 
 func getEnvWithAlt(key, altKey, fallback string) string {

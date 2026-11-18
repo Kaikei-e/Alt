@@ -7,6 +7,31 @@ servers:
   - url: http://localhost:8080
     description: Local server
 paths:
+  /internal/rag/candidate-similarity:
+    post:
+      summary: Compute similarity between a seed article and a candidate set
+      description: |
+        Computes embedding cosine similarity between a seed article and a bounded
+        caller-supplied set of candidate articles under the requested representation.
+      operationId: CandidateSimilarity
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CandidateSimilarityRequest"
+      responses:
+        "200":
+          description: Similarity scores sorted descending
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CandidateSimilarityResponse"
+        "400":
+          description: Invalid request payload or candidate set limit exceeded
+        "500":
+          description: Internal server error
+
   /internal/rag/index/upsert:
     post:
       summary: Upsert an article to the RAG index
@@ -363,3 +388,54 @@ components:
         not_found:
           type: integer
           format: int64
+
+    CandidateSimilarityRequest:
+      type: object
+      required:
+        - seed_article_id
+        - candidate_article_ids
+        - representation
+      properties:
+        seed_article_id:
+          type: string
+        candidate_article_ids:
+          type: array
+          maxItems: 2000
+          items:
+            type: string
+        representation:
+          type: string
+          enum:
+            - first_chunk
+            - chunk_mean
+            - nearest_chunk_pair
+        user_id:
+          type: string
+
+    CandidateSimilarityItem:
+      type: object
+      required:
+        - article_id
+        - similarity
+      properties:
+        article_id:
+          type: string
+        similarity:
+          type: number
+          format: double
+
+    CandidateSimilarityResponse:
+      type: object
+      required:
+        - seed_indexed
+        - candidates_without_embedding
+        - results
+      properties:
+        seed_indexed:
+          type: boolean
+        candidates_without_embedding:
+          type: integer
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/CandidateSimilarityItem"
