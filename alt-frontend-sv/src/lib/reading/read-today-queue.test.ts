@@ -267,4 +267,23 @@ describe("createReadTodayQueueStore", () => {
 		await store.refresh();
 		expect(store.isQueued("art-1")).toBe(false);
 	});
+
+	it("tracks and clears one-shot pendingNotice", () => {
+		const store = createReadTodayQueueStore({
+			getQueue: vi.fn(),
+			queueItem: vi.fn(),
+			unqueueItem: vi.fn(),
+		});
+
+		expect(store.pendingNotice).toBeNull();
+		store.setPendingNotice('Could not add "Example" to Read today.');
+		expect(store.pendingNotice).toBe('Could not add "Example" to Read today.');
+
+		store.clearPendingNotice();
+		expect(store.pendingNotice).toBeNull();
+
+		store.setPendingNotice("Full");
+		store.reset();
+		expect(store.pendingNotice).toBeNull();
+	});
 });

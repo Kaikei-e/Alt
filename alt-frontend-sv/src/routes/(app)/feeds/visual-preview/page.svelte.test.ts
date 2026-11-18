@@ -70,6 +70,7 @@ import {
 } from "#lib/api/client/articles.js";
 import {
 	getAllFeedsWithCursorClient,
+	getFeedsWithCursorClient,
 	listSubscriptionsClient,
 	updateFeedReadStatusClient,
 } from "#lib/api/client/feeds.js";
@@ -94,6 +95,8 @@ import Page from "./+page.svelte";
 
 const PORTRAIT = { width: 393, height: 851 };
 const LANDSCAPE = { width: 851, height: 393 };
+
+const GALLERY_ARTICLE_UUID = "01938e82-7c00-7a7b-9b10-000000000111";
 
 const FEEDS: RenderFeed[] = Array.from({ length: 6 }, (_, i) =>
 	createRenderFeed(`feed-${i + 1}`, `https://example.com/feed-${i + 1}`),
@@ -166,6 +169,13 @@ describe("Visual Preview page continuity across a rotation", () => {
 			has_more: false,
 		} as unknown as Awaited<ReturnType<typeof getAllFeedsWithCursorClient>>);
 
+		vi.mocked(getFeedsWithCursorClient).mockReset();
+		vi.mocked(getFeedsWithCursorClient).mockResolvedValue({
+			data: FEEDS,
+			next_cursor: undefined,
+			has_more: false,
+		} as unknown as Awaited<ReturnType<typeof getFeedsWithCursorClient>>);
+
 		vi.mocked(listSubscriptionsClient).mockReset();
 		vi.mocked(listSubscriptionsClient).mockResolvedValue([]);
 
@@ -175,7 +185,7 @@ describe("Visual Preview page continuity across a rotation", () => {
 		vi.mocked(getFeedContentOnTheFlyClient).mockReset();
 		vi.mocked(getFeedContentOnTheFlyClient).mockResolvedValue({
 			content: "<p>Gallery article body</p>",
-			article_id: "art-1",
+			article_id: GALLERY_ARTICLE_UUID,
 			og_image_url: "",
 			og_image_proxy_url: "",
 		});
@@ -211,7 +221,7 @@ describe("Visual Preview page continuity across a rotation", () => {
 		await expect.element(page.getByTestId("reader-overlay")).toBeVisible();
 		expect(mockPushState).toHaveBeenCalledTimes(1);
 		await vi.waitFor(() =>
-			expect(currentPageURL.pathname).toBe("/articles/art-1"),
+			expect(currentPageURL.pathname).toBe(`/articles/${GALLERY_ARTICLE_UUID}`),
 		);
 		expect(trackHomeActionClient).not.toHaveBeenCalled();
 		expect(updateFeedReadStatusClient).not.toHaveBeenCalled();
@@ -332,7 +342,7 @@ describe("Visual Preview page continuity across a rotation", () => {
 		);
 	});
 
-	it("hides queued articles from the Gallery without marking them read and restores them when unqueued", async () => {
+	it("hides queued articles from the Gallery only in the unread view without marking them read and restores them when unqueued", async () => {
 		vi.mocked(getReadTodayQueue).mockResolvedValueOnce({
 			items: [
 				{
@@ -349,8 +359,16 @@ describe("Visual Preview page continuity across a rotation", () => {
 			readCountSince: 0,
 		});
 
-		await page.viewport(PORTRAIT.width, PORTRAIT.height);
+		await page.viewport(1024, 800);
 		render(Page);
+		await settle(400);
+
+		// Default (all feeds, unreadOnly=false) keeps queued articles visible
+		expect(cardLabels()).toContain(openLabel(FIRST));
+		expect(cardLabels()).toHaveLength(FEEDS.length);
+
+		// Switching to Unread Only hides queued articles without marking them read
+		await page.getByLabelText("Unread Only").click();
 		await settle(400);
 
 		expect(cardLabels()).not.toContain(openLabel(FIRST));
@@ -374,7 +392,7 @@ describe("Visual Preview page continuity across a rotation", () => {
 		vi.mocked(recordReadingEvents).mockResolvedValueOnce({
 			accepted: 1,
 			duplicates: 0,
-			readArticleIds: ["art-1"],
+			readArticleIds: [GALLERY_ARTICLE_UUID],
 		});
 
 		await page.viewport(PORTRAIT.width, PORTRAIT.height);

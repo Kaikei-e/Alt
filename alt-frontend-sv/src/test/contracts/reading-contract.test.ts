@@ -253,9 +253,10 @@ describe("Reading API Contract", () => {
 				send: (events) => recordReadingEvents(transport, events),
 			});
 
+			const wireArticleId = "01938e82-7c00-7a7b-9b10-000000000077";
 			queue.enqueueSurfaceViewed(ReadingSurface.SWIPE);
 			const session = createReadingSession({
-				articleId: "article-wire",
+				articleId: wireArticleId,
 				surface: ReadingSurface.SWIPE,
 				bodyLengthChars: 2500,
 				queue,
@@ -283,7 +284,7 @@ describe("Reading API Contract", () => {
 						clientEventId: "01938e82-7c00-7a7b-9b10-100000000002",
 						occurredAt: "2026-11-18T06:00:00Z",
 						reachedEnd: {
-							articleId: "article-wire",
+							articleId: wireArticleId,
 							surface: "READING_SURFACE_SWIPE",
 						},
 					},
@@ -291,7 +292,7 @@ describe("Reading API Contract", () => {
 						clientEventId: "01938e82-7c00-7a7b-9b10-100000000003",
 						occurredAt: "2026-11-18T06:00:00Z",
 						sessionEnded: {
-							articleId: "article-wire",
+							articleId: wireArticleId,
 							surface: "READING_SURFACE_SWIPE",
 							activeDwellMs: "18400",
 							maxScrollRatio: 0.96,

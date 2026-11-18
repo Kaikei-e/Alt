@@ -298,4 +298,35 @@ describe("/today page", () => {
 			.element(page.getByTestId("today-read-count"))
 			.toHaveTextContent("Articles read today: 1");
 	});
+
+	it("renders a one-shot pendingNotice from the queue store above the list and clears it", async () => {
+		vi.mocked(getReadTodayQueue).mockResolvedValue({
+			items: [
+				{
+					articleId: "art-1",
+					title: "First Queued Story",
+					url: "https://news.example.com/first",
+					sourceName: "News Daily",
+					imageUrl: "",
+					queuedAt: new Date(),
+					expiresAt: new Date(Date.now() + 10 * 3600_000),
+				},
+			],
+			cap: 7,
+			readCountSince: 0,
+		});
+
+		readTodayQueue.setPendingNotice(
+			'Could not add "Deferred Story" to Read today.',
+		);
+
+		render(Page);
+		await settle();
+
+		const notice = page.getByRole("status").filter({
+			hasText: 'Could not add "Deferred Story" to Read today.',
+		});
+		await expect.element(notice).toBeVisible();
+		expect(readTodayQueue.pendingNotice).toBeNull();
+	});
 });

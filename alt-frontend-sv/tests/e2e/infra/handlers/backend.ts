@@ -87,6 +87,11 @@ function encodeConnectEnvelope(message: unknown, flags = 0x00): Buffer {
 	return envelope;
 }
 
+const UUID_PATTERN =
+	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const MIN_READ_DWELL_MS = 1000;
+
 /**
  * Create the Backend mock server
  */
@@ -104,6 +109,7 @@ export function createBackendServer(): http.Server {
 			expiresAt: string;
 		}
 	>();
+	const readArticles = new Set<string>();
 
 	async function handle(
 		req: http.IncomingMessage,
@@ -642,14 +648,46 @@ export function createBackendServer(): http.Server {
 
 		// ReadingService (Connect-RPC)
 		if (path === "/alt.reading.v1.ReadingService/RecordReadingEvents") {
-			const events = Array.isArray(body.events) ? body.events : [];
+			const events = Array.isArray(body.events)
+				? (body.events as Array<Record<string, unknown>>)
+				: [];
+			const readArticleIds: string[] = [];
+			const seenReadIds = new Set<string>();
+			for (const evt of events) {
+				const sessionEnded = evt?.sessionEnded as
+					| {
+							articleId?: unknown;
+							reachedEnd?: unknown;
+							activeDwellMs?: unknown;
+					  }
+					| undefined;
+				if (!sessionEnded) continue;
+				const articleId =
+					typeof sessionEnded.articleId === "string"
+						? sessionEnded.articleId.trim()
+						: "";
+				const dwellMs = Number(sessionEnded.activeDwellMs ?? 0);
+				if (
+					UUID_PATTERN.test(articleId) &&
+					sessionEnded.reachedEnd === true &&
+					Number.isFinite(dwellMs) &&
+					dwellMs >= MIN_READ_DWELL_MS
+				) {
+					if (!seenReadIds.has(articleId)) {
+						seenReadIds.add(articleId);
+						readArticleIds.push(articleId);
+					}
+					readTodayQueue.delete(articleId);
+					readArticles.add(articleId);
+				}
+			}
 			res.setHeader("Content-Type", "application/json");
 			res.writeHead(200);
 			res.end(
 				JSON.stringify({
 					accepted: events.length,
 					duplicates: 0,
-					readArticleIds: [],
+					readArticleIds,
 				}),
 			);
 			return;
@@ -659,17 +697,17 @@ export function createBackendServer(): http.Server {
 			const articleId =
 				typeof body.articleId === "string" ? body.articleId.trim() : "";
 			res.setHeader("Content-Type", "application/json");
-			res.writeHead(200);
-			if (!articleId) {
+			if (!articleId || !UUID_PATTERN.test(articleId)) {
+				res.writeHead(400);
 				res.end(
 					JSON.stringify({
-						outcome: "QUEUE_ARTICLE_OUTCOME_UNSPECIFIED",
-						items: [...readTodayQueue.values()],
-						cap: READ_TODAY_CAP,
+						code: "invalid_argument",
+						message: "article_id must be a valid UUID",
 					}),
 				);
 				return;
 			}
+			res.writeHead(200);
 			if (readTodayQueue.has(articleId)) {
 				res.end(
 					JSON.stringify({
@@ -716,10 +754,18 @@ export function createBackendServer(): http.Server {
 		if (path === "/alt.reading.v1.ReadingService/UnqueueArticle") {
 			const articleId =
 				typeof body.articleId === "string" ? body.articleId.trim() : "";
-			if (articleId) {
-				readTodayQueue.delete(articleId);
-			}
 			res.setHeader("Content-Type", "application/json");
+			if (!articleId || !UUID_PATTERN.test(articleId)) {
+				res.writeHead(400);
+				res.end(
+					JSON.stringify({
+						code: "invalid_argument",
+						message: "article_id must be a valid UUID",
+					}),
+				);
+				return;
+			}
+			readTodayQueue.delete(articleId);
 			res.writeHead(200);
 			res.end(JSON.stringify({}));
 			return;
@@ -732,7 +778,7 @@ export function createBackendServer(): http.Server {
 				JSON.stringify({
 					items: [...readTodayQueue.values()],
 					cap: READ_TODAY_CAP,
-					readCountSince: 0,
+					readCountSince: readArticles.size,
 				}),
 			);
 			return;

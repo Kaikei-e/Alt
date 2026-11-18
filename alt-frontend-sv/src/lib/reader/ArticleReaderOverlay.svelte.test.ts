@@ -168,9 +168,10 @@ describe("ArticleReaderOverlay + shallow routing", () => {
 	});
 
 	it("ends reading session and flushes queued events when the overlay closes", async () => {
+		const overlayArtId = "01938e82-7c00-7a7b-9b10-000000000173";
 		mockGetFeedContent.mockResolvedValueOnce({
 			content: "<p>Overlay reading session body.</p>",
-			article_id: "art-overlay-1",
+			article_id: overlayArtId,
 		});
 
 		render(ArticleReaderOverlay);
@@ -179,7 +180,7 @@ describe("ArticleReaderOverlay + shallow routing", () => {
 			surface: ReadingSurface.SWIPE,
 			items: [
 				{
-					articleId: "art-overlay-1",
+					articleId: overlayArtId,
 					url: "https://example.com/overlay-1",
 					title: "Overlay 1",
 				},
@@ -204,7 +205,7 @@ describe("ArticleReaderOverlay + shallow routing", () => {
 		const sessionEnded = events.find((e) => e.event?.case === "sessionEnded")
 			?.event?.value;
 		expect(sessionEnded).toMatchObject({
-			articleId: "art-overlay-1",
+			articleId: overlayArtId,
 			surface: ReadingSurface.SWIPE,
 		});
 	});
@@ -271,12 +272,13 @@ describe("ArticleReaderOverlay + shallow routing", () => {
 	});
 
 	it("sends opened once when articleId resolves, drops readArticleIds from queue, and notifies onArticlesRead", async () => {
+		const resolvedOpenId = "01938e82-7c00-7a7b-9b10-000000000279";
 		await readTodayQueue.refresh();
 		vi.mocked(queueArticle).mockResolvedValueOnce({
 			outcome: QueueArticleOutcome.QUEUED,
 			items: [
 				{
-					articleId: "resolved-open-1",
+					articleId: resolvedOpenId,
 					title: "Queued From Before",
 					url: "https://example.com/open-1",
 					sourceName: "Source",
@@ -288,21 +290,21 @@ describe("ArticleReaderOverlay + shallow routing", () => {
 			cap: 7,
 		});
 		await readTodayQueue.queue({
-			articleId: "resolved-open-1",
+			articleId: resolvedOpenId,
 			surface: ReadingSurface.SWIPE,
 			title: "Queued From Before",
 			url: "https://example.com/open-1",
 		});
-		expect(readTodayQueue.isQueued("resolved-open-1")).toBe(true);
+		expect(readTodayQueue.isQueued(resolvedOpenId)).toBe(true);
 
 		mockGetFeedContent.mockResolvedValueOnce({
 			content: "<p>Body for opened + readArticleIds.</p>",
-			article_id: "resolved-open-1",
+			article_id: resolvedOpenId,
 		});
 		vi.mocked(recordReadingEvents).mockResolvedValueOnce({
 			accepted: 2,
 			duplicates: 0,
-			readArticleIds: ["resolved-open-1"],
+			readArticleIds: [resolvedOpenId],
 		});
 
 		const onArticlesRead = vi.fn();
@@ -334,14 +336,14 @@ describe("ArticleReaderOverlay + shallow routing", () => {
 		const openedEvents = events.filter((e) => e.event?.case === "opened");
 		expect(openedEvents).toHaveLength(1);
 		expect(openedEvents[0]?.event?.value).toMatchObject({
-			articleId: "resolved-open-1",
+			articleId: resolvedOpenId,
 			surface: ReadingSurface.GALLERY,
 		});
 
 		await vi.waitFor(() =>
-			expect(onArticlesRead).toHaveBeenCalledWith(["resolved-open-1"]),
+			expect(onArticlesRead).toHaveBeenCalledWith([resolvedOpenId]),
 		);
-		expect(readTodayQueue.isQueued("resolved-open-1")).toBe(false);
+		expect(readTodayQueue.isQueued(resolvedOpenId)).toBe(false);
 	});
 
 	it("toggles Read today / In Read today from the reader action cluster", async () => {
@@ -479,5 +481,99 @@ describe("ArticleReaderOverlay + shallow routing", () => {
 		await toggleBtn.click();
 		await expect.element(toggleBtn).toHaveAttribute("aria-pressed", "true");
 		expect(getComputedStyle(toggleBtn.element()).borderBottomWidth).toBe("2px");
+	});
+
+	it("shows full-queue error without calling queueArticle when remainingSlots is 0", async () => {
+		const targetId = "01938e82-7c00-7a7b-9b10-000000000555";
+		vi.mocked(getReadTodayQueue).mockResolvedValue({
+			items: Array.from({ length: 6 }, (_, i) => ({
+				articleId: `01938e82-7c00-7a7b-9b10-00000000060${i}`,
+				title: `Queued ${i}`,
+				url: `https://example.com/queued-${i}`,
+				sourceName: "Source",
+				imageUrl: "",
+				queuedAt: new Date(),
+				expiresAt: new Date(Date.now() + 3600_000),
+			})),
+			cap: 7,
+			readCountSince: 0,
+		});
+		await readTodayQueue.refresh();
+		readTodayQueue.setPendingQueueCount(1);
+		expect(readTodayQueue.remainingSlots).toBe(0);
+
+		mockGetFeedContent.mockResolvedValueOnce({
+			content: "<p>Full queue test body.</p>",
+			article_id: targetId,
+		});
+
+		render(ArticleReaderOverlay);
+
+		openReaderOverlay({
+			surface: ReadingSurface.GALLERY,
+			items: [
+				{
+					articleId: targetId,
+					url: "https://example.com/full-queue-article",
+					title: "Unqueued Article",
+				},
+			],
+			currentIndex: 0,
+		});
+
+		await expect
+			.element(testPage.getByText("Full queue test body."))
+			.toBeInTheDocument();
+
+		const toggleBtn = testPage.getByTestId("read-today-toggle-button");
+		await expect.element(toggleBtn).toHaveAttribute("aria-pressed", "false");
+		await toggleBtn.click();
+
+		expect(queueArticle).not.toHaveBeenCalled();
+		await expect
+			.element(
+				testPage.getByText("Read today is full (7). Read or remove one first."),
+			)
+			.toBeInTheDocument();
+		await expect.element(toggleBtn).toHaveAttribute("aria-pressed", "false");
+	});
+
+	it("treats UNSPECIFIED outcome from queueArticle as a failure in reader toggle", async () => {
+		const targetId = "01938e82-7c00-7a7b-9b10-000000000556";
+		vi.mocked(queueArticle).mockResolvedValueOnce({
+			outcome: QueueArticleOutcome.UNSPECIFIED,
+			items: [],
+			cap: 7,
+		});
+		mockGetFeedContent.mockResolvedValueOnce({
+			content: "<p>Unspecified outcome body.</p>",
+			article_id: targetId,
+		});
+
+		render(ArticleReaderOverlay);
+
+		openReaderOverlay({
+			surface: ReadingSurface.GALLERY,
+			items: [
+				{
+					articleId: targetId,
+					url: "https://example.com/unspecified-article",
+					title: "Unspecified Article",
+				},
+			],
+			currentIndex: 0,
+		});
+
+		await expect
+			.element(testPage.getByText("Unspecified outcome body."))
+			.toBeInTheDocument();
+
+		const toggleBtn = testPage.getByTestId("read-today-toggle-button");
+		await toggleBtn.click();
+
+		await expect
+			.element(testPage.getByText("Could not add to Read today."))
+			.toBeInTheDocument();
+		await expect.element(toggleBtn).toHaveAttribute("aria-pressed", "false");
 	});
 });

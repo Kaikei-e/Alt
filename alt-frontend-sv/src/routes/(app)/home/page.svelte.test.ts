@@ -212,11 +212,25 @@ vi.mock("#lib/hooks/useSummarySpeech.svelte.js", () => ({
 	})),
 }));
 
-vi.mock("#lib/connect/reading.js", () => ({
-	recordReadingEvents: vi
-		.fn()
-		.mockResolvedValue({ accepted: 1, duplicates: 0 }),
-}));
+vi.mock("#lib/connect/reading.js", async (importOriginal) => {
+	const actual =
+		await importOriginal<typeof import("#lib/connect/reading.js")>();
+	return {
+		...actual,
+		recordReadingEvents: vi
+			.fn()
+			.mockResolvedValue({ accepted: 1, duplicates: 0, readArticleIds: [] }),
+		getReadTodayQueue: vi
+			.fn()
+			.mockResolvedValue({ items: [], cap: 7, readCountSince: 0 }),
+		queueArticle: vi.fn().mockResolvedValue({
+			outcome: actual.QueueArticleOutcome.QUEUED,
+			items: [],
+			cap: 7,
+		}),
+		unqueueArticle: vi.fn().mockResolvedValue(undefined),
+	};
+});
 
 vi.mock("#lib/connect/index.js", () => ({
 	createClientTransport: vi.fn(() => ({})),

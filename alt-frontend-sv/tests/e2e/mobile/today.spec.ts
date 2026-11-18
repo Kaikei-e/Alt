@@ -8,12 +8,16 @@ import { expect, test } from "../fixtures/pomFixtures";
 import { gotoMobileRoute } from "../helpers/navigation";
 import { fulfillJson } from "../utils/mockHelpers";
 
+function deckUuid(index: number): string {
+	return `01938e82-7c00-7a7b-9b10-${String(100 + index).padStart(12, "0")}`;
+}
+
 function buildDeck(count: number) {
 	return {
 		data: Array.from({ length: count }, (_, i) => ({
 			id: `deck-feed-${i + 1}`,
 			feedId: `feed-src-${i + 1}`,
-			articleId: `deck-art-${i + 1}`,
+			articleId: deckUuid(i + 1),
 			title: `Deck Article ${i + 1}`,
 			description: `Summary for deck article ${i + 1}.`,
 			link: `https://example.com/deck-${i + 1}`,
@@ -45,6 +49,8 @@ async function swipeCard(
 }
 
 test.describe("Read today mobile flow", () => {
+	test.describe.configure({ mode: "serial" });
+
 	test("/ lands on /today and bottom nav shows five tabs with Today active", async ({
 		page,
 	}) => {
@@ -112,8 +118,12 @@ test.describe("Read today mobile flow", () => {
 		await expect(
 			card.getByRole("heading", { name: "Svelte 5 Tips" }),
 		).toBeVisible();
+		const queueDone = page.waitForResponse((res) =>
+			res.url().includes("ReadingService/QueueArticle"),
+		);
 		await swipeCard(page, "left");
 		await expect(page.getByText("No more feeds")).toBeVisible();
+		await queueDone;
 		expect(markAsReadCalls).toBe(1);
 
 		await gotoMobileRoute(page, "today");
@@ -304,7 +314,9 @@ test.describe("Read today mobile flow", () => {
 		await page.getByTestId("swipe-pass-button").click();
 		await expect(page.getByText("No more feeds")).toBeVisible();
 
-		await expect.poll(() => queuedIds).toEqual(["article-1"]);
+		await expect
+			.poll(() => queuedIds)
+			.toEqual(["01938e82-7c00-7a7b-9b10-000000000001"]);
 		await expect
 			.poll(() => passedLinks)
 			.toEqual(["https://example.com/svelte-5"]);
@@ -365,5 +377,116 @@ test.describe("Read today mobile flow", () => {
 				expect(box.height).toBeGreaterThanOrEqual(44);
 			}
 		}
+	});
+
+	test("queued article opened from /today disappears and count drops once mock reports it read", async ({
+		page,
+	}) => {
+		const longBody = Array.from(
+			{ length: 24 },
+			(_, idx) =>
+				`<p>Paragraph ${idx + 1}: Analytical prose for read-today completion flow verification in mobile reader overlay.</p>`,
+		).join("");
+
+		await page.route(CONNECT_RPC_PATHS.getUnreadFeeds, (route) =>
+			fulfillJson(route, { data: [], nextCursor: "", hasMore: false }),
+		);
+		await page.route(CONNECT_RPC_PATHS.getReadFeeds, (route) =>
+			fulfillJson(route, CONNECT_READ_FEEDS_EMPTY_RESPONSE),
+		);
+		await page.route(CONNECT_RPC_PATHS.markAsRead, (route) =>
+			fulfillJson(route, CONNECT_MARK_AS_READ_RESPONSE),
+		);
+		await page.route(CONNECT_RPC_PATHS.fetchArticleContent, (route) =>
+			fulfillJson(route, {
+				url: "https://example.com/ai-trends",
+				content: longBody,
+				articleId: "01938e82-7c00-7a7b-9b10-000000000001",
+			}),
+		);
+
+		// Queue card 1 ("AI Trends") via swipe -> flush on card 2 pass
+		await gotoMobileRoute(page, "feeds/swipe/visual-preview");
+		const card = page.getByTestId("visual-preview-card");
+		await expect(
+			card.getByRole("heading", { name: "AI Trends" }),
+		).toBeVisible();
+		await swipeCard(page, "right");
+		await expect(
+			card.getByRole("heading", { name: "Svelte 5 Tips" }),
+		).toBeVisible();
+		const queueDone = page.waitForResponse((res) =>
+			res.url().includes("ReadingService/QueueArticle"),
+		);
+		await swipeCard(page, "left");
+		await expect(page.getByText("No more feeds")).toBeVisible();
+		await queueDone;
+
+		await gotoMobileRoute(page, "today");
+		await expect(page.getByTestId("today-queue-count")).toContainText("1 / 7");
+		await expect(page.getByText("AI Trends")).toBeVisible();
+
+		// Open from /today, scroll to bottom, dwell >= 1s, and close overlay
+		await page.getByText("AI Trends").click();
+		const overlay = page.getByTestId("reader-overlay");
+		await expect(overlay).toBeVisible();
+		await expect(overlay.getByText(/Paragraph 1:/)).toBeVisible();
+
+		const overlayBody = overlay.getByTestId("reader-overlay-body");
+		await overlayBody.evaluate((el) => {
+			el.scrollTop = el.scrollHeight;
+			el.dispatchEvent(new Event("scroll"));
+		});
+		await page.waitForTimeout(1150);
+
+		await overlay.getByTestId("reader-overlay-close").click();
+		await expect(overlay).toBeHidden();
+
+		await expect(page.getByText("Nothing queued.")).toBeVisible();
+		await expect(page.getByTestId("today-queue-count")).toContainText("0 / 7");
+	});
+
+	test("right swipe whose QueueArticle is rejected restores the card and shows the notice", async ({
+		page,
+	}) => {
+		await page.route(CONNECT_RPC_PATHS.getUnreadFeeds, (route) =>
+			fulfillJson(route, { data: [], nextCursor: "", hasMore: false }),
+		);
+		await page.route(CONNECT_RPC_PATHS.getReadFeeds, (route) =>
+			fulfillJson(route, CONNECT_READ_FEEDS_EMPTY_RESPONSE),
+		);
+		await page.route(CONNECT_RPC_PATHS.getReadTodayQueue, (route) =>
+			fulfillJson(route, { items: [], cap: 7, readCountSince: 0 }),
+		);
+		await page.route(CONNECT_RPC_PATHS.queueArticle, (route) =>
+			route.fulfill({
+				status: 400,
+				contentType: "application/json",
+				body: JSON.stringify({
+					code: "invalid_argument",
+					message: "article_id must be a valid UUID",
+				}),
+			}),
+		);
+
+		await gotoMobileRoute(page, "feeds/swipe/visual-preview");
+		const card = page.getByTestId("visual-preview-card");
+		await expect(
+			card.getByRole("heading", { name: "AI Trends" }),
+		).toBeVisible();
+
+		// Right swipe Card 1 -> held in pending slot; left swipe Card 2 -> flushes Card 1 and triggers rejection
+		await swipeCard(page, "right");
+		await expect(
+			card.getByRole("heading", { name: "Svelte 5 Tips" }),
+		).toBeVisible();
+		await swipeCard(page, "left");
+
+		await expect(page.getByTestId("swipe-notice")).toContainText(
+			'Could not add "AI Trends" to Read today.',
+		);
+		await expect(
+			card.getByRole("heading", { name: "AI Trends" }),
+		).toBeVisible();
 	});
 });
