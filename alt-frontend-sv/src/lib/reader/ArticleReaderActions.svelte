@@ -1,5 +1,7 @@
 <script lang="ts">
 import {
+	Bookmark,
+	BookmarkCheck,
 	Download,
 	ExternalLink,
 	Loader2,
@@ -17,6 +19,27 @@ const { reader }: Props = $props();
 </script>
 
 <div class="actions-cluster">
+	<Button
+		data-testid="read-today-toggle-button"
+		aria-label={reader.isQueued ? "In Read today" : "Read today"}
+		aria-pressed={reader.isQueued}
+		onclick={() => void reader.toggleReadToday()}
+		disabled={!reader.canToggleQueue}
+		variant={reader.isQueued ? "default" : "outline"}
+		size="icon"
+		class={reader.isQueued
+			? "action-btn action-btn--primary"
+			: "action-btn"}
+	>
+		{#if reader.isQueued}
+			<BookmarkCheck class="h-4 w-4" />
+			<span class="action-label">In Read today</span>
+		{:else}
+			<Bookmark class="h-4 w-4" />
+			<span class="action-label">Read today</span>
+		{/if}
+	</Button>
+
 	<Button
 		data-testid="fetch-button"
 		aria-label={reader.fetchAriaLabel}

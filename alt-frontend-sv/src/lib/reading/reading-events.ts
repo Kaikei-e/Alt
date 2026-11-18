@@ -7,6 +7,7 @@ import {
 import { Code, ConnectError, type Transport } from "@connectrpc/connect";
 import { recordReadingEvents } from "#lib/connect/reading.js";
 import {
+	OpenedSchema,
 	ReachedEndSchema,
 	type ReadingEvent,
 	ReadingEventSchema,
@@ -52,11 +53,13 @@ export interface ReadingEventQueueOptions {
 		events: ReadingEvent[],
 		options: { keepalive: boolean },
 	) => Promise<unknown>;
+	onReadArticleIds?: (articleIds: string[]) => void;
 }
 
 export interface ReadingEventQueue {
 	readonly size: number;
 	enqueueSurfaceViewed(surface: ReadingSurface): void;
+	enqueueOpened(articleId: string, surface: ReadingSurface): void;
 	enqueueReachedEnd(articleId: string, surface: ReadingSurface): void;
 	enqueueSessionEnded(params: SessionEndedParams): void;
 	flush(options?: FlushOptions): Promise<void>;
@@ -139,6 +142,18 @@ export function createReadingEventQueue(
 				}),
 			);
 		},
+		enqueueOpened(articleId: string, surface: ReadingSurface) {
+			enqueue(
+				create(ReadingEventSchema, {
+					clientEventId: generateId(),
+					occurredAt: toTimestamp(clock()),
+					event: {
+						case: "opened",
+						value: create(OpenedSchema, { articleId, surface }),
+					},
+				}),
+			);
+		},
 		enqueueReachedEnd(articleId: string, surface: ReadingSurface) {
 			enqueue(
 				create(ReadingEventSchema, {
@@ -179,7 +194,22 @@ export function createReadingEventQueue(
 			while (pending.length > 0) {
 				const batch = pending.splice(0, batchLimit);
 				try {
-					await send(batch, { keepalive });
+					const response = await send(batch, { keepalive });
+					if (
+						response &&
+						typeof response === "object" &&
+						"readArticleIds" in response &&
+						Array.isArray(response.readArticleIds) &&
+						response.readArticleIds.length > 0
+					) {
+						const ids = response.readArticleIds.filter(
+							(id): id is string =>
+								typeof id === "string" && id.trim().length > 0,
+						);
+						if (ids.length > 0) {
+							options.onReadArticleIds?.(ids);
+						}
+					}
 				} catch (err) {
 					if (PERMANENT_ERROR_CODES.has(ConnectError.from(err).code)) {
 						continue;

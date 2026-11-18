@@ -35,6 +35,12 @@ const {
 	title={reader.mastheadTitle}
 />
 
+{#if reader.queueError}
+	<p class="queue-error" role="alert" data-testid="reader-queue-error">
+		{reader.queueError}
+	</p>
+{/if}
+
 {#if showInlineSummary}
 	<ArticleSummaryBlock {reader} />
 {/if}
@@ -179,5 +185,15 @@ const {
 		font-size: 0.95rem;
 		line-height: 1.7;
 		color: var(--alt-charcoal, #1a1a1a);
+	}
+
+	.queue-error {
+		margin: 0;
+		padding: 0.5rem 0.75rem;
+		font-family: var(--font-body);
+		font-size: 0.82rem;
+		color: var(--alt-error, #8c1d1d);
+		background: var(--surface-2, #f5f4f1);
+		border-left: 3px solid var(--alt-error, #8c1d1d);
 	}
 </style>

@@ -4,6 +4,7 @@ import {
 	createDwellTracker,
 	type VisibilitySource,
 } from "#lib/reading/dwell-tracker.js";
+import { readTodayQueue } from "#lib/reading/read-today-queue.svelte.js";
 import {
 	createReadingEventQueue,
 	type FlushOptions,
@@ -36,6 +37,7 @@ export interface StartReadingSessionParams {
 	dwell?: ReadingSessionDwell;
 	visibility?: VisibilitySource | null;
 	now?: () => number;
+	onReadArticleIds?: (articleIds: string[]) => void;
 }
 
 export interface ManagedReadingSession {
@@ -48,6 +50,11 @@ export interface ManagedReadingSession {
 export interface ReadingInstrumentation {
 	readonly queue: ReadingEventQueue;
 	recordSurfaceViewed(surface: ReadingSurface): void;
+	recordArticleOpened(
+		articleId: string | null | undefined,
+		surface: ReadingSurface,
+		onReadArticleIds?: (articleIds: string[]) => void,
+	): void;
 	startSession(params: StartReadingSessionParams): ManagedReadingSession | null;
 	flush(options?: FlushOptions): Promise<void>;
 	endOpenSessionsAndFlushKeepalive(): Promise<void>;
@@ -160,7 +167,25 @@ export function observeEndSentinel(
 export function createReadingInstrumentation(
 	options: ReadingEventQueueOptions = {},
 ): ReadingInstrumentation {
-	const queueOptions: ReadingEventQueueOptions =
+	const articleReadListeners = new Map<
+		string,
+		(articleIds: string[]) => void
+	>();
+	const handleReadArticleIds = (ids: string[]) => {
+		options.onReadArticleIds?.(ids);
+		const invoked = new Set<(articleIds: string[]) => void>();
+		for (const id of ids) {
+			const cb = articleReadListeners.get(id);
+			if (!cb) continue;
+			articleReadListeners.delete(id);
+			if (!invoked.has(cb)) {
+				invoked.add(cb);
+				cb(ids);
+			}
+		}
+	};
+
+	const baseOptions: ReadingEventQueueOptions =
 		options.send || options.getTransport
 			? options
 			: {
@@ -168,6 +193,10 @@ export function createReadingInstrumentation(
 					getTransport: (keepalive) =>
 						keepalive ? createKeepaliveTransport() : createClientTransport(),
 				};
+	const queueOptions: ReadingEventQueueOptions = {
+		...baseOptions,
+		onReadArticleIds: handleReadArticleIds,
+	};
 	const queue = createReadingEventQueue(queueOptions);
 	const openSessionEnders = new Set<() => void>();
 
@@ -192,12 +221,29 @@ export function createReadingInstrumentation(
 		recordSurfaceViewed(surface: ReadingSurface) {
 			queue.enqueueSurfaceViewed(surface);
 		},
+		recordArticleOpened(
+			articleId: string | null | undefined,
+			surface: ReadingSurface,
+			onReadArticleIds?: (articleIds: string[]) => void,
+		) {
+			const trimmed = articleId?.trim() ?? "";
+			if (trimmed.length === 0) {
+				return;
+			}
+			if (onReadArticleIds) {
+				articleReadListeners.set(trimmed, onReadArticleIds);
+			}
+			queue.enqueueOpened(trimmed, surface);
+		},
 		startSession(
 			params: StartReadingSessionParams,
 		): ManagedReadingSession | null {
 			const articleId = params.articleId?.trim() ?? "";
 			if (articleId.length === 0) {
 				return null;
+			}
+			if (params.onReadArticleIds) {
+				articleReadListeners.set(articleId, params.onReadArticleIds);
 			}
 			const dwell =
 				params.dwell ??
@@ -290,10 +336,26 @@ export function createReadingInstrumentation(
 	};
 }
 
-const defaultInstrumentation = createReadingInstrumentation();
+const defaultInstrumentation = createReadingInstrumentation({
+	onReadArticleIds: (ids) => {
+		readTodayQueue.applyReadArticleIds(ids);
+	},
+});
 
 export function recordSurfaceViewed(surface: ReadingSurface): void {
 	defaultInstrumentation.recordSurfaceViewed(surface);
+}
+
+export function recordArticleOpened(
+	articleId: string | null | undefined,
+	surface: ReadingSurface,
+	onReadArticleIds?: (articleIds: string[]) => void,
+): void {
+	defaultInstrumentation.recordArticleOpened(
+		articleId,
+		surface,
+		onReadArticleIds,
+	);
 }
 
 export function flushReadingEvents(options?: FlushOptions): Promise<void> {
@@ -337,6 +399,7 @@ interface ReadingSessionAttachmentConfig {
 	doc?: LifecycleDocumentTarget | null;
 	observerCtor?: typeof IntersectionObserver;
 	now?: () => number;
+	onReadArticleIds?: (articleIds: string[]) => void;
 }
 
 function attachReadingSession(
@@ -379,6 +442,7 @@ function attachReadingSession(
 			bodyLengthChars: measureDisplayedBodyChars(bodyElement),
 			visibility: doc,
 			now: config.now,
+			onReadArticleIds: config.onReadArticleIds,
 		});
 		if (!session) {
 			return;
@@ -448,6 +512,7 @@ export interface ElementReadingSessionAttachment {
 	doc?: LifecycleDocumentTarget | null;
 	observerCtor?: typeof IntersectionObserver;
 	now?: () => number;
+	onReadArticleIds?: (articleIds: string[]) => void;
 }
 
 export function attachElementReadingSession(
@@ -472,6 +537,7 @@ export function attachElementReadingSession(
 		doc: params.doc,
 		observerCtor: params.observerCtor,
 		now: params.now,
+		onReadArticleIds: params.onReadArticleIds,
 	});
 }
 
@@ -485,6 +551,7 @@ export interface WindowReadingSessionAttachment {
 	doc?: (LifecycleDocumentTarget & DocumentScrollMetrics) | null;
 	observerCtor?: typeof IntersectionObserver;
 	now?: () => number;
+	onReadArticleIds?: (articleIds: string[]) => void;
 }
 
 export function attachWindowReadingSession(
@@ -520,5 +587,6 @@ export function attachWindowReadingSession(
 		doc,
 		observerCtor: params.observerCtor,
 		now: params.now,
+		onReadArticleIds: params.onReadArticleIds,
 	});
 }

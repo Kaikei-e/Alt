@@ -113,6 +113,12 @@ function handleSelectFeed(feed: RenderFeed, index: number, _total: number) {
 		currentIndex: resolvedIndex >= 0 ? resolvedIndex : index,
 		onMarkAsRead: handleMarkAsReadInOverlay,
 		isMarkingAsRead: () => isMarkingAsRead || isProcessingMarkAsRead,
+		onArticleIdResolved: (url, articleId) => {
+			feedGridApi?.setFeedArticleId(url, articleId);
+		},
+		onArticlesRead: (articleIds) => {
+			feedGridApi?.markFeedReadByArticleIds(articleIds);
+		},
 	});
 }
 
@@ -215,6 +221,7 @@ function handleFeedGridReady(api: FeedGridApi) {
 	unreadOnly={filters.unreadOnly}
 	sortBy={filters.sortBy}
 	excludedFeedLinkIds={filters.excludedFeedLinkIds}
+	excludeQueued={true}
 	onReady={handleFeedGridReady}
 	gridClass={GALLERY_GRID_CLASS}
 	gridTestId="gallery-grid"

@@ -38,6 +38,7 @@ const reader = createArticleReader({
 	onArticleIdResolved: (articleId, url) => {
 		updateReaderOverlayArticleId(articleId, url);
 	},
+	getOnArticlesRead: () => session?.onArticlesRead,
 });
 
 // Reset overlay scroll position when navigating to another article.

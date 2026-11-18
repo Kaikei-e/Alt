@@ -6,6 +6,7 @@ export type { FeedGridApi, RemoveFeedResult } from "./feed-grid-types";
 	import type { Snippet } from "svelte";
 	import { getFeedsWithCursorClient, getAllFeedsWithCursorClient } from "#lib/api/client/feeds.js";
 	import { appendUniqueFeeds } from "#lib/domain/feed/dedupe.js";
+	import { readTodayQueue } from "#lib/reading/read-today-queue.svelte.js";
 	import type { RenderFeed } from "#lib/schema/feed.js";
 	import type { FeedGridApi, RemoveFeedResult } from "./feed-grid-types";
 	import DesktopFeedCard from "./DesktopFeedCard.svelte";
@@ -39,9 +40,10 @@ export type { FeedGridApi, RemoveFeedResult } from "./feed-grid-types";
 		 */
 		emptyContent?: Snippet;
 		loadingContent?: Snippet;
+		excludeQueued?: boolean;
 	}
 
-	let { onSelectFeed, unreadOnly = false, sortBy = "date_desc", excludedFeedLinkIds = [], onReady, fetchFn, cardRenderer, gridClass = "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-4", gridTestId, emptyText = "No dispatches on the wire", loadingText = "Retrieving dispatches", initialFeeds = [], emptyContent, loadingContent }: Props = $props();
+	let { onSelectFeed, unreadOnly = false, sortBy = "date_desc", excludedFeedLinkIds = [], onReady, fetchFn, cardRenderer, gridClass = "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-4", gridTestId, emptyText = "No dispatches on the wire", loadingText = "Retrieving dispatches", initialFeeds = [], emptyContent, loadingContent, excludeQueued = false }: Props = $props();
 
 	// Track initial load completion to only animate first batch
 	let initialLoadDone = $state(false);
@@ -95,12 +97,22 @@ export type { FeedGridApi, RemoveFeedResult } from "./feed-grid-types";
 		return sorted;
 	}
 
-	// Filter out removed feeds, then apply sort
+	// Filter out removed feeds (and queued items when requested), then apply sort
 	const visibleFeeds = $derived(
 		sortFeeds(
-			feeds.filter(feed => !removedUrls.has(feed.normalizedUrl)),
+			feeds.filter((feed) => {
+				if (removedUrls.has(feed.normalizedUrl)) return false;
+				if (
+					excludeQueued &&
+					(readTodayQueue.isQueued(feed.articleId) ||
+						readTodayQueue.isQueued(feed.normalizedUrl || feed.link))
+				) {
+					return false;
+				}
+				return true;
+			}),
 			sortBy,
-		)
+		),
 	);
 
 	/**
@@ -224,6 +236,45 @@ export type { FeedGridApi, RemoveFeedResult } from "./feed-grid-types";
 			});
 	}
 
+	function markFeedReadByArticleIds(articleIds: string[]): void {
+		if (articleIds.length === 0) return;
+		const idSet = new Set(articleIds);
+		if (unreadOnly) {
+			const nextRemoved = new Set(removedUrls);
+			let changed = false;
+			for (const feed of feeds) {
+				if (feed.articleId && idSet.has(feed.articleId)) {
+					nextRemoved.add(feed.normalizedUrl);
+					changed = true;
+				}
+			}
+			if (changed) {
+				removedUrls = nextRemoved;
+			}
+		} else {
+			let changed = false;
+			const updated = feeds.map((feed) => {
+				if (feed.articleId && idSet.has(feed.articleId) && !feed.isRead) {
+					changed = true;
+					return { ...feed, isRead: true };
+				}
+				return feed;
+			});
+			if (changed) {
+				feeds = updated;
+			}
+		}
+	}
+
+	function setFeedArticleId(url: string, articleId: string): void {
+		if (!articleId) return;
+		const index = feeds.findIndex(
+			(f) => f.normalizedUrl === url || f.link === url,
+		);
+		if (index === -1 || feeds[index]?.articleId === articleId) return;
+		feeds = feeds.map((f, i) => (i === index ? { ...f, articleId } : f));
+	}
+
 	/**
 	 * Refresh the feed list from scratch.
 	 * Used for Safari connection recovery after prolonged background.
@@ -256,6 +307,8 @@ export type { FeedGridApi, RemoveFeedResult } from "./feed-grid-types";
 			getVisibleFeeds: () => visibleFeeds,
 			getFeedByUrl,
 			fetchReplacementFeed,
+			markFeedReadByArticleIds,
+			setFeedArticleId,
 			refresh,
 		});
 	});
@@ -390,6 +443,9 @@ export type { FeedGridApi, RemoveFeedResult } from "./feed-grid-types";
 
 	// Initial data load
 	onMount(async () => {
+		if (excludeQueued) {
+			void readTodayQueue.refresh().catch(() => {});
+		}
 		try {
 			isLoading = true;
 			await loadFeeds();

@@ -1,5 +1,5 @@
 <script lang="ts">
-import { BookOpen, SquareArrowOutUpRight } from "@lucide/svelte";
+import { SquareArrowOutUpRight } from "@lucide/svelte";
 import { Spring } from "svelte/motion";
 import { type SwipeDirection, swipe } from "#lib/actions/swipe.js";
 import type { RenderFeed } from "#lib/schema/feed.js";
@@ -9,11 +9,14 @@ import { createProxyImage } from "#lib/utils/proxyImage.svelte.js";
 interface Props {
 	feed: RenderFeed;
 	statusMessage?: string | null;
-	onDismiss: (direction: number) => Promise<void> | void;
+	onDismiss: (
+		direction: number,
+	) => Promise<boolean | undefined> | boolean | undefined;
 	onOpenArticle?: () => void;
 	thumbnailProxyUrl: string | null;
 	isBusy?: boolean;
 	isLcp?: boolean;
+	canQueue?: boolean;
 }
 
 const {
@@ -23,6 +26,7 @@ const {
 	thumbnailProxyUrl,
 	isBusy = false,
 	isLcp = false,
+	canQueue = true,
 }: Props = $props();
 
 let thumbnailArea = $state<HTMLElement | null>(null);
@@ -35,10 +39,26 @@ const image = createProxyImage({
 
 const SWIPE_THRESHOLD = 60;
 const HORIZONTAL_DRAG_GUARD_PX = 10;
+const DRAG_LABEL_THRESHOLD_PX = 16;
 let x = new Spring(0, { stiffness: 0.18, damping: 0.85 });
 let hasSwiped = $state(false);
+let isDragging = $state(false);
+let dragDeltaX = $state(0);
 let movedHorizontally = false;
 let swipeElement: HTMLDivElement | null = $state(null);
+
+const dragDirection = $derived.by<"left" | "right" | null>(() => {
+	if (!isDragging || hasSwiped) return null;
+	if (dragDeltaX <= -DRAG_LABEL_THRESHOLD_PX) return "left";
+	if (dragDeltaX >= DRAG_LABEL_THRESHOLD_PX) return "right";
+	return null;
+});
+
+const dragLabel = $derived.by(() => {
+	if (dragDirection === "left") return "Pass";
+	if (dragDirection === "right") return "Read today";
+	return null;
+});
 
 const cardStyle = $derived.by(() => {
 	const translate = x.current;
@@ -72,7 +92,7 @@ $effect(() => {
 
 	const swipeHandler = (event: Event) => {
 		if (hasSwiped) return;
-		handleSwipe(event as CustomEvent<{ direction: SwipeDirection }>);
+		void handleSwipe(event as CustomEvent<{ direction: SwipeDirection }>);
 	};
 
 	const swipeMoveHandler = (event: Event) => {
@@ -86,11 +106,15 @@ $effect(() => {
 			if (Math.abs(deltaX) > HORIZONTAL_DRAG_GUARD_PX) {
 				movedHorizontally = true;
 			}
+			isDragging = true;
+			dragDeltaX = deltaX;
 			x.set(deltaX, { instant: true });
 		}
 	};
 
 	const swipeEndHandler = (_event: Event) => {
+		isDragging = false;
+		dragDeltaX = 0;
 		x.target = 0;
 		setTimeout(() => {
 			movedHorizontally = false;
@@ -112,16 +136,30 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
 	const dir = event.detail.direction;
 	if (dir !== "left" && dir !== "right") return;
 
+	const dirNum = dir === "left" ? -1 : 1;
+	isDragging = false;
+	dragDeltaX = 0;
+
+	if (dirNum === 1 && !canQueue) {
+		await x.set(0);
+		await onDismiss(1);
+		return;
+	}
+
 	hasSwiped = true;
 
 	const width = swipeElement?.clientWidth ?? window.innerWidth;
 	const target = dir === "left" ? -width : width;
 
 	await x.set(target, { preserveMomentum: 120 });
-	await onDismiss(dir === "left" ? -1 : 1);
+	const accepted = await onDismiss(dirNum);
 
 	hasSwiped = false;
-	await x.set(0, { instant: true });
+	if (accepted === false) {
+		await x.set(0);
+	} else {
+		await x.set(0, { instant: true });
+	}
 }
 
 function handleCardClick(event: MouseEvent) {
@@ -143,6 +181,17 @@ function handleCardClick(event: MouseEvent) {
   style="{cardStyle}; touch-action: none;"
 >
   <div class="card-inner">
+    {#if dragLabel}
+      <div
+        class="drag-label"
+        class:drag-label--pass={dragDirection === "left"}
+        class:drag-label--queue={dragDirection === "right"}
+        data-testid="swipe-direction-label"
+      >
+        {dragLabel}
+      </div>
+    {/if}
+
     <div class="thumbnail-area" bind:this={thumbnailArea}>
       {#if image.state === "absent"}
         <div class="thumbnail-fallback" data-testid="thumbnail-fallback">
@@ -166,7 +215,6 @@ function handleCardClick(event: MouseEvent) {
 
     <div class="content-area">
       <div class="card-header-compact">
-        <p class="card-label">Swipe to mark as read</p>
         <div class="flex items-center gap-2">
           <a
             href={feed.link}
@@ -205,19 +253,6 @@ function handleCardClick(event: MouseEvent) {
         {/if}
       </div>
     </div>
-
-    <footer class="card-footer" data-testid="action-footer">
-      <div class="flex gap-3 w-full">
-        <button
-          type="button"
-          onclick={() => onOpenArticle?.()}
-          class="action-btn"
-        >
-          <BookOpen size={14} />
-          Article
-        </button>
-      </div>
-    </footer>
   </div>
 </div>
 
@@ -235,15 +270,42 @@ function handleCardClick(event: MouseEvent) {
   }
 
   .card-inner {
+    position: relative;
     display: flex;
     flex-direction: column;
     height: 100%;
   }
 
+  .drag-label {
+    position: absolute;
+    top: 0.75rem;
+    z-index: 4;
+    padding: 0.25rem 0.65rem;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    background: var(--surface-bg);
+    border: 1.5px solid var(--alt-charcoal);
+    pointer-events: none;
+  }
+
+  .drag-label--pass {
+    right: 0.75rem;
+    color: var(--alt-charcoal);
+    border-color: var(--alt-charcoal);
+  }
+
+  .drag-label--queue {
+    left: 0.75rem;
+    color: var(--alt-primary);
+    border-color: var(--alt-primary);
+  }
+
   .thumbnail-area {
     position: relative;
     width: 100%;
-    height: 35%;
+    height: 38%;
     min-height: 150px;
     overflow: hidden;
   }
@@ -299,7 +361,7 @@ function handleCardClick(event: MouseEvent) {
     flex-direction: column;
     flex: 1;
     min-height: 0;
-    padding: 0 0.75rem;
+    padding: 0 0.75rem 0.75rem;
     margin-top: -1rem;
     position: relative;
     z-index: 1;
@@ -307,16 +369,6 @@ function handleCardClick(event: MouseEvent) {
 
   .card-header-compact {
     margin-bottom: 0.5rem;
-  }
-
-  .card-label {
-    font-family: var(--font-body);
-    font-size: 0.65rem;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--alt-ash);
-    margin: 0 0 0.35rem;
   }
 
   .card-title-link {
@@ -397,43 +449,10 @@ function handleCardClick(event: MouseEvent) {
 
   .summary-prose--clamp {
     display: -webkit-box;
-    -webkit-line-clamp: 3;
-    line-clamp: 3;
+    -webkit-line-clamp: 4;
+    line-clamp: 4;
     -webkit-box-orient: vertical;
     overflow: hidden;
-  }
-
-  .card-footer {
-    position: relative;
-    z-index: 2;
-    border-top: 1px solid var(--surface-border);
-    padding: 0.75rem;
-    padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
-  }
-
-  .action-btn {
-    font-family: var(--font-body);
-    font-size: 0.75rem;
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: var(--alt-charcoal);
-    background: transparent;
-    border: 1.5px solid var(--alt-charcoal);
-    padding: 0.5rem 0.75rem;
-    min-height: 48px;
-    flex: 1;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.35rem;
-    cursor: pointer;
-    transition: background 0.15s, color 0.15s;
-  }
-
-  .action-btn:active:not(:disabled) {
-    background: var(--alt-charcoal);
-    color: var(--surface-bg);
   }
 
   @keyframes shimmer-pulse {
