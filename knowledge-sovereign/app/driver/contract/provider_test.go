@@ -140,6 +140,9 @@ func TestVerifyAltBackendConsumerContract(t *testing.T) {
 			"a user has reading sources recorded since midnight": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
 				return nil, nil
 			},
+			"a user has reading sources recorded within a 30-day window": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
+				return nil, nil
+			},
 			// Scoped to the one interaction that asked for it: pact-go calls
 			// this handler again with setup=false on teardown, so the fixture
 			// is accepting again before the next interaction is set up. The

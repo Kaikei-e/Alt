@@ -319,8 +319,8 @@ func TestAltDBRepository_FetchUnreadFeedsListCursor_ArticleHeadFallbackAndRetent
 	mock.ExpectQuery(`(?s)7 days.*article_heads`).
 		WithArgs(limit, userID).
 		WillReturnRows(pgxmock.NewRows([]string{
-			"id", "title", "description", "website_url", "pub_date", "created_at", "updated_at", "article_id", "og_image_url",
-		}).AddRow(feedID, "Title", "Desc", "https://example.com/feed", now, now, now, nil, &ogURL))
+			"id", "title", "description", "website_url", "pub_date", "created_at", "updated_at", "article_id", "og_image_url", "feed_link_id", "daily_cap", "daily_rank",
+		}).AddRow(feedID, "Title", "Desc", "https://example.com/feed", now, now, now, nil, &ogURL, (*string)(nil), (*int)(nil), (*int)(nil)))
 
 	feeds, err := repo.FetchUnreadFeedsListCursor(ctx, nil, limit, nil)
 	require.NoError(t, err)
@@ -348,10 +348,10 @@ func TestAltDBRepository_FetchFeedsCursorForUser_ScopesArticleIDByUser(t *testin
 		mock.ExpectQuery(`SELECT a\.id FROM articles a WHERE a\.feed_id = f\.id AND a\.user_id = \$2 AND a\.deleted_at IS NULL ORDER BY a\.created_at DESC LIMIT 1`).
 			WithArgs(limit, userB).
 			WillReturnRows(pgxmock.NewRows([]string{
-				"id", "title", "description", "website_url", "pub_date", "created_at", "updated_at", "article_id", "og_image_url",
-			}).AddRow(feedID, "Feed", "Desc", "https://example.com/post", now, now, now, (*string)(nil), (*string)(nil)))
+				"id", "title", "description", "website_url", "pub_date", "created_at", "updated_at", "article_id", "og_image_url", "feed_link_id", "daily_cap", "daily_rank",
+			}).AddRow(feedID, "Feed", "Desc", "https://example.com/post", now, now, now, (*string)(nil), (*string)(nil), (*string)(nil), (*int)(nil), (*int)(nil)))
 
-		feeds, err := repo.FetchUnreadFeedsListCursorForUser(context.Background(), userB, nil, limit, nil)
+		feeds, err := repo.FetchUnreadFeedsListCursorForUser(context.Background(), userB, nil, nil, limit, nil)
 		require.NoError(t, err)
 		require.Len(t, feeds, 1)
 		require.Nil(t, feeds[0].ArticleID)

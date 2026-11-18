@@ -47,6 +47,10 @@ func (s *feedListStoreStub) FetchUnreadFeedsListCursor(context.Context, *time.Ti
 	return s.feeds, s.err
 }
 
+func (s *feedListStoreStub) FetchUnreadFeedsListCursorWithID(context.Context, *time.Time, *uuid.UUID, int, []uuid.UUID) ([]*models.Feed, error) {
+	return s.feeds, s.err
+}
+
 func (s *feedListStoreStub) FetchReadFeedsListCursor(context.Context, *time.Time, int) ([]*models.Feed, error) {
 	return s.feeds, s.err
 }

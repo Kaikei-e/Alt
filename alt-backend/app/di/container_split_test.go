@@ -76,6 +76,7 @@ func TestComponentStructs_OmitWhatTheirBinaryDoesNotBuild(t *testing.T) {
 				"CreateSummaryVersionUsecase", "ImageProxyUsecase", "CSRFTokenUsecase",
 				"RecordReadingEventsUsecase",
 				"QueueArticleUsecase", "UnqueueArticleUsecase", "GetReadTodayQueueUsecase",
+				"SetSubscriptionDailyCapUsecase", "FeedInflowStatsUsecase",
 			},
 		},
 		{
@@ -94,6 +95,7 @@ func TestComponentStructs_OmitWhatTheirBinaryDoesNotBuild(t *testing.T) {
 				// achieved — a job that reaches for a pool must not compile.
 				"AltDBRepository",
 				"RecordReadingEventsUsecase",
+				"SetSubscriptionDailyCapUsecase", "FeedInflowStatsUsecase",
 			},
 			present: []string{
 				"ScrapingDomainUsecase", "RagIntegration",
@@ -110,6 +112,7 @@ func TestComponentStructs_OmitWhatTheirBinaryDoesNotBuild(t *testing.T) {
 				"KratosClient", "CSRFTokenUsecase", "AdminMonitor",
 				"ArticleCatalogGateway", "FeedCatalogGateway", "TagCatalogGateway",
 				"RecordReadingEventsUsecase",
+				"SetSubscriptionDailyCapUsecase", "FeedInflowStatsUsecase",
 			},
 			present: []string{
 				"Dispatch",
