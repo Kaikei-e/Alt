@@ -795,3 +795,154 @@ func TestNewPolicyAuthInterceptor_PanicsWhenUserTokenRequiredWithoutVerifier(t *
 		NewPolicyAuthInterceptor(polWithoutUserToken, nil, true)
 	})
 }
+
+func TestPolicyAuth_ReadingThemesAndRecapSourcesAccess(t *testing.T) {
+	const (
+		backendToken = "backend-secret-token-long-enough-1234"
+		recapToken   = "recap-secret-token-long-enough-5678"
+		jwtIssuer    = "auth-hub"
+		jwtAudience  = "alt-backend"
+	)
+	pubKey, jwtSigningKey, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+
+	pol := &config.AuthPolicy{
+		Services: []config.ServicePolicy{
+			{
+				Name:  "alt-backend",
+				Token: backendToken,
+				AllowedMethods: map[string]bool{
+					"/services.sovereign.v1.KnowledgeSovereignService/ListReadingThemes":          true,
+					"/services.sovereign.v1.KnowledgeSovereignService/ListReadingSourcesInWindow": true,
+					"/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent":       true,
+				},
+				AllowedEvents: map[string]bool{
+					"reading.theme_opened.v1": true,
+				},
+				RequireUserToken: true,
+				AllowSystemScope: false,
+			},
+			{
+				Name:  "recap-worker",
+				Token: recapToken,
+				AllowedMethods: map[string]bool{
+					"/services.sovereign.v1.KnowledgeSovereignService/ListReadingSourcesInWindow": true,
+					"/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent":       true,
+				},
+				AllowedEvents: map[string]bool{
+					"reading.theme_version_created.v1": true,
+				},
+				RequireUserToken: false,
+				AllowSystemScope: false,
+			},
+		},
+	}
+
+	verifier := &config.LocalUserJWTVerifier{
+		PublicKey: pubKey,
+		Issuer:    jwtIssuer,
+		Audience:  jwtAudience,
+	}
+
+	client, cleanup := setupPolicyTestServer(t, pol, verifier)
+	defer cleanup()
+
+	targetUserID := uuid.New().String()
+	otherUserID := uuid.New().String()
+	targetTenantID := uuid.New().String()
+	now := time.Date(2026, 11, 18, 9, 0, 0, 0, time.UTC)
+
+	t.Run("alt-backend ListReadingThemes requires matching user JWT", func(t *testing.T) {
+		noJWT := connect.NewRequest(&sovereignv1.ListReadingThemesRequest{UserId: targetUserID})
+		noJWT.Header().Set("Authorization", "Bearer "+backendToken)
+		_, err := client.ListReadingThemes(context.Background(), noJWT)
+		require.Error(t, err)
+		assert.Equal(t, connect.CodeUnauthenticated, connect.CodeOf(err))
+
+		wrongUserJWT := createTestBackendToken(t, jwtSigningKey, otherUserID, targetTenantID, jwtIssuer, jwtAudience, time.Hour)
+		wrongReq := connect.NewRequest(&sovereignv1.ListReadingThemesRequest{UserId: targetUserID})
+		wrongReq.Header().Set("Authorization", "Bearer "+backendToken)
+		wrongReq.Header().Set("X-Alt-Backend-Token", wrongUserJWT)
+		_, err = client.ListReadingThemes(context.Background(), wrongReq)
+		require.Error(t, err)
+		assert.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
+
+		validJWT := createTestBackendToken(t, jwtSigningKey, targetUserID, targetTenantID, jwtIssuer, jwtAudience, time.Hour)
+		okReq := connect.NewRequest(&sovereignv1.ListReadingThemesRequest{UserId: targetUserID, Limit: 10})
+		okReq.Header().Set("Authorization", "Bearer "+backendToken)
+		okReq.Header().Set("X-Alt-Backend-Token", validJWT)
+		_, err = client.ListReadingThemes(context.Background(), okReq)
+		require.NoError(t, err)
+	})
+
+	t.Run("alt-backend may append reading.theme_opened.v1 with user JWT", func(t *testing.T) {
+		validJWT := createTestBackendToken(t, jwtSigningKey, targetUserID, targetTenantID, jwtIssuer, jwtAudience, time.Hour)
+		req := connect.NewRequest(&sovereignv1.AppendKnowledgeEventRequest{
+			Event: &sovereignv1.KnowledgeEvent{
+				EventId:    uuid.New().String(),
+				TenantId:   targetTenantID,
+				UserId:     targetUserID,
+				EventType:  "reading.theme_opened.v1",
+				DedupeKey:  "reading.theme_opened.v1:" + uuid.NewString(),
+				Payload:    []byte(`{"theme_id":"` + uuid.NewString() + `","version":1,"opened_at":"2026-11-18T09:00:00Z"}`),
+				OccurredAt: timestamppb.New(now),
+			},
+		})
+		req.Header().Set("Authorization", "Bearer "+backendToken)
+		req.Header().Set("X-Alt-Backend-Token", validJWT)
+		resp, err := client.AppendKnowledgeEvent(context.Background(), req)
+		require.NoError(t, err)
+		assert.Equal(t, int64(100), resp.Msg.EventSeq)
+	})
+
+	t.Run("recap-worker may call ListReadingSourcesInWindow and append reading.theme_version_created.v1 without user JWT", func(t *testing.T) {
+		sourcesReq := connect.NewRequest(&sovereignv1.ListReadingSourcesInWindowRequest{
+			UserId: targetUserID,
+			From:   timestamppb.New(now.Add(-24 * time.Hour)),
+			To:     timestamppb.New(now),
+		})
+		sourcesReq.Header().Set("Authorization", "Bearer "+recapToken)
+		_, err := client.ListReadingSourcesInWindow(context.Background(), sourcesReq)
+		require.NoError(t, err)
+
+		appendReq := connect.NewRequest(&sovereignv1.AppendKnowledgeEventRequest{
+			Event: &sovereignv1.KnowledgeEvent{
+				EventId:    uuid.New().String(),
+				TenantId:   targetTenantID,
+				UserId:     targetUserID,
+				EventType:  "reading.theme_version_created.v1",
+				DedupeKey:  "reading.theme_version_created.v1:" + uuid.NewString(),
+				Payload:    []byte(`{"theme_id":"` + uuid.NewString() + `","version":1,"title":"T","member_article_ids":[],"article_count":0,"created_at":"2026-11-18T09:00:00Z"}`),
+				OccurredAt: timestamppb.New(now),
+			},
+		})
+		appendReq.Header().Set("Authorization", "Bearer "+recapToken)
+		resp, err := client.AppendKnowledgeEvent(context.Background(), appendReq)
+		require.NoError(t, err)
+		assert.Equal(t, int64(100), resp.Msg.EventSeq)
+	})
+
+	t.Run("recap-worker cannot call ListReadingThemes or append reading.theme_opened.v1", func(t *testing.T) {
+		themesReq := connect.NewRequest(&sovereignv1.ListReadingThemesRequest{UserId: targetUserID})
+		themesReq.Header().Set("Authorization", "Bearer "+recapToken)
+		_, err := client.ListReadingThemes(context.Background(), themesReq)
+		require.Error(t, err)
+		assert.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
+
+		openedReq := connect.NewRequest(&sovereignv1.AppendKnowledgeEventRequest{
+			Event: &sovereignv1.KnowledgeEvent{
+				EventId:    uuid.New().String(),
+				TenantId:   targetTenantID,
+				UserId:     targetUserID,
+				EventType:  "reading.theme_opened.v1",
+				DedupeKey:  "reading.theme_opened.v1:" + uuid.NewString(),
+				Payload:    []byte(`{}`),
+				OccurredAt: timestamppb.New(now),
+			},
+		})
+		openedReq.Header().Set("Authorization", "Bearer "+recapToken)
+		_, err = client.AppendKnowledgeEvent(context.Background(), openedReq)
+		require.Error(t, err)
+		assert.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
+	})
+}

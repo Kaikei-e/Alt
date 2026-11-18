@@ -464,6 +464,7 @@ func TestRequirePeerProcedure_ExactPeerAllowlist(t *testing.T) {
 		},
 		"recap-worker": {
 			allowed: []string{
+				"BatchGetArticlesByIDs",
 				"BatchGetTagsByArticleIDs",
 				"EnqueueNotification",
 				"GetAllReadFeedIDs",

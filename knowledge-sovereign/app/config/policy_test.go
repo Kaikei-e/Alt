@@ -215,7 +215,14 @@ func TestLoadPolicy_ExampleFixtureValid(t *testing.T) {
 	recapSvc := pol.FindServiceByName("recap-worker")
 	require.NotNil(t, recapSvc)
 	assert.True(t, recapSvc.AllowedEvents["recap.topic_snapshotted.v1"])
+	assert.True(t, recapSvc.AllowedEvents["reading.theme_version_created.v1"])
 	assert.False(t, recapSvc.AllowedEvents["recap.evening_pulse_generated.v1"])
+	assert.True(t, recapSvc.AllowedMethods["/services.sovereign.v1.KnowledgeSovereignService/ListReadingSourcesInWindow"])
+
+	backendSvc := pol.FindServiceByName("alt-backend")
+	require.NotNil(t, backendSvc)
+	assert.True(t, backendSvc.AllowedEvents["reading.theme_opened.v1"])
+	assert.True(t, backendSvc.AllowedMethods["/services.sovereign.v1.KnowledgeSovereignService/ListReadingThemes"])
 }
 
 // alt-data-hub's article ingestion appends ArticleCreated and refuses to
@@ -275,44 +282,67 @@ func TestProductionPolicy_AltBackendMayAppendReadingEvents(t *testing.T) {
 	var pol AuthPolicy
 	require.NoError(t, json.Unmarshal(data, &pol))
 
-	readingEvents := []string{
+	backendReadingEvents := []string{
 		"reading.surface_viewed.v1",
 		"reading.reached_end.v1",
 		"reading.session_ended.v1",
 		"reading.opened.v1",
 		"reading.queued.v1",
 		"reading.unqueued.v1",
+		"reading.theme_opened.v1",
 	}
-	readingMethods := []string{
+	backendOnlyReadingMethods := []string{
 		"/services.sovereign.v1.KnowledgeSovereignService/GetReadingQueue",
 		"/services.sovereign.v1.KnowledgeSovereignService/CountReadingSourcesSince",
-		"/services.sovereign.v1.KnowledgeSovereignService/ListReadingSourcesInWindow",
+		"/services.sovereign.v1.KnowledgeSovereignService/ListReadingThemes",
 	}
+	const listReadingSourcesMethod = "/services.sovereign.v1.KnowledgeSovereignService/ListReadingSourcesInWindow"
+	const themeVersionCreatedEvent = "reading.theme_version_created.v1"
 
-	var backendFound bool
+	var backendFound, recapFound bool
+	var listReadingSourcesCallers []string
+	var themeVersionCreators []string
 	for _, svc := range pol.Services {
+		for _, m := range svc.RawAllowedMethods {
+			if m == listReadingSourcesMethod {
+				listReadingSourcesCallers = append(listReadingSourcesCallers, svc.Name)
+			}
+		}
+		for _, ev := range svc.RawAllowedEvents {
+			if ev == themeVersionCreatedEvent {
+				themeVersionCreators = append(themeVersionCreators, svc.Name)
+			}
+		}
 		if svc.Name == "alt-backend" {
 			backendFound = true
 			assert.True(t, svc.RequireUserToken, "alt-backend must require a user token")
 			assert.False(t, svc.AllowSystemScope, "alt-backend must not allow system scope")
-			for _, ev := range readingEvents {
+			for _, ev := range backendReadingEvents {
 				assert.Contains(t, svc.RawAllowedEvents, ev)
 			}
-			for _, m := range readingMethods {
+			for _, m := range backendOnlyReadingMethods {
 				assert.Contains(t, svc.RawAllowedMethods, m)
 			}
 		} else {
-			for _, ev := range readingEvents {
+			for _, ev := range backendReadingEvents {
 				assert.NotContains(t, svc.RawAllowedEvents, ev,
 					"service %s must not be allowed to append %s", svc.Name, ev)
 			}
-			for _, m := range readingMethods {
+			for _, m := range backendOnlyReadingMethods {
 				assert.NotContains(t, svc.RawAllowedMethods, m,
 					"service %s must not be allowed to call %s", svc.Name, m)
 			}
 		}
+		if svc.Name == "recap-worker" {
+			recapFound = true
+			assert.False(t, svc.RequireUserToken, "recap-worker must not require a user token")
+			assert.False(t, svc.AllowSystemScope, "recap-worker must not allow system scope")
+		}
 	}
 	require.True(t, backendFound, "alt-backend service entry must exist in production policy")
+	require.True(t, recapFound, "recap-worker service entry must exist in production policy")
+	assert.ElementsMatch(t, []string{"alt-backend", "recap-worker"}, listReadingSourcesCallers)
+	assert.ElementsMatch(t, []string{"recap-worker"}, themeVersionCreators)
 }
 
 func replaceSecretPath(content, oldPath, newPath string) string {

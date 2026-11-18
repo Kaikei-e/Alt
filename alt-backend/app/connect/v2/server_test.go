@@ -22,6 +22,7 @@ import (
 	"alt/gen/proto/services/datahub/v1/datahubv1connect"
 	"alt/orchestrator/usecase/feed_inflow_stats_usecase"
 	"alt/orchestrator/usecase/reading_queue_usecase"
+	"alt/orchestrator/usecase/reading_theme_usecase"
 	"alt/orchestrator/usecase/record_reading_events_usecase"
 	"alt/orchestrator/usecase/resolve_article_usecase"
 	"alt/orchestrator/usecase/search_feed_usecase"
@@ -73,6 +74,9 @@ var publicServicePaths = []string{
 	"/alt.reading.v1.ReadingService/QueueArticle",
 	"/alt.reading.v1.ReadingService/UnqueueArticle",
 	"/alt.reading.v1.ReadingService/GetReadTodayQueue",
+	"/alt.reading.v1.ReadingService/ListThemes",
+	"/alt.reading.v1.ReadingService/GetTheme",
+	"/alt.reading.v1.ReadingService/RecordThemeOpened",
 	"/alt.search.v2.GlobalSearchService/SearchEverything",
 }
 
@@ -109,6 +113,12 @@ func (fakeReadingTestPorts) FetchArticlesByIDs(context.Context, []uuid.UUID) ([]
 	return nil, nil
 }
 func (fakeReadingTestPorts) GetOgImageURLsByArticleIDs(context.Context, []string) (map[string]string, error) {
+	return nil, nil
+}
+func (fakeReadingTestPorts) ListReadingThemes(context.Context, uuid.UUID, int32) ([]domain.ReadingThemeSummary, error) {
+	return nil, nil
+}
+func (fakeReadingTestPorts) GetTheme(context.Context, uuid.UUID, uuid.UUID, *int32) (*domain.ReadingThemePage, error) {
 	return nil, nil
 }
 
@@ -161,6 +171,9 @@ func testDeps() (*di.ApplicationComponents, *config.Config, *slog.Logger) {
 	queueUsecase := reading_queue_usecase.NewQueueArticleUsecase(readingPorts, readingPorts, readingPorts, readingPorts, readingPorts, 7, 48, fixedNow)
 	unqueueUsecase := reading_queue_usecase.NewUnqueueArticleUsecase(readingPorts, fixedNow)
 	getQueueUsecase := reading_queue_usecase.NewGetReadTodayQueueUsecase(readingPorts, readingPorts, readingPorts, readingPorts, 7, fixedNow)
+	listThemesUsecase := reading_theme_usecase.NewListThemesUsecase(readingPorts)
+	getThemeUsecase := reading_theme_usecase.NewGetThemeUsecase(readingPorts)
+	recordThemeOpenedUsecase := reading_theme_usecase.NewRecordThemeOpenedUsecase(readingPorts, fixedNow)
 	setCapUsecase := subscription_usecase.NewSetSubscriptionDailyCapUsecase(fakeSubscriptionTestPort{})
 	inflowUsecase := feed_inflow_stats_usecase.NewFeedInflowStatsUsecase(fakeFeedInflowTestPorts{}, fakeFeedInflowTestPorts{})
 
@@ -171,6 +184,9 @@ func testDeps() (*di.ApplicationComponents, *config.Config, *slog.Logger) {
 			QueueArticleUsecase:            queueUsecase,
 			UnqueueArticleUsecase:          unqueueUsecase,
 			GetReadTodayQueueUsecase:       getQueueUsecase,
+			ListThemesUsecase:              listThemesUsecase,
+			GetThemeUsecase:                getThemeUsecase,
+			RecordThemeOpenedUsecase:       recordThemeOpenedUsecase,
 			SetSubscriptionDailyCapUsecase: setCapUsecase,
 			FeedInflowStatsUsecase:         inflowUsecase,
 			Search:                         &di.SearchModule{},

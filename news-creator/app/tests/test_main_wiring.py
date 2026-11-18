@@ -49,6 +49,13 @@ class _DummyRecapCardUsecase:
         self.cache = cache
 
 
+class _DummyThemePageUsecase:
+    def __init__(self, config, llm_provider, cache=None):
+        self.config = config
+        self.llm_provider = llm_provider
+        self.cache = cache
+
+
 class _DummyExpandUsecase:
     def __init__(self, config, llm_provider):
         self.config = config
@@ -231,6 +238,7 @@ def test_dependency_container_routes_only_summarize_usecase_through_distributing
     monkeypatch.setattr(main_module, "SummarizeUsecase", _DummySummarizeUsecase)
     monkeypatch.setattr(main_module, "RecapSummaryUsecase", _DummyRecapUsecase)
     monkeypatch.setattr(main_module, "RecapCardUsecase", _DummyRecapCardUsecase)
+    monkeypatch.setattr(main_module, "ThemePageUsecase", _DummyThemePageUsecase)
     monkeypatch.setattr(main_module, "ExpandQueryUsecase", _DummyExpandUsecase)
     monkeypatch.setattr(main_module, "PlanQueryUsecase", _DummyPlanQueryUsecase)
     monkeypatch.setattr(main_module, "MorningLetterUsecase", _DummyMorningLetterUsecase)
@@ -268,6 +276,7 @@ def test_dependency_container_routes_only_summarize_usecase_through_distributing
     # All other LLM usecases must receive self.ollama_gateway directly
     assert container.recap_summary_usecase.llm_provider is container.ollama_gateway
     assert container.recap_card_usecase.llm_provider is container.ollama_gateway
+    assert container.theme_page_usecase.llm_provider is container.ollama_gateway
     assert container.expand_query_usecase.llm_provider is container.ollama_gateway
     assert container.plan_query_usecase.llm_provider is container.ollama_gateway
     assert container.morning_letter_usecase.llm_provider is container.ollama_gateway
@@ -302,6 +311,7 @@ def test_dependency_container_logs_distributed_be_disabled_when_off(
     assert container.summarize_usecase.llm_provider is container.ollama_gateway
     assert container.recap_summary_usecase.llm_provider is container.ollama_gateway
     assert container.recap_card_usecase.llm_provider is container.ollama_gateway
+    assert container.theme_page_usecase.llm_provider is container.ollama_gateway
     assert container.expand_query_usecase.llm_provider is container.ollama_gateway
     assert container.plan_query_usecase.llm_provider is container.ollama_gateway
     assert container.morning_letter_usecase.llm_provider is container.ollama_gateway
@@ -479,6 +489,7 @@ def test_dependency_container_wires_real_cache_when_cache_enabled_true(
     assert isinstance(container.cache_gateway, RedisCacheGateway)
     assert container.recap_summary_usecase.cache is container.cache_gateway
     assert container.recap_card_usecase.cache is container.cache_gateway
+    assert container.theme_page_usecase.cache is container.cache_gateway
     assert not any("cache_enabled" in record.message for record in caplog.records)
 
 
@@ -495,6 +506,7 @@ def test_dependency_container_wires_null_cache_when_cache_enabled_false(
     assert isinstance(container.cache_gateway, NullCacheGateway)
     assert container.recap_summary_usecase.cache is container.cache_gateway
     assert container.recap_card_usecase.cache is container.cache_gateway
+    assert container.theme_page_usecase.cache is container.cache_gateway
     assert any("cache_disabled" in record.message for record in caplog.records)
 
 

@@ -16,6 +16,7 @@ import (
 	"alt/domain"
 	readingv1 "alt/gen/proto/alt/reading/v1"
 	"alt/orchestrator/usecase/reading_queue_usecase"
+	"alt/orchestrator/usecase/reading_theme_usecase"
 	"alt/orchestrator/usecase/record_reading_events_usecase"
 )
 
@@ -123,7 +124,10 @@ func newTestHandler(port *fakeAppendPort, qp *fakeQueuePort, cp *fakeCountPort, 
 	qUC := reading_queue_usecase.NewQueueArticleUsecase(qp, port, lookup, ab, &fakeOgImagePort{}, 7, 48, fixedClock())
 	uqUC := reading_queue_usecase.NewUnqueueArticleUsecase(port, fixedClock())
 	gUC := reading_queue_usecase.NewGetReadTodayQueueUsecase(qp, cp, ab, &fakeOgImagePort{}, 7, fixedClock())
-	return NewHandler(recUC, qUC, uqUC, gUC, nil, nil)
+	ltUC := reading_theme_usecase.NewListThemesUsecase(&fakeListThemesPort{})
+	gtUC := reading_theme_usecase.NewGetThemeUsecase(&fakeGetThemePort{})
+	rtoUC := reading_theme_usecase.NewRecordThemeOpenedUsecase(port, fixedClock())
+	return NewHandler(recUC, qUC, uqUC, gUC, ltUC, gtUC, rtoUC, nil, nil)
 }
 
 func TestNewHandler_NilUsecasePanics(t *testing.T) {
@@ -133,11 +137,17 @@ func TestNewHandler_NilUsecasePanics(t *testing.T) {
 	qUC := reading_queue_usecase.NewQueueArticleUsecase(&fakeQueuePort{}, port, lookup, &fakeArticleBatchPort{}, &fakeOgImagePort{}, 7, 48, fixedClock())
 	uqUC := reading_queue_usecase.NewUnqueueArticleUsecase(port, fixedClock())
 	gUC := reading_queue_usecase.NewGetReadTodayQueueUsecase(&fakeQueuePort{}, &fakeCountPort{}, &fakeArticleBatchPort{}, &fakeOgImagePort{}, 7, fixedClock())
+	ltUC := reading_theme_usecase.NewListThemesUsecase(&fakeListThemesPort{})
+	gtUC := reading_theme_usecase.NewGetThemeUsecase(&fakeGetThemePort{})
+	rtoUC := reading_theme_usecase.NewRecordThemeOpenedUsecase(port, fixedClock())
 
-	require.Panics(t, func() { NewHandler(nil, qUC, uqUC, gUC, nil, nil) })
-	require.Panics(t, func() { NewHandler(recUC, nil, uqUC, gUC, nil, nil) })
-	require.Panics(t, func() { NewHandler(recUC, qUC, nil, gUC, nil, nil) })
-	require.Panics(t, func() { NewHandler(recUC, qUC, uqUC, nil, nil, nil) })
+	require.Panics(t, func() { NewHandler(nil, qUC, uqUC, gUC, ltUC, gtUC, rtoUC, nil, nil) })
+	require.Panics(t, func() { NewHandler(recUC, nil, uqUC, gUC, ltUC, gtUC, rtoUC, nil, nil) })
+	require.Panics(t, func() { NewHandler(recUC, qUC, nil, gUC, ltUC, gtUC, rtoUC, nil, nil) })
+	require.Panics(t, func() { NewHandler(recUC, qUC, uqUC, nil, ltUC, gtUC, rtoUC, nil, nil) })
+	require.Panics(t, func() { NewHandler(recUC, qUC, uqUC, gUC, nil, gtUC, rtoUC, nil, nil) })
+	require.Panics(t, func() { NewHandler(recUC, qUC, uqUC, gUC, ltUC, nil, rtoUC, nil, nil) })
+	require.Panics(t, func() { NewHandler(recUC, qUC, uqUC, gUC, ltUC, gtUC, nil, nil, nil) })
 }
 
 func TestRecordReadingEvents_Unauthenticated(t *testing.T) {
@@ -422,7 +432,10 @@ func TestRecordReadingEvents_TransientReadSyncErrorMapsToUnavailable(t *testing.
 		qUC := reading_queue_usecase.NewQueueArticleUsecase(&fakeQueuePort{}, port, &fakeLookupPort{}, &fakeArticleBatchPort{}, &fakeOgImagePort{}, 7, 48, fixedClock())
 		uqUC := reading_queue_usecase.NewUnqueueArticleUsecase(port, fixedClock())
 		gUC := reading_queue_usecase.NewGetReadTodayQueueUsecase(&fakeQueuePort{}, &fakeCountPort{}, &fakeArticleBatchPort{}, &fakeOgImagePort{}, 7, fixedClock())
-		h := NewHandler(recUC, qUC, uqUC, gUC, nil, nil)
+		ltUC := reading_theme_usecase.NewListThemesUsecase(&fakeListThemesPort{})
+		gtUC := reading_theme_usecase.NewGetThemeUsecase(&fakeGetThemePort{})
+		rtoUC := reading_theme_usecase.NewRecordThemeOpenedUsecase(port, fixedClock())
+		h := NewHandler(recUC, qUC, uqUC, gUC, ltUC, gtUC, rtoUC, nil, nil)
 
 		_, err := h.RecordReadingEvents(authenticatedContext(t), makeReq())
 		require.Error(t, err)
@@ -441,7 +454,10 @@ func TestRecordReadingEvents_TransientReadSyncErrorMapsToUnavailable(t *testing.
 		qUC := reading_queue_usecase.NewQueueArticleUsecase(&fakeQueuePort{}, port, &fakeLookupPort{}, &fakeArticleBatchPort{}, &fakeOgImagePort{}, 7, 48, fixedClock())
 		uqUC := reading_queue_usecase.NewUnqueueArticleUsecase(port, fixedClock())
 		gUC := reading_queue_usecase.NewGetReadTodayQueueUsecase(&fakeQueuePort{}, &fakeCountPort{}, &fakeArticleBatchPort{}, &fakeOgImagePort{}, 7, fixedClock())
-		h := NewHandler(recUC, qUC, uqUC, gUC, nil, nil)
+		ltUC := reading_theme_usecase.NewListThemesUsecase(&fakeListThemesPort{})
+		gtUC := reading_theme_usecase.NewGetThemeUsecase(&fakeGetThemePort{})
+		rtoUC := reading_theme_usecase.NewRecordThemeOpenedUsecase(port, fixedClock())
+		h := NewHandler(recUC, qUC, uqUC, gUC, ltUC, gtUC, rtoUC, nil, nil)
 
 		_, err := h.RecordReadingEvents(authenticatedContext(t), makeReq())
 		require.Error(t, err)
@@ -460,7 +476,10 @@ func TestRecordReadingEvents_TransientReadSyncErrorMapsToUnavailable(t *testing.
 		qUC := reading_queue_usecase.NewQueueArticleUsecase(&fakeQueuePort{}, port, &fakeLookupPort{}, &fakeArticleBatchPort{}, &fakeOgImagePort{}, 7, 48, fixedClock())
 		uqUC := reading_queue_usecase.NewUnqueueArticleUsecase(port, fixedClock())
 		gUC := reading_queue_usecase.NewGetReadTodayQueueUsecase(&fakeQueuePort{}, &fakeCountPort{}, &fakeArticleBatchPort{}, &fakeOgImagePort{}, 7, fixedClock())
-		h := NewHandler(recUC, qUC, uqUC, gUC, nil, nil)
+		ltUC := reading_theme_usecase.NewListThemesUsecase(&fakeListThemesPort{})
+		gtUC := reading_theme_usecase.NewGetThemeUsecase(&fakeGetThemePort{})
+		rtoUC := reading_theme_usecase.NewRecordThemeOpenedUsecase(port, fixedClock())
+		h := NewHandler(recUC, qUC, uqUC, gUC, ltUC, gtUC, rtoUC, nil, nil)
 
 		resp, err := h.RecordReadingEvents(authenticatedContext(t), makeReq())
 		require.NoError(t, err)

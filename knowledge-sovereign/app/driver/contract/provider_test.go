@@ -143,6 +143,12 @@ func TestVerifyAltBackendConsumerContract(t *testing.T) {
 			"a user has reading sources recorded within a 30-day window": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
 				return nil, nil
 			},
+			"reading themes exist for the user": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
+				return nil, nil
+			},
+			"alt-backend may append theme opened events": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
+				return nil, nil
+			},
 			// Scoped to the one interaction that asked for it: pact-go calls
 			// this handler again with setup=false on teardown, so the fixture
 			// is accepting again before the next interaction is set up. The
@@ -304,6 +310,12 @@ func TestVerifyRecapWorkerConsumerContract(t *testing.T) {
 		FailIfNoPactsFound: true,
 		StateHandlers: models.StateHandlers{
 			"sovereign accepts append-only Loop transition events": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
+				return nil, nil
+			},
+			"reading sources exist for the user": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
+				return nil, nil
+			},
+			"recap-worker may append theme version events": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
 				return nil, nil
 			},
 		},

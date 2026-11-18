@@ -16,6 +16,9 @@ func TestAllowConnectPath_ReadingServiceRecordReadingEvents(t *testing.T) {
 		"/alt.reading.v1.ReadingService/QueueArticle",
 		"/alt.reading.v1.ReadingService/UnqueueArticle",
 		"/alt.reading.v1.ReadingService/GetReadTodayQueue",
+		"/alt.reading.v1.ReadingService/ListThemes",
+		"/alt.reading.v1.ReadingService/GetTheme",
+		"/alt.reading.v1.ReadingService/RecordThemeOpened",
 	} {
 		assert.True(t, allowConnectPath(path), "path %q", path)
 	}

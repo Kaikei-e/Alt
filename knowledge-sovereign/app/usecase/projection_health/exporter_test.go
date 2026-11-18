@@ -33,6 +33,9 @@ func TestRunOnce_NeverSeenProducerReadsAsStale(t *testing.T) {
 	recapAge := testutil.ToFloat64(eventLastOccurrenceAge.WithLabelValues("recap.topic_snapshotted.v1"))
 	require.Equal(t, neverSeenAgeSeconds, recapAge,
 		"a producer that never emitted must read as extremely stale, not as an absent series")
+	themeAge := testutil.ToFloat64(eventLastOccurrenceAge.WithLabelValues("reading.theme_version_created.v1"))
+	require.Equal(t, neverSeenAgeSeconds, themeAge,
+		"reading.theme_version_created.v1 that never emitted must read as extremely stale")
 	augurAge := testutil.ToFloat64(eventLastOccurrenceAge.WithLabelValues("augur.conversation_linked.v1"))
 	require.Equal(t, neverSeenAgeSeconds, augurAge,
 		"augur.conversation_linked.v1 that never emitted must read as extremely stale")

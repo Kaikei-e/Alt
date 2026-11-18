@@ -19,6 +19,11 @@ type queueKey struct {
 	articleID uuid.UUID
 }
 
+type themeKey struct {
+	userID  uuid.UUID
+	themeID uuid.UUID
+}
+
 type fakeQueueRow struct {
 	item          sovereign_db.ReadingQueueItem
 	removedAt     *time.Time
@@ -26,17 +31,21 @@ type fakeQueueRow struct {
 }
 
 type fakeReadingRepo struct {
-	events     []sovereign_db.KnowledgeEvent
-	checkpoint sovereign_db.ProjectionCheckpoint
-	sources    map[queueKey]sovereign_db.ReadingSource
-	queue      map[queueKey]fakeQueueRow
+	events       []sovereign_db.KnowledgeEvent
+	checkpoint   sovereign_db.ProjectionCheckpoint
+	sources      map[queueKey]sovereign_db.ReadingSource
+	queue        map[queueKey]fakeQueueRow
+	themes       map[themeKey]sovereign_db.ReadingTheme
+	themeMembers map[themeKey]map[uuid.UUID]int
 }
 
 func newFakeReadingRepo(events []sovereign_db.KnowledgeEvent) *fakeReadingRepo {
 	return &fakeReadingRepo{
-		events:  events,
-		sources: make(map[queueKey]sovereign_db.ReadingSource),
-		queue:   make(map[queueKey]fakeQueueRow),
+		events:       events,
+		sources:      make(map[queueKey]sovereign_db.ReadingSource),
+		queue:        make(map[queueKey]fakeQueueRow),
+		themes:       make(map[themeKey]sovereign_db.ReadingTheme),
+		themeMembers: make(map[themeKey]map[uuid.UUID]int),
 	}
 }
 
@@ -108,6 +117,51 @@ func (r *fakeReadingRepo) RemoveReadingQueueItem(_ context.Context, userID, arti
 	cur.removedReason = reason
 	cur.item.LastEventSeq = eventSeq
 	r.queue[k] = cur
+	return nil
+}
+
+func (r *fakeReadingRepo) UpsertReadingThemeVersion(_ context.Context, theme sovereign_db.ReadingTheme, memberArticleIDs []uuid.UUID) error {
+	k := themeKey{userID: theme.UserID, themeID: theme.ThemeID}
+	if cur, ok := r.themes[k]; ok {
+		if theme.LatestVersion < cur.LatestVersion {
+			return nil
+		}
+		cur.Title = theme.Title
+		cur.LatestVersion = theme.LatestVersion
+		cur.ArticleCount = theme.ArticleCount
+		cur.UpdatedAt = theme.UpdatedAt
+		r.themes[k] = cur
+	} else {
+		r.themes[k] = theme
+	}
+
+	existing := r.themeMembers[k]
+	next := make(map[uuid.UUID]int, len(memberArticleIDs))
+	for _, id := range memberArticleIDs {
+		if ver, ok := existing[id]; ok {
+			next[id] = ver
+		} else {
+			next[id] = theme.LatestVersion
+		}
+	}
+	r.themeMembers[k] = next
+	return nil
+}
+
+func (r *fakeReadingRepo) MarkReadingThemeOpened(_ context.Context, userID, themeID uuid.UUID, openedAt time.Time, version int) error {
+	k := themeKey{userID: userID, themeID: themeID}
+	cur, ok := r.themes[k]
+	if !ok {
+		return nil
+	}
+	if cur.LastOpenedAt == nil || openedAt.After(*cur.LastOpenedAt) {
+		t := openedAt
+		cur.LastOpenedAt = &t
+	}
+	if version > cur.LastOpenedVersion {
+		cur.LastOpenedVersion = version
+	}
+	r.themes[k] = cur
 	return nil
 }
 
