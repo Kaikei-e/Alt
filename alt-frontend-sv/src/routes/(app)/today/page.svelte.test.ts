@@ -113,7 +113,7 @@ describe("/today page", () => {
 		vi.mocked(unqueueArticle).mockResolvedValue(undefined);
 	});
 
-	it("renders heading Today, Read today count, queue rows, and Read today: N when > 0", async () => {
+	it("renders heading Today, Read today count, queue rows, and Articles read today: N when > 0", async () => {
 		vi.mocked(getReadTodayQueue).mockResolvedValue({
 			items: [
 				{
@@ -166,10 +166,10 @@ describe("/today page", () => {
 
 		await expect
 			.element(page.getByTestId("today-read-count"))
-			.toHaveTextContent("Read today: 4");
+			.toHaveTextContent("Articles read today: 4");
 	});
 
-	it("hides Read today: N when readCountSince is 0 and shows calm empty state with Swipe and Gallery links", async () => {
+	it("hides Articles read today: N when readCountSince is 0 and shows calm empty state with Swipe and Gallery links", async () => {
 		vi.mocked(getReadTodayQueue).mockResolvedValue({
 			items: [],
 			cap: 7,
@@ -250,9 +250,13 @@ describe("/today page", () => {
 		render(Page);
 		await settle();
 
-		await page
-			.getByRole("button", { name: /Remove First Queued Story/i })
-			.click();
+		const removeBtn = page.getByRole("button", {
+			name: /Remove First Queued Story/i,
+		});
+		const removeRect = removeBtn.element().getBoundingClientRect();
+		expect(removeRect.width).toBeGreaterThanOrEqual(44);
+		expect(removeRect.height).toBeGreaterThanOrEqual(44);
+		await removeBtn.click();
 
 		expect(unqueueArticle).toHaveBeenCalledWith(expect.anything(), {
 			articleId: "art-1",
@@ -292,6 +296,6 @@ describe("/today page", () => {
 		await expect.element(page.getByText("Recovered Story")).toBeInTheDocument();
 		await expect
 			.element(page.getByTestId("today-read-count"))
-			.toHaveTextContent("Read today: 1");
+			.toHaveTextContent("Articles read today: 1");
 	});
 });

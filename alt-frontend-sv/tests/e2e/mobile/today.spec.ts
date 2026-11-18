@@ -309,4 +309,61 @@ test.describe("Read today mobile flow", () => {
 			.poll(() => passedLinks)
 			.toEqual(["https://example.com/svelte-5"]);
 	});
+
+	test("reader overlay top bar fits all eight controls at 360px width without overflow", async ({
+		page,
+	}) => {
+		await page.setViewportSize({ width: 360, height: 800 });
+		await page.route(CONNECT_RPC_PATHS.getAllFeeds, (route) =>
+			fulfillJson(route, buildDeck(2)),
+		);
+		await page.route(CONNECT_RPC_PATHS.getUnreadFeeds, (route) =>
+			fulfillJson(route, buildDeck(2)),
+		);
+		await page.route(CONNECT_RPC_PATHS.getReadFeeds, (route) =>
+			fulfillJson(route, CONNECT_READ_FEEDS_EMPTY_RESPONSE),
+		);
+		await page.route(CONNECT_RPC_PATHS.getReadTodayQueue, (route) =>
+			fulfillJson(route, { items: [], cap: 7, readCountSince: 0 }),
+		);
+		await page.route(CONNECT_RPC_PATHS.fetchArticleContent, (route) =>
+			fulfillJson(route, CONNECT_ARTICLE_CONTENT_RESPONSE),
+		);
+
+		await gotoMobileRoute(page, "feeds/visual-preview");
+		await page.getByTestId("gallery-tile").first().click();
+
+		const overlay = page.getByTestId("reader-overlay");
+		await expect(overlay).toBeVisible();
+
+		const bar = overlay.locator("header.overlay-bar");
+		await expect(bar).toBeVisible();
+
+		const overflow = await bar.evaluate((el) => ({
+			scrollWidth: el.scrollWidth,
+			clientWidth: el.clientWidth,
+		}));
+		expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth);
+
+		const controls = [
+			overlay.getByTestId("reader-overlay-close"),
+			overlay.getByTestId("reader-prev-button"),
+			overlay.getByTestId("reader-next-button"),
+			overlay.getByTestId("reader-mark-read-button"),
+			overlay.getByTestId("read-today-toggle-button"),
+			overlay.getByTestId("fetch-button"),
+			overlay.getByTestId("summarize-button"),
+			overlay.getByRole("link", { name: "Open original" }),
+		];
+
+		for (const control of controls) {
+			await expect(control).toBeVisible();
+			const box = await control.boundingBox();
+			expect(box).not.toBeNull();
+			if (box) {
+				expect(box.width).toBeGreaterThanOrEqual(40);
+				expect(box.height).toBeGreaterThanOrEqual(44);
+			}
+		}
+	});
 });

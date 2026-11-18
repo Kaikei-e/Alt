@@ -1,3 +1,4 @@
+import { Layers } from "@lucide/svelte";
 import { describe, expect, it } from "vitest";
 import {
 	getVisibleMobileMenuSections,
@@ -34,6 +35,11 @@ describe("NAV_TABS", () => {
 		for (const tab of NAV_TABS) {
 			expect(tab.icon).toBeDefined();
 		}
+	});
+
+	it("uses Layers icon for Swipe tab", () => {
+		const swipeTab = NAV_TABS.find((t) => t.label === "Swipe");
+		expect(swipeTab?.icon).toBe(Layers);
 	});
 });
 

@@ -374,6 +374,7 @@ describe("SwipeFeedScreen", () => {
 		const queueBtn = page.getByRole("button", { name: "Read today" });
 		await expect.element(passBtn).toBeVisible();
 		await expect.element(queueBtn).toBeVisible();
+		await expect.element(queueBtn).not.toHaveAttribute("aria-disabled", "true");
 
 		// Tap Read today on Card One (held in pending slot, not sent yet)
 		await queueBtn.click();
@@ -449,7 +450,10 @@ describe("SwipeFeedScreen", () => {
 		});
 		await settle(200);
 
-		await page.getByRole("button", { name: "Read today" }).click();
+		const queueBtn = page.getByTestId("swipe-queue-button");
+		await expect.element(queueBtn).toHaveAttribute("aria-disabled", "true");
+		expect(queueBtn.element().hasAttribute("disabled")).toBe(false);
+		(queueBtn.element() as HTMLButtonElement).click();
 
 		await expect
 			.element(page.getByTestId("swipe-notice"))

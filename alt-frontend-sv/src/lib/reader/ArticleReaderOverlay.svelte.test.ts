@@ -404,4 +404,80 @@ describe("ArticleReaderOverlay + shallow routing", () => {
 			articleId: "art-toggle-1",
 		});
 	});
+
+	it("fits all eight reader overlay controls in a 360px viewport without horizontal overflow and with >= 40x44 targets", async () => {
+		await testPage.viewport(360, 800);
+		mockGetFeedContent.mockResolvedValueOnce({
+			content: "<p>Mobile bar layout test.</p>",
+			article_id: "art-bar-1",
+		});
+		vi.mocked(queueArticle).mockResolvedValueOnce({
+			outcome: QueueArticleOutcome.QUEUED,
+			items: [
+				{
+					articleId: "art-bar-1",
+					title: "Article 1",
+					url: "https://example.com/bar-1",
+					sourceName: "Source",
+					imageUrl: "",
+					queuedAt: new Date(),
+					expiresAt: new Date(Date.now() + 3600_000),
+				},
+			],
+			cap: 7,
+		});
+
+		render(ArticleReaderOverlay);
+
+		openReaderOverlay({
+			surface: ReadingSurface.GALLERY,
+			items: [
+				{
+					articleId: "art-bar-1",
+					url: "https://example.com/bar-1",
+					title: "Article 1",
+				},
+				{
+					articleId: "art-bar-2",
+					url: "https://example.com/bar-2",
+					title: "Article 2",
+				},
+			],
+			currentIndex: 0,
+			onMarkAsRead: vi.fn(),
+		});
+
+		await expect
+			.element(testPage.getByText("Mobile bar layout test."))
+			.toBeInTheDocument();
+
+		const bar = document.querySelector<HTMLElement>("header.overlay-bar");
+		expect(bar).not.toBeNull();
+		if (bar) {
+			expect(bar.scrollWidth).toBeLessThanOrEqual(bar.clientWidth);
+		}
+
+		const controls = [
+			testPage.getByTestId("reader-overlay-close").element(),
+			testPage.getByTestId("reader-prev-button").element(),
+			testPage.getByTestId("reader-next-button").element(),
+			testPage.getByTestId("reader-mark-read-button").element(),
+			testPage.getByTestId("read-today-toggle-button").element(),
+			testPage.getByTestId("fetch-button").element(),
+			testPage.getByTestId("summarize-button").element(),
+			testPage.getByRole("link", { name: "Open original" }).element(),
+		];
+
+		for (const el of controls) {
+			const rect = el.getBoundingClientRect();
+			expect(rect.width).toBeGreaterThanOrEqual(40);
+			expect(rect.height).toBeGreaterThanOrEqual(44);
+			expect(rect.right).toBeLessThanOrEqual(360);
+		}
+
+		const toggleBtn = testPage.getByTestId("read-today-toggle-button");
+		await toggleBtn.click();
+		await expect.element(toggleBtn).toHaveAttribute("aria-pressed", "true");
+		expect(getComputedStyle(toggleBtn.element()).borderBottomWidth).toBe("2px");
+	});
 });

@@ -89,6 +89,14 @@ describe("VisualPreviewCard", () => {
 				.element(page.getByTestId("summary-speech-button"))
 				.not.toBeInTheDocument();
 		});
+
+		it("formats the dateline compactly without time of day", async () => {
+			render(VisualPreviewCard, {
+				props: defaultProps,
+			});
+
+			await expect.element(page.getByText("Jan 15, 2025")).toBeInTheDocument();
+		});
 	});
 
 	describe("drag direction labels", () => {

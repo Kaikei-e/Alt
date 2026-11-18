@@ -397,4 +397,34 @@ describe("Visual Preview page continuity across a rotation", () => {
 			expect(tile.element().getAttribute("data-read")).toBe("true"),
 		);
 	});
+
+	it("shows Gallery mobile heading with edge padding at 393px and preserves desktop Visual Preview header", async () => {
+		await page.viewport(PORTRAIT.width, PORTRAIT.height);
+		render(Page);
+		await settle(400);
+
+		const mobileHeading = page.getByRole("heading", {
+			level: 1,
+			name: "Gallery",
+		});
+		await expect.element(mobileHeading).toBeInTheDocument();
+
+		const headerEl = document.querySelector<HTMLElement>(".gallery-header");
+		expect(headerEl).not.toBeNull();
+		if (headerEl) {
+			expect(getComputedStyle(headerEl).paddingLeft).toBe("16px");
+			expect(getComputedStyle(headerEl).paddingRight).toBe("16px");
+		}
+
+		const gridEl = page.getByTestId("gallery-grid").element();
+		expect(gridEl.className).toContain("px-2");
+		expect(gridEl.className).toContain("md:px-0");
+
+		await page.viewport(1024, 800);
+		await settle(250);
+
+		await expect
+			.element(page.getByRole("heading", { level: 1, name: "Visual Preview" }))
+			.toBeInTheDocument();
+	});
 });

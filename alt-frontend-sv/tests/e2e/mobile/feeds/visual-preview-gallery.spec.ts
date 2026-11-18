@@ -79,6 +79,25 @@ test.describe("mobile feeds — visual preview gallery", () => {
 			.evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(" "));
 
 		expect(columns).toHaveLength(2);
+
+		await expect(
+			page.getByRole("heading", { level: 1, name: "Gallery" }),
+		).toBeVisible();
+		const headerPadding = await page
+			.locator(".gallery-header")
+			.evaluate((el) => ({
+				left: getComputedStyle(el).paddingLeft,
+				right: getComputedStyle(el).paddingRight,
+			}));
+		expect(headerPadding).toEqual({ left: "16px", right: "16px" });
+
+		const gridPadding = await page
+			.getByTestId("gallery-grid")
+			.evaluate((el) => ({
+				left: getComputedStyle(el).paddingLeft,
+				right: getComputedStyle(el).paddingRight,
+			}));
+		expect(gridPadding).toEqual({ left: "8px", right: "8px" });
 	});
 
 	test("opens reader overlay at /articles/<id>, Back restores list scroll, and reload renders standalone page", async ({
