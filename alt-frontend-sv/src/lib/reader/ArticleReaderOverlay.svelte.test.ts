@@ -53,6 +53,7 @@ import {
 	flushReadingEvents,
 	ReadingSurface,
 } from "#lib/reading/instrumentation.js";
+import { articlePrefetcher } from "#lib/utils/articlePrefetcher.js";
 import ArticleReaderOverlay from "./ArticleReaderOverlay.svelte";
 import {
 	openReaderOverlay,
@@ -247,5 +248,88 @@ describe("ArticleReaderOverlay + shallow routing", () => {
 		expect(backSpy).toHaveBeenCalledTimes(1);
 
 		backSpy.mockRestore();
+	});
+
+	it("renders the editorial rail with excerpt on wide viewports and omits it on narrow viewports", async () => {
+		mockGetFeedContent.mockResolvedValue({
+			content: "<p>Wide desktop article body.</p>",
+			article_id: "art-rail-1",
+		});
+
+		await testPage.viewport(1440, 900);
+		const { unmount } = render(ArticleReaderOverlay);
+
+		openReaderOverlay({
+			surface: ReadingSurface.OTHER,
+			items: [
+				{
+					articleId: "art-rail-1",
+					url: "https://example.com/rail-article",
+					title: "Rail Article",
+					excerpt: "Editorial excerpt summary for the rail.",
+				},
+			],
+			currentIndex: 0,
+		});
+
+		const rail = testPage.getByTestId("article-rail");
+		await expect.element(rail).toBeVisible();
+		await expect
+			.element(rail.getByText("Editorial excerpt summary for the rail."))
+			.toBeVisible();
+		await expect.element(rail.getByText("example.com")).toBeVisible();
+
+		await testPage.viewport(390, 844);
+		await expect.element(rail).not.toBeInTheDocument();
+
+		currentPageState = {};
+		unmount();
+	});
+
+	it("triggers prefetch for the next 2 articles when opened on a list", async () => {
+		const triggerSpy = vi.spyOn(articlePrefetcher, "triggerPrefetch");
+		mockGetFeedContent.mockResolvedValue({
+			content: "<p>First article body.</p>",
+			article_id: "art-1",
+		});
+
+		const { unmount } = render(ArticleReaderOverlay);
+
+		openReaderOverlay({
+			surface: ReadingSurface.OTHER,
+			items: [
+				{
+					articleId: "art-1",
+					url: "https://example.com/1",
+					title: "First",
+				},
+				{
+					articleId: "art-2",
+					url: "https://example.com/2",
+					title: "Second",
+				},
+				{
+					articleId: "art-3",
+					url: "https://example.com/3",
+					title: "Third",
+				},
+			],
+			currentIndex: 0,
+		});
+
+		await vi.waitFor(() => expect(triggerSpy).toHaveBeenCalled());
+		expect(triggerSpy).toHaveBeenCalledWith(
+			[
+				{ normalizedUrl: "https://example.com/1" },
+				{ normalizedUrl: "https://example.com/2" },
+				{ normalizedUrl: "https://example.com/3" },
+			],
+			0,
+			2,
+		);
+
+		currentPageState = {};
+		unmount();
+		triggerSpy.mockRestore();
 	});
 });

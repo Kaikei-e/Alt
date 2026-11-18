@@ -58,26 +58,25 @@ export class DesktopFeedsPage extends BasePage {
 		this.unreadOnlyCheckbox = page.getByRole("checkbox", { name: /unread/i });
 		this.sortByDropdown = page.getByRole("combobox");
 
-		// Feed detail modal
-		this.feedDetailModal = page.locator('[role="dialog"]');
-		this.modalTitle = this.feedDetailModal.locator("h2");
-		// Dialog.Close button - there are 2 close buttons (footer and X icon), use the one with text "Close"
-		this.modalCloseButton = this.feedDetailModal
-			.getByRole("button", { name: /^Close$/i })
-			.first();
-		this.markAsReadButton = page.getByRole("button", { name: /mark as read/i });
-		this.fullArticleButton = page.getByRole("button", {
-			name: /full article/i,
-		});
-		this.summarizeButton = page.getByRole("button", { name: /summarize/i });
+		// Reader overlay
+		this.feedDetailModal = page.getByTestId("reader-overlay");
+		this.modalTitle = this.feedDetailModal
+			.getByTestId("article-masthead")
+			.getByRole("heading", { level: 1 });
+		this.modalCloseButton = this.feedDetailModal.getByTestId(
+			"reader-overlay-close",
+		);
+		this.markAsReadButton = this.feedDetailModal.getByTestId(
+			"reader-mark-read-button",
+		);
+		this.fullArticleButton = this.feedDetailModal.getByTestId("fetch-button");
+		this.summarizeButton = this.feedDetailModal.getByTestId("summarize-button");
 
-		// Modal navigation arrows
-		this.prevFeedButton = this.feedDetailModal.getByRole("button", {
-			name: /previous feed/i,
-		});
-		this.nextFeedButton = this.feedDetailModal.getByRole("button", {
-			name: /next feed/i,
-		});
+		// Reader navigation arrows
+		this.prevFeedButton =
+			this.feedDetailModal.getByTestId("reader-prev-button");
+		this.nextFeedButton =
+			this.feedDetailModal.getByTestId("reader-next-button");
 
 		// Infinite scroll elements
 		this.loadMoreTrigger = page.getByText("Scroll for more");
