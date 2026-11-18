@@ -251,7 +251,7 @@ mod tests {
     fn peer_guarded_app() -> Router {
         let allowed = vec!["alt-backend".to_string()];
         Router::new()
-            .route("/v1/recaps/7days", get(|| async { StatusCode::OK }))
+            .route("/v1/recaps/3days", get(|| async { StatusCode::OK }))
             .route(
                 "/v1/morning/letters/regenerate",
                 axum::routing::post(|| async { StatusCode::OK }),
@@ -263,12 +263,12 @@ mod tests {
     #[tokio::test]
     async fn disabled_peer_guard_passes_request_without_client_certificate() {
         let app = Router::new()
-            .route("/v1/recaps/7days", get(|| async { StatusCode::OK }))
+            .route("/v1/recaps/3days", get(|| async { StatusCode::OK }))
             .route_layer(middleware::from_fn(require_peer_identity))
             .layer(Extension(PeerIdentityGuard::new(None)));
         let req = Request::builder()
             .method(Method::GET)
-            .uri("/v1/recaps/7days")
+            .uri("/v1/recaps/3days")
             .body(Body::empty())
             .expect("request builds");
         let resp = app.oneshot(req).await.expect("request succeeds");
@@ -302,7 +302,7 @@ mod tests {
 
         let req = Request::builder()
             .method(Method::GET)
-            .uri("/v1/recaps/7days?secret=query-secret-value")
+            .uri("/v1/recaps/3days?secret=query-secret-value")
             .header(AUTHORIZATION, "Bearer header-secret-value")
             .header("x-alt-peer-identity", "spoofed-peer-header")
             .body(Body::empty())
@@ -322,7 +322,7 @@ mod tests {
             "expected one WARN line for 401 rejection, got: {captured}"
         );
         assert!(captured.contains("WARN"));
-        assert!(captured.contains("/v1/recaps/7days"));
+        assert!(captured.contains("/v1/recaps/3days"));
         assert!(captured.contains("no_client_certificate"));
         assert!(!captured.contains("query-secret-value"));
         assert!(!captured.contains("header-secret-value"));

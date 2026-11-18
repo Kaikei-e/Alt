@@ -9,7 +9,6 @@ pub mod metrics;
 pub mod morning;
 pub mod notification_outbox;
 pub mod output;
-pub mod pulse;
 pub mod stage;
 pub mod subworker;
 pub mod surface;
@@ -48,6 +47,5 @@ pub(crate) type RecapDaoImpl = UnifiedDao;
 #[allow(unused_imports)]
 pub(crate) use traits::{
     ArticleDao, ConfigDao, EvaluationDao, GenreLearningDao, JobDao,
-    JobStatusDao as JobStatusDaoTrait, MetricsDao, MorningDao, OutputDao, PulseDao, StageDao,
-    SubworkerDao,
+    JobStatusDao as JobStatusDaoTrait, MetricsDao, MorningDao, OutputDao, StageDao, SubworkerDao,
 };

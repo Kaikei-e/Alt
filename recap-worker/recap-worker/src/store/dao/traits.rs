@@ -12,7 +12,6 @@ mod job_status;
 mod metrics;
 mod morning;
 mod output;
-mod pulse;
 mod stage;
 mod subworker;
 
@@ -25,6 +24,5 @@ pub(crate) use job_status::JobStatusDao;
 pub(crate) use metrics::MetricsDao;
 pub(crate) use morning::MorningDao;
 pub(crate) use output::OutputDao;
-pub(crate) use pulse::PulseDao;
 pub(crate) use stage::StageDao;
 pub(crate) use subworker::SubworkerDao;

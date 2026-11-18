@@ -172,10 +172,6 @@ services:
       - RECAP_BATCH_SUMMARY_CHUNK_SIZE=${RECAP_BATCH_SUMMARY_CHUNK_SIZE:-3}
       # Per-genre LLM summary timeout (hierarchical Map-Reduce needs sufficient margin)
       - LLM_SUMMARY_TIMEOUT_SECS=${LLM_SUMMARY_TIMEOUT_SECS:-900}
-      # Evening Pulse configuration
-      - PULSE_ENABLED=true
-      - PULSE_ROLLOUT_PERCENT=100
-      - PULSE_VERSION=v4
       - MORNING_DAEMON_ENABLED=${MORNING_DAEMON_ENABLED:-true}
       # OpenTelemetry
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://rask-log-aggregator:4318
@@ -211,7 +207,6 @@ services:
       - RECAP_CARDS_CATCHUP=${RECAP_CARDS_CATCHUP:-enabled}
       - RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS=30
       - RECAP_FRESHNESS_TOPIC_CARDS_HOURS=30
-      - RECAP_FRESHNESS_EVENING_PULSE_HOURS=30
       - RECAP_FRESHNESS_MORNING_LETTER_HOURS=3
     secrets:
       - recap_db_password

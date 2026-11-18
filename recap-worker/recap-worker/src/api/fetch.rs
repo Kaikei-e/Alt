@@ -517,13 +517,7 @@ pub async fn get_3days_recap_impl(
     freshness_budget: chrono::Duration,
     now: chrono::DateTime<chrono::Utc>,
 ) -> axum::response::Response {
-    get_recap_by_window(dao, 3, "3-day", Some((freshness_budget, now))).await
-}
-
-/// GET /v1/recaps/7days
-/// 最新の7日間Recapデータを取得する
-pub(crate) async fn get_7days_recap(State(state): State<AppState>) -> impl IntoResponse {
-    get_recap_by_window(&state, 7, "7-day", None).await
+    get_3days_recap_response(dao, freshness_budget, now).await
 }
 
 /// GET /v1/recaps/3days
@@ -533,18 +527,18 @@ pub(crate) async fn get_3days_recap(State(state): State<AppState>) -> impl IntoR
     get_3days_recap_impl(&state, budget, chrono::Utc::now()).await
 }
 
-/// 指定されたウィンドウ日数のRecapデータを取得する
+/// 3日間Recapデータを取得する
 #[allow(clippy::too_many_lines)]
-async fn get_recap_by_window(
+async fn get_3days_recap_response(
     dao: &impl RecapReadDao,
-    window_days: i32,
-    label: &str,
-    surface_clock: Option<(chrono::Duration, chrono::DateTime<chrono::Utc>)>,
+    freshness_budget: chrono::Duration,
+    now: chrono::DateTime<chrono::Utc>,
 ) -> axum::response::Response {
+    let label = "3-day";
     info!("Fetching latest {} recap", label);
     let handler_start = Instant::now();
 
-    let job = match dao.get_latest_completed_job(window_days).await {
+    let job = match dao.get_latest_completed_job(3).await {
         Ok(Some(job)) => job,
         Ok(None) => {
             info!("No completed {} recap found", label);
@@ -691,31 +685,27 @@ async fn get_recap_by_window(
         });
     }
 
-    let surface_status = if let Some((budget, now)) = surface_clock {
-        let latest_run = match dao.get_latest_three_day_recap_run().await {
-            Ok(run) => run,
-            Err(e) => {
-                error!("Failed to fetch latest 3-day recap run: {}", e);
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(ErrorResponse {
-                        error: "Failed to fetch recap data".to_string(),
-                    }),
-                )
-                    .into_response();
-            }
-        };
-        Some(build_surface_status(
-            job.window_end,
-            Some((job.window_start, job.window_end)),
-            latest_run,
-            three_day_recap_reasons(degraded_genres, total_genres),
-            budget,
-            now,
-        ))
-    } else {
-        None
+    let latest_run = match dao.get_latest_three_day_recap_run().await {
+        Ok(run) => run,
+        Err(e) => {
+            error!("Failed to fetch latest 3-day recap run: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Failed to fetch recap data".to_string(),
+                }),
+            )
+                .into_response();
+        }
     };
+    let surface_status = Some(build_surface_status(
+        job.window_end,
+        Some((job.window_start, job.window_end)),
+        latest_run,
+        three_day_recap_reasons(degraded_genres, total_genres),
+        freshness_budget,
+        now,
+    ));
 
     let response = RecapSummaryResponse {
         job_id: job.job_id.to_string(),
@@ -859,7 +849,6 @@ mod tests {
                 ("RECAP_CARDS_JOB", Some("disabled")),
                 ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
-                ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
                 ("RECAP_GENRES", Some("ai,space")),
                 (
@@ -982,7 +971,6 @@ mod tests {
                 ("RECAP_CARDS_JOB", Some("disabled")),
                 ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
-                ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
                 ("RECAP_GENRES", Some("ai,space")),
                 ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
@@ -1182,56 +1170,6 @@ mod tests {
                     "detail": "1 of 2 genres are extractive excerpts, not AI summaries"
                 }
             ])
-        );
-    }
-
-    #[tokio::test]
-    async fn get_7days_recap_omits_surface_status_key() {
-        use chrono::{DateTime, Utc};
-        use uuid::Uuid;
-
-        let job_id = Uuid::parse_str("11111111-2222-3333-4444-555555555555").unwrap();
-        let started_at = DateTime::parse_from_rfc3339("2026-11-08T12:00:00Z")
-            .unwrap()
-            .with_timezone(&Utc);
-        let window_start = DateTime::parse_from_rfc3339("2026-11-01T12:05:00Z")
-            .unwrap()
-            .with_timezone(&Utc);
-        let window_end = DateTime::parse_from_rfc3339("2026-11-08T12:05:00Z")
-            .unwrap()
-            .with_timezone(&Utc);
-
-        let dao = MockRecapReadDao {
-            job: Some(crate::store::models::RecapJob {
-                job_id,
-                started_at,
-                window_start,
-                window_end,
-                total_articles: Some(25),
-            }),
-            genres: vec![crate::store::models::GenreWithSummary {
-                genre_name: "ai_data".to_string(),
-                summary_ja: Some("7-day AI summary".to_string()),
-                title_ja: None,
-                bullets_ja: None,
-            }],
-            body_jsons: std::collections::HashMap::new(),
-            latest_run: None,
-        };
-
-        let response = get_recap_by_window(&dao, 7, "7-day", None).await;
-        assert_eq!(response.status(), StatusCode::OK);
-
-        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .expect("body bytes");
-        let body: Value = serde_json::from_slice(&body_bytes).expect("valid json");
-
-        assert!(
-            !body
-                .as_object()
-                .expect("response is object")
-                .contains_key("surface_status")
         );
     }
 
@@ -1481,7 +1419,6 @@ mod tests {
                 ("RECAP_CARDS_JOB", Some("disabled")),
                 ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
-                ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
                 ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
                 ("RECAP_GENRES", Some("ai")),
@@ -1629,7 +1566,6 @@ mod tests {
                 ("RECAP_CARDS_JOB", Some("disabled")),
                 ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
-                ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
                 ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
                 ("RECAP_GENRES", Some("ai")),
@@ -1736,7 +1672,6 @@ mod tests {
                 ("RECAP_CARDS_JOB", Some("disabled")),
                 ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
-                ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
                 ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
                 ("RECAP_GENRES", Some("ai")),

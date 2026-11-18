@@ -79,11 +79,7 @@ flowchart TB
 
     Phase2 --> SummaryDetails["Generate Summaries<br/>Build requests with 5-8 representative sentences<br/>Filter empty representative clusters<br/>Send chunks to news-creator /v1/summary/generate/batch<br/>Deferred retries (stops retrying and degrades if &gt;50% fail)"]
 
-    SummaryDetails --> EveningPulse{"Evening Pulse<br/>Enabled?"}
-
-    EveningPulse -->|Yes| GeneratePulse["Generate Evening Pulse<br/>Summarize top daily developments<br/>Save to pulse_generations"]
-    EveningPulse -->|No| Persist
-    GeneratePulse --> Persist["Persist Stage<br/>FinalSectionPersistStage"]
+    SummaryDetails --> Persist["Persist Stage<br/>FinalSectionPersistStage"]
 
     Persist --> PersistDetails["Persist Results<br/>Reconcile citations to sentence IDs<br/>Optional semantic tags via tag-generator<br/>Atomic write to recap_outputs and recap_sections<br/>Emit topic snapshots to knowledge-sovereign<br/>Record errors to recap_failed_tasks"]
 
@@ -207,11 +203,7 @@ flowchart TB
 
     ValidateBatch --> DispatchResult["Dispatch Result<br/>Per-Genre Results &amp; System Metrics"]
 
-    DispatchResult --> EveningPulseCheck{"Evening Pulse<br/>Enabled?"}
-
-    EveningPulseCheck -->|Yes| EveningPulse["Evening Pulse Generation<br/>Summarize key cluster events<br/>Save to pulse_generations"]
-    EveningPulseCheck -->|No| Persist
-    EveningPulse --> Persist["Persist Stage"]
+    DispatchResult --> Persist["Persist Stage"]
 
     style Phase1 fill:#f8d7da
     style Phase2 fill:#fff3cd
@@ -347,7 +339,6 @@ flowchart LR
 - **Phase 1 (Clustering)**: Parallel clustering across all genres via `recap-subworker` `/v1/runs`, polling `/v1/runs/{run_id}` with exponential backoff and JSON Schema validation; subworker writes to `recap_subworker_clusters` and `recap_cluster_evidence`
 - **Phase 2 (Batch Summarization)**: Parallel request building allocating 5-8 representative sentences per cluster; empty representative clusters filtered out; requests batched into chunks (`RECAP_BATCH_SUMMARY_CHUNK_SIZE`, default 3) sent to `news-creator` `/v1/summary/generate/batch`
 - **Resilience**: Deferred retry rounds for failed chunks with full-jitter backoff, respect for upstream `Retry-After` headers, and overload circuit breaker tripping when >50% of a deferred round fails again (stops retrying and degrades remaining genres to missing-from-batch)
-- **Evening Pulse**: Optional post-dispatch generation summarizing major cluster developments saved to `pulse_generations` before persist
 
 ### Evidence Building
 - **Sentence Filtering**: Minimum 20 non-whitespace characters per sentence (`MIN_SENTENCE_LENGTH_CHARS = 20`)

@@ -12,17 +12,16 @@ use uuid::Uuid;
 use super::article::FetchedArticleData;
 use super::traits::{
     ArticleDao, ConfigDao, EvaluationDao, GenreLearningDao, JobDao, JobStatusDao, MetricsDao,
-    MorningDao, OutputDao, PulseDao, StageDao, SubworkerDao,
+    MorningDao, OutputDao, StageDao, SubworkerDao,
 };
 use super::types::{JobStatus, JobStatusTransition, StatusTransitionActor};
 use crate::error::Result;
-use crate::pipeline::pulse::PulseResult;
 use crate::store::models::{
     ClusterWithEvidence, DiagnosticEntry, ExtendedRecapJob, GenreEvaluationMetric,
     GenreEvaluationRun, GenreLearningRecord, GenreWithSummary, GraphEdgeRecord, JobStats,
     MorningLetter, MorningLetterSource, NewSubworkerRun, PersistedCluster, PersistedGenre,
-    PreprocessMetrics, PulseGenerationRow, RawArticle, RecapFinalSection, RecapJob, RecapOutput,
-    RecapSearchHit, SubworkerRunStatus,
+    PreprocessMetrics, RawArticle, RecapFinalSection, RecapJob, RecapOutput, RecapSearchHit,
+    SubworkerRunStatus,
 };
 
 /// RecapDao - Backward-compatible composite trait combining all focused DAO traits
@@ -347,17 +346,6 @@ pub(crate) trait RecapDao: Send + Sync {
     ) -> Result<()>;
 
     async fn get_user_jobs_count(&self, user_id: Uuid, window_seconds: i64) -> Result<i32>;
-
-    // === PulseDao methods ===
-    async fn get_pulse_by_date(&self, date: NaiveDate) -> Result<Option<PulseGenerationRow>>;
-
-    async fn get_latest_pulse(&self) -> Result<Option<PulseGenerationRow>>;
-
-    async fn save_pulse_generation(
-        &self,
-        result: &PulseResult,
-        target_date: NaiveDate,
-    ) -> Result<(i64, DateTime<Utc>)>;
 }
 
 // Blanket implementation: any type implementing all focused traits also implements RecapDao
@@ -375,7 +363,6 @@ where
         + EvaluationDao
         + MorningDao
         + JobStatusDao
-        + PulseDao
         + Send
         + Sync,
 {
@@ -808,21 +795,5 @@ where
 
     async fn get_user_jobs_count(&self, user_id: Uuid, window_seconds: i64) -> Result<i32> {
         JobStatusDao::get_user_jobs_count(self, user_id, window_seconds).await
-    }
-
-    async fn get_pulse_by_date(&self, date: NaiveDate) -> Result<Option<PulseGenerationRow>> {
-        PulseDao::get_pulse_by_date(self, date).await
-    }
-
-    async fn get_latest_pulse(&self) -> Result<Option<PulseGenerationRow>> {
-        PulseDao::get_latest_pulse(self).await
-    }
-
-    async fn save_pulse_generation(
-        &self,
-        result: &PulseResult,
-        target_date: NaiveDate,
-    ) -> Result<(i64, DateTime<Utc>)> {
-        PulseDao::save_pulse_generation(self, result, target_date).await
     }
 }

@@ -3,7 +3,7 @@ name = "recap-worker"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.99.1"
-description = "Alt 7days Recap batch worker (CPU-centric) with Axum control plane and Prometheus/OTLP telemetry."
+description = "Alt 3days Recap batch worker (CPU-centric) with Axum control plane and Prometheus/OTLP telemetry."
 repository = "https://github.com/Kaikei-e/Alt"
 
 [features]

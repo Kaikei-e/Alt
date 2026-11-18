@@ -22,7 +22,7 @@
 //!   (`pipeline::executor`/`orchestrator`, `queue`, `scheduler`, `replay`)
 //!   and the pipeline stages whose errors fail the whole job rather than
 //!   classify a single genre (`preprocess`, `dedup`, `genre*`, `select`,
-//!   `embedding`, `morning`, `pulse`), plus the classification/evaluation
+//!   `embedding`, `morning`), plus the classification/evaluation
 //!   chains and their clients — none of these feed `error_kind`, and
 //!   forcing them into the variants below would blur the classification;
 //! - `clients::alt_backend`, deliberately: `pipeline::fetch`'s retry loop

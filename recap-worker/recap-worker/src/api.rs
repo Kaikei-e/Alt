@@ -8,7 +8,6 @@ pub(crate) mod generate;
 pub(crate) mod health;
 pub(crate) mod learning;
 pub(crate) mod metrics;
-pub mod pulse;
 pub mod surface_status;
 
 use axum::{
@@ -26,8 +25,6 @@ macro_rules! with_non_health_routes {
                 (POST, post, "/admin/genre-learning", "/admin/genre-learning", learning::receive_genre_learning),
             ],
             v1: [
-                (POST, post, "/v1/generate/recaps/7days", "/v1/generate/recaps/7days", generate::trigger_7days),
-                (GET, get, "/v1/recaps/7days", "/v1/recaps/7days", fetch::get_7days_recap),
                 (POST, post, "/v1/generate/recaps/3days", "/v1/generate/recaps/3days", generate::trigger_3days),
                 (POST, post, "/v1/generate/topic-cards", "/v1/generate/topic-cards", generate::trigger_topic_cards),
                 (GET, get, "/v1/recaps/3days", "/v1/recaps/3days", fetch::get_3days_recap),
@@ -49,7 +46,6 @@ macro_rules! with_non_health_routes {
                 (GET, get, "/v1/dashboard/recap_jobs", "/v1/dashboard/recap_jobs", dashboard::get_recap_jobs),
                 (GET, get, "/v1/dashboard/job-progress", "/v1/dashboard/job-progress", dashboard::get_job_progress),
                 (GET, get, "/v1/dashboard/job-stats", "/v1/dashboard/job-stats", dashboard::get_job_stats),
-                (GET, get, "/v1/pulse/latest", "/v1/pulse/latest", pulse::get_latest),
             ]
         }
     };
@@ -149,7 +145,6 @@ mod tests {
                 ("RECAP_CARDS_JOB", Some("disabled")),
                 ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
-                ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
                 ("RECAP_GENRES", Some("ai,space")),
                 (
@@ -251,7 +246,6 @@ mod tests {
                 ("RECAP_CARDS_JOB", Some("disabled")),
                 ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
-                ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
                 ("RECAP_GENRES", Some("ai,space")),
                 (
@@ -274,6 +268,9 @@ mod tests {
         for (method, path) in [
             (Method::GET, "/v1/recaps/3days/cards"),
             (Method::POST, "/v1/generate/recaps/3days/cards"),
+            (Method::GET, "/v1/pulse/latest"),
+            (Method::GET, "/v1/recaps/7days"),
+            (Method::POST, "/v1/generate/recaps/7days"),
         ] {
             let request = Request::builder()
                 .method(method)
@@ -324,7 +321,7 @@ mod tests {
             "/v1/generate/topic-cards must be registered"
         );
 
-        assert_eq!(NON_HEALTH_ROUTES.len(), 26);
+        assert_eq!(NON_HEALTH_ROUTES.len(), 23);
         for (_method, uri) in NON_HEALTH_ROUTES {
             let req = Request::builder()
                 .method(Method::DELETE)
@@ -394,7 +391,6 @@ mod tests {
                 ("RECAP_CARDS_JOB", Some("disabled")),
                 ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
-                ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
                 ("RECAP_GENRES", Some("ai,space")),
                 ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
@@ -416,7 +412,7 @@ mod tests {
         let app = router(AppState::new(registry));
         let request = Request::builder()
             .method(Method::POST)
-            .uri("/v1/generate/recaps/7days")
+            .uri("/v1/generate/recaps/3days")
             .header("content-type", "application/json")
             .body(Body::from("{}"))
             .expect("request builds");
@@ -459,7 +455,6 @@ mod tests {
                 ("RECAP_CARDS_JOB", Some("disabled")),
                 ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
-                ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
                 ("RECAP_GENRES", Some("ai,space")),
                 ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
@@ -524,7 +519,7 @@ mod tests {
             (Method::GET, "/v1/not-a-registered-route"),
             (Method::GET, "/"),
             (Method::DELETE, "/v1/topic-cards"),
-            (Method::POST, "/v1/recaps/7days"),
+            (Method::POST, "/v1/recaps/3days"),
         ] {
             let request = Request::builder()
                 .method(method.clone())
@@ -545,7 +540,7 @@ mod tests {
 
         let mut allowed_generate = Request::builder()
             .method(Method::POST)
-            .uri("/v1/generate/recaps/7days")
+            .uri("/v1/generate/recaps/3days")
             .header("content-type", "application/json")
             .body(Body::from("{}"))
             .expect("request builds");
@@ -560,7 +555,7 @@ mod tests {
         assert_eq!(
             allowed_resp.status(),
             StatusCode::ACCEPTED,
-            "allowlisted peer must reach /v1/generate/recaps/7days"
+            "allowlisted peer must reach /v1/generate/recaps/3days"
         );
 
         for path in ["/health/live", "/health/ready", "/metrics"] {
@@ -697,7 +692,6 @@ mod tests {
                 ("RECAP_CARDS_JOB", Some("disabled")),
                 ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
-                ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
                 ("RECAP_GENRES", Some("ai")),
                 ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
@@ -783,7 +777,7 @@ mod tests {
 
         let mtls_resp = mtls_client
             .post(format!(
-                "https://127.0.0.1:{}/v1/generate/recaps/7days",
+                "https://127.0.0.1:{}/v1/generate/recaps/3days",
                 mtls_addr.port()
             ))
             .header("content-type", "application/json")
@@ -809,7 +803,7 @@ mod tests {
             .expect("plain reqwest client");
         let plain_resp = plain_client
             .post(format!(
-                "http://127.0.0.1:{}/v1/generate/recaps/7days",
+                "http://127.0.0.1:{}/v1/generate/recaps/3days",
                 plain_addr.port()
             ))
             .header("content-type", "application/json")

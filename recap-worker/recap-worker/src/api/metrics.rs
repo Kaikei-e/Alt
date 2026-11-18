@@ -37,7 +37,6 @@ mod tests {
                 ("RECAP_CARDS_JOB", Some("disabled")),
                 ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
-                ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
                 ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
                 ("RECAP_GENRES", Some("ai")),
@@ -68,12 +67,7 @@ mod tests {
 
         assert!(text.contains("# TYPE recap_surface_last_success_timestamp_seconds gauge"));
         assert!(text.contains("# TYPE recap_surface_consecutive_failures gauge"));
-        for surface in [
-            "three_day_recap",
-            "topic_cards",
-            "evening_pulse",
-            "morning_letter",
-        ] {
+        for surface in ["three_day_recap", "topic_cards", "morning_letter"] {
             assert!(
                 text.contains(&format!(
                     "recap_surface_last_success_timestamp_seconds{{surface=\"{surface}\"}}"
