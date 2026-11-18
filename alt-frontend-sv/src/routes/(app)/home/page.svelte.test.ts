@@ -6,6 +6,7 @@ import type {
 	LensData,
 	RecallCandidateData,
 } from "#lib/connect/knowledge_home.js";
+import type { ReaderOverlayRouteState } from "#lib/reader/types.js";
 import { goto } from "$app/navigation";
 
 const {
@@ -54,6 +55,25 @@ let mockItems: KnowledgeHomeItemData[] = [];
 let mockRecallCandidates: RecallCandidateData[] = [];
 let mockLenses: LensData[] = [];
 let mockActiveLensId: string | null = null;
+let currentPageState = $state<{ reader?: ReaderOverlayRouteState }>({});
+let currentPageURL = $state(new URL("http://localhost/home"));
+
+const mockPushState = vi.fn(
+	(url: string | URL, state: { reader?: ReaderOverlayRouteState }) => {
+		currentPageState = state;
+		if (url) {
+			currentPageURL = new URL(String(url), "http://localhost");
+		}
+	},
+);
+const mockReplaceState = vi.fn(
+	(url: string | URL, state: { reader?: ReaderOverlayRouteState }) => {
+		currentPageState = state;
+		if (url) {
+			currentPageURL = new URL(String(url), "http://localhost");
+		}
+	},
+);
 
 vi.mock("$app/env", () => ({
 	browser: true,
@@ -61,13 +81,27 @@ vi.mock("$app/env", () => ({
 
 vi.mock("$app/state", () => ({
 	page: {
-		url: new URL("http://localhost/home"),
+		get state() {
+			return currentPageState;
+		},
+		get url() {
+			return currentPageURL;
+		},
+		get params() {
+			return {};
+		},
 	},
 }));
 
 vi.mock("$app/navigation", () => ({
 	goto: vi.fn().mockResolvedValue(undefined),
 	beforeNavigate: vi.fn(),
+	pushState: (url: string | URL, state: { reader?: ReaderOverlayRouteState }) =>
+		mockPushState(url, state),
+	replaceState: (
+		url: string | URL,
+		state: { reader?: ReaderOverlayRouteState },
+	) => mockReplaceState(url, state),
 }));
 
 vi.mock("#lib/stores/viewport.svelte.js", () => ({
@@ -145,6 +179,7 @@ vi.mock("#lib/stores/toast.svelte.js", () => ({
 vi.mock("#lib/api/client/articles.js", () => ({
 	getFeedContentOnTheFlyClient: (...args: unknown[]) =>
 		mockGetFeedContent(...args),
+	getArticleSourceURLClient: vi.fn().mockResolvedValue({ url: "", title: "" }),
 }));
 
 vi.mock("#lib/api/client/knowledge_home.js", () => ({
@@ -177,6 +212,26 @@ vi.mock("#lib/hooks/useSummarySpeech.svelte.js", () => ({
 	})),
 }));
 
+vi.mock("#lib/connect/reading.js", async (importOriginal) => {
+	const actual =
+		await importOriginal<typeof import("#lib/connect/reading.js")>();
+	return {
+		...actual,
+		recordReadingEvents: vi
+			.fn()
+			.mockResolvedValue({ accepted: 1, duplicates: 0, readArticleIds: [] }),
+		getReadTodayQueue: vi
+			.fn()
+			.mockResolvedValue({ items: [], cap: 7, readCountSince: 0 }),
+		queueArticle: vi.fn().mockResolvedValue({
+			outcome: actual.QueueArticleOutcome.QUEUED,
+			items: [],
+			cap: 7,
+		}),
+		unqueueArticle: vi.fn().mockResolvedValue(undefined),
+	};
+});
+
 vi.mock("#lib/connect/index.js", () => ({
 	createClientTransport: vi.fn(() => ({})),
 	listSubscriptions: (...args: unknown[]) => mockListSubscriptions(...args),
@@ -184,6 +239,8 @@ vi.mock("#lib/connect/index.js", () => ({
 	streamAugurChat: vi.fn(),
 }));
 
+import ArticleReaderOverlay from "#lib/reader/ArticleReaderOverlay.svelte";
+import { resetReaderOverlaySessions } from "#lib/reader/reader-overlay.svelte.js";
 import HomePage from "./+page.svelte";
 
 function makeHomeItem(
@@ -218,6 +275,9 @@ function countAllRecordedOpens(): number {
 describe("Knowledge Home open tracking and lens deletion", () => {
 	beforeEach(async () => {
 		vi.clearAllMocks();
+		resetReaderOverlaySessions();
+		currentPageState = {};
+		currentPageURL = new URL("http://localhost/home");
 		await testPage.viewport(1024, 768);
 		mockItems = [
 			makeHomeItem({
@@ -279,6 +339,7 @@ describe("Knowledge Home open tracking and lens deletion", () => {
 		);
 
 		render(HomePage);
+		render(ArticleReaderOverlay);
 
 		await expect
 			.element(testPage.getByText("First Home Article"))
@@ -288,9 +349,11 @@ describe("Knowledge Home open tracking and lens deletion", () => {
 			.getByRole("button", { name: "First Home Article", exact: true })
 			.click();
 
+		await expect.element(testPage.getByTestId("reader-overlay")).toBeVisible();
 		await expect
 			.element(testPage.getByText("Full content for https://example.com/art-1"))
 			.toBeInTheDocument();
+		expect(currentPageURL.pathname).toBe("/articles/art-1");
 
 		expect(countAllRecordedOpens()).toBe(1);
 		expect(mockHomeTrackAction).toHaveBeenCalledWith(
@@ -304,10 +367,11 @@ describe("Knowledge Home open tracking and lens deletion", () => {
 		mockHomeTrackAction.mockClear();
 		mockTrackHomeActionClient.mockClear();
 
-		await testPage.getByRole("button", { name: "Next feed" }).click();
+		await testPage.getByRole("button", { name: "Next article" }).click();
 		await expect
 			.element(testPage.getByText("Full content for https://example.com/art-2"))
 			.toBeInTheDocument();
+		expect(currentPageURL.pathname).toBe("/articles/art-2");
 
 		expect(countAllRecordedOpens()).toBe(1);
 		expect(mockHomeTrackAction).toHaveBeenCalledWith(
@@ -321,7 +385,7 @@ describe("Knowledge Home open tracking and lens deletion", () => {
 		mockHomeTrackAction.mockClear();
 		mockTrackHomeActionClient.mockClear();
 
-		await testPage.getByRole("button", { name: "Previous feed" }).click();
+		await testPage.getByRole("button", { name: "Previous article" }).click();
 		await expect
 			.element(testPage.getByText("Full content for https://example.com/art-1"))
 			.toBeInTheDocument();
@@ -342,14 +406,17 @@ describe("Knowledge Home open tracking and lens deletion", () => {
 		});
 
 		render(HomePage);
+		render(ArticleReaderOverlay);
 
 		const recallCard = testPage.getByText("Recall Article With URL");
 		await expect.element(recallCard).toBeInTheDocument();
 		await recallCard.click();
 
+		await expect.element(testPage.getByTestId("reader-overlay")).toBeVisible();
 		await expect
 			.element(testPage.getByText("Recall full body"))
 			.toBeInTheDocument();
+		expect(currentPageURL.pathname).toBe("/articles/recall-1");
 
 		expect(countAllRecordedOpens()).toBe(1);
 		expect(mockHomeTrackAction).toHaveBeenCalledWith(

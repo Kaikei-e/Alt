@@ -13,7 +13,9 @@ declare global {
 			user: import("@ory/client").Identity | null;
 			userRole?: "admin" | "user";
 		}
-		// interface PageState {}
+		interface PageState {
+			reader?: import("#lib/reader/types.js").ReaderOverlayRouteState;
+		}
 		// interface Platform {}
 	}
 }

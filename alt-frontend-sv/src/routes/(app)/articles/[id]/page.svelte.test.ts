@@ -45,23 +45,34 @@ import {
 	getItemBranches,
 	resolveBranch,
 } from "#lib/connect/knowledge_trail.js";
-import { recordReadingEvents } from "#lib/connect/reading.js";
+import {
+	getReadTodayQueue,
+	QueueArticleOutcome,
+	queueArticle,
+	recordReadingEvents,
+	unqueueArticle,
+} from "#lib/connect/reading.js";
 import { createClientTransport } from "#lib/connect/transport-client.js";
 import {
 	flushReadingEvents,
 	ReadingSurface,
 } from "#lib/reading/instrumentation.js";
+import { readTodayQueue } from "#lib/reading/read-today-queue.svelte.js";
 
 const mockGetFeedContent = vi.fn();
 const mockGetArticleSourceURL = vi
 	.fn()
 	.mockResolvedValue({ url: "", title: "" });
-vi.mock("#lib/api/client/articles.js", () => ({
-	getFeedContentOnTheFlyClient: (...args: unknown[]) =>
-		mockGetFeedContent(...args),
-	getArticleSourceURLClient: (...args: unknown[]) =>
-		mockGetArticleSourceURL(...args),
-}));
+vi.mock("#lib/api/client/articles.js", async (importOriginal) => {
+	const actual = await importOriginal<Record<string, unknown>>();
+	return {
+		...actual,
+		getFeedContentOnTheFlyClient: (...args: unknown[]) =>
+			mockGetFeedContent(...args),
+		getArticleSourceURLClient: (...args: unknown[]) =>
+			mockGetArticleSourceURL(...args),
+	};
+});
 
 const mockTrackHomeActionClient = vi.mocked(trackHomeActionClient);
 const mockGetItemBranches = vi.mocked(getItemBranches);
@@ -70,10 +81,30 @@ const mockEmitTrailOutcome = vi.mocked(emitTrailOutcome);
 const mockRecordReadingEvents = vi.mocked(recordReadingEvents);
 
 beforeEach(async () => {
-	mockRecordReadingEvents.mockResolvedValue({ accepted: 0, duplicates: 0 });
+	readTodayQueue.reset();
+	mockRecordReadingEvents.mockResolvedValue({
+		accepted: 0,
+		duplicates: 0,
+		readArticleIds: [],
+	});
 	await flushReadingEvents();
 	mockRecordReadingEvents.mockClear();
-	mockRecordReadingEvents.mockResolvedValue({ accepted: 1, duplicates: 0 });
+	mockRecordReadingEvents.mockResolvedValue({
+		accepted: 1,
+		duplicates: 0,
+		readArticleIds: [],
+	});
+	vi.mocked(getReadTodayQueue).mockResolvedValue({
+		items: [],
+		cap: 7,
+		readCountSince: 0,
+	});
+	vi.mocked(queueArticle).mockResolvedValue({
+		outcome: QueueArticleOutcome.QUEUED,
+		items: [],
+		cap: 7,
+	});
+	vi.mocked(unqueueArticle).mockResolvedValue(undefined);
 	mockTrackHomeActionClient.mockResolvedValue(undefined);
 	mockGetItemBranches.mockResolvedValue([]);
 	mockResolveBranch.mockResolvedValue(undefined);
@@ -82,6 +113,16 @@ beforeEach(async () => {
 		{} as ReturnType<typeof createClientTransport>,
 	);
 });
+
+const mockSpeechPlay = vi.fn();
+const mockSpeechStop = vi.fn();
+vi.mock("#lib/hooks/useSummarySpeech.svelte.js", () => ({
+	createSummarySpeech: () => ({
+		state: "idle",
+		play: mockSpeechPlay,
+		stop: mockSpeechStop,
+	}),
+}));
 
 const mockSummarizerReset = vi.fn();
 let summarizerOverride: Partial<{
@@ -346,6 +387,29 @@ describe("Article page Alt-Paper mobile layout", () => {
 		await expect
 			.element(testPage.getByRole("link", { name: /open original/i }))
 			.toBeInTheDocument();
+	});
+
+	it("renders read-aloud control when summary is complete and calls createSummarySpeech", async () => {
+		summarizerOverride = {
+			summary: "Read aloud summary text.",
+			isSummarizing: false,
+			summaryError: null,
+			buttonState: "success",
+		};
+		mockGetFeedContent.mockResolvedValueOnce({
+			content: "<p>Article body</p>",
+			article_id: "a1",
+		});
+
+		const { unmount } = renderPage();
+
+		const speechBtn = testPage.getByTestId("summary-speech-button");
+		await expect.element(speechBtn).toBeInTheDocument();
+		await speechBtn.click();
+		expect(mockSpeechPlay).toHaveBeenCalledWith("Read aloud summary text.");
+
+		unmount();
+		expect(mockSpeechStop).toHaveBeenCalled();
 	});
 });
 
@@ -732,14 +796,20 @@ describe("Article page branch walk and open tracking", () => {
 });
 
 describe("Article page reading session recording", () => {
+	const READ_PAGE_ID = "01938e82-7c00-7a7b-9b10-000000000101";
+
 	beforeEach(() => {
 		vi.clearAllMocks();
-		mockRecordReadingEvents.mockResolvedValue({ accepted: 1, duplicates: 0 });
+		mockRecordReadingEvents.mockResolvedValue({
+			accepted: 1,
+			duplicates: 0,
+			readArticleIds: [],
+		});
 		vi.mocked(goto).mockImplementation(async () => {});
 		summarizerOverride = {};
-		currentArticleId = "art-read-page";
+		currentArticleId = READ_PAGE_ID;
 		currentPageURL = new URL(
-			"http://localhost/articles/art-read-page?url=https%3A%2F%2Fexample.com%2Fread-page&title=Read+Page",
+			`http://localhost/articles/${READ_PAGE_ID}?url=https%3A%2F%2Fexample.com%2Fread-page&title=Read+Page`,
 		);
 	});
 
@@ -764,7 +834,13 @@ describe("Article page reading session recording", () => {
 		);
 		const events = mockRecordReadingEvents.mock.calls[0]?.[1] ?? [];
 		expect(events.map((e) => e.event?.case)).toContain("surfaceViewed");
+		expect(events.map((e) => e.event?.case)).toContain("opened");
 		expect(events.map((e) => e.event?.case)).toContain("sessionEnded");
+		const opened = events.find((e) => e.event?.case === "opened")?.event?.value;
+		expect(opened).toMatchObject({
+			articleId: READ_PAGE_ID,
+			surface: ReadingSurface.ARTICLE_PAGE,
+		});
 		const surfaceViewed = events.find((e) => e.event?.case === "surfaceViewed")
 			?.event?.value;
 		expect(surfaceViewed).toEqual(
@@ -773,7 +849,7 @@ describe("Article page reading session recording", () => {
 		const sessionEnded = events.find((e) => e.event?.case === "sessionEnded")
 			?.event?.value;
 		expect(sessionEnded).toMatchObject({
-			articleId: "art-read-page",
+			articleId: READ_PAGE_ID,
 			surface: ReadingSurface.ARTICLE_PAGE,
 		});
 		expect(
@@ -781,7 +857,34 @@ describe("Article page reading session recording", () => {
 		).toBeGreaterThan(0);
 	});
 
-	it("records surface_viewed without session_ended when content fetch fails", async () => {
+	it("does not enqueue opened or session_ended when /articles/[id] param is not a UUID", async () => {
+		currentArticleId = "not-a-uuid";
+		currentPageURL = new URL(
+			"http://localhost/articles/not-a-uuid?url=https%3A%2F%2Fexample.com%2Fnon-uuid&title=Non+UUID",
+		);
+		mockGetFeedContent.mockResolvedValueOnce({
+			content: "<p>Non-UUID article page body.</p>",
+			article_id: "also-not-a-uuid",
+		});
+
+		const { unmount } = renderPage();
+
+		await expect
+			.element(testPage.getByText("Non-UUID article page body."))
+			.toBeInTheDocument();
+
+		unmount();
+		await flushReadingEvents();
+
+		const events = mockRecordReadingEvents.mock.calls.flatMap(
+			(call) => call[1] ?? [],
+		);
+		expect(events.map((e) => e.event?.case)).toContain("surfaceViewed");
+		expect(events.map((e) => e.event?.case)).not.toContain("opened");
+		expect(events.map((e) => e.event?.case)).not.toContain("sessionEnded");
+	});
+
+	it("records surface_viewed and opened without session_ended when content fetch fails", async () => {
 		mockGetFeedContent.mockRejectedValueOnce(connectError(Code.Unavailable));
 
 		const { unmount } = renderPage();
@@ -796,6 +899,46 @@ describe("Article page reading session recording", () => {
 		const events = mockRecordReadingEvents.mock.calls.flatMap(
 			(call) => call[1] ?? [],
 		);
-		expect(events.map((e) => e.event?.case)).toEqual(["surfaceViewed"]);
+		expect(events.map((e) => e.event?.case)).toContain("surfaceViewed");
+		expect(events.map((e) => e.event?.case)).toContain("opened");
+		expect(events.map((e) => e.event?.case)).not.toContain("sessionEnded");
+	});
+
+	it("toggles Read today / In Read today from the standalone article page action cluster", async () => {
+		mockGetFeedContent.mockResolvedValueOnce({
+			content: "<p>Standalone queue toggle.</p>",
+			article_id: READ_PAGE_ID,
+		});
+		vi.mocked(queueArticle).mockResolvedValueOnce({
+			outcome: QueueArticleOutcome.QUEUED,
+			items: [
+				{
+					articleId: READ_PAGE_ID,
+					title: "Read Page",
+					url: "https://example.com/read-page",
+					sourceName: "example.com",
+					imageUrl: "",
+					queuedAt: new Date(),
+					expiresAt: new Date(Date.now() + 3600_000),
+				},
+			],
+			cap: 7,
+		});
+
+		renderPage();
+
+		await expect
+			.element(testPage.getByText("Standalone queue toggle."))
+			.toBeInTheDocument();
+
+		const toggleBtn = testPage.getByTestId("read-today-toggle-button");
+		await expect.element(toggleBtn).toHaveAccessibleName("Read today");
+		await toggleBtn.click();
+
+		await expect.element(toggleBtn).toHaveAccessibleName("In Read today");
+		expect(queueArticle).toHaveBeenCalledWith(expect.anything(), {
+			articleId: READ_PAGE_ID,
+			surface: ReadingSurface.ARTICLE_PAGE,
+		});
 	});
 });

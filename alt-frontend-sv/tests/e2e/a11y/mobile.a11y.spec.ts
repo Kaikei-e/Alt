@@ -168,21 +168,21 @@ test.describe("Mobile Pages Accessibility", () => {
 		});
 	});
 
-	test.describe("Mobile Swipe Page (/feeds/swipe)", () => {
+	test.describe("Mobile Swipe Page (/feeds/swipe/visual-preview)", () => {
 		test("has no critical accessibility violations", async ({ page }) => {
-			await gotoMobileRoute(page, "feeds/swipe");
+			await gotoMobileRoute(page, "feeds/swipe/visual-preview");
 			await page.waitForLoadState("domcontentloaded");
-			await expect(page.getByTestId("swipe-card")).toBeVisible();
+			await expect(page.getByTestId("visual-preview-card")).toBeVisible();
 
 			await checkAccessibility(page, a11yOptions);
 		});
 
 		test("swipe card has proper ARIA attributes", async ({ page }) => {
-			await gotoMobileRoute(page, "feeds/swipe");
+			await gotoMobileRoute(page, "feeds/swipe/visual-preview");
 			await page.waitForLoadState("domcontentloaded");
-			await expect(page.getByTestId("swipe-card")).toBeVisible();
+			await expect(page.getByTestId("visual-preview-card")).toBeVisible();
 
-			const swipeCard = page.getByTestId("swipe-card");
+			const swipeCard = page.getByTestId("visual-preview-card");
 			await expect(swipeCard).toBeVisible();
 
 			// Check for aria-busy attribute (used during loading states)
@@ -190,30 +190,24 @@ test.describe("Mobile Pages Accessibility", () => {
 		});
 
 		test("buttons have accessible names", async ({ page }) => {
-			await gotoMobileRoute(page, "feeds/swipe");
+			await gotoMobileRoute(page, "feeds/swipe/visual-preview");
 			await page.waitForLoadState("domcontentloaded");
-			await expect(page.getByTestId("swipe-card")).toBeVisible();
+			await expect(page.getByTestId("visual-preview-card")).toBeVisible();
 
-			// Article button - using getByRole with name ensures it has an accessible name
-			// Button text may change: "Article" -> "Loading..." -> "Hide"
-			const articleButton = page.getByRole("button", {
-				name: /article|loading|hide/i,
-			});
-			await expect(articleButton).toBeVisible();
-			await expect(articleButton).toHaveAccessibleName(/article|loading|hide/i);
-
-			// Summary button
-			const summaryButton = page.getByRole("button", { name: /summary/i });
-			await expect(summaryButton).toBeVisible();
-			await expect(summaryButton).toHaveAccessibleName(/summary/i);
+			const passButton = page.getByTestId("swipe-pass-button");
+			const queueButton = page.getByTestId("swipe-queue-button");
+			await expect(passButton).toBeVisible();
+			await expect(passButton).toHaveAccessibleName("Pass");
+			await expect(queueButton).toBeVisible();
+			await expect(queueButton).toHaveAccessibleName("Read today");
 		});
 
 		test("external links have proper security and accessibility", async ({
 			page,
 		}) => {
-			await gotoMobileRoute(page, "feeds/swipe");
+			await gotoMobileRoute(page, "feeds/swipe/visual-preview");
 			await page.waitForLoadState("domcontentloaded");
-			await expect(page.getByTestId("swipe-card")).toBeVisible();
+			await expect(page.getByTestId("visual-preview-card")).toBeVisible();
 
 			const externalLink = page.getByRole("link", {
 				name: /open article|external/i,
@@ -353,11 +347,11 @@ test.describe("Keyboard Navigation", () => {
 	});
 
 	test("swipe page buttons are keyboard accessible", async ({ page }) => {
-		await gotoMobileRoute(page, "feeds/swipe");
+		await gotoMobileRoute(page, "feeds/swipe/visual-preview");
 		await page.waitForLoadState("domcontentloaded");
-		await expect(page.getByTestId("swipe-card")).toBeVisible();
+		await expect(page.getByTestId("visual-preview-card")).toBeVisible();
 
-		// Tab to Article button
+		// Tab to interactive elements
 		await page.keyboard.press("Tab");
 		await page.keyboard.press("Tab");
 		await page.keyboard.press("Tab");
@@ -373,24 +367,16 @@ test.describe("Keyboard Navigation", () => {
 	});
 
 	test("buttons can be activated with keyboard", async ({ page }) => {
-		await gotoMobileRoute(page, "feeds/swipe");
+		await gotoMobileRoute(page, "feeds/swipe/visual-preview");
 		await page.waitForLoadState("domcontentloaded");
-		await expect(page.getByTestId("swipe-card")).toBeVisible();
+		await expect(page.getByTestId("visual-preview-card")).toBeVisible();
 
-		// Focus on the Article button - once activated and content has
-		// loaded (mocked via fetchArticleContent in beforeEach), the label
-		// switches to "Re-fetch" (see SwipeFeedCard.svelte).
-		const articleButton = page.getByRole("button", {
-			name: /article|loading|re-fetch/i,
-		});
-		await articleButton.focus();
+		const passButton = page.getByTestId("swipe-pass-button");
+		await passButton.focus();
 
-		// Activate with Enter
+		// Activate with Enter to pass the first card and advance to the next
 		await page.keyboard.press("Enter");
 
-		// Web-first assertion: the button label deterministically settles
-		// on "Re-fetch" once the article content finishes loading, instead
-		// of a fixed wait followed by a tautological toBeTruthy() check.
-		await expect(articleButton).toHaveText(/re-fetch/i, { timeout: 10000 });
+		await expect(page.getByTestId("dispatch-counter")).toHaveText("№ 1");
 	});
 });

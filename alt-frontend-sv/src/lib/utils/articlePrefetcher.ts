@@ -475,7 +475,7 @@ export class ArticlePrefetcher {
 
 	/**
 	 * Prefetch content for a single article
-	 * Uses normalizedUrl as cache key for consistency with FeedDetailModal
+	 * Uses normalizedUrl as cache key for consistency with the unified reader.
 	 */
 	private prefetchContent(feed: RenderFeed): Promise<void> {
 		const cacheKey = feed.normalizedUrl;

@@ -16,6 +16,9 @@ import {
 	DETAILED_FEED_STATS,
 	FEED_STATS,
 	FEEDS_RESPONSE,
+	INITIAL_FEED_INFLOW_STATS,
+	MOCK_CONNECT_FEEDS,
+	type MockFeedInflowStat,
 	RSS_FEED_LINKS,
 	UNREAD_COUNT,
 	VIEWED_FEEDS_RESPONSE,
@@ -84,10 +87,37 @@ function encodeConnectEnvelope(message: unknown, flags = 0x00): Buffer {
 	return envelope;
 }
 
+const UUID_PATTERN =
+	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const MIN_READ_DWELL_MS = 1000;
+
 /**
  * Create the Backend mock server
  */
 export function createBackendServer(): http.Server {
+	const READ_TODAY_CAP = 7;
+	const readTodayQueue = new Map<
+		string,
+		{
+			articleId: string;
+			title: string;
+			url: string;
+			sourceName: string;
+			imageUrl: string;
+			queuedAt: string;
+			expiresAt: string;
+		}
+	>();
+	const readArticles = new Set<string>();
+
+	// Feed Inflow Stats & Daily Cap stateful store (isolated block for clean merges)
+	const feedInflowStats = new Map<string, MockFeedInflowStat>(
+		INITIAL_FEED_INFLOW_STATS.map((item) => [item.feedLinkId, { ...item }]),
+	);
+	const UUID_REGEX =
+		/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 	async function handle(
 		req: http.IncomingMessage,
 		res: http.ServerResponse,
@@ -595,6 +625,224 @@ export function createBackendServer(): http.Server {
 			res.setHeader("Content-Type", "application/json");
 			res.writeHead(200);
 			res.end(JSON.stringify(CONNECT_TRANSITION_LOOP_RESPONSE));
+			return;
+		}
+
+		// ReadingService (Connect-RPC)
+		if (path === "/alt.reading.v1.ReadingService/RecordReadingEvents") {
+			const events = Array.isArray(body.events)
+				? (body.events as Array<Record<string, unknown>>)
+				: [];
+			const readArticleIds: string[] = [];
+			const seenReadIds = new Set<string>();
+			for (const evt of events) {
+				const sessionEnded = evt?.sessionEnded as
+					| {
+							articleId?: unknown;
+							reachedEnd?: unknown;
+							activeDwellMs?: unknown;
+					  }
+					| undefined;
+				if (!sessionEnded) continue;
+				const articleId =
+					typeof sessionEnded.articleId === "string"
+						? sessionEnded.articleId.trim()
+						: "";
+				const dwellMs = Number(sessionEnded.activeDwellMs ?? 0);
+				if (
+					UUID_PATTERN.test(articleId) &&
+					sessionEnded.reachedEnd === true &&
+					Number.isFinite(dwellMs) &&
+					dwellMs >= MIN_READ_DWELL_MS
+				) {
+					if (!seenReadIds.has(articleId)) {
+						seenReadIds.add(articleId);
+						readArticleIds.push(articleId);
+					}
+					readTodayQueue.delete(articleId);
+					readArticles.add(articleId);
+				}
+			}
+			res.setHeader("Content-Type", "application/json");
+			res.writeHead(200);
+			res.end(
+				JSON.stringify({
+					accepted: events.length,
+					duplicates: 0,
+					readArticleIds,
+				}),
+			);
+			return;
+		}
+
+		if (path === "/alt.reading.v1.ReadingService/QueueArticle") {
+			const articleId =
+				typeof body.articleId === "string" ? body.articleId.trim() : "";
+			res.setHeader("Content-Type", "application/json");
+			if (!articleId || !UUID_PATTERN.test(articleId)) {
+				res.writeHead(400);
+				res.end(
+					JSON.stringify({
+						code: "invalid_argument",
+						message: "article_id must be a valid UUID",
+					}),
+				);
+				return;
+			}
+			res.writeHead(200);
+			if (readTodayQueue.has(articleId)) {
+				res.end(
+					JSON.stringify({
+						outcome: "QUEUE_ARTICLE_OUTCOME_ALREADY_QUEUED",
+						items: [...readTodayQueue.values()],
+						cap: READ_TODAY_CAP,
+					}),
+				);
+				return;
+			}
+			if (readTodayQueue.size >= READ_TODAY_CAP) {
+				res.end(
+					JSON.stringify({
+						outcome: "QUEUE_ARTICLE_OUTCOME_QUEUE_FULL",
+						items: [...readTodayQueue.values()],
+						cap: READ_TODAY_CAP,
+					}),
+				);
+				return;
+			}
+			const feedMatch = MOCK_CONNECT_FEEDS.find(
+				(f) => f.articleId === articleId,
+			);
+			const now = Date.now();
+			readTodayQueue.set(articleId, {
+				articleId,
+				title: feedMatch?.title ?? `Article ${articleId}`,
+				url: feedMatch?.link ?? `https://example.com/${articleId}`,
+				sourceName: feedMatch?.author ?? "Example",
+				imageUrl: "",
+				queuedAt: new Date(now).toISOString(),
+				expiresAt: new Date(now + 48 * 3600_000).toISOString(),
+			});
+			res.end(
+				JSON.stringify({
+					outcome: "QUEUE_ARTICLE_OUTCOME_QUEUED",
+					items: [...readTodayQueue.values()],
+					cap: READ_TODAY_CAP,
+				}),
+			);
+			return;
+		}
+
+		if (path === "/alt.reading.v1.ReadingService/UnqueueArticle") {
+			const articleId =
+				typeof body.articleId === "string" ? body.articleId.trim() : "";
+			res.setHeader("Content-Type", "application/json");
+			if (!articleId || !UUID_PATTERN.test(articleId)) {
+				res.writeHead(400);
+				res.end(
+					JSON.stringify({
+						code: "invalid_argument",
+						message: "article_id must be a valid UUID",
+					}),
+				);
+				return;
+			}
+			readTodayQueue.delete(articleId);
+			res.writeHead(200);
+			res.end(JSON.stringify({}));
+			return;
+		}
+
+		if (path === "/alt.reading.v1.ReadingService/GetReadTodayQueue") {
+			res.setHeader("Content-Type", "application/json");
+			res.writeHead(200);
+			res.end(
+				JSON.stringify({
+					items: [...readTodayQueue.values()],
+					cap: READ_TODAY_CAP,
+					readCountSince: readArticles.size,
+				}),
+			);
+			return;
+		}
+
+		// =========================================================================
+		// Feed Inflow Stats & Daily Cap (Connect-RPC v2)
+		// =========================================================================
+		if (path === "/alt.feeds.v2.FeedService/GetFeedInflowStats") {
+			res.setHeader("Content-Type", "application/json");
+			res.writeHead(200);
+			res.end(
+				JSON.stringify({
+					stats: [...feedInflowStats.values()].map((s) => ({ ...s })),
+					windowDays: 30,
+				}),
+			);
+			return;
+		}
+
+		if (path === "/alt.feeds.v2.FeedService/SetSubscriptionDailyCap") {
+			res.setHeader("Content-Type", "application/json");
+			const feedLinkId =
+				typeof body.feedLinkId === "string" ? body.feedLinkId.trim() : "";
+			if (!UUID_REGEX.test(feedLinkId)) {
+				res.writeHead(400);
+				res.end(
+					JSON.stringify({
+						code: "invalid_argument",
+						message: "feed_link_id must be a valid UUID",
+					}),
+				);
+				return;
+			}
+
+			const hasDailyCap = body.dailyCap !== undefined && body.dailyCap !== null;
+			let nextCap: number | undefined;
+			if (hasDailyCap) {
+				if (
+					typeof body.dailyCap !== "number" ||
+					!Number.isInteger(body.dailyCap) ||
+					body.dailyCap <= 0
+				) {
+					res.writeHead(400);
+					res.end(
+						JSON.stringify({
+							code: "invalid_argument",
+							message: "daily_cap must be a positive integer",
+						}),
+					);
+					return;
+				}
+				nextCap = body.dailyCap;
+			}
+
+			const stat = feedInflowStats.get(feedLinkId);
+			if (!stat) {
+				res.writeHead(404);
+				res.end(
+					JSON.stringify({
+						code: "not_found",
+						message: `subscription not found: ${feedLinkId}`,
+					}),
+				);
+				return;
+			}
+
+			if (nextCap === undefined) {
+				delete stat.dailyCap;
+				res.writeHead(200);
+				res.end(JSON.stringify({ message: "Daily cap cleared" }));
+				return;
+			}
+
+			stat.dailyCap = nextCap;
+			res.writeHead(200);
+			res.end(
+				JSON.stringify({
+					message: "Daily cap updated",
+					dailyCap: nextCap,
+				}),
+			);
 			return;
 		}
 

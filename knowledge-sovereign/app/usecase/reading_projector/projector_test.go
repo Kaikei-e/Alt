@@ -99,8 +99,15 @@ func (r *fakeReadingRepo) UpsertReadingSource(_ context.Context, src sovereign_d
 
 func (r *fakeReadingRepo) UpsertReadingQueueItem(_ context.Context, item sovereign_db.ReadingQueueItem) error {
 	k := queueKey{userID: item.UserID, articleID: item.ArticleID}
-	if cur, ok := r.queue[k]; ok && cur.item.LastEventSeq > item.LastEventSeq {
-		return nil
+	if cur, ok := r.queue[k]; ok {
+		if cur.item.LastEventSeq > item.LastEventSeq {
+			return nil
+		}
+		if cur.removedAt == nil && cur.item.ExpiresAt.After(item.QueuedAt) {
+			cur.item.LastEventSeq = item.LastEventSeq
+			r.queue[k] = cur
+			return nil
+		}
 	}
 	r.queue[k] = fakeQueueRow{item: item}
 	return nil
@@ -271,6 +278,114 @@ func TestReadingProjector_FoldsSessionQueuedUnqueuedAndLegacyOpen(t *testing.T) 
 	qRequeued := repo.queue[queueKey{userID: userID, articleID: artQueued}]
 	assert.Nil(t, qRequeued.removedAt)
 	assert.Equal(t, t0.Add(5*time.Minute), qRequeued.item.QueuedAt)
+}
+
+func TestReadingProjector_FoldQueueMergeSemantics(t *testing.T) {
+	tenantID := uuid.New()
+	userID := uuid.New()
+	t1 := time.Date(2026, 11, 18, 9, 0, 0, 0, time.UTC)
+	exp1 := t1.Add(48 * time.Hour)
+	t2 := t1.Add(2 * time.Hour)
+	exp2 := t2.Add(48 * time.Hour)
+	tAfterExpiry := exp1.Add(time.Hour)
+	expAfterExpiry := tAfterExpiry.Add(48 * time.Hour)
+
+	queuedEvt := func(seq int64, articleID uuid.UUID, queuedAt, expiresAt time.Time, policyVersion int) sovereign_db.KnowledgeEvent {
+		return readingEvt(t, seq, eventReadingQueued, queuedAt, tenantID, userID, "article:"+articleID.String(), map[string]any{
+			"article_id":           articleID.String(),
+			"queued_at":            queuedAt.Format(time.RFC3339),
+			"expires_at":           expiresAt.Format(time.RFC3339),
+			"queue_policy_version": policyVersion,
+		})
+	}
+	unqueuedEvt := func(seq int64, articleID uuid.UUID, occurredAt time.Time) sovereign_db.KnowledgeEvent {
+		return readingEvt(t, seq, eventReadingUnqueue, occurredAt, tenantID, userID, "article:"+articleID.String(), map[string]any{
+			"article_id": articleID.String(),
+		})
+	}
+
+	tests := []struct {
+		name              string
+		buildEvents       func(articleID uuid.UUID) []sovereign_db.KnowledgeEvent
+		wantQueuedAt      time.Time
+		wantExpiresAt     time.Time
+		wantPolicyVersion int
+		wantLastSeq       int64
+	}{
+		{
+			name: "queued then queued again while active keeps original times",
+			buildEvents: func(articleID uuid.UUID) []sovereign_db.KnowledgeEvent {
+				return []sovereign_db.KnowledgeEvent{
+					queuedEvt(1, articleID, t1, exp1, 1),
+					queuedEvt(2, articleID, t2, exp2, 2),
+				}
+			},
+			wantQueuedAt:      t1,
+			wantExpiresAt:     exp1,
+			wantPolicyVersion: 1,
+			wantLastSeq:       2,
+		},
+		{
+			name: "queued then unqueued then queued re-activates with third event times",
+			buildEvents: func(articleID uuid.UUID) []sovereign_db.KnowledgeEvent {
+				return []sovereign_db.KnowledgeEvent{
+					queuedEvt(1, articleID, t1, exp1, 1),
+					unqueuedEvt(2, articleID, t1.Add(30*time.Minute)),
+					queuedEvt(3, articleID, t2, exp2, 2),
+				}
+			},
+			wantQueuedAt:      t2,
+			wantExpiresAt:     exp2,
+			wantPolicyVersion: 2,
+			wantLastSeq:       3,
+		},
+		{
+			name: "queued then queued after expiry uses new times",
+			buildEvents: func(articleID uuid.UUID) []sovereign_db.KnowledgeEvent {
+				return []sovereign_db.KnowledgeEvent{
+					queuedEvt(1, articleID, t1, exp1, 1),
+					queuedEvt(2, articleID, tAfterExpiry, expAfterExpiry, 2),
+				}
+			},
+			wantQueuedAt:      tAfterExpiry,
+			wantExpiresAt:     expAfterExpiry,
+			wantPolicyVersion: 2,
+			wantLastSeq:       2,
+		},
+		{
+			name: "out-of-order older seq is ignored",
+			buildEvents: func(articleID uuid.UUID) []sovereign_db.KnowledgeEvent {
+				return []sovereign_db.KnowledgeEvent{
+					queuedEvt(5, articleID, t2, exp2, 2),
+					queuedEvt(3, articleID, t1, exp1, 1),
+				}
+			},
+			wantQueuedAt:      t2,
+			wantExpiresAt:     exp2,
+			wantPolicyVersion: 2,
+			wantLastSeq:       5,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			articleID := uuid.New()
+			repo := newFakeReadingRepo(nil)
+			p := NewProjector(repo, nil, Config{})
+
+			for _, evt := range tc.buildEvents(articleID) {
+				require.NoError(t, p.foldEvent(context.Background(), evt))
+			}
+
+			row, ok := repo.queue[queueKey{userID: userID, articleID: articleID}]
+			require.True(t, ok)
+			assert.Nil(t, row.removedAt)
+			assert.Equal(t, tc.wantQueuedAt, row.item.QueuedAt)
+			assert.Equal(t, tc.wantExpiresAt, row.item.ExpiresAt)
+			assert.Equal(t, tc.wantPolicyVersion, row.item.QueuePolicyVersion)
+			assert.Equal(t, tc.wantLastSeq, row.item.LastEventSeq)
+		})
+	}
 }
 
 func TestReadingProjector_SkipsUnknownEventAndStopsOnMalformedPayload(t *testing.T) {

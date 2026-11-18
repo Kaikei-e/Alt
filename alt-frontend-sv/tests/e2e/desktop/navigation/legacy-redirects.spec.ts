@@ -41,7 +41,8 @@ const REDIRECTS: ReadonlyArray<readonly [string, string]> = [
 	["/mobile/feeds/manage", "/settings/feeds"],
 	["/desktop/stats", "/stats"],
 	["/mobile/feeds/stats", "/stats"],
-	["/mobile/feeds/swipe", "/feeds/swipe"],
+	["/feeds/swipe", "/feeds/swipe/visual-preview"],
+	["/mobile/feeds/swipe", "/feeds/swipe/visual-preview"],
 	["/desktop", "/dashboard"],
 ];
 

@@ -47,12 +47,15 @@ describe("ClippingsEntry", () => {
 		await expect.element(page.getByText("Read")).not.toBeInTheDocument();
 	});
 
-	it("has a Details button", async () => {
-		render(ClippingsEntry, { props: { feed: unreadFeed } });
+	it("has a Details button and calls onSelect when clicked", async () => {
+		const onSelect = vi.fn();
+		render(ClippingsEntry, { props: { feed: unreadFeed, onSelect } });
 
-		await expect
-			.element(page.getByRole("button", { name: /details/i }))
-			.toBeInTheDocument();
+		const detailsBtn = page.getByRole("button", { name: /details/i });
+		await expect.element(detailsBtn).toBeInTheDocument();
+		await detailsBtn.click();
+
+		expect(onSelect).toHaveBeenCalledWith(unreadFeed);
 	});
 
 	it("has an Open link pointing to normalizedUrl", async () => {

@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import type { TagTrailArticle } from "#lib/connect/index.js";
+import { openReaderOverlay } from "#lib/reader/reader-overlay.svelte.js";
+import { ReadingSurface } from "#lib/reading/reading-events.js";
 
 const { pageState } = vi.hoisted(() => {
 	const value: { url: URL } = {
@@ -37,6 +39,16 @@ vi.mock("#lib/connect/index.js", async (importOriginal) => {
 	};
 });
 
+vi.mock("#lib/reader/reader-overlay.svelte.js", () => ({
+	openReaderOverlay: vi.fn(),
+	replaceReaderOverlayItems: vi.fn(),
+	closeReaderOverlay: vi.fn(),
+	updateReaderOverlayArticleId: vi.fn(),
+	navigateReaderOverlay: vi.fn(),
+	getReaderOverlaySession: vi.fn(),
+	resetReaderOverlaySessions: vi.fn(),
+}));
+
 import Page from "./+page.svelte";
 
 const PORTRAIT = { width: 393, height: 851 };
@@ -65,6 +77,7 @@ async function settle(ms = 250) {
 
 describe("/articles/by-tag page", () => {
 	beforeEach(() => {
+		vi.mocked(openReaderOverlay).mockReset();
 		pageState.url = new URL("http://localhost/articles/by-tag?tag=AI");
 		fetchArticlesByTagMock.mockReset();
 		fetchArticlesByTagMock.mockResolvedValue({
@@ -163,5 +176,39 @@ describe("/articles/by-tag page", () => {
 			.element(page.getByTestId("tag-article-art-2"))
 			.toBeInTheDocument();
 		expect(fetchArticlesByTagMock).toHaveBeenCalledTimes(1);
+	});
+
+	it("opens the unified reader overlay on desktop article click without rendering ArticleDetailPanel", async () => {
+		await page.viewport(1280, 800);
+		render(Page);
+		await settle(350);
+
+		await page.getByTestId("tag-article-art-2").click();
+
+		expect(openReaderOverlay).toHaveBeenCalledTimes(1);
+		const ctx = vi.mocked(openReaderOverlay).mock.calls[0]?.[0];
+		expect(ctx?.surface).toBe(ReadingSurface.OTHER);
+		expect(ctx?.currentIndex).toBe(1);
+		expect(ctx?.items).toHaveLength(ARTICLES.length);
+		expect(ctx?.items?.[1]?.url).toBe(ARTICLES[1]!.link);
+		expect(
+			document.querySelector('[data-testid="article-detail-panel"]'),
+		).toBeNull();
+	});
+
+	it("opens the unified reader overlay on mobile Details click", async () => {
+		await page.viewport(PORTRAIT.width, PORTRAIT.height);
+		render(Page);
+		await settle(350);
+
+		await page
+			.getByRole("button", { name: `Show details for ${ARTICLES[0]!.title}` })
+			.click();
+
+		expect(openReaderOverlay).toHaveBeenCalledTimes(1);
+		const ctx = vi.mocked(openReaderOverlay).mock.calls[0]?.[0];
+		expect(ctx?.surface).toBe(ReadingSurface.OTHER);
+		expect(ctx?.currentIndex).toBe(0);
+		expect(ctx?.items).toHaveLength(ARTICLES.length);
 	});
 });

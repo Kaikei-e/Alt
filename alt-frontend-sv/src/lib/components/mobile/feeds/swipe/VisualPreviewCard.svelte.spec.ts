@@ -1,108 +1,31 @@
 /**
  * VisualPreviewCard Component Tests
- *
- * The card the mobile swipe surface (`/feeds/swipe/visual-preview`) shows one
- * at a time. Besides the article-body panel it owns the same four-state image
- * pipeline the desktop grid and the mobile gallery use — idle -> loading ->
- * loaded | absent, via `createProxyImage` — and the two properties that
- * pipeline exists for are pinned below:
- *
- *  - **A transient failure is not "absent".** A 429 from the shared image
- *    proxy is retried *inside* `loadProxyImage`, and the card must hold its
- *    shimmer while that happens. The card used to render a bare `<img>` with
- *    an `onerror` that latched `imgError = true` for the life of the card, so
- *    one rate-limited response pinned it to "No preview" for the rest of the
- *    session. That is the regression this suite guards.
- *  - **Only a proxy URL is ever rendered.** What reaches `<img src>` is the
- *    URL `loadProxyImage` actually probed, which is the HMAC-signed
- *    `/v1/images/proxy/...` path. A raw publisher URL used to arrive here from
- *    `FetchArticleContent.og_image_url` and go straight into the DOM as an
- *    unproxied cross-origin request.
  */
-import { Code, ConnectError } from "@connectrpc/connect";
-import { page } from "@vitest/browser/context";
-import { flushSync, tick } from "svelte";
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import { getFeedContentOnTheFlyClient } from "#lib/api/client/index.js";
-import {
-	flushReadingEvents,
-	ReadingSurface,
-} from "#lib/reading/instrumentation.js";
 import type { RenderFeed } from "#lib/schema/feed.js";
 import VisualPreviewCard from "./VisualPreviewCard.svelte";
 
-const {
-	loadProxyImageDefault,
-	resolveOgImage,
-	mockSpeechPlay,
-	mockSpeechStop,
-	speechState,
-	mockRecordReadingEvents,
-} = vi.hoisted(() => ({
+const { loadProxyImageDefault, resolveOgImage } = vi.hoisted(() => ({
 	loadProxyImageDefault: vi.fn(),
 	resolveOgImage: vi.fn(),
-	mockSpeechPlay: vi.fn(),
-	mockSpeechStop: vi.fn(),
-	speechState: { value: "idle" },
-	mockRecordReadingEvents: vi.fn(),
-}));
-
-vi.mock("#lib/connect/reading.js", async (importOriginal) => {
-	const actual =
-		await importOriginal<typeof import("#lib/connect/reading.js")>();
-	return {
-		...actual,
-		recordReadingEvents: (...args: unknown[]) =>
-			mockRecordReadingEvents(...args),
-		createKeepaliveTransport: vi.fn(() => ({})),
-	};
-});
-
-vi.mock("#lib/hooks/useSummarySpeech.svelte.js", () => ({
-	createSummarySpeech: vi.fn(() => ({
-		get state() {
-			return speechState.value;
-		},
-		play: mockSpeechPlay,
-		stop: mockSpeechStop,
-	})),
 }));
 
 vi.mock("#lib/utils/loadProxyImage.js", () => ({ loadProxyImageDefault }));
-
-// Stubbed rather than left to the real shared resolver: without this the card
-// fires a Connect-RPC at the dev server and the outcome of every image test
-// depends on what that happens to answer.
 vi.mock("#lib/utils/ogImageResolver.js", () => ({
 	ogImageResolver: () => ({ resolve: resolveOgImage }),
 }));
 
-/** What the image proxy hands out: an HMAC signature over an encoded URL. */
 const PROXY_URL =
 	"/v1/images/proxy/testsig/aHR0cHM6Ly9jZG4uZXhhbXBsZS5jb20vaGVyby5qcGc";
 
-/** Let mount effects, the IntersectionObserver callback and microtasks settle. */
 function settle(): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, 50));
 }
 
-const connectError = (
-	code: Code,
-	headers: Record<string, string> = {},
-): ConnectError =>
-	new ConnectError(
-		"Service temporarily unavailable due to circuit breaker",
-		code,
-		headers,
-	);
-
 const mockFeed: RenderFeed = {
-	// `id` is articles.id (or a per-response UUID) and is a render key only;
-	// `feedId` is feeds.id, the one ResolveOgImages matches. They are set to
-	// different strings on purpose — a fixture where they agree would keep
-	// passing if the card regressed to sending `id`, which is the bug that
-	// shipped once already.
 	id: "feed-test-1",
 	feedId: "feeds-row-uuid-1",
 	title: "Test Article Title",
@@ -117,78 +40,25 @@ const mockFeed: RenderFeed = {
 	excerpt: "This is a test excerpt for the article content.",
 };
 
-// Mock API client functions
-vi.mock("#lib/api/client/index.js", () => ({
-	getFeedContentOnTheFlyClient: vi.fn(() =>
-		Promise.resolve({
-			content: "<p>Full article content here.</p>",
-			article_id: "article-123",
-		}),
-	),
-	summarizeArticleClient: vi.fn(() =>
-		Promise.resolve({
-			success: true,
-			summary: "This is a test summary.",
-		}),
-	),
-	registerFavoriteFeedClient: vi.fn(() => Promise.resolve({ message: "ok" })),
-}));
-
-// Mock Connect RPC functions
-vi.mock("#lib/connect/index.js", () => ({
-	createClientTransport: vi.fn(() => ({})),
-	streamSummarizeWithAbortAdapter: vi.fn(
-		(
-			_transport: unknown,
-			_options: unknown,
-			updateState?: (text: string) => void,
-			_rendererOptions?: unknown,
-			onComplete?: (result: unknown) => void,
-			_onError?: (error: Error) => void,
-		) => {
-			updateState?.("This is a test summary.");
-			if (onComplete) {
-				onComplete({
-					hasReceivedData: true,
-					articleId: "article-123",
-					chunkCount: 1,
-					totalLength: 23,
-					summary: "This is a test summary.",
-					wasCached: false,
-				});
-			}
-			const controller = new AbortController();
-			return controller;
-		},
-	),
-}));
-
 describe("VisualPreviewCard", () => {
 	const defaultProps = {
 		feed: mockFeed,
 		statusMessage: null,
 		onDismiss: vi.fn(),
+		onOpenArticle: vi.fn(),
 		thumbnailProxyUrl: PROXY_URL,
 	};
 
-	beforeEach(async () => {
-		mockRecordReadingEvents.mockResolvedValue({ accepted: 0, duplicates: 0 });
-		await flushReadingEvents();
+	beforeEach(() => {
 		vi.clearAllMocks();
-		mockRecordReadingEvents.mockResolvedValue({ accepted: 1, duplicates: 0 });
-		// `clearAllMocks` clears calls but keeps implementations, so these are
-		// re-stated rather than relying on what a previous test left behind.
 		loadProxyImageDefault.mockReset();
 		loadProxyImageDefault.mockResolvedValue({ status: "loaded" });
 		resolveOgImage.mockReset();
 		resolveOgImage.mockResolvedValue({ status: "absent" });
-		mockSpeechPlay.mockReset();
-		mockSpeechStop.mockReset();
-		speechState.value = "idle";
 	});
 
-	describe("rendering", () => {
-		it("renders the visual preview card with feed title", async () => {
+	describe("rendering and removed in-card reader controls", () => {
+		it("renders card title and description without Keep stamp, Article button, or Summary button", async () => {
 			render(VisualPreviewCard, {
 				props: defaultProps,
 			});
@@ -196,86 +66,105 @@ describe("VisualPreviewCard", () => {
 			await expect
 				.element(page.getByRole("heading", { name: mockFeed.title }))
 				.toBeInTheDocument();
-		});
-
-		it("renders the swipe card container", async () => {
-			render(VisualPreviewCard, {
-				props: defaultProps,
-			});
-
 			await expect
 				.element(page.getByTestId("visual-preview-card"))
 				.toBeInTheDocument();
-		});
-
-		it("renders the action footer with buttons", async () => {
-			render(VisualPreviewCard, {
-				props: defaultProps,
-			});
+			await expect
+				.element(page.getByText(mockFeed.description))
+				.toBeInTheDocument();
 
 			await expect
 				.element(page.getByTestId("action-footer"))
-				.toBeInTheDocument();
-		});
-
-		it("renders Article button", async () => {
-			render(VisualPreviewCard, {
-				props: defaultProps,
-			});
-
+				.not.toBeInTheDocument();
 			await expect
-				.element(page.getByRole("button", { name: /article/i }))
-				.toBeInTheDocument();
-		});
-
-		it("renders Summary button", async () => {
-			render(VisualPreviewCard, {
-				props: defaultProps,
-			});
-
+				.element(page.getByRole("button", { name: /^article$/i }))
+				.not.toBeInTheDocument();
+			await expect
+				.element(page.getByTestId("keep-stamp"))
+				.not.toBeInTheDocument();
 			await expect
 				.element(page.getByRole("button", { name: /summary/i }))
-				.toBeInTheDocument();
+				.not.toBeInTheDocument();
+			await expect
+				.element(page.getByTestId("summary-speech-button"))
+				.not.toBeInTheDocument();
+		});
+
+		it("formats the dateline compactly without time of day", async () => {
+			render(VisualPreviewCard, {
+				props: defaultProps,
+			});
+
+			await expect.element(page.getByText("Jan 15, 2025")).toBeInTheDocument();
 		});
 	});
 
-	describe("keep stamp", () => {
-		it("renders the keep stamp on the thumbnail, not in the footer", async () => {
+	describe("drag direction labels", () => {
+		it("shows Pass while dragging left and Read today while dragging right", async () => {
 			render(VisualPreviewCard, {
 				props: defaultProps,
 			});
 
-			await expect.element(page.getByTestId("keep-stamp")).toBeInTheDocument();
+			const card = page.getByTestId("visual-preview-card").element();
 
-			const footer = document.querySelector('[data-testid="action-footer"]');
-			expect(footer?.querySelector('[data-testid="keep-stamp"]')).toBeNull();
-			expect(footer?.querySelectorAll("button")).toHaveLength(2);
+			card.dispatchEvent(
+				new CustomEvent("swipe:move", {
+					detail: { deltaX: -48, deltaY: 0 },
+				}),
+			);
+			await expect
+				.element(page.getByTestId("swipe-direction-label"))
+				.toHaveTextContent("Pass");
+
+			card.dispatchEvent(
+				new CustomEvent("swipe:move", {
+					detail: { deltaX: 48, deltaY: 0 },
+				}),
+			);
+			await expect
+				.element(page.getByTestId("swipe-direction-label"))
+				.toHaveTextContent("Read today");
+
+			card.dispatchEvent(
+				new CustomEvent("swipe:end", {
+					detail: { deltaX: 0, deltaY: 0 },
+				}),
+			);
+			await expect
+				.element(page.getByTestId("swipe-direction-label"))
+				.not.toBeInTheDocument();
+		});
+	});
+
+	describe("opening the reader overlay", () => {
+		it("calls onOpenArticle when the card surface is tapped", async () => {
+			const onOpenArticle = vi.fn();
+			render(VisualPreviewCard, {
+				props: { ...defaultProps, onOpenArticle },
+			});
+
+			await page.getByText(mockFeed.description).click();
+			expect(onOpenArticle).toHaveBeenCalledTimes(1);
 		});
 
-		it("marks the feed as favorite when stamped", async () => {
-			const { registerFavoriteFeedClient } = await import(
-				"#lib/api/client/index.js"
-			);
+		it("does not call onOpenArticle when the external title link is clicked", async () => {
+			const onOpenArticle = vi.fn();
 			render(VisualPreviewCard, {
-				props: defaultProps,
+				props: { ...defaultProps, onOpenArticle },
 			});
 
-			// Native click: the swipe action's setPointerCapture retargets
-			// CDP pointer sequences to the card in this environment.
-			(page.getByTestId("keep-stamp").element() as HTMLElement).click();
+			const link = page.getByRole("link", { name: /open article/i });
+			(link.element() as HTMLAnchorElement).addEventListener("click", (e) => {
+				e.preventDefault();
+			});
+			await link.click();
 
-			expect(registerFavoriteFeedClient).toHaveBeenCalledWith(mockFeed.link);
-			await expect
-				.element(page.getByTestId("keep-stamp"))
-				.toHaveAttribute("aria-pressed", "true");
+			expect(onOpenArticle).not.toHaveBeenCalled();
 		});
 	});
 
 	describe("thumbnail pipeline", () => {
 		it("renders the thumbnail once the proxy load resolves", async () => {
-			// Replaces "renders thumbnail image when URL is provided": having a
-			// URL is no longer what puts an <img> on screen — a load that
-			// answered 200 is.
 			render(VisualPreviewCard, {
 				props: defaultProps,
 			});
@@ -289,8 +178,6 @@ describe("VisualPreviewCard", () => {
 		});
 
 		it("renders the fallback when there is no image to be had", async () => {
-			// No URL and nothing to resolve one from: the card settles rather
-			// than shimmering for the rest of the session.
 			resolveOgImage.mockResolvedValue({ status: "absent" });
 
 			render(VisualPreviewCard, {
@@ -309,11 +196,6 @@ describe("VisualPreviewCard", () => {
 		});
 
 		it("renders exactly the proxy URL the load probed, never a publisher URL", async () => {
-			// Replaces the old assertion that src === "https://cdn.example.com/
-			// hero.jpg". A raw cross-origin URL in <img src> is the defect, not
-			// the contract: what is rendered is the signed /v1/images/proxy path
-			// that `loadProxyImage` verified, and it is the same string, so a
-			// preload hint can match it.
 			render(VisualPreviewCard, {
 				props: defaultProps,
 			});
@@ -330,11 +212,6 @@ describe("VisualPreviewCard", () => {
 		});
 
 		it("keeps the shimmer while a transient failure is retried inside the loader", async () => {
-			// Never resolves: models a 429 being retried with backoff inside
-			// `loadProxyImage`. The card used to latch `imgError` on the first
-			// `onerror` and show "No preview" for the rest of the session — an
-			// <img> reports a retryable 429 and a permanent 403 as the same
-			// silent event, so the card could not tell them apart at all.
 			loadProxyImageDefault.mockReturnValue(new Promise<never>(() => {}));
 
 			render(VisualPreviewCard, {
@@ -376,9 +253,6 @@ describe("VisualPreviewCard", () => {
 		});
 
 		it("carries the LCP hints on the first card only", async () => {
-			// Replaces "thumbnail image has lazy loading". Both halves of the
-			// hint matter now that `src` is a real URL the browser can act on:
-			// the first card is the LCP element and must not be lazy.
 			render(VisualPreviewCard, {
 				props: { ...defaultProps, isLcp: true },
 			});
@@ -401,9 +275,6 @@ describe("VisualPreviewCard", () => {
 
 	describe("on-demand og:image resolution", () => {
 		it("asks on feeds.id, never on the render key", async () => {
-			// `id` is articles.id or a per-response UUID; ResolveOgImages matches
-			// feeds.id. Sending `id` matched nothing and read back as "no feed
-			// has an image" — a shipped bug.
 			resolveOgImage.mockResolvedValue({ status: "resolved", url: PROXY_URL });
 
 			render(VisualPreviewCard, {
@@ -471,568 +342,22 @@ describe("VisualPreviewCard", () => {
 			const card = page.getByTestId("visual-preview-card");
 			await expect.element(card).toHaveAttribute("aria-busy", "true");
 		});
-	});
-
-	describe("feed info", () => {
-		it("displays feed description", async () => {
+		it("carries feed.id in onDismiss and reports dismissing state during swipe animation", async () => {
+			const onDismiss = vi.fn().mockResolvedValue(true);
+			const onDismissingChange = vi.fn();
 			render(VisualPreviewCard, {
-				props: defaultProps,
+				props: { ...defaultProps, onDismiss, onDismissingChange },
 			});
 
-			await expect
-				.element(page.getByText(mockFeed.description))
-				.toBeInTheDocument();
-		});
-
-		it("displays 'Swipe to mark as read' text", async () => {
-			render(VisualPreviewCard, {
-				props: defaultProps,
-			});
-
-			await expect
-				.element(page.getByText("Swipe to mark as read"))
-				.toBeInTheDocument();
-		});
-	});
-
-	describe("content caching", () => {
-		it("uses cached content when getCachedContent returns value", async () => {
-			const getCachedContent = vi.fn(() => "<p>Cached</p>");
-
-			render(VisualPreviewCard, {
-				props: {
-					...defaultProps,
-					getCachedContent,
-				},
-			});
-
-			expect(getCachedContent).toHaveBeenCalledWith(mockFeed.normalizedUrl);
-		});
-	});
-
-	describe("expanding the article panel", () => {
-		// The panel used to be opened only after the fetch settled, so its
-		// loading state could not be reached on a first tap: the reader waited
-		// on a disabled button and then got a panel that was already in its
-		// final state. When that state was the fallback, the card looked
-		// permanently broken the instant it appeared, with no sign anything had
-		// been attempted — which is how a few seconds of backoff read as a dead
-		// article.
-		it("opens on its loading state instead of after the fetch settles", async () => {
-			let settle: (value: { content: string; article_id: string }) => void =
-				() => {};
-			vi.mocked(getFeedContentOnTheFlyClient).mockImplementation(
-				() =>
-					new Promise((resolve) => {
-						settle = resolve as typeof settle;
-					}),
+			const card = page.getByTestId("visual-preview-card").element();
+			card.dispatchEvent(
+				new CustomEvent("swipe", { detail: { direction: "left" } }),
 			);
 
-			render(VisualPreviewCard, {
-				props: {
-					...defaultProps,
-					initialArticleContent: null,
-					getCachedContent: () => null,
-				},
-			});
-
-			await page.getByRole("button", { name: /^article$/i }).click();
-
-			await expect
-				.element(page.getByTestId("content-section"))
-				.toBeInTheDocument();
-			await expect
-				.element(page.getByTestId("article-content-pending"))
-				.toHaveTextContent("Fetching the full article");
-			// A request still in flight is not a verdict: the failed markup must
-			// not be on screen at the same time.
-			await expect
-				.element(page.getByTestId("article-content-failed"))
-				.not.toBeInTheDocument();
-
-			settle({ content: "<p>Full body.</p>", article_id: "article-123" });
-
-			await expect.element(page.getByText("Full body.")).toBeInTheDocument();
-		});
-	});
-
-	// These exercise the click-driven async error path in handleToggleContent.
-	// They were skipped after hitting Svelte 5 `track_reactivity_loss`: the
-	// component ran `getFeedContentOnTheFlyClient` through a detached
-	// `.then().catch()` chain, so the post-rejection state update was not
-	// flushed in the browser runner. The handler awaits inside the handler now,
-	// and the panel opens before the fetch rather than after it, so both the
-	// notice and the summary are reachable from a first tap.
-	describe("article content fallback when source fetch fails", () => {
-		it("shows 'Source content unavailable' notice and full summary when Article fetch errors", async () => {
-			vi.mocked(getFeedContentOnTheFlyClient).mockRejectedValue(
-				new Error("[unavailable] HTTP 500"),
-			);
-
-			render(VisualPreviewCard, {
-				props: {
-					...defaultProps,
-					initialArticleContent: null,
-					getCachedContent: () => null,
-				},
-			});
-
-			const articleBtn = page.getByRole("button", { name: /^article$/i });
-			await articleBtn.click();
-			await tick();
-			await new Promise((r) => setTimeout(r, 50));
-			flushSync();
-			await tick();
-
-			await expect
-				.element(page.getByTestId("source-unavailable-notice"))
-				.toBeInTheDocument();
-
-			await expect
-				.element(page.getByTestId("article-fallback-summary"))
-				.toBeInTheDocument();
-		});
-
-		it("shows 'Source content unavailable' notice when Article fetch returns no content", async () => {
-			vi.mocked(getFeedContentOnTheFlyClient).mockResolvedValue({
-				content: "",
-				article_id: "",
-			} as never);
-
-			render(VisualPreviewCard, {
-				props: {
-					...defaultProps,
-					initialArticleContent: null,
-					getCachedContent: () => null,
-				},
-			});
-
-			const articleBtn = page.getByRole("button", { name: /^article$/i });
-			await articleBtn.click();
-			await tick();
-			await new Promise((r) => setTimeout(r, 50));
-			flushSync();
-			await tick();
-
-			await expect
-				.element(page.getByTestId("source-unavailable-notice"))
-				.toBeInTheDocument();
-		});
-
-		it("states the transient wording for a retryable failure instead of a hardcoded literal", async () => {
-			// Every surface used to hardcode its own sentence, so the same
-			// condition read three different ways. The wording now comes from
-			// articleContentErrorMessage() alone, which also guarantees the
-			// upstream prose ("...circuit breaker") never reaches the reader.
-			vi.mocked(getFeedContentOnTheFlyClient).mockRejectedValue(
-				connectError(Code.Unavailable),
-			);
-
-			render(VisualPreviewCard, {
-				props: {
-					...defaultProps,
-					initialArticleContent: null,
-					getCachedContent: () => null,
-				},
-			});
-
-			await page.getByRole("button", { name: /^article$/i }).click();
-
-			const notice = page.getByTestId("source-unavailable-notice");
-			await expect
-				.element(notice)
-				.toHaveTextContent(
-					"Source content is temporarily unavailable. Please try again shortly.",
-				);
-			await expect.element(notice).not.toHaveTextContent("circuit breaker");
-		});
-
-		it("offers both remedies — a retry control and the original site", async () => {
-			// NN/g heuristic 9: naming the problem without offering a way out is
-			// the defect, not the message.
-			vi.mocked(getFeedContentOnTheFlyClient).mockRejectedValue(
-				connectError(Code.Unavailable),
-			);
-
-			render(VisualPreviewCard, {
-				props: {
-					...defaultProps,
-					initialArticleContent: null,
-					getCachedContent: () => null,
-				},
-			});
-
-			await page.getByRole("button", { name: /^article$/i }).click();
-
-			await expect
-				.element(page.getByTestId("retry-content"))
-				.toBeInTheDocument();
-			await expect
-				.element(page.getByTestId("read-original-link"))
-				.toHaveAttribute("href", mockFeed.link);
-			// ...and the RSS body stays on screen underneath, so the reader is
-			// never looking at a bare error.
-			await expect
-				.element(page.getByTestId("article-fallback-summary"))
-				.toBeInTheDocument();
-		});
-	});
-
-	describe("the one automatic foreground retry (ADR-000959 §4 / ADR-000963 §2)", () => {
-		it("retries an unstamped ResourceExhausted once, showing the retrying state", async () => {
-			// Unstamped means Alt's own host-slot gate rejected it: no packet
-			// reached the publisher and Retry-After says when the slot frees.
-			vi.mocked(getFeedContentOnTheFlyClient)
-				.mockRejectedValueOnce(
-					connectError(Code.ResourceExhausted, { "Retry-After": "0" }),
-				)
-				.mockResolvedValue({
-					content: "<p>Arrived on the second attempt.</p>",
-					article_id: "article-123",
-				} as never);
-
-			render(VisualPreviewCard, {
-				props: {
-					...defaultProps,
-					initialArticleContent: null,
-					getCachedContent: () => null,
-				},
-			});
-
-			await page.getByRole("button", { name: /^article$/i }).click();
-
-			await expect
-				.element(page.getByTestId("article-content-pending"))
-				.toHaveTextContent("Retrying");
-
-			await expect
-				.element(page.getByText("Arrived on the second attempt."))
-				.toBeInTheDocument();
-			expect(getFeedContentOnTheFlyClient).toHaveBeenCalledTimes(2);
-		});
-
-		// These count the requests the card sends ON ITS OWN, so none of them
-		// touches the card: a reader's tap is a separate, deliberate request
-		// that ADR-000963 §6 rations rather than refuses, and counting it here
-		// would measure the wrong thing.
-		it("stops after exactly one automatic retry, then states the failure", async () => {
-			vi.mocked(getFeedContentOnTheFlyClient).mockRejectedValue(
-				connectError(Code.ResourceExhausted, { "Retry-After": "0" }),
-			);
-
-			render(VisualPreviewCard, {
-				props: {
-					...defaultProps,
-					initialArticleContent: null,
-					getCachedContent: () => null,
-				},
-			});
-
-			await new Promise((r) => setTimeout(r, 1200));
-			expect(getFeedContentOnTheFlyClient).toHaveBeenCalledTimes(2);
-
-			await page.getByRole("button", { name: /^article$/i }).click();
-			await expect
-				.element(page.getByTestId("article-content-failed"))
-				.toBeInTheDocument();
-		});
-
-		it("does NOT retry a ResourceExhausted stamped as the publisher's own 429", async () => {
-			vi.mocked(getFeedContentOnTheFlyClient).mockRejectedValue(
-				connectError(Code.ResourceExhausted, {
-					"Retry-After": "0",
-					"X-Alt-Failure-Scope": "host",
-				}),
-			);
-
-			render(VisualPreviewCard, {
-				props: {
-					...defaultProps,
-					initialArticleContent: null,
-					getCachedContent: () => null,
-				},
-			});
-
-			await new Promise((r) => setTimeout(r, 1200));
-			expect(getFeedContentOnTheFlyClient).toHaveBeenCalledTimes(1);
-		});
-
-		it("does NOT retry Code.Unavailable — ADR-000959 rejected exactly that", async () => {
-			// Two components re-sending into an open circuit breaker was the
-			// incident. This test exists to keep it closed.
-			vi.mocked(getFeedContentOnTheFlyClient).mockRejectedValue(
-				connectError(Code.Unavailable, { "Retry-After": "0" }),
-			);
-
-			render(VisualPreviewCard, {
-				props: {
-					...defaultProps,
-					initialArticleContent: null,
-					getCachedContent: () => null,
-				},
-			});
-
-			await new Promise((r) => setTimeout(r, 1200));
-			expect(getFeedContentOnTheFlyClient).toHaveBeenCalledTimes(1);
-		});
-
-		it("still lets the reader ask again after an Unavailable failure", async () => {
-			// The auto-retry ban is on the card re-sending by itself. A tap is
-			// the reader deciding, which ADR-000963 §6 keeps reachable — the
-			// "TRY AGAIN that does nothing" was half of that incident.
-			vi.mocked(getFeedContentOnTheFlyClient).mockRejectedValue(
-				connectError(Code.Unavailable),
-			);
-
-			render(VisualPreviewCard, {
-				props: {
-					...defaultProps,
-					initialArticleContent: null,
-					getCachedContent: () => null,
-				},
-			});
-
-			await page.getByRole("button", { name: /^article$/i }).click();
-			const retry = page.getByTestId("retry-content");
-			await expect.element(retry).toBeInTheDocument();
-
-			vi.mocked(getFeedContentOnTheFlyClient).mockResolvedValue({
-				content: "<p>Back on its feet.</p>",
-				article_id: "article-123",
-			} as never);
-			await retry.click();
-
-			await expect
-				.element(page.getByText("Back on its feet."))
-				.toBeInTheDocument();
-		});
-	});
-
-	describe("AI summary speech button", () => {
-		it("does not render the speech button while chunks are still typing before completion even though text is visible", async () => {
-			const { streamSummarizeWithAbortAdapter } = await import(
-				"#lib/connect/index.js"
-			);
-			vi.mocked(streamSummarizeWithAbortAdapter).mockImplementationOnce(
-				(
-					_transport: unknown,
-					_options: unknown,
-					updateState?: (chunk: string) => void,
-					rendererOptions?: {
-						onChunk?: (
-							count: number,
-							size: number,
-							decLen: number,
-							totLen: number,
-							preview: string,
-						) => void;
-					},
-				) => {
-					rendererOptions?.onChunk?.(1, 25, 25, 25, "Typing partial");
-					updateState?.("Typing partial summary...");
-					return new AbortController();
-				},
-			);
-
-			render(VisualPreviewCard, {
-				props: defaultProps,
-			});
-
-			await page.getByRole("button", { name: /summary/i }).click();
-
-			await expect
-				.element(page.getByTestId("ai-summary-section"))
-				.toBeInTheDocument();
-			await expect
-				.element(page.getByText("Typing partial summary..."))
-				.toBeInTheDocument();
-			await expect
-				.element(page.getByTestId("summary-speech-button"))
-				.not.toBeInTheDocument();
-		});
-
-		it("renders speech button with 'Play summary' once summary stream completes via real update path", async () => {
-			render(VisualPreviewCard, {
-				props: defaultProps,
-			});
-
-			await page.getByRole("button", { name: /summary/i }).click();
-
-			await expect
-				.element(page.getByTestId("ai-summary-section"))
-				.toBeInTheDocument();
-			const speechBtn = page.getByTestId("summary-speech-button");
-			await expect.element(speechBtn).toBeInTheDocument();
-			await expect.element(speechBtn).toHaveTextContent("Play summary");
-		});
-
-		it("speaks the full received summary text even when displayed text is still typing (cached single-chunk)", async () => {
-			const fullCachedText =
-				"This is the full comprehensive cached summary that arrived in a single chunk.";
-			const { streamSummarizeWithAbortAdapter } = await import(
-				"#lib/connect/index.js"
-			);
-			vi.mocked(streamSummarizeWithAbortAdapter).mockImplementationOnce(
-				(_transport, _options, updateState, _rendererOptions, onComplete) => {
-					// Simulate typewriter has only received or typed first character
-					updateState?.("T");
-					onComplete?.({
-						hasReceivedData: true,
-						articleId: "art-1",
-						chunkCount: 1,
-						totalLength: fullCachedText.length,
-						summary: fullCachedText,
-						wasCached: true,
-					});
-					return new AbortController();
-				},
-			);
-
-			render(VisualPreviewCard, {
-				props: defaultProps,
-			});
-
-			await page.getByRole("button", { name: /summary/i }).click();
-
-			const speechBtn = page.getByTestId("summary-speech-button");
-			await expect.element(speechBtn).toBeInTheDocument();
-
-			await speechBtn.click();
-
-			expect(mockSpeechPlay).toHaveBeenCalledWith(fullCachedText);
-		});
-
-		it("speaks the full fallback text when stream fails and REST fallback succeeds", async () => {
-			const fallbackSummary =
-				"This is the complete fallback summary generated via REST client.";
-			const { streamSummarizeWithAbortAdapter } = await import(
-				"#lib/connect/index.js"
-			);
-			const { summarizeArticleClient } = await import(
-				"#lib/api/client/index.js"
-			);
-
-			vi.mocked(streamSummarizeWithAbortAdapter).mockImplementationOnce(
-				(
-					_transport,
-					_options,
-					_updateState,
-					_rendererOptions,
-					_onComplete,
-					onError,
-				) => {
-					onError?.(new Error("Network connection closed"));
-					return new AbortController();
-				},
-			);
-
-			vi.mocked(summarizeArticleClient).mockResolvedValueOnce({
-				success: true,
-				summary: fallbackSummary,
-				article_id: "article-123",
-				feed_url: mockFeed.link,
-			});
-
-			render(VisualPreviewCard, {
-				props: defaultProps,
-			});
-
-			await page.getByRole("button", { name: /summary/i }).click();
-
-			const speechBtn = page.getByTestId("summary-speech-button");
-			await expect.element(speechBtn).toBeInTheDocument();
-
-			await speechBtn.click();
-
-			expect(mockSpeechPlay).toHaveBeenCalledWith(fallbackSummary);
-		});
-	});
-
-	describe("reading session recording", () => {
-		it("starts a session only when expanded with article id and ends on collapse", async () => {
-			vi.mocked(getFeedContentOnTheFlyClient).mockResolvedValueOnce({
-				content: "<p>Full swipe article text for reading session.</p>",
-				article_id: "swipe-art-1",
-			} as never);
-
-			const { unmount } = render(VisualPreviewCard, {
-				props: {
-					...defaultProps,
-					initialArticleContent: null,
-					getCachedContent: () => null,
-				},
-			});
-
-			await settle();
-			expect(mockRecordReadingEvents).not.toHaveBeenCalled();
-
-			await page.getByRole("button", { name: /^article$/i }).click();
-			await expect
-				.element(page.getByText("Full swipe article text for reading session."))
-				.toBeInTheDocument();
-
-			await page.getByRole("button", { name: /^hide$/i }).click();
-
-			await vi.waitFor(() =>
-				expect(mockRecordReadingEvents).toHaveBeenCalledTimes(1),
-			);
-			const events = mockRecordReadingEvents.mock.calls[0]?.[1] ?? [];
-			const sessionEnded = events.find(
-				(e: { event: { case: string } }) => e.event.case === "sessionEnded",
-			)?.event.value;
-			expect(sessionEnded).toMatchObject({
-				articleId: "swipe-art-1",
-				surface: ReadingSurface.SWIPE,
-			});
-			expect(sessionEnded.bodyLengthChars).toBeGreaterThan(0);
-
-			unmount();
-			expect(mockRecordReadingEvents).toHaveBeenCalledTimes(1);
-		});
-
-		it("records no session when content fetch fails", async () => {
-			vi.mocked(getFeedContentOnTheFlyClient).mockRejectedValue(
-				connectError(Code.Unavailable),
-			);
-
-			const { unmount } = render(VisualPreviewCard, {
-				props: {
-					...defaultProps,
-					initialArticleContent: null,
-					getCachedContent: () => null,
-				},
-			});
-			await page.getByRole("button", { name: /^article$/i }).click();
-			await expect
-				.element(page.getByTestId("source-unavailable-notice"))
-				.toBeInTheDocument();
-			unmount();
-
-			await flushReadingEvents();
-			expect(mockRecordReadingEvents).not.toHaveBeenCalled();
-		});
-
-		it("records no session when article id remains unknown", async () => {
-			vi.mocked(getFeedContentOnTheFlyClient).mockResolvedValue({
-				content: "<p>Expanded body without article id.</p>",
-				article_id: "",
-			} as never);
-
-			const { unmount } = render(VisualPreviewCard, {
-				props: {
-					...defaultProps,
-					initialArticleContent: null,
-					getCachedContent: () => null,
-				},
-			});
-			await page.getByRole("button", { name: /^article$/i }).click();
-			await expect
-				.element(page.getByText("Expanded body without article id."))
-				.toBeInTheDocument();
-			unmount();
-
-			await flushReadingEvents();
-			expect(mockRecordReadingEvents).not.toHaveBeenCalled();
+			await vi.waitFor(() => expect(onDismiss).toHaveBeenCalledTimes(1));
+			expect(onDismiss).toHaveBeenCalledWith(-1, mockFeed.id);
+			expect(onDismissingChange).toHaveBeenNthCalledWith(1, true, mockFeed.id);
+			expect(onDismissingChange).toHaveBeenLastCalledWith(false, mockFeed.id);
 		});
 	});
 });
