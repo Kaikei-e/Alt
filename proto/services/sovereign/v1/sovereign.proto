@@ -168,6 +168,9 @@ message WhyReason {
 }
 
 message TodayDigest {
+  reserved 9;
+  reserved "evening_pulse_available";
+
   string user_id = 1;
   string digest_date = 2;
   int32 new_articles = 3;
@@ -176,7 +179,6 @@ message TodayDigest {
   repeated string top_tags = 6;
   google.protobuf.Timestamp updated_at = 7;
   bool weekly_recap_available = 8;
-  bool evening_pulse_available = 9;
   int32 need_to_know_count = 10;
   string digest_freshness = 11;
   google.protobuf.Timestamp last_projected_at = 12;

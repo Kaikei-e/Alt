@@ -10,17 +10,15 @@ import (
 )
 
 type todayDigestMutation struct {
-	UserID                uuid.UUID
-	DigestDate            string
-	NewArticles           int
-	SummarizedArticles    int
-	UnsummarizedArticles  int
-	TopTagsJSON           string
-	PulseRefsJSON         string
-	UpdatedAt             time.Time
-	WeeklyRecapAvailable  bool
-	EveningPulseAvailable bool
-	LastEventSeq          int64
+	UserID               uuid.UUID
+	DigestDate           string
+	NewArticles          int
+	SummarizedArticles   int
+	UnsummarizedArticles int
+	TopTagsJSON          string
+	UpdatedAt            time.Time
+	WeeklyRecapAvailable bool
+	LastEventSeq         int64
 }
 
 func parseTodayDigestMutation(payload json.RawMessage) (todayDigestMutation, error) {
@@ -31,14 +29,12 @@ func parseTodayDigestMutation(payload json.RawMessage) (todayDigestMutation, err
 		SummarizedArticles   int       `json:"summarized_articles"`
 		UnsummarizedArticles int       `json:"unsummarized_articles"`
 		TopTags              []string  `json:"top_tags"`
-		PulseRefs            []string  `json:"pulse_refs"`
 		UpdatedAt            time.Time `json:"updated_at"`
 		// LastEventSeq is a pointer so a payload that omits the key
 		// entirely (nil) can be told apart from one that sends an
 		// explicit 0 — the two need different diagnostics, see below.
-		LastEventSeq          *int64 `json:"last_event_seq"`
-		WeeklyRecapAvailable  bool   `json:"weekly_recap_available"`
-		EveningPulseAvailable bool   `json:"evening_pulse_available"`
+		LastEventSeq         *int64 `json:"last_event_seq"`
+		WeeklyRecapAvailable bool   `json:"weekly_recap_available"`
 	}
 	if err := json.Unmarshal(payload, &digest); err != nil {
 		return todayDigestMutation{}, fmt.Errorf("UpsertTodayDigest: unmarshal: %w: %w", ErrInvalidMutationPayload, err)
@@ -68,27 +64,16 @@ func parseTodayDigestMutation(payload json.RawMessage) (todayDigestMutation, err
 		return todayDigestMutation{}, fmt.Errorf("UpsertTodayDigest: marshal top_tags: %w", err)
 	}
 
-	pulseRefs := digest.PulseRefs
-	if pulseRefs == nil {
-		pulseRefs = []string{}
-	}
-	pulseRefsJSON, err := json.Marshal(pulseRefs)
-	if err != nil {
-		return todayDigestMutation{}, fmt.Errorf("UpsertTodayDigest: marshal pulse_refs: %w", err)
-	}
-
 	return todayDigestMutation{
-		UserID:                digest.UserID,
-		DigestDate:            digest.DigestDate,
-		NewArticles:           digest.NewArticles,
-		SummarizedArticles:    digest.SummarizedArticles,
-		UnsummarizedArticles:  digest.UnsummarizedArticles,
-		TopTagsJSON:           string(topTagsJSON),
-		PulseRefsJSON:         string(pulseRefsJSON),
-		UpdatedAt:             digest.UpdatedAt,
-		WeeklyRecapAvailable:  digest.WeeklyRecapAvailable,
-		EveningPulseAvailable: digest.EveningPulseAvailable,
-		LastEventSeq:          *digest.LastEventSeq,
+		UserID:               digest.UserID,
+		DigestDate:           digest.DigestDate,
+		NewArticles:          digest.NewArticles,
+		SummarizedArticles:   digest.SummarizedArticles,
+		UnsummarizedArticles: digest.UnsummarizedArticles,
+		TopTagsJSON:          string(topTagsJSON),
+		UpdatedAt:            digest.UpdatedAt,
+		WeeklyRecapAvailable: digest.WeeklyRecapAvailable,
+		LastEventSeq:         *digest.LastEventSeq,
 	}, nil
 }
 
@@ -96,9 +81,9 @@ func buildUpsertTodayDigestArgs(m todayDigestMutation) []any {
 	return []any{
 		m.UserID, m.DigestDate,
 		m.NewArticles, m.SummarizedArticles,
-		m.UnsummarizedArticles, m.TopTagsJSON, m.PulseRefsJSON,
+		m.UnsummarizedArticles, m.TopTagsJSON,
 		m.UpdatedAt,
-		m.WeeklyRecapAvailable, m.EveningPulseAvailable,
+		m.WeeklyRecapAvailable,
 		m.LastEventSeq,
 	}
 }
@@ -115,18 +100,16 @@ func buildUpsertTodayDigestArgs(m todayDigestMutation) []any {
 // decrement of an existing row would silently become a no-op.
 const upsertTodayDigestQuery = `INSERT INTO today_digest_view
 		(user_id, digest_date, new_articles, summarized_articles,
-		 unsummarized_articles, top_tags_json, pulse_refs_json, updated_at,
-		 weekly_recap_available, evening_pulse_available, last_event_seq)
-		VALUES ($1, $2, $3, $4, GREATEST(0, $5), $6, $7, $8, $9, $10, $11)
+		 unsummarized_articles, top_tags_json, updated_at,
+		 weekly_recap_available, last_event_seq)
+		VALUES ($1, $2, $3, $4, GREATEST(0, $5), $6, $7, $8, $9)
 		ON CONFLICT (user_id, digest_date) DO UPDATE SET
 		 new_articles = today_digest_view.new_articles + EXCLUDED.new_articles,
 		 summarized_articles = today_digest_view.summarized_articles + EXCLUDED.summarized_articles,
 		 unsummarized_articles = GREATEST(0, today_digest_view.unsummarized_articles + $5),
 		 top_tags_json = COALESCE(NULLIF(EXCLUDED.top_tags_json, '[]'::jsonb), today_digest_view.top_tags_json),
-		 pulse_refs_json = COALESCE(NULLIF(EXCLUDED.pulse_refs_json, '[]'::jsonb), today_digest_view.pulse_refs_json),
 		 updated_at = EXCLUDED.updated_at,
 		 weekly_recap_available = EXCLUDED.weekly_recap_available OR today_digest_view.weekly_recap_available,
-		 evening_pulse_available = EXCLUDED.evening_pulse_available OR today_digest_view.evening_pulse_available,
 		 last_event_seq = EXCLUDED.last_event_seq
 		WHERE EXCLUDED.last_event_seq > today_digest_view.last_event_seq`
 

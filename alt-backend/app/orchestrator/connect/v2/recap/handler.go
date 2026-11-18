@@ -19,7 +19,6 @@ import (
 
 // Handler implements the RecapService Connect-RPC service.
 type Handler struct {
-	recapv2connect.UnimplementedRecapServiceHandler
 	recapUsecase       RecapUsecaseInterface
 	clusterDraftLoader *recapinternal.ClusterDraftLoader
 	logger             *slog.Logger

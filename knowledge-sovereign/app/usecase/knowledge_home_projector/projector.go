@@ -268,7 +268,9 @@ func (p *Projector) foldEvent(ctx context.Context, evt sovereign_db.KnowledgeEve
 	case "RecallDismissed":
 		return p.foldRecallDismissed(ctx, evt)
 	case "recap.evening_pulse_generated.v1":
-		return p.foldEveningPulseGenerated(ctx, evt)
+		// Retired historical event preserved in append-only knowledge_events;
+		// skip deliberately so full reprojects advance past it without error.
+		return nil
 	default:
 		// Unknown event types are silently skipped but still advance the
 		// checkpoint (handled by the caller).
