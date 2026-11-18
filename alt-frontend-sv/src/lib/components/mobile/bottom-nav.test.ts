@@ -45,6 +45,12 @@ describe("getActiveTabIndex", () => {
 
 	it("falls back to Menu (4) for secondary destinations surfaced by the Menu page", () => {
 		expect(getActiveTabIndex("/home")).toBe(4);
+		expect(getActiveTabIndex("/knowledge")).toBe(4);
+		expect(
+			getActiveTabIndex(
+				"/knowledge/themes/01938e82-7c00-7a7b-9b10-000000000001",
+			),
+		).toBe(4);
 		expect(getActiveTabIndex("/knowledge/trail")).toBe(4);
 		expect(getActiveTabIndex("/augur")).toBe(4);
 		expect(getActiveTabIndex("/augur/history")).toBe(4);
@@ -74,6 +80,8 @@ describe("isImmersiveRoute", () => {
 		expect(isImmersiveRoute("/feeds/visual-preview")).toBe(false);
 		expect(isImmersiveRoute("/feeds/favorites")).toBe(false);
 		expect(isImmersiveRoute("/menu")).toBe(false);
+		expect(isImmersiveRoute("/knowledge")).toBe(false);
+		expect(isImmersiveRoute("/knowledge/themes/123")).toBe(false);
 		expect(isImmersiveRoute("/knowledge/trail")).toBe(false);
 	});
 

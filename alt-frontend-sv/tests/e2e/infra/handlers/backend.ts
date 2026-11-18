@@ -43,6 +43,7 @@ import {
 	CONNECT_RECAP_RESPONSE,
 	JOB_PROGRESS_RESPONSE,
 } from "../data/recap";
+import { createInitialThemesStore, type MockThemeRecord } from "../data/themes";
 
 export const BACKEND_PORT = 4003;
 
@@ -110,6 +111,13 @@ export function createBackendServer(): http.Server {
 		}
 	>();
 	const readArticles = new Set<string>();
+	let themesStore: Map<string, MockThemeRecord> = createInitialThemesStore();
+	const themeOpenedCalls: Array<{
+		themeId: string;
+		version: number;
+		clientEventId: string;
+		openedAt: string;
+	}> = [];
 
 	// Feed Inflow Stats & Daily Cap stateful store (isolated block for clean merges)
 	const feedInflowStats = new Map<string, MockFeedInflowStat>(
@@ -763,6 +771,124 @@ export function createBackendServer(): http.Server {
 					readCountSince: readArticles.size,
 				}),
 			);
+			return;
+		}
+
+		if (path === "/alt.reading.v1.ReadingService/ListThemes") {
+			res.setHeader("Content-Type", "application/json");
+			res.writeHead(200);
+			const themes = [...themesStore.values()]
+				.map((entry) => ({ ...entry.summary }))
+				.sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
+			res.end(JSON.stringify({ themes }));
+			return;
+		}
+
+		if (path === "/alt.reading.v1.ReadingService/GetTheme") {
+			const themeId =
+				typeof body.themeId === "string" ? body.themeId.trim() : "";
+			res.setHeader("Content-Type", "application/json");
+			if (!themeId || !UUID_PATTERN.test(themeId)) {
+				res.writeHead(400);
+				res.end(
+					JSON.stringify({
+						code: "invalid_argument",
+						message: "theme_id must be a valid UUID",
+					}),
+				);
+				return;
+			}
+			const record = themesStore.get(themeId);
+			if (!record) {
+				res.writeHead(404);
+				res.end(
+					JSON.stringify({
+						code: "not_found",
+						message: "theme not found",
+					}),
+				);
+				return;
+			}
+			const requestedVersion =
+				typeof body.version === "number"
+					? body.version
+					: record.summary.latestVersion;
+			const versionPage = record.versions.get(requestedVersion);
+			if (!versionPage) {
+				res.writeHead(404);
+				res.end(
+					JSON.stringify({
+						code: "not_found",
+						message: "theme version not found",
+					}),
+				);
+				return;
+			}
+			res.writeHead(200);
+			res.end(JSON.stringify(versionPage));
+			return;
+		}
+
+		if (path === "/alt.reading.v1.ReadingService/RecordThemeOpened") {
+			const themeId =
+				typeof body.themeId === "string" ? body.themeId.trim() : "";
+			const version = typeof body.version === "number" ? body.version : 0;
+			const clientEventId =
+				typeof body.clientEventId === "string" ? body.clientEventId : "";
+			const openedAt =
+				typeof body.openedAt === "string"
+					? body.openedAt
+					: new Date().toISOString();
+			res.setHeader("Content-Type", "application/json");
+			if (!themeId || !UUID_PATTERN.test(themeId)) {
+				res.writeHead(400);
+				res.end(
+					JSON.stringify({
+						code: "invalid_argument",
+						message: "theme_id must be a valid UUID",
+					}),
+				);
+				return;
+			}
+			const record = themesStore.get(themeId);
+			if (!record?.versions.has(version)) {
+				res.writeHead(404);
+				res.end(
+					JSON.stringify({
+						code: "not_found",
+						message: "theme not found",
+					}),
+				);
+				return;
+			}
+			themeOpenedCalls.push({
+				themeId,
+				version,
+				clientEventId,
+				openedAt,
+			});
+			if (version > record.summary.lastOpenedVersion) {
+				record.summary.lastOpenedVersion = version;
+			}
+			record.summary.lastOpenedAt = openedAt;
+			res.writeHead(200);
+			res.end(JSON.stringify({}));
+			return;
+		}
+
+		if (path === "/__mock/themes/opened") {
+			res.setHeader("Content-Type", "application/json");
+			res.writeHead(200);
+			res.end(JSON.stringify({ calls: [...themeOpenedCalls] }));
+			return;
+		}
+
+		if (path === "/__mock/themes/reset") {
+			themesStore = createInitialThemesStore();
+			themeOpenedCalls.length = 0;
+			res.setHeader("Content-Type", "application/json");
+			res.writeHead(200);
+			res.end(JSON.stringify({ ok: true }));
 			return;
 		}
 

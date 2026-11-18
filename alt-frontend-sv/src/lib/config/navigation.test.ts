@@ -56,6 +56,7 @@ describe("MOBILE_MENU_SECTIONS", () => {
 			s.items.map((i) => i.href),
 		);
 		expect(hrefs).toContain("/home");
+		expect(hrefs).toContain("/knowledge");
 		expect(hrefs).toContain("/knowledge/trail");
 		expect(hrefs).toContain("/augur");
 		expect(hrefs).not.toContain("/feeds/swipe/visual-preview");

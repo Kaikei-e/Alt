@@ -316,6 +316,101 @@ test.describe("Mobile Pages Accessibility", () => {
 			await checkAccessibility(page, a11yOptions);
 		});
 	});
+
+	test.describe("Mobile Themes List Page (/knowledge)", () => {
+		test("has no critical accessibility violations", async ({ page }) => {
+			await page.route(CONNECT_RPC_PATHS.listThemes, (route) =>
+				fulfillJson(route, {
+					themes: [
+						{
+							themeId: "01938e82-7c00-7a7b-9b10-100000000001",
+							title: "Compiler Toolchains",
+							latestVersion: 2,
+							articleCount: 3,
+							updatedAt: "2026-11-18T10:00:00Z",
+							lastOpenedVersion: 0,
+						},
+					],
+				}),
+			);
+
+			await gotoMobileRoute(page, "knowledge");
+			await page.waitForLoadState("domcontentloaded");
+			await expect(
+				page.getByRole("heading", { level: 1, name: "Themes" }),
+			).toBeVisible();
+			await expect(page.getByTestId("theme-row").first()).toBeVisible();
+
+			await checkAccessibility(page, a11yOptions);
+		});
+	});
+
+	test.describe("Mobile Theme Detail Page (/knowledge/themes/:themeId)", () => {
+		test("has no critical accessibility violations", async ({ page }) => {
+			await page.route(CONNECT_RPC_PATHS.getTheme, (route) =>
+				fulfillJson(route, {
+					themeId: "01938e82-7c00-7a7b-9b10-100000000001",
+					title: "Compiler Toolchains",
+					version: 2,
+					latestVersion: 2,
+					createdAt: "2026-11-18T10:00:00Z",
+					keyPoints: [
+						{
+							text: "Incremental linking cuts rebuild latency.",
+							sourceArticleIds: ["01938e82-7c00-7a7b-9b10-200000000001"],
+						},
+					],
+					timeline: [
+						{
+							date: "2026-11-18",
+							text: "Parallel symbol resolution enabled.",
+							sourceArticleIds: ["01938e82-7c00-7a7b-9b10-200000000001"],
+						},
+					],
+					whatChanged: [
+						{
+							text: "Incremental link latency dropped by half.",
+							sourceArticleIds: ["01938e82-7c00-7a7b-9b10-200000000001"],
+						},
+					],
+					openQuestions: [
+						{
+							text: "How should remote caches expire stale archives?",
+							sourceArticleIds: ["01938e82-7c00-7a7b-9b10-200000000001"],
+						},
+					],
+					sources: [
+						{
+							articleId: "01938e82-7c00-7a7b-9b10-200000000001",
+							title: "Incremental Linker Benchmarks",
+							url: "https://toolchain.example/incremental-linker",
+						},
+					],
+					versions: [
+						{
+							version: 2,
+							createdAt: "2026-11-18T10:00:00Z",
+							articleCount: 3,
+						},
+					],
+				}),
+			);
+			await page.route(CONNECT_RPC_PATHS.recordThemeOpened, (route) =>
+				fulfillJson(route, {}),
+			);
+
+			await gotoMobileRoute(
+				page,
+				"knowledge/themes/01938e82-7c00-7a7b-9b10-100000000001",
+			);
+			await page.waitForLoadState("domcontentloaded");
+			await expect(
+				page.getByRole("heading", { level: 1, name: "Compiler Toolchains" }),
+			).toBeVisible();
+
+			await checkAccessibility(page, a11yOptions);
+		});
+	});
 });
 
 test.describe("Keyboard Navigation", () => {
