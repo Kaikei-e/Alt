@@ -186,9 +186,10 @@ func (s *stubQuotaSummarizeRepo) FetchArticleSummaryByArticleID(_ context.Contex
 }
 
 type stubQuotaPreProcessor struct {
-	summarizeCalls int
-	streamCalls    int
-	queueCalls     int
+	summarizeCalls  int
+	streamCalls     int
+	queueCalls      int
+	lastQueueOrigin domain.SummarizeOrigin
 }
 
 func (s *stubQuotaPreProcessor) Summarize(_ context.Context, _, _, _ string) (string, error) {
@@ -201,8 +202,9 @@ func (s *stubQuotaPreProcessor) StreamSummarize(_ context.Context, _, _, _ strin
 	return io.NopCloser(strings.NewReader("data: streamed summary\n\n")), nil
 }
 
-func (s *stubQuotaPreProcessor) QueueSummarize(_ context.Context, _, _ string) (string, error) {
+func (s *stubQuotaPreProcessor) QueueSummarize(_ context.Context, _, _ string, origin domain.SummarizeOrigin) (string, error) {
 	s.queueCalls++
+	s.lastQueueOrigin = origin
 	return "job-quota-1", nil
 }
 
@@ -373,6 +375,7 @@ func TestSummarizeRoutes_ShareSinglePerUserBudgetAcrossStreamingAndNonStreaming(
 	otherUserQueueRec := doPost("/v1/feeds/summarize/queue", `{"feed_url":"https://example.com/a"}`, userBToken)
 	assert.Equal(t, http.StatusAccepted, otherUserQueueRec.Code)
 	assert.Equal(t, 1, preproc.queueCalls)
+	assert.Equal(t, domain.SummarizeOriginUser, preproc.lastQueueOrigin)
 }
 
 func TestSummarizeRoutes_PanicAtRegistrationWhenLimiterNil(t *testing.T) {

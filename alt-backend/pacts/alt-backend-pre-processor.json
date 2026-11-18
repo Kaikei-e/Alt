@@ -71,6 +71,7 @@
       "request": {
         "body": {
           "articleId": "article-456",
+          "origin": "SUMMARIZE_ORIGIN_USER",
           "title": "Async Test Article"
         },
         "headers": {

@@ -365,8 +365,8 @@ func TestSummarizeQueueWorker_ProcessQueue_ContentTooShort(t *testing.T) {
 		ctx := context.Background()
 
 		jobs := []*domain.SummarizeJob{
-			{JobID: uuid.New(), ArticleID: "article-short", MaxRetries: 3},
-			{JobID: uuid.New(), ArticleID: "article-normal", MaxRetries: 3},
+			{JobID: uuid.New(), ArticleID: "article-short", Origin: domain.SummarizeOriginSystem, MaxRetries: 3},
+			{JobID: uuid.New(), ArticleID: "article-normal", Origin: domain.SummarizeOriginSystem, MaxRetries: 3},
 		}
 
 		// Use a custom API repo that returns ErrContentTooShort for the first call, success for the second
@@ -691,7 +691,7 @@ func TestSummarizeQueueWorker_ProcessQueue_SummarySaveFailure(t *testing.T) {
 		jobID := uuid.New()
 
 		jobs := []*domain.SummarizeJob{
-			{JobID: jobID, ArticleID: "article-1", Status: domain.SummarizeJobStatusRunning, MaxRetries: 3},
+			{JobID: jobID, ArticleID: "article-1", Status: domain.SummarizeJobStatusRunning, Origin: domain.SummarizeOriginSystem, MaxRetries: 3},
 		}
 
 		jobRepo := &stubJobRepoTracking{jobs: jobs}
@@ -720,7 +720,7 @@ func TestSummarizeQueueWorker_ProcessQueue_AtomicDequeue(t *testing.T) {
 		jobID := uuid.New()
 
 		jobs := []*domain.SummarizeJob{
-			{JobID: jobID, ArticleID: "article-1", Status: domain.SummarizeJobStatusRunning, MaxRetries: 3},
+			{JobID: jobID, ArticleID: "article-1", Status: domain.SummarizeJobStatusRunning, Origin: domain.SummarizeOriginSystem, MaxRetries: 3},
 		}
 
 		jobRepo := &stubJobRepoTracking{jobs: jobs}
@@ -798,6 +798,7 @@ type stubJobRepoWithEnqueue struct {
 	invalidatedCountMap  map[string]int
 	markInFlightOnCreate bool
 	createJobCalls       []string // article IDs passed to CreateJob
+	createJobOrigins     []domain.SummarizeOrigin
 	dequeueCalls         int
 	getErr               error
 }
@@ -835,8 +836,9 @@ func (m *stubJobRepoWithEnqueue) CountInvalidatedCompletedJobs(_ context.Context
 	return m.invalidatedCountMap[articleID], nil
 }
 
-func (m *stubJobRepoWithEnqueue) CreateJob(_ context.Context, articleID string) (string, error) {
+func (m *stubJobRepoWithEnqueue) CreateJob(_ context.Context, articleID string, origin domain.SummarizeOrigin) (string, error) {
 	m.createJobCalls = append(m.createJobCalls, articleID)
+	m.createJobOrigins = append(m.createJobOrigins, origin)
 	if m.markInFlightOnCreate {
 		if m.inFlightMap == nil {
 			m.inFlightMap = make(map[string]bool)
@@ -855,8 +857,9 @@ type stubJobRepoWithDuplicate struct {
 	stubJobRepoWithEnqueue
 }
 
-func (m *stubJobRepoWithDuplicate) CreateJob(_ context.Context, articleID string) (string, error) {
+func (m *stubJobRepoWithDuplicate) CreateJob(_ context.Context, articleID string, origin domain.SummarizeOrigin) (string, error) {
 	m.createJobCalls = append(m.createJobCalls, articleID)
+	m.createJobOrigins = append(m.createJobOrigins, origin)
 	return "", nil // empty string = duplicate, no error
 }
 
@@ -885,6 +888,7 @@ func TestEnqueueUnsummarizedBatch_EnqueuesViaGuard(t *testing.T) {
 		assert.Equal(t, 0, result.Skipped)
 		assert.Equal(t, 0, result.Errors)
 		assert.Equal(t, []string{"article-1", "article-2"}, jobRepo.createJobCalls)
+		assert.Equal(t, []domain.SummarizeOrigin{domain.SummarizeOriginSystem, domain.SummarizeOriginSystem}, jobRepo.createJobOrigins)
 	})
 }
 
@@ -1328,8 +1332,8 @@ type stubJobRepoCancellingOnArticle struct {
 	cancelFunc context.CancelFunc
 }
 
-func (m *stubJobRepoCancellingOnArticle) CreateJob(ctx context.Context, articleID string) (string, error) {
-	id, err := m.stubJobRepoWithEnqueue.CreateJob(ctx, articleID)
+func (m *stubJobRepoCancellingOnArticle) CreateJob(ctx context.Context, articleID string, origin domain.SummarizeOrigin) (string, error) {
+	id, err := m.stubJobRepoWithEnqueue.CreateJob(ctx, articleID, origin)
 	if articleID == m.cancelOnID && m.cancelFunc != nil {
 		m.cancelFunc()
 	}
@@ -1523,8 +1527,8 @@ func TestSummarizeQueueWorker_ProcessQueue_ContentTooLong_SavesPlaceholder(t *te
 		ctx := context.Background()
 
 		jobs := []*domain.SummarizeJob{
-			{JobID: uuid.New(), ArticleID: "article-long", MaxRetries: 3},
-			{JobID: uuid.New(), ArticleID: "article-normal", MaxRetries: 3},
+			{JobID: uuid.New(), ArticleID: "article-long", Origin: domain.SummarizeOriginSystem, MaxRetries: 3},
+			{JobID: uuid.New(), ArticleID: "article-normal", Origin: domain.SummarizeOriginSystem, MaxRetries: 3},
 		}
 
 		// First call returns too long, second succeeds
@@ -1665,9 +1669,9 @@ func TestSummarizeQueueWorker_ProcessQueue_DeadLetterRechecksSummaryExists(t *te
 func TestSummarizeQueueWorker_ProcessQueue_UsesConfiguredConcurrency(t *testing.T) {
 	t.Run("processes jobs concurrently when worker concurrency is increased", func(t *testing.T) {
 		jobs := []*domain.SummarizeJob{
-			{JobID: uuid.New(), ArticleID: "article-1", MaxRetries: 3},
-			{JobID: uuid.New(), ArticleID: "article-2", MaxRetries: 3},
-			{JobID: uuid.New(), ArticleID: "article-3", MaxRetries: 3},
+			{JobID: uuid.New(), ArticleID: "article-1", Origin: domain.SummarizeOriginSystem, MaxRetries: 3},
+			{JobID: uuid.New(), ArticleID: "article-2", Origin: domain.SummarizeOriginSystem, MaxRetries: 3},
+			{JobID: uuid.New(), ArticleID: "article-3", Origin: domain.SummarizeOriginSystem, MaxRetries: 3},
 		}
 
 		jobRepo := &stubJobRepoTracking{jobs: jobs}

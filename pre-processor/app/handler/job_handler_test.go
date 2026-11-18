@@ -333,7 +333,7 @@ func (m *stubJobRepoForEnqueue) CountInvalidatedCompletedJobs(_ context.Context,
 	return 0, nil
 }
 
-func (m *stubJobRepoForEnqueue) CreateJob(_ context.Context, _ string) (string, error) {
+func (m *stubJobRepoForEnqueue) CreateJob(_ context.Context, _ string, _ domain.SummarizeOrigin) (string, error) {
 	m.createJobCalls++
 	return "new-job-id", nil
 }
@@ -619,7 +619,7 @@ func (m *stubJobRepoForRefill) CountInvalidatedCompletedJobs(_ context.Context, 
 	return 0, nil
 }
 
-func (m *stubJobRepoForRefill) CreateJob(_ context.Context, _ string) (string, error) {
+func (m *stubJobRepoForRefill) CreateJob(_ context.Context, _ string, _ domain.SummarizeOrigin) (string, error) {
 	m.createJobCalls++
 	return m.createJobToken, nil
 }
@@ -852,11 +852,13 @@ func TestProcessQueueTick_RefillsAndProcessesWhileStragglerInFlight(t *testing.T
 
 	var queueMu sync.Mutex
 	var pending []*domain.SummarizeJob
+	var jobIDToArticle sync.Map
 
-	enqueueJob := func(articleID string) string {
+	enqueueJob := func(articleID string, origin domain.SummarizeOrigin) string {
 		queueMu.Lock()
 		defer queueMu.Unlock()
-		j := &domain.SummarizeJob{JobID: uuid.New(), ArticleID: articleID, MaxRetries: 3}
+		j := &domain.SummarizeJob{JobID: uuid.New(), ArticleID: articleID, Origin: origin, MaxRetries: 3}
+		jobIDToArticle.Store(j.JobID.String(), articleID)
 		pending = append(pending, j)
 		return j.JobID.String()
 	}
@@ -887,8 +889,8 @@ func TestProcessQueueTick_RefillsAndProcessesWhileStragglerInFlight(t *testing.T
 	jobRepo.EXPECT().HasRecentFailedJob(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil).AnyTimes()
 	jobRepo.EXPECT().CountInvalidatedCompletedJobs(gomock.Any(), gomock.Any()).Return(0, nil).AnyTimes()
 
-	jobRepo.EXPECT().CreateJob(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, articleID string) (string, error) {
-		return enqueueJob(articleID), nil
+	jobRepo.EXPECT().CreateJob(gomock.Any(), gomock.Any(), domain.SummarizeOriginSystem).DoAndReturn(func(_ context.Context, articleID string, origin domain.SummarizeOrigin) (string, error) {
+		return enqueueJob(articleID, origin), nil
 	}).Times(3)
 
 	jobRepo.EXPECT().GetPendingJobs(gomock.Any(), 1).DoAndReturn(func(_ context.Context, _ int) ([]*domain.SummarizeJob, error) {
@@ -946,9 +948,9 @@ func TestProcessQueueTick_RefillsAndProcessesWhileStragglerInFlight(t *testing.T
 	}).AnyTimes()
 
 	summaryRepo.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
-	jobRepo.EXPECT().CompleteJobWithNotification(gomock.Any(), gomock.Any(), gomock.Any(), "u1", gomock.Any()).
-		DoAndReturn(func(_ context.Context, _, _, _, articleID string) error {
-			if articleID == "refill-3" {
+	jobRepo.EXPECT().UpdateJobStatus(gomock.Any(), gomock.Any(), domain.SummarizeJobStatusCompleted, gomock.Any(), "").
+		DoAndReturn(func(_ context.Context, jobID string, _ domain.SummarizeJobStatus, _, _ string) error {
+			if v, ok := jobIDToArticle.Load(jobID); ok && v == "refill-3" {
 				closeRefill3Once.Do(func() { close(refill3Completed) })
 			}
 			return nil
@@ -1045,10 +1047,10 @@ func TestProcessQueueTick_ConcurrentDrainedWorkersDoNotTriggerDuplicateSweeps(t 
 	jobRepo.EXPECT().HasRecentFailedJob(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil).AnyTimes()
 	jobRepo.EXPECT().CountInvalidatedCompletedJobs(gomock.Any(), gomock.Any()).Return(0, nil).AnyTimes()
 
-	jobRepo.EXPECT().CreateJob(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, articleID string) (string, error) {
+	jobRepo.EXPECT().CreateJob(gomock.Any(), gomock.Any(), domain.SummarizeOriginSystem).DoAndReturn(func(_ context.Context, articleID string, origin domain.SummarizeOrigin) (string, error) {
 		queueMu.Lock()
 		defer queueMu.Unlock()
-		j := &domain.SummarizeJob{JobID: uuid.New(), ArticleID: articleID, MaxRetries: 3}
+		j := &domain.SummarizeJob{JobID: uuid.New(), ArticleID: articleID, Origin: origin, MaxRetries: 3}
 		pending = append(pending, j)
 		return j.JobID.String(), nil
 	}).Times(6)
@@ -1100,7 +1102,7 @@ func TestProcessQueueTick_ConcurrentDrainedWorkersDoNotTriggerDuplicateSweeps(t 
 	}).AnyTimes()
 	apiRepo.EXPECT().SummarizeArticle(gomock.Any(), gomock.Any(), "low").Return(&domain.SummarizedContent{SummaryJapanese: "要約"}, nil).AnyTimes()
 	summaryRepo.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
-	jobRepo.EXPECT().CompleteJobWithNotification(gomock.Any(), gomock.Any(), gomock.Any(), "u1", gomock.Any()).Return(nil).AnyTimes()
+	jobRepo.EXPECT().UpdateJobStatus(gomock.Any(), gomock.Any(), domain.SummarizeJobStatusCompleted, gomock.Any(), "").Return(nil).AnyTimes()
 
 	log := testJobHandlerLogger()
 	worker := service.NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, log)
@@ -1201,10 +1203,12 @@ func TestProcessQueueTick_WorkerDoesNotExitWhileRefillStillNeeded(t *testing.T) 
 	jobRepo.EXPECT().HasDeadLetterJob(gomock.Any(), gomock.Any()).Return(false, nil).AnyTimes()
 	jobRepo.EXPECT().HasRecentFailedJob(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil).AnyTimes()
 	jobRepo.EXPECT().CountInvalidatedCompletedJobs(gomock.Any(), gomock.Any()).Return(0, nil).AnyTimes()
-	jobRepo.EXPECT().CreateJob(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, id string) (string, error) {
+	var rJobToArticle sync.Map
+	jobRepo.EXPECT().CreateJob(gomock.Any(), gomock.Any(), domain.SummarizeOriginSystem).DoAndReturn(func(_ context.Context, id string, origin domain.SummarizeOrigin) (string, error) {
 		mu.Lock()
 		defer mu.Unlock()
-		j := &domain.SummarizeJob{JobID: uuid.New(), ArticleID: id, MaxRetries: 3}
+		j := &domain.SummarizeJob{JobID: uuid.New(), ArticleID: id, Origin: origin, MaxRetries: 3}
+		rJobToArticle.Store(j.JobID.String(), id)
 		pending = append(pending, j)
 		if id == "r1" {
 			afterSweep2.Store(true)
@@ -1287,8 +1291,8 @@ func TestProcessQueueTick_WorkerDoesNotExitWhileRefillStillNeeded(t *testing.T) 
 	summaryRepo.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 	r3Done := make(chan struct{})
 	var r3DoneOnce sync.Once
-	jobRepo.EXPECT().CompleteJobWithNotification(gomock.Any(), gomock.Any(), gomock.Any(), "u1", gomock.Any()).DoAndReturn(func(_ context.Context, _, _, _, id string) error {
-		if id == "r3" {
+	jobRepo.EXPECT().UpdateJobStatus(gomock.Any(), gomock.Any(), domain.SummarizeJobStatusCompleted, gomock.Any(), "").DoAndReturn(func(_ context.Context, jobID string, _ domain.SummarizeJobStatus, _, _ string) error {
+		if v, ok := rJobToArticle.Load(jobID); ok && v == "r3" {
 			r3DoneOnce.Do(func() { close(r3Done) })
 		}
 		return nil
@@ -1358,10 +1362,12 @@ func TestProcessQueueTick_PendingJobMissedByDequeuePickedUpWhileStragglerInFligh
 	jobRepo.EXPECT().HasDeadLetterJob(gomock.Any(), gomock.Any()).Return(false, nil).AnyTimes()
 	jobRepo.EXPECT().HasRecentFailedJob(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil).AnyTimes()
 	jobRepo.EXPECT().CountInvalidatedCompletedJobs(gomock.Any(), gomock.Any()).Return(0, nil).AnyTimes()
-	jobRepo.EXPECT().CreateJob(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, id string) (string, error) {
+	var missedJobToArticle sync.Map
+	jobRepo.EXPECT().CreateJob(gomock.Any(), gomock.Any(), domain.SummarizeOriginSystem).DoAndReturn(func(_ context.Context, id string, origin domain.SummarizeOrigin) (string, error) {
 		mu.Lock()
 		defer mu.Unlock()
-		j := &domain.SummarizeJob{JobID: uuid.New(), ArticleID: id, MaxRetries: 3}
+		j := &domain.SummarizeJob{JobID: uuid.New(), ArticleID: id, Origin: origin, MaxRetries: 3}
+		missedJobToArticle.Store(j.JobID.String(), id)
 		pending = append(pending, j)
 		return j.JobID.String(), nil
 	}).Times(2)
@@ -1411,8 +1417,8 @@ func TestProcessQueueTick_PendingJobMissedByDequeuePickedUpWhileStragglerInFligh
 		return &domain.SummarizedContent{SummaryJapanese: "s"}, nil
 	}).AnyTimes()
 	summaryRepo.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
-	jobRepo.EXPECT().CompleteJobWithNotification(gomock.Any(), gomock.Any(), gomock.Any(), "u1", gomock.Any()).DoAndReturn(func(_ context.Context, _, _, _, id string) error {
-		if id == "missed-2" {
+	jobRepo.EXPECT().UpdateJobStatus(gomock.Any(), gomock.Any(), domain.SummarizeJobStatusCompleted, gomock.Any(), "").DoAndReturn(func(_ context.Context, jobID string, _ domain.SummarizeJobStatus, _, _ string) error {
+		if v, ok := missedJobToArticle.Load(jobID); ok && v == "missed-2" {
 			missed2DoneOnce.Do(func() { close(missed2Done) })
 		}
 		return nil

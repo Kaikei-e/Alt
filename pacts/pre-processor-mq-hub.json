@@ -14,6 +14,7 @@
           },
           "payload": {
             "article_id": "art-002",
+            "origin": "user",
             "title": "Rust Memory Safety"
           },
           "source": "alt-backend"

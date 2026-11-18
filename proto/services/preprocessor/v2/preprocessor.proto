@@ -54,12 +54,19 @@ message StreamSummarizeResponse {
 // Async Queue Messages
 // =============================================================================
 
+enum SummarizeOrigin {
+  SUMMARIZE_ORIGIN_UNSPECIFIED = 0;
+  SUMMARIZE_ORIGIN_USER = 1;
+  SUMMARIZE_ORIGIN_SYSTEM = 2;
+}
+
 // QueueSummarizeRequest is the request for async queue submission
 message QueueSummarizeRequest {
   // Article ID (required)
   string article_id = 1;
   // Article title
   string title = 2;
+  SummarizeOrigin origin = 3;
 }
 
 // QueueSummarizeResponse contains the job creation result

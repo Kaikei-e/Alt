@@ -56,6 +56,7 @@ type fakePreProcessor struct {
 	streamErr    error
 	jobID        string
 	queueErr     error
+	queuedOrigin domain.SummarizeOrigin
 	status       *preprocessor_summarize_port.SummarizeStatus
 	statusErr    error
 }
@@ -68,7 +69,8 @@ func (f *fakePreProcessor) StreamSummarize(_ context.Context, _, _, _ string) (i
 	return f.stream, f.streamErr
 }
 
-func (f *fakePreProcessor) QueueSummarize(_ context.Context, _, _ string) (string, error) {
+func (f *fakePreProcessor) QueueSummarize(_ context.Context, _, _ string, origin domain.SummarizeOrigin) (string, error) {
+	f.queuedOrigin = origin
 	return f.jobID, f.queueErr
 }
 
@@ -256,6 +258,7 @@ func TestQueueSummary_ReturnsJobID(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, "job-1", jobID)
+	assert.Equal(t, domain.SummarizeOriginUser, pre.queuedOrigin)
 }
 
 func TestResolveStreamArticle_FillsContentByID(t *testing.T) {

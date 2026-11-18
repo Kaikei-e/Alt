@@ -373,8 +373,9 @@ func TestSummarizeHandler_HandleSummarizeQueue(t *testing.T) {
 		expectedCode int
 		validateResp func(t *testing.T, resp map[string]interface{})
 		wantErr      bool
+		errContains  string
 	}{
-		"should queue job successfully": {
+		"should queue user-origin job successfully": {
 			setupMock: func(s *mocks.MockSummaryRepository, j *mocks.MockSummarizeJobRepository) {
 				s.EXPECT().Exists(gomock.Any(), testArticleID).Return(false, nil)
 				j.EXPECT().HasRecentSuccessfulJob(gomock.Any(), testArticleID, gomock.Any()).Return(false, nil)
@@ -382,12 +383,29 @@ func TestSummarizeHandler_HandleSummarizeQueue(t *testing.T) {
 				j.EXPECT().HasDeadLetterJob(gomock.Any(), testArticleID).Return(false, nil)
 				j.EXPECT().HasRecentFailedJob(gomock.Any(), testArticleID, gomock.Any()).Return(false, nil)
 				j.EXPECT().CountInvalidatedCompletedJobs(gomock.Any(), testArticleID).Return(0, nil)
-				j.EXPECT().CreateJob(gomock.Any(), testArticleID).Return("job-123", nil)
+				j.EXPECT().CreateJob(gomock.Any(), testArticleID, domain.SummarizeOriginUser).Return("job-123", nil)
 			},
-			requestBody:  map[string]interface{}{"article_id": testArticleID},
+			requestBody:  map[string]interface{}{"article_id": testArticleID, "origin": "user"},
 			expectedCode: http.StatusAccepted,
 			validateResp: func(t *testing.T, resp map[string]interface{}) {
 				assert.Equal(t, "job-123", resp["job_id"])
+				assert.Equal(t, "pending", resp["status"])
+			},
+		},
+		"should queue system-origin job successfully": {
+			setupMock: func(s *mocks.MockSummaryRepository, j *mocks.MockSummarizeJobRepository) {
+				s.EXPECT().Exists(gomock.Any(), testArticleID).Return(false, nil)
+				j.EXPECT().HasRecentSuccessfulJob(gomock.Any(), testArticleID, gomock.Any()).Return(false, nil)
+				j.EXPECT().HasInFlightJob(gomock.Any(), testArticleID, gomock.Any()).Return(false, nil)
+				j.EXPECT().HasDeadLetterJob(gomock.Any(), testArticleID).Return(false, nil)
+				j.EXPECT().HasRecentFailedJob(gomock.Any(), testArticleID, gomock.Any()).Return(false, nil)
+				j.EXPECT().CountInvalidatedCompletedJobs(gomock.Any(), testArticleID).Return(0, nil)
+				j.EXPECT().CreateJob(gomock.Any(), testArticleID, domain.SummarizeOriginSystem).Return("job-sys-1", nil)
+			},
+			requestBody:  map[string]interface{}{"article_id": testArticleID, "origin": "system"},
+			expectedCode: http.StatusAccepted,
+			validateResp: func(t *testing.T, resp map[string]interface{}) {
+				assert.Equal(t, "job-sys-1", resp["job_id"])
 				assert.Equal(t, "pending", resp["status"])
 			},
 		},
@@ -400,9 +418,9 @@ func TestSummarizeHandler_HandleSummarizeQueue(t *testing.T) {
 				j.EXPECT().HasDeadLetterJob(gomock.Any(), canonical).Return(false, nil)
 				j.EXPECT().HasRecentFailedJob(gomock.Any(), canonical, gomock.Any()).Return(false, nil)
 				j.EXPECT().CountInvalidatedCompletedJobs(gomock.Any(), canonical).Return(0, nil)
-				j.EXPECT().CreateJob(gomock.Any(), canonical).Return("job-upper", nil)
+				j.EXPECT().CreateJob(gomock.Any(), canonical, domain.SummarizeOriginUser).Return("job-upper", nil)
 			},
-			requestBody:  map[string]interface{}{"article_id": "AAAAAAAA-BBBB-4CCC-8DDD-EEEEEEEEEEEE"},
+			requestBody:  map[string]interface{}{"article_id": "AAAAAAAA-BBBB-4CCC-8DDD-EEEEEEEEEEEE", "origin": "user"},
 			expectedCode: http.StatusAccepted,
 			validateResp: func(t *testing.T, resp map[string]interface{}) {
 				assert.Equal(t, "job-upper", resp["job_id"])
@@ -413,7 +431,7 @@ func TestSummarizeHandler_HandleSummarizeQueue(t *testing.T) {
 			setupMock: func(s *mocks.MockSummaryRepository, j *mocks.MockSummarizeJobRepository) {
 				s.EXPECT().Exists(gomock.Any(), testArticleID).Return(true, nil)
 			},
-			requestBody:  map[string]interface{}{"article_id": testArticleID},
+			requestBody:  map[string]interface{}{"article_id": testArticleID, "origin": "user"},
 			expectedCode: http.StatusAccepted,
 			validateResp: func(t *testing.T, resp map[string]interface{}) {
 				assert.Equal(t, "", resp["job_id"])
@@ -426,7 +444,7 @@ func TestSummarizeHandler_HandleSummarizeQueue(t *testing.T) {
 				s.EXPECT().Exists(gomock.Any(), testArticleID).Return(false, nil)
 				j.EXPECT().HasRecentSuccessfulJob(gomock.Any(), testArticleID, gomock.Any()).Return(true, nil)
 			},
-			requestBody:  map[string]interface{}{"article_id": testArticleID},
+			requestBody:  map[string]interface{}{"article_id": testArticleID, "origin": "user"},
 			expectedCode: http.StatusAccepted,
 			validateResp: func(t *testing.T, resp map[string]interface{}) {
 				assert.Equal(t, "skipped", resp["status"])
@@ -439,7 +457,7 @@ func TestSummarizeHandler_HandleSummarizeQueue(t *testing.T) {
 				j.EXPECT().HasRecentSuccessfulJob(gomock.Any(), testArticleID, gomock.Any()).Return(false, nil)
 				j.EXPECT().HasInFlightJob(gomock.Any(), testArticleID, gomock.Any()).Return(true, nil)
 			},
-			requestBody:  map[string]interface{}{"article_id": testArticleID},
+			requestBody:  map[string]interface{}{"article_id": testArticleID, "origin": "user"},
 			expectedCode: http.StatusAccepted,
 			validateResp: func(t *testing.T, resp map[string]interface{}) {
 				assert.Equal(t, "skipped", resp["status"])
@@ -450,7 +468,7 @@ func TestSummarizeHandler_HandleSummarizeQueue(t *testing.T) {
 			setupMock: func(s *mocks.MockSummaryRepository, j *mocks.MockSummarizeJobRepository) {
 				s.EXPECT().Exists(gomock.Any(), testArticleID).Return(false, assert.AnError)
 			},
-			requestBody:  map[string]interface{}{"article_id": testArticleID},
+			requestBody:  map[string]interface{}{"article_id": testArticleID, "origin": "user"},
 			expectedCode: http.StatusInternalServerError,
 			wantErr:      true,
 		},
@@ -462,23 +480,37 @@ func TestSummarizeHandler_HandleSummarizeQueue(t *testing.T) {
 				j.EXPECT().HasDeadLetterJob(gomock.Any(), testArticleID).Return(false, nil)
 				j.EXPECT().HasRecentFailedJob(gomock.Any(), testArticleID, gomock.Any()).Return(false, nil)
 				j.EXPECT().CountInvalidatedCompletedJobs(gomock.Any(), testArticleID).Return(0, nil)
-				j.EXPECT().CreateJob(gomock.Any(), testArticleID).Return("", assert.AnError)
+				j.EXPECT().CreateJob(gomock.Any(), testArticleID, domain.SummarizeOriginUser).Return("", assert.AnError)
 			},
-			requestBody:  map[string]interface{}{"article_id": testArticleID},
+			requestBody:  map[string]interface{}{"article_id": testArticleID, "origin": "user"},
 			expectedCode: http.StatusInternalServerError,
 			wantErr:      true,
 		},
 		"should return 400 for missing article_id": {
 			setupMock:    func(s *mocks.MockSummaryRepository, j *mocks.MockSummarizeJobRepository) {},
-			requestBody:  map[string]interface{}{},
+			requestBody:  map[string]interface{}{"origin": "user"},
 			expectedCode: http.StatusBadRequest,
 			wantErr:      true,
 		},
 		"should return 400 for non-UUID article_id": {
 			setupMock:    func(s *mocks.MockSummaryRepository, j *mocks.MockSummarizeJobRepository) {},
-			requestBody:  map[string]interface{}{"article_id": "not-a-uuid"},
+			requestBody:  map[string]interface{}{"article_id": "not-a-uuid", "origin": "user"},
 			expectedCode: http.StatusBadRequest,
 			wantErr:      true,
+		},
+		"should return 400 for missing origin": {
+			setupMock:    func(s *mocks.MockSummaryRepository, j *mocks.MockSummarizeJobRepository) {},
+			requestBody:  map[string]interface{}{"article_id": testArticleID},
+			expectedCode: http.StatusBadRequest,
+			wantErr:      true,
+			errContains:  "origin",
+		},
+		"should return 400 for invalid origin": {
+			setupMock:    func(s *mocks.MockSummaryRepository, j *mocks.MockSummarizeJobRepository) {},
+			requestBody:  map[string]interface{}{"article_id": testArticleID, "origin": "invalid"},
+			expectedCode: http.StatusBadRequest,
+			wantErr:      true,
+			errContains:  "origin",
 		},
 	}
 
@@ -509,6 +541,9 @@ func TestSummarizeHandler_HandleSummarizeQueue(t *testing.T) {
 			if tc.wantErr {
 				require.Error(t, err)
 				assert.Equal(t, tc.expectedCode, httpStatusOf(t, err))
+				if tc.errContains != "" {
+					assert.Contains(t, err.Error(), tc.errContains)
+				}
 				return
 			}
 

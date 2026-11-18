@@ -20,16 +20,20 @@ type completionCall struct {
 	articleID string
 }
 
-// stubJobRepoCompletion records which completion path the worker took, so the
-// test can tell a job that merely finished from one that also enqueued its
-// notification.
+type statusUpdateCall struct {
+	jobID    string
+	status   domain.SummarizeJobStatus
+	summary  string
+	errorMsg string
+}
+
 type stubJobRepoCompletion struct {
 	repository.SummarizeJobRepository
 	jobs []*domain.SummarizeJob
 
 	mu          sync.Mutex
 	completions []completionCall
-	updates     []domain.SummarizeJobStatus
+	updates     []statusUpdateCall
 }
 
 func (m *stubJobRepoCompletion) DequeueJobs(_ context.Context, limit int) ([]*domain.SummarizeJob, error) {
@@ -48,10 +52,15 @@ func (m *stubJobRepoCompletion) DequeueJobs(_ context.Context, limit int) ([]*do
 
 func (m *stubJobRepoCompletion) RecoverStuckJobs(_ context.Context) (int64, error) { return 0, nil }
 
-func (m *stubJobRepoCompletion) UpdateJobStatus(_ context.Context, _ string, status domain.SummarizeJobStatus, _ string, _ string) error {
+func (m *stubJobRepoCompletion) UpdateJobStatus(_ context.Context, jobID string, status domain.SummarizeJobStatus, summary string, errorMsg string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.updates = append(m.updates, status)
+	m.updates = append(m.updates, statusUpdateCall{
+		jobID:    jobID,
+		status:   status,
+		summary:  summary,
+		errorMsg: errorMsg,
+	})
 	return nil
 }
 
@@ -67,14 +76,121 @@ func (m *stubJobRepoCompletion) CompleteJobWithNotification(_ context.Context, j
 	return nil
 }
 
-// TestSummarizeQueueWorker_CompletesThroughTheOutbox is the wiring half of the
-// producer: a summary that reaches the user has to be completed through the
-// transactional path, or the outbox row is never written and the feature is
-// dead code with passing unit tests.
-func TestSummarizeQueueWorker_CompletesThroughTheOutbox(t *testing.T) {
+type stubArticleRepoNoUser struct {
+	repository.ArticleRepository
+}
+
+func (m *stubArticleRepoNoUser) FindByID(_ context.Context, articleID string) (*domain.Article, error) {
+	return &domain.Article{
+		ID:      articleID,
+		UserID:  "",
+		Title:   "Ownerless Article",
+		Content: "Test content for summarization",
+	}, nil
+}
+
+type stubCompletionAPIRepo struct {
+	repository.ExternalAPIRepository
+}
+
+func (m *stubCompletionAPIRepo) SummarizeArticle(_ context.Context, _ *domain.Article, _ string) (*domain.SummarizedContent, error) {
+	return &domain.SummarizedContent{SummaryJapanese: "Generated summary"}, nil
+}
+
+func TestSummarizeQueueWorker_UserOriginInsertsNotification(t *testing.T) {
 	jobID := uuid.New()
 	jobRepo := &stubJobRepoCompletion{
-		jobs: []*domain.SummarizeJob{{JobID: jobID, ArticleID: "article-1", MaxRetries: 3}},
+		jobs: []*domain.SummarizeJob{{
+			JobID:      jobID,
+			ArticleID:  "article-1",
+			Origin:     domain.SummarizeOriginUser,
+			MaxRetries: 3,
+		}},
+	}
+
+	worker := NewSummarizeQueueWorker(
+		jobRepo,
+		&stubArticleRepoForWorker{},
+		&stubCompletionAPIRepo{},
+		&stubSummaryRepoForWorker{},
+		testLogger(),
+	)
+
+	require.NoError(t, worker.ProcessQueue(context.Background(), noRefill))
+
+	require.Len(t, jobRepo.completions, 1)
+	assert.Equal(t, jobID.String(), jobRepo.completions[0].jobID)
+	assert.Equal(t, "Generated summary", jobRepo.completions[0].summary)
+	assert.Equal(t, "user-1", jobRepo.completions[0].userID)
+	assert.Equal(t, "article-1", jobRepo.completions[0].articleID)
+	assert.Empty(t, jobRepo.updates)
+}
+
+func TestSummarizeQueueWorker_SystemOriginSkipsNotification(t *testing.T) {
+	jobID := uuid.New()
+	jobRepo := &stubJobRepoCompletion{
+		jobs: []*domain.SummarizeJob{{
+			JobID:      jobID,
+			ArticleID:  "article-1",
+			Origin:     domain.SummarizeOriginSystem,
+			MaxRetries: 3,
+		}},
+	}
+
+	worker := NewSummarizeQueueWorker(
+		jobRepo,
+		&stubArticleRepoForWorker{},
+		&stubCompletionAPIRepo{},
+		&stubSummaryRepoForWorker{},
+		testLogger(),
+	)
+
+	require.NoError(t, worker.ProcessQueue(context.Background(), noRefill))
+
+	assert.Empty(t, jobRepo.completions, "system-origin jobs must not enqueue a summary_ready notification")
+	require.Len(t, jobRepo.updates, 1)
+	assert.Equal(t, statusUpdateCall{
+		jobID:    jobID.String(),
+		status:   domain.SummarizeJobStatusCompleted,
+		summary:  "Generated summary",
+		errorMsg: "",
+	}, jobRepo.updates[0])
+}
+
+func TestSummarizeQueueWorker_UserOriginFailsExplicitlyWithoutUserID(t *testing.T) {
+	jobID := uuid.New()
+	jobRepo := &stubJobRepoCompletion{
+		jobs: []*domain.SummarizeJob{{
+			JobID:      jobID,
+			ArticleID:  "article-no-user",
+			Origin:     domain.SummarizeOriginUser,
+			MaxRetries: 3,
+		}},
+	}
+
+	worker := NewSummarizeQueueWorker(
+		jobRepo,
+		&stubArticleRepoNoUser{},
+		&stubAPIRepoForWorker{},
+		&stubSummaryRepoForWorker{},
+		testLogger(),
+	)
+
+	err := worker.processJob(context.Background(), jobRepo.jobs[0])
+	require.Error(t, err)
+	assert.Empty(t, jobRepo.completions, "must not invent a user ID or enqueue an unaddressed notification")
+	assert.Empty(t, jobRepo.updates, "must not silently downgrade user-origin completion to non-notifying status update")
+}
+
+func TestSummarizeQueueWorker_InvalidOriginFailsExplicitly(t *testing.T) {
+	jobID := uuid.New()
+	jobRepo := &stubJobRepoCompletion{
+		jobs: []*domain.SummarizeJob{{
+			JobID:      jobID,
+			ArticleID:  "article-1",
+			Origin:     "",
+			MaxRetries: 3,
+		}},
 	}
 
 	worker := NewSummarizeQueueWorker(
@@ -85,15 +201,8 @@ func TestSummarizeQueueWorker_CompletesThroughTheOutbox(t *testing.T) {
 		testLogger(),
 	)
 
-	require.NoError(t, worker.ProcessQueue(context.Background(), noRefill))
-
-	require.Len(t, jobRepo.completions, 1)
-	assert.Equal(t, jobID.String(), jobRepo.completions[0].jobID)
-	assert.Equal(t, "テスト要約", jobRepo.completions[0].summary)
-	assert.Equal(t, "user-1", jobRepo.completions[0].userID,
-		"the notification's recipient comes from the article's owner")
-	assert.Equal(t, "article-1", jobRepo.completions[0].articleID)
-
-	assert.NotContains(t, jobRepo.updates, domain.SummarizeJobStatusCompleted,
-		"a successful summary must not be completed through the non-transactional path")
+	err := worker.processJob(context.Background(), jobRepo.jobs[0])
+	require.ErrorIs(t, err, domain.ErrInvalidSummarizeOrigin)
+	assert.Empty(t, jobRepo.completions)
+	assert.Empty(t, jobRepo.updates)
 }
