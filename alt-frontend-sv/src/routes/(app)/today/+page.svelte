@@ -153,7 +153,7 @@ async function handleRemove(item: ReadTodayQueueItem) {
 
 		{#if readTodayQueue.readCountSince > 0}
 			<p class="read-count" data-testid="today-read-count">
-				Read today: {readTodayQueue.readCountSince}
+				Articles read today: {readTodayQueue.readCountSince}
 			</p>
 		{/if}
 	</section>
@@ -300,21 +300,25 @@ async function handleRemove(item: ReadTodayQueueItem) {
 
 	.row-remove {
 		flex-shrink: 0;
+		display: inline-flex;
+		align-items: flex-start;
+		justify-content: flex-end;
 		min-height: 44px;
 		min-width: 44px;
-		padding: 0.4rem 0.75rem;
-		border: 1px solid var(--surface-border);
+		padding: 0;
+		border: none;
 		background: transparent;
-		font-family: var(--font-body);
-		font-size: 0.78rem;
-		font-weight: 600;
+		font-family: var(--font-mono);
+		font-size: 0.72rem;
+		line-height: 1.3;
 		color: var(--alt-slate);
+		text-decoration: underline;
+		text-underline-offset: 0.2em;
 		cursor: pointer;
 		touch-action: manipulation;
 	}
 
 	.row-remove:active {
-		background: var(--surface-hover);
 		color: var(--alt-charcoal);
 	}
 

@@ -47,7 +47,9 @@ const { reader }: Props = $props();
 		disabled={reader.fetchButtonState === "loading"}
 		variant={reader.fetchButtonState === "error" ? "destructive" : "outline"}
 		size="icon"
-		class="action-btn"
+		class={reader.fetchButtonState === "error"
+			? "action-btn action-btn--error"
+			: "action-btn"}
 	>
 		{#if reader.fetchButtonState === "loading"}
 			<Loader2 class="h-4 w-4 animate-spin" />
@@ -75,7 +77,7 @@ const { reader }: Props = $props();
 		variant={reader.summarizer.buttonState === "error" ? "destructive" : "default"}
 		size="icon"
 		class={reader.summarizer.buttonState === "error"
-			? "action-btn"
+			? "action-btn action-btn--error"
 			: "action-btn action-btn--primary"}
 	>
 		{#if reader.summarizer.buttonState === "loading"}
@@ -111,7 +113,7 @@ const { reader }: Props = $props();
 	:global(.actions-cluster) {
 		display: flex;
 		align-items: center;
-		gap: 0.25rem;
+		gap: 0;
 		margin-left: auto;
 		min-width: 0;
 	}
@@ -139,13 +141,68 @@ const { reader }: Props = $props();
 		transition: background 0.15s ease;
 	}
 
-	.action-link:hover,
-	.action-link:focus-visible {
+	.action-link:hover {
 		background: var(--surface-hover, #f3f1ed);
-		outline: none;
+	}
+
+	:global(.action-btn):focus-visible,
+	.action-link:focus-visible {
+		outline: 2px solid var(--alt-primary, #2f4f4f);
+		outline-offset: -2px;
+	}
+
+	@media (max-width: 639px) {
+		:global(.action-btn),
+		.action-link {
+			width: 40px;
+			height: 44px;
+			padding: 0;
+			border: none;
+			background: transparent;
+			box-shadow: none;
+			color: var(--alt-charcoal, #1a1a1a);
+		}
+
+		:global(.action-btn):hover:not(:disabled),
+		.action-link:hover {
+			background: transparent;
+			color: var(--alt-charcoal, #1a1a1a);
+			box-shadow: none;
+		}
+
+		:global(.action-btn):active:not(:disabled),
+		.action-link:active {
+			background: var(--surface-hover, #f3f1ed);
+			color: var(--alt-charcoal, #1a1a1a);
+		}
+
+		:global(.action-btn[data-testid="read-today-toggle-button"][aria-pressed="true"]) {
+			color: var(--alt-primary, #2f4f4f);
+			border-bottom: 2px solid var(--alt-primary, #2f4f4f);
+		}
+
+		:global(.action-btn[data-testid="read-today-toggle-button"][aria-pressed="true"]):hover:not(:disabled),
+		:global(.action-btn[data-testid="read-today-toggle-button"][aria-pressed="true"]):active:not(:disabled) {
+			color: var(--alt-primary, #2f4f4f);
+		}
+
+		:global(.action-btn.action-btn--error),
+		:global(.action-btn.action-btn--error):hover:not(:disabled),
+		:global(.action-btn.action-btn--error):active:not(:disabled) {
+			color: var(--alt-error, #8c1d1d);
+		}
+
+		:global(.action-btn):disabled {
+			color: var(--alt-ash, #999999);
+			opacity: 1;
+		}
 	}
 
 	@media (min-width: 640px) {
+		:global(.actions-cluster) {
+			gap: 0.25rem;
+		}
+
 		:global(.action-label) {
 			display: inline;
 		}

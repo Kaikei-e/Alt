@@ -11,6 +11,7 @@ import {
 	Footprints,
 	Heart,
 	Home,
+	Layers,
 	LayoutGrid,
 	Lightbulb,
 	Link as LinkIcon,
@@ -55,7 +56,7 @@ export interface MobileMenuSection {
  */
 export const NAV_TABS: NavTab[] = [
 	{ label: "Today", href: "/today", icon: BookOpen },
-	{ label: "Swipe", href: "/feeds/swipe/visual-preview", icon: Rss },
+	{ label: "Swipe", href: "/feeds/swipe/visual-preview", icon: Layers },
 	{ label: "Gallery", href: "/feeds/visual-preview", icon: LayoutGrid },
 	{ label: "Search", href: "/search", icon: Search },
 	{ label: "Menu", href: "/menu", icon: Menu },

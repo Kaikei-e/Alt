@@ -129,8 +129,6 @@ const {
 
 <style>
 	.article-surface {
-		border-top: 1px solid var(--surface-border, #c8c8c8);
-		padding-top: 0.5rem;
 		min-width: 0;
 	}
 

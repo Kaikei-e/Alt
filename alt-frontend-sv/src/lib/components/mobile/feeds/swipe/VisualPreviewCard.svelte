@@ -3,6 +3,7 @@ import { SquareArrowOutUpRight } from "@lucide/svelte";
 import { Spring } from "svelte/motion";
 import { type SwipeDirection, swipe } from "#lib/actions/swipe.js";
 import type { RenderFeed } from "#lib/schema/feed.js";
+import { formatCompactDate } from "#lib/utils/feed.js";
 import { ogImageResolver } from "#lib/utils/ogImageResolver.js";
 import { createProxyImage } from "#lib/utils/proxyImage.svelte.js";
 
@@ -71,21 +72,12 @@ const cardStyle = $derived.by(() => {
 });
 
 const hasDescription = $derived(Boolean(feed.description));
-const publishedLabel = $derived.by(() => {
-	if (feed.created_at) {
-		try {
-			return new Date(feed.created_at).toLocaleString();
-		} catch {
-			// Fallback
-		}
-	}
-	if (!feed.published) return null;
-	try {
-		return new Date(feed.published).toLocaleString();
-	} catch {
-		return feed.published;
-	}
-});
+const publishedLabel = $derived(
+	formatCompactDate(feed.created_at) ||
+		formatCompactDate(feed.published) ||
+		feed.publishedAtFormatted ||
+		null,
+);
 
 $effect(() => {
 	if (!swipeElement) return;

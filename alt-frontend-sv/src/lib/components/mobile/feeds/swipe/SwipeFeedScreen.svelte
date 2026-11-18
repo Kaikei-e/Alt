@@ -661,6 +661,7 @@ function handleOpenArticle() {
 			<button
 				type="button"
 				class="swipe-action-btn swipe-action-btn--queue"
+				aria-disabled={!canQueue ? "true" : undefined}
 				data-testid="swipe-queue-button"
 				onclick={() => void handleDismiss(1)}
 			>
@@ -719,7 +720,7 @@ function handleOpenArticle() {
     font-family: var(--font-body);
     font-size: 0.8rem;
     line-height: 1.4;
-    color: var(--alt-error, #8c1d1d);
+    color: var(--alt-charcoal);
     background: var(--surface-2, #f5f4f1);
     border-top: 1px solid var(--surface-border);
     border-bottom: 1px solid var(--surface-border);
@@ -783,8 +784,14 @@ function handleOpenArticle() {
     color: var(--surface-bg);
   }
 
-  .swipe-action-btn--queue:active {
+  .swipe-action-btn--queue:active:not([aria-disabled="true"]) {
     background: var(--interactive-text-hover, #223b3b);
+  }
+
+  .swipe-action-btn--queue[aria-disabled="true"] {
+    border-color: var(--surface-border);
+    background: transparent;
+    color: var(--alt-ash);
   }
 
 	/* ── Loading ── */
