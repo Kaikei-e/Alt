@@ -28,6 +28,7 @@ type Config struct {
 	Sovereign     SovereignConfig     `json:"sovereign"`
 	Meilisearch   MeilisearchConfig   `json:"meilisearch"`
 	WebPush       WebPushConfig       `json:"web_push"`
+	ReadingQueue  ReadingQueueConfig  `json:"reading_queue"`
 
 	// AppEnv drives the remaining environment-keyed checks (e.g. Knowledge
 	// Sovereign wiring, AUTH_HUB_URL scheme). It must be one of
@@ -45,6 +46,14 @@ type Config struct {
 	MeilisearchURL     string        `json:"meilisearch_url"`
 	RateLimitInterval  time.Duration `json:"rate_limit_interval"`
 	MaxPaginationLimit int           `json:"max_pagination_limit"`
+}
+
+// ReadingQueueConfig configures the Read Today queue limits on cmd/backend.
+// Neither field carries a default tag: cmd/backend validates both as required
+// positive integers at startup, while harvester/notifier/datahub ignore them.
+type ReadingQueueConfig struct {
+	Cap      int `json:"cap" env:"READING_QUEUE_CAP"`
+	TTLHours int `json:"ttl_hours" env:"READING_QUEUE_TTL_HOURS"`
 }
 
 // SovereignConfig holds configuration for the Knowledge Sovereign Connect-RPC

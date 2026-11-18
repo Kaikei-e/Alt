@@ -108,7 +108,7 @@ func NewTrackHomeActionUsecase(
 }
 
 // WithArticleStatusPort wires the port used to synchronize Knowledge Home
-// "open" and "dismiss" actions with the user's feed read status in alt-db.
+// "dismiss" actions with the user's feed read status in alt-db.
 func (u *TrackHomeActionUsecase) WithArticleStatusPort(port article_status_port.UpdateArticleStatusPort) *TrackHomeActionUsecase {
 	u.articleStatusPort = port
 	return u
@@ -389,34 +389,6 @@ func (u *TrackHomeActionUsecase) dismissReadModel(ctx context.Context, userID uu
 	}
 }
 
-// openMarkReadAllowedSources lists the reading surfaces whose "open" action is
-// allowed to mark the underlying feed read. The swipe surface is excluded so
-// deferred mark-as-read / UNDO continues to work (ADR-000948 decision 5).
-var openMarkReadAllowedSources = map[string]struct{}{
-	"":                    {},
-	"feed_detail_modal":   {},
-	"mobile_feed_details": {},
-}
-
-func parseOpenSource(metadataJSON string) (string, bool) {
-	if metadataJSON == "" {
-		return "", true
-	}
-	var meta map[string]any
-	if err := json.Unmarshal([]byte(metadataJSON), &meta); err != nil || meta == nil {
-		return "", false
-	}
-	raw, exists := meta["source"]
-	if !exists {
-		return "", true
-	}
-	src, ok := raw.(string)
-	if !ok {
-		return "", false
-	}
-	return src, true
-}
-
 func metadataSource(metadataJSON string) string {
 	if metadataJSON == "" {
 		return ""
@@ -430,19 +402,10 @@ func metadataSource(metadataJSON string) string {
 }
 
 func shouldSyncFeedReadStatus(actionType, metadataJSON string) bool {
-	switch actionType {
-	case "open":
-		source, valid := parseOpenSource(metadataJSON)
-		if !valid {
-			return false
-		}
-		_, ok := openMarkReadAllowedSources[source]
-		return ok
-	case "dismiss":
-		return metadataSource(metadataJSON) != "feeds_mark_read"
-	default:
+	if actionType != "dismiss" {
 		return false
 	}
+	return metadataSource(metadataJSON) != "feeds_mark_read"
 }
 
 func (u *TrackHomeActionUsecase) syncFeedReadStatus(ctx context.Context, userID uuid.UUID, itemKey string, rawURL string) {
