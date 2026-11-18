@@ -32,6 +32,8 @@ var (
 var (
 	// ErrJobNotFound indicates the requested job does not exist
 	ErrJobNotFound = errors.New("job not found")
+
+	ErrInvalidSummarizeOrigin = errors.New("summarize origin must be user or system")
 )
 
 // Validation errors

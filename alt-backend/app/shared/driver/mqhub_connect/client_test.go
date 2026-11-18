@@ -81,7 +81,7 @@ func TestPublishInjectsTraceIDFromSpanContext(t *testing.T) {
 		{
 			name: "PublishSummarizeRequested",
 			publish: func(ctx context.Context, c *Client) (string, error) {
-				return c.PublishSummarizeRequested(ctx, SummarizeRequestedPayload{ArticleID: "art-1", UserID: "user-1", Title: "t"})
+				return c.PublishSummarizeRequested(ctx, SummarizeRequestedPayload{ArticleID: "art-1", UserID: "user-1", Title: "t", Origin: "user"})
 			},
 		},
 		{

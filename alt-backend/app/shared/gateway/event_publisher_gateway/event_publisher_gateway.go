@@ -97,6 +97,9 @@ func (g *EventPublisherGateway) PublishArticleUpdated(ctx context.Context, event
 
 // PublishSummarizeRequested publishes a SummarizeRequested event.
 func (g *EventPublisherGateway) PublishSummarizeRequested(ctx context.Context, event event_publisher_port.SummarizeRequestedEvent) error {
+	if err := event.Origin.Validate(); err != nil {
+		return err
+	}
 	if !g.client.IsEnabled() {
 		g.logger.Debug("mqhub disabled, skipping PublishSummarizeRequested", "article_id", event.ArticleID)
 		return nil
@@ -107,6 +110,7 @@ func (g *EventPublisherGateway) PublishSummarizeRequested(ctx context.Context, e
 		UserID:    event.UserID,
 		Title:     event.Title,
 		Streaming: event.Streaming,
+		Origin:    string(event.Origin),
 	}
 
 	messageID, err := g.client.PublishSummarizeRequested(ctx, payload)

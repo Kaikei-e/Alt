@@ -140,21 +140,67 @@ func TestClient_StreamSummarize_NonOKStatus(t *testing.T) {
 }
 
 func TestClient_QueueSummarize_Success(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/api/v1/summarize/queue", r.URL.Path)
-		w.WriteHeader(http.StatusAccepted)
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{
-			"job_id": "job-123",
-			"status": "pending",
+	tests := []struct {
+		name           string
+		origin         SummarizeOrigin
+		expectedOrigin string
+	}{
+		{
+			name:           "user origin",
+			origin:         SummarizeOriginUser,
+			expectedOrigin: "user",
+		},
+		{
+			name:           "system origin",
+			origin:         SummarizeOriginSystem,
+			expectedOrigin: "system",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var receivedBody map[string]string
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, "/api/v1/summarize/queue", r.URL.Path)
+				assert.Equal(t, http.MethodPost, r.Method)
+				require.NoError(t, json.NewDecoder(r.Body).Decode(&receivedBody))
+				w.WriteHeader(http.StatusAccepted)
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{
+					"job_id": "job-123",
+					"status": "pending",
+				})
+			}))
+			defer server.Close()
+
+			client := NewClientWithTransport(server.URL, server.Client().Transport)
+			jobID, err := client.QueueSummarize(context.Background(), "article-1", "title", tc.origin)
+
+			require.NoError(t, err)
+			assert.Equal(t, "job-123", jobID)
+			assert.Equal(t, "article-1", receivedBody["article_id"])
+			assert.Equal(t, "title", receivedBody["title"])
+			assert.Equal(t, tc.expectedOrigin, receivedBody["origin"])
 		})
+	}
+}
+
+func TestClient_QueueSummarize_RejectsInvalidOrigin(t *testing.T) {
+	called := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusAccepted)
 	}))
 	defer server.Close()
 
 	client := NewClientWithTransport(server.URL, server.Client().Transport)
-	jobID, err := client.QueueSummarize(context.Background(), "article-1", "title")
 
-	require.NoError(t, err)
-	assert.Equal(t, "job-123", jobID)
+	_, err := client.QueueSummarize(context.Background(), "article-1", "title", "")
+	require.Error(t, err)
+	assert.False(t, called)
+
+	_, err = client.QueueSummarize(context.Background(), "article-1", "title", SummarizeOrigin("unknown"))
+	require.Error(t, err)
+	assert.False(t, called)
 }
 
 func TestClient_GetSummarizeStatus_Success(t *testing.T) {

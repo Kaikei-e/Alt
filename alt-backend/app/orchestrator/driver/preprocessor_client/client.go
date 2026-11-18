@@ -24,6 +24,13 @@ import (
 	"alt/utils/authcontext"
 )
 
+type SummarizeOrigin string
+
+const (
+	SummarizeOriginUser   SummarizeOrigin = "user"
+	SummarizeOriginSystem SummarizeOrigin = "system"
+)
+
 // SummarizeStatus represents the status of an asynchronous summarization job.
 type SummarizeStatus struct {
 	JobID        string
@@ -233,14 +240,18 @@ func (c *Client) StreamSummarize(ctx context.Context, content, articleID, title 
 
 // QueueSummarize submits an article for asynchronous summarization and
 // returns the job ID.
-func (c *Client) QueueSummarize(ctx context.Context, articleID, title string) (string, error) {
+func (c *Client) QueueSummarize(ctx context.Context, articleID, title string, origin SummarizeOrigin) (string, error) {
 	if articleID == "" {
 		return "", fmt.Errorf("article_id is required")
+	}
+	if origin != SummarizeOriginUser && origin != SummarizeOriginSystem {
+		return "", fmt.Errorf("origin must be user or system")
 	}
 
 	jsonData, err := json.Marshal(map[string]string{
 		"article_id": articleID,
 		"title":      title,
+		"origin":     string(origin),
 	})
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal request: %w", err)

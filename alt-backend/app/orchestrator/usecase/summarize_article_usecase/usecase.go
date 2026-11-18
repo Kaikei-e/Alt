@@ -247,7 +247,7 @@ func (u *Usecase) QueueSummary(ctx context.Context, articleID, title string) (st
 	// content from DB).
 	time.Sleep(summarizeDelay)
 
-	jobID, err := u.preprocessor.QueueSummarize(ctx, articleID, title)
+	jobID, err := u.preprocessor.QueueSummarize(ctx, articleID, title, domain.SummarizeOriginUser)
 	if err != nil {
 		return "", fmt.Errorf("queue summarize: %w", err)
 	}

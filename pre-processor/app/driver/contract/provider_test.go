@@ -14,6 +14,7 @@
 package contract
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -26,7 +27,11 @@ import (
 
 	"github.com/pact-foundation/pact-go/v2/models"
 	"github.com/pact-foundation/pact-go/v2/provider"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/encoding/protojson"
+
+	preprocessorv2 "pre-processor/gen/proto/services/preprocessor/v2"
 )
 
 const (
@@ -65,7 +70,33 @@ func startPreProcessorProviderStub(t *testing.T) int {
 				w.WriteHeader(http.StatusMethodNotAllowed)
 				return
 			}
-			_, _ = io.Copy(io.Discard, r.Body)
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			var req preprocessorv2.QueueSummarizeRequest
+			if err := protojson.Unmarshal(body, &req); err != nil {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusBadRequest)
+				_ = json.NewEncoder(w).Encode(map[string]string{
+					"code":    "invalid_argument",
+					"message": err.Error(),
+				})
+				return
+			}
+			switch req.GetOrigin() {
+			case preprocessorv2.SummarizeOrigin_SUMMARIZE_ORIGIN_USER,
+				preprocessorv2.SummarizeOrigin_SUMMARIZE_ORIGIN_SYSTEM:
+			default:
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusBadRequest)
+				_ = json.NewEncoder(w).Encode(map[string]string{
+					"code":    "invalid_argument",
+					"message": "origin is required",
+				})
+				return
+			}
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"jobId":   "job-001",
@@ -167,4 +198,20 @@ func TestVerifyAltBackendContract(t *testing.T) {
 	verifier := provider.NewVerifier()
 	err := verifier.VerifyProvider(t, verifyRequest)
 	require.NoError(t, err)
+}
+
+func TestPreProcessorProviderStub_RejectsMissingOrInvalidOrigin(t *testing.T) {
+	port := startPreProcessorProviderStub(t)
+	endpoint := fmt.Sprintf("http://127.0.0.1:%d/services.preprocessor.v2.PreProcessorService/QueueSummarize", port)
+
+	for _, body := range []string{
+		`{"articleId":"article-456","title":"Async Test Article"}`,
+		`{"articleId":"article-456","title":"Async Test Article","origin":"SUMMARIZE_ORIGIN_UNSPECIFIED"}`,
+		`{"articleId":"article-456","title":"Async Test Article","origin":"UNKNOWN_ORIGIN"}`,
+	} {
+		resp, err := http.Post(endpoint, "application/json", bytes.NewBufferString(body))
+		require.NoError(t, err)
+		_ = resp.Body.Close()
+		assert.Equal(t, http.StatusBadRequest, resp.StatusCode, "body: %s", body)
+	}
 }

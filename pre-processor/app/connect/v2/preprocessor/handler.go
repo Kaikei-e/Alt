@@ -187,6 +187,19 @@ func mapDomainError(err error, articleID string) error {
 	}
 }
 
+func fromProtoOrigin(origin preprocessorv2.SummarizeOrigin) (domain.SummarizeOrigin, error) {
+	switch origin {
+	case preprocessorv2.SummarizeOrigin_SUMMARIZE_ORIGIN_USER:
+		return domain.SummarizeOriginUser, nil
+	case preprocessorv2.SummarizeOrigin_SUMMARIZE_ORIGIN_SYSTEM:
+		return domain.SummarizeOriginSystem, nil
+	case preprocessorv2.SummarizeOrigin_SUMMARIZE_ORIGIN_UNSPECIFIED:
+		return "", fmt.Errorf("origin is required")
+	default:
+		return "", fmt.Errorf("invalid origin: %d", origin)
+	}
+}
+
 // QueueSummarize submits an article for async summarization.
 func (h *Handler) QueueSummarize(
 	ctx context.Context,
@@ -204,7 +217,12 @@ func (h *Handler) QueueSummarize(
 	}
 	articleID = parsedArticleID.String()
 
-	h.logger.InfoContext(ctx, "queueing summarization job", "article_id", articleID)
+	origin, err := fromProtoOrigin(req.Msg.GetOrigin())
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+
+	h.logger.InfoContext(ctx, "queueing summarization job", "article_id", articleID, "origin", origin)
 
 	shouldQueue, reason, err := service.ShouldQueueSummarizeJob(ctx, articleID, h.summaryRepo, h.jobRepo, h.logger)
 	if err != nil {
@@ -221,7 +239,7 @@ func (h *Handler) QueueSummarize(
 	}
 
 	// Create job in queue
-	jobID, err := h.jobRepo.CreateJob(ctx, articleID)
+	jobID, err := h.jobRepo.CreateJob(ctx, articleID, origin)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "failed to queue summarization job", "error", err, "article_id", articleID)
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("failed to queue summarization job"))

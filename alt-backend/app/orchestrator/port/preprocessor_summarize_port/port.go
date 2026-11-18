@@ -5,6 +5,7 @@
 package preprocessor_summarize_port
 
 import (
+	"alt/domain"
 	"context"
 	"io"
 )
@@ -30,7 +31,7 @@ type PreProcessorSummarizePort interface {
 	StreamSummarize(ctx context.Context, content, articleID, title string) (io.ReadCloser, error)
 	// QueueSummarize submits an article for asynchronous summarization and
 	// returns a job ID.
-	QueueSummarize(ctx context.Context, articleID, title string) (string, error)
+	QueueSummarize(ctx context.Context, articleID, title string, origin domain.SummarizeOrigin) (string, error)
 	// GetSummarizeStatus checks the status of a previously queued job.
 	// Returns (nil, nil) when the job is not found.
 	GetSummarizeStatus(ctx context.Context, jobID string) (*SummarizeStatus, error)

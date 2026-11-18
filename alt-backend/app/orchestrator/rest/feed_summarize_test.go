@@ -160,7 +160,7 @@ func (s *stubStreamPreProcessor) StreamSummarize(_ context.Context, _, _, _ stri
 	return io.NopCloser(strings.NewReader("data: streamed summary\n\n")), nil
 }
 
-func (s *stubStreamPreProcessor) QueueSummarize(_ context.Context, _, _ string) (string, error) {
+func (s *stubStreamPreProcessor) QueueSummarize(_ context.Context, _, _ string, _ domain.SummarizeOrigin) (string, error) {
 	return "", nil
 }
 

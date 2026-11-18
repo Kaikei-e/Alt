@@ -22,6 +22,7 @@ import (
 
 	ppv2 "alt/gen/proto/services/preprocessor/v2"
 	"alt/gen/proto/services/preprocessor/v2/preprocessorv2connect"
+	"alt/orchestrator/driver/preprocessor_connect"
 )
 
 const pactDir = "../../../../../pacts"
@@ -42,6 +43,13 @@ func newConnectClient(config consumer.MockServerConfig) preprocessorv2connect.Pr
 		http.DefaultClient,
 		fmt.Sprintf("http://%s:%d", config.Host, config.Port),
 		connect.WithProtoJSON(),
+	)
+}
+
+func newDriverClient(config consumer.MockServerConfig) *preprocessor_connect.ConnectPreProcessorClient {
+	return preprocessor_connect.NewConnectPreProcessorClientWithHTTPClient(
+		fmt.Sprintf("http://%s:%d", config.Host, config.Port),
+		http.DefaultClient,
 	)
 }
 
@@ -110,6 +118,7 @@ func TestPreProcessorQueueSummarizeContract(t *testing.T) {
 			Body: matchers.MapMatcher{
 				"articleId": matchers.Like("article-456"),
 				"title":     matchers.Like("Async Test Article"),
+				"origin":    matchers.String("SUMMARIZE_ORIGIN_USER"),
 			},
 		}).
 		WithCompleteResponse(consumer.Response{
@@ -124,17 +133,12 @@ func TestPreProcessorQueueSummarizeContract(t *testing.T) {
 			},
 		}).
 		ExecuteTest(t, func(config consumer.MockServerConfig) error {
-			client := newConnectClient(config)
-			resp, err := client.QueueSummarize(context.Background(), connect.NewRequest(&ppv2.QueueSummarizeRequest{
-				ArticleId: "article-456",
-				Title:     "Async Test Article",
-			}))
+			jobID, err := newDriverClient(config).QueueSummarize(context.Background(), "article-456", "Async Test Article", preprocessor_connect.SummarizeOriginUser)
 			if err != nil {
 				return fmt.Errorf("QueueSummarize failed: %w", err)
 			}
 
-			assert.NotEmpty(t, resp.Msg.JobId)
-			assert.Equal(t, "pending", resp.Msg.Status)
+			assert.NotEmpty(t, jobID)
 			return nil
 		})
 	require.NoError(t, err)

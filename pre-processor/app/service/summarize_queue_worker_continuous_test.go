@@ -61,11 +61,11 @@ func TestSummarizeQueueWorker_ProcessQueue_ContinuousDispatchWithoutBatchBarrier
 	summaryRepo := mocks.NewMockSummaryRepository(ctrl)
 
 	jobs := []*domain.SummarizeJob{
-		{JobID: uuid.New(), ArticleID: "straggler-1", MaxRetries: 3},
-		{JobID: uuid.New(), ArticleID: "fast-2", MaxRetries: 3},
-		{JobID: uuid.New(), ArticleID: "fast-3", MaxRetries: 3},
-		{JobID: uuid.New(), ArticleID: "fast-4", MaxRetries: 3},
-		{JobID: uuid.New(), ArticleID: "fast-5", MaxRetries: 3},
+		{JobID: uuid.New(), ArticleID: "straggler-1", Origin: domain.SummarizeOriginUser, MaxRetries: 3},
+		{JobID: uuid.New(), ArticleID: "fast-2", Origin: domain.SummarizeOriginUser, MaxRetries: 3},
+		{JobID: uuid.New(), ArticleID: "fast-3", Origin: domain.SummarizeOriginUser, MaxRetries: 3},
+		{JobID: uuid.New(), ArticleID: "fast-4", Origin: domain.SummarizeOriginUser, MaxRetries: 3},
+		{JobID: uuid.New(), ArticleID: "fast-5", Origin: domain.SummarizeOriginUser, MaxRetries: 3},
 	}
 
 	var queueMu sync.Mutex
@@ -192,8 +192,8 @@ func TestSummarizeQueueWorker_ProcessQueue_RefillOnDrainedWhileStragglerRuns(t *
 
 	var queueMu sync.Mutex
 	pending := []*domain.SummarizeJob{
-		{JobID: uuid.New(), ArticleID: "straggler-1", MaxRetries: 3},
-		{JobID: uuid.New(), ArticleID: "fast-2", MaxRetries: 3},
+		{JobID: uuid.New(), ArticleID: "straggler-1", Origin: domain.SummarizeOriginUser, MaxRetries: 3},
+		{JobID: uuid.New(), ArticleID: "fast-2", Origin: domain.SummarizeOriginUser, MaxRetries: 3},
 	}
 
 	stragglerStarted := make(chan struct{})
@@ -251,7 +251,7 @@ func TestSummarizeQueueWorker_ProcessQueue_RefillOnDrainedWhileStragglerRuns(t *
 		refilled := false
 		refillOnce.Do(func() {
 			queueMu.Lock()
-			pending = append(pending, &domain.SummarizeJob{JobID: uuid.New(), ArticleID: "refilled-3", MaxRetries: 3})
+			pending = append(pending, &domain.SummarizeJob{JobID: uuid.New(), ArticleID: "refilled-3", Origin: domain.SummarizeOriginUser, MaxRetries: 3})
 			queueMu.Unlock()
 			refilled = true
 		})
@@ -298,8 +298,8 @@ func TestSummarizeQueueWorker_ProcessQueue_OverloadStopsAndReleasesUnstartedJob(
 	apiRepo := mocks.NewMockExternalAPIRepository(ctrl)
 	summaryRepo := mocks.NewMockSummaryRepository(ctrl)
 
-	job1 := &domain.SummarizeJob{JobID: uuid.New(), ArticleID: "job-1", MaxRetries: 3}
-	job2 := &domain.SummarizeJob{JobID: uuid.New(), ArticleID: "job-2", MaxRetries: 3}
+	job1 := &domain.SummarizeJob{JobID: uuid.New(), ArticleID: "job-1", Origin: domain.SummarizeOriginUser, MaxRetries: 3}
+	job2 := &domain.SummarizeJob{JobID: uuid.New(), ArticleID: "job-2", Origin: domain.SummarizeOriginUser, MaxRetries: 3}
 
 	overloadedSet := make(chan struct{})
 	var overloadedSetOnce sync.Once
@@ -364,8 +364,8 @@ func TestSummarizeQueueWorker_ProcessQueue_ContextCancelStopsAndReleasesUnstarte
 	apiRepo := mocks.NewMockExternalAPIRepository(ctrl)
 	summaryRepo := mocks.NewMockSummaryRepository(ctrl)
 
-	job1 := &domain.SummarizeJob{JobID: uuid.New(), ArticleID: "job-1", MaxRetries: 3}
-	job2 := &domain.SummarizeJob{JobID: uuid.New(), ArticleID: "job-2", MaxRetries: 3}
+	job1 := &domain.SummarizeJob{JobID: uuid.New(), ArticleID: "job-1", Origin: domain.SummarizeOriginUser, MaxRetries: 3}
+	job2 := &domain.SummarizeJob{JobID: uuid.New(), ArticleID: "job-2", Origin: domain.SummarizeOriginUser, MaxRetries: 3}
 
 	worker2EnteringDequeue := make(chan struct{})
 	ctxCanceled := make(chan struct{})
@@ -453,8 +453,8 @@ func TestSummarizeQueueWorker_ProcessQueue_PendingReportedByOnDrainedPickedUpOnL
 	apiRepo := mocks.NewMockExternalAPIRepository(ctrl)
 	summaryRepo := mocks.NewMockSummaryRepository(ctrl)
 
-	stragglerJob := &domain.SummarizeJob{JobID: uuid.New(), ArticleID: "straggler-1", MaxRetries: 3}
-	missedJob := &domain.SummarizeJob{JobID: uuid.New(), ArticleID: "missed-2", MaxRetries: 3}
+	stragglerJob := &domain.SummarizeJob{JobID: uuid.New(), ArticleID: "straggler-1", Origin: domain.SummarizeOriginUser, MaxRetries: 3}
+	missedJob := &domain.SummarizeJob{JobID: uuid.New(), ArticleID: "missed-2", Origin: domain.SummarizeOriginUser, MaxRetries: 3}
 
 	stragglerStarted := make(chan struct{})
 	releaseStraggler := make(chan struct{})
@@ -552,7 +552,7 @@ func TestSummarizeQueueWorker_ProcessQueue_OutOfBandEnqueueProcessedWhileStraggl
 
 	var queueMu sync.Mutex
 	pending := []*domain.SummarizeJob{
-		{JobID: uuid.New(), ArticleID: "straggler-1", MaxRetries: 3},
+		{JobID: uuid.New(), ArticleID: "straggler-1", Origin: domain.SummarizeOriginUser, MaxRetries: 3},
 	}
 
 	stragglerStarted := make(chan struct{})
@@ -629,7 +629,7 @@ func TestSummarizeQueueWorker_ProcessQueue_OutOfBandEnqueueProcessedWhileStraggl
 	}
 
 	queueMu.Lock()
-	pending = append(pending, &domain.SummarizeJob{JobID: uuid.New(), ArticleID: "oob-2", MaxRetries: 3})
+	pending = append(pending, &domain.SummarizeJob{JobID: uuid.New(), ArticleID: "oob-2", Origin: domain.SummarizeOriginUser, MaxRetries: 3})
 	queueMu.Unlock()
 
 	select {
@@ -660,7 +660,7 @@ func TestSummarizeQueueWorker_ProcessQueue_DequeueErrorStopsWorkersAndWaitsForIn
 	apiRepo := mocks.NewMockExternalAPIRepository(ctrl)
 	summaryRepo := mocks.NewMockSummaryRepository(ctrl)
 
-	job1 := &domain.SummarizeJob{JobID: uuid.New(), ArticleID: "job-1", MaxRetries: 3}
+	job1 := &domain.SummarizeJob{JobID: uuid.New(), ArticleID: "job-1", Origin: domain.SummarizeOriginUser, MaxRetries: 3}
 	dequeueErr := errors.New("db connection lost")
 
 	job1Started := make(chan struct{})

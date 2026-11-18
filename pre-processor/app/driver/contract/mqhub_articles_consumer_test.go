@@ -29,6 +29,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"pre-processor/consumer"
+	"pre-processor/domain"
 )
 
 // redisStreamEvent is the wire shape mq-hub's RedisDriver.eventToValues()
@@ -49,12 +50,14 @@ type recordingSummarizer struct {
 	called    bool
 	articleID string
 	title     string
+	origin    domain.SummarizeOrigin
 }
 
-func (r *recordingSummarizer) SummarizeArticle(_ context.Context, articleID, title string) error {
+func (r *recordingSummarizer) SummarizeArticle(_ context.Context, articleID, title string, origin domain.SummarizeOrigin) error {
 	r.called = true
 	r.articleID = articleID
 	r.title = title
+	r.origin = origin
 	return nil
 }
 
@@ -152,6 +155,7 @@ func TestConsumeArticleCreatedIDOnlyEvent(t *testing.T) {
 			require.True(t, summarizer.called, "ArticleCreated must reach SummarizeArticle")
 			assert.Equal(t, "art-001", summarizer.articleID, "article_id is the claim check pre-processor dereferences")
 			assert.Equal(t, "Breaking: Go 1.26 Released", summarizer.title)
+			assert.Equal(t, domain.SummarizeOriginSystem, summarizer.origin)
 			return nil
 		}).
 		Verify(t)
@@ -178,6 +182,7 @@ func TestConsumeSummarizeRequestedIDOnlyEvent(t *testing.T) {
 			"payload": matchers.Like(matchers.MapMatcher{
 				"article_id": matchers.Like("art-002"),
 				"title":      matchers.Like("Rust Memory Safety"),
+				"origin":     matchers.String("user"),
 			}),
 			"metadata": matchers.Like(matchers.MapMatcher{
 				"trace_id": matchers.Like("trace-002"),
@@ -194,6 +199,7 @@ func TestConsumeSummarizeRequestedIDOnlyEvent(t *testing.T) {
 			require.True(t, summarizer.called, "SummarizeRequested must reach SummarizeArticle")
 			assert.Equal(t, "art-002", summarizer.articleID)
 			assert.Equal(t, "Rust Memory Safety", summarizer.title)
+			assert.Equal(t, domain.SummarizeOriginUser, summarizer.origin)
 			return nil
 		}).
 		Verify(t)
@@ -220,7 +226,7 @@ func TestArticleStreamPayloadsCarryNoArticleBody(t *testing.T) {
 		{
 			name: "SummarizeRequestedPayload",
 			typ:  reflect.TypeOf(consumer.SummarizeRequestedPayload{}),
-			want: []string{"article_id", "user_id", "title", "streaming"},
+			want: []string{"article_id", "user_id", "title", "streaming", "origin"},
 		},
 	}
 

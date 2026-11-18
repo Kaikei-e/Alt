@@ -358,6 +358,11 @@ table "summarize_job_queue" {
     type    = timestamptz
     comment = "Timestamp when job processing completed"
   }
+  column "origin" {
+    null    = false
+    type    = text
+    default = "system"
+  }
   primary_key {
     columns = [column.id]
   }
@@ -389,6 +394,9 @@ table "summarize_job_queue" {
   }
   check "summarize_job_queue_status_check" {
     expr = "((status)::text = ANY (ARRAY[('pending'::character varying)::text, ('running'::character varying)::text, ('completed'::character varying)::text, ('failed'::character varying)::text, ('dead_letter'::character varying)::text]))"
+  }
+  check "summarize_job_queue_origin_check" {
+    expr = "(origin = ANY (ARRAY['user'::text, 'system'::text]))"
   }
 }
 

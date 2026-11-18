@@ -11,6 +11,7 @@ import (
 
 	"pre-processor/domain"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/pashagolub/pgxmock/v5"
 	"github.com/stretchr/testify/assert"
@@ -47,7 +48,7 @@ func TestSummarizeJobRepository_CreateJob(t *testing.T) {
 	t.Run("should handle nil database gracefully", func(t *testing.T) {
 		repo := NewSummarizeJobRepository(nil, testSummarizeJobLogger())
 
-		jobID, err := repo.CreateJob(context.Background(), "test-article-id")
+		jobID, err := repo.CreateJob(context.Background(), "test-article-id", domain.SummarizeOriginSystem)
 
 		assert.Error(t, err)
 		assert.Empty(t, jobID)
@@ -56,11 +57,45 @@ func TestSummarizeJobRepository_CreateJob(t *testing.T) {
 	t.Run("should reject empty article ID", func(t *testing.T) {
 		repo := NewSummarizeJobRepository(nil, testSummarizeJobLogger())
 
-		jobID, err := repo.CreateJob(context.Background(), "")
+		jobID, err := repo.CreateJob(context.Background(), "", domain.SummarizeOriginSystem)
 
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "article ID cannot be empty")
 		assert.Empty(t, jobID)
+	})
+
+	t.Run("should reject empty or invalid origin without touching database", func(t *testing.T) {
+		for _, invalid := range []domain.SummarizeOrigin{"", "unknown", "USER"} {
+			repo, mock := newMockJobRepo(t)
+
+			jobID, err := repo.CreateJob(context.Background(), "test-article-id", invalid)
+
+			require.ErrorIs(t, err, domain.ErrInvalidSummarizeOrigin, "origin %q", invalid)
+			assert.Empty(t, jobID)
+			require.NoError(t, mock.ExpectationsWereMet())
+		}
+	})
+
+	t.Run("writes explicit origin into summarize_job_queue", func(t *testing.T) {
+		for _, origin := range []domain.SummarizeOrigin{domain.SummarizeOriginUser, domain.SummarizeOriginSystem} {
+			repo, mock := newMockJobRepo(t)
+			expectedJobID := uuid.New()
+
+			mock.ExpectBegin()
+			mock.ExpectExec(`SELECT pg_advisory_xact_lock\(hashtext\(\$1\)::bigint\)`).
+				WithArgs("article-origin").
+				WillReturnResult(pgxmock.NewResult("SELECT", 1))
+			mock.ExpectQuery(`INSERT INTO summarize_job_queue \(article_id, status, origin\)\s+SELECT \$1, 'pending', \$2`).
+				WithArgs("article-origin", string(origin)).
+				WillReturnRows(pgxmock.NewRows([]string{"job_id"}).AddRow(expectedJobID))
+			mock.ExpectCommit()
+
+			jobID, err := repo.CreateJob(context.Background(), "article-origin", origin)
+
+			require.NoError(t, err)
+			assert.Equal(t, expectedJobID.String(), jobID)
+			require.NoError(t, mock.ExpectationsWereMet())
+		}
 	})
 }
 
@@ -271,7 +306,7 @@ func TestSummarizeJobRepository_GetJob(t *testing.T) {
 		repo, mock := newMockJobRepo(t)
 		jobID := "missing-job-id"
 
-		mock.ExpectQuery(`SELECT id, job_id, article_id, status, summary, error_message`).
+		mock.ExpectQuery(`SELECT id, job_id, article_id, status, origin, summary, error_message`).
 			WithArgs(jobID).
 			WillReturnError(pgx.ErrNoRows)
 
@@ -280,6 +315,26 @@ func TestSummarizeJobRepository_GetJob(t *testing.T) {
 		assert.Error(t, err)
 		assert.Nil(t, job)
 		assert.True(t, errors.Is(err, domain.ErrJobNotFound), "expected err to satisfy errors.Is(err, domain.ErrJobNotFound), got: %v", err)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("populates Origin when reading job", func(t *testing.T) {
+		repo, mock := newMockJobRepo(t)
+		jobUUID := uuid.New()
+		now := time.Now().UTC()
+
+		mock.ExpectQuery(`SELECT id, job_id, article_id, status, origin, summary, error_message`).
+			WithArgs(jobUUID.String()).
+			WillReturnRows(pgxmock.NewRows([]string{
+				"id", "job_id", "article_id", "status", "origin", "summary", "error_message",
+				"retry_count", "max_retries", "created_at", "started_at", "completed_at",
+			}).AddRow(1, jobUUID, "article-1", domain.SummarizeJobStatusPending, domain.SummarizeOriginUser, nil, nil, 0, 3, now, nil, nil))
+
+		job, err := repo.GetJob(context.Background(), jobUUID.String())
+
+		require.NoError(t, err)
+		require.NotNil(t, job)
+		assert.Equal(t, domain.SummarizeOriginUser, job.Origin)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }
@@ -371,6 +426,26 @@ func TestSummarizeJobRepository_GetPendingJobs(t *testing.T) {
 		assert.True(t, strings.Contains(getPendingJobsQuery, "ORDER BY created_at ASC"),
 			"pending jobs should be dequeued oldest-first to avoid backlog starvation")
 	})
+
+	t.Run("populates Origin when reading pending jobs", func(t *testing.T) {
+		repo, mock := newMockJobRepo(t)
+		jobUUID := uuid.New()
+		now := time.Now().UTC()
+
+		mock.ExpectQuery(`SELECT id, job_id, article_id, status, origin, summary, error_message`).
+			WithArgs(5).
+			WillReturnRows(pgxmock.NewRows([]string{
+				"id", "job_id", "article_id", "status", "origin", "summary", "error_message",
+				"retry_count", "max_retries", "created_at", "started_at", "completed_at",
+			}).AddRow(2, jobUUID, "article-2", domain.SummarizeJobStatusPending, domain.SummarizeOriginSystem, nil, nil, 0, 3, now, nil, nil))
+
+		jobs, err := repo.GetPendingJobs(context.Background(), 5)
+
+		require.NoError(t, err)
+		require.Len(t, jobs, 1)
+		assert.Equal(t, domain.SummarizeOriginSystem, jobs[0].Origin)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
 }
 
 func TestSummarizeJobRepository_DequeueJobs(t *testing.T) {
@@ -401,6 +476,26 @@ func TestSummarizeJobRepository_DequeueJobs(t *testing.T) {
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "limit must be positive")
 		assert.Nil(t, jobs)
+	})
+
+	t.Run("populates Origin when dequeuing jobs", func(t *testing.T) {
+		repo, mock := newMockJobRepo(t)
+		jobUUID := uuid.New()
+		now := time.Now().UTC()
+
+		mock.ExpectQuery(`RETURNING id, job_id, article_id, status, origin, summary, error_message`).
+			WithArgs(pgxmock.AnyArg(), 1).
+			WillReturnRows(pgxmock.NewRows([]string{
+				"id", "job_id", "article_id", "status", "origin", "summary", "error_message",
+				"retry_count", "max_retries", "created_at", "started_at", "completed_at",
+			}).AddRow(3, jobUUID, "article-3", domain.SummarizeJobStatusRunning, domain.SummarizeOriginUser, nil, nil, 0, 3, now, &now, nil))
+
+		jobs, err := repo.DequeueJobs(context.Background(), 1)
+
+		require.NoError(t, err)
+		require.Len(t, jobs, 1)
+		assert.Equal(t, domain.SummarizeOriginUser, jobs[0].Origin)
+		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }
 

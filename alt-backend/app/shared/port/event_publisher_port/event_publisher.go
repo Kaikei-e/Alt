@@ -2,6 +2,7 @@
 package event_publisher_port
 
 import (
+	"alt/domain"
 	"context"
 	"time"
 )
@@ -36,6 +37,7 @@ type SummarizeRequestedEvent struct {
 	UserID    string
 	Title     string
 	Streaming bool
+	Origin    domain.SummarizeOrigin
 }
 
 // IndexArticleEvent represents an article indexing request.

@@ -53,7 +53,7 @@ type ExternalAPIRepository interface {
 
 // SummarizeJobRepository handles summarization job queue persistence.
 type SummarizeJobRepository interface {
-	CreateJob(ctx context.Context, articleID string) (string, error)
+	CreateJob(ctx context.Context, articleID string, origin domain.SummarizeOrigin) (string, error)
 	HasRecentSuccessfulJob(ctx context.Context, articleID string, since time.Time) (bool, error)
 	// HasInFlightJob reports whether the article has a pending/running job whose
 	// updated_at is newer than the given cutoff. Stale rows are excluded so a

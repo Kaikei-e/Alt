@@ -4,7 +4,10 @@ package consumer
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
+
+	"pre-processor/domain"
 )
 
 // EventType constants.
@@ -29,12 +32,13 @@ type SummarizeRequestedPayload struct {
 	UserID    string `json:"user_id"`
 	Title     string `json:"title"`
 	Streaming bool   `json:"streaming"`
+	Origin    string `json:"origin"`
 }
 
 // SummarizeService defines the interface for summarization operations.
 type SummarizeService interface {
 	// SummarizeArticle processes an article for summarization.
-	SummarizeArticle(ctx context.Context, articleID, title string) error
+	SummarizeArticle(ctx context.Context, articleID, title string, origin domain.SummarizeOrigin) error
 }
 
 // PreProcessorEventHandler handles events for pre-processor service.
@@ -90,7 +94,7 @@ func (h *PreProcessorEventHandler) handleArticleCreated(ctx context.Context, eve
 	)
 
 	// Queue article for summarization
-	if err := h.summarizeService.SummarizeArticle(ctx, payload.ArticleID, payload.Title); err != nil {
+	if err := h.summarizeService.SummarizeArticle(ctx, payload.ArticleID, payload.Title, domain.SummarizeOriginSystem); err != nil {
 		h.logger.Error("failed to summarize article",
 			"article_id", payload.ArticleID,
 			"error", err,
@@ -112,14 +116,26 @@ func (h *PreProcessorEventHandler) handleSummarizeRequested(ctx context.Context,
 		return err
 	}
 
+	origin, err := domain.ParseSummarizeOrigin(payload.Origin)
+	if err != nil {
+		h.logger.Error("invalid origin in SummarizeRequested payload",
+			"event_id", event.EventID,
+			"article_id", payload.ArticleID,
+			"origin", payload.Origin,
+			"error", err,
+		)
+		return fmt.Errorf("invalid SummarizeRequested origin: %w", err)
+	}
+
 	h.logger.Info("processing SummarizeRequested event",
 		"article_id", payload.ArticleID,
 		"title", payload.Title,
 		"streaming", payload.Streaming,
+		"origin", origin,
 	)
 
 	// Process summarization request
-	if err := h.summarizeService.SummarizeArticle(ctx, payload.ArticleID, payload.Title); err != nil {
+	if err := h.summarizeService.SummarizeArticle(ctx, payload.ArticleID, payload.Title, origin); err != nil {
 		h.logger.Error("failed to summarize article",
 			"article_id", payload.ArticleID,
 			"error", err,

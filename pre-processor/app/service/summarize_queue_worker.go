@@ -470,14 +470,27 @@ func (w *SummarizeQueueWorker) processJob(ctx context.Context, job *domain.Summa
 		"article_id", job.ArticleID,
 		"save_duration_ms", saveSummaryDuration.Milliseconds())
 
-	// Complete the job through the transactional path: this is the only
-	// completion that produced a summary the user asked for, so it is the one
-	// that owes them a notification. The outbox row and the completion share
-	// one commit — see repository.CompleteJobWithNotification.
 	updateStatusStartTime := time.Now()
-	if err := w.jobRepo.CompleteJobWithNotification(ctx, job.JobID.String(), summarized.SummaryJapanese, article.UserID, job.ArticleID); err != nil {
-		w.logger.ErrorContext(ctx, "failed to complete job and enqueue notification", "error", err, "job_id", job.JobID)
-		return fmt.Errorf("failed to update job status: %w", err)
+	switch job.Origin {
+	case domain.SummarizeOriginUser:
+		if article.UserID == "" {
+			err := fmt.Errorf("user ID cannot be empty for user-origin job")
+			w.logger.ErrorContext(ctx, "failed to complete job and enqueue notification", "error", err, "job_id", job.JobID)
+			return fmt.Errorf("failed to update job status: %w", err)
+		}
+		if err := w.jobRepo.CompleteJobWithNotification(ctx, job.JobID.String(), summarized.SummaryJapanese, article.UserID, job.ArticleID); err != nil {
+			w.logger.ErrorContext(ctx, "failed to complete job and enqueue notification", "error", err, "job_id", job.JobID)
+			return fmt.Errorf("failed to update job status: %w", err)
+		}
+	case domain.SummarizeOriginSystem:
+		if err := w.jobRepo.UpdateJobStatus(ctx, job.JobID.String(), domain.SummarizeJobStatusCompleted, summarized.SummaryJapanese, ""); err != nil {
+			w.logger.ErrorContext(ctx, "failed to update job status to completed", "error", err, "job_id", job.JobID)
+			return fmt.Errorf("failed to update job status: %w", err)
+		}
+	default:
+		err := fmt.Errorf("%w: %q", domain.ErrInvalidSummarizeOrigin, job.Origin)
+		w.logger.ErrorContext(ctx, "invalid job origin on completion", "error", err, "job_id", job.JobID, "origin", job.Origin)
+		return err
 	}
 	updateStatusDuration := time.Since(updateStatusStartTime)
 
@@ -622,7 +635,7 @@ func (w *SummarizeQueueWorker) EnqueueUnsummarizedBatch(ctx context.Context, bat
 				continue
 			}
 
-			jobID, createErr := w.jobRepo.CreateJob(ctx, article.ID)
+			jobID, createErr := w.jobRepo.CreateJob(ctx, article.ID, domain.SummarizeOriginSystem)
 			if createErr != nil {
 				w.logger.ErrorContext(ctx, "failed to create job", "article_id", article.ID, "error", createErr)
 				result.Errors++

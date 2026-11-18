@@ -4,6 +4,7 @@
 package preprocessor_summarize_gateway
 
 import (
+	"alt/domain"
 	"alt/orchestrator/driver/preprocessor_client"
 	"alt/orchestrator/port/preprocessor_summarize_port"
 	"context"
@@ -29,8 +30,23 @@ func (g *Gateway) StreamSummarize(ctx context.Context, content, articleID, title
 	return g.client.StreamSummarize(ctx, content, articleID, title)
 }
 
-func (g *Gateway) QueueSummarize(ctx context.Context, articleID, title string) (string, error) {
-	return g.client.QueueSummarize(ctx, articleID, title)
+func (g *Gateway) QueueSummarize(ctx context.Context, articleID, title string, origin domain.SummarizeOrigin) (string, error) {
+	clientOrigin, err := mapDomainOriginToClientOrigin(origin)
+	if err != nil {
+		return "", err
+	}
+	return g.client.QueueSummarize(ctx, articleID, title, clientOrigin)
+}
+
+func mapDomainOriginToClientOrigin(origin domain.SummarizeOrigin) (preprocessor_client.SummarizeOrigin, error) {
+	switch origin {
+	case domain.SummarizeOriginUser:
+		return preprocessor_client.SummarizeOriginUser, nil
+	case domain.SummarizeOriginSystem:
+		return preprocessor_client.SummarizeOriginSystem, nil
+	default:
+		return "", domain.ErrInvalidSummarizeOrigin
+	}
 }
 
 func (g *Gateway) GetSummarizeStatus(ctx context.Context, jobID string) (*preprocessor_summarize_port.SummarizeStatus, error) {

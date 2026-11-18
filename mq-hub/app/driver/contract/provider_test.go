@@ -41,6 +41,7 @@ type SummarizeRequestedPayload struct {
 	UserID    string `json:"user_id"`
 	Title     string `json:"title"`
 	Streaming bool   `json:"streaming"`
+	Origin    string `json:"origin"`
 }
 
 // articleCreatedEvent models what alt-backend puts on the stream today, body
@@ -99,6 +100,7 @@ func summarizeRequestedEvent() *domain.Event {
 		UserID:    "user-001",
 		Title:     "Rust Memory Safety",
 		Streaming: false,
+		Origin:    "user",
 	}
 	payloadJSON, _ := json.Marshal(payload)
 	event, _ := domain.NewEvent(
