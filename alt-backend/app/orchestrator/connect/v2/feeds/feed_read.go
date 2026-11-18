@@ -12,6 +12,7 @@ import (
 
 	"alt/connect/errorhandler"
 	"alt/connect/v2/middleware"
+	"alt/domain"
 	"alt/utils/perf"
 	"alt/utils/safeconv"
 
@@ -393,16 +394,65 @@ func (h *Handler) ListSubscriptions(
 
 	protoSources := make([]*feedsv2.FeedSource, 0, len(sources))
 	for _, s := range sources {
+		var dailyCap *int32
+		if s.DailyCap != nil {
+			v := safeconv.Int32(*s.DailyCap)
+			dailyCap = &v
+		}
 		protoSources = append(protoSources, &feedsv2.FeedSource{
 			Id:           s.ID,
 			Url:          s.URL,
 			Title:        s.Title,
 			IsSubscribed: s.IsSubscribed,
 			CreatedAt:    s.CreatedAt.Format(time.RFC3339),
+			DailyCap:     dailyCap,
 		})
 	}
 
 	return connect.NewResponse(&feedsv2.ListSubscriptionsResponse{
 		Sources: protoSources,
+	}), nil
+}
+
+// GetFeedInflowStats returns 30-day inflow and reading engagement statistics per
+// subscribed feed for the calling user.
+func (h *Handler) GetFeedInflowStats(
+	ctx context.Context,
+	_ *connect.Request[feedsv2.GetFeedInflowStatsRequest],
+) (*connect.Response[feedsv2.GetFeedInflowStatsResponse], error) {
+	if h.deps.FeedInflowStats == nil {
+		panic("feeds handler: FeedInflowStats usecase is not wired (see .claude/rules/di-wiring.md)")
+	}
+	if _, err := middleware.GetUserContext(ctx); err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
+	}
+
+	windowEnd := time.Now().UTC()
+	stats, err := h.deps.FeedInflowStats.Execute(ctx, windowEnd)
+	if err != nil {
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "GetFeedInflowStats")
+	}
+
+	protoStats := make([]*feedsv2.FeedInflowStat, 0, len(stats))
+	for _, st := range stats {
+		var dailyCap *int32
+		if st.DailyCap != nil {
+			v := safeconv.Int32(*st.DailyCap)
+			dailyCap = &v
+		}
+		protoStats = append(protoStats, &feedsv2.FeedInflowStat{
+			FeedLinkId:        st.FeedLinkID,
+			Url:               st.FeedURL,
+			DailyCap:          dailyCap,
+			InflowCount:       st.InflowCount,
+			ReadCount:         st.ReadCount,
+			OpenedCountLegacy: st.OpenedCountLegacy,
+			ReadRate:          st.ReadRate,
+		})
+	}
+
+	return connect.NewResponse(&feedsv2.GetFeedInflowStatsResponse{
+		Stats:      protoStats,
+		WindowDays: domain.FeedInflowWindowDays,
 	}), nil
 }

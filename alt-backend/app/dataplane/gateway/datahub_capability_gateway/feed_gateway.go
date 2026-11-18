@@ -32,7 +32,7 @@ import (
 type feedDriver interface {
 	RegisterMultipleFeedsWithState(ctx context.Context, feeds []models.Feed) ([]alt_db.FeedRegistrationResult, error)
 	FetchAllFeedsListCursorForUser(ctx context.Context, userID uuid.UUID, cursor *time.Time, limit int, excludeFeedLinkIDs []uuid.UUID) ([]*models.Feed, error)
-	FetchUnreadFeedsListCursorForUser(ctx context.Context, userID uuid.UUID, cursor *time.Time, limit int, excludeFeedLinkIDs []uuid.UUID) ([]*models.Feed, error)
+	FetchUnreadFeedsListCursorForUser(ctx context.Context, userID uuid.UUID, cursor *time.Time, cursorID *uuid.UUID, limit int, excludeFeedLinkIDs []uuid.UUID) ([]*models.Feed, error)
 	FetchReadFeedsListCursorForUser(ctx context.Context, userID uuid.UUID, cursor *time.Time, limit int) ([]*models.Feed, error)
 	FetchFavoriteFeedsListCursorForUser(ctx context.Context, userID uuid.UUID, cursor *time.Time, limit int) ([]*models.Feed, error)
 	FetchUnreadFeedsListPageForUser(ctx context.Context, userID uuid.UUID, page int) ([]*models.Feed, error)
@@ -48,6 +48,8 @@ type feedDriver interface {
 	GetFeedURLsByArticleIDs(ctx context.Context, articleIDs []string) ([]domain.FeedAndArticle, error)
 	FetchFeedTitlesByIDs(ctx context.Context, feedIDs []uuid.UUID) (map[uuid.UUID]string, error)
 	FetchInoreaderSummariesByURLs(ctx context.Context, urls []string) ([]*models.InoreaderSummary, error)
+	GetFeedInflowByUser(ctx context.Context, userID uuid.UUID, from, to time.Time) ([]domain.FeedInflow, error)
+	BatchGetFeedLinkIDsByArticleIDs(ctx context.Context, userID uuid.UUID, articleIDs []uuid.UUID) (map[uuid.UUID]uuid.UUID, error)
 }
 
 // FeedGateway implements datahub_capability_port.FeedPort.
@@ -73,7 +75,7 @@ func (g *FeedGateway) Register(ctx context.Context, feeds []domain.FeedRegistrat
 	return feedRegistrationResultsFromDriver(rows), nil
 }
 
-func (g *FeedGateway) ListCursor(ctx context.Context, scope datahub_capability_port.FeedScope, userID uuid.UUID, cursor *time.Time, limit int, excludeFeedLinkIDs []uuid.UUID) ([]*domain.FeedRow, error) {
+func (g *FeedGateway) ListCursor(ctx context.Context, scope datahub_capability_port.FeedScope, userID uuid.UUID, cursor *time.Time, cursorID *uuid.UUID, limit int, excludeFeedLinkIDs []uuid.UUID) ([]*domain.FeedRow, error) {
 	var (
 		rows []*models.Feed
 		err  error
@@ -82,7 +84,7 @@ func (g *FeedGateway) ListCursor(ctx context.Context, scope datahub_capability_p
 	case datahub_capability_port.FeedScopeAll:
 		rows, err = g.db.FetchAllFeedsListCursorForUser(ctx, userID, cursor, limit, excludeFeedLinkIDs)
 	case datahub_capability_port.FeedScopeUnread:
-		rows, err = g.db.FetchUnreadFeedsListCursorForUser(ctx, userID, cursor, limit, excludeFeedLinkIDs)
+		rows, err = g.db.FetchUnreadFeedsListCursorForUser(ctx, userID, cursor, cursorID, limit, excludeFeedLinkIDs)
 	case datahub_capability_port.FeedScopeRead:
 		// Read and favourite walks page by read_at / favourited_at, not by
 		// feeds.created_at, so they take no exclusion list: the client-side
@@ -242,6 +244,25 @@ func (g *FeedGateway) GetInoreaderSummariesByURLs(ctx context.Context, urls []st
 	return inoreaderSummariesFromDriver(rows), nil
 }
 
+func (g *FeedGateway) GetFeedInflowByUser(ctx context.Context, userID uuid.UUID, from, to time.Time) ([]domain.FeedInflow, error) {
+	inflows, err := g.db.GetFeedInflowByUser(ctx, userID, from, to)
+	if err != nil {
+		return nil, fmt.Errorf("get feed inflow for user %s: %w", userID, err)
+	}
+	return inflows, nil
+}
+
+func (g *FeedGateway) BatchGetFeedLinkIDsByArticleIDs(ctx context.Context, userID uuid.UUID, articleIDs []uuid.UUID) (map[uuid.UUID]uuid.UUID, error) {
+	if len(articleIDs) == 0 {
+		return map[uuid.UUID]uuid.UUID{}, nil
+	}
+	mapping, err := g.db.BatchGetFeedLinkIDsByArticleIDs(ctx, userID, articleIDs)
+	if err != nil {
+		return nil, fmt.Errorf("batch get feed link ids for user %s (%d): %w", userID, len(articleIDs), err)
+	}
+	return mapping, nil
+}
+
 func feedRowsFromModels(rows []*models.Feed) []*domain.FeedRow {
 	out := make([]*domain.FeedRow, 0, len(rows))
 	for _, r := range rows {
@@ -268,6 +289,8 @@ func feedRowFromModel(f *models.Feed) *domain.FeedRow {
 		IsRead:      f.IsRead,
 		FeedLinkID:  f.FeedLinkID,
 		OgImageURL:  f.OgImageURL,
+		DailyRank:   f.DailyRank,
+		DailyCap:    f.DailyCap,
 	}
 }
 

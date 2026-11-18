@@ -69,3 +69,45 @@ func (h *SovereignHandler) CountReadingSourcesSince(
 		Count: safeIntToInt32(count),
 	}), nil
 }
+
+// ListReadingSourcesInWindow returns reading_sources entries across all rule
+// versions for the calling user within the requested time window.
+func (h *SovereignHandler) ListReadingSourcesInWindow(
+	ctx context.Context,
+	req *connect.Request[sovereignv1.ListReadingSourcesInWindowRequest],
+) (*connect.Response[sovereignv1.ListReadingSourcesInWindowResponse], error) {
+	msg := req.Msg
+	userID, err := parseUUIDField("user_id", msg.UserId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	if msg.From == nil || !msg.From.IsValid() {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("from timestamp is required"))
+	}
+	if msg.To == nil || !msg.To.IsValid() {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("to timestamp is required"))
+	}
+	from := msg.From.AsTime()
+	to := msg.To.AsTime()
+	if to.Before(from) {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("to timestamp must not be before from"))
+	}
+
+	sources, err := h.readDB.ListReadingSourcesInWindow(ctx, userID, from, to)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("ListReadingSourcesInWindow: %w", err))
+	}
+
+	entries := make([]*sovereignv1.ReadingSourceEntry, 0, len(sources))
+	for _, s := range sources {
+		entries = append(entries, &sovereignv1.ReadingSourceEntry{
+			ArticleId:       s.ArticleID.String(),
+			FirstReadAt:     timestamppb.New(s.FirstReadAt),
+			ReadRuleVersion: safeIntToInt32(s.ReadRuleVersion),
+		})
+	}
+
+	return connect.NewResponse(&sovereignv1.ListReadingSourcesInWindowResponse{
+		Entries: entries,
+	}), nil
+}

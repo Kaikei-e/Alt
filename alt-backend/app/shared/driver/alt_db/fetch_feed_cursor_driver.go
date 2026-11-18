@@ -21,16 +21,24 @@ func scanFeedPageRow(scanner rowScanner, feed *models.Feed, includeIsRead bool) 
 	return scanner.Scan(&feed.ID, &feed.Title, &feed.Description, &feed.WebsiteURL, &feed.PubDate, &feed.CreatedAt, &feed.UpdatedAt, &feed.ArticleID, &feed.OgImageURL)
 }
 
+func scanUnreadFeedPageRow(scanner rowScanner, feed *models.Feed) error {
+	return scanner.Scan(
+		&feed.ID, &feed.Title, &feed.Description, &feed.WebsiteURL,
+		&feed.PubDate, &feed.CreatedAt, &feed.UpdatedAt, &feed.ArticleID, &feed.OgImageURL,
+		&feed.FeedLinkID, &feed.DailyCap, &feed.DailyRank,
+	)
+}
+
 func (r *FeedRepository) FetchUnreadFeedsListCursor(ctx context.Context, cursor *time.Time, limit int, excludeFeedLinkIDs []uuid.UUID) ([]*models.Feed, error) {
 	user, err := domain.GetUserFromContext(ctx)
 	if err != nil {
 		logger.Logger.ErrorContext(ctx, "user context not found", "error", err)
 		return nil, errors.New("authentication required")
 	}
-	return r.FetchUnreadFeedsListCursorForUser(ctx, user.UserID, cursor, limit, excludeFeedLinkIDs)
+	return r.FetchUnreadFeedsListCursorForUser(ctx, user.UserID, cursor, nil, limit, excludeFeedLinkIDs)
 }
 
-func (r *FeedRepository) FetchUnreadFeedsListCursorForUser(ctx context.Context, userID uuid.UUID, cursor *time.Time, limit int, excludeFeedLinkIDs []uuid.UUID) ([]*models.Feed, error) {
+func (r *FeedRepository) FetchUnreadFeedsListCursorForUser(ctx context.Context, userID uuid.UUID, cursor *time.Time, cursorID *uuid.UUID, limit int, excludeFeedLinkIDs []uuid.UUID) ([]*models.Feed, error) {
 	ctx, span := otel.Tracer("alt-backend").Start(ctx, "db.FetchUnreadFeedsListCursorForUser")
 	defer span.End()
 
@@ -38,7 +46,7 @@ func (r *FeedRepository) FetchUnreadFeedsListCursorForUser(ctx context.Context, 
 	// created_at is always populated (NOT NULL DEFAULT CURRENT_TIMESTAMP) and reliable
 	// pub_date has many zero values (0001-01-01) and is not reliable for pagination
 	// LEFT JOIN with articles table to get article_id if article exists
-	query, args := buildUnreadFeedsCursorQuery(cursor, excludeFeedLinkIDs, limit, userID)
+	query, args := buildUnreadFeedsCursorQuery(cursor, cursorID, excludeFeedLinkIDs, limit, userID)
 
 	rows, err := r.pool.Query(ctx, query, args...)
 	if err != nil {
@@ -50,7 +58,7 @@ func (r *FeedRepository) FetchUnreadFeedsListCursorForUser(ctx context.Context, 
 	var feeds []*models.Feed
 	for rows.Next() {
 		var feed models.Feed
-		err := scanFeedPageRow(rows, &feed, false)
+		err := scanUnreadFeedPageRow(rows, &feed)
 		if err != nil {
 			logger.Logger.ErrorContext(ctx, "error scanning unread feeds with cursor", "error", err)
 			return nil, errors.New("error scanning feeds list")

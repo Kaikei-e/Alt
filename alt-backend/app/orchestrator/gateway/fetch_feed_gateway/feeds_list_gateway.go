@@ -26,6 +26,7 @@ type FeedListStore interface {
 	FetchUnreadFeedsListPage(ctx context.Context, page int) ([]*models.Feed, error)
 	FetchAllFeedsListCursor(ctx context.Context, cursor *time.Time, limit int, excludeFeedLinkIDs []uuid.UUID) ([]*models.Feed, error)
 	FetchUnreadFeedsListCursor(ctx context.Context, cursor *time.Time, limit int, excludeFeedLinkIDs []uuid.UUID) ([]*models.Feed, error)
+	FetchUnreadFeedsListCursorWithID(ctx context.Context, cursor *time.Time, cursorID *uuid.UUID, limit int, excludeFeedLinkIDs []uuid.UUID) ([]*models.Feed, error)
 	FetchReadFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*models.Feed, error)
 	FetchFavoriteFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*models.Feed, error)
 }
@@ -108,6 +109,23 @@ func (g *FetchFeedsGateway) FetchUnreadFeedsListCursor(ctx context.Context, curs
 		return nil, errors.New("error fetching unread feeds with cursor")
 	}
 
+	return mapUnreadFeedItems(ctx, feeds)
+}
+
+func (g *FetchFeedsGateway) FetchUnreadFeedsListCursorWithID(ctx context.Context, cursor *time.Time, cursorID *uuid.UUID, limit int, excludeFeedLinkIDs []uuid.UUID) ([]*domain.FeedItem, error) {
+	ctx, span := otel.Tracer("alt-backend").Start(ctx, "gateway.FetchUnreadFeedsListCursorWithID")
+	defer span.End()
+
+	feeds, err := g.store.FetchUnreadFeedsListCursorWithID(ctx, cursor, cursorID, limit, excludeFeedLinkIDs)
+	if err != nil {
+		logger.SafeErrorContext(ctx, "Error fetching unread feeds with cursor", "error", err)
+		return nil, errors.New("error fetching unread feeds with cursor")
+	}
+
+	return mapUnreadFeedItems(ctx, feeds)
+}
+
+func mapUnreadFeedItems(ctx context.Context, feeds []*models.Feed) ([]*domain.FeedItem, error) {
 	var feedItems []*domain.FeedItem
 	// Use created_at only for cursor pagination
 	// created_at is always populated (NOT NULL DEFAULT CURRENT_TIMESTAMP) and reliable

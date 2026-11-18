@@ -150,3 +150,36 @@ WHERE user_id = $1
 	}
 	return count, nil
 }
+
+// ListReadingSourcesInWindow returns all reading_sources entries (all rule
+// versions) for a user whose first_read_at falls within [from, to].
+func (r *Repository) ListReadingSourcesInWindow(ctx context.Context, userID uuid.UUID, from, to time.Time) ([]ReadingSource, error) {
+	const q = `
+SELECT user_id, tenant_id, article_id, first_read_at, read_rule_version
+FROM reading_sources
+WHERE user_id = $1
+  AND first_read_at >= $2
+  AND first_read_at <= $3
+ORDER BY first_read_at ASC, article_id ASC`
+	rows, err := r.pool.Query(ctx, q, userID, from, to)
+	if err != nil {
+		return nil, fmt.Errorf("ListReadingSourcesInWindow: %w", err)
+	}
+	defer rows.Close()
+
+	var entries []ReadingSource
+	for rows.Next() {
+		var entry ReadingSource
+		if err := rows.Scan(
+			&entry.UserID, &entry.TenantID, &entry.ArticleID,
+			&entry.FirstReadAt, &entry.ReadRuleVersion,
+		); err != nil {
+			return nil, fmt.Errorf("ListReadingSourcesInWindow scan: %w", err)
+		}
+		entries = append(entries, entry)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("ListReadingSourcesInWindow rows: %w", err)
+	}
+	return entries, nil
+}

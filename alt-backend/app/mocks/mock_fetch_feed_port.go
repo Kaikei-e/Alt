@@ -292,6 +292,21 @@ func (mr *MockUnreadFeedCursorPortMockRecorder) FetchUnreadFeedsListCursor(ctx, 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchUnreadFeedsListCursor", reflect.TypeOf((*MockUnreadFeedCursorPort)(nil).FetchUnreadFeedsListCursor), ctx, cursor, limit, excludeFeedLinkIDs)
 }
 
+// FetchUnreadFeedsListCursorWithID mocks base method.
+func (m *MockUnreadFeedCursorPort) FetchUnreadFeedsListCursorWithID(ctx context.Context, cursor *time.Time, cursorID *uuid.UUID, limit int, excludeFeedLinkIDs []uuid.UUID) ([]*domain.FeedItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FetchUnreadFeedsListCursorWithID", ctx, cursor, cursorID, limit, excludeFeedLinkIDs)
+	ret0, _ := ret[0].([]*domain.FeedItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FetchUnreadFeedsListCursorWithID indicates an expected call of FetchUnreadFeedsListCursorWithID.
+func (mr *MockUnreadFeedCursorPortMockRecorder) FetchUnreadFeedsListCursorWithID(ctx, cursor, cursorID, limit, excludeFeedLinkIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchUnreadFeedsListCursorWithID", reflect.TypeOf((*MockUnreadFeedCursorPort)(nil).FetchUnreadFeedsListCursorWithID), ctx, cursor, cursorID, limit, excludeFeedLinkIDs)
+}
+
 // MockReadFeedCursorPort is a mock of ReadFeedCursorPort interface.
 type MockReadFeedCursorPort struct {
 	ctrl     *gomock.Controller
@@ -635,4 +650,19 @@ func (m *MockFetchFeedsPort) FetchUnreadFeedsListCursor(ctx context.Context, cur
 func (mr *MockFetchFeedsPortMockRecorder) FetchUnreadFeedsListCursor(ctx, cursor, limit, excludeFeedLinkIDs any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchUnreadFeedsListCursor", reflect.TypeOf((*MockFetchFeedsPort)(nil).FetchUnreadFeedsListCursor), ctx, cursor, limit, excludeFeedLinkIDs)
+}
+
+// FetchUnreadFeedsListCursorWithID mocks base method.
+func (m *MockFetchFeedsPort) FetchUnreadFeedsListCursorWithID(ctx context.Context, cursor *time.Time, cursorID *uuid.UUID, limit int, excludeFeedLinkIDs []uuid.UUID) ([]*domain.FeedItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FetchUnreadFeedsListCursorWithID", ctx, cursor, cursorID, limit, excludeFeedLinkIDs)
+	ret0, _ := ret[0].([]*domain.FeedItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FetchUnreadFeedsListCursorWithID indicates an expected call of FetchUnreadFeedsListCursorWithID.
+func (mr *MockFetchFeedsPortMockRecorder) FetchUnreadFeedsListCursorWithID(ctx, cursor, cursorID, limit, excludeFeedLinkIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchUnreadFeedsListCursorWithID", reflect.TypeOf((*MockFetchFeedsPort)(nil).FetchUnreadFeedsListCursorWithID), ctx, cursor, cursorID, limit, excludeFeedLinkIDs)
 }
