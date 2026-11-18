@@ -17,7 +17,10 @@ import (
 	"github.com/google/uuid"
 )
 
-var ErrInvalidInput = domain.ErrInvalidReadingEvent
+var (
+	ErrInvalidInput        = domain.ErrInvalidReadingEvent
+	ErrReadSyncUnavailable = errors.New("read sync unavailable")
+)
 
 type Result struct {
 	Accepted       int32
@@ -101,6 +104,7 @@ func (u *RecordReadingEventsUsecase) Execute(
 	receivedAt := u.now().UTC()
 	var res Result
 	seenRead := make(map[string]struct{})
+	var syncErrs []error
 
 	for _, ev := range events {
 		ke, err := buildKnowledgeEvent(userID, tenantID, ev, receivedAt)
@@ -122,35 +126,48 @@ func (u *RecordReadingEventsUsecase) Execute(
 				canonicalArticleID := uuid.MustParse(se.ArticleID).String()
 				if _, already := seenRead[canonicalArticleID]; !already {
 					seenRead[canonicalArticleID] = struct{}{}
-					res.ReadArticleIDs = append(res.ReadArticleIDs, canonicalArticleID)
-					u.markArticleRead(ctx, canonicalArticleID, userID)
+					marked, syncErr := u.markArticleRead(ctx, canonicalArticleID, userID)
+					if syncErr != nil {
+						syncErrs = append(syncErrs, syncErr)
+					} else if marked {
+						res.ReadArticleIDs = append(res.ReadArticleIDs, canonicalArticleID)
+					}
 				}
 			}
 		}
 	}
+	if len(syncErrs) > 0 {
+		return res, fmt.Errorf("%w: %w", ErrReadSyncUnavailable, errors.Join(syncErrs...))
+	}
 	return res, nil
 }
 
-func (u *RecordReadingEventsUsecase) markArticleRead(ctx context.Context, articleID string, userID uuid.UUID) {
+func (u *RecordReadingEventsUsecase) markArticleRead(ctx context.Context, articleID string, userID uuid.UUID) (bool, error) {
 	source, err := u.articleLookupPort.LookupArticleSource(ctx, articleID, userID)
 	if err != nil {
+		if errors.Is(err, domain.ErrArticleNotFound) {
+			return false, nil
+		}
 		slog.ErrorContext(ctx, "record_reading_events: lookup article URL failed for read sync",
 			"article_id", articleID, "error", err)
-		return
+		return false, err
 	}
 	if source.URL == "" {
-		return
+		return false, nil
 	}
 	parsedURL, err := url.Parse(source.URL)
 	if err != nil || parsedURL.Scheme == "" {
-		return
+		return false, nil
 	}
 	if err := u.articleStatusPort.MarkArticleAsRead(ctx, *parsedURL, userID); err != nil {
-		if !errors.Is(err, domain.ErrFeedNotFound) {
-			slog.ErrorContext(ctx, "record_reading_events: mark article read failed",
-				"article_id", articleID, "error", err)
+		if errors.Is(err, domain.ErrFeedNotFound) {
+			return false, nil
 		}
+		slog.ErrorContext(ctx, "record_reading_events: mark article read failed",
+			"article_id", articleID, "error", err)
+		return false, err
 	}
+	return true, nil
 }
 
 func buildKnowledgeEvent(

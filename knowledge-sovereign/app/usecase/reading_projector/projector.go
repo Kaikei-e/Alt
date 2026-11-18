@@ -15,7 +15,7 @@ import (
 const (
 	projectorName    = "reading-projector"
 	defaultBatchSize = 500
-	defaultMaxTick   = 4
+	defaultMaxTick   = 40
 )
 
 // Repository is the narrow persistence surface required by reading_projector.
@@ -43,6 +43,7 @@ type Projector struct {
 	logger *slog.Logger
 	cfg    Config
 	gaps   projection_gap.Tracker
+	behind bool
 }
 
 // NewProjector builds a reading Projector.
@@ -65,6 +66,7 @@ func NewProjector(repo Repository, logger *slog.Logger, cfg Config) *Projector {
 // RunBatch processes up to MaxBatchesPerTick contiguous event batches and
 // advances the reading-projector checkpoint with CAS protection.
 func (p *Projector) RunBatch(ctx context.Context) error {
+	var lastAdvancedSeq int64
 	for i := 0; i < p.cfg.MaxBatchesPerTick; i++ {
 		checkpoint, err := p.repo.ReadProjectionCheckpointForAdvance(ctx, projectorName)
 		if err != nil {
@@ -75,6 +77,7 @@ func (p *Projector) RunBatch(ctx context.Context) error {
 			return fmt.Errorf("list events: %w", err)
 		}
 		if len(events) == 0 {
+			p.markCaughtUp(ctx, checkpoint.LastEventSeq)
 			return nil
 		}
 
@@ -97,6 +100,11 @@ func (p *Projector) RunBatch(ctx context.Context) error {
 					slog.Int64("expected_seq", checkpoint.LastEventSeq),
 					slog.Int64("attempted_seq", hole.Last),
 					slog.Int("batch_events", 0))
+				return nil
+			}
+			lastAdvancedSeq = hole.Last
+			if len(events) < p.cfg.BatchSize {
+				p.markCaughtUp(ctx, hole.Last)
 				return nil
 			}
 			continue
@@ -125,6 +133,7 @@ func (p *Projector) RunBatch(ctx context.Context) error {
 					slog.Int("batch_events", len(batch)))
 				return foldErr
 			}
+			lastAdvancedSeq = lastGoodSeq
 		}
 		if foldErr != nil {
 			return foldErr
@@ -133,10 +142,34 @@ func (p *Projector) RunBatch(ctx context.Context) error {
 			return nil
 		}
 		if len(events) < p.cfg.BatchSize {
+			p.markCaughtUp(ctx, lastGoodSeq)
 			return nil
 		}
 	}
+	p.markBehind(ctx, lastAdvancedSeq)
 	return nil
+}
+
+func (p *Projector) markBehind(ctx context.Context, lastEventSeq int64) {
+	if p.behind {
+		return
+	}
+	p.behind = true
+	p.logger.InfoContext(ctx, "reading_projector.catchup_started",
+		slog.String("projector", projectorName),
+		slog.Int64("last_event_seq", lastEventSeq),
+		slog.Int("batch_size", p.cfg.BatchSize),
+		slog.Int("max_batches_per_tick", p.cfg.MaxBatchesPerTick))
+}
+
+func (p *Projector) markCaughtUp(ctx context.Context, lastEventSeq int64) {
+	if !p.behind {
+		return
+	}
+	p.behind = false
+	p.logger.InfoContext(ctx, "reading_projector.catchup_completed",
+		slog.String("projector", projectorName),
+		slog.Int64("last_event_seq", lastEventSeq))
 }
 
 func (p *Projector) mayAbandonHole(ctx context.Context, hole projection_gap.Hole) (bool, error) {

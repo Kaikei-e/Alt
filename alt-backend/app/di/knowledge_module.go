@@ -150,6 +150,7 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 	queueArticleUC := reading_queue_usecase.NewQueueArticleUsecase(
 		sovereignCli,
 		sovereignCli,
+		articleURLLookupGw,
 		infra.ArticleBatchGateway,
 		trailThumbnailGw,
 		cfg.ReadingQueue.Cap,

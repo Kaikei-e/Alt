@@ -3,12 +3,14 @@ package reading_queue_usecase
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 
 	"alt/domain"
+	"alt/orchestrator/port/article_url_lookup_port"
 	"alt/orchestrator/port/reading_queue_port"
 	"alt/shared/port/knowledge_event_port"
 )
@@ -20,18 +22,20 @@ type QueueArticleResult struct {
 }
 
 type QueueArticleUsecase struct {
-	queuePort        reading_queue_port.GetReadingQueuePort
-	appendPort       knowledge_event_port.AppendKnowledgeEventPort
-	articleBatchPort reading_queue_port.FetchArticlesByIDsPort
-	ogImagePort      reading_queue_port.GetOgImageURLsPort
-	cap              int
-	ttlHours         int
-	now              func() time.Time
+	queuePort         reading_queue_port.GetReadingQueuePort
+	appendPort        knowledge_event_port.AppendKnowledgeEventPort
+	articleLookupPort article_url_lookup_port.ArticleURLLookupPort
+	articleBatchPort  reading_queue_port.FetchArticlesByIDsPort
+	ogImagePort       reading_queue_port.GetOgImageURLsPort
+	cap               int
+	ttlHours          int
+	now               func() time.Time
 }
 
 func NewQueueArticleUsecase(
 	queuePort reading_queue_port.GetReadingQueuePort,
 	appendPort knowledge_event_port.AppendKnowledgeEventPort,
+	articleLookupPort article_url_lookup_port.ArticleURLLookupPort,
 	articleBatchPort reading_queue_port.FetchArticlesByIDsPort,
 	ogImagePort reading_queue_port.GetOgImageURLsPort,
 	cap int,
@@ -43,6 +47,9 @@ func NewQueueArticleUsecase(
 	}
 	if appendPort == nil {
 		panic("reading_queue_usecase: appendPort is required")
+	}
+	if articleLookupPort == nil {
+		panic("reading_queue_usecase: articleLookupPort is required")
 	}
 	if articleBatchPort == nil {
 		panic("reading_queue_usecase: articleBatchPort is required")
@@ -60,13 +67,14 @@ func NewQueueArticleUsecase(
 		panic("reading_queue_usecase: now clock is required")
 	}
 	return &QueueArticleUsecase{
-		queuePort:        queuePort,
-		appendPort:       appendPort,
-		articleBatchPort: articleBatchPort,
-		ogImagePort:      ogImagePort,
-		cap:              cap,
-		ttlHours:         ttlHours,
-		now:              now,
+		queuePort:         queuePort,
+		appendPort:        appendPort,
+		articleLookupPort: articleLookupPort,
+		articleBatchPort:  articleBatchPort,
+		ogImagePort:       ogImagePort,
+		cap:               cap,
+		ttlHours:          ttlHours,
+		now:               now,
 	}
 }
 
@@ -105,6 +113,17 @@ func (u *QueueArticleUsecase) Execute(
 	}
 	if !surface.IsValid() {
 		return QueueArticleResult{}, fmt.Errorf("%w: invalid surface", ErrInvalidInput)
+	}
+
+	source, err := u.articleLookupPort.LookupArticleSource(ctx, articleID.String(), userID)
+	if err != nil {
+		if errors.Is(err, domain.ErrArticleNotFound) {
+			return QueueArticleResult{}, fmt.Errorf("%w: article not found", ErrInvalidInput)
+		}
+		return QueueArticleResult{}, fmt.Errorf("queue article: %w", err)
+	}
+	if source.URL == "" {
+		return QueueArticleResult{}, fmt.Errorf("%w: article not found", ErrInvalidInput)
 	}
 
 	receivedAt := u.now().UTC()
