@@ -28,6 +28,7 @@ import { useKnowledgeHome } from "#lib/hooks/useKnowledgeHome.svelte.js";
 import { useLens } from "#lib/hooks/useLens.svelte.js";
 import { useRecallRail } from "#lib/hooks/useRecallRail.svelte.js";
 import { useStreamUpdates } from "#lib/hooks/useStreamUpdates.svelte.js";
+import { ReadingSurface } from "#lib/reading/instrumentation.js";
 import type { RenderFeed } from "#lib/schema/feed.js";
 import { useToastStore } from "#lib/stores/toast.svelte.js";
 import { isDesktop } from "#lib/stores/viewport.svelte.js";
@@ -533,6 +534,7 @@ onMount(async () => {
 <FeedDetailModal
 	bind:open={readerModalOpen}
 	feed={readerFeed}
+	readingSurface={ReadingSurface.OTHER}
 	trackOpen={false}
 	showHomeReaderLinks={true}
 	onOpenChange={(open) => {

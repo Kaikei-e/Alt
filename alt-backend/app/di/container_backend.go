@@ -214,6 +214,7 @@ func NewBackendComponents(cfg *config.Config) (*ApplicationComponents, error) {
 		GetItemBranchesUsecase:           knowledge.GetItemBranchesUsecase,
 		TrackHomeSeenUsecase:             knowledge.TrackHomeSeenUsecase,
 		TrackHomeActionUsecase:           knowledge.TrackHomeActionUsecase,
+		RecordReadingEventsUsecase:       knowledge.RecordReadingEventsUsecase,
 		CreateSummaryVersionUsecase:      knowledge.CreateSummaryVersionUsecase,
 		FeatureFlagGateway:               knowledge.FeatureFlagGateway,
 		KnowledgeBackfillUsecase:         knowledge.KnowledgeBackfillUsecase,

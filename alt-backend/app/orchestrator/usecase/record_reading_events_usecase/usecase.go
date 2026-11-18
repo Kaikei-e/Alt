@@ -1,0 +1,206 @@
+package record_reading_events_usecase
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"time"
+
+	"alt/domain"
+	"alt/shared/port/knowledge_event_port"
+
+	"github.com/google/uuid"
+)
+
+const maxClockSkew = 24 * time.Hour
+
+var ErrInvalidInput = domain.ErrInvalidReadingEvent
+
+type Result struct {
+	Accepted   int32
+	Duplicates int32
+}
+
+type RecordReadingEventsUsecase struct {
+	appendPort knowledge_event_port.AppendKnowledgeEventPort
+	now        func() time.Time
+}
+
+func NewRecordReadingEventsUsecase(
+	appendPort knowledge_event_port.AppendKnowledgeEventPort,
+	now func() time.Time,
+) *RecordReadingEventsUsecase {
+	if appendPort == nil {
+		panic("record_reading_events_usecase: appendPort is required")
+	}
+	if now == nil {
+		panic("record_reading_events_usecase: now clock is required")
+	}
+	return &RecordReadingEventsUsecase{
+		appendPort: appendPort,
+		now:        now,
+	}
+}
+
+type surfaceViewedPayload struct {
+	ClientEventID    string `json:"client_event_id"`
+	Surface          string `json:"surface"`
+	ReceivedAt       string `json:"received_at"`
+	ClientOccurredAt string `json:"client_occurred_at,omitempty"`
+}
+
+type reachedEndPayload struct {
+	ClientEventID    string `json:"client_event_id"`
+	ArticleID        string `json:"article_id"`
+	Surface          string `json:"surface"`
+	ReceivedAt       string `json:"received_at"`
+	ClientOccurredAt string `json:"client_occurred_at,omitempty"`
+}
+
+type sessionEndedPayload struct {
+	ClientEventID    string  `json:"client_event_id"`
+	ArticleID        string  `json:"article_id"`
+	Surface          string  `json:"surface"`
+	ActiveDwellMs    int64   `json:"active_dwell_ms"`
+	MaxScrollRatio   float64 `json:"max_scroll_ratio"`
+	BodyLengthChars  int32   `json:"body_length_chars"`
+	ReachedEnd       bool    `json:"reached_end"`
+	ReceivedAt       string  `json:"received_at"`
+	ClientOccurredAt string  `json:"client_occurred_at,omitempty"`
+}
+
+func (u *RecordReadingEventsUsecase) Execute(
+	ctx context.Context,
+	userID uuid.UUID,
+	tenantID uuid.UUID,
+	events []domain.ReadingEventInput,
+) (Result, error) {
+	if len(events) == 0 {
+		return Result{}, nil
+	}
+	if err := domain.ValidateReadingEventBatch(events); err != nil {
+		return Result{}, err
+	}
+
+	receivedAt := u.now().UTC()
+	var res Result
+
+	for _, ev := range events {
+		ke, err := buildKnowledgeEvent(userID, tenantID, ev, receivedAt)
+		if err != nil {
+			return Result{}, fmt.Errorf("record reading events: %w", err)
+		}
+		seq, err := u.appendPort.AppendKnowledgeEvent(ctx, ke)
+		if err != nil {
+			return Result{}, fmt.Errorf("record reading events: %w", err)
+		}
+		if seq == 0 {
+			res.Duplicates++
+		} else {
+			res.Accepted++
+		}
+	}
+	return res, nil
+}
+
+func buildKnowledgeEvent(
+	userID uuid.UUID,
+	tenantID uuid.UUID,
+	ev domain.ReadingEventInput,
+	receivedAt time.Time,
+) (domain.KnowledgeEvent, error) {
+	clientEventID := uuid.MustParse(ev.ClientEventID).String()
+	occurredAt, clientOccurredAt := clampOccurredAt(ev.OccurredAt.UTC(), receivedAt)
+	receivedAtStr := receivedAt.Format(time.RFC3339)
+
+	eventType, aggregateID, payloadBytes, err := encodePayload(ev.Payload, clientEventID, receivedAtStr, clientOccurredAt)
+	if err != nil {
+		return domain.KnowledgeEvent{}, err
+	}
+
+	uid := userID
+	return domain.KnowledgeEvent{
+		EventID:       uuid.New(),
+		OccurredAt:    occurredAt,
+		TenantID:      tenantID,
+		UserID:        &uid,
+		ActorType:     domain.ActorUser,
+		ActorID:       userID.String(),
+		EventType:     eventType,
+		AggregateType: domain.AggregateReadingSession,
+		AggregateID:   aggregateID,
+		DedupeKey:     eventType + ":" + clientEventID,
+		Payload:       payloadBytes,
+	}, nil
+}
+
+// clampOccurredAt guards monthly event partitioning against wildly skewed device clocks.
+func clampOccurredAt(clientOccurredAt, receivedAt time.Time) (time.Time, string) {
+	skew := receivedAt.Sub(clientOccurredAt)
+	if skew < 0 {
+		skew = -skew
+	}
+	if skew > maxClockSkew {
+		return receivedAt, clientOccurredAt.Format(time.RFC3339)
+	}
+	return clientOccurredAt, ""
+}
+
+func encodePayload(
+	payload domain.ReadingEventPayload,
+	clientEventID string,
+	receivedAtStr string,
+	clientOccurredAtStr string,
+) (string, string, []byte, error) {
+	var (
+		eventType   string
+		aggregateID string
+		wirePayload any
+	)
+
+	switch p := payload.(type) {
+	case domain.SurfaceViewedInput:
+		eventType = domain.EventReadingSurfaceViewed
+		aggregateID = "surface:" + p.Surface.String()
+		wirePayload = surfaceViewedPayload{
+			ClientEventID:    clientEventID,
+			Surface:          p.Surface.String(),
+			ReceivedAt:       receivedAtStr,
+			ClientOccurredAt: clientOccurredAtStr,
+		}
+	case domain.ReachedEndInput:
+		articleID := uuid.MustParse(p.ArticleID).String()
+		eventType = domain.EventReadingReachedEnd
+		aggregateID = "article:" + articleID
+		wirePayload = reachedEndPayload{
+			ClientEventID:    clientEventID,
+			ArticleID:        articleID,
+			Surface:          p.Surface.String(),
+			ReceivedAt:       receivedAtStr,
+			ClientOccurredAt: clientOccurredAtStr,
+		}
+	case domain.SessionEndedInput:
+		articleID := uuid.MustParse(p.ArticleID).String()
+		eventType = domain.EventReadingSessionEnded
+		aggregateID = "article:" + articleID
+		wirePayload = sessionEndedPayload{
+			ClientEventID:    clientEventID,
+			ArticleID:        articleID,
+			Surface:          p.Surface.String(),
+			ActiveDwellMs:    p.ActiveDwellMs,
+			MaxScrollRatio:   p.MaxScrollRatio,
+			BodyLengthChars:  p.BodyLengthChars,
+			ReachedEnd:       p.ReachedEnd,
+			ReceivedAt:       receivedAtStr,
+			ClientOccurredAt: clientOccurredAtStr,
+		}
+	default:
+		return "", "", nil, fmt.Errorf("%w: unknown event payload", ErrInvalidInput)
+	}
+
+	raw, err := json.Marshal(wirePayload)
+	if err != nil {
+		return "", "", nil, fmt.Errorf("marshal payload: %w", err)
+	}
+	return eventType, aggregateID, raw, nil
+}

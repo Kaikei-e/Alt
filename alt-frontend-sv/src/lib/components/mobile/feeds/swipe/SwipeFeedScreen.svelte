@@ -25,6 +25,7 @@ interface Props {
 	initialFeeds?: RenderFeed[];
 	initialNextCursor?: string | null;
 	initialArticleContent?: string | null;
+	initialArticleId?: string | null;
 	/**
 	 * The SSR-resolved og:image for the first card, as a signed
 	 * `/v1/images/proxy/...` path. Never a publisher URL — see
@@ -38,6 +39,7 @@ const {
 	initialFeeds = [],
 	initialNextCursor,
 	initialArticleContent,
+	initialArticleId,
 	initialOgImageProxyUrl,
 	mode = "default",
 }: Props = $props();
@@ -487,9 +489,12 @@ function handleArticleIdResolved(feedLink: string, articleId: string) {
 						getCachedArticleId={getCachedArticleId}
 						requestContent={requestContent}
 						isBusy={isLoading}
-            initialArticleContent={activeIndex === 0
-              ? initialArticleContent
-              : undefined}
+						initialArticleContent={activeIndex === 0
+							? initialArticleContent
+							: undefined}
+						initialArticleId={activeIndex === 0
+							? initialArticleId
+							: undefined}
 						onArticleIdResolved={handleArticleIdResolved}
 						isLcp={activeIndex === 0}
 					/>
@@ -502,9 +507,9 @@ function handleArticleIdResolved(feedLink: string, articleId: string) {
 						getCachedArticleId={getCachedArticleId}
 						requestContent={requestContent}
 						isBusy={isLoading}
-            initialArticleContent={activeIndex === 0
-              ? initialArticleContent
-              : undefined}
+						initialArticleContent={activeIndex === 0
+							? initialArticleContent
+							: undefined}
 						onArticleIdResolved={handleArticleIdResolved}
 					/>
 				{/if}

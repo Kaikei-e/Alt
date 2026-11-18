@@ -7,6 +7,7 @@ import FeedDetailModal from "#lib/components/desktop/feeds/FeedDetailModal.svelt
 import FeedGrid from "#lib/components/desktop/feeds/FeedGrid.svelte";
 import type { FeedGridApi } from "#lib/components/desktop/feeds/feed-grid-types.js";
 import ClippingsEntry from "#lib/components/mobile/ClippingsEntry.svelte";
+import { ReadingSurface } from "#lib/reading/instrumentation.js";
 import type { RenderFeed } from "#lib/schema/feed.js";
 import { isDesktop } from "#lib/stores/viewport.svelte.js";
 
@@ -170,6 +171,7 @@ const CLIPPINGS_LIST_CLASS =
 	bind:open={isModalOpen}
 	feed={selectedFeed}
 	onOpenChange={(open: boolean) => (isModalOpen = open)}
+	readingSurface={ReadingSurface.OTHER}
 	{hasPrevious}
 	{hasNext}
 	onPrevious={handlePrevious}

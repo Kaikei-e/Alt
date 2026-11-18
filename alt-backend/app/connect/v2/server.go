@@ -16,6 +16,7 @@ import (
 	"alt/gen/proto/alt/knowledge_trail/v1/knowledgetrailv1connect"
 	"alt/gen/proto/alt/morning_letter/v2/morningletterv2connect"
 	"alt/gen/proto/alt/push/v1/pushv1connect"
+	"alt/gen/proto/alt/reading/v1/readingv1connect"
 	"alt/gen/proto/alt/recap/v2/recapv2connect"
 	"alt/gen/proto/alt/rss/v2/rssv2connect"
 	"alt/gen/proto/alt/search/v2/searchv2connect"
@@ -36,6 +37,7 @@ import (
 	knowledge_trail "alt/orchestrator/connect/v2/knowledge_trail"
 	"alt/orchestrator/connect/v2/morning_letter"
 	"alt/orchestrator/connect/v2/push"
+	"alt/orchestrator/connect/v2/reading"
 	"alt/orchestrator/connect/v2/recap"
 	"alt/orchestrator/connect/v2/rss"
 )
@@ -215,6 +217,12 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 	logger.Info("web_push_enabled",
 		"path", pushPath,
 		"vapid_key_fingerprint", push.VAPIDFingerprint(cfg.WebPush.PublicKey))
+
+	// Register ReadingService
+	readingHandler := reading.NewHandler(container.RecordReadingEventsUsecase, logger)
+	readingPath, readingServiceHandler := readingv1connect.NewReadingServiceHandler(readingHandler, opts)
+	mux.Handle(readingPath, readingServiceHandler)
+	logger.Info("reading_service_enabled", "path", readingPath)
 
 	// Register GlobalSearchService
 	if container.Search != nil {

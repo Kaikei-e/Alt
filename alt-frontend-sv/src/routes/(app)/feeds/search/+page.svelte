@@ -7,6 +7,7 @@ import FeedDetailModal from "#lib/components/desktop/feeds/FeedDetailModal.svelt
 import SearchFeedsClient from "#lib/components/mobile/search/SearchFeedsClient.svelte";
 import { createMobileSearchSession } from "#lib/components/mobile/search/search-session.js";
 import { appendUniqueById } from "#lib/domain/feed/dedupe.js";
+import { ReadingSurface } from "#lib/reading/instrumentation.js";
 import {
 	type RenderFeed,
 	sanitizeFeed,
@@ -303,6 +304,7 @@ async function handleNext() {
 			bind:open={isModalOpen}
 			feed={selectedFeed}
 			onOpenChange={(open: boolean) => (isModalOpen = open)}
+			readingSurface={ReadingSurface.OTHER}
 			{hasPrevious}
 			hasNext={hasNextFeed}
 			onPrevious={handlePrevious}

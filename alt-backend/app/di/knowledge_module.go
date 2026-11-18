@@ -26,6 +26,7 @@ import (
 	"alt/orchestrator/usecase/recall_dismiss_usecase"
 	"alt/orchestrator/usecase/recall_rail_usecase"
 	"alt/orchestrator/usecase/recall_snooze_usecase"
+	"alt/orchestrator/usecase/record_reading_events_usecase"
 	"alt/orchestrator/usecase/resolve_trail_branch_usecase"
 	"alt/orchestrator/usecase/search_trail_usecase"
 	"alt/orchestrator/usecase/select_lens_usecase"
@@ -50,6 +51,7 @@ type KnowledgeModule struct {
 	GetItemBranchesUsecase           *get_item_branches_usecase.GetItemBranchesUsecase
 	TrackHomeSeenUsecase             *track_home_seen_usecase.TrackHomeSeenUsecase
 	TrackHomeActionUsecase           *track_home_action_usecase.TrackHomeActionUsecase
+	RecordReadingEventsUsecase       *record_reading_events_usecase.RecordReadingEventsUsecase
 	AppendKnowledgeEventUsecase      *append_knowledge_event_usecase.AppendKnowledgeEventUsecase
 	CreateSummaryVersionUsecase      *create_summary_version_usecase.CreateSummaryVersionUsecase
 	KnowledgeBackfillUsecase         *knowledge_backfill_usecase.Usecase
@@ -135,6 +137,7 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 	trackHomeActionUC := track_home_action_usecase.NewTrackHomeActionUsecase(sovereignCli, sovereignCli, featureFlagGw, sovereignCli, sovereignCli, sovereignCli, articleURLLookupGw).
 		WithArticleStatusPort(infra.ReadStateGateway)
 	slog.Info("track_home_action_article_status_sync_enabled")
+	recordReadingEventsUC := record_reading_events_usecase.NewRecordReadingEventsUsecase(sovereignCli, time.Now)
 	appendKnowledgeEventUC := append_knowledge_event_usecase.NewAppendKnowledgeEventUsecase(sovereignCli)
 	createSummaryVersionUC := create_summary_version_usecase.NewCreateSummaryVersionUsecase(versionGw, sovereignCli, versionGw)
 	knowledgeBackfillUC := knowledge_backfill_usecase.NewUsecase(
@@ -239,6 +242,7 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 		GetItemBranchesUsecase:           getItemBranchesUC,
 		TrackHomeSeenUsecase:             trackHomeSeenUC,
 		TrackHomeActionUsecase:           trackHomeActionUC,
+		RecordReadingEventsUsecase:       recordReadingEventsUC,
 		AppendKnowledgeEventUsecase:      appendKnowledgeEventUC,
 		CreateSummaryVersionUsecase:      createSummaryVersionUC,
 		KnowledgeBackfillUsecase:         knowledgeBackfillUC,

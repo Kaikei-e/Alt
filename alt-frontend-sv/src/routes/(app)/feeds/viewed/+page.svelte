@@ -7,6 +7,7 @@ import FeedGrid from "#lib/components/desktop/feeds/FeedGrid.svelte";
 import type { FeedGridApi } from "#lib/components/desktop/feeds/feed-grid-types.js";
 import EmptyViewedFeedsState from "#lib/components/mobile/EmptyViewedFeedsState.svelte";
 import MorgueClipping from "#lib/components/mobile/MorgueClipping.svelte";
+import { ReadingSurface } from "#lib/reading/instrumentation.js";
 import type { RenderFeed } from "#lib/schema/feed.js";
 import { isDesktop } from "#lib/stores/viewport.svelte.js";
 
@@ -140,6 +141,7 @@ const MORGUE_LIST_CLASS =
 	bind:open={isModalOpen}
 	feed={selectedFeed}
 	onOpenChange={(open: boolean) => (isModalOpen = open)}
+	readingSurface={ReadingSurface.OTHER}
 	{hasPrevious}
 	{hasNext}
 	onPrevious={handlePrevious}

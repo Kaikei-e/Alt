@@ -11,6 +11,10 @@ import {
 	streamSummarizeWithAbortAdapter,
 } from "#lib/connect/index.js";
 import { createSummarySpeech } from "#lib/hooks/useSummarySpeech.svelte.js";
+import {
+	attachElementReadingSession,
+	ReadingSurface,
+} from "#lib/reading/instrumentation.js";
 import type { RenderFeed } from "#lib/schema/feed.js";
 import {
 	type ArticleContentPhase,
@@ -35,6 +39,7 @@ interface Props {
 	open: boolean;
 	feed: RenderFeed | null;
 	onOpenChange: (open: boolean) => void;
+	readingSurface: ReadingSurface;
 	hasPrevious?: boolean;
 	hasNext?: boolean;
 	onPrevious?: () => void;
@@ -58,6 +63,7 @@ let {
 	open = $bindable(),
 	feed,
 	onOpenChange,
+	readingSurface,
 	hasPrevious = false,
 	hasNext = false,
 	onPrevious,
@@ -79,8 +85,22 @@ let {
 let contentPhase = $state<ArticleContentPhase>("idle");
 let articleContent = $state<string | null>(null);
 let articleID = $state<string | null>(null);
+let loadedFeedUrl = $state<string | null>(null);
 let contentError = $state<string | null>(null);
+let modalBodyEl = $state<HTMLDivElement | null>(null);
+let articleBodyEl = $state<HTMLDivElement | null>(null);
+let endSentinelEl = $state<HTMLDivElement | null>(null);
+const feedNormalizedUrl = $derived(feed?.normalizedUrl ?? null);
 const readerArticleId = $derived(feed?.articleId || articleID);
+const activeReadingSurface = $derived(readingSurface);
+const hasCurrentArticleBody = $derived(
+	Boolean(
+		open &&
+			articleContent &&
+			loadedFeedUrl !== null &&
+			loadedFeedUrl === feedNormalizedUrl,
+	),
+);
 // The one automatic re-attempt allowed per failure.
 let foregroundRetrySpent = false;
 let contentRetryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -219,6 +239,7 @@ $effect(() => {
 		// Reset states
 		articleContent = null;
 		articleID = null;
+		loadedFeedUrl = null;
 		summary = null;
 		fullSummaryText = null;
 		isSummaryComplete = false;
@@ -267,6 +288,7 @@ $effect(() => {
 	// Reset content states
 	articleContent = null;
 	articleID = null;
+	loadedFeedUrl = null;
 	summary = null;
 	fullSummaryText = null;
 	isSummaryComplete = false;
@@ -277,6 +299,9 @@ $effect(() => {
 	foregroundRetrySpent = false;
 	if (contentRetryTimer) clearTimeout(contentRetryTimer);
 	summaryRetryCount = 0;
+	if (modalBodyEl) {
+		modalBodyEl.scrollTop = 0;
+	}
 });
 
 // Auto-fetch article content when modal opens.
@@ -322,11 +347,25 @@ $effect(() => {
 	}
 });
 
+$effect(() => {
+	if (!hasCurrentArticleBody) {
+		return;
+	}
+	return attachElementReadingSession({
+		articleId: readerArticleId,
+		surface: activeReadingSurface,
+		bodyElement: articleBodyEl,
+		scrollContainer: modalBodyEl,
+		endSentinel: endSentinelEl,
+	});
+});
+
 async function handleRefetchArticle() {
 	speech.stop();
 	// Clear existing content and summary, then re-fetch with force refresh
 	articleContent = null;
 	articleID = null;
+	loadedFeedUrl = null;
 	summary = null;
 	fullSummaryText = null;
 	isSummaryComplete = false;
@@ -364,6 +403,7 @@ function applyResult(
 	}
 	articleContent = result.articleContent;
 	articleID = result.articleID;
+	loadedFeedUrl = targetFeedUrl;
 	contentError = null;
 	contentPhase = "ready";
 	if (
@@ -430,6 +470,7 @@ async function handleFetchFullArticle(forceRefresh = false) {
 			if (feed.normalizedUrl !== targetFeedUrl) return;
 			articleContent = cachedContent;
 			articleID = cachedArticleId;
+			loadedFeedUrl = targetFeedUrl;
 			contentError = null;
 			contentPhase = "ready";
 			return;
@@ -656,16 +697,23 @@ async function handleSummarize(forceRefresh = false) {
 					{/if}
 				</div>
 
-				<div class="modal-body">
+				<div class="modal-body" bind:this={modalBodyEl}>
 					<div class="modal-body-grid">
 						<article class="modal-article">
 							{#if articleContent}
 								<section class="content-section">
 									<h3 class="section-label">FULL ARTICLE</h3>
-									<RenderFeedDetails
-										feedDetails={articleContent ? { content: articleContent, article_id: articleID ?? "", og_image_url: "", og_image_proxy_url: "" } : null}
-										error={null}
-									/>
+									<div bind:this={articleBodyEl}>
+										<RenderFeedDetails
+											feedDetails={articleContent ? { content: articleContent, article_id: articleID ?? "", og_image_url: "", og_image_proxy_url: "" } : null}
+											error={null}
+										/>
+									</div>
+									<div
+										class="reading-end-sentinel"
+										bind:this={endSentinelEl}
+										aria-hidden="true"
+									></div>
 								</section>
 							{:else if isFetchingContent}
 								<!-- A request in flight is not a failure. It says which
@@ -1414,5 +1462,11 @@ async function handleSummarize(forceRefresh = false) {
 		text-decoration: underline;
 		text-decoration-thickness: 1px;
 		text-underline-offset: 3px;
+	}
+
+	.reading-end-sentinel {
+		height: 1px;
+		margin-top: -1px;
+		pointer-events: none;
 	}
 </style>

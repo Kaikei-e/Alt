@@ -7,7 +7,7 @@ import {
 	RefreshCw,
 	Sparkles,
 } from "@lucide/svelte";
-import { onDestroy } from "svelte";
+import { onDestroy, onMount } from "svelte";
 import { MediaQuery } from "svelte/reactivity";
 import {
 	getArticleSourceURLClient,
@@ -20,6 +20,11 @@ import { Button } from "#lib/components/ui/button/index.js";
 import { useArticleEndBranches } from "#lib/hooks/useArticleEndBranches.svelte.js";
 import { useSummarize } from "#lib/hooks/useSummarize.svelte.js";
 import {
+	attachWindowReadingSession,
+	ReadingSurface,
+	recordSurfaceViewed,
+} from "#lib/reading/instrumentation.js";
+import {
 	type ArticleContentPhase,
 	CONTENT_PENDING_LABEL,
 	CONTENT_RETRYING_LABEL,
@@ -30,7 +35,7 @@ import {
 } from "#lib/utils/articleContentState.js";
 import { articleContentErrorMessage } from "#lib/utils/errorClassification.js";
 import { safeArticleHref } from "#lib/utils/safeHref.js";
-import { goto } from "$app/navigation";
+import { beforeNavigate, goto } from "$app/navigation";
 import { page } from "$app/state";
 import ArticleVisit from "./ArticleVisit.svelte";
 
@@ -103,7 +108,11 @@ $effect(() => {
 let contentPhase = $state<ArticleContentPhase>("idle");
 let articleContent = $state<string | null>(null);
 let fetchedArticleId = $state<string | null>(null);
+let loadedForArticleId = $state<string | null>(null);
 let contentError = $state<string | null>(null);
+let articleBodyEl = $state<HTMLDivElement | null>(null);
+let endSentinelEl = $state<HTMLDivElement | null>(null);
+let activeReadingCleanup: (() => void) | undefined;
 let previousUrl = $state<string | null>(null);
 // The one automatic re-attempt allowed per failure.
 let foregroundRetrySpent = false;
@@ -113,6 +122,9 @@ let contentToken = 0;
 
 const isFetching = $derived(
 	contentPhase === "pending" || contentPhase === "retrying",
+);
+const hasLoadedArticleBody = $derived(
+	Boolean(articleId && articleContent && loadedForArticleId === articleId),
 );
 const pendingLabel = $derived(
 	contentPhase === "retrying" ? CONTENT_RETRYING_LABEL : CONTENT_PENDING_LABEL,
@@ -182,6 +194,16 @@ const summarizeAriaLabel = $derived.by(() => {
 	}
 });
 
+onMount(() => {
+	recordSurfaceViewed(ReadingSurface.ARTICLE_PAGE);
+});
+
+beforeNavigate(({ shallow }) => {
+	if (!shallow) {
+		activeReadingCleanup?.();
+	}
+});
+
 onDestroy(() => {
 	summarizer.abort();
 	// A re-attempt parked in its Retry-After wait outlives the page otherwise.
@@ -203,6 +225,7 @@ function failContent(err: unknown, token: number) {
 function applyResponse(
 	response: { content?: string; article_id?: string },
 	token: number,
+	targetArticleId: string | null,
 ) {
 	if (token !== contentToken) return;
 	if (!response.content?.trim()) {
@@ -212,6 +235,7 @@ function applyResponse(
 	}
 	articleContent = response.content;
 	fetchedArticleId = response.article_id || null;
+	loadedForArticleId = targetArticleId;
 	contentError = null;
 	contentPhase = "ready";
 }
@@ -228,7 +252,9 @@ async function fetchContent(forceRefresh = false) {
 	if (!articleUrl) return;
 
 	const url = articleUrl;
+	const targetArticleId = articleId ?? null;
 	const token = ++contentToken;
+	loadedForArticleId = null;
 	contentPhase = "pending";
 	contentError = null;
 
@@ -236,6 +262,7 @@ async function fetchContent(forceRefresh = false) {
 		applyResponse(
 			await getFeedContentOnTheFlyClient(url, { forceRefresh }),
 			token,
+			targetArticleId,
 		);
 		return;
 	} catch (err) {
@@ -263,6 +290,7 @@ async function fetchContent(forceRefresh = false) {
 			applyResponse(
 				await getFeedContentOnTheFlyClient(url, { forceRefresh }),
 				token,
+				targetArticleId,
 			);
 		} catch (retryErr) {
 			failContent(retryErr, token);
@@ -299,11 +327,29 @@ $effect(() => {
 		if (contentRetryTimer) clearTimeout(contentRetryTimer);
 		articleContent = null;
 		fetchedArticleId = null;
+		loadedForArticleId = null;
 		contentError = null;
 		contentPhase = "idle";
 		foregroundRetrySpent = false;
 		summarizer.reset();
 	}
+});
+
+$effect(() => {
+	if (!hasLoadedArticleBody || !articleId) {
+		return;
+	}
+	const cleanup = attachWindowReadingSession({
+		articleId,
+		surface: ReadingSurface.ARTICLE_PAGE,
+		bodyElement: articleBodyEl,
+		endSentinel: endSentinelEl,
+	});
+	activeReadingCleanup = cleanup;
+	return () => {
+		activeReadingCleanup = undefined;
+		cleanup?.();
+	};
 });
 
 // Fetch once per article, and only from the one state that means "not asked
@@ -512,7 +558,11 @@ $effect(() => {
 						</div>
 					</div>
 				{:else if articleContent}
-					<div class="article-surface" data-testid="article-content-surface">
+					<div
+						class="article-surface"
+						data-testid="article-content-surface"
+						bind:this={articleBodyEl}
+					>
 						<RenderFeedDetails
 							feedDetails={{
 								content: articleContent,
@@ -522,6 +572,11 @@ $effect(() => {
 							}}
 							error={null}
 						/>
+						<div
+							class="reading-end-sentinel"
+							bind:this={endSentinelEl}
+							aria-hidden="true"
+						></div>
 					</div>
 					<ArticleEndBranches
 						branches={endBranches.branches}
@@ -687,6 +742,12 @@ $effect(() => {
 		border-top: 1px solid var(--surface-border, #c8c8c8);
 		padding-top: 0.5rem;
 		min-width: 0;
+	}
+
+	.reading-end-sentinel {
+		height: 1px;
+		margin-top: -1px;
+		pointer-events: none;
 	}
 
 	.placeholder {
