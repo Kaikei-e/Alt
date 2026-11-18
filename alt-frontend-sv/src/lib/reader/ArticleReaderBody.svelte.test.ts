@@ -76,12 +76,14 @@ describe("ArticleReaderBody + createArticleReader", () => {
 		vi.mocked(recordReadingEvents).mockResolvedValue({
 			accepted: 0,
 			duplicates: 0,
+			readArticleIds: [],
 		});
 		await flushReadingEvents();
 		vi.mocked(recordReadingEvents).mockClear();
 		vi.mocked(recordReadingEvents).mockResolvedValue({
 			accepted: 1,
 			duplicates: 0,
+			readArticleIds: [],
 		});
 		vi.mocked(getItemBranches).mockResolvedValue([]);
 		vi.mocked(createClientTransport).mockReturnValue(

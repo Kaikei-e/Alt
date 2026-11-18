@@ -39,9 +39,8 @@ test.describe("mobile feeds — swipe card rendering", () => {
 			card.getByRole("heading", { name: "AI Trends" }),
 		).toBeVisible();
 		await expect(card.getByText("Deep dive into the ecosystem.")).toBeVisible();
-		await expect(
-			card.getByRole("button", { name: /^article$/i }),
-		).toBeVisible();
+		await expect(page.getByTestId("swipe-pass-button")).toBeVisible();
+		await expect(page.getByTestId("swipe-queue-button")).toBeVisible();
 	});
 
 	test("shows description as fallback when article content is unavailable", async ({

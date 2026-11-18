@@ -414,4 +414,80 @@ describe("createReadingEventQueue", () => {
 		expect(sentIds[0]).toBe("id-11");
 		expect(sentIds[199]).toBe("id-210");
 	});
+
+	it("enqueues opened events and invokes onReadArticleIds from flush response", async () => {
+		const onReadArticleIds = vi.fn();
+		const send = vi.fn(
+			async (_events: ReadingEvent[], _opts: { keepalive: boolean }) => ({
+				accepted: 1,
+				duplicates: 0,
+				readArticleIds: ["art-opened-1"],
+			}),
+		);
+		const queue = createReadingEventQueue({
+			send,
+			onReadArticleIds,
+		});
+
+		queue.enqueueOpened("art-opened-1", ReadingSurface.SWIPE);
+		expect(send).not.toHaveBeenCalled();
+
+		await queue.flush({ keepalive: false });
+
+		expect(send).toHaveBeenCalledTimes(1);
+		const sent = send.mock.calls[0]?.[0]?.[0];
+		expect(sent?.event).toMatchObject({
+			case: "opened",
+			value: {
+				articleId: "art-opened-1",
+				surface: ReadingSurface.SWIPE,
+			},
+		});
+		expect(onReadArticleIds).toHaveBeenCalledWith(["art-opened-1"]);
+	});
+
+	it("retains batch on Code.Unavailable and delivers readArticleIds on retry flush within cap", async () => {
+		const onReadArticleIds = vi.fn();
+		const send = vi
+			.fn<
+				(
+					events: ReadingEvent[],
+					options: { keepalive: boolean },
+				) => Promise<{
+					accepted: number;
+					duplicates: number;
+					readArticleIds: string[];
+				}>
+			>()
+			.mockRejectedValueOnce(
+				new ConnectError(
+					"transient read-status write failure",
+					Code.Unavailable,
+				),
+			)
+			.mockResolvedValueOnce({
+				accepted: 0,
+				duplicates: 1,
+				readArticleIds: ["art-retry-1"],
+			});
+		let seq = 0;
+		const queue = createReadingEventQueue({
+			generateId: () => `id-${++seq}`,
+			send,
+			onReadArticleIds,
+		});
+
+		queue.enqueueOpened("art-retry-1", ReadingSurface.ARTICLE_PAGE);
+		await queue.flush({ keepalive: false });
+
+		expect(queue.size).toBe(1);
+		expect(queue.size).toBeLessThanOrEqual(MAX_PENDING_EVENTS);
+		expect(onReadArticleIds).not.toHaveBeenCalled();
+
+		await queue.flush({ keepalive: false });
+
+		expect(queue.size).toBe(0);
+		expect(send.mock.calls[1]?.[0]?.[0]?.clientEventId).toBe("id-1");
+		expect(onReadArticleIds).toHaveBeenCalledWith(["art-retry-1"]);
+	});
 });

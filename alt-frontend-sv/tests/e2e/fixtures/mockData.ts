@@ -528,6 +528,10 @@ export const CONNECT_RPC_PATHS = {
 	// Reading service
 	recordReadingEvents:
 		"**/api/v2/alt.reading.v1.ReadingService/RecordReadingEvents",
+	queueArticle: "**/api/v2/alt.reading.v1.ReadingService/QueueArticle",
+	unqueueArticle: "**/api/v2/alt.reading.v1.ReadingService/UnqueueArticle",
+	getReadTodayQueue:
+		"**/api/v2/alt.reading.v1.ReadingService/GetReadTodayQueue",
 	// TTS service
 	ttsSynthesizeStream: "**/alt.tts.v1.TTSService/SynthesizeStream",
 };

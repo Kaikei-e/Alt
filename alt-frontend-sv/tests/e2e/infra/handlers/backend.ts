@@ -17,6 +17,7 @@ import {
 	DETAILED_FEED_STATS,
 	FEED_STATS,
 	FEEDS_RESPONSE,
+	MOCK_CONNECT_FEEDS,
 	RSS_FEED_LINKS,
 	UNREAD_COUNT,
 	VIEWED_FEEDS_RESPONSE,
@@ -90,6 +91,20 @@ function encodeConnectEnvelope(message: unknown, flags = 0x00): Buffer {
  * Create the Backend mock server
  */
 export function createBackendServer(): http.Server {
+	const READ_TODAY_CAP = 7;
+	const readTodayQueue = new Map<
+		string,
+		{
+			articleId: string;
+			title: string;
+			url: string;
+			sourceName: string;
+			imageUrl: string;
+			queuedAt: string;
+			expiresAt: string;
+		}
+	>();
+
 	async function handle(
 		req: http.IncomingMessage,
 		res: http.ServerResponse,
@@ -622,6 +637,104 @@ export function createBackendServer(): http.Server {
 			res.setHeader("Content-Type", "application/json");
 			res.writeHead(200);
 			res.end(JSON.stringify(CONNECT_TRANSITION_LOOP_RESPONSE));
+			return;
+		}
+
+		// ReadingService (Connect-RPC)
+		if (path === "/alt.reading.v1.ReadingService/RecordReadingEvents") {
+			const events = Array.isArray(body.events) ? body.events : [];
+			res.setHeader("Content-Type", "application/json");
+			res.writeHead(200);
+			res.end(
+				JSON.stringify({
+					accepted: events.length,
+					duplicates: 0,
+					readArticleIds: [],
+				}),
+			);
+			return;
+		}
+
+		if (path === "/alt.reading.v1.ReadingService/QueueArticle") {
+			const articleId =
+				typeof body.articleId === "string" ? body.articleId.trim() : "";
+			res.setHeader("Content-Type", "application/json");
+			res.writeHead(200);
+			if (!articleId) {
+				res.end(
+					JSON.stringify({
+						outcome: "QUEUE_ARTICLE_OUTCOME_UNSPECIFIED",
+						items: [...readTodayQueue.values()],
+						cap: READ_TODAY_CAP,
+					}),
+				);
+				return;
+			}
+			if (readTodayQueue.has(articleId)) {
+				res.end(
+					JSON.stringify({
+						outcome: "QUEUE_ARTICLE_OUTCOME_ALREADY_QUEUED",
+						items: [...readTodayQueue.values()],
+						cap: READ_TODAY_CAP,
+					}),
+				);
+				return;
+			}
+			if (readTodayQueue.size >= READ_TODAY_CAP) {
+				res.end(
+					JSON.stringify({
+						outcome: "QUEUE_ARTICLE_OUTCOME_QUEUE_FULL",
+						items: [...readTodayQueue.values()],
+						cap: READ_TODAY_CAP,
+					}),
+				);
+				return;
+			}
+			const feedMatch = MOCK_CONNECT_FEEDS.find(
+				(f) => f.articleId === articleId,
+			);
+			const now = Date.now();
+			readTodayQueue.set(articleId, {
+				articleId,
+				title: feedMatch?.title ?? `Article ${articleId}`,
+				url: feedMatch?.link ?? `https://example.com/${articleId}`,
+				sourceName: feedMatch?.author ?? "Example",
+				imageUrl: "",
+				queuedAt: new Date(now).toISOString(),
+				expiresAt: new Date(now + 48 * 3600_000).toISOString(),
+			});
+			res.end(
+				JSON.stringify({
+					outcome: "QUEUE_ARTICLE_OUTCOME_QUEUED",
+					items: [...readTodayQueue.values()],
+					cap: READ_TODAY_CAP,
+				}),
+			);
+			return;
+		}
+
+		if (path === "/alt.reading.v1.ReadingService/UnqueueArticle") {
+			const articleId =
+				typeof body.articleId === "string" ? body.articleId.trim() : "";
+			if (articleId) {
+				readTodayQueue.delete(articleId);
+			}
+			res.setHeader("Content-Type", "application/json");
+			res.writeHead(200);
+			res.end(JSON.stringify({}));
+			return;
+		}
+
+		if (path === "/alt.reading.v1.ReadingService/GetReadTodayQueue") {
+			res.setHeader("Content-Type", "application/json");
+			res.writeHead(200);
+			res.end(
+				JSON.stringify({
+					items: [...readTodayQueue.values()],
+					cap: READ_TODAY_CAP,
+					readCountSince: 0,
+				}),
+			);
 			return;
 		}
 

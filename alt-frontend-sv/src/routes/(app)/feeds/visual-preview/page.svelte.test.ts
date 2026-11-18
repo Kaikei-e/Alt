@@ -75,7 +75,10 @@ import {
 } from "#lib/api/client/feeds.js";
 import { trackHomeActionClient } from "#lib/api/client/knowledge_home.js";
 import { getItemBranches } from "#lib/connect/knowledge_trail.js";
-import { recordReadingEvents } from "#lib/connect/reading.js";
+import {
+	getReadTodayQueue,
+	recordReadingEvents,
+} from "#lib/connect/reading.js";
 import { createClientTransport } from "#lib/connect/transport-client.js";
 import { MARK_AS_READ_FAILED_MESSAGE } from "#lib/feeds/mark-as-read-feedback.js";
 import ArticleReaderOverlay from "#lib/reader/ArticleReaderOverlay.svelte";
@@ -84,6 +87,7 @@ import {
 	flushReadingEvents,
 	ReadingSurface,
 } from "#lib/reading/instrumentation.js";
+import { readTodayQueue } from "#lib/reading/read-today-queue.svelte.js";
 import type { RenderFeed } from "#lib/schema/feed.js";
 import { createRenderFeed } from "../../../../../tests/fixtures/feeds";
 import Page from "./+page.svelte";
@@ -126,6 +130,13 @@ describe("Visual Preview page continuity across a rotation", () => {
 
 	beforeEach(async () => {
 		resetReaderOverlaySessions();
+		readTodayQueue.reset();
+		vi.mocked(getReadTodayQueue).mockReset();
+		vi.mocked(getReadTodayQueue).mockResolvedValue({
+			items: [],
+			cap: 7,
+			readCountSince: 0,
+		});
 		currentPageState = {};
 		currentPageURL = new URL("http://localhost/feeds/visual-preview");
 		mockPushState.mockClear();
@@ -139,12 +150,14 @@ describe("Visual Preview page continuity across a rotation", () => {
 		vi.mocked(recordReadingEvents).mockResolvedValue({
 			accepted: 0,
 			duplicates: 0,
+			readArticleIds: [],
 		});
 		await flushReadingEvents();
 		vi.mocked(recordReadingEvents).mockReset();
 		vi.mocked(recordReadingEvents).mockResolvedValue({
 			accepted: 1,
 			duplicates: 0,
+			readArticleIds: [],
 		});
 		vi.mocked(getAllFeedsWithCursorClient).mockReset();
 		vi.mocked(getAllFeedsWithCursorClient).mockResolvedValue({
@@ -316,6 +329,72 @@ describe("Visual Preview page continuity across a rotation", () => {
 		expect(surfaceViews).toHaveLength(1);
 		expect(surfaceViews[0]?.event?.value).toEqual(
 			expect.objectContaining({ surface: ReadingSurface.GALLERY }),
+		);
+	});
+
+	it("hides queued articles from the Gallery without marking them read and restores them when unqueued", async () => {
+		vi.mocked(getReadTodayQueue).mockResolvedValueOnce({
+			items: [
+				{
+					articleId: FIRST.articleId ?? "art-1",
+					title: FIRST.title,
+					url: FIRST.normalizedUrl,
+					sourceName: "Source",
+					imageUrl: "",
+					queuedAt: new Date(),
+					expiresAt: new Date(Date.now() + 3600_000),
+				},
+			],
+			cap: 7,
+			readCountSince: 0,
+		});
+
+		await page.viewport(PORTRAIT.width, PORTRAIT.height);
+		render(Page);
+		await settle(400);
+
+		expect(cardLabels()).not.toContain(openLabel(FIRST));
+		expect(cardLabels()).toHaveLength(FEEDS.length - 1);
+		expect(updateFeedReadStatusClient).not.toHaveBeenCalled();
+
+		// When the item is removed/expired and the queue refreshes, it shows up again
+		vi.mocked(getReadTodayQueue).mockResolvedValueOnce({
+			items: [],
+			cap: 7,
+			readCountSince: 0,
+		});
+		await readTodayQueue.refresh();
+		await settle(100);
+
+		expect(cardLabels()).toContain(openLabel(FIRST));
+		expect(cardLabels()).toHaveLength(FEEDS.length);
+	});
+
+	it("marks a gallery tile as read when closing the reader overlay flushes readArticleIds", async () => {
+		vi.mocked(recordReadingEvents).mockResolvedValueOnce({
+			accepted: 1,
+			duplicates: 0,
+			readArticleIds: ["art-1"],
+		});
+
+		await page.viewport(PORTRAIT.width, PORTRAIT.height);
+		render(Page);
+		render(ArticleReaderOverlay);
+		await settle(400);
+
+		const tile = page.getByRole("button", { name: openLabel(FIRST) });
+		await expect.element(tile).toHaveAttribute("data-read", "false");
+
+		await tile.click();
+		await expect.element(page.getByTestId("reader-overlay")).toBeVisible();
+		await expect
+			.element(page.getByText("Gallery article body"))
+			.toBeInTheDocument();
+
+		await page.getByTestId("reader-overlay-close").click();
+
+		await vi.waitFor(() =>
+			expect(tile.element().getAttribute("data-read")).toBe("true"),
 		);
 	});
 });

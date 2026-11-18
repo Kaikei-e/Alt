@@ -173,7 +173,7 @@ test.describe("Visual Preview — AI summary speech playback", () => {
 
 		const card = page.getByTestId("visual-preview-card").first();
 		await expect(card).toBeVisible({ timeout: 15000 });
-		await card.getByRole("button", { name: /^article$/i }).click();
+		await card.getByTestId("unified-scroll-area").click();
 
 		const overlay = page.getByTestId("reader-overlay");
 		await expect(overlay).toBeVisible();
@@ -198,7 +198,7 @@ test.describe("Visual Preview — AI summary speech playback", () => {
 
 		const card = page.getByTestId("visual-preview-card").first();
 		await expect(card).toBeVisible({ timeout: 15000 });
-		await card.getByRole("button", { name: /^article$/i }).click();
+		await card.getByTestId("unified-scroll-area").click();
 
 		const overlay = page.getByTestId("reader-overlay");
 		await expect(overlay).toBeVisible();
@@ -238,7 +238,7 @@ test.describe("Visual Preview — AI summary speech playback", () => {
 
 		const card = page.getByTestId("visual-preview-card").first();
 		await expect(card).toBeVisible({ timeout: 15000 });
-		await card.getByRole("button", { name: /^article$/i }).click();
+		await card.getByTestId("unified-scroll-area").click();
 
 		const overlay = page.getByTestId("reader-overlay");
 		await expect(overlay).toBeVisible();
@@ -276,7 +276,7 @@ test.describe("Visual Preview — AI summary speech playback", () => {
 
 		const card = page.getByTestId("visual-preview-card").first();
 		await expect(card).toBeVisible({ timeout: 15000 });
-		await card.getByRole("button", { name: /^article$/i }).click();
+		await card.getByTestId("unified-scroll-area").click();
 
 		const overlay = page.getByTestId("reader-overlay");
 		await expect(overlay).toBeVisible();
@@ -326,7 +326,7 @@ test.describe("Visual Preview — AI summary speech playback", () => {
 
 		const card = page.getByTestId("visual-preview-card").first();
 		await expect(card).toBeVisible({ timeout: 15000 });
-		await card.getByRole("button", { name: /^article$/i }).click();
+		await card.getByTestId("unified-scroll-area").click();
 
 		const overlay = page.getByTestId("reader-overlay");
 		await expect(overlay).toBeVisible();

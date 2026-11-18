@@ -560,4 +560,40 @@ describe("reading-instrumentation", () => {
 
 		stopLifecycle();
 	});
+
+	it("records opened event and forwards readArticleIds to instrumentation and session callbacks", async () => {
+		const onGlobalRead = vi.fn();
+		const onSessionRead = vi.fn();
+		const send = vi.fn(
+			async (_events: ReadingEvent[], _opts: { keepalive: boolean }) => ({
+				accepted: 2,
+				duplicates: 0,
+				readArticleIds: ["art-open-1"],
+			}),
+		);
+		const instrumentation = createReadingInstrumentation({
+			send,
+			onReadArticleIds: onGlobalRead,
+		});
+
+		instrumentation.recordArticleOpened("art-open-1", ReadingSurface.GALLERY);
+		const session = instrumentation.startSession({
+			articleId: "art-open-1",
+			surface: ReadingSurface.GALLERY,
+			bodyLengthChars: 500,
+			dwell: { stop: () => 5000 },
+			onReadArticleIds: onSessionRead,
+		});
+
+		session?.endAndFlush();
+		await vi.waitFor(() => expect(onGlobalRead).toHaveBeenCalledTimes(1));
+
+		expect(onGlobalRead).toHaveBeenCalledWith(["art-open-1"]);
+		expect(onSessionRead).toHaveBeenCalledWith(["art-open-1"]);
+		const events = send.mock.calls[0]?.[0] ?? [];
+		expect(events.map((e: ReadingEvent) => e.event.case)).toEqual([
+			"opened",
+			"sessionEnded",
+		]);
+	});
 });

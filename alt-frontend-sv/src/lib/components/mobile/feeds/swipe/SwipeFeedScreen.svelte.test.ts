@@ -117,11 +117,18 @@ vi.mock("#lib/utils/ogImageResolver.js", () => ({
 
 import { trackHomeActionClient } from "#lib/api/client/knowledge_home.js";
 import { getItemBranches } from "#lib/connect/knowledge_trail.js";
-import { recordReadingEvents } from "#lib/connect/reading.js";
+import {
+	getReadTodayQueue,
+	QueueArticleOutcome,
+	queueArticle,
+	recordReadingEvents,
+	unqueueArticle,
+} from "#lib/connect/reading.js";
 import { createClientTransport } from "#lib/connect/transport-client.js";
 import ArticleReaderOverlay from "#lib/reader/ArticleReaderOverlay.svelte";
 import { resetReaderOverlaySessions } from "#lib/reader/reader-overlay.svelte.js";
 import { flushReadingEvents } from "#lib/reading/instrumentation.js";
+import { readTodayQueue } from "#lib/reading/read-today-queue.svelte.js";
 import SwipeFeedScreen from "./SwipeFeedScreen.svelte";
 
 function makeFeed(overrides: Partial<RenderFeed> = {}): RenderFeed {
@@ -153,6 +160,7 @@ describe("SwipeFeedScreen", () => {
 
 	beforeEach(async () => {
 		resetReaderOverlaySessions();
+		readTodayQueue.reset();
 		currentPageState = {};
 		currentPageURL = new URL("http://localhost/feeds/swipe/visual-preview");
 		mockPushState.mockClear();
@@ -162,15 +170,32 @@ describe("SwipeFeedScreen", () => {
 			currentPageURL = new URL("http://localhost/feeds/swipe/visual-preview");
 		});
 
+		vi.mocked(getReadTodayQueue).mockReset();
+		vi.mocked(getReadTodayQueue).mockResolvedValue({
+			items: [],
+			cap: 7,
+			readCountSince: 0,
+		});
+		vi.mocked(queueArticle).mockReset();
+		vi.mocked(queueArticle).mockResolvedValue({
+			outcome: QueueArticleOutcome.QUEUED,
+			items: [],
+			cap: 7,
+		});
+		vi.mocked(unqueueArticle).mockReset();
+		vi.mocked(unqueueArticle).mockResolvedValue(undefined);
+
 		vi.mocked(recordReadingEvents).mockResolvedValue({
 			accepted: 0,
 			duplicates: 0,
+			readArticleIds: [],
 		});
 		await flushReadingEvents();
 		vi.mocked(recordReadingEvents).mockReset();
 		vi.mocked(recordReadingEvents).mockResolvedValue({
 			accepted: 1,
 			duplicates: 0,
+			readArticleIds: [],
 		});
 
 		batchPrefetchImagesClientMock.mockReset();
@@ -282,7 +307,7 @@ describe("SwipeFeedScreen", () => {
 		expect(batchPrefetchImagesClientMock).toHaveBeenCalledWith(["art-vp-1"]);
 	});
 
-	it("opens the reader overlay on tap/Article without marking read and restores the same top card on close", async () => {
+	it("opens the reader overlay on card tap without marking read and restores the same top card on close", async () => {
 		render(SwipeFeedScreen, {
 			props: {
 				initialFeeds: [
@@ -302,7 +327,7 @@ describe("SwipeFeedScreen", () => {
 		render(ArticleReaderOverlay);
 		await settle(200);
 
-		await page.getByRole("button", { name: /^article$/i }).click();
+		await page.getByText("Consensus and replication notes").click();
 
 		await expect.element(page.getByTestId("reader-overlay")).toBeVisible();
 		expect(currentPageURL.pathname).toBe("/articles/art-1");
@@ -317,5 +342,236 @@ describe("SwipeFeedScreen", () => {
 		await expect
 			.element(page.getByRole("heading", { name: "Top Card" }))
 			.toBeVisible();
+	});
+
+	it("renders Pass and Read today buttons under the card that mirror left/right swipes and support UNDO", async () => {
+		render(SwipeFeedScreen, {
+			props: {
+				initialFeeds: [
+					makeFeed({ id: "feed-1", articleId: "art-1", title: "Card One" }),
+					makeFeed({
+						id: "feed-2",
+						articleId: "art-2",
+						title: "Card Two",
+						link: "https://example.com/dispatch-2",
+						normalizedUrl: "https://example.com/dispatch-2",
+					}),
+					makeFeed({
+						id: "feed-3",
+						articleId: "art-3",
+						title: "Card Three",
+						link: "https://example.com/dispatch-3",
+						normalizedUrl: "https://example.com/dispatch-3",
+					}),
+				],
+				initialNextCursor: null,
+				mode: "visual-preview",
+			},
+		});
+		await settle(200);
+
+		const passBtn = page.getByRole("button", { name: "Pass" });
+		const queueBtn = page.getByRole("button", { name: "Read today" });
+		await expect.element(passBtn).toBeVisible();
+		await expect.element(queueBtn).toBeVisible();
+
+		// Tap Read today on Card One (held in pending slot, not sent yet)
+		await queueBtn.click();
+		await expect
+			.element(page.getByRole("heading", { name: "Card Two" }))
+			.toBeVisible();
+		await expect
+			.element(page.getByTestId("dispatch-counter"))
+			.toHaveTextContent("№ 1");
+		expect(queueArticle).not.toHaveBeenCalled();
+		expect(updateFeedReadStatusClientMock).not.toHaveBeenCalled();
+
+		// Undo returns Card One
+		await page.getByTestId("dispatch-undo").click();
+		await expect
+			.element(page.getByRole("heading", { name: "Card One" }))
+			.toBeVisible();
+		await expect
+			.element(page.getByTestId("dispatch-counter"))
+			.toHaveTextContent("№ 0");
+
+		// Tap Read today on Card One, then Pass on Card Two -> flushes Card One as queue (no mark read)
+		await queueBtn.click();
+		await passBtn.click();
+		await expect
+			.element(page.getByRole("heading", { name: "Card Three" }))
+			.toBeVisible();
+		await expect
+			.element(page.getByTestId("dispatch-counter"))
+			.toHaveTextContent("№ 2");
+
+		await vi.waitFor(() => expect(queueArticle).toHaveBeenCalledTimes(1));
+		expect(queueArticle).toHaveBeenCalledWith(expect.anything(), {
+			articleId: "art-1",
+			surface: 2,
+		});
+		expect(updateFeedReadStatusClientMock).not.toHaveBeenCalled();
+
+		// Pass Card Three (last card) -> flushes Card Two as pass and Card Three as pass
+		await passBtn.click();
+		await vi.waitFor(() =>
+			expect(updateFeedReadStatusClientMock).toHaveBeenCalledTimes(2),
+		);
+	});
+
+	it("refuses Read today immediately when remainingSlots is 0 and displays cap notice", async () => {
+		vi.mocked(getReadTodayQueue).mockResolvedValue({
+			items: Array.from({ length: 7 }, (_, i) => ({
+				articleId: `queued-${i}`,
+				title: `Queued ${i}`,
+				url: `https://example.com/queued-${i}`,
+				sourceName: "Source",
+				imageUrl: "",
+				queuedAt: new Date(),
+				expiresAt: new Date(Date.now() + 3600_000),
+			})),
+			cap: 7,
+			readCountSince: 0,
+		});
+
+		render(SwipeFeedScreen, {
+			props: {
+				initialFeeds: [
+					makeFeed({
+						id: "feed-1",
+						articleId: "art-1",
+						title: "Full Deck Card",
+					}),
+				],
+				initialNextCursor: null,
+				mode: "visual-preview",
+			},
+		});
+		await settle(200);
+
+		await page.getByRole("button", { name: "Read today" }).click();
+
+		await expect
+			.element(page.getByTestId("swipe-notice"))
+			.toHaveTextContent("Read today is full (7). Read or remove one first.");
+		await expect
+			.element(page.getByRole("heading", { name: "Full Deck Card" }))
+			.toBeVisible();
+		expect(queueArticle).not.toHaveBeenCalled();
+	});
+
+	it("resolves articleId at flush time when missing and returns card to deck with notice on error or QUEUE_FULL", async () => {
+		getFeedContentOnTheFlyClientMock.mockResolvedValueOnce({
+			content: "<p>Resolved body</p>",
+			article_id: "resolved-from-fetch",
+			og_image_url: "",
+			og_image_proxy_url: "",
+		});
+		vi.mocked(queueArticle).mockResolvedValueOnce({
+			outcome: QueueArticleOutcome.QUEUE_FULL,
+			items: [],
+			cap: 7,
+		});
+
+		render(SwipeFeedScreen, {
+			props: {
+				initialFeeds: [
+					makeFeed({
+						id: "feed-no-id",
+						articleId: undefined,
+						title: "Needs Resolution",
+						link: "https://example.com/needs-id",
+						normalizedUrl: "https://example.com/needs-id",
+					}),
+				],
+				initialNextCursor: null,
+				mode: "visual-preview",
+			},
+		});
+		await settle(200);
+
+		// Last card -> flushes immediately
+		await page.getByRole("button", { name: "Read today" }).click();
+
+		await vi.waitFor(() =>
+			expect(getFeedContentOnTheFlyClientMock).toHaveBeenCalledWith(
+				"https://example.com/needs-id",
+			),
+		);
+		await vi.waitFor(() =>
+			expect(queueArticle).toHaveBeenCalledWith(expect.anything(), {
+				articleId: "resolved-from-fetch",
+				surface: 2,
+			}),
+		);
+
+		await expect
+			.element(page.getByTestId("swipe-notice"))
+			.toHaveTextContent("Read today is full (7). Read or remove one first.");
+		await expect
+			.element(page.getByRole("heading", { name: "Needs Resolution" }))
+			.toBeVisible();
+	});
+
+	it("filters queued articles from the Swipe deck by articleId or normalized URL without marking read", async () => {
+		vi.mocked(getReadTodayQueue).mockResolvedValue({
+			items: [
+				{
+					articleId: "art-queued",
+					title: "Queued by ID",
+					url: "https://other.example/queued",
+					sourceName: "Source",
+					imageUrl: "",
+					queuedAt: new Date(),
+					expiresAt: new Date(Date.now() + 3600_000),
+				},
+				{
+					articleId: "art-different",
+					title: "Queued by URL",
+					url: "https://example.com/dispatch-2/",
+					sourceName: "Source",
+					imageUrl: "",
+					queuedAt: new Date(),
+					expiresAt: new Date(Date.now() + 3600_000),
+				},
+			],
+			cap: 7,
+			readCountSince: 0,
+		});
+
+		render(SwipeFeedScreen, {
+			props: {
+				initialFeeds: [
+					makeFeed({
+						id: "feed-1",
+						articleId: "art-queued",
+						title: "Hidden By ID",
+						link: "https://example.com/dispatch-1",
+						normalizedUrl: "https://example.com/dispatch-1",
+					}),
+					makeFeed({
+						id: "feed-2",
+						articleId: "art-2",
+						title: "Hidden By URL",
+						link: "https://example.com/dispatch-2?utm_source=rss",
+						normalizedUrl: "https://example.com/dispatch-2",
+					}),
+					makeFeed({
+						id: "feed-3",
+						articleId: "art-3",
+						title: "Visible Card",
+						link: "https://example.com/dispatch-3",
+						normalizedUrl: "https://example.com/dispatch-3",
+					}),
+				],
+				initialNextCursor: null,
+				mode: "visual-preview",
+			},
+		});
+
+		await expect
+			.element(page.getByRole("heading", { name: "Visible Card" }))
+			.toBeVisible();
+		expect(updateFeedReadStatusClientMock).not.toHaveBeenCalled();
 	});
 });

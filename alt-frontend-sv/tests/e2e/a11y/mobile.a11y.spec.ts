@@ -200,11 +200,12 @@ test.describe("Mobile Pages Accessibility", () => {
 			await page.waitForLoadState("domcontentloaded");
 			await expect(page.getByTestId("visual-preview-card")).toBeVisible();
 
-			const articleButton = page.getByRole("button", {
-				name: /^article$/i,
-			});
-			await expect(articleButton).toBeVisible();
-			await expect(articleButton).toHaveAccessibleName(/^article$/i);
+			const passButton = page.getByTestId("swipe-pass-button");
+			const queueButton = page.getByTestId("swipe-queue-button");
+			await expect(passButton).toBeVisible();
+			await expect(passButton).toHaveAccessibleName("Pass");
+			await expect(queueButton).toBeVisible();
+			await expect(queueButton).toHaveAccessibleName("Read today");
 		});
 
 		test("external links have proper security and accessibility", async ({
@@ -386,16 +387,12 @@ test.describe("Keyboard Navigation", () => {
 		await page.waitForLoadState("domcontentloaded");
 		await expect(page.getByTestId("visual-preview-card")).toBeVisible();
 
-		const articleButton = page.getByRole("button", {
-			name: /^article$/i,
-		});
-		await articleButton.focus();
+		const passButton = page.getByTestId("swipe-pass-button");
+		await passButton.focus();
 
-		// Activate with Enter to open the unified reader overlay
+		// Activate with Enter to pass the first card and advance to the next
 		await page.keyboard.press("Enter");
 
-		await expect(page.getByTestId("reader-overlay")).toBeVisible({
-			timeout: 10000,
-		});
+		await expect(page.getByTestId("dispatch-counter")).toHaveText("№ 1");
 	});
 });

@@ -58,7 +58,7 @@ describe("VisualPreviewCard", () => {
 	});
 
 	describe("rendering and removed in-card reader controls", () => {
-		it("renders card title, description, and Article button without Keep stamp or Summary button", async () => {
+		it("renders card title and description without Keep stamp, Article button, or Summary button", async () => {
 			render(VisualPreviewCard, {
 				props: defaultProps,
 			});
@@ -70,18 +70,15 @@ describe("VisualPreviewCard", () => {
 				.element(page.getByTestId("visual-preview-card"))
 				.toBeInTheDocument();
 			await expect
-				.element(page.getByTestId("action-footer"))
-				.toBeInTheDocument();
-			await expect
-				.element(page.getByRole("button", { name: /^article$/i }))
-				.toBeInTheDocument();
-			await expect
 				.element(page.getByText(mockFeed.description))
 				.toBeInTheDocument();
-			await expect
-				.element(page.getByText("Swipe to mark as read"))
-				.toBeInTheDocument();
 
+			await expect
+				.element(page.getByTestId("action-footer"))
+				.not.toBeInTheDocument();
+			await expect
+				.element(page.getByRole("button", { name: /^article$/i }))
+				.not.toBeInTheDocument();
 			await expect
 				.element(page.getByTestId("keep-stamp"))
 				.not.toBeInTheDocument();
@@ -94,17 +91,44 @@ describe("VisualPreviewCard", () => {
 		});
 	});
 
-	describe("opening the reader overlay", () => {
-		it("calls onOpenArticle when Article button is clicked", async () => {
-			const onOpenArticle = vi.fn();
+	describe("drag direction labels", () => {
+		it("shows Pass while dragging left and Read today while dragging right", async () => {
 			render(VisualPreviewCard, {
-				props: { ...defaultProps, onOpenArticle },
+				props: defaultProps,
 			});
 
-			await page.getByRole("button", { name: /^article$/i }).click();
-			expect(onOpenArticle).toHaveBeenCalledTimes(1);
-		});
+			const card = page.getByTestId("visual-preview-card").element();
 
+			card.dispatchEvent(
+				new CustomEvent("swipe:move", {
+					detail: { deltaX: -48, deltaY: 0 },
+				}),
+			);
+			await expect
+				.element(page.getByTestId("swipe-direction-label"))
+				.toHaveTextContent("Pass");
+
+			card.dispatchEvent(
+				new CustomEvent("swipe:move", {
+					detail: { deltaX: 48, deltaY: 0 },
+				}),
+			);
+			await expect
+				.element(page.getByTestId("swipe-direction-label"))
+				.toHaveTextContent("Read today");
+
+			card.dispatchEvent(
+				new CustomEvent("swipe:end", {
+					detail: { deltaX: 0, deltaY: 0 },
+				}),
+			);
+			await expect
+				.element(page.getByTestId("swipe-direction-label"))
+				.not.toBeInTheDocument();
+		});
+	});
+
+	describe("opening the reader overlay", () => {
 		it("calls onOpenArticle when the card surface is tapped", async () => {
 			const onOpenArticle = vi.fn();
 			render(VisualPreviewCard, {

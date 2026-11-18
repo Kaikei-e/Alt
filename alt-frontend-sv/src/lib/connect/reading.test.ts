@@ -66,7 +66,11 @@ describe("reading Connect client", () => {
 		expect(mockRecordReadingEvents).toHaveBeenCalledWith({
 			events: [event],
 		});
-		expect(result).toEqual({ accepted: 2, duplicates: 1 });
+		expect(result).toEqual({
+			accepted: 2,
+			duplicates: 1,
+			readArticleIds: [],
+		});
 	});
 
 	it("re-exports the reading client helpers from the connect barrel", async () => {

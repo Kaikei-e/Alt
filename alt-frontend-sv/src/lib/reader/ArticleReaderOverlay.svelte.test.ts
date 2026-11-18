@@ -47,12 +47,19 @@ vi.mock("#lib/api/client/articles.js", async (importOriginal) => {
 });
 
 import { getItemBranches } from "#lib/connect/knowledge_trail.js";
-import { recordReadingEvents } from "#lib/connect/reading.js";
+import {
+	getReadTodayQueue,
+	QueueArticleOutcome,
+	queueArticle,
+	recordReadingEvents,
+	unqueueArticle,
+} from "#lib/connect/reading.js";
 import { createClientTransport } from "#lib/connect/transport-client.js";
 import {
 	flushReadingEvents,
 	ReadingSurface,
 } from "#lib/reading/instrumentation.js";
+import { readTodayQueue } from "#lib/reading/read-today-queue.svelte.js";
 import ArticleReaderOverlay from "./ArticleReaderOverlay.svelte";
 import {
 	openReaderOverlay,
@@ -63,6 +70,7 @@ describe("ArticleReaderOverlay + shallow routing", () => {
 	beforeEach(async () => {
 		vi.clearAllMocks();
 		resetReaderOverlaySessions();
+		readTodayQueue.reset();
 		currentPageState = {};
 		currentPageURL = new URL("http://localhost/feeds/visual-preview");
 
@@ -86,13 +94,26 @@ describe("ArticleReaderOverlay + shallow routing", () => {
 		vi.mocked(recordReadingEvents).mockResolvedValue({
 			accepted: 0,
 			duplicates: 0,
+			readArticleIds: [],
 		});
 		await flushReadingEvents();
 		vi.mocked(recordReadingEvents).mockClear();
 		vi.mocked(recordReadingEvents).mockResolvedValue({
 			accepted: 1,
 			duplicates: 0,
+			readArticleIds: [],
 		});
+		vi.mocked(getReadTodayQueue).mockResolvedValue({
+			items: [],
+			cap: 7,
+			readCountSince: 0,
+		});
+		vi.mocked(queueArticle).mockResolvedValue({
+			outcome: QueueArticleOutcome.QUEUED,
+			items: [],
+			cap: 7,
+		});
+		vi.mocked(unqueueArticle).mockResolvedValue(undefined);
 		vi.mocked(getItemBranches).mockResolvedValue([]);
 		vi.mocked(createClientTransport).mockReturnValue(
 			{} as ReturnType<typeof createClientTransport>,
@@ -247,5 +268,140 @@ describe("ArticleReaderOverlay + shallow routing", () => {
 		expect(backSpy).toHaveBeenCalledTimes(1);
 
 		backSpy.mockRestore();
+	});
+
+	it("sends opened once when articleId resolves, drops readArticleIds from queue, and notifies onArticlesRead", async () => {
+		await readTodayQueue.refresh();
+		vi.mocked(queueArticle).mockResolvedValueOnce({
+			outcome: QueueArticleOutcome.QUEUED,
+			items: [
+				{
+					articleId: "resolved-open-1",
+					title: "Queued From Before",
+					url: "https://example.com/open-1",
+					sourceName: "Source",
+					imageUrl: "",
+					queuedAt: new Date(),
+					expiresAt: new Date(Date.now() + 3600_000),
+				},
+			],
+			cap: 7,
+		});
+		await readTodayQueue.queue({
+			articleId: "resolved-open-1",
+			surface: ReadingSurface.SWIPE,
+			title: "Queued From Before",
+			url: "https://example.com/open-1",
+		});
+		expect(readTodayQueue.isQueued("resolved-open-1")).toBe(true);
+
+		mockGetFeedContent.mockResolvedValueOnce({
+			content: "<p>Body for opened + readArticleIds.</p>",
+			article_id: "resolved-open-1",
+		});
+		vi.mocked(recordReadingEvents).mockResolvedValueOnce({
+			accepted: 2,
+			duplicates: 0,
+			readArticleIds: ["resolved-open-1"],
+		});
+
+		const onArticlesRead = vi.fn();
+		render(ArticleReaderOverlay);
+
+		openReaderOverlay({
+			surface: ReadingSurface.GALLERY,
+			items: [
+				{
+					url: "https://example.com/open-1",
+					title: "Queued From Before",
+				},
+			],
+			currentIndex: 0,
+			onArticlesRead,
+		});
+
+		await expect
+			.element(testPage.getByText("Body for opened + readArticleIds."))
+			.toBeInTheDocument();
+
+		// Close overlay -> flushes opened + sessionEnded
+		currentPageState = {};
+
+		await vi.waitFor(() =>
+			expect(recordReadingEvents).toHaveBeenCalledTimes(1),
+		);
+		const events = vi.mocked(recordReadingEvents).mock.calls[0]?.[1] ?? [];
+		const openedEvents = events.filter((e) => e.event?.case === "opened");
+		expect(openedEvents).toHaveLength(1);
+		expect(openedEvents[0]?.event?.value).toMatchObject({
+			articleId: "resolved-open-1",
+			surface: ReadingSurface.GALLERY,
+		});
+
+		await vi.waitFor(() =>
+			expect(onArticlesRead).toHaveBeenCalledWith(["resolved-open-1"]),
+		);
+		expect(readTodayQueue.isQueued("resolved-open-1")).toBe(false);
+	});
+
+	it("toggles Read today / In Read today from the reader action cluster", async () => {
+		mockGetFeedContent.mockResolvedValueOnce({
+			content: "<p>Toggle queue body.</p>",
+			article_id: "art-toggle-1",
+		});
+		vi.mocked(queueArticle).mockResolvedValueOnce({
+			outcome: QueueArticleOutcome.QUEUED,
+			items: [
+				{
+					articleId: "art-toggle-1",
+					title: "Toggle Article",
+					url: "https://example.com/toggle-1",
+					sourceName: "Source",
+					imageUrl: "",
+					queuedAt: new Date(),
+					expiresAt: new Date(Date.now() + 3600_000),
+				},
+			],
+			cap: 7,
+		});
+
+		render(ArticleReaderOverlay);
+
+		openReaderOverlay({
+			surface: ReadingSurface.OTHER,
+			items: [
+				{
+					articleId: "art-toggle-1",
+					url: "https://example.com/toggle-1",
+					title: "Toggle Article",
+				},
+			],
+			currentIndex: 0,
+		});
+
+		await expect
+			.element(testPage.getByText("Toggle queue body."))
+			.toBeInTheDocument();
+
+		const toggleBtn = testPage.getByTestId("read-today-toggle-button");
+		await expect.element(toggleBtn).toHaveAccessibleName("Read today");
+		await expect.element(toggleBtn).toHaveAttribute("aria-pressed", "false");
+
+		await toggleBtn.click();
+
+		await expect.element(toggleBtn).toHaveAccessibleName("In Read today");
+		await expect.element(toggleBtn).toHaveAttribute("aria-pressed", "true");
+		expect(queueArticle).toHaveBeenCalledWith(expect.anything(), {
+			articleId: "art-toggle-1",
+			surface: ReadingSurface.OTHER,
+		});
+
+		await toggleBtn.click();
+
+		await expect.element(toggleBtn).toHaveAccessibleName("Read today");
+		await expect.element(toggleBtn).toHaveAttribute("aria-pressed", "false");
+		expect(unqueueArticle).toHaveBeenCalledWith(expect.anything(), {
+			articleId: "art-toggle-1",
+		});
 	});
 });

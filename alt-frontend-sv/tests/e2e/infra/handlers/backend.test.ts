@@ -104,4 +104,53 @@ describe("E2E mock backend server", () => {
 			await new Promise<void>((resolve) => server.close(() => resolve()));
 		}
 	});
+
+	it("handles QueueArticle -> GetReadTodayQueue -> UnqueueArticle statefully and enforces cap 7", async () => {
+		const server = createBackendServer();
+		await new Promise<void>((resolve) => {
+			server.listen(0, "127.0.0.1", () => resolve());
+		});
+		const address = server.address();
+		if (!address || typeof address === "string") {
+			server.close();
+			throw new Error("Expected TCP server address");
+		}
+		const baseUrl = `http://127.0.0.1:${address.port}`;
+
+		try {
+			const postRpc = async (method: string, body: Record<string, unknown>) => {
+				const res = await fetch(
+					`${baseUrl}/alt.reading.v1.ReadingService/${method}`,
+					{
+						method: "POST",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify(body),
+					},
+				);
+				return res.json() as Promise<Record<string, unknown>>;
+			};
+
+			const initial = await postRpc("GetReadTodayQueue", {});
+			expect(initial).toMatchObject({ items: [], cap: 7, readCountSince: 0 });
+
+			for (let i = 1; i <= 7; i++) {
+				const q = await postRpc("QueueArticle", {
+					articleId: i === 1 ? "article-1" : `art-${i}`,
+				});
+				expect(q.outcome).toBe("QUEUE_ARTICLE_OUTCOME_QUEUED");
+				expect(q.items).toHaveLength(i);
+			}
+
+			const full = await postRpc("QueueArticle", { articleId: "art-8" });
+			expect(full.outcome).toBe("QUEUE_ARTICLE_OUTCOME_QUEUE_FULL");
+			expect(full.items).toHaveLength(7);
+
+			await postRpc("UnqueueArticle", { articleId: "article-1" });
+			const afterRemove = await postRpc("GetReadTodayQueue", {});
+			expect(afterRemove.items).toHaveLength(6);
+		} finally {
+			server.closeAllConnections();
+			await new Promise<void>((resolve) => server.close(() => resolve()));
+		}
+	});
 });
