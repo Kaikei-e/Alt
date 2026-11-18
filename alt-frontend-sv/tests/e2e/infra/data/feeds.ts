@@ -247,3 +247,44 @@ export const CONNECT_TAG_TRAIL_ARTICLES = {
 // =============================================================================
 
 export const RSS_FEED_LINKS: RssFeedLink[] = [];
+
+// =============================================================================
+// Feed Inflow Stats & Daily Cap (Connect-RPC v2)
+// =============================================================================
+
+export interface MockFeedInflowStat {
+	feedLinkId: string;
+	url: string;
+	dailyCap?: number;
+	inflowCount: string;
+	readCount: string;
+	openedCountLegacy: string;
+	readRate: number;
+}
+
+export const INITIAL_FEED_INFLOW_STATS: MockFeedInflowStat[] = [
+	{
+		feedLinkId: "11111111-1111-4111-8111-111111111111",
+		url: "https://engaged.example/atom.xml",
+		inflowCount: "420",
+		readCount: "210",
+		openedCountLegacy: "8",
+		readRate: 0.5,
+	},
+	{
+		feedLinkId: "22222222-2222-4222-8222-222222222222",
+		url: "https://noisy.example/feed.xml",
+		inflowCount: "180",
+		readCount: "9",
+		openedCountLegacy: "0",
+		readRate: 0.05,
+	},
+	{
+		feedLinkId: "33333333-3333-4333-8333-333333333333",
+		url: "https://alpha-quiet.example/rss.xml",
+		inflowCount: "0",
+		readCount: "0",
+		openedCountLegacy: "0",
+		readRate: 0,
+	},
+];
