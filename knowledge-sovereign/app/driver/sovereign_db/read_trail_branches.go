@@ -3,13 +3,10 @@ package sovereign_db
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 )
 
 // TrailEvidenceRef is one piece of evidence backing a branch.
@@ -29,14 +26,6 @@ type TrailBranch struct {
 	Confidence    string
 	TargetItemKey string
 	TargetTitle   string
-}
-
-// FootprintAnchor is the spine point a branch forks from: the item the why
-// names, the tenant that owns it, and the verb that makes the why true.
-type FootprintAnchor struct {
-	ItemKey  string
-	TenantID uuid.UUID
-	Verb     string
 }
 
 func scanTrailBranchRow(scanner rowScanner) (TrailBranch, error) {
@@ -175,43 +164,4 @@ LIMIT $3`
 		branches = append(branches, b)
 	}
 	return branches, rows.Err()
-}
-
-// GetItemTitle resolves one item's live display title (D28 — anchored why):
-// the trail planner uses it to name the anchor a branch's why must reference.
-// ok=false means the title is absent or blank — the caller must not fabricate
-// a why around an item it cannot name.
-func (r *Repository) GetItemTitle(ctx context.Context, userID uuid.UUID, itemKey string) (title string, ok bool, err error) {
-	const q = `SELECT title FROM knowledge_home_items
-		WHERE user_id = $1 AND item_key = $2 AND projection_version = ` + activeProjectionVersionSQL
-	row := r.pool.QueryRow(ctx, q, userID, itemKey)
-	if scanErr := row.Scan(&title); scanErr != nil {
-		if errors.Is(scanErr, pgx.ErrNoRows) {
-			return "", false, nil
-		}
-		return "", false, fmt.Errorf("GetItemTitle: %w", scanErr)
-	}
-	return title, strings.TrimSpace(title) != "", nil
-}
-
-// GetLatestFootprintAnchor returns the user's most recent footprint that can
-// anchor a branch — the spine point a freshly proposed branch forks from. Only
-// EngagementVerbs qualify: the why must name the act that happened, and a
-// dismissal cannot back "Because you read this" (core-concept §C4). The verb
-// travels with the anchor so the caller phrases the why from it rather than
-// assuming a read. ok=false means the spine holds nothing that can truthfully
-// anchor a why — the caller must suppress, never invent one.
-func (r *Repository) GetLatestFootprintAnchor(ctx context.Context, userID uuid.UUID) (FootprintAnchor, bool, error) {
-	const q = `SELECT item_key, tenant_id, verb FROM knowledge_trail_footprints
-		WHERE user_id = $1 AND verb = ANY($2::text[])
-		ORDER BY occurred_at DESC, footprint_key DESC LIMIT 1`
-	var a FootprintAnchor
-	row := r.pool.QueryRow(ctx, q, userID, EngagementVerbs)
-	if scanErr := row.Scan(&a.ItemKey, &a.TenantID, &a.Verb); scanErr != nil {
-		if errors.Is(scanErr, pgx.ErrNoRows) {
-			return FootprintAnchor{}, false, nil
-		}
-		return FootprintAnchor{}, false, fmt.Errorf("GetLatestFootprintAnchor: %w", scanErr)
-	}
-	return a, true, nil
 }
