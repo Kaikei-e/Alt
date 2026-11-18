@@ -39,9 +39,13 @@ func (f *fakeAppendPort) AppendKnowledgeEvent(_ context.Context, event domain.Kn
 
 type fakeLookupPort struct {
 	sources map[string]domain.ArticleSource
+	err     error
 }
 
 func (f *fakeLookupPort) LookupArticleSource(_ context.Context, articleID string, _ uuid.UUID) (domain.ArticleSource, error) {
+	if f.err != nil {
+		return domain.ArticleSource{}, f.err
+	}
 	if f.sources == nil {
 		return domain.ArticleSource{}, nil
 	}
@@ -50,9 +54,13 @@ func (f *fakeLookupPort) LookupArticleSource(_ context.Context, articleID string
 
 type fakeStatusPort struct {
 	marked []url.URL
+	err    error
 }
 
 func (f *fakeStatusPort) MarkArticleAsRead(_ context.Context, articleURL url.URL, _ uuid.UUID) error {
+	if f.err != nil {
+		return f.err
+	}
 	f.marked = append(f.marked, articleURL)
 	return nil
 }
@@ -106,12 +114,13 @@ func fixedClock() func() time.Time {
 }
 
 func newTestHandler(port *fakeAppendPort, qp *fakeQueuePort, cp *fakeCountPort, ab *fakeArticleBatchPort) *Handler {
-	recUC := record_reading_events_usecase.NewRecordReadingEventsUsecase(port, &fakeLookupPort{
+	lookup := &fakeLookupPort{
 		sources: map[string]domain.ArticleSource{
 			"11111111-1111-4111-8111-111111111111": {URL: "https://example.com/1"},
 		},
-	}, &fakeStatusPort{}, fixedClock())
-	qUC := reading_queue_usecase.NewQueueArticleUsecase(qp, port, ab, &fakeOgImagePort{}, 7, 48, fixedClock())
+	}
+	recUC := record_reading_events_usecase.NewRecordReadingEventsUsecase(port, lookup, &fakeStatusPort{}, fixedClock())
+	qUC := reading_queue_usecase.NewQueueArticleUsecase(qp, port, lookup, ab, &fakeOgImagePort{}, 7, 48, fixedClock())
 	uqUC := reading_queue_usecase.NewUnqueueArticleUsecase(port, fixedClock())
 	gUC := reading_queue_usecase.NewGetReadTodayQueueUsecase(qp, cp, ab, &fakeOgImagePort{}, 7, fixedClock())
 	return NewHandler(recUC, qUC, uqUC, gUC, nil, nil)
@@ -119,8 +128,9 @@ func newTestHandler(port *fakeAppendPort, qp *fakeQueuePort, cp *fakeCountPort, 
 
 func TestNewHandler_NilUsecasePanics(t *testing.T) {
 	port := &fakeAppendPort{}
-	recUC := record_reading_events_usecase.NewRecordReadingEventsUsecase(port, &fakeLookupPort{}, &fakeStatusPort{}, fixedClock())
-	qUC := reading_queue_usecase.NewQueueArticleUsecase(&fakeQueuePort{}, port, &fakeArticleBatchPort{}, &fakeOgImagePort{}, 7, 48, fixedClock())
+	lookup := &fakeLookupPort{}
+	recUC := record_reading_events_usecase.NewRecordReadingEventsUsecase(port, lookup, &fakeStatusPort{}, fixedClock())
+	qUC := reading_queue_usecase.NewQueueArticleUsecase(&fakeQueuePort{}, port, lookup, &fakeArticleBatchPort{}, &fakeOgImagePort{}, 7, 48, fixedClock())
 	uqUC := reading_queue_usecase.NewUnqueueArticleUsecase(port, fixedClock())
 	gUC := reading_queue_usecase.NewGetReadTodayQueueUsecase(&fakeQueuePort{}, &fakeCountPort{}, &fakeArticleBatchPort{}, &fakeOgImagePort{}, 7, fixedClock())
 
@@ -376,6 +386,88 @@ func TestRecordReadingEvents_UpstreamErrorMapsToInternal(t *testing.T) {
 	assert.Equal(t, connect.CodeInternal, connect.CodeOf(err))
 }
 
+func TestRecordReadingEvents_TransientReadSyncErrorMapsToUnavailable(t *testing.T) {
+	ts := timestamppb.New(time.Date(2026, 11, 18, 0, 0, 0, 0, time.UTC))
+	articleID := "11111111-1111-4111-8111-111111111111"
+
+	makeReq := func() *connect.Request[readingv1.RecordReadingEventsRequest] {
+		return connect.NewRequest(&readingv1.RecordReadingEventsRequest{
+			Events: []*readingv1.ReadingEvent{
+				{
+					ClientEventId: "01960000-0000-7000-8000-000000000001",
+					OccurredAt:    ts,
+					Event: &readingv1.ReadingEvent_SessionEnded{
+						SessionEnded: &readingv1.SessionEnded{
+							ArticleId:       articleID,
+							Surface:         readingv1.ReadingSurface_READING_SURFACE_GALLERY,
+							ActiveDwellMs:   10000,
+							MaxScrollRatio:  1.0,
+							BodyLengthChars: 500,
+							ReachedEnd:      true,
+						},
+					},
+				},
+			},
+		})
+	}
+
+	t.Run("lookup transient error returns Unavailable", func(t *testing.T) {
+		port := &fakeAppendPort{}
+		recUC := record_reading_events_usecase.NewRecordReadingEventsUsecase(
+			port,
+			&fakeLookupPort{err: errors.New("datahub unavailable")},
+			&fakeStatusPort{},
+			fixedClock(),
+		)
+		qUC := reading_queue_usecase.NewQueueArticleUsecase(&fakeQueuePort{}, port, &fakeLookupPort{}, &fakeArticleBatchPort{}, &fakeOgImagePort{}, 7, 48, fixedClock())
+		uqUC := reading_queue_usecase.NewUnqueueArticleUsecase(port, fixedClock())
+		gUC := reading_queue_usecase.NewGetReadTodayQueueUsecase(&fakeQueuePort{}, &fakeCountPort{}, &fakeArticleBatchPort{}, &fakeOgImagePort{}, 7, fixedClock())
+		h := NewHandler(recUC, qUC, uqUC, gUC, nil, nil)
+
+		_, err := h.RecordReadingEvents(authenticatedContext(t), makeReq())
+		require.Error(t, err)
+		assert.Equal(t, connect.CodeUnavailable, connect.CodeOf(err))
+		assert.Len(t, port.events, 1)
+	})
+
+	t.Run("mark transient error returns Unavailable", func(t *testing.T) {
+		port := &fakeAppendPort{}
+		recUC := record_reading_events_usecase.NewRecordReadingEventsUsecase(
+			port,
+			&fakeLookupPort{sources: map[string]domain.ArticleSource{articleID: {URL: "https://example.com/1"}}},
+			&fakeStatusPort{err: errors.New("db timeout")},
+			fixedClock(),
+		)
+		qUC := reading_queue_usecase.NewQueueArticleUsecase(&fakeQueuePort{}, port, &fakeLookupPort{}, &fakeArticleBatchPort{}, &fakeOgImagePort{}, 7, 48, fixedClock())
+		uqUC := reading_queue_usecase.NewUnqueueArticleUsecase(port, fixedClock())
+		gUC := reading_queue_usecase.NewGetReadTodayQueueUsecase(&fakeQueuePort{}, &fakeCountPort{}, &fakeArticleBatchPort{}, &fakeOgImagePort{}, 7, fixedClock())
+		h := NewHandler(recUC, qUC, uqUC, gUC, nil, nil)
+
+		_, err := h.RecordReadingEvents(authenticatedContext(t), makeReq())
+		require.Error(t, err)
+		assert.Equal(t, connect.CodeUnavailable, connect.CodeOf(err))
+		assert.Len(t, port.events, 1)
+	})
+
+	t.Run("terminal feed not found succeeds without returning ReadArticleIds", func(t *testing.T) {
+		port := &fakeAppendPort{}
+		recUC := record_reading_events_usecase.NewRecordReadingEventsUsecase(
+			port,
+			&fakeLookupPort{sources: map[string]domain.ArticleSource{articleID: {URL: "https://example.com/1"}}},
+			&fakeStatusPort{err: domain.ErrFeedNotFound},
+			fixedClock(),
+		)
+		qUC := reading_queue_usecase.NewQueueArticleUsecase(&fakeQueuePort{}, port, &fakeLookupPort{}, &fakeArticleBatchPort{}, &fakeOgImagePort{}, 7, 48, fixedClock())
+		uqUC := reading_queue_usecase.NewUnqueueArticleUsecase(port, fixedClock())
+		gUC := reading_queue_usecase.NewGetReadTodayQueueUsecase(&fakeQueuePort{}, &fakeCountPort{}, &fakeArticleBatchPort{}, &fakeOgImagePort{}, 7, fixedClock())
+		h := NewHandler(recUC, qUC, uqUC, gUC, nil, nil)
+
+		resp, err := h.RecordReadingEvents(authenticatedContext(t), makeReq())
+		require.NoError(t, err)
+		assert.Empty(t, resp.Msg.GetReadArticleIds())
+	})
+}
+
 func TestReadingQueueHandlers(t *testing.T) {
 	articleID := uuid.MustParse("11111111-1111-4111-8111-111111111111")
 	ts := timestamppb.New(time.Date(2026, 11, 18, 0, 0, 0, 0, time.UTC))
@@ -401,6 +493,21 @@ func TestReadingQueueHandlers(t *testing.T) {
 		require.Len(t, resp.Msg.GetItems(), 1)
 		assert.Equal(t, "Queued Article", resp.Msg.GetItems()[0].GetTitle())
 		assert.Equal(t, "example.com", resp.Msg.GetItems()[0].GetSourceName())
+	})
+
+	t.Run("QueueArticle rejects foreign or unknown article with InvalidArgument", func(t *testing.T) {
+		port := &fakeAppendPort{seqResults: []int64{1}}
+		h := newTestHandler(port, &fakeQueuePort{}, &fakeCountPort{}, &fakeArticleBatchPort{})
+
+		_, err := h.QueueArticle(authenticatedContext(t), connect.NewRequest(&readingv1.QueueArticleRequest{
+			ArticleId:     "99999999-9999-4999-8999-999999999999",
+			ClientEventId: "01960000-0000-7000-8000-000000000029",
+			OccurredAt:    ts,
+			Surface:       readingv1.ReadingSurface_READING_SURFACE_SWIPE,
+		}))
+		require.Error(t, err)
+		assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+		assert.Empty(t, port.events)
 	})
 
 	t.Run("UnqueueArticle appends reading.unqueued.v1", func(t *testing.T) {

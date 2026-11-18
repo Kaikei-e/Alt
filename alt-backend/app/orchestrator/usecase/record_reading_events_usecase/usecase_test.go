@@ -37,12 +37,16 @@ func (f *fakeAppendPort) AppendKnowledgeEvent(_ context.Context, event domain.Kn
 
 type fakeLookupPort struct {
 	sources map[string]domain.ArticleSource
+	errs    map[string]error
 	err     error
 }
 
 func (f *fakeLookupPort) LookupArticleSource(_ context.Context, articleID string, _ uuid.UUID) (domain.ArticleSource, error) {
 	if f.err != nil {
 		return domain.ArticleSource{}, f.err
+	}
+	if err := f.errs[articleID]; err != nil {
+		return domain.ArticleSource{}, err
 	}
 	if f.sources == nil {
 		return domain.ArticleSource{}, nil
@@ -605,12 +609,13 @@ func (h *recordingLogHandler) Handle(_ context.Context, r slog.Record) error {
 func (h *recordingLogHandler) WithAttrs(_ []slog.Attr) slog.Handler { return h }
 func (h *recordingLogHandler) WithGroup(_ string) slog.Handler      { return h }
 
-func TestRecordReadingEventsUsecase_MarkArticleReadLogsErrorsAtErrorLevel(t *testing.T) {
+func TestRecordReadingEventsUsecase_MarkArticleReadClassification(t *testing.T) {
 	receivedAt := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
 	fixedNow := func() time.Time { return receivedAt }
 	userID := uuid.New()
 	tenantID := uuid.New()
 	articleID := "55555555-5555-4555-8555-555555555555"
+	articleID2 := "66666666-6666-4666-8666-666666666666"
 
 	qualifyingEvent := domain.ReadingEventInput{
 		ClientEventID: "01960000-0000-7000-8000-000000000030",
@@ -625,43 +630,51 @@ func TestRecordReadingEventsUsecase_MarkArticleReadLogsErrorsAtErrorLevel(t *tes
 		},
 	}
 
-	t.Run("lookup failure logs at Error level", func(t *testing.T) {
+	t.Run("lookup failure logs at Error level, excludes ID, and returns ErrReadSyncUnavailable", func(t *testing.T) {
 		handler := &recordingLogHandler{}
 		prev := slog.Default()
 		slog.SetDefault(slog.New(handler))
 		t.Cleanup(func() { slog.SetDefault(prev) })
 
+		appendPort := &fakeAppendPort{seqResults: []int64{1}}
 		uc := NewRecordReadingEventsUsecase(
-			&fakeAppendPort{seqResults: []int64{1}},
+			appendPort,
 			&fakeLookupPort{err: errors.New("db timeout")},
 			&fakeStatusPort{},
 			fixedNow,
 		)
-		_, err := uc.Execute(context.Background(), userID, tenantID, []domain.ReadingEventInput{qualifyingEvent})
-		require.NoError(t, err)
+		res, err := uc.Execute(context.Background(), userID, tenantID, []domain.ReadingEventInput{qualifyingEvent})
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrReadSyncUnavailable)
+		assert.Empty(t, res.ReadArticleIDs)
+		assert.Len(t, appendPort.events, 1)
 		require.Len(t, handler.records, 1)
 		assert.Equal(t, slog.LevelError, handler.records[0].Level)
 	})
 
-	t.Run("mark failure other than feed not found logs at Error level", func(t *testing.T) {
+	t.Run("mark failure other than feed not found logs at Error level, excludes ID, and returns ErrReadSyncUnavailable", func(t *testing.T) {
 		handler := &recordingLogHandler{}
 		prev := slog.Default()
 		slog.SetDefault(slog.New(handler))
 		t.Cleanup(func() { slog.SetDefault(prev) })
 
+		appendPort := &fakeAppendPort{seqResults: []int64{1}}
 		uc := NewRecordReadingEventsUsecase(
-			&fakeAppendPort{seqResults: []int64{1}},
+			appendPort,
 			&fakeLookupPort{sources: map[string]domain.ArticleSource{articleID: {URL: "https://example.com/a"}}},
 			&fakeStatusPort{err: errors.New("mark failed")},
 			fixedNow,
 		)
-		_, err := uc.Execute(context.Background(), userID, tenantID, []domain.ReadingEventInput{qualifyingEvent})
-		require.NoError(t, err)
+		res, err := uc.Execute(context.Background(), userID, tenantID, []domain.ReadingEventInput{qualifyingEvent})
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrReadSyncUnavailable)
+		assert.Empty(t, res.ReadArticleIDs)
+		assert.Len(t, appendPort.events, 1)
 		require.Len(t, handler.records, 1)
 		assert.Equal(t, slog.LevelError, handler.records[0].Level)
 	})
 
-	t.Run("feed not found does not log error", func(t *testing.T) {
+	t.Run("feed not found does not log error, succeeds, and excludes ID", func(t *testing.T) {
 		handler := &recordingLogHandler{}
 		prev := slog.Default()
 		slog.SetDefault(slog.New(handler))
@@ -673,8 +686,87 @@ func TestRecordReadingEventsUsecase_MarkArticleReadLogsErrorsAtErrorLevel(t *tes
 			&fakeStatusPort{err: domain.ErrFeedNotFound},
 			fixedNow,
 		)
-		_, err := uc.Execute(context.Background(), userID, tenantID, []domain.ReadingEventInput{qualifyingEvent})
+		res, err := uc.Execute(context.Background(), userID, tenantID, []domain.ReadingEventInput{qualifyingEvent})
 		require.NoError(t, err)
+		assert.Empty(t, res.ReadArticleIDs)
 		assert.Empty(t, handler.records)
+	})
+
+	t.Run("article not found (zero ArticleSource) skips quietly and excludes ID", func(t *testing.T) {
+		handler := &recordingLogHandler{}
+		prev := slog.Default()
+		slog.SetDefault(slog.New(handler))
+		t.Cleanup(func() { slog.SetDefault(prev) })
+
+		statusPort := &fakeStatusPort{}
+		uc := NewRecordReadingEventsUsecase(
+			&fakeAppendPort{seqResults: []int64{1}},
+			&fakeLookupPort{sources: map[string]domain.ArticleSource{}},
+			statusPort,
+			fixedNow,
+		)
+		res, err := uc.Execute(context.Background(), userID, tenantID, []domain.ReadingEventInput{qualifyingEvent})
+		require.NoError(t, err)
+		assert.Empty(t, res.ReadArticleIDs)
+		assert.Empty(t, statusPort.marked)
+		assert.Empty(t, handler.records)
+	})
+
+	t.Run("ErrArticleNotFound skips quietly and excludes ID", func(t *testing.T) {
+		handler := &recordingLogHandler{}
+		prev := slog.Default()
+		slog.SetDefault(slog.New(handler))
+		t.Cleanup(func() { slog.SetDefault(prev) })
+
+		statusPort := &fakeStatusPort{}
+		uc := NewRecordReadingEventsUsecase(
+			&fakeAppendPort{seqResults: []int64{1}},
+			&fakeLookupPort{err: domain.ErrArticleNotFound},
+			statusPort,
+			fixedNow,
+		)
+		res, err := uc.Execute(context.Background(), userID, tenantID, []domain.ReadingEventInput{qualifyingEvent})
+		require.NoError(t, err)
+		assert.Empty(t, res.ReadArticleIDs)
+		assert.Empty(t, statusPort.marked)
+		assert.Empty(t, handler.records)
+	})
+
+	t.Run("transient error on first event still appends and syncs remaining events in batch", func(t *testing.T) {
+		appendPort := &fakeAppendPort{seqResults: []int64{1, 2}}
+		statusPort := &fakeStatusPort{}
+		uc := NewRecordReadingEventsUsecase(
+			appendPort,
+			&fakeLookupPort{
+				errs: map[string]error{articleID: errors.New("datahub timeout")},
+				sources: map[string]domain.ArticleSource{
+					articleID2: {URL: "https://example.com/2"},
+				},
+			},
+			statusPort,
+			fixedNow,
+		)
+		events := []domain.ReadingEventInput{
+			qualifyingEvent,
+			{
+				ClientEventID: "01960000-0000-7000-8000-000000000031",
+				OccurredAt:    receivedAt,
+				Payload: domain.SessionEndedInput{
+					ArticleID:       articleID2,
+					Surface:         domain.ReadingSurfaceSwipe,
+					ActiveDwellMs:   6000,
+					MaxScrollRatio:  1.0,
+					BodyLengthChars: 500,
+					ReachedEnd:      true,
+				},
+			},
+		}
+		res, err := uc.Execute(context.Background(), userID, tenantID, events)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrReadSyncUnavailable)
+		assert.Equal(t, []string{articleID2}, res.ReadArticleIDs)
+		assert.Len(t, appendPort.events, 2)
+		require.Len(t, statusPort.marked, 1)
+		assert.Equal(t, "https://example.com/2", statusPort.marked[0].String())
 	})
 }
