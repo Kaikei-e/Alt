@@ -1,6 +1,6 @@
 # Recap Database Schema Contract
 
-_Last reviewed: September 5, 2026_
+_Last reviewed: November 19, 2026_
 
 **Location:** `recap-db`, `recap-migration-atlas`  
 **Port:** 5435 (host `127.0.0.1:5435:5432`)  
@@ -11,7 +11,9 @@ _Last reviewed: September 5, 2026_
 `recap-db` is the dedicated PostgreSQL 18 database owning state machine and idempotency rows for the Recap pipeline (`recap-worker` as data owner, `dashboard` as read-only consumer).
 - **`recap_jobs` lifecycle**: Status transitions follow `pending` → `running` → `completed` | `failed` | `morning_completed`. There is explicitly no `morning_failed` status (failed morning jobs remain `failed`). Breaking the `morning_completed` lifecycle ([[000897]]) leaks rows in `pending`, corrupting dashboard queue metrics and triggering redundant re-enqueues.
 - **Atlas Migration Exclusivity**: Migrations must be executed via `recap-migration-atlas` (Atlas). Manual schema changes drift constraint checks (such as `chk_status_history_status`), causing worker crashes on PG constraint violations when writing new status entries.
-- **3-Day Active Window**: Automated recap batches operate strictly on 3-day windows (`window_days=3`); the 7-day automated batch was retired in 2026-04.
+- **3-Day Active Window**: Recap batches operate on 3-day windows (`window_days=3`), while morning-update runs use `window_days=1`.
+- **`read_theme_versions` append-only immutability**: A `BEFORE UPDATE OR DELETE` trigger (`trg_read_theme_versions_immutable` executing `prevent_read_theme_version_mutation()`) rejects every update or deletion on `read_theme_versions`. Each version enforces `version >= 1`, uniqueness on `(user_id, theme_id, version)`, and foreign keys to both `read_themes (user_id, theme_id)` and `read_theme_runs (run_id)`.
+- **Theme publication ledger separation**: Published theme versions are recorded in `read_theme_version_publications` (`version_id` primary key referencing `read_theme_versions`) rather than mutating rows on `read_theme_versions`, preserving append-only immutability while enabling idempotent retry of unpublished events.
 
 This document outlines the schema for the `recap_db` PostgreSQL database, which stores data related to the Recap Worker's processing of RSS feed articles.
 
@@ -31,7 +33,7 @@ Tracks each recap pipeline run (batch, manual, or morning-update) and its lifecy
 | `updated_at`       | `TIMESTAMPTZ` | `NOT NULL`, `DEFAULT NOW()` | Timestamp when the row was last updated   |
 | `user_id`          | `UUID`        |                      | Requesting user, when the job is user-scoped     |
 | `trigger_source`   | `TEXT`        | `NOT NULL`, `DEFAULT 'system'` | What kicked the job (e.g. `system`, `morning`, manual API) |
-| `window_days`      | `INTEGER`     | `NOT NULL`           | Recap window in days. The 7-day product window was retired in 2026-04 — current values in practice are `1` (morning-update) and `3` (batch/manual); `7` remains reachable only through the manual `/v1/generate/recaps/7days` trigger, with no schema default any more. |
+| `window_days`      | `INTEGER`     | `NOT NULL`           | Recap window in days (`1` for morning-update, `3` for batch/manual 3-day recaps); no schema default. |
 
 ### `recap_job_status_history`
 Immutable, append-only event log of job status transitions (event-sourcing pattern), added alongside — not replacing — the mutable `recap_jobs.status` column, which `recap-worker` still updates in place as the denormalized current state. `reason` has repeatedly been the fastest path to root-causing multi-day incidents — see Known failure patterns below.
@@ -77,7 +79,7 @@ Lightweight per-genre pointer from a job to the LLM Responses API `response_id` 
 Primary key `(job_id, genre)`.
 
 ### `recap_outputs`
-The only recap content table any live code path writes. Holds the actual generated recap per `(job_id, genre)`, written together with the `recap_sections` genre pointer (above) in one transaction via `persist_genre_output`. Actively read by the dashboard and the fetch endpoints (`/v1/recaps/7days`, `/v1/recaps/3days`, `/v1/recaps/search`).
+The only recap content table any live code path writes. Holds the actual generated recap per `(job_id, genre)`, written together with the `recap_sections` genre pointer (above) in one transaction via `persist_genre_output`. Actively read by the dashboard and the fetch endpoints (`/v1/recaps/3days`, `/v1/recaps/search`).
 
 | Column Name    | Type          | Constraints         | Description                                      |
 |----------------|---------------|----------------------|---------------------------------------------------|
@@ -90,7 +92,7 @@ The only recap content table any live code path writes. Holds the actual generat
 | `created_at`   | `TIMESTAMPTZ` | `NOT NULL`, `DEFAULT NOW()` | Creation time                                |
 | `body_json`    | `JSONB`       | `NOT NULL`           | Full structured output (clusters, evidence, metadata) |
 | `updated_at`   | `TIMESTAMPTZ` | `NOT NULL`, `DEFAULT NOW()` | Last update time                             |
-| `window_days`  | `INTEGER`     | `NOT NULL`, `DEFAULT 7` | Recap window the output belongs to. The 7-day default was never dropped when `recap_jobs.window_days` lost its default in the 3-day-only sweep — every reachable insert supplies the value explicitly, so this is a latent fallback rather than a live behaviour, but it means the column is not `NOT NULL`-only as the 3-day-only framing elsewhere in this doc might suggest. |
+| `window_days`  | `INTEGER`     | `NOT NULL`, `DEFAULT 7` | Recap window the output belongs to. The schema retains `DEFAULT 7` as a latent fallback, while every live insert supplies the value explicitly (`3`). |
 | `tags`         | `JSONB`       | `NOT NULL`, `DEFAULT '[]'` | KeyBERT-based semantic tags, tag-generator enriched |
 
 Primary key `(job_id, genre)`.
@@ -99,7 +101,7 @@ Primary key `(job_id, genre)`.
 Original shape for per-genre recap content, created by the earliest migration (`20240101000200_create_recap_final_sections.sql`) with columns `(job_id, genre, response_id, title_ja, summary_ja, bullets_ja, created_at)` and PK `(job_id, genre)`. `recap_outputs` superseded it, but the table was never dropped. No live code path writes to it: its sole writer, `RecapDao::save_final_section`, is marked `#[allow(dead_code)]` and is unreachable from the pipeline, API, or scheduler. Its `INSERT` has also drifted out of sync with the table — it names `model_name`, `updated_at`, and `RETURNING id`, none of which exist on `recap_final_sections` — so if it were ever wired up it would fail at runtime rather than silently succeed. Treat this table as permanently empty.
 
 ### `recap_cluster_evidence`
-Holds deduplicated evidence links that were returned by recap-subworker clusters so the `/v1/recaps/7days` and `/v1/recaps/3days` fetch APIs can surface articles without re-running the clustering pipeline.
+Holds deduplicated evidence links that were returned by recap-subworker clusters so the `/v1/recaps/3days` fetch API can surface articles without re-running the clustering pipeline.
 
 | Column Name      | Type         | Constraints         | Description                                      |
 |------------------|--------------|---------------------|--------------------------------------------------|
@@ -162,7 +164,7 @@ Indexes:
 Comments explain each column’s role (coarse candidates, refine decision, tag profile, graph context, feedback, telemetry, timestamps) so downstream services understand what to expect before clogging the graph builder.
 
 ### `morning_letters` / `morning_letter_sources` / `morning_article_groups`
-Backing store for the Morning Letter feature (recap-worker's morning-update daemon, `/v1/morning/letters/*`). Superseded the earlier `morning_daily_summaries` / `morning_daily_evidence` tables, which are no longer written by any code path.
+Backing store for the Morning Letter feature (recap-worker's morning-update daemon, `/v1/morning/letters/*`). Superseded the earlier `morning_daily_summaries` / `morning_daily_evidence` tables, which are unwritten by any code path.
 
 `morning_article_groups` records overnight article dedup groups (`group_id`, `article_id`, `is_primary` for the group's representative article).
 
@@ -186,61 +188,65 @@ Unique on `(target_date, edition_timezone)`.
 
 `morning_letter_sources` cites the articles behind each section of a letter: `letter_id` (FK, cascades), `section_key`, `article_id`, `source_type` (default `overnight`), `position`. Primary key `(letter_id, section_key, article_id)`.
 
-### `pulse_generations`
-Tracks Evening Pulse generation runs with version control and status.
+### `read_theme_runs`
+Tracks each scheduled or manual theme-page generation run per user, including lifecycle status, outcome counters, and parameter version.
 
-| Column Name      | Type         | Constraints         | Description                                      |
-|------------------|--------------|---------------------|--------------------------------------------------|
-| `id`             | `BIGSERIAL`  | `PRIMARY KEY`       | Unique identifier for the generation run        |
-| `job_id`         | `UUID`       | `NOT NULL`          | Job UUID for this generation run                |
-| `target_date`    | `DATE`       | `NOT NULL`, `DEFAULT CURRENT_DATE` | Target date for the pulse generation  |
-| `version`        | `TEXT`       | `NOT NULL`, `CHECK (v2, v3, v4)` | Pulse algorithm version              |
-| `status`         | `TEXT`       | `NOT NULL`, `CHECK (running, succeeded, failed)` | Generation status         |
-| `topics_count`   | `INT`        | `NOT NULL`, `DEFAULT 0` | Number of topics generated (0-3)             |
-| `started_at`     | `TIMESTAMPTZ`| `NOT NULL`, `DEFAULT NOW()` | Generation start time                   |
-| `finished_at`    | `TIMESTAMPTZ`|                     | Generation finish time                           |
-| `config_snapshot`| `JSONB`      | `NOT NULL`, `DEFAULT ‘{}’` | Configuration snapshot at generation time   |
-| `result_payload` | `JSONB`      |                     | Full JSON result for succeeded generations       |
-| `error_message`  | `TEXT`       |                     | Error message for failed generations             |
+| Column Name         | Type          | Constraints         | Description                                      |
+|---------------------|---------------|---------------------|--------------------------------------------------|
+| `run_id`            | `UUID`        | `PRIMARY KEY`       | Unique identifier for the theme run              |
+| `user_id`           | `UUID`        | `NOT NULL`          | User whose read articles are processed           |
+| `kicked_at`         | `TIMESTAMPTZ` | `NOT NULL`          | Timestamp when the run started                   |
+| `finished_at`       | `TIMESTAMPTZ` |                     | Timestamp when the run completed or failed       |
+| `status`            | `TEXT`        | `NOT NULL`, `CHECK (running, completed, failed)` | Run lifecycle status                |
+| `source_count`      | `INT`         | `NOT NULL`, `DEFAULT 0` | Distinct read articles discovered in the window |
+| `versions_created`  | `INT`         | `NOT NULL`, `DEFAULT 0` | New theme versions persisted in this run     |
+| `versions_deferred` | `INT`         | `NOT NULL`, `DEFAULT 0` | Candidate themes deferred past the per-run cap |
+| `params_version`    | `TEXT`        | `NOT NULL`          | Parameter version identifier (e.g. `themes-v0.1`) |
+| `error_message`     | `TEXT`        |                     | Truncated error summary when `status = 'failed'` |
 
-Indexes: `idx_pulse_generations_job_id`, `idx_pulse_generations_version_status`, `idx_pulse_generations_started_at`, `idx_pulse_generations_target_date`, GIN on `config_snapshot`.
+Index: `idx_read_theme_runs_user_kicked` on `(user_id, kicked_at DESC)` supports startup catch-up checks and latest-run lookups per user.
 
-### `pulse_cluster_diagnostics`
-Per-cluster quality metrics and syndication detection results.
+### `read_themes`
+Identity table anchoring each `(user_id, theme_id)` pair across append-only versions.
 
-| Column Name         | Type         | Constraints         | Description                                   |
-|---------------------|--------------|---------------------|-----------------------------------------------|
-| `id`                | `BIGSERIAL`  | `PRIMARY KEY`       | Unique identifier                            |
-| `generation_id`     | `BIGINT`     | `NOT NULL`, `FK (pulse_generations.id) ON DELETE CASCADE` | Parent generation |
-| `cluster_id`        | `BIGINT`     | `NOT NULL`          | Cluster identifier                            |
-| `cohesion`          | `REAL`       | `NOT NULL`          | Title cohesion score (0.0-1.0)               |
-| `ambiguity`         | `REAL`       | `NOT NULL`          | Ambiguity score (0.0-1.0, lower is better)   |
-| `entity_consistency`| `REAL`       | `NOT NULL`          | Entity consistency score (0.0-1.0)           |
-| `quality_tier`      | `TEXT`       | `NOT NULL`, `CHECK (ok, caution, ng)` | Diagnosed quality tier        |
-| `syndication_status`| `TEXT`       | `CHECK (original, canonical_match, wire_source, title_similar)` | Syndication detection |
-| `article_count`     | `INT`        | `NOT NULL`          | Number of articles in cluster                 |
-| `top_entities`      | `JSONB`      | `NOT NULL`, `DEFAULT ‘[]’` | Top entities from cluster articles       |
+| Column Name  | Type          | Constraints   | Description                                      |
+|--------------|---------------|---------------|--------------------------------------------------|
+| `user_id`    | `UUID`        | `NOT NULL`    | Owning user (primary key part)                   |
+| `theme_id`   | `UUID`        | `NOT NULL`    | Stable theme identifier (primary key part)       |
+| `created_at` | `TIMESTAMPTZ` | `NOT NULL`    | Timestamp when the theme identity was created    |
 
-Unique: `(generation_id, cluster_id)`.
+Primary key `(user_id, theme_id)`.
 
-### `pulse_selection_log`
-Topic selection decisions with scoring breakdown.
+### `read_theme_versions`
+Append-only store of immutable theme-page snapshots. The `trg_read_theme_versions_immutable` trigger (`BEFORE UPDATE OR DELETE`, executing `prevent_read_theme_version_mutation()`) forbids updates and deletions at the database layer.
 
-| Column Name      | Type         | Constraints         | Description                                      |
-|------------------|--------------|---------------------|--------------------------------------------------|
-| `id`             | `BIGSERIAL`  | `PRIMARY KEY`       | Unique identifier                               |
-| `generation_id`  | `BIGINT`     | `NOT NULL`, `FK (pulse_generations.id) ON DELETE CASCADE` | Parent generation |
-| `topic_rank`     | `INT`        | `NOT NULL`, `CHECK (1-3)` | Topic rank (1-3)                            |
-| `cluster_id`     | `BIGINT`     | `NOT NULL`          | Selected cluster identifier                      |
-| `role`           | `TEXT`       | `NOT NULL`, `CHECK (need_to_know, trend, serendipity)` | Assigned role       |
-| `impact_score`   | `REAL`       | `NOT NULL`          | Impact score component                           |
-| `burst_score`    | `REAL`       | `NOT NULL`          | Burst score component                            |
-| `novelty_score`  | `REAL`       | `NOT NULL`          | Novelty score component                          |
-| `recency_score`  | `REAL`       | `NOT NULL`          | Recency score component                          |
-| `final_score`    | `REAL`       | `NOT NULL`          | Final weighted score                             |
-| `rationale`      | `TEXT`       | `NOT NULL`          | Human-readable rationale for selection           |
+| Column Name          | Type          | Constraints         | Description                                      |
+|----------------------|---------------|---------------------|--------------------------------------------------|
+| `version_id`         | `UUID`        | `PRIMARY KEY`       | Unique identifier for the version snapshot       |
+| `user_id`            | `UUID`        | `NOT NULL`          | Owning user (composite FK to `read_themes`)      |
+| `theme_id`           | `UUID`        | `NOT NULL`          | Parent theme (composite FK to `read_themes`)     |
+| `version`            | `INT`         | `NOT NULL`, `CHECK (version >= 1)` | Monotonic 1-based version number per `(user_id, theme_id)` |
+| `run_id`             | `UUID`        | `NOT NULL`, `FOREIGN KEY (read_theme_runs.run_id)` | Run that generated this version |
+| `title`              | `TEXT`        | `NOT NULL`          | Theme page title                                 |
+| `member_article_ids` | `UUID[]`      | `NOT NULL`          | Sorted article UUIDs belonging to the theme cluster |
+| `membership_hash`    | `TEXT`        | `NOT NULL`          | Deterministic fingerprint of `member_article_ids` |
+| `centroid`           | `REAL[]`      | `NOT NULL`          | Cluster embedding centroid used for continuation matching |
+| `body_json`          | `JSONB`       | `NOT NULL`          | Structured theme body (`key_points`, `timeline`, `what_changed`, `open_questions`, `sources`) |
+| `created_at`         | `TIMESTAMPTZ` | `NOT NULL`          | Version creation timestamp                       |
 
-Unique: `(generation_id, topic_rank)`.
+Constraints and indexes:
+- Unique constraint on `(user_id, theme_id, version)` prevents duplicate or concurrent version numbers for the same theme.
+- Composite foreign key `(user_id, theme_id)` references `read_themes (user_id, theme_id)`.
+- `idx_read_theme_versions_run_id` on `(run_id)`.
+- `idx_read_theme_versions_user_theme_version_desc` on `(user_id, theme_id, version DESC)` accelerates latest-version lookups and version-history listing.
+
+### `read_theme_version_publications`
+Publication ledger recording which `read_theme_versions` rows have had their `reading.theme_version_created.v1` event successfully published to `knowledge-sovereign`. Separating publication tracking into this ledger preserves `read_theme_versions` immutability; versions without a ledger entry are queried at the start of subsequent theme runs and retried idempotently (`ON CONFLICT (version_id) DO NOTHING`).
+
+| Column Name    | Type          | Constraints         | Description                                      |
+|----------------|---------------|---------------------|--------------------------------------------------|
+| `version_id`   | `UUID`        | `PRIMARY KEY`, `FOREIGN KEY (read_theme_versions.version_id)` | Published theme version |
+| `published_at` | `TIMESTAMPTZ` | `NOT NULL`          | Timestamp when event publication succeeded       |
 
 ### `notification_outbox`
 Transactional outbox for user-facing push notifications, produced inside the same local transaction as the recap completion that triggers them. It is co-located with recap job state (rather than in `alt-db`, which owns the per-device push queue) precisely so the outbox row and the business state change share one commit — an outbox only gives its guarantee (message sent iff the transaction commits) when the two live in the same database. A dual write into `alt-db` instead would silently lose notifications whenever the second write failed. A relay in `recap-worker` forwards rows to `alt-data-hub` over mTLS; delivery to the device itself is tracked separately in `alt-db`'s `push_deliveries`.
@@ -296,12 +302,6 @@ The following exist in the schema and are written by `recap-worker` / `recap-sub
 - `admin_jobs` (`20251209000000_create_admin_jobs_table.sql`) — async admin task tracking for `recap-subworker` (graph rebuild / learning jobs).
 - `log_errors` (`20251209010000_create_log_errors.sql`) — parsed error-log rows for dashboard surfacing.
 - `recap_evaluation_runs` (`20260304100000_create_recap_evaluation_runs.sql`) — persisted evaluation results (genre/cluster/summary/pipeline) keyed by `evaluation_id`.
-
-### Views
-
-- `pulse_latest_generations` — Latest pulse generation per job
-- `pulse_quality_stats` — Quality statistics by version and tier
-- `pulse_syndication_stats` — Syndication detection statistics by version
 
 ## Known failure patterns
 

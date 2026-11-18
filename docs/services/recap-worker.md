@@ -1,29 +1,28 @@
 # Recap Worker
 
-_Last reviewed: September 5, 2026_
+_Last reviewed: November 19, 2026_
 
 **Location:** `recap-worker` (Crate: `recap-worker/recap-worker`)
 
 ## Role
-`recap-worker` is the **orchestrator and pipeline runner** for the Alt recap system. Written in Rust (2024 edition), it manages the end-to-end flow of generating Japanese news recaps. The **3-day** (daily quick-catch) window is the automated production pipeline; the **7-day** deep-dive batch daemon was retired after LLM queue saturation and remains available via manual API trigger only ([[000184]]).
+`recap-worker` is the **orchestrator and pipeline runner** for the Alt recap system. Written in Rust (2024 edition), it manages the end-to-end flow of generating Japanese news recaps on the **3-day** daily window.
 
 It delegates **heavy ML tasks** (embedding generation, coarse classification, clustering) to `recap-subworker`, keeping the worker itself focused on high-throughput data processing, pipeline coordination, and persistence.
 
 **Pipelines:**
-1.  **7-Day Recap Pipeline:** Deep-dive pipeline. The automated batch was retired ([[000184]]); trigger manually via `/v1/generate/recaps/7days` only.
-2.  **3-Day Recap Pipeline:** Daily quick-catch batch process with smaller article window, faster processing, and reduced prompt sizes. The batch daemon uses `RECAP_3DAYS_WINDOW_DAYS` for window configuration.
-3.  **Evening Pulse Pipeline:** Daily digest delivering up to 3 high-quality news topics as an "entrance" to 7 Days Recap, helping users understand the day's news in 60 seconds. Controlled by `PULSE_ENABLED`, `PULSE_ROLLOUT_PERCENT`, and `PULSE_VERSION` feature flags.
-4.  **Morning Update Pipeline (Morning Letter):** Runs every ~30 minutes, gated by `MORNING_DAEMON_ENABLED`. Enabled in the Compose deployment (`compose/recap.yaml` supplies `MORNING_DAEMON_ENABLED=true`); the binary's own default when the variable is unset is **off**, logged at startup as `morning daemon disabled`. Fetches recent articles, hash-dedups and groups them, folds in the latest 3-day recap context, and asks `news-creator` to compose an editorial "Morning Letter" (overnight groups + recap highlights + a one-sentence through-line). Persisted to `morning_letters` / `morning_letter_sources` / `morning_article_groups` and served via `/v1/morning/letters/*`.
+1.  **3-Day Recap Pipeline:** Daily quick-catch batch process with a 3-day article window (`RECAP_3DAYS_WINDOW_DAYS`), running on the daily JST batch schedule and via `POST /v1/generate/recaps/3days`.
+2.  **Morning Update Pipeline (Morning Letter):** Runs every ~30 minutes, gated by `MORNING_DAEMON_ENABLED`. Enabled in the Compose deployment (`compose/recap.yaml` supplies `MORNING_DAEMON_ENABLED=true`); the binary's own default when the variable is unset is **off**, logged at startup as `morning daemon disabled`. Fetches recent articles, hash-dedups and groups them, folds in the latest 3-day recap context, and asks `news-creator` to compose an editorial "Morning Letter" (overnight groups + recap highlights + a one-sentence through-line). Persisted to `morning_letters` / `morning_letter_sources` / `morning_article_groups` and served via `/v1/morning/letters/*`.
+3.  **Theme Pages Pipeline:** Runs daily on a UTC schedule (`RECAP_THEMES_UTC_TIME`, default `19:00`) and via `POST /v1/generate/themes`, gated by `RECAP_THEMES_ENABLED` (requires `RECAP_KNOWLEDGE_EMIT=true` and an owner scope). Fetches a user's read articles from `knowledge-sovereign` and bodies from `alt-data-hub`, embeds and clusters them via `recap-subworker`, continues existing themes by centroid similarity, generates and verifies theme pages via `news-creator` and `recap-subworker`, persists immutable versions to `read_theme_runs` / `read_themes` / `read_theme_versions` / `read_theme_version_publications`, emits `reading.theme_version_created.v1` events, and serves pages via `GET /v1/themes/{theme_id}`.
 
 ## Service Snapshot
 
 | Layer | Responsibilities |
 | --- | --- |
-| **Control Plane** | Axum router exposing: <br>- **Ops**: `/health/ready`, `/health/live`, `/metrics` (Prometheus) <br>- **Triggers**: `/v1/generate/recaps/7days`, `/v1/generate/recaps/3days` <br>- **Fetch**: `/v1/recaps/7days`, `/v1/recaps/3days`, `/v1/recaps/search`, `/v1/recaps/genres/indexable`, `/v1/morning/updates` <br>- **Morning Letter**: `/v1/morning/letters/*` (latest, regenerate, by date, sources) <br>- **Pulse**: `/v1/pulse/latest` (Evening Pulse digest) <br>- **Admin**: `/admin/jobs/retry`, `/admin/genre-learning` <br>- **Dashboard**: `/v1/dashboard/*` (Metrics, Overview, Logs, Jobs, recap_jobs, job-progress, job-stats) <br>- **Eval**: `/v1/evaluation/*` (Genre classification stats) |
-| **Pipeline Core** | `src/pipeline/`: Modular stages for Fetch, Preprocess, Dedup, Genre, Select, Evidence, Dispatch, Persist. |
-| **Clients** | `src/clients/`: Strongly-typed HTTP clients for: <br>- **`recap-subworker`**: Coarse classification (`/v1/classify/coarse`), clustering (`/v1/runs`), graph refresh. <br>- **`news-creator`**: LLM summarization (`/v1/summary/generate`, `/v1/summary/generate/batch`). <br>- **`alt-backend`**: Article fetching. <br>- **`tag-generator`**: Optional tag enrichment. |
+| **Control Plane** | Axum router exposing: <br>- **Ops**: `/health/ready`, `/health/live`, `/metrics` (Prometheus) <br>- **Triggers**: `/v1/generate/recaps/3days`, `/v1/generate/themes` <br>- **Fetch**: `/v1/recaps/3days`, `/v1/recaps/search`, `/v1/recaps/genres/indexable`, `/v1/morning/updates` <br>- **Morning Letter**: `/v1/morning/letters/*` (latest, regenerate, by date, sources) <br>- **Themes**: `/v1/themes/{theme_id}` (Theme page and version history) <br>- **Admin**: `/admin/jobs/retry`, `/admin/genre-learning` <br>- **Dashboard**: `/v1/dashboard/*` (Metrics, Overview, Logs, Jobs, recap_jobs, job-progress, job-stats) <br>- **Eval**: `/v1/evaluation/*` (Genre classification stats) |
+| **Pipeline Core** | `src/pipeline/`: Modular stages for Fetch, Preprocess, Dedup, Genre, Select, Evidence, Dispatch, Persist; plus `src/pipeline/morning.rs` and `src/pipeline/themes/`. |
+| **Clients** | `src/clients/`: Strongly-typed HTTP clients for: <br>- **`recap-subworker`**: Coarse classification (`/v1/classify/coarse`), clustering (`/v1/runs`), story clustering, and claim verification. <br>- **`news-creator`**: LLM summarization (`/v1/summary/generate`, `/v1/summary/generate/batch`) and theme page generation. <br>- **`alt-backend` / `alt-data-hub`**: Article fetching. <br>- **`knowledge-sovereign`**: Reading source listing and event emission. <br>- **`tag-generator`**: Optional tag enrichment. |
 | **Classification** | **Remote Coarse**: Calls `recap-subworker` (`/v1/classify/coarse`) for initial genre assignment. <br>**Local Refine**: Optional Graph Label Propagation stage (`src/pipeline/genre_refine/`) using cached graph data. |
-| **Store** | `src/store/`: SQLx DAO managing `recap_jobs`, `recap_sections` / `recap_outputs`, `recap_cluster_evidence`, `recap_genre_learning_results`, `pulse_generations`, `notification_outbox`, and `tag_label_graph` (cached from DB). |
+| **Store** | `src/store/`: SQLx DAO managing `recap_jobs`, `recap_sections` / `recap_outputs`, `recap_cluster_evidence`, `recap_genre_learning_results`, `read_theme_runs` / `read_themes` / `read_theme_versions` / `read_theme_version_publications`, `notification_outbox`, and `tag_label_graph` (cached from DB). |
 
 ## API Endpoints
 
@@ -37,13 +36,12 @@ It delegates **heavy ML tasks** (embedding generation, coarse classification, cl
 ### Triggers
 | Endpoint | Method | Description |
 | --- | --- | --- |
-| `/v1/generate/recaps/7days` | POST | Trigger 7-day recap pipeline |
 | `/v1/generate/recaps/3days` | POST | Trigger 3-day recap pipeline |
+| `/v1/generate/themes` | POST | Trigger theme-page generation run |
 
 ### Fetch
 | Endpoint | Method | Description |
 | --- | --- | --- |
-| `/v1/recaps/7days` | GET | Retrieve latest 7-day recap |
 | `/v1/recaps/3days` | GET | Retrieve latest 3-day recap |
 | `/v1/recaps/search` | GET | Search recaps |
 | `/v1/recaps/genres/indexable` | GET | List genres eligible for indexing |
@@ -57,10 +55,10 @@ It delegates **heavy ML tasks** (embedding generation, coarse classification, cl
 | `/v1/morning/letters/{target_date}` | GET | Retrieve the Morning Letter for a given date |
 | `/v1/morning/letters/{letter_id}/sources` | GET | Retrieve source articles cited by a Morning Letter |
 
-### Pulse
+### Themes
 | Endpoint | Method | Description |
 | --- | --- | --- |
-| `/v1/pulse/latest` | GET | Retrieve latest Evening Pulse (accepts optional `?date=YYYY-MM-DD`) |
+| `/v1/themes/{theme_id}` | GET | Retrieve a theme page and version history (`?user_id=<uuid>`, optional `?version=<n>`) |
 
 ### Admin
 | Endpoint | Method | Description |
@@ -101,6 +99,8 @@ ComponentRegistry
   +-- recap_pool: sqlx::PgPool
   +-- notification_relay: Option<Arc<NotificationRelay>>  # None only when explicitly disabled
   +-- pki: Option<crate::pki::Handle>                      # None when PKI_ENROLLMENT=disabled
+  +-- themes_runner: Option<Arc<dyn ThemesJobRunner>>      # None when RECAP_THEMES_ENABLED=false
+  +-- themes_run_in_flight: Arc<Mutex<Option<Uuid>>>
 ```
 
 `AppState` wraps `Arc<ComponentRegistry>` and is passed as Axum `State` to all route handlers. The `build_router()` function wires `AppState` into the Axum `Router`.
@@ -113,7 +113,7 @@ Key construction flow in `ComponentRegistry::build()`:
 4. Create `PgPool` for `recap-db` and wrap it in `RecapDaoImpl` (the unified DAO implementation).
 5. Initialise `ClassificationJobQueue` (persistent queue with retry).
 6. Build `PipelineOrchestrator` with all stage implementations.
-7. Build `MorningPipeline` and `Scheduler`.
+7. Build `MorningPipeline`, `Scheduler`, and (when `RECAP_THEMES_ENABLED=true`) `ThemesRunner`.
 
 ## Module Architecture
 
@@ -130,8 +130,7 @@ Key construction flow in `ComponentRegistry::build()`:
 | `pipeline/embedding.rs` | Embedding service integration |
 | `pipeline/minhash.rs` | MinHash-based similarity detection |
 | `pipeline/graph_override.rs` | Dynamic graph override settings |
-| `pipeline/pulse/` | Evening Pulse v4 pipeline (quality eval, syndication removal, role-based selection, rationale generation) |
-| `pipeline/pulse_integration.rs` | Pulse integration with the main recap pipeline |
+| `pipeline/themes/` | Theme-page pipeline (reading sources, clustering, centroid continuation, generation, verification, versioning, and event publishing) |
 | `pipeline/genre_canonical.rs` | Canonical genre name resolution |
 | `pipeline/genre_keywords.rs` | Genre keyword definitions and scoring |
 | `pipeline/tag_signal.rs` | Tag signal extraction from articles |
@@ -149,7 +148,7 @@ Key construction flow in `ComponentRegistry::build()`:
 
 ## Pipeline Flow
 
-The 7-Day Recap Pipeline (`src/pipeline.rs`) follows these stages. For detailed stage transitions, payload schemas, and dispatch flowcharts, see [recap-worker/PIPELINE_FLOW.md](../../recap-worker/PIPELINE_FLOW.md).
+The 3-Day Recap Pipeline (`src/pipeline.rs`) follows these stages. For detailed stage transitions, payload schemas, and dispatch flowcharts, see [recap-worker/PIPELINE_FLOW.md](../../recap-worker/PIPELINE_FLOW.md).
 
 ```mermaid
 flowchart TB
@@ -191,10 +190,7 @@ flowchart TB
 
     Phase1 --> Phase2["Phase 2: Batch Summary<br/>(Call news-creator /v1/summary/generate/batch)"]
 
-    Phase2 --> Pulse{Pulse<br/>Enabled?}
-    Pulse -->|Yes| PulseStage["Evening Pulse Stage<br/>(Quality Eval, Syndication Removal,<br/>Role-Based Selection, Rationale)"]
-    Pulse -->|No| Persist
-    PulseStage --> Persist
+    Phase2 --> Persist
 
     Persist --> PersistStage[Persist Stage<br/>FinalSectionPersistStage]
 
@@ -208,12 +204,10 @@ flowchart TB
     style Dispatch fill:#f8d7da
     style Phase1 fill:#f8d7da
     style Phase2 fill:#f8d7da
-    style Pulse fill:#e8daef
-    style PulseStage fill:#e8daef
 ```
 
 ### 1. Fetch (`fetch.rs`)
-*   Pulls articles from `alt-backend` for the configured window (default 7 days).
+*   Pulls articles from `alt-backend` / `alt-data-hub` for the configured job window (`3` days for the 3-day recap).
 *   Optionally enriches with tags from `tag-generator`.
 *   Persists raw HTML/metadata to `recap_job_articles`.
 
@@ -250,15 +244,14 @@ The genre classification is a hybrid **Remote + Local** process:
 *   Saves the final `Recap` and `RecapGenre` results to `recap_db`.
 *   Stores cluster evidence in `recap_cluster_evidence` for transparency.
 
-### 9. Evening Pulse (`pulse/`)
-The Evening Pulse is an optional post-pipeline stage (controlled by `PULSE_ENABLED` and `PULSE_ROLLOUT_PERCENT`) that selects up to 3 high-quality topics from the recap clusters:
+### Theme Pages (`pipeline/themes/`)
+The Theme Pages pipeline (`pipeline.rs`, parameters `params.rs` version `themes-v0.1`) builds and versions per-user theme pages from read articles on a daily UTC schedule (`spawn_themes_batch_daemon` in `scheduler/daemon.rs`, with startup catch-up and bounded retries) or on manual trigger (`POST /v1/generate/themes`):
 
-1.  **Quality Evaluation** (`cluster_quality.rs`): Evaluates cluster quality using cohesion, ambiguity, and entity consistency metrics.
-2.  **Syndication Removal** (`syndication.rs`): Removes duplicate/syndicated content using canonical URL matching, wire source detection, and title similarity.
-3.  **Role-Based Selection** (`selection.rs`): Selects topics with diverse roles: **NeedToKnow**, **Trend**, and **Serendipity**.
-4.  **Rationale Generation** (`rationale.rs`): Generates human-readable explanations for why each topic was selected.
-
-Results are persisted to the `pulse_generations` table and served via `/v1/pulse/latest`.
+1.  **Pending Publication Retry**: Queries `read_theme_version_publications` for any theme version missing a publication record and emits `reading.theme_version_created.v1` to `knowledge-sovereign`.
+2.  **Reading Source & Body Preparation**: Lists the owner's read articles in `(UNIX_EPOCH, run_time]` from `knowledge-sovereign`, fetches article bodies from `alt-data-hub`, cleans HTML, and clips titles (`MAX_TITLE_CHARS=120`) and ledes (`MAX_LEDE_CHARS=400`). Runs with fewer than `min_theme_articles` (`3`) sources or prepared articles complete early.
+3.  **Embedding & Clustering**: Resolves `bge-m3` (`1024`-dim) embeddings via `embed_cache` and `recap-subworker`, then clusters stories via `recap-subworker` (`threshold=0.65`, `linkage="average"`, `time_decay_per_day=0.0`, `min_cluster_size=3`).
+4.  **Continuation Matching & Selection**: Matches eligible clusters (`>= 3` articles) 1-to-1 against the user's latest theme centroids (`cosine_similarity >= 0.80`), skips unchanged `membership_hash` themes, sorts candidates by cluster size descending, caps at `max_generations_per_run` (`5`, deferring extras), and selects up to `max_items_per_generation` (`8`) articles per theme (prioritizing newly added articles).
+5.  **Generation, Verification & Versioning**: Generates structured theme bodies (`key_points`, `timeline`, `what_changed`, `open_questions`) via `news-creator`, verifies claims via `recap-subworker` (`tau_a=0.55`) with one failure-note retry, drops themes with no verified key points, appends an immutable version to `read_themes` / `read_theme_versions`, and records successful event emission in `read_theme_version_publications`.
 
 ## Pipeline Resume Support
 
@@ -289,8 +282,7 @@ flowchart LR
     SubCluster -- Cluster Results --> Dispatch[Dispatch]
     Dispatch --> NewsCreator[news-creator<br/>/v1/summary/generate/batch]
 
-    NewsCreator --> Pulse[Evening Pulse<br/>Optional]
-    Pulse --> Persist[Persist]
+    NewsCreator --> Persist[Persist]
 
     Persist --> RecapDB[(recap-db<br/>PostgreSQL)]
 
@@ -305,7 +297,6 @@ flowchart LR
     style RecapDB fill:#d4edda
     style GraphCache fill:#fff3cd
     style Config fill:#fff3cd
-    style Pulse fill:#e8daef
 ```
 
 ## Configuration & Tuning
@@ -315,7 +306,6 @@ Configuration is handled via `src/config.rs` (env vars) and dynamic DB overrides
 ### Key Environment Variables
 
 #### Core Settings
-*   `RECAP_WINDOW_DAYS`: Number of days to include in the 7-day recap (default 7).
 *   `RECAP_3DAYS_WINDOW_DAYS`: Number of days to include in the 3-day recap (default 3). Also used by `BatchDaemon` as the window for the automated 3-day pipeline run.
 *   `RECAP_GENRES`: Comma-separated list of genre slugs to process (default: 30 genres including `ai_data`, `climate_environment`, `consumer_products`, `consumer_tech`, `culture_arts`, `cybersecurity`, `diplomacy_security`, `economics_macro`, `education`, `energy_transition`, `film_tv`, `food_cuisine`, `games_esports`, `health_medicine`, `home_living`, `industry_logistics`, `internet_platforms`, `labor_workplace`, `law_crime`, `life_science`, `markets_finance`, `mobility_automotive`, `music_audio`, `politics_government`, `society_demographics`, `software_dev`, `space_astronomy`, `sports`, `startups_innovation`, `travel_places`). If empty at startup, the batch daemon is skipped.
 *   `RECAP_GENRE_MODEL_THRESHOLD`: Confidence threshold for local genre classification (default: 0.5 via config, 0.75 in classifier).
@@ -397,17 +387,12 @@ Configuration is handled via `src/config.rs` (env vars) and dynamic DB overrides
 *   `RECAP_LANG_DETECT_MIN_CHARS`: Minimum characters for detection (default: 50).
 *   `RECAP_LANG_DETECT_MIN_CONFIDENCE`: Minimum confidence threshold (default: 0.65).
 
-#### Evening Pulse
-*   `PULSE_ENABLED`: Global enable/disable for the Evening Pulse pipeline (default: true).
-*   `PULSE_ROLLOUT_PERCENT`: Percentage rollout for Pulse (0-100).
-*   `PULSE_VERSION`: Target Pulse version (v2, v3, v4).
-*   `PULSE_MAX_TOPICS`: Maximum topics to select (default: 3).
-*   `PULSE_COHESION_THRESHOLD`: Minimum cluster cohesion score (default: 0.3).
-*   `PULSE_AMBIGUITY_THRESHOLD`: Maximum cluster ambiguity score (default: 0.5).
-*   `PULSE_ENTITY_CONSISTENCY_THRESHOLD`: Minimum entity consistency (default: 0.4).
-*   `PULSE_MIN_SCORE_THRESHOLD`: Minimum topic score to include (default: 0.3).
-*   `PULSE_MAX_FALLBACK_LEVEL`: Maximum fallback level for topic selection (default: 5).
-*   `PULSE_SYNDICATION_*`: Syndication removal toggles (`CANONICAL_ENABLED`, `WIRE_ENABLED`, `TITLE_ENABLED`, `TITLE_THRESHOLD`).
+#### Theme Pages
+*   `RECAP_THEMES_ENABLED`: Required strict boolean (`true` or `false`; defaults to `true` in `compose/recap.yaml`). When `true`, requires `RECAP_KNOWLEDGE_EMIT=true` with valid `RECAP_KNOWLEDGE_OWNER_USER_ID`, `RECAP_KNOWLEDGE_OWNER_TENANT_ID`, and `RECAP_KNOWLEDGE_SOVEREIGN_URL`.
+*   `RECAP_THEMES_UTC_TIME`: Daily UTC schedule time in `HH:MM` format (default: `19:00`).
+*   `RECAP_THEMES_RETRY_DELAY_MINUTES`: Delay in minutes between failed run retries and for the startup catch-up grace period (`1..=180`, default: `15`).
+*   `RECAP_THEMES_MAX_ATTEMPTS`: Maximum attempts per scheduled or catch-up theme run (`1..=5`, default: `3`).
+*   `RECAP_THEMES_CATCHUP`: Startup catch-up mode (`enabled` or `disabled`, default: `enabled`); runs a catch-up pass after the grace delay when `read_theme_runs` has no completed run since the latest scheduled UTC slot.
 
 ### Graph & Learning
 *   **Tag Label Graph**: Cached locally for `TAG_LABEL_GRAPH_TTL_SECONDS`. Loaded from `tag_label_graph` table.
@@ -430,9 +415,9 @@ The store layer uses a modular trait-based DAO architecture:
 | `MetricsDao` | Metrics persistence |
 | `MorningDao` | Morning pipeline data |
 | `OutputDao` | Output storage |
-| `PulseDao` | Evening Pulse generation data (`pulse_generations` table) |
 | `StageDao` | Stage state persistence |
 | `SubworkerDao` | Subworker communication |
+| `ThemesPipelineDao` (`ThemesDaoOps`) | Theme-page runs, append-only versions, and publication ledger (`read_theme_*` tables) |
 
 ### Implementation
 *   **`UnifiedDao`** (`RecapDaoImpl`): Unified implementation of all DAO traits, backed by a single `PgPool`.
@@ -467,7 +452,7 @@ curl http://localhost:9005/health/ready
     *   `recap_worker_config`: Dynamic configuration store.
     *   `recap_stage_state`: Pipeline stage state for resume support.
     *   `classification_job_queue`: Persistent classification chunk queue with retry/reclaim, backing `ClassificationJobQueue`.
-    *   `pulse_generations`: Evening Pulse generation results (job_id, target_date, version, status, result payload).
+    *   `read_theme_runs` / `read_themes` / `read_theme_versions` / `read_theme_version_publications`: Theme-page run ledger, theme identities, append-only versioned pages, and event-publication ledger.
     *   `morning_letters` / `morning_letter_sources` / `morning_article_groups`: Morning Letter generations, their cited sources, and overnight article dedup groups.
     *   `notification_outbox`: Transactional outbox for push notifications, relayed to `alt-data-hub` (see Configuration below).
 
