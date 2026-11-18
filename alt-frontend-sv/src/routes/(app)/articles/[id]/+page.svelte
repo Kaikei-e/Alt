@@ -3,9 +3,9 @@ import { ArrowLeft } from "@lucide/svelte";
 import { onMount } from "svelte";
 import { MediaQuery } from "svelte/reactivity";
 import { Button } from "#lib/components/ui/button/index.js";
+import ArticleEditorialRail from "#lib/reader/ArticleEditorialRail.svelte";
 import ArticleReaderActions from "#lib/reader/ArticleReaderActions.svelte";
 import ArticleReaderBody from "#lib/reader/ArticleReaderBody.svelte";
-import ArticleSummaryBlock from "#lib/reader/ArticleSummaryBlock.svelte";
 import { createArticleReader } from "#lib/reader/createArticleReader.svelte.js";
 import {
 	ReadingSurface,
@@ -84,30 +84,7 @@ beforeNavigate(({ shallow }) => {
 			</article>
 
 			{#if hasRail}
-				<aside
-					class="article-rail"
-					data-testid="article-rail"
-					aria-label="Article details"
-				>
-					<section class="rail-section">
-						<h2 class="rail-kicker">Source</h2>
-						<p class="rail-value">{reader.sourceHost || "—"}</p>
-					</section>
-
-					<section class="rail-section">
-						<h2 class="rail-kicker">Reading time</h2>
-						<p class="rail-value">
-							{reader.readingTimeMinutes ? `${reader.readingTimeMinutes} min` : "—"}
-						</p>
-					</section>
-
-					<section class="rail-section rail-section--actions">
-						<h2 class="rail-kicker">Actions</h2>
-						<ArticleReaderActions {reader} />
-					</section>
-
-					<ArticleSummaryBlock {reader} />
-				</aside>
+				<ArticleEditorialRail {reader} />
 			{/if}
 		</div>
 	{/key}
@@ -180,70 +157,6 @@ beforeNavigate(({ shallow }) => {
 			margin-inline: auto;
 			width: 100%;
 			max-width: 72ch;
-		}
-
-		.article-rail {
-			position: sticky;
-			top: calc(env(safe-area-inset-top, 0px) + 1rem);
-			align-self: start;
-			display: flex;
-			flex-direction: column;
-			gap: 1.25rem;
-			padding: 1.1rem 1.1rem 1.25rem;
-			background: var(--surface-2, #f5f4f1);
-			border: 1px solid var(--surface-border, #c8c8c8);
-			border-top: 3px solid var(--alt-primary, #2f4f4f);
-			max-height: calc(100vh - 2rem);
-			overflow-y: auto;
-		}
-
-		.rail-section {
-			display: flex;
-			flex-direction: column;
-			gap: 0.4rem;
-		}
-
-		.rail-kicker {
-			margin: 0;
-			font-family: var(--font-mono);
-			font-size: 0.65rem;
-			font-weight: 600;
-			letter-spacing: 0.14em;
-			text-transform: uppercase;
-			color: var(--alt-ash, #999999);
-		}
-
-		.rail-value {
-			margin: 0;
-			font-family: var(--font-body);
-			font-size: 0.95rem;
-			color: var(--alt-charcoal, #1a1a1a);
-			word-break: break-word;
-		}
-
-		.rail-section--actions :global(.actions-cluster) {
-			flex-direction: column;
-			align-items: stretch;
-			gap: 0.5rem;
-			margin-left: 0;
-		}
-
-		.rail-section--actions :global(.action-btn) {
-			width: 100%;
-			justify-content: flex-start;
-		}
-
-		.rail-section--actions .rail-kicker + :global(.actions-cluster) {
-			margin-top: 0.1rem;
-		}
-
-		.rail-section--actions :global(.actions-cluster) > :global(*) {
-			width: 100%;
-		}
-
-		.rail-section--actions :global(.action-link) {
-			width: 100%;
-			justify-content: flex-start;
 		}
 	}
 </style>
