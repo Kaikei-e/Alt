@@ -33,7 +33,6 @@ use crate::clients::subworker::cards::{
     VerifyCardRequest, VerifyCardResponse, VerifyItemInput, VerifySentenceInput,
     VerifySentenceKind, VerifyThresholds,
 };
-use crate::clients::subworker::is_subworker_auth_error;
 use crate::config::KnowledgeOwnerIds;
 use crate::language_detection::detect_text_language;
 use crate::pipeline::cards::rank::compute_cluster_fingerprint;
@@ -42,8 +41,9 @@ use crate::pipeline::embed_cache::{EmbeddingCacheDao, embed_with_cache};
 use crate::pipeline::preprocess::clean_html;
 use crate::store::dao::impls::UnifiedDao;
 use crate::store::dao::themes::{
-    LatestThemeVersion, NewThemeVersion, ThemeBody, ThemeClaim, ThemeRunFinish, ThemeRunStatus,
-    ThemeSource, ThemeTimelineEntry, ThemeVersionDetail, ThemesDaoOps, UnpublishedThemeVersion,
+    LatestThemeVersion, NewThemeGenerationAttempt, NewThemeVersion, ThemeAttemptOutcome, ThemeBody,
+    ThemeClaim, ThemeRunFinish, ThemeRunStatus, ThemeSource, ThemeTimelineEntry,
+    ThemeVersionDetail, ThemesDaoOps, UnpublishedThemeVersion,
 };
 
 static TRAILING_CITATION_RE: LazyLock<Regex> = LazyLock::new(|| {
@@ -64,7 +64,6 @@ pub struct ThemesPipelineResult {
     pub versions_created: usize,
     pub versions_deferred: usize,
     pub generation_rejected: usize,
-    pub generation_failed: usize,
     pub verification_dropped: usize,
     pub publish_failures: usize,
     pub embed_cache_hits: usize,
@@ -103,6 +102,13 @@ pub trait ThemesPipelineDao: EmbeddingCacheDao + Send + Sync {
         version_id: Uuid,
         published_at: DateTime<Utc>,
     ) -> Result<()>;
+
+    async fn generation_attempt_counts_for_user(
+        &self,
+        user_id: Uuid,
+    ) -> Result<HashMap<(Uuid, String), usize>>;
+
+    async fn insert_generation_attempt(&self, input: &NewThemeGenerationAttempt) -> Result<()>;
 }
 
 #[async_trait::async_trait]
@@ -188,6 +194,21 @@ impl ThemesPipelineDao for UnifiedDao {
             .await
             .map_err(|e| anyhow::anyhow!("{e}"))
     }
+
+    async fn generation_attempt_counts_for_user(
+        &self,
+        user_id: Uuid,
+    ) -> Result<HashMap<(Uuid, String), usize>> {
+        ThemesDaoOps::generation_attempt_counts_for_user(self.pool(), user_id)
+            .await
+            .map_err(|e| anyhow::anyhow!("{e}"))
+    }
+
+    async fn insert_generation_attempt(&self, input: &NewThemeGenerationAttempt) -> Result<()> {
+        ThemesDaoOps::insert_generation_attempt(self.pool(), input)
+            .await
+            .map_err(|e| anyhow::anyhow!("{e}"))
+    }
 }
 
 /// Scheduled and manual job runner for the themes pipeline.
@@ -206,10 +227,29 @@ impl ThemesRunner {
 #[async_trait::async_trait]
 impl ThemesJobRunner for ThemesRunner {
     async fn run_themes(&self, run_id: Uuid, run_time: DateTime<Utc>) -> Result<()> {
-        self.pipeline
+        let result = self
+            .pipeline
             .run(run_id, self.owner, run_time, &ThemesParams::default())
-            .await
-            .map(|_| ())
+            .await?;
+        info!(
+            run_id = %result.run_id,
+            user_id = %self.owner.user_id,
+            source_count = result.source_count,
+            articles_with_body = result.articles_with_body,
+            missing_bodies = result.missing_bodies,
+            empty_bodies = result.empty_bodies,
+            clusters_eligible = result.clusters_eligible,
+            themes_unchanged = result.themes_unchanged,
+            versions_created = result.versions_created,
+            versions_deferred = result.versions_deferred,
+            generation_rejected = result.generation_rejected,
+            verification_dropped = result.verification_dropped,
+            publish_failures = result.publish_failures,
+            embed_cache_hits = result.embed_cache_hits,
+            embed_cache_misses = result.embed_cache_misses,
+            "themes_run_finished"
+        );
+        Ok(())
     }
 }
 
@@ -276,6 +316,9 @@ struct RunProgress {
     source_count: usize,
     versions_created: usize,
     versions_deferred: usize,
+    generation_rejected: usize,
+    verification_dropped: usize,
+    publish_failures: usize,
 }
 
 impl ThemesPipeline {
@@ -349,6 +392,12 @@ impl ThemesPipeline {
                                 .unwrap_or(i32::MAX),
                             versions_deferred: i32::try_from(result.versions_deferred)
                                 .unwrap_or(i32::MAX),
+                            generation_rejected: i32::try_from(result.generation_rejected)
+                                .unwrap_or(i32::MAX),
+                            verification_dropped: i32::try_from(result.verification_dropped)
+                                .unwrap_or(i32::MAX),
+                            publish_failures: i32::try_from(result.publish_failures)
+                                .unwrap_or(i32::MAX),
                             error_message: None,
                         },
                     )
@@ -370,6 +419,12 @@ impl ThemesPipeline {
                             versions_created: i32::try_from(progress.versions_created)
                                 .unwrap_or(i32::MAX),
                             versions_deferred: i32::try_from(progress.versions_deferred)
+                                .unwrap_or(i32::MAX),
+                            generation_rejected: i32::try_from(progress.generation_rejected)
+                                .unwrap_or(i32::MAX),
+                            verification_dropped: i32::try_from(progress.verification_dropped)
+                                .unwrap_or(i32::MAX),
+                            publish_failures: i32::try_from(progress.publish_failures)
                                 .unwrap_or(i32::MAX),
                             error_message: Some(short_err),
                         },
@@ -397,9 +452,10 @@ impl ThemesPipeline {
         params: &ThemesParams,
         progress: &mut RunProgress,
     ) -> Result<ThemesPipelineResult> {
-        let mut publish_failures = self
+        let initial_publish_failures = self
             .publish_pending_versions(run_id, owner, run_time)
             .await?;
+        progress.publish_failures = initial_publish_failures;
 
         let raw_sources = self
             .knowledge
@@ -439,9 +495,8 @@ impl ThemesPipeline {
                 versions_created: 0,
                 versions_deferred: 0,
                 generation_rejected: 0,
-                generation_failed: 0,
                 verification_dropped: 0,
-                publish_failures,
+                publish_failures: progress.publish_failures,
                 embed_cache_hits: 0,
                 embed_cache_misses: 0,
             });
@@ -480,9 +535,8 @@ impl ThemesPipeline {
                 versions_created: 0,
                 versions_deferred: 0,
                 generation_rejected: 0,
-                generation_failed: 0,
                 verification_dropped: 0,
-                publish_failures,
+                publish_failures: progress.publish_failures,
                 embed_cache_hits: 0,
                 embed_cache_misses: 0,
             });
@@ -566,25 +620,43 @@ impl ThemesPipeline {
             candidates.push(assignment);
         }
 
-        candidates.sort_by(|a, b| {
-            b.cluster
-                .member_ids
-                .len()
-                .cmp(&a.cluster.member_ids.len())
+        let prior_attempts = if candidates.is_empty() {
+            HashMap::new()
+        } else {
+            self.dao
+                .generation_attempt_counts_for_user(owner.user_id)
+                .await
+                .context("failed to query prior theme generation attempts")?
+        };
+
+        let mut ranked_candidates: Vec<(usize, ThemeCandidate)> = candidates
+            .into_iter()
+            .map(|candidate| {
+                let attempts = prior_attempts
+                    .get(&(
+                        candidate.theme_id,
+                        candidate.cluster.membership_hash.clone(),
+                    ))
+                    .copied()
+                    .unwrap_or(0);
+                (attempts, candidate)
+            })
+            .collect();
+
+        ranked_candidates.sort_by(|(a_attempts, a), (b_attempts, b)| {
+            a_attempts
+                .cmp(b_attempts)
+                .then_with(|| b.cluster.member_ids.len().cmp(&a.cluster.member_ids.len()))
                 .then_with(|| a.theme_id.cmp(&b.theme_id))
         });
 
-        let versions_deferred = candidates
+        let versions_deferred = ranked_candidates
             .len()
             .saturating_sub(params.max_generations_per_run);
         progress.versions_deferred = versions_deferred;
-        candidates.truncate(params.max_generations_per_run);
+        ranked_candidates.truncate(params.max_generations_per_run);
 
-        let mut generation_rejected = 0usize;
-        let mut generation_failed = 0usize;
-        let mut verification_dropped = 0usize;
-
-        for candidate in candidates {
+        for (_, candidate) in ranked_candidates {
             let outcome = self
                 .process_candidate(
                     run_id,
@@ -600,12 +672,11 @@ impl ThemesPipeline {
                 CandidateOutcome::Created { publish_failed } => {
                     progress.versions_created += 1;
                     if publish_failed {
-                        publish_failures += 1;
+                        progress.publish_failures += 1;
                     }
                 }
-                CandidateOutcome::GenerationRejected => generation_rejected += 1,
-                CandidateOutcome::GenerationFailed => generation_failed += 1,
-                CandidateOutcome::VerificationDropped => verification_dropped += 1,
+                CandidateOutcome::GenerationRejected => progress.generation_rejected += 1,
+                CandidateOutcome::VerificationDropped => progress.verification_dropped += 1,
             }
         }
 
@@ -619,10 +690,9 @@ impl ThemesPipeline {
             themes_unchanged,
             versions_created: progress.versions_created,
             versions_deferred,
-            generation_rejected,
-            generation_failed,
-            verification_dropped,
-            publish_failures,
+            generation_rejected: progress.generation_rejected,
+            verification_dropped: progress.verification_dropped,
+            publish_failures: progress.publish_failures,
             embed_cache_hits,
             embed_cache_misses,
         })
@@ -730,9 +800,14 @@ impl ThemesPipeline {
             failure_notes: Vec::new(),
         };
 
-        let mut generated = match self.generator.generate_theme(&gen_req).await {
-            Ok(ThemeGenerateOutcome::Success(resp)) => resp,
-            Ok(ThemeGenerateOutcome::Rejected(rej)) => {
+        let mut generated = match self
+            .generator
+            .generate_theme(&gen_req)
+            .await
+            .with_context(|| format!("theme generation failed for theme {theme_id}"))?
+        {
+            ThemeGenerateOutcome::Success(resp) => resp,
+            ThemeGenerateOutcome::Rejected(rej) => {
                 warn!(
                     %run_id,
                     %theme_id,
@@ -740,16 +815,16 @@ impl ThemesPipeline {
                     attempts = rej.attempts,
                     "theme generation rejected, skipping theme"
                 );
+                self.record_generation_attempt(
+                    run_id,
+                    owner.user_id,
+                    theme_id,
+                    &candidate.cluster.membership_hash,
+                    ThemeAttemptOutcome::GenerationRejected,
+                    run_time,
+                )
+                .await?;
                 return Ok(CandidateOutcome::GenerationRejected);
-            }
-            Err(err) => {
-                warn!(
-                    %run_id,
-                    %theme_id,
-                    error = %err,
-                    "theme generation failed, skipping theme"
-                );
-                return Ok(CandidateOutcome::GenerationFailed);
             }
         };
 
@@ -758,21 +833,19 @@ impl ThemesPipeline {
         let (mut verify_req, mut sentence_map) =
             build_verify_request(run_id, theme_id, &generated, &selected_items, params.tau_a);
 
-        let mut verify_resp = match self
-            .verify_with_auth_check(&verify_req, run_id, theme_id)
-            .await
-        {
-            Ok(Some(resp)) => resp,
-            Ok(None) => return Ok(CandidateOutcome::VerificationDropped),
-            Err(err) => return Err(err),
-        };
+        let mut verify_resp = self.verify_sentences(&verify_req, theme_id).await?;
 
         let failure_notes = build_failure_notes(&verify_resp, params.tau_a);
         if !failure_notes.is_empty() {
             gen_req.failure_notes = failure_notes;
-            generated = match self.generator.generate_theme(&gen_req).await {
-                Ok(ThemeGenerateOutcome::Success(resp)) => resp,
-                Ok(ThemeGenerateOutcome::Rejected(rej)) => {
+            generated = match self
+                .generator
+                .generate_theme(&gen_req)
+                .await
+                .with_context(|| format!("theme regeneration failed for theme {theme_id}"))?
+            {
+                ThemeGenerateOutcome::Success(resp) => resp,
+                ThemeGenerateOutcome::Rejected(rej) => {
                     warn!(
                         %run_id,
                         %theme_id,
@@ -780,16 +853,16 @@ impl ThemesPipeline {
                         attempts = rej.attempts,
                         "theme regeneration rejected, skipping theme"
                     );
+                    self.record_generation_attempt(
+                        run_id,
+                        owner.user_id,
+                        theme_id,
+                        &candidate.cluster.membership_hash,
+                        ThemeAttemptOutcome::GenerationRejected,
+                        run_time,
+                    )
+                    .await?;
                     return Ok(CandidateOutcome::GenerationRejected);
-                }
-                Err(err) => {
-                    warn!(
-                        %run_id,
-                        %theme_id,
-                        error = %err,
-                        "theme regeneration failed, skipping theme"
-                    );
-                    return Ok(CandidateOutcome::GenerationFailed);
                 }
             };
             strip_response_citation_markers(&mut generated);
@@ -798,14 +871,7 @@ impl ThemesPipeline {
             verify_req = rebuilt.0;
             sentence_map = rebuilt.1;
 
-            verify_resp = match self
-                .verify_with_auth_check(&verify_req, run_id, theme_id)
-                .await
-            {
-                Ok(Some(resp)) => resp,
-                Ok(None) => return Ok(CandidateOutcome::VerificationDropped),
-                Err(err) => return Err(err),
-            };
+            verify_resp = self.verify_sentences(&verify_req, theme_id).await?;
         }
 
         let body =
@@ -816,6 +882,15 @@ impl ThemesPipeline {
                 %theme_id,
                 "all key points failed verification, skipping theme version"
             );
+            self.record_generation_attempt(
+                run_id,
+                owner.user_id,
+                theme_id,
+                &candidate.cluster.membership_hash,
+                ThemeAttemptOutcome::VerificationDropped,
+                run_time,
+            )
+            .await?;
             return Ok(CandidateOutcome::VerificationDropped);
         }
 
@@ -878,42 +953,56 @@ impl ThemesPipeline {
         Ok(CandidateOutcome::Created { publish_failed })
     }
 
-    async fn verify_with_auth_check(
+    async fn record_generation_attempt(
+        &self,
+        run_id: Uuid,
+        user_id: Uuid,
+        theme_id: Uuid,
+        membership_hash: &str,
+        outcome: ThemeAttemptOutcome,
+        created_at: DateTime<Utc>,
+    ) -> Result<()> {
+        self.dao
+            .insert_generation_attempt(&NewThemeGenerationAttempt {
+                attempt_id: Uuid::new_v4(),
+                run_id,
+                user_id,
+                theme_id,
+                membership_hash: membership_hash.to_string(),
+                outcome,
+                created_at,
+            })
+            .await
+            .with_context(|| {
+                format!("failed to record theme generation attempt for theme {theme_id}")
+            })
+    }
+
+    async fn verify_sentences(
         &self,
         verify_req: &VerifyCardRequest,
-        run_id: Uuid,
         theme_id: Uuid,
-    ) -> Result<Option<VerifyCardResponse>> {
+    ) -> Result<VerifyCardResponse> {
         if verify_req.sentences.is_empty() {
-            return Ok(Some(VerifyCardResponse {
+            return Ok(VerifyCardResponse {
                 sentences: Vec::new(),
                 why_hint_present: false,
                 embedding: crate::clients::subworker::cards::VerifyEmbeddingInfo {
                     model: String::new(),
                     identity: String::new(),
                 },
-            }));
+            });
         }
-        match self.verifier.verify_card(verify_req).await {
-            Ok(resp) => Ok(Some(resp)),
-            Err(err) if is_subworker_auth_error(&err) => Err(err),
-            Err(err) => {
-                warn!(
-                    %run_id,
-                    %theme_id,
-                    error = %err,
-                    "theme verification request failed, skipping theme"
-                );
-                Ok(None)
-            }
-        }
+        self.verifier
+            .verify_card(verify_req)
+            .await
+            .with_context(|| format!("theme verification failed for theme {theme_id}"))
     }
 }
 
 enum CandidateOutcome {
     Created { publish_failed: bool },
     GenerationRejected,
-    GenerationFailed,
     VerificationDropped,
 }
 
@@ -1496,6 +1585,7 @@ mod tests {
         versions: Mutex<Vec<NewThemeVersion>>,
         published: Mutex<HashMap<Uuid, DateTime<Utc>>>,
         cache: Mutex<HashMap<String, CachedEmbedding>>,
+        attempts: Mutex<Vec<NewThemeGenerationAttempt>>,
     }
 
     impl MockThemesPipelineDao {
@@ -1505,6 +1595,10 @@ mod tests {
             if let Some(ts) = mark_published_at {
                 self.published.lock().unwrap().insert(version_id, ts);
             }
+        }
+
+        fn seed_attempt(&self, attempt: NewThemeGenerationAttempt) {
+            self.attempts.lock().unwrap().push(attempt);
         }
     }
 
@@ -1677,6 +1771,25 @@ mod tests {
                 .unwrap()
                 .entry(version_id)
                 .or_insert(published_at);
+            Ok(())
+        }
+
+        async fn generation_attempt_counts_for_user(
+            &self,
+            user_id: Uuid,
+        ) -> Result<HashMap<(Uuid, String), usize>> {
+            let lock = self.attempts.lock().unwrap();
+            let mut counts = HashMap::new();
+            for attempt in lock.iter().filter(|a| a.user_id == user_id) {
+                *counts
+                    .entry((attempt.theme_id, attempt.membership_hash.clone()))
+                    .or_insert(0) += 1;
+            }
+            Ok(counts)
+        }
+
+        async fn insert_generation_attempt(&self, input: &NewThemeGenerationAttempt) -> Result<()> {
+            self.attempts.lock().unwrap().push(input.clone());
             Ok(())
         }
     }
@@ -2742,5 +2855,621 @@ mod tests {
                 .as_deref()
                 .is_some_and(|m| m.contains("sovereign unavailable"))
         );
+    }
+
+    struct SequenceCardVerifier {
+        outcomes: Mutex<std::collections::VecDeque<Result<VerifyCardResponse>>>,
+    }
+
+    impl SequenceCardVerifier {
+        fn new(outcomes: Vec<Result<VerifyCardResponse>>) -> Self {
+            Self {
+                outcomes: Mutex::new(outcomes.into()),
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl CardVerifier for SequenceCardVerifier {
+        async fn verify_card(&self, req: &VerifyCardRequest) -> Result<VerifyCardResponse> {
+            if let Some(next) = self.outcomes.lock().unwrap().pop_front() {
+                return next;
+            }
+            Ok(passing_verify_response(req.sentences.len()))
+        }
+    }
+
+    fn passing_verify_response(sentence_count: usize) -> VerifyCardResponse {
+        VerifyCardResponse {
+            sentences: (0..sentence_count)
+                .map(|idx| VerifySentenceResult {
+                    idx,
+                    attribution: VerifyAttribution {
+                        max_cos: 0.9,
+                        best_n: Some(1),
+                        pass: true,
+                    },
+                    filler: VerifyFiller {
+                        matched: vec![],
+                        pass: true,
+                    },
+                    specificity: VerifySpecificity {
+                        proper_nouns: 1,
+                        numbers: 0,
+                        tokens: 4,
+                        density: 0.25,
+                    },
+                })
+                .collect(),
+            why_hint_present: false,
+            embedding: VerifyEmbeddingInfo {
+                model: "bge-m3".to_string(),
+                identity: "bge-m3".to_string(),
+            },
+        }
+    }
+
+    fn failing_verify_response(sentence_count: usize) -> VerifyCardResponse {
+        VerifyCardResponse {
+            sentences: (0..sentence_count)
+                .map(|idx| VerifySentenceResult {
+                    idx,
+                    attribution: VerifyAttribution {
+                        max_cos: 0.2,
+                        best_n: None,
+                        pass: false,
+                    },
+                    filler: VerifyFiller {
+                        matched: vec![],
+                        pass: true,
+                    },
+                    specificity: VerifySpecificity {
+                        proper_nouns: 0,
+                        numbers: 0,
+                        tokens: 3,
+                        density: 0.0,
+                    },
+                })
+                .collect(),
+            why_hint_present: false,
+            embedding: VerifyEmbeddingInfo {
+                model: "bge-m3".to_string(),
+                identity: "bge-m3".to_string(),
+            },
+        }
+    }
+
+    struct ClusterFixture {
+        sources: Vec<ReadingSourceEntry>,
+        articles: Vec<DataHubArticle>,
+        embeddings: Vec<Vec<f32>>,
+        clusters: Vec<ClusterOutput>,
+        cluster_themes: Vec<(Uuid, String)>,
+    }
+
+    fn build_clusters_fixture(sizes: &[usize]) -> ClusterFixture {
+        let mut sources = Vec::new();
+        let mut articles = Vec::new();
+        let mut embeddings = Vec::new();
+        let mut clusters = Vec::new();
+        let mut cluster_themes = Vec::new();
+        let mut next_id = 1u128;
+
+        for (c_idx, &size) in sizes.iter().enumerate() {
+            let mut member_ids = Vec::with_capacity(size);
+            for m_idx in 0..size {
+                let id = uuid_from_u128(next_id);
+                next_id += 1;
+                sources.push(make_source(id, 1));
+                articles.push(make_article(
+                    id,
+                    &format!("Title {c_idx}-{m_idx}"),
+                    &format!("<p>Body {c_idx}-{m_idx}</p>"),
+                    Some(15),
+                ));
+                embeddings.push(vec![1.0, 0.0, 0.0, 0.0]);
+                member_ids.push(id);
+            }
+            member_ids.sort();
+            let hash = compute_cluster_fingerprint(&member_ids);
+            let theme_id = Uuid::new_v5(&Uuid::NAMESPACE_OID, hash.as_bytes());
+            cluster_themes.push((theme_id, hash));
+            clusters.push(ClusterOutput {
+                cluster_id: c_idx,
+                member_ids,
+                centroid: vec![1.0, 0.0, 0.0, 0.0],
+            });
+        }
+
+        ClusterFixture {
+            sources,
+            articles,
+            embeddings,
+            clusters,
+            cluster_themes,
+        }
+    }
+
+    #[tokio::test]
+    async fn generation_error_fails_run_and_preserves_earlier_versions() {
+        let fx = build_clusters_fixture(&[4, 3]);
+        let knowledge = Arc::new(FakeThemeKnowledgePort::with_sources(fx.sources));
+        let article_source = Arc::new(FakeThemeArticleSource::with_articles(fx.articles));
+        let ml_port = Arc::new(FakeEmbedCluster::with_fixed(
+            fx.embeddings,
+            ClusterStoriesResponse {
+                clusters: fx.clusters,
+                params: StoryClusterParams::default(),
+            },
+        ));
+        let generator = Arc::new(FakeThemeGenerator::with_outcomes(vec![
+            Ok(ThemeGenerateOutcome::Success(ThemeGenerateResponse {
+                title: "First Theme".to_string(),
+                key_points: vec![ThemeSentenceOutput {
+                    text: "Grounded claim [1]".to_string(),
+                    refs: vec![1],
+                }],
+                timeline: vec![],
+                what_changed: vec![],
+                open_questions: vec![],
+                model: "gemma4-e4b".to_string(),
+            })),
+            Err(anyhow::anyhow!("news-creator 503 unavailable")),
+        ]));
+        let verifier = Arc::new(FakeCardVerifier::new());
+        let dao = Arc::new(MockThemesPipelineDao::default());
+
+        let pipeline = ThemesPipeline::new(
+            knowledge,
+            article_source,
+            ml_port,
+            generator,
+            verifier,
+            dao.clone(),
+        );
+
+        let err = pipeline
+            .run(Uuid::new_v4(), owner(), run_clock(), &test_params())
+            .await
+            .expect_err("generation error must fail the run");
+        let msg = format!("{err:#}");
+        let failing_theme_id = fx.cluster_themes[1].0.to_string();
+        assert!(msg.contains(&failing_theme_id), "unexpected error: {msg}");
+        assert!(msg.contains("news-creator 503 unavailable"));
+
+        let finishes = dao.finishes.lock().unwrap();
+        assert_eq!(finishes.len(), 1);
+        assert_eq!(finishes[0].2.status, ThemeRunStatus::Failed);
+        assert_eq!(finishes[0].2.versions_created, 1);
+        assert!(
+            finishes[0]
+                .2
+                .error_message
+                .as_deref()
+                .is_some_and(|m| m.contains(&failing_theme_id))
+        );
+
+        let versions = dao.versions.lock().unwrap();
+        assert_eq!(versions.len(), 1);
+        assert_eq!(versions[0].theme_id, fx.cluster_themes[0].0);
+        assert!(dao.attempts.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn regeneration_error_fails_run() {
+        let fx = build_clusters_fixture(&[3]);
+        let knowledge = Arc::new(FakeThemeKnowledgePort::with_sources(fx.sources));
+        let article_source = Arc::new(FakeThemeArticleSource::with_articles(fx.articles));
+        let ml_port = Arc::new(FakeEmbedCluster::with_fixed(
+            fx.embeddings,
+            ClusterStoriesResponse {
+                clusters: fx.clusters,
+                params: StoryClusterParams::default(),
+            },
+        ));
+        let generator = Arc::new(FakeThemeGenerator::with_outcomes(vec![
+            Ok(ThemeGenerateOutcome::Success(ThemeGenerateResponse {
+                title: "Initial Theme".to_string(),
+                key_points: vec![ThemeSentenceOutput {
+                    text: "Needs regen [1]".to_string(),
+                    refs: vec![1],
+                }],
+                timeline: vec![],
+                what_changed: vec![],
+                open_questions: vec![],
+                model: "gemma4-e4b".to_string(),
+            })),
+            Err(anyhow::anyhow!("news-creator timeout on regen")),
+        ]));
+        let verifier = Arc::new(SequenceCardVerifier::new(vec![Ok(
+            failing_verify_response(1),
+        )]));
+        let dao = Arc::new(MockThemesPipelineDao::default());
+
+        let pipeline = ThemesPipeline::new(
+            knowledge,
+            article_source,
+            ml_port,
+            generator,
+            verifier,
+            dao.clone(),
+        );
+
+        let err = pipeline
+            .run(Uuid::new_v4(), owner(), run_clock(), &test_params())
+            .await
+            .expect_err("regeneration error must fail the run");
+        let msg = format!("{err:#}");
+        let theme_id_str = fx.cluster_themes[0].0.to_string();
+        assert!(msg.contains(&theme_id_str), "unexpected error: {msg}");
+        assert!(msg.contains("news-creator timeout on regen"));
+
+        let finishes = dao.finishes.lock().unwrap();
+        assert_eq!(finishes.len(), 1);
+        assert_eq!(finishes[0].2.status, ThemeRunStatus::Failed);
+        assert!(dao.attempts.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn verification_transport_error_fails_run_and_preserves_earlier_versions() {
+        let fx = build_clusters_fixture(&[4, 3]);
+        let knowledge = Arc::new(FakeThemeKnowledgePort::with_sources(fx.sources));
+        let article_source = Arc::new(FakeThemeArticleSource::with_articles(fx.articles));
+        let ml_port = Arc::new(FakeEmbedCluster::with_fixed(
+            fx.embeddings,
+            ClusterStoriesResponse {
+                clusters: fx.clusters,
+                params: StoryClusterParams::default(),
+            },
+        ));
+        let generator = Arc::new(FakeThemeGenerator::new());
+        let verifier = Arc::new(SequenceCardVerifier::new(vec![
+            Ok(passing_verify_response(4)),
+            Err(anyhow::anyhow!("subworker connection refused")),
+        ]));
+        let dao = Arc::new(MockThemesPipelineDao::default());
+
+        let pipeline = ThemesPipeline::new(
+            knowledge,
+            article_source,
+            ml_port,
+            generator,
+            verifier,
+            dao.clone(),
+        );
+
+        let err = pipeline
+            .run(Uuid::new_v4(), owner(), run_clock(), &test_params())
+            .await
+            .expect_err("verification transport error must fail the run");
+        let msg = format!("{err:#}");
+        let failing_theme_id = fx.cluster_themes[1].0.to_string();
+        assert!(msg.contains(&failing_theme_id), "unexpected error: {msg}");
+        assert!(msg.contains("subworker connection refused"));
+
+        let finishes = dao.finishes.lock().unwrap();
+        assert_eq!(finishes.len(), 1);
+        assert_eq!(finishes[0].2.status, ThemeRunStatus::Failed);
+        assert_eq!(finishes[0].2.versions_created, 1);
+        assert!(
+            finishes[0]
+                .2
+                .error_message
+                .as_deref()
+                .is_some_and(|m| m.contains("subworker connection refused"))
+        );
+
+        let versions = dao.versions.lock().unwrap();
+        assert_eq!(versions.len(), 1);
+        assert_eq!(versions[0].theme_id, fx.cluster_themes[0].0);
+        assert!(dao.attempts.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn prior_failed_attempt_defers_largest_candidate_and_ordering_is_deterministic() {
+        let fx = build_clusters_fixture(&[6, 5, 4, 3, 3, 3]);
+        let largest_theme_id = fx.cluster_themes[0].0;
+        let largest_hash = fx.cluster_themes[0].1.clone();
+
+        let dao = Arc::new(MockThemesPipelineDao::default());
+        dao.seed_attempt(NewThemeGenerationAttempt {
+            attempt_id: Uuid::new_v4(),
+            run_id: Uuid::new_v4(),
+            user_id: owner().user_id,
+            theme_id: largest_theme_id,
+            membership_hash: largest_hash,
+            outcome: ThemeAttemptOutcome::GenerationRejected,
+            created_at: run_clock() - chrono::Duration::days(1),
+        });
+
+        let knowledge = Arc::new(FakeThemeKnowledgePort::with_sources(fx.sources));
+        let article_source = Arc::new(FakeThemeArticleSource::with_articles(fx.articles));
+        let ml_port = Arc::new(FakeEmbedCluster::with_fixed(
+            fx.embeddings,
+            ClusterStoriesResponse {
+                clusters: fx.clusters,
+                params: StoryClusterParams::default(),
+            },
+        ));
+        let generator = Arc::new(FakeThemeGenerator::new());
+        let verifier = Arc::new(FakeCardVerifier::new());
+
+        let pipeline = ThemesPipeline::new(
+            knowledge,
+            article_source,
+            ml_port,
+            generator.clone(),
+            verifier,
+            dao.clone(),
+        );
+
+        let res = pipeline
+            .run(Uuid::new_v4(), owner(), run_clock(), &test_params())
+            .await
+            .expect("run succeeds");
+        assert_eq!(res.clusters_eligible, 6);
+        assert_eq!(res.versions_created, 5);
+        assert_eq!(res.versions_deferred, 1);
+
+        let generated_ids: Vec<Uuid> = generator
+            .requests
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|r| r.theme_id)
+            .collect();
+        assert!(!generated_ids.contains(&largest_theme_id));
+        // Zero-attempt candidates are ordered by member count DESC, then theme_id ASC.
+        assert_eq!(generated_ids[0], fx.cluster_themes[1].0);
+        assert_eq!(generated_ids[1], fx.cluster_themes[2].0);
+        let mut tie_ids = vec![
+            fx.cluster_themes[3].0,
+            fx.cluster_themes[4].0,
+            fx.cluster_themes[5].0,
+        ];
+        tie_ids.sort();
+        assert_eq!(generated_ids[2..5], tie_ids);
+    }
+
+    #[tokio::test]
+    async fn rejected_and_verification_dropped_record_attempts_while_created_does_not() {
+        let fx = build_clusters_fixture(&[5, 4, 3]);
+        let knowledge = Arc::new(FakeThemeKnowledgePort::with_sources(fx.sources));
+        let article_source = Arc::new(FakeThemeArticleSource::with_articles(fx.articles));
+        let ml_port = Arc::new(FakeEmbedCluster::with_fixed(
+            fx.embeddings,
+            ClusterStoriesResponse {
+                clusters: fx.clusters,
+                params: StoryClusterParams::default(),
+            },
+        ));
+
+        let ok_resp = || {
+            Ok(ThemeGenerateOutcome::Success(ThemeGenerateResponse {
+                title: "Theme".to_string(),
+                key_points: vec![ThemeSentenceOutput {
+                    text: "Point [1]".to_string(),
+                    refs: vec![1],
+                }],
+                timeline: vec![],
+                what_changed: vec![],
+                open_questions: vec![],
+                model: "gemma4-e4b".to_string(),
+            }))
+        };
+        let generator = Arc::new(FakeThemeGenerator::with_outcomes(vec![
+            Ok(ThemeGenerateOutcome::Rejected(CardGenerate422Response {
+                reason: "nothing_usable".to_string(),
+                attempts: 2,
+                raw_text: "bad".to_string(),
+                detail: None,
+            })),
+            ok_resp(),
+            ok_resp(),
+            ok_resp(),
+        ]));
+        let verifier = Arc::new(SequenceCardVerifier::new(vec![
+            Ok(failing_verify_response(1)),
+            Ok(failing_verify_response(1)),
+            Ok(passing_verify_response(1)),
+        ]));
+        let dao = Arc::new(MockThemesPipelineDao::default());
+
+        let pipeline = ThemesPipeline::new(
+            knowledge,
+            article_source,
+            ml_port,
+            generator,
+            verifier,
+            dao.clone(),
+        );
+
+        let run_id = Uuid::new_v4();
+        let clock = run_clock();
+        let res = pipeline
+            .run(run_id, owner(), clock, &test_params())
+            .await
+            .expect("run succeeds");
+
+        assert_eq!(res.generation_rejected, 1);
+        assert_eq!(res.verification_dropped, 1);
+        assert_eq!(res.versions_created, 1);
+        assert_eq!(res.publish_failures, 0);
+
+        let attempts = dao.attempts.lock().unwrap();
+        assert_eq!(attempts.len(), 2);
+        assert_eq!(attempts[0].run_id, run_id);
+        assert_eq!(attempts[0].user_id, owner().user_id);
+        assert_eq!(attempts[0].theme_id, fx.cluster_themes[0].0);
+        assert_eq!(attempts[0].membership_hash, fx.cluster_themes[0].1);
+        assert_eq!(attempts[0].outcome, ThemeAttemptOutcome::GenerationRejected);
+        assert_eq!(attempts[0].created_at, clock);
+
+        assert_eq!(attempts[1].run_id, run_id);
+        assert_eq!(attempts[1].user_id, owner().user_id);
+        assert_eq!(attempts[1].theme_id, fx.cluster_themes[1].0);
+        assert_eq!(attempts[1].membership_hash, fx.cluster_themes[1].1);
+        assert_eq!(
+            attempts[1].outcome,
+            ThemeAttemptOutcome::VerificationDropped
+        );
+        assert_eq!(attempts[1].created_at, clock);
+
+        let versions = dao.versions.lock().unwrap();
+        assert_eq!(versions.len(), 1);
+        assert_eq!(versions[0].theme_id, fx.cluster_themes[2].0);
+
+        let finishes = dao.finishes.lock().unwrap();
+        assert_eq!(finishes[0].2.generation_rejected, 1);
+        assert_eq!(finishes[0].2.verification_dropped, 1);
+        assert_eq!(finishes[0].2.publish_failures, 0);
+        assert_eq!(finishes[0].2.versions_created, 1);
+    }
+
+    #[tokio::test]
+    async fn changed_membership_resets_prior_attempt_count_to_zero() {
+        let fx = build_clusters_fixture(&[6, 4, 4, 4, 4, 3]);
+        let largest_theme_id = fx.cluster_themes[0].0;
+        let dao = Arc::new(MockThemesPipelineDao::default());
+        dao.seed_attempt(NewThemeGenerationAttempt {
+            attempt_id: Uuid::new_v4(),
+            run_id: Uuid::new_v4(),
+            user_id: owner().user_id,
+            theme_id: largest_theme_id,
+            membership_hash: "stale-old-membership-hash".to_string(),
+            outcome: ThemeAttemptOutcome::GenerationRejected,
+            created_at: run_clock() - chrono::Duration::days(1),
+        });
+
+        let knowledge = Arc::new(FakeThemeKnowledgePort::with_sources(fx.sources));
+        let article_source = Arc::new(FakeThemeArticleSource::with_articles(fx.articles));
+        let ml_port = Arc::new(FakeEmbedCluster::with_fixed(
+            fx.embeddings,
+            ClusterStoriesResponse {
+                clusters: fx.clusters,
+                params: StoryClusterParams::default(),
+            },
+        ));
+        let generator = Arc::new(FakeThemeGenerator::new());
+        let verifier = Arc::new(FakeCardVerifier::new());
+
+        let pipeline = ThemesPipeline::new(
+            knowledge,
+            article_source,
+            ml_port,
+            generator.clone(),
+            verifier,
+            dao,
+        );
+
+        let res = pipeline
+            .run(Uuid::new_v4(), owner(), run_clock(), &test_params())
+            .await
+            .expect("run succeeds");
+        assert_eq!(res.versions_created, 5);
+        assert_eq!(res.versions_deferred, 1);
+
+        let generated_ids: Vec<Uuid> = generator
+            .requests
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|r| r.theme_id)
+            .collect();
+        assert_eq!(generated_ids[0], largest_theme_id);
+        assert!(!generated_ids.contains(&fx.cluster_themes[5].0));
+    }
+
+    #[tokio::test]
+    async fn failed_run_persists_partial_counters_in_theme_run_finish() {
+        let fx = build_clusters_fixture(&[5, 4, 3]);
+        let knowledge = Arc::new(FakeThemeKnowledgePort::with_sources(fx.sources));
+        knowledge.set_fail_all_publishes(true);
+        let article_source = Arc::new(FakeThemeArticleSource::with_articles(fx.articles));
+        let ml_port = Arc::new(FakeEmbedCluster::with_fixed(
+            fx.embeddings,
+            ClusterStoriesResponse {
+                clusters: fx.clusters,
+                params: StoryClusterParams::default(),
+            },
+        ));
+        let generator = Arc::new(FakeThemeGenerator::with_outcomes(vec![
+            Ok(ThemeGenerateOutcome::Rejected(CardGenerate422Response {
+                reason: "nothing_usable".to_string(),
+                attempts: 1,
+                raw_text: "bad".to_string(),
+                detail: None,
+            })),
+            Ok(ThemeGenerateOutcome::Success(ThemeGenerateResponse {
+                title: "Theme Two".to_string(),
+                key_points: vec![ThemeSentenceOutput {
+                    text: "Point [1]".to_string(),
+                    refs: vec![1],
+                }],
+                timeline: vec![],
+                what_changed: vec![],
+                open_questions: vec![],
+                model: "gemma4-e4b".to_string(),
+            })),
+            Err(anyhow::anyhow!("downstream 500")),
+        ]));
+        let verifier = Arc::new(FakeCardVerifier::new());
+        let dao = Arc::new(MockThemesPipelineDao::default());
+
+        let pipeline = ThemesPipeline::new(
+            knowledge,
+            article_source,
+            ml_port,
+            generator,
+            verifier,
+            dao.clone(),
+        );
+
+        let err = pipeline
+            .run(Uuid::new_v4(), owner(), run_clock(), &test_params())
+            .await
+            .expect_err("downstream 500 must fail run");
+        assert!(format!("{err:#}").contains("downstream 500"));
+
+        let finishes = dao.finishes.lock().unwrap();
+        assert_eq!(finishes.len(), 1);
+        assert_eq!(finishes[0].2.status, ThemeRunStatus::Failed);
+        assert_eq!(finishes[0].2.source_count, 12);
+        assert_eq!(finishes[0].2.versions_created, 1);
+        assert_eq!(finishes[0].2.generation_rejected, 1);
+        assert_eq!(finishes[0].2.verification_dropped, 0);
+        assert_eq!(finishes[0].2.publish_failures, 1);
+    }
+
+    #[tokio::test]
+    async fn themes_runner_logs_and_completes_cleanly() {
+        let fx = build_clusters_fixture(&[3]);
+        let knowledge = Arc::new(FakeThemeKnowledgePort::with_sources(fx.sources));
+        let article_source = Arc::new(FakeThemeArticleSource::with_articles(fx.articles));
+        let ml_port = Arc::new(FakeEmbedCluster::with_fixed(
+            fx.embeddings,
+            ClusterStoriesResponse {
+                clusters: fx.clusters,
+                params: StoryClusterParams::default(),
+            },
+        ));
+        let generator = Arc::new(FakeThemeGenerator::new());
+        let verifier = Arc::new(FakeCardVerifier::new());
+        let dao = Arc::new(MockThemesPipelineDao::default());
+
+        let pipeline = ThemesPipeline::new(
+            knowledge,
+            article_source,
+            ml_port,
+            generator,
+            verifier,
+            dao.clone(),
+        );
+        let runner = ThemesRunner::new(pipeline, owner());
+        runner
+            .run_themes(Uuid::new_v4(), run_clock())
+            .await
+            .expect("runner succeeds");
+        assert_eq!(dao.finishes.lock().unwrap().len(), 1);
     }
 }

@@ -36,9 +36,9 @@ pub use cards::{
 pub(crate) use impls::UnifiedDao;
 #[allow(unused_imports)]
 pub use themes::{
-    LatestThemeVersion, NewThemeVersion, ThemeBody, ThemeClaim, ThemeRunFinish, ThemeRunStatus,
-    ThemeSource, ThemeTimelineEntry, ThemeVersionDetail, ThemeVersionSummary, ThemesDaoOps,
-    UnpublishedThemeVersion,
+    LatestThemeVersion, NewThemeGenerationAttempt, NewThemeVersion, ThemeAttemptOutcome, ThemeBody,
+    ThemeClaim, ThemeRunFinish, ThemeRunStatus, ThemeSource, ThemeTimelineEntry,
+    ThemeVersionDetail, ThemeVersionSummary, ThemesDaoOps, UnpublishedThemeVersion,
 };
 pub use types::{GenreStatus, JobStatus, PipelineStage, TriggerSource};
 
