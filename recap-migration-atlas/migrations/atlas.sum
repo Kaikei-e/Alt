@@ -1,4 +1,4 @@
-h1:FzSqjgjp2TdsoD+GT535ajlAetxoBdN2o+s13Q9da5k=
+h1:cusMokCrdqz1NJjspdE+u52wceYYJQIJTqOYHQyjExk=
 20240101000000_create_recap_subworker_tables.sql h1:+6xgDONWHNmxnO9fpHkciX6pKuvzuwGYlp68GIO+rxw=
 20240101000100_create_recap_job_tables.sql h1:hGr/YECmSltZD0SmwSXcfoRJWQoUTIvpx7DygDCpZMA=
 20240101000200_create_recap_final_sections.sql h1:Rk51k37W+Txj8k5Ux8ZynZNOpPyNXFDhOiXMV+f52xQ=
@@ -44,3 +44,4 @@ h1:FzSqjgjp2TdsoD+GT535ajlAetxoBdN2o+s13Q9da5k=
 20261017000000_drop_unused_gin_indexes.sql h1:VDN0BQX26mIBNJVLDkHBYBDvcwM9cZ0Zfbiv1ySdWmI=
 20261109000000_append_only_morning_letter_versions.sql h1:JP1NTXPwNWk/k5Rf5uma9W4hOiY25splfWBxnVnQgtM=
 20261120000000_create_read_themes.sql h1:kyU50EpqOpzP/dD3xSJkfPKUSImS9/Sqr/funFd/0XY=
+20261121000000_drop_evening_pulse_tables.sql h1:AkTxIVAhVtNM+EVGfj3x+SAja8VKMXJJ9pUValP+OZk=
