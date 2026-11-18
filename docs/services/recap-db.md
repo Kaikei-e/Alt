@@ -191,18 +191,21 @@ Unique on `(target_date, edition_timezone)`.
 ### `read_theme_runs`
 Tracks each scheduled or manual theme-page generation run per user, including lifecycle status, outcome counters, and parameter version.
 
-| Column Name         | Type          | Constraints         | Description                                      |
-|---------------------|---------------|---------------------|--------------------------------------------------|
-| `run_id`            | `UUID`        | `PRIMARY KEY`       | Unique identifier for the theme run              |
-| `user_id`           | `UUID`        | `NOT NULL`          | User whose read articles are processed           |
-| `kicked_at`         | `TIMESTAMPTZ` | `NOT NULL`          | Timestamp when the run started                   |
-| `finished_at`       | `TIMESTAMPTZ` |                     | Timestamp when the run completed or failed       |
-| `status`            | `TEXT`        | `NOT NULL`, `CHECK (running, completed, failed)` | Run lifecycle status                |
-| `source_count`      | `INT`         | `NOT NULL`, `DEFAULT 0` | Distinct read articles discovered in the window |
-| `versions_created`  | `INT`         | `NOT NULL`, `DEFAULT 0` | New theme versions persisted in this run     |
-| `versions_deferred` | `INT`         | `NOT NULL`, `DEFAULT 0` | Candidate themes deferred past the per-run cap |
-| `params_version`    | `TEXT`        | `NOT NULL`          | Parameter version identifier (e.g. `themes-v0.1`) |
-| `error_message`     | `TEXT`        |                     | Truncated error summary when `status = 'failed'` |
+| Column Name            | Type          | Constraints         | Description                                      |
+|------------------------|---------------|---------------------|--------------------------------------------------|
+| `run_id`               | `UUID`        | `PRIMARY KEY`       | Unique identifier for the theme run              |
+| `user_id`              | `UUID`        | `NOT NULL`          | User whose read articles are processed           |
+| `kicked_at`            | `TIMESTAMPTZ` | `NOT NULL`          | Timestamp when the run started                   |
+| `finished_at`          | `TIMESTAMPTZ` |                     | Timestamp when the run completed or failed       |
+| `status`               | `TEXT`        | `NOT NULL`, `CHECK (running, completed, failed)` | Run lifecycle status                |
+| `source_count`         | `INT`         | `NOT NULL`, `DEFAULT 0` | Distinct read articles discovered in the window |
+| `versions_created`     | `INT`         | `NOT NULL`, `DEFAULT 0` | New theme versions persisted in this run     |
+| `versions_deferred`    | `INT`         | `NOT NULL`, `DEFAULT 0` | Candidate themes deferred past the per-run cap |
+| `generation_rejected`  | `INT`         | `NOT NULL`, `DEFAULT 0` | Candidate themes skipped after generation rejection |
+| `verification_dropped` | `INT`         | `NOT NULL`, `DEFAULT 0` | Candidate themes skipped when all key points failed verification |
+| `publish_failures`     | `INT`         | `NOT NULL`, `DEFAULT 0` | Failed theme-version event publish attempts (pending retry and new versions) |
+| `params_version`       | `TEXT`        | `NOT NULL`          | Parameter version identifier (e.g. `themes-v0.1`) |
+| `error_message`        | `TEXT`        |                     | Truncated error summary when `status = 'failed'` |
 
 Index: `idx_read_theme_runs_user_kicked` on `(user_id, kicked_at DESC)` supports startup catch-up checks and latest-run lookups per user.
 
@@ -247,6 +250,21 @@ Publication ledger recording which `read_theme_versions` rows have had their `re
 |----------------|---------------|---------------------|--------------------------------------------------|
 | `version_id`   | `UUID`        | `PRIMARY KEY`, `FOREIGN KEY (read_theme_versions.version_id)` | Published theme version |
 | `published_at` | `TIMESTAMPTZ` | `NOT NULL`          | Timestamp when event publication succeeded       |
+
+### `read_theme_generation_attempts`
+Insert-only log of per-theme generation attempts that did not produce a persisted version (`generation_rejected` or `verification_dropped`). `recap-worker` aggregates prior attempt counts per `(theme_id, membership_hash)` for a user and orders themes with fewer earlier failed attempts ahead of candidates with prior failures before applying the per-run generation cap.
+
+| Column Name       | Type          | Constraints         | Description                                      |
+|-------------------|---------------|---------------------|--------------------------------------------------|
+| `attempt_id`      | `UUID`        | `PRIMARY KEY`       | Unique identifier for the attempt                |
+| `run_id`          | `UUID`        | `NOT NULL`, `FOREIGN KEY (read_theme_runs.run_id)` | Run during which the attempt occurred |
+| `user_id`         | `UUID`        | `NOT NULL`          | Owning user                                      |
+| `theme_id`        | `UUID`        | `NOT NULL`          | Candidate theme identifier                       |
+| `membership_hash` | `TEXT`        | `NOT NULL`          | Deterministic fingerprint of the candidate cluster's `member_article_ids` |
+| `outcome`         | `TEXT`        | `NOT NULL`, `CHECK (generation_rejected, verification_dropped)` | Why the candidate was skipped |
+| `created_at`      | `TIMESTAMPTZ` | `NOT NULL`          | Timestamp when the attempt was recorded          |
+
+Index: `idx_read_theme_generation_attempts_lookup` on `(user_id, theme_id, membership_hash)` accelerates per-user attempt-count lookups.
 
 ### `notification_outbox`
 Transactional outbox for user-facing push notifications, produced inside the same local transaction as the recap completion that triggers them. It is co-located with recap job state (rather than in `alt-db`, which owns the per-device push queue) precisely so the outbox row and the business state change share one commit — an outbox only gives its guarantee (message sent iff the transaction commits) when the two live in the same database. A dual write into `alt-db` instead would silently lose notifications whenever the second write failed. A relay in `recap-worker` forwards rows to `alt-data-hub` over mTLS; delivery to the device itself is tracked separately in `alt-db`'s `push_deliveries`.
