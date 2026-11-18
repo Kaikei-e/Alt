@@ -1,6 +1,11 @@
 <script lang="ts">
 import { ArrowLeft, Check, ChevronLeft, ChevronRight } from "@lucide/svelte";
+import { onDestroy } from "svelte";
+import { MediaQuery } from "svelte/reactivity";
 import { Button } from "#lib/components/ui/button/index.js";
+import { ReadingSurface } from "#lib/reading/reading-events.js";
+import { articlePrefetcher } from "#lib/utils/articlePrefetcher.js";
+import ArticleEditorialRail from "./ArticleEditorialRail.svelte";
 import ArticleReaderActions from "./ArticleReaderActions.svelte";
 import ArticleReaderBody from "./ArticleReaderBody.svelte";
 import { createArticleReader } from "./createArticleReader.svelte.js";
@@ -28,6 +33,8 @@ const hasNext = $derived(
 
 let scrollEl = $state<HTMLDivElement | null>(null);
 let lastScrollUrl: string | null = null;
+const railQuery = new MediaQuery("(min-width: 1024px)", false);
+const hasRail = $derived(railQuery.current);
 
 const reader = createArticleReader({
 	getArticleId: () => overlayState.article.articleId,
@@ -58,6 +65,23 @@ $effect(() => {
 	return () => {
 		document.body.style.overflow = originalOverflow;
 	};
+});
+
+// Prefetch the next 2 articles from the surrounding list context.
+$effect(() => {
+	const currentIndex = overlayState.currentIndex;
+	if (currentIndex < 0 || items.length <= 1) return;
+	articlePrefetcher.triggerPrefetch(
+		items.map((item) => ({ normalizedUrl: item.url })),
+		currentIndex,
+		2,
+	);
+});
+
+onDestroy(() => {
+	if (overlayState.surface !== ReadingSurface.SWIPE) {
+		articlePrefetcher.triggerPrefetch([], -1, 0);
+	}
 });
 
 function handlePrevious() {
@@ -166,7 +190,9 @@ async function handleMarkAsRead() {
 			</Button>
 		{/if}
 
-		<ArticleReaderActions {reader} />
+		{#if !hasRail}
+			<ArticleReaderActions {reader} />
+		{/if}
 	</header>
 
 	<div
@@ -174,11 +200,22 @@ async function handleMarkAsRead() {
 		bind:this={scrollEl}
 		data-testid="reader-overlay-body"
 	>
-		<div class="overlay-article">
-			<ArticleReaderBody
-				{reader}
-				fallbackDescription={overlayState.article.fallbackDescription}
-			/>
+		<div class="overlay-layout">
+			<article class="overlay-article">
+				<ArticleReaderBody
+					{reader}
+					showInlineSummary={!hasRail}
+					fallbackDescription={overlayState.article.fallbackDescription}
+				/>
+			</article>
+
+			{#if hasRail}
+				<ArticleEditorialRail
+					{reader}
+					excerpt={overlayState.article.excerpt ??
+						overlayState.article.fallbackDescription}
+				/>
+			{/if}
 		</div>
 	</div>
 </div>
@@ -213,16 +250,25 @@ async function handleMarkAsRead() {
 	}
 
 	.overlay-body {
+		--rail-sticky-top: 0px;
+		--rail-max-height: calc(100vh - 5.5rem);
 		flex: 1;
 		min-height: 0;
 		overflow-y: auto;
 		padding: 1.25rem 1rem calc(2rem + env(safe-area-inset-bottom, 0px));
 	}
 
+	.overlay-layout {
+		display: flex;
+		flex-direction: column;
+		min-width: 0;
+	}
+
 	.overlay-article {
 		display: flex;
 		flex-direction: column;
 		gap: 1.25rem;
+		width: 100%;
 		max-width: 72ch;
 		margin: 0 auto;
 		min-width: 0;
@@ -235,6 +281,21 @@ async function handleMarkAsRead() {
 
 		.overlay-body {
 			padding: 1.5rem 2rem 3rem;
+		}
+	}
+
+	@media (min-width: 1024px) {
+		.overlay-layout {
+			max-width: min(100%, 96rem);
+			margin: 0 auto;
+			display: grid;
+			grid-template-columns: minmax(0, 1fr) 22rem;
+			column-gap: 2rem;
+			align-items: start;
+		}
+
+		.overlay-article {
+			margin-inline: auto;
 		}
 	}
 </style>
