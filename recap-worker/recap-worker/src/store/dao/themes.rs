@@ -5,6 +5,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::types::Json;
 use sqlx::{PgPool, Row};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 /// Claim sentence with source article citations used in key points, changes, and open questions.
@@ -81,7 +82,54 @@ pub struct ThemeRunFinish {
     pub source_count: i32,
     pub versions_created: i32,
     pub versions_deferred: i32,
+    pub generation_rejected: i32,
+    pub verification_dropped: i32,
+    pub publish_failures: i32,
     pub error_message: Option<String>,
+}
+
+/// Outcome recorded for a skipped theme generation attempt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ThemeAttemptOutcome {
+    GenerationRejected,
+    VerificationDropped,
+}
+
+impl ThemeAttemptOutcome {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::GenerationRejected => "generation_rejected",
+            Self::VerificationDropped => "verification_dropped",
+        }
+    }
+}
+
+impl TryFrom<&str> for ThemeAttemptOutcome {
+    type Error = anyhow::Error;
+
+    fn try_from(value: &str) -> std::result::Result<Self, Self::Error> {
+        match value {
+            "generation_rejected" => Ok(Self::GenerationRejected),
+            "verification_dropped" => Ok(Self::VerificationDropped),
+            other => Err(anyhow::anyhow!(
+                "invalid read_theme_generation_attempts outcome: '{other}'"
+            )),
+        }
+    }
+}
+
+/// Insert-only record of a rejected or verification-dropped theme generation attempt.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NewThemeGenerationAttempt {
+    pub attempt_id: Uuid,
+    pub run_id: Uuid,
+    pub user_id: Uuid,
+    pub theme_id: Uuid,
+    pub membership_hash: String,
+    pub outcome: ThemeAttemptOutcome,
+    pub created_at: DateTime<Utc>,
 }
 
 /// Latest version summary per theme needed for continuation matching and prompt history.
@@ -175,9 +223,28 @@ fn validate_finish_input(finish: &ThemeRunFinish) -> Result<()> {
             "finish_run requires terminal status (completed or failed)".to_string(),
         ));
     }
-    if finish.source_count < 0 || finish.versions_created < 0 || finish.versions_deferred < 0 {
+    if finish.source_count < 0
+        || finish.versions_created < 0
+        || finish.versions_deferred < 0
+        || finish.generation_rejected < 0
+        || finish.verification_dropped < 0
+        || finish.publish_failures < 0
+    {
         return Err(RecapError::Db(
             "finish_run counters must be non-negative".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_generation_attempt(input: &NewThemeGenerationAttempt) -> Result<()> {
+    validate_non_nil_user(input.user_id)?;
+    if input.theme_id.is_nil() {
+        return Err(RecapError::Db("theme_id must not be nil".to_string()));
+    }
+    if input.membership_hash.trim().is_empty() {
+        return Err(RecapError::Db(
+            "attempt membership_hash must not be empty".to_string(),
         ));
     }
     Ok(())
@@ -266,7 +333,10 @@ impl ThemesDaoOps {
                 source_count = $5,
                 versions_created = $6,
                 versions_deferred = $7,
-                error_message = $8
+                generation_rejected = $8,
+                verification_dropped = $9,
+                publish_failures = $10,
+                error_message = $11
             WHERE run_id = $1 AND user_id = $2
             ",
         )
@@ -277,6 +347,9 @@ impl ThemesDaoOps {
         .bind(finish.source_count)
         .bind(finish.versions_created)
         .bind(finish.versions_deferred)
+        .bind(finish.generation_rejected)
+        .bind(finish.verification_dropped)
+        .bind(finish.publish_failures)
         .bind(finish.error_message.as_deref())
         .execute(pool)
         .await
@@ -635,6 +708,75 @@ impl ThemesDaoOps {
 
         Ok(row.map(|r| r.get("run_id")))
     }
+
+    /// Append one rejected or verification-dropped generation attempt record.
+    pub async fn insert_generation_attempt(
+        pool: &PgPool,
+        input: &NewThemeGenerationAttempt,
+    ) -> Result<()> {
+        validate_generation_attempt(input)?;
+
+        sqlx::query(
+            r"
+            INSERT INTO read_theme_generation_attempts (
+                attempt_id, run_id, user_id, theme_id, membership_hash, outcome, created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+            ",
+        )
+        .bind(input.attempt_id)
+        .bind(input.run_id)
+        .bind(input.user_id)
+        .bind(input.theme_id)
+        .bind(&input.membership_hash)
+        .bind(input.outcome.as_str())
+        .bind(input.created_at)
+        .execute(pool)
+        .await
+        .map_err(|e| {
+            RecapError::Db(format!(
+                "failed to insert read_theme_generation_attempts row: {e}"
+            ))
+        })?;
+
+        Ok(())
+    }
+
+    /// Return the count of prior failed generation attempts per `(theme_id, membership_hash)` for `user_id`.
+    pub async fn generation_attempt_counts_for_user(
+        pool: &PgPool,
+        user_id: Uuid,
+    ) -> Result<HashMap<(Uuid, String), usize>> {
+        validate_non_nil_user(user_id)?;
+
+        let rows = sqlx::query(
+            r"
+            SELECT theme_id, membership_hash, COUNT(*) AS attempt_count
+            FROM read_theme_generation_attempts
+            WHERE user_id = $1
+            GROUP BY theme_id, membership_hash
+            ",
+        )
+        .bind(user_id)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| {
+            RecapError::Db(format!(
+                "failed to query read_theme_generation_attempts counts: {e}"
+            ))
+        })?;
+
+        let mut out = HashMap::with_capacity(rows.len());
+        for row in rows {
+            let theme_id: Uuid = row.try_get("theme_id")?;
+            let membership_hash: String = row.try_get("membership_hash")?;
+            let count: i64 = row.try_get("attempt_count")?;
+            out.insert(
+                (theme_id, membership_hash),
+                usize::try_from(count).unwrap_or(0),
+            );
+        }
+        Ok(out)
+    }
 }
 
 #[cfg(test)]
@@ -713,6 +855,27 @@ mod tests {
         assert!(ThemeRunStatus::try_from("unknown").is_err());
     }
 
+    #[test]
+    fn theme_attempt_outcome_roundtrip_and_rejection() {
+        assert_eq!(
+            ThemeAttemptOutcome::GenerationRejected.as_str(),
+            "generation_rejected"
+        );
+        assert_eq!(
+            ThemeAttemptOutcome::VerificationDropped.as_str(),
+            "verification_dropped"
+        );
+        assert_eq!(
+            ThemeAttemptOutcome::try_from("generation_rejected").unwrap(),
+            ThemeAttemptOutcome::GenerationRejected
+        );
+        assert_eq!(
+            ThemeAttemptOutcome::try_from("verification_dropped").unwrap(),
+            ThemeAttemptOutcome::VerificationDropped
+        );
+        assert!(ThemeAttemptOutcome::try_from("unknown").is_err());
+    }
+
     #[tokio::test]
     async fn validation_rejects_invalid_inputs_before_db() {
         let pool = PgPool::connect_lazy("postgres://localhost/dummy").unwrap();
@@ -739,12 +902,35 @@ mod tests {
                 source_count: 0,
                 versions_created: 0,
                 versions_deferred: 0,
+                generation_rejected: 0,
+                verification_dropped: 0,
+                publish_failures: 0,
                 error_message: None,
             },
         )
         .await
         .expect_err("non-terminal finish status must fail");
         assert!(err_running_finish.to_string().contains("terminal status"));
+
+        let err_neg_rejected = ThemesDaoOps::finish_run(
+            &pool,
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            &ThemeRunFinish {
+                status: ThemeRunStatus::Completed,
+                finished_at: now,
+                source_count: 0,
+                versions_created: 0,
+                versions_deferred: 0,
+                generation_rejected: -1,
+                verification_dropped: 0,
+                publish_failures: 0,
+                error_message: None,
+            },
+        )
+        .await
+        .expect_err("negative counter must fail");
+        assert!(err_neg_rejected.to_string().contains("non-negative"));
 
         let err_bad_version = ThemesDaoOps::insert_theme_version(
             &pool,
@@ -773,6 +959,54 @@ mod tests {
         assert!(err_get_zero.to_string().contains("version must be >= 1"));
     }
 
+    #[tokio::test]
+    async fn attempt_validation_rejects_invalid_inputs_before_db() {
+        let pool = PgPool::connect_lazy("postgres://localhost/dummy").unwrap();
+        let now = Utc::now();
+
+        let err_nil_attempt_theme = ThemesDaoOps::insert_generation_attempt(
+            &pool,
+            &NewThemeGenerationAttempt {
+                attempt_id: Uuid::new_v4(),
+                run_id: Uuid::new_v4(),
+                user_id: Uuid::new_v4(),
+                theme_id: Uuid::nil(),
+                membership_hash: "h".to_string(),
+                outcome: ThemeAttemptOutcome::GenerationRejected,
+                created_at: now,
+            },
+        )
+        .await
+        .expect_err("nil theme_id must fail");
+        assert!(err_nil_attempt_theme.to_string().contains("theme_id"));
+
+        let err_empty_attempt_hash = ThemesDaoOps::insert_generation_attempt(
+            &pool,
+            &NewThemeGenerationAttempt {
+                attempt_id: Uuid::new_v4(),
+                run_id: Uuid::new_v4(),
+                user_id: Uuid::new_v4(),
+                theme_id: Uuid::new_v4(),
+                membership_hash: "   ".to_string(),
+                outcome: ThemeAttemptOutcome::VerificationDropped,
+                created_at: now,
+            },
+        )
+        .await
+        .expect_err("empty membership_hash must fail");
+        assert!(
+            err_empty_attempt_hash
+                .to_string()
+                .contains("membership_hash")
+        );
+
+        let err_nil_counts_user =
+            ThemesDaoOps::generation_attempt_counts_for_user(&pool, Uuid::nil())
+                .await
+                .expect_err("nil user_id must fail");
+        assert!(err_nil_counts_user.to_string().contains("user_id"));
+    }
+
     async fn setup_themes_schema(pool: &PgPool) -> anyhow::Result<()> {
         pool.execute(
             r"
@@ -785,9 +1019,17 @@ mod tests {
                 source_count INT NOT NULL DEFAULT 0,
                 versions_created INT NOT NULL DEFAULT 0,
                 versions_deferred INT NOT NULL DEFAULT 0,
+                generation_rejected INT NOT NULL DEFAULT 0,
+                verification_dropped INT NOT NULL DEFAULT 0,
+                publish_failures INT NOT NULL DEFAULT 0,
                 params_version TEXT NOT NULL,
                 error_message TEXT NULL
             );
+
+            ALTER TABLE read_theme_runs
+                ADD COLUMN IF NOT EXISTS generation_rejected INT NOT NULL DEFAULT 0,
+                ADD COLUMN IF NOT EXISTS verification_dropped INT NOT NULL DEFAULT 0,
+                ADD COLUMN IF NOT EXISTS publish_failures INT NOT NULL DEFAULT 0;
 
             CREATE TABLE IF NOT EXISTS read_themes (
                 user_id UUID NOT NULL,
@@ -829,6 +1071,19 @@ mod tests {
                 version_id UUID PRIMARY KEY REFERENCES read_theme_versions (version_id),
                 published_at TIMESTAMPTZ NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS read_theme_generation_attempts (
+                attempt_id UUID PRIMARY KEY,
+                run_id UUID NOT NULL REFERENCES read_theme_runs (run_id),
+                user_id UUID NOT NULL,
+                theme_id UUID NOT NULL,
+                membership_hash TEXT NOT NULL,
+                outcome TEXT NOT NULL CHECK (outcome IN ('generation_rejected', 'verification_dropped')),
+                created_at TIMESTAMPTZ NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_read_theme_generation_attempts_lookup
+                ON read_theme_generation_attempts (user_id, theme_id, membership_hash);
             ",
         )
         .await?;
@@ -865,11 +1120,33 @@ mod tests {
                 finished_at: t1 + chrono::Duration::seconds(5),
                 source_count: 10,
                 versions_created: 1,
-                versions_deferred: 0,
+                versions_deferred: 2,
+                generation_rejected: 3,
+                verification_dropped: 4,
+                publish_failures: 1,
                 error_message: None,
             },
         )
         .await?;
+
+        let run_row = sqlx::query(
+            r"
+            SELECT source_count, versions_created, versions_deferred,
+                   generation_rejected, verification_dropped, publish_failures
+            FROM read_theme_runs
+            WHERE run_id = $1 AND user_id = $2
+            ",
+        )
+        .bind(run1_id)
+        .bind(user_a)
+        .fetch_one(&pool)
+        .await?;
+        assert_eq!(run_row.try_get::<i32, _>("source_count")?, 10);
+        assert_eq!(run_row.try_get::<i32, _>("versions_created")?, 1);
+        assert_eq!(run_row.try_get::<i32, _>("versions_deferred")?, 2);
+        assert_eq!(run_row.try_get::<i32, _>("generation_rejected")?, 3);
+        assert_eq!(run_row.try_get::<i32, _>("verification_dropped")?, 4);
+        assert_eq!(run_row.try_get::<i32, _>("publish_failures")?, 1);
 
         let v1_id = Uuid::new_v4();
         let v1 = NewThemeVersion {
@@ -983,6 +1260,79 @@ mod tests {
         let remaining = ThemesDaoOps::unpublished_versions(&pool, user_a).await?;
         assert_eq!(remaining.len(), 1);
         assert_eq!(remaining[0].version_id, v2_id);
+
+        // Generation attempts are insert-only, keyed by (user_id, theme_id, membership_hash),
+        // and isolated by user_id.
+        ThemesDaoOps::insert_generation_attempt(
+            &pool,
+            &NewThemeGenerationAttempt {
+                attempt_id: Uuid::new_v4(),
+                run_id: run1_id,
+                user_id: user_a,
+                theme_id,
+                membership_hash: "hash-failed-1".to_string(),
+                outcome: ThemeAttemptOutcome::GenerationRejected,
+                created_at: t1,
+            },
+        )
+        .await?;
+        ThemesDaoOps::insert_generation_attempt(
+            &pool,
+            &NewThemeGenerationAttempt {
+                attempt_id: Uuid::new_v4(),
+                run_id: run2_id,
+                user_id: user_a,
+                theme_id,
+                membership_hash: "hash-failed-1".to_string(),
+                outcome: ThemeAttemptOutcome::VerificationDropped,
+                created_at: t2,
+            },
+        )
+        .await?;
+        ThemesDaoOps::insert_generation_attempt(
+            &pool,
+            &NewThemeGenerationAttempt {
+                attempt_id: Uuid::new_v4(),
+                run_id: run2_id,
+                user_id: user_a,
+                theme_id,
+                membership_hash: "hash-failed-2".to_string(),
+                outcome: ThemeAttemptOutcome::GenerationRejected,
+                created_at: t2,
+            },
+        )
+        .await?;
+        ThemesDaoOps::insert_generation_attempt(
+            &pool,
+            &NewThemeGenerationAttempt {
+                attempt_id: Uuid::new_v4(),
+                run_id: run2_id,
+                user_id: user_b,
+                theme_id,
+                membership_hash: "hash-failed-1".to_string(),
+                outcome: ThemeAttemptOutcome::GenerationRejected,
+                created_at: t2,
+            },
+        )
+        .await?;
+
+        let counts_a = ThemesDaoOps::generation_attempt_counts_for_user(&pool, user_a).await?;
+        assert_eq!(
+            counts_a.get(&(theme_id, "hash-failed-1".to_string())),
+            Some(&2)
+        );
+        assert_eq!(
+            counts_a.get(&(theme_id, "hash-failed-2".to_string())),
+            Some(&1)
+        );
+        assert_eq!(counts_a.len(), 2);
+
+        let counts_b = ThemesDaoOps::generation_attempt_counts_for_user(&pool, user_b).await?;
+        assert_eq!(
+            counts_b.get(&(theme_id, "hash-failed-1".to_string())),
+            Some(&1)
+        );
+        assert_eq!(counts_b.len(), 1);
 
         Ok(())
     }

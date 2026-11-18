@@ -152,6 +152,25 @@ impl UnifiedDao {
         )
         .await
     }
+
+    #[allow(dead_code)]
+    pub async fn insert_theme_generation_attempt(
+        &self,
+        input: &crate::store::dao::themes::NewThemeGenerationAttempt,
+    ) -> Result<()> {
+        crate::store::dao::themes::ThemesDaoOps::insert_generation_attempt(&self.pool, input).await
+    }
+
+    #[allow(dead_code)]
+    pub async fn theme_generation_attempt_counts_for_user(
+        &self,
+        user_id: Uuid,
+    ) -> Result<std::collections::HashMap<(Uuid, String), usize>> {
+        crate::store::dao::themes::ThemesDaoOps::generation_attempt_counts_for_user(
+            &self.pool, user_id,
+        )
+        .await
+    }
 }
 
 // JobDao implementation

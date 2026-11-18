@@ -17,139 +17,31 @@
         },
         "body": {
           "card_id": "00000000-0000-0000-0000-000000000002",
-          "items": [
-            {
-              "title": "新しいAIモデルの発表",
-              "lede": "大手企業が新しいAIモデルを正式に発表した。",
-              "n": 1
-            }
-          ],
-          "language": "ja",
-          "job_id": "00000000-0000-0000-0000-000000000001",
           "sentences": [
             {
               "idx": 0,
+              "text": "新しいAIモデルが発表された。",
               "kind": "what",
               "refs": [
                 1
-              ],
-              "text": "新しいAIモデルが発表された。"
+              ]
             }
           ],
+          "language": "ja",
+          "items": [
+            {
+              "n": 1,
+              "lede": "大手企業が新しいAIモデルを正式に発表した。",
+              "title": "新しいAIモデルの発表"
+            }
+          ],
+          "job_id": "00000000-0000-0000-0000-000000000001",
           "thresholds": {
             "attribution_cos": 0.55
           }
         },
         "matchingRules": {
-          "header": {
-            "Authorization": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "regex",
-                  "regex": "^Bearer \\S+$"
-                }
-              ]
-            }
-          },
           "body": {
-            "$.sentences[*].text": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.items[*].lede": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.sentences": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type",
-                  "min": 1
-                }
-              ]
-            },
-            "$.items[*].*": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.sentences[*].idx": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.sentences[*].*": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.job_id": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.language": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.card_id": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.sentences[*].refs[*]": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.sentences[*].refs[*].*": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.thresholds.attribution_cos": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
             "$.sentences[*].kind": {
               "combine": "AND",
               "matchers": [
@@ -166,7 +58,31 @@
                 }
               ]
             },
-            "$.items[*].title": {
+            "$.sentences[*].refs[*]": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.job_id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.card_id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.items[*].*": {
               "combine": "AND",
               "matchers": [
                 {
@@ -183,53 +99,7 @@
                 }
               ]
             },
-            "$.sentences[*].refs": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type",
-                  "min": 1
-                }
-              ]
-            }
-          }
-        }
-      },
-      "response": {
-        "status": 200,
-        "headers": {
-          "content-type": "application/json"
-        },
-        "body": {
-          "sentences": [
-            {
-              "attribution": {
-                "best_n": 1,
-                "max_cos": 0.85,
-                "pass": true
-              },
-              "filler": {
-                "matched": [],
-                "pass": true
-              },
-              "idx": 0,
-              "specificity": {
-                "density": 0.2,
-                "numbers": 0,
-                "tokens": 5,
-                "proper_nouns": 1
-              }
-            }
-          ],
-          "embedding": {
-            "identity": "bge-m3",
-            "model": "bge-m3"
-          },
-          "why_hint_present": true
-        },
-        "matchingRules": {
-          "body": {
-            "$.why_hint_present": {
+            "$.thresholds.attribution_cos": {
               "combine": "AND",
               "matchers": [
                 {
@@ -237,7 +107,7 @@
                 }
               ]
             },
-            "$.sentences[*].specificity.numbers": {
+            "$.sentences[*].text": {
               "combine": "AND",
               "matchers": [
                 {
@@ -245,7 +115,7 @@
                 }
               ]
             },
-            "$.sentences[*].attribution.pass": {
+            "$.sentences[*].refs[*].*": {
               "combine": "AND",
               "matchers": [
                 {
@@ -253,63 +123,7 @@
                 }
               ]
             },
-            "$.sentences[*].idx": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.sentences[*].*": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.sentences[*].attribution.max_cos": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.sentences[*].specificity.proper_nouns": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.embedding.model": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.sentences[*].attribution.best_n": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.sentences[*].specificity.tokens": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.sentences[*].specificity.density": {
+            "$.items[*].title": {
               "combine": "AND",
               "matchers": [
                 {
@@ -326,6 +140,103 @@
                 }
               ]
             },
+            "$.items[*].lede": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.sentences[*].*": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.sentences[*].refs": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.language": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.sentences[*].idx": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Authorization": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^Bearer \\S+$"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "sentences": [
+            {
+              "specificity": {
+                "density": 0.2,
+                "tokens": 5,
+                "numbers": 0,
+                "proper_nouns": 1
+              },
+              "filler": {
+                "pass": true,
+                "matched": []
+              },
+              "idx": 0,
+              "attribution": {
+                "pass": true,
+                "best_n": 1,
+                "max_cos": 0.85
+              }
+            }
+          ],
+          "embedding": {
+            "model": "bge-m3",
+            "identity": "bge-m3"
+          },
+          "why_hint_present": true
+        },
+        "matchingRules": {
+          "body": {
+            "$.sentences[*].specificity.proper_nouns": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
             "$.sentences[*].filler.pass": {
               "combine": "AND",
               "matchers": [
@@ -334,7 +245,96 @@
                 }
               ]
             },
+            "$.sentences[*].attribution.best_n": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
             "$.embedding.identity": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.sentences": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.sentences[*].specificity.tokens": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.why_hint_present": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.sentences[*].attribution.max_cos": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.sentences[*].specificity.density": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.sentences[*].*": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.sentences[*].idx": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.embedding.model": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.sentences[*].specificity.numbers": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.sentences[*].attribution.pass": {
               "combine": "AND",
               "matchers": [
                 {
@@ -366,18 +366,15 @@
           ]
         },
         "matchingRules": {
-          "header": {
-            "Authorization": {
+          "body": {
+            "$.texts[*]": {
               "combine": "AND",
               "matchers": [
                 {
-                  "match": "regex",
-                  "regex": "^Bearer \\S+$"
+                  "match": "type"
                 }
               ]
-            }
-          },
-          "body": {
+            },
             "$.texts": {
               "combine": "AND",
               "matchers": [
@@ -394,12 +391,15 @@
                   "match": "type"
                 }
               ]
-            },
-            "$.texts[*]": {
+            }
+          },
+          "header": {
+            "Authorization": {
               "combine": "AND",
               "matchers": [
                 {
-                  "match": "type"
+                  "match": "regex",
+                  "regex": "^Bearer \\S+$"
                 }
               ]
             }
@@ -412,10 +412,10 @@
           "content-type": "application/json"
         },
         "body": {
+          "status": "running",
           "run_id": 1,
           "job_id": "00000000-0000-0000-0000-000000000001",
-          "result_count": 0,
-          "status": "running"
+          "result_count": 0
         },
         "matchingRules": {
           "body": {
@@ -435,7 +435,7 @@
                 }
               ]
             },
-            "$.status": {
+            "$.job_id": {
               "combine": "AND",
               "matchers": [
                 {
@@ -443,7 +443,7 @@
                 }
               ]
             },
-            "$.job_id": {
+            "$.status": {
               "combine": "AND",
               "matchers": [
                 {
@@ -472,38 +472,38 @@
           "content-type": "application/json"
         },
         "body": {
+          "params": {
+            "mmr_lambda": 0.35,
+            "max_sentences_per_cluster": 20,
+            "umap_n_components": 25,
+            "hdbscan_min_cluster_size": 5,
+            "max_sentences_total": 2000
+          },
           "documents": [
             {
+              "article_id": "art-001",
               "paragraphs": [
                 "AI is transforming industries across every major economic sector."
-              ],
-              "article_id": "art-001"
+              ]
             },
             {
+              "article_id": "art-001",
               "paragraphs": [
                 "AI is transforming industries across every major economic sector."
-              ],
-              "article_id": "art-001"
+              ]
             },
             {
+              "article_id": "art-001",
               "paragraphs": [
                 "AI is transforming industries across every major economic sector."
-              ],
-              "article_id": "art-001"
+              ]
             }
           ],
-          "params": {
-            "max_sentences_per_cluster": 20,
-            "hdbscan_min_cluster_size": 5,
-            "max_sentences_total": 2000,
-            "mmr_lambda": 0.35,
-            "umap_n_components": 25
-          },
           "metadata": {
-            "character_count": 500,
-            "article_count": 3,
             "sentence_count": 10,
-            "primary_language": "en"
+            "article_count": 3,
+            "primary_language": "en",
+            "character_count": 500
           }
         },
         "matchingRules": {
@@ -519,56 +519,7 @@
             }
           },
           "body": {
-            "$.documents[*].paragraphs": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type",
-                  "min": 1
-                }
-              ]
-            },
-            "$.params.max_sentences_total": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.documents[*].paragraphs[*]": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.metadata.character_count": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.params.hdbscan_min_cluster_size": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.metadata.sentence_count": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.metadata.primary_language": {
+            "$.documents[*].article_id": {
               "combine": "AND",
               "matchers": [
                 {
@@ -584,44 +535,28 @@
                 }
               ]
             },
-            "$.documents": {
+            "$.metadata.primary_language": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.metadata.character_count": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.documents[*].paragraphs": {
               "combine": "AND",
               "matchers": [
                 {
                   "match": "type",
-                  "min": 3
-                }
-              ]
-            },
-            "$.documents[*].*": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.documents[*].article_id": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.params.max_sentences_per_cluster": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.metadata.article_count": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
+                  "min": 1
                 }
               ]
             },
@@ -640,6 +575,71 @@
                   "match": "type"
                 }
               ]
+            },
+            "$.params.hdbscan_min_cluster_size": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.documents[*].*": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.params.max_sentences_total": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.metadata.sentence_count": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.documents": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 3
+                }
+              ]
+            },
+            "$.params.max_sentences_per_cluster": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.documents[*].paragraphs[*]": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.metadata.article_count": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
             }
           }
         }
@@ -650,33 +650,25 @@
           "content-type": "application/json"
         },
         "body": {
+          "run_id": 42,
           "clusters": [],
-          "job_id": "00000000-0000-0000-0000-000000000001",
           "genre": "technology",
-          "status": "running",
           "cluster_count": 0,
+          "job_id": "00000000-0000-0000-0000-000000000001",
           "diagnostics": {},
-          "run_id": 42
+          "status": "running"
         },
         "matchingRules": {
           "body": {
+            "$.genre": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
             "$.status": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.run_id": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.cluster_count": {
               "combine": "AND",
               "matchers": [
                 {
@@ -692,7 +684,15 @@
                 }
               ]
             },
-            "$.genre": {
+            "$.cluster_count": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.run_id": {
               "combine": "AND",
               "matchers": [
                 {
@@ -722,16 +722,6 @@
           "text": "Breaking news about AI technology"
         },
         "matchingRules": {
-          "body": {
-            "$.text": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            }
-          },
           "header": {
             "Authorization": {
               "combine": "AND",
@@ -739,6 +729,16 @@
                 {
                   "match": "regex",
                   "regex": "^Bearer \\S+$"
+                }
+              ]
+            }
+          },
+          "body": {
+            "$.text": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
                 }
               ]
             }
@@ -793,10 +793,21 @@
           "content-type": "application/json"
         },
         "body": {
-          "include_comments": false,
-          "html": "<html><body><p>Extracted article body text.</p></body></html>"
+          "html": "<html><body><p>Extracted article body text.</p></body></html>",
+          "include_comments": false
         },
         "matchingRules": {
+          "header": {
+            "Authorization": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^Bearer \\S+$"
+                }
+              ]
+            }
+          },
           "body": {
             "$.html": {
               "combine": "AND",
@@ -811,17 +822,6 @@
               "matchers": [
                 {
                   "match": "type"
-                }
-              ]
-            }
-          },
-          "header": {
-            "Authorization": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "regex",
-                  "regex": "^Bearer \\S+$"
                 }
               ]
             }
@@ -865,15 +865,15 @@
           "content-type": "application/json"
         },
         "body": {
-          "use_cross_validation": false,
+          "n_bootstrap": 1000,
           "n_folds": 5,
           "save_to_db": false,
-          "n_bootstrap": 1000,
+          "use_cross_validation": false,
           "use_bootstrap": true
         },
         "matchingRules": {
           "body": {
-            "$.n_bootstrap": {
+            "$.use_cross_validation": {
               "combine": "AND",
               "matchers": [
                 {
@@ -881,7 +881,7 @@
                 }
               ]
             },
-            "$.use_cross_validation": {
+            "$.use_bootstrap": {
               "combine": "AND",
               "matchers": [
                 {
@@ -897,7 +897,7 @@
                 }
               ]
             },
-            "$.use_bootstrap": {
+            "$.n_bootstrap": {
               "combine": "AND",
               "matchers": [
                 {
@@ -933,117 +933,29 @@
           "content-type": "application/json"
         },
         "body": {
+          "accuracy": 0.85,
+          "macro_f1": 0.81,
+          "micro_recall": 0.85,
           "micro_precision": 0.85,
           "per_genre_metrics": {
             "technology": {
-              "fp": 2,
-              "precision": 0.83,
-              "recall": 0.91,
               "support": 11,
+              "tp": 10,
+              "precision": 0.83,
               "fn": 1,
-              "f1": 0.87,
-              "tp": 10
+              "fp": 2,
+              "recall": 0.91,
+              "f1": 0.87
             }
           },
-          "micro_f1": 0.85,
-          "accuracy": 0.85,
-          "micro_recall": 0.85,
-          "macro_precision": 0.82,
           "total_samples": 50,
           "macro_recall": 0.8,
-          "macro_f1": 0.81
+          "micro_f1": 0.85,
+          "macro_precision": 0.82
         },
         "matchingRules": {
           "body": {
-            "$.per_genre_metrics.technology.fp": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.accuracy": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.macro_recall": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.total_samples": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.per_genre_metrics.technology.support": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.macro_precision": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.micro_recall": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
             "$.per_genre_metrics.technology.fn": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.micro_f1": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.micro_precision": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.per_genre_metrics.technology.tp": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.per_genre_metrics.technology.f1": {
               "combine": "AND",
               "matchers": [
                 {
@@ -1059,7 +971,23 @@
                 }
               ]
             },
-            "$.per_genre_metrics.technology.precision": {
+            "$.per_genre_metrics.technology.support": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.accuracy": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.per_genre_metrics.technology.f1": {
               "combine": "AND",
               "matchers": [
                 {
@@ -1068,6 +996,78 @@
               ]
             },
             "$.macro_f1": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.macro_recall": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.per_genre_metrics.technology.tp": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.micro_recall": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.micro_precision": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.macro_precision": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.per_genre_metrics.technology.fp": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.total_samples": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.micro_f1": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.per_genre_metrics.technology.precision": {
               "combine": "AND",
               "matchers": [
                 {
@@ -1097,24 +1097,24 @@
           "items": [
             {
               "published_at": "2026-09-21T00:00:00Z",
+              "id": "00000000-0000-0000-0000-000000000001",
               "embedding": [
                 0.1
-              ],
-              "id": "00000000-0000-0000-0000-000000000001"
+              ]
             },
             {
               "published_at": "2026-09-21T00:00:00Z",
+              "id": "00000000-0000-0000-0000-000000000001",
               "embedding": [
                 0.1
-              ],
-              "id": "00000000-0000-0000-0000-000000000001"
+              ]
             }
           ],
           "params": {
-            "min_cluster_size": 1,
-            "linkage": "average",
             "threshold": 0.78,
-            "time_decay_per_day": 0.02
+            "min_cluster_size": 1,
+            "time_decay_per_day": 0.02,
+            "linkage": "average"
           }
         },
         "matchingRules": {
@@ -1130,7 +1130,23 @@
             }
           },
           "body": {
-            "$.params.linkage": {
+            "$.items[*].embedding[*]": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.items[*].published_at": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.items[*].id": {
               "combine": "AND",
               "matchers": [
                 {
@@ -1139,6 +1155,14 @@
               ]
             },
             "$.params.threshold": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.items[*].embedding[*].*": {
               "combine": "AND",
               "matchers": [
                 {
@@ -1155,15 +1179,7 @@
                 }
               ]
             },
-            "$.items[*].embedding[*]": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.items[*].id": {
+            "$.params.min_cluster_size": {
               "combine": "AND",
               "matchers": [
                 {
@@ -1179,14 +1195,6 @@
                 }
               ]
             },
-            "$.items[*].embedding[*].*": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
             "$.items[*].*": {
               "combine": "AND",
               "matchers": [
@@ -1195,15 +1203,7 @@
                 }
               ]
             },
-            "$.params.min_cluster_size": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.items[*].published_at": {
+            "$.params.linkage": {
               "combine": "AND",
               "matchers": [
                 {
@@ -1230,26 +1230,26 @@
         },
         "body": {
           "params": {
+            "min_cluster_size": 1,
             "linkage": "average",
             "time_decay_per_day": 0.02,
-            "min_cluster_size": 1,
             "threshold": 0.78
           },
           "clusters": [
             {
-              "centroid": [
-                0.1
-              ],
               "member_ids": [
                 "00000000-0000-0000-0000-000000000001"
               ],
-              "cluster_id": 0
+              "cluster_id": 0,
+              "centroid": [
+                0.1
+              ]
             }
           ]
         },
         "matchingRules": {
           "body": {
-            "$.params.threshold": {
+            "$.clusters[*].cluster_id": {
               "combine": "AND",
               "matchers": [
                 {
@@ -1257,7 +1257,39 @@
                 }
               ]
             },
-            "$.clusters[*].centroid[*]": {
+            "$.clusters[*].member_ids[*].*": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.clusters[*].centroid[*].*": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.params.min_cluster_size": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.clusters[*].*": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.params.threshold": {
               "combine": "AND",
               "matchers": [
                 {
@@ -1274,53 +1306,12 @@
                 }
               ]
             },
-            "$.clusters[*].member_ids": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type",
-                  "min": 1
-                }
-              ]
-            },
-            "$.clusters[*].*": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.params.linkage": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.params.time_decay_per_day": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
             "$.clusters[*].centroid": {
               "combine": "AND",
               "matchers": [
                 {
                   "match": "type",
                   "min": 1
-                }
-              ]
-            },
-            "$.clusters[*].member_ids[*].*": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
                 }
               ]
             },
@@ -1332,7 +1323,16 @@
                 }
               ]
             },
-            "$.params.min_cluster_size": {
+            "$.clusters[*].member_ids": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.params.time_decay_per_day": {
               "combine": "AND",
               "matchers": [
                 {
@@ -1340,7 +1340,7 @@
                 }
               ]
             },
-            "$.clusters[*].cluster_id": {
+            "$.clusters[*].centroid[*]": {
               "combine": "AND",
               "matchers": [
                 {
@@ -1348,7 +1348,7 @@
                 }
               ]
             },
-            "$.clusters[*].centroid[*].*": {
+            "$.params.linkage": {
               "combine": "AND",
               "matchers": [
                 {
@@ -1376,13 +1376,13 @@
         },
         "body": {
           "params": {
+            "linkage": "average",
             "time_decay_per_day": 0.02,
+            "min_cluster_size": 2,
             "min_cluster_size_by_language": {
               "ja": 1,
               "en": 2
             },
-            "min_cluster_size": 2,
-            "linkage": "average",
             "threshold": 0.78
           },
           "items": [
@@ -1415,23 +1415,7 @@
             }
           },
           "body": {
-            "$.items[*].published_at": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
             "$.params.time_decay_per_day": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.items[*].id": {
               "combine": "AND",
               "matchers": [
                 {
@@ -1447,20 +1431,20 @@
                 }
               ]
             },
-            "$.items[*].embedding[*]": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.items[*].embedding": {
+            "$.items": {
               "combine": "AND",
               "matchers": [
                 {
                   "match": "type",
-                  "min": 1
+                  "min": 2
+                }
+              ]
+            },
+            "$.items[*].id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
                 }
               ]
             },
@@ -1472,7 +1456,7 @@
                 }
               ]
             },
-            "$.params.linkage": {
+            "$.params.min_cluster_size": {
               "combine": "AND",
               "matchers": [
                 {
@@ -1480,7 +1464,7 @@
                 }
               ]
             },
-            "$.params.min_cluster_size": {
+            "$.items[*].published_at": {
               "combine": "AND",
               "matchers": [
                 {
@@ -1504,16 +1488,32 @@
                 }
               ]
             },
-            "$.items": {
+            "$.items[*].*": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.params.linkage": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.items[*].embedding": {
               "combine": "AND",
               "matchers": [
                 {
                   "match": "type",
-                  "min": 2
+                  "min": 1
                 }
               ]
             },
-            "$.items[*].*": {
+            "$.items[*].embedding[*]": {
               "combine": "AND",
               "matchers": [
                 {
@@ -1531,30 +1531,63 @@
         },
         "body": {
           "params": {
-            "time_decay_per_day": 0.02,
             "min_cluster_size": 2,
+            "time_decay_per_day": 0.02,
             "linkage": "average",
+            "threshold": 0.78,
             "min_cluster_size_by_language": {
-              "ja": 1,
-              "en": 2
-            },
-            "threshold": 0.78
+              "en": 2,
+              "ja": 1
+            }
           },
           "clusters": [
             {
-              "member_ids": [
-                "00000000-0000-0000-0000-000000000001"
-              ],
               "centroid": [
                 0.1
               ],
-              "cluster_id": 0
+              "cluster_id": 0,
+              "member_ids": [
+                "00000000-0000-0000-0000-000000000001"
+              ]
             }
           ]
         },
         "matchingRules": {
           "body": {
-            "$.params.threshold": {
+            "$.clusters[*].member_ids[*]": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.clusters[*].member_ids": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.clusters[*].*": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.clusters[*].member_ids[*].*": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.params.min_cluster_size_by_language.ja": {
               "combine": "AND",
               "matchers": [
                 {
@@ -1571,7 +1604,7 @@
                 }
               ]
             },
-            "$.params.min_cluster_size_by_language.ja": {
+            "$.params.threshold": {
               "combine": "AND",
               "matchers": [
                 {
@@ -1579,15 +1612,7 @@
                 }
               ]
             },
-            "$.clusters[*].centroid[*].*": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.clusters[*].member_ids[*].*": {
+            "$.params.time_decay_per_day": {
               "combine": "AND",
               "matchers": [
                 {
@@ -1603,6 +1628,23 @@
                 }
               ]
             },
+            "$.clusters[*].cluster_id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.clusters": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
             "$.params.min_cluster_size": {
               "combine": "AND",
               "matchers": [
@@ -1611,15 +1653,7 @@
                 }
               ]
             },
-            "$.clusters[*].*": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.clusters[*].cluster_id": {
+            "$.clusters[*].centroid[*].*": {
               "combine": "AND",
               "matchers": [
                 {
@@ -1642,26 +1676,77 @@
                   "match": "type"
                 }
               ]
+            }
+          }
+        }
+      },
+      "providerStates": [
+        {
+          "name": "the story clusterer is ready"
+        }
+      ]
+    },
+    {
+      "description": "a verify request for theme page sentences",
+      "request": {
+        "method": "POST",
+        "path": "/v1/verify",
+        "headers": {
+          "Authorization": "Bearer test-recap-subworker-token-42",
+          "content-type": "application/json"
+        },
+        "body": {
+          "job_id": "00000000-0000-0000-0000-000000000001",
+          "card_id": "00000000-0000-0000-0000-000000000002",
+          "language": "ja",
+          "sentences": [
+            {
+              "kind": "key_point",
+              "refs": [
+                1
+              ],
+              "text": "新しいAIモデルが主要企業から公開された。",
+              "idx": 0
             },
-            "$.clusters": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type",
-                  "min": 1
-                }
+            {
+              "text": "2026年11月に最初の仕様が公開された。",
+              "idx": 1,
+              "kind": "timeline",
+              "refs": [
+                1
               ]
             },
-            "$.clusters[*].member_ids": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type",
-                  "min": 1
-                }
-              ]
+            {
+              "refs": [
+                1
+              ],
+              "kind": "what_changed",
+              "text": "新しく読んだ記事で提供開始日が追加された。",
+              "idx": 2
             },
-            "$.params.time_decay_per_day": {
+            {
+              "text": "今後の価格改定の範囲は未確定である。",
+              "refs": [
+                1
+              ],
+              "idx": 3,
+              "kind": "open_question"
+            }
+          ],
+          "thresholds": {
+            "attribution_cos": 0.55
+          },
+          "items": [
+            {
+              "lede": "大手企業が新しいAIモデルを正式に発表した。",
+              "n": 1,
+              "title": "新しいAIモデルの発表"
+            }
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.sentences[0].idx": {
               "combine": "AND",
               "matchers": [
                 {
@@ -1669,7 +1754,421 @@
                 }
               ]
             },
-            "$.clusters[*].member_ids[*]": {
+            "$.sentences[3].refs": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.sentences[2].refs[*]": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.sentences[1].text": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.items": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.sentences[0].refs[*].*": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.sentences[3].refs[*].*": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.sentences[1].kind": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.card_id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.sentences[0].refs[*]": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.sentences[1].idx": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.sentences[0].refs": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.sentences[1].refs[*]": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.sentences[3].refs[*]": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.sentences[1].refs": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.sentences[0].kind": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.sentences[3].idx": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.sentences[2].refs": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.language": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.thresholds.attribution_cos": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.sentences[2].refs[*].*": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.job_id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.items[*].lede": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.sentences[0].text": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.sentences[3].text": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.sentences[3].kind": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.items[*].*": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.sentences[2].kind": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.items[*].n": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.items[*].title": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.sentences[2].idx": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.sentences[1].refs[*].*": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.sentences[2].text": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Authorization": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^Bearer \\S+$"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "embedding": {
+            "identity": "bge-m3",
+            "model": "bge-m3"
+          },
+          "sentences": [
+            {
+              "idx": 0,
+              "filler": {
+                "matched": [],
+                "pass": true
+              },
+              "specificity": {
+                "proper_nouns": 1,
+                "tokens": 5,
+                "density": 0.2,
+                "numbers": 0
+              },
+              "attribution": {
+                "best_n": 1,
+                "pass": true,
+                "max_cos": 0.85
+              }
+            }
+          ],
+          "why_hint_present": false
+        },
+        "matchingRules": {
+          "body": {
+            "$.sentences[*].attribution.best_n": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.sentences[*].*": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.sentences[*].specificity.density": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.sentences[*].specificity.numbers": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.sentences[*].attribution.max_cos": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.sentences[*].specificity.proper_nouns": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.why_hint_present": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.sentences[*].specificity.tokens": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.sentences[*].attribution.pass": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.embedding.identity": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.sentences[*].filler.pass": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.sentences": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.embedding.model": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.sentences[*].idx": {
               "combine": "AND",
               "matchers": [
                 {
@@ -1682,7 +2181,7 @@
       },
       "providerStates": [
         {
-          "name": "the story clusterer is ready"
+          "name": "the card verifier is ready"
         }
       ]
     },
@@ -1696,10 +2195,10 @@
           "content-type": "application/json"
         },
         "body": {
-          "normalize": true,
           "texts": [
             "Example headline"
-          ]
+          ],
+          "normalize": true
         },
         "matchingRules": {
           "header": {
@@ -1714,16 +2213,7 @@
             }
           },
           "body": {
-            "$.texts": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type",
-                  "min": 1
-                }
-              ]
-            },
-            "$.texts[*].*": {
+            "$.normalize": {
               "combine": "AND",
               "matchers": [
                 {
@@ -1731,7 +2221,7 @@
                 }
               ]
             },
-            "$.normalize": {
+            "$.texts[*].*": {
               "combine": "AND",
               "matchers": [
                 {
@@ -1746,6 +2236,15 @@
                   "match": "type"
                 }
               ]
+            },
+            "$.texts": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
             }
           }
         }
@@ -1756,13 +2255,13 @@
           "content-type": "application/json"
         },
         "body": {
-          "model": "bge-m3",
-          "dim": 1024,
           "embeddings": [
             [
               0.1
             ]
-          ]
+          ],
+          "dim": 1024,
+          "model": "bge-m3"
         },
         "matchingRules": {
           "body": {
@@ -1775,6 +2274,23 @@
                 }
               ]
             },
+            "$.embeddings[*]": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.dim": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
             "$.model": {
               "combine": "AND",
               "matchers": [
@@ -1783,12 +2299,11 @@
                 }
               ]
             },
-            "$.embeddings[*]": {
+            "$.embeddings[*].*": {
               "combine": "AND",
               "matchers": [
                 {
-                  "match": "type",
-                  "min": 1
+                  "match": "type"
                 }
               ]
             },
@@ -1801,22 +2316,6 @@
               ]
             },
             "$.embeddings[*][*]": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.dim": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.embeddings[*].*": {
               "combine": "AND",
               "matchers": [
                 {
@@ -1861,23 +2360,31 @@
           "content-type": "application/json"
         },
         "body": {
-          "run_id": 42,
-          "status": "succeeded",
           "job_id": "00000000-0000-0000-0000-000000000001",
+          "status": "succeeded",
           "result_count": 5,
           "results": [
             {
-              "confidence": 0.85,
               "scores": {
-                "science": 0.1,
-                "technology": 0.85
+                "technology": 0.85,
+                "science": 0.1
               },
-              "top_genre": "technology"
+              "top_genre": "technology",
+              "confidence": 0.85
             }
-          ]
+          ],
+          "run_id": 42
         },
         "matchingRules": {
           "body": {
+            "$.results[*].top_genre": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
             "$.results": {
               "combine": "AND",
               "matchers": [
@@ -1887,7 +2394,15 @@
                 }
               ]
             },
-            "$.results[*].confidence": {
+            "$.results[*].*": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.result_count": {
               "combine": "AND",
               "matchers": [
                 {
@@ -1903,15 +2418,7 @@
                 }
               ]
             },
-            "$.results[*].*": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.job_id": {
+            "$.results[*].scores.science": {
               "combine": "AND",
               "matchers": [
                 {
@@ -1927,6 +2434,14 @@
                 }
               ]
             },
+            "$.results[*].confidence": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
             "$.run_id": {
               "combine": "AND",
               "matchers": [
@@ -1935,23 +2450,7 @@
                 }
               ]
             },
-            "$.results[*].top_genre": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.results[*].scores.science": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.result_count": {
+            "$.job_id": {
               "combine": "AND",
               "matchers": [
                 {
@@ -1996,51 +2495,59 @@
           "content-type": "application/json"
         },
         "body": {
-          "cluster_count": 1,
-          "run_id": 42,
+          "diagnostics": {
+            "dedup_pairs": 0
+          },
           "genre": "technology",
           "job_id": "00000000-0000-0000-0000-000000000001",
+          "run_id": 42,
           "status": "succeeded",
+          "cluster_count": 1,
           "clusters": [
             {
+              "representatives": [
+                {
+                  "paragraph_idx": 0,
+                  "article_id": "art-001",
+                  "score": 0.95,
+                  "sentence_text": "AI is transforming industries across every major economic sector.",
+                  "lang": "en"
+                }
+              ],
               "label": "technology",
-              "cluster_id": 0,
               "size": 5,
+              "cluster_id": 0,
               "top_terms": [
                 "AI"
               ],
-              "stats": {},
-              "representatives": [
-                {
-                  "lang": "en",
-                  "score": 0.95,
-                  "sentence_text": "AI is transforming industries across every major economic sector.",
-                  "paragraph_idx": 0,
-                  "article_id": "art-001"
-                }
-              ]
+              "stats": {}
             }
-          ],
-          "diagnostics": {
-            "dedup_pairs": 0
-          }
+          ]
         },
         "matchingRules": {
           "body": {
+            "$.job_id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.cluster_count": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
             "$.clusters[*].top_terms": {
               "combine": "AND",
               "matchers": [
                 {
                   "match": "type",
                   "min": 1
-                }
-              ]
-            },
-            "$.clusters[*].top_terms[*].*": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
                 }
               ]
             },
@@ -2052,7 +2559,15 @@
                 }
               ]
             },
-            "$.clusters[*].representatives[*].sentence_text": {
+            "$.clusters[*].top_terms[*].*": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.clusters[*].representatives[*].score": {
               "combine": "AND",
               "matchers": [
                 {
@@ -2069,7 +2584,23 @@
                 }
               ]
             },
-            "$.clusters[*].top_terms[*]": {
+            "$.clusters[*].size": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.clusters[*].cluster_id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.run_id": {
               "combine": "AND",
               "matchers": [
                 {
@@ -2086,6 +2617,14 @@
                 }
               ]
             },
+            "$.clusters[*].label": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
             "$.clusters[*].*": {
               "combine": "AND",
               "matchers": [
@@ -2094,39 +2633,7 @@
                 }
               ]
             },
-            "$.clusters[*].cluster_id": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.clusters[*].representatives[*].paragraph_idx": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.job_id": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.clusters[*].representatives[*].score": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.clusters[*].representatives[*].*": {
+            "$.clusters[*].top_terms[*]": {
               "combine": "AND",
               "matchers": [
                 {
@@ -2142,6 +2649,14 @@
                 }
               ]
             },
+            "$.genre": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
             "$.clusters[*].representatives[*].article_id": {
               "combine": "AND",
               "matchers": [
@@ -2150,7 +2665,7 @@
                 }
               ]
             },
-            "$.clusters[*].label": {
+            "$.clusters[*].representatives[*].paragraph_idx": {
               "combine": "AND",
               "matchers": [
                 {
@@ -2166,7 +2681,7 @@
                 }
               ]
             },
-            "$.genre": {
+            "$.clusters[*].representatives[*].*": {
               "combine": "AND",
               "matchers": [
                 {
@@ -2174,23 +2689,7 @@
                 }
               ]
             },
-            "$.cluster_count": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.clusters[*].size": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.run_id": {
+            "$.clusters[*].representatives[*].sentence_text": {
               "combine": "AND",
               "matchers": [
                 {

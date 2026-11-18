@@ -7,6 +7,9 @@ CREATE TABLE read_theme_runs (
     source_count INT NOT NULL DEFAULT 0,
     versions_created INT NOT NULL DEFAULT 0,
     versions_deferred INT NOT NULL DEFAULT 0,
+    generation_rejected INT NOT NULL DEFAULT 0,
+    verification_dropped INT NOT NULL DEFAULT 0,
+    publish_failures INT NOT NULL DEFAULT 0,
     params_version TEXT NOT NULL,
     error_message TEXT NULL
 );
@@ -59,3 +62,16 @@ CREATE TABLE read_theme_version_publications (
     version_id UUID PRIMARY KEY REFERENCES read_theme_versions (version_id),
     published_at TIMESTAMPTZ NOT NULL
 );
+
+CREATE TABLE read_theme_generation_attempts (
+    attempt_id UUID PRIMARY KEY,
+    run_id UUID NOT NULL REFERENCES read_theme_runs (run_id),
+    user_id UUID NOT NULL,
+    theme_id UUID NOT NULL,
+    membership_hash TEXT NOT NULL,
+    outcome TEXT NOT NULL CHECK (outcome IN ('generation_rejected', 'verification_dropped')),
+    created_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX idx_read_theme_generation_attempts_lookup
+    ON read_theme_generation_attempts (user_id, theme_id, membership_hash);
