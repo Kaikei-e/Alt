@@ -23,6 +23,10 @@ type Feed struct {
 	FeedLinkID *string `db:"feed_link_id"`
 	// OgImageURL is the image URL extracted from RSS (nullable)
 	OgImageURL *string `db:"og_image_url"`
+	// DailyRank is the 1-based position within (feed_link_id, UTC day of created_at) (nullable)
+	DailyRank *int `db:"daily_rank"`
+	// DailyCap is the calling user's per-feed daily cap, if configured (nullable)
+	DailyCap *int `db:"daily_cap"`
 }
 
 type FeedAndArticle struct {

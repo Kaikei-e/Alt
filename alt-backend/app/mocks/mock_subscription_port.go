@@ -84,3 +84,17 @@ func (mr *MockSubscriptionPortMockRecorder) Unsubscribe(ctx, userID, feedLinkID 
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Unsubscribe", reflect.TypeOf((*MockSubscriptionPort)(nil).Unsubscribe), ctx, userID, feedLinkID)
 }
+
+// SetSubscriptionDailyCap mocks base method.
+func (m *MockSubscriptionPort) SetSubscriptionDailyCap(ctx context.Context, userID, feedLinkID uuid.UUID, dailyCap *int) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetSubscriptionDailyCap", ctx, userID, feedLinkID, dailyCap)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetSubscriptionDailyCap indicates an expected call of SetSubscriptionDailyCap.
+func (mr *MockSubscriptionPortMockRecorder) SetSubscriptionDailyCap(ctx, userID, feedLinkID, dailyCap any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetSubscriptionDailyCap", reflect.TypeOf((*MockSubscriptionPort)(nil).SetSubscriptionDailyCap), ctx, userID, feedLinkID, dailyCap)
+}

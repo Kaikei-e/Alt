@@ -112,3 +112,56 @@ func TestCountReadingSourcesSinceContract(t *testing.T) {
 		})
 	require.NoError(t, err)
 }
+
+func TestListReadingSourcesInWindowContract(t *testing.T) {
+	mockProvider := newSovereignPact(t)
+
+	const userID = "22222222-2222-2222-2222-222222222222"
+	from := time.Date(2026, 10, 19, 0, 0, 0, 0, time.UTC)
+	to := time.Date(2026, 11, 18, 0, 0, 0, 0, time.UTC)
+
+	err := mockProvider.
+		AddInteraction().
+		Given("a user has reading sources recorded within a 30-day window").
+		UponReceiving("a ListReadingSourcesInWindow request for the user").
+		WithCompleteRequest(consumer.Request{
+			Method:  "POST",
+			Path:    matchers.String("/services.sovereign.v1.KnowledgeSovereignService/ListReadingSourcesInWindow"),
+			Headers: sovereignHeaders(),
+			Body: matchers.MapMatcher{
+				"userId": matchers.Like(userID),
+				"from":   matchers.Like("2026-10-19T00:00:00Z"),
+				"to":     matchers.Like("2026-11-18T00:00:00Z"),
+			},
+		}).
+		WithCompleteResponse(consumer.Response{
+			Status: 200,
+			Headers: matchers.MapMatcher{
+				"Content-Type": matchers.String("application/json"),
+			},
+			Body: matchers.MapMatcher{
+				"entries": matchers.EachLike(matchers.MapMatcher{
+					"articleId":       matchers.Like("33333333-3333-3333-3333-333333333333"),
+					"firstReadAt":     matchers.Like("2026-11-10T08:00:00Z"),
+					"readRuleVersion": matchers.Integer(1),
+				}, 1),
+			},
+		}).
+		ExecuteTest(t, func(config consumer.MockServerConfig) error {
+			client := newSovereignClient(config)
+			resp, err := client.ListReadingSourcesInWindow(context.Background(), connect.NewRequest(&sovereignv1.ListReadingSourcesInWindowRequest{
+				UserId: userID,
+				From:   timestamppb.New(from),
+				To:     timestamppb.New(to),
+			}))
+			if err != nil {
+				return fmt.Errorf("ListReadingSourcesInWindow failed: %w", err)
+			}
+			require.NotEmpty(t, resp.Msg.Entries)
+			assert.NotEmpty(t, resp.Msg.Entries[0].ArticleId)
+			assert.NotNil(t, resp.Msg.Entries[0].FirstReadAt)
+			assert.Equal(t, int32(1), resp.Msg.Entries[0].ReadRuleVersion)
+			return nil
+		})
+	require.NoError(t, err)
+}

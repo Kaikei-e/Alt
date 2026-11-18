@@ -15,6 +15,7 @@
         "/services.sovereign.v1.KnowledgeSovereignService/GetTrailBranchesForAnchor",
         "/services.sovereign.v1.KnowledgeSovereignService/GetReadingQueue",
         "/services.sovereign.v1.KnowledgeSovereignService/CountReadingSourcesSince",
+        "/services.sovereign.v1.KnowledgeSovereignService/ListReadingSourcesInWindow",
         "/services.sovereign.v1.KnowledgeSovereignService/AppendRecallSignal",
         "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent",
         "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeUserEvent",

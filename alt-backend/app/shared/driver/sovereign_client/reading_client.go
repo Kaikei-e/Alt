@@ -67,3 +67,39 @@ func (c *Client) CountReadingSourcesSince(ctx context.Context, userID uuid.UUID,
 	}
 	return int(resp.Msg.GetCount()), nil
 }
+
+// ListReadingSourcesInWindow returns all reading_sources entries (all rule
+// versions) for userID whose first_read_at falls within [from, to].
+// Returns ErrSovereignDisabled when the client is not enabled (no silent fallback).
+func (c *Client) ListReadingSourcesInWindow(ctx context.Context, userID uuid.UUID, from, to time.Time) ([]domain.ReadingSourceEntry, error) {
+	if !c.enabled {
+		return nil, ErrSovereignDisabled
+	}
+
+	resp, err := c.client.ListReadingSourcesInWindow(ctx, connect.NewRequest(&sovereignv1.ListReadingSourcesInWindowRequest{
+		UserId: userID.String(),
+		From:   timestamppb.New(from),
+		To:     timestamppb.New(to),
+	}))
+	if err != nil {
+		return nil, fmt.Errorf("sovereign ListReadingSourcesInWindow: %w", err)
+	}
+
+	out := make([]domain.ReadingSourceEntry, 0, len(resp.Msg.GetEntries()))
+	for _, pb := range resp.Msg.GetEntries() {
+		articleID, err := uuid.Parse(pb.GetArticleId())
+		if err != nil {
+			return nil, fmt.Errorf("sovereign ListReadingSourcesInWindow invalid article_id %q: %w", pb.GetArticleId(), err)
+		}
+		var firstReadAt time.Time
+		if pb.GetFirstReadAt() != nil {
+			firstReadAt = pb.GetFirstReadAt().AsTime()
+		}
+		out = append(out, domain.ReadingSourceEntry{
+			ArticleID:       articleID,
+			FirstReadAt:     firstReadAt,
+			ReadRuleVersion: pb.GetReadRuleVersion(),
+		})
+	}
+	return out, nil
+}

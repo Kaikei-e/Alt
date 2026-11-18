@@ -238,6 +238,134 @@
       }
     },
     {
+      "description": "a GetFeedInflowStats unary Connect-RPC request proxied by BFF",
+      "providerStates": [
+        {
+          "name": "feed inflow stats are available for user"
+        }
+      ],
+      "request": {
+        "body": {},
+        "headers": {
+          "Content-Type": "application/json",
+          "X-Alt-Backend-Token": "header.payload.signature"
+        },
+        "matchingRules": {
+          "header": {
+            "X-Alt-Backend-Token": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/alt.feeds.v2.FeedService/GetFeedInflowStats"
+      },
+      "response": {
+        "body": {
+          "stats": [
+            {
+              "dailyCap": 5,
+              "feedLinkId": "11111111-1111-4111-8111-111111111111",
+              "inflowCount": "120",
+              "openedCountLegacy": "4",
+              "readCount": "18",
+              "readRate": 0.15,
+              "url": "https://example.com/feed.xml"
+            }
+          ],
+          "windowDays": 30
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.stats": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.stats[*].dailyCap": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.stats[*].feedLinkId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            },
+            "$.stats[*].inflowCount": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.stats[*].openedCountLegacy": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.stats[*].readCount": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.stats[*].readRate": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.stats[*].url": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.windowDays": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
       "description": "a GetFeedStats unary Connect-RPC request proxied by BFF",
       "providerStates": [
         {
@@ -1086,6 +1214,88 @@
                 {
                   "match": "type",
                   "min": 1
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a SetSubscriptionDailyCap unary Connect-RPC request proxied by BFF",
+      "providerStates": [
+        {
+          "name": "feed subscription exists for user"
+        }
+      ],
+      "request": {
+        "body": {
+          "dailyCap": 5,
+          "feedLinkId": "11111111-1111-4111-8111-111111111111"
+        },
+        "headers": {
+          "Content-Type": "application/json",
+          "X-Alt-Backend-Token": "header.payload.signature"
+        },
+        "matchingRules": {
+          "body": {
+            "$.dailyCap": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.feedLinkId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            }
+          },
+          "header": {
+            "X-Alt-Backend-Token": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/alt.feeds.v2.FeedService/SetSubscriptionDailyCap"
+      },
+      "response": {
+        "body": {
+          "dailyCap": 5,
+          "message": "Daily cap updated"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.dailyCap": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.message": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
                 }
               ]
             }

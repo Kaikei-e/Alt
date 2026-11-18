@@ -31,6 +31,7 @@ type readStateDriver interface {
 	FetchSubscriptions(ctx context.Context, userID uuid.UUID) ([]*domain.FeedSource, error)
 	InsertSubscription(ctx context.Context, userID uuid.UUID, feedLinkID uuid.UUID) error
 	DeleteSubscription(ctx context.Context, userID uuid.UUID, feedLinkID uuid.UUID) error
+	SetSubscriptionDailyCap(ctx context.Context, userID uuid.UUID, feedLinkID uuid.UUID, dailyCap *int) error
 	RegisterFavoriteFeed(ctx context.Context, url string, userID uuid.UUID) error
 	RemoveFavoriteFeed(ctx context.Context, url string, userID uuid.UUID) error
 }
@@ -134,6 +135,11 @@ func (g *ReadStateGateway) Unsubscribe(ctx context.Context, userID, feedLinkID u
 		return fmt.Errorf("unsubscribe user %s from feed link %s: %w", userID, feedLinkID, err)
 	}
 	return nil
+}
+
+func (g *ReadStateGateway) SetSubscriptionDailyCap(ctx context.Context, userID, feedLinkID uuid.UUID, dailyCap *int) error {
+	// Passes domain.ErrFeedNotFound through unwrapped so the handler answers NotFound.
+	return g.db.SetSubscriptionDailyCap(ctx, userID, feedLinkID, dailyCap)
 }
 
 // AddFavorite and RemoveFavorite pass the driver's pgx.ErrNoRows through

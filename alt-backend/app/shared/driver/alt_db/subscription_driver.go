@@ -16,7 +16,8 @@ func (r *SubscriptionRepository) FetchSubscriptions(ctx context.Context, userID 
 	query := `
 		SELECT fl.id, fl.url,
 		       COALESCE(ufs.feed_link_id IS NOT NULL, FALSE) AS is_subscribed,
-		       COALESCE(ufs.created_at, NOW()) AS created_at
+		       COALESCE(ufs.created_at, NOW()) AS created_at,
+		       ufs.daily_cap
 		FROM feed_links fl
 		LEFT JOIN user_feed_subscriptions ufs
 		    ON ufs.feed_link_id = fl.id AND ufs.user_id = $1
@@ -33,7 +34,7 @@ func (r *SubscriptionRepository) FetchSubscriptions(ctx context.Context, userID 
 	for rows.Next() {
 		var s domain.FeedSource
 		var createdAt time.Time
-		if err := rows.Scan(&s.ID, &s.URL, &s.IsSubscribed, &createdAt); err != nil {
+		if err := rows.Scan(&s.ID, &s.URL, &s.IsSubscribed, &createdAt, &s.DailyCap); err != nil {
 			return nil, fmt.Errorf("scan subscription: %w", err)
 		}
 		s.CreatedAt = createdAt
@@ -82,6 +83,27 @@ func (r *SubscriptionRepository) DeleteSubscription(ctx context.Context, userID 
 	_, err := r.pool.Exec(ctx, deleteSubscriptionQuery, userID, feedLinkID)
 	if err != nil {
 		return fmt.Errorf("delete subscription: %w", err)
+	}
+	return nil
+}
+
+// SetSubscriptionDailyCap updates or clears the daily unread cap on an existing
+// user subscription, returning domain.ErrFeedNotFound if the user is not subscribed.
+func (r *SubscriptionRepository) SetSubscriptionDailyCap(ctx context.Context, userID uuid.UUID, feedLinkID uuid.UUID, dailyCap *int) error {
+	if dailyCap != nil && *dailyCap <= 0 {
+		return fmt.Errorf("invalid daily_cap %d: must be positive", *dailyCap)
+	}
+	const query = `
+		UPDATE user_feed_subscriptions
+		SET daily_cap = $3
+		WHERE user_id = $1 AND feed_link_id = $2
+	`
+	tag, err := r.pool.Exec(ctx, query, userID, feedLinkID, dailyCap)
+	if err != nil {
+		return fmt.Errorf("set subscription daily cap: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrFeedNotFound
 	}
 	return nil
 }

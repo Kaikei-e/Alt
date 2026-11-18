@@ -9,4 +9,5 @@ type FeedSource struct {
 	Title        string
 	IsSubscribed bool
 	CreatedAt    time.Time
+	DailyCap     *int
 }

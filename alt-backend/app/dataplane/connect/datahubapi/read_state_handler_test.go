@@ -96,6 +96,11 @@ func (f *fakeReadStatePort) Unsubscribe(_ context.Context, userID, feedLinkID uu
 	f.gotUserID, f.gotFeedLinkID = userID, feedLinkID
 	return f.err
 }
+func (f *fakeReadStatePort) SetSubscriptionDailyCap(_ context.Context, userID, feedLinkID uuid.UUID, _ *int) error {
+	f.calls++
+	f.gotUserID, f.gotFeedLinkID = userID, feedLinkID
+	return f.err
+}
 
 func (f *fakeReadStatePort) AddFavorite(_ context.Context, feedURL string, userID uuid.UUID) error {
 	f.calls++

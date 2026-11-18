@@ -723,3 +723,110 @@ func TestBFFProxyGetReadTodayQueue(t *testing.T) {
 		})
 	require.NoError(t, err)
 }
+
+func TestBFFProxySetSubscriptionDailyCap(t *testing.T) {
+	mockProvider := newBackendPact(t)
+
+	err := mockProvider.
+		AddInteraction().
+		Given("feed subscription exists for user").
+		UponReceiving("a SetSubscriptionDailyCap unary Connect-RPC request proxied by BFF").
+		WithCompleteRequest(consumer.Request{
+			Method: "POST",
+			Path:   matchers.String("/alt.feeds.v2.FeedService/SetSubscriptionDailyCap"),
+			Headers: matchers.MapMatcher{
+				"Content-Type":        matchers.String("application/json"),
+				"X-Alt-Backend-Token": matchers.Regex(jwtHeaderExample, jwtHeaderPattern),
+			},
+			Body: matchers.MapMatcher{
+				"feedLinkId": matchers.Regex("11111111-1111-4111-8111-111111111111", uuidStringPattern),
+				"dailyCap":   matchers.Integer(5),
+			},
+		}).
+		WithCompleteResponse(consumer.Response{
+			Status: 200,
+			Headers: matchers.MapMatcher{
+				"Content-Type": matchers.String("application/json"),
+			},
+			Body: matchers.MapMatcher{
+				"message":  matchers.Like("Daily cap updated"),
+				"dailyCap": matchers.Integer(5),
+			},
+		}).
+		ExecuteTest(t, func(config consumer.MockServerConfig) error {
+			backendURL := fmt.Sprintf("http://%s:%d", config.Host, config.Port)
+			handler := createBFFHandler(backendURL)
+
+			req := httptest.NewRequest(
+				http.MethodPost,
+				"/alt.feeds.v2.FeedService/SetSubscriptionDailyCap",
+				strings.NewReader(`{"feedLinkId":"11111111-1111-4111-8111-111111111111","dailyCap":5}`),
+			)
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("X-Alt-Backend-Token", createTestToken(t, "user"))
+
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, req)
+
+			assert.Equal(t, http.StatusOK, recorder.Code)
+			assert.Contains(t, recorder.Body.String(), "dailyCap")
+			return nil
+		})
+	require.NoError(t, err)
+}
+
+func TestBFFProxyGetFeedInflowStats(t *testing.T) {
+	mockProvider := newBackendPact(t)
+
+	err := mockProvider.
+		AddInteraction().
+		Given("feed inflow stats are available for user").
+		UponReceiving("a GetFeedInflowStats unary Connect-RPC request proxied by BFF").
+		WithCompleteRequest(consumer.Request{
+			Method: "POST",
+			Path:   matchers.String("/alt.feeds.v2.FeedService/GetFeedInflowStats"),
+			Headers: matchers.MapMatcher{
+				"Content-Type":        matchers.String("application/json"),
+				"X-Alt-Backend-Token": matchers.Regex(jwtHeaderExample, jwtHeaderPattern),
+			},
+			Body: matchers.MapMatcher{},
+		}).
+		WithCompleteResponse(consumer.Response{
+			Status: 200,
+			Headers: matchers.MapMatcher{
+				"Content-Type": matchers.String("application/json"),
+			},
+			Body: matchers.MapMatcher{
+				"windowDays": matchers.Integer(30),
+				"stats": matchers.EachLike(map[string]interface{}{
+					"feedLinkId":        matchers.Regex("11111111-1111-4111-8111-111111111111", uuidStringPattern),
+					"url":               matchers.Like("https://example.com/feed.xml"),
+					"dailyCap":          matchers.Integer(5),
+					"inflowCount":       matchers.Like("120"),
+					"readCount":         matchers.Like("18"),
+					"openedCountLegacy": matchers.Like("4"),
+					"readRate":          matchers.Like(0.15),
+				}, 1),
+			},
+		}).
+		ExecuteTest(t, func(config consumer.MockServerConfig) error {
+			backendURL := fmt.Sprintf("http://%s:%d", config.Host, config.Port)
+			handler := createBFFHandler(backendURL)
+
+			req := httptest.NewRequest(
+				http.MethodPost,
+				"/alt.feeds.v2.FeedService/GetFeedInflowStats",
+				strings.NewReader(`{}`),
+			)
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("X-Alt-Backend-Token", createTestToken(t, "user"))
+
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, req)
+
+			assert.Equal(t, http.StatusOK, recorder.Code)
+			assert.Contains(t, recorder.Body.String(), "inflowCount")
+			return nil
+		})
+	require.NoError(t, err)
+}

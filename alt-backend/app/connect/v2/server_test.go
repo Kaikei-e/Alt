@@ -20,10 +20,12 @@ import (
 	"alt/di"
 	"alt/domain"
 	"alt/gen/proto/services/datahub/v1/datahubv1connect"
+	"alt/orchestrator/usecase/feed_inflow_stats_usecase"
 	"alt/orchestrator/usecase/reading_queue_usecase"
 	"alt/orchestrator/usecase/record_reading_events_usecase"
 	"alt/orchestrator/usecase/resolve_article_usecase"
 	"alt/orchestrator/usecase/search_feed_usecase"
+	"alt/orchestrator/usecase/subscription_usecase"
 	"alt/shared/gateway/datahub_gateway"
 )
 
@@ -57,6 +59,8 @@ var operatorServicePaths = []string{
 // interceptor.
 var publicServicePaths = []string{
 	"/alt.feeds.v2.FeedService/GetFeedStats",
+	"/alt.feeds.v2.FeedService/SetSubscriptionDailyCap",
+	"/alt.feeds.v2.FeedService/GetFeedInflowStats",
 	"/alt.articles.v2.ArticleService/FetchArticleContent",
 	"/alt.rss.v2.RSSService/ListRSSFeedLinks",
 	"/alt.augur.v2.AugurService/RetrieveContext",
@@ -108,6 +112,29 @@ func (fakeReadingTestPorts) GetOgImageURLsByArticleIDs(context.Context, []string
 	return nil, nil
 }
 
+type fakeSubscriptionTestPort struct{}
+
+func (fakeSubscriptionTestPort) ListSubscriptions(context.Context, uuid.UUID) ([]*domain.FeedSource, error) {
+	return nil, nil
+}
+func (fakeSubscriptionTestPort) Subscribe(context.Context, uuid.UUID, uuid.UUID) error   { return nil }
+func (fakeSubscriptionTestPort) Unsubscribe(context.Context, uuid.UUID, uuid.UUID) error { return nil }
+func (fakeSubscriptionTestPort) SetSubscriptionDailyCap(context.Context, uuid.UUID, uuid.UUID, *int) error {
+	return nil
+}
+
+type fakeFeedInflowTestPorts struct{}
+
+func (fakeFeedInflowTestPorts) GetFeedInflowByUser(context.Context, uuid.UUID, time.Time, time.Time) ([]domain.FeedInflow, error) {
+	return nil, nil
+}
+func (fakeFeedInflowTestPorts) BatchGetFeedLinkIDsByArticleIDs(context.Context, uuid.UUID, []uuid.UUID) (map[uuid.UUID]uuid.UUID, error) {
+	return nil, nil
+}
+func (fakeFeedInflowTestPorts) ListReadingSourcesInWindow(context.Context, uuid.UUID, time.Time, time.Time) ([]domain.ReadingSourceEntry, error) {
+	return nil, nil
+}
+
 func testDeps() (*di.ApplicationComponents, *config.Config, *slog.Logger) {
 	pushGateway := datahub_gateway.NewPushSubscriptionGateway(
 		datahubv1connect.NewDataHubServiceClient(http.DefaultClient, "http://datahub.invalid"))
@@ -134,16 +161,20 @@ func testDeps() (*di.ApplicationComponents, *config.Config, *slog.Logger) {
 	queueUsecase := reading_queue_usecase.NewQueueArticleUsecase(readingPorts, readingPorts, readingPorts, readingPorts, readingPorts, 7, 48, fixedNow)
 	unqueueUsecase := reading_queue_usecase.NewUnqueueArticleUsecase(readingPorts, fixedNow)
 	getQueueUsecase := reading_queue_usecase.NewGetReadTodayQueueUsecase(readingPorts, readingPorts, readingPorts, readingPorts, 7, fixedNow)
+	setCapUsecase := subscription_usecase.NewSetSubscriptionDailyCapUsecase(fakeSubscriptionTestPort{})
+	inflowUsecase := feed_inflow_stats_usecase.NewFeedInflowStatsUsecase(fakeFeedInflowTestPorts{}, fakeFeedInflowTestPorts{})
 
 	return &di.ApplicationComponents{
-			Infra:                      &di.InfraModule{PushSubscriptionGateway: pushGateway},
-			ResolveArticleUsecase:      resolve_article_usecase.New(nil, nil), // satisfies the feeds handler fail-loud wiring check
-			RecordReadingEventsUsecase: readingUsecase,
-			QueueArticleUsecase:        queueUsecase,
-			UnqueueArticleUsecase:      unqueueUsecase,
-			GetReadTodayQueueUsecase:   getQueueUsecase,
-			Search:                     &di.SearchModule{},
-			UserQuotaLimiter:           limiter,
+			Infra:                          &di.InfraModule{PushSubscriptionGateway: pushGateway},
+			ResolveArticleUsecase:          resolve_article_usecase.New(nil, nil), // satisfies the feeds handler fail-loud wiring check
+			RecordReadingEventsUsecase:     readingUsecase,
+			QueueArticleUsecase:            queueUsecase,
+			UnqueueArticleUsecase:          unqueueUsecase,
+			GetReadTodayQueueUsecase:       getQueueUsecase,
+			SetSubscriptionDailyCapUsecase: setCapUsecase,
+			FeedInflowStatsUsecase:         inflowUsecase,
+			Search:                         &di.SearchModule{},
+			UserQuotaLimiter:               limiter,
 		},
 		cfg,
 		slog.New(slog.NewTextHandler(io_Discard{}, nil))
@@ -452,4 +483,28 @@ func TestCreateOperatorConnectServer_RejectsOversizedRequestMessage(t *testing.T
 	if !strings.Contains(rec.Body.String(), "resource_exhausted") {
 		t.Fatalf("expected resource_exhausted from operator Connect server, got status=%d body=%q", rec.Code, rec.Body.String())
 	}
+}
+
+func TestSetupConnectHandlers_PanicsWhenFeedInflowOrDailyCapUnwired(t *testing.T) {
+	t.Run("panics when SetSubscriptionDailyCapUsecase is nil", func(t *testing.T) {
+		container, cfg, logger := testDeps()
+		container.SetSubscriptionDailyCapUsecase = nil
+		defer func() {
+			if r := recover(); r == nil {
+				t.Fatal("expected panic when SetSubscriptionDailyCapUsecase is nil")
+			}
+		}()
+		SetupConnectHandlers(http.NewServeMux(), container, cfg, logger)
+	})
+
+	t.Run("panics when FeedInflowStatsUsecase is nil", func(t *testing.T) {
+		container, cfg, logger := testDeps()
+		container.FeedInflowStatsUsecase = nil
+		defer func() {
+			if r := recover(); r == nil {
+				t.Fatal("expected panic when FeedInflowStatsUsecase is nil")
+			}
+		}()
+		SetupConnectHandlers(http.NewServeMux(), container, cfg, logger)
+	})
 }

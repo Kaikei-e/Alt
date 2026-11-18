@@ -11,6 +11,7 @@ import (
 	"alt/gen/proto/alt/feeds/v2/feedsv2connect"
 	"alt/orchestrator/driver/preprocessor_connect"
 	"alt/orchestrator/usecase/cached_feed_list_usecase"
+	"alt/orchestrator/usecase/feed_inflow_stats_usecase"
 	"alt/orchestrator/usecase/fetch_feed_stats_usecase"
 	"alt/orchestrator/usecase/fetch_feed_usecase"
 	"alt/orchestrator/usecase/image_proxy_usecase"
@@ -31,15 +32,17 @@ type FeedHandlerDeps struct {
 	FeedSearch               *search_feed_usecase.SearchFeedMeilisearchUsecase
 	ListSubscriptions        *subscription_usecase.ListSubscriptionsUsecase
 	// Feed write
-	ArticlesReadingStatus *reading_status.ArticlesReadingStatusUsecase
-	Subscribe             *subscription_usecase.SubscribeUsecase
-	Unsubscribe           *subscription_usecase.UnsubscribeUsecase
+	ArticlesReadingStatus   *reading_status.ArticlesReadingStatusUsecase
+	Subscribe               *subscription_usecase.SubscribeUsecase
+	Unsubscribe             *subscription_usecase.UnsubscribeUsecase
+	SetSubscriptionDailyCap *subscription_usecase.SetSubscriptionDailyCapUsecase
 	// Feed stats
 	FeedAmount        *fetch_feed_stats_usecase.FeedsCountUsecase
 	UnsummarizedCount *fetch_feed_stats_usecase.UnsummarizedArticlesCountUsecase
 	SummarizedCount   *fetch_feed_stats_usecase.SummarizedArticlesCountUsecase
 	TotalCount        *fetch_feed_stats_usecase.TotalArticlesCountUsecase
 	TodayUnreadCount  *fetch_feed_stats_usecase.TodayUnreadArticlesCountUsecase
+	FeedInflowStats   *feed_inflow_stats_usecase.FeedInflowStatsUsecase
 	// Feed summary.
 	//
 	// ArticleStore is the article half (catalog §2.B / §2.C), served by

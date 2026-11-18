@@ -18,6 +18,7 @@ import (
 	"alt/orchestrator/usecase/csrf_token_usecase"
 	dashboard_usecase "alt/orchestrator/usecase/dashboard"
 	"alt/orchestrator/usecase/emit_trail_outcome_usecase"
+	"alt/orchestrator/usecase/feed_inflow_stats_usecase"
 	"alt/orchestrator/usecase/feed_link_usecase"
 	"alt/orchestrator/usecase/fetch_article_summaries_usecase"
 	"alt/orchestrator/usecase/fetch_article_summary_usecase"
@@ -160,6 +161,8 @@ type ApplicationComponents struct {
 	ListSubscriptionsUsecase            *subscription_usecase.ListSubscriptionsUsecase
 	SubscribeUsecase                    *subscription_usecase.SubscribeUsecase
 	UnsubscribeUsecase                  *subscription_usecase.UnsubscribeUsecase
+	SetSubscriptionDailyCapUsecase      *subscription_usecase.SetSubscriptionDailyCapUsecase
+	FeedInflowStatsUsecase              *feed_inflow_stats_usecase.FeedInflowStatsUsecase
 
 	DashboardMetricsUsecase    *dashboard_usecase.DashboardMetricsUsecase
 	FetchLatestArticleUsecase  *fetch_latest_article_usecase.FetchLatestArticleUsecase

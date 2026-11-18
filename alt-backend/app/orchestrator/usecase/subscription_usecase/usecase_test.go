@@ -18,9 +18,11 @@ type stubSubscriptionPort struct {
 	listErr        error
 	subscribeErr   error
 	unsubscribeErr error
+	setCapErr      error
 	lastCtx        context.Context
 	lastUserID     uuid.UUID
 	lastFeedLinkID uuid.UUID
+	lastDailyCap   *int
 }
 
 func (s *stubSubscriptionPort) ListSubscriptions(ctx context.Context, userID uuid.UUID) ([]*domain.FeedSource, error) {
@@ -41,6 +43,14 @@ func (s *stubSubscriptionPort) Unsubscribe(ctx context.Context, userID uuid.UUID
 	s.lastUserID = userID
 	s.lastFeedLinkID = feedLinkID
 	return s.unsubscribeErr
+}
+
+func (s *stubSubscriptionPort) SetSubscriptionDailyCap(ctx context.Context, userID uuid.UUID, feedLinkID uuid.UUID, dailyCap *int) error {
+	s.lastCtx = ctx
+	s.lastUserID = userID
+	s.lastFeedLinkID = feedLinkID
+	s.lastDailyCap = dailyCap
+	return s.setCapErr
 }
 
 func contextWithUser(userID uuid.UUID) context.Context {
@@ -153,5 +163,62 @@ func TestUnsubscribeUsecase(t *testing.T) {
 		err := uc.Execute(contextWithUser(userID), userID, feedLinkID)
 
 		require.ErrorIs(t, err, wantErr)
+	})
+}
+
+func TestSetSubscriptionDailyCapUsecase(t *testing.T) {
+	userID := uuid.MustParse("11111111-2222-3333-4444-555555555555")
+	feedLinkID := uuid.MustParse("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+
+	t.Run("sets positive cap for calling user", func(t *testing.T) {
+		port := &stubSubscriptionPort{}
+		uc := NewSetSubscriptionDailyCapUsecase(port)
+		capVal := 5
+
+		err := uc.Execute(contextWithUser(userID), userID, feedLinkID, &capVal)
+		require.NoError(t, err)
+		assert.Equal(t, userID, port.lastUserID)
+		assert.Equal(t, feedLinkID, port.lastFeedLinkID)
+		require.NotNil(t, port.lastDailyCap)
+		assert.Equal(t, 5, *port.lastDailyCap)
+	})
+
+	t.Run("clears cap when nil", func(t *testing.T) {
+		port := &stubSubscriptionPort{}
+		uc := NewSetSubscriptionDailyCapUsecase(port)
+
+		err := uc.Execute(contextWithUser(userID), userID, feedLinkID, nil)
+		require.NoError(t, err)
+		assert.Nil(t, port.lastDailyCap)
+	})
+
+	t.Run("rejects non-positive cap", func(t *testing.T) {
+		port := &stubSubscriptionPort{}
+		uc := NewSetSubscriptionDailyCapUsecase(port)
+		zero := 0
+
+		err := uc.Execute(contextWithUser(userID), userID, feedLinkID, &zero)
+		require.Error(t, err)
+		assert.Equal(t, uuid.Nil, port.lastUserID)
+	})
+
+	t.Run("rejects nil userID", func(t *testing.T) {
+		port := &stubSubscriptionPort{}
+		uc := NewSetSubscriptionDailyCapUsecase(port)
+		capVal := 3
+
+		err := uc.Execute(context.Background(), uuid.Nil, feedLinkID, &capVal)
+		require.Error(t, err)
+	})
+
+	t.Run("rejects mismatched context userID", func(t *testing.T) {
+		port := &stubSubscriptionPort{}
+		uc := NewSetSubscriptionDailyCapUsecase(port)
+		otherUserID := uuid.New()
+		capVal := 3
+
+		err := uc.Execute(contextWithUser(userID), otherUserID, feedLinkID, &capVal)
+		require.Error(t, err)
+		assert.Equal(t, uuid.Nil, port.lastUserID)
 	})
 }

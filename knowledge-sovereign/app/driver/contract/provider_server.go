@@ -152,6 +152,18 @@ func (f *fakeRepo) CountReadingSourcesSince(context.Context, uuid.UUID, time.Tim
 	return 3, nil
 }
 
+func (f *fakeRepo) ListReadingSourcesInWindow(context.Context, uuid.UUID, time.Time, time.Time) ([]sovereign_db.ReadingSource, error) {
+	return []sovereign_db.ReadingSource{
+		{
+			UserID:          uuid.MustParse(fixtureSnapshotID),
+			TenantID:        uuid.MustParse(fixtureSnapshotID),
+			ArticleID:       uuid.MustParse(fixtureSnapshotID),
+			FirstReadAt:     fixtureTime(),
+			ReadRuleVersion: 1,
+		},
+	}, nil
+}
+
 func fixtureBranch() sovereign_db.TrailBranch {
 	return sovereign_db.TrailBranch{
 		BranchKey:     "cluster:u:article:z",

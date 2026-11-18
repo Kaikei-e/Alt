@@ -861,6 +861,118 @@
       }
     },
     {
+      "description": "a ListReadingSourcesInWindow request for the user",
+      "providerStates": [
+        {
+          "name": "a user has reading sources recorded within a 30-day window"
+        }
+      ],
+      "request": {
+        "body": {
+          "from": "2026-10-19T00:00:00Z",
+          "to": "2026-11-18T00:00:00Z",
+          "userId": "22222222-2222-2222-2222-222222222222"
+        },
+        "headers": {
+          "Authorization": "Bearer test-sovereign-event-token",
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.from": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.to": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.userId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Authorization": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^Bearer .+$"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/services.sovereign.v1.KnowledgeSovereignService/ListReadingSourcesInWindow"
+      },
+      "response": {
+        "body": {
+          "entries": [
+            {
+              "articleId": "33333333-3333-3333-3333-333333333333",
+              "firstReadAt": "2026-11-10T08:00:00Z",
+              "readRuleVersion": 1
+            }
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.entries": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.entries[*].articleId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.entries[*].firstReadAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.entries[*].readRuleVersion": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
       "description": "an AppendKnowledgeEvent request for ArticleCreated from the CreateArticle procedure",
       "providerStates": [
         {

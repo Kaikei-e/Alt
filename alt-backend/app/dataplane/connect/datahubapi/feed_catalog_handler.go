@@ -8,6 +8,7 @@ import (
 	"alt/domain"
 	datahubv1 "alt/gen/proto/services/datahub/v1"
 	"alt/shared/driver/alt_db"
+	"alt/utils/safeconv"
 
 	"connectrpc.com/connect"
 	"github.com/google/uuid"
@@ -80,8 +81,17 @@ func (h *Handler) ListFeedsCursor(ctx context.Context, req *connect.Request[data
 		return nil, err
 	}
 
+	var cursorID *uuid.UUID
+	if req.Msg.CursorId != nil && req.Msg.GetCursorId() != "" {
+		parsed, err := uuid.Parse(req.Msg.GetCursorId())
+		if err != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("cursor_id must be a uuid: %w", err))
+		}
+		cursorID = &parsed
+	}
+
 	rows, err := h.feed.ListCursor(ctx, scope, userID,
-		timePtrOrNil(req.Msg.GetCursor()), clampFeedLimit(int(req.Msg.GetLimit())), excludes)
+		timePtrOrNil(req.Msg.GetCursor()), cursorID, clampFeedLimit(int(req.Msg.GetLimit())), excludes)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "ListFeedsCursor failed", "error", err, "scope", req.Msg.GetScope().String())
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to list feeds"))
@@ -372,4 +382,74 @@ func (h *Handler) GetEmptyFeedID(ctx context.Context, req *connect.Request[datah
 	return connect.NewResponse(&datahubv1.GetEmptyFeedIDResponse{
 		FeedId: feedID,
 	}), nil
+}
+
+func (h *Handler) GetFeedInflowByUser(ctx context.Context, req *connect.Request[datahubv1.GetFeedInflowByUserRequest]) (*connect.Response[datahubv1.GetFeedInflowByUserResponse], error) {
+	userID, err := requiredUUID(req.Msg.GetUserId(), "user_id")
+	if err != nil {
+		return nil, err
+	}
+	if req.Msg.GetFrom() == nil || !req.Msg.GetFrom().IsValid() {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("from timestamp is required"))
+	}
+	if req.Msg.GetTo() == nil || !req.Msg.GetTo().IsValid() {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("to timestamp is required"))
+	}
+	from := req.Msg.GetFrom().AsTime()
+	to := req.Msg.GetTo().AsTime()
+	if to.Before(from) {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("to timestamp must not be before from"))
+	}
+
+	inflows, err := h.feed.GetFeedInflowByUser(ctx, userID, from, to)
+	if err != nil {
+		h.logger.ErrorContext(ctx, "GetFeedInflowByUser failed", "error", err, "user_id", userID)
+		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to get feed inflow"))
+	}
+
+	out := make([]*datahubv1.FeedInflowCount, 0, len(inflows))
+	for _, item := range inflows {
+		entry := &datahubv1.FeedInflowCount{
+			FeedLinkId:  item.FeedLinkID.String(),
+			Url:         item.FeedURL,
+			InflowCount: item.InflowCount,
+		}
+		if item.DailyCap != nil {
+			v := safeconv.Int32(*item.DailyCap)
+			entry.DailyCap = &v
+		}
+		out = append(out, entry)
+	}
+	return connect.NewResponse(&datahubv1.GetFeedInflowByUserResponse{Feeds: out}), nil
+}
+
+func (h *Handler) BatchGetFeedLinkIDsByArticleIDs(ctx context.Context, req *connect.Request[datahubv1.BatchGetFeedLinkIDsByArticleIDsRequest]) (*connect.Response[datahubv1.BatchGetFeedLinkIDsByArticleIDsResponse], error) {
+	userID, err := requiredUUID(req.Msg.GetUserId(), "user_id")
+	if err != nil {
+		return nil, err
+	}
+	if len(req.Msg.GetArticleIds()) == 0 {
+		return connect.NewResponse(&datahubv1.BatchGetFeedLinkIDsByArticleIDsResponse{
+			FeedLinkIds: map[string]string{},
+		}), nil
+	}
+	if len(req.Msg.GetArticleIds()) > maxFeedLimit {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("too many article_ids (max %d)", maxFeedLimit))
+	}
+	articleIDs, err := parseUUIDs(req.Msg.GetArticleIds(), "article_ids")
+	if err != nil {
+		return nil, err
+	}
+
+	mapping, err := h.feed.BatchGetFeedLinkIDsByArticleIDs(ctx, userID, articleIDs)
+	if err != nil {
+		h.logger.ErrorContext(ctx, "BatchGetFeedLinkIDsByArticleIDs failed", "error", err, "user_id", userID)
+		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to batch get feed link ids"))
+	}
+
+	out := make(map[string]string, len(mapping))
+	for artID, linkID := range mapping {
+		out[artID.String()] = linkID.String()
+	}
+	return connect.NewResponse(&datahubv1.BatchGetFeedLinkIDsByArticleIDsResponse{FeedLinkIds: out}), nil
 }

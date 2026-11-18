@@ -8,7 +8,9 @@ import (
 
 	"alt/config"
 	connectmiddleware "alt/connect/v2/middleware"
+	"alt/domain"
 	"alt/orchestrator/driver/preprocessor_connect"
+	"alt/orchestrator/usecase/feed_inflow_stats_usecase"
 
 	"github.com/google/uuid"
 )
@@ -75,6 +77,15 @@ func NewBackendComponents(cfg *config.Config) (*ApplicationComponents, error) {
 
 	// 6. Knowledge module (depends on article module)
 	knowledge := newKnowledgeModule(infra, article)
+
+	// Feed inflow stats combines alt-data-hub inflow counts with knowledge-sovereign
+	// reading sources, so it is wired once both modules exist.
+	feedInflowStatsUC := feed_inflow_stats_usecase.NewFeedInflowStatsUsecase(infra.FeedGateway, knowledge.SovereignClient)
+	slog.Info("set_subscription_daily_cap_enabled")
+	slog.Info("feed_inflow_stats_enabled",
+		"sovereign_enabled", knowledge.SovereignClient.Enabled(),
+		"window_days", domain.FeedInflowWindowDays,
+	)
 
 	// Wire two-way read/dismiss/open synchronization between Feeds and Knowledge Home
 	dismissFromFeedFn := func(ctx context.Context, userID, tenantID uuid.UUID, itemKey string) error {
@@ -195,12 +206,14 @@ func NewBackendComponents(cfg *config.Config) (*ApplicationComponents, error) {
 		DashboardMetricsUsecase: recap.DashboardMetricsUsecase,
 
 		// Subscription / OPML / CSRF usecases
-		ListSubscriptionsUsecase: sub.ListSubscriptionsUsecase,
-		SubscribeUsecase:         sub.SubscribeUsecase,
-		UnsubscribeUsecase:       sub.UnsubscribeUsecase,
-		ExportOPMLUsecase:        sub.ExportOPMLUsecase,
-		ImportOPMLUsecase:        sub.ImportOPMLUsecase,
-		CSRFTokenUsecase:         sub.CSRFTokenUsecase,
+		ListSubscriptionsUsecase:       sub.ListSubscriptionsUsecase,
+		SubscribeUsecase:               sub.SubscribeUsecase,
+		UnsubscribeUsecase:             sub.UnsubscribeUsecase,
+		SetSubscriptionDailyCapUsecase: sub.SetSubscriptionDailyCapUsecase,
+		FeedInflowStatsUsecase:         feedInflowStatsUC,
+		ExportOPMLUsecase:              sub.ExportOPMLUsecase,
+		ImportOPMLUsecase:              sub.ImportOPMLUsecase,
+		CSRFTokenUsecase:               sub.CSRFTokenUsecase,
 
 		// Service-to-service Connect-RPC clients
 		PreProcessorConnectClient: preprocConnectClient,

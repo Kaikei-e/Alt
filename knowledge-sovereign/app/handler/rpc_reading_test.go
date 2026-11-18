@@ -93,3 +93,71 @@ func TestCountReadingSourcesSince_ValidAndInvalidRequests(t *testing.T) {
 		assert.Equal(t, int32(5), resp.Msg.Count)
 	})
 }
+
+func TestListReadingSourcesInWindow_ValidAndInvalidRequests(t *testing.T) {
+	userID := uuid.New()
+	artV1 := uuid.New()
+	artLegacy := uuid.New()
+	from := time.Date(2026, 10, 19, 0, 0, 0, 0, time.UTC)
+	to := time.Date(2026, 11, 18, 0, 0, 0, 0, time.UTC)
+	readAtV1 := time.Date(2026, 11, 10, 8, 0, 0, 0, time.UTC)
+	readAtLegacy := time.Date(2026, 11, 1, 8, 0, 0, 0, time.UTC)
+
+	repo := &mockRepo{
+		readingSourcesInWindow: []sovereign_db.ReadingSource{
+			{UserID: userID, ArticleID: artV1, FirstReadAt: readAtV1, ReadRuleVersion: 1},
+			{UserID: userID, ArticleID: artLegacy, FirstReadAt: readAtLegacy, ReadRuleVersion: 0},
+		},
+	}
+	h := NewSovereignHandler(repo)
+
+	t.Run("rejects invalid user_id", func(t *testing.T) {
+		_, err := h.ListReadingSourcesInWindow(context.Background(), connect.NewRequest(&sovereignv1.ListReadingSourcesInWindowRequest{
+			UserId: "bad",
+			From:   timestamppb.New(from),
+			To:     timestamppb.New(to),
+		}))
+		assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+	})
+
+	t.Run("rejects missing from", func(t *testing.T) {
+		_, err := h.ListReadingSourcesInWindow(context.Background(), connect.NewRequest(&sovereignv1.ListReadingSourcesInWindowRequest{
+			UserId: userID.String(),
+			To:     timestamppb.New(to),
+		}))
+		assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+	})
+
+	t.Run("rejects missing to", func(t *testing.T) {
+		_, err := h.ListReadingSourcesInWindow(context.Background(), connect.NewRequest(&sovereignv1.ListReadingSourcesInWindowRequest{
+			UserId: userID.String(),
+			From:   timestamppb.New(from),
+		}))
+		assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+	})
+
+	t.Run("rejects to before from", func(t *testing.T) {
+		_, err := h.ListReadingSourcesInWindow(context.Background(), connect.NewRequest(&sovereignv1.ListReadingSourcesInWindowRequest{
+			UserId: userID.String(),
+			From:   timestamppb.New(to),
+			To:     timestamppb.New(from),
+		}))
+		assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+	})
+
+	t.Run("returns all versions preserving rule version", func(t *testing.T) {
+		resp, err := h.ListReadingSourcesInWindow(context.Background(), connect.NewRequest(&sovereignv1.ListReadingSourcesInWindowRequest{
+			UserId: userID.String(),
+			From:   timestamppb.New(from),
+			To:     timestamppb.New(to),
+		}))
+		require.NoError(t, err)
+		require.Len(t, resp.Msg.Entries, 2)
+		assert.Equal(t, artV1.String(), resp.Msg.Entries[0].ArticleId)
+		assert.Equal(t, readAtV1, resp.Msg.Entries[0].FirstReadAt.AsTime())
+		assert.Equal(t, int32(1), resp.Msg.Entries[0].ReadRuleVersion)
+		assert.Equal(t, artLegacy.String(), resp.Msg.Entries[1].ArticleId)
+		assert.Equal(t, readAtLegacy, resp.Msg.Entries[1].FirstReadAt.AsTime())
+		assert.Equal(t, int32(0), resp.Msg.Entries[1].ReadRuleVersion)
+	})
+}

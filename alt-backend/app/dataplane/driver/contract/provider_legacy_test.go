@@ -168,6 +168,12 @@ func TestVerifyAltButterflyFacadeContract(t *testing.T) {
 				readingStubState.setMode("active")
 				return nil, nil
 			},
+			"feed subscription exists for user": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
+				return nil, nil
+			},
+			"feed inflow stats are available for user": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
+				return nil, nil
+			},
 		},
 	}
 
