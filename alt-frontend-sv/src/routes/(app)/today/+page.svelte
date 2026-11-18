@@ -11,7 +11,16 @@ import { readTodayQueue } from "#lib/reading/read-today-queue.svelte.js";
 import { ReadingSurface } from "#lib/reading/reading-events.js";
 
 let removeError = $state<string | null>(null);
+let queueNotice = $state<string | null>(null);
 let liveMessage = $state("");
+
+$effect(() => {
+	const notice = readTodayQueue.pendingNotice;
+	if (!notice) return;
+	queueNotice = notice;
+	liveMessage = notice;
+	readTodayQueue.clearPendingNotice();
+});
 
 const dateStr = new Date().toLocaleDateString("en-US", {
 	weekday: "long",
@@ -86,6 +95,12 @@ async function handleRemove(item: ReadTodayQueueItem) {
 				{readTodayQueue.items.length} / {readTodayQueue.cap}
 			</span>
 		</div>
+
+		{#if queueNotice}
+			<p class="inline-notice" role="status" data-testid="today-queue-notice">
+				{queueNotice}
+			</p>
+		{/if}
 
 		{#if removeError}
 			<p class="inline-error" role="alert" data-testid="today-remove-error">
@@ -231,6 +246,15 @@ async function handleRemove(item: ReadTodayQueueItem) {
 		font-family: var(--font-mono);
 		font-size: 0.75rem;
 		color: var(--alt-slate);
+	}
+
+	.inline-notice {
+		margin: 0.75rem 0 0;
+		padding: 0.5rem 0.75rem;
+		font-size: 0.85rem;
+		color: var(--alt-charcoal);
+		border-left: 3px solid var(--alt-charcoal);
+		background: var(--surface-2);
 	}
 
 	.inline-error {

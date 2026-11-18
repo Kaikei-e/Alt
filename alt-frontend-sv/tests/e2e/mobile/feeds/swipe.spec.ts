@@ -12,7 +12,7 @@ const SWIPE_FEEDS_RESPONSE = {
 	data: [
 		{
 			id: "feed-1",
-			articleId: "article-1",
+			articleId: "01938e82-7c00-7a7b-9b10-000000000001",
 			title: "AI Trends",
 			description: "Latest AI updates across the ecosystem.",
 			link: "https://example.com/ai-trends",
@@ -22,7 +22,7 @@ const SWIPE_FEEDS_RESPONSE = {
 		},
 		{
 			id: "feed-2",
-			articleId: "article-2",
+			articleId: "01938e82-7c00-7a7b-9b10-000000000002",
 			title: "Systems Engineering",
 			description: "Notes on distributed systems.",
 			link: "https://example.com/systems",
@@ -87,7 +87,7 @@ test.describe("mobile feeds routes - swipe", () => {
 			fulfillJson(route, {
 				url: "https://example.com/ai-trends",
 				content: "<p>Full AI Trends body from swipe.</p>",
-				articleId: "article-1",
+				articleId: "01938e82-7c00-7a7b-9b10-000000000001",
 			}),
 		);
 
@@ -114,7 +114,7 @@ test.describe("mobile feeds routes - swipe", () => {
 		).toBeVisible();
 		await expect
 			.poll(() => new URL(page.url()).pathname)
-			.toBe("/articles/article-123");
+			.toBe("/articles/01938e82-7c00-7a7b-9b10-000000000123");
 		expect(markAsReadCalled).toBe(false);
 
 		await page.goBack();

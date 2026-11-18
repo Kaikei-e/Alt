@@ -90,7 +90,7 @@ export const MOCK_CONNECT_FEEDS: ConnectFeed[] = [
 		// the defect that shipped once already.
 		id: "feed-1",
 		feedId: "feeds-row-1",
-		articleId: "article-1",
+		articleId: "01938e82-7c00-7a7b-9b10-000000000001",
 		title: "AI Trends",
 		description: "Deep dive into the ecosystem.",
 		link: "https://example.com/ai-trends",
@@ -101,7 +101,7 @@ export const MOCK_CONNECT_FEEDS: ConnectFeed[] = [
 	{
 		id: "feed-2",
 		feedId: "feeds-row-2",
-		articleId: "article-2",
+		articleId: "01938e82-7c00-7a7b-9b10-000000000002",
 		title: "Svelte 5 Tips",
 		description: "Runes-first patterns for fast interfaces.",
 		link: "https://example.com/svelte-5",
@@ -146,7 +146,7 @@ export const CONNECT_UNREAD_COUNT = { count: 42 };
 export const CONNECT_ARTICLE_CONTENT: ConnectArticleContent = {
 	url: "https://example.com/ai-trends",
 	content: "<p>This is a mocked article content for E2E testing.</p>",
-	articleId: "article-123",
+	articleId: "01938e82-7c00-7a7b-9b10-000000000123",
 };
 
 // =============================================================================

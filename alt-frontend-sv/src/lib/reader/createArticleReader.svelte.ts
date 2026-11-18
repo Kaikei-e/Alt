@@ -2,7 +2,10 @@ import {
 	getArticleSourceURLClient,
 	getFeedContentOnTheFlyClient,
 } from "#lib/api/client/articles.js";
-import { QueueArticleOutcome } from "#lib/connect/reading.js";
+import {
+	isQueueSuccessOutcome,
+	QueueArticleOutcome,
+} from "#lib/connect/reading.js";
 import { useArticleEndBranches } from "#lib/hooks/useArticleEndBranches.svelte.js";
 import { useSummarize } from "#lib/hooks/useSummarize.svelte.js";
 import { createSummarySpeech } from "#lib/hooks/useSummarySpeech.svelte.js";
@@ -15,6 +18,7 @@ import {
 	recordArticleOpened,
 } from "#lib/reading/instrumentation.js";
 import { readTodayQueue } from "#lib/reading/read-today-queue.svelte.js";
+import { isUuid } from "#lib/reading/reading-events.js";
 import {
 	type ArticleContentPhase,
 	CONTENT_PENDING_LABEL,
@@ -76,6 +80,13 @@ export function createArticleReader(options: CreateArticleReaderOptions) {
 
 	const effectiveArticleId = $derived(
 		suppliedArticleId || fetchedArticleId || null,
+	);
+	const readingEventArticleId = $derived(
+		isUuid(suppliedArticleId)
+			? suppliedArticleId
+			: isUuid(fetchedArticleId)
+				? fetchedArticleId
+				: null,
 	);
 	const isQueued = $derived(
 		readTodayQueue.isQueued(effectiveArticleId) ||
@@ -421,6 +432,10 @@ export function createArticleReader(options: CreateArticleReaderOptions) {
 			if (currentlyQueued) {
 				await readTodayQueue.unqueue(id);
 			} else {
+				if (readTodayQueue.remainingSlots <= 0) {
+					queueError = `Read today is full (${readTodayQueue.cap}). Read or remove one first.`;
+					return;
+				}
 				const result = await readTodayQueue.queue({
 					articleId: id,
 					surface: options.getSurface(),
@@ -431,6 +446,8 @@ export function createArticleReader(options: CreateArticleReaderOptions) {
 				if (result.outcome === QueueArticleOutcome.QUEUE_FULL) {
 					const cap = result.cap > 0 ? result.cap : readTodayQueue.cap;
 					queueError = `Read today is full (${cap}). Read or remove one first.`;
+				} else if (!isQueueSuccessOutcome(result.outcome)) {
+					queueError = "Could not add to Read today.";
 				}
 			}
 		} catch {
@@ -451,9 +468,9 @@ export function createArticleReader(options: CreateArticleReaderOptions) {
 		}
 	});
 
-	// Send reading.opened.v1 once per reader article session when articleId is known
+	// Send reading.opened.v1 once per reader article session when a valid article UUID is known
 	$effect(() => {
-		const id = effectiveArticleId;
+		const id = readingEventArticleId;
 		if (!id || openedEmittedFor === id) return;
 		openedEmittedFor = id;
 		recordArticleOpened(
@@ -499,7 +516,7 @@ export function createArticleReader(options: CreateArticleReaderOptions) {
 	$effect(() => {
 		if (
 			!hasLoadedArticleBody ||
-			!effectiveArticleId ||
+			!readingEventArticleId ||
 			!articleBodyEl ||
 			!endSentinelEl
 		) {
@@ -513,7 +530,7 @@ export function createArticleReader(options: CreateArticleReaderOptions) {
 
 		const cleanup = usesContainer
 			? attachElementReadingSession({
-					articleId: effectiveArticleId,
+					articleId: readingEventArticleId,
 					surface: options.getSurface(),
 					bodyElement: articleBodyEl,
 					scrollContainer,
@@ -521,7 +538,7 @@ export function createArticleReader(options: CreateArticleReaderOptions) {
 					onReadArticleIds: options.getOnArticlesRead?.(),
 				})
 			: attachWindowReadingSession({
-					articleId: effectiveArticleId,
+					articleId: readingEventArticleId,
 					surface: options.getSurface(),
 					bodyElement: articleBodyEl,
 					endSentinel: endSentinelEl,

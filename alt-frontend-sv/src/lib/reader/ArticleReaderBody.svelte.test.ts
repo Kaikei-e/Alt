@@ -94,6 +94,7 @@ describe("ArticleReaderBody + createArticleReader", () => {
 	});
 
 	it("renders fetched content, retries unstamped ResourceExhausted once, and ends reading session on unmount", async () => {
+		const artId = "01938e82-7c00-7a7b-9b10-000000000105";
 		mockGetFeedContent
 			.mockRejectedValueOnce(
 				new ConnectError("Rate limited", Code.ResourceExhausted, {
@@ -102,13 +103,13 @@ describe("ArticleReaderBody + createArticleReader", () => {
 			)
 			.mockResolvedValueOnce({
 				content: "<p>Unified reader body.</p>",
-				article_id: "art-1",
+				article_id: artId,
 			});
 
 		let reader!: ReturnType<typeof createArticleReader>;
 		const cleanup = $effect.root(() => {
 			reader = createArticleReader({
-				getArticleId: () => "art-1",
+				getArticleId: () => artId,
 				getUrl: () => "https://example.com/unified",
 				getTitle: () => "Unified Title",
 				getSurface: () => ReadingSurface.ARTICLE_PAGE,

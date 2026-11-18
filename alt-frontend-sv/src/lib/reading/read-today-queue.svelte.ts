@@ -1,14 +1,14 @@
 import {
 	type GetReadTodayQueueResult,
+	getReadingTransport,
 	getReadTodayQueue,
-	QueueArticleOutcome,
+	isQueueSuccessOutcome,
 	type QueueArticleResult,
 	queueArticle,
 	type ReadingSurface,
 	type ReadTodayQueueItem,
 	unqueueArticle,
 } from "#lib/connect/reading.js";
-import { createClientTransport } from "#lib/connect/transport-client.js";
 import { normalizeUrl } from "#lib/utils/feed.js";
 
 const DEFAULT_QUEUE_CAP = 7;
@@ -25,6 +25,7 @@ export interface QueueItemInput {
 	url?: string | null;
 	sourceName?: string | null;
 	imageUrl?: string | null;
+	keepalive?: boolean;
 }
 
 export interface ReadTodayQueueStoreDeps {
@@ -91,18 +92,18 @@ export function createReadTodayQueueStore(deps: ReadTodayQueueStoreDeps = {}) {
 	const fetchQueue =
 		deps.getQueue ??
 		((readSince: Date) =>
-			getReadTodayQueue(createClientTransport(), readSince));
+			getReadTodayQueue(getReadingTransport(false), readSince));
 	const sendQueue =
 		deps.queueItem ??
 		((input: QueueItemInput) =>
-			queueArticle(createClientTransport(), {
+			queueArticle(getReadingTransport(input.keepalive), {
 				articleId: input.articleId,
 				surface: input.surface,
 			}));
 	const sendUnqueue =
 		deps.unqueueItem ??
 		((articleId: string) =>
-			unqueueArticle(createClientTransport(), { articleId }));
+			unqueueArticle(getReadingTransport(false), { articleId }));
 
 	let serverItems = $state<ReadTodayQueueItem[]>([]);
 	let items = $state<ReadTodayQueueItem[]>([]);
@@ -112,6 +113,7 @@ export function createReadTodayQueueStore(deps: ReadTodayQueueStoreDeps = {}) {
 	let isLoading = $state(false);
 	let hasLoaded = $state(false);
 	let error = $state<string | null>(null);
+	let pendingNotice = $state<string | null>(null);
 
 	const localAdds = new Map<string, OverlayAdd>();
 	const localRemoves = new Map<string, number>();
@@ -180,10 +182,7 @@ export function createReadTodayQueueStore(deps: ReadTodayQueueStoreDeps = {}) {
 		}
 		serverItems = result.items;
 
-		if (
-			result.outcome === QueueArticleOutcome.QUEUED ||
-			result.outcome === QueueArticleOutcome.ALREADY_QUEUED
-		) {
+		if (isQueueSuccessOutcome(result.outcome)) {
 			const nowMs = now();
 			localRemoves.delete(articleId);
 			const fromServer = result.items.find((i) => i.articleId === articleId);
@@ -250,6 +249,14 @@ export function createReadTodayQueueStore(deps: ReadTodayQueueStoreDeps = {}) {
 		recompute();
 	}
 
+	function setPendingNotice(message: string | null): void {
+		pendingNotice = message?.trim() || null;
+	}
+
+	function clearPendingNotice(): void {
+		pendingNotice = null;
+	}
+
 	function reset(): void {
 		refreshToken++;
 		serverItems = [];
@@ -260,6 +267,7 @@ export function createReadTodayQueueStore(deps: ReadTodayQueueStoreDeps = {}) {
 		isLoading = false;
 		hasLoaded = false;
 		error = null;
+		pendingNotice = null;
 		localAdds.clear();
 		localRemoves.clear();
 	}
@@ -286,8 +294,13 @@ export function createReadTodayQueueStore(deps: ReadTodayQueueStoreDeps = {}) {
 		get error() {
 			return error;
 		},
+		get pendingNotice() {
+			return pendingNotice;
+		},
 		isQueued,
 		setPendingQueueCount,
+		setPendingNotice,
+		clearPendingNotice,
 		refresh,
 		queue,
 		unqueue,

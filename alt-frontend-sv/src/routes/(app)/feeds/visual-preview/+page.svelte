@@ -221,7 +221,7 @@ function handleFeedGridReady(api: FeedGridApi) {
 	unreadOnly={filters.unreadOnly}
 	sortBy={filters.sortBy}
 	excludedFeedLinkIds={filters.excludedFeedLinkIds}
-	excludeQueued={true}
+	excludeQueued={filters.unreadOnly}
 	onReady={handleFeedGridReady}
 	gridClass={GALLERY_GRID_CLASS}
 	gridTestId="gallery-grid"

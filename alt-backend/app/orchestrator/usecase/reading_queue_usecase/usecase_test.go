@@ -167,16 +167,18 @@ func TestQueueArticleUsecase_OutcomesAndPayload(t *testing.T) {
 		assert.Equal(t, float64(1), payload["queue_policy_version"])
 	})
 
-	t.Run("returns ALREADY_QUEUED without appending when already active", func(t *testing.T) {
+	t.Run("appends reading.queued.v1 and returns ALREADY_QUEUED with current items when already active", func(t *testing.T) {
+		origQueuedAt := now.Add(-time.Hour)
+		origExpiresAt := now.Add(47 * time.Hour)
 		qp := &fakeQueuePort{
 			entries: []domain.ReadingQueueEntry{{
 				ArticleID:          art1,
-				QueuedAt:           now.Add(-time.Hour),
-				ExpiresAt:          now.Add(47 * time.Hour),
+				QueuedAt:           origQueuedAt,
+				ExpiresAt:          origExpiresAt,
 				QueuePolicyVersion: 1,
 			}},
 		}
-		ap := &fakeAppendPort{seq: 1}
+		ap := &fakeAppendPort{seq: 42}
 		lk := &fakeArticleLookupPort{
 			sources: map[string]domain.ArticleSource{
 				art1.String(): {Title: "A", URL: "https://a.test/1"},
@@ -186,11 +188,83 @@ func TestQueueArticleUsecase_OutcomesAndPayload(t *testing.T) {
 		og := &fakeOgImagePort{}
 		uc := NewQueueArticleUsecase(qp, ap, lk, ab, og, 7, 48, fixedNow)
 
-		res, err := uc.Execute(context.Background(), userID, tenantID, art1.String(), "01960000-0000-7000-8000-000000000002", now, domain.ReadingSurfaceSwipe)
+		clientEventID := "01960000-0000-7000-8000-000000000002"
+		res, err := uc.Execute(context.Background(), userID, tenantID, art1.String(), clientEventID, now, domain.ReadingSurfaceSwipe)
 		require.NoError(t, err)
 		assert.Equal(t, domain.QueueArticleOutcomeAlreadyQueued, res.Outcome)
-		assert.Empty(t, ap.events)
+		require.Len(t, ap.events, 1)
+		ev := ap.events[0]
+		assert.Equal(t, domain.EventReadingQueued, ev.EventType)
+		assert.Equal(t, domain.EventReadingQueued+":"+clientEventID, ev.DedupeKey)
+		assert.Equal(t, "article:"+art1.String(), ev.AggregateID)
+
+		var payload map[string]any
+		require.NoError(t, json.Unmarshal(ev.Payload, &payload))
+		assert.Equal(t, clientEventID, payload["client_event_id"])
+		assert.Equal(t, art1.String(), payload["article_id"])
+		assert.Equal(t, "swipe", payload["surface"])
+		assert.Equal(t, now.Format(time.RFC3339), payload["queued_at"])
+		assert.Equal(t, now.Add(48*time.Hour).Format(time.RFC3339), payload["expires_at"])
+		assert.Equal(t, float64(7), payload["cap"])
+		assert.Equal(t, float64(48), payload["ttl_hours"])
+		assert.Equal(t, float64(1), payload["queue_policy_version"])
+
 		require.Len(t, res.Items, 1)
+		assert.Equal(t, art1, res.Items[0].ArticleID)
+		assert.Equal(t, origQueuedAt, res.Items[0].QueuedAt)
+		assert.Equal(t, origExpiresAt, res.Items[0].ExpiresAt)
+	})
+
+	t.Run("does not consult cap when read model already holds article", func(t *testing.T) {
+		qp := &fakeQueuePort{
+			entries: []domain.ReadingQueueEntry{{
+				ArticleID:          art1,
+				QueuedAt:           now.Add(-time.Hour),
+				ExpiresAt:          now.Add(47 * time.Hour),
+				QueuePolicyVersion: 1,
+			}},
+		}
+		ap := &fakeAppendPort{seq: 10}
+		lk := &fakeArticleLookupPort{
+			sources: map[string]domain.ArticleSource{
+				art1.String(): {Title: "A", URL: "https://a.test/1"},
+			},
+		}
+		ab := &fakeArticleBatchPort{articles: []*domain.Article{{ID: art1, Title: "A", URL: "https://a.test/1"}}}
+		og := &fakeOgImagePort{}
+		uc := NewQueueArticleUsecase(qp, ap, lk, ab, og, 1, 48, fixedNow)
+
+		res, err := uc.Execute(context.Background(), userID, tenantID, art1.String(), "01960000-0000-7000-8000-000000000012", now, domain.ReadingSurfaceSwipe)
+		require.NoError(t, err)
+		assert.Equal(t, domain.QueueArticleOutcomeAlreadyQueued, res.Outcome)
+		assert.Equal(t, 1, res.Cap)
+		require.Len(t, ap.events, 1)
+		require.Len(t, res.Items, 1)
+	})
+
+	t.Run("surfaces append failure as error when read model already holds article", func(t *testing.T) {
+		qp := &fakeQueuePort{
+			entries: []domain.ReadingQueueEntry{{
+				ArticleID:          art1,
+				QueuedAt:           now.Add(-time.Hour),
+				ExpiresAt:          now.Add(47 * time.Hour),
+				QueuePolicyVersion: 1,
+			}},
+		}
+		appendErr := errors.New("sovereign unavailable")
+		ap := &fakeAppendPort{err: appendErr}
+		lk := &fakeArticleLookupPort{
+			sources: map[string]domain.ArticleSource{
+				art1.String(): {Title: "A", URL: "https://a.test/1"},
+			},
+		}
+		ab := &fakeArticleBatchPort{articles: []*domain.Article{{ID: art1, Title: "A", URL: "https://a.test/1"}}}
+		og := &fakeOgImagePort{}
+		uc := NewQueueArticleUsecase(qp, ap, lk, ab, og, 7, 48, fixedNow)
+
+		_, err := uc.Execute(context.Background(), userID, tenantID, art1.String(), "01960000-0000-7000-8000-000000000013", now, domain.ReadingSurfaceSwipe)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, appendErr)
 	})
 
 	t.Run("returns QUEUE_FULL without evicting or appending when at cap", func(t *testing.T) {

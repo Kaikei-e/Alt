@@ -55,6 +55,8 @@ ON CONFLICT (user_id, article_id) DO UPDATE SET
 
 // UpsertReadingQueueItem inserts or re-activates a reading queue entry when the
 // folding event's sequence is at least as recent as the last folded sequence.
+// An active, non-expired row (as of the event's queued_at) preserves its
+// original queue window so duplicate adds do not extend the TTL.
 func (r *Repository) UpsertReadingQueueItem(ctx context.Context, item ReadingQueueItem) error {
 	const q = `
 INSERT INTO reading_queue_items (
@@ -62,12 +64,24 @@ INSERT INTO reading_queue_items (
   removed_at, removed_reason, last_event_seq
 ) VALUES ($1, $2, $3, $4, $5, $6, NULL, '', $7)
 ON CONFLICT (user_id, article_id) DO UPDATE SET
-  queued_at            = EXCLUDED.queued_at,
-  expires_at           = EXCLUDED.expires_at,
-  queue_policy_version = EXCLUDED.queue_policy_version,
-  removed_at           = NULL,
-  removed_reason       = '',
-  last_event_seq       = EXCLUDED.last_event_seq
+  queued_at = CASE
+    WHEN reading_queue_items.removed_at IS NULL AND reading_queue_items.expires_at > EXCLUDED.queued_at
+      THEN reading_queue_items.queued_at
+    ELSE EXCLUDED.queued_at
+  END,
+  expires_at = CASE
+    WHEN reading_queue_items.removed_at IS NULL AND reading_queue_items.expires_at > EXCLUDED.queued_at
+      THEN reading_queue_items.expires_at
+    ELSE EXCLUDED.expires_at
+  END,
+  queue_policy_version = CASE
+    WHEN reading_queue_items.removed_at IS NULL AND reading_queue_items.expires_at > EXCLUDED.queued_at
+      THEN reading_queue_items.queue_policy_version
+    ELSE EXCLUDED.queue_policy_version
+  END,
+  removed_at     = NULL,
+  removed_reason = '',
+  last_event_seq = EXCLUDED.last_event_seq
 WHERE reading_queue_items.last_event_seq <= EXCLUDED.last_event_seq`
 	if _, err := r.pool.Exec(ctx, q,
 		item.UserID, item.TenantID, item.ArticleID,

@@ -578,4 +578,283 @@ describe("SwipeFeedScreen", () => {
 			.toBeVisible();
 		expect(updateFeedReadStatusClientMock).not.toHaveBeenCalled();
 	});
+
+	it("ignores Pass/Read today button presses while a swipe exit animation is in flight", async () => {
+		render(SwipeFeedScreen, {
+			props: {
+				initialFeeds: [
+					makeFeed({ id: "feed-1", articleId: "art-1", title: "Card One" }),
+					makeFeed({
+						id: "feed-2",
+						articleId: "art-2",
+						title: "Card Two",
+						link: "https://example.com/dispatch-2",
+						normalizedUrl: "https://example.com/dispatch-2",
+					}),
+					makeFeed({
+						id: "feed-3",
+						articleId: "art-3",
+						title: "Card Three",
+						link: "https://example.com/dispatch-3",
+						normalizedUrl: "https://example.com/dispatch-3",
+					}),
+				],
+				initialNextCursor: null,
+				mode: "visual-preview",
+			},
+		});
+		await settle(200);
+
+		const card = page.getByTestId("visual-preview-card").element();
+		card.dispatchEvent(
+			new CustomEvent("swipe", { detail: { direction: "left" } }),
+		);
+
+		// Immediately click Read today while Card One's swipe exit animation is still running
+		const queueBtn = page
+			.getByTestId("swipe-queue-button")
+			.element() as HTMLButtonElement;
+		queueBtn.click();
+
+		await expect
+			.element(page.getByRole("heading", { name: "Card Two" }))
+			.toBeVisible();
+		await settle(1200);
+		await expect
+			.element(page.getByRole("heading", { name: "Card Two" }))
+			.toBeVisible();
+		await expect
+			.element(page.getByTestId("dispatch-counter"))
+			.toHaveTextContent("№ 1");
+		expect(queueArticle).not.toHaveBeenCalled();
+
+		// Passing Card Two flushes Card One: proves the swipe-left (pass) won, not the ignored Read today button
+		await page.getByTestId("swipe-pass-button").click();
+		await vi.waitFor(() =>
+			expect(updateFeedReadStatusClientMock).toHaveBeenCalledWith(
+				"https://example.com/dispatch-1",
+			),
+		);
+		expect(queueArticle).not.toHaveBeenCalled();
+	});
+
+	it("ignores a delayed swipe onDismiss when the swiped card is no longer active", async () => {
+		const artOneId = "01938e82-7c00-7a7b-9b10-000000000401";
+		const artTwoId = "01938e82-7c00-7a7b-9b10-000000000402";
+		render(SwipeFeedScreen, {
+			props: {
+				initialFeeds: [
+					makeFeed({ id: "feed-1", articleId: artOneId, title: "Card One" }),
+					makeFeed({
+						id: "feed-2",
+						articleId: artTwoId,
+						title: "Card Two",
+						link: "https://example.com/dispatch-2",
+						normalizedUrl: "https://example.com/dispatch-2",
+					}),
+				],
+				initialNextCursor: null,
+				mode: "visual-preview",
+			},
+		});
+		await settle(200);
+
+		const card = page.getByTestId("visual-preview-card").element();
+		card.dispatchEvent(
+			new CustomEvent("swipe", { detail: { direction: "left" } }),
+		);
+
+		// Card One disappears from the remaining deck mid-animation (e.g. queued elsewhere), making Card Two active
+		vi.mocked(queueArticle).mockResolvedValueOnce({
+			outcome: QueueArticleOutcome.QUEUED,
+			items: [
+				{
+					articleId: artOneId,
+					title: "Card One",
+					url: "https://example.com/dispatch-1",
+					sourceName: "Alice",
+					imageUrl: "",
+					queuedAt: new Date(),
+					expiresAt: new Date(Date.now() + 3600_000),
+				},
+			],
+			cap: 7,
+		});
+		await readTodayQueue.queue({
+			articleId: artOneId,
+			surface: 2,
+		});
+
+		await settle(500);
+		// Card Two must still be active and dispatch counter must remain 0
+		await expect
+			.element(page.getByRole("heading", { name: "Card Two" }))
+			.toBeVisible();
+		await expect
+			.element(page.getByTestId("dispatch-counter"))
+			.toHaveTextContent("№ 0");
+	});
+
+	it("resolves missing articleId immediately when a right swipe is accepted before commit time", async () => {
+		getFeedContentOnTheFlyClientMock.mockResolvedValueOnce({
+			content: "<p>Resolved early</p>",
+			article_id: "01938e82-7c00-7a7b-9b10-000000000701",
+			og_image_url: "",
+			og_image_proxy_url: "",
+		});
+
+		render(SwipeFeedScreen, {
+			props: {
+				initialFeeds: [
+					makeFeed({
+						id: "feed-no-id",
+						articleId: undefined,
+						title: "Resolve Early",
+						link: "https://example.com/resolve-early",
+						normalizedUrl: "https://example.com/resolve-early",
+					}),
+					makeFeed({
+						id: "feed-2",
+						articleId: "01938e82-7c00-7a7b-9b10-000000000702",
+						title: "Second Card",
+						link: "https://example.com/second",
+						normalizedUrl: "https://example.com/second",
+					}),
+				],
+				initialNextCursor: null,
+				mode: "visual-preview",
+			},
+		});
+		await settle(200);
+
+		await page.getByTestId("swipe-queue-button").click();
+
+		// Article ID resolution starts immediately upon acceptance, before the next card is dismissed
+		await vi.waitFor(() =>
+			expect(getFeedContentOnTheFlyClientMock).toHaveBeenCalledTimes(1),
+		);
+		expect(queueArticle).not.toHaveBeenCalled();
+
+		await page.getByTestId("swipe-pass-button").click();
+		await vi.waitFor(() => expect(queueArticle).toHaveBeenCalledTimes(1));
+		expect(queueArticle).toHaveBeenCalledWith(expect.anything(), {
+			articleId: "01938e82-7c00-7a7b-9b10-000000000701",
+			surface: 2,
+		});
+		expect(getFeedContentOnTheFlyClientMock).toHaveBeenCalledTimes(1);
+	});
+
+	it("commits pending pass and queue on visibilitychange hidden with keepalive", async () => {
+		const visibilitySpy = vi
+			.spyOn(document, "visibilityState", "get")
+			.mockReturnValue("hidden");
+		try {
+			render(SwipeFeedScreen, {
+				props: {
+					initialFeeds: [
+						makeFeed({
+							id: "feed-1",
+							articleId: "01938e82-7c00-7a7b-9b10-000000000711",
+							title: "Card One",
+						}),
+						makeFeed({
+							id: "feed-2",
+							articleId: "01938e82-7c00-7a7b-9b10-000000000712",
+							title: "Card Two",
+							link: "https://example.com/dispatch-2",
+							normalizedUrl: "https://example.com/dispatch-2",
+						}),
+						makeFeed({
+							id: "feed-3",
+							articleId: "01938e82-7c00-7a7b-9b10-000000000713",
+							title: "Card Three",
+							link: "https://example.com/dispatch-3",
+							normalizedUrl: "https://example.com/dispatch-3",
+						}),
+					],
+					initialNextCursor: null,
+					mode: "visual-preview",
+				},
+			});
+			await settle(200);
+
+			// Pending pass flushed on visibilitychange -> hidden with keepalive
+			await page.getByTestId("swipe-pass-button").click();
+			expect(updateFeedReadStatusClientMock).not.toHaveBeenCalled();
+
+			document.dispatchEvent(new Event("visibilitychange"));
+			await vi.waitFor(() =>
+				expect(updateFeedReadStatusClientMock).toHaveBeenCalledWith(
+					"https://example.com/dispatch-1",
+					{ keepalive: true },
+				),
+			);
+
+			// Pending queue flushed on visibilitychange -> hidden
+			await page.getByTestId("swipe-queue-button").click();
+			expect(queueArticle).not.toHaveBeenCalled();
+
+			document.dispatchEvent(new Event("visibilitychange"));
+			await vi.waitFor(() => expect(queueArticle).toHaveBeenCalledTimes(1));
+		} finally {
+			visibilitySpy.mockRestore();
+		}
+	});
+
+	it("treats UNSPECIFIED QueueArticleOutcome as failure and sets pendingNotice when unmounted", async () => {
+		vi.mocked(queueArticle).mockResolvedValueOnce({
+			outcome: QueueArticleOutcome.UNSPECIFIED,
+			items: [],
+			cap: 7,
+		});
+
+		const { unmount } = render(SwipeFeedScreen, {
+			props: {
+				initialFeeds: [
+					makeFeed({
+						id: "feed-1",
+						articleId: "01938e82-7c00-7a7b-9b10-000000000721",
+						title: "Unspecified Card",
+					}),
+					makeFeed({
+						id: "feed-2",
+						articleId: "01938e82-7c00-7a7b-9b10-000000000722",
+						title: "Next Card",
+						link: "https://example.com/dispatch-2",
+						normalizedUrl: "https://example.com/dispatch-2",
+					}),
+					makeFeed({
+						id: "feed-3",
+						articleId: "01938e82-7c00-7a7b-9b10-000000000723",
+						title: "Third Card",
+						link: "https://example.com/dispatch-3",
+						normalizedUrl: "https://example.com/dispatch-3",
+					}),
+				],
+				initialNextCursor: null,
+				mode: "visual-preview",
+			},
+		});
+		await settle(200);
+
+		// First test UNSPECIFIED while mounted -> restores card and shows notice
+		await page.getByTestId("swipe-queue-button").click();
+		await page.getByTestId("swipe-pass-button").click();
+
+		await vi.waitFor(() =>
+			expect(page.getByTestId("swipe-notice")).toBeVisible(),
+		);
+		await expect
+			.element(page.getByRole("heading", { name: "Unspecified Card" }))
+			.toBeVisible();
+
+		// Now queue and unmount immediately before commit rejects -> sets readTodayQueue.pendingNotice
+		vi.mocked(queueArticle).mockRejectedValueOnce(new Error("network down"));
+		await page.getByTestId("swipe-queue-button").click();
+		unmount();
+
+		await vi.waitFor(() =>
+			expect(readTodayQueue.pendingNotice).toContain("Unspecified Card"),
+		);
+	});
 });

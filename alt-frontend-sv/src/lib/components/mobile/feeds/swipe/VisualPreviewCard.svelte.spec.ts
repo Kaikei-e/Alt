@@ -342,5 +342,22 @@ describe("VisualPreviewCard", () => {
 			const card = page.getByTestId("visual-preview-card");
 			await expect.element(card).toHaveAttribute("aria-busy", "true");
 		});
+		it("carries feed.id in onDismiss and reports dismissing state during swipe animation", async () => {
+			const onDismiss = vi.fn().mockResolvedValue(true);
+			const onDismissingChange = vi.fn();
+			render(VisualPreviewCard, {
+				props: { ...defaultProps, onDismiss, onDismissingChange },
+			});
+
+			const card = page.getByTestId("visual-preview-card").element();
+			card.dispatchEvent(
+				new CustomEvent("swipe", { detail: { direction: "left" } }),
+			);
+
+			await vi.waitFor(() => expect(onDismiss).toHaveBeenCalledTimes(1));
+			expect(onDismiss).toHaveBeenCalledWith(-1, mockFeed.id);
+			expect(onDismissingChange).toHaveBeenNthCalledWith(1, true, mockFeed.id);
+			expect(onDismissingChange).toHaveBeenLastCalledWith(false, mockFeed.id);
+		});
 	});
 });

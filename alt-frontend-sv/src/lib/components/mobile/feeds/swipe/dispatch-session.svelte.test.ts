@@ -145,4 +145,22 @@ describe("createDispatchSession", () => {
 		session.dismiss("https://b.example/", "queue");
 		expect(() => session.flush()).not.toThrow();
 	});
+
+	it("forwards keepalive option from flush to onPass and onQueue", () => {
+		const onPass = vi.fn(() => Promise.resolve());
+		const onQueue = vi.fn(() => Promise.resolve());
+		const session = createDispatchSession({ onPass, onQueue });
+
+		session.dismiss("https://a.example/", "queue");
+		session.flush({ keepalive: true });
+		expect(onQueue).toHaveBeenCalledExactlyOnceWith("https://a.example/", {
+			keepalive: true,
+		});
+
+		session.dismiss("https://b.example/", "pass");
+		session.flush({ keepalive: true });
+		expect(onPass).toHaveBeenCalledExactlyOnceWith("https://b.example/", {
+			keepalive: true,
+		});
+	});
 });
