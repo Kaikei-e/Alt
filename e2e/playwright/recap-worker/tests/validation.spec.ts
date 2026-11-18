@@ -42,46 +42,40 @@ import {
  */
 
 test.describe("trigger validation", () => {
-	for (const window of ["7days", "3days"] as const) {
-		test(`POST /v1/generate/recaps/${window} rejects an all-empty genres array @contract`, async ({
-			api,
-		}) => {
-			// The Hurl port. `normalize_genres` trims, lowercases, dedupes and
-			// drops empties (api/generate.rs:87-100); when nothing survives, the
-			// handler answers 400 rather than falling back to the configured
-			// defaults (api/generate.rs:53-58). The fallback is reserved for an
-			// *absent* `genres` key — see the pipeline spec — and conflating the
-			// two would silently run a full pipeline over every configured genre
-			// for a caller who asked for none.
-			//
-			// The 3days case is new: the Hurl suite only exercised 7days, and
-			// both routes funnel into the same `trigger_recap`, so this is the
-			// assertion that they still do.
-			const response = await api.post(`/v1/generate/recaps/${window}`, {
-				data: triggerBody(["", "  "]),
-			});
-			const body = await expectJsonStatus(response, 400, errorSchema);
-			expect(body.error).toBe("genres array must include at least one non-empty value");
-			expectHeaderContains(response, "Content-Type", "application/json");
-		});
-	}
-
-	test("POST /v1/generate/recaps/7days without a JSON content type answers 415 @contract", async ({
+	test("POST /v1/generate/recaps/3days rejects an all-empty genres array @contract", async ({
 		api,
 	}) => {
-		// New coverage, and the cheapest possible proof that the route is
-		// mounted: axum's `Json` extractor rejects on Content-Type before the
-		// handler runs, so this resolves the route without spawning a pipeline
-		// task. A 404 here would mean the `.route("/v1/generate/recaps/7days",
-		// post(generate::trigger_7days))` line (api.rs:31) is gone.
-		const response = await api.post("/v1/generate/recaps/7days", {
+		// `normalize_genres` trims, lowercases, dedupes and drops empties
+		// (api/generate.rs:199-212); when nothing survives, `trigger_recap`
+		// answers 400 rather than falling back to the configured defaults
+		// (api/generate.rs:143-155). The fallback is reserved for an *absent*
+		// `genres` key — see the pipeline spec — and conflating the two would
+		// silently run a full pipeline over every configured genre for a
+		// caller who asked for none.
+		const response = await api.post("/v1/generate/recaps/3days", {
+			data: triggerBody(["", "  "]),
+		});
+		const body = await expectJsonStatus(response, 400, errorSchema);
+		expect(body.error).toBe("genres array must include at least one non-empty value");
+		expectHeaderContains(response, "Content-Type", "application/json");
+	});
+
+	test("POST /v1/generate/recaps/3days without a JSON content type answers 415 @contract", async ({
+		api,
+	}) => {
+		// Cheapest possible proof that the route is mounted: axum's `Json`
+		// extractor rejects on Content-Type before the handler runs, so this
+		// resolves the route without spawning a pipeline task. A 404 here
+		// would mean the `.route("/v1/generate/recaps/3days",
+		// post(generate::trigger_3days))` line (api.rs:28) is gone.
+		const response = await api.post("/v1/generate/recaps/3days", {
 			headers: { "Content-Type": "text/plain" },
 			data: "{}",
 		});
 		await expectRouteMounted(response, [415]);
 	});
 
-	test("POST /v1/generate/recaps/7days rejects malformed JSON with 400 @contract", async ({
+	test("POST /v1/generate/recaps/3days rejects malformed JSON with 400 @contract", async ({
 		api,
 	}) => {
 		// axum's `JsonSyntaxError` branch. Distinct from the 422 below, and the
@@ -96,14 +90,14 @@ test.describe("trigger validation", () => {
 		// expected. axum then answers 422 (JsonDataError) instead of 400
 		// (JsonSyntaxError), and this test could never reach the branch it names.
 		// A Buffer is sent verbatim.
-		const response = await api.post("/v1/generate/recaps/7days", {
+		const response = await api.post("/v1/generate/recaps/3days", {
 			headers: { "Content-Type": "application/json" },
 			data: Buffer.from("{ this is not json", "utf8"),
 		});
 		await expectStatus(response, 400);
 	});
 
-	test("POST /v1/generate/recaps/7days rejects a non-array genres field with 422 @contract", async ({
+	test("POST /v1/generate/recaps/3days rejects a non-array genres field with 422 @contract", async ({
 		api,
 	}) => {
 		// `genres: Option<Vec<String>>` — a number is a well-formed JSON body
@@ -111,18 +105,18 @@ test.describe("trigger validation", () => {
 		// branch. Worth pinning because the natural "make it lenient" refactor
 		// (`Option<Value>` plus a manual coercion) would turn this into a 202
 		// and start a pipeline for a genre list nobody asked for.
-		const response = await api.post("/v1/generate/recaps/7days", {
+		const response = await api.post("/v1/generate/recaps/3days", {
 			data: { genres: 5 },
 		});
 		await expectStatus(response, 422);
 	});
 
-	test("GET /v1/generate/recaps/7days answers 405, not 404 @contract", async ({ api }) => {
+	test("GET /v1/generate/recaps/3days answers 405, not 404 @contract", async ({ api }) => {
 		// The trigger is registered with `post(...)` only. 405 rather than 404
 		// is what proves the *path* exists — which is what makes the 404
 		// assertions in tests/topology.spec.ts mean something, and what would
 		// catch a `get`/`post` swap that no unit test can see.
-		const response = await api.get("/v1/generate/recaps/7days");
+		const response = await api.get("/v1/generate/recaps/3days");
 		await expectStatus(response, 405);
 		expectHeaderContains(response, "Allow", "POST");
 	});
@@ -285,32 +279,6 @@ test.describe("path-parameter validation", () => {
 		);
 		expect(body.error).toBe("Evaluation result not found");
 		expect(body.run_id).toBe(seed.absentId);
-	});
-
-	test("GET /v1/pulse/latest?date={bad} answers 400 naming the format @contract", async ({
-		api,
-	}) => {
-		// api/pulse.rs:117-127.
-		const body = await expectJsonStatus(
-			await api.get("/v1/pulse/latest?date=nope"),
-			400,
-			errorSchema,
-		);
-		expect(body.error).toBe("Invalid date format: nope. Expected YYYY-MM-DD");
-	});
-
-	test("GET /v1/pulse/latest?date={absent} answers 404 naming the date @contract", async ({
-		api,
-	}) => {
-		// The dated miss interpolates the requested date rather than "today"
-		// (api/pulse.rs:146-163) — the branch tests/cold-start.spec.ts cannot
-		// reach, and the one a client hits when a user scrolls back a week.
-		const body = await expectJsonStatus(
-			await api.get("/v1/pulse/latest?date=2020-01-01"),
-			404,
-			errorSchema,
-		);
-		expect(body.error).toBe("No evening pulse found for date 2020-01-01");
 	});
 });
 

@@ -57,7 +57,7 @@ export const healthDegradedSchema = z
 
 /**
  * recap-worker's own error envelope: `struct ErrorResponse { error: String }`,
- * repeated in api/fetch.rs, api/generate.rs, api/admin.rs and api/pulse.rs.
+ * repeated in api/fetch.rs, api/generate.rs and api/admin.rs.
  *
  * `min(1)` because the Hurl suite compared the string exactly and an empty
  * string would satisfy a bare `z.string()`.
@@ -83,7 +83,7 @@ export const evaluationNotFoundSchema = z
 // ---------------------------------------------------------------------------
 
 /**
- * `POST /v1/generate/recaps/{7,3}days` → 202.
+ * `POST /v1/generate/recaps/3days` → 202.
  *
  * `genres` is the *normalized* list (`normalize_genres`: trim, lowercase,
  * dedupe, drop empties) and is never empty — an empty result short-circuits to
@@ -139,7 +139,7 @@ export const recapGenreSchema = z
 	.passthrough();
 
 /**
- * `GET /v1/recaps/{7,3}days` → 200.
+ * `GET /v1/recaps/3days` → 200.
  *
  * Every one of `job_id`, `executed_at`, `window_start`, `window_end` was an
  * `exists` check in the Hurl suite. They are a UUID and three RFC 3339
@@ -266,23 +266,6 @@ export const morningLetterSchema = z
 				through_line: z.string().optional(),
 			})
 			.passthrough(),
-	})
-	.passthrough();
-
-// ---------------------------------------------------------------------------
-// Evening Pulse (api/pulse.rs)
-// ---------------------------------------------------------------------------
-
-export const pulseLatestSchema = z
-	.object({
-		job_id: z.string().min(1),
-		version: z.string().min(1),
-		date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-		generated_at: z.string().min(1),
-		status: z.string().min(1),
-		topics: z.array(z.object({ cluster_id: z.number().int() }).passthrough()),
-		quiet_day: z.unknown().optional(),
-		diagnostics: z.unknown().optional(),
 	})
 	.passthrough();
 

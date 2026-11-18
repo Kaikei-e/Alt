@@ -49,15 +49,15 @@ export default defineApiSuite({
 	 * Three projects, because recap-worker has two kinds of state that naming
 	 * cannot isolate, and they need opposite treatment.
 	 *
-	 * `cold-start` — the empty-database observations. `GET /v1/recaps/7days`
+	 * `cold-start` — the empty-database observations. `GET /v1/recaps/3days`
 	 * answers 404 only while `recap_outputs` holds no completed job for that
-	 * window (api/fetch.rs:407-418), and there is no tenant, prefix or token
+	 * window (api/fetch.rs:541-552), and there is no tenant, prefix or token
 	 * that would let a test carve out its own "empty". It is a genuine global
 	 * singleton observable exactly once per stack, so it gets a single-worker
 	 * project that every other project `dependsOn`. The Hurl suite expressed
 	 * the same constraint as `--jobs 1` over the *whole* suite; this expresses
-	 * it over the four scenarios that actually need it and lets the other
-	 * thirty run in parallel.
+	 * it over only the scenarios that actually need it and lets the rest run
+	 * in parallel.
 	 *
 	 * `pipeline` — the trigger-and-poll drives. `Scheduler::run_job` holds a
 	 * `Semaphore(1)` and *rejects* rather than queues a concurrent run
