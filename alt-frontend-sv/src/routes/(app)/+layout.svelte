@@ -2,6 +2,7 @@
 import { onMount, type Snippet } from "svelte";
 import ResponsiveLayout from "#lib/components/layout/ResponsiveLayout.svelte";
 import { SystemLoader } from "#lib/components/ui/system-loader/index.js";
+import ArticleReaderOverlay from "#lib/reader/ArticleReaderOverlay.svelte";
 import { registerReadingLifecycle } from "#lib/reading/instrumentation.js";
 import { getLoadingStore } from "#lib/stores/loading.svelte.js";
 import { navigating } from "$app/state";
@@ -53,3 +54,5 @@ let showLoader = $derived(
 <ResponsiveLayout>
 	{@render children()}
 </ResponsiveLayout>
+
+<ArticleReaderOverlay />

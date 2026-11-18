@@ -6,9 +6,11 @@ import {
 	fetchArticlesByTag,
 	type TagTrailArticle,
 } from "#lib/connect/index.js";
+import { tagTrailArticleToReaderItem } from "#lib/reader/mappers.js";
+import { openReaderOverlay } from "#lib/reader/reader-overlay.svelte.js";
+import { ReadingSurface } from "#lib/reading/instrumentation.js";
 import { browser } from "$app/env";
 import ArticleCard from "./ArticleCard.svelte";
-import ArticleDetailPanel from "./ArticleDetailPanel.svelte";
 
 interface Props {
 	tagName: string;
@@ -17,7 +19,6 @@ interface Props {
 	error?: string | null;
 	hasMore?: boolean;
 	isLoadingMore?: boolean;
-	selectedArticle?: TagTrailArticle | null;
 	onLoadMore?: () => Promise<void> | void;
 }
 
@@ -28,7 +29,6 @@ let {
 	error: externalError,
 	hasMore: externalHasMore,
 	isLoadingMore: externalIsLoadingMore,
-	selectedArticle = $bindable<TagTrailArticle | null>(null),
 	onLoadMore,
 }: Props = $props();
 
@@ -93,6 +93,14 @@ onMount(async () => {
 	await loadArticles();
 	internalIsLoading = false;
 });
+
+function handleSelectArticle(index: number) {
+	openReaderOverlay({
+		surface: ReadingSurface.OTHER,
+		items: articles.map(tagTrailArticleToReaderItem),
+		currentIndex: index,
+	});
+}
 </script>
 
 <div class="max-w-[90rem] mx-auto px-6 py-8">
@@ -134,11 +142,11 @@ onMount(async () => {
 				class="grid grid-cols-2 lg:grid-cols-3 gap-3"
 				data-testid="article-grid"
 			>
-				{#each articles as article (article.id)}
+				{#each articles as article, i (article.id)}
 					<ArticleCard
 						article={article}
-						selected={selectedArticle?.id === article.id}
-						onclick={() => { selectedArticle = article; }}
+						selected={false}
+						onclick={() => handleSelectArticle(i)}
 					/>
 				{/each}
 			</div>
@@ -159,13 +167,5 @@ onMount(async () => {
 				</div>
 			{/if}
 		</div>
-
-		<!-- Slide-over Detail Panel (overlay) -->
-		{#if selectedArticle}
-			<ArticleDetailPanel
-				article={selectedArticle}
-				onClose={() => { selectedArticle = null; }}
-			/>
-		{/if}
 	{/if}
 </div>

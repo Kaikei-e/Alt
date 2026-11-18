@@ -5,7 +5,6 @@ import {
 	updateFeedReadStatusClient,
 } from "#lib/api/client/feeds.js";
 import DesktopFeedCard from "#lib/components/desktop/feeds/DesktopFeedCard.svelte";
-import FeedDetailModal from "#lib/components/desktop/feeds/FeedDetailModal.svelte";
 import FeedFilters from "#lib/components/desktop/feeds/FeedFilters.svelte";
 import FeedGrid from "#lib/components/desktop/feeds/FeedGrid.svelte";
 import type { FeedGridApi } from "#lib/components/desktop/feeds/feed-grid-types.js";
@@ -15,6 +14,13 @@ import FeedCard from "#lib/components/mobile/FeedCard.svelte";
 import MobileFeedExcludeFilter from "#lib/components/mobile/feeds/MobileFeedExcludeFilter.svelte";
 import type { ConnectFeedSource } from "#lib/connect/feeds.js";
 import { MARK_AS_READ_FAILED_MESSAGE } from "#lib/feeds/mark-as-read-feedback.js";
+import { renderFeedToReaderItem } from "#lib/reader/mappers.js";
+import {
+	closeReaderOverlay,
+	openReaderOverlay,
+	replaceReaderOverlayItems,
+} from "#lib/reader/reader-overlay.svelte.js";
+import type { ReaderArticleItem } from "#lib/reader/types.js";
 import { ReadingSurface } from "#lib/reading/instrumentation.js";
 import type { RenderFeed } from "#lib/schema/feed.js";
 import {
@@ -52,8 +58,6 @@ const connectionRecovery = getContext<ConnectionRecoveryStore | undefined>(
  */
 const arrivedOnPhone = isMobile();
 
-let selectedFeedUrl = $state<string | null>(null);
-let isModalOpen = $state(false);
 let filters = $state({
 	unreadOnly: arrivedOnPhone,
 	sortBy: "date_desc",
@@ -130,38 +134,18 @@ $effect(() => {
 	return unsubscribe;
 });
 
-const selectedFeed = $derived.by(() => {
-	if (!selectedFeedUrl || !feedGridApi) return null;
-	return feedGridApi.getFeedByUrl(selectedFeedUrl);
-});
-
-const currentIndex = $derived.by(() => {
-	if (!selectedFeedUrl || !feedGridApi) return -1;
-	const feeds = feedGridApi.getVisibleFeeds();
-	return feeds.findIndex(
-		(f: RenderFeed) => f.normalizedUrl === selectedFeedUrl,
+function handleSelectFeed(feed: RenderFeed, index: number, _total: number) {
+	const visibleFeeds = feedGridApi?.getVisibleFeeds() ?? [feed];
+	const resolvedIndex = visibleFeeds.findIndex(
+		(f) => f.normalizedUrl === feed.normalizedUrl,
 	);
-});
-
-const totalCount = $derived(feedGridApi?.getVisibleFeeds().length ?? 0);
-const hasPrevious = $derived(currentIndex > 0);
-const hasNext = $derived(currentIndex >= 0 && currentIndex < totalCount - 1);
-
-function handlePrevious() {
-	if (!feedGridApi || currentIndex <= 0) return;
-	const previous = feedGridApi.getVisibleFeeds()[currentIndex - 1];
-	if (previous) selectedFeedUrl = previous.normalizedUrl;
-}
-
-function handleNext() {
-	if (!feedGridApi || currentIndex >= totalCount - 1) return;
-	const next = feedGridApi.getVisibleFeeds()[currentIndex + 1];
-	if (next) selectedFeedUrl = next.normalizedUrl;
-}
-
-function handleSelectFeed(feed: RenderFeed, _index: number, _total: number) {
-	selectedFeedUrl = feed.normalizedUrl;
-	isModalOpen = true;
+	openReaderOverlay({
+		surface: ReadingSurface.OTHER,
+		items: visibleFeeds.map(renderFeedToReaderItem),
+		currentIndex: resolvedIndex >= 0 ? resolvedIndex : index,
+		onMarkAsRead: handleMarkAsReadInOverlay,
+		isMarkingAsRead: () => isMarkingAsRead || isProcessingMarkAsRead,
+	});
 }
 
 function handleFilterChange(newFilters: {
@@ -172,14 +156,13 @@ function handleFilterChange(newFilters: {
 	filters = newFilters;
 }
 
-async function handleMarkAsReadInModal() {
-	const feed = selectedFeed;
-	if (!feed || isMarkingAsRead) return;
+async function handleMarkAsReadInOverlay(item: ReaderArticleItem) {
+	if (!item.url || isMarkingAsRead) return;
 
 	try {
 		isMarkingAsRead = true;
-		await updateFeedReadStatusClient(feed.normalizedUrl);
-		handleMarkAsRead(feed.normalizedUrl);
+		await updateFeedReadStatusClient(item.url);
+		handleMarkAsRead(item.url, true);
 		announce("Feed marked as read", 1000);
 	} catch (error) {
 		console.error("Failed to mark feed as read:", error);
@@ -193,8 +176,8 @@ async function handleMarkAsReadInModal() {
 /**
  * The card's own "Mark as Read".
  *
- * Optimistic, unlike the modal's: a tap on a card in a list has to answer
- * instantly, and there is no open modal whose contents would have to be walked
+ * Optimistic, unlike the overlay's: a tap on a card in a list has to answer
+ * instantly, and there is no open overlay whose contents would have to be walked
  * back. `restoreFeedByUrl` is the undo — before this the phone list rolled back
  * by deleting from its own read-set, and the grid had no equivalent, so the
  * only rollback available would have been a full refresh.
@@ -202,7 +185,7 @@ async function handleMarkAsReadInModal() {
 async function handleMarkAsReadFromCard(feedUrl: string) {
 	if (!feedGridApi) return;
 
-	handleMarkAsRead(feedUrl);
+	handleMarkAsRead(feedUrl, false);
 	announce("Feed marked as read", 1000);
 
 	try {
@@ -215,17 +198,10 @@ async function handleMarkAsReadFromCard(feedUrl: string) {
 	}
 }
 
-function handleMarkAsRead(feedUrl: string) {
+function handleMarkAsRead(feedUrl: string, fromOverlay = false) {
 	if (isProcessingMarkAsRead || !feedGridApi) return;
 
 	isProcessingMarkAsRead = true;
-
-	// Whether the modal is looking at the feed being removed. It always was
-	// when this was reachable only from the modal's own footer; the card's
-	// inline button reaches it too now, and moving the modal's selection to
-	// some unrelated "next" feed because a card three rows down was tapped is
-	// not what that reader asked for.
-	const wasOnScreen = selectedFeedUrl === feedUrl;
 
 	const currentFeeds = feedGridApi.getVisibleFeeds();
 	const currentIdx = currentFeeds.findIndex(
@@ -234,13 +210,19 @@ function handleMarkAsRead(feedUrl: string) {
 	const isLastFeed = currentIdx === currentFeeds.length - 1;
 
 	const { nextFeedUrl, totalCount } = feedGridApi.removeFeedByUrl(feedUrl);
+	const remainingFeeds = feedGridApi.getVisibleFeeds();
 
-	if (wasOnScreen) {
+	if (fromOverlay) {
 		if (totalCount === 0 || isLastFeed || nextFeedUrl === null) {
-			isModalOpen = false;
-			selectedFeedUrl = null;
+			closeReaderOverlay();
 		} else {
-			selectedFeedUrl = nextFeedUrl;
+			const nextIdx = remainingFeeds.findIndex(
+				(f: RenderFeed) => f.normalizedUrl === nextFeedUrl,
+			);
+			replaceReaderOverlayItems(
+				remainingFeeds.map(renderFeedToReaderItem),
+				nextIdx >= 0 ? nextIdx : 0,
+			);
 		}
 	}
 
@@ -349,6 +331,7 @@ const WIRE_LIST_CLASS =
 						isReadStatus={false}
 						setIsReadStatus={(feedLink: string) =>
 							void handleMarkAsReadFromCard(feedLink)}
+						{onSelect}
 					/>
 				{/if}
 			{/snippet}
@@ -381,21 +364,6 @@ const WIRE_LIST_CLASS =
 		</FeedGrid>
 	</div>
 </div>
-
-<FeedDetailModal
-	bind:open={isModalOpen}
-	feed={selectedFeed}
-	onOpenChange={(open: boolean) => (isModalOpen = open)}
-	readingSurface={ReadingSurface.OTHER}
-	{hasPrevious}
-	{hasNext}
-	onPrevious={handlePrevious}
-	onNext={handleNext}
-	feeds={feedGridApi?.getVisibleFeeds() ?? []}
-	{currentIndex}
-	onMarkAsRead={handleMarkAsReadInModal}
-	isMarkingAsRead={isMarkingAsRead || isProcessingMarkAsRead}
-/>
 
 <style>
 	.sr-only {

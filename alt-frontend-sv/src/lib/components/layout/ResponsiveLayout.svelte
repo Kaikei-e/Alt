@@ -3,6 +3,7 @@ import type { Snippet } from "svelte";
 import Sidebar from "#lib/components/desktop/layout/Sidebar.svelte";
 import { isImmersiveRoute } from "#lib/components/mobile/bottom-nav.js";
 import MobileBottomNav from "#lib/components/mobile/MobileBottomNav.svelte";
+import { ReadingSurface } from "#lib/reading/reading-events.js";
 import { isDesktop, isMobile } from "#lib/stores/viewport.svelte.js";
 import { cn } from "#lib/utils.js";
 import { afterNavigate } from "$app/navigation";
@@ -14,7 +15,10 @@ let { children, class: className = "" }: { children: Snippet; class?: string } =
 const FULL_BLEED_PATHS = ["/feeds/tag-verse"];
 
 const isFullBleed = $derived(FULL_BLEED_PATHS.includes(page.url.pathname));
-const isImmersive = $derived(isImmersiveRoute(page.url.pathname));
+const isImmersive = $derived(
+	isImmersiveRoute(page.url.pathname) ||
+		page.state.reader?.surface === ReadingSurface.SWIPE,
+);
 
 let mainEl = $state<HTMLElement | undefined>(undefined);
 

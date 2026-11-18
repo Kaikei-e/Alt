@@ -31,7 +31,8 @@ export const RESPONSIVE_REDIRECTS: Record<string, string> = {
 	"/desktop/stats": "/stats",
 	"/mobile/feeds/stats": "/stats",
 	// Batch E
-	"/mobile/feeds/swipe": "/feeds/swipe",
+	"/feeds/swipe": "/feeds/swipe/visual-preview",
+	"/mobile/feeds/swipe": "/feeds/swipe/visual-preview",
 	"/desktop": "/dashboard",
 };
 

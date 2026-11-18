@@ -2,11 +2,12 @@
 import { onMount } from "svelte";
 import { getReadFeedsWithCursorClient } from "#lib/api/client/feeds.js";
 import DesktopFeedCard from "#lib/components/desktop/feeds/DesktopFeedCard.svelte";
-import FeedDetailModal from "#lib/components/desktop/feeds/FeedDetailModal.svelte";
 import FeedGrid from "#lib/components/desktop/feeds/FeedGrid.svelte";
 import type { FeedGridApi } from "#lib/components/desktop/feeds/feed-grid-types.js";
 import EmptyViewedFeedsState from "#lib/components/mobile/EmptyViewedFeedsState.svelte";
 import MorgueClipping from "#lib/components/mobile/MorgueClipping.svelte";
+import { renderFeedToReaderItem } from "#lib/reader/mappers.js";
+import { openReaderOverlay } from "#lib/reader/reader-overlay.svelte.js";
 import { ReadingSurface } from "#lib/reading/instrumentation.js";
 import type { RenderFeed } from "#lib/schema/feed.js";
 import { isDesktop } from "#lib/stores/viewport.svelte.js";
@@ -26,42 +27,18 @@ onMount(() => {
 	});
 });
 
-let selectedFeedUrl = $state<string | null>(null);
-let isModalOpen = $state(false);
 let feedGridApi = $state<FeedGridApi | null>(null);
 
-const selectedFeed = $derived.by(() => {
-	if (!selectedFeedUrl || !feedGridApi) return null;
-	return feedGridApi.getFeedByUrl(selectedFeedUrl);
-});
-
-const currentIndex = $derived.by(() => {
-	if (!selectedFeedUrl || !feedGridApi) return -1;
-	const feeds = feedGridApi.getVisibleFeeds();
-	return feeds.findIndex(
-		(f: RenderFeed) => f.normalizedUrl === selectedFeedUrl,
+function handleSelectFeed(feed: RenderFeed, index: number, _total: number) {
+	const visibleFeeds = feedGridApi?.getVisibleFeeds() ?? [feed];
+	const resolvedIndex = visibleFeeds.findIndex(
+		(f) => f.normalizedUrl === feed.normalizedUrl,
 	);
-});
-
-const totalCount = $derived(feedGridApi?.getVisibleFeeds().length ?? 0);
-const hasPrevious = $derived(currentIndex > 0);
-const hasNext = $derived(currentIndex >= 0 && currentIndex < totalCount - 1);
-
-function handlePrevious() {
-	if (!feedGridApi || currentIndex <= 0) return;
-	const previous = feedGridApi.getVisibleFeeds()[currentIndex - 1];
-	if (previous) selectedFeedUrl = previous.normalizedUrl;
-}
-
-function handleNext() {
-	if (!feedGridApi || currentIndex >= totalCount - 1) return;
-	const next = feedGridApi.getVisibleFeeds()[currentIndex + 1];
-	if (next) selectedFeedUrl = next.normalizedUrl;
-}
-
-function handleSelectFeed(feed: RenderFeed, _index: number, _total: number) {
-	selectedFeedUrl = feed.normalizedUrl;
-	isModalOpen = true;
+	openReaderOverlay({
+		surface: ReadingSurface.OTHER,
+		items: visibleFeeds.map(renderFeedToReaderItem),
+		currentIndex: resolvedIndex >= 0 ? resolvedIndex : index,
+	});
 }
 
 function handleFeedGridReady(api: FeedGridApi) {
@@ -120,7 +97,7 @@ const MORGUE_LIST_CLASS =
 				{#if isDesktop()}
 					<DesktopFeedCard {feed} {isRead} {onSelect} />
 				{:else}
-					<MorgueClipping {feed} />
+					<MorgueClipping {feed} {onSelect} />
 				{/if}
 			{/snippet}
 
@@ -136,19 +113,6 @@ const MORGUE_LIST_CLASS =
 		</FeedGrid>
 	</div>
 </div>
-
-<FeedDetailModal
-	bind:open={isModalOpen}
-	feed={selectedFeed}
-	onOpenChange={(open: boolean) => (isModalOpen = open)}
-	readingSurface={ReadingSurface.OTHER}
-	{hasPrevious}
-	{hasNext}
-	onPrevious={handlePrevious}
-	onNext={handleNext}
-	feeds={feedGridApi?.getVisibleFeeds() ?? []}
-	{currentIndex}
-/>
 
 <style>
 	.morgue-page {
