@@ -172,9 +172,16 @@ func TestVerifyAltBackendContract(t *testing.T) {
 		// broker never records a verification for the currently-deployed
 		// consumer version, so can-i-deploy returns "unknown" after a SHA
 		// bump even when the pact contents are unchanged.
-		verifyRequest.ConsumerVersionSelectors = []provider.Selector{
-			&provider.ConsumerVersionSelector{Consumer: "alt-backend", MainBranch: true},
-			&provider.ConsumerVersionSelector{Consumer: "alt-backend", DeployedOrReleased: true},
+		lockstep := lockstepConsumers(os.Getenv("PACT_LOCKSTEP_CONSUMERS"))
+		if lockstep["alt-backend"] {
+			t.Logf("lockstep: not verifying the production-deployed pact of %s (PACT_LOCKSTEP_CONSUMERS)", "alt-backend")
+		}
+		for _, s := range consumerSelectors("alt-backend", lockstep) {
+			verifyRequest.ConsumerVersionSelectors = append(verifyRequest.ConsumerVersionSelectors, &provider.ConsumerVersionSelector{
+				Consumer:           s.Consumer,
+				MainBranch:         s.MainBranch,
+				DeployedOrReleased: s.DeployedOrReleased,
+			})
 		}
 		if ver := os.Getenv("PACT_PROVIDER_VERSION"); ver != "" {
 			verifyRequest.ProviderVersion = ver
