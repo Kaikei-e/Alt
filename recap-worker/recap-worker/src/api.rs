@@ -9,6 +9,7 @@ pub(crate) mod health;
 pub(crate) mod learning;
 pub(crate) mod metrics;
 pub mod surface_status;
+pub mod themes;
 
 use axum::{
     Extension, Router, middleware,
@@ -27,8 +28,10 @@ macro_rules! with_non_health_routes {
             v1: [
                 (POST, post, "/v1/generate/recaps/3days", "/v1/generate/recaps/3days", generate::trigger_3days),
                 (POST, post, "/v1/generate/topic-cards", "/v1/generate/topic-cards", generate::trigger_topic_cards),
+                (POST, post, "/v1/generate/themes", "/v1/generate/themes", generate::trigger_themes),
                 (GET, get, "/v1/recaps/3days", "/v1/recaps/3days", fetch::get_3days_recap),
                 (GET, get, "/v1/topic-cards", "/v1/topic-cards", cards::get_topic_cards),
+                (GET, get, "/v1/themes/{theme_id}", "/v1/themes/44444444-4444-4444-4444-444444444444?user_id=22222222-2222-2222-2222-222222222222", themes::get_theme_page),
                 (GET, get, "/v1/recaps/search", "/v1/recaps/search?q=ai", fetch::search_recaps),
                 (GET, get, "/v1/recaps/genres/indexable", "/v1/recaps/genres/indexable", fetch::get_indexable_genres),
                 (GET, get, "/v1/morning/updates", "/v1/morning/updates?since=2026-01-26T00:00:00Z", fetch::get_morning_updates),
@@ -143,6 +146,7 @@ mod tests {
                 ("MTLS_ALLOWED_PEERS", Some("disabled")),
                 ("RECAP_EVAL_LISTENER", Some("disabled")),
                 ("RECAP_CARDS_JOB", Some("disabled")),
+                ("RECAP_THEMES_ENABLED", Some("false")),
                 ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
@@ -244,6 +248,7 @@ mod tests {
                 ("MTLS_ALLOWED_PEERS", Some("disabled")),
                 ("RECAP_EVAL_LISTENER", Some("disabled")),
                 ("RECAP_CARDS_JOB", Some("disabled")),
+                ("RECAP_THEMES_ENABLED", Some("false")),
                 ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
@@ -321,7 +326,7 @@ mod tests {
             "/v1/generate/topic-cards must be registered"
         );
 
-        assert_eq!(NON_HEALTH_ROUTES.len(), 23);
+        assert_eq!(NON_HEALTH_ROUTES.len(), 25);
         for (_method, uri) in NON_HEALTH_ROUTES {
             let req = Request::builder()
                 .method(Method::DELETE)
@@ -389,6 +394,7 @@ mod tests {
                 ("MTLS_ALLOWED_PEERS", Some("disabled")),
                 ("RECAP_EVAL_LISTENER", Some("disabled")),
                 ("RECAP_CARDS_JOB", Some("disabled")),
+                ("RECAP_THEMES_ENABLED", Some("false")),
                 ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
@@ -453,6 +459,7 @@ mod tests {
                 ),
                 ("RECAP_EVAL_LISTENER", Some("disabled")),
                 ("RECAP_CARDS_JOB", Some("disabled")),
+                ("RECAP_THEMES_ENABLED", Some("false")),
                 ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
@@ -690,6 +697,7 @@ mod tests {
                 ("MTLS_ALLOWED_PEERS", Some("alt-frontend-sv")),
                 ("RECAP_EVAL_LISTENER", Some("disabled")),
                 ("RECAP_CARDS_JOB", Some("disabled")),
+                ("RECAP_THEMES_ENABLED", Some("false")),
                 ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),

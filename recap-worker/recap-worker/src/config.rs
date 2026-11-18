@@ -119,6 +119,38 @@ impl CardsCatchupConfig {
     }
 }
 
+/// Configuration for the scheduled daily themes batch job.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ThemesJobConfig {
+    Disabled,
+    Enabled {
+        utc_hour: u32,
+        utc_minute: u32,
+        owner: KnowledgeOwnerIds,
+    },
+}
+
+impl ThemesJobConfig {
+    #[must_use]
+    pub const fn is_enabled(&self) -> bool {
+        matches!(self, ThemesJobConfig::Enabled { .. })
+    }
+}
+
+/// Configuration for themes startup catch-up.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ThemesCatchupConfig {
+    Enabled,
+    Disabled,
+}
+
+impl ThemesCatchupConfig {
+    #[must_use]
+    pub const fn is_enabled(self) -> bool {
+        matches!(self, ThemesCatchupConfig::Enabled)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SurfaceFreshnessConfig {
     pub three_day_recap_hours: i64,
@@ -217,6 +249,10 @@ pub struct Config {
     cards_retry_delay_minutes: u64,
     cards_max_attempts: u32,
     cards_catchup: CardsCatchupConfig,
+    themes_job: ThemesJobConfig,
+    themes_retry_delay_minutes: u64,
+    themes_max_attempts: u32,
+    themes_catchup: ThemesCatchupConfig,
     surface_freshness: SurfaceFreshnessConfig,
 }
 
@@ -376,6 +412,14 @@ struct QueueConfig {
     classification_queue_retry_delay_ms: u64,
 }
 
+#[allow(clippy::struct_field_names)] // Field names match Config struct for clarity
+struct ThemesConfig {
+    themes_job: ThemesJobConfig,
+    themes_retry_delay_minutes: u64,
+    themes_max_attempts: u32,
+    themes_catchup: ThemesCatchupConfig,
+}
+
 impl Config {
     /// 環境変数から Recap Worker の設定値を読み込み、検証する。
     ///
@@ -454,6 +498,7 @@ impl Config {
         let cards_window_days = parse_cards_window_days()?;
         let cards_retry_delay_minutes = parse_cards_retry_delay_minutes()?;
         let cards_max_attempts = parse_cards_max_attempts()?;
+        let themes = load_themes_config(&knowledge_emit)?;
         let surface_freshness = load_surface_freshness()?;
 
         Ok(Self::from_components(
@@ -485,6 +530,7 @@ impl Config {
             cards_retry_delay_minutes,
             cards_max_attempts,
             cards_catchup,
+            themes,
             surface_freshness,
         ))
     }
@@ -519,6 +565,7 @@ impl Config {
         cards_retry_delay_minutes: u64,
         cards_max_attempts: u32,
         cards_catchup: CardsCatchupConfig,
+        themes: ThemesConfig,
         surface_freshness: SurfaceFreshnessConfig,
     ) -> Self {
         Self {
@@ -594,6 +641,10 @@ impl Config {
             cards_retry_delay_minutes,
             cards_max_attempts,
             cards_catchup,
+            themes_job: themes.themes_job,
+            themes_retry_delay_minutes: themes.themes_retry_delay_minutes,
+            themes_max_attempts: themes.themes_max_attempts,
+            themes_catchup: themes.themes_catchup,
             surface_freshness,
         }
     }
@@ -1072,6 +1123,42 @@ impl Config {
     #[must_use]
     pub fn cards_catchup_enabled(&self) -> bool {
         self.cards_catchup.is_enabled()
+    }
+
+    /// Scheduled themes daily batch job configuration.
+    #[must_use]
+    pub fn themes_job(&self) -> &ThemesJobConfig {
+        &self.themes_job
+    }
+
+    /// Returns true if the scheduled themes batch pipeline is enabled.
+    #[must_use]
+    pub fn themes_enabled(&self) -> bool {
+        self.themes_job.is_enabled()
+    }
+
+    /// Retry delay in minutes for failed themes runs (1..=180, default 15).
+    #[must_use]
+    pub fn themes_retry_delay_minutes(&self) -> u64 {
+        self.themes_retry_delay_minutes
+    }
+
+    /// Maximum total attempts for a themes run (1..=5, default 3).
+    #[must_use]
+    pub fn themes_max_attempts(&self) -> u32 {
+        self.themes_max_attempts
+    }
+
+    /// Themes startup catch-up policy.
+    #[must_use]
+    pub fn themes_catchup(&self) -> ThemesCatchupConfig {
+        self.themes_catchup
+    }
+
+    /// Returns true if themes startup catch-up is enabled.
+    #[must_use]
+    pub fn themes_catchup_enabled(&self) -> bool {
+        self.themes_catchup.is_enabled()
     }
 
     #[must_use]
@@ -1652,33 +1739,111 @@ fn parse_cards_window_days() -> Result<u32, ConfigError> {
     Ok(val)
 }
 
-fn parse_cards_retry_delay_minutes() -> Result<u64, ConfigError> {
-    let raw =
-        env_var_optional("RECAP_CARDS_RETRY_DELAY_MINUTES").unwrap_or_else(|| "15".to_string());
-    let val: u64 = raw
-        .parse()
-        .map_err(|e| invalid_config("RECAP_CARDS_RETRY_DELAY_MINUTES", e))?;
-    if !(1..=180).contains(&val) {
+fn parse_ranged_u64(
+    name: &'static str,
+    default: &str,
+    min: u64,
+    max: u64,
+) -> Result<u64, ConfigError> {
+    let raw = env_var_optional(name).unwrap_or_else(|| default.to_string());
+    let val: u64 = raw.parse().map_err(|e| invalid_config(name, e))?;
+    if !(min..=max).contains(&val) {
         return Err(invalid_config(
-            "RECAP_CARDS_RETRY_DELAY_MINUTES",
-            format!("value must be between 1 and 180, got {val}"),
+            name,
+            format!("value must be between {min} and {max}, got {val}"),
         ));
     }
     Ok(val)
 }
 
-fn parse_cards_max_attempts() -> Result<u32, ConfigError> {
-    let raw = env_var_optional("RECAP_CARDS_MAX_ATTEMPTS").unwrap_or_else(|| "3".to_string());
-    let val: u32 = raw
-        .parse()
-        .map_err(|e| invalid_config("RECAP_CARDS_MAX_ATTEMPTS", e))?;
-    if !(1..=5).contains(&val) {
+fn parse_ranged_u32(
+    name: &'static str,
+    default: &str,
+    min: u32,
+    max: u32,
+) -> Result<u32, ConfigError> {
+    let raw = env_var_optional(name).unwrap_or_else(|| default.to_string());
+    let val: u32 = raw.parse().map_err(|e| invalid_config(name, e))?;
+    if !(min..=max).contains(&val) {
         return Err(invalid_config(
-            "RECAP_CARDS_MAX_ATTEMPTS",
-            format!("value must be between 1 and 5, got {val}"),
+            name,
+            format!("value must be between {min} and {max}, got {val}"),
         ));
     }
     Ok(val)
+}
+
+fn parse_cards_retry_delay_minutes() -> Result<u64, ConfigError> {
+    parse_ranged_u64("RECAP_CARDS_RETRY_DELAY_MINUTES", "15", 1, 180)
+}
+
+fn parse_cards_max_attempts() -> Result<u32, ConfigError> {
+    parse_ranged_u32("RECAP_CARDS_MAX_ATTEMPTS", "3", 1, 5)
+}
+
+fn parse_required_strict_bool(name: &'static str) -> Result<bool, ConfigError> {
+    let raw = env_var(name)?;
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "true" => Ok(true),
+        "false" => Ok(false),
+        _ => Err(invalid_config(
+            name,
+            format!("must be 'true' or 'false', got '{raw}'"),
+        )),
+    }
+}
+
+fn load_themes_config(knowledge_emit: &KnowledgeEmit) -> Result<ThemesConfig, ConfigError> {
+    let enabled = parse_required_strict_bool("RECAP_THEMES_ENABLED")?;
+    let retry_delay_minutes = parse_ranged_u64("RECAP_THEMES_RETRY_DELAY_MINUTES", "15", 1, 180)?;
+    let max_attempts = parse_ranged_u32("RECAP_THEMES_MAX_ATTEMPTS", "3", 1, 5)?;
+    let catchup = match env_var_optional("RECAP_THEMES_CATCHUP") {
+        Some(raw) => match raw.trim().to_ascii_lowercase().as_str() {
+            "enabled" => ThemesCatchupConfig::Enabled,
+            "disabled" => ThemesCatchupConfig::Disabled,
+            other => {
+                return Err(invalid_config(
+                    "RECAP_THEMES_CATCHUP",
+                    format!("must be 'enabled' or 'disabled', got '{other}'"),
+                ));
+            }
+        },
+        None => ThemesCatchupConfig::Enabled,
+    };
+
+    let themes_job = if enabled {
+        let owner = match knowledge_emit {
+            KnowledgeEmit::Enabled { owner, .. } => *owner,
+            KnowledgeEmit::Disabled => {
+                return Err(invalid_config(
+                    "RECAP_THEMES_ENABLED",
+                    "RECAP_THEMES_ENABLED=true requires Config::knowledge_owner() \
+                     (set RECAP_KNOWLEDGE_EMIT=true with valid RECAP_KNOWLEDGE_OWNER_USER_ID, \
+                     RECAP_KNOWLEDGE_OWNER_TENANT_ID, and RECAP_KNOWLEDGE_SOVEREIGN_URL)",
+                ));
+            }
+        };
+        let time_str =
+            env_var_optional("RECAP_THEMES_UTC_TIME").unwrap_or_else(|| "19:00".to_string());
+        let (utc_hour, utc_minute) = parse_utc_time("RECAP_THEMES_UTC_TIME", &time_str)?;
+        ThemesJobConfig::Enabled {
+            utc_hour,
+            utc_minute,
+            owner,
+        }
+    } else {
+        if let Some(time_str) = env_var_optional("RECAP_THEMES_UTC_TIME") {
+            let _ = parse_utc_time("RECAP_THEMES_UTC_TIME", &time_str)?;
+        }
+        ThemesJobConfig::Disabled
+    };
+
+    Ok(ThemesConfig {
+        themes_job,
+        themes_retry_delay_minutes: retry_delay_minutes,
+        themes_max_attempts: max_attempts,
+        themes_catchup: catchup,
+    })
 }
 
 fn load_cards_catchup(cards_job_enabled: bool) -> Result<CardsCatchupConfig, ConfigError> {
@@ -1987,6 +2152,11 @@ mod tests {
             ("RECAP_CARDS_RETRY_DELAY_MINUTES", None),
             ("RECAP_CARDS_MAX_ATTEMPTS", None),
             ("RECAP_CARDS_CATCHUP", None),
+            ("RECAP_THEMES_ENABLED", Some("false")),
+            ("RECAP_THEMES_UTC_TIME", None),
+            ("RECAP_THEMES_RETRY_DELAY_MINUTES", None),
+            ("RECAP_THEMES_MAX_ATTEMPTS", None),
+            ("RECAP_THEMES_CATCHUP", None),
             ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
             ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
             ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
@@ -3860,5 +4030,110 @@ mod tests {
                 && !captured.contains("peer_identity_enabled"),
             "load_peer_identity_from_env must not log (app.rs logs once after telemetry init), got: {captured}"
         );
+    }
+
+    #[test]
+    fn from_env_fails_when_themes_enabled_flag_absent() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let vars: Vec<_> = required_base()
+            .into_iter()
+            .filter(|(name, _)| *name != "RECAP_THEMES_ENABLED")
+            .chain(std::iter::once(("RECAP_THEMES_ENABLED", None)))
+            .collect();
+        temp_env::with_vars(vars, || {
+            let err = Config::from_env().expect_err("RECAP_THEMES_ENABLED must be required");
+            assert!(matches!(err, ConfigError::Missing("RECAP_THEMES_ENABLED")));
+        });
+    }
+
+    #[test]
+    fn from_env_fails_when_themes_enabled_flag_invalid() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let vars: Vec<_> = required_base()
+            .into_iter()
+            .filter(|(name, _)| *name != "RECAP_THEMES_ENABLED")
+            .chain(std::iter::once(("RECAP_THEMES_ENABLED", Some("maybe"))))
+            .collect();
+        temp_env::with_vars(vars, || {
+            let err = Config::from_env().expect_err("invalid RECAP_THEMES_ENABLED must fail");
+            assert!(matches!(
+                err,
+                ConfigError::Invalid {
+                    name: "RECAP_THEMES_ENABLED",
+                    ..
+                }
+            ));
+        });
+    }
+
+    #[test]
+    fn from_env_fails_when_themes_enabled_without_knowledge_owner() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let vars: Vec<_> = required_base()
+            .into_iter()
+            .filter(|(name, _)| *name != "RECAP_THEMES_ENABLED")
+            .chain(std::iter::once(("RECAP_THEMES_ENABLED", Some("true"))))
+            .collect();
+        temp_env::with_vars(vars, || {
+            let err = Config::from_env().expect_err("themes enabled without owner must fail");
+            assert!(matches!(
+                err,
+                ConfigError::Invalid {
+                    name: "RECAP_THEMES_ENABLED",
+                    ..
+                }
+            ));
+        });
+    }
+
+    #[test]
+    fn from_env_succeeds_when_themes_enabled_with_owner_and_defaults() {
+        let _lock = ENV_MUTEX.lock().expect("env mutex");
+        let user_id = uuid::Uuid::new_v4().to_string();
+        let tenant_id = uuid::Uuid::new_v4().to_string();
+        let vars: Vec<_> = required_base()
+            .into_iter()
+            .filter(|(name, _)| {
+                !matches!(
+                    *name,
+                    "RECAP_THEMES_ENABLED"
+                        | "RECAP_KNOWLEDGE_EMIT"
+                        | "RECAP_KNOWLEDGE_SOVEREIGN_URL"
+                        | "RECAP_KNOWLEDGE_SOVEREIGN_AUTH"
+                        | "RECAP_KNOWLEDGE_OWNER_USER_ID"
+                        | "RECAP_KNOWLEDGE_OWNER_TENANT_ID"
+                )
+            })
+            .chain([
+                ("RECAP_KNOWLEDGE_EMIT", Some("true")),
+                (
+                    "RECAP_KNOWLEDGE_SOVEREIGN_URL",
+                    Some("http://localhost:9500"),
+                ),
+                ("RECAP_KNOWLEDGE_SOVEREIGN_AUTH", Some("disabled")),
+                ("RECAP_KNOWLEDGE_OWNER_USER_ID", Some(user_id.as_str())),
+                ("RECAP_KNOWLEDGE_OWNER_TENANT_ID", Some(tenant_id.as_str())),
+                ("RECAP_THEMES_ENABLED", Some("true")),
+            ])
+            .collect();
+        temp_env::with_vars(vars, || {
+            let config = Config::from_env().expect("themes config should load with defaults");
+            assert!(config.themes_enabled());
+            assert_eq!(config.themes_retry_delay_minutes(), 15);
+            assert_eq!(config.themes_max_attempts(), 3);
+            assert!(config.themes_catchup_enabled());
+            match config.themes_job() {
+                ThemesJobConfig::Enabled {
+                    utc_hour,
+                    utc_minute,
+                    owner,
+                } => {
+                    assert_eq!((*utc_hour, *utc_minute), (19, 0));
+                    assert_eq!(owner.user_id.to_string(), user_id);
+                    assert_eq!(owner.tenant_id.to_string(), tenant_id);
+                }
+                ThemesJobConfig::Disabled => panic!("expected enabled themes job"),
+            }
+        });
     }
 }

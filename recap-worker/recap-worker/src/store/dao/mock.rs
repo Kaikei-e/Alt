@@ -87,6 +87,8 @@ pub(crate) struct MockRecapDao {
     mark_abandoned_jobs_calls: Arc<Mutex<Vec<Option<Uuid>>>>,
     /// `find_running_cards_job` の応答。
     running_cards_job: Arc<Mutex<Option<Uuid>>>,
+    /// `find_running_theme_run` の応答。
+    running_theme_run: Arc<Mutex<Option<Uuid>>>,
     /// `search_recaps_by_term` の応答。
     search_recaps_hits: Arc<Mutex<Vec<RecapSearchHit>>>,
     latest_completed_job: Arc<Mutex<Option<RecapJob>>>,
@@ -169,6 +171,14 @@ impl MockRecapDao {
             .running_cards_job
             .lock()
             .expect("running_cards_job mutex poisoned") = job_id;
+    }
+
+    /// Set the mock `find_running_theme_run` response for tests.
+    pub(crate) fn set_running_theme_run(&self, run_id: Option<Uuid>) {
+        *self
+            .running_theme_run
+            .lock()
+            .expect("running_theme_run mutex poisoned") = run_id;
     }
 
     /// テスト用に `search_recaps_by_term` の応答をセットする。
@@ -299,6 +309,13 @@ impl RecapDao for MockRecapDao {
             .running_cards_job
             .lock()
             .expect("running_cards_job mutex poisoned"))
+    }
+
+    async fn find_running_theme_run(&self) -> Result<Option<Uuid>> {
+        Ok(*self
+            .running_theme_run
+            .lock()
+            .expect("running_theme_run mutex poisoned"))
     }
 
     async fn update_job_status(

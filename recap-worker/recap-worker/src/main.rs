@@ -218,6 +218,44 @@ fn maybe_spawn_cards_batch_daemon(
     }
 }
 
+fn maybe_spawn_themes_batch_daemon(
+    config: &recap_worker::config::Config,
+    registry: &ComponentRegistry,
+    shutdown_token: CancellationToken,
+) -> Option<tokio::task::JoinHandle<()>> {
+    match config.themes_job() {
+        recap_worker::config::ThemesJobConfig::Enabled {
+            utc_hour,
+            utc_minute,
+            owner,
+        } => {
+            info!(
+                utc_hour,
+                utc_minute,
+                user_id = %owner.user_id,
+                catchup = config.themes_catchup_enabled(),
+                "themes_daemon_enabled"
+            );
+            Some(recap_worker::scheduler::daemon::spawn_themes_batch_daemon(
+                registry.themes_runner(),
+                registry.themes_run_in_flight(),
+                std::sync::Arc::new(registry.pool().clone()),
+                owner.user_id,
+                config.themes_retry_delay_minutes(),
+                config.themes_max_attempts(),
+                config.themes_catchup_enabled(),
+                *utc_hour,
+                *utc_minute,
+                shutdown_token,
+            ))
+        }
+        recap_worker::config::ThemesJobConfig::Disabled => {
+            info!("themes_daemon_disabled");
+            None
+        }
+    }
+}
+
 async fn maybe_spawn_eval_listener(
     config: &recap_worker::config::Config,
     pool: sqlx::PgPool,
@@ -307,6 +345,11 @@ async fn main() -> anyhow::Result<()> {
     let pool = registry.pool().clone();
 
     let _cards_daemon = maybe_spawn_cards_batch_daemon(
+        registry.config().as_ref(),
+        &registry,
+        shutdown_token.clone(),
+    );
+    let _themes_daemon = maybe_spawn_themes_batch_daemon(
         registry.config().as_ref(),
         &registry,
         shutdown_token.clone(),

@@ -1369,6 +1369,7 @@ mod tests_batch {
     }
 
     #[tokio::test]
+    #[allow(clippy::too_many_lines)]
     async fn generate_theme_validates_bounds_before_sending() {
         use super::super::models::{ThemeGenerateItemInput, ThemePreviousInput};
 
@@ -1618,10 +1619,10 @@ mod tests_batch {
                 ResponseTemplate::new(422)
                     .insert_header("X-Card-Rejection", "1")
                     .set_body_json(serde_json::json!({
-                        "reason": "nothing_usable",
+                        "reason": "empty_output",
                         "attempts": 2,
                         "raw_text": "bad output",
-                        "detail": "no_key_points"
+                        "detail": serde_json::Value::Null
                     })),
             )
             .expect(1)
@@ -1649,9 +1650,9 @@ mod tests_batch {
             .expect("domain rejection must return Ok(Rejected)");
         match outcome {
             ThemeGenerateOutcome::Rejected(rej) => {
-                assert_eq!(rej.reason, "nothing_usable");
+                assert_eq!(rej.reason, "empty_output");
                 assert_eq!(rej.attempts, 2);
-                assert_eq!(rej.detail.as_deref(), Some("no_key_points"));
+                assert!(rej.detail.is_none());
             }
             ThemeGenerateOutcome::Success(s) => panic!("expected Rejected, got {s:?}"),
         }

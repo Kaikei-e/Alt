@@ -202,6 +202,10 @@ impl JobDao for UnifiedDao {
         crate::store::dao::job::RecapDao::find_running_cards_job(&self.pool).await
     }
 
+    async fn find_running_theme_run(&self) -> Result<Option<Uuid>> {
+        crate::store::dao::themes::ThemesDaoOps::find_running_run(&self.pool).await
+    }
+
     async fn update_job_status(
         &self,
         job_id: Uuid,

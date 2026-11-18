@@ -270,6 +270,7 @@ fn duration_until(next: chrono::DateTime<Utc>, now: chrono::DateTime<Utc>) -> Du
 }
 
 pub use crate::pipeline::cards::CardsJobRunner;
+pub use crate::pipeline::themes::ThemesJobRunner;
 
 /// Compute the latest scheduled slot <= now for a daily UTC cadence.
 /// If today's slot has already passed, it is today's slot.
@@ -363,6 +364,303 @@ impl CardsLedger for sqlx::PgPool {
     }
 }
 
+#[async_trait::async_trait]
+pub trait ThemesLedger: Send + Sync {
+    async fn has_completed_theme_run_since(
+        &self,
+        user_id: Uuid,
+        since: chrono::DateTime<Utc>,
+    ) -> anyhow::Result<bool>;
+}
+
+#[async_trait::async_trait]
+impl ThemesLedger for sqlx::PgPool {
+    async fn has_completed_theme_run_since(
+        &self,
+        user_id: Uuid,
+        since: chrono::DateTime<Utc>,
+    ) -> anyhow::Result<bool> {
+        crate::store::dao::themes::ThemesDaoOps::has_completed_run_since(self, user_id, since)
+            .await
+            .map_err(Into::into)
+    }
+}
+
+struct InFlightGuard<'a>(&'a std::sync::Mutex<Option<Uuid>>);
+impl Drop for InFlightGuard<'_> {
+    fn drop(&mut self) {
+        *self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+    }
+}
+
+fn try_acquire_in_flight(
+    in_flight: &std::sync::Mutex<Option<Uuid>>,
+    run_id: Uuid,
+) -> std::result::Result<InFlightGuard<'_>, Uuid> {
+    let mut lock = in_flight
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some(running_id) = *lock {
+        return Err(running_id);
+    }
+    *lock = Some(run_id);
+    Ok(InFlightGuard(in_flight))
+}
+
+#[async_trait::async_trait]
+trait ScheduledBatchTarget: Send + Sync {
+    fn kind(&self) -> &'static str;
+    async fn has_completed_since(&self, since: chrono::DateTime<Utc>) -> anyhow::Result<bool>;
+    async fn run_once(&self) -> anyhow::Result<Option<Uuid>>;
+    fn is_fatal_error(&self, err: &anyhow::Error) -> bool;
+}
+
+struct CardsBatchTarget {
+    runner: std::sync::Arc<dyn CardsJobRunner>,
+    in_flight: std::sync::Arc<std::sync::Mutex<Option<Uuid>>>,
+    ledger: std::sync::Arc<dyn CardsLedger>,
+    window_days: u32,
+}
+
+#[async_trait::async_trait]
+impl ScheduledBatchTarget for CardsBatchTarget {
+    fn kind(&self) -> &'static str {
+        "cards"
+    }
+
+    async fn has_completed_since(&self, since: chrono::DateTime<Utc>) -> anyhow::Result<bool> {
+        self.ledger.has_completed_cards_job_since(since).await
+    }
+
+    async fn run_once(&self) -> anyhow::Result<Option<Uuid>> {
+        CardsBatchDaemon::run_once(self.runner.as_ref(), &self.in_flight, self.window_days).await
+    }
+
+    fn is_fatal_error(&self, err: &anyhow::Error) -> bool {
+        crate::clients::subworker::is_subworker_auth_error(err)
+    }
+}
+
+struct ThemesBatchTarget {
+    runner: std::sync::Arc<dyn ThemesJobRunner>,
+    in_flight: std::sync::Arc<std::sync::Mutex<Option<Uuid>>>,
+    ledger: std::sync::Arc<dyn ThemesLedger>,
+    owner_user_id: Uuid,
+}
+
+#[async_trait::async_trait]
+impl ScheduledBatchTarget for ThemesBatchTarget {
+    fn kind(&self) -> &'static str {
+        "themes"
+    }
+
+    async fn has_completed_since(&self, since: chrono::DateTime<Utc>) -> anyhow::Result<bool> {
+        self.ledger
+            .has_completed_theme_run_since(self.owner_user_id, since)
+            .await
+    }
+
+    async fn run_once(&self) -> anyhow::Result<Option<Uuid>> {
+        ThemesBatchDaemon::run_once(self.runner.as_ref(), &self.in_flight).await
+    }
+
+    fn is_fatal_error(&self, err: &anyhow::Error) -> bool {
+        crate::clients::subworker::is_subworker_auth_error(err)
+    }
+}
+
+async fn run_target_with_retry(
+    target: &dyn ScheduledBatchTarget,
+    in_flight: &std::sync::Mutex<Option<Uuid>>,
+    retry_delay_minutes: u64,
+    max_attempts: u32,
+    shutdown: &CancellationToken,
+) {
+    let kind = target.kind();
+    let mut attempt = 1;
+    loop {
+        if shutdown.is_cancelled() {
+            break;
+        }
+
+        if attempt > 1 {
+            let lock = in_flight
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if let Some(running_id) = *lock {
+                warn!(
+                    kind,
+                    attempt,
+                    running_id = %running_id,
+                    "retry skipped: another run is in flight"
+                );
+                break;
+            }
+        }
+
+        match target.run_once().await {
+            Ok(Some(run_id)) => {
+                info!(kind, %run_id, attempt, "automatic batch completed");
+                break;
+            }
+            Ok(None) => {
+                warn!(kind, attempt, "automatic batch skipped: run is in flight");
+                break;
+            }
+            Err(err) => {
+                if target.is_fatal_error(&err) {
+                    error!(
+                        kind,
+                        attempt,
+                        max_attempts,
+                        error = %format!("{err:#}"),
+                        "subworker authentication error is fatal; aborting batch retry"
+                    );
+                    break;
+                }
+                error!(kind, attempt, error = %err, "automatic batch failed");
+                match decide_next_attempt(attempt, max_attempts, retry_delay_minutes) {
+                    RetryDecision::Retry {
+                        next_attempt,
+                        delay,
+                    } => {
+                        info!(
+                            kind,
+                            attempt = next_attempt,
+                            max_attempts,
+                            delay_minutes = retry_delay_minutes,
+                            "batch_retry_scheduled"
+                        );
+                        tokio::select! {
+                            () = sleep(delay) => {
+                                attempt = next_attempt;
+                            }
+                            () = shutdown.cancelled() => {
+                                info!(kind, "shutdown requested during retry wait");
+                                break;
+                            }
+                        }
+                    }
+                    RetryDecision::Exhausted { attempts } => {
+                        warn!(kind, attempts, "batch_retry_exhausted");
+                        break;
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_daily_batch_daemon<T: ScheduledBatchTarget>(
+    target: T,
+    in_flight: std::sync::Arc<std::sync::Mutex<Option<Uuid>>>,
+    cadence: DailyCadence,
+    retry_delay_minutes: u64,
+    max_attempts: u32,
+    catchup_enabled: bool,
+    utc_hour: u32,
+    utc_minute: u32,
+    shutdown: CancellationToken,
+) {
+    let kind = target.kind();
+    let now = Utc::now();
+    if catchup_enabled {
+        let slot = latest_scheduled_slot(now, utc_hour, utc_minute);
+        match target.has_completed_since(slot).await {
+            Err(err) => {
+                error!(kind, error = %err, reason = "ledger_query_failed", "batch_catchup_skipped");
+            }
+            Ok(has_completed) => match should_catchup(catchup_enabled, slot, has_completed) {
+                CatchupDecision::Run { slot } => {
+                    info!(
+                        kind,
+                        slot = %slot.to_rfc3339(),
+                        delay_minutes = retry_delay_minutes,
+                        "batch_catchup_scheduled"
+                    );
+                    let grace = Duration::from_mins(retry_delay_minutes);
+                    tokio::select! {
+                        () = sleep(grace) => {
+                            match target.has_completed_since(slot).await {
+                                Err(err) => {
+                                    error!(kind, error = %err, reason = "ledger_query_failed", "batch_catchup_skipped");
+                                }
+                                Ok(has_completed_after_grace) => {
+                                    match should_catchup(catchup_enabled, slot, has_completed_after_grace) {
+                                        CatchupDecision::Run { .. } => {
+                                            run_target_with_retry(
+                                                &target,
+                                                &in_flight,
+                                                retry_delay_minutes,
+                                                max_attempts,
+                                                &shutdown,
+                                            )
+                                            .await;
+                                        }
+                                        CatchupDecision::Skip { .. } => {
+                                            info!(kind, reason = "completed_during_grace", "batch_catchup_skipped");
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        () = shutdown.cancelled() => {
+                            info!(kind, "shutdown requested during catch-up grace delay");
+                            return;
+                        }
+                    }
+                }
+                CatchupDecision::Skip { reason } => {
+                    info!(kind, reason, "batch_catchup_skipped");
+                }
+            },
+        }
+    } else {
+        info!(kind, reason = "catchup_disabled", "batch_catchup_skipped");
+    }
+
+    loop {
+        if shutdown.is_cancelled() {
+            info!(kind, "shutdown requested, stopping daily batch daemon");
+            break;
+        }
+
+        let now = Utc::now();
+        let next = cadence.next_run_from(now);
+        let wait = duration_until(next, now);
+        info!(
+            kind,
+            next_run_utc = %next.to_rfc3339(),
+            wait_seconds = wait.as_secs(),
+            "scheduled automatic daily batch"
+        );
+        tokio::select! {
+            () = sleep(wait) => {}
+            () = shutdown.cancelled() => {
+                info!(kind, "shutdown requested during wait, stopping daily batch daemon");
+                break;
+            }
+        }
+
+        if shutdown.is_cancelled() {
+            break;
+        }
+
+        run_target_with_retry(
+            &target,
+            &in_flight,
+            retry_delay_minutes,
+            max_attempts,
+            &shutdown,
+        )
+        .await;
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn spawn_cards_batch_daemon(
     runner: std::sync::Arc<dyn CardsJobRunner>,
@@ -451,31 +749,16 @@ impl CardsBatchDaemon {
         window_days: u32,
     ) -> anyhow::Result<Option<Uuid>> {
         let job_id = Uuid::new_v4();
-
-        {
-            let mut lock = in_flight
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            if let Some(running_id) = *lock {
+        let _guard = match try_acquire_in_flight(in_flight, job_id) {
+            Ok(guard) => guard,
+            Err(running_id) => {
                 warn!(
                     running_job_id = %running_id,
                     "scheduled cards batch skipped: another cards run is in flight"
                 );
                 return Ok(None);
             }
-            *lock = Some(job_id);
-        }
-
-        struct InFlightGuard<'a>(&'a std::sync::Mutex<Option<Uuid>>);
-        impl Drop for InFlightGuard<'_> {
-            fn drop(&mut self) {
-                *self
-                    .0
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
-            }
-        }
-        let _guard = InFlightGuard(in_flight);
+        };
 
         let kick_time = Utc::now();
         let to = kick_time;
@@ -505,6 +788,7 @@ impl CardsBatchDaemon {
         Ok(Some(job_id))
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) async fn run_with_retry(
         runner: &dyn CardsJobRunner,
         in_flight: &std::sync::Mutex<Option<Uuid>>,
@@ -513,180 +797,172 @@ impl CardsBatchDaemon {
         max_attempts: u32,
         shutdown: &CancellationToken,
     ) {
-        let mut attempt = 1;
-        loop {
-            if shutdown.is_cancelled() {
-                break;
+        struct RefCardsTarget<'a> {
+            runner: &'a dyn CardsJobRunner,
+            in_flight: &'a std::sync::Mutex<Option<Uuid>>,
+            window_days: u32,
+        }
+        #[async_trait::async_trait]
+        impl ScheduledBatchTarget for RefCardsTarget<'_> {
+            fn kind(&self) -> &'static str {
+                "cards"
             }
-
-            if attempt > 1 {
-                let lock = in_flight
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
-                if let Some(running_id) = *lock {
-                    warn!(
-                        attempt,
-                        running_job_id = %running_id,
-                        "cards retry skipped: another cards run is in flight"
-                    );
-                    break;
-                }
+            async fn has_completed_since(
+                &self,
+                _since: chrono::DateTime<Utc>,
+            ) -> anyhow::Result<bool> {
+                Ok(false)
             }
-
-            match Self::run_once(runner, in_flight, window_days).await {
-                Ok(Some(job_id)) => {
-                    info!(%job_id, attempt, "automatic cards batch completed");
-                    break;
-                }
-                Ok(None) => {
-                    warn!(
-                        attempt,
-                        "automatic cards batch skipped: another cards run is in flight"
-                    );
-                    break;
-                }
-                Err(err) => {
-                    if crate::clients::subworker::is_subworker_auth_error(&err) {
-                        error!(
-                            attempt,
-                            max_attempts,
-                            window_days,
-                            error = %format!("{err:#}"),
-                            "subworker authentication error is fatal; aborting cards batch retry"
-                        );
-                        break;
-                    }
-                    error!(attempt, error = %err, "automatic cards batch failed");
-                    match decide_next_attempt(attempt, max_attempts, retry_delay_minutes) {
-                        RetryDecision::Retry {
-                            next_attempt,
-                            delay,
-                        } => {
-                            info!(
-                                attempt = next_attempt,
-                                max_attempts,
-                                delay_minutes = retry_delay_minutes,
-                                "cards_retry_scheduled"
-                            );
-                            tokio::select! {
-                                () = sleep(delay) => {
-                                    attempt = next_attempt;
-                                }
-                                () = shutdown.cancelled() => {
-                                    info!("shutdown requested during retry wait, stopping cards batch retry");
-                                    break;
-                                }
-                            }
-                        }
-                        RetryDecision::Exhausted { attempts } => {
-                            warn!(attempts, "cards_retry_exhausted");
-                            break;
-                        }
-                    }
-                }
+            async fn run_once(&self) -> anyhow::Result<Option<Uuid>> {
+                CardsBatchDaemon::run_once(self.runner, self.in_flight, self.window_days).await
+            }
+            fn is_fatal_error(&self, err: &anyhow::Error) -> bool {
+                crate::clients::subworker::is_subworker_auth_error(err)
             }
         }
+        let target = RefCardsTarget {
+            runner,
+            in_flight,
+            window_days,
+        };
+        run_target_with_retry(
+            &target,
+            in_flight,
+            retry_delay_minutes,
+            max_attempts,
+            shutdown,
+        )
+        .await;
     }
 
     async fn run(self) {
-        let state = self;
+        let in_flight = std::sync::Arc::clone(&self.in_flight);
+        let target = CardsBatchTarget {
+            runner: self.runner,
+            in_flight: std::sync::Arc::clone(&in_flight),
+            ledger: self.ledger,
+            window_days: self.window_days,
+        };
+        run_daily_batch_daemon(
+            target,
+            in_flight,
+            self.cadence,
+            self.retry_delay_minutes,
+            self.max_attempts,
+            self.catchup_enabled,
+            self.utc_hour,
+            self.utc_minute,
+            self.shutdown,
+        )
+        .await;
+    }
+}
 
-        let now = Utc::now();
-        if state.catchup_enabled {
-            let slot = latest_scheduled_slot(now, state.utc_hour, state.utc_minute);
-            let catchup_res = state.ledger.has_completed_cards_job_since(slot).await;
-            match catchup_res {
-                Err(err) => {
-                    error!(error = %err, reason = "ledger_query_failed", "cards_catchup_skipped");
-                }
-                Ok(has_completed) => {
-                    match should_catchup(state.catchup_enabled, slot, has_completed) {
-                        CatchupDecision::Run { slot } => {
-                            info!(
-                                slot = %slot.to_rfc3339(),
-                                delay_minutes = state.retry_delay_minutes,
-                                "cards_catchup_scheduled"
-                            );
-                            let grace = Duration::from_mins(state.retry_delay_minutes);
-                            tokio::select! {
-                                () = sleep(grace) => {
-                                    match state.ledger.has_completed_cards_job_since(slot).await {
-                                        Err(err) => {
-                                            error!(error = %err, reason = "ledger_query_failed", "cards_catchup_skipped");
-                                        }
-                                        Ok(has_completed_after_grace) => {
-                                            let decision_after_grace = should_catchup(state.catchup_enabled, slot, has_completed_after_grace);
-                                            match decision_after_grace {
-                                                CatchupDecision::Run { .. } => {
-                                                    Self::run_with_retry(
-                                                        state.runner.as_ref(),
-                                                        &state.in_flight,
-                                                        state.window_days,
-                                                        state.retry_delay_minutes,
-                                                        state.max_attempts,
-                                                        &state.shutdown,
-                                                    )
-                                                    .await;
-                                                }
-                                                CatchupDecision::Skip { .. } => {
-                                                    info!(reason = "completed_during_grace", "cards_catchup_skipped");
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                                () = state.shutdown.cancelled() => {
-                                    info!("shutdown requested during catch-up grace delay, stopping cards batch daemon");
-                                    return;
-                                }
-                            }
-                        }
-                        CatchupDecision::Skip { reason } => {
-                            info!(reason, "cards_catchup_skipped");
-                        }
-                    }
-                }
+#[allow(clippy::too_many_arguments)]
+pub fn spawn_themes_batch_daemon(
+    runner: std::sync::Arc<dyn ThemesJobRunner>,
+    in_flight: std::sync::Arc<std::sync::Mutex<Option<Uuid>>>,
+    ledger: std::sync::Arc<dyn ThemesLedger>,
+    owner_user_id: Uuid,
+    retry_delay_minutes: u64,
+    max_attempts: u32,
+    catchup_enabled: bool,
+    hour: u32,
+    minute: u32,
+    shutdown: CancellationToken,
+) -> JoinHandle<()> {
+    let tz = FixedOffset::east_opt(0).expect("valid UTC offset");
+    let cadence =
+        DailyCadence::new(tz, hour, minute).unwrap_or_else(|e| panic!("themes batch cadence: {e}"));
+    let target = ThemesBatchTarget {
+        runner,
+        in_flight: std::sync::Arc::clone(&in_flight),
+        ledger,
+        owner_user_id,
+    };
+    tokio::spawn(run_daily_batch_daemon(
+        target,
+        in_flight,
+        cadence,
+        retry_delay_minutes,
+        max_attempts,
+        catchup_enabled,
+        hour,
+        minute,
+        shutdown,
+    ))
+}
+
+struct ThemesBatchDaemon;
+
+impl ThemesBatchDaemon {
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) async fn run_once(
+        runner: &dyn ThemesJobRunner,
+        in_flight: &std::sync::Mutex<Option<Uuid>>,
+    ) -> anyhow::Result<Option<Uuid>> {
+        let run_id = Uuid::new_v4();
+        let _guard = match try_acquire_in_flight(in_flight, run_id) {
+            Ok(guard) => guard,
+            Err(running_id) => {
+                warn!(
+                    running_run_id = %running_id,
+                    "scheduled themes batch skipped: another themes run is in flight"
+                );
+                return Ok(None);
             }
-        } else {
-            info!(reason = "catchup_disabled", "cards_catchup_skipped");
+        };
+
+        let run_time = Utc::now();
+        info!(
+            %run_id,
+            run_time = %run_time.to_rfc3339(),
+            "starting automatic themes batch"
+        );
+
+        runner.run_themes(run_id, run_time).await?;
+        Ok(Some(run_id))
+    }
+
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) async fn run_with_retry(
+        runner: &dyn ThemesJobRunner,
+        in_flight: &std::sync::Mutex<Option<Uuid>>,
+        retry_delay_minutes: u64,
+        max_attempts: u32,
+        shutdown: &CancellationToken,
+    ) {
+        struct RefThemesTarget<'a> {
+            runner: &'a dyn ThemesJobRunner,
+            in_flight: &'a std::sync::Mutex<Option<Uuid>>,
         }
-
-        loop {
-            if state.shutdown.is_cancelled() {
-                info!("shutdown requested, stopping cards batch daemon");
-                break;
+        #[async_trait::async_trait]
+        impl ScheduledBatchTarget for RefThemesTarget<'_> {
+            fn kind(&self) -> &'static str {
+                "themes"
             }
-
-            let now = Utc::now();
-            let next = state.cadence.next_run_from(now);
-            let wait = duration_until(next, now);
-            info!(
-                next_run_utc = %next.to_rfc3339(),
-                wait_seconds = wait.as_secs(),
-                "scheduled automatic cards recap batch"
-            );
-            tokio::select! {
-                () = sleep(wait) => {}
-                () = state.shutdown.cancelled() => {
-                    info!("shutdown requested during wait, stopping cards batch daemon");
-                    break;
-                }
+            async fn has_completed_since(
+                &self,
+                _since: chrono::DateTime<Utc>,
+            ) -> anyhow::Result<bool> {
+                Ok(false)
             }
-
-            if state.shutdown.is_cancelled() {
-                break;
+            async fn run_once(&self) -> anyhow::Result<Option<Uuid>> {
+                ThemesBatchDaemon::run_once(self.runner, self.in_flight).await
             }
-
-            Self::run_with_retry(
-                state.runner.as_ref(),
-                &state.in_flight,
-                state.window_days,
-                state.retry_delay_minutes,
-                state.max_attempts,
-                &state.shutdown,
-            )
-            .await;
+            fn is_fatal_error(&self, err: &anyhow::Error) -> bool {
+                crate::clients::subworker::is_subworker_auth_error(err)
+            }
         }
+        let target = RefThemesTarget { runner, in_flight };
+        run_target_with_retry(
+            &target,
+            in_flight,
+            retry_delay_minutes,
+            max_attempts,
+            shutdown,
+        )
+        .await;
     }
 }
 
@@ -1277,5 +1553,148 @@ mod tests {
             0,
             "runner must not be invoked when catchup is disabled"
         );
+    }
+
+    struct FakeThemesLedger {
+        results: std::sync::Mutex<std::collections::VecDeque<anyhow::Result<bool>>>,
+        queried_slots: std::sync::Mutex<Vec<(Uuid, chrono::DateTime<Utc>)>>,
+    }
+
+    impl FakeThemesLedger {
+        fn new(results: Vec<anyhow::Result<bool>>) -> Self {
+            Self {
+                results: std::sync::Mutex::new(results.into()),
+                queried_slots: std::sync::Mutex::new(Vec::new()),
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl ThemesLedger for FakeThemesLedger {
+        async fn has_completed_theme_run_since(
+            &self,
+            user_id: Uuid,
+            since: chrono::DateTime<Utc>,
+        ) -> anyhow::Result<bool> {
+            self.queried_slots.lock().unwrap().push((user_id, since));
+            self.results.lock().unwrap().pop_front().unwrap_or(Ok(true))
+        }
+    }
+
+    #[tokio::test]
+    async fn test_themes_batch_daemon_run_once_uses_kick_time() {
+        let runner = crate::pipeline::themes::fakes::FakeThemesJobRunner::new();
+        let in_flight = std::sync::Mutex::new(None);
+        let before = Utc::now();
+        let run_id = ThemesBatchDaemon::run_once(&runner, &in_flight)
+            .await
+            .expect("run_once succeeds")
+            .expect("run executed");
+        let after = Utc::now();
+
+        let runs = runner.invocations();
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].0, run_id);
+        assert!(runs[0].1 >= before && runs[0].1 <= after);
+    }
+
+    #[tokio::test]
+    async fn test_themes_and_cards_in_flight_guards_are_independent() {
+        let cards_runner = RecordingCardsRunner::default();
+        let themes_runner = crate::pipeline::themes::fakes::FakeThemesJobRunner::new();
+        let cards_in_flight = std::sync::Mutex::new(Some(Uuid::new_v4()));
+        let themes_in_flight = std::sync::Mutex::new(None);
+
+        let cards_res = CardsBatchDaemon::run_once(&cards_runner, &cards_in_flight, 3)
+            .await
+            .expect("cards run_once returns Ok(None)");
+        assert!(cards_res.is_none(), "occupied cards guard blocks cards");
+
+        let themes_res = ThemesBatchDaemon::run_once(&themes_runner, &themes_in_flight)
+            .await
+            .expect("themes run_once succeeds");
+        assert!(
+            themes_res.is_some(),
+            "occupied cards guard must NOT block themes run"
+        );
+        assert_eq!(themes_runner.invocations().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_themes_batch_daemon_skips_when_themes_in_flight() {
+        let runner = crate::pipeline::themes::fakes::FakeThemesJobRunner::new();
+        let in_flight = std::sync::Mutex::new(Some(Uuid::new_v4()));
+
+        let res = ThemesBatchDaemon::run_once(&runner, &in_flight)
+            .await
+            .expect("run_once returns Ok(None)");
+        assert_eq!(res, None);
+        assert!(runner.invocations().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_themes_batch_daemon_retry_recovers_within_max_attempts() {
+        struct FlakyThemesRunner {
+            fail_first: std::sync::atomic::AtomicU32,
+            runs: std::sync::Mutex<Vec<Uuid>>,
+        }
+        #[async_trait::async_trait]
+        impl ThemesJobRunner for FlakyThemesRunner {
+            async fn run_themes(
+                &self,
+                run_id: Uuid,
+                _run_time: chrono::DateTime<Utc>,
+            ) -> anyhow::Result<()> {
+                self.runs.lock().unwrap().push(run_id);
+                let prev = self
+                    .fail_first
+                    .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+                if prev > 0 {
+                    anyhow::bail!("transient failure");
+                }
+                Ok(())
+            }
+        }
+
+        let runner = FlakyThemesRunner {
+            fail_first: std::sync::atomic::AtomicU32::new(1),
+            runs: std::sync::Mutex::new(Vec::new()),
+        };
+        let in_flight = std::sync::Mutex::new(None);
+        let shutdown = CancellationToken::new();
+
+        ThemesBatchDaemon::run_with_retry(&runner, &in_flight, 0, 3, &shutdown).await;
+        assert_eq!(runner.runs.lock().unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_themes_batch_daemon_catchup_runs_and_skips_when_already_completed() {
+        let owner_id = Uuid::new_v4();
+        let runner =
+            std::sync::Arc::new(crate::pipeline::themes::fakes::FakeThemesJobRunner::new());
+        let in_flight = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let ledger = std::sync::Arc::new(FakeThemesLedger::new(vec![Ok(false), Ok(false)]));
+        let shutdown = CancellationToken::new();
+
+        let handle = spawn_themes_batch_daemon(
+            runner.clone(),
+            in_flight,
+            ledger.clone(),
+            owner_id,
+            0,
+            1,
+            true,
+            19,
+            0,
+            shutdown.clone(),
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+        shutdown.cancel();
+        handle.await.expect("daemon task exits");
+
+        assert_eq!(runner.invocations().len(), 1);
+        let queries = ledger.queried_slots.lock().unwrap();
+        assert_eq!(queries.len(), 2);
+        assert_eq!(queries[0].0, owner_id);
     }
 }

@@ -132,6 +132,103 @@ pub(crate) async fn trigger_topic_cards(
     (StatusCode::ACCEPTED, body).into_response()
 }
 
+pub(crate) async fn trigger_themes(
+    State(state): State<AppState>,
+    body: axum::body::Bytes,
+) -> axum::response::Response {
+    if !body.is_empty() && serde_json::from_slice::<serde_json::Value>(&body).is_err() {
+        let body = Json(ErrorResponse {
+            error: "invalid json".into(),
+        });
+        return (StatusCode::BAD_REQUEST, body).into_response();
+    }
+
+    state.telemetry().record_manual_generate_invocation();
+
+    if !state.config().themes_enabled() {
+        error!("themes trigger not configured");
+        let body = Json(ErrorResponse {
+            error: "themes trigger not configured".into(),
+        });
+        return (StatusCode::SERVICE_UNAVAILABLE, body).into_response();
+    }
+
+    let in_flight = state.themes_run_in_flight();
+    {
+        let lock = in_flight
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(running_run_id) = *lock {
+            let body = Json(ErrorResponse {
+                error: format!("themes run is already running: {running_run_id}"),
+            });
+            return (StatusCode::CONFLICT, body).into_response();
+        }
+    }
+
+    match state.dao().find_running_theme_run().await {
+        Ok(Some(running_run_id)) => {
+            let body = Json(ErrorResponse {
+                error: format!("themes run is already running: {running_run_id}"),
+            });
+            return (StatusCode::CONFLICT, body).into_response();
+        }
+        Ok(None) => {}
+        Err(e) => {
+            error!(error = %e, "failed to query running theme run");
+            let body = Json(ErrorResponse {
+                error: "failed to query running theme run".into(),
+            });
+            return (StatusCode::INTERNAL_SERVER_ERROR, body).into_response();
+        }
+    }
+
+    let run_id = Uuid::new_v4();
+
+    {
+        let mut lock = in_flight
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(running_run_id) = *lock {
+            let body = Json(ErrorResponse {
+                error: format!("themes run is already running: {running_run_id}"),
+            });
+            return (StatusCode::CONFLICT, body).into_response();
+        }
+        *lock = Some(run_id);
+    }
+
+    let run_time = chrono::Utc::now();
+    let runner = state.themes_runner();
+    let in_flight_task = Arc::clone(&in_flight);
+
+    tokio::spawn(async move {
+        struct ThemesInFlightGuard(Arc<std::sync::Mutex<Option<Uuid>>>);
+        impl Drop for ThemesInFlightGuard {
+            fn drop(&mut self) {
+                *self
+                    .0
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+            }
+        }
+
+        let _guard = ThemesInFlightGuard(in_flight_task);
+        match runner.run_themes(run_id, run_time).await {
+            Ok(()) => info!(%run_id, "themes run completed"),
+            Err(err) => error!(%run_id, error = %err, "themes run failed"),
+        }
+    });
+
+    let body = Json(GenerateRecapResponse {
+        job_id: run_id,
+        genres: vec![],
+        status: "accepted",
+    });
+
+    (StatusCode::ACCEPTED, body).into_response()
+}
+
 fn trigger_recap(
     state: AppState,
     payload: GenerateRecapRequest,
@@ -271,6 +368,7 @@ mod tests {
                 ("MTLS_ALLOWED_PEERS", Some("disabled")),
                 ("RECAP_EVAL_LISTENER", Some("disabled")),
                 ("RECAP_CARDS_JOB", Some("disabled")),
+                ("RECAP_THEMES_ENABLED", Some("false")),
                 ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
@@ -347,6 +445,7 @@ mod tests {
                 ("MTLS_ALLOWED_PEERS", Some("disabled")),
                 ("RECAP_EVAL_LISTENER", Some("disabled")),
                 ("RECAP_CARDS_JOB", Some("disabled")),
+                ("RECAP_THEMES_ENABLED", Some("false")),
                 ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
@@ -407,6 +506,7 @@ mod tests {
                 ("MTLS_ALLOWED_PEERS", Some("disabled")),
                 ("RECAP_EVAL_LISTENER", Some("disabled")),
                 ("RECAP_CARDS_JOB", Some("disabled")),
+                ("RECAP_THEMES_ENABLED", Some("false")),
                 ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
@@ -476,6 +576,7 @@ mod tests {
                 ("MTLS_ALLOWED_PEERS", Some("disabled")),
                 ("RECAP_EVAL_LISTENER", Some("disabled")),
                 ("RECAP_CARDS_JOB", Some("disabled")),
+                ("RECAP_THEMES_ENABLED", Some("false")),
                 ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
@@ -578,6 +679,7 @@ mod tests {
                 ("MTLS_ALLOWED_PEERS", Some("disabled")),
                 ("RECAP_EVAL_LISTENER", Some("disabled")),
                 ("RECAP_CARDS_JOB", Some("disabled")),
+                ("RECAP_THEMES_ENABLED", Some("false")),
                 ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
@@ -657,6 +759,7 @@ mod tests {
                 ("MTLS_ALLOWED_PEERS", Some("disabled")),
                 ("RECAP_EVAL_LISTENER", Some("disabled")),
                 ("RECAP_CARDS_JOB", Some("disabled")),
+                ("RECAP_THEMES_ENABLED", Some("false")),
                 ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
@@ -769,6 +872,7 @@ mod tests {
                 ("MTLS_ALLOWED_PEERS", Some("disabled")),
                 ("RECAP_EVAL_LISTENER", Some("disabled")),
                 ("RECAP_CARDS_JOB", Some("disabled")),
+                ("RECAP_THEMES_ENABLED", Some("false")),
                 ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
@@ -876,6 +980,7 @@ mod tests {
                 ("MTLS_ALLOWED_PEERS", Some("disabled")),
                 ("RECAP_EVAL_LISTENER", Some("disabled")),
                 ("RECAP_CARDS_JOB", Some("disabled")),
+                ("RECAP_THEMES_ENABLED", Some("false")),
                 ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
@@ -895,5 +1000,197 @@ mod tests {
         assert_eq!(job.trigger_source(), "user");
         assert_eq!(job.user_id(), Some(user_id));
         assert_eq!(job.tenant_id(), Some(tenant_id));
+    }
+
+    async fn build_themes_trigger_registry(
+        themes_enabled: bool,
+    ) -> (ComponentRegistry, Option<(Uuid, Uuid)>) {
+        let user_id = Uuid::new_v4();
+        let tenant_id = Uuid::new_v4();
+        let user_id_str = user_id.to_string();
+        let tenant_id_str = tenant_id.to_string();
+        let themes_flag = if themes_enabled { "true" } else { "false" };
+        let emit_flag = if themes_enabled { "true" } else { "false" };
+        let sov_url = themes_enabled.then_some("http://localhost:19500");
+        let sov_auth = themes_enabled.then_some("disabled");
+        let user_var = themes_enabled.then_some(user_id_str.as_str());
+        let tenant_var = themes_enabled.then_some(tenant_id_str.as_str());
+
+        let registry = temp_env::async_with_vars(
+            [
+                (
+                    "RECAP_DB_DSN",
+                    Some("postgres://recap:recap@localhost:5432/recap"),
+                ),
+                ("NEWS_CREATOR_BASE_URL", Some("http://localhost:18001/")),
+                ("SUBWORKER_BASE_URL", Some("http://localhost:18002/")),
+                ("ALT_BACKEND_BASE_URL", Some("http://localhost:19000/")),
+                ("RECAP_KNOWLEDGE_EMIT", Some(emit_flag)),
+                ("RECAP_KNOWLEDGE_SOVEREIGN_URL", sov_url),
+                ("RECAP_KNOWLEDGE_SOVEREIGN_AUTH", sov_auth),
+                ("RECAP_KNOWLEDGE_OWNER_USER_ID", user_var),
+                ("RECAP_KNOWLEDGE_OWNER_TENANT_ID", tenant_var),
+                ("RECAP_ADMIN_AUTH", Some("disabled")),
+                ("MTLS_ALLOWED_PEERS", Some("disabled")),
+                ("RECAP_EVAL_LISTENER", Some("disabled")),
+                ("RECAP_CARDS_JOB", Some("disabled")),
+                ("RECAP_THEMES_ENABLED", Some(themes_flag)),
+                ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
+                ("RECAP_GENRES", Some("ai,space")),
+                (
+                    "HUGGING_FACE_TOKEN_PATH",
+                    Some("/tmp/test-token-which-does-not-exist"),
+                ),
+                ("TOKEN_COUNTER_ALLOW_DUMMY_FALLBACK", Some("true")),
+            ],
+            async {
+                let config = Config::from_env().expect("config loads");
+                ComponentRegistry::build(config)
+                    .await
+                    .expect("registry builds")
+            },
+        )
+        .await;
+
+        (registry, themes_enabled.then_some((user_id, tenant_id)))
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn trigger_themes_returns_503_when_disabled() {
+        let _lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let (registry, _) = build_themes_trigger_registry(false).await;
+        let app = build_router(registry);
+
+        let response = app
+            .oneshot(
+                Request::post("/v1/generate/themes")
+                    .header("content-type", "application/json")
+                    .body(Body::from("{}"))
+                    .expect("request builds"),
+            )
+            .await
+            .expect("request succeeds");
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+
+        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body bytes");
+        let payload: serde_json::Value = serde_json::from_slice(&body_bytes).expect("valid json");
+        assert_eq!(payload["error"], "themes trigger not configured");
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn trigger_themes_returns_409_when_run_already_running() {
+        let _lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let running_run_id = Uuid::new_v4();
+        let (registry, _) = build_themes_trigger_registry(true).await;
+
+        let mock_dao = MockRecapDao::new();
+        mock_dao.set_running_theme_run(Some(running_run_id));
+        let registry = registry.with_recap_dao(Arc::new(mock_dao));
+
+        let app = build_router(registry);
+        let response = app
+            .oneshot(
+                Request::post("/v1/generate/themes")
+                    .header("content-type", "application/json")
+                    .body(Body::from("{}"))
+                    .expect("request builds"),
+            )
+            .await
+            .expect("request succeeds");
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn trigger_themes_returns_409_when_in_flight() {
+        let _lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let (registry, _) = build_themes_trigger_registry(true).await;
+
+        let runner = Arc::new(crate::pipeline::themes::fakes::FakeThemesJobRunner::new());
+        runner.set_hold(true);
+        let mock_dao = MockRecapDao::new();
+        let registry = registry
+            .with_recap_dao(Arc::new(mock_dao))
+            .with_themes_runner(runner.clone());
+
+        let app = build_router(registry);
+        let first_resp = app
+            .clone()
+            .oneshot(
+                Request::post("/v1/generate/themes")
+                    .header("content-type", "application/json")
+                    .body(Body::from("{}"))
+                    .expect("request builds"),
+            )
+            .await
+            .expect("request succeeds");
+        assert_eq!(first_resp.status(), StatusCode::ACCEPTED);
+
+        let second_resp = app
+            .oneshot(
+                Request::post("/v1/generate/themes")
+                    .header("content-type", "application/json")
+                    .body(Body::from("{}"))
+                    .expect("request builds"),
+            )
+            .await
+            .expect("request succeeds");
+        assert_eq!(second_resp.status(), StatusCode::CONFLICT);
+
+        runner.release();
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn trigger_themes_returns_202_and_invokes_runner() {
+        let _lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let (registry, _) = build_themes_trigger_registry(true).await;
+
+        let runner = Arc::new(crate::pipeline::themes::fakes::FakeThemesJobRunner::new());
+        let mock_dao = MockRecapDao::new();
+        let registry = registry
+            .with_recap_dao(Arc::new(mock_dao))
+            .with_themes_runner(runner.clone());
+
+        let app = build_router(registry);
+        let response = app
+            .oneshot(
+                Request::post("/v1/generate/themes")
+                    .header("content-type", "application/json")
+                    .body(Body::from("{}"))
+                    .expect("request builds"),
+            )
+            .await
+            .expect("request succeeds");
+        assert_eq!(response.status(), StatusCode::ACCEPTED);
+
+        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body bytes");
+        let payload: serde_json::Value = serde_json::from_slice(&body_bytes).expect("valid json");
+        let run_id = payload["job_id"]
+            .as_str()
+            .and_then(|s| Uuid::parse_str(s).ok())
+            .expect("response job_id must be UUID");
+        assert_eq!(payload["status"], "accepted");
+
+        runner.notify_on_finish.notified().await;
+        let runs = runner.invocations();
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].0, run_id);
     }
 }

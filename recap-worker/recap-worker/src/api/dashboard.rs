@@ -745,6 +745,10 @@ mod tests {
             self.inner.find_running_cards_job().await
         }
 
+        async fn find_running_theme_run(&self) -> crate::error::Result<Option<Uuid>> {
+            self.inner.find_running_theme_run().await
+        }
+
         async fn update_job_status(
             &self,
             job_id: Uuid,
@@ -1311,6 +1315,7 @@ mod tests {
                 ("MTLS_ALLOWED_PEERS", Some("disabled")),
                 ("RECAP_EVAL_LISTENER", Some("disabled")),
                 ("RECAP_CARDS_JOB", Some("disabled")),
+                ("RECAP_THEMES_ENABLED", Some("false")),
                 ("RECAP_GENRES", Some("ai,space")),
                 ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
                 ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),

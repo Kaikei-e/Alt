@@ -41,6 +41,8 @@ pub struct ComponentRegistry {
     cards_runner: Option<Arc<dyn crate::pipeline::cards::CardsJobRunner>>,
     // recap-worker runs as a single instance, so an in-process guard is sufficient to prevent overlapping runs.
     cards_run_in_flight: Arc<std::sync::Mutex<Option<uuid::Uuid>>>,
+    themes_runner: Option<Arc<dyn crate::pipeline::themes::ThemesJobRunner>>,
+    themes_run_in_flight: Arc<std::sync::Mutex<Option<uuid::Uuid>>>,
 }
 
 impl AppState {
@@ -84,6 +86,14 @@ impl AppState {
 
     pub(crate) fn cards_run_in_flight(&self) -> Arc<std::sync::Mutex<Option<uuid::Uuid>>> {
         self.registry.cards_run_in_flight()
+    }
+
+    pub(crate) fn themes_runner(&self) -> Arc<dyn crate::pipeline::themes::ThemesJobRunner> {
+        self.registry.themes_runner()
+    }
+
+    pub(crate) fn themes_run_in_flight(&self) -> Arc<std::sync::Mutex<Option<uuid::Uuid>>> {
+        self.registry.themes_run_in_flight()
     }
 }
 
@@ -181,6 +191,13 @@ impl ComponentRegistry {
         let cards_runner =
             build_cards_runner(&config, &recap_pool, telemetry.metrics_arc()).await?;
         let cards_run_in_flight = Arc::new(std::sync::Mutex::new(None));
+        let themes_runner = build_themes_runner(
+            &config,
+            mtls_paths.as_ref(),
+            &recap_pool,
+            Arc::clone(&news_creator_client),
+        )?;
+        let themes_run_in_flight = Arc::new(std::sync::Mutex::new(None));
 
         Ok(Self {
             config,
@@ -194,6 +211,8 @@ impl ComponentRegistry {
             pki,
             cards_runner,
             cards_run_in_flight,
+            themes_runner,
+            themes_run_in_flight,
         })
     }
 
@@ -260,6 +279,30 @@ impl ComponentRegistry {
         runner: Arc<dyn crate::pipeline::cards::CardsJobRunner>,
     ) -> Self {
         self.cards_runner = Some(runner);
+        self
+    }
+
+    #[must_use]
+    pub fn themes_runner(&self) -> Arc<dyn crate::pipeline::themes::ThemesJobRunner> {
+        Arc::clone(
+            self.themes_runner
+                .as_ref()
+                .expect("themes_runner unwired in ComponentRegistry"),
+        )
+    }
+
+    #[must_use]
+    pub fn themes_run_in_flight(&self) -> Arc<std::sync::Mutex<Option<uuid::Uuid>>> {
+        Arc::clone(&self.themes_run_in_flight)
+    }
+
+    #[cfg(test)]
+    #[must_use]
+    pub(crate) fn with_themes_runner(
+        mut self,
+        runner: Arc<dyn crate::pipeline::themes::ThemesJobRunner>,
+    ) -> Self {
+        self.themes_runner = Some(runner);
         self
     }
 
@@ -376,6 +419,118 @@ fn relay_enabled() -> Result<bool> {
     }
 }
 
+fn build_datahub_client(
+    config: &Config,
+    mtls_paths: Option<&crate::clients::mtls::MtlsPaths>,
+    purpose: &str,
+) -> Result<DataHubClient> {
+    let base_url = if mtls_paths.is_some() {
+        std::env::var("ALT_BACKEND_MTLS_URL")
+            .unwrap_or_else(|_| config.alt_backend_base_url().to_string())
+    } else {
+        config.alt_backend_base_url().to_string()
+    };
+
+    if let Some(paths) = mtls_paths {
+        let http = crate::clients::mtls::build_mtls_client(
+            paths,
+            config.alt_backend_connect_timeout(),
+            config.alt_backend_total_timeout(),
+        )
+        .with_context(|| format!("failed to build alt-data-hub mTLS client for {purpose}"))?;
+        DataHubClient::new_with_client(base_url, http)
+    } else {
+        DataHubClient::new(
+            base_url,
+            config.alt_backend_connect_timeout(),
+            config.alt_backend_total_timeout(),
+        )
+    }
+    .with_context(|| format!("failed to build alt-data-hub client for {purpose}"))
+}
+
+fn build_subworker_cards_client(
+    config: &Config,
+    mtls_paths: Option<&crate::clients::mtls::MtlsPaths>,
+) -> Result<crate::clients::subworker::cards::SubworkerCardsClient> {
+    let admin_token = config.admin_auth_token().map(str::to_string);
+    if let Some(paths) = mtls_paths {
+        let mtls_builder = crate::clients::mtls::build_mtls_client_builder(
+            paths,
+            std::time::Duration::from_secs(5),
+            std::time::Duration::from_mins(2),
+        )
+        .context("failed to build subworker mTLS client")?;
+        crate::clients::subworker::cards::SubworkerCardsClient::new_with_client(
+            config.subworker_base_url(),
+            mtls_builder,
+            admin_token,
+        )
+    } else {
+        crate::clients::subworker::cards::SubworkerCardsClient::new(
+            config.subworker_base_url(),
+            admin_token,
+        )
+    }
+    .context("failed to build subworker cards client")
+}
+
+fn build_themes_runner(
+    config: &Config,
+    mtls_paths: Option<&crate::clients::mtls::MtlsPaths>,
+    pool: &sqlx::PgPool,
+    news_creator_client: Arc<NewsCreatorClient>,
+) -> Result<Option<Arc<dyn crate::pipeline::themes::ThemesJobRunner>>> {
+    let crate::config::ThemesJobConfig::Enabled {
+        utc_hour,
+        utc_minute,
+        owner,
+    } = config.themes_job()
+    else {
+        tracing::info!("themes_disabled");
+        return Ok(None);
+    };
+
+    tracing::info!(
+        user_id = %owner.user_id,
+        tenant_id = %owner.tenant_id,
+        utc_hour,
+        utc_minute,
+        "themes_enabled"
+    );
+
+    let sovereign_url = config
+        .knowledge_sovereign_url()
+        .ok_or_else(|| anyhow!("themes_enabled requires RECAP_KNOWLEDGE_SOVEREIGN_URL"))?;
+    let knowledge_client = Arc::new(
+        crate::clients::knowledge_sovereign::KnowledgeSovereignClient::new(
+            sovereign_url,
+            config.knowledge_sovereign_token().map(str::to_string),
+        )
+        .context("failed to build knowledge-sovereign client for themes pipeline")?,
+    );
+    let datahub_client = Arc::new(build_datahub_client(
+        config,
+        mtls_paths,
+        "the themes pipeline",
+    )?);
+    let subworker_client = Arc::new(build_subworker_cards_client(config, mtls_paths)?);
+    let params = crate::pipeline::themes::ThemesParams::default();
+    let pipeline = crate::pipeline::themes::ThemesPipeline::from_clients(
+        crate::pipeline::themes::pipeline::ThemesPipelineClients {
+            knowledge_client,
+            datahub_client,
+            subworker_client,
+            news_creator_client,
+            pool: pool.clone(),
+        },
+        &params,
+    );
+    Ok(Some(Arc::new(crate::pipeline::themes::ThemesRunner::new(
+        pipeline, *owner,
+    ))))
+}
+
 /// Build the relay, or state plainly that it is disabled.
 ///
 /// The data-hub URL resolution mirrors `pipeline::orchestrator`: under
@@ -397,29 +552,7 @@ fn build_notification_relay(
         return Ok(None);
     }
 
-    let base_url = if mtls_paths.is_some() {
-        std::env::var("ALT_BACKEND_MTLS_URL")
-            .unwrap_or_else(|_| config.alt_backend_base_url().to_string())
-    } else {
-        config.alt_backend_base_url().to_string()
-    };
-
-    let client = if let Some(paths) = mtls_paths {
-        let http = crate::clients::mtls::build_mtls_client(
-            paths,
-            config.alt_backend_connect_timeout(),
-            config.alt_backend_total_timeout(),
-        )
-        .context("failed to build alt-data-hub mTLS client for the notification relay")?;
-        DataHubClient::new_with_client(base_url, http)
-    } else {
-        DataHubClient::new(
-            base_url,
-            config.alt_backend_connect_timeout(),
-            config.alt_backend_total_timeout(),
-        )
-    }
-    .context("failed to build alt-data-hub client for the notification relay")?;
+    let client = build_datahub_client(config, mtls_paths, "the notification relay")?;
 
     // Identifies the lease holder in `locked_by`; the pid distinguishes two
     // relays that shared a hostname across a restart.
@@ -474,6 +607,7 @@ mod tests {
                 ("MTLS_ALLOWED_PEERS", Some("disabled")),
                 ("RECAP_EVAL_LISTENER", Some("disabled")),
                 ("RECAP_CARDS_JOB", Some("disabled")),
+                ("RECAP_THEMES_ENABLED", Some("false")),
                 ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),

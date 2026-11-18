@@ -586,6 +586,55 @@ impl ThemesDaoOps {
 
         Ok(())
     }
+
+    /// Return whether a completed theme run exists for `user_id` with `kicked_at >= since`.
+    pub async fn has_completed_run_since(
+        pool: &PgPool,
+        user_id: Uuid,
+        since: DateTime<Utc>,
+    ) -> Result<bool> {
+        validate_non_nil_user(user_id)?;
+        let row = sqlx::query(
+            r"
+            SELECT EXISTS (
+                SELECT 1 FROM read_theme_runs
+                WHERE user_id = $1
+                  AND status = 'completed'
+                  AND kicked_at >= $2
+            ) AS exists
+            ",
+        )
+        .bind(user_id)
+        .bind(since)
+        .fetch_one(pool)
+        .await
+        .map_err(|e| {
+            RecapError::Db(format!(
+                "failed to check completed read_theme_runs since slot: {e}"
+            ))
+        })?;
+
+        let exists: bool = row.try_get("exists")?;
+        Ok(exists)
+    }
+
+    /// Return the newest running theme run ID, if any.
+    pub async fn find_running_run(pool: &PgPool) -> Result<Option<Uuid>> {
+        let row = sqlx::query(
+            r"
+            SELECT run_id
+            FROM read_theme_runs
+            WHERE status = 'running'
+            ORDER BY kicked_at DESC
+            LIMIT 1
+            ",
+        )
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| RecapError::Db(format!("failed to query running read_theme_runs: {e}")))?;
+
+        Ok(row.map(|r| r.get("run_id")))
+    }
 }
 
 #[cfg(test)]
@@ -787,6 +836,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(clippy::too_many_lines)]
     async fn db_theme_lifecycle_versioning_and_user_isolation() -> anyhow::Result<()> {
         let Ok(database_url) = std::env::var("DATABASE_URL") else {
             return Ok(());

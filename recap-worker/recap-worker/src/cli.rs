@@ -829,6 +829,7 @@ mod tests {
             ("RECAP_ADMIN_AUTH", Some("disabled")),
             ("MTLS_ALLOWED_PEERS", Some("disabled")),
             ("RECAP_CARDS_JOB", Some("disabled")),
+            ("RECAP_THEMES_ENABLED", Some("false")),
             ("RECAP_EVAL_LISTENER", Some("disabled")),
             ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
             ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
