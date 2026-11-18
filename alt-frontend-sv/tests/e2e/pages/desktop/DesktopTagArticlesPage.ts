@@ -26,13 +26,11 @@ export class DesktopTagArticlesPage extends BasePage {
 		this.emptyState = page.getByTestId("empty-state");
 		this.errorMessage = page.getByText(/failed|error/i).first();
 		this.backLink = page.getByRole("link", { name: /home/i }).first();
-		this.detailPanel = page.getByTestId("article-detail-panel");
-		this.fetchContentButton = page.getByRole("button", {
-			name: /fetch content/i,
-		});
-		this.closeDetailButton = page
-			.getByTestId("article-detail-panel")
-			.getByRole("button", { name: /close/i });
+		this.detailPanel = page.getByTestId("reader-overlay");
+		this.fetchContentButton = this.detailPanel.getByTestId("fetch-button");
+		this.closeDetailButton = this.detailPanel.getByTestId(
+			"reader-overlay-close",
+		);
 	}
 
 	get url(): string {

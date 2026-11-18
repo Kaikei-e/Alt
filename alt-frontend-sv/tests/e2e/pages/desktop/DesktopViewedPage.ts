@@ -35,16 +35,14 @@ export class DesktopViewedPage extends BasePage {
 		this.errorMessage = page.getByText(/error/i).first();
 		this.noMoreFeeds = page.getByText(/end of wire/i);
 
-		this.feedDetailModal = page.locator('[role="dialog"]');
-		this.modalCloseButton = this.feedDetailModal
-			.getByRole("button", { name: /^close$/i })
-			.first();
-		this.prevFeedButton = this.feedDetailModal.getByRole("button", {
-			name: /previous feed/i,
-		});
-		this.nextFeedButton = this.feedDetailModal.getByRole("button", {
-			name: /next feed/i,
-		});
+		this.feedDetailModal = page.getByTestId("reader-overlay");
+		this.modalCloseButton = this.feedDetailModal.getByTestId(
+			"reader-overlay-close",
+		);
+		this.prevFeedButton =
+			this.feedDetailModal.getByTestId("reader-prev-button");
+		this.nextFeedButton =
+			this.feedDetailModal.getByTestId("reader-next-button");
 	}
 
 	get url(): string {
