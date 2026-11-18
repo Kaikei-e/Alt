@@ -425,3 +425,301 @@ func TestBFFProxyRecordReadingEvents(t *testing.T) {
 		})
 	require.NoError(t, err)
 }
+
+func TestBFFProxyRecordReadingEvents_OpenedAndReadArticleIDs(t *testing.T) {
+	mockProvider := newBackendPact(t)
+
+	err := mockProvider.
+		AddInteraction().
+		Given("reading service records opened and marks qualifying sessions as read").
+		UponReceiving("a RecordReadingEvents unary Connect-RPC request with opened and sessionEnded returning readArticleIds").
+		WithCompleteRequest(consumer.Request{
+			Method: "POST",
+			Path:   matchers.String("/alt.reading.v1.ReadingService/RecordReadingEvents"),
+			Headers: matchers.MapMatcher{
+				"Content-Type":        matchers.String("application/json"),
+				"X-Alt-Backend-Token": matchers.Regex(jwtHeaderExample, jwtHeaderPattern),
+			},
+			Body: matchers.MapMatcher{
+				"events": matchers.Like([]interface{}{
+					map[string]interface{}{
+						"clientEventId": matchers.Regex("01960000-0000-7000-8000-000000000011", uuidStringPattern),
+						"occurredAt":    matchers.Regex("2026-11-18T00:00:00Z", rfc3339TimestampPattern),
+						"opened": map[string]interface{}{
+							"articleId": matchers.Regex("11111111-1111-4111-8111-111111111111", uuidStringPattern),
+							"surface":   matchers.String("READING_SURFACE_GALLERY"),
+						},
+					},
+					map[string]interface{}{
+						"clientEventId": matchers.Regex("01960000-0000-7000-8000-000000000012", uuidStringPattern),
+						"occurredAt":    matchers.Regex("2026-11-18T00:01:00Z", rfc3339TimestampPattern),
+						"sessionEnded": map[string]interface{}{
+							"articleId":       matchers.Regex("11111111-1111-4111-8111-111111111111", uuidStringPattern),
+							"surface":         matchers.String("READING_SURFACE_GALLERY"),
+							"activeDwellMs":   matchers.Like(10000),
+							"maxScrollRatio":  matchers.Like(1.0),
+							"bodyLengthChars": matchers.Like(500),
+							"reachedEnd":      matchers.Like(true),
+						},
+					},
+				}),
+			},
+		}).
+		WithCompleteResponse(consumer.Response{
+			Status: 200,
+			Headers: matchers.MapMatcher{
+				"Content-Type": matchers.String("application/json"),
+			},
+			Body: matchers.MapMatcher{
+				"accepted":       matchers.Integer(2),
+				"readArticleIds": matchers.EachLike("11111111-1111-4111-8111-111111111111", 1),
+			},
+		}).
+		ExecuteTest(t, func(config consumer.MockServerConfig) error {
+			backendURL := fmt.Sprintf("http://%s:%d", config.Host, config.Port)
+			handler := createBFFHandler(backendURL)
+
+			req := httptest.NewRequest(
+				http.MethodPost,
+				"/alt.reading.v1.ReadingService/RecordReadingEvents",
+				strings.NewReader(`{"events":[{"clientEventId":"01960000-0000-7000-8000-000000000011","occurredAt":"2026-11-18T00:00:00Z","opened":{"articleId":"11111111-1111-4111-8111-111111111111","surface":"READING_SURFACE_GALLERY"}},{"clientEventId":"01960000-0000-7000-8000-000000000012","occurredAt":"2026-11-18T00:01:00Z","sessionEnded":{"articleId":"11111111-1111-4111-8111-111111111111","surface":"READING_SURFACE_GALLERY","activeDwellMs":10000,"maxScrollRatio":1.0,"bodyLengthChars":500,"reachedEnd":true}}]}`),
+			)
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("X-Alt-Backend-Token", createTestToken(t, "user"))
+
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, req)
+
+			assert.Equal(t, http.StatusOK, recorder.Code)
+			assert.Contains(t, recorder.Body.String(), "readArticleIds")
+			return nil
+		})
+	require.NoError(t, err)
+}
+
+func TestBFFProxyQueueArticle(t *testing.T) {
+	mockProvider := newBackendPact(t)
+
+	err := mockProvider.
+		AddInteraction().
+		Given("reading queue has capacity").
+		UponReceiving("a QueueArticle unary Connect-RPC request proxied by BFF").
+		WithCompleteRequest(consumer.Request{
+			Method: "POST",
+			Path:   matchers.String("/alt.reading.v1.ReadingService/QueueArticle"),
+			Headers: matchers.MapMatcher{
+				"Content-Type":        matchers.String("application/json"),
+				"X-Alt-Backend-Token": matchers.Regex(jwtHeaderExample, jwtHeaderPattern),
+			},
+			Body: matchers.MapMatcher{
+				"articleId":     matchers.Regex("11111111-1111-4111-8111-111111111111", uuidStringPattern),
+				"clientEventId": matchers.Regex("01960000-0000-7000-8000-000000000021", uuidStringPattern),
+				"occurredAt":    matchers.Regex("2026-11-18T00:00:00Z", rfc3339TimestampPattern),
+				"surface":       matchers.String("READING_SURFACE_SWIPE"),
+			},
+		}).
+		WithCompleteResponse(consumer.Response{
+			Status: 200,
+			Headers: matchers.MapMatcher{
+				"Content-Type": matchers.String("application/json"),
+			},
+			Body: matchers.MapMatcher{
+				"outcome": matchers.String("QUEUE_ARTICLE_OUTCOME_QUEUED"),
+				"cap":     matchers.Integer(7),
+				"items": matchers.EachLike(map[string]interface{}{
+					"articleId":  matchers.Regex("11111111-1111-4111-8111-111111111111", uuidStringPattern),
+					"title":      matchers.Like("Queued Article"),
+					"url":        matchers.Like("https://example.com/articles/1"),
+					"sourceName": matchers.Like("example.com"),
+					"queuedAt":   matchers.Regex("2026-11-18T00:00:00Z", rfc3339TimestampPattern),
+					"expiresAt":  matchers.Regex("2026-11-20T00:00:00Z", rfc3339TimestampPattern),
+				}, 1),
+			},
+		}).
+		ExecuteTest(t, func(config consumer.MockServerConfig) error {
+			backendURL := fmt.Sprintf("http://%s:%d", config.Host, config.Port)
+			handler := createBFFHandler(backendURL)
+
+			req := httptest.NewRequest(
+				http.MethodPost,
+				"/alt.reading.v1.ReadingService/QueueArticle",
+				strings.NewReader(`{"articleId":"11111111-1111-4111-8111-111111111111","clientEventId":"01960000-0000-7000-8000-000000000021","occurredAt":"2026-11-18T00:00:00Z","surface":"READING_SURFACE_SWIPE"}`),
+			)
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("X-Alt-Backend-Token", createTestToken(t, "user"))
+
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, req)
+
+			assert.Equal(t, http.StatusOK, recorder.Code)
+			assert.Contains(t, recorder.Body.String(), "QUEUE_ARTICLE_OUTCOME_QUEUED")
+			return nil
+		})
+	require.NoError(t, err)
+}
+
+func TestBFFProxyQueueArticle_QueueFull(t *testing.T) {
+	mockProvider := newBackendPact(t)
+
+	err := mockProvider.
+		AddInteraction().
+		Given("reading queue is at capacity").
+		UponReceiving("a QueueArticle unary Connect-RPC request when the queue is full").
+		WithCompleteRequest(consumer.Request{
+			Method: "POST",
+			Path:   matchers.String("/alt.reading.v1.ReadingService/QueueArticle"),
+			Headers: matchers.MapMatcher{
+				"Content-Type":        matchers.String("application/json"),
+				"X-Alt-Backend-Token": matchers.Regex(jwtHeaderExample, jwtHeaderPattern),
+			},
+			Body: matchers.MapMatcher{
+				"articleId":     matchers.Regex("88888888-8888-4888-8888-888888888888", uuidStringPattern),
+				"clientEventId": matchers.Regex("01960000-0000-7000-8000-000000000022", uuidStringPattern),
+				"occurredAt":    matchers.Regex("2026-11-18T00:00:00Z", rfc3339TimestampPattern),
+				"surface":       matchers.String("READING_SURFACE_SWIPE"),
+			},
+		}).
+		WithCompleteResponse(consumer.Response{
+			Status: 200,
+			Headers: matchers.MapMatcher{
+				"Content-Type": matchers.String("application/json"),
+			},
+			Body: matchers.MapMatcher{
+				"outcome": matchers.String("QUEUE_ARTICLE_OUTCOME_QUEUE_FULL"),
+				"cap":     matchers.Integer(7),
+				"items": matchers.EachLike(map[string]interface{}{
+					"articleId": matchers.Regex("11111111-1111-4111-8111-111111111111", uuidStringPattern),
+					"title":     matchers.Like("Existing Queued Article"),
+					"url":       matchers.Like("https://example.com/articles/1"),
+					"queuedAt":  matchers.Regex("2026-11-18T00:00:00Z", rfc3339TimestampPattern),
+					"expiresAt": matchers.Regex("2026-11-20T00:00:00Z", rfc3339TimestampPattern),
+				}, 1),
+			},
+		}).
+		ExecuteTest(t, func(config consumer.MockServerConfig) error {
+			backendURL := fmt.Sprintf("http://%s:%d", config.Host, config.Port)
+			handler := createBFFHandler(backendURL)
+
+			req := httptest.NewRequest(
+				http.MethodPost,
+				"/alt.reading.v1.ReadingService/QueueArticle",
+				strings.NewReader(`{"articleId":"88888888-8888-4888-8888-888888888888","clientEventId":"01960000-0000-7000-8000-000000000022","occurredAt":"2026-11-18T00:00:00Z","surface":"READING_SURFACE_SWIPE"}`),
+			)
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("X-Alt-Backend-Token", createTestToken(t, "user"))
+
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, req)
+
+			assert.Equal(t, http.StatusOK, recorder.Code)
+			assert.Contains(t, recorder.Body.String(), "QUEUE_ARTICLE_OUTCOME_QUEUE_FULL")
+			return nil
+		})
+	require.NoError(t, err)
+}
+
+func TestBFFProxyUnqueueArticle(t *testing.T) {
+	mockProvider := newBackendPact(t)
+
+	err := mockProvider.
+		AddInteraction().
+		Given("reading service is available").
+		UponReceiving("an UnqueueArticle unary Connect-RPC request proxied by BFF").
+		WithCompleteRequest(consumer.Request{
+			Method: "POST",
+			Path:   matchers.String("/alt.reading.v1.ReadingService/UnqueueArticle"),
+			Headers: matchers.MapMatcher{
+				"Content-Type":        matchers.String("application/json"),
+				"X-Alt-Backend-Token": matchers.Regex(jwtHeaderExample, jwtHeaderPattern),
+			},
+			Body: matchers.MapMatcher{
+				"articleId":     matchers.Regex("11111111-1111-4111-8111-111111111111", uuidStringPattern),
+				"clientEventId": matchers.Regex("01960000-0000-7000-8000-000000000023", uuidStringPattern),
+				"occurredAt":    matchers.Regex("2026-11-18T00:00:00Z", rfc3339TimestampPattern),
+			},
+		}).
+		WithCompleteResponse(consumer.Response{
+			Status: 200,
+			Headers: matchers.MapMatcher{
+				"Content-Type": matchers.String("application/json"),
+			},
+			Body: map[string]interface{}{},
+		}).
+		ExecuteTest(t, func(config consumer.MockServerConfig) error {
+			backendURL := fmt.Sprintf("http://%s:%d", config.Host, config.Port)
+			handler := createBFFHandler(backendURL)
+
+			req := httptest.NewRequest(
+				http.MethodPost,
+				"/alt.reading.v1.ReadingService/UnqueueArticle",
+				strings.NewReader(`{"articleId":"11111111-1111-4111-8111-111111111111","clientEventId":"01960000-0000-7000-8000-000000000023","occurredAt":"2026-11-18T00:00:00Z"}`),
+			)
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("X-Alt-Backend-Token", createTestToken(t, "user"))
+
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, req)
+
+			assert.Equal(t, http.StatusOK, recorder.Code)
+			return nil
+		})
+	require.NoError(t, err)
+}
+
+func TestBFFProxyGetReadTodayQueue(t *testing.T) {
+	mockProvider := newBackendPact(t)
+
+	err := mockProvider.
+		AddInteraction().
+		Given("reading queue has active items and read sources since midnight").
+		UponReceiving("a GetReadTodayQueue unary Connect-RPC request proxied by BFF").
+		WithCompleteRequest(consumer.Request{
+			Method: "POST",
+			Path:   matchers.String("/alt.reading.v1.ReadingService/GetReadTodayQueue"),
+			Headers: matchers.MapMatcher{
+				"Content-Type":        matchers.String("application/json"),
+				"X-Alt-Backend-Token": matchers.Regex(jwtHeaderExample, jwtHeaderPattern),
+			},
+			Body: matchers.MapMatcher{
+				"readSince": matchers.Regex("2026-11-18T00:00:00Z", rfc3339TimestampPattern),
+			},
+		}).
+		WithCompleteResponse(consumer.Response{
+			Status: 200,
+			Headers: matchers.MapMatcher{
+				"Content-Type": matchers.String("application/json"),
+			},
+			Body: matchers.MapMatcher{
+				"cap":            matchers.Integer(7),
+				"readCountSince": matchers.Integer(2),
+				"items": matchers.EachLike(map[string]interface{}{
+					"articleId":  matchers.Regex("11111111-1111-4111-8111-111111111111", uuidStringPattern),
+					"title":      matchers.Like("Queued Article"),
+					"url":        matchers.Like("https://example.com/articles/1"),
+					"sourceName": matchers.Like("example.com"),
+					"queuedAt":   matchers.Regex("2026-11-18T00:00:00Z", rfc3339TimestampPattern),
+					"expiresAt":  matchers.Regex("2026-11-20T00:00:00Z", rfc3339TimestampPattern),
+				}, 1),
+			},
+		}).
+		ExecuteTest(t, func(config consumer.MockServerConfig) error {
+			backendURL := fmt.Sprintf("http://%s:%d", config.Host, config.Port)
+			handler := createBFFHandler(backendURL)
+
+			req := httptest.NewRequest(
+				http.MethodPost,
+				"/alt.reading.v1.ReadingService/GetReadTodayQueue",
+				strings.NewReader(`{"readSince":"2026-11-18T00:00:00Z"}`),
+			)
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("X-Alt-Backend-Token", createTestToken(t, "user"))
+
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, req)
+
+			assert.Equal(t, http.StatusOK, recorder.Code)
+			assert.Contains(t, recorder.Body.String(), "readCountSince")
+			return nil
+		})
+	require.NoError(t, err)
+}

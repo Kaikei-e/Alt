@@ -81,6 +81,10 @@ service KnowledgeSovereignService {
   // GetTrailBranchesForAnchor returns the user's open branches anchored on one
   // item, newest first — the patch-exit read (D26).
   rpc GetTrailBranchesForAnchor(GetTrailBranchesForAnchorRequest) returns (GetTrailBranchesForAnchorResponse);
+
+  // === Reading (Read Today queue & reading sources) ===
+  rpc GetReadingQueue(GetReadingQueueRequest) returns (GetReadingQueueResponse);
+  rpc CountReadingSourcesSince(CountReadingSourcesSinceRequest) returns (CountReadingSourcesSinceResponse);
 }
 
 // =============================================================================
@@ -788,4 +792,33 @@ message TrailFootprint {
   int32 contact_count = 13;
   // first_occurred_at is the earliest collapsed contact.
   google.protobuf.Timestamp first_occurred_at = 14;
+}
+
+// =============================================================================
+// Reading (Read Today queue & reading sources)
+// =============================================================================
+
+message ReadingQueueEntry {
+  string article_id = 1;
+  google.protobuf.Timestamp queued_at = 2;
+  google.protobuf.Timestamp expires_at = 3;
+  int32 queue_policy_version = 4;
+}
+
+message GetReadingQueueRequest {
+  string user_id = 1;
+  google.protobuf.Timestamp as_of = 2;
+}
+
+message GetReadingQueueResponse {
+  repeated ReadingQueueEntry items = 1;
+}
+
+message CountReadingSourcesSinceRequest {
+  string user_id = 1;
+  google.protobuf.Timestamp since = 2;
+}
+
+message CountReadingSourcesSinceResponse {
+  int32 count = 1;
 }

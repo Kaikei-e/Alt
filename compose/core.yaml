@@ -376,6 +376,8 @@ services:
       # would fail inside the browser, one layer away from anything that could
       # explain it, so ValidateBackendConfig refuses to start without it.
       - VAPID_PUBLIC_KEY_FILE=/run/secrets/vapid_public_key
+      - READING_QUEUE_CAP=7
+      - READING_QUEUE_TTL_HOURS=48
       # Cross-process per-host rate limiting (CLAUDE.md rule 2). The interval
       # is a promise to the publisher's server, and this binary polls the same
       # hosts alt-harvester does — feed-registration validation vs the hourly

@@ -49,6 +49,7 @@ import (
 	"alt/orchestrator/usecase/list_lenses_usecase"
 	"alt/orchestrator/usecase/og_image_resolve_usecase"
 	"alt/orchestrator/usecase/opml_usecase"
+	"alt/orchestrator/usecase/reading_queue_usecase"
 	"alt/orchestrator/usecase/reading_status"
 	"alt/orchestrator/usecase/recall_dismiss_usecase"
 	"alt/orchestrator/usecase/recall_rail_usecase"
@@ -205,6 +206,9 @@ type ApplicationComponents struct {
 	TrackHomeSeenUsecase             *track_home_seen_usecase.TrackHomeSeenUsecase
 	TrackHomeActionUsecase           *track_home_action_usecase.TrackHomeActionUsecase
 	RecordReadingEventsUsecase       *record_reading_events_usecase.RecordReadingEventsUsecase
+	QueueArticleUsecase              *reading_queue_usecase.QueueArticleUsecase
+	UnqueueArticleUsecase            *reading_queue_usecase.UnqueueArticleUsecase
+	GetReadTodayQueueUsecase         *reading_queue_usecase.GetReadTodayQueueUsecase
 	CreateSummaryVersionUsecase      *create_summary_version_usecase.CreateSummaryVersionUsecase
 	FeatureFlagGateway               *feature_flag_gateway.Gateway
 	KnowledgeBackfillUsecase         *knowledge_backfill_usecase.Usecase

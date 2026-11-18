@@ -183,6 +183,8 @@ services:
       # No knowledge-sovereign in the dev stack; disable sovereign explicitly.
       - SOVEREIGN_URL=disabled
       - SOVEREIGN_EVENT_AUTH=disabled
+      - READING_QUEUE_CAP=7
+      - READING_QUEUE_TTL_HOURS=48
     depends_on:
       dev-secret-init:
         condition: service_completed_successfully

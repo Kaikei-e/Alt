@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
+	"net/url"
 	"testing"
 	"time"
 
@@ -33,21 +35,55 @@ func (f *fakeAppendPort) AppendKnowledgeEvent(_ context.Context, event domain.Kn
 	return int64(callIdx + 1), nil
 }
 
+type fakeLookupPort struct {
+	sources map[string]domain.ArticleSource
+	err     error
+}
+
+func (f *fakeLookupPort) LookupArticleSource(_ context.Context, articleID string, _ uuid.UUID) (domain.ArticleSource, error) {
+	if f.err != nil {
+		return domain.ArticleSource{}, f.err
+	}
+	if f.sources == nil {
+		return domain.ArticleSource{}, nil
+	}
+	return f.sources[articleID], nil
+}
+
+type fakeStatusPort struct {
+	marked []url.URL
+	err    error
+}
+
+func (f *fakeStatusPort) MarkArticleAsRead(_ context.Context, articleURL url.URL, _ uuid.UUID) error {
+	if f.err != nil {
+		return f.err
+	}
+	f.marked = append(f.marked, articleURL)
+	return nil
+}
+
 func TestNewRecordReadingEventsUsecase_PanicsOnNilDeps(t *testing.T) {
 	fixedNow := func() time.Time { return time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC) }
 
 	assert.Panics(t, func() {
-		NewRecordReadingEventsUsecase(nil, fixedNow)
+		NewRecordReadingEventsUsecase(nil, &fakeLookupPort{}, &fakeStatusPort{}, fixedNow)
 	})
 	assert.Panics(t, func() {
-		NewRecordReadingEventsUsecase(&fakeAppendPort{}, nil)
+		NewRecordReadingEventsUsecase(&fakeAppendPort{}, nil, &fakeStatusPort{}, fixedNow)
+	})
+	assert.Panics(t, func() {
+		NewRecordReadingEventsUsecase(&fakeAppendPort{}, &fakeLookupPort{}, nil, fixedNow)
+	})
+	assert.Panics(t, func() {
+		NewRecordReadingEventsUsecase(&fakeAppendPort{}, &fakeLookupPort{}, &fakeStatusPort{}, nil)
 	})
 }
 
 func TestRecordReadingEventsUsecase_EmptyBatchIsNoOp(t *testing.T) {
 	port := &fakeAppendPort{}
 	fixedNow := func() time.Time { return time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC) }
-	uc := NewRecordReadingEventsUsecase(port, fixedNow)
+	uc := NewRecordReadingEventsUsecase(port, &fakeLookupPort{}, &fakeStatusPort{}, fixedNow)
 
 	userID := uuid.New()
 	tenantID := uuid.New()
@@ -148,7 +184,7 @@ func TestRecordReadingEventsUsecase_InvalidBatchAppendsNothing(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			port := &fakeAppendPort{}
-			uc := NewRecordReadingEventsUsecase(port, fixedNow)
+			uc := NewRecordReadingEventsUsecase(port, &fakeLookupPort{}, &fakeStatusPort{}, fixedNow)
 
 			_, err := uc.Execute(context.Background(), uuid.New(), uuid.New(), tt.events)
 			require.Error(t, err)
@@ -175,7 +211,7 @@ func TestRecordReadingEventsUsecase_AppendsWireFormatAndCountsDuplicates(t *test
 	port := &fakeAppendPort{
 		seqResults: []int64{101, 0, 102, 103},
 	}
-	uc := NewRecordReadingEventsUsecase(port, fixedNow)
+	uc := NewRecordReadingEventsUsecase(port, &fakeLookupPort{}, &fakeStatusPort{}, fixedNow)
 
 	events := []domain.ReadingEventInput{
 		{
@@ -336,7 +372,7 @@ func TestRecordReadingEventsUsecase_ClockSkewHandling(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			port := &fakeAppendPort{}
-			uc := NewRecordReadingEventsUsecase(port, fixedNow)
+			uc := NewRecordReadingEventsUsecase(port, &fakeLookupPort{}, &fakeStatusPort{}, fixedNow)
 
 			_, err := uc.Execute(context.Background(), userID, tenantID, []domain.ReadingEventInput{
 				{
@@ -373,7 +409,7 @@ func TestRecordReadingEventsUsecase_StopsOnAppendError(t *testing.T) {
 		errAtCall: 2,
 		err:       appendErr,
 	}
-	uc := NewRecordReadingEventsUsecase(port, fixedNow)
+	uc := NewRecordReadingEventsUsecase(port, &fakeLookupPort{}, &fakeStatusPort{}, fixedNow)
 
 	events := []domain.ReadingEventInput{
 		{
@@ -397,4 +433,248 @@ func TestRecordReadingEventsUsecase_StopsOnAppendError(t *testing.T) {
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, appendErr))
 	assert.Len(t, port.events, 1)
+}
+
+func TestRecordReadingEventsUsecase_OpenedAndQualifyingSessionsMarkReadAndReturnIDs(t *testing.T) {
+	receivedAt := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
+	fixedNow := func() time.Time { return receivedAt }
+
+	userID := uuid.New()
+	tenantID := uuid.New()
+	artRead := "11111111-1111-4111-8111-111111111111"
+	artSkimmed := "22222222-2222-4222-8222-222222222222"
+	artDup := "33333333-3333-4333-8333-333333333333"
+
+	appendPort := &fakeAppendPort{
+		seqResults: []int64{1, 2, 3, 0},
+	}
+	lookupPort := &fakeLookupPort{
+		sources: map[string]domain.ArticleSource{
+			artRead:    {URL: "https://example.com/read"},
+			artSkimmed: {URL: "https://example.com/skimmed"},
+			artDup:     {URL: "https://example.com/dup"},
+		},
+	}
+	statusPort := &fakeStatusPort{}
+	uc := NewRecordReadingEventsUsecase(appendPort, lookupPort, statusPort, fixedNow)
+
+	events := []domain.ReadingEventInput{
+		{
+			ClientEventID: "01960000-0000-7000-8000-000000000010",
+			OccurredAt:    receivedAt,
+			Payload: domain.OpenedInput{
+				ArticleID: artRead,
+				Surface:   domain.ReadingSurfaceGallery,
+			},
+		},
+		{
+			ClientEventID: "01960000-0000-7000-8000-000000000011",
+			OccurredAt:    receivedAt,
+			Payload: domain.SessionEndedInput{
+				ArticleID:       artSkimmed,
+				Surface:         domain.ReadingSurfaceGallery,
+				ActiveDwellMs:   4999,
+				MaxScrollRatio:  1.0,
+				BodyLengthChars: 500,
+				ReachedEnd:      true,
+			},
+		},
+		{
+			ClientEventID: "01960000-0000-7000-8000-000000000012",
+			OccurredAt:    receivedAt,
+			Payload: domain.SessionEndedInput{
+				ArticleID:       artRead,
+				Surface:         domain.ReadingSurfaceGallery,
+				ActiveDwellMs:   36000,
+				MaxScrollRatio:  0.8,
+				BodyLengthChars: 1200,
+				ReachedEnd:      false,
+			},
+		},
+		{
+			ClientEventID: "01960000-0000-7000-8000-000000000013",
+			OccurredAt:    receivedAt,
+			Payload: domain.SessionEndedInput{
+				ArticleID:       artDup,
+				Surface:         domain.ReadingSurfaceSwipe,
+				ActiveDwellMs:   6000,
+				MaxScrollRatio:  1.0,
+				BodyLengthChars: 500,
+				ReachedEnd:      true,
+			},
+		},
+	}
+
+	res, err := uc.Execute(context.Background(), userID, tenantID, events)
+	require.NoError(t, err)
+	assert.Equal(t, int32(3), res.Accepted)
+	assert.Equal(t, int32(1), res.Duplicates)
+	assert.Equal(t, []string{artRead, artDup}, res.ReadArticleIDs)
+
+	require.Len(t, appendPort.events, 4)
+	assert.Equal(t, domain.EventReadingOpened, appendPort.events[0].EventType)
+	assert.Equal(t, "article:"+artRead, appendPort.events[0].AggregateID)
+
+	require.Len(t, statusPort.marked, 2)
+	assert.Equal(t, "https://example.com/read", statusPort.marked[0].String())
+	assert.Equal(t, "https://example.com/dup", statusPort.marked[1].String())
+}
+
+func TestRecordReadingEventsUsecase_DuplicateSessionEndedReadSync(t *testing.T) {
+	receivedAt := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
+	fixedNow := func() time.Time { return receivedAt }
+	userID := uuid.New()
+	tenantID := uuid.New()
+	articleID := "44444444-4444-4444-8444-444444444444"
+
+	tests := []struct {
+		name           string
+		payload        domain.SessionEndedInput
+		wantReadIDs    []string
+		wantMarkedURLs []string
+	}{
+		{
+			name: "duplicate session_ended that satisfies rule marks read once and returns id",
+			payload: domain.SessionEndedInput{
+				ArticleID:       articleID,
+				Surface:         domain.ReadingSurfaceSwipe,
+				ActiveDwellMs:   6000,
+				MaxScrollRatio:  1.0,
+				BodyLengthChars: 500,
+				ReachedEnd:      true,
+			},
+			wantReadIDs:    []string{articleID},
+			wantMarkedURLs: []string{"https://example.com/dup"},
+		},
+		{
+			name: "duplicate session_ended that does not satisfy rule does not mark read",
+			payload: domain.SessionEndedInput{
+				ArticleID:       articleID,
+				Surface:         domain.ReadingSurfaceSwipe,
+				ActiveDwellMs:   2000,
+				MaxScrollRatio:  1.0,
+				BodyLengthChars: 500,
+				ReachedEnd:      true,
+			},
+			wantReadIDs:    nil,
+			wantMarkedURLs: nil,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			appendPort := &fakeAppendPort{seqResults: []int64{0}}
+			lookupPort := &fakeLookupPort{
+				sources: map[string]domain.ArticleSource{
+					articleID: {URL: "https://example.com/dup"},
+				},
+			}
+			statusPort := &fakeStatusPort{}
+			uc := NewRecordReadingEventsUsecase(appendPort, lookupPort, statusPort, fixedNow)
+
+			res, err := uc.Execute(context.Background(), userID, tenantID, []domain.ReadingEventInput{
+				{
+					ClientEventID: "01960000-0000-7000-8000-000000000020",
+					OccurredAt:    receivedAt,
+					Payload:       tc.payload,
+				},
+			})
+			require.NoError(t, err)
+			assert.Equal(t, int32(0), res.Accepted)
+			assert.Equal(t, int32(1), res.Duplicates)
+			assert.Equal(t, tc.wantReadIDs, res.ReadArticleIDs)
+
+			var gotURLs []string
+			for _, u := range statusPort.marked {
+				gotURLs = append(gotURLs, u.String())
+			}
+			assert.Equal(t, tc.wantMarkedURLs, gotURLs)
+		})
+	}
+}
+
+type recordingLogHandler struct {
+	records []slog.Record
+}
+
+func (h *recordingLogHandler) Enabled(_ context.Context, _ slog.Level) bool { return true }
+func (h *recordingLogHandler) Handle(_ context.Context, r slog.Record) error {
+	h.records = append(h.records, r.Clone())
+	return nil
+}
+func (h *recordingLogHandler) WithAttrs(_ []slog.Attr) slog.Handler { return h }
+func (h *recordingLogHandler) WithGroup(_ string) slog.Handler      { return h }
+
+func TestRecordReadingEventsUsecase_MarkArticleReadLogsErrorsAtErrorLevel(t *testing.T) {
+	receivedAt := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
+	fixedNow := func() time.Time { return receivedAt }
+	userID := uuid.New()
+	tenantID := uuid.New()
+	articleID := "55555555-5555-4555-8555-555555555555"
+
+	qualifyingEvent := domain.ReadingEventInput{
+		ClientEventID: "01960000-0000-7000-8000-000000000030",
+		OccurredAt:    receivedAt,
+		Payload: domain.SessionEndedInput{
+			ArticleID:       articleID,
+			Surface:         domain.ReadingSurfaceGallery,
+			ActiveDwellMs:   6000,
+			MaxScrollRatio:  1.0,
+			BodyLengthChars: 500,
+			ReachedEnd:      true,
+		},
+	}
+
+	t.Run("lookup failure logs at Error level", func(t *testing.T) {
+		handler := &recordingLogHandler{}
+		prev := slog.Default()
+		slog.SetDefault(slog.New(handler))
+		t.Cleanup(func() { slog.SetDefault(prev) })
+
+		uc := NewRecordReadingEventsUsecase(
+			&fakeAppendPort{seqResults: []int64{1}},
+			&fakeLookupPort{err: errors.New("db timeout")},
+			&fakeStatusPort{},
+			fixedNow,
+		)
+		_, err := uc.Execute(context.Background(), userID, tenantID, []domain.ReadingEventInput{qualifyingEvent})
+		require.NoError(t, err)
+		require.Len(t, handler.records, 1)
+		assert.Equal(t, slog.LevelError, handler.records[0].Level)
+	})
+
+	t.Run("mark failure other than feed not found logs at Error level", func(t *testing.T) {
+		handler := &recordingLogHandler{}
+		prev := slog.Default()
+		slog.SetDefault(slog.New(handler))
+		t.Cleanup(func() { slog.SetDefault(prev) })
+
+		uc := NewRecordReadingEventsUsecase(
+			&fakeAppendPort{seqResults: []int64{1}},
+			&fakeLookupPort{sources: map[string]domain.ArticleSource{articleID: {URL: "https://example.com/a"}}},
+			&fakeStatusPort{err: errors.New("mark failed")},
+			fixedNow,
+		)
+		_, err := uc.Execute(context.Background(), userID, tenantID, []domain.ReadingEventInput{qualifyingEvent})
+		require.NoError(t, err)
+		require.Len(t, handler.records, 1)
+		assert.Equal(t, slog.LevelError, handler.records[0].Level)
+	})
+
+	t.Run("feed not found does not log error", func(t *testing.T) {
+		handler := &recordingLogHandler{}
+		prev := slog.Default()
+		slog.SetDefault(slog.New(handler))
+		t.Cleanup(func() { slog.SetDefault(prev) })
+
+		uc := NewRecordReadingEventsUsecase(
+			&fakeAppendPort{seqResults: []int64{1}},
+			&fakeLookupPort{sources: map[string]domain.ArticleSource{articleID: {URL: "https://example.com/a"}}},
+			&fakeStatusPort{err: domain.ErrFeedNotFound},
+			fixedNow,
+		)
+		_, err := uc.Execute(context.Background(), userID, tenantID, []domain.ReadingEventInput{qualifyingEvent})
+		require.NoError(t, err)
+		assert.Empty(t, handler.records)
+	})
 }

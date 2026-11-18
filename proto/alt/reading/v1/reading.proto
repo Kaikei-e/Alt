@@ -58,6 +58,14 @@ message SessionEnded {
   bool reached_end = 6;
 }
 
+// Opened records that the user opened an article in a reader surface.
+message Opened {
+  // Identifier of the article that was opened.
+  string article_id = 1;
+  // Surface where the article was opened.
+  ReadingSurface surface = 2;
+}
+
 // ReadingEvent is a single client-observed reading telemetry event.
 // Carries identifiers, timestamps, enums, numbers, and booleans only; no
 // titles, URLs, or text content fields are permitted.
@@ -75,6 +83,8 @@ message ReadingEvent {
     ReachedEnd reached_end = 11;
     // User finished a reading session on an article.
     SessionEnded session_ended = 12;
+    // User opened an article in a reader surface.
+    Opened opened = 13;
   }
 }
 
@@ -90,17 +100,108 @@ message RecordReadingEventsResponse {
   int32 accepted = 1;
   // Number of events skipped because client_event_id was already recorded (>= 0).
   int32 duplicates = 2;
+  // Identifiers of articles that this batch caused to count as read.
+  repeated string read_article_ids = 3;
+}
+
+// QueueArticleOutcome reports the result of attempting to add an article to the Read Today queue.
+enum QueueArticleOutcome {
+  // Default unspecified outcome.
+  QUEUE_ARTICLE_OUTCOME_UNSPECIFIED = 0;
+  // The article was added to the queue.
+  QUEUE_ARTICLE_OUTCOME_QUEUED = 1;
+  // The article was already present in the active queue.
+  QUEUE_ARTICLE_OUTCOME_ALREADY_QUEUED = 2;
+  // The queue is at capacity; older items are never evicted.
+  QUEUE_ARTICLE_OUTCOME_QUEUE_FULL = 3;
+}
+
+// ReadingQueueItem represents one active entry in the user's Read Today queue,
+// hydrated with article display metadata by alt-backend.
+message ReadingQueueItem {
+  // Identifier of the queued article.
+  string article_id = 1;
+  // Article title hydrated from the article store.
+  string title = 2;
+  // Canonical article URL hydrated from the article store.
+  string url = 3;
+  // Source or site name derived from the article metadata when available.
+  string source_name = 4;
+  // Image URL (such as an OG image or signed proxy URL) when available.
+  string image_url = 5;
+  // Timestamp when the article was queued.
+  google.protobuf.Timestamp queued_at = 6;
+  // Timestamp when the queue entry expires if not read.
+  google.protobuf.Timestamp expires_at = 7;
+}
+
+// QueueArticleRequest requests adding an article to the Read Today queue.
+message QueueArticleRequest {
+  // Identifier of the article to queue.
+  string article_id = 1;
+  // Client-generated UUIDv7 used to deduplicate retried deliveries.
+  string client_event_id = 2;
+  // Client-observed timestamp when the queue action occurred.
+  google.protobuf.Timestamp occurred_at = 3;
+  // Surface where the queue action was triggered.
+  ReadingSurface surface = 4;
+}
+
+// QueueArticleResponse reports the queue outcome and the active queue snapshot.
+message QueueArticleResponse {
+  // Outcome of the queue attempt; QUEUE_FULL is a normal outcome, not an error.
+  QueueArticleOutcome outcome = 1;
+  // Current active items in the user's Read Today queue.
+  repeated ReadingQueueItem items = 2;
+  // Configured maximum number of active items in the queue.
+  int32 cap = 3;
+}
+
+// UnqueueArticleRequest requests removing an article from the Read Today queue.
+message UnqueueArticleRequest {
+  // Identifier of the article to remove from the queue.
+  string article_id = 1;
+  // Client-generated UUIDv7 used to deduplicate retried deliveries.
+  string client_event_id = 2;
+  // Client-observed timestamp when the unqueue action occurred.
+  google.protobuf.Timestamp occurred_at = 3;
+}
+
+// UnqueueArticleResponse acknowledges the unqueue request.
+message UnqueueArticleResponse {}
+
+// GetReadTodayQueueRequest requests the active Read Today queue and recent read count.
+message GetReadTodayQueueRequest {
+  // Lower bound (inclusive) for counting articles that counted as read;
+  // typically the client's local midnight.
+  google.protobuf.Timestamp read_since = 1;
+}
+
+// GetReadTodayQueueResponse returns the hydrated active queue, capacity, and read count.
+message GetReadTodayQueueResponse {
+  // Active non-expired items in the Read Today queue.
+  repeated ReadingQueueItem items = 1;
+  // Configured maximum number of active items in the queue.
+  int32 cap = 2;
+  // Number of distinct articles that counted as read since read_since.
+  int32 read_count_since = 3;
 }
 
 // =============================================================================
 // Service
 // =============================================================================
 
-// ReadingService records client-observed reading events for the calling user.
+// ReadingService records client-observed reading events and manages the Read Today queue.
 service ReadingService {
   option (alt.api.v1.visibility) = VISIBILITY_PUBLIC;
 
   // Appends a batch of at most 50 reading events, deduplicating retries by
   // each event's client_event_id.
   rpc RecordReadingEvents(RecordReadingEventsRequest) returns (RecordReadingEventsResponse);
+  // Adds an article to the Read Today queue if capacity allows.
+  rpc QueueArticle(QueueArticleRequest) returns (QueueArticleResponse);
+  // Removes an article from the Read Today queue.
+  rpc UnqueueArticle(UnqueueArticleRequest) returns (UnqueueArticleResponse);
+  // Returns the active Read Today queue and the count of articles read since read_since.
+  rpc GetReadTodayQueue(GetReadTodayQueueRequest) returns (GetReadTodayQueueResponse);
 }

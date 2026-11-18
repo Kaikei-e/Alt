@@ -74,6 +74,10 @@ func TestNewKnowledgeModule_OperatorWiring(t *testing.T) {
 				URL:        "http://knowledge-sovereign:9500",
 				EventToken: "valid-backend-token-long-enough-123456",
 			},
+			ReadingQueue: config.ReadingQueueConfig{
+				Cap:      7,
+				TTLHours: 48,
+			},
 		}
 		infra := &InfraModule{Config: cfg}
 		article := &ArticleModule{}

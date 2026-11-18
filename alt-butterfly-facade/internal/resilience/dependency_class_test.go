@@ -69,6 +69,9 @@ func TestClassForEndpoint_UnclassifiedDefaultsNonCritical(t *testing.T) {
 		"/alt.feeds.v2.FeedService/GetFeedStats",
 		"/alt.feeds.v2.FeedService/StreamSummarize",
 		"/alt.augur.v2.AugurService/StreamChat",
+		"/alt.reading.v1.ReadingService/QueueArticle",
+		"/alt.reading.v1.ReadingService/UnqueueArticle",
+		"/alt.reading.v1.ReadingService/GetReadTodayQueue",
 		"/unknown/rpc",
 	}
 	for _, ep := range nonCritical {

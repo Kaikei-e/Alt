@@ -219,7 +219,14 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 		"vapid_key_fingerprint", push.VAPIDFingerprint(cfg.WebPush.PublicKey))
 
 	// Register ReadingService
-	readingHandler := reading.NewHandler(container.RecordReadingEventsUsecase, logger)
+	readingHandler := reading.NewHandler(
+		container.RecordReadingEventsUsecase,
+		container.QueueArticleUsecase,
+		container.UnqueueArticleUsecase,
+		container.GetReadTodayQueueUsecase,
+		container.ImageProxyUsecase,
+		logger,
+	)
 	readingPath, readingServiceHandler := readingv1connect.NewReadingServiceHandler(readingHandler, opts)
 	mux.Handle(readingPath, readingServiceHandler)
 	logger.Info("reading_service_enabled", "path", readingPath)

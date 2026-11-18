@@ -124,6 +124,8 @@ func TestValidateBackendConfig_VerifyKeyFileFailsFast(t *testing.T) {
 				"SOVEREIGN_EVENT_AUTH":          "disabled",
 				"RAG_API_AUTH":                  "disabled",
 				"VAPID_PUBLIC_KEY":              "a-vapid-public-key-value",
+				"READING_QUEUE_CAP":             "7",
+				"READING_QUEUE_TTL_HOURS":       "48",
 				"BACKEND_TOKEN_VERIFY_KEY":      "",
 				"BACKEND_TOKEN_VERIFY_KEY_FILE": "",
 			}
