@@ -18,6 +18,24 @@ import (
 	"alt/utils/authcontext"
 )
 
+type SummarizeOrigin string
+
+const (
+	SummarizeOriginUser   SummarizeOrigin = "user"
+	SummarizeOriginSystem SummarizeOrigin = "system"
+)
+
+func toProtoOrigin(origin SummarizeOrigin) (ppv2.SummarizeOrigin, error) {
+	switch origin {
+	case SummarizeOriginUser:
+		return ppv2.SummarizeOrigin_SUMMARIZE_ORIGIN_USER, nil
+	case SummarizeOriginSystem:
+		return ppv2.SummarizeOrigin_SUMMARIZE_ORIGIN_SYSTEM, nil
+	default:
+		return ppv2.SummarizeOrigin_SUMMARIZE_ORIGIN_UNSPECIFIED, fmt.Errorf("origin must be user or system")
+	}
+}
+
 // SummarizeStatus represents the status of a summarization job.
 type SummarizeStatus struct {
 	JobID        string
@@ -148,10 +166,15 @@ func (c *ConnectPreProcessorClient) StreamSummarize(ctx context.Context, content
 }
 
 // QueueSummarize submits an article for async summarization via Connect-RPC.
-func (c *ConnectPreProcessorClient) QueueSummarize(ctx context.Context, articleID, title string) (string, error) {
+func (c *ConnectPreProcessorClient) QueueSummarize(ctx context.Context, articleID, title string, origin SummarizeOrigin) (string, error) {
+	protoOrigin, err := toProtoOrigin(origin)
+	if err != nil {
+		return "", err
+	}
 	resp, err := c.client.QueueSummarize(ctx, connect.NewRequest(&ppv2.QueueSummarizeRequest{
 		ArticleId: articleID,
 		Title:     title,
+		Origin:    protoOrigin,
 	}))
 	if err != nil {
 		return "", err

@@ -146,6 +146,7 @@ func mapDomainErrorToHTTP(err error, articleID string) error {
 type SummarizeQueueRequest struct {
 	ArticleID string `json:"article_id" validate:"required"`
 	Title     string `json:"title"`
+	Origin    string `json:"origin"`
 }
 
 // SummarizeQueueResponse represents the response for queueing a summarization job
@@ -299,7 +300,16 @@ func (h *SummarizeHandler) HandleSummarizeQueue(c echo.Context) error {
 	}
 	articleID := parsedArticleID.String()
 
-	h.logger.InfoContext(ctx, "queueing summarization job", "article_id", articleID)
+	origin, err := domain.ParseSummarizeOrigin(req.Origin)
+	if err != nil {
+		return apperrors.NewValidationContextError(
+			"origin must be 'user' or 'system'",
+			"handler", "SummarizeHandler", "HandleSummarizeQueue",
+			map[string]interface{}{"origin": req.Origin},
+		)
+	}
+
+	h.logger.InfoContext(ctx, "queueing summarization job", "article_id", articleID, "origin", origin)
 
 	shouldQueue, reason, err := service.ShouldQueueSummarizeJob(ctx, articleID, h.summaryRepo, h.jobRepo, h.logger)
 	if err != nil {
@@ -319,7 +329,7 @@ func (h *SummarizeHandler) HandleSummarizeQueue(c echo.Context) error {
 	}
 
 	// Create job in queue
-	jobID, err := h.jobRepo.CreateJob(ctx, articleID)
+	jobID, err := h.jobRepo.CreateJob(ctx, articleID, origin)
 	if err != nil {
 		return apperrors.NewDatabaseContextError(
 			"failed to queue summarization job",

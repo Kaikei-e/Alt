@@ -144,6 +144,7 @@ type SummarizeRequestedPayload struct {
 	UserID    string `json:"user_id"`
 	Title     string `json:"title"`
 	Streaming bool   `json:"streaming"`
+	Origin    string `json:"origin"`
 }
 
 // IndexArticlePayload represents the payload for IndexArticle event.

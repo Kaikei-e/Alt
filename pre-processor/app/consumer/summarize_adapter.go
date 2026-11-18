@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 
+	"pre-processor/domain"
 	"pre-processor/repository"
 	"pre-processor/service"
 )
@@ -32,10 +33,20 @@ func NewSummarizeServiceAdapter(
 }
 
 // SummarizeArticle queues an article for summarization via the existing job system.
-func (a *SummarizeServiceAdapter) SummarizeArticle(ctx context.Context, articleID, title string) error {
+func (a *SummarizeServiceAdapter) SummarizeArticle(ctx context.Context, articleID, title string, origin domain.SummarizeOrigin) error {
+	if err := origin.Validate(); err != nil {
+		a.logger.Error("invalid summarize job origin",
+			"article_id", articleID,
+			"origin", origin,
+			"error", err,
+		)
+		return err
+	}
+
 	a.logger.Info("queueing article for summarization via event",
 		"article_id", articleID,
 		"title", title,
+		"origin", origin,
 	)
 
 	shouldQueue, reason, err := service.ShouldQueueSummarizeJob(ctx, articleID, a.summaryRepo, a.jobRepo, a.logger)
@@ -54,7 +65,7 @@ func (a *SummarizeServiceAdapter) SummarizeArticle(ctx context.Context, articleI
 		return nil
 	}
 
-	_, err = a.jobRepo.CreateJob(ctx, articleID)
+	_, err = a.jobRepo.CreateJob(ctx, articleID, origin)
 	if err != nil {
 		a.logger.Error("failed to create summarization job",
 			"article_id", articleID,

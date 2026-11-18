@@ -438,18 +438,18 @@ func (mr *MockSummarizeJobRepositoryMockRecorder) CountInvalidatedCompletedJobs(
 }
 
 // CreateJob mocks base method.
-func (m *MockSummarizeJobRepository) CreateJob(ctx context.Context, articleID string) (string, error) {
+func (m *MockSummarizeJobRepository) CreateJob(ctx context.Context, articleID string, origin domain.SummarizeOrigin) (string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateJob", ctx, articleID)
+	ret := m.ctrl.Call(m, "CreateJob", ctx, articleID, origin)
 	ret0, _ := ret[0].(string)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CreateJob indicates an expected call of CreateJob.
-func (mr *MockSummarizeJobRepositoryMockRecorder) CreateJob(ctx, articleID any) *gomock.Call {
+func (mr *MockSummarizeJobRepositoryMockRecorder) CreateJob(ctx, articleID, origin any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateJob", reflect.TypeOf((*MockSummarizeJobRepository)(nil).CreateJob), ctx, articleID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateJob", reflect.TypeOf((*MockSummarizeJobRepository)(nil).CreateJob), ctx, articleID, origin)
 }
 
 // DequeueJobs mocks base method.

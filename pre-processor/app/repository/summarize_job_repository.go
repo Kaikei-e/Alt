@@ -41,7 +41,7 @@ type summarizeJobRepository struct {
 }
 
 const getPendingJobsQuery = `
-		SELECT id, job_id, article_id, status, summary, error_message,
+		SELECT id, job_id, article_id, status, origin, summary, error_message,
 		       retry_count, max_retries, created_at, started_at, completed_at
 		FROM summarize_job_queue
 		WHERE status = 'pending'
@@ -65,10 +65,15 @@ func NewSummarizeJobRepository(db *pgxpool.Pool, logger *slog.Logger) SummarizeJ
 }
 
 // CreateJob creates a new summarization job in the queue.
-func (r *summarizeJobRepository) CreateJob(ctx context.Context, articleID string) (string, error) {
+func (r *summarizeJobRepository) CreateJob(ctx context.Context, articleID string, origin domain.SummarizeOrigin) (string, error) {
 	if articleID == "" {
 		r.logger.ErrorContext(ctx, "article ID cannot be empty")
 		return "", fmt.Errorf("article ID cannot be empty")
+	}
+
+	if err := origin.Validate(); err != nil {
+		r.logger.ErrorContext(ctx, "invalid summarize job origin", "origin", origin, "article_id", articleID)
+		return "", err
 	}
 
 	if r.db == nil {
@@ -76,11 +81,11 @@ func (r *summarizeJobRepository) CreateJob(ctx context.Context, articleID string
 		return "", fmt.Errorf("database connection is nil")
 	}
 
-	r.logger.InfoContext(ctx, "creating summarization job", "article_id", articleID)
+	r.logger.InfoContext(ctx, "creating summarization job", "article_id", articleID, "origin", origin)
 
 	query := `
-		INSERT INTO summarize_job_queue (article_id, status)
-		SELECT $1, 'pending'
+		INSERT INTO summarize_job_queue (article_id, status, origin)
+		SELECT $1, 'pending', $2
 		WHERE NOT EXISTS (
 			SELECT 1 FROM summarize_job_queue
 			WHERE article_id = $1
@@ -109,7 +114,7 @@ func (r *summarizeJobRepository) CreateJob(ctx context.Context, articleID string
 	}
 
 	var jobID uuid.UUID
-	err = tx.QueryRow(ctx, query, articleID).Scan(&jobID)
+	err = tx.QueryRow(ctx, query, articleID, string(origin)).Scan(&jobID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			r.logger.InfoContext(ctx, "skipping duplicate job, pending/running job already exists", "article_id", articleID)
@@ -127,7 +132,7 @@ func (r *summarizeJobRepository) CreateJob(ctx context.Context, articleID string
 		return "", fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	r.logger.InfoContext(ctx, "summarization job created successfully", "job_id", jobID, "article_id", articleID)
+	r.logger.InfoContext(ctx, "summarization job created successfully", "job_id", jobID, "article_id", articleID, "origin", origin)
 	return jobID.String(), nil
 }
 
@@ -299,7 +304,7 @@ func (r *summarizeJobRepository) GetJob(ctx context.Context, jobID string) (*dom
 	// Read with Read Committed isolation level to ensure we see latest committed data
 	// This helps prevent stale reads when checking job status immediately after updates
 	query := `
-		SELECT id, job_id, article_id, status, summary, error_message,
+		SELECT id, job_id, article_id, status, origin, summary, error_message,
 		       retry_count, max_retries, created_at, started_at, completed_at
 		FROM summarize_job_queue
 		WHERE job_id = $1
@@ -314,6 +319,7 @@ func (r *summarizeJobRepository) GetJob(ctx context.Context, jobID string) (*dom
 		&jobIDUUID,
 		&job.ArticleID,
 		&job.Status,
+		&job.Origin,
 		&summary,
 		&errorMessage,
 		&job.RetryCount,
@@ -601,6 +607,7 @@ func (r *summarizeJobRepository) GetPendingJobs(ctx context.Context, limit int) 
 			&jobIDUUID,
 			&job.ArticleID,
 			&job.Status,
+			&job.Origin,
 			&summary,
 			&errorMessage,
 			&job.RetryCount,
@@ -666,7 +673,7 @@ func (r *summarizeJobRepository) DequeueJobs(ctx context.Context, limit int) ([]
 			LIMIT $2
 			FOR UPDATE SKIP LOCKED
 		)
-		RETURNING id, job_id, article_id, status, summary, error_message,
+		RETURNING id, job_id, article_id, status, origin, summary, error_message,
 		          retry_count, max_retries, created_at, started_at, completed_at
 	`
 
@@ -688,6 +695,7 @@ func (r *summarizeJobRepository) DequeueJobs(ctx context.Context, limit int) ([]
 			&jobIDUUID,
 			&job.ArticleID,
 			&job.Status,
+			&job.Origin,
 			&summary,
 			&errorMessage,
 			&job.RetryCount,

@@ -17,12 +17,39 @@ const (
 	SummarizeJobStatusDeadLetter SummarizeJobStatus = "dead_letter"
 )
 
+type SummarizeOrigin string
+
+const (
+	SummarizeOriginUser   SummarizeOrigin = "user"
+	SummarizeOriginSystem SummarizeOrigin = "system"
+)
+
+func ParseSummarizeOrigin(raw string) (SummarizeOrigin, error) {
+	origin := SummarizeOrigin(raw)
+	if err := origin.Validate(); err != nil {
+		return "", err
+	}
+	return origin, nil
+}
+
+func (o SummarizeOrigin) IsValid() bool {
+	return o == SummarizeOriginUser || o == SummarizeOriginSystem
+}
+
+func (o SummarizeOrigin) Validate() error {
+	if !o.IsValid() {
+		return ErrInvalidSummarizeOrigin
+	}
+	return nil
+}
+
 // SummarizeJob represents a job in the summarization queue.
 type SummarizeJob struct {
 	ID           int                `db:"id"`
 	JobID        uuid.UUID          `db:"job_id"`
 	ArticleID    string             `db:"article_id"`
 	Status       SummarizeJobStatus `db:"status"`
+	Origin       SummarizeOrigin    `db:"origin"`
 	Summary      *string            `db:"summary"`       // Nullable
 	ErrorMessage *string            `db:"error_message"` // Nullable
 	RetryCount   int                `db:"retry_count"`
