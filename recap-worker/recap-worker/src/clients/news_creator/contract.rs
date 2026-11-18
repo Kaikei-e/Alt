@@ -537,15 +537,15 @@ async fn contract_news_creator_theme_generate() {
                     "date": like!("2026-11-18"),
                     "text": like!("Timeline entry."),
                     "refs": each_like!(like!(1i64)),
-                })),
+                }), min = 0),
                 "what_changed": each_like!(json_pattern!({
                     "text": like!("What changed sentence."),
                     "refs": each_like!(like!(1i64)),
-                })),
+                }), min = 0),
                 "open_questions": each_like!(json_pattern!({
                     "text": like!("Open question sentence."),
                     "refs": each_like!(like!(1i64)),
-                })),
+                }), min = 0),
                 "model": like!("gemma4-e4b-12k"),
             }));
             i
@@ -582,9 +582,9 @@ async fn contract_news_creator_theme_generate() {
         ThemeGenerateOutcome::Success(parsed) => {
             assert_eq!(parsed.title, "Rust 2026");
             assert_eq!(parsed.key_points.len(), 1);
-            assert_eq!(parsed.timeline.len(), 1);
-            assert_eq!(parsed.what_changed.len(), 1);
-            assert_eq!(parsed.open_questions.len(), 1);
+            assert!(parsed.timeline.is_empty());
+            assert!(parsed.what_changed.is_empty());
+            assert!(parsed.open_questions.is_empty());
             assert_eq!(parsed.model, "gemma4-e4b-12k");
         }
         ThemeGenerateOutcome::Rejected(rejected) => {
@@ -627,10 +627,10 @@ async fn contract_news_creator_theme_generate_rejected() {
                 i.response.content_type("application/json");
                 i.response.header("X-Card-Rejection", "1");
                 i.response.json_body(json_pattern!({
-                    "reason": like!("nothing_usable"),
+                    "reason": like!("empty_output"),
                     "attempts": like!(2i64),
                     "raw_text": like!("invalid output"),
-                    "detail": like!("no_key_points"),
+                    "detail": null,
                 }));
                 i
             },
@@ -661,9 +661,9 @@ async fn contract_news_creator_theme_generate_rejected() {
 
     match outcome {
         ThemeGenerateOutcome::Rejected(rejected) => {
-            assert_eq!(rejected.reason, "nothing_usable");
+            assert_eq!(rejected.reason, "empty_output");
             assert_eq!(rejected.attempts, 2);
-            assert_eq!(rejected.detail.as_deref(), Some("no_key_points"));
+            assert!(rejected.detail.is_none());
         }
         ThemeGenerateOutcome::Success(success) => {
             panic!("expected Rejected, got Success: {success:?}");

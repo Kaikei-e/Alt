@@ -17,7 +17,7 @@ use std::sync::{Arc, RwLock};
 
 use axum::{
     Router,
-    extract::Path,
+    extract::{Path, Query, rejection::QueryRejection},
     response::Json,
     routing::{get, post},
 };
@@ -32,6 +32,10 @@ use recap_worker::api::fetch::{
     get_morning_letter_by_date_impl,
 };
 use recap_worker::api::surface_status::SurfaceRun;
+use recap_worker::api::themes::{
+    GetThemeRawQuery, ThemeBody, ThemeClaim, ThemeReadDao, ThemeSource, ThemeTimelineEntry,
+    ThemeVersionDetail, ThemeVersionSummary, get_theme_page_impl,
+};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
@@ -116,6 +120,92 @@ struct StubState {
 
 struct VerificationCardsDao {
     provider_state: Arc<RwLock<Option<String>>>,
+}
+
+struct VerificationThemesDao {
+    provider_state: Arc<RwLock<Option<String>>>,
+}
+
+#[async_trait::async_trait]
+impl ThemeReadDao for VerificationThemesDao {
+    async fn get_theme_version(
+        &self,
+        _user_id: Uuid,
+        theme_id: Uuid,
+        version: Option<i32>,
+    ) -> Result<Option<ThemeVersionDetail>, String> {
+        let current = self.provider_state.read().unwrap().clone();
+        match current.as_deref() {
+            Some("no theme exists for the user") => Ok(None),
+            Some("a theme exists for the user") => {
+                let article_id = Uuid::parse_str("33333333-3333-3333-3333-333333333333").unwrap();
+                let created_at = DateTime::parse_from_rfc3339("2026-11-18T08:00:00Z")
+                    .unwrap()
+                    .with_timezone(&Utc);
+                Ok(Some(ThemeVersionDetail {
+                    version_id: Uuid::parse_str("66666666-6666-6666-6666-666666666666").unwrap(),
+                    theme_id,
+                    version: version.unwrap_or(2),
+                    latest_version: 2,
+                    title: "Systems Architecture".to_string(),
+                    member_article_ids: vec![article_id],
+                    body: ThemeBody {
+                        key_points: vec![ThemeClaim {
+                            text: "Event logs keep projections rebuildable.".to_string(),
+                            source_article_ids: vec![article_id],
+                        }],
+                        timeline: vec![ThemeTimelineEntry {
+                            date: "2026-11-15".to_string(),
+                            text: "Initial event schema adopted.".to_string(),
+                            source_article_ids: vec![article_id],
+                        }],
+                        what_changed: vec![ThemeClaim {
+                            text: "Added versioned projection notes.".to_string(),
+                            source_article_ids: vec![article_id],
+                        }],
+                        open_questions: vec![ThemeClaim {
+                            text: "How should backfill windows be bounded?".to_string(),
+                            source_article_ids: vec![article_id],
+                        }],
+                        sources: vec![ThemeSource {
+                            article_id,
+                            title: "Event Sourcing Notes".to_string(),
+                            url: "https://example.com/event-sourcing".to_string(),
+                        }],
+                    },
+                    created_at,
+                }))
+            }
+            Some(unknown) => {
+                panic!("unrecognised provider state in VerificationThemesDao: {unknown}")
+            }
+            None => panic!("missing provider state in VerificationThemesDao"),
+        }
+    }
+
+    async fn list_theme_versions(
+        &self,
+        _user_id: Uuid,
+        _theme_id: Uuid,
+    ) -> Result<Vec<ThemeVersionSummary>, String> {
+        let current = self.provider_state.read().unwrap().clone();
+        match current.as_deref() {
+            Some("no theme exists for the user") => Ok(Vec::new()),
+            Some("a theme exists for the user") => Ok(vec![ThemeVersionSummary {
+                version_id: Uuid::parse_str("66666666-6666-6666-6666-666666666666").unwrap(),
+                version: 2,
+                title: "Systems Architecture".to_string(),
+                created_at: DateTime::parse_from_rfc3339("2026-11-18T08:00:00Z")
+                    .unwrap()
+                    .with_timezone(&Utc),
+                article_count: 5,
+            }]),
+            Some(unknown) => {
+                panic!("unrecognised provider state in VerificationThemesDao: {unknown}")
+            }
+            None => panic!("missing provider state in VerificationThemesDao"),
+        }
+    }
 }
 
 #[async_trait::async_trait]
@@ -761,6 +851,22 @@ fn stub_router_with_state(state: StubState) -> Router {
                 }
             }),
         )
+        .route(
+            "/v1/themes/{theme_id}",
+            get({
+                let state = state.clone();
+                move |Path(theme_id): Path<String>,
+                      query: Result<Query<GetThemeRawQuery>, QueryRejection>| {
+                    let state = state.clone();
+                    async move {
+                        let dao = VerificationThemesDao {
+                            provider_state: state.provider_state.clone(),
+                        };
+                        get_theme_page_impl(&dao, &theme_id, query).await
+                    }
+                }
+            }),
+        )
 }
 
 async fn start_stub_server() -> SocketAddr {
@@ -841,6 +947,28 @@ fn assert_shape_matches(actual: &Value, expected: &Value, path: &str) {
         assert!(actual.is_string(), "{path}: expected string, got {actual}");
     } else {
         panic!("{path}: unexpected JSON value type in expected: {expected}");
+    }
+}
+
+fn request_path_with_query(req: &Value) -> String {
+    let base = req["path"].as_str().unwrap();
+    let Some(query_obj) = req.get("query").and_then(|q| q.as_object()) else {
+        return base.to_string();
+    };
+    let mut pairs = Vec::new();
+    for (key, vals) in query_obj {
+        if let Some(arr) = vals.as_array() {
+            for val in arr {
+                if let Some(s) = val.as_str() {
+                    pairs.push(format!("{key}={s}"));
+                }
+            }
+        }
+    }
+    if pairs.is_empty() {
+        base.to_string()
+    } else {
+        format!("{base}?{}", pairs.join("&"))
     }
 }
 
@@ -1177,10 +1305,11 @@ async fn verify_alt_backend_pact() {
         }
         let req = &interaction["request"];
         let resp = &interaction["response"];
+        let full_path = request_path_with_query(req);
         let body = verify_interaction(
             addr,
             req["method"].as_str().unwrap(),
-            req["path"].as_str().unwrap(),
+            &full_path,
             resp["status"].as_u64().unwrap() as u16,
             resp.get("body"),
         )
@@ -1302,6 +1431,25 @@ async fn verify_alt_backend_pact() {
                 assert_eq!(
                     body["surface_status"]["degradation_reasons"][0]["code"], "placeholder_output",
                     "expected placeholder_output reason for state: {state_name}"
+                );
+            }
+            "no theme exists for the user" => {
+                assert!(
+                    body["error"].is_string(),
+                    "expected error string for state: {state_name}"
+                );
+            }
+            "a theme exists for the user" => {
+                assert_eq!(body["theme_id"], "44444444-4444-4444-4444-444444444444");
+                assert_eq!(body["version"], 2);
+                assert_eq!(body["latest_version"], 2);
+                assert!(
+                    body["key_points"].as_array().is_some_and(|k| !k.is_empty()),
+                    "expected non-empty key_points for state: {state_name}"
+                );
+                assert!(
+                    body["versions"].as_array().is_some_and(|v| !v.is_empty()),
+                    "expected non-empty versions for state: {state_name}"
                 );
             }
             unknown => panic!("unrecognised provider state in verify_alt_backend_pact: {unknown}"),
