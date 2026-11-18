@@ -16,7 +16,8 @@ use super::client::NewsCreatorClient;
 use super::models::{
     BatchSummaryResponse, CardGenerateOutcome, CardGenerateRequest, CardItemInput,
     MorningLetterGenerateRequest, MorningLetterGroupInput, MorningLetterRecapInput,
-    RepresentativeSentence, SummaryResponse,
+    RepresentativeSentence, SummaryResponse, ThemeGenerateItemInput, ThemeGenerateOutcome,
+    ThemeGenerateRequest, ThemePreviousInput,
 };
 
 const PACT_DIR: &str = "../../pacts";
@@ -491,4 +492,181 @@ async fn contract_news_creator_morning_letter_generate() {
     assert_eq!(parsed.content.source_recap_window_days, Some(3));
     assert!(!parsed.metadata.is_degraded);
     assert!(parsed.metadata.degradation_reason.is_none());
+}
+
+/// Theme page generation: POST /v1/themes/generate → 200 OK
+#[tokio::test]
+#[ignore = "CDC contract test — run with `cargo test contract -- --ignored`"]
+async fn contract_news_creator_theme_generate() {
+    let job_id = "00000000-0000-0000-0000-000000000010";
+    let theme_id = "00000000-0000-0000-0000-000000000020";
+    let pact = PactBuilder::new("recap-worker", "news-creator")
+        .interaction("a theme generate request", "", |mut i| {
+            i.given("the LLM model is loaded and ready");
+            i.request.method("POST");
+            i.request.path("/v1/themes/generate");
+            i.request.content_type("application/json");
+            i.request.header("X-Job-ID", job_id);
+            i.request.json_body(json_pattern!({
+                "job_id": like!(job_id),
+                "theme_id": like!(theme_id),
+                "language": like!("ja"),
+                "items": each_like!(json_pattern!({
+                    "n": like!(1i64),
+                    "title": like!("Rust 2026 Overview"),
+                    "published_at": like!("2026-11-18"),
+                    "text": like!("Summary text of the article."),
+                })),
+                "new_item_ns": each_like!(like!(1i64)),
+                "previous": json_pattern!({
+                    "title": like!("Rust Compiler"),
+                    "key_points": each_like!(like!("Previous key point")),
+                    "open_questions": each_like!(like!("Previous open question")),
+                }),
+                "failure_notes": each_like!(like!("retry note")),
+            }));
+            i.response.status(200);
+            i.response.content_type("application/json");
+            i.response.json_body(json_pattern!({
+                "title": like!("Rust 2026"),
+                "key_points": each_like!(json_pattern!({
+                    "text": like!("Key point sentence."),
+                    "refs": each_like!(like!(1i64)),
+                })),
+                "timeline": each_like!(json_pattern!({
+                    "date": like!("2026-11-18"),
+                    "text": like!("Timeline entry."),
+                    "refs": each_like!(like!(1i64)),
+                })),
+                "what_changed": each_like!(json_pattern!({
+                    "text": like!("What changed sentence."),
+                    "refs": each_like!(like!(1i64)),
+                })),
+                "open_questions": each_like!(json_pattern!({
+                    "text": like!("Open question sentence."),
+                    "refs": each_like!(like!(1i64)),
+                })),
+                "model": like!("gemma4-e4b-12k"),
+            }));
+            i
+        })
+        .with_output_dir(PACT_DIR)
+        .start_mock_server(None, None);
+
+    let client = NewsCreatorClient::new_for_test(pact.url().to_string());
+    let request = ThemeGenerateRequest {
+        job_id: Uuid::parse_str(job_id).unwrap(),
+        theme_id: Uuid::parse_str(theme_id).unwrap(),
+        language: "ja".to_string(),
+        items: vec![ThemeGenerateItemInput {
+            n: 1,
+            title: "Rust 2026 Overview".to_string(),
+            published_at: Some("2026-11-18".to_string()),
+            text: "Summary text of the article.".to_string(),
+        }],
+        new_item_ns: vec![1],
+        previous: Some(ThemePreviousInput {
+            title: "Rust Compiler".to_string(),
+            key_points: vec!["Previous key point".to_string()],
+            open_questions: vec!["Previous open question".to_string()],
+        }),
+        failure_notes: vec!["retry note".to_string()],
+    };
+
+    let outcome = client
+        .generate_theme(&request)
+        .await
+        .expect("theme generation should succeed against mock provider");
+
+    match outcome {
+        ThemeGenerateOutcome::Success(parsed) => {
+            assert_eq!(parsed.title, "Rust 2026");
+            assert_eq!(parsed.key_points.len(), 1);
+            assert_eq!(parsed.timeline.len(), 1);
+            assert_eq!(parsed.what_changed.len(), 1);
+            assert_eq!(parsed.open_questions.len(), 1);
+            assert_eq!(parsed.model, "gemma4-e4b-12k");
+        }
+        ThemeGenerateOutcome::Rejected(rejected) => {
+            panic!("expected Success, got Rejected: {rejected:?}");
+        }
+    }
+}
+
+/// Theme page generation rejected: POST /v1/themes/generate → 422 Unprocessable Entity
+#[tokio::test]
+#[ignore = "CDC contract test — run with `cargo test contract -- --ignored`"]
+async fn contract_news_creator_theme_generate_rejected() {
+    let job_id = "00000000-0000-0000-0000-000000000011";
+    let theme_id = "00000000-0000-0000-0000-000000000021";
+    let pact = PactBuilder::new("recap-worker", "news-creator")
+        .interaction(
+            "a theme generate request that is rejected by validation",
+            "",
+            |mut i| {
+                i.given("theme generation fails validation and is rejected");
+                i.request.method("POST");
+                i.request.path("/v1/themes/generate");
+                i.request.content_type("application/json");
+                i.request.header("X-Job-ID", job_id);
+                i.request.json_body(json_pattern!({
+                    "job_id": like!(job_id),
+                    "theme_id": like!(theme_id),
+                    "language": like!("ja"),
+                    "items": each_like!(json_pattern!({
+                        "n": like!(1i64),
+                        "title": like!("Insufficient Article"),
+                        "published_at": like!("2026-11-18"),
+                        "text": like!("Short source text."),
+                    })),
+                    "new_item_ns": each_like!(like!(1i64)),
+                    "previous": null,
+                    "failure_notes": [],
+                }));
+                i.response.status(422);
+                i.response.content_type("application/json");
+                i.response.header("X-Card-Rejection", "1");
+                i.response.json_body(json_pattern!({
+                    "reason": like!("nothing_usable"),
+                    "attempts": like!(2i64),
+                    "raw_text": like!("invalid output"),
+                    "detail": like!("no_key_points"),
+                }));
+                i
+            },
+        )
+        .with_output_dir(PACT_DIR)
+        .start_mock_server(None, None);
+
+    let client = NewsCreatorClient::new_for_test(pact.url().to_string());
+    let request = ThemeGenerateRequest {
+        job_id: Uuid::parse_str(job_id).unwrap(),
+        theme_id: Uuid::parse_str(theme_id).unwrap(),
+        language: "ja".to_string(),
+        items: vec![ThemeGenerateItemInput {
+            n: 1,
+            title: "Insufficient Article".to_string(),
+            published_at: Some("2026-11-18".to_string()),
+            text: "Short source text.".to_string(),
+        }],
+        new_item_ns: vec![1],
+        previous: None,
+        failure_notes: vec![],
+    };
+
+    let outcome = client
+        .generate_theme(&request)
+        .await
+        .expect("theme rejection should return Ok(Rejected)");
+
+    match outcome {
+        ThemeGenerateOutcome::Rejected(rejected) => {
+            assert_eq!(rejected.reason, "nothing_usable");
+            assert_eq!(rejected.attempts, 2);
+            assert_eq!(rejected.detail.as_deref(), Some("no_key_points"));
+        }
+        ThemeGenerateOutcome::Success(success) => {
+            panic!("expected Rejected, got Success: {success:?}");
+        }
+    }
 }

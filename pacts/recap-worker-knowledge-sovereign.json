@@ -7,7 +7,127 @@
   },
   "interactions": [
     {
-      "description": "an AppendKnowledgeEvent request for recap.topic_snapshotted.v1",
+      "description": "a ListReadingSourcesInWindow request for a user",
+      "request": {
+        "method": "POST",
+        "path": "/services.sovereign.v1.KnowledgeSovereignService/ListReadingSourcesInWindow",
+        "headers": {
+          "Authorization": "Bearer test-sovereign-event-token",
+          "content-type": "application/json"
+        },
+        "body": {
+          "from": "2026-11-01T00:00:00+00:00",
+          "to": "2026-11-19T00:00:00+00:00",
+          "userId": "44444444-4444-4444-4444-444444444444"
+        },
+        "matchingRules": {
+          "header": {
+            "Authorization": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^Bearer .+$"
+                }
+              ]
+            }
+          },
+          "body": {
+            "$.to": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.userId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.from": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "entries": [
+            {
+              "firstReadAt": "2026-11-18T12:00:00+00:00",
+              "articleId": "55555555-5555-5555-5555-555555555555",
+              "readRuleVersion": 1
+            }
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.entries[*].readRuleVersion": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.entries": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.entries[*].articleId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.entries[*].*": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.entries[*].firstReadAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "providerStates": [
+        {
+          "name": "reading sources exist for the user"
+        }
+      ]
+    },
+    {
+      "description": "an AppendKnowledgeEvent request for reading.theme_version_created.v1",
       "request": {
         "method": "POST",
         "path": "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent",
@@ -17,17 +137,17 @@
         },
         "body": {
           "event": {
-            "dedupeKey": "recap.topic_snapshotted.v1:44444444-4444-4444-4444-444444444444:01939001-aaaa-7000-8000-000000000001",
+            "actorId": "themes",
+            "aggregateType": "reading_theme",
             "tenantId": "11111111-1111-1111-1111-111111111111",
-            "eventType": "recap.topic_snapshotted.v1",
-            "occurredAt": "2026-04-26T01:00:00+00:00",
-            "eventId": "00000000-0000-0000-0000-000000000000",
-            "aggregateId": "recap-topic-snapshot:44444444-4444-4444-4444-444444444444:2026-04-26T00:00:00+00:00",
-            "payload": "eyJyZWNhcF90b3BpY19zbmFwc2hvdF9pZCI6IjAxOTM5MDAxLWFhYWEtNzAwMC04MDAwLTAwMDAwMDAwMDAwMSIsInRvcF90ZXJtcyI6WyJhaSIsImxsbSJdLCJjbHVzdGVyX2lkIjo3LCJzbmFwc2hvdF93aW5kb3dfc3RhcnQiOiIyMDI2LTA0LTI2VDAwOjAwOjAwKzAwOjAwIiwic25hcHNob3Rfd2luZG93X2VuZCI6IjIwMjYtMDQtMjZUMDE6MDA6MDArMDA6MDAifQ==",
-            "aggregateType": "knowledge_loop_session",
-            "actorType": "service:recap-worker",
             "userId": "44444444-4444-4444-4444-444444444444",
-            "actorId": "persist-stage"
+            "occurredAt": "2026-11-18T02:00:00+00:00",
+            "payload": "eyJ0aGVtZV9pZCI6IjY2NjY2NjY2LTY2NjYtNjY2Ni02NjY2LTY2NjY2NjY2NjY2NiIsInZlcnNpb24iOjIsInRpdGxlIjoiUnVzdCBDb21waWxlciBBZHZhbmNlcyIsIm1lbWJlcl9hcnRpY2xlX2lkcyI6WyI3Nzc3Nzc3Ny03Nzc3LTc3NzctNzc3Ny03Nzc3Nzc3Nzc3NzEiLCI3Nzc3Nzc3Ny03Nzc3LTc3NzctNzc3Ny03Nzc3Nzc3Nzc3NzIiXSwiYXJ0aWNsZV9jb3VudCI6MiwiY3JlYXRlZF9hdCI6IjIwMjYtMTEtMThUMDI6MDA6MDArMDA6MDAifQ==",
+            "actorType": "service:recap-worker",
+            "aggregateId": "66666666-6666-6666-6666-666666666666",
+            "eventId": "00000000-0000-0000-0000-000000000000",
+            "eventType": "reading.theme_version_created.v1",
+            "dedupeKey": "reading.theme_version_created:66666666-6666-6666-6666-666666666666:2"
           }
         },
         "matchingRules": {
@@ -38,6 +158,54 @@
                 {
                   "match": "regex",
                   "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            },
+            "$.event.actorType": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.event.eventType": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.event.aggregateType": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.event.tenantId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.event.userId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.event.payload": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
                 }
               ]
             },
@@ -57,7 +225,98 @@
                 }
               ]
             },
+            "$.event.actorId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
             "$.event.dedupeKey": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Authorization": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^Bearer .+$"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "eventSeq": "456"
+        },
+        "matchingRules": {
+          "body": {
+            "$.eventSeq": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "providerStates": [
+        {
+          "name": "recap-worker may append theme version events"
+        }
+      ]
+    },
+    {
+      "description": "an AppendKnowledgeEvent request for recap.topic_snapshotted.v1",
+      "request": {
+        "method": "POST",
+        "path": "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent",
+        "headers": {
+          "Authorization": "Bearer test-sovereign-event-token",
+          "content-type": "application/json"
+        },
+        "body": {
+          "event": {
+            "aggregateId": "recap-topic-snapshot:44444444-4444-4444-4444-444444444444:2026-04-26T00:00:00+00:00",
+            "payload": "eyJyZWNhcF90b3BpY19zbmFwc2hvdF9pZCI6IjAxOTM5MDAxLWFhYWEtNzAwMC04MDAwLTAwMDAwMDAwMDAwMSIsInRvcF90ZXJtcyI6WyJhaSIsImxsbSJdLCJjbHVzdGVyX2lkIjo3LCJzbmFwc2hvdF93aW5kb3dfc3RhcnQiOiIyMDI2LTA0LTI2VDAwOjAwOjAwKzAwOjAwIiwic25hcHNob3Rfd2luZG93X2VuZCI6IjIwMjYtMDQtMjZUMDE6MDA6MDArMDA6MDAifQ==",
+            "userId": "44444444-4444-4444-4444-444444444444",
+            "actorType": "service:recap-worker",
+            "occurredAt": "2026-04-26T01:00:00+00:00",
+            "eventId": "00000000-0000-0000-0000-000000000000",
+            "tenantId": "11111111-1111-1111-1111-111111111111",
+            "aggregateType": "knowledge_loop_session",
+            "actorId": "persist-stage",
+            "eventType": "recap.topic_snapshotted.v1",
+            "dedupeKey": "recap.topic_snapshotted.v1:44444444-4444-4444-4444-444444444444:01939001-aaaa-7000-8000-000000000001"
+          }
+        },
+        "matchingRules": {
+          "body": {
+            "$.event.occurredAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.event.aggregateId": {
               "combine": "AND",
               "matchers": [
                 {
@@ -73,7 +332,23 @@
                 }
               ]
             },
-            "$.event.aggregateType": {
+            "$.event.actorId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.event.payload": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.event.eventType": {
               "combine": "AND",
               "matchers": [
                 {
@@ -97,7 +372,16 @@
                 }
               ]
             },
-            "$.event.eventType": {
+            "$.event.eventId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            },
+            "$.event.dedupeKey": {
               "combine": "AND",
               "matchers": [
                 {
@@ -105,15 +389,7 @@
                 }
               ]
             },
-            "$.event.payload": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
-            "$.event.actorId": {
+            "$.event.aggregateType": {
               "combine": "AND",
               "matchers": [
                 {

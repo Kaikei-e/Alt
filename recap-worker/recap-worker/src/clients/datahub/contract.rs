@@ -95,3 +95,53 @@ async fn contract_datahub_enqueue_notification_recap_ready() {
     );
     assert_eq!(outcome.superseded_count, 0);
 }
+
+#[tokio::test]
+#[ignore = "CDC contract test — run with `cargo test --lib contract -- --ignored`"]
+async fn contract_datahub_batch_get_articles_by_ids() {
+    let article_id = Uuid::parse_str("88888888-8888-8888-8888-888888888888").unwrap();
+    let published_at = Utc.with_ymd_and_hms(2026, 11, 18, 9, 0, 0).unwrap();
+
+    let pact = PactBuilder::new("recap-worker", "alt-data-hub")
+        .interaction(
+            "a BatchGetArticlesByIDs request from recap-worker",
+            "",
+            |mut i| {
+                i.given("articles exist for the requested ids");
+                i.request.method("POST");
+                i.request
+                    .path("/services.datahub.v1.DataHubService/BatchGetArticlesByIDs");
+                i.request.content_type("application/json");
+                i.request.json_body(json_pattern!({
+                    "articleIds": each_like!(like!(article_id.to_string())),
+                }));
+                i.response.status(200);
+                i.response.content_type("application/json");
+                i.response.json_body(json_pattern!({
+                    "articles": each_like!(json_pattern!({
+                        "id": like!(article_id.to_string()),
+                        "title": like!("Example Article"),
+                        "content": like!("<p>Body content.</p>"),
+                        "url": like!("https://example.com/articles/1"),
+                        "publishedAt": like!("2026-11-18T09:00:00Z"),
+                    })),
+                }));
+                i
+            },
+        )
+        .with_output_dir(PACT_DIR)
+        .start_mock_server(None, None);
+
+    let client = DataHubClient::new_for_test(pact.url().to_string());
+    let articles = client
+        .batch_get_articles_by_ids(&[article_id])
+        .await
+        .expect("batch_get_articles_by_ids should succeed against mock provider");
+
+    assert_eq!(articles.len(), 1);
+    assert_eq!(articles[0].id, article_id);
+    assert_eq!(articles[0].title, "Example Article");
+    assert_eq!(articles[0].url, "https://example.com/articles/1");
+    assert_eq!(articles[0].content, "<p>Body content.</p>");
+    assert_eq!(articles[0].published_at, Some(published_at));
+}
