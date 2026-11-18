@@ -11,8 +11,14 @@ import (
 )
 
 func TestAllowConnectPath_ReadingServiceRecordReadingEvents(t *testing.T) {
-	const path = "/alt.reading.v1.ReadingService/RecordReadingEvents"
-	assert.True(t, allowConnectPath(path), "path %q", path)
+	for _, path := range []string{
+		"/alt.reading.v1.ReadingService/RecordReadingEvents",
+		"/alt.reading.v1.ReadingService/QueueArticle",
+		"/alt.reading.v1.ReadingService/UnqueueArticle",
+		"/alt.reading.v1.ReadingService/GetReadTodayQueue",
+	} {
+		assert.True(t, allowConnectPath(path), "path %q", path)
+	}
 }
 
 func TestServer_ForwardsReadingServiceRecordReadingEvents(t *testing.T) {

@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -254,4 +255,29 @@ func containsString(haystack []string, needle string) bool {
 		}
 	}
 	return false
+}
+
+// TestComposeAltBackendReadingQueueIsExplicitlyWired pins that every compose
+// definition of alt-backend sets positive integer literals for READING_QUEUE_CAP
+// and READING_QUEUE_TTL_HOURS so ValidateBackendConfig never fails startup.
+func TestComposeAltBackendReadingQueueIsExplicitlyWired(t *testing.T) {
+	for _, relPath := range composeFilesDefiningAltBackend {
+		t.Run(relPath, func(t *testing.T) {
+			service := loadAltBackendService(t, relPath)
+			env, err := parseEnvironment(&service.Environment)
+			if err != nil {
+				t.Fatalf("parse %s environment: %v", relPath, err)
+			}
+			for _, key := range []string{"READING_QUEUE_CAP", "READING_QUEUE_TTL_HOURS"} {
+				raw, ok := env[key]
+				if !ok || strings.TrimSpace(raw) == "" {
+					t.Fatalf("%s: alt-backend is missing %s", relPath, key)
+				}
+				v, err := strconv.Atoi(strings.TrimSpace(raw))
+				if err != nil || v <= 0 {
+					t.Errorf("%s: %s=%q must be a positive integer literal", relPath, key, raw)
+				}
+			}
+		})
+	}
 }

@@ -75,6 +75,7 @@ func TestComponentStructs_OmitWhatTheirBinaryDoesNotBuild(t *testing.T) {
 				"SovereignClient", "AdminMonitor", "RecallRailUsecase",
 				"CreateSummaryVersionUsecase", "ImageProxyUsecase", "CSRFTokenUsecase",
 				"RecordReadingEventsUsecase",
+				"QueueArticleUsecase", "UnqueueArticleUsecase", "GetReadTodayQueueUsecase",
 			},
 		},
 		{
@@ -143,6 +144,7 @@ func splitTestConfig() *config.Config {
 		RateLimit:     config.RateLimitConfig{ExternalAPIInterval: 10 * time.Second, ExternalAPIBurst: 3, FeedFetchLimit: 100},
 		SearchIndexer: config.SearchIndexerConfig{ConnectURL: "http://search-indexer:9301"},
 		MQHub:         config.MQHubConfig{Enabled: false, ConnectURL: "http://mq-hub:9500"},
+		ReadingQueue:  config.ReadingQueueConfig{Cap: 7, TTLHours: 48},
 	}
 }
 

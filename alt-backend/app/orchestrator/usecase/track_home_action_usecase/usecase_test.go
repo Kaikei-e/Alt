@@ -600,16 +600,23 @@ func TestTrackHomeActionUsecase_PanicsWhenArticleStatusPortUnwired(t *testing.T)
 	articleID := uuid.New()
 	itemKey := "article:" + articleID.String()
 
-	for _, action := range []string{"open", "dismiss"} {
-		t.Run("panics on "+action+" when articleStatusPort is not wired", func(t *testing.T) {
-			urlPort := &flakyArticleURLLookupPort{succeedURL: "https://example.com/post-1"}
-			uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, nil, nil, nil, urlPort)
+	t.Run("panics on dismiss when articleStatusPort is not wired", func(t *testing.T) {
+		urlPort := &flakyArticleURLLookupPort{succeedURL: "https://example.com/post-1"}
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, nil, nil, nil, urlPort)
 
-			assert.PanicsWithValue(t, "TrackHomeActionUsecase: articleStatusPort is not wired (use WithArticleStatusPort)", func() {
-				_ = uc.Execute(context.Background(), userID, tenantID, action, itemKey, "")
-			})
+		assert.PanicsWithValue(t, "TrackHomeActionUsecase: articleStatusPort is not wired (use WithArticleStatusPort)", func() {
+			_ = uc.Execute(context.Background(), userID, tenantID, "dismiss", itemKey, "")
 		})
-	}
+	})
+
+	t.Run("does not panic on open when articleStatusPort is not wired", func(t *testing.T) {
+		urlPort := &flakyArticleURLLookupPort{succeedURL: "https://example.com/post-1"}
+		uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, nil, nil, nil, urlPort)
+
+		assert.NotPanics(t, func() {
+			require.NoError(t, uc.Execute(context.Background(), userID, tenantID, "open", itemKey, ""))
+		})
+	})
 }
 
 func TestTrackHomeActionUsecase_SyncsFeedReadStatus(t *testing.T) {
@@ -626,34 +633,34 @@ func TestTrackHomeActionUsecase_SyncsFeedReadStatus(t *testing.T) {
 		wantMarked   bool
 	}{
 		{
-			name:         "open with empty metadata (Knowledge Home)",
+			name:         "open with empty metadata does not mark read",
 			action:       "open",
 			metadataJSON: "",
-			wantMarked:   true,
+			wantMarked:   false,
 		},
 		{
-			name:         "open with metadata missing source key",
+			name:         "open with metadata missing source key does not mark read",
 			action:       "open",
 			metadataJSON: `{"idempotency_key":"k1"}`,
-			wantMarked:   true,
+			wantMarked:   false,
 		},
 		{
-			name:         "open with empty source string",
+			name:         "open with empty source string does not mark read",
 			action:       "open",
 			metadataJSON: `{"source":""}`,
-			wantMarked:   true,
+			wantMarked:   false,
 		},
 		{
-			name:         "open from feed_detail_modal",
+			name:         "open from feed_detail_modal does not mark read",
 			action:       "open",
 			metadataJSON: `{"source":"feed_detail_modal"}`,
-			wantMarked:   true,
+			wantMarked:   false,
 		},
 		{
-			name:         "open from mobile_feed_details",
+			name:         "open from mobile_feed_details does not mark read",
 			action:       "open",
 			metadataJSON: `{"source":"mobile_feed_details"}`,
-			wantMarked:   true,
+			wantMarked:   false,
 		},
 		{
 			name:         "open from swipe_card_expand does not mark read",
@@ -759,7 +766,7 @@ func TestTrackHomeActionUsecase_SyncErrorLogExcludesURL(t *testing.T) {
 	uc := NewTrackHomeActionUsecase(&mockUserEventPort{}, &mockKnowledgeEventPort{}, nil, nil, nil, nil, urlPort).
 		WithArticleStatusPort(statusPort)
 
-	require.NoError(t, uc.Execute(context.Background(), userID, tenantID, "open", itemKey, ""))
+	require.NoError(t, uc.Execute(context.Background(), userID, tenantID, "dismiss", itemKey, ""))
 	assert.Contains(t, buf.String(), "WARN")
 	assert.Contains(t, buf.String(), itemKey)
 	assert.NotContains(t, buf.String(), rawURL)

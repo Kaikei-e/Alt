@@ -1,0 +1,333 @@
+package reading_projector
+
+import (
+	"context"
+	"encoding/json"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"knowledge-sovereign/driver/sovereign_db"
+)
+
+type queueKey struct {
+	userID    uuid.UUID
+	articleID uuid.UUID
+}
+
+type fakeQueueRow struct {
+	item          sovereign_db.ReadingQueueItem
+	removedAt     *time.Time
+	removedReason string
+}
+
+type fakeReadingRepo struct {
+	events     []sovereign_db.KnowledgeEvent
+	checkpoint sovereign_db.ProjectionCheckpoint
+	sources    map[queueKey]sovereign_db.ReadingSource
+	queue      map[queueKey]fakeQueueRow
+}
+
+func newFakeReadingRepo(events []sovereign_db.KnowledgeEvent) *fakeReadingRepo {
+	return &fakeReadingRepo{
+		events:  events,
+		sources: make(map[queueKey]sovereign_db.ReadingSource),
+		queue:   make(map[queueKey]fakeQueueRow),
+	}
+}
+
+func (r *fakeReadingRepo) ReadProjectionCheckpointForAdvance(_ context.Context, _ string) (sovereign_db.ProjectionCheckpoint, error) {
+	return r.checkpoint, nil
+}
+
+func (r *fakeReadingRepo) AdvanceProjectionCheckpointIfUnchanged(_ context.Context, _ string, from sovereign_db.ProjectionCheckpoint, toSeq int64) (bool, error) {
+	if r.checkpoint.LastEventSeq != from.LastEventSeq {
+		return false, nil
+	}
+	r.checkpoint.LastEventSeq = toSeq
+	r.checkpoint.Exists = true
+	return true, nil
+}
+
+func (r *fakeReadingRepo) ListKnowledgeEventsSince(_ context.Context, afterSeq int64, limit int) ([]sovereign_db.KnowledgeEvent, error) {
+	var out []sovereign_db.KnowledgeEvent
+	for _, ev := range r.events {
+		if ev.EventSeq > afterSeq {
+			out = append(out, ev)
+			if len(out) >= limit {
+				break
+			}
+		}
+	}
+	return out, nil
+}
+
+func (r *fakeReadingRepo) ReadSequenceGapFrontier(_ context.Context, _, _ int64) (sovereign_db.SequenceGapFrontier, error) {
+	return sovereign_db.SequenceGapFrontier{}, nil
+}
+
+func (r *fakeReadingRepo) UpsertReadingSource(_ context.Context, src sovereign_db.ReadingSource) error {
+	k := queueKey{userID: src.UserID, articleID: src.ArticleID}
+	if cur, ok := r.sources[k]; ok {
+		switch {
+		case src.ReadRuleVersion > cur.ReadRuleVersion:
+			// Incoming higher rule version replaces both first_read_at and version.
+		case src.ReadRuleVersion < cur.ReadRuleVersion:
+			return nil
+		default:
+			if cur.FirstReadAt.Before(src.FirstReadAt) {
+				src.FirstReadAt = cur.FirstReadAt
+			}
+		}
+	}
+	r.sources[k] = src
+	return nil
+}
+
+func (r *fakeReadingRepo) UpsertReadingQueueItem(_ context.Context, item sovereign_db.ReadingQueueItem) error {
+	k := queueKey{userID: item.UserID, articleID: item.ArticleID}
+	if cur, ok := r.queue[k]; ok && cur.item.LastEventSeq > item.LastEventSeq {
+		return nil
+	}
+	r.queue[k] = fakeQueueRow{item: item}
+	return nil
+}
+
+func (r *fakeReadingRepo) RemoveReadingQueueItem(_ context.Context, userID, articleID uuid.UUID, removedAt time.Time, reason string, eventSeq int64) error {
+	k := queueKey{userID: userID, articleID: articleID}
+	cur, ok := r.queue[k]
+	if !ok || cur.removedAt != nil || cur.item.LastEventSeq > eventSeq {
+		return nil
+	}
+	t := removedAt
+	cur.removedAt = &t
+	cur.removedReason = reason
+	cur.item.LastEventSeq = eventSeq
+	r.queue[k] = cur
+	return nil
+}
+
+func mustJSON(t *testing.T, v any) json.RawMessage {
+	t.Helper()
+	b, err := json.Marshal(v)
+	require.NoError(t, err)
+	return b
+}
+
+func readingEvt(t *testing.T, seq int64, eventType string, occurredAt time.Time, tenantID, userID uuid.UUID, aggregateID string, payload any) sovereign_db.KnowledgeEvent {
+	t.Helper()
+	u := userID
+	return sovereign_db.KnowledgeEvent{
+		EventID:     uuid.New(),
+		EventSeq:    seq,
+		OccurredAt:  occurredAt,
+		TenantID:    tenantID,
+		UserID:      &u,
+		EventType:   eventType,
+		AggregateID: aggregateID,
+		Payload:     mustJSON(t, payload),
+	}
+}
+
+func TestReadingProjector_FoldsSessionQueuedUnqueuedAndLegacyOpen(t *testing.T) {
+	tenantID := uuid.New()
+	userID := uuid.New()
+	artRead := uuid.New()
+	artSkimmed := uuid.New()
+	artLegacy := uuid.New()
+	artQueued := uuid.New()
+
+	t0 := time.Date(2026, 11, 18, 8, 0, 0, 0, time.UTC)
+	events := []sovereign_db.KnowledgeEvent{
+		// 1. Queued article
+		readingEvt(t, 1, eventReadingQueued, t0, tenantID, userID, "article:"+artRead.String(), map[string]any{
+			"article_id":           artRead.String(),
+			"queued_at":            t0.Format(time.RFC3339),
+			"expires_at":           t0.Add(48 * time.Hour).Format(time.RFC3339),
+			"queue_policy_version": 1,
+		}),
+		// 2. Second queued article (will be explicitly unqueued)
+		readingEvt(t, 2, eventReadingQueued, t0.Add(time.Minute), tenantID, userID, "article:"+artQueued.String(), map[string]any{
+			"article_id":           artQueued.String(),
+			"queued_at":            t0.Add(time.Minute).Format(time.RFC3339),
+			"expires_at":           t0.Add(time.Minute + 48*time.Hour).Format(time.RFC3339),
+			"queue_policy_version": 1,
+		}),
+		// 3. Skimmed session (does NOT count as read -> no reading_source, stays in queue if queued)
+		readingEvt(t, 3, eventSessionEnded, t0.Add(2*time.Minute), tenantID, userID, "article:"+artSkimmed.String(), map[string]any{
+			"article_id":        artSkimmed.String(),
+			"active_dwell_ms":   2000,
+			"body_length_chars": 1500,
+			"reached_end":       true,
+		}),
+		// 4. Qualifying session on artRead -> inserts reading_source v1 and removes from queue
+		readingEvt(t, 4, eventSessionEnded, t0.Add(3*time.Minute), tenantID, userID, "article:"+artRead.String(), map[string]any{
+			"article_id":        artRead.String(),
+			"active_dwell_ms":   6000,
+			"body_length_chars": 1500,
+			"reached_end":       true,
+		}),
+		// 5. Explicit unqueue on artQueued
+		readingEvt(t, 5, eventReadingUnqueue, t0.Add(4*time.Minute), tenantID, userID, "article:"+artQueued.String(), map[string]any{
+			"article_id": artQueued.String(),
+		}),
+		// 6. Legacy HomeItemOpened on artLegacy -> inserts reading_source with LegacyReadRuleVersion (0)
+		readingEvt(t, 6, eventHomeItemOpened, t0.Add(-24*time.Hour), tenantID, userID, "article:"+artLegacy.String(), map[string]any{
+			"item_key": "article:" + artLegacy.String(),
+		}),
+		// 7. Re-queue artQueued at seq 7 -> becomes active again
+		readingEvt(t, 7, eventReadingQueued, t0.Add(5*time.Minute), tenantID, userID, "article:"+artQueued.String(), map[string]any{
+			"article_id":           artQueued.String(),
+			"queued_at":            t0.Add(5 * time.Minute).Format(time.RFC3339),
+			"expires_at":           t0.Add(5*time.Minute + 48*time.Hour).Format(time.RFC3339),
+			"queue_policy_version": 1,
+		}),
+	}
+
+	repo := newFakeReadingRepo(events)
+	p := NewProjector(repo, nil, Config{})
+	require.NoError(t, p.RunBatch(context.Background()))
+
+	assert.Equal(t, int64(7), repo.checkpoint.LastEventSeq)
+
+	// artRead counted as read (version 1) and left the queue
+	srcRead, ok := repo.sources[queueKey{userID: userID, articleID: artRead}]
+	require.True(t, ok)
+	assert.Equal(t, ReadRuleVersionV1, srcRead.ReadRuleVersion)
+	assert.Equal(t, t0.Add(3*time.Minute), srcRead.FirstReadAt)
+
+	qRead := repo.queue[queueKey{userID: userID, articleID: artRead}]
+	require.NotNil(t, qRead.removedAt)
+	assert.Equal(t, "read", qRead.removedReason)
+
+	// artSkimmed did not count as read
+	_, ok = repo.sources[queueKey{userID: userID, articleID: artSkimmed}]
+	assert.False(t, ok)
+
+	// artLegacy recorded with legacy rule version 0
+	srcLegacy, ok := repo.sources[queueKey{userID: userID, articleID: artLegacy}]
+	require.True(t, ok)
+	assert.Equal(t, LegacyReadRuleVersion, srcLegacy.ReadRuleVersion)
+
+	// artQueued was re-queued at seq 7 and is active
+	qRequeued := repo.queue[queueKey{userID: userID, articleID: artQueued}]
+	assert.Nil(t, qRequeued.removedAt)
+	assert.Equal(t, t0.Add(5*time.Minute), qRequeued.item.QueuedAt)
+}
+
+func TestReadingProjector_SkipsUnknownEventAndStopsOnMalformedPayload(t *testing.T) {
+	tenantID := uuid.New()
+	userID := uuid.New()
+	t0 := time.Date(2026, 11, 18, 8, 0, 0, 0, time.UTC)
+
+	events := []sovereign_db.KnowledgeEvent{
+		readingEvt(t, 1, "reading.opened.v1", t0, tenantID, userID, "article:"+uuid.NewString(), map[string]any{"article_id": uuid.NewString()}),
+		{
+			EventID:     uuid.New(),
+			EventSeq:    2,
+			OccurredAt:  t0.Add(time.Minute),
+			TenantID:    tenantID,
+			UserID:      &userID,
+			EventType:   eventSessionEnded,
+			AggregateID: "article:bad",
+			Payload:     json.RawMessage(`{bad-json`),
+		},
+	}
+
+	repo := newFakeReadingRepo(events)
+	p := NewProjector(repo, nil, Config{})
+	err := p.RunBatch(context.Background())
+	require.Error(t, err)
+	assert.Equal(t, int64(1), repo.checkpoint.LastEventSeq)
+}
+
+func TestReadingProjector_ReadingSourceMergeOrderIndependent(t *testing.T) {
+	tenantID := uuid.New()
+	userID := uuid.New()
+	tOld := time.Date(2026, 11, 1, 8, 0, 0, 0, time.UTC)
+	tEarly := time.Date(2026, 11, 18, 9, 0, 0, 0, time.UTC)
+	tLate := time.Date(2026, 11, 18, 14, 0, 0, 0, time.UTC)
+
+	legacyEvt := func(seq int64, articleID uuid.UUID, occurredAt time.Time) sovereign_db.KnowledgeEvent {
+		return readingEvt(t, seq, eventHomeItemOpened, occurredAt, tenantID, userID, "article:"+articleID.String(), map[string]any{
+			"item_key": "article:" + articleID.String(),
+		})
+	}
+	v1Evt := func(seq int64, articleID uuid.UUID, occurredAt time.Time) sovereign_db.KnowledgeEvent {
+		return readingEvt(t, seq, eventSessionEnded, occurredAt, tenantID, userID, "article:"+articleID.String(), map[string]any{
+			"article_id":        articleID.String(),
+			"active_dwell_ms":   6000,
+			"body_length_chars": 1500,
+			"reached_end":       true,
+		})
+	}
+
+	tests := []struct {
+		name        string
+		buildEvents func(articleID uuid.UUID) []sovereign_db.KnowledgeEvent
+		wantTime    time.Time
+		wantVersion int
+	}{
+		{
+			name: "legacy then v1",
+			buildEvents: func(articleID uuid.UUID) []sovereign_db.KnowledgeEvent {
+				return []sovereign_db.KnowledgeEvent{
+					legacyEvt(1, articleID, tOld),
+					v1Evt(2, articleID, tEarly),
+				}
+			},
+			wantTime:    tEarly,
+			wantVersion: ReadRuleVersionV1,
+		},
+		{
+			name: "v1 then legacy (replay order reversed)",
+			buildEvents: func(articleID uuid.UUID) []sovereign_db.KnowledgeEvent {
+				return []sovereign_db.KnowledgeEvent{
+					v1Evt(1, articleID, tEarly),
+					legacyEvt(2, articleID, tOld),
+				}
+			},
+			wantTime:    tEarly,
+			wantVersion: ReadRuleVersionV1,
+		},
+		{
+			name: "v1 twice earlier then later",
+			buildEvents: func(articleID uuid.UUID) []sovereign_db.KnowledgeEvent {
+				return []sovereign_db.KnowledgeEvent{
+					v1Evt(1, articleID, tEarly),
+					v1Evt(2, articleID, tLate),
+				}
+			},
+			wantTime:    tEarly,
+			wantVersion: ReadRuleVersionV1,
+		},
+		{
+			name: "v1 twice later then earlier",
+			buildEvents: func(articleID uuid.UUID) []sovereign_db.KnowledgeEvent {
+				return []sovereign_db.KnowledgeEvent{
+					v1Evt(1, articleID, tLate),
+					v1Evt(2, articleID, tEarly),
+				}
+			},
+			wantTime:    tEarly,
+			wantVersion: ReadRuleVersionV1,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			articleID := uuid.New()
+			repo := newFakeReadingRepo(tc.buildEvents(articleID))
+			p := NewProjector(repo, nil, Config{})
+			require.NoError(t, p.RunBatch(context.Background()))
+
+			src, ok := repo.sources[queueKey{userID: userID, articleID: articleID}]
+			require.True(t, ok)
+			assert.Equal(t, tc.wantTime, src.FirstReadAt)
+			assert.Equal(t, tc.wantVersion, src.ReadRuleVersion)
+		})
+	}
+}

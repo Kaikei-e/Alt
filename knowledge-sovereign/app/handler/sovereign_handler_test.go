@@ -39,6 +39,9 @@ type mockRepo struct {
 	openBranchesCalls   int
 	gotBranchUserID     uuid.UUID
 	gotBranchAnchorKeys []string
+
+	readingQueueItems   []sovereign_db.ReadingQueueItem
+	readingSourcesCount int
 }
 
 // --- MutationRepository ---
@@ -241,6 +244,12 @@ func (m *mockRepo) AppendRecallSignal(_ context.Context, _ sovereign_db.RecallSi
 func (m *mockRepo) AppendKnowledgeUserEvent(_ context.Context, _ sovereign_db.KnowledgeUserEvent) error {
 	m.lastMethod = "AppendKnowledgeUserEvent"
 	return m.returnErr
+}
+func (m *mockRepo) GetActiveReadingQueue(_ context.Context, _ uuid.UUID, _ time.Time) ([]sovereign_db.ReadingQueueItem, error) {
+	return m.readingQueueItems, m.returnErr
+}
+func (m *mockRepo) CountReadingSourcesSince(_ context.Context, _ uuid.UUID, _ time.Time) (int, error) {
+	return m.readingSourcesCount, m.returnErr
 }
 
 func setupTestServer(repo ReadDB) (sovereignv1connect.KnowledgeSovereignServiceClient, func()) {
