@@ -56,21 +56,34 @@ test.describe("Desktop Feeds", () => {
 	});
 
 	test("opens feed detail modal on card click", async ({ page }) => {
+		let markAsReadCalled = false;
+		await page.route(CONNECT_RPC_PATHS.markAsRead, (route) => {
+			markAsReadCalled = true;
+			return fulfillJson(route, CONNECT_MARK_AS_READ_RESPONSE);
+		});
+
 		await feedsPage.goto();
 		await feedsPage.waitForFeedsLoaded();
 
 		// Click on a feed card
 		await feedsPage.selectFeed("AI Trends");
 
-		// Verify modal is open with correct content
+		// Verify overlay is open with correct content and URL
 		await expect(feedsPage.feedDetailModal).toBeVisible();
 		await feedsPage.expectModalTitle("AI Trends");
+		await expect
+			.poll(() => new URL(page.url()).pathname)
+			.toBe("/articles/article-123");
+
+		// Opening must not mark the article as read
+		expect(markAsReadCalled).toBe(false);
 
 		// Verify action buttons are present
 		await expect(feedsPage.markAsReadButton).toBeVisible();
-		// Article button shows "Full Article" (idle) or "Re-fetch Article" (after auto-fetch)
 		await expect(
-			page.getByRole("button", { name: /full article|re-fetch article/i }),
+			page.getByRole("button", {
+				name: /fetch article|re-fetch article|fetching article/i,
+			}),
 		).toBeVisible();
 	});
 
@@ -215,12 +228,14 @@ test.describe("Desktop Feeds", () => {
 		await feedsPage.selectFeed("AI Trends");
 		await expect(feedsPage.feedDetailModal).toBeVisible();
 
-		const rail = page.getByTestId("modal-rail");
+		const rail = feedsPage.feedDetailModal.getByTestId("article-rail");
 		await expect(rail).toBeVisible({ timeout: 10000 });
 		// Rail carries the excerpt copy surfaced from feed.description
 		await expect(rail.getByText(/deep dive into the ecosystem/i)).toBeVisible();
-		// Rail carries the EXCERPT kicker label
+		// Rail carries the EXCERPT and SOURCE kicker labels
 		await expect(rail.getByText(/^excerpt$/i)).toBeVisible();
+		await expect(rail.getByText(/^source$/i)).toBeVisible();
+		await expect(rail.getByText(/example\.com/i)).toBeVisible();
 	});
 
 	test("displays feed grid with 3 columns on large screens", async ({
@@ -293,9 +308,10 @@ test.describe("Desktop Feeds - Modal Navigation", () => {
 		await feedsPage.selectFeed("First Feed");
 		await feedsPage.expectModalTitle("First Feed");
 
-		// Should show next arrow but not previous
+		// Next is enabled, previous is disabled on the first feed
 		await expect(feedsPage.nextFeedButton).toBeVisible();
-		await expect(feedsPage.prevFeedButton).not.toBeVisible();
+		await expect(feedsPage.nextFeedButton).toBeEnabled();
+		await expect(feedsPage.prevFeedButton).toBeDisabled();
 	});
 
 	test("shows both arrows on middle feed", async () => {
@@ -306,9 +322,11 @@ test.describe("Desktop Feeds - Modal Navigation", () => {
 		await feedsPage.selectFeed("Second Feed");
 		await feedsPage.expectModalTitle("Second Feed");
 
-		// Should show both arrows
+		// Should enable both arrows
 		await expect(feedsPage.prevFeedButton).toBeVisible();
+		await expect(feedsPage.prevFeedButton).toBeEnabled();
 		await expect(feedsPage.nextFeedButton).toBeVisible();
+		await expect(feedsPage.nextFeedButton).toBeEnabled();
 	});
 
 	test("shows previous arrow but not next arrow on last feed", async () => {
@@ -319,9 +337,10 @@ test.describe("Desktop Feeds - Modal Navigation", () => {
 		await feedsPage.selectFeed("Third Feed");
 		await feedsPage.expectModalTitle("Third Feed");
 
-		// Should show previous arrow but not next
+		// Previous is enabled, next is disabled on the last feed
 		await expect(feedsPage.prevFeedButton).toBeVisible();
-		await expect(feedsPage.nextFeedButton).not.toBeVisible();
+		await expect(feedsPage.prevFeedButton).toBeEnabled();
+		await expect(feedsPage.nextFeedButton).toBeDisabled();
 	});
 
 	test("navigates to next feed using arrow button", async () => {
@@ -400,8 +419,8 @@ test.describe("Desktop Feeds - Modal Navigation", () => {
 		await feedsPage.navigateToNextFeed();
 		await feedsPage.expectModalTitle("Third Feed");
 
-		// Should not have next arrow on last feed
-		await expect(feedsPage.nextFeedButton).not.toBeVisible();
+		// Next arrow should be disabled on last feed
+		await expect(feedsPage.nextFeedButton).toBeDisabled();
 
 		// Navigate back to second
 		await feedsPage.navigateToPreviousFeed();
@@ -411,8 +430,8 @@ test.describe("Desktop Feeds - Modal Navigation", () => {
 		await feedsPage.navigateToPreviousFeed();
 		await feedsPage.expectModalTitle("First Feed");
 
-		// Should not have previous arrow on first feed
-		await expect(feedsPage.prevFeedButton).not.toBeVisible();
+		// Previous arrow should be disabled on first feed
+		await expect(feedsPage.prevFeedButton).toBeDisabled();
 	});
 
 	test("prefetches next 2 articles when modal opens", async ({ page }) => {

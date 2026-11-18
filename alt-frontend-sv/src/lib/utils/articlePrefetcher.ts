@@ -9,6 +9,8 @@ import {
 } from "./errorClassification";
 import { parseRetryAfter } from "./retryAfter";
 
+export type PrefetchTarget = Pick<RenderFeed, "normalizedUrl">;
+
 const MAX_CACHE_SIZE = 30;
 const PREFETCH_DELAY = 500; // ms
 const DISMISSED_CLEANUP_DELAY = 3000; // ms
@@ -161,7 +163,7 @@ export class ArticlePrefetcher {
 	// A retry is only worth booking for one the reader is still heading
 	// towards, and this is also what keeps the ledger from growing: the
 	// foreground card is never in here, so its failures book nothing.
-	private windowFeeds = new Map<string, RenderFeed>();
+	private windowFeeds = new Map<string, PrefetchTarget>();
 	// Articles this client has already asked the server to warm. One attempt
 	// per URL, ever: the server does not retry and the client must not poll,
 	// because browser -> BFF -> alt-backend -> publisher is four hops and a
@@ -382,7 +384,7 @@ export class ArticlePrefetcher {
 	 * Everything excluded here stays with the per-URL ladder, so a refusal
 	 * costs pacing, never coverage.
 	 */
-	private selectWarmUrls(windowOrder: [string, RenderFeed][]): string[] {
+	private selectWarmUrls(windowOrder: [string, PrefetchTarget][]): string[] {
 		if (this.warmDisabled) return [];
 		if (windowOrder.length <= LADDER_OWNED_AHEAD) return [];
 		// The all-hosts pause is the BFF's own breaker being open. A warm is
@@ -477,7 +479,7 @@ export class ArticlePrefetcher {
 	 * Prefetch content for a single article
 	 * Uses normalizedUrl as cache key for consistency with the unified reader.
 	 */
-	private prefetchContent(feed: RenderFeed): Promise<void> {
+	private prefetchContent(feed: PrefetchTarget): Promise<void> {
 		const cacheKey = feed.normalizedUrl;
 
 		if (!cacheKey) return Promise.resolve();
@@ -692,11 +694,11 @@ export class ArticlePrefetcher {
 	 * Trigger prefetch for next N articles
 	 */
 	public triggerPrefetch(
-		feeds: RenderFeed[],
+		feeds: readonly PrefetchTarget[],
 		activeIndex: number,
 		prefetchAhead: number = 2,
 	) {
-		const wanted = new Map<string, RenderFeed>();
+		const wanted = new Map<string, PrefetchTarget>();
 		for (let i = 1; i <= prefetchAhead; i++) {
 			const feed = feeds[activeIndex + i];
 			const key = feed?.normalizedUrl;
@@ -737,8 +739,8 @@ export class ArticlePrefetcher {
 		// rung spacing, the same per-host serialization and cooldowns behind
 		// it. prefetchAhead is untouched — ADR-000884 cut it 10 -> 4 after a
 		// production 429 incident and nothing here reopens that.
-		const reachable: [string, RenderFeed][] = [];
-		const blocked: [string, RenderFeed][] = [];
+		const reachable: [string, PrefetchTarget][] = [];
+		const blocked: [string, PrefetchTarget][] = [];
 		for (const entry of wanted) {
 			const host = hostOf(entry[0]);
 			const free =
@@ -764,7 +766,7 @@ export class ArticlePrefetcher {
 	}
 
 	private schedulePrefetch(
-		feed: RenderFeed,
+		feed: PrefetchTarget,
 		cacheKey: string,
 		delay: number,
 	): void {
