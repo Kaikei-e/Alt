@@ -15,13 +15,17 @@ func TestBuildUnreadFeedsCursorQuery_NilCursor(t *testing.T) {
 	limit := 20
 
 	t.Run("without exclusions", func(t *testing.T) {
-		gotSQL, gotArgs := buildUnreadFeedsCursorQuery(nil, nil, limit, userID)
+		gotSQL, gotArgs := buildUnreadFeedsCursorQuery(nil, nil, nil, limit, userID)
 
 		wantSQL := fmt.Sprintf(`
 			SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at,
 			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.user_id = $2 AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
+			       %s,
+			       f.feed_link_id,
+			       ufs.daily_cap,
 			       %s
 			FROM feeds f
+			INNER JOIN user_feed_subscriptions ufs ON ufs.feed_link_id = f.feed_link_id AND ufs.user_id = $2
 			WHERE NOT EXISTS (
 				SELECT 1
 				FROM read_status rs
@@ -29,13 +33,16 @@ func TestBuildUnreadFeedsCursorQuery_NilCursor(t *testing.T) {
 				AND rs.user_id = $2
 				AND rs.is_read = TRUE
 			)
-			AND f.feed_link_id IN (SELECT feed_link_id FROM user_feed_subscriptions WHERE user_id = $2)
 			
 			ORDER BY f.created_at DESC, f.id DESC
 			LIMIT $1
-		`, ogImageSelectExpr)
+		`, ogImageSelectExpr, dailyRankSelectExpr)
 
 		assert.Equal(t, wantSQL, gotSQL)
+		assert.NotContains(t, gotSQL, "daily_rank >")
+		assert.NotContains(t, gotSQL, "daily_rank <")
+		assert.NotContains(t, gotSQL, "< ufs.daily_cap")
+		assert.NotContains(t, gotSQL, "> ufs.daily_cap")
 		require.Len(t, gotArgs, 2)
 		assert.Equal(t, limit, gotArgs[0])
 		assert.Equal(t, userID, gotArgs[1])
@@ -43,13 +50,17 @@ func TestBuildUnreadFeedsCursorQuery_NilCursor(t *testing.T) {
 
 	t.Run("with exclusions", func(t *testing.T) {
 		exID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
-		gotSQL, gotArgs := buildUnreadFeedsCursorQuery(nil, []uuid.UUID{exID}, limit, userID)
+		gotSQL, gotArgs := buildUnreadFeedsCursorQuery(nil, nil, []uuid.UUID{exID}, limit, userID)
 
 		wantSQL := fmt.Sprintf(`
 			SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at,
 			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.user_id = $2 AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
+			       %s,
+			       f.feed_link_id,
+			       ufs.daily_cap,
 			       %s
 			FROM feeds f
+			INNER JOIN user_feed_subscriptions ufs ON ufs.feed_link_id = f.feed_link_id AND ufs.user_id = $2
 			WHERE NOT EXISTS (
 				SELECT 1
 				FROM read_status rs
@@ -57,11 +68,10 @@ func TestBuildUnreadFeedsCursorQuery_NilCursor(t *testing.T) {
 				AND rs.user_id = $2
 				AND rs.is_read = TRUE
 			)
-			AND f.feed_link_id IN (SELECT feed_link_id FROM user_feed_subscriptions WHERE user_id = $2)
 			AND f.feed_link_id != ALL($3::uuid[])
 			ORDER BY f.created_at DESC, f.id DESC
 			LIMIT $1
-		`, ogImageSelectExpr)
+		`, ogImageSelectExpr, dailyRankSelectExpr)
 
 		assert.Equal(t, wantSQL, gotSQL)
 		require.Len(t, gotArgs, 3)
@@ -77,13 +87,17 @@ func TestBuildUnreadFeedsCursorQuery_WithCursor(t *testing.T) {
 	limit := 30
 
 	t.Run("without exclusions", func(t *testing.T) {
-		gotSQL, gotArgs := buildUnreadFeedsCursorQuery(&cursor, nil, limit, userID)
+		gotSQL, gotArgs := buildUnreadFeedsCursorQuery(&cursor, nil, nil, limit, userID)
 
 		wantSQL := fmt.Sprintf(`
 			SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at,
 			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.user_id = $3 AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
+			       %s,
+			       f.feed_link_id,
+			       ufs.daily_cap,
 			       %s
 			FROM feeds f
+			INNER JOIN user_feed_subscriptions ufs ON ufs.feed_link_id = f.feed_link_id AND ufs.user_id = $3
 			WHERE NOT EXISTS (
 				SELECT 1
 				FROM read_status rs
@@ -91,12 +105,11 @@ func TestBuildUnreadFeedsCursorQuery_WithCursor(t *testing.T) {
 				AND rs.user_id = $3
 				AND rs.is_read = TRUE
 			)
-			AND f.feed_link_id IN (SELECT feed_link_id FROM user_feed_subscriptions WHERE user_id = $3)
 			AND f.created_at < $1
 			
 			ORDER BY f.created_at DESC, f.id DESC
 			LIMIT $2
-		`, ogImageSelectExpr)
+		`, ogImageSelectExpr, dailyRankSelectExpr)
 
 		assert.Equal(t, wantSQL, gotSQL)
 		require.Len(t, gotArgs, 3)
@@ -107,13 +120,17 @@ func TestBuildUnreadFeedsCursorQuery_WithCursor(t *testing.T) {
 
 	t.Run("with exclusions", func(t *testing.T) {
 		exID := uuid.MustParse("22222222-2222-2222-2222-222222222222")
-		gotSQL, gotArgs := buildUnreadFeedsCursorQuery(&cursor, []uuid.UUID{exID}, limit, userID)
+		gotSQL, gotArgs := buildUnreadFeedsCursorQuery(&cursor, nil, []uuid.UUID{exID}, limit, userID)
 
 		wantSQL := fmt.Sprintf(`
 			SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at,
 			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.user_id = $3 AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
+			       %s,
+			       f.feed_link_id,
+			       ufs.daily_cap,
 			       %s
 			FROM feeds f
+			INNER JOIN user_feed_subscriptions ufs ON ufs.feed_link_id = f.feed_link_id AND ufs.user_id = $3
 			WHERE NOT EXISTS (
 				SELECT 1
 				FROM read_status rs
@@ -121,12 +138,11 @@ func TestBuildUnreadFeedsCursorQuery_WithCursor(t *testing.T) {
 				AND rs.user_id = $3
 				AND rs.is_read = TRUE
 			)
-			AND f.feed_link_id IN (SELECT feed_link_id FROM user_feed_subscriptions WHERE user_id = $3)
 			AND f.created_at < $1
 			AND f.feed_link_id != ALL($4::uuid[])
 			ORDER BY f.created_at DESC, f.id DESC
 			LIMIT $2
-		`, ogImageSelectExpr)
+		`, ogImageSelectExpr, dailyRankSelectExpr)
 
 		assert.Equal(t, wantSQL, gotSQL)
 		require.Len(t, gotArgs, 4)
@@ -134,6 +150,20 @@ func TestBuildUnreadFeedsCursorQuery_WithCursor(t *testing.T) {
 		assert.Equal(t, limit, gotArgs[1])
 		assert.Equal(t, userID, gotArgs[2])
 		assert.Equal(t, []string{exID.String()}, gotArgs[3])
+	})
+
+	t.Run("with cursorID tie-breaker", func(t *testing.T) {
+		cursorID := uuid.MustParse("33333333-3333-3333-3333-333333333333")
+		gotSQL, gotArgs := buildUnreadFeedsCursorQuery(&cursor, &cursorID, nil, limit, userID)
+
+		assert.Contains(t, gotSQL, "AND (f.created_at, f.id) < ($1, $2)")
+		assert.Contains(t, gotSQL, "AND ufs.user_id = $4")
+		assert.Contains(t, gotSQL, "LIMIT $3")
+		require.Len(t, gotArgs, 4)
+		assert.Equal(t, &cursor, gotArgs[0])
+		assert.Equal(t, cursorID, gotArgs[1])
+		assert.Equal(t, limit, gotArgs[2])
+		assert.Equal(t, userID, gotArgs[3])
 	})
 }
 

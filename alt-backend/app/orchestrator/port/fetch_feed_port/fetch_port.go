@@ -38,6 +38,7 @@ type FeedCursorPort interface {
 
 type UnreadFeedCursorPort interface {
 	FetchUnreadFeedsListCursor(ctx context.Context, cursor *time.Time, limit int, excludeFeedLinkIDs []uuid.UUID) ([]*domain.FeedItem, error)
+	FetchUnreadFeedsListCursorWithID(ctx context.Context, cursor *time.Time, cursorID *uuid.UUID, limit int, excludeFeedLinkIDs []uuid.UUID) ([]*domain.FeedItem, error)
 }
 
 type ReadFeedCursorPort interface {

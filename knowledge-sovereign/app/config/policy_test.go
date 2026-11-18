@@ -284,6 +284,14 @@ func TestProductionPolicy_AltBackendMayAppendReadingEvents(t *testing.T) {
 		"reading.surface_viewed.v1",
 		"reading.reached_end.v1",
 		"reading.session_ended.v1",
+		"reading.opened.v1",
+		"reading.queued.v1",
+		"reading.unqueued.v1",
+	}
+	readingMethods := []string{
+		"/services.sovereign.v1.KnowledgeSovereignService/GetReadingQueue",
+		"/services.sovereign.v1.KnowledgeSovereignService/CountReadingSourcesSince",
+		"/services.sovereign.v1.KnowledgeSovereignService/ListReadingSourcesInWindow",
 	}
 
 	var backendFound bool
@@ -295,10 +303,17 @@ func TestProductionPolicy_AltBackendMayAppendReadingEvents(t *testing.T) {
 			for _, ev := range readingEvents {
 				assert.Contains(t, svc.RawAllowedEvents, ev)
 			}
+			for _, m := range readingMethods {
+				assert.Contains(t, svc.RawAllowedMethods, m)
+			}
 		} else {
 			for _, ev := range readingEvents {
 				assert.NotContains(t, svc.RawAllowedEvents, ev,
 					"service %s must not be allowed to append %s", svc.Name, ev)
+			}
+			for _, m := range readingMethods {
+				assert.NotContains(t, svc.RawAllowedMethods, m,
+					"service %s must not be allowed to call %s", svc.Name, m)
 			}
 		}
 	}

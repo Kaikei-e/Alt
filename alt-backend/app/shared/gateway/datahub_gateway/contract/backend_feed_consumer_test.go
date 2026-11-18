@@ -625,6 +625,151 @@ func TestGetInoreaderSummariesByURLsContract(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestListFeedsCursorUnreadDailyCapContract(t *testing.T) {
+	mockProvider := newDataHubPact(t, consumerBackend)
+	cursorTime := time.Date(2026, 7, 31, 9, 0, 0, 0, time.UTC)
+	cursorID := uuid.MustParse(testFeedRowID)
+
+	err := mockProvider.
+		AddInteraction().
+		Given("alt-data-hub has unread feeds with daily rank and cap for the user").
+		UponReceiving("a ListFeedsCursor request with cursorId carrying dailyRank and dailyCap").
+		WithCompleteRequest(consumer.Request{
+			Method:  "POST",
+			Path:    matchers.String("/services.datahub.v1.DataHubService/ListFeedsCursor"),
+			Headers: jsonHeaders(),
+			Body: map[string]interface{}{
+				"scope":    "FEED_SCOPE_UNREAD",
+				"userId":   testUserID,
+				"cursor":   "2026-07-31T09:00:00Z",
+				"cursorId": testFeedRowID,
+				"limit":    20,
+			},
+		}).
+		WithCompleteResponse(consumer.Response{
+			Status:  200,
+			Headers: jsonHeaders(),
+			Body: matchers.MapMatcher{
+				"feeds": matchers.EachLike(map[string]interface{}{
+					"id":          matchers.Regex(testFeedRowID, uuidLikePattern),
+					"title":       matchers.Like("Example Post"),
+					"description": matchers.Like("body"),
+					"websiteUrl":  matchers.Like("https://example.com/post"),
+					"pubDate":     matchers.Like("2026-07-31T00:00:00Z"),
+					"createdAt":   matchers.Like("2026-07-31T09:00:00Z"),
+					"updatedAt":   matchers.Like("2026-07-31T09:00:00Z"),
+					"articleId":   matchers.Regex(testArticleID, uuidLikePattern),
+					"feedLinkId":  matchers.Regex(testFeedLinkID, uuidLikePattern),
+					"dailyRank":   matchers.Integer(4),
+					"dailyCap":    matchers.Integer(3),
+				}, 1),
+			},
+		}).
+		ExecuteTest(t, func(config consumer.MockServerConfig) error {
+			gw := datahub_gateway.NewFeedGateway(newDataHubServiceClient(config))
+			feeds, err := gw.FetchUnreadFeedsListCursorWithID(authedContext(testUserID), &cursorTime, &cursorID, 20, nil)
+			if err != nil {
+				return fmt.Errorf("FetchUnreadFeedsListCursorWithID failed: %w", err)
+			}
+			require.Len(t, feeds, 1)
+			require.NotNil(t, feeds[0].FeedLinkID)
+			assert.Equal(t, testFeedLinkID, *feeds[0].FeedLinkID)
+			require.NotNil(t, feeds[0].DailyRank)
+			assert.Equal(t, 4, *feeds[0].DailyRank)
+			require.NotNil(t, feeds[0].DailyCap)
+			assert.Equal(t, 3, *feeds[0].DailyCap)
+			return nil
+		})
+	require.NoError(t, err)
+}
+
+func TestGetFeedInflowByUserContract(t *testing.T) {
+	mockProvider := newDataHubPact(t, consumerBackend)
+	from := time.Date(2026, 10, 19, 0, 0, 0, 0, time.UTC)
+	to := time.Date(2026, 11, 18, 0, 0, 0, 0, time.UTC)
+	userID := uuid.MustParse(testUserID)
+
+	err := mockProvider.
+		AddInteraction().
+		Given("alt-data-hub has feed inflow counts for the user").
+		UponReceiving("a GetFeedInflowByUser request from alt-backend").
+		WithCompleteRequest(consumer.Request{
+			Method:  "POST",
+			Path:    matchers.String("/services.datahub.v1.DataHubService/GetFeedInflowByUser"),
+			Headers: jsonHeaders(),
+			Body: map[string]interface{}{
+				"userId": testUserID,
+				"from":   "2026-10-19T00:00:00Z",
+				"to":     "2026-11-18T00:00:00Z",
+			},
+		}).
+		WithCompleteResponse(consumer.Response{
+			Status:  200,
+			Headers: jsonHeaders(),
+			Body: matchers.MapMatcher{
+				"feeds": matchers.EachLike(map[string]interface{}{
+					"feedLinkId":  matchers.Regex(testFeedLinkID, uuidLikePattern),
+					"url":         matchers.Like("https://example.com/feed.xml"),
+					"dailyCap":    matchers.Integer(5),
+					"inflowCount": matchers.Like("12"),
+				}, 1),
+			},
+		}).
+		ExecuteTest(t, func(config consumer.MockServerConfig) error {
+			gw := datahub_gateway.NewFeedGateway(newDataHubServiceClient(config))
+			inflows, err := gw.GetFeedInflowByUser(context.Background(), userID, from, to)
+			if err != nil {
+				return fmt.Errorf("GetFeedInflowByUser failed: %w", err)
+			}
+			require.Len(t, inflows, 1)
+			assert.Equal(t, testFeedLinkID, inflows[0].FeedLinkID.String())
+			assert.Equal(t, int64(12), inflows[0].InflowCount)
+			require.NotNil(t, inflows[0].DailyCap)
+			assert.Equal(t, 5, *inflows[0].DailyCap)
+			return nil
+		})
+	require.NoError(t, err)
+}
+
+func TestBatchGetFeedLinkIDsByArticleIDsContract(t *testing.T) {
+	mockProvider := newDataHubPact(t, consumerBackend)
+	userID := uuid.MustParse(testUserID)
+	articleID := uuid.MustParse(testArticleID)
+
+	err := mockProvider.
+		AddInteraction().
+		Given("alt-data-hub maps articles to feed links for the user").
+		UponReceiving("a BatchGetFeedLinkIDsByArticleIDs request from alt-backend").
+		WithCompleteRequest(consumer.Request{
+			Method:  "POST",
+			Path:    matchers.String("/services.datahub.v1.DataHubService/BatchGetFeedLinkIDsByArticleIDs"),
+			Headers: jsonHeaders(),
+			Body: map[string]interface{}{
+				"userId":     testUserID,
+				"articleIds": []string{testArticleID},
+			},
+		}).
+		WithCompleteResponse(consumer.Response{
+			Status:  200,
+			Headers: jsonHeaders(),
+			Body: matchers.MapMatcher{
+				"feedLinkIds": matchers.Like(map[string]interface{}{
+					testArticleID: matchers.Regex(testFeedLinkID, uuidLikePattern),
+				}),
+			},
+		}).
+		ExecuteTest(t, func(config consumer.MockServerConfig) error {
+			gw := datahub_gateway.NewFeedGateway(newDataHubServiceClient(config))
+			mapping, err := gw.BatchGetFeedLinkIDsByArticleIDs(context.Background(), userID, []uuid.UUID{articleID})
+			if err != nil {
+				return fmt.Errorf("BatchGetFeedLinkIDsByArticleIDs failed: %w", err)
+			}
+			assert.Equal(t, testFeedLinkID, mapping[articleID].String())
+			return nil
+		})
+	require.NoError(t, err)
+}
+
 // parseTestURL keeps the url.Parse error out of the interaction bodies.
 func parseTestURL(raw string) (*url.URL, error) {
 	parsed, err := url.Parse(raw)

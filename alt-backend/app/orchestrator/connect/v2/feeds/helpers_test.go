@@ -90,6 +90,11 @@ func (f *fakeUnreadFeedCursorPort) FetchUnreadFeedsListCursor(_ context.Context,
 	return f.feeds, nil
 }
 
+func (f *fakeUnreadFeedCursorPort) FetchUnreadFeedsListCursorWithID(_ context.Context, cursor *time.Time, _ *uuid.UUID, _ int, _ []uuid.UUID) ([]*domain.FeedItem, error) {
+	f.lastCursor = cursor
+	return f.feeds, nil
+}
+
 // TestGetUnreadFeeds_CursorRoundTripKeepsSubSecondPrecision pins the pagination
 // boundary: feeds.created_at is microsecond precision and one harvester
 // transaction stamps a whole batch inside the same second, so a cursor that
@@ -156,6 +161,9 @@ func (s *cursorFilteringStoreStub) FetchAllFeedsListCursor(context.Context, *tim
 	return nil, nil
 }
 func (s *cursorFilteringStoreStub) FetchUnreadFeedsListCursor(context.Context, *time.Time, int, []uuid.UUID) ([]*models.Feed, error) {
+	return nil, nil
+}
+func (s *cursorFilteringStoreStub) FetchUnreadFeedsListCursorWithID(context.Context, *time.Time, *uuid.UUID, int, []uuid.UUID) ([]*models.Feed, error) {
 	return nil, nil
 }
 func (s *cursorFilteringStoreStub) FetchReadFeedsListCursor(_ context.Context, cursor *time.Time, limit int) ([]*models.Feed, error) {

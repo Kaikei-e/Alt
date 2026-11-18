@@ -171,6 +171,10 @@ func (h *Handler) ListSubscriptions(ctx context.Context, req *connect.Request[da
 			Url:          s.URL,
 			IsSubscribed: s.IsSubscribed,
 		}
+		if s.DailyCap != nil {
+			v := int32(*s.DailyCap)
+			sub.DailyCap = &v
+		}
 		// subscribedAt is sent only for a followed link. The query coalesces
 		// the missing join to now(), so an unfollowed row carries a timestamp
 		// that means nothing; forwarding it would have the screen show a
@@ -210,6 +214,30 @@ func (h *Handler) Unsubscribe(ctx context.Context, req *connect.Request[datahubv
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to unsubscribe"))
 	}
 	return connect.NewResponse(&datahubv1.UnsubscribeResponse{}), nil
+}
+
+func (h *Handler) SetSubscriptionDailyCap(ctx context.Context, req *connect.Request[datahubv1.SetSubscriptionDailyCapRequest]) (*connect.Response[datahubv1.SetSubscriptionDailyCapResponse], error) {
+	userID, feedLinkID, err := userAndFeedLinkID(req.Msg.GetUserId(), req.Msg.GetFeedLinkId())
+	if err != nil {
+		return nil, err
+	}
+	var dailyCap *int
+	if req.Msg.DailyCap != nil {
+		if req.Msg.GetDailyCap() <= 0 {
+			return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("daily_cap must be positive"))
+		}
+		v := int(req.Msg.GetDailyCap())
+		dailyCap = &v
+	}
+
+	if err := h.readState.SetSubscriptionDailyCap(ctx, userID, feedLinkID, dailyCap); err != nil {
+		if errors.Is(err, domain.ErrFeedNotFound) {
+			return nil, connect.NewError(connect.CodeNotFound, errors.New("subscription not found"))
+		}
+		h.logger.ErrorContext(ctx, "SetSubscriptionDailyCap failed", "error", err, "user_id", userID, "feed_link_id", feedLinkID)
+		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to set subscription daily cap"))
+	}
+	return connect.NewResponse(&datahubv1.SetSubscriptionDailyCapResponse{}), nil
 }
 
 func (h *Handler) AddFavoriteFeed(ctx context.Context, req *connect.Request[datahubv1.AddFavoriteFeedRequest]) (*connect.Response[datahubv1.AddFavoriteFeedResponse], error) {

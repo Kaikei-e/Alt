@@ -115,6 +115,9 @@ type stubFeedCursorPort struct{}
 func (stubFeedCursorPort) FetchUnreadFeedsListCursor(_ context.Context, _ *time.Time, _ int, _ []uuid.UUID) ([]*domain.FeedItem, error) {
 	return nil, nil
 }
+func (stubFeedCursorPort) FetchUnreadFeedsListCursorWithID(_ context.Context, _ *time.Time, _ *uuid.UUID, _ int, _ []uuid.UUID) ([]*domain.FeedItem, error) {
+	return nil, nil
+}
 func (stubFeedCursorPort) FetchReadFeedsListCursor(_ context.Context, _ *time.Time, _ int) ([]*domain.FeedItem, error) {
 	return nil, nil
 }
@@ -264,6 +267,9 @@ func (s *restCursorFilteringStoreStub) FetchAllFeedsListCursor(context.Context, 
 	return nil, nil
 }
 func (s *restCursorFilteringStoreStub) FetchUnreadFeedsListCursor(context.Context, *time.Time, int, []uuid.UUID) ([]*models.Feed, error) {
+	return nil, nil
+}
+func (s *restCursorFilteringStoreStub) FetchUnreadFeedsListCursorWithID(context.Context, *time.Time, *uuid.UUID, int, []uuid.UUID) ([]*models.Feed, error) {
 	return nil, nil
 }
 func (s *restCursorFilteringStoreStub) FetchReadFeedsListCursor(_ context.Context, cursor *time.Time, limit int) ([]*models.Feed, error) {

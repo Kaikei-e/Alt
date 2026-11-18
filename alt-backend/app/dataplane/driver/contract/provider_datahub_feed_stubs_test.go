@@ -55,7 +55,10 @@ func mountFeedProcedures(mux *http.ServeMux) {
 		"createdAt":   "2026-07-31T09:00:00Z",
 		"updatedAt":   "2026-07-31T09:00:00Z",
 		"articleId":   stubArticleID,
+		"feedLinkId":  stubFeedLinkID,
 		"ogImageUrl":  "https://cdn.example.com/og.png",
+		"dailyRank":   4,
+		"dailyCap":    3,
 	}
 	// The retired-og-image row omits ogImageUrl and articleId entirely rather
 	// than sending empty strings — the absence is what the placeholder
@@ -216,6 +219,19 @@ func mountFeedProcedures(mux *http.ServeMux) {
 			"inoreaderId": "tag:google.com,2005:reader/item/0001",
 		}},
 	}))
+	dataHubProcedure(mux, "GetFeedInflowByUser", jsonPost(map[string]interface{}{
+		"feeds": []map[string]interface{}{{
+			"feedLinkId":  stubFeedLinkID,
+			"url":         stubFeedLinkURL,
+			"dailyCap":    5,
+			"inflowCount": "12",
+		}},
+	}))
+	dataHubProcedure(mux, "BatchGetFeedLinkIDsByArticleIDs", jsonPost(map[string]interface{}{
+		"feedLinkIds": map[string]interface{}{
+			stubArticleID: stubFeedLinkID,
+		},
+	}))
 }
 
 // mountReadStateAndTagProcedures adds the per-user feed state and the tag reads
@@ -297,10 +313,12 @@ func mountReadStateAndTagProcedures(mux *http.ServeMux) {
 			"url":          "https://example.com/feed.xml",
 			"isSubscribed": true,
 			"subscribedAt": "2026-05-01T12:00:00Z",
+			"dailyCap":     5,
 		}},
 	}))
 	dataHubProcedure(mux, "Subscribe", jsonPost(map[string]interface{}{}))
 	dataHubProcedure(mux, "Unsubscribe", jsonPost(map[string]interface{}{}))
+	dataHubProcedure(mux, "SetSubscriptionDailyCap", jsonPost(map[string]interface{}{}))
 
 	// ---- §2.J Tag reads ----------------------------------------------------
 

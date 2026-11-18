@@ -622,6 +622,39 @@ func TestBFFHandler_MarkAsRead_InvalidatesUnreadProjectionCache(t *testing.T) {
 	assert.True(t, found)
 }
 
+func TestBFFHandler_SetSubscriptionDailyCap_InvalidatesUnreadProjectionCache(t *testing.T) {
+	mockBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"message":"Daily cap updated","dailyCap":2}`))
+	}))
+	defer mockBackend.Close()
+
+	config := BFFConfig{
+		EnableCache:          true,
+		CacheMaxSize:         100,
+		EnableCircuitBreaker: false,
+	}
+	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, testPublicKey, config)
+	token := createTestToken(t, testPrivateKey)
+	userID := "550e8400-e29b-41d4-a716-446655440000"
+	unread := "/alt.feeds.v2.FeedService/GetUnreadFeeds"
+
+	handler.responseCache.Set(
+		cache.BuildCacheKey(userID, unread, []byte(`{"limit":20}`)),
+		&cache.CacheEntry{Response: []byte(`{"stale":1}`), StatusCode: 200, CachedAt: time.Now(), TTL: 30 * time.Second},
+	)
+
+	req := httptest.NewRequest("POST", "/alt.feeds.v2.FeedService/SetSubscriptionDailyCap", bytes.NewReader([]byte(`{"feedLinkId":"11111111-1111-4111-8111-111111111111","dailyCap":2}`)))
+	req.Header.Set("X-Alt-Backend-Token", token)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	_, found := handler.responseCache.Get(cache.BuildCacheKey(userID, unread, []byte(`{"limit":20}`)))
+	assert.False(t, found)
+}
+
 func TestBFFHandler_ApplyConnectTimeout_CappedAt5Minutes(t *testing.T) {
 	handler := createTestBFFHandler(t, BFFConfig{})
 

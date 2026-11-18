@@ -12,6 +12,7 @@ import (
 	"knowledge-sovereign/usecase/knowledge_trail_projector"
 	"knowledge-sovereign/usecase/partition_maintainer"
 	"knowledge-sovereign/usecase/projection_health"
+	"knowledge-sovereign/usecase/reading_projector"
 	"knowledge-sovereign/usecase/trail_planner"
 )
 
@@ -122,6 +123,32 @@ func startWorkers(ctx context.Context, wg *sync.WaitGroup, repo *sovereign_db.Re
 			case <-homeTick.C:
 				if err := homeProjector.RunBatch(ctx); err != nil {
 					slog.Error("knowledge_home_projector batch failed", "error", err)
+				}
+			}
+		}
+	}()
+
+	// Reading projector: folds reading.session_ended.v1, reading.queued.v1,
+	// reading.unqueued.v1, and legacy HomeItemOpened into reading_sources and
+	// reading_queue_items in-process.
+	readingProjector := reading_projector.NewProjector(repo, slog.Default(),
+		reading_projector.Config{
+			BatchSize:         cfg.ReadingProjectorBatchSize,
+			MaxBatchesPerTick: cfg.ReadingProjectorMaxBatches,
+		})
+	slog.Info("reading.projector.wiring", "enabled", true, "repository_wired", repo != nil)
+	readingTick := time.NewTicker(cfg.ProjectorTickInterval)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		defer readingTick.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-readingTick.C:
+				if err := readingProjector.RunBatch(ctx); err != nil {
+					slog.Error("reading_projector batch failed", "error", err)
 				}
 			}
 		}

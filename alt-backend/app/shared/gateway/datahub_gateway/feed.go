@@ -46,6 +46,8 @@ type feedDataHubClient interface {
 	ListFeedsLimit(context.Context, *connect.Request[datahubv1.ListFeedsLimitRequest]) (*connect.Response[datahubv1.ListFeedsLimitResponse], error)
 	GetSingleFeed(context.Context, *connect.Request[datahubv1.GetSingleFeedRequest]) (*connect.Response[datahubv1.GetSingleFeedResponse], error)
 	ListFeedsByFeedLinkID(context.Context, *connect.Request[datahubv1.ListFeedsByFeedLinkIDRequest]) (*connect.Response[datahubv1.ListFeedsByFeedLinkIDResponse], error)
+	GetFeedInflowByUser(context.Context, *connect.Request[datahubv1.GetFeedInflowByUserRequest]) (*connect.Response[datahubv1.GetFeedInflowByUserResponse], error)
+	BatchGetFeedLinkIDsByArticleIDs(context.Context, *connect.Request[datahubv1.BatchGetFeedLinkIDsByArticleIDsRequest]) (*connect.Response[datahubv1.BatchGetFeedLinkIDsByArticleIDsResponse], error)
 }
 
 type FeedGateway struct {
@@ -294,6 +296,76 @@ func (g *FeedGateway) FetchInoreaderSummariesByURLs(ctx context.Context, urls []
 			FetchedAt:   timeFromProto(s.GetFetchedAt()),
 			InoreaderID: s.GetInoreaderId(),
 		})
+	}
+	return out, nil
+}
+
+const batchFeedLinkIDsChunkSize = 500
+
+func (g *FeedGateway) GetFeedInflowByUser(ctx context.Context, userID uuid.UUID, from, to time.Time) ([]domain.FeedInflow, error) {
+	resp, err := g.client.GetFeedInflowByUser(ctx, connect.NewRequest(&datahubv1.GetFeedInflowByUserRequest{
+		UserId: userID.String(),
+		From:   timePtrToProto(&from),
+		To:     timePtrToProto(&to),
+	}))
+	if err != nil {
+		return nil, fmt.Errorf("get feed inflow for user %s: %w", userID, err)
+	}
+
+	out := make([]domain.FeedInflow, 0, len(resp.Msg.GetFeeds()))
+	for _, f := range resp.Msg.GetFeeds() {
+		linkID, parseErr := parseUUID(f.GetFeedLinkId())
+		if parseErr != nil {
+			return nil, fmt.Errorf("feed inflow link id: %w", parseErr)
+		}
+		var dailyCap *int
+		if f.DailyCap != nil {
+			v := int(f.GetDailyCap())
+			dailyCap = &v
+		}
+		out = append(out, domain.FeedInflow{
+			FeedLinkID:  linkID,
+			FeedURL:     f.GetUrl(),
+			DailyCap:    dailyCap,
+			InflowCount: f.GetInflowCount(),
+		})
+	}
+	return out, nil
+}
+
+func (g *FeedGateway) BatchGetFeedLinkIDsByArticleIDs(ctx context.Context, userID uuid.UUID, articleIDs []uuid.UUID) (map[uuid.UUID]uuid.UUID, error) {
+	out := make(map[uuid.UUID]uuid.UUID)
+	if len(articleIDs) == 0 {
+		return out, nil
+	}
+
+	for start := 0; start < len(articleIDs); start += batchFeedLinkIDsChunkSize {
+		end := start + batchFeedLinkIDsChunkSize
+		if end > len(articleIDs) {
+			end = len(articleIDs)
+		}
+		raw := make([]string, 0, end-start)
+		for _, id := range articleIDs[start:end] {
+			raw = append(raw, id.String())
+		}
+		resp, err := g.client.BatchGetFeedLinkIDsByArticleIDs(ctx, connect.NewRequest(&datahubv1.BatchGetFeedLinkIDsByArticleIDsRequest{
+			UserId:     userID.String(),
+			ArticleIds: raw,
+		}))
+		if err != nil {
+			return nil, fmt.Errorf("batch get feed link ids (%d): %w", len(raw), err)
+		}
+		for rawArticleID, rawLinkID := range resp.Msg.GetFeedLinkIds() {
+			artID, err := parseUUID(rawArticleID)
+			if err != nil {
+				return nil, fmt.Errorf("article id key: %w", err)
+			}
+			linkID, err := parseUUID(rawLinkID)
+			if err != nil {
+				return nil, fmt.Errorf("feed link id value: %w", err)
+			}
+			out[artID] = linkID
+		}
 	}
 	return out, nil
 }
