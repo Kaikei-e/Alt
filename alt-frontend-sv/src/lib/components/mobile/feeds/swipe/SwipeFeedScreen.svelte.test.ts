@@ -1,7 +1,55 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
+import type { ReaderOverlayRouteState } from "#lib/reader/types.js";
 import type { RenderFeed } from "#lib/schema/feed.js";
+
+let currentPageState = $state<{ reader?: ReaderOverlayRouteState }>({});
+let currentPageURL = $state(
+	new URL("http://localhost/feeds/swipe/visual-preview"),
+);
+
+const mockPushState = vi.fn(
+	(url: string | URL, state: { reader?: ReaderOverlayRouteState }) => {
+		currentPageState = state;
+		if (url) {
+			currentPageURL = new URL(String(url), "http://localhost");
+		}
+	},
+);
+const mockReplaceState = vi.fn(
+	(url: string | URL, state: { reader?: ReaderOverlayRouteState }) => {
+		currentPageState = state;
+		if (url) {
+			currentPageURL = new URL(String(url), "http://localhost");
+		}
+	},
+);
+
+vi.mock("$app/navigation", () => ({
+	goto: vi.fn(),
+	beforeNavigate: vi.fn(),
+	pushState: (url: string | URL, state: { reader?: ReaderOverlayRouteState }) =>
+		mockPushState(url, state),
+	replaceState: (
+		url: string | URL,
+		state: { reader?: ReaderOverlayRouteState },
+	) => mockReplaceState(url, state),
+}));
+
+vi.mock("$app/state", () => ({
+	page: {
+		get state() {
+			return currentPageState;
+		},
+		get url() {
+			return currentPageURL;
+		},
+		get params() {
+			return {};
+		},
+	},
+}));
 
 const {
 	batchPrefetchImagesClientMock,
@@ -38,13 +86,26 @@ vi.mock("#lib/api/client/index.js", () => ({
 	getReadFeedsWithCursorClient: getReadFeedsWithCursorClientMock,
 	listSubscriptionsClient: listSubscriptionsClientMock,
 	updateFeedReadStatusClient: updateFeedReadStatusClientMock,
-	registerFavoriteFeedClient: vi.fn(),
-	summarizeArticleClient: vi.fn(),
 }));
+
+vi.mock("#lib/api/client/articles.js", async (importOriginal) => {
+	const actual = await importOriginal<Record<string, unknown>>();
+	return {
+		...actual,
+		getFeedContentOnTheFlyClient: getFeedContentOnTheFlyClientMock,
+		getArticleSourceURLClient: vi
+			.fn()
+			.mockResolvedValue({ url: "", title: "" }),
+	};
+});
 
 vi.mock("#lib/api/client/knowledge_home.js", () => ({
 	trackHomeActionClient: vi.fn(() => Promise.resolve()),
 }));
+
+vi.mock("#lib/connect/knowledge_trail.js", { spy: true });
+vi.mock("#lib/connect/reading.js", { spy: true });
+vi.mock("#lib/connect/transport-client.js", { spy: true });
 
 vi.mock("#lib/utils/articlePrefetcher.js", () => ({
 	articlePrefetcher: articlePrefetcherMock,
@@ -54,6 +115,13 @@ vi.mock("#lib/utils/ogImageResolver.js", () => ({
 	ogImageResolver: () => ({ resolve: () => Promise.resolve(null) }),
 }));
 
+import { trackHomeActionClient } from "#lib/api/client/knowledge_home.js";
+import { getItemBranches } from "#lib/connect/knowledge_trail.js";
+import { recordReadingEvents } from "#lib/connect/reading.js";
+import { createClientTransport } from "#lib/connect/transport-client.js";
+import ArticleReaderOverlay from "#lib/reader/ArticleReaderOverlay.svelte";
+import { resetReaderOverlaySessions } from "#lib/reader/reader-overlay.svelte.js";
+import { flushReadingEvents } from "#lib/reading/instrumentation.js";
 import SwipeFeedScreen from "./SwipeFeedScreen.svelte";
 
 function makeFeed(overrides: Partial<RenderFeed> = {}): RenderFeed {
@@ -81,7 +149,30 @@ async function settle(ms = 200) {
 }
 
 describe("SwipeFeedScreen", () => {
-	beforeEach(() => {
+	let backSpy: ReturnType<typeof vi.spyOn>;
+
+	beforeEach(async () => {
+		resetReaderOverlaySessions();
+		currentPageState = {};
+		currentPageURL = new URL("http://localhost/feeds/swipe/visual-preview");
+		mockPushState.mockClear();
+		mockReplaceState.mockClear();
+		backSpy = vi.spyOn(history, "back").mockImplementation(() => {
+			currentPageState = {};
+			currentPageURL = new URL("http://localhost/feeds/swipe/visual-preview");
+		});
+
+		vi.mocked(recordReadingEvents).mockResolvedValue({
+			accepted: 0,
+			duplicates: 0,
+		});
+		await flushReadingEvents();
+		vi.mocked(recordReadingEvents).mockReset();
+		vi.mocked(recordReadingEvents).mockResolvedValue({
+			accepted: 1,
+			duplicates: 0,
+		});
+
 		batchPrefetchImagesClientMock.mockReset();
 		batchPrefetchImagesClientMock.mockResolvedValue([]);
 
@@ -113,6 +204,12 @@ describe("SwipeFeedScreen", () => {
 		updateFeedReadStatusClientMock.mockReset();
 		updateFeedReadStatusClientMock.mockResolvedValue(undefined);
 
+		vi.mocked(trackHomeActionClient).mockClear();
+		vi.mocked(getItemBranches).mockResolvedValue([]);
+		vi.mocked(createClientTransport).mockReturnValue(
+			{} as ReturnType<typeof createClientTransport>,
+		);
+
 		for (const fn of Object.values(articlePrefetcherMock)) {
 			fn.mockClear();
 		}
@@ -120,6 +217,10 @@ describe("SwipeFeedScreen", () => {
 		articlePrefetcherMock.getCachedContent.mockReturnValue(null);
 		articlePrefetcherMock.getCachedArticleId.mockReturnValue(null);
 		articlePrefetcherMock.ensureContent.mockResolvedValue("<p>Body</p>");
+
+		return () => {
+			backSpy.mockRestore();
+		};
 	});
 
 	it("clears initial loading state and renders Retry UI when initial feed load fails", async () => {
@@ -152,63 +253,7 @@ describe("SwipeFeedScreen", () => {
 			.toBeInTheDocument();
 	});
 
-	it("guards handleArticleIdResolved against redundant feeds reassignment when articleId is unchanged", async () => {
-		articlePrefetcherMock.getCachedContent.mockReturnValue(null);
-		articlePrefetcherMock.getCachedArticleId.mockReturnValue("art-1");
-
-		const { unmount } = render(SwipeFeedScreen, {
-			props: {
-				initialFeeds: [makeFeed({ articleId: "art-1" })],
-				initialNextCursor: null,
-			},
-		});
-		await settle(200);
-
-		// Because feed.articleId is already "art-1", handleArticleIdResolved must not
-		// rebuild `feeds` or re-trigger the prefetch effect after ensureContent resolves.
-		expect(articlePrefetcherMock.triggerPrefetch).toHaveBeenCalledTimes(1);
-		unmount();
-
-		articlePrefetcherMock.triggerPrefetch.mockClear();
-		articlePrefetcherMock.getCachedArticleId.mockReturnValue("art-new-99");
-
-		render(SwipeFeedScreen, {
-			props: {
-				initialFeeds: [makeFeed({ articleId: undefined })],
-				initialNextCursor: null,
-			},
-		});
-		await settle(200);
-
-		// When articleId changes from undefined -> "art-new-99" after ensureContent resolves,
-		// `feeds` is updated and the prefetch effect runs a second time with the resolved articleId.
-		expect(articlePrefetcherMock.triggerPrefetch).toHaveBeenCalledTimes(2);
-		const secondCallFeeds = articlePrefetcherMock.triggerPrefetch.mock
-			.calls[1]?.[0] as RenderFeed[];
-		expect(secondCallFeeds[0]?.articleId).toBe("art-new-99");
-	});
-
-	it("distinguishes default mode (prefetchAhead=2) from visual-preview mode (prefetchAhead=4 and batch image prefetch)", async () => {
-		const { unmount } = render(SwipeFeedScreen, {
-			props: {
-				initialFeeds: [makeFeed()],
-				initialNextCursor: null,
-				mode: "default",
-			},
-		});
-		await settle(200);
-
-		expect(articlePrefetcherMock.triggerPrefetch).toHaveBeenCalledWith(
-			expect.any(Array),
-			0,
-			2,
-		);
-		expect(articlePrefetcherMock.setOnArticleIdCached).not.toHaveBeenCalled();
-		unmount();
-
-		articlePrefetcherMock.triggerPrefetch.mockClear();
-		articlePrefetcherMock.setOnArticleIdCached.mockClear();
-
+	it("triggers visual-preview prefetchAhead=4 and batch image prefetch on articleId cache", async () => {
 		render(SwipeFeedScreen, {
 			props: {
 				initialFeeds: [makeFeed()],
@@ -235,5 +280,42 @@ describe("SwipeFeedScreen", () => {
 		await settle(100);
 
 		expect(batchPrefetchImagesClientMock).toHaveBeenCalledWith(["art-vp-1"]);
+	});
+
+	it("opens the reader overlay on tap/Article without marking read and restores the same top card on close", async () => {
+		render(SwipeFeedScreen, {
+			props: {
+				initialFeeds: [
+					makeFeed({ id: "feed-1", articleId: "art-1", title: "Top Card" }),
+					makeFeed({
+						id: "feed-2",
+						articleId: "art-2",
+						title: "Second Card",
+						link: "https://example.com/dispatch-2",
+						normalizedUrl: "https://example.com/dispatch-2",
+					}),
+				],
+				initialNextCursor: null,
+				mode: "visual-preview",
+			},
+		});
+		render(ArticleReaderOverlay);
+		await settle(200);
+
+		await page.getByRole("button", { name: /^article$/i }).click();
+
+		await expect.element(page.getByTestId("reader-overlay")).toBeVisible();
+		expect(currentPageURL.pathname).toBe("/articles/art-1");
+		expect(updateFeedReadStatusClientMock).not.toHaveBeenCalled();
+		expect(trackHomeActionClient).not.toHaveBeenCalled();
+
+		await page.getByTestId("reader-overlay-close").click();
+
+		await expect
+			.element(page.getByTestId("reader-overlay"))
+			.not.toBeInTheDocument();
+		await expect
+			.element(page.getByRole("heading", { name: "Top Card" }))
+			.toBeVisible();
 	});
 });

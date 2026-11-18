@@ -28,9 +28,11 @@ describe("MENU_SECTIONS (re-export of MOBILE_MENU_SECTIONS)", () => {
 		expect(MENU_SECTIONS.find((s) => s.title === "Admin")).toBeDefined();
 	});
 
-	it("Browse includes Swipe Mode pointing to /feeds/swipe", () => {
+	it("Browse includes Swipe pointing to /feeds/swipe/visual-preview", () => {
 		const browse = MENU_SECTIONS.find((s) => s.title === "Browse");
-		const swipe = browse?.items.find((i) => i.href === "/feeds/swipe");
+		const swipe = browse?.items.find(
+			(i) => i.href === "/feeds/swipe/visual-preview",
+		);
 		expect(swipe).toBeDefined();
 	});
 

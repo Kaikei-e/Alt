@@ -173,13 +173,17 @@ test.describe("Visual Preview — AI summary speech playback", () => {
 
 		const card = page.getByTestId("visual-preview-card").first();
 		await expect(card).toBeVisible({ timeout: 15000 });
+		await card.getByRole("button", { name: /^article$/i }).click();
 
-		// Tap summary button in footer
-		const summaryBtn = card.getByRole("button", { name: /summary/i });
-		await summaryBtn.click();
+		const overlay = page.getByTestId("reader-overlay");
+		await expect(overlay).toBeVisible();
+
+		const summarizeBtn = overlay.getByTestId("summarize-button");
+		await expect(summarizeBtn).toBeEnabled({ timeout: 15000 });
+		await summarizeBtn.click();
 
 		// During summary streaming, the speech button must NOT be rendered
-		const speechBtn = card.getByTestId("summary-speech-button");
+		const speechBtn = overlay.getByTestId("summary-speech-button");
 		await expect(speechBtn).toHaveCount(0);
 
 		// Once the summary completes, speech button appears with label "Play summary"
@@ -194,18 +198,23 @@ test.describe("Visual Preview — AI summary speech playback", () => {
 
 		const card = page.getByTestId("visual-preview-card").first();
 		await expect(card).toBeVisible({ timeout: 15000 });
+		await card.getByRole("button", { name: /^article$/i }).click();
 
-		// Request summary
-		await card.getByRole("button", { name: /summary/i }).click();
+		const overlay = page.getByTestId("reader-overlay");
+		await expect(overlay).toBeVisible();
 
-		const speechBtn = card.getByTestId("summary-speech-button");
+		const summarizeBtn = overlay.getByTestId("summarize-button");
+		await expect(summarizeBtn).toBeEnabled({ timeout: 15000 });
+		await summarizeBtn.click();
+
+		const speechBtn = overlay.getByTestId("summary-speech-button");
 		await expect(speechBtn).toBeVisible({ timeout: 15000 });
 
 		// Tap play summary
 		await speechBtn.click();
 
 		// Status text must indicate Playing
-		const statusText = card.getByTestId("summary-speech-status");
+		const statusText = overlay.getByTestId("summary-speech-status");
 		await expect(statusText).toBeVisible();
 		await expect(statusText).toHaveText("Playing");
 
@@ -229,10 +238,16 @@ test.describe("Visual Preview — AI summary speech playback", () => {
 
 		const card = page.getByTestId("visual-preview-card").first();
 		await expect(card).toBeVisible({ timeout: 15000 });
+		await card.getByRole("button", { name: /^article$/i }).click();
 
-		await card.getByRole("button", { name: /summary/i }).click();
+		const overlay = page.getByTestId("reader-overlay");
+		await expect(overlay).toBeVisible();
 
-		const speechBtn = card.getByTestId("summary-speech-button");
+		const summarizeBtn = overlay.getByTestId("summarize-button");
+		await expect(summarizeBtn).toBeEnabled({ timeout: 15000 });
+		await summarizeBtn.click();
+
+		const speechBtn = overlay.getByTestId("summary-speech-button");
 		await expect(speechBtn).toBeVisible({ timeout: 15000 });
 
 		// Start playback
@@ -261,16 +276,22 @@ test.describe("Visual Preview — AI summary speech playback", () => {
 
 		const card = page.getByTestId("visual-preview-card").first();
 		await expect(card).toBeVisible({ timeout: 15000 });
+		await card.getByRole("button", { name: /^article$/i }).click();
 
-		await card.getByRole("button", { name: /summary/i }).click();
+		const overlay = page.getByTestId("reader-overlay");
+		await expect(overlay).toBeVisible();
 
-		const speechBtn = card.getByTestId("summary-speech-button");
+		const summarizeBtn = overlay.getByTestId("summarize-button");
+		await expect(summarizeBtn).toBeEnabled({ timeout: 15000 });
+		await summarizeBtn.click();
+
+		const speechBtn = overlay.getByTestId("summary-speech-button");
 		await expect(speechBtn).toBeVisible({ timeout: 15000 });
 
 		await speechBtn.click();
 
 		// Status text indicates speech unavailable
-		const statusText = card.getByTestId("summary-speech-status");
+		const statusText = overlay.getByTestId("summary-speech-status");
 		await expect(statusText).toBeVisible();
 		await expect(statusText).toHaveText("Speech unavailable");
 
@@ -279,7 +300,7 @@ test.describe("Visual Preview — AI summary speech playback", () => {
 
 		// AI summary text remains visible
 		await expect(
-			card.getByText(
+			overlay.getByText(
 				"This is the generated AI summary for visual preview speech test.",
 			),
 		).toBeVisible();
@@ -305,16 +326,22 @@ test.describe("Visual Preview — AI summary speech playback", () => {
 
 		const card = page.getByTestId("visual-preview-card").first();
 		await expect(card).toBeVisible({ timeout: 15000 });
+		await card.getByRole("button", { name: /^article$/i }).click();
 
-		await card.getByRole("button", { name: /summary/i }).click();
+		const overlay = page.getByTestId("reader-overlay");
+		await expect(overlay).toBeVisible();
 
-		const speechBtn = card.getByTestId("summary-speech-button");
+		const summarizeBtn = overlay.getByTestId("summarize-button");
+		await expect(summarizeBtn).toBeEnabled({ timeout: 15000 });
+		await summarizeBtn.click();
+
+		const speechBtn = overlay.getByTestId("summary-speech-button");
 		await expect(speechBtn).toBeVisible({ timeout: 15000 });
 
 		// First play attempt fails
 		await speechBtn.click();
 
-		const statusText = card.getByTestId("summary-speech-status");
+		const statusText = overlay.getByTestId("summary-speech-status");
 		await expect(statusText).toBeVisible();
 		await expect(statusText).toHaveText(
 			"Couldn't play the summary. Try again.",

@@ -15,11 +15,22 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { getReadFeedsWithCursorClient } from "#lib/api/client/feeds.js";
+import { openReaderOverlay } from "#lib/reader/reader-overlay.svelte.js";
+import { ReadingSurface } from "#lib/reading/reading-events.js";
 import type { RenderFeed } from "#lib/schema/feed.js";
 import { createRenderFeed } from "../../../../../tests/fixtures/feeds";
 
 vi.mock("#lib/api/client/feeds.js", { spy: true });
 vi.mock("#lib/api/client/articles.js", { spy: true });
+vi.mock("#lib/reader/reader-overlay.svelte.js", () => ({
+	openReaderOverlay: vi.fn(),
+	replaceReaderOverlayItems: vi.fn(),
+	closeReaderOverlay: vi.fn(),
+	updateReaderOverlayArticleId: vi.fn(),
+	navigateReaderOverlay: vi.fn(),
+	getReaderOverlaySession: vi.fn(),
+	resetReaderOverlaySessions: vi.fn(),
+}));
 
 import Page from "./+page.svelte";
 
@@ -50,6 +61,7 @@ function fetches(): number {
 
 describe("Morgue Desk page continuity across a rotation", () => {
 	beforeEach(() => {
+		vi.mocked(openReaderOverlay).mockReset();
 		vi.mocked(getReadFeedsWithCursorClient).mockReset();
 		vi.mocked(getReadFeedsWithCursorClient).mockResolvedValue({
 			data: FILED,
@@ -120,5 +132,35 @@ describe("Morgue Desk page continuity across a rotation", () => {
 		await expect
 			.element(page.getByRole("region", { name: /empty morgue state/i }))
 			.toBeInTheDocument();
+	});
+
+	it("opens the unified reader overlay on mobile Details and desktop card click", async () => {
+		await page.viewport(PORTRAIT.width, PORTRAIT.height);
+		render(Page);
+		await settle(400);
+
+		await page
+			.getByRole("button", { name: `Show details for ${FILED[0]!.title}` })
+			.click();
+
+		expect(openReaderOverlay).toHaveBeenCalledTimes(1);
+		const mobileCtx = vi.mocked(openReaderOverlay).mock.calls[0]?.[0];
+		expect(mobileCtx?.surface).toBe(ReadingSurface.OTHER);
+		expect(mobileCtx?.currentIndex).toBe(0);
+		expect(mobileCtx?.items).toHaveLength(FILED.length);
+		expect(document.querySelector('[role="dialog"]')).toBeNull();
+
+		vi.mocked(openReaderOverlay).mockReset();
+		await page.viewport(1280, 800);
+		await settle(400);
+
+		await page.getByRole("button", { name: `Open ${FILED[1]!.title}` }).click();
+
+		expect(openReaderOverlay).toHaveBeenCalledTimes(1);
+		const desktopCtx = vi.mocked(openReaderOverlay).mock.calls[0]?.[0];
+		expect(desktopCtx?.surface).toBe(ReadingSurface.OTHER);
+		expect(desktopCtx?.currentIndex).toBe(1);
+		expect(desktopCtx?.items?.[1]?.url).toBe(FILED[1]!.normalizedUrl);
+		expect(document.querySelector('[role="dialog"]')).toBeNull();
 	});
 });

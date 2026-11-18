@@ -103,13 +103,12 @@ test.describe("Gallery reading events", () => {
 		const dialog = page.getByRole("dialog");
 		await expect(dialog).toBeVisible();
 		await expect(dialog.getByText(/Paragraph 1:/)).toBeVisible();
-		await expect.poll(() => openTracked).toBe(true);
-
 		await page.waitForTimeout(60);
+		expect(openTracked).toBe(false);
 		expect(recordedRequests).toHaveLength(0);
 
-		const modalBody = dialog.locator(".modal-body");
-		await modalBody.evaluate((el) => {
+		const overlayBody = dialog.getByTestId("reader-overlay-body");
+		await overlayBody.evaluate((el) => {
 			el.scrollTop = el.scrollHeight;
 			el.dispatchEvent(new Event("scroll"));
 		});
@@ -122,7 +121,7 @@ test.describe("Gallery reading events", () => {
 
 		expect(recordedRequests).toHaveLength(0);
 
-		await dialog.getByTestId("modal-close").click();
+		await dialog.getByTestId("reader-overlay-close").click();
 		await expect(dialog).toBeHidden();
 
 		await expect.poll(() => recordedRequests.length).toBeGreaterThan(0);
