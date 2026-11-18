@@ -38,7 +38,6 @@ export interface TodayDigestData {
 	unsummarizedArticles: number;
 	topTags: string[];
 	weeklyRecapAvailable: boolean;
-	eveningPulseAvailable: boolean;
 	needToKnowCount: number;
 	digestFreshness: DigestFreshness;
 	lastProjectedAt: string | null;
@@ -194,7 +193,6 @@ function convertDigest(proto: ProtoTodayDigest): TodayDigestData {
 		unsummarizedArticles: proto.unsummarizedArticles,
 		topTags: [...proto.topTags],
 		weeklyRecapAvailable: proto.weeklyRecapAvailable,
-		eveningPulseAvailable: proto.eveningPulseAvailable,
 		needToKnowCount: proto.needToKnowCount,
 		digestFreshness: (proto.digestFreshness || "unknown") as DigestFreshness,
 		lastProjectedAt: proto.lastProjectedAt || null,

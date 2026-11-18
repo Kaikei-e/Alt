@@ -123,15 +123,14 @@ func (h *Handler) GetKnowledgeHome(
 
 	// Map digest from usecase (needToKnowCount is backend-authoritative, not page-scanned)
 	digest := &knowledgehomev1.TodayDigest{
-		Date:                  result.Digest.DigestDate.Format("2006-01-02"),
-		NewArticles:           safeconv.Int32(result.Digest.NewArticles),
-		SummarizedArticles:    safeconv.Int32(result.Digest.SummarizedArticles),
-		UnsummarizedArticles:  safeconv.Int32(result.Digest.UnsummarizedArticles),
-		TopTags:               result.Digest.TopTags,
-		WeeklyRecapAvailable:  result.Digest.WeeklyRecapAvailable,
-		EveningPulseAvailable: result.Digest.EveningPulseAvailable,
-		NeedToKnowCount:       safeconv.Int32(result.Digest.NeedToKnowCount),
-		DigestFreshness:       result.Digest.DigestFreshness,
+		Date:                 result.Digest.DigestDate.Format("2006-01-02"),
+		NewArticles:          safeconv.Int32(result.Digest.NewArticles),
+		SummarizedArticles:   safeconv.Int32(result.Digest.SummarizedArticles),
+		UnsummarizedArticles: safeconv.Int32(result.Digest.UnsummarizedArticles),
+		TopTags:              result.Digest.TopTags,
+		WeeklyRecapAvailable: result.Digest.WeeklyRecapAvailable,
+		NeedToKnowCount:      safeconv.Int32(result.Digest.NeedToKnowCount),
+		DigestFreshness:      result.Digest.DigestFreshness,
 	}
 	if result.Digest.LastProjectedAt != nil {
 		digest.LastProjectedAt = result.Digest.LastProjectedAt.Format(time.RFC3339)

@@ -18,11 +18,8 @@ export const RESPONSIVE_REDIRECTS: Record<string, string> = {
 	"/desktop/feeds/viewed": "/feeds/viewed",
 	"/mobile/feeds/viewed": "/feeds/viewed",
 	// Batch C
-	"/desktop/recap/evening-pulse": "/recap/evening-pulse",
-	"/mobile/recap/evening-pulse": "/recap/evening-pulse",
 	"/desktop/recap": "/recap",
 	"/mobile/recap/3days": "/recap",
-	"/mobile/recap/7days": "/recap?window=7",
 	"/desktop/recap/job-status": "/recap/job-status",
 	"/mobile/recap/job-status": "/recap/job-status",
 	// Batch D

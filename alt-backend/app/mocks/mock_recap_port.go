@@ -41,36 +41,6 @@ func (m *MockRecapPort) EXPECT() *MockRecapPortMockRecorder {
 	return m.recorder
 }
 
-// GetEveningPulse mocks base method.
-func (m *MockRecapPort) GetEveningPulse(ctx context.Context, date string) (*domain.EveningPulse, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetEveningPulse", ctx, date)
-	ret0, _ := ret[0].(*domain.EveningPulse)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetEveningPulse indicates an expected call of GetEveningPulse.
-func (mr *MockRecapPortMockRecorder) GetEveningPulse(ctx, date any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEveningPulse", reflect.TypeOf((*MockRecapPort)(nil).GetEveningPulse), ctx, date)
-}
-
-// GetSevenDayRecap mocks base method.
-func (m *MockRecapPort) GetSevenDayRecap(ctx context.Context) (*domain.RecapSummary, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetSevenDayRecap", ctx)
-	ret0, _ := ret[0].(*domain.RecapSummary)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetSevenDayRecap indicates an expected call of GetSevenDayRecap.
-func (mr *MockRecapPortMockRecorder) GetSevenDayRecap(ctx any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSevenDayRecap", reflect.TypeOf((*MockRecapPort)(nil).GetSevenDayRecap), ctx)
-}
-
 // GetThreeDayRecap mocks base method.
 func (m *MockRecapPort) GetThreeDayRecap(ctx context.Context) (*domain.RecapSummary, error) {
 	m.ctrl.T.Helper()
