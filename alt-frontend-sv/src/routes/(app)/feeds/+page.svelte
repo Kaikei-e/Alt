@@ -15,6 +15,7 @@ import FeedCard from "#lib/components/mobile/FeedCard.svelte";
 import MobileFeedExcludeFilter from "#lib/components/mobile/feeds/MobileFeedExcludeFilter.svelte";
 import type { ConnectFeedSource } from "#lib/connect/feeds.js";
 import { MARK_AS_READ_FAILED_MESSAGE } from "#lib/feeds/mark-as-read-feedback.js";
+import { ReadingSurface } from "#lib/reading/instrumentation.js";
 import type { RenderFeed } from "#lib/schema/feed.js";
 import {
 	CONNECTION_RECOVERY_KEY,
@@ -385,6 +386,7 @@ const WIRE_LIST_CLASS =
 	bind:open={isModalOpen}
 	feed={selectedFeed}
 	onOpenChange={(open: boolean) => (isModalOpen = open)}
+	readingSurface={ReadingSurface.OTHER}
 	{hasPrevious}
 	{hasNext}
 	onPrevious={handlePrevious}

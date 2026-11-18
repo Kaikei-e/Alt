@@ -81,6 +81,10 @@ const (
 	// applies it as a patch-only update. Payload schema lives at
 	// `ArticleUrlBackfilledPayload` in knowledge_event_payload.go.
 	EventArticleUrlBackfilled = "ArticleUrlBackfilled"
+
+	EventReadingSurfaceViewed = "reading.surface_viewed.v1"
+	EventReadingReachedEnd    = "reading.reached_end.v1"
+	EventReadingSessionEnded  = "reading.session_ended.v1"
 )
 
 // Dedupe key namespaces for AppendKnowledgeEvent. Each producer MUST use
@@ -114,10 +118,11 @@ const (
 
 // Aggregate type constants.
 const (
-	AggregateArticle     = "article"
-	AggregateRecap       = "recap"
-	AggregateHomeSession = "home_session"
-	AggregateLoopSession = "loop_session"
+	AggregateArticle        = "article"
+	AggregateRecap          = "recap"
+	AggregateHomeSession    = "home_session"
+	AggregateLoopSession    = "loop_session"
+	AggregateReadingSession = "reading_session"
 )
 
 // KnowledgeEvent represents a single event in the knowledge event store.

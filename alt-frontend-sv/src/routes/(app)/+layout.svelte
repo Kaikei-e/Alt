@@ -1,13 +1,16 @@
 <script lang="ts">
-import type { Snippet } from "svelte";
+import { onMount, type Snippet } from "svelte";
 import ResponsiveLayout from "#lib/components/layout/ResponsiveLayout.svelte";
 import { SystemLoader } from "#lib/components/ui/system-loader/index.js";
+import { registerReadingLifecycle } from "#lib/reading/instrumentation.js";
 import { getLoadingStore } from "#lib/stores/loading.svelte.js";
 import { navigating } from "$app/state";
 
 let { children }: { children: Snippet } = $props();
 
 const loadingStore = getLoadingStore();
+
+onMount(() => registerReadingLifecycle());
 
 // Safety net: if navigation stays stuck for too long, hide the loader
 const NAVIGATION_TIMEOUT_MS = 10_000;

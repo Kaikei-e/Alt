@@ -172,6 +172,16 @@ export {
 	streamMorningLetterChat,
 	streamMorningLetterChatAsync,
 } from "./morning_letter";
+export {
+	createReadingClient,
+	type ReadingClient,
+	type ReadingEvent,
+	type ReadingEventInput,
+	ReadingSurface,
+	type RecordReadingEventsResult,
+	recordReadingEvents,
+} from "./reading";
+export { createKeepaliveTransport } from "./reading-transport";
 // RecapService client
 export {
 	createRecapClient,

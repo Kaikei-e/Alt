@@ -148,6 +148,9 @@ func TestVerifyAltButterflyFacadeContract(t *testing.T) {
 			"tag cloud data with co-occurring tags is available": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
 				return nil, nil
 			},
+			"reading service is available": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
+				return nil, nil
+			},
 		},
 	}
 

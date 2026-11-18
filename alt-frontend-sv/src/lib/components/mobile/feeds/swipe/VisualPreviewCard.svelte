@@ -19,6 +19,10 @@ import {
 	streamSummarizeWithAbortAdapter,
 } from "#lib/connect/index.js";
 import { createSummarySpeech } from "#lib/hooks/useSummarySpeech.svelte.js";
+import {
+	attachElementReadingSession,
+	ReadingSurface,
+} from "#lib/reading/instrumentation.js";
 import type { RenderFeed } from "#lib/schema/feed.js";
 import {
 	type ArticleContentPhase,
@@ -59,6 +63,7 @@ interface Props {
 	requestContent?: (feedUrl: string) => Promise<string | null>;
 	isBusy?: boolean;
 	initialArticleContent?: string | null;
+	initialArticleId?: string | null;
 	onArticleIdResolved?: (feedLink: string, articleId: string) => void;
 	isLcp?: boolean;
 }
@@ -73,6 +78,7 @@ const {
 	requestContent,
 	isBusy = false,
 	initialArticleContent,
+	initialArticleId,
 	onArticleIdResolved,
 	isLcp = false,
 }: Props = $props();
@@ -104,6 +110,10 @@ const speechStatusText = $derived.by(() => {
 
 let isContentExpanded = $state(false);
 let fullContent = $state<string | null>(null);
+let fetchedArticleId = $state<string | null>(null);
+let articleBodyEl = $state<HTMLDivElement | null>(null);
+let endSentinelEl = $state<HTMLDivElement | null>(null);
+let activeReadingCleanup: (() => void) | undefined;
 // Three honest states rather than two booleans. `pending` / `retrying` are
 // deliberately NOT `failed`: a request in flight used to render as
 // "Source content unavailable.", which announced a verdict before there was
@@ -179,6 +189,16 @@ const cardStyle = $derived.by(() => {
 const sanitizedFullContent = $derived(
 	fullContent ? sanitizeHtml(fullContent) : null,
 );
+const hasExpandedBody = $derived(
+	isContentExpanded && Boolean(sanitizedFullContent),
+);
+const readerArticleId = $derived(
+	feed.articleId ||
+		fetchedArticleId ||
+		initialArticleId ||
+		getCachedArticleId?.(feed.normalizedUrl) ||
+		null,
+);
 const hasDescription = $derived(Boolean(feed.description));
 const isContentPending = $derived(
 	contentPhase === "pending" || contentPhase === "retrying",
@@ -210,16 +230,20 @@ const publishedLabel = $derived.by(() => {
 async function fetchBody(): Promise<string | null> {
 	if (requestContent) {
 		const content = await requestContent(feed.normalizedUrl);
-		if (content && onArticleIdResolved) {
+		if (content) {
 			const articleId = getCachedArticleId?.(feed.normalizedUrl);
-			if (articleId) onArticleIdResolved(feed.link, articleId);
+			if (articleId) {
+				fetchedArticleId = articleId;
+				onArticleIdResolved?.(feed.link, articleId);
+			}
 		}
 		return content;
 	}
 
 	const res = await getFeedContentOnTheFlyClient(feed.normalizedUrl);
-	if (res.article_id && onArticleIdResolved) {
-		onArticleIdResolved(feed.link, res.article_id);
+	if (res.article_id) {
+		fetchedArticleId = res.article_id;
+		onArticleIdResolved?.(feed.link, res.article_id);
 	}
 	return res.content || null;
 }
@@ -229,13 +253,17 @@ onMount(() => {
 	if (initialArticleContent) {
 		fullContent = initialArticleContent;
 	}
+	if (initialArticleId) {
+		fetchedArticleId = initialArticleId;
+	}
 
 	const cached = getCachedContent?.(feed.normalizedUrl);
 	if (cached) {
 		fullContent = cached;
 		const cachedArticleId = getCachedArticleId?.(feed.normalizedUrl);
-		if (cachedArticleId && onArticleIdResolved) {
-			onArticleIdResolved(feed.link, cachedArticleId);
+		if (cachedArticleId) {
+			fetchedArticleId = cachedArticleId;
+			onArticleIdResolved?.(feed.link, cachedArticleId);
 		}
 	} else if (!fullContent) {
 		// Same loader as the tap path. The auto-fetch used to have its own
@@ -299,6 +327,24 @@ $effect(() => {
 	};
 });
 
+$effect(() => {
+	if (!hasExpandedBody) {
+		return;
+	}
+	const cleanup = attachElementReadingSession({
+		articleId: readerArticleId,
+		surface: ReadingSurface.SWIPE,
+		bodyElement: articleBodyEl,
+		scrollContainer: scrollAreaRef,
+		endSentinel: endSentinelEl,
+	});
+	activeReadingCleanup = cleanup;
+	return () => {
+		activeReadingCleanup = undefined;
+		cleanup?.();
+	};
+});
+
 /**
  * Record a terminal failure. The wording comes from articleContentErrorMessage
  * and nowhere else — ADR-000959 §6: the upstream `message` (the BFF's
@@ -322,6 +368,10 @@ async function loadContent(): Promise<void> {
 	const cached = getCachedContent?.(feed.normalizedUrl);
 	if (cached) {
 		fullContent = cached;
+		const cachedArticleId = getCachedArticleId?.(feed.normalizedUrl);
+		if (cachedArticleId) {
+			fetchedArticleId = cachedArticleId;
+		}
 		contentError = null;
 		contentPhase = "ready";
 		return;
@@ -552,6 +602,7 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
 
 	hasSwiped = true;
 	isDragging = false;
+	activeReadingCleanup?.();
 
 	const width = swipeElement?.clientWidth ?? window.innerWidth;
 	const target = dir === "left" ? -width : width;
@@ -772,9 +823,14 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
                 </div>
               {/if}
             {:else if sanitizedFullContent}
-              <div class="article-prose">
+              <div class="article-prose" bind:this={articleBodyEl}>
                 {@html sanitizedFullContent}
               </div>
+              <div
+                class="reading-end-sentinel"
+                bind:this={endSentinelEl}
+                aria-hidden="true"
+              ></div>
             {/if}
           </div>
         {/if}
@@ -1096,6 +1152,12 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
   .article-prose :global(img) {
     max-width: 100%;
     height: auto;
+  }
+
+  .reading-end-sentinel {
+    height: 1px;
+    margin-top: -1px;
+    pointer-events: none;
   }
 
   /* ── Loading ── */

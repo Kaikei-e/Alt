@@ -15,6 +15,10 @@ import Toast from "#lib/components/knowledge-home/Toast.svelte";
 import MobileGalleryTile from "#lib/components/mobile/feeds/gallery/MobileGalleryTile.svelte";
 import type { ConnectFeedSource } from "#lib/connect/feeds.js";
 import { MARK_AS_READ_FAILED_MESSAGE } from "#lib/feeds/mark-as-read-feedback.js";
+import {
+	ReadingSurface,
+	recordSurfaceViewed,
+} from "#lib/reading/instrumentation.js";
 import type { RenderFeed } from "#lib/schema/feed.js";
 import { ogImageOverlay } from "#lib/stores/ogImageOverlay.svelte.js";
 import { useToastStore } from "#lib/stores/toast.svelte.js";
@@ -65,6 +69,7 @@ function announce(message: string, holdMs: number) {
 const requestedOgImageArticleIds = new Set<string>();
 
 onMount(async () => {
+	recordSurfaceViewed(ReadingSurface.GALLERY);
 	try {
 		feedSources = await listSubscriptionsClient();
 	} catch (e) {
@@ -315,6 +320,7 @@ function handleFeedGridReady(api: FeedGridApi) {
 	bind:open={isModalOpen}
 	feed={selectedFeed}
 	onOpenChange={(open: boolean) => (isModalOpen = open)}
+	readingSurface={ReadingSurface.GALLERY}
 	{hasPrevious}
 	{hasNext}
 	onPrevious={handlePrevious}

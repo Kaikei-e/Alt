@@ -1052,6 +1052,399 @@
       }
     },
     {
+      "description": "an AppendKnowledgeEvent request for reading.reached_end.v1",
+      "providerStates": [
+        {
+          "name": "sovereign accepts reading.reached_end.v1 events"
+        }
+      ],
+      "request": {
+        "body": {
+          "event": {
+            "actorId": "22222222-2222-2222-2222-222222222222",
+            "actorType": "user",
+            "aggregateId": "article:33333333-3333-3333-3333-333333333333",
+            "aggregateType": "reading_session",
+            "dedupeKey": "reading.reached_end.v1:019a0000-0002-7000-8000-000000000102",
+            "eventId": "019a0000-0002-7000-8000-000000000002",
+            "eventType": "reading.reached_end.v1",
+            "occurredAt": "2026-11-18T09:00:00Z",
+            "payload": "eyJhcnRpY2xlX2lkIjoiMzMzMzMzMzMtMzMzMy0zMzMzLTMzMzMtMzMzMzMzMzMzMzMzIiwiY2xpZW50X2V2ZW50X2lkIjoiMDE5YTAwMDAtMDAwMi03MDAwLTgwMDAtMDAwMDAwMDAwMTAyIiwicmVjZWl2ZWRfYXQiOiIyMDI2LTExLTE4VDA5OjAwOjAxWiIsInN1cmZhY2UiOiJzd2lwZSJ9",
+            "tenantId": "11111111-1111-1111-1111-111111111111",
+            "userId": "22222222-2222-2222-2222-222222222222"
+          }
+        },
+        "headers": {
+          "Authorization": "Bearer test-sovereign-event-token",
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.event.actorId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.event.aggregateId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.event.dedupeKey": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.event.eventId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.event.occurredAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.event.payload": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.event.tenantId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.event.userId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Authorization": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^Bearer .+$"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent"
+      },
+      "response": {
+        "body": {
+          "eventSeq": "123"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.eventSeq": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "an AppendKnowledgeEvent request for reading.session_ended.v1",
+      "providerStates": [
+        {
+          "name": "sovereign accepts reading.session_ended.v1 events"
+        }
+      ],
+      "request": {
+        "body": {
+          "event": {
+            "actorId": "22222222-2222-2222-2222-222222222222",
+            "actorType": "user",
+            "aggregateId": "article:33333333-3333-3333-3333-333333333333",
+            "aggregateType": "reading_session",
+            "dedupeKey": "reading.session_ended.v1:019a0000-0003-7000-8000-000000000103",
+            "eventId": "019a0000-0003-7000-8000-000000000003",
+            "eventType": "reading.session_ended.v1",
+            "occurredAt": "2026-11-18T09:00:00Z",
+            "payload": "eyJhY3RpdmVfZHdlbGxfbXMiOjQyMDAwLCJhcnRpY2xlX2lkIjoiMzMzMzMzMzMtMzMzMy0zMzMzLTMzMzMtMzMzMzMzMzMzMzMzIiwiYm9keV9sZW5ndGhfY2hhcnMiOjMyMDAsImNsaWVudF9ldmVudF9pZCI6IjAxOWEwMDAwLTAwMDMtNzAwMC04MDAwLTAwMDAwMDAwMDEwMyIsIm1heF9zY3JvbGxfcmF0aW8iOjAuOTUsInJlYWNoZWRfZW5kIjp0cnVlLCJyZWNlaXZlZF9hdCI6IjIwMjYtMTEtMThUMDk6MDA6MDFaIiwic3VyZmFjZSI6ImFydGljbGVfcGFnZSJ9",
+            "tenantId": "11111111-1111-1111-1111-111111111111",
+            "userId": "22222222-2222-2222-2222-222222222222"
+          }
+        },
+        "headers": {
+          "Authorization": "Bearer test-sovereign-event-token",
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.event.actorId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.event.aggregateId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.event.dedupeKey": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.event.eventId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.event.occurredAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.event.payload": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.event.tenantId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.event.userId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Authorization": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^Bearer .+$"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent"
+      },
+      "response": {
+        "body": {
+          "eventSeq": "123"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.eventSeq": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "an AppendKnowledgeEvent request for reading.surface_viewed.v1",
+      "providerStates": [
+        {
+          "name": "sovereign accepts reading.surface_viewed.v1 events"
+        }
+      ],
+      "request": {
+        "body": {
+          "event": {
+            "actorId": "22222222-2222-2222-2222-222222222222",
+            "actorType": "user",
+            "aggregateId": "surface:gallery",
+            "aggregateType": "reading_session",
+            "dedupeKey": "reading.surface_viewed.v1:019a0000-0001-7000-8000-000000000101",
+            "eventId": "019a0000-0001-7000-8000-000000000001",
+            "eventType": "reading.surface_viewed.v1",
+            "occurredAt": "2026-11-18T09:00:00Z",
+            "payload": "eyJjbGllbnRfZXZlbnRfaWQiOiIwMTlhMDAwMC0wMDAxLTcwMDAtODAwMC0wMDAwMDAwMDAxMDEiLCJyZWNlaXZlZF9hdCI6IjIwMjYtMTEtMThUMDk6MDA6MDFaIiwic3VyZmFjZSI6ImdhbGxlcnkifQ==",
+            "tenantId": "11111111-1111-1111-1111-111111111111",
+            "userId": "22222222-2222-2222-2222-222222222222"
+          }
+        },
+        "headers": {
+          "Authorization": "Bearer test-sovereign-event-token",
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.event.actorId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.event.aggregateId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.event.dedupeKey": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.event.eventId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.event.occurredAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.event.payload": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.event.tenantId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.event.userId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "Authorization": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^Bearer .+$"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent"
+      },
+      "response": {
+        "body": {
+          "eventSeq": "123"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.eventSeq": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
       "description": "an AppendKnowledgeEvent request for trail.act_outcome.v1 with branch_key, item_key and dwell_ms",
       "providerStates": [
         {

@@ -129,6 +129,7 @@ var telemetryEndpoints = map[string]struct{}{
 	"/alt.knowledge_home.v1.KnowledgeHomeService/TrackHomeAction":    {},
 	"/alt.knowledge_home.v1.KnowledgeHomeService/TrackHomeItemsSeen": {},
 	"/alt.knowledge_trail.v1.KnowledgeTrailService/EmitTrailOutcome": {},
+	"/alt.reading.v1.ReadingService/RecordReadingEvents":             {},
 	// BatchPrefetchArticleContent is fire-and-forget in the same sense: it
 	// returns an acceptance receipt before any publisher is contacted, and the
 	// reader discards it. It is deliberately not in externalContentEndpoints

@@ -54,6 +54,7 @@ import (
 	"alt/orchestrator/usecase/recall_rail_usecase"
 	"alt/orchestrator/usecase/recall_snooze_usecase"
 	"alt/orchestrator/usecase/recap_usecase"
+	"alt/orchestrator/usecase/record_reading_events_usecase"
 	"alt/orchestrator/usecase/register_favorite_feed_usecase"
 	"alt/orchestrator/usecase/register_feed_usecase"
 	"alt/orchestrator/usecase/remove_favorite_feed_usecase"
@@ -203,6 +204,7 @@ type ApplicationComponents struct {
 	GetItemBranchesUsecase           *get_item_branches_usecase.GetItemBranchesUsecase
 	TrackHomeSeenUsecase             *track_home_seen_usecase.TrackHomeSeenUsecase
 	TrackHomeActionUsecase           *track_home_action_usecase.TrackHomeActionUsecase
+	RecordReadingEventsUsecase       *record_reading_events_usecase.RecordReadingEventsUsecase
 	CreateSummaryVersionUsecase      *create_summary_version_usecase.CreateSummaryVersionUsecase
 	FeatureFlagGateway               *feature_flag_gateway.Gateway
 	KnowledgeBackfillUsecase         *knowledge_backfill_usecase.Usecase

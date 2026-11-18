@@ -24,12 +24,18 @@ import {
 	listSubscriptionsClient,
 	updateFeedReadStatusClient,
 } from "#lib/api/client/feeds.js";
+import { recordReadingEvents } from "#lib/connect/reading.js";
 import { MARK_AS_READ_FAILED_MESSAGE } from "#lib/feeds/mark-as-read-feedback.js";
+import {
+	flushReadingEvents,
+	ReadingSurface,
+} from "#lib/reading/instrumentation.js";
 import type { RenderFeed } from "#lib/schema/feed.js";
 import { createRenderFeed } from "../../../../../tests/fixtures/feeds";
 
 vi.mock("#lib/api/client/feeds.js", { spy: true });
 vi.mock("#lib/api/client/articles.js", { spy: true });
+vi.mock("#lib/connect/reading.js", { spy: true });
 
 // The tiles resolve OG images through a shared resolver that would otherwise
 // fire a Connect-RPC at whatever is listening on the dev server.
@@ -80,7 +86,17 @@ function feedFetches(): number {
 }
 
 describe("Visual Preview page continuity across a rotation", () => {
-	beforeEach(() => {
+	beforeEach(async () => {
+		vi.mocked(recordReadingEvents).mockResolvedValue({
+			accepted: 0,
+			duplicates: 0,
+		});
+		await flushReadingEvents();
+		vi.mocked(recordReadingEvents).mockReset();
+		vi.mocked(recordReadingEvents).mockResolvedValue({
+			accepted: 1,
+			duplicates: 0,
+		});
 		vi.mocked(getAllFeedsWithCursorClient).mockReset();
 		vi.mocked(getAllFeedsWithCursorClient).mockResolvedValue({
 			data: FEEDS,
@@ -196,5 +212,25 @@ describe("Visual Preview page continuity across a rotation", () => {
 		);
 		expect(toastMessage?.textContent?.trim()).toBe(MARK_AS_READ_FAILED_MESSAGE);
 		expect(cardLabels()).toContain(openLabel(FIRST));
+	});
+
+	it("enqueues one gallery surface_viewed event on mount", async () => {
+		await page.viewport(PORTRAIT.width, PORTRAIT.height);
+		render(Page);
+		await settle(100);
+
+		expect(recordReadingEvents).not.toHaveBeenCalled();
+
+		await flushReadingEvents();
+
+		expect(recordReadingEvents).toHaveBeenCalledTimes(1);
+		const events = vi.mocked(recordReadingEvents).mock.calls[0]?.[1] ?? [];
+		const surfaceViews = events.filter(
+			(e) => e.event?.case === "surfaceViewed",
+		);
+		expect(surfaceViews).toHaveLength(1);
+		expect(surfaceViews[0]?.event?.value).toEqual(
+			expect.objectContaining({ surface: ReadingSurface.GALLERY }),
+		);
 	});
 });

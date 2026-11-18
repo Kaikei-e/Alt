@@ -1,6 +1,10 @@
 <script lang="ts">
 import { onMount } from "svelte";
 import SwipeFeedScreen from "#lib/components/mobile/feeds/swipe/SwipeFeedScreen.svelte";
+import {
+	ReadingSurface,
+	recordSurfaceViewed,
+} from "#lib/reading/instrumentation.js";
 import type { RenderFeed } from "#lib/schema/feed.js";
 import { isDesktop } from "#lib/stores/viewport.svelte.js";
 import { articlePrefetcher } from "#lib/utils/articlePrefetcher.js";
@@ -24,6 +28,7 @@ const resolvedArticleData = $derived(data.articleData);
 // Seed the prefetcher cache once per mount so subsequent swipes hit the
 // in-memory cache instead of refetching.
 onMount(() => {
+	recordSurfaceViewed(ReadingSurface.SWIPE);
 	if (data.initialFeeds.length === 0 || !resolvedArticleData.firstArticleId) {
 		return;
 	}
@@ -65,6 +70,7 @@ onMount(() => {
 		initialFeeds={data.initialFeeds}
 		initialNextCursor={data.nextCursor}
 		initialArticleContent={resolvedArticleData.firstArticleContent}
+		initialArticleId={resolvedArticleData.firstArticleId}
 		initialOgImageProxyUrl={resolvedArticleData.firstArticleImageUrl}
 		mode="visual-preview"
 	/>
