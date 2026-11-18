@@ -4,6 +4,7 @@ import {
 	BarChart3,
 	Bell,
 	Bird,
+	BookMarked,
 	BookOpen,
 	CalendarRange,
 	Compass,
@@ -71,6 +72,7 @@ export const MOBILE_MENU_SECTIONS: MobileMenuSection[] = [
 		title: "Browse",
 		items: [
 			{ label: "Home", href: "/home", icon: Lightbulb },
+			{ label: "Themes", href: "/knowledge", icon: BookMarked },
 			{ label: "Trail", href: "/knowledge/trail", icon: Footprints },
 			{ label: "Library", href: "/feeds", icon: Rss },
 			{ label: "Favorites", href: "/feeds/favorites", icon: Heart },

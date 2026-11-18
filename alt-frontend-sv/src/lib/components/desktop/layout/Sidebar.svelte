@@ -3,6 +3,7 @@ import {
 	Activity,
 	Bell,
 	BirdIcon,
+	BookMarked,
 	CalendarRange,
 	ChartBar,
 	ChevronDown,
@@ -39,6 +40,12 @@ const baseMenuItems = [
 		label: "Knowledge Home",
 		href: "/home",
 		icon: Lightbulb,
+		category: "main",
+	},
+	{
+		label: "Themes",
+		href: "/knowledge",
+		icon: BookMarked,
 		category: "main",
 	},
 	{
@@ -231,7 +238,13 @@ function toggleSection(category: string) {
 }
 
 function isActive(href: string): boolean {
-	return page.url.pathname === href || page.url.pathname.startsWith(`${href}?`);
+	const pathname = page.url.pathname;
+	if (href === "/knowledge") {
+		return (
+			pathname === "/knowledge" || pathname.startsWith("/knowledge/themes/")
+		);
+	}
+	return pathname === href || pathname.startsWith(`${href}?`);
 }
 
 function isParentActive(children?: { href: string }[]): boolean {
