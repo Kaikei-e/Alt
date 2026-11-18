@@ -10,9 +10,9 @@ import { errorSchema, jobStatsSchema } from "../src/schemas.js";
  * ----------------------------------------------
  * Every assertion here is about the *absence* of a row, and recap-worker
  * offers no way for a test to own an absence. `get_latest_completed_job`
- * selects the newest completed job for a window with no tenant, owner or name
- * predicate (api/fetch.rs:404-418); `get_latest_morning_letter`,
- * `get_latest_pulse` and `get_latest_genre_evaluation` are the same shape.
+ * selects the newest completed job for the 3-day window with no tenant, owner
+ * or name predicate (api/fetch.rs:541-552); `get_latest_morning_letter` and
+ * `get_latest_genre_evaluation` are the same shape.
  * There is no token a test could seed under to carve out its own empty
  * database, so these are observable exactly once per stack — which is what the
  * Hurl suite's `--jobs 1` was really buying, and all it was buying.
@@ -31,31 +31,19 @@ import { errorSchema, jobStatsSchema } from "../src/schemas.js";
  */
 
 test.describe("an empty recap_db", () => {
-	test("GET /v1/recaps/7days answers 404 with the 7-day miss envelope @contract", async ({
+	test("GET /v1/recaps/3days answers 404 with the 3-day miss envelope @contract", async ({
 		api,
 	}) => {
-		// api/fetch.rs:407-418 — Ok(None) becomes
-		// (NOT_FOUND, Json(ErrorResponse { error: "No {label} recap found" })).
+		// api/fetch.rs:541-552 — Ok(None) becomes
+		// (NOT_FOUND, Json(ErrorResponse { error: "No 3-day recap found" })).
 		// The exact string matters: alt-backend's recap gateway treats this 404
 		// as "nothing to show yet" and anything else as an upstream fault, so a
 		// handler that started returning 200 + `{"genres": []}` here would put
 		// an empty recap in front of a user instead of the empty state.
-		const response = await api.get("/v1/recaps/7days");
-		const body = await expectJsonStatus(response, 404, errorSchema);
-		expect(body.error).toBe("No 7-day recap found");
-		expectHeaderContains(response, "Content-Type", "application/json");
-	});
-
-	test("GET /v1/recaps/3days answers 404 with the 3-day miss envelope @contract", async ({
-		api,
-	}) => {
-		// The label is interpolated from the caller (`get_3days_recap` passes
-		// "3-day"), so this is not a copy of the test above: it is the assertion
-		// that the two windows do not share a message — which is how a
-		// `get_recap_by_window(state, 3, "7-day")` copy-paste would be caught.
 		const response = await api.get("/v1/recaps/3days");
 		const body = await expectJsonStatus(response, 404, errorSchema);
 		expect(body.error).toBe("No 3-day recap found");
+		expectHeaderContains(response, "Content-Type", "application/json");
 	});
 
 	test("GET /v1/morning/letters/latest answers 404 before any letter exists @contract", async ({
@@ -69,17 +57,6 @@ test.describe("an empty recap_db", () => {
 			errorSchema,
 		);
 		expect(body.error).toBe("No morning letter found");
-	});
-
-	test("GET /v1/pulse/latest answers 404 naming today when no pulse exists @contract", async ({
-		api,
-	}) => {
-		// New coverage. api/pulse.rs:146-163 interpolates the *requested* date
-		// into the message, falling back to the literal "today" when the query
-		// omits `date`. tests/validation.spec.ts asserts the dated branch, which
-		// is order-independent; this one pins the default branch, which is not.
-		const body = await expectJsonStatus(await api.get("/v1/pulse/latest"), 404, errorSchema);
-		expect(body.error).toBe("No evening pulse found for date today");
 	});
 
 	test("GET /v1/evaluation/genres/latest answers 404 before any run @contract", async ({

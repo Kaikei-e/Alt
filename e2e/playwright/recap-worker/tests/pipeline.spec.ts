@@ -12,8 +12,7 @@ import {
 } from "../src/schemas.js";
 
 /**
- * The end-to-end pipeline drives — the port of `05-trigger-and-poll-7days.hurl`
- * and `06-trigger-and-poll-3days.hurl`.
+ * The end-to-end pipeline drive — the port of `06-trigger-and-poll-3days.hurl`.
  *
  * Each trigger walks the real pipeline: alt-data-hub `ListRecapArticles` →
  * recap-subworker `classify-runs` + clustering → news-creator
@@ -53,97 +52,89 @@ test.describe.configure({ mode: "serial" });
 const PIPELINE_BUDGET_MS = 120_000;
 
 test.describe("the recap pipeline", () => {
-	for (const drive of [
-		{ window: "7days", label: "7-day", days: 7 },
-		{ window: "3days", label: "3-day", days: 3 },
-	] as const) {
-		test(`triggering the ${drive.label} window produces a completed recap @slow @contract`, async ({
-			api,
-		}) => {
-			// Two sequential waits, each allowed the full budget: the convergence
-			// poll below (120s) and then the drain (120s). Budgeting only one of
-			// them meant a slow-but-healthy stack died at 180s with Playwright's
-			// generic "Test timeout exceeded" instead of the `eventually` message
-			// naming what never became true.
-			test.setTimeout(2 * PIPELINE_BUDGET_MS + 60_000);
+	test("triggering the 3-day window produces a completed recap @slow @contract", async ({
+		api,
+	}) => {
+		// Two sequential waits, each allowed the full budget: the convergence
+		// poll below (120s) and then the drain (120s). Budgeting only one of
+		// them meant a slow-but-healthy stack died at 180s with Playwright's
+		// generic "Test timeout exceeded" instead of the `eventually` message
+		// naming what never became true.
+		test.setTimeout(2 * PIPELINE_BUDGET_MS + 60_000);
 
-			const before = await readTotalJobs(api);
+		const before = await readTotalJobs(api);
 
-			// --- the trigger -------------------------------------------------
-			const accepted = await expectJsonStatus(
-				await api.post(`/v1/generate/recaps/${drive.window}`, {
-					data: triggerBody([env.defaultGenre]),
-				}),
-				202,
-				triggerAcceptedSchema,
-			);
-			expect(accepted.genres).toContain(env.defaultGenre);
+		// --- the trigger -------------------------------------------------
+		const accepted = await expectJsonStatus(
+			await api.post("/v1/generate/recaps/3days", {
+				data: triggerBody([env.defaultGenre]),
+			}),
+			202,
+			triggerAcceptedSchema,
+		);
+		expect(accepted.genres).toContain(env.defaultGenre);
 
-			// 202, not 200: the handler spawns `scheduler.run_job` and returns
-			// before any work happens (api/generate.rs:83). A 200 would mean
-			// somebody made the endpoint synchronous, which would hold a request
-			// open for the length of an LLM pipeline.
-			//
-			// The Hurl suite matched job_id against a UUID regex inline; here it
-			// is `uuidSchema` inside `triggerAcceptedSchema`, together with the
-			// `status: "accepted"` literal and a non-empty normalized `genres`
-			// list — one assertion instead of three, and it fails on a field the
-			// spot checks never looked at.
+		// 202, not 200: the handler spawns `scheduler.run_job_locked` and
+		// returns before any work happens (api/generate.rs:170-185). A 200
+		// would mean somebody made the endpoint synchronous, which would hold a
+		// request open for the length of an LLM pipeline.
+		//
+		// The Hurl suite matched job_id against a UUID regex inline; here it
+		// is `uuidSchema` inside `triggerAcceptedSchema`, together with the
+		// `status: "accepted"` literal and a non-empty normalized `genres`
+		// list — one assertion instead of three, and it fails on a field the
+		// spot checks never looked at.
 
-			// --- the read ----------------------------------------------------
-			// `--delay`/`retry: 60` becomes a real convergence assertion: a fast
-			// stack finishes in one interval, a slow one still passes, and a
-			// stuck one fails naming what never became true.
-			await eventually(
-				async () => {
-					const recap = await expectJsonStatus(
-						await api.get(`/v1/recaps/${drive.window}`),
-						200,
-						recapSummarySchema,
-					);
-					// Identity, not arithmetic. Asserting
-					// `window_end - window_start === drive.days` cannot fail:
-					// neither timestamp comes from the row.
-					// `get_latest_completed_job` derives both from the
-					// `window_days` argument the handler was called with — the
-					// literal 7 or 3 (store/dao/output.rs:174-177,
-					// api/fetch.rs:382-390) — so the span equals the requested
-					// window for *any* row the query returns, including one whose
-					// stored `window_days` is wrong.
-					//
-					// What is falsifiable is *which* row came back. A
-					// `JobContext::new_manual(id, genres, 7)` hard-coded into
-					// `trigger_3days` would file the job under `window_days = 7`,
-					// so `/v1/recaps/3days` would either stay 404 until the budget
-					// runs out or serve some other job's id — and the span check
-					// passed for either.
-					expect(
-						recap.job_id,
-						`GET /v1/recaps/${drive.window} must serve the job this test ` +
-							`just triggered — the newest completed ${drive.label} job ` +
-							`is unambiguous in this serial, single-worker project`,
-					).toBe(accepted.job_id);
+		// --- the read ----------------------------------------------------
+		// `--delay`/`retry: 60` becomes a real convergence assertion: a fast
+		// stack finishes in one interval, a slow one still passes, and a
+		// stuck one fails naming what never became true.
+		await eventually(
+			async () => {
+				const recap = await expectJsonStatus(
+					await api.get("/v1/recaps/3days"),
+					200,
+					recapSummarySchema,
+				);
+				// Identity, not arithmetic. Asserting
+				// `window_end - window_start === 3 days` cannot fail: neither
+				// timestamp comes from the row. `get_latest_completed_job`
+				// derives both from the `window_days` argument `3`
+				// (store/dao/output.rs:146-148, api/fetch.rs:541), so the span
+				// equals the requested window for *any* row the query returns,
+				// including one whose stored `window_days` is wrong.
+				//
+				// What is falsifiable is *which* row came back. If
+				// `trigger_3days` filed the job under the wrong `window_days`,
+				// `/v1/recaps/3days` would either stay 404 until the budget
+				// runs out or serve some other job's id — and the span check
+				// passed for either.
+				expect(
+					recap.job_id,
+					"GET /v1/recaps/3days must serve the job this test " +
+						"just triggered — the newest completed 3-day job " +
+						"is unambiguous in this serial, single-worker project",
+				).toBe(accepted.job_id);
 
-					// The genre the trigger asked for is the genre that came
-					// back. `normalize_genres` lowercases, and `recap_outputs`
-					// rows are keyed by genre name, so this is the end-to-end
-					// proof that the request reached persistence — not merely
-					// that *a* recap exists.
-					expect(recap.genres.map((g) => g.genre)).toContain(env.defaultGenre);
-				},
-				{
-					timeout: PIPELINE_BUDGET_MS,
-					message: `GET /v1/recaps/${drive.window} serves a completed ${drive.label} recap`,
-				},
-			);
+				// The genre the trigger asked for is the genre that came
+				// back. `normalize_genres` lowercases, and `recap_outputs`
+				// rows are keyed by genre name, so this is the end-to-end
+				// proof that the request reached persistence — not merely
+				// that *a* recap exists.
+				expect(recap.genres.map((g) => g.genre)).toContain(env.defaultGenre);
+			},
+			{
+				timeout: PIPELINE_BUDGET_MS,
+				message: "GET /v1/recaps/3days serves a completed 3-day recap",
+			},
+		);
 
-			// The completed row is written before the run lock is released
-			// (status update, then optional classification evaluation, then the
-			// permit drops at the end of `run_job`), so the read passing does
-			// not mean the next trigger will be accepted. Drain explicitly.
-			await waitForPipelineIdle(api, before + 1, PIPELINE_BUDGET_MS);
-		});
-	}
+		// The completed row is written before the run lock is released
+		// (status update, then optional classification evaluation, then the
+		// permit drops at the end of `run_job_locked`), so the read passing
+		// does not mean the next trigger will be accepted. Drain explicitly.
+		await waitForPipelineIdle(api, before + 1, PIPELINE_BUDGET_MS);
+	});
 
 	test("a trigger with no genres falls back to the configured defaults @slow @contract", async ({
 		api,
@@ -152,7 +143,7 @@ test.describe("the recap pipeline", () => {
 
 		// New coverage. `genres` is `Option<Vec<String>>` with
 		// `#[serde(default)]`, and an absent key takes the
-		// `state.config().recap_genres()` branch (api/generate.rs:60) rather
+		// `state.config().recap_genres()` branch (api/generate.rs:154) rather
 		// than the 400 that an all-empty *array* takes
 		// (tests/validation.spec.ts). Those two inputs look almost identical
 		// from a client and mean opposite things, so both branches need pinning
@@ -166,7 +157,7 @@ test.describe("the recap pipeline", () => {
 		const before = await readTotalJobs(api);
 
 		const accepted = await expectJsonStatus(
-			await api.post("/v1/generate/recaps/7days", { data: triggerBody() }),
+			await api.post("/v1/generate/recaps/3days", { data: triggerBody() }),
 			202,
 			triggerAcceptedSchema,
 		);

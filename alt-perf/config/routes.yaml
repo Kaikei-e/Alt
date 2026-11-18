@@ -106,10 +106,6 @@ routes:
       name: "Mobile Viewed"
       requiresAuth: true
 
-    - path: "/sv/mobile/recap/7days"
-      name: "Mobile 7-Day Recap"
-      requiresAuth: true
-
     - path: "/sv/mobile/retrieve/ask-augur"
       name: "Mobile Ask Augur"
       requiresAuth: true
