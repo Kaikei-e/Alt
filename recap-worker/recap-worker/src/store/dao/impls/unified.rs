@@ -60,6 +60,98 @@ impl UnifiedDao {
         crate::store::dao::cards::CardsDaoOps::insert_embeddings(&self.pool, model, dim, entries)
             .await
     }
+
+    #[allow(dead_code)]
+    pub async fn create_theme_run(
+        &self,
+        run_id: Uuid,
+        user_id: Uuid,
+        kicked_at: DateTime<Utc>,
+        params_version: &str,
+    ) -> Result<()> {
+        crate::store::dao::themes::ThemesDaoOps::create_run(
+            &self.pool,
+            run_id,
+            user_id,
+            kicked_at,
+            params_version,
+        )
+        .await
+    }
+
+    #[allow(dead_code)]
+    pub async fn finish_theme_run(
+        &self,
+        run_id: Uuid,
+        user_id: Uuid,
+        finish: &crate::store::dao::themes::ThemeRunFinish,
+    ) -> Result<()> {
+        crate::store::dao::themes::ThemesDaoOps::finish_run(&self.pool, run_id, user_id, finish)
+            .await
+    }
+
+    #[allow(dead_code)]
+    pub async fn latest_theme_versions_for_user(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Vec<crate::store::dao::themes::LatestThemeVersion>> {
+        crate::store::dao::themes::ThemesDaoOps::latest_versions_for_user(&self.pool, user_id).await
+    }
+
+    #[allow(dead_code)]
+    pub async fn insert_theme_version(
+        &self,
+        input: &crate::store::dao::themes::NewThemeVersion,
+    ) -> Result<()> {
+        crate::store::dao::themes::ThemesDaoOps::insert_theme_version(&self.pool, input).await
+    }
+
+    #[allow(dead_code)]
+    pub async fn get_theme_version(
+        &self,
+        user_id: Uuid,
+        theme_id: Uuid,
+        version: Option<i32>,
+    ) -> Result<Option<crate::store::dao::themes::ThemeVersionDetail>> {
+        crate::store::dao::themes::ThemesDaoOps::get_theme_version(
+            &self.pool, user_id, theme_id, version,
+        )
+        .await
+    }
+
+    #[allow(dead_code)]
+    pub async fn list_theme_versions(
+        &self,
+        user_id: Uuid,
+        theme_id: Uuid,
+    ) -> Result<Vec<crate::store::dao::themes::ThemeVersionSummary>> {
+        crate::store::dao::themes::ThemesDaoOps::list_theme_versions(&self.pool, user_id, theme_id)
+            .await
+    }
+
+    #[allow(dead_code)]
+    pub async fn unpublished_theme_versions(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Vec<crate::store::dao::themes::UnpublishedThemeVersion>> {
+        crate::store::dao::themes::ThemesDaoOps::unpublished_versions(&self.pool, user_id).await
+    }
+
+    #[allow(dead_code)]
+    pub async fn mark_theme_version_published(
+        &self,
+        user_id: Uuid,
+        version_id: Uuid,
+        published_at: DateTime<Utc>,
+    ) -> Result<()> {
+        crate::store::dao::themes::ThemesDaoOps::mark_published(
+            &self.pool,
+            user_id,
+            version_id,
+            published_at,
+        )
+        .await
+    }
 }
 
 // JobDao implementation

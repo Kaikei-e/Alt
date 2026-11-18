@@ -5,6 +5,7 @@ use std::collections::HashSet;
 use tracing::info;
 
 use super::normalize::NormalizedItem;
+pub use crate::pipeline::continuation::cosine_similarity;
 use crate::util::text::hash_text;
 
 /// Normalize title for deduplication: lowercase and whitespace-collapsed.
@@ -67,32 +68,6 @@ pub fn deduplicate(mut items: Vec<NormalizedItem>) -> (Vec<NormalizedItem>, usiz
     );
 
     (kept, duplicates_removed)
-}
-
-/// Compute cosine similarity between two vectors.
-pub fn cosine_similarity(a: &[f32], b: &[f32]) -> Result<f32> {
-    if a.is_empty() || b.is_empty() {
-        anyhow::bail!("cannot compute cosine similarity for empty vector");
-    }
-    if a.len() != b.len() {
-        anyhow::bail!(
-            "vector dimension mismatch in cosine similarity: {} vs {}",
-            a.len(),
-            b.len()
-        );
-    }
-    let mut dot = 0.0_f32;
-    let mut norm_a = 0.0_f32;
-    let mut norm_b = 0.0_f32;
-    for (x, y) in a.iter().zip(b.iter()) {
-        dot += x * y;
-        norm_a += x * x;
-        norm_b += y * y;
-    }
-    if norm_a <= 1e-9 || norm_b <= 1e-9 {
-        return Ok(0.0);
-    }
-    Ok((dot / (norm_a.sqrt() * norm_b.sqrt())).clamp(-1.0, 1.0))
 }
 
 /// Near-duplicate deduplication using embedding cosine similarity.

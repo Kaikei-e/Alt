@@ -16,7 +16,8 @@ use tracing::{debug, error, warn};
 use uuid::Uuid;
 
 use super::snapshot_id::deterministic_snapshot_id;
-use super::{KnowledgeSovereignClient, TopicSnapshottedInput};
+use super::{KnowledgeSovereignClient, ThemeVersionCreatedInput, TopicSnapshottedInput};
+use crate::store::dao::themes::UnpublishedThemeVersion;
 
 /// One cluster the persist stage has confirmed during a recap cycle. Held by
 /// reference so the helper can stay independent of the heavyweight
@@ -129,6 +130,62 @@ pub(crate) async fn publish_topic_snapshots(
                         "recap.topic_snapshotted.v1 emit failed (non-fatal)"
                     );
                 }
+                outcome.failed += 1;
+            }
+        }
+    }
+
+    outcome
+}
+
+/// Outcome of publishing pending theme versions, returning `version_id`s that succeeded.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[allow(dead_code)]
+pub(crate) struct ThemePublishOutcome {
+    pub(crate) succeeded_version_ids: Vec<Uuid>,
+    pub(crate) failed: usize,
+}
+
+#[allow(dead_code)]
+pub(crate) async fn publish_theme_versions(
+    client: &KnowledgeSovereignClient,
+    user_id: Uuid,
+    tenant_id: Uuid,
+    versions: &[UnpublishedThemeVersion],
+) -> ThemePublishOutcome {
+    let mut outcome = ThemePublishOutcome::default();
+    if user_id.is_nil() || tenant_id.is_nil() {
+        warn!(
+            user_id = %user_id,
+            tenant_id = %tenant_id,
+            "skipping reading.theme_version_created.v1 publish: user/tenant not resolved"
+        );
+        return outcome;
+    }
+
+    for v in versions {
+        let input = ThemeVersionCreatedInput {
+            user_id,
+            tenant_id,
+            theme_id: v.theme_id,
+            version: v.version,
+            title: v.title.clone(),
+            member_article_ids: v.member_article_ids.clone(),
+            created_at: v.created_at,
+        };
+        match client.emit_theme_version_created(&input).await {
+            Ok(()) => {
+                outcome.succeeded_version_ids.push(v.version_id);
+            }
+            Err(err) => {
+                warn!(
+                    user_id = %user_id,
+                    theme_id = %v.theme_id,
+                    version_id = %v.version_id,
+                    version = v.version,
+                    error = ?err,
+                    "reading.theme_version_created.v1 emit failed"
+                );
                 outcome.failed += 1;
             }
         }
@@ -420,5 +477,65 @@ mod tests {
         assert_eq!(snap_a, snap_b);
         // `server` drop verifies `.expect(2)`: both calls matched the pinned
         // dedupe_key, not just any POST.
+    }
+
+    #[tokio::test]
+    async fn publishes_theme_versions_and_records_succeeded_ids() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(
+                "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent",
+            ))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("Content-Type", "application/json")
+                    .set_body_string(r#"{"eventSeq":"1"}"#),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = KnowledgeSovereignClient::new_for_test(server.uri());
+        let version_id = Uuid::new_v4();
+        let versions = vec![UnpublishedThemeVersion {
+            version_id,
+            user_id: fixture_user(),
+            theme_id: Uuid::new_v4(),
+            version: 1,
+            title: "Theme A".to_string(),
+            member_article_ids: vec![Uuid::new_v4()],
+            created_at: Utc.with_ymd_and_hms(2026, 11, 18, 2, 0, 0).unwrap(),
+        }];
+
+        let outcome =
+            publish_theme_versions(&client, fixture_user(), fixture_tenant(), &versions).await;
+        assert_eq!(outcome.succeeded_version_ids, vec![version_id]);
+        assert_eq!(outcome.failed, 0);
+    }
+
+    #[tokio::test]
+    async fn theme_publish_warn_and_continues_on_failure() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(500))
+            .expect(2)
+            .mount(&server)
+            .await;
+
+        let client = KnowledgeSovereignClient::new_for_test(server.uri());
+        let v = UnpublishedThemeVersion {
+            version_id: Uuid::new_v4(),
+            user_id: fixture_user(),
+            theme_id: Uuid::new_v4(),
+            version: 1,
+            title: "Theme".to_string(),
+            member_article_ids: vec![Uuid::new_v4()],
+            created_at: Utc.with_ymd_and_hms(2026, 11, 18, 2, 0, 0).unwrap(),
+        };
+        let versions = vec![v.clone(), v];
+        let outcome =
+            publish_theme_versions(&client, fixture_user(), fixture_tenant(), &versions).await;
+        assert!(outcome.succeeded_version_ids.is_empty());
+        assert_eq!(outcome.failed, 2);
     }
 }

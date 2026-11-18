@@ -341,6 +341,77 @@ pub(crate) enum CardGenerateOutcome {
     Rejected(CardGenerate422Response),
 }
 
+// ============================================================================
+// Theme Generation Models
+// ============================================================================
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub(crate) struct ThemeGenerateItemInput {
+    pub(crate) n: usize,
+    pub(crate) title: String,
+    pub(crate) published_at: Option<String>,
+    pub(crate) text: String,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub(crate) struct ThemePreviousInput {
+    pub(crate) title: String,
+    pub(crate) key_points: Vec<String>,
+    pub(crate) open_questions: Vec<String>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub(crate) struct ThemeGenerateRequest {
+    pub(crate) job_id: Uuid,
+    pub(crate) theme_id: Uuid,
+    pub(crate) language: String,
+    pub(crate) items: Vec<ThemeGenerateItemInput>,
+    pub(crate) new_item_ns: Vec<usize>,
+    pub(crate) previous: Option<ThemePreviousInput>,
+    #[serde(default)]
+    pub(crate) failure_notes: Vec<String>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub(crate) struct ThemeSentenceOutput {
+    pub(crate) text: String,
+    pub(crate) refs: Vec<usize>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub(crate) struct ThemeTimelineOutput {
+    pub(crate) date: String,
+    pub(crate) text: String,
+    pub(crate) refs: Vec<usize>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub(crate) struct ThemeGenerateResponse {
+    pub(crate) title: String,
+    #[serde(default)]
+    pub(crate) key_points: Vec<ThemeSentenceOutput>,
+    #[serde(default)]
+    pub(crate) timeline: Vec<ThemeTimelineOutput>,
+    #[serde(default)]
+    pub(crate) what_changed: Vec<ThemeSentenceOutput>,
+    #[serde(default)]
+    pub(crate) open_questions: Vec<ThemeSentenceOutput>,
+    pub(crate) model: String,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+pub(crate) enum ThemeGenerateOutcome {
+    Success(ThemeGenerateResponse),
+    Rejected(CardGenerate422Response),
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

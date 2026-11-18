@@ -16,6 +16,7 @@ use uuid::Uuid;
 use super::dedup::cosine_similarity;
 use super::normalize::NormalizedItem;
 use crate::clients::subworker::cards::ClusterOutput;
+use crate::pipeline::continuation::match_ranked_continuations;
 use crate::store::dao::cards::{PreviousCardSummary, RecapCardCandidate};
 
 /// Compute cluster fingerprint: lowercase hex sha256 of sorted member feed ids joined by `","`.
@@ -162,13 +163,11 @@ fn determine_novelty_and_continuation(
         }));
     }
 
-    let mut matches: Vec<(&PreviousCardSummary, f32)> = Vec::new();
-    for prev in previous_cards {
-        let sim = cosine_similarity(centroid, &prev.centroid)?;
-        if sim >= theta_novelty {
-            matches.push((prev, sim));
-        }
-    }
+    let matches = match_ranked_continuations(
+        centroid,
+        previous_cards.iter().map(|c| (c.id, c.centroid.as_slice())),
+        theta_novelty,
+    )?;
 
     if matches.is_empty() {
         let story_id = Uuid::new_v5(&Uuid::NAMESPACE_OID, fingerprint.as_bytes());
@@ -187,20 +186,13 @@ fn determine_novelty_and_continuation(
             return Ok(None);
         }
 
-        matches.sort_by(|a, b| {
-            b.1.partial_cmp(&a.1)
-                .unwrap_or(std::cmp::Ordering::Equal)
-                .then_with(|| a.0.id.cmp(&b.0.id))
-        });
-
-        let nearest = matches[0].0;
+        let best = matches[0];
+        let nearest = previous_cards
+            .iter()
+            .find(|c| c.id == best.id)
+            .expect("matched id must exist in previous_cards");
         let merged = if matches.len() > 1 {
-            Some(
-                matches[1..]
-                    .iter()
-                    .map(|(c, _)| c.id)
-                    .collect::<Vec<Uuid>>(),
-            )
+            Some(matches[1..].iter().map(|m| m.id).collect::<Vec<Uuid>>())
         } else {
             None
         };

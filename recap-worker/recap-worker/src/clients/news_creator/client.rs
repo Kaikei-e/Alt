@@ -15,7 +15,7 @@ use super::models::{
     BatchSummaryRequest, BatchSummaryResponse, CardGenerate422Response, CardGenerateOutcome,
     CardGenerateRequest, CardGenerateResponse, GenreTieBreakRequest, GenreTieBreakResponse,
     MorningLetterGenerateRequest, MorningLetterGenerateResponse, SummaryRequest, SummaryResponse,
-    truncate_error_message,
+    ThemeGenerateOutcome, ThemeGenerateRequest, ThemeGenerateResponse, truncate_error_message,
 };
 
 /// Parse the `Retry-After` response header as delta-seconds (RFC 7231 §7.1.3
@@ -446,6 +446,81 @@ impl NewsCreatorClient {
         })
     }
 
+    #[allow(dead_code)]
+    pub(crate) async fn generate_theme(
+        &self,
+        request: &ThemeGenerateRequest,
+    ) -> Result<ThemeGenerateOutcome> {
+        validate_theme_generate_request(request)?;
+
+        let url = self.base_url.join("v1/themes/generate").map_err(|e| {
+            RecapError::Summary(format!("failed to build theme generation URL: {e}"))
+        })?;
+
+        debug!(
+            job_id = %request.job_id,
+            theme_id = %request.theme_id,
+            item_count = request.items.len(),
+            "sending theme generation request to news-creator"
+        );
+
+        let response = self
+            .client
+            .post(url)
+            .json(request)
+            .header("X-Job-ID", request.job_id.to_string())
+            .timeout(self.summary_timeout)
+            .send()
+            .await
+            .map_err(|e| RecapError::Summary(format!("theme generation request failed: {e}")))?;
+
+        let status = response.status();
+        if status == reqwest::StatusCode::OK {
+            let parsed: ThemeGenerateResponse = response.json().await.map_err(|e| {
+                RecapError::Summary(format!(
+                    "failed to deserialize theme generate response for theme {}: {e}",
+                    request.theme_id
+                ))
+            })?;
+            return Ok(ThemeGenerateOutcome::Success(parsed));
+        }
+
+        if status == reqwest::StatusCode::UNPROCESSABLE_ENTITY {
+            let is_domain_rejection = response
+                .headers()
+                .get("X-Card-Rejection")
+                .and_then(|v| v.to_str().ok())
+                == Some("1");
+
+            if is_domain_rejection {
+                let parsed: CardGenerate422Response = response.json().await.map_err(|e| {
+                    RecapError::Summary(format!(
+                        "failed to deserialize theme generate 422 response: {e}"
+                    ))
+                })?;
+                return Ok(ThemeGenerateOutcome::Rejected(parsed));
+            }
+
+            let body = response.text().await.unwrap_or_default();
+            return Err(RecapError::SummaryHttpStatus {
+                status: 422,
+                message: format!("theme generation request validation failed: {body}"),
+                retry_after_secs: None,
+            });
+        }
+
+        let retry_after_secs = parse_retry_after_secs(&response);
+        let body = response.text().await.unwrap_or_default();
+        let truncated_body = truncate_error_message(&body);
+        Err(RecapError::SummaryHttpStatus {
+            status: status.as_u16(),
+            message: format!(
+                "theme generation endpoint returned error status {status}: {truncated_body}"
+            ),
+            retry_after_secs,
+        })
+    }
+
     /// クラスタリングレスポンスから要約リクエストを構築する。
     ///
     /// # Arguments
@@ -514,6 +589,140 @@ impl NewsCreatorClient {
             ))
         })
     }
+}
+
+fn validate_theme_generate_request(request: &ThemeGenerateRequest) -> Result<()> {
+    let seen_ns = validate_theme_items(request)?;
+    for n in &request.new_item_ns {
+        if !seen_ns.contains(n) {
+            return Err(RecapError::Summary(format!(
+                "theme generation new_item_ns contains {n} which is not in items"
+            )));
+        }
+    }
+    validate_theme_previous_and_notes(request)
+}
+
+fn ensure_char_len(value: &str, max: usize, label: &str) -> Result<()> {
+    let chars = value.chars().count();
+    if !(1..=max).contains(&chars) {
+        return Err(RecapError::Summary(format!(
+            "{label} length {chars} must be in 1..={max} chars"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_theme_items(
+    request: &ThemeGenerateRequest,
+) -> Result<std::collections::HashSet<usize>> {
+    const MAX_THEME_ITEMS: usize = 8;
+    const MAX_TITLE_CHARS: usize = 120;
+    const MAX_ITEM_TEXT_CHARS: usize = 400;
+
+    if request.items.is_empty() || request.items.len() > MAX_THEME_ITEMS {
+        return Err(RecapError::Summary(format!(
+            "theme generation request items length must be between 1 and {MAX_THEME_ITEMS}, got {}",
+            request.items.len()
+        )));
+    }
+
+    let mut seen_ns = std::collections::HashSet::with_capacity(request.items.len());
+    for item in &request.items {
+        if item.n < 1 {
+            return Err(RecapError::Summary(format!(
+                "theme generation item n must be >= 1, got {}",
+                item.n
+            )));
+        }
+        if !seen_ns.insert(item.n) {
+            return Err(RecapError::Summary(format!(
+                "theme generation item n {} is duplicated",
+                item.n
+            )));
+        }
+        ensure_char_len(
+            &item.title,
+            MAX_TITLE_CHARS,
+            &format!("theme generation item {} title", item.n),
+        )?;
+        ensure_char_len(
+            &item.text,
+            MAX_ITEM_TEXT_CHARS,
+            &format!("theme generation item {} text", item.n),
+        )?;
+        if let Some(ref pub_date) = item.published_at {
+            if pub_date.len() != 10
+                || chrono::NaiveDate::parse_from_str(pub_date, "%Y-%m-%d").is_err()
+            {
+                return Err(RecapError::Summary(format!(
+                    "theme generation item {} published_at '{pub_date}' must be YYYY-MM-DD",
+                    item.n
+                )));
+            }
+        }
+    }
+
+    Ok(seen_ns)
+}
+
+fn validate_theme_previous_and_notes(request: &ThemeGenerateRequest) -> Result<()> {
+    const MAX_TITLE_CHARS: usize = 120;
+    const MAX_PREV_KEY_POINTS: usize = 7;
+    const MAX_PREV_OPEN_QUESTIONS: usize = 4;
+    const MAX_PREV_ENTRY_CHARS: usize = 200;
+    const MAX_FAILURE_NOTES: usize = 5;
+    const MAX_FAILURE_NOTE_CHARS: usize = 120;
+
+    if let Some(ref prev) = request.previous {
+        ensure_char_len(
+            &prev.title,
+            MAX_TITLE_CHARS,
+            "theme generation previous title",
+        )?;
+        if prev.key_points.len() > MAX_PREV_KEY_POINTS {
+            return Err(RecapError::Summary(format!(
+                "theme generation previous key_points count {} exceeds {MAX_PREV_KEY_POINTS}",
+                prev.key_points.len()
+            )));
+        }
+        for kp in &prev.key_points {
+            ensure_char_len(
+                kp,
+                MAX_PREV_ENTRY_CHARS,
+                "theme generation previous key_point",
+            )?;
+        }
+        if prev.open_questions.len() > MAX_PREV_OPEN_QUESTIONS {
+            return Err(RecapError::Summary(format!(
+                "theme generation previous open_questions count {} exceeds {MAX_PREV_OPEN_QUESTIONS}",
+                prev.open_questions.len()
+            )));
+        }
+        for oq in &prev.open_questions {
+            ensure_char_len(
+                oq,
+                MAX_PREV_ENTRY_CHARS,
+                "theme generation previous open_question",
+            )?;
+        }
+    }
+
+    if request.failure_notes.len() > MAX_FAILURE_NOTES {
+        return Err(RecapError::Summary(format!(
+            "theme generation failure_notes count {} exceeds {MAX_FAILURE_NOTES}",
+            request.failure_notes.len()
+        )));
+    }
+    for note in &request.failure_notes {
+        ensure_char_len(
+            note,
+            MAX_FAILURE_NOTE_CHARS,
+            "theme generation failure_note",
+        )?;
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -1157,5 +1366,308 @@ mod tests_batch {
             }
             other => panic!("expected RecapError::Summary, got {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn generate_theme_validates_bounds_before_sending() {
+        use super::super::models::{ThemeGenerateItemInput, ThemePreviousInput};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(500))
+            .expect(0)
+            .mount(&server)
+            .await;
+        let client = NewsCreatorClient::new_for_test(server.uri());
+
+        let base_item = |n: usize| ThemeGenerateItemInput {
+            n,
+            title: format!("Title {n}"),
+            published_at: None,
+            text: "text".to_string(),
+        };
+
+        let empty_req = ThemeGenerateRequest {
+            job_id: Uuid::new_v4(),
+            theme_id: Uuid::new_v4(),
+            language: "ja".to_string(),
+            items: vec![],
+            new_item_ns: vec![],
+            previous: None,
+            failure_notes: vec![],
+        };
+        assert!(
+            client
+                .generate_theme(&empty_req)
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("between 1 and 8")
+        );
+
+        let nine_items_req = ThemeGenerateRequest {
+            items: (1..=9).map(base_item).collect(),
+            new_item_ns: vec![1],
+            ..empty_req.clone()
+        };
+        assert!(
+            client
+                .generate_theme(&nine_items_req)
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("between 1 and 8")
+        );
+
+        let dup_n_req = ThemeGenerateRequest {
+            items: vec![base_item(1), base_item(1)],
+            new_item_ns: vec![1],
+            ..empty_req.clone()
+        };
+        assert!(
+            client
+                .generate_theme(&dup_n_req)
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("duplicated")
+        );
+
+        let long_title_req = ThemeGenerateRequest {
+            items: vec![ThemeGenerateItemInput {
+                n: 1,
+                title: "あ".repeat(121),
+                published_at: None,
+                text: "text".to_string(),
+            }],
+            new_item_ns: vec![1],
+            ..empty_req.clone()
+        };
+        assert!(
+            client
+                .generate_theme(&long_title_req)
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("1..=120")
+        );
+
+        let long_text_req = ThemeGenerateRequest {
+            items: vec![ThemeGenerateItemInput {
+                n: 1,
+                title: "Title".to_string(),
+                published_at: None,
+                text: "あ".repeat(401),
+            }],
+            new_item_ns: vec![1],
+            ..empty_req.clone()
+        };
+        assert!(
+            client
+                .generate_theme(&long_text_req)
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("1..=400")
+        );
+
+        let bad_date_req = ThemeGenerateRequest {
+            items: vec![ThemeGenerateItemInput {
+                n: 1,
+                title: "Title".to_string(),
+                published_at: Some("2026/11/18".to_string()),
+                text: "text".to_string(),
+            }],
+            new_item_ns: vec![1],
+            ..empty_req.clone()
+        };
+        assert!(
+            client
+                .generate_theme(&bad_date_req)
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("YYYY-MM-DD")
+        );
+
+        let bad_new_ns_req = ThemeGenerateRequest {
+            items: vec![base_item(1)],
+            new_item_ns: vec![2],
+            ..empty_req.clone()
+        };
+        assert!(
+            client
+                .generate_theme(&bad_new_ns_req)
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("new_item_ns")
+        );
+
+        let bad_prev_req = ThemeGenerateRequest {
+            items: vec![base_item(1)],
+            new_item_ns: vec![1],
+            previous: Some(ThemePreviousInput {
+                title: "Prev".to_string(),
+                key_points: vec!["kp".to_string(); 8],
+                open_questions: vec![],
+            }),
+            ..empty_req.clone()
+        };
+        assert!(
+            client
+                .generate_theme(&bad_prev_req)
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("key_points")
+        );
+
+        let bad_notes_req = ThemeGenerateRequest {
+            items: vec![base_item(1)],
+            new_item_ns: vec![1],
+            failure_notes: vec!["n".to_string(); 6],
+            ..empty_req
+        };
+        assert!(
+            client
+                .generate_theme(&bad_notes_req)
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("failure_notes")
+        );
+    }
+
+    #[tokio::test]
+    async fn generate_theme_serializes_null_previous_and_accepts_400_multibyte_chars() {
+        use super::super::models::ThemeGenerateItemInput;
+        use wiremock::matchers::body_json;
+
+        let server = MockServer::start().await;
+        let job_id = Uuid::new_v4();
+        let theme_id = Uuid::new_v4();
+        let text_400 = "あ".repeat(400);
+
+        let expected_req = serde_json::json!({
+            "job_id": job_id,
+            "theme_id": theme_id,
+            "language": "ja",
+            "items": [{
+                "n": 1,
+                "title": "Title",
+                "published_at": null,
+                "text": text_400,
+            }],
+            "new_item_ns": [1],
+            "previous": null,
+            "failure_notes": [],
+        });
+
+        Mock::given(method("POST"))
+            .and(path("/v1/themes/generate"))
+            .and(body_json(&expected_req))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "title": "Theme Title",
+                "key_points": [{"text": "Point", "refs": [1]}],
+                "timeline": [{"date": "2026-11-18", "text": "Event", "refs": [1]}],
+                "what_changed": [{"text": "Change", "refs": [1]}],
+                "open_questions": [{"text": "Question", "refs": [1]}],
+                "model": "gemma4"
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = NewsCreatorClient::new_for_test(server.uri());
+        let outcome = client
+            .generate_theme(&ThemeGenerateRequest {
+                job_id,
+                theme_id,
+                language: "ja".to_string(),
+                items: vec![ThemeGenerateItemInput {
+                    n: 1,
+                    title: "Title".to_string(),
+                    published_at: None,
+                    text: text_400,
+                }],
+                new_item_ns: vec![1],
+                previous: None,
+                failure_notes: vec![],
+            })
+            .await
+            .expect("400 chars request must succeed");
+
+        match outcome {
+            ThemeGenerateOutcome::Success(resp) => {
+                assert_eq!(resp.title, "Theme Title");
+                assert_eq!(resp.model, "gemma4");
+            }
+            ThemeGenerateOutcome::Rejected(r) => panic!("expected Success, got {r:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn generate_theme_maps_domain_rejection_422_and_retry_after_429() {
+        use super::super::models::ThemeGenerateItemInput;
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/themes/generate"))
+            .respond_with(
+                ResponseTemplate::new(422)
+                    .insert_header("X-Card-Rejection", "1")
+                    .set_body_json(serde_json::json!({
+                        "reason": "nothing_usable",
+                        "attempts": 2,
+                        "raw_text": "bad output",
+                        "detail": "no_key_points"
+                    })),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = NewsCreatorClient::new_for_test(server.uri());
+        let req = ThemeGenerateRequest {
+            job_id: Uuid::new_v4(),
+            theme_id: Uuid::new_v4(),
+            language: "ja".to_string(),
+            items: vec![ThemeGenerateItemInput {
+                n: 1,
+                title: "T".to_string(),
+                published_at: None,
+                text: "body".to_string(),
+            }],
+            new_item_ns: vec![1],
+            previous: None,
+            failure_notes: vec![],
+        };
+        let outcome = client
+            .generate_theme(&req)
+            .await
+            .expect("domain rejection must return Ok(Rejected)");
+        match outcome {
+            ThemeGenerateOutcome::Rejected(rej) => {
+                assert_eq!(rej.reason, "nothing_usable");
+                assert_eq!(rej.attempts, 2);
+                assert_eq!(rej.detail.as_deref(), Some("no_key_points"));
+            }
+            ThemeGenerateOutcome::Success(s) => panic!("expected Rejected, got {s:?}"),
+        }
+
+        let server_429 = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/themes/generate"))
+            .respond_with(ResponseTemplate::new(429).insert_header("Retry-After", "15"))
+            .mount(&server_429)
+            .await;
+
+        let client_429 = NewsCreatorClient::new_for_test(server_429.uri());
+        let err = client_429
+            .generate_theme(&req)
+            .await
+            .expect_err("429 must fail");
+        assert_eq!(err.retry_after(), Some(Duration::from_secs(15)));
     }
 }

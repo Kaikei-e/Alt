@@ -4,6 +4,7 @@
 //! from fetching through summarization and persistence.
 
 pub mod cards;
+pub mod continuation;
 pub mod dedup;
 pub(crate) mod dispatch;
 pub(crate) mod embedding;
