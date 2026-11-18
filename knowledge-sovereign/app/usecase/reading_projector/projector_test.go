@@ -3,6 +3,7 @@ package reading_projector
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -330,4 +331,143 @@ func TestReadingProjector_ReadingSourceMergeOrderIndependent(t *testing.T) {
 			assert.Equal(t, tc.wantVersion, src.ReadRuleVersion)
 		})
 	}
+}
+
+type recordedLog struct {
+	Level   slog.Level
+	Message string
+}
+
+type recordingLogHandler struct {
+	records []recordedLog
+}
+
+func (h *recordingLogHandler) Enabled(context.Context, slog.Level) bool { return true }
+func (h *recordingLogHandler) Handle(_ context.Context, r slog.Record) error {
+	h.records = append(h.records, recordedLog{Level: r.Level, Message: r.Message})
+	return nil
+}
+func (h *recordingLogHandler) WithAttrs(_ []slog.Attr) slog.Handler { return h }
+func (h *recordingLogHandler) WithGroup(_ string) slog.Handler      { return h }
+
+func (h *recordingLogHandler) count(msg string) int {
+	n := 0
+	for _, r := range h.records {
+		if r.Message == msg {
+			n++
+		}
+	}
+	return n
+}
+
+func (h *recordingLogHandler) find(msg string) (recordedLog, bool) {
+	for _, r := range h.records {
+		if r.Message == msg {
+			return r, true
+		}
+	}
+	return recordedLog{}, false
+}
+
+func noopEvents(t *testing.T, count int) []sovereign_db.KnowledgeEvent {
+	t.Helper()
+	t0 := time.Date(2026, 11, 18, 8, 0, 0, 0, time.UTC)
+	tenantID := uuid.New()
+	userID := uuid.New()
+	events := make([]sovereign_db.KnowledgeEvent, count)
+	for i := range count {
+		u := userID
+		events[i] = sovereign_db.KnowledgeEvent{
+			EventID:     uuid.New(),
+			EventSeq:    int64(i + 1),
+			OccurredAt:  t0,
+			TenantID:    tenantID,
+			UserID:      &u,
+			EventType:   "ArticleCreated",
+			AggregateID: "article:noop",
+			Payload:     json.RawMessage(`{}`),
+		}
+	}
+	return events
+}
+
+func TestReadingProjector_BacklogDrainsAndLogsCatchupLifecycle(t *testing.T) {
+	t.Run("drains multi-batch backlog up to configured limit and logs catchup once", func(t *testing.T) {
+		events := noopEvents(t, 32)
+		repo := newFakeReadingRepo(events)
+		logs := &recordingLogHandler{}
+		p := NewProjector(repo, slog.New(logs), Config{BatchSize: 5, MaxBatchesPerTick: 3})
+
+		// Tick 1: drains 15 events (3 batches of 5) -> behind by more than 1 full tick
+		require.NoError(t, p.RunBatch(context.Background()))
+		assert.Equal(t, int64(15), repo.checkpoint.LastEventSeq)
+		assert.Equal(t, 1, logs.count("reading_projector.catchup_started"))
+		assert.Equal(t, 0, logs.count("reading_projector.catchup_completed"))
+		rec, ok := logs.find("reading_projector.catchup_started")
+		require.True(t, ok)
+		assert.Equal(t, slog.LevelInfo, rec.Level)
+
+		// Tick 2: drains next 15 events (seq 16..30) -> still behind, no duplicate catchup_started
+		require.NoError(t, p.RunBatch(context.Background()))
+		assert.Equal(t, int64(30), repo.checkpoint.LastEventSeq)
+		assert.Equal(t, 1, logs.count("reading_projector.catchup_started"))
+		assert.Equal(t, 0, logs.count("reading_projector.catchup_completed"))
+
+		// Tick 3: drains final 2 events (short batch) -> caught up logged once at Info
+		require.NoError(t, p.RunBatch(context.Background()))
+		assert.Equal(t, int64(32), repo.checkpoint.LastEventSeq)
+		assert.Equal(t, 1, logs.count("reading_projector.catchup_started"))
+		assert.Equal(t, 1, logs.count("reading_projector.catchup_completed"))
+		doneRec, ok := logs.find("reading_projector.catchup_completed")
+		require.True(t, ok)
+		assert.Equal(t, slog.LevelInfo, doneRec.Level)
+
+		// Tick 4: steady-state empty poll -> no extra catchup logs
+		require.NoError(t, p.RunBatch(context.Background()))
+		assert.Equal(t, 1, logs.count("reading_projector.catchup_started"))
+		assert.Equal(t, 1, logs.count("reading_projector.catchup_completed"))
+	})
+
+	t.Run("exact batch multiple catches up on subsequent empty read", func(t *testing.T) {
+		events := noopEvents(t, 15)
+		repo := newFakeReadingRepo(events)
+		logs := &recordingLogHandler{}
+		p := NewProjector(repo, slog.New(logs), Config{BatchSize: 5, MaxBatchesPerTick: 2})
+
+		require.NoError(t, p.RunBatch(context.Background()))
+		assert.Equal(t, int64(10), repo.checkpoint.LastEventSeq)
+		assert.Equal(t, 1, logs.count("reading_projector.catchup_started"))
+		assert.Equal(t, 0, logs.count("reading_projector.catchup_completed"))
+
+		require.NoError(t, p.RunBatch(context.Background()))
+		assert.Equal(t, int64(15), repo.checkpoint.LastEventSeq)
+		assert.Equal(t, 1, logs.count("reading_projector.catchup_completed"))
+	})
+
+	t.Run("small steady-state multi-batch under one full tick does not emit catchup logs", func(t *testing.T) {
+		events := noopEvents(t, 7)
+		repo := newFakeReadingRepo(events)
+		logs := &recordingLogHandler{}
+		p := NewProjector(repo, slog.New(logs), Config{BatchSize: 5, MaxBatchesPerTick: 3})
+
+		require.NoError(t, p.RunBatch(context.Background()))
+		assert.Equal(t, int64(7), repo.checkpoint.LastEventSeq)
+		assert.Empty(t, logs.records)
+	})
+
+	t.Run("default config drains 20000 events in one RunBatch call", func(t *testing.T) {
+		events := noopEvents(t, 20500)
+		repo := newFakeReadingRepo(events)
+		logs := &recordingLogHandler{}
+		p := NewProjector(repo, slog.New(logs), Config{})
+
+		require.NoError(t, p.RunBatch(context.Background()))
+		assert.Equal(t, int64(20000), repo.checkpoint.LastEventSeq)
+		assert.Equal(t, 1, logs.count("reading_projector.catchup_started"))
+		assert.Equal(t, 0, logs.count("reading_projector.catchup_completed"))
+
+		require.NoError(t, p.RunBatch(context.Background()))
+		assert.Equal(t, int64(20500), repo.checkpoint.LastEventSeq)
+		assert.Equal(t, 1, logs.count("reading_projector.catchup_completed"))
+	})
 }

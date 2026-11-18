@@ -74,6 +74,40 @@ func (f *fakeOgImagePort) GetOgImageURLsByArticleIDs(_ context.Context, _ []stri
 	return f.urls, nil
 }
 
+type fakeArticleLookupPort struct {
+	sources map[string]domain.ArticleSource
+	err     error
+}
+
+func (f *fakeArticleLookupPort) LookupArticleSource(_ context.Context, articleID string, _ uuid.UUID) (domain.ArticleSource, error) {
+	if f.err != nil {
+		return domain.ArticleSource{}, f.err
+	}
+	if f.sources == nil {
+		return domain.ArticleSource{}, nil
+	}
+	return f.sources[articleID], nil
+}
+
+func TestNewQueueArticleUsecase_PanicsOnNilDeps(t *testing.T) {
+	fixedNow := func() time.Time { return time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC) }
+	require.Panics(t, func() {
+		NewQueueArticleUsecase(nil, &fakeAppendPort{}, &fakeArticleLookupPort{}, &fakeArticleBatchPort{}, &fakeOgImagePort{}, 7, 48, fixedNow)
+	})
+	require.Panics(t, func() {
+		NewQueueArticleUsecase(&fakeQueuePort{}, nil, &fakeArticleLookupPort{}, &fakeArticleBatchPort{}, &fakeOgImagePort{}, 7, 48, fixedNow)
+	})
+	require.Panics(t, func() {
+		NewQueueArticleUsecase(&fakeQueuePort{}, &fakeAppendPort{}, nil, &fakeArticleBatchPort{}, &fakeOgImagePort{}, 7, 48, fixedNow)
+	})
+	require.Panics(t, func() {
+		NewQueueArticleUsecase(&fakeQueuePort{}, &fakeAppendPort{}, &fakeArticleLookupPort{}, nil, &fakeOgImagePort{}, 7, 48, fixedNow)
+	})
+	require.Panics(t, func() {
+		NewQueueArticleUsecase(&fakeQueuePort{}, &fakeAppendPort{}, &fakeArticleLookupPort{}, &fakeArticleBatchPort{}, nil, 7, 48, fixedNow)
+	})
+}
+
 func TestQueueArticleUsecase_OutcomesAndPayload(t *testing.T) {
 	now := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
 	fixedNow := func() time.Time { return now }
@@ -85,6 +119,11 @@ func TestQueueArticleUsecase_OutcomesAndPayload(t *testing.T) {
 	t.Run("queues new article with fixed expires_at and policy metadata", func(t *testing.T) {
 		qp := &fakeQueuePort{}
 		ap := &fakeAppendPort{seq: 1}
+		lk := &fakeArticleLookupPort{
+			sources: map[string]domain.ArticleSource{
+				art1.String(): {Title: "First Article", URL: "https://www.example.com/posts/1"},
+			},
+		}
 		ab := &fakeArticleBatchPort{
 			articles: []*domain.Article{{
 				ID:    art1,
@@ -95,7 +134,7 @@ func TestQueueArticleUsecase_OutcomesAndPayload(t *testing.T) {
 		og := &fakeOgImagePort{
 			urls: map[string]string{art1.String(): "https://cdn.example.com/1.png"},
 		}
-		uc := NewQueueArticleUsecase(qp, ap, ab, og, 7, 48, fixedNow)
+		uc := NewQueueArticleUsecase(qp, ap, lk, ab, og, 7, 48, fixedNow)
 
 		clientEventID := "01960000-0000-7000-8000-000000000001"
 		res, err := uc.Execute(context.Background(), userID, tenantID, art1.String(), clientEventID, now, domain.ReadingSurfaceSwipe)
@@ -138,9 +177,14 @@ func TestQueueArticleUsecase_OutcomesAndPayload(t *testing.T) {
 			}},
 		}
 		ap := &fakeAppendPort{seq: 1}
+		lk := &fakeArticleLookupPort{
+			sources: map[string]domain.ArticleSource{
+				art1.String(): {Title: "A", URL: "https://a.test/1"},
+			},
+		}
 		ab := &fakeArticleBatchPort{articles: []*domain.Article{{ID: art1, Title: "A", URL: "https://a.test/1"}}}
 		og := &fakeOgImagePort{}
-		uc := NewQueueArticleUsecase(qp, ap, ab, og, 7, 48, fixedNow)
+		uc := NewQueueArticleUsecase(qp, ap, lk, ab, og, 7, 48, fixedNow)
 
 		res, err := uc.Execute(context.Background(), userID, tenantID, art1.String(), "01960000-0000-7000-8000-000000000002", now, domain.ReadingSurfaceSwipe)
 		require.NoError(t, err)
@@ -159,9 +203,14 @@ func TestQueueArticleUsecase_OutcomesAndPayload(t *testing.T) {
 			}},
 		}
 		ap := &fakeAppendPort{seq: 1}
+		lk := &fakeArticleLookupPort{
+			sources: map[string]domain.ArticleSource{
+				art2.String(): {Title: "Second", URL: "https://a.test/2"},
+			},
+		}
 		ab := &fakeArticleBatchPort{articles: []*domain.Article{{ID: art1, Title: "Existing", URL: "https://a.test/1"}}}
 		og := &fakeOgImagePort{}
-		uc := NewQueueArticleUsecase(qp, ap, ab, og, 1, 48, fixedNow)
+		uc := NewQueueArticleUsecase(qp, ap, lk, ab, og, 1, 48, fixedNow)
 
 		res, err := uc.Execute(context.Background(), userID, tenantID, art2.String(), "01960000-0000-7000-8000-000000000003", now, domain.ReadingSurfaceSwipe)
 		require.NoError(t, err)
@@ -170,6 +219,50 @@ func TestQueueArticleUsecase_OutcomesAndPayload(t *testing.T) {
 		assert.Empty(t, ap.events)
 		require.Len(t, res.Items, 1)
 		assert.Equal(t, art1, res.Items[0].ArticleID)
+	})
+
+	t.Run("rejects unknown or foreign article without appending or reading queue", func(t *testing.T) {
+		qp := &fakeQueuePort{err: errors.New("should not be called")}
+		ap := &fakeAppendPort{seq: 1}
+		lk := &fakeArticleLookupPort{sources: map[string]domain.ArticleSource{}}
+		ab := &fakeArticleBatchPort{}
+		og := &fakeOgImagePort{}
+		uc := NewQueueArticleUsecase(qp, ap, lk, ab, og, 7, 48, fixedNow)
+
+		_, err := uc.Execute(context.Background(), userID, tenantID, art2.String(), "01960000-0000-7000-8000-000000000004", now, domain.ReadingSurfaceSwipe)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrInvalidInput)
+		assert.Empty(t, ap.events)
+	})
+
+	t.Run("rejects ErrArticleNotFound with ErrInvalidInput without appending", func(t *testing.T) {
+		qp := &fakeQueuePort{}
+		ap := &fakeAppendPort{seq: 1}
+		lk := &fakeArticleLookupPort{err: domain.ErrArticleNotFound}
+		ab := &fakeArticleBatchPort{}
+		og := &fakeOgImagePort{}
+		uc := NewQueueArticleUsecase(qp, ap, lk, ab, og, 7, 48, fixedNow)
+
+		_, err := uc.Execute(context.Background(), userID, tenantID, art2.String(), "01960000-0000-7000-8000-000000000005", now, domain.ReadingSurfaceSwipe)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, ErrInvalidInput)
+		assert.Empty(t, ap.events)
+	})
+
+	t.Run("propagates transient lookup error without ErrInvalidInput and without appending", func(t *testing.T) {
+		qp := &fakeQueuePort{}
+		ap := &fakeAppendPort{seq: 1}
+		lookupErr := errors.New("datahub unavailable")
+		lk := &fakeArticleLookupPort{err: lookupErr}
+		ab := &fakeArticleBatchPort{}
+		og := &fakeOgImagePort{}
+		uc := NewQueueArticleUsecase(qp, ap, lk, ab, og, 7, 48, fixedNow)
+
+		_, err := uc.Execute(context.Background(), userID, tenantID, art2.String(), "01960000-0000-7000-8000-000000000006", now, domain.ReadingSurfaceSwipe)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, lookupErr)
+		assert.NotErrorIs(t, err, ErrInvalidInput)
+		assert.Empty(t, ap.events)
 	})
 }
 

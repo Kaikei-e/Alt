@@ -374,12 +374,14 @@ services:
       # The binary refuses an unset mode. Staging runs no step-ca and gives
       # sovereign no outbound mTLS peer, so it mints nothing.
       - PKI_ENROLLMENT=disabled
-      # Tighten projector tick cadence (production default 5s) and keep Trail/Home batch caps smaller for bounded E2E fixtures.
+      # Tighten projector tick cadence (production default 5s) and keep Trail/Home/Reading batch caps smaller for bounded E2E fixtures.
       - KNOWLEDGE_SOVEREIGN_PROJECTOR_TICK_INTERVAL=2s
       - KNOWLEDGE_SOVEREIGN_TRAIL_PROJECTOR_BATCH_SIZE=200
       - KNOWLEDGE_SOVEREIGN_TRAIL_PROJECTOR_MAX_BATCHES_PER_TICK=2
       - KNOWLEDGE_SOVEREIGN_HOME_PROJECTOR_BATCH_SIZE=200
       - KNOWLEDGE_SOVEREIGN_HOME_PROJECTOR_MAX_BATCHES_PER_TICK=2
+      - KNOWLEDGE_SOVEREIGN_READING_PROJECTOR_BATCH_SIZE=200
+      - KNOWLEDGE_SOVEREIGN_READING_PROJECTOR_MAX_BATCHES_PER_TICK=2
     ports:
       - "127.0.0.1:19510:9500"
       - "127.0.0.1:19511:9501"

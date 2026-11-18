@@ -131,7 +131,7 @@ func testDeps() (*di.ApplicationComponents, *config.Config, *slog.Logger) {
 		readingPorts,
 		fixedNow,
 	)
-	queueUsecase := reading_queue_usecase.NewQueueArticleUsecase(readingPorts, readingPorts, readingPorts, readingPorts, 7, 48, fixedNow)
+	queueUsecase := reading_queue_usecase.NewQueueArticleUsecase(readingPorts, readingPorts, readingPorts, readingPorts, readingPorts, 7, 48, fixedNow)
 	unqueueUsecase := reading_queue_usecase.NewUnqueueArticleUsecase(readingPorts, fixedNow)
 	getQueueUsecase := reading_queue_usecase.NewGetReadTodayQueueUsecase(readingPorts, readingPorts, readingPorts, readingPorts, 7, fixedNow)
 

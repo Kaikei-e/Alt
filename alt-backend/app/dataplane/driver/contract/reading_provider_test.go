@@ -129,6 +129,7 @@ func mountReadingServiceProcedures(mux *http.ServeMux) {
 		readingStubState,
 		readingStubState,
 		readingStubState,
+		readingStubState,
 		7,
 		48,
 		fixedNow,

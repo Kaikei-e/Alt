@@ -96,6 +96,9 @@ func (h *Handler) RecordReadingEvents(
 		if errors.Is(err, record_reading_events_usecase.ErrInvalidInput) {
 			return nil, connect.NewError(connect.CodeInvalidArgument, err)
 		}
+		if errors.Is(err, record_reading_events_usecase.ErrReadSyncUnavailable) {
+			return nil, errorhandler.HandleConnectError(ctx, h.logger, err, connect.CodeUnavailable, "RecordReadingEvents")
+		}
 		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "RecordReadingEvents")
 	}
 
