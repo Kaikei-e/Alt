@@ -19,6 +19,7 @@ import (
 	"alt/di"
 	"alt/domain"
 	"alt/gen/proto/services/datahub/v1/datahubv1connect"
+	"alt/orchestrator/usecase/record_reading_events_usecase"
 	"alt/orchestrator/usecase/resolve_article_usecase"
 	"alt/orchestrator/usecase/search_feed_usecase"
 	"alt/shared/gateway/datahub_gateway"
@@ -62,6 +63,7 @@ var publicServicePaths = []string{
 	"/alt.knowledge_home.v1.KnowledgeHomeService/GetKnowledgeHome",
 	"/alt.knowledge_trail.v1.KnowledgeTrailService/GetTrail",
 	"/alt.push.v1.PushService/GetPushConfig",
+	"/alt.reading.v1.ReadingService/RecordReadingEvents",
 	"/alt.search.v2.GlobalSearchService/SearchEverything",
 }
 
@@ -77,6 +79,12 @@ var publicServicePaths = []string{
 // wired to a client pointed at an address nothing resolves, which is enough for
 // routing assertions and would fail loudly if one of these tests ever made a
 // call.
+type fakeAppendKnowledgeEventPort struct{}
+
+func (fakeAppendKnowledgeEventPort) AppendKnowledgeEvent(context.Context, domain.KnowledgeEvent) (int64, error) {
+	return 1, nil
+}
+
 func testDeps() (*di.ApplicationComponents, *config.Config, *slog.Logger) {
 	pushGateway := datahub_gateway.NewPushSubscriptionGateway(
 		datahubv1connect.NewDataHubServiceClient(http.DefaultClient, "http://datahub.invalid"))
@@ -92,11 +100,17 @@ func testDeps() (*di.ApplicationComponents, *config.Config, *slog.Logger) {
 		panic(err)
 	}
 
+	readingUsecase := record_reading_events_usecase.NewRecordReadingEventsUsecase(
+		fakeAppendKnowledgeEventPort{},
+		func() time.Time { return time.Date(2026, 11, 18, 0, 5, 0, 0, time.UTC) },
+	)
+
 	return &di.ApplicationComponents{
-			Infra:                 &di.InfraModule{PushSubscriptionGateway: pushGateway},
-			ResolveArticleUsecase: resolve_article_usecase.New(nil, nil), // satisfies the feeds handler fail-loud wiring check
-			Search:                &di.SearchModule{},
-			UserQuotaLimiter:      limiter,
+			Infra:                      &di.InfraModule{PushSubscriptionGateway: pushGateway},
+			ResolveArticleUsecase:      resolve_article_usecase.New(nil, nil), // satisfies the feeds handler fail-loud wiring check
+			RecordReadingEventsUsecase: readingUsecase,
+			Search:                     &di.SearchModule{},
+			UserQuotaLimiter:           limiter,
 		},
 		cfg,
 		slog.New(slog.NewTextHandler(io_Discard{}, nil))

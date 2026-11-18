@@ -74,6 +74,7 @@ func TestComponentStructs_OmitWhatTheirBinaryDoesNotBuild(t *testing.T) {
 			present: []string{
 				"SovereignClient", "AdminMonitor", "RecallRailUsecase",
 				"CreateSummaryVersionUsecase", "ImageProxyUsecase", "CSRFTokenUsecase",
+				"RecordReadingEventsUsecase",
 			},
 		},
 		{
@@ -91,6 +92,7 @@ func TestComponentStructs_OmitWhatTheirBinaryDoesNotBuild(t *testing.T) {
 				// condition, and the absence is asserted rather than merely
 				// achieved — a job that reaches for a pool must not compile.
 				"AltDBRepository",
+				"RecordReadingEventsUsecase",
 			},
 			present: []string{
 				"ScrapingDomainUsecase", "RagIntegration",
@@ -106,6 +108,7 @@ func TestComponentStructs_OmitWhatTheirBinaryDoesNotBuild(t *testing.T) {
 				"SearchIndexerDriver", "MQHubClient", "EventPublisher",
 				"KratosClient", "CSRFTokenUsecase", "AdminMonitor",
 				"ArticleCatalogGateway", "FeedCatalogGateway", "TagCatalogGateway",
+				"RecordReadingEventsUsecase",
 			},
 			present: []string{
 				"Dispatch",

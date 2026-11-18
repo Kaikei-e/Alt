@@ -36,6 +36,7 @@ vi.mock("$app/navigation", () => ({
 }));
 vi.mock("#lib/api/client/knowledge_home.js", { spy: true });
 vi.mock("#lib/connect/knowledge_trail.js", { spy: true });
+vi.mock("#lib/connect/reading.js", { spy: true });
 vi.mock("#lib/connect/transport-client.js", { spy: true });
 
 import { trackHomeActionClient } from "#lib/api/client/knowledge_home.js";
@@ -44,7 +45,12 @@ import {
 	getItemBranches,
 	resolveBranch,
 } from "#lib/connect/knowledge_trail.js";
+import { recordReadingEvents } from "#lib/connect/reading.js";
 import { createClientTransport } from "#lib/connect/transport-client.js";
+import {
+	flushReadingEvents,
+	ReadingSurface,
+} from "#lib/reading/instrumentation.js";
 
 const mockGetFeedContent = vi.fn();
 const mockGetArticleSourceURL = vi
@@ -61,8 +67,13 @@ const mockTrackHomeActionClient = vi.mocked(trackHomeActionClient);
 const mockGetItemBranches = vi.mocked(getItemBranches);
 const mockResolveBranch = vi.mocked(resolveBranch);
 const mockEmitTrailOutcome = vi.mocked(emitTrailOutcome);
+const mockRecordReadingEvents = vi.mocked(recordReadingEvents);
 
-beforeEach(() => {
+beforeEach(async () => {
+	mockRecordReadingEvents.mockResolvedValue({ accepted: 0, duplicates: 0 });
+	await flushReadingEvents();
+	mockRecordReadingEvents.mockClear();
+	mockRecordReadingEvents.mockResolvedValue({ accepted: 1, duplicates: 0 });
 	mockTrackHomeActionClient.mockResolvedValue(undefined);
 	mockGetItemBranches.mockResolvedValue([]);
 	mockResolveBranch.mockResolvedValue(undefined);
@@ -717,5 +728,74 @@ describe("Article page branch walk and open tracking", () => {
 		await expect
 			.element(testPage.getByText("Stale branch from article:art-a"))
 			.not.toBeInTheDocument();
+	});
+});
+
+describe("Article page reading session recording", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mockRecordReadingEvents.mockResolvedValue({ accepted: 1, duplicates: 0 });
+		vi.mocked(goto).mockImplementation(async () => {});
+		summarizerOverride = {};
+		currentArticleId = "art-read-page";
+		currentPageURL = new URL(
+			"http://localhost/articles/art-read-page?url=https%3A%2F%2Fexample.com%2Fread-page&title=Read+Page",
+		);
+	});
+
+	it("enqueues surface_viewed and records session_ended with route param articleId on unmount", async () => {
+		mockGetFeedContent.mockResolvedValueOnce({
+			content: "<p>Standalone article page body text.</p>",
+			article_id: "different-fetched-id",
+		});
+
+		const { unmount } = renderPage();
+
+		await expect
+			.element(testPage.getByText("Standalone article page body text."))
+			.toBeInTheDocument();
+
+		expect(mockRecordReadingEvents).not.toHaveBeenCalled();
+
+		unmount();
+
+		await vi.waitFor(() =>
+			expect(mockRecordReadingEvents).toHaveBeenCalledTimes(1),
+		);
+		const events = mockRecordReadingEvents.mock.calls[0]?.[1] ?? [];
+		expect(events.map((e) => e.event?.case)).toContain("surfaceViewed");
+		expect(events.map((e) => e.event?.case)).toContain("sessionEnded");
+		const surfaceViewed = events.find((e) => e.event?.case === "surfaceViewed")
+			?.event?.value;
+		expect(surfaceViewed).toEqual(
+			expect.objectContaining({ surface: ReadingSurface.ARTICLE_PAGE }),
+		);
+		const sessionEnded = events.find((e) => e.event?.case === "sessionEnded")
+			?.event?.value;
+		expect(sessionEnded).toMatchObject({
+			articleId: "art-read-page",
+			surface: ReadingSurface.ARTICLE_PAGE,
+		});
+		expect(
+			(sessionEnded as { bodyLengthChars?: number })?.bodyLengthChars ?? 0,
+		).toBeGreaterThan(0);
+	});
+
+	it("records surface_viewed without session_ended when content fetch fails", async () => {
+		mockGetFeedContent.mockRejectedValueOnce(connectError(Code.Unavailable));
+
+		const { unmount } = renderPage();
+
+		await expect
+			.element(testPage.getByTestId("article-content-failed"))
+			.toBeInTheDocument();
+
+		unmount();
+		await flushReadingEvents();
+
+		const events = mockRecordReadingEvents.mock.calls.flatMap(
+			(call) => call[1] ?? [],
+		);
+		expect(events.map((e) => e.event?.case)).toEqual(["surfaceViewed"]);
 	});
 });

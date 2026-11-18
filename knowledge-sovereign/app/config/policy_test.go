@@ -273,6 +273,38 @@ func TestProductionPolicy_RecapWorkerMayAppendEveningPulseGenerated(t *testing.T
 	require.True(t, recapFound, "recap-worker service entry must exist in production policy")
 }
 
+func TestProductionPolicy_AltBackendMayAppendReadingEvents(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "config", "event-auth-policy.json"))
+	require.NoError(t, err)
+
+	var pol AuthPolicy
+	require.NoError(t, json.Unmarshal(data, &pol))
+
+	readingEvents := []string{
+		"reading.surface_viewed.v1",
+		"reading.reached_end.v1",
+		"reading.session_ended.v1",
+	}
+
+	var backendFound bool
+	for _, svc := range pol.Services {
+		if svc.Name == "alt-backend" {
+			backendFound = true
+			assert.True(t, svc.RequireUserToken, "alt-backend must require a user token")
+			assert.False(t, svc.AllowSystemScope, "alt-backend must not allow system scope")
+			for _, ev := range readingEvents {
+				assert.Contains(t, svc.RawAllowedEvents, ev)
+			}
+		} else {
+			for _, ev := range readingEvents {
+				assert.NotContains(t, svc.RawAllowedEvents, ev,
+					"service %s must not be allowed to append %s", svc.Name, ev)
+			}
+		}
+	}
+	require.True(t, backendFound, "alt-backend service entry must exist in production policy")
+}
+
 func replaceSecretPath(content, oldPath, newPath string) string {
 	return strings.ReplaceAll(content, oldPath, newPath)
 }

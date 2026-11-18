@@ -87,6 +87,20 @@ vi.mock("#lib/connect/index.js", () => ({
 	),
 }));
 
+const mockRecordReadingEvents = vi.fn();
+vi.mock("#lib/connect/reading.js", async (importOriginal) => {
+	const actual =
+		await importOriginal<typeof import("#lib/connect/reading.js")>();
+	return {
+		...actual,
+		recordReadingEvents: (...args: unknown[]) =>
+			mockRecordReadingEvents(...args),
+		createKeepaliveTransport: vi.fn(() => ({})),
+	};
+});
+
+import { ReadingSurface } from "#lib/connect/reading.js";
+import { flushReadingEvents } from "#lib/reading/instrumentation.js";
 import FeedDetailModal from "./FeedDetailModal.svelte";
 
 const FEED: RenderFeed = {
@@ -113,15 +127,18 @@ const connectError = (
 		headers,
 	);
 
-function renderModal() {
+function renderModal(readingSurface: ReadingSurface = ReadingSurface.GALLERY) {
 	return render(FeedDetailModal, {
-		props: { open: true, feed: FEED, onOpenChange: () => {} },
+		props: { open: true, feed: FEED, onOpenChange: () => {}, readingSurface },
 	});
 }
 
 describe("FeedDetailModal content states", () => {
-	beforeEach(() => {
+	beforeEach(async () => {
+		mockRecordReadingEvents.mockResolvedValue({ accepted: 0, duplicates: 0 });
+		await flushReadingEvents();
 		vi.clearAllMocks();
+		mockRecordReadingEvents.mockResolvedValue({ accepted: 1, duplicates: 0 });
 		mockSpeechPlay.mockReset();
 		mockSpeechStop.mockReset();
 		speechState.value = "idle";
@@ -408,6 +425,7 @@ describe("FeedDetailModal content states", () => {
 					open: true,
 					feed: { ...FEED, articleId: "art-home-open" },
 					onOpenChange: () => {},
+					readingSurface: ReadingSurface.OTHER,
 					trackOpen: false,
 				},
 			});
@@ -461,6 +479,7 @@ describe("FeedDetailModal content states", () => {
 					open: true,
 					feed: { ...FEED, articleId: "art-home-1" },
 					onOpenChange: () => {},
+					readingSurface: ReadingSurface.OTHER,
 					trackOpen: false,
 					showHomeReaderLinks: true,
 				},
@@ -503,6 +522,7 @@ describe("FeedDetailModal content states", () => {
 					normalizedUrl: "https://example.com/test-article-2",
 				},
 				onOpenChange: () => {},
+				readingSurface: ReadingSurface.OTHER,
 				trackOpen: false,
 				showHomeReaderLinks: true,
 			});
@@ -516,6 +536,307 @@ describe("FeedDetailModal content states", () => {
 				"article:art/home 2?x=1",
 				2,
 			);
+		});
+	});
+
+	describe("reading session recording", () => {
+		it("starts a session when body and article id are present, records reached_end, and flushes session_ended on close", async () => {
+			const longBody = Array.from(
+				{ length: 24 },
+				(_, i) =>
+					`<p>Paragraph ${i + 1} with substantial prose for scrolling inside the modal body container.</p>`,
+			).join("");
+			mockGetFeedContent.mockResolvedValue({
+				content: longBody,
+				article_id: "art-read-1",
+			});
+
+			const { rerender } = renderModal();
+
+			await expect
+				.element(testPage.getByText(/Paragraph 1 with substantial prose/))
+				.toBeInTheDocument();
+
+			const modalBody = document.querySelector(".modal-body") as HTMLElement;
+			expect(modalBody).not.toBeNull();
+			modalBody.scrollTop = modalBody.scrollHeight;
+			modalBody.dispatchEvent(new Event("scroll"));
+			await new Promise((r) => setTimeout(r, 50));
+
+			expect(mockRecordReadingEvents).not.toHaveBeenCalled();
+
+			await rerender({
+				open: false,
+				feed: FEED,
+				onOpenChange: () => {},
+				readingSurface: ReadingSurface.GALLERY,
+			});
+
+			await vi.waitFor(() =>
+				expect(mockRecordReadingEvents).toHaveBeenCalledTimes(1),
+			);
+			const events = mockRecordReadingEvents.mock.calls[0]?.[1] ?? [];
+			const cases = events.map(
+				(e: { event: { case: string } }) => e.event.case,
+			);
+			expect(cases).toContain("reachedEnd");
+			expect(cases).toContain("sessionEnded");
+			const sessionEnded = events.find(
+				(e: { event: { case: string } }) => e.event.case === "sessionEnded",
+			)?.event.value;
+			expect(sessionEnded).toMatchObject({
+				articleId: "art-read-1",
+				surface: ReadingSurface.GALLERY,
+				reachedEnd: true,
+			});
+			expect(sessionEnded.bodyLengthChars).toBeGreaterThan(0);
+		});
+
+		it("ends the current session when navigating to another feed inside the modal", async () => {
+			mockGetFeedContent
+				.mockResolvedValueOnce({
+					content: "<p>First modal article body.</p>",
+					article_id: "art-nav-1",
+				})
+				.mockResolvedValueOnce({
+					content: "<p>Second modal article body.</p>",
+					article_id: "art-nav-2",
+				});
+
+			const { rerender, unmount } = renderModal();
+
+			await expect
+				.element(testPage.getByText("First modal article body."))
+				.toBeInTheDocument();
+
+			await rerender({
+				open: true,
+				feed: {
+					...FEED,
+					id: "feed-2",
+					articleId: "art-nav-2",
+					link: "https://example.com/second-article",
+					normalizedUrl: "https://example.com/second-article",
+				},
+				onOpenChange: () => {},
+				readingSurface: ReadingSurface.GALLERY,
+			});
+
+			await vi.waitFor(() =>
+				expect(mockRecordReadingEvents).toHaveBeenCalledTimes(1),
+			);
+			const firstEvents = mockRecordReadingEvents.mock.calls[0]?.[1] ?? [];
+			const firstSessionEnded = firstEvents.find(
+				(e: { event: { case: string } }) => e.event.case === "sessionEnded",
+			)?.event.value;
+			expect(firstSessionEnded?.articleId).toBe("art-nav-1");
+
+			await expect
+				.element(testPage.getByText("Second modal article body."))
+				.toBeInTheDocument();
+
+			unmount();
+			await vi.waitFor(() =>
+				expect(mockRecordReadingEvents).toHaveBeenCalledTimes(2),
+			);
+			const secondEvents = mockRecordReadingEvents.mock.calls[1]?.[1] ?? [];
+			const secondSessionEnded = secondEvents.find(
+				(e: { event: { case: string } }) => e.event.case === "sessionEnded",
+			)?.event.value;
+			expect(secondSessionEnded?.articleId).toBe("art-nav-2");
+		});
+
+		it("records no session when content fetch fails or when article id remains unknown", async () => {
+			mockGetFeedContent.mockRejectedValueOnce(connectError(Code.Unavailable));
+
+			const first = renderModal();
+			await expect
+				.element(testPage.getByTestId("article-content-failed"))
+				.toBeInTheDocument();
+			first.unmount();
+
+			mockGetFeedContent.mockResolvedValueOnce({
+				content: "<p>Body with no stored article id.</p>",
+				article_id: "",
+			});
+
+			const second = renderModal();
+			await expect
+				.element(testPage.getByText("Body with no stored article id."))
+				.toBeInTheDocument();
+			second.unmount();
+
+			await flushReadingEvents();
+			expect(mockRecordReadingEvents).not.toHaveBeenCalled();
+		});
+
+		it("records the supplied ReadingSurface.OTHER prop on reachedEnd and sessionEnded", async () => {
+			const longBody = Array.from(
+				{ length: 24 },
+				(_, i) =>
+					`<p>Paragraph ${i + 1} with substantial prose for other surface attribution testing.</p>`,
+			).join("");
+			mockGetFeedContent.mockResolvedValueOnce({
+				content: longBody,
+				article_id: "art-other-surface",
+			});
+
+			const { rerender } = renderModal(ReadingSurface.OTHER);
+
+			await expect
+				.element(testPage.getByText(/Paragraph 1 with substantial prose/))
+				.toBeInTheDocument();
+
+			const modalBody = document.querySelector(".modal-body") as HTMLElement;
+			modalBody.scrollTop = modalBody.scrollHeight;
+			modalBody.dispatchEvent(new Event("scroll"));
+			await new Promise((r) => setTimeout(r, 50));
+
+			await rerender({
+				open: false,
+				feed: FEED,
+				onOpenChange: () => {},
+				readingSurface: ReadingSurface.OTHER,
+			});
+
+			await vi.waitFor(() =>
+				expect(mockRecordReadingEvents).toHaveBeenCalledTimes(1),
+			);
+			const events = mockRecordReadingEvents.mock.calls[0]?.[1] ?? [];
+			const reachedEnd = events.find(
+				(e: { event: { case: string } }) => e.event.case === "reachedEnd",
+			)?.event.value;
+			const sessionEnded = events.find(
+				(e: { event: { case: string } }) => e.event.case === "sessionEnded",
+			)?.event.value;
+			expect(reachedEnd).toMatchObject({
+				articleId: "art-other-surface",
+				surface: ReadingSurface.OTHER,
+			});
+			expect(sessionEnded).toMatchObject({
+				articleId: "art-other-surface",
+				surface: ReadingSurface.OTHER,
+			});
+		});
+
+		it("does not fragment the session when the parent replaces feed with a new object for the same article", async () => {
+			const longBody = Array.from(
+				{ length: 24 },
+				(_, i) =>
+					`<p>Paragraph ${i + 1} with substantial prose to guard against object-identity restarts.</p>`,
+			).join("");
+			mockGetFeedContent.mockResolvedValueOnce({
+				content: longBody,
+				article_id: "art-stable-1",
+			});
+
+			const { rerender } = renderModal(ReadingSurface.GALLERY);
+
+			await expect
+				.element(testPage.getByText(/Paragraph 1 with substantial prose/))
+				.toBeInTheDocument();
+
+			// Parent replaces the feed object with identical values (e.g. list refresh after open).
+			await rerender({
+				open: true,
+				feed: { ...FEED },
+				onOpenChange: () => {},
+				readingSurface: ReadingSurface.GALLERY,
+			});
+
+			const modalBody = document.querySelector(".modal-body") as HTMLElement;
+			modalBody.scrollTop = modalBody.scrollHeight;
+			modalBody.dispatchEvent(new Event("scroll"));
+			await new Promise((r) => setTimeout(r, 50));
+
+			expect(mockRecordReadingEvents).not.toHaveBeenCalled();
+
+			await rerender({
+				open: false,
+				feed: { ...FEED },
+				onOpenChange: () => {},
+				readingSurface: ReadingSurface.GALLERY,
+			});
+
+			await vi.waitFor(() =>
+				expect(mockRecordReadingEvents).toHaveBeenCalledTimes(1),
+			);
+			const events = mockRecordReadingEvents.mock.calls[0]?.[1] ?? [];
+			const sessionEndeds = events.filter(
+				(e: { event: { case: string } }) => e.event.case === "sessionEnded",
+			);
+			const reachedEnds = events.filter(
+				(e: { event: { case: string } }) => e.event.case === "reachedEnd",
+			);
+			expect(sessionEndeds).toHaveLength(1);
+			expect(reachedEnds).toHaveLength(1);
+		});
+
+		it("resets modal-body scrollTop to 0 when navigating to a different article", async () => {
+			await testPage.viewport(393, 600);
+			const longFirstBody = Array.from(
+				{ length: 45 },
+				(_, i) =>
+					`<p>First article paragraph ${i + 1} with substantial prose for scrolling.</p>`,
+			).join("");
+			const longSecondBody = Array.from(
+				{ length: 45 },
+				(_, i) =>
+					`<p>Second article paragraph ${i + 1} with substantial prose for scrolling.</p>`,
+			).join("");
+			mockGetFeedContent
+				.mockResolvedValueOnce({
+					content: longFirstBody,
+					article_id: "art-scroll-1",
+				})
+				.mockResolvedValueOnce({
+					content: longSecondBody,
+					article_id: "art-scroll-2",
+				});
+
+			const { rerender, unmount } = renderModal(ReadingSurface.GALLERY);
+
+			await expect
+				.element(testPage.getByText(/First article paragraph 1 /))
+				.toBeInTheDocument();
+
+			const modalBody = document.querySelector(".modal-body") as HTMLElement;
+			modalBody.style.height = "200px";
+			modalBody.style.overflowY = "auto";
+			modalBody.scrollTop = modalBody.scrollHeight;
+			modalBody.dispatchEvent(new Event("scroll"));
+			expect(modalBody.scrollTop).toBeGreaterThan(0);
+
+			await rerender({
+				open: true,
+				feed: {
+					...FEED,
+					id: "feed-scroll-2",
+					articleId: "art-scroll-2",
+					link: "https://example.com/scroll-2",
+					normalizedUrl: "https://example.com/scroll-2",
+				},
+				onOpenChange: () => {},
+				readingSurface: ReadingSurface.GALLERY,
+			});
+
+			await expect
+				.element(testPage.getByText(/Second article paragraph 1 /))
+				.toBeInTheDocument();
+			expect(modalBody.scrollTop).toBe(0);
+
+			unmount();
+			await vi.waitFor(() =>
+				expect(mockRecordReadingEvents).toHaveBeenCalledTimes(2),
+			);
+			const secondEvents = mockRecordReadingEvents.mock.calls[1]?.[1] ?? [];
+			const secondSessionEnded = secondEvents.find(
+				(e: { event: { case: string } }) => e.event.case === "sessionEnded",
+			)?.event.value;
+			expect(secondSessionEnded).toMatchObject({
+				articleId: "art-scroll-2",
+				reachedEnd: false,
+			});
 		});
 	});
 });

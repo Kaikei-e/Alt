@@ -25,6 +25,10 @@ import { flushSync, tick } from "svelte";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 import { getFeedContentOnTheFlyClient } from "#lib/api/client/index.js";
+import {
+	flushReadingEvents,
+	ReadingSurface,
+} from "#lib/reading/instrumentation.js";
 import type { RenderFeed } from "#lib/schema/feed.js";
 import VisualPreviewCard from "./VisualPreviewCard.svelte";
 
@@ -34,13 +38,26 @@ const {
 	mockSpeechPlay,
 	mockSpeechStop,
 	speechState,
+	mockRecordReadingEvents,
 } = vi.hoisted(() => ({
 	loadProxyImageDefault: vi.fn(),
 	resolveOgImage: vi.fn(),
 	mockSpeechPlay: vi.fn(),
 	mockSpeechStop: vi.fn(),
 	speechState: { value: "idle" },
+	mockRecordReadingEvents: vi.fn(),
 }));
+
+vi.mock("#lib/connect/reading.js", async (importOriginal) => {
+	const actual =
+		await importOriginal<typeof import("#lib/connect/reading.js")>();
+	return {
+		...actual,
+		recordReadingEvents: (...args: unknown[]) =>
+			mockRecordReadingEvents(...args),
+		createKeepaliveTransport: vi.fn(() => ({})),
+	};
+});
 
 vi.mock("#lib/hooks/useSummarySpeech.svelte.js", () => ({
 	createSummarySpeech: vi.fn(() => ({
@@ -154,8 +171,11 @@ describe("VisualPreviewCard", () => {
 		thumbnailProxyUrl: PROXY_URL,
 	};
 
-	beforeEach(() => {
+	beforeEach(async () => {
+		mockRecordReadingEvents.mockResolvedValue({ accepted: 0, duplicates: 0 });
+		await flushReadingEvents();
 		vi.clearAllMocks();
+		mockRecordReadingEvents.mockResolvedValue({ accepted: 1, duplicates: 0 });
 		// `clearAllMocks` clears calls but keeps implementations, so these are
 		// re-stated rather than relying on what a previous test left behind.
 		loadProxyImageDefault.mockReset();
@@ -925,6 +945,94 @@ describe("VisualPreviewCard", () => {
 			await speechBtn.click();
 
 			expect(mockSpeechPlay).toHaveBeenCalledWith(fallbackSummary);
+		});
+	});
+
+	describe("reading session recording", () => {
+		it("starts a session only when expanded with article id and ends on collapse", async () => {
+			vi.mocked(getFeedContentOnTheFlyClient).mockResolvedValueOnce({
+				content: "<p>Full swipe article text for reading session.</p>",
+				article_id: "swipe-art-1",
+			} as never);
+
+			const { unmount } = render(VisualPreviewCard, {
+				props: {
+					...defaultProps,
+					initialArticleContent: null,
+					getCachedContent: () => null,
+				},
+			});
+
+			await settle();
+			expect(mockRecordReadingEvents).not.toHaveBeenCalled();
+
+			await page.getByRole("button", { name: /^article$/i }).click();
+			await expect
+				.element(page.getByText("Full swipe article text for reading session."))
+				.toBeInTheDocument();
+
+			await page.getByRole("button", { name: /^hide$/i }).click();
+
+			await vi.waitFor(() =>
+				expect(mockRecordReadingEvents).toHaveBeenCalledTimes(1),
+			);
+			const events = mockRecordReadingEvents.mock.calls[0]?.[1] ?? [];
+			const sessionEnded = events.find(
+				(e: { event: { case: string } }) => e.event.case === "sessionEnded",
+			)?.event.value;
+			expect(sessionEnded).toMatchObject({
+				articleId: "swipe-art-1",
+				surface: ReadingSurface.SWIPE,
+			});
+			expect(sessionEnded.bodyLengthChars).toBeGreaterThan(0);
+
+			unmount();
+			expect(mockRecordReadingEvents).toHaveBeenCalledTimes(1);
+		});
+
+		it("records no session when content fetch fails", async () => {
+			vi.mocked(getFeedContentOnTheFlyClient).mockRejectedValue(
+				connectError(Code.Unavailable),
+			);
+
+			const { unmount } = render(VisualPreviewCard, {
+				props: {
+					...defaultProps,
+					initialArticleContent: null,
+					getCachedContent: () => null,
+				},
+			});
+			await page.getByRole("button", { name: /^article$/i }).click();
+			await expect
+				.element(page.getByTestId("source-unavailable-notice"))
+				.toBeInTheDocument();
+			unmount();
+
+			await flushReadingEvents();
+			expect(mockRecordReadingEvents).not.toHaveBeenCalled();
+		});
+
+		it("records no session when article id remains unknown", async () => {
+			vi.mocked(getFeedContentOnTheFlyClient).mockResolvedValue({
+				content: "<p>Expanded body without article id.</p>",
+				article_id: "",
+			} as never);
+
+			const { unmount } = render(VisualPreviewCard, {
+				props: {
+					...defaultProps,
+					initialArticleContent: null,
+					getCachedContent: () => null,
+				},
+			});
+			await page.getByRole("button", { name: /^article$/i }).click();
+			await expect
+				.element(page.getByText("Expanded body without article id."))
+				.toBeInTheDocument();
+			unmount();
+
+			await flushReadingEvents();
+			expect(mockRecordReadingEvents).not.toHaveBeenCalled();
 		});
 	});
 });

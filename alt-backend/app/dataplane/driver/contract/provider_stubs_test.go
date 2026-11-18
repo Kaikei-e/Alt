@@ -470,6 +470,7 @@ func startStubServer(t *testing.T) int {
 	// The one route on this stub server that is not a stub: see
 	// articles_prefetch_provider_test.go.
 	mountArticleServiceProcedures(mux)
+	mountReadingServiceProcedures(mux)
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)

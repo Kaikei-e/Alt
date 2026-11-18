@@ -116,6 +116,15 @@ func TestVerifyAltBackendConsumerContract(t *testing.T) {
 			"sovereign accepts trail.branch_resolved.v1 events carrying an optional dismiss reason": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
 				return nil, nil
 			},
+			"sovereign accepts reading.surface_viewed.v1 events": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
+				return nil, nil
+			},
+			"sovereign accepts reading.reached_end.v1 events": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
+				return nil, nil
+			},
+			"sovereign accepts reading.session_ended.v1 events": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
+				return nil, nil
+			},
 			// Scoped to the one interaction that asked for it: pact-go calls
 			// this handler again with setup=false on teardown, so the fixture
 			// is accepting again before the next interaction is set up. The

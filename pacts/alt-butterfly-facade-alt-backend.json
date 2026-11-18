@@ -339,6 +339,142 @@
         },
         "status": 200
       }
+    },
+    {
+      "description": "a RecordReadingEvents unary Connect-RPC request proxied by BFF",
+      "providerStates": [
+        {
+          "name": "reading service is available"
+        }
+      ],
+      "request": {
+        "body": {
+          "events": [
+            {
+              "clientEventId": "01960000-0000-7000-8000-000000000001",
+              "occurredAt": "2026-11-18T00:00:00Z",
+              "sessionEnded": {
+                "activeDwellMs": 45000,
+                "articleId": "11111111-1111-4111-8111-111111111111",
+                "bodyLengthChars": 2400,
+                "maxScrollRatio": 0.85,
+                "reachedEnd": true,
+                "surface": "READING_SURFACE_GALLERY"
+              }
+            }
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json",
+          "X-Alt-Backend-Token": "header.payload.signature"
+        },
+        "matchingRules": {
+          "body": {
+            "$.events": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.events[*].clientEventId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            },
+            "$.events[*].occurredAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$"
+                }
+              ]
+            },
+            "$.events[*].sessionEnded.activeDwellMs": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.events[*].sessionEnded.articleId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            },
+            "$.events[*].sessionEnded.bodyLengthChars": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.events[*].sessionEnded.maxScrollRatio": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.events[*].sessionEnded.reachedEnd": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          },
+          "header": {
+            "X-Alt-Backend-Token": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$"
+                }
+              ]
+            }
+          }
+        },
+        "method": "POST",
+        "path": "/alt.reading.v1.ReadingService/RecordReadingEvents"
+      },
+      "response": {
+        "body": {
+          "accepted": 1
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.accepted": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
     }
   ],
   "metadata": {

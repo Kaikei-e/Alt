@@ -16,6 +16,7 @@ var PublicServices = map[string]struct{}{
 	"alt.morning_letter.v2.MorningLetterReadService": {},
 	"alt.morning_letter.v2.MorningLetterService":     {},
 	"alt.push.v1.PushService":                        {},
+	"alt.reading.v1.ReadingService":                  {},
 	"alt.recap.v2.JobStatusService":                  {},
 	"alt.recap.v2.RecapService":                      {},
 	"alt.rss.v2.RSSService":                          {},

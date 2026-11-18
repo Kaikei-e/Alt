@@ -1,0 +1,106 @@
+syntax = "proto3";
+
+package alt.reading.v1;
+
+import "alt/api/v1/visibility.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "alt/gen/proto/alt/reading/v1;readingv1";
+
+// =============================================================================
+// Messages
+// =============================================================================
+
+// ReadingSurface identifies the UI surface where reading activity occurred.
+enum ReadingSurface {
+  // Default value when the surface is unknown or omitted.
+  READING_SURFACE_UNSPECIFIED = 0;
+  // Visual preview gallery feed surface.
+  READING_SURFACE_GALLERY = 1;
+  // Card swipe feed surface.
+  READING_SURFACE_SWIPE = 2;
+  // Standalone article reader page.
+  READING_SURFACE_ARTICLE_PAGE = 3;
+  // Any other surface that opens the article reader, such as a feed list or
+  // search result.
+  READING_SURFACE_OTHER = 4;
+}
+
+// SurfaceViewed records that the user viewed a reading surface.
+message SurfaceViewed {
+  // Surface that became visible to the user.
+  ReadingSurface surface = 1;
+}
+
+// ReachedEnd records that the user scrolled to the end of an article body.
+message ReachedEnd {
+  // Identifier of the article whose end was reached.
+  string article_id = 1;
+  // Surface where the article was being read.
+  ReadingSurface surface = 2;
+}
+
+// SessionEnded summarizes a completed reading session for a single article.
+// Payloads carry identifiers, enums, numbers, and booleans only; titles, URLs,
+// and article text are never included.
+message SessionEnded {
+  // Identifier of the article read during the session.
+  string article_id = 1;
+  // Surface where the reading session took place.
+  ReadingSurface surface = 2;
+  // Elapsed foreground time in milliseconds; counts foreground time only (>= 0).
+  int64 active_dwell_ms = 3;
+  // Maximum scroll depth reached within the article body, in the range 0..1.
+  double max_scroll_ratio = 4;
+  // Length of the rendered article body in characters (>= 0).
+  int32 body_length_chars = 5;
+  // Whether the user reached the end of the article body during this session.
+  bool reached_end = 6;
+}
+
+// ReadingEvent is a single client-observed reading telemetry event.
+// Carries identifiers, timestamps, enums, numbers, and booleans only; no
+// titles, URLs, or text content fields are permitted.
+message ReadingEvent {
+  // Client-generated UUIDv7 used to deduplicate retried deliveries.
+  string client_event_id = 1;
+  // Client-observed timestamp when the event occurred.
+  google.protobuf.Timestamp occurred_at = 2;
+
+  // Event-specific payload.
+  oneof event {
+    // User viewed a reading surface.
+    SurfaceViewed surface_viewed = 10;
+    // User reached the end of an article body.
+    ReachedEnd reached_end = 11;
+    // User finished a reading session on an article.
+    SessionEnded session_ended = 12;
+  }
+}
+
+// RecordReadingEventsRequest carries a batch of reading events from the client.
+message RecordReadingEventsRequest {
+  // Batch of reading events to record; a request carries at most 50 events.
+  repeated ReadingEvent events = 1;
+}
+
+// RecordReadingEventsResponse reports how many events in the batch were stored.
+message RecordReadingEventsResponse {
+  // Number of newly accepted events persisted from the batch (>= 0).
+  int32 accepted = 1;
+  // Number of events skipped because client_event_id was already recorded (>= 0).
+  int32 duplicates = 2;
+}
+
+// =============================================================================
+// Service
+// =============================================================================
+
+// ReadingService records client-observed reading events for the calling user.
+service ReadingService {
+  option (alt.api.v1.visibility) = VISIBILITY_PUBLIC;
+
+  // Appends a batch of at most 50 reading events, deduplicating retries by
+  // each event's client_event_id.
+  rpc RecordReadingEvents(RecordReadingEventsRequest) returns (RecordReadingEventsResponse);
+}

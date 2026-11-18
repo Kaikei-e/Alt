@@ -37,6 +37,11 @@ const jwtHeaderPattern = `^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$`
 // indistinguishable from a leaked token to secret scanners.
 const jwtHeaderExample = "header.payload.signature"
 
+const (
+	uuidStringPattern       = `^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`
+	rfc3339TimestampPattern = `^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$`
+)
+
 func newBackendPact(t *testing.T) *consumer.V3HTTPMockProvider {
 	t.Helper()
 	mockProvider, err := consumer.NewV3Pact(consumer.MockHTTPProviderConfig{
@@ -354,6 +359,68 @@ func TestBFFProxyFetchTagCloud(t *testing.T) {
 
 			assert.Equal(t, http.StatusOK, recorder.Code)
 			assert.Contains(t, recorder.Body.String(), "edges")
+			return nil
+		})
+	require.NoError(t, err)
+}
+
+// duplicates is a proto3 scalar that protojson omits at 0, so the contract
+// pins only accepted on the 200 response.
+func TestBFFProxyRecordReadingEvents(t *testing.T) {
+	mockProvider := newBackendPact(t)
+
+	err := mockProvider.
+		AddInteraction().
+		Given("reading service is available").
+		UponReceiving("a RecordReadingEvents unary Connect-RPC request proxied by BFF").
+		WithCompleteRequest(consumer.Request{
+			Method: "POST",
+			Path:   matchers.String("/alt.reading.v1.ReadingService/RecordReadingEvents"),
+			Headers: matchers.MapMatcher{
+				"Content-Type":        matchers.String("application/json"),
+				"X-Alt-Backend-Token": matchers.Regex(jwtHeaderExample, jwtHeaderPattern),
+			},
+			Body: matchers.MapMatcher{
+				"events": matchers.EachLike(map[string]interface{}{
+					"clientEventId": matchers.Regex("01960000-0000-7000-8000-000000000001", uuidStringPattern),
+					"occurredAt":    matchers.Regex("2026-11-18T00:00:00Z", rfc3339TimestampPattern),
+					"sessionEnded": map[string]interface{}{
+						"articleId":       matchers.Regex("11111111-1111-4111-8111-111111111111", uuidStringPattern),
+						"surface":         matchers.String("READING_SURFACE_GALLERY"),
+						"activeDwellMs":   matchers.Like(45000),
+						"maxScrollRatio":  matchers.Like(0.85),
+						"bodyLengthChars": matchers.Like(2400),
+						"reachedEnd":      matchers.Like(true),
+					},
+				}, 1),
+			},
+		}).
+		WithCompleteResponse(consumer.Response{
+			Status: 200,
+			Headers: matchers.MapMatcher{
+				"Content-Type": matchers.String("application/json"),
+			},
+			Body: matchers.MapMatcher{
+				"accepted": matchers.Integer(1),
+			},
+		}).
+		ExecuteTest(t, func(config consumer.MockServerConfig) error {
+			backendURL := fmt.Sprintf("http://%s:%d", config.Host, config.Port)
+			handler := createBFFHandler(backendURL)
+
+			req := httptest.NewRequest(
+				http.MethodPost,
+				"/alt.reading.v1.ReadingService/RecordReadingEvents",
+				strings.NewReader(`{"events":[{"clientEventId":"01960000-0000-7000-8000-000000000002","occurredAt":"2026-11-18T01:23:45Z","sessionEnded":{"articleId":"22222222-2222-4222-8222-222222222222","surface":"READING_SURFACE_GALLERY","activeDwellMs":32000,"maxScrollRatio":0.92,"bodyLengthChars":1800,"reachedEnd":false}}]}`),
+			)
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("X-Alt-Backend-Token", createTestToken(t, "user"))
+
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, req)
+
+			assert.Equal(t, http.StatusOK, recorder.Code)
+			assert.Contains(t, recorder.Body.String(), "accepted")
 			return nil
 		})
 	require.NoError(t, err)
