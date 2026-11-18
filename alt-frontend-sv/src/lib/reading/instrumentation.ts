@@ -1,3 +1,5 @@
+import { createKeepaliveTransport } from "#lib/connect/reading-transport.js";
+import { createClientTransport } from "#lib/connect/transport-client.js";
 import {
 	createDwellTracker,
 	type VisibilitySource,
@@ -158,7 +160,15 @@ export function observeEndSentinel(
 export function createReadingInstrumentation(
 	options: ReadingEventQueueOptions = {},
 ): ReadingInstrumentation {
-	const queue = createReadingEventQueue(options);
+	const queueOptions: ReadingEventQueueOptions =
+		options.send || options.getTransport
+			? options
+			: {
+					...options,
+					getTransport: (keepalive) =>
+						keepalive ? createKeepaliveTransport() : createClientTransport(),
+				};
+	const queue = createReadingEventQueue(queueOptions);
 	const openSessionEnders = new Set<() => void>();
 
 	let lifecycleRefs = 0;

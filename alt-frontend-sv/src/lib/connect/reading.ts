@@ -1,7 +1,6 @@
 import type { MessageInitShape } from "@bufbuild/protobuf";
 import type { Client, Transport } from "@connectrpc/connect";
 import { createClient } from "@connectrpc/connect";
-import { createConnectTransport } from "@connectrpc/connect-web";
 import {
 	type ReadingEvent,
 	type ReadingEventSchema,
@@ -9,7 +8,6 @@ import {
 	ReadingSurface,
 	type RecordReadingEventsResponse,
 } from "#lib/gen/alt/reading/v1/reading_pb.js";
-import { resolve } from "$app/paths";
 
 export { type ReadingEvent, ReadingSurface };
 
@@ -24,21 +22,6 @@ export interface RecordReadingEventsResult {
 
 export function createReadingClient(transport: Transport): ReadingClient {
 	return createClient(ReadingService, transport);
-}
-
-// pagehide can outlive the document, so keepalive lets pending events survive tab close.
-let keepaliveTransport: Transport | null = null;
-
-export function createKeepaliveTransport(): Transport {
-	if (keepaliveTransport) {
-		return keepaliveTransport;
-	}
-	keepaliveTransport = createConnectTransport({
-		baseUrl: resolve("api/v2"),
-		fetch: (input, init) =>
-			fetch(input, { ...init, credentials: "include", keepalive: true }),
-	});
-	return keepaliveTransport;
 }
 
 export async function recordReadingEvents(

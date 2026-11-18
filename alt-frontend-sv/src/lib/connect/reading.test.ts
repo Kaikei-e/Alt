@@ -23,20 +23,10 @@ vi.mock("@connectrpc/connect", async (importOriginal) => {
 	};
 });
 
-let lastTransportConfig: Record<string, unknown> | null = null;
-vi.mock("@connectrpc/connect-web", () => ({
-	createConnectTransport: vi.fn((config: Record<string, unknown>) => {
-		lastTransportConfig = config;
-		return { __keepaliveTransport: true };
-	}),
-}));
-
 describe("reading Connect client", () => {
 	beforeEach(() => {
 		vi.resetModules();
-		vi.unstubAllGlobals();
 		vi.clearAllMocks();
-		lastTransportConfig = null;
 	});
 
 	it("creates a ReadingService client bound to the provided transport", async () => {
@@ -77,45 +67,6 @@ describe("reading Connect client", () => {
 			events: [event],
 		});
 		expect(result).toEqual({ accepted: 2, duplicates: 1 });
-	});
-
-	it("builds a cached keepalive transport with credentials and keepalive flags", async () => {
-		const { createConnectTransport } = await import("@connectrpc/connect-web");
-		const { createKeepaliveTransport } = await import("./reading");
-
-		const first = createKeepaliveTransport();
-		const second = createKeepaliveTransport();
-
-		expect(second).toBe(first);
-		expect(createConnectTransport).toHaveBeenCalledTimes(1);
-		expect(lastTransportConfig?.baseUrl).toBe("/sv/api/v2");
-
-		const fetchFn = lastTransportConfig?.fetch as (
-			input: RequestInfo | URL,
-			init?: RequestInit,
-		) => Promise<Response>;
-		const nativeFetch = vi
-			.fn()
-			.mockResolvedValue(new Response(null, { status: 200 }));
-		vi.stubGlobal("fetch", nativeFetch);
-
-		await fetchFn(
-			"/sv/api/v2/alt.reading.v1.ReadingService/RecordReadingEvents",
-			{
-				method: "POST",
-				body: "{}",
-			},
-		);
-
-		expect(nativeFetch).toHaveBeenCalledWith(
-			"/sv/api/v2/alt.reading.v1.ReadingService/RecordReadingEvents",
-			expect.objectContaining({
-				method: "POST",
-				body: "{}",
-				credentials: "include",
-				keepalive: true,
-			}),
-		);
 	});
 
 	it("re-exports the reading client helpers from the connect barrel", async () => {

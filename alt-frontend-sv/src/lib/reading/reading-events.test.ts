@@ -32,6 +32,15 @@ describe("createReadingEventQueue", () => {
 		vi.useRealTimers();
 	});
 
+	it("throws at construction time when neither send nor getTransport is provided", () => {
+		expect(() => createReadingEventQueue()).toThrow(
+			/send.*getTransport|getTransport.*send/i,
+		);
+		expect(() => createReadingEventQueue({})).toThrow(
+			/send.*getTransport|getTransport.*send/i,
+		);
+	});
+
 	it("does not send anything on enqueue until flush is called", () => {
 		const send = vi.fn<SendFn>().mockResolvedValue(undefined);
 		const queue = createReadingEventQueue({ send });

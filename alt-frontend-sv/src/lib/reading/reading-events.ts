@@ -5,11 +5,7 @@ import {
 	timestampFromMs,
 } from "@bufbuild/protobuf/wkt";
 import { Code, ConnectError, type Transport } from "@connectrpc/connect";
-import {
-	createKeepaliveTransport,
-	recordReadingEvents,
-} from "#lib/connect/reading.js";
-import { createClientTransport } from "#lib/connect/transport-client.js";
+import { recordReadingEvents } from "#lib/connect/reading.js";
 import {
 	ReachedEndSchema,
 	type ReadingEvent,
@@ -101,14 +97,18 @@ export function createReadingEventQueue(
 ): ReadingEventQueue {
 	const clock = options.clock ?? (() => Date.now());
 	const generateId = options.generateId ?? uuidv7;
-	const getTransport =
-		options.getTransport ??
-		((keepalive: boolean) =>
-			keepalive ? createKeepaliveTransport() : createClientTransport());
-	const send =
-		options.send ??
-		((events: ReadingEvent[], sendOptions: { keepalive: boolean }) =>
-			recordReadingEvents(getTransport(sendOptions.keepalive), events));
+	let send: NonNullable<ReadingEventQueueOptions["send"]>;
+	if (options.send) {
+		send = options.send;
+	} else if (options.getTransport) {
+		const getTransport = options.getTransport;
+		send = (events, sendOptions) =>
+			recordReadingEvents(getTransport(sendOptions.keepalive), events);
+	} else {
+		throw new Error(
+			"createReadingEventQueue requires either send or getTransport",
+		);
+	}
 
 	const pending: ReadingEvent[] = [];
 

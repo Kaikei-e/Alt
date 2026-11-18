@@ -1,8 +1,37 @@
-import { describe, expect, it, vi } from "vitest";
+import type { Transport } from "@connectrpc/connect";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	type ReadingEvent,
 	ReadingSurface,
 } from "#lib/gen/alt/reading/v1/reading_pb.js";
+
+const {
+	mockCreateKeepaliveTransport,
+	mockCreateClientTransport,
+	mockRecordReadingEvents,
+} = vi.hoisted(() => ({
+	mockCreateKeepaliveTransport: vi.fn(),
+	mockCreateClientTransport: vi.fn(),
+	mockRecordReadingEvents: vi.fn(),
+}));
+
+vi.mock("#lib/connect/reading-transport.js", () => ({
+	createKeepaliveTransport: mockCreateKeepaliveTransport,
+}));
+
+vi.mock("#lib/connect/transport-client.js", () => ({
+	createClientTransport: mockCreateClientTransport,
+}));
+
+vi.mock("#lib/connect/reading.js", async (importOriginal) => {
+	const actual =
+		await importOriginal<typeof import("#lib/connect/reading.js")>();
+	return {
+		...actual,
+		recordReadingEvents: mockRecordReadingEvents,
+	};
+});
+
 import {
 	attachElementReadingSession,
 	attachWindowReadingSession,
@@ -62,6 +91,40 @@ function createFakeTargets(
 }
 
 describe("reading-instrumentation", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	it("wires default getTransport to keepalive transport for keepalive flushes and client transport otherwise", async () => {
+		const clientTransport = { id: "client" } as unknown as Transport;
+		const keepaliveTransport = { id: "keepalive" } as unknown as Transport;
+		mockCreateClientTransport.mockReturnValue(clientTransport);
+		mockCreateKeepaliveTransport.mockReturnValue(keepaliveTransport);
+		mockRecordReadingEvents.mockResolvedValue({ accepted: 1, duplicates: 0 });
+
+		const instrumentation = createReadingInstrumentation();
+
+		instrumentation.recordSurfaceViewed(ReadingSurface.GALLERY);
+		await instrumentation.flush({ keepalive: false });
+
+		expect(mockCreateClientTransport).toHaveBeenCalledTimes(1);
+		expect(mockCreateKeepaliveTransport).not.toHaveBeenCalled();
+		expect(mockRecordReadingEvents).toHaveBeenLastCalledWith(
+			clientTransport,
+			expect.any(Array),
+		);
+
+		instrumentation.recordSurfaceViewed(ReadingSurface.SWIPE);
+		await instrumentation.flush({ keepalive: true });
+
+		expect(mockCreateKeepaliveTransport).toHaveBeenCalledTimes(1);
+		expect(mockCreateClientTransport).toHaveBeenCalledTimes(1);
+		expect(mockRecordReadingEvents).toHaveBeenLastCalledWith(
+			keepaliveTransport,
+			expect.any(Array),
+		);
+	});
+
 	it("enqueues surface_viewed without flushing immediately", () => {
 		const send = vi.fn<SendFn>().mockResolvedValue(undefined);
 		const instrumentation = createReadingInstrumentation({ send });
