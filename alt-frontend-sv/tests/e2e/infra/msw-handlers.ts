@@ -20,11 +20,7 @@ import {
 	UNREAD_COUNT,
 	VIEWED_FEEDS_RESPONSE,
 } from "./data/feeds";
-import {
-	AUGUR_CONNECT_MESSAGES,
-	AUGUR_SSE_CHUNKS,
-	RECAP_RESPONSE,
-} from "./data/recap";
+import { AUGUR_CONNECT_MESSAGES, AUGUR_SSE_CHUNKS } from "./data/recap";
 import {
 	buildAuthHubSession,
 	buildKratosSession,
@@ -266,10 +262,6 @@ export const backendHandlers = [
 	// Mark as read
 	http.post("*/v1/feeds/read", () => HttpResponse.json({ ok: true })),
 	http.post("*/api/v1/feeds/read", () => HttpResponse.json({ ok: true })),
-
-	// Recap 7-days
-	http.get("*/v1/recap/7days", () => HttpResponse.json(RECAP_RESPONSE)),
-	http.get("*/api/v1/recap/7days", () => HttpResponse.json(RECAP_RESPONSE)),
 
 	// Augur chat (streaming SSE)
 	http.post("*/v1/augur/chat", () => {

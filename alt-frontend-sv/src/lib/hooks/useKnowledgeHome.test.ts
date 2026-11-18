@@ -226,7 +226,6 @@ describe("useKnowledgeHome", () => {
 				unsummarizedArticles: 3,
 				topTags: [],
 				weeklyRecapAvailable: false,
-				eveningPulseAvailable: false,
 				needToKnowCount: 0,
 				digestFreshness: "fresh",
 				lastProjectedAt: null,

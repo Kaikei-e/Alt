@@ -51,7 +51,7 @@ describe("MOBILE_MENU_SECTIONS", () => {
 		);
 		expect(hrefs).toContain("/recap");
 		expect(hrefs).toContain("/recap/morning-letter");
-		expect(hrefs).toContain("/recap/evening-pulse");
+		expect(hrefs).not.toContain("/recap/evening-pulse");
 		expect(hrefs).toContain("/recap/job-status");
 		expect(hrefs).toContain("/feeds/swipe");
 		expect(hrefs).toContain("/feeds/swipe/visual-preview");

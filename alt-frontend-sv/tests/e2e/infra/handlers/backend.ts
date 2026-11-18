@@ -7,7 +7,6 @@ import http from "node:http";
 import {
 	CONNECT_ARTICLE_CONTENT,
 	CONNECT_DETAILED_STATS,
-	CONNECT_EVENING_PULSE,
 	CONNECT_FEEDS_LAST_PAGE_RESPONSE,
 	CONNECT_FEEDS_RESPONSE,
 	CONNECT_READ_FEEDS_RESPONSE,
@@ -40,7 +39,6 @@ import {
 	CONNECT_RECAP_CARDS_RESPONSE,
 	CONNECT_RECAP_RESPONSE,
 	JOB_PROGRESS_RESPONSE,
-	RECAP_RESPONSE,
 } from "../data/recap";
 
 export const BACKEND_PORT = 4003;
@@ -176,13 +174,6 @@ export function createBackendServer(): http.Server {
 		if (path === "/api/v1/feeds/read" || path === "/v1/feeds/read") {
 			res.writeHead(200);
 			res.end(JSON.stringify({ ok: true }));
-			return;
-		}
-
-		// Recap 7-days
-		if (path === "/api/v1/recap/7days" || path === "/v1/recap/7days") {
-			res.writeHead(200);
-			res.end(JSON.stringify(RECAP_RESPONSE));
 			return;
 		}
 
@@ -552,16 +543,6 @@ export function createBackendServer(): http.Server {
 			return;
 		}
 
-		// GetSevenDayRecap (Connect-RPC)
-		if (path === "/alt.recap.v2.RecapService/GetSevenDayRecap") {
-			const { surfaceStatus: _surfaceStatus, ...sevenDayRecap } =
-				CONNECT_RECAP_RESPONSE;
-			res.setHeader("Content-Type", "application/json");
-			res.writeHead(200);
-			res.end(JSON.stringify(sevenDayRecap));
-			return;
-		}
-
 		// GetThreeDayRecap (Connect-RPC)
 		if (path === "/alt.recap.v2.RecapService/GetThreeDayRecap") {
 			res.setHeader("Content-Type", "application/json");
@@ -575,14 +556,6 @@ export function createBackendServer(): http.Server {
 			res.setHeader("Content-Type", "application/json");
 			res.writeHead(200);
 			res.end(JSON.stringify(CONNECT_RECAP_CARDS_RESPONSE));
-			return;
-		}
-
-		// GetEveningPulse (Connect-RPC)
-		if (path === "/alt.recap.v2.RecapService/GetEveningPulse") {
-			res.setHeader("Content-Type", "application/json");
-			res.writeHead(200);
-			res.end(JSON.stringify(CONNECT_EVENING_PULSE));
 			return;
 		}
 

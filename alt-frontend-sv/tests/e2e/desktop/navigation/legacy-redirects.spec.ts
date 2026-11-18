@@ -33,11 +33,8 @@ const REDIRECTS: ReadonlyArray<readonly [string, string]> = [
 	["/mobile/feeds/search", "/feeds/search"],
 	["/desktop/feeds/viewed", "/feeds/viewed"],
 	["/mobile/feeds/viewed", "/feeds/viewed"],
-	["/desktop/recap/evening-pulse", "/recap/evening-pulse"],
-	["/mobile/recap/evening-pulse", "/recap/evening-pulse"],
 	["/desktop/recap", "/recap"],
 	["/mobile/recap/3days", "/recap"],
-	["/mobile/recap/7days", "/recap?window=7"],
 	["/desktop/recap/job-status", "/recap/job-status"],
 	["/mobile/recap/job-status", "/recap/job-status"],
 	["/desktop/settings/feeds", "/settings/feeds"],
@@ -67,19 +64,6 @@ test.describe("legacy route redirects", () => {
 
 		expect(response.status()).toBe(303);
 		expect(response.headers().location).toBe("/feeds?sort=title_asc");
-	});
-
-	test("merges the query string when the target already has one", async ({
-		page,
-	}) => {
-		// `/mobile/recap/7days` maps to `/recap?window=7`, so an incoming query
-		// has to join with `&` — appending a second `?` would silently swallow it.
-		const response = await page.request.get("/mobile/recap/7days?genre=tech", {
-			maxRedirects: 0,
-		});
-
-		expect(response.status()).toBe(303);
-		expect(response.headers().location).toBe("/recap?window=7&genre=tech");
 	});
 
 	test("leaves a responsive route alone", async ({ page }) => {

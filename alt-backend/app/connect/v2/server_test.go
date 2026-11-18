@@ -59,7 +59,7 @@ var publicServicePaths = []string{
 	"/alt.rss.v2.RSSService/ListRSSFeedLinks",
 	"/alt.augur.v2.AugurService/RetrieveContext",
 	"/alt.morning_letter.v2.MorningLetterReadService/GetLatestLetter",
-	"/alt.recap.v2.RecapService/GetSevenDayRecap",
+	"/alt.recap.v2.RecapService/GetThreeDayRecap",
 	"/alt.knowledge_home.v1.KnowledgeHomeService/GetKnowledgeHome",
 	"/alt.knowledge_trail.v1.KnowledgeTrailService/GetTrail",
 	"/alt.push.v1.PushService/GetPushConfig",

@@ -218,18 +218,17 @@ func TestProtoToTodayDigest(t *testing.T) {
 	t.Run("valid proto digest", func(t *testing.T) {
 		now := time.Now().Truncate(time.Second)
 		pb := &sovereignv1.TodayDigest{
-			UserId:                uid.String(),
-			DigestDate:            "2026-09-25",
-			NewArticles:           10,
-			SummarizedArticles:    8,
-			UnsummarizedArticles:  2,
-			TopTags:               []string{"go", "grpc"},
-			WeeklyRecapAvailable:  true,
-			EveningPulseAvailable: false,
-			NeedToKnowCount:       3,
-			DigestFreshness:       "fresh",
-			UpdatedAt:             timestamppb.New(now),
-			LastProjectedAt:       timestamppb.New(now),
+			UserId:               uid.String(),
+			DigestDate:           "2026-09-25",
+			NewArticles:          10,
+			SummarizedArticles:   8,
+			UnsummarizedArticles: 2,
+			TopTags:              []string{"go", "grpc"},
+			WeeklyRecapAvailable: true,
+			NeedToKnowCount:      3,
+			DigestFreshness:      "fresh",
+			UpdatedAt:            timestamppb.New(now),
+			LastProjectedAt:      timestamppb.New(now),
 		}
 
 		got := protoToTodayDigest(pb, uid, fallbackDate)

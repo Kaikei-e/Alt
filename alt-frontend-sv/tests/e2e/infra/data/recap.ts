@@ -61,8 +61,8 @@ export const RECAP_RESPONSE: RecapResponse = {
 // =============================================================================
 
 /**
- * Connect-RPC format for GetSevenDayRecap response.
- * Used by tests mocking the alt.recap.v2.RecapService/GetSevenDayRecap endpoint.
+ * Connect-RPC format for GetThreeDayRecap response.
+ * Used by tests mocking the alt.recap.v2.RecapService/GetThreeDayRecap endpoint.
  */
 export const CONNECT_RECAP_RESPONSE = {
 	jobId: "test-job-123",

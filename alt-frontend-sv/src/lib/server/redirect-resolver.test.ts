@@ -18,16 +18,14 @@ describe("resolveResponsiveRedirect", () => {
 		expect(resolveResponsiveRedirect("/desktop/feeds", "")).toBe("/feeds");
 	});
 
-	it("handles target that already contains query params", () => {
-		expect(resolveResponsiveRedirect("/mobile/recap/7days", "")).toBe(
-			"/recap?window=7",
-		);
-	});
-
-	it("merges query params when target already has params", () => {
-		expect(resolveResponsiveRedirect("/mobile/recap/7days", "?extra=1")).toBe(
-			"/recap?window=7&extra=1",
-		);
+	it("returns null for retired evening pulse and 7-day recap routes", () => {
+		expect(
+			resolveResponsiveRedirect("/desktop/recap/evening-pulse", ""),
+		).toBeNull();
+		expect(
+			resolveResponsiveRedirect("/mobile/recap/evening-pulse", ""),
+		).toBeNull();
+		expect(resolveResponsiveRedirect("/mobile/recap/7days", "")).toBeNull();
 	});
 
 	it("returns null for unknown paths", () => {
