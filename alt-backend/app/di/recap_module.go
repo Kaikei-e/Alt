@@ -15,6 +15,7 @@ import (
 // it here as well would give the backend a second, independently configured
 // reader of the same table that no backend handler ever calls.
 type RecapModule struct {
+	RecapGateway            *recap_gateway.RecapGateway
 	RecapUsecase            *recap_usecase.RecapUsecase
 	GetRecapJobsUsecase     dashboard_usecase.GetRecapJobsUsecase
 	DashboardMetricsUsecase *dashboard_usecase.DashboardMetricsUsecase
@@ -37,6 +38,7 @@ func newRecapModule(infra *InfraModule) *RecapModule {
 	dashboardMetricsUC := dashboard_usecase.NewDashboardMetricsUsecase(dashboardGw)
 
 	return &RecapModule{
+		RecapGateway:            recapGw,
 		RecapUsecase:            recapUC,
 		GetRecapJobsUsecase:     getRecapJobsUC,
 		DashboardMetricsUsecase: dashboardMetricsUC,

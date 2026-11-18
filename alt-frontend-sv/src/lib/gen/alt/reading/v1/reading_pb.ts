@@ -13,7 +13,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file alt/reading/v1/reading.proto.
  */
 export const file_alt_reading_v1_reading: GenFile = /*@__PURE__*/
-  fileDesc("ChxhbHQvcmVhZGluZy92MS9yZWFkaW5nLnByb3RvEg5hbHQucmVhZGluZy52MSJACg1TdXJmYWNlVmlld2VkEi8KB3N1cmZhY2UYASABKA4yHi5hbHQucmVhZGluZy52MS5SZWFkaW5nU3VyZmFjZSJRCgpSZWFjaGVkRW5kEhIKCmFydGljbGVfaWQYASABKAkSLwoHc3VyZmFjZRgCIAEoDjIeLmFsdC5yZWFkaW5nLnYxLlJlYWRpbmdTdXJmYWNlIrYBCgxTZXNzaW9uRW5kZWQSEgoKYXJ0aWNsZV9pZBgBIAEoCRIvCgdzdXJmYWNlGAIgASgOMh4uYWx0LnJlYWRpbmcudjEuUmVhZGluZ1N1cmZhY2USFwoPYWN0aXZlX2R3ZWxsX21zGAMgASgDEhgKEG1heF9zY3JvbGxfcmF0aW8YBCABKAESGQoRYm9keV9sZW5ndGhfY2hhcnMYBSABKAUSEwoLcmVhY2hlZF9lbmQYBiABKAgiTQoGT3BlbmVkEhIKCmFydGljbGVfaWQYASABKAkSLwoHc3VyZmFjZRgCIAEoDjIeLmFsdC5yZWFkaW5nLnYxLlJlYWRpbmdTdXJmYWNlIq4CCgxSZWFkaW5nRXZlbnQSFwoPY2xpZW50X2V2ZW50X2lkGAEgASgJEi8KC29jY3VycmVkX2F0GAIgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBI3Cg5zdXJmYWNlX3ZpZXdlZBgKIAEoCzIdLmFsdC5yZWFkaW5nLnYxLlN1cmZhY2VWaWV3ZWRIABIxCgtyZWFjaGVkX2VuZBgLIAEoCzIaLmFsdC5yZWFkaW5nLnYxLlJlYWNoZWRFbmRIABI1Cg1zZXNzaW9uX2VuZGVkGAwgASgLMhwuYWx0LnJlYWRpbmcudjEuU2Vzc2lvbkVuZGVkSAASKAoGb3BlbmVkGA0gASgLMhYuYWx0LnJlYWRpbmcudjEuT3BlbmVkSABCBwoFZXZlbnQiSgoaUmVjb3JkUmVhZGluZ0V2ZW50c1JlcXVlc3QSLAoGZXZlbnRzGAEgAygLMhwuYWx0LnJlYWRpbmcudjEuUmVhZGluZ0V2ZW50Il0KG1JlY29yZFJlYWRpbmdFdmVudHNSZXNwb25zZRIQCghhY2NlcHRlZBgBIAEoBRISCgpkdXBsaWNhdGVzGAIgASgFEhgKEHJlYWRfYXJ0aWNsZV9pZHMYAyADKAkiyQEKEFJlYWRpbmdRdWV1ZUl0ZW0SEgoKYXJ0aWNsZV9pZBgBIAEoCRINCgV0aXRsZRgCIAEoCRILCgN1cmwYAyABKAkSEwoLc291cmNlX25hbWUYBCABKAkSEQoJaW1hZ2VfdXJsGAUgASgJEi0KCXF1ZXVlZF9hdBgGIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLgoKZXhwaXJlc19hdBgHIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAipAEKE1F1ZXVlQXJ0aWNsZVJlcXVlc3QSEgoKYXJ0aWNsZV9pZBgBIAEoCRIXCg9jbGllbnRfZXZlbnRfaWQYAiABKAkSLwoLb2NjdXJyZWRfYXQYAyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEi8KB3N1cmZhY2UYBCABKA4yHi5hbHQucmVhZGluZy52MS5SZWFkaW5nU3VyZmFjZSKKAQoUUXVldWVBcnRpY2xlUmVzcG9uc2USNAoHb3V0Y29tZRgBIAEoDjIjLmFsdC5yZWFkaW5nLnYxLlF1ZXVlQXJ0aWNsZU91dGNvbWUSLwoFaXRlbXMYAiADKAsyIC5hbHQucmVhZGluZy52MS5SZWFkaW5nUXVldWVJdGVtEgsKA2NhcBgDIAEoBSJ1ChVVbnF1ZXVlQXJ0aWNsZVJlcXVlc3QSEgoKYXJ0aWNsZV9pZBgBIAEoCRIXCg9jbGllbnRfZXZlbnRfaWQYAiABKAkSLwoLb2NjdXJyZWRfYXQYAyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIhgKFlVucXVldWVBcnRpY2xlUmVzcG9uc2UiSgoYR2V0UmVhZFRvZGF5UXVldWVSZXF1ZXN0Ei4KCnJlYWRfc2luY2UYASABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wInMKGUdldFJlYWRUb2RheVF1ZXVlUmVzcG9uc2USLwoFaXRlbXMYASADKAsyIC5hbHQucmVhZGluZy52MS5SZWFkaW5nUXVldWVJdGVtEgsKA2NhcBgCIAEoBRIYChByZWFkX2NvdW50X3NpbmNlGAMgASgFKqYBCg5SZWFkaW5nU3VyZmFjZRIfChtSRUFESU5HX1NVUkZBQ0VfVU5TUEVDSUZJRUQQABIbChdSRUFESU5HX1NVUkZBQ0VfR0FMTEVSWRABEhkKFVJFQURJTkdfU1VSRkFDRV9TV0lQRRACEiAKHFJFQURJTkdfU1VSRkFDRV9BUlRJQ0xFX1BBR0UQAxIZChVSRUFESU5HX1NVUkZBQ0VfT1RIRVIQBCquAQoTUXVldWVBcnRpY2xlT3V0Y29tZRIlCiFRVUVVRV9BUlRJQ0xFX09VVENPTUVfVU5TUEVDSUZJRUQQABIgChxRVUVVRV9BUlRJQ0xFX09VVENPTUVfUVVFVUVEEAESKAokUVVFVUVfQVJUSUNMRV9PVVRDT01FX0FMUkVBRFlfUVVFVUVEEAISJAogUVVFVUVfQVJUSUNMRV9PVVRDT01FX1FVRVVFX0ZVTEwQAzKsAwoOUmVhZGluZ1NlcnZpY2USbgoTUmVjb3JkUmVhZGluZ0V2ZW50cxIqLmFsdC5yZWFkaW5nLnYxLlJlY29yZFJlYWRpbmdFdmVudHNSZXF1ZXN0GisuYWx0LnJlYWRpbmcudjEuUmVjb3JkUmVhZGluZ0V2ZW50c1Jlc3BvbnNlElkKDFF1ZXVlQXJ0aWNsZRIjLmFsdC5yZWFkaW5nLnYxLlF1ZXVlQXJ0aWNsZVJlcXVlc3QaJC5hbHQucmVhZGluZy52MS5RdWV1ZUFydGljbGVSZXNwb25zZRJfCg5VbnF1ZXVlQXJ0aWNsZRIlLmFsdC5yZWFkaW5nLnYxLlVucXVldWVBcnRpY2xlUmVxdWVzdBomLmFsdC5yZWFkaW5nLnYxLlVucXVldWVBcnRpY2xlUmVzcG9uc2USaAoRR2V0UmVhZFRvZGF5UXVldWUSKC5hbHQucmVhZGluZy52MS5HZXRSZWFkVG9kYXlRdWV1ZVJlcXVlc3QaKS5hbHQucmVhZGluZy52MS5HZXRSZWFkVG9kYXlRdWV1ZVJlc3BvbnNlGgSItRgBQihaJmFsdC9nZW4vcHJvdG8vYWx0L3JlYWRpbmcvdjE7cmVhZGluZ3YxYgZwcm90bzM", [file_alt_api_v1_visibility, file_google_protobuf_timestamp]);
+  fileDesc("ChxhbHQvcmVhZGluZy92MS9yZWFkaW5nLnByb3RvEg5hbHQucmVhZGluZy52MSJACg1TdXJmYWNlVmlld2VkEi8KB3N1cmZhY2UYASABKA4yHi5hbHQucmVhZGluZy52MS5SZWFkaW5nU3VyZmFjZSJRCgpSZWFjaGVkRW5kEhIKCmFydGljbGVfaWQYASABKAkSLwoHc3VyZmFjZRgCIAEoDjIeLmFsdC5yZWFkaW5nLnYxLlJlYWRpbmdTdXJmYWNlIrYBCgxTZXNzaW9uRW5kZWQSEgoKYXJ0aWNsZV9pZBgBIAEoCRIvCgdzdXJmYWNlGAIgASgOMh4uYWx0LnJlYWRpbmcudjEuUmVhZGluZ1N1cmZhY2USFwoPYWN0aXZlX2R3ZWxsX21zGAMgASgDEhgKEG1heF9zY3JvbGxfcmF0aW8YBCABKAESGQoRYm9keV9sZW5ndGhfY2hhcnMYBSABKAUSEwoLcmVhY2hlZF9lbmQYBiABKAgiTQoGT3BlbmVkEhIKCmFydGljbGVfaWQYASABKAkSLwoHc3VyZmFjZRgCIAEoDjIeLmFsdC5yZWFkaW5nLnYxLlJlYWRpbmdTdXJmYWNlIq4CCgxSZWFkaW5nRXZlbnQSFwoPY2xpZW50X2V2ZW50X2lkGAEgASgJEi8KC29jY3VycmVkX2F0GAIgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBI3Cg5zdXJmYWNlX3ZpZXdlZBgKIAEoCzIdLmFsdC5yZWFkaW5nLnYxLlN1cmZhY2VWaWV3ZWRIABIxCgtyZWFjaGVkX2VuZBgLIAEoCzIaLmFsdC5yZWFkaW5nLnYxLlJlYWNoZWRFbmRIABI1Cg1zZXNzaW9uX2VuZGVkGAwgASgLMhwuYWx0LnJlYWRpbmcudjEuU2Vzc2lvbkVuZGVkSAASKAoGb3BlbmVkGA0gASgLMhYuYWx0LnJlYWRpbmcudjEuT3BlbmVkSABCBwoFZXZlbnQiSgoaUmVjb3JkUmVhZGluZ0V2ZW50c1JlcXVlc3QSLAoGZXZlbnRzGAEgAygLMhwuYWx0LnJlYWRpbmcudjEuUmVhZGluZ0V2ZW50Il0KG1JlY29yZFJlYWRpbmdFdmVudHNSZXNwb25zZRIQCghhY2NlcHRlZBgBIAEoBRISCgpkdXBsaWNhdGVzGAIgASgFEhgKEHJlYWRfYXJ0aWNsZV9pZHMYAyADKAkiyQEKEFJlYWRpbmdRdWV1ZUl0ZW0SEgoKYXJ0aWNsZV9pZBgBIAEoCRINCgV0aXRsZRgCIAEoCRILCgN1cmwYAyABKAkSEwoLc291cmNlX25hbWUYBCABKAkSEQoJaW1hZ2VfdXJsGAUgASgJEi0KCXF1ZXVlZF9hdBgGIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLgoKZXhwaXJlc19hdBgHIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAipAEKE1F1ZXVlQXJ0aWNsZVJlcXVlc3QSEgoKYXJ0aWNsZV9pZBgBIAEoCRIXCg9jbGllbnRfZXZlbnRfaWQYAiABKAkSLwoLb2NjdXJyZWRfYXQYAyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEi8KB3N1cmZhY2UYBCABKA4yHi5hbHQucmVhZGluZy52MS5SZWFkaW5nU3VyZmFjZSKKAQoUUXVldWVBcnRpY2xlUmVzcG9uc2USNAoHb3V0Y29tZRgBIAEoDjIjLmFsdC5yZWFkaW5nLnYxLlF1ZXVlQXJ0aWNsZU91dGNvbWUSLwoFaXRlbXMYAiADKAsyIC5hbHQucmVhZGluZy52MS5SZWFkaW5nUXVldWVJdGVtEgsKA2NhcBgDIAEoBSJ1ChVVbnF1ZXVlQXJ0aWNsZVJlcXVlc3QSEgoKYXJ0aWNsZV9pZBgBIAEoCRIXCg9jbGllbnRfZXZlbnRfaWQYAiABKAkSLwoLb2NjdXJyZWRfYXQYAyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIhgKFlVucXVldWVBcnRpY2xlUmVzcG9uc2UiSgoYR2V0UmVhZFRvZGF5UXVldWVSZXF1ZXN0Ei4KCnJlYWRfc2luY2UYASABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wInMKGUdldFJlYWRUb2RheVF1ZXVlUmVzcG9uc2USLwoFaXRlbXMYASADKAsyIC5hbHQucmVhZGluZy52MS5SZWFkaW5nUXVldWVJdGVtEgsKA2NhcBgCIAEoBRIYChByZWFkX2NvdW50X3NpbmNlGAMgASgFIhMKEUxpc3RUaGVtZXNSZXF1ZXN0IvcBCgxUaGVtZVN1bW1hcnkSEAoIdGhlbWVfaWQYASABKAkSDQoFdGl0bGUYAiABKAkSFgoObGF0ZXN0X3ZlcnNpb24YAyABKAUSFQoNYXJ0aWNsZV9jb3VudBgEIAEoBRIuCgp1cGRhdGVkX2F0GAUgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBI3Cg5sYXN0X29wZW5lZF9hdBgGIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXBIAIgBARIbChNsYXN0X29wZW5lZF92ZXJzaW9uGAcgASgFQhEKD19sYXN0X29wZW5lZF9hdCJCChJMaXN0VGhlbWVzUmVzcG9uc2USLAoGdGhlbWVzGAEgAygLMhwuYWx0LnJlYWRpbmcudjEuVGhlbWVTdW1tYXJ5IkUKD0dldFRoZW1lUmVxdWVzdBIQCgh0aGVtZV9pZBgBIAEoCRIUCgd2ZXJzaW9uGAIgASgFSACIAQFCCgoIX3ZlcnNpb24iOQoNVGhlbWVTZW50ZW5jZRIMCgR0ZXh0GAEgASgJEhoKEnNvdXJjZV9hcnRpY2xlX2lkcxgCIAMoCSJMChJUaGVtZVRpbWVsaW5lRW50cnkSDAoEZGF0ZRgBIAEoCRIMCgR0ZXh0GAIgASgJEhoKEnNvdXJjZV9hcnRpY2xlX2lkcxgDIAMoCSI9CgtUaGVtZVNvdXJjZRISCgphcnRpY2xlX2lkGAEgASgJEg0KBXRpdGxlGAIgASgJEgsKA3VybBgDIAEoCSJpCg9UaGVtZVZlcnNpb25SZWYSDwoHdmVyc2lvbhgBIAEoBRIuCgpjcmVhdGVkX2F0GAIgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIVCg1hcnRpY2xlX2NvdW50GAMgASgFIsIDChBHZXRUaGVtZVJlc3BvbnNlEhAKCHRoZW1lX2lkGAEgASgJEg0KBXRpdGxlGAIgASgJEg8KB3ZlcnNpb24YAyABKAUSFgoObGF0ZXN0X3ZlcnNpb24YBCABKAUSLgoKY3JlYXRlZF9hdBgFIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASMQoKa2V5X3BvaW50cxgGIAMoCzIdLmFsdC5yZWFkaW5nLnYxLlRoZW1lU2VudGVuY2USNAoIdGltZWxpbmUYByADKAsyIi5hbHQucmVhZGluZy52MS5UaGVtZVRpbWVsaW5lRW50cnkSMwoMd2hhdF9jaGFuZ2VkGAggAygLMh0uYWx0LnJlYWRpbmcudjEuVGhlbWVTZW50ZW5jZRI1Cg5vcGVuX3F1ZXN0aW9ucxgJIAMoCzIdLmFsdC5yZWFkaW5nLnYxLlRoZW1lU2VudGVuY2USLAoHc291cmNlcxgKIAMoCzIbLmFsdC5yZWFkaW5nLnYxLlRoZW1lU291cmNlEjEKCHZlcnNpb25zGAsgAygLMh8uYWx0LnJlYWRpbmcudjEuVGhlbWVWZXJzaW9uUmVmIoUBChhSZWNvcmRUaGVtZU9wZW5lZFJlcXVlc3QSEAoIdGhlbWVfaWQYASABKAkSDwoHdmVyc2lvbhgCIAEoBRIXCg9jbGllbnRfZXZlbnRfaWQYAyABKAkSLQoJb3BlbmVkX2F0GAQgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCIbChlSZWNvcmRUaGVtZU9wZW5lZFJlc3BvbnNlKqYBCg5SZWFkaW5nU3VyZmFjZRIfChtSRUFESU5HX1NVUkZBQ0VfVU5TUEVDSUZJRUQQABIbChdSRUFESU5HX1NVUkZBQ0VfR0FMTEVSWRABEhkKFVJFQURJTkdfU1VSRkFDRV9TV0lQRRACEiAKHFJFQURJTkdfU1VSRkFDRV9BUlRJQ0xFX1BBR0UQAxIZChVSRUFESU5HX1NVUkZBQ0VfT1RIRVIQBCquAQoTUXVldWVBcnRpY2xlT3V0Y29tZRIlCiFRVUVVRV9BUlRJQ0xFX09VVENPTUVfVU5TUEVDSUZJRUQQABIgChxRVUVVRV9BUlRJQ0xFX09VVENPTUVfUVVFVUVEEAESKAokUVVFVUVfQVJUSUNMRV9PVVRDT01FX0FMUkVBRFlfUVVFVUVEEAISJAogUVVFVUVfQVJUSUNMRV9PVVRDT01FX1FVRVVFX0ZVTEwQAzK6BQoOUmVhZGluZ1NlcnZpY2USbgoTUmVjb3JkUmVhZGluZ0V2ZW50cxIqLmFsdC5yZWFkaW5nLnYxLlJlY29yZFJlYWRpbmdFdmVudHNSZXF1ZXN0GisuYWx0LnJlYWRpbmcudjEuUmVjb3JkUmVhZGluZ0V2ZW50c1Jlc3BvbnNlElkKDFF1ZXVlQXJ0aWNsZRIjLmFsdC5yZWFkaW5nLnYxLlF1ZXVlQXJ0aWNsZVJlcXVlc3QaJC5hbHQucmVhZGluZy52MS5RdWV1ZUFydGljbGVSZXNwb25zZRJfCg5VbnF1ZXVlQXJ0aWNsZRIlLmFsdC5yZWFkaW5nLnYxLlVucXVldWVBcnRpY2xlUmVxdWVzdBomLmFsdC5yZWFkaW5nLnYxLlVucXVldWVBcnRpY2xlUmVzcG9uc2USaAoRR2V0UmVhZFRvZGF5UXVldWUSKC5hbHQucmVhZGluZy52MS5HZXRSZWFkVG9kYXlRdWV1ZVJlcXVlc3QaKS5hbHQucmVhZGluZy52MS5HZXRSZWFkVG9kYXlRdWV1ZVJlc3BvbnNlElMKCkxpc3RUaGVtZXMSIS5hbHQucmVhZGluZy52MS5MaXN0VGhlbWVzUmVxdWVzdBoiLmFsdC5yZWFkaW5nLnYxLkxpc3RUaGVtZXNSZXNwb25zZRJNCghHZXRUaGVtZRIfLmFsdC5yZWFkaW5nLnYxLkdldFRoZW1lUmVxdWVzdBogLmFsdC5yZWFkaW5nLnYxLkdldFRoZW1lUmVzcG9uc2USaAoRUmVjb3JkVGhlbWVPcGVuZWQSKC5hbHQucmVhZGluZy52MS5SZWNvcmRUaGVtZU9wZW5lZFJlcXVlc3QaKS5hbHQucmVhZGluZy52MS5SZWNvcmRUaGVtZU9wZW5lZFJlc3BvbnNlGgSItRgBQihaJmFsdC9nZW4vcHJvdG8vYWx0L3JlYWRpbmcvdjE7cmVhZGluZ3YxYgZwcm90bzM", [file_alt_api_v1_visibility, file_google_protobuf_timestamp]);
 
 /**
  * SurfaceViewed records that the user viewed a reading surface.
@@ -524,6 +524,414 @@ export const GetReadTodayQueueResponseSchema: GenMessage<GetReadTodayQueueRespon
   messageDesc(file_alt_reading_v1_reading, 13);
 
 /**
+ * ListThemesRequest requests the user's theme pages.
+ *
+ * @generated from message alt.reading.v1.ListThemesRequest
+ */
+export type ListThemesRequest = Message<"alt.reading.v1.ListThemesRequest"> & {
+};
+
+/**
+ * Describes the message alt.reading.v1.ListThemesRequest.
+ * Use `create(ListThemesRequestSchema)` to create a new message.
+ */
+export const ListThemesRequestSchema: GenMessage<ListThemesRequest> = /*@__PURE__*/
+  messageDesc(file_alt_reading_v1_reading, 14);
+
+/**
+ * ThemeSummary summarizes a theme page in the user's reading theme list.
+ *
+ * @generated from message alt.reading.v1.ThemeSummary
+ */
+export type ThemeSummary = Message<"alt.reading.v1.ThemeSummary"> & {
+  /**
+   * Identifier of the theme.
+   *
+   * @generated from field: string theme_id = 1;
+   */
+  themeId: string;
+
+  /**
+   * Human-readable theme title.
+   *
+   * @generated from field: string title = 2;
+   */
+  title: string;
+
+  /**
+   * Latest published version number of the theme.
+   *
+   * @generated from field: int32 latest_version = 3;
+   */
+  latestVersion: number;
+
+  /**
+   * Number of read source articles included in the latest version.
+   *
+   * @generated from field: int32 article_count = 4;
+   */
+  articleCount: number;
+
+  /**
+   * Timestamp when the latest version was created.
+   *
+   * @generated from field: google.protobuf.Timestamp updated_at = 5;
+   */
+  updatedAt?: Timestamp | undefined;
+
+  /**
+   * Timestamp when the user last opened this theme, if ever.
+   *
+   * @generated from field: optional google.protobuf.Timestamp last_opened_at = 6;
+   */
+  lastOpenedAt?: Timestamp | undefined;
+
+  /**
+   * Last version number opened by the user (0 = never opened).
+   *
+   * @generated from field: int32 last_opened_version = 7;
+   */
+  lastOpenedVersion: number;
+};
+
+/**
+ * Describes the message alt.reading.v1.ThemeSummary.
+ * Use `create(ThemeSummarySchema)` to create a new message.
+ */
+export const ThemeSummarySchema: GenMessage<ThemeSummary> = /*@__PURE__*/
+  messageDesc(file_alt_reading_v1_reading, 15);
+
+/**
+ * ListThemesResponse returns the user's theme summaries.
+ *
+ * @generated from message alt.reading.v1.ListThemesResponse
+ */
+export type ListThemesResponse = Message<"alt.reading.v1.ListThemesResponse"> & {
+  /**
+   * Theme summaries available for the user.
+   *
+   * @generated from field: repeated alt.reading.v1.ThemeSummary themes = 1;
+   */
+  themes: ThemeSummary[];
+};
+
+/**
+ * Describes the message alt.reading.v1.ListThemesResponse.
+ * Use `create(ListThemesResponseSchema)` to create a new message.
+ */
+export const ListThemesResponseSchema: GenMessage<ListThemesResponse> = /*@__PURE__*/
+  messageDesc(file_alt_reading_v1_reading, 16);
+
+/**
+ * GetThemeRequest requests a specific theme page and optionally a specific version.
+ *
+ * @generated from message alt.reading.v1.GetThemeRequest
+ */
+export type GetThemeRequest = Message<"alt.reading.v1.GetThemeRequest"> & {
+  /**
+   * Identifier of the theme to fetch.
+   *
+   * @generated from field: string theme_id = 1;
+   */
+  themeId: string;
+
+  /**
+   * Specific version to return; unset returns the latest version.
+   *
+   * @generated from field: optional int32 version = 2;
+   */
+  version?: number | undefined;
+};
+
+/**
+ * Describes the message alt.reading.v1.GetThemeRequest.
+ * Use `create(GetThemeRequestSchema)` to create a new message.
+ */
+export const GetThemeRequestSchema: GenMessage<GetThemeRequest> = /*@__PURE__*/
+  messageDesc(file_alt_reading_v1_reading, 17);
+
+/**
+ * ThemeSentence is a single attributed sentence in a theme page section.
+ *
+ * @generated from message alt.reading.v1.ThemeSentence
+ */
+export type ThemeSentence = Message<"alt.reading.v1.ThemeSentence"> & {
+  /**
+   * Sentence text.
+   *
+   * @generated from field: string text = 1;
+   */
+  text: string;
+
+  /**
+   * Identifiers of the read articles supporting this sentence.
+   *
+   * @generated from field: repeated string source_article_ids = 2;
+   */
+  sourceArticleIds: string[];
+};
+
+/**
+ * Describes the message alt.reading.v1.ThemeSentence.
+ * Use `create(ThemeSentenceSchema)` to create a new message.
+ */
+export const ThemeSentenceSchema: GenMessage<ThemeSentence> = /*@__PURE__*/
+  messageDesc(file_alt_reading_v1_reading, 18);
+
+/**
+ * ThemeTimelineEntry is a dated entry in a theme page timeline.
+ *
+ * @generated from message alt.reading.v1.ThemeTimelineEntry
+ */
+export type ThemeTimelineEntry = Message<"alt.reading.v1.ThemeTimelineEntry"> & {
+  /**
+   * Date string in YYYY-MM-DD format.
+   *
+   * @generated from field: string date = 1;
+   */
+  date: string;
+
+  /**
+   * Timeline entry text.
+   *
+   * @generated from field: string text = 2;
+   */
+  text: string;
+
+  /**
+   * Identifiers of the read articles supporting this entry.
+   *
+   * @generated from field: repeated string source_article_ids = 3;
+   */
+  sourceArticleIds: string[];
+};
+
+/**
+ * Describes the message alt.reading.v1.ThemeTimelineEntry.
+ * Use `create(ThemeTimelineEntrySchema)` to create a new message.
+ */
+export const ThemeTimelineEntrySchema: GenMessage<ThemeTimelineEntry> = /*@__PURE__*/
+  messageDesc(file_alt_reading_v1_reading, 19);
+
+/**
+ * ThemeSource describes a source article cited by a theme page.
+ *
+ * @generated from message alt.reading.v1.ThemeSource
+ */
+export type ThemeSource = Message<"alt.reading.v1.ThemeSource"> & {
+  /**
+   * Identifier of the source article.
+   *
+   * @generated from field: string article_id = 1;
+   */
+  articleId: string;
+
+  /**
+   * Title of the source article.
+   *
+   * @generated from field: string title = 2;
+   */
+  title: string;
+
+  /**
+   * Canonical URL of the source article.
+   *
+   * @generated from field: string url = 3;
+   */
+  url: string;
+};
+
+/**
+ * Describes the message alt.reading.v1.ThemeSource.
+ * Use `create(ThemeSourceSchema)` to create a new message.
+ */
+export const ThemeSourceSchema: GenMessage<ThemeSource> = /*@__PURE__*/
+  messageDesc(file_alt_reading_v1_reading, 20);
+
+/**
+ * ThemeVersionRef identifies an available version of a theme page.
+ *
+ * @generated from message alt.reading.v1.ThemeVersionRef
+ */
+export type ThemeVersionRef = Message<"alt.reading.v1.ThemeVersionRef"> & {
+  /**
+   * Version number.
+   *
+   * @generated from field: int32 version = 1;
+   */
+  version: number;
+
+  /**
+   * Timestamp when this version was created.
+   *
+   * @generated from field: google.protobuf.Timestamp created_at = 2;
+   */
+  createdAt?: Timestamp | undefined;
+
+  /**
+   * Number of source articles in this version.
+   *
+   * @generated from field: int32 article_count = 3;
+   */
+  articleCount: number;
+};
+
+/**
+ * Describes the message alt.reading.v1.ThemeVersionRef.
+ * Use `create(ThemeVersionRefSchema)` to create a new message.
+ */
+export const ThemeVersionRefSchema: GenMessage<ThemeVersionRef> = /*@__PURE__*/
+  messageDesc(file_alt_reading_v1_reading, 21);
+
+/**
+ * GetThemeResponse returns the full content and version metadata for a theme page.
+ *
+ * @generated from message alt.reading.v1.GetThemeResponse
+ */
+export type GetThemeResponse = Message<"alt.reading.v1.GetThemeResponse"> & {
+  /**
+   * Identifier of the theme.
+   *
+   * @generated from field: string theme_id = 1;
+   */
+  themeId: string;
+
+  /**
+   * Human-readable theme title.
+   *
+   * @generated from field: string title = 2;
+   */
+  title: string;
+
+  /**
+   * Version number returned by this response.
+   *
+   * @generated from field: int32 version = 3;
+   */
+  version: number;
+
+  /**
+   * Latest available version number for this theme.
+   *
+   * @generated from field: int32 latest_version = 4;
+   */
+  latestVersion: number;
+
+  /**
+   * Timestamp when this version was created.
+   *
+   * @generated from field: google.protobuf.Timestamp created_at = 5;
+   */
+  createdAt?: Timestamp | undefined;
+
+  /**
+   * Attributed key point sentences.
+   *
+   * @generated from field: repeated alt.reading.v1.ThemeSentence key_points = 6;
+   */
+  keyPoints: ThemeSentence[];
+
+  /**
+   * Attributed chronological timeline entries.
+   *
+   * @generated from field: repeated alt.reading.v1.ThemeTimelineEntry timeline = 7;
+   */
+  timeline: ThemeTimelineEntry[];
+
+  /**
+   * Attributed sentences describing what changed in this version.
+   *
+   * @generated from field: repeated alt.reading.v1.ThemeSentence what_changed = 8;
+   */
+  whatChanged: ThemeSentence[];
+
+  /**
+   * Attributed open questions remaining in this theme.
+   *
+   * @generated from field: repeated alt.reading.v1.ThemeSentence open_questions = 9;
+   */
+  openQuestions: ThemeSentence[];
+
+  /**
+   * Source articles referenced by this version.
+   *
+   * @generated from field: repeated alt.reading.v1.ThemeSource sources = 10;
+   */
+  sources: ThemeSource[];
+
+  /**
+   * Available versions ordered newest first.
+   *
+   * @generated from field: repeated alt.reading.v1.ThemeVersionRef versions = 11;
+   */
+  versions: ThemeVersionRef[];
+};
+
+/**
+ * Describes the message alt.reading.v1.GetThemeResponse.
+ * Use `create(GetThemeResponseSchema)` to create a new message.
+ */
+export const GetThemeResponseSchema: GenMessage<GetThemeResponse> = /*@__PURE__*/
+  messageDesc(file_alt_reading_v1_reading, 22);
+
+/**
+ * RecordThemeOpenedRequest records that the user opened a theme page version.
+ *
+ * @generated from message alt.reading.v1.RecordThemeOpenedRequest
+ */
+export type RecordThemeOpenedRequest = Message<"alt.reading.v1.RecordThemeOpenedRequest"> & {
+  /**
+   * Identifier of the theme that was opened.
+   *
+   * @generated from field: string theme_id = 1;
+   */
+  themeId: string;
+
+  /**
+   * Version number that was opened.
+   *
+   * @generated from field: int32 version = 2;
+   */
+  version: number;
+
+  /**
+   * Client-generated UUID used to deduplicate retried deliveries.
+   *
+   * @generated from field: string client_event_id = 3;
+   */
+  clientEventId: string;
+
+  /**
+   * Client-observed timestamp when the theme was opened.
+   *
+   * @generated from field: google.protobuf.Timestamp opened_at = 4;
+   */
+  openedAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message alt.reading.v1.RecordThemeOpenedRequest.
+ * Use `create(RecordThemeOpenedRequestSchema)` to create a new message.
+ */
+export const RecordThemeOpenedRequestSchema: GenMessage<RecordThemeOpenedRequest> = /*@__PURE__*/
+  messageDesc(file_alt_reading_v1_reading, 23);
+
+/**
+ * RecordThemeOpenedResponse acknowledges the theme opened event.
+ *
+ * @generated from message alt.reading.v1.RecordThemeOpenedResponse
+ */
+export type RecordThemeOpenedResponse = Message<"alt.reading.v1.RecordThemeOpenedResponse"> & {
+};
+
+/**
+ * Describes the message alt.reading.v1.RecordThemeOpenedResponse.
+ * Use `create(RecordThemeOpenedResponseSchema)` to create a new message.
+ */
+export const RecordThemeOpenedResponseSchema: GenMessage<RecordThemeOpenedResponse> = /*@__PURE__*/
+  messageDesc(file_alt_reading_v1_reading, 24);
+
+/**
  * ReadingSurface identifies the UI surface where reading activity occurred.
  *
  * @generated from enum alt.reading.v1.ReadingSurface
@@ -659,6 +1067,36 @@ export const ReadingService: GenService<{
     methodKind: "unary";
     input: typeof GetReadTodayQueueRequestSchema;
     output: typeof GetReadTodayQueueResponseSchema;
+  },
+  /**
+   * Returns the user's theme page summaries.
+   *
+   * @generated from rpc alt.reading.v1.ReadingService.ListThemes
+   */
+  listThemes: {
+    methodKind: "unary";
+    input: typeof ListThemesRequestSchema;
+    output: typeof ListThemesResponseSchema;
+  },
+  /**
+   * Returns a theme page version, or NOT_FOUND if the theme does not exist.
+   *
+   * @generated from rpc alt.reading.v1.ReadingService.GetTheme
+   */
+  getTheme: {
+    methodKind: "unary";
+    input: typeof GetThemeRequestSchema;
+    output: typeof GetThemeResponseSchema;
+  },
+  /**
+   * Records that the user opened a theme page version.
+   *
+   * @generated from rpc alt.reading.v1.ReadingService.RecordThemeOpened
+   */
+  recordThemeOpened: {
+    methodKind: "unary";
+    input: typeof RecordThemeOpenedRequestSchema;
+    output: typeof RecordThemeOpenedResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_alt_reading_v1_reading, 0);

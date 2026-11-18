@@ -118,6 +118,7 @@ class NewsCreatorConfig:
                 "event_loop_lag_warn_ms": self.event_loop_lag_warn_ms,
                 "recap_card_max_new_tokens": self.llm.recap_card_max_new_tokens,
                 "recap_card_temperature": self.llm.recap_card_temperature,
+                "recap_theme_max_new_tokens": self.llm.recap_theme_max_new_tokens,
             },
         )
 

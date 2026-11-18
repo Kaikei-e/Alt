@@ -158,6 +158,7 @@ var defaultPeerProcedures = map[string]map[string]struct{}{
 		"UpsertArticleTags":      {},
 	},
 	"recap-worker": {
+		"BatchGetArticlesByIDs":    {},
 		"BatchGetTagsByArticleIDs": {},
 		"EnqueueNotification":      {},
 		"GetAllReadFeedIDs":        {},

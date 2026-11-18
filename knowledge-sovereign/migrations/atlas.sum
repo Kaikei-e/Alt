@@ -1,4 +1,4 @@
-h1:dh8RiWKFMMjQj49mOIB9VutPUjxqDypF9AeoCA4k030=
+h1:SLV/b84Bxgrndqw5b5gmChNUylu5DHpKzudKGT2Tfa0=
 00001_initial_schema.sql h1:CSFJx5Q5Jv44C4sqoKpzvdh6t8Unwog8bZw9/VBd3NQ=
 00002_add_link_column.sql h1:A2QxniA5wEK9bo0UnqTNKX5TgvkR/zugtdCKs8O07DE=
 00003_fix_user_events_dedupe_constraint.sql h1:5EpJwNHbInepPLqTMNG3YL/FPTqvpkpqazjt6rK0PkQ=
@@ -34,3 +34,4 @@ h1:dh8RiWKFMMjQj49mOIB9VutPUjxqDypF9AeoCA4k030=
 00033_add_home_ranking_covering_indexes.sql h1:uKYdVz+gs6Imqvsae17P4ohwolDrBTCvCjXkd4inOXA=
 00034_add_trail_branches_anchor_and_cluster_indexes.sql h1:OIyd6FaWxmbhOUkt6gAwdTa18tCGH5P7aJ2v5ZV+bGM=
 00035_create_reading_sources_and_queue.sql h1:eGhC9oebaBLPLheonq8nXc81TIswvlu5w1HLWiIoeUc=
+00036_create_reading_themes.sql h1:8Msn+YshyxDgzOdskTMuIGoBvErMGtmqscKVEIVVBnY=

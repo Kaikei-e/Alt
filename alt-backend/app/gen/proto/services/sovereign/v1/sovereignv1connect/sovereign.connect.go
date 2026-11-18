@@ -181,6 +181,9 @@ const (
 	// KnowledgeSovereignServiceListReadingSourcesInWindowProcedure is the fully-qualified name of the
 	// KnowledgeSovereignService's ListReadingSourcesInWindow RPC.
 	KnowledgeSovereignServiceListReadingSourcesInWindowProcedure = "/services.sovereign.v1.KnowledgeSovereignService/ListReadingSourcesInWindow"
+	// KnowledgeSovereignServiceListReadingThemesProcedure is the fully-qualified name of the
+	// KnowledgeSovereignService's ListReadingThemes RPC.
+	KnowledgeSovereignServiceListReadingThemesProcedure = "/services.sovereign.v1.KnowledgeSovereignService/ListReadingThemes"
 )
 
 // KnowledgeSovereignServiceClient is a client for the
@@ -252,6 +255,7 @@ type KnowledgeSovereignServiceClient interface {
 	GetReadingQueue(context.Context, *connect.Request[v1.GetReadingQueueRequest]) (*connect.Response[v1.GetReadingQueueResponse], error)
 	CountReadingSourcesSince(context.Context, *connect.Request[v1.CountReadingSourcesSinceRequest]) (*connect.Response[v1.CountReadingSourcesSinceResponse], error)
 	ListReadingSourcesInWindow(context.Context, *connect.Request[v1.ListReadingSourcesInWindowRequest]) (*connect.Response[v1.ListReadingSourcesInWindowResponse], error)
+	ListReadingThemes(context.Context, *connect.Request[v1.ListReadingThemesRequest]) (*connect.Response[v1.ListReadingThemesResponse], error)
 }
 
 // NewKnowledgeSovereignServiceClient constructs a client for the
@@ -560,6 +564,12 @@ func NewKnowledgeSovereignServiceClient(httpClient connect.HTTPClient, baseURL s
 			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("ListReadingSourcesInWindow")),
 			connect.WithClientOptions(opts...),
 		),
+		listReadingThemes: connect.NewClient[v1.ListReadingThemesRequest, v1.ListReadingThemesResponse](
+			httpClient,
+			baseURL+KnowledgeSovereignServiceListReadingThemesProcedure,
+			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("ListReadingThemes")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -614,6 +624,7 @@ type knowledgeSovereignServiceClient struct {
 	getReadingQueue            *connect.Client[v1.GetReadingQueueRequest, v1.GetReadingQueueResponse]
 	countReadingSourcesSince   *connect.Client[v1.CountReadingSourcesSinceRequest, v1.CountReadingSourcesSinceResponse]
 	listReadingSourcesInWindow *connect.Client[v1.ListReadingSourcesInWindowRequest, v1.ListReadingSourcesInWindowResponse]
+	listReadingThemes          *connect.Client[v1.ListReadingThemesRequest, v1.ListReadingThemesResponse]
 }
 
 // ApplyProjectionMutation calls
@@ -878,6 +889,11 @@ func (c *knowledgeSovereignServiceClient) ListReadingSourcesInWindow(ctx context
 	return c.listReadingSourcesInWindow.CallUnary(ctx, req)
 }
 
+// ListReadingThemes calls services.sovereign.v1.KnowledgeSovereignService.ListReadingThemes.
+func (c *knowledgeSovereignServiceClient) ListReadingThemes(ctx context.Context, req *connect.Request[v1.ListReadingThemesRequest]) (*connect.Response[v1.ListReadingThemesResponse], error) {
+	return c.listReadingThemes.CallUnary(ctx, req)
+}
+
 // KnowledgeSovereignServiceHandler is an implementation of the
 // services.sovereign.v1.KnowledgeSovereignService service.
 type KnowledgeSovereignServiceHandler interface {
@@ -947,6 +963,7 @@ type KnowledgeSovereignServiceHandler interface {
 	GetReadingQueue(context.Context, *connect.Request[v1.GetReadingQueueRequest]) (*connect.Response[v1.GetReadingQueueResponse], error)
 	CountReadingSourcesSince(context.Context, *connect.Request[v1.CountReadingSourcesSinceRequest]) (*connect.Response[v1.CountReadingSourcesSinceResponse], error)
 	ListReadingSourcesInWindow(context.Context, *connect.Request[v1.ListReadingSourcesInWindowRequest]) (*connect.Response[v1.ListReadingSourcesInWindowResponse], error)
+	ListReadingThemes(context.Context, *connect.Request[v1.ListReadingThemesRequest]) (*connect.Response[v1.ListReadingThemesResponse], error)
 }
 
 // NewKnowledgeSovereignServiceHandler builds an HTTP handler from the service implementation. It
@@ -1250,6 +1267,12 @@ func NewKnowledgeSovereignServiceHandler(svc KnowledgeSovereignServiceHandler, o
 		connect.WithSchema(knowledgeSovereignServiceMethods.ByName("ListReadingSourcesInWindow")),
 		connect.WithHandlerOptions(opts...),
 	)
+	knowledgeSovereignServiceListReadingThemesHandler := connect.NewUnaryHandler(
+		KnowledgeSovereignServiceListReadingThemesProcedure,
+		svc.ListReadingThemes,
+		connect.WithSchema(knowledgeSovereignServiceMethods.ByName("ListReadingThemes")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/services.sovereign.v1.KnowledgeSovereignService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case KnowledgeSovereignServiceApplyProjectionMutationProcedure:
@@ -1350,6 +1373,8 @@ func NewKnowledgeSovereignServiceHandler(svc KnowledgeSovereignServiceHandler, o
 			knowledgeSovereignServiceCountReadingSourcesSinceHandler.ServeHTTP(w, r)
 		case KnowledgeSovereignServiceListReadingSourcesInWindowProcedure:
 			knowledgeSovereignServiceListReadingSourcesInWindowHandler.ServeHTTP(w, r)
+		case KnowledgeSovereignServiceListReadingThemesProcedure:
+			knowledgeSovereignServiceListReadingThemesHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -1553,4 +1578,8 @@ func (UnimplementedKnowledgeSovereignServiceHandler) CountReadingSourcesSince(co
 
 func (UnimplementedKnowledgeSovereignServiceHandler) ListReadingSourcesInWindow(context.Context, *connect.Request[v1.ListReadingSourcesInWindowRequest]) (*connect.Response[v1.ListReadingSourcesInWindowResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.ListReadingSourcesInWindow is not implemented"))
+}
+
+func (UnimplementedKnowledgeSovereignServiceHandler) ListReadingThemes(context.Context, *connect.Request[v1.ListReadingThemesRequest]) (*connect.Response[v1.ListReadingThemesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.ListReadingThemes is not implemented"))
 }

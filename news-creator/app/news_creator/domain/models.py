@@ -1,11 +1,19 @@
 """Domain models for News Creator service."""
 
 from dataclasses import dataclass
+from datetime import date
 import re
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, field_validator
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 _KEEP_ALIVE_RE = re.compile(r"^(?:\d+[smh]|-1|0)$")
 _ALLOWED_RERANK_MODELS = frozenset({"BAAI/bge-reranker-v2-m3"})
@@ -677,3 +685,252 @@ class CardGenerationRejectedError(Exception):
             if self.character_counts is not None:
                 data["character_counts"] = self.character_counts
         return data
+
+
+# ============================================================================
+# Theme Page Generation Models
+# ============================================================================
+
+THEME_MAX_ITEMS = 8
+THEME_MAX_ITEM_TITLE_CHARS = 120
+THEME_MAX_ITEM_TEXT_CHARS = 400
+THEME_MAX_PREVIOUS_TITLE_CHARS = 120
+THEME_MAX_PREVIOUS_KEY_POINTS = 7
+THEME_MAX_PREVIOUS_OPEN_QUESTIONS = 4
+THEME_MAX_PREVIOUS_ENTRY_CHARS = 200
+THEME_MAX_FAILURE_NOTES = 5
+THEME_MAX_FAILURE_NOTE_CHARS = 120
+
+THEME_MAX_OUTPUT_TITLE_CHARS = 60
+THEME_MAX_OUTPUT_TEXT_CHARS = 200
+THEME_MAX_KEY_POINTS = 7
+THEME_MAX_TIMELINE = 10
+THEME_MAX_WHAT_CHANGED = 5
+THEME_MAX_OPEN_QUESTIONS = 4
+
+_THEME_DATE_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+
+
+def _require_non_blank(value: str, field_name: str) -> str:
+    if not value.strip():
+        raise ValueError(f"{field_name} must not be empty or whitespace-only")
+    return value
+
+
+def _validate_iso_date(value: str | None) -> str | None:
+    if value is None:
+        return None
+    if not _THEME_DATE_RE.fullmatch(value):
+        raise ValueError("published_at must match YYYY-MM-DD")
+    date.fromisoformat(value)
+    return value
+
+
+class ThemeItemInput(StrictFrozenModel):
+    """Source item for theme page generation."""
+
+    n: int = Field(ge=1, description="Unique positive item index")
+    title: str = Field(
+        min_length=1,
+        max_length=THEME_MAX_ITEM_TITLE_CHARS,
+        description="Item title",
+    )
+    published_at: str | None = Field(
+        default=None,
+        description="Publication date in YYYY-MM-DD format or null",
+    )
+    text: str = Field(
+        min_length=1,
+        max_length=THEME_MAX_ITEM_TEXT_CHARS,
+        description="Item passage text",
+    )
+
+    @field_validator("title", mode="after")
+    @classmethod
+    def _validate_title(cls, v: str) -> str:
+        return _require_non_blank(v, "title")
+
+    @field_validator("text", mode="after")
+    @classmethod
+    def _validate_text(cls, v: str) -> str:
+        return _require_non_blank(v, "text")
+
+    @field_validator("published_at", mode="after")
+    @classmethod
+    def _validate_published_at(cls, v: str | None) -> str | None:
+        return _validate_iso_date(v)
+
+
+class ThemePreviousVersion(StrictFrozenModel):
+    """Previous version summary used for incremental update context."""
+
+    title: str = Field(
+        min_length=1,
+        max_length=THEME_MAX_PREVIOUS_TITLE_CHARS,
+        description="Previous version title",
+    )
+    key_points: list[str] = Field(
+        max_length=THEME_MAX_PREVIOUS_KEY_POINTS,
+        description="Previous version key points",
+    )
+    open_questions: list[str] = Field(
+        max_length=THEME_MAX_PREVIOUS_OPEN_QUESTIONS,
+        description="Previous version open questions",
+    )
+
+    @field_validator("title", mode="after")
+    @classmethod
+    def _validate_title(cls, v: str) -> str:
+        return _require_non_blank(v, "previous.title")
+
+    @field_validator("key_points", mode="after")
+    @classmethod
+    def _validate_key_points(cls, entries: list[str]) -> list[str]:
+        for idx, entry in enumerate(entries):
+            if not entry.strip() or len(entry) > THEME_MAX_PREVIOUS_ENTRY_CHARS:
+                raise ValueError(
+                    f"previous.key_points[{idx}] must be 1..={THEME_MAX_PREVIOUS_ENTRY_CHARS} non-blank chars"
+                )
+        return entries
+
+    @field_validator("open_questions", mode="after")
+    @classmethod
+    def _validate_open_questions(cls, entries: list[str]) -> list[str]:
+        for idx, entry in enumerate(entries):
+            if not entry.strip() or len(entry) > THEME_MAX_PREVIOUS_ENTRY_CHARS:
+                raise ValueError(
+                    f"previous.open_questions[{idx}] must be 1..={THEME_MAX_PREVIOUS_ENTRY_CHARS} non-blank chars"
+                )
+        return entries
+
+
+class ThemeGenerateRequest(StrictFrozenModel):
+    """Request payload for POST /v1/themes/generate."""
+
+    job_id: ApiUUID = Field(description="Job UUID")
+    theme_id: ApiUUID = Field(description="Theme UUID")
+    language: Literal["ja"] = Field(description="Target language (must be 'ja')")
+    items: list[ThemeItemInput] = Field(
+        min_length=1,
+        max_length=THEME_MAX_ITEMS,
+        description="1..=8 source items",
+    )
+    new_item_ns: list[int] = Field(
+        max_length=THEME_MAX_ITEMS,
+        description="Subset of item indices that are newly added",
+    )
+    previous: ThemePreviousVersion | None = Field(
+        default=None,
+        description="Previous theme page version or null",
+    )
+    failure_notes: list[str] = Field(
+        default_factory=list,
+        max_length=THEME_MAX_FAILURE_NOTES,
+        description="Optional failure notes for regeneration",
+    )
+
+    @field_validator("failure_notes", mode="after")
+    @classmethod
+    def _validate_failure_notes(cls, notes: list[str]) -> list[str]:
+        for idx, note in enumerate(notes):
+            if not note.strip() or len(note) > THEME_MAX_FAILURE_NOTE_CHARS:
+                raise ValueError(
+                    f"failure_notes[{idx}] must be 1..={THEME_MAX_FAILURE_NOTE_CHARS} non-blank chars"
+                )
+        return notes
+
+    @model_validator(mode="after")
+    def _validate_item_indices(self) -> "ThemeGenerateRequest":
+        ns = [item.n for item in self.items]
+        if len(set(ns)) != len(ns):
+            raise ValueError("items[].n values must be unique")
+        valid_ns = set(ns)
+        if not set(self.new_item_ns).issubset(valid_ns):
+            raise ValueError("new_item_ns must be a subset of items[].n")
+        return self
+
+
+class ThemeSentence(StrictFrozenModel):
+    """Cited single sentence entry in a theme page section."""
+
+    text: str = Field(
+        min_length=1,
+        max_length=THEME_MAX_OUTPUT_TEXT_CHARS,
+        description="Single sentence <= 200 chars",
+    )
+    refs: list[int] = Field(
+        min_length=1,
+        description="Non-empty list of cited item n values",
+    )
+
+
+class ThemeTimelineEntry(StrictFrozenModel):
+    """Dated single sentence entry in a theme page timeline."""
+
+    date: str = Field(
+        min_length=10,
+        max_length=10,
+        description="Date in YYYY-MM-DD format",
+    )
+    text: str = Field(
+        min_length=1,
+        max_length=THEME_MAX_OUTPUT_TEXT_CHARS,
+        description="Single sentence <= 200 chars",
+    )
+    refs: list[int] = Field(
+        min_length=1,
+        description="Non-empty list of cited item n values",
+    )
+
+
+class ThemeGenerateResponse(StrictFrozenModel):
+    """Response payload for POST /v1/themes/generate (200 OK)."""
+
+    title: str = Field(
+        min_length=1,
+        max_length=THEME_MAX_OUTPUT_TITLE_CHARS,
+        description="Theme page title (1..=60 chars)",
+    )
+    key_points: list[ThemeSentence] = Field(
+        min_length=1,
+        max_length=THEME_MAX_KEY_POINTS,
+        description="Up to 7 key points",
+    )
+    timeline: list[ThemeTimelineEntry] = Field(
+        max_length=THEME_MAX_TIMELINE,
+        description="Up to 10 timeline entries",
+    )
+    what_changed: list[ThemeSentence] = Field(
+        max_length=THEME_MAX_WHAT_CHANGED,
+        description="Up to 5 what-changed entries",
+    )
+    open_questions: list[ThemeSentence] = Field(
+        max_length=THEME_MAX_OPEN_QUESTIONS,
+        description="Up to 4 open questions",
+    )
+    model: str = Field(min_length=1, description="Model name used for generation")
+
+
+class ThemeLLMItem(BaseModel):
+    """LLM structured output item for sentence sections."""
+
+    text: str
+    refs: list[int]
+
+
+class ThemeLLMTimelineItem(BaseModel):
+    """LLM structured output item for timeline entries."""
+
+    date: str
+    text: str
+    refs: list[int]
+
+
+class ThemePageLLMOutput(BaseModel):
+    """JSON Schema forwarded to Ollama format= for theme page structured output."""
+
+    title: str
+    key_points: list[ThemeLLMItem]
+    timeline: list[ThemeLLMTimelineItem]
+    what_changed: list[ThemeLLMItem]
+    open_questions: list[ThemeLLMItem]

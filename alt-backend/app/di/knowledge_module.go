@@ -6,6 +6,7 @@ import (
 	"alt/orchestrator/gateway/feature_flag_gateway"
 	"alt/orchestrator/gateway/knowledge_backfill_gateway"
 	"alt/orchestrator/gateway/knowledge_metrics_gateway"
+	"alt/orchestrator/gateway/reading_theme_gateway"
 	"alt/orchestrator/gateway/trail_thumbnail_gateway"
 	"alt/orchestrator/gateway/trending_tags_gateway"
 	"alt/orchestrator/usecase/append_knowledge_event_usecase"
@@ -24,6 +25,7 @@ import (
 	"alt/orchestrator/usecase/knowledge_url_backfill_usecase"
 	"alt/orchestrator/usecase/list_lenses_usecase"
 	"alt/orchestrator/usecase/reading_queue_usecase"
+	"alt/orchestrator/usecase/reading_theme_usecase"
 	"alt/orchestrator/usecase/recall_dismiss_usecase"
 	"alt/orchestrator/usecase/recall_rail_usecase"
 	"alt/orchestrator/usecase/recall_snooze_usecase"
@@ -56,6 +58,8 @@ type KnowledgeModule struct {
 	QueueArticleUsecase              *reading_queue_usecase.QueueArticleUsecase
 	UnqueueArticleUsecase            *reading_queue_usecase.UnqueueArticleUsecase
 	GetReadTodayQueueUsecase         *reading_queue_usecase.GetReadTodayQueueUsecase
+	ListThemesUsecase                *reading_theme_usecase.ListThemesUsecase
+	RecordThemeOpenedUsecase         *reading_theme_usecase.RecordThemeOpenedUsecase
 	AppendKnowledgeEventUsecase      *append_knowledge_event_usecase.AppendKnowledgeEventUsecase
 	CreateSummaryVersionUsecase      *create_summary_version_usecase.CreateSummaryVersionUsecase
 	KnowledgeBackfillUsecase         *knowledge_backfill_usecase.Usecase
@@ -167,6 +171,9 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 		time.Now,
 	)
 	slog.Info("reading_queue_enabled", "cap", cfg.ReadingQueue.Cap, "ttl_hours", cfg.ReadingQueue.TTLHours)
+	readingThemeGw := reading_theme_gateway.NewGateway(sovereignCli)
+	listThemesUC := reading_theme_usecase.NewListThemesUsecase(readingThemeGw)
+	recordThemeOpenedUC := reading_theme_usecase.NewRecordThemeOpenedUsecase(sovereignCli, time.Now)
 	appendKnowledgeEventUC := append_knowledge_event_usecase.NewAppendKnowledgeEventUsecase(sovereignCli)
 	createSummaryVersionUC := create_summary_version_usecase.NewCreateSummaryVersionUsecase(versionGw, sovereignCli, versionGw)
 	knowledgeBackfillUC := knowledge_backfill_usecase.NewUsecase(
@@ -275,6 +282,8 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 		QueueArticleUsecase:              queueArticleUC,
 		UnqueueArticleUsecase:            unqueueArticleUC,
 		GetReadTodayQueueUsecase:         getReadTodayQueueUC,
+		ListThemesUsecase:                listThemesUC,
+		RecordThemeOpenedUsecase:         recordThemeOpenedUC,
 		AppendKnowledgeEventUsecase:      appendKnowledgeEventUC,
 		CreateSummaryVersionUsecase:      createSummaryVersionUC,
 		KnowledgeBackfillUsecase:         knowledgeBackfillUC,

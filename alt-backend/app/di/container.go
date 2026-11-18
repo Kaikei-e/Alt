@@ -52,6 +52,7 @@ import (
 	"alt/orchestrator/usecase/opml_usecase"
 	"alt/orchestrator/usecase/reading_queue_usecase"
 	"alt/orchestrator/usecase/reading_status"
+	"alt/orchestrator/usecase/reading_theme_usecase"
 	"alt/orchestrator/usecase/recall_dismiss_usecase"
 	"alt/orchestrator/usecase/recall_rail_usecase"
 	"alt/orchestrator/usecase/recall_snooze_usecase"
@@ -212,6 +213,9 @@ type ApplicationComponents struct {
 	QueueArticleUsecase              *reading_queue_usecase.QueueArticleUsecase
 	UnqueueArticleUsecase            *reading_queue_usecase.UnqueueArticleUsecase
 	GetReadTodayQueueUsecase         *reading_queue_usecase.GetReadTodayQueueUsecase
+	ListThemesUsecase                *reading_theme_usecase.ListThemesUsecase
+	GetThemeUsecase                  *reading_theme_usecase.GetThemeUsecase
+	RecordThemeOpenedUsecase         *reading_theme_usecase.RecordThemeOpenedUsecase
 	CreateSummaryVersionUsecase      *create_summary_version_usecase.CreateSummaryVersionUsecase
 	FeatureFlagGateway               *feature_flag_gateway.Gateway
 	KnowledgeBackfillUsecase         *knowledge_backfill_usecase.Usecase

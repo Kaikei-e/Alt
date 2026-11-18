@@ -86,6 +86,7 @@ service KnowledgeSovereignService {
   rpc GetReadingQueue(GetReadingQueueRequest) returns (GetReadingQueueResponse);
   rpc CountReadingSourcesSince(CountReadingSourcesSinceRequest) returns (CountReadingSourcesSinceResponse);
   rpc ListReadingSourcesInWindow(ListReadingSourcesInWindowRequest) returns (ListReadingSourcesInWindowResponse);
+  rpc ListReadingThemes(ListReadingThemesRequest) returns (ListReadingThemesResponse);
 }
 
 // =============================================================================
@@ -840,4 +841,25 @@ message ListReadingSourcesInWindowRequest {
 
 message ListReadingSourcesInWindowResponse {
   repeated ReadingSourceEntry entries = 1;
+}
+
+message ListReadingThemesRequest {
+  string user_id = 1;
+  // 0 uses the server default limit.
+  int32 limit = 2;
+}
+
+message ReadingThemeEntry {
+  string theme_id = 1;
+  string title = 2;
+  int32 latest_version = 3;
+  int32 article_count = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp updated_at = 6;
+  optional google.protobuf.Timestamp last_opened_at = 7;
+  int32 last_opened_version = 8;
+}
+
+message ListReadingThemesResponse {
+  repeated ReadingThemeEntry themes = 1;
 }
