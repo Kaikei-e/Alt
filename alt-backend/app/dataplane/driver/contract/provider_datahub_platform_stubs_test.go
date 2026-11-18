@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -500,4 +501,125 @@ type pactRecentArticles struct{}
 
 func (pactRecentArticles) Execute(context.Context, fetch_recent_articles_usecase.FetchRecentArticlesInput) (*fetch_recent_articles_usecase.FetchRecentArticlesOutput, error) {
 	return nil, nil
+}
+
+type pactArticleBatchStore struct {
+	mu       sync.RWMutex
+	articles map[uuid.UUID]*domain.Article
+}
+
+var pactArticleStore = &pactArticleBatchStore{}
+
+func (s *pactArticleBatchStore) seed(articles ...*domain.Article) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.articles = make(map[uuid.UUID]*domain.Article, len(articles))
+	for _, a := range articles {
+		s.articles[a.ID] = a
+	}
+}
+
+func (s *pactArticleBatchStore) clear() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.articles = nil
+}
+
+func (s *pactArticleBatchStore) GetByURL(context.Context, string, *uuid.UUID) (*domain.ArticleContent, error) {
+	return nil, nil
+}
+
+func (s *pactArticleBatchStore) BatchGetByURLs(context.Context, []string, *uuid.UUID) (map[string]*domain.ArticleContent, error) {
+	return map[string]*domain.ArticleContent{}, nil
+}
+
+func (s *pactArticleBatchStore) GetContentByID(context.Context, string, *uuid.UUID) (*domain.ArticleContent, error) {
+	return nil, nil
+}
+
+func (s *pactArticleBatchStore) ListCursor(context.Context, uuid.UUID, *time.Time, int) ([]*domain.Article, error) {
+	return nil, nil
+}
+
+func (s *pactArticleBatchStore) ListIDsCursor(context.Context, uuid.UUID, *time.Time, int) ([]uuid.UUID, error) {
+	return nil, nil
+}
+
+func (s *pactArticleBatchStore) BatchGetByIDs(_ context.Context, articleIDs []uuid.UUID) ([]*domain.Article, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if len(s.articles) == 0 {
+		return nil, nil
+	}
+	out := make([]*domain.Article, 0, len(articleIDs))
+	for _, id := range articleIDs {
+		if a, ok := s.articles[id]; ok {
+			out = append(out, a)
+		}
+	}
+	return out, nil
+}
+
+func (s *pactArticleBatchStore) GetLatestByFeedID(context.Context, uuid.UUID) (*domain.ArticleContent, error) {
+	return nil, nil
+}
+
+func (s *pactArticleBatchStore) LookupSource(context.Context, string, uuid.UUID) (domain.ArticleSource, error) {
+	return domain.ArticleSource{}, nil
+}
+
+type pactArticleWritePort struct{}
+
+func (pactArticleWritePort) Archive(context.Context, string, string, string, uuid.UUID) (string, bool, error) {
+	return "", false, nil
+}
+
+type pactKnowledgeBackfillPort struct{}
+
+func (pactKnowledgeBackfillPort) CountArticles(context.Context) (int, error) { return 0, nil }
+func (pactKnowledgeBackfillPort) ListArticles(context.Context, *time.Time, *uuid.UUID, int) ([]domain.KnowledgeBackfillArticle, error) {
+	return nil, nil
+}
+func (pactKnowledgeBackfillPort) CountSummaryTitles(context.Context) (int, error) { return 0, nil }
+func (pactKnowledgeBackfillPort) ListSummaryTitles(context.Context, *time.Time, *uuid.UUID, int) ([]domain.KnowledgeBackfillSummaryTitle, error) {
+	return nil, nil
+}
+
+func articleBatchStates() models.StateHandlers {
+	seedFor := func(articles ...*domain.Article) models.StateHandler {
+		return func(setUp bool, _ models.ProviderState) (models.ProviderStateResponse, error) {
+			if setUp {
+				pactArticleStore.seed(articles...)
+			} else {
+				pactArticleStore.clear()
+			}
+			return nil, nil
+		}
+	}
+
+	recapTs := time.Date(2026, 11, 18, 9, 0, 0, 0, time.UTC)
+	backendTs := time.Date(2026, 7, 31, 0, 0, 0, 0, time.UTC)
+	feedID := uuid.MustParse("33333333-4444-5555-6666-777777777777")
+
+	return models.StateHandlers{
+		"articles exist for the requested ids": seedFor(&domain.Article{
+			ID:          uuid.MustParse("88888888-8888-8888-8888-888888888888"),
+			FeedID:      feedID,
+			Title:       "Example Article",
+			Content:     "<p>Body content.</p>",
+			URL:         "https://example.com/articles/1",
+			PublishedAt: recapTs,
+			CreatedAt:   recapTs,
+		}),
+		"alt-data-hub has articles for the user": seedFor(&domain.Article{
+			ID:          uuid.MustParse("6f1a2f7e-1f1e-4c2a-9a3e-5b6c7d8e9f01"),
+			FeedID:      feedID,
+			Title:       "Example",
+			Content:     "body text",
+			URL:         "https://example.com/post",
+			Tags:        []string{"go"},
+			PublishedAt: backendTs,
+			CreatedAt:   backendTs,
+		}),
+	}
 }

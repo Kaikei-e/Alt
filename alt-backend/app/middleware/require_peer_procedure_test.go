@@ -568,3 +568,36 @@ func TestRequirePeerProcedure_AllowlistNamesExistInServiceDescriptor(t *testing.
 		}
 	}
 }
+
+func TestRequirePeerProcedure_RecapWorkerArticleBatchScope(t *testing.T) {
+	handler := RequirePeerProcedure(nil, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	newRecapReq := func(proc string) *http.Request {
+		req := httptest.NewRequest(http.MethodPost, "/services.datahub.v1.DataHubService/"+proc, nil)
+		req.TLS = &tls.ConnectionState{
+			VerifiedChains: [][]*x509.Certificate{{{Subject: pkix.Name{CommonName: "recap-worker"}}}},
+		}
+		return req
+	}
+
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, newRecapReq("BatchGetArticlesByIDs"))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("recap-worker BatchGetArticlesByIDs: got status %d, want %d", rr.Code, http.StatusOK)
+	}
+
+	for _, deniedProc := range []string{
+		"GetArticleContentByID",
+		"BatchGetArticlesByURLs",
+		"ArchiveArticle",
+		"GetArticleByID",
+	} {
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, newRecapReq(deniedProc))
+		if rr.Code != http.StatusForbidden {
+			t.Errorf("recap-worker %s: got status %d, want %d", deniedProc, rr.Code, http.StatusForbidden)
+		}
+	}
+}
