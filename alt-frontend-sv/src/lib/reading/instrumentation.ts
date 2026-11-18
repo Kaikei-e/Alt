@@ -8,6 +8,7 @@ import { readTodayQueue } from "#lib/reading/read-today-queue.svelte.js";
 import {
 	createReadingEventQueue,
 	type FlushOptions,
+	isUuid,
 	type ReadingEventQueue,
 	type ReadingEventQueueOptions,
 	ReadingSurface,
@@ -227,7 +228,7 @@ export function createReadingInstrumentation(
 			onReadArticleIds?: (articleIds: string[]) => void,
 		) {
 			const trimmed = articleId?.trim() ?? "";
-			if (trimmed.length === 0) {
+			if (!isUuid(trimmed)) {
 				return;
 			}
 			if (onReadArticleIds) {
@@ -239,7 +240,7 @@ export function createReadingInstrumentation(
 			params: StartReadingSessionParams,
 		): ManagedReadingSession | null {
 			const articleId = params.articleId?.trim() ?? "";
-			if (articleId.length === 0) {
+			if (!isUuid(articleId)) {
 				return null;
 			}
 			if (params.onReadArticleIds) {

@@ -14,9 +14,13 @@ export interface PendingDismiss {
 	kind: DismissKind;
 }
 
+export interface FlushCommitOptions {
+	keepalive?: boolean;
+}
+
 export interface DispatchSessionHandlers {
-	onPass: (link: string) => Promise<void>;
-	onQueue: (link: string) => Promise<void>;
+	onPass: (link: string, options?: FlushCommitOptions) => Promise<void>;
+	onQueue: (link: string, options?: FlushCommitOptions) => Promise<void>;
 	onPendingChange?: (pending: PendingDismiss | null) => void;
 }
 
@@ -26,7 +30,7 @@ export interface DispatchSession {
 	readonly pending: PendingDismiss | null;
 	dismiss(link: string, kind?: DismissKind): void;
 	undo(): PendingDismiss | null;
-	flush(): void;
+	flush(options?: FlushCommitOptions): void;
 	revertCount(): void;
 }
 
@@ -36,11 +40,12 @@ export function createDispatchSession(
 	let readCount = $state(0);
 	let pending = $state<PendingDismiss | null>(null);
 
-	function commit(entry: PendingDismiss) {
+	function commit(entry: PendingDismiss, options?: FlushCommitOptions) {
+		const handler = entry.kind === "queue" ? handlers.onQueue : handlers.onPass;
 		const run =
-			entry.kind === "queue"
-				? handlers.onQueue(entry.link)
-				: handlers.onPass(entry.link);
+			options !== undefined
+				? handler(entry.link, options)
+				: handler(entry.link);
 		try {
 			run.catch((err) => {
 				console.warn(
@@ -84,12 +89,12 @@ export function createDispatchSession(
 			handlers.onPendingChange?.(null);
 			return restored;
 		},
-		flush() {
+		flush(options?: FlushCommitOptions) {
 			if (pending === null) return;
 			const toCommit = pending;
 			pending = null;
 			handlers.onPendingChange?.(null);
-			commit(toCommit);
+			commit(toCommit, options);
 		},
 		revertCount() {
 			readCount = Math.max(0, readCount - 1);

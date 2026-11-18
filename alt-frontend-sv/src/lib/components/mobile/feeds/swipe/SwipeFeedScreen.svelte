@@ -9,7 +9,10 @@ import {
 	updateFeedReadStatusClient,
 } from "#lib/api/client/index.js";
 import type { ConnectFeedSource } from "#lib/connect/feeds.js";
-import { QueueArticleOutcome } from "#lib/connect/reading.js";
+import {
+	isQueueSuccessOutcome,
+	QueueArticleOutcome,
+} from "#lib/connect/reading.js";
 import { renderFeedToReaderItem } from "#lib/reader/mappers.js";
 import { openReaderOverlay } from "#lib/reader/reader-overlay.svelte.js";
 import { readTodayQueue } from "#lib/reading/read-today-queue.svelte.js";
@@ -74,7 +77,20 @@ let activeIndex = $state(0);
 let isInitialLoading = $state((initialFeeds ?? []).length === 0);
 let liveRegionMessage = $state("");
 let noticeMessage = $state<string | null>(null);
+let dismissingCardId = $state<string | null>(null);
 let inFlightQueueCount = 0;
+let isMounted = true;
+
+interface PreparedQueueTarget {
+	title: string;
+	url: string;
+	sourceName?: string;
+	imageUrl: string;
+	resolvedArticleId: string;
+	articleIdPromise: Promise<string> | null;
+}
+
+const pendingQueueTargets = new Map<string, PreparedQueueTarget>();
 
 // Filter & sort state
 let excludedFeedLinkIds = $state<string[]>([]);
@@ -83,6 +99,7 @@ let sortOrder = $state<"newest" | "oldest">("newest");
 let isFilterSheetOpen = $state(false);
 
 function syncPendingQueueCount(hasPendingQueueSlot: boolean) {
+	if (!isMounted) return;
 	readTodayQueue.setPendingQueueCount(
 		(hasPendingQueueSlot ? 1 : 0) + inFlightQueueCount,
 	);
@@ -90,8 +107,11 @@ function syncPendingQueueCount(hasPendingQueueSlot: boolean) {
 
 // Session bookkeeping: deferred pass/queue flush + one-card undo window
 const session = createDispatchSession({
-	onPass: (link) => updateFeedReadStatusClient(link),
-	onQueue: (link) => commitQueue(link),
+	onPass: (link, opts) =>
+		opts?.keepalive
+			? updateFeedReadStatusClient(link, { keepalive: true })
+			: updateFeedReadStatusClient(link),
+	onQueue: (link, opts) => commitQueue(link, opts),
 	onPendingChange: (pending) => {
 		syncPendingQueueCount(pending?.kind === "queue");
 	},
@@ -116,6 +136,53 @@ function fullQueueNotice(cap: number): string {
 	return `Read today is full (${cap}). Read or remove one first.`;
 }
 
+function queueFailureNotice(title?: string | null): string {
+	const trimmed = title?.trim();
+	return trimmed
+		? `Could not add "${trimmed}" to Read today.`
+		: "Could not add to Read today.";
+}
+
+function failDeferredQueue(link: string, message: string) {
+	if (isMounted) {
+		restoreFailedQueueCard(link, message);
+	} else {
+		readTodayQueue.setPendingNotice(message);
+	}
+}
+
+function prepareQueueTarget(feed: RenderFeed, link: string): void {
+	const targetUrl = feed.normalizedUrl || link;
+	const knownId =
+		feed.articleId?.trim() ||
+		articlePrefetcher.getCachedArticleId(targetUrl)?.trim() ||
+		"";
+	const entry: PreparedQueueTarget = {
+		title: feed.title,
+		url: targetUrl,
+		sourceName: feed.author,
+		imageUrl:
+			feed.ogImageProxyUrl ||
+			articlePrefetcher.getCachedOgImage(targetUrl) ||
+			"",
+		resolvedArticleId: knownId,
+		articleIdPromise: null,
+	};
+	if (!knownId) {
+		entry.articleIdPromise = getFeedContentOnTheFlyClient(targetUrl)
+			.then((res) => {
+				const resolved = res.article_id?.trim() || "";
+				entry.resolvedArticleId = resolved;
+				if (resolved) {
+					handleArticleIdResolved(feed.link, resolved);
+				}
+				return resolved;
+			})
+			.catch(() => "");
+	}
+	pendingQueueTargets.set(link, entry);
+}
+
 function restoreFailedQueueCard(link: string, message: string) {
 	dismissedLinks.delete(link);
 	const idx = feeds.findIndex((f) => canonicalize(f.link) === link);
@@ -137,62 +204,62 @@ function restoreFailedQueueCard(link: string, message: string) {
 	liveRegionMessage = message;
 }
 
-async function commitQueue(link: string): Promise<void> {
+async function commitQueue(
+	link: string,
+	commitOptions?: { keepalive?: boolean },
+): Promise<void> {
 	inFlightQueueCount++;
 	syncPendingQueueCount(session.pending?.kind === "queue");
 
+	const prepared = pendingQueueTargets.get(link);
+	pendingQueueTargets.delete(link);
+	const feed = feeds.find(
+		(f) =>
+			canonicalize(f.link) === link || canonicalize(f.normalizedUrl) === link,
+	);
+	const title = prepared?.title ?? feed?.title;
+	const targetUrl = prepared?.url ?? feed?.normalizedUrl ?? link;
+
 	try {
-		const feed = feeds.find(
-			(f) =>
-				canonicalize(f.link) === link || canonicalize(f.normalizedUrl) === link,
-		);
-		const targetUrl = feed?.normalizedUrl || link;
 		let articleId =
+			prepared?.resolvedArticleId ||
 			feed?.articleId?.trim() ||
 			articlePrefetcher.getCachedArticleId(targetUrl)?.trim() ||
 			"";
 
-		if (!articleId) {
-			try {
-				const res = await getFeedContentOnTheFlyClient(targetUrl);
-				articleId = res.article_id?.trim() || "";
-				if (articleId && feed) {
-					handleArticleIdResolved(feed.link, articleId);
-				}
-			} catch {
-				articleId = "";
-			}
+		if (!articleId && prepared?.articleIdPromise) {
+			articleId = await prepared.articleIdPromise;
 		}
 
 		if (!articleId) {
-			restoreFailedQueueCard(
-				link,
-				"Could not add to Read today. Card returned to the deck.",
-			);
+			failDeferredQueue(link, queueFailureNotice(title));
 			return;
 		}
 
 		const result = await readTodayQueue.queue({
 			articleId,
 			surface: ReadingSurface.SWIPE,
-			title: feed?.title,
+			title,
 			url: targetUrl,
-			sourceName: feed?.author,
+			sourceName: prepared?.sourceName ?? feed?.author,
 			imageUrl:
-				feed?.ogImageProxyUrl ||
-				articlePrefetcher.getCachedOgImage(targetUrl) ||
+				prepared?.imageUrl ??
+				feed?.ogImageProxyUrl ??
+				articlePrefetcher.getCachedOgImage(targetUrl) ??
 				"",
+			keepalive: commitOptions?.keepalive,
 		});
 
-		if (result.outcome === QueueArticleOutcome.QUEUE_FULL) {
+		if (!isQueueSuccessOutcome(result.outcome)) {
 			const cap = result.cap > 0 ? result.cap : readTodayQueue.cap;
-			restoreFailedQueueCard(link, fullQueueNotice(cap));
+			const msg =
+				result.outcome === QueueArticleOutcome.QUEUE_FULL
+					? fullQueueNotice(cap)
+					: queueFailureNotice(title);
+			failDeferredQueue(link, msg);
 		}
 	} catch {
-		restoreFailedQueueCard(
-			link,
-			"Could not add to Read today. Card returned to the deck.",
-		);
+		failDeferredQueue(link, queueFailureNotice(title));
 	} finally {
 		inFlightQueueCount = Math.max(0, inFlightQueueCount - 1);
 		syncPendingQueueCount(session.pending?.kind === "queue");
@@ -262,13 +329,30 @@ onMount(() => {
 
 // Commit the pending action when the surface is left or backgrounded
 onMount(() => {
-	const flush = () => session.flush();
-	window.addEventListener("pagehide", flush);
+	isMounted = true;
+	const flushKeepalive = () => session.flush({ keepalive: true });
+	const onVisibilityChange = () => {
+		if (document.visibilityState === "hidden") {
+			flushKeepalive();
+		}
+	};
+	window.addEventListener("pagehide", flushKeepalive);
+	document.addEventListener("visibilitychange", onVisibilityChange);
 	return () => {
-		window.removeEventListener("pagehide", flush);
+		isMounted = false;
+		window.removeEventListener("pagehide", flushKeepalive);
+		document.removeEventListener("visibilitychange", onVisibilityChange);
 		session.flush();
 		readTodayQueue.setPendingQueueCount(0);
 	};
+});
+
+$effect(() => {
+	const pending = readTodayQueue.pendingNotice;
+	if (!pending) return;
+	noticeMessage = pending;
+	liveRegionMessage = pending;
+	readTodayQueue.clearPendingNotice();
 });
 
 // Wire articleId callback to trigger batch image prefetch in visual-preview mode
@@ -474,8 +558,21 @@ function resetAndReload() {
 	void loadMore();
 }
 
-async function handleDismiss(direction: number): Promise<boolean> {
+function handleDismissingChange(dismissing: boolean, cardId: string) {
+	if (dismissing) {
+		dismissingCardId = cardId;
+	} else if (dismissingCardId === cardId) {
+		dismissingCardId = null;
+	}
+}
+
+async function handleDismiss(
+	direction: number,
+	cardId?: string,
+): Promise<boolean> {
 	if (!activeFeed) return false;
+	if (cardId !== undefined && cardId !== activeFeed.id) return false;
+	if (cardId === undefined && dismissingCardId === activeFeed.id) return false;
 
 	noticeMessage = null;
 	const kind: DismissKind = direction > 0 ? "queue" : "pass";
@@ -487,6 +584,10 @@ async function handleDismiss(direction: number): Promise<boolean> {
 		return false;
 	}
 
+	if (dismissingCardId === activeFeed.id) {
+		dismissingCardId = null;
+	}
+
 	const currentLink = canonicalize(activeFeed.link);
 	dismissedLinks.add(currentLink);
 
@@ -496,6 +597,7 @@ async function handleDismiss(direction: number): Promise<boolean> {
 		articlePrefetcher.markAsDismissed(currentLink);
 		liveRegionMessage = "Passed";
 	} else {
+		prepareQueueTarget(activeFeed, currentLink);
 		liveRegionMessage = "Added to Read today";
 	}
 
@@ -519,6 +621,10 @@ function handleUndo() {
 	noticeMessage = null;
 	const restored = session.undo();
 	if (!restored) return;
+
+	if (restored.kind === "queue") {
+		pendingQueueTargets.delete(restored.link);
+	}
 
 	dismissedLinks.delete(restored.link);
 	if (restored.kind === "pass") {
@@ -640,6 +746,7 @@ function handleOpenArticle() {
 					feed={activeFeed}
 					statusMessage={liveRegionMessage}
 					onDismiss={handleDismiss}
+					onDismissingChange={handleDismissingChange}
 					onOpenArticle={handleOpenArticle}
 					thumbnailProxyUrl={currentOgImage}
 					isBusy={isLoading}

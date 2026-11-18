@@ -12,7 +12,9 @@ interface Props {
 	statusMessage?: string | null;
 	onDismiss: (
 		direction: number,
+		cardId?: string,
 	) => Promise<boolean | undefined> | boolean | undefined;
+	onDismissingChange?: (dismissing: boolean, cardId: string) => void;
 	onOpenArticle?: () => void;
 	thumbnailProxyUrl: string | null;
 	isBusy?: boolean;
@@ -23,6 +25,7 @@ interface Props {
 const {
 	feed,
 	onDismiss,
+	onDismissingChange,
 	onOpenArticle,
 	thumbnailProxyUrl,
 	isBusy = false,
@@ -128,29 +131,40 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
 	const dir = event.detail.direction;
 	if (dir !== "left" && dir !== "right") return;
 
+	const swipedCardId = feed.id;
 	const dirNum = dir === "left" ? -1 : 1;
 	isDragging = false;
 	dragDeltaX = 0;
 
 	if (dirNum === 1 && !canQueue) {
-		await x.set(0);
-		await onDismiss(1);
+		onDismissingChange?.(true, swipedCardId);
+		try {
+			await x.set(0);
+			await onDismiss(1, swipedCardId);
+		} finally {
+			onDismissingChange?.(false, swipedCardId);
+		}
 		return;
 	}
 
 	hasSwiped = true;
+	onDismissingChange?.(true, swipedCardId);
 
-	const width = swipeElement?.clientWidth ?? window.innerWidth;
-	const target = dir === "left" ? -width : width;
+	try {
+		const width = swipeElement?.clientWidth ?? window.innerWidth;
+		const target = dir === "left" ? -width : width;
 
-	await x.set(target, { preserveMomentum: 120 });
-	const accepted = await onDismiss(dirNum);
+		await x.set(target, { preserveMomentum: 120 });
+		const accepted = await onDismiss(dirNum, swipedCardId);
 
-	hasSwiped = false;
-	if (accepted === false) {
-		await x.set(0);
-	} else {
-		await x.set(0, { instant: true });
+		if (accepted === false) {
+			await x.set(0);
+		} else {
+			await x.set(0, { instant: true });
+		}
+	} finally {
+		hasSwiped = false;
+		onDismissingChange?.(false, swipedCardId);
 	}
 }
 
