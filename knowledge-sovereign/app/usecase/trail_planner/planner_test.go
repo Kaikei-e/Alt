@@ -17,46 +17,25 @@ import (
 
 type fakePlannerRepo struct {
 	users                  []uuid.UUID
-	anchor                 string
-	anchorVerb             string
-	anchorOK               bool
-	candidates             []sovereign_db.TrailClusterCandidate
-	emitted                []sovereign_db.KnowledgeEvent
-	anchorErr              map[uuid.UUID]error
-	anchorTitle            string
-	anchorTitleOK          bool
-	titleErr               error
 	continuationCandidates []sovereign_db.TrailContinuationCandidate
+	continuationErr        map[uuid.UUID]error
+	emitted                []sovereign_db.KnowledgeEvent
 	dedupeRejects          bool
 }
 
 func (f *fakePlannerRepo) ListDistinctUserIDs(context.Context) ([]uuid.UUID, error) {
 	return f.users, nil
 }
-func (f *fakePlannerRepo) GetLatestFootprintAnchor(_ context.Context, userID uuid.UUID) (sovereign_db.FootprintAnchor, bool, error) {
-	if f.anchorErr != nil {
-		if err, ok := f.anchorErr[userID]; ok {
-			return sovereign_db.FootprintAnchor{}, false, err
+
+func (f *fakePlannerRepo) DeriveTrailContinuationCandidates(_ context.Context, userID uuid.UUID, _ int) ([]sovereign_db.TrailContinuationCandidate, error) {
+	if f.continuationErr != nil {
+		if err, ok := f.continuationErr[userID]; ok {
+			return nil, err
 		}
 	}
-	verb := f.anchorVerb
-	if verb == "" {
-		verb = "read"
-	}
-	return sovereign_db.FootprintAnchor{ItemKey: f.anchor, TenantID: uuid.New(), Verb: verb}, f.anchorOK, nil
-}
-func (f *fakePlannerRepo) GetItemTitle(_ context.Context, _ uuid.UUID, _ string) (string, bool, error) {
-	if f.titleErr != nil {
-		return "", false, f.titleErr
-	}
-	return f.anchorTitle, f.anchorTitleOK, nil
-}
-func (f *fakePlannerRepo) DeriveTrailClusterCandidates(context.Context, uuid.UUID, int) ([]sovereign_db.TrailClusterCandidate, error) {
-	return f.candidates, nil
-}
-func (f *fakePlannerRepo) DeriveTrailContinuationCandidates(context.Context, uuid.UUID, int) ([]sovereign_db.TrailContinuationCandidate, error) {
 	return f.continuationCandidates, nil
 }
+
 func (f *fakePlannerRepo) AppendKnowledgeEventIfNew(_ context.Context, e sovereign_db.KnowledgeEvent) (int64, bool, error) {
 	if f.dedupeRejects {
 		return 0, false, nil
@@ -73,13 +52,9 @@ func captureLogger() (*slog.Logger, *bytes.Buffer) {
 func TestPlanner_DedupeRejectedBranchIsNotClaimedAsProposed(t *testing.T) {
 	user := uuid.New()
 	repo := &fakePlannerRepo{
-		users:         []uuid.UUID{user},
-		anchor:        "article:a",
-		anchorOK:      true,
-		anchorTitle:   "Anchor Title",
-		anchorTitleOK: true,
-		candidates: []sovereign_db.TrailClusterCandidate{
-			{TargetItemKey: "article:b", TargetTitle: "Target B", SharedTags: []string{"rust"}},
+		users: []uuid.UUID{user},
+		continuationCandidates: []sovereign_db.TrailContinuationCandidate{
+			{TenantID: uuid.New(), TargetItemKey: "article:b", TargetTitle: "Target B", Verb: "read", LastContactAt: time.Unix(0, 0)},
 		},
 		dedupeRejects: true,
 	}
@@ -95,14 +70,11 @@ func TestPlanner_DedupeRejectedBranchIsNotClaimedAsProposed(t *testing.T) {
 
 func TestPlanner_GenuineAppendLogsProposedWithEventSeq(t *testing.T) {
 	user := uuid.New()
+	tenant := uuid.New()
 	repo := &fakePlannerRepo{
-		users:         []uuid.UUID{user},
-		anchor:        "article:a",
-		anchorOK:      true,
-		anchorTitle:   "Anchor Title",
-		anchorTitleOK: true,
-		candidates: []sovereign_db.TrailClusterCandidate{
-			{TargetItemKey: "article:b", TargetTitle: "Target B", SharedTags: []string{"rust"}},
+		users: []uuid.UUID{user},
+		continuationCandidates: []sovereign_db.TrailContinuationCandidate{
+			{TenantID: tenant, TargetItemKey: "article:b", TargetTitle: "Target B", Verb: "read", LastContactAt: time.Unix(0, 0)},
 		},
 	}
 
@@ -110,17 +82,21 @@ func TestPlanner_GenuineAppendLogsProposedWithEventSeq(t *testing.T) {
 	p := NewPlanner(repo, logger, Config{Clock: func() time.Time { return time.Unix(0, 0) }})
 	require.NoError(t, p.RunBatch(context.Background()))
 
+	require.Len(t, repo.emitted, 1)
+	assert.Equal(t, tenant, repo.emitted[0].TenantID)
 	out := buf.String()
 	assert.Contains(t, out, "\"msg\":\"trail.branch_proposed\"")
-	assert.Contains(t, out, "\"relation_kind\":\"cluster\"")
+	assert.Contains(t, out, "\"relation_kind\":\"continuation\"")
 	assert.Contains(t, out, "\"event_seq\":1")
 }
 
-func TestPlanner_NoEligibleAnchorSuppressesAndSaysSo(t *testing.T) {
+func TestPlanner_SkipsTitlelessCandidate(t *testing.T) {
 	user := uuid.New()
 	repo := &fakePlannerRepo{
-		users:    []uuid.UUID{user},
-		anchorOK: false,
+		users: []uuid.UUID{user},
+		continuationCandidates: []sovereign_db.TrailContinuationCandidate{
+			{TenantID: uuid.New(), TargetItemKey: "article:x", TargetTitle: "   ", Verb: "read", LastContactAt: time.Unix(0, 0)},
+		},
 	}
 	logger, buf := captureLogger()
 	p := NewPlanner(repo, logger, Config{Clock: func() time.Time { return time.Unix(0, 0) }})
@@ -128,16 +104,16 @@ func TestPlanner_NoEligibleAnchorSuppressesAndSaysSo(t *testing.T) {
 
 	assert.Empty(t, repo.emitted)
 	assert.Contains(t, buf.String(), "trail.branch_anchor_unresolved")
-	assert.Contains(t, buf.String(), "no_eligible_footprint")
+	assert.Contains(t, buf.String(), "title_unresolved")
 }
 
-func TestPlanner_AnchorVerbWithoutPhraseSuppresses(t *testing.T) {
+func TestPlanner_UnphrasableVerbSuppresses(t *testing.T) {
 	user := uuid.New()
 	repo := &fakePlannerRepo{
-		users:      []uuid.UUID{user},
-		anchor:     "article:a",
-		anchorVerb: "dismissed",
-		anchorOK:   true,
+		users: []uuid.UUID{user},
+		continuationCandidates: []sovereign_db.TrailContinuationCandidate{
+			{TenantID: uuid.New(), TargetItemKey: "article:a", TargetTitle: "Dismissed Item", Verb: "dismissed", LastContactAt: time.Unix(0, 0)},
+		},
 	}
 	logger, buf := captureLogger()
 	p := NewPlanner(repo, logger, Config{Clock: func() time.Time { return time.Unix(0, 0) }})
@@ -154,76 +130,6 @@ func TestNewPlanner_DefaultClockIsWallClock(t *testing.T) {
 	assert.True(t, now.After(time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)), "default clock should return wall clock time, got %v", now)
 }
 
-func TestPlanner_EmitsBranchProposedEvents(t *testing.T) {
-	user := uuid.New()
-	repo := &fakePlannerRepo{
-		users:         []uuid.UUID{user},
-		anchor:        "article:a",
-		anchorOK:      true,
-		anchorTitle:   "US military courts in the UK",
-		anchorTitleOK: true,
-		candidates: []sovereign_db.TrailClusterCandidate{
-			{TargetItemKey: "article:x", TargetTitle: "X", SharedTags: []string{"tag1"}},
-			{TargetItemKey: "article:y", TargetTitle: "Y", SharedTags: []string{"tag2"}},
-		},
-	}
-	p := NewPlanner(repo, nil, Config{Clock: func() time.Time { return time.Unix(0, 0) }})
-	require.NoError(t, p.RunBatch(context.Background()))
-
-	require.Len(t, repo.emitted, 2)
-	assert.Equal(t, EventTrailBranchProposed, repo.emitted[0].EventType)
-	assert.Equal(t, EventTrailBranchProposed+":cluster:"+user.String()+":article:x", repo.emitted[0].DedupeKey)
-
-	var payload BranchProposedPayload
-	require.NoError(t, json.Unmarshal(repo.emitted[0].Payload, &payload))
-	assert.True(t, payload.Valid(), "emitted branch payload must be valid")
-	assert.Contains(t, payload.Why, `"US military courts in the UK"`, "why must anchor to anchor title")
-}
-
-func TestPlanner_SkipsTitlelessCandidate(t *testing.T) {
-	user := uuid.New()
-	repo := &fakePlannerRepo{
-		users:         []uuid.UUID{user},
-		anchor:        "article:a",
-		anchorOK:      true,
-		anchorTitle:   "Anchor Title",
-		anchorTitleOK: true,
-		candidates: []sovereign_db.TrailClusterCandidate{
-			{TargetItemKey: "article:x", TargetTitle: "", SharedTags: []string{"tag1"}},
-			{TargetItemKey: "article:y", TargetTitle: "Y", SharedTags: []string{"tag2"}},
-		},
-	}
-	p := NewPlanner(repo, nil, Config{Clock: func() time.Time { return time.Unix(0, 0) }})
-	require.NoError(t, p.RunBatch(context.Background()))
-
-	require.Len(t, repo.emitted, 1)
-	var payload BranchProposedPayload
-	require.NoError(t, json.Unmarshal(repo.emitted[0].Payload, &payload))
-	assert.Equal(t, "article:y", payload.TargetItemKey)
-}
-
-func TestPlanner_NoAnchorEmitsNothing(t *testing.T) {
-	repo := &fakePlannerRepo{users: []uuid.UUID{uuid.New()}, anchorOK: false}
-	p := NewPlanner(repo, nil, Config{})
-	require.NoError(t, p.RunBatch(context.Background()))
-	assert.Empty(t, repo.emitted)
-}
-
-func TestPlanner_SkipsUserWhenAnchorTitleUnresolved(t *testing.T) {
-	repo := &fakePlannerRepo{
-		users:         []uuid.UUID{uuid.New()},
-		anchor:        "article:a",
-		anchorOK:      true,
-		anchorTitleOK: false,
-		candidates: []sovereign_db.TrailClusterCandidate{
-			{TargetItemKey: "article:x", TargetTitle: "X", SharedTags: []string{"tag1"}},
-		},
-	}
-	p := NewPlanner(repo, nil, Config{Clock: func() time.Time { return time.Unix(0, 0) }})
-	require.NoError(t, p.RunBatch(context.Background()))
-	assert.Empty(t, repo.emitted)
-}
-
 func TestPlanner_PanicsWhenUnwired(t *testing.T) {
 	p := NewPlanner(nil, nil, Config{})
 	assert.PanicsWithValue(t, "trail_planner: repository not wired", func() {
@@ -234,15 +140,11 @@ func TestPlanner_PanicsWhenUnwired(t *testing.T) {
 func TestPlanner_ContinuesAfterUserError(t *testing.T) {
 	good1, bad, good2 := uuid.New(), uuid.New(), uuid.New()
 	repo := &fakePlannerRepo{
-		users:         []uuid.UUID{good1, bad, good2},
-		anchor:        "article:a",
-		anchorOK:      true,
-		anchorTitle:   "Anchor Title",
-		anchorTitleOK: true,
-		candidates: []sovereign_db.TrailClusterCandidate{
-			{TargetItemKey: "article:x", TargetTitle: "X", SharedTags: []string{"tag1"}},
+		users: []uuid.UUID{good1, bad, good2},
+		continuationCandidates: []sovereign_db.TrailContinuationCandidate{
+			{TenantID: uuid.New(), TargetItemKey: "article:x", TargetTitle: "X", Verb: "read", LastContactAt: time.Unix(0, 0)},
 		},
-		anchorErr: map[uuid.UUID]error{
+		continuationErr: map[uuid.UUID]error{
 			bad: assert.AnError,
 		},
 	}
@@ -267,14 +169,11 @@ func continuationEventsOf(t *testing.T, events []sovereign_db.KnowledgeEvent) []
 
 func TestPlanner_EmitsContinuationBranchWithAnchoredWhy(t *testing.T) {
 	userID := uuid.New()
+	tenantID := uuid.New()
 	repo := &fakePlannerRepo{
-		users:         []uuid.UUID{userID},
-		anchor:        "article:a",
-		anchorOK:      true,
-		anchorTitle:   "US military courts in the UK",
-		anchorTitleOK: true,
+		users: []uuid.UUID{userID},
 		continuationCandidates: []sovereign_db.TrailContinuationCandidate{
-			{TargetItemKey: "article:q", TargetTitle: "Async Rust", Verb: "read", LastContactAt: time.Unix(0, 0)},
+			{TenantID: tenantID, TargetItemKey: "article:q", TargetTitle: "Async Rust", Verb: "read", LastContactAt: time.Unix(0, 0)},
 		},
 	}
 	p := NewPlanner(repo, nil, Config{Clock: func() time.Time { return time.Unix(0, 0) }})
@@ -297,14 +196,10 @@ func TestPlanner_EmitsContinuationBranchWithAnchoredWhy(t *testing.T) {
 func TestPlanner_EmitsAtMostOneContinuationPerUserPerRun(t *testing.T) {
 	userID := uuid.New()
 	repo := &fakePlannerRepo{
-		users:         []uuid.UUID{userID},
-		anchor:        "article:a",
-		anchorOK:      true,
-		anchorTitle:   "US military courts in the UK",
-		anchorTitleOK: true,
+		users: []uuid.UUID{userID},
 		continuationCandidates: []sovereign_db.TrailContinuationCandidate{
-			{TargetItemKey: "article:q", TargetTitle: "Async Rust", Verb: "read", LastContactAt: time.Unix(100, 0)},
-			{TargetItemKey: "article:r", TargetTitle: "Distributed Systems", Verb: "read", LastContactAt: time.Unix(50, 0)},
+			{TenantID: uuid.New(), TargetItemKey: "article:q", TargetTitle: "Async Rust", Verb: "read", LastContactAt: time.Unix(100, 0)},
+			{TenantID: uuid.New(), TargetItemKey: "article:r", TargetTitle: "Distributed Systems", Verb: "read", LastContactAt: time.Unix(50, 0)},
 		},
 	}
 	p := NewPlanner(repo, nil, Config{Clock: func() time.Time { return time.Unix(0, 0) }})
@@ -314,36 +209,24 @@ func TestPlanner_EmitsAtMostOneContinuationPerUserPerRun(t *testing.T) {
 	assert.Len(t, continuationEvents, 1, "at most one continuation branch per user per run")
 }
 
-func TestPlanner_NoContinuationCandidatesEmitsNoneAndLeavesClusterUntouched(t *testing.T) {
+func TestPlanner_NoContinuationCandidatesEmitsNothing(t *testing.T) {
 	userID := uuid.New()
 	repo := &fakePlannerRepo{
-		users:         []uuid.UUID{userID},
-		anchor:        "article:a",
-		anchorOK:      true,
-		anchorTitle:   "US military courts in the UK",
-		anchorTitleOK: true,
-		candidates: []sovereign_db.TrailClusterCandidate{
-			{TargetItemKey: "article:z", TargetTitle: "Async Rust", SharedTags: []string{"rust"}},
-		},
+		users:                  []uuid.UUID{userID},
 		continuationCandidates: nil,
 	}
 	p := NewPlanner(repo, nil, Config{Clock: func() time.Time { return time.Unix(0, 0) }})
 	require.NoError(t, p.RunBatch(context.Background()))
 
-	assert.Empty(t, continuationEventsOf(t, repo.emitted), "no continuation candidates → no continuation emit")
-	require.Len(t, repo.emitted, 1, "the cluster branch from the same run must be untouched")
+	assert.Empty(t, repo.emitted)
 }
 
 func TestPlanner_ContinuationDedupeKeyIsDeterministicBranchKey(t *testing.T) {
 	userID := uuid.New()
 	repo := &fakePlannerRepo{
-		users:         []uuid.UUID{userID},
-		anchor:        "article:a",
-		anchorOK:      true,
-		anchorTitle:   "US military courts in the UK",
-		anchorTitleOK: true,
+		users: []uuid.UUID{userID},
 		continuationCandidates: []sovereign_db.TrailContinuationCandidate{
-			{TargetItemKey: "article:q", TargetTitle: "Async Rust", Verb: "read", LastContactAt: time.Unix(0, 0)},
+			{TenantID: uuid.New(), TargetItemKey: "article:q", TargetTitle: "Async Rust", Verb: "read", LastContactAt: time.Unix(0, 0)},
 		},
 	}
 	p := NewPlanner(repo, nil, Config{Clock: func() time.Time { return time.Unix(0, 0) }})
@@ -360,41 +243,23 @@ func TestPlanner_ContinuationDedupeKeyIsDeterministicBranchKey(t *testing.T) {
 	assert.Equal(t, wantKey, payload.BranchKey)
 }
 
-func TestPlanner_UsesCandidateMatchedAnchorAndFiltersJunkSharedTags(t *testing.T) {
+func TestPlanner_NeverProposesClusterBranches(t *testing.T) {
 	userID := uuid.New()
+	tenantID := uuid.New()
 	repo := &fakePlannerRepo{
-		users:         []uuid.UUID{userID},
-		anchor:        "article:scalp-detox",
-		anchorOK:      true,
-		anchorTitle:   "Is it true that you need to detox your scalp?",
-		anchorTitleOK: true,
-		candidates: []sovereign_db.TrailClusterCandidate{
-			{
-				TargetItemKey: "article:junk-only",
-				TargetTitle:   "Only Junk Shared Tags",
-				SharedTags:    []string{"AI", "[1]", "技術"},
-				AnchorItemKey: "article:scalp-detox",
-				AnchorTitle:   "Is it true that you need to detox your scalp?",
-				AnchorVerb:    "read",
-			},
-			{
-				TargetItemKey: "article:rust-target",
-				TargetTitle:   "Zero-Cost Abstractions in Rust",
-				SharedTags:    []string{"Rust", "AI", "io_uring"},
-				AnchorItemKey: "article:rust-anchor",
-				AnchorTitle:   "Async I/O with io_uring",
-				AnchorVerb:    "asked",
-			},
+		users: []uuid.UUID{userID},
+		continuationCandidates: []sovereign_db.TrailContinuationCandidate{
+			{TenantID: tenantID, TargetItemKey: "article:q", TargetTitle: "Quiet Thread", Verb: "read", LastContactAt: time.Unix(0, 0)},
 		},
 	}
 
 	p := NewPlanner(repo, nil, Config{Clock: func() time.Time { return time.Unix(0, 0) }})
 	require.NoError(t, p.RunBatch(context.Background()))
 
-	require.Len(t, repo.emitted, 1, "junk-only candidate must be skipped")
+	require.Len(t, repo.emitted, 1)
+	assert.Equal(t, tenantID, repo.emitted[0].TenantID)
 	var payload BranchProposedPayload
 	require.NoError(t, json.Unmarshal(repo.emitted[0].Payload, &payload))
-	assert.Equal(t, "article:rust-anchor", payload.AnchorItemKey)
-	assert.Equal(t, "article:rust-target", payload.TargetItemKey)
-	assert.Equal(t, `Because you asked about "Async I/O with io_uring" — joins rust, io_uring`, payload.Why)
+	assert.NotEqual(t, "cluster", payload.RelationKind)
+	assert.Equal(t, "continuation", payload.RelationKind)
 }

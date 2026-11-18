@@ -228,15 +228,21 @@ func TestProjector_SkipsSystemEventsWithoutUser(t *testing.T) {
 
 func TestProjector_FoldsValidBranch(t *testing.T) {
 	user := userPtr()
-	repo := newFakeRepo([]sovereign_db.KnowledgeEvent{branchEvent(1, validBranchPayload(), user)})
+	want := validBranchPayload()
+	repo := newFakeRepo([]sovereign_db.KnowledgeEvent{branchEvent(1, want, user)})
 	require.NoError(t, NewProjector(repo, nil, Config{}).RunBatch(context.Background()))
 
 	require.Len(t, repo.branches, 1)
-	b := repo.branches["cluster:u:article:z"]
+	b := repo.branches[want.BranchKey]
+	assert.Equal(t, want.BranchKey, b.BranchKey)
+	assert.Equal(t, want.AnchorItemKey, b.AnchorItemKey)
 	assert.Equal(t, "cluster", b.RelationKind)
-	assert.NotEmpty(t, b.Why)
-	assert.Len(t, b.EvidenceRefs, 1)
-	assert.Equal(t, "plausible", b.Confidence)
+	assert.Equal(t, want.Why, b.Why)
+	assert.Equal(t, []sovereign_db.TrailEvidenceRef{{RefID: "rust", Label: "rust", Kind: "tag"}}, b.EvidenceRefs)
+	assert.Equal(t, want.Confidence, b.Confidence)
+	assert.Equal(t, want.TargetItemKey, b.TargetItemKey)
+	assert.Equal(t, want.TargetTitle, b.TargetTitle)
+	assert.Equal(t, "open", repo.states[want.BranchKey])
 }
 
 func TestProjector_DuplicateBranchProposalIsFirstWriteWins(t *testing.T) {

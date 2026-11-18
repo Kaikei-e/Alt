@@ -356,10 +356,12 @@ func TestDeriveTrailContinuationCandidates_WindowAndExclusionsAgainstPostgres(t 
 	require.Equal(t, []string{"cand:qualifying-read", "cand:qualifying-listened"}, keys,
 		"only threads with 1..3 contacts, no ask, no engaged outcome, and last_contact_at between 3 and 21 days ago may qualify, ordered by last_contact_at DESC")
 
+	assert.Equal(t, tenantID, got[0].TenantID)
 	assert.Equal(t, "Quiet Distributed Transactions Thread", got[0].TargetTitle)
 	assert.Equal(t, "read", got[0].Verb)
 	assert.True(t, fiveDaysAgo.Equal(got[0].LastContactAt.UTC()))
 
+	assert.Equal(t, tenantID, got[1].TenantID)
 	assert.Equal(t, "Quiet Audio Episode Thread", got[1].TargetTitle)
 	assert.Equal(t, "listened", got[1].Verb)
 	assert.True(t, tenDaysAgo.Equal(got[1].LastContactAt.UTC()))
