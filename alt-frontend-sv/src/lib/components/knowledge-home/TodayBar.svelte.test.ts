@@ -12,7 +12,6 @@ function makeDigest(overrides: Partial<TodayDigestData> = {}): TodayDigestData {
 		unsummarizedArticles: 12,
 		topTags: ["AI", "Go", "Rust"],
 		weeklyRecapAvailable: true,
-		eveningPulseAvailable: false,
 		needToKnowCount: 0,
 		digestFreshness: "fresh",
 		lastProjectedAt: null,
@@ -83,9 +82,13 @@ describe("TodayBar", () => {
 			.toBeInTheDocument();
 	});
 
-	it("renders morning letter link always", async () => {
+	it("renders morning letter link always and omits retired pulse link", async () => {
 		render(TodayBar, { props: { digest: makeDigest() } });
 
 		await expect.element(page.getByText("Morning Letter")).toBeInTheDocument();
+		await expect
+			.element(page.getByRole("link", { name: /Pulse/i }))
+			.not.toBeInTheDocument();
+		await expect.element(page.getByText("Pulse")).not.toBeInTheDocument();
 	});
 });

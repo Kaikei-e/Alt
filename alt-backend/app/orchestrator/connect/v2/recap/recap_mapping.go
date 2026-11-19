@@ -10,32 +10,6 @@ import (
 	"alt/utils/safeconv"
 )
 
-// domainToProto converts domain.RecapSummary to 7-day proto response.
-func domainToProto(recap *domain.RecapSummary) *recapv2.GetSevenDayRecapResponse {
-	genres := make([]*recapv2.RecapGenre, len(recap.Genres))
-	for i, g := range recap.Genres {
-		genres[i] = &recapv2.RecapGenre{
-			Genre:         g.Genre,
-			Summary:       g.Summary,
-			TopTerms:      g.TopTerms,
-			ArticleCount:  safeconv.Int32(g.ArticleCount),
-			ClusterCount:  safeconv.Int32(g.ClusterCount),
-			EvidenceLinks: evidenceLinksToProto(g.EvidenceLinks),
-			Bullets:       g.Bullets,
-			References:    referencesToProto(g.References),
-		}
-	}
-
-	return &recapv2.GetSevenDayRecapResponse{
-		JobId:         recap.JobID,
-		ExecutedAt:    recap.ExecutedAt.Format(time.RFC3339),
-		WindowStart:   recap.WindowStart.Format(time.RFC3339),
-		WindowEnd:     recap.WindowEnd.Format(time.RFC3339),
-		TotalArticles: safeconv.Int32(recap.TotalArticles),
-		Genres:        genres,
-	}
-}
-
 // domainToProtoThreeDays converts domain.RecapSummary to 3-day proto response.
 func domainToProtoThreeDays(recap *domain.RecapSummary) *recapv2.GetThreeDayRecapResponse {
 	genres := make([]*recapv2.RecapGenre, len(recap.Genres))

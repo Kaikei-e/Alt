@@ -279,7 +279,7 @@ export const CONNECT_FEEDS_RESPONSE = {
 	data: [
 		{
 			id: "feed-1",
-			articleId: "article-1",
+			articleId: "01938e82-7c00-7a7b-9b10-000000000001",
 			title: "AI Trends",
 			description: "Deep dive into the ecosystem.",
 			link: "https://example.com/ai-trends",
@@ -289,7 +289,7 @@ export const CONNECT_FEEDS_RESPONSE = {
 		},
 		{
 			id: "feed-2",
-			articleId: "article-2",
+			articleId: "01938e82-7c00-7a7b-9b10-000000000002",
 			title: "Svelte 5 Tips",
 			description: "Runes-first patterns for fast interfaces.",
 			link: "https://example.com/svelte-5",
@@ -522,12 +522,15 @@ export const CONNECT_RPC_PATHS = {
 	morningLetterGetSources:
 		"**/api/v2/alt.morning_letter.v2.MorningLetterReadService/GetLetterSources",
 	// Recap service
-	getSevenDayRecap: "**/alt.recap.v2.RecapService/GetSevenDayRecap",
 	getThreeDayRecap: "**/alt.recap.v2.RecapService/GetThreeDayRecap",
 	getTopicCards: "**/alt.recap.v2.RecapService/GetTopicCards",
 	// Reading service
 	recordReadingEvents:
 		"**/api/v2/alt.reading.v1.ReadingService/RecordReadingEvents",
+	queueArticle: "**/api/v2/alt.reading.v1.ReadingService/QueueArticle",
+	unqueueArticle: "**/api/v2/alt.reading.v1.ReadingService/UnqueueArticle",
+	getReadTodayQueue:
+		"**/api/v2/alt.reading.v1.ReadingService/GetReadTodayQueue",
 	// TTS service
 	ttsSynthesizeStream: "**/alt.tts.v1.TTSService/SynthesizeStream",
 };
@@ -651,7 +654,7 @@ export const CONNECT_MORNING_LETTER_SIMPLE_RESPONSE = [
 // =============================================================================
 
 /**
- * Connect-RPC format for GetSevenDayRecap response.
+ * Connect-RPC format for GetThreeDayRecap response.
  */
 export const CONNECT_RECAP_RESPONSE = {
 	jobId: "test-job-123",
@@ -1014,124 +1017,8 @@ export const JOB_PROGRESS_EMPTY = {
 export const JOB_DASHBOARD_PATHS = {
 	jobProgress: "**/api/v1/dashboard/job-progress*",
 	jobStats: "**/api/v1/dashboard/job-stats",
-	triggerJob: "**/api/v1/generate/recaps/7days",
+	triggerJob: "**/api/v1/generate/recaps/3days",
 	triggerTopicCardsJob: "**/api/v1/generate/topic-cards",
-};
-
-// =============================================================================
-// Evening Pulse Mock Data
-// =============================================================================
-
-/**
- * Connect-RPC path for Evening Pulse service
- * RPC is alt.recap.v2.RecapService/GetEveningPulse
- */
-export const CONNECT_EVENING_PULSE_PATH =
-	"**/api/v2/alt.recap.v2.RecapService/GetEveningPulse";
-
-/**
- * Evening Pulse response with topics (proto JSON wire format)
- * PulseStatus: UNSPECIFIED=0, NORMAL=1, PARTIAL=2, QUIET_DAY=3, ERROR=4
- * TopicRole: UNSPECIFIED=0, NEED_TO_KNOW=1, TREND=2, SERENDIPITY=3
- * Confidence: UNSPECIFIED=0, HIGH=1, MEDIUM=2, LOW=3
- */
-export const CONNECT_EVENING_PULSE_RESPONSE = {
-	jobId: "pulse-job-123",
-	date: "2026-01-15",
-	generatedAt: new Date().toISOString(),
-	status: 1, // PULSE_STATUS_NORMAL
-	topics: [
-		{
-			clusterId: "1", // bigint wire format = string
-			role: 1, // NEED_TO_KNOW
-			title: "AI Breakthrough",
-			rationale: { text: "Major advances in AI this week.", confidence: 1 },
-			articleCount: 5,
-			sourceCount: 3,
-			timeAgo: "3 hours ago",
-			genre: "Technology",
-			articleIds: ["art-1", "art-2"],
-			representativeArticles: [
-				{
-					articleId: "art-1",
-					title: "GPT-5 Announced",
-					sourceUrl: "https://example.com/gpt5",
-					sourceName: "TechNews",
-					publishedAt: "2026-01-15T10:00:00Z",
-				},
-			],
-			topEntities: ["AI", "GPT", "LLM"],
-			sourceNames: ["TechNews", "AIDaily"],
-		},
-		{
-			clusterId: "2",
-			role: 2, // TREND
-			title: "Web Standards Update",
-			rationale: {
-				text: "New web platform features landing in browsers.",
-				confidence: 2,
-			},
-			articleCount: 3,
-			sourceCount: 2,
-			timeAgo: "5 hours ago",
-			genre: "Web Development",
-			articleIds: ["art-3"],
-			representativeArticles: [
-				{
-					articleId: "art-3",
-					title: "CSS Nesting Ships",
-					sourceUrl: "https://example.com/css",
-					sourceName: "WebDev",
-					publishedAt: "2026-01-15T08:00:00Z",
-				},
-			],
-			topEntities: ["CSS", "HTML", "Web"],
-			sourceNames: ["WebDev"],
-		},
-	],
-	surfaceStatus: {
-		generatedAt: new Date().toISOString(),
-		windowStart: "2026-01-12T00:00:00Z",
-		windowEnd: "2026-01-15T00:00:00Z",
-		isStale: false,
-		staleAfter: new Date(Date.now() + 30 * 60 * 60 * 1000).toISOString(),
-		latestRun: {
-			jobId: "pulse-job-123",
-			status: "completed",
-			kickedAt: "2026-01-15T12:00:00Z",
-			updatedAt: "2026-01-15T12:05:00Z",
-		},
-		degradationReasons: [],
-	},
-};
-
-/**
- * Evening Pulse quiet day response (no significant topics)
- */
-export const CONNECT_EVENING_PULSE_QUIET_RESPONSE = {
-	jobId: "pulse-job-quiet",
-	date: "2026-01-15",
-	generatedAt: new Date().toISOString(),
-	status: 3, // PULSE_STATUS_QUIET_DAY
-	topics: [],
-	quietDay: {
-		message: "It's a quiet news day. Here are some highlights from this week.",
-		weeklyHighlights: [],
-	},
-	surfaceStatus: {
-		generatedAt: new Date().toISOString(),
-		windowStart: "2026-01-12T00:00:00Z",
-		windowEnd: "2026-01-15T00:00:00Z",
-		isStale: false,
-		staleAfter: new Date(Date.now() + 30 * 60 * 60 * 1000).toISOString(),
-		latestRun: {
-			jobId: "pulse-job-quiet",
-			status: "completed",
-			kickedAt: "2026-01-15T12:00:00Z",
-			updatedAt: "2026-01-15T12:05:00Z",
-		},
-		degradationReasons: [],
-	},
 };
 
 // =============================================================================
@@ -1209,4 +1096,14 @@ export const CONNECT_TREND_STATS_RESPONSE = {
 		{ date: "2025-12-15", articles: 52, summarized: 48, feeds: 14 },
 		{ date: "2025-12-16", articles: 38, summarized: 35, feeds: 11 },
 	],
+};
+
+// =============================================================================
+// Feed Inflow Stats & Daily Cap Mock Data
+// =============================================================================
+
+export const CONNECT_FEED_INFLOW_PATHS = {
+	getFeedInflowStats: "**/api/v2/alt.feeds.v2.FeedService/GetFeedInflowStats",
+	setSubscriptionDailyCap:
+		"**/api/v2/alt.feeds.v2.FeedService/SetSubscriptionDailyCap",
 };

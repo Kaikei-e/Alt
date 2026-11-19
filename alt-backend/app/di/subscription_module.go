@@ -13,9 +13,10 @@ import (
 // SubscriptionModule holds subscription, OPML, and CSRF components.
 type SubscriptionModule struct {
 	// Subscription usecases
-	ListSubscriptionsUsecase *subscription_usecase.ListSubscriptionsUsecase
-	SubscribeUsecase         *subscription_usecase.SubscribeUsecase
-	UnsubscribeUsecase       *subscription_usecase.UnsubscribeUsecase
+	ListSubscriptionsUsecase       *subscription_usecase.ListSubscriptionsUsecase
+	SubscribeUsecase               *subscription_usecase.SubscribeUsecase
+	UnsubscribeUsecase             *subscription_usecase.UnsubscribeUsecase
+	SetSubscriptionDailyCapUsecase *subscription_usecase.SetSubscriptionDailyCapUsecase
 
 	// OPML usecases
 	ExportOPMLUsecase *opml_usecase.ExportOPMLUsecase
@@ -37,6 +38,7 @@ func newSubscriptionModule(infra *InfraModule) *SubscriptionModule {
 	listSubscriptionsUC := subscription_usecase.NewListSubscriptionsUsecase(subscriptionGw)
 	subscribeUC := subscription_usecase.NewSubscribeUsecase(subscriptionGw)
 	unsubscribeUC := subscription_usecase.NewUnsubscribeUsecase(subscriptionGw)
+	setSubscriptionDailyCapUC := subscription_usecase.NewSetSubscriptionDailyCapUsecase(subscriptionGw)
 
 	// OPML
 	// OPML export used to build its SQL in the gateway and issue it through
@@ -53,12 +55,13 @@ func newSubscriptionModule(infra *InfraModule) *SubscriptionModule {
 	csrfTokenUC := csrf_token_usecase.NewCSRFTokenUsecase(csrfTokenGw)
 
 	return &SubscriptionModule{
-		ListSubscriptionsUsecase: listSubscriptionsUC,
-		SubscribeUsecase:         subscribeUC,
-		UnsubscribeUsecase:       unsubscribeUC,
-		ExportOPMLUsecase:        exportOPMLUC,
-		ImportOPMLUsecase:        importOPMLUC,
-		CSRFTokenUsecase:         csrfTokenUC,
-		SubscriptionGateway:      subscriptionGw,
+		ListSubscriptionsUsecase:       listSubscriptionsUC,
+		SubscribeUsecase:               subscribeUC,
+		UnsubscribeUsecase:             unsubscribeUC,
+		SetSubscriptionDailyCapUsecase: setSubscriptionDailyCapUC,
+		ExportOPMLUsecase:              exportOPMLUC,
+		ImportOPMLUsecase:              importOPMLUC,
+		CSRFTokenUsecase:               csrfTokenUC,
+		SubscriptionGateway:            subscriptionGw,
 	}
 }

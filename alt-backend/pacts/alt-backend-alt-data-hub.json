@@ -195,6 +195,59 @@
       }
     },
     {
+      "description": "a BatchGetFeedLinkIDsByArticleIDs request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub maps articles to feed links for the user"
+        }
+      ],
+      "request": {
+        "body": {
+          "articleIds": [
+            "6f1a2f7e-1f1e-4c2a-9a3e-5b6c7d8e9f01"
+          ],
+          "userId": "11111111-2222-3333-4444-555555555555"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/services.datahub.v1.DataHubService/BatchGetFeedLinkIDsByArticleIDs"
+      },
+      "response": {
+        "body": {
+          "feedLinkIds": {
+            "6f1a2f7e-1f1e-4c2a-9a3e-5b6c7d8e9f01": "a1b2c3d4-1111-4111-8111-111111111111"
+          }
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.feedLinkIds": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.feedLinkIds['6f1a2f7e-1f1e-4c2a-9a3e-5b6c7d8e9f01']": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
       "description": "a BatchGetFeedTitlesByIDs request from alt-backend",
       "providerStates": [
         {
@@ -1456,6 +1509,88 @@
         "matchingRules": {
           "body": {
             "$.count": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a GetFeedInflowByUser request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has feed inflow counts for the user"
+        }
+      ],
+      "request": {
+        "body": {
+          "from": "2026-10-19T00:00:00Z",
+          "to": "2026-11-18T00:00:00Z",
+          "userId": "11111111-2222-3333-4444-555555555555"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/services.datahub.v1.DataHubService/GetFeedInflowByUser"
+      },
+      "response": {
+        "body": {
+          "feeds": [
+            {
+              "dailyCap": 5,
+              "feedLinkId": "a1b2c3d4-1111-4111-8111-111111111111",
+              "inflowCount": "12",
+              "url": "https://example.com/feed.xml"
+            }
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.feeds": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.feeds[*].dailyCap": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.feeds[*].feedLinkId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            },
+            "$.feeds[*].inflowCount": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.feeds[*].url": {
               "combine": "AND",
               "matchers": [
                 {
@@ -4552,6 +4687,155 @@
       }
     },
     {
+      "description": "a ListFeedsCursor request with cursorId carrying dailyRank and dailyCap",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has unread feeds with daily rank and cap for the user"
+        }
+      ],
+      "request": {
+        "body": {
+          "cursor": "2026-07-31T09:00:00Z",
+          "cursorId": "b2c3d4e5-2222-4222-8222-222222222222",
+          "limit": 20,
+          "scope": "FEED_SCOPE_UNREAD",
+          "userId": "11111111-2222-3333-4444-555555555555"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/services.datahub.v1.DataHubService/ListFeedsCursor"
+      },
+      "response": {
+        "body": {
+          "feeds": [
+            {
+              "articleId": "6f1a2f7e-1f1e-4c2a-9a3e-5b6c7d8e9f01",
+              "createdAt": "2026-07-31T09:00:00Z",
+              "dailyCap": 3,
+              "dailyRank": 4,
+              "description": "body",
+              "feedLinkId": "a1b2c3d4-1111-4111-8111-111111111111",
+              "id": "b2c3d4e5-2222-4222-8222-222222222222",
+              "pubDate": "2026-07-31T00:00:00Z",
+              "title": "Example Post",
+              "updatedAt": "2026-07-31T09:00:00Z",
+              "websiteUrl": "https://example.com/post"
+            }
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.feeds": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.feeds[*].articleId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            },
+            "$.feeds[*].createdAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.feeds[*].dailyCap": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.feeds[*].dailyRank": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
+                }
+              ]
+            },
+            "$.feeds[*].description": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.feeds[*].feedLinkId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            },
+            "$.feeds[*].id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            },
+            "$.feeds[*].pubDate": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.feeds[*].title": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.feeds[*].updatedAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.feeds[*].websiteUrl": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
       "description": "a ListFeedsLimit request from alt-backend",
       "providerStates": [
         {
@@ -4819,6 +5103,95 @@
                 {
                   "match": "type",
                   "min": 1
+                }
+              ]
+            },
+            "$.subscriptions[*].feedLinkId": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+                }
+              ]
+            },
+            "$.subscriptions[*].isSubscribed": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.subscriptions[*].subscribedAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.subscriptions[*].url": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a ListSubscriptions request returning dailyCap from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has subscriptions with daily caps for the user"
+        }
+      ],
+      "request": {
+        "body": {
+          "userId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/services.datahub.v1.DataHubService/ListSubscriptions"
+      },
+      "response": {
+        "body": {
+          "subscriptions": [
+            {
+              "dailyCap": 5,
+              "feedLinkId": "a1b2c3d4-1111-4111-8111-111111111111",
+              "isSubscribed": true,
+              "subscribedAt": "2026-05-01T12:00:00Z",
+              "url": "https://example.com/feed.xml"
+            }
+          ]
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "matchingRules": {
+          "body": {
+            "$.subscriptions": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.subscriptions[*].dailyCap": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "integer"
                 }
               ]
             },
@@ -5910,6 +6283,33 @@
               ]
             }
           }
+        },
+        "status": 200
+      }
+    },
+    {
+      "description": "a SetSubscriptionDailyCap request from alt-backend",
+      "providerStates": [
+        {
+          "name": "alt-data-hub has an active subscription for the user"
+        }
+      ],
+      "request": {
+        "body": {
+          "dailyCap": 5,
+          "feedLinkId": "a1b2c3d4-1111-4111-8111-111111111111",
+          "userId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301"
+        },
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "path": "/services.datahub.v1.DataHubService/SetSubscriptionDailyCap"
+      },
+      "response": {
+        "body": {},
+        "headers": {
+          "Content-Type": "application/json"
         },
         "status": 200
       }

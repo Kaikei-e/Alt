@@ -374,12 +374,14 @@ services:
       # The binary refuses an unset mode. Staging runs no step-ca and gives
       # sovereign no outbound mTLS peer, so it mints nothing.
       - PKI_ENROLLMENT=disabled
-      # Tighten projector tick cadence (production default 5s) and keep Trail/Home batch caps smaller for bounded E2E fixtures.
+      # Tighten projector tick cadence (production default 5s) and keep Trail/Home/Reading batch caps smaller for bounded E2E fixtures.
       - KNOWLEDGE_SOVEREIGN_PROJECTOR_TICK_INTERVAL=2s
       - KNOWLEDGE_SOVEREIGN_TRAIL_PROJECTOR_BATCH_SIZE=200
       - KNOWLEDGE_SOVEREIGN_TRAIL_PROJECTOR_MAX_BATCHES_PER_TICK=2
       - KNOWLEDGE_SOVEREIGN_HOME_PROJECTOR_BATCH_SIZE=200
       - KNOWLEDGE_SOVEREIGN_HOME_PROJECTOR_MAX_BATCHES_PER_TICK=2
+      - KNOWLEDGE_SOVEREIGN_READING_PROJECTOR_BATCH_SIZE=200
+      - KNOWLEDGE_SOVEREIGN_READING_PROJECTOR_MAX_BATCHES_PER_TICK=2
     ports:
       - "127.0.0.1:19510:9500"
       - "127.0.0.1:19511:9501"
@@ -1264,6 +1266,8 @@ services:
       # P-256 point in base64url so anything that decodes it gets 65 bytes
       # rather than a parse error.
       - VAPID_PUBLIC_KEY=BA1Hxzyi1RUM1b5wjxsn7nGxAszw2u61m164i3MrAIxHF6YK5h4SDYic-dRuU_RCPCfA5aq9ojSwk5Y2EmClBPs
+      - READING_QUEUE_CAP=7
+      - READING_QUEUE_TTL_HOURS=48
       # Upstream targets — every alias resolves to alt-backend-deps-stub.
       - SEARCH_INDEXER_CONNECT_URL=https://auth-hub:9443/
       - SEARCH_INDEXER_MTLS_SERVER_NAME=auth-hub

@@ -65,7 +65,8 @@ func TestMQHubAuth_EnabledRequiresToken(t *testing.T) {
 				URL:        "https://pre-processor:9443",
 				ConnectURL: "https://pre-processor:9443",
 			},
-			WebPush: WebPushConfig{PublicKey: "vapid-key"},
+			WebPush:      WebPushConfig{PublicKey: "vapid-key"},
+			ReadingQueue: ReadingQueueConfig{Cap: 7, TTLHours: 48},
 			MQHub: MQHubConfig{
 				Enabled:    true,
 				ConnectURL: "http://mq-hub:9500",

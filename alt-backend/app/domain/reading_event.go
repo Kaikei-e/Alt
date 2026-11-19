@@ -9,7 +9,48 @@ import (
 	"github.com/google/uuid"
 )
 
-const MaxReadingEventsBatchSize = 50
+const (
+	MaxReadingEventsBatchSize = 50
+	MaxReadingClockSkew       = 24 * time.Hour
+
+	ReadRuleVersionV1              = 1
+	ReadRuleV1MinReachedEndDwellMs = int64(5000)
+	ReadRuleV1MinDwellMs           = int64(30000)
+	ReadRuleV1MsPerChar            = int64(30)
+)
+
+// ClampReadingOccurredAt guards monthly event partitioning against wildly
+// skewed device clocks by clamping occurred_at to receivedAt when |skew| > 24h.
+func ClampReadingOccurredAt(clientOccurredAt, receivedAt time.Time) (time.Time, string) {
+	utcClient := clientOccurredAt.UTC()
+	utcReceived := receivedAt.UTC()
+	skew := utcReceived.Sub(utcClient)
+	if skew < 0 {
+		skew = -skew
+	}
+	if skew > MaxReadingClockSkew {
+		return utcReceived, utcClient.Format(time.RFC3339)
+	}
+	return utcClient, ""
+}
+
+// EvaluateReadRuleV1 determines whether a reading session counts as read under
+// read_rule_version = 1.
+func EvaluateReadRuleV1(reachedEnd bool, activeDwellMs int64, bodyLengthChars int32) bool {
+	if reachedEnd && activeDwellMs >= ReadRuleV1MinReachedEndDwellMs {
+		return true
+	}
+	if bodyLengthChars > 0 {
+		threshold := int64(bodyLengthChars) * ReadRuleV1MsPerChar
+		if threshold < ReadRuleV1MinDwellMs {
+			threshold = ReadRuleV1MinDwellMs
+		}
+		if activeDwellMs >= threshold {
+			return true
+		}
+	}
+	return false
+}
 
 var ErrInvalidReadingEvent = errors.New("invalid reading event")
 
@@ -72,6 +113,13 @@ type SessionEndedInput struct {
 
 func (SessionEndedInput) isReadingEventPayload() {}
 
+type OpenedInput struct {
+	ArticleID string
+	Surface   ReadingSurface
+}
+
+func (OpenedInput) isReadingEventPayload() {}
+
 type ReadingEventInput struct {
 	ClientEventID string
 	OccurredAt    time.Time
@@ -95,6 +143,13 @@ func (e ReadingEventInput) Validate() error {
 			return fmt.Errorf("%w: invalid surface", ErrInvalidReadingEvent)
 		}
 	case ReachedEndInput:
+		if !p.Surface.IsValid() {
+			return fmt.Errorf("%w: invalid surface", ErrInvalidReadingEvent)
+		}
+		if _, err := uuid.Parse(p.ArticleID); err != nil {
+			return fmt.Errorf("%w: invalid article_id", ErrInvalidReadingEvent)
+		}
+	case OpenedInput:
 		if !p.Surface.IsValid() {
 			return fmt.Errorf("%w: invalid surface", ErrInvalidReadingEvent)
 		}

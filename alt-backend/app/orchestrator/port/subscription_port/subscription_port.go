@@ -12,4 +12,5 @@ type SubscriptionPort interface {
 	ListSubscriptions(ctx context.Context, userID uuid.UUID) ([]*domain.FeedSource, error)
 	Subscribe(ctx context.Context, userID uuid.UUID, feedLinkID uuid.UUID) error
 	Unsubscribe(ctx context.Context, userID uuid.UUID, feedLinkID uuid.UUID) error
+	SetSubscriptionDailyCap(ctx context.Context, userID uuid.UUID, feedLinkID uuid.UUID, dailyCap *int) error
 }

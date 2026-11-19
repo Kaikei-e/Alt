@@ -18,6 +18,7 @@ import (
 	"alt/orchestrator/usecase/csrf_token_usecase"
 	dashboard_usecase "alt/orchestrator/usecase/dashboard"
 	"alt/orchestrator/usecase/emit_trail_outcome_usecase"
+	"alt/orchestrator/usecase/feed_inflow_stats_usecase"
 	"alt/orchestrator/usecase/feed_link_usecase"
 	"alt/orchestrator/usecase/fetch_article_summaries_usecase"
 	"alt/orchestrator/usecase/fetch_article_summary_usecase"
@@ -49,6 +50,7 @@ import (
 	"alt/orchestrator/usecase/list_lenses_usecase"
 	"alt/orchestrator/usecase/og_image_resolve_usecase"
 	"alt/orchestrator/usecase/opml_usecase"
+	"alt/orchestrator/usecase/reading_queue_usecase"
 	"alt/orchestrator/usecase/reading_status"
 	"alt/orchestrator/usecase/recall_dismiss_usecase"
 	"alt/orchestrator/usecase/recall_rail_usecase"
@@ -159,6 +161,8 @@ type ApplicationComponents struct {
 	ListSubscriptionsUsecase            *subscription_usecase.ListSubscriptionsUsecase
 	SubscribeUsecase                    *subscription_usecase.SubscribeUsecase
 	UnsubscribeUsecase                  *subscription_usecase.UnsubscribeUsecase
+	SetSubscriptionDailyCapUsecase      *subscription_usecase.SetSubscriptionDailyCapUsecase
+	FeedInflowStatsUsecase              *feed_inflow_stats_usecase.FeedInflowStatsUsecase
 
 	DashboardMetricsUsecase    *dashboard_usecase.DashboardMetricsUsecase
 	FetchLatestArticleUsecase  *fetch_latest_article_usecase.FetchLatestArticleUsecase
@@ -205,6 +209,9 @@ type ApplicationComponents struct {
 	TrackHomeSeenUsecase             *track_home_seen_usecase.TrackHomeSeenUsecase
 	TrackHomeActionUsecase           *track_home_action_usecase.TrackHomeActionUsecase
 	RecordReadingEventsUsecase       *record_reading_events_usecase.RecordReadingEventsUsecase
+	QueueArticleUsecase              *reading_queue_usecase.QueueArticleUsecase
+	UnqueueArticleUsecase            *reading_queue_usecase.UnqueueArticleUsecase
+	GetReadTodayQueueUsecase         *reading_queue_usecase.GetReadTodayQueueUsecase
 	CreateSummaryVersionUsecase      *create_summary_version_usecase.CreateSummaryVersionUsecase
 	FeatureFlagGateway               *feature_flag_gateway.Gateway
 	KnowledgeBackfillUsecase         *knowledge_backfill_usecase.Usecase

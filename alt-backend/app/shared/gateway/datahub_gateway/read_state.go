@@ -37,6 +37,7 @@ type readStateDataHubClient interface {
 	ListSubscriptions(context.Context, *connect.Request[datahubv1.ListSubscriptionsRequest]) (*connect.Response[datahubv1.ListSubscriptionsResponse], error)
 	Subscribe(context.Context, *connect.Request[datahubv1.SubscribeRequest]) (*connect.Response[datahubv1.SubscribeResponse], error)
 	Unsubscribe(context.Context, *connect.Request[datahubv1.UnsubscribeRequest]) (*connect.Response[datahubv1.UnsubscribeResponse], error)
+	SetSubscriptionDailyCap(context.Context, *connect.Request[datahubv1.SetSubscriptionDailyCapRequest]) (*connect.Response[datahubv1.SetSubscriptionDailyCapResponse], error)
 	AddFavoriteFeed(context.Context, *connect.Request[datahubv1.AddFavoriteFeedRequest]) (*connect.Response[datahubv1.AddFavoriteFeedResponse], error)
 	RemoveFavoriteFeed(context.Context, *connect.Request[datahubv1.RemoveFavoriteFeedRequest]) (*connect.Response[datahubv1.RemoveFavoriteFeedResponse], error)
 }
@@ -152,6 +153,11 @@ func (g *ReadStateGateway) ListSubscriptions(ctx context.Context, userID uuid.UU
 
 	sources := make([]*domain.FeedSource, 0, len(resp.Msg.GetSubscriptions()))
 	for _, s := range resp.Msg.GetSubscriptions() {
+		var dailyCap *int
+		if s.DailyCap != nil {
+			v := int(s.GetDailyCap())
+			dailyCap = &v
+		}
 		sources = append(sources, &domain.FeedSource{
 			ID:           s.GetFeedLinkId(),
 			URL:          s.GetUrl(),
@@ -160,6 +166,7 @@ func (g *ReadStateGateway) ListSubscriptions(ctx context.Context, userID uuid.UU
 			// nobody started following it. The screen already renders the
 			// zero time as "not following".
 			CreatedAt: timeFromProto(s.GetSubscribedAt()),
+			DailyCap:  dailyCap,
 		})
 	}
 	return sources, nil
@@ -183,6 +190,23 @@ func (g *ReadStateGateway) Unsubscribe(ctx context.Context, userID uuid.UUID, fe
 	}))
 	if err != nil {
 		return fmt.Errorf("unsubscribe user %s from feed link %s: %w", userID, feedLinkID, err)
+	}
+	return nil
+}
+
+func (g *ReadStateGateway) SetSubscriptionDailyCap(ctx context.Context, userID uuid.UUID, feedLinkID uuid.UUID, dailyCap *int) error {
+	var pbCap *int32
+	if dailyCap != nil {
+		v := int32(*dailyCap)
+		pbCap = &v
+	}
+	_, err := g.client.SetSubscriptionDailyCap(ctx, connect.NewRequest(&datahubv1.SetSubscriptionDailyCapRequest{
+		UserId:     userID.String(),
+		FeedLinkId: feedLinkID.String(),
+		DailyCap:   pbCap,
+	}))
+	if err != nil {
+		return feedAbsenceError(err, fmt.Sprintf("set daily cap for user %s feed link %s", userID, feedLinkID))
 	}
 	return nil
 }

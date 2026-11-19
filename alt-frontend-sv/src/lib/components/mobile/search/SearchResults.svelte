@@ -2,6 +2,9 @@
 import { onDestroy } from "svelte";
 import { infiniteScroll } from "#lib/actions/infinite-scroll.js";
 import { searchFeedsClient } from "#lib/api/client/index.js";
+import { searchFeedItemToReaderItem } from "#lib/reader/mappers.js";
+import { openReaderOverlay } from "#lib/reader/reader-overlay.svelte.js";
+import { ReadingSurface } from "#lib/reading/instrumentation.js";
 import type { SearchFeedItem } from "#lib/schema/search.js";
 import { transformFeedSearchResult } from "#lib/utils/transformFeedSearchResult.js";
 import SearchResultItem from "./SearchResultItem.svelte";
@@ -113,6 +116,16 @@ const loadMore = async () => {
 		setIsLoading(false);
 	}
 };
+
+function handleSelectResult(result: SearchFeedItem) {
+	const readable = results.filter((item) => Boolean(item.link));
+	const currentIndex = readable.indexOf(result);
+	openReaderOverlay({
+		surface: ReadingSurface.OTHER,
+		items: readable.map(searchFeedItemToReaderItem),
+		currentIndex: currentIndex >= 0 ? currentIndex : 0,
+	});
+}
 </script>
 
 {#if !searchQuery.trim()}
@@ -147,7 +160,7 @@ const loadMore = async () => {
 		<ul class="flex flex-col gap-4" role="list" aria-label="Search results">
 			{#each results as result, i (result.article_id || `${result.link}-${i}`)}
 				<li class={initialLoadDone ? "" : "stagger-entry"} style={initialLoadDone ? "" : `--stagger: ${i}`}>
-					<SearchResultItem {result} />
+					<SearchResultItem {result} onSelect={handleSelectResult} />
 				</li>
 			{/each}
 		</ul>

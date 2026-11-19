@@ -106,6 +106,16 @@ func feedRowToProto(r *domain.FeedRow) *datahubv1.Feed {
 	if r == nil {
 		return nil
 	}
+	var dailyRank *int32
+	if r.DailyRank != nil {
+		v := safeconv.Int32(*r.DailyRank)
+		dailyRank = &v
+	}
+	var dailyCap *int32
+	if r.DailyCap != nil {
+		v := safeconv.Int32(*r.DailyCap)
+		dailyCap = &v
+	}
 	return &datahubv1.Feed{
 		Id:          r.ID,
 		Title:       r.Title,
@@ -122,5 +132,7 @@ func feedRowToProto(r *domain.FeedRow) *datahubv1.Feed {
 		IsRead:     r.IsRead,
 		FeedLinkId: r.FeedLinkID,
 		OgImageUrl: r.OgImageURL,
+		DailyRank:  dailyRank,
+		DailyCap:   dailyCap,
 	}
 }

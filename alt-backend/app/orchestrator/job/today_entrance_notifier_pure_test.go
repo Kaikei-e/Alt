@@ -122,7 +122,7 @@ func TestBuildTodayEntranceEnqueue(t *testing.T) {
 			}
 			require.NoError(t, json.Unmarshal(got.Payload, &payload))
 			assert.Equal(t, domain.NotificationKindTodayEntranceReady, payload.Kind)
-			assert.Equal(t, "/home", payload.URL)
+			assert.Equal(t, "/today", payload.URL)
 			assert.Equal(t, tt.wantCount, payload.Count)
 		})
 	}

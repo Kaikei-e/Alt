@@ -118,7 +118,7 @@ func (f *fakeFeedPort) Register(_ context.Context, _ []domain.FeedRegistration) 
 	return f.results, f.err
 }
 
-func (f *fakeFeedPort) ListCursor(_ context.Context, scope datahub_capability_port.FeedScope, userID uuid.UUID, cursor *time.Time, limit int, excludes []uuid.UUID) ([]*domain.FeedRow, error) {
+func (f *fakeFeedPort) ListCursor(_ context.Context, scope datahub_capability_port.FeedScope, userID uuid.UUID, cursor *time.Time, _ *uuid.UUID, limit int, excludes []uuid.UUID) ([]*domain.FeedRow, error) {
 	f.gotScope, f.gotUser, f.gotCursor, f.gotLimit, f.gotExcludes = scope, userID, cursor, limit, excludes
 	return f.rows, f.err
 }
@@ -164,6 +164,12 @@ func (f *fakeFeedPort) BatchGetTitlesByIDs(context.Context, []uuid.UUID) (map[uu
 }
 
 func (f *fakeFeedPort) GetInoreaderSummariesByURLs(context.Context, []string) ([]*domain.InoreaderSummary, error) {
+	return nil, f.err
+}
+func (f *fakeFeedPort) GetFeedInflowByUser(context.Context, uuid.UUID, time.Time, time.Time) ([]domain.FeedInflow, error) {
+	return nil, f.err
+}
+func (f *fakeFeedPort) BatchGetFeedLinkIDsByArticleIDs(context.Context, uuid.UUID, []uuid.UUID) (map[uuid.UUID]uuid.UUID, error) {
 	return nil, f.err
 }
 
@@ -553,8 +559,8 @@ func TestListFeedsCursor_UserBFeedListingNeverCarriesUserAArticleID(t *testing.T
 	mock.ExpectQuery(`SELECT a\.id FROM articles a WHERE a\.feed_id = f\.id AND a\.user_id = \$2 AND a\.deleted_at IS NULL ORDER BY a\.created_at DESC LIMIT 1`).
 		WithArgs(20, userA).
 		WillReturnRows(pgxmock.NewRows([]string{
-			"id", "title", "description", "website_url", "pub_date", "created_at", "updated_at", "article_id", "og_image_url",
-		}).AddRow(feedID, "Shared Feed", "Desc", "https://example.com/shared", now, now, now, &articleA, (*string)(nil)))
+			"id", "title", "description", "website_url", "pub_date", "created_at", "updated_at", "article_id", "og_image_url", "feed_link_id", "daily_cap", "daily_rank",
+		}).AddRow(feedID, "Shared Feed", "Desc", "https://example.com/shared", now, now, now, &articleA, (*string)(nil), (*string)(nil), (*int)(nil), (*int)(nil)))
 
 	respA, err := h.ListFeedsCursor(context.Background(), connect.NewRequest(&datahubv1.ListFeedsCursorRequest{
 		Scope:  datahubv1.FeedScope_FEED_SCOPE_UNREAD,
@@ -571,8 +577,8 @@ func TestListFeedsCursor_UserBFeedListingNeverCarriesUserAArticleID(t *testing.T
 	mock.ExpectQuery(`SELECT a\.id FROM articles a WHERE a\.feed_id = f\.id AND a\.user_id = \$2 AND a\.deleted_at IS NULL ORDER BY a\.created_at DESC LIMIT 1`).
 		WithArgs(20, userB).
 		WillReturnRows(pgxmock.NewRows([]string{
-			"id", "title", "description", "website_url", "pub_date", "created_at", "updated_at", "article_id", "og_image_url",
-		}).AddRow(feedID, "Shared Feed", "Desc", "https://example.com/shared", now, now, now, (*string)(nil), (*string)(nil)))
+			"id", "title", "description", "website_url", "pub_date", "created_at", "updated_at", "article_id", "og_image_url", "feed_link_id", "daily_cap", "daily_rank",
+		}).AddRow(feedID, "Shared Feed", "Desc", "https://example.com/shared", now, now, now, (*string)(nil), (*string)(nil), (*string)(nil), (*int)(nil), (*int)(nil)))
 
 	respB, err := h.ListFeedsCursor(context.Background(), connect.NewRequest(&datahubv1.ListFeedsCursorRequest{
 		Scope:  datahubv1.FeedScope_FEED_SCOPE_UNREAD,

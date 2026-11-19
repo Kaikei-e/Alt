@@ -1,5 +1,5 @@
 import { createQuery } from "@tanstack/svelte-query";
-import { getSevenDayRecap, getThreeDayRecap } from "#lib/connect/recap.js";
+import { getThreeDayRecap } from "#lib/connect/recap.js";
 import { createClientTransport } from "#lib/connect/transport-client.js";
 import { recapKeys } from "./keys";
 
@@ -8,15 +8,6 @@ export function createThreeDayRecapQuery(genreDraftId?: string) {
 	return createQuery(() => ({
 		queryKey: recapKeys.threeDays(genreDraftId),
 		queryFn: () => getThreeDayRecap(transport, genreDraftId),
-		staleTime: 1000 * 60 * 10,
-	}));
-}
-
-export function createSevenDayRecapQuery(genreDraftId?: string) {
-	const transport = createClientTransport();
-	return createQuery(() => ({
-		queryKey: recapKeys.sevenDays(genreDraftId),
-		queryFn: () => getSevenDayRecap(transport, genreDraftId),
 		staleTime: 1000 * 60 * 10,
 	}));
 }

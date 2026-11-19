@@ -1,6 +1,6 @@
 /**
  * Headless composable for Knowledge Home data fetching and state management.
- * Follows the usePulse.svelte.ts Runes pattern.
+ * Knowledge Home state hook using Svelte 5 Runes.
  */
 
 import { Code, ConnectError } from "@connectrpc/connect";

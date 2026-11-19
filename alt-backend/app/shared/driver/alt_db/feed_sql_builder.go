@@ -47,8 +47,21 @@ func buildExcludeClauseMultiple(args []any, excludeFeedLinkIDs []uuid.UUID) (str
 	return clause, args
 }
 
+// dailyRankSelectExpr computes the 1-based rank of a feed item within its
+// feed_link_id and UTC calendar day, ordered by created_at ASC, id ASC across
+// all items of that feed-day regardless of read status.
+const dailyRankSelectExpr = `(
+	SELECT COUNT(*)::int
+	FROM feeds f2
+	WHERE f2.feed_link_id = f.feed_link_id
+	  AND f2.created_at >= date_trunc('day', f.created_at)
+	  AND f2.created_at < date_trunc('day', f.created_at) + INTERVAL '1 day'
+	  AND (f2.created_at < f.created_at OR (f2.created_at = f.created_at AND f2.id <= f.id))
+) AS daily_rank`
+
 // Builds the SQL query and arguments for fetching unread feeds with cursor pagination.
-func buildUnreadFeedsCursorQuery(cursor *time.Time, excludeFeedLinkIDs []uuid.UUID, limit int, userID uuid.UUID) (string, []any) {
+// Cap enforcement happens in Go; SQL emits daily_rank and ufs.daily_cap without comparing them.
+func buildUnreadFeedsCursorQuery(cursor *time.Time, cursorID *uuid.UUID, excludeFeedLinkIDs []uuid.UUID, limit int, userID uuid.UUID) (string, []any) {
 	var query string
 	var args []any
 	var excludeClause string
@@ -59,8 +72,12 @@ func buildUnreadFeedsCursorQuery(cursor *time.Time, excludeFeedLinkIDs []uuid.UU
 		query = fmt.Sprintf(`
 			SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at,
 			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.user_id = $2 AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
+			       %s,
+			       f.feed_link_id,
+			       ufs.daily_cap,
 			       %s
 			FROM feeds f
+			INNER JOIN user_feed_subscriptions ufs ON ufs.feed_link_id = f.feed_link_id AND ufs.user_id = $2
 			WHERE NOT EXISTS (
 				SELECT 1
 				FROM read_status rs
@@ -68,19 +85,22 @@ func buildUnreadFeedsCursorQuery(cursor *time.Time, excludeFeedLinkIDs []uuid.UU
 				AND rs.user_id = $2
 				AND rs.is_read = TRUE
 			)
-			AND f.feed_link_id IN (SELECT feed_link_id FROM user_feed_subscriptions WHERE user_id = $2)
 			%s
 			ORDER BY f.created_at DESC, f.id DESC
 			LIMIT $1
-		`, ogImageSelectExpr, excludeClause)
-	} else {
+		`, ogImageSelectExpr, dailyRankSelectExpr, excludeClause)
+	} else if cursorID == nil {
 		args = []any{cursor, limit, userID}
 		excludeClause, args = buildExcludeClauseMultiple(args, excludeFeedLinkIDs)
 		query = fmt.Sprintf(`
 			SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at,
 			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.user_id = $3 AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
+			       %s,
+			       f.feed_link_id,
+			       ufs.daily_cap,
 			       %s
 			FROM feeds f
+			INNER JOIN user_feed_subscriptions ufs ON ufs.feed_link_id = f.feed_link_id AND ufs.user_id = $3
 			WHERE NOT EXISTS (
 				SELECT 1
 				FROM read_status rs
@@ -88,12 +108,35 @@ func buildUnreadFeedsCursorQuery(cursor *time.Time, excludeFeedLinkIDs []uuid.UU
 				AND rs.user_id = $3
 				AND rs.is_read = TRUE
 			)
-			AND f.feed_link_id IN (SELECT feed_link_id FROM user_feed_subscriptions WHERE user_id = $3)
 			AND f.created_at < $1
 			%s
 			ORDER BY f.created_at DESC, f.id DESC
 			LIMIT $2
-		`, ogImageSelectExpr, excludeClause)
+		`, ogImageSelectExpr, dailyRankSelectExpr, excludeClause)
+	} else {
+		args = []any{cursor, *cursorID, limit, userID}
+		excludeClause, args = buildExcludeClauseMultiple(args, excludeFeedLinkIDs)
+		query = fmt.Sprintf(`
+			SELECT f.id, f.title, f.description, f.website_url, f.pub_date, f.created_at, f.updated_at,
+			       (SELECT a.id FROM articles a WHERE a.feed_id = f.id AND a.user_id = $4 AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 1) AS article_id,
+			       %s,
+			       f.feed_link_id,
+			       ufs.daily_cap,
+			       %s
+			FROM feeds f
+			INNER JOIN user_feed_subscriptions ufs ON ufs.feed_link_id = f.feed_link_id AND ufs.user_id = $4
+			WHERE NOT EXISTS (
+				SELECT 1
+				FROM read_status rs
+				WHERE rs.feed_id = f.id
+				AND rs.user_id = $4
+				AND rs.is_read = TRUE
+			)
+			AND (f.created_at, f.id) < ($1, $2)
+			%s
+			ORDER BY f.created_at DESC, f.id DESC
+			LIMIT $3
+		`, ogImageSelectExpr, dailyRankSelectExpr, excludeClause)
 	}
 
 	return query, args

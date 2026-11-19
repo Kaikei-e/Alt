@@ -21,6 +21,14 @@ export {
 	type FeedSearchResponse,
 	normalizeUrl,
 } from "./feeds/client";
+// Inflow & Daily Cap
+export {
+	type FeedInflowStatItem,
+	type FeedInflowStatsResult,
+	getFeedInflowStats,
+	type SetSubscriptionDailyCapResult,
+	setSubscriptionDailyCap,
+} from "./feeds/inflow";
 
 // Listing & Search
 export {

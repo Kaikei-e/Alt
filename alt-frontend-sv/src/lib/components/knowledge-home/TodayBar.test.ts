@@ -14,7 +14,6 @@ function makeDigest(overrides: Partial<TodayDigestData> = {}): TodayDigestData {
 		unsummarizedArticles: 12,
 		topTags: ["AI", "Go", "Rust"],
 		weeklyRecapAvailable: true,
-		eveningPulseAvailable: false,
 		needToKnowCount: 0,
 		digestFreshness: "fresh",
 		lastProjectedAt: null,
@@ -53,11 +52,6 @@ describe("TodayBar data", () => {
 		expect(digest.weeklyRecapAvailable).toBe(true);
 	});
 
-	it("shows pulse shortcut when eveningPulseAvailable", () => {
-		const digest = makeDigest({ eveningPulseAvailable: true });
-		expect(digest.eveningPulseAvailable).toBe(true);
-	});
-
 	it("handles zero articles", () => {
 		const digest = makeDigest({
 			newArticles: 0,
@@ -71,7 +65,6 @@ describe("TodayBar data", () => {
 		// TodayBar always shows Morning Letter link regardless of flags
 		const digest = makeDigest({
 			weeklyRecapAvailable: false,
-			eveningPulseAvailable: false,
 		});
 		// Morning Letter doesn't depend on any availability flag
 		expect(digest).toBeDefined();
@@ -85,15 +78,6 @@ describe("TodayBar data", () => {
 	it("needToKnowCount reflects pulse_need_to_know items", () => {
 		const digest = makeDigest({ needToKnowCount: 3 });
 		expect(digest.needToKnowCount).toBe(3);
-	});
-
-	it("shows badge when needToKnowCount > 0 alongside pulse", () => {
-		const digest = makeDigest({
-			eveningPulseAvailable: true,
-			needToKnowCount: 5,
-		});
-		expect(digest.eveningPulseAvailable).toBe(true);
-		expect(digest.needToKnowCount).toBe(5);
 	});
 
 	it("digestFreshness defaults to fresh", () => {
@@ -115,11 +99,9 @@ describe("TodayBar data", () => {
 		const digest = makeDigest({
 			digestFreshness: "stale",
 			weeklyRecapAvailable: true,
-			eveningPulseAvailable: true,
 		});
 		// Stale indicator is separate from CTA activity
 		expect(digest.weeklyRecapAvailable).toBe(true);
-		expect(digest.eveningPulseAvailable).toBe(true);
 		expect(digest.digestFreshness).toBe("stale");
 	});
 

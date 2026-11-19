@@ -167,32 +167,3 @@ test.describe("Desktop Recap - Genre Selection", () => {
 			.toBe(false);
 	});
 });
-
-test.describe("Desktop Recap - 7-Day Window", () => {
-	test("switches to 7-day recap when clicking 7 Days button", async ({
-		page,
-	}) => {
-		const recapPage = new DesktopRecapPage(page);
-
-		// Mock both API endpoints
-		await page.route(CONNECT_RPC_PATHS.getThreeDayRecap, (route) =>
-			fulfillJson(route, CONNECT_RECAP_RESPONSE),
-		);
-		await page.route(CONNECT_RPC_PATHS.getSevenDayRecap, (route) =>
-			fulfillJson(route, CONNECT_RECAP_RESPONSE),
-		);
-
-		await recapPage.goto();
-		await recapPage.waitForRecapLoaded();
-
-		// Verify initial 3-day state
-		await expect(page.getByText("3-day window")).toBeVisible();
-
-		// Click 7 Days button
-		await page.getByRole("button", { name: "7 Days" }).click();
-		await recapPage.waitForRecapLoaded();
-
-		// Verify window info updated to 7-day
-		await expect(page.getByText("7-day window")).toBeVisible();
-	});
-});

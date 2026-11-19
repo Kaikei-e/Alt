@@ -35,6 +35,11 @@ type FeedRow struct {
 	// aged out of the 7-day copyright retention window. The read path does not
 	// distinguish them and neither does the placeholder the frontend renders.
 	OgImageURL *string
+	// DailyRank is the 1-based position within (feed_link_id, UTC day of created_at)
+	// ordered by created_at ASC, id ASC across all collected items of that day.
+	DailyRank *int
+	// DailyCap is the calling user's configured per-day cap for this feed link, if set.
+	DailyCap *int
 }
 
 // FeedRegistration is one collected RSS item to upsert into feeds.

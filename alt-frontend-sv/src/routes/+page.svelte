@@ -25,12 +25,12 @@ const auth = getAuthStore();
             Embark on a Journey of Discovery
           </p>
           <Button
-            href="/home"
+            href="/today"
             size="lg"
             class="w-full sm:w-auto"
             variant="secondary"
           >
-            Open Knowledge Home →
+            Open Today →
           </Button>
         </div>
 

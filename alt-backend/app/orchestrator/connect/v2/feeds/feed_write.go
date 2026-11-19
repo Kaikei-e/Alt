@@ -121,3 +121,56 @@ func (h *Handler) Unsubscribe(
 		Message: "Unsubscribed successfully",
 	}), nil
 }
+
+// SetSubscriptionDailyCap sets or clears the daily unread cap for one subscription
+// of the calling user.
+func (h *Handler) SetSubscriptionDailyCap(
+	ctx context.Context,
+	req *connect.Request[feedsv2.SetSubscriptionDailyCapRequest],
+) (*connect.Response[feedsv2.SetSubscriptionDailyCapResponse], error) {
+	if h.deps.SetSubscriptionDailyCap == nil {
+		panic("feeds handler: SetSubscriptionDailyCap usecase is not wired (see .claude/rules/di-wiring.md)")
+	}
+	userCtx, err := middleware.GetUserContext(ctx)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
+	}
+
+	if req.Msg.FeedLinkId == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("feed_link_id is required"))
+	}
+
+	feedLinkID, err := uuid.Parse(req.Msg.FeedLinkId)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("invalid feed_link_id: %w", err))
+	}
+
+	var dailyCap *int
+	if req.Msg.DailyCap != nil {
+		if req.Msg.GetDailyCap() <= 0 {
+			return nil, connect.NewError(connect.CodeInvalidArgument,
+				fmt.Errorf("daily_cap must be greater than 0"))
+		}
+		v := int(req.Msg.GetDailyCap())
+		dailyCap = &v
+	}
+
+	if err := h.deps.SetSubscriptionDailyCap.Execute(ctx, userCtx.UserID, feedLinkID, dailyCap); err != nil {
+		if errors.Is(err, domain.ErrFeedNotFound) {
+			return nil, connect.NewError(connect.CodeNotFound,
+				fmt.Errorf("subscription not found: %s", req.Msg.FeedLinkId))
+		}
+		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "SetSubscriptionDailyCap")
+	}
+
+	msg := "Daily cap cleared"
+	if req.Msg.DailyCap != nil {
+		msg = "Daily cap updated"
+	}
+	return connect.NewResponse(&feedsv2.SetSubscriptionDailyCapResponse{
+		Message:  msg,
+		DailyCap: req.Msg.DailyCap,
+	}), nil
+}

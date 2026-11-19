@@ -50,6 +50,9 @@ func (m *mockReadStateDriver) InsertSubscription(_ context.Context, _ uuid.UUID,
 func (m *mockReadStateDriver) DeleteSubscription(_ context.Context, _ uuid.UUID, _ uuid.UUID) error {
 	return nil
 }
+func (m *mockReadStateDriver) SetSubscriptionDailyCap(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ *int) error {
+	return nil
+}
 func (m *mockReadStateDriver) RegisterFavoriteFeed(_ context.Context, _ string, _ uuid.UUID) error {
 	return nil
 }

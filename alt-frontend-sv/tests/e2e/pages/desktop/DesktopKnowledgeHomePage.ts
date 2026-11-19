@@ -114,11 +114,6 @@ export class DesktopKnowledgeHomePage extends BasePage {
 		return this.todayBar.locator('a[href*="morning-letter"]');
 	}
 
-	/** Get the evening pulse link in TodayBar */
-	getTodayBarEveningPulseLink(): Locator {
-		return this.todayBar.locator('a[href*="evening-pulse"]');
-	}
-
 	/** Get the weekly recap link in TodayBar */
 	getTodayBarRecapLink(): Locator {
 		return this.todayBar.locator('a[href*="/recap"]').first();

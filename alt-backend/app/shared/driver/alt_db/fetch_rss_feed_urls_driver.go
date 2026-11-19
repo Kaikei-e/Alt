@@ -10,11 +10,16 @@ import (
 )
 
 func (r *FeedRepository) FetchRSSFeedURLs(ctx context.Context) ([]domain.FeedLink, error) {
-	// LEFT JOIN ensures feeds without availability records (new feeds) are still returned
+	// LEFT JOIN ensures feeds without availability records (new feeds) are still returned,
+	// while EXISTS skips unsubscribed links without deleting rows so re-subscribing resumes collection.
 	query := `
 		SELECT fl.id, fl.url FROM feed_links fl
 		LEFT JOIN feed_link_availability fla ON fl.id = fla.feed_link_id
-		WHERE fla.is_active IS NULL OR fla.is_active = true`
+		WHERE (fla.is_active IS NULL OR fla.is_active = true)
+		AND EXISTS (
+			SELECT 1 FROM user_feed_subscriptions ufs
+			WHERE ufs.feed_link_id = fl.id
+		)`
 	rows, err := r.pool.Query(ctx, query)
 	if err != nil {
 		logger.SafeErrorContext(ctx, "Error fetching RSS links", "error", err)

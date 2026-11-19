@@ -56,6 +56,7 @@ func TestVerifyAltBackendDataHubContract(t *testing.T) {
 			"alt-data-hub has a feed link that has never been polled",
 			"alt-data-hub has no feed link for the url",
 			"alt-data-hub has unread feeds for the user",
+			"alt-data-hub has unread feeds with daily rank and cap for the user",
 			"alt-data-hub has favorite feeds past the og image retention window",
 			"alt-data-hub has feeds",
 			"alt-data-hub has no feeds",
@@ -66,6 +67,8 @@ func TestVerifyAltBackendDataHubContract(t *testing.T) {
 			"alt-data-hub has no tagged feeds",
 			"alt-data-hub has feeds for the articles",
 			"alt-data-hub has imported inoreader articles for the urls",
+			"alt-data-hub has feed inflow counts for the user",
+			"alt-data-hub maps articles to feed links for the user",
 
 			// Read state and tag read capabilities (catalog §2.I / §2.J).
 			"alt-data-hub has a feed at the url",
@@ -73,6 +76,8 @@ func TestVerifyAltBackendDataHubContract(t *testing.T) {
 			"alt-data-hub has a feed for the article url",
 			"alt-data-hub has read marks for the user",
 			"alt-data-hub has subscriptions for the user",
+			"alt-data-hub has subscriptions with daily caps for the user",
+			"alt-data-hub has an active subscription for the user",
 			"alt-data-hub accepts subscription writes",
 			"alt-data-hub has no tags for the article",
 			"alt-data-hub has tags for the feed",

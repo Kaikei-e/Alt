@@ -23,6 +23,7 @@ import (
 	"alt/orchestrator/usecase/knowledge_slo_usecase"
 	"alt/orchestrator/usecase/knowledge_url_backfill_usecase"
 	"alt/orchestrator/usecase/list_lenses_usecase"
+	"alt/orchestrator/usecase/reading_queue_usecase"
 	"alt/orchestrator/usecase/recall_dismiss_usecase"
 	"alt/orchestrator/usecase/recall_rail_usecase"
 	"alt/orchestrator/usecase/recall_snooze_usecase"
@@ -52,6 +53,9 @@ type KnowledgeModule struct {
 	TrackHomeSeenUsecase             *track_home_seen_usecase.TrackHomeSeenUsecase
 	TrackHomeActionUsecase           *track_home_action_usecase.TrackHomeActionUsecase
 	RecordReadingEventsUsecase       *record_reading_events_usecase.RecordReadingEventsUsecase
+	QueueArticleUsecase              *reading_queue_usecase.QueueArticleUsecase
+	UnqueueArticleUsecase            *reading_queue_usecase.UnqueueArticleUsecase
+	GetReadTodayQueueUsecase         *reading_queue_usecase.GetReadTodayQueueUsecase
 	AppendKnowledgeEventUsecase      *append_knowledge_event_usecase.AppendKnowledgeEventUsecase
 	CreateSummaryVersionUsecase      *create_summary_version_usecase.CreateSummaryVersionUsecase
 	KnowledgeBackfillUsecase         *knowledge_backfill_usecase.Usecase
@@ -137,7 +141,32 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 	trackHomeActionUC := track_home_action_usecase.NewTrackHomeActionUsecase(sovereignCli, sovereignCli, featureFlagGw, sovereignCli, sovereignCli, sovereignCli, articleURLLookupGw).
 		WithArticleStatusPort(infra.ReadStateGateway)
 	slog.Info("track_home_action_article_status_sync_enabled")
-	recordReadingEventsUC := record_reading_events_usecase.NewRecordReadingEventsUsecase(sovereignCli, time.Now)
+	recordReadingEventsUC := record_reading_events_usecase.NewRecordReadingEventsUsecase(
+		sovereignCli,
+		articleURLLookupGw,
+		infra.ReadStateGateway,
+		time.Now,
+	)
+	queueArticleUC := reading_queue_usecase.NewQueueArticleUsecase(
+		sovereignCli,
+		sovereignCli,
+		articleURLLookupGw,
+		infra.ArticleBatchGateway,
+		trailThumbnailGw,
+		cfg.ReadingQueue.Cap,
+		cfg.ReadingQueue.TTLHours,
+		time.Now,
+	)
+	unqueueArticleUC := reading_queue_usecase.NewUnqueueArticleUsecase(sovereignCli, time.Now)
+	getReadTodayQueueUC := reading_queue_usecase.NewGetReadTodayQueueUsecase(
+		sovereignCli,
+		sovereignCli,
+		infra.ArticleBatchGateway,
+		trailThumbnailGw,
+		cfg.ReadingQueue.Cap,
+		time.Now,
+	)
+	slog.Info("reading_queue_enabled", "cap", cfg.ReadingQueue.Cap, "ttl_hours", cfg.ReadingQueue.TTLHours)
 	appendKnowledgeEventUC := append_knowledge_event_usecase.NewAppendKnowledgeEventUsecase(sovereignCli)
 	createSummaryVersionUC := create_summary_version_usecase.NewCreateSummaryVersionUsecase(versionGw, sovereignCli, versionGw)
 	knowledgeBackfillUC := knowledge_backfill_usecase.NewUsecase(
@@ -243,6 +272,9 @@ func newKnowledgeModule(infra *InfraModule, article *ArticleModule) *KnowledgeMo
 		TrackHomeSeenUsecase:             trackHomeSeenUC,
 		TrackHomeActionUsecase:           trackHomeActionUC,
 		RecordReadingEventsUsecase:       recordReadingEventsUC,
+		QueueArticleUsecase:              queueArticleUC,
+		UnqueueArticleUsecase:            unqueueArticleUC,
+		GetReadTodayQueueUsecase:         getReadTodayQueueUC,
 		AppendKnowledgeEventUsecase:      appendKnowledgeEventUC,
 		CreateSummaryVersionUsecase:      createSummaryVersionUC,
 		KnowledgeBackfillUsecase:         knowledgeBackfillUC,

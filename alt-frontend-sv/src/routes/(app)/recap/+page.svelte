@@ -18,7 +18,6 @@ import {
 import { Button } from "#lib/components/ui/button/index.js";
 import {
 	createClientTransport,
-	getSevenDayRecap,
 	getThreeDayRecap,
 	type RecapSearchResultItem,
 	searchRecaps,
@@ -32,15 +31,6 @@ import { page } from "$app/state";
 
 const loadingStore = getLoadingStore();
 
-// Window selection: 3 or 7 days, driven by URL query param
-type RecapWindow = 3 | 7;
-
-function getWindowFromUrl(): RecapWindow {
-	const w = page.url.searchParams.get("window");
-	return w === "7" ? 7 : 3;
-}
-
-let selectedWindow = $state<RecapWindow>(3);
 let selectedGenre = $state<RecapGenre | null>(null);
 let recapData = $state<RecapSummary | null>(null);
 let isLoading = $state(true);
@@ -105,8 +95,7 @@ function clearSearch() {
 	const url = new URL(page.url.href);
 	url.searchParams.delete("q");
 	goto(url.toString(), { replace: true });
-	selectedWindow = getWindowFromUrl();
-	void fetchRecap(selectedWindow);
+	void fetchRecap();
 }
 
 function formatSearchDate(dateStr: string): string {
@@ -117,7 +106,7 @@ function formatSearchDate(dateStr: string): string {
 	});
 }
 
-async function fetchRecap(window: RecapWindow) {
+async function fetchRecap() {
 	try {
 		isLoading = true;
 		error = null;
@@ -129,10 +118,7 @@ async function fetchRecap(window: RecapWindow) {
 		}
 
 		const transport = createClientTransport();
-		recapData =
-			window === 3
-				? await getThreeDayRecap(transport)
-				: await getSevenDayRecap(transport);
+		recapData = await getThreeDayRecap(transport);
 
 		// Desktop: auto-select genre from URL param or first genre
 		if (isDesktop() && recapData?.genres && recapData.genres.length > 0) {
@@ -169,17 +155,10 @@ async function fetchRecap(window: RecapWindow) {
 	}
 }
 
-function switchWindow(window: RecapWindow) {
-	if (window !== selectedWindow) {
-		selectedWindow = window;
-		fetchRecap(window);
-	}
-}
-
 const retry = async () => {
 	isRetrying = true;
 	try {
-		await fetchRecap(selectedWindow);
+		await fetchRecap();
 	} catch (err) {
 		console.error("Retry failed:", err);
 	} finally {
@@ -211,15 +190,14 @@ onMount(() => {
 			searchQuery = q;
 			void executeSearch(q);
 		} else {
-			selectedWindow = getWindowFromUrl();
-			void fetchRecap(selectedWindow);
+			void fetchRecap();
 		}
 	}
 });
 </script>
 
 <svelte:head>
-	<title>{isSearchMode ? `Search: ${searchQuery}` : `${selectedWindow}-Day Recap`} - Alt</title>
+	<title>{isSearchMode ? `Search: ${searchQuery}` : "3-Day Recap"} - Alt</title>
 </svelte:head>
 
 {#if isDesktop()}
@@ -324,43 +302,18 @@ onMount(() => {
 					href="/recap/cards"
 					class="px-3 py-1.5 text-sm font-medium rounded-md text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-hover)] border border-[var(--border-color)] transition-colors mr-2"
 				>Topic cards</a>
-
-				<div
-					class="flex items-center gap-1 bg-[var(--surface-bg)] rounded-lg p-1 border border-[var(--border-color)]"
-				>
-					<button
-						class="px-3 py-1.5 text-sm font-medium rounded-md transition-colors {selectedWindow === 3
-							? 'bg-gray-800 text-white shadow-sm'
-							: 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-hover)]'}"
-						onclick={() => switchWindow(3)}
-						disabled={isLoading}
-					>
-						3 Days
-					</button>
-					<button
-						class="px-3 py-1.5 text-sm font-medium rounded-md transition-colors {selectedWindow === 7
-							? 'bg-gray-800 text-white shadow-sm'
-							: 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-hover)]'}"
-						onclick={() => switchWindow(7)}
-						disabled={isLoading}
-					>
-						7 Days
-					</button>
-				</div>
 			{/snippet}
 		</PageHeader>
 
 		{#if recapData}
 			<div class="flex items-center gap-2 text-sm text-[var(--text-secondary)] mb-4 -mt-2">
-				<span class="font-medium">{selectedWindow}-day window</span>
+				<span class="font-medium">3-day window</span>
 				<span class="text-[var(--text-muted)]">·</span>
 				<span>Generated: {formatExecutedAt(recapData.executedAt)}</span>
 				<span class="text-[var(--text-muted)]">·</span>
 				<span>{formatArticleCount(recapData.totalArticles)} articles</span>
 			</div>
-			{#if selectedWindow === 3}
-				<SurfaceStatusBanner surfaceStatus={recapData.surfaceStatus} />
-			{/if}
+			<SurfaceStatusBanner surfaceStatus={recapData.surfaceStatus} />
 		{/if}
 
 		{#if isLoading}
@@ -455,7 +408,7 @@ onMount(() => {
 		{:else if !recapData || recapData.genres.length === 0}
 			<RecapEmptyState />
 		{:else}
-			<SwipeRecapScreen window={selectedWindow} genres={recapData.genres} summaryData={recapData} />
+			<SwipeRecapScreen genres={recapData.genres} summaryData={recapData} />
 		{/if}
 	</div>
 {/if}

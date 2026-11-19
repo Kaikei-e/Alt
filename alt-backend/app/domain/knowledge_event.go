@@ -85,6 +85,9 @@ const (
 	EventReadingSurfaceViewed = "reading.surface_viewed.v1"
 	EventReadingReachedEnd    = "reading.reached_end.v1"
 	EventReadingSessionEnded  = "reading.session_ended.v1"
+	EventReadingOpened        = "reading.opened.v1"
+	EventReadingQueued        = "reading.queued.v1"
+	EventReadingUnqueued      = "reading.unqueued.v1"
 )
 
 // Dedupe key namespaces for AppendKnowledgeEvent. Each producer MUST use

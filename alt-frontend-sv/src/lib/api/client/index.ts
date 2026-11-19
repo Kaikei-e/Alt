@@ -29,10 +29,12 @@ export {
 // フィード関連のAPI
 export {
 	getFavoriteFeedsWithCursorClient,
+	getFeedInflowStatsClient,
 	getFeedsWithCursorClient,
 	getReadFeedsWithCursorClient,
 	listSubscriptionsClient,
 	searchFeedsClient,
+	setSubscriptionDailyCapClient,
 	subscribeClient,
 	unsubscribeClient,
 	updateFeedReadStatusClient,

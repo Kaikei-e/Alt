@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import type { TagTrailArticle, TagTrailTag } from "#lib/connect/index.js";
+import { openReaderOverlay } from "#lib/reader/reader-overlay.svelte.js";
+import { ReadingSurface } from "#lib/reading/reading-events.js";
 
 const {
 	fetchArticlesByTagMock,
@@ -20,6 +22,16 @@ vi.mock("#lib/connect/index.js", () => ({
 	fetchArticlesByTag: fetchArticlesByTagMock,
 	fetchRandomFeed: fetchRandomFeedMock,
 	streamArticleTags: streamArticleTagsMock,
+}));
+
+vi.mock("#lib/reader/reader-overlay.svelte.js", () => ({
+	openReaderOverlay: vi.fn(),
+	replaceReaderOverlayItems: vi.fn(),
+	closeReaderOverlay: vi.fn(),
+	updateReaderOverlayArticleId: vi.fn(),
+	navigateReaderOverlay: vi.fn(),
+	getReaderOverlaySession: vi.fn(),
+	resetReaderOverlaySessions: vi.fn(),
 }));
 
 import Page from "./+page.svelte";
@@ -56,6 +68,7 @@ async function settle(ms = 250) {
 
 describe("/feeds/tag-trail page", () => {
 	beforeEach(() => {
+		vi.mocked(openReaderOverlay).mockReset();
 		fetchArticlesByTagMock.mockReset();
 		fetchArticlesByTagMock.mockResolvedValue({
 			articles: ARTICLES,
@@ -197,5 +210,38 @@ describe("/feeds/tag-trail page", () => {
 		await expect
 			.element(page.getByText("Tag generation timed out. Please refresh."))
 			.toBeInTheDocument();
+	});
+
+	it("opens the unified reader overlay from desktop and mobile tag-trail article cards", async () => {
+		await page.viewport(1280, 800);
+		render(Page, { props: { data: { initialFeed: INITIAL_FEED } } });
+		await settle(250);
+
+		await page.getByRole("button", { name: "AI" }).click();
+		await settle(250);
+
+		await page
+			.getByRole("button", { name: `Show details for ${ARTICLES[0]!.title}` })
+			.click();
+
+		expect(openReaderOverlay).toHaveBeenCalledTimes(1);
+		const desktopCtx = vi.mocked(openReaderOverlay).mock.calls[0]?.[0];
+		expect(desktopCtx?.surface).toBe(ReadingSurface.OTHER);
+		expect(desktopCtx?.currentIndex).toBe(0);
+		expect(desktopCtx?.items?.[0]?.url).toBe(ARTICLES[0]!.link);
+
+		vi.mocked(openReaderOverlay).mockReset();
+		await page.viewport(PORTRAIT.width, PORTRAIT.height);
+		await settle(250);
+
+		await page
+			.getByRole("button", { name: `Show details for ${ARTICLES[0]!.title}` })
+			.click();
+
+		expect(openReaderOverlay).toHaveBeenCalledTimes(1);
+		const mobileCtx = vi.mocked(openReaderOverlay).mock.calls[0]?.[0];
+		expect(mobileCtx?.surface).toBe(ReadingSurface.OTHER);
+		expect(mobileCtx?.currentIndex).toBe(0);
+		expect(mobileCtx?.items?.[0]?.url).toBe(ARTICLES[0]!.link);
 	});
 });

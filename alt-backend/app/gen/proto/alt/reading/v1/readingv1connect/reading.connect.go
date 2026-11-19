@@ -36,6 +36,15 @@ const (
 	// ReadingServiceRecordReadingEventsProcedure is the fully-qualified name of the ReadingService's
 	// RecordReadingEvents RPC.
 	ReadingServiceRecordReadingEventsProcedure = "/alt.reading.v1.ReadingService/RecordReadingEvents"
+	// ReadingServiceQueueArticleProcedure is the fully-qualified name of the ReadingService's
+	// QueueArticle RPC.
+	ReadingServiceQueueArticleProcedure = "/alt.reading.v1.ReadingService/QueueArticle"
+	// ReadingServiceUnqueueArticleProcedure is the fully-qualified name of the ReadingService's
+	// UnqueueArticle RPC.
+	ReadingServiceUnqueueArticleProcedure = "/alt.reading.v1.ReadingService/UnqueueArticle"
+	// ReadingServiceGetReadTodayQueueProcedure is the fully-qualified name of the ReadingService's
+	// GetReadTodayQueue RPC.
+	ReadingServiceGetReadTodayQueueProcedure = "/alt.reading.v1.ReadingService/GetReadTodayQueue"
 )
 
 // ReadingServiceClient is a client for the alt.reading.v1.ReadingService service.
@@ -43,6 +52,12 @@ type ReadingServiceClient interface {
 	// Appends a batch of at most 50 reading events, deduplicating retries by
 	// each event's client_event_id.
 	RecordReadingEvents(context.Context, *connect.Request[v1.RecordReadingEventsRequest]) (*connect.Response[v1.RecordReadingEventsResponse], error)
+	// Adds an article to the Read Today queue if capacity allows.
+	QueueArticle(context.Context, *connect.Request[v1.QueueArticleRequest]) (*connect.Response[v1.QueueArticleResponse], error)
+	// Removes an article from the Read Today queue.
+	UnqueueArticle(context.Context, *connect.Request[v1.UnqueueArticleRequest]) (*connect.Response[v1.UnqueueArticleResponse], error)
+	// Returns the active Read Today queue and the count of articles read since read_since.
+	GetReadTodayQueue(context.Context, *connect.Request[v1.GetReadTodayQueueRequest]) (*connect.Response[v1.GetReadTodayQueueResponse], error)
 }
 
 // NewReadingServiceClient constructs a client for the alt.reading.v1.ReadingService service. By
@@ -62,12 +77,33 @@ func NewReadingServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(readingServiceMethods.ByName("RecordReadingEvents")),
 			connect.WithClientOptions(opts...),
 		),
+		queueArticle: connect.NewClient[v1.QueueArticleRequest, v1.QueueArticleResponse](
+			httpClient,
+			baseURL+ReadingServiceQueueArticleProcedure,
+			connect.WithSchema(readingServiceMethods.ByName("QueueArticle")),
+			connect.WithClientOptions(opts...),
+		),
+		unqueueArticle: connect.NewClient[v1.UnqueueArticleRequest, v1.UnqueueArticleResponse](
+			httpClient,
+			baseURL+ReadingServiceUnqueueArticleProcedure,
+			connect.WithSchema(readingServiceMethods.ByName("UnqueueArticle")),
+			connect.WithClientOptions(opts...),
+		),
+		getReadTodayQueue: connect.NewClient[v1.GetReadTodayQueueRequest, v1.GetReadTodayQueueResponse](
+			httpClient,
+			baseURL+ReadingServiceGetReadTodayQueueProcedure,
+			connect.WithSchema(readingServiceMethods.ByName("GetReadTodayQueue")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // readingServiceClient implements ReadingServiceClient.
 type readingServiceClient struct {
 	recordReadingEvents *connect.Client[v1.RecordReadingEventsRequest, v1.RecordReadingEventsResponse]
+	queueArticle        *connect.Client[v1.QueueArticleRequest, v1.QueueArticleResponse]
+	unqueueArticle      *connect.Client[v1.UnqueueArticleRequest, v1.UnqueueArticleResponse]
+	getReadTodayQueue   *connect.Client[v1.GetReadTodayQueueRequest, v1.GetReadTodayQueueResponse]
 }
 
 // RecordReadingEvents calls alt.reading.v1.ReadingService.RecordReadingEvents.
@@ -75,11 +111,32 @@ func (c *readingServiceClient) RecordReadingEvents(ctx context.Context, req *con
 	return c.recordReadingEvents.CallUnary(ctx, req)
 }
 
+// QueueArticle calls alt.reading.v1.ReadingService.QueueArticle.
+func (c *readingServiceClient) QueueArticle(ctx context.Context, req *connect.Request[v1.QueueArticleRequest]) (*connect.Response[v1.QueueArticleResponse], error) {
+	return c.queueArticle.CallUnary(ctx, req)
+}
+
+// UnqueueArticle calls alt.reading.v1.ReadingService.UnqueueArticle.
+func (c *readingServiceClient) UnqueueArticle(ctx context.Context, req *connect.Request[v1.UnqueueArticleRequest]) (*connect.Response[v1.UnqueueArticleResponse], error) {
+	return c.unqueueArticle.CallUnary(ctx, req)
+}
+
+// GetReadTodayQueue calls alt.reading.v1.ReadingService.GetReadTodayQueue.
+func (c *readingServiceClient) GetReadTodayQueue(ctx context.Context, req *connect.Request[v1.GetReadTodayQueueRequest]) (*connect.Response[v1.GetReadTodayQueueResponse], error) {
+	return c.getReadTodayQueue.CallUnary(ctx, req)
+}
+
 // ReadingServiceHandler is an implementation of the alt.reading.v1.ReadingService service.
 type ReadingServiceHandler interface {
 	// Appends a batch of at most 50 reading events, deduplicating retries by
 	// each event's client_event_id.
 	RecordReadingEvents(context.Context, *connect.Request[v1.RecordReadingEventsRequest]) (*connect.Response[v1.RecordReadingEventsResponse], error)
+	// Adds an article to the Read Today queue if capacity allows.
+	QueueArticle(context.Context, *connect.Request[v1.QueueArticleRequest]) (*connect.Response[v1.QueueArticleResponse], error)
+	// Removes an article from the Read Today queue.
+	UnqueueArticle(context.Context, *connect.Request[v1.UnqueueArticleRequest]) (*connect.Response[v1.UnqueueArticleResponse], error)
+	// Returns the active Read Today queue and the count of articles read since read_since.
+	GetReadTodayQueue(context.Context, *connect.Request[v1.GetReadTodayQueueRequest]) (*connect.Response[v1.GetReadTodayQueueResponse], error)
 }
 
 // NewReadingServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -95,10 +152,34 @@ func NewReadingServiceHandler(svc ReadingServiceHandler, opts ...connect.Handler
 		connect.WithSchema(readingServiceMethods.ByName("RecordReadingEvents")),
 		connect.WithHandlerOptions(opts...),
 	)
+	readingServiceQueueArticleHandler := connect.NewUnaryHandler(
+		ReadingServiceQueueArticleProcedure,
+		svc.QueueArticle,
+		connect.WithSchema(readingServiceMethods.ByName("QueueArticle")),
+		connect.WithHandlerOptions(opts...),
+	)
+	readingServiceUnqueueArticleHandler := connect.NewUnaryHandler(
+		ReadingServiceUnqueueArticleProcedure,
+		svc.UnqueueArticle,
+		connect.WithSchema(readingServiceMethods.ByName("UnqueueArticle")),
+		connect.WithHandlerOptions(opts...),
+	)
+	readingServiceGetReadTodayQueueHandler := connect.NewUnaryHandler(
+		ReadingServiceGetReadTodayQueueProcedure,
+		svc.GetReadTodayQueue,
+		connect.WithSchema(readingServiceMethods.ByName("GetReadTodayQueue")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/alt.reading.v1.ReadingService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case ReadingServiceRecordReadingEventsProcedure:
 			readingServiceRecordReadingEventsHandler.ServeHTTP(w, r)
+		case ReadingServiceQueueArticleProcedure:
+			readingServiceQueueArticleHandler.ServeHTTP(w, r)
+		case ReadingServiceUnqueueArticleProcedure:
+			readingServiceUnqueueArticleHandler.ServeHTTP(w, r)
+		case ReadingServiceGetReadTodayQueueProcedure:
+			readingServiceGetReadTodayQueueHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -110,4 +191,16 @@ type UnimplementedReadingServiceHandler struct{}
 
 func (UnimplementedReadingServiceHandler) RecordReadingEvents(context.Context, *connect.Request[v1.RecordReadingEventsRequest]) (*connect.Response[v1.RecordReadingEventsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.reading.v1.ReadingService.RecordReadingEvents is not implemented"))
+}
+
+func (UnimplementedReadingServiceHandler) QueueArticle(context.Context, *connect.Request[v1.QueueArticleRequest]) (*connect.Response[v1.QueueArticleResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.reading.v1.ReadingService.QueueArticle is not implemented"))
+}
+
+func (UnimplementedReadingServiceHandler) UnqueueArticle(context.Context, *connect.Request[v1.UnqueueArticleRequest]) (*connect.Response[v1.UnqueueArticleResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.reading.v1.ReadingService.UnqueueArticle is not implemented"))
+}
+
+func (UnimplementedReadingServiceHandler) GetReadTodayQueue(context.Context, *connect.Request[v1.GetReadTodayQueueRequest]) (*connect.Response[v1.GetReadTodayQueueResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.reading.v1.ReadingService.GetReadTodayQueue is not implemented"))
 }

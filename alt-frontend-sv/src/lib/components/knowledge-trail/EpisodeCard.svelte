@@ -220,9 +220,15 @@ function toggle() {
 </div>
 
 <style>
+	/* Episode titles and tags are often the article's source URL. A single
+	   unbreakable token is wider than a phone, and a flex child defaults to
+	   min-width: auto so it refuses to shrink. min-width: 0 plus
+	   overflow-wrap: anywhere keeps the URL readable and inside the column. */
 	.episode-step {
 		display: flex;
 		gap: 1.1rem;
+		min-width: 0;
+		max-width: 100%;
 	}
 	.spine-cell {
 		width: 3.4rem;
@@ -282,6 +288,7 @@ function toggle() {
 	.episode {
 		flex: 1;
 		min-width: 0;
+		max-width: 100%;
 		display: flex;
 		gap: 1rem;
 		padding: 0.85rem 0 1.35rem;
@@ -297,14 +304,18 @@ function toggle() {
 	.episode-body {
 		flex: 1;
 		min-width: 0;
+		max-width: 100%;
 	}
 	.episode-head {
 		display: flex;
 		align-items: baseline;
 		justify-content: space-between;
 		gap: 0.8rem;
+		min-width: 0;
+		max-width: 100%;
 	}
 	.episode-title {
+		flex: 1 1 auto;
 		font-family: var(--font-display);
 		font-size: 1.15rem;
 		font-weight: 700;
@@ -313,6 +324,10 @@ function toggle() {
 		color: var(--alt-charcoal, #1a1a1a);
 		cursor: pointer;
 		text-decoration: none;
+		min-width: 0;
+		max-width: 100%;
+		overflow-wrap: anywhere;
+		word-break: break-word;
 	}
 	a.episode-title:hover {
 		color: var(--interactive-text-hover, #223b3b);
@@ -358,6 +373,8 @@ function toggle() {
 		gap: 0.35rem;
 		margin-top: 0.55rem;
 		flex-wrap: wrap;
+		min-width: 0;
+		max-width: 100%;
 	}
 	.fp-tag {
 		font-family: var(--font-mono);
@@ -366,6 +383,10 @@ function toggle() {
 		border: 1px solid var(--chip-border, #d0c8bb);
 		background: var(--chip-bg, #ebe7df);
 		padding: 0.08rem 0.5rem;
+		min-width: 0;
+		max-width: 100%;
+		overflow-wrap: anywhere;
+		word-break: break-word;
 	}
 	.episode-footprints {
 		margin-top: 0.75rem;

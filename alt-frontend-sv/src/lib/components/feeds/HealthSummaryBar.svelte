@@ -61,8 +61,8 @@ const visibleStatuses = $derived(
 		align-items: center;
 		gap: 0.5rem;
 		padding: 0.5rem 0.75rem;
-		border-radius: 0.5rem;
-		border: 1px solid;
+		border-radius: 0;
+		border: 1px solid var(--surface-border);
 		font-size: 0.75rem;
 		flex-wrap: wrap;
 	}

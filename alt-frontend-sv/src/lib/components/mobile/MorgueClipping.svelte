@@ -1,14 +1,12 @@
 <script lang="ts">
 import type { RenderFeed } from "#lib/schema/feed.js";
-import FeedDetails from "./FeedDetails.svelte";
 
 interface Props {
 	feed: RenderFeed;
+	onSelect?: (feed: RenderFeed) => void;
 }
 
-const { feed }: Props = $props();
-
-let isDetailsOpen = $state(false);
+const { feed, onSelect }: Props = $props();
 </script>
 
 <article
@@ -34,7 +32,8 @@ let isDetailsOpen = $state(false);
 
 		<div class="morgue-actions">
 			<button
-				onclick={() => { isDetailsOpen = true; }}
+				type="button"
+				onclick={() => onSelect?.(feed)}
 				class="action-btn"
 				aria-label="Show details for {feed.title}"
 			>
@@ -53,13 +52,6 @@ let isDetailsOpen = $state(false);
 		</div>
 	</div>
 </article>
-
-<FeedDetails
-	feedURL={feed.link}
-	feedTitle={feed.title}
-	bind:open={isDetailsOpen}
-	showButton={false}
-/>
 
 <style>
 	.morgue-card {

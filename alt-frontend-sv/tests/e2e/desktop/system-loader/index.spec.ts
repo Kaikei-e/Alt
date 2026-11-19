@@ -20,7 +20,7 @@ test.describe("System Loader", () => {
 	 */
 
 	test("hides loader after content loads", async ({ page }) => {
-		await page.route(CONNECT_RPC_PATHS.getSevenDayRecap, async (route) => {
+		await page.route(CONNECT_RPC_PATHS.getThreeDayRecap, async (route) => {
 			await fulfillJson(route, CONNECT_RECAP_RESPONSE);
 		});
 
@@ -32,7 +32,7 @@ test.describe("System Loader", () => {
 	});
 
 	test("shows content after loading completes", async ({ page }) => {
-		await page.route(CONNECT_RPC_PATHS.getSevenDayRecap, async (route) => {
+		await page.route(CONNECT_RPC_PATHS.getThreeDayRecap, async (route) => {
 			await fulfillJson(route, CONNECT_RECAP_RESPONSE);
 		});
 
@@ -53,7 +53,7 @@ test.describe("System Loader", () => {
 			resolveRoute = resolve;
 		});
 
-		await page.route(CONNECT_RPC_PATHS.getSevenDayRecap, async (route) => {
+		await page.route(CONNECT_RPC_PATHS.getThreeDayRecap, async (route) => {
 			await routePromise;
 			await fulfillJson(route, CONNECT_RECAP_RESPONSE);
 		});

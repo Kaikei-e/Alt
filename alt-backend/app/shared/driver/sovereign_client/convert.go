@@ -114,16 +114,15 @@ func protoToTodayDigest(d *sovereignv1.TodayDigest, fallbackUserID uuid.UUID, fa
 	}
 	digestDate, _ := time.Parse("2006-01-02", d.DigestDate)
 	result := domain.TodayDigest{
-		UserID:                parseUUID(d.UserId),
-		DigestDate:            digestDate,
-		NewArticles:           int(d.NewArticles),
-		SummarizedArticles:    int(d.SummarizedArticles),
-		UnsummarizedArticles:  int(d.UnsummarizedArticles),
-		TopTags:               d.TopTags,
-		WeeklyRecapAvailable:  d.WeeklyRecapAvailable,
-		EveningPulseAvailable: d.EveningPulseAvailable,
-		NeedToKnowCount:       int(d.NeedToKnowCount),
-		DigestFreshness:       d.DigestFreshness,
+		UserID:               parseUUID(d.UserId),
+		DigestDate:           digestDate,
+		NewArticles:          int(d.NewArticles),
+		SummarizedArticles:   int(d.SummarizedArticles),
+		UnsummarizedArticles: int(d.UnsummarizedArticles),
+		TopTags:              d.TopTags,
+		WeeklyRecapAvailable: d.WeeklyRecapAvailable,
+		NeedToKnowCount:      int(d.NeedToKnowCount),
+		DigestFreshness:      d.DigestFreshness,
 	}
 	if d.UpdatedAt != nil {
 		result.UpdatedAt = d.UpdatedAt.AsTime()
