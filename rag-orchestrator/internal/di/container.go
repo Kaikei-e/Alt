@@ -41,11 +41,12 @@ type ApplicationComponents struct {
 	JobRepo   domain.RagJobRepository
 
 	// Usecases
-	IndexUsecase         usecase.IndexArticleUsecase
-	RetrieveUsecase      usecase.RetrieveContextUsecase
-	AnswerUsecase        usecase.AnswerWithRAGUsecase
-	MorningLetterUsecase usecase.MorningLetterUsecase
-	ConversationUsecase  usecase.AugurConversationUsecase
+	IndexUsecase               usecase.IndexArticleUsecase
+	RetrieveUsecase            usecase.RetrieveContextUsecase
+	AnswerUsecase              usecase.AnswerWithRAGUsecase
+	MorningLetterUsecase       usecase.MorningLetterUsecase
+	ConversationUsecase        usecase.AugurConversationUsecase
+	CandidateSimilarityUsecase usecase.CandidateSimilarityUsecase
 
 	// Worker
 	Worker *worker.JobWorker
@@ -80,6 +81,7 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 	docRepo := repository.NewRagDocumentRepository(pool)
 	jobRepo := repository.NewRagJobRepository(pool)
 	augurConvRepo := repository.NewAugurConversationRepository(pool)
+	candidateSimilarityRepo := repository.NewCandidateSimilarityRepository(pool)
 	txManager := repository.NewPostgresTransactionManager(pool)
 
 	// Preflight mTLS cert loading so any cert/key/CA misconfiguration surfaces
@@ -359,6 +361,11 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 	// Ask Augur chat persistence (append-first rows in rag-db)
 	conversationUsecase := usecase.NewAugurConversationUsecase(augurConvRepo, nil)
 
+	// Candidate-set similarity for reading connections
+	candidateSimilarityUsecase := usecase.NewCandidateSimilarityUsecase(candidateSimilarityRepo)
+	log.Info("candidate_similarity_enabled",
+		slog.Int("max_candidates", domain.MaxCandidateSimilarityArticles))
+
 	// Morning letter fetcher for chat grounding (recap-worker REST).
 	// The URL is resolved in config.Load() (RECAP_WORKER_URL, default
 	// http://recap-worker:9005) — DI does not re-derive a fallback, so a
@@ -437,23 +444,24 @@ func NewApplicationComponents(cfg *config.Config, pool *pgxpool.Pool, log *slog.
 	}
 
 	return &ApplicationComponents{
-		ChunkRepo:            chunkRepo,
-		DocRepo:              docRepo,
-		JobRepo:              jobRepo,
-		IndexUsecase:         indexUsecase,
-		RetrieveUsecase:      retrieveUsecase,
-		AnswerUsecase:        answerUsecase,
-		MorningLetterUsecase: morningLetterUsecase,
-		ConversationUsecase:  conversationUsecase,
-		EventEmitter:         eventEmitter,
-		CoverageSampler:      coverageSampler,
-		Worker:               jobWorker,
-		EmbedderFactory:      embedderFactory,
-		IndexUsecaseFactory:  indexUsecaseFactory,
-		ArticleClient:        articleClient,
-		LetterFetcher:        letterFetcher,
-		EmbeddingModel:       cfg.Embedder.Model,
-		EmbedderTimeout:      cfg.Embedder.Timeout,
+		ChunkRepo:                  chunkRepo,
+		DocRepo:                    docRepo,
+		JobRepo:                    jobRepo,
+		IndexUsecase:               indexUsecase,
+		RetrieveUsecase:            retrieveUsecase,
+		AnswerUsecase:              answerUsecase,
+		MorningLetterUsecase:       morningLetterUsecase,
+		ConversationUsecase:        conversationUsecase,
+		CandidateSimilarityUsecase: candidateSimilarityUsecase,
+		EventEmitter:               eventEmitter,
+		CoverageSampler:            coverageSampler,
+		Worker:                     jobWorker,
+		EmbedderFactory:            embedderFactory,
+		IndexUsecaseFactory:        indexUsecaseFactory,
+		ArticleClient:              articleClient,
+		LetterFetcher:              letterFetcher,
+		EmbeddingModel:             cfg.Embedder.Model,
+		EmbedderTimeout:            cfg.Embedder.Timeout,
 	}
 }
 

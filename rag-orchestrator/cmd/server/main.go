@@ -148,51 +148,9 @@ func main() {
 	app.CoverageSampler.Start(ctx)
 	defer app.CoverageSampler.Stop()
 
-	// 7. Initialize Echo
-	e := echo.New()
-	// CVE-2026-118653 / CVE-2026-118651: rag-orchestrator is service-to-service
-	// only; never trust client-supplied X-Forwarded-For or X-Real-IP headers.
-	e.IPExtractor = echo.ExtractIPDirect()
-	e.Use(middleware.RequestLogger())
-	e.Use(middleware.Recover())
-	if peerMW != nil {
-		e.Use(echo.WrapMiddleware(peerMW.Require))
-	}
+	// 7-9. Initialize Echo REST server, middlewares, handlers, and health checks
 	apiAuthMW := peermw.NewAPIAuthMiddleware(cfg.APIAuth.Token, cfg.APIAuth.Enabled, log)
-	e.Use(apiAuthMW.EchoMiddleware())
-
-	// 8. Initialize Handlers
-	handler := rag_http.NewHandler(
-		app.RetrieveUsecase,
-		app.AnswerUsecase,
-		app.IndexUsecase,
-		app.JobRepo,
-		app.MorningLetterUsecase,
-		log,
-		rag_http.WithEmbedderOverride(app.EmbedderFactory, app.IndexUsecaseFactory, app.EmbeddingModel, app.EmbedderTimeout, cfg.Embedder.AllowedOverrideOrigins),
-	)
-	openapi.RegisterHandlers(e, handler)
-	e.POST("/internal/rag/backfill", handler.Backfill)
-	e.POST("/v1/rag/morning-letter", handler.MorningLetter)
-
-	// 9. Health Checks
-	e.GET("/healthz", func(c echo.Context) error {
-		return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
-	})
-	e.GET("/readyz", func(c echo.Context) error {
-		if err := dbPool.Ping(c.Request().Context()); err != nil {
-			log.Error("readyz db ping failed", "error", err)
-			return c.JSON(http.StatusServiceUnavailable, map[string]string{"status": "db down"})
-		}
-		return c.JSON(http.StatusOK, map[string]string{"status": "ready"})
-	})
-
-	// 9.1 Prometheus /metrics on the Echo API mux. Exposes the
-	// rag_orchestrator_knowledge_event_emitter_* counters (Knowledge Loop
-	// Completion Phase 1 §1). PKI enrollment series live on the dedicated
-	// ops listener (:9110, private registry) — they must not land here via
-	// DefaultRegisterer.
-	e.GET("/metrics", echo.WrapHandler(promhttp.Handler()))
+	e := newRESTEcho(app, cfg, peerMW, apiAuthMW, dbPool, log)
 
 	// Dedicated Plaintext Health Check Server
 	healthPort := os.Getenv("RAG_HEALTH_PORT")
@@ -313,6 +271,66 @@ func main() {
 // HealthPinger checks readiness of backing dependencies (e.g. database pool).
 type HealthPinger interface {
 	Ping(ctx context.Context) error
+}
+
+// newRESTEcho builds the Echo REST router (:9010) with peer-identity, API auth,
+// all OpenAPI/internal handlers, and observability endpoints.
+func newRESTEcho(
+	app *di.ApplicationComponents,
+	cfg *config.Config,
+	peerMW *peermw.PeerIdentityMiddleware,
+	apiAuthMW *peermw.APIAuthMiddleware,
+	pinger HealthPinger,
+	log *slog.Logger,
+) *echo.Echo {
+	e := echo.New()
+	// CVE-2026-118653 / CVE-2026-118651: rag-orchestrator is service-to-service
+	// only; never trust client-supplied X-Forwarded-For or X-Real-IP headers.
+	e.IPExtractor = echo.ExtractIPDirect()
+	e.Use(middleware.RequestLogger())
+	e.Use(middleware.Recover())
+	if peerMW != nil {
+		e.Use(echo.WrapMiddleware(peerMW.Require))
+	}
+	if apiAuthMW != nil {
+		e.Use(apiAuthMW.EchoMiddleware())
+	}
+
+	handler := rag_http.NewHandler(
+		app.RetrieveUsecase,
+		app.AnswerUsecase,
+		app.IndexUsecase,
+		app.JobRepo,
+		app.MorningLetterUsecase,
+		log,
+		rag_http.WithEmbedderOverride(app.EmbedderFactory, app.IndexUsecaseFactory, app.EmbeddingModel, app.EmbedderTimeout, cfg.Embedder.AllowedOverrideOrigins),
+		rag_http.WithCandidateSimilarity(app.CandidateSimilarityUsecase),
+	)
+	openapi.RegisterHandlers(e, handler)
+	e.POST("/internal/rag/backfill", handler.Backfill)
+	e.POST("/v1/rag/morning-letter", handler.MorningLetter)
+	e.POST("/internal/rag/candidate-similarity", handler.CandidateSimilarity)
+
+	e.GET("/healthz", func(c echo.Context) error {
+		return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
+	})
+	e.GET("/readyz", func(c echo.Context) error {
+		if pinger != nil {
+			if err := pinger.Ping(c.Request().Context()); err != nil {
+				log.Error("readyz db ping failed", "error", err)
+				return c.JSON(http.StatusServiceUnavailable, map[string]string{"status": "db down"})
+			}
+		}
+		return c.JSON(http.StatusOK, map[string]string{"status": "ready"})
+	})
+
+	// Prometheus /metrics on the Echo API mux. Exposes the
+	// rag_orchestrator_knowledge_event_emitter_* counters (Knowledge Loop
+	// Completion Phase 1 §1). PKI enrollment series live on the dedicated
+	// ops listener (:9110, private registry) — they must not land here via
+	// DefaultRegisterer.
+	e.GET("/metrics", echo.WrapHandler(promhttp.Handler()))
+	return e
 }
 
 // newHealthMux builds the ServeMux for the dedicated public health check port.

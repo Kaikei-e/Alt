@@ -160,10 +160,12 @@ func startWorkers(ctx context.Context, wg *sync.WaitGroup, repo *sovereign_db.Re
 	// NewPlanner always returns non-nil; the real wiring signal is whether the
 	// repository dependency was supplied.
 	branchPlanner := trail_planner.NewPlanner(repo, slog.Default(), trail_planner.Config{
-		MaxBranchesPerUser: cfg.TrailMaxBranchesPerUser,
-		Clock:              time.Now,
+		Clock: time.Now,
 	})
-	slog.Info("trail.branch_producer.wiring", "enabled", true, "repository_wired", repo != nil)
+	slog.Info("trail.branch_producer.wiring",
+		"enabled", true,
+		"repository_wired", repo != nil,
+		"relation_kinds", []string{"continuation"})
 	branchTick := time.NewTicker(cfg.BranchPlannerTickInterval)
 	wg.Add(1)
 	go func() {

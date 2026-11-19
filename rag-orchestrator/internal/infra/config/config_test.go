@@ -761,3 +761,63 @@ func TestLoad_Search_CarriesClientCertMaterial(t *testing.T) {
 	assert.Equal(t, "/certs/svc-key.pem", cfg.Search.KeyFile)
 	assert.Equal(t, "/trust/ca-bundle.pem", cfg.Search.CAFile)
 }
+
+func TestLoadDBConfig_FailFastAndLoadsServerEnv(t *testing.T) {
+	t.Run("missing DB_PASSWORD and DB_PASSWORD_FILE returns error", func(t *testing.T) {
+		unsetEnv(t, "DB_PASSWORD")
+		unsetEnv(t, "DB_PASSWORD_FILE")
+
+		_, err := LoadDBConfig()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "DB_PASSWORD")
+	})
+
+	t.Run("reads DB_PASSWORD and server defaults", func(t *testing.T) {
+		t.Setenv("DB_PASSWORD", "secret-pw")
+		unsetEnv(t, "DB_PASSWORD_FILE")
+		unsetEnv(t, "DB_HOST")
+		unsetEnv(t, "DB_PORT")
+		unsetEnv(t, "DB_USER")
+		unsetEnv(t, "DB_NAME")
+		unsetEnv(t, "DB_SSL_MODE")
+
+		db, err := LoadDBConfig()
+		require.NoError(t, err)
+		assert.Equal(t, "postgres://rag_user:secret-pw@rag-db:5432/rag_db?sslmode=disable", db.DSN())
+	})
+
+	t.Run("reads DB_PASSWORD_FILE", func(t *testing.T) {
+		unsetEnv(t, "DB_PASSWORD")
+		t.Setenv("DB_PASSWORD_FILE", writeTokenFile(t, "file-pw", "\n"))
+		t.Setenv("DB_HOST", "127.0.0.1")
+		t.Setenv("DB_PORT", "5436")
+
+		db, err := LoadDBConfig()
+		require.NoError(t, err)
+		assert.Equal(t, "postgres://rag_user:file-pw@127.0.0.1:5436/rag_db?sslmode=disable", db.DSN())
+	})
+}
+
+func TestLoadEmbedderConfig_FailFastAndLoadsServerEnv(t *testing.T) {
+	t.Run("missing inference auth fails fast", func(t *testing.T) {
+		unsetEnv(t, "INFERENCE_AUTH")
+		unsetEnv(t, "INFERENCE_SERVICE_TOKEN_FILE")
+
+		_, err := LoadEmbedderConfig()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "INFERENCE_SERVICE_TOKEN_FILE")
+	})
+
+	t.Run("loads server embedder settings", func(t *testing.T) {
+		t.Setenv("INFERENCE_AUTH", "disabled")
+		t.Setenv("EMBEDDER_EXTERNAL", "http://localhost:11436")
+		t.Setenv("EMBEDDING_MODEL", "bge-m3")
+		t.Setenv("EMBEDDER_TIMEOUT", "45")
+
+		emb, err := LoadEmbedderConfig()
+		require.NoError(t, err)
+		assert.Equal(t, "http://localhost:11436", emb.URL)
+		assert.Equal(t, "bge-m3", emb.Model)
+		assert.Equal(t, 45, emb.Timeout)
+	})
+}

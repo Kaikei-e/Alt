@@ -11,10 +11,10 @@ Durable knowledge state owner (event log, Knowledge Home projector, and Knowledg
   - Time-decay ranking (`homeItemRankScoreSQL`) and empty-title filtering (`COALESCE(khi.title, '') <> ''`) happen at read time in `GetKnowledgeHomeItems` (`driver/sovereign_db/read_projections.go`), not in the projector.
 - **Recall Candidates**: `UpsertRecallCandidate` (`driver/sovereign_db/mutation_recall_candidate.go`) deduplicates `reason_json` entries by `(type, description, source_item_key)` per `(user_id, item_key)` and `DismissRecallCandidate` soft-deletes dismissed items by setting `dismissed_at`.
 - **Knowledge Trail Projector & Planner**:
-  - `EngagementVerbs` are `read`, `asked`, and `listened` (`driver/sovereign_db/read_trail.go`). Only these verbs appear on the trail spine, count toward path wear, or anchor branches (`dismissed` footprints are excluded).
-  - `DeriveTrailClusterCandidates` (`driver/sovereign_db/read_trail_candidates.go`) normalizes tags and excludes junk tags (`JunkTagWords` in `driver/sovereign_db/read_trail_candidates.go`) in SQL before ranking, selecting the anchor with the largest clean tag overlap (ties broken by most recent engagement).
-  - `usecase/trail_planner` requires at least 1 clean shared tag (`len(c.SharedTags) >= 1` after `tagclean.CleanDisplay`) to propose a `cluster` branch (`confidence: "plausible"` for 1 clean shared tag, `"corroborated"` for 2 or more).
-  - Branch proposals (`trail.branch_proposed.v1`) fold first-write-wins via `UpsertTrailBranch` (`ON CONFLICT (user_id, branch_key) DO NOTHING` in `driver/sovereign_db/read_trail_branches.go`), keeping the earliest proposal's fields and preserving resolved `state` across reprojects.
+  - `EngagementVerbs` are `read`, `asked`, and `listened` (`driver/sovereign_db/read_trail.go`). Only these verbs appear on the trail spine, count toward path wear, or anchor continuation branches (`dismissed` footprints are excluded).
+  - `JunkTagWords` (`driver/sovereign_db/read_trail_candidates.go`) is shared with `usecase/tagclean` for display tag normalization and episode chaining (`usecase/trail_episodes`).
+  - `usecase/trail_planner` proposes `continuation` branches via `DeriveTrailContinuationCandidates` (`driver/sovereign_db/read_trail_candidates.go`) and no longer proposes new `cluster` branches.
+  - Branch proposals (`trail.branch_proposed.v1`) fold first-write-wins via `UpsertTrailBranch` (`ON CONFLICT (user_id, branch_key) DO NOTHING` in `driver/sovereign_db/read_trail_branches.go`), keeping the earliest proposal's fields (including historical `cluster` branches) and preserving resolved `state` across reprojects.
 
 ## Commands
 

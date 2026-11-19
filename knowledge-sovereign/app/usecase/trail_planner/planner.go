@@ -19,15 +19,11 @@ import (
 	"github.com/google/uuid"
 
 	"knowledge-sovereign/driver/sovereign_db"
-	"knowledge-sovereign/usecase/tagclean"
 )
 
 // Repository is the narrow surface the planner needs.
 type Repository interface {
 	ListDistinctUserIDs(ctx context.Context) ([]uuid.UUID, error)
-	GetLatestFootprintAnchor(ctx context.Context, userID uuid.UUID) (sovereign_db.FootprintAnchor, bool, error)
-	GetItemTitle(ctx context.Context, userID uuid.UUID, itemKey string) (string, bool, error)
-	DeriveTrailClusterCandidates(ctx context.Context, userID uuid.UUID, limit int) ([]sovereign_db.TrailClusterCandidate, error)
 	DeriveTrailContinuationCandidates(ctx context.Context, userID uuid.UUID, limit int) ([]sovereign_db.TrailContinuationCandidate, error)
 	// AppendKnowledgeEventIfNew appends an event only if its dedupe_key has
 	// not been seen yet, returning (event_seq, true, nil) when fresh and (0,
@@ -40,7 +36,6 @@ type Repository interface {
 
 // Config tunes the planner.
 type Config struct {
-	MaxBranchesPerUser int
 	// Clock is injected so the emitted occurred_at is testable and the planner
 	// holds no wall clock literal. Production wires wall clock.
 	Clock func() time.Time
@@ -57,20 +52,17 @@ func NewPlanner(repo Repository, logger *slog.Logger, cfg Config) *Planner {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	if cfg.MaxBranchesPerUser <= 0 {
-		cfg.MaxBranchesPerUser = 5
-	}
 	if cfg.Clock == nil {
 		cfg.Clock = time.Now
 	}
 	return &Planner{repo: repo, logger: logger, cfg: cfg}
 }
 
-// RunBatch derives Cluster branches for every user with a spine and emits a
-// branch_proposed event per fresh candidate (idempotent via dedupe_key).
+// RunBatch derives branches for every user with eligible trail history and
+// emits a branch_proposed event per fresh candidate (idempotent via dedupe_key).
 func (p *Planner) RunBatch(ctx context.Context) error {
-	// Rule 8: a planner reached with no repository is a wiring bug — fail loud,
-	// never silently no-op.
+	// A planner reached with no repository is a wiring bug — fail loud, never
+	// silently no-op.
 	if p.repo == nil {
 		panic("trail_planner: repository not wired")
 	}
@@ -97,98 +89,13 @@ func (p *Planner) RunBatch(ctx context.Context) error {
 }
 
 func (p *Planner) planUser(ctx context.Context, userID uuid.UUID) error {
-	anchor, ok, err := p.repo.GetLatestFootprintAnchor(ctx, userID)
-	if err != nil {
-		return fmt.Errorf("trail_planner anchor: %w", err)
-	}
-	if !ok {
-		// Either no footprints yet, or none the why can name (a spine of
-		// dismissals). Both mean the same thing here: nothing to fork from.
-		p.logger.WarnContext(ctx, "trail.branch_anchor_unresolved",
-			slog.String("user_id", userID.String()),
-			slog.String("reason", "no_eligible_footprint"))
-		return nil
-	}
-
-	// §C4: the why names the act that happened. A verb with no phrase is a
-	// verb the why cannot back, so it suppresses rather than borrowing "read".
-	whyPhrase, phraseOK := whyPhraseForVerb(anchor.Verb)
-	if !phraseOK {
-		p.logger.WarnContext(ctx, "trail.branch_anchor_unresolved",
-			slog.String("user_id", userID.String()),
-			slog.String("anchor_item_key", anchor.ItemKey),
-			slog.String("reason", "unphrasable_verb"),
-			slog.String("verb", anchor.Verb))
-		return nil
-	}
-
-	// D28(a): a branch whose why does not reference its anchor is forbidden.
-	// The anchor's title is that reference, so an unresolvable title must
-	// suppress emission for this user — never fall back to a generic why.
-	anchorTitle, titleOK, err := p.repo.GetItemTitle(ctx, userID, anchor.ItemKey)
-	if err != nil {
-		return fmt.Errorf("trail_planner anchor title: %w", err)
-	}
-	if !titleOK {
-		p.logger.WarnContext(ctx, "trail.branch_anchor_unresolved",
-			slog.String("user_id", userID.String()),
-			slog.String("anchor_item_key", anchor.ItemKey),
-			slog.String("reason", "title_unresolved"))
-		return nil
-	}
-	ref := anchorRef{itemKey: anchor.ItemKey, title: anchorTitle, whyPhrase: whyPhrase}
-
-	candidates, err := p.repo.DeriveTrailClusterCandidates(ctx, userID, p.cfg.MaxBranchesPerUser)
-	if err != nil {
-		return fmt.Errorf("trail_planner candidates: %w", err)
-	}
-	for _, c := range candidates {
-		// A target the user cannot even read the name of is not a useful
-		// proposal — surfacing it would render as a bare item key. Title-less
-		// targets (upstream knowledge_home_items.title gaps) are skipped, not
-		// proposed. The read path still applies a display fallback for any
-		// title-less branches already in the log.
-		if strings.TrimSpace(c.TargetTitle) == "" {
-			continue
-		}
-		c.SharedTags = tagclean.CleanDisplay(c.SharedTags)
-		if len(c.SharedTags) == 0 {
-			continue
-		}
-		candRef := ref
-		if strings.TrimSpace(c.AnchorItemKey) != "" && strings.TrimSpace(c.AnchorTitle) != "" {
-			candPhrase := ref.whyPhrase
-			if c.AnchorVerb != "" {
-				if phrase, ok := whyPhraseForVerb(c.AnchorVerb); ok {
-					candPhrase = phrase
-				} else {
-					continue
-				}
-			}
-			candRef = anchorRef{
-				itemKey:   c.AnchorItemKey,
-				title:     c.AnchorTitle,
-				whyPhrase: candPhrase,
-			}
-		}
-		payload := buildClusterBranch(userID, candRef, c)
-		if err := p.emitBranch(ctx, userID, anchor.TenantID, payload); err != nil {
-			return err
-		}
-	}
-
-	if err := p.planContinuationBranch(ctx, userID, anchor.TenantID); err != nil {
-		return err
-	}
-	return nil
+	return p.planContinuationBranch(ctx, userID)
 }
 
-// planContinuationBranch derives at most ONE Continuation candidate per user
-// per run (D28 — 少数精鋭, precision over recall) and emits it. Continuation
-// is self-referential (D27, contexts/knowledge-trail.md): the target IS the
-// anchor, because past engagement with the SAME item — not tag overlap with a
-// new item — is what qualifies it (contrast the Cluster loop above).
-func (p *Planner) planContinuationBranch(ctx context.Context, userID, tenantID uuid.UUID) error {
+// planContinuationBranch derives at most one Continuation candidate per user
+// per run and emits it. Continuation is self-referential: the target IS the
+// anchor, because past engagement with the same item qualifies it.
+func (p *Planner) planContinuationBranch(ctx context.Context, userID uuid.UUID) error {
 	candidates, err := p.repo.DeriveTrailContinuationCandidates(ctx, userID, 1)
 	if err != nil {
 		return fmt.Errorf("trail_planner continuation candidates: %w", err)
@@ -219,14 +126,11 @@ func (p *Planner) planContinuationBranch(ctx context.Context, userID, tenantID u
 		return nil
 	}
 	payload := buildContinuationBranch(userID, whyPhrase, c)
-	return p.emitBranch(ctx, userID, tenantID, payload)
+	return p.emitBranch(ctx, userID, c.TenantID, payload)
 }
 
 // emitBranch appends a validated branch_proposed event and logs its relation
-// kind (Wave 11 observability — makes the type distribution across Cluster /
-// Continuation / future kinds measurable). A branch that fails Valid() is
-// dropped rather than emitted incomplete — untyped branches are forbidden by
-// construction, not just by convention.
+// kind. A branch that fails Valid() is dropped rather than emitted incomplete.
 func (p *Planner) emitBranch(ctx context.Context, userID, tenantID uuid.UUID, payload BranchProposedPayload) error {
 	if !payload.Valid() {
 		p.logger.WarnContext(ctx, "trail_planner: dropping incomplete branch",

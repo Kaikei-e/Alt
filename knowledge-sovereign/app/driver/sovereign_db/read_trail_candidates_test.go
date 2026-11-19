@@ -14,9 +14,7 @@ import (
 // TestDeriveTrailContinuationCandidates_DismissalsAreNotContact pins the two
 // halves of the continuation truthfulness gate: a dismissal must not count as
 // contact with a thread (it is the opposite), and an item the user dismissed
-// from Home must not be proposed back to them. The sibling cluster query has
-// carried the dismissed_at gate all along; its absence here is what put 386 of
-// 391 continuation branches on dismissed articles.
+// from Home must not be proposed back to them.
 func TestDeriveTrailContinuationCandidates_DismissalsAreNotContact(t *testing.T) {
 	mock := &mockPgx{}
 	repo := &Repository{pool: mock}
@@ -110,123 +108,12 @@ func TestCalcTrailContinuationCutoffs(t *testing.T) {
 	}
 }
 
-func TestDeriveTrailClusterCandidates_FiltersByEngagementVerbsAndExcludesExistingBranches(t *testing.T) {
-	mock := &mockPgx{}
-	repo := &Repository{pool: mock}
-
-	userID := uuid.New()
-	_, err := repo.DeriveTrailClusterCandidates(context.Background(), userID, 5)
-	require.NoError(t, err)
-	require.Len(t, mock.queryCalls, 1)
-
-	call := mock.queryCalls[0]
-	assert.Contains(t, call.SQL, "f.verb = ANY($2::text[])",
-		"cluster anchor tags must only be derived from EngagementVerbs, not dismissals")
-	assert.Contains(t, call.SQL, "relation_kind = 'cluster'",
-		"already-proposed cluster branches must be excluded so the top-N query does not lock out")
-	assert.Contains(t, call.SQL, "NOT EXISTS",
-		"already-proposed cluster branches must be excluded via NOT EXISTS")
-	assert.Contains(t, call.SQL, "$3::text[]",
-		"junk vocabulary from tagclean must be bound as a text[] parameter, not inlined")
-	assert.Contains(t, call.SQL, `regexp_replace(`,
-		"tags and titles must be trimmed of Unicode whitespace via regexp_replace")
-	assert.Contains(t, call.SQL, `\u00A0\u3000`,
-		"SQL whitespace trim must include NBSP (U+00A0) and ideographic space (U+3000)")
-	assert.NotContains(t, call.SQL, "btrim(",
-		"btrim strips only ASCII space and misses Unicode whitespace")
-	assert.Contains(t, call.SQL, "[[:alpha:]]",
-		"tags must contain a letter in SQL")
-	assert.Contains(t, call.SQL, "COALESCE(khi.published_at, khi.updated_at) >= NOW() - INTERVAL '30 days'",
-		"cluster candidates must be bounded to recent items so JSONB tags are not unnested across all history")
-	assert.Contains(t, call.SQL, "ORDER BY target_item_key, tag_overlap DESC, last_occurred_at DESC",
-		"best_per_target must pick the anchor with the largest clean overlap, breaking ties by most recent engagement")
-	assert.Contains(t, call.SQL, "ORDER BY tag_overlap DESC, last_occurred_at DESC, target_item_key",
-		"candidates must rank by largest clean overlap first before LIMIT")
-	assert.Contains(t, call.SQL, "LIMIT $4")
-
-	require.Len(t, call.Args, 4)
-	assert.Equal(t, userID, call.Args[0])
-	assert.Equal(t, EngagementVerbs, call.Args[1])
-	junkWordsArg, ok := call.Args[2].([]string)
-	require.True(t, ok, "arg[2] must be the junk tag vocabulary slice")
-	assert.Equal(t, JunkTagWords, junkWordsArg)
-	require.NotEmpty(t, junkWordsArg)
-	assert.Contains(t, junkWordsArg, "https")
-	assert.Contains(t, junkWordsArg, "ai")
-	assert.Contains(t, junkWordsArg, "blog")
-	assert.Contains(t, junkWordsArg, "こと")
-	assert.Equal(t, 5, call.Args[3])
-}
-
-func TestScanTrailClusterCandidateRow(t *testing.T) {
-	tests := []struct {
-		name        string
-		itemKey     string
-		title       string
-		tags        []string
-		anchorKey   string
-		anchorTitle string
-		anchorVerb  string
-		scanErr     error
-		wantErr     bool
-		wantCand    TrailClusterCandidate
-	}{
-		{
-			name:        "valid candidate",
-			itemKey:     "item-10",
-			title:       "Title 10",
-			tags:        []string{"go", "clean-architecture"},
-			anchorKey:   "item-1",
-			anchorTitle: "Anchor 1",
-			anchorVerb:  "read",
-			wantCand: TrailClusterCandidate{
-				TargetItemKey: "item-10",
-				TargetTitle:   "Title 10",
-				SharedTags:    []string{"go", "clean-architecture"},
-				AnchorItemKey: "item-1",
-				AnchorTitle:   "Anchor 1",
-				AnchorVerb:    "read",
-			},
-		},
-		{
-			name:    "scan error",
-			scanErr: errors.New("cluster scan failed"),
-			wantErr: true,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			mock := &mockRow{
-				scanFunc: func(dest ...interface{}) error {
-					if tc.scanErr != nil {
-						return tc.scanErr
-					}
-					*dest[0].(*string) = tc.itemKey
-					*dest[1].(*string) = tc.title
-					*dest[2].(*[]string) = tc.tags
-					*dest[3].(*string) = tc.anchorKey
-					*dest[4].(*string) = tc.anchorTitle
-					*dest[5].(*string) = tc.anchorVerb
-					return nil
-				},
-			}
-
-			c, err := scanTrailClusterCandidateRow(mock)
-			if tc.wantErr {
-				require.Error(t, err)
-				return
-			}
-			require.NoError(t, err)
-			assert.Equal(t, tc.wantCand, c)
-		})
-	}
-}
-
 func TestScanTrailContinuationCandidateRow(t *testing.T) {
 	refTime := time.Date(2026, time.September, 20, 10, 0, 0, 0, time.UTC)
+	tenantID := uuid.New()
 	tests := []struct {
 		name     string
+		tenantID uuid.UUID
 		itemKey  string
 		title    string
 		lastAt   time.Time
@@ -236,12 +123,14 @@ func TestScanTrailContinuationCandidateRow(t *testing.T) {
 		wantCand TrailContinuationCandidate
 	}{
 		{
-			name:    "valid candidate",
-			itemKey: "item-20",
-			title:   "Title 20",
-			lastAt:  refTime,
-			verb:    "read",
+			name:     "valid candidate",
+			tenantID: tenantID,
+			itemKey:  "item-20",
+			title:    "Title 20",
+			lastAt:   refTime,
+			verb:     "read",
 			wantCand: TrailContinuationCandidate{
+				TenantID:      tenantID,
 				TargetItemKey: "item-20",
 				TargetTitle:   "Title 20",
 				LastContactAt: refTime,
@@ -262,10 +151,11 @@ func TestScanTrailContinuationCandidateRow(t *testing.T) {
 					if tc.scanErr != nil {
 						return tc.scanErr
 					}
-					*dest[0].(*string) = tc.itemKey
-					*dest[1].(*string) = tc.title
-					*dest[2].(*time.Time) = tc.lastAt
-					*dest[3].(*string) = tc.verb
+					*dest[0].(*uuid.UUID) = tc.tenantID
+					*dest[1].(*string) = tc.itemKey
+					*dest[2].(*string) = tc.title
+					*dest[3].(*time.Time) = tc.lastAt
+					*dest[4].(*string) = tc.verb
 					return nil
 				},
 			}
