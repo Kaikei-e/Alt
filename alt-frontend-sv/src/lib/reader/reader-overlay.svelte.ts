@@ -1,4 +1,5 @@
 import { articlePrefetcher } from "#lib/utils/articlePrefetcher.js";
+import { uuidv7 } from "#lib/utils/uuidv7.js";
 import { pushState, replaceState } from "$app/navigation";
 import { page } from "$app/state";
 import type {
@@ -37,16 +38,6 @@ function buildOverlayPath(articleId: string | null | undefined): string {
 	return articleId ? `/articles/${encodeURIComponent(articleId)}` : "";
 }
 
-function nextSessionId(): string {
-	if (
-		typeof crypto !== "undefined" &&
-		typeof crypto.randomUUID === "function"
-	) {
-		return crypto.randomUUID();
-	}
-	return `reader-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
 export function getReaderOverlaySession(
 	sessionId: string | undefined,
 ): ReaderOverlaySession | undefined {
@@ -68,7 +59,7 @@ export function openReaderOverlay(context: ReaderOpenContext): void {
 	const activeItem = items[currentIndex];
 	if (!activeItem) return;
 
-	const sessionId = nextSessionId();
+	const sessionId = uuidv7();
 	sessions.set(sessionId, {
 		items,
 		onMarkAsRead: context.onMarkAsRead,
