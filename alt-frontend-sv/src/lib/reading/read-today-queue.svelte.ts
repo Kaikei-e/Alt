@@ -1,6 +1,5 @@
 import {
 	type GetReadTodayQueueResult,
-	getReadingTransport,
 	getReadTodayQueue,
 	isQueueSuccessOutcome,
 	type QueueArticleResult,
@@ -9,6 +8,7 @@ import {
 	type ReadTodayQueueItem,
 	unqueueArticle,
 } from "#lib/connect/reading.js";
+import { getReadingTransport } from "#lib/connect/reading-transport.js";
 import { normalizeUrl } from "#lib/utils/feed.js";
 
 const DEFAULT_QUEUE_CAP = 7;
