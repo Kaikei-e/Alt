@@ -106,12 +106,7 @@ mod tests {
         "recap_surface_consecutive_failures",
     ];
 
-    const SURFACES: [&str; 4] = [
-        "three_day_recap",
-        "topic_cards",
-        "evening_pulse",
-        "morning_letter",
-    ];
+    const SURFACES: [&str; 3] = ["three_day_recap", "topic_cards", "morning_letter"];
 
     /// The instruments are registered into a registry this struct owns, so
     /// rendering has to read that registry. Reading the crate-global default

@@ -83,11 +83,6 @@ curl http://localhost:9005/metrics
 curl -X POST http://localhost:9005/v1/generate/recaps/3days \
   -H "Content-Type: application/json" \
   -d '{"genres":["tech","ai"]}'
-
-# Trigger manual 7-day recap (retired from auto-batch)
-curl -X POST http://localhost:9005/v1/generate/recaps/7days \
-  -H "Content-Type: application/json" \
-  -d '{"genres":["tech","ai"]}'
 ```
 
 ## Related Documentation

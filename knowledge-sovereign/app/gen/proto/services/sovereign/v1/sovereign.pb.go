@@ -659,21 +659,20 @@ func (x *WhyReason) GetTag() string {
 }
 
 type TodayDigest struct {
-	state                 protoimpl.MessageState `protogen:"open.v1"`
-	UserId                string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
-	DigestDate            string                 `protobuf:"bytes,2,opt,name=digest_date,json=digestDate,proto3" json:"digest_date,omitempty"`
-	NewArticles           int32                  `protobuf:"varint,3,opt,name=new_articles,json=newArticles,proto3" json:"new_articles,omitempty"`
-	SummarizedArticles    int32                  `protobuf:"varint,4,opt,name=summarized_articles,json=summarizedArticles,proto3" json:"summarized_articles,omitempty"`
-	UnsummarizedArticles  int32                  `protobuf:"varint,5,opt,name=unsummarized_articles,json=unsummarizedArticles,proto3" json:"unsummarized_articles,omitempty"`
-	TopTags               []string               `protobuf:"bytes,6,rep,name=top_tags,json=topTags,proto3" json:"top_tags,omitempty"`
-	UpdatedAt             *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
-	WeeklyRecapAvailable  bool                   `protobuf:"varint,8,opt,name=weekly_recap_available,json=weeklyRecapAvailable,proto3" json:"weekly_recap_available,omitempty"`
-	EveningPulseAvailable bool                   `protobuf:"varint,9,opt,name=evening_pulse_available,json=eveningPulseAvailable,proto3" json:"evening_pulse_available,omitempty"`
-	NeedToKnowCount       int32                  `protobuf:"varint,10,opt,name=need_to_know_count,json=needToKnowCount,proto3" json:"need_to_know_count,omitempty"`
-	DigestFreshness       string                 `protobuf:"bytes,11,opt,name=digest_freshness,json=digestFreshness,proto3" json:"digest_freshness,omitempty"`
-	LastProjectedAt       *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=last_projected_at,json=lastProjectedAt,proto3" json:"last_projected_at,omitempty"`
-	unknownFields         protoimpl.UnknownFields
-	sizeCache             protoimpl.SizeCache
+	state                protoimpl.MessageState `protogen:"open.v1"`
+	UserId               string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	DigestDate           string                 `protobuf:"bytes,2,opt,name=digest_date,json=digestDate,proto3" json:"digest_date,omitempty"`
+	NewArticles          int32                  `protobuf:"varint,3,opt,name=new_articles,json=newArticles,proto3" json:"new_articles,omitempty"`
+	SummarizedArticles   int32                  `protobuf:"varint,4,opt,name=summarized_articles,json=summarizedArticles,proto3" json:"summarized_articles,omitempty"`
+	UnsummarizedArticles int32                  `protobuf:"varint,5,opt,name=unsummarized_articles,json=unsummarizedArticles,proto3" json:"unsummarized_articles,omitempty"`
+	TopTags              []string               `protobuf:"bytes,6,rep,name=top_tags,json=topTags,proto3" json:"top_tags,omitempty"`
+	UpdatedAt            *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	WeeklyRecapAvailable bool                   `protobuf:"varint,8,opt,name=weekly_recap_available,json=weeklyRecapAvailable,proto3" json:"weekly_recap_available,omitempty"`
+	NeedToKnowCount      int32                  `protobuf:"varint,10,opt,name=need_to_know_count,json=needToKnowCount,proto3" json:"need_to_know_count,omitempty"`
+	DigestFreshness      string                 `protobuf:"bytes,11,opt,name=digest_freshness,json=digestFreshness,proto3" json:"digest_freshness,omitempty"`
+	LastProjectedAt      *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=last_projected_at,json=lastProjectedAt,proto3" json:"last_projected_at,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *TodayDigest) Reset() {
@@ -758,13 +757,6 @@ func (x *TodayDigest) GetUpdatedAt() *timestamppb.Timestamp {
 func (x *TodayDigest) GetWeeklyRecapAvailable() bool {
 	if x != nil {
 		return x.WeeklyRecapAvailable
-	}
-	return false
-}
-
-func (x *TodayDigest) GetEveningPulseAvailable() bool {
-	if x != nil {
-		return x.EveningPulseAvailable
 	}
 	return false
 }
@@ -7061,7 +7053,7 @@ const file_services_sovereign_v1_sovereign_proto_rawDesc = "" +
 	"\tWhyReason\x12\x12\n" +
 	"\x04code\x18\x01 \x01(\tR\x04code\x12\x15\n" +
 	"\x06ref_id\x18\x02 \x01(\tR\x05refId\x12\x10\n" +
-	"\x03tag\x18\x03 \x01(\tR\x03tag\"\xb4\x04\n" +
+	"\x03tag\x18\x03 \x01(\tR\x03tag\"\x9b\x04\n" +
 	"\vTodayDigest\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x1f\n" +
 	"\vdigest_date\x18\x02 \x01(\tR\n" +
@@ -7072,12 +7064,12 @@ const file_services_sovereign_v1_sovereign_proto_rawDesc = "" +
 	"\btop_tags\x18\x06 \x03(\tR\atopTags\x129\n" +
 	"\n" +
 	"updated_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x124\n" +
-	"\x16weekly_recap_available\x18\b \x01(\bR\x14weeklyRecapAvailable\x126\n" +
-	"\x17evening_pulse_available\x18\t \x01(\bR\x15eveningPulseAvailable\x12+\n" +
+	"\x16weekly_recap_available\x18\b \x01(\bR\x14weeklyRecapAvailable\x12+\n" +
 	"\x12need_to_know_count\x18\n" +
 	" \x01(\x05R\x0fneedToKnowCount\x12)\n" +
 	"\x10digest_freshness\x18\v \x01(\tR\x0fdigestFreshness\x12F\n" +
-	"\x11last_projected_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\x0flastProjectedAt\"\x9c\x04\n" +
+	"\x11last_projected_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\x0flastProjectedAtJ\x04\b\t\x10\n" +
+	"R\x17evening_pulse_available\"\x9c\x04\n" +
 	"\x0fRecallCandidate\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x19\n" +
 	"\bitem_key\x18\x02 \x01(\tR\aitemKey\x12!\n" +

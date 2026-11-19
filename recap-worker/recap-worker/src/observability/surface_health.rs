@@ -9,24 +9,17 @@ use crate::store::dao::surface::SurfaceDaoOps;
 pub enum SurfaceHealthTarget {
     ThreeDayRecap,
     TopicCards,
-    EveningPulse,
     MorningLetter,
 }
 
 impl SurfaceHealthTarget {
-    pub const ALL: [Self; 4] = [
-        Self::ThreeDayRecap,
-        Self::TopicCards,
-        Self::EveningPulse,
-        Self::MorningLetter,
-    ];
+    pub const ALL: [Self; 3] = [Self::ThreeDayRecap, Self::TopicCards, Self::MorningLetter];
 
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::ThreeDayRecap => "three_day_recap",
             Self::TopicCards => "topic_cards",
-            Self::EveningPulse => "evening_pulse",
             Self::MorningLetter => "morning_letter",
         }
     }

@@ -123,7 +123,6 @@ impl CardsCatchupConfig {
 pub struct SurfaceFreshnessConfig {
     pub three_day_recap_hours: i64,
     pub topic_cards_hours: i64,
-    pub evening_pulse_hours: i64,
     pub morning_letter_hours: i64,
 }
 
@@ -136,11 +135,6 @@ impl SurfaceFreshnessConfig {
     #[must_use]
     pub const fn topic_cards_budget(self) -> chrono::Duration {
         chrono::Duration::hours(self.topic_cards_hours)
-    }
-
-    #[must_use]
-    pub const fn evening_pulse_budget(self) -> chrono::Duration {
-        chrono::Duration::hours(self.evening_pulse_hours)
     }
 
     #[must_use]
@@ -1734,7 +1728,6 @@ fn load_surface_freshness() -> Result<SurfaceFreshnessConfig, ConfigError> {
             "RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS",
         )?,
         topic_cards_hours: parse_required_positive_hours("RECAP_FRESHNESS_TOPIC_CARDS_HOURS")?,
-        evening_pulse_hours: parse_required_positive_hours("RECAP_FRESHNESS_EVENING_PULSE_HOURS")?,
         morning_letter_hours: parse_required_positive_hours(
             "RECAP_FRESHNESS_MORNING_LETTER_HOURS",
         )?,
@@ -1996,7 +1989,6 @@ mod tests {
             ("RECAP_CARDS_CATCHUP", None),
             ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
             ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
-            ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
             ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
         ]
     }
@@ -3570,7 +3562,6 @@ mod tests {
         for missing_var in [
             "RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS",
             "RECAP_FRESHNESS_TOPIC_CARDS_HOURS",
-            "RECAP_FRESHNESS_EVENING_PULSE_HOURS",
             "RECAP_FRESHNESS_MORNING_LETTER_HOURS",
         ] {
             let mut vars: Vec<_> = required_base()
@@ -3596,7 +3587,6 @@ mod tests {
         for var in [
             "RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS",
             "RECAP_FRESHNESS_TOPIC_CARDS_HOURS",
-            "RECAP_FRESHNESS_EVENING_PULSE_HOURS",
             "RECAP_FRESHNESS_MORNING_LETTER_HOURS",
         ] {
             for bad in ["0", "-5", "abc"] {
@@ -3625,7 +3615,6 @@ mod tests {
         vars.extend([
             ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
             ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
-            ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
             ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
         ]);
         temp_env::with_vars(vars, || {
@@ -3635,7 +3624,6 @@ mod tests {
                 SurfaceFreshnessConfig {
                     three_day_recap_hours: 30,
                     topic_cards_hours: 30,
-                    evening_pulse_hours: 30,
                     morning_letter_hours: 3,
                 }
             );

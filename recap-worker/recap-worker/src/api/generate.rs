@@ -26,13 +26,6 @@ struct ErrorResponse {
     error: String,
 }
 
-pub(crate) async fn trigger_7days(
-    State(state): State<AppState>,
-    Json(payload): Json<GenerateRecapRequest>,
-) -> impl IntoResponse {
-    trigger_recap(state, payload, 7, "7days")
-}
-
 pub(crate) async fn trigger_3days(
     State(state): State<AppState>,
     Json(payload): Json<GenerateRecapRequest>,
@@ -280,7 +273,6 @@ mod tests {
                 ("RECAP_CARDS_JOB", Some("disabled")),
                 ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
-                ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
                 ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
                 ("RECAP_GENRES", Some("ai,space")),
@@ -305,7 +297,7 @@ mod tests {
 
         let app = build_router(registry);
 
-        let request = Request::post("/v1/generate/recaps/7days")
+        let request = Request::post("/v1/generate/recaps/3days")
             .header("content-type", "application/json")
             .body(Body::from("{}"))
             .expect("request builds");
@@ -357,7 +349,6 @@ mod tests {
                 ("RECAP_CARDS_JOB", Some("disabled")),
                 ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
-                ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
                 ("RECAP_CARDS_USER_ID", None),
                 ("RECAP_GENRES", Some("ai,space")),
@@ -418,7 +409,6 @@ mod tests {
                 ("RECAP_CARDS_JOB", Some("disabled")),
                 ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
-                ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
                 ("RECAP_CARDS_USER_ID", Some(user_id_str.as_str())),
                 ("RECAP_GENRES", Some("ai,space")),
@@ -488,7 +478,6 @@ mod tests {
                 ("RECAP_CARDS_JOB", Some("disabled")),
                 ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
-                ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
                 ("RECAP_CARDS_USER_ID", Some(user_id_str.as_str())),
                 ("RECAP_GENRES", Some("ai,space")),
@@ -591,7 +580,6 @@ mod tests {
                 ("RECAP_CARDS_JOB", Some("disabled")),
                 ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
-                ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
                 ("RECAP_CARDS_USER_ID", Some(user_id_str.as_str())),
                 ("RECAP_CARDS_WINDOW_DAYS", Some("5")),
@@ -671,7 +659,6 @@ mod tests {
                 ("RECAP_CARDS_JOB", Some("disabled")),
                 ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
-                ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
                 ("RECAP_CARDS_USER_ID", Some(user_id_str.as_str())),
                 ("RECAP_GENRES", Some("ai,space")),
@@ -764,7 +751,7 @@ mod tests {
 
     #[tokio::test]
     #[allow(clippy::await_holding_lock)]
-    async fn trigger_7days_returns_409_when_run_lock_is_held() {
+    async fn trigger_3days_returns_409_when_run_lock_is_held() {
         let _lock = ENV_MUTEX
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -784,7 +771,6 @@ mod tests {
                 ("RECAP_CARDS_JOB", Some("disabled")),
                 ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
-                ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
                 ("RECAP_GENRES", Some("ai,space")),
                 ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
@@ -812,7 +798,7 @@ mod tests {
 
         let app = build_router(registry);
 
-        let held_req = Request::post("/v1/generate/recaps/7days")
+        let held_req = Request::post("/v1/generate/recaps/3days")
             .header("content-type", "application/json")
             .body(Body::from("{}"))
             .expect("request builds");
@@ -835,7 +821,7 @@ mod tests {
 
         drop(permit);
 
-        let idle_req = Request::post("/v1/generate/recaps/7days")
+        let idle_req = Request::post("/v1/generate/recaps/3days")
             .header("content-type", "application/json")
             .body(Body::from("{}"))
             .expect("request builds");
@@ -892,7 +878,6 @@ mod tests {
                 ("RECAP_CARDS_JOB", Some("disabled")),
                 ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
-                ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
                 ("RECAP_GENRES", Some("ai,space")),
                 ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
@@ -902,11 +887,11 @@ mod tests {
 
         let job_id = Uuid::new_v4();
         let genres = vec!["ai".to_string(), "space".to_string()];
-        let job = build_manual_job(&config, job_id, genres.clone(), 7);
+        let job = build_manual_job(&config, job_id, genres.clone(), 3);
 
         assert_eq!(job.job_id, job_id);
         assert_eq!(job.genres(), genres.as_slice());
-        assert_eq!(job.window_days(), 7);
+        assert_eq!(job.window_days(), 3);
         assert_eq!(job.trigger_source(), "user");
         assert_eq!(job.user_id(), Some(user_id));
         assert_eq!(job.tenant_id(), Some(tenant_id));

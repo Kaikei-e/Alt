@@ -1282,27 +1282,6 @@ mod tests {
                 .get_user_jobs_count(user_id, window_seconds)
                 .await
         }
-
-        async fn get_pulse_by_date(
-            &self,
-            date: chrono::NaiveDate,
-        ) -> crate::error::Result<Option<crate::store::models::PulseGenerationRow>> {
-            self.inner.get_pulse_by_date(date).await
-        }
-
-        async fn get_latest_pulse(
-            &self,
-        ) -> crate::error::Result<Option<crate::store::models::PulseGenerationRow>> {
-            self.inner.get_latest_pulse().await
-        }
-
-        async fn save_pulse_generation(
-            &self,
-            result: &crate::pipeline::pulse::PulseResult,
-            target_date: chrono::NaiveDate,
-        ) -> crate::error::Result<(i64, chrono::DateTime<chrono::Utc>)> {
-            self.inner.save_pulse_generation(result, target_date).await
-        }
     }
 
     #[tokio::test]
@@ -1336,7 +1315,6 @@ mod tests {
                 ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
                 ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
-                ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
                 (
                     "HUGGING_FACE_TOKEN_PATH",

@@ -71,8 +71,8 @@ opposite treatment. Hence three projects rather than the usual one.
 | `pipeline` | 1 | `tests/pipeline.spec.ts` | `Scheduler::run_job` holds a `Semaphore(1)` and **rejects** a concurrent run while the handler has already answered 202 (`scheduler/jobs.rs:214-227` + `api/generate.rs:70-84`). Two overlapping triggers both look successful and only one produces anything. Also `mode: "serial"`, and each test drains the lock before it ends. |
 
 The Hurl suite expressed all of this as one `--jobs 1` over the whole run.
-Here it is scoped to the eleven scenarios that genuinely need it, and the
-other fifty-nine run in parallel.
+Here it is scoped to the eight scenarios that genuinely need it, and the
+other fifty-seven run in parallel.
 
 Worker count is sized against the **DB pool** (`RECAP_DB_MAX_CONNECTIONS`
 defaults to 50, `config.rs:1029`, not overridden in the slice) — which is
@@ -87,10 +87,9 @@ is running an ML pipeline in the `pipeline` project.
 | `00-setup.hurl` | `setup/global-setup.ts` | A readiness gate inside the suite is order-dependent by construction; `fullyParallel` has no "run this first". Widened from `/health/live` alone to live + ready + a DB-backed probe, because nothing in the health path touches Postgres (`connect_lazy`) and a failed migration otherwise surfaces as a 500 in a random spec. |
 | `01-health-schema.hurl` | `tests/health.spec.ts` → "health probes" | `jsonpath "$.status" == "live"` became a `.strict()` schema: `HealthReport` shares one struct with the degraded path, and a live response that grew a `detail` key would mean the dependency-free probe started reporting on a dependency. Plus a new test that the two routes are genuinely distinct handlers. |
 | `02-metrics-shape.hurl` | `tests/health.spec.ts` → "metrics" | Upgraded past 200 + `text/plain` to `_shared/http.ts`'s `expectPrometheusText` with the families named, plus the per-line exposition check in `src/assertions.ts` that the shared helper does not carry. It could not assert either until the exporter published: `Metrics::new` registered into a `Registry` the service owned while `render_prometheus` encoded `prometheus::gather()` (the default one), so the body was empty and `# HELP` was absent. The assertion that stood here pinned that emptiness rather than checking nothing, and failed the day the binding was fixed — which is how it got replaced. |
-| `03-recaps-empty.hurl` | `tests/cold-start.spec.ts` | Both windows, exact error strings, in the single-worker project that every other project depends on. Widened to the four other empty-database 404s the Hurl suite never looked at (morning letter, pulse, evaluation) and to the all-zero job-stats ledger. |
-| `04-trigger-validation.hurl` | `tests/validation.spec.ts` → "trigger validation" | Ported exactly, then mirrored onto `/3days` (both routes funnel through one `trigger_recap`, and nothing asserted that they still do) and joined by the three axum extractor rejections and the 405. |
-| `05-trigger-and-poll-7days.hurl` | `tests/pipeline.spec.ts` | `retry: 60 / retry-interval: 1000` became `eventually`. Four `jsonpath … exists` checks became real types: `job_id` a UUID, `executed_at` / `window_start` / `window_end` RFC 3339 instants, `genres` a non-empty list of fully-typed genre objects. `[Captures] job_id` is finally *consumed*: the Hurl scenarios captured it and never compared it with anything. `get_latest_completed_job` has no "give me this job" predicate, but the `pipeline` project is single-worker + serial and drains the lock, so the newest completed job for the window is the one the test just triggered. |
-| `06-trigger-and-poll-3days.hurl` | `tests/pipeline.spec.ts` | Same drive, parameterised. **Not** upgraded with a `window_end - window_start == 3 days` check: `get_latest_completed_job` computes both timestamps from the `window_days` literal the handler passed (`store/dao/output.rs:174-177`), so that span equals the requested window for any row it returns and the assertion cannot fail. The job-id correlation above is what catches a `window_days` that stopped propagating — a job filed under the wrong window makes the 3-day fetch 404 or serve someone else's id. |
+| `03-recaps-empty.hurl` | `tests/cold-start.spec.ts` | 3-day window, exact error string, in the single-worker project that every other project depends on. Widened to the other empty-database 404s the Hurl suite never looked at (morning letter, evaluation) and to the all-zero job-stats ledger. |
+| `04-trigger-validation.hurl` | `tests/validation.spec.ts` → "trigger validation" | Ported onto `/3days` and joined by the three axum extractor rejections and the 405. |
+| `06-trigger-and-poll-3days.hurl` | `tests/pipeline.spec.ts` | `retry: 60 / retry-interval: 1000` became `eventually`. Four `jsonpath … exists` checks became real types: `job_id` a UUID, `executed_at` / `window_start` / `window_end` RFC 3339 instants, `genres` a non-empty list of fully-typed genre objects. `[Captures] job_id` is finally *consumed*: `get_latest_completed_job` has no "give me this job" predicate, but the `pipeline` project is single-worker + serial and drains the lock, so the newest completed job for the window is the one the test just triggered. **Not** upgraded with a `window_end - window_start == 3 days` check: `get_latest_completed_job` computes both timestamps from the `window_days` literal the handler passed (`store/dao/output.rs:146-148`), so that span equals the requested window for any row it returns and the assertion cannot fail. The job-id correlation catches a `window_days` that stopped propagating — a job filed under the wrong window makes the 3-day fetch 404 or serve someone else's id. |
 
 ## What is new
 
@@ -110,8 +109,7 @@ comment.
   failed job it is retrying.
 - **`/v1/recaps/genres/indexable`** — the search-indexer contract, including
   the `has_more == (results.length == limit)` page-boundary relation.
-- **`/v1/morning/*`** and **`/v1/pulse/latest`** and
-  **`/v1/evaluation/genres/*`** — listed as "out of scope (deferred phases)"
+- **`/v1/morning/*`** and **`/v1/evaluation/genres/*`** — listed as "out of scope (deferred phases)"
   by the Hurl README; every validation and miss branch is now pinned.
 - **The whole `/v1/dashboard/*` surface** — seven hand-written SQL queries the
   compiler cannot see and the mock DAO hides, now schema-checked live.

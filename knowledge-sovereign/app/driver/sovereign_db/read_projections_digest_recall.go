@@ -12,15 +12,14 @@ import (
 
 // TodayDigest contains daily summary statistics.
 type TodayDigest struct {
-	UserID                uuid.UUID
-	DigestDate            time.Time
-	NewArticles           int
-	SummarizedArticles    int
-	UnsummarizedArticles  int
-	TopTags               []string
-	WeeklyRecapAvailable  bool
-	EveningPulseAvailable bool
-	UpdatedAt             time.Time
+	UserID               uuid.UUID
+	DigestDate           time.Time
+	NewArticles          int
+	SummarizedArticles   int
+	UnsummarizedArticles int
+	TopTags              []string
+	WeeklyRecapAvailable bool
+	UpdatedAt            time.Time
 }
 
 // RecallCandidate represents a candidate for the recall rail.
@@ -46,28 +45,26 @@ type RecallReason struct {
 
 // rawTodayDigestRow holds columns scanned from today_digest_view.
 type rawTodayDigestRow struct {
-	UserID                uuid.UUID
-	DigestDate            time.Time
-	NewArticles           int
-	SummarizedArticles    int
-	UnsummarizedArticles  int
-	TopTagsJSON           []byte
-	UpdatedAt             time.Time
-	WeeklyRecapAvailable  bool
-	EveningPulseAvailable bool
+	UserID               uuid.UUID
+	DigestDate           time.Time
+	NewArticles          int
+	SummarizedArticles   int
+	UnsummarizedArticles int
+	TopTagsJSON          []byte
+	UpdatedAt            time.Time
+	WeeklyRecapAvailable bool
 }
 
 // mapTodayDigestRow maps raw today_digest_view columns into TodayDigest.
 func mapTodayDigestRow(raw rawTodayDigestRow) TodayDigest {
 	d := TodayDigest{
-		UserID:                raw.UserID,
-		DigestDate:            raw.DigestDate,
-		NewArticles:           raw.NewArticles,
-		SummarizedArticles:    raw.SummarizedArticles,
-		UnsummarizedArticles:  raw.UnsummarizedArticles,
-		UpdatedAt:             raw.UpdatedAt,
-		WeeklyRecapAvailable:  raw.WeeklyRecapAvailable,
-		EveningPulseAvailable: raw.EveningPulseAvailable,
+		UserID:               raw.UserID,
+		DigestDate:           raw.DigestDate,
+		NewArticles:          raw.NewArticles,
+		SummarizedArticles:   raw.SummarizedArticles,
+		UnsummarizedArticles: raw.UnsummarizedArticles,
+		UpdatedAt:            raw.UpdatedAt,
+		WeeklyRecapAvailable: raw.WeeklyRecapAvailable,
 	}
 	unmarshalJSONWarn(raw.TopTagsJSON, &d.TopTags, "top_tags_json")
 	return d
@@ -150,13 +147,13 @@ func mapRecallCandidateRow(raw rawRecallCandidateRow) RecallCandidate {
 // GetTodayDigest returns the today digest for a user and date.
 func (r *Repository) GetTodayDigest(ctx context.Context, userID uuid.UUID, date time.Time) (*TodayDigest, error) {
 	query := `SELECT user_id, digest_date, new_articles, summarized_articles, unsummarized_articles,
-		top_tags_json, updated_at, weekly_recap_available, evening_pulse_available
+		top_tags_json, updated_at, weekly_recap_available
 		FROM today_digest_view WHERE user_id = $1 AND digest_date = $2`
 
 	var raw rawTodayDigestRow
 	err := r.pool.QueryRow(ctx, query, userID, date.Format("2006-01-02")).Scan(
 		&raw.UserID, &raw.DigestDate, &raw.NewArticles, &raw.SummarizedArticles, &raw.UnsummarizedArticles,
-		&raw.TopTagsJSON, &raw.UpdatedAt, &raw.WeeklyRecapAvailable, &raw.EveningPulseAvailable,
+		&raw.TopTagsJSON, &raw.UpdatedAt, &raw.WeeklyRecapAvailable,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

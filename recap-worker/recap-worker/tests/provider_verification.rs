@@ -31,14 +31,7 @@ use recap_worker::api::fetch::{
     RecapJob, RecapReadDao, get_3days_recap_impl, get_latest_morning_letter_impl,
     get_morning_letter_by_date_impl,
 };
-use recap_worker::api::pulse::{
-    PulseGenerationRow, PulseReadDao, PulseWindow, get_latest_pulse_impl,
-};
 use recap_worker::api::surface_status::SurfaceRun;
-use recap_worker::pipeline::pulse::{
-    ClusterQualityMetrics, PulseDiagnostics, PulseResult, PulseTopic, PulseVersion, QualityTier,
-    ScoreBreakdown, TopicRole, types::RepresentativeArticle,
-};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
@@ -326,116 +319,6 @@ impl CardsDao for VerificationCardsDao {
             }
             None => panic!("missing provider state in VerificationCardsDao"),
         }
-    }
-}
-
-struct VerificationPulseDao {
-    provider_state: Arc<RwLock<Option<String>>>,
-}
-
-impl VerificationPulseDao {
-    fn build_topic(role: TopicRole, cluster_id: i64) -> PulseTopic {
-        PulseTopic {
-            cluster_id,
-            role,
-            score: 0.85,
-            rationale: "High impact news with multiple sources".to_string(),
-            articles: vec![
-                "44444444-5555-6666-7777-888888888888".to_string(),
-                "55555555-6666-7777-8888-999999999999".to_string(),
-                "66666666-7777-8888-9999-aaaaaaaaaaaa".to_string(),
-            ],
-            quality_metrics: ClusterQualityMetrics {
-                cohesion: 0.8,
-                ambiguity: 0.2,
-                entity_consistency: 0.9,
-                tier: QualityTier::Ok,
-            },
-            score_breakdown: ScoreBreakdown {
-                impact_score: 0.5,
-                burst_score: 0.15,
-                novelty_score: 0.1,
-                recency_score: 0.1,
-            },
-            representative_articles: vec![RepresentativeArticle {
-                article_id: "44444444-5555-6666-7777-888888888888".to_string(),
-                title: "Breaking news article".to_string(),
-                source_url: "https://example.com/article/1".to_string(),
-                source_name: "Example".to_string(),
-                published_at: "2026-09-22T12:00:00Z".to_string(),
-            }],
-            top_entities: vec!["Entity1".to_string(), "Entity2".to_string()],
-            source_names: vec!["Example".to_string()],
-            genre: Some("Tech".to_string()),
-        }
-    }
-}
-
-#[async_trait::async_trait]
-impl PulseReadDao for VerificationPulseDao {
-    async fn get_latest_pulse(&self) -> Result<Option<PulseGenerationRow>, String> {
-        let current = self.provider_state.read().unwrap().clone();
-        match current.as_deref() {
-            Some("a succeeded evening pulse generation with fallback exists") | None => {
-                let job_id = Uuid::parse_str("11111111-2222-3333-4444-555555555555").unwrap();
-                let generated_at = DateTime::parse_from_rfc3339("2026-09-22T17:05:00Z")
-                    .unwrap()
-                    .with_timezone(&Utc);
-                let result = PulseResult {
-                    job_id,
-                    version: PulseVersion::V4,
-                    topics: vec![
-                        Self::build_topic(TopicRole::NeedToKnow, 42),
-                        Self::build_topic(TopicRole::Trend, 43),
-                        Self::build_topic(TopicRole::Serendipity, 44),
-                    ],
-                    generated_at,
-                    diagnostics: PulseDiagnostics {
-                        syndication_removed: 2,
-                        clusters_evaluated: 12,
-                        fallback_level: 1,
-                        duration_ms: 250,
-                        ..Default::default()
-                    },
-                };
-                Ok(Some(PulseGenerationRow {
-                    job_id,
-                    target_date: NaiveDate::from_ymd_opt(2026, 9, 22).unwrap(),
-                    version: "v4".to_string(),
-                    result_payload: Some(serde_json::to_value(&result).unwrap()),
-                    finished_at: generated_at,
-                }))
-            }
-            Some(unknown) => {
-                panic!("unrecognised provider state in VerificationPulseDao: {unknown}")
-            }
-        }
-    }
-
-    async fn get_pulse_by_date(
-        &self,
-        _date: NaiveDate,
-    ) -> Result<Option<PulseGenerationRow>, String> {
-        self.get_latest_pulse().await
-    }
-
-    async fn get_latest_pulse_run(&self) -> Result<Option<SurfaceRun>, String> {
-        Ok(Some(SurfaceRun {
-            job_id: "11111111-2222-3333-4444-555555555555".to_string(),
-            status: "completed".to_string(),
-            kicked_at: "2026-09-22T17:00:00Z".to_string(),
-            updated_at: "2026-09-22T17:05:00Z".to_string(),
-        }))
-    }
-
-    async fn get_recap_job_window(&self, _job_id: Uuid) -> Result<Option<PulseWindow>, String> {
-        let win_start = DateTime::parse_from_rfc3339("2026-09-19T17:00:00Z")
-            .unwrap()
-            .with_timezone(&Utc);
-        let win_end = DateTime::parse_from_rfc3339("2026-09-22T17:00:00Z")
-            .unwrap()
-            .with_timezone(&Utc);
-        Ok(Some((win_start, win_end)))
     }
 }
 
@@ -861,24 +744,6 @@ fn stub_router_with_state(state: StubState) -> Router {
             }),
         )
         .route(
-            "/v1/pulse/latest",
-            get({
-                let state = state.clone();
-                move || {
-                    let state = state.clone();
-                    async move {
-                        let dao = VerificationPulseDao {
-                            provider_state: state.provider_state.clone(),
-                        };
-                        let now = DateTime::parse_from_rfc3339("2026-09-22T18:00:00Z")
-                            .unwrap()
-                            .with_timezone(&Utc);
-                        get_latest_pulse_impl(&dao, None, chrono::Duration::hours(30), now).await
-                    }
-                }
-            }),
-        )
-        .route(
             "/v1/topic-cards",
             get({
                 let state = state.clone();
@@ -1171,17 +1036,6 @@ mod evidence_tests {
             "extractive_genres"
         );
 
-        set_provider_state(
-            addr,
-            "a succeeded evening pulse generation with fallback exists",
-        )
-        .await;
-        let pulse_body = verify_interaction(addr, "GET", "/v1/pulse/latest", 200, None).await;
-        assert_eq!(
-            pulse_body["surface_status"]["degradation_reasons"][0]["code"],
-            "pulse_fallback"
-        );
-
         set_provider_state(addr, "a degraded morning letter version exists").await;
         let morning_body =
             verify_interaction(addr, "GET", "/v1/morning/letters/latest", 200, None).await;
@@ -1438,16 +1292,6 @@ async fn verify_alt_backend_pact() {
                 assert_eq!(
                     body["surface_status"]["degradation_reasons"][0]["code"], "extractive_genres",
                     "expected extractive_genres reason for state: {state_name}"
-                );
-            }
-            "a succeeded evening pulse generation with fallback exists" => {
-                assert!(
-                    body["surface_status"].is_object(),
-                    "expected surface_status object for state: {state_name}"
-                );
-                assert_eq!(
-                    body["surface_status"]["degradation_reasons"][0]["code"], "pulse_fallback",
-                    "expected pulse_fallback reason for state: {state_name}"
                 );
             }
             "a degraded morning letter version exists" => {

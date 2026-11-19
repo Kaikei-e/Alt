@@ -85,6 +85,14 @@ test.describe("listener topology", () => {
 		expect(mounted.status(), "the control route must not 404").not.toBe(404);
 	});
 
+	test("retired pulse and 7-day recap routes answer 404 @contract", async ({ api }) => {
+		// Mirror the router negative test in recap-worker/src/api.rs:268-290 so
+		// reintroducing any of these routes fails loudly.
+		await expectStatus(await api.get("/v1/pulse/latest"), 404);
+		await expectStatus(await api.get("/v1/recaps/7days"), 404);
+		await expectStatus(await api.post("/v1/generate/recaps/7days", { data: {} }), 404);
+	});
+
 	test("responses leak no server-identity headers @contract", async ({ api }) => {
 		// axum adds neither `Server` nor `X-Powered-By`, and `api::router`
 		// installs no tower layer that would (api.rs:17-70). Asserting the

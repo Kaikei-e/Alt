@@ -286,7 +286,6 @@ func (f *fakeRepo) UpsertTodayDigest(_ context.Context, payload json.RawMessage)
 		if len(w.TopTags) == 0 {
 			w.TopTags = existing.TopTags
 		}
-		w.EveningPulseAvailable = existing.EveningPulseAvailable || w.EveningPulseAvailable
 	} else if w.UnsummarizedArticles < 0 {
 		w.UnsummarizedArticles = 0
 	}

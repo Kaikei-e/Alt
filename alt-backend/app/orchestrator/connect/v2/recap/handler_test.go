@@ -376,20 +376,3 @@ func TestHandler_GetTopicCards(t *testing.T) {
 		mockUsecase.AssertExpectations(t)
 	})
 }
-
-func TestHandler_RetiredProcedures_ReturnUnimplemented(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	handler := NewHandler(new(MockRecapUsecase), nil, logger)
-
-	t.Run("GetSevenDayRecap returns Unimplemented", func(t *testing.T) {
-		_, err := handler.GetSevenDayRecap(context.Background(), connect.NewRequest(&recapv2.GetSevenDayRecapRequest{}))
-		require.Error(t, err)
-		assert.Equal(t, connect.CodeUnimplemented, connect.CodeOf(err))
-	})
-
-	t.Run("GetEveningPulse returns Unimplemented", func(t *testing.T) {
-		_, err := handler.GetEveningPulse(context.Background(), connect.NewRequest(&recapv2.GetEveningPulseRequest{}))
-		require.Error(t, err)
-		assert.Equal(t, connect.CodeUnimplemented, connect.CodeOf(err))
-	})
-}

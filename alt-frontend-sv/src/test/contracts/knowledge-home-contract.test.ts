@@ -32,7 +32,6 @@ describe("Knowledge Home API Contract", () => {
 					unsummarizedArticles: 2,
 					topTags: ["AI", "Rust"],
 					weeklyRecapAvailable: true,
-					eveningPulseAvailable: false,
 					digestFreshness: "fresh",
 					lastProjectedAt: "2026-03-18T12:00:00Z",
 				},

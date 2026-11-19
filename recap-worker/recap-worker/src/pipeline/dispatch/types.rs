@@ -24,7 +24,7 @@ pub(crate) struct DispatchResult {
 pub(crate) struct GenreResult {
     /// The genre name.
     pub(crate) genre: String,
-    /// Clustering response from subworker (used in persist and pulse stages).
+    /// Clustering response from subworker (used in persist stage).
     pub(crate) clustering_response: Option<ClusteringResponse>,
     pub(crate) summary_response_id: Option<String>,
     pub(crate) summary_response: Option<crate::clients::news_creator::SummaryResponse>,

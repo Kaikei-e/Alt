@@ -64,7 +64,6 @@ describe("knowledge_home client", () => {
 					unsummarizedArticles: 12,
 					topTags: ["AI", "Go"],
 					weeklyRecapAvailable: true,
-					eveningPulseAvailable: false,
 					needToKnowCount: 3,
 					digestFreshness: "fresh",
 					lastProjectedAt: "2026-03-17T10:00:00Z",

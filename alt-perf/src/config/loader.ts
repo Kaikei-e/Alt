@@ -186,7 +186,6 @@ function getDefaultRoutes(): RoutesConfig {
         name: "Morning Letter",
         requiresAuth: true,
       },
-      { path: "/mobile/recap/7days", name: "7-Day Recap", requiresAuth: true },
     ],
     sveltekit: [
       { path: "/sv/", name: "SvelteKit Root" },

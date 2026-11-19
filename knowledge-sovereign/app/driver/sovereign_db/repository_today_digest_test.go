@@ -90,8 +90,8 @@ func TestUpsertTodayDigest_ReplayGuardOrdersByEventSeqNotWallClock(t *testing.T)
 	assert.Contains(t, sql, "last_event_seq = EXCLUDED.last_event_seq",
 		"the high-water mark must advance, otherwise every later event re-passes the guard")
 
-	require.Len(t, mock.execCalls[0].Args, 11, "last_event_seq must be bound as the 11th parameter")
-	assert.EqualValues(t, 4711, mock.execCalls[0].Args[10],
+	require.Len(t, mock.execCalls[0].Args, 9, "last_event_seq must be bound as the 9th parameter")
+	assert.EqualValues(t, 4711, mock.execCalls[0].Args[8],
 		"last_event_seq must reach the statement as the payload's event_seq")
 }
 

@@ -76,15 +76,14 @@ func (h *SovereignHandler) GetTodayDigest(
 	var pb *sovereignv1.TodayDigest
 	if digest != nil {
 		pb = &sovereignv1.TodayDigest{
-			UserId:                digest.UserID.String(),
-			DigestDate:            digest.DigestDate.Format("2006-01-02"),
-			NewArticles:           safeIntToInt32(digest.NewArticles),
-			SummarizedArticles:    safeIntToInt32(digest.SummarizedArticles),
-			UnsummarizedArticles:  safeIntToInt32(digest.UnsummarizedArticles),
-			TopTags:               digest.TopTags,
-			UpdatedAt:             timestamppb.New(digest.UpdatedAt),
-			WeeklyRecapAvailable:  digest.WeeklyRecapAvailable,
-			EveningPulseAvailable: digest.EveningPulseAvailable,
+			UserId:               digest.UserID.String(),
+			DigestDate:           digest.DigestDate.Format("2006-01-02"),
+			NewArticles:          safeIntToInt32(digest.NewArticles),
+			SummarizedArticles:   safeIntToInt32(digest.SummarizedArticles),
+			UnsummarizedArticles: safeIntToInt32(digest.UnsummarizedArticles),
+			TopTags:              digest.TopTags,
+			UpdatedAt:            timestamppb.New(digest.UpdatedAt),
+			WeeklyRecapAvailable: digest.WeeklyRecapAvailable,
 		}
 	}
 

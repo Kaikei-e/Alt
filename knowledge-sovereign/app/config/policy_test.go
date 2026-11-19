@@ -215,7 +215,7 @@ func TestLoadPolicy_ExampleFixtureValid(t *testing.T) {
 	recapSvc := pol.FindServiceByName("recap-worker")
 	require.NotNil(t, recapSvc)
 	assert.True(t, recapSvc.AllowedEvents["recap.topic_snapshotted.v1"])
-	assert.True(t, recapSvc.AllowedEvents["recap.evening_pulse_generated.v1"])
+	assert.False(t, recapSvc.AllowedEvents["recap.evening_pulse_generated.v1"])
 }
 
 // alt-data-hub's article ingestion appends ArticleCreated and refuses to
@@ -241,9 +241,8 @@ func TestProductionPolicy_DataHubMayAppendArticleCreated(t *testing.T) {
 	assert.Contains(t, events, "ArticleCreated")
 }
 
-// recap-worker appends recap.evening_pulse_generated.v1 after saving a
-// succeeded pulse generation.
-func TestProductionPolicy_RecapWorkerMayAppendEveningPulseGenerated(t *testing.T) {
+// recap-worker may no longer append recap.evening_pulse_generated.v1 after Evening Pulse retirement.
+func TestProductionPolicy_RecapWorkerMayNotAppendEveningPulseGenerated(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("..", "..", "config", "event-auth-policy.json"))
 	require.NoError(t, err)
 
@@ -257,18 +256,14 @@ func TestProductionPolicy_RecapWorkerMayAppendEveningPulseGenerated(t *testing.T
 	require.NoError(t, json.Unmarshal(data, &pol))
 
 	const eventType = "recap.evening_pulse_generated.v1"
-	const appendMethod = "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent"
 
 	var recapFound bool
 	for _, svc := range pol.Services {
 		if svc.Name == "recap-worker" {
 			recapFound = true
-			assert.Contains(t, svc.AllowedMethods, appendMethod)
-			assert.Contains(t, svc.AllowedEvents, eventType)
-		} else {
-			assert.NotContains(t, svc.AllowedEvents, eventType,
-				"service %s must not be allowed to append %s", svc.Name, eventType)
 		}
+		assert.NotContains(t, svc.AllowedEvents, eventType,
+			"service %s must not be allowed to append %s", svc.Name, eventType)
 	}
 	require.True(t, recapFound, "recap-worker service entry must exist in production policy")
 }

@@ -133,17 +133,6 @@ pub fn topic_cards_reasons(cards_selected: i32, degraded: bool) -> Vec<Degradati
 }
 
 #[must_use]
-pub fn evening_pulse_reasons(fallback_level: i32) -> Vec<DegradationReason> {
-    if fallback_level <= 0 {
-        return Vec::new();
-    }
-    vec![DegradationReason::new(
-        "pulse_fallback",
-        format!("fallback level {fallback_level}"),
-    )]
-}
-
-#[must_use]
 pub fn morning_letter_reasons(
     is_degraded: bool,
     generation_metadata_jsonb: &Value,
@@ -238,11 +227,11 @@ mod tests {
         let kicked = ts("2026-11-09T00:00:00Z");
         let updated = ts("2026-11-09T00:05:00Z");
 
-        let pulse_run = SurfaceRun::new(job_id, "succeeded", kicked, updated);
-        assert_eq!(pulse_run.status, "completed");
-        assert_eq!(pulse_run.job_id, job_id.to_string());
-        assert_eq!(pulse_run.kicked_at, "2026-11-09T00:00:00Z");
-        assert_eq!(pulse_run.updated_at, "2026-11-09T00:05:00Z");
+        let completed_run = SurfaceRun::new(job_id, "succeeded", kicked, updated);
+        assert_eq!(completed_run.status, "completed");
+        assert_eq!(completed_run.job_id, job_id.to_string());
+        assert_eq!(completed_run.kicked_at, "2026-11-09T00:00:00Z");
+        assert_eq!(completed_run.updated_at, "2026-11-09T00:05:00Z");
 
         let morning_run = SurfaceRun::new(job_id, "morning_completed", kicked, updated);
         assert_eq!(morning_run.status, "completed");
@@ -272,12 +261,6 @@ mod tests {
         assert_eq!(
             topic_cards_reasons(3, true),
             vec![DegradationReason::new("few_cards", "3 cards selected")]
-        );
-
-        assert!(evening_pulse_reasons(0).is_empty());
-        assert_eq!(
-            evening_pulse_reasons(2),
-            vec![DegradationReason::new("pulse_fallback", "fallback level 2")]
         );
 
         assert!(

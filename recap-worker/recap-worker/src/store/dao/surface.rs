@@ -68,35 +68,6 @@ impl SurfaceDaoOps {
         .context("failed to decode latest morning recap run")
     }
 
-    pub async fn get_latest_pulse_run(pool: &PgPool) -> Result<Option<SurfaceRunRecord>> {
-        let row = sqlx::query(
-            r"
-            SELECT
-                job_id,
-                status,
-                started_at,
-                COALESCE(finished_at, started_at) AS updated_at
-            FROM pulse_generations
-            ORDER BY started_at DESC, id DESC
-            LIMIT 1
-            ",
-        )
-        .fetch_optional(pool)
-        .await
-        .context("failed to fetch latest pulse generation run")?;
-
-        row.map(|r| -> Result<SurfaceRunRecord> {
-            Ok(SurfaceRunRecord {
-                job_id: r.try_get("job_id")?,
-                status: r.try_get("status")?,
-                kicked_at: r.try_get("started_at")?,
-                updated_at: r.try_get("updated_at")?,
-            })
-        })
-        .transpose()
-        .context("failed to decode latest pulse generation run")
-    }
-
     pub async fn get_recap_job_window(
         pool: &PgPool,
         job_id: Uuid,
@@ -223,41 +194,6 @@ impl SurfaceDaoOps {
         })
     }
 
-    pub async fn get_evening_pulse_health_seed(pool: &PgPool) -> Result<SurfaceHealthSeed> {
-        let row = sqlx::query(
-            r"
-            WITH latest_success AS (
-                SELECT COALESCE(finished_at, started_at) AS completed_at
-                FROM pulse_generations
-                WHERE status = 'succeeded'
-                ORDER BY COALESCE(finished_at, started_at) DESC, id DESC
-                LIMIT 1
-            )
-            SELECT
-                (SELECT completed_at FROM latest_success) AS last_success_at,
-                (
-                    SELECT COUNT(*)
-                    FROM pulse_generations
-                    WHERE status = 'failed'
-                      AND (
-                          (SELECT completed_at FROM latest_success) IS NULL
-                          OR COALESCE(finished_at, started_at) > (SELECT completed_at FROM latest_success)
-                      )
-                ) AS consecutive_failures
-            ",
-        )
-        .fetch_one(pool)
-        .await
-        .context("failed to query evening_pulse health seed")?;
-
-        let last_success_at: Option<DateTime<Utc>> = row.try_get("last_success_at")?;
-        let consecutive_failures: i64 = row.try_get("consecutive_failures")?;
-        Ok(SurfaceHealthSeed {
-            last_success_at,
-            consecutive_failures: u64::try_from(consecutive_failures).unwrap_or(0),
-        })
-    }
-
     pub async fn get_morning_letter_health_seed(pool: &PgPool) -> Result<SurfaceHealthSeed> {
         let row = sqlx::query(
             r"
@@ -295,15 +231,13 @@ impl SurfaceDaoOps {
 
     pub async fn get_all_surface_health_seeds(
         pool: &PgPool,
-    ) -> Result<[(SurfaceHealthTarget, SurfaceHealthSeed); 4]> {
+    ) -> Result<[(SurfaceHealthTarget, SurfaceHealthSeed); 3]> {
         let three_day = Self::get_three_day_recap_health_seed(pool).await?;
         let topic_cards = Self::get_topic_cards_health_seed(pool).await?;
-        let evening_pulse = Self::get_evening_pulse_health_seed(pool).await?;
         let morning_letter = Self::get_morning_letter_health_seed(pool).await?;
         Ok([
             (SurfaceHealthTarget::ThreeDayRecap, three_day),
             (SurfaceHealthTarget::TopicCards, topic_cards),
-            (SurfaceHealthTarget::EveningPulse, evening_pulse),
             (SurfaceHealthTarget::MorningLetter, morning_letter),
         ])
     }
@@ -397,16 +331,6 @@ mod tests {
             )
             ",
             r"
-            CREATE TEMP TABLE pulse_generations (
-                id BIGSERIAL PRIMARY KEY,
-                job_id UUID NOT NULL,
-                target_date DATE NOT NULL,
-                status TEXT NOT NULL,
-                started_at TIMESTAMPTZ NOT NULL,
-                finished_at TIMESTAMPTZ
-            )
-            ",
-            r"
             CREATE TEMP TABLE morning_letters (
                 id UUID PRIMARY KEY,
                 target_date DATE NOT NULL,
@@ -477,20 +401,6 @@ mod tests {
 
         sqlx::query(
             r"
-            INSERT INTO pulse_generations (job_id, target_date, status, started_at, finished_at)
-            VALUES ($1, '2026-11-09', 'failed', $2, $2),
-                   ($3, '2026-11-09', 'succeeded', $4, $4)
-            ",
-        )
-        .bind(Uuid::new_v4())
-        .bind(t0)
-        .bind(Uuid::new_v4())
-        .bind(t2)
-        .execute(pool)
-        .await?;
-
-        sqlx::query(
-            r"
             INSERT INTO morning_letters (id, target_date, generation_revision, created_at)
             VALUES ($1, '2026-11-09', 1, $2)
             ",
@@ -552,16 +462,6 @@ mod tests {
         );
         assert_eq!(
             seeds[2],
-            (
-                SurfaceHealthTarget::EveningPulse,
-                SurfaceHealthSeed {
-                    last_success_at: Some(t2),
-                    consecutive_failures: 0,
-                }
-            )
-        );
-        assert_eq!(
-            seeds[3],
             (
                 SurfaceHealthTarget::MorningLetter,
                 SurfaceHealthSeed {

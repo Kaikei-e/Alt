@@ -782,24 +782,6 @@ impl ExtendedRecapJob {
     }
 }
 
-// ============================================================
-// Evening Pulse models
-// ============================================================
-
-/// Database row projection for pulse_generations table.
-///
-/// Contains only the fields needed for the `/v1/pulse/latest` API response.
-/// The full table schema includes additional fields (id, status, topics_count,
-/// started_at, error_message) which are used for internal tracking.
-#[derive(Debug, Clone)]
-pub struct PulseGenerationRow {
-    pub job_id: Uuid,
-    pub target_date: chrono::NaiveDate,
-    pub version: String,
-    pub result_payload: Option<Value>,
-    pub finished_at: DateTime<Utc>,
-}
-
 // ============================================================================
 // Morning Letter Models
 // ============================================================================

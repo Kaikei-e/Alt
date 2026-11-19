@@ -28,7 +28,6 @@ use super::genre_refine::{
 use super::graph_override::GraphOverrideSettings;
 use super::persist::{self, PersistStage};
 use super::preprocess::{PreprocessStage, TextPreprocessStage};
-use super::pulse::{DefaultPulseStage, PulseConfig, PulseRollout, PulseStage};
 use super::select::{SelectStage, SubgenreConfig, SummarySelectStage};
 
 /// Core pipeline orchestrator that coordinates all stages.
@@ -38,9 +37,6 @@ pub(crate) struct PipelineOrchestrator {
     pub(super) recap_dao: Arc<dyn RecapDao>,
     pub(super) subworker_client: Arc<SubworkerClient>,
     pub(super) classification_queue: Arc<ClassificationJobQueue>,
-    pub(super) pulse_stage: Arc<dyn PulseStage>,
-    pub(super) pulse_rollout: PulseRollout,
-    pub(super) sovereign_client: Option<Arc<KnowledgeSovereignClient>>,
     pub(super) metrics: Arc<Metrics>,
 }
 
@@ -86,9 +82,6 @@ pub(crate) struct PipelineBuilder {
     select: Option<Arc<dyn SelectStage>>,
     dispatch: Option<Arc<dyn DispatchStage>>,
     persist: Option<Arc<dyn PersistStage>>,
-    pulse_stage: Option<Arc<dyn PulseStage>>,
-    pulse_rollout: Option<PulseRollout>,
-    sovereign_client: Option<Arc<KnowledgeSovereignClient>>,
     metrics: Option<Arc<Metrics>>,
 }
 
@@ -232,12 +225,6 @@ impl PipelineOrchestrator {
                     Arc::new(s) as Arc<dyn crate::pipeline::embedding::Embedder>
                 });
 
-        // Initialize Pulse stage and rollout
-        let pulse_config = PulseConfig::from_env();
-        let pulse_rollout = PulseRollout::from_env();
-        let pulse_stage: Arc<dyn PulseStage> =
-            Arc::new(DefaultPulseStage::new(pulse_config, pulse_rollout.clone()));
-
         use crate::pipeline::genre_remote::RemoteGenreStage;
         let coarse_stage = Arc::new(RemoteGenreStage::new(
             Arc::clone(&subworker_client),
@@ -338,11 +325,8 @@ impl PipelineOrchestrator {
                     Arc::clone(&recap_dao),
                     tag_generator_for_persist,
                 )
-                .with_sovereign(sovereign_client.clone()),
+                .with_sovereign(sovereign_client),
             ))
-            .with_pulse_stage(pulse_stage)
-            .with_pulse_rollout(pulse_rollout)
-            .with_sovereign_client(sovereign_client)
             .with_metrics(metrics)
             .build(
                 Arc::clone(&recap_dao),
@@ -396,9 +380,6 @@ impl PipelineOrchestrator {
         let dispatched = executor
             .execute_dispatch_stage(job, resume_stage_idx, evidence_bundle)
             .await?;
-
-        // Generate Evening Pulse after dispatch (before persist, so we have clustering data)
-        self.generate_pulse_if_enabled(job, &dispatched).await;
 
         let persisted = executor
             .execute_persist_stage(job, resume_stage_idx, dispatched)
@@ -488,9 +469,6 @@ impl PipelineBuilder {
             select: None,
             dispatch: None,
             persist: None,
-            pulse_stage: None,
-            pulse_rollout: None,
-            sovereign_client: None,
             metrics: None,
         }
     }
@@ -532,24 +510,6 @@ impl PipelineBuilder {
 
     pub(crate) fn with_persist_stage(mut self, stage: Arc<dyn PersistStage>) -> Self {
         self.persist = Some(stage);
-        self
-    }
-
-    pub(crate) fn with_pulse_stage(mut self, stage: Arc<dyn PulseStage>) -> Self {
-        self.pulse_stage = Some(stage);
-        self
-    }
-
-    pub(crate) fn with_pulse_rollout(mut self, rollout: PulseRollout) -> Self {
-        self.pulse_rollout = Some(rollout);
-        self
-    }
-
-    pub(crate) fn with_sovereign_client(
-        mut self,
-        client: Option<Arc<KnowledgeSovereignClient>>,
-    ) -> Self {
-        self.sovereign_client = client;
         self
     }
 
@@ -597,15 +557,6 @@ impl PipelineBuilder {
                 .context("persist stage must be configured before build")?,
         };
 
-        // Initialize pulse stage and rollout with defaults if not provided
-        let pulse_rollout = self.pulse_rollout.unwrap_or_default();
-        let pulse_stage = self.pulse_stage.unwrap_or_else(|| {
-            Arc::new(DefaultPulseStage::new(
-                PulseConfig::default(),
-                pulse_rollout.clone(),
-            ))
-        });
-
         let metrics = self
             .metrics
             .context("metrics must be configured before build")?;
@@ -616,9 +567,6 @@ impl PipelineBuilder {
             recap_dao,
             subworker_client,
             classification_queue,
-            pulse_stage,
-            pulse_rollout,
-            sovereign_client: self.sovereign_client,
             metrics,
         })
     }
@@ -660,7 +608,6 @@ mod new_tests {
             ("RECAP_CARDS_JOB", Some("disabled")),
             ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
             ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
-            ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
             ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
             ("MTLS_ENFORCE", Some("true")),
             ("MTLS_CERT_FILE", None),
@@ -844,7 +791,6 @@ mod new_tests {
                     ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
                     ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
                     ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
-                    ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
                     ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
                     ("MTLS_ENFORCE", None),
                 ],
@@ -954,7 +900,6 @@ mod new_tests {
                     ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
                     ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
                     ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
-                    ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
                     ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
                     ("MTLS_ENFORCE", None),
                 ],
@@ -1042,7 +987,6 @@ mod new_tests {
                     ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
                     ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
                     ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
-                    ("RECAP_FRESHNESS_EVENING_PULSE_HOURS", Some("30")),
                     ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
                     ("MTLS_ENFORCE", None),
                 ],

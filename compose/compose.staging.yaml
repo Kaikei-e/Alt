@@ -748,8 +748,8 @@ services:
   # recap-worker suite — Postgres + Atlas migrator + multi-aliased
   # pipeline stub + recap-worker SUT. The stub stands in for
   # recap-subworker, news-creator, alt-backend, and tag-generator so
-  # the full recap pipeline (POST /v1/generate/recaps/7days → row in
-  # recap_outputs → GET /v1/recaps/7days) runs without GPU-bound deps.
+  # the full recap pipeline (POST /v1/generate/recaps/3days → row in
+  # recap_outputs → GET /v1/recaps/3days) runs without GPU-bound deps.
   recap-db:
     # Production image (docker/postgres/Dockerfile.recap-db) bakes in
     # postgresql-18-cron — migration 20260101000000 needs it. Reuse the
@@ -901,7 +901,6 @@ services:
       - RECAP_CARDS_JOB_UTC_TIME=17:30
       - RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS=30
       - RECAP_FRESHNESS_TOPIC_CARDS_HOURS=30
-      - RECAP_FRESHNESS_EVENING_PULSE_HOURS=30
       - RECAP_FRESHNESS_MORNING_LETTER_HOURS=3
       - TAG_GENERATOR_BASE_URL=http://rw-stub-tag-generator/
       - HUGGING_FACE_TOKEN_PATH=/tmp/staging-hf-token-not-used

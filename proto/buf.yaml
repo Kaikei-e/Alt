@@ -32,9 +32,19 @@ breaking:
   # (now carried on surface_status). Every consumer ships in the same deploy
   # through Compose (no compat aliases). Delete these entries in the first PR
   # after this reaches main.
+  #
+  # Evening Pulse and the 7-day recap are retired: their RPCs, messages and
+  # enums leave RecapService, and TodayDigest loses evening_pulse_available in
+  # both the public and the sovereign contract (number and name are reserved).
+  # The callers were removed one release earlier. Delete these entries with
+  # the ones above.
   ignore_only:
-    FIELD_NO_DELETE:
+    ENUM_NO_DELETE:
       - alt/recap/v2/recap.proto
+    FIELD_NO_DELETE:
+      - alt/knowledge_home/v1/knowledge_home.proto
+      - alt/recap/v2/recap.proto
+      - services/sovereign/v1/sovereign.proto
     MESSAGE_NO_DELETE:
       - alt/recap/v2/recap.proto
     RPC_NO_DELETE:

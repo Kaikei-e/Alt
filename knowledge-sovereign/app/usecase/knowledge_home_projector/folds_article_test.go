@@ -3,6 +3,7 @@ package knowledge_home_projector
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -412,9 +413,9 @@ func TestProjector_FoldsTagSetVersionCreated_EmptyTagsSkipsDigest(t *testing.T) 
 	assert.Empty(t, repo.digests, "an empty tag set must not touch today_digest_view.top_tags")
 }
 
-// ── recap.evening_pulse_generated.v1 ──
+// ── recap.evening_pulse_generated.v1 (retired historical event) ──
 
-func TestProjector_FoldsEveningPulseGenerated_SetsAvailabilityForTargetDate(t *testing.T) {
+func TestProjector_SkipsHistoricalEveningPulseGenerated_AdvancesCheckpoint(t *testing.T) {
 	tenant := uuid.New()
 	user := userPtr()
 	jobID := uuid.New()
@@ -430,35 +431,30 @@ func TestProjector_FoldsEveningPulseGenerated_SetsAvailabilityForTargetDate(t *t
 	events := []sovereign_db.KnowledgeEvent{
 		homeEvent(1, "recap.evening_pulse_generated.v1", "evening-pulse:2026-11-09", occurredAt, tenant, user, payload),
 	}
+	logs := &recordingHandler{}
 	repo := newFakeRepo(events)
-	p := NewProjector(repo, nil, Config{})
+	p := NewProjector(repo, slog.New(logs), Config{})
 	require.NoError(t, p.RunBatch(context.Background()))
 
-	digest, ok := repo.digests[user.String()]
-	require.True(t, ok, "recap.evening_pulse_generated.v1 must upsert today_digest_view")
-	assert.Equal(t, *user, digest.UserID)
-	assert.Equal(t, "2026-11-09", digest.DigestDate, "digest_date must come from payload.target_date, not occurred_at or wall clock")
-	assert.True(t, digest.EveningPulseAvailable)
-	assert.Equal(t, 0, digest.NewArticles)
-	assert.Equal(t, 0, digest.SummarizedArticles)
-	assert.Equal(t, 0, digest.UnsummarizedArticles)
-	assert.True(t, occurredAt.Equal(digest.UpdatedAt))
-	require.NotNil(t, digest.LastEventSeq)
-	assert.Equal(t, int64(1), *digest.LastEventSeq)
+	assert.Empty(t, repo.digests, "historical recap.evening_pulse_generated.v1 must not write today_digest_view")
+	assert.Empty(t, repo.homeItems, "historical recap.evening_pulse_generated.v1 must not write knowledge_home_items")
+	assert.Equal(t, int64(1), repo.checkpoint, "checkpoint must advance past skipped historical event")
+	for _, r := range logs.records {
+		assert.Less(t, r.Level, slog.LevelWarn, "skipping retired event must not emit warn/error logs: %+v", r)
+	}
 }
 
-func TestProjector_FoldsEveningPulseGenerated_IdempotentOnReplay(t *testing.T) {
+func TestProjector_ReprojectSkipsHistoricalEveningPulseGenerated(t *testing.T) {
 	tenant := uuid.New()
 	user := userPtr()
 	articleID := uuid.New()
 	jobID := uuid.New()
-	articleAt := time.Date(2026, 11, 9, 9, 0, 0, 0, time.UTC)
-	pulseAt := time.Date(2026, 11, 9, 18, 0, 0, 0, time.UTC)
+	base := time.Date(2026, 11, 9, 9, 0, 0, 0, time.UTC)
 
 	articlePayload := mustJSON(t, map[string]any{
 		"article_id":   articleID.String(),
 		"title":        "Rust pulse test",
-		"published_at": articleAt.Format(time.RFC3339),
+		"published_at": base.Add(-time.Hour).Format(time.RFC3339),
 		"url":          "https://example.com/pulse",
 	})
 	pulsePayload := mustJSON(t, map[string]any{
@@ -468,63 +464,40 @@ func TestProjector_FoldsEveningPulseGenerated_IdempotentOnReplay(t *testing.T) {
 		"topic_count":    3,
 		"fallback_level": 0,
 	})
-	events := []sovereign_db.KnowledgeEvent{
-		homeEvent(1, "ArticleCreated", articleID.String(), articleAt, tenant, user, articlePayload),
-		homeEvent(2, "recap.evening_pulse_generated.v1", "evening-pulse:2026-11-09", pulseAt, tenant, user, pulsePayload),
+	summaryPayload := mustJSON(t, map[string]any{
+		"article_id":   articleID.String(),
+		"summary_text": "Summary body.",
+	})
+	tagsPayload := mustJSON(t, map[string]any{
+		"article_id": articleID.String(),
+		"tags":       []string{"rust", "sovereign"},
+	})
+
+	withHistorical := []sovereign_db.KnowledgeEvent{
+		homeEvent(1, "ArticleCreated", articleID.String(), base, tenant, user, articlePayload),
+		homeEvent(2, "recap.evening_pulse_generated.v1", "evening-pulse:2026-11-09", base.Add(time.Minute), tenant, user, pulsePayload),
+		homeEvent(3, "SummaryVersionCreated", articleID.String(), base.Add(2*time.Minute), tenant, user, summaryPayload),
+		homeEvent(4, "TagSetVersionCreated", articleID.String(), base.Add(3*time.Minute), tenant, user, tagsPayload),
 	}
-	repo := newFakeRepo(events)
-	p := NewProjector(repo, nil, Config{})
-	require.NoError(t, p.RunBatch(context.Background()))
-
-	// Replay the pulse event by resetting the checkpoint before seq 2 and running again.
-	repo.checkpoint = 1
-	require.NoError(t, p.RunBatch(context.Background()))
-
-	digest, ok := repo.digests[user.String()]
-	require.True(t, ok)
-	assert.Equal(t, "2026-11-09", digest.DigestDate)
-	assert.True(t, digest.EveningPulseAvailable)
-	assert.Equal(t, 1, digest.NewArticles, "replaying evening_pulse_generated must not alter article counters")
-	assert.Equal(t, 1, digest.UnsummarizedArticles)
-	require.NotNil(t, digest.LastEventSeq)
-	assert.Equal(t, int64(2), *digest.LastEventSeq)
-}
-
-func TestProjector_FoldsEveningPulseGenerated_MalformedPayloadReported(t *testing.T) {
-	cases := []struct {
-		name    string
-		payload []byte
-	}{
-		{
-			name:    "invalid json",
-			payload: []byte(`{"target_date": not-json`),
-		},
-		{
-			name:    "missing target_date",
-			payload: []byte(`{"job_id":"22222222-2222-4222-8222-222222222222","version":"v4","topic_count":3,"fallback_level":0}`),
-		},
-		{
-			name:    "malformed target_date",
-			payload: []byte(`{"job_id":"22222222-2222-4222-8222-222222222222","target_date":"2026/11/09","version":"v4","topic_count":3,"fallback_level":0}`),
-		},
+	withoutHistorical := []sovereign_db.KnowledgeEvent{
+		homeEvent(1, "ArticleCreated", articleID.String(), base, tenant, user, articlePayload),
+		homeEvent(2, "SummaryVersionCreated", articleID.String(), base.Add(2*time.Minute), tenant, user, summaryPayload),
+		homeEvent(3, "TagSetVersionCreated", articleID.String(), base.Add(3*time.Minute), tenant, user, tagsPayload),
 	}
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			tenant := uuid.New()
-			user := userPtr()
-			occurredAt := time.Date(2026, 11, 9, 18, 0, 0, 0, time.UTC)
+	repoWith := newFakeRepo(withHistorical)
+	require.NoError(t, NewProjector(repoWith, nil, Config{}).RunBatch(context.Background()))
 
-			events := []sovereign_db.KnowledgeEvent{
-				homeEvent(1, "recap.evening_pulse_generated.v1", "evening-pulse:2026-11-09", occurredAt, tenant, user, tc.payload),
-			}
-			repo := newFakeRepo(events)
-			p := NewProjector(repo, nil, Config{})
+	repoWithout := newFakeRepo(withoutHistorical)
+	require.NoError(t, NewProjector(repoWithout, nil, Config{}).RunBatch(context.Background()))
 
-			err := p.RunBatch(context.Background())
-			require.Error(t, err, "malformed evening_pulse_generated payload must return projector error and never fall back to wall clock")
-			assert.Empty(t, repo.digests)
-			assert.Zero(t, repo.checkpoint)
-		})
-	}
+	assert.Equal(t, repoWithout.homeItems, repoWith.homeItems, "reproject with historical pulse event must match log without it")
+	assert.Equal(t, repoWithout.recallCandidates, repoWith.recallCandidates)
+	assert.Equal(t, int64(4), repoWith.checkpoint)
+
+	digestWith := repoWith.digests[user.String()]
+	digestWithout := repoWithout.digests[user.String()]
+	digestWith.LastEventSeq = nil
+	digestWithout.LastEventSeq = nil
+	assert.Equal(t, digestWithout, digestWith, "TodayDigest projection must match regardless of historical pulse event")
 }

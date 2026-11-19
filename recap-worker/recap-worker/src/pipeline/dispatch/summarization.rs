@@ -1008,7 +1008,7 @@ mod tests {
     }
 
     #[test]
-    fn apply_request_defaults_threads_7day_window_without_forcing_bullet_override() {
+    fn apply_request_defaults_clears_bullet_override_and_sets_temperature() {
         let mut request = SummaryRequest {
             job_id: Uuid::new_v4(),
             genre: "tech".to_string(),
@@ -1021,10 +1021,10 @@ mod tests {
             window_days: None,
         };
 
-        apply_recap_request_defaults(&mut request, 7, 0.0);
+        apply_recap_request_defaults(&mut request, 3, 0.0);
 
         let options = request.options.expect("options should be set");
-        assert_eq!(request.window_days, Some(7));
+        assert_eq!(request.window_days, Some(3));
         assert_eq!(options.temperature, Some(0.0));
         assert_eq!(options.max_bullets, None);
     }

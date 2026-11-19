@@ -82,6 +82,9 @@ message FeatureFlagStatus {
 
 // TodayDigest contains daily summary statistics.
 message TodayDigest {
+  reserved 7;
+  reserved "evening_pulse_available";
+
   // Date in YYYY-MM-DD format
   string date = 1;
   // Number of new articles today
@@ -94,8 +97,6 @@ message TodayDigest {
   repeated string top_tags = 5;
   // Whether backend has determined that recap link should be active
   bool weekly_recap_available = 6;
-  // Whether backend has determined that pulse link should be active
-  bool evening_pulse_available = 7;
   // Backend-authoritative count of need-to-know items (page-independent)
   int32 need_to_know_count = 8;
   // Digest freshness indicator: "fresh", "stale", "unknown"
