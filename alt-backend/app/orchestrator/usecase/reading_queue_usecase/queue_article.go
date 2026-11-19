@@ -132,21 +132,15 @@ func (u *QueueArticleUsecase) Execute(
 		return QueueArticleResult{}, fmt.Errorf("queue article: %w", err)
 	}
 
+	alreadyQueued := false
 	for _, existing := range entries {
 		if existing.ArticleID == articleID {
-			items, err := hydrateQueueEntries(ctx, u.articleBatchPort, u.ogImagePort, entries)
-			if err != nil {
-				return QueueArticleResult{}, fmt.Errorf("queue article: %w", err)
-			}
-			return QueueArticleResult{
-				Outcome: domain.QueueArticleOutcomeAlreadyQueued,
-				Items:   items,
-				Cap:     u.cap,
-			}, nil
+			alreadyQueued = true
+			break
 		}
 	}
 
-	if len(entries) >= u.cap {
+	if !alreadyQueued && len(entries) >= u.cap {
 		items, err := hydrateQueueEntries(ctx, u.articleBatchPort, u.ogImagePort, entries)
 		if err != nil {
 			return QueueArticleResult{}, fmt.Errorf("queue article: %w", err)
@@ -197,21 +191,27 @@ func (u *QueueArticleUsecase) Execute(
 		return QueueArticleResult{}, fmt.Errorf("queue article: %w", err)
 	}
 
-	outcome := domain.QueueArticleOutcomeQueued
-	if seq == 0 {
-		outcome = domain.QueueArticleOutcomeAlreadyQueued
+	// Still append when the read model already shows the article queued so a
+	// remove-then-readd within the projection lag window is not lost; return the
+	// current entries without appending a duplicate row.
+	outcome := domain.QueueArticleOutcomeAlreadyQueued
+	entriesToHydrate := entries
+	if !alreadyQueued {
+		if seq != 0 {
+			outcome = domain.QueueArticleOutcomeQueued
+		}
+		updatedEntries := make([]domain.ReadingQueueEntry, len(entries), len(entries)+1)
+		copy(updatedEntries, entries)
+		updatedEntries = append(updatedEntries, domain.ReadingQueueEntry{
+			ArticleID:          articleID,
+			QueuedAt:           clampedOccurredAt,
+			ExpiresAt:          expiresAt,
+			QueuePolicyVersion: domain.QueuePolicyVersionV1,
+		})
+		entriesToHydrate = updatedEntries
 	}
 
-	updatedEntries := make([]domain.ReadingQueueEntry, len(entries), len(entries)+1)
-	copy(updatedEntries, entries)
-	updatedEntries = append(updatedEntries, domain.ReadingQueueEntry{
-		ArticleID:          articleID,
-		QueuedAt:           clampedOccurredAt,
-		ExpiresAt:          expiresAt,
-		QueuePolicyVersion: domain.QueuePolicyVersionV1,
-	})
-
-	items, err := hydrateQueueEntries(ctx, u.articleBatchPort, u.ogImagePort, updatedEntries)
+	items, err := hydrateQueueEntries(ctx, u.articleBatchPort, u.ogImagePort, entriesToHydrate)
 	if err != nil {
 		return QueueArticleResult{}, fmt.Errorf("queue article: %w", err)
 	}
