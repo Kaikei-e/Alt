@@ -70,6 +70,13 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 		connect.WithReadMaxBytes(config.MaxRequestBodyBytes),
 	)
 
+	if container.SetSubscriptionDailyCapUsecase == nil {
+		panic("connect: ApplicationComponents.SetSubscriptionDailyCapUsecase is nil (see .claude/rules/di-wiring.md)")
+	}
+	if container.FeedInflowStatsUsecase == nil {
+		panic("connect: ApplicationComponents.FeedInflowStatsUsecase is nil (see .claude/rules/di-wiring.md)")
+	}
+
 	// Register Feed service
 	feedHandler := feeds.NewHandler(feeds.FeedHandlerDeps{
 		CachedFeedList:           container.CachedFeedListUsecase,
@@ -80,11 +87,13 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 		ArticlesReadingStatus:    container.ArticlesReadingStatusUsecase,
 		Subscribe:                container.SubscribeUsecase,
 		Unsubscribe:              container.UnsubscribeUsecase,
+		SetSubscriptionDailyCap:  container.SetSubscriptionDailyCapUsecase,
 		FeedAmount:               container.FeedAmountUsecase,
 		UnsummarizedCount:        container.UnsummarizedArticlesCountUsecase,
 		SummarizedCount:          container.SummarizedArticlesCountUsecase,
 		TotalCount:               container.TotalArticlesCountUsecase,
 		TodayUnreadCount:         container.TodayUnreadArticlesCountUsecase,
+		FeedInflowStats:          container.FeedInflowStatsUsecase,
 		ArticleStore:             container.Infra.ArticleStoreGateway,
 		SummaryStore:             container.Infra.FeedGateway,
 		FeedTagStore:             container.Infra.TagGateway,

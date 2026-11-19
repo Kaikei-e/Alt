@@ -445,6 +445,9 @@ func (p *pactReadStatePort) ListSubscriptions(context.Context, uuid.UUID) ([]*do
 }
 func (p *pactReadStatePort) Subscribe(context.Context, uuid.UUID, uuid.UUID) error   { return nil }
 func (p *pactReadStatePort) Unsubscribe(context.Context, uuid.UUID, uuid.UUID) error { return nil }
+func (p *pactReadStatePort) SetSubscriptionDailyCap(context.Context, uuid.UUID, uuid.UUID, *int) error {
+	return nil
+}
 func (p *pactReadStatePort) AddFavorite(context.Context, string, uuid.UUID) error    { return nil }
 func (p *pactReadStatePort) RemoveFavorite(context.Context, string, uuid.UUID) error { return nil }
 

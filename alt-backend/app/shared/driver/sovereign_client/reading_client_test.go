@@ -21,6 +21,7 @@ type fakeReadingSovereignServer struct {
 	sovereignv1connect.UnimplementedKnowledgeSovereignServiceHandler
 	queueItems []*sovereignv1.ReadingQueueEntry
 	readCount  int32
+	entries    []*sovereignv1.ReadingSourceEntry
 }
 
 func (f *fakeReadingSovereignServer) GetReadingQueue(
@@ -35,6 +36,13 @@ func (f *fakeReadingSovereignServer) CountReadingSourcesSince(
 	_ *connect.Request[sovereignv1.CountReadingSourcesSinceRequest],
 ) (*connect.Response[sovereignv1.CountReadingSourcesSinceResponse], error) {
 	return connect.NewResponse(&sovereignv1.CountReadingSourcesSinceResponse{Count: f.readCount}), nil
+}
+
+func (f *fakeReadingSovereignServer) ListReadingSourcesInWindow(
+	_ context.Context,
+	_ *connect.Request[sovereignv1.ListReadingSourcesInWindowRequest],
+) (*connect.Response[sovereignv1.ListReadingSourcesInWindowResponse], error) {
+	return connect.NewResponse(&sovereignv1.ListReadingSourcesInWindowResponse{Entries: f.entries}), nil
 }
 
 func TestClient_GetReadingQueueAndCountReadingSourcesSince(t *testing.T) {
@@ -71,4 +79,34 @@ func TestClient_GetReadingQueueAndCountReadingSourcesSince(t *testing.T) {
 	cnt, err := c.CountReadingSourcesSince(context.Background(), userID, queuedAt)
 	require.NoError(t, err)
 	assert.Equal(t, 4, cnt)
+}
+
+func TestClient_ListReadingSourcesInWindow(t *testing.T) {
+	artV1 := uuid.New()
+	artLegacy := uuid.New()
+	t1 := time.Date(2026, 11, 10, 8, 0, 0, 0, time.UTC)
+	t0 := time.Date(2026, 11, 1, 8, 0, 0, 0, time.UTC)
+
+	srv := &fakeReadingSovereignServer{
+		entries: []*sovereignv1.ReadingSourceEntry{
+			{ArticleId: artV1.String(), FirstReadAt: timestamppb.New(t1), ReadRuleVersion: 1},
+			{ArticleId: artLegacy.String(), FirstReadAt: timestamppb.New(t0), ReadRuleVersion: 0},
+		},
+	}
+	mux := http.NewServeMux()
+	path, handler := sovereignv1connect.NewKnowledgeSovereignServiceHandler(srv)
+	mux.Handle(path, handler)
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+
+	c := NewClient(ts.URL, true)
+	got, err := c.ListReadingSourcesInWindow(context.Background(), uuid.New(), t0.Add(-time.Hour), t1.Add(time.Hour))
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	assert.Equal(t, int32(1), got[0].ReadRuleVersion)
+	assert.Equal(t, int32(0), got[1].ReadRuleVersion)
+
+	disabled := NewClient("", false)
+	_, err = disabled.ListReadingSourcesInWindow(context.Background(), uuid.New(), t0, t1)
+	assert.ErrorIs(t, err, ErrSovereignDisabled)
 }

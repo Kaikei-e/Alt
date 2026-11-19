@@ -409,3 +409,22 @@ func TestCountReadingSourcesSince_FiltersVersionAndSince(t *testing.T) {
 	assert.Contains(t, mock.queryRowCalls[0].SQL, "first_read_at >= $2")
 	assert.Equal(t, []any{userID, since}, mock.queryRowCalls[0].Args)
 }
+
+func TestListReadingSourcesInWindow_QueriesWindowAndReturnsAllVersions(t *testing.T) {
+	mock := &mockPgx{}
+	repo := NewRepository(mock)
+	userID := uuid.New()
+	from := time.Date(2026, 10, 19, 0, 0, 0, 0, time.UTC)
+	to := time.Date(2026, 11, 18, 0, 0, 0, 0, time.UTC)
+
+	_, err := repo.ListReadingSourcesInWindow(context.Background(), userID, from, to)
+	require.NoError(t, err)
+	require.Len(t, mock.queryCalls, 1)
+	sql := mock.queryCalls[0].SQL
+	assert.Contains(t, sql, "FROM reading_sources")
+	assert.Contains(t, sql, "user_id = $1")
+	assert.Contains(t, sql, "first_read_at >= $2")
+	assert.Contains(t, sql, "first_read_at <= $3")
+	assert.NotContains(t, sql, "read_rule_version >= 1")
+	assert.Equal(t, []any{userID, from, to}, mock.queryCalls[0].Args)
+}

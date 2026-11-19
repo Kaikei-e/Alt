@@ -807,9 +807,12 @@ func (h *BFFHandler) logTelemetryHealth(o resilience.TelemetryOutcome) {
 }
 
 // invalidateUnreadProjectionOnMutation drops cached Unread Projection Reads
-// for the user after a successful Critical Feed Mutation (read-your-writes).
+// for the user after a successful Critical Feed Mutation or daily-cap update (read-your-writes).
 func (h *BFFHandler) invalidateUnreadProjectionOnMutation(userID, endpoint string, statusCode int) {
-	if h.responseCache == nil || !resilience.IsCriticalFeedMutation(endpoint) {
+	if h.responseCache == nil {
+		return
+	}
+	if !resilience.IsCriticalFeedMutation(endpoint) && endpoint != "/alt.feeds.v2.FeedService/SetSubscriptionDailyCap" {
 		return
 	}
 	if statusCode < 200 || statusCode >= 300 {

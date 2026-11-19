@@ -296,6 +296,8 @@ message FeedSource {
   bool is_subscribed = 4;
   // When the feed link was created (RFC3339)
   string created_at = 5;
+  // Per-subscription daily cap on unread items shown per UTC day; absent when uncapped
+  optional int32 daily_cap = 6;
 }
 
 // ListSubscriptionsRequest is the request for listing feed sources with subscription status
@@ -329,6 +331,51 @@ message UnsubscribeRequest {
 message UnsubscribeResponse {
   // Success message
   string message = 1;
+}
+
+// SetSubscriptionDailyCapRequest sets or clears the daily unread cap for one subscription.
+message SetSubscriptionDailyCapRequest {
+  // Feed link ID (UUID) to configure
+  string feed_link_id = 1;
+  // Positive daily cap on unread items shown per UTC day; omit to clear the cap
+  optional int32 daily_cap = 2;
+}
+
+// SetSubscriptionDailyCapResponse is the response after updating the daily cap.
+message SetSubscriptionDailyCapResponse {
+  // Success message
+  string message = 1;
+  // Updated daily cap (absent when cleared)
+  optional int32 daily_cap = 2;
+}
+
+// GetFeedInflowStatsRequest requests 30-day inflow and reading statistics per subscribed feed.
+message GetFeedInflowStatsRequest {}
+
+// FeedInflowStat holds 30-day inflow and reading counts for one subscribed feed.
+message FeedInflowStat {
+  // Feed link ID (UUID)
+  string feed_link_id = 1;
+  // Subscription feed URL
+  string url = 2;
+  // Configured daily unread cap (absent when uncapped)
+  optional int32 daily_cap = 3;
+  // Number of feed items stored for this source in the window
+  int64 inflow_count = 4;
+  // Distinct articles from this source counted as read (read_rule_version >= 1) in the window
+  int64 read_count = 5;
+  // Distinct articles from this source with legacy open record (read_rule_version = 0) in the window
+  int64 opened_count_legacy = 6;
+  // read_count / inflow_count (0 when inflow_count is 0)
+  double read_rate = 7;
+}
+
+// GetFeedInflowStatsResponse contains per-feed inflow and reading statistics.
+message GetFeedInflowStatsResponse {
+  // Per-subscribed-feed inflow and read statistics
+  repeated FeedInflowStat stats = 1;
+  // Length of the rolling evaluation window in days
+  int32 window_days = 2;
 }
 
 // =============================================================================
@@ -401,6 +448,12 @@ service FeedService {
 
   // Unsubscribe unsubscribes the current user from a feed source
   rpc Unsubscribe(UnsubscribeRequest) returns (UnsubscribeResponse);
+
+  // SetSubscriptionDailyCap sets or clears the daily unread cap for one subscription.
+  rpc SetSubscriptionDailyCap(SetSubscriptionDailyCapRequest) returns (SetSubscriptionDailyCapResponse);
+
+  // GetFeedInflowStats returns 30-day inflow and reading statistics per subscribed feed.
+  rpc GetFeedInflowStats(GetFeedInflowStatsRequest) returns (GetFeedInflowStatsResponse);
 
   // GetFeedTags returns the tags associated with a single feed by ID.
   // Replaces GET /v1/feeds/:id/tags used by the Tag Trail feature.

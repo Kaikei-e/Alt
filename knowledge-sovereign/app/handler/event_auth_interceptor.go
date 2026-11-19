@@ -303,6 +303,13 @@ func (i *policyAuthInterceptor) authorize(ctx context.Context, principal *Princi
 			}
 		}
 
+	case *sovereignv1.ListReadingSourcesInWindowRequest:
+		if principal.RequireUserToken {
+			if err := i.verifyUserDelegation(ctx, header, m.UserId, ""); err != nil {
+				return err
+			}
+		}
+
 	case *sovereignv1.ListRecallSignalsRequest:
 		if principal.RequireUserToken {
 			if err := i.verifyUserDelegation(ctx, header, m.UserId, ""); err != nil {

@@ -354,6 +354,15 @@ const (
 	// DataHubServiceUnsubscribeProcedure is the fully-qualified name of the DataHubService's
 	// Unsubscribe RPC.
 	DataHubServiceUnsubscribeProcedure = "/services.datahub.v1.DataHubService/Unsubscribe"
+	// DataHubServiceSetSubscriptionDailyCapProcedure is the fully-qualified name of the
+	// DataHubService's SetSubscriptionDailyCap RPC.
+	DataHubServiceSetSubscriptionDailyCapProcedure = "/services.datahub.v1.DataHubService/SetSubscriptionDailyCap"
+	// DataHubServiceGetFeedInflowByUserProcedure is the fully-qualified name of the DataHubService's
+	// GetFeedInflowByUser RPC.
+	DataHubServiceGetFeedInflowByUserProcedure = "/services.datahub.v1.DataHubService/GetFeedInflowByUser"
+	// DataHubServiceBatchGetFeedLinkIDsByArticleIDsProcedure is the fully-qualified name of the
+	// DataHubService's BatchGetFeedLinkIDsByArticleIDs RPC.
+	DataHubServiceBatchGetFeedLinkIDsByArticleIDsProcedure = "/services.datahub.v1.DataHubService/BatchGetFeedLinkIDsByArticleIDs"
 	// DataHubServiceAddFavoriteFeedProcedure is the fully-qualified name of the DataHubService's
 	// AddFavoriteFeed RPC.
 	DataHubServiceAddFavoriteFeedProcedure = "/services.datahub.v1.DataHubService/AddFavoriteFeed"
@@ -861,6 +870,12 @@ type DataHubServiceClient interface {
 	Subscribe(context.Context, *connect.Request[v1.SubscribeRequest]) (*connect.Response[v1.SubscribeResponse], error)
 	// Unsubscribe stops following a feed link. Idempotent.
 	Unsubscribe(context.Context, *connect.Request[v1.UnsubscribeRequest]) (*connect.Response[v1.UnsubscribeResponse], error)
+	// SetSubscriptionDailyCap sets or clears the daily unread cap on a user's subscription.
+	SetSubscriptionDailyCap(context.Context, *connect.Request[v1.SetSubscriptionDailyCapRequest]) (*connect.Response[v1.SetSubscriptionDailyCapResponse], error)
+	// GetFeedInflowByUser returns stored feed item counts per subscribed feed in a window.
+	GetFeedInflowByUser(context.Context, *connect.Request[v1.GetFeedInflowByUserRequest]) (*connect.Response[v1.GetFeedInflowByUserResponse], error)
+	// BatchGetFeedLinkIDsByArticleIDs maps article ids belonging to a user to their feed_link_id.
+	BatchGetFeedLinkIDsByArticleIDs(context.Context, *connect.Request[v1.BatchGetFeedLinkIDsByArticleIDsRequest]) (*connect.Response[v1.BatchGetFeedLinkIDsByArticleIDsResponse], error)
 	// AddFavoriteFeed stars the feed at a URL for one user.
 	//
 	// Unlike the two read-status writes above, this keeps its SELECT: the
@@ -1668,6 +1683,24 @@ func NewDataHubServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(dataHubServiceMethods.ByName("Unsubscribe")),
 			connect.WithClientOptions(opts...),
 		),
+		setSubscriptionDailyCap: connect.NewClient[v1.SetSubscriptionDailyCapRequest, v1.SetSubscriptionDailyCapResponse](
+			httpClient,
+			baseURL+DataHubServiceSetSubscriptionDailyCapProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("SetSubscriptionDailyCap")),
+			connect.WithClientOptions(opts...),
+		),
+		getFeedInflowByUser: connect.NewClient[v1.GetFeedInflowByUserRequest, v1.GetFeedInflowByUserResponse](
+			httpClient,
+			baseURL+DataHubServiceGetFeedInflowByUserProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("GetFeedInflowByUser")),
+			connect.WithClientOptions(opts...),
+		),
+		batchGetFeedLinkIDsByArticleIDs: connect.NewClient[v1.BatchGetFeedLinkIDsByArticleIDsRequest, v1.BatchGetFeedLinkIDsByArticleIDsResponse](
+			httpClient,
+			baseURL+DataHubServiceBatchGetFeedLinkIDsByArticleIDsProcedure,
+			connect.WithSchema(dataHubServiceMethods.ByName("BatchGetFeedLinkIDsByArticleIDs")),
+			connect.WithClientOptions(opts...),
+		),
 		addFavoriteFeed: connect.NewClient[v1.AddFavoriteFeedRequest, v1.AddFavoriteFeedResponse](
 			httpClient,
 			baseURL+DataHubServiceAddFavoriteFeedProcedure,
@@ -1981,6 +2014,9 @@ type dataHubServiceClient struct {
 	listSubscriptions                 *connect.Client[v1.ListSubscriptionsRequest, v1.ListSubscriptionsResponse]
 	subscribe                         *connect.Client[v1.SubscribeRequest, v1.SubscribeResponse]
 	unsubscribe                       *connect.Client[v1.UnsubscribeRequest, v1.UnsubscribeResponse]
+	setSubscriptionDailyCap           *connect.Client[v1.SetSubscriptionDailyCapRequest, v1.SetSubscriptionDailyCapResponse]
+	getFeedInflowByUser               *connect.Client[v1.GetFeedInflowByUserRequest, v1.GetFeedInflowByUserResponse]
+	batchGetFeedLinkIDsByArticleIDs   *connect.Client[v1.BatchGetFeedLinkIDsByArticleIDsRequest, v1.BatchGetFeedLinkIDsByArticleIDsResponse]
 	addFavoriteFeed                   *connect.Client[v1.AddFavoriteFeedRequest, v1.AddFavoriteFeedResponse]
 	removeFavoriteFeed                *connect.Client[v1.RemoveFavoriteFeedRequest, v1.RemoveFavoriteFeedResponse]
 	getArticleTags                    *connect.Client[v1.GetArticleTagsRequest, v1.GetArticleTagsResponse]
@@ -2513,6 +2549,22 @@ func (c *dataHubServiceClient) Subscribe(ctx context.Context, req *connect.Reque
 // Unsubscribe calls services.datahub.v1.DataHubService.Unsubscribe.
 func (c *dataHubServiceClient) Unsubscribe(ctx context.Context, req *connect.Request[v1.UnsubscribeRequest]) (*connect.Response[v1.UnsubscribeResponse], error) {
 	return c.unsubscribe.CallUnary(ctx, req)
+}
+
+// SetSubscriptionDailyCap calls services.datahub.v1.DataHubService.SetSubscriptionDailyCap.
+func (c *dataHubServiceClient) SetSubscriptionDailyCap(ctx context.Context, req *connect.Request[v1.SetSubscriptionDailyCapRequest]) (*connect.Response[v1.SetSubscriptionDailyCapResponse], error) {
+	return c.setSubscriptionDailyCap.CallUnary(ctx, req)
+}
+
+// GetFeedInflowByUser calls services.datahub.v1.DataHubService.GetFeedInflowByUser.
+func (c *dataHubServiceClient) GetFeedInflowByUser(ctx context.Context, req *connect.Request[v1.GetFeedInflowByUserRequest]) (*connect.Response[v1.GetFeedInflowByUserResponse], error) {
+	return c.getFeedInflowByUser.CallUnary(ctx, req)
+}
+
+// BatchGetFeedLinkIDsByArticleIDs calls
+// services.datahub.v1.DataHubService.BatchGetFeedLinkIDsByArticleIDs.
+func (c *dataHubServiceClient) BatchGetFeedLinkIDsByArticleIDs(ctx context.Context, req *connect.Request[v1.BatchGetFeedLinkIDsByArticleIDsRequest]) (*connect.Response[v1.BatchGetFeedLinkIDsByArticleIDsResponse], error) {
+	return c.batchGetFeedLinkIDsByArticleIDs.CallUnary(ctx, req)
 }
 
 // AddFavoriteFeed calls services.datahub.v1.DataHubService.AddFavoriteFeed.
@@ -3094,6 +3146,12 @@ type DataHubServiceHandler interface {
 	Subscribe(context.Context, *connect.Request[v1.SubscribeRequest]) (*connect.Response[v1.SubscribeResponse], error)
 	// Unsubscribe stops following a feed link. Idempotent.
 	Unsubscribe(context.Context, *connect.Request[v1.UnsubscribeRequest]) (*connect.Response[v1.UnsubscribeResponse], error)
+	// SetSubscriptionDailyCap sets or clears the daily unread cap on a user's subscription.
+	SetSubscriptionDailyCap(context.Context, *connect.Request[v1.SetSubscriptionDailyCapRequest]) (*connect.Response[v1.SetSubscriptionDailyCapResponse], error)
+	// GetFeedInflowByUser returns stored feed item counts per subscribed feed in a window.
+	GetFeedInflowByUser(context.Context, *connect.Request[v1.GetFeedInflowByUserRequest]) (*connect.Response[v1.GetFeedInflowByUserResponse], error)
+	// BatchGetFeedLinkIDsByArticleIDs maps article ids belonging to a user to their feed_link_id.
+	BatchGetFeedLinkIDsByArticleIDs(context.Context, *connect.Request[v1.BatchGetFeedLinkIDsByArticleIDsRequest]) (*connect.Response[v1.BatchGetFeedLinkIDsByArticleIDsResponse], error)
 	// AddFavoriteFeed stars the feed at a URL for one user.
 	//
 	// Unlike the two read-status writes above, this keeps its SELECT: the
@@ -3897,6 +3955,24 @@ func NewDataHubServiceHandler(svc DataHubServiceHandler, opts ...connect.Handler
 		connect.WithSchema(dataHubServiceMethods.ByName("Unsubscribe")),
 		connect.WithHandlerOptions(opts...),
 	)
+	dataHubServiceSetSubscriptionDailyCapHandler := connect.NewUnaryHandler(
+		DataHubServiceSetSubscriptionDailyCapProcedure,
+		svc.SetSubscriptionDailyCap,
+		connect.WithSchema(dataHubServiceMethods.ByName("SetSubscriptionDailyCap")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceGetFeedInflowByUserHandler := connect.NewUnaryHandler(
+		DataHubServiceGetFeedInflowByUserProcedure,
+		svc.GetFeedInflowByUser,
+		connect.WithSchema(dataHubServiceMethods.ByName("GetFeedInflowByUser")),
+		connect.WithHandlerOptions(opts...),
+	)
+	dataHubServiceBatchGetFeedLinkIDsByArticleIDsHandler := connect.NewUnaryHandler(
+		DataHubServiceBatchGetFeedLinkIDsByArticleIDsProcedure,
+		svc.BatchGetFeedLinkIDsByArticleIDs,
+		connect.WithSchema(dataHubServiceMethods.ByName("BatchGetFeedLinkIDsByArticleIDs")),
+		connect.WithHandlerOptions(opts...),
+	)
 	dataHubServiceAddFavoriteFeedHandler := connect.NewUnaryHandler(
 		DataHubServiceAddFavoriteFeedProcedure,
 		svc.AddFavoriteFeed,
@@ -4305,6 +4381,12 @@ func NewDataHubServiceHandler(svc DataHubServiceHandler, opts ...connect.Handler
 			dataHubServiceSubscribeHandler.ServeHTTP(w, r)
 		case DataHubServiceUnsubscribeProcedure:
 			dataHubServiceUnsubscribeHandler.ServeHTTP(w, r)
+		case DataHubServiceSetSubscriptionDailyCapProcedure:
+			dataHubServiceSetSubscriptionDailyCapHandler.ServeHTTP(w, r)
+		case DataHubServiceGetFeedInflowByUserProcedure:
+			dataHubServiceGetFeedInflowByUserHandler.ServeHTTP(w, r)
+		case DataHubServiceBatchGetFeedLinkIDsByArticleIDsProcedure:
+			dataHubServiceBatchGetFeedLinkIDsByArticleIDsHandler.ServeHTTP(w, r)
 		case DataHubServiceAddFavoriteFeedProcedure:
 			dataHubServiceAddFavoriteFeedHandler.ServeHTTP(w, r)
 		case DataHubServiceRemoveFavoriteFeedProcedure:
@@ -4774,6 +4856,18 @@ func (UnimplementedDataHubServiceHandler) Subscribe(context.Context, *connect.Re
 
 func (UnimplementedDataHubServiceHandler) Unsubscribe(context.Context, *connect.Request[v1.UnsubscribeRequest]) (*connect.Response[v1.UnsubscribeResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.datahub.v1.DataHubService.Unsubscribe is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) SetSubscriptionDailyCap(context.Context, *connect.Request[v1.SetSubscriptionDailyCapRequest]) (*connect.Response[v1.SetSubscriptionDailyCapResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.datahub.v1.DataHubService.SetSubscriptionDailyCap is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) GetFeedInflowByUser(context.Context, *connect.Request[v1.GetFeedInflowByUserRequest]) (*connect.Response[v1.GetFeedInflowByUserResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.datahub.v1.DataHubService.GetFeedInflowByUser is not implemented"))
+}
+
+func (UnimplementedDataHubServiceHandler) BatchGetFeedLinkIDsByArticleIDs(context.Context, *connect.Request[v1.BatchGetFeedLinkIDsByArticleIDsRequest]) (*connect.Response[v1.BatchGetFeedLinkIDsByArticleIDsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.datahub.v1.DataHubService.BatchGetFeedLinkIDsByArticleIDs is not implemented"))
 }
 
 func (UnimplementedDataHubServiceHandler) AddFavoriteFeed(context.Context, *connect.Request[v1.AddFavoriteFeedRequest]) (*connect.Response[v1.AddFavoriteFeedResponse], error) {

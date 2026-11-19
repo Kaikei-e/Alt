@@ -27,6 +27,16 @@ func feedModelFromProto(f *datahubv1.Feed) *models.Feed {
 	if f == nil {
 		return nil
 	}
+	var dailyRank *int
+	if f.DailyRank != nil {
+		v := int(f.GetDailyRank())
+		dailyRank = &v
+	}
+	var dailyCap *int
+	if f.DailyCap != nil {
+		v := int(f.GetDailyCap())
+		dailyCap = &v
+	}
 	return &models.Feed{
 		ID:          f.GetId(),
 		Title:       f.GetTitle(),
@@ -39,6 +49,8 @@ func feedModelFromProto(f *datahubv1.Feed) *models.Feed {
 		IsRead:      f.GetIsRead(),
 		FeedLinkID:  f.FeedLinkId,
 		OgImageURL:  f.OgImageUrl,
+		DailyRank:   dailyRank,
+		DailyCap:    dailyCap,
 	}
 }
 
@@ -58,6 +70,8 @@ func feedModelToRow(m *models.Feed) *domain.FeedRow {
 		IsRead:      m.IsRead,
 		FeedLinkID:  m.FeedLinkID,
 		OgImageURL:  m.OgImageURL,
+		DailyRank:   m.DailyRank,
+		DailyCap:    m.DailyCap,
 	}
 }
 

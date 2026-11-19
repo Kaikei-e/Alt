@@ -234,11 +234,12 @@ var streamingEndpoints = map[string]bool{
 
 // Mutation endpoints that should never be cached
 var mutationEndpoints = map[string]bool{
-	"/alt.feeds.v2.FeedService/CreateFeed":   true,
-	"/alt.feeds.v2.FeedService/UpdateFeed":   true,
-	"/alt.feeds.v2.FeedService/DeleteFeed":   true,
-	"/alt.feeds.v2.FeedService/MarkAsRead":   true,
-	"/alt.feeds.v2.FeedService/MarkAsUnread": true,
+	"/alt.feeds.v2.FeedService/CreateFeed":              true,
+	"/alt.feeds.v2.FeedService/UpdateFeed":              true,
+	"/alt.feeds.v2.FeedService/DeleteFeed":              true,
+	"/alt.feeds.v2.FeedService/MarkAsRead":              true,
+	"/alt.feeds.v2.FeedService/MarkAsUnread":            true,
+	"/alt.feeds.v2.FeedService/SetSubscriptionDailyCap": true,
 }
 
 // NewCacheConfig creates a new cache configuration with default TTLs.

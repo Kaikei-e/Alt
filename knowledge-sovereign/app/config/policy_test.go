@@ -291,6 +291,7 @@ func TestProductionPolicy_AltBackendMayAppendReadingEvents(t *testing.T) {
 	readingMethods := []string{
 		"/services.sovereign.v1.KnowledgeSovereignService/GetReadingQueue",
 		"/services.sovereign.v1.KnowledgeSovereignService/CountReadingSourcesSince",
+		"/services.sovereign.v1.KnowledgeSovereignService/ListReadingSourcesInWindow",
 	}
 
 	var backendFound bool

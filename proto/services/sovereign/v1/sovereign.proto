@@ -85,6 +85,7 @@ service KnowledgeSovereignService {
   // === Reading (Read Today queue & reading sources) ===
   rpc GetReadingQueue(GetReadingQueueRequest) returns (GetReadingQueueResponse);
   rpc CountReadingSourcesSince(CountReadingSourcesSinceRequest) returns (CountReadingSourcesSinceResponse);
+  rpc ListReadingSourcesInWindow(ListReadingSourcesInWindowRequest) returns (ListReadingSourcesInWindowResponse);
 }
 
 // =============================================================================
@@ -821,4 +822,20 @@ message CountReadingSourcesSinceRequest {
 
 message CountReadingSourcesSinceResponse {
   int32 count = 1;
+}
+
+message ReadingSourceEntry {
+  string article_id = 1;
+  google.protobuf.Timestamp first_read_at = 2;
+  int32 read_rule_version = 3;
+}
+
+message ListReadingSourcesInWindowRequest {
+  string user_id = 1;
+  google.protobuf.Timestamp from = 2;
+  google.protobuf.Timestamp to = 3;
+}
+
+message ListReadingSourcesInWindowResponse {
+  repeated ReadingSourceEntry entries = 1;
 }
