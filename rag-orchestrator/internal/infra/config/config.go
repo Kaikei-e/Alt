@@ -670,17 +670,6 @@ func loadSecret(envKey, fileEnvKey string) (string, error) {
 	return "", fmt.Errorf("config: %s or %s must be set (no fallback permitted)", envKey, fileEnvKey)
 }
 
-// requireSecret loads a required secret from envKey or the file referenced by
-// fileEnvKey. There is no fallback value: a missing secret is a fail-fast
-// startup error, never a known-weak default (CLAUDE.md rule 4).
-func requireSecret(envKey, fileEnvKey string) string {
-	val, err := loadSecret(envKey, fileEnvKey)
-	if err != nil {
-		panic(err.Error())
-	}
-	return val
-}
-
 func getEnvWithAlt(key, altKey, fallback string) string {
 	if value, ok := os.LookupEnv(key); ok {
 		return value
