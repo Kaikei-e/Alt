@@ -6,8 +6,10 @@ import {
 	getReadFeeds,
 	getUnreadFeeds,
 	listSubscriptions,
+	markAsRead,
 	searchFeeds as searchFeedsConnect,
 } from "#lib/connect/feeds.js";
+import { createKeepaliveTransport } from "#lib/connect/reading-transport.js";
 import { createClientTransport } from "#lib/connect/transport-client.js";
 import type { RenderFeed } from "#lib/schema/feed.js";
 import type { FeedSearchResult, SearchFeedItem } from "#lib/schema/search.js";
@@ -123,9 +125,11 @@ export async function getFavoriteFeedsWithCursorClient(
  */
 export async function updateFeedReadStatusClient(
 	feedUrl: string,
+	options?: { keepalive?: boolean },
 ): Promise<void> {
-	const transport = createClientTransport();
-	const { markAsRead } = await import("#lib/connect/feeds.js");
+	const transport = options?.keepalive
+		? createKeepaliveTransport()
+		: createClientTransport();
 	await markAsRead(transport, feedUrl);
 }
 

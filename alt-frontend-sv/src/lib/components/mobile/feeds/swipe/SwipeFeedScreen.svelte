@@ -9,8 +9,13 @@ import {
 	updateFeedReadStatusClient,
 } from "#lib/api/client/index.js";
 import type { ConnectFeedSource } from "#lib/connect/feeds.js";
+import {
+	isQueueSuccessOutcome,
+	QueueArticleOutcome,
+} from "#lib/connect/reading.js";
 import { renderFeedToReaderItem } from "#lib/reader/mappers.js";
 import { openReaderOverlay } from "#lib/reader/reader-overlay.svelte.js";
+import { readTodayQueue } from "#lib/reading/read-today-queue.svelte.js";
 import { ReadingSurface } from "#lib/reading/reading-events.js";
 import type { RenderFeed, SanitizedFeed } from "#lib/schema/feed.js";
 import { toRenderFeed } from "#lib/schema/feed.js";
@@ -18,7 +23,10 @@ import { articlePrefetcher } from "#lib/utils/articlePrefetcher.js";
 import { canonicalize } from "#lib/utils/feed.js";
 import { browser } from "$app/env";
 import DispatchHeader from "./DispatchHeader.svelte";
-import { createDispatchSession } from "./dispatch-session.svelte";
+import {
+	createDispatchSession,
+	type DismissKind,
+} from "./dispatch-session.svelte";
 import SwipeFilterSortSheet from "./SwipeFilterSortSheet.svelte";
 import SwipeLoadingOverlay from "./SwipeLoadingOverlay.svelte";
 import VisualPreviewCard from "./VisualPreviewCard.svelte";
@@ -63,10 +71,26 @@ let hasMore = $state(initialFeeds.length > 0 ? !!initialNextCursor : true);
 let isLoading = $state(false);
 let error = $state<string | null>(null);
 let readFeeds = $state<Set<string>>(new Set());
+let dismissedLinks = new Set<string>();
 let activeIndex = $state(0);
 // svelte-ignore state_referenced_locally
 let isInitialLoading = $state((initialFeeds ?? []).length === 0);
 let liveRegionMessage = $state("");
+let noticeMessage = $state<string | null>(null);
+let dismissingCardId = $state<string | null>(null);
+let inFlightQueueCount = 0;
+let isMounted = true;
+
+interface PreparedQueueTarget {
+	title: string;
+	url: string;
+	sourceName?: string;
+	imageUrl: string;
+	resolvedArticleId: string;
+	articleIdPromise: Promise<string> | null;
+}
+
+const pendingQueueTargets = new Map<string, PreparedQueueTarget>();
 
 // Filter & sort state
 let excludedFeedLinkIds = $state<string[]>([]);
@@ -74,10 +98,24 @@ let feedSources = $state<ConnectFeedSource[]>([]);
 let sortOrder = $state<"newest" | "oldest">("newest");
 let isFilterSheetOpen = $state(false);
 
-// Session bookkeeping: deferred read flush + one-card undo window
-const session = createDispatchSession((link) =>
-	updateFeedReadStatusClient(link),
-);
+function syncPendingQueueCount(hasPendingQueueSlot: boolean) {
+	if (!isMounted) return;
+	readTodayQueue.setPendingQueueCount(
+		(hasPendingQueueSlot ? 1 : 0) + inFlightQueueCount,
+	);
+}
+
+// Session bookkeeping: deferred pass/queue flush + one-card undo window
+const session = createDispatchSession({
+	onPass: (link, opts) =>
+		opts?.keepalive
+			? updateFeedReadStatusClient(link, { keepalive: true })
+			: updateFeedReadStatusClient(link),
+	onQueue: (link, opts) => commitQueue(link, opts),
+	onPendingChange: (pending) => {
+		syncPendingQueueCount(pending?.kind === "queue");
+	},
+});
 
 // Reactive OGP image update version counter
 let ogImageVersion = $state(0);
@@ -85,6 +123,148 @@ let ogImageVersion = $state(0);
 // Derived
 const activeFeed = $derived(feeds[activeIndex]);
 const nextFeed = $derived(feeds[activeIndex + 1]);
+const canQueue = $derived(readTodayQueue.remainingSlots > 0);
+
+function isFeedQueued(feed: RenderFeed): boolean {
+	return (
+		readTodayQueue.isQueued(feed.articleId) ||
+		readTodayQueue.isQueued(feed.normalizedUrl || feed.link)
+	);
+}
+
+function fullQueueNotice(cap: number): string {
+	return `Read today is full (${cap}). Read or remove one first.`;
+}
+
+function queueFailureNotice(title?: string | null): string {
+	const trimmed = title?.trim();
+	return trimmed
+		? `Could not add "${trimmed}" to Read today.`
+		: "Could not add to Read today.";
+}
+
+function failDeferredQueue(link: string, message: string) {
+	if (isMounted) {
+		restoreFailedQueueCard(link, message);
+	} else {
+		readTodayQueue.setPendingNotice(message);
+	}
+}
+
+function prepareQueueTarget(feed: RenderFeed, link: string): void {
+	const targetUrl = feed.normalizedUrl || link;
+	const knownId =
+		feed.articleId?.trim() ||
+		articlePrefetcher.getCachedArticleId(targetUrl)?.trim() ||
+		"";
+	const entry: PreparedQueueTarget = {
+		title: feed.title,
+		url: targetUrl,
+		sourceName: feed.author,
+		imageUrl:
+			feed.ogImageProxyUrl ||
+			articlePrefetcher.getCachedOgImage(targetUrl) ||
+			"",
+		resolvedArticleId: knownId,
+		articleIdPromise: null,
+	};
+	if (!knownId) {
+		entry.articleIdPromise = getFeedContentOnTheFlyClient(targetUrl)
+			.then((res) => {
+				const resolved = res.article_id?.trim() || "";
+				entry.resolvedArticleId = resolved;
+				if (resolved) {
+					handleArticleIdResolved(feed.link, resolved);
+				}
+				return resolved;
+			})
+			.catch(() => "");
+	}
+	pendingQueueTargets.set(link, entry);
+}
+
+function restoreFailedQueueCard(link: string, message: string) {
+	dismissedLinks.delete(link);
+	const idx = feeds.findIndex((f) => canonicalize(f.link) === link);
+	if (idx !== -1) {
+		if (idx === activeIndex - 1) {
+			activeIndex = Math.max(0, activeIndex - 1);
+		} else if (idx < activeIndex - 1) {
+			const [card] = feeds.splice(idx, 1);
+			if (card) {
+				const insertAt = Math.max(0, activeIndex - 1);
+				feeds.splice(insertAt, 0, card);
+				feeds = [...feeds];
+				activeIndex = insertAt;
+			}
+		}
+	}
+	session.revertCount();
+	noticeMessage = message;
+	liveRegionMessage = message;
+}
+
+async function commitQueue(
+	link: string,
+	commitOptions?: { keepalive?: boolean },
+): Promise<void> {
+	inFlightQueueCount++;
+	syncPendingQueueCount(session.pending?.kind === "queue");
+
+	const prepared = pendingQueueTargets.get(link);
+	pendingQueueTargets.delete(link);
+	const feed = feeds.find(
+		(f) =>
+			canonicalize(f.link) === link || canonicalize(f.normalizedUrl) === link,
+	);
+	const title = prepared?.title ?? feed?.title;
+	const targetUrl = prepared?.url ?? feed?.normalizedUrl ?? link;
+
+	try {
+		let articleId =
+			prepared?.resolvedArticleId ||
+			feed?.articleId?.trim() ||
+			articlePrefetcher.getCachedArticleId(targetUrl)?.trim() ||
+			"";
+
+		if (!articleId && prepared?.articleIdPromise) {
+			articleId = await prepared.articleIdPromise;
+		}
+
+		if (!articleId) {
+			failDeferredQueue(link, queueFailureNotice(title));
+			return;
+		}
+
+		const result = await readTodayQueue.queue({
+			articleId,
+			surface: ReadingSurface.SWIPE,
+			title,
+			url: targetUrl,
+			sourceName: prepared?.sourceName ?? feed?.author,
+			imageUrl:
+				prepared?.imageUrl ??
+				feed?.ogImageProxyUrl ??
+				articlePrefetcher.getCachedOgImage(targetUrl) ??
+				"",
+			keepalive: commitOptions?.keepalive,
+		});
+
+		if (!isQueueSuccessOutcome(result.outcome)) {
+			const cap = result.cap > 0 ? result.cap : readTodayQueue.cap;
+			const msg =
+				result.outcome === QueueArticleOutcome.QUEUE_FULL
+					? fullQueueNotice(cap)
+					: queueFailureNotice(title);
+			failDeferredQueue(link, msg);
+		}
+	} catch {
+		failDeferredQueue(link, queueFailureNotice(title));
+	} finally {
+		inFlightQueueCount = Math.max(0, inFlightQueueCount - 1);
+		syncPendingQueueCount(session.pending?.kind === "queue");
+	}
+}
 
 // Initialize read feeds
 onMount(() => {
@@ -110,6 +290,13 @@ onMount(() => {
 	} else {
 		setTimeout(() => void initializeReadFeeds(), 100);
 	}
+});
+
+// Hydrate Read today queue so remainingSlots and unread filtering are accurate
+onMount(() => {
+	void readTodayQueue.refresh().catch(() => {
+		// Keep default cap when queue refresh fails on mount
+	});
 });
 
 // Initial load if needed
@@ -140,14 +327,32 @@ onMount(() => {
 	return () => articlePrefetcher.setOnOgImageFetched(null);
 });
 
-// Commit the pending read when the surface is left or backgrounded
+// Commit the pending action when the surface is left or backgrounded
 onMount(() => {
-	const flush = () => session.flush();
-	window.addEventListener("pagehide", flush);
-	return () => {
-		window.removeEventListener("pagehide", flush);
-		session.flush();
+	isMounted = true;
+	const flushKeepalive = () => session.flush({ keepalive: true });
+	const onVisibilityChange = () => {
+		if (document.visibilityState === "hidden") {
+			flushKeepalive();
+		}
 	};
+	window.addEventListener("pagehide", flushKeepalive);
+	document.addEventListener("visibilitychange", onVisibilityChange);
+	return () => {
+		isMounted = false;
+		window.removeEventListener("pagehide", flushKeepalive);
+		document.removeEventListener("visibilitychange", onVisibilityChange);
+		session.flush();
+		readTodayQueue.setPendingQueueCount(0);
+	};
+});
+
+$effect(() => {
+	const pending = readTodayQueue.pendingNotice;
+	if (!pending) return;
+	noticeMessage = pending;
+	liveRegionMessage = pending;
+	readTodayQueue.clearPendingNotice();
 });
 
 // Wire articleId callback to trigger batch image prefetch in visual-preview mode
@@ -178,18 +383,20 @@ onMount(() => {
 	return () => articlePrefetcher.setOnArticleIdCached(null);
 });
 
+// Filter remaining (not-yet-swiped) deck items whenever queue membership changes
+// without shifting cards before activeIndex.
+$effect(() => {
+	void readTodayQueue.items;
+	if (activeIndex >= feeds.length) return;
+	const tail = feeds.slice(activeIndex);
+	if (!tail.some((f) => isFeedQueued(f))) return;
+	feeds = [
+		...feeds.slice(0, activeIndex),
+		...tail.filter((f) => !isFeedQueued(f)),
+	];
+});
+
 // The card's og:image, as a signed proxy path or null.
-//
-// Three sources, all of them proxy-only: the prefetcher's cache (filled from
-// FetchArticleContent's og_image_proxy_url and from BatchPrefetchImages), the
-// feed row's own og_image_proxy_url, and the SSR seed for the first card. A
-// feed that yields none of the three is not the end of it — the card resolves
-// one on demand through ResolveOgImages once the reader reaches it.
-//
-// `ogImageVersion` is read for its dependency alone: getCachedOgImage is a
-// plain Map lookup, so without the counter a URL the prefetcher obtains after
-// this ran would never reach the card. The card's own pipeline reads its `url`
-// getter reactively, so bumping the counter is all the push it needs.
 const currentOgImage = $derived.by(() => {
 	void ogImageVersion;
 	if (!activeFeed) return null;
@@ -203,14 +410,6 @@ const currentOgImage = $derived.by(() => {
 });
 
 // Prefetch next feeds.
-//
-// This drives both halves of the lookahead: the per-URL ladder that fills the
-// client cache for the next couple of cards, and the fire-and-forget
-// BatchPrefetchArticleContent warm the prefetcher sends for the slots beyond
-// them. The two never cover the same article, so nothing here doubles the
-// outbound rate to publishers. This effect re-runs far more often than a warm
-// is worth — every swipe, and every `feeds` reassignment — which is why the
-// prefetcher, not this call site, owns the interval that bounds it.
 $effect(() => {
 	if (feeds.length > 0) {
 		articlePrefetcher.triggerPrefetch(feeds, activeIndex, prefetchAhead);
@@ -229,6 +428,15 @@ $effect(() => {
 	}
 });
 
+function filterIncomingFeeds(newFeeds: RenderFeed[]): RenderFeed[] {
+	return newFeeds.filter((f) => {
+		const link = canonicalize(f.link);
+		return (
+			!readFeeds.has(link) && !dismissedLinks.has(link) && !isFeedQueued(f)
+		);
+	});
+}
+
 async function loadMore() {
 	if (isLoading || !hasMore) return;
 	isLoading = true;
@@ -238,26 +446,21 @@ async function loadMore() {
 
 	try {
 		if (isFirstLoad) {
-			const feedsPromise = getFeedsWithCursorClient(
+			const res = await getFeedsWithCursorClient(
 				cursor ?? undefined,
 				PAGE_SIZE,
 				excludedFeedLinkIds.length > 0 ? excludedFeedLinkIds : undefined,
 			);
-
-			const res = await feedsPromise;
 			const newFeeds = res.data.map((f: SanitizedFeed) => toRenderFeed(f));
-
-			const filtered = newFeeds.filter(
-				(f) => !readFeeds.has(canonicalize(f.link)),
-			);
+			const filtered = filterIncomingFeeds(newFeeds);
 
 			feeds = [...feeds, ...filtered];
 			cursor = res.next_cursor;
 			hasMore = res.next_cursor !== null;
 			isInitialLoading = false;
 
-			if (filtered.length > 0) {
-				const firstFeed = filtered[0]!;
+			const firstFeed = filtered[0];
+			if (firstFeed) {
 				const cacheKey = firstFeed.normalizedUrl;
 
 				if (!articlePrefetcher.getCachedContent(cacheKey)) {
@@ -268,11 +471,6 @@ async function loadMore() {
 									cacheKey,
 									articleRes.content,
 									articleRes.article_id || "",
-									// The signed path only. `og_image_url` is the
-									// publisher's own URL and used to be seeded
-									// here, from where it reached the card's
-									// <img src> as an unproxied cross-origin
-									// request.
 									articleRes.og_image_proxy_url || null,
 								);
 							}
@@ -292,10 +490,7 @@ async function loadMore() {
 				excludedFeedLinkIds.length > 0 ? excludedFeedLinkIds : undefined,
 			);
 			const newFeeds = res.data.map((f: SanitizedFeed) => toRenderFeed(f));
-
-			const filtered = newFeeds.filter(
-				(f) => !readFeeds.has(canonicalize(f.link)),
-			);
+			const filtered = filterIncomingFeeds(newFeeds);
 
 			feeds = [...feeds, ...filtered];
 			cursor = res.next_cursor;
@@ -310,10 +505,6 @@ async function loadMore() {
 		error = "Failed to load feeds";
 	} finally {
 		isLoading = false;
-		// Unconditional: the first-load success path clears this inside the
-		// try block, so gating on !isFirstLoad here left a failed first load
-		// stuck on the loading placeholder forever, hiding the error state
-		// and its Retry action.
 		isInitialLoading = false;
 	}
 }
@@ -367,37 +558,79 @@ function resetAndReload() {
 	void loadMore();
 }
 
-async function handleDismiss(_direction: number) {
-	if (!activeFeed) return;
+function handleDismissingChange(dismissing: boolean, cardId: string) {
+	if (dismissing) {
+		dismissingCardId = cardId;
+	} else if (dismissingCardId === cardId) {
+		dismissingCardId = null;
+	}
+}
+
+async function handleDismiss(
+	direction: number,
+	cardId?: string,
+): Promise<boolean> {
+	if (!activeFeed) return false;
+	if (cardId !== undefined && cardId !== activeFeed.id) return false;
+	if (cardId === undefined && dismissingCardId === activeFeed.id) return false;
+
+	noticeMessage = null;
+	const kind: DismissKind = direction > 0 ? "queue" : "pass";
+
+	if (kind === "queue" && readTodayQueue.remainingSlots <= 0) {
+		const msg = fullQueueNotice(readTodayQueue.cap);
+		noticeMessage = msg;
+		liveRegionMessage = msg;
+		return false;
+	}
+
+	if (dismissingCardId === activeFeed.id) {
+		dismissingCardId = null;
+	}
 
 	const currentLink = canonicalize(activeFeed.link);
+	dismissedLinks.add(currentLink);
 
-	readFeeds.add(currentLink);
-	readFeeds = new Set(readFeeds);
+	if (kind === "pass") {
+		readFeeds.add(currentLink);
+		readFeeds = new Set(readFeeds);
+		articlePrefetcher.markAsDismissed(currentLink);
+		liveRegionMessage = "Passed";
+	} else {
+		prepareQueueTarget(activeFeed, currentLink);
+		liveRegionMessage = "Added to Read today";
+	}
 
-	liveRegionMessage = "Feed marked as read";
 	setTimeout(() => {
 		liveRegionMessage = "";
 	}, 1000);
 
-	articlePrefetcher.markAsDismissed(currentLink);
-
 	activeIndex++;
-	session.dismiss(currentLink);
+	session.dismiss(currentLink, kind);
 
 	// With no next card on screen there may be no next dismissal — commit
 	// now rather than gambling on the pagehide flush surviving unload.
 	if (!feeds[activeIndex]) {
 		session.flush();
 	}
+
+	return true;
 }
 
 function handleUndo() {
-	const restoredLink = session.undo();
-	if (!restoredLink) return;
+	noticeMessage = null;
+	const restored = session.undo();
+	if (!restored) return;
 
-	readFeeds.delete(restoredLink);
-	readFeeds = new Set(readFeeds);
+	if (restored.kind === "queue") {
+		pendingQueueTargets.delete(restored.link);
+	}
+
+	dismissedLinks.delete(restored.link);
+	if (restored.kind === "pass") {
+		readFeeds.delete(restored.link);
+		readFeeds = new Set(readFeeds);
+	}
 	activeIndex = Math.max(0, activeIndex - 1);
 
 	liveRegionMessage = "Returned card to the pile";
@@ -415,8 +648,27 @@ function handleArticleIdResolved(feedLink: string, articleId: string) {
 	feeds = feeds.map((f, i) => (i === index ? { ...f, articleId } : f));
 }
 
+function removeArticlesByIdsFromDeck(articleIds: string[]) {
+	if (articleIds.length === 0) return;
+	const idSet = new Set(articleIds);
+	for (const f of feeds) {
+		if (f.articleId && idSet.has(f.articleId)) {
+			readFeeds.add(canonicalize(f.link));
+		}
+	}
+	readFeeds = new Set(readFeeds);
+	if (activeIndex >= feeds.length) return;
+	const tail = feeds.slice(activeIndex);
+	if (!tail.some((f) => f.articleId && idSet.has(f.articleId))) return;
+	feeds = [
+		...feeds.slice(0, activeIndex),
+		...tail.filter((f) => !f.articleId || !idSet.has(f.articleId)),
+	];
+}
+
 function handleOpenArticle() {
 	if (!activeFeed) return;
+	noticeMessage = null;
 	openReaderOverlay({
 		surface: ReadingSurface.SWIPE,
 		items: feeds.map(renderFeedToReaderItem),
@@ -429,6 +681,7 @@ function handleOpenArticle() {
 				handleArticleIdResolved(match.link, articleId);
 			}
 		},
+		onArticlesRead: removeArticlesByIdsFromDeck,
 	});
 }
 </script>
@@ -453,6 +706,12 @@ function handleOpenArticle() {
 		}}
 		filterActive={excludedFeedLinkIds.length > 0}
 	/>
+
+	{#if noticeMessage}
+		<p class="swipe-notice" role="alert" data-testid="swipe-notice">
+			{noticeMessage}
+		</p>
+	{/if}
 
 	{#if isInitialLoading}
 		<div class="initial-loading">
@@ -487,12 +746,34 @@ function handleOpenArticle() {
 					feed={activeFeed}
 					statusMessage={liveRegionMessage}
 					onDismiss={handleDismiss}
+					onDismissingChange={handleDismissingChange}
 					onOpenArticle={handleOpenArticle}
 					thumbnailProxyUrl={currentOgImage}
 					isBusy={isLoading}
 					isLcp={activeIndex === 0}
+					{canQueue}
 				/>
 			{/key}
+		</div>
+
+		<div class="swipe-actions" data-testid="swipe-actions">
+			<button
+				type="button"
+				class="swipe-action-btn swipe-action-btn--pass"
+				data-testid="swipe-pass-button"
+				onclick={() => void handleDismiss(-1)}
+			>
+				Pass
+			</button>
+			<button
+				type="button"
+				class="swipe-action-btn swipe-action-btn--queue"
+				aria-disabled={!canQueue ? "true" : undefined}
+				data-testid="swipe-queue-button"
+				onclick={() => void handleDismiss(1)}
+			>
+				Read today
+			</button>
 		</div>
 	{:else}
 		<div class="empty-state">
@@ -538,6 +819,21 @@ function handleOpenArticle() {
     overflow: hidden;
   }
 
+  .swipe-notice {
+    width: 100%;
+    max-width: 30rem;
+    margin: 0.5rem 0 0;
+    padding: 0.5rem 0.75rem;
+    font-family: var(--font-body);
+    font-size: 0.8rem;
+    line-height: 1.4;
+    color: var(--alt-charcoal);
+    background: var(--surface-2, #f5f4f1);
+    border-top: 1px solid var(--surface-border);
+    border-bottom: 1px solid var(--surface-border);
+    flex-shrink: 0;
+  }
+
   .card-container {
     position: relative;
     width: 100%;
@@ -557,6 +853,52 @@ function handleOpenArticle() {
     border: 1px solid var(--surface-border);
     opacity: 0.35;
     pointer-events: none;
+  }
+
+  .swipe-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+    width: 100%;
+    max-width: 30rem;
+    padding: 0.5rem 0.5rem calc(0.75rem + env(safe-area-inset-bottom, 0px));
+    background: var(--surface-bg);
+    flex-shrink: 0;
+  }
+
+  .swipe-action-btn {
+    min-height: 48px;
+    padding: 0.5rem 0.75rem;
+    font-family: var(--font-body);
+    font-size: 0.85rem;
+    font-weight: 600;
+    border: 1.5px solid var(--alt-charcoal);
+    background: transparent;
+    color: var(--alt-charcoal);
+    cursor: pointer;
+    touch-action: manipulation;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .swipe-action-btn--queue {
+    border-color: var(--alt-primary);
+    background: var(--alt-primary);
+    color: var(--surface-bg);
+  }
+
+  .swipe-action-btn--pass:active {
+    background: var(--alt-charcoal);
+    color: var(--surface-bg);
+  }
+
+  .swipe-action-btn--queue:active:not([aria-disabled="true"]) {
+    background: var(--interactive-text-hover, #223b3b);
+  }
+
+  .swipe-action-btn--queue[aria-disabled="true"] {
+    border-color: var(--surface-border);
+    background: transparent;
+    color: var(--alt-ash);
   }
 
 	/* ── Loading ── */

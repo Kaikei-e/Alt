@@ -2,6 +2,10 @@ import {
 	getArticleSourceURLClient,
 	getFeedContentOnTheFlyClient,
 } from "#lib/api/client/articles.js";
+import {
+	isQueueSuccessOutcome,
+	QueueArticleOutcome,
+} from "#lib/connect/reading.js";
 import { useArticleEndBranches } from "#lib/hooks/useArticleEndBranches.svelte.js";
 import { useSummarize } from "#lib/hooks/useSummarize.svelte.js";
 import { createSummarySpeech } from "#lib/hooks/useSummarySpeech.svelte.js";
@@ -9,8 +13,12 @@ import {
 	attachElementReadingSession,
 	attachWindowReadingSession,
 	type ElementScrollTarget,
+	flushReadingEvents,
 	type ReadingSurface,
+	recordArticleOpened,
 } from "#lib/reading/instrumentation.js";
+import { readTodayQueue } from "#lib/reading/read-today-queue.svelte.js";
+import { isUuid } from "#lib/reading/reading-events.js";
 import {
 	type ArticleContentPhase,
 	CONTENT_PENDING_LABEL,
@@ -31,6 +39,7 @@ export interface CreateArticleReaderOptions {
 	getScrollContainer?: () => ElementScrollTarget | null | undefined;
 	getUsePrefetchCache?: () => boolean;
 	onArticleIdResolved?: (articleId: string, url: string) => void;
+	getOnArticlesRead?: () => ((articleIds: string[]) => void) | undefined;
 }
 
 export function createArticleReader(options: CreateArticleReaderOptions) {
@@ -60,6 +69,10 @@ export function createArticleReader(options: CreateArticleReaderOptions) {
 	let contentRetryTimer: ReturnType<typeof setTimeout> | null = null;
 	let contentToken = 0;
 	let branchesLoadedFor: string | null = null;
+	let openedEmittedFor: string | null = null;
+	let queueRefreshAttempted = false;
+	let isTogglingQueue = $state(false);
+	let queueError = $state<string | null>(null);
 
 	const summarizer = useSummarize();
 	const speech = createSummarySpeech();
@@ -67,6 +80,20 @@ export function createArticleReader(options: CreateArticleReaderOptions) {
 
 	const effectiveArticleId = $derived(
 		suppliedArticleId || fetchedArticleId || null,
+	);
+	const readingEventArticleId = $derived(
+		isUuid(suppliedArticleId)
+			? suppliedArticleId
+			: isUuid(fetchedArticleId)
+				? fetchedArticleId
+				: null,
+	);
+	const isQueued = $derived(
+		readTodayQueue.isQueued(effectiveArticleId) ||
+			readTodayQueue.isQueued(articleUrl),
+	);
+	const canToggleQueue = $derived(
+		Boolean(effectiveArticleId) && !isTogglingQueue,
 	);
 	const currentLoadKey = $derived(
 		articleUrl ?? (suppliedArticleId ? `id:${suppliedArticleId}` : null),
@@ -180,11 +207,17 @@ export function createArticleReader(options: CreateArticleReaderOptions) {
 		contentError = null;
 		contentPhase = "idle";
 		foregroundRetrySpent = false;
+		openedEmittedFor = null;
+		queueError = null;
 	}
 
 	function destroy() {
+		const hadReadingSession = Boolean(activeReadingCleanup);
 		activeReadingCleanup?.();
 		activeReadingCleanup = undefined;
+		if (!hadReadingSession && openedEmittedFor !== null) {
+			void flushReadingEvents({ keepalive: false });
+		}
 		speech.stop();
 		summarizer.abort();
 		contentToken++;
@@ -381,9 +414,71 @@ export function createArticleReader(options: CreateArticleReaderOptions) {
 	}
 
 	function endActiveSession() {
+		const hadReadingSession = Boolean(activeReadingCleanup);
 		activeReadingCleanup?.();
 		activeReadingCleanup = undefined;
+		if (!hadReadingSession && openedEmittedFor !== null) {
+			void flushReadingEvents({ keepalive: false });
+		}
 	}
+
+	async function toggleReadToday() {
+		const id = effectiveArticleId;
+		if (!id || isTogglingQueue) return;
+		isTogglingQueue = true;
+		queueError = null;
+		const currentlyQueued = isQueued;
+		try {
+			if (currentlyQueued) {
+				await readTodayQueue.unqueue(id);
+			} else {
+				if (readTodayQueue.remainingSlots <= 0) {
+					queueError = `Read today is full (${readTodayQueue.cap}). Read or remove one first.`;
+					return;
+				}
+				const result = await readTodayQueue.queue({
+					articleId: id,
+					surface: options.getSurface(),
+					title: articleTitle,
+					url: articleUrl,
+					sourceName: sourceHost,
+				});
+				if (result.outcome === QueueArticleOutcome.QUEUE_FULL) {
+					const cap = result.cap > 0 ? result.cap : readTodayQueue.cap;
+					queueError = `Read today is full (${cap}). Read or remove one first.`;
+				} else if (!isQueueSuccessOutcome(result.outcome)) {
+					queueError = "Could not add to Read today.";
+				}
+			}
+		} catch {
+			queueError = currentlyQueued
+				? "Could not remove from Read today."
+				: "Could not add to Read today.";
+		} finally {
+			isTogglingQueue = false;
+		}
+	}
+
+	// Hydrate Read today queue once when opened directly (e.g. standalone page)
+	$effect(() => {
+		if (queueRefreshAttempted) return;
+		queueRefreshAttempted = true;
+		if (!readTodayQueue.hasLoaded && !readTodayQueue.isLoading) {
+			void readTodayQueue.refresh().catch(() => {});
+		}
+	});
+
+	// Send reading.opened.v1 once per reader article session when a valid article UUID is known
+	$effect(() => {
+		const id = readingEventArticleId;
+		if (!id || openedEmittedFor === id) return;
+		openedEmittedFor = id;
+		recordArticleOpened(
+			id,
+			options.getSurface(),
+			options.getOnArticlesRead?.(),
+		);
+	});
 
 	// Auto-fetch once per article while in idle phase.
 	$effect(() => {
@@ -421,7 +516,7 @@ export function createArticleReader(options: CreateArticleReaderOptions) {
 	$effect(() => {
 		if (
 			!hasLoadedArticleBody ||
-			!effectiveArticleId ||
+			!readingEventArticleId ||
 			!articleBodyEl ||
 			!endSentinelEl
 		) {
@@ -435,17 +530,19 @@ export function createArticleReader(options: CreateArticleReaderOptions) {
 
 		const cleanup = usesContainer
 			? attachElementReadingSession({
-					articleId: effectiveArticleId,
+					articleId: readingEventArticleId,
 					surface: options.getSurface(),
 					bodyElement: articleBodyEl,
 					scrollContainer,
 					endSentinel: endSentinelEl,
+					onReadArticleIds: options.getOnArticlesRead?.(),
 				})
 			: attachWindowReadingSession({
-					articleId: effectiveArticleId,
+					articleId: readingEventArticleId,
 					surface: options.getSurface(),
 					bodyElement: articleBodyEl,
 					endSentinel: endSentinelEl,
+					onReadArticleIds: options.getOnArticlesRead?.(),
 				});
 
 		activeReadingCleanup = cleanup;
@@ -516,6 +613,18 @@ export function createArticleReader(options: CreateArticleReaderOptions) {
 		get canPlaySpeech() {
 			return canPlaySpeech;
 		},
+		get isQueued() {
+			return isQueued;
+		},
+		get isTogglingQueue() {
+			return isTogglingQueue;
+		},
+		get canToggleQueue() {
+			return canToggleQueue;
+		},
+		get queueError() {
+			return queueError;
+		},
 		get speechStatusText() {
 			return speechStatusText;
 		},
@@ -537,6 +646,7 @@ export function createArticleReader(options: CreateArticleReaderOptions) {
 		handleFetch,
 		handleSummarize,
 		toggleSpeech,
+		toggleReadToday,
 		endActiveSession,
 		destroy,
 	};

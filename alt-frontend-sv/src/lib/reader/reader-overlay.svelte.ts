@@ -14,6 +14,7 @@ interface ReaderOverlaySession {
 	isMarkingAsRead?: () => boolean;
 	onArticleIdResolved?: (url: string, articleId: string) => void;
 	onSelectItem?: (item: ReaderArticleItem, index: number) => void;
+	onArticlesRead?: (articleIds: string[]) => void;
 }
 
 const sessions = new Map<string, ReaderOverlaySession>();
@@ -66,6 +67,7 @@ export function openReaderOverlay(context: ReaderOpenContext): void {
 		isMarkingAsRead: context.isMarkingAsRead,
 		onArticleIdResolved: context.onArticleIdResolved,
 		onSelectItem: context.onSelectItem,
+		onArticlesRead: context.onArticlesRead,
 	});
 
 	const routeState: ReaderOverlayRouteState = {

@@ -4,12 +4,14 @@ import {
 	BarChart3,
 	Bell,
 	Bird,
+	BookOpen,
 	CalendarRange,
 	Compass,
 	Eye,
 	Footprints,
 	Heart,
 	Home,
+	Layers,
 	LayoutGrid,
 	Lightbulb,
 	Link as LinkIcon,
@@ -53,10 +55,10 @@ export interface MobileMenuSection {
  * Five top-level destinations following Material 3 / NN/g guidance.
  */
 export const NAV_TABS: NavTab[] = [
-	{ label: "Home", href: "/home", icon: Lightbulb },
-	{ label: "Trail", href: "/knowledge/trail", icon: Footprints },
+	{ label: "Today", href: "/today", icon: BookOpen },
+	{ label: "Swipe", href: "/feeds/swipe/visual-preview", icon: Layers },
+	{ label: "Gallery", href: "/feeds/visual-preview", icon: LayoutGrid },
 	{ label: "Search", href: "/search", icon: Search },
-	{ label: "Augur", href: "/augur", icon: Bird },
 	{ label: "Menu", href: "/menu", icon: Menu },
 ];
 
@@ -69,9 +71,9 @@ export const MOBILE_MENU_SECTIONS: MobileMenuSection[] = [
 	{
 		title: "Browse",
 		items: [
+			{ label: "Home", href: "/home", icon: Lightbulb },
+			{ label: "Trail", href: "/knowledge/trail", icon: Footprints },
 			{ label: "Library", href: "/feeds", icon: Rss },
-			{ label: "Gallery", href: "/feeds/visual-preview", icon: LayoutGrid },
-			{ label: "Swipe", href: "/feeds/swipe/visual-preview", icon: Rss },
 			{ label: "Favorites", href: "/feeds/favorites", icon: Heart },
 			{ label: "Viewed", href: "/feeds/viewed", icon: Eye },
 			{ label: "Tag Trail", href: "/feeds/tag-trail", icon: Compass },
@@ -100,6 +102,7 @@ export const MOBILE_MENU_SECTIONS: MobileMenuSection[] = [
 	{
 		title: "AI & Insights",
 		items: [
+			{ label: "Augur", href: "/augur", icon: Bird },
 			{
 				label: "Augur History",
 				href: "/augur/history",

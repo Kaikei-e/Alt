@@ -113,6 +113,12 @@ function handleSelectFeed(feed: RenderFeed, index: number, _total: number) {
 		currentIndex: resolvedIndex >= 0 ? resolvedIndex : index,
 		onMarkAsRead: handleMarkAsReadInOverlay,
 		isMarkingAsRead: () => isMarkingAsRead || isProcessingMarkAsRead,
+		onArticleIdResolved: (url, articleId) => {
+			feedGridApi?.setFeedArticleId(url, articleId);
+		},
+		onArticlesRead: (articleIds) => {
+			feedGridApi?.markFeedReadByArticleIds(articleIds);
+		},
 	});
 }
 
@@ -172,7 +178,7 @@ function handleMarkAsRead(feedUrl: string) {
 }
 
 const GALLERY_GRID_CLASS =
-	"grid grid-cols-2 gap-2 md:gap-5 lg:grid-cols-3 xl:grid-cols-4";
+	"grid grid-cols-2 gap-2 px-2 md:px-0 md:gap-5 lg:grid-cols-3 xl:grid-cols-4";
 
 function handleFeedGridReady(api: FeedGridApi) {
 	feedGridApi = api;
@@ -205,7 +211,7 @@ function handleFeedGridReady(api: FeedGridApi) {
 	/>
 {:else}
 	<header class="gallery-header">
-		<h1 class="gallery-title">Visual Preview</h1>
+		<h1 class="gallery-title">Gallery</h1>
 		<p class="gallery-subtitle">Browse feeds by their cover</p>
 	</header>
 {/if}
@@ -215,6 +221,7 @@ function handleFeedGridReady(api: FeedGridApi) {
 	unreadOnly={filters.unreadOnly}
 	sortBy={filters.sortBy}
 	excludedFeedLinkIds={filters.excludedFeedLinkIds}
+	excludeQueued={filters.unreadOnly}
 	onReady={handleFeedGridReady}
 	gridClass={GALLERY_GRID_CLASS}
 	gridTestId="gallery-grid"
@@ -237,7 +244,7 @@ function handleFeedGridReady(api: FeedGridApi) {
 		overflow: hidden;
 	}
 	.gallery-header {
-		padding: 0.75rem 0 1rem;
+		padding: 0.75rem 1rem 1rem;
 	}
 
 	.gallery-title {

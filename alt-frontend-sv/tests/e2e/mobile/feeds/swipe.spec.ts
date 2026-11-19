@@ -12,7 +12,7 @@ const SWIPE_FEEDS_RESPONSE = {
 	data: [
 		{
 			id: "feed-1",
-			articleId: "article-1",
+			articleId: "01938e82-7c00-7a7b-9b10-000000000001",
 			title: "AI Trends",
 			description: "Latest AI updates across the ecosystem.",
 			link: "https://example.com/ai-trends",
@@ -22,7 +22,7 @@ const SWIPE_FEEDS_RESPONSE = {
 		},
 		{
 			id: "feed-2",
-			articleId: "article-2",
+			articleId: "01938e82-7c00-7a7b-9b10-000000000002",
 			title: "Systems Engineering",
 			description: "Notes on distributed systems.",
 			link: "https://example.com/systems",
@@ -42,7 +42,7 @@ const VIEWED_FEEDS_EMPTY = {
 };
 
 test.describe("mobile feeds routes - swipe", () => {
-	test("swipe page renders visual-preview card without Keep stamp or Summary button", async ({
+	test("swipe page renders visual-preview card with Pass/Read today buttons and no Keep/Article/Summary", async ({
 		page,
 	}) => {
 		await page.route(CONNECT_RPC_PATHS.getUnreadFeeds, (route) =>
@@ -62,15 +62,19 @@ test.describe("mobile feeds routes - swipe", () => {
 		await expect(
 			card.getByRole("heading", { name: "AI Trends" }),
 		).toBeVisible();
-		await expect(page.getByTestId("action-footer")).toBeVisible();
+		await expect(page.getByTestId("swipe-actions")).toBeVisible();
+		await expect(page.getByRole("button", { name: "Pass" })).toBeVisible();
 		await expect(
-			card.getByRole("button", { name: /^article$/i }),
+			page.getByRole("button", { name: "Read today" }),
 		).toBeVisible();
+		await expect(card.getByRole("button", { name: /^article$/i })).toHaveCount(
+			0,
+		);
 		await expect(card.getByTestId("keep-stamp")).toHaveCount(0);
 		await expect(card.getByRole("button", { name: /summary/i })).toHaveCount(0);
 	});
 
-	test("tapping card or Article opens reader overlay at /articles/<id> and Back restores the same top card", async ({
+	test("tapping card opens reader overlay at /articles/<id> and Back restores the same top card", async ({
 		page,
 	}) => {
 		await page.route(CONNECT_RPC_PATHS.getUnreadFeeds, (route) =>
@@ -83,7 +87,7 @@ test.describe("mobile feeds routes - swipe", () => {
 			fulfillJson(route, {
 				url: "https://example.com/ai-trends",
 				content: "<p>Full AI Trends body from swipe.</p>",
-				articleId: "article-1",
+				articleId: "01938e82-7c00-7a7b-9b10-000000000001",
 			}),
 		);
 
@@ -101,7 +105,7 @@ test.describe("mobile feeds routes - swipe", () => {
 			card.getByRole("heading", { name: "AI Trends" }),
 		).toBeVisible();
 
-		await card.getByRole("button", { name: /^article$/i }).click();
+		await card.getByTestId("unified-scroll-area").click();
 
 		const overlay = page.getByTestId("reader-overlay");
 		await expect(overlay).toBeVisible();
@@ -110,7 +114,7 @@ test.describe("mobile feeds routes - swipe", () => {
 		).toBeVisible();
 		await expect
 			.poll(() => new URL(page.url()).pathname)
-			.toBe("/articles/article-123");
+			.toBe("/articles/01938e82-7c00-7a7b-9b10-000000000123");
 		expect(markAsReadCalled).toBe(false);
 
 		await page.goBack();
@@ -170,9 +174,7 @@ test.describe("mobile feeds routes - swipe", () => {
 		// SSR loads 2 cards ("AI Trends", "Svelte 5 Tips") and client loadMore
 		// appends "Feed Without Article".
 		const swipeLeftOnce = async () => {
-			await expect(
-				page.getByTestId("swipe-progress-indicator"),
-			).toBeHidden();
+			await expect(page.getByTestId("swipe-progress-indicator")).toBeHidden();
 			const box = await card.boundingBox();
 			if (!box) throw new Error("Card not found");
 			await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);

@@ -45,6 +45,7 @@ const reader = createArticleReader({
 	onArticleIdResolved: (articleId, url) => {
 		updateReaderOverlayArticleId(articleId, url);
 	},
+	getOnArticlesRead: () => session?.onArticlesRead,
 });
 
 // Reset overlay scroll position when navigating to another article.
@@ -235,9 +236,9 @@ async function handleMarkAsRead() {
 	.overlay-bar {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
+		gap: 0.25rem;
 		min-height: 56px;
-		padding: calc(env(safe-area-inset-top, 0px) + 0.5rem) 1rem 0.5rem;
+		padding: calc(env(safe-area-inset-top, 0px) + 0.5rem) 0.5rem 0.5rem;
 		background: var(--surface-bg, #faf9f7);
 		border-bottom: 1px solid var(--surface-border, #c8c8c8);
 		flex-shrink: 0;
@@ -246,7 +247,7 @@ async function handleMarkAsRead() {
 	.nav-cluster {
 		display: inline-flex;
 		align-items: center;
-		gap: 0.25rem;
+		gap: 0;
 	}
 
 	.overlay-body {
@@ -276,7 +277,12 @@ async function handleMarkAsRead() {
 
 	@media (min-width: 640px) {
 		.overlay-bar {
+			gap: 0.5rem;
 			padding-inline: 1.5rem;
+		}
+
+		.nav-cluster {
+			gap: 0.25rem;
 		}
 
 		.overlay-body {

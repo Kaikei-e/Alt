@@ -26,4 +26,5 @@ export interface ReaderOpenContext {
 	isMarkingAsRead?: () => boolean;
 	onArticleIdResolved?: (url: string, articleId: string) => void;
 	onSelectItem?: (item: ReaderArticleItem, index: number) => void;
+	onArticlesRead?: (articleIds: string[]) => void;
 }

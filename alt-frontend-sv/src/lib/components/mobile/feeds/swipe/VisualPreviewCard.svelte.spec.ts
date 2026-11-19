@@ -58,7 +58,7 @@ describe("VisualPreviewCard", () => {
 	});
 
 	describe("rendering and removed in-card reader controls", () => {
-		it("renders card title, description, and Article button without Keep stamp or Summary button", async () => {
+		it("renders card title and description without Keep stamp, Article button, or Summary button", async () => {
 			render(VisualPreviewCard, {
 				props: defaultProps,
 			});
@@ -70,18 +70,15 @@ describe("VisualPreviewCard", () => {
 				.element(page.getByTestId("visual-preview-card"))
 				.toBeInTheDocument();
 			await expect
-				.element(page.getByTestId("action-footer"))
-				.toBeInTheDocument();
-			await expect
-				.element(page.getByRole("button", { name: /^article$/i }))
-				.toBeInTheDocument();
-			await expect
 				.element(page.getByText(mockFeed.description))
 				.toBeInTheDocument();
-			await expect
-				.element(page.getByText("Swipe to mark as read"))
-				.toBeInTheDocument();
 
+			await expect
+				.element(page.getByTestId("action-footer"))
+				.not.toBeInTheDocument();
+			await expect
+				.element(page.getByRole("button", { name: /^article$/i }))
+				.not.toBeInTheDocument();
 			await expect
 				.element(page.getByTestId("keep-stamp"))
 				.not.toBeInTheDocument();
@@ -92,19 +89,54 @@ describe("VisualPreviewCard", () => {
 				.element(page.getByTestId("summary-speech-button"))
 				.not.toBeInTheDocument();
 		});
+
+		it("formats the dateline compactly without time of day", async () => {
+			render(VisualPreviewCard, {
+				props: defaultProps,
+			});
+
+			await expect.element(page.getByText("Jan 15, 2025")).toBeInTheDocument();
+		});
+	});
+
+	describe("drag direction labels", () => {
+		it("shows Pass while dragging left and Read today while dragging right", async () => {
+			render(VisualPreviewCard, {
+				props: defaultProps,
+			});
+
+			const card = page.getByTestId("visual-preview-card").element();
+
+			card.dispatchEvent(
+				new CustomEvent("swipe:move", {
+					detail: { deltaX: -48, deltaY: 0 },
+				}),
+			);
+			await expect
+				.element(page.getByTestId("swipe-direction-label"))
+				.toHaveTextContent("Pass");
+
+			card.dispatchEvent(
+				new CustomEvent("swipe:move", {
+					detail: { deltaX: 48, deltaY: 0 },
+				}),
+			);
+			await expect
+				.element(page.getByTestId("swipe-direction-label"))
+				.toHaveTextContent("Read today");
+
+			card.dispatchEvent(
+				new CustomEvent("swipe:end", {
+					detail: { deltaX: 0, deltaY: 0 },
+				}),
+			);
+			await expect
+				.element(page.getByTestId("swipe-direction-label"))
+				.not.toBeInTheDocument();
+		});
 	});
 
 	describe("opening the reader overlay", () => {
-		it("calls onOpenArticle when Article button is clicked", async () => {
-			const onOpenArticle = vi.fn();
-			render(VisualPreviewCard, {
-				props: { ...defaultProps, onOpenArticle },
-			});
-
-			await page.getByRole("button", { name: /^article$/i }).click();
-			expect(onOpenArticle).toHaveBeenCalledTimes(1);
-		});
-
 		it("calls onOpenArticle when the card surface is tapped", async () => {
 			const onOpenArticle = vi.fn();
 			render(VisualPreviewCard, {
@@ -309,6 +341,26 @@ describe("VisualPreviewCard", () => {
 
 			const card = page.getByTestId("visual-preview-card");
 			await expect.element(card).toHaveAttribute("aria-busy", "true");
+		});
+		it("carries feed.id in onDismiss and reports dismissing state during swipe animation", async () => {
+			const onDismiss = vi.fn().mockResolvedValue(true);
+			const onDismissingChange = vi.fn();
+			render(VisualPreviewCard, {
+				props: { ...defaultProps, onDismiss, onDismissingChange },
+			});
+
+			const card = page.getByTestId("visual-preview-card").element();
+			card.dispatchEvent(
+				new CustomEvent("swipe", { detail: { direction: "left" } }),
+			);
+
+			// onDismiss fires only after the exit spring settles, which is frame-paced and can outlast the default 1 s wait on a loaded runner.
+			await vi.waitFor(() => expect(onDismiss).toHaveBeenCalledTimes(1), {
+				timeout: 5000,
+			});
+			expect(onDismiss).toHaveBeenCalledWith(-1, mockFeed.id);
+			expect(onDismissingChange).toHaveBeenNthCalledWith(1, true, mockFeed.id);
+			expect(onDismissingChange).toHaveBeenLastCalledWith(false, mockFeed.id);
 		});
 	});
 });

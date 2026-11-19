@@ -52,12 +52,13 @@ test.describe("Mobile Swipe Feed - Page Object Model Tests", () => {
 			);
 		});
 
-		test("displays action footer with Article button", async () => {
+		test("displays Pass and Read today buttons under the card", async () => {
 			await swipePage.goto();
 			await swipePage.waitForPageReady();
 
 			await expect(swipePage.actionFooter).toBeVisible();
-			await expect(swipePage.articleButton).toBeVisible();
+			await expect(swipePage.passButton).toBeVisible();
+			await expect(swipePage.queueButton).toBeVisible();
 		});
 
 		test("external link has correct URL", async () => {
@@ -84,7 +85,8 @@ test.describe("Mobile Swipe Feed - Page Object Model Tests", () => {
 			await swipePage.goto();
 			await swipePage.waitForPageReady();
 
-			await expect(swipePage.articleButton).toHaveAccessibleName(/article/i);
+			await expect(swipePage.passButton).toHaveAccessibleName("Pass");
+			await expect(swipePage.queueButton).toHaveAccessibleName("Read today");
 		});
 	});
 
@@ -113,36 +115,50 @@ test.describe("Mobile Swipe Feed - Page Object Model Tests", () => {
 			await expect.poll(() => markAsReadCalled, { timeout: 5000 }).toBe(true);
 		});
 
-		test("swipe right marks article as read", async ({ page }) => {
+		test("swipe right queues article for Read today without marking read", async ({
+			page,
+		}) => {
 			let markAsReadCalled = false;
+			let queueArticleCalled = false;
 			await page.route(CONNECT_RPC_PATHS.markAsRead, (route) => {
 				markAsReadCalled = true;
 				return fulfillJson(route, CONNECT_MARK_AS_READ_RESPONSE);
+			});
+			await page.route(CONNECT_RPC_PATHS.getReadTodayQueue, (route) =>
+				fulfillJson(route, { items: [], cap: 7, readCountSince: 0 }),
+			);
+			await page.route(CONNECT_RPC_PATHS.queueArticle, (route) => {
+				queueArticleCalled = true;
+				return fulfillJson(route, {
+					outcome: "QUEUE_ARTICLE_OUTCOME_QUEUED",
+					items: [],
+					cap: 7,
+				});
 			});
 
 			await swipePage.goto();
 			await swipePage.waitForPageReady();
 
 			await swipePage.swipeRight();
-			// Let the dismiss animation finish and the next card mount;
-			// the first dismissal is held in the undo window, not committed.
 			await page.waitForTimeout(500);
+			expect(queueArticleCalled).toBe(false);
 			expect(markAsReadCalled).toBe(false);
 
 			await swipePage.swipeRight();
 
-			await expect.poll(() => markAsReadCalled, { timeout: 5000 }).toBe(true);
+			await expect.poll(() => queueArticleCalled, { timeout: 5000 }).toBe(true);
+			expect(markAsReadCalled).toBe(false);
 		});
 	});
 
 	test.describe("button interactions", () => {
-		test("Article button opens reader overlay and Back restores the card", async ({
+		test("tapping card opens reader overlay and Back restores the card", async ({
 			page,
 		}) => {
 			await swipePage.goto();
 			await swipePage.waitForPageReady();
 
-			await swipePage.articleButton.click();
+			await swipePage.toggleArticleContent();
 
 			const overlay = page.getByTestId("reader-overlay");
 			await expect(overlay).toBeVisible();

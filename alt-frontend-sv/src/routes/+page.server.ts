@@ -1,9 +1,9 @@
 import { redirect, type ServerLoad } from "@sveltejs/kit";
 
 /**
- * Knowledge Home is the primary surface for authenticated users.
+ * Today is the primary landing surface for authenticated users.
  *
- * - Authenticated users → `/home`
+ * - Authenticated users → `/today`
  * - Unauthenticated visitors fall through to the landing page (`+page.svelte`)
  *
  * Server-side redirect avoids the flash of the landing UI for authenticated
@@ -14,5 +14,5 @@ export const load: ServerLoad = async ({ locals }) => {
 		return {};
 	}
 
-	throw redirect(303, "/home");
+	throw redirect(303, "/today");
 };

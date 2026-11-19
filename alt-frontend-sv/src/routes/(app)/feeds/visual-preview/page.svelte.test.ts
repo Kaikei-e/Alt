@@ -70,12 +70,16 @@ import {
 } from "#lib/api/client/articles.js";
 import {
 	getAllFeedsWithCursorClient,
+	getFeedsWithCursorClient,
 	listSubscriptionsClient,
 	updateFeedReadStatusClient,
 } from "#lib/api/client/feeds.js";
 import { trackHomeActionClient } from "#lib/api/client/knowledge_home.js";
 import { getItemBranches } from "#lib/connect/knowledge_trail.js";
-import { recordReadingEvents } from "#lib/connect/reading.js";
+import {
+	getReadTodayQueue,
+	recordReadingEvents,
+} from "#lib/connect/reading.js";
 import { createClientTransport } from "#lib/connect/transport-client.js";
 import { MARK_AS_READ_FAILED_MESSAGE } from "#lib/feeds/mark-as-read-feedback.js";
 import ArticleReaderOverlay from "#lib/reader/ArticleReaderOverlay.svelte";
@@ -84,12 +88,15 @@ import {
 	flushReadingEvents,
 	ReadingSurface,
 } from "#lib/reading/instrumentation.js";
+import { readTodayQueue } from "#lib/reading/read-today-queue.svelte.js";
 import type { RenderFeed } from "#lib/schema/feed.js";
 import { createRenderFeed } from "../../../../../tests/fixtures/feeds";
 import Page from "./+page.svelte";
 
 const PORTRAIT = { width: 393, height: 851 };
 const LANDSCAPE = { width: 851, height: 393 };
+
+const GALLERY_ARTICLE_UUID = "01938e82-7c00-7a7b-9b10-000000000111";
 
 const FEEDS: RenderFeed[] = Array.from({ length: 6 }, (_, i) =>
 	createRenderFeed(`feed-${i + 1}`, `https://example.com/feed-${i + 1}`),
@@ -126,6 +133,13 @@ describe("Visual Preview page continuity across a rotation", () => {
 
 	beforeEach(async () => {
 		resetReaderOverlaySessions();
+		readTodayQueue.reset();
+		vi.mocked(getReadTodayQueue).mockReset();
+		vi.mocked(getReadTodayQueue).mockResolvedValue({
+			items: [],
+			cap: 7,
+			readCountSince: 0,
+		});
 		currentPageState = {};
 		currentPageURL = new URL("http://localhost/feeds/visual-preview");
 		mockPushState.mockClear();
@@ -139,12 +153,14 @@ describe("Visual Preview page continuity across a rotation", () => {
 		vi.mocked(recordReadingEvents).mockResolvedValue({
 			accepted: 0,
 			duplicates: 0,
+			readArticleIds: [],
 		});
 		await flushReadingEvents();
 		vi.mocked(recordReadingEvents).mockReset();
 		vi.mocked(recordReadingEvents).mockResolvedValue({
 			accepted: 1,
 			duplicates: 0,
+			readArticleIds: [],
 		});
 		vi.mocked(getAllFeedsWithCursorClient).mockReset();
 		vi.mocked(getAllFeedsWithCursorClient).mockResolvedValue({
@@ -152,6 +168,13 @@ describe("Visual Preview page continuity across a rotation", () => {
 			next_cursor: undefined,
 			has_more: false,
 		} as unknown as Awaited<ReturnType<typeof getAllFeedsWithCursorClient>>);
+
+		vi.mocked(getFeedsWithCursorClient).mockReset();
+		vi.mocked(getFeedsWithCursorClient).mockResolvedValue({
+			data: FEEDS,
+			next_cursor: undefined,
+			has_more: false,
+		} as unknown as Awaited<ReturnType<typeof getFeedsWithCursorClient>>);
 
 		vi.mocked(listSubscriptionsClient).mockReset();
 		vi.mocked(listSubscriptionsClient).mockResolvedValue([]);
@@ -162,7 +185,7 @@ describe("Visual Preview page continuity across a rotation", () => {
 		vi.mocked(getFeedContentOnTheFlyClient).mockReset();
 		vi.mocked(getFeedContentOnTheFlyClient).mockResolvedValue({
 			content: "<p>Gallery article body</p>",
-			article_id: "art-1",
+			article_id: GALLERY_ARTICLE_UUID,
 			og_image_url: "",
 			og_image_proxy_url: "",
 		});
@@ -198,7 +221,7 @@ describe("Visual Preview page continuity across a rotation", () => {
 		await expect.element(page.getByTestId("reader-overlay")).toBeVisible();
 		expect(mockPushState).toHaveBeenCalledTimes(1);
 		await vi.waitFor(() =>
-			expect(currentPageURL.pathname).toBe("/articles/art-1"),
+			expect(currentPageURL.pathname).toBe(`/articles/${GALLERY_ARTICLE_UUID}`),
 		);
 		expect(trackHomeActionClient).not.toHaveBeenCalled();
 		expect(updateFeedReadStatusClient).not.toHaveBeenCalled();
@@ -317,5 +340,109 @@ describe("Visual Preview page continuity across a rotation", () => {
 		expect(surfaceViews[0]?.event?.value).toEqual(
 			expect.objectContaining({ surface: ReadingSurface.GALLERY }),
 		);
+	});
+
+	it("hides queued articles from the Gallery only in the unread view without marking them read and restores them when unqueued", async () => {
+		vi.mocked(getReadTodayQueue).mockResolvedValueOnce({
+			items: [
+				{
+					articleId: FIRST.articleId ?? "art-1",
+					title: FIRST.title,
+					url: FIRST.normalizedUrl,
+					sourceName: "Source",
+					imageUrl: "",
+					queuedAt: new Date(),
+					expiresAt: new Date(Date.now() + 3600_000),
+				},
+			],
+			cap: 7,
+			readCountSince: 0,
+		});
+
+		await page.viewport(1024, 800);
+		render(Page);
+		await settle(400);
+
+		// Default (all feeds, unreadOnly=false) keeps queued articles visible
+		expect(cardLabels()).toContain(openLabel(FIRST));
+		expect(cardLabels()).toHaveLength(FEEDS.length);
+
+		// Switching to Unread Only hides queued articles without marking them read
+		await page.getByLabelText("Unread Only").click();
+		await settle(400);
+
+		expect(cardLabels()).not.toContain(openLabel(FIRST));
+		expect(cardLabels()).toHaveLength(FEEDS.length - 1);
+		expect(updateFeedReadStatusClient).not.toHaveBeenCalled();
+
+		// When the item is removed/expired and the queue refreshes, it shows up again
+		vi.mocked(getReadTodayQueue).mockResolvedValueOnce({
+			items: [],
+			cap: 7,
+			readCountSince: 0,
+		});
+		await readTodayQueue.refresh();
+		await settle(100);
+
+		expect(cardLabels()).toContain(openLabel(FIRST));
+		expect(cardLabels()).toHaveLength(FEEDS.length);
+	});
+
+	it("marks a gallery tile as read when closing the reader overlay flushes readArticleIds", async () => {
+		vi.mocked(recordReadingEvents).mockResolvedValueOnce({
+			accepted: 1,
+			duplicates: 0,
+			readArticleIds: [GALLERY_ARTICLE_UUID],
+		});
+
+		await page.viewport(PORTRAIT.width, PORTRAIT.height);
+		render(Page);
+		render(ArticleReaderOverlay);
+		await settle(400);
+
+		const tile = page.getByRole("button", { name: openLabel(FIRST) });
+		await expect.element(tile).toHaveAttribute("data-read", "false");
+
+		await tile.click();
+		await expect.element(page.getByTestId("reader-overlay")).toBeVisible();
+		await expect
+			.element(page.getByText("Gallery article body"))
+			.toBeInTheDocument();
+
+		await page.getByTestId("reader-overlay-close").click();
+
+		await vi.waitFor(() =>
+			expect(tile.element().getAttribute("data-read")).toBe("true"),
+		);
+	});
+
+	it("shows Gallery mobile heading with edge padding at 393px and preserves desktop Visual Preview header", async () => {
+		await page.viewport(PORTRAIT.width, PORTRAIT.height);
+		render(Page);
+		await settle(400);
+
+		const mobileHeading = page.getByRole("heading", {
+			level: 1,
+			name: "Gallery",
+		});
+		await expect.element(mobileHeading).toBeInTheDocument();
+
+		const headerEl = document.querySelector<HTMLElement>(".gallery-header");
+		expect(headerEl).not.toBeNull();
+		if (headerEl) {
+			expect(getComputedStyle(headerEl).paddingLeft).toBe("16px");
+			expect(getComputedStyle(headerEl).paddingRight).toBe("16px");
+		}
+
+		const gridEl = page.getByTestId("gallery-grid").element();
+		expect(gridEl.className).toContain("px-2");
+		expect(gridEl.className).toContain("md:px-0");
+
+		await page.viewport(1024, 800);
+		await settle(250);
+
+		await expect
+			.element(page.getByRole("heading", { level: 1, name: "Visual Preview" }))
+			.toBeInTheDocument();
 	});
 });

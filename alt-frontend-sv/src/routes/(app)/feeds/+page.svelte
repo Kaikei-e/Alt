@@ -145,6 +145,12 @@ function handleSelectFeed(feed: RenderFeed, index: number, _total: number) {
 		currentIndex: resolvedIndex >= 0 ? resolvedIndex : index,
 		onMarkAsRead: handleMarkAsReadInOverlay,
 		isMarkingAsRead: () => isMarkingAsRead || isProcessingMarkAsRead,
+		onArticleIdResolved: (url, articleId) => {
+			feedGridApi?.setFeedArticleId(url, articleId);
+		},
+		onArticlesRead: (articleIds) => {
+			feedGridApi?.markFeedReadByArticleIds(articleIds);
+		},
 	});
 }
 
@@ -315,6 +321,7 @@ const WIRE_LIST_CLASS =
 			unreadOnly={filters.unreadOnly}
 			sortBy={filters.sortBy}
 			excludedFeedLinkIds={filters.excludedFeedLinkIds}
+			excludeQueued={filters.unreadOnly}
 			onReady={handleFeedGridReady}
 			initialFeeds={seededFeeds}
 			gridClass={WIRE_LIST_CLASS}

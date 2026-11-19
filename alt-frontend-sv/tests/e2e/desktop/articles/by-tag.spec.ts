@@ -100,7 +100,7 @@ test.describe("Desktop Tag Articles", () => {
 		).toBeVisible();
 		await expect
 			.poll(() => new URL(page.url()).pathname)
-			.toBe("/articles/article-123");
+			.toBe("/articles/01938e82-7c00-7a7b-9b10-000000000123");
 	});
 
 	test("detail panel auto-fetches content on open", async ({
@@ -156,7 +156,7 @@ test.describe("Desktop Tag Articles", () => {
 		await expect(desktopTagArticlesPage.detailPanel).toBeVisible();
 		await expect
 			.poll(() => new URL(page.url()).pathname)
-			.toBe("/articles/article-123");
+			.toBe("/articles/01938e82-7c00-7a7b-9b10-000000000123");
 
 		await page.goBack();
 		await expect(desktopTagArticlesPage.detailPanel).not.toBeVisible();

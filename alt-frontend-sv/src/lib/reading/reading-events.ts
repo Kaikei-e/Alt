@@ -7,6 +7,7 @@ import {
 import { Code, ConnectError, type Transport } from "@connectrpc/connect";
 import { recordReadingEvents } from "#lib/connect/reading.js";
 import {
+	OpenedSchema,
 	ReachedEndSchema,
 	type ReadingEvent,
 	ReadingEventSchema,
@@ -21,6 +22,14 @@ export { type ReadingEvent, ReadingSurface };
 export const MAX_FLUSH_BATCH_SIZE = 50;
 export const MAX_KEEPALIVE_BATCH_SIZE = 20;
 export const MAX_PENDING_EVENTS = 200;
+export const MAX_RETRY_ATTEMPTS = 3;
+
+const UUID_PATTERN =
+	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isUuid(value: string | null | undefined): value is string {
+	return typeof value === "string" && UUID_PATTERN.test(value.trim());
+}
 
 const PERMANENT_ERROR_CODES = new Set<Code>([
 	Code.InvalidArgument,
@@ -30,6 +39,23 @@ const PERMANENT_ERROR_CODES = new Set<Code>([
 	Code.Unimplemented,
 	Code.NotFound,
 ]);
+
+const UNREACHABLE_ERROR_CODES = new Set<Code>([
+	Code.Unavailable,
+	Code.DeadlineExceeded,
+	Code.Canceled,
+	Code.Aborted,
+]);
+
+function isUnreachableError(err: unknown, connectErr: ConnectError): boolean {
+	if (UNREACHABLE_ERROR_CODES.has(connectErr.code)) {
+		return true;
+	}
+	if (connectErr.code === Code.Unknown) {
+		return err instanceof TypeError || connectErr.cause instanceof TypeError;
+	}
+	return false;
+}
 
 export interface SessionEndedParams {
 	articleId: string;
@@ -52,11 +78,13 @@ export interface ReadingEventQueueOptions {
 		events: ReadingEvent[],
 		options: { keepalive: boolean },
 	) => Promise<unknown>;
+	onReadArticleIds?: (articleIds: string[]) => void;
 }
 
 export interface ReadingEventQueue {
 	readonly size: number;
 	enqueueSurfaceViewed(surface: ReadingSurface): void;
+	enqueueOpened(articleId: string, surface: ReadingSurface): void;
 	enqueueReachedEnd(articleId: string, surface: ReadingSurface): void;
 	enqueueSessionEnded(params: SessionEndedParams): void;
 	flush(options?: FlushOptions): Promise<void>;
@@ -110,22 +138,72 @@ export function createReadingEventQueue(
 		);
 	}
 
+	interface RetryBatch {
+		events: ReadingEvent[];
+		attempts: number;
+	}
+
+	const retryBatches: RetryBatch[] = [];
 	const pending: ReadingEvent[] = [];
 
-	const enforceQueueCap = () => {
-		if (pending.length > MAX_PENDING_EVENTS) {
-			pending.splice(0, pending.length - MAX_PENDING_EVENTS);
+	const totalSize = () => {
+		let total = pending.length;
+		for (const batch of retryBatches) {
+			total += batch.events.length;
 		}
+		return total;
+	};
+
+	const warnDropped = (count: number, reason: string) => {
+		if (count <= 0) {
+			return;
+		}
+		console.warn(
+			`[reading-events] Dropped ${count} reading event(s) (${reason})`,
+		);
+	};
+
+	const enforceQueueCap = () => {
+		let excess = totalSize() - MAX_PENDING_EVENTS;
+		if (excess <= 0) {
+			return;
+		}
+		let evicted = 0;
+		while (excess > 0 && retryBatches.length > 0) {
+			const oldest = retryBatches[0];
+			if (!oldest) break;
+			if (oldest.events.length <= excess) {
+				evicted += oldest.events.length;
+				excess -= oldest.events.length;
+				retryBatches.shift();
+			} else {
+				oldest.events.splice(0, excess);
+				evicted += excess;
+				excess = 0;
+			}
+		}
+		if (excess > 0 && pending.length > 0) {
+			const dropFromPending = Math.min(excess, pending.length);
+			pending.splice(0, dropFromPending);
+			evicted += dropFromPending;
+		}
+		warnDropped(evicted, "queue capacity exceeded");
 	};
 
 	const enqueue = (event: ReadingEvent) => {
+		if (
+			event.event.case !== "surfaceViewed" &&
+			!isUuid(event.event.value?.articleId)
+		) {
+			return;
+		}
 		pending.push(event);
 		enforceQueueCap();
 	};
 
 	return {
 		get size() {
-			return pending.length;
+			return totalSize();
 		},
 		enqueueSurfaceViewed(surface: ReadingSurface) {
 			enqueue(
@@ -139,19 +217,46 @@ export function createReadingEventQueue(
 				}),
 			);
 		},
+		enqueueOpened(articleId: string, surface: ReadingSurface) {
+			const normalizedId = articleId.trim();
+			if (!isUuid(normalizedId)) {
+				return;
+			}
+			enqueue(
+				create(ReadingEventSchema, {
+					clientEventId: generateId(),
+					occurredAt: toTimestamp(clock()),
+					event: {
+						case: "opened",
+						value: create(OpenedSchema, { articleId: normalizedId, surface }),
+					},
+				}),
+			);
+		},
 		enqueueReachedEnd(articleId: string, surface: ReadingSurface) {
+			const normalizedId = articleId.trim();
+			if (!isUuid(normalizedId)) {
+				return;
+			}
 			enqueue(
 				create(ReadingEventSchema, {
 					clientEventId: generateId(),
 					occurredAt: toTimestamp(clock()),
 					event: {
 						case: "reachedEnd",
-						value: create(ReachedEndSchema, { articleId, surface }),
+						value: create(ReachedEndSchema, {
+							articleId: normalizedId,
+							surface,
+						}),
 					},
 				}),
 			);
 		},
 		enqueueSessionEnded(params: SessionEndedParams) {
+			const normalizedId = params.articleId.trim();
+			if (!isUuid(normalizedId)) {
+				return;
+			}
 			enqueue(
 				create(ReadingEventSchema, {
 					clientEventId: generateId(),
@@ -159,7 +264,7 @@ export function createReadingEventQueue(
 					event: {
 						case: "sessionEnded",
 						value: create(SessionEndedSchema, {
-							articleId: params.articleId,
+							articleId: normalizedId,
 							surface: params.surface,
 							activeDwellMs: normalizeDwellMs(params.activeDwellMs),
 							maxScrollRatio: clampScrollRatio(params.maxScrollRatio),
@@ -175,19 +280,77 @@ export function createReadingEventQueue(
 			const batchLimit = keepalive
 				? MAX_KEEPALIVE_BATCH_SIZE
 				: MAX_FLUSH_BATCH_SIZE;
+			const attemptedThisFlush = new Set<RetryBatch>();
 
-			while (pending.length > 0) {
-				const batch = pending.splice(0, batchLimit);
+			const takeNextBatch = (): RetryBatch | null => {
+				const retryIndex = retryBatches.findIndex(
+					(batch) => !attemptedThisFlush.has(batch),
+				);
+				if (retryIndex !== -1) {
+					const retryBatch = retryBatches[retryIndex];
+					if (retryBatch) {
+						if (retryBatch.events.length <= batchLimit) {
+							retryBatches.splice(retryIndex, 1);
+							return retryBatch;
+						}
+						return {
+							events: retryBatch.events.splice(0, batchLimit),
+							attempts: retryBatch.attempts,
+						};
+					}
+				}
+				if (pending.length > 0) {
+					return {
+						events: pending.splice(0, batchLimit),
+						attempts: 0,
+					};
+				}
+				return null;
+			};
+
+			while (true) {
+				const batch = takeNextBatch();
+				if (!batch) {
+					break;
+				}
 				try {
-					await send(batch, { keepalive });
+					const response = await send(batch.events, { keepalive });
+					if (
+						response &&
+						typeof response === "object" &&
+						"readArticleIds" in response &&
+						Array.isArray(response.readArticleIds) &&
+						response.readArticleIds.length > 0
+					) {
+						const ids = response.readArticleIds.filter(
+							(id): id is string =>
+								typeof id === "string" && id.trim().length > 0,
+						);
+						if (ids.length > 0) {
+							options.onReadArticleIds?.(ids);
+						}
+					}
 				} catch (err) {
-					if (PERMANENT_ERROR_CODES.has(ConnectError.from(err).code)) {
+					const connectErr = ConnectError.from(err);
+					if (PERMANENT_ERROR_CODES.has(connectErr.code)) {
 						continue;
 					}
-					// Server deduplicates by client_event_id, so transient failures return to the head for retry.
-					pending.unshift(...batch);
+					const unreachable = isUnreachableError(err, connectErr);
+					const nextAttempts = unreachable
+						? batch.attempts
+						: batch.attempts + 1;
+					if (!unreachable && nextAttempts >= MAX_RETRY_ATTEMPTS) {
+						warnDropped(batch.events.length, "retry limit reached");
+						continue;
+					}
+					// Server deduplicates by client_event_id; retain for a later flush without blocking batches behind it.
+					const retryEntry: RetryBatch = {
+						events: batch.events,
+						attempts: nextAttempts,
+					};
+					attemptedThisFlush.add(retryEntry);
+					retryBatches.push(retryEntry);
 					enforceQueueCap();
-					return;
 				}
 			}
 		},
