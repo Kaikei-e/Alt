@@ -441,7 +441,7 @@ func TestRebuildProjection_DoesNotLogFinishOnFailure(t *testing.T) {
 // exactly the allowlist and nothing that reaches the event log.
 func TestRebuildTargets_ListsOnlyProjections(t *testing.T) {
 	targets := RebuildTargets()
-	require.Len(t, targets, 2)
+	require.Len(t, targets, 3)
 
 	names := make([]string, 0, len(targets))
 	for _, tgt := range targets {
@@ -451,5 +451,5 @@ func TestRebuildTargets_ListsOnlyProjections(t *testing.T) {
 				"%s lists a source-of-truth table", tgt.Name())
 		}
 	}
-	assert.ElementsMatch(t, []string{"knowledge-home", "knowledge-trail"}, names)
+	assert.ElementsMatch(t, []string{"knowledge-home", "knowledge-trail", "reading"}, names)
 }

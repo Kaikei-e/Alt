@@ -15,21 +15,25 @@ import (
 )
 
 func (g *FeedGateway) FetchAllFeedsListCursor(ctx context.Context, cursor *time.Time, limit int, excludeFeedLinkIDs []uuid.UUID) ([]*models.Feed, error) {
-	return g.listCursor(ctx, datahubv1.FeedScope_FEED_SCOPE_ALL, cursor, limit, excludeFeedLinkIDs)
+	return g.listCursor(ctx, datahubv1.FeedScope_FEED_SCOPE_ALL, cursor, nil, limit, excludeFeedLinkIDs)
 }
 
 func (g *FeedGateway) FetchUnreadFeedsListCursor(ctx context.Context, cursor *time.Time, limit int, excludeFeedLinkIDs []uuid.UUID) ([]*models.Feed, error) {
-	return g.listCursor(ctx, datahubv1.FeedScope_FEED_SCOPE_UNREAD, cursor, limit, excludeFeedLinkIDs)
+	return g.listCursor(ctx, datahubv1.FeedScope_FEED_SCOPE_UNREAD, cursor, nil, limit, excludeFeedLinkIDs)
+}
+
+func (g *FeedGateway) FetchUnreadFeedsListCursorWithID(ctx context.Context, cursor *time.Time, cursorID *uuid.UUID, limit int, excludeFeedLinkIDs []uuid.UUID) ([]*models.Feed, error) {
+	return g.listCursor(ctx, datahubv1.FeedScope_FEED_SCOPE_UNREAD, cursor, cursorID, limit, excludeFeedLinkIDs)
 }
 
 // FetchReadFeedsListCursor pages by read_at, so it takes no exclusion list —
 // the "hide this source" filter only exists on the two timeline scopes.
 func (g *FeedGateway) FetchReadFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*models.Feed, error) {
-	return g.listCursor(ctx, datahubv1.FeedScope_FEED_SCOPE_READ, cursor, limit, nil)
+	return g.listCursor(ctx, datahubv1.FeedScope_FEED_SCOPE_READ, cursor, nil, limit, nil)
 }
 
 func (g *FeedGateway) FetchFavoriteFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*models.Feed, error) {
-	return g.listCursor(ctx, datahubv1.FeedScope_FEED_SCOPE_FAVORITE, cursor, limit, nil)
+	return g.listCursor(ctx, datahubv1.FeedScope_FEED_SCOPE_FAVORITE, cursor, nil, limit, nil)
 }
 
 // listCursor refuses to run without a signed-in user rather than sending an
@@ -38,7 +42,7 @@ func (g *FeedGateway) FetchFavoriteFeedsListCursor(ctx context.Context, cursor *
 // The four scopes are all "one person's feeds". A request with no user has no
 // meaning to fall back to, and failing here names the missing thing instead of
 // surfacing a Connect error from the other side of the network.
-func (g *FeedGateway) listCursor(ctx context.Context, scope datahubv1.FeedScope, cursor *time.Time, limit int, excludeFeedLinkIDs []uuid.UUID) ([]*models.Feed, error) {
+func (g *FeedGateway) listCursor(ctx context.Context, scope datahubv1.FeedScope, cursor *time.Time, cursorID *uuid.UUID, limit int, excludeFeedLinkIDs []uuid.UUID) ([]*models.Feed, error) {
 	user, err := domain.GetUserFromContext(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("user context required to list feeds (%s): %w", scope.String(), err)
@@ -49,10 +53,17 @@ func (g *FeedGateway) listCursor(ctx context.Context, scope datahubv1.FeedScope,
 		excludes = append(excludes, id.String())
 	}
 
+	var pbCursorID *string
+	if cursorID != nil {
+		s := cursorID.String()
+		pbCursorID = &s
+	}
+
 	resp, err := g.client.ListFeedsCursor(ctx, connect.NewRequest(&datahubv1.ListFeedsCursorRequest{
 		Scope:              scope,
 		UserId:             user.UserID.String(),
 		Cursor:             timePtrToProto(cursor),
+		CursorId:           pbCursorID,
 		Limit:              safeconv.Int32(limit),
 		ExcludeFeedLinkIds: excludes,
 	}))

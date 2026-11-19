@@ -65,6 +65,8 @@ type Config struct {
 	TrailProjectorMaxBatches     int
 	HomeProjectorBatchSize       int
 	HomeProjectorMaxBatches      int
+	ReadingProjectorBatchSize    int
+	ReadingProjectorMaxBatches   int
 }
 
 // Load reads configuration from environment variables.
@@ -197,6 +199,8 @@ func Load() (*Config, error) {
 		TrailProjectorMaxBatches:     parseIntEnv("KNOWLEDGE_SOVEREIGN_TRAIL_PROJECTOR_MAX_BATCHES_PER_TICK", 4),
 		HomeProjectorBatchSize:       parseIntEnv("KNOWLEDGE_SOVEREIGN_HOME_PROJECTOR_BATCH_SIZE", 500),
 		HomeProjectorMaxBatches:      parseIntEnv("KNOWLEDGE_SOVEREIGN_HOME_PROJECTOR_MAX_BATCHES_PER_TICK", 4),
+		ReadingProjectorBatchSize:    parseIntEnv("KNOWLEDGE_SOVEREIGN_READING_PROJECTOR_BATCH_SIZE", 500),
+		ReadingProjectorMaxBatches:   parseIntEnv("KNOWLEDGE_SOVEREIGN_READING_PROJECTOR_MAX_BATCHES_PER_TICK", 40),
 	}, nil
 }
 

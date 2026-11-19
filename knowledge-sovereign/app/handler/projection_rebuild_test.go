@@ -126,7 +126,7 @@ func TestProjectionRebuildHandler_ListsRebuildableTargets(t *testing.T) {
 		} `json:"targets"`
 	}
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
-	require.Len(t, body.Targets, 2)
+	require.Len(t, body.Targets, 3)
 
 	byName := map[string][]string{}
 	projectors := map[string]string{}
@@ -139,6 +139,8 @@ func TestProjectionRebuildHandler_ListsRebuildableTargets(t *testing.T) {
 	assert.Equal(t, "knowledge-home-projector", projectors["knowledge-home"])
 	assert.Equal(t, []string{"knowledge_trail_footprints", "knowledge_trail_branches", "knowledge_trail_act_outcomes"}, byName["knowledge-trail"])
 	assert.Equal(t, "knowledge-trail-projector", projectors["knowledge-trail"])
+	assert.Equal(t, []string{"reading_sources", "reading_queue_items"}, byName["reading"])
+	assert.Equal(t, "reading-projector", projectors["reading"])
 
 	for _, tgt := range body.Targets {
 		for _, table := range tgt.Tables {

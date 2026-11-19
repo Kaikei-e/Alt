@@ -75,6 +75,11 @@ type ReadOperations interface {
 
 	// User events
 	AppendKnowledgeUserEvent(ctx context.Context, event sovereign_db.KnowledgeUserEvent) error
+
+	// Reading
+	GetActiveReadingQueue(ctx context.Context, userID uuid.UUID, asOf time.Time) ([]sovereign_db.ReadingQueueItem, error)
+	CountReadingSourcesSince(ctx context.Context, userID uuid.UUID, since time.Time) (int, error)
+	ListReadingSourcesInWindow(ctx context.Context, userID uuid.UUID, from, to time.Time) ([]sovereign_db.ReadingSource, error)
 }
 
 // Compile-time check.

@@ -11,7 +11,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file alt/feeds/v2/feeds.proto.
  */
 export const file_alt_feeds_v2_feeds: GenFile = /*@__PURE__*/
-  fileDesc("ChhhbHQvZmVlZHMvdjIvZmVlZHMucHJvdG8SDGFsdC5mZWVkcy52MiIVChNHZXRGZWVkU3RhdHNSZXF1ZXN0IksKFEdldEZlZWRTdGF0c1Jlc3BvbnNlEhMKC2ZlZWRfYW1vdW50GAEgASgDEh4KFnN1bW1hcml6ZWRfZmVlZF9hbW91bnQYAiABKAMiHQobR2V0RGV0YWlsZWRGZWVkU3RhdHNSZXF1ZXN0Im0KHEdldERldGFpbGVkRmVlZFN0YXRzUmVzcG9uc2USEwoLZmVlZF9hbW91bnQYASABKAMSFgoOYXJ0aWNsZV9hbW91bnQYAiABKAMSIAoYdW5zdW1tYXJpemVkX2ZlZWRfYW1vdW50GAMgASgDIhcKFUdldFVucmVhZENvdW50UmVxdWVzdCInChZHZXRVbnJlYWRDb3VudFJlc3BvbnNlEg0KBWNvdW50GAEgASgDIhgKFlN0cmVhbUZlZWRTdGF0c1JlcXVlc3QimgEKF1N0cmVhbUZlZWRTdGF0c1Jlc3BvbnNlEhMKC2ZlZWRfYW1vdW50GAEgASgDEiAKGHVuc3VtbWFyaXplZF9mZWVkX2Ftb3VudBgCIAEoAxIWCg50b3RhbF9hcnRpY2xlcxgDIAEoAxIwCghtZXRhZGF0YRgEIAEoCzIeLmFsdC5mZWVkcy52Mi5SZXNwb25zZU1ldGFkYXRhIjsKEFJlc3BvbnNlTWV0YWRhdGESEQoJdGltZXN0YW1wGAEgASgDEhQKDGlzX2hlYXJ0YmVhdBgCIAEoCCL7AQoIRmVlZEl0ZW0SCgoCaWQYASABKAkSDQoFdGl0bGUYAiABKAkSEwoLZGVzY3JpcHRpb24YAyABKAkSDAoEbGluaxgEIAEoCRIRCglwdWJsaXNoZWQYBSABKAkSEgoKY3JlYXRlZF9hdBgGIAEoCRIOCgZhdXRob3IYByABKAkSFwoKYXJ0aWNsZV9pZBgIIAEoCUgAiAEBEg8KB2lzX3JlYWQYCSABKAgSFAoMb2dfaW1hZ2VfdXJsGAogASgJEhoKEm9nX2ltYWdlX3Byb3h5X3VybBgLIAEoCRIPCgdmZWVkX2lkGAwgASgJQg0KC19hcnRpY2xlX2lkIr0BChVHZXRVbnJlYWRGZWVkc1JlcXVlc3QSEwoGY3Vyc29yGAEgASgJSACIAQESDQoFbGltaXQYAiABKAUSEQoEdmlldxgDIAEoCUgBiAEBEiEKFGV4Y2x1ZGVfZmVlZF9saW5rX2lkGAQgASgJSAKIAQESHQoVZXhjbHVkZV9mZWVkX2xpbmtfaWRzGAUgAygJQgkKB19jdXJzb3JCBwoFX3ZpZXdCFwoVX2V4Y2x1ZGVfZmVlZF9saW5rX2lkInoKFkdldFVucmVhZEZlZWRzUmVzcG9uc2USJAoEZGF0YRgBIAMoCzIWLmFsdC5mZWVkcy52Mi5GZWVkSXRlbRIYCgtuZXh0X2N1cnNvchgCIAEoCUgAiAEBEhAKCGhhc19tb3JlGAMgASgIQg4KDF9uZXh0X2N1cnNvciKeAQoSR2V0QWxsRmVlZHNSZXF1ZXN0EhMKBmN1cnNvchgBIAEoCUgAiAEBEg0KBWxpbWl0GAIgASgFEiEKFGV4Y2x1ZGVfZmVlZF9saW5rX2lkGAMgASgJSAGIAQESHQoVZXhjbHVkZV9mZWVkX2xpbmtfaWRzGAQgAygJQgkKB19jdXJzb3JCFwoVX2V4Y2x1ZGVfZmVlZF9saW5rX2lkIncKE0dldEFsbEZlZWRzUmVzcG9uc2USJAoEZGF0YRgBIAMoCzIWLmFsdC5mZWVkcy52Mi5GZWVkSXRlbRIYCgtuZXh0X2N1cnNvchgCIAEoCUgAiAEBEhAKCGhhc19tb3JlGAMgASgIQg4KDF9uZXh0X2N1cnNvciJEChNHZXRSZWFkRmVlZHNSZXF1ZXN0EhMKBmN1cnNvchgBIAEoCUgAiAEBEg0KBWxpbWl0GAIgASgFQgkKB19jdXJzb3IieAoUR2V0UmVhZEZlZWRzUmVzcG9uc2USJAoEZGF0YRgBIAMoCzIWLmFsdC5mZWVkcy52Mi5GZWVkSXRlbRIYCgtuZXh0X2N1cnNvchgCIAEoCUgAiAEBEhAKCGhhc19tb3JlGAMgASgIQg4KDF9uZXh0X2N1cnNvciJIChdHZXRGYXZvcml0ZUZlZWRzUmVxdWVzdBITCgZjdXJzb3IYASABKAlIAIgBARINCgVsaW1pdBgCIAEoBUIJCgdfY3Vyc29yInwKGEdldEZhdm9yaXRlRmVlZHNSZXNwb25zZRIkCgRkYXRhGAEgAygLMhYuYWx0LmZlZWRzLnYyLkZlZWRJdGVtEhgKC25leHRfY3Vyc29yGAIgASgJSACIAQESEAoIaGFzX21vcmUYAyABKAhCDgoMX25leHRfY3Vyc29yImEKElNlYXJjaEZlZWRzUmVxdWVzdBINCgVxdWVyeRgBIAEoCRITCgZjdXJzb3IYAiABKAVIAIgBARISCgVsaW1pdBgDIAEoBUgBiAEBQgkKB19jdXJzb3JCCAoGX2xpbWl0IncKE1NlYXJjaEZlZWRzUmVzcG9uc2USJAoEZGF0YRgBIAMoCzIWLmFsdC5mZWVkcy52Mi5GZWVkSXRlbRIYCgtuZXh0X2N1cnNvchgCIAEoBUgAiAEBEhAKCGhhc19tb3JlGAMgASgIQg4KDF9uZXh0X2N1cnNvciLSAQoWU3RyZWFtU3VtbWFyaXplUmVxdWVzdBIVCghmZWVkX3VybBgBIAEoCUgAiAEBEhcKCmFydGljbGVfaWQYAiABKAlIAYgBARIUCgdjb250ZW50GAMgASgJSAKIAQESEgoFdGl0bGUYBCABKAlIA4gBARIaCg1mb3JjZV9yZWZyZXNoGAUgASgISASIAQFCCwoJX2ZlZWRfdXJsQg0KC19hcnRpY2xlX2lkQgoKCF9jb250ZW50QggKBl90aXRsZUIQCg5fZm9yY2VfcmVmcmVzaCKNAQoXU3RyZWFtU3VtbWFyaXplUmVzcG9uc2USDQoFY2h1bmsYASABKAkSEAoIaXNfZmluYWwYAiABKAgSEgoKYXJ0aWNsZV9pZBgDIAEoCRIRCglpc19jYWNoZWQYBCABKAgSGQoMZnVsbF9zdW1tYXJ5GAUgASgJSACIAQFCDwoNX2Z1bGxfc3VtbWFyeSIoChFNYXJrQXNSZWFkUmVxdWVzdBITCgthcnRpY2xlX3VybBgBIAEoCSIlChJNYXJrQXNSZWFkUmVzcG9uc2USDwoHbWVzc2FnZRgBIAEoCSJfCgpGZWVkU291cmNlEgoKAmlkGAEgASgJEgsKA3VybBgCIAEoCRINCgV0aXRsZRgDIAEoCRIVCg1pc19zdWJzY3JpYmVkGAQgASgIEhIKCmNyZWF0ZWRfYXQYBSABKAkiGgoYTGlzdFN1YnNjcmlwdGlvbnNSZXF1ZXN0IkYKGUxpc3RTdWJzY3JpcHRpb25zUmVzcG9uc2USKQoHc291cmNlcxgBIAMoCzIYLmFsdC5mZWVkcy52Mi5GZWVkU291cmNlIigKEFN1YnNjcmliZVJlcXVlc3QSFAoMZmVlZF9saW5rX2lkGAEgASgJIiQKEVN1YnNjcmliZVJlc3BvbnNlEg8KB21lc3NhZ2UYASABKAkiKgoSVW5zdWJzY3JpYmVSZXF1ZXN0EhQKDGZlZWRfbGlua19pZBgBIAEoCSImChNVbnN1YnNjcmliZVJlc3BvbnNlEg8KB21lc3NhZ2UYASABKAkiRAoSR2V0RmVlZFRhZ3NSZXF1ZXN0Eg8KB2ZlZWRfaWQYASABKAkSDgoGY3Vyc29yGAIgASgJEg0KBWxpbWl0GAMgASgFIjcKB0ZlZWRUYWcSCgoCaWQYASABKAkSDAoEbmFtZRgCIAEoCRISCgpjcmVhdGVkX2F0GAMgASgJIjoKE0dldEZlZWRUYWdzUmVzcG9uc2USIwoEdGFncxgBIAMoCzIVLmFsdC5mZWVkcy52Mi5GZWVkVGFnIioKFlJlc29sdmVPZ0ltYWdlc1JlcXVlc3QSEAoIZmVlZF9pZHMYASADKAkiPQoOUmVzb2x2ZU9nSW1hZ2USDwoHZmVlZF9pZBgBIAEoCRIaChJvZ19pbWFnZV9wcm94eV91cmwYAiABKAkiQQoRVW5yZXNvbHZlZE9nSW1hZ2USDwoHZmVlZF9pZBgBIAEoCRIbChNyZXRyeV9hZnRlcl9zZWNvbmRzGAIgASgDInwKF1Jlc29sdmVPZ0ltYWdlc1Jlc3BvbnNlEiwKBmltYWdlcxgBIAMoCzIcLmFsdC5mZWVkcy52Mi5SZXNvbHZlT2dJbWFnZRIzCgp1bnJlc29sdmVkGAIgAygLMh8uYWx0LmZlZWRzLnYyLlVucmVzb2x2ZWRPZ0ltYWdlMsYLCgtGZWVkU2VydmljZRJVCgxHZXRGZWVkU3RhdHMSIS5hbHQuZmVlZHMudjIuR2V0RmVlZFN0YXRzUmVxdWVzdBoiLmFsdC5mZWVkcy52Mi5HZXRGZWVkU3RhdHNSZXNwb25zZRJtChRHZXREZXRhaWxlZEZlZWRTdGF0cxIpLmFsdC5mZWVkcy52Mi5HZXREZXRhaWxlZEZlZWRTdGF0c1JlcXVlc3QaKi5hbHQuZmVlZHMudjIuR2V0RGV0YWlsZWRGZWVkU3RhdHNSZXNwb25zZRJbCg5HZXRVbnJlYWRDb3VudBIjLmFsdC5mZWVkcy52Mi5HZXRVbnJlYWRDb3VudFJlcXVlc3QaJC5hbHQuZmVlZHMudjIuR2V0VW5yZWFkQ291bnRSZXNwb25zZRJgCg9TdHJlYW1GZWVkU3RhdHMSJC5hbHQuZmVlZHMudjIuU3RyZWFtRmVlZFN0YXRzUmVxdWVzdBolLmFsdC5mZWVkcy52Mi5TdHJlYW1GZWVkU3RhdHNSZXNwb25zZTABElsKDkdldFVucmVhZEZlZWRzEiMuYWx0LmZlZWRzLnYyLkdldFVucmVhZEZlZWRzUmVxdWVzdBokLmFsdC5mZWVkcy52Mi5HZXRVbnJlYWRGZWVkc1Jlc3BvbnNlElIKC0dldEFsbEZlZWRzEiAuYWx0LmZlZWRzLnYyLkdldEFsbEZlZWRzUmVxdWVzdBohLmFsdC5mZWVkcy52Mi5HZXRBbGxGZWVkc1Jlc3BvbnNlElUKDEdldFJlYWRGZWVkcxIhLmFsdC5mZWVkcy52Mi5HZXRSZWFkRmVlZHNSZXF1ZXN0GiIuYWx0LmZlZWRzLnYyLkdldFJlYWRGZWVkc1Jlc3BvbnNlEmEKEEdldEZhdm9yaXRlRmVlZHMSJS5hbHQuZmVlZHMudjIuR2V0RmF2b3JpdGVGZWVkc1JlcXVlc3QaJi5hbHQuZmVlZHMudjIuR2V0RmF2b3JpdGVGZWVkc1Jlc3BvbnNlElIKC1NlYXJjaEZlZWRzEiAuYWx0LmZlZWRzLnYyLlNlYXJjaEZlZWRzUmVxdWVzdBohLmFsdC5mZWVkcy52Mi5TZWFyY2hGZWVkc1Jlc3BvbnNlEmAKD1N0cmVhbVN1bW1hcml6ZRIkLmFsdC5mZWVkcy52Mi5TdHJlYW1TdW1tYXJpemVSZXF1ZXN0GiUuYWx0LmZlZWRzLnYyLlN0cmVhbVN1bW1hcml6ZVJlc3BvbnNlMAESTwoKTWFya0FzUmVhZBIfLmFsdC5mZWVkcy52Mi5NYXJrQXNSZWFkUmVxdWVzdBogLmFsdC5mZWVkcy52Mi5NYXJrQXNSZWFkUmVzcG9uc2USZAoRTGlzdFN1YnNjcmlwdGlvbnMSJi5hbHQuZmVlZHMudjIuTGlzdFN1YnNjcmlwdGlvbnNSZXF1ZXN0GicuYWx0LmZlZWRzLnYyLkxpc3RTdWJzY3JpcHRpb25zUmVzcG9uc2USTAoJU3Vic2NyaWJlEh4uYWx0LmZlZWRzLnYyLlN1YnNjcmliZVJlcXVlc3QaHy5hbHQuZmVlZHMudjIuU3Vic2NyaWJlUmVzcG9uc2USUgoLVW5zdWJzY3JpYmUSIC5hbHQuZmVlZHMudjIuVW5zdWJzY3JpYmVSZXF1ZXN0GiEuYWx0LmZlZWRzLnYyLlVuc3Vic2NyaWJlUmVzcG9uc2USUgoLR2V0RmVlZFRhZ3MSIC5hbHQuZmVlZHMudjIuR2V0RmVlZFRhZ3NSZXF1ZXN0GiEuYWx0LmZlZWRzLnYyLkdldEZlZWRUYWdzUmVzcG9uc2USXgoPUmVzb2x2ZU9nSW1hZ2VzEiQuYWx0LmZlZWRzLnYyLlJlc29sdmVPZ0ltYWdlc1JlcXVlc3QaJS5hbHQuZmVlZHMudjIuUmVzb2x2ZU9nSW1hZ2VzUmVzcG9uc2UaBIi1GAFCJFoiYWx0L2dlbi9wcm90by9hbHQvZmVlZHMvdjI7ZmVlZHN2MmIGcHJvdG8z", [file_alt_api_v1_visibility]);
+  fileDesc("ChhhbHQvZmVlZHMvdjIvZmVlZHMucHJvdG8SDGFsdC5mZWVkcy52MiIVChNHZXRGZWVkU3RhdHNSZXF1ZXN0IksKFEdldEZlZWRTdGF0c1Jlc3BvbnNlEhMKC2ZlZWRfYW1vdW50GAEgASgDEh4KFnN1bW1hcml6ZWRfZmVlZF9hbW91bnQYAiABKAMiHQobR2V0RGV0YWlsZWRGZWVkU3RhdHNSZXF1ZXN0Im0KHEdldERldGFpbGVkRmVlZFN0YXRzUmVzcG9uc2USEwoLZmVlZF9hbW91bnQYASABKAMSFgoOYXJ0aWNsZV9hbW91bnQYAiABKAMSIAoYdW5zdW1tYXJpemVkX2ZlZWRfYW1vdW50GAMgASgDIhcKFUdldFVucmVhZENvdW50UmVxdWVzdCInChZHZXRVbnJlYWRDb3VudFJlc3BvbnNlEg0KBWNvdW50GAEgASgDIhgKFlN0cmVhbUZlZWRTdGF0c1JlcXVlc3QimgEKF1N0cmVhbUZlZWRTdGF0c1Jlc3BvbnNlEhMKC2ZlZWRfYW1vdW50GAEgASgDEiAKGHVuc3VtbWFyaXplZF9mZWVkX2Ftb3VudBgCIAEoAxIWCg50b3RhbF9hcnRpY2xlcxgDIAEoAxIwCghtZXRhZGF0YRgEIAEoCzIeLmFsdC5mZWVkcy52Mi5SZXNwb25zZU1ldGFkYXRhIjsKEFJlc3BvbnNlTWV0YWRhdGESEQoJdGltZXN0YW1wGAEgASgDEhQKDGlzX2hlYXJ0YmVhdBgCIAEoCCL7AQoIRmVlZEl0ZW0SCgoCaWQYASABKAkSDQoFdGl0bGUYAiABKAkSEwoLZGVzY3JpcHRpb24YAyABKAkSDAoEbGluaxgEIAEoCRIRCglwdWJsaXNoZWQYBSABKAkSEgoKY3JlYXRlZF9hdBgGIAEoCRIOCgZhdXRob3IYByABKAkSFwoKYXJ0aWNsZV9pZBgIIAEoCUgAiAEBEg8KB2lzX3JlYWQYCSABKAgSFAoMb2dfaW1hZ2VfdXJsGAogASgJEhoKEm9nX2ltYWdlX3Byb3h5X3VybBgLIAEoCRIPCgdmZWVkX2lkGAwgASgJQg0KC19hcnRpY2xlX2lkIr0BChVHZXRVbnJlYWRGZWVkc1JlcXVlc3QSEwoGY3Vyc29yGAEgASgJSACIAQESDQoFbGltaXQYAiABKAUSEQoEdmlldxgDIAEoCUgBiAEBEiEKFGV4Y2x1ZGVfZmVlZF9saW5rX2lkGAQgASgJSAKIAQESHQoVZXhjbHVkZV9mZWVkX2xpbmtfaWRzGAUgAygJQgkKB19jdXJzb3JCBwoFX3ZpZXdCFwoVX2V4Y2x1ZGVfZmVlZF9saW5rX2lkInoKFkdldFVucmVhZEZlZWRzUmVzcG9uc2USJAoEZGF0YRgBIAMoCzIWLmFsdC5mZWVkcy52Mi5GZWVkSXRlbRIYCgtuZXh0X2N1cnNvchgCIAEoCUgAiAEBEhAKCGhhc19tb3JlGAMgASgIQg4KDF9uZXh0X2N1cnNvciKeAQoSR2V0QWxsRmVlZHNSZXF1ZXN0EhMKBmN1cnNvchgBIAEoCUgAiAEBEg0KBWxpbWl0GAIgASgFEiEKFGV4Y2x1ZGVfZmVlZF9saW5rX2lkGAMgASgJSAGIAQESHQoVZXhjbHVkZV9mZWVkX2xpbmtfaWRzGAQgAygJQgkKB19jdXJzb3JCFwoVX2V4Y2x1ZGVfZmVlZF9saW5rX2lkIncKE0dldEFsbEZlZWRzUmVzcG9uc2USJAoEZGF0YRgBIAMoCzIWLmFsdC5mZWVkcy52Mi5GZWVkSXRlbRIYCgtuZXh0X2N1cnNvchgCIAEoCUgAiAEBEhAKCGhhc19tb3JlGAMgASgIQg4KDF9uZXh0X2N1cnNvciJEChNHZXRSZWFkRmVlZHNSZXF1ZXN0EhMKBmN1cnNvchgBIAEoCUgAiAEBEg0KBWxpbWl0GAIgASgFQgkKB19jdXJzb3IieAoUR2V0UmVhZEZlZWRzUmVzcG9uc2USJAoEZGF0YRgBIAMoCzIWLmFsdC5mZWVkcy52Mi5GZWVkSXRlbRIYCgtuZXh0X2N1cnNvchgCIAEoCUgAiAEBEhAKCGhhc19tb3JlGAMgASgIQg4KDF9uZXh0X2N1cnNvciJIChdHZXRGYXZvcml0ZUZlZWRzUmVxdWVzdBITCgZjdXJzb3IYASABKAlIAIgBARINCgVsaW1pdBgCIAEoBUIJCgdfY3Vyc29yInwKGEdldEZhdm9yaXRlRmVlZHNSZXNwb25zZRIkCgRkYXRhGAEgAygLMhYuYWx0LmZlZWRzLnYyLkZlZWRJdGVtEhgKC25leHRfY3Vyc29yGAIgASgJSACIAQESEAoIaGFzX21vcmUYAyABKAhCDgoMX25leHRfY3Vyc29yImEKElNlYXJjaEZlZWRzUmVxdWVzdBINCgVxdWVyeRgBIAEoCRITCgZjdXJzb3IYAiABKAVIAIgBARISCgVsaW1pdBgDIAEoBUgBiAEBQgkKB19jdXJzb3JCCAoGX2xpbWl0IncKE1NlYXJjaEZlZWRzUmVzcG9uc2USJAoEZGF0YRgBIAMoCzIWLmFsdC5mZWVkcy52Mi5GZWVkSXRlbRIYCgtuZXh0X2N1cnNvchgCIAEoBUgAiAEBEhAKCGhhc19tb3JlGAMgASgIQg4KDF9uZXh0X2N1cnNvciLSAQoWU3RyZWFtU3VtbWFyaXplUmVxdWVzdBIVCghmZWVkX3VybBgBIAEoCUgAiAEBEhcKCmFydGljbGVfaWQYAiABKAlIAYgBARIUCgdjb250ZW50GAMgASgJSAKIAQESEgoFdGl0bGUYBCABKAlIA4gBARIaCg1mb3JjZV9yZWZyZXNoGAUgASgISASIAQFCCwoJX2ZlZWRfdXJsQg0KC19hcnRpY2xlX2lkQgoKCF9jb250ZW50QggKBl90aXRsZUIQCg5fZm9yY2VfcmVmcmVzaCKNAQoXU3RyZWFtU3VtbWFyaXplUmVzcG9uc2USDQoFY2h1bmsYASABKAkSEAoIaXNfZmluYWwYAiABKAgSEgoKYXJ0aWNsZV9pZBgDIAEoCRIRCglpc19jYWNoZWQYBCABKAgSGQoMZnVsbF9zdW1tYXJ5GAUgASgJSACIAQFCDwoNX2Z1bGxfc3VtbWFyeSIoChFNYXJrQXNSZWFkUmVxdWVzdBITCgthcnRpY2xlX3VybBgBIAEoCSIlChJNYXJrQXNSZWFkUmVzcG9uc2USDwoHbWVzc2FnZRgBIAEoCSKFAQoKRmVlZFNvdXJjZRIKCgJpZBgBIAEoCRILCgN1cmwYAiABKAkSDQoFdGl0bGUYAyABKAkSFQoNaXNfc3Vic2NyaWJlZBgEIAEoCBISCgpjcmVhdGVkX2F0GAUgASgJEhYKCWRhaWx5X2NhcBgGIAEoBUgAiAEBQgwKCl9kYWlseV9jYXAiGgoYTGlzdFN1YnNjcmlwdGlvbnNSZXF1ZXN0IkYKGUxpc3RTdWJzY3JpcHRpb25zUmVzcG9uc2USKQoHc291cmNlcxgBIAMoCzIYLmFsdC5mZWVkcy52Mi5GZWVkU291cmNlIigKEFN1YnNjcmliZVJlcXVlc3QSFAoMZmVlZF9saW5rX2lkGAEgASgJIiQKEVN1YnNjcmliZVJlc3BvbnNlEg8KB21lc3NhZ2UYASABKAkiKgoSVW5zdWJzY3JpYmVSZXF1ZXN0EhQKDGZlZWRfbGlua19pZBgBIAEoCSImChNVbnN1YnNjcmliZVJlc3BvbnNlEg8KB21lc3NhZ2UYASABKAkiXAoeU2V0U3Vic2NyaXB0aW9uRGFpbHlDYXBSZXF1ZXN0EhQKDGZlZWRfbGlua19pZBgBIAEoCRIWCglkYWlseV9jYXAYAiABKAVIAIgBAUIMCgpfZGFpbHlfY2FwIlgKH1NldFN1YnNjcmlwdGlvbkRhaWx5Q2FwUmVzcG9uc2USDwoHbWVzc2FnZRgBIAEoCRIWCglkYWlseV9jYXAYAiABKAVIAIgBAUIMCgpfZGFpbHlfY2FwIhsKGUdldEZlZWRJbmZsb3dTdGF0c1JlcXVlc3QiswEKDkZlZWRJbmZsb3dTdGF0EhQKDGZlZWRfbGlua19pZBgBIAEoCRILCgN1cmwYAiABKAkSFgoJZGFpbHlfY2FwGAMgASgFSACIAQESFAoMaW5mbG93X2NvdW50GAQgASgDEhIKCnJlYWRfY291bnQYBSABKAMSGwoTb3BlbmVkX2NvdW50X2xlZ2FjeRgGIAEoAxIRCglyZWFkX3JhdGUYByABKAFCDAoKX2RhaWx5X2NhcCJeChpHZXRGZWVkSW5mbG93U3RhdHNSZXNwb25zZRIrCgVzdGF0cxgBIAMoCzIcLmFsdC5mZWVkcy52Mi5GZWVkSW5mbG93U3RhdBITCgt3aW5kb3dfZGF5cxgCIAEoBSJEChJHZXRGZWVkVGFnc1JlcXVlc3QSDwoHZmVlZF9pZBgBIAEoCRIOCgZjdXJzb3IYAiABKAkSDQoFbGltaXQYAyABKAUiNwoHRmVlZFRhZxIKCgJpZBgBIAEoCRIMCgRuYW1lGAIgASgJEhIKCmNyZWF0ZWRfYXQYAyABKAkiOgoTR2V0RmVlZFRhZ3NSZXNwb25zZRIjCgR0YWdzGAEgAygLMhUuYWx0LmZlZWRzLnYyLkZlZWRUYWciKgoWUmVzb2x2ZU9nSW1hZ2VzUmVxdWVzdBIQCghmZWVkX2lkcxgBIAMoCSI9Cg5SZXNvbHZlT2dJbWFnZRIPCgdmZWVkX2lkGAEgASgJEhoKEm9nX2ltYWdlX3Byb3h5X3VybBgCIAEoCSJBChFVbnJlc29sdmVkT2dJbWFnZRIPCgdmZWVkX2lkGAEgASgJEhsKE3JldHJ5X2FmdGVyX3NlY29uZHMYAiABKAMifAoXUmVzb2x2ZU9nSW1hZ2VzUmVzcG9uc2USLAoGaW1hZ2VzGAEgAygLMhwuYWx0LmZlZWRzLnYyLlJlc29sdmVPZ0ltYWdlEjMKCnVucmVzb2x2ZWQYAiADKAsyHy5hbHQuZmVlZHMudjIuVW5yZXNvbHZlZE9nSW1hZ2Uypw0KC0ZlZWRTZXJ2aWNlElUKDEdldEZlZWRTdGF0cxIhLmFsdC5mZWVkcy52Mi5HZXRGZWVkU3RhdHNSZXF1ZXN0GiIuYWx0LmZlZWRzLnYyLkdldEZlZWRTdGF0c1Jlc3BvbnNlEm0KFEdldERldGFpbGVkRmVlZFN0YXRzEikuYWx0LmZlZWRzLnYyLkdldERldGFpbGVkRmVlZFN0YXRzUmVxdWVzdBoqLmFsdC5mZWVkcy52Mi5HZXREZXRhaWxlZEZlZWRTdGF0c1Jlc3BvbnNlElsKDkdldFVucmVhZENvdW50EiMuYWx0LmZlZWRzLnYyLkdldFVucmVhZENvdW50UmVxdWVzdBokLmFsdC5mZWVkcy52Mi5HZXRVbnJlYWRDb3VudFJlc3BvbnNlEmAKD1N0cmVhbUZlZWRTdGF0cxIkLmFsdC5mZWVkcy52Mi5TdHJlYW1GZWVkU3RhdHNSZXF1ZXN0GiUuYWx0LmZlZWRzLnYyLlN0cmVhbUZlZWRTdGF0c1Jlc3BvbnNlMAESWwoOR2V0VW5yZWFkRmVlZHMSIy5hbHQuZmVlZHMudjIuR2V0VW5yZWFkRmVlZHNSZXF1ZXN0GiQuYWx0LmZlZWRzLnYyLkdldFVucmVhZEZlZWRzUmVzcG9uc2USUgoLR2V0QWxsRmVlZHMSIC5hbHQuZmVlZHMudjIuR2V0QWxsRmVlZHNSZXF1ZXN0GiEuYWx0LmZlZWRzLnYyLkdldEFsbEZlZWRzUmVzcG9uc2USVQoMR2V0UmVhZEZlZWRzEiEuYWx0LmZlZWRzLnYyLkdldFJlYWRGZWVkc1JlcXVlc3QaIi5hbHQuZmVlZHMudjIuR2V0UmVhZEZlZWRzUmVzcG9uc2USYQoQR2V0RmF2b3JpdGVGZWVkcxIlLmFsdC5mZWVkcy52Mi5HZXRGYXZvcml0ZUZlZWRzUmVxdWVzdBomLmFsdC5mZWVkcy52Mi5HZXRGYXZvcml0ZUZlZWRzUmVzcG9uc2USUgoLU2VhcmNoRmVlZHMSIC5hbHQuZmVlZHMudjIuU2VhcmNoRmVlZHNSZXF1ZXN0GiEuYWx0LmZlZWRzLnYyLlNlYXJjaEZlZWRzUmVzcG9uc2USYAoPU3RyZWFtU3VtbWFyaXplEiQuYWx0LmZlZWRzLnYyLlN0cmVhbVN1bW1hcml6ZVJlcXVlc3QaJS5hbHQuZmVlZHMudjIuU3RyZWFtU3VtbWFyaXplUmVzcG9uc2UwARJPCgpNYXJrQXNSZWFkEh8uYWx0LmZlZWRzLnYyLk1hcmtBc1JlYWRSZXF1ZXN0GiAuYWx0LmZlZWRzLnYyLk1hcmtBc1JlYWRSZXNwb25zZRJkChFMaXN0U3Vic2NyaXB0aW9ucxImLmFsdC5mZWVkcy52Mi5MaXN0U3Vic2NyaXB0aW9uc1JlcXVlc3QaJy5hbHQuZmVlZHMudjIuTGlzdFN1YnNjcmlwdGlvbnNSZXNwb25zZRJMCglTdWJzY3JpYmUSHi5hbHQuZmVlZHMudjIuU3Vic2NyaWJlUmVxdWVzdBofLmFsdC5mZWVkcy52Mi5TdWJzY3JpYmVSZXNwb25zZRJSCgtVbnN1YnNjcmliZRIgLmFsdC5mZWVkcy52Mi5VbnN1YnNjcmliZVJlcXVlc3QaIS5hbHQuZmVlZHMudjIuVW5zdWJzY3JpYmVSZXNwb25zZRJ2ChdTZXRTdWJzY3JpcHRpb25EYWlseUNhcBIsLmFsdC5mZWVkcy52Mi5TZXRTdWJzY3JpcHRpb25EYWlseUNhcFJlcXVlc3QaLS5hbHQuZmVlZHMudjIuU2V0U3Vic2NyaXB0aW9uRGFpbHlDYXBSZXNwb25zZRJnChJHZXRGZWVkSW5mbG93U3RhdHMSJy5hbHQuZmVlZHMudjIuR2V0RmVlZEluZmxvd1N0YXRzUmVxdWVzdBooLmFsdC5mZWVkcy52Mi5HZXRGZWVkSW5mbG93U3RhdHNSZXNwb25zZRJSCgtHZXRGZWVkVGFncxIgLmFsdC5mZWVkcy52Mi5HZXRGZWVkVGFnc1JlcXVlc3QaIS5hbHQuZmVlZHMudjIuR2V0RmVlZFRhZ3NSZXNwb25zZRJeCg9SZXNvbHZlT2dJbWFnZXMSJC5hbHQuZmVlZHMudjIuUmVzb2x2ZU9nSW1hZ2VzUmVxdWVzdBolLmFsdC5mZWVkcy52Mi5SZXNvbHZlT2dJbWFnZXNSZXNwb25zZRoEiLUYAUIkWiJhbHQvZ2VuL3Byb3RvL2FsdC9mZWVkcy92MjtmZWVkc3YyYgZwcm90bzM", [file_alt_api_v1_visibility]);
 
 /**
  * GetFeedStatsRequest is the request for getting basic feed statistics
@@ -882,6 +882,13 @@ export type FeedSource = Message<"alt.feeds.v2.FeedSource"> & {
    * @generated from field: string created_at = 5;
    */
   createdAt: string;
+
+  /**
+   * Per-subscription daily cap on unread items shown per UTC day; absent when uncapped
+   *
+   * @generated from field: optional int32 daily_cap = 6;
+   */
+  dailyCap?: number | undefined;
 };
 
 /**
@@ -1012,6 +1019,168 @@ export const UnsubscribeResponseSchema: GenMessage<UnsubscribeResponse> = /*@__P
   messageDesc(file_alt_feeds_v2_feeds, 30);
 
 /**
+ * SetSubscriptionDailyCapRequest sets or clears the daily unread cap for one subscription.
+ *
+ * @generated from message alt.feeds.v2.SetSubscriptionDailyCapRequest
+ */
+export type SetSubscriptionDailyCapRequest = Message<"alt.feeds.v2.SetSubscriptionDailyCapRequest"> & {
+  /**
+   * Feed link ID (UUID) to configure
+   *
+   * @generated from field: string feed_link_id = 1;
+   */
+  feedLinkId: string;
+
+  /**
+   * Positive daily cap on unread items shown per UTC day; omit to clear the cap
+   *
+   * @generated from field: optional int32 daily_cap = 2;
+   */
+  dailyCap?: number | undefined;
+};
+
+/**
+ * Describes the message alt.feeds.v2.SetSubscriptionDailyCapRequest.
+ * Use `create(SetSubscriptionDailyCapRequestSchema)` to create a new message.
+ */
+export const SetSubscriptionDailyCapRequestSchema: GenMessage<SetSubscriptionDailyCapRequest> = /*@__PURE__*/
+  messageDesc(file_alt_feeds_v2_feeds, 31);
+
+/**
+ * SetSubscriptionDailyCapResponse is the response after updating the daily cap.
+ *
+ * @generated from message alt.feeds.v2.SetSubscriptionDailyCapResponse
+ */
+export type SetSubscriptionDailyCapResponse = Message<"alt.feeds.v2.SetSubscriptionDailyCapResponse"> & {
+  /**
+   * Success message
+   *
+   * @generated from field: string message = 1;
+   */
+  message: string;
+
+  /**
+   * Updated daily cap (absent when cleared)
+   *
+   * @generated from field: optional int32 daily_cap = 2;
+   */
+  dailyCap?: number | undefined;
+};
+
+/**
+ * Describes the message alt.feeds.v2.SetSubscriptionDailyCapResponse.
+ * Use `create(SetSubscriptionDailyCapResponseSchema)` to create a new message.
+ */
+export const SetSubscriptionDailyCapResponseSchema: GenMessage<SetSubscriptionDailyCapResponse> = /*@__PURE__*/
+  messageDesc(file_alt_feeds_v2_feeds, 32);
+
+/**
+ * GetFeedInflowStatsRequest requests 30-day inflow and reading statistics per subscribed feed.
+ *
+ * @generated from message alt.feeds.v2.GetFeedInflowStatsRequest
+ */
+export type GetFeedInflowStatsRequest = Message<"alt.feeds.v2.GetFeedInflowStatsRequest"> & {
+};
+
+/**
+ * Describes the message alt.feeds.v2.GetFeedInflowStatsRequest.
+ * Use `create(GetFeedInflowStatsRequestSchema)` to create a new message.
+ */
+export const GetFeedInflowStatsRequestSchema: GenMessage<GetFeedInflowStatsRequest> = /*@__PURE__*/
+  messageDesc(file_alt_feeds_v2_feeds, 33);
+
+/**
+ * FeedInflowStat holds 30-day inflow and reading counts for one subscribed feed.
+ *
+ * @generated from message alt.feeds.v2.FeedInflowStat
+ */
+export type FeedInflowStat = Message<"alt.feeds.v2.FeedInflowStat"> & {
+  /**
+   * Feed link ID (UUID)
+   *
+   * @generated from field: string feed_link_id = 1;
+   */
+  feedLinkId: string;
+
+  /**
+   * Subscription feed URL
+   *
+   * @generated from field: string url = 2;
+   */
+  url: string;
+
+  /**
+   * Configured daily unread cap (absent when uncapped)
+   *
+   * @generated from field: optional int32 daily_cap = 3;
+   */
+  dailyCap?: number | undefined;
+
+  /**
+   * Number of feed items stored for this source in the window
+   *
+   * @generated from field: int64 inflow_count = 4;
+   */
+  inflowCount: bigint;
+
+  /**
+   * Distinct articles from this source counted as read (read_rule_version >= 1) in the window
+   *
+   * @generated from field: int64 read_count = 5;
+   */
+  readCount: bigint;
+
+  /**
+   * Distinct articles from this source with legacy open record (read_rule_version = 0) in the window
+   *
+   * @generated from field: int64 opened_count_legacy = 6;
+   */
+  openedCountLegacy: bigint;
+
+  /**
+   * read_count / inflow_count (0 when inflow_count is 0)
+   *
+   * @generated from field: double read_rate = 7;
+   */
+  readRate: number;
+};
+
+/**
+ * Describes the message alt.feeds.v2.FeedInflowStat.
+ * Use `create(FeedInflowStatSchema)` to create a new message.
+ */
+export const FeedInflowStatSchema: GenMessage<FeedInflowStat> = /*@__PURE__*/
+  messageDesc(file_alt_feeds_v2_feeds, 34);
+
+/**
+ * GetFeedInflowStatsResponse contains per-feed inflow and reading statistics.
+ *
+ * @generated from message alt.feeds.v2.GetFeedInflowStatsResponse
+ */
+export type GetFeedInflowStatsResponse = Message<"alt.feeds.v2.GetFeedInflowStatsResponse"> & {
+  /**
+   * Per-subscribed-feed inflow and read statistics
+   *
+   * @generated from field: repeated alt.feeds.v2.FeedInflowStat stats = 1;
+   */
+  stats: FeedInflowStat[];
+
+  /**
+   * Length of the rolling evaluation window in days
+   *
+   * @generated from field: int32 window_days = 2;
+   */
+  windowDays: number;
+};
+
+/**
+ * Describes the message alt.feeds.v2.GetFeedInflowStatsResponse.
+ * Use `create(GetFeedInflowStatsResponseSchema)` to create a new message.
+ */
+export const GetFeedInflowStatsResponseSchema: GenMessage<GetFeedInflowStatsResponse> = /*@__PURE__*/
+  messageDesc(file_alt_feeds_v2_feeds, 35);
+
+/**
  * GetFeedTagsRequest requests tags for a single feed by its ID.
  *
  * @generated from message alt.feeds.v2.GetFeedTagsRequest
@@ -1044,7 +1213,7 @@ export type GetFeedTagsRequest = Message<"alt.feeds.v2.GetFeedTagsRequest"> & {
  * Use `create(GetFeedTagsRequestSchema)` to create a new message.
  */
 export const GetFeedTagsRequestSchema: GenMessage<GetFeedTagsRequest> = /*@__PURE__*/
-  messageDesc(file_alt_feeds_v2_feeds, 31);
+  messageDesc(file_alt_feeds_v2_feeds, 36);
 
 /**
  * FeedTag represents a tag attached to a feed.
@@ -1079,7 +1248,7 @@ export type FeedTag = Message<"alt.feeds.v2.FeedTag"> & {
  * Use `create(FeedTagSchema)` to create a new message.
  */
 export const FeedTagSchema: GenMessage<FeedTag> = /*@__PURE__*/
-  messageDesc(file_alt_feeds_v2_feeds, 32);
+  messageDesc(file_alt_feeds_v2_feeds, 37);
 
 /**
  * GetFeedTagsResponse carries the tags associated with the requested feed.
@@ -1100,7 +1269,7 @@ export type GetFeedTagsResponse = Message<"alt.feeds.v2.GetFeedTagsResponse"> & 
  * Use `create(GetFeedTagsResponseSchema)` to create a new message.
  */
 export const GetFeedTagsResponseSchema: GenMessage<GetFeedTagsResponse> = /*@__PURE__*/
-  messageDesc(file_alt_feeds_v2_feeds, 33);
+  messageDesc(file_alt_feeds_v2_feeds, 38);
 
 /**
  * ResolveOgImagesRequest asks for og:image URLs for feeds that arrived without
@@ -1128,7 +1297,7 @@ export type ResolveOgImagesRequest = Message<"alt.feeds.v2.ResolveOgImagesReques
  * Use `create(ResolveOgImagesRequestSchema)` to create a new message.
  */
 export const ResolveOgImagesRequestSchema: GenMessage<ResolveOgImagesRequest> = /*@__PURE__*/
-  messageDesc(file_alt_feeds_v2_feeds, 34);
+  messageDesc(file_alt_feeds_v2_feeds, 39);
 
 /**
  * ResolveOgImage carries one feed that resolved.
@@ -1156,7 +1325,7 @@ export type ResolveOgImage = Message<"alt.feeds.v2.ResolveOgImage"> & {
  * Use `create(ResolveOgImageSchema)` to create a new message.
  */
 export const ResolveOgImageSchema: GenMessage<ResolveOgImage> = /*@__PURE__*/
-  messageDesc(file_alt_feeds_v2_feeds, 35);
+  messageDesc(file_alt_feeds_v2_feeds, 40);
 
 /**
  * UnresolvedOgImage carries one feed the server considered and could not
@@ -1189,7 +1358,7 @@ export type UnresolvedOgImage = Message<"alt.feeds.v2.UnresolvedOgImage"> & {
  * Use `create(UnresolvedOgImageSchema)` to create a new message.
  */
 export const UnresolvedOgImageSchema: GenMessage<UnresolvedOgImage> = /*@__PURE__*/
-  messageDesc(file_alt_feeds_v2_feeds, 36);
+  messageDesc(file_alt_feeds_v2_feeds, 41);
 
 /**
  * ResolveOgImagesResponse separates four outcomes across two parallel lists.
@@ -1250,7 +1419,7 @@ export type ResolveOgImagesResponse = Message<"alt.feeds.v2.ResolveOgImagesRespo
  * Use `create(ResolveOgImagesResponseSchema)` to create a new message.
  */
 export const ResolveOgImagesResponseSchema: GenMessage<ResolveOgImagesResponse> = /*@__PURE__*/
-  messageDesc(file_alt_feeds_v2_feeds, 37);
+  messageDesc(file_alt_feeds_v2_feeds, 42);
 
 /**
  * FeedService provides feed-related operations
@@ -1404,6 +1573,26 @@ export const FeedService: GenService<{
     methodKind: "unary";
     input: typeof UnsubscribeRequestSchema;
     output: typeof UnsubscribeResponseSchema;
+  },
+  /**
+   * SetSubscriptionDailyCap sets or clears the daily unread cap for one subscription.
+   *
+   * @generated from rpc alt.feeds.v2.FeedService.SetSubscriptionDailyCap
+   */
+  setSubscriptionDailyCap: {
+    methodKind: "unary";
+    input: typeof SetSubscriptionDailyCapRequestSchema;
+    output: typeof SetSubscriptionDailyCapResponseSchema;
+  },
+  /**
+   * GetFeedInflowStats returns 30-day inflow and reading statistics per subscribed feed.
+   *
+   * @generated from rpc alt.feeds.v2.FeedService.GetFeedInflowStats
+   */
+  getFeedInflowStats: {
+    methodKind: "unary";
+    input: typeof GetFeedInflowStatsRequestSchema;
+    output: typeof GetFeedInflowStatsResponseSchema;
   },
   /**
    * GetFeedTags returns the tags associated with a single feed by ID.

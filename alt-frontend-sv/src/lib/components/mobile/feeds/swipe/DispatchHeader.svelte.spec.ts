@@ -41,11 +41,12 @@ describe("DispatchHeader", () => {
 			.toHaveTextContent("№ 14");
 	});
 
-	it("exits to the menu page", async () => {
+	it("exits to the Today page", async () => {
 		const screen = render(DispatchHeader, { ...baseProps });
-		await expect
-			.element(screen.getByTestId("dispatch-back"))
-			.toHaveAttribute("href", "/menu");
+		const back = screen.getByTestId("dispatch-back");
+		await expect.element(back).toHaveAttribute("href", "/today");
+		await expect.element(back).toHaveAttribute("aria-label", "Back to Today");
+		await expect.element(back).toHaveTextContent("Today");
 	});
 
 	it("disables undo when there is nothing to undo", async () => {

@@ -6,6 +6,7 @@ export type { FeedGridApi, RemoveFeedResult } from "./feed-grid-types";
 	import type { Snippet } from "svelte";
 	import { getFeedsWithCursorClient, getAllFeedsWithCursorClient } from "#lib/api/client/feeds.js";
 	import { appendUniqueFeeds } from "#lib/domain/feed/dedupe.js";
+	import { readTodayQueue } from "#lib/reading/read-today-queue.svelte.js";
 	import type { RenderFeed } from "#lib/schema/feed.js";
 	import type { FeedGridApi, RemoveFeedResult } from "./feed-grid-types";
 	import DesktopFeedCard from "./DesktopFeedCard.svelte";
@@ -39,9 +40,10 @@ export type { FeedGridApi, RemoveFeedResult } from "./feed-grid-types";
 		 */
 		emptyContent?: Snippet;
 		loadingContent?: Snippet;
+		excludeQueued?: boolean;
 	}
 
-	let { onSelectFeed, unreadOnly = false, sortBy = "date_desc", excludedFeedLinkIds = [], onReady, fetchFn, cardRenderer, gridClass = "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-4", gridTestId, emptyText = "No dispatches on the wire", loadingText = "Retrieving dispatches", initialFeeds = [], emptyContent, loadingContent }: Props = $props();
+	let { onSelectFeed, unreadOnly = false, sortBy = "date_desc", excludedFeedLinkIds = [], onReady, fetchFn, cardRenderer, gridClass = "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-4", gridTestId, emptyText = "No dispatches on the wire", loadingText = "Retrieving dispatches", initialFeeds = [], emptyContent, loadingContent, excludeQueued = false }: Props = $props();
 
 	// Track initial load completion to only animate first batch
 	let initialLoadDone = $state(false);
@@ -95,12 +97,22 @@ export type { FeedGridApi, RemoveFeedResult } from "./feed-grid-types";
 		return sorted;
 	}
 
-	// Filter out removed feeds, then apply sort
+	// Filter out removed feeds (and queued items when requested), then apply sort
 	const visibleFeeds = $derived(
 		sortFeeds(
-			feeds.filter(feed => !removedUrls.has(feed.normalizedUrl)),
+			feeds.filter((feed) => {
+				if (removedUrls.has(feed.normalizedUrl)) return false;
+				if (
+					excludeQueued &&
+					(readTodayQueue.isQueued(feed.articleId) ||
+						readTodayQueue.isQueued(feed.normalizedUrl || feed.link))
+				) {
+					return false;
+				}
+				return true;
+			}),
 			sortBy,
-		)
+		),
 	);
 
 	/**
@@ -127,8 +139,10 @@ export type { FeedGridApi, RemoveFeedResult } from "./feed-grid-types";
 		return err instanceof Error && err.message.includes("404");
 	}
 
+	const PAGE_SIZE = 20;
+
 	/** Fetch feeds using the correct API based on unreadOnly or custom fetchFn */
-	function fetchFeedsApi(cursor?: string, limit: number = 20) {
+	function fetchFeedsApi(cursor?: string, limit: number = PAGE_SIZE) {
 		if (fetchFn) return fetchFn(cursor, limit);
 		if (unreadOnly) {
 			return getFeedsWithCursorClient(cursor, limit, excludedFeedLinkIds.length > 0 ? excludedFeedLinkIds : undefined);
@@ -208,7 +222,7 @@ export type { FeedGridApi, RemoveFeedResult } from "./feed-grid-types";
 	 * Separated from removeFeedByUrl to avoid race conditions.
 	 */
 	function fetchReplacementFeed(): void {
-		if (!hasNextPage || !nextCursor) return;
+		if (!hasNextPage || !nextCursor || isFetchingNextPage) return;
 
 		// Fire-and-forget: don't await, let it complete in the background
 		fetchFeedsApi(nextCursor, 1)
@@ -224,6 +238,45 @@ export type { FeedGridApi, RemoveFeedResult } from "./feed-grid-types";
 			});
 	}
 
+	function markFeedReadByArticleIds(articleIds: string[]): void {
+		if (articleIds.length === 0) return;
+		const idSet = new Set(articleIds);
+		if (unreadOnly) {
+			const nextRemoved = new Set(removedUrls);
+			let changed = false;
+			for (const feed of feeds) {
+				if (feed.articleId && idSet.has(feed.articleId)) {
+					nextRemoved.add(feed.normalizedUrl);
+					changed = true;
+				}
+			}
+			if (changed) {
+				removedUrls = nextRemoved;
+			}
+		} else {
+			let changed = false;
+			const updated = feeds.map((feed) => {
+				if (feed.articleId && idSet.has(feed.articleId) && !feed.isRead) {
+					changed = true;
+					return { ...feed, isRead: true };
+				}
+				return feed;
+			});
+			if (changed) {
+				feeds = updated;
+			}
+		}
+	}
+
+	function setFeedArticleId(url: string, articleId: string): void {
+		if (!articleId) return;
+		const index = feeds.findIndex(
+			(f) => f.normalizedUrl === url || f.link === url,
+		);
+		if (index === -1 || feeds[index]?.articleId === articleId) return;
+		feeds = feeds.map((f, i) => (i === index ? { ...f, articleId } : f));
+	}
+
 	/**
 	 * Refresh the feed list from scratch.
 	 * Used for Safari connection recovery after prolonged background.
@@ -233,6 +286,7 @@ export type { FeedGridApi, RemoveFeedResult } from "./feed-grid-types";
 		feeds = [];
 		nextCursor = undefined;
 		hasNextPage = true;
+		autoRefillStopped = false;
 		removedUrls = new Set();
 		error = null;
 		isLoading = true;
@@ -256,6 +310,8 @@ export type { FeedGridApi, RemoveFeedResult } from "./feed-grid-types";
 			getVisibleFeeds: () => visibleFeeds,
 			getFeedByUrl,
 			fetchReplacementFeed,
+			markFeedReadByArticleIds,
+			setFeedArticleId,
 			refresh,
 		});
 	});
@@ -264,10 +320,15 @@ export type { FeedGridApi, RemoveFeedResult } from "./feed-grid-types";
 	let error = $state<Error | null>(null);
 	let nextCursor = $state<string | undefined>(undefined);
 	let hasNextPage = $state(true);
+	let autoRefillStopped = $state(false);
 
 	async function loadFeeds(cursor?: string) {
 		try {
-			const result = await fetchFeedsApi(cursor, 20);
+			const result = await fetchFeedsApi(cursor, PAGE_SIZE);
+			const incomingRows = result.data ?? [];
+			if (incomingRows.length === 0) {
+				autoRefillStopped = true;
+			}
 
 			// Always merged rather than concatenated, on the first page as well as
 			// on later ones. The keyed `{#each}` below cannot hold two siblings
@@ -279,7 +340,7 @@ export type { FeedGridApi, RemoveFeedResult } from "./feed-grid-types";
 			// also matches on `normalizedUrl`, because the SSR read and the client
 			// read are two separate queries and the same article can come back
 			// under two different row ids.
-			feeds = appendUniqueFeeds(cursor ? feeds : [...seedFeeds], result.data ?? []);
+			feeds = appendUniqueFeeds(cursor ? feeds : [...seedFeeds], incomingRows);
 
 			nextCursor = nextCursorOf(result);
 			hasNextPage = hasMorePages(result);
@@ -342,6 +403,7 @@ export type { FeedGridApi, RemoveFeedResult } from "./feed-grid-types";
 			feeds = [];
 			nextCursor = undefined;
 			hasNextPage = true;
+			autoRefillStopped = false;
 			await loadFeeds();
 			if (!error) announce("The list was reloaded.");
 		} finally {
@@ -377,6 +439,7 @@ export type { FeedGridApi, RemoveFeedResult } from "./feed-grid-types";
 				feeds = [];
 				nextCursor = undefined;
 				hasNextPage = true;
+				autoRefillStopped = false;
 				removedUrls = new Set();
 				error = null;
 				isLoading = true;
@@ -385,6 +448,29 @@ export type { FeedGridApi, RemoveFeedResult } from "./feed-grid-types";
 					isLoading = false;
 				});
 			}
+		}
+	});
+
+	$effect(() => {
+		if (excludeQueued && !readTodayQueue.hasLoaded && !readTodayQueue.isLoading) {
+			void readTodayQueue.refresh().catch(() => {});
+		}
+	});
+
+	// When hidden rows (queued or marked read) drop visible count below a page,
+	// pull the next page automatically so pagination does not stall.
+	$effect(() => {
+		if (
+			isLoading ||
+			isFetchingNextPage ||
+			error ||
+			!hasNextPage ||
+			autoRefillStopped
+		) {
+			return;
+		}
+		if (visibleFeeds.length < feeds.length && visibleFeeds.length < PAGE_SIZE) {
+			void loadMore();
 		}
 	});
 
@@ -403,6 +489,36 @@ export type { FeedGridApi, RemoveFeedResult } from "./feed-grid-types";
 	});
 
 </script>
+
+{#snippet loadMoreSentinel()}
+	<div
+		use:infiniteScroll={{
+			callback: loadMore,
+			// `isLoading` is in the guard because a server-rendered first
+			// screen is on the page *before* the first request answers, and on
+			// a phone that screen is short enough that the sentinel is already
+			// in view. Without it the sentinel fired straight away and page one
+			// was requested twice.
+			disabled: isLoading || isFetchingNextPage || !hasNextPage || autoRefillStopped,
+			threshold: 0.1,
+			rootMargin: "0px 0px 200px 0px",
+		}}
+		class="load-more"
+		role="status"
+		aria-live="polite"
+	>
+		{#if isFetchingNextPage}
+			<div class="loading-state">
+				<span class="loading-pulse"></span>
+				<span class="loading-text">Loading more&hellip;</span>
+			</div>
+		{:else if hasNextPage}
+			<p class="scroll-hint">Scroll for more</p>
+		{:else}
+			<p class="scroll-hint">End of wire</p>
+		{/if}
+	</div>
+{/snippet}
 
 <div class="wire-container">
 	<div class="sr-only" role="status" aria-live="polite" aria-atomic="true">{statusMessage}</div>
@@ -435,6 +551,9 @@ export type { FeedGridApi, RemoveFeedResult } from "./feed-grid-types";
 		{:else}
 			<p class="empty-state">{emptyText}</p>
 		{/if}
+		{#if hasNextPage}
+			{@render loadMoreSentinel()}
+		{/if}
 	{:else}
 		<div class={gridClass} data-testid={gridTestId}>
 			{#each visibleFeeds as feed, index (feed.id)}
@@ -448,33 +567,7 @@ export type { FeedGridApi, RemoveFeedResult } from "./feed-grid-types";
 			{/each}
 		</div>
 
-		<div
-			use:infiniteScroll={{
-				callback: loadMore,
-				// `isLoading` is in the guard because a server-rendered first
-				// screen is on the page *before* the first request answers, and on
-				// a phone that screen is short enough that the sentinel is already
-				// in view. Without it the sentinel fired straight away and page one
-				// was requested twice.
-				disabled: isLoading || isFetchingNextPage || !hasNextPage,
-				threshold: 0.1,
-				rootMargin: "0px 0px 200px 0px",
-			}}
-			class="load-more"
-			role="status"
-			aria-live="polite"
-		>
-			{#if isFetchingNextPage}
-				<div class="loading-state">
-					<span class="loading-pulse"></span>
-					<span class="loading-text">Loading more&hellip;</span>
-				</div>
-			{:else if hasNextPage}
-				<p class="scroll-hint">Scroll for more</p>
-			{:else}
-				<p class="scroll-hint">End of wire</p>
-			{/if}
-		</div>
+		{@render loadMoreSentinel()}
 	{/if}
 </div>
 

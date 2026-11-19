@@ -78,7 +78,8 @@ type FeedPort interface {
 	// writes no articles row (ADR-000953). Results are in request order.
 	Register(ctx context.Context, feeds []domain.FeedRegistration) ([]domain.FeedRegistrationResult, error)
 	// ListCursor pages one user's feeds newest first within a scope.
-	ListCursor(ctx context.Context, scope FeedScope, userID uuid.UUID, cursor *time.Time, limit int, excludeFeedLinkIDs []uuid.UUID) ([]*domain.FeedRow, error)
+	// cursorID breaks created_at ties on FEED_SCOPE_UNREAD.
+	ListCursor(ctx context.Context, scope FeedScope, userID uuid.UUID, cursor *time.Time, cursorID *uuid.UUID, limit int, excludeFeedLinkIDs []uuid.UUID) ([]*domain.FeedRow, error)
 	// ListPage is the legacy offset pager. userID is required only when
 	// unreadOnly is set — the two are different queries.
 	ListPage(ctx context.Context, page int, unreadOnly bool, userID uuid.UUID) ([]*domain.FeedRow, error)
@@ -106,6 +107,10 @@ type FeedPort interface {
 	BatchGetTitlesByIDs(ctx context.Context, feedIDs []uuid.UUID) (map[uuid.UUID]string, error)
 	// GetInoreaderSummariesByURLs returns imported Inoreader bodies.
 	GetInoreaderSummariesByURLs(ctx context.Context, urls []string) ([]*domain.InoreaderSummary, error)
+	// GetFeedInflowByUser returns stored item inflow counts per subscribed feed in [from, to].
+	GetFeedInflowByUser(ctx context.Context, userID uuid.UUID, from, to time.Time) ([]domain.FeedInflow, error)
+	// BatchGetFeedLinkIDsByArticleIDs resolves article IDs belonging to userID to their feed_link_id.
+	BatchGetFeedLinkIDsByArticleIDs(ctx context.Context, userID uuid.UUID, articleIDs []uuid.UUID) (map[uuid.UUID]uuid.UUID, error)
 }
 
 // ReadStatePort is the per-user state kept beside the feed list: what has been
@@ -147,6 +152,8 @@ type ReadStatePort interface {
 	Subscribe(ctx context.Context, userID, feedLinkID uuid.UUID) error
 	// Unsubscribe is idempotent in the other direction.
 	Unsubscribe(ctx context.Context, userID, feedLinkID uuid.UUID) error
+	// SetSubscriptionDailyCap updates or clears daily_cap on an existing subscription.
+	SetSubscriptionDailyCap(ctx context.Context, userID, feedLinkID uuid.UUID, dailyCap *int) error
 	// AddFavorite stars the feed at a URL. domain.ErrFeedNotFound for a URL
 	// with no feed; starring twice succeeds.
 	AddFavorite(ctx context.Context, feedURL string, userID uuid.UUID) error

@@ -1324,6 +1324,12 @@ message Feed {
   // the 7-day copyright retention window — the provider does not distinguish
   // them, and neither does the placeholder the frontend renders.
   optional string og_image_url = 11;
+  // 1-based position of this item within its (feed_link_id, UTC day of created_at)
+  // ordered by (created_at ASC, id ASC) over all items of that feed-day.
+  // Populated on FEED_SCOPE_UNREAD so the caller can apply per-subscription caps.
+  optional int32 daily_rank = 12;
+  // Per-subscription daily unread cap configured by the user; absent when uncapped.
+  optional int32 daily_cap = 13;
 }
 
 // FeedRegistration is one RSS item to upsert into feeds.
@@ -1534,6 +1540,8 @@ message ListFeedsCursorRequest {
   int32 limit = 4;
   // Feed links to leave out — the client-side "hide this source" filter.
   repeated string exclude_feed_link_ids = 5;
+  // Optional tie-breaker feed id paired with cursor for (created_at, id) keyset paging.
+  optional string cursor_id = 6;
 }
 
 message ListFeedsCursorResponse {
@@ -1657,6 +1665,8 @@ message FeedSubscription {
   // field says there is no such date, where a zero timestamp would claim the
   // user subscribed at the epoch.
   optional google.protobuf.Timestamp subscribed_at = 4;
+  // Per-subscription daily cap on unread items shown per UTC day; absent when uncapped.
+  optional int32 daily_cap = 5;
 }
 
 message MarkFeedReadRequest {
@@ -1734,6 +1744,42 @@ message UnsubscribeRequest {
 // Idempotent in the other direction: unsubscribing from something the user
 // does not follow succeeds.
 message UnsubscribeResponse {}
+
+message SetSubscriptionDailyCapRequest {
+  string user_id = 1;
+  string feed_link_id = 2;
+  // Positive daily cap; omit to clear the cap.
+  optional int32 daily_cap = 3;
+}
+
+message SetSubscriptionDailyCapResponse {}
+
+message FeedInflowCount {
+  string feed_link_id = 1;
+  string url = 2;
+  optional int32 daily_cap = 3;
+  int64 inflow_count = 4;
+}
+
+message GetFeedInflowByUserRequest {
+  string user_id = 1;
+  google.protobuf.Timestamp from = 2;
+  google.protobuf.Timestamp to = 3;
+}
+
+message GetFeedInflowByUserResponse {
+  repeated FeedInflowCount feeds = 1;
+}
+
+message BatchGetFeedLinkIDsByArticleIDsRequest {
+  string user_id = 1;
+  repeated string article_ids = 2;
+}
+
+message BatchGetFeedLinkIDsByArticleIDsResponse {
+  // article_id -> feed_link_id for articles whose feed_link_id can be resolved.
+  map<string, string> feed_link_ids = 1;
+}
 
 message AddFavoriteFeedRequest {
   string feed_url = 1;
@@ -2955,6 +3001,15 @@ service DataHubService {
 
   // Unsubscribe stops following a feed link. Idempotent.
   rpc Unsubscribe(UnsubscribeRequest) returns (UnsubscribeResponse);
+
+  // SetSubscriptionDailyCap sets or clears the daily unread cap on a user's subscription.
+  rpc SetSubscriptionDailyCap(SetSubscriptionDailyCapRequest) returns (SetSubscriptionDailyCapResponse);
+
+  // GetFeedInflowByUser returns stored feed item counts per subscribed feed in a window.
+  rpc GetFeedInflowByUser(GetFeedInflowByUserRequest) returns (GetFeedInflowByUserResponse);
+
+  // BatchGetFeedLinkIDsByArticleIDs maps article ids belonging to a user to their feed_link_id.
+  rpc BatchGetFeedLinkIDsByArticleIDs(BatchGetFeedLinkIDsByArticleIDsRequest) returns (BatchGetFeedLinkIDsByArticleIDsResponse);
 
   // AddFavoriteFeed stars the feed at a URL for one user.
   //

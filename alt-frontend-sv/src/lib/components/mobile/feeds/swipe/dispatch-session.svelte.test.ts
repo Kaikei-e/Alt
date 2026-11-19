@@ -1,82 +1,166 @@
 /**
  * Dispatch session store tests.
  *
- * Undo semantics (contexts/visual-preview.md): the last swiped card can be
- * returned to the pile. There is no un-read RPC, so the mark-as-read call
- * for a dismissed card is deferred until the next dismissal (or flush);
- * undo cancels the pending call instead of reverting the backend.
+ * Undo semantics: the last swiped card can be returned to the pile. Both
+ * `pass` (mark read) and `queue` (Read today) are held in a single-slot
+ * pending buffer and committed by kind on the next dismissal or flush.
  */
 import { describe, expect, it, vi } from "vitest";
 import { createDispatchSession } from "./dispatch-session.svelte";
 
 describe("createDispatchSession", () => {
 	it("starts with an empty session", () => {
-		const session = createDispatchSession(vi.fn());
+		const session = createDispatchSession({
+			onPass: vi.fn(),
+			onQueue: vi.fn(),
+		});
 		expect(session.readCount).toBe(0);
 		expect(session.canUndo).toBe(false);
+		expect(session.pending).toBeNull();
 	});
 
-	it("defers mark-as-read on dismiss until the next dismissal", () => {
-		const markRead = vi.fn(() => Promise.resolve());
-		const session = createDispatchSession(markRead);
+	it("defers pass on dismiss until the next dismissal", () => {
+		const onPass = vi.fn(() => Promise.resolve());
+		const onQueue = vi.fn(() => Promise.resolve());
+		const session = createDispatchSession({ onPass, onQueue });
 
-		session.dismiss("https://a.example/");
+		session.dismiss("https://a.example/", "pass");
 		expect(session.readCount).toBe(1);
 		expect(session.canUndo).toBe(true);
-		expect(markRead).not.toHaveBeenCalled();
+		expect(session.pending).toEqual({
+			link: "https://a.example/",
+			kind: "pass",
+		});
+		expect(onPass).not.toHaveBeenCalled();
 
-		session.dismiss("https://b.example/");
+		session.dismiss("https://b.example/", "pass");
 		expect(session.readCount).toBe(2);
-		expect(markRead).toHaveBeenCalledExactlyOnceWith("https://a.example/");
+		expect(onPass).toHaveBeenCalledExactlyOnceWith("https://a.example/");
+		expect(onQueue).not.toHaveBeenCalled();
 	});
 
-	it("undo returns the pending link without marking it read", () => {
-		const markRead = vi.fn(() => Promise.resolve());
-		const session = createDispatchSession(markRead);
+	it("defers queue on dismiss and flushes by kind", () => {
+		const onPass = vi.fn(() => Promise.resolve());
+		const onQueue = vi.fn(() => Promise.resolve());
+		const session = createDispatchSession({ onPass, onQueue });
 
-		session.dismiss("https://a.example/");
+		session.dismiss("https://a.example/", "queue");
+		expect(session.readCount).toBe(1);
+		expect(session.canUndo).toBe(true);
+		expect(onQueue).not.toHaveBeenCalled();
+
+		session.dismiss("https://b.example/", "pass");
+		expect(session.readCount).toBe(2);
+		expect(onQueue).toHaveBeenCalledExactlyOnceWith("https://a.example/");
+		expect(onPass).not.toHaveBeenCalled();
+
+		session.flush();
+		expect(onPass).toHaveBeenCalledExactlyOnceWith("https://b.example/");
+	});
+
+	it("undo returns the pending entry without committing either pass or queue", () => {
+		const onPass = vi.fn(() => Promise.resolve());
+		const onQueue = vi.fn(() => Promise.resolve());
+		const session = createDispatchSession({ onPass, onQueue });
+
+		session.dismiss("https://a.example/", "queue");
 		const restored = session.undo();
 
-		expect(restored).toBe("https://a.example/");
+		expect(restored).toEqual({
+			link: "https://a.example/",
+			kind: "queue",
+		});
 		expect(session.readCount).toBe(0);
 		expect(session.canUndo).toBe(false);
-		expect(markRead).not.toHaveBeenCalled();
+		expect(session.pending).toBeNull();
+		expect(onPass).not.toHaveBeenCalled();
+		expect(onQueue).not.toHaveBeenCalled();
 	});
 
 	it("undo only reaches one card back", () => {
-		const markRead = vi.fn(() => Promise.resolve());
-		const session = createDispatchSession(markRead);
+		const onPass = vi.fn(() => Promise.resolve());
+		const onQueue = vi.fn(() => Promise.resolve());
+		const session = createDispatchSession({ onPass, onQueue });
 
-		session.dismiss("https://a.example/");
-		session.dismiss("https://b.example/");
+		session.dismiss("https://a.example/", "pass");
+		session.dismiss("https://b.example/", "queue");
 		const restored = session.undo();
 
-		expect(restored).toBe("https://b.example/");
+		expect(restored).toEqual({
+			link: "https://b.example/",
+			kind: "queue",
+		});
 		expect(session.readCount).toBe(1);
 		expect(session.undo()).toBeNull();
-		expect(markRead).toHaveBeenCalledExactlyOnceWith("https://a.example/");
+		expect(onPass).toHaveBeenCalledExactlyOnceWith("https://a.example/");
+		expect(onQueue).not.toHaveBeenCalled();
 	});
 
-	it("flush commits the pending read and closes the undo window", () => {
-		const markRead = vi.fn(() => Promise.resolve());
-		const session = createDispatchSession(markRead);
+	it("notifies onPendingChange across dismiss, undo, and flush", () => {
+		const onPendingChange = vi.fn();
+		const session = createDispatchSession({
+			onPass: vi.fn(() => Promise.resolve()),
+			onQueue: vi.fn(() => Promise.resolve()),
+			onPendingChange,
+		});
 
-		session.dismiss("https://a.example/");
+		session.dismiss("https://a.example/", "queue");
+		expect(onPendingChange).toHaveBeenLastCalledWith({
+			link: "https://a.example/",
+			kind: "queue",
+		});
+
+		session.undo();
+		expect(onPendingChange).toHaveBeenLastCalledWith(null);
+
+		session.dismiss("https://b.example/", "pass");
+		session.flush();
+		expect(onPendingChange).toHaveBeenLastCalledWith(null);
+	});
+
+	it("flush commits the pending entry and closes the undo window", () => {
+		const onPass = vi.fn(() => Promise.resolve());
+		const onQueue = vi.fn(() => Promise.resolve());
+		const session = createDispatchSession({ onPass, onQueue });
+
+		session.dismiss("https://a.example/", "queue");
 		session.flush();
 
-		expect(markRead).toHaveBeenCalledExactlyOnceWith("https://a.example/");
+		expect(onQueue).toHaveBeenCalledExactlyOnceWith("https://a.example/");
 		expect(session.canUndo).toBe(false);
 		expect(session.readCount).toBe(1);
 
 		session.flush();
-		expect(markRead).toHaveBeenCalledOnce();
+		expect(onQueue).toHaveBeenCalledOnce();
 	});
 
-	it("swallows mark-as-read failures", () => {
-		const markRead = vi.fn(() => Promise.reject(new Error("offline")));
-		const session = createDispatchSession(markRead);
+	it("swallows commit failures", () => {
+		const onPass = vi.fn(() => Promise.reject(new Error("offline")));
+		const onQueue = vi.fn(() => Promise.reject(new Error("offline")));
+		const session = createDispatchSession({ onPass, onQueue });
 
-		session.dismiss("https://a.example/");
+		session.dismiss("https://a.example/", "pass");
 		expect(() => session.flush()).not.toThrow();
+
+		session.dismiss("https://b.example/", "queue");
+		expect(() => session.flush()).not.toThrow();
+	});
+
+	it("forwards keepalive option from flush to onPass and onQueue", () => {
+		const onPass = vi.fn(() => Promise.resolve());
+		const onQueue = vi.fn(() => Promise.resolve());
+		const session = createDispatchSession({ onPass, onQueue });
+
+		session.dismiss("https://a.example/", "queue");
+		session.flush({ keepalive: true });
+		expect(onQueue).toHaveBeenCalledExactlyOnceWith("https://a.example/", {
+			keepalive: true,
+		});
+
+		session.dismiss("https://b.example/", "pass");
+		session.flush({ keepalive: true });
+		expect(onPass).toHaveBeenCalledExactlyOnceWith("https://b.example/", {
+			keepalive: true,
+		});
 	});
 });

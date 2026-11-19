@@ -39,7 +39,10 @@ func mapFeedCursor(feed *models.Feed, includeIsRead bool) (*domain.FeedItem, err
 		Link:            feed.WebsiteURL,
 		Published:       publishedTime.Format(time.RFC3339),
 		PublishedParsed: publishedTime,
+		FeedLinkID:      feed.FeedLinkID,
 		OgImageURL:      derefString(feed.OgImageURL),
+		DailyRank:       feed.DailyRank,
+		DailyCap:        feed.DailyCap,
 	}
 
 	if includeIsRead {

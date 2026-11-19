@@ -12,9 +12,7 @@
  * backlog is bounded to roughly one horizon.
  *
  * Note: `simulateTypewriterEffect` in ./streamingRenderer.ts is the superseded
- * fixed-rate engine, retained only because the swipe cards (SwipeFeedCard /
- * VisualPreviewCard) still render through it. New streaming surfaces use this
- * module.
+ * fixed-rate engine. New streaming surfaces use this module.
  */
 
 export interface RevealScheduler {

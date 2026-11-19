@@ -76,6 +76,10 @@ type FeedItem struct {
 	OgImageProxyURL string `json:"ogImageProxyUrl,omitempty"`
 	// CursorAt is the sort-key timestamp used to derive next_cursor when a list is ordered by a column other than feeds.created_at.
 	CursorAt time.Time `json:"-"`
+	// DailyRank is the 1-based rank of this item within its feed and UTC day (created_at ASC, id ASC).
+	DailyRank *int `json:"-"`
+	// DailyCap is the user's configured daily cap for this feed link, if any.
+	DailyCap *int `json:"-"`
 }
 
 type Author struct {

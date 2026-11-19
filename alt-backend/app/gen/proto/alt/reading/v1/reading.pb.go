@@ -85,6 +85,63 @@ func (ReadingSurface) EnumDescriptor() ([]byte, []int) {
 	return file_alt_reading_v1_reading_proto_rawDescGZIP(), []int{0}
 }
 
+// QueueArticleOutcome reports the result of attempting to add an article to the Read Today queue.
+type QueueArticleOutcome int32
+
+const (
+	// Default unspecified outcome.
+	QueueArticleOutcome_QUEUE_ARTICLE_OUTCOME_UNSPECIFIED QueueArticleOutcome = 0
+	// The article was added to the queue.
+	QueueArticleOutcome_QUEUE_ARTICLE_OUTCOME_QUEUED QueueArticleOutcome = 1
+	// The article was already present in the active queue.
+	QueueArticleOutcome_QUEUE_ARTICLE_OUTCOME_ALREADY_QUEUED QueueArticleOutcome = 2
+	// The queue is at capacity; older items are never evicted.
+	QueueArticleOutcome_QUEUE_ARTICLE_OUTCOME_QUEUE_FULL QueueArticleOutcome = 3
+)
+
+// Enum value maps for QueueArticleOutcome.
+var (
+	QueueArticleOutcome_name = map[int32]string{
+		0: "QUEUE_ARTICLE_OUTCOME_UNSPECIFIED",
+		1: "QUEUE_ARTICLE_OUTCOME_QUEUED",
+		2: "QUEUE_ARTICLE_OUTCOME_ALREADY_QUEUED",
+		3: "QUEUE_ARTICLE_OUTCOME_QUEUE_FULL",
+	}
+	QueueArticleOutcome_value = map[string]int32{
+		"QUEUE_ARTICLE_OUTCOME_UNSPECIFIED":    0,
+		"QUEUE_ARTICLE_OUTCOME_QUEUED":         1,
+		"QUEUE_ARTICLE_OUTCOME_ALREADY_QUEUED": 2,
+		"QUEUE_ARTICLE_OUTCOME_QUEUE_FULL":     3,
+	}
+)
+
+func (x QueueArticleOutcome) Enum() *QueueArticleOutcome {
+	p := new(QueueArticleOutcome)
+	*p = x
+	return p
+}
+
+func (x QueueArticleOutcome) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (QueueArticleOutcome) Descriptor() protoreflect.EnumDescriptor {
+	return file_alt_reading_v1_reading_proto_enumTypes[1].Descriptor()
+}
+
+func (QueueArticleOutcome) Type() protoreflect.EnumType {
+	return &file_alt_reading_v1_reading_proto_enumTypes[1]
+}
+
+func (x QueueArticleOutcome) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use QueueArticleOutcome.Descriptor instead.
+func (QueueArticleOutcome) EnumDescriptor() ([]byte, []int) {
+	return file_alt_reading_v1_reading_proto_rawDescGZIP(), []int{1}
+}
+
 // SurfaceViewed records that the user viewed a reading surface.
 type SurfaceViewed struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -279,6 +336,61 @@ func (x *SessionEnded) GetReachedEnd() bool {
 	return false
 }
 
+// Opened records that the user opened an article in a reader surface.
+type Opened struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Identifier of the article that was opened.
+	ArticleId string `protobuf:"bytes,1,opt,name=article_id,json=articleId,proto3" json:"article_id,omitempty"`
+	// Surface where the article was opened.
+	Surface       ReadingSurface `protobuf:"varint,2,opt,name=surface,proto3,enum=alt.reading.v1.ReadingSurface" json:"surface,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Opened) Reset() {
+	*x = Opened{}
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Opened) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Opened) ProtoMessage() {}
+
+func (x *Opened) ProtoReflect() protoreflect.Message {
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Opened.ProtoReflect.Descriptor instead.
+func (*Opened) Descriptor() ([]byte, []int) {
+	return file_alt_reading_v1_reading_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *Opened) GetArticleId() string {
+	if x != nil {
+		return x.ArticleId
+	}
+	return ""
+}
+
+func (x *Opened) GetSurface() ReadingSurface {
+	if x != nil {
+		return x.Surface
+	}
+	return ReadingSurface_READING_SURFACE_UNSPECIFIED
+}
+
 // ReadingEvent is a single client-observed reading telemetry event.
 // Carries identifiers, timestamps, enums, numbers, and booleans only; no
 // titles, URLs, or text content fields are permitted.
@@ -295,6 +407,7 @@ type ReadingEvent struct {
 	//	*ReadingEvent_SurfaceViewed
 	//	*ReadingEvent_ReachedEnd
 	//	*ReadingEvent_SessionEnded
+	//	*ReadingEvent_Opened
 	Event         isReadingEvent_Event `protobuf_oneof:"event"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -302,7 +415,7 @@ type ReadingEvent struct {
 
 func (x *ReadingEvent) Reset() {
 	*x = ReadingEvent{}
-	mi := &file_alt_reading_v1_reading_proto_msgTypes[3]
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -314,7 +427,7 @@ func (x *ReadingEvent) String() string {
 func (*ReadingEvent) ProtoMessage() {}
 
 func (x *ReadingEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_reading_v1_reading_proto_msgTypes[3]
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -327,7 +440,7 @@ func (x *ReadingEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadingEvent.ProtoReflect.Descriptor instead.
 func (*ReadingEvent) Descriptor() ([]byte, []int) {
-	return file_alt_reading_v1_reading_proto_rawDescGZIP(), []int{3}
+	return file_alt_reading_v1_reading_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *ReadingEvent) GetClientEventId() string {
@@ -378,6 +491,15 @@ func (x *ReadingEvent) GetSessionEnded() *SessionEnded {
 	return nil
 }
 
+func (x *ReadingEvent) GetOpened() *Opened {
+	if x != nil {
+		if x, ok := x.Event.(*ReadingEvent_Opened); ok {
+			return x.Opened
+		}
+	}
+	return nil
+}
+
 type isReadingEvent_Event interface {
 	isReadingEvent_Event()
 }
@@ -397,11 +519,18 @@ type ReadingEvent_SessionEnded struct {
 	SessionEnded *SessionEnded `protobuf:"bytes,12,opt,name=session_ended,json=sessionEnded,proto3,oneof"`
 }
 
+type ReadingEvent_Opened struct {
+	// User opened an article in a reader surface.
+	Opened *Opened `protobuf:"bytes,13,opt,name=opened,proto3,oneof"`
+}
+
 func (*ReadingEvent_SurfaceViewed) isReadingEvent_Event() {}
 
 func (*ReadingEvent_ReachedEnd) isReadingEvent_Event() {}
 
 func (*ReadingEvent_SessionEnded) isReadingEvent_Event() {}
+
+func (*ReadingEvent_Opened) isReadingEvent_Event() {}
 
 // RecordReadingEventsRequest carries a batch of reading events from the client.
 type RecordReadingEventsRequest struct {
@@ -414,7 +543,7 @@ type RecordReadingEventsRequest struct {
 
 func (x *RecordReadingEventsRequest) Reset() {
 	*x = RecordReadingEventsRequest{}
-	mi := &file_alt_reading_v1_reading_proto_msgTypes[4]
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -426,7 +555,7 @@ func (x *RecordReadingEventsRequest) String() string {
 func (*RecordReadingEventsRequest) ProtoMessage() {}
 
 func (x *RecordReadingEventsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_reading_v1_reading_proto_msgTypes[4]
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -439,7 +568,7 @@ func (x *RecordReadingEventsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RecordReadingEventsRequest.ProtoReflect.Descriptor instead.
 func (*RecordReadingEventsRequest) Descriptor() ([]byte, []int) {
-	return file_alt_reading_v1_reading_proto_rawDescGZIP(), []int{4}
+	return file_alt_reading_v1_reading_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *RecordReadingEventsRequest) GetEvents() []*ReadingEvent {
@@ -455,14 +584,16 @@ type RecordReadingEventsResponse struct {
 	// Number of newly accepted events persisted from the batch (>= 0).
 	Accepted int32 `protobuf:"varint,1,opt,name=accepted,proto3" json:"accepted,omitempty"`
 	// Number of events skipped because client_event_id was already recorded (>= 0).
-	Duplicates    int32 `protobuf:"varint,2,opt,name=duplicates,proto3" json:"duplicates,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Duplicates int32 `protobuf:"varint,2,opt,name=duplicates,proto3" json:"duplicates,omitempty"`
+	// Identifiers of articles that this batch caused to count as read.
+	ReadArticleIds []string `protobuf:"bytes,3,rep,name=read_article_ids,json=readArticleIds,proto3" json:"read_article_ids,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *RecordReadingEventsResponse) Reset() {
 	*x = RecordReadingEventsResponse{}
-	mi := &file_alt_reading_v1_reading_proto_msgTypes[5]
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -474,7 +605,7 @@ func (x *RecordReadingEventsResponse) String() string {
 func (*RecordReadingEventsResponse) ProtoMessage() {}
 
 func (x *RecordReadingEventsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_alt_reading_v1_reading_proto_msgTypes[5]
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -487,7 +618,7 @@ func (x *RecordReadingEventsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RecordReadingEventsResponse.ProtoReflect.Descriptor instead.
 func (*RecordReadingEventsResponse) Descriptor() ([]byte, []int) {
-	return file_alt_reading_v1_reading_proto_rawDescGZIP(), []int{5}
+	return file_alt_reading_v1_reading_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *RecordReadingEventsResponse) GetAccepted() int32 {
@@ -500,6 +631,463 @@ func (x *RecordReadingEventsResponse) GetAccepted() int32 {
 func (x *RecordReadingEventsResponse) GetDuplicates() int32 {
 	if x != nil {
 		return x.Duplicates
+	}
+	return 0
+}
+
+func (x *RecordReadingEventsResponse) GetReadArticleIds() []string {
+	if x != nil {
+		return x.ReadArticleIds
+	}
+	return nil
+}
+
+// ReadingQueueItem represents one active entry in the user's Read Today queue,
+// hydrated with article display metadata by alt-backend.
+type ReadingQueueItem struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Identifier of the queued article.
+	ArticleId string `protobuf:"bytes,1,opt,name=article_id,json=articleId,proto3" json:"article_id,omitempty"`
+	// Article title hydrated from the article store.
+	Title string `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
+	// Canonical article URL hydrated from the article store.
+	Url string `protobuf:"bytes,3,opt,name=url,proto3" json:"url,omitempty"`
+	// Source or site name derived from the article metadata when available.
+	SourceName string `protobuf:"bytes,4,opt,name=source_name,json=sourceName,proto3" json:"source_name,omitempty"`
+	// Image URL (such as an OG image or signed proxy URL) when available.
+	ImageUrl string `protobuf:"bytes,5,opt,name=image_url,json=imageUrl,proto3" json:"image_url,omitempty"`
+	// Timestamp when the article was queued.
+	QueuedAt *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=queued_at,json=queuedAt,proto3" json:"queued_at,omitempty"`
+	// Timestamp when the queue entry expires if not read.
+	ExpiresAt     *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReadingQueueItem) Reset() {
+	*x = ReadingQueueItem{}
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReadingQueueItem) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReadingQueueItem) ProtoMessage() {}
+
+func (x *ReadingQueueItem) ProtoReflect() protoreflect.Message {
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReadingQueueItem.ProtoReflect.Descriptor instead.
+func (*ReadingQueueItem) Descriptor() ([]byte, []int) {
+	return file_alt_reading_v1_reading_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *ReadingQueueItem) GetArticleId() string {
+	if x != nil {
+		return x.ArticleId
+	}
+	return ""
+}
+
+func (x *ReadingQueueItem) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *ReadingQueueItem) GetUrl() string {
+	if x != nil {
+		return x.Url
+	}
+	return ""
+}
+
+func (x *ReadingQueueItem) GetSourceName() string {
+	if x != nil {
+		return x.SourceName
+	}
+	return ""
+}
+
+func (x *ReadingQueueItem) GetImageUrl() string {
+	if x != nil {
+		return x.ImageUrl
+	}
+	return ""
+}
+
+func (x *ReadingQueueItem) GetQueuedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.QueuedAt
+	}
+	return nil
+}
+
+func (x *ReadingQueueItem) GetExpiresAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ExpiresAt
+	}
+	return nil
+}
+
+// QueueArticleRequest requests adding an article to the Read Today queue.
+type QueueArticleRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Identifier of the article to queue.
+	ArticleId string `protobuf:"bytes,1,opt,name=article_id,json=articleId,proto3" json:"article_id,omitempty"`
+	// Client-generated UUIDv7 used to deduplicate retried deliveries.
+	ClientEventId string `protobuf:"bytes,2,opt,name=client_event_id,json=clientEventId,proto3" json:"client_event_id,omitempty"`
+	// Client-observed timestamp when the queue action occurred.
+	OccurredAt *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=occurred_at,json=occurredAt,proto3" json:"occurred_at,omitempty"`
+	// Surface where the queue action was triggered.
+	Surface       ReadingSurface `protobuf:"varint,4,opt,name=surface,proto3,enum=alt.reading.v1.ReadingSurface" json:"surface,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *QueueArticleRequest) Reset() {
+	*x = QueueArticleRequest{}
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *QueueArticleRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*QueueArticleRequest) ProtoMessage() {}
+
+func (x *QueueArticleRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use QueueArticleRequest.ProtoReflect.Descriptor instead.
+func (*QueueArticleRequest) Descriptor() ([]byte, []int) {
+	return file_alt_reading_v1_reading_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *QueueArticleRequest) GetArticleId() string {
+	if x != nil {
+		return x.ArticleId
+	}
+	return ""
+}
+
+func (x *QueueArticleRequest) GetClientEventId() string {
+	if x != nil {
+		return x.ClientEventId
+	}
+	return ""
+}
+
+func (x *QueueArticleRequest) GetOccurredAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.OccurredAt
+	}
+	return nil
+}
+
+func (x *QueueArticleRequest) GetSurface() ReadingSurface {
+	if x != nil {
+		return x.Surface
+	}
+	return ReadingSurface_READING_SURFACE_UNSPECIFIED
+}
+
+// QueueArticleResponse reports the queue outcome and the active queue snapshot.
+type QueueArticleResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Outcome of the queue attempt; QUEUE_FULL is a normal outcome, not an error.
+	Outcome QueueArticleOutcome `protobuf:"varint,1,opt,name=outcome,proto3,enum=alt.reading.v1.QueueArticleOutcome" json:"outcome,omitempty"`
+	// Current active items in the user's Read Today queue.
+	Items []*ReadingQueueItem `protobuf:"bytes,2,rep,name=items,proto3" json:"items,omitempty"`
+	// Configured maximum number of active items in the queue.
+	Cap           int32 `protobuf:"varint,3,opt,name=cap,proto3" json:"cap,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *QueueArticleResponse) Reset() {
+	*x = QueueArticleResponse{}
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *QueueArticleResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*QueueArticleResponse) ProtoMessage() {}
+
+func (x *QueueArticleResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use QueueArticleResponse.ProtoReflect.Descriptor instead.
+func (*QueueArticleResponse) Descriptor() ([]byte, []int) {
+	return file_alt_reading_v1_reading_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *QueueArticleResponse) GetOutcome() QueueArticleOutcome {
+	if x != nil {
+		return x.Outcome
+	}
+	return QueueArticleOutcome_QUEUE_ARTICLE_OUTCOME_UNSPECIFIED
+}
+
+func (x *QueueArticleResponse) GetItems() []*ReadingQueueItem {
+	if x != nil {
+		return x.Items
+	}
+	return nil
+}
+
+func (x *QueueArticleResponse) GetCap() int32 {
+	if x != nil {
+		return x.Cap
+	}
+	return 0
+}
+
+// UnqueueArticleRequest requests removing an article from the Read Today queue.
+type UnqueueArticleRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Identifier of the article to remove from the queue.
+	ArticleId string `protobuf:"bytes,1,opt,name=article_id,json=articleId,proto3" json:"article_id,omitempty"`
+	// Client-generated UUIDv7 used to deduplicate retried deliveries.
+	ClientEventId string `protobuf:"bytes,2,opt,name=client_event_id,json=clientEventId,proto3" json:"client_event_id,omitempty"`
+	// Client-observed timestamp when the unqueue action occurred.
+	OccurredAt    *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=occurred_at,json=occurredAt,proto3" json:"occurred_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UnqueueArticleRequest) Reset() {
+	*x = UnqueueArticleRequest{}
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UnqueueArticleRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UnqueueArticleRequest) ProtoMessage() {}
+
+func (x *UnqueueArticleRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UnqueueArticleRequest.ProtoReflect.Descriptor instead.
+func (*UnqueueArticleRequest) Descriptor() ([]byte, []int) {
+	return file_alt_reading_v1_reading_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *UnqueueArticleRequest) GetArticleId() string {
+	if x != nil {
+		return x.ArticleId
+	}
+	return ""
+}
+
+func (x *UnqueueArticleRequest) GetClientEventId() string {
+	if x != nil {
+		return x.ClientEventId
+	}
+	return ""
+}
+
+func (x *UnqueueArticleRequest) GetOccurredAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.OccurredAt
+	}
+	return nil
+}
+
+// UnqueueArticleResponse acknowledges the unqueue request.
+type UnqueueArticleResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UnqueueArticleResponse) Reset() {
+	*x = UnqueueArticleResponse{}
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UnqueueArticleResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UnqueueArticleResponse) ProtoMessage() {}
+
+func (x *UnqueueArticleResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UnqueueArticleResponse.ProtoReflect.Descriptor instead.
+func (*UnqueueArticleResponse) Descriptor() ([]byte, []int) {
+	return file_alt_reading_v1_reading_proto_rawDescGZIP(), []int{11}
+}
+
+// GetReadTodayQueueRequest requests the active Read Today queue and recent read count.
+type GetReadTodayQueueRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Lower bound (inclusive) for counting articles that counted as read;
+	// typically the client's local midnight.
+	ReadSince     *timestamppb.Timestamp `protobuf:"bytes,1,opt,name=read_since,json=readSince,proto3" json:"read_since,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetReadTodayQueueRequest) Reset() {
+	*x = GetReadTodayQueueRequest{}
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetReadTodayQueueRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetReadTodayQueueRequest) ProtoMessage() {}
+
+func (x *GetReadTodayQueueRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetReadTodayQueueRequest.ProtoReflect.Descriptor instead.
+func (*GetReadTodayQueueRequest) Descriptor() ([]byte, []int) {
+	return file_alt_reading_v1_reading_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *GetReadTodayQueueRequest) GetReadSince() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ReadSince
+	}
+	return nil
+}
+
+// GetReadTodayQueueResponse returns the hydrated active queue, capacity, and read count.
+type GetReadTodayQueueResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Active non-expired items in the Read Today queue.
+	Items []*ReadingQueueItem `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
+	// Configured maximum number of active items in the queue.
+	Cap int32 `protobuf:"varint,2,opt,name=cap,proto3" json:"cap,omitempty"`
+	// Number of distinct articles that counted as read since read_since.
+	ReadCountSince int32 `protobuf:"varint,3,opt,name=read_count_since,json=readCountSince,proto3" json:"read_count_since,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *GetReadTodayQueueResponse) Reset() {
+	*x = GetReadTodayQueueResponse{}
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetReadTodayQueueResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetReadTodayQueueResponse) ProtoMessage() {}
+
+func (x *GetReadTodayQueueResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetReadTodayQueueResponse.ProtoReflect.Descriptor instead.
+func (*GetReadTodayQueueResponse) Descriptor() ([]byte, []int) {
+	return file_alt_reading_v1_reading_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *GetReadTodayQueueResponse) GetItems() []*ReadingQueueItem {
+	if x != nil {
+		return x.Items
+	}
+	return nil
+}
+
+func (x *GetReadTodayQueueResponse) GetCap() int32 {
+	if x != nil {
+		return x.Cap
+	}
+	return 0
+}
+
+func (x *GetReadTodayQueueResponse) GetReadCountSince() int32 {
+	if x != nil {
+		return x.ReadCountSince
 	}
 	return 0
 }
@@ -524,7 +1112,11 @@ const file_alt_reading_v1_reading_proto_rawDesc = "" +
 	"\x10max_scroll_ratio\x18\x04 \x01(\x01R\x0emaxScrollRatio\x12*\n" +
 	"\x11body_length_chars\x18\x05 \x01(\x05R\x0fbodyLengthChars\x12\x1f\n" +
 	"\vreached_end\x18\x06 \x01(\bR\n" +
-	"reachedEnd\"\xc8\x02\n" +
+	"reachedEnd\"a\n" +
+	"\x06Opened\x12\x1d\n" +
+	"\n" +
+	"article_id\x18\x01 \x01(\tR\tarticleId\x128\n" +
+	"\asurface\x18\x02 \x01(\x0e2\x1e.alt.reading.v1.ReadingSurfaceR\asurface\"\xfa\x02\n" +
 	"\fReadingEvent\x12&\n" +
 	"\x0fclient_event_id\x18\x01 \x01(\tR\rclientEventId\x12;\n" +
 	"\voccurred_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
@@ -533,23 +1125,69 @@ const file_alt_reading_v1_reading_proto_rawDesc = "" +
 	" \x01(\v2\x1d.alt.reading.v1.SurfaceViewedH\x00R\rsurfaceViewed\x12=\n" +
 	"\vreached_end\x18\v \x01(\v2\x1a.alt.reading.v1.ReachedEndH\x00R\n" +
 	"reachedEnd\x12C\n" +
-	"\rsession_ended\x18\f \x01(\v2\x1c.alt.reading.v1.SessionEndedH\x00R\fsessionEndedB\a\n" +
+	"\rsession_ended\x18\f \x01(\v2\x1c.alt.reading.v1.SessionEndedH\x00R\fsessionEnded\x120\n" +
+	"\x06opened\x18\r \x01(\v2\x16.alt.reading.v1.OpenedH\x00R\x06openedB\a\n" +
 	"\x05event\"R\n" +
 	"\x1aRecordReadingEventsRequest\x124\n" +
-	"\x06events\x18\x01 \x03(\v2\x1c.alt.reading.v1.ReadingEventR\x06events\"Y\n" +
+	"\x06events\x18\x01 \x03(\v2\x1c.alt.reading.v1.ReadingEventR\x06events\"\x83\x01\n" +
 	"\x1bRecordReadingEventsResponse\x12\x1a\n" +
 	"\baccepted\x18\x01 \x01(\x05R\baccepted\x12\x1e\n" +
 	"\n" +
 	"duplicates\x18\x02 \x01(\x05R\n" +
-	"duplicates*\xa6\x01\n" +
+	"duplicates\x12(\n" +
+	"\x10read_article_ids\x18\x03 \x03(\tR\x0ereadArticleIds\"\x8b\x02\n" +
+	"\x10ReadingQueueItem\x12\x1d\n" +
+	"\n" +
+	"article_id\x18\x01 \x01(\tR\tarticleId\x12\x14\n" +
+	"\x05title\x18\x02 \x01(\tR\x05title\x12\x10\n" +
+	"\x03url\x18\x03 \x01(\tR\x03url\x12\x1f\n" +
+	"\vsource_name\x18\x04 \x01(\tR\n" +
+	"sourceName\x12\x1b\n" +
+	"\timage_url\x18\x05 \x01(\tR\bimageUrl\x127\n" +
+	"\tqueued_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\bqueuedAt\x129\n" +
+	"\n" +
+	"expires_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\"\xd3\x01\n" +
+	"\x13QueueArticleRequest\x12\x1d\n" +
+	"\n" +
+	"article_id\x18\x01 \x01(\tR\tarticleId\x12&\n" +
+	"\x0fclient_event_id\x18\x02 \x01(\tR\rclientEventId\x12;\n" +
+	"\voccurred_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"occurredAt\x128\n" +
+	"\asurface\x18\x04 \x01(\x0e2\x1e.alt.reading.v1.ReadingSurfaceR\asurface\"\x9f\x01\n" +
+	"\x14QueueArticleResponse\x12=\n" +
+	"\aoutcome\x18\x01 \x01(\x0e2#.alt.reading.v1.QueueArticleOutcomeR\aoutcome\x126\n" +
+	"\x05items\x18\x02 \x03(\v2 .alt.reading.v1.ReadingQueueItemR\x05items\x12\x10\n" +
+	"\x03cap\x18\x03 \x01(\x05R\x03cap\"\x9b\x01\n" +
+	"\x15UnqueueArticleRequest\x12\x1d\n" +
+	"\n" +
+	"article_id\x18\x01 \x01(\tR\tarticleId\x12&\n" +
+	"\x0fclient_event_id\x18\x02 \x01(\tR\rclientEventId\x12;\n" +
+	"\voccurred_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"occurredAt\"\x18\n" +
+	"\x16UnqueueArticleResponse\"U\n" +
+	"\x18GetReadTodayQueueRequest\x129\n" +
+	"\n" +
+	"read_since\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\treadSince\"\x8f\x01\n" +
+	"\x19GetReadTodayQueueResponse\x126\n" +
+	"\x05items\x18\x01 \x03(\v2 .alt.reading.v1.ReadingQueueItemR\x05items\x12\x10\n" +
+	"\x03cap\x18\x02 \x01(\x05R\x03cap\x12(\n" +
+	"\x10read_count_since\x18\x03 \x01(\x05R\x0ereadCountSince*\xa6\x01\n" +
 	"\x0eReadingSurface\x12\x1f\n" +
 	"\x1bREADING_SURFACE_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17READING_SURFACE_GALLERY\x10\x01\x12\x19\n" +
 	"\x15READING_SURFACE_SWIPE\x10\x02\x12 \n" +
 	"\x1cREADING_SURFACE_ARTICLE_PAGE\x10\x03\x12\x19\n" +
-	"\x15READING_SURFACE_OTHER\x10\x042\x86\x01\n" +
+	"\x15READING_SURFACE_OTHER\x10\x04*\xae\x01\n" +
+	"\x13QueueArticleOutcome\x12%\n" +
+	"!QUEUE_ARTICLE_OUTCOME_UNSPECIFIED\x10\x00\x12 \n" +
+	"\x1cQUEUE_ARTICLE_OUTCOME_QUEUED\x10\x01\x12(\n" +
+	"$QUEUE_ARTICLE_OUTCOME_ALREADY_QUEUED\x10\x02\x12$\n" +
+	" QUEUE_ARTICLE_OUTCOME_QUEUE_FULL\x10\x032\xac\x03\n" +
 	"\x0eReadingService\x12n\n" +
-	"\x13RecordReadingEvents\x12*.alt.reading.v1.RecordReadingEventsRequest\x1a+.alt.reading.v1.RecordReadingEventsResponse\x1a\x04\x88\xb5\x18\x01B(Z&alt/gen/proto/alt/reading/v1;readingv1b\x06proto3"
+	"\x13RecordReadingEvents\x12*.alt.reading.v1.RecordReadingEventsRequest\x1a+.alt.reading.v1.RecordReadingEventsResponse\x12Y\n" +
+	"\fQueueArticle\x12#.alt.reading.v1.QueueArticleRequest\x1a$.alt.reading.v1.QueueArticleResponse\x12_\n" +
+	"\x0eUnqueueArticle\x12%.alt.reading.v1.UnqueueArticleRequest\x1a&.alt.reading.v1.UnqueueArticleResponse\x12h\n" +
+	"\x11GetReadTodayQueue\x12(.alt.reading.v1.GetReadTodayQueueRequest\x1a).alt.reading.v1.GetReadTodayQueueResponse\x1a\x04\x88\xb5\x18\x01B(Z&alt/gen/proto/alt/reading/v1;readingv1b\x06proto3"
 
 var (
 	file_alt_reading_v1_reading_proto_rawDescOnce sync.Once
@@ -563,34 +1201,60 @@ func file_alt_reading_v1_reading_proto_rawDescGZIP() []byte {
 	return file_alt_reading_v1_reading_proto_rawDescData
 }
 
-var file_alt_reading_v1_reading_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_alt_reading_v1_reading_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_alt_reading_v1_reading_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
+var file_alt_reading_v1_reading_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
 var file_alt_reading_v1_reading_proto_goTypes = []any{
 	(ReadingSurface)(0),                 // 0: alt.reading.v1.ReadingSurface
-	(*SurfaceViewed)(nil),               // 1: alt.reading.v1.SurfaceViewed
-	(*ReachedEnd)(nil),                  // 2: alt.reading.v1.ReachedEnd
-	(*SessionEnded)(nil),                // 3: alt.reading.v1.SessionEnded
-	(*ReadingEvent)(nil),                // 4: alt.reading.v1.ReadingEvent
-	(*RecordReadingEventsRequest)(nil),  // 5: alt.reading.v1.RecordReadingEventsRequest
-	(*RecordReadingEventsResponse)(nil), // 6: alt.reading.v1.RecordReadingEventsResponse
-	(*timestamppb.Timestamp)(nil),       // 7: google.protobuf.Timestamp
+	(QueueArticleOutcome)(0),            // 1: alt.reading.v1.QueueArticleOutcome
+	(*SurfaceViewed)(nil),               // 2: alt.reading.v1.SurfaceViewed
+	(*ReachedEnd)(nil),                  // 3: alt.reading.v1.ReachedEnd
+	(*SessionEnded)(nil),                // 4: alt.reading.v1.SessionEnded
+	(*Opened)(nil),                      // 5: alt.reading.v1.Opened
+	(*ReadingEvent)(nil),                // 6: alt.reading.v1.ReadingEvent
+	(*RecordReadingEventsRequest)(nil),  // 7: alt.reading.v1.RecordReadingEventsRequest
+	(*RecordReadingEventsResponse)(nil), // 8: alt.reading.v1.RecordReadingEventsResponse
+	(*ReadingQueueItem)(nil),            // 9: alt.reading.v1.ReadingQueueItem
+	(*QueueArticleRequest)(nil),         // 10: alt.reading.v1.QueueArticleRequest
+	(*QueueArticleResponse)(nil),        // 11: alt.reading.v1.QueueArticleResponse
+	(*UnqueueArticleRequest)(nil),       // 12: alt.reading.v1.UnqueueArticleRequest
+	(*UnqueueArticleResponse)(nil),      // 13: alt.reading.v1.UnqueueArticleResponse
+	(*GetReadTodayQueueRequest)(nil),    // 14: alt.reading.v1.GetReadTodayQueueRequest
+	(*GetReadTodayQueueResponse)(nil),   // 15: alt.reading.v1.GetReadTodayQueueResponse
+	(*timestamppb.Timestamp)(nil),       // 16: google.protobuf.Timestamp
 }
 var file_alt_reading_v1_reading_proto_depIdxs = []int32{
-	0, // 0: alt.reading.v1.SurfaceViewed.surface:type_name -> alt.reading.v1.ReadingSurface
-	0, // 1: alt.reading.v1.ReachedEnd.surface:type_name -> alt.reading.v1.ReadingSurface
-	0, // 2: alt.reading.v1.SessionEnded.surface:type_name -> alt.reading.v1.ReadingSurface
-	7, // 3: alt.reading.v1.ReadingEvent.occurred_at:type_name -> google.protobuf.Timestamp
-	1, // 4: alt.reading.v1.ReadingEvent.surface_viewed:type_name -> alt.reading.v1.SurfaceViewed
-	2, // 5: alt.reading.v1.ReadingEvent.reached_end:type_name -> alt.reading.v1.ReachedEnd
-	3, // 6: alt.reading.v1.ReadingEvent.session_ended:type_name -> alt.reading.v1.SessionEnded
-	4, // 7: alt.reading.v1.RecordReadingEventsRequest.events:type_name -> alt.reading.v1.ReadingEvent
-	5, // 8: alt.reading.v1.ReadingService.RecordReadingEvents:input_type -> alt.reading.v1.RecordReadingEventsRequest
-	6, // 9: alt.reading.v1.ReadingService.RecordReadingEvents:output_type -> alt.reading.v1.RecordReadingEventsResponse
-	9, // [9:10] is the sub-list for method output_type
-	8, // [8:9] is the sub-list for method input_type
-	8, // [8:8] is the sub-list for extension type_name
-	8, // [8:8] is the sub-list for extension extendee
-	0, // [0:8] is the sub-list for field type_name
+	0,  // 0: alt.reading.v1.SurfaceViewed.surface:type_name -> alt.reading.v1.ReadingSurface
+	0,  // 1: alt.reading.v1.ReachedEnd.surface:type_name -> alt.reading.v1.ReadingSurface
+	0,  // 2: alt.reading.v1.SessionEnded.surface:type_name -> alt.reading.v1.ReadingSurface
+	0,  // 3: alt.reading.v1.Opened.surface:type_name -> alt.reading.v1.ReadingSurface
+	16, // 4: alt.reading.v1.ReadingEvent.occurred_at:type_name -> google.protobuf.Timestamp
+	2,  // 5: alt.reading.v1.ReadingEvent.surface_viewed:type_name -> alt.reading.v1.SurfaceViewed
+	3,  // 6: alt.reading.v1.ReadingEvent.reached_end:type_name -> alt.reading.v1.ReachedEnd
+	4,  // 7: alt.reading.v1.ReadingEvent.session_ended:type_name -> alt.reading.v1.SessionEnded
+	5,  // 8: alt.reading.v1.ReadingEvent.opened:type_name -> alt.reading.v1.Opened
+	6,  // 9: alt.reading.v1.RecordReadingEventsRequest.events:type_name -> alt.reading.v1.ReadingEvent
+	16, // 10: alt.reading.v1.ReadingQueueItem.queued_at:type_name -> google.protobuf.Timestamp
+	16, // 11: alt.reading.v1.ReadingQueueItem.expires_at:type_name -> google.protobuf.Timestamp
+	16, // 12: alt.reading.v1.QueueArticleRequest.occurred_at:type_name -> google.protobuf.Timestamp
+	0,  // 13: alt.reading.v1.QueueArticleRequest.surface:type_name -> alt.reading.v1.ReadingSurface
+	1,  // 14: alt.reading.v1.QueueArticleResponse.outcome:type_name -> alt.reading.v1.QueueArticleOutcome
+	9,  // 15: alt.reading.v1.QueueArticleResponse.items:type_name -> alt.reading.v1.ReadingQueueItem
+	16, // 16: alt.reading.v1.UnqueueArticleRequest.occurred_at:type_name -> google.protobuf.Timestamp
+	16, // 17: alt.reading.v1.GetReadTodayQueueRequest.read_since:type_name -> google.protobuf.Timestamp
+	9,  // 18: alt.reading.v1.GetReadTodayQueueResponse.items:type_name -> alt.reading.v1.ReadingQueueItem
+	7,  // 19: alt.reading.v1.ReadingService.RecordReadingEvents:input_type -> alt.reading.v1.RecordReadingEventsRequest
+	10, // 20: alt.reading.v1.ReadingService.QueueArticle:input_type -> alt.reading.v1.QueueArticleRequest
+	12, // 21: alt.reading.v1.ReadingService.UnqueueArticle:input_type -> alt.reading.v1.UnqueueArticleRequest
+	14, // 22: alt.reading.v1.ReadingService.GetReadTodayQueue:input_type -> alt.reading.v1.GetReadTodayQueueRequest
+	8,  // 23: alt.reading.v1.ReadingService.RecordReadingEvents:output_type -> alt.reading.v1.RecordReadingEventsResponse
+	11, // 24: alt.reading.v1.ReadingService.QueueArticle:output_type -> alt.reading.v1.QueueArticleResponse
+	13, // 25: alt.reading.v1.ReadingService.UnqueueArticle:output_type -> alt.reading.v1.UnqueueArticleResponse
+	15, // 26: alt.reading.v1.ReadingService.GetReadTodayQueue:output_type -> alt.reading.v1.GetReadTodayQueueResponse
+	23, // [23:27] is the sub-list for method output_type
+	19, // [19:23] is the sub-list for method input_type
+	19, // [19:19] is the sub-list for extension type_name
+	19, // [19:19] is the sub-list for extension extendee
+	0,  // [0:19] is the sub-list for field type_name
 }
 
 func init() { file_alt_reading_v1_reading_proto_init() }
@@ -598,18 +1262,19 @@ func file_alt_reading_v1_reading_proto_init() {
 	if File_alt_reading_v1_reading_proto != nil {
 		return
 	}
-	file_alt_reading_v1_reading_proto_msgTypes[3].OneofWrappers = []any{
+	file_alt_reading_v1_reading_proto_msgTypes[4].OneofWrappers = []any{
 		(*ReadingEvent_SurfaceViewed)(nil),
 		(*ReadingEvent_ReachedEnd)(nil),
 		(*ReadingEvent_SessionEnded)(nil),
+		(*ReadingEvent_Opened)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_alt_reading_v1_reading_proto_rawDesc), len(file_alt_reading_v1_reading_proto_rawDesc)),
-			NumEnums:      1,
-			NumMessages:   6,
+			NumEnums:      2,
+			NumMessages:   14,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

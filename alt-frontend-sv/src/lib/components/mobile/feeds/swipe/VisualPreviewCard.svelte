@@ -1,180 +1,69 @@
 <script lang="ts">
-import {
-	BookOpen,
-	Sparkles,
-	SquareArrowOutUpRight,
-	Star,
-} from "@lucide/svelte";
-import { onDestroy, onMount, tick } from "svelte";
+import { SquareArrowOutUpRight } from "@lucide/svelte";
 import { Spring } from "svelte/motion";
-import { fade } from "svelte/transition";
 import { type SwipeDirection, swipe } from "#lib/actions/swipe.js";
-import {
-	getFeedContentOnTheFlyClient,
-	registerFavoriteFeedClient,
-	summarizeArticleClient,
-} from "#lib/api/client/index.js";
-import {
-	createClientTransport,
-	streamSummarizeWithAbortAdapter,
-} from "#lib/connect/index.js";
-import { createSummarySpeech } from "#lib/hooks/useSummarySpeech.svelte.js";
-import {
-	attachElementReadingSession,
-	ReadingSurface,
-} from "#lib/reading/instrumentation.js";
 import type { RenderFeed } from "#lib/schema/feed.js";
-import {
-	type ArticleContentPhase,
-	CONTENT_PENDING_LABEL,
-	CONTENT_RETRYING_LABEL,
-	EMPTY_CONTENT_ERROR,
-	foregroundRetryDelayMs,
-	READ_ORIGINAL_LABEL,
-	TRY_AGAIN_LABEL,
-} from "#lib/utils/articleContentState.js";
-import { articleContentErrorMessage } from "#lib/utils/errorClassification.js";
+import { formatCompactDate } from "#lib/utils/feed.js";
 import { ogImageResolver } from "#lib/utils/ogImageResolver.js";
 import { createProxyImage } from "#lib/utils/proxyImage.svelte.js";
-import { sanitizeHtml } from "#lib/utils/sanitizeHtml.js";
-import { simulateTypewriterEffect } from "#lib/utils/streamingRenderer.js";
 
 interface Props {
 	feed: RenderFeed;
-	statusMessage: string | null;
-	onDismiss: (direction: number) => Promise<void> | void;
-	/**
-	 * The signed `/v1/images/proxy/...` path for this card's og:image, or null.
-	 *
-	 * Never a publisher's own URL. Named for what it must be rather than for
-	 * what it is used as: the raw `og_image_url` from `FetchArticleContent`
-	 * used to arrive here under the old name and go straight into `<img src>`
-	 * as an unproxied cross-origin request. Null is normal — a feed that
-	 * carries no image resolves one on demand through `resolve` below.
-	 */
+	statusMessage?: string | null;
+	onDismiss: (
+		direction: number,
+		cardId?: string,
+	) => Promise<boolean | undefined> | boolean | undefined;
+	onDismissingChange?: (dismissing: boolean, cardId: string) => void;
+	onOpenArticle?: () => void;
 	thumbnailProxyUrl: string | null;
-	getCachedContent?: (feedUrl: string) => string | null;
-	getCachedArticleId?: (feedUrl: string) => string | null;
-	/**
-	 * Fetch the body through the shared prefetcher, which dedupes against an
-	 * in-flight prefetch for the same URL and honors the host cooldown.
-	 * Resolves null when the body is unavailable right now (retryable).
-	 */
-	requestContent?: (feedUrl: string) => Promise<string | null>;
 	isBusy?: boolean;
-	initialArticleContent?: string | null;
-	initialArticleId?: string | null;
-	onArticleIdResolved?: (feedLink: string, articleId: string) => void;
 	isLcp?: boolean;
+	canQueue?: boolean;
 }
 
 const {
 	feed,
-	statusMessage,
 	onDismiss,
+	onDismissingChange,
+	onOpenArticle,
 	thumbnailProxyUrl,
-	getCachedContent,
-	getCachedArticleId,
-	requestContent,
 	isBusy = false,
-	initialArticleContent,
-	initialArticleId,
-	onArticleIdResolved,
 	isLcp = false,
+	canQueue = true,
 }: Props = $props();
 
-// State
-let isAISummaryRequested = $state(false);
-let aiSummary = $state<string | null>(null);
-let fullSummaryText = $state<string | null>(null);
-let summaryError = $state<string | null>(null);
-let isSummarizing = $state(false);
-let isSummaryComplete = $state(false);
-
-const speech = createSummarySpeech();
-
-const speechStatusText = $derived.by(() => {
-	switch (speech.state) {
-		case "loading":
-			return "Preparing audio…";
-		case "playing":
-			return "Playing";
-		case "unavailable":
-			return "Speech unavailable";
-		case "error":
-			return "Couldn't play the summary. Try again.";
-		default:
-			return "";
-	}
-});
-
-let isContentExpanded = $state(false);
-let fullContent = $state<string | null>(null);
-let fetchedArticleId = $state<string | null>(null);
-let articleBodyEl = $state<HTMLDivElement | null>(null);
-let endSentinelEl = $state<HTMLDivElement | null>(null);
-let activeReadingCleanup: (() => void) | undefined;
-// Three honest states rather than two booleans. `pending` / `retrying` are
-// deliberately NOT `failed`: a request in flight used to render as
-// "Source content unavailable.", which announced a verdict before there was
-// one. `idle` only distinguishes "nothing asked for" from "asked, got nothing".
-let contentPhase = $state<ArticleContentPhase>("idle");
-let contentError = $state<string | null>(null);
-// The one automatic re-attempt this card is allowed per failure; a reader
-// tapping "Try again" buys a fresh one. A plain `let`: nothing renders from it.
-let foregroundRetrySpent = false;
-let retryTimer: ReturnType<typeof setTimeout> | null = null;
-// Monotonic token. A load only applies its result while it is still the newest
-// one, so a re-attempt parked in its Retry-After wait cannot overwrite a body
-// the reader has since fetched by hand.
-let contentToken = 0;
-
-let summaryAbortController = $state<AbortController | null>(null);
-
-let isFavoriting = $state(false);
-let isFavorited = $state(false);
-let favoriteError = $state<string | null>(null);
-
-// Thumbnail: the four-state pipeline the desktop grid and the mobile gallery
-// share — idle -> loading -> loaded | absent.
-//
-// Called unconditionally at initialisation because it registers `$effect`s and
-// an `onDestroy` hook against this component's lifecycle.
-//
-// It replaces a bare `<img>` whose `onerror` latched `imgError = true` for the
-// life of the card. An `<img>` reports a retryable 429 and a permanent 403 as
-// the same silent event, so a single rate-limited response from the shared
-// image proxy pinned the card to "No preview" for the rest of the session.
-// `loadProxyImage` reads the status instead and retries the transient case
-// *inside* the loader, and the pipeline also owns the reset — including the
-// distinction between a genuinely different feed and the same feed's URL being
-// backfilled a moment later, which the `$effect` that used to sit here got
-// wrong in the other direction by clearing state on every arrival.
 let thumbnailArea = $state<HTMLElement | null>(null);
 
 const image = createProxyImage({
 	url: () => thumbnailProxyUrl,
 	container: () => thumbnailArea,
-	// A feed whose RSS carried no og:image resolves one when the reader
-	// actually reaches this card.
-	//
-	// `feedId`, never `id`. `id` is articles.id or a per-response UUID, and
-	// ResolveOgImages matches feeds.id — sending `id` matched nothing and read
-	// back as "no feed has an image". Absent on surfaces built without a
-	// feeds.id, and the resolver settles an empty key on `absent` without a
-	// request.
 	resolve: () => ogImageResolver().resolve(feed.feedId ?? ""),
 });
 
-// Swipe state with Spring
 const SWIPE_THRESHOLD = 60;
+const HORIZONTAL_DRAG_GUARD_PX = 10;
+const DRAG_LABEL_THRESHOLD_PX = 16;
 let x = new Spring(0, { stiffness: 0.18, damping: 0.85 });
-let isDragging = $state(false);
 let hasSwiped = $state(false);
+let isDragging = $state(false);
+let dragDeltaX = $state(0);
+let movedHorizontally = false;
 let swipeElement: HTMLDivElement | null = $state(null);
-let scrollAreaRef: HTMLDivElement | null = $state(null);
 
-// Derived styles
+const dragDirection = $derived.by<"left" | "right" | null>(() => {
+	if (!isDragging || hasSwiped) return null;
+	if (dragDeltaX <= -DRAG_LABEL_THRESHOLD_PX) return "left";
+	if (dragDeltaX >= DRAG_LABEL_THRESHOLD_PX) return "right";
+	return null;
+});
+
+const dragLabel = $derived.by(() => {
+	if (dragDirection === "left") return "Pass";
+	if (dragDirection === "right") return "Read today";
+	return null;
+});
+
 const cardStyle = $derived.by(() => {
 	const translate = x.current;
 	const opacity = Math.max(0.4, 1 - Math.abs(translate) / 500);
@@ -185,110 +74,20 @@ const cardStyle = $derived.by(() => {
 	].join("; ");
 });
 
-// Derived
-const sanitizedFullContent = $derived(
-	fullContent ? sanitizeHtml(fullContent) : null,
-);
-const hasExpandedBody = $derived(
-	isContentExpanded && Boolean(sanitizedFullContent),
-);
-const readerArticleId = $derived(
-	feed.articleId ||
-		fetchedArticleId ||
-		initialArticleId ||
-		getCachedArticleId?.(feed.normalizedUrl) ||
+const hasDescription = $derived(Boolean(feed.description));
+const publishedLabel = $derived(
+	formatCompactDate(feed.created_at) ||
+		formatCompactDate(feed.published) ||
+		feed.publishedAtFormatted ||
 		null,
 );
-const hasDescription = $derived(Boolean(feed.description));
-const isContentPending = $derived(
-	contentPhase === "pending" || contentPhase === "retrying",
-);
-const pendingLabel = $derived(
-	contentPhase === "retrying" ? CONTENT_RETRYING_LABEL : CONTENT_PENDING_LABEL,
-);
-const publishedLabel = $derived.by(() => {
-	if (feed.created_at) {
-		try {
-			return new Date(feed.created_at).toLocaleString();
-		} catch {
-			// Fallback
-		}
-	}
-	if (!feed.published) return null;
-	try {
-		return new Date(feed.published).toLocaleString();
-	} catch {
-		return feed.published;
-	}
-});
 
-/**
- * Fetch the body for this card. Goes through the shared prefetcher when one is
- * supplied so a card mounting mid-prefetch joins that request instead of firing
- * a second, unserialized one at the same host.
- */
-async function fetchBody(): Promise<string | null> {
-	if (requestContent) {
-		const content = await requestContent(feed.normalizedUrl);
-		if (content) {
-			const articleId = getCachedArticleId?.(feed.normalizedUrl);
-			if (articleId) {
-				fetchedArticleId = articleId;
-				onArticleIdResolved?.(feed.link, articleId);
-			}
-		}
-		return content;
-	}
-
-	const res = await getFeedContentOnTheFlyClient(feed.normalizedUrl);
-	if (res.article_id) {
-		fetchedArticleId = res.article_id;
-		onArticleIdResolved?.(feed.link, res.article_id);
-	}
-	return res.content || null;
-}
-
-// Auto-fetch content
-onMount(() => {
-	if (initialArticleContent) {
-		fullContent = initialArticleContent;
-	}
-	if (initialArticleId) {
-		fetchedArticleId = initialArticleId;
-	}
-
-	const cached = getCachedContent?.(feed.normalizedUrl);
-	if (cached) {
-		fullContent = cached;
-		const cachedArticleId = getCachedArticleId?.(feed.normalizedUrl);
-		if (cachedArticleId) {
-			fetchedArticleId = cachedArticleId;
-			onArticleIdResolved?.(feed.link, cachedArticleId);
-		}
-	} else if (!fullContent) {
-		// Same loader as the tap path. The auto-fetch used to have its own
-		// copy of the terminal wording and its own idea of what "failed"
-		// means; two paths writing two different sentences for one condition
-		// is how the reading surface ended up with three of them.
-		void loadContent();
-	}
-});
-
-onDestroy(() => {
-	speech.stop();
-	// A re-attempt parked in its Retry-After wait outlives the card otherwise:
-	// it wakes after unmount and writes $state on a destroyed instance.
-	contentToken++;
-	if (retryTimer) clearTimeout(retryTimer);
-});
-
-// Set up swipe event listeners reactively
 $effect(() => {
 	if (!swipeElement) return;
 
 	const swipeHandler = (event: Event) => {
 		if (hasSwiped) return;
-		handleSwipe(event as CustomEvent<{ direction: SwipeDirection }>);
+		void handleSwipe(event as CustomEvent<{ direction: SwipeDirection }>);
 	};
 
 	const swipeMoveHandler = (event: Event) => {
@@ -299,14 +98,22 @@ $effect(() => {
 		const { deltaX, deltaY } = moveEvent.detail;
 
 		if (Math.abs(deltaX) > Math.abs(deltaY)) {
+			if (Math.abs(deltaX) > HORIZONTAL_DRAG_GUARD_PX) {
+				movedHorizontally = true;
+			}
 			isDragging = true;
+			dragDeltaX = deltaX;
 			x.set(deltaX, { instant: true });
 		}
 	};
 
 	const swipeEndHandler = (_event: Event) => {
-		x.target = 0;
 		isDragging = false;
+		dragDeltaX = 0;
+		x.target = 0;
+		setTimeout(() => {
+			movedHorizontally = false;
+		}, 0);
 	};
 
 	swipeElement.addEventListener("swipe", swipeHandler);
@@ -320,315 +127,77 @@ $effect(() => {
 	};
 });
 
-// Abort in-flight summary stream when component is destroyed
-$effect(() => {
-	return () => {
-		summaryAbortController?.abort();
-	};
-});
-
-$effect(() => {
-	if (!hasExpandedBody) {
-		return;
-	}
-	const cleanup = attachElementReadingSession({
-		articleId: readerArticleId,
-		surface: ReadingSurface.SWIPE,
-		bodyElement: articleBodyEl,
-		scrollContainer: scrollAreaRef,
-		endSentinel: endSentinelEl,
-	});
-	activeReadingCleanup = cleanup;
-	return () => {
-		activeReadingCleanup = undefined;
-		cleanup?.();
-	};
-});
-
-/**
- * Record a terminal failure. The wording comes from articleContentErrorMessage
- * and nowhere else — ADR-000959 §6: the upstream `message` (the BFF's
- * "Service temporarily unavailable due to circuit breaker") must never reach
- * the reader.
- */
-function failContent(err: unknown, token: number) {
-	if (token !== contentToken) return;
-	contentError = articleContentErrorMessage(err);
-	contentPhase = "failed";
-}
-
-/**
- * Load the body, with at most ONE automatic re-attempt.
- *
- * The re-attempt is admitted for exactly one condition — see
- * foregroundRetryDelayMs — and is announced while it waits rather than being
- * hidden behind a still frame of the failed state.
- */
-async function loadContent(): Promise<void> {
-	const cached = getCachedContent?.(feed.normalizedUrl);
-	if (cached) {
-		fullContent = cached;
-		const cachedArticleId = getCachedArticleId?.(feed.normalizedUrl);
-		if (cachedArticleId) {
-			fetchedArticleId = cachedArticleId;
-		}
-		contentError = null;
-		contentPhase = "ready";
-		return;
-	}
-
-	const token = ++contentToken;
-	contentPhase = "pending";
-	contentError = null;
-
-	let content: string | null;
-	try {
-		content = await fetchBody();
-	} catch (err) {
-		if (token !== contentToken) return;
-		await retryOrFail(err, token);
-		return;
-	}
-
-	if (token !== contentToken) return;
-	if (content) {
-		fullContent = content;
-		contentPhase = "ready";
-		return;
-	}
-	// `content: ""` is a state, not a falsy no-op (ADR-000581): say so.
-	failContent(EMPTY_CONTENT_ERROR, token);
-}
-
-async function retryOrFail(err: unknown, token: number): Promise<void> {
-	const delayMs = foregroundRetrySpent ? null : foregroundRetryDelayMs(err);
-	if (delayMs === null) {
-		console.warn("[VisualPreviewCard] article content unavailable:", err);
-		failContent(err, token);
-		return;
-	}
-
-	foregroundRetrySpent = true;
-	contentPhase = "retrying";
-	await new Promise<void>((resolve) => {
-		if (retryTimer) clearTimeout(retryTimer);
-		retryTimer = setTimeout(() => {
-			retryTimer = null;
-			resolve();
-		}, delayMs);
-	});
-	if (token !== contentToken) return;
-
-	contentPhase = "pending";
-	try {
-		const content = await fetchBody();
-		if (token !== contentToken) return;
-		if (content) {
-			fullContent = content;
-			contentPhase = "ready";
-			return;
-		}
-		failContent(EMPTY_CONTENT_ERROR, token);
-	} catch (retryErr) {
-		console.warn("[VisualPreviewCard] article content unavailable:", retryErr);
-		failContent(retryErr, token);
-	}
-}
-
-async function handleToggleContent() {
-	if (isContentExpanded) {
-		isContentExpanded = false;
-		return;
-	}
-
-	// Open first, then fetch. Awaiting the body before expanding meant the
-	// panel's loading state could never be reached on a first tap: the reader
-	// waited on a disabled button and the panel arrived already in its final
-	// state. When that state was the fallback, the card read as permanently
-	// broken from the instant it appeared, with nothing to show an attempt had
-	// been made at all.
-	isContentExpanded = true;
-
-	// A previous failure is not permanent: the host cooldown that caused it
-	// lifts, and requestContent() rations rather than refuses while it has not.
-	// Latching contentError here pinned the card to the summary for its whole
-	// lifetime.
-	//
-	// A load already in flight is joined rather than duplicated — the panel
-	// shows its pending state and the mount fetch fills it in. Firing a second
-	// request at the same host is what the shared prefetcher exists to avoid.
-	if (!fullContent && !isContentPending) {
-		await loadContent();
-	}
-}
-
-async function handleRetryContent() {
-	if (isContentPending) return;
-	// A reader asking again is a fresh budget: the automatic attempt is spent
-	// per failure, not per card lifetime.
-	foregroundRetrySpent = false;
-	await loadContent();
-}
-
-function handleGenerateAISummary() {
-	const targetFeedLink = feed.link;
-
-	isAISummaryRequested = true;
-	isSummarizing = true;
-	isSummaryComplete = false;
-	speech.stop();
-	summaryError = null;
-	aiSummary = "";
-	fullSummaryText = null;
-
-	summaryAbortController?.abort();
-
-	const transport = createClientTransport();
-	summaryAbortController = streamSummarizeWithAbortAdapter(
-		transport,
-		{
-			feedUrl: feed.link,
-			title: feed.title,
-		},
-		(chunk) => {
-			if (feed.link !== targetFeedLink) return;
-			aiSummary = (aiSummary || "") + chunk;
-		},
-		{
-			tick,
-			typewriter: true,
-			typewriterDelay: 10,
-			onChunk: (
-				chunkCount,
-				_chunkSize,
-				_decodedLength,
-				_totalLength,
-				_preview,
-			) => {
-				if (chunkCount === 1) {
-					isSummarizing = false;
-				}
-			},
-		},
-		(result) => {
-			summaryAbortController = null;
-			fullSummaryText = result.summary || "";
-			isSummaryComplete = true;
-			isSummarizing = false;
-		},
-		async (err) => {
-			summaryAbortController = null;
-
-			const errorMessage = err instanceof Error ? err.message : String(err);
-
-			if (errorMessage.includes("abort") || errorMessage.includes("cancel")) {
-				return;
-			}
-
-			const isAuthError =
-				errorMessage.includes("403") ||
-				errorMessage.includes("401") ||
-				errorMessage.includes("Forbidden") ||
-				errorMessage.includes("Authentication") ||
-				errorMessage.includes("unauthenticated");
-
-			if (isAuthError) {
-				summaryError =
-					"Authentication failed. Please refresh the page and try again.";
-				isSummarizing = false;
-				return;
-			}
-
-			if (aiSummary && aiSummary.length > 0) {
-				summaryError = "Stream interrupted. Summary may be incomplete.";
-				isSummarizing = false;
-				return;
-			}
-
-			try {
-				const res = await summarizeArticleClient(feed.link);
-				if (res.success && res.summary) {
-					isSummarizing = false;
-					fullSummaryText = res.summary;
-					isSummaryComplete = true;
-					const typewriter = simulateTypewriterEffect(
-						(char) => {
-							aiSummary = (aiSummary || "") + char;
-						},
-						{ tick, delay: 10 },
-					);
-					typewriter.add(res.summary);
-				} else {
-					isSummarizing = false;
-					summaryError = "Failed to generate the summary";
-				}
-			} catch (legacyErr) {
-				isSummarizing = false;
-				summaryError = "Failed to generate the summary. Please try again.";
-			}
-		},
-	);
-}
-
-function handleToggleSpeech() {
-	if (speech.state === "playing" || speech.state === "loading") {
-		speech.stop();
-	} else if (fullSummaryText) {
-		speech.play(fullSummaryText);
-	}
-}
-
-async function handleFavorite() {
-	if (isFavoriting || isFavorited) return;
-	isFavoriting = true;
-	favoriteError = null;
-	try {
-		await registerFavoriteFeedClient(feed.link);
-		isFavorited = true;
-	} catch (err) {
-		console.error("[VisualPreviewCard] Failed to favorite feed:", err);
-		favoriteError = "Failed";
-		setTimeout(() => {
-			favoriteError = null;
-		}, 3000);
-	} finally {
-		isFavoriting = false;
-	}
-}
-
 async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
 	const dir = event.detail.direction;
 	if (dir !== "left" && dir !== "right") return;
 
-	hasSwiped = true;
+	const swipedCardId = feed.id;
+	const dirNum = dir === "left" ? -1 : 1;
 	isDragging = false;
-	activeReadingCleanup?.();
+	dragDeltaX = 0;
 
-	const width = swipeElement?.clientWidth ?? window.innerWidth;
-	const target = dir === "left" ? -width : width;
+	if (dirNum === 1 && !canQueue) {
+		onDismissingChange?.(true, swipedCardId);
+		try {
+			await x.set(0);
+			await onDismiss(1, swipedCardId);
+		} finally {
+			onDismissingChange?.(false, swipedCardId);
+		}
+		return;
+	}
 
-	await x.set(target, { preserveMomentum: 120 });
-	await onDismiss(dir === "left" ? -1 : 1);
+	hasSwiped = true;
+	onDismissingChange?.(true, swipedCardId);
 
-	hasSwiped = false;
-	await x.set(0, { instant: true });
+	try {
+		const width = swipeElement?.clientWidth ?? window.innerWidth;
+		const target = dir === "left" ? -width : width;
+
+		await x.set(target, { preserveMomentum: 120 });
+		const accepted = await onDismiss(dirNum, swipedCardId);
+
+		if (accepted === false) {
+			await x.set(0);
+		} else {
+			await x.set(0, { instant: true });
+		}
+	} finally {
+		hasSwiped = false;
+		onDismissingChange?.(false, swipedCardId);
+	}
+}
+
+function handleCardClick(event: MouseEvent) {
+	if (hasSwiped || movedHorizontally) return;
+	const target = event.target as HTMLElement | null;
+	if (target?.closest("a, button")) return;
+	onOpenArticle?.();
 }
 </script>
 
+<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 <div
   bind:this={swipeElement}
   class="swipe-card"
   use:swipe={{ threshold: SWIPE_THRESHOLD, restraint: 120, allowedTime: 500 }}
   aria-busy={isBusy}
   data-testid="visual-preview-card"
+  onclick={handleCardClick}
   style="{cardStyle}; touch-action: none;"
 >
   <div class="card-inner">
-    <!-- Thumbnail Area -->
-    <!-- Three mutually exclusive branches, matching MobileGalleryTile and
-         VisualFeedCard. The shimmer used to be painted *over* a rendered
-         <img>, which meant the element existed (and its src had been
-         requested) before anything knew whether the URL answered. -->
+    {#if dragLabel}
+      <div
+        class="drag-label"
+        class:drag-label--pass={dragDirection === "left"}
+        class:drag-label--queue={dragDirection === "right"}
+        data-testid="swipe-direction-label"
+      >
+        {dragLabel}
+      </div>
+    {/if}
+
     <div class="thumbnail-area" bind:this={thumbnailArea}>
       {#if image.state === "absent"}
         <div class="thumbnail-fallback" data-testid="thumbnail-fallback">
@@ -648,30 +217,10 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
         <div class="thumbnail-shimmer" data-testid="thumbnail-shimmer"></div>
       {/if}
       <div class="thumbnail-overlay"></div>
-      <button
-        type="button"
-        class="keep-stamp"
-        class:keep-stamp--stamped={isFavorited}
-        class:keep-stamp--error={favoriteError}
-        onclick={handleFavorite}
-        disabled={isFavoriting || isFavorited}
-        aria-pressed={isFavorited}
-        aria-label={isFavorited ? "Favorited" : isFavoriting ? "Saving favorite" : favoriteError ? "Favorite failed, tap to retry" : "Favorite"}
-        data-testid="keep-stamp"
-      >
-        {#if isFavoriting}
-          <div class="loading-dot-sm" aria-hidden="true"></div>
-        {:else}
-          <Star size={18} fill={isFavorited ? "currentColor" : "none"} />
-        {/if}
-      </button>
     </div>
 
-    <!-- Content Area -->
     <div class="content-area">
-      <!-- Header -->
       <div class="card-header-compact">
-        <p class="card-label">Swipe to mark as read</p>
         <div class="flex items-center gap-2">
           <a
             href={feed.link}
@@ -696,176 +245,20 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
         {/if}
       </div>
 
-      <!-- Scrollable content -->
       <div
-        bind:this={scrollAreaRef}
         style="touch-action: pan-y; overflow-x: hidden;"
         class="scroll-area"
         data-testid="unified-scroll-area"
       >
-        {#if hasDescription && !isAISummaryRequested}
+        {#if hasDescription}
           <div class="content-block">
             <div class="summary-prose summary-prose--clamp">
               {feed.description}
             </div>
           </div>
         {/if}
-
-        {#if isAISummaryRequested}
-          <div
-            class="content-block ai-summary-block"
-            data-testid="ai-summary-section"
-            transition:fade
-          >
-            <p class="section-label">
-              {isSummarizing ? "Summary" : "AI Summary"}
-            </p>
-            {#if isSummarizing}
-              <div class="loading-state">
-                <div class="loading-dot" aria-hidden="true"></div>
-                <span class="loading-label">Summarizing...</span>
-              </div>
-            {:else if summaryError}
-              <p class="error-hint">{summaryError}</p>
-            {:else}
-              {#if aiSummary}
-                <p class="summary-prose ai-summary-text">
-                  {aiSummary}
-                </p>
-              {/if}
-              {#if isSummaryComplete && fullSummaryText}
-                <div class="summary-speech-controls mt-2 flex items-center gap-2">
-                  <button
-                    type="button"
-                    class="speech-btn"
-                    data-testid="summary-speech-button"
-                    disabled={speech.state === "unavailable"}
-                    onclick={handleToggleSpeech}
-                  >
-                    {#if speech.state === "playing" || speech.state === "loading"}
-                      Stop
-                    {:else}
-                      Play summary
-                    {/if}
-                  </button>
-                  <span
-                    class="speech-status"
-                    data-testid="summary-speech-status"
-                    role="status"
-                    aria-live="polite"
-                  >{speechStatusText}</span>
-                </div>
-              {/if}
-            {/if}
-          </div>
-        {/if}
-
-        {#if isContentExpanded}
-          <div
-            class="content-block article-block"
-            data-testid="content-section"
-            transition:fade
-          >
-            <p class="section-label">Full Article</p>
-            {#if isContentPending}
-              <!-- A request in flight is not a failure. It says what it is
-                   doing, and the RSS body stays underneath so the panel is
-                   never a blank wait. -->
-              <div class="loading-state" data-testid="article-content-pending">
-                <div class="loading-dot" aria-hidden="true"></div>
-                <span class="loading-label">{pendingLabel}</span>
-              </div>
-              {#if hasDescription}
-                <div
-                  class="summary-prose article-prose"
-                  data-testid="article-fallback-summary"
-                >
-                  {feed.description}
-                </div>
-              {/if}
-            {:else if contentPhase === "failed"}
-              <div data-testid="article-content-failed">
-                <p
-                  class="fallback-notice"
-                  data-testid="source-unavailable-notice"
-                >
-                  {contentError} Showing summary.
-                </p>
-                <!-- Stating the problem without offering a way out is the
-                     defect (NN/g heuristic 9), so both remedies ship with it:
-                     ask again, or leave for the publisher. -->
-                <div class="remedy-row">
-                  <button
-                    type="button"
-                    class="retry-btn"
-                    onclick={handleRetryContent}
-                    data-testid="retry-content"
-                  >
-                    {TRY_AGAIN_LABEL}
-                  </button>
-                  <a
-                    class="remedy-link"
-                    href={feed.link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    data-testid="read-original-link"
-                  >
-                    {READ_ORIGINAL_LABEL}
-                  </a>
-                </div>
-              </div>
-              {#if hasDescription}
-                <div
-                  class="summary-prose article-prose"
-                  data-testid="article-fallback-summary"
-                >
-                  {feed.description}
-                </div>
-              {/if}
-            {:else if sanitizedFullContent}
-              <div class="article-prose" bind:this={articleBodyEl}>
-                {@html sanitizedFullContent}
-              </div>
-              <div
-                class="reading-end-sentinel"
-                bind:this={endSentinelEl}
-                aria-hidden="true"
-              ></div>
-            {/if}
-          </div>
-        {/if}
       </div>
     </div>
-
-    <!-- Footer: reading actions only (keep judgment lives on the stamp) -->
-    <footer class="card-footer" data-testid="action-footer">
-      <div class="flex gap-3 w-full">
-        <!-- A pure toggle, never disabled. Disabling it while a background
-             fetch ran locked the reader out of the panel — and the panel is
-             where the pending state, the remedies and the RSS body all live. -->
-        <button
-          type="button"
-          onclick={handleToggleContent}
-          class="action-btn {isContentExpanded ? 'action-btn--active' : ''}"
-        >
-          <BookOpen size={14} />
-          {isContentExpanded ? "Hide" : "Article"}
-        </button>
-        <button
-          type="button"
-          onclick={handleGenerateAISummary}
-          class="action-btn {isAISummaryRequested ? 'action-btn--active' : ''}"
-          disabled={isSummarizing}
-        >
-          <Sparkles size={14} />
-          {isSummarizing
-            ? "Summarizing..."
-            : isAISummaryRequested
-              ? "Summary"
-              : "Summary"}
-        </button>
-      </div>
-    </footer>
   </div>
 </div>
 
@@ -879,26 +272,50 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
     border: 1px solid var(--surface-border);
     user-select: none;
     overflow: hidden;
+    cursor: pointer;
   }
 
   .card-inner {
+    position: relative;
     display: flex;
     flex-direction: column;
     height: 100%;
   }
 
-  /* ── Thumbnail ── */
+  .drag-label {
+    position: absolute;
+    top: 0.75rem;
+    z-index: 4;
+    padding: 0.25rem 0.65rem;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    background: var(--surface-bg);
+    border: 1.5px solid var(--alt-charcoal);
+    pointer-events: none;
+  }
+
+  .drag-label--pass {
+    right: 0.75rem;
+    color: var(--alt-charcoal);
+    border-color: var(--alt-charcoal);
+  }
+
+  .drag-label--queue {
+    left: 0.75rem;
+    color: var(--alt-primary);
+    border-color: var(--alt-primary);
+  }
+
   .thumbnail-area {
     position: relative;
     width: 100%;
-    height: 35%;
+    height: 38%;
     min-height: 150px;
     overflow: hidden;
   }
 
-  /* No `opacity: 0` default any more: the element is mounted only once the
-     load has answered 200, so hiding it until an `onload` that has already
-     happened would leave the card blank. It fades in on mount instead. */
   .thumbnail-img {
     position: absolute;
     inset: 0;
@@ -912,9 +329,6 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
     position: absolute;
     inset: 0;
     background: var(--surface-2);
-    /* Bounded rather than `infinite`: a resolution can outlive several asks,
-       and an animation running past five seconds with no pause control fails
-       WCAG 2.2.2. The flat tint that remains still reads as "not here yet". */
     animation: shimmer-pulse 1.5s ease-in-out 3;
   }
 
@@ -948,62 +362,12 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
     background: linear-gradient(to top, var(--surface-bg) 0%, transparent 50%);
   }
 
-  /* ── Keep stamp ──
-     Press-mark chip flush to the photo's top-right corner: opaque paper
-     ground, sharp edges. Stamped = inked (inverted). 48px, not the 44px
-     floor: edge-flush targets double miss rates (Henze 2011). */
-  .keep-stamp {
-    position: absolute;
-    top: 0;
-    right: 0;
-    z-index: 2;
-    width: 48px;
-    height: 48px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--surface-bg);
-    border: none;
-    border-left: 1.5px solid var(--alt-charcoal);
-    border-bottom: 1.5px solid var(--alt-charcoal);
-    color: var(--alt-charcoal);
-    cursor: pointer;
-    touch-action: manipulation;
-    transition: background 0.15s, color 0.15s;
-  }
-
-  .keep-stamp:active:not(:disabled) {
-    background: var(--alt-charcoal);
-    color: var(--surface-bg);
-  }
-
-  .keep-stamp--stamped {
-    background: var(--alt-charcoal);
-    color: var(--surface-bg);
-  }
-
-  .keep-stamp--stamped:disabled {
-    opacity: 1;
-    cursor: default;
-  }
-
-  .keep-stamp--error {
-    border-color: var(--alt-terracotta);
-    color: var(--alt-terracotta);
-  }
-
-  .keep-stamp:disabled:not(.keep-stamp--stamped) {
-    opacity: 0.4;
-    cursor: not-allowed;
-  }
-
-  /* ── Content area ── */
   .content-area {
     display: flex;
     flex-direction: column;
     flex: 1;
     min-height: 0;
-    padding: 0 0.75rem;
+    padding: 0 0.75rem 0.75rem;
     margin-top: -1rem;
     position: relative;
     z-index: 1;
@@ -1011,16 +375,6 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
 
   .card-header-compact {
     margin-bottom: 0.5rem;
-  }
-
-  .card-label {
-    font-family: var(--font-body);
-    font-size: 0.65rem;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--alt-ash);
-    margin: 0 0 0.35rem;
   }
 
   .card-title-link {
@@ -1064,7 +418,6 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
     margin: 0.25rem 0 0;
   }
 
-  /* ── Scroll area ── */
   .scroll-area {
     flex: 1;
     overflow-y: auto;
@@ -1087,29 +440,8 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
     user-select: none;
   }
 
-  /* ── Content blocks ── */
   .content-block {
     margin-bottom: 0.75rem;
-  }
-
-  .ai-summary-block {
-    border-top: 1px solid var(--surface-border);
-    padding-top: 0.5rem;
-  }
-
-  .article-block {
-    border-top: 1px solid var(--surface-border);
-    padding-top: 0.5rem;
-  }
-
-  .section-label {
-    font-family: var(--font-body);
-    font-size: 0.65rem;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--alt-ash);
-    margin: 0 0 0.35rem;
   }
 
   .summary-prose {
@@ -1123,232 +455,10 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
 
   .summary-prose--clamp {
     display: -webkit-box;
-    -webkit-line-clamp: 3;
-    line-clamp: 3;
+    -webkit-line-clamp: 4;
+    line-clamp: 4;
     -webkit-box-orient: vertical;
     overflow: hidden;
-  }
-
-  .ai-summary-text {
-    white-space: pre-wrap;
-  }
-
-  .article-prose {
-    font-family: var(--font-body);
-    font-size: 0.85rem;
-    line-height: 1.65;
-    color: var(--alt-charcoal);
-    max-width: 65ch;
-    word-break: break-word;
-    overflow-wrap: anywhere;
-  }
-
-  .article-prose :global(a) {
-    color: var(--alt-primary);
-    text-decoration: underline;
-    text-underline-offset: 2px;
-  }
-
-  .article-prose :global(img) {
-    max-width: 100%;
-    height: auto;
-  }
-
-  .reading-end-sentinel {
-    height: 1px;
-    margin-top: -1px;
-    pointer-events: none;
-  }
-
-  /* ── Loading ── */
-  .loading-state {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.75rem 0;
-  }
-
-  .loading-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--alt-ash);
-    animation: pulse 1.2s ease-in-out infinite;
-  }
-
-  .loading-dot-sm {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: currentColor;
-    animation: pulse 1.2s ease-in-out infinite;
-    flex-shrink: 0;
-  }
-
-  .loading-label {
-    font-family: var(--font-body);
-    font-size: 0.75rem;
-    font-style: italic;
-    color: var(--alt-ash);
-  }
-
-  .error-hint {
-    font-size: 0.75rem;
-    color: var(--alt-terracotta);
-    text-align: center;
-    padding: 0.5rem 0;
-    margin: 0;
-  }
-
-  .fallback-notice {
-    font-family: var(--font-mono);
-    font-size: 0.65rem;
-    letter-spacing: 0.06em;
-    color: var(--alt-ash);
-    margin: 0 0 0.5rem;
-    padding: 0;
-  }
-
-  .retry-btn {
-    font-family: var(--font-body);
-    font-size: 0.7rem;
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: var(--alt-charcoal);
-    background: transparent;
-    border: 1.5px solid var(--alt-charcoal);
-    padding: 0.4rem 1rem;
-    min-height: 44px;
-    margin: 0 0 0.75rem;
-    cursor: pointer;
-    transition: background 0.15s, color 0.15s;
-  }
-
-  .retry-btn:active:not(:disabled) {
-    background: var(--alt-charcoal);
-    color: var(--surface-bg);
-  }
-
-  .retry-btn:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-  }
-
-  .remedy-row {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    flex-wrap: wrap;
-  }
-
-  .remedy-link {
-    font-family: var(--font-body);
-    font-size: 0.7rem;
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: var(--alt-charcoal);
-    text-decoration: underline;
-    text-underline-offset: 0.2em;
-    min-height: 44px;
-    display: inline-flex;
-    align-items: center;
-    margin: 0 0 0.75rem;
-  }
-
-  /* ── Footer ── */
-  .card-footer {
-    position: relative;
-    z-index: 2;
-    border-top: 1px solid var(--surface-border);
-    padding: 0.75rem;
-    padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
-  }
-
-  /* ── Action buttons ── */
-  .action-btn {
-    font-family: var(--font-body);
-    font-size: 0.75rem;
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: var(--alt-charcoal);
-    background: transparent;
-    border: 1.5px solid var(--alt-charcoal);
-    padding: 0.5rem 0.75rem;
-    min-height: 48px;
-    flex: 1;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.35rem;
-    cursor: pointer;
-    transition: background 0.15s, color 0.15s;
-  }
-
-  .action-btn:active:not(:disabled) {
-    background: var(--alt-charcoal);
-    color: var(--surface-bg);
-  }
-
-  .action-btn:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-  }
-
-  .action-btn--active {
-    background: var(--alt-charcoal);
-    color: var(--surface-bg);
-  }
-
-  /* ── Speech Controls ── */
-  .summary-speech-controls {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin-top: 0.5rem;
-  }
-
-  .speech-btn {
-    font-family: var(--font-body);
-    font-size: 0.7rem;
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: var(--alt-charcoal);
-    background: transparent;
-    border: 1.5px solid var(--alt-charcoal);
-    padding: 0.4rem 0.8rem;
-    min-height: 40px;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    cursor: pointer;
-    transition: background 0.15s, color 0.15s;
-  }
-
-  .speech-btn:active:not(:disabled) {
-    background: var(--alt-charcoal);
-    color: var(--surface-bg);
-  }
-
-  .speech-btn:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-  }
-
-  .speech-status {
-    font-family: var(--font-body);
-    font-size: 0.75rem;
-    color: var(--alt-ash);
-  }
-
-  /* ── Animations ── */
-  @keyframes pulse {
-    0%, 100% { opacity: 0.3; }
-    50% { opacity: 1; }
   }
 
   @keyframes shimmer-pulse {
@@ -1357,11 +467,6 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .loading-dot,
-    .loading-dot-sm {
-      animation: none;
-      opacity: 0.6;
-    }
     .thumbnail-shimmer {
       animation: none;
       opacity: 0.7;

@@ -123,7 +123,7 @@ function handleResultDialogClose(open: boolean) {
 {#if isDesktop}
 	<!-- Desktop Layout -->
 	<div
-		class="border rounded-lg p-6"
+		class="border rounded-none p-6 shadow-none"
 		style="background: var(--surface-bg); border-color: var(--surface-border);"
 	>
 		<div class="flex items-center justify-between mb-4">
@@ -140,6 +140,7 @@ function handleResultDialogClose(open: boolean) {
 			</div>
 			<Button
 				variant="outline"
+				class="rounded-none shadow-none"
 				onclick={handleExport}
 				disabled={isExporting || feedCount === 0}
 			>
@@ -162,7 +163,7 @@ function handleResultDialogClose(open: boolean) {
 		<!-- Drop Zone -->
 		<button
 			type="button"
-			class="w-full border-2 border-dashed rounded-lg p-8 text-center transition-colors cursor-pointer"
+			class="w-full border border-dashed rounded-none p-8 text-center transition-colors cursor-pointer"
 			style="
 				border-color: {dragOver ? 'var(--alt-primary)' : 'var(--surface-border)'};
 				background: {dragOver ? 'rgba(var(--alt-primary-rgb, 0,0,0), 0.05)' : 'transparent'};
@@ -199,7 +200,7 @@ function handleResultDialogClose(open: boolean) {
 
 		{#if errorMessage}
 			<div
-				class="mt-3 rounded-md p-3 text-sm"
+				class="mt-3 rounded-none p-3 text-sm"
 				style="background: var(--alt-error); color: white;"
 			>
 				{errorMessage}
@@ -209,7 +210,7 @@ function handleResultDialogClose(open: boolean) {
 {:else}
 	<!-- Mobile Layout -->
 	<div
-		class="rounded-2xl border p-5"
+		class="rounded-none border p-5 shadow-none"
 		style="background: var(--surface-bg); border-color: var(--surface-border);"
 	>
 		<h2
@@ -220,7 +221,7 @@ function handleResultDialogClose(open: boolean) {
 		</h2>
 		<div class="flex gap-3">
 			<Button
-				class="flex-1 rounded-full min-h-[48px] font-semibold text-sm transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
+				class="flex-1 rounded-none shadow-none min-h-[48px] font-semibold text-sm transition-colors"
 				variant="outline"
 				onclick={handleExport}
 				disabled={isExporting || feedCount === 0}
@@ -240,7 +241,7 @@ function handleResultDialogClose(open: boolean) {
 				{/if}
 			</Button>
 			<Button
-				class="flex-1 rounded-full min-h-[48px] font-semibold text-sm transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
+				class="flex-1 rounded-none shadow-none min-h-[48px] font-semibold text-sm transition-colors"
 				variant="outline"
 				onclick={() => fileInput?.click()}
 				disabled={isImporting}
@@ -263,7 +264,7 @@ function handleResultDialogClose(open: boolean) {
 
 		{#if errorMessage}
 			<div
-				class="mt-3 rounded-md p-3 text-xs"
+				class="mt-3 rounded-none p-3 text-xs"
 				style="background: var(--alt-error); color: white;"
 			>
 				{errorMessage}

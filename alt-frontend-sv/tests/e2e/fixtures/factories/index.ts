@@ -13,15 +13,6 @@ export {
 	type FeedV1,
 	resetFeedCounter,
 } from "./feedFactory";
-// Pulse factories
-export {
-	buildEveningPulseResponse,
-	buildPulseTopic,
-	buildQuietDayResponse,
-	type EveningPulseResponse,
-	type PulseTopic,
-	resetPulseCounter,
-} from "./pulseFactory";
 // Topic Cards factories
 export {
 	buildMockDegradedRecapCardsResponse,

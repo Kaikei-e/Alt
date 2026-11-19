@@ -382,6 +382,91 @@ func TestListSubscriptionsContract(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestListSubscriptionsWithDailyCapContract(t *testing.T) {
+	mockProvider := newDataHubPact(t, consumerBackend)
+
+	err := mockProvider.
+		AddInteraction().
+		Given("alt-data-hub has subscriptions with daily caps for the user").
+		UponReceiving("a ListSubscriptions request returning dailyCap from alt-backend").
+		WithCompleteRequest(consumer.Request{
+			Method:  "POST",
+			Path:    matchers.String("/services.datahub.v1.DataHubService/ListSubscriptions"),
+			Headers: jsonHeaders(),
+			Body:    map[string]interface{}{"userId": readStateUserID},
+		}).
+		WithCompleteResponse(consumer.Response{
+			Status:  200,
+			Headers: jsonHeaders(),
+			Body: matchers.MapMatcher{
+				"subscriptions": matchers.EachLike(map[string]interface{}{
+					"feedLinkId":   matchers.Regex(readStateLinkID, uuidLikePattern),
+					"url":          matchers.Like(readStateFeedURL),
+					"isSubscribed": matchers.Like(true),
+					"subscribedAt": matchers.Like("2026-05-01T12:00:00Z"),
+					"dailyCap":     matchers.Integer(5),
+				}, 1),
+			},
+		}).
+		ExecuteTest(t, func(config consumer.MockServerConfig) error {
+			gw := datahub_gateway.NewReadStateGateway(newDataHubServiceClient(config))
+			userID, err := parseTestUUID(readStateUserID)
+			if err != nil {
+				return err
+			}
+			sources, err := gw.ListSubscriptions(context.Background(), userID)
+			if err != nil {
+				return fmt.Errorf("ListSubscriptions failed: %w", err)
+			}
+			require.Len(t, sources, 1)
+			require.NotNil(t, sources[0].DailyCap)
+			assert.Equal(t, 5, *sources[0].DailyCap)
+			return nil
+		})
+	require.NoError(t, err)
+}
+
+func TestSetSubscriptionDailyCapContract(t *testing.T) {
+	mockProvider := newDataHubPact(t, consumerBackend)
+
+	err := mockProvider.
+		AddInteraction().
+		Given("alt-data-hub has an active subscription for the user").
+		UponReceiving("a SetSubscriptionDailyCap request from alt-backend").
+		WithCompleteRequest(consumer.Request{
+			Method:  "POST",
+			Path:    matchers.String("/services.datahub.v1.DataHubService/SetSubscriptionDailyCap"),
+			Headers: jsonHeaders(),
+			Body: map[string]interface{}{
+				"userId":     readStateUserID,
+				"feedLinkId": readStateLinkID,
+				"dailyCap":   5,
+			},
+		}).
+		WithCompleteResponse(consumer.Response{
+			Status:  200,
+			Headers: jsonHeaders(),
+			Body:    matchers.MapMatcher{},
+		}).
+		ExecuteTest(t, func(config consumer.MockServerConfig) error {
+			gw := datahub_gateway.NewReadStateGateway(newDataHubServiceClient(config))
+			userID, err := parseTestUUID(readStateUserID)
+			if err != nil {
+				return err
+			}
+			linkID, err := parseTestUUID(readStateLinkID)
+			if err != nil {
+				return err
+			}
+			capVal := 5
+			if err := gw.SetSubscriptionDailyCap(context.Background(), userID, linkID, &capVal); err != nil {
+				return fmt.Errorf("SetSubscriptionDailyCap failed: %w", err)
+			}
+			return nil
+		})
+	require.NoError(t, err)
+}
+
 func TestSubscribeContract(t *testing.T) {
 	mockProvider := newDataHubPact(t, consumerBackend)
 

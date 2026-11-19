@@ -13,17 +13,16 @@ vi.mock("#lib/api/client/index.js", () => ({
 			has_more: false,
 		}),
 	),
-	getArticleSummaryClient: vi.fn(() =>
-		Promise.resolve({ matched_articles: [] }),
-	),
-	getFeedContentOnTheFlyClient: vi.fn(() =>
-		Promise.resolve({
-			content: "<p>Full article body paragraph.</p>",
-			article_id: "article-123",
-			og_image_url: "",
-			og_image_proxy_url: "",
-		}),
-	),
+}));
+
+vi.mock("#lib/reader/reader-overlay.svelte.js", () => ({
+	openReaderOverlay: vi.fn(),
+	replaceReaderOverlayItems: vi.fn(),
+	closeReaderOverlay: vi.fn(),
+	updateReaderOverlayArticleId: vi.fn(),
+	navigateReaderOverlay: vi.fn(),
+	getReaderOverlaySession: vi.fn(),
+	resetReaderOverlaySessions: vi.fn(),
 }));
 
 vi.mock("#lib/utils/transformFeedSearchResult.js", () => ({

@@ -90,7 +90,7 @@ export const MOCK_CONNECT_FEEDS: ConnectFeed[] = [
 		// the defect that shipped once already.
 		id: "feed-1",
 		feedId: "feeds-row-1",
-		articleId: "article-1",
+		articleId: "01938e82-7c00-7a7b-9b10-000000000001",
 		title: "AI Trends",
 		description: "Deep dive into the ecosystem.",
 		link: "https://example.com/ai-trends",
@@ -101,7 +101,7 @@ export const MOCK_CONNECT_FEEDS: ConnectFeed[] = [
 	{
 		id: "feed-2",
 		feedId: "feeds-row-2",
-		articleId: "article-2",
+		articleId: "01938e82-7c00-7a7b-9b10-000000000002",
 		title: "Svelte 5 Tips",
 		description: "Runes-first patterns for fast interfaces.",
 		link: "https://example.com/svelte-5",
@@ -146,7 +146,7 @@ export const CONNECT_UNREAD_COUNT = { count: 42 };
 export const CONNECT_ARTICLE_CONTENT: ConnectArticleContent = {
 	url: "https://example.com/ai-trends",
 	content: "<p>This is a mocked article content for E2E testing.</p>",
-	articleId: "article-123",
+	articleId: "01938e82-7c00-7a7b-9b10-000000000123",
 };
 
 // =============================================================================
@@ -167,55 +167,6 @@ export const CONNECT_TAG_TRAIL_FEED = {
 		},
 		{ id: "tag-3", name: "Technology", createdAt: "2026-01-01T00:00:00Z" },
 	],
-};
-
-// =============================================================================
-// Connect-RPC Evening Pulse Data (proto JSON wire format)
-// =============================================================================
-
-export const CONNECT_EVENING_PULSE = {
-	jobId: "pulse-job-123",
-	date: "2026-01-15",
-	generatedAt: new Date().toISOString(),
-	status: 1, // PULSE_STATUS_NORMAL
-	topics: [
-		{
-			clusterId: "1",
-			role: 1,
-			title: "AI Breakthrough",
-			rationale: { text: "Major advances in AI this week.", confidence: 1 },
-			articleCount: 5,
-			sourceCount: 3,
-			timeAgo: "3 hours ago",
-			genre: "Technology",
-			articleIds: ["art-1", "art-2"],
-			representativeArticles: [
-				{
-					articleId: "art-1",
-					title: "GPT-5 Announced",
-					sourceUrl: "https://example.com/gpt5",
-					sourceName: "TechNews",
-					publishedAt: "2026-01-15T10:00:00Z",
-				},
-			],
-			topEntities: ["AI", "GPT", "LLM"],
-			sourceNames: ["TechNews", "AIDaily"],
-		},
-	],
-	surfaceStatus: {
-		generatedAt: new Date().toISOString(),
-		windowStart: "2026-01-12T00:00:00Z",
-		windowEnd: "2026-01-15T00:00:00Z",
-		isStale: false,
-		staleAfter: new Date(Date.now() + 30 * 60 * 60 * 1000).toISOString(),
-		latestRun: {
-			jobId: "pulse-job-123",
-			status: "completed",
-			kickedAt: "2026-01-15T12:00:00Z",
-			updatedAt: "2026-01-15T12:05:00Z",
-		},
-		degradationReasons: [],
-	},
 };
 
 // =============================================================================
@@ -247,3 +198,44 @@ export const CONNECT_TAG_TRAIL_ARTICLES = {
 // =============================================================================
 
 export const RSS_FEED_LINKS: RssFeedLink[] = [];
+
+// =============================================================================
+// Feed Inflow Stats & Daily Cap (Connect-RPC v2)
+// =============================================================================
+
+export interface MockFeedInflowStat {
+	feedLinkId: string;
+	url: string;
+	dailyCap?: number;
+	inflowCount: string;
+	readCount: string;
+	openedCountLegacy: string;
+	readRate: number;
+}
+
+export const INITIAL_FEED_INFLOW_STATS: MockFeedInflowStat[] = [
+	{
+		feedLinkId: "11111111-1111-4111-8111-111111111111",
+		url: "https://engaged.example/atom.xml",
+		inflowCount: "420",
+		readCount: "210",
+		openedCountLegacy: "8",
+		readRate: 0.5,
+	},
+	{
+		feedLinkId: "22222222-2222-4222-8222-222222222222",
+		url: "https://noisy.example/feed.xml",
+		inflowCount: "180",
+		readCount: "9",
+		openedCountLegacy: "0",
+		readRate: 0.05,
+	},
+	{
+		feedLinkId: "33333333-3333-4333-8333-333333333333",
+		url: "https://alpha-quiet.example/rss.xml",
+		inflowCount: "0",
+		readCount: "0",
+		openedCountLegacy: "0",
+		readRate: 0,
+	},
+];

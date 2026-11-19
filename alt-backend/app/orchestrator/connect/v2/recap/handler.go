@@ -19,6 +19,7 @@ import (
 
 // Handler implements the RecapService Connect-RPC service.
 type Handler struct {
+	recapv2connect.UnimplementedRecapServiceHandler
 	recapUsecase       RecapUsecaseInterface
 	clusterDraftLoader *recapinternal.ClusterDraftLoader
 	logger             *slog.Logger
@@ -26,10 +27,8 @@ type Handler struct {
 
 // RecapUsecaseInterface defines the interface for recap usecase.
 type RecapUsecaseInterface interface {
-	GetSevenDayRecap(ctx context.Context) (*domain.RecapSummary, error)
 	GetThreeDayRecap(ctx context.Context) (*domain.RecapSummary, error)
 	GetTopicCards(ctx context.Context) (*domain.RecapCardsResponse, error)
-	GetEveningPulse(ctx context.Context, date string) (*domain.EveningPulse, error)
 	SearchRecapsByTag(ctx context.Context, tagName string, limit int) ([]*domain.RecapSearchResult, error)
 	SearchRecapsByQuery(ctx context.Context, query string, limit int) ([]*domain.RecapSearchResult, error)
 }
@@ -49,39 +48,6 @@ func NewHandler(
 
 // Verify interface implementation at compile time.
 var _ recapv2connect.RecapServiceHandler = (*Handler)(nil)
-
-// GetSevenDayRecap returns 7-day recap summary.
-func (h *Handler) GetSevenDayRecap(
-	ctx context.Context,
-	req *connect.Request[recapv2.GetSevenDayRecapRequest],
-) (*connect.Response[recapv2.GetSevenDayRecapResponse], error) {
-	userCtx, err := middleware.GetUserContext(ctx)
-	if err != nil {
-		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
-	}
-	h.logger.InfoContext(ctx, "GetSevenDayRecap called", "user_id", userCtx.UserID)
-
-	recap, err := h.recapUsecase.GetSevenDayRecap(ctx)
-	if err != nil {
-		if errors.Is(err, domain.ErrRecapNotFound) {
-			return nil, errorhandler.HandleNotFoundError(ctx, h.logger, "No 7-day recap available yet", "GetSevenDayRecap")
-		}
-		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "GetSevenDayRecap")
-	}
-
-	resp := domainToProto(recap)
-
-	if req.Msg.GenreDraftId != nil && *req.Msg.GenreDraftId != "" && h.clusterDraftLoader != nil {
-		draft, err := h.clusterDraftLoader.LoadDraft(*req.Msg.GenreDraftId)
-		if err != nil {
-			h.logger.WarnContext(ctx, "cluster draft loader failed", "error", err, "draft_id", *req.Msg.GenreDraftId)
-		} else if draft != nil {
-			resp.ClusterDraft = clusterDraftToProto(draft)
-		}
-	}
-
-	return connect.NewResponse(resp), nil
-}
 
 // GetThreeDayRecap returns 3-day recap summary.
 func (h *Handler) GetThreeDayRecap(
@@ -133,34 +99,6 @@ func (h *Handler) GetTopicCards(
 	}
 
 	resp := domainToProtoTopicCards(cardsResp)
-	return connect.NewResponse(resp), nil
-}
-
-// GetEveningPulse returns Evening Pulse data.
-func (h *Handler) GetEveningPulse(
-	ctx context.Context,
-	req *connect.Request[recapv2.GetEveningPulseRequest],
-) (*connect.Response[recapv2.GetEveningPulseResponse], error) {
-	userCtx, err := middleware.GetUserContext(ctx)
-	if err != nil {
-		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
-	}
-	h.logger.InfoContext(ctx, "GetEveningPulse called", "user_id", userCtx.UserID)
-
-	date := ""
-	if req.Msg.Date != nil {
-		date = *req.Msg.Date
-	}
-
-	pulse, err := h.recapUsecase.GetEveningPulse(ctx, date)
-	if err != nil {
-		if errors.Is(err, domain.ErrEveningPulseNotFound) {
-			return nil, errorhandler.HandleNotFoundError(ctx, h.logger, "Evening Pulse not available", "GetEveningPulse")
-		}
-		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "GetEveningPulse")
-	}
-
-	resp := eveningPulseDomainToProto(pulse)
 	return connect.NewResponse(resp), nil
 }
 

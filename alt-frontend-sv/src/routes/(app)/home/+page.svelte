@@ -1,6 +1,5 @@
 <script lang="ts">
 import { onMount } from "svelte";
-import FeedDetailModal from "#lib/components/desktop/feeds/FeedDetailModal.svelte";
 import AskSheet from "#lib/components/knowledge-home/AskSheet.svelte";
 import DegradedModeBanner from "#lib/components/knowledge-home/DegradedModeBanner.svelte";
 import GlobalSearchEntry from "#lib/components/knowledge-home/GlobalSearchEntry.svelte";
@@ -28,6 +27,8 @@ import { useKnowledgeHome } from "#lib/hooks/useKnowledgeHome.svelte.js";
 import { useLens } from "#lib/hooks/useLens.svelte.js";
 import { useRecallRail } from "#lib/hooks/useRecallRail.svelte.js";
 import { useStreamUpdates } from "#lib/hooks/useStreamUpdates.svelte.js";
+import { renderFeedToReaderItem } from "#lib/reader/mappers.js";
+import { openReaderOverlay } from "#lib/reader/reader-overlay.svelte.js";
 import { ReadingSurface } from "#lib/reading/instrumentation.js";
 import type { RenderFeed } from "#lib/schema/feed.js";
 import { useToastStore } from "#lib/stores/toast.svelte.js";
@@ -56,9 +57,6 @@ let askScopeTags = $state<string[]>([]);
 let searchQuery = $state("");
 let lensSources = $state<ConnectFeedSource[]>([]);
 let lensSourcesLoading = $state(false);
-let readerModalOpen = $state(false);
-let readerItemKey = $state<string | null>(null);
-let readerCustomFeed = $state<RenderFeed | null>(null);
 let lensDraft = $state<Omit<LensVersionData, "versionId">>({
 	queryText: "",
 	tagIds: [],
@@ -104,17 +102,6 @@ const showBanner = $derived(
 );
 const streamMode = $derived(lens.activeLensId ? "lens" : "default");
 const visibleItems = $derived(home.items);
-const readerIndex = $derived(
-	readerItemKey
-		? visibleItems.findIndex((i) => i.itemKey === readerItemKey)
-		: -1,
-);
-const readerFeed = $derived.by((): RenderFeed | null => {
-	if (readerIndex >= 0 && visibleItems[readerIndex]) {
-		return toHomeRenderFeed(visibleItems[readerIndex]);
-	}
-	return readerCustomFeed;
-});
 const emptyReason = $derived.by(() => {
 	if (home.pageState === "degraded" && visibleItems.length === 0) {
 		return "degraded";
@@ -186,9 +173,26 @@ function handleAction(type: string, item: KnowledgeHomeItemData) {
 	if (type === "open" && articleId) {
 		if (item.url) {
 			home.trackAction(type, itemKey, metadata);
-			readerItemKey = itemKey;
-			readerCustomFeed = toHomeRenderFeed(item);
-			readerModalOpen = true;
+			const items = visibleItems.map((entry) =>
+				renderFeedToReaderItem(toHomeRenderFeed(entry)),
+			);
+			const idx = visibleItems.findIndex((entry) => entry.itemKey === itemKey);
+			openReaderOverlay({
+				surface: ReadingSurface.OTHER,
+				items:
+					idx >= 0 ? items : [renderFeedToReaderItem(toHomeRenderFeed(item))],
+				currentIndex: idx >= 0 ? idx : 0,
+				onSelectItem: (_selected, nextIndex) => {
+					const target = visibleItems[nextIndex];
+					if (target) {
+						home.trackAction(
+							"open",
+							target.itemKey,
+							buildHomeActionMetadata("open", target),
+						);
+					}
+				},
+			});
 		} else {
 			goto(`/articles/${articleId}`);
 		}
@@ -220,9 +224,11 @@ function handleRecallOpen(itemKey: string) {
 	const candidate = recall.candidates.find((c) => c.itemKey === itemKey);
 	if (candidate?.item?.url) {
 		home.trackAction("open", itemKey);
-		readerItemKey = itemKey;
-		readerCustomFeed = toHomeRenderFeed(candidate.item);
-		readerModalOpen = true;
+		openReaderOverlay({
+			surface: ReadingSurface.OTHER,
+			items: [renderFeedToReaderItem(toHomeRenderFeed(candidate.item))],
+			currentIndex: 0,
+		});
 	} else {
 		goto(`/articles/${articleId}`);
 	}
@@ -530,39 +536,6 @@ onMount(async () => {
 	</div>
 
 {/if}
-
-<FeedDetailModal
-	bind:open={readerModalOpen}
-	feed={readerFeed}
-	readingSurface={ReadingSurface.OTHER}
-	trackOpen={false}
-	showHomeReaderLinks={true}
-	onOpenChange={(open) => {
-		readerModalOpen = open;
-	}}
-	hasPrevious={readerIndex > 0}
-	hasNext={readerIndex >= 0 && readerIndex < visibleItems.length - 1}
-	onPrevious={() => {
-		if (readerIndex > 0) {
-			const prev = visibleItems[readerIndex - 1];
-			if (prev) {
-				home.trackAction("open", prev.itemKey, buildHomeActionMetadata("open", prev));
-				readerItemKey = prev.itemKey;
-				readerCustomFeed = toHomeRenderFeed(prev);
-			}
-		}
-	}}
-	onNext={() => {
-		if (readerIndex >= 0 && readerIndex < visibleItems.length - 1) {
-			const next = visibleItems[readerIndex + 1];
-			if (next) {
-				home.trackAction("open", next.itemKey, buildHomeActionMetadata("open", next));
-				readerItemKey = next.itemKey;
-				readerCustomFeed = toHomeRenderFeed(next);
-			}
-		}
-	}}
-/>
 
 <AskSheet
 	open={askSheetOpen}

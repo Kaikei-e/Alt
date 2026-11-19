@@ -26,13 +26,13 @@ const kicker = $derived(
 
 <header class="dispatch-header" data-testid="dispatch-header">
   <a
-    href="/menu"
+    href="/today"
     class="header-action"
-    aria-label="Back to menu"
+    aria-label="Back to Today"
     data-testid="dispatch-back"
   >
     <ArrowLeft size={16} />
-    <span class="header-action-label">Menu</span>
+    <span class="header-action-label">Today</span>
   </a>
 
   <div class="dispatch-masthead" aria-hidden="false">

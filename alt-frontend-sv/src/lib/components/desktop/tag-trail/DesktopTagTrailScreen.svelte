@@ -9,6 +9,9 @@ import {
 	type TagTrailArticle,
 	type TagTrailTag,
 } from "#lib/connect/index.js";
+import { tagTrailArticleToReaderItem } from "#lib/reader/mappers.js";
+import { openReaderOverlay } from "#lib/reader/reader-overlay.svelte.js";
+import { ReadingSurface } from "#lib/reading/instrumentation.js";
 import type { TagTrailHop } from "#lib/schema/tagTrail.js";
 import { sanitizeHrefUrl } from "#lib/utils/urlSafety.js";
 
@@ -350,6 +353,14 @@ const formatDate = (dateStr: string) => {
 		year: "numeric",
 	});
 };
+
+function handleOpenArticle(index: number) {
+	openReaderOverlay({
+		surface: ReadingSurface.OTHER,
+		items: articles.map(tagTrailArticleToReaderItem),
+		currentIndex: index,
+	});
+}
 </script>
 
 <div class="flex flex-col h-full">
@@ -542,21 +553,33 @@ const formatDate = (dateStr: string) => {
 									class="article-card"
 									style="--stagger: {i};"
 								>
-									<a
-										href={sanitizeHrefUrl(article.link)}
-										target="_blank"
-										rel="noopener noreferrer"
-										class="block"
-									>
-										<h3 class="card-title">{article.title}</h3>
-										<div class="card-meta">
-											{#if article.feedTitle}
-												<span class="meta-source">{article.feedTitle}</span>
-												<span class="meta-dot">&middot;</span>
-											{/if}
-											<span>{formatDate(article.publishedAt)}</span>
-										</div>
-									</a>
+									<div class="flex items-start justify-between gap-2">
+										<a
+											href={sanitizeHrefUrl(article.link)}
+											target="_blank"
+											rel="noopener noreferrer"
+											class="block flex-1 min-w-0"
+										>
+											<h3 class="card-title">{article.title}</h3>
+											<div class="card-meta">
+												{#if article.feedTitle}
+													<span class="meta-source">{article.feedTitle}</span>
+													<span class="meta-dot">&middot;</span>
+												{/if}
+												<span>{formatDate(article.publishedAt)}</span>
+											</div>
+										</a>
+										{#if sanitizeHrefUrl(article.link)}
+											<button
+												type="button"
+												onclick={() => handleOpenArticle(i)}
+												class="article-tag shrink-0"
+												aria-label="Show details for {article.title}"
+											>
+												Details
+											</button>
+										{/if}
+									</div>
 
 									<!-- Article Tags -->
 									<div class="card-tags">

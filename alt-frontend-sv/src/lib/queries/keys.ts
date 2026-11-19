@@ -48,13 +48,6 @@ export const recapKeys = {
 	all: ["recap"] as const,
 	threeDays: (draftId?: string) =>
 		[...recapKeys.all, "3d", { draftId }] as const,
-	sevenDays: (draftId?: string) =>
-		[...recapKeys.all, "7d", { draftId }] as const,
-};
-
-export const pulseKeys = {
-	all: ["pulse"] as const,
-	today: (date?: string) => [...pulseKeys.all, "today", { date }] as const,
 };
 
 export const tagTrailKeys = {

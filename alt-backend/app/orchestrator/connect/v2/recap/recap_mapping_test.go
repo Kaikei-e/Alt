@@ -85,11 +85,6 @@ func TestDomainToProto_TableDriven(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			res7 := domainToProto(tt.input)
-			require.NotNil(t, res7)
-			assert.Equal(t, tt.input.JobID, res7.JobId)
-			assert.Len(t, res7.Genres, tt.expected)
-
 			res3 := domainToProtoThreeDays(tt.input)
 			require.NotNil(t, res3)
 			assert.Equal(t, tt.input.JobID, res3.JobId)

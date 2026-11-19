@@ -70,6 +70,12 @@ const (
 	FeedServiceSubscribeProcedure = "/alt.feeds.v2.FeedService/Subscribe"
 	// FeedServiceUnsubscribeProcedure is the fully-qualified name of the FeedService's Unsubscribe RPC.
 	FeedServiceUnsubscribeProcedure = "/alt.feeds.v2.FeedService/Unsubscribe"
+	// FeedServiceSetSubscriptionDailyCapProcedure is the fully-qualified name of the FeedService's
+	// SetSubscriptionDailyCap RPC.
+	FeedServiceSetSubscriptionDailyCapProcedure = "/alt.feeds.v2.FeedService/SetSubscriptionDailyCap"
+	// FeedServiceGetFeedInflowStatsProcedure is the fully-qualified name of the FeedService's
+	// GetFeedInflowStats RPC.
+	FeedServiceGetFeedInflowStatsProcedure = "/alt.feeds.v2.FeedService/GetFeedInflowStats"
 	// FeedServiceGetFeedTagsProcedure is the fully-qualified name of the FeedService's GetFeedTags RPC.
 	FeedServiceGetFeedTagsProcedure = "/alt.feeds.v2.FeedService/GetFeedTags"
 	// FeedServiceResolveOgImagesProcedure is the fully-qualified name of the FeedService's
@@ -114,6 +120,10 @@ type FeedServiceClient interface {
 	Subscribe(context.Context, *connect.Request[v2.SubscribeRequest]) (*connect.Response[v2.SubscribeResponse], error)
 	// Unsubscribe unsubscribes the current user from a feed source
 	Unsubscribe(context.Context, *connect.Request[v2.UnsubscribeRequest]) (*connect.Response[v2.UnsubscribeResponse], error)
+	// SetSubscriptionDailyCap sets or clears the daily unread cap for one subscription.
+	SetSubscriptionDailyCap(context.Context, *connect.Request[v2.SetSubscriptionDailyCapRequest]) (*connect.Response[v2.SetSubscriptionDailyCapResponse], error)
+	// GetFeedInflowStats returns 30-day inflow and reading statistics per subscribed feed.
+	GetFeedInflowStats(context.Context, *connect.Request[v2.GetFeedInflowStatsRequest]) (*connect.Response[v2.GetFeedInflowStatsResponse], error)
 	// GetFeedTags returns the tags associated with a single feed by ID.
 	// Replaces GET /v1/feeds/:id/tags used by the Tag Trail feature.
 	GetFeedTags(context.Context, *connect.Request[v2.GetFeedTagsRequest]) (*connect.Response[v2.GetFeedTagsResponse], error)
@@ -218,6 +228,18 @@ func NewFeedServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(feedServiceMethods.ByName("Unsubscribe")),
 			connect.WithClientOptions(opts...),
 		),
+		setSubscriptionDailyCap: connect.NewClient[v2.SetSubscriptionDailyCapRequest, v2.SetSubscriptionDailyCapResponse](
+			httpClient,
+			baseURL+FeedServiceSetSubscriptionDailyCapProcedure,
+			connect.WithSchema(feedServiceMethods.ByName("SetSubscriptionDailyCap")),
+			connect.WithClientOptions(opts...),
+		),
+		getFeedInflowStats: connect.NewClient[v2.GetFeedInflowStatsRequest, v2.GetFeedInflowStatsResponse](
+			httpClient,
+			baseURL+FeedServiceGetFeedInflowStatsProcedure,
+			connect.WithSchema(feedServiceMethods.ByName("GetFeedInflowStats")),
+			connect.WithClientOptions(opts...),
+		),
 		getFeedTags: connect.NewClient[v2.GetFeedTagsRequest, v2.GetFeedTagsResponse](
 			httpClient,
 			baseURL+FeedServiceGetFeedTagsProcedure,
@@ -235,22 +257,24 @@ func NewFeedServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 
 // feedServiceClient implements FeedServiceClient.
 type feedServiceClient struct {
-	getFeedStats         *connect.Client[v2.GetFeedStatsRequest, v2.GetFeedStatsResponse]
-	getDetailedFeedStats *connect.Client[v2.GetDetailedFeedStatsRequest, v2.GetDetailedFeedStatsResponse]
-	getUnreadCount       *connect.Client[v2.GetUnreadCountRequest, v2.GetUnreadCountResponse]
-	streamFeedStats      *connect.Client[v2.StreamFeedStatsRequest, v2.StreamFeedStatsResponse]
-	getUnreadFeeds       *connect.Client[v2.GetUnreadFeedsRequest, v2.GetUnreadFeedsResponse]
-	getAllFeeds          *connect.Client[v2.GetAllFeedsRequest, v2.GetAllFeedsResponse]
-	getReadFeeds         *connect.Client[v2.GetReadFeedsRequest, v2.GetReadFeedsResponse]
-	getFavoriteFeeds     *connect.Client[v2.GetFavoriteFeedsRequest, v2.GetFavoriteFeedsResponse]
-	searchFeeds          *connect.Client[v2.SearchFeedsRequest, v2.SearchFeedsResponse]
-	streamSummarize      *connect.Client[v2.StreamSummarizeRequest, v2.StreamSummarizeResponse]
-	markAsRead           *connect.Client[v2.MarkAsReadRequest, v2.MarkAsReadResponse]
-	listSubscriptions    *connect.Client[v2.ListSubscriptionsRequest, v2.ListSubscriptionsResponse]
-	subscribe            *connect.Client[v2.SubscribeRequest, v2.SubscribeResponse]
-	unsubscribe          *connect.Client[v2.UnsubscribeRequest, v2.UnsubscribeResponse]
-	getFeedTags          *connect.Client[v2.GetFeedTagsRequest, v2.GetFeedTagsResponse]
-	resolveOgImages      *connect.Client[v2.ResolveOgImagesRequest, v2.ResolveOgImagesResponse]
+	getFeedStats            *connect.Client[v2.GetFeedStatsRequest, v2.GetFeedStatsResponse]
+	getDetailedFeedStats    *connect.Client[v2.GetDetailedFeedStatsRequest, v2.GetDetailedFeedStatsResponse]
+	getUnreadCount          *connect.Client[v2.GetUnreadCountRequest, v2.GetUnreadCountResponse]
+	streamFeedStats         *connect.Client[v2.StreamFeedStatsRequest, v2.StreamFeedStatsResponse]
+	getUnreadFeeds          *connect.Client[v2.GetUnreadFeedsRequest, v2.GetUnreadFeedsResponse]
+	getAllFeeds             *connect.Client[v2.GetAllFeedsRequest, v2.GetAllFeedsResponse]
+	getReadFeeds            *connect.Client[v2.GetReadFeedsRequest, v2.GetReadFeedsResponse]
+	getFavoriteFeeds        *connect.Client[v2.GetFavoriteFeedsRequest, v2.GetFavoriteFeedsResponse]
+	searchFeeds             *connect.Client[v2.SearchFeedsRequest, v2.SearchFeedsResponse]
+	streamSummarize         *connect.Client[v2.StreamSummarizeRequest, v2.StreamSummarizeResponse]
+	markAsRead              *connect.Client[v2.MarkAsReadRequest, v2.MarkAsReadResponse]
+	listSubscriptions       *connect.Client[v2.ListSubscriptionsRequest, v2.ListSubscriptionsResponse]
+	subscribe               *connect.Client[v2.SubscribeRequest, v2.SubscribeResponse]
+	unsubscribe             *connect.Client[v2.UnsubscribeRequest, v2.UnsubscribeResponse]
+	setSubscriptionDailyCap *connect.Client[v2.SetSubscriptionDailyCapRequest, v2.SetSubscriptionDailyCapResponse]
+	getFeedInflowStats      *connect.Client[v2.GetFeedInflowStatsRequest, v2.GetFeedInflowStatsResponse]
+	getFeedTags             *connect.Client[v2.GetFeedTagsRequest, v2.GetFeedTagsResponse]
+	resolveOgImages         *connect.Client[v2.ResolveOgImagesRequest, v2.ResolveOgImagesResponse]
 }
 
 // GetFeedStats calls alt.feeds.v2.FeedService.GetFeedStats.
@@ -323,6 +347,16 @@ func (c *feedServiceClient) Unsubscribe(ctx context.Context, req *connect.Reques
 	return c.unsubscribe.CallUnary(ctx, req)
 }
 
+// SetSubscriptionDailyCap calls alt.feeds.v2.FeedService.SetSubscriptionDailyCap.
+func (c *feedServiceClient) SetSubscriptionDailyCap(ctx context.Context, req *connect.Request[v2.SetSubscriptionDailyCapRequest]) (*connect.Response[v2.SetSubscriptionDailyCapResponse], error) {
+	return c.setSubscriptionDailyCap.CallUnary(ctx, req)
+}
+
+// GetFeedInflowStats calls alt.feeds.v2.FeedService.GetFeedInflowStats.
+func (c *feedServiceClient) GetFeedInflowStats(ctx context.Context, req *connect.Request[v2.GetFeedInflowStatsRequest]) (*connect.Response[v2.GetFeedInflowStatsResponse], error) {
+	return c.getFeedInflowStats.CallUnary(ctx, req)
+}
+
 // GetFeedTags calls alt.feeds.v2.FeedService.GetFeedTags.
 func (c *feedServiceClient) GetFeedTags(ctx context.Context, req *connect.Request[v2.GetFeedTagsRequest]) (*connect.Response[v2.GetFeedTagsResponse], error) {
 	return c.getFeedTags.CallUnary(ctx, req)
@@ -370,6 +404,10 @@ type FeedServiceHandler interface {
 	Subscribe(context.Context, *connect.Request[v2.SubscribeRequest]) (*connect.Response[v2.SubscribeResponse], error)
 	// Unsubscribe unsubscribes the current user from a feed source
 	Unsubscribe(context.Context, *connect.Request[v2.UnsubscribeRequest]) (*connect.Response[v2.UnsubscribeResponse], error)
+	// SetSubscriptionDailyCap sets or clears the daily unread cap for one subscription.
+	SetSubscriptionDailyCap(context.Context, *connect.Request[v2.SetSubscriptionDailyCapRequest]) (*connect.Response[v2.SetSubscriptionDailyCapResponse], error)
+	// GetFeedInflowStats returns 30-day inflow and reading statistics per subscribed feed.
+	GetFeedInflowStats(context.Context, *connect.Request[v2.GetFeedInflowStatsRequest]) (*connect.Response[v2.GetFeedInflowStatsResponse], error)
 	// GetFeedTags returns the tags associated with a single feed by ID.
 	// Replaces GET /v1/feeds/:id/tags used by the Tag Trail feature.
 	GetFeedTags(context.Context, *connect.Request[v2.GetFeedTagsRequest]) (*connect.Response[v2.GetFeedTagsResponse], error)
@@ -470,6 +508,18 @@ func NewFeedServiceHandler(svc FeedServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(feedServiceMethods.ByName("Unsubscribe")),
 		connect.WithHandlerOptions(opts...),
 	)
+	feedServiceSetSubscriptionDailyCapHandler := connect.NewUnaryHandler(
+		FeedServiceSetSubscriptionDailyCapProcedure,
+		svc.SetSubscriptionDailyCap,
+		connect.WithSchema(feedServiceMethods.ByName("SetSubscriptionDailyCap")),
+		connect.WithHandlerOptions(opts...),
+	)
+	feedServiceGetFeedInflowStatsHandler := connect.NewUnaryHandler(
+		FeedServiceGetFeedInflowStatsProcedure,
+		svc.GetFeedInflowStats,
+		connect.WithSchema(feedServiceMethods.ByName("GetFeedInflowStats")),
+		connect.WithHandlerOptions(opts...),
+	)
 	feedServiceGetFeedTagsHandler := connect.NewUnaryHandler(
 		FeedServiceGetFeedTagsProcedure,
 		svc.GetFeedTags,
@@ -512,6 +562,10 @@ func NewFeedServiceHandler(svc FeedServiceHandler, opts ...connect.HandlerOption
 			feedServiceSubscribeHandler.ServeHTTP(w, r)
 		case FeedServiceUnsubscribeProcedure:
 			feedServiceUnsubscribeHandler.ServeHTTP(w, r)
+		case FeedServiceSetSubscriptionDailyCapProcedure:
+			feedServiceSetSubscriptionDailyCapHandler.ServeHTTP(w, r)
+		case FeedServiceGetFeedInflowStatsProcedure:
+			feedServiceGetFeedInflowStatsHandler.ServeHTTP(w, r)
 		case FeedServiceGetFeedTagsProcedure:
 			feedServiceGetFeedTagsHandler.ServeHTTP(w, r)
 		case FeedServiceResolveOgImagesProcedure:
@@ -579,6 +633,14 @@ func (UnimplementedFeedServiceHandler) Subscribe(context.Context, *connect.Reque
 
 func (UnimplementedFeedServiceHandler) Unsubscribe(context.Context, *connect.Request[v2.UnsubscribeRequest]) (*connect.Response[v2.UnsubscribeResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.feeds.v2.FeedService.Unsubscribe is not implemented"))
+}
+
+func (UnimplementedFeedServiceHandler) SetSubscriptionDailyCap(context.Context, *connect.Request[v2.SetSubscriptionDailyCapRequest]) (*connect.Response[v2.SetSubscriptionDailyCapResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.feeds.v2.FeedService.SetSubscriptionDailyCap is not implemented"))
+}
+
+func (UnimplementedFeedServiceHandler) GetFeedInflowStats(context.Context, *connect.Request[v2.GetFeedInflowStatsRequest]) (*connect.Response[v2.GetFeedInflowStatsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.feeds.v2.FeedService.GetFeedInflowStats is not implemented"))
 }
 
 func (UnimplementedFeedServiceHandler) GetFeedTags(context.Context, *connect.Request[v2.GetFeedTagsRequest]) (*connect.Response[v2.GetFeedTagsResponse], error) {

@@ -46,6 +46,25 @@ describe("FeedCard", () => {
 		);
 	});
 
+	it("calls onSelect with the feed when Show Details is clicked", async () => {
+		const onSelect = vi.fn();
+		render(FeedCard, {
+			props: {
+				feed: renderFeedFixture,
+				isReadStatus: false,
+				setIsReadStatus: vi.fn(),
+				onSelect,
+			},
+		});
+
+		const detailsButton = page.getByRole("button", {
+			name: /show details/i,
+		});
+		await detailsButton.click();
+
+		expect(onSelect).toHaveBeenCalledWith(renderFeedFixture);
+	});
+
 	it("renders nothing when feed is already read", async () => {
 		render(FeedCard, {
 			props: {

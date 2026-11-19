@@ -23,7 +23,7 @@ type RecapModule struct {
 func newRecapModule(infra *InfraModule) *RecapModule {
 	cfg := infra.Config
 
-	// Recap 7-day summary
+	// Recap summary
 	recapGw := recap_gateway.NewRecapGateway()
 	recapUC := recap_usecase.NewRecapUsecase(recapGw, infra.SearchIndexerDriver)
 

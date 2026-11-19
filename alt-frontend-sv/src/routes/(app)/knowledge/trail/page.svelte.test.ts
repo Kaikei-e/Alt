@@ -166,4 +166,69 @@ describe("Knowledge Trail +page.svelte", () => {
 			.element(errorAlert)
 			.toHaveTextContent("Trail search failed: backend timeout");
 	});
+
+	it("keeps a long unbroken URL inside a phone-width trail without horizontal overflow", async () => {
+		const longUrl =
+			"https://www.zdnet.com/a/img/resize/a380d377116335d01087bcb191f4613da7010344/2026/02/28/77bc4efe8fc0d630a7f6f1c9dsc09454.jpg?auto=webp&fit=crop&height=675&width=1200";
+		const narrow = 375;
+		vi.mocked(getTrail).mockResolvedValueOnce({
+			footprints: [],
+			episodes: [
+				{
+					episodeKey: "ep-url",
+					wear: "worn",
+					thumbnailUrl: "",
+					footprints: [
+						{
+							footprintKey: "fp-url",
+							verb: "read",
+							itemKey: "article:long-url",
+							title: longUrl,
+							excerpt: longUrl,
+							tags: [longUrl],
+							note: longUrl,
+							occurredAt: "2026-03-20T12:00:00Z",
+							wear: "worn",
+							contactCount: 2,
+							firstOccurredAt: "2026-03-19T12:00:00Z",
+						},
+					],
+				},
+			],
+			branches: [
+				{
+					branchKey: "br-url",
+					anchorItemKey: "article:long-url",
+					relationKind: "continuation",
+					why: longUrl,
+					evidenceRefs: [{ refId: "src", label: longUrl, kind: "source" }],
+					confidence: "high",
+					targetItemKey: "article:target-url",
+					targetTitle: longUrl,
+				},
+			],
+			nextCursor: "",
+			hasMore: false,
+		});
+
+		render(Page);
+
+		const link = page.getByTestId("episode-link");
+		await expect.element(link).toBeInTheDocument();
+		const spine = page.getByTestId("trail-spine").element() as HTMLElement;
+		const content = spine.closest(".content") as HTMLElement;
+		const host = content.parentElement as HTMLElement;
+		host.style.width = `${narrow}px`;
+		host.style.maxWidth = `${narrow}px`;
+		host.style.boxSizing = "border-box";
+		host.style.overflow = "visible";
+		void host.offsetWidth;
+
+		expect(link.element().textContent).toContain(longUrl);
+		expect(content.scrollWidth).toBeLessThanOrEqual(content.clientWidth);
+		expect(content.getBoundingClientRect().width).toBeLessThanOrEqual(narrow);
+		expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(
+			document.documentElement.clientWidth,
+		);
+	});
 });

@@ -10,8 +10,17 @@ import {
 import { timestampFromDate } from "@bufbuild/protobuf/wkt";
 import { createConnectTransport } from "@connectrpc/connect-web";
 import { describe, expect, it, vi } from "vitest";
-import { recordReadingEvents } from "#lib/connect/reading.js";
 import {
+	getReadTodayQueue,
+	queueArticle,
+	recordReadingEvents,
+	unqueueArticle,
+} from "#lib/connect/reading.js";
+import {
+	GetReadTodayQueueRequestSchema,
+	OpenedSchema,
+	QueueArticleOutcome,
+	QueueArticleRequestSchema,
 	ReachedEndSchema,
 	ReadingEventSchema,
 	ReadingSurface,
@@ -20,6 +29,7 @@ import {
 	RecordReadingEventsResponseSchema,
 	SessionEndedSchema,
 	SurfaceViewedSchema,
+	UnqueueArticleRequestSchema,
 } from "#lib/gen/alt/reading/v1/reading_pb.js";
 import { createReadingEventQueue } from "#lib/reading/reading-events.js";
 import { createReadingSession } from "#lib/reading/reading-session.js";
@@ -243,9 +253,10 @@ describe("Reading API Contract", () => {
 				send: (events) => recordReadingEvents(transport, events),
 			});
 
+			const wireArticleId = "01938e82-7c00-7a7b-9b10-000000000077";
 			queue.enqueueSurfaceViewed(ReadingSurface.SWIPE);
 			const session = createReadingSession({
-				articleId: "article-wire",
+				articleId: wireArticleId,
 				surface: ReadingSurface.SWIPE,
 				bodyLengthChars: 2500,
 				queue,
@@ -273,7 +284,7 @@ describe("Reading API Contract", () => {
 						clientEventId: "01938e82-7c00-7a7b-9b10-100000000002",
 						occurredAt: "2026-11-18T06:00:00Z",
 						reachedEnd: {
-							articleId: "article-wire",
+							articleId: wireArticleId,
 							surface: "READING_SURFACE_SWIPE",
 						},
 					},
@@ -281,7 +292,7 @@ describe("Reading API Contract", () => {
 						clientEventId: "01938e82-7c00-7a7b-9b10-100000000003",
 						occurredAt: "2026-11-18T06:00:00Z",
 						sessionEnded: {
-							articleId: "article-wire",
+							articleId: wireArticleId,
 							surface: "READING_SURFACE_SWIPE",
 							activeDwellMs: "18400",
 							maxScrollRatio: 0.96,
@@ -332,6 +343,233 @@ describe("Reading API Contract", () => {
 				accepted: 12,
 				duplicates: 3,
 			});
+		});
+
+		it("surfaces readArticleIds returned by RecordReadingEvents", async () => {
+			const stubFetch = vi.fn(async () => {
+				return new Response(
+					JSON.stringify({
+						accepted: 1,
+						duplicates: 0,
+						readArticleIds: ["art-10", "art-20"],
+					}),
+					{
+						status: 200,
+						headers: { "Content-Type": "application/json" },
+					},
+				);
+			});
+			const transport = createConnectTransport({
+				baseUrl: "http://127.0.0.1/api/v2",
+				fetch: stubFetch,
+			});
+
+			const res = await recordReadingEvents(transport, []);
+			expect(res).toEqual({
+				accepted: 1,
+				duplicates: 0,
+				readArticleIds: ["art-10", "art-20"],
+			});
+		});
+	});
+
+	describe("Opened event schema", () => {
+		it("serializes opened event without title, url, or text fields", () => {
+			const request = create(RecordReadingEventsRequestSchema, {
+				events: [
+					create(ReadingEventSchema, {
+						clientEventId: "01938e82-7c00-7a7b-9b10-000000000020",
+						occurredAt: timestampFromDate(new Date("2026-11-18T07:00:00.000Z")),
+						event: {
+							case: "opened",
+							value: create(OpenedSchema, {
+								articleId: "article-opened-1",
+								surface: ReadingSurface.SWIPE,
+							}),
+						},
+					}),
+				],
+			});
+
+			expect(toJson(RecordReadingEventsRequestSchema, request)).toEqual({
+				events: [
+					{
+						clientEventId: "01938e82-7c00-7a7b-9b10-000000000020",
+						occurredAt: "2026-11-18T07:00:00Z",
+						opened: {
+							articleId: "article-opened-1",
+							surface: "READING_SURFACE_SWIPE",
+						},
+					},
+				],
+			});
+		});
+	});
+
+	describe("Read Today Queue RPCs", () => {
+		it("QueueArticle sends request and returns mapped outcome, items, and cap", async () => {
+			let capturedUrl = "";
+			let capturedBody = "";
+			const stubFetch = vi.fn(
+				async (input: RequestInfo | URL, init?: RequestInit) => {
+					capturedUrl = String(input);
+					if (typeof init?.body === "string") {
+						capturedBody = init.body;
+					} else if (init?.body instanceof Uint8Array) {
+						capturedBody = new TextDecoder().decode(init.body);
+					}
+					return new Response(
+						JSON.stringify({
+							outcome: "QUEUE_ARTICLE_OUTCOME_QUEUED",
+							cap: 7,
+							items: [
+								{
+									articleId: "art-1",
+									title: "Queued Article",
+									url: "https://example.com/1",
+									sourceName: "Example Feed",
+									imageUrl: "/v1/images/proxy/abc",
+									queuedAt: "2026-11-18T08:00:00Z",
+									expiresAt: "2026-11-20T08:00:00Z",
+								},
+							],
+						}),
+						{ status: 200, headers: { "Content-Type": "application/json" } },
+					);
+				},
+			);
+			const transport = createConnectTransport({
+				baseUrl: "http://127.0.0.1/api/v2",
+				fetch: stubFetch,
+			});
+
+			const result = await queueArticle(transport, {
+				articleId: "art-1",
+				surface: ReadingSurface.SWIPE,
+				clientEventId: "01938e82-7c00-7a7b-9b10-000000000030",
+				occurredAt: new Date("2026-11-18T08:00:00.000Z"),
+			});
+
+			expect(capturedUrl).toBe(
+				"http://127.0.0.1/api/v2/alt.reading.v1.ReadingService/QueueArticle",
+			);
+			expect(JSON.parse(capturedBody)).toEqual({
+				articleId: "art-1",
+				clientEventId: "01938e82-7c00-7a7b-9b10-000000000030",
+				occurredAt: "2026-11-18T08:00:00Z",
+				surface: "READING_SURFACE_SWIPE",
+			});
+			expect(result.outcome).toBe(QueueArticleOutcome.QUEUED);
+			expect(result.cap).toBe(7);
+			expect(result.items).toHaveLength(1);
+			expect(result.items[0]).toMatchObject({
+				articleId: "art-1",
+				title: "Queued Article",
+				url: "https://example.com/1",
+				sourceName: "Example Feed",
+				imageUrl: "/v1/images/proxy/abc",
+			});
+			expect(result.items[0]?.queuedAt?.toISOString()).toBe(
+				"2026-11-18T08:00:00.000Z",
+			);
+			expect(result.items[0]?.expiresAt?.toISOString()).toBe(
+				"2026-11-20T08:00:00.000Z",
+			);
+		});
+
+		it("UnqueueArticle sends articleId, clientEventId, and occurredAt", async () => {
+			let capturedUrl = "";
+			let capturedBody = "";
+			const stubFetch = vi.fn(
+				async (input: RequestInfo | URL, init?: RequestInit) => {
+					capturedUrl = String(input);
+					if (typeof init?.body === "string") {
+						capturedBody = init.body;
+					} else if (init?.body instanceof Uint8Array) {
+						capturedBody = new TextDecoder().decode(init.body);
+					}
+					return new Response(JSON.stringify({}), {
+						status: 200,
+						headers: { "Content-Type": "application/json" },
+					});
+				},
+			);
+			const transport = createConnectTransport({
+				baseUrl: "http://127.0.0.1/api/v2",
+				fetch: stubFetch,
+			});
+
+			await unqueueArticle(transport, {
+				articleId: "art-1",
+				clientEventId: "01938e82-7c00-7a7b-9b10-000000000031",
+				occurredAt: new Date("2026-11-18T09:00:00.000Z"),
+			});
+
+			expect(capturedUrl).toBe(
+				"http://127.0.0.1/api/v2/alt.reading.v1.ReadingService/UnqueueArticle",
+			);
+			expect(JSON.parse(capturedBody)).toEqual({
+				articleId: "art-1",
+				clientEventId: "01938e82-7c00-7a7b-9b10-000000000031",
+				occurredAt: "2026-11-18T09:00:00Z",
+			});
+		});
+
+		it("GetReadTodayQueue sends readSince and returns items, cap, and readCountSince", async () => {
+			let capturedUrl = "";
+			let capturedBody = "";
+			const stubFetch = vi.fn(
+				async (input: RequestInfo | URL, init?: RequestInit) => {
+					capturedUrl = String(input);
+					if (typeof init?.body === "string") {
+						capturedBody = init.body;
+					} else if (init?.body instanceof Uint8Array) {
+						capturedBody = new TextDecoder().decode(init.body);
+					}
+					return new Response(
+						JSON.stringify({
+							items: [],
+							cap: 7,
+							readCountSince: 4,
+						}),
+						{ status: 200, headers: { "Content-Type": "application/json" } },
+					);
+				},
+			);
+			const transport = createConnectTransport({
+				baseUrl: "http://127.0.0.1/api/v2",
+				fetch: stubFetch,
+			});
+
+			const readSince = new Date("2026-11-18T15:00:00.000Z");
+			const result = await getReadTodayQueue(transport, readSince);
+
+			expect(capturedUrl).toBe(
+				"http://127.0.0.1/api/v2/alt.reading.v1.ReadingService/GetReadTodayQueue",
+			);
+			expect(JSON.parse(capturedBody)).toEqual({
+				readSince: "2026-11-18T15:00:00Z",
+			});
+			expect(result).toEqual({
+				items: [],
+				cap: 7,
+				readCountSince: 4,
+			});
+		});
+
+		it("pins schema fields for queue request messages", () => {
+			expect(QueueArticleRequestSchema.fields.map((f) => f.localName)).toEqual([
+				"articleId",
+				"clientEventId",
+				"occurredAt",
+				"surface",
+			]);
+			expect(
+				UnqueueArticleRequestSchema.fields.map((f) => f.localName),
+			).toEqual(["articleId", "clientEventId", "occurredAt"]);
+			expect(
+				GetReadTodayQueueRequestSchema.fields.map((f) => f.localName),
+			).toEqual(["readSince"]);
 		});
 	});
 });

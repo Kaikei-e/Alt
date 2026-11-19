@@ -13,7 +13,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file alt/reading/v1/reading.proto.
  */
 export const file_alt_reading_v1_reading: GenFile = /*@__PURE__*/
-  fileDesc("ChxhbHQvcmVhZGluZy92MS9yZWFkaW5nLnByb3RvEg5hbHQucmVhZGluZy52MSJACg1TdXJmYWNlVmlld2VkEi8KB3N1cmZhY2UYASABKA4yHi5hbHQucmVhZGluZy52MS5SZWFkaW5nU3VyZmFjZSJRCgpSZWFjaGVkRW5kEhIKCmFydGljbGVfaWQYASABKAkSLwoHc3VyZmFjZRgCIAEoDjIeLmFsdC5yZWFkaW5nLnYxLlJlYWRpbmdTdXJmYWNlIrYBCgxTZXNzaW9uRW5kZWQSEgoKYXJ0aWNsZV9pZBgBIAEoCRIvCgdzdXJmYWNlGAIgASgOMh4uYWx0LnJlYWRpbmcudjEuUmVhZGluZ1N1cmZhY2USFwoPYWN0aXZlX2R3ZWxsX21zGAMgASgDEhgKEG1heF9zY3JvbGxfcmF0aW8YBCABKAESGQoRYm9keV9sZW5ndGhfY2hhcnMYBSABKAUSEwoLcmVhY2hlZF9lbmQYBiABKAgihAIKDFJlYWRpbmdFdmVudBIXCg9jbGllbnRfZXZlbnRfaWQYASABKAkSLwoLb2NjdXJyZWRfYXQYAiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEjcKDnN1cmZhY2Vfdmlld2VkGAogASgLMh0uYWx0LnJlYWRpbmcudjEuU3VyZmFjZVZpZXdlZEgAEjEKC3JlYWNoZWRfZW5kGAsgASgLMhouYWx0LnJlYWRpbmcudjEuUmVhY2hlZEVuZEgAEjUKDXNlc3Npb25fZW5kZWQYDCABKAsyHC5hbHQucmVhZGluZy52MS5TZXNzaW9uRW5kZWRIAEIHCgVldmVudCJKChpSZWNvcmRSZWFkaW5nRXZlbnRzUmVxdWVzdBIsCgZldmVudHMYASADKAsyHC5hbHQucmVhZGluZy52MS5SZWFkaW5nRXZlbnQiQwobUmVjb3JkUmVhZGluZ0V2ZW50c1Jlc3BvbnNlEhAKCGFjY2VwdGVkGAEgASgFEhIKCmR1cGxpY2F0ZXMYAiABKAUqpgEKDlJlYWRpbmdTdXJmYWNlEh8KG1JFQURJTkdfU1VSRkFDRV9VTlNQRUNJRklFRBAAEhsKF1JFQURJTkdfU1VSRkFDRV9HQUxMRVJZEAESGQoVUkVBRElOR19TVVJGQUNFX1NXSVBFEAISIAocUkVBRElOR19TVVJGQUNFX0FSVElDTEVfUEFHRRADEhkKFVJFQURJTkdfU1VSRkFDRV9PVEhFUhAEMoYBCg5SZWFkaW5nU2VydmljZRJuChNSZWNvcmRSZWFkaW5nRXZlbnRzEiouYWx0LnJlYWRpbmcudjEuUmVjb3JkUmVhZGluZ0V2ZW50c1JlcXVlc3QaKy5hbHQucmVhZGluZy52MS5SZWNvcmRSZWFkaW5nRXZlbnRzUmVzcG9uc2UaBIi1GAFCKFomYWx0L2dlbi9wcm90by9hbHQvcmVhZGluZy92MTtyZWFkaW5ndjFiBnByb3RvMw", [file_alt_api_v1_visibility, file_google_protobuf_timestamp]);
+  fileDesc("ChxhbHQvcmVhZGluZy92MS9yZWFkaW5nLnByb3RvEg5hbHQucmVhZGluZy52MSJACg1TdXJmYWNlVmlld2VkEi8KB3N1cmZhY2UYASABKA4yHi5hbHQucmVhZGluZy52MS5SZWFkaW5nU3VyZmFjZSJRCgpSZWFjaGVkRW5kEhIKCmFydGljbGVfaWQYASABKAkSLwoHc3VyZmFjZRgCIAEoDjIeLmFsdC5yZWFkaW5nLnYxLlJlYWRpbmdTdXJmYWNlIrYBCgxTZXNzaW9uRW5kZWQSEgoKYXJ0aWNsZV9pZBgBIAEoCRIvCgdzdXJmYWNlGAIgASgOMh4uYWx0LnJlYWRpbmcudjEuUmVhZGluZ1N1cmZhY2USFwoPYWN0aXZlX2R3ZWxsX21zGAMgASgDEhgKEG1heF9zY3JvbGxfcmF0aW8YBCABKAESGQoRYm9keV9sZW5ndGhfY2hhcnMYBSABKAUSEwoLcmVhY2hlZF9lbmQYBiABKAgiTQoGT3BlbmVkEhIKCmFydGljbGVfaWQYASABKAkSLwoHc3VyZmFjZRgCIAEoDjIeLmFsdC5yZWFkaW5nLnYxLlJlYWRpbmdTdXJmYWNlIq4CCgxSZWFkaW5nRXZlbnQSFwoPY2xpZW50X2V2ZW50X2lkGAEgASgJEi8KC29jY3VycmVkX2F0GAIgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBI3Cg5zdXJmYWNlX3ZpZXdlZBgKIAEoCzIdLmFsdC5yZWFkaW5nLnYxLlN1cmZhY2VWaWV3ZWRIABIxCgtyZWFjaGVkX2VuZBgLIAEoCzIaLmFsdC5yZWFkaW5nLnYxLlJlYWNoZWRFbmRIABI1Cg1zZXNzaW9uX2VuZGVkGAwgASgLMhwuYWx0LnJlYWRpbmcudjEuU2Vzc2lvbkVuZGVkSAASKAoGb3BlbmVkGA0gASgLMhYuYWx0LnJlYWRpbmcudjEuT3BlbmVkSABCBwoFZXZlbnQiSgoaUmVjb3JkUmVhZGluZ0V2ZW50c1JlcXVlc3QSLAoGZXZlbnRzGAEgAygLMhwuYWx0LnJlYWRpbmcudjEuUmVhZGluZ0V2ZW50Il0KG1JlY29yZFJlYWRpbmdFdmVudHNSZXNwb25zZRIQCghhY2NlcHRlZBgBIAEoBRISCgpkdXBsaWNhdGVzGAIgASgFEhgKEHJlYWRfYXJ0aWNsZV9pZHMYAyADKAkiyQEKEFJlYWRpbmdRdWV1ZUl0ZW0SEgoKYXJ0aWNsZV9pZBgBIAEoCRINCgV0aXRsZRgCIAEoCRILCgN1cmwYAyABKAkSEwoLc291cmNlX25hbWUYBCABKAkSEQoJaW1hZ2VfdXJsGAUgASgJEi0KCXF1ZXVlZF9hdBgGIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLgoKZXhwaXJlc19hdBgHIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAipAEKE1F1ZXVlQXJ0aWNsZVJlcXVlc3QSEgoKYXJ0aWNsZV9pZBgBIAEoCRIXCg9jbGllbnRfZXZlbnRfaWQYAiABKAkSLwoLb2NjdXJyZWRfYXQYAyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEi8KB3N1cmZhY2UYBCABKA4yHi5hbHQucmVhZGluZy52MS5SZWFkaW5nU3VyZmFjZSKKAQoUUXVldWVBcnRpY2xlUmVzcG9uc2USNAoHb3V0Y29tZRgBIAEoDjIjLmFsdC5yZWFkaW5nLnYxLlF1ZXVlQXJ0aWNsZU91dGNvbWUSLwoFaXRlbXMYAiADKAsyIC5hbHQucmVhZGluZy52MS5SZWFkaW5nUXVldWVJdGVtEgsKA2NhcBgDIAEoBSJ1ChVVbnF1ZXVlQXJ0aWNsZVJlcXVlc3QSEgoKYXJ0aWNsZV9pZBgBIAEoCRIXCg9jbGllbnRfZXZlbnRfaWQYAiABKAkSLwoLb2NjdXJyZWRfYXQYAyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIhgKFlVucXVldWVBcnRpY2xlUmVzcG9uc2UiSgoYR2V0UmVhZFRvZGF5UXVldWVSZXF1ZXN0Ei4KCnJlYWRfc2luY2UYASABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wInMKGUdldFJlYWRUb2RheVF1ZXVlUmVzcG9uc2USLwoFaXRlbXMYASADKAsyIC5hbHQucmVhZGluZy52MS5SZWFkaW5nUXVldWVJdGVtEgsKA2NhcBgCIAEoBRIYChByZWFkX2NvdW50X3NpbmNlGAMgASgFKqYBCg5SZWFkaW5nU3VyZmFjZRIfChtSRUFESU5HX1NVUkZBQ0VfVU5TUEVDSUZJRUQQABIbChdSRUFESU5HX1NVUkZBQ0VfR0FMTEVSWRABEhkKFVJFQURJTkdfU1VSRkFDRV9TV0lQRRACEiAKHFJFQURJTkdfU1VSRkFDRV9BUlRJQ0xFX1BBR0UQAxIZChVSRUFESU5HX1NVUkZBQ0VfT1RIRVIQBCquAQoTUXVldWVBcnRpY2xlT3V0Y29tZRIlCiFRVUVVRV9BUlRJQ0xFX09VVENPTUVfVU5TUEVDSUZJRUQQABIgChxRVUVVRV9BUlRJQ0xFX09VVENPTUVfUVVFVUVEEAESKAokUVVFVUVfQVJUSUNMRV9PVVRDT01FX0FMUkVBRFlfUVVFVUVEEAISJAogUVVFVUVfQVJUSUNMRV9PVVRDT01FX1FVRVVFX0ZVTEwQAzKsAwoOUmVhZGluZ1NlcnZpY2USbgoTUmVjb3JkUmVhZGluZ0V2ZW50cxIqLmFsdC5yZWFkaW5nLnYxLlJlY29yZFJlYWRpbmdFdmVudHNSZXF1ZXN0GisuYWx0LnJlYWRpbmcudjEuUmVjb3JkUmVhZGluZ0V2ZW50c1Jlc3BvbnNlElkKDFF1ZXVlQXJ0aWNsZRIjLmFsdC5yZWFkaW5nLnYxLlF1ZXVlQXJ0aWNsZVJlcXVlc3QaJC5hbHQucmVhZGluZy52MS5RdWV1ZUFydGljbGVSZXNwb25zZRJfCg5VbnF1ZXVlQXJ0aWNsZRIlLmFsdC5yZWFkaW5nLnYxLlVucXVldWVBcnRpY2xlUmVxdWVzdBomLmFsdC5yZWFkaW5nLnYxLlVucXVldWVBcnRpY2xlUmVzcG9uc2USaAoRR2V0UmVhZFRvZGF5UXVldWUSKC5hbHQucmVhZGluZy52MS5HZXRSZWFkVG9kYXlRdWV1ZVJlcXVlc3QaKS5hbHQucmVhZGluZy52MS5HZXRSZWFkVG9kYXlRdWV1ZVJlc3BvbnNlGgSItRgBQihaJmFsdC9nZW4vcHJvdG8vYWx0L3JlYWRpbmcvdjE7cmVhZGluZ3YxYgZwcm90bzM", [file_alt_api_v1_visibility, file_google_protobuf_timestamp]);
 
 /**
  * SurfaceViewed records that the user viewed a reading surface.
@@ -123,6 +123,34 @@ export const SessionEndedSchema: GenMessage<SessionEnded> = /*@__PURE__*/
   messageDesc(file_alt_reading_v1_reading, 2);
 
 /**
+ * Opened records that the user opened an article in a reader surface.
+ *
+ * @generated from message alt.reading.v1.Opened
+ */
+export type Opened = Message<"alt.reading.v1.Opened"> & {
+  /**
+   * Identifier of the article that was opened.
+   *
+   * @generated from field: string article_id = 1;
+   */
+  articleId: string;
+
+  /**
+   * Surface where the article was opened.
+   *
+   * @generated from field: alt.reading.v1.ReadingSurface surface = 2;
+   */
+  surface: ReadingSurface;
+};
+
+/**
+ * Describes the message alt.reading.v1.Opened.
+ * Use `create(OpenedSchema)` to create a new message.
+ */
+export const OpenedSchema: GenMessage<Opened> = /*@__PURE__*/
+  messageDesc(file_alt_reading_v1_reading, 3);
+
+/**
  * ReadingEvent is a single client-observed reading telemetry event.
  * Carries identifiers, timestamps, enums, numbers, and booleans only; no
  * titles, URLs, or text content fields are permitted.
@@ -173,6 +201,14 @@ export type ReadingEvent = Message<"alt.reading.v1.ReadingEvent"> & {
      */
     value: SessionEnded;
     case: "sessionEnded";
+  } | {
+    /**
+     * User opened an article in a reader surface.
+     *
+     * @generated from field: alt.reading.v1.Opened opened = 13;
+     */
+    value: Opened;
+    case: "opened";
   } | { case: undefined; value?: undefined };
 };
 
@@ -181,7 +217,7 @@ export type ReadingEvent = Message<"alt.reading.v1.ReadingEvent"> & {
  * Use `create(ReadingEventSchema)` to create a new message.
  */
 export const ReadingEventSchema: GenMessage<ReadingEvent> = /*@__PURE__*/
-  messageDesc(file_alt_reading_v1_reading, 3);
+  messageDesc(file_alt_reading_v1_reading, 4);
 
 /**
  * RecordReadingEventsRequest carries a batch of reading events from the client.
@@ -202,7 +238,7 @@ export type RecordReadingEventsRequest = Message<"alt.reading.v1.RecordReadingEv
  * Use `create(RecordReadingEventsRequestSchema)` to create a new message.
  */
 export const RecordReadingEventsRequestSchema: GenMessage<RecordReadingEventsRequest> = /*@__PURE__*/
-  messageDesc(file_alt_reading_v1_reading, 4);
+  messageDesc(file_alt_reading_v1_reading, 5);
 
 /**
  * RecordReadingEventsResponse reports how many events in the batch were stored.
@@ -223,6 +259,13 @@ export type RecordReadingEventsResponse = Message<"alt.reading.v1.RecordReadingE
    * @generated from field: int32 duplicates = 2;
    */
   duplicates: number;
+
+  /**
+   * Identifiers of articles that this batch caused to count as read.
+   *
+   * @generated from field: repeated string read_article_ids = 3;
+   */
+  readArticleIds: string[];
 };
 
 /**
@@ -230,7 +273,255 @@ export type RecordReadingEventsResponse = Message<"alt.reading.v1.RecordReadingE
  * Use `create(RecordReadingEventsResponseSchema)` to create a new message.
  */
 export const RecordReadingEventsResponseSchema: GenMessage<RecordReadingEventsResponse> = /*@__PURE__*/
-  messageDesc(file_alt_reading_v1_reading, 5);
+  messageDesc(file_alt_reading_v1_reading, 6);
+
+/**
+ * ReadingQueueItem represents one active entry in the user's Read Today queue,
+ * hydrated with article display metadata by alt-backend.
+ *
+ * @generated from message alt.reading.v1.ReadingQueueItem
+ */
+export type ReadingQueueItem = Message<"alt.reading.v1.ReadingQueueItem"> & {
+  /**
+   * Identifier of the queued article.
+   *
+   * @generated from field: string article_id = 1;
+   */
+  articleId: string;
+
+  /**
+   * Article title hydrated from the article store.
+   *
+   * @generated from field: string title = 2;
+   */
+  title: string;
+
+  /**
+   * Canonical article URL hydrated from the article store.
+   *
+   * @generated from field: string url = 3;
+   */
+  url: string;
+
+  /**
+   * Source or site name derived from the article metadata when available.
+   *
+   * @generated from field: string source_name = 4;
+   */
+  sourceName: string;
+
+  /**
+   * Image URL (such as an OG image or signed proxy URL) when available.
+   *
+   * @generated from field: string image_url = 5;
+   */
+  imageUrl: string;
+
+  /**
+   * Timestamp when the article was queued.
+   *
+   * @generated from field: google.protobuf.Timestamp queued_at = 6;
+   */
+  queuedAt?: Timestamp | undefined;
+
+  /**
+   * Timestamp when the queue entry expires if not read.
+   *
+   * @generated from field: google.protobuf.Timestamp expires_at = 7;
+   */
+  expiresAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message alt.reading.v1.ReadingQueueItem.
+ * Use `create(ReadingQueueItemSchema)` to create a new message.
+ */
+export const ReadingQueueItemSchema: GenMessage<ReadingQueueItem> = /*@__PURE__*/
+  messageDesc(file_alt_reading_v1_reading, 7);
+
+/**
+ * QueueArticleRequest requests adding an article to the Read Today queue.
+ *
+ * @generated from message alt.reading.v1.QueueArticleRequest
+ */
+export type QueueArticleRequest = Message<"alt.reading.v1.QueueArticleRequest"> & {
+  /**
+   * Identifier of the article to queue.
+   *
+   * @generated from field: string article_id = 1;
+   */
+  articleId: string;
+
+  /**
+   * Client-generated UUIDv7 used to deduplicate retried deliveries.
+   *
+   * @generated from field: string client_event_id = 2;
+   */
+  clientEventId: string;
+
+  /**
+   * Client-observed timestamp when the queue action occurred.
+   *
+   * @generated from field: google.protobuf.Timestamp occurred_at = 3;
+   */
+  occurredAt?: Timestamp | undefined;
+
+  /**
+   * Surface where the queue action was triggered.
+   *
+   * @generated from field: alt.reading.v1.ReadingSurface surface = 4;
+   */
+  surface: ReadingSurface;
+};
+
+/**
+ * Describes the message alt.reading.v1.QueueArticleRequest.
+ * Use `create(QueueArticleRequestSchema)` to create a new message.
+ */
+export const QueueArticleRequestSchema: GenMessage<QueueArticleRequest> = /*@__PURE__*/
+  messageDesc(file_alt_reading_v1_reading, 8);
+
+/**
+ * QueueArticleResponse reports the queue outcome and the active queue snapshot.
+ *
+ * @generated from message alt.reading.v1.QueueArticleResponse
+ */
+export type QueueArticleResponse = Message<"alt.reading.v1.QueueArticleResponse"> & {
+  /**
+   * Outcome of the queue attempt; QUEUE_FULL is a normal outcome, not an error.
+   *
+   * @generated from field: alt.reading.v1.QueueArticleOutcome outcome = 1;
+   */
+  outcome: QueueArticleOutcome;
+
+  /**
+   * Current active items in the user's Read Today queue.
+   *
+   * @generated from field: repeated alt.reading.v1.ReadingQueueItem items = 2;
+   */
+  items: ReadingQueueItem[];
+
+  /**
+   * Configured maximum number of active items in the queue.
+   *
+   * @generated from field: int32 cap = 3;
+   */
+  cap: number;
+};
+
+/**
+ * Describes the message alt.reading.v1.QueueArticleResponse.
+ * Use `create(QueueArticleResponseSchema)` to create a new message.
+ */
+export const QueueArticleResponseSchema: GenMessage<QueueArticleResponse> = /*@__PURE__*/
+  messageDesc(file_alt_reading_v1_reading, 9);
+
+/**
+ * UnqueueArticleRequest requests removing an article from the Read Today queue.
+ *
+ * @generated from message alt.reading.v1.UnqueueArticleRequest
+ */
+export type UnqueueArticleRequest = Message<"alt.reading.v1.UnqueueArticleRequest"> & {
+  /**
+   * Identifier of the article to remove from the queue.
+   *
+   * @generated from field: string article_id = 1;
+   */
+  articleId: string;
+
+  /**
+   * Client-generated UUIDv7 used to deduplicate retried deliveries.
+   *
+   * @generated from field: string client_event_id = 2;
+   */
+  clientEventId: string;
+
+  /**
+   * Client-observed timestamp when the unqueue action occurred.
+   *
+   * @generated from field: google.protobuf.Timestamp occurred_at = 3;
+   */
+  occurredAt?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message alt.reading.v1.UnqueueArticleRequest.
+ * Use `create(UnqueueArticleRequestSchema)` to create a new message.
+ */
+export const UnqueueArticleRequestSchema: GenMessage<UnqueueArticleRequest> = /*@__PURE__*/
+  messageDesc(file_alt_reading_v1_reading, 10);
+
+/**
+ * UnqueueArticleResponse acknowledges the unqueue request.
+ *
+ * @generated from message alt.reading.v1.UnqueueArticleResponse
+ */
+export type UnqueueArticleResponse = Message<"alt.reading.v1.UnqueueArticleResponse"> & {
+};
+
+/**
+ * Describes the message alt.reading.v1.UnqueueArticleResponse.
+ * Use `create(UnqueueArticleResponseSchema)` to create a new message.
+ */
+export const UnqueueArticleResponseSchema: GenMessage<UnqueueArticleResponse> = /*@__PURE__*/
+  messageDesc(file_alt_reading_v1_reading, 11);
+
+/**
+ * GetReadTodayQueueRequest requests the active Read Today queue and recent read count.
+ *
+ * @generated from message alt.reading.v1.GetReadTodayQueueRequest
+ */
+export type GetReadTodayQueueRequest = Message<"alt.reading.v1.GetReadTodayQueueRequest"> & {
+  /**
+   * Lower bound (inclusive) for counting articles that counted as read;
+   * typically the client's local midnight.
+   *
+   * @generated from field: google.protobuf.Timestamp read_since = 1;
+   */
+  readSince?: Timestamp | undefined;
+};
+
+/**
+ * Describes the message alt.reading.v1.GetReadTodayQueueRequest.
+ * Use `create(GetReadTodayQueueRequestSchema)` to create a new message.
+ */
+export const GetReadTodayQueueRequestSchema: GenMessage<GetReadTodayQueueRequest> = /*@__PURE__*/
+  messageDesc(file_alt_reading_v1_reading, 12);
+
+/**
+ * GetReadTodayQueueResponse returns the hydrated active queue, capacity, and read count.
+ *
+ * @generated from message alt.reading.v1.GetReadTodayQueueResponse
+ */
+export type GetReadTodayQueueResponse = Message<"alt.reading.v1.GetReadTodayQueueResponse"> & {
+  /**
+   * Active non-expired items in the Read Today queue.
+   *
+   * @generated from field: repeated alt.reading.v1.ReadingQueueItem items = 1;
+   */
+  items: ReadingQueueItem[];
+
+  /**
+   * Configured maximum number of active items in the queue.
+   *
+   * @generated from field: int32 cap = 2;
+   */
+  cap: number;
+
+  /**
+   * Number of distinct articles that counted as read since read_since.
+   *
+   * @generated from field: int32 read_count_since = 3;
+   */
+  readCountSince: number;
+};
+
+/**
+ * Describes the message alt.reading.v1.GetReadTodayQueueResponse.
+ * Use `create(GetReadTodayQueueResponseSchema)` to create a new message.
+ */
+export const GetReadTodayQueueResponseSchema: GenMessage<GetReadTodayQueueResponse> = /*@__PURE__*/
+  messageDesc(file_alt_reading_v1_reading, 13);
 
 /**
  * ReadingSurface identifies the UI surface where reading activity occurred.
@@ -282,7 +573,48 @@ export const ReadingSurfaceSchema: GenEnum<ReadingSurface> = /*@__PURE__*/
   enumDesc(file_alt_reading_v1_reading, 0);
 
 /**
- * ReadingService records client-observed reading events for the calling user.
+ * QueueArticleOutcome reports the result of attempting to add an article to the Read Today queue.
+ *
+ * @generated from enum alt.reading.v1.QueueArticleOutcome
+ */
+export enum QueueArticleOutcome {
+  /**
+   * Default unspecified outcome.
+   *
+   * @generated from enum value: QUEUE_ARTICLE_OUTCOME_UNSPECIFIED = 0;
+   */
+  UNSPECIFIED = 0,
+
+  /**
+   * The article was added to the queue.
+   *
+   * @generated from enum value: QUEUE_ARTICLE_OUTCOME_QUEUED = 1;
+   */
+  QUEUED = 1,
+
+  /**
+   * The article was already present in the active queue.
+   *
+   * @generated from enum value: QUEUE_ARTICLE_OUTCOME_ALREADY_QUEUED = 2;
+   */
+  ALREADY_QUEUED = 2,
+
+  /**
+   * The queue is at capacity; older items are never evicted.
+   *
+   * @generated from enum value: QUEUE_ARTICLE_OUTCOME_QUEUE_FULL = 3;
+   */
+  QUEUE_FULL = 3,
+}
+
+/**
+ * Describes the enum alt.reading.v1.QueueArticleOutcome.
+ */
+export const QueueArticleOutcomeSchema: GenEnum<QueueArticleOutcome> = /*@__PURE__*/
+  enumDesc(file_alt_reading_v1_reading, 1);
+
+/**
+ * ReadingService records client-observed reading events and manages the Read Today queue.
  *
  * @generated from service alt.reading.v1.ReadingService
  */
@@ -297,6 +629,36 @@ export const ReadingService: GenService<{
     methodKind: "unary";
     input: typeof RecordReadingEventsRequestSchema;
     output: typeof RecordReadingEventsResponseSchema;
+  },
+  /**
+   * Adds an article to the Read Today queue if capacity allows.
+   *
+   * @generated from rpc alt.reading.v1.ReadingService.QueueArticle
+   */
+  queueArticle: {
+    methodKind: "unary";
+    input: typeof QueueArticleRequestSchema;
+    output: typeof QueueArticleResponseSchema;
+  },
+  /**
+   * Removes an article from the Read Today queue.
+   *
+   * @generated from rpc alt.reading.v1.ReadingService.UnqueueArticle
+   */
+  unqueueArticle: {
+    methodKind: "unary";
+    input: typeof UnqueueArticleRequestSchema;
+    output: typeof UnqueueArticleResponseSchema;
+  },
+  /**
+   * Returns the active Read Today queue and the count of articles read since read_since.
+   *
+   * @generated from rpc alt.reading.v1.ReadingService.GetReadTodayQueue
+   */
+  getReadTodayQueue: {
+    methodKind: "unary";
+    input: typeof GetReadTodayQueueRequestSchema;
+    output: typeof GetReadTodayQueueResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_alt_reading_v1_reading, 0);

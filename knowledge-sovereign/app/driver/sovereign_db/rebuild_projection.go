@@ -71,11 +71,23 @@ var (
 		},
 		projectorName: "knowledge-trail-projector",
 	}
+
+	// RebuildTargetReading rebuilds the reading read models folded by
+	// reading_projector.
+	RebuildTargetReading = ProjectionRebuildTarget{
+		name: "reading",
+		tables: []string{
+			"reading_sources",
+			"reading_queue_items",
+		},
+		projectorName: "reading-projector",
+	}
 )
 
 var rebuildTargets = []ProjectionRebuildTarget{
 	RebuildTargetKnowledgeHome,
 	RebuildTargetKnowledgeTrail,
+	RebuildTargetReading,
 }
 
 // protectedTables can never be emptied by a rebuild. The append-only event log

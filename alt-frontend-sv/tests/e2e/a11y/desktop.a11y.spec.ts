@@ -7,8 +7,6 @@
 
 import {
 	CONNECT_ARTICLE_CONTENT_RESPONSE,
-	CONNECT_EVENING_PULSE_PATH,
-	CONNECT_EVENING_PULSE_RESPONSE,
 	CONNECT_READ_FEEDS_EMPTY_RESPONSE,
 	CONNECT_RPC_PATHS,
 	CONNECT_TAG_TRAIL_FEED_RESPONSE,
@@ -116,10 +114,6 @@ test.describe("Desktop Pages Accessibility", () => {
 				{ kind: "tag", tag: "AI" },
 				{ kind: "tag", tag: "Web" },
 			]),
-		);
-		// Evening Pulse mock
-		await page.route(CONNECT_EVENING_PULSE_PATH, (route) =>
-			fulfillJson(route, CONNECT_EVENING_PULSE_RESPONSE),
 		);
 		// Trend stats mock
 		await page.route(CONNECT_TREND_STATS_PATH, (route) =>
@@ -332,16 +326,6 @@ test.describe("Desktop Pages Accessibility", () => {
 	test.describe("Desktop Viewed Page (/feeds/viewed)", () => {
 		test("has no critical accessibility violations", async ({ page }) => {
 			await gotoDesktopRoute(page, "feeds/viewed");
-			await page.waitForLoadState("domcontentloaded");
-			await expect(page.getByRole("heading").first()).toBeVisible();
-
-			await checkAccessibility(page, a11yOptions);
-		});
-	});
-
-	test.describe("Desktop Evening Pulse Page (/recap/evening-pulse)", () => {
-		test("has no critical accessibility violations", async ({ page }) => {
-			await gotoDesktopRoute(page, "recap/evening-pulse");
 			await page.waitForLoadState("domcontentloaded");
 			await expect(page.getByRole("heading").first()).toBeVisible();
 

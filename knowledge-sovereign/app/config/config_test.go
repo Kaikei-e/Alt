@@ -407,3 +407,46 @@ func TestLoad_LogsWarningWhenAuthDisabledOutsideProduction(t *testing.T) {
 		})
 	}
 }
+
+func TestLoad_ReadingProjectorThroughputConfig(t *testing.T) {
+	baseEnv := func(t *testing.T) {
+		t.Helper()
+		t.Setenv("APP_ENV", "test")
+		t.Setenv("DATABASE_URL", "postgres://test:test@localhost:5432/test")
+		t.Setenv("ADMIN_AUTH", "disabled")
+		t.Setenv("EVENT_AUTH", "disabled")
+	}
+
+	t.Run("defaults allow 20000 events per tick", func(t *testing.T) {
+		baseEnv(t)
+		t.Setenv("KNOWLEDGE_SOVEREIGN_READING_PROJECTOR_BATCH_SIZE", "")
+		t.Setenv("KNOWLEDGE_SOVEREIGN_READING_PROJECTOR_MAX_BATCHES_PER_TICK", "")
+
+		cfg, err := Load()
+		require.NoError(t, err)
+		assert.Equal(t, 500, cfg.ReadingProjectorBatchSize)
+		assert.Equal(t, 40, cfg.ReadingProjectorMaxBatches)
+	})
+
+	t.Run("honors explicit env overrides", func(t *testing.T) {
+		baseEnv(t)
+		t.Setenv("KNOWLEDGE_SOVEREIGN_READING_PROJECTOR_BATCH_SIZE", "250")
+		t.Setenv("KNOWLEDGE_SOVEREIGN_READING_PROJECTOR_MAX_BATCHES_PER_TICK", "12")
+
+		cfg, err := Load()
+		require.NoError(t, err)
+		assert.Equal(t, 250, cfg.ReadingProjectorBatchSize)
+		assert.Equal(t, 12, cfg.ReadingProjectorMaxBatches)
+	})
+
+	t.Run("falls back to defaults on invalid overrides", func(t *testing.T) {
+		baseEnv(t)
+		t.Setenv("KNOWLEDGE_SOVEREIGN_READING_PROJECTOR_BATCH_SIZE", "-5")
+		t.Setenv("KNOWLEDGE_SOVEREIGN_READING_PROJECTOR_MAX_BATCHES_PER_TICK", "not-a-number")
+
+		cfg, err := Load()
+		require.NoError(t, err)
+		assert.Equal(t, 500, cfg.ReadingProjectorBatchSize)
+		assert.Equal(t, 40, cfg.ReadingProjectorMaxBatches)
+	})
+}

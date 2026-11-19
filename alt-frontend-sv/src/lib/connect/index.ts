@@ -59,8 +59,6 @@ export {
 	streamAugurChat,
 	streamAugurChatAsync,
 } from "./augur";
-// Evening Pulse client
-export { getEveningPulse } from "./evening_pulse";
 // FeedService client
 export {
 	type ConnectFeedItem,
@@ -68,10 +66,13 @@ export {
 	createFeedClient,
 	type DetailedFeedStats,
 	type FeedCursorResponse,
+	type FeedInflowStatItem,
+	type FeedInflowStatsResult,
 	type FeedSearchResponse,
 	type FeedStats,
 	getDetailedFeedStats,
 	getFavoriteFeeds,
+	getFeedInflowStats,
 	// Phase 1: Stats
 	getFeedStats,
 	getReadFeeds,
@@ -82,12 +83,14 @@ export {
 	type MarkAsReadResult,
 	// Phase 7: Mark As Read
 	markAsRead,
+	type SetSubscriptionDailyCapResult,
 	type StreamingFeedStats,
 	type StreamSummarizeChunk,
 	type StreamSummarizeOptions,
 	type StreamSummarizeResult,
 	// Phase 3: Search
 	searchFeeds,
+	setSubscriptionDailyCap,
 	streamFeedStats,
 	// Phase 6: Streaming Summarize
 	streamSummarize,
@@ -186,7 +189,6 @@ export { createKeepaliveTransport } from "./reading-transport";
 export {
 	createRecapClient,
 	type DegradationReason,
-	getSevenDayRecap,
 	getThreeDayRecap,
 	getTopicCards,
 	type RecapCard,

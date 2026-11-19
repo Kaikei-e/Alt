@@ -176,7 +176,7 @@ describe("createReadingSession", () => {
 		});
 
 		const session = createReadingSession({
-			articleId: "article-integrated",
+			articleId: "01938e82-7c00-7a7b-9b10-000000000179",
 			surface: ReadingSurface.GALLERY,
 			bodyLengthChars: 3300,
 			queue,
@@ -198,7 +198,7 @@ describe("createReadingSession", () => {
 		expect(events[1]?.event).toMatchObject({
 			case: "sessionEnded",
 			value: {
-				articleId: "article-integrated",
+				articleId: "01938e82-7c00-7a7b-9b10-000000000179",
 				surface: ReadingSurface.GALLERY,
 				activeDwellMs: 6400n,
 				maxScrollRatio: 0.88,

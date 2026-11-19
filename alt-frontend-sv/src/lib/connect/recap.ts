@@ -8,7 +8,6 @@
 import type { Client, Transport } from "@connectrpc/connect";
 import { createClient } from "@connectrpc/connect";
 import {
-	type GetSevenDayRecapResponse,
 	type GetThreeDayRecapResponse,
 	type GetTopicCardsResponse,
 	type RecapSearchResultItem as ProtoRecapSearchResultItem,
@@ -61,32 +60,6 @@ export interface RecapSummaryWithReferences
  */
 export function createRecapClient(transport: Transport): RecapClient {
 	return createClient(RecapService, transport);
-}
-
-/**
- * Gets 7-day recap summary via Connect-RPC.
- *
- * @param transport - The Connect transport to use (must include auth)
- * @param genreDraftId - Optional draft ID for cluster draft attachment
- * @returns Recap summary with genres
- */
-export async function getSevenDayRecap(
-	transport: Transport,
-	genreDraftId?: string,
-): Promise<RecapSummaryWithReferences> {
-	const client = createRecapClient(transport);
-	const response = (await client.getSevenDayRecap({
-		genreDraftId,
-	})) as GetSevenDayRecapResponse;
-
-	return {
-		jobId: response.jobId,
-		executedAt: response.executedAt,
-		windowStart: response.windowStart,
-		windowEnd: response.windowEnd,
-		totalArticles: response.totalArticles,
-		genres: response.genres.map(convertProtoGenre),
-	};
 }
 
 /**

@@ -25,14 +25,6 @@ type MockRecapUsecase struct {
 	mock.Mock
 }
 
-func (m *MockRecapUsecase) GetSevenDayRecap(ctx context.Context) (*domain.RecapSummary, error) {
-	args := m.Called(ctx)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*domain.RecapSummary), args.Error(1)
-}
-
 func (m *MockRecapUsecase) GetThreeDayRecap(ctx context.Context) (*domain.RecapSummary, error) {
 	args := m.Called(ctx)
 	if args.Get(0) == nil {
@@ -47,14 +39,6 @@ func (m *MockRecapUsecase) GetTopicCards(ctx context.Context) (*domain.RecapCard
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(*domain.RecapCardsResponse), args.Error(1)
-}
-
-func (m *MockRecapUsecase) GetEveningPulse(ctx context.Context, date string) (*domain.EveningPulse, error) {
-	args := m.Called(ctx, date)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*domain.EveningPulse), args.Error(1)
 }
 
 func (m *MockRecapUsecase) SearchRecapsByTag(ctx context.Context, tagName string, limit int) ([]*domain.RecapSearchResult, error) {
@@ -390,5 +374,22 @@ func TestHandler_GetTopicCards(t *testing.T) {
 
 		require.Error(t, err)
 		mockUsecase.AssertExpectations(t)
+	})
+}
+
+func TestHandler_RetiredProcedures_ReturnUnimplemented(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	handler := NewHandler(new(MockRecapUsecase), nil, logger)
+
+	t.Run("GetSevenDayRecap returns Unimplemented", func(t *testing.T) {
+		_, err := handler.GetSevenDayRecap(context.Background(), connect.NewRequest(&recapv2.GetSevenDayRecapRequest{}))
+		require.Error(t, err)
+		assert.Equal(t, connect.CodeUnimplemented, connect.CodeOf(err))
+	})
+
+	t.Run("GetEveningPulse returns Unimplemented", func(t *testing.T) {
+		_, err := handler.GetEveningPulse(context.Background(), connect.NewRequest(&recapv2.GetEveningPulseRequest{}))
+		require.Error(t, err)
+		assert.Equal(t, connect.CodeUnimplemented, connect.CodeOf(err))
 	})
 }

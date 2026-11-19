@@ -125,6 +125,24 @@ func TestVerifyAltBackendConsumerContract(t *testing.T) {
 			"sovereign accepts reading.session_ended.v1 events": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
 				return nil, nil
 			},
+			"sovereign accepts reading.opened.v1 events": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
+				return nil, nil
+			},
+			"sovereign accepts reading.queued.v1 events": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
+				return nil, nil
+			},
+			"sovereign accepts reading.unqueued.v1 events": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
+				return nil, nil
+			},
+			"a user has active reading queue items": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
+				return nil, nil
+			},
+			"a user has reading sources recorded since midnight": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
+				return nil, nil
+			},
+			"a user has reading sources recorded within a 30-day window": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
+				return nil, nil
+			},
 			// Scoped to the one interaction that asked for it: pact-go calls
 			// this handler again with setup=false on teardown, so the fixture
 			// is accepting again before the next interaction is set up. The

@@ -332,8 +332,7 @@ func TestGetKnowledgeHomeUsecase_DigestEnrichment(t *testing.T) {
 	t.Run("enrichDigest preserves availability flags from read model", func(t *testing.T) {
 		homeItems := &mockHomeItemsPort{items: []domain.KnowledgeHomeItem{}}
 		digestPort := &mockTodayDigestPort{digest: domain.TodayDigest{
-			WeeklyRecapAvailable:  true,
-			EveningPulseAvailable: true,
+			WeeklyRecapAvailable: true,
 		}}
 		countPort := &mockCountNeedToKnowPort{count: 2}
 		freshnessPort := &mockProjectionFreshnessPort{updatedAt: &recentTime}
@@ -344,7 +343,6 @@ func TestGetKnowledgeHomeUsecase_DigestEnrichment(t *testing.T) {
 		require.NoError(t, err)
 		// enrichDigest must NOT overwrite availability flags
 		assert.True(t, result.Digest.WeeklyRecapAvailable)
-		assert.True(t, result.Digest.EveningPulseAvailable)
 		assert.Equal(t, 2, result.Digest.NeedToKnowCount)
 	})
 }

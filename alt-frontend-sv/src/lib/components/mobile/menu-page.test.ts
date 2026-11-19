@@ -28,10 +28,15 @@ describe("MENU_SECTIONS (re-export of MOBILE_MENU_SECTIONS)", () => {
 		expect(MENU_SECTIONS.find((s) => s.title === "Admin")).toBeDefined();
 	});
 
-	it("Browse includes Swipe Mode pointing to /feeds/swipe", () => {
+	it("Browse includes Home (/home) and Trail (/knowledge/trail) and omits Swipe", () => {
 		const browse = MENU_SECTIONS.find((s) => s.title === "Browse");
-		const swipe = browse?.items.find((i) => i.href === "/feeds/swipe");
-		expect(swipe).toBeDefined();
+		expect(browse?.items.find((i) => i.href === "/home")).toBeDefined();
+		expect(
+			browse?.items.find((i) => i.href === "/knowledge/trail"),
+		).toBeDefined();
+		expect(
+			browse?.items.find((i) => i.href === "/feeds/swipe/visual-preview"),
+		).toBeUndefined();
 	});
 
 	it("Recap includes Job Status pointing to /recap/job-status", () => {

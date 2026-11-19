@@ -65,7 +65,10 @@ function handleClear() {
 		align-items: center;
 		gap: 0.5rem;
 		margin: 1.3rem 0 0;
+		width: 100%;
 		max-width: 880px;
+		min-width: 0;
+		box-sizing: border-box;
 	}
 	.trail-search-submit {
 		position: absolute;
@@ -97,6 +100,9 @@ function handleClear() {
 	}
 	.trail-search-input {
 		flex: 1;
+		min-width: 0;
+		max-width: 100%;
+		box-sizing: border-box;
 		font-family: var(--font-body);
 		font-size: 0.9rem;
 		color: var(--alt-charcoal, #1a1a1a);

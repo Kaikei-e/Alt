@@ -111,8 +111,11 @@ const branchByEpisodeKey = $derived.by(() => {
 
 <style>
 	.content {
+		box-sizing: border-box;
 		padding: 1.75rem 2.25rem 3rem;
+		width: 100%;
 		max-width: 1100px;
+		min-width: 0;
 	}
 	.desk-date {
 		font-family: var(--font-mono);
@@ -144,8 +147,11 @@ const branchByEpisodeKey = $derived.by(() => {
 	}
 	.trailhead-actions {
 		display: flex;
+		flex-wrap: wrap;
 		gap: 0.5rem;
 		margin-top: 1.1rem;
+		min-width: 0;
+		max-width: 100%;
 	}
 	.action-link {
 		display: inline-flex;
