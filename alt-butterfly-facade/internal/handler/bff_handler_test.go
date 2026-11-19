@@ -626,7 +626,7 @@ func TestBFFHandler_SetSubscriptionDailyCap_InvalidatesUnreadProjectionCache(t *
 	mockBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"message":"Daily cap updated","dailyCap":2}`))
+		_, _ = w.Write([]byte(`{"message":"Daily cap updated","dailyCap":2}`))
 	}))
 	defer mockBackend.Close()
 
