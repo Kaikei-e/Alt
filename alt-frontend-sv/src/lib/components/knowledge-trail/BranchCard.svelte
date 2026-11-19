@@ -105,12 +105,18 @@ function dismissWithReason(reason?: string) {
 </article>
 
 <style>
+	/* why / evidence / target title carry source URLs and citations. The card
+	   is a flex descendant on the trail and at the article read-end, so it
+	   must be allowed to shrink and the URL must break mid-token. */
 	.branch-card {
 		border: 1px solid var(--surface-border, #c8c8c8);
 		border-left-width: 3px;
 		background: var(--surface-2, #f5f4f1);
 		padding: 0.8rem 1rem 0.85rem;
 		margin-bottom: 0.7rem;
+		min-width: 0;
+		max-width: 100%;
+		box-sizing: border-box;
 	}
 	.kind-contradiction {
 		border-left-color: var(--accent-emphasis-text, #8c1d1d);
@@ -154,12 +160,20 @@ function dismissWithReason(reason?: string) {
 		line-height: 1.3;
 		margin-top: 0.45rem;
 		color: var(--alt-charcoal, #1a1a1a);
+		min-width: 0;
+		max-width: 100%;
+		overflow-wrap: anywhere;
+		word-break: break-word;
 	}
 	.branch-why {
 		font-size: 0.83rem;
 		color: var(--text-secondary, #333);
 		line-height: 1.5;
 		margin: 0.3rem 0 0;
+		min-width: 0;
+		max-width: 100%;
+		overflow-wrap: anywhere;
+		word-break: break-word;
 	}
 	.branch-evidence {
 		font-family: var(--font-mono);
@@ -167,6 +181,10 @@ function dismissWithReason(reason?: string) {
 		color: var(--alt-ash, #999);
 		margin-top: 0.45rem;
 		letter-spacing: 0.02em;
+		min-width: 0;
+		max-width: 100%;
+		overflow-wrap: anywhere;
+		word-break: break-word;
 	}
 	.branch-actions,
 	.branch-dismiss-reasons {
