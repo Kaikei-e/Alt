@@ -84,9 +84,15 @@ function formatTime(iso: string): string {
 </div>
 
 <style>
+	/* Titles, excerpts, notes and tags can be a raw source URL: one token with
+	   no spaces, wider than a phone. min-width: 0 lets the flex child shrink,
+	   and overflow-wrap: anywhere splits that token. Without both, the URL
+	   widens the trail and the page scrolls sideways. */
 	.step {
 		display: flex;
 		gap: 1.1rem;
+		min-width: 0;
+		max-width: 100%;
 	}
 	.spine-cell {
 		width: 2.4rem;
@@ -140,6 +146,7 @@ function formatTime(iso: string): string {
 	.footprint {
 		flex: 1;
 		min-width: 0;
+		max-width: 100%;
 		padding: 0.1rem 0 1.1rem;
 	}
 	/* Wave 9 trail search (D25): the matched member stands out inside its
@@ -153,7 +160,10 @@ function formatTime(iso: string): string {
 	.fp-meta {
 		display: flex;
 		align-items: center;
+		flex-wrap: wrap;
 		gap: 0.6rem;
+		min-width: 0;
+		max-width: 100%;
 	}
 	.fp-time {
 		font-family: var(--font-mono);
@@ -181,6 +191,10 @@ function formatTime(iso: string): string {
 		font-size: 0.68rem;
 		color: var(--alt-ash, #999);
 		font-style: italic;
+		min-width: 0;
+		max-width: 100%;
+		overflow-wrap: anywhere;
+		word-break: break-word;
 	}
 	.fp-title {
 		font-family: var(--font-display);
@@ -189,6 +203,10 @@ function formatTime(iso: string): string {
 		line-height: 1.3;
 		margin-top: 0.2rem;
 		color: var(--alt-charcoal, #1a1a1a);
+		min-width: 0;
+		max-width: 100%;
+		overflow-wrap: anywhere;
+		word-break: break-word;
 	}
 	.fp-title-link {
 		display: block;
@@ -204,13 +222,17 @@ function formatTime(iso: string): string {
 		color: var(--text-secondary, #333);
 		line-height: 1.5;
 		margin-top: 0.25rem;
-		max-width: 60ch;
+		max-width: min(60ch, 100%);
+		overflow-wrap: anywhere;
+		word-break: break-word;
 	}
 	.fp-tags {
 		display: flex;
 		gap: 0.35rem;
 		margin-top: 0.4rem;
 		flex-wrap: wrap;
+		min-width: 0;
+		max-width: 100%;
 	}
 	.fp-tag {
 		font-family: var(--font-mono);
@@ -219,5 +241,9 @@ function formatTime(iso: string): string {
 		border: 1px solid var(--chip-border, #d0c8bb);
 		background: var(--chip-bg, #ebe7df);
 		padding: 0.08rem 0.5rem;
+		min-width: 0;
+		max-width: 100%;
+		overflow-wrap: anywhere;
+		word-break: break-word;
 	}
 </style>

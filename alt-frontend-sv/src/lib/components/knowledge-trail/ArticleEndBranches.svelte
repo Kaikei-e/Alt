@@ -51,6 +51,8 @@ const visible = $derived(effectiveBranches.slice(0, 2));
 		margin-top: 2rem;
 		padding-top: 1.25rem;
 		border-top: 1px solid var(--surface-border, #c8c8c8);
+		min-width: 0;
+		max-width: 100%;
 	}
 	.section-heading {
 		font-family: var(--font-display);
