@@ -178,7 +178,7 @@ func TestTodayEntranceNotificationJob_EnqueuesOneTriggerPerUserWithItems(t *test
 	if err := json.Unmarshal(got.Payload, &payload); err != nil {
 		t.Fatalf("payload is not JSON: %v", err)
 	}
-	want := map[string]any{"kind": "today_entrance_ready", "url": "/home", "count": float64(5)}
+	want := map[string]any{"kind": "today_entrance_ready", "url": "/today", "count": float64(5)}
 	if len(payload) != len(want) {
 		t.Fatalf("payload = %v, want exactly %v", payload, want)
 	}

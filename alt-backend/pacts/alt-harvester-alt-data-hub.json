@@ -1019,7 +1019,7 @@
           "expiresAt": "2026-08-09T23:00:00Z",
           "kind": "today_entrance_ready",
           "occurredAt": "2026-08-08T23:00:00Z",
-          "payload": "eyJraW5kIjoidG9kYXlfZW50cmFuY2VfcmVhZHkiLCJ1cmwiOiIvaG9tZSIsImNvdW50Ijo1fQ==",
+          "payload": "eyJraW5kIjoidG9kYXlfZW50cmFuY2VfcmVhZHkiLCJ1cmwiOiIvdG9kYXkiLCJjb3VudCI6NX0=",
           "userId": "3f2504e0-4f89-11d3-9a0c-0305e82c3301"
         },
         "headers": {

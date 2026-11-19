@@ -135,6 +135,23 @@ func (f *fakeRepo) GetOpenTrailBranchesForAnchor(context.Context, uuid.UUID, str
 	return []sovereign_db.TrailBranch{b}, nil
 }
 
+// --- Reading read path ---
+
+func (f *fakeRepo) GetActiveReadingQueue(_ context.Context, userID uuid.UUID, _ time.Time) ([]sovereign_db.ReadingQueueItem, error) {
+	queuedAt := time.Date(2026, 11, 18, 8, 0, 0, 0, time.UTC)
+	return []sovereign_db.ReadingQueueItem{{
+		UserID:             userID,
+		ArticleID:          uuid.MustParse("33333333-3333-3333-3333-333333333333"),
+		QueuedAt:           queuedAt,
+		ExpiresAt:          queuedAt.Add(48 * time.Hour),
+		QueuePolicyVersion: 1,
+	}}, nil
+}
+
+func (f *fakeRepo) CountReadingSourcesSince(context.Context, uuid.UUID, time.Time) (int, error) {
+	return 3, nil
+}
+
 func fixtureBranch() sovereign_db.TrailBranch {
 	return sovereign_db.TrailBranch{
 		BranchKey:     "cluster:u:article:z",

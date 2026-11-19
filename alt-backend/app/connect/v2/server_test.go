@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -19,6 +20,7 @@ import (
 	"alt/di"
 	"alt/domain"
 	"alt/gen/proto/services/datahub/v1/datahubv1connect"
+	"alt/orchestrator/usecase/reading_queue_usecase"
 	"alt/orchestrator/usecase/record_reading_events_usecase"
 	"alt/orchestrator/usecase/resolve_article_usecase"
 	"alt/orchestrator/usecase/search_feed_usecase"
@@ -64,6 +66,9 @@ var publicServicePaths = []string{
 	"/alt.knowledge_trail.v1.KnowledgeTrailService/GetTrail",
 	"/alt.push.v1.PushService/GetPushConfig",
 	"/alt.reading.v1.ReadingService/RecordReadingEvents",
+	"/alt.reading.v1.ReadingService/QueueArticle",
+	"/alt.reading.v1.ReadingService/UnqueueArticle",
+	"/alt.reading.v1.ReadingService/GetReadTodayQueue",
 	"/alt.search.v2.GlobalSearchService/SearchEverything",
 }
 
@@ -79,10 +84,28 @@ var publicServicePaths = []string{
 // wired to a client pointed at an address nothing resolves, which is enough for
 // routing assertions and would fail loudly if one of these tests ever made a
 // call.
-type fakeAppendKnowledgeEventPort struct{}
+type fakeReadingTestPorts struct{}
 
-func (fakeAppendKnowledgeEventPort) AppendKnowledgeEvent(context.Context, domain.KnowledgeEvent) (int64, error) {
+func (fakeReadingTestPorts) AppendKnowledgeEvent(context.Context, domain.KnowledgeEvent) (int64, error) {
 	return 1, nil
+}
+func (fakeReadingTestPorts) LookupArticleSource(context.Context, string, uuid.UUID) (domain.ArticleSource, error) {
+	return domain.ArticleSource{}, nil
+}
+func (fakeReadingTestPorts) MarkArticleAsRead(context.Context, url.URL, uuid.UUID) error {
+	return nil
+}
+func (fakeReadingTestPorts) GetReadingQueue(context.Context, uuid.UUID, time.Time) ([]domain.ReadingQueueEntry, error) {
+	return nil, nil
+}
+func (fakeReadingTestPorts) CountReadingSourcesSince(context.Context, uuid.UUID, time.Time) (int, error) {
+	return 0, nil
+}
+func (fakeReadingTestPorts) FetchArticlesByIDs(context.Context, []uuid.UUID) ([]*domain.Article, error) {
+	return nil, nil
+}
+func (fakeReadingTestPorts) GetOgImageURLsByArticleIDs(context.Context, []string) (map[string]string, error) {
+	return nil, nil
 }
 
 func testDeps() (*di.ApplicationComponents, *config.Config, *slog.Logger) {
@@ -100,15 +123,25 @@ func testDeps() (*di.ApplicationComponents, *config.Config, *slog.Logger) {
 		panic(err)
 	}
 
+	fixedNow := func() time.Time { return time.Date(2026, 11, 18, 0, 5, 0, 0, time.UTC) }
+	readingPorts := fakeReadingTestPorts{}
 	readingUsecase := record_reading_events_usecase.NewRecordReadingEventsUsecase(
-		fakeAppendKnowledgeEventPort{},
-		func() time.Time { return time.Date(2026, 11, 18, 0, 5, 0, 0, time.UTC) },
+		readingPorts,
+		readingPorts,
+		readingPorts,
+		fixedNow,
 	)
+	queueUsecase := reading_queue_usecase.NewQueueArticleUsecase(readingPorts, readingPorts, readingPorts, readingPorts, readingPorts, 7, 48, fixedNow)
+	unqueueUsecase := reading_queue_usecase.NewUnqueueArticleUsecase(readingPorts, fixedNow)
+	getQueueUsecase := reading_queue_usecase.NewGetReadTodayQueueUsecase(readingPorts, readingPorts, readingPorts, readingPorts, 7, fixedNow)
 
 	return &di.ApplicationComponents{
 			Infra:                      &di.InfraModule{PushSubscriptionGateway: pushGateway},
 			ResolveArticleUsecase:      resolve_article_usecase.New(nil, nil), // satisfies the feeds handler fail-loud wiring check
 			RecordReadingEventsUsecase: readingUsecase,
+			QueueArticleUsecase:        queueUsecase,
+			UnqueueArticleUsecase:      unqueueUsecase,
+			GetReadTodayQueueUsecase:   getQueueUsecase,
 			Search:                     &di.SearchModule{},
 			UserQuotaLimiter:           limiter,
 		},

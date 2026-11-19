@@ -572,8 +572,8 @@ func TestHarvesterEnqueueTodayEntranceNotificationContract(t *testing.T) {
 				"userId":    digestUserID,
 				"kind":      "today_entrance_ready",
 				// bytes over protoJSON is base64; this decodes to
-				// {"kind":"today_entrance_ready","url":"/home","count":5}.
-				"payload":    "eyJraW5kIjoidG9kYXlfZW50cmFuY2VfcmVhZHkiLCJ1cmwiOiIvaG9tZSIsImNvdW50Ijo1fQ==",
+				// {"kind":"today_entrance_ready","url":"/today","count":5}.
+				"payload":    "eyJraW5kIjoidG9kYXlfZW50cmFuY2VfcmVhZHkiLCJ1cmwiOiIvdG9kYXkiLCJjb3VudCI6NX0=",
 				"occurredAt": "2026-08-08T23:00:00Z",
 				// One day. The next evening's enqueue supersedes an unsent
 				// digest anyway, and an entrance delivered a day late lies
@@ -596,7 +596,7 @@ func TestHarvesterEnqueueTodayEntranceNotificationContract(t *testing.T) {
 				DedupeKey:  "digest:" + digestUserID + ":2026-08-08",
 				UserID:     digestUserID,
 				Kind:       domain.NotificationKindTodayEntranceReady,
-				Payload:    []byte(`{"kind":"today_entrance_ready","url":"/home","count":5}`),
+				Payload:    []byte(`{"kind":"today_entrance_ready","url":"/today","count":5}`),
 				OccurredAt: occurredAt,
 				ExpiresAt:  occurredAt.Add(24 * time.Hour),
 			})

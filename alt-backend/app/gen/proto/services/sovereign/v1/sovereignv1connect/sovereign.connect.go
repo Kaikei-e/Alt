@@ -172,6 +172,12 @@ const (
 	// KnowledgeSovereignServiceGetTrailBranchesForAnchorProcedure is the fully-qualified name of the
 	// KnowledgeSovereignService's GetTrailBranchesForAnchor RPC.
 	KnowledgeSovereignServiceGetTrailBranchesForAnchorProcedure = "/services.sovereign.v1.KnowledgeSovereignService/GetTrailBranchesForAnchor"
+	// KnowledgeSovereignServiceGetReadingQueueProcedure is the fully-qualified name of the
+	// KnowledgeSovereignService's GetReadingQueue RPC.
+	KnowledgeSovereignServiceGetReadingQueueProcedure = "/services.sovereign.v1.KnowledgeSovereignService/GetReadingQueue"
+	// KnowledgeSovereignServiceCountReadingSourcesSinceProcedure is the fully-qualified name of the
+	// KnowledgeSovereignService's CountReadingSourcesSince RPC.
+	KnowledgeSovereignServiceCountReadingSourcesSinceProcedure = "/services.sovereign.v1.KnowledgeSovereignService/CountReadingSourcesSince"
 )
 
 // KnowledgeSovereignServiceClient is a client for the
@@ -239,6 +245,9 @@ type KnowledgeSovereignServiceClient interface {
 	// GetTrailBranchesForAnchor returns the user's open branches anchored on one
 	// item, newest first — the patch-exit read (D26).
 	GetTrailBranchesForAnchor(context.Context, *connect.Request[v1.GetTrailBranchesForAnchorRequest]) (*connect.Response[v1.GetTrailBranchesForAnchorResponse], error)
+	// === Reading (Read Today queue & reading sources) ===
+	GetReadingQueue(context.Context, *connect.Request[v1.GetReadingQueueRequest]) (*connect.Response[v1.GetReadingQueueResponse], error)
+	CountReadingSourcesSince(context.Context, *connect.Request[v1.CountReadingSourcesSinceRequest]) (*connect.Response[v1.CountReadingSourcesSinceResponse], error)
 }
 
 // NewKnowledgeSovereignServiceClient constructs a client for the
@@ -529,6 +538,18 @@ func NewKnowledgeSovereignServiceClient(httpClient connect.HTTPClient, baseURL s
 			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("GetTrailBranchesForAnchor")),
 			connect.WithClientOptions(opts...),
 		),
+		getReadingQueue: connect.NewClient[v1.GetReadingQueueRequest, v1.GetReadingQueueResponse](
+			httpClient,
+			baseURL+KnowledgeSovereignServiceGetReadingQueueProcedure,
+			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("GetReadingQueue")),
+			connect.WithClientOptions(opts...),
+		),
+		countReadingSourcesSince: connect.NewClient[v1.CountReadingSourcesSinceRequest, v1.CountReadingSourcesSinceResponse](
+			httpClient,
+			baseURL+KnowledgeSovereignServiceCountReadingSourcesSinceProcedure,
+			connect.WithSchema(knowledgeSovereignServiceMethods.ByName("CountReadingSourcesSince")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -580,6 +601,8 @@ type knowledgeSovereignServiceClient struct {
 	watchProjectorEvents       *connect.Client[v1.WatchProjectorEventsRequest, v1.WatchProjectorEventsResponse]
 	getTrailFootprints         *connect.Client[v1.GetTrailFootprintsRequest, v1.GetTrailFootprintsResponse]
 	getTrailBranchesForAnchor  *connect.Client[v1.GetTrailBranchesForAnchorRequest, v1.GetTrailBranchesForAnchorResponse]
+	getReadingQueue            *connect.Client[v1.GetReadingQueueRequest, v1.GetReadingQueueResponse]
+	countReadingSourcesSince   *connect.Client[v1.CountReadingSourcesSinceRequest, v1.CountReadingSourcesSinceResponse]
 }
 
 // ApplyProjectionMutation calls
@@ -827,6 +850,17 @@ func (c *knowledgeSovereignServiceClient) GetTrailBranchesForAnchor(ctx context.
 	return c.getTrailBranchesForAnchor.CallUnary(ctx, req)
 }
 
+// GetReadingQueue calls services.sovereign.v1.KnowledgeSovereignService.GetReadingQueue.
+func (c *knowledgeSovereignServiceClient) GetReadingQueue(ctx context.Context, req *connect.Request[v1.GetReadingQueueRequest]) (*connect.Response[v1.GetReadingQueueResponse], error) {
+	return c.getReadingQueue.CallUnary(ctx, req)
+}
+
+// CountReadingSourcesSince calls
+// services.sovereign.v1.KnowledgeSovereignService.CountReadingSourcesSince.
+func (c *knowledgeSovereignServiceClient) CountReadingSourcesSince(ctx context.Context, req *connect.Request[v1.CountReadingSourcesSinceRequest]) (*connect.Response[v1.CountReadingSourcesSinceResponse], error) {
+	return c.countReadingSourcesSince.CallUnary(ctx, req)
+}
+
 // KnowledgeSovereignServiceHandler is an implementation of the
 // services.sovereign.v1.KnowledgeSovereignService service.
 type KnowledgeSovereignServiceHandler interface {
@@ -892,6 +926,9 @@ type KnowledgeSovereignServiceHandler interface {
 	// GetTrailBranchesForAnchor returns the user's open branches anchored on one
 	// item, newest first — the patch-exit read (D26).
 	GetTrailBranchesForAnchor(context.Context, *connect.Request[v1.GetTrailBranchesForAnchorRequest]) (*connect.Response[v1.GetTrailBranchesForAnchorResponse], error)
+	// === Reading (Read Today queue & reading sources) ===
+	GetReadingQueue(context.Context, *connect.Request[v1.GetReadingQueueRequest]) (*connect.Response[v1.GetReadingQueueResponse], error)
+	CountReadingSourcesSince(context.Context, *connect.Request[v1.CountReadingSourcesSinceRequest]) (*connect.Response[v1.CountReadingSourcesSinceResponse], error)
 }
 
 // NewKnowledgeSovereignServiceHandler builds an HTTP handler from the service implementation. It
@@ -1177,6 +1214,18 @@ func NewKnowledgeSovereignServiceHandler(svc KnowledgeSovereignServiceHandler, o
 		connect.WithSchema(knowledgeSovereignServiceMethods.ByName("GetTrailBranchesForAnchor")),
 		connect.WithHandlerOptions(opts...),
 	)
+	knowledgeSovereignServiceGetReadingQueueHandler := connect.NewUnaryHandler(
+		KnowledgeSovereignServiceGetReadingQueueProcedure,
+		svc.GetReadingQueue,
+		connect.WithSchema(knowledgeSovereignServiceMethods.ByName("GetReadingQueue")),
+		connect.WithHandlerOptions(opts...),
+	)
+	knowledgeSovereignServiceCountReadingSourcesSinceHandler := connect.NewUnaryHandler(
+		KnowledgeSovereignServiceCountReadingSourcesSinceProcedure,
+		svc.CountReadingSourcesSince,
+		connect.WithSchema(knowledgeSovereignServiceMethods.ByName("CountReadingSourcesSince")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/services.sovereign.v1.KnowledgeSovereignService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case KnowledgeSovereignServiceApplyProjectionMutationProcedure:
@@ -1271,6 +1320,10 @@ func NewKnowledgeSovereignServiceHandler(svc KnowledgeSovereignServiceHandler, o
 			knowledgeSovereignServiceGetTrailFootprintsHandler.ServeHTTP(w, r)
 		case KnowledgeSovereignServiceGetTrailBranchesForAnchorProcedure:
 			knowledgeSovereignServiceGetTrailBranchesForAnchorHandler.ServeHTTP(w, r)
+		case KnowledgeSovereignServiceGetReadingQueueProcedure:
+			knowledgeSovereignServiceGetReadingQueueHandler.ServeHTTP(w, r)
+		case KnowledgeSovereignServiceCountReadingSourcesSinceProcedure:
+			knowledgeSovereignServiceCountReadingSourcesSinceHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -1462,4 +1515,12 @@ func (UnimplementedKnowledgeSovereignServiceHandler) GetTrailFootprints(context.
 
 func (UnimplementedKnowledgeSovereignServiceHandler) GetTrailBranchesForAnchor(context.Context, *connect.Request[v1.GetTrailBranchesForAnchorRequest]) (*connect.Response[v1.GetTrailBranchesForAnchorResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.GetTrailBranchesForAnchor is not implemented"))
+}
+
+func (UnimplementedKnowledgeSovereignServiceHandler) GetReadingQueue(context.Context, *connect.Request[v1.GetReadingQueueRequest]) (*connect.Response[v1.GetReadingQueueResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.GetReadingQueue is not implemented"))
+}
+
+func (UnimplementedKnowledgeSovereignServiceHandler) CountReadingSourcesSince(context.Context, *connect.Request[v1.CountReadingSourcesSinceRequest]) (*connect.Response[v1.CountReadingSourcesSinceResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("services.sovereign.v1.KnowledgeSovereignService.CountReadingSourcesSince is not implemented"))
 }

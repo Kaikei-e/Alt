@@ -43,7 +43,7 @@ const (
 	// todayEntranceNavigate is where a tap lands. The notification carries a
 	// trigger, not content — no titles and no article text — so the app
 	// fetches the entrance itself over an authenticated navigation load.
-	todayEntranceNavigate = "/home"
+	todayEntranceNavigate = "/today"
 )
 
 // digestAudienceReader is knowledge-sovereign's half: who has a Knowledge Home

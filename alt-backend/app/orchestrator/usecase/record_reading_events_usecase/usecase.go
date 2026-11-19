@@ -3,42 +3,61 @@ package record_reading_events_usecase
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log/slog"
+	"net/url"
 	"time"
 
 	"alt/domain"
+	"alt/orchestrator/port/article_status_port"
+	"alt/orchestrator/port/article_url_lookup_port"
 	"alt/shared/port/knowledge_event_port"
 
 	"github.com/google/uuid"
 )
 
-const maxClockSkew = 24 * time.Hour
-
-var ErrInvalidInput = domain.ErrInvalidReadingEvent
+var (
+	ErrInvalidInput        = domain.ErrInvalidReadingEvent
+	ErrReadSyncUnavailable = errors.New("read sync unavailable")
+)
 
 type Result struct {
-	Accepted   int32
-	Duplicates int32
+	Accepted       int32
+	Duplicates     int32
+	ReadArticleIDs []string
 }
 
 type RecordReadingEventsUsecase struct {
-	appendPort knowledge_event_port.AppendKnowledgeEventPort
-	now        func() time.Time
+	appendPort        knowledge_event_port.AppendKnowledgeEventPort
+	articleLookupPort article_url_lookup_port.ArticleURLLookupPort
+	articleStatusPort article_status_port.UpdateArticleStatusPort
+	now               func() time.Time
 }
 
 func NewRecordReadingEventsUsecase(
 	appendPort knowledge_event_port.AppendKnowledgeEventPort,
+	articleLookupPort article_url_lookup_port.ArticleURLLookupPort,
+	articleStatusPort article_status_port.UpdateArticleStatusPort,
 	now func() time.Time,
 ) *RecordReadingEventsUsecase {
 	if appendPort == nil {
 		panic("record_reading_events_usecase: appendPort is required")
 	}
+	if articleLookupPort == nil {
+		panic("record_reading_events_usecase: articleLookupPort is required")
+	}
+	if articleStatusPort == nil {
+		panic("record_reading_events_usecase: articleStatusPort is required")
+	}
 	if now == nil {
 		panic("record_reading_events_usecase: now clock is required")
 	}
 	return &RecordReadingEventsUsecase{
-		appendPort: appendPort,
-		now:        now,
+		appendPort:        appendPort,
+		articleLookupPort: articleLookupPort,
+		articleStatusPort: articleStatusPort,
+		now:               now,
 	}
 }
 
@@ -49,7 +68,7 @@ type surfaceViewedPayload struct {
 	ClientOccurredAt string `json:"client_occurred_at,omitempty"`
 }
 
-type reachedEndPayload struct {
+type articleSurfacePayload struct {
 	ClientEventID    string `json:"client_event_id"`
 	ArticleID        string `json:"article_id"`
 	Surface          string `json:"surface"`
@@ -84,6 +103,8 @@ func (u *RecordReadingEventsUsecase) Execute(
 
 	receivedAt := u.now().UTC()
 	var res Result
+	seenRead := make(map[string]struct{})
+	var syncErrs []error
 
 	for _, ev := range events {
 		ke, err := buildKnowledgeEvent(userID, tenantID, ev, receivedAt)
@@ -99,8 +120,54 @@ func (u *RecordReadingEventsUsecase) Execute(
 		} else {
 			res.Accepted++
 		}
+
+		if se, ok := ev.Payload.(domain.SessionEndedInput); ok {
+			if domain.EvaluateReadRuleV1(se.ReachedEnd, se.ActiveDwellMs, se.BodyLengthChars) {
+				canonicalArticleID := uuid.MustParse(se.ArticleID).String()
+				if _, already := seenRead[canonicalArticleID]; !already {
+					seenRead[canonicalArticleID] = struct{}{}
+					marked, syncErr := u.markArticleRead(ctx, canonicalArticleID, userID)
+					if syncErr != nil {
+						syncErrs = append(syncErrs, syncErr)
+					} else if marked {
+						res.ReadArticleIDs = append(res.ReadArticleIDs, canonicalArticleID)
+					}
+				}
+			}
+		}
+	}
+	if len(syncErrs) > 0 {
+		return res, fmt.Errorf("%w: %w", ErrReadSyncUnavailable, errors.Join(syncErrs...))
 	}
 	return res, nil
+}
+
+func (u *RecordReadingEventsUsecase) markArticleRead(ctx context.Context, articleID string, userID uuid.UUID) (bool, error) {
+	source, err := u.articleLookupPort.LookupArticleSource(ctx, articleID, userID)
+	if err != nil {
+		if errors.Is(err, domain.ErrArticleNotFound) {
+			return false, nil
+		}
+		slog.ErrorContext(ctx, "record_reading_events: lookup article URL failed for read sync",
+			"article_id", articleID, "error", err)
+		return false, err
+	}
+	if source.URL == "" {
+		return false, nil
+	}
+	parsedURL, err := url.Parse(source.URL)
+	if err != nil || parsedURL.Scheme == "" {
+		return false, nil
+	}
+	if err := u.articleStatusPort.MarkArticleAsRead(ctx, *parsedURL, userID); err != nil {
+		if errors.Is(err, domain.ErrFeedNotFound) {
+			return false, nil
+		}
+		slog.ErrorContext(ctx, "record_reading_events: mark article read failed",
+			"article_id", articleID, "error", err)
+		return false, err
+	}
+	return true, nil
 }
 
 func buildKnowledgeEvent(
@@ -110,7 +177,7 @@ func buildKnowledgeEvent(
 	receivedAt time.Time,
 ) (domain.KnowledgeEvent, error) {
 	clientEventID := uuid.MustParse(ev.ClientEventID).String()
-	occurredAt, clientOccurredAt := clampOccurredAt(ev.OccurredAt.UTC(), receivedAt)
+	occurredAt, clientOccurredAt := domain.ClampReadingOccurredAt(ev.OccurredAt, receivedAt)
 	receivedAtStr := receivedAt.Format(time.RFC3339)
 
 	eventType, aggregateID, payloadBytes, err := encodePayload(ev.Payload, clientEventID, receivedAtStr, clientOccurredAt)
@@ -132,18 +199,6 @@ func buildKnowledgeEvent(
 		DedupeKey:     eventType + ":" + clientEventID,
 		Payload:       payloadBytes,
 	}, nil
-}
-
-// clampOccurredAt guards monthly event partitioning against wildly skewed device clocks.
-func clampOccurredAt(clientOccurredAt, receivedAt time.Time) (time.Time, string) {
-	skew := receivedAt.Sub(clientOccurredAt)
-	if skew < 0 {
-		skew = -skew
-	}
-	if skew > maxClockSkew {
-		return receivedAt, clientOccurredAt.Format(time.RFC3339)
-	}
-	return clientOccurredAt, ""
 }
 
 func encodePayload(
@@ -172,7 +227,18 @@ func encodePayload(
 		articleID := uuid.MustParse(p.ArticleID).String()
 		eventType = domain.EventReadingReachedEnd
 		aggregateID = "article:" + articleID
-		wirePayload = reachedEndPayload{
+		wirePayload = articleSurfacePayload{
+			ClientEventID:    clientEventID,
+			ArticleID:        articleID,
+			Surface:          p.Surface.String(),
+			ReceivedAt:       receivedAtStr,
+			ClientOccurredAt: clientOccurredAtStr,
+		}
+	case domain.OpenedInput:
+		articleID := uuid.MustParse(p.ArticleID).String()
+		eventType = domain.EventReadingOpened
+		aggregateID = "article:" + articleID
+		wirePayload = articleSurfacePayload{
 			ClientEventID:    clientEventID,
 			ArticleID:        articleID,
 			Surface:          p.Surface.String(),

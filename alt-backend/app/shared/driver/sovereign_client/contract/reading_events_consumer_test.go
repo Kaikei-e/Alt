@@ -165,3 +165,73 @@ func TestAppendKnowledgeEvent_ReadingSessionEnded(t *testing.T) {
 		},
 	})
 }
+
+func TestAppendKnowledgeEvent_ReadingOpened(t *testing.T) {
+	const (
+		clientEventID = "019a0000-0004-7000-8000-000000000104"
+		articleID     = "33333333-3333-3333-3333-333333333333"
+	)
+
+	assertAppendReadingEventContract(t, readingEventContractSpec{
+		providerState: "sovereign accepts reading.opened.v1 events",
+		description:   "an AppendKnowledgeEvent request for reading.opened.v1",
+		eventID:       "019a0000-0004-7000-8000-000000000004",
+		clientEventID: clientEventID,
+		eventType:     "reading.opened.v1",
+		aggregateID:   "article:" + articleID,
+		payload: map[string]any{
+			"client_event_id": clientEventID,
+			"article_id":      articleID,
+			"surface":         "gallery",
+			"received_at":     "2026-11-18T09:00:01Z",
+		},
+	})
+}
+
+func TestAppendKnowledgeEvent_ReadingQueued(t *testing.T) {
+	const (
+		clientEventID = "019a0000-0005-7000-8000-000000000105"
+		articleID     = "33333333-3333-3333-3333-333333333333"
+	)
+
+	assertAppendReadingEventContract(t, readingEventContractSpec{
+		providerState: "sovereign accepts reading.queued.v1 events",
+		description:   "an AppendKnowledgeEvent request for reading.queued.v1",
+		eventID:       "019a0000-0005-7000-8000-000000000005",
+		clientEventID: clientEventID,
+		eventType:     "reading.queued.v1",
+		aggregateID:   "article:" + articleID,
+		payload: map[string]any{
+			"client_event_id":      clientEventID,
+			"article_id":           articleID,
+			"surface":              "swipe",
+			"queued_at":            "2026-11-18T09:00:00Z",
+			"expires_at":           "2026-11-20T09:00:00Z",
+			"cap":                  7,
+			"ttl_hours":            48,
+			"queue_policy_version": 1,
+			"received_at":          "2026-11-18T09:00:01Z",
+		},
+	})
+}
+
+func TestAppendKnowledgeEvent_ReadingUnqueued(t *testing.T) {
+	const (
+		clientEventID = "019a0000-0006-7000-8000-000000000106"
+		articleID     = "33333333-3333-3333-3333-333333333333"
+	)
+
+	assertAppendReadingEventContract(t, readingEventContractSpec{
+		providerState: "sovereign accepts reading.unqueued.v1 events",
+		description:   "an AppendKnowledgeEvent request for reading.unqueued.v1",
+		eventID:       "019a0000-0006-7000-8000-000000000006",
+		clientEventID: clientEventID,
+		eventType:     "reading.unqueued.v1",
+		aggregateID:   "article:" + articleID,
+		payload: map[string]any{
+			"client_event_id": clientEventID,
+			"article_id":      articleID,
+			"received_at":     "2026-11-18T09:00:01Z",
+		},
+	})
+}

@@ -107,6 +107,12 @@ func ValidateBackendConfig(cfg *Config) error {
 	if cfg.MQHub.Enabled && cfg.MQHub.AuthToken == "" {
 		return fmt.Errorf("backend config: MQHUB_AUTH_TOKEN_FILE or MQHUB_AUTH_TOKEN is required when MQHUB_ENABLED=true")
 	}
+	if cfg.ReadingQueue.Cap <= 0 {
+		return fmt.Errorf("backend config: READING_QUEUE_CAP is required and must be a positive integer (got %d)", cfg.ReadingQueue.Cap)
+	}
+	if cfg.ReadingQueue.TTLHours <= 0 {
+		return fmt.Errorf("backend config: READING_QUEUE_TTL_HOURS is required and must be a positive integer (got %d)", cfg.ReadingQueue.TTLHours)
+	}
 	return nil
 }
 

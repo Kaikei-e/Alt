@@ -26,8 +26,9 @@ func baseConfig() *Config {
 		Auth: AuthConfig{
 			InternalAuthSecret: "a-distinct-internal-auth-secret-value",
 		},
-		Sovereign: SovereignConfig{URL: "http://knowledge-sovereign:9500"},
-		WebPush:   WebPushConfig{PublicKey: "a-vapid-public-key-value", PrivateKey: "a-vapid-private-key-value", Subject: "mailto:ops@alt.example"},
+		Sovereign:    SovereignConfig{URL: "http://knowledge-sovereign:9500"},
+		WebPush:      WebPushConfig{PublicKey: "a-vapid-public-key-value", PrivateKey: "a-vapid-private-key-value", Subject: "mailto:ops@alt.example"},
+		ReadingQueue: ReadingQueueConfig{Cap: 7, TTLHours: 48},
 	}
 }
 
@@ -416,9 +417,17 @@ func TestValidateBinaryConfig(t *testing.T) {
 			mutate: func(c *Config) { c.Rag.APIToken = ""; c.Rag.APIAuth = "disabled" }, wantErr: ""},
 		{name: "backend refuses disabled rag auth in prod", validate: ValidateBackendConfig,
 			mutate: func(c *Config) { c.AppEnv = "production"; c.Rag.APIToken = ""; c.Rag.APIAuth = "disabled" }, wantErr: "RAG_API_AUTH=disabled is not permitted in production"},
+		{name: "backend needs reading queue cap", validate: ValidateBackendConfig,
+			mutate: func(c *Config) { c.ReadingQueue.Cap = 0 }, wantErr: "READING_QUEUE_CAP"},
+		{name: "backend rejects negative reading queue cap", validate: ValidateBackendConfig,
+			mutate: func(c *Config) { c.ReadingQueue.Cap = -1 }, wantErr: "READING_QUEUE_CAP"},
+		{name: "backend needs reading queue ttl hours", validate: ValidateBackendConfig,
+			mutate: func(c *Config) { c.ReadingQueue.TTLHours = 0 }, wantErr: "READING_QUEUE_TTL_HOURS"},
+		{name: "backend rejects negative reading queue ttl hours", validate: ValidateBackendConfig,
+			mutate: func(c *Config) { c.ReadingQueue.TTLHours = -5 }, wantErr: "READING_QUEUE_TTL_HOURS"},
 
 		{name: "harvester accepts a complete config without backend token key", validate: ValidateHarvesterConfig,
-			verifyKeyValue: new(string), mutate: func(*Config) {}},
+			verifyKeyValue: new(string), mutate: func(c *Config) { c.ReadingQueue = ReadingQueueConfig{} }},
 		{name: "harvester needs sovereign in every environment", validate: ValidateHarvesterConfig,
 			mutate: func(c *Config) { c.Sovereign.URL = "" }, wantErr: "SOVEREIGN_URL"},
 		{name: "harvester needs the rag orchestrator", validate: ValidateHarvesterConfig,
@@ -431,7 +440,7 @@ func TestValidateBinaryConfig(t *testing.T) {
 			mutate: func(c *Config) { c.AppEnv = "production"; c.Rag.APIToken = ""; c.Rag.APIAuth = "disabled" }, wantErr: "RAG_API_AUTH=disabled is not permitted in production"},
 
 		{name: "datahub accepts a complete config without backend token key", validate: ValidateDataHubConfig,
-			verifyKeyValue: new(string), mutate: func(*Config) {}},
+			verifyKeyValue: new(string), mutate: func(c *Config) { c.ReadingQueue = ReadingQueueConfig{} }},
 		{name: "datahub needs auth-hub", validate: ValidateDataHubConfig,
 			mutate: func(c *Config) { c.AuthHub.URL = "" }, wantErr: "AUTH_HUB_URL"},
 		{name: "datahub refuses plaintext auth-hub in prod", validate: ValidateDataHubConfig,
@@ -444,7 +453,7 @@ func TestValidateBinaryConfig(t *testing.T) {
 			mutate: func(c *Config) { c.MQHub.ConnectURL = "" }, wantErr: "MQHUB_CONNECT_URL"},
 
 		{name: "notifier accepts a complete mailto config without backend token key", validate: ValidateNotifierConfig,
-			verifyKeyValue: new(string), mutate: func(*Config) {}},
+			verifyKeyValue: new(string), mutate: func(c *Config) { c.ReadingQueue = ReadingQueueConfig{} }},
 		{name: "notifier accepts an https subject", validate: ValidateNotifierConfig,
 			mutate: func(c *Config) { c.WebPush.Subject = "https://alt.example/contact" }, wantErr: ""},
 		{name: "notifier needs the vapid private key", validate: ValidateNotifierConfig,

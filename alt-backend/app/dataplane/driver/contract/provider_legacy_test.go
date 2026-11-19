@@ -149,6 +149,23 @@ func TestVerifyAltButterflyFacadeContract(t *testing.T) {
 				return nil, nil
 			},
 			"reading service is available": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
+				readingStubState.setMode("empty")
+				return nil, nil
+			},
+			"reading service records opened and marks qualifying sessions as read": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
+				readingStubState.setMode("empty")
+				return nil, nil
+			},
+			"reading queue has capacity": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
+				readingStubState.setMode("empty")
+				return nil, nil
+			},
+			"reading queue is at capacity": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
+				readingStubState.setMode("full")
+				return nil, nil
+			},
+			"reading queue has active items and read sources since midnight": func(setup bool, s models.ProviderState) (models.ProviderStateResponse, error) {
+				readingStubState.setMode("active")
 				return nil, nil
 			},
 		},
