@@ -4,20 +4,26 @@ import { onMount, untrack } from "svelte";
 import * as v from "valibot";
 import {
 	deleteFeedLinkClient,
+	getFeedInflowStatsClient,
 	listFeedLinksClient,
 	listSubscriptionsClient,
 	registerRssFeedClient,
+	setSubscriptionDailyCapClient,
 	subscribeClient,
 	unsubscribeClient,
 } from "#lib/api/client/index.js";
 import PageHeader from "#lib/components/desktop/layout/PageHeader.svelte";
 import FeedHealthBadge from "#lib/components/feeds/FeedHealthBadge.svelte";
+import FeedInflowSection from "#lib/components/feeds/FeedInflowSection.svelte";
 import HealthSummaryBar from "#lib/components/feeds/HealthSummaryBar.svelte";
 import OpmlSection from "#lib/components/feeds/OpmlSection.svelte";
 import { Button } from "#lib/components/ui/button/index.js";
 import * as Dialog from "#lib/components/ui/dialog/index.js";
 import { Input } from "#lib/components/ui/input/index.js";
-import type { ConnectFeedSource } from "#lib/connect/feeds.js";
+import type {
+	ConnectFeedSource,
+	FeedInflowStatItem,
+} from "#lib/connect/feeds.js";
 import type { FeedLink } from "#lib/schema/feedLink.js";
 import { feedUrlSchema } from "#lib/schema/validation/feedUrlSchema.js";
 import { isDesktop } from "#lib/stores/viewport.svelte.js";
@@ -50,11 +56,17 @@ let isDeleteDialogOpen = $state(false);
 let subscriptions = $state<ConnectFeedSource[]>([]);
 let togglingIds = $state<Set<string>>(new Set());
 
+// Feed inflow stats state
+let inflowStats = $state<FeedInflowStatItem[]>([]);
+let isLoadingInflow = $state(true);
+let inflowError = $state<string | null>(null);
+
 // Mobile-only state
 let showAddForm = $state(false);
 
 onMount(() => {
 	loadSubscriptions();
+	void loadInflowStats();
 });
 
 const sortedLinks = $derived(
@@ -110,6 +122,34 @@ async function loadSubscriptions() {
 	}
 }
 
+async function loadInflowStats() {
+	isLoadingInflow = true;
+	inflowError = null;
+	try {
+		const result = await getFeedInflowStatsClient();
+		inflowStats = result.stats;
+	} catch (err) {
+		inflowError =
+			err instanceof Error ? err.message : "Failed to load feed inflow stats.";
+	} finally {
+		isLoadingInflow = false;
+	}
+}
+
+async function handleSaveDailyCap(
+	feedLinkId: string,
+	dailyCap?: number,
+): Promise<number | undefined> {
+	const result = await setSubscriptionDailyCapClient(feedLinkId, dailyCap);
+	return result.dailyCap;
+}
+
+function handleCapCommitted(feedLinkId: string, dailyCap?: number) {
+	inflowStats = inflowStats.map((stat) =>
+		stat.feedLinkId === feedLinkId ? { ...stat, dailyCap } : stat,
+	);
+}
+
 function getSubscriptionStatus(linkId: string): boolean {
 	const sub = subscriptions.find((s) => s.id === linkId);
 	return sub?.isSubscribed ?? false;
@@ -152,6 +192,7 @@ async function handleToggleSubscription(linkId: string) {
 			await subscribeClient(linkId);
 			setSubscriptionStatus(linkId, true);
 		}
+		void loadInflowStats();
 	} catch (err) {
 		const message =
 			err instanceof Error ? err.message : "Failed to update subscription.";
@@ -182,7 +223,11 @@ async function handleSubmit(event: Event) {
 			text: "Feed registered successfully.",
 		};
 		resetForm();
-		await Promise.all([loadFeedLinks(), loadSubscriptions()]);
+		await Promise.all([
+			loadFeedLinks(),
+			loadSubscriptions(),
+			loadInflowStats(),
+		]);
 	} catch (err) {
 		let message = "Failed to register feed.";
 		if (err instanceof Error) {
@@ -206,7 +251,11 @@ async function handleDeleteConfirmed() {
 	try {
 		await deleteFeedLinkClient(selectedLink.id);
 		actionMessage = { type: "success", text: "Feed link deleted." };
-		await Promise.all([loadFeedLinks(), loadSubscriptions()]);
+		await Promise.all([
+			loadFeedLinks(),
+			loadSubscriptions(),
+			loadInflowStats(),
+		]);
 	} catch (err) {
 		let message = "Failed to delete feed link.";
 		if (err instanceof Error) {
@@ -249,7 +298,7 @@ function handleBackToHome() {
 	<!-- Action Message -->
 	{#if actionMessage}
 		<div
-			class="mb-6 rounded-lg p-4 text-sm"
+			class="mb-6 rounded-none p-4 text-sm"
 			style="
 				background: {actionMessage.type === 'success'
 					? 'var(--alt-success)'
@@ -282,7 +331,7 @@ function handleBackToHome() {
 	<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
 		<!-- Add Feed Form Panel -->
 		<div
-			class="border rounded-lg p-6"
+			class="border rounded-none p-6 shadow-none"
 			style="
 				background: var(--surface-bg);
 				border-color: var(--surface-border);
@@ -306,7 +355,7 @@ function handleBackToHome() {
 							placeholder="https://example.com/feed.xml"
 							value={feedUrl}
 							oninput={handleUrlChange}
-							class="text-sm"
+							class="text-sm rounded-none"
 							style="
 								background: white;
 								border-color: {validationError ? 'var(--alt-error)' : 'var(--surface-border)'};
@@ -320,7 +369,7 @@ function handleBackToHome() {
 					</div>
 					<Button
 						type="submit"
-						class="w-full font-semibold text-sm"
+						class="w-full rounded-none shadow-none font-semibold text-sm"
 						style="
 							background: var(--alt-primary);
 							color: black;
@@ -347,7 +396,7 @@ function handleBackToHome() {
 
 		<!-- Feed Links List Panel -->
 		<div
-			class="border rounded-lg p-6"
+			class="border rounded-none p-6 shadow-none"
 			style="
 				background: var(--surface-bg);
 				border-color: var(--surface-border);
@@ -361,7 +410,7 @@ function handleBackToHome() {
 					Registered Feeds
 					{#if sortedLinks.length > 0}
 						<span
-							class="ml-2 text-xs font-normal px-2 py-0.5 rounded-full"
+							class="ml-2 text-xs font-normal px-2 py-0.5 rounded-none"
 							style="background: var(--surface-hover); color: var(--text-secondary);"
 						>
 							{sortedLinks.length}
@@ -371,7 +420,7 @@ function handleBackToHome() {
 				<Button
 					variant="ghost"
 					size="icon"
-					class="h-8 w-8 rounded-full"
+					class="h-8 w-8 rounded-none shadow-none"
 					aria-label="Refresh feed list"
 					onclick={() => loadFeedLinks()}
 					disabled={isLoadingLinks}
@@ -394,7 +443,7 @@ function handleBackToHome() {
 				</div>
 			{:else if loadingError}
 				<div
-					class="rounded-md p-3 text-sm"
+					class="rounded-none p-3 text-sm"
 					style="
 						background: var(--alt-error);
 						color: white;
@@ -413,7 +462,7 @@ function handleBackToHome() {
 				<div class="flex flex-col gap-2 max-h-[400px] overflow-y-auto">
 					{#each sortedLinks as link (link.id)}
 						<div
-							class="flex items-center justify-between px-4 py-3 rounded-lg border"
+							class="flex items-center justify-between px-4 py-3 rounded-none border"
 							style="
 								background: white;
 								border-color: var(--surface-border);
@@ -455,7 +504,7 @@ function handleBackToHome() {
 								<Button
 									variant="ghost"
 									size="icon"
-									class="h-8 w-8 rounded-full"
+									class="h-8 w-8 rounded-none shadow-none"
 									style="color: var(--alt-error);"
 									aria-label="Delete feed link"
 									onclick={() => handleDeleteRequested(link)}
@@ -476,6 +525,20 @@ function handleBackToHome() {
 			feedCount={sortedLinks.length}
 			isDesktop={isDesktop()}
 			onImportComplete={() => loadFeedLinks()}
+		/>
+	</div>
+
+	<!-- Feed Inflow & Daily Caps -->
+	<div class="mt-6">
+		<FeedInflowSection
+			stats={inflowStats}
+			{feedLinks}
+			{subscriptions}
+			isLoading={isLoadingInflow}
+			error={inflowError}
+			onRetry={loadInflowStats}
+			onSaveCap={handleSaveDailyCap}
+			onCapCommitted={handleCapCommitted}
 		/>
 	</div>
 
@@ -500,6 +563,7 @@ function handleBackToHome() {
 				<Dialog.Footer class="mt-4">
 					<Button
 						variant="outline"
+						class="rounded-none shadow-none"
 						onclick={() => handleDialogOpenChange(false)}
 						disabled={isDeleting}
 					>
@@ -507,6 +571,7 @@ function handleBackToHome() {
 					</Button>
 					<Button
 						variant="destructive"
+						class="rounded-none shadow-none"
 						onclick={handleDeleteConfirmed}
 						disabled={isDeleting}
 					>
@@ -537,7 +602,7 @@ function handleBackToHome() {
 							<Button
 								size="icon"
 								variant="ghost"
-								class="h-10 w-10 rounded-full"
+								class="h-10 w-10 rounded-none shadow-none"
 								aria-label="Back to feeds list"
 								onclick={handleBackToFeeds}
 							>
@@ -559,7 +624,7 @@ function handleBackToHome() {
 						<Button
 							size="icon"
 							variant="ghost"
-							class="h-10 w-10 rounded-full"
+							class="h-10 w-10 rounded-none shadow-none"
 							aria-label="Back to home"
 							onclick={handleBackToHome}
 						>
@@ -572,7 +637,7 @@ function handleBackToHome() {
 				{#if actionMessage}
 					<section>
 						<div
-							class="rounded-xl p-4 text-sm"
+							class="rounded-none p-4 text-sm"
 							style="
 								background: {actionMessage.type === 'success'
 									? 'var(--alt-success)'
@@ -617,7 +682,7 @@ function handleBackToHome() {
 				<section class="space-y-3">
 					{#if !showAddForm}
 						<Button
-							class="w-full rounded-full min-h-[48px] font-semibold text-base transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
+							class="w-full rounded-none shadow-none min-h-[48px] font-semibold text-base transition-colors"
 							style="
 								background: var(--alt-primary);
 								color: black;
@@ -631,7 +696,7 @@ function handleBackToHome() {
 						</Button>
 					{:else}
 						<div
-							class="rounded-2xl border p-5"
+							class="rounded-none border p-5 shadow-none"
 							style="
 								background: var(--surface-bg);
 								border-color: var(--surface-border);
@@ -647,6 +712,7 @@ function handleBackToHome() {
 								<Button
 									variant="ghost"
 									size="sm"
+									class="rounded-none shadow-none"
 									onclick={() => {
 										resetForm();
 										actionMessage = null;
@@ -666,7 +732,7 @@ function handleBackToHome() {
 										placeholder="https://example.com/feed.xml"
 										value={feedUrl}
 										oninput={handleUrlChange}
-										class="text-sm"
+										class="text-sm rounded-none"
 										style="
 											background: white;
 											border-color: {validationError ? 'var(--alt-error)' : 'var(--surface-border)'};
@@ -679,7 +745,7 @@ function handleBackToHome() {
 									{/if}
 									<Button
 										type="submit"
-										class="w-full rounded-full min-h-[44px] font-semibold text-sm transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
+										class="w-full rounded-none shadow-none min-h-[44px] font-semibold text-sm transition-colors"
 										style="
 											background: var(--alt-primary);
 											color: black;
@@ -701,7 +767,7 @@ function handleBackToHome() {
 				<!-- Feed Links List -->
 				<section>
 					<div
-						class="rounded-2xl border p-5"
+						class="rounded-none border p-5 shadow-none"
 						style="
 							background: var(--surface-bg);
 							border-color: var(--surface-border);
@@ -717,7 +783,7 @@ function handleBackToHome() {
 							<Button
 								variant="ghost"
 								size="icon"
-								class="h-8 w-8 rounded-full"
+								class="h-8 w-8 rounded-none shadow-none"
 								aria-label="Refresh"
 								onclick={() => loadFeedLinks()}
 								disabled={isLoadingLinks}
@@ -740,7 +806,7 @@ function handleBackToHome() {
 							</div>
 						{:else if loadingError}
 							<div
-								class="rounded-md p-3 text-xs"
+								class="rounded-none p-3 text-xs"
 								style="
 									background: var(--alt-error);
 									color: white;
@@ -759,7 +825,7 @@ function handleBackToHome() {
 							<div class="flex flex-col gap-3">
 								{#each sortedLinks as link (link.id)}
 									<div
-										class="flex items-center justify-between px-4 py-3 rounded-xl border"
+										class="flex items-center justify-between px-4 py-3 rounded-none border"
 										style="
 											background: var(--app-bg);
 											border-color: var(--surface-border);
@@ -800,7 +866,7 @@ function handleBackToHome() {
 											<Button
 												variant="ghost"
 												size="icon"
-												class="h-9 w-9 rounded-full text-[var(--alt-error)]"
+												class="h-9 w-9 rounded-none shadow-none text-[var(--alt-error)]"
 												aria-label="Delete feed link"
 												onclick={() => handleDeleteRequested(link)}
 											>
@@ -813,6 +879,18 @@ function handleBackToHome() {
 						{/if}
 					</div>
 				</section>
+
+				<!-- Feed Inflow & Daily Caps -->
+				<FeedInflowSection
+					stats={inflowStats}
+					{feedLinks}
+					{subscriptions}
+					isLoading={isLoadingInflow}
+					error={inflowError}
+					onRetry={loadInflowStats}
+					onSaveCap={handleSaveDailyCap}
+					onCapCommitted={handleCapCommitted}
+				/>
 			</div>
 		</div>
 
@@ -826,7 +904,7 @@ function handleBackToHome() {
 				"
 			>
 				<div
-					class="w-full max-w-sm rounded-2xl border p-5 space-y-4"
+					class="w-full max-w-sm rounded-none border p-5 space-y-4 shadow-none"
 					style="
 						background: var(--surface-bg);
 						border-color: var(--surface-border);
@@ -842,12 +920,18 @@ function handleBackToHome() {
 						checking it. This action cannot be undone.
 					</p>
 					<div class="flex justify-end gap-3 pt-2">
-						<Button variant="outline" size="sm" onclick={() => handleDialogOpenChange(false)}>
+						<Button
+							variant="outline"
+							size="sm"
+							class="rounded-none shadow-none"
+							onclick={() => handleDialogOpenChange(false)}
+						>
 							Cancel
 						</Button>
 						<Button
 							variant="destructive"
 							size="sm"
+							class="rounded-none shadow-none"
 							onclick={handleDeleteConfirmed}
 							disabled={isDeleting}
 						>

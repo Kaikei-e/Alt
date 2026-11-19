@@ -1214,3 +1214,13 @@ export const CONNECT_TREND_STATS_RESPONSE = {
 		{ date: "2025-12-16", articles: 38, summarized: 35, feeds: 11 },
 	],
 };
+
+// =============================================================================
+// Feed Inflow Stats & Daily Cap Mock Data
+// =============================================================================
+
+export const CONNECT_FEED_INFLOW_PATHS = {
+	getFeedInflowStats: "**/api/v2/alt.feeds.v2.FeedService/GetFeedInflowStats",
+	setSubscriptionDailyCap:
+		"**/api/v2/alt.feeds.v2.FeedService/SetSubscriptionDailyCap",
+};

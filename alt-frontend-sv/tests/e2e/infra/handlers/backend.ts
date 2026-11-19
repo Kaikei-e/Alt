@@ -17,7 +17,9 @@ import {
 	DETAILED_FEED_STATS,
 	FEED_STATS,
 	FEEDS_RESPONSE,
+	INITIAL_FEED_INFLOW_STATS,
 	MOCK_CONNECT_FEEDS,
+	type MockFeedInflowStat,
 	RSS_FEED_LINKS,
 	UNREAD_COUNT,
 	VIEWED_FEEDS_RESPONSE,
@@ -110,6 +112,13 @@ export function createBackendServer(): http.Server {
 		}
 	>();
 	const readArticles = new Set<string>();
+
+	// Feed Inflow Stats & Daily Cap stateful store (isolated block for clean merges)
+	const feedInflowStats = new Map<string, MockFeedInflowStat>(
+		INITIAL_FEED_INFLOW_STATS.map((item) => [item.feedLinkId, { ...item }]),
+	);
+	const UUID_REGEX =
+		/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 	async function handle(
 		req: http.IncomingMessage,
@@ -779,6 +788,86 @@ export function createBackendServer(): http.Server {
 					items: [...readTodayQueue.values()],
 					cap: READ_TODAY_CAP,
 					readCountSince: readArticles.size,
+				}),
+			);
+			return;
+		}
+
+		// =========================================================================
+		// Feed Inflow Stats & Daily Cap (Connect-RPC v2)
+		// =========================================================================
+		if (path === "/alt.feeds.v2.FeedService/GetFeedInflowStats") {
+			res.setHeader("Content-Type", "application/json");
+			res.writeHead(200);
+			res.end(
+				JSON.stringify({
+					stats: [...feedInflowStats.values()].map((s) => ({ ...s })),
+					windowDays: 30,
+				}),
+			);
+			return;
+		}
+
+		if (path === "/alt.feeds.v2.FeedService/SetSubscriptionDailyCap") {
+			res.setHeader("Content-Type", "application/json");
+			const feedLinkId =
+				typeof body.feedLinkId === "string" ? body.feedLinkId.trim() : "";
+			if (!UUID_REGEX.test(feedLinkId)) {
+				res.writeHead(400);
+				res.end(
+					JSON.stringify({
+						code: "invalid_argument",
+						message: "feed_link_id must be a valid UUID",
+					}),
+				);
+				return;
+			}
+
+			const hasDailyCap = body.dailyCap !== undefined && body.dailyCap !== null;
+			let nextCap: number | undefined;
+			if (hasDailyCap) {
+				if (
+					typeof body.dailyCap !== "number" ||
+					!Number.isInteger(body.dailyCap) ||
+					body.dailyCap <= 0
+				) {
+					res.writeHead(400);
+					res.end(
+						JSON.stringify({
+							code: "invalid_argument",
+							message: "daily_cap must be a positive integer",
+						}),
+					);
+					return;
+				}
+				nextCap = body.dailyCap;
+			}
+
+			const stat = feedInflowStats.get(feedLinkId);
+			if (!stat) {
+				res.writeHead(404);
+				res.end(
+					JSON.stringify({
+						code: "not_found",
+						message: `subscription not found: ${feedLinkId}`,
+					}),
+				);
+				return;
+			}
+
+			if (nextCap === undefined) {
+				delete stat.dailyCap;
+				res.writeHead(200);
+				res.end(JSON.stringify({ message: "Daily cap cleared" }));
+				return;
+			}
+
+			stat.dailyCap = nextCap;
+			res.writeHead(200);
+			res.end(
+				JSON.stringify({
+					message: "Daily cap updated",
+					dailyCap: nextCap,
 				}),
 			);
 			return;
