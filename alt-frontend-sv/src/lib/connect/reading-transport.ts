@@ -1,5 +1,6 @@
 import type { Transport } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-web";
+import { createClientTransport } from "#lib/connect/transport-client.js";
 import { resolve } from "$app/paths";
 
 // pagehide can outlive the document, so keepalive lets pending events survive tab close.
@@ -15,4 +16,8 @@ export function createKeepaliveTransport(): Transport {
 			fetch(input, { ...init, credentials: "include", keepalive: true }),
 	});
 	return keepaliveTransport;
+}
+
+export function getReadingTransport(keepalive = false): Transport {
+	return keepalive ? createKeepaliveTransport() : createClientTransport();
 }

@@ -130,10 +130,6 @@ func (m *mockFetchFeedsPort) FetchUnreadFeedsListCursor(ctx context.Context, cur
 	return nil, nil
 }
 
-func (m *mockFetchFeedsPort) FetchUnreadFeedsListCursorWithID(ctx context.Context, cursor *time.Time, cursorID *uuid.UUID, limit int, excludeFeedLinkIDs []uuid.UUID) ([]*domain.FeedItem, error) {
-	return nil, nil
-}
-
 func (m *mockFetchFeedsPort) FetchReadFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*domain.FeedItem, error) {
 	return nil, nil
 }
