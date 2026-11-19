@@ -23,24 +23,24 @@ export class MobileSwipePage extends BasePage {
 		super(page);
 
 		// Main elements
-		this.swipeCard = page.getByTestId("swipe-card");
+		this.swipeCard = page.getByTestId("visual-preview-card");
 		this.actionFooter = page.getByTestId("action-footer");
 		this.scrollArea = page.getByTestId("unified-scroll-area");
 
 		// Buttons
-		this.articleButton = page.getByRole("button", { name: /article/i });
-		this.summaryButton = page.getByRole("button", { name: /summary/i });
+		this.articleButton = page.getByRole("button", { name: /^article$/i });
+		this.summaryButton = page.getByTestId("summarize-button");
 
-		// Content sections
-		this.aiSummarySection = page.getByTestId("ai-summary-section");
-		this.contentSection = page.getByTestId("content-section");
+		// Content sections (inside reader overlay)
+		this.aiSummarySection = page.getByTestId("ai-summary");
+		this.contentSection = page.getByTestId("article-content-surface");
 
 		// UI components
 		this.loadingOverlay = page.getByTestId("swipe-loading-overlay");
 	}
 
 	get url(): string {
-		return "feeds/swipe";
+		return "feeds/swipe/visual-preview";
 	}
 
 	/**

@@ -3,10 +3,11 @@ import { onMount } from "svelte";
 import { infiniteScroll } from "#lib/actions/infinite-scroll.js";
 import { searchFeedsClient } from "#lib/api/client/feeds.js";
 import DesktopFeedCard from "#lib/components/desktop/feeds/DesktopFeedCard.svelte";
-import FeedDetailModal from "#lib/components/desktop/feeds/FeedDetailModal.svelte";
 import SearchFeedsClient from "#lib/components/mobile/search/SearchFeedsClient.svelte";
 import { createMobileSearchSession } from "#lib/components/mobile/search/search-session.js";
 import { appendUniqueById } from "#lib/domain/feed/dedupe.js";
+import { renderFeedToReaderItem } from "#lib/reader/mappers.js";
+import { openReaderOverlay } from "#lib/reader/reader-overlay.svelte.js";
 import { ReadingSurface } from "#lib/reading/instrumentation.js";
 import {
 	type RenderFeed,
@@ -18,8 +19,6 @@ import { page } from "$app/state";
 
 const initialQuery = page.url.searchParams.get("q")?.trim() ?? "";
 
-let selectedFeed = $state<RenderFeed | null>(null);
-let isModalOpen = $state(false);
 let searchQuery = $state(initialQuery);
 let lastSearchedQuery = $state("");
 
@@ -174,38 +173,12 @@ function handleKeyDown(event: KeyboardEvent) {
 	}
 }
 
-let currentIndex = $state(-1);
-
-const hasPrevious = $derived(currentIndex > 0);
-const hasNextFeed = $derived(
-	(currentIndex >= 0 && currentIndex < feeds.length - 1) ||
-		(currentIndex === feeds.length - 1 && hasMore),
-);
-
-function handleSelectFeed(feed: RenderFeed, index: number) {
-	selectedFeed = feed;
-	currentIndex = index;
-	isModalOpen = true;
-}
-
-function handlePrevious() {
-	if (currentIndex > 0) {
-		selectedFeed = feeds[currentIndex - 1] ?? null;
-		currentIndex = currentIndex - 1;
-	}
-}
-
-async function handleNext() {
-	if (currentIndex >= 0 && currentIndex < feeds.length - 1) {
-		selectedFeed = feeds[currentIndex + 1] ?? null;
-		currentIndex = currentIndex + 1;
-	} else if (hasMore && !isLoadingMore) {
-		await loadMore();
-		if (currentIndex < feeds.length - 1) {
-			selectedFeed = feeds[currentIndex + 1] ?? null;
-			currentIndex = currentIndex + 1;
-		}
-	}
+function handleSelectFeed(_feed: RenderFeed, index: number) {
+	openReaderOverlay({
+		surface: ReadingSurface.OTHER,
+		items: feeds.map(renderFeedToReaderItem),
+		currentIndex: index,
+	});
 }
 </script>
 
@@ -299,19 +272,6 @@ async function handleNext() {
 				{/if}
 			{/if}
 		</div>
-
-		<FeedDetailModal
-			bind:open={isModalOpen}
-			feed={selectedFeed}
-			onOpenChange={(open: boolean) => (isModalOpen = open)}
-			readingSurface={ReadingSurface.OTHER}
-			{hasPrevious}
-			hasNext={hasNextFeed}
-			onPrevious={handlePrevious}
-			onNext={handleNext}
-			{feeds}
-			{currentIndex}
-		/>
 	</div>
 {:else}
 	<SearchFeedsClient

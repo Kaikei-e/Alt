@@ -1,5 +1,5 @@
-import { page } from "@vitest/browser/context";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import {
 	searchResultFixture,
@@ -7,24 +7,6 @@ import {
 	searchResultNoDescFixture,
 } from "../../../../../tests/fixtures/search";
 import SearchResultItem from "./SearchResultItem.svelte";
-
-vi.mock("#lib/api/client/index.js", () => ({
-	getArticleSummaryClient: vi.fn(() =>
-		Promise.resolve({
-			matched_articles: [
-				{ title: "Summary Title", content: "Summary content here." },
-			],
-		}),
-	),
-	getFeedContentOnTheFlyClient: vi.fn(() =>
-		Promise.resolve({
-			content: "<p>Full article body paragraph.</p>",
-			article_id: "article-123",
-			og_image_url: "",
-			og_image_proxy_url: "",
-		}),
-	),
-}));
 
 describe("SearchResultItem Alt-Paper compliance", () => {
 	beforeEach(() => {
@@ -78,13 +60,16 @@ describe("SearchResultItem Alt-Paper compliance", () => {
 		await expect.element(page.getByText("Quick Update")).toBeInTheDocument();
 	});
 
-	it("has toggle summary button with uppercase text", async () => {
+	it("has a DETAILS button when result has a link", async () => {
 		render(SearchResultItem, {
 			props: { result: searchResultFixture },
 		});
 
-		const btn = page.getByRole("button", { name: /show summary/i });
+		const btn = page.getByRole("button", { name: /^details$/i });
 		await expect.element(btn).toBeInTheDocument();
+		await expect
+			.element(page.getByRole("button", { name: /show summary/i }))
+			.not.toBeInTheDocument();
 	});
 
 	it("does not contain Lucide SVG icons", async () => {
@@ -191,194 +176,23 @@ describe("SearchResultItem long-URL wrapping", () => {
 		expect(allowsMidTokenBreak(title)).toBe(true);
 		expect(title.scrollWidth).toBeLessThanOrEqual(title.clientWidth);
 	});
-
-	it("breaks long URLs inside an expanded summary", async () => {
-		const { getArticleSummaryClient } = await import(
-			"#lib/api/client/index.js"
-		);
-		vi.mocked(getArticleSummaryClient).mockResolvedValueOnce({
-			matched_articles: [
-				{
-					title: "Summary Title",
-					content:
-						"See https://www.zdnet.com/a/img/resize/a380d377116335d01087bcb191f4613da7010344/2026/02/28/77bc4efe-edc8-4a95-8fc0-d630a7f6f1c9/dsc09454.jpg?auto=webp&fit=crop&height=675&width=1200",
-				},
-			],
-			// biome-ignore lint/suspicious/noExplicitAny: partial API shape is enough here
-		} as any);
-
-		render(SearchResultItem, {
-			props: { result: searchResultLongUrlFixture },
-		});
-
-		await page.getByRole("button", { name: /show summary/i }).click();
-
-		// Scoped to the summary: the excerpt on this fixture also contains
-		// "auto=webp", and an unscoped match is a strict-mode violation.
-		const locator = page.getByText(/^See https:/);
-		await expect.element(locator).toBeInTheDocument();
-		const prose = locator.element() as HTMLElement;
-		squeezeToPhoneWidth(prose.closest("article") as HTMLElement);
-
-		expect(allowsMidTokenBreak(prose)).toBe(true);
-		expect(prose.scrollWidth).toBeLessThanOrEqual(prose.clientWidth);
-	});
 });
 
-describe("SearchResultItem article body on demand", () => {
+describe("SearchResultItem reader overlay trigger", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 	});
 
-	async function contentClient() {
-		const { getFeedContentOnTheFlyClient } = await import(
-			"#lib/api/client/index.js"
-		);
-		return vi.mocked(getFeedContentOnTheFlyClient);
-	}
-
-	it("offers a details control alongside the summary control", async () => {
+	it("calls onSelect with the result when DETAILS is clicked without inline expansion", async () => {
+		const onSelect = vi.fn();
 		render(SearchResultItem, {
-			props: { result: searchResultFixture },
-		});
-
-		await expect
-			.element(page.getByRole("button", { name: /^details$/i }))
-			.toBeInTheDocument();
-	});
-
-	it("does not fetch the body until the control is tapped", async () => {
-		render(SearchResultItem, {
-			props: { result: searchResultFixture },
-		});
-
-		await expect
-			.element(page.getByRole("button", { name: /^details$/i }))
-			.toBeInTheDocument();
-		expect(await contentClient()).not.toHaveBeenCalled();
-	});
-
-	it("fetches and renders the article body when tapped", async () => {
-		render(SearchResultItem, {
-			props: { result: searchResultFixture },
+			props: { result: searchResultFixture, onSelect },
 		});
 
 		await page.getByRole("button", { name: /^details$/i }).click();
 
-		await expect
-			.element(page.getByText("Full article body paragraph."))
-			.toBeInTheDocument();
-		expect(await contentClient()).toHaveBeenCalledWith(
-			searchResultFixture.link,
-		);
-	});
-
-	it("collapses the body on the second tap without refetching", async () => {
-		render(SearchResultItem, {
-			props: { result: searchResultFixture },
-		});
-
-		await page.getByRole("button", { name: /^details$/i }).click();
-		await expect
-			.element(page.getByText("Full article body paragraph."))
-			.toBeInTheDocument();
-
-		await page.getByRole("button", { name: /hide details/i }).click();
-		await expect
-			.element(page.getByText("Full article body paragraph."))
-			.not.toBeInTheDocument();
-
-		await page.getByRole("button", { name: /^details$/i }).click();
-		await expect
-			.element(page.getByText("Full article body paragraph."))
-			.toBeInTheDocument();
-		expect(await contentClient()).toHaveBeenCalledTimes(1);
-	});
-
-	it("surfaces a retryable failure instead of an empty panel", async () => {
-		(await contentClient()).mockRejectedValueOnce(new Error("boom"));
-
-		render(SearchResultItem, {
-			props: { result: searchResultFixture },
-		});
-
-		await page.getByRole("button", { name: /^details$/i }).click();
-
-		await expect
-			.element(page.getByText(/Source content unavailable/i))
-			.toBeInTheDocument();
-		await expect
-			.element(page.getByRole("button", { name: /try again/i }))
-			.toBeInTheDocument();
-	});
-
-	it("treats an empty body as a stated failure, not as success", async () => {
-		(await contentClient()).mockResolvedValueOnce({
-			content: "",
-			article_id: "article-123",
-			og_image_url: "",
-			og_image_proxy_url: "",
-		});
-
-		render(SearchResultItem, {
-			props: { result: searchResultFixture },
-		});
-
-		await page.getByRole("button", { name: /^details$/i }).click();
-
-		await expect
-			.element(page.getByText(/Source content unavailable/i))
-			.toBeInTheDocument();
-	});
-
-	it("wraps long URLs inside the fetched body", async () => {
-		(await contentClient()).mockResolvedValueOnce({
-			content:
-				'<p>See <a href="https://example.com/x">https://www.zdnet.com/a/img/resize/a380d377116335d01087bcb191f4613da7010344/2026/02/28/77bc4efe-edc8-4a95-8fc0-d630a7f6f1c9/dsc09454.jpg?auto=webp&amp;fit=crop&amp;height=675&amp;width=1200</a></p>',
-			article_id: "article-123",
-			og_image_url: "",
-			og_image_proxy_url: "",
-		});
-
-		render(SearchResultItem, {
-			props: { result: searchResultFixture },
-		});
-
-		await page.getByRole("button", { name: /^details$/i }).click();
-
-		const locator = page.getByText(/auto=webp/);
-		await expect.element(locator).toBeInTheDocument();
-		const link = locator.element() as HTMLElement;
-		const card = link.closest("article") as HTMLElement;
-		const host = card.parentElement as HTMLElement;
-		host.style.width = "320px";
-		host.style.maxWidth = "320px";
-		void host.offsetWidth;
-
-		expect(card.scrollWidth).toBeLessThanOrEqual(card.clientWidth);
-	});
-
-	it("fits both controls on one row at phone width", async () => {
-		render(SearchResultItem, {
-			props: { result: searchResultLongUrlFixture },
-		});
-
-		const details = page
-			.getByRole("button", { name: /^details$/i })
-			.element() as HTMLElement;
-		const row = details.parentElement as HTMLElement;
-		const host = (details.closest("article") as HTMLElement)
-			.parentElement as HTMLElement;
-		host.style.width = "320px";
-		host.style.maxWidth = "320px";
-		void host.offsetWidth;
-
-		// Two 44px-tall bordered controls sharing one row is the tightest thing
-		// on this card. Neither may spill its own label nor widen the row.
-		expect(row.scrollWidth).toBeLessThanOrEqual(row.clientWidth);
-		for (const btn of Array.from(row.children) as HTMLElement[]) {
-			expect(btn.scrollWidth).toBeLessThanOrEqual(btn.clientWidth);
-		}
+		expect(onSelect).toHaveBeenCalledWith(searchResultFixture);
+		expect(document.querySelector('[data-role="result-body"]')).toBeNull();
 	});
 
 	it("does not offer the details control without a link", async () => {
@@ -386,9 +200,6 @@ describe("SearchResultItem article body on demand", () => {
 			props: { result: { ...searchResultFixture, link: "" } },
 		});
 
-		await expect
-			.element(page.getByRole("button", { name: /show summary/i }))
-			.toBeInTheDocument();
 		await expect
 			.element(page.getByRole("button", { name: /^details$/i }))
 			.not.toBeInTheDocument();

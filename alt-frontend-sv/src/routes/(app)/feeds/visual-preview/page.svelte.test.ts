@@ -1,41 +1,62 @@
 /**
- * `/feeds/visual-preview` across a rotation.
- *
- * The page used to hold two `<FeedGrid>`s — one in each arm of an
- * `{#if isDesktop()}` — and `FeedGrid` owns the reader's whole session in
- * local `$state`: the fetched `feeds`, the `removedUrls` set that mark-as-read
- * writes into, and the pagination cursor. Flipping the branch destroyed one
- * grid and built the other from nothing, so a rotation silently re-fetched page
- * one, threw away everything infinite scroll had added, dropped the scroll
- * position along with the DOM, and resurrected every article the reader had
- * marked read.
- *
- * None of that shows up in a snapshot of the markup — both arms render the same
- * *kind* of grid — so these tests follow the live nodes instead: mark the grid
- * element, rotate, and require the mark to still be there. Same technique as
- * `ResponsiveLayout.svelte.test.ts`.
+ * `/feeds/visual-preview` across a rotation and reader overlay integration.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import { batchPrefetchImagesClient } from "#lib/api/client/articles.js";
-import {
-	getAllFeedsWithCursorClient,
-	listSubscriptionsClient,
-	updateFeedReadStatusClient,
-} from "#lib/api/client/feeds.js";
-import { recordReadingEvents } from "#lib/connect/reading.js";
-import { MARK_AS_READ_FAILED_MESSAGE } from "#lib/feeds/mark-as-read-feedback.js";
-import {
-	flushReadingEvents,
-	ReadingSurface,
-} from "#lib/reading/instrumentation.js";
-import type { RenderFeed } from "#lib/schema/feed.js";
-import { createRenderFeed } from "../../../../../tests/fixtures/feeds";
+import type { ReaderOverlayRouteState } from "#lib/reader/types.js";
+
+let currentPageState = $state<{ reader?: ReaderOverlayRouteState }>({});
+let currentPageURL = $state(new URL("http://localhost/feeds/visual-preview"));
+
+const mockPushState = vi.fn(
+	(url: string | URL, state: { reader?: ReaderOverlayRouteState }) => {
+		currentPageState = state;
+		if (url) {
+			currentPageURL = new URL(String(url), "http://localhost");
+		}
+	},
+);
+const mockReplaceState = vi.fn(
+	(url: string | URL, state: { reader?: ReaderOverlayRouteState }) => {
+		currentPageState = state;
+		if (url) {
+			currentPageURL = new URL(String(url), "http://localhost");
+		}
+	},
+);
+
+vi.mock("$app/navigation", () => ({
+	goto: vi.fn(),
+	beforeNavigate: vi.fn(),
+	pushState: (url: string | URL, state: { reader?: ReaderOverlayRouteState }) =>
+		mockPushState(url, state),
+	replaceState: (
+		url: string | URL,
+		state: { reader?: ReaderOverlayRouteState },
+	) => mockReplaceState(url, state),
+}));
+
+vi.mock("$app/state", () => ({
+	page: {
+		get state() {
+			return currentPageState;
+		},
+		get url() {
+			return currentPageURL;
+		},
+		get params() {
+			return {};
+		},
+	},
+}));
 
 vi.mock("#lib/api/client/feeds.js", { spy: true });
 vi.mock("#lib/api/client/articles.js", { spy: true });
+vi.mock("#lib/api/client/knowledge_home.js", { spy: true });
+vi.mock("#lib/connect/knowledge_trail.js", { spy: true });
 vi.mock("#lib/connect/reading.js", { spy: true });
+vi.mock("#lib/connect/transport-client.js", { spy: true });
 
 // The tiles resolve OG images through a shared resolver that would otherwise
 // fire a Connect-RPC at whatever is listening on the dev server.
@@ -43,6 +64,28 @@ vi.mock("#lib/utils/ogImageResolver.js", () => ({
 	ogImageResolver: () => ({ resolve: () => Promise.resolve(null) }),
 }));
 
+import {
+	batchPrefetchImagesClient,
+	getFeedContentOnTheFlyClient,
+} from "#lib/api/client/articles.js";
+import {
+	getAllFeedsWithCursorClient,
+	listSubscriptionsClient,
+	updateFeedReadStatusClient,
+} from "#lib/api/client/feeds.js";
+import { trackHomeActionClient } from "#lib/api/client/knowledge_home.js";
+import { getItemBranches } from "#lib/connect/knowledge_trail.js";
+import { recordReadingEvents } from "#lib/connect/reading.js";
+import { createClientTransport } from "#lib/connect/transport-client.js";
+import { MARK_AS_READ_FAILED_MESSAGE } from "#lib/feeds/mark-as-read-feedback.js";
+import ArticleReaderOverlay from "#lib/reader/ArticleReaderOverlay.svelte";
+import { resetReaderOverlaySessions } from "#lib/reader/reader-overlay.svelte.js";
+import {
+	flushReadingEvents,
+	ReadingSurface,
+} from "#lib/reading/instrumentation.js";
+import type { RenderFeed } from "#lib/schema/feed.js";
+import { createRenderFeed } from "../../../../../tests/fixtures/feeds";
 import Page from "./+page.svelte";
 
 const PORTRAIT = { width: 393, height: 851 };
@@ -55,21 +98,14 @@ const FEEDS: RenderFeed[] = Array.from({ length: 6 }, (_, i) =>
 /** The tile the mark-as-read cases act on. */
 const FIRST = FEEDS[0] as RenderFeed;
 
-/** The media-query listener fires off a browser event, so yield a frame. */
 async function settle(ms = 250) {
 	await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/**
- * `FeedGrid`'s own root. Identity is the whole point: if the `{#if}` rebuilt
- * the grid, this is a different node and every piece of session state the grid
- * was holding went with the old one.
- */
 function gridRoot(): HTMLElement | null {
 	return document.querySelector<HTMLElement>(".wire-container");
 }
 
-/** One entry per card the grid is currently rendering, at either width. */
 function cardLabels(): string[] {
 	const grid = gridRoot()?.querySelector('[class*="grid-cols"]');
 	if (!grid) return [];
@@ -86,7 +122,20 @@ function feedFetches(): number {
 }
 
 describe("Visual Preview page continuity across a rotation", () => {
+	let backSpy: ReturnType<typeof vi.spyOn>;
+
 	beforeEach(async () => {
+		resetReaderOverlaySessions();
+		currentPageState = {};
+		currentPageURL = new URL("http://localhost/feeds/visual-preview");
+		mockPushState.mockClear();
+		mockReplaceState.mockClear();
+
+		backSpy = vi.spyOn(history, "back").mockImplementation(() => {
+			currentPageState = {};
+			currentPageURL = new URL("http://localhost/feeds/visual-preview");
+		});
+
 		vi.mocked(recordReadingEvents).mockResolvedValue({
 			accepted: 0,
 			duplicates: 0,
@@ -110,23 +159,60 @@ describe("Visual Preview page continuity across a rotation", () => {
 		vi.mocked(batchPrefetchImagesClient).mockReset();
 		vi.mocked(batchPrefetchImagesClient).mockResolvedValue([]);
 
+		vi.mocked(getFeedContentOnTheFlyClient).mockReset();
+		vi.mocked(getFeedContentOnTheFlyClient).mockResolvedValue({
+			content: "<p>Gallery article body</p>",
+			article_id: "art-1",
+			og_image_url: "",
+			og_image_proxy_url: "",
+		});
+
 		vi.mocked(updateFeedReadStatusClient).mockReset();
 		vi.mocked(updateFeedReadStatusClient).mockResolvedValue(
 			undefined as unknown as Awaited<
 				ReturnType<typeof updateFeedReadStatusClient>
 			>,
 		);
+
+		vi.mocked(trackHomeActionClient).mockReset();
+		vi.mocked(trackHomeActionClient).mockResolvedValue(undefined);
+		vi.mocked(getItemBranches).mockReset();
+		vi.mocked(getItemBranches).mockResolvedValue([]);
+		vi.mocked(createClientTransport).mockReturnValue(
+			{} as ReturnType<typeof createClientTransport>,
+		);
+
+		return () => {
+			backSpy.mockRestore();
+		};
+	});
+
+	it("opens the reader overlay via shallow routing without marking read on open", async () => {
+		await page.viewport(PORTRAIT.width, PORTRAIT.height);
+		render(Page);
+		render(ArticleReaderOverlay);
+		await settle(400);
+
+		await page.getByRole("button", { name: openLabel(FIRST) }).click();
+
+		await expect.element(page.getByTestId("reader-overlay")).toBeVisible();
+		expect(mockPushState).toHaveBeenCalledTimes(1);
+		await vi.waitFor(() =>
+			expect(currentPageURL.pathname).toBe("/articles/art-1"),
+		);
+		expect(trackHomeActionClient).not.toHaveBeenCalled();
+		expect(updateFeedReadStatusClient).not.toHaveBeenCalled();
 	});
 
 	it("keeps an article the reader marked read out of the grid after a rotation", async () => {
 		await page.viewport(PORTRAIT.width, PORTRAIT.height);
 		render(Page);
+		render(ArticleReaderOverlay);
 		await settle(400);
 
 		expect(cardLabels()).toHaveLength(FEEDS.length);
 
-		// Open the first tile and mark it read. The grid records the removal in
-		// its own `removedUrls`, which is precisely the state a remount loses.
+		// Open the first tile and mark it read inside the overlay.
 		await page.getByRole("button", { name: openLabel(FIRST) }).click();
 		await page.getByRole("button", { name: "Mark as Read" }).click();
 		await settle(400);
@@ -137,8 +223,6 @@ describe("Visual Preview page continuity across a rotation", () => {
 		await page.viewport(LANDSCAPE.width, LANDSCAPE.height);
 		await settle(400);
 
-		// The loudest symptom of the double grid: an article the reader has
-		// already dealt with comes back when they turn the phone.
 		expect(cardLabels()).not.toContain(openLabel(FIRST));
 		expect(cardLabels()).toHaveLength(afterRead);
 
@@ -190,13 +274,14 @@ describe("Visual Preview page continuity across a rotation", () => {
 		expect(feedFetches()).toBe(fetchesBefore);
 	});
 
-	it("surfaces an error toast, announces to aria-live, and keeps the card when modal mark-as-read fails", async () => {
+	it("surfaces an error toast, announces to aria-live, and keeps the card when overlay mark-as-read fails", async () => {
 		vi.mocked(updateFeedReadStatusClient).mockRejectedValueOnce(
 			new Error("Network error"),
 		);
 
 		await page.viewport(LANDSCAPE.width, LANDSCAPE.height);
 		render(Page);
+		render(ArticleReaderOverlay);
 		await settle(400);
 
 		expect(cardLabels()).toContain(openLabel(FIRST));

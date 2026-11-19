@@ -1,4 +1,7 @@
 <script lang="ts">
+import { tagTrailArticleToReaderItem } from "#lib/reader/mappers.js";
+import { openReaderOverlay } from "#lib/reader/reader-overlay.svelte.js";
+import { ReadingSurface } from "#lib/reading/instrumentation.js";
 import type { TagTrailArticle, TagTrailTag } from "#lib/schema/tagTrail.js";
 import { sanitizeHrefUrl } from "#lib/utils/urlSafety.js";
 import TagChipList from "./TagChipList.svelte";
@@ -32,6 +35,14 @@ const formatDate = (dateStr: string) => {
 		day: "numeric",
 	});
 };
+
+function handleOpenArticle(index: number) {
+	openReaderOverlay({
+		surface: ReadingSurface.OTHER,
+		items: articles.map(tagTrailArticleToReaderItem),
+		currentIndex: index,
+	});
+}
 </script>
 
 <div class="flex-1 overflow-y-auto px-4 pb-4" data-testid="tag-article-list">
@@ -47,20 +58,34 @@ const formatDate = (dateStr: string) => {
 				style="--stagger: {i};"
 				data-testid="tag-article-{article.id}"
 			>
-				<a
-					href={sanitizeHrefUrl(article.link) ?? "#"}
-					target="_blank"
-					rel="noopener noreferrer"
-					class="article-title"
-				>
-					{article.title}
-				</a>
-				<div class="article-meta">
-					{#if article.feedTitle}
-						<span>{article.feedTitle}</span>
-						<span class="meta-dot">&middot;</span>
+				<div class="flex items-start justify-between gap-2">
+					<div class="flex-1 min-w-0">
+						<a
+							href={sanitizeHrefUrl(article.link) ?? "#"}
+							target="_blank"
+							rel="noopener noreferrer"
+							class="article-title"
+						>
+							{article.title}
+						</a>
+						<div class="article-meta">
+							{#if article.feedTitle}
+								<span>{article.feedTitle}</span>
+								<span class="meta-dot">&middot;</span>
+							{/if}
+							<span>{formatDate(article.publishedAt)}</span>
+						</div>
+					</div>
+					{#if sanitizeHrefUrl(article.link)}
+						<button
+							type="button"
+							onclick={() => handleOpenArticle(i)}
+							class="details-btn shrink-0"
+							aria-label="Show details for {article.title}"
+						>
+							Details
+						</button>
 					{/if}
-					<span>{formatDate(article.publishedAt)}</span>
 				</div>
 				<!-- Article tags for hopping -->
 				{#if loadingArticleTags.has(article.id)}
@@ -175,6 +200,22 @@ const formatDate = (dateStr: string) => {
 
 	.meta-dot {
 		color: var(--surface-border, #c8c8c8);
+	}
+
+	.details-btn {
+		display: inline-flex;
+		align-items: center;
+		min-height: 36px;
+		padding: 0.25rem 0.6rem;
+		font-family: var(--font-body, "Source Sans 3", sans-serif);
+		font-size: 0.7rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--alt-charcoal, #1a1a1a);
+		background: transparent;
+		border: 1px solid var(--alt-charcoal, #1a1a1a);
+		cursor: pointer;
 	}
 
 	.skeleton-tag {

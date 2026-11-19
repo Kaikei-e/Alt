@@ -5,7 +5,6 @@ import {
 	listSubscriptionsClient,
 	updateFeedReadStatusClient,
 } from "#lib/api/client/feeds.js";
-import FeedDetailModal from "#lib/components/desktop/feeds/FeedDetailModal.svelte";
 import FeedFilters from "#lib/components/desktop/feeds/FeedFilters.svelte";
 import FeedGrid from "#lib/components/desktop/feeds/FeedGrid.svelte";
 import type { FeedGridApi } from "#lib/components/desktop/feeds/feed-grid-types.js";
@@ -15,6 +14,13 @@ import Toast from "#lib/components/knowledge-home/Toast.svelte";
 import MobileGalleryTile from "#lib/components/mobile/feeds/gallery/MobileGalleryTile.svelte";
 import type { ConnectFeedSource } from "#lib/connect/feeds.js";
 import { MARK_AS_READ_FAILED_MESSAGE } from "#lib/feeds/mark-as-read-feedback.js";
+import { renderFeedToReaderItem } from "#lib/reader/mappers.js";
+import {
+	closeReaderOverlay,
+	openReaderOverlay,
+	replaceReaderOverlayItems,
+} from "#lib/reader/reader-overlay.svelte.js";
+import type { ReaderArticleItem } from "#lib/reader/types.js";
 import {
 	ReadingSurface,
 	recordSurfaceViewed,
@@ -34,9 +40,6 @@ interface PageData {
 const { data }: { data: PageData } = $props();
 const toast = useToastStore();
 
-// --- Desktop state ---
-let selectedFeedUrl = $state<string | null>(null);
-let isModalOpen = $state(false);
 let filters = $state({
 	unreadOnly: false,
 	sortBy: "date_desc",
@@ -58,14 +61,6 @@ function announce(message: string, holdMs: number) {
 	}, holdMs);
 }
 
-// --- OG Image prefetch tracking ---
-// Non-reactive set of articleIds already requested (or in-flight). Content-based,
-// not count-based: a mark-as-read remove + replacement append can leave the
-// visible count unchanged, so keying backfill off the count drops the
-// replacement's image. Keying off articleId never misses a new card.
-//
-// Plain `Set`, not `SvelteSet`, on purpose: the effect below both reads and
-// writes it, and a reactive one would re-run the effect on its own writes.
 const requestedOgImageArticleIds = new Set<string>();
 
 onMount(async () => {
@@ -77,19 +72,8 @@ onMount(async () => {
 	}
 });
 
-// Bounded queue for article OG image prefetch created outside $effect (global cap across effect re-runs)
 const articlePrefetchQueue = createRequestQueue({ concurrency: 4 });
 
-// Bounded progressive prefetch of OG images for visible feeds that have articleId but no ogImageProxyUrl.
-//
-// The result is written to the shared overlay keyed by article, never onto the
-// feed objects. Two reasons, both of which used to lose the picture silently:
-// the array read here is a snapshot taken before the request, so the feed it
-// would find afterwards may be one the grid has already replaced; and a feed
-// that came from SSR — or through a `$derived` that rebuilds its items — is not
-// a `$state` proxy, so assigning a field on it updates nothing on screen. A
-// keyed overlay is read by whichever object the card is rendering, so the
-// answer lands wherever the card ended up.
 $effect(() => {
 	if (!feedGridApi) return;
 	const visibleFeeds = feedGridApi.getVisibleFeeds();
@@ -101,11 +85,8 @@ $effect(() => {
 	);
 	if (articleIds.length === 0) return;
 
-	// Mark in-flight before awaiting so re-runs don't re-request the same ids.
 	for (const id of articleIds) requestedOgImageArticleIds.add(id);
 
-	// Dispatch each article independently through the bounded request queue so fast cards
-	// resolve progressively into the overlay without unbounded bursts or group blocking.
 	for (const id of articleIds) {
 		articlePrefetchQueue
 			.add(() => batchPrefetchImagesClient([id]))
@@ -116,44 +97,23 @@ $effect(() => {
 			})
 			.catch((err) => {
 				console.error(`Failed to prefetch OG image for article ${id}:`, err);
-				// Allow retry on the next change.
 				requestedOgImageArticleIds.delete(id);
 			});
 	}
 });
 
-const selectedFeed = $derived.by(() => {
-	if (!selectedFeedUrl || !feedGridApi) return null;
-	return feedGridApi.getFeedByUrl(selectedFeedUrl);
-});
-
-const currentIndex = $derived.by(() => {
-	if (!selectedFeedUrl || !feedGridApi) return -1;
-	const feeds = feedGridApi.getVisibleFeeds();
-	return feeds.findIndex(
-		(f: RenderFeed) => f.normalizedUrl === selectedFeedUrl,
+function handleSelectFeed(feed: RenderFeed, index: number, _total: number) {
+	const visibleFeeds = feedGridApi?.getVisibleFeeds() ?? [feed];
+	const resolvedIndex = visibleFeeds.findIndex(
+		(f) => f.normalizedUrl === feed.normalizedUrl,
 	);
-});
-
-const totalCount = $derived(feedGridApi?.getVisibleFeeds().length ?? 0);
-const hasPrevious = $derived(currentIndex > 0);
-const hasNext = $derived(currentIndex >= 0 && currentIndex < totalCount - 1);
-
-function handlePrevious() {
-	if (!feedGridApi || currentIndex <= 0) return;
-	const previous = feedGridApi.getVisibleFeeds()[currentIndex - 1];
-	if (previous) selectedFeedUrl = previous.normalizedUrl;
-}
-
-function handleNext() {
-	if (!feedGridApi || currentIndex >= totalCount - 1) return;
-	const next = feedGridApi.getVisibleFeeds()[currentIndex + 1];
-	if (next) selectedFeedUrl = next.normalizedUrl;
-}
-
-function handleSelectFeed(feed: RenderFeed, _index: number, _total: number) {
-	selectedFeedUrl = feed.normalizedUrl;
-	isModalOpen = true;
+	openReaderOverlay({
+		surface: ReadingSurface.GALLERY,
+		items: visibleFeeds.map(renderFeedToReaderItem),
+		currentIndex: resolvedIndex >= 0 ? resolvedIndex : index,
+		onMarkAsRead: handleMarkAsReadInOverlay,
+		isMarkingAsRead: () => isMarkingAsRead || isProcessingMarkAsRead,
+	});
 }
 
 function handleFilterChange(newFilters: {
@@ -164,14 +124,13 @@ function handleFilterChange(newFilters: {
 	filters = newFilters;
 }
 
-async function handleMarkAsReadInModal() {
-	const feed = selectedFeed;
-	if (!feed || isMarkingAsRead) return;
+async function handleMarkAsReadInOverlay(item: ReaderArticleItem) {
+	if (!item.url || isMarkingAsRead) return;
 
 	try {
 		isMarkingAsRead = true;
-		await updateFeedReadStatusClient(feed.normalizedUrl);
-		handleMarkAsRead(feed.normalizedUrl);
+		await updateFeedReadStatusClient(item.url);
+		handleMarkAsRead(item.url);
 		announce("Feed marked as read", 1000);
 	} catch (error) {
 		console.error("Failed to mark feed as read:", error);
@@ -194,31 +153,24 @@ function handleMarkAsRead(feedUrl: string) {
 	const isLastFeed = currentIdx === currentFeeds.length - 1;
 
 	const { nextFeedUrl, totalCount } = feedGridApi.removeFeedByUrl(feedUrl);
+	const remainingFeeds = feedGridApi.getVisibleFeeds();
 
-	if (totalCount === 0 || isLastFeed) {
-		isModalOpen = false;
-		selectedFeedUrl = null;
-	} else if (nextFeedUrl !== null) {
-		selectedFeedUrl = nextFeedUrl;
+	if (totalCount === 0 || isLastFeed || nextFeedUrl === null) {
+		closeReaderOverlay();
 	} else {
-		isModalOpen = false;
-		selectedFeedUrl = null;
+		const nextIdx = remainingFeeds.findIndex(
+			(f: RenderFeed) => f.normalizedUrl === nextFeedUrl,
+		);
+		replaceReaderOverlayItems(
+			remainingFeeds.map(renderFeedToReaderItem),
+			nextIdx >= 0 ? nextIdx : 0,
+		);
 	}
 
 	feedGridApi.fetchReplacementFeed();
 	isProcessingMarkAsRead = false;
 }
 
-/**
- * One class string for both viewports, because the difference between them is
- * pure presentation and Tailwind's breakpoints express it exactly.
- *
- * Previously two: desktop `grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5`,
- * phone `grid-cols-2 gap-2`. They already agreed on two columns at the narrow
- * end, so the only real difference was the gap below `md` — which is what the
- * `md:` prefix is for. Column counts per width are unchanged: 2 below `lg`,
- * 3 at `lg`, 4 at `xl`.
- */
 const GALLERY_GRID_CLASS =
 	"grid grid-cols-2 gap-2 md:gap-5 lg:grid-cols-3 xl:grid-cols-4";
 
@@ -241,19 +193,6 @@ function handleFeedGridReady(api: FeedGridApi) {
 	{liveRegionMessage}
 </div>
 
-<!--
-	The header is the only thing the two viewports genuinely disagree about, so
-	it is the only thing left inside an `{#if}`. `FeedGrid` sits outside it and
-	is built exactly once.
-
-	It used to be built twice — one instance per branch — and the grid is where
-	the reader's session lives: the fetched `feeds`, the `removedUrls` that
-	mark-as-read writes into, and the pagination cursor are all local `$state`
-	inside it. Rotating the phone flipped the branch, destroyed the live grid and
-	mounted a fresh one, which re-fetched page one, dropped everything infinite
-	scroll had added, reset the scroll position with the DOM, and brought back
-	every article the reader had already marked read.
--->
 {#if isDesktop()}
 	<PageHeader title="Visual Preview" description="Browse feeds with image thumbnails" />
 
@@ -265,19 +204,6 @@ function handleFeedGridReady(api: FeedGridApi) {
 		onFilterChange={handleFilterChange}
 	/>
 {:else}
-	<!--
-		Mobile: a vertically scrolling, two-column thumbnail gallery.
-
-		This used to be a hand-off notice pointing at the swipe screen, which made
-		the route a dead end on the device most of the reading happens on. Swipe is
-		a one-at-a-time judgment surface; this is the scanning surface — the reader
-		sees ~6 covers per screen and drills into one, which is a different job and
-		now has its own layout rather than a redirect.
-
-		Two columns rather than a list of small thumbnails: at half a phone's width
-		the image is still large enough to recognise, which is the threshold below
-		which list thumbnails stop earning their place.
-	-->
 	<header class="gallery-header">
 		<h1 class="gallery-title">Visual Preview</h1>
 		<p class="gallery-subtitle">Browse feeds by their cover</p>
@@ -294,14 +220,6 @@ function handleFeedGridReady(api: FeedGridApi) {
 	gridTestId="gallery-grid"
 >
 	{#snippet cardRenderer({ feed, isRead, onSelect }: { feed: RenderFeed; index: number; isRead: boolean; onSelect: (feed: RenderFeed) => void })}
-		<!--
-			The card is the one branch that stays. Swapping it on rotation costs a
-			re-decode of the tile image and nothing else — cards hold no list
-			state — while the two layouts really are different components: the
-			desktop card carries an excerpt, an author line and a tag row, and the
-			phone tile deliberately carries none of them so the cover keeps its
-			height.
-		-->
 		{#if isDesktop()}
 			<VisualFeedCard {feed} {isRead} {onSelect} />
 		{:else}
@@ -309,27 +227,6 @@ function handleFeedGridReady(api: FeedGridApi) {
 		{/if}
 	{/snippet}
 </FeedGrid>
-
-<!--
-	Shared by both layouts. Opening the article in a modal rather than navigating
-	is what keeps the reader's place: the gallery grows by infinite scroll, so a
-	round-trip to a detail route and back would drop them at the top of a list
-	that no longer contains the items they had already scrolled past.
--->
-<FeedDetailModal
-	bind:open={isModalOpen}
-	feed={selectedFeed}
-	onOpenChange={(open: boolean) => (isModalOpen = open)}
-	readingSurface={ReadingSurface.GALLERY}
-	{hasPrevious}
-	{hasNext}
-	onPrevious={handlePrevious}
-	onNext={handleNext}
-	feeds={feedGridApi?.getVisibleFeeds() ?? []}
-	{currentIndex}
-	onMarkAsRead={handleMarkAsReadInModal}
-	isMarkingAsRead={isMarkingAsRead || isProcessingMarkAsRead}
-/>
 
 <style>
 	.sr-only {

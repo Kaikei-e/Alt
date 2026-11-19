@@ -88,6 +88,7 @@ test.describe("Desktop Tag Articles", () => {
 	});
 
 	test("clicking article card opens detail panel", async ({
+		page,
 		desktopTagArticlesPage,
 	}) => {
 		await desktopTagArticlesPage.gotoWithTag("AI");
@@ -97,6 +98,9 @@ test.describe("Desktop Tag Articles", () => {
 		await expect(
 			desktopTagArticlesPage.detailPanel.getByText("AI Trends in 2026"),
 		).toBeVisible();
+		await expect
+			.poll(() => new URL(page.url()).pathname)
+			.toBe("/articles/article-123");
 	});
 
 	test("detail panel auto-fetches content on open", async ({
@@ -113,6 +117,7 @@ test.describe("Desktop Tag Articles", () => {
 	});
 
 	test("closing detail panel returns to full grid", async ({
+		page,
 		desktopTagArticlesPage,
 	}) => {
 		await desktopTagArticlesPage.gotoWithTag("AI");
@@ -121,6 +126,12 @@ test.describe("Desktop Tag Articles", () => {
 		await expect(desktopTagArticlesPage.detailPanel).toBeVisible();
 		await desktopTagArticlesPage.closeDetailButton.click();
 		await expect(desktopTagArticlesPage.detailPanel).not.toBeVisible();
+		await expect
+			.poll(
+				() => `${new URL(page.url()).pathname}${new URL(page.url()).search}`,
+			)
+			.toBe("/articles/by-tag?tag=AI");
+		await expect(desktopTagArticlesPage.articleGrid).toBeVisible();
 	});
 
 	test("Escape key closes detail panel", async ({
@@ -135,7 +146,7 @@ test.describe("Desktop Tag Articles", () => {
 		await expect(desktopTagArticlesPage.detailPanel).not.toBeVisible();
 	});
 
-	test("backdrop click closes detail panel", async ({
+	test("browser Back closes reader overlay and returns to tag grid", async ({
 		page,
 		desktopTagArticlesPage,
 	}) => {
@@ -143,20 +154,34 @@ test.describe("Desktop Tag Articles", () => {
 		await desktopTagArticlesPage.waitForArticlesLoaded();
 		await desktopTagArticlesPage.getArticle("trail-art-1").click();
 		await expect(desktopTagArticlesPage.detailPanel).toBeVisible();
-		await page
-			.getByTestId("detail-backdrop")
-			.click({ position: { x: 10, y: 10 } });
+		await expect
+			.poll(() => new URL(page.url()).pathname)
+			.toBe("/articles/article-123");
+
+		await page.goBack();
 		await expect(desktopTagArticlesPage.detailPanel).not.toBeVisible();
+		await expect
+			.poll(
+				() => `${new URL(page.url()).pathname}${new URL(page.url()).search}`,
+			)
+			.toBe("/articles/by-tag?tag=AI");
+		await expect(desktopTagArticlesPage.articleGrid).toBeVisible();
 	});
 
 	test("detail panel is overlay (grid stays 3-col)", async ({
+		page,
 		desktopTagArticlesPage,
 	}) => {
+		await page.setViewportSize({ width: 1280, height: 800 });
 		await desktopTagArticlesPage.gotoWithTag("AI");
 		await desktopTagArticlesPage.waitForArticlesLoaded();
 		await desktopTagArticlesPage.getArticle("trail-art-1").click();
 		await expect(desktopTagArticlesPage.detailPanel).toBeVisible();
-		// Grid should still be visible behind the overlay
+		// Grid should still be mounted and keep its 3-column layout behind the overlay
 		await expect(desktopTagArticlesPage.articleGrid).toBeVisible();
+		const columns = await desktopTagArticlesPage.articleGrid.evaluate((el) =>
+			getComputedStyle(el).gridTemplateColumns.split(" "),
+		);
+		expect(columns).toHaveLength(3);
 	});
 });

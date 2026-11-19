@@ -21,11 +21,26 @@ import {
 	listSubscriptionsClient,
 	updateFeedReadStatusClient,
 } from "#lib/api/client/feeds.js";
+import {
+	closeReaderOverlay,
+	openReaderOverlay,
+	replaceReaderOverlayItems,
+} from "#lib/reader/reader-overlay.svelte.js";
+import { ReadingSurface } from "#lib/reading/reading-events.js";
 import type { RenderFeed } from "#lib/schema/feed.js";
 import { createRenderFeed } from "../../../../tests/fixtures/feeds";
 
 vi.mock("#lib/api/client/feeds.js", { spy: true });
 vi.mock("#lib/api/client/articles.js", { spy: true });
+vi.mock("#lib/reader/reader-overlay.svelte.js", () => ({
+	openReaderOverlay: vi.fn(),
+	replaceReaderOverlayItems: vi.fn(),
+	closeReaderOverlay: vi.fn(),
+	updateReaderOverlayArticleId: vi.fn(),
+	navigateReaderOverlay: vi.fn(),
+	getReaderOverlaySession: vi.fn(),
+	resetReaderOverlaySessions: vi.fn(),
+}));
 
 import Page from "./+page.svelte";
 
@@ -81,6 +96,10 @@ describe("Feeds page continuity across a rotation", () => {
 				ReturnType<typeof updateFeedReadStatusClient>
 			>,
 		);
+
+		vi.mocked(openReaderOverlay).mockReset();
+		vi.mocked(replaceReaderOverlayItems).mockReset();
+		vi.mocked(closeReaderOverlay).mockReset();
 	});
 
 	it("keeps an article the reader marked read off the wire after a rotation", async () => {
@@ -201,5 +220,49 @@ describe("Feeds page continuity across a rotation", () => {
 		await expect
 			.element(page.getByRole("link", { name: /add your first feed/i }))
 			.toBeInTheDocument();
+	});
+
+	it("opens the unified reader overlay on mobile Show Details without rendering FeedDetails", async () => {
+		await page.viewport(PORTRAIT.width, PORTRAIT.height);
+		renderPage();
+		await settle(400);
+
+		await page
+			.getByRole("button", { name: `Show details: ${FIRST.title}` })
+			.click();
+
+		expect(openReaderOverlay).toHaveBeenCalledTimes(1);
+		const ctx = vi.mocked(openReaderOverlay).mock.calls[0]?.[0];
+		expect(ctx?.surface).toBe(ReadingSurface.OTHER);
+		expect(ctx?.currentIndex).toBe(0);
+		expect(ctx?.items).toHaveLength(WIRE.length);
+		expect(document.querySelector('[role="dialog"]')).toBeNull();
+	});
+
+	it("opens the unified reader overlay on desktop card click and advances overlay items on Mark as Read", async () => {
+		await page.viewport(1280, 800);
+		renderPage();
+		await settle(400);
+
+		await page.getByRole("button", { name: `Open ${FIRST.title}` }).click();
+
+		expect(openReaderOverlay).toHaveBeenCalledTimes(1);
+		const ctx = vi.mocked(openReaderOverlay).mock.calls[0]?.[0];
+		expect(ctx?.surface).toBe(ReadingSurface.OTHER);
+		expect(ctx?.currentIndex).toBe(0);
+		expect(ctx?.items?.[0]?.url).toBe(FIRST.normalizedUrl);
+
+		await ctx?.onMarkAsRead?.(ctx.items![0]!);
+
+		expect(updateFeedReadStatusClient).toHaveBeenCalledWith(
+			FIRST.normalizedUrl,
+		);
+		expect(replaceReaderOverlayItems).toHaveBeenCalledWith(
+			expect.arrayContaining([
+				expect.objectContaining({ url: WIRE[1]!.normalizedUrl }),
+			]),
+			0,
+		);
+		expect(document.querySelector('[role="dialog"]')).toBeNull();
 	});
 });

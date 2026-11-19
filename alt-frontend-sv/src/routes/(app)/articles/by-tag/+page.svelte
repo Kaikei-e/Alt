@@ -18,7 +18,6 @@ let error = $state<string | null>(null);
 let nextCursor = $state<string | null>(null);
 let hasMore = $state(false);
 let isLoadingMore = $state(false);
-let selectedArticle = $state<TagTrailArticle | null>(null);
 let loadedTag = $state<string | null>(null);
 
 async function loadArticles(tag: string, cursor?: string) {
@@ -60,7 +59,6 @@ $effect(() => {
 		error = null;
 		nextCursor = null;
 		hasMore = false;
-		selectedArticle = null;
 		return;
 	}
 	if (currentTag === loadedTag) return;
@@ -69,7 +67,6 @@ $effect(() => {
 	error = null;
 	nextCursor = null;
 	hasMore = false;
-	selectedArticle = null;
 	void loadArticles(currentTag).finally(() => {
 		isLoading = false;
 	});
@@ -92,7 +89,6 @@ $effect(() => {
 		{error}
 		{hasMore}
 		{isLoadingMore}
-		bind:selectedArticle
 		onLoadMore={loadMore}
 	/>
 {:else}

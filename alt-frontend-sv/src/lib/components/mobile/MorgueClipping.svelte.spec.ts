@@ -1,5 +1,5 @@
 import { page } from "@vitest/browser/context";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 
 import { renderFeedFixture } from "../../../../tests/fixtures/feeds";
@@ -34,12 +34,15 @@ describe("MorgueClipping", () => {
 			.toHaveAttribute("data-role", "morgue-clipping");
 	});
 
-	it("has a Details button (text, no icon)", async () => {
-		render(MorgueClipping, { props: { feed } });
+	it("has a Details button and calls onSelect when clicked", async () => {
+		const onSelect = vi.fn();
+		render(MorgueClipping, { props: { feed, onSelect } });
 
-		await expect
-			.element(page.getByRole("button", { name: /details/i }))
-			.toBeInTheDocument();
+		const detailsBtn = page.getByRole("button", { name: /details/i });
+		await expect.element(detailsBtn).toBeInTheDocument();
+		await detailsBtn.click();
+
+		expect(onSelect).toHaveBeenCalledWith(feed);
 	});
 
 	it("has an Open link pointing to normalizedUrl with target _blank", async () => {

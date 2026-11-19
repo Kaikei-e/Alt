@@ -9,6 +9,9 @@ import {
 	updateFeedReadStatusClient,
 } from "#lib/api/client/index.js";
 import type { ConnectFeedSource } from "#lib/connect/feeds.js";
+import { renderFeedToReaderItem } from "#lib/reader/mappers.js";
+import { openReaderOverlay } from "#lib/reader/reader-overlay.svelte.js";
+import { ReadingSurface } from "#lib/reading/reading-events.js";
 import type { RenderFeed, SanitizedFeed } from "#lib/schema/feed.js";
 import { toRenderFeed } from "#lib/schema/feed.js";
 import { articlePrefetcher } from "#lib/utils/articlePrefetcher.js";
@@ -16,7 +19,6 @@ import { canonicalize } from "#lib/utils/feed.js";
 import { browser } from "$app/env";
 import DispatchHeader from "./DispatchHeader.svelte";
 import { createDispatchSession } from "./dispatch-session.svelte";
-import SwipeFeedCard from "./SwipeFeedCard.svelte";
 import SwipeFilterSortSheet from "./SwipeFilterSortSheet.svelte";
 import SwipeLoadingOverlay from "./SwipeLoadingOverlay.svelte";
 import VisualPreviewCard from "./VisualPreviewCard.svelte";
@@ -38,10 +40,10 @@ interface Props {
 const {
 	initialFeeds = [],
 	initialNextCursor,
-	initialArticleContent,
-	initialArticleId,
+	initialArticleContent: _initialArticleContent,
+	initialArticleId: _initialArticleId,
 	initialOgImageProxyUrl,
-	mode = "default",
+	mode = "visual-preview",
 }: Props = $props();
 
 const isVisualPreview = $derived(mode === "visual-preview");
@@ -404,21 +406,6 @@ function handleUndo() {
 	}, 1000);
 }
 
-function getCachedContent(url: string) {
-	return articlePrefetcher.getCachedContent(url);
-}
-
-function getCachedArticleId(url: string) {
-	return articlePrefetcher.getCachedArticleId(url);
-}
-
-// Single entry point for the visible card's body fetch. Routing it through the
-// prefetcher makes a card that mounts mid-prefetch join that request instead of
-// issuing a duplicate one that skips the per-host gate and the 429 cooldown.
-function requestContent(url: string) {
-	return articlePrefetcher.ensureContent(url);
-}
-
 function handleArticleIdResolved(feedLink: string, articleId: string) {
 	// Only reassign when something actually changed: `feeds` drives the prefetch
 	// $effect, and every card called this on mount, so an unconditional rebuild
@@ -426,6 +413,23 @@ function handleArticleIdResolved(feedLink: string, articleId: string) {
 	const index = feeds.findIndex((f) => f.link === feedLink);
 	if (index === -1 || feeds[index]?.articleId === articleId) return;
 	feeds = feeds.map((f, i) => (i === index ? { ...f, articleId } : f));
+}
+
+function handleOpenArticle() {
+	if (!activeFeed) return;
+	openReaderOverlay({
+		surface: ReadingSurface.SWIPE,
+		items: feeds.map(renderFeedToReaderItem),
+		currentIndex: activeIndex,
+		onArticleIdResolved: (url, articleId) => {
+			const match = feeds.find(
+				(f) => f.normalizedUrl === url || f.link === url,
+			);
+			if (match) {
+				handleArticleIdResolved(match.link, articleId);
+			}
+		},
+	});
 }
 </script>
 
@@ -479,40 +483,15 @@ function handleArticleIdResolved(feedLink: string, articleId: string) {
 
 			<!-- Active card -->
 			{#key activeFeed.id}
-				{#if isVisualPreview}
-					<VisualPreviewCard
-						feed={activeFeed}
-						statusMessage={liveRegionMessage}
-						onDismiss={handleDismiss}
-						thumbnailProxyUrl={currentOgImage}
-						getCachedContent={getCachedContent}
-						getCachedArticleId={getCachedArticleId}
-						requestContent={requestContent}
-						isBusy={isLoading}
-						initialArticleContent={activeIndex === 0
-							? initialArticleContent
-							: undefined}
-						initialArticleId={activeIndex === 0
-							? initialArticleId
-							: undefined}
-						onArticleIdResolved={handleArticleIdResolved}
-						isLcp={activeIndex === 0}
-					/>
-				{:else}
-					<SwipeFeedCard
-						feed={activeFeed}
-						statusMessage={liveRegionMessage}
-						onDismiss={handleDismiss}
-						getCachedContent={getCachedContent}
-						getCachedArticleId={getCachedArticleId}
-						requestContent={requestContent}
-						isBusy={isLoading}
-						initialArticleContent={activeIndex === 0
-							? initialArticleContent
-							: undefined}
-						onArticleIdResolved={handleArticleIdResolved}
-					/>
-				{/if}
+				<VisualPreviewCard
+					feed={activeFeed}
+					statusMessage={liveRegionMessage}
+					onDismiss={handleDismiss}
+					onOpenArticle={handleOpenArticle}
+					thumbnailProxyUrl={currentOgImage}
+					isBusy={isLoading}
+					isLcp={activeIndex === 0}
+				/>
 			{/key}
 		</div>
 	{:else}

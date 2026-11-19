@@ -1,198 +1,35 @@
 <script lang="ts">
-import {
-	ArrowLeft,
-	Download,
-	ExternalLink,
-	Loader2,
-	RefreshCw,
-	Sparkles,
-} from "@lucide/svelte";
-import { onDestroy, onMount } from "svelte";
+import { ArrowLeft } from "@lucide/svelte";
+import { onMount } from "svelte";
 import { MediaQuery } from "svelte/reactivity";
-import {
-	getArticleSourceURLClient,
-	getFeedContentOnTheFlyClient,
-} from "#lib/api/client/articles.js";
-import ArticleEndBranches from "#lib/components/knowledge-trail/ArticleEndBranches.svelte";
-import RenderFeedDetails from "#lib/components/mobile/RenderFeedDetails.svelte";
-import PageKicker from "#lib/components/recap/job-status/PageKicker.svelte";
 import { Button } from "#lib/components/ui/button/index.js";
-import { useArticleEndBranches } from "#lib/hooks/useArticleEndBranches.svelte.js";
-import { useSummarize } from "#lib/hooks/useSummarize.svelte.js";
+import ArticleEditorialRail from "#lib/reader/ArticleEditorialRail.svelte";
+import ArticleReaderActions from "#lib/reader/ArticleReaderActions.svelte";
+import ArticleReaderBody from "#lib/reader/ArticleReaderBody.svelte";
+import { createArticleReader } from "#lib/reader/createArticleReader.svelte.js";
 import {
-	attachWindowReadingSession,
 	ReadingSurface,
 	recordSurfaceViewed,
 } from "#lib/reading/instrumentation.js";
-import {
-	type ArticleContentPhase,
-	CONTENT_PENDING_LABEL,
-	CONTENT_RETRYING_LABEL,
-	EMPTY_CONTENT_ERROR,
-	foregroundRetryDelayMs,
-	READ_ORIGINAL_LABEL,
-	TRY_AGAIN_LABEL,
-} from "#lib/utils/articleContentState.js";
-import { articleContentErrorMessage } from "#lib/utils/errorClassification.js";
-import { safeArticleHref } from "#lib/utils/safeHref.js";
 import { beforeNavigate, goto } from "$app/navigation";
 import { page } from "$app/state";
 import ArticleVisit from "./ArticleVisit.svelte";
 
 const articleId = $derived(page.params.id);
-// Sanitize the `?url=` handoff before any consumer (fetch / <a href>) sees
-// it: rejects javascript:/data:/file: and private/loopback hosts. With the
-// canonical Loop ACT fix the projector + FE only ever produce public HTTPS
-// URLs here, but a hand-typed share URL or external linker could still
-// arrive with a hostile scheme — defense-in-depth.
-// Primary source: a `?url=` handoff (home / recall / search). Sanitized before
-// any consumer sees it.
-const paramUrl = $derived(safeArticleHref(page.url.searchParams.get("url")));
-// id-only entry (e.g. the Knowledge Trail spine) passes no URL — it is resolved
-// from the article id server-side (GetArticleSourceURL), so the URL never
-// travels in the client URL bar and is never client-supplied.
-let resolvedUrl = $state<string | null>(null);
-// The title comes back from the same lookup. It has to, because the entry
-// points that omit `?title=` — the summary-ready notification, the trail spine,
-// a Home card whose projection row has no title — have no second call they
-// could make for it.
-let resolvedTitle = $state<string | null>(null);
-const articleUrl = $derived(paramUrl ?? resolvedUrl);
+const paramUrl = $derived(page.url.searchParams.get("url"));
 const paramTitle = $derived(page.url.searchParams.get("title"));
-const articleTitle = $derived(paramTitle ?? resolvedTitle);
 
-// Patch-exit branches (D26/D28): the article read-end's main branch stage —
-// at most two proposals anchored on this article. Reloaded on each keyed
-// article visit via ArticleVisit's onMount.
-const endBranches = useArticleEndBranches();
-
-// Plain latch rather than $state: read inside the effect that writes it,
-// so a reactive latch would re-run the effect on its own write.
-let resolveRequestedFor: string | null = null;
-
-$effect(() => {
-	// Either half being absent is reason enough to resolve — a Home card with a
-	// blank projection title passes `?url=` and no `?title=`, and gating on the
-	// URL alone left that case rendering the URL host as its headline.
-	if (!articleId) return;
-	if (resolveRequestedFor !== articleId) {
-		resolvedUrl = null;
-		resolvedTitle = null;
-	}
-	if (paramUrl && paramTitle) {
-		resolveRequestedFor = articleId;
-		return;
-	}
-	if (resolveRequestedFor === articleId) return;
-	resolveRequestedFor = articleId;
-	let cancelled = false;
-	void getArticleSourceURLClient(articleId)
-		.then((source) => {
-			if (cancelled) return;
-			resolvedUrl = safeArticleHref(source.url);
-			resolvedTitle = source.title || null;
-		})
-		.catch(() => {
-			// Leave both null — the page falls back to its empty state.
-		});
-	return () => {
-		cancelled = true;
-	};
+const reader = createArticleReader({
+	getArticleId: () => articleId,
+	getUrl: () => paramUrl,
+	getTitle: () => paramTitle,
+	getSurface: () => ReadingSurface.ARTICLE_PAGE,
+	getAutoSummarize: () => page.url.searchParams.get("summarize") === "true",
+	getUsePrefetchCache: () => false,
 });
-
-// One explicit phase instead of three booleans read as a truth table. The old
-// guard — `!articleContent && !isFetching && !contentError` — could not tell
-// "not fetched yet" from "fetched, came back empty", so an empty body left all
-// three false and the effect re-fired the moment isFetching cleared: the
-// ADR-000581 infinite loop, still open on this route.
-let contentPhase = $state<ArticleContentPhase>("idle");
-let articleContent = $state<string | null>(null);
-let fetchedArticleId = $state<string | null>(null);
-let loadedForArticleId = $state<string | null>(null);
-let contentError = $state<string | null>(null);
-let articleBodyEl = $state<HTMLDivElement | null>(null);
-let endSentinelEl = $state<HTMLDivElement | null>(null);
-let activeReadingCleanup: (() => void) | undefined;
-let previousUrl = $state<string | null>(null);
-// The one automatic re-attempt allowed per failure.
-let foregroundRetrySpent = false;
-let contentRetryTimer: ReturnType<typeof setTimeout> | null = null;
-// Monotonic token: a load applies its result only while it is the newest one.
-let contentToken = 0;
-
-const isFetching = $derived(
-	contentPhase === "pending" || contentPhase === "retrying",
-);
-const hasLoadedArticleBody = $derived(
-	Boolean(articleId && articleContent && loadedForArticleId === articleId),
-);
-const pendingLabel = $derived(
-	contentPhase === "retrying" ? CONTENT_RETRYING_LABEL : CONTENT_PENDING_LABEL,
-);
-
-const summarizer = useSummarize();
 
 const railQuery = new MediaQuery("(min-width: 1024px)", false);
 const hasRail = $derived(railQuery.current);
-
-const fetchButtonState = $derived.by(() => {
-	if (isFetching) return "loading" as const;
-	if (contentPhase === "failed") return "error" as const;
-	if (articleContent) return "success" as const;
-	return "idle" as const;
-});
-
-const sourceHost = $derived.by(() => {
-	if (!articleUrl) return "";
-	try {
-		return new URL(articleUrl).host;
-	} catch {
-		return "";
-	}
-});
-
-const mastheadKicker = $derived(
-	sourceHost ? sourceHost.toUpperCase() : "ARTICLE",
-);
-// Never the host. A URL is not a headline, and substituting one made a Guardian
-// feature read as "www.theguardian.com" on every entry that carries no title.
-const mastheadTitle = $derived(articleTitle ?? "Article");
-
-const readingTimeMinutes = $derived.by<number | null>(() => {
-	if (!articleContent) return null;
-	const words = articleContent
-		.replace(/<[^>]+>/g, " ")
-		.trim()
-		.split(/\s+/)
-		.filter(Boolean).length;
-	return words > 0 ? Math.max(1, Math.round(words / 240)) : null;
-});
-
-const fetchAriaLabel = $derived.by(() => {
-	switch (fetchButtonState) {
-		case "loading":
-			return "Fetching article";
-		case "error":
-			return "Retry fetch";
-		case "success":
-			return "Re-fetch article";
-		default:
-			return "Fetch article";
-	}
-});
-
-const summarizeAriaLabel = $derived.by(() => {
-	switch (summarizer.buttonState) {
-		case "loading":
-			return "Summarizing";
-		case "error":
-			return "Retry summarize";
-		case "success":
-			return "Re-summarize";
-		default:
-			return "Summarize with AI";
-	}
-});
 
 onMount(() => {
 	recordSurfaceViewed(ReadingSurface.ARTICLE_PAGE);
@@ -200,178 +37,7 @@ onMount(() => {
 
 beforeNavigate(({ shallow }) => {
 	if (!shallow) {
-		activeReadingCleanup?.();
-	}
-});
-
-onDestroy(() => {
-	summarizer.abort();
-	// A re-attempt parked in its Retry-After wait outlives the page otherwise.
-	contentToken++;
-	if (contentRetryTimer) clearTimeout(contentRetryTimer);
-});
-
-/**
- * Record a terminal failure. The wording comes from articleContentErrorMessage
- * and nowhere else — ADR-000959 §6 keeps the upstream `message` off the
- * reading surface.
- */
-function failContent(err: unknown, token: number) {
-	if (token !== contentToken) return;
-	contentError = articleContentErrorMessage(err);
-	contentPhase = "failed";
-}
-
-function applyResponse(
-	response: { content?: string; article_id?: string },
-	token: number,
-	targetArticleId: string | null,
-) {
-	if (token !== contentToken) return;
-	if (!response.content?.trim()) {
-		// `content: ""` is a state, never a falsy no-op (ADR-000581).
-		failContent(EMPTY_CONTENT_ERROR, token);
-		return;
-	}
-	articleContent = response.content;
-	fetchedArticleId = response.article_id || null;
-	loadedForArticleId = targetArticleId;
-	contentError = null;
-	contentPhase = "ready";
-}
-
-/**
- * Fetch the body, with at most ONE automatic re-attempt.
- *
- * The re-attempt lives here rather than in the auto-fetch $effect on purpose.
- * Re-arming that effect is exactly what ADR-000581 closed; a retry that runs
- * inside the call keeps the phase at pending/retrying for its whole duration,
- * so the effect never sees a state that could start a second one.
- */
-async function fetchContent(forceRefresh = false) {
-	if (!articleUrl) return;
-
-	const url = articleUrl;
-	const targetArticleId = articleId ?? null;
-	const token = ++contentToken;
-	loadedForArticleId = null;
-	contentPhase = "pending";
-	contentError = null;
-
-	try {
-		applyResponse(
-			await getFeedContentOnTheFlyClient(url, { forceRefresh }),
-			token,
-			targetArticleId,
-		);
-		return;
-	} catch (err) {
-		if (token !== contentToken) return;
-
-		const delayMs = foregroundRetrySpent ? null : foregroundRetryDelayMs(err);
-		if (delayMs === null) {
-			failContent(err, token);
-			return;
-		}
-
-		foregroundRetrySpent = true;
-		contentPhase = "retrying";
-		await new Promise<void>((resolve) => {
-			if (contentRetryTimer) clearTimeout(contentRetryTimer);
-			contentRetryTimer = setTimeout(() => {
-				contentRetryTimer = null;
-				resolve();
-			}, delayMs);
-		});
-		if (token !== contentToken) return;
-
-		contentPhase = "pending";
-		try {
-			applyResponse(
-				await getFeedContentOnTheFlyClient(url, { forceRefresh }),
-				token,
-				targetArticleId,
-			);
-		} catch (retryErr) {
-			failContent(retryErr, token);
-		}
-	}
-}
-
-function handleFetch() {
-	const isRefetch = fetchButtonState === "success";
-	if (isRefetch) {
-		summarizer.reset();
-	}
-	// A reader asking again is a fresh budget: the automatic attempt is spent
-	// per failure, not once per page visit.
-	foregroundRetrySpent = false;
-	void fetchContent(isRefetch);
-}
-
-function handleSummarize() {
-	if (!articleUrl) return;
-	summarizer.summarize(
-		articleUrl,
-		fetchedArticleId ?? articleId,
-		articleTitle ?? undefined,
-		summarizer.buttonState === "success",
-	);
-}
-
-// Reset state when articleUrl changes
-$effect(() => {
-	if (articleUrl !== previousUrl) {
-		previousUrl = articleUrl;
-		contentToken++;
-		if (contentRetryTimer) clearTimeout(contentRetryTimer);
-		articleContent = null;
-		fetchedArticleId = null;
-		loadedForArticleId = null;
-		contentError = null;
-		contentPhase = "idle";
-		foregroundRetrySpent = false;
-		summarizer.reset();
-	}
-});
-
-$effect(() => {
-	if (!hasLoadedArticleBody || !articleId) {
-		return;
-	}
-	const cleanup = attachWindowReadingSession({
-		articleId,
-		surface: ReadingSurface.ARTICLE_PAGE,
-		bodyElement: articleBodyEl,
-		endSentinel: endSentinelEl,
-	});
-	activeReadingCleanup = cleanup;
-	return () => {
-		activeReadingCleanup = undefined;
-		cleanup?.();
-	};
-});
-
-// Fetch once per article, and only from the one state that means "not asked
-// yet". Every other phase — pending, retrying, ready, failed — is a state the
-// effect must not act on: acting on `failed` is the ADR-000581 loop, and
-// acting on `pending` doubles the request rate at the publisher.
-$effect(() => {
-	if (articleUrl && contentPhase === "idle") {
-		void fetchContent();
-	}
-});
-
-// Auto-trigger summarize when ?summarize=true and content is loaded
-$effect(() => {
-	const autoSummarize = page.url.searchParams.get("summarize") === "true";
-	if (
-		autoSummarize &&
-		articleContent &&
-		!summarizer.isSummarizing &&
-		!summarizer.summary
-	) {
-		handleSummarize();
+		reader.endActiveSession();
 	}
 });
 </script>
@@ -379,99 +45,6 @@ $effect(() => {
 <svelte:head>
 	<title>Article — Alt</title>
 </svelte:head>
-
-{#snippet actionControls()}
-	<div class="actions-cluster">
-		<Button
-			data-testid="fetch-button"
-			aria-label={fetchAriaLabel}
-			onclick={handleFetch}
-			disabled={fetchButtonState === 'loading'}
-			variant={fetchButtonState === 'error' ? 'destructive' : 'outline'}
-			size="icon"
-			class="action-btn"
-		>
-			{#if fetchButtonState === 'loading'}
-				<Loader2 class="h-4 w-4 animate-spin" />
-				<span class="action-label">Fetching...</span>
-			{:else if fetchButtonState === 'error'}
-				<RefreshCw class="h-4 w-4" />
-				<span class="action-label">Try again</span>
-			{:else if fetchButtonState === 'success'}
-				<RefreshCw class="h-4 w-4" />
-				<span class="action-label">Re-fetch</span>
-			{:else}
-				<Download class="h-4 w-4" />
-				<span class="action-label">Fetch</span>
-			{/if}
-		</Button>
-
-		<Button
-			data-testid="summarize-button"
-			aria-label={summarizeAriaLabel}
-			onclick={handleSummarize}
-			disabled={summarizer.buttonState === 'loading' || !articleContent && summarizer.buttonState !== 'error' && summarizer.buttonState !== 'success'}
-			variant={summarizer.buttonState === 'error' ? 'destructive' : 'default'}
-			size="icon"
-			class={summarizer.buttonState === 'error' ? 'action-btn' : 'action-btn action-btn--primary'}
-		>
-			{#if summarizer.buttonState === 'loading'}
-				<Loader2 class="h-4 w-4 animate-spin" />
-				<span class="action-label">Summarizing...</span>
-			{:else if summarizer.buttonState === 'error'}
-				<RefreshCw class="h-4 w-4" />
-				<span class="action-label">Try again</span>
-			{:else if summarizer.buttonState === 'success'}
-				<RefreshCw class="h-4 w-4" />
-				<span class="action-label">Re-summarize</span>
-			{:else}
-				<Sparkles class="h-4 w-4" />
-				<span class="action-label">Summarize</span>
-			{/if}
-		</Button>
-
-		{#if articleUrl}
-			<a
-				href={articleUrl}
-				target="_blank"
-				rel="noopener noreferrer"
-				aria-label="Open original"
-				class="action-link"
-			>
-				<ExternalLink class="h-4 w-4" />
-				<span class="action-label">Open original</span>
-			</a>
-		{/if}
-	</div>
-{/snippet}
-
-{#snippet aiSummaryBlock()}
-	{#if summarizer.summary}
-		<section class="ai-summary" data-testid="ai-summary" aria-label="AI summary">
-			<p class="ai-summary__kicker">
-				<Sparkles class="h-[0.75rem] w-[0.75rem]" />
-				<span>AI SUMMARY</span>
-			</p>
-			<div class="ai-summary__body">{summarizer.summary}</div>
-			{#if summarizer.summaryError}
-				<!-- A cut stream leaves its partial text on screen. Without this
-				     notice a truncated summary reads as a clean short one. -->
-				<p
-					class="ai-summary__interrupted"
-					data-testid="summary-interrupted"
-					role="alert"
-				>
-					Stream interrupted. Summary may be incomplete.
-				</p>
-			{/if}
-		</section>
-	{:else if summarizer.summaryError}
-		<section class="ai-summary ai-summary--error" role="alert">
-			<p class="ai-summary__kicker">SUMMARIZE ERROR</p>
-			<div class="ai-summary__body">{summarizer.summaryError}</div>
-		</section>
-	{/if}
-{/snippet}
 
 <div class="article-page">
 	<header class="action-bar" aria-label="Article actions">
@@ -487,195 +60,56 @@ $effect(() => {
 		</Button>
 
 		{#if !hasRail}
-			{@render actionControls()}
+			<ArticleReaderActions {reader} />
 		{/if}
 	</header>
 
 	{#key articleId}
 		{#if articleId}
-			<ArticleVisit
-				{articleId}
-				onVisit={(id) => {
-					void endBranches.load(`article:${id}`);
-				}}
-			/>
+			<ArticleVisit {articleId} />
 		{/if}
 		<div class="article-layout">
 			<article class="article-body">
-				<PageKicker
-					testId="article-masthead"
-					kicker={mastheadKicker}
-					title={mastheadTitle}
-				/>
-
-				{#if !hasRail}
-					{@render aiSummaryBlock()}
-				{/if}
-
-				{#if !articleUrl}
-					<div class="placeholder">
-						<p>No article URL provided. Unable to load content.</p>
-						<Button variant="outline" onclick={() => goto("/home")} class="placeholder-cta mt-1">
+				<ArticleReaderBody {reader} showInlineSummary={!hasRail}>
+					{#snippet emptyAction()}
+						<Button
+							variant="outline"
+							onclick={() => goto("/home")}
+							class="placeholder-cta mt-1"
+						>
 							Return to Home
 						</Button>
-					</div>
-				{:else if isFetching}
-					<!-- A request in flight is not a failure, and it says which one
-					     it is: the first attempt, or the single re-attempt waiting
-					     out the Retry-After the server named. -->
-					<div
-						class="placeholder placeholder--center"
-						data-testid="article-content-pending"
-					>
-						<Loader2 class="h-5 w-5 animate-spin" />
-						<span>{pendingLabel}</span>
-					</div>
-				{:else if contentPhase === "failed"}
-					<div class="placeholder" data-testid="article-content-failed" role="alert">
-						<p class="placeholder__error">{contentError}</p>
-						<!-- Stating the problem without offering a way out is the
-						     defect (NN/g heuristic 9). This route carries no RSS
-						     description to fall back to, so the remedies are all
-						     the reader has: ask again, or go to the publisher. -->
-						<div class="placeholder-remedies">
-							<Button
-								variant="outline"
-								onclick={handleFetch}
-								data-testid="retry-content"
-								class="placeholder-cta mt-1"
-							>
-								{TRY_AGAIN_LABEL}
-							</Button>
-							<a
-								href={articleUrl}
-								target="_blank"
-								rel="noopener noreferrer"
-								class="placeholder-link"
-								data-testid="read-original-link"
-							>
-								{READ_ORIGINAL_LABEL}
-							</a>
-						</div>
-					</div>
-				{:else if articleContent}
-					<div
-						class="article-surface"
-						data-testid="article-content-surface"
-						bind:this={articleBodyEl}
-					>
-						<RenderFeedDetails
-							feedDetails={{
-								content: articleContent,
-								article_id: fetchedArticleId ?? "",
-								og_image_url: "",
-								og_image_proxy_url: "",
-							}}
-							error={null}
-						/>
-						<div
-							class="reading-end-sentinel"
-							bind:this={endSentinelEl}
-							aria-hidden="true"
-						></div>
-					</div>
-					<ArticleEndBranches
-						branches={endBranches.branches}
-						onResolve={endBranches.resolve}
-					/>
-				{:else}
-					<div class="placeholder">
-						<p>No content available.</p>
-					</div>
-				{/if}
+					{/snippet}
+				</ArticleReaderBody>
 			</article>
 
 			{#if hasRail}
-				<aside
-					class="article-rail"
-					data-testid="article-rail"
-					aria-label="Article details"
-				>
-					<section class="rail-section">
-						<h2 class="rail-kicker">Source</h2>
-						<p class="rail-value">{sourceHost || "—"}</p>
-					</section>
-
-					<section class="rail-section">
-						<h2 class="rail-kicker">Reading time</h2>
-						<p class="rail-value">
-							{readingTimeMinutes ? `${readingTimeMinutes} min` : "—"}
-						</p>
-					</section>
-
-					<section class="rail-section rail-section--actions">
-						<h2 class="rail-kicker">Actions</h2>
-						{@render actionControls()}
-					</section>
-
-					{@render aiSummaryBlock()}
-				</aside>
+				<ArticleEditorialRail {reader} />
 			{/if}
 		</div>
 	{/key}
 </div>
 
 <style>
-.article-page {
-	max-width: 720px;
-	margin: 0 auto;
-	padding: 0 1rem 2rem;
-	color: var(--alt-charcoal, #1a1a1a);
-	font-family: var(--font-body);
-}
+	.article-page {
+		max-width: 720px;
+		margin: 0 auto;
+		padding: 0 1rem 2rem;
+		color: var(--alt-charcoal, #1a1a1a);
+		font-family: var(--font-body);
+	}
 
-.action-bar {
-	position: sticky;
-	top: 0;
-	z-index: 20;
-	display: flex;
-	align-items: center;
-	gap: 0.5rem;
-	min-height: 56px;
-	padding: calc(env(safe-area-inset-top, 0px) + 0.5rem) 0 0.5rem;
-	background: var(--surface-bg, #faf9f7);
-	border-bottom: 1px solid var(--surface-border, #c8c8c8);
-}
-
-	:global(.actions-cluster) {
+	.action-bar {
+		position: sticky;
+		top: 0;
+		z-index: 20;
 		display: flex;
 		align-items: center;
-		gap: 0.25rem;
-		margin-left: auto;
-		min-width: 0;
-	}
-
-	:global(.action-label) {
-		display: none;
-	}
-
-	:global(.action-btn) {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-	}
-
-	.action-link {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 2.25rem;
-		height: 2.25rem;
-		border: 1px solid var(--surface-border, #c8c8c8);
-		color: var(--interactive-text, #2f4f4f);
-		background: transparent;
-		text-decoration: none;
-		transition: background 0.15s ease;
-	}
-
-	.action-link:hover,
-	.action-link:focus-visible {
-		background: var(--surface-hover, #f3f1ed);
-		outline: none;
+		gap: 0.5rem;
+		min-height: 56px;
+		padding: calc(env(safe-area-inset-top, 0px) + 0.5rem) 0 0.5rem;
+		background: var(--surface-bg, #faf9f7);
+		border-bottom: 1px solid var(--surface-border, #c8c8c8);
 	}
 
 	.article-layout {
@@ -692,129 +126,9 @@ $effect(() => {
 		min-width: 0;
 	}
 
-	.ai-summary {
-		display: flex;
-		flex-direction: column;
-		gap: 0.75rem;
-		padding: 1rem 1.1rem 1.1rem;
-		background: var(--surface-2, #f5f4f1);
-		border: 1px solid var(--surface-border, #c8c8c8);
-		border-left: 3px solid var(--alt-primary, #2f4f4f);
-	}
-
-	.ai-summary--error {
-		border-left-color: var(--alt-error, #8c1d1d);
-	}
-
-	.ai-summary__kicker {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.4rem;
-		margin: 0;
-		font-family: var(--font-mono);
-		font-size: 0.65rem;
-		font-weight: 600;
-		letter-spacing: 0.14em;
-		text-transform: uppercase;
-		color: var(--alt-ash, #999999);
-	}
-
-	.ai-summary__interrupted {
-		margin: 0;
-		padding-left: 0.75rem;
-		border-left: 3px solid var(--alt-error, #8c1d1d);
-		font-family: var(--font-body);
-		font-size: 0.82rem;
-		color: var(--alt-error, #8c1d1d);
-	}
-
-	.ai-summary__body {
-		font-family: var(--font-body);
-		font-size: 1rem;
-		line-height: 1.75;
-		color: var(--alt-charcoal, #1a1a1a);
-		white-space: pre-wrap;
-		word-break: break-word;
-		overflow-wrap: anywhere;
-	}
-
-	.article-surface {
-		border-top: 1px solid var(--surface-border, #c8c8c8);
-		padding-top: 0.5rem;
-		min-width: 0;
-	}
-
-	.reading-end-sentinel {
-		height: 1px;
-		margin-top: -1px;
-		pointer-events: none;
-	}
-
-	.placeholder {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		gap: 0.75rem;
-		padding: 3rem 1rem;
-		color: var(--alt-slate, #666666);
-		text-align: center;
-	}
-
-	.placeholder--center {
-		flex-direction: row;
-	}
-
-	.placeholder__error {
-		color: var(--alt-error, #8c1d1d);
-		margin: 0;
-	}
-
-	.placeholder-remedies {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		gap: 1rem;
-		flex-wrap: wrap;
-	}
-
-	.placeholder-link {
-		font-size: 0.8125rem;
-		font-weight: 600;
-		color: var(--alt-primary, #2f4f4f);
-		text-decoration: underline;
-		text-underline-offset: 0.2em;
-		min-height: 44px;
-		display: inline-flex;
-		align-items: center;
-	}
-
-	/* Tablet / Desktop — restore label text on wider viewports */
 	@media (min-width: 640px) {
 		.article-page {
 			padding: 0 1.5rem 3rem;
-		}
-
-		:global(.action-label) {
-			display: inline;
-		}
-
-		:global(.action-btn) {
-			width: auto;
-			height: auto;
-			gap: 0.4rem;
-			padding: 0.4rem 0.75rem;
-			font-family: var(--font-body);
-			font-size: 0.85rem;
-		}
-
-		.action-link {
-			width: auto;
-			height: auto;
-			gap: 0.4rem;
-			padding: 0.4rem 0.75rem;
-			font-family: var(--font-body);
-			font-size: 0.85rem;
 		}
 	}
 
@@ -843,75 +157,6 @@ $effect(() => {
 			margin-inline: auto;
 			width: 100%;
 			max-width: 72ch;
-		}
-
-		.article-rail {
-			position: sticky;
-			top: calc(env(safe-area-inset-top, 0px) + 1rem);
-			align-self: start;
-			display: flex;
-			flex-direction: column;
-			gap: 1.25rem;
-			padding: 1.1rem 1.1rem 1.25rem;
-			background: var(--surface-2, #f5f4f1);
-			border: 1px solid var(--surface-border, #c8c8c8);
-			border-top: 3px solid var(--alt-primary, #2f4f4f);
-			max-height: calc(100vh - 2rem);
-			overflow-y: auto;
-		}
-
-		.rail-section {
-			display: flex;
-			flex-direction: column;
-			gap: 0.4rem;
-		}
-
-		.rail-kicker {
-			margin: 0;
-			font-family: var(--font-mono);
-			font-size: 0.65rem;
-			font-weight: 600;
-			letter-spacing: 0.14em;
-			text-transform: uppercase;
-			color: var(--alt-ash, #999999);
-		}
-
-		.rail-value {
-			margin: 0;
-			font-family: var(--font-body);
-			font-size: 0.95rem;
-			color: var(--alt-charcoal, #1a1a1a);
-			word-break: break-word;
-		}
-
-		.rail-section--actions :global(.actions-cluster) {
-			flex-direction: column;
-			align-items: stretch;
-			gap: 0.5rem;
-			margin-left: 0;
-		}
-
-		.rail-section--actions :global(.action-btn) {
-			width: 100%;
-			justify-content: flex-start;
-		}
-
-		.rail-section--actions .rail-kicker + :global(.actions-cluster) {
-			margin-top: 0.1rem;
-		}
-
-		.rail-section--actions :global(.actions-cluster) > :global(*) {
-			width: 100%;
-		}
-
-		.rail-section--actions :global(.action-link) {
-			width: 100%;
-			justify-content: flex-start;
-		}
-
-		.article-rail .ai-summary {
-			border: 1px solid var(--surface-border, #c8c8c8);
-			border-left: 3px solid var(--alt-primary, #2f4f4f);
 		}
 	}
 </style>

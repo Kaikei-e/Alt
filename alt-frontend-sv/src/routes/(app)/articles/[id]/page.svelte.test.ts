@@ -56,12 +56,16 @@ const mockGetFeedContent = vi.fn();
 const mockGetArticleSourceURL = vi
 	.fn()
 	.mockResolvedValue({ url: "", title: "" });
-vi.mock("#lib/api/client/articles.js", () => ({
-	getFeedContentOnTheFlyClient: (...args: unknown[]) =>
-		mockGetFeedContent(...args),
-	getArticleSourceURLClient: (...args: unknown[]) =>
-		mockGetArticleSourceURL(...args),
-}));
+vi.mock("#lib/api/client/articles.js", async (importOriginal) => {
+	const actual = await importOriginal<Record<string, unknown>>();
+	return {
+		...actual,
+		getFeedContentOnTheFlyClient: (...args: unknown[]) =>
+			mockGetFeedContent(...args),
+		getArticleSourceURLClient: (...args: unknown[]) =>
+			mockGetArticleSourceURL(...args),
+	};
+});
 
 const mockTrackHomeActionClient = vi.mocked(trackHomeActionClient);
 const mockGetItemBranches = vi.mocked(getItemBranches);
@@ -82,6 +86,16 @@ beforeEach(async () => {
 		{} as ReturnType<typeof createClientTransport>,
 	);
 });
+
+const mockSpeechPlay = vi.fn();
+const mockSpeechStop = vi.fn();
+vi.mock("#lib/hooks/useSummarySpeech.svelte.js", () => ({
+	createSummarySpeech: () => ({
+		state: "idle",
+		play: mockSpeechPlay,
+		stop: mockSpeechStop,
+	}),
+}));
 
 const mockSummarizerReset = vi.fn();
 let summarizerOverride: Partial<{
@@ -346,6 +360,29 @@ describe("Article page Alt-Paper mobile layout", () => {
 		await expect
 			.element(testPage.getByRole("link", { name: /open original/i }))
 			.toBeInTheDocument();
+	});
+
+	it("renders read-aloud control when summary is complete and calls createSummarySpeech", async () => {
+		summarizerOverride = {
+			summary: "Read aloud summary text.",
+			isSummarizing: false,
+			summaryError: null,
+			buttonState: "success",
+		};
+		mockGetFeedContent.mockResolvedValueOnce({
+			content: "<p>Article body</p>",
+			article_id: "a1",
+		});
+
+		const { unmount } = renderPage();
+
+		const speechBtn = testPage.getByTestId("summary-speech-button");
+		await expect.element(speechBtn).toBeInTheDocument();
+		await speechBtn.click();
+		expect(mockSpeechPlay).toHaveBeenCalledWith("Read aloud summary text.");
+
+		unmount();
+		expect(mockSpeechStop).toHaveBeenCalled();
 	});
 });
 

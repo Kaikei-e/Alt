@@ -3,6 +3,8 @@ import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { getFavoriteFeedsWithCursorClient } from "#lib/api/client/feeds.js";
 import { removeFavoriteFeedClient } from "#lib/api/client/index.js";
+import { openReaderOverlay } from "#lib/reader/reader-overlay.svelte.js";
+import { ReadingSurface } from "#lib/reading/reading-events.js";
 import type { RenderFeed } from "#lib/schema/feed.js";
 
 // Spy-mode automocks keep every export bound and let each test override only
@@ -10,6 +12,15 @@ import type { RenderFeed } from "#lib/schema/feed.js";
 vi.mock("#lib/api/client/feeds.js", { spy: true });
 vi.mock("#lib/api/client/index.js", { spy: true });
 vi.mock("#lib/api/client/articles.js", { spy: true });
+vi.mock("#lib/reader/reader-overlay.svelte.js", () => ({
+	openReaderOverlay: vi.fn(),
+	replaceReaderOverlayItems: vi.fn(),
+	closeReaderOverlay: vi.fn(),
+	updateReaderOverlayArticleId: vi.fn(),
+	navigateReaderOverlay: vi.fn(),
+	getReaderOverlaySession: vi.fn(),
+	resetReaderOverlaySessions: vi.fn(),
+}));
 
 import Page from "./+page.svelte";
 
@@ -35,6 +46,7 @@ async function settle(ms = 80) {
 
 describe("Clippings File page", () => {
 	beforeEach(() => {
+		vi.mocked(openReaderOverlay).mockReset();
 		vi.mocked(getFavoriteFeedsWithCursorClient).mockReset();
 		vi.mocked(getFavoriteFeedsWithCursorClient).mockResolvedValue({
 			data: [clipping],
@@ -127,6 +139,7 @@ const MANY: RenderFeed[] = Array.from({ length: 4 }, (_, i) => ({
 
 describe("Clippings File continuity across a rotation", () => {
 	beforeEach(() => {
+		vi.mocked(openReaderOverlay).mockReset();
 		vi.mocked(getFavoriteFeedsWithCursorClient).mockReset();
 		vi.mocked(getFavoriteFeedsWithCursorClient).mockResolvedValue({
 			data: MANY,
@@ -205,5 +218,35 @@ describe("Clippings File continuity across a rotation", () => {
 		await page.viewport(PORTRAIT.width, PORTRAIT.height);
 		await settle(400);
 		expect(cardCount()).toBe(MANY.length - 1);
+	});
+
+	it("opens the unified reader overlay on mobile Details and desktop card click", async () => {
+		await page.viewport(PORTRAIT.width, PORTRAIT.height);
+		render(Page);
+		await settle(400);
+
+		await page
+			.getByRole("button", { name: `Show details for ${MANY[0]!.title}` })
+			.click();
+
+		expect(openReaderOverlay).toHaveBeenCalledTimes(1);
+		const mobileCtx = vi.mocked(openReaderOverlay).mock.calls[0]?.[0];
+		expect(mobileCtx?.surface).toBe(ReadingSurface.OTHER);
+		expect(mobileCtx?.currentIndex).toBe(0);
+		expect(mobileCtx?.items).toHaveLength(MANY.length);
+		expect(document.querySelector('[role="dialog"]')).toBeNull();
+
+		vi.mocked(openReaderOverlay).mockReset();
+		await page.viewport(1280, 800);
+		await settle(400);
+
+		await page.getByRole("button", { name: `Open ${MANY[1]!.title}` }).click();
+
+		expect(openReaderOverlay).toHaveBeenCalledTimes(1);
+		const desktopCtx = vi.mocked(openReaderOverlay).mock.calls[0]?.[0];
+		expect(desktopCtx?.surface).toBe(ReadingSurface.OTHER);
+		expect(desktopCtx?.currentIndex).toBe(1);
+		expect(desktopCtx?.items?.[1]?.url).toBe(MANY[1]!.normalizedUrl);
+		expect(document.querySelector('[role="dialog"]')).toBeNull();
 	});
 });
