@@ -53,8 +53,9 @@ from .routers import (
 
 logger = structlog.get_logger(__name__)
 
-# Default 64 MiB request body limit
-DEFAULT_MAX_REQUEST_BODY_BYTES = 64 * 1024 * 1024
+# Default 96 MiB request body limit: bounds story-clustering memory, which grows
+# quadratically (~54 B per item pair measured), within the container memory budget.
+DEFAULT_MAX_REQUEST_BODY_BYTES = 96 * 1024 * 1024
 _STRICT_DIGITS_RE = re.compile(rb"[0-9]+")
 
 

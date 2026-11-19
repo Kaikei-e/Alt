@@ -281,7 +281,8 @@ services:
     environment:
       - RECAP_SUBWORKER_DB_PASSWORD_FILE=/run/secrets/recap_db_password
       - RECAP_SUBWORKER_BASE_URL=http://recap-subworker:8002
-      - RECAP_SUBWORKER_MAX_REQUEST_BODY_BYTES=67108864
+      # 96 MiB: bounds quadratic story-clustering memory (~54 B per item pair) within mem_limit 8192m.
+      - RECAP_SUBWORKER_MAX_REQUEST_BODY_BYTES=100663296
       - RECAP_SUBWORKER_MODEL_BACKEND=${RECAP_SUBWORKER_MODEL_BACKEND:-ollama-remote}
       - RECAP_SUBWORKER_MODEL_ID=${RECAP_SUBWORKER_MODEL_ID:-BAAI/bge-m3}
       # Embedding endpoint: routes through embedding-proxy (token-authenticated
