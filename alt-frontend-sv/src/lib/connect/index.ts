@@ -177,7 +177,6 @@ export {
 } from "./morning_letter";
 export {
 	createReadingClient,
-	getReadingTransport,
 	getTheme,
 	listThemes,
 	type ReadingClient,
@@ -195,7 +194,10 @@ export {
 	type ThemeTimelineItem,
 	type ThemeVersionItem,
 } from "./reading";
-export { createKeepaliveTransport } from "./reading-transport";
+export {
+	createKeepaliveTransport,
+	getReadingTransport,
+} from "./reading-transport";
 // RecapService client
 export {
 	createRecapClient,
