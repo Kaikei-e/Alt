@@ -57,6 +57,14 @@ vi.mock("$app/state", () => ({
 	},
 }));
 
+vi.mock("#lib/connect/reading-transport.js", async (importOriginal) => ({
+	...(await importOriginal<
+		typeof import("#lib/connect/reading-transport.js")
+	>()),
+	getReadingTransport: (keepalive = false) =>
+		keepalive ? "keepalive-transport" : "client-transport",
+}));
+
 vi.mock("#lib/connect/reading.js", async (importOriginal) => {
 	const actual =
 		await importOriginal<typeof import("#lib/connect/reading.js")>();
@@ -267,7 +275,11 @@ describe("/knowledge/themes/[themeId] page", () => {
 		await expect.element(page.getByTestId("reader-overlay")).toBeVisible();
 		expect(currentPageURL.pathname).toBe(`/articles/${SRC_2}`);
 		expect(recordThemeOpened).toHaveBeenCalledTimes(1);
-		expect(recordThemeOpened).toHaveBeenCalledWith(THEME_ID, 2);
+		expect(recordThemeOpened).toHaveBeenCalledWith(
+			"keepalive-transport",
+			THEME_ID,
+			2,
+		);
 	});
 
 	it("omits empty sections, hides Versions when only one version exists, and shows older-version notice", async () => {
@@ -318,7 +330,12 @@ describe("/knowledge/themes/[themeId] page", () => {
 		await settle();
 
 		expect(recordThemeOpened).toHaveBeenCalledTimes(1);
-		expect(recordThemeOpened).toHaveBeenNthCalledWith(1, THEME_ID, 2);
+		expect(recordThemeOpened).toHaveBeenNthCalledWith(
+			1,
+			"keepalive-transport",
+			THEME_ID,
+			2,
+		);
 
 		// Switching query param to ?version=1 reloads and records version 1
 		currentPageURL = new URL(
@@ -326,9 +343,19 @@ describe("/knowledge/themes/[themeId] page", () => {
 		);
 		await settle();
 
-		expect(getTheme).toHaveBeenNthCalledWith(2, THEME_ID, 1);
+		expect(getTheme).toHaveBeenNthCalledWith(
+			2,
+			"client-transport",
+			THEME_ID,
+			1,
+		);
 		expect(recordThemeOpened).toHaveBeenCalledTimes(2);
-		expect(recordThemeOpened).toHaveBeenNthCalledWith(2, THEME_ID, 1);
+		expect(recordThemeOpened).toHaveBeenNthCalledWith(
+			2,
+			"keepalive-transport",
+			THEME_ID,
+			1,
+		);
 	});
 
 	it("renders not-found state on Connect Code.NotFound with link back to /knowledge", async () => {

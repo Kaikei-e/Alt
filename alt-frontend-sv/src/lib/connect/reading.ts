@@ -119,7 +119,6 @@ export interface ThemePageData {
 export interface RecordThemeOpenedOptions {
 	clientEventId?: string;
 	openedAt?: Date;
-	transport?: Transport;
 }
 
 function mapThemeSummary(item: ThemeSummary): ThemeSummaryItem {
@@ -248,7 +247,7 @@ export async function getReadTodayQueue(
 }
 
 export async function listThemes(
-	transport: Transport = getReadingTransport(),
+	transport: Transport,
 ): Promise<ThemeSummaryItem[]> {
 	const client = createReadingClient(transport);
 	const response: ListThemesResponse = await client.listThemes({});
@@ -256,9 +255,9 @@ export async function listThemes(
 }
 
 export async function getTheme(
+	transport: Transport,
 	themeId: string,
 	version?: number,
-	transport: Transport = getReadingTransport(),
 ): Promise<ThemePageData> {
 	const client = createReadingClient(transport);
 	const response: GetThemeResponse = await client.getTheme(
@@ -280,14 +279,13 @@ export async function getTheme(
 }
 
 export async function recordThemeOpened(
+	transport: Transport,
 	themeId: string,
 	version: number,
 	options?: RecordThemeOpenedOptions,
 ): Promise<void> {
 	try {
-		const client = createReadingClient(
-			options?.transport ?? getReadingTransport(true),
-		);
+		const client = createReadingClient(transport);
 		await client.recordThemeOpened({
 			themeId,
 			version,

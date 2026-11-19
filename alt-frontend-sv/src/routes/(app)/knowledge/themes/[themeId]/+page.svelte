@@ -5,6 +5,7 @@ import {
 	recordThemeOpened,
 	type ThemePageData,
 } from "#lib/connect/reading.js";
+import { getReadingTransport } from "#lib/connect/reading-transport.js";
 import { openReaderOverlay } from "#lib/reader/reader-overlay.svelte.js";
 import { ReadingSurface } from "#lib/reading/reading-events.js";
 import {
@@ -38,7 +39,7 @@ async function loadThemePage(id: string, version: number | undefined) {
 	theme = null;
 
 	try {
-		const data = await getTheme(id, version);
+		const data = await getTheme(getReadingTransport(), id, version);
 		if (seq !== requestSeq) return;
 		theme = data;
 		loadState = "ready";
@@ -46,7 +47,11 @@ async function loadThemePage(id: string, version: number | undefined) {
 		const key = `${data.themeId}:${data.version}`;
 		if (lastRecordedKey !== key) {
 			lastRecordedKey = key;
-			void recordThemeOpened(data.themeId, data.version);
+			void recordThemeOpened(
+				getReadingTransport(true),
+				data.themeId,
+				data.version,
+			);
 		}
 	} catch (err) {
 		if (seq !== requestSeq) return;

@@ -2,6 +2,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 
+vi.mock("#lib/connect/reading-transport.js", async (importOriginal) => ({
+	...(await importOriginal<
+		typeof import("#lib/connect/reading-transport.js")
+	>()),
+	getReadingTransport: (keepalive = false) =>
+		keepalive ? "keepalive-transport" : "client-transport",
+}));
+
 vi.mock("#lib/connect/reading.js", async (importOriginal) => {
 	const actual =
 		await importOriginal<typeof import("#lib/connect/reading.js")>();
@@ -127,6 +135,7 @@ describe("/knowledge Themes list page", () => {
 		render(Page);
 		await settle();
 
+		expect(listThemes).toHaveBeenCalledWith("client-transport");
 		await expect.element(page.getByTestId("themes-empty")).toBeInTheDocument();
 		await expect
 			.element(

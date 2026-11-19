@@ -1,6 +1,7 @@
 <script lang="ts">
 import { onMount } from "svelte";
 import { listThemes, type ThemeSummaryItem } from "#lib/connect/reading.js";
+import { getReadingTransport } from "#lib/connect/reading-transport.js";
 import {
 	formatThemeListMeta,
 	formatThemeStatusLabel,
@@ -16,7 +17,7 @@ async function loadThemes() {
 	isLoading = true;
 	loadError = false;
 	try {
-		const result = await listThemes();
+		const result = await listThemes(getReadingTransport());
 		if (seq !== requestSeq) return;
 		themes = result;
 	} catch {

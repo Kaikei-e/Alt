@@ -259,15 +259,11 @@ describe("Theme Pages ReadingService Contract", () => {
 				fetch: stubFetch,
 			});
 
-			await getTheme(
-				"01938e82-7c00-7a7b-9b10-100000000001",
-				undefined,
-				transport,
-			);
+			await getTheme(transport, "01938e82-7c00-7a7b-9b10-100000000001");
 			const page = await getTheme(
+				transport,
 				"01938e82-7c00-7a7b-9b10-100000000001",
 				1,
-				transport,
 			);
 
 			expect(JSON.parse(capturedBodies[0] ?? "{}")).toEqual({
@@ -311,9 +307,11 @@ describe("Theme Pages ReadingService Contract", () => {
 				fetch: stubFetch,
 			});
 
-			await recordThemeOpened("01938e82-7c00-7a7b-9b10-100000000001", 2, {
+			await recordThemeOpened(
 				transport,
-			});
+				"01938e82-7c00-7a7b-9b10-100000000001",
+				2,
+			);
 
 			expect(capturedUrl).toBe(
 				"http://127.0.0.1/api/v2/alt.reading.v1.ReadingService/RecordThemeOpened",
@@ -345,8 +343,7 @@ describe("Theme Pages ReadingService Contract", () => {
 			});
 
 			await expect(
-				recordThemeOpened(secretThemeId, 2, {
-					transport,
+				recordThemeOpened(transport, secretThemeId, 2, {
 					clientEventId: secretEventId,
 				}),
 			).resolves.toBeUndefined();
