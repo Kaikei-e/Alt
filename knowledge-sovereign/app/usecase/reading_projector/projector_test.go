@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"sort"
 	"testing"
 	"time"
 
@@ -25,11 +26,23 @@ type fakeQueueRow struct {
 	removedReason string
 }
 
+type frontierReadRecord struct {
+	FirstSeq int64
+	LastSeq  int64
+	Frontier sovereign_db.SequenceGapFrontier
+}
+
 type fakeReadingRepo struct {
-	events     []sovereign_db.KnowledgeEvent
-	checkpoint sovereign_db.ProjectionCheckpoint
-	sources    map[queueKey]sovereign_db.ReadingSource
-	queue      map[queueKey]fakeQueueRow
+	events             []sovereign_db.KnowledgeEvent
+	checkpoint         sovereign_db.ProjectionCheckpoint
+	sources            map[queueKey]sovereign_db.ReadingSource
+	queue              map[queueKey]fakeQueueRow
+	nextXID            int64
+	runningWriterXID   int64
+	frontierReads      []frontierReadRecord
+	beforeFrontierRead func(readIndex int, firstSeq, lastSeq int64)
+	beforeAdvance      func(from sovereign_db.ProjectionCheckpoint, toSeq int64) bool
+	foldedQueueSeqs    []int64
 }
 
 func newFakeReadingRepo(events []sovereign_db.KnowledgeEvent) *fakeReadingRepo {
@@ -37,7 +50,38 @@ func newFakeReadingRepo(events []sovereign_db.KnowledgeEvent) *fakeReadingRepo {
 		events:  events,
 		sources: make(map[queueKey]sovereign_db.ReadingSource),
 		queue:   make(map[queueKey]fakeQueueRow),
+		nextXID: 100,
 	}
+}
+
+func (r *fakeReadingRepo) allocXID() int64 {
+	if r.nextXID == 0 {
+		r.nextXID = 100
+	}
+	r.nextXID++
+	return r.nextXID
+}
+
+func (r *fakeReadingRepo) startWriter() int64 {
+	w := r.allocXID()
+	r.runningWriterXID = w
+	return w
+}
+
+func (r *fakeReadingRepo) insertEventSorted(ev sovereign_db.KnowledgeEvent) {
+	idx := sort.Search(len(r.events), func(i int) bool {
+		return r.events[i].EventSeq >= ev.EventSeq
+	})
+	r.events = append(r.events, sovereign_db.KnowledgeEvent{})
+	copy(r.events[idx+1:], r.events[idx:])
+	r.events[idx] = ev
+}
+
+func (r *fakeReadingRepo) hasEventInRange(firstSeq, lastSeq int64) bool {
+	idx := sort.Search(len(r.events), func(i int) bool {
+		return r.events[i].EventSeq >= firstSeq
+	})
+	return idx < len(r.events) && r.events[idx].EventSeq <= lastSeq
 }
 
 func (r *fakeReadingRepo) ReadProjectionCheckpointForAdvance(_ context.Context, _ string) (sovereign_db.ProjectionCheckpoint, error) {
@@ -45,6 +89,9 @@ func (r *fakeReadingRepo) ReadProjectionCheckpointForAdvance(_ context.Context, 
 }
 
 func (r *fakeReadingRepo) AdvanceProjectionCheckpointIfUnchanged(_ context.Context, _ string, from sovereign_db.ProjectionCheckpoint, toSeq int64) (bool, error) {
+	if r.beforeAdvance != nil && !r.beforeAdvance(from, toSeq) {
+		return false, nil
+	}
 	if r.checkpoint.LastEventSeq != from.LastEventSeq {
 		return false, nil
 	}
@@ -54,20 +101,42 @@ func (r *fakeReadingRepo) AdvanceProjectionCheckpointIfUnchanged(_ context.Conte
 }
 
 func (r *fakeReadingRepo) ListKnowledgeEventsSince(_ context.Context, afterSeq int64, limit int) ([]sovereign_db.KnowledgeEvent, error) {
-	var out []sovereign_db.KnowledgeEvent
-	for _, ev := range r.events {
-		if ev.EventSeq > afterSeq {
-			out = append(out, ev)
-			if len(out) >= limit {
-				break
-			}
-		}
+	start := sort.Search(len(r.events), func(i int) bool {
+		return r.events[i].EventSeq > afterSeq
+	})
+	if start >= len(r.events) {
+		return nil, nil
 	}
+	end := start + limit
+	if end > len(r.events) {
+		end = len(r.events)
+	}
+	out := make([]sovereign_db.KnowledgeEvent, end-start)
+	copy(out, r.events[start:end])
 	return out, nil
 }
 
-func (r *fakeReadingRepo) ReadSequenceGapFrontier(_ context.Context, _, _ int64) (sovereign_db.SequenceGapFrontier, error) {
-	return sovereign_db.SequenceGapFrontier{}, nil
+func (r *fakeReadingRepo) ReadSequenceGapFrontier(_ context.Context, firstSeq, lastSeq int64) (sovereign_db.SequenceGapFrontier, error) {
+	readIdx := len(r.frontierReads) + 1
+	if r.beforeFrontierRead != nil {
+		r.beforeFrontierRead(readIdx, firstSeq, lastSeq)
+	}
+	ceiling := r.allocXID()
+	xmin := ceiling
+	if r.runningWriterXID > 0 {
+		xmin = r.runningWriterXID
+	}
+	f := sovereign_db.SequenceGapFrontier{
+		Ceiling:  ceiling,
+		Xmin:     xmin,
+		HoleOpen: !r.hasEventInRange(firstSeq, lastSeq),
+	}
+	r.frontierReads = append(r.frontierReads, frontierReadRecord{
+		FirstSeq: firstSeq,
+		LastSeq:  lastSeq,
+		Frontier: f,
+	})
+	return f, nil
 }
 
 func (r *fakeReadingRepo) UpsertReadingSource(_ context.Context, src sovereign_db.ReadingSource) error {
@@ -89,6 +158,7 @@ func (r *fakeReadingRepo) UpsertReadingSource(_ context.Context, src sovereign_d
 }
 
 func (r *fakeReadingRepo) UpsertReadingQueueItem(_ context.Context, item sovereign_db.ReadingQueueItem) error {
+	r.foldedQueueSeqs = append(r.foldedQueueSeqs, item.LastEventSeq)
 	k := queueKey{userID: item.UserID, articleID: item.ArticleID}
 	if cur, ok := r.queue[k]; ok {
 		if cur.item.LastEventSeq > item.LastEventSeq {
