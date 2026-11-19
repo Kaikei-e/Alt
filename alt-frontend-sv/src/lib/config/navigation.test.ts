@@ -1,3 +1,4 @@
+import { Layers } from "@lucide/svelte";
 import { describe, expect, it } from "vitest";
 import {
 	getVisibleMobileMenuSections,
@@ -10,22 +11,22 @@ describe("NAV_TABS", () => {
 		expect(NAV_TABS).toHaveLength(5);
 	});
 
-	it("has Home, Trail, Search, Augur, Menu in order", () => {
+	it("has Today, Swipe, Gallery, Search, Menu in order", () => {
 		expect(NAV_TABS.map((t) => t.label)).toEqual([
-			"Home",
-			"Trail",
+			"Today",
+			"Swipe",
+			"Gallery",
 			"Search",
-			"Augur",
 			"Menu",
 		]);
 	});
 
 	it("maps labels to expected hrefs", () => {
 		expect(NAV_TABS.map((t) => t.href)).toEqual([
-			"/home",
-			"/knowledge/trail",
+			"/today",
+			"/feeds/swipe/visual-preview",
+			"/feeds/visual-preview",
 			"/search",
-			"/augur",
 			"/menu",
 		]);
 	});
@@ -34,6 +35,11 @@ describe("NAV_TABS", () => {
 		for (const tab of NAV_TABS) {
 			expect(tab.icon).toBeDefined();
 		}
+	});
+
+	it("uses Layers icon for Swipe tab", () => {
+		const swipeTab = NAV_TABS.find((t) => t.label === "Swipe");
+		expect(swipeTab?.icon).toBe(Layers);
 	});
 });
 
@@ -45,16 +51,21 @@ describe("MOBILE_MENU_SECTIONS", () => {
 		}
 	});
 
-	it("absorbs the FloatingMenu orphan items", () => {
+	it("includes moved primary routes (Home, Trail, Augur) and omits Swipe and Gallery", () => {
 		const hrefs = MOBILE_MENU_SECTIONS.flatMap((s) =>
 			s.items.map((i) => i.href),
 		);
+		expect(hrefs).toContain("/home");
+		expect(hrefs).toContain("/knowledge/trail");
+		expect(hrefs).toContain("/augur");
+		expect(hrefs).not.toContain("/feeds/swipe/visual-preview");
+		expect(hrefs).not.toContain("/feeds/visual-preview");
+		expect(hrefs).not.toContain("/today");
+		expect(hrefs).not.toContain("/feeds/swipe");
 		expect(hrefs).toContain("/recap");
 		expect(hrefs).toContain("/recap/morning-letter");
 		expect(hrefs).not.toContain("/recap/evening-pulse");
 		expect(hrefs).toContain("/recap/job-status");
-		expect(hrefs).toContain("/feeds/swipe");
-		expect(hrefs).toContain("/feeds/swipe/visual-preview");
 		expect(hrefs).toContain("/feeds");
 		expect(hrefs).toContain("/feeds/favorites");
 		expect(hrefs).toContain("/feeds/viewed");
@@ -64,16 +75,6 @@ describe("MOBILE_MENU_SECTIONS", () => {
 		expect(hrefs).toContain("/stats");
 		expect(hrefs).toContain("/settings/feeds");
 		expect(hrefs).toContain("/admin/monitor");
-	});
-
-	it("reaches the visual-preview gallery", () => {
-		// The route has a mobile layout of its own now (a two-column thumbnail
-		// gallery). Without a menu entry it is only reachable by typing the URL,
-		// which on a phone means not at all.
-		const hrefs = MOBILE_MENU_SECTIONS.flatMap((s) =>
-			s.items.map((i) => i.href),
-		);
-		expect(hrefs).toContain("/feeds/visual-preview");
 	});
 
 	it("does not duplicate primary tab destinations", () => {

@@ -37,4 +37,13 @@ describe("resolveResponsiveRedirect", () => {
 			resolveResponsiveRedirect("/desktop/feeds/search", "?q=LLM&page=2"),
 		).toBe("/feeds/search?q=LLM&page=2");
 	});
+
+	it("redirects /feeds/swipe and /mobile/feeds/swipe to /feeds/swipe/visual-preview", () => {
+		expect(resolveResponsiveRedirect("/feeds/swipe", "")).toBe(
+			"/feeds/swipe/visual-preview",
+		);
+		expect(resolveResponsiveRedirect("/mobile/feeds/swipe", "")).toBe(
+			"/feeds/swipe/visual-preview",
+		);
+	});
 });

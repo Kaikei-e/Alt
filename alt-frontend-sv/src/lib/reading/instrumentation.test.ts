@@ -162,9 +162,10 @@ describe("reading-instrumentation", () => {
 		const send = vi.fn<SendFn>().mockResolvedValue(undefined);
 		const instrumentation = createReadingInstrumentation({ send });
 
+		const artId = "01938e82-7c00-7a7b-9b10-000000000167";
 		instrumentation.recordSurfaceViewed(ReadingSurface.GALLERY);
 		const session = instrumentation.startSession({
-			articleId: "art-1",
+			articleId: artId,
 			surface: ReadingSurface.GALLERY,
 			bodyLengthChars: 1234,
 			dwell: { stop: () => 4200 },
@@ -190,7 +191,7 @@ describe("reading-instrumentation", () => {
 		expect(events[2]?.event).toMatchObject({
 			case: "sessionEnded",
 			value: {
-				articleId: "art-1",
+				articleId: artId,
 				surface: ReadingSurface.GALLERY,
 				activeDwellMs: 4200n,
 				maxScrollRatio: 0.8,
@@ -211,8 +212,9 @@ describe("reading-instrumentation", () => {
 		expect(targets.doc.addEventListener).toHaveBeenCalledTimes(1);
 		expect(targets.win.addEventListener).toHaveBeenCalledTimes(1);
 
+		const artHiddenId = "01938e82-7c00-7a7b-9b10-000000000215";
 		const session = instrumentation.startSession({
-			articleId: "art-hidden",
+			articleId: artHiddenId,
 			surface: ReadingSurface.SWIPE,
 			bodyLengthChars: 800,
 			dwell: { stop: () => 2500 },
@@ -229,7 +231,7 @@ describe("reading-instrumentation", () => {
 		expect(send.mock.calls[0]?.[0]?.[0]?.event).toMatchObject({
 			case: "sessionEnded",
 			value: {
-				articleId: "art-hidden",
+				articleId: artHiddenId,
 				surface: ReadingSurface.SWIPE,
 				activeDwellMs: 2500n,
 			},
@@ -390,8 +392,9 @@ describe("reading-instrumentation", () => {
 			thresholds = [];
 		}
 
+		const artResumeElId = "01938e82-7c00-7a7b-9b10-000000000394";
 		const cleanup = attachElementReadingSession({
-			articleId: "art-resume-el",
+			articleId: artResumeElId,
 			surface: ReadingSurface.GALLERY,
 			bodyElement: { textContent: "Hello world body text" },
 			scrollContainer,
@@ -416,7 +419,7 @@ describe("reading-instrumentation", () => {
 		expect(send.mock.calls[0]?.[0]?.[0]?.event).toMatchObject({
 			case: "sessionEnded",
 			value: {
-				articleId: "art-resume-el",
+				articleId: artResumeElId,
 				surface: ReadingSurface.GALLERY,
 				activeDwellMs: 3000n,
 				maxScrollRatio: 0.5,
@@ -454,7 +457,7 @@ describe("reading-instrumentation", () => {
 		expect(secondBatch[1]?.event).toMatchObject({
 			case: "sessionEnded",
 			value: {
-				articleId: "art-resume-el",
+				articleId: artResumeElId,
 				surface: ReadingSurface.GALLERY,
 				activeDwellMs: 1500n,
 				maxScrollRatio: 0.8,
@@ -506,8 +509,9 @@ describe("reading-instrumentation", () => {
 			thresholds = [];
 		}
 
+		const artResumeWinId = "01938e82-7c00-7a7b-9b10-000000000510";
 		const cleanup = attachWindowReadingSession({
-			articleId: "art-resume-win",
+			articleId: artResumeWinId,
 			surface: ReadingSurface.ARTICLE_PAGE,
 			bodyElement: { textContent: "Window body content" },
 			endSentinel: {} as Element,
@@ -532,7 +536,7 @@ describe("reading-instrumentation", () => {
 		expect(send.mock.calls[0]?.[0]?.[0]?.event).toMatchObject({
 			case: "sessionEnded",
 			value: {
-				articleId: "art-resume-win",
+				articleId: artResumeWinId,
 				activeDwellMs: 2000n,
 				maxScrollRatio: 0.5,
 			},
@@ -550,7 +554,7 @@ describe("reading-instrumentation", () => {
 		expect(send.mock.calls[1]?.[0]?.[0]?.event).toMatchObject({
 			case: "sessionEnded",
 			value: {
-				articleId: "art-resume-win",
+				articleId: artResumeWinId,
 				surface: ReadingSurface.ARTICLE_PAGE,
 				activeDwellMs: 1200n,
 				maxScrollRatio: 0.5,
@@ -559,5 +563,42 @@ describe("reading-instrumentation", () => {
 		});
 
 		stopLifecycle();
+	});
+
+	it("records opened event and forwards readArticleIds to instrumentation and session callbacks", async () => {
+		const artOpenId = "01938e82-7c00-7a7b-9b10-000000000579";
+		const onGlobalRead = vi.fn();
+		const onSessionRead = vi.fn();
+		const send = vi.fn(
+			async (_events: ReadingEvent[], _opts: { keepalive: boolean }) => ({
+				accepted: 2,
+				duplicates: 0,
+				readArticleIds: [artOpenId],
+			}),
+		);
+		const instrumentation = createReadingInstrumentation({
+			send,
+			onReadArticleIds: onGlobalRead,
+		});
+
+		instrumentation.recordArticleOpened(artOpenId, ReadingSurface.GALLERY);
+		const session = instrumentation.startSession({
+			articleId: artOpenId,
+			surface: ReadingSurface.GALLERY,
+			bodyLengthChars: 500,
+			dwell: { stop: () => 5000 },
+			onReadArticleIds: onSessionRead,
+		});
+
+		session?.endAndFlush();
+		await vi.waitFor(() => expect(onGlobalRead).toHaveBeenCalledTimes(1));
+
+		expect(onGlobalRead).toHaveBeenCalledWith([artOpenId]);
+		expect(onSessionRead).toHaveBeenCalledWith([artOpenId]);
+		const events = send.mock.calls[0]?.[0] ?? [];
+		expect(events.map((e: ReadingEvent) => e.event.case)).toEqual([
+			"opened",
+			"sessionEnded",
+		]);
 	});
 });

@@ -22,11 +22,16 @@ vi.mock("$app/state", () => ({
 	page: {
 		url: new URL("http://localhost/home"),
 		params: {},
+		state: {},
 	},
 }));
 
 vi.mock("$app/navigation", () => ({
 	afterNavigate: vi.fn(),
+	beforeNavigate: vi.fn(),
+	goto: vi.fn().mockResolvedValue(undefined),
+	pushState: vi.fn(),
+	replaceState: vi.fn(),
 }));
 
 vi.mock("#lib/stores/loading.svelte.js", () => ({

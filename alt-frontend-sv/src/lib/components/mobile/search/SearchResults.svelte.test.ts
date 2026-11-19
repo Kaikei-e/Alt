@@ -1,22 +1,23 @@
-import { page } from "@vitest/browser/context";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
+import { openReaderOverlay } from "#lib/reader/reader-overlay.svelte.js";
+import { ReadingSurface } from "#lib/reading/reading-events.js";
 import { searchResultsFixture } from "../../../../../tests/fixtures/search";
 import SearchResults from "./SearchResults.svelte";
 
 vi.mock("#lib/api/client/index.js", () => ({
 	searchFeedsClient: vi.fn(),
-	getArticleSummaryClient: vi.fn(() =>
-		Promise.resolve({ matched_articles: [] }),
-	),
-	getFeedContentOnTheFlyClient: vi.fn(() =>
-		Promise.resolve({
-			content: "<p>Full article body paragraph.</p>",
-			article_id: "article-123",
-			og_image_url: "",
-			og_image_proxy_url: "",
-		}),
-	),
+}));
+
+vi.mock("#lib/reader/reader-overlay.svelte.js", () => ({
+	openReaderOverlay: vi.fn(),
+	replaceReaderOverlayItems: vi.fn(),
+	closeReaderOverlay: vi.fn(),
+	updateReaderOverlayArticleId: vi.fn(),
+	navigateReaderOverlay: vi.fn(),
+	getReaderOverlaySession: vi.fn(),
+	resetReaderOverlaySessions: vi.fn(),
 }));
 
 vi.mock("#lib/utils/transformFeedSearchResult.js", () => ({
@@ -93,5 +94,21 @@ describe("SearchResults Alt-Paper compliance", () => {
 		await expect
 			.element(page.getByText(/No more results/i))
 			.toBeInTheDocument();
+	});
+
+	it("opens the unified reader overlay when a result DETAILS button is clicked", async () => {
+		render(SearchResults, { props: baseProps() });
+
+		await page
+			.getByRole("button", { name: /^details$/i })
+			.nth(1)
+			.click();
+
+		expect(openReaderOverlay).toHaveBeenCalledTimes(1);
+		const ctx = vi.mocked(openReaderOverlay).mock.calls[0]?.[0];
+		expect(ctx?.surface).toBe(ReadingSurface.OTHER);
+		expect(ctx?.currentIndex).toBe(1);
+		expect(ctx?.items).toHaveLength(searchResultsFixture.length);
+		expect(ctx?.items?.[1]?.url).toBe(searchResultsFixture[1]!.link);
 	});
 });

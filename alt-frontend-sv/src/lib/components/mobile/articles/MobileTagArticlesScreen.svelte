@@ -6,6 +6,9 @@ import {
 	fetchArticlesByTag,
 	type TagTrailArticle,
 } from "#lib/connect/index.js";
+import { tagTrailArticleToReaderItem } from "#lib/reader/mappers.js";
+import { openReaderOverlay } from "#lib/reader/reader-overlay.svelte.js";
+import { ReadingSurface } from "#lib/reading/instrumentation.js";
 import { sanitizeHrefUrl } from "#lib/utils/urlSafety.js";
 import { browser } from "$app/env";
 
@@ -95,6 +98,14 @@ function formatDate(dateStr: string): string {
 	const date = new Date(dateStr);
 	return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
+
+function handleOpenArticle(index: number) {
+	openReaderOverlay({
+		surface: ReadingSurface.OTHER,
+		items: articles.map(tagTrailArticleToReaderItem),
+		currentIndex: index,
+	});
+}
 </script>
 
 <div class="flex flex-col h-full" style="background: var(--app-bg);">
@@ -125,7 +136,7 @@ function formatDate(dateStr: string): string {
 			</div>
 		{:else}
 			<div class="flex flex-col gap-3" data-testid="article-list">
-				{#each articles as article (article.id)}
+				{#each articles as article, i (article.id)}
 					<div
 						class="p-3 rounded-xl border"
 						style="background: var(--surface-bg); border-color: var(--surface-border);"
@@ -143,12 +154,25 @@ function formatDate(dateStr: string): string {
 								>
 									{article.title}
 								</a>
-								<div class="flex items-center gap-2 mt-1">
-									{#if article.feedTitle}
-										<span class="text-xs" style="color: var(--text-secondary);">{article.feedTitle}</span>
-										<span style="color: var(--text-secondary);">·</span>
+								<div class="flex items-center justify-between gap-2 mt-1">
+									<div class="flex items-center gap-2 min-w-0">
+										{#if article.feedTitle}
+											<span class="text-xs truncate" style="color: var(--text-secondary);">{article.feedTitle}</span>
+											<span style="color: var(--text-secondary);">·</span>
+										{/if}
+										<span class="text-xs" style="color: var(--text-secondary);">{formatDate(article.publishedAt)}</span>
+									</div>
+									{#if sanitizeHrefUrl(article.link)}
+										<button
+											type="button"
+											onclick={() => handleOpenArticle(i)}
+											class="text-xs font-semibold uppercase tracking-wider px-2.5 py-1 border min-h-[36px] shrink-0"
+											style="color: var(--text-primary); border-color: var(--surface-border);"
+											aria-label="Show details for {article.title}"
+										>
+											Details
+										</button>
 									{/if}
-									<span class="text-xs" style="color: var(--text-secondary);">{formatDate(article.publishedAt)}</span>
 								</div>
 							</div>
 						</div>

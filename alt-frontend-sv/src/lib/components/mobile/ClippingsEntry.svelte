@@ -1,16 +1,15 @@
 <script lang="ts">
 import type { RenderFeed } from "#lib/schema/feed.js";
-import FeedDetails from "./FeedDetails.svelte";
 
 interface Props {
 	feed: RenderFeed;
 	onRemove?: (feedUrl: string) => void;
+	onSelect?: (feed: RenderFeed) => void;
 }
 
-const { feed, onRemove }: Props = $props();
+const { feed, onRemove, onSelect }: Props = $props();
 
 let isRemoving = $state(false);
-let isDetailsOpen = $state(false);
 
 const isRead = $derived(feed.isRead ?? false);
 
@@ -59,7 +58,8 @@ const handleRemove = async () => {
 
 		<div class="clipping-actions">
 			<button
-				onclick={() => { isDetailsOpen = true; }}
+				type="button"
+				onclick={() => onSelect?.(feed)}
 				class="action-btn"
 				aria-label="Show details for {feed.title}"
 			>
@@ -89,13 +89,6 @@ const handleRemove = async () => {
 		</div>
 	</div>
 </article>
-
-<FeedDetails
-	feedURL={feed.link}
-	feedTitle={feed.title}
-	bind:open={isDetailsOpen}
-	showButton={false}
-/>
 
 <style>
 	.clipping-entry {

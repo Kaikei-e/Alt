@@ -1,13 +1,19 @@
 import {
 	type ConnectFeedItem,
 	type ConnectFeedSource,
+	type FeedInflowStatsResult,
 	getAllFeeds,
 	getFavoriteFeeds,
+	getFeedInflowStats,
 	getReadFeeds,
 	getUnreadFeeds,
 	listSubscriptions,
+	markAsRead,
+	type SetSubscriptionDailyCapResult,
 	searchFeeds as searchFeedsConnect,
+	setSubscriptionDailyCap,
 } from "#lib/connect/feeds.js";
+import { createKeepaliveTransport } from "#lib/connect/reading-transport.js";
 import { createClientTransport } from "#lib/connect/transport-client.js";
 import type { RenderFeed } from "#lib/schema/feed.js";
 import type { FeedSearchResult, SearchFeedItem } from "#lib/schema/search.js";
@@ -123,9 +129,11 @@ export async function getFavoriteFeedsWithCursorClient(
  */
 export async function updateFeedReadStatusClient(
 	feedUrl: string,
+	options?: { keepalive?: boolean },
 ): Promise<void> {
-	const transport = createClientTransport();
-	const { markAsRead } = await import("#lib/connect/feeds.js");
+	const transport = options?.keepalive
+		? createKeepaliveTransport()
+		: createClientTransport();
 	await markAsRead(transport, feedUrl);
 }
 
@@ -297,4 +305,23 @@ export async function unsubscribeClient(feedLinkId: string): Promise<string> {
 	const transport = createClientTransport();
 	const { unsubscribe } = await import("#lib/connect/feeds.js");
 	return unsubscribe(transport, feedLinkId);
+}
+
+/**
+ * 購読中フィードの直近30日流入・読了統計を取得（クライアントサイド）
+ */
+export async function getFeedInflowStatsClient(): Promise<FeedInflowStatsResult> {
+	const transport = createClientTransport();
+	return getFeedInflowStats(transport);
+}
+
+/**
+ * 購読フィードの日次未読上限を設定または解除（クライアントサイド）
+ */
+export async function setSubscriptionDailyCapClient(
+	feedLinkId: string,
+	dailyCap?: number,
+): Promise<SetSubscriptionDailyCapResult> {
+	const transport = createClientTransport();
+	return setSubscriptionDailyCap(transport, feedLinkId, dailyCap);
 }

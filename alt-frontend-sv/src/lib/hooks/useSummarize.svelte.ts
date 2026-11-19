@@ -1,7 +1,5 @@
 /**
  * Reusable summarize hook for streaming AI summarization.
- *
- * Extracts the summarize logic from FeedDetailModal into a reusable hook.
  */
 
 import {

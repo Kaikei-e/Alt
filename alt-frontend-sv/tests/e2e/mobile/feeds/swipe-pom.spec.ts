@@ -16,31 +16,6 @@ import { MobileSwipePage } from "../../pages/mobile/MobileSwipePage";
 import { fulfillError, fulfillJson } from "../../utils/mockHelpers";
 
 // Test data
-const MOCK_FEEDS = {
-	data: [
-		{
-			id: "feed-1",
-			title: "Test Article One",
-			description: "Description for first test article.",
-			link: "https://example.com/article-1",
-			published: "2025-01-15",
-			createdAt: new Date().toISOString(),
-			author: "Test Author",
-		},
-		{
-			id: "feed-2",
-			title: "Test Article Two",
-			description: "Description for second test article.",
-			link: "https://example.com/article-2",
-			published: "2025-01-14",
-			createdAt: new Date().toISOString(),
-			author: "Another Author",
-		},
-	],
-	nextCursor: "next-cursor",
-	hasMore: true,
-};
-
 const EMPTY_FEEDS = {
 	data: [],
 	nextCursor: "",
@@ -53,9 +28,9 @@ test.describe("Mobile Swipe Feed - Page Object Model Tests", () => {
 	test.beforeEach(async ({ page }) => {
 		swipePage = new MobileSwipePage(page);
 
-		// Setup default mocks
+		// Setup default mocks (+page.server.ts provides the 2 SSR cards "AI Trends" and "Svelte 5 Tips")
 		await page.route(CONNECT_RPC_PATHS.getUnreadFeeds, (route) =>
-			fulfillJson(route, MOCK_FEEDS),
+			fulfillJson(route, EMPTY_FEEDS),
 		);
 		await page.route(CONNECT_RPC_PATHS.getReadFeeds, (route) =>
 			fulfillJson(route, CONNECT_READ_FEEDS_EMPTY_RESPONSE),
@@ -73,19 +48,17 @@ test.describe("Mobile Swipe Feed - Page Object Model Tests", () => {
 			// Web-first assertion (auto-retrying) instead of a one-shot
 			// textContent() read wrapped in expect(...).toContain(...).
 			await expect(swipePage.swipeCard.locator("h2")).toContainText(
-				"Test Article One",
+				"AI Trends",
 			);
 		});
 
-		test("displays action footer with buttons", async () => {
+		test("displays Pass and Read today buttons under the card", async () => {
 			await swipePage.goto();
 			await swipePage.waitForPageReady();
 
-			// Web-first assertion (auto-retrying) instead of a synchronous
-			// isVisible() read wrapped in expect(...).toBe(...).
 			await expect(swipePage.actionFooter).toBeVisible();
-			await expect(swipePage.articleButton).toBeVisible();
-			await expect(swipePage.summaryButton).toBeVisible();
+			await expect(swipePage.passButton).toBeVisible();
+			await expect(swipePage.queueButton).toBeVisible();
 		});
 
 		test("external link has correct URL", async () => {
@@ -95,7 +68,7 @@ test.describe("Mobile Swipe Feed - Page Object Model Tests", () => {
 			const link = swipePage.getExternalLink();
 			await expect(link).toHaveAttribute(
 				"href",
-				"https://example.com/article-1",
+				"https://example.com/ai-trends",
 			);
 		});
 	});
@@ -112,8 +85,8 @@ test.describe("Mobile Swipe Feed - Page Object Model Tests", () => {
 			await swipePage.goto();
 			await swipePage.waitForPageReady();
 
-			await expect(swipePage.articleButton).toHaveAccessibleName(/article/i);
-			await expect(swipePage.summaryButton).toHaveAccessibleName(/summary/i);
+			await expect(swipePage.passButton).toHaveAccessibleName("Pass");
+			await expect(swipePage.queueButton).toHaveAccessibleName("Read today");
 		});
 	});
 
@@ -142,66 +115,71 @@ test.describe("Mobile Swipe Feed - Page Object Model Tests", () => {
 			await expect.poll(() => markAsReadCalled, { timeout: 5000 }).toBe(true);
 		});
 
-		test("swipe right marks article as read", async ({ page }) => {
+		test("swipe right queues article for Read today without marking read", async ({
+			page,
+		}) => {
 			let markAsReadCalled = false;
+			let queueArticleCalled = false;
 			await page.route(CONNECT_RPC_PATHS.markAsRead, (route) => {
 				markAsReadCalled = true;
 				return fulfillJson(route, CONNECT_MARK_AS_READ_RESPONSE);
+			});
+			await page.route(CONNECT_RPC_PATHS.getReadTodayQueue, (route) =>
+				fulfillJson(route, { items: [], cap: 7, readCountSince: 0 }),
+			);
+			await page.route(CONNECT_RPC_PATHS.queueArticle, (route) => {
+				queueArticleCalled = true;
+				return fulfillJson(route, {
+					outcome: "QUEUE_ARTICLE_OUTCOME_QUEUED",
+					items: [],
+					cap: 7,
+				});
 			});
 
 			await swipePage.goto();
 			await swipePage.waitForPageReady();
 
 			await swipePage.swipeRight();
-			// Let the dismiss animation finish and the next card mount;
-			// the first dismissal is held in the undo window, not committed.
 			await page.waitForTimeout(500);
+			expect(queueArticleCalled).toBe(false);
 			expect(markAsReadCalled).toBe(false);
 
 			await swipePage.swipeRight();
 
-			await expect.poll(() => markAsReadCalled, { timeout: 5000 }).toBe(true);
+			await expect.poll(() => queueArticleCalled, { timeout: 5000 }).toBe(true);
+			expect(markAsReadCalled).toBe(false);
 		});
 	});
 
 	test.describe("button interactions", () => {
-		test("Article button is clickable and page remains stable", async () => {
+		test("tapping card opens reader overlay and Back restores the card", async ({
+			page,
+		}) => {
 			await swipePage.goto();
 			await swipePage.waitForPageReady();
 
-			// Click Article button
-			await swipePage.articleButton.click();
+			await swipePage.toggleArticleContent();
 
-			// Page should remain stable - swipe card should still be visible
+			const overlay = page.getByTestId("reader-overlay");
+			await expect(overlay).toBeVisible();
+
+			await page.getByTestId("reader-overlay-close").click();
+			await expect(overlay).toBeHidden();
 			await expect(swipePage.swipeCard).toBeVisible();
-
-			// Action footer should still be visible
-			await expect(swipePage.actionFooter).toBeVisible();
-		});
-
-		test("Summary button is clickable and page remains stable", async () => {
-			await swipePage.goto();
-			await swipePage.waitForPageReady();
-
-			// Click Summary button
-			await swipePage.summaryButton.click();
-
-			// Page should remain stable - swipe card should still be visible
-			await expect(swipePage.swipeCard).toBeVisible();
-
-			// Action footer should still be visible
-			await expect(swipePage.actionFooter).toBeVisible();
 		});
 	});
 
 	test.describe("empty state", () => {
 		test("handles empty feed list gracefully", async ({ page }) => {
-			// Override with empty feeds
-			await page.route(CONNECT_RPC_PATHS.getUnreadFeeds, (route) =>
-				fulfillJson(route, EMPTY_FEEDS),
-			);
-
 			await swipePage.goto();
+			await swipePage.waitForPageReady();
+
+			// Exhaust both SSR cards while cursor pagination returns EMPTY_FEEDS.
+			await swipePage.swipeLeft();
+			await expect(swipePage.swipeCard.locator("h2")).toContainText(
+				"Svelte 5 Tips",
+			);
+			await swipePage.swipeLeft();
 
 			// SwipeFeedScreen renders its "No more feeds" empty state when
 			// there is no active feed and no error.
@@ -213,11 +191,20 @@ test.describe("Mobile Swipe Feed - Page Object Model Tests", () => {
 
 	test.describe("error handling", () => {
 		test("handles API error gracefully", async ({ page }) => {
+			await swipePage.goto();
+			await swipePage.waitForPageReady();
+
+			await swipePage.swipeLeft();
+			await expect(swipePage.swipeCard.locator("h2")).toContainText(
+				"Svelte 5 Tips",
+			);
+			await swipePage.swipeLeft();
+			await expect(page.getByText("No more feeds")).toBeVisible();
+
 			await page.route(CONNECT_RPC_PATHS.getUnreadFeeds, (route) =>
 				fulfillError(route, "Internal Server Error", 500),
 			);
-
-			await swipePage.goto();
+			await page.getByRole("button", { name: "Refresh" }).click();
 
 			// SwipeFeedScreen surfaces a distinct error state (not the
 			// generic empty state) with a retry action.
@@ -234,11 +221,18 @@ test.describe("Mobile Swipe Feed - Page Object Model Tests", () => {
 			await swipePage.goto();
 			await swipePage.waitForPageReady();
 
-			// Toggle article content - should handle error gracefully
+			// Card 1 ("AI Trends") is SSR-seeded in articlePrefetcher; swipe to
+			// Card 2 ("Svelte 5 Tips") which fetches article content on open.
+			await swipePage.swipeLeft();
+			await expect(swipePage.swipeCard.locator("h2")).toContainText(
+				"Svelte 5 Tips",
+			);
+
 			await swipePage.toggleArticleContent();
 
-			// Should not crash the page
-			await expect(swipePage.swipeCard).toBeVisible();
+			const overlay = page.getByTestId("reader-overlay");
+			await expect(overlay).toBeVisible();
+			await expect(overlay.getByTestId("article-content-failed")).toBeVisible();
 		});
 	});
 });

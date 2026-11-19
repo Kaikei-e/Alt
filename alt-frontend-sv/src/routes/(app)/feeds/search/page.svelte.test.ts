@@ -15,11 +15,22 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import { searchFeedsClient } from "#lib/api/client/feeds.js";
+import { openReaderOverlay } from "#lib/reader/reader-overlay.svelte.js";
+import { ReadingSurface } from "#lib/reading/reading-events.js";
 
 // Only the leaf module is mocked: `#lib/api/client/index.js` re-exports from it, so
 // mocking both would give the two import paths two different spies and the
 // component under test would call the one the assertions do not watch.
 vi.mock("#lib/api/client/feeds.js", { spy: true });
+vi.mock("#lib/reader/reader-overlay.svelte.js", () => ({
+	openReaderOverlay: vi.fn(),
+	replaceReaderOverlayItems: vi.fn(),
+	closeReaderOverlay: vi.fn(),
+	updateReaderOverlayArticleId: vi.fn(),
+	navigateReaderOverlay: vi.fn(),
+	getReaderOverlaySession: vi.fn(),
+	resetReaderOverlaySessions: vi.fn(),
+}));
 vi.mock("$app/state", () => ({
 	page: { url: new URL("http://localhost/feeds/search") },
 }));
@@ -43,6 +54,7 @@ async function settle(ms = 250) {
 
 describe("Archive Desk search continuity across a rotation", () => {
 	beforeEach(() => {
+		vi.mocked(openReaderOverlay).mockReset();
 		vi.mocked(searchFeedsClient).mockReset();
 		vi.mocked(searchFeedsClient).mockResolvedValue({
 			results: [HIT],
@@ -91,5 +103,24 @@ describe("Archive Desk search continuity across a rotation", () => {
 		// Two boxes over one query. Rotating mid-search used to hand the reader
 		// an empty field and no way to tell what they had been looking for.
 		await expect.element(page.getByRole("searchbox")).toHaveValue("runes");
+	});
+
+	it("opens the unified reader overlay on desktop search result click", async () => {
+		await page.viewport(1280, 800);
+		render(Page);
+		await settle(300);
+
+		await page.getByRole("searchbox").fill("runes");
+		await page.getByRole("button", { name: "SEARCH" }).click();
+		await settle(500);
+
+		await page.getByRole("button", { name: `Open ${HIT.title}` }).click();
+
+		expect(openReaderOverlay).toHaveBeenCalledTimes(1);
+		const ctx = vi.mocked(openReaderOverlay).mock.calls[0]?.[0];
+		expect(ctx?.surface).toBe(ReadingSurface.OTHER);
+		expect(ctx?.currentIndex).toBe(0);
+		expect(ctx?.items?.[0]?.url).toBe(HIT.link);
+		expect(document.querySelector('[role="dialog"]')).toBeNull();
 	});
 });

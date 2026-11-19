@@ -1,14 +1,14 @@
 <script lang="ts">
 import type { RenderFeed } from "#lib/schema/feed.js";
-import FeedDetails from "./FeedDetails.svelte";
 
 interface Props {
 	feed: RenderFeed;
 	isReadStatus: boolean;
 	setIsReadStatus: (feedLink: string) => void;
+	onSelect?: (feed: RenderFeed) => void;
 }
 
-const { feed, isReadStatus, setIsReadStatus }: Props = $props();
+const { feed, isReadStatus, setIsReadStatus, onSelect }: Props = $props();
 
 const handleReadStatus = () => {
 	setIsReadStatus(feed.normalizedUrl);
@@ -49,7 +49,14 @@ const handleReadStatus = () => {
 					Mark as Read
 				</button>
 
-				<FeedDetails feedURL={feed.link} feedTitle={feed.title} />
+				<button
+					type="button"
+					onclick={() => onSelect?.(feed)}
+					class="action-btn"
+					aria-label="Show details: {feed.title}"
+				>
+					Show Details
+				</button>
 			</div>
 		</div>
 	</article>
