@@ -68,6 +68,8 @@ pub(crate) trait RecapDao: Send + Sync {
 
     async fn find_running_cards_job(&self) -> Result<Option<Uuid>>;
 
+    async fn find_running_theme_run(&self) -> Result<Option<Uuid>>;
+
     async fn update_job_status(
         &self,
         job_id: Uuid,
@@ -404,6 +406,10 @@ where
 
     async fn find_running_cards_job(&self) -> Result<Option<Uuid>> {
         JobDao::find_running_cards_job(self).await
+    }
+
+    async fn find_running_theme_run(&self) -> Result<Option<Uuid>> {
+        JobDao::find_running_theme_run(self).await
     }
 
     async fn update_job_status(

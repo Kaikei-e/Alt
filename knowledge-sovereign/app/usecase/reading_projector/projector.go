@@ -27,6 +27,8 @@ type Repository interface {
 	UpsertReadingSource(ctx context.Context, src sovereign_db.ReadingSource) error
 	UpsertReadingQueueItem(ctx context.Context, item sovereign_db.ReadingQueueItem) error
 	RemoveReadingQueueItem(ctx context.Context, userID, articleID uuid.UUID, removedAt time.Time, reason string, eventSeq int64) error
+	UpsertReadingThemeVersion(ctx context.Context, theme sovereign_db.ReadingTheme, memberArticleIDs []uuid.UUID) error
+	MarkReadingThemeOpened(ctx context.Context, userID, themeID uuid.UUID, openedAt time.Time, version int) error
 }
 
 var _ Repository = (*sovereign_db.Repository)(nil)

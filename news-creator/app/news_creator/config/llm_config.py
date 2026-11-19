@@ -64,6 +64,8 @@ class LLMConfig:
     # Recap card settings: max new tokens budget passed to Ollama num_predict
     recap_card_max_new_tokens: int = 700
     recap_card_temperature: float = 0.2
+    # Theme page settings: max new tokens budget passed to Ollama num_predict
+    recap_theme_max_new_tokens: int = 2048
 
     # Inference Proxy Token
     inference_service_token: str | None = None
@@ -138,6 +140,7 @@ class LLMConfig:
             recap_summary_repair_attempts=_get_int("RECAP_SUMMARY_REPAIR_ATTEMPTS", 2),
             recap_card_max_new_tokens=_get_int("RECAP_CARD_MAX_NEW_TOKENS", 700),
             recap_card_temperature=_get_float("RECAP_CARD_TEMPERATURE", 0.2),
+            recap_theme_max_new_tokens=_get_int("RECAP_THEME_MAX_NEW_TOKENS", 2048),
             inference_service_token=resolve_inference_token(),
         )
 

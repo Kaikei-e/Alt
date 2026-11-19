@@ -819,3 +819,153 @@ async fn contract_subworker_verify_card() {
     assert!(resp.why_hint_present);
     assert_eq!(resp.embedding.model, "bge-m3");
 }
+
+/// Theme page sentence verification: POST /v1/verify → 200 OK
+#[tokio::test]
+#[ignore = "CDC contract test"]
+#[allow(clippy::too_many_lines)]
+async fn contract_subworker_verify_theme_sentences() {
+    use crate::clients::subworker::cards::{
+        VerifyCardRequest, VerifyItemInput, VerifySentenceInput, VerifySentenceKind,
+        VerifyThresholds,
+    };
+
+    let job_id = "00000000-0000-0000-0000-000000000001";
+    let theme_id = "00000000-0000-0000-0000-000000000002";
+    let pact = PactBuilder::new("recap-worker", "recap-subworker")
+        .interaction("a verify request for theme page sentences", "", |mut i| {
+            i.given("the card verifier is ready");
+            i.request.method("POST");
+            i.request.path("/v1/verify");
+            i.request.content_type("application/json");
+            i.request.header(
+                "Authorization",
+                term!("^Bearer \\S+$", "Bearer test-recap-subworker-token-42"),
+            );
+            i.request.json_body(json_pattern!({
+                "job_id": like!(job_id),
+                "card_id": like!(theme_id),
+                "language": like!("ja"),
+                "sentences": json_pattern!([
+                    json_pattern!({
+                        "idx": like!(0i64),
+                        "kind": like!("key_point"),
+                        "text": like!("新しいAIモデルが主要企業から公開された。"),
+                        "refs": each_like!(like!(1i64)),
+                    }),
+                    json_pattern!({
+                        "idx": like!(1i64),
+                        "kind": like!("timeline"),
+                        "text": like!("2026年11月に最初の仕様が公開された。"),
+                        "refs": each_like!(like!(1i64)),
+                    }),
+                    json_pattern!({
+                        "idx": like!(2i64),
+                        "kind": like!("what_changed"),
+                        "text": like!("新しく読んだ記事で提供開始日が追加された。"),
+                        "refs": each_like!(like!(1i64)),
+                    }),
+                    json_pattern!({
+                        "idx": like!(3i64),
+                        "kind": like!("open_question"),
+                        "text": like!("今後の価格改定の範囲は未確定である。"),
+                        "refs": each_like!(like!(1i64)),
+                    }),
+                ]),
+                "items": each_like!(json_pattern!({
+                    "n": like!(1i64),
+                    "title": like!("新しいAIモデルの発表"),
+                    "lede": like!("大手企業が新しいAIモデルを正式に発表した。"),
+                })),
+                "thresholds": json_pattern!({
+                    "attribution_cos": like!(0.55f64),
+                }),
+            }));
+            i.response.status(200);
+            i.response.content_type("application/json");
+            i.response.json_body(json_pattern!({
+                "sentences": each_like!(json_pattern!({
+                    "idx": like!(0i64),
+                    "attribution": json_pattern!({
+                        "max_cos": like!(0.85f64),
+                        "best_n": like!(1i64),
+                        "pass": like!(true),
+                    }),
+                    "filler": json_pattern!({
+                        "matched": json_pattern!([]),
+                        "pass": like!(true),
+                    }),
+                    "specificity": json_pattern!({
+                        "proper_nouns": like!(1i64),
+                        "numbers": like!(0i64),
+                        "tokens": like!(5i64),
+                        "density": like!(0.2f64),
+                    }),
+                })),
+                "why_hint_present": like!(false),
+                "embedding": json_pattern!({
+                    "model": like!("bge-m3"),
+                    "identity": like!("bge-m3"),
+                }),
+            }));
+            i
+        })
+        .with_output_dir(PACT_DIR)
+        .start_mock_server(None, None);
+
+    let client =
+        SubworkerCardsClient::new(pact.path("/").as_str(), Some(TEST_ADMIN_TOKEN.to_string()))
+            .expect("client creation should succeed");
+
+    let req = VerifyCardRequest {
+        job_id: uuid::Uuid::parse_str(job_id).unwrap(),
+        card_id: uuid::Uuid::parse_str(theme_id).unwrap(),
+        language: "ja".to_string(),
+        sentences: vec![
+            VerifySentenceInput::with_kind(
+                0,
+                VerifySentenceKind::KeyPoint,
+                "新しいAIモデルが主要企業から公開された。",
+                vec![1],
+            ),
+            VerifySentenceInput::with_kind(
+                1,
+                VerifySentenceKind::Timeline,
+                "2026年11月に最初の仕様が公開された。",
+                vec![1],
+            ),
+            VerifySentenceInput::with_kind(
+                2,
+                VerifySentenceKind::WhatChanged,
+                "新しく読んだ記事で提供開始日が追加された。",
+                vec![1],
+            ),
+            VerifySentenceInput::with_kind(
+                3,
+                VerifySentenceKind::OpenQuestion,
+                "今後の価格改定の範囲は未確定である。",
+                vec![1],
+            ),
+        ],
+        items: vec![VerifyItemInput {
+            n: 1,
+            title: "新しいAIモデルの発表".to_string(),
+            lede: "大手企業が新しいAIモデルを正式に発表した。".to_string(),
+        }],
+        thresholds: VerifyThresholds {
+            attribution_cos: crate::pipeline::themes::params::DEFAULT_TAU_A,
+        },
+    };
+
+    let resp = client
+        .verify_card(&req)
+        .await
+        .expect("request should succeed");
+
+    assert!(!resp.sentences.is_empty());
+    assert!(resp.sentences[0].attribution.pass);
+    assert!(resp.sentences[0].filler.pass);
+    assert!(resp.sentences[0].specificity.density >= 0.0);
+    assert!(!resp.why_hint_present);
+    assert_eq!(resp.embedding.model, "bge-m3");
+}

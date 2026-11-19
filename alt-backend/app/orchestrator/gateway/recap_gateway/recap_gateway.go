@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"alt/domain"
+	"alt/orchestrator/port/reading_theme_port"
 	"alt/orchestrator/port/recap_port"
 )
 
@@ -18,7 +19,12 @@ type RecapGateway struct {
 	recapWorkerURL string
 }
 
-func NewRecapGateway() recap_port.RecapPort {
+var (
+	_ recap_port.RecapPort            = (*RecapGateway)(nil)
+	_ reading_theme_port.GetThemePort = (*RecapGateway)(nil)
+)
+
+func NewRecapGateway() *RecapGateway {
 	recapWorkerURL := os.Getenv("RECAP_WORKER_URL")
 	if recapWorkerURL == "" {
 		recapWorkerURL = "http://recap-worker:9005" //#nosec G101 -- service-discovery default, not a credential
@@ -30,6 +36,10 @@ func NewRecapGateway() recap_port.RecapPort {
 		},
 		recapWorkerURL: recapWorkerURL,
 	}
+}
+
+func (g *RecapGateway) BaseURL() string {
+	return g.recapWorkerURL
 }
 
 // NewRecapGatewayWithConfig creates a RecapGateway with custom client and URL (for testing and contract tests).

@@ -57,11 +57,12 @@ func TestClassForEndpoint_Telemetry(t *testing.T) {
 		"/alt.knowledge_home.v1.KnowledgeHomeService/TrackHomeItemsSeen",
 		"/alt.knowledge_trail.v1.KnowledgeTrailService/EmitTrailOutcome",
 		"/alt.reading.v1.ReadingService/RecordReadingEvents",
+		"/alt.reading.v1.ReadingService/RecordThemeOpened",
 	} {
 		assert.Equal(t, ClassTelemetry, ClassForEndpoint(ep), ep)
 	}
 	assert.Equal(t, "telemetry", ClassTelemetry.String())
-	assert.Equal(t, 5, TelemetryEndpointCount())
+	assert.Equal(t, 6, TelemetryEndpointCount())
 }
 
 func TestClassForEndpoint_UnclassifiedDefaultsNonCritical(t *testing.T) {
@@ -72,6 +73,8 @@ func TestClassForEndpoint_UnclassifiedDefaultsNonCritical(t *testing.T) {
 		"/alt.reading.v1.ReadingService/QueueArticle",
 		"/alt.reading.v1.ReadingService/UnqueueArticle",
 		"/alt.reading.v1.ReadingService/GetReadTodayQueue",
+		"/alt.reading.v1.ReadingService/ListThemes",
+		"/alt.reading.v1.ReadingService/GetTheme",
 		"/unknown/rpc",
 	}
 	for _, ep := range nonCritical {

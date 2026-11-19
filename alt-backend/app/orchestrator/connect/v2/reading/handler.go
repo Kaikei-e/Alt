@@ -17,17 +17,21 @@ import (
 	"alt/gen/proto/alt/reading/v1/readingv1connect"
 	"alt/orchestrator/usecase/image_proxy_usecase"
 	"alt/orchestrator/usecase/reading_queue_usecase"
+	"alt/orchestrator/usecase/reading_theme_usecase"
 	"alt/orchestrator/usecase/record_reading_events_usecase"
 	"alt/utils/safeconv"
 )
 
 type Handler struct {
-	recordUsecase   *record_reading_events_usecase.RecordReadingEventsUsecase
-	queueUsecase    *reading_queue_usecase.QueueArticleUsecase
-	unqueueUsecase  *reading_queue_usecase.UnqueueArticleUsecase
-	getQueueUsecase *reading_queue_usecase.GetReadTodayQueueUsecase
-	imageProxy      *image_proxy_usecase.ImageProxyUsecase
-	logger          *slog.Logger
+	recordUsecase            *record_reading_events_usecase.RecordReadingEventsUsecase
+	queueUsecase             *reading_queue_usecase.QueueArticleUsecase
+	unqueueUsecase           *reading_queue_usecase.UnqueueArticleUsecase
+	getQueueUsecase          *reading_queue_usecase.GetReadTodayQueueUsecase
+	listThemesUsecase        *reading_theme_usecase.ListThemesUsecase
+	getThemeUsecase          *reading_theme_usecase.GetThemeUsecase
+	recordThemeOpenedUsecase *reading_theme_usecase.RecordThemeOpenedUsecase
+	imageProxy               *image_proxy_usecase.ImageProxyUsecase
+	logger                   *slog.Logger
 }
 
 var _ readingv1connect.ReadingServiceHandler = (*Handler)(nil)
@@ -37,6 +41,9 @@ func NewHandler(
 	queueUsecase *reading_queue_usecase.QueueArticleUsecase,
 	unqueueUsecase *reading_queue_usecase.UnqueueArticleUsecase,
 	getQueueUsecase *reading_queue_usecase.GetReadTodayQueueUsecase,
+	listThemesUsecase *reading_theme_usecase.ListThemesUsecase,
+	getThemeUsecase *reading_theme_usecase.GetThemeUsecase,
+	recordThemeOpenedUsecase *reading_theme_usecase.RecordThemeOpenedUsecase,
 	imageProxy *image_proxy_usecase.ImageProxyUsecase,
 	logger *slog.Logger,
 ) *Handler {
@@ -52,16 +59,28 @@ func NewHandler(
 	if getQueueUsecase == nil {
 		panic("reading: GetReadTodayQueueUsecase is required")
 	}
+	if listThemesUsecase == nil {
+		panic("reading: ListThemesUsecase is required")
+	}
+	if getThemeUsecase == nil {
+		panic("reading: GetThemeUsecase is required")
+	}
+	if recordThemeOpenedUsecase == nil {
+		panic("reading: RecordThemeOpenedUsecase is required")
+	}
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &Handler{
-		recordUsecase:   recordUsecase,
-		queueUsecase:    queueUsecase,
-		unqueueUsecase:  unqueueUsecase,
-		getQueueUsecase: getQueueUsecase,
-		imageProxy:      imageProxy,
-		logger:          logger,
+		recordUsecase:            recordUsecase,
+		queueUsecase:             queueUsecase,
+		unqueueUsecase:           unqueueUsecase,
+		getQueueUsecase:          getQueueUsecase,
+		listThemesUsecase:        listThemesUsecase,
+		getThemeUsecase:          getThemeUsecase,
+		recordThemeOpenedUsecase: recordThemeOpenedUsecase,
+		imageProxy:               imageProxy,
+		logger:                   logger,
 	}
 }
 

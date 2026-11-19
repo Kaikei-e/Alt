@@ -187,6 +187,120 @@ message GetReadTodayQueueResponse {
   int32 read_count_since = 3;
 }
 
+// ListThemesRequest requests the user's theme pages.
+message ListThemesRequest {}
+
+// ThemeSummary summarizes a theme page in the user's reading theme list.
+message ThemeSummary {
+  // Identifier of the theme.
+  string theme_id = 1;
+  // Human-readable theme title.
+  string title = 2;
+  // Latest published version number of the theme.
+  int32 latest_version = 3;
+  // Number of read source articles included in the latest version.
+  int32 article_count = 4;
+  // Timestamp when the latest version was created.
+  google.protobuf.Timestamp updated_at = 5;
+  // Timestamp when the user last opened this theme, if ever.
+  optional google.protobuf.Timestamp last_opened_at = 6;
+  // Last version number opened by the user (0 = never opened).
+  int32 last_opened_version = 7;
+}
+
+// ListThemesResponse returns the user's theme summaries.
+message ListThemesResponse {
+  // Theme summaries available for the user.
+  repeated ThemeSummary themes = 1;
+}
+
+// GetThemeRequest requests a specific theme page and optionally a specific version.
+message GetThemeRequest {
+  // Identifier of the theme to fetch.
+  string theme_id = 1;
+  // Specific version to return; unset returns the latest version.
+  optional int32 version = 2;
+}
+
+// ThemeSentence is a single attributed sentence in a theme page section.
+message ThemeSentence {
+  // Sentence text.
+  string text = 1;
+  // Identifiers of the read articles supporting this sentence.
+  repeated string source_article_ids = 2;
+}
+
+// ThemeTimelineEntry is a dated entry in a theme page timeline.
+message ThemeTimelineEntry {
+  // Date string in YYYY-MM-DD format.
+  string date = 1;
+  // Timeline entry text.
+  string text = 2;
+  // Identifiers of the read articles supporting this entry.
+  repeated string source_article_ids = 3;
+}
+
+// ThemeSource describes a source article cited by a theme page.
+message ThemeSource {
+  // Identifier of the source article.
+  string article_id = 1;
+  // Title of the source article.
+  string title = 2;
+  // Canonical URL of the source article.
+  string url = 3;
+}
+
+// ThemeVersionRef identifies an available version of a theme page.
+message ThemeVersionRef {
+  // Version number.
+  int32 version = 1;
+  // Timestamp when this version was created.
+  google.protobuf.Timestamp created_at = 2;
+  // Number of source articles in this version.
+  int32 article_count = 3;
+}
+
+// GetThemeResponse returns the full content and version metadata for a theme page.
+message GetThemeResponse {
+  // Identifier of the theme.
+  string theme_id = 1;
+  // Human-readable theme title.
+  string title = 2;
+  // Version number returned by this response.
+  int32 version = 3;
+  // Latest available version number for this theme.
+  int32 latest_version = 4;
+  // Timestamp when this version was created.
+  google.protobuf.Timestamp created_at = 5;
+  // Attributed key point sentences.
+  repeated ThemeSentence key_points = 6;
+  // Attributed chronological timeline entries.
+  repeated ThemeTimelineEntry timeline = 7;
+  // Attributed sentences describing what changed in this version.
+  repeated ThemeSentence what_changed = 8;
+  // Attributed open questions remaining in this theme.
+  repeated ThemeSentence open_questions = 9;
+  // Source articles referenced by this version.
+  repeated ThemeSource sources = 10;
+  // Available versions ordered newest first.
+  repeated ThemeVersionRef versions = 11;
+}
+
+// RecordThemeOpenedRequest records that the user opened a theme page version.
+message RecordThemeOpenedRequest {
+  // Identifier of the theme that was opened.
+  string theme_id = 1;
+  // Version number that was opened.
+  int32 version = 2;
+  // Client-generated UUID used to deduplicate retried deliveries.
+  string client_event_id = 3;
+  // Client-observed timestamp when the theme was opened.
+  google.protobuf.Timestamp opened_at = 4;
+}
+
+// RecordThemeOpenedResponse acknowledges the theme opened event.
+message RecordThemeOpenedResponse {}
+
 // =============================================================================
 // Service
 // =============================================================================
@@ -204,4 +318,10 @@ service ReadingService {
   rpc UnqueueArticle(UnqueueArticleRequest) returns (UnqueueArticleResponse);
   // Returns the active Read Today queue and the count of articles read since read_since.
   rpc GetReadTodayQueue(GetReadTodayQueueRequest) returns (GetReadTodayQueueResponse);
+  // Returns the user's theme page summaries.
+  rpc ListThemes(ListThemesRequest) returns (ListThemesResponse);
+  // Returns a theme page version, or NOT_FOUND if the theme does not exist.
+  rpc GetTheme(GetThemeRequest) returns (GetThemeResponse);
+  // Records that the user opened a theme page version.
+  rpc RecordThemeOpened(RecordThemeOpenedRequest) returns (RecordThemeOpenedResponse);
 }

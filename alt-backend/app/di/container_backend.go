@@ -11,6 +11,7 @@ import (
 	"alt/domain"
 	"alt/orchestrator/driver/preprocessor_connect"
 	"alt/orchestrator/usecase/feed_inflow_stats_usecase"
+	"alt/orchestrator/usecase/reading_theme_usecase"
 
 	"github.com/google/uuid"
 )
@@ -105,6 +106,12 @@ func NewBackendComponents(cfg *config.Config) (*ApplicationComponents, error) {
 
 	// 8. Recap module
 	recap := newRecapModule(infra)
+
+	getThemeUC := reading_theme_usecase.NewGetThemeUsecase(recap.RecapGateway)
+	slog.Info("reading_themes_enabled",
+		"sovereign_enabled", knowledge.SovereignClient.Enabled(),
+		"recap_worker_url", recap.RecapGateway.BaseURL(),
+	)
 
 	// 9. Search module (global federated search)
 	search := newSearchModule(infra)
@@ -231,6 +238,9 @@ func NewBackendComponents(cfg *config.Config) (*ApplicationComponents, error) {
 		QueueArticleUsecase:              knowledge.QueueArticleUsecase,
 		UnqueueArticleUsecase:            knowledge.UnqueueArticleUsecase,
 		GetReadTodayQueueUsecase:         knowledge.GetReadTodayQueueUsecase,
+		ListThemesUsecase:                knowledge.ListThemesUsecase,
+		GetThemeUsecase:                  getThemeUC,
+		RecordThemeOpenedUsecase:         knowledge.RecordThemeOpenedUsecase,
 		CreateSummaryVersionUsecase:      knowledge.CreateSummaryVersionUsecase,
 		FeatureFlagGateway:               knowledge.FeatureFlagGateway,
 		KnowledgeBackfillUsecase:         knowledge.KnowledgeBackfillUsecase,

@@ -88,6 +88,7 @@ const (
 	EventReadingOpened        = "reading.opened.v1"
 	EventReadingQueued        = "reading.queued.v1"
 	EventReadingUnqueued      = "reading.unqueued.v1"
+	EventReadingThemeOpened   = "reading.theme_opened.v1"
 )
 
 // Dedupe key namespaces for AppendKnowledgeEvent. Each producer MUST use
@@ -126,6 +127,7 @@ const (
 	AggregateHomeSession    = "home_session"
 	AggregateLoopSession    = "loop_session"
 	AggregateReadingSession = "reading_session"
+	AggregateReadingTheme   = "reading_theme"
 )
 
 // KnowledgeEvent represents a single event in the knowledge event store.

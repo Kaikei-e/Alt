@@ -233,6 +233,9 @@ func SetupConnectHandlers(mux *http.ServeMux, container *di.ApplicationComponent
 		container.QueueArticleUsecase,
 		container.UnqueueArticleUsecase,
 		container.GetReadTodayQueueUsecase,
+		container.ListThemesUsecase,
+		container.GetThemeUsecase,
+		container.RecordThemeOpenedUsecase,
 		container.ImageProxyUsecase,
 		logger,
 	)

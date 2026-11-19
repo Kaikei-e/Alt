@@ -519,3 +519,154 @@ def test_verify_router_502_on_unresolvable_dimension():
     assert response.status_code == 502
     data = response.json()
     assert data["detail"]["reason"] == "Embedding service unavailable"
+
+
+# ============================================================================
+# Theme page sentence kinds verification tests
+# ============================================================================
+
+
+@pytest.mark.parametrize(
+    "kind",
+    ["key_point", "timeline", "what_changed", "open_question"],
+)
+def test_verify_router_accepts_theme_kinds_and_verifies_like_what(kind: str):
+    """Verify POST /v1/verify accepts theme sentence kinds and runs attribution, filler, and specificity."""
+    vectors = {
+        "山田商事は2026年11月に新製品を公開した。": [1.0, 0.0, 0.0, 0.0],
+        "今後の動向が注目される。": [0.0, 1.0, 0.0, 0.0],
+        "山田商事の発表 — 山田商事は2026年11月に新製品を公開した。": [1.0, 0.0, 0.0, 0.0],
+    }
+    app = _build_app(_SyntheticEmbedder(vectors=vectors, default_dim=4, model_id="bge-m3"))
+    client = TestClient(app)
+
+    request_payload = {
+        "job_id": "00000000-0000-0000-0000-000000000001",
+        "card_id": "00000000-0000-0000-0000-000000000002",
+        "language": "ja",
+        "sentences": [
+            {
+                "idx": 0,
+                "kind": kind,
+                "text": "山田商事は2026年11月に新製品を公開した。",
+                "refs": [1],
+            },
+            {
+                "idx": 1,
+                "kind": kind,
+                "text": "今後の動向が注目される。",
+                "refs": [1],
+            },
+        ],
+        "items": [
+            {
+                "n": 1,
+                "title": "山田商事の発表",
+                "lede": "山田商事は2026年11月に新製品を公開した。",
+            }
+        ],
+        "thresholds": {"attribution_cos": 0.55},
+    }
+
+    response = client.post("/v1/verify", json=request_payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["sentences"]) == 2
+
+    s0 = data["sentences"][0]
+    assert s0["idx"] == 0
+    assert s0["attribution"]["best_n"] == 1
+    assert s0["attribution"]["max_cos"] == pytest.approx(1.0, rel=1e-3)
+    assert s0["attribution"]["pass"] is True
+    assert s0["filler"]["matched"] == []
+    assert s0["filler"]["pass"] is True
+    assert s0["specificity"]["proper_nouns"] >= 1
+    assert s0["specificity"]["numbers"] >= 1
+    assert s0["specificity"]["density"] > 0.0
+
+    s1 = data["sentences"][1]
+    assert s1["idx"] == 1
+    assert s1["attribution"]["max_cos"] == pytest.approx(0.0, abs=1e-3)
+    assert s1["attribution"]["pass"] is False
+    assert "今後の動向" in s1["filler"]["matched"]
+    assert "注目される" in s1["filler"]["matched"]
+    assert s1["filler"]["pass"] is False
+
+
+def test_verify_router_422_on_unknown_kind():
+    """Verify POST /v1/verify returns 422 when sentence kind is unknown."""
+    app = _build_app(_SyntheticEmbedder())
+    client = TestClient(app)
+
+    request_payload = {
+        "job_id": "00000000-0000-0000-0000-000000000001",
+        "card_id": "00000000-0000-0000-0000-000000000002",
+        "language": "ja",
+        "sentences": [
+            {
+                "idx": 0,
+                "kind": "unknown_kind",
+                "text": "テスト文。",
+                "refs": [1],
+            }
+        ],
+        "items": [
+            {
+                "n": 1,
+                "title": "タイトル",
+                "lede": "リード",
+            }
+        ],
+    }
+
+    response = client.post("/v1/verify", json=request_payload)
+    assert response.status_code == 422
+
+
+def test_why_hint_present_does_not_count_new_theme_kinds():
+    """Verify new theme kinds do not contribute refs to why_hint_present."""
+    sentences = [
+        VerifySentenceInput(
+            idx=0,
+            kind="why",
+            text="背景の説明である。",
+            refs=[1],
+        ),
+        VerifySentenceInput(
+            idx=1,
+            kind="key_point",
+            text="売上高が15%増加した。",
+            refs=[2],
+        ),
+        VerifySentenceInput(
+            idx=2,
+            kind="timeline",
+            text="2026年11月に発表された。",
+            refs=[2],
+        ),
+        VerifySentenceInput(
+            idx=3,
+            kind="what_changed",
+            text="新たな提携が追加された。",
+            refs=[2],
+        ),
+        VerifySentenceInput(
+            idx=4,
+            kind="open_question",
+            text="詳細は未定である。",
+            refs=[2],
+        ),
+    ]
+    items = [
+        VerifyItemInput(
+            n=1,
+            title="概要",
+            lede="一般的な説明文です。",
+        ),
+        VerifyItemInput(
+            n=2,
+            title="提携の発表",
+            lede="売上高が前年比で15%増加した。",
+        ),
+    ]
+    assert check_why_hint_present(sentences, items) is False

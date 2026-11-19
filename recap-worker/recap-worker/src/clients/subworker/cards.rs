@@ -135,12 +135,69 @@ pub struct ClusterStoriesResponse {
     pub params: StoryClusterParams,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum VerifySentenceKind {
+    What,
+    Why,
+    KeyPoint,
+    Timeline,
+    WhatChanged,
+    OpenQuestion,
+}
+
+impl VerifySentenceKind {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::What => "what",
+            Self::Why => "why",
+            Self::KeyPoint => "key_point",
+            Self::Timeline => "timeline",
+            Self::WhatChanged => "what_changed",
+            Self::OpenQuestion => "open_question",
+        }
+    }
+}
+
+impl From<VerifySentenceKind> for String {
+    fn from(kind: VerifySentenceKind) -> Self {
+        kind.as_str().to_string()
+    }
+}
+
+#[must_use]
+#[allow(dead_code)]
+pub fn is_valid_verify_sentence_kind(kind: &str) -> bool {
+    matches!(
+        kind,
+        "what" | "why" | "key_point" | "timeline" | "what_changed" | "open_question"
+    )
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct VerifySentenceInput {
     pub idx: usize,
     pub kind: String,
     pub text: String,
     pub refs: Vec<i64>,
+}
+
+impl VerifySentenceInput {
+    #[must_use]
+    pub fn with_kind(
+        idx: usize,
+        kind: VerifySentenceKind,
+        text: impl Into<String>,
+        refs: Vec<i64>,
+    ) -> Self {
+        Self {
+            idx,
+            kind: kind.into(),
+            text: text.into(),
+            refs,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -1169,5 +1226,25 @@ mod tests {
             .await
             .expect("injected cards client must preserve probe header and send Authorization");
         assert_eq!(resp.dim, 4);
+    }
+
+    #[test]
+    fn verify_sentence_kind_supports_card_and_theme_variants() {
+        let kinds = [
+            (VerifySentenceKind::What, "what"),
+            (VerifySentenceKind::Why, "why"),
+            (VerifySentenceKind::KeyPoint, "key_point"),
+            (VerifySentenceKind::Timeline, "timeline"),
+            (VerifySentenceKind::WhatChanged, "what_changed"),
+            (VerifySentenceKind::OpenQuestion, "open_question"),
+        ];
+        for (kind, expected) in kinds {
+            assert_eq!(kind.as_str(), expected);
+            assert!(is_valid_verify_sentence_kind(expected));
+            let input = VerifySentenceInput::with_kind(0, kind, "Sentence.", vec![1]);
+            let json = serde_json::to_value(&input).unwrap();
+            assert_eq!(json["kind"], expected);
+        }
+        assert!(!is_valid_verify_sentence_kind("unknown"));
     }
 }

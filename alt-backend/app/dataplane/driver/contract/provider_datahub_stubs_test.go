@@ -4,7 +4,12 @@ package contract
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
+
+	"connectrpc.com/connect"
+
+	"alt/dataplane/connect/datahubapi"
 )
 
 // mountMediaProcedures adds the capabilities ADR-000954 moved off the
@@ -328,9 +333,16 @@ func mountArticleProcedures(mux *http.ServeMux) {
 	dataHubProcedure(mux, "ListArticleIDsCursor", jsonPost(map[string]interface{}{
 		"articleIds": []string{stubArticleID},
 	}))
-	dataHubProcedure(mux, "BatchGetArticlesByIDs", jsonPost(map[string]interface{}{
-		"articles": []map[string]interface{}{userArticle},
-	}))
+	articleDHHandler := datahubapi.NewHandler(
+		nil, nil, nil, nil, nil,
+		pactSystemUser{}, pactRecentArticles{},
+		slog.Default(),
+		datahubapi.WithArticleCapabilities(pactArticleWritePort{}, pactArticleStore, pactKnowledgeBackfillPort{}),
+	)
+	dataHubProcedure(mux, "BatchGetArticlesByIDs", connect.NewUnaryHandler(
+		"/services.datahub.v1.DataHubService/BatchGetArticlesByIDs",
+		articleDHHandler.BatchGetArticlesByIDs,
+	).ServeHTTP)
 	dataHubProcedure(mux, "GetLatestArticleByFeedID", jsonPost(map[string]interface{}{
 		"article": articleContent,
 	}))

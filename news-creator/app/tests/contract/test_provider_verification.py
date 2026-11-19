@@ -287,6 +287,57 @@ def _create_provider_app() -> FastAPI:
     recap_card_router = recap_card_mod.create_recap_card_router(mock_recap_card_usecase)
     app.include_router(recap_card_router)
 
+    # --- Mock theme page handler (real router + Pydantic validation) ---
+    import news_creator.handler.theme_page_handler as theme_page_mod
+
+    importlib.reload(theme_page_mod)
+
+    mock_theme_page_usecase = Mock()
+
+    async def _mock_generate_theme_page(request: Any) -> Any:
+        from news_creator.domain.errors import QueueFullError
+        from news_creator.domain.models import (
+            CardGenerationRejectedError,
+            ThemeGenerateResponse,
+            ThemeSentence,
+            ThemeTimelineEntry,
+        )
+
+        if provider_state["mode"] == "queue_full":
+            raise QueueFullError("Queue depth 20 >= max 20")
+        if provider_state["mode"] == "theme_generation_rejected":
+            raise CardGenerationRejectedError(
+                reason="empty_output",
+                attempts=2,
+                raw_text="invalid output",
+            )
+        return ThemeGenerateResponse(
+            title="Rust 2026",
+            key_points=[
+                ThemeSentence(text="Key point sentence.", refs=[1]),
+            ],
+            timeline=[
+                ThemeTimelineEntry(
+                    date="2026-11-18",
+                    text="Timeline entry.",
+                    refs=[1],
+                ),
+            ],
+            what_changed=[
+                ThemeSentence(text="What changed sentence.", refs=[1]),
+            ],
+            open_questions=[
+                ThemeSentence(text="Open question sentence.", refs=[1]),
+            ],
+            model="gemma4-e4b-12k",
+        )
+
+    mock_theme_page_usecase.generate_theme_page = AsyncMock(
+        side_effect=_mock_generate_theme_page
+    )
+    theme_page_router = theme_page_mod.create_theme_page_router(mock_theme_page_usecase)
+    app.include_router(theme_page_router)
+
     # --- Mock morning letter handler (real router + Pydantic validation) ---
     import news_creator.handler.morning_letter_handler as morning_letter_mod
 
@@ -373,6 +424,9 @@ def _create_provider_app() -> FastAPI:
     async def _set_card_generation_rejected(_params: dict[str, Any]) -> None:
         provider_state["mode"] = "card_generation_rejected"
 
+    async def _set_theme_generation_rejected(_params: dict[str, Any]) -> None:
+        provider_state["mode"] = "theme_generation_rejected"
+
     registry: StateRegistry = {
         "the LLM model is loaded and ready": _set_default,
         "the LLM model is loaded and ready for chat": _set_default,
@@ -380,6 +434,7 @@ def _create_provider_app() -> FastAPI:
         "the LLM model is loaded and ready for card generation": _set_default,
         "the LLM model is loaded and ready for morning letter generation": _set_default,
         "card generation fails validation and is rejected": _set_card_generation_rejected,
+        "theme generation fails validation and is rejected": _set_theme_generation_rejected,
         "the LLM queue is full": _set_queue_full,
         # acolyte-orchestrator's provider state for /api/v1/summarize replay.
         "news-creator is ready": _set_default,

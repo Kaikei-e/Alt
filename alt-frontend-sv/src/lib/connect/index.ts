@@ -177,14 +177,27 @@ export {
 } from "./morning_letter";
 export {
 	createReadingClient,
+	getTheme,
+	listThemes,
 	type ReadingClient,
 	type ReadingEvent,
 	type ReadingEventInput,
 	ReadingSurface,
 	type RecordReadingEventsResult,
+	type RecordThemeOpenedOptions,
 	recordReadingEvents,
+	recordThemeOpened,
+	type ThemePageData,
+	type ThemeSentenceItem,
+	type ThemeSourceItem,
+	type ThemeSummaryItem,
+	type ThemeTimelineItem,
+	type ThemeVersionItem,
 } from "./reading";
-export { createKeepaliveTransport } from "./reading-transport";
+export {
+	createKeepaliveTransport,
+	getReadingTransport,
+} from "./reading-transport";
 // RecapService client
 export {
 	createRecapClient,

@@ -6995,6 +6995,203 @@ func (x *ListReadingSourcesInWindowResponse) GetEntries() []*ReadingSourceEntry 
 	return nil
 }
 
+type ListReadingThemesRequest struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	UserId string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	// 0 uses the server default limit.
+	Limit         int32 `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListReadingThemesRequest) Reset() {
+	*x = ListReadingThemesRequest{}
+	mi := &file_services_sovereign_v1_sovereign_proto_msgTypes[121]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListReadingThemesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListReadingThemesRequest) ProtoMessage() {}
+
+func (x *ListReadingThemesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_services_sovereign_v1_sovereign_proto_msgTypes[121]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListReadingThemesRequest.ProtoReflect.Descriptor instead.
+func (*ListReadingThemesRequest) Descriptor() ([]byte, []int) {
+	return file_services_sovereign_v1_sovereign_proto_rawDescGZIP(), []int{121}
+}
+
+func (x *ListReadingThemesRequest) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+func (x *ListReadingThemesRequest) GetLimit() int32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+type ReadingThemeEntry struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	ThemeId           string                 `protobuf:"bytes,1,opt,name=theme_id,json=themeId,proto3" json:"theme_id,omitempty"`
+	Title             string                 `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
+	LatestVersion     int32                  `protobuf:"varint,3,opt,name=latest_version,json=latestVersion,proto3" json:"latest_version,omitempty"`
+	ArticleCount      int32                  `protobuf:"varint,4,opt,name=article_count,json=articleCount,proto3" json:"article_count,omitempty"`
+	CreatedAt         *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt         *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	LastOpenedAt      *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=last_opened_at,json=lastOpenedAt,proto3,oneof" json:"last_opened_at,omitempty"`
+	LastOpenedVersion int32                  `protobuf:"varint,8,opt,name=last_opened_version,json=lastOpenedVersion,proto3" json:"last_opened_version,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *ReadingThemeEntry) Reset() {
+	*x = ReadingThemeEntry{}
+	mi := &file_services_sovereign_v1_sovereign_proto_msgTypes[122]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReadingThemeEntry) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReadingThemeEntry) ProtoMessage() {}
+
+func (x *ReadingThemeEntry) ProtoReflect() protoreflect.Message {
+	mi := &file_services_sovereign_v1_sovereign_proto_msgTypes[122]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReadingThemeEntry.ProtoReflect.Descriptor instead.
+func (*ReadingThemeEntry) Descriptor() ([]byte, []int) {
+	return file_services_sovereign_v1_sovereign_proto_rawDescGZIP(), []int{122}
+}
+
+func (x *ReadingThemeEntry) GetThemeId() string {
+	if x != nil {
+		return x.ThemeId
+	}
+	return ""
+}
+
+func (x *ReadingThemeEntry) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *ReadingThemeEntry) GetLatestVersion() int32 {
+	if x != nil {
+		return x.LatestVersion
+	}
+	return 0
+}
+
+func (x *ReadingThemeEntry) GetArticleCount() int32 {
+	if x != nil {
+		return x.ArticleCount
+	}
+	return 0
+}
+
+func (x *ReadingThemeEntry) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+func (x *ReadingThemeEntry) GetUpdatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.UpdatedAt
+	}
+	return nil
+}
+
+func (x *ReadingThemeEntry) GetLastOpenedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.LastOpenedAt
+	}
+	return nil
+}
+
+func (x *ReadingThemeEntry) GetLastOpenedVersion() int32 {
+	if x != nil {
+		return x.LastOpenedVersion
+	}
+	return 0
+}
+
+type ListReadingThemesResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Themes        []*ReadingThemeEntry   `protobuf:"bytes,1,rep,name=themes,proto3" json:"themes,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListReadingThemesResponse) Reset() {
+	*x = ListReadingThemesResponse{}
+	mi := &file_services_sovereign_v1_sovereign_proto_msgTypes[123]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListReadingThemesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListReadingThemesResponse) ProtoMessage() {}
+
+func (x *ListReadingThemesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_services_sovereign_v1_sovereign_proto_msgTypes[123]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListReadingThemesResponse.ProtoReflect.Descriptor instead.
+func (*ListReadingThemesResponse) Descriptor() ([]byte, []int) {
+	return file_services_sovereign_v1_sovereign_proto_rawDescGZIP(), []int{123}
+}
+
+func (x *ListReadingThemesResponse) GetThemes() []*ReadingThemeEntry {
+	if x != nil {
+		return x.Themes
+	}
+	return nil
+}
+
 var File_services_sovereign_v1_sovereign_proto protoreflect.FileDescriptor
 
 const file_services_sovereign_v1_sovereign_proto_rawDesc = "" +
@@ -7520,7 +7717,24 @@ const file_services_sovereign_v1_sovereign_proto_rawDesc = "" +
 	"\x04from\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x04from\x12*\n" +
 	"\x02to\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\x02to\"i\n" +
 	"\"ListReadingSourcesInWindowResponse\x12C\n" +
-	"\aentries\x18\x01 \x03(\v2).services.sovereign.v1.ReadingSourceEntryR\aentries2\xbb0\n" +
+	"\aentries\x18\x01 \x03(\v2).services.sovereign.v1.ReadingSourceEntryR\aentries\"I\n" +
+	"\x18ListReadingThemesRequest\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x14\n" +
+	"\x05limit\x18\x02 \x01(\x05R\x05limit\"\x90\x03\n" +
+	"\x11ReadingThemeEntry\x12\x19\n" +
+	"\btheme_id\x18\x01 \x01(\tR\athemeId\x12\x14\n" +
+	"\x05title\x18\x02 \x01(\tR\x05title\x12%\n" +
+	"\x0elatest_version\x18\x03 \x01(\x05R\rlatestVersion\x12#\n" +
+	"\rarticle_count\x18\x04 \x01(\x05R\farticleCount\x129\n" +
+	"\n" +
+	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
+	"\n" +
+	"updated_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12E\n" +
+	"\x0elast_opened_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampH\x00R\flastOpenedAt\x88\x01\x01\x12.\n" +
+	"\x13last_opened_version\x18\b \x01(\x05R\x11lastOpenedVersionB\x11\n" +
+	"\x0f_last_opened_at\"]\n" +
+	"\x19ListReadingThemesResponse\x12@\n" +
+	"\x06themes\x18\x01 \x03(\v2(.services.sovereign.v1.ReadingThemeEntryR\x06themes2\xb31\n" +
 	"\x19KnowledgeSovereignService\x12\x88\x01\n" +
 	"\x17ApplyProjectionMutation\x125.services.sovereign.v1.ApplyProjectionMutationRequest\x1a6.services.sovereign.v1.ApplyProjectionMutationResponse\x12|\n" +
 	"\x13ApplyRecallMutation\x121.services.sovereign.v1.ApplyRecallMutationRequest\x1a2.services.sovereign.v1.ApplyRecallMutationResponse\x12\x82\x01\n" +
@@ -7572,7 +7786,8 @@ const file_services_sovereign_v1_sovereign_proto_rawDesc = "" +
 	"\x19GetTrailBranchesForAnchor\x127.services.sovereign.v1.GetTrailBranchesForAnchorRequest\x1a8.services.sovereign.v1.GetTrailBranchesForAnchorResponse\x12p\n" +
 	"\x0fGetReadingQueue\x12-.services.sovereign.v1.GetReadingQueueRequest\x1a..services.sovereign.v1.GetReadingQueueResponse\x12\x8b\x01\n" +
 	"\x18CountReadingSourcesSince\x126.services.sovereign.v1.CountReadingSourcesSinceRequest\x1a7.services.sovereign.v1.CountReadingSourcesSinceResponse\x12\x91\x01\n" +
-	"\x1aListReadingSourcesInWindow\x128.services.sovereign.v1.ListReadingSourcesInWindowRequest\x1a9.services.sovereign.v1.ListReadingSourcesInWindowResponseB\xd2\x01\n" +
+	"\x1aListReadingSourcesInWindow\x128.services.sovereign.v1.ListReadingSourcesInWindowRequest\x1a9.services.sovereign.v1.ListReadingSourcesInWindowResponse\x12v\n" +
+	"\x11ListReadingThemes\x12/.services.sovereign.v1.ListReadingThemesRequest\x1a0.services.sovereign.v1.ListReadingThemesResponseB\xd2\x01\n" +
 	"\x19com.services.sovereign.v1B\x0eSovereignProtoP\x01Z/alt/gen/proto/services/sovereign/v1;sovereignv1\xa2\x02\x03SSX\xaa\x02\x15Services.Sovereign.V1\xca\x02\x15Services\\Sovereign\\V1\xe2\x02!Services\\Sovereign\\V1\\GPBMetadata\xea\x02\x17Services::Sovereign::V1b\x06proto3"
 
 var (
@@ -7587,7 +7802,7 @@ func file_services_sovereign_v1_sovereign_proto_rawDescGZIP() []byte {
 	return file_services_sovereign_v1_sovereign_proto_rawDescData
 }
 
-var file_services_sovereign_v1_sovereign_proto_msgTypes = make([]protoimpl.MessageInfo, 122)
+var file_services_sovereign_v1_sovereign_proto_msgTypes = make([]protoimpl.MessageInfo, 125)
 var file_services_sovereign_v1_sovereign_proto_goTypes = []any{
 	(*ApplyProjectionMutationRequest)(nil),     // 0: services.sovereign.v1.ApplyProjectionMutationRequest
 	(*ApplyProjectionMutationResponse)(nil),    // 1: services.sovereign.v1.ApplyProjectionMutationResponse
@@ -7710,58 +7925,61 @@ var file_services_sovereign_v1_sovereign_proto_goTypes = []any{
 	(*ReadingSourceEntry)(nil),                 // 118: services.sovereign.v1.ReadingSourceEntry
 	(*ListReadingSourcesInWindowRequest)(nil),  // 119: services.sovereign.v1.ListReadingSourcesInWindowRequest
 	(*ListReadingSourcesInWindowResponse)(nil), // 120: services.sovereign.v1.ListReadingSourcesInWindowResponse
-	nil,                           // 121: services.sovereign.v1.AreArticlesVisibleInLensResponse.VisibilityEntry
-	(*timestamppb.Timestamp)(nil), // 122: google.protobuf.Timestamp
+	(*ListReadingThemesRequest)(nil),           // 121: services.sovereign.v1.ListReadingThemesRequest
+	(*ReadingThemeEntry)(nil),                  // 122: services.sovereign.v1.ReadingThemeEntry
+	(*ListReadingThemesResponse)(nil),          // 123: services.sovereign.v1.ListReadingThemesResponse
+	nil,                                        // 124: services.sovereign.v1.AreArticlesVisibleInLensResponse.VisibilityEntry
+	(*timestamppb.Timestamp)(nil),              // 125: google.protobuf.Timestamp
 }
 var file_services_sovereign_v1_sovereign_proto_depIdxs = []int32{
 	7,   // 0: services.sovereign.v1.KnowledgeHomeItem.why_reasons:type_name -> services.sovereign.v1.WhyReason
-	122, // 1: services.sovereign.v1.KnowledgeHomeItem.freshness_at:type_name -> google.protobuf.Timestamp
-	122, // 2: services.sovereign.v1.KnowledgeHomeItem.published_at:type_name -> google.protobuf.Timestamp
-	122, // 3: services.sovereign.v1.KnowledgeHomeItem.last_interacted_at:type_name -> google.protobuf.Timestamp
-	122, // 4: services.sovereign.v1.KnowledgeHomeItem.generated_at:type_name -> google.protobuf.Timestamp
-	122, // 5: services.sovereign.v1.KnowledgeHomeItem.updated_at:type_name -> google.protobuf.Timestamp
-	122, // 6: services.sovereign.v1.KnowledgeHomeItem.dismissed_at:type_name -> google.protobuf.Timestamp
-	122, // 7: services.sovereign.v1.KnowledgeHomeItem.superseded_at:type_name -> google.protobuf.Timestamp
-	122, // 8: services.sovereign.v1.TodayDigest.updated_at:type_name -> google.protobuf.Timestamp
-	122, // 9: services.sovereign.v1.TodayDigest.last_projected_at:type_name -> google.protobuf.Timestamp
+	125, // 1: services.sovereign.v1.KnowledgeHomeItem.freshness_at:type_name -> google.protobuf.Timestamp
+	125, // 2: services.sovereign.v1.KnowledgeHomeItem.published_at:type_name -> google.protobuf.Timestamp
+	125, // 3: services.sovereign.v1.KnowledgeHomeItem.last_interacted_at:type_name -> google.protobuf.Timestamp
+	125, // 4: services.sovereign.v1.KnowledgeHomeItem.generated_at:type_name -> google.protobuf.Timestamp
+	125, // 5: services.sovereign.v1.KnowledgeHomeItem.updated_at:type_name -> google.protobuf.Timestamp
+	125, // 6: services.sovereign.v1.KnowledgeHomeItem.dismissed_at:type_name -> google.protobuf.Timestamp
+	125, // 7: services.sovereign.v1.KnowledgeHomeItem.superseded_at:type_name -> google.protobuf.Timestamp
+	125, // 8: services.sovereign.v1.TodayDigest.updated_at:type_name -> google.protobuf.Timestamp
+	125, // 9: services.sovereign.v1.TodayDigest.last_projected_at:type_name -> google.protobuf.Timestamp
 	10,  // 10: services.sovereign.v1.RecallCandidate.reasons:type_name -> services.sovereign.v1.RecallReason
-	122, // 11: services.sovereign.v1.RecallCandidate.next_suggest_at:type_name -> google.protobuf.Timestamp
-	122, // 12: services.sovereign.v1.RecallCandidate.first_eligible_at:type_name -> google.protobuf.Timestamp
-	122, // 13: services.sovereign.v1.RecallCandidate.snoozed_until:type_name -> google.protobuf.Timestamp
-	122, // 14: services.sovereign.v1.RecallCandidate.updated_at:type_name -> google.protobuf.Timestamp
+	125, // 11: services.sovereign.v1.RecallCandidate.next_suggest_at:type_name -> google.protobuf.Timestamp
+	125, // 12: services.sovereign.v1.RecallCandidate.first_eligible_at:type_name -> google.protobuf.Timestamp
+	125, // 13: services.sovereign.v1.RecallCandidate.snoozed_until:type_name -> google.protobuf.Timestamp
+	125, // 14: services.sovereign.v1.RecallCandidate.updated_at:type_name -> google.protobuf.Timestamp
 	6,   // 15: services.sovereign.v1.RecallCandidate.item:type_name -> services.sovereign.v1.KnowledgeHomeItem
-	122, // 16: services.sovereign.v1.KnowledgeEvent.occurred_at:type_name -> google.protobuf.Timestamp
-	122, // 17: services.sovereign.v1.ProjectionVersion.created_at:type_name -> google.protobuf.Timestamp
-	122, // 18: services.sovereign.v1.ProjectionVersion.activated_at:type_name -> google.protobuf.Timestamp
-	122, // 19: services.sovereign.v1.ReprojectRun.range_start:type_name -> google.protobuf.Timestamp
-	122, // 20: services.sovereign.v1.ReprojectRun.range_end:type_name -> google.protobuf.Timestamp
-	122, // 21: services.sovereign.v1.ReprojectRun.created_at:type_name -> google.protobuf.Timestamp
-	122, // 22: services.sovereign.v1.ReprojectRun.started_at:type_name -> google.protobuf.Timestamp
-	122, // 23: services.sovereign.v1.ReprojectRun.finished_at:type_name -> google.protobuf.Timestamp
-	122, // 24: services.sovereign.v1.ProjectionAudit.checked_at:type_name -> google.protobuf.Timestamp
-	122, // 25: services.sovereign.v1.BackfillJob.created_at:type_name -> google.protobuf.Timestamp
-	122, // 26: services.sovereign.v1.BackfillJob.started_at:type_name -> google.protobuf.Timestamp
-	122, // 27: services.sovereign.v1.BackfillJob.completed_at:type_name -> google.protobuf.Timestamp
-	122, // 28: services.sovereign.v1.BackfillJob.updated_at:type_name -> google.protobuf.Timestamp
-	122, // 29: services.sovereign.v1.Lens.created_at:type_name -> google.protobuf.Timestamp
-	122, // 30: services.sovereign.v1.Lens.updated_at:type_name -> google.protobuf.Timestamp
-	122, // 31: services.sovereign.v1.Lens.archived_at:type_name -> google.protobuf.Timestamp
+	125, // 16: services.sovereign.v1.KnowledgeEvent.occurred_at:type_name -> google.protobuf.Timestamp
+	125, // 17: services.sovereign.v1.ProjectionVersion.created_at:type_name -> google.protobuf.Timestamp
+	125, // 18: services.sovereign.v1.ProjectionVersion.activated_at:type_name -> google.protobuf.Timestamp
+	125, // 19: services.sovereign.v1.ReprojectRun.range_start:type_name -> google.protobuf.Timestamp
+	125, // 20: services.sovereign.v1.ReprojectRun.range_end:type_name -> google.protobuf.Timestamp
+	125, // 21: services.sovereign.v1.ReprojectRun.created_at:type_name -> google.protobuf.Timestamp
+	125, // 22: services.sovereign.v1.ReprojectRun.started_at:type_name -> google.protobuf.Timestamp
+	125, // 23: services.sovereign.v1.ReprojectRun.finished_at:type_name -> google.protobuf.Timestamp
+	125, // 24: services.sovereign.v1.ProjectionAudit.checked_at:type_name -> google.protobuf.Timestamp
+	125, // 25: services.sovereign.v1.BackfillJob.created_at:type_name -> google.protobuf.Timestamp
+	125, // 26: services.sovereign.v1.BackfillJob.started_at:type_name -> google.protobuf.Timestamp
+	125, // 27: services.sovereign.v1.BackfillJob.completed_at:type_name -> google.protobuf.Timestamp
+	125, // 28: services.sovereign.v1.BackfillJob.updated_at:type_name -> google.protobuf.Timestamp
+	125, // 29: services.sovereign.v1.Lens.created_at:type_name -> google.protobuf.Timestamp
+	125, // 30: services.sovereign.v1.Lens.updated_at:type_name -> google.protobuf.Timestamp
+	125, // 31: services.sovereign.v1.Lens.archived_at:type_name -> google.protobuf.Timestamp
 	17,  // 32: services.sovereign.v1.Lens.current_version:type_name -> services.sovereign.v1.LensVersion
-	122, // 33: services.sovereign.v1.LensVersion.created_at:type_name -> google.protobuf.Timestamp
-	122, // 34: services.sovereign.v1.CurrentLensSelection.selected_at:type_name -> google.protobuf.Timestamp
-	122, // 35: services.sovereign.v1.RecallSignal.occurred_at:type_name -> google.protobuf.Timestamp
+	125, // 33: services.sovereign.v1.LensVersion.created_at:type_name -> google.protobuf.Timestamp
+	125, // 34: services.sovereign.v1.CurrentLensSelection.selected_at:type_name -> google.protobuf.Timestamp
+	125, // 35: services.sovereign.v1.RecallSignal.occurred_at:type_name -> google.protobuf.Timestamp
 	19,  // 36: services.sovereign.v1.GetKnowledgeHomeItemsRequest.filter:type_name -> services.sovereign.v1.LensFilter
 	6,   // 37: services.sovereign.v1.GetKnowledgeHomeItemsResponse.items:type_name -> services.sovereign.v1.KnowledgeHomeItem
 	8,   // 38: services.sovereign.v1.GetTodayDigestResponse.digest:type_name -> services.sovereign.v1.TodayDigest
 	9,   // 39: services.sovereign.v1.GetRecallCandidatesResponse.candidates:type_name -> services.sovereign.v1.RecallCandidate
 	11,  // 40: services.sovereign.v1.ListKnowledgeEventsResponse.events:type_name -> services.sovereign.v1.KnowledgeEvent
 	19,  // 41: services.sovereign.v1.AreArticlesVisibleInLensRequest.filter:type_name -> services.sovereign.v1.LensFilter
-	121, // 42: services.sovereign.v1.AreArticlesVisibleInLensResponse.visibility:type_name -> services.sovereign.v1.AreArticlesVisibleInLensResponse.VisibilityEntry
+	124, // 42: services.sovereign.v1.AreArticlesVisibleInLensResponse.visibility:type_name -> services.sovereign.v1.AreArticlesVisibleInLensResponse.VisibilityEntry
 	11,  // 43: services.sovereign.v1.AppendKnowledgeEventRequest.event:type_name -> services.sovereign.v1.KnowledgeEvent
 	12,  // 44: services.sovereign.v1.GetActiveProjectionVersionResponse.version:type_name -> services.sovereign.v1.ProjectionVersion
 	12,  // 45: services.sovereign.v1.ListProjectionVersionsResponse.versions:type_name -> services.sovereign.v1.ProjectionVersion
 	12,  // 46: services.sovereign.v1.CreateProjectionVersionRequest.version:type_name -> services.sovereign.v1.ProjectionVersion
-	122, // 47: services.sovereign.v1.GetProjectionFreshnessResponse.updated_at:type_name -> google.protobuf.Timestamp
+	125, // 47: services.sovereign.v1.GetProjectionFreshnessResponse.updated_at:type_name -> google.protobuf.Timestamp
 	13,  // 48: services.sovereign.v1.GetReprojectRunResponse.run:type_name -> services.sovereign.v1.ReprojectRun
 	13,  // 49: services.sovereign.v1.ListReprojectRunsResponse.runs:type_name -> services.sovereign.v1.ReprojectRun
 	13,  // 50: services.sovereign.v1.CreateReprojectRunRequest.run:type_name -> services.sovereign.v1.ReprojectRun
@@ -7782,129 +8000,135 @@ var file_services_sovereign_v1_sovereign_proto_depIdxs = []int32{
 	18,  // 65: services.sovereign.v1.SelectCurrentLensRequest.selection:type_name -> services.sovereign.v1.CurrentLensSelection
 	20,  // 66: services.sovereign.v1.ListRecallSignalsResponse.signals:type_name -> services.sovereign.v1.RecallSignal
 	20,  // 67: services.sovereign.v1.AppendRecallSignalRequest.signal:type_name -> services.sovereign.v1.RecallSignal
-	122, // 68: services.sovereign.v1.KnowledgeUserEvent.occurred_at:type_name -> google.protobuf.Timestamp
+	125, // 68: services.sovereign.v1.KnowledgeUserEvent.occurred_at:type_name -> google.protobuf.Timestamp
 	100, // 69: services.sovereign.v1.AppendKnowledgeUserEventRequest.event:type_name -> services.sovereign.v1.KnowledgeUserEvent
-	122, // 70: services.sovereign.v1.WatchProjectorEventsResponse.occurred_at:type_name -> google.protobuf.Timestamp
+	125, // 70: services.sovereign.v1.WatchProjectorEventsResponse.occurred_at:type_name -> google.protobuf.Timestamp
 	110, // 71: services.sovereign.v1.GetTrailBranchesForAnchorResponse.branches:type_name -> services.sovereign.v1.TrailBranch
 	112, // 72: services.sovereign.v1.GetTrailFootprintsResponse.footprints:type_name -> services.sovereign.v1.TrailFootprint
 	110, // 73: services.sovereign.v1.GetTrailFootprintsResponse.branches:type_name -> services.sovereign.v1.TrailBranch
 	109, // 74: services.sovereign.v1.GetTrailFootprintsResponse.episodes:type_name -> services.sovereign.v1.TrailEpisode
 	112, // 75: services.sovereign.v1.TrailEpisode.footprints:type_name -> services.sovereign.v1.TrailFootprint
 	111, // 76: services.sovereign.v1.TrailBranch.evidence_refs:type_name -> services.sovereign.v1.TrailEvidenceRef
-	122, // 77: services.sovereign.v1.TrailFootprint.occurred_at:type_name -> google.protobuf.Timestamp
-	122, // 78: services.sovereign.v1.TrailFootprint.first_occurred_at:type_name -> google.protobuf.Timestamp
-	122, // 79: services.sovereign.v1.ReadingQueueEntry.queued_at:type_name -> google.protobuf.Timestamp
-	122, // 80: services.sovereign.v1.ReadingQueueEntry.expires_at:type_name -> google.protobuf.Timestamp
-	122, // 81: services.sovereign.v1.GetReadingQueueRequest.as_of:type_name -> google.protobuf.Timestamp
+	125, // 77: services.sovereign.v1.TrailFootprint.occurred_at:type_name -> google.protobuf.Timestamp
+	125, // 78: services.sovereign.v1.TrailFootprint.first_occurred_at:type_name -> google.protobuf.Timestamp
+	125, // 79: services.sovereign.v1.ReadingQueueEntry.queued_at:type_name -> google.protobuf.Timestamp
+	125, // 80: services.sovereign.v1.ReadingQueueEntry.expires_at:type_name -> google.protobuf.Timestamp
+	125, // 81: services.sovereign.v1.GetReadingQueueRequest.as_of:type_name -> google.protobuf.Timestamp
 	113, // 82: services.sovereign.v1.GetReadingQueueResponse.items:type_name -> services.sovereign.v1.ReadingQueueEntry
-	122, // 83: services.sovereign.v1.CountReadingSourcesSinceRequest.since:type_name -> google.protobuf.Timestamp
-	122, // 84: services.sovereign.v1.ReadingSourceEntry.first_read_at:type_name -> google.protobuf.Timestamp
-	122, // 85: services.sovereign.v1.ListReadingSourcesInWindowRequest.from:type_name -> google.protobuf.Timestamp
-	122, // 86: services.sovereign.v1.ListReadingSourcesInWindowRequest.to:type_name -> google.protobuf.Timestamp
+	125, // 83: services.sovereign.v1.CountReadingSourcesSinceRequest.since:type_name -> google.protobuf.Timestamp
+	125, // 84: services.sovereign.v1.ReadingSourceEntry.first_read_at:type_name -> google.protobuf.Timestamp
+	125, // 85: services.sovereign.v1.ListReadingSourcesInWindowRequest.from:type_name -> google.protobuf.Timestamp
+	125, // 86: services.sovereign.v1.ListReadingSourcesInWindowRequest.to:type_name -> google.protobuf.Timestamp
 	118, // 87: services.sovereign.v1.ListReadingSourcesInWindowResponse.entries:type_name -> services.sovereign.v1.ReadingSourceEntry
-	0,   // 88: services.sovereign.v1.KnowledgeSovereignService.ApplyProjectionMutation:input_type -> services.sovereign.v1.ApplyProjectionMutationRequest
-	2,   // 89: services.sovereign.v1.KnowledgeSovereignService.ApplyRecallMutation:input_type -> services.sovereign.v1.ApplyRecallMutationRequest
-	4,   // 90: services.sovereign.v1.KnowledgeSovereignService.ApplyCurationMutation:input_type -> services.sovereign.v1.ApplyCurationMutationRequest
-	22,  // 91: services.sovereign.v1.KnowledgeSovereignService.GetKnowledgeHomeItems:input_type -> services.sovereign.v1.GetKnowledgeHomeItemsRequest
-	24,  // 92: services.sovereign.v1.KnowledgeSovereignService.GetTodayDigest:input_type -> services.sovereign.v1.GetTodayDigestRequest
-	26,  // 93: services.sovereign.v1.KnowledgeSovereignService.GetRecallCandidates:input_type -> services.sovereign.v1.GetRecallCandidatesRequest
-	28,  // 94: services.sovereign.v1.KnowledgeSovereignService.ListDistinctUserIDs:input_type -> services.sovereign.v1.ListDistinctUserIDsRequest
-	30,  // 95: services.sovereign.v1.KnowledgeSovereignService.CountNeedToKnowItems:input_type -> services.sovereign.v1.CountNeedToKnowItemsRequest
-	32,  // 96: services.sovereign.v1.KnowledgeSovereignService.ListKnowledgeEvents:input_type -> services.sovereign.v1.ListKnowledgeEventsRequest
-	34,  // 97: services.sovereign.v1.KnowledgeSovereignService.GetLatestEventSeq:input_type -> services.sovereign.v1.GetLatestEventSeqRequest
-	38,  // 98: services.sovereign.v1.KnowledgeSovereignService.AppendKnowledgeEvent:input_type -> services.sovereign.v1.AppendKnowledgeEventRequest
-	36,  // 99: services.sovereign.v1.KnowledgeSovereignService.AreArticlesVisibleInLens:input_type -> services.sovereign.v1.AreArticlesVisibleInLensRequest
-	40,  // 100: services.sovereign.v1.KnowledgeSovereignService.GetActiveProjectionVersion:input_type -> services.sovereign.v1.GetActiveProjectionVersionRequest
-	42,  // 101: services.sovereign.v1.KnowledgeSovereignService.ListProjectionVersions:input_type -> services.sovereign.v1.ListProjectionVersionsRequest
-	44,  // 102: services.sovereign.v1.KnowledgeSovereignService.CreateProjectionVersion:input_type -> services.sovereign.v1.CreateProjectionVersionRequest
-	46,  // 103: services.sovereign.v1.KnowledgeSovereignService.ActivateProjectionVersion:input_type -> services.sovereign.v1.ActivateProjectionVersionRequest
-	48,  // 104: services.sovereign.v1.KnowledgeSovereignService.GetProjectionCheckpoint:input_type -> services.sovereign.v1.GetProjectionCheckpointRequest
-	50,  // 105: services.sovereign.v1.KnowledgeSovereignService.UpdateProjectionCheckpoint:input_type -> services.sovereign.v1.UpdateProjectionCheckpointRequest
-	52,  // 106: services.sovereign.v1.KnowledgeSovereignService.GetProjectionFreshness:input_type -> services.sovereign.v1.GetProjectionFreshnessRequest
-	54,  // 107: services.sovereign.v1.KnowledgeSovereignService.GetProjectionLag:input_type -> services.sovereign.v1.GetProjectionLagRequest
-	56,  // 108: services.sovereign.v1.KnowledgeSovereignService.GetReprojectRun:input_type -> services.sovereign.v1.GetReprojectRunRequest
-	58,  // 109: services.sovereign.v1.KnowledgeSovereignService.ListReprojectRuns:input_type -> services.sovereign.v1.ListReprojectRunsRequest
-	60,  // 110: services.sovereign.v1.KnowledgeSovereignService.CreateReprojectRun:input_type -> services.sovereign.v1.CreateReprojectRunRequest
-	62,  // 111: services.sovereign.v1.KnowledgeSovereignService.UpdateReprojectRun:input_type -> services.sovereign.v1.UpdateReprojectRunRequest
-	64,  // 112: services.sovereign.v1.KnowledgeSovereignService.CompareProjections:input_type -> services.sovereign.v1.CompareProjectionsRequest
-	66,  // 113: services.sovereign.v1.KnowledgeSovereignService.ListProjectionAudits:input_type -> services.sovereign.v1.ListProjectionAuditsRequest
-	68,  // 114: services.sovereign.v1.KnowledgeSovereignService.CreateProjectionAudit:input_type -> services.sovereign.v1.CreateProjectionAuditRequest
-	70,  // 115: services.sovereign.v1.KnowledgeSovereignService.GetBackfillJob:input_type -> services.sovereign.v1.GetBackfillJobRequest
-	72,  // 116: services.sovereign.v1.KnowledgeSovereignService.ListBackfillJobs:input_type -> services.sovereign.v1.ListBackfillJobsRequest
-	74,  // 117: services.sovereign.v1.KnowledgeSovereignService.CreateBackfillJob:input_type -> services.sovereign.v1.CreateBackfillJobRequest
-	76,  // 118: services.sovereign.v1.KnowledgeSovereignService.UpdateBackfillJob:input_type -> services.sovereign.v1.UpdateBackfillJobRequest
-	78,  // 119: services.sovereign.v1.KnowledgeSovereignService.ListLenses:input_type -> services.sovereign.v1.ListLensesRequest
-	80,  // 120: services.sovereign.v1.KnowledgeSovereignService.GetLens:input_type -> services.sovereign.v1.GetLensRequest
-	82,  // 121: services.sovereign.v1.KnowledgeSovereignService.GetCurrentLensSelection:input_type -> services.sovereign.v1.GetCurrentLensSelectionRequest
-	84,  // 122: services.sovereign.v1.KnowledgeSovereignService.ResolveLensFilter:input_type -> services.sovereign.v1.ResolveLensFilterRequest
-	86,  // 123: services.sovereign.v1.KnowledgeSovereignService.CreateLens:input_type -> services.sovereign.v1.CreateLensRequest
-	88,  // 124: services.sovereign.v1.KnowledgeSovereignService.CreateLensVersion:input_type -> services.sovereign.v1.CreateLensVersionRequest
-	90,  // 125: services.sovereign.v1.KnowledgeSovereignService.SelectCurrentLens:input_type -> services.sovereign.v1.SelectCurrentLensRequest
-	92,  // 126: services.sovereign.v1.KnowledgeSovereignService.ClearCurrentLens:input_type -> services.sovereign.v1.ClearCurrentLensRequest
-	94,  // 127: services.sovereign.v1.KnowledgeSovereignService.ArchiveLens:input_type -> services.sovereign.v1.ArchiveLensRequest
-	96,  // 128: services.sovereign.v1.KnowledgeSovereignService.ListRecallSignals:input_type -> services.sovereign.v1.ListRecallSignalsRequest
-	98,  // 129: services.sovereign.v1.KnowledgeSovereignService.AppendRecallSignal:input_type -> services.sovereign.v1.AppendRecallSignalRequest
-	101, // 130: services.sovereign.v1.KnowledgeSovereignService.AppendKnowledgeUserEvent:input_type -> services.sovereign.v1.AppendKnowledgeUserEventRequest
-	103, // 131: services.sovereign.v1.KnowledgeSovereignService.WatchProjectorEvents:input_type -> services.sovereign.v1.WatchProjectorEventsRequest
-	107, // 132: services.sovereign.v1.KnowledgeSovereignService.GetTrailFootprints:input_type -> services.sovereign.v1.GetTrailFootprintsRequest
-	105, // 133: services.sovereign.v1.KnowledgeSovereignService.GetTrailBranchesForAnchor:input_type -> services.sovereign.v1.GetTrailBranchesForAnchorRequest
-	114, // 134: services.sovereign.v1.KnowledgeSovereignService.GetReadingQueue:input_type -> services.sovereign.v1.GetReadingQueueRequest
-	116, // 135: services.sovereign.v1.KnowledgeSovereignService.CountReadingSourcesSince:input_type -> services.sovereign.v1.CountReadingSourcesSinceRequest
-	119, // 136: services.sovereign.v1.KnowledgeSovereignService.ListReadingSourcesInWindow:input_type -> services.sovereign.v1.ListReadingSourcesInWindowRequest
-	1,   // 137: services.sovereign.v1.KnowledgeSovereignService.ApplyProjectionMutation:output_type -> services.sovereign.v1.ApplyProjectionMutationResponse
-	3,   // 138: services.sovereign.v1.KnowledgeSovereignService.ApplyRecallMutation:output_type -> services.sovereign.v1.ApplyRecallMutationResponse
-	5,   // 139: services.sovereign.v1.KnowledgeSovereignService.ApplyCurationMutation:output_type -> services.sovereign.v1.ApplyCurationMutationResponse
-	23,  // 140: services.sovereign.v1.KnowledgeSovereignService.GetKnowledgeHomeItems:output_type -> services.sovereign.v1.GetKnowledgeHomeItemsResponse
-	25,  // 141: services.sovereign.v1.KnowledgeSovereignService.GetTodayDigest:output_type -> services.sovereign.v1.GetTodayDigestResponse
-	27,  // 142: services.sovereign.v1.KnowledgeSovereignService.GetRecallCandidates:output_type -> services.sovereign.v1.GetRecallCandidatesResponse
-	29,  // 143: services.sovereign.v1.KnowledgeSovereignService.ListDistinctUserIDs:output_type -> services.sovereign.v1.ListDistinctUserIDsResponse
-	31,  // 144: services.sovereign.v1.KnowledgeSovereignService.CountNeedToKnowItems:output_type -> services.sovereign.v1.CountNeedToKnowItemsResponse
-	33,  // 145: services.sovereign.v1.KnowledgeSovereignService.ListKnowledgeEvents:output_type -> services.sovereign.v1.ListKnowledgeEventsResponse
-	35,  // 146: services.sovereign.v1.KnowledgeSovereignService.GetLatestEventSeq:output_type -> services.sovereign.v1.GetLatestEventSeqResponse
-	39,  // 147: services.sovereign.v1.KnowledgeSovereignService.AppendKnowledgeEvent:output_type -> services.sovereign.v1.AppendKnowledgeEventResponse
-	37,  // 148: services.sovereign.v1.KnowledgeSovereignService.AreArticlesVisibleInLens:output_type -> services.sovereign.v1.AreArticlesVisibleInLensResponse
-	41,  // 149: services.sovereign.v1.KnowledgeSovereignService.GetActiveProjectionVersion:output_type -> services.sovereign.v1.GetActiveProjectionVersionResponse
-	43,  // 150: services.sovereign.v1.KnowledgeSovereignService.ListProjectionVersions:output_type -> services.sovereign.v1.ListProjectionVersionsResponse
-	45,  // 151: services.sovereign.v1.KnowledgeSovereignService.CreateProjectionVersion:output_type -> services.sovereign.v1.CreateProjectionVersionResponse
-	47,  // 152: services.sovereign.v1.KnowledgeSovereignService.ActivateProjectionVersion:output_type -> services.sovereign.v1.ActivateProjectionVersionResponse
-	49,  // 153: services.sovereign.v1.KnowledgeSovereignService.GetProjectionCheckpoint:output_type -> services.sovereign.v1.GetProjectionCheckpointResponse
-	51,  // 154: services.sovereign.v1.KnowledgeSovereignService.UpdateProjectionCheckpoint:output_type -> services.sovereign.v1.UpdateProjectionCheckpointResponse
-	53,  // 155: services.sovereign.v1.KnowledgeSovereignService.GetProjectionFreshness:output_type -> services.sovereign.v1.GetProjectionFreshnessResponse
-	55,  // 156: services.sovereign.v1.KnowledgeSovereignService.GetProjectionLag:output_type -> services.sovereign.v1.GetProjectionLagResponse
-	57,  // 157: services.sovereign.v1.KnowledgeSovereignService.GetReprojectRun:output_type -> services.sovereign.v1.GetReprojectRunResponse
-	59,  // 158: services.sovereign.v1.KnowledgeSovereignService.ListReprojectRuns:output_type -> services.sovereign.v1.ListReprojectRunsResponse
-	61,  // 159: services.sovereign.v1.KnowledgeSovereignService.CreateReprojectRun:output_type -> services.sovereign.v1.CreateReprojectRunResponse
-	63,  // 160: services.sovereign.v1.KnowledgeSovereignService.UpdateReprojectRun:output_type -> services.sovereign.v1.UpdateReprojectRunResponse
-	65,  // 161: services.sovereign.v1.KnowledgeSovereignService.CompareProjections:output_type -> services.sovereign.v1.CompareProjectionsResponse
-	67,  // 162: services.sovereign.v1.KnowledgeSovereignService.ListProjectionAudits:output_type -> services.sovereign.v1.ListProjectionAuditsResponse
-	69,  // 163: services.sovereign.v1.KnowledgeSovereignService.CreateProjectionAudit:output_type -> services.sovereign.v1.CreateProjectionAuditResponse
-	71,  // 164: services.sovereign.v1.KnowledgeSovereignService.GetBackfillJob:output_type -> services.sovereign.v1.GetBackfillJobResponse
-	73,  // 165: services.sovereign.v1.KnowledgeSovereignService.ListBackfillJobs:output_type -> services.sovereign.v1.ListBackfillJobsResponse
-	75,  // 166: services.sovereign.v1.KnowledgeSovereignService.CreateBackfillJob:output_type -> services.sovereign.v1.CreateBackfillJobResponse
-	77,  // 167: services.sovereign.v1.KnowledgeSovereignService.UpdateBackfillJob:output_type -> services.sovereign.v1.UpdateBackfillJobResponse
-	79,  // 168: services.sovereign.v1.KnowledgeSovereignService.ListLenses:output_type -> services.sovereign.v1.ListLensesResponse
-	81,  // 169: services.sovereign.v1.KnowledgeSovereignService.GetLens:output_type -> services.sovereign.v1.GetLensResponse
-	83,  // 170: services.sovereign.v1.KnowledgeSovereignService.GetCurrentLensSelection:output_type -> services.sovereign.v1.GetCurrentLensSelectionResponse
-	85,  // 171: services.sovereign.v1.KnowledgeSovereignService.ResolveLensFilter:output_type -> services.sovereign.v1.ResolveLensFilterResponse
-	87,  // 172: services.sovereign.v1.KnowledgeSovereignService.CreateLens:output_type -> services.sovereign.v1.CreateLensResponse
-	89,  // 173: services.sovereign.v1.KnowledgeSovereignService.CreateLensVersion:output_type -> services.sovereign.v1.CreateLensVersionResponse
-	91,  // 174: services.sovereign.v1.KnowledgeSovereignService.SelectCurrentLens:output_type -> services.sovereign.v1.SelectCurrentLensResponse
-	93,  // 175: services.sovereign.v1.KnowledgeSovereignService.ClearCurrentLens:output_type -> services.sovereign.v1.ClearCurrentLensResponse
-	95,  // 176: services.sovereign.v1.KnowledgeSovereignService.ArchiveLens:output_type -> services.sovereign.v1.ArchiveLensResponse
-	97,  // 177: services.sovereign.v1.KnowledgeSovereignService.ListRecallSignals:output_type -> services.sovereign.v1.ListRecallSignalsResponse
-	99,  // 178: services.sovereign.v1.KnowledgeSovereignService.AppendRecallSignal:output_type -> services.sovereign.v1.AppendRecallSignalResponse
-	102, // 179: services.sovereign.v1.KnowledgeSovereignService.AppendKnowledgeUserEvent:output_type -> services.sovereign.v1.AppendKnowledgeUserEventResponse
-	104, // 180: services.sovereign.v1.KnowledgeSovereignService.WatchProjectorEvents:output_type -> services.sovereign.v1.WatchProjectorEventsResponse
-	108, // 181: services.sovereign.v1.KnowledgeSovereignService.GetTrailFootprints:output_type -> services.sovereign.v1.GetTrailFootprintsResponse
-	106, // 182: services.sovereign.v1.KnowledgeSovereignService.GetTrailBranchesForAnchor:output_type -> services.sovereign.v1.GetTrailBranchesForAnchorResponse
-	115, // 183: services.sovereign.v1.KnowledgeSovereignService.GetReadingQueue:output_type -> services.sovereign.v1.GetReadingQueueResponse
-	117, // 184: services.sovereign.v1.KnowledgeSovereignService.CountReadingSourcesSince:output_type -> services.sovereign.v1.CountReadingSourcesSinceResponse
-	120, // 185: services.sovereign.v1.KnowledgeSovereignService.ListReadingSourcesInWindow:output_type -> services.sovereign.v1.ListReadingSourcesInWindowResponse
-	137, // [137:186] is the sub-list for method output_type
-	88,  // [88:137] is the sub-list for method input_type
-	88,  // [88:88] is the sub-list for extension type_name
-	88,  // [88:88] is the sub-list for extension extendee
-	0,   // [0:88] is the sub-list for field type_name
+	125, // 88: services.sovereign.v1.ReadingThemeEntry.created_at:type_name -> google.protobuf.Timestamp
+	125, // 89: services.sovereign.v1.ReadingThemeEntry.updated_at:type_name -> google.protobuf.Timestamp
+	125, // 90: services.sovereign.v1.ReadingThemeEntry.last_opened_at:type_name -> google.protobuf.Timestamp
+	122, // 91: services.sovereign.v1.ListReadingThemesResponse.themes:type_name -> services.sovereign.v1.ReadingThemeEntry
+	0,   // 92: services.sovereign.v1.KnowledgeSovereignService.ApplyProjectionMutation:input_type -> services.sovereign.v1.ApplyProjectionMutationRequest
+	2,   // 93: services.sovereign.v1.KnowledgeSovereignService.ApplyRecallMutation:input_type -> services.sovereign.v1.ApplyRecallMutationRequest
+	4,   // 94: services.sovereign.v1.KnowledgeSovereignService.ApplyCurationMutation:input_type -> services.sovereign.v1.ApplyCurationMutationRequest
+	22,  // 95: services.sovereign.v1.KnowledgeSovereignService.GetKnowledgeHomeItems:input_type -> services.sovereign.v1.GetKnowledgeHomeItemsRequest
+	24,  // 96: services.sovereign.v1.KnowledgeSovereignService.GetTodayDigest:input_type -> services.sovereign.v1.GetTodayDigestRequest
+	26,  // 97: services.sovereign.v1.KnowledgeSovereignService.GetRecallCandidates:input_type -> services.sovereign.v1.GetRecallCandidatesRequest
+	28,  // 98: services.sovereign.v1.KnowledgeSovereignService.ListDistinctUserIDs:input_type -> services.sovereign.v1.ListDistinctUserIDsRequest
+	30,  // 99: services.sovereign.v1.KnowledgeSovereignService.CountNeedToKnowItems:input_type -> services.sovereign.v1.CountNeedToKnowItemsRequest
+	32,  // 100: services.sovereign.v1.KnowledgeSovereignService.ListKnowledgeEvents:input_type -> services.sovereign.v1.ListKnowledgeEventsRequest
+	34,  // 101: services.sovereign.v1.KnowledgeSovereignService.GetLatestEventSeq:input_type -> services.sovereign.v1.GetLatestEventSeqRequest
+	38,  // 102: services.sovereign.v1.KnowledgeSovereignService.AppendKnowledgeEvent:input_type -> services.sovereign.v1.AppendKnowledgeEventRequest
+	36,  // 103: services.sovereign.v1.KnowledgeSovereignService.AreArticlesVisibleInLens:input_type -> services.sovereign.v1.AreArticlesVisibleInLensRequest
+	40,  // 104: services.sovereign.v1.KnowledgeSovereignService.GetActiveProjectionVersion:input_type -> services.sovereign.v1.GetActiveProjectionVersionRequest
+	42,  // 105: services.sovereign.v1.KnowledgeSovereignService.ListProjectionVersions:input_type -> services.sovereign.v1.ListProjectionVersionsRequest
+	44,  // 106: services.sovereign.v1.KnowledgeSovereignService.CreateProjectionVersion:input_type -> services.sovereign.v1.CreateProjectionVersionRequest
+	46,  // 107: services.sovereign.v1.KnowledgeSovereignService.ActivateProjectionVersion:input_type -> services.sovereign.v1.ActivateProjectionVersionRequest
+	48,  // 108: services.sovereign.v1.KnowledgeSovereignService.GetProjectionCheckpoint:input_type -> services.sovereign.v1.GetProjectionCheckpointRequest
+	50,  // 109: services.sovereign.v1.KnowledgeSovereignService.UpdateProjectionCheckpoint:input_type -> services.sovereign.v1.UpdateProjectionCheckpointRequest
+	52,  // 110: services.sovereign.v1.KnowledgeSovereignService.GetProjectionFreshness:input_type -> services.sovereign.v1.GetProjectionFreshnessRequest
+	54,  // 111: services.sovereign.v1.KnowledgeSovereignService.GetProjectionLag:input_type -> services.sovereign.v1.GetProjectionLagRequest
+	56,  // 112: services.sovereign.v1.KnowledgeSovereignService.GetReprojectRun:input_type -> services.sovereign.v1.GetReprojectRunRequest
+	58,  // 113: services.sovereign.v1.KnowledgeSovereignService.ListReprojectRuns:input_type -> services.sovereign.v1.ListReprojectRunsRequest
+	60,  // 114: services.sovereign.v1.KnowledgeSovereignService.CreateReprojectRun:input_type -> services.sovereign.v1.CreateReprojectRunRequest
+	62,  // 115: services.sovereign.v1.KnowledgeSovereignService.UpdateReprojectRun:input_type -> services.sovereign.v1.UpdateReprojectRunRequest
+	64,  // 116: services.sovereign.v1.KnowledgeSovereignService.CompareProjections:input_type -> services.sovereign.v1.CompareProjectionsRequest
+	66,  // 117: services.sovereign.v1.KnowledgeSovereignService.ListProjectionAudits:input_type -> services.sovereign.v1.ListProjectionAuditsRequest
+	68,  // 118: services.sovereign.v1.KnowledgeSovereignService.CreateProjectionAudit:input_type -> services.sovereign.v1.CreateProjectionAuditRequest
+	70,  // 119: services.sovereign.v1.KnowledgeSovereignService.GetBackfillJob:input_type -> services.sovereign.v1.GetBackfillJobRequest
+	72,  // 120: services.sovereign.v1.KnowledgeSovereignService.ListBackfillJobs:input_type -> services.sovereign.v1.ListBackfillJobsRequest
+	74,  // 121: services.sovereign.v1.KnowledgeSovereignService.CreateBackfillJob:input_type -> services.sovereign.v1.CreateBackfillJobRequest
+	76,  // 122: services.sovereign.v1.KnowledgeSovereignService.UpdateBackfillJob:input_type -> services.sovereign.v1.UpdateBackfillJobRequest
+	78,  // 123: services.sovereign.v1.KnowledgeSovereignService.ListLenses:input_type -> services.sovereign.v1.ListLensesRequest
+	80,  // 124: services.sovereign.v1.KnowledgeSovereignService.GetLens:input_type -> services.sovereign.v1.GetLensRequest
+	82,  // 125: services.sovereign.v1.KnowledgeSovereignService.GetCurrentLensSelection:input_type -> services.sovereign.v1.GetCurrentLensSelectionRequest
+	84,  // 126: services.sovereign.v1.KnowledgeSovereignService.ResolveLensFilter:input_type -> services.sovereign.v1.ResolveLensFilterRequest
+	86,  // 127: services.sovereign.v1.KnowledgeSovereignService.CreateLens:input_type -> services.sovereign.v1.CreateLensRequest
+	88,  // 128: services.sovereign.v1.KnowledgeSovereignService.CreateLensVersion:input_type -> services.sovereign.v1.CreateLensVersionRequest
+	90,  // 129: services.sovereign.v1.KnowledgeSovereignService.SelectCurrentLens:input_type -> services.sovereign.v1.SelectCurrentLensRequest
+	92,  // 130: services.sovereign.v1.KnowledgeSovereignService.ClearCurrentLens:input_type -> services.sovereign.v1.ClearCurrentLensRequest
+	94,  // 131: services.sovereign.v1.KnowledgeSovereignService.ArchiveLens:input_type -> services.sovereign.v1.ArchiveLensRequest
+	96,  // 132: services.sovereign.v1.KnowledgeSovereignService.ListRecallSignals:input_type -> services.sovereign.v1.ListRecallSignalsRequest
+	98,  // 133: services.sovereign.v1.KnowledgeSovereignService.AppendRecallSignal:input_type -> services.sovereign.v1.AppendRecallSignalRequest
+	101, // 134: services.sovereign.v1.KnowledgeSovereignService.AppendKnowledgeUserEvent:input_type -> services.sovereign.v1.AppendKnowledgeUserEventRequest
+	103, // 135: services.sovereign.v1.KnowledgeSovereignService.WatchProjectorEvents:input_type -> services.sovereign.v1.WatchProjectorEventsRequest
+	107, // 136: services.sovereign.v1.KnowledgeSovereignService.GetTrailFootprints:input_type -> services.sovereign.v1.GetTrailFootprintsRequest
+	105, // 137: services.sovereign.v1.KnowledgeSovereignService.GetTrailBranchesForAnchor:input_type -> services.sovereign.v1.GetTrailBranchesForAnchorRequest
+	114, // 138: services.sovereign.v1.KnowledgeSovereignService.GetReadingQueue:input_type -> services.sovereign.v1.GetReadingQueueRequest
+	116, // 139: services.sovereign.v1.KnowledgeSovereignService.CountReadingSourcesSince:input_type -> services.sovereign.v1.CountReadingSourcesSinceRequest
+	119, // 140: services.sovereign.v1.KnowledgeSovereignService.ListReadingSourcesInWindow:input_type -> services.sovereign.v1.ListReadingSourcesInWindowRequest
+	121, // 141: services.sovereign.v1.KnowledgeSovereignService.ListReadingThemes:input_type -> services.sovereign.v1.ListReadingThemesRequest
+	1,   // 142: services.sovereign.v1.KnowledgeSovereignService.ApplyProjectionMutation:output_type -> services.sovereign.v1.ApplyProjectionMutationResponse
+	3,   // 143: services.sovereign.v1.KnowledgeSovereignService.ApplyRecallMutation:output_type -> services.sovereign.v1.ApplyRecallMutationResponse
+	5,   // 144: services.sovereign.v1.KnowledgeSovereignService.ApplyCurationMutation:output_type -> services.sovereign.v1.ApplyCurationMutationResponse
+	23,  // 145: services.sovereign.v1.KnowledgeSovereignService.GetKnowledgeHomeItems:output_type -> services.sovereign.v1.GetKnowledgeHomeItemsResponse
+	25,  // 146: services.sovereign.v1.KnowledgeSovereignService.GetTodayDigest:output_type -> services.sovereign.v1.GetTodayDigestResponse
+	27,  // 147: services.sovereign.v1.KnowledgeSovereignService.GetRecallCandidates:output_type -> services.sovereign.v1.GetRecallCandidatesResponse
+	29,  // 148: services.sovereign.v1.KnowledgeSovereignService.ListDistinctUserIDs:output_type -> services.sovereign.v1.ListDistinctUserIDsResponse
+	31,  // 149: services.sovereign.v1.KnowledgeSovereignService.CountNeedToKnowItems:output_type -> services.sovereign.v1.CountNeedToKnowItemsResponse
+	33,  // 150: services.sovereign.v1.KnowledgeSovereignService.ListKnowledgeEvents:output_type -> services.sovereign.v1.ListKnowledgeEventsResponse
+	35,  // 151: services.sovereign.v1.KnowledgeSovereignService.GetLatestEventSeq:output_type -> services.sovereign.v1.GetLatestEventSeqResponse
+	39,  // 152: services.sovereign.v1.KnowledgeSovereignService.AppendKnowledgeEvent:output_type -> services.sovereign.v1.AppendKnowledgeEventResponse
+	37,  // 153: services.sovereign.v1.KnowledgeSovereignService.AreArticlesVisibleInLens:output_type -> services.sovereign.v1.AreArticlesVisibleInLensResponse
+	41,  // 154: services.sovereign.v1.KnowledgeSovereignService.GetActiveProjectionVersion:output_type -> services.sovereign.v1.GetActiveProjectionVersionResponse
+	43,  // 155: services.sovereign.v1.KnowledgeSovereignService.ListProjectionVersions:output_type -> services.sovereign.v1.ListProjectionVersionsResponse
+	45,  // 156: services.sovereign.v1.KnowledgeSovereignService.CreateProjectionVersion:output_type -> services.sovereign.v1.CreateProjectionVersionResponse
+	47,  // 157: services.sovereign.v1.KnowledgeSovereignService.ActivateProjectionVersion:output_type -> services.sovereign.v1.ActivateProjectionVersionResponse
+	49,  // 158: services.sovereign.v1.KnowledgeSovereignService.GetProjectionCheckpoint:output_type -> services.sovereign.v1.GetProjectionCheckpointResponse
+	51,  // 159: services.sovereign.v1.KnowledgeSovereignService.UpdateProjectionCheckpoint:output_type -> services.sovereign.v1.UpdateProjectionCheckpointResponse
+	53,  // 160: services.sovereign.v1.KnowledgeSovereignService.GetProjectionFreshness:output_type -> services.sovereign.v1.GetProjectionFreshnessResponse
+	55,  // 161: services.sovereign.v1.KnowledgeSovereignService.GetProjectionLag:output_type -> services.sovereign.v1.GetProjectionLagResponse
+	57,  // 162: services.sovereign.v1.KnowledgeSovereignService.GetReprojectRun:output_type -> services.sovereign.v1.GetReprojectRunResponse
+	59,  // 163: services.sovereign.v1.KnowledgeSovereignService.ListReprojectRuns:output_type -> services.sovereign.v1.ListReprojectRunsResponse
+	61,  // 164: services.sovereign.v1.KnowledgeSovereignService.CreateReprojectRun:output_type -> services.sovereign.v1.CreateReprojectRunResponse
+	63,  // 165: services.sovereign.v1.KnowledgeSovereignService.UpdateReprojectRun:output_type -> services.sovereign.v1.UpdateReprojectRunResponse
+	65,  // 166: services.sovereign.v1.KnowledgeSovereignService.CompareProjections:output_type -> services.sovereign.v1.CompareProjectionsResponse
+	67,  // 167: services.sovereign.v1.KnowledgeSovereignService.ListProjectionAudits:output_type -> services.sovereign.v1.ListProjectionAuditsResponse
+	69,  // 168: services.sovereign.v1.KnowledgeSovereignService.CreateProjectionAudit:output_type -> services.sovereign.v1.CreateProjectionAuditResponse
+	71,  // 169: services.sovereign.v1.KnowledgeSovereignService.GetBackfillJob:output_type -> services.sovereign.v1.GetBackfillJobResponse
+	73,  // 170: services.sovereign.v1.KnowledgeSovereignService.ListBackfillJobs:output_type -> services.sovereign.v1.ListBackfillJobsResponse
+	75,  // 171: services.sovereign.v1.KnowledgeSovereignService.CreateBackfillJob:output_type -> services.sovereign.v1.CreateBackfillJobResponse
+	77,  // 172: services.sovereign.v1.KnowledgeSovereignService.UpdateBackfillJob:output_type -> services.sovereign.v1.UpdateBackfillJobResponse
+	79,  // 173: services.sovereign.v1.KnowledgeSovereignService.ListLenses:output_type -> services.sovereign.v1.ListLensesResponse
+	81,  // 174: services.sovereign.v1.KnowledgeSovereignService.GetLens:output_type -> services.sovereign.v1.GetLensResponse
+	83,  // 175: services.sovereign.v1.KnowledgeSovereignService.GetCurrentLensSelection:output_type -> services.sovereign.v1.GetCurrentLensSelectionResponse
+	85,  // 176: services.sovereign.v1.KnowledgeSovereignService.ResolveLensFilter:output_type -> services.sovereign.v1.ResolveLensFilterResponse
+	87,  // 177: services.sovereign.v1.KnowledgeSovereignService.CreateLens:output_type -> services.sovereign.v1.CreateLensResponse
+	89,  // 178: services.sovereign.v1.KnowledgeSovereignService.CreateLensVersion:output_type -> services.sovereign.v1.CreateLensVersionResponse
+	91,  // 179: services.sovereign.v1.KnowledgeSovereignService.SelectCurrentLens:output_type -> services.sovereign.v1.SelectCurrentLensResponse
+	93,  // 180: services.sovereign.v1.KnowledgeSovereignService.ClearCurrentLens:output_type -> services.sovereign.v1.ClearCurrentLensResponse
+	95,  // 181: services.sovereign.v1.KnowledgeSovereignService.ArchiveLens:output_type -> services.sovereign.v1.ArchiveLensResponse
+	97,  // 182: services.sovereign.v1.KnowledgeSovereignService.ListRecallSignals:output_type -> services.sovereign.v1.ListRecallSignalsResponse
+	99,  // 183: services.sovereign.v1.KnowledgeSovereignService.AppendRecallSignal:output_type -> services.sovereign.v1.AppendRecallSignalResponse
+	102, // 184: services.sovereign.v1.KnowledgeSovereignService.AppendKnowledgeUserEvent:output_type -> services.sovereign.v1.AppendKnowledgeUserEventResponse
+	104, // 185: services.sovereign.v1.KnowledgeSovereignService.WatchProjectorEvents:output_type -> services.sovereign.v1.WatchProjectorEventsResponse
+	108, // 186: services.sovereign.v1.KnowledgeSovereignService.GetTrailFootprints:output_type -> services.sovereign.v1.GetTrailFootprintsResponse
+	106, // 187: services.sovereign.v1.KnowledgeSovereignService.GetTrailBranchesForAnchor:output_type -> services.sovereign.v1.GetTrailBranchesForAnchorResponse
+	115, // 188: services.sovereign.v1.KnowledgeSovereignService.GetReadingQueue:output_type -> services.sovereign.v1.GetReadingQueueResponse
+	117, // 189: services.sovereign.v1.KnowledgeSovereignService.CountReadingSourcesSince:output_type -> services.sovereign.v1.CountReadingSourcesSinceResponse
+	120, // 190: services.sovereign.v1.KnowledgeSovereignService.ListReadingSourcesInWindow:output_type -> services.sovereign.v1.ListReadingSourcesInWindowResponse
+	123, // 191: services.sovereign.v1.KnowledgeSovereignService.ListReadingThemes:output_type -> services.sovereign.v1.ListReadingThemesResponse
+	142, // [142:192] is the sub-list for method output_type
+	92,  // [92:142] is the sub-list for method input_type
+	92,  // [92:92] is the sub-list for extension type_name
+	92,  // [92:92] is the sub-list for extension extendee
+	0,   // [0:92] is the sub-list for field type_name
 }
 
 func init() { file_services_sovereign_v1_sovereign_proto_init() }
@@ -7912,13 +8136,14 @@ func file_services_sovereign_v1_sovereign_proto_init() {
 	if File_services_sovereign_v1_sovereign_proto != nil {
 		return
 	}
+	file_services_sovereign_v1_sovereign_proto_msgTypes[122].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_services_sovereign_v1_sovereign_proto_rawDesc), len(file_services_sovereign_v1_sovereign_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   122,
+			NumMessages:   125,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

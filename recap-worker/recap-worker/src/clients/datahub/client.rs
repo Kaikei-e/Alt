@@ -12,6 +12,9 @@ use uuid::Uuid;
 /// Connect-RPC procedure path. `services.datahub.v1.DataHubService` is the
 /// data plane's only namespace since the 3-binary split (ADR-000954).
 const ENQUEUE_NOTIFICATION_PATH: &str = "services.datahub.v1.DataHubService/EnqueueNotification";
+const BATCH_GET_ARTICLES_BY_IDS_PATH: &str =
+    "services.datahub.v1.DataHubService/BatchGetArticlesByIDs";
+const BATCH_GET_ARTICLES_MAX_BATCH_SIZE: usize = 500;
 
 /// One enqueue, addressed to every device of one user that still wants this
 /// kind. Borrowed rather than owned because the relay builds it per row from
@@ -38,6 +41,16 @@ pub(crate) struct NotificationEnqueue<'a> {
 pub(crate) struct EnqueueOutcome {
     pub(crate) delivery_count: i32,
     pub(crate) superseded_count: i32,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct DataHubArticle {
+    pub(crate) id: Uuid,
+    pub(crate) title: String,
+    pub(crate) url: String,
+    pub(crate) content: String,
+    pub(crate) published_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone)]
@@ -142,6 +155,80 @@ impl DataHubClient {
             superseded_count: wire.superseded_count,
         })
     }
+
+    #[allow(dead_code)]
+    pub(crate) async fn batch_get_articles_by_ids(
+        &self,
+        article_ids: &[Uuid],
+    ) -> Result<Vec<DataHubArticle>> {
+        if article_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let url = self
+            .base_url
+            .join(BATCH_GET_ARTICLES_BY_IDS_PATH)
+            .context("failed to build BatchGetArticlesByIDs URL")?;
+
+        let mut articles = Vec::with_capacity(article_ids.len());
+        for chunk in article_ids.chunks(BATCH_GET_ARTICLES_MAX_BATCH_SIZE) {
+            let body = BatchGetArticlesByIDsRequest {
+                article_ids: chunk.iter().map(ToString::to_string).collect(),
+            };
+
+            let response = self
+                .client
+                .post(url.clone())
+                .header("Content-Type", "application/json")
+                .json(&body)
+                .send()
+                .await
+                .context("BatchGetArticlesByIDs request failed")?;
+
+            let status = response.status();
+            if !status.is_success() {
+                let error_body = response.text().await.unwrap_or_default();
+                return Err(anyhow!(
+                    "BatchGetArticlesByIDs returned status {status}: {error_body}"
+                ));
+            }
+
+            let wire: BatchGetArticlesByIDsResponse = response
+                .json()
+                .await
+                .context("failed to deserialize BatchGetArticlesByIDs response")?;
+
+            for item in wire.articles {
+                let id = Uuid::parse_str(&item.id).with_context(|| {
+                    format!(
+                        "invalid article id '{}' in BatchGetArticlesByIDs response",
+                        item.id
+                    )
+                })?;
+                let published_at = match item.published_at {
+                    Some(ref ts) if !ts.is_empty() => Some(
+                        DateTime::parse_from_rfc3339(ts)
+                            .with_context(|| {
+                                format!(
+                                    "invalid publishedAt '{ts}' in BatchGetArticlesByIDs response"
+                                )
+                            })?
+                            .with_timezone(&Utc),
+                    ),
+                    _ => None,
+                };
+                articles.push(DataHubArticle {
+                    id,
+                    title: item.title,
+                    url: item.url,
+                    content: item.content,
+                    published_at,
+                });
+            }
+        }
+
+        Ok(articles)
+    }
 }
 
 /// protojson renders `bytes` as standard base64. Kept public to the module so
@@ -185,6 +272,33 @@ struct EnqueueNotificationResponse {
     delivery_count: i32,
     #[serde(default)]
     superseded_count: i32,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BatchGetArticlesByIDsRequest {
+    article_ids: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BatchGetArticlesByIDsResponse {
+    #[serde(default)]
+    articles: Vec<UserArticleWire>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UserArticleWire {
+    id: String,
+    #[serde(default)]
+    title: String,
+    #[serde(default)]
+    content: String,
+    #[serde(default)]
+    url: String,
+    #[serde(default)]
+    published_at: Option<String>,
 }
 
 #[cfg(test)]
@@ -314,5 +428,57 @@ mod tests {
             .expect_err("an empty dedupe key makes at-least-once delivery unbounded");
 
         assert!(format!("{err:#}").contains("dedupe_key"));
+    }
+
+    #[tokio::test]
+    async fn batch_get_articles_by_ids_short_circuits_empty_input() {
+        let client = DataHubClient::new_for_test("http://localhost:1");
+        let articles = client
+            .batch_get_articles_by_ids(&[])
+            .await
+            .expect("empty input must short-circuit");
+        assert!(articles.is_empty());
+    }
+
+    #[tokio::test]
+    async fn batch_get_articles_by_ids_chunks_under_500_cap() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(
+                "/services.datahub.v1.DataHubService/BatchGetArticlesByIDs",
+            ))
+            .respond_with(|req: &wiremock::Request| {
+                let body: serde_json::Value = req.body_json().unwrap();
+                let ids = body["articleIds"].as_array().unwrap();
+                assert!(ids.len() <= 500);
+                let articles: Vec<serde_json::Value> = ids
+                    .iter()
+                    .map(|id| {
+                        serde_json::json!({
+                            "id": id,
+                            "title": "Title",
+                            "content": "Content",
+                            "url": "https://example.com/a",
+                        })
+                    })
+                    .collect();
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({ "articles": articles }))
+            })
+            .expect(3)
+            .mount(&server)
+            .await;
+
+        let ids: Vec<Uuid> = (0..1001).map(|_| Uuid::new_v4()).collect();
+        let client = DataHubClient::new_for_test(server.uri());
+        let articles = client
+            .batch_get_articles_by_ids(&ids)
+            .await
+            .expect("chunked batch get should succeed");
+
+        assert_eq!(articles.len(), 1001);
+        assert_eq!(articles[0].id, ids[0]);
+        assert_eq!(articles[0].published_at, None);
+        assert_eq!(articles[1000].id, ids[1000]);
     }
 }

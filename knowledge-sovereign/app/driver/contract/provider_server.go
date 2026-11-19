@@ -164,6 +164,24 @@ func (f *fakeRepo) ListReadingSourcesInWindow(context.Context, uuid.UUID, time.T
 	}, nil
 }
 
+func (f *fakeRepo) ListReadingThemes(_ context.Context, userID uuid.UUID, _ int) ([]sovereign_db.ReadingTheme, error) {
+	openedAt := fixtureTime()
+	return []sovereign_db.ReadingTheme{
+		{
+			UserID:            userID,
+			TenantID:          uuid.MustParse(fixtureSnapshotID),
+			ThemeID:           uuid.MustParse(fixtureSnapshotID),
+			Title:             "Distributed Systems",
+			LatestVersion:     1,
+			ArticleCount:      3,
+			CreatedAt:         fixtureTime(),
+			UpdatedAt:         fixtureTime(),
+			LastOpenedAt:      &openedAt,
+			LastOpenedVersion: 1,
+		},
+	}, nil
+}
+
 func fixtureBranch() sovereign_db.TrailBranch {
 	return sovereign_db.TrailBranch{
 		BranchKey:     "cluster:u:article:z",

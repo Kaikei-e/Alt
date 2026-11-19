@@ -116,6 +116,7 @@ func TestNewBackendComponents_EmitsHomeFeedSyncStartupLogs(t *testing.T) {
 		"articles_reading_status_home_dismiss_enabled",
 		"feeds_reading_status_home_dismiss_enabled",
 		"register_favorite_feed_home_open_enabled",
+		"reading_themes_enabled",
 	} {
 		assert.Contains(t, logs, `"msg":"`+wantMsg+`"`, "missing startup log %s", wantMsg)
 	}

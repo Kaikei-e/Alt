@@ -13,4 +13,5 @@ mod client;
 #[cfg(test)]
 mod contract;
 
-pub(crate) use client::{DataHubClient, NotificationEnqueue, recap_ready_payload};
+#[allow(unused_imports)]
+pub(crate) use client::{DataHubArticle, DataHubClient, NotificationEnqueue, recap_ready_payload};

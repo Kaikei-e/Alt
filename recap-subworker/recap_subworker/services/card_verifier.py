@@ -69,7 +69,13 @@ class VerifySentenceInput(BaseModel):
     """Input sentence to verify."""
 
     idx: int = Field(..., description="0-based sentence index in the card")
-    kind: Literal["what", "why"] = Field(..., description="Sentence kind: 'what' or 'why'")
+    kind: Literal["what", "why", "key_point", "timeline", "what_changed", "open_question"] = Field(
+        ...,
+        description=(
+            "Sentence kind: 'what', 'why', 'key_point', 'timeline', "
+            "'what_changed', or 'open_question'"
+        ),
+    )
     text: str = Field(..., description="Sentence text")
     refs: list[int] = Field(
         default_factory=list,

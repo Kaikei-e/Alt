@@ -55,6 +55,10 @@ describe("Desktop Sidebar", () => {
 			.element(page.getByRole("link", { name: "Evening Pulse" }))
 			.not.toBeInTheDocument();
 
+		const themesLink = page.getByRole("link", { name: "Themes" });
+		await expect.element(themesLink).toBeInTheDocument();
+		await expect.element(themesLink).toHaveAttribute("href", "/knowledge");
+
 		const trailLink = page.getByRole("link", { name: "Your Trail" });
 		await expect.element(trailLink).toBeInTheDocument();
 		await expect.element(trailLink).toHaveAttribute("href", "/knowledge/trail");
@@ -62,6 +66,44 @@ describe("Desktop Sidebar", () => {
 		const searchLink = page.getByRole("link", { name: "Search" });
 		await expect.element(searchLink).toBeInTheDocument();
 		await expect.element(searchLink).toHaveAttribute("href", "/search");
+	});
+
+	it("marks Themes active on /knowledge without marking Your Trail", async () => {
+		pageState.url = new URL("http://localhost/knowledge");
+		render(Sidebar);
+
+		await expect
+			.element(page.getByRole("link", { name: "Themes" }))
+			.toHaveAttribute("aria-current", "page");
+		await expect
+			.element(page.getByRole("link", { name: "Your Trail" }))
+			.not.toHaveAttribute("aria-current", "page");
+	});
+
+	it("marks Themes active on /knowledge/themes/* without marking Your Trail", async () => {
+		pageState.url = new URL(
+			"http://localhost/knowledge/themes/01938e82-7c00-7a7b-9b10-000000000001",
+		);
+		render(Sidebar);
+
+		await expect
+			.element(page.getByRole("link", { name: "Themes" }))
+			.toHaveAttribute("aria-current", "page");
+		await expect
+			.element(page.getByRole("link", { name: "Your Trail" }))
+			.not.toHaveAttribute("aria-current", "page");
+	});
+
+	it("marks Your Trail active on /knowledge/trail without marking Themes", async () => {
+		pageState.url = new URL("http://localhost/knowledge/trail");
+		render(Sidebar);
+
+		await expect
+			.element(page.getByRole("link", { name: "Your Trail" }))
+			.toHaveAttribute("aria-current", "page");
+		await expect
+			.element(page.getByRole("link", { name: "Themes" }))
+			.not.toHaveAttribute("aria-current", "page");
 	});
 
 	it("surfaces /settings/notifications inside the Settings section", async () => {

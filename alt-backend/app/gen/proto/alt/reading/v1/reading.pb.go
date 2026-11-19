@@ -1092,6 +1092,737 @@ func (x *GetReadTodayQueueResponse) GetReadCountSince() int32 {
 	return 0
 }
 
+// ListThemesRequest requests the user's theme pages.
+type ListThemesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListThemesRequest) Reset() {
+	*x = ListThemesRequest{}
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListThemesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListThemesRequest) ProtoMessage() {}
+
+func (x *ListThemesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListThemesRequest.ProtoReflect.Descriptor instead.
+func (*ListThemesRequest) Descriptor() ([]byte, []int) {
+	return file_alt_reading_v1_reading_proto_rawDescGZIP(), []int{14}
+}
+
+// ThemeSummary summarizes a theme page in the user's reading theme list.
+type ThemeSummary struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Identifier of the theme.
+	ThemeId string `protobuf:"bytes,1,opt,name=theme_id,json=themeId,proto3" json:"theme_id,omitempty"`
+	// Human-readable theme title.
+	Title string `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
+	// Latest published version number of the theme.
+	LatestVersion int32 `protobuf:"varint,3,opt,name=latest_version,json=latestVersion,proto3" json:"latest_version,omitempty"`
+	// Number of read source articles included in the latest version.
+	ArticleCount int32 `protobuf:"varint,4,opt,name=article_count,json=articleCount,proto3" json:"article_count,omitempty"`
+	// Timestamp when the latest version was created.
+	UpdatedAt *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	// Timestamp when the user last opened this theme, if ever.
+	LastOpenedAt *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=last_opened_at,json=lastOpenedAt,proto3,oneof" json:"last_opened_at,omitempty"`
+	// Last version number opened by the user (0 = never opened).
+	LastOpenedVersion int32 `protobuf:"varint,7,opt,name=last_opened_version,json=lastOpenedVersion,proto3" json:"last_opened_version,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *ThemeSummary) Reset() {
+	*x = ThemeSummary{}
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ThemeSummary) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ThemeSummary) ProtoMessage() {}
+
+func (x *ThemeSummary) ProtoReflect() protoreflect.Message {
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ThemeSummary.ProtoReflect.Descriptor instead.
+func (*ThemeSummary) Descriptor() ([]byte, []int) {
+	return file_alt_reading_v1_reading_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *ThemeSummary) GetThemeId() string {
+	if x != nil {
+		return x.ThemeId
+	}
+	return ""
+}
+
+func (x *ThemeSummary) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *ThemeSummary) GetLatestVersion() int32 {
+	if x != nil {
+		return x.LatestVersion
+	}
+	return 0
+}
+
+func (x *ThemeSummary) GetArticleCount() int32 {
+	if x != nil {
+		return x.ArticleCount
+	}
+	return 0
+}
+
+func (x *ThemeSummary) GetUpdatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.UpdatedAt
+	}
+	return nil
+}
+
+func (x *ThemeSummary) GetLastOpenedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.LastOpenedAt
+	}
+	return nil
+}
+
+func (x *ThemeSummary) GetLastOpenedVersion() int32 {
+	if x != nil {
+		return x.LastOpenedVersion
+	}
+	return 0
+}
+
+// ListThemesResponse returns the user's theme summaries.
+type ListThemesResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Theme summaries available for the user.
+	Themes        []*ThemeSummary `protobuf:"bytes,1,rep,name=themes,proto3" json:"themes,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListThemesResponse) Reset() {
+	*x = ListThemesResponse{}
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListThemesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListThemesResponse) ProtoMessage() {}
+
+func (x *ListThemesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListThemesResponse.ProtoReflect.Descriptor instead.
+func (*ListThemesResponse) Descriptor() ([]byte, []int) {
+	return file_alt_reading_v1_reading_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *ListThemesResponse) GetThemes() []*ThemeSummary {
+	if x != nil {
+		return x.Themes
+	}
+	return nil
+}
+
+// GetThemeRequest requests a specific theme page and optionally a specific version.
+type GetThemeRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Identifier of the theme to fetch.
+	ThemeId string `protobuf:"bytes,1,opt,name=theme_id,json=themeId,proto3" json:"theme_id,omitempty"`
+	// Specific version to return; unset returns the latest version.
+	Version       *int32 `protobuf:"varint,2,opt,name=version,proto3,oneof" json:"version,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetThemeRequest) Reset() {
+	*x = GetThemeRequest{}
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetThemeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetThemeRequest) ProtoMessage() {}
+
+func (x *GetThemeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetThemeRequest.ProtoReflect.Descriptor instead.
+func (*GetThemeRequest) Descriptor() ([]byte, []int) {
+	return file_alt_reading_v1_reading_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *GetThemeRequest) GetThemeId() string {
+	if x != nil {
+		return x.ThemeId
+	}
+	return ""
+}
+
+func (x *GetThemeRequest) GetVersion() int32 {
+	if x != nil && x.Version != nil {
+		return *x.Version
+	}
+	return 0
+}
+
+// ThemeSentence is a single attributed sentence in a theme page section.
+type ThemeSentence struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Sentence text.
+	Text string `protobuf:"bytes,1,opt,name=text,proto3" json:"text,omitempty"`
+	// Identifiers of the read articles supporting this sentence.
+	SourceArticleIds []string `protobuf:"bytes,2,rep,name=source_article_ids,json=sourceArticleIds,proto3" json:"source_article_ids,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *ThemeSentence) Reset() {
+	*x = ThemeSentence{}
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ThemeSentence) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ThemeSentence) ProtoMessage() {}
+
+func (x *ThemeSentence) ProtoReflect() protoreflect.Message {
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ThemeSentence.ProtoReflect.Descriptor instead.
+func (*ThemeSentence) Descriptor() ([]byte, []int) {
+	return file_alt_reading_v1_reading_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *ThemeSentence) GetText() string {
+	if x != nil {
+		return x.Text
+	}
+	return ""
+}
+
+func (x *ThemeSentence) GetSourceArticleIds() []string {
+	if x != nil {
+		return x.SourceArticleIds
+	}
+	return nil
+}
+
+// ThemeTimelineEntry is a dated entry in a theme page timeline.
+type ThemeTimelineEntry struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Date string in YYYY-MM-DD format.
+	Date string `protobuf:"bytes,1,opt,name=date,proto3" json:"date,omitempty"`
+	// Timeline entry text.
+	Text string `protobuf:"bytes,2,opt,name=text,proto3" json:"text,omitempty"`
+	// Identifiers of the read articles supporting this entry.
+	SourceArticleIds []string `protobuf:"bytes,3,rep,name=source_article_ids,json=sourceArticleIds,proto3" json:"source_article_ids,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *ThemeTimelineEntry) Reset() {
+	*x = ThemeTimelineEntry{}
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ThemeTimelineEntry) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ThemeTimelineEntry) ProtoMessage() {}
+
+func (x *ThemeTimelineEntry) ProtoReflect() protoreflect.Message {
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ThemeTimelineEntry.ProtoReflect.Descriptor instead.
+func (*ThemeTimelineEntry) Descriptor() ([]byte, []int) {
+	return file_alt_reading_v1_reading_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *ThemeTimelineEntry) GetDate() string {
+	if x != nil {
+		return x.Date
+	}
+	return ""
+}
+
+func (x *ThemeTimelineEntry) GetText() string {
+	if x != nil {
+		return x.Text
+	}
+	return ""
+}
+
+func (x *ThemeTimelineEntry) GetSourceArticleIds() []string {
+	if x != nil {
+		return x.SourceArticleIds
+	}
+	return nil
+}
+
+// ThemeSource describes a source article cited by a theme page.
+type ThemeSource struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Identifier of the source article.
+	ArticleId string `protobuf:"bytes,1,opt,name=article_id,json=articleId,proto3" json:"article_id,omitempty"`
+	// Title of the source article.
+	Title string `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
+	// Canonical URL of the source article.
+	Url           string `protobuf:"bytes,3,opt,name=url,proto3" json:"url,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ThemeSource) Reset() {
+	*x = ThemeSource{}
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ThemeSource) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ThemeSource) ProtoMessage() {}
+
+func (x *ThemeSource) ProtoReflect() protoreflect.Message {
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ThemeSource.ProtoReflect.Descriptor instead.
+func (*ThemeSource) Descriptor() ([]byte, []int) {
+	return file_alt_reading_v1_reading_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *ThemeSource) GetArticleId() string {
+	if x != nil {
+		return x.ArticleId
+	}
+	return ""
+}
+
+func (x *ThemeSource) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *ThemeSource) GetUrl() string {
+	if x != nil {
+		return x.Url
+	}
+	return ""
+}
+
+// ThemeVersionRef identifies an available version of a theme page.
+type ThemeVersionRef struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Version number.
+	Version int32 `protobuf:"varint,1,opt,name=version,proto3" json:"version,omitempty"`
+	// Timestamp when this version was created.
+	CreatedAt *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	// Number of source articles in this version.
+	ArticleCount  int32 `protobuf:"varint,3,opt,name=article_count,json=articleCount,proto3" json:"article_count,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ThemeVersionRef) Reset() {
+	*x = ThemeVersionRef{}
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ThemeVersionRef) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ThemeVersionRef) ProtoMessage() {}
+
+func (x *ThemeVersionRef) ProtoReflect() protoreflect.Message {
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ThemeVersionRef.ProtoReflect.Descriptor instead.
+func (*ThemeVersionRef) Descriptor() ([]byte, []int) {
+	return file_alt_reading_v1_reading_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *ThemeVersionRef) GetVersion() int32 {
+	if x != nil {
+		return x.Version
+	}
+	return 0
+}
+
+func (x *ThemeVersionRef) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+func (x *ThemeVersionRef) GetArticleCount() int32 {
+	if x != nil {
+		return x.ArticleCount
+	}
+	return 0
+}
+
+// GetThemeResponse returns the full content and version metadata for a theme page.
+type GetThemeResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Identifier of the theme.
+	ThemeId string `protobuf:"bytes,1,opt,name=theme_id,json=themeId,proto3" json:"theme_id,omitempty"`
+	// Human-readable theme title.
+	Title string `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
+	// Version number returned by this response.
+	Version int32 `protobuf:"varint,3,opt,name=version,proto3" json:"version,omitempty"`
+	// Latest available version number for this theme.
+	LatestVersion int32 `protobuf:"varint,4,opt,name=latest_version,json=latestVersion,proto3" json:"latest_version,omitempty"`
+	// Timestamp when this version was created.
+	CreatedAt *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	// Attributed key point sentences.
+	KeyPoints []*ThemeSentence `protobuf:"bytes,6,rep,name=key_points,json=keyPoints,proto3" json:"key_points,omitempty"`
+	// Attributed chronological timeline entries.
+	Timeline []*ThemeTimelineEntry `protobuf:"bytes,7,rep,name=timeline,proto3" json:"timeline,omitempty"`
+	// Attributed sentences describing what changed in this version.
+	WhatChanged []*ThemeSentence `protobuf:"bytes,8,rep,name=what_changed,json=whatChanged,proto3" json:"what_changed,omitempty"`
+	// Attributed open questions remaining in this theme.
+	OpenQuestions []*ThemeSentence `protobuf:"bytes,9,rep,name=open_questions,json=openQuestions,proto3" json:"open_questions,omitempty"`
+	// Source articles referenced by this version.
+	Sources []*ThemeSource `protobuf:"bytes,10,rep,name=sources,proto3" json:"sources,omitempty"`
+	// Available versions ordered newest first.
+	Versions      []*ThemeVersionRef `protobuf:"bytes,11,rep,name=versions,proto3" json:"versions,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetThemeResponse) Reset() {
+	*x = GetThemeResponse{}
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetThemeResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetThemeResponse) ProtoMessage() {}
+
+func (x *GetThemeResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetThemeResponse.ProtoReflect.Descriptor instead.
+func (*GetThemeResponse) Descriptor() ([]byte, []int) {
+	return file_alt_reading_v1_reading_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *GetThemeResponse) GetThemeId() string {
+	if x != nil {
+		return x.ThemeId
+	}
+	return ""
+}
+
+func (x *GetThemeResponse) GetTitle() string {
+	if x != nil {
+		return x.Title
+	}
+	return ""
+}
+
+func (x *GetThemeResponse) GetVersion() int32 {
+	if x != nil {
+		return x.Version
+	}
+	return 0
+}
+
+func (x *GetThemeResponse) GetLatestVersion() int32 {
+	if x != nil {
+		return x.LatestVersion
+	}
+	return 0
+}
+
+func (x *GetThemeResponse) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+func (x *GetThemeResponse) GetKeyPoints() []*ThemeSentence {
+	if x != nil {
+		return x.KeyPoints
+	}
+	return nil
+}
+
+func (x *GetThemeResponse) GetTimeline() []*ThemeTimelineEntry {
+	if x != nil {
+		return x.Timeline
+	}
+	return nil
+}
+
+func (x *GetThemeResponse) GetWhatChanged() []*ThemeSentence {
+	if x != nil {
+		return x.WhatChanged
+	}
+	return nil
+}
+
+func (x *GetThemeResponse) GetOpenQuestions() []*ThemeSentence {
+	if x != nil {
+		return x.OpenQuestions
+	}
+	return nil
+}
+
+func (x *GetThemeResponse) GetSources() []*ThemeSource {
+	if x != nil {
+		return x.Sources
+	}
+	return nil
+}
+
+func (x *GetThemeResponse) GetVersions() []*ThemeVersionRef {
+	if x != nil {
+		return x.Versions
+	}
+	return nil
+}
+
+// RecordThemeOpenedRequest records that the user opened a theme page version.
+type RecordThemeOpenedRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Identifier of the theme that was opened.
+	ThemeId string `protobuf:"bytes,1,opt,name=theme_id,json=themeId,proto3" json:"theme_id,omitempty"`
+	// Version number that was opened.
+	Version int32 `protobuf:"varint,2,opt,name=version,proto3" json:"version,omitempty"`
+	// Client-generated UUID used to deduplicate retried deliveries.
+	ClientEventId string `protobuf:"bytes,3,opt,name=client_event_id,json=clientEventId,proto3" json:"client_event_id,omitempty"`
+	// Client-observed timestamp when the theme was opened.
+	OpenedAt      *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=opened_at,json=openedAt,proto3" json:"opened_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RecordThemeOpenedRequest) Reset() {
+	*x = RecordThemeOpenedRequest{}
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RecordThemeOpenedRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RecordThemeOpenedRequest) ProtoMessage() {}
+
+func (x *RecordThemeOpenedRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RecordThemeOpenedRequest.ProtoReflect.Descriptor instead.
+func (*RecordThemeOpenedRequest) Descriptor() ([]byte, []int) {
+	return file_alt_reading_v1_reading_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *RecordThemeOpenedRequest) GetThemeId() string {
+	if x != nil {
+		return x.ThemeId
+	}
+	return ""
+}
+
+func (x *RecordThemeOpenedRequest) GetVersion() int32 {
+	if x != nil {
+		return x.Version
+	}
+	return 0
+}
+
+func (x *RecordThemeOpenedRequest) GetClientEventId() string {
+	if x != nil {
+		return x.ClientEventId
+	}
+	return ""
+}
+
+func (x *RecordThemeOpenedRequest) GetOpenedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.OpenedAt
+	}
+	return nil
+}
+
+// RecordThemeOpenedResponse acknowledges the theme opened event.
+type RecordThemeOpenedResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RecordThemeOpenedResponse) Reset() {
+	*x = RecordThemeOpenedResponse{}
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RecordThemeOpenedResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RecordThemeOpenedResponse) ProtoMessage() {}
+
+func (x *RecordThemeOpenedResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_alt_reading_v1_reading_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RecordThemeOpenedResponse.ProtoReflect.Descriptor instead.
+func (*RecordThemeOpenedResponse) Descriptor() ([]byte, []int) {
+	return file_alt_reading_v1_reading_proto_rawDescGZIP(), []int{24}
+}
+
 var File_alt_reading_v1_reading_proto protoreflect.FileDescriptor
 
 const file_alt_reading_v1_reading_proto_rawDesc = "" +
@@ -1171,7 +1902,63 @@ const file_alt_reading_v1_reading_proto_rawDesc = "" +
 	"\x19GetReadTodayQueueResponse\x126\n" +
 	"\x05items\x18\x01 \x03(\v2 .alt.reading.v1.ReadingQueueItemR\x05items\x12\x10\n" +
 	"\x03cap\x18\x02 \x01(\x05R\x03cap\x12(\n" +
-	"\x10read_count_since\x18\x03 \x01(\x05R\x0ereadCountSince*\xa6\x01\n" +
+	"\x10read_count_since\x18\x03 \x01(\x05R\x0ereadCountSince\"\x13\n" +
+	"\x11ListThemesRequest\"\xd0\x02\n" +
+	"\fThemeSummary\x12\x19\n" +
+	"\btheme_id\x18\x01 \x01(\tR\athemeId\x12\x14\n" +
+	"\x05title\x18\x02 \x01(\tR\x05title\x12%\n" +
+	"\x0elatest_version\x18\x03 \x01(\x05R\rlatestVersion\x12#\n" +
+	"\rarticle_count\x18\x04 \x01(\x05R\farticleCount\x129\n" +
+	"\n" +
+	"updated_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12E\n" +
+	"\x0elast_opened_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampH\x00R\flastOpenedAt\x88\x01\x01\x12.\n" +
+	"\x13last_opened_version\x18\a \x01(\x05R\x11lastOpenedVersionB\x11\n" +
+	"\x0f_last_opened_at\"J\n" +
+	"\x12ListThemesResponse\x124\n" +
+	"\x06themes\x18\x01 \x03(\v2\x1c.alt.reading.v1.ThemeSummaryR\x06themes\"W\n" +
+	"\x0fGetThemeRequest\x12\x19\n" +
+	"\btheme_id\x18\x01 \x01(\tR\athemeId\x12\x1d\n" +
+	"\aversion\x18\x02 \x01(\x05H\x00R\aversion\x88\x01\x01B\n" +
+	"\n" +
+	"\b_version\"Q\n" +
+	"\rThemeSentence\x12\x12\n" +
+	"\x04text\x18\x01 \x01(\tR\x04text\x12,\n" +
+	"\x12source_article_ids\x18\x02 \x03(\tR\x10sourceArticleIds\"j\n" +
+	"\x12ThemeTimelineEntry\x12\x12\n" +
+	"\x04date\x18\x01 \x01(\tR\x04date\x12\x12\n" +
+	"\x04text\x18\x02 \x01(\tR\x04text\x12,\n" +
+	"\x12source_article_ids\x18\x03 \x03(\tR\x10sourceArticleIds\"T\n" +
+	"\vThemeSource\x12\x1d\n" +
+	"\n" +
+	"article_id\x18\x01 \x01(\tR\tarticleId\x12\x14\n" +
+	"\x05title\x18\x02 \x01(\tR\x05title\x12\x10\n" +
+	"\x03url\x18\x03 \x01(\tR\x03url\"\x8b\x01\n" +
+	"\x0fThemeVersionRef\x12\x18\n" +
+	"\aversion\x18\x01 \x01(\x05R\aversion\x129\n" +
+	"\n" +
+	"created_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12#\n" +
+	"\rarticle_count\x18\x03 \x01(\x05R\farticleCount\"\xb9\x04\n" +
+	"\x10GetThemeResponse\x12\x19\n" +
+	"\btheme_id\x18\x01 \x01(\tR\athemeId\x12\x14\n" +
+	"\x05title\x18\x02 \x01(\tR\x05title\x12\x18\n" +
+	"\aversion\x18\x03 \x01(\x05R\aversion\x12%\n" +
+	"\x0elatest_version\x18\x04 \x01(\x05R\rlatestVersion\x129\n" +
+	"\n" +
+	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12<\n" +
+	"\n" +
+	"key_points\x18\x06 \x03(\v2\x1d.alt.reading.v1.ThemeSentenceR\tkeyPoints\x12>\n" +
+	"\btimeline\x18\a \x03(\v2\".alt.reading.v1.ThemeTimelineEntryR\btimeline\x12@\n" +
+	"\fwhat_changed\x18\b \x03(\v2\x1d.alt.reading.v1.ThemeSentenceR\vwhatChanged\x12D\n" +
+	"\x0eopen_questions\x18\t \x03(\v2\x1d.alt.reading.v1.ThemeSentenceR\ropenQuestions\x125\n" +
+	"\asources\x18\n" +
+	" \x03(\v2\x1b.alt.reading.v1.ThemeSourceR\asources\x12;\n" +
+	"\bversions\x18\v \x03(\v2\x1f.alt.reading.v1.ThemeVersionRefR\bversions\"\xb0\x01\n" +
+	"\x18RecordThemeOpenedRequest\x12\x19\n" +
+	"\btheme_id\x18\x01 \x01(\tR\athemeId\x12\x18\n" +
+	"\aversion\x18\x02 \x01(\x05R\aversion\x12&\n" +
+	"\x0fclient_event_id\x18\x03 \x01(\tR\rclientEventId\x127\n" +
+	"\topened_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\bopenedAt\"\x1b\n" +
+	"\x19RecordThemeOpenedResponse*\xa6\x01\n" +
 	"\x0eReadingSurface\x12\x1f\n" +
 	"\x1bREADING_SURFACE_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17READING_SURFACE_GALLERY\x10\x01\x12\x19\n" +
@@ -1182,12 +1969,16 @@ const file_alt_reading_v1_reading_proto_rawDesc = "" +
 	"!QUEUE_ARTICLE_OUTCOME_UNSPECIFIED\x10\x00\x12 \n" +
 	"\x1cQUEUE_ARTICLE_OUTCOME_QUEUED\x10\x01\x12(\n" +
 	"$QUEUE_ARTICLE_OUTCOME_ALREADY_QUEUED\x10\x02\x12$\n" +
-	" QUEUE_ARTICLE_OUTCOME_QUEUE_FULL\x10\x032\xac\x03\n" +
+	" QUEUE_ARTICLE_OUTCOME_QUEUE_FULL\x10\x032\xba\x05\n" +
 	"\x0eReadingService\x12n\n" +
 	"\x13RecordReadingEvents\x12*.alt.reading.v1.RecordReadingEventsRequest\x1a+.alt.reading.v1.RecordReadingEventsResponse\x12Y\n" +
 	"\fQueueArticle\x12#.alt.reading.v1.QueueArticleRequest\x1a$.alt.reading.v1.QueueArticleResponse\x12_\n" +
 	"\x0eUnqueueArticle\x12%.alt.reading.v1.UnqueueArticleRequest\x1a&.alt.reading.v1.UnqueueArticleResponse\x12h\n" +
-	"\x11GetReadTodayQueue\x12(.alt.reading.v1.GetReadTodayQueueRequest\x1a).alt.reading.v1.GetReadTodayQueueResponse\x1a\x04\x88\xb5\x18\x01B(Z&alt/gen/proto/alt/reading/v1;readingv1b\x06proto3"
+	"\x11GetReadTodayQueue\x12(.alt.reading.v1.GetReadTodayQueueRequest\x1a).alt.reading.v1.GetReadTodayQueueResponse\x12S\n" +
+	"\n" +
+	"ListThemes\x12!.alt.reading.v1.ListThemesRequest\x1a\".alt.reading.v1.ListThemesResponse\x12M\n" +
+	"\bGetTheme\x12\x1f.alt.reading.v1.GetThemeRequest\x1a .alt.reading.v1.GetThemeResponse\x12h\n" +
+	"\x11RecordThemeOpened\x12(.alt.reading.v1.RecordThemeOpenedRequest\x1a).alt.reading.v1.RecordThemeOpenedResponse\x1a\x04\x88\xb5\x18\x01B(Z&alt/gen/proto/alt/reading/v1;readingv1b\x06proto3"
 
 var (
 	file_alt_reading_v1_reading_proto_rawDescOnce sync.Once
@@ -1202,7 +1993,7 @@ func file_alt_reading_v1_reading_proto_rawDescGZIP() []byte {
 }
 
 var file_alt_reading_v1_reading_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_alt_reading_v1_reading_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
+var file_alt_reading_v1_reading_proto_msgTypes = make([]protoimpl.MessageInfo, 25)
 var file_alt_reading_v1_reading_proto_goTypes = []any{
 	(ReadingSurface)(0),                 // 0: alt.reading.v1.ReadingSurface
 	(QueueArticleOutcome)(0),            // 1: alt.reading.v1.QueueArticleOutcome
@@ -1220,41 +2011,70 @@ var file_alt_reading_v1_reading_proto_goTypes = []any{
 	(*UnqueueArticleResponse)(nil),      // 13: alt.reading.v1.UnqueueArticleResponse
 	(*GetReadTodayQueueRequest)(nil),    // 14: alt.reading.v1.GetReadTodayQueueRequest
 	(*GetReadTodayQueueResponse)(nil),   // 15: alt.reading.v1.GetReadTodayQueueResponse
-	(*timestamppb.Timestamp)(nil),       // 16: google.protobuf.Timestamp
+	(*ListThemesRequest)(nil),           // 16: alt.reading.v1.ListThemesRequest
+	(*ThemeSummary)(nil),                // 17: alt.reading.v1.ThemeSummary
+	(*ListThemesResponse)(nil),          // 18: alt.reading.v1.ListThemesResponse
+	(*GetThemeRequest)(nil),             // 19: alt.reading.v1.GetThemeRequest
+	(*ThemeSentence)(nil),               // 20: alt.reading.v1.ThemeSentence
+	(*ThemeTimelineEntry)(nil),          // 21: alt.reading.v1.ThemeTimelineEntry
+	(*ThemeSource)(nil),                 // 22: alt.reading.v1.ThemeSource
+	(*ThemeVersionRef)(nil),             // 23: alt.reading.v1.ThemeVersionRef
+	(*GetThemeResponse)(nil),            // 24: alt.reading.v1.GetThemeResponse
+	(*RecordThemeOpenedRequest)(nil),    // 25: alt.reading.v1.RecordThemeOpenedRequest
+	(*RecordThemeOpenedResponse)(nil),   // 26: alt.reading.v1.RecordThemeOpenedResponse
+	(*timestamppb.Timestamp)(nil),       // 27: google.protobuf.Timestamp
 }
 var file_alt_reading_v1_reading_proto_depIdxs = []int32{
 	0,  // 0: alt.reading.v1.SurfaceViewed.surface:type_name -> alt.reading.v1.ReadingSurface
 	0,  // 1: alt.reading.v1.ReachedEnd.surface:type_name -> alt.reading.v1.ReadingSurface
 	0,  // 2: alt.reading.v1.SessionEnded.surface:type_name -> alt.reading.v1.ReadingSurface
 	0,  // 3: alt.reading.v1.Opened.surface:type_name -> alt.reading.v1.ReadingSurface
-	16, // 4: alt.reading.v1.ReadingEvent.occurred_at:type_name -> google.protobuf.Timestamp
+	27, // 4: alt.reading.v1.ReadingEvent.occurred_at:type_name -> google.protobuf.Timestamp
 	2,  // 5: alt.reading.v1.ReadingEvent.surface_viewed:type_name -> alt.reading.v1.SurfaceViewed
 	3,  // 6: alt.reading.v1.ReadingEvent.reached_end:type_name -> alt.reading.v1.ReachedEnd
 	4,  // 7: alt.reading.v1.ReadingEvent.session_ended:type_name -> alt.reading.v1.SessionEnded
 	5,  // 8: alt.reading.v1.ReadingEvent.opened:type_name -> alt.reading.v1.Opened
 	6,  // 9: alt.reading.v1.RecordReadingEventsRequest.events:type_name -> alt.reading.v1.ReadingEvent
-	16, // 10: alt.reading.v1.ReadingQueueItem.queued_at:type_name -> google.protobuf.Timestamp
-	16, // 11: alt.reading.v1.ReadingQueueItem.expires_at:type_name -> google.protobuf.Timestamp
-	16, // 12: alt.reading.v1.QueueArticleRequest.occurred_at:type_name -> google.protobuf.Timestamp
+	27, // 10: alt.reading.v1.ReadingQueueItem.queued_at:type_name -> google.protobuf.Timestamp
+	27, // 11: alt.reading.v1.ReadingQueueItem.expires_at:type_name -> google.protobuf.Timestamp
+	27, // 12: alt.reading.v1.QueueArticleRequest.occurred_at:type_name -> google.protobuf.Timestamp
 	0,  // 13: alt.reading.v1.QueueArticleRequest.surface:type_name -> alt.reading.v1.ReadingSurface
 	1,  // 14: alt.reading.v1.QueueArticleResponse.outcome:type_name -> alt.reading.v1.QueueArticleOutcome
 	9,  // 15: alt.reading.v1.QueueArticleResponse.items:type_name -> alt.reading.v1.ReadingQueueItem
-	16, // 16: alt.reading.v1.UnqueueArticleRequest.occurred_at:type_name -> google.protobuf.Timestamp
-	16, // 17: alt.reading.v1.GetReadTodayQueueRequest.read_since:type_name -> google.protobuf.Timestamp
+	27, // 16: alt.reading.v1.UnqueueArticleRequest.occurred_at:type_name -> google.protobuf.Timestamp
+	27, // 17: alt.reading.v1.GetReadTodayQueueRequest.read_since:type_name -> google.protobuf.Timestamp
 	9,  // 18: alt.reading.v1.GetReadTodayQueueResponse.items:type_name -> alt.reading.v1.ReadingQueueItem
-	7,  // 19: alt.reading.v1.ReadingService.RecordReadingEvents:input_type -> alt.reading.v1.RecordReadingEventsRequest
-	10, // 20: alt.reading.v1.ReadingService.QueueArticle:input_type -> alt.reading.v1.QueueArticleRequest
-	12, // 21: alt.reading.v1.ReadingService.UnqueueArticle:input_type -> alt.reading.v1.UnqueueArticleRequest
-	14, // 22: alt.reading.v1.ReadingService.GetReadTodayQueue:input_type -> alt.reading.v1.GetReadTodayQueueRequest
-	8,  // 23: alt.reading.v1.ReadingService.RecordReadingEvents:output_type -> alt.reading.v1.RecordReadingEventsResponse
-	11, // 24: alt.reading.v1.ReadingService.QueueArticle:output_type -> alt.reading.v1.QueueArticleResponse
-	13, // 25: alt.reading.v1.ReadingService.UnqueueArticle:output_type -> alt.reading.v1.UnqueueArticleResponse
-	15, // 26: alt.reading.v1.ReadingService.GetReadTodayQueue:output_type -> alt.reading.v1.GetReadTodayQueueResponse
-	23, // [23:27] is the sub-list for method output_type
-	19, // [19:23] is the sub-list for method input_type
-	19, // [19:19] is the sub-list for extension type_name
-	19, // [19:19] is the sub-list for extension extendee
-	0,  // [0:19] is the sub-list for field type_name
+	27, // 19: alt.reading.v1.ThemeSummary.updated_at:type_name -> google.protobuf.Timestamp
+	27, // 20: alt.reading.v1.ThemeSummary.last_opened_at:type_name -> google.protobuf.Timestamp
+	17, // 21: alt.reading.v1.ListThemesResponse.themes:type_name -> alt.reading.v1.ThemeSummary
+	27, // 22: alt.reading.v1.ThemeVersionRef.created_at:type_name -> google.protobuf.Timestamp
+	27, // 23: alt.reading.v1.GetThemeResponse.created_at:type_name -> google.protobuf.Timestamp
+	20, // 24: alt.reading.v1.GetThemeResponse.key_points:type_name -> alt.reading.v1.ThemeSentence
+	21, // 25: alt.reading.v1.GetThemeResponse.timeline:type_name -> alt.reading.v1.ThemeTimelineEntry
+	20, // 26: alt.reading.v1.GetThemeResponse.what_changed:type_name -> alt.reading.v1.ThemeSentence
+	20, // 27: alt.reading.v1.GetThemeResponse.open_questions:type_name -> alt.reading.v1.ThemeSentence
+	22, // 28: alt.reading.v1.GetThemeResponse.sources:type_name -> alt.reading.v1.ThemeSource
+	23, // 29: alt.reading.v1.GetThemeResponse.versions:type_name -> alt.reading.v1.ThemeVersionRef
+	27, // 30: alt.reading.v1.RecordThemeOpenedRequest.opened_at:type_name -> google.protobuf.Timestamp
+	7,  // 31: alt.reading.v1.ReadingService.RecordReadingEvents:input_type -> alt.reading.v1.RecordReadingEventsRequest
+	10, // 32: alt.reading.v1.ReadingService.QueueArticle:input_type -> alt.reading.v1.QueueArticleRequest
+	12, // 33: alt.reading.v1.ReadingService.UnqueueArticle:input_type -> alt.reading.v1.UnqueueArticleRequest
+	14, // 34: alt.reading.v1.ReadingService.GetReadTodayQueue:input_type -> alt.reading.v1.GetReadTodayQueueRequest
+	16, // 35: alt.reading.v1.ReadingService.ListThemes:input_type -> alt.reading.v1.ListThemesRequest
+	19, // 36: alt.reading.v1.ReadingService.GetTheme:input_type -> alt.reading.v1.GetThemeRequest
+	25, // 37: alt.reading.v1.ReadingService.RecordThemeOpened:input_type -> alt.reading.v1.RecordThemeOpenedRequest
+	8,  // 38: alt.reading.v1.ReadingService.RecordReadingEvents:output_type -> alt.reading.v1.RecordReadingEventsResponse
+	11, // 39: alt.reading.v1.ReadingService.QueueArticle:output_type -> alt.reading.v1.QueueArticleResponse
+	13, // 40: alt.reading.v1.ReadingService.UnqueueArticle:output_type -> alt.reading.v1.UnqueueArticleResponse
+	15, // 41: alt.reading.v1.ReadingService.GetReadTodayQueue:output_type -> alt.reading.v1.GetReadTodayQueueResponse
+	18, // 42: alt.reading.v1.ReadingService.ListThemes:output_type -> alt.reading.v1.ListThemesResponse
+	24, // 43: alt.reading.v1.ReadingService.GetTheme:output_type -> alt.reading.v1.GetThemeResponse
+	26, // 44: alt.reading.v1.ReadingService.RecordThemeOpened:output_type -> alt.reading.v1.RecordThemeOpenedResponse
+	38, // [38:45] is the sub-list for method output_type
+	31, // [31:38] is the sub-list for method input_type
+	31, // [31:31] is the sub-list for extension type_name
+	31, // [31:31] is the sub-list for extension extendee
+	0,  // [0:31] is the sub-list for field type_name
 }
 
 func init() { file_alt_reading_v1_reading_proto_init() }
@@ -1268,13 +2088,15 @@ func file_alt_reading_v1_reading_proto_init() {
 		(*ReadingEvent_SessionEnded)(nil),
 		(*ReadingEvent_Opened)(nil),
 	}
+	file_alt_reading_v1_reading_proto_msgTypes[15].OneofWrappers = []any{}
+	file_alt_reading_v1_reading_proto_msgTypes[17].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_alt_reading_v1_reading_proto_rawDesc), len(file_alt_reading_v1_reading_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   14,
+			NumMessages:   25,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

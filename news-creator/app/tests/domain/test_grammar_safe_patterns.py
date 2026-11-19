@@ -32,6 +32,7 @@ from news_creator.domain.models import (
     IntermediateSummary,
     MorningLetterContent,
     RecapSummary,
+    ThemePageLLMOutput,
 )
 
 
@@ -42,6 +43,7 @@ SCHEMAS_FORWARDED_TO_OLLAMA: list[type[BaseModel]] = [
     MorningLetterContent,
     IntermediateSummary,
     RecapSummary,
+    ThemePageLLMOutput,
 ]
 
 

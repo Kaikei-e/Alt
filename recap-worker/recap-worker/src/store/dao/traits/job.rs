@@ -54,6 +54,9 @@ pub(crate) trait JobDao: Send + Sync {
     /// Check if a cards job (`trigger_source = 'cards'` and `status = 'running'`) is currently running.
     fn find_running_cards_job(&self) -> impl Future<Output = Result<Option<Uuid>>> + Send;
 
+    /// Check if a themes run (`status = 'running'`) is currently running.
+    fn find_running_theme_run(&self) -> impl Future<Output = Result<Option<Uuid>>> + Send;
+
     /// ジョブのステータスと最終ステージを更新する
     fn update_job_status(
         &self,

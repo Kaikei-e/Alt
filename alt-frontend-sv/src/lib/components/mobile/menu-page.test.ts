@@ -28,9 +28,12 @@ describe("MENU_SECTIONS (re-export of MOBILE_MENU_SECTIONS)", () => {
 		expect(MENU_SECTIONS.find((s) => s.title === "Admin")).toBeDefined();
 	});
 
-	it("Browse includes Home (/home) and Trail (/knowledge/trail) and omits Swipe", () => {
+	it("Browse includes Home (/home), Themes (/knowledge), and Trail (/knowledge/trail) and omits Swipe", () => {
 		const browse = MENU_SECTIONS.find((s) => s.title === "Browse");
 		expect(browse?.items.find((i) => i.href === "/home")).toBeDefined();
+		const themes = browse?.items.find((i) => i.href === "/knowledge");
+		expect(themes).toBeDefined();
+		expect(themes?.label).toBe("Themes");
 		expect(
 			browse?.items.find((i) => i.href === "/knowledge/trail"),
 		).toBeDefined();

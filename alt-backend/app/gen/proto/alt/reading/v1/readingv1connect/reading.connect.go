@@ -45,6 +45,14 @@ const (
 	// ReadingServiceGetReadTodayQueueProcedure is the fully-qualified name of the ReadingService's
 	// GetReadTodayQueue RPC.
 	ReadingServiceGetReadTodayQueueProcedure = "/alt.reading.v1.ReadingService/GetReadTodayQueue"
+	// ReadingServiceListThemesProcedure is the fully-qualified name of the ReadingService's ListThemes
+	// RPC.
+	ReadingServiceListThemesProcedure = "/alt.reading.v1.ReadingService/ListThemes"
+	// ReadingServiceGetThemeProcedure is the fully-qualified name of the ReadingService's GetTheme RPC.
+	ReadingServiceGetThemeProcedure = "/alt.reading.v1.ReadingService/GetTheme"
+	// ReadingServiceRecordThemeOpenedProcedure is the fully-qualified name of the ReadingService's
+	// RecordThemeOpened RPC.
+	ReadingServiceRecordThemeOpenedProcedure = "/alt.reading.v1.ReadingService/RecordThemeOpened"
 )
 
 // ReadingServiceClient is a client for the alt.reading.v1.ReadingService service.
@@ -58,6 +66,12 @@ type ReadingServiceClient interface {
 	UnqueueArticle(context.Context, *connect.Request[v1.UnqueueArticleRequest]) (*connect.Response[v1.UnqueueArticleResponse], error)
 	// Returns the active Read Today queue and the count of articles read since read_since.
 	GetReadTodayQueue(context.Context, *connect.Request[v1.GetReadTodayQueueRequest]) (*connect.Response[v1.GetReadTodayQueueResponse], error)
+	// Returns the user's theme page summaries.
+	ListThemes(context.Context, *connect.Request[v1.ListThemesRequest]) (*connect.Response[v1.ListThemesResponse], error)
+	// Returns a theme page version, or NOT_FOUND if the theme does not exist.
+	GetTheme(context.Context, *connect.Request[v1.GetThemeRequest]) (*connect.Response[v1.GetThemeResponse], error)
+	// Records that the user opened a theme page version.
+	RecordThemeOpened(context.Context, *connect.Request[v1.RecordThemeOpenedRequest]) (*connect.Response[v1.RecordThemeOpenedResponse], error)
 }
 
 // NewReadingServiceClient constructs a client for the alt.reading.v1.ReadingService service. By
@@ -95,6 +109,24 @@ func NewReadingServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(readingServiceMethods.ByName("GetReadTodayQueue")),
 			connect.WithClientOptions(opts...),
 		),
+		listThemes: connect.NewClient[v1.ListThemesRequest, v1.ListThemesResponse](
+			httpClient,
+			baseURL+ReadingServiceListThemesProcedure,
+			connect.WithSchema(readingServiceMethods.ByName("ListThemes")),
+			connect.WithClientOptions(opts...),
+		),
+		getTheme: connect.NewClient[v1.GetThemeRequest, v1.GetThemeResponse](
+			httpClient,
+			baseURL+ReadingServiceGetThemeProcedure,
+			connect.WithSchema(readingServiceMethods.ByName("GetTheme")),
+			connect.WithClientOptions(opts...),
+		),
+		recordThemeOpened: connect.NewClient[v1.RecordThemeOpenedRequest, v1.RecordThemeOpenedResponse](
+			httpClient,
+			baseURL+ReadingServiceRecordThemeOpenedProcedure,
+			connect.WithSchema(readingServiceMethods.ByName("RecordThemeOpened")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -104,6 +136,9 @@ type readingServiceClient struct {
 	queueArticle        *connect.Client[v1.QueueArticleRequest, v1.QueueArticleResponse]
 	unqueueArticle      *connect.Client[v1.UnqueueArticleRequest, v1.UnqueueArticleResponse]
 	getReadTodayQueue   *connect.Client[v1.GetReadTodayQueueRequest, v1.GetReadTodayQueueResponse]
+	listThemes          *connect.Client[v1.ListThemesRequest, v1.ListThemesResponse]
+	getTheme            *connect.Client[v1.GetThemeRequest, v1.GetThemeResponse]
+	recordThemeOpened   *connect.Client[v1.RecordThemeOpenedRequest, v1.RecordThemeOpenedResponse]
 }
 
 // RecordReadingEvents calls alt.reading.v1.ReadingService.RecordReadingEvents.
@@ -126,6 +161,21 @@ func (c *readingServiceClient) GetReadTodayQueue(ctx context.Context, req *conne
 	return c.getReadTodayQueue.CallUnary(ctx, req)
 }
 
+// ListThemes calls alt.reading.v1.ReadingService.ListThemes.
+func (c *readingServiceClient) ListThemes(ctx context.Context, req *connect.Request[v1.ListThemesRequest]) (*connect.Response[v1.ListThemesResponse], error) {
+	return c.listThemes.CallUnary(ctx, req)
+}
+
+// GetTheme calls alt.reading.v1.ReadingService.GetTheme.
+func (c *readingServiceClient) GetTheme(ctx context.Context, req *connect.Request[v1.GetThemeRequest]) (*connect.Response[v1.GetThemeResponse], error) {
+	return c.getTheme.CallUnary(ctx, req)
+}
+
+// RecordThemeOpened calls alt.reading.v1.ReadingService.RecordThemeOpened.
+func (c *readingServiceClient) RecordThemeOpened(ctx context.Context, req *connect.Request[v1.RecordThemeOpenedRequest]) (*connect.Response[v1.RecordThemeOpenedResponse], error) {
+	return c.recordThemeOpened.CallUnary(ctx, req)
+}
+
 // ReadingServiceHandler is an implementation of the alt.reading.v1.ReadingService service.
 type ReadingServiceHandler interface {
 	// Appends a batch of at most 50 reading events, deduplicating retries by
@@ -137,6 +187,12 @@ type ReadingServiceHandler interface {
 	UnqueueArticle(context.Context, *connect.Request[v1.UnqueueArticleRequest]) (*connect.Response[v1.UnqueueArticleResponse], error)
 	// Returns the active Read Today queue and the count of articles read since read_since.
 	GetReadTodayQueue(context.Context, *connect.Request[v1.GetReadTodayQueueRequest]) (*connect.Response[v1.GetReadTodayQueueResponse], error)
+	// Returns the user's theme page summaries.
+	ListThemes(context.Context, *connect.Request[v1.ListThemesRequest]) (*connect.Response[v1.ListThemesResponse], error)
+	// Returns a theme page version, or NOT_FOUND if the theme does not exist.
+	GetTheme(context.Context, *connect.Request[v1.GetThemeRequest]) (*connect.Response[v1.GetThemeResponse], error)
+	// Records that the user opened a theme page version.
+	RecordThemeOpened(context.Context, *connect.Request[v1.RecordThemeOpenedRequest]) (*connect.Response[v1.RecordThemeOpenedResponse], error)
 }
 
 // NewReadingServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -170,6 +226,24 @@ func NewReadingServiceHandler(svc ReadingServiceHandler, opts ...connect.Handler
 		connect.WithSchema(readingServiceMethods.ByName("GetReadTodayQueue")),
 		connect.WithHandlerOptions(opts...),
 	)
+	readingServiceListThemesHandler := connect.NewUnaryHandler(
+		ReadingServiceListThemesProcedure,
+		svc.ListThemes,
+		connect.WithSchema(readingServiceMethods.ByName("ListThemes")),
+		connect.WithHandlerOptions(opts...),
+	)
+	readingServiceGetThemeHandler := connect.NewUnaryHandler(
+		ReadingServiceGetThemeProcedure,
+		svc.GetTheme,
+		connect.WithSchema(readingServiceMethods.ByName("GetTheme")),
+		connect.WithHandlerOptions(opts...),
+	)
+	readingServiceRecordThemeOpenedHandler := connect.NewUnaryHandler(
+		ReadingServiceRecordThemeOpenedProcedure,
+		svc.RecordThemeOpened,
+		connect.WithSchema(readingServiceMethods.ByName("RecordThemeOpened")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/alt.reading.v1.ReadingService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case ReadingServiceRecordReadingEventsProcedure:
@@ -180,6 +254,12 @@ func NewReadingServiceHandler(svc ReadingServiceHandler, opts ...connect.Handler
 			readingServiceUnqueueArticleHandler.ServeHTTP(w, r)
 		case ReadingServiceGetReadTodayQueueProcedure:
 			readingServiceGetReadTodayQueueHandler.ServeHTTP(w, r)
+		case ReadingServiceListThemesProcedure:
+			readingServiceListThemesHandler.ServeHTTP(w, r)
+		case ReadingServiceGetThemeProcedure:
+			readingServiceGetThemeHandler.ServeHTTP(w, r)
+		case ReadingServiceRecordThemeOpenedProcedure:
+			readingServiceRecordThemeOpenedHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -203,4 +283,16 @@ func (UnimplementedReadingServiceHandler) UnqueueArticle(context.Context, *conne
 
 func (UnimplementedReadingServiceHandler) GetReadTodayQueue(context.Context, *connect.Request[v1.GetReadTodayQueueRequest]) (*connect.Response[v1.GetReadTodayQueueResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.reading.v1.ReadingService.GetReadTodayQueue is not implemented"))
+}
+
+func (UnimplementedReadingServiceHandler) ListThemes(context.Context, *connect.Request[v1.ListThemesRequest]) (*connect.Response[v1.ListThemesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.reading.v1.ReadingService.ListThemes is not implemented"))
+}
+
+func (UnimplementedReadingServiceHandler) GetTheme(context.Context, *connect.Request[v1.GetThemeRequest]) (*connect.Response[v1.GetThemeResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.reading.v1.ReadingService.GetTheme is not implemented"))
+}
+
+func (UnimplementedReadingServiceHandler) RecordThemeOpened(context.Context, *connect.Request[v1.RecordThemeOpenedRequest]) (*connect.Response[v1.RecordThemeOpenedResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("alt.reading.v1.ReadingService.RecordThemeOpened is not implemented"))
 }

@@ -44,7 +44,6 @@ func TestVerifyAltBackendDataHubContract(t *testing.T) {
 			"alt-data-hub accepts article archives",
 			"alt-data-hub accepts article head writes",
 			"alt-data-hub has no article for the url",
-			"alt-data-hub has articles for the user",
 			"alt-data-hub has articles for the feed",
 			"alt-data-hub has historic articles to replay",
 			"alt-data-hub has summary versions to replay",
@@ -127,5 +126,5 @@ func TestVerifyAltBackendDataHubContract(t *testing.T) {
 			"alt-data-hub accepts feed og image resolutions",
 			"alt-data-hub accepts feed og image refusals",
 			"alt-data-hub holds feed og images past the retention window",
-		), withStates(backlogStates(), withStates(deepHealthStates(), readStateStates()))), true)
+		), withStates(backlogStates(), withStates(deepHealthStates(), withStates(readStateStates(), articleBatchStates())))), true)
 }

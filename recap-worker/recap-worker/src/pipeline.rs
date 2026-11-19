@@ -4,8 +4,10 @@
 //! from fetching through summarization and persistence.
 
 pub mod cards;
+pub mod continuation;
 pub mod dedup;
 pub(crate) mod dispatch;
+pub(crate) mod embed_cache;
 pub(crate) mod embedding;
 pub(crate) mod evidence;
 pub(crate) mod executor;
@@ -23,6 +25,7 @@ pub(crate) mod persist;
 pub mod preprocess;
 pub(crate) mod select;
 pub(crate) mod tag_signal;
+pub mod themes;
 
 // Re-export core orchestrator types
 pub(crate) use orchestrator::PipelineOrchestrator;
@@ -66,6 +69,7 @@ mod tests {
                 ("MTLS_ALLOWED_PEERS", Some("disabled")),
                 ("RECAP_EVAL_LISTENER", Some("disabled")),
                 ("RECAP_CARDS_JOB", Some("disabled")),
+                ("RECAP_THEMES_ENABLED", Some("false")),
                 ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
                 ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
                 ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),

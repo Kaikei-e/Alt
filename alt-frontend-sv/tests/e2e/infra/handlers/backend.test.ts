@@ -257,4 +257,124 @@ describe("E2E mock backend server", () => {
 			await new Promise<void>((resolve) => server.close(() => resolve()));
 		}
 	});
+
+	it("handles ListThemes, GetTheme (404 not_found / 400 invalid_argument), and RecordThemeOpened statefully", async () => {
+		const server = createBackendServer();
+		await new Promise<void>((resolve) => {
+			server.listen(0, "127.0.0.1", () => resolve());
+		});
+		const address = server.address();
+		if (!address || typeof address === "string") {
+			server.close();
+			throw new Error("Expected TCP server address");
+		}
+		const baseUrl = `http://127.0.0.1:${address.port}`;
+
+		try {
+			const postThemeRpc = async (
+				method: string,
+				body: Record<string, unknown>,
+			) => {
+				const res = await fetch(
+					`${baseUrl}/alt.reading.v1.ReadingService/${method}`,
+					{
+						method: "POST",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify(body),
+					},
+				);
+				return {
+					status: res.status,
+					json: (await res.json()) as Record<string, unknown>,
+				};
+			};
+
+			const listRes = await postThemeRpc("ListThemes", {});
+			expect(listRes.status).toBe(200);
+			const themes = listRes.json.themes as Array<{
+				themeId: string;
+				latestVersion: number;
+				lastOpenedVersion: number;
+			}>;
+			expect(themes).toHaveLength(2);
+			const unopened = themes.find((t) => t.lastOpenedVersion === 0);
+			const opened = themes.find((t) => t.lastOpenedVersion > 0);
+			expect(unopened).toBeDefined();
+			expect(unopened?.latestVersion).toBe(2);
+			expect(opened).toBeDefined();
+			expect(opened?.lastOpenedVersion).toBe(opened?.latestVersion);
+
+			// Non-UUID themeId -> 400 invalid_argument
+			const badIdRes = await postThemeRpc("GetTheme", {
+				themeId: "not-a-uuid",
+			});
+			expect(badIdRes.status).toBe(400);
+			expect(badIdRes.json.code).toBe("invalid_argument");
+
+			// Unknown UUID -> 404 not_found
+			const missingIdRes = await postThemeRpc("GetTheme", {
+				themeId: "01938e82-7c00-7a7b-9b10-999999999999",
+			});
+			expect(missingIdRes.status).toBe(404);
+			expect(missingIdRes.json.code).toBe("not_found");
+
+			// Unknown version -> 404 not_found
+			const missingVersionRes = await postThemeRpc("GetTheme", {
+				themeId: unopened?.themeId,
+				version: 99,
+			});
+			expect(missingVersionRes.status).toBe(404);
+			expect(missingVersionRes.json.code).toBe("not_found");
+
+			// Version 2 has whatChanged and openQuestions; Version 1 has neither
+			const v2Res = await postThemeRpc("GetTheme", {
+				themeId: unopened?.themeId,
+			});
+			expect(v2Res.status).toBe(200);
+			expect(v2Res.json.version).toBe(2);
+			expect((v2Res.json.whatChanged as unknown[]).length).toBeGreaterThan(0);
+			expect((v2Res.json.openQuestions as unknown[]).length).toBeGreaterThan(0);
+
+			const v1Res = await postThemeRpc("GetTheme", {
+				themeId: unopened?.themeId,
+				version: 1,
+			});
+			expect(v1Res.status).toBe(200);
+			expect(v1Res.json.version).toBe(1);
+			expect(v1Res.json.whatChanged).toEqual([]);
+			expect(v1Res.json.openQuestions).toEqual([]);
+
+			// RecordThemeOpened records the call and updates lastOpenedVersion
+			const recordRes = await postThemeRpc("RecordThemeOpened", {
+				themeId: unopened?.themeId,
+				version: 2,
+				clientEventId: "01938e82-7c00-7a7b-9b10-000000000099",
+				openedAt: new Date().toISOString(),
+			});
+			expect(recordRes.status).toBe(200);
+
+			const recordedCallsRes = await fetch(`${baseUrl}/__mock/themes/opened`);
+			const recordedCallsJson = (await recordedCallsRes.json()) as {
+				calls: Array<{ themeId: string; version: number }>;
+			};
+			expect(recordedCallsJson.calls).toContainEqual(
+				expect.objectContaining({
+					themeId: unopened?.themeId,
+					version: 2,
+				}),
+			);
+
+			const afterList = await postThemeRpc("ListThemes", {});
+			const updatedTheme = (
+				afterList.json.themes as Array<{
+					themeId: string;
+					lastOpenedVersion: number;
+				}>
+			).find((t) => t.themeId === unopened?.themeId);
+			expect(updatedTheme?.lastOpenedVersion).toBe(2);
+		} finally {
+			server.closeAllConnections();
+			await new Promise<void>((resolve) => server.close(() => resolve()));
+		}
+	});
 });

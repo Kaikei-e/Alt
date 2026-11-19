@@ -43,6 +43,8 @@ type mockRepo struct {
 	readingQueueItems      []sovereign_db.ReadingQueueItem
 	readingSourcesCount    int
 	readingSourcesInWindow []sovereign_db.ReadingSource
+	readingThemes          []sovereign_db.ReadingTheme
+	gotThemesLimit         int
 }
 
 // --- MutationRepository ---
@@ -254,6 +256,10 @@ func (m *mockRepo) CountReadingSourcesSince(_ context.Context, _ uuid.UUID, _ ti
 }
 func (m *mockRepo) ListReadingSourcesInWindow(_ context.Context, _ uuid.UUID, _, _ time.Time) ([]sovereign_db.ReadingSource, error) {
 	return m.readingSourcesInWindow, m.returnErr
+}
+func (m *mockRepo) ListReadingThemes(_ context.Context, _ uuid.UUID, limit int) ([]sovereign_db.ReadingTheme, error) {
+	m.gotThemesLimit = limit
+	return m.readingThemes, m.returnErr
 }
 
 func setupTestServer(repo ReadDB) (sovereignv1connect.KnowledgeSovereignServiceClient, func()) {

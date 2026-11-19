@@ -79,6 +79,8 @@ var (
 		tables: []string{
 			"reading_sources",
 			"reading_queue_items",
+			"reading_themes",
+			"reading_theme_members",
 		},
 		projectorName: "reading-projector",
 	}

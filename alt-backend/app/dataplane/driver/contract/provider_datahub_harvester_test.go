@@ -74,5 +74,5 @@ func TestVerifyAltHarvesterDataHubContract(t *testing.T) {
 func TestVerifyRecapWorkerDataHubContract(t *testing.T) {
 	verifyConsumer(t, "recap-worker", dataHubProviderName,
 		filepath.Join(pactDir, recapWorkerDataHubPactFile),
-		withStates(noopStates("alt-data-hub accepts notification enqueues"), readStateStates()), true)
+		withStates(noopStates("alt-data-hub accepts notification enqueues"), withStates(readStateStates(), articleBatchStates())), true)
 }

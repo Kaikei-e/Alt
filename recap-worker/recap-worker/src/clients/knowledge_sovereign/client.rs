@@ -2,7 +2,7 @@ use anyhow::{Context, Result, anyhow};
 use base64::Engine;
 use chrono::{DateTime, Utc};
 use reqwest::{Client, Url};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tracing::{debug, error, warn};
 use uuid::Uuid;
@@ -38,6 +38,26 @@ pub(crate) struct TopicSnapshottedInput {
     pub(crate) cluster_id: i64,
     pub(crate) snapshot_window_start: DateTime<Utc>,
     pub(crate) snapshot_window_end: DateTime<Utc>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ReadingSourceEntry {
+    pub(crate) article_id: Uuid,
+    pub(crate) first_read_at: DateTime<Utc>,
+    pub(crate) read_rule_version: i32,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+pub(crate) struct ThemeVersionCreatedInput {
+    pub(crate) user_id: Uuid,
+    pub(crate) tenant_id: Uuid,
+    pub(crate) theme_id: Uuid,
+    pub(crate) version: i32,
+    pub(crate) title: String,
+    pub(crate) member_article_ids: Vec<Uuid>,
+    pub(crate) created_at: DateTime<Utc>,
 }
 
 #[allow(dead_code)]
@@ -105,11 +125,6 @@ impl KnowledgeSovereignClient {
             ));
         }
 
-        let url = self
-            .base_url
-            .join("/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent")
-            .context("failed to build AppendKnowledgeEvent URL")?;
-
         let payload_bytes = serde_json::to_vec(&json!({
             "recap_topic_snapshot_id": input.recap_topic_snapshot_id.to_string(),
             "top_terms": input.top_terms,
@@ -148,6 +163,159 @@ impl KnowledgeSovereignClient {
             "emitting recap.topic_snapshotted.v1 to knowledge-sovereign"
         );
 
+        self.send_append_knowledge_event(&body).await
+    }
+
+    pub(crate) async fn emit_theme_version_created(
+        &self,
+        input: &ThemeVersionCreatedInput,
+    ) -> Result<()> {
+        if input.user_id.is_nil() {
+            return Err(anyhow!("ThemeVersionCreatedInput.user_id required"));
+        }
+        if input.tenant_id.is_nil() {
+            return Err(anyhow!("ThemeVersionCreatedInput.tenant_id required"));
+        }
+        if input.theme_id.is_nil() {
+            return Err(anyhow!("ThemeVersionCreatedInput.theme_id required"));
+        }
+        if input.version < 1 {
+            return Err(anyhow!(
+                "ThemeVersionCreatedInput.version must be >= 1, got {}",
+                input.version
+            ));
+        }
+        if input.title.trim().is_empty() {
+            return Err(anyhow!("ThemeVersionCreatedInput.title must not be empty"));
+        }
+
+        let created_at_rfc3339 = input.created_at.to_rfc3339();
+        let payload = ThemeVersionCreatedPayload {
+            theme_id: input.theme_id,
+            version: input.version,
+            title: &input.title,
+            member_article_ids: &input.member_article_ids,
+            article_count: input.member_article_ids.len(),
+            created_at: &created_at_rfc3339,
+        };
+        let payload_bytes =
+            serde_json::to_vec(&payload).context("failed to serialize theme version payload")?;
+        let payload_b64 = base64::engine::general_purpose::STANDARD.encode(&payload_bytes);
+        let dedupe_key = format!(
+            "reading.theme_version_created:{}:{}",
+            input.theme_id, input.version
+        );
+
+        let body = AppendKnowledgeEventRequest {
+            event: KnowledgeEventWire {
+                event_id: Uuid::new_v4().to_string(),
+                occurred_at: created_at_rfc3339.clone(),
+                tenant_id: input.tenant_id.to_string(),
+                user_id: input.user_id.to_string(),
+                actor_type: "service:recap-worker".to_string(),
+                actor_id: "themes".to_string(),
+                event_type: "reading.theme_version_created.v1".to_string(),
+                aggregate_type: "reading_theme".to_string(),
+                aggregate_id: input.theme_id.to_string(),
+                dedupe_key,
+                payload: payload_b64,
+            },
+        };
+
+        debug!(
+            user_id = %input.user_id,
+            theme_id = %input.theme_id,
+            version = input.version,
+            "emitting reading.theme_version_created.v1 to knowledge-sovereign"
+        );
+
+        self.send_append_knowledge_event(&body).await
+    }
+
+    pub(crate) async fn list_reading_sources_in_window(
+        &self,
+        user_id: Uuid,
+        from: DateTime<Utc>,
+        to: DateTime<Utc>,
+    ) -> Result<Vec<ReadingSourceEntry>> {
+        if user_id.is_nil() {
+            return Err(anyhow!("ListReadingSourcesInWindow requires user_id"));
+        }
+        if from > to {
+            return Err(anyhow!(
+                "ListReadingSourcesInWindow requires from <= to ({from} > {to})"
+            ));
+        }
+
+        let url = self
+            .base_url
+            .join("/services.sovereign.v1.KnowledgeSovereignService/ListReadingSourcesInWindow")
+            .context("failed to build ListReadingSourcesInWindow URL")?;
+
+        let body = ListReadingSourcesInWindowRequest {
+            user_id: user_id.to_string(),
+            from: from.to_rfc3339(),
+            to: to.to_rfc3339(),
+        };
+
+        let mut request = self
+            .client
+            .post(url)
+            .header("Content-Type", "application/json");
+        if let Some(ref token) = self.token {
+            request = request.header("Authorization", format!("Bearer {token}"));
+        }
+
+        let response = request
+            .json(&body)
+            .send()
+            .await
+            .context("ListReadingSourcesInWindow request failed")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let err_body = response.text().await.unwrap_or_default();
+            return Err(anyhow!(
+                "ListReadingSourcesInWindow returned status {status}: {err_body}"
+            ));
+        }
+
+        let wire: ListReadingSourcesInWindowResponse = response
+            .json()
+            .await
+            .context("failed to deserialize ListReadingSourcesInWindow response")?;
+
+        let mut out = Vec::with_capacity(wire.entries.len());
+        for entry in wire.entries {
+            let article_id = Uuid::parse_str(&entry.article_id).with_context(|| {
+                format!(
+                    "invalid articleId '{}' in ListReadingSourcesInWindow response",
+                    entry.article_id
+                )
+            })?;
+            let first_read_at = DateTime::parse_from_rfc3339(&entry.first_read_at)
+                .with_context(|| {
+                    format!(
+                        "invalid firstReadAt '{}' in ListReadingSourcesInWindow response",
+                        entry.first_read_at
+                    )
+                })?
+                .with_timezone(&Utc);
+            out.push(ReadingSourceEntry {
+                article_id,
+                first_read_at,
+                read_rule_version: entry.read_rule_version,
+            });
+        }
+        Ok(out)
+    }
+
+    async fn send_append_knowledge_event(&self, body: &AppendKnowledgeEventRequest) -> Result<()> {
+        let url = self
+            .base_url
+            .join("/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent")
+            .context("failed to build AppendKnowledgeEvent URL")?;
+
         let mut request = self
             .client
             .post(url)
@@ -158,7 +326,7 @@ impl KnowledgeSovereignClient {
         }
 
         let response = request
-            .json(&body)
+            .json(body)
             .send()
             .await
             .context("AppendKnowledgeEvent request failed")?;
@@ -188,6 +356,40 @@ impl KnowledgeSovereignClient {
 
         Ok(())
     }
+}
+
+#[derive(Debug, Serialize)]
+struct ThemeVersionCreatedPayload<'a> {
+    theme_id: Uuid,
+    version: i32,
+    title: &'a str,
+    member_article_ids: &'a [Uuid],
+    article_count: usize,
+    created_at: &'a str,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ListReadingSourcesInWindowRequest {
+    user_id: String,
+    from: String,
+    to: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ListReadingSourcesInWindowResponse {
+    #[serde(default)]
+    entries: Vec<ReadingSourceEntryWire>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ReadingSourceEntryWire {
+    article_id: String,
+    first_read_at: String,
+    #[serde(default)]
+    read_rule_version: i32,
 }
 
 // Wire types match the protojson camelCase emission of
@@ -315,5 +517,134 @@ mod tests {
 
         let result = client.emit_recap_topic_snapshotted(&input).await;
         assert!(result.is_ok(), "emit with auth header should succeed");
+    }
+
+    #[tokio::test]
+    async fn list_reading_sources_rejects_nil_user_and_inverted_window() {
+        let client = KnowledgeSovereignClient::new_for_test("http://localhost:1");
+        let t1 = Utc.with_ymd_and_hms(2026, 11, 18, 0, 0, 0).unwrap();
+        let t2 = Utc.with_ymd_and_hms(2026, 11, 19, 0, 0, 0).unwrap();
+
+        let err_nil = client
+            .list_reading_sources_in_window(Uuid::nil(), t1, t2)
+            .await
+            .expect_err("nil user_id must fail");
+        assert!(err_nil.to_string().contains("user_id"));
+
+        let err_window = client
+            .list_reading_sources_in_window(Uuid::new_v4(), t2, t1)
+            .await
+            .expect_err("from > to must fail");
+        assert!(err_window.to_string().contains("from <= to"));
+    }
+
+    #[tokio::test]
+    async fn list_reading_sources_parses_entries_and_empty_response() {
+        use wiremock::matchers::{body_json, header, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        let user_id = Uuid::new_v4();
+        let article_id = Uuid::new_v4();
+        let from = Utc.with_ymd_and_hms(2026, 11, 1, 0, 0, 0).unwrap();
+        let to = Utc.with_ymd_and_hms(2026, 11, 19, 0, 0, 0).unwrap();
+        let first_read = Utc.with_ymd_and_hms(2026, 11, 10, 8, 30, 0).unwrap();
+
+        Mock::given(method("POST"))
+            .and(path(
+                "/services.sovereign.v1.KnowledgeSovereignService/ListReadingSourcesInWindow",
+            ))
+            .and(header("Authorization", "Bearer tok"))
+            .and(body_json(serde_json::json!({
+                "userId": user_id.to_string(),
+                "from": from.to_rfc3339(),
+                "to": to.to_rfc3339(),
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "entries": [{
+                    "articleId": article_id.to_string(),
+                    "firstReadAt": first_read.to_rfc3339(),
+                    "readRuleVersion": 2
+                }]
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client =
+            KnowledgeSovereignClient::new_for_test_with_token(server.uri(), Some("tok".into()));
+        let entries = client
+            .list_reading_sources_in_window(user_id, from, to)
+            .await
+            .expect("list should succeed");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].article_id, article_id);
+        assert_eq!(entries[0].first_read_at, first_read);
+        assert_eq!(entries[0].read_rule_version, 2);
+
+        let empty_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(
+                "/services.sovereign.v1.KnowledgeSovereignService/ListReadingSourcesInWindow",
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({})))
+            .mount(&empty_server)
+            .await;
+        let empty_client = KnowledgeSovereignClient::new_for_test(empty_server.uri());
+        let empty = empty_client
+            .list_reading_sources_in_window(user_id, from, to)
+            .await
+            .expect("empty protojson response must succeed");
+        assert!(empty.is_empty());
+    }
+
+    #[tokio::test]
+    async fn emit_theme_version_created_is_byte_stable_across_retries() {
+        use std::sync::{Arc, Mutex};
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, Request, ResponseTemplate};
+
+        let captured: Arc<Mutex<Vec<serde_json::Value>>> = Arc::new(Mutex::new(Vec::new()));
+        let captured_clone = Arc::clone(&captured);
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(
+                "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent",
+            ))
+            .respond_with(move |req: &Request| {
+                let body: serde_json::Value = req.body_json().unwrap();
+                captured_clone.lock().unwrap().push(body);
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({"eventSeq": "10"}))
+            })
+            .expect(2)
+            .mount(&server)
+            .await;
+
+        let client = KnowledgeSovereignClient::new_for_test(server.uri());
+        let input = ThemeVersionCreatedInput {
+            user_id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+            theme_id: Uuid::new_v4(),
+            version: 1,
+            title: "Theme One".to_string(),
+            member_article_ids: vec![Uuid::new_v4()],
+            created_at: Utc.with_ymd_and_hms(2026, 11, 18, 2, 0, 0).unwrap(),
+        };
+
+        client.emit_theme_version_created(&input).await.unwrap();
+        client.emit_theme_version_created(&input).await.unwrap();
+
+        let bodies = captured.lock().unwrap();
+        assert_eq!(bodies.len(), 2);
+        assert_eq!(
+            bodies[0]["event"]["occurredAt"],
+            bodies[1]["event"]["occurredAt"]
+        );
+        assert_eq!(
+            bodies[0]["event"]["dedupeKey"],
+            bodies[1]["event"]["dedupeKey"]
+        );
+        assert_eq!(bodies[0]["event"]["payload"], bodies[1]["event"]["payload"]);
     }
 }

@@ -16,6 +16,7 @@
         "/services.sovereign.v1.KnowledgeSovereignService/GetReadingQueue",
         "/services.sovereign.v1.KnowledgeSovereignService/CountReadingSourcesSince",
         "/services.sovereign.v1.KnowledgeSovereignService/ListReadingSourcesInWindow",
+        "/services.sovereign.v1.KnowledgeSovereignService/ListReadingThemes",
         "/services.sovereign.v1.KnowledgeSovereignService/AppendRecallSignal",
         "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent",
         "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeUserEvent",
@@ -53,6 +54,7 @@
         "reading.opened.v1",
         "reading.queued.v1",
         "reading.unqueued.v1",
+        "reading.theme_opened.v1",
         "open",
         "dismiss",
         "ask",
@@ -110,10 +112,12 @@
       "name": "recap-worker",
       "token_file": "/run/secrets/sovereign_recap_token",
       "allowed_methods": [
-        "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent"
+        "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent",
+        "/services.sovereign.v1.KnowledgeSovereignService/ListReadingSourcesInWindow"
       ],
       "allowed_events": [
-        "recap.topic_snapshotted.v1"
+        "recap.topic_snapshotted.v1",
+        "reading.theme_version_created.v1"
       ],
       "require_user_token": false,
       "allow_system_scope": false

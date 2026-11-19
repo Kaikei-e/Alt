@@ -12,6 +12,7 @@ pub mod output;
 pub mod stage;
 pub mod subworker;
 pub mod surface;
+pub mod themes;
 pub mod types;
 
 // New modular architecture
@@ -33,6 +34,12 @@ pub use cards::{
     RecapCardSnapshot, RecapEvalWindow, RecapEvalWindowSummary, RecapStoryJudgment,
 };
 pub(crate) use impls::UnifiedDao;
+#[allow(unused_imports)]
+pub use themes::{
+    LatestThemeVersion, NewThemeGenerationAttempt, NewThemeVersion, ThemeAttemptOutcome, ThemeBody,
+    ThemeClaim, ThemeRunFinish, ThemeRunStatus, ThemeSource, ThemeTimelineEntry,
+    ThemeVersionDetail, ThemeVersionSummary, ThemesDaoOps, UnpublishedThemeVersion,
+};
 pub use types::{GenreStatus, JobStatus, PipelineStage, TriggerSource};
 
 // Backward compatibility re-exports

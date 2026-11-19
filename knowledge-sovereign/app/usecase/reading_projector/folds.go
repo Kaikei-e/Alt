@@ -14,10 +14,12 @@ import (
 )
 
 const (
-	eventSessionEnded   = "reading.session_ended.v1"
-	eventReadingQueued  = "reading.queued.v1"
-	eventReadingUnqueue = "reading.unqueued.v1"
-	eventHomeItemOpened = "HomeItemOpened"
+	eventSessionEnded               = "reading.session_ended.v1"
+	eventReadingQueued              = "reading.queued.v1"
+	eventReadingUnqueue             = "reading.unqueued.v1"
+	eventReadingThemeVersionCreated = "reading.theme_version_created.v1"
+	eventReadingThemeOpened         = "reading.theme_opened.v1"
+	eventHomeItemOpened             = "HomeItemOpened"
 
 	articlePrefix = "article:"
 )
@@ -44,6 +46,21 @@ type homeItemOpenedPayload struct {
 	ItemKey string `json:"item_key"`
 }
 
+type readingThemeVersionCreatedPayload struct {
+	ThemeID          string   `json:"theme_id"`
+	Version          int      `json:"version"`
+	Title            string   `json:"title"`
+	MemberArticleIDs []string `json:"member_article_ids"`
+	ArticleCount     int      `json:"article_count"`
+	CreatedAt        string   `json:"created_at"`
+}
+
+type readingThemeOpenedPayload struct {
+	ThemeID  string `json:"theme_id"`
+	Version  int    `json:"version"`
+	OpenedAt string `json:"opened_at"`
+}
+
 func (p *Projector) foldEvent(ctx context.Context, evt sovereign_db.KnowledgeEvent) error {
 	switch evt.EventType {
 	case eventSessionEnded:
@@ -54,6 +71,10 @@ func (p *Projector) foldEvent(ctx context.Context, evt sovereign_db.KnowledgeEve
 		return p.foldReadingQueued(ctx, evt)
 	case eventReadingUnqueue:
 		return p.foldReadingUnqueued(ctx, evt)
+	case eventReadingThemeVersionCreated:
+		return p.foldThemeVersionCreated(ctx, evt)
+	case eventReadingThemeOpened:
+		return p.foldThemeOpened(ctx, evt)
 	default:
 		return nil
 	}
@@ -177,4 +198,79 @@ func (p *Projector) foldReadingUnqueued(ctx context.Context, evt sovereign_db.Kn
 		return fmt.Errorf("invalid article_id in %s: %w", eventReadingUnqueue, err)
 	}
 	return p.repo.RemoveReadingQueueItem(ctx, *evt.UserID, articleID, evt.OccurredAt, "unqueued", evt.EventSeq)
+}
+
+func (p *Projector) foldThemeVersionCreated(ctx context.Context, evt sovereign_db.KnowledgeEvent) error {
+	var payload readingThemeVersionCreatedPayload
+	if err := json.Unmarshal(evt.Payload, &payload); err != nil {
+		return fmt.Errorf("unmarshal %s: %w", eventReadingThemeVersionCreated, err)
+	}
+	if evt.UserID == nil {
+		p.logger.WarnContext(ctx, "reading_projector: skipping reading.theme_version_created without user_id",
+			slog.String("event_id", evt.EventID.String()))
+		return nil
+	}
+	themeID, err := uuid.Parse(payload.ThemeID)
+	if err != nil {
+		return fmt.Errorf("invalid theme_id in %s: %w", eventReadingThemeVersionCreated, err)
+	}
+	if payload.Version < 1 {
+		return fmt.Errorf("invalid version %d in %s", payload.Version, eventReadingThemeVersionCreated)
+	}
+	if payload.ArticleCount < 0 {
+		return fmt.Errorf("invalid article_count %d in %s", payload.ArticleCount, eventReadingThemeVersionCreated)
+	}
+	createdAt, err := time.Parse(time.RFC3339Nano, payload.CreatedAt)
+	if err != nil {
+		return fmt.Errorf("invalid created_at in %s: %w", eventReadingThemeVersionCreated, err)
+	}
+
+	seen := make(map[uuid.UUID]struct{}, len(payload.MemberArticleIDs))
+	memberIDs := make([]uuid.UUID, 0, len(payload.MemberArticleIDs))
+	for _, rawID := range payload.MemberArticleIDs {
+		id, err := uuid.Parse(rawID)
+		if err != nil {
+			return fmt.Errorf("invalid member_article_id in %s: %w", eventReadingThemeVersionCreated, err)
+		}
+		if _, dup := seen[id]; dup {
+			continue
+		}
+		seen[id] = struct{}{}
+		memberIDs = append(memberIDs, id)
+	}
+
+	return p.repo.UpsertReadingThemeVersion(ctx, sovereign_db.ReadingTheme{
+		UserID:        *evt.UserID,
+		TenantID:      evt.TenantID,
+		ThemeID:       themeID,
+		Title:         payload.Title,
+		LatestVersion: payload.Version,
+		ArticleCount:  payload.ArticleCount,
+		CreatedAt:     createdAt,
+		UpdatedAt:     createdAt,
+	}, memberIDs)
+}
+
+func (p *Projector) foldThemeOpened(ctx context.Context, evt sovereign_db.KnowledgeEvent) error {
+	var payload readingThemeOpenedPayload
+	if err := json.Unmarshal(evt.Payload, &payload); err != nil {
+		return fmt.Errorf("unmarshal %s: %w", eventReadingThemeOpened, err)
+	}
+	if evt.UserID == nil {
+		p.logger.WarnContext(ctx, "reading_projector: skipping reading.theme_opened without user_id",
+			slog.String("event_id", evt.EventID.String()))
+		return nil
+	}
+	themeID, err := uuid.Parse(payload.ThemeID)
+	if err != nil {
+		return fmt.Errorf("invalid theme_id in %s: %w", eventReadingThemeOpened, err)
+	}
+	if payload.Version < 1 {
+		return fmt.Errorf("invalid version %d in %s", payload.Version, eventReadingThemeOpened)
+	}
+	openedAt, err := time.Parse(time.RFC3339Nano, payload.OpenedAt)
+	if err != nil {
+		return fmt.Errorf("invalid opened_at in %s: %w", eventReadingThemeOpened, err)
+	}
+	return p.repo.MarkReadingThemeOpened(ctx, *evt.UserID, themeID, openedAt, payload.Version)
 }

@@ -7,6 +7,133 @@
   },
   "interactions": [
     {
+      "description": "a BatchGetArticlesByIDs request from recap-worker",
+      "request": {
+        "method": "POST",
+        "path": "/services.datahub.v1.DataHubService/BatchGetArticlesByIDs",
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "articleIds": [
+            "88888888-8888-8888-8888-888888888888"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.articleIds[*]": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.articleIds[*].*": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.articleIds": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            }
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "articles": [
+            {
+              "id": "88888888-8888-8888-8888-888888888888",
+              "content": "<p>Body content.</p>",
+              "title": "Example Article",
+              "publishedAt": "2026-11-18T09:00:00Z",
+              "url": "https://example.com/articles/1"
+            }
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.articles[*].publishedAt": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.articles[*].url": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.articles[*].content": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.articles[*].id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.articles": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type",
+                  "min": 1
+                }
+              ]
+            },
+            "$.articles[*].*": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.articles[*].title": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "providerStates": [
+        {
+          "name": "articles exist for the requested ids"
+        }
+      ]
+    },
+    {
       "description": "an EnqueueNotification request from the recap-worker outbox relay",
       "request": {
         "method": "POST",
@@ -15,23 +142,15 @@
           "content-type": "application/json"
         },
         "body": {
-          "expiresAt": "2026-08-02T09:30:00.000000Z",
           "dedupeKey": "recap:7d2a1c34-0a5f-4e51-9b1f-1a2b3c4d5e6f",
           "userId": "3f2504e0-4f89-11d3-9a0c-0305e82c3301",
-          "kind": "recap_ready",
           "payload": "eyJraW5kIjoicmVjYXBfcmVhZHkiLCJ1cmwiOiIvcmVjYXAifQ==",
+          "kind": "recap_ready",
+          "expiresAt": "2026-08-02T09:30:00.000000Z",
           "occurredAt": "2026-08-01T09:30:00.000000Z"
         },
         "matchingRules": {
           "body": {
-            "$.expiresAt": {
-              "combine": "AND",
-              "matchers": [
-                {
-                  "match": "type"
-                }
-              ]
-            },
             "$.payload": {
               "combine": "AND",
               "matchers": [
@@ -49,6 +168,14 @@
               ]
             },
             "$.dedupeKey": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.expiresAt": {
               "combine": "AND",
               "matchers": [
                 {
@@ -86,7 +213,7 @@
         },
         "matchingRules": {
           "body": {
-            "$.supersededCount": {
+            "$.deliveryCount": {
               "combine": "AND",
               "matchers": [
                 {
@@ -94,7 +221,7 @@
                 }
               ]
             },
-            "$.deliveryCount": {
+            "$.supersededCount": {
               "combine": "AND",
               "matchers": [
                 {
@@ -114,9 +241,9 @@
   ],
   "metadata": {
     "pactRust": {
-      "consumer": "1.4.5",
-      "mockserver": "2.2.2",
-      "models": "1.3.11"
+      "consumer": "1.4.11",
+      "mockserver": "2.2.6",
+      "models": "1.3.17"
     },
     "pactSpecification": {
       "version": "3.0.0"

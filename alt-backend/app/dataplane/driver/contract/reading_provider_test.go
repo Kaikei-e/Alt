@@ -18,6 +18,7 @@ import (
 	"alt/gen/proto/alt/reading/v1/readingv1connect"
 	"alt/orchestrator/connect/v2/reading"
 	"alt/orchestrator/usecase/reading_queue_usecase"
+	"alt/orchestrator/usecase/reading_theme_usecase"
 	"alt/orchestrator/usecase/record_reading_events_usecase"
 )
 
@@ -116,6 +117,14 @@ func (p *pactReadingState) GetOgImageURLsByArticleIDs(_ context.Context, _ []str
 	return map[string]string{}, nil
 }
 
+func (p *pactReadingState) ListReadingThemes(_ context.Context, _ uuid.UUID, _ int32) ([]domain.ReadingThemeSummary, error) {
+	return nil, nil
+}
+
+func (p *pactReadingState) GetTheme(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ *int32) (*domain.ReadingThemePage, error) {
+	return nil, domain.ErrThemeNotFound
+}
+
 func mountReadingServiceProcedures(mux *http.ServeMux) {
 	fixedNow := func() time.Time { return time.Date(2026, 11, 18, 0, 5, 0, 0, time.UTC) }
 	recordUC := record_reading_events_usecase.NewRecordReadingEventsUsecase(
@@ -146,7 +155,10 @@ func mountReadingServiceProcedures(mux *http.ServeMux) {
 		7,
 		fixedNow,
 	)
-	handler := reading.NewHandler(recordUC, queueUC, unqueueUC, getQueueUC, nil, slog.Default())
+	listThemesUC := reading_theme_usecase.NewListThemesUsecase(readingStubState)
+	getThemeUC := reading_theme_usecase.NewGetThemeUsecase(readingStubState)
+	recordThemeOpenedUC := reading_theme_usecase.NewRecordThemeOpenedUsecase(readingStubState, fixedNow)
+	handler := reading.NewHandler(recordUC, queueUC, unqueueUC, getQueueUC, listThemesUC, getThemeUC, recordThemeOpenedUC, nil, slog.Default())
 	path, connectHandler := readingv1connect.NewReadingServiceHandler(handler)
 	mux.Handle(path, withPactUserContext(connectHandler))
 }

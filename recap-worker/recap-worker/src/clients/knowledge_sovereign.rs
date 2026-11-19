@@ -32,4 +32,7 @@ mod snapshot_id;
 #[cfg(test)]
 mod contract;
 
-pub(crate) use client::{KnowledgeSovereignClient, TopicSnapshottedInput};
+#[allow(unused_imports)]
+pub(crate) use client::{
+    KnowledgeSovereignClient, ReadingSourceEntry, ThemeVersionCreatedInput, TopicSnapshottedInput,
+};
