@@ -23,6 +23,7 @@
 		"test:e2e": "bun run build && npx playwright test --reporter=list",
 		"test:e2e:ui": "npx playwright test --ui",
 		"test:e2e:integration": "npx playwright test --project=integration --reporter=list",
+		"capture:readme": "playwright test -c playwright.readme.config.ts --reporter=list && node tests/readme-capture/export.mjs",
 		"test:coverage": "vitest run --coverage",
 		"build:analyze": "ANALYZE=true vite build && echo 'Bundle report: stats.html'"
 	},
