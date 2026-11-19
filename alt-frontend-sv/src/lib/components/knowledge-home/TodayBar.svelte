@@ -1,11 +1,5 @@
 <script lang="ts">
-import {
-	Activity,
-	AlertCircle,
-	CalendarRange,
-	Clock,
-	Newspaper,
-} from "@lucide/svelte";
+import { AlertCircle, CalendarRange, Clock, Newspaper } from "@lucide/svelte";
 import type {
 	ServiceQuality,
 	TodayDigestData,
@@ -48,23 +42,6 @@ const distinctTopTags = $derived.by(() => {
 				<Newspaper class="h-4 w-4" />
 				Morning Letter
 			</a>
-
-			{#if digest.eveningPulseAvailable}
-				<a href="/recap/evening-pulse" class="action-link">
-					<Activity class="h-4 w-4" />
-					Pulse
-					{#if digest.needToKnowCount > 0}
-						<span class="pulse-count" title="{digest.needToKnowCount} need-to-know">
-							{digest.needToKnowCount}
-						</span>
-					{/if}
-				</a>
-			{:else}
-				<span class="action-link action-link--disabled" title="No pulse content available today">
-					<Activity class="h-4 w-4" />
-					Pulse
-				</span>
-			{/if}
 
 			{#if digest.weeklyRecapAvailable}
 				<a href="/recap" class="action-link">
@@ -179,21 +156,6 @@ const distinctTopTags = $derived.by(() => {
 		color: var(--alt-ash);
 		cursor: default;
 		pointer-events: none;
-	}
-
-	.pulse-count {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		min-width: 1.15rem;
-		height: 1.15rem;
-		padding: 0 0.3rem;
-		font-family: var(--font-mono);
-		font-size: 0.66rem;
-		font-weight: 600;
-		background: var(--accent-emphasis-bg);
-		color: var(--accent-emphasis-text);
-		border: 1px solid var(--accent-emphasis-border);
 	}
 
 	.stale-indicator {

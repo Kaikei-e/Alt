@@ -6,16 +6,16 @@
 
 import { create, fromBinary, toBinary } from "@bufbuild/protobuf";
 import { describe, expect, it } from "vitest";
-import { GetSevenDayRecapResponseSchema } from "#lib/gen/alt/recap/v2/recap_pb.js";
+import { GetThreeDayRecapResponseSchema } from "#lib/gen/alt/recap/v2/recap_pb.js";
 import {
 	buildConnectRecapResponse,
 	buildRecapGenre,
 } from "../../../tests/e2e/fixtures/factories";
 
 describe("Recap API Contract", () => {
-	it("GetSevenDayRecapResponse conforms to proto schema", () => {
+	it("GetThreeDayRecapResponse conforms to proto schema", () => {
 		const mockData = buildConnectRecapResponse();
-		const response = create(GetSevenDayRecapResponseSchema, {
+		const response = create(GetThreeDayRecapResponseSchema, {
 			jobId: mockData.jobId,
 			executedAt: mockData.executedAt,
 			windowStart: mockData.windowStart,
@@ -44,10 +44,10 @@ describe("Recap API Contract", () => {
 	});
 
 	it("round-trips through proto serialization", () => {
-		const original = create(GetSevenDayRecapResponseSchema, {
+		const original = create(GetThreeDayRecapResponseSchema, {
 			jobId: "test-job",
 			executedAt: "2025-12-20T12:00:00Z",
-			windowStart: "2025-12-13T00:00:00Z",
+			windowStart: "2025-12-17T00:00:00Z",
 			windowEnd: "2025-12-20T00:00:00Z",
 			totalArticles: 1,
 			genres: [
@@ -71,8 +71,8 @@ describe("Recap API Contract", () => {
 			],
 		});
 
-		const binary = toBinary(GetSevenDayRecapResponseSchema, original);
-		const deserialized = fromBinary(GetSevenDayRecapResponseSchema, binary);
+		const binary = toBinary(GetThreeDayRecapResponseSchema, original);
+		const deserialized = fromBinary(GetThreeDayRecapResponseSchema, binary);
 
 		expect(deserialized.genres).toHaveLength(1);
 		expect(deserialized.genres[0]!.genre).toBe("Tech");

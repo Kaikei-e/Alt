@@ -2,7 +2,6 @@ import {
 	buildGetKnowledgeHomeResponse,
 	buildListLensesResponse,
 	DIGEST_WITH_AVAILABILITY,
-	DIGEST_WITHOUT_AVAILABILITY,
 	FEATURE_FLAGS_RECALL_DISABLED,
 	FEATURE_FLAGS_WITH_LENS,
 	FEATURE_FLAGS_WITH_STREAM,
@@ -353,34 +352,16 @@ test.describe("Knowledge Home - TodayBar", () => {
 		await expect(page.getByText("Morning Letter")).toBeVisible();
 	});
 
-	test("pulse link rendered when eveningPulseAvailable is true", async ({
-		page,
-	}) => {
+	test("does not render evening pulse link in TodayBar", async ({ page }) => {
 		await mockAllKnowledgeHomeRoutes(page, {
 			todayDigest: DIGEST_WITH_AVAILABILITY,
 		});
 		await homePage.goto();
 		await homePage.waitForHomeLoaded();
 
-		// When available, Pulse should be an <a> link
-		await expect(page.locator('a[href*="evening-pulse"]')).toBeVisible();
-		// Recap link should also be present
-		await expect(page.locator('a[href="/recap"]')).toBeVisible();
-	});
-
-	test("pulse shows as disabled when eveningPulseAvailable is false", async ({
-		page,
-	}) => {
-		await mockAllKnowledgeHomeRoutes(page, {
-			todayDigest: DIGEST_WITHOUT_AVAILABILITY,
-		});
-		await homePage.goto();
-		await homePage.waitForHomeLoaded();
-
-		// Pulse text should be visible (as a span, not a link)
-		await expect(page.getByText("Pulse").first()).toBeVisible();
-		// But the evening-pulse link should NOT exist
 		await expect(page.locator('a[href*="evening-pulse"]')).not.toBeVisible();
+		// Recap link should still be present
+		await expect(page.locator('a[href="/recap"]')).toBeVisible();
 	});
 });
 

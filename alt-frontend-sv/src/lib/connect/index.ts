@@ -59,8 +59,6 @@ export {
 	streamAugurChat,
 	streamAugurChatAsync,
 } from "./augur";
-// Evening Pulse client
-export { getEveningPulse } from "./evening_pulse";
 // FeedService client
 export {
 	type ConnectFeedItem,
@@ -191,7 +189,6 @@ export { createKeepaliveTransport } from "./reading-transport";
 export {
 	createRecapClient,
 	type DegradationReason,
-	getSevenDayRecap,
 	getThreeDayRecap,
 	getTopicCards,
 	type RecapCard,

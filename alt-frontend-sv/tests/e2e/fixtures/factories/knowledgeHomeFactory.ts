@@ -42,7 +42,6 @@ export const KNOWLEDGE_HOME_DIGEST = {
 	unsummarizedArticles: 2,
 	topTags: ["rust", "wasm", "ai"],
 	weeklyRecapAvailable: false,
-	eveningPulseAvailable: false,
 	needToKnowCount: 0,
 	digestFreshness: "fresh",
 	lastProjectedAt: new Date().toISOString(),
@@ -137,13 +136,11 @@ export const FEATURE_FLAGS_WITH_STREAM = FEATURE_FLAGS.map((f) =>
 export const DIGEST_WITH_AVAILABILITY = {
 	...KNOWLEDGE_HOME_DIGEST,
 	weeklyRecapAvailable: true,
-	eveningPulseAvailable: true,
 };
 
 export const DIGEST_WITHOUT_AVAILABILITY = {
 	...KNOWLEDGE_HOME_DIGEST,
 	weeklyRecapAvailable: false,
-	eveningPulseAvailable: false,
 };
 
 const LENS_TIMESTAMP = "2026-01-15T00:00:00.000Z";

@@ -179,12 +179,8 @@ export interface TriggerJobResponse {
 export async function triggerRecapJob(
 	fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
 	genres?: string[],
-	windowDays: 3 | 7 = 3,
 ): Promise<TriggerJobResponse> {
-	const endpoint =
-		windowDays === 3
-			? resolve(`api/v1/generate/recaps/3days`)
-			: resolve(`api/v1/generate/recaps/7days`);
+	const endpoint = resolve(`api/v1/generate/recaps/3days`);
 
 	const csrfToken = await getClientCSRFToken();
 	const res = await fetch(endpoint, {
@@ -243,12 +239,5 @@ export async function trigger3DaysRecapJob(
 	fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
 	genres?: string[],
 ): Promise<TriggerJobResponse> {
-	return triggerRecapJob(fetch, genres, 3);
-}
-
-export async function trigger7DaysRecapJob(
-	fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
-	genres?: string[],
-): Promise<TriggerJobResponse> {
-	return triggerRecapJob(fetch, genres, 7);
+	return triggerRecapJob(fetch, genres);
 }

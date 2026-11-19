@@ -7,8 +7,6 @@
 
 import {
 	CONNECT_ARTICLE_CONTENT_RESPONSE,
-	CONNECT_EVENING_PULSE_PATH,
-	CONNECT_EVENING_PULSE_RESPONSE,
 	CONNECT_MORNING_LETTER_STREAM_MESSAGES,
 	CONNECT_READ_FEEDS_EMPTY_RESPONSE,
 	CONNECT_RPC_PATHS,
@@ -96,10 +94,6 @@ test.describe("Mobile Pages Accessibility", () => {
 				{ kind: "tag", tag: "AI" },
 				{ kind: "tag", tag: "Web" },
 			]),
-		);
-		// Evening Pulse mock
-		await page.route(CONNECT_EVENING_PULSE_PATH, (route) =>
-			fulfillJson(route, CONNECT_EVENING_PULSE_RESPONSE),
 		);
 		// Morning Letter mock
 		await page.route(CONNECT_RPC_PATHS.morningLetterStreamChat, (route) =>
@@ -300,16 +294,6 @@ test.describe("Mobile Pages Accessibility", () => {
 	test.describe("Mobile Morning Letter Page (/recap/morning-letter)", () => {
 		test("has no critical accessibility violations", async ({ page }) => {
 			await gotoMobileRoute(page, "recap/morning-letter");
-			await page.waitForLoadState("domcontentloaded");
-			await expect(page.getByRole("heading").first()).toBeVisible();
-
-			await checkAccessibility(page, a11yOptions);
-		});
-	});
-
-	test.describe("Mobile Evening Pulse Page (/recap/evening-pulse)", () => {
-		test("has no critical accessibility violations", async ({ page }) => {
-			await gotoMobileRoute(page, "recap/evening-pulse");
 			await page.waitForLoadState("domcontentloaded");
 			await expect(page.getByRole("heading").first()).toBeVisible();
 

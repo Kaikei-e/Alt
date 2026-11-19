@@ -170,55 +170,6 @@ export const CONNECT_TAG_TRAIL_FEED = {
 };
 
 // =============================================================================
-// Connect-RPC Evening Pulse Data (proto JSON wire format)
-// =============================================================================
-
-export const CONNECT_EVENING_PULSE = {
-	jobId: "pulse-job-123",
-	date: "2026-01-15",
-	generatedAt: new Date().toISOString(),
-	status: 1, // PULSE_STATUS_NORMAL
-	topics: [
-		{
-			clusterId: "1",
-			role: 1,
-			title: "AI Breakthrough",
-			rationale: { text: "Major advances in AI this week.", confidence: 1 },
-			articleCount: 5,
-			sourceCount: 3,
-			timeAgo: "3 hours ago",
-			genre: "Technology",
-			articleIds: ["art-1", "art-2"],
-			representativeArticles: [
-				{
-					articleId: "art-1",
-					title: "GPT-5 Announced",
-					sourceUrl: "https://example.com/gpt5",
-					sourceName: "TechNews",
-					publishedAt: "2026-01-15T10:00:00Z",
-				},
-			],
-			topEntities: ["AI", "GPT", "LLM"],
-			sourceNames: ["TechNews", "AIDaily"],
-		},
-	],
-	surfaceStatus: {
-		generatedAt: new Date().toISOString(),
-		windowStart: "2026-01-12T00:00:00Z",
-		windowEnd: "2026-01-15T00:00:00Z",
-		isStale: false,
-		staleAfter: new Date(Date.now() + 30 * 60 * 60 * 1000).toISOString(),
-		latestRun: {
-			jobId: "pulse-job-123",
-			status: "completed",
-			kickedAt: "2026-01-15T12:00:00Z",
-			updatedAt: "2026-01-15T12:05:00Z",
-		},
-		degradationReasons: [],
-	},
-};
-
-// =============================================================================
 // Connect-RPC Tag Trail Articles Data
 // =============================================================================
 

@@ -7,10 +7,9 @@ import SwipeRecapCard from "./SwipeRecapCard.svelte";
 interface Props {
 	genres: RecapGenre[];
 	summaryData?: RecapSummary | null;
-	window?: 3 | 7;
 }
 
-const { genres, summaryData, window = 3 }: Props = $props();
+const { genres, summaryData }: Props = $props();
 
 // State
 let activeIndex = $state(0);
@@ -44,7 +43,7 @@ async function handleSwipe(direction: number) {
       <div class="screen-header">
         <div class="header-card">
           <div class="flex justify-between items-center">
-            <h1 class="header-title">{window}-Day Recap</h1>
+            <h1 class="header-title">3-Day Recap</h1>
             <span class="header-position">
               {currentPosition} / {totalCount}
             </span>
@@ -58,11 +57,9 @@ async function handleSwipe(direction: number) {
             })} · {summaryData.totalArticles.toLocaleString()} articles
           </p>
         </div>
-        {#if window === 3}
-          <div class="mt-2">
-            <SurfaceStatusBanner surfaceStatus={summaryData.surfaceStatus} />
-          </div>
-        {/if}
+        <div class="mt-2">
+          <SurfaceStatusBanner surfaceStatus={summaryData.surfaceStatus} />
+        </div>
       </div>
     {/if}
 

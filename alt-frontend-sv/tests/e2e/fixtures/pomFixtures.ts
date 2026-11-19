@@ -15,7 +15,6 @@ import { SidebarComponent } from "../pages/components/SidebarComponent";
 import { DesktopAcolyteNewPage } from "../pages/desktop/DesktopAcolyteNewPage";
 import { DesktopAcolyteReportPage } from "../pages/desktop/DesktopAcolyteReportPage";
 import { DesktopAugurPage } from "../pages/desktop/DesktopAugurPage";
-import { DesktopEveningPulsePage } from "../pages/desktop/DesktopEveningPulsePage";
 import { DesktopFavoritesPage } from "../pages/desktop/DesktopFavoritesPage";
 // Desktop POMs
 import { DesktopFeedsPage } from "../pages/desktop/DesktopFeedsPage";
@@ -33,7 +32,6 @@ import { DesktopTagArticlesPage } from "../pages/desktop/DesktopTagArticlesPage"
 import { DesktopTagTrailPage } from "../pages/desktop/DesktopTagTrailPage";
 import { DesktopViewedPage } from "../pages/desktop/DesktopViewedPage";
 import { Mobile3DayRecapPage } from "../pages/mobile/Mobile3DayRecapPage";
-import { MobileEveningPulsePage } from "../pages/mobile/MobileEveningPulsePage";
 import { MobileFavoritesPage } from "../pages/mobile/MobileFavoritesPage";
 // Mobile POMs
 import { MobileFeedsPage } from "../pages/mobile/MobileFeedsPage";
@@ -72,7 +70,6 @@ type PomFixtures = {
 	desktopFavoritesPage: DesktopFavoritesPage;
 	desktopViewedPage: DesktopViewedPage;
 	desktopStatsPage: DesktopStatsPage;
-	desktopEveningPulsePage: DesktopEveningPulsePage;
 	desktopJobStatusPage: DesktopJobStatusPage;
 	desktopTagArticlesPage: DesktopTagArticlesPage;
 	// Mobile
@@ -87,7 +84,6 @@ type PomFixtures = {
 	mobileViewedPage: MobileViewedPage;
 	mobileTagTrailPage: MobileTagTrailPage;
 	mobileMorningLetterPage: MobileMorningLetterPage;
-	mobileEveningPulsePage: MobileEveningPulsePage;
 	mobile3DayRecapPage: Mobile3DayRecapPage;
 	mobileJobStatusPage: MobileJobStatusPage;
 	mobileTagArticlesPage: MobileTagArticlesPage;
@@ -153,9 +149,6 @@ export const test = base.extend<PomFixtures>({
 	desktopStatsPage: async ({ page }, use) => {
 		await use(new DesktopStatsPage(page));
 	},
-	desktopEveningPulsePage: async ({ page }, use) => {
-		await use(new DesktopEveningPulsePage(page));
-	},
 	desktopJobStatusPage: async ({ page }, use) => {
 		await use(new DesktopJobStatusPage(page));
 	},
@@ -195,9 +188,6 @@ export const test = base.extend<PomFixtures>({
 	},
 	mobileMorningLetterPage: async ({ page }, use) => {
 		await use(new MobileMorningLetterPage(page));
-	},
-	mobileEveningPulsePage: async ({ page }, use) => {
-		await use(new MobileEveningPulsePage(page));
 	},
 	mobile3DayRecapPage: async ({ page }, use) => {
 		await use(new Mobile3DayRecapPage(page));

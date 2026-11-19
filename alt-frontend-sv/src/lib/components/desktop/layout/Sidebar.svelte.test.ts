@@ -51,6 +51,9 @@ describe("Desktop Sidebar", () => {
 		});
 		await expect.element(morningLetterLink).toBeInTheDocument();
 		await expect.element(morningLetterLink).not.toHaveTextContent("Today");
+		await expect
+			.element(page.getByRole("link", { name: "Evening Pulse" }))
+			.not.toBeInTheDocument();
 
 		const trailLink = page.getByRole("link", { name: "Your Trail" });
 		await expect.element(trailLink).toBeInTheDocument();

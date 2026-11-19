@@ -20,20 +20,12 @@ func NewRecapUsecase(recapPort recap_port.RecapPort, recapSearch search_indexer_
 	}
 }
 
-func (u *RecapUsecase) GetSevenDayRecap(ctx context.Context) (*domain.RecapSummary, error) {
-	return u.recapPort.GetSevenDayRecap(ctx)
-}
-
 func (u *RecapUsecase) GetThreeDayRecap(ctx context.Context) (*domain.RecapSummary, error) {
 	return u.recapPort.GetThreeDayRecap(ctx)
 }
 
 func (u *RecapUsecase) GetTopicCards(ctx context.Context) (*domain.RecapCardsResponse, error) {
 	return u.recapPort.GetTopicCards(ctx)
-}
-
-func (u *RecapUsecase) GetEveningPulse(ctx context.Context, date string) (*domain.EveningPulse, error) {
-	return u.recapPort.GetEveningPulse(ctx, date)
 }
 
 func (u *RecapUsecase) SearchRecapsByTag(ctx context.Context, tagName string, limit int) ([]*domain.RecapSearchResult, error) {

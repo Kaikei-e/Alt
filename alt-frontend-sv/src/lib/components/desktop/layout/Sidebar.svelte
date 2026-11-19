@@ -22,7 +22,6 @@ import {
 	Search,
 	Settings,
 	Shuffle,
-	Sparkles,
 	Star,
 	Tag,
 } from "@lucide/svelte";
@@ -106,11 +105,6 @@ const baseMenuItems = [
 				label: "Morning Letter",
 				href: "/recap/morning-letter",
 				icon: Newspaper,
-			},
-			{
-				label: "Evening Pulse",
-				href: "/recap/evening-pulse",
-				icon: Sparkles,
 			},
 			{
 				label: "Job Status",
