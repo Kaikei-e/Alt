@@ -291,6 +291,58 @@ describe("EpisodeCard subordinate branch", () => {
 		);
 	});
 
+	it("wraps a long unbroken URL in the episode link and subordinate branch", async () => {
+		const longUrl =
+			"https://www.zdnet.com/a/img/resize/a380d377116335d01087bcb191f4613da7010344/2026/02/28/77bc4efe8fc0d630a7f6f1c9dsc09454.jpg?auto=webp&fit=crop&height=675&width=1200";
+		const narrow = 375;
+		render(EpisodeCard, {
+			props: {
+				episode: makeEpisode({
+					footprints: [
+						makeFootprint({
+							title: longUrl,
+							excerpt: longUrl,
+							tags: [longUrl],
+						}),
+					],
+				}),
+				branch: makeBranch({
+					targetTitle: longUrl,
+					why: longUrl,
+					evidenceRefs: [{ refId: "src", label: longUrl, kind: "source" }],
+				}),
+				onResolveBranch: vi.fn(),
+			},
+		});
+		const link = page.getByTestId("episode-link");
+		await expect.element(link).toBeInTheDocument();
+		const title = link.element() as HTMLElement;
+		const root = title.closest("[data-testid='trail-episode']") as HTMLElement;
+		const host = root.parentElement as HTMLElement;
+		host.style.width = `${narrow}px`;
+		host.style.maxWidth = `${narrow}px`;
+		host.style.boxSizing = "border-box";
+		void host.offsetWidth;
+
+		const styles = window.getComputedStyle(title);
+		expect(
+			styles.overflowWrap === "anywhere" ||
+				styles.wordBreak === "break-all" ||
+				styles.wordBreak === "break-word",
+		).toBe(true);
+		expect(styles.textOverflow).not.toBe("ellipsis");
+		expect(title.textContent).toContain(longUrl);
+		expect(title.scrollWidth).toBeLessThanOrEqual(title.clientWidth);
+		expect(root.scrollWidth).toBeLessThanOrEqual(root.clientWidth);
+		expect(root.getBoundingClientRect().width).toBeLessThanOrEqual(narrow);
+
+		const card = page
+			.getByTestId("episode-branch-card")
+			.element() as HTMLElement;
+		expect(card.scrollWidth).toBeLessThanOrEqual(card.clientWidth);
+		expect(card.textContent).toContain(longUrl);
+	});
+
 	it("Dismiss on the subordinate branch opens the one-tap reason row", async () => {
 		const onResolveBranch = vi.fn();
 		render(EpisodeCard, {

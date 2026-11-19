@@ -78,7 +78,10 @@ const isEmpty = $derived(
 <style>
 	.trail {
 		margin-top: 1.4rem;
+		width: 100%;
 		max-width: 880px;
+		min-width: 0;
+		box-sizing: border-box;
 	}
 	.trail-empty {
 		font-family: var(--font-body);
