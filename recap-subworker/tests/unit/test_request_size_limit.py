@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import httpx
 import pytest
+import yaml
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
@@ -19,15 +22,40 @@ from recap_subworker.infra.config import Settings, get_settings
 
 pytestmark = pytest.mark.usefixtures("stub_startup_sweep")
 
+REPO_ROOT = Path(__file__).resolve().parents[3]
+COMPOSE_RECAP_PATH = REPO_ROOT / "compose" / "recap.yaml"
+
+# Sizing constants for a full 72-hour story clustering batch sent by recap-worker:
+# each ClusterStoryItem carries id (UUID), embedding (1,024 f32 values),
+# published_at (RFC3339 UTC timestamp), and language ("ja" / "en" / "other").
+CLUSTER_STORY_COUNT = 7_000
+EMBEDDING_DIM = 1_024
+BYTES_PER_FLOAT_JSON = 13
+# Non-embedding per-item JSON wrapper + comma separator:
+# {"id":"<36-char-uuid>","embedding":...,"published_at":"YYYY-MM-DDTHH:MM:SSZ","language":"ja"},
+PER_ITEM_OVERHEAD_BYTES = 113
+# Top-level request envelope: {"items":[],"params":{...}}
+REQUEST_ENVELOPE_OVERHEAD_BYTES = 107
+CLUSTER_STORIES_BODY_BYTES = (
+    CLUSTER_STORY_COUNT * (EMBEDDING_DIM * BYTES_PER_FLOAT_JSON + PER_ITEM_OVERHEAD_BYTES)
+    + REQUEST_ENVELOPE_OVERHEAD_BYTES
+)
+EXPECTED_DEFAULT_MAX_REQUEST_BODY_BYTES = 96 * 1024 * 1024
+
+# Memory budget constants for quadratic pairwise distance/clustering allocation.
+CLUSTERING_BYTES_PER_ITEM_PAIR = 54
+CONTAINER_MEMORY_LIMIT_BYTES = 8 * 1024**3
+MEASURED_BYTES_PER_CLUSTER_ITEM = 12_883
+
 
 def test_settings_max_request_body_bytes_default(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Settings should default max_request_body_bytes to 64 MiB after clearing env aliases."""
+    """Settings should default max_request_body_bytes to 96 MiB after clearing env aliases."""
     monkeypatch.delenv("RECAP_SUBWORKER_MAX_REQUEST_BODY_BYTES", raising=False)
     monkeypatch.delenv("RECAP_MAX_REQUEST_BODY_BYTES", raising=False)
     settings = Settings()
-    assert settings.max_request_body_bytes == 64 * 1024 * 1024
-    assert settings.max_request_body_bytes == 67108864
-    assert DEFAULT_MAX_REQUEST_BODY_BYTES == 67108864
+    assert settings.max_request_body_bytes == EXPECTED_DEFAULT_MAX_REQUEST_BODY_BYTES
+    assert settings.max_request_body_bytes == 100663296
+    assert DEFAULT_MAX_REQUEST_BODY_BYTES == 100663296
 
 
 def test_settings_max_request_body_bytes_env_override(
@@ -229,3 +257,142 @@ def test_create_app_enforces_configured_request_size_limit(
             assert res_large.json() == {"detail": "Request body too large"}
     finally:
         get_settings.cache_clear()
+
+
+def _load_recap_subworker_compose_service() -> dict[str, object] | None:
+    if not COMPOSE_RECAP_PATH.is_file():
+        return None
+    compose_data = yaml.safe_load(COMPOSE_RECAP_PATH.read_text(encoding="utf-8"))
+    return compose_data["services"]["recap-subworker"]
+
+
+@pytest.mark.asyncio
+async def test_default_limit_admits_7000_story_cluster_payload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Default limit must admit a 7,000-story clustering payload without returning 413."""
+    monkeypatch.delenv("RECAP_SUBWORKER_MAX_REQUEST_BODY_BYTES", raising=False)
+    monkeypatch.delenv("RECAP_MAX_REQUEST_BODY_BYTES", raising=False)
+    settings = Settings()
+
+    for max_bytes in (DEFAULT_MAX_REQUEST_BODY_BYTES, settings.max_request_body_bytes):
+        forwarded = False
+        sent_events: list[dict[str, object]] = []
+
+        async def inner_app(scope: Scope, receive: Receive, send: Send) -> None:
+            nonlocal forwarded
+            forwarded = True
+            await send({"type": "http.response.start", "status": 200, "headers": []})
+            await send({"type": "http.response.body", "body": b'{"ok":true}'})
+
+        async def dummy_receive() -> dict[str, object]:
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        async def dummy_send(event: dict[str, object]) -> None:
+            sent_events.append(event)
+
+        middleware = RequestSizeLimitMiddleware(inner_app, max_bytes=max_bytes)
+        scope: Scope = {
+            "type": "http",
+            "method": "POST",
+            "path": "/v1/cluster-stories",
+            "headers": [
+                (b"content-type", b"application/json"),
+                (b"content-length", str(CLUSTER_STORIES_BODY_BYTES).encode("ascii")),
+            ],
+        }
+        await middleware(scope, dummy_receive, dummy_send)  # type: ignore[arg-type]
+        assert forwarded is True, (
+            f"Expected {CLUSTER_STORIES_BODY_BYTES} bytes (7,000 stories) to fit within {max_bytes}"
+        )
+        assert sent_events[0]["status"] == 200
+
+
+@pytest.mark.asyncio
+async def test_default_limit_rejects_one_byte_over_with_413(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Request one byte over the default limit must be rejected with 413."""
+    monkeypatch.delenv("RECAP_SUBWORKER_MAX_REQUEST_BODY_BYTES", raising=False)
+    monkeypatch.delenv("RECAP_MAX_REQUEST_BODY_BYTES", raising=False)
+    settings = Settings()
+
+    for max_bytes in (DEFAULT_MAX_REQUEST_BODY_BYTES, settings.max_request_body_bytes):
+        forwarded = False
+        sent_events: list[dict[str, object]] = []
+
+        async def inner_app(scope: Scope, receive: Receive, send: Send) -> None:
+            nonlocal forwarded
+            forwarded = True
+
+        async def dummy_receive() -> dict[str, object]:
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        async def dummy_send(event: dict[str, object]) -> None:
+            sent_events.append(event)
+
+        middleware = RequestSizeLimitMiddleware(inner_app, max_bytes=max_bytes)
+        scope: Scope = {
+            "type": "http",
+            "method": "POST",
+            "path": "/v1/cluster-stories",
+            "headers": [
+                (b"content-type", b"application/json"),
+                (b"content-length", str(max_bytes + 1).encode("ascii")),
+            ],
+        }
+        await middleware(scope, dummy_receive, dummy_send)  # type: ignore[arg-type]
+        assert forwarded is False
+        assert sent_events[0]["status"] == 413
+        assert sent_events[1]["body"] == b'{"detail":"Request body too large"}'
+
+
+def test_default_limit_stays_within_clustering_memory_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Largest admitted batch must keep quadratic clustering memory within half the container limit."""
+    monkeypatch.delenv("RECAP_SUBWORKER_MAX_REQUEST_BODY_BYTES", raising=False)
+    monkeypatch.delenv("RECAP_MAX_REQUEST_BODY_BYTES", raising=False)
+    settings = Settings()
+
+    for limit_bytes in (DEFAULT_MAX_REQUEST_BODY_BYTES, settings.max_request_body_bytes):
+        max_items = limit_bytes // MEASURED_BYTES_PER_CLUSTER_ITEM
+        clustering_bytes = CLUSTERING_BYTES_PER_ITEM_PAIR * max_items * max_items
+        assert clustering_bytes <= CONTAINER_MEMORY_LIMIT_BYTES // 2, (
+            f"Limit {limit_bytes} bytes admits {max_items} items needing {clustering_bytes} bytes "
+            f"for clustering, exceeding half of {CONTAINER_MEMORY_LIMIT_BYTES} bytes"
+        )
+
+    service = _load_recap_subworker_compose_service()
+    if service is None:
+        pytest.skip(f"compose file not present at {COMPOSE_RECAP_PATH}")
+    assert service["mem_limit"] == "8192m"
+
+
+def test_compose_recap_max_request_body_bytes_matches_code_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Compose configuration for recap-subworker must match the code default and admit 7,000 stories."""
+    service = _load_recap_subworker_compose_service()
+    if service is None:
+        pytest.skip(f"compose file not present at {COMPOSE_RECAP_PATH}")
+
+    monkeypatch.delenv("RECAP_SUBWORKER_MAX_REQUEST_BODY_BYTES", raising=False)
+    monkeypatch.delenv("RECAP_MAX_REQUEST_BODY_BYTES", raising=False)
+    settings = Settings()
+
+    env_entries = service["environment"]
+    env_map: dict[str, str] = {}
+    if isinstance(env_entries, dict):
+        env_map = {str(k): str(v) for k, v in env_entries.items()}
+    else:
+        assert isinstance(env_entries, list)
+        for entry in env_entries:
+            key, _, val = str(entry).partition("=")
+            env_map[key] = val
+
+    assert "RECAP_SUBWORKER_MAX_REQUEST_BODY_BYTES" in env_map
+    compose_limit = int(env_map["RECAP_SUBWORKER_MAX_REQUEST_BODY_BYTES"])
+    assert compose_limit == DEFAULT_MAX_REQUEST_BODY_BYTES
+    assert compose_limit == settings.max_request_body_bytes
+    assert compose_limit >= CLUSTER_STORIES_BODY_BYTES
