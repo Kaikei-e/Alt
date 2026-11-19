@@ -2,8 +2,6 @@ import type { MessageInitShape } from "@bufbuild/protobuf";
 import { timestampDate, timestampFromDate } from "@bufbuild/protobuf/wkt";
 import type { Client, Transport } from "@connectrpc/connect";
 import { createClient } from "@connectrpc/connect";
-import { createKeepaliveTransport } from "#lib/connect/reading-transport.js";
-import { createClientTransport } from "#lib/connect/transport-client.js";
 import {
 	type GetReadTodayQueueResponse,
 	type GetThemeResponse,
@@ -177,10 +175,6 @@ function mapQueueItem(item: ReadingQueueItem): ReadTodayQueueItem {
 		queuedAt: item.queuedAt ? timestampDate(item.queuedAt) : null,
 		expiresAt: item.expiresAt ? timestampDate(item.expiresAt) : null,
 	};
-}
-
-export function getReadingTransport(keepalive = false): Transport {
-	return keepalive ? createKeepaliveTransport() : createClientTransport();
 }
 
 export function isQueueSuccessOutcome(outcome: QueueArticleOutcome): boolean {
