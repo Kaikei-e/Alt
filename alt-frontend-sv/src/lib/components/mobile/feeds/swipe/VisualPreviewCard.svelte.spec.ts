@@ -354,7 +354,10 @@ describe("VisualPreviewCard", () => {
 				new CustomEvent("swipe", { detail: { direction: "left" } }),
 			);
 
-			await vi.waitFor(() => expect(onDismiss).toHaveBeenCalledTimes(1));
+			// onDismiss fires only after the exit spring settles, which is frame-paced and can outlast the default 1 s wait on a loaded runner.
+			await vi.waitFor(() => expect(onDismiss).toHaveBeenCalledTimes(1), {
+				timeout: 5000,
+			});
 			expect(onDismiss).toHaveBeenCalledWith(-1, mockFeed.id);
 			expect(onDismissingChange).toHaveBeenNthCalledWith(1, true, mockFeed.id);
 			expect(onDismissingChange).toHaveBeenLastCalledWith(false, mockFeed.id);
