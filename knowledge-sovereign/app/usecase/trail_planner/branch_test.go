@@ -23,34 +23,6 @@ func TestWhyPhraseForVerb_CoversEveryEngagementVerb(t *testing.T) {
 	assert.False(t, ok, "dismissal is not an engagement act")
 }
 
-func TestBuildClusterBranch_WhyNamesTheActThatHappened(t *testing.T) {
-	user := uuid.New()
-	c := sovereign_db.TrailClusterCandidate{
-		TargetItemKey: "article:target",
-		TargetTitle:   "Target Article",
-		SharedTags:    []string{"rust"},
-	}
-
-	tests := []struct {
-		verb       string
-		wantPhrase string
-	}{
-		{"read", "Because you read \"Anchor Title\" — joins rust"},
-		{"asked", "Because you asked about \"Anchor Title\" — joins rust"},
-		{"listened", "Because you listened to \"Anchor Title\" — joins rust"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.verb, func(t *testing.T) {
-			phrase, ok := whyPhraseForVerb(tt.verb)
-			require.True(t, ok)
-			ref := anchorRef{itemKey: "article:anchor", title: "Anchor Title", whyPhrase: phrase}
-			payload := buildClusterBranch(user, ref, c)
-			assert.Equal(t, tt.wantPhrase, payload.Why)
-		})
-	}
-}
-
 func TestBuildContinuationBranch_WhyNamesTheActThatHappened(t *testing.T) {
 	user := uuid.New()
 	c := sovereign_db.TrailContinuationCandidate{
@@ -64,50 +36,6 @@ func TestBuildContinuationBranch_WhyNamesTheActThatHappened(t *testing.T) {
 	assert.Equal(t, "Because you asked about \"Quiet Thread\" and the thread went quiet — pick it back up.", payload.Why)
 	assert.Equal(t, "article:c", payload.AnchorItemKey)
 	assert.Equal(t, "article:c", payload.TargetItemKey)
-}
-
-func TestBuildClusterBranch_AlwaysPopulatesFourTuple(t *testing.T) {
-	user := uuid.New()
-	ref := anchorRef{itemKey: "article:a", title: "A", whyPhrase: "you read"}
-	c := sovereign_db.TrailClusterCandidate{
-		TargetItemKey: "article:b",
-		TargetTitle:   "B",
-		SharedTags:    []string{"go"},
-	}
-	payload := buildClusterBranch(user, ref, c)
-	assert.True(t, payload.Valid())
-	assert.Equal(t, "cluster", payload.RelationKind)
-	assert.NotEmpty(t, payload.Why)
-	assert.NotEmpty(t, payload.EvidenceRefs)
-	assert.NotEmpty(t, payload.Confidence)
-}
-
-func TestBuildClusterBranch_SingleTagIsPlausible(t *testing.T) {
-	user := uuid.New()
-	ref := anchorRef{itemKey: "article:a", title: "A", whyPhrase: "you read"}
-	c := sovereign_db.TrailClusterCandidate{
-		TargetItemKey: "article:b",
-		TargetTitle:   "B",
-		SharedTags:    []string{"go"},
-	}
-	payload := buildClusterBranch(user, ref, c)
-	assert.Equal(t, "plausible", payload.Confidence)
-
-	c.SharedTags = []string{"go", "cli"}
-	payload = buildClusterBranch(user, ref, c)
-	assert.Equal(t, "corroborated", payload.Confidence)
-}
-
-func TestBuildClusterBranch_WhyReferencesAnchorTitleInQuotes(t *testing.T) {
-	user := uuid.New()
-	ref := anchorRef{itemKey: "article:a", title: "Specific Anchor Title", whyPhrase: "you read"}
-	c := sovereign_db.TrailClusterCandidate{
-		TargetItemKey: "article:b",
-		TargetTitle:   "Target",
-		SharedTags:    []string{"topic"},
-	}
-	payload := buildClusterBranch(user, ref, c)
-	assert.Contains(t, payload.Why, "\"Specific Anchor Title\"")
 }
 
 func TestValidResolution(t *testing.T) {

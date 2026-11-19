@@ -3,7 +3,6 @@ package trail_planner
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -62,18 +61,9 @@ func (p BranchProposedPayload) Valid() bool {
 	return p.RelationKind != "" && p.Why != "" && len(p.EvidenceRefs) > 0 && p.Confidence != ""
 }
 
-// anchorRef is the resolved spine anchor a branch's why points back to: the
-// item it forks from, the title that names it, and the verb phrase that makes
-// the claim true.
-type anchorRef struct {
-	itemKey   string
-	title     string
-	whyPhrase string
-}
-
 // whyPhraseByVerb renders each engagement verb as the subject-verb half of an
 // anchored why. It is deliberately total over sovereign_db.EngagementVerbs and
-// empty of everything else (§C4).
+// empty of everything else.
 var whyPhraseByVerb = map[string]string{
 	"read":     "you read",
 	"asked":    "you asked about",
@@ -85,43 +75,10 @@ func whyPhraseForVerb(verb string) (string, bool) {
 	return phrase, ok
 }
 
-// buildClusterBranch turns a Cluster candidate into a fully-populated branch:
-// a new item that situates into a topic the user already follows. The
-// four-tuple is always set, and the why is anchored (D28(a)): it names the
-// anchor item's title in quotes, phrased from the act that actually happened,
-// never a generic "a topic you follow" claim with no concrete reference back
-// to what the user did.
-func buildClusterBranch(userID uuid.UUID, anchor anchorRef, c sovereign_db.TrailClusterCandidate) BranchProposedPayload {
-	refs := make([]EvidenceRef, 0, len(c.SharedTags)+1)
-	for _, tag := range c.SharedTags {
-		refs = append(refs, EvidenceRef{RefID: tag, Label: tag, Kind: "tag"})
-	}
-	refs = append(refs, EvidenceRef{RefID: c.TargetItemKey, Label: c.TargetTitle, Kind: "article"})
-
-	confidence := "plausible"
-	if len(c.SharedTags) >= 2 {
-		confidence = "corroborated"
-	}
-
-	return BranchProposedPayload{
-		BranchKey:      "cluster:" + userID.String() + ":" + c.TargetItemKey,
-		AnchorItemKey:  anchor.itemKey,
-		RelationKind:   "cluster",
-		Why:            fmt.Sprintf("Because %s %q — joins %s", anchor.whyPhrase, anchor.title, strings.Join(c.SharedTags, ", ")),
-		EvidenceRefs:   refs,
-		Confidence:     confidence,
-		TargetItemKey:  c.TargetItemKey,
-		TargetTitle:    c.TargetTitle,
-		PlannerVersion: plannerVersion,
-	}
-}
-
 // buildContinuationBranch turns a Continuation candidate into a fully-
-// populated, self-referential branch (D27, Wave 11): the target IS the
-// anchor — past engagement with the SAME item is what makes it continuation
-// material, not a new item situating into a followed topic (contrast
-// buildClusterBranch). The why is anchored on the candidate's own title,
-// quoted, per the same D28(a) contract.
+// populated, self-referential branch: the target IS the anchor — past
+// engagement with the same item is what makes it continuation material. The why
+// is anchored on the candidate's own title in quotes.
 func buildContinuationBranch(userID uuid.UUID, whyPhrase string, c sovereign_db.TrailContinuationCandidate) BranchProposedPayload {
 	return BranchProposedPayload{
 		BranchKey:     "continuation:" + userID.String() + ":" + c.TargetItemKey,
