@@ -1,16 +1,14 @@
 """Security contract tests for F-001..F-011 (sync Python PKI)."""
 
-# ruff: noqa: TRY003, PLC0415, PTH110
-
 from __future__ import annotations
 
 import base64
 import json
-import os
 import ssl
 import tempfile
 import threading
 import time
+import urllib.request
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -22,7 +20,7 @@ from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 from jwcrypto.jwa import default_max_pbkdf2_iterations
 from jwcrypto.jwk import JWK
 from prometheus_client import REGISTRY as DEFAULT_REGISTRY
-from prometheus_client import generate_latest
+from prometheus_client import CollectorRegistry, generate_latest
 
 from tests.unit.infra.pki.helpers import self_signed_pem, write_password_file
 from tests.unit.infra.pki.test_manager import FakeIssuer
@@ -32,6 +30,7 @@ from tts_speaker.infra.pki.config import (
     MAX_RESPONSE_BYTES,
     MODE_ENABLED,
     CARejectedError,
+    Config,
     InsecureCAURLError,
     PasswordTooLargeError,
     PkiError,
@@ -52,6 +51,7 @@ from tts_speaker.infra.pki.native_issuer import (
     decrypt_provisioner_jwk,
     encrypt_step_ca_provisioner_jwk,
 )
+from tts_speaker.infra.pki.start import start_with_observer
 
 NB = datetime(2026, 8, 18, tzinfo=UTC)
 
@@ -382,14 +382,13 @@ def test_certfile_rejects_symlink_dest_and_parent(tmp_path: Path) -> None:
 
 
 def test_enroll_cancel_during_backoff_is_cancelled(tmp_path: Path) -> None:
-    from tts_speaker.infra.pki.config import Config
-
     files = CertFile(str(tmp_path / "svc-cert.pem"), str(tmp_path / "svc-key.pem"))
 
     class _Fail:
         def issue(self, ctx: Ctx, subject: str, sans: list[str]) -> tuple[bytes, bytes]:
             del ctx, subject, sans
-            raise PkiError("CA down")
+            msg = "CA down"
+            raise PkiError(msg)
 
     cfg = Config(
         mode=MODE_ENABLED,
@@ -429,7 +428,8 @@ def test_rekey_does_not_use_named_tmp(tmp_path: Path, monkeypatch: pytest.Monkey
     iss = _new_issuer(ca, tmp_path)
 
     def _boom(*_args: object, **_kwargs: object) -> object:
-        raise AssertionError("named tempfile must not be used for rekey mTLS")
+        msg = "named tempfile must not be used for rekey mTLS"
+        raise AssertionError(msg)
 
     monkeypatch.setattr(tempfile, "mkstemp", _boom)
     try:
@@ -447,13 +447,6 @@ def test_prom_observer_rejects_default_registry() -> None:
 
 
 def test_start_uses_private_registry_and_ops(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    import urllib.request
-
-    from prometheus_client import CollectorRegistry
-
-    from tts_speaker.infra.pki.config import Config
-    from tts_speaker.infra.pki.start import start_with_observer
-
     monkeypatch.setenv("OPS_LISTEN", "127.0.0.1:0")
 
     cfg = Config(
@@ -533,8 +526,6 @@ def test_stop_during_http_closes_connections(tmp_path: Path) -> None:
 
 
 def test_stop_during_write_does_not_abandon(tmp_path: Path) -> None:
-    from tts_speaker.infra.pki.config import Config
-
     files = CertFile(str(tmp_path / "b-cert.pem"), str(tmp_path / "b-key.pem"))
     started = threading.Event()
     orig = files.write
@@ -592,7 +583,7 @@ def test_pbes2_constant_is_step_ca_default() -> None:
     actual_p2c = STEP_CA_PBES2_P2C
     expected_p2c = 600_000
     assert actual_p2c == expected_p2c
-    assert os.path.exists("/proc/self/fd")
+    assert Path("/proc/self/fd").exists()
 
 
 def _leaf_and_ca(

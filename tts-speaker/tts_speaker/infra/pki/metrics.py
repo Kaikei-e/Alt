@@ -1,7 +1,5 @@
 """Lifecycle metrics for in-process enrollment on a private registry."""
 
-# ruff: noqa: TRY003
-
 from __future__ import annotations
 
 import time
@@ -17,7 +15,8 @@ class PromObserver:
 
     def __init__(self, subject: str, registry: CollectorRegistry) -> None:
         if registry is DEFAULT_REGISTRY:
-            raise TypeError("pki: PromObserver must use a private CollectorRegistry")
+            msg = "pki: PromObserver must use a private CollectorRegistry"
+            raise TypeError(msg)
         self._subject = subject
         self._remaining = Gauge(
             "cert_remaining_seconds",
