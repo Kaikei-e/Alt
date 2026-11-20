@@ -2,7 +2,6 @@ package datahub
 
 import (
 	"bytes"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -22,7 +21,7 @@ import (
 
 func mounted(t *testing.T, mux *http.ServeMux, path string) bool {
 	t.Helper()
-	_, pattern := mux.Handler(httptest.NewRequest(http.MethodPost, path, nil))
+	_, pattern := mux.Handler(httptest.NewRequestWithContext(t.Context(), http.MethodPost, path, nil))
 	return pattern != ""
 }
 
@@ -117,7 +116,7 @@ func withoutCreateTagSetVersionUsecase() *datahubdi.DataHubComponents {
 // services.datahub.v1 one PR at a time; Wave 2-C removed it, so a call on the old
 // path must now find nothing rather than a second door onto the same data.
 func TestSetupConnectHandlers_ServesOnlyTheDataHubNamespace(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	mux := http.NewServeMux()
 
 	SetupConnectHandlers(mux, components(), &config.Config{}, logger)
@@ -189,7 +188,7 @@ func TestSetupConnectHandlers_RefusesToMountWithoutTheAbsorbedRESTCapabilities(t
 				}
 			}()
 			SetupConnectHandlers(http.NewServeMux(), tt.container, &config.Config{},
-				slog.New(slog.NewTextHandler(io.Discard, nil)))
+				slog.New(slog.DiscardHandler))
 		})
 	}
 }
@@ -211,11 +210,11 @@ func TestSetupConnectHandlers_LogsTheArticleCreatedProducerWiring(t *testing.T) 
 // CreateServer is the only constructor this package offers, and it adds only
 // the health endpoint on top of SetupConnectHandlers.
 func TestCreateServer_AddsHealthAndNothingElse(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	h := CreateServer(components(), &config.Config{}, logger)
 
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health", nil))
+	h.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("/health = %d, want 200", rec.Code)
 	}

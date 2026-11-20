@@ -27,8 +27,13 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
-from compose_include import load_yaml, production_compose_files, production_services  # noqa: E402
-import yaml  # noqa: E402
+import yaml  # noqa: E402 - needs the sys.path entry added above
+
+from compose_include import (  # noqa: E402 - needs the sys.path entry added above
+    load_yaml,
+    production_compose_files,
+    production_services,
+)
 
 RUNBOOK = ROOT / "docs" / "runbooks" / "pki-agent-recovery.md"
 WORKFLOW = ROOT / ".github" / "workflows" / "compose-audit.yaml"
@@ -46,8 +51,17 @@ TEST_CASCADE = "tests/scripts/test_cascade_pki_sidecars.sh"
 PYTHON3_TEST = re.compile(r"^python3\s+(\S+)\s*$")
 BASH_TEST = re.compile(r"^bash\s+(\S+\.sh)\s*$")
 
-PASS = 0
-FAIL = 0
+MIN_VOLUME_PARTS = 2
+EXPECTED_PKI_PARENTS = 17
+
+
+class _Results:
+    def __init__(self) -> None:
+        self.passed = 0
+        self.failed = 0
+
+
+_RESULTS = _Results()
 
 # pre_start must chown the volume *contents* (`-R`). A directory-only
 # chown leaves 0400 keys owned by root after a previous mint, and the
@@ -70,15 +84,14 @@ RM_EXACT = re.compile(r"docker\s+rm\s+-f\s+--")
 
 
 def check(name: str, condition: bool, detail: str = "") -> None:
-    global PASS, FAIL
     if condition:
-        print(f"  PASS  {name}")
-        PASS += 1
+        sys.stdout.write(f"  PASS  {name}\n")
+        _RESULTS.passed += 1
         return
-    print(f"  FAIL  {name}")
+    sys.stdout.write(f"  FAIL  {name}\n")
     if detail:
-        print(f"        {detail}")
-    FAIL += 1
+        sys.stdout.write(f"        {detail}\n")
+    _RESULTS.failed += 1
 
 
 def bash_fences(md: str) -> list[str]:
@@ -93,10 +106,7 @@ def parse_assoc_arrays(md: str) -> dict[str, dict[str, str]]:
     found: dict[str, dict[str, str]] = {}
     for match in ASSOC_ARRAY.finditer(md):
         body = re.sub(r"#.*", "", match.group("body"))
-        entries = {
-            m.group("key"): m.group("val").strip("'\"")
-            for m in ASSOC_ENTRY.finditer(body)
-        }
+        entries = {m.group("key"): m.group("val").strip("'\"") for m in ASSOC_ENTRY.finditer(body)}
         found[match.group("name")] = entries
     return found
 
@@ -118,7 +128,11 @@ def cert_volume_for(svc: dict) -> str | None:
     for item in svc.get("volumes") or []:
         if isinstance(item, str):
             parts = item.split(":")
-            if len(parts) >= 2 and parts[1] == "/certs" and parts[0].endswith("_certs"):
+            if (
+                len(parts) >= MIN_VOLUME_PARTS
+                and parts[1] == "/certs"
+                and parts[0].endswith("_certs")
+            ):
                 return parts[0]
             continue
         if not isinstance(item, dict):
@@ -227,10 +241,7 @@ def has_exact_label_sweep(text: str) -> bool:
 
 def has_zero_ps_gate(text: str) -> bool:
     return (
-        PROJECT_LABEL in text
-        and "pki-agent-" in text
-        and "exit 1" in text
-        and "docker ps" in text
+        PROJECT_LABEL in text and "pki-agent-" in text and "exit 1" in text and "docker ps" in text
     )
 
 
@@ -255,7 +266,11 @@ def calls_sweep(block: str) -> bool:
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
             continue
-        if stripped == SWEEP_FN or stripped.startswith(f"{SWEEP_FN} ") or stripped.startswith(f"{SWEEP_FN}()"):
+        if (
+            stripped == SWEEP_FN
+            or stripped.startswith(f"{SWEEP_FN} ")
+            or stripped.startswith(f"{SWEEP_FN}()")
+        ):
             return True
     return False
 
@@ -264,11 +279,7 @@ def is_forward_parent_up_fence(block: str) -> bool:
     joined = join_continuations(block)
     if not COMPOSE_UP.search(joined):
         return False
-    return (
-        "--force-recreate" in joined
-        or "SUBJECTS[@]" in joined
-        or "<subject>" in joined
-    )
+    return "--force-recreate" in joined or "SUBJECTS[@]" in joined or "<subject>" in joined
 
 
 def inprocess_parents() -> dict[str, tuple[str, str]]:
@@ -284,13 +295,11 @@ def inprocess_parents() -> dict[str, tuple[str, str]]:
     return parents
 
 
-print("pki-agent recovery runbook structure")
+sys.stdout.write("pki-agent recovery runbook structure\n")
 
 check(
     "pre_start chown regex matches recursive -R (volume contents, not just the dir)",
-    CHOWN_CERTS.search(
-        "mkdir -p /certs && chown -R 65532:65532 /certs && chmod 0750 /certs"
-    )
+    CHOWN_CERTS.search("mkdir -p /certs && chown -R 65532:65532 /certs && chmod 0750 /certs")
     is not None,
 )
 check(
@@ -310,13 +319,13 @@ check(
 )
 check(
     "compose declares 17 cert volumes, each written by its in-process parent",
-    len(cert_volumes) == 17
+    len(cert_volumes) == EXPECTED_PKI_PARENTS
     and set(cert_volumes) == {volume for volume, _ in parents.values()},
     f"got {sorted(cert_volumes)}",
 )
 check(
     "compose has exactly 17 in-process PKI parents",
-    len(parents) == 17,
+    len(parents) == EXPECTED_PKI_PARENTS,
     f"got {sorted(parents)}",
 )
 RUNTIME_UIDS = {"65532", "1000", "999", "65533"}
@@ -382,9 +391,7 @@ check(
 
 fn_def_at = runbook.find(f"{SWEEP_FN}()")
 parent_up_fences = [
-    join_continuations(block)
-    for block in bash_fences(runbook)
-    if is_forward_parent_up_fence(block)
+    join_continuations(block) for block in bash_fences(runbook) if is_forward_parent_up_fence(block)
 ]
 check(
     "at least one forward parent up fence exists (cutover/recovery)",
@@ -458,11 +465,7 @@ leftover_ps = PROJECT_LABEL in runbook and "docker ps" in runbook
 check(
     "runbook does not treat Prometheus pki-agent scrape as leftover detector",
     leftover_ps
-    and (
-        "scrape" in runbook.lower()
-        or "9510" in runbook
-        or "prometheus" in runbook.lower()
-    )
+    and ("scrape" in runbook.lower() or "9510" in runbook or "prometheus" in runbook.lower())
     and (
         "頼ら" in runbook
         or "do not rely" in runbook.lower()
@@ -508,20 +511,58 @@ check(
 
 check(
     "emergency mint sets cert 0444 and key 0400",
-    "chmod 0444 /certs/svc-cert.pem" in runbook
-    and "chmod 0400 /certs/svc-key.pem" in runbook,
+    "chmod 0444 /certs/svc-cert.pem" in runbook and "chmod 0400 /certs/svc-key.pem" in runbook,
 )
 check(
     "emergency mint chown uses CERT_UID, not a blanket 65532",
-    "CERT_UID" in runbook
-    and not re.search(r"chown\s+65532:65532\s+/certs/svc-cert", runbook),
+    "CERT_UID" in runbook and not re.search(r"chown\s+65532:65532\s+/certs/svc-cert", runbook),
     "copyable mint must chown from the per-subject UID table",
 )
 
-print("compose-audit workflow wiring")
+COMPOSE_LINT_SH = ROOT / "scripts" / "lint" / "compose.sh"
+COMPOSE_LINT_GLOB = "scripts/lint/**"
+
+
+def workflow_invokes_lint_target(cfg: dict, target: str) -> bool:
+    wf_env = cfg.get("env") if isinstance(cfg.get("env"), dict) else {}
+    for job in (cfg.get("jobs") or {}).values():
+        if not isinstance(job, dict):
+            continue
+        job_env = job.get("env") if isinstance(job.get("env"), dict) else {}
+        for step in job.get("steps") or []:
+            if not isinstance(step, dict):
+                continue
+            run = step.get("run")
+            if not isinstance(run, str):
+                continue
+            step_env = step.get("env") if isinstance(step.get("env"), dict) else {}
+            env = {str(k): str(v) for k, v in {**wf_env, **job_env, **step_env}.items()}
+            for line in run.splitlines():
+                stripped = line.strip()
+                if not stripped or stripped.startswith("#"):
+                    continue
+                if "./scripts/lint/run.sh" in stripped and (
+                    env.get("TARGET") == target or f"run.sh {target}" in stripped
+                ):
+                    return True
+    return False
+
+
+def compose_lint_invokes(script_rel: str) -> bool:
+    if not COMPOSE_LINT_SH.is_file():
+        return False
+    for line in COMPOSE_LINT_SH.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if script_rel in stripped:
+            return True
+    return False
+
+
+sys.stdout.write("compose-audit workflow wiring\n")
 workflow_cfg = load_github_workflow(WORKFLOW)
 on = workflow_on(workflow_cfg)
-executed = executed_python_tests(workflow_cfg)
 check(
     "compose-audit.yaml exists and parses as YAML mapping",
     WORKFLOW.is_file() and bool(workflow_cfg.get("jobs")),
@@ -549,12 +590,21 @@ for event in ("push", "pull_request"):
         WORKFLOW_REL in paths,
         f"missing {WORKFLOW_REL}",
     )
+    check(
+        f"{event} path filter includes scripts/lint/**",
+        COMPOSE_LINT_GLOB in paths,
+        f"missing {COMPOSE_LINT_GLOB}",
+    )
 check(
-    "compose-audit executes recovery runbook test via run: (not a comment)",
-    TEST_REL in executed,
-    f"python3 steps={sorted(executed)}",
+    "compose-audit invokes ./scripts/lint/run.sh for target compose",
+    workflow_invokes_lint_target(workflow_cfg, "compose"),
+    "missing ./scripts/lint/run.sh compose step",
 )
-executed_all = executed_run_scripts(workflow_cfg)
+check(
+    "scripts/lint/compose.sh executes recovery runbook test (not a comment)",
+    compose_lint_invokes(TEST_REL),
+    f"missing {TEST_REL} in {COMPOSE_LINT_SH}",
+)
 for required in (PKI_SCRIPTS_GLOB, DEPLOY_SH, LEFTOVER_SWEEP, TEST_DEPLOY, TEST_CASCADE):
     for event in ("push", "pull_request"):
         paths = event_paths(on, event)
@@ -564,15 +614,15 @@ for required in (PKI_SCRIPTS_GLOB, DEPLOY_SH, LEFTOVER_SWEEP, TEST_DEPLOY, TEST_
             f"missing {required} in {sorted(paths)}",
         )
 check(
-    "compose-audit executes test_deploy.sh via run: (not a comment)",
-    TEST_DEPLOY in executed_all,
-    f"run scripts={sorted(executed_all)}",
+    "scripts/lint/compose.sh executes test_deploy.sh (not a comment)",
+    compose_lint_invokes(TEST_DEPLOY),
+    f"missing {TEST_DEPLOY} in {COMPOSE_LINT_SH}",
 )
 check(
-    "compose-audit executes test_cascade_pki_sidecars.sh via run: (not a comment)",
-    TEST_CASCADE in executed_all,
-    f"run scripts={sorted(executed_all)}",
+    "scripts/lint/compose.sh executes test_cascade_pki_sidecars.sh (not a comment)",
+    compose_lint_invokes(TEST_CASCADE),
+    f"missing {TEST_CASCADE} in {COMPOSE_LINT_SH}",
 )
 
-print(f"\n{PASS} passed, {FAIL} failed")
-sys.exit(1 if FAIL else 0)
+sys.stdout.write(f"\n{_RESULTS.passed} passed, {_RESULTS.failed} failed\n")
+sys.exit(1 if _RESULTS.failed else 0)

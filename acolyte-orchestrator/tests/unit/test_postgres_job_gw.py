@@ -23,6 +23,10 @@ from structlog.testing import capture_logs
 
 from acolyte.gateway.postgres_job_gw import PostgresJobGateway
 
+COMPLETE_RUN_QUERY_COUNT = 2
+TRANSITION_ATTEMPT_QUERY_COUNT = 3
+NOOP_WARNING_LOG_COUNT = 2
+
 
 class _FakeCursor:
     def __init__(self, row: Sequence[Any] | None) -> None:
@@ -111,7 +115,7 @@ async def test_complete_run_updates_reports_latest_successful_run_id_same_transa
 
     await gw.complete_run(run_id)
 
-    assert len(conn.executed) == 2
+    assert len(conn.executed) == COMPLETE_RUN_QUERY_COUNT
 
     run_query, run_params = conn.executed[0]
     assert "run_status = 'succeeded'" in run_query
@@ -287,7 +291,7 @@ async def test_run_transitions_guard_against_terminal_statuses_and_log_noop() ->
         await gw.complete_run(run_id)
         await gw.fail_run(run_id, "pipeline_crashed", "boom")
 
-    assert len(conn.executed) == 3
+    assert len(conn.executed) == TRANSITION_ATTEMPT_QUERY_COUNT
     mark_query, _mark_params = conn.executed[0]
     assert "run_status IN ('pending', 'running', 'failed')" in mark_query
     assert "finished_at = NULL" in mark_query
@@ -303,6 +307,6 @@ async def test_run_transitions_guard_against_terminal_statuses_and_log_noop() ->
     assert fail_params == ["pipeline_crashed", "boom", run_id]
 
     warnings = [e for e in logs if e.get("log_level") == "warning"]
-    assert len(warnings) == 2
+    assert len(warnings) == NOOP_WARNING_LOG_COUNT
     assert all(e.get("run_id") == str(run_id) for e in warnings)
     assert "Not called from any production code path yet" not in (PostgresJobGateway.mark_running.__doc__ or "")

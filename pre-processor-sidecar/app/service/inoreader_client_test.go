@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	"pre-processor-sidecar/driver"
@@ -91,7 +92,7 @@ func TestInoreaderClient_RetryOnTransientFailures(t *testing.T) {
 			result, err := client.FetchSubscriptionListWithRetry(context.Background(), "test_token")
 
 			if tt.shouldSucceed {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.NotNil(t, result)
 			} else {
 				assert.Error(t, err)
@@ -118,7 +119,7 @@ func TestInoreaderClient_RetryConfiguration(t *testing.T) {
 	assert.Equal(t, 3, retryConfig.MaxRetries)
 	assert.Equal(t, 5*time.Second, retryConfig.InitialDelay)
 	assert.Equal(t, 30*time.Second, retryConfig.MaxDelay)
-	assert.Equal(t, 2.0, retryConfig.Multiplier)
+	assert.InDelta(t, 2.0, retryConfig.Multiplier, 1e-9)
 
 	// Test custom retry configuration
 	customConfig := RetryConfig{
@@ -133,7 +134,7 @@ func TestInoreaderClient_RetryConfiguration(t *testing.T) {
 	assert.Equal(t, customConfig.MaxRetries, updatedConfig.MaxRetries)
 	assert.Equal(t, customConfig.InitialDelay, updatedConfig.InitialDelay)
 	assert.Equal(t, customConfig.MaxDelay, updatedConfig.MaxDelay)
-	assert.Equal(t, customConfig.Multiplier, updatedConfig.Multiplier)
+	assert.InDelta(t, customConfig.Multiplier, updatedConfig.Multiplier, 1e-9)
 }
 
 // TEST: エラー分類テスト - isRetryableError関数の動作検証

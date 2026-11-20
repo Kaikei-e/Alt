@@ -56,11 +56,19 @@ func TestHTTPClientFactory_CreateHTTPClient_ProxyStrategy(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Setup environment variables
-			os.Setenv("PROXY_STRATEGY", tt.proxyStrategyEnv)
-			os.Setenv("ENVOY_PROXY_BASE_URL", tt.envoyBaseURLEnv)
+			if err := os.Setenv("PROXY_STRATEGY", tt.proxyStrategyEnv); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Setenv("ENVOY_PROXY_BASE_URL", tt.envoyBaseURLEnv); err != nil {
+				t.Fatal(err)
+			}
 			defer func() {
-				os.Unsetenv("PROXY_STRATEGY")
-				os.Unsetenv("ENVOY_PROXY_BASE_URL")
+				if err := os.Unsetenv("PROXY_STRATEGY"); err != nil {
+					t.Errorf("unsetenv PROXY_STRATEGY: %v", err)
+				}
+				if err := os.Unsetenv("ENVOY_PROXY_BASE_URL"); err != nil {
+					t.Errorf("unsetenv ENVOY_PROXY_BASE_URL: %v", err)
+				}
 			}()
 
 			// Create factory
@@ -114,8 +122,7 @@ func TestHTTPClientFactory_UnifiedStrategy_AllComponents(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Setup environment
-			os.Setenv("PROXY_STRATEGY", tt.proxyStrategy)
-			defer os.Unsetenv("PROXY_STRATEGY")
+			t.Setenv("PROXY_STRATEGY", tt.proxyStrategy)
 
 			// Create multiple factories (simulating different components)
 			gatewayFactory := NewHTTPClientFactory()
@@ -165,12 +172,8 @@ func TestSecureHTTPClient_BackwardCompatibility(t *testing.T) {
 // RED: Test for Envoy proxy request transformation - this should fail initially
 func TestHTTPClientFactory_EnvoyProxyRequestTransformation(t *testing.T) {
 	// Setup environment for Envoy proxy strategy
-	os.Setenv("PROXY_STRATEGY", "ENVOY")
-	os.Setenv("ENVOY_PROXY_BASE_URL", "http://envoy.test:8080")
-	defer func() {
-		os.Unsetenv("PROXY_STRATEGY")
-		os.Unsetenv("ENVOY_PROXY_BASE_URL")
-	}()
+	t.Setenv("PROXY_STRATEGY", "ENVOY")
+	t.Setenv("ENVOY_PROXY_BASE_URL", "http://envoy.test:8080")
 
 	// Create HTTP client factory
 	factory := NewHTTPClientFactory()
@@ -215,7 +218,7 @@ func TestHTTPClientFactory_EnvoyProxyRequestTransformation(t *testing.T) {
 	resp, err := client.Do(req)
 
 	// We expect this to succeed (transformation working)
-	assert.NoError(t, err, "Expected request to succeed through Envoy proxy")
+	require.NoError(t, err, "Expected request to succeed through Envoy proxy")
 	assert.NotNil(t, resp, "Expected response to be non-nil")
 
 	if resp != nil {
@@ -225,7 +228,7 @@ func TestHTTPClientFactory_EnvoyProxyRequestTransformation(t *testing.T) {
 		assert.Equal(t, http.StatusOK, resp.StatusCode, "Expected successful response")
 
 		body, err := io.ReadAll(resp.Body)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, "RSS feed content", string(body))
 	} else {
 		t.Fatal("Failed to get response - Envoy proxy transformation not working")
@@ -293,7 +296,10 @@ func TestSecureHTTPClient_PrivateIPRejected_GenericErrorDoesNotLeakIP(t *testing
 	req, err := http.NewRequestWithContext(context.Background(), "GET", "http://internal.example.org/feed.xml", nil)
 	require.NoError(t, err)
 
-	_, err = client.Do(req)
+	resp, err := client.Do(req)
+	if resp != nil {
+		defer func() { _ = resp.Body.Close() }()
+	}
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "destination not allowed")
 	assert.NotContains(t, err.Error(), "10.0.0.1", "generic error must not leak probed IP")
@@ -366,7 +372,10 @@ func TestSecureHTTPClient_RedirectToPrivateTargetBlockedOnSecondHop(t *testing.T
 	req, err := http.NewRequestWithContext(context.Background(), "GET", fmt.Sprintf("http://%s:%s/feed.xml", publicDomain, hop1Port), nil)
 	require.NoError(t, err)
 
-	_, err = client.Do(req)
+	resp, err := client.Do(req)
+	if resp != nil {
+		defer func() { _ = resp.Body.Close() }()
+	}
 	require.Error(t, err, "redirect to private target must be rejected")
 	assert.Contains(t, err.Error(), "destination not allowed")
 	assert.NotContains(t, err.Error(), "192.168.1.50", "error must not leak private IP")
@@ -464,11 +473,14 @@ func TestSecureHTTPClient_ResolverFailure_ReturnsDistinctErrorWithoutLeakingIP(t
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://"+testHost+"/feed.xml", nil)
 	require.NoError(t, err)
 
-	_, err = client.Do(req)
+	resp, err := client.Do(req)
+	if resp != nil {
+		defer func() { _ = resp.Body.Close() }()
+	}
 	require.Error(t, err)
 	assert.NotContains(t, err.Error(), "destination not allowed", "DNS failure must not look like security block")
 	assert.Contains(t, err.Error(), testHost, "error must include hostname")
-	assert.True(t, errors.Is(err, ErrLookupFailed), "must wrap ErrLookupFailed")
+	assert.ErrorIs(t, err, ErrLookupFailed, "must wrap ErrLookupFailed")
 }
 
 func TestSecureHTTPClient_ConnectFailure_WrapsErrorWithoutLeakingIP(t *testing.T) {
@@ -489,7 +501,10 @@ func TestSecureHTTPClient_ConnectFailure_WrapsErrorWithoutLeakingIP(t *testing.T
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://"+testHost+"/feed.xml", nil)
 	require.NoError(t, err)
 
-	_, err = client.Do(req)
+	resp, err := client.Do(req)
+	if resp != nil {
+		defer func() { _ = resp.Body.Close() }()
+	}
 	require.Error(t, err)
 	assert.NotContains(t, err.Error(), testNetIP, "connect failure must not leak pinned IP in error string")
 	assert.Contains(t, err.Error(), testHost, "connect failure should mention target hostname")

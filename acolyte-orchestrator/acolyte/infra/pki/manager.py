@@ -1,7 +1,5 @@
 """Cert lifecycle state machine. Tests inject a fake issuer, clock, and temp fs."""
 
-# ruff: noqa: TRY003, PLR0911, PLR0913
-
 from __future__ import annotations
 
 import asyncio
@@ -44,7 +42,7 @@ class RekeyIssuer(Protocol):
 class Manager:
     """Inspects on-disk certs and re-issues when missing, near expiry, or expired."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - constructor injection
         self,
         *,
         subject: str,
@@ -105,9 +103,10 @@ class Manager:
             if i == attempts:
                 break
             await asyncio.sleep(backoff)
-        raise PkiError(f"pki: enroll failed after {attempts} attempts: {last}") from last
+        msg = f"pki: enroll failed after {attempts} attempts: {last}"
+        raise PkiError(msg) from last
 
-    async def tick(self) -> CertState:
+    async def tick(self) -> CertState:  # noqa: PLR0911 - one return per enrollment outcome
         try:
             cert = self.files.load()
         except CertNotFoundError:
@@ -150,12 +149,15 @@ class Manager:
                 reason=reason,
                 error=str(err),
             )
-            raise PkiError(f"pki: issue cert: {err}") from err
+            msg = f"pki: issue cert: {err}"
+            raise PkiError(msg) from err
         self.observer.on_renewed(True)
         return self._classified_after_write()
 
     async def _rekey(self) -> CertState:
-        assert isinstance(self.issuer, RekeyIssuer)
+        if not isinstance(self.issuer, RekeyIssuer):
+            msg = f"issuer {type(self.issuer).__name__} does not implement RekeyIssuer"
+            raise TypeError(msg)
         self.observer.on_reissued("near_expiry")
         self._log.info(
             "pki_enrollment_rekey",
@@ -178,7 +180,8 @@ class Manager:
                 reason="near_expiry",
                 error=str(err),
             )
-            raise PkiError(f"pki: rekey cert: {err}") from err
+            msg = f"pki: rekey cert: {err}"
+            raise PkiError(msg) from err
         self.observer.on_renewed(True)
         return self._classified_after_write()
 

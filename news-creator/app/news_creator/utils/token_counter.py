@@ -29,12 +29,10 @@ def count_tokens(text: str) -> int:
     # - English: 1 character ≈ 0.25-0.5 tokens
     # - Mixed: average ≈ 0.75 tokens per character
     # Using integer division for performance: (len(text) * 3) // 4
-    estimated_tokens = max(1, (len(text) * 3) // 4)
-
-    return estimated_tokens
+    return max(1, (len(text) * 3) // 4)
 
 
-def count_tokens_with_template(prompt_template: str, **kwargs) -> int:
+def count_tokens_with_template(prompt_template: str, **kwargs: object) -> int:
     """
     Count tokens in a formatted prompt template.
 
@@ -52,9 +50,10 @@ def count_tokens_with_template(prompt_template: str, **kwargs) -> int:
         else:
             formatted_prompt = prompt_template
         return count_tokens(formatted_prompt)
-    except Exception as e:
+    except (KeyError, IndexError, ValueError, TypeError) as e:
         logger.warning(
-            f"Template formatting failed: {e}. Counting tokens in raw template.",
+            "Template formatting failed: %s. Counting tokens in raw template.",
+            e,
             exc_info=True,
         )
         return count_tokens(prompt_template)

@@ -23,7 +23,7 @@ import (
 	"rag-orchestrator/internal/usecase"
 
 	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/pact-foundation/pact-go/v2/models"
 	"github.com/pact-foundation/pact-go/v2/provider"
 	"github.com/stretchr/testify/require"

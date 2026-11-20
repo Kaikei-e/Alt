@@ -1,7 +1,6 @@
 package domain
 
 import (
-	"errors"
 	"math"
 	"testing"
 	"time"
@@ -248,7 +247,7 @@ func TestReadingEventInput_Validate(t *testing.T) {
 			err := tt.input.Validate()
 			if tt.wantErr {
 				require.Error(t, err)
-				assert.True(t, errors.Is(err, ErrInvalidReadingEvent))
+				assert.ErrorIs(t, err, ErrInvalidReadingEvent)
 				return
 			}
 			require.NoError(t, err)
@@ -283,7 +282,7 @@ func TestValidateReadingEventBatch(t *testing.T) {
 		}
 		err := ValidateReadingEventBatch(batch)
 		require.Error(t, err)
-		assert.True(t, errors.Is(err, ErrInvalidReadingEvent))
+		assert.ErrorIs(t, err, ErrInvalidReadingEvent)
 	})
 }
 
@@ -304,7 +303,7 @@ func TestReadingEventInput_OpenedValidation(t *testing.T) {
 		Payload:       OpenedInput{ArticleID: "bad-uuid", Surface: ReadingSurfaceGallery},
 	}.Validate()
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, ErrInvalidReadingEvent))
+	require.ErrorIs(t, err, ErrInvalidReadingEvent)
 
 	err = ReadingEventInput{
 		ClientEventID: validEventID,
@@ -312,7 +311,7 @@ func TestReadingEventInput_OpenedValidation(t *testing.T) {
 		Payload:       OpenedInput{ArticleID: validArticleID, Surface: ReadingSurface("")},
 	}.Validate()
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, ErrInvalidReadingEvent))
+	require.ErrorIs(t, err, ErrInvalidReadingEvent)
 }
 
 func TestEvaluateReadRuleV1(t *testing.T) {

@@ -39,6 +39,13 @@ pub enum DockerConnectError {
 
 /// Validates a raw Docker endpoint URL string.
 /// Supported schemes: `tcp://`, `unix://`, `http://`, and `https://`.
+///
+/// # Errors
+///
+/// Returns [`DockerEndpointError::EmptyDockerHost`] if `raw` is blank,
+/// [`DockerEndpointError::UnsupportedScheme`] if the scheme is not one of the
+/// supported prefixes, or [`DockerEndpointError::InvalidUrl`] if the host or
+/// path after `://` is missing.
 pub fn validate_docker_endpoint(raw: &str) -> Result<&str, DockerEndpointError> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
@@ -64,12 +71,33 @@ pub fn validate_docker_endpoint(raw: &str) -> Result<&str, DockerEndpointError> 
     Ok(trimmed)
 }
 
+static ENDPOINT_LOGGED: AtomicBool = AtomicBool::new(false);
+
 /// Reads and validates `DOCKER_HOST` from the environment.
 /// Fails fast if unset, empty, or using an unsupported scheme.
+///
+/// # Errors
+///
+/// Returns [`DockerEndpointError::MissingDockerHost`] if `DOCKER_HOST` is
+/// unset, or any [`DockerEndpointError`] from [`validate_docker_endpoint`].
 pub fn get_validated_docker_endpoint() -> Result<String, DockerEndpointError> {
-    match std::env::var("DOCKER_HOST") {
-        Ok(val) => validate_docker_endpoint(&val).map(str::to_string),
-        Err(_) => Err(DockerEndpointError::MissingDockerHost),
+    get_validated_docker_endpoint_with(|k| std::env::var(k).ok())
+}
+
+/// Reads and validates `DOCKER_HOST` using a custom environment lookup.
+///
+/// # Errors
+///
+/// Returns [`DockerEndpointError::MissingDockerHost`] if `lookup("DOCKER_HOST")`
+/// returns `None`, or any [`DockerEndpointError`] from
+/// [`validate_docker_endpoint`].
+pub fn get_validated_docker_endpoint_with<F>(lookup: F) -> Result<String, DockerEndpointError>
+where
+    F: Fn(&str) -> Option<String>,
+{
+    match lookup("DOCKER_HOST") {
+        Some(val) => validate_docker_endpoint(&val).map(str::to_string),
+        None => Err(DockerEndpointError::MissingDockerHost),
     }
 }
 
@@ -77,8 +105,28 @@ pub fn get_validated_docker_endpoint() -> Result<String, DockerEndpointError> {
 ///
 /// Logs `docker_endpoint=<value>` at startup. Fails startup loudly when `DOCKER_HOST`
 /// is unset or has an unsupported scheme, avoiding silent fallback to platform defaults.
+///
+/// # Errors
+///
+/// Returns [`DockerConnectError::Endpoint`] if `DOCKER_HOST` is missing or
+/// invalid, or [`DockerConnectError::Bollard`] if constructing the Docker
+/// client fails.
 pub fn connect_docker() -> Result<Docker, DockerConnectError> {
-    let endpoint = get_validated_docker_endpoint().map_err(|e| {
+    connect_docker_with(|k| std::env::var(k).ok())
+}
+
+/// Connects to the Docker daemon using a custom environment lookup for `DOCKER_HOST`.
+///
+/// # Errors
+///
+/// Returns [`DockerConnectError::Endpoint`] if `DOCKER_HOST` is missing or
+/// invalid in `lookup`, or [`DockerConnectError::Bollard`] if constructing the
+/// Docker client fails.
+pub fn connect_docker_with<F>(lookup: F) -> Result<Docker, DockerConnectError>
+where
+    F: Fn(&str) -> Option<String>,
+{
+    let endpoint = get_validated_docker_endpoint_with(lookup).map_err(|e| {
         tracing::error!(
             error = %e,
             "Failed to initialize Docker client: invalid or missing DOCKER_HOST"
@@ -86,11 +134,10 @@ pub fn connect_docker() -> Result<Docker, DockerConnectError> {
         e
     })?;
 
-    static ENDPOINT_LOGGED: AtomicBool = AtomicBool::new(false);
-    if !ENDPOINT_LOGGED.swap(true, Ordering::Relaxed) {
-        tracing::info!(docker_endpoint = %endpoint, "Connecting to Docker daemon");
-    } else {
+    if ENDPOINT_LOGGED.swap(true, Ordering::Relaxed) {
         tracing::debug!(docker_endpoint = %endpoint, "Reconnecting to Docker daemon");
+    } else {
+        tracing::info!(docker_endpoint = %endpoint, "Connecting to Docker daemon");
     }
 
     // connect_with_host dispatches tcp:///http:// (or TLS if DOCKER_TLS_VERIFY is set) and unix://
@@ -134,6 +181,10 @@ pub struct DockerContainerInfo {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "Option flags mirror bollard::query_parameters::LogsOptions boolean fields"
+)]
 pub struct LogStreamOptions {
     pub follow: bool,
     pub stdout: bool,
@@ -162,19 +213,26 @@ impl Default for LogStreamOptions {
 ///   with `timestamps: true` so that historical logs are not replayed on startup while enabling
 ///   per-line timestamp extraction.
 /// - On reconnect (`last_timestamp == Some(ts)`), fetches all logs since floor second of `ts`
-///   (`tail: "all"`, `since: ts.timestamp() as i32`) with `timestamps: true`. This prevents log
-///   loss during proxy disconnects or backoff windows, while boundary-second duplicate lines
+///   (`tail: "all"`, `since` clamped to `i32` Unix seconds) with `timestamps: true`. This prevents
+///   log loss during proxy disconnects or backoff windows, while boundary-second duplicate lines
 ///   at or before `ts` are deduplicated and dropped by [`DedupeFilter`] before forwarding.
+#[must_use]
 pub fn compute_resume_log_options(last_timestamp: Option<DateTime<Utc>>) -> LogStreamOptions {
     match last_timestamp {
-        Some(ts) => LogStreamOptions {
-            follow: true,
-            stdout: true,
-            stderr: true,
-            timestamps: true,
-            tail: "all".to_string(),
-            since: ts.timestamp() as i32,
-        },
+        Some(ts) => {
+            let secs = ts.timestamp();
+            // `bollard::query_parameters::LogsOptions::since` is `i32` (valid through 2038-01-19).
+            // Saturate rather than wrapping or resetting to 0 if a timestamp exceeds `i32` bounds.
+            let since = i32::try_from(secs).unwrap_or(if secs < 0 { i32::MIN } else { i32::MAX });
+            LogStreamOptions {
+                follow: true,
+                stdout: true,
+                stderr: true,
+                timestamps: true,
+                tail: "all".to_string(),
+                since,
+            }
+        }
         None => LogStreamOptions {
             follow: true,
             stdout: true,
@@ -257,6 +315,7 @@ pub struct DedupeFilter {
 }
 
 impl DedupeFilter {
+    #[must_use]
     pub fn new(last_timestamp: Option<DateTime<Utc>>) -> Self {
         Self {
             threshold: last_timestamp,
@@ -286,6 +345,7 @@ impl DedupeFilter {
         }
     }
 
+    #[must_use]
     pub fn is_active(&self) -> bool {
         self.active
     }
@@ -297,21 +357,59 @@ pub struct DockerCollector {
 
 impl DockerCollector {
     /// Expose the Docker client for reuse by other components.
+    #[must_use]
     pub fn docker(&self) -> &Docker {
         &self.docker
     }
 }
 
 impl DockerCollector {
-    pub async fn new() -> Result<Self, CollectorError> {
-        let docker = connect_docker()?;
+    /// Creates a [`DockerCollector`] connected to `DOCKER_HOST` from the process
+    /// environment.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CollectorError::EndpointError`] if `DOCKER_HOST` is missing or
+    /// invalid, or [`CollectorError::ConnectionFailed`] if connecting fails.
+    pub fn new() -> Result<Self, CollectorError> {
+        Self::new_with_env(|k| std::env::var(k).ok())
+    }
+
+    /// Creates a [`DockerCollector`] using `lookup` to resolve `DOCKER_HOST`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CollectorError::EndpointError`] if `DOCKER_HOST` is missing or
+    /// invalid in `lookup`, or [`CollectorError::ConnectionFailed`] if
+    /// connecting fails.
+    pub fn new_with_env<F>(lookup: F) -> Result<Self, CollectorError>
+    where
+        F: Fn(&str) -> Option<String>,
+    {
+        let docker = connect_docker_with(lookup)?;
         Ok(Self { docker })
+    }
+
+    /// Creates a [`DockerCollector`] targeting an explicit Docker `endpoint`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CollectorError::EndpointError`] if `endpoint` fails
+    /// validation, or [`CollectorError::ConnectionFailed`] if connecting fails.
+    pub fn from_endpoint(endpoint: &str) -> Result<Self, CollectorError> {
+        Self::new_with_env(|k| (k == "DOCKER_HOST").then(|| endpoint.to_string()))
     }
 
     pub async fn can_connect(&self) -> bool {
         self.docker.ping().await.is_ok()
     }
 
+    /// Lists running containers matching `label_filter`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CollectorError::DiscoveryFailed`] if the Docker API call
+    /// fails.
     pub async fn find_labeled_containers(
         &self,
         label_filter: &str,
@@ -332,13 +430,13 @@ impl DockerCollector {
 
         let container_infos = containers
             .into_iter()
-            .filter_map(|container| self.container_to_info(container))
+            .filter_map(Self::container_to_info)
             .collect();
 
         Ok(container_infos)
     }
 
-    fn container_to_info(&self, container: ContainerSummary) -> Option<DockerContainerInfo> {
+    fn container_to_info(container: ContainerSummary) -> Option<DockerContainerInfo> {
         Some(DockerContainerInfo {
             id: container.id?,
             name: container
@@ -351,6 +449,12 @@ impl DockerCollector {
         })
     }
 
+    /// Discovers containers matching `label_filter` and spawns background tasks
+    /// forwarding their log chunks onto `tx` with default stream options.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CollectorError::DiscoveryFailed`] if listing containers fails.
     pub async fn start_tailing_logs(
         &self,
         tx: BroadcastSender<Bytes>,
@@ -360,6 +464,12 @@ impl DockerCollector {
             .await
     }
 
+    /// Discovers containers matching `label_filter` and spawns background tasks
+    /// forwarding their log chunks onto `tx` using `options`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CollectorError::DiscoveryFailed`] if listing containers fails.
     pub async fn start_tailing_logs_with_options(
         &self,
         tx: BroadcastSender<Bytes>,

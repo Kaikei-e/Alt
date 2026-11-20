@@ -27,14 +27,15 @@
 #     capability and set no-new-privileges
 #
 # Usage (from anywhere): bash scripts/tests/test_compose_wiring.sh
-#   COMPOSE_ENV_FILE  env file passed to --env-file (default: <repo>/.env.template)
+#   COMPOSE_ENV_FILE   env file passed to --env-file (default: <repo>/.env.template)
+#   COMPOSE_REPO_ROOT  repo/staging root containing compose/ (default: <repo>)
 # Requirements: python3 with PyYAML, docker compose, and <repo>/.env present for the
-# services' `env_file: ../.env` (CI stages it from .env.template).
+# services' `env_file: ../.env` (CI / compose.sh stages a temp tree from .env.template).
 # Rendered values are written to a 0600 temp file and never printed.
 
 set -uo pipefail
 
-REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+REPO_ROOT="${COMPOSE_REPO_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}"
 COMPOSE_DIR="$REPO_ROOT/compose"
 ENV_FILE="${COMPOSE_ENV_FILE:-$REPO_ROOT/.env.template}"
 export REPO_ROOT COMPOSE_DIR

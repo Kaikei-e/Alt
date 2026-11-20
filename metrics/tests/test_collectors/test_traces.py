@@ -39,17 +39,18 @@ class TestCollectApiPerformance:
             "max_ms",
             "error_spans",
         ]
-        mock_client.query.return_value.result_rows = [
+        rows = [
             ("alt-backend", "GET /api/health", 100, 50.0, 40.0, 95.0, 99.0, 150.0, 0),
             ("alt-frontend", "GET /dashboard", 500, 200.0, 180.0, 400.0, 500.0, 800.0, 2),
         ]
+        mock_client.query.return_value.result_rows = rows
 
         result = collect_api_performance(mock_client, "rask_logs", 24)
 
-        assert len(result) == 2
+        assert len(result) == len(rows)
         assert all(isinstance(row, ApiPerformanceStats) for row in result)
         assert result[0].service == "alt-backend"
-        assert result[0].p95_ms == 95.0
+        assert result[0].p95_ms == rows[0][5]
         assert result[1].endpoint == "GET /dashboard"
 
     def test_empty_result_returns_empty_list(self) -> None:
@@ -78,7 +79,7 @@ class TestCollectApiPerformance:
         mock_client = MagicMock()
         mock_client.query.side_effect = ValueError("unexpected bug")
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="unexpected bug"):
             collect_api_performance(mock_client, "rask_logs", 24)
 
 
@@ -96,17 +97,18 @@ class TestCollectBottlenecks:
             "p95_ms",
             "total_time_sec",
         ]
-        mock_client.query.return_value.result_rows = [
+        rows = [
             ("auth-hub", "authenticate", 50, 2000.0, 3500.0, 100.0),
         ]
+        mock_client.query.return_value.result_rows = rows
 
         result = collect_bottlenecks(mock_client, "rask_logs", 24)
 
-        assert len(result) == 1
+        assert len(result) == len(rows)
         assert isinstance(result[0], Bottleneck)
         assert result[0].service == "auth-hub"
         assert result[0].operation == "authenticate"
-        assert result[0].p95_ms == 3500.0
+        assert result[0].p95_ms == rows[0][4]
 
     def test_raises_collector_error_on_exception(self) -> None:
         """例外発生時はCollectorErrorを投げる"""
@@ -134,17 +136,18 @@ class TestCollectSpanTypeStats:
             "p95_duration_ms",
             "error_count",
         ]
-        mock_client.query.return_value.result_rows = [
+        rows = [
             ("alt-backend", "SERVER", 1000, 50.0, 100.0, 5),
             ("alt-backend", "CLIENT", 500, 30.0, 80.0, 2),
         ]
+        mock_client.query.return_value.result_rows = rows
 
         result = collect_span_type_stats(mock_client, "rask_logs", 24)
 
-        assert len(result) == 2
+        assert len(result) == len(rows)
         assert all(isinstance(row, SpanTypeStat) for row in result)
         assert result[0].span_kind == "SERVER"
-        assert result[0].span_count == 1000
+        assert result[0].span_count == rows[0][2]
 
     def test_raises_collector_error_on_exception(self) -> None:
         """例外発生時はCollectorErrorを投げる"""
@@ -172,16 +175,17 @@ class TestCollectErrorSpans:
             "avg_duration_ms",
             "last_occurrence",
         ]
-        mock_client.query.return_value.result_rows = [
+        rows = [
             ("auth-hub", "login", "Invalid credentials", 50, 100.0, "2026-01-19 12:00:00"),
         ]
+        mock_client.query.return_value.result_rows = rows
 
         result = collect_error_spans(mock_client, "rask_logs", 24)
 
-        assert len(result) == 1
+        assert len(result) == len(rows)
         assert isinstance(result[0], ErrorSpan)
         assert result[0].operation == "login"
-        assert result[0].error_count == 50
+        assert result[0].error_count == rows[0][3]
 
     def test_raises_collector_error_on_exception(self) -> None:
         """例外発生時はCollectorErrorを投げる"""
@@ -209,18 +213,19 @@ class TestCollectServiceDependencies:
             "p95_duration_ms",
             "error_count",
         ]
-        mock_client.query.return_value.result_rows = [
+        rows = [
             ("alt-backend", "auth-hub", 500, 50.0, 100.0, 5),
             ("alt-frontend", "alt-backend", 1000, 100.0, 300.0, 10),
         ]
+        mock_client.query.return_value.result_rows = rows
 
         result = collect_service_dependencies(mock_client, "rask_logs", 24)
 
-        assert len(result) == 2
+        assert len(result) == len(rows)
         assert all(isinstance(row, ServiceDependency) for row in result)
         assert result[0].caller == "alt-backend"
         assert result[0].callee == "auth-hub"
-        assert result[1].call_count == 1000
+        assert result[1].call_count == rows[1][2]
 
     def test_raises_collector_error_on_exception(self) -> None:
         """例外発生時はCollectorErrorを投げる"""

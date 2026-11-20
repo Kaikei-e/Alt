@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -16,7 +17,11 @@ import (
 	"time"
 )
 
-var allowedPathRegex = regexp.MustCompile("^/(v[0-9]+\\.[0-9]+/)?(containers/json|containers/[a-zA-Z0-9_.-]+/logs|_ping)$")
+var allowedPathRegex = regexp.MustCompile(`^/(v[0-9]+\.[0-9]+/)?(containers/json|containers/[a-zA-Z0-9_.-]+/logs|_ping)$`)
+
+func sanitizeLogValue(s string) string {
+	return strings.ReplaceAll(strings.ReplaceAll(s, "\n", ""), "\r", "")
+}
 
 func isAllowed(r *http.Request) bool {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
@@ -94,7 +99,7 @@ func scopedListQuery(q url.Values, project string) url.Values {
 // segment to a different container by name or id prefix than the one checked.
 // It asks the daemon whether the container id belongs to the project
 // and carries the opt-in label.
-func logsAllowed(client *http.Client, base *url.URL, id, project string) bool {
+func logsAllowed(ctx context.Context, client *http.Client, base *url.URL, id, project string) bool {
 	if !fullContainerIDRegex.MatchString(id) {
 		return false
 	}
@@ -105,12 +110,23 @@ func logsAllowed(client *http.Client, base *url.URL, id, project string) bool {
 	u := *base
 	u.Path = "/containers/json"
 	u.RawQuery = url.Values{"all": {"1"}, "filters": {string(filters)}}.Encode()
-	resp, err := client.Get(u.String())
+	// #nosec G704 -- base URL is operator-configured DOCKER_HOST_URL, path is fixed to /containers/json, and id is validated as 64 hex chars.
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		log.Printf("Scope lookup request build failed: %v", err)
+		return false
+	}
+	// #nosec G704 -- base URL is operator-configured DOCKER_HOST_URL, path is fixed to /containers/json, and id is validated as 64 hex chars.
+	resp, err := client.Do(req)
 	if err != nil {
 		log.Printf("Scope lookup failed: %v", err)
 		return false
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("Failed to close scope lookup response body: %v", err)
+		}
+	}()
 	if resp.StatusCode != http.StatusOK {
 		return false
 	}
@@ -129,13 +145,14 @@ func logsAllowed(client *http.Client, base *url.URL, id, project string) bool {
 }
 
 func newProxyHandler(parsedURL *url.URL, transport http.RoundTripper, project string) http.Handler {
+	// #nosec G704 -- parsedURL is operator-configured DOCKER_HOST_URL at startup, not derived from incoming requests.
 	proxy := httputil.NewSingleHostReverseProxy(parsedURL)
 	proxy.Transport = transport
 	lookupClient := &http.Client{Transport: transport, Timeout: 5 * time.Second}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !isAllowed(r) {
-			log.Printf("Denied request: %s %s", r.Method, r.URL.Path)
+			slog.Warn("Denied request", "method", sanitizeLogValue(r.Method), "path", sanitizeLogValue(r.URL.Path))
 			http.Error(w, "Forbidden", http.StatusForbidden)
 			return
 		}
@@ -147,20 +164,20 @@ func newProxyHandler(parsedURL *url.URL, transport http.RoundTripper, project st
 		if containerListRegex.MatchString(r.URL.Path) {
 			r.URL.RawQuery = scopedListQuery(r.URL.Query(), project).Encode()
 		} else if m := containerLogsRegex.FindStringSubmatch(r.URL.Path); m != nil {
-			if !logsAllowed(lookupClient, parsedURL, m[2], project) {
-				log.Printf("Denied out-of-scope logs request: %s", r.URL.Path)
+			if !logsAllowed(r.Context(), lookupClient, parsedURL, m[2], project) {
+				slog.Warn("Denied out-of-scope logs request", "path", sanitizeLogValue(r.URL.Path))
 				http.Error(w, "Forbidden", http.StatusForbidden)
 				return
 			}
 		}
 
-		log.Printf("Allowed request: %s %s", r.Method, r.URL.Path)
+		slog.Info("Allowed request", "method", sanitizeLogValue(r.Method), "path", sanitizeLogValue(r.URL.Path))
 		proxy.ServeHTTP(w, r)
 	})
 }
 
 // runHealthcheck performs a native binary healthcheck by querying GET /_ping
-func runHealthcheck(addr string) int {
+func runHealthcheck(ctx context.Context, addr string) int {
 	target := addr
 	if !strings.HasPrefix(target, "http://") && !strings.HasPrefix(target, "https://") {
 		target = "http://" + target
@@ -171,12 +188,22 @@ func runHealthcheck(addr string) int {
 		Timeout: 2 * time.Second,
 	}
 
-	resp, err := client.Get(targetURL)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, targetURL, nil)
+	if err != nil {
+		log.Printf("Healthcheck request failed: %v", err)
+		return 1
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
 		log.Printf("Healthcheck failed: %v", err)
 		return 1
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("Failed to close healthcheck response body: %v", err)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		log.Printf("Healthcheck returned status: %d", resp.StatusCode)
@@ -201,7 +228,7 @@ func newServer(addr string, handler http.Handler) *http.Server {
 
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
-		os.Exit(runHealthcheck("127.0.0.1:2375"))
+		os.Exit(runHealthcheck(context.Background(), "127.0.0.1:2375"))
 	}
 
 	targetURL := os.Getenv("DOCKER_HOST_URL")
@@ -217,7 +244,8 @@ func main() {
 		socketPath := strings.TrimPrefix(targetURL, "unix://")
 		transport = &http.Transport{
 			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-				return net.Dial("unix", socketPath)
+				// #nosec G704 -- socketPath is derived from operator-configured DOCKER_HOST_URL, not user requests.
+				return (&net.Dialer{}).DialContext(ctx, "unix", socketPath)
 			},
 		}
 		parsedURL, _ = url.Parse("http://localhost") // Dummy host for http requests
@@ -237,7 +265,7 @@ func main() {
 	handler := newProxyHandler(parsedURL, transport, project)
 
 	addr := ":2375"
-	log.Printf("Starting read-only proxy on %s, forwarding to %s (compose project %q)", addr, targetURL, project)
+	slog.Info("Starting read-only proxy", "addr", addr, "target_url", targetURL, "compose_project", project)
 	if err := newServer(addr, handler).ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}

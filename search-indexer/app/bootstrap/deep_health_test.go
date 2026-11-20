@@ -16,7 +16,7 @@ func TestHTTPServer_DeepHealthFailsWhenMeilisearchDown(t *testing.T) {
 		func(context.Context) error { return context.DeadlineExceeded })
 
 	rec := httptest.NewRecorder()
-	srv.Handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health/deep", nil))
+	srv.Handler.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health/deep", nil))
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("deep = %d, want 503", rec.Code)
 	}
@@ -29,7 +29,7 @@ func TestHTTPServer_DeepHealthFailsWhenMeilisearchDown(t *testing.T) {
 	}
 
 	rec = httptest.NewRecorder()
-	srv.Handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health", nil))
+	srv.Handler.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("cheap /health = %d, want 200", rec.Code)
 	}
@@ -40,7 +40,7 @@ func TestHTTPServer_DeepHealthPassesWhenMeilisearchUp(t *testing.T) {
 		func(context.Context) error { return nil })
 
 	rec := httptest.NewRecorder()
-	srv.Handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health/deep", nil))
+	srv.Handler.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health/deep", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("deep = %d, want 200", rec.Code)
 	}
@@ -52,7 +52,7 @@ func TestHTTPServer_DeepHealthNeverReturns429(t *testing.T) {
 
 	for i := 0; i < 5; i++ {
 		rec := httptest.NewRecorder()
-		srv.Handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health/deep", nil))
+		srv.Handler.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health/deep", nil))
 		if rec.Code == http.StatusTooManyRequests {
 			t.Fatalf("GET /health/deep returned 429 on call %d; deep must not share the search token bucket", i+1)
 		}

@@ -19,6 +19,7 @@ import hmac
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Annotated
 
 import structlog
 from fastapi import Depends, Header, HTTPException, Request, status
@@ -54,19 +55,19 @@ def load_admin_auth_config() -> AdminAuthConfig:
 
     token_file = os.getenv("ADMIN_TOKEN_FILE", "").strip()
     if not token_file:
-        raise RuntimeError(
-            "ADMIN_TOKEN_FILE is unset or empty; set it or set ADMIN_AUTH=disabled explicitly"
-        )
+        msg = "ADMIN_TOKEN_FILE is unset or empty; set it or set ADMIN_AUTH=disabled explicitly"
+        raise RuntimeError(msg)
     try:
         token = Path(token_file).read_text().strip()
     except OSError as exc:
-        raise RuntimeError(f"failed to read token file '{token_file}': {exc}") from exc
+        msg = f"failed to read token file '{token_file}': {exc}"
+        raise RuntimeError(msg) from exc
     if not token:
-        raise RuntimeError(f"token file '{token_file}' resolved to an empty token")
+        msg = f"token file '{token_file}' resolved to an empty token"
+        raise RuntimeError(msg)
     if len(token) < _MIN_TOKEN_LENGTH:
-        raise RuntimeError(
-            f"token from '{token_file}' must be at least {_MIN_TOKEN_LENGTH} characters (got {len(token)})"
-        )
+        msg = f"token from '{token_file}' must be at least {_MIN_TOKEN_LENGTH} characters (got {len(token)})"
+        raise RuntimeError(msg)
 
     logger.info("recap_admin_auth_enabled")
     return AdminAuthConfig(token=token)
@@ -75,15 +76,14 @@ def load_admin_auth_config() -> AdminAuthConfig:
 def get_admin_auth_config(request: Request) -> AdminAuthConfig:
     config = getattr(request.app.state, "admin_auth", None)
     if config is None:
-        raise RuntimeError(
-            "AdminAuthConfig is not initialized on app.state. Ensure create_app()'s lifespan is active."
-        )
+        msg = "AdminAuthConfig is not initialized on app.state. Ensure create_app()'s lifespan is active."
+        raise RuntimeError(msg)
     return config
 
 
 async def require_admin_token(
-    authorization: str | None = Header(default=None),
-    auth_config: AdminAuthConfig = Depends(get_admin_auth_config),
+    auth_config: Annotated[AdminAuthConfig, Depends(get_admin_auth_config)],
+    authorization: Annotated[str | None, Header()] = None,
 ) -> None:
     """Router-level dependency guarding protected routes.
 

@@ -168,7 +168,7 @@ func (r *SummaryRepository) GetSummaryVersionByID(ctx context.Context, summaryVe
 		&sv.SummaryText, &sv.SupersededBy,
 	)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.SummaryVersion{}, fmt.Errorf("no summary version found for id %s", summaryVersionID)
 		}
 		return domain.SummaryVersion{}, fmt.Errorf("GetSummaryVersionByID: %w", err)
@@ -200,7 +200,7 @@ func (r *SummaryRepository) GetLatestSummaryVersionForUser(ctx context.Context, 
 		&sv.SummaryText, &sv.SupersededBy,
 	)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.SummaryVersion{}, fmt.Errorf("no summary version found for article %s", articleID)
 		}
 		return domain.SummaryVersion{}, fmt.Errorf("GetLatestSummaryVersion: %w", err)

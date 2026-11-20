@@ -42,7 +42,7 @@ class InMemoryCache:
         pass
 
 
-def _make_config():
+def _make_config() -> Mock:
     config = Mock()
     config.model_name = "gemma4-e4b-12k"
     config.llm = Mock()
@@ -89,7 +89,9 @@ def _llm_json(payload: dict) -> str:
 
 
 @pytest.mark.asyncio
-async def test_generate_theme_page_uses_structured_format_and_card_temperature():
+async def test_generate_theme_page_uses_structured_format_and_card_temperature() -> (
+    None
+):
     config = _make_config()
     llm_provider = AsyncMock()
     llm_provider.generate.return_value = LLMGenerateResponse(
@@ -130,16 +132,18 @@ async def test_generate_theme_page_uses_structured_format_and_card_temperature()
     assert len(resp.open_questions) == 1
 
     call_kwargs = llm_provider.generate.call_args.kwargs
-    assert call_kwargs["model"] == "gemma4-e4b-12k"
+    assert call_kwargs["model"] == config.llm.model_name
     assert call_kwargs["priority"] == "low"
-    assert call_kwargs["num_predict"] == 2048
-    assert call_kwargs["options"]["temperature"] == 0.2
-    assert call_kwargs["options"]["num_predict"] == 2048
+    assert call_kwargs["num_predict"] == config.llm.recap_theme_max_new_tokens
+    assert call_kwargs["options"]["temperature"] == config.llm.recap_card_temperature
+    assert (
+        call_kwargs["options"]["num_predict"] == config.llm.recap_theme_max_new_tokens
+    )
     assert call_kwargs["format"] == ThemePageLLMOutput.model_json_schema()
 
 
 @pytest.mark.asyncio
-async def test_generate_theme_page_filters_invalid_refs_and_deduplicates():
+async def test_generate_theme_page_filters_invalid_refs_and_deduplicates() -> None:
     config = _make_config()
     llm_provider = AsyncMock()
     llm_provider.generate.return_value = LLMGenerateResponse(
@@ -194,7 +198,7 @@ async def test_generate_theme_page_filters_invalid_refs_and_deduplicates():
 
 
 @pytest.mark.asyncio
-async def test_generate_theme_page_timeline_date_rules():
+async def test_generate_theme_page_timeline_date_rules() -> None:
     config = _make_config()
     llm_provider = AsyncMock()
     llm_provider.generate.return_value = LLMGenerateResponse(
@@ -239,7 +243,7 @@ async def test_generate_theme_page_timeline_date_rules():
 
 
 @pytest.mark.asyncio
-async def test_generate_theme_page_what_changed_rules():
+async def test_generate_theme_page_what_changed_rules() -> None:
     config = _make_config()
     llm_provider = AsyncMock()
     llm_provider.generate.return_value = LLMGenerateResponse(
@@ -291,7 +295,7 @@ async def test_generate_theme_page_what_changed_rules():
 
 
 @pytest.mark.asyncio
-async def test_generate_theme_page_enforces_caps_and_single_sentence_length():
+async def test_generate_theme_page_enforces_caps_and_single_sentence_length() -> None:
     config = _make_config()
     llm_provider = AsyncMock()
     long_sentence = "あ" * 201
@@ -342,15 +346,19 @@ async def test_generate_theme_page_enforces_caps_and_single_sentence_length():
         _make_request(items=items, previous=prev, new_item_ns=[2])
     )
 
-    assert len(resp.key_points) == 7
+    expected_key_points_cap = 7
+    expected_timeline_cap = 10
+    expected_what_changed_cap = 5
+    expected_open_questions_cap = 4
+    assert len(resp.key_points) == expected_key_points_cap
     assert resp.key_points[0].text == "バージョン3.0を公開した。[1]"
-    assert len(resp.timeline) == 10
-    assert len(resp.what_changed) == 5
-    assert len(resp.open_questions) == 4
+    assert len(resp.timeline) == expected_timeline_cap
+    assert len(resp.what_changed) == expected_what_changed_cap
+    assert len(resp.open_questions) == expected_open_questions_cap
 
 
 @pytest.mark.asyncio
-async def test_generate_theme_page_empty_key_points_retries_and_rejects():
+async def test_generate_theme_page_empty_key_points_retries_and_rejects() -> None:
     config = _make_config()
     llm_provider = AsyncMock()
     empty_kp_payload = _llm_json(
@@ -364,22 +372,23 @@ async def test_generate_theme_page_empty_key_points_retries_and_rejects():
             "open_questions": [],
         }
     )
-    llm_provider.generate.side_effect = [
+    responses = [
         LLMGenerateResponse(response=empty_kp_payload, model="gemma4-e4b-12k"),
         LLMGenerateResponse(response=empty_kp_payload, model="gemma4-e4b-12k"),
     ]
+    llm_provider.generate.side_effect = responses
 
     usecase = ThemePageUsecase(config=config, llm_provider=llm_provider)
     with pytest.raises(CardGenerationRejectedError) as exc_info:
         await usecase.generate_theme_page(_make_request())
 
-    assert exc_info.value.attempts == 2
+    assert exc_info.value.attempts == len(responses)
     assert exc_info.value.reason == "empty_output"
-    assert llm_provider.generate.call_count == 2
+    assert llm_provider.generate.call_count == len(responses)
 
 
 @pytest.mark.asyncio
-async def test_generate_theme_page_title_too_long_retries_and_recovers():
+async def test_generate_theme_page_title_too_long_retries_and_recovers() -> None:
     config = _make_config()
     llm_provider = AsyncMock()
     too_long_title = _llm_json(
@@ -400,20 +409,21 @@ async def test_generate_theme_page_title_too_long_retries_and_recovers():
             "open_questions": [],
         }
     )
-    llm_provider.generate.side_effect = [
+    responses = [
         LLMGenerateResponse(response=too_long_title, model="gemma4-e4b-12k"),
         LLMGenerateResponse(response=valid, model="gemma4-e4b-12k"),
     ]
+    llm_provider.generate.side_effect = responses
 
     usecase = ThemePageUsecase(config=config, llm_provider=llm_provider)
     resp = await usecase.generate_theme_page(_make_request())
 
     assert resp.title == "短い見出し"
-    assert llm_provider.generate.call_count == 2
+    assert llm_provider.generate.call_count == len(responses)
 
 
 @pytest.mark.asyncio
-async def test_generate_theme_page_strips_thinking_block_before_json():
+async def test_generate_theme_page_strips_thinking_block_before_json() -> None:
     config = _make_config()
     llm_provider = AsyncMock()
     payload = _llm_json(
@@ -435,7 +445,7 @@ async def test_generate_theme_page_strips_thinking_block_before_json():
     assert resp.title == "ソラリス社の基盤"
 
 
-def test_theme_page_prompt_rendering_snapshot_assertions():
+def test_theme_page_prompt_rendering_snapshot_assertions() -> None:
     config = _make_config()
     usecase = ThemePageUsecase(config=config, llm_provider=Mock())
 
@@ -477,7 +487,7 @@ def test_theme_page_prompt_rendering_snapshot_assertions():
     assert "</article_content>" in user_turn
 
 
-def test_theme_page_worst_case_prompt_fits_12k_context_with_headroom():
+def test_theme_page_worst_case_prompt_fits_12k_context_with_headroom() -> None:
     config = _make_config()
     usecase = ThemePageUsecase(config=config, llm_provider=Mock())
 

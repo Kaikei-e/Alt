@@ -66,7 +66,7 @@ onMount(() => {
 		revealed = true;
 	});
 	if (initialQuery) {
-		handleSearch();
+		void handleSearch();
 	}
 });
 
@@ -169,7 +169,7 @@ async function loadMore() {
 function handleKeyDown(event: KeyboardEvent) {
 	if (event.key === "Enter") {
 		event.preventDefault();
-		handleSearch();
+		void handleSearch();
 	}
 }
 

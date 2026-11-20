@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 // CSRFTokenUsecase defines the interface for CSRF token operations
@@ -17,7 +17,7 @@ type CSRFTokenUsecase interface {
 // CSRFMiddleware creates middleware for CSRF protection
 func CSRFMiddleware(usecase CSRFTokenUsecase) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+		return func(c *echo.Context) error {
 			// Skip CSRF protection for non-state-changing methods and exempt endpoints
 			if !isCSRFProtectedEndpoint(c.Request().Method, c.Request().URL.Path) {
 				return next(c)
@@ -26,7 +26,7 @@ func CSRFMiddleware(usecase CSRFTokenUsecase) echo.MiddlewareFunc {
 			// Get CSRF token from header
 			csrfToken := c.Request().Header.Get("X-CSRF-Token")
 			if csrfToken == "" {
-				return echo.NewHTTPError(http.StatusForbidden, map[string]interface{}{
+				return NewStructuredHTTPError(http.StatusForbidden, "CSRF token is required", map[string]any{
 					"error":   "csrf_token_missing",
 					"message": "CSRF token is required",
 				})
@@ -35,14 +35,14 @@ func CSRFMiddleware(usecase CSRFTokenUsecase) echo.MiddlewareFunc {
 			// Validate CSRF token
 			valid, err := usecase.ValidateToken(c.Request().Context(), csrfToken)
 			if err != nil {
-				return echo.NewHTTPError(http.StatusInternalServerError, map[string]interface{}{
+				return NewStructuredHTTPError(http.StatusInternalServerError, "Failed to validate CSRF token", map[string]any{
 					"error":   "csrf_validation_error",
 					"message": "Failed to validate CSRF token",
 				})
 			}
 
 			if !valid {
-				return echo.NewHTTPError(http.StatusForbidden, map[string]interface{}{
+				return NewStructuredHTTPError(http.StatusForbidden, "Invalid CSRF token", map[string]any{
 					"error":   "csrf_token_invalid",
 					"message": "Invalid CSRF token",
 				})
@@ -56,10 +56,10 @@ func CSRFMiddleware(usecase CSRFTokenUsecase) echo.MiddlewareFunc {
 
 // CSRFTokenHandler creates a handler for CSRF token generation endpoint
 func CSRFTokenHandler(usecase CSRFTokenUsecase) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		token, err := usecase.GenerateToken(c.Request().Context())
 		if err != nil {
-			return echo.NewHTTPError(http.StatusInternalServerError, map[string]interface{}{
+			return NewStructuredHTTPError(http.StatusInternalServerError, "Failed to generate CSRF token", map[string]any{
 				"error":   "csrf_token_generation_error",
 				"message": "Failed to generate CSRF token",
 			})

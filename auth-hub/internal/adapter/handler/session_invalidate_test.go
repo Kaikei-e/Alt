@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -13,7 +14,7 @@ import (
 	"auth-hub/internal/infrastructure/cache"
 	"auth-hub/internal/usecase"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -34,10 +35,13 @@ func TestSessionHandler_HandleInvalidate(t *testing.T) {
 		invalidateUC := usecase.NewInvalidateSession(sessionCache, slog.Default())
 		h := NewSessionHandler(nil, invalidateUC)
 
-		req := httptest.NewRequest(http.MethodPost, "/session/invalidate", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/session/invalidate", nil)
 		req.AddCookie(&http.Cookie{
-			Name:  "ory_kratos_session",
-			Value: "cookie-val-123",
+			Name:     "ory_kratos_session",
+			Value:    "cookie-val-123",
+			Secure:   true,
+			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
 		})
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
@@ -61,14 +65,15 @@ func TestSessionHandler_HandleInvalidate(t *testing.T) {
 		invalidateUC := usecase.NewInvalidateSession(sessionCache, slog.Default())
 		h := NewSessionHandler(nil, invalidateUC)
 
-		req := httptest.NewRequest(http.MethodPost, "/session/invalidate", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/session/invalidate", nil)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
 
 		err := h.HandleInvalidate(c)
 		require.Error(t, err)
 
-		he, ok := err.(*echo.HTTPError)
+		he := &echo.HTTPError{}
+		ok := errors.As(err, &he)
 		require.True(t, ok)
 		assert.Equal(t, http.StatusUnauthorized, he.Code)
 		assert.Contains(t, he.Message, "session cookie not found")
@@ -91,7 +96,7 @@ func TestInternalHandler_HandleInvalidateSession(t *testing.T) {
 		h := NewInternalHandler(nil, invalidateUC, nil)
 
 		body := `{"cookie":"internal-cookie-target"}`
-		req := httptest.NewRequest(http.MethodPost, "/internal/session/invalidate", strings.NewReader(body))
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/internal/session/invalidate", strings.NewReader(body))
 		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
@@ -110,7 +115,7 @@ func TestInternalHandler_HandleInvalidateSession(t *testing.T) {
 		h := NewInternalHandler(nil, invalidateUC, nil)
 
 		body := `{}`
-		req := httptest.NewRequest(http.MethodPost, "/internal/session/invalidate", strings.NewReader(body))
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/internal/session/invalidate", strings.NewReader(body))
 		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
@@ -118,7 +123,8 @@ func TestInternalHandler_HandleInvalidateSession(t *testing.T) {
 		err := h.HandleInvalidateSession(c)
 		require.Error(t, err)
 
-		he, ok := err.(*echo.HTTPError)
+		he := &echo.HTTPError{}
+		ok := errors.As(err, &he)
 		require.True(t, ok)
 		assert.Equal(t, http.StatusBadRequest, he.Code)
 	})

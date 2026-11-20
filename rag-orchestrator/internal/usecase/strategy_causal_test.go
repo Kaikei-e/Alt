@@ -2,7 +2,6 @@ package usecase
 
 import (
 	"context"
-	"io"
 	"log/slog"
 	"testing"
 
@@ -24,13 +23,13 @@ func (s *causalStubRetrieve) Execute(ctx context.Context, input RetrieveContextI
 }
 
 func TestCausalStrategy_Name(t *testing.T) {
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	s := NewCausalStrategy(nil, nil, logger)
 	assert.Equal(t, "causal", s.Name())
 }
 
 func TestCausalStrategy_Retrieve_UsesPlannerSearchQueries(t *testing.T) {
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	baseQuery := "物流危機の原因"
 	plannerQuery1 := "物流危機 サプライチェーン 原因"
 	plannerQuery2 := "global logistics crisis root cause"
@@ -64,7 +63,7 @@ func TestCausalStrategy_Retrieve_UsesPlannerSearchQueries(t *testing.T) {
 }
 
 func TestCausalStrategy_Retrieve_FallbackWithoutPlannerQueries(t *testing.T) {
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	baseQuery := "物流危機の原因"
 	stub := &causalStubRetrieve{
 		outputs: map[string]*RetrieveContextOutput{
@@ -87,7 +86,7 @@ func TestCausalStrategy_Retrieve_FallbackWithoutPlannerQueries(t *testing.T) {
 }
 
 func TestCausalStrategy_Retrieve_EarlyExitOnGoodBaseResult(t *testing.T) {
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	baseQuery := "物流危機の原因"
 	stub := &causalStubRetrieve{
 		outputs: map[string]*RetrieveContextOutput{
@@ -111,7 +110,7 @@ func TestCausalStrategy_Retrieve_EarlyExitOnGoodBaseResult(t *testing.T) {
 }
 
 func TestCausalStrategy_Retrieve_DetailedQueryRequiresGoodVerdict(t *testing.T) {
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	baseQuery := "物流危機の背景を詳しく教えて"
 	stub := &causalStubRetrieve{
 		outputs: map[string]*RetrieveContextOutput{
@@ -135,5 +134,5 @@ func TestCausalStrategy_Retrieve_DetailedQueryRequiresGoodVerdict(t *testing.T) 
 }
 
 func TestIntentCausalExplanation_IsValidConstant(t *testing.T) {
-	assert.Equal(t, IntentType("causal_explanation"), IntentCausalExplanation)
+	assert.Equal(t, IntentCausalExplanation, IntentType("causal_explanation"))
 }

@@ -36,20 +36,25 @@ SKIP_DIR_NAMES = {
     ".venv",
 }
 
-PASS = 0
-FAIL = 0
+
+class _Results:
+    def __init__(self) -> None:
+        self.passed = 0
+        self.failed = 0
+
+
+_RESULTS = _Results()
 
 
 def check(name: str, condition: bool, detail: str = "") -> None:
-    global PASS, FAIL
     if condition:
-        print(f"  PASS  {name}")
-        PASS += 1
+        sys.stdout.write(f"  PASS  {name}\n")
+        _RESULTS.passed += 1
         return
-    print(f"  FAIL  {name}")
+    sys.stdout.write(f"  FAIL  {name}\n")
     if detail:
-        print(f"        {detail}")
-    FAIL += 1
+        sys.stdout.write(f"        {detail}\n")
+    _RESULTS.failed += 1
 
 
 def iter_production_go() -> list[pathlib.Path]:
@@ -65,7 +70,7 @@ def iter_production_go() -> list[pathlib.Path]:
     return files
 
 
-print("user-journey SLO counters (production BFF Go only)")
+sys.stdout.write("user-journey SLO counters (production BFF Go only)\n")
 
 prod_files = iter_production_go()
 check(
@@ -74,23 +79,22 @@ check(
     f"no .go files under {BFF.relative_to(ROOT)} excluding tests",
 )
 
-metric_hits = [
-    p for p in prod_files if METRIC in p.read_text(encoding="utf-8", errors="replace")
-]
+metric_hits = [p for p in prod_files if METRIC in p.read_text(encoding="utf-8", errors="replace")]
 check(
     f"{METRIC} is registered in production BFF Go",
     len(metric_hits) > 0,
     "counter must be defined in alt-butterfly-facade production Go, not promtool fixtures",
 )
 
-corpus = "\n".join(
-    p.read_text(encoding="utf-8", errors="replace") for p in metric_hits
-) if metric_hits else ""
+corpus = (
+    "\n".join(p.read_text(encoding="utf-8", errors="replace") for p in metric_hits)
+    if metric_hits
+    else ""
+)
 
 for journey in JOURNEYS:
     labeled = (
-        f'"{journey}"' in corpus
-        or re.search(rf'Journey\w+\s*=\s*"{journey}"', corpus) is not None
+        f'"{journey}"' in corpus or re.search(rf'Journey\w+\s*=\s*"{journey}"', corpus) is not None
     )
     check(
         f"production Go names journey {journey!r}",
@@ -99,10 +103,7 @@ for journey in JOURNEYS:
     )
 
 for status in STATUSES:
-    labeled = (
-        f'Status{"OK" if status == "ok" else "Error"}' in corpus
-        and f'"{status}"' in corpus
-    )
+    labeled = f"Status{'OK' if status == 'ok' else 'Error'}" in corpus and f'"{status}"' in corpus
     check(
         f"production Go names status {status!r}",
         labeled,
@@ -126,12 +127,12 @@ server = BFF / "internal" / "server" / "server.go"
 sv = server.read_text(encoding="utf-8", errors="replace") if server.is_file() else ""
 check(
     "server.go wires Handler onto REST /v1/",
-    "mux.Handle(\"/v1/\"" in sv and "journeyMetrics.Handler(restProxy)" in sv,
+    'mux.Handle("/v1/"' in sv and "journeyMetrics.Handler(restProxy)" in sv,
     "REST allowlist mux must wrap restProxy with journeyMetrics.Handler",
 )
 check(
     "server.go wires Handler onto Connect catch-all /",
-    "mux.Handle(\"/\"" in sv and "journeyMetrics.Handler(mainHandler)" in sv,
+    'mux.Handle("/"' in sv and "journeyMetrics.Handler(mainHandler)" in sv,
     "Connect catch-all mux must wrap mainHandler with journeyMetrics.Handler",
 )
 check(
@@ -140,5 +141,5 @@ check(
     "wiring must be in NewServer production constructor, not a test helper",
 )
 
-print(f"\n{PASS} passed, {FAIL} failed")
-sys.exit(1 if FAIL else 0)
+sys.stdout.write(f"\n{_RESULTS.passed} passed, {_RESULTS.failed} failed\n")
+sys.exit(1 if _RESULTS.failed else 0)

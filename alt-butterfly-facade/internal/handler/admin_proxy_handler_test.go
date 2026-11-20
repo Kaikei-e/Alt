@@ -38,7 +38,8 @@ func TestAdminProxyHandler_ServeHTTP_RequiresAdminRole(t *testing.T) {
 		30*time.Second,
 	)
 
-	req := httptest.NewRequest(
+	req := httptest.NewRequestWithContext(
+		t.Context(),
 		http.MethodPost,
 		"/alt.knowledge_home.v1.KnowledgeHomeAdminService/GetProjectionHealth",
 		strings.NewReader("{}"),
@@ -81,7 +82,8 @@ func TestAdminProxyHandler_ServeHTTP_AdminForwardedWithoutServiceToken(t *testin
 		30*time.Second,
 	)
 
-	req := httptest.NewRequest(
+	req := httptest.NewRequestWithContext(
+		t.Context(),
 		http.MethodPost,
 		"/alt.knowledge_home.v1.KnowledgeHomeAdminService/GetProjectionHealth",
 		strings.NewReader("{}"),

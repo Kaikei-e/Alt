@@ -41,12 +41,18 @@ func TestGetStrategy_Priority(t *testing.T) {
 	origNginxURL := os.Getenv("NGINX_PROXY_URL")
 
 	defer func() {
-		os.Setenv("SIDECAR_PROXY_ENABLED", origSidecar)
-		os.Setenv("SIDECAR_PROXY_URL", origSidecarURL)
-		os.Setenv("ENVOY_PROXY_ENABLED", origEnvoy)
-		os.Setenv("ENVOY_PROXY_URL", origEnvoyURL)
-		os.Setenv("NGINX_PROXY_ENABLED", origNginx)
-		os.Setenv("NGINX_PROXY_URL", origNginxURL)
+		for k, v := range map[string]string{
+			"SIDECAR_PROXY_ENABLED": origSidecar,
+			"SIDECAR_PROXY_URL":     origSidecarURL,
+			"ENVOY_PROXY_ENABLED":   origEnvoy,
+			"ENVOY_PROXY_URL":       origEnvoyURL,
+			"NGINX_PROXY_ENABLED":   origNginx,
+			"NGINX_PROXY_URL":       origNginxURL,
+		} {
+			if err := os.Setenv(k, v); err != nil {
+				t.Errorf("restore %s: %v", k, err)
+			}
+		}
 	}()
 
 	tests := []struct {
@@ -143,31 +149,26 @@ func TestGetStrategy_Priority(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Clear all env vars first
-			os.Unsetenv("SIDECAR_PROXY_ENABLED")
-			os.Unsetenv("SIDECAR_PROXY_URL")
-			os.Unsetenv("ENVOY_PROXY_ENABLED")
-			os.Unsetenv("ENVOY_PROXY_URL")
-			os.Unsetenv("NGINX_PROXY_ENABLED")
-			os.Unsetenv("NGINX_PROXY_URL")
+			for _, k := range []string{
+				"SIDECAR_PROXY_ENABLED", "SIDECAR_PROXY_URL",
+				"ENVOY_PROXY_ENABLED", "ENVOY_PROXY_URL",
+				"NGINX_PROXY_ENABLED", "NGINX_PROXY_URL",
+			} {
+				require.NoError(t, os.Unsetenv(k))
+			}
 
 			// Set test-specific env vars
-			if tt.sidecarEnabled != "" {
-				os.Setenv("SIDECAR_PROXY_ENABLED", tt.sidecarEnabled)
-			}
-			if tt.sidecarURL != "" {
-				os.Setenv("SIDECAR_PROXY_URL", tt.sidecarURL)
-			}
-			if tt.envoyEnabled != "" {
-				os.Setenv("ENVOY_PROXY_ENABLED", tt.envoyEnabled)
-			}
-			if tt.envoyURL != "" {
-				os.Setenv("ENVOY_PROXY_URL", tt.envoyURL)
-			}
-			if tt.nginxEnabled != "" {
-				os.Setenv("NGINX_PROXY_ENABLED", tt.nginxEnabled)
-			}
-			if tt.nginxURL != "" {
-				os.Setenv("NGINX_PROXY_URL", tt.nginxURL)
+			for k, v := range map[string]string{
+				"SIDECAR_PROXY_ENABLED": tt.sidecarEnabled,
+				"SIDECAR_PROXY_URL":     tt.sidecarURL,
+				"ENVOY_PROXY_ENABLED":   tt.envoyEnabled,
+				"ENVOY_PROXY_URL":       tt.envoyURL,
+				"NGINX_PROXY_ENABLED":   tt.nginxEnabled,
+				"NGINX_PROXY_URL":       tt.nginxURL,
+			} {
+				if v != "" {
+					require.NoError(t, os.Setenv(k, v))
+				}
 			}
 
 			strategy := GetStrategy()
@@ -387,7 +388,7 @@ func TestEnvoyProxyRoundTripper_HostHeaderFix(t *testing.T) {
 			// Execute request
 			resp, err := rt.RoundTrip(req)
 			require.NoError(t, err)
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 
 			if tt.shouldModifyHeader {
 				assert.Equal(t, tt.expectedHost, req.Host, "Host should be set")
@@ -485,7 +486,7 @@ func TestDefaultProxyURLConstants(t *testing.T) {
 	assert.Contains(t, DefaultNginxProxyURL, "8889", "Nginx should use port 8889")
 
 	// Verify they are HTTP URLs (internal cluster communication)
-	assert.True(t, len(DefaultSidecarProxyURL) > 0, "Sidecar URL should not be empty")
-	assert.True(t, len(DefaultEnvoyProxyURL) > 0, "Envoy URL should not be empty")
-	assert.True(t, len(DefaultNginxProxyURL) > 0, "Nginx URL should not be empty")
+	assert.NotEmpty(t, DefaultSidecarProxyURL, "Sidecar URL should not be empty")
+	assert.NotEmpty(t, DefaultEnvoyProxyURL, "Envoy URL should not be empty")
+	assert.NotEmpty(t, DefaultNginxProxyURL, "Nginx URL should not be empty")
 }

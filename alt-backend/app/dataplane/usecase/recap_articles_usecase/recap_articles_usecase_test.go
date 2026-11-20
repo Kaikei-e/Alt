@@ -184,6 +184,6 @@ func TestRecapArticlesUsecase_Execute_PropagatesRepoError(t *testing.T) {
 	repo.EXPECT().FetchRecapArticles(gomock.Any(), gomock.Any()).Return(nil, repoErr)
 
 	result, err := usecase.Execute(context.Background(), input)
-	assert.ErrorIs(t, err, repoErr)
+	require.ErrorIs(t, err, repoErr)
 	assert.Nil(t, result)
 }

@@ -45,8 +45,10 @@ func NewDataHubArticleClient(client datahubv1connect.DataHubServiceClient, logge
 // Letting protojson elide the zero would silently truncate the result to 100
 // articles. Sending both fields is what preserves the REST route's semantics.
 func (c *DataHubArticleClient) GetRecentArticles(ctx context.Context, withinHours int, limit int) ([]domain.ArticleMetadata, error) {
-	withinHours32 := int32(min(withinHours, math.MaxInt32)) //nolint:gosec // clamped to MaxInt32
-	limit32 := int32(min(limit, math.MaxInt32))             //nolint:gosec // clamped to MaxInt32
+	// #nosec G115 -- clamped to MaxInt32
+	withinHours32 := int32(min(withinHours, math.MaxInt32))
+	// #nosec G115 -- clamped to MaxInt32
+	limit32 := int32(min(limit, math.MaxInt32))
 
 	req := connect.NewRequest(&datahubv1.ListRecentArticlesRequest{
 		WithinHours: &withinHours32,

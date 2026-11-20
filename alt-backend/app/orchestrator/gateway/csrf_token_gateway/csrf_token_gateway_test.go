@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 // MockCSRFTokenDriver is a mock implementation of CSRF token driver
@@ -89,11 +90,11 @@ func TestCSRFTokenGateway_GenerateToken(t *testing.T) {
 
 			// Verify results
 			if tt.expectError {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.expectedErrMsg)
 				assert.Empty(t, token)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.Equal(t, tt.expectedToken, token)
 			}
 
@@ -177,11 +178,11 @@ func TestCSRFTokenGateway_ValidateToken(t *testing.T) {
 
 			// Verify results
 			if tt.expectError {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.expectedErrMsg)
 				assert.False(t, valid)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.Equal(t, tt.expectValid, valid)
 			}
 
@@ -241,10 +242,10 @@ func TestCSRFTokenGateway_InvalidateToken(t *testing.T) {
 
 			// Verify results
 			if tt.expectError {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.expectedErrMsg)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}
 
 			// Verify mock expectations
@@ -306,7 +307,7 @@ func TestCSRFTokenGateway_TokenExpiration(t *testing.T) {
 			valid, err := gateway.ValidateToken(ctx, "test-token")
 
 			// Verify results
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.expectValid, valid)
 
 			// Verify mock expectations
@@ -422,10 +423,10 @@ func TestCSRFTokenGateway_ValidateHMACToken(t *testing.T) {
 
 			// Verify results
 			if tt.expectError {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.False(t, valid)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.Equal(t, tt.expectValid, valid)
 			}
 		})

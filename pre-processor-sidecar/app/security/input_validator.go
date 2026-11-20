@@ -395,6 +395,7 @@ func (v *OWASPInputValidator) ValidateAndSanitizeInput(input string, fieldName s
 
 // GetValidationRules は検証ルールの説明を返す（開発用）
 func (v *OWASPInputValidator) GetValidationRules() map[string]string {
+	// #nosec G101 -- static validation rule descriptions, not credentials
 	return map[string]string{
 		"refresh_token":  "32-512 characters, alphanumeric and underscore only",
 		"client_id":      "exactly 10 digits",

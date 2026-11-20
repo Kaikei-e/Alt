@@ -67,6 +67,8 @@ CONTEXT_SIZES = {
 }
 
 PERCENTILES = [10, 25, 50, 75, 90, 95, 99, 99.9]
+RECOMMENDED_FIT_RATE_PERCENT = 95.0
+FULL_FIT_RATE_PERCENT = 100
 
 
 def estimate_tokens(text: str) -> int:
@@ -133,10 +135,12 @@ def analyze_sizes(contents: list[str]) -> ArticleStats:
     token_percentile_values = np.percentile(token_counts, PERCENTILES)
 
     char_percentiles = {
-        f"P{p}": int(v) for p, v in zip(PERCENTILES, char_percentile_values)
+        f"P{p}": int(v)
+        for p, v in zip(PERCENTILES, char_percentile_values, strict=True)
     }
     token_percentiles = {
-        f"P{p}": int(v) for p, v in zip(PERCENTILES, token_percentile_values)
+        f"P{p}": int(v)
+        for p, v in zip(PERCENTILES, token_percentile_values, strict=True)
     }
 
     # Calculate context fit rates
@@ -170,7 +174,7 @@ def format_number(n: int | float) -> str:
 
 def generate_markdown_report(stats: ArticleStats) -> str:
     """Generate Markdown report."""
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    now = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S")
 
     lines = [
         "# 記事サイズ分布レポート",
@@ -222,7 +226,7 @@ def generate_markdown_report(stats: ArticleStats) -> str:
     # Determine recommendation (first context that covers >= 95%)
     recommended = None
     for name, rate in stats.context_fit_rates.items():
-        if rate >= 95.0 and recommended is None:
+        if rate >= RECOMMENDED_FIT_RATE_PERCENT and recommended is None:
             recommended = name
 
     for name, rate in stats.context_fit_rates.items():
@@ -247,14 +251,14 @@ def generate_markdown_report(stats: ArticleStats) -> str:
         )
 
     fit_8k = stats.context_fit_rates.get("8K", 0)
-    if fit_8k < 100:
-        need_mapreduce = 100 - fit_8k
+    if fit_8k < FULL_FIT_RATE_PERCENT:
+        need_mapreduce = FULL_FIT_RATE_PERCENT - fit_8k
         lines.append(
             f"- 8K では約 {need_mapreduce:.1f}% の記事が Map-Reduce または切り詰めが必要"
         )
 
     fit_16k = stats.context_fit_rates.get("16K", 0)
-    if fit_16k >= 95:
+    if fit_16k >= RECOMMENDED_FIT_RATE_PERCENT:
         lines.append(f"- 16K コンテキストで {fit_16k:.1f}% の記事を処理可能 (推奨)")
 
     lines.append(
@@ -267,7 +271,7 @@ def generate_markdown_report(stats: ArticleStats) -> str:
 def generate_json_report(stats: ArticleStats) -> dict:
     """Generate JSON report."""
     return {
-        "generated_at": datetime.now().isoformat(),
+        "generated_at": datetime.now().astimezone().isoformat(),
         "total_articles": stats.total_articles,
         "char_stats": {
             "min": stats.min_chars,
@@ -304,27 +308,27 @@ def main() -> None:
     args = parser.parse_args()
 
     # Connect and fetch data
-    print("Connecting to database...", file=sys.stderr)
+    sys.stderr.write("Connecting to database...\n")
     try:
         conn = get_db_connection()
-    except Exception as e:
-        print(f"Error: Failed to connect to database: {e}", file=sys.stderr)
+    except (psycopg2.Error, OSError) as e:
+        sys.stderr.write(f"Error: Failed to connect to database: {e}\n")
         sys.exit(1)
 
-    print("Fetching article contents...", file=sys.stderr)
+    sys.stderr.write("Fetching article contents...\n")
     try:
         contents = fetch_article_contents(conn)
-    except Exception as e:
-        print(f"Error: Failed to fetch articles: {e}", file=sys.stderr)
+    except (psycopg2.Error, OSError) as e:
+        sys.stderr.write(f"Error: Failed to fetch articles: {e}\n")
         conn.close()
         sys.exit(1)
     finally:
         conn.close()
 
-    print(f"Analyzing {len(contents)} articles...", file=sys.stderr)
+    sys.stderr.write(f"Analyzing {len(contents)} articles...\n")
 
     if not contents:
-        print("Warning: No articles found in database", file=sys.stderr)
+        sys.stderr.write("Warning: No articles found in database\n")
         sys.exit(0)
 
     # Analyze
@@ -333,16 +337,16 @@ def main() -> None:
     # Output Markdown report
     if not args.quiet:
         markdown_report = generate_markdown_report(stats)
-        print(markdown_report)
+        sys.stdout.write(f"{markdown_report}\n")
 
     # Output JSON if requested
     if args.output_json:
         json_report = generate_json_report(stats)
         output_path = Path(args.output_json)
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(output_path, "w", encoding="utf-8") as f:
+        with output_path.open("w", encoding="utf-8") as f:
             json.dump(json_report, f, indent=2, ensure_ascii=False)
-        print(f"\nJSON report saved to: {args.output_json}", file=sys.stderr)
+        sys.stderr.write(f"\nJSON report saved to: {args.output_json}\n")
 
 
 if __name__ == "__main__":

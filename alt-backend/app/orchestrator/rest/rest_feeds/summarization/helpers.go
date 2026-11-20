@@ -8,10 +8,10 @@ import (
 	"alt/utils/errors"
 	"alt/utils/logger"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
-func respondWithSummary(c echo.Context, summary, articleID, feedURL string) error {
+func respondWithSummary(c *echo.Context, summary, articleID, feedURL string) error {
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"success":    true,
 		"summary":    summary,
@@ -20,11 +20,13 @@ func respondWithSummary(c echo.Context, summary, articleID, feedURL string) erro
 	})
 }
 
-func handleError(c echo.Context, err error, operation string) error {
+func handleError(c *echo.Context, err error, operation string) error {
 	ctx := c.Request().Context()
 	var enrichedErr *errors.AppContextError
 
-	if appContextErr, ok := err.(*errors.AppContextError); ok {
+	var appContextErr *errors.AppContextError
+	var appErr *errors.AppError
+	if stderrors.As(err, &appContextErr) {
 		enrichedErr = errors.EnrichWithContext(appContextErr, "summarization", "RESTHandler", operation, map[string]interface{}{
 			"path":        c.Request().URL.Path,
 			"method":      c.Request().Method,
@@ -32,7 +34,7 @@ func handleError(c echo.Context, err error, operation string) error {
 			"user_agent":  c.Request().UserAgent(),
 			"request_id":  c.Response().Header().Get("X-Request-ID"),
 		})
-	} else if appErr, ok := err.(*errors.AppError); ok {
+	} else if stderrors.As(err, &appErr) {
 		enrichedErr = errors.NewAppContextError(
 			string(appErr.Code),
 			appErr.Message,
@@ -92,7 +94,7 @@ func handleError(c echo.Context, err error, operation string) error {
 	})
 }
 
-func handleValidationError(c echo.Context, message, field string, value interface{}) error {
+func handleValidationError(c *echo.Context, message, field string, value interface{}) error {
 	ctx := c.Request().Context()
 	logger.Logger.WarnContext(ctx, "Validation error", "message", message, "field", field, "value", value)
 	return c.JSON(http.StatusBadRequest, map[string]interface{}{

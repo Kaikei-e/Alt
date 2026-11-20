@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
+from typing import Annotated, cast
 from uuid import UUID
 
 import structlog
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.exc import DatabaseError, IntegrityError, OperationalError
 
+from ...db.dao import RunRecord
 from ...domain.models import (
     ClassificationJobPayload,
     ClassificationJobResponse,
     ClassificationResult,
+    RunStatusLiteral,
 )
 from ...services.run_manager import (
     ClassificationRunSubmission,
@@ -31,7 +34,7 @@ router = APIRouter()
 LOGGER = structlog.get_logger(__name__)
 
 
-def _record_to_classification_response(record) -> ClassificationJobResponse:
+def _record_to_classification_response(record: RunRecord) -> ClassificationJobResponse:
     """Convert RunRecord to ClassificationJobResponse."""
     results = None
     if record.response_payload and "results" in record.response_payload:
@@ -40,7 +43,7 @@ def _record_to_classification_response(record) -> ClassificationJobResponse:
     return ClassificationJobResponse(
         run_id=record.run_id,
         job_id=str(record.job_id),
-        status=record.status,
+        status=cast(RunStatusLiteral, record.status),
         result_count=record.cluster_count,  # Reuse cluster_count for result_count
         results=results,
         error_message=record.error_message,
@@ -54,9 +57,11 @@ def _record_to_classification_response(record) -> ClassificationJobResponse:
 )
 async def create_classification_run(
     payload: ClassificationJobPayload,
-    job_id_header: str = Header(..., alias="X-Alt-Job-Id"),
-    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
-    submit_uc: SubmitClassificationRunUsecase = Depends(get_submit_classification_run_usecase_dep),
+    job_id_header: Annotated[str, Header(alias="X-Alt-Job-Id")],
+    submit_uc: Annotated[
+        SubmitClassificationRunUsecase, Depends(get_submit_classification_run_usecase_dep)
+    ],
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> ClassificationJobResponse:
     """Create a new classification run (async job pattern)."""
     try:
@@ -85,23 +90,21 @@ async def create_classification_run(
         )
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except (OperationalError, IntegrityError, DatabaseError) as exc:
-        LOGGER.error(
+        LOGGER.exception(
             "classification.run.database_error",
             job_id=str(job_id),
             error_type=type(exc).__name__,
             error=str(exc),
-            exc_info=True,
         )
         raise HTTPException(
             status_code=503,
             detail="Database service temporarily unavailable",
         ) from exc
     except FileNotFoundError as exc:
-        LOGGER.error(
+        LOGGER.exception(
             "classification.run.model_not_found",
             job_id=str(job_id),
             error=str(exc),
-            exc_info=True,
         )
         raise HTTPException(
             status_code=503,
@@ -125,7 +128,7 @@ async def create_classification_run(
 @router.get("/v1/classify-runs/{run_id}", response_model=ClassificationJobResponse)
 async def get_classification_run(
     run_id: int,
-    get_uc: GetClassificationRunUsecase = Depends(get_get_classification_run_usecase_dep),
+    get_uc: Annotated[GetClassificationRunUsecase, Depends(get_get_classification_run_usecase_dep)],
 ) -> ClassificationJobResponse:
     """Get classification run status and results."""
     record = await get_uc.execute(run_id)

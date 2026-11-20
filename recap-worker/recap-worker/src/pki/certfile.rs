@@ -117,7 +117,7 @@ impl CertFile {
             match crate::pki::filesafe::write_temp_nofollow(&self.key_path, key_pem, 0o400) {
                 Ok(p) => p,
                 Err(err) => {
-                    let _ = crate::pki::filesafe::unlink_nofollow(&cert_tmp);
+                    unlink_or_warn(&cert_tmp);
                     return Err(err);
                 }
             };
@@ -131,26 +131,26 @@ impl CertFile {
                 crate::pki::filesafe::MAX_ROOT_PEM_BYTES,
             )?;
             if let Err(err) = crate::pki::filesafe::write_regular_nofollow(&prev, &old_key, 0o400) {
-                let _ = crate::pki::filesafe::unlink_nofollow(&cert_tmp);
-                let _ = crate::pki::filesafe::unlink_nofollow(&key_tmp);
+                unlink_or_warn(&cert_tmp);
+                unlink_or_warn(&key_tmp);
                 return Err(err);
             }
             if let Err(err) =
                 crate::pki::filesafe::write_regular_nofollow(&journal, b"in_progress\n", 0o600)
             {
-                let _ = crate::pki::filesafe::unlink_nofollow(&cert_tmp);
-                let _ = crate::pki::filesafe::unlink_nofollow(&key_tmp);
-                let _ = crate::pki::filesafe::unlink_nofollow(&prev);
+                unlink_or_warn(&cert_tmp);
+                unlink_or_warn(&key_tmp);
+                unlink_or_warn(&prev);
                 return Err(err);
             }
         }
 
         if let Err(err) = crate::pki::filesafe::rename_nofollow(&key_tmp, &self.key_path) {
-            let _ = crate::pki::filesafe::unlink_nofollow(&cert_tmp);
-            let _ = crate::pki::filesafe::unlink_nofollow(&key_tmp);
+            unlink_or_warn(&cert_tmp);
+            unlink_or_warn(&key_tmp);
             if had_old_key {
-                let _ = crate::pki::filesafe::unlink_nofollow(&journal);
-                let _ = crate::pki::filesafe::unlink_nofollow(&prev);
+                unlink_or_warn(&journal);
+                unlink_or_warn(&prev);
             }
             return Err(err);
         }
@@ -167,13 +167,13 @@ impl CertFile {
         };
         if let Err(err) = cert_rename {
             self.rollback_key(had_old_key, &prev, &journal);
-            let _ = crate::pki::filesafe::unlink_nofollow(&cert_tmp);
-            let _ = crate::pki::filesafe::unlink_nofollow(&key_tmp);
+            unlink_or_warn(&cert_tmp);
+            unlink_or_warn(&key_tmp);
             return Err(err);
         }
 
-        let _ = crate::pki::filesafe::unlink_nofollow(&journal);
-        let _ = crate::pki::filesafe::unlink_nofollow(&prev);
+        unlink_or_warn(&journal);
+        unlink_or_warn(&prev);
         self.cleanup_enroll_temps();
         Ok(())
     }
@@ -220,13 +220,13 @@ impl CertFile {
             if !self.pair_matches_on_disk() && !is_not_found(&prev) {
                 crate::pki::filesafe::rename_nofollow(&prev, &self.key_path)?;
             }
-            let _ = crate::pki::filesafe::unlink_nofollow(&journal);
-            let _ = crate::pki::filesafe::unlink_nofollow(&prev);
+            unlink_or_warn(&journal);
+            unlink_or_warn(&prev);
             self.cleanup_enroll_temps();
             return Ok(());
         }
         if !is_not_found(&prev) {
-            let _ = crate::pki::filesafe::unlink_nofollow(&prev);
+            unlink_or_warn(&prev);
         }
         Ok(())
     }
@@ -249,12 +249,19 @@ impl CertFile {
 
     fn rollback_key(&self, had_old_key: bool, prev: &std::path::Path, journal: &std::path::Path) {
         if had_old_key {
-            let _ = crate::pki::filesafe::rename_nofollow(prev, &self.key_path);
+            if let Err(err) = crate::pki::filesafe::rename_nofollow(prev, &self.key_path) {
+                tracing::warn!(
+                    src = %prev.display(),
+                    dst = %self.key_path.display(),
+                    error = %err,
+                    "pki: failed to restore previous key during rollback"
+                );
+            }
         } else {
-            let _ = crate::pki::filesafe::unlink_nofollow(&self.key_path);
+            unlink_or_warn(&self.key_path);
         }
-        let _ = crate::pki::filesafe::unlink_nofollow(journal);
-        let _ = crate::pki::filesafe::unlink_nofollow(prev);
+        unlink_or_warn(journal);
+        unlink_or_warn(prev);
     }
 
     fn cleanup_enroll_temps(&self) {
@@ -271,10 +278,16 @@ impl CertFile {
                     continue;
                 };
                 if name.starts_with(".pki-enroll-") {
-                    let _ = crate::pki::filesafe::unlink_nofollow(&entry.path());
+                    unlink_or_warn(&entry.path());
                 }
             }
         }
+    }
+}
+
+fn unlink_or_warn(path: &std::path::Path) {
+    if let Err(err) = crate::pki::filesafe::unlink_nofollow(path) {
+        tracing::warn!(path = %path.display(), error = %err, "pki: failed to remove temporary file");
     }
 }
 
@@ -294,6 +307,10 @@ fn sibling_with_suffix(path: &std::path::Path, suffix: &str) -> PathBuf {
 }
 
 fn assert_pair_matches(cert_pem: &[u8], key_pem: &[u8]) -> Result<(), PkiError> {
+    #[expect(
+        clippy::let_underscore_must_use,
+        reason = "install_default is idempotent and returns Err if already installed"
+    )]
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     let certs = rustls_pemfile::certs(&mut &cert_pem[..])
         .collect::<Result<Vec<_>, _>>()

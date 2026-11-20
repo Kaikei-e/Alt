@@ -1,18 +1,20 @@
 """Tests for ExpandQueryUsecase."""
 
-import pytest
 from unittest.mock import AsyncMock, Mock
 
+import pytest
+
+from news_creator.domain.errors import QueueFullError
 from news_creator.domain.models import LLMGenerateResponse
 from news_creator.usecase.expand_query_usecase import (
-    ExpandQueryUsecase,
     EXPAND_QUERY_PROMPT_TEMPLATE,
     EXPAND_QUERY_WITH_HISTORY_TEMPLATE,
+    ExpandQueryUsecase,
 )
 
 
 @pytest.mark.asyncio
-async def test_expand_query_success():
+async def test_expand_query_success() -> None:
     """Test successful query expansion with Japanese and English queries."""
     config = Mock()
     llm_provider = AsyncMock()
@@ -29,15 +31,18 @@ generative AI development""",
 
     usecase = ExpandQueryUsecase(config=config, llm_provider=llm_provider)
 
+    japanese_count = 1
+    english_count = 3
     expanded_queries, model, elapsed_ms = await usecase.expand_query(
         query="AI技術のトレンド",
-        japanese_count=1,
-        english_count=3,
+        japanese_count=japanese_count,
+        english_count=english_count,
     )
 
-    assert len(expanded_queries) == 4
+    assert len(expanded_queries) == japanese_count + english_count
     assert model == "gemma4-e4b-12k"
-    assert elapsed_ms is not None and elapsed_ms > 0
+    assert elapsed_ms is not None
+    assert elapsed_ms > 0
 
     # Verify LLM was called with correct model
     llm_provider.generate.assert_called_once()
@@ -46,7 +51,7 @@ generative AI development""",
 
 
 @pytest.mark.asyncio
-async def test_expand_query_filters_labels():
+async def test_expand_query_filters_labels() -> None:
     """Test that query expansion filters out labels and empty lines."""
     config = Mock()
     llm_provider = AsyncMock()
@@ -67,17 +72,19 @@ English:
 
     usecase = ExpandQueryUsecase(config=config, llm_provider=llm_provider)
 
-    expanded_queries, model, _ = await usecase.expand_query(
+    japanese_count = 1
+    english_count = 4
+    expanded_queries, _model, _ = await usecase.expand_query(
         query="AI技術のトレンド",
-        japanese_count=1,
-        english_count=4,
+        japanese_count=japanese_count,
+        english_count=english_count,
     )
 
     # Should filter out "Japanese:", "English:", empty lines, and strip numbering/bullets
     assert "Japanese:" not in expanded_queries
     assert "English:" not in expanded_queries
     assert "" not in expanded_queries
-    assert len(expanded_queries) == 5
+    assert len(expanded_queries) == japanese_count + english_count
     assert "AI技術の最新動向" in expanded_queries
     assert "AI technology trends" in expanded_queries
     assert "machine learning advances" in expanded_queries
@@ -86,7 +93,7 @@ English:
 
 
 @pytest.mark.asyncio
-async def test_expand_query_empty_query_raises_error():
+async def test_expand_query_empty_query_raises_error() -> None:
     """Test that empty query raises ValueError."""
     config = Mock()
     llm_provider = AsyncMock()
@@ -101,7 +108,7 @@ async def test_expand_query_empty_query_raises_error():
 
 
 @pytest.mark.asyncio
-async def test_expand_query_llm_failure():
+async def test_expand_query_llm_failure() -> None:
     """Test that LLM failure raises RuntimeError."""
     config = Mock()
     llm_provider = AsyncMock()
@@ -116,15 +123,13 @@ async def test_expand_query_llm_failure():
 
 
 @pytest.mark.asyncio
-async def test_expand_query_queue_full_propagates_unwrapped():
+async def test_expand_query_queue_full_propagates_unwrapped() -> None:
     """QueueFullError must reach the handler as-is so it can be mapped to HTTP 429.
 
     Wrapping it in RuntimeError (like other LLM failures) would make the
     handler surface it as 502, masking expected backpressure as an upstream
     error instead of "retry after backoff".
     """
-    from news_creator.domain.errors import QueueFullError
-
     config = Mock()
     llm_provider = AsyncMock()
     llm_provider.generate.side_effect = QueueFullError("Queue depth 10 >= max 10")
@@ -138,7 +143,7 @@ async def test_expand_query_queue_full_propagates_unwrapped():
 
 
 @pytest.mark.asyncio
-async def test_expand_query_uses_correct_model():
+async def test_expand_query_uses_correct_model() -> None:
     """Test that query expansion uses gemma4-e4b-12k model specifically."""
     config = Mock()
     llm_provider = AsyncMock()
@@ -161,7 +166,7 @@ async def test_expand_query_uses_correct_model():
 
 
 @pytest.mark.asyncio
-async def test_expand_query_low_temperature():
+async def test_expand_query_low_temperature() -> None:
     """Test that query expansion uses low temperature for consistent results."""
     config = Mock()
     llm_provider = AsyncMock()
@@ -183,7 +188,7 @@ async def test_expand_query_low_temperature():
 
 
 @pytest.mark.asyncio
-async def test_expand_query_passes_priority_to_llm():
+async def test_expand_query_passes_priority_to_llm() -> None:
     """Test that query expansion passes priority to LLM provider."""
     config = Mock()
     llm_provider = AsyncMock()
@@ -209,7 +214,7 @@ async def test_expand_query_passes_priority_to_llm():
 
 
 @pytest.mark.asyncio
-async def test_expand_query_default_priority_is_low():
+async def test_expand_query_default_priority_is_low() -> None:
     """Test that query expansion defaults to low priority when not specified."""
     config = Mock()
     llm_provider = AsyncMock()
@@ -243,13 +248,13 @@ ECHOABLE_META_PHRASES = [
 class TestPromptHasNoEchoableMeta:
     """Prompt templates must not contain meta-instructions that small models echo."""
 
-    def test_single_turn_template_has_no_echoable_meta_lines(self):
+    def test_single_turn_template_has_no_echoable_meta_lines(self) -> None:
         for phrase in ECHOABLE_META_PHRASES:
             assert phrase not in EXPAND_QUERY_PROMPT_TEMPLATE, (
                 f"Template contains echoable meta: '{phrase}'"
             )
 
-    def test_multi_turn_template_has_no_echoable_meta_lines(self):
+    def test_multi_turn_template_has_no_echoable_meta_lines(self) -> None:
         for phrase in ECHOABLE_META_PHRASES:
             assert phrase not in EXPAND_QUERY_WITH_HISTORY_TEMPLATE, (
                 f"History template contains echoable meta: '{phrase}'"
@@ -257,7 +262,7 @@ class TestPromptHasNoEchoableMeta:
 
 
 @pytest.mark.asyncio
-async def test_expand_query_filters_instruction_echo():
+async def test_expand_query_filters_instruction_echo() -> None:
     """When LLM echoes prompt instructions, the result must be empty."""
     config = Mock()
     llm_provider = AsyncMock()
@@ -285,7 +290,7 @@ async def test_expand_query_filters_instruction_echo():
 
 
 @pytest.mark.asyncio
-async def test_expand_query_deduplicates_preserving_order():
+async def test_expand_query_deduplicates_preserving_order() -> None:
     """Duplicate queries must be removed while preserving first-occurrence order."""
     config = Mock()
     llm_provider = AsyncMock()
@@ -314,7 +319,7 @@ async def test_expand_query_deduplicates_preserving_order():
 
 
 @pytest.mark.asyncio
-async def test_expand_query_rejects_wrapped_labels_and_preamble():
+async def test_expand_query_rejects_wrapped_labels_and_preamble() -> None:
     """Preamble lines like 'Here are the queries:' must be stripped."""
     config = Mock()
     llm_provider = AsyncMock()
@@ -336,31 +341,32 @@ async def test_expand_query_rejects_wrapped_labels_and_preamble():
 
     # Preamble "Here are the generated queries:" must be excluded
     assert "Here are the generated queries:" not in expanded_queries
-    assert len(expanded_queries) == 3
+    expected_query_count = 3
+    assert len(expanded_queries) == expected_query_count
 
 
 class TestPromptHasBilingualOutputLabels:
     """Prompt templates must include both Japanese and English output labels
     to prevent small models from stopping after the Japanese section."""
 
-    def test_single_turn_template_has_english_label(self):
+    def test_single_turn_template_has_english_label(self) -> None:
         assert "English(" in EXPAND_QUERY_PROMPT_TEMPLATE, (
             "Single-turn template must contain 'English(' label to prompt bilingual output"
         )
 
-    def test_multi_turn_template_has_english_label(self):
+    def test_multi_turn_template_has_english_label(self) -> None:
         assert "English(" in EXPAND_QUERY_WITH_HISTORY_TEMPLATE, (
             "Multi-turn template must contain 'English(' label to prompt bilingual output"
         )
 
-    def test_single_turn_english_label_comes_after_japanese(self):
+    def test_single_turn_english_label_comes_after_japanese(self) -> None:
         jp_pos = EXPAND_QUERY_PROMPT_TEMPLATE.find("Japanese(")
         en_pos = EXPAND_QUERY_PROMPT_TEMPLATE.find("English(")
         assert jp_pos < en_pos, (
             "English label must come after Japanese label in single-turn template"
         )
 
-    def test_multi_turn_english_label_comes_after_japanese(self):
+    def test_multi_turn_english_label_comes_after_japanese(self) -> None:
         jp_pos = EXPAND_QUERY_WITH_HISTORY_TEMPLATE.find("Japanese(")
         en_pos = EXPAND_QUERY_WITH_HISTORY_TEMPLATE.find("English(")
         assert jp_pos < en_pos, (
@@ -369,7 +375,7 @@ class TestPromptHasBilingualOutputLabels:
 
 
 @pytest.mark.asyncio
-async def test_expand_query_parses_multi_digit_numbered_lines():
+async def test_expand_query_parses_multi_digit_numbered_lines() -> None:
     """Lines with multi-digit numbers (10., 11., etc.) must have numbers stripped."""
     config = Mock()
     llm_provider = AsyncMock()
@@ -404,7 +410,9 @@ class TestExpandQueryWithHistoryTemplateNoAIChipContamination:
     """The multi-turn few-shot example must not contain domain-specific content
     that Gemma 4 (12B) copies verbatim instead of learning the pattern."""
 
-    def test_expand_query_with_history_template_does_not_contain_ai_chip_content(self):
+    def test_expand_query_with_history_template_does_not_contain_ai_chip_content(
+        self,
+    ) -> None:
         """Template must not contain concrete topical examples that cause contamination."""
         assert "AIチップ" not in EXPAND_QUERY_WITH_HISTORY_TEMPLATE, (
             "Template contains 'AIチップ' which causes few-shot example contamination"
@@ -416,7 +424,7 @@ class TestExpandQueryWithHistoryTemplateNoAIChipContamination:
             "Template contains 'AMD Intel' which causes few-shot example contamination"
         )
 
-    def test_expand_query_with_history_template_has_neutral_examples(self):
+    def test_expand_query_with_history_template_has_neutral_examples(self) -> None:
         """Template must use abstract placeholders instead of real topics."""
         assert "[TOPIC_A]" in EXPAND_QUERY_WITH_HISTORY_TEMPLATE, (
             "Template should contain abstract placeholder [TOPIC_A]"
@@ -435,7 +443,7 @@ class TestExpandQueryWithHistoryTemplateNoAIChipContamination:
                 f"Template contains concrete topic example '{phrase}'"
             )
 
-    def test_expand_query_with_history_template_has_anti_copy_rule(self):
+    def test_expand_query_with_history_template_has_anti_copy_rule(self) -> None:
         """Template must explicitly tell the model not to copy example topics."""
         assert "SAME TOPIC as the input" in EXPAND_QUERY_WITH_HISTORY_TEMPLATE, (
             "Template must contain anti-contamination instruction 'SAME TOPIC as the input'"
@@ -445,14 +453,14 @@ class TestExpandQueryWithHistoryTemplateNoAIChipContamination:
 class TestExpandQueryPromptGemma4AndKVCachePrefix:
     """Templates must use Gemma 4 turn markers for raw=True and keep Current Date after static rules."""
 
-    def test_single_turn_template_uses_gemma4_turn_markers(self):
+    def test_single_turn_template_uses_gemma4_turn_markers(self) -> None:
         assert EXPAND_QUERY_PROMPT_TEMPLATE.startswith("<|turn>user\n")
         assert "<turn|>\n<|turn>model" in EXPAND_QUERY_PROMPT_TEMPLATE
         assert EXPAND_QUERY_PROMPT_TEMPLATE.index(
             "Current Date:"
         ) > EXPAND_QUERY_PROMPT_TEMPLATE.index("</rules>")
 
-    def test_multi_turn_template_uses_gemma4_turn_markers(self):
+    def test_multi_turn_template_uses_gemma4_turn_markers(self) -> None:
         assert EXPAND_QUERY_WITH_HISTORY_TEMPLATE.startswith("<|turn>user\n")
         assert "<turn|>\n<|turn>model" in EXPAND_QUERY_WITH_HISTORY_TEMPLATE
         assert EXPAND_QUERY_WITH_HISTORY_TEMPLATE.index(

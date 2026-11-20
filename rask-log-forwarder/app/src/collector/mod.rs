@@ -37,8 +37,8 @@ pub use discovery::{ContainerInfo, DiscoveryError, ServiceDiscovery, ServiceDisc
 pub use docker::{
     CollectorError as DockerError, DedupeFilter, DockerCollector, DockerConnectError,
     DockerContainerInfo, DockerEndpointError, LogStreamOptions, compute_resume_log_options,
-    connect_docker, get_validated_docker_endpoint, parse_log_timestamp_prefix,
-    validate_docker_endpoint,
+    connect_docker, connect_docker_with, get_validated_docker_endpoint,
+    get_validated_docker_endpoint_with, parse_log_timestamp_prefix, validate_docker_endpoint,
 };
 
 #[derive(Error, Debug)]
@@ -78,13 +78,11 @@ impl LogStream {
     pub(crate) fn from_log_output(output: &LogOutput) -> Self {
         match output {
             LogOutput::StdErr { .. } => Self::Stderr,
-            LogOutput::StdOut { .. } => Self::Stdout,
-            // TTY-attached containers: Docker merges both streams into a
-            // single console stream and reports it as stdout.
-            LogOutput::Console { .. } => Self::Stdout,
-            // Only produced by the attach endpoint's input side, never by
-            // `docker logs`.
-            LogOutput::StdIn { .. } => Self::Stdout,
+            // Console (TTY-attached containers) and StdIn (attach input, never
+            // produced by `docker logs`) both map to stdout.
+            LogOutput::StdOut { .. } | LogOutput::Console { .. } | LogOutput::StdIn { .. } => {
+                Self::Stdout
+            }
         }
     }
 }
@@ -122,25 +120,63 @@ impl Default for CollectorConfig {
     }
 }
 
-#[derive(Debug)]
+type EnvLookup = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
+
 pub struct LogCollector {
-    #[allow(dead_code)]
     config: CollectorConfig,
     discovery: discovery::ServiceDiscovery,
     container_info: Option<Arc<discovery::ContainerInfo>>,
     target_service: String,
     last_timestamp: Option<DateTime<Utc>>,
     warned_malformed_prefix: bool,
+    env_lookup: EnvLookup,
+}
+
+impl std::fmt::Debug for LogCollector {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LogCollector")
+            .field("config", &self.config)
+            .field("target_service", &self.target_service)
+            .field("last_timestamp", &self.last_timestamp)
+            .field("warned_malformed_prefix", &self.warned_malformed_prefix)
+            .finish_non_exhaustive()
+    }
 }
 
 impl LogCollector {
-    pub async fn new(config: CollectorConfig) -> Result<Self, CollectorError> {
-        let discovery = discovery::ServiceDiscovery::new().await?;
+    /// Creates a [`LogCollector`] reading environment variables from the
+    /// process environment.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CollectorError::DiscoveryError`] if Docker discovery setup or
+    /// target service resolution fails.
+    pub fn new(config: CollectorConfig) -> Result<Self, CollectorError> {
+        Self::new_with_env(config, Arc::new(|k| std::env::var(k).ok()))
+    }
+
+    /// Creates a [`LogCollector`] using `env_lookup` as the sole source of
+    /// environment variables for service discovery and Docker connections.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CollectorError::DiscoveryError`] if Docker discovery setup or
+    /// target service resolution fails.
+    pub fn new_with_env(
+        config: CollectorConfig,
+        env_lookup: EnvLookup,
+    ) -> Result<Self, CollectorError> {
+        let env_for_discovery = Arc::clone(&env_lookup);
+        let discovery = discovery::ServiceDiscovery::new_with_env(move |k| env_for_discovery(k))?;
 
         let target_service = if let Some(ref service) = config.target_service {
             service.clone()
         } else if config.auto_discover {
-            discovery.get_target_service()?
+            if let Some(service) = env_lookup("TARGET_SERVICE") {
+                service
+            } else {
+                discovery.get_target_service()?
+            }
         } else {
             return Err(CollectorError::DiscoveryError(
                 discovery::DiscoveryError::NoTargetService,
@@ -154,13 +190,23 @@ impl LogCollector {
             target_service,
             last_timestamp: None,
             warned_malformed_prefix: false,
+            env_lookup,
         })
     }
 
+    #[must_use]
     pub fn get_target_service(&self) -> &str {
         &self.target_service
     }
 
+    /// Continuously discovers the target container and streams its Docker logs
+    /// onto `tx` until cancelled or stopped.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CollectorError::DockerError`] on fatal Docker endpoint
+    /// configuration errors, or [`CollectorError::CollectionStopped`] if `tx`
+    /// is closed by the downstream consumer.
     pub async fn start_collection(
         &mut self,
         tx: mpsc::Sender<LogEntry>,
@@ -204,7 +250,7 @@ impl LogCollector {
             }
             self.container_info = Some(Arc::clone(&container_info));
 
-            let docker_collector = match DockerCollector::new().await {
+            let docker_collector = match DockerCollector::new_with_env(|k| (self.env_lookup)(k)) {
                 Ok(c) => c,
                 Err(e @ docker::CollectorError::EndpointError(_)) => {
                     tracing::error!(
@@ -278,8 +324,8 @@ impl LogCollector {
     /// Sleeps for `delay`, returning early (with `true`) if cancelled first.
     async fn sleep_or_cancelled(delay: Duration, cancel_token: &CancellationToken) -> bool {
         tokio::select! {
-            _ = cancel_token.cancelled() => true,
-            _ = tokio::time::sleep(delay) => false,
+            () = cancel_token.cancelled() => true,
+            () = tokio::time::sleep(delay) => false,
         }
     }
 
@@ -315,7 +361,7 @@ impl LogCollector {
         loop {
             tokio::select! {
                 // Check for cancellation signal first
-                _ = cancel_token.cancelled() => {
+                () = cancel_token.cancelled() => {
                     tracing::info!("Collector received cancellation signal, stopping log collection");
                     return Ok(StreamExit::Cancelled);
                 }
@@ -361,7 +407,7 @@ impl LogCollector {
                             // drop when the batching/send side can't keep up, while
                             // staying responsive to cancellation in the meantime.
                             tokio::select! {
-                                _ = cancel_token.cancelled() => {
+                                () = cancel_token.cancelled() => {
                                     tracing::info!("Collector received cancellation signal while backpressured, stopping log collection");
                                     return Ok(StreamExit::Cancelled);
                                 }
@@ -393,6 +439,7 @@ impl LogCollector {
         }
     }
 
+    #[must_use]
     pub fn get_container_info(&self) -> Option<&discovery::ContainerInfo> {
         self.container_info.as_deref()
     }
@@ -493,7 +540,6 @@ mod reconnect_tests {
     }
 
     #[tokio::test]
-    #[serial_test::serial]
     async fn start_collection_resets_reconnect_delay_after_established_stream() {
         use std::sync::atomic::{AtomicUsize, Ordering};
         use wiremock::matchers::{method, path_regex};
@@ -530,7 +576,9 @@ mod reconnect_tests {
                 let bytes = line.as_bytes();
                 let mut frame = Vec::with_capacity(8 + bytes.len());
                 frame.extend_from_slice(&[1, 0, 0, 0]);
-                frame.extend_from_slice(&(bytes.len() as u32).to_be_bytes());
+                // Formatted test log line is under 64 bytes and always fits in `u32`.
+                let len = u32::try_from(bytes.len()).unwrap_or(u32::MAX);
+                frame.extend_from_slice(&len.to_be_bytes());
                 frame.extend_from_slice(bytes);
                 ResponseTemplate::new(200).set_body_bytes(frame)
             }
@@ -554,18 +602,17 @@ mod reconnect_tests {
             .mount(&mock_server)
             .await;
 
-        unsafe {
-            std::env::set_var("DOCKER_HOST", mock_server.uri());
-        }
-
-        let mut collector = LogCollector::new(CollectorConfig {
-            auto_discover: false,
-            target_service: Some("alt-backend".to_string()),
-            follow_rotations: true,
-            buffer_size: 8192,
-        })
-        .await
-        .expect("LogCollector::new should succeed with mock DOCKER_HOST");
+        let docker_host = mock_server.uri();
+        let mut collector = LogCollector::new_with_env(
+            CollectorConfig {
+                auto_discover: false,
+                target_service: Some("alt-backend".to_string()),
+                follow_rotations: true,
+                buffer_size: 8192,
+            },
+            Arc::new(move |k| (k == "DOCKER_HOST").then(|| docker_host.clone())),
+        )
+        .expect("LogCollector::new_with_env should succeed with mock DOCKER_HOST");
 
         let (tx, mut rx) = mpsc::channel(16);
         let cancel_token = CancellationToken::new();
@@ -594,10 +641,11 @@ mod reconnect_tests {
         assert_eq!(second.raw_bytes.as_ref(), b"stream-2\n");
 
         cancel_token.cancel();
-        let _ = tokio::time::timeout(Duration::from_secs(2), handle).await;
-
-        unsafe {
-            std::env::remove_var("DOCKER_HOST");
+        if let Err(err) = tokio::time::timeout(Duration::from_secs(2), handle).await {
+            tracing::debug!(
+                ?err,
+                "collector task did not finish within shutdown timeout"
+            );
         }
 
         assert!(

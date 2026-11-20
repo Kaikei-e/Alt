@@ -157,7 +157,9 @@ func (u *RecordReadingEventsUsecase) markArticleRead(ctx context.Context, articl
 	}
 	parsedURL, err := url.Parse(source.URL)
 	if err != nil || parsedURL.Scheme == "" {
-		return false, nil
+		slog.WarnContext(ctx, "record_reading_events: invalid article source URL for read sync",
+			"article_id", articleID, "error", err)
+		return false, nil //nolint:nilerr // invalid stored URL skips feed read-sync without failing reading-event ingestion
 	}
 	if err := u.articleStatusPort.MarkArticleAsRead(ctx, *parsedURL, userID); err != nil {
 		if errors.Is(err, domain.ErrFeedNotFound) {

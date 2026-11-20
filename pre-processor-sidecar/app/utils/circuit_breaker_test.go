@@ -79,7 +79,7 @@ func TestCircuitBreaker_FailureThreshold(t *testing.T) {
 			return testError
 		})
 
-		if err != testError {
+		if !errors.Is(err, testError) {
 			t.Errorf("Expected test error for operation %d, got %v", i, err)
 		}
 
@@ -93,7 +93,7 @@ func TestCircuitBreaker_FailureThreshold(t *testing.T) {
 		return testError
 	})
 
-	if err != testError {
+	if !errors.Is(err, testError) {
 		t.Errorf("Expected test error for threshold failure, got %v", err)
 	}
 
@@ -117,9 +117,11 @@ func TestCircuitBreaker_OpenStateRejectsRequests(t *testing.T) {
 
 	// Force circuit to open by exceeding failure threshold
 	for i := 0; i < config.FailureThreshold; i++ {
-		cb.Execute(ctx, func(ctx context.Context) error {
+		if err := cb.Execute(ctx, func(ctx context.Context) error {
 			return testError
-		})
+		}); err == nil {
+			t.Fatalf("Expected error on attempt %d", i)
+		}
 	}
 
 	// Verify circuit is open
@@ -133,7 +135,7 @@ func TestCircuitBreaker_OpenStateRejectsRequests(t *testing.T) {
 		return nil
 	})
 
-	if err != ErrCircuitBreakerOpen {
+	if !errors.Is(err, ErrCircuitBreakerOpen) {
 		t.Errorf("Expected ErrCircuitBreakerOpen, got %v", err)
 	}
 
@@ -158,9 +160,11 @@ func TestCircuitBreaker_HalfOpenTransition(t *testing.T) {
 
 	// Force circuit to open
 	for i := 0; i < config.FailureThreshold; i++ {
-		cb.Execute(ctx, func(ctx context.Context) error {
+		if err := cb.Execute(ctx, func(ctx context.Context) error {
 			return testError
-		})
+		}); err == nil {
+			t.Fatalf("Expected error on attempt %d", i)
+		}
 	}
 
 	// Wait for timeout to pass
@@ -195,9 +199,11 @@ func TestCircuitBreaker_HalfOpenRecovery(t *testing.T) {
 
 	// Force circuit to open
 	for i := 0; i < config.FailureThreshold; i++ {
-		cb.Execute(ctx, func(ctx context.Context) error {
+		if err := cb.Execute(ctx, func(ctx context.Context) error {
 			return errors.New("test failure")
-		})
+		}); err == nil {
+			t.Fatalf("Expected error on attempt %d", i)
+		}
 	}
 
 	// Wait for timeout
@@ -230,15 +236,19 @@ func TestCircuitBreaker_Statistics(t *testing.T) {
 	failureCount := 2
 
 	for i := 0; i < successCount; i++ {
-		cb.Execute(ctx, func(ctx context.Context) error {
+		if err := cb.Execute(ctx, func(ctx context.Context) error {
 			return nil
-		})
+		}); err != nil {
+			t.Fatalf("Unexpected error on success op %d: %v", i, err)
+		}
 	}
 
 	for i := 0; i < failureCount; i++ {
-		cb.Execute(ctx, func(ctx context.Context) error {
+		if err := cb.Execute(ctx, func(ctx context.Context) error {
 			return errors.New("test failure")
-		})
+		}); err == nil {
+			t.Fatalf("Expected error on failure op %d", i)
+		}
 	}
 
 	stats := cb.GetStats()
@@ -271,9 +281,11 @@ func TestCircuitBreaker_Reset(t *testing.T) {
 
 	// Force circuit to open
 	for i := 0; i < config.FailureThreshold; i++ {
-		cb.Execute(ctx, func(ctx context.Context) error {
+		if err := cb.Execute(ctx, func(ctx context.Context) error {
 			return errors.New("test failure")
-		})
+		}); err == nil {
+			t.Fatalf("Expected error on attempt %d", i)
+		}
 	}
 
 	// Verify circuit is open

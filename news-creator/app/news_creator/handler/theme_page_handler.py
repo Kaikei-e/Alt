@@ -107,20 +107,18 @@ def create_theme_page_router(usecase: ThemePageUsecase) -> APIRouter:
             ) from exc
 
         except CardGenerationInvariantError as exc:
-            logger.error(
+            logger.exception(
                 "Theme page generation failed with invariant violation",
                 extra={"error": str(exc), "job_id": str(request.job_id)},
-                exc_info=True,
             )
             raise HTTPException(
                 status_code=500, detail="Internal server error"
             ) from exc
 
         except RuntimeError as exc:
-            logger.error(
+            logger.exception(
                 "Theme page generation failed with runtime error",
                 extra={"error": str(exc), "job_id": str(request.job_id)},
-                exc_info=True,
             )
             raise HTTPException(
                 status_code=502, detail="Upstream service error"

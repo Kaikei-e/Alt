@@ -2,12 +2,12 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 from uuid import UUID
 
 
-class EvaluationType(str, Enum):
+class EvaluationType(StrEnum):
     """Types of evaluation."""
 
     GENRE = "genre"
@@ -17,7 +17,7 @@ class EvaluationType(str, Enum):
     FULL = "full"
 
 
-class AlertLevel(str, Enum):
+class AlertLevel(StrEnum):
     """Alert severity levels."""
 
     OK = "ok"

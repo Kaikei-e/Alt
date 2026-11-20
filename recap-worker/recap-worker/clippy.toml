@@ -9,3 +9,7 @@ too-many-arguments-threshold = 7
 
 # Cognitive complexity threshold
 cognitive-complexity-threshold = 25
+
+# Allow unwrap/expect in test code while forbidding them in production code
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true

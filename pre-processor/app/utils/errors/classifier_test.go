@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"strconv"
 	"syscall"
 	"testing"
 )
@@ -236,7 +237,7 @@ func TestIsRetryableHTTPStatus(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(string(rune(tt.status)), func(t *testing.T) {
+		t.Run(strconv.Itoa(tt.status), func(t *testing.T) {
 			if got := IsRetryableHTTPStatus(tt.status); got != tt.retryable {
 				t.Errorf("IsRetryableHTTPStatus(%d) = %v, want %v", tt.status, got, tt.retryable)
 			}

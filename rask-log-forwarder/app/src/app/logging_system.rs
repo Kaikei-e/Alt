@@ -10,6 +10,7 @@ pub struct LoggingSystem {
 }
 
 impl LoggingSystem {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             directives: Arc::new(RwLock::new(Vec::new())),
@@ -18,6 +19,11 @@ impl LoggingSystem {
     }
 
     /// 完全メモリセーフなディレクティブ追加
+    ///
+    /// # Errors
+    ///
+    /// Returns [`InitializationError`] if parsing `directive_str` fails with an
+    /// error whose fallback strategy does not recover it.
     pub fn add_directive(&self, directive_str: &str) -> Result<(), InitializationError> {
         match LogDirective::parse(directive_str) {
             Ok(directive) => {
@@ -30,7 +36,8 @@ impl LoggingSystem {
                 match e.fallback_strategy() {
                     FallbackStrategy::UseDefaultLevel => {
                         eprintln!("Warning: {e}, using default level");
-                        self.add_default_directive(directive_str)
+                        self.add_default_directive(directive_str);
+                        Ok(())
                     }
                     FallbackStrategy::SkipDirective => {
                         eprintln!("Warning: {e}, skipping directive");
@@ -43,16 +50,19 @@ impl LoggingSystem {
     }
 
     /// デフォルトレベルでのディレクティブ追加
-    fn add_default_directive(&self, directive_str: &str) -> Result<(), InitializationError> {
+    fn add_default_directive(&self, directive_str: &str) {
         let target = directive_str.split('=').next().unwrap_or("unknown");
         let directive = LogDirective::new(target, self.fallback_level);
 
         let mut directives = self.directives.write();
         directives.push(directive);
-        Ok(())
     }
 
     /// 型安全なバッチ追加
+    ///
+    /// # Errors
+    ///
+    /// This method currently never fails and always returns `Ok(())`.
     pub fn add_default_directives(&self) -> Result<(), InitializationError> {
         let default_directives = &[
             ("hyper", LogLevel::Warn),
@@ -72,6 +82,11 @@ impl LoggingSystem {
     }
 
     /// メモリセーフなtracing初期化
+    ///
+    /// # Errors
+    ///
+    /// Returns [`InitializationError::LoggingInitFailed`] if building the
+    /// `EnvFilter` or installing the global tracing subscriber fails.
     pub fn initialize_tracing(&self, default_level: LogLevel) -> Result<(), InitializationError> {
         let filter_string = self.build_filter_string(default_level);
 
@@ -83,9 +98,7 @@ impl LoggingSystem {
         })?;
 
         // Use JSON format if RUST_LOG_FORMAT=json, otherwise use human-readable format
-        let use_json = std::env::var("RUST_LOG_FORMAT")
-            .map(|v| v == "json")
-            .unwrap_or(true); // Default to JSON for production
+        let use_json = std::env::var("RUST_LOG_FORMAT").map_or(true, |v| v == "json"); // Default to JSON for production
 
         if use_json {
             let subscriber = tracing_subscriber::registry().with(env_filter).with(
@@ -125,6 +138,7 @@ impl LoggingSystem {
     }
 
     /// フィルタ文字列の構築
+    #[must_use]
     pub fn build_filter_string(&self, default_level: LogLevel) -> String {
         let directives = self.directives.read();
 
@@ -145,6 +159,7 @@ impl LoggingSystem {
     }
 
     /// 現在のディレクティブ数を取得（テスト用）
+    #[must_use]
     pub fn directive_count(&self) -> usize {
         self.directives.read().len()
     }
@@ -174,7 +189,12 @@ impl From<ConfigLogLevel> for LogLevel {
     }
 }
 
-// Safe logging setup using the memory-safe logging system
+/// Safe logging setup using the memory-safe logging system.
+///
+/// # Errors
+///
+/// Returns [`InitializationError::LoggingInitFailed`] if the one-time tracing
+/// subscriber setup fails.
 pub fn setup_logging_safe(config_level: ConfigLogLevel) -> Result<(), InitializationError> {
     use std::sync::{Mutex, Once};
 
@@ -334,12 +354,18 @@ mod tests {
                     ];
 
                     for directive in directives {
-                        let _ = logging_system.add_directive(&directive);
+                        if let Err(err) = logging_system.add_directive(&directive) {
+                            tracing::debug!(?err, "expected directive failure under load test");
+                        }
                     }
 
                     // Also read frequently
-                    let _ = logging_system.build_filter_string(LogLevel::Info);
-                    let _ = logging_system.directive_count();
+                    assert!(
+                        logging_system
+                            .build_filter_string(LogLevel::Info)
+                            .starts_with("info")
+                    );
+                    assert!(logging_system.directive_count() <= 2000);
                 })
             })
             .collect();
@@ -414,11 +440,8 @@ mod tests {
         // The function might fail due to tracing already being initialized
         // in other tests, but it shouldn't panic
         match result {
-            Ok(()) => {
-                // Success case
-            }
-            Err(InitializationError::LoggingInitFailed { .. }) => {
-                // Expected when tracing is already initialized
+            Ok(()) | Err(InitializationError::LoggingInitFailed { .. }) => {
+                // Success or expected when tracing is already initialized
             }
             Err(e) => {
                 panic!("Unexpected error type: {e:?}");

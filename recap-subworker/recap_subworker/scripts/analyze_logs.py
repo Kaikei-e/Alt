@@ -1,7 +1,8 @@
 import argparse
 import re
 import sqlite3
-from datetime import datetime
+import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pandas as pd
@@ -42,29 +43,29 @@ def parse_logs(log_file_path: str) -> pd.DataFrame:
                             {
                                 "timestamp": timestamp
                                 if timestamp
-                                else datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                else datetime.now(UTC).astimezone().strftime("%Y-%m-%d %H:%M:%S"),
                                 "error_type": error_type,
                                 "raw_line": line.strip()[:200],  # truncate
                             }
                         )
     except FileNotFoundError:
-        print(f"Log file not found: {log_file_path}")
+        sys.stdout.write(f"Log file not found: {log_file_path}\n")
         return pd.DataFrame()
 
     return pd.DataFrame(data)
 
 
-def save_to_db(df: pd.DataFrame, db_path: str = "recap_logs.db"):
+def save_to_db(df: pd.DataFrame, db_path: str = "recap_logs.db") -> None:
     if df.empty:
         return
 
     conn = sqlite3.connect(db_path)
     df.to_sql("log_errors", conn, if_exists="append", index=False)
     conn.close()
-    print(f"Saved {len(df)} error records to {db_path}")
+    sys.stdout.write(f"Saved {len(df)} error records to {db_path}\n")
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="Analyze recap logs for errors.")
     parser.add_argument("log_file", help="Path to the log file")
     parser.add_argument(
@@ -75,11 +76,11 @@ def main():
 
     df = parse_logs(args.log_file)
     if not df.empty:
-        print(f"Found {len(df)} errors.")
-        print(df["error_type"].value_counts())
+        sys.stdout.write(f"Found {len(df)} errors.\n")
+        sys.stdout.write(f"{df['error_type'].value_counts()}\n")
         save_to_db(df, args.db_path)
     else:
-        print("No errors found or empty file.")
+        sys.stdout.write("No errors found or empty file.\n")
 
 
 if __name__ == "__main__":

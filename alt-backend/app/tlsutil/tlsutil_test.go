@@ -74,9 +74,12 @@ func writeTestPKI(t *testing.T, dir, cn string) (certPath, keyPath, caPath strin
 
 func writePEM(t *testing.T, path, blockType string, der []byte) {
 	t.Helper()
-	f, err := os.Create(path)
+	root, err := os.OpenRoot(filepath.Dir(path))
 	require.NoError(t, err)
-	defer f.Close()
+	defer func() { _ = root.Close() }()
+	f, err := root.Create(filepath.Base(path))
+	require.NoError(t, err)
+	defer func() { _ = f.Close() }()
 	require.NoError(t, pem.Encode(f, &pem.Block{Type: blockType, Bytes: der}))
 }
 
@@ -142,7 +145,7 @@ func TestLoadServerConfig_ReloadFailure_FallsBackToCached(t *testing.T) {
 	// Corrupt the cert file after advancing mtime: a parse error at reload
 	// time should NOT kill the listener; the cached cert must be returned.
 	time.Sleep(10 * time.Millisecond)
-	require.NoError(t, os.WriteFile(certPath, []byte("not a pem"), 0o644))
+	require.NoError(t, os.WriteFile(certPath, []byte("not a pem"), 0o600))
 	future := time.Now().Add(2 * time.Second)
 	require.NoError(t, os.Chtimes(certPath, future, future))
 
@@ -290,7 +293,7 @@ func TestOptionsFromEnv(t *testing.T) {
 		t.Setenv("MTLS_CLIENT_AUTH", "")
 		t.Setenv("MTLS_ALLOWED_PEERS", "")
 		opts := OptionsFromEnv()
-		assert.Len(t, opts, 0)
+		assert.Empty(t, opts)
 	})
 
 	t.Run("require_and_verify + allowlist", func(t *testing.T) {
@@ -306,7 +309,7 @@ func TestOptionsFromEnv(t *testing.T) {
 		require.NotNil(t, cfg.VerifyConnection)
 
 		peer := makePeerCert(t, "pre-processor", "pre-processor")
-		assert.NoError(t, cfg.VerifyConnection(tls.ConnectionState{PeerCertificates: []*x509.Certificate{peer}}))
+		require.NoError(t, cfg.VerifyConnection(tls.ConnectionState{PeerCertificates: []*x509.Certificate{peer}}))
 		rogue := makePeerCert(t, "news-creator", "news-creator")
 		assert.Error(t, cfg.VerifyConnection(tls.ConnectionState{PeerCertificates: []*x509.Certificate{rogue}}))
 	})
@@ -345,28 +348,37 @@ func TestEndToEnd_MTLSClient_PassesRequireAndVerify(t *testing.T) {
 	srv := NewMTLSHTTPServer("127.0.0.1:0", srvCfg, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	go func() { _ = srv.Serve(tls.NewListener(ln, srvCfg)) }()
 	t.Cleanup(func() { _ = srv.Close() })
 
 	client, err := NewMTLSClient(certPath, keyPath, caPath)
 	require.NoError(t, err)
-	resp, err := client.Get("https://" + ln.Addr().String() + "/health")
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "https://"+ln.Addr().String()+"/health", nil)
+	require.NoError(t, err)
+	resp, err := client.Do(req)
 	require.NoError(t, err, "client with leaf cert must pass RequireAndVerifyClientCert")
 	defer func() { _ = resp.Body.Close() }()
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 	// A cert-less client must be rejected at handshake time.
-	caPEM, err := os.ReadFile(caPath)
+	root, err := os.OpenRoot(dir)
+	require.NoError(t, err)
+	defer func() { _ = root.Close() }()
+	caPEM, err := root.ReadFile(filepath.Base(caPath))
 	require.NoError(t, err)
 	pool := x509.NewCertPool()
 	require.True(t, pool.AppendCertsFromPEM(caPEM))
 	bare := &http.Client{
 		Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS13}},
 	}
-	//nolint:bodyclose // request must fail before a body exists
-	_, err = bare.Get("https://" + ln.Addr().String() + "/health")
+	bareReq, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "https://"+ln.Addr().String()+"/health", nil)
+	require.NoError(t, err)
+	bareResp, err := bare.Do(bareReq)
+	if bareResp != nil {
+		defer func() { _ = bareResp.Body.Close() }()
+	}
 	require.Error(t, err, "handshake without client cert must fail")
 }
 
@@ -381,13 +393,16 @@ func TestEndToEnd_ServerAccepts_WithNoClientCertRequired(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	}))
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	tlsLn := tls.NewListener(ln, tlsCfg)
 	go func() { _ = srv.Serve(tlsLn) }()
 	t.Cleanup(func() { _ = srv.Close() })
 
-	caPEM, err := os.ReadFile(caPath)
+	root, err := os.OpenRoot(dir)
+	require.NoError(t, err)
+	defer func() { _ = root.Close() }()
+	caPEM, err := root.ReadFile(filepath.Base(caPath))
 	require.NoError(t, err)
 	pool := x509.NewCertPool()
 	require.True(t, pool.AppendCertsFromPEM(caPEM))
@@ -395,8 +410,10 @@ func TestEndToEnd_ServerAccepts_WithNoClientCertRequired(t *testing.T) {
 	client := &http.Client{
 		Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS13}},
 	}
-	resp, err := client.Get("https://" + ln.Addr().String() + "/health")
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "https://"+ln.Addr().String()+"/health", nil)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	resp, err := client.Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }

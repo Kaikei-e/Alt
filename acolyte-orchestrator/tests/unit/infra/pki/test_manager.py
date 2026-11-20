@@ -17,6 +17,7 @@ from tests.unit.infra.pki.helpers import self_signed_pem
 
 SUBJECT = "acolyte-orchestrator"
 NB = datetime(2026, 8, 18, tzinfo=UTC)
+RETRY_ATTEMPTS = 3
 
 
 class FakeIssuer:
@@ -95,7 +96,7 @@ def _manager(tmp_path: Path, issuer: FakeIssuer, now: datetime) -> tuple[Manager
         files=files,
         issuer=issuer,
         renew_at_fraction=0.66,
-        retry_attempts=3,
+        retry_attempts=RETRY_ATTEMPTS,
         retry_backoff_seconds=0.001,
         observer=obs,
         now=lambda: now,
@@ -160,7 +161,7 @@ async def test_enroll_retries_then_fails(tmp_path: Path) -> None:
     mgr, _, obs = _manager(tmp_path, issuer, datetime.now(tz=UTC))
     with pytest.raises(PkiError, match="enroll failed"):
         await mgr.enroll()
-    assert issuer.calls == 3
+    assert issuer.calls == RETRY_ATTEMPTS
     assert obs.retries > 0
 
 

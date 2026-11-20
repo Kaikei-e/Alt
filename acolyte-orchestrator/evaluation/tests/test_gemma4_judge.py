@@ -7,6 +7,8 @@ import asyncio
 from acolyte.port.llm_provider import LLMResponse
 from evaluation.judges.gemma4 import Gemma4FaithfulnessJudge
 
+_EXPECTED_SCORE = 0.75
+
 
 class _FakeLLM:
     def __init__(
@@ -30,7 +32,7 @@ class _FakeLLM:
 
 def test_parses_rubric_score_from_llm_output() -> None:
     judge = Gemma4FaithfulnessJudge(_FakeLLM(text="<score>0.75</score><reason>r</reason>"))
-    assert judge("any prompt") == 0.75
+    assert judge("any prompt") == _EXPECTED_SCORE
 
 
 def test_returns_none_on_timeout() -> None:

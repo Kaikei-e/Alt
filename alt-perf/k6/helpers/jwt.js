@@ -6,8 +6,8 @@
 
 function decodePart(part) {
   let str;
-  if (typeof Buffer !== "undefined") {
-    str = Buffer.from(part, "base64url").toString("utf-8");
+  if (typeof globalThis.Buffer !== "undefined") {
+    str = globalThis.Buffer.from(part, "base64url").toString("utf-8");
   } else {
     let base64 = part.replace(/-/g, "+").replace(/_/g, "/");
     while (base64.length % 4) {

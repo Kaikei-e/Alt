@@ -54,6 +54,12 @@ Checks:
      `# swallow-ok: <reason>` comment (with at least 10 characters after the
      colon) either at the end of the same line or on the nearest previous
      non-blank line.
+ 13. No job step invokes a lint/format/static-analysis tool directly in `run:`
+     (`golangci-lint`, `gofmt`, `go vet`, `gosec`, `govulncheck`, `ruff`,
+     `bandit`, `pyrefly`, `cargo fmt`, `cargo clippy`, `biome`,
+     `svelte-check`, `deno fmt`, `deno lint`, `actionlint`, `buf lint`,
+     `buf breaking`) or `uses:` a lint action or lint Docker image instead of
+     `./scripts/lint/run.sh`.
 """
 from __future__ import annotations
 
@@ -112,6 +118,111 @@ SWALLOW_RE = re.compile(
 SWALLOW_OK_COMMENT_RE = re.compile(r"^#\s*swallow-ok:(.*)$")
 SWALLOW_OK_SAME_LINE_RE = re.compile(r"(?:^|\s)#\s*swallow-ok:(.*)$")
 MIN_SWALLOW_REASON_LEN = 10
+
+# --- Check 13 constants ------------------------------------------------
+DIRECT_LINT_TOOLS = frozenset(
+    {
+        "golangci-lint",
+        "gofmt",
+        "gosec",
+        "govulncheck",
+        "ruff",
+        "bandit",
+        "pyrefly",
+        "biome",
+        "svelte-check",
+        "actionlint",
+        "docdag",
+        "promtool",
+        "amtool",
+        "lkal",
+    }
+)
+WRAPPED_STATIC_SCRIPTS = frozenset(
+    {
+        "compose-feature-gate.py",
+        "compose-image-audit.py",
+        "check-compose-variables.sh",
+        "test_compose_wiring.sh",
+        "kisage-env.py",
+        "regen-service-registry.py",
+        "observability-validate.sh",
+        "harness_selfcheck.py",
+        "postmortem_ledger.py",
+        "migration_destructive_gate.py",
+        "adr_supersede_gate.py",
+        "check-suites.sh",
+        "workflow-safety-check.py",
+    }
+)
+COMPOSE_AUDIT_SCRIPT_RE = re.compile(r"^compose-.*-audit\.py$")
+GO_RUN_LINT_PACKAGES = frozenset(
+    {"actionlint", "golangci-lint", "gosec", "govulncheck"}
+)
+PYTHON_BIN_RE = re.compile(r"^python(?:\d+(?:\.\d+)*)?$")
+ENV_ASSIGN_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=.*$")
+SHELL_LEAD_PREFIXES = frozenset(
+    {
+        "if",
+        "then",
+        "elif",
+        "else",
+        "do",
+        "while",
+        "until",
+        "!",
+        "time",
+        "exec",
+        "command",
+        "builtin",
+        "nohup",
+    }
+)
+UV_RUN_VALUE_FLAGS = frozenset(
+    {
+        "--python",
+        "-p",
+        "--with",
+        "--with-editable",
+        "--directory",
+        "--project",
+        "--package",
+        "--group",
+        "--extra",
+        "--python-preference",
+        "--index-url",
+        "--extra-index-url",
+    }
+)
+FORBIDDEN_LINT_ACTIONS = frozenset(
+    {
+        "golangci/golangci-lint-action",
+        "rhysd/actionlint",
+        "reviewdog/action-actionlint",
+        "raven-actions/actionlint",
+        "astral-sh/ruff-action",
+        "chartboost/ruff-action",
+        "bufbuild/buf-lint-action",
+        "bufbuild/buf-breaking-action",
+        "actions-rs/clippy-check",
+        "clechasseur/rs-clippy-check",
+        "securego/gosec",
+    }
+)
+FORBIDDEN_LINT_IMAGE_NAMES = frozenset(
+    {
+        "actionlint",
+        "golangci-lint",
+        "gosec",
+        "govulncheck",
+        "ruff",
+        "bandit",
+        "pyrefly",
+        "biome",
+        "svelte-check",
+        "buf",
+    }
+)
 
 
 def resolve_path_filter_target(entry: str) -> str:
@@ -324,6 +435,323 @@ def is_disabled(node):
     if node.get("continue-on-error") in (True, "true"):
         return True
     return str(node.get("if", "")).strip().lower() in ("false", "${{ false }}")
+
+
+def _extract_shell_segments(
+    script: str, start: int = 0, stop_on_rparen: bool = False
+) -> tuple[list[list[str]], int]:
+    """Split a shell `run:` body into command token lists without matching comments."""
+    segments: list[list[str]] = []
+    tokens: list[str] = []
+    buf: list[str] = []
+    in_token = False
+    in_single = False
+    in_double = False
+    i = start
+    n = len(script)
+
+    def flush_token() -> None:
+        nonlocal in_token
+        if in_token or buf:
+            tokens.append("".join(buf))
+            buf.clear()
+            in_token = False
+
+    def flush_segment() -> None:
+        flush_token()
+        if tokens:
+            segments.append(list(tokens))
+            tokens.clear()
+
+    while i < n:
+        ch = script[i]
+        if in_single:
+            if ch == "'":
+                in_single = False
+            else:
+                buf.append(ch)
+            i += 1
+            continue
+
+        if in_double:
+            if ch == "\\" and i + 1 < n:
+                if script[i + 1] == "\n":
+                    i += 2
+                    continue
+                buf.append(script[i + 1])
+                i += 2
+                continue
+            if ch == '"':
+                in_double = False
+                i += 1
+                continue
+            if ch == "$" and i + 1 < n and script[i + 1] == "(":
+                sub_segs, next_i = _extract_shell_segments(
+                    script, i + 2, stop_on_rparen=True
+                )
+                segments.extend(sub_segs)
+                i = next_i
+                continue
+            buf.append(ch)
+            i += 1
+            continue
+
+        if ch == "\\" and i + 1 < n:
+            if script[i + 1] == "\n":
+                i += 2
+                continue
+            buf.append(script[i + 1])
+            in_token = True
+            i += 2
+            continue
+
+        if ch == "'":
+            in_single = True
+            in_token = True
+            i += 1
+            continue
+
+        if ch == '"':
+            in_double = True
+            in_token = True
+            i += 1
+            continue
+
+        if ch == "#" and not in_token:
+            while i < n and script[i] != "\n":
+                i += 1
+            continue
+
+        if stop_on_rparen and ch == ")":
+            flush_segment()
+            return segments, i + 1
+
+        if ch == "$" and i + 1 < n and script[i + 1] == "(":
+            sub_segs, next_i = _extract_shell_segments(
+                script, i + 2, stop_on_rparen=True
+            )
+            segments.extend(sub_segs)
+            i = next_i
+            continue
+
+        if ch in ("\n", ";", "(", ")", "{", "}"):
+            flush_segment()
+            i += 1
+            continue
+
+        if ch in ("&", "|"):
+            flush_segment()
+            if i + 1 < n and script[i + 1] == ch:
+                i += 2
+            else:
+                i += 1
+            continue
+
+        if ch.isspace():
+            flush_token()
+            i += 1
+            continue
+
+        buf.append(ch)
+        in_token = True
+        i += 1
+
+    flush_segment()
+    return segments, i
+
+
+def _strip_shell_prefixes(tokens: list[str]) -> list[str]:
+    i = 0
+    while i < len(tokens):
+        tok = tokens[i]
+        if tok in SHELL_LEAD_PREFIXES or ENV_ASSIGN_RE.match(tok):
+            i += 1
+            continue
+        if tok == "env":
+            i += 1
+            while i < len(tokens):
+                arg = tokens[i]
+                if ENV_ASSIGN_RE.match(arg):
+                    i += 1
+                elif arg in ("-u", "-C", "-S", "--unset", "--chdir"):
+                    i += 2
+                elif arg.startswith("-"):
+                    i += 1
+                else:
+                    break
+            continue
+        break
+    return tokens[i:]
+
+
+def _first_positional(args: list[str], value_flags: frozenset[str] = frozenset()) -> tuple[str | None, list[str]]:
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--":
+            i += 1
+            break
+        if arg in value_flags:
+            i += 2
+            continue
+        if arg.startswith("-"):
+            i += 1
+            continue
+        return arg, args[i + 1 :]
+    if i < len(args):
+        return args[i], args[i + 1 :]
+    return None, []
+
+
+def _is_wrapped_static_script(target: str) -> bool:
+    base = os.path.basename(target)
+    return base in WRAPPED_STATIC_SCRIPTS or bool(COMPOSE_AUDIT_SCRIPT_RE.match(base))
+
+
+def _detect_direct_lint_command(tokens: list[str]) -> str | None:
+    core = _strip_shell_prefixes(tokens)
+    if not core:
+        return None
+    cmd = os.path.basename(core[0])
+    args = core[1:]
+
+    if cmd in DIRECT_LINT_TOOLS or _is_wrapped_static_script(cmd):
+        return cmd
+
+    if cmd == "go":
+        sub, rest = _first_positional(args)
+        if sub == "vet":
+            return "go vet"
+        if sub == "run":
+            pkg, _ = _first_positional(rest)
+            if pkg:
+                pkg_name = pkg.split("@", 1)[0].rstrip("/").rsplit("/", 1)[-1]
+                if pkg_name in GO_RUN_LINT_PACKAGES:
+                    return f"go run {pkg_name}"
+        return None
+
+    if cmd == "cargo":
+        idx = 0
+        while idx < len(args) and args[idx].startswith("+"):
+            idx += 1
+        sub, _ = _first_positional(args[idx:])
+        if sub in ("fmt", "clippy"):
+            return f"cargo {sub}"
+        return None
+
+    if cmd == "deno":
+        sub, _ = _first_positional(args)
+        if sub in ("fmt", "lint"):
+            return f"deno {sub}"
+        return None
+
+    if cmd == "buf":
+        sub, _ = _first_positional(args)
+        if sub in ("lint", "breaking"):
+            return f"buf {sub}"
+        return None
+
+    if cmd == "uv":
+        sub, rest = _first_positional(args)
+        if sub == "run":
+            inner_cmd, inner_rest = _first_positional(rest, UV_RUN_VALUE_FLAGS)
+            if inner_cmd is not None:
+                return _detect_direct_lint_command([inner_cmd, *inner_rest])
+        return None
+
+    if PYTHON_BIN_RE.match(cmd):
+        i = 0
+        while i < len(args):
+            if args[i] == "-m" and i + 1 < len(args):
+                mod_root = args[i + 1].split(".", 1)[0]
+                if mod_root in ("ruff", "bandit", "pyrefly"):
+                    return f"{cmd} -m {mod_root}"
+                return None
+            if args[i] == "-c":
+                return None
+            if args[i] in ("-W", "-X", "-Q"):
+                i += 2
+                continue
+            if not args[i].startswith("-"):
+                if _is_wrapped_static_script(args[i]):
+                    return os.path.basename(args[i])
+                return None
+            i += 1
+        return None
+
+    if cmd in ("bash", "sh"):
+        i = 0
+        while i < len(args):
+            if args[i] == "-c":
+                return None
+            if args[i] in ("-o", "+o"):
+                i += 2
+                continue
+            if args[i].startswith(("-", "+")):
+                i += 1
+                continue
+            if _is_wrapped_static_script(args[i]):
+                return os.path.basename(args[i])
+            return None
+        return None
+
+    if cmd in ("bunx", "npx"):
+        inner, _ = _first_positional(args, frozenset({"-p", "--package"}))
+        if inner:
+            inner_base = os.path.basename(inner.split("@", 1)[0] if not inner.startswith("@") else inner)
+            if inner_base in ("biome", "svelte-check") or inner.startswith("@biomejs/biome"):
+                return f"{cmd} {inner_base}"
+        return None
+
+    if cmd in ("poetry", "pipenv", "pdm") and args and args[0] == "run":
+        return _detect_direct_lint_command(args[1:])
+
+    return None
+
+
+def find_direct_lint_invocations(run_body: str) -> list[str]:
+    """Return lint tool commands invoked directly inside a `run:` body."""
+    normalized = run_body.replace("\\\n", " ")
+    segments, _ = _extract_shell_segments(normalized)
+    found: list[str] = []
+    for seg in segments:
+        hit = _detect_direct_lint_command(seg)
+        if hit and hit not in found:
+            found.append(hit)
+    return found
+
+
+def is_forbidden_lint_uses(step: Mapping[str, Any]) -> bool:
+    """True if a step `uses:` a lint action or lint Docker image directly."""
+    uses = step.get("uses")
+    if not isinstance(uses, str):
+        return False
+    ref = uses.strip()
+    if ref.startswith("./"):
+        return False
+    ref_base = ref.split("@", 1)[0].lower()
+
+    if ref_base.startswith("docker://"):
+        image_path = ref_base.removeprefix("docker://")
+        image_name = image_path.rsplit("/", 1)[-1].split(":", 1)[0]
+        return image_name in FORBIDDEN_LINT_IMAGE_NAMES
+
+    if ref_base == "bufbuild/buf-action":
+        with_ = step.get("with")
+        return not (isinstance(with_, dict) and with_.get("setup_only") is True)
+
+    if ref_base in FORBIDDEN_LINT_ACTIONS:
+        return True
+
+    action_tail = ref_base.rsplit("/", 1)[-1]
+    return action_tail in (
+        "golangci-lint-action",
+        "actionlint",
+        "ruff-action",
+        "buf-lint-action",
+        "buf-breaking-action",
+        "clippy-check",
+    )
 
 
 def iter_run_steps(doc):
@@ -545,6 +973,15 @@ def _check_workflow_doc_details(
                         f"branches are mutable supply-chain inputs."
                     )
                     bad += 1
+                # Rule 13a — no lint actions or lint Docker images.
+                if is_forbidden_lint_uses(step):
+                    errors.append(
+                        f"::error file={path}::job {job_name!r} uses "
+                        f"lint action/image {uses!r}; invoke "
+                        f"./scripts/lint/run.sh instead so CI and local "
+                        f"development run the same command."
+                    )
+                    bad += 1
             # Rule 6 — no untrusted context expanded into a shell body.
             run = step.get("run")
             if isinstance(run, str):
@@ -559,6 +996,15 @@ def _check_workflow_doc_details(
                             f"in the shell."
                         )
                         bad += 1
+                # Rule 13b — no direct lint/static-analysis commands in run:.
+                for tool in find_direct_lint_invocations(run):
+                    errors.append(
+                        f"::error file={path}::job {job_name!r} invokes "
+                        f"{tool!r} directly in a `run:` block; invoke "
+                        f"./scripts/lint/run.sh instead so CI and local "
+                        f"development run the same command."
+                    )
+                    bad += 1
 
     return errors, bad
 

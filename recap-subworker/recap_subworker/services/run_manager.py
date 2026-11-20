@@ -59,6 +59,7 @@ SessionFactory = Callable[[], Any]
 
 ORPHANED_RUN_MESSAGE = "run orphaned by a subworker restart"
 CANCELLED_RUN_MESSAGE = "run cancelled during shutdown"
+_MIN_REPRESENTATIVE_TEXT_LENGTH = 20
 
 
 def _hash_payload(payload: dict[str, Any]) -> str:
@@ -103,7 +104,7 @@ class ClassificationRunSubmission:
 class RunManager:
     """Coordinates run creation, idempotency checks, and background execution."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - constructor injection of collaborators
         self,
         settings: Settings,
         session_factory: SessionFactory,
@@ -178,9 +179,8 @@ class RunManager:
                     stored_hash = existing.request_payload.get("request_hash")
                     if stored_hash and stored_hash != request_hash:
                         await session.rollback()
-                        raise IdempotencyMismatchError(
-                            "request payload differs for idempotency key"
-                        )
+                        msg = "request payload differs for idempotency key"
+                        raise IdempotencyMismatchError(msg)
                     if _should_reuse_idempotent_run(existing.status):
                         await session.rollback()
                         return existing
@@ -193,7 +193,8 @@ class RunManager:
 
             if await dao.has_running_run(submission.job_id, submission.genre):
                 await session.rollback()
-                raise ConcurrentRunError("run already in progress for job/genre")
+                msg = "run already in progress for job/genre"
+                raise ConcurrentRunError(msg)
 
             run = NewRun(
                 job_id=submission.job_id,
@@ -251,7 +252,9 @@ class RunManager:
                 raise
             except TimeoutError:
                 await self._handle_failure(run_id, f"pipeline timed out after {self._run_timeout}s")
-                LOGGER.error("run.process.timeout", run_id=run_id, timeout_s=self._run_timeout)
+                LOGGER.error(  # noqa: TRY400 - expected timeout; traceback not needed
+                    "run.process.timeout", run_id=run_id, timeout_s=self._run_timeout
+                )
             except Exception as exc:
                 await self._handle_failure(run_id, str(exc))
                 raise
@@ -261,54 +264,61 @@ class RunManager:
             LOGGER.warning("pipeline unavailable; skipping run", run_id=run_id)
             return
 
-        # Session 1: Fetch record and validate payload (close session before long-running operation)
-        record = None
-        pipeline_request = None
+        fetched = await self._fetch_and_build_pipeline_request(run_id)
+        if fetched is None:
+            return
+        record, pipeline_request = fetched
+
+        response = await self._execute_pipeline_with_failure_mark(run_id, pipeline_request)
+        await self._persist_pipeline_results(run_id, record, response)
+
+    async def _fetch_and_build_pipeline_request(
+        self, run_id: int
+    ) -> tuple[RunRecord, EvidenceRequest] | None:
+        """Session 1: Fetch run record and build validated pipeline request."""
         try:
             async with self._session_factory() as session:
                 dao = self._dao_factory(session)
                 record = await dao.fetch_run(run_id)
                 if not record:
                     await session.rollback()
-                    return
+                    return None
                 payload_container = record.request_payload or {}
                 payload_dict = payload_container.get("payload")
                 if payload_dict is None:
                     await dao.mark_run_failure(run_id, "failed", "request payload missing")
                     await session.commit()
-                    return
-                # Validate payload before closing session
+                    return None
                 job_payload = ClusterJobPayload.model_validate(payload_dict)
                 pipeline_request = self._build_pipeline_request(record, job_payload)
+                return record, pipeline_request
         except Exception as exc:
-            error_str = str(exc)
-            error_type = type(exc).__name__
-
-            # Check if this is a connection closed error during rollback
             if _is_connection_closed_error(exc):
                 LOGGER.warning(
                     "run.process.connection_closed",
                     run_id=run_id,
-                    error=error_str,
-                    error_type=error_type,
+                    error=str(exc),
+                    error_type=type(exc).__name__,
                     message="Connection was closed during record fetch",
                 )
             raise
 
-        # Long-running operation: Run pipeline (embedding generation and clustering, no database connection needed)
+    async def _execute_pipeline_with_failure_mark(
+        self, run_id: int, pipeline_request: EvidenceRequest
+    ) -> EvidenceResponse:
+        """Run pipeline outside DB session; mark run failed if execution raises."""
         try:
             LOGGER.info("run.pipeline.executing", run_id=run_id, stage="clustering")
             response = await self._execute_pipeline(pipeline_request)
             LOGGER.info("run.pipeline.completed", run_id=run_id, stage="clustering")
         except Exception as exc:
-            # If pipeline fails, mark as failed in a new session
             try:
                 async with self._session_factory() as session:
                     dao = self._dao_factory(session)
                     await dao.mark_run_failure(run_id, "failed", str(exc))
                     await session.commit()
             except Exception as db_exc:
-                LOGGER.error(
+                LOGGER.exception(
                     "run.process.failure_mark_failed",
                     run_id=run_id,
                     pipeline_error=str(exc),
@@ -316,10 +326,13 @@ class RunManager:
                     message="Failed to mark run as failed after pipeline error",
                 )
             raise
+        else:
+            return response
 
-        # Session 2: Save results (open new session after long-running operation)
-        # record is guaranteed to be non-None at this point (checked in Session 1)
-        assert record is not None, "record should not be None after Session 1"
+    async def _persist_pipeline_results(
+        self, run_id: int, record: RunRecord, response: EvidenceResponse
+    ) -> None:
+        """Session 2: Persist clusters, diagnostics, metrics, and final run status."""
         try:
             async with self._session_factory() as session:
                 dao = self._dao_factory(session)
@@ -328,31 +341,8 @@ class RunManager:
                 diagnostics = self._build_diagnostics_entries(response)
                 await dao.upsert_diagnostics(run_id, diagnostics)
 
-                # Calculate and persist run-level cluster statistics
-                cluster_stats = self._compute_cluster_statistics(response)
-                if cluster_stats:
-                    try:
-                        await dao.upsert_run_diagnostics(
-                            run_id=run_id,
-                            cluster_avg_similarity_mean=cluster_stats.get("mean"),
-                            cluster_avg_similarity_variance=cluster_stats.get("variance"),
-                            cluster_avg_similarity_p95=cluster_stats.get("p95"),
-                            cluster_avg_similarity_max=cluster_stats.get("max"),
-                            cluster_count=cluster_stats.get("cluster_count", 0),
-                        )
-                    except Exception as diag_exc:
-                        # Log warning but continue processing - other data is saved successfully
-                        error_str = str(diag_exc)
-                        LOGGER.warning(
-                            "run.diagnostics.save_failed",
-                            run_id=run_id,
-                            error=error_str,
-                            error_type=type(diag_exc).__name__,
-                            message="Failed to save run diagnostics. Other data was saved successfully. "
-                            "If this is a missing table error, run: 'make recap-migrate'",
-                        )
+                await self._persist_run_diagnostics_best_effort(dao, run_id, response)
 
-                # Log system metrics for dashboard
                 clustering_metrics = {
                     "dbcv_score": response.diagnostics.dbcv_score,
                     "silhouette_score": response.diagnostics.silhouette_score,
@@ -384,19 +374,40 @@ class RunManager:
                     status=status,
                 )
         except Exception as exc:
-            error_str = str(exc)
-            error_type = type(exc).__name__
-
-            # Check if this is a connection closed error during rollback
             if _is_connection_closed_error(exc):
                 LOGGER.warning(
                     "run.process.connection_closed",
                     run_id=run_id,
-                    error=error_str,
-                    error_type=error_type,
+                    error=str(exc),
+                    error_type=type(exc).__name__,
                     message="Connection was closed during result save",
                 )
             raise
+
+    async def _persist_run_diagnostics_best_effort(
+        self, dao: SubworkerDAO, run_id: int, response: EvidenceResponse
+    ) -> None:
+        cluster_stats = self._compute_cluster_statistics(response)
+        if not cluster_stats:
+            return
+        try:
+            await dao.upsert_run_diagnostics(
+                run_id=run_id,
+                cluster_avg_similarity_mean=cluster_stats.get("mean"),
+                cluster_avg_similarity_variance=cluster_stats.get("variance"),
+                cluster_avg_similarity_p95=cluster_stats.get("p95"),
+                cluster_avg_similarity_max=cluster_stats.get("max"),
+                cluster_count=cluster_stats.get("cluster_count", 0),
+            )
+        except Exception as diag_exc:  # noqa: BLE001 - diagnostics persistence is best-effort; cluster results are already saved
+            LOGGER.warning(
+                "run.diagnostics.save_failed",
+                run_id=run_id,
+                error=str(diag_exc),
+                error_type=type(diag_exc).__name__,
+                message="Failed to save run diagnostics. Other data was saved successfully. "
+                "If this is a missing table error, run: 'make recap-migrate'",
+            )
 
     @staticmethod
     def _fallback_classification_run_record(
@@ -438,9 +449,8 @@ class RunManager:
                 )
                 if existing:
                     if existing.request_payload.get("request_hash") != request_hash:
-                        raise IdempotencyMismatchError(
-                            "idempotency key reused with different payload"
-                        )
+                        msg = "idempotency key reused with different payload"
+                        raise IdempotencyMismatchError(msg)
                     if _should_reuse_idempotent_run(existing.status):
                         LOGGER.info(
                             "classification.run.idempotent",
@@ -461,9 +471,8 @@ class RunManager:
                 submission.job_id, "classification"
             ):
                 # If no idempotency key provided, check for any running run (backward compatibility)
-                raise ConcurrentRunError(
-                    f"classification run already in progress for job {submission.job_id}"
-                )
+                msg = f"classification run already in progress for job {submission.job_id}"
+                raise ConcurrentRunError(msg)
             # If idempotency_key is provided, only check for runs with the same key (idempotency check)
             # Different keys are allowed to run concurrently
 
@@ -495,7 +504,7 @@ class RunManager:
                 record = self._fallback_classification_run_record(
                     run_id, submission.job_id, request_envelope
                 )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - post-insert fetch failure falls back to in-memory RunRecord
             # If get_run fails (e.g., database connection error), construct record from inserted data
             LOGGER.warning(
                 "classification.run.get_failed_fallback",
@@ -542,7 +551,7 @@ class RunManager:
                 await self._handle_failure(
                     run_id, f"classification timed out after {self._run_timeout}s"
                 )
-                LOGGER.error(
+                LOGGER.error(  # noqa: TRY400 - expected timeout; traceback not needed
                     "classification.run.process.timeout",
                     run_id=run_id,
                     timeout_s=self._run_timeout,
@@ -556,62 +565,65 @@ class RunManager:
             LOGGER.warning("classifier unavailable; skipping run", run_id=run_id)
             return
 
-        # Session 1: Fetch record and validate payload (close session before long-running operation)
+        classification_payload = await self._fetch_classification_payload(run_id)
+        if classification_payload is None:
+            return
+
+        result_count, response_payload = await self._execute_classification_with_failure_mark(
+            run_id, classification_payload.texts
+        )
+        await self._persist_classification_results(run_id, result_count, response_payload)
+
+    async def _fetch_classification_payload(self, run_id: int) -> ClassificationJobPayload | None:
+        """Session 1: Fetch run record and validate classification payload."""
         try:
             async with self._session_factory() as session:
                 dao = self._dao_factory(session)
                 record = await dao.fetch_run(run_id)
                 if not record:
                     await session.rollback()
-                    return
+                    return None
                 payload_container = record.request_payload or {}
                 payload_dict = payload_container.get("payload")
                 if payload_dict is None:
                     await dao.mark_run_failure(run_id, "failed", "request payload missing")
                     await session.commit()
-                    return
-                # Validate payload before closing session
-                classification_payload = ClassificationJobPayload.model_validate(payload_dict)
+                    return None
+                return ClassificationJobPayload.model_validate(payload_dict)
         except Exception as exc:
-            error_str = str(exc)
-            error_type = type(exc).__name__
-
-            # Check if this is a connection closed error during rollback
             if _is_connection_closed_error(exc):
                 LOGGER.warning(
                     "classification.run.connection_closed",
                     run_id=run_id,
-                    error=error_str,
-                    error_type=error_type,
+                    error=str(exc),
+                    error_type=type(exc).__name__,
                     message="Connection was closed during record fetch",
                 )
             raise
 
-        # Long-running operation: Run classification (no database connection needed)
+    async def _infer_classification(self, texts: list[str]) -> list[dict[str, Any]]:
+        if self._classification_runner is not None:
+            return await self._classification_runner.predict_batch(texts)
+        if self._classifier is None:
+            msg = "Either classification_runner or classifier must be set"
+            raise RuntimeError(msg)
+        classifier = self._classifier
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, functools.partial(classifier.predict_batch, texts))
+
+    async def _execute_classification_with_failure_mark(
+        self, run_id: int, texts: list[str]
+    ) -> tuple[int, dict[str, Any]]:
+        """Run classification inference outside DB session; mark failed on error."""
         try:
             LOGGER.info(
                 "classification.run.executing",
                 run_id=run_id,
-                text_count=len(classification_payload.texts),
+                text_count=len(texts),
             )
-            # Use ClassificationRunner if available (spawn-based process pool), otherwise fall back to direct classifier
-            if self._classification_runner is not None:
-                results = await self._classification_runner.predict_batch(
-                    classification_payload.texts
-                )
-            else:
-                # Fallback to direct classifier (for backward compatibility)
-                assert self._classifier is not None, (
-                    "Either classification_runner or classifier must be set"
-                )
-                classifier = self._classifier
-                loop = asyncio.get_running_loop()
-                results = await loop.run_in_executor(
-                    None, functools.partial(classifier.predict_batch, classification_payload.texts)
-                )
+            results = await self._infer_classification(texts)
             LOGGER.info("classification.run.completed_inference", run_id=run_id)
 
-            # Convert results to domain models
             classification_results = [
                 ClassificationResult(
                     top_genre=r["top_genre"],
@@ -620,19 +632,17 @@ class RunManager:
                 )
                 for r in results
             ]
-
             response_payload = {
                 "results": [r.model_dump() for r in classification_results],
             }
         except Exception as exc:
-            # If classification fails, mark as failed in a new session
             try:
                 async with self._session_factory() as session:
                     dao = self._dao_factory(session)
                     await dao.mark_run_failure(run_id, "failed", str(exc))
                     await session.commit()
             except Exception as db_exc:
-                LOGGER.error(
+                LOGGER.exception(
                     "classification.run.failure_mark_failed",
                     run_id=run_id,
                     classification_error=str(exc),
@@ -640,35 +650,35 @@ class RunManager:
                     message="Failed to mark run as failed after classification error",
                 )
             raise
+        else:
+            return len(classification_results), response_payload
 
-        # Session 2: Save results (open new session after long-running operation)
+    async def _persist_classification_results(
+        self, run_id: int, result_count: int, response_payload: dict[str, Any]
+    ) -> None:
+        """Session 2: Save classification results and mark run succeeded."""
         try:
             async with self._session_factory() as session:
                 dao = self._dao_factory(session)
-                status = "succeeded"
                 await dao.mark_run_success(
                     run_id,
-                    len(classification_results),  # Use result_count instead of cluster_count
+                    result_count,
                     response_payload,
-                    status,
+                    "succeeded",
                 )
                 await session.commit()
                 LOGGER.info(
                     "classification.run.completed",
                     run_id=run_id,
-                    result_count=len(classification_results),
+                    result_count=result_count,
                 )
         except Exception as exc:
-            error_str = str(exc)
-            error_type = type(exc).__name__
-
-            # Check if this is a connection closed error during rollback
             if _is_connection_closed_error(exc):
                 LOGGER.warning(
                     "classification.run.connection_closed",
                     run_id=run_id,
-                    error=error_str,
-                    error_type=error_type,
+                    error=str(exc),
+                    error_type=type(exc).__name__,
                     message="Connection was closed during result save",
                 )
             raise
@@ -684,7 +694,9 @@ class RunManager:
         if self._pipeline_runner is not None:
             return await self._pipeline_runner.run(request)
         loop = asyncio.get_running_loop()
-        assert self._pipeline is not None
+        if self._pipeline is None:
+            msg = "Pipeline must be initialized when pipeline_runner is None"
+            raise RuntimeError(msg)
         return await loop.run_in_executor(self._pipeline_executor, self._pipeline.run, request)
 
     def _build_pipeline_request(
@@ -788,7 +800,7 @@ class RunManager:
         for idx, sentence in enumerate(cluster.representatives):
             # Defensive filter: skip sentences shorter than 20 characters to prevent ValidationError
             # This should rarely trigger if upstream filters work correctly, but ensures fail-open behavior
-            if not sentence.text or len(sentence.text) < 20:
+            if not sentence.text or len(sentence.text) < _MIN_REPRESENTATIVE_TEXT_LENGTH:
                 continue
             representatives.append(
                 ClusterSentencePayload(
@@ -867,10 +879,11 @@ class RunManager:
         Returns:
             Dictionary with statistics, or None if no valid avg_sim values found.
         """
-        sims: list[float] = []
-        for cluster in response.clusters:
-            if cluster.stats.avg_sim is not None:
-                sims.append(cluster.stats.avg_sim)
+        sims: list[float] = [
+            cluster.stats.avg_sim
+            for cluster in response.clusters
+            if cluster.stats.avg_sim is not None
+        ]
 
         if not sims:
             return None

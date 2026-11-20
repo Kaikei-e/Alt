@@ -55,7 +55,8 @@ export function isMockRssUrl(urlStr: string): boolean {
     if (u.protocol !== "http:" && u.protocol !== "https:") return false;
 
     // Exact pattern: http://mock-rss-<numeric>:8080/feeds/<numeric>/rss.xml
-    const isMockRss = /^mock-rss-\d+$/.test(u.hostname) && u.port === "8080" && /^\/feeds\/\d+\/rss\.xml$/.test(u.pathname);
+    const isMockRss = /^mock-rss-\d+$/.test(u.hostname) && u.port === "8080" &&
+      /^\/feeds\/\d+\/rss\.xml$/.test(u.pathname);
 
     // Localhost numeric ports (only allowed for dev/tests, restrict to common known router/service ports if needed, but the prompt says: "noarbitraryloopback, accept ONLYgenuine numeric host/route pattern".
     // The prompt: "accept ONLYgenuine numeric host/route pattern (noattacker suffix/noarbitraryloopback)"
@@ -64,7 +65,8 @@ export function isMockRssUrl(urlStr: string): boolean {
     // Actually, I can just allow `/feeds/\d+/rss.xml` on both `mock-rss-\d+` and `localhost/127.0.0.1` on port 8080?
     // Let's check `isMockRssUrl`. I will just use a regex for the whole thing.
 
-    const isLocalhost = (u.hostname === "localhost" || u.hostname === "127.0.0.1") && u.port === "8080" && /^\/feeds\/\d+\/rss\.xml$/.test(u.pathname);
+    const isLocalhost = (u.hostname === "localhost" || u.hostname === "127.0.0.1") &&
+      u.port === "8080" && /^\/feeds\/\d+\/rss\.xml$/.test(u.pathname);
 
     return isMockRss || isLocalhost;
   } catch {
@@ -204,10 +206,20 @@ export async function writeManifestAtomic(
 export async function readManifest(path: string): Promise<RunManifest | null> {
   try {
     const text = await Deno.readTextFile(path);
-    const m = JSON.parse(text) as any;
+    const parsed: unknown = JSON.parse(text);
 
-    if (!m || typeof m !== "object") throw new Error("Manifest is not a JSON object");
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("Manifest is not a JSON object");
+    }
+    const m = parsed as Record<string, unknown>;
     if (m.version !== "1") throw new Error(`Unsupported manifest version: ${m.version}`);
+    if (typeof m.runId !== "string") {
+      throw new Error(
+        `Invalid runId "${
+          String(m.runId)
+        }": must contain only alphanumeric characters, underscores, or hyphens and cannot escape directories`,
+      );
+    }
     validateRunId(m.runId);
 
     if (m.source !== "feed-load-test-setup" && m.source !== "feed-read-setup-inline") {
@@ -215,42 +227,92 @@ export async function readManifest(path: string): Promise<RunManifest | null> {
     }
 
     if (!Array.isArray(m.identities)) throw new Error("Manifest identities must be an array");
-    for (const id of m.identities) {
+    for (const item of m.identities) {
+      if (!item || typeof item !== "object") throw new Error("Invalid identity record in manifest");
+      const id = item as Record<string, unknown>;
+      if (typeof id.kratosId !== "string") {
+        throw new Error(`Invalid UUID for kratosId: "${id.kratosId}"`);
+      }
       validateUUID(id.kratosId, "kratosId");
-      if (!isSyntheticEmail(id.email)) throw new Error(`Invalid email: ${id.email}`);
-      if (id.syntheticUserId !== "" && !isSyntheticUserId(id.syntheticUserId)) {
-         throw new Error(`Invalid syntheticUserId: ${id.syntheticUserId}`);
+      if (typeof id.email !== "string" || !isSyntheticEmail(id.email)) {
+        throw new Error(`Invalid email: ${id.email}`);
+      }
+      if (
+        id.syntheticUserId !== "" &&
+        (typeof id.syntheticUserId !== "string" || !isSyntheticUserId(id.syntheticUserId))
+      ) {
+        throw new Error(`Invalid syntheticUserId: ${id.syntheticUserId}`);
       }
     }
 
     if (!Array.isArray(m.articles)) throw new Error("Manifest articles must be an array");
-    for (const art of m.articles) {
+    for (const item of m.articles) {
+      if (!item || typeof item !== "object") throw new Error("Invalid article record in manifest");
+      const art = item as Record<string, unknown>;
+      if (typeof art.articleId !== "string") {
+        throw new Error(`Invalid UUID for articleId: "${art.articleId}"`);
+      }
       validateUUID(art.articleId, "articleId");
-      if (isSyntheticUserId(art.articleId)) throw new Error("Article ID cannot be a synthetic user ID prefix");
-      if (!isSyntheticUserId(art.syntheticUserId)) throw new Error(`Invalid syntheticUserId in article: ${art.syntheticUserId}`);
-      if (typeof art.copiedFromUrl !== "string" || !art.copiedFromUrl) throw new Error("Invalid copiedFromUrl in article");
+      if (isSyntheticUserId(art.articleId)) {
+        throw new Error("Article ID cannot be a synthetic user ID prefix");
+      }
+      if (typeof art.syntheticUserId !== "string" || !isSyntheticUserId(art.syntheticUserId)) {
+        throw new Error(`Invalid syntheticUserId in article: ${art.syntheticUserId}`);
+      }
+      if (typeof art.copiedFromUrl !== "string" || !art.copiedFromUrl) {
+        throw new Error("Invalid copiedFromUrl in article");
+      }
     }
 
     if (!Array.isArray(m.feeds)) throw new Error("Manifest feeds must be an array");
-    for (const feed of m.feeds) {
+    for (const item of m.feeds) {
+      if (!item || typeof item !== "object") throw new Error("Invalid feed record in manifest");
+      const feed = item as Record<string, unknown>;
+      if (typeof feed.feedId !== "string") {
+        throw new Error(`Invalid UUID for feedId: "${feed.feedId}"`);
+      }
       validateUUID(feed.feedId, "feedId");
-      if (!isMockRssUrl(feed.mockRssUrl)) throw new Error(`Invalid mockRssUrl: ${feed.mockRssUrl}`);
+      if (typeof feed.mockRssUrl !== "string" || !isMockRssUrl(feed.mockRssUrl)) {
+        throw new Error(`Invalid mockRssUrl: ${feed.mockRssUrl}`);
+      }
     }
 
-    if (!Array.isArray(m.pendingExternalCleanup)) throw new Error("pendingExternalCleanup must be an array");
+    if (!Array.isArray(m.pendingExternalCleanup)) {
+      throw new Error("pendingExternalCleanup must be an array");
+    }
 
-    if (!Array.isArray(m.completedTeardownSteps)) throw new Error("completedTeardownSteps must be an array");
-    const validSteps = new Set(["kratos-identities", "db-synthetic-user-rows", "db-articles", "db-feeds", "db-feed-links", "data-files", "db-teardown"]);
+    if (!Array.isArray(m.completedTeardownSteps)) {
+      throw new Error("completedTeardownSteps must be an array");
+    }
+    const validSteps = new Set([
+      "kratos-identities",
+      "db-synthetic-user-rows",
+      "db-articles",
+      "db-feeds",
+      "db-feed-links",
+      "data-files",
+      "db-teardown",
+    ]);
     for (const step of m.completedTeardownSteps) {
-      if (!validSteps.has(step)) throw new Error(`Unknown teardown step: ${step}`);
+      if (typeof step !== "string" || !validSteps.has(step)) {
+        throw new Error(`Unknown teardown step: ${step}`);
+      }
     }
 
     if (m.teardownStatus) {
-       const validStatus = new Set(["not_started", "in_progress", "local_partial", "external_pending", "completed"]);
-       if (!validStatus.has(m.teardownStatus)) throw new Error(`Unknown teardown status: ${m.teardownStatus}`);
+      const validStatus = new Set([
+        "not_started",
+        "in_progress",
+        "local_partial",
+        "external_pending",
+        "completed",
+      ]);
+      if (typeof m.teardownStatus !== "string" || !validStatus.has(m.teardownStatus)) {
+        throw new Error(`Unknown teardown status: ${m.teardownStatus}`);
+      }
     }
 
-    return m as RunManifest;
+    return m as unknown as RunManifest;
   } catch (e) {
     if (e instanceof Deno.errors.NotFound) return null;
     throw new Error(`Failed to read/validate manifest at ${path}: ${e}`);

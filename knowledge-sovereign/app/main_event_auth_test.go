@@ -77,7 +77,7 @@ func TestEventAuth_EnabledGatesRPCPaths(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(`{}`))
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, tc.path, strings.NewReader(`{}`))
 			req.Header.Set("Content-Type", "application/json")
 			if tc.auth != "" {
 				req.Header.Set("Authorization", tc.auth)
@@ -93,7 +93,8 @@ func TestEventAuth_EnabledGatesRPCPaths(t *testing.T) {
 func TestEventAuth_EmptyTokenWhileEnabledDenies(t *testing.T) {
 	h := setupTestServer("", true)
 
-	req := httptest.NewRequest(
+	req := httptest.NewRequestWithContext(
+		t.Context(),
 		http.MethodPost,
 		"/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent",
 		strings.NewReader(`{}`),
@@ -108,7 +109,8 @@ func TestEventAuth_EmptyTokenWhileEnabledDenies(t *testing.T) {
 func TestEventAuth_ExplicitlyDisabledPassesThrough(t *testing.T) {
 	h := setupTestServer("", false)
 
-	req := httptest.NewRequest(
+	req := httptest.NewRequestWithContext(
+		t.Context(),
 		http.MethodPost,
 		"/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent",
 		strings.NewReader(`{}`),
@@ -137,6 +139,7 @@ func TestEventAuth_StartupFailureWhenNeitherSet(t *testing.T) {
 
 func TestEventAuth_PolicyWiringInServer(t *testing.T) {
 	const (
+		// #nosec G101 -- test-only dummy token fixture
 		recapToken   = "recap-token-value-with-length-24-plus"
 		legacyToken  = "legacy-shared-token-value-24-plus"
 		allowedEvent = "recap.topic_snapshotted.v1"
@@ -164,20 +167,20 @@ func TestEventAuth_PolicyWiringInServer(t *testing.T) {
 	mux := buildRPCMux(testSovereignHandler{}, cfg)
 
 	// Health check stays open
-	healthReq := httptest.NewRequest(http.MethodGet, "/health", nil)
+	healthReq := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health", nil)
 	healthRec := httptest.NewRecorder()
 	mux.ServeHTTP(healthRec, healthReq)
 	assert.Equal(t, http.StatusOK, healthRec.Code)
 
 	// Unauthenticated fails 401
-	unauthReq := httptest.NewRequest(http.MethodPost, "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent", strings.NewReader(`{"event":{"eventType":"`+allowedEvent+`"}}`))
+	unauthReq := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent", strings.NewReader(`{"event":{"eventType":"`+allowedEvent+`"}}`))
 	unauthReq.Header.Set("Content-Type", "application/json")
 	unauthRec := httptest.NewRecorder()
 	mux.ServeHTTP(unauthRec, unauthReq)
 	assert.Equal(t, http.StatusUnauthorized, unauthRec.Code)
 
 	// Legacy shared token fails 401 (no legacy escape when policy enabled)
-	legacyReq := httptest.NewRequest(http.MethodPost, "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent", strings.NewReader(`{"event":{"eventType":"`+allowedEvent+`"}}`))
+	legacyReq := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent", strings.NewReader(`{"event":{"eventType":"`+allowedEvent+`"}}`))
 	legacyReq.Header.Set("Content-Type", "application/json")
 	legacyReq.Header.Set("Authorization", "Bearer "+legacyToken)
 	legacyRec := httptest.NewRecorder()
@@ -185,7 +188,7 @@ func TestEventAuth_PolicyWiringInServer(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, legacyRec.Code)
 
 	// Valid policy token for allowed event succeeds 200
-	validReq := httptest.NewRequest(http.MethodPost, "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent", strings.NewReader(`{"event":{"eventType":"`+allowedEvent+`"}}`))
+	validReq := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent", strings.NewReader(`{"event":{"eventType":"`+allowedEvent+`"}}`))
 	validReq.Header.Set("Content-Type", "application/json")
 	validReq.Header.Set("Authorization", "Bearer "+recapToken)
 	validRec := httptest.NewRecorder()
@@ -193,7 +196,7 @@ func TestEventAuth_PolicyWiringInServer(t *testing.T) {
 	assert.Equal(t, http.StatusOK, validRec.Code)
 
 	// Wrong event type fails 403 PermissionDenied
-	wrongEvtReq := httptest.NewRequest(http.MethodPost, "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent", strings.NewReader(`{"event":{"eventType":"forbidden.event.v1"}}`))
+	wrongEvtReq := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/services.sovereign.v1.KnowledgeSovereignService/AppendKnowledgeEvent", strings.NewReader(`{"event":{"eventType":"forbidden.event.v1"}}`))
 	wrongEvtReq.Header.Set("Content-Type", "application/json")
 	wrongEvtReq.Header.Set("Authorization", "Bearer "+recapToken)
 	wrongEvtRec := httptest.NewRecorder()

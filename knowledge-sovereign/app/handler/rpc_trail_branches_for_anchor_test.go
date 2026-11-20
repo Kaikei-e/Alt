@@ -34,15 +34,15 @@ func TestGetTrailBranchesForAnchor_ReturnsMappedBranches(t *testing.T) {
 		Limit:         2,
 	}))
 	require.NoError(t, err)
-	require.Len(t, resp.Msg.Branches, 1)
-	b := resp.Msg.Branches[0]
-	assert.Equal(t, "cluster:u:article:z", b.BranchKey)
-	assert.Equal(t, "article:1", b.AnchorItemKey)
-	assert.Equal(t, "cluster", b.RelationKind)
-	assert.Contains(t, b.Why, "US military courts in the UK")
-	assert.Equal(t, "plausible", b.Confidence)
-	require.Len(t, b.EvidenceRefs, 1)
-	assert.Equal(t, "rust", b.EvidenceRefs[0].RefId)
+	require.Len(t, resp.Msg.GetBranches(), 1)
+	b := resp.Msg.GetBranches()[0]
+	assert.Equal(t, "cluster:u:article:z", b.GetBranchKey())
+	assert.Equal(t, "article:1", b.GetAnchorItemKey())
+	assert.Equal(t, "cluster", b.GetRelationKind())
+	assert.Contains(t, b.GetWhy(), "US military courts in the UK")
+	assert.Equal(t, "plausible", b.GetConfidence())
+	require.Len(t, b.GetEvidenceRefs(), 1)
+	assert.Equal(t, "rust", b.GetEvidenceRefs()[0].GetRefId())
 
 	assert.Equal(t, "article:1", repo.gotAnchorItemKey, "the anchor item key must reach the repository")
 	assert.Equal(t, 2, repo.gotAnchorLimit, "the client-supplied limit must reach the repository")
@@ -82,5 +82,5 @@ func TestGetTrailBranchesForAnchor_DefaultsLimitWhenNotProvided(t *testing.T) {
 		AnchorItemKey: "article:1",
 	}))
 	require.NoError(t, err)
-	assert.Greater(t, repo.gotAnchorLimit, 0, "an unset client limit must not degrade to LIMIT 0")
+	assert.Positive(t, repo.gotAnchorLimit, "an unset client limit must not degrade to LIMIT 0")
 }

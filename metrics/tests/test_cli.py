@@ -5,7 +5,6 @@ analyze/validateコマンドの部分失敗継続とexit codeを検証します�
 
 import argparse
 from pathlib import Path
-from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -37,12 +36,13 @@ class TestRunAnalysis:
             MagicMock(side_effect=CollectorError("error_types", "boom")),
         )
 
-        result = cli.run_analysis(ClickHouseConfig(), HealthThresholds(), hours=24)
+        hours = 24
+        result = cli.run_analysis(ClickHouseConfig(), HealthThresholds(), hours=hours)
 
         # 失敗したコレクターはデフォルト値のまま、他は正常に収集される
         assert result.error_types == []
         assert result.service_stats == []
-        assert result.hours_analyzed == 24
+        assert result.hours_analyzed == hours
 
     def test_closes_client_after_analysis(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """分析完了後にClickHouseクライアントをcloseする"""
@@ -71,8 +71,8 @@ class TestRunAnalysis:
 class TestCmdAnalyze:
     """cmd_analyzeコマンドのexit codeテスト"""
 
-    def _args(self, tmp_path: Path, **overrides: Any) -> argparse.Namespace:
-        defaults: dict[str, Any] = {"hours": 24, "output_dir": tmp_path, "lang": "ja", "verbose": False}
+    def _args(self, tmp_path: Path, **overrides: object) -> argparse.Namespace:
+        defaults: dict[str, object] = {"hours": 24, "output_dir": tmp_path, "lang": "ja", "verbose": False}
         defaults.update(overrides)
         return argparse.Namespace(**defaults)
 
@@ -89,8 +89,9 @@ class TestCmdAnalyze:
     def test_returns_1_on_connection_error(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         """ClickHouse接続失敗時はexit code 1"""
 
-        def _raise(**kwargs: Any) -> None:
-            raise OperationalError("connection refused")
+        def _raise(**_kwargs: object) -> None:
+            msg = "connection refused"
+            raise OperationalError(msg)
 
         monkeypatch.setattr(cli.clickhouse_connect, "get_client", _raise)
 
@@ -114,8 +115,8 @@ class TestCmdAnalyze:
 class TestCmdValidate:
     """cmd_validateコマンドのexit codeテスト"""
 
-    def _args(self, **overrides: Any) -> argparse.Namespace:
-        defaults: dict[str, Any] = {"verbose": False}
+    def _args(self, **overrides: object) -> argparse.Namespace:
+        defaults: dict[str, object] = {"verbose": False}
         defaults.update(overrides)
         return argparse.Namespace(**defaults)
 
@@ -132,8 +133,9 @@ class TestCmdValidate:
     def test_returns_1_on_connection_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """接続失敗時はexit code 1"""
 
-        def _raise(**kwargs: Any) -> None:
-            raise OperationalError("connection refused")
+        def _raise(**_kwargs: object) -> None:
+            msg = "connection refused"
+            raise OperationalError(msg)
 
         monkeypatch.setattr(cli.clickhouse_connect, "get_client", _raise)
 

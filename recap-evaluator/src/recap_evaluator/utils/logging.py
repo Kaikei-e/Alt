@@ -16,6 +16,7 @@ from collections.abc import Callable
 from contextvars import ContextVar
 
 import structlog
+from opentelemetry.instrumentation.logging import LoggingInstrumentor
 from structlog.typing import EventDict, WrappedLogger
 
 from recap_evaluator.utils.otel import OTelConfig, init_otel_provider
@@ -26,7 +27,7 @@ def _noop_shutdown() -> None:
     pass
 
 
-_otel_shutdown: Callable[[], None] = _noop_shutdown
+_otel_shutdown_holder: list[Callable[[], None]] = [_noop_shutdown]
 
 # Context variables for ADR 98 business context (thread-safe for async)
 _alt_job_id: ContextVar[str | None] = ContextVar("alt.job.id", default=None)
@@ -100,20 +101,16 @@ def configure_logging(
     Initializes OpenTelemetry provider and LoggingInstrumentor for distributed
     tracing and log correlation.
     """
-    global _otel_shutdown
-
     # Initialize OpenTelemetry provider first
     otel_config = OTelConfig()
-    _otel_shutdown = init_otel_provider(otel_config)
+    _otel_shutdown_holder[0] = init_otel_provider(otel_config)
 
     # Instrument stdlib logging with OTel (set_logging_format=False preserves structlog formatting)
     if otel_config.enabled:
         try:
-            from opentelemetry.instrumentation.logging import LoggingInstrumentor
-
             instrumentor = LoggingInstrumentor()
             instrumentor.instrument(set_logging_format=False)  # pyrefly: ignore[missing-attribute]
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 — optional OTel logging instrumentation must not block startup
             sys.stderr.write(f"Failed to initialize OTel LoggingInstrumentor: {e}\n")
 
     # Determine processors based on format
@@ -165,6 +162,4 @@ def configure_logging(
 
 def shutdown_logging() -> None:
     """Shutdown OTel provider and cleanup resources."""
-    global _otel_shutdown
-    if _otel_shutdown:
-        _otel_shutdown()
+    _otel_shutdown_holder[0]()

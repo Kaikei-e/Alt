@@ -1,6 +1,6 @@
 //! OTLP (OpenTelemetry Protocol) serialization for log batches.
 //!
-//! This module converts EnrichedLogEntry batches to OTLP protobuf format
+//! This module converts `EnrichedLogEntry` batches to OTLP protobuf format
 //! for transmission to OTLP-compatible log receivers.
 
 use crate::buffer::Batch;
@@ -18,14 +18,15 @@ use std::collections::HashMap;
 /// Instrumentation scope name for rask-log-forwarder
 const SCOPE_NAME: &str = "rask-log-forwarder";
 
-/// OTLP serializer that converts EnrichedLogEntry batches to protobuf format.
+/// OTLP serializer that converts `EnrichedLogEntry` batches to protobuf format.
 #[derive(Clone)]
 pub struct OtlpSerializer {
     forwarder_version: String,
 }
 
 impl OtlpSerializer {
-    /// Creates a new OtlpSerializer.
+    /// Creates a new `OtlpSerializer`.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             forwarder_version: env!("CARGO_PKG_VERSION").to_string(),
@@ -35,13 +36,18 @@ impl OtlpSerializer {
     /// Serializes a batch of log entries to OTLP protobuf format.
     ///
     /// Returns the protobuf-encoded bytes ready for HTTP transmission.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SerializationError::EmptyBatch`] if `batch` has no entries, or
+    /// [`SerializationError::IoError`] if protobuf encoding fails.
     pub fn serialize_batch(&self, batch: &Batch) -> Result<Vec<u8>, SerializationError> {
         if batch.is_empty() {
             return Err(SerializationError::EmptyBatch);
         }
 
         // Group entries by service_name to create ResourceLogs
-        let grouped = self.group_by_service(batch.entries());
+        let grouped = Self::group_by_service(batch.entries());
 
         // Convert to OTLP format
         let resource_logs: Vec<ResourceLogs> = grouped
@@ -61,10 +67,7 @@ impl OtlpSerializer {
     }
 
     /// Groups log entries by service name.
-    fn group_by_service<'a>(
-        &self,
-        entries: &'a [EnrichedLogEntry],
-    ) -> HashMap<String, Vec<&'a EnrichedLogEntry>> {
+    fn group_by_service(entries: &[EnrichedLogEntry]) -> HashMap<String, Vec<&EnrichedLogEntry>> {
         let mut grouped: HashMap<String, Vec<&EnrichedLogEntry>> = HashMap::new();
 
         for entry in entries {
@@ -77,7 +80,7 @@ impl OtlpSerializer {
         grouped
     }
 
-    /// Creates a ResourceLogs message for a group of entries from the same service.
+    /// Creates a `ResourceLogs` message for a group of entries from the same service.
     fn create_resource_logs(
         &self,
         service_name: &str,
@@ -88,14 +91,14 @@ impl OtlpSerializer {
 
         // Create resource attributes
         let mut resource_attributes = vec![
-            self.create_string_kv("service.name", service_name),
-            self.create_string_kv("container.id", &first_entry.container_id),
-            self.create_string_kv("telemetry.sdk.name", "rask-log-forwarder"),
-            self.create_string_kv("telemetry.sdk.version", &self.forwarder_version),
+            Self::create_string_kv("service.name", service_name),
+            Self::create_string_kv("container.id", &first_entry.container_id),
+            Self::create_string_kv("telemetry.sdk.name", "rask-log-forwarder"),
+            Self::create_string_kv("telemetry.sdk.version", &self.forwarder_version),
         ];
 
         if let Some(ref group) = first_entry.service_group {
-            resource_attributes.push(self.create_string_kv("service.namespace", group));
+            resource_attributes.push(Self::create_string_kv("service.namespace", group));
         }
 
         let resource = Resource {
@@ -105,10 +108,8 @@ impl OtlpSerializer {
         };
 
         // Create log records
-        let log_records: Vec<LogRecord> = entries
-            .into_iter()
-            .map(|entry| self.create_log_record(entry))
-            .collect();
+        let log_records: Vec<LogRecord> =
+            entries.into_iter().map(Self::create_log_record).collect();
 
         // Create scope logs
         let scope_logs = vec![ScopeLogs {
@@ -131,17 +132,19 @@ impl OtlpSerializer {
         })
     }
 
-    /// Creates an OTLP LogRecord from an EnrichedLogEntry.
-    fn create_log_record(&self, entry: &EnrichedLogEntry) -> LogRecord {
+    /// Creates an OTLP `LogRecord` from an `EnrichedLogEntry`.
+    fn create_log_record(entry: &EnrichedLogEntry) -> LogRecord {
         // Parse timestamp to nanoseconds
-        let time_unix_nano = self.parse_timestamp_to_nanos(&entry.timestamp);
+        let time_unix_nano = Self::parse_timestamp_to_nanos(&entry.timestamp);
+        // SystemTime nanoseconds since UNIX_EPOCH stay within u64 until the year 2554.
         let observed_time_unix_nano = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos() as u64)
-            .unwrap_or(time_unix_nano);
+            .map_or(time_unix_nano, |d| {
+                u64::try_from(d.as_nanos()).unwrap_or(u64::MAX)
+            });
 
         // Map log level to severity number
-        let (severity_number, severity_text) = self.map_log_level(entry.level.clone());
+        let (severity_number, severity_text) = Self::map_log_level(entry.level.as_ref());
 
         // Create body
         let body = Some(AnyValue {
@@ -149,11 +152,11 @@ impl OtlpSerializer {
         });
 
         // Create log attributes
-        let mut attributes = self.create_log_attributes(entry);
+        let mut attributes = Self::create_log_attributes(entry);
 
         // Add extra fields
         for (key, value) in &entry.fields {
-            attributes.push(self.create_string_kv(key, value));
+            attributes.push(Self::create_string_kv(key, value));
         }
 
         // Parse trace context
@@ -172,7 +175,7 @@ impl OtlpSerializer {
         LogRecord {
             time_unix_nano,
             observed_time_unix_nano,
-            severity_number: severity_number as i32,
+            severity_number: i32::from(severity_number),
             severity_text,
             body,
             attributes,
@@ -184,38 +187,46 @@ impl OtlpSerializer {
         }
     }
 
-    /// Creates log attributes from an EnrichedLogEntry.
-    fn create_log_attributes(&self, entry: &EnrichedLogEntry) -> Vec<KeyValue> {
+    /// Creates log attributes from an `EnrichedLogEntry`.
+    fn create_log_attributes(entry: &EnrichedLogEntry) -> Vec<KeyValue> {
         let mut attrs = vec![
-            self.create_string_kv("log.type", &entry.log_type),
-            self.create_string_kv("stream", &entry.stream),
+            Self::create_string_kv("log.type", &entry.log_type),
+            Self::create_string_kv("stream", &entry.stream),
         ];
 
         // HTTP attributes (OTel semantic conventions)
         if let Some(ref method) = entry.method {
-            attrs.push(self.create_string_kv("http.method", method));
+            attrs.push(Self::create_string_kv("http.method", method));
         }
         if let Some(ref path) = entry.path {
-            attrs.push(self.create_string_kv("http.target", path));
+            attrs.push(Self::create_string_kv("http.target", path));
         }
         if let Some(status_code) = entry.status_code {
-            attrs.push(self.create_int_kv("http.status_code", status_code as i64));
+            attrs.push(Self::create_int_kv(
+                "http.status_code",
+                i64::from(status_code),
+            ));
         }
         if let Some(response_size) = entry.response_size {
-            attrs.push(self.create_int_kv("http.response_content_length", response_size as i64));
+            // HTTP response sizes in bytes cannot exceed i64::MAX (~8 EiB); saturate instead of wrapping negative.
+            let size_i64 = i64::try_from(response_size).unwrap_or(i64::MAX);
+            attrs.push(Self::create_int_kv(
+                "http.response_content_length",
+                size_i64,
+            ));
         }
         if let Some(ref ip) = entry.ip_address {
-            attrs.push(self.create_string_kv("net.peer.ip", ip));
+            attrs.push(Self::create_string_kv("net.peer.ip", ip));
         }
         if let Some(ref ua) = entry.user_agent {
-            attrs.push(self.create_string_kv("http.user_agent", ua));
+            attrs.push(Self::create_string_kv("http.user_agent", ua));
         }
 
         attrs
     }
 
-    /// Creates a string-valued KeyValue.
-    fn create_string_kv(&self, key: &str, value: &str) -> KeyValue {
+    /// Creates a string-valued `KeyValue`.
+    fn create_string_kv(key: &str, value: &str) -> KeyValue {
         KeyValue {
             key: key.to_string(),
             value: Some(AnyValue {
@@ -225,8 +236,8 @@ impl OtlpSerializer {
         }
     }
 
-    /// Creates an integer-valued KeyValue.
-    fn create_int_kv(&self, key: &str, value: i64) -> KeyValue {
+    /// Creates an integer-valued `KeyValue`.
+    fn create_int_kv(key: &str, value: i64) -> KeyValue {
         KeyValue {
             key: key.to_string(),
             value: Some(AnyValue {
@@ -236,16 +247,16 @@ impl OtlpSerializer {
         }
     }
 
-    /// Maps LogLevel to OTLP severity number and text.
+    /// Maps `LogLevel` to OTLP severity number and text.
     ///
-    /// OTel severity numbers:
+    /// `OTel` severity numbers:
     /// - 1-4: TRACE
     /// - 5-8: DEBUG
     /// - 9-12: INFO
     /// - 13-16: WARN
     /// - 17-20: ERROR
     /// - 21-24: FATAL
-    fn map_log_level(&self, level: Option<LogLevel>) -> (u8, String) {
+    fn map_log_level(level: Option<&LogLevel>) -> (u8, String) {
         match level {
             Some(LogLevel::Debug) => (5, "DEBUG".to_string()),
             Some(LogLevel::Info) => (9, "INFO".to_string()),
@@ -257,15 +268,27 @@ impl OtlpSerializer {
     }
 
     /// Parses an RFC3339 timestamp string to nanoseconds since Unix epoch.
-    fn parse_timestamp_to_nanos(&self, timestamp: &str) -> u64 {
-        chrono::DateTime::parse_from_rfc3339(timestamp)
-            .map(|dt| dt.timestamp_nanos_opt().unwrap_or(0) as u64)
-            .unwrap_or_else(|_| {
+    fn parse_timestamp_to_nanos(timestamp: &str) -> u64 {
+        // Post-1970 log timestamps are non-negative; pre-epoch timestamps clamp to 0 (Unix epoch).
+        chrono::DateTime::parse_from_rfc3339(timestamp).map_or_else(
+            |_| {
                 // Fallback: try parsing without timezone
-                chrono::NaiveDateTime::parse_from_str(timestamp, "%Y-%m-%dT%H:%M:%S%.f")
-                    .map(|dt| dt.and_utc().timestamp_nanos_opt().unwrap_or(0) as u64)
+                chrono::NaiveDateTime::parse_from_str(timestamp, "%Y-%m-%dT%H:%M:%S%.f").map_or(
+                    0,
+                    |dt| {
+                        dt.and_utc()
+                            .timestamp_nanos_opt()
+                            .and_then(|n| u64::try_from(n).ok())
+                            .unwrap_or(0)
+                    },
+                )
+            },
+            |dt| {
+                dt.timestamp_nanos_opt()
+                    .and_then(|n| u64::try_from(n).ok())
                     .unwrap_or(0)
-            })
+            },
+        )
     }
 }
 
@@ -305,51 +328,45 @@ mod tests {
 
     #[test]
     fn test_log_level_mapping() {
-        let serializer = OtlpSerializer::new();
-
         assert_eq!(
-            serializer.map_log_level(Some(LogLevel::Debug)),
+            OtlpSerializer::map_log_level(Some(&LogLevel::Debug)),
             (5, "DEBUG".to_string())
         );
         assert_eq!(
-            serializer.map_log_level(Some(LogLevel::Info)),
+            OtlpSerializer::map_log_level(Some(&LogLevel::Info)),
             (9, "INFO".to_string())
         );
         assert_eq!(
-            serializer.map_log_level(Some(LogLevel::Warn)),
+            OtlpSerializer::map_log_level(Some(&LogLevel::Warn)),
             (13, "WARN".to_string())
         );
         assert_eq!(
-            serializer.map_log_level(Some(LogLevel::Error)),
+            OtlpSerializer::map_log_level(Some(&LogLevel::Error)),
             (17, "ERROR".to_string())
         );
         assert_eq!(
-            serializer.map_log_level(Some(LogLevel::Fatal)),
+            OtlpSerializer::map_log_level(Some(&LogLevel::Fatal)),
             (21, "FATAL".to_string())
         );
         assert_eq!(
-            serializer.map_log_level(None),
+            OtlpSerializer::map_log_level(None),
             (0, "UNSPECIFIED".to_string())
         );
     }
 
     #[test]
     fn test_timestamp_parsing() {
-        let serializer = OtlpSerializer::new();
-
         // RFC3339 with Z suffix
-        let nanos = serializer.parse_timestamp_to_nanos("2024-01-01T00:00:00.000Z");
+        let nanos = OtlpSerializer::parse_timestamp_to_nanos("2024-01-01T00:00:00.000Z");
         assert!(nanos > 0);
 
         // RFC3339 with offset
-        let nanos2 = serializer.parse_timestamp_to_nanos("2024-01-01T00:00:00.000+00:00");
+        let nanos2 = OtlpSerializer::parse_timestamp_to_nanos("2024-01-01T00:00:00.000+00:00");
         assert_eq!(nanos, nanos2);
     }
 
     #[test]
     fn test_group_by_service() {
-        let serializer = OtlpSerializer::new();
-
         let mut entry1 = create_test_entry();
         entry1.service_name = "service-a".to_string();
 
@@ -360,10 +377,10 @@ mod tests {
         entry3.service_name = "service-a".to_string();
 
         let entries = vec![entry1, entry2, entry3];
-        let grouped = serializer.group_by_service(&entries);
+        let grouped = OtlpSerializer::group_by_service(&entries);
 
         assert_eq!(grouped.len(), 2);
-        assert_eq!(grouped.get("service-a").map(|v| v.len()), Some(2));
-        assert_eq!(grouped.get("service-b").map(|v| v.len()), Some(1));
+        assert_eq!(grouped.get("service-a").map(std::vec::Vec::len), Some(2));
+        assert_eq!(grouped.get("service-b").map(std::vec::Vec::len), Some(1));
     }
 }

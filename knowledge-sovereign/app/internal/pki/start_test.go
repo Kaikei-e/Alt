@@ -137,7 +137,7 @@ func TestStartEnabled_PrivateRegistryNotDefault(t *testing.T) {
 		t.Fatal("enabled start must expose a private-registry metrics handler")
 	}
 	rec := httptest.NewRecorder()
-	mh.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	mh.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/metrics", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("metrics status %d", rec.Code)
 	}
@@ -147,7 +147,7 @@ func TestStartEnabled_PrivateRegistryNotDefault(t *testing.T) {
 		t.Fatalf("ops scrape missing %q\n%s", needle, body)
 	}
 	def := httptest.NewRecorder()
-	promhttp.Handler().ServeHTTP(def, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	promhttp.Handler().ServeHTTP(def, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/metrics", nil))
 	if strings.Contains(def.Body.String(), `subject="knowledge-sovereign-private-reg"`) {
 		t.Fatal("PKI series leaked onto prometheus.DefaultGatherer")
 	}

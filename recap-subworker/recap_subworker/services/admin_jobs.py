@@ -50,17 +50,23 @@ class AdminJobManager:
             task = asyncio.create_task(self._worker_loop())
             self._worker_tasks.append(task)
 
+    @staticmethod
+    def _require_job_fn(job: AdminJob) -> AdminJobFn:
+        if job._fn is None:
+            msg = "job function missing"
+            raise RuntimeError(msg)
+        return job._fn
+
     async def _worker_loop(self) -> None:
         while True:
             job = await self._queue.get()
             job.started_at = datetime.now(UTC)
             job.status = "running"
             try:
-                if job._fn is None:
-                    raise RuntimeError("job function missing")
-                job.result = await job._fn()
+                fn = self._require_job_fn(job)
+                job.result = await fn()
                 job.status = "succeeded"
-            except Exception as exc:  # pragma: no cover - runtime safety
+            except Exception as exc:  # noqa: BLE001 - worker loop boundary; records failure and keeps worker alive  # pragma: no cover - runtime safety
                 self._log.error(
                     "admin_job.failed", job_id=str(job.job_id), kind=job.kind, error=str(exc)
                 )

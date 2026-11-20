@@ -75,11 +75,6 @@ impl BufferMetricsCollector {
         }
     }
 
-    #[allow(dead_code)]
-    fn increment_batches(&self) {
-        self.batches_formed.fetch_add(1, Ordering::Relaxed);
-    }
-
     pub fn reset(&self) {
         self.messages_sent.store(0, Ordering::Relaxed);
         self.messages_received.store(0, Ordering::Relaxed);
@@ -98,6 +93,12 @@ pub struct LogBufferSender {
 }
 
 impl LogBufferSender {
+    /// Sends `entry` into the lock-free broadcast buffer, applying backpressure if configured.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BufferError::BufferFull`] if `queue_depth >= config.capacity` or the broadcast
+    /// channel send fails.
     pub async fn send(&self, entry: EnrichedLogEntry) -> Result<(), BufferError> {
         // Check if buffer is full
         let current_depth = self.metrics.queue_depth.load(Ordering::Relaxed);
@@ -111,12 +112,16 @@ impl LogBufferSender {
 
         // Check backpressure
         if self.config.enable_backpressure {
-            // Safety: capacity is bounded by system memory, threshold is 0.0-1.0 fraction
-            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-            let threshold =
-                (self.config.capacity as f64 * self.config.backpressure_threshold) as usize;
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "queue depth and capacity converted to f64 for backpressure threshold ratio"
+            )]
+            let over_threshold = (current_depth as f64)
+                > (self.config.capacity as f64 * self.config.backpressure_threshold)
+                    .max(0.0)
+                    .trunc();
 
-            if current_depth > threshold {
+            if over_threshold {
                 self.metrics
                     .backpressure_events
                     .fetch_add(1, Ordering::Relaxed);
@@ -125,22 +130,25 @@ impl LogBufferSender {
         }
 
         // Try to send
-        match self.sender.send(entry) {
-            Ok(_receiver_count) => {
-                self.metrics.messages_sent.fetch_add(1, Ordering::Relaxed);
-                self.metrics.queue_depth.fetch_add(1, Ordering::Relaxed);
-                Ok(())
-            }
-            Err(_) => {
-                self.metrics.messages_sent.fetch_add(1, Ordering::Relaxed);
-                self.metrics
-                    .messages_dropped
-                    .fetch_add(1, Ordering::Relaxed);
-                Err(BufferError::BufferFull)
-            }
+        if let Ok(_receiver_count) = self.sender.send(entry) {
+            self.metrics.messages_sent.fetch_add(1, Ordering::Relaxed);
+            self.metrics.queue_depth.fetch_add(1, Ordering::Relaxed);
+            Ok(())
+        } else {
+            self.metrics.messages_sent.fetch_add(1, Ordering::Relaxed);
+            self.metrics
+                .messages_dropped
+                .fetch_add(1, Ordering::Relaxed);
+            Err(BufferError::BufferFull)
         }
     }
 
+    /// Sends `entry` into the buffer, aborting with [`BufferError::SendTimeout`] after `timeout_duration`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BufferError::SendTimeout`] if `timeout_duration` elapses, or propagates
+    /// [`BufferError::BufferFull`] from [`LogBufferSender::send`].
     pub async fn send_with_timeout(
         &self,
         entry: EnrichedLogEntry,
@@ -158,6 +166,11 @@ pub struct LogBufferReceiver {
 }
 
 impl LogBufferReceiver {
+    /// Receives the next [`EnrichedLogEntry`] from the buffer, skipping over lagged messages.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BufferError::BufferClosed`] when all senders have been dropped.
     pub async fn recv(&mut self) -> Result<EnrichedLogEntry, BufferError> {
         loop {
             match self.receiver.recv().await {
@@ -196,6 +209,11 @@ impl LogBufferReceiver {
         }
     }
 
+    /// Receives the next entry within `timeout_duration`, returning `Ok(None)` on timeout.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BufferError::BufferClosed`] if the underlying broadcast channel closes.
     pub async fn recv_with_timeout(
         &mut self,
         timeout_duration: Duration,
@@ -216,6 +234,11 @@ pub struct LogBuffer {
 }
 
 impl LogBuffer {
+    /// Creates a new [`LogBuffer`] with default settings and the given `capacity`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BufferError::BufferClosed`] if `capacity` is `0`.
     pub fn new(capacity: usize) -> Result<Self, BufferError> {
         if capacity == 0 {
             return Err(BufferError::BufferClosed);
@@ -235,7 +258,12 @@ impl LogBuffer {
         })
     }
 
-    pub async fn new_with_config(config: BufferConfig) -> Result<Self, BufferError> {
+    /// Creates a new [`LogBuffer`] from `config`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BufferError::BufferClosed`] if `config.capacity` is `0`.
+    pub fn new_with_config(config: BufferConfig) -> Result<Self, BufferError> {
         if config.capacity == 0 {
             return Err(BufferError::BufferClosed);
         }
@@ -250,7 +278,11 @@ impl LogBuffer {
         })
     }
 
-    /// Memory-safe buffer split with zero expect() calls.
+    /// Memory-safe buffer split with zero `expect()` calls.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BufferError::BufferClosed`] if the internal broadcast sender is absent.
     pub fn split(&self) -> Result<(LogBufferSender, LogBufferReceiver), BufferError> {
         safe_buffer_operation(|| {
             // Safe sender access with explicit error handling
@@ -271,6 +303,12 @@ impl LogBuffer {
         })
     }
 
+    /// Pushes an entry into the buffer synchronously.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BufferError::BufferClosed`] if the sender is absent, or
+    /// [`BufferError::BufferFull`] if `queue_depth >= config.capacity` or the channel send fails.
     pub fn push(&self, entry: impl Into<EnrichedLogEntry>) -> Result<(), BufferError> {
         if let Some(sender) = &self.sender {
             // Check if buffer is full
@@ -284,25 +322,28 @@ impl LogBuffer {
             }
 
             let enriched_entry = entry.into();
-            match sender.send(enriched_entry) {
-                Ok(_receiver_count) => {
-                    self.metrics.messages_sent.fetch_add(1, Ordering::Relaxed);
-                    self.metrics.queue_depth.fetch_add(1, Ordering::Relaxed);
-                    Ok(())
-                }
-                Err(_) => {
-                    self.metrics.messages_sent.fetch_add(1, Ordering::Relaxed);
-                    self.metrics
-                        .messages_dropped
-                        .fetch_add(1, Ordering::Relaxed);
-                    Err(BufferError::BufferFull)
-                }
+            if let Ok(_receiver_count) = sender.send(enriched_entry) {
+                self.metrics.messages_sent.fetch_add(1, Ordering::Relaxed);
+                self.metrics.queue_depth.fetch_add(1, Ordering::Relaxed);
+                Ok(())
+            } else {
+                self.metrics.messages_sent.fetch_add(1, Ordering::Relaxed);
+                self.metrics
+                    .messages_dropped
+                    .fetch_add(1, Ordering::Relaxed);
+                Err(BufferError::BufferFull)
             }
         } else {
             Err(BufferError::BufferClosed)
         }
     }
 
+    /// Attempts a non-blocking pop of the next buffered [`EnrichedLogEntry`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BufferError::BufferClosed`] if the receiver is absent or `try_recv()` returns an
+    /// error (empty, lagged, or closed channel).
     pub fn pop(&mut self) -> Result<EnrichedLogEntry, BufferError> {
         if let Some(receiver) = &mut self.receiver {
             match receiver.try_recv() {
@@ -324,26 +365,36 @@ impl LogBuffer {
         }
     }
 
+    #[must_use]
     pub fn metrics(&self) -> Arc<BufferMetricsCollector> {
         self.metrics.clone()
     }
 
+    #[must_use]
     pub fn config(&self) -> &BufferConfig {
         &self.config
     }
 
+    #[must_use]
     pub fn capacity(&self) -> usize {
         self.config.capacity
     }
 
+    #[must_use]
     pub fn len(&self) -> usize {
         self.metrics.queue_depth.load(Ordering::Relaxed)
     }
 
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
+    #[must_use]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "message counters and capacity converted to f64 for throughput and fill ratio metrics"
+    )]
     pub fn detailed_metrics(&self) -> DetailedMetrics {
         let snapshot = self.metrics.snapshot();
         let elapsed = self.metrics.start_time.elapsed();
@@ -381,18 +432,26 @@ impl LogBuffer {
         self.pop().ok()
     }
 
+    #[must_use]
     pub fn is_full(&self) -> bool {
         self.len() >= self.capacity()
     }
 
+    #[must_use]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "queue length and capacity converted to f64 for fill ratio metric"
+    )]
     pub fn fill_ratio(&self) -> f64 {
         self.len() as f64 / self.capacity() as f64
     }
 
+    #[must_use]
     pub fn needs_backpressure(&self) -> bool {
         self.fill_ratio() >= self.config.backpressure_threshold
     }
 
+    #[must_use]
     pub fn backpressure_level(&self) -> crate::buffer::backpressure::BackpressureLevel {
         let ratio = self.fill_ratio();
         if ratio >= 0.95 {
@@ -406,6 +465,12 @@ impl LogBuffer {
         }
     }
 
+    /// Pushes `entry` using the specified backpressure `strategy`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BufferError::BufferClosed`] if the sender is absent, or
+    /// [`BufferError::BufferFull`] when the configured `strategy` stops retrying without capacity.
     pub async fn push_with_strategy(
         &self,
         entry: impl Into<EnrichedLogEntry> + Clone,
@@ -445,18 +510,17 @@ impl LogBuffer {
                 // with a bounded sleep between attempts instead of hot-
                 // spinning on `yield_now` (which pins a CPU core at 100%
                 // while backpressured).
+                const MAX_BLOCK_DELAY: Duration = Duration::from_millis(10);
                 let mut delay = self
                     .config
                     .backpressure_delay
                     .max(Duration::from_micros(50));
-                const MAX_BLOCK_DELAY: Duration = Duration::from_millis(10);
                 loop {
                     match self.push(entry.clone()) {
                         Ok(()) => return Ok(()),
                         Err(BufferError::BufferFull) => {
                             tokio::time::sleep(delay).await;
                             delay = (delay * 2).min(MAX_BLOCK_DELAY);
-                            continue;
                         }
                         Err(e) => return Err(e),
                     }

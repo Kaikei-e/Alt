@@ -53,10 +53,10 @@ func TestEmitUnpopulatedJSONCodec_MarshalEmitsZeroValuedScalars(t *testing.T) {
 		assert.Truef(t, ok, "expected JSON key %q to be present even at zero value, got %v", key, got)
 	}
 
-	assert.Equal(t, float64(0), got["articlesScanned"])
-	assert.Equal(t, float64(0), got["eventsAppended"])
-	assert.Equal(t, float64(0), got["skippedBlockedScheme"])
-	assert.Equal(t, float64(0), got["skippedDuplicate"])
+	assert.InDelta(t, float64(0), got["articlesScanned"], 1e-9)
+	assert.InDelta(t, float64(0), got["eventsAppended"], 1e-9)
+	assert.InDelta(t, float64(0), got["skippedBlockedScheme"], 1e-9)
+	assert.InDelta(t, float64(0), got["skippedDuplicate"], 1e-9)
 	assert.Equal(t, false, got["moreRemaining"])
 }
 
@@ -78,8 +78,8 @@ func TestEmitUnpopulatedJSONCodec_UnmarshalDiscardsUnknown(t *testing.T) {
 	req := &knowledgehomev1.EmitArticleUrlBackfillRequest{}
 	require.NoError(t, EmitUnpopulatedJSONCodec{}.Unmarshal(body, req))
 
-	assert.Equal(t, int32(12), req.MaxArticles)
-	assert.True(t, req.DryRun)
+	assert.Equal(t, int32(12), req.GetMaxArticles())
+	assert.True(t, req.GetDryRun())
 }
 
 func TestEmitUnpopulatedJSONCodec_UnmarshalNonProtoFails(t *testing.T) {

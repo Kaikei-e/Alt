@@ -4,13 +4,15 @@ import pytest
 
 from recap_subworker.services.evaluation import EvaluationService
 
+EXPECTED_FAITHFULNESS_SCORE = 0.85
+
 
 @pytest.fixture
-def evaluation_service():
+def evaluation_service() -> EvaluationService:
     return EvaluationService()
 
 
-def test_evaluate_classification(evaluation_service):
+def test_evaluate_classification(evaluation_service: EvaluationService) -> None:
     y_true = [[0, 1], [1, 0], [0, 1]]
     y_pred = [[0, 1], [1, 1], [0, 0]]
     target_names = ["GenreA", "GenreB"]
@@ -24,7 +26,7 @@ def test_evaluate_classification(evaluation_service):
 
 
 @pytest.mark.asyncio
-async def test_evaluate_summary_no_deepeval(evaluation_service):
+async def test_evaluate_summary_no_deepeval(evaluation_service: EvaluationService) -> None:
     # Mock DEEPEVAL_AVAILABLE to False
     with patch("recap_subworker.services.evaluation.DEEPEVAL_AVAILABLE", False):
         metrics = await evaluation_service.evaluate_summary("source", "summary")
@@ -37,18 +39,20 @@ async def test_evaluate_summary_no_deepeval(evaluation_service):
 @patch("recap_subworker.services.evaluation.FaithfulnessMetric")
 @patch("recap_subworker.services.evaluation.LLMTestCase")
 async def test_evaluate_summary_with_deepeval_mock(
-    mock_test_case, mock_faithfulness, evaluation_service
-):
+    mock_test_case: MagicMock,
+    mock_faithfulness: MagicMock,
+    evaluation_service: EvaluationService,
+) -> None:
     # Verify that if deepeval is available, we try to use it
 
     # Setup mocks
     mock_metric_instance = MagicMock()
-    mock_metric_instance.score = 0.85
+    mock_metric_instance.score = EXPECTED_FAITHFULNESS_SCORE
     mock_faithfulness.return_value = mock_metric_instance
 
     metrics = await evaluation_service.evaluate_summary("source text", "summary text")
 
-    assert metrics.faithfulness == 0.85
+    assert metrics.faithfulness == EXPECTED_FAITHFULNESS_SCORE
     # Brevity is calculated simply length ratio in our implementation
     expected_brevity = len("summary text") / (len("source text") + 1)
     assert metrics.brevity == expected_brevity
@@ -60,17 +64,21 @@ async def test_evaluate_summary_with_deepeval_mock(
 class TestEvaluatePathValidation:
     """Tests for path validation in evaluate() method - defense in depth."""
 
-    def test_evaluate_rejects_path_traversal(self, evaluation_service):
+    def test_evaluate_rejects_path_traversal(self, evaluation_service: EvaluationService) -> None:
         """Path traversal attempts should be rejected with ValueError."""
         with pytest.raises(ValueError, match="not within allowed directories"):
             evaluation_service.evaluate("../../../etc/passwd")
 
-    def test_evaluate_rejects_absolute_path_outside_allowed(self, evaluation_service):
+    def test_evaluate_rejects_absolute_path_outside_allowed(
+        self, evaluation_service: EvaluationService
+    ) -> None:
         """Absolute paths outside allowed directories should be rejected."""
         with pytest.raises(ValueError, match="not within allowed directories"):
             evaluation_service.evaluate("/etc/passwd")
 
-    def test_evaluate_by_language_rejects_path_traversal(self, evaluation_service):
+    def test_evaluate_by_language_rejects_path_traversal(
+        self, evaluation_service: EvaluationService
+    ) -> None:
         """evaluate_by_language should also reject path traversal attempts."""
         # evaluate_by_language catches exceptions per-language and returns error dict
         results = evaluation_service.evaluate_by_language("../../../etc/passwd")
@@ -80,7 +88,7 @@ class TestEvaluatePathValidation:
         assert "error" in results["en"]
         assert "not within allowed directories" in results["en"]["error"]
 
-    def test_init_rejects_weights_path_traversal(self):
+    def test_init_rejects_weights_path_traversal(self) -> None:
         """EvaluationService.__init__ must reject weights_path outside allowed dirs."""
         with pytest.raises(ValueError, match="not within allowed directories"):
             EvaluationService(weights_path="../../../etc/passwd")

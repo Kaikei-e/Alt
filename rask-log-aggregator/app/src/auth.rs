@@ -15,7 +15,7 @@ use axum::{
     response::Response,
 };
 use subtle::ConstantTimeEq;
-use tracing::warn;
+use tracing::{error, warn};
 
 use crate::error::AggregatorError;
 
@@ -53,6 +53,12 @@ pub fn is_rfc6750_token68(token: &str) -> bool {
 ///
 /// Rejects tokens containing CR, LF, non-ASCII bytes, or that are empty
 /// after trimming. Error messages never expose the token value.
+///
+/// # Errors
+///
+/// Returns [`AggregatorError::Config`] if the file at `path` cannot be read,
+/// or if the trimmed token is empty, contains non-ASCII or control
+/// characters (including CR/LF), or violates RFC 6750 `token68` syntax.
 pub fn load_ingest_token(path: &str) -> Result<String, AggregatorError> {
     let raw = fs::read_to_string(path).map_err(|e| {
         AggregatorError::Config(format!(
@@ -120,14 +126,18 @@ fn constant_time_token_eq(a: &str, b: &str) -> bool {
 /// request that reaches it. Wire this onto ingest routes only; health and
 /// metrics routes must be mounted outside this layer.
 ///
-/// # Panics
+/// Returns `500 Internal Server Error` if the `IngestToken` extension is missing.
 ///
-/// Panics if the `IngestToken` extension is not set on the request extensions.
+/// # Errors
+///
+/// Returns [`StatusCode::INTERNAL_SERVER_ERROR`] if the [`IngestToken`]
+/// extension is missing from the request, or [`StatusCode::UNAUTHORIZED`] if
+/// the `Authorization` bearer header is missing, malformed, or does not match.
 pub async fn require_ingest_token(request: Request, next: Next) -> Result<Response, StatusCode> {
-    let expected = request
-        .extensions()
-        .get::<Arc<IngestToken>>()
-        .expect("IngestToken extension must be inserted by the router");
+    let Some(expected) = request.extensions().get::<Arc<IngestToken>>() else {
+        error!("ingest auth: IngestToken extension missing from router");
+        return Err(StatusCode::INTERNAL_SERVER_ERROR);
+    };
 
     match extract_bearer(request.headers()) {
         Some(provided) if constant_time_token_eq(provided, &expected.0) => {

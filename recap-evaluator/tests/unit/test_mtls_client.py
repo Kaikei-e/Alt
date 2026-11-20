@@ -3,16 +3,24 @@
 from __future__ import annotations
 
 import asyncio
+import datetime
+import ipaddress
 import os
 import socket
 import ssl
 import tempfile
 import threading
+from collections.abc import Callable
+from http import HTTPStatus
 from pathlib import Path
 
 import httpx
 import pytest
 import structlog
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
 from recap_evaluator.infra import mtls_client
 from recap_evaluator.infra.mtls_client import (
@@ -24,41 +32,49 @@ from recap_evaluator.infra.mtls_client import (
 )
 
 
-def test_mtls_enforce_unset_fails_fast(monkeypatch):
+def test_mtls_enforce_unset_fails_fast(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("MTLS_ENFORCE", raising=False)
     with pytest.raises(RuntimeError, match="MTLS_ENFORCE"):
         mtls_enforced()
 
 
 @pytest.mark.parametrize("raw", ["", "yes", "1", "enabled"])
-def test_mtls_enforce_garbage_fails_fast(monkeypatch, raw):
+def test_mtls_enforce_garbage_fails_fast(monkeypatch: pytest.MonkeyPatch, raw: str) -> None:
     monkeypatch.setenv("MTLS_ENFORCE", raw)
     with pytest.raises(RuntimeError, match="MTLS_ENFORCE"):
         mtls_enforced()
 
 
-def test_mtls_enforced_true_when_env_set(monkeypatch):
+def test_mtls_enforced_true_when_env_set(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("MTLS_ENFORCE", "true")
     assert mtls_enforced()
 
 
-def test_mtls_enforced_false_only_when_explicitly_disabled(monkeypatch):
+def test_mtls_enforced_false_only_when_explicitly_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("MTLS_ENFORCE", "false")
     assert mtls_enforced() is False
 
 
-def test_build_ssl_context_none_when_explicitly_disabled(monkeypatch):
+def test_build_ssl_context_none_when_explicitly_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("MTLS_ENFORCE", "false")
     assert build_ssl_context() is None
 
 
-def test_build_ssl_context_fails_fast_when_enforce_unset(monkeypatch):
+def test_build_ssl_context_fails_fast_when_enforce_unset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.delenv("MTLS_ENFORCE", raising=False)
     with pytest.raises(RuntimeError, match="MTLS_ENFORCE"):
         build_ssl_context()
 
 
-def test_build_ssl_context_fails_closed_when_paths_missing(monkeypatch):
+def test_build_ssl_context_fails_closed_when_paths_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("MTLS_ENFORCE", "true")
     for v in ("MTLS_CERT_FILE", "MTLS_KEY_FILE", "MTLS_CA_FILE"):
         monkeypatch.delenv(v, raising=False)
@@ -67,7 +83,9 @@ def test_build_ssl_context_fails_closed_when_paths_missing(monkeypatch):
         build_ssl_context()
 
 
-def test_build_ssl_context_fails_closed_when_cert_unreadable(monkeypatch):
+def test_build_ssl_context_fails_closed_when_cert_unreadable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("MTLS_ENFORCE", "true")
     monkeypatch.setenv("MTLS_CERT_FILE", "/nonexistent/cert.pem")
     with tempfile.NamedTemporaryFile() as ca:
@@ -79,45 +97,9 @@ def test_build_ssl_context_fails_closed_when_cert_unreadable(monkeypatch):
 
 
 def _write_test_identity(dir_path: Path, cn: str) -> tuple[Path, Path]:
-    """Generate a throwaway self-signed cert + key PEM pair under dir.
-
-    Uses ``cryptography`` if available, else falls back to shelling out to
-    openssl. The resulting pair is valid for TLS usage in tests.
-    """
+    """Generate a throwaway self-signed cert + key PEM pair under dir."""
     cert_path = dir_path / f"{cn}-cert.pem"
     key_path = dir_path / f"{cn}-key.pem"
-
-    try:
-        import datetime
-
-        from cryptography import x509
-        from cryptography.hazmat.primitives import hashes, serialization
-        from cryptography.hazmat.primitives.asymmetric import ec
-        from cryptography.x509.oid import NameOID
-    except ImportError:  # pragma: no cover — CI always has cryptography
-        import subprocess
-
-        subprocess.run(
-            [
-                "openssl",
-                "req",
-                "-x509",
-                "-newkey",
-                "rsa:2048",
-                "-keyout",
-                str(key_path),
-                "-out",
-                str(cert_path),
-                "-days",
-                "1",
-                "-nodes",
-                "-subj",
-                f"/CN={cn}",
-            ],
-            check=True,
-            capture_output=True,
-        )
-        return cert_path, key_path
 
     key = ec.generate_private_key(ec.SECP256R1())
     subject = issuer = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, cn)])
@@ -142,7 +124,7 @@ def _write_test_identity(dir_path: Path, cn: str) -> tuple[Path, Path]:
     return cert_path, key_path
 
 
-def test_ssl_context_reloader_maybe_reload_true_on_mtime_advance(tmp_path):
+def test_ssl_context_reloader_maybe_reload_true_on_mtime_advance(tmp_path: Path) -> None:
     cert, key = _write_test_identity(tmp_path, "initial")
 
     ctx = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
@@ -155,7 +137,7 @@ def test_ssl_context_reloader_maybe_reload_true_on_mtime_advance(tmp_path):
     new_cert, new_key = _write_test_identity(tmp_path, "rotated")
     cert.write_bytes(new_cert.read_bytes())
     key.write_bytes(new_key.read_bytes())
-    future = reloader._cert_mtime + 2.0  # noqa: SLF001 — test-only access
+    future = reloader._cert_mtime + 2.0
     os.utime(cert, (future, future))
     os.utime(key, (future, future))
 
@@ -164,7 +146,7 @@ def test_ssl_context_reloader_maybe_reload_true_on_mtime_advance(tmp_path):
     assert reloader.maybe_reload() is False
 
 
-def test_ssl_context_reloader_swallows_transient_error(tmp_path):
+def test_ssl_context_reloader_swallows_transient_error(tmp_path: Path) -> None:
     cert, key = _write_test_identity(tmp_path, "fallback")
 
     ctx = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
@@ -174,7 +156,7 @@ def test_ssl_context_reloader_swallows_transient_error(tmp_path):
 
     # Truncate the cert (simulate mid-rotation window) and bump mtime.
     cert.write_bytes(b"not a pem")
-    future = reloader._cert_mtime + 2.0  # noqa: SLF001 — test-only access
+    future = reloader._cert_mtime + 2.0
     os.utime(cert, (future, future))
 
     # maybe_reload must NOT raise; it returns False so the caller keeps
@@ -182,14 +164,14 @@ def test_ssl_context_reloader_swallows_transient_error(tmp_path):
     assert reloader.maybe_reload() is False
 
 
-def test_watch_cert_rotation_cancels_cleanly(tmp_path):
+def test_watch_cert_rotation_cancels_cleanly(tmp_path: Path) -> None:
     cert, key = _write_test_identity(tmp_path, "watch")
 
     ctx = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
     ctx.load_cert_chain(certfile=str(cert), keyfile=str(key))
     reloader = SslContextReloader(ctx, str(cert), str(key))
 
-    async def runner():
+    async def runner() -> None:
         task = asyncio.create_task(watch_cert_rotation(reloader, interval_seconds=60.0))
         # Give the task one event-loop tick to start sleeping.
         await asyncio.sleep(0)
@@ -203,14 +185,6 @@ def test_watch_cert_rotation_cancels_cleanly(tmp_path):
 def _internal_pki(tmp_path: Path) -> dict[str, Path]:
     """Mint a throwaway CA, a news-creator server leaf, and a recap-evaluator
     client leaf, shaped like the step-ca leaves of the east-west mesh."""
-    import datetime
-    import ipaddress
-
-    from cryptography import x509
-    from cryptography.hazmat.primitives import hashes, serialization
-    from cryptography.hazmat.primitives.asymmetric import ec
-    from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
-
     now = datetime.datetime.now(datetime.UTC)
     ca_key = ec.generate_private_key(ec.SECP256R1())
     ca_name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "alt-test-ca")])
@@ -242,7 +216,9 @@ def _internal_pki(tmp_path: Path) -> dict[str, Path]:
         .sign(ca_key, hashes.SHA256())
     )
 
-    def leaf(cn: str, sans: list, eku) -> tuple[bytes, bytes]:
+    def leaf(
+        cn: str, sans: list[x509.GeneralName], eku: x509.ObjectIdentifier
+    ) -> tuple[bytes, bytes]:
         key = ec.generate_private_key(ec.SECP256R1())
         cert = (
             x509.CertificateBuilder()
@@ -295,7 +271,7 @@ def _internal_pki(tmp_path: Path) -> dict[str, Path]:
     return paths
 
 
-def _set_client_env(monkeypatch, pki: dict[str, Path]) -> None:
+def _set_client_env(monkeypatch: pytest.MonkeyPatch, pki: dict[str, Path]) -> None:
     monkeypatch.setenv("MTLS_ENFORCE", "true")
     monkeypatch.setenv("MTLS_CERT_FILE", str(pki["client_cert"]))
     monkeypatch.setenv("MTLS_KEY_FILE", str(pki["client_key"]))
@@ -334,7 +310,9 @@ def _serve_mtls_once(pki: dict[str, Path]) -> tuple[int, dict[str, str], threadi
     return port, seen, thread
 
 
-async def test_client_presents_cert_and_trusts_internal_ca_over_httpx(monkeypatch, tmp_path):
+async def test_client_presents_cert_and_trusts_internal_ca_over_httpx(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     pki = _internal_pki(tmp_path)
     _set_client_env(monkeypatch, pki)
     port, seen, thread = _serve_mtls_once(pki)
@@ -345,7 +323,7 @@ async def test_client_presents_cert_and_trusts_internal_ca_over_httpx(monkeypatc
         response = await client.get(f"https://localhost:{port}/api/tags")
     thread.join(timeout=5)
 
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     assert seen.get("peer_cn") == "recap-evaluator", seen
 
 
@@ -364,7 +342,7 @@ def _fake_enrollment(
     *,
     publish: tuple[Path, Path, Path, Path] | None = None,
     enrolled: tuple[str, str] | None = None,
-):
+) -> Callable[[str], _FakeHandle]:
     """Stand-in for the in-process enrollment start(). When ``publish`` is
     given, it moves the leaf into place the way a real enroll writes it. The
     handle reports ``enrolled`` as its CERT_PATH/KEY_PATH, defaulting to the
@@ -385,7 +363,9 @@ def _fake_enrollment(
     return start
 
 
-async def test_outbound_mtls_enrolls_before_loading_client_cert(monkeypatch, tmp_path):
+async def test_outbound_mtls_enrolls_before_loading_client_cert(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     pki = _internal_pki(tmp_path)
     _set_client_env(monkeypatch, pki)
     pending_cert = pki["client_cert"].rename(tmp_path / "pending-cert.pem")
@@ -417,7 +397,9 @@ async def test_outbound_mtls_enrolls_before_loading_client_cert(monkeypatch, tmp
     assert calls == ["pki:recap-evaluator", "pki_stop"]
 
 
-async def test_outbound_mtls_refuses_https_upstream_without_client_cert(monkeypatch):
+async def test_outbound_mtls_refuses_https_upstream_without_client_cert(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("MTLS_ENFORCE", "false")
     calls: list[str] = []
     monkeypatch.setattr(mtls_client, "start_pki_enrollment", _fake_enrollment(calls))
@@ -435,7 +417,9 @@ async def test_outbound_mtls_refuses_https_upstream_without_client_cert(monkeypa
     assert calls == []
 
 
-async def test_outbound_mtls_disabled_is_loud_and_plaintext_only(monkeypatch):
+async def test_outbound_mtls_disabled_is_loud_and_plaintext_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("MTLS_ENFORCE", "false")
     calls: list[str] = []
     monkeypatch.setattr(mtls_client, "start_pki_enrollment", _fake_enrollment(calls))
@@ -450,7 +434,9 @@ async def test_outbound_mtls_disabled_is_loud_and_plaintext_only(monkeypatch):
     assert calls == ["pki:recap-evaluator", "pki_stop"]
 
 
-async def test_outbound_mtls_enabled_is_logged(monkeypatch, tmp_path):
+async def test_outbound_mtls_enabled_is_logged(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     pki = _internal_pki(tmp_path)
     _set_client_env(monkeypatch, pki)
     calls: list[str] = []
@@ -465,7 +451,9 @@ async def test_outbound_mtls_enabled_is_logged(monkeypatch, tmp_path):
     assert any(entry["event"] == "outbound_mtls_enabled" for entry in logs), logs
 
 
-async def test_outbound_mtls_stops_enrollment_when_client_cert_unloadable(monkeypatch, tmp_path):
+async def test_outbound_mtls_stops_enrollment_when_client_cert_unloadable(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     pki = _internal_pki(tmp_path)
     _set_client_env(monkeypatch, pki)
     monkeypatch.setenv("MTLS_CERT_FILE", str(tmp_path / "never-written.pem"))
@@ -483,13 +471,16 @@ async def test_outbound_mtls_stops_enrollment_when_client_cert_unloadable(monkey
     assert calls == ["pki:recap-evaluator", "pki_stop"]
 
 
-async def test_outbound_mtls_propagates_enrollment_failure(monkeypatch, tmp_path):
+async def test_outbound_mtls_propagates_enrollment_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     pki = _internal_pki(tmp_path)
     _set_client_env(monkeypatch, pki)
 
     def failing_start(service_name: str) -> None:
         del service_name
-        raise RuntimeError("pki: enroll failed after 5 attempts")
+        msg = "pki: enroll failed after 5 attempts"
+        raise RuntimeError(msg)
 
     monkeypatch.setattr(mtls_client, "start_pki_enrollment", failing_start)
 
@@ -500,7 +491,9 @@ async def test_outbound_mtls_propagates_enrollment_failure(monkeypatch, tmp_path
             pass
 
 
-async def test_outbound_mtls_refuses_enforced_client_without_enrollment(monkeypatch, tmp_path):
+async def test_outbound_mtls_refuses_enforced_client_without_enrollment(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     pki = _internal_pki(tmp_path)
     _set_client_env(monkeypatch, pki)
     calls: list[str] = []
@@ -524,8 +517,8 @@ async def test_outbound_mtls_refuses_enforced_client_without_enrollment(monkeypa
     [("MTLS_CERT_FILE", "client_cert"), ("MTLS_KEY_FILE", "client_key")],
 )
 async def test_outbound_mtls_refuses_leaf_enrollment_does_not_renew(
-    monkeypatch, tmp_path, env_name, stale
-):
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, env_name: str, stale: str
+) -> None:
     pki = _internal_pki(tmp_path)
     _set_client_env(monkeypatch, pki)
     stale_copy = tmp_path / f"stale-{pki[stale].name}"

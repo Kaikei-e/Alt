@@ -79,7 +79,15 @@ impl GenreClassifier {
         let model = match std::env::var("RECAP_GENRE_MODEL_WEIGHTS") {
             Ok(path) => HybridModel::from_path(Some(Path::new(&path)))
                 .unwrap_or_else(|err| panic!("failed to load classifier weights: {err}")),
-            Err(_) => HybridModel::new().expect("hybrid model initialization"),
+            Err(_) => {
+                #[expect(
+                    clippy::expect_used,
+                    reason = "embedded genre_classifier_weights.json is valid by construction at compile time"
+                )]
+                HybridModel::new().expect(
+                    "embedded genre_classifier_weights.json is valid by construction at compile time",
+                )
+            }
         };
         let score_threshold = std::env::var("RECAP_GENRE_MODEL_THRESHOLD")
             .ok()

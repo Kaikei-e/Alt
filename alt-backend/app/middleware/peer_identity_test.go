@@ -9,9 +9,10 @@ import (
 	"testing"
 )
 
-func echoPeerHeader() http.Handler {
+func capturePeerHeader(got *string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(r.Header.Get(PeerIdentityHeader)))
+		*got = r.Header.Get(PeerIdentityHeader)
+		w.WriteHeader(http.StatusOK)
 	})
 }
 
@@ -26,25 +27,27 @@ func verifiedTLSState(cn string) *tls.ConnectionState {
 // handlers see, or the audit trail records whoever the caller claimed to be.
 func TestPeerIdentityHTTPMiddleware_StripsCallerSuppliedHeader(t *testing.T) {
 	res := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/v1/internal/system-user", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/internal/system-user", nil)
 	req.Header.Set(PeerIdentityHeader, "alt-backend")
 
-	PeerIdentityHTTPMiddleware(echoPeerHeader()).ServeHTTP(res, req)
+	var got string
+	PeerIdentityHTTPMiddleware(capturePeerHeader(&got)).ServeHTTP(res, req)
 
-	if got := res.Body.String(); got != "" {
+	if got != "" {
 		t.Errorf("peer identity header on a plaintext request = %q, want it stripped", got)
 	}
 }
 
 func TestPeerIdentityHTTPMiddleware_OverwritesForgedHeaderWithCertCN(t *testing.T) {
 	res := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/v1/internal/system-user", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/internal/system-user", nil)
 	req.Header.Set(PeerIdentityHeader, "auth-hub")
 	req.TLS = verifiedTLSState("pre-processor")
 
-	PeerIdentityHTTPMiddleware(echoPeerHeader()).ServeHTTP(res, req)
+	var got string
+	PeerIdentityHTTPMiddleware(capturePeerHeader(&got)).ServeHTTP(res, req)
 
-	if got := res.Body.String(); got != "pre-processor" {
+	if got != "pre-processor" {
 		t.Errorf("peer identity header = %q, want the client certificate CN", got)
 	}
 }

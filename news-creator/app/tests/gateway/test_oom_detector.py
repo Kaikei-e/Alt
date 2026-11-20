@@ -23,7 +23,7 @@ class TestOOMDetectorEnabled:
             "HTTP 500 - memory allocation failed in ggml backend",
         ],
     )
-    def test_is_oom_error_detects_known_patterns(self, message: str):
+    def test_is_oom_error_detects_known_patterns(self, message: str) -> None:
         detector = OOMDetector(enabled=True)
         assert detector.is_oom_error(message) is True
 
@@ -36,11 +36,13 @@ class TestOOMDetectorEnabled:
             "HTTP 404: endpoint not found",
         ],
     )
-    def test_is_oom_error_returns_false_for_non_oom_messages(self, message: str):
+    def test_is_oom_error_returns_false_for_non_oom_messages(
+        self, message: str
+    ) -> None:
         detector = OOMDetector(enabled=True)
         assert detector.is_oom_error(message) is False
 
-    def test_detect_oom_from_response_sets_oom_and_two_model_mode(self):
+    def test_detect_oom_from_response_sets_oom_and_two_model_mode(self) -> None:
         detector = OOMDetector(enabled=True)
         assert detector.oom_detected is False
         assert detector.two_model_mode is False
@@ -53,7 +55,7 @@ class TestOOMDetectorEnabled:
         assert detector.oom_detected is True
         assert detector.two_model_mode is True
 
-    def test_detect_oom_from_response_returns_false_on_normal_response(self):
+    def test_detect_oom_from_response_returns_false_on_normal_response(self) -> None:
         detector = OOMDetector(enabled=True)
 
         assert (
@@ -63,7 +65,7 @@ class TestOOMDetectorEnabled:
         assert detector.oom_detected is False
         assert detector.two_model_mode is False
 
-    def test_detect_oom_from_exception_sets_oom_and_two_model_mode(self):
+    def test_detect_oom_from_exception_sets_oom_and_two_model_mode(self) -> None:
         detector = OOMDetector(enabled=True)
         exc = RuntimeError(
             "Ollama API error: HTTP 500 - ggml_cuda_host_malloc: memory allocation failed"
@@ -75,7 +77,9 @@ class TestOOMDetectorEnabled:
         assert detector.oom_detected is True
         assert detector.two_model_mode is True
 
-    def test_detect_oom_from_exception_returns_false_on_unrelated_exception(self):
+    def test_detect_oom_from_exception_returns_false_on_unrelated_exception(
+        self,
+    ) -> None:
         detector = OOMDetector(enabled=True)
         exc = RuntimeError("Ollama API error: HTTP 503 - service unavailable")
 
@@ -83,7 +87,7 @@ class TestOOMDetectorEnabled:
         assert detector.oom_detected is False
         assert detector.two_model_mode is False
 
-    def test_reset_clears_oom_detected_and_two_model_mode(self):
+    def test_reset_clears_oom_detected_and_two_model_mode(self) -> None:
         detector = OOMDetector(enabled=True)
         detector.detect_oom_from_response({"error": "CUDA out of memory"})
         assert detector.oom_detected is True
@@ -113,7 +117,7 @@ class TestOOMDetectorFallbackModelSelection:
         config.model_60k_enabled = model_60k_enabled
         return config
 
-    def test_fallback_from_60k_to_12k_when_oom_detected(self):
+    def test_fallback_from_60k_to_12k_when_oom_detected(self) -> None:
         """After OOM on gemma4-e4b-60k, router in two_model_mode selects gemma4-e4b-12k for fallback."""
         detector = OOMDetector(enabled=True)
         config = self._make_config(model_60k_enabled=False)
@@ -126,9 +130,9 @@ class TestOOMDetectorFallbackModelSelection:
         selected_model, bucket = router.select_model("short prompt")
         assert selected_model != original_model
         assert selected_model == "gemma4-e4b-12k"
-        assert bucket == 8192
+        assert bucket == config.llm_num_ctx
 
-    def test_already_on_12k_yields_no_different_fallback_model(self):
+    def test_already_on_12k_yields_no_different_fallback_model(self) -> None:
         """If already running on gemma4-e4b-12k, re-selecting returns the same model (no fallback)."""
         detector = OOMDetector(enabled=True)
         config = self._make_config(model_60k_enabled=False)
@@ -145,7 +149,7 @@ class TestOOMDetectorFallbackModelSelection:
 class TestOOMDetectorDisabled:
     """Tests for OOMDetector when enabled=False."""
 
-    def test_disabled_detector_always_returns_false(self):
+    def test_disabled_detector_always_returns_false(self) -> None:
         detector = OOMDetector(enabled=False)
 
         assert detector.is_oom_error("CUDA out of memory") is False

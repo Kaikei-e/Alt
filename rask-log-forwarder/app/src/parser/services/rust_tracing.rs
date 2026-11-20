@@ -1,4 +1,4 @@
-//! Rust tracing_subscriber fmt().json() log parser.
+//! Rust `tracing_subscriber` `fmt().json()` log parser.
 //!
 //! Handles the specific format produced by `tracing_subscriber::fmt::layer().json()`:
 //! ```json
@@ -15,7 +15,7 @@ use super::{LogLevel, ParsedLogEntry, ServiceParser};
 use crate::parser::docker::ParseError;
 use serde_json::Value;
 
-/// Parser for Rust tracing_subscriber fmt().json() logs.
+/// Parser for Rust `tracing_subscriber` `fmt().json()` logs.
 pub struct RustTracingParser;
 
 impl Default for RustTracingParser {
@@ -25,6 +25,7 @@ impl Default for RustTracingParser {
 }
 
 impl RustTracingParser {
+    #[must_use]
     pub fn new() -> Self {
         Self
     }
@@ -42,7 +43,7 @@ impl RustTracingParser {
 }
 
 impl ServiceParser for RustTracingParser {
-    fn service_type(&self) -> &str {
+    fn service_type(&self) -> &'static str {
         "rust-tracing"
     }
 
@@ -54,8 +55,9 @@ impl ServiceParser for RustTracingParser {
     fn can_parse(&self, log: &str) -> bool {
         let trimmed = log.trim();
 
-        if let Some(start) = trimmed.find('{') {
-            let json_part = &trimmed[start..];
+        if let Some(start) = trimmed.find('{')
+            && let Some(json_part) = trimmed.get(start..)
+        {
             // Two renderings of the same subscriber: the JSON layer's default nests
             // the event's own fields under "fields", while a flattened writer (plecto
             // 0.7.0) puts them at the line root. "target" is on every tracing line
@@ -74,9 +76,9 @@ impl ServiceParser for RustTracingParser {
     fn parse_log(&self, log: &str) -> Result<ParsedLogEntry, ParseError> {
         let trimmed_log = log.trim();
 
-        if let Some(start_brace_pos) = trimmed_log.find('{') {
-            let potential_json_slice = &trimmed_log[start_brace_pos..];
-
+        if let Some(start_brace_pos) = trimmed_log.find('{')
+            && let Some(potential_json_slice) = trimmed_log.get(start_brace_pos..)
+        {
             match serde_json::from_str::<Value>(potential_json_slice) {
                 Ok(json) => {
                     if let Some(obj) = json.as_object() {
@@ -85,7 +87,6 @@ impl ServiceParser for RustTracingParser {
 
                         let level = match level_str {
                             "DEBUG" | "debug" => LogLevel::Debug,
-                            "INFO" | "info" => LogLevel::Info,
                             "WARN" | "warn" | "WARNING" | "warning" => LogLevel::Warn,
                             "ERROR" | "error" => LogLevel::Error,
                             "FATAL" | "fatal" => LogLevel::Fatal,
@@ -236,8 +237,7 @@ mod tests {
             ("ERROR", LogLevel::Error),
         ] {
             let log = format!(
-                r#"{{"timestamp":"2026-03-04T10:00:00Z","level":"{}","fields":{{"message":"test"}}}}"#,
-                level_str
+                r#"{{"timestamp":"2026-03-04T10:00:00Z","level":"{level_str}","fields":{{"message":"test"}}}}"#
             );
             let entry = parser.parse_log(&log).unwrap();
             assert_eq!(entry.level, Some(expected), "Failed for level {level_str}");

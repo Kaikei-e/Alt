@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -97,7 +98,21 @@ func (r *certReloader) load() (*tls.Certificate, error) {
 }
 
 func loadRootCAs(caPath string) (*x509.CertPool, error) {
-	pem, err := os.ReadFile(caPath)
+	if caPath == "" {
+		return nil, fmt.Errorf("empty ca bundle path")
+	}
+	clean := filepath.Clean(caPath)
+	dir := filepath.Dir(clean)
+	base := filepath.Base(clean)
+	if base == "." || base == ".." || strings.ContainsRune(base, filepath.Separator) {
+		return nil, fmt.Errorf("invalid ca bundle path %q", caPath)
+	}
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return nil, fmt.Errorf("open ca bundle dir for %q: %w", caPath, err)
+	}
+	defer func() { _ = root.Close() }()
+	pem, err := root.ReadFile(base)
 	if err != nil {
 		return nil, fmt.Errorf("read ca bundle %q: %w", caPath, err)
 	}

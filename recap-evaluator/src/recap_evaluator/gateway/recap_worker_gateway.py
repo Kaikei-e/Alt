@@ -25,7 +25,7 @@ class RecapWorkerGateway:
             response.raise_for_status()
             return response.json()
         except httpx.HTTPStatusError as e:
-            logger.error(
+            logger.exception(
                 "Failed to trigger genre evaluation",
                 status_code=e.response.status_code,
             )
@@ -42,7 +42,7 @@ class RecapWorkerGateway:
             response.raise_for_status()
             return response.json()
         except httpx.HTTPStatusError as e:
-            logger.error(
+            logger.exception(
                 "Failed to fetch genre evaluation",
                 status_code=e.response.status_code,
             )
@@ -59,7 +59,7 @@ class RecapWorkerGateway:
             response.raise_for_status()
             return response.json()
         except httpx.HTTPStatusError as e:
-            logger.error(
+            logger.exception(
                 "Failed to fetch genre evaluation",
                 run_id=run_id,
                 status_code=e.response.status_code,

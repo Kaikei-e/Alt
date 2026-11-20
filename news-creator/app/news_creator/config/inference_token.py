@@ -29,7 +29,7 @@ def resolve_inference_token() -> str | None:
     file variable is unset or blank, or the file is missing, unreadable, empty
     or holds a malformed token.
     """
-    global _disabled_logged
+    global _disabled_logged  # noqa: PLW0603 - module-level once-log guard (monkeypatched in tests)
 
     if os.environ.get("INFERENCE_AUTH", "").strip().lower() == "disabled":
         if not _disabled_logged:
@@ -42,22 +42,24 @@ def resolve_inference_token() -> str | None:
 
     token_file = os.environ.get("INFERENCE_SERVICE_TOKEN_FILE", "").strip()
     if not token_file:
-        raise ValueError(
+        msg = (
             "inference proxy authentication requires INFERENCE_SERVICE_TOKEN_FILE "
             "or INFERENCE_AUTH=disabled"
         )
+        raise ValueError(msg)
 
     try:
         token = Path(token_file).read_text(encoding="utf-8").strip()
     except OSError as exc:
-        raise ValueError(
-            f"Inference token file {token_file} not found or unreadable: {exc}"
-        ) from exc
+        msg = f"Inference token file {token_file} not found or unreadable: {exc}"
+        raise ValueError(msg) from exc
 
     if not token:
-        raise ValueError(f"Inference token file {token_file} is empty")
+        msg = f"Inference token file {token_file} is empty"
+        raise ValueError(msg)
     if not _TOKEN_PATTERN.match(token):
-        raise ValueError(f"Invalid token format in {token_file}")
+        msg = f"Invalid token format in {token_file}"
+        raise ValueError(msg)
 
     logger.info("inference_auth_enabled", extra={"token_file": token_file})
     return token

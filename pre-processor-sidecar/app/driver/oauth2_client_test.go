@@ -43,7 +43,7 @@ func TestOAuth2Client_RefreshToken(t *testing.T) {
 
 					// Parse form data
 					err := r.ParseForm()
-					require.NoError(t, err)
+					assert.NoError(t, err)
 
 					// Verify required parameters
 					assert.Equal(t, "refresh_token", r.Form.Get("grant_type"))
@@ -59,7 +59,7 @@ func TestOAuth2Client_RefreshToken(t *testing.T) {
 						"refresh_token": "new_refresh_token_456",
 					}
 					w.Header().Set("Content-Type", "application/json")
-					json.NewEncoder(w).Encode(response)
+					assert.NoError(t, json.NewEncoder(w).Encode(response))
 				}))
 			},
 			expectError:       false,
@@ -76,7 +76,7 @@ func TestOAuth2Client_RefreshToken(t *testing.T) {
 						"error_description": "Invalid refresh token",
 					}
 					w.Header().Set("Content-Type", "application/json")
-					json.NewEncoder(w).Encode(errorResponse)
+					assert.NoError(t, json.NewEncoder(w).Encode(errorResponse))
 				}))
 			},
 			expectError: true,
@@ -98,7 +98,8 @@ func TestOAuth2Client_RefreshToken(t *testing.T) {
 			mockResponse: func() *httptest.Server {
 				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
-					w.Write([]byte(`{"invalid": json`)) // Malformed JSON
+					_, writeErr := w.Write([]byte(`{"invalid": json`)) // Malformed JSON
+					assert.NoError(t, writeErr)
 				}))
 			},
 			expectError: true,
@@ -123,10 +124,10 @@ func TestOAuth2Client_RefreshToken(t *testing.T) {
 
 			// Verify results
 			if tc.expectError {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Nil(t, tokenResponse)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.NotNil(t, tokenResponse)
 				assert.Equal(t, tc.expectAccessToken, tokenResponse.AccessToken)
 				assert.Equal(t, "Bearer", tokenResponse.TokenType)
@@ -164,7 +165,7 @@ func TestOAuth2Client_ValidateToken(t *testing.T) {
 						"userName":  "test_user",
 						"userEmail": "test@example.com",
 					}
-					json.NewEncoder(w).Encode(userInfo)
+					assert.NoError(t, json.NewEncoder(w).Encode(userInfo))
 				}))
 			},
 			expectError: false,
@@ -179,7 +180,7 @@ func TestOAuth2Client_ValidateToken(t *testing.T) {
 						"error":       "invalid_token",
 						"description": "Token expired",
 					}
-					json.NewEncoder(w).Encode(errorResponse)
+					assert.NoError(t, json.NewEncoder(w).Encode(errorResponse))
 				}))
 			},
 			expectError: false,
@@ -194,7 +195,7 @@ func TestOAuth2Client_ValidateToken(t *testing.T) {
 						"error":       "access_denied",
 						"description": "Invalid token",
 					}
-					json.NewEncoder(w).Encode(errorResponse)
+					assert.NoError(t, json.NewEncoder(w).Encode(errorResponse))
 				}))
 			},
 			expectError: false,
@@ -230,10 +231,10 @@ func TestOAuth2Client_ValidateToken(t *testing.T) {
 
 			// Verify results
 			if tc.expectError {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.False(t, isValid)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.Equal(t, tc.expectValid, isValid)
 			}
 		})
@@ -271,7 +272,7 @@ func TestOAuth2Client_MakeAuthenticatedRequest(t *testing.T) {
 							},
 						},
 					}
-					json.NewEncoder(w).Encode(response)
+					assert.NoError(t, json.NewEncoder(w).Encode(response))
 				}))
 			},
 			expectError: false,
@@ -302,7 +303,7 @@ func TestOAuth2Client_MakeAuthenticatedRequest(t *testing.T) {
 						"error":       "rate_limit_exceeded",
 						"description": "Zone 1 daily limit exceeded",
 					}
-					json.NewEncoder(w).Encode(errorResponse)
+					assert.NoError(t, json.NewEncoder(w).Encode(errorResponse))
 				}))
 			},
 			expectError: true,
@@ -317,7 +318,7 @@ func TestOAuth2Client_MakeAuthenticatedRequest(t *testing.T) {
 						"error":       "invalid_token",
 						"description": "Token expired or invalid",
 					}
-					json.NewEncoder(w).Encode(errorResponse)
+					assert.NoError(t, json.NewEncoder(w).Encode(errorResponse))
 				}))
 			},
 			expectError: true,
@@ -339,10 +340,10 @@ func TestOAuth2Client_MakeAuthenticatedRequest(t *testing.T) {
 
 			// Verify results
 			if tc.expectError {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Nil(t, data)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.Equal(t, tc.expectData, data)
 			}
 		})
@@ -435,7 +436,9 @@ func TestOAuth2Client_TimeoutHandling(t *testing.T) {
 				}
 
 				w.WriteHeader(http.StatusOK)
-				w.Write([]byte(`{"access_token":"test_token","token_type":"Bearer","expires_in":3600,"refresh_token":"test_refresh"}`))
+				if _, writeErr := w.Write([]byte(`{"access_token":"test_token","token_type":"Bearer","expires_in":3600,"refresh_token":"test_refresh"}`)); writeErr != nil {
+					t.Logf("mock write after client timeout: %v", writeErr)
+				}
 			}))
 			defer server.Close()
 
@@ -448,7 +451,7 @@ func TestOAuth2Client_TimeoutHandling(t *testing.T) {
 			_, err := client.RefreshToken(ctx, "refresh_token")
 
 			if tt.expectTimeout {
-				assert.Error(t, err)
+				require.Error(t, err)
 				// Check for context deadline exceeded or timeout-related errors
 				assert.True(t,
 					strings.Contains(err.Error(), "deadline exceeded") ||
@@ -471,7 +474,9 @@ func BenchmarkOAuth2Client_RefreshToken(b *testing.B) {
 			"expires_in":    3600,
 			"refresh_token": "benchmark_refresh_token",
 		}
-		json.NewEncoder(w).Encode(response)
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			b.Error(err)
+		}
 	}))
 	defer server.Close()
 

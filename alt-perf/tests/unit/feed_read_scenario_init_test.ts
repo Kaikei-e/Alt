@@ -10,31 +10,19 @@
  *   - Fails closed at init time if short/expired/mismatched.
  */
 
-import { assertEquals, assertThrows } from "@std/assert";
+import { assertEquals } from "@std/assert";
 import { describe, it } from "@std/testing/bdd";
 import * as fs from "node:fs";
-import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 import { Buffer } from "node:buffer";
 
-const UUID_REGEX = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
-const MAX_JWT_LENGTH = 4096;
-const MAX_TTL_SECONDS = 300;
-const CLOCK_SKEW_SECONDS = 60;
-
-function decodeJWT(token: string): Record<string, unknown> | null {
-  try {
-    if (typeof token !== "string") return null;
-    const parts = token.split(".");
-    if (parts.length !== 3) return null;
-    let base64 = parts[1]!.replace(/-/g, "+").replace(/_/g, "/");
-    while (base64.length % 4) base64 += "=";
-    const payloadStr = atob(base64);
-    return JSON.parse(payloadStr) as Record<string, unknown>;
-  } catch {
-    return null;
+function getErrorMessage(e: unknown): string | undefined {
+  if (typeof e === "object" && e !== null && "message" in e) {
+    const msg = (e as { message: unknown }).message;
+    return typeof msg === "string" ? msg : undefined;
   }
+  return undefined;
 }
 
 function makeJWT(
@@ -152,7 +140,11 @@ function runScenarioInit(
         cfg: { testUserId?: string } = {},
         fixtureUserId?: string,
       ) => {
-        const claims = (exportsObj.validateFixtureTokenAtInit as Function)(
+        const claims = (exportsObj.validateFixtureTokenAtInit as (
+          token: string,
+          cfg?: { testUserId?: string },
+          fixtureUserId?: string,
+        ) => Record<string, unknown>)(
           token,
           cfg,
           fixtureUserId,
@@ -195,9 +187,10 @@ describe("feed-read-3000vu.js scenario init fixture validation", () => {
     try {
       runScenarioInit(fixtures);
       throw new Error("Expected to throw");
-    } catch (e: any) {
-      if (!e.message || !e.message.includes("Token expired")) {
-        throw new Error(`Expected error message to include "Token expired", got ${e.message}`);
+    } catch (e: unknown) {
+      const message = getErrorMessage(e);
+      if (!message || !message.includes("Token expired")) {
+        throw new Error(`Expected error message to include "Token expired", got ${message}`);
       }
     }
   });
@@ -210,9 +203,10 @@ describe("feed-read-3000vu.js scenario init fixture validation", () => {
     try {
       runScenarioInit(fixtures);
       throw new Error("Expected to throw");
-    } catch (e: any) {
-      if (!e.message || !e.message.includes("insufficient")) {
-        throw new Error(`Expected error message to include "insufficient", got ${e.message}`);
+    } catch (e: unknown) {
+      const message = getErrorMessage(e);
+      if (!message || !message.includes("insufficient")) {
+        throw new Error(`Expected error message to include "insufficient", got ${message}`);
       }
     }
   });
@@ -225,10 +219,11 @@ describe("feed-read-3000vu.js scenario init fixture validation", () => {
     try {
       runScenarioInit(fixtures);
       throw new Error("Expected to throw");
-    } catch (e: any) {
-      if (!e.message || !e.message.includes("exceeds maximum allowed 5 minutes")) {
+    } catch (e: unknown) {
+      const message = getErrorMessage(e);
+      if (!message || !message.includes("exceeds maximum allowed 5 minutes")) {
         throw new Error(
-          `Expected error message to include "exceeds maximum allowed 5 minutes", got ${e.message}`,
+          `Expected error message to include "exceeds maximum allowed 5 minutes", got ${message}`,
         );
       }
     }
@@ -242,9 +237,10 @@ describe("feed-read-3000vu.js scenario init fixture validation", () => {
     try {
       runScenarioInit(fixtures);
       throw new Error("Expected to throw");
-    } catch (e: any) {
-      if (!e.message || !e.message.includes("mismatch")) {
-        throw new Error(`Expected error message to include "mismatch", got ${e.message}`);
+    } catch (e: unknown) {
+      const message = getErrorMessage(e);
+      if (!message || !message.includes("mismatch")) {
+        throw new Error(`Expected error message to include "mismatch", got ${message}`);
       }
     }
   });

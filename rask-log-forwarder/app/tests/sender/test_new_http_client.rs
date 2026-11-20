@@ -12,7 +12,7 @@ async fn test_http_client_creation() {
         ..Default::default()
     };
 
-    let client = HttpClient::new(config).await;
+    let client = HttpClient::new(config);
     // Should succeed in creating client, but might fail health check without server
     assert!(client.is_ok() || matches!(client.unwrap_err(), ClientError::ConnectionFailed(_)));
 }
@@ -32,7 +32,7 @@ async fn test_client_configuration() {
     };
 
     // This should create client successfully even without connecting
-    let result = HttpClient::new(config.clone()).await;
+    let result = HttpClient::new(config.clone());
 
     // Might fail on health check, but config should be valid
     match result {
@@ -55,7 +55,7 @@ async fn test_invalid_endpoint() {
         ..Default::default()
     };
 
-    let result = HttpClient::new(config).await;
+    let result = HttpClient::new(config);
     assert!(result.is_err());
     assert!(matches!(
         result.unwrap_err(),
@@ -74,7 +74,7 @@ async fn test_connection_stats() {
     let max_connections = config.max_connections; // Extract before move
 
     // Try to create client
-    let result = HttpClient::new(config).await;
+    let result = HttpClient::new(config);
 
     match result {
         Ok(client) => {
@@ -102,7 +102,7 @@ async fn test_client_clone_and_sharing() {
         ..Default::default()
     };
 
-    let result = HttpClient::new(config).await;
+    let result = HttpClient::new(config);
 
     match result {
         Ok(client) => {
@@ -138,15 +138,12 @@ async fn test_timeout_configuration() {
         ..Default::default()
     };
 
-    let result = HttpClient::new(config).await;
+    let result = HttpClient::new(config);
 
     // Should either timeout or fail to connect
     match result {
-        Ok(_) => {
-            // Unlikely with such short timeout, but possible
-        }
-        Err(ClientError::ConnectionFailed(_)) | Err(ClientError::RequestTimeout(_)) => {
-            // Expected with very short timeout
+        Ok(_) | Err(ClientError::ConnectionFailed(_) | ClientError::RequestTimeout(_)) => {
+            // Possible with very short timeout (either succeeds or hits connection/timeout error)
         }
         Err(e) => panic!("Unexpected error: {e}"),
     }
@@ -160,7 +157,7 @@ async fn test_user_agent_header() {
         ..Default::default()
     };
 
-    let result = HttpClient::new(config).await;
+    let result = HttpClient::new(config);
 
     match result {
         Ok(client) => {
@@ -182,7 +179,7 @@ async fn test_compression_enabled() {
         ..Default::default()
     };
 
-    let result = HttpClient::new(config).await;
+    let result = HttpClient::new(config);
 
     match result {
         Ok(client) => {

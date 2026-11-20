@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"io"
 	"log/slog"
 	"net/http"
 
@@ -12,7 +11,7 @@ func init() {
 	// tests import the package directly without calling logger.Init() — wire a
 	// discard slog so middleware that logs via logger.Logger never panics.
 	if logger.Logger == nil {
-		logger.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+		logger.Logger = slog.New(slog.DiscardHandler)
 	}
 }
 

@@ -177,8 +177,7 @@ func TestLoadPolicy_Success(t *testing.T) {
 }
 
 func TestLoadPolicy_ExampleFixtureValid(t *testing.T) {
-	fixturePath := filepath.Join("fixtures", "event_auth_policy.example.json")
-	data, err := os.ReadFile(fixturePath)
+	data, err := os.ReadFile("fixtures/event_auth_policy.example.json")
 	require.NoError(t, err, "example fixture must exist in owned config fixtures")
 
 	// Create temp mock secrets so the example file paths or token references resolve
@@ -207,6 +206,7 @@ func TestLoadPolicy_ExampleFixtureValid(t *testing.T) {
 	substituted = replaceSecretPath(substituted, "/run/secrets/sovereign_harvester_token", harvesterTok)
 
 	testPolicyFile := filepath.Join(dir, "test_policy.json")
+	// #nosec G703 -- test writes temporary policy file inside t.TempDir()
 	require.NoError(t, os.WriteFile(testPolicyFile, []byte(substituted), 0o600))
 
 	pol, err := LoadPolicyFile(testPolicyFile)

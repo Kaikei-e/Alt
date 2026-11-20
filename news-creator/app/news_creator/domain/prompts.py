@@ -101,7 +101,7 @@ class _FormatMapping(Protocol):
 class _NeutralizedMapping:
     """Format mapping that serves neutralized text for untrusted placeholders."""
 
-    __slots__ = ("_values", "_neutralized")
+    __slots__ = ("_neutralized", "_values")
 
     def __init__(self, values: _FormatMapping, neutralized: dict[str, str]) -> None:
         self._values = values
@@ -117,7 +117,9 @@ class _NeutralizedMapping:
 def _neutralize_untrusted(values: _FormatMapping) -> _FormatMapping:
     """Return `values` with untrusted placeholders sanitized and delimited."""
     # Imported here because prompt_boundary builds on this module's scan.
-    from news_creator.domain.prompt_boundary import wrap_untrusted_content_with_report
+    from news_creator.domain.prompt_boundary import (  # noqa: PLC0415 - circular import with prompt_boundary
+        wrap_untrusted_content_with_report,
+    )
 
     neutralized: dict[str, str] = {}
     for placeholder in UNTRUSTED_PLACEHOLDERS:
@@ -179,10 +181,11 @@ class PromptTemplate(str):
             # A positional field carries no placeholder name, so it cannot be
             # screened against UNTRUSTED_PLACEHOLDERS. Refuse loudly rather than
             # let a future template silently interpolate feed content unchecked.
-            raise TypeError(
+            msg = (
                 "PromptTemplate.format() takes keyword arguments only; "
                 "positional fields bypass untrusted-input neutralization"
             )
+            raise TypeError(msg)
         return self.format_map(kwargs)
 
 

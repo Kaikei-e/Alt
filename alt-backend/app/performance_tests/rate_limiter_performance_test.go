@@ -25,7 +25,9 @@ func BenchmarkRateLimiterConcurrentHosts(b *testing.B) {
 		for pb.Next() {
 			host := hosts[b.N%len(hosts)]
 			ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
-			rateLimiter.WaitForHost(ctx, host)
+			if err := rateLimiter.WaitForHost(ctx, host); err != nil {
+				b.Error(err)
+			}
 			cancel()
 		}
 	})
@@ -38,7 +40,9 @@ func BenchmarkRateLimiterMemoryUsage(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		host := fmt.Sprintf("http://example%d.com", i)
 		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-		rateLimiter.WaitForHost(ctx, host)
+		if err := rateLimiter.WaitForHost(ctx, host); err != nil {
+			b.Fatal(err)
+		}
 		cancel()
 	}
 }
@@ -105,7 +109,9 @@ func BenchmarkRateLimiterSingleHost(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-		rateLimiter.WaitForHost(ctx, host)
+		if err := rateLimiter.WaitForHost(ctx, host); err != nil {
+			b.Fatal(err)
+		}
 		cancel()
 	}
 }
@@ -116,14 +122,18 @@ func BenchmarkRateLimiterLockContention(b *testing.B) {
 
 	// Pre-initialize the limiter to avoid setup cost
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
-	rateLimiter.WaitForHost(ctx, host)
+	if err := rateLimiter.WaitForHost(ctx, host); err != nil {
+		b.Fatal(err)
+	}
 	cancel()
 
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
-			rateLimiter.WaitForHost(ctx, host)
+			if err := rateLimiter.WaitForHost(ctx, host); err != nil {
+				b.Error(err)
+			}
 			cancel()
 		}
 	})
@@ -156,7 +166,9 @@ func TestRateLimiterScalability(t *testing.T) {
 						host := fmt.Sprintf("http://host%d.com", hostID)
 						ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 						defer cancel()
-						rateLimiter.WaitForHost(ctx, host)
+						if err := rateLimiter.WaitForHost(ctx, host); err != nil {
+							t.Errorf("WaitForHost(%s): %v", host, err)
+						}
 					}(i)
 				}
 
@@ -227,7 +239,9 @@ func BenchmarkRateLimiterURLParsing(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		url := urls[i%len(urls)]
 		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-		rateLimiter.WaitForHost(ctx, url)
+		if err := rateLimiter.WaitForHost(ctx, url); err != nil {
+			b.Fatal(err)
+		}
 		cancel()
 	}
 }

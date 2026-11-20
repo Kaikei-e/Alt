@@ -250,8 +250,12 @@ func TestProcessingGateway_ProcessImage_DecompressionBombRejected(t *testing.T) 
 	buf.WriteString("IHDR")
 	buf.Write(ihdr[:])
 	crc := crc32.NewIEEE()
-	crc.Write([]byte("IHDR"))
-	crc.Write(ihdr[:])
+	if _, err := crc.Write([]byte("IHDR")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := crc.Write(ihdr[:]); err != nil {
+		t.Fatal(err)
+	}
 	_ = binary.Write(&buf, binary.BigEndian, crc.Sum32())
 
 	_, err := gw.ProcessImage(context.Background(), buf.Bytes(), "image/png", 600, 80)

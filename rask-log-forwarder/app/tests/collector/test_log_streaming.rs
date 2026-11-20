@@ -21,16 +21,18 @@ fn docker_ok(args: &[&str]) -> bool {
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
+        .is_ok_and(|s| s.success())
 }
 
 fn cleanup(container_name: &str) {
-    let _ = Command::new("docker")
+    if let Err(err) = Command::new("docker")
         .args(["rm", "-f", container_name])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
-        .output();
+        .output()
+    {
+        eprintln!("Failed to remove test container {container_name}: {err}");
+    }
 }
 
 /// Start a container that continuously emits distinguishable log lines, so a
@@ -60,8 +62,7 @@ async fn wait_for_log_bytes(
     while tokio::time::Instant::now() < deadline {
         match rx.try_recv() {
             Ok(bytes) if !bytes.is_empty() => return Some(bytes),
-            Ok(_) => continue,
-            Err(broadcast::error::TryRecvError::Lagged(_)) => continue,
+            Ok(_) | Err(broadcast::error::TryRecvError::Lagged(_)) => {}
             Err(broadcast::error::TryRecvError::Closed) => return None,
             Err(broadcast::error::TryRecvError::Empty) => {
                 tokio::time::sleep(Duration::from_millis(50)).await;
@@ -77,25 +78,15 @@ async fn test_nginx_log_stream_initialization() {
     const CONTAINER_NAME: &str = "test-rlf-log-stream-init";
     cleanup(CONTAINER_NAME);
 
-    unsafe {
-        std::env::set_var("DOCKER_HOST", "unix:///var/run/docker.sock");
-    }
-
-    let collector = match DockerCollector::new().await {
+    let collector = match DockerCollector::from_endpoint("unix:///var/run/docker.sock") {
         Ok(c) => c,
         Err(e) => {
-            unsafe {
-                std::env::remove_var("DOCKER_HOST");
-            }
             println!("Docker not available, skipping: {e}");
             return;
         }
     };
 
     if !start_chatty_container(CONTAINER_NAME) {
-        unsafe {
-            std::env::remove_var("DOCKER_HOST");
-        }
         println!("Cannot start test container, skipping (Docker may not be available)");
         return;
     }
@@ -109,10 +100,6 @@ async fn test_nginx_log_stream_initialization() {
 
     let received = wait_for_log_bytes(&mut rx, Duration::from_secs(10)).await;
     cleanup(CONTAINER_NAME);
-
-    unsafe {
-        std::env::remove_var("DOCKER_HOST");
-    }
 
     let bytes = received.expect("must receive at least one log chunk from the tailed container");
     let text = String::from_utf8_lossy(&bytes);
@@ -128,25 +115,15 @@ async fn test_log_stream_with_options() {
     const CONTAINER_NAME: &str = "test-rlf-log-stream-options";
     cleanup(CONTAINER_NAME);
 
-    unsafe {
-        std::env::set_var("DOCKER_HOST", "unix:///var/run/docker.sock");
-    }
-
-    let collector = match DockerCollector::new().await {
+    let collector = match DockerCollector::from_endpoint("unix:///var/run/docker.sock") {
         Ok(c) => c,
         Err(e) => {
-            unsafe {
-                std::env::remove_var("DOCKER_HOST");
-            }
             println!("Docker not available, skipping: {e}");
             return;
         }
     };
 
     if !start_chatty_container(CONTAINER_NAME) {
-        unsafe {
-            std::env::remove_var("DOCKER_HOST");
-        }
         println!("Cannot start test container, skipping (Docker may not be available)");
         return;
     }
@@ -169,10 +146,6 @@ async fn test_log_stream_with_options() {
 
     let received = wait_for_log_bytes(&mut rx, Duration::from_secs(10)).await;
     cleanup(CONTAINER_NAME);
-
-    unsafe {
-        std::env::remove_var("DOCKER_HOST");
-    }
 
     let bytes = received.expect("must receive at least one log chunk from the tailed container");
     let text = String::from_utf8_lossy(&bytes);

@@ -8,9 +8,11 @@ import (
 )
 
 const (
-	minRAGAPITokenLen  = 24
-	ragAPIAuthEnv      = "RAG_API_AUTH"
+	minRAGAPITokenLen = 24
+	ragAPIAuthEnv     = "RAG_API_AUTH"
+	// #nosec G101 -- env var name constant, not a credential
 	ragAPITokenFileEnv = "RAG_API_TOKEN_FILE"
+	// #nosec G101 -- env var name constant, not a credential
 	ragAPITokenEnv     = "RAG_API_TOKEN"
 	ragAPIAuthDisabled = "disabled"
 )

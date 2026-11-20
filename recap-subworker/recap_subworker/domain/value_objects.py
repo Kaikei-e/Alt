@@ -10,6 +10,9 @@ from dataclasses import dataclass
 
 from pydantic import BaseModel, ConfigDict, Field
 
+MIN_SENTENCE_TEXT_LENGTH = 2
+MAX_GENRE_NAME_LENGTH = 32
+
 
 class ClusterDiagnostics(BaseModel):
     """Persisted run diagnostics built from an EvidenceResponse.
@@ -42,8 +45,9 @@ class SentenceText:
     text: str
 
     def __post_init__(self) -> None:
-        if len(self.text) < 2:
-            raise ValueError(f"Sentence text must be at least 2 characters, got {len(self.text)}")
+        if len(self.text) < MIN_SENTENCE_TEXT_LENGTH:
+            msg = f"Sentence text must be at least 2 characters, got {len(self.text)}"
+            raise ValueError(msg)
 
     def __str__(self) -> str:
         return self.text
@@ -59,8 +63,9 @@ class GenreName:
     value: str
 
     def __post_init__(self) -> None:
-        if not self.value or len(self.value) > 32:
-            raise ValueError(f"Genre name must be 1-32 characters, got '{self.value}'")
+        if not self.value or len(self.value) > MAX_GENRE_NAME_LENGTH:
+            msg = f"Genre name must be 1-32 characters, got '{self.value}'"
+            raise ValueError(msg)
 
     def __str__(self) -> str:
         return self.value
@@ -74,7 +79,8 @@ class IdempotencyKey:
 
     def __post_init__(self) -> None:
         if not self.value:
-            raise ValueError("Idempotency key cannot be empty")
+            msg = "Idempotency key cannot be empty"
+            raise ValueError(msg)
 
     def __str__(self) -> str:
         return self.value

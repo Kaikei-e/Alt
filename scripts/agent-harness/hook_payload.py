@@ -94,6 +94,32 @@ def _extract_added_text_for_claude(tool_name: str, tool_input: dict[str, Any]) -
     return ""
 
 
+def _collect_apply_patch_paths(
+    tool_input: dict[str, Any],
+    ordered: list[str],
+    seen: set[str],
+    added_text: dict[str, str],
+) -> None:
+    cmd = tool_input.get("command")
+    if isinstance(cmd, str):
+        patch_text = cmd
+    elif isinstance(cmd, list):
+        patch_text = "\n".join(part for part in cmd if isinstance(part, str))
+    else:
+        patch_text = ""
+
+    patch_paths, patch_added = extract_patch_details(patch_text)
+    for path in patch_paths:
+        _append_unique(ordered, seen, path)
+        if path in added_text:
+            combined = "\n".join(
+                part for part in (added_text[path], patch_added.get(path, "")) if part
+            )
+            added_text[path] = combined
+        else:
+            added_text[path] = patch_added.get(path, "")
+
+
 def parse_hook_stdin(raw: str) -> HookPayload | None:
     """Parse PreToolUse JSON from stdin.
 
@@ -103,29 +129,25 @@ def parse_hook_stdin(raw: str) -> HookPayload | None:
     try:
         payload = json.loads(raw)
     except json.JSONDecodeError as exc:
-        raise HookPayloadError(
-            f"guard could not read the hook payload: invalid JSON ({exc.msg})"
-        ) from exc
+        msg = f"guard could not read the hook payload: invalid JSON ({exc.msg})"
+        raise HookPayloadError(msg) from exc
 
     if not isinstance(payload, dict):
-        raise HookPayloadError(
-            "guard could not read the hook payload: expected a JSON object"
-        )
+        msg = "guard could not read the hook payload: expected a JSON object"
+        raise HookPayloadError(msg)
 
     tool_name = payload.get("tool_name")
     if not isinstance(tool_name, str) or not tool_name.strip():
-        raise HookPayloadError(
-            "guard could not read the hook payload: missing tool_name"
-        )
+        msg = "guard could not read the hook payload: missing tool_name"
+        raise HookPayloadError(msg)
 
     if tool_name not in WATCHED_TOOLS:
         return None
 
     tool_input = payload.get("tool_input")
     if not isinstance(tool_input, dict):
-        raise HookPayloadError(
-            f"guard could not read the hook payload: missing tool_input for {tool_name}"
-        )
+        msg = f"guard could not read the hook payload: missing tool_input for {tool_name}"
+        raise HookPayloadError(msg)
 
     ordered: list[str] = []
     seen: set[str] = set()
@@ -140,29 +162,11 @@ def parse_hook_stdin(raw: str) -> HookPayload | None:
             added_text[cleaned] = claude_added
 
     if tool_name == "apply_patch":
-        cmd = tool_input.get("command")
-        if isinstance(cmd, str):
-            patch_text = cmd
-        elif isinstance(cmd, list):
-            patch_text = "\n".join(part for part in cmd if isinstance(part, str))
-        else:
-            patch_text = ""
-
-        patch_paths, patch_added = extract_patch_details(patch_text)
-        for path in patch_paths:
-            _append_unique(ordered, seen, path)
-            if path in added_text:
-                combined = "\n".join(
-                    part for part in (added_text[path], patch_added.get(path, "")) if part
-                )
-                added_text[path] = combined
-            else:
-                added_text[path] = patch_added.get(path, "")
+        _collect_apply_patch_paths(tool_input, ordered, seen, added_text)
 
     if not ordered:
-        raise HookPayloadError(
-            f"guard could not read the hook payload: {tool_name} yielded no target path"
-        )
+        msg = f"guard could not read the hook payload: {tool_name} yielded no target path"
+        raise HookPayloadError(msg)
 
     return HookPayload(tool_name=tool_name, paths=tuple(ordered), added_text=added_text)
 
@@ -173,5 +177,5 @@ def read_hook_stdin_or_exit() -> HookPayload | None:
     try:
         return parse_hook_stdin(raw)
     except HookPayloadError as exc:
-        print(str(exc), file=sys.stderr)
+        sys.stderr.write(f"{exc}\n")
         sys.exit(2)

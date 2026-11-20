@@ -36,7 +36,16 @@ from acolyte.infra.otel import (
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-_VALID_TOKEN = "ValidRaskIngestToken1234567890abcdefgh="
+_VALID_TOKEN = "ValidRaskIngestToken1234567890abcdefgh="  # noqa: S105 - test fixture value, not a credential
+MIN_OTLP_EXPORT_TIMEOUT_S = 2.0
+MAX_OTLP_EXPORT_TIMEOUT_S = 3.0
+CAPPED_REDIRECT_TIMEOUT_S = 7.0
+EXPECTED_BRIDGED_LOG_COUNT = 2
+SAMPLE_FINAL_VERSION = 2
+MAX_SHUTDOWN_DRAIN_SECONDS = 4.0
+EXPECTED_EXCEPTION_LOG_COUNT = 4
+SAMPLE_ATTR_COUNT = 3
+SAMPLE_ATTR_RATIO = 0.5
 
 
 @pytest.fixture(autouse=True)
@@ -140,7 +149,7 @@ def test_otel_enabled_missing_or_invalid_token_fails_fast_without_leaking_secret
     assert exc_empty.type is RuntimeError
 
     bad_file = tmp_path / "bad_token"
-    bad_secret = "secret with spaces not allowed in token68"
+    bad_secret = "secret with spaces not allowed in token68"  # noqa: S105 - test fixture value, not a credential
     bad_file.write_text(bad_secret, encoding="utf-8")
     monkeypatch.setenv("RASK_INGEST_TOKEN_FILE", str(bad_file))
     with pytest.raises(RuntimeError, match="RASK_INGEST_TOKEN_FILE") as exc_info:
@@ -177,7 +186,7 @@ def test_otel_enabled_wires_bearer_header_and_logs_otel_logs_enabled(
             assert kwargs["endpoint"] == "http://rask-log-aggregator:4318/v1/logs"
             assert kwargs["headers"] == {"Authorization": f"Bearer {_VALID_TOKEN}"}
             assert isinstance(kwargs.get("session"), _NoRedirectSession)
-            assert 2.0 <= float(kwargs["timeout"]) <= 3.0
+            assert MIN_OTLP_EXPORT_TIMEOUT_S <= float(kwargs["timeout"]) <= MAX_OTLP_EXPORT_TIMEOUT_S
             mock_batch_processor.assert_called_once_with(mock_log_exporter.return_value)
             mock_provider_cls.return_value.add_log_record_processor.assert_called_once_with(
                 mock_batch_processor.return_value
@@ -213,7 +222,7 @@ def test_no_redirect_session_disables_redirects_and_caps_timeout(
     try:
         session.request("POST", "http://rask-log-aggregator:4318/v1/logs", allow_redirects=True, timeout=30.0)
         assert captured["allow_redirects"] is False
-        assert captured["timeout"] == 7.0
+        assert captured["timeout"] == CAPPED_REDIRECT_TIMEOUT_S
     finally:
         session.close()
 
@@ -242,22 +251,22 @@ def test_structlog_events_reach_otel_logger_provider_with_attributes_and_preserv
         structlog.contextvars.bind_contextvars(run_id="run-456")
 
         log = structlog.get_logger("acolyte.pipeline")
-        log.info("Pipeline completed", report_id="rep-123", final_version=2)
+        log.info("Pipeline completed", report_id="rep-123", final_version=SAMPLE_FINAL_VERSION)
         log.warning("Critic retry requested", report_id="rep-123")
 
         stdout_lines = [line for line in capsys.readouterr().out.strip().splitlines() if line.strip()]
-        assert len(stdout_lines) == 2
+        assert len(stdout_lines) == EXPECTED_BRIDGED_LOG_COUNT
 
         first_json = json.loads(stdout_lines[0])
         assert first_json["event"] == "Pipeline completed"
         assert first_json["level"] == "info"
         assert first_json["report_id"] == "rep-123"
         assert first_json["run_id"] == "run-456"
-        assert first_json["final_version"] == 2
+        assert first_json["final_version"] == SAMPLE_FINAL_VERSION
         assert "timestamp" in first_json
 
         finished = exporter.get_finished_logs()
-        assert len(finished) == 2
+        assert len(finished) == EXPECTED_BRIDGED_LOG_COUNT
 
         first_record = finished[0].log_record
         assert first_record.body == "Pipeline completed"
@@ -266,7 +275,7 @@ def test_structlog_events_reach_otel_logger_provider_with_attributes_and_preserv
         assert first_record.attributes is not None
         assert first_record.attributes["report_id"] == "rep-123"
         assert first_record.attributes["run_id"] == "run-456"
-        assert first_record.attributes["final_version"] == 2
+        assert first_record.attributes["final_version"] == SAMPLE_FINAL_VERSION
 
         second_record = finished[1].log_record
         assert second_record.body == "Critic retry requested"
@@ -314,7 +323,7 @@ def test_shutdown_drains_within_bounded_time_without_force_flush(
     start = time.monotonic()
     real_handle.shutdown()
     elapsed = time.monotonic() - start
-    assert elapsed < 4.0
+    assert elapsed < MAX_SHUTDOWN_DRAIN_SECONDS
 
 
 def test_bridge_processor_swallows_str_and_emit_errors_preserving_stdout_json(
@@ -383,7 +392,7 @@ def test_bridge_processor_exports_exception_details_and_preserves_exception_fiel
         _ = capsys.readouterr()
 
         finished = exporter.get_finished_logs()
-        assert len(finished) == 4
+        assert len(finished) == EXPECTED_EXCEPTION_LOG_COUNT
 
         div_attrs = dict(finished[0].log_record.attributes or {})
         assert div_attrs.get("exception.type") == "ZeroDivisionError"
@@ -418,9 +427,9 @@ def test_bridge_processor_serializes_non_primitive_attributes_as_json(
             meta={"a": 1, "b": "two"},
             tags=["x", "y"],
             raw=b"bytes",
-            count=3,
+            count=SAMPLE_ATTR_COUNT,
             flag=True,
-            ratio=0.5,
+            ratio=SAMPLE_ATTR_RATIO,
             label="ok",
         )
         _ = capsys.readouterr()
@@ -431,9 +440,9 @@ def test_bridge_processor_serializes_non_primitive_attributes_as_json(
         assert attrs["meta"] == json.dumps({"a": 1, "b": "two"}, default=str)
         assert attrs["tags"] == json.dumps(["x", "y"], default=str)
         assert attrs["raw"] == "bytes"
-        assert attrs["count"] == 3
+        assert attrs["count"] == SAMPLE_ATTR_COUNT
         assert attrs["flag"] is True
-        assert attrs["ratio"] == 0.5
+        assert attrs["ratio"] == SAMPLE_ATTR_RATIO
         assert attrs["label"] == "ok"
     finally:
         provider.shutdown()

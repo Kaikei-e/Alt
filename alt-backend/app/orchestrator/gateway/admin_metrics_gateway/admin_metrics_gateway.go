@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -118,7 +119,8 @@ func (g *Gateway) resolve(ctx context.Context, e allowEntry, window domain.Range
 
 	v, _, _ := g.sf.Do(cacheKey, func() (any, error) {
 		if err := g.limit.Wait(ctx); err != nil {
-			return g.degraded(e, kind, "rate limited"), nil
+			slog.WarnContext(ctx, "admin_metrics_gateway: rate limiter wait failed", "metric_key", e.key, "kind", kind, "error", err)
+			return g.degraded(e, kind, "rate limited"), nil //nolint:nilerr // rate-limited call returns degraded MetricResult rather than failing singleflight
 		}
 		res := g.fetch(ctx, e, kind, window, step)
 		g.cache.put(cacheKey, res)
@@ -161,7 +163,7 @@ func degradedReason(err error) string {
 			return "invalid query parameter"
 		case prometheus_client.ErrKindExecution:
 			return "prometheus query execution failed"
-		case prometheus_client.ErrKindUnavailable:
+		case prometheus_client.ErrKindUnavailable, prometheus_client.ErrKindUnknown:
 			return "prometheus unavailable"
 		}
 	}

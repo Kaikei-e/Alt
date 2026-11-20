@@ -145,9 +145,8 @@ class FaithfulnessEvaluator:
         """
         self._model_name = model_name or self.DEFAULT_MODEL
         if model_revision is None and self._model_name != self.DEFAULT_MODEL:
-            raise ValueError(
-                f"model_revision is required for non-default model {self._model_name!r}"
-            )
+            msg = f"model_revision is required for non-default model {self._model_name!r}"
+            raise ValueError(msg)
         self._model_revision = model_revision or self.DEFAULT_REVISION
         self.device = device
         self._nli: Any | None = None
@@ -174,11 +173,11 @@ class FaithfulnessEvaluator:
             if self._initialized:
                 return
 
-            if not TRANSFORMERS_AVAILABLE:
-                raise RuntimeError("transformers not available")
+            if not TRANSFORMERS_AVAILABLE or pipeline is None:
+                msg = "transformers not available"
+                raise RuntimeError(msg)
 
             logger.info("Initializing NLI pipeline", model=self._model_name)
-            assert pipeline is not None, "pipeline should be available (checked above)"
             self._nli = pipeline(
                 "text-classification",
                 model=self._model_name,
@@ -212,7 +211,8 @@ class FaithfulnessEvaluator:
         """
         self._ensure_initialized()
         if self._nli is None:
-            raise RuntimeError("NLI pipeline not available")
+            msg = "NLI pipeline not available"
+            raise RuntimeError(msg)
 
         if not pairs:
             return []
@@ -259,9 +259,11 @@ class FaithfulnessEvaluator:
             ValueError: If summary or source_sentences is empty.
         """
         if not summary or not summary.strip():
-            raise ValueError("summary cannot be empty")
+            msg = "summary cannot be empty"
+            raise ValueError(msg)
         if not source_sentences:
-            raise ValueError("source_sentences cannot be empty")
+            msg = "source_sentences cannot be empty"
+            raise ValueError(msg)
 
         summary_sentences = self._split_sentences(summary)
         sentence_results: list[SentenceResult] = []
@@ -356,9 +358,8 @@ class FaithfulnessEvaluator:
             ValueError: If summaries and sources have different lengths.
         """
         if len(summaries) != len(sources):
-            raise ValueError(
-                f"Mismatched lengths: {len(summaries)} summaries vs {len(sources)} sources"
-            )
+            msg = f"Mismatched lengths: {len(summaries)} summaries vs {len(sources)} sources"
+            raise ValueError(msg)
 
         results = []
         for summary, source_sentences in zip(summaries, sources, strict=True):

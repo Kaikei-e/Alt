@@ -47,7 +47,9 @@ test.describe("Preload warning regression gate", () => {
 			// Wait for network idle + Chrome's "few-second" window after load
 			// so any deferred preload directive surfaces as a warning if it is
 			// going to. Five seconds matches the Chromium heuristic timer.
+			// biome-ignore lint/nursery/noPlaywrightNetworkidle: regression gate monitors arbitrary routes' subresource preloads with no single target element
 			await page.waitForLoadState("networkidle");
+			// biome-ignore lint/nursery/noPlaywrightWaitForTimeout: Chromium emits preload-unused console warnings via an internal ~3-5s post-load browser heuristic with no DOM/network signal
 			await page.waitForTimeout(5000);
 
 			expect(

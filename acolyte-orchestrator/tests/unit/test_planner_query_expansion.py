@@ -12,6 +12,8 @@ from acolyte.domain.section_contract import QueryExpansionOutput
 from acolyte.port.llm_provider import LLMResponse
 from acolyte.usecase.graph.nodes.planner_node import PlannerNode
 
+MARKET_ANALYSIS_SECTION_COUNT = 3
+
 
 class FakeLLM:
     def __init__(self, response_text: str) -> None:
@@ -76,7 +78,7 @@ async def test_planner_without_llm_output_generates_skeleton() -> None:
     result = await node({"brief": {"topic": "AI semiconductor", "report_type": "market_analysis"}})
 
     outline = result["outline"]
-    assert len(outline) == 3
+    assert len(outline) == MARKET_ANALYSIS_SECTION_COUNT
     keys = [s["key"] for s in outline]
     assert keys == ["executive_summary", "analysis", "conclusion"]
     for section in outline:
@@ -116,7 +118,7 @@ async def test_market_analysis_always_3_sections_on_success() -> None:
     node = PlannerNode(llm)
 
     result = await node({"brief": {"topic": "AI chips", "report_type": "market_analysis"}})
-    assert len(result["outline"]) == 3
+    assert len(result["outline"]) == MARKET_ANALYSIS_SECTION_COUNT
 
 
 @pytest.mark.asyncio
@@ -126,7 +128,7 @@ async def test_market_analysis_always_3_sections_on_failure() -> None:
     node = PlannerNode(llm)
 
     result = await node({"brief": {"topic": "AI chips", "report_type": "market_analysis"}})
-    assert len(result["outline"]) == 3
+    assert len(result["outline"]) == MARKET_ANALYSIS_SECTION_COUNT
 
 
 # --- Query merging ---

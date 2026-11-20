@@ -35,13 +35,13 @@ func TestFetchRandomFeedResponse_Construction(t *testing.T) {
 		LatestArticleId: articleID,
 	}
 
-	assert.Equal(t, id, resp.Id)
-	assert.Equal(t, "https://example.com", resp.Url)
-	assert.Equal(t, "Test Feed", resp.Title)
-	assert.Equal(t, "A test feed", resp.Description)
-	assert.Len(t, resp.Tags, 1)
-	assert.Equal(t, "Go", resp.Tags[0].Name)
-	assert.Equal(t, articleID, resp.LatestArticleId)
+	assert.Equal(t, id, resp.GetId())
+	assert.Equal(t, "https://example.com", resp.GetUrl())
+	assert.Equal(t, "Test Feed", resp.GetTitle())
+	assert.Equal(t, "A test feed", resp.GetDescription())
+	assert.Len(t, resp.GetTags(), 1)
+	assert.Equal(t, "Go", resp.GetTags()[0].GetName())
+	assert.Equal(t, articleID, resp.GetLatestArticleId())
 }
 
 func TestFetchRandomFeedResponse_LatestArticleIdEmpty(t *testing.T) {
@@ -54,7 +54,7 @@ func TestFetchRandomFeedResponse_LatestArticleIdEmpty(t *testing.T) {
 		LatestArticleId: "",
 	}
 
-	assert.Empty(t, resp.LatestArticleId)
+	assert.Empty(t, resp.GetLatestArticleId())
 }
 
 func TestFetchRandomFeedResponse_WithEmptyTags(t *testing.T) {
@@ -67,8 +67,8 @@ func TestFetchRandomFeedResponse_WithEmptyTags(t *testing.T) {
 		Tags:        []*articlesv2.ArticleTagItem{},
 	}
 
-	assert.Equal(t, id, resp.Id)
-	assert.Empty(t, resp.Tags)
+	assert.Equal(t, id, resp.GetId())
+	assert.Empty(t, resp.GetTags())
 }
 
 func TestFetchRandomFeedResponse_WithNilTags(t *testing.T) {
@@ -80,7 +80,7 @@ func TestFetchRandomFeedResponse_WithNilTags(t *testing.T) {
 		Tags:        nil,
 	}
 
-	assert.Nil(t, resp.Tags)
+	assert.Nil(t, resp.GetTags())
 }
 
 func TestFetchRandomFeed_RequiresAuth(t *testing.T) {
@@ -113,7 +113,7 @@ func TestFetchRandomFeed_TagsIncludedInResponse_Documented(t *testing.T) {
 
 	t.Run("fail_open_behavior", func(t *testing.T) {
 		err := errors.New("database error")
-		assert.NotNil(t, err)
+		assert.Error(t, err)
 	})
 }
 
@@ -133,10 +133,10 @@ func TestFetchRandomFeed_MultipleTags(t *testing.T) {
 		Tags:        tags,
 	}
 
-	assert.Len(t, resp.Tags, 3)
-	assert.Equal(t, "Go", resp.Tags[0].Name)
-	assert.Equal(t, "Testing", resp.Tags[1].Name)
-	assert.Equal(t, "Backend", resp.Tags[2].Name)
+	assert.Len(t, resp.GetTags(), 3)
+	assert.Equal(t, "Go", resp.GetTags()[0].GetName())
+	assert.Equal(t, "Testing", resp.GetTags()[1].GetName())
+	assert.Equal(t, "Backend", resp.GetTags()[2].GetName())
 }
 
 func TestFetchRandomFeed_NoArticles_FetchesContentAndGeneratesTags_Documented(t *testing.T) {
@@ -152,7 +152,7 @@ func TestFetchRandomFeed_NoArticles_FetchesContentAndGeneratesTags_Documented(t 
 
 	t.Run("fail_open_behavior", func(t *testing.T) {
 		err := errors.New("network error")
-		assert.NotNil(t, err)
+		assert.Error(t, err)
 	})
 }
 

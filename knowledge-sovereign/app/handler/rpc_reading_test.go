@@ -54,11 +54,11 @@ func TestGetReadingQueue_ValidAndInvalidRequests(t *testing.T) {
 			AsOf:   timestamppb.New(asOf),
 		}))
 		require.NoError(t, err)
-		require.Len(t, resp.Msg.Items, 1)
-		assert.Equal(t, articleID.String(), resp.Msg.Items[0].ArticleId)
-		assert.Equal(t, queuedAt, resp.Msg.Items[0].QueuedAt.AsTime())
-		assert.Equal(t, expiresAt, resp.Msg.Items[0].ExpiresAt.AsTime())
-		assert.Equal(t, int32(1), resp.Msg.Items[0].QueuePolicyVersion)
+		require.Len(t, resp.Msg.GetItems(), 1)
+		assert.Equal(t, articleID.String(), resp.Msg.GetItems()[0].GetArticleId())
+		assert.Equal(t, queuedAt, resp.Msg.GetItems()[0].GetQueuedAt().AsTime())
+		assert.Equal(t, expiresAt, resp.Msg.GetItems()[0].GetExpiresAt().AsTime())
+		assert.Equal(t, int32(1), resp.Msg.GetItems()[0].GetQueuePolicyVersion())
 	})
 }
 
@@ -90,7 +90,7 @@ func TestCountReadingSourcesSince_ValidAndInvalidRequests(t *testing.T) {
 			Since:  timestamppb.New(since),
 		}))
 		require.NoError(t, err)
-		assert.Equal(t, int32(5), resp.Msg.Count)
+		assert.Equal(t, int32(5), resp.Msg.GetCount())
 	})
 }
 
@@ -152,12 +152,12 @@ func TestListReadingSourcesInWindow_ValidAndInvalidRequests(t *testing.T) {
 			To:     timestamppb.New(to),
 		}))
 		require.NoError(t, err)
-		require.Len(t, resp.Msg.Entries, 2)
-		assert.Equal(t, artV1.String(), resp.Msg.Entries[0].ArticleId)
-		assert.Equal(t, readAtV1, resp.Msg.Entries[0].FirstReadAt.AsTime())
-		assert.Equal(t, int32(1), resp.Msg.Entries[0].ReadRuleVersion)
-		assert.Equal(t, artLegacy.String(), resp.Msg.Entries[1].ArticleId)
-		assert.Equal(t, readAtLegacy, resp.Msg.Entries[1].FirstReadAt.AsTime())
-		assert.Equal(t, int32(0), resp.Msg.Entries[1].ReadRuleVersion)
+		require.Len(t, resp.Msg.GetEntries(), 2)
+		assert.Equal(t, artV1.String(), resp.Msg.GetEntries()[0].GetArticleId())
+		assert.Equal(t, readAtV1, resp.Msg.GetEntries()[0].GetFirstReadAt().AsTime())
+		assert.Equal(t, int32(1), resp.Msg.GetEntries()[0].GetReadRuleVersion())
+		assert.Equal(t, artLegacy.String(), resp.Msg.GetEntries()[1].GetArticleId())
+		assert.Equal(t, readAtLegacy, resp.Msg.GetEntries()[1].GetFirstReadAt().AsTime())
+		assert.Equal(t, int32(0), resp.Msg.GetEntries()[1].GetReadRuleVersion())
 	})
 }

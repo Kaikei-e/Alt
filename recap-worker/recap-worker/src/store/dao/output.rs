@@ -916,7 +916,7 @@ mod tests {
             .expect("get_latest_completed_job succeeds");
 
         pool.close().await;
-        let _ = server.await;
+        server.await.expect("mock pg server task");
 
         let queries = parsed_queries.lock().expect("mutex").clone();
         assert!(
@@ -974,14 +974,16 @@ mod tests {
         let found = RecapDao::get_latest_completed_job(&pool, 7).await;
 
         for job_id in [completed_3day_job, failed_7day_job] {
-            let _ = sqlx::query("DELETE FROM recap_outputs WHERE job_id = $1")
+            sqlx::query("DELETE FROM recap_outputs WHERE job_id = $1")
                 .bind(job_id)
                 .execute(&pool)
-                .await;
-            let _ = sqlx::query("DELETE FROM recap_jobs WHERE job_id = $1")
+                .await
+                .expect("cleanup recap_outputs");
+            sqlx::query("DELETE FROM recap_jobs WHERE job_id = $1")
                 .bind(job_id)
                 .execute(&pool)
-                .await;
+                .await
+                .expect("cleanup recap_jobs");
         }
 
         let found = found?;

@@ -191,7 +191,7 @@ func TestTitleFallback(t *testing.T) {
 		}))
 		defer server.Close()
 
-		logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+		logger := slog.New(slog.DiscardHandler)
 		cfg := &config.Config{
 			NewsCreator: config.NewsCreatorConfig{
 				Host:    server.URL,
@@ -490,7 +490,7 @@ func TestArticleSummarizerAPIClient_NewsCreatorPacingSeparatedFromExternalLimite
 		utils.NewsCreatorRateLimiter().SetInterval(0)
 	})
 
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	article := ArticlePayload{
 		ID:      "test-pacing",
 		Content: strings.Repeat("Valid content for pacing test. ", 10),

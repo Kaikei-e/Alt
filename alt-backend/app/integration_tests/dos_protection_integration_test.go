@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -127,7 +127,7 @@ func TestDOSProtectionIntegration(t *testing.T) {
 			e.Use(middleware.DOSProtectionMiddleware(context.Background(), tt.config))
 
 			// Create test handlers
-			e.GET("/v1/feeds", func(c echo.Context) error {
+			e.GET("/v1/feeds", func(c *echo.Context) error {
 				// Check if this request should force an error
 				reqIndex := getRequestIndex(c.Request())
 				if reqIndex >= 0 && reqIndex < len(tt.requests) && tt.requests[reqIndex].forceError {
@@ -136,11 +136,11 @@ func TestDOSProtectionIntegration(t *testing.T) {
 				return c.String(http.StatusOK, "OK")
 			})
 
-			e.GET("/v1/health", func(c echo.Context) error {
+			e.GET("/v1/health", func(c *echo.Context) error {
 				return c.String(http.StatusOK, "OK")
 			})
 
-			e.POST("/security/csp-report", func(c echo.Context) error {
+			e.POST("/security/csp-report", func(c *echo.Context) error {
 				return c.String(http.StatusOK, "OK")
 			})
 
@@ -150,7 +150,7 @@ func TestDOSProtectionIntegration(t *testing.T) {
 					time.Sleep(req.delay)
 				}
 
-				httpReq := httptest.NewRequest(req.method, req.path, nil)
+				httpReq := httptest.NewRequestWithContext(t.Context(), req.method, req.path, nil)
 				httpReq.RemoteAddr = req.ip + ":12345"
 				httpReq.Header.Set("X-Request-Index", fmt.Sprintf("%d", i))
 
@@ -282,7 +282,7 @@ func TestDOSProtectionEnvironmentConfiguration(t *testing.T) {
 
 	// Verify DOS protection configuration
 	dosConfig := cfg.RateLimit.DOSProtection
-	assert.Equal(t, true, dosConfig.Enabled)
+	assert.True(t, dosConfig.Enabled)
 	assert.Equal(t, 50, dosConfig.RateLimit)
 	assert.Equal(t, 100, dosConfig.BurstLimit)
 	assert.Equal(t, 2*time.Minute, dosConfig.WindowSize)
@@ -290,7 +290,7 @@ func TestDOSProtectionEnvironmentConfiguration(t *testing.T) {
 
 	// Verify circuit breaker configuration
 	cbConfig := dosConfig.CircuitBreaker
-	assert.Equal(t, true, cbConfig.Enabled)
+	assert.True(t, cbConfig.Enabled)
 	assert.Equal(t, 15, cbConfig.FailureThreshold)
 	assert.Equal(t, 45*time.Second, cbConfig.TimeoutDuration)
 	assert.Equal(t, 2*time.Minute, cbConfig.RecoveryTimeout)
@@ -307,7 +307,7 @@ func TestDOSProtectionPerformance(t *testing.T) {
 
 	e := echo.New()
 	e.Use(middleware.DOSProtectionMiddleware(context.Background(), config))
-	e.GET("/v1/test", func(c echo.Context) error {
+	e.GET("/v1/test", func(c *echo.Context) error {
 		return c.String(http.StatusOK, "OK")
 	})
 
@@ -316,7 +316,7 @@ func TestDOSProtectionPerformance(t *testing.T) {
 	const numRequests = 1000
 
 	for i := 0; i < numRequests; i++ {
-		req := httptest.NewRequest(http.MethodGet, "/v1/test", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/test", nil)
 		req.RemoteAddr = fmt.Sprintf("192.168.1.%d:12345", i%100)
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, req)

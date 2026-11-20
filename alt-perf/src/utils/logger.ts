@@ -52,9 +52,7 @@ function normalizeFieldName(key: string): string {
 
 function isSensitiveField(key: string): boolean {
   const normalized = normalizeFieldName(key);
-  return SENSITIVE_FIELDS.some((field) =>
-    normalized.includes(normalizeFieldName(field))
-  );
+  return SENSITIVE_FIELDS.some((field) => normalized.includes(normalizeFieldName(field)));
 }
 
 /** Redact credential-like keys before logging. */

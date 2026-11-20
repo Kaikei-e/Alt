@@ -138,7 +138,7 @@ export default function () {
           Cookie: `ory_kratos_session=${vuSession}`,
           "X-Forwarded-For": vuIP,
         },
-      }),
+      })
     );
     if (csrfRes && csrfRes.status === 200) {
       try {
@@ -171,7 +171,7 @@ export default function () {
           Cookie: `ory_kratos_session=${vuSession}`,
           "X-Forwarded-For": vuIP,
         },
-      }),
+      })
     );
     if (csrfRes && csrfRes.status === 200) {
       try {
@@ -197,7 +197,7 @@ export default function () {
         },
         tags: { name: "feed-register" },
       },
-    ),
+    )
   );
 
   registerDuration.add(res.timings.duration);

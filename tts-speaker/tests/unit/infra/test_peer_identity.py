@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 from starlette.applications import Starlette
+from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 from starlette.testclient import TestClient
@@ -24,9 +25,12 @@ from tts_speaker.infra.peer_identity import (
 # reached the published plaintext port directly.
 SIDECAR = ("127.0.0.1", 44444)
 DIRECT = ("172.18.0.9", 44444)
+_HTTP_OK = 200
+_HTTP_UNAUTHORIZED = 401
+_HTTP_FORBIDDEN = 403
 
 
-def _echo_peer(request):
+def _echo_peer(request: Request) -> JSONResponse:
     return JSONResponse({"peer": getattr(request.state, "peer_identity", None)})
 
 
@@ -47,7 +51,7 @@ def test_header_propagated_when_mtls_on(monkeypatch: pytest.MonkeyPatch) -> None
     app = _build_app(monkeypatch, verify_client="on")
     with TestClient(app, client=SIDECAR) as client:
         resp = client.get("/echo", headers={PEER_IDENTITY_HEADER: "alt-backend"})
-        assert resp.status_code == 200
+        assert resp.status_code == _HTTP_OK
         assert resp.json() == {"peer": "alt-backend"}
 
 
@@ -57,7 +61,7 @@ def test_header_stripped_when_mtls_off(monkeypatch: pytest.MonkeyPatch) -> None:
     app = _build_app(monkeypatch, verify_client="off")
     with TestClient(app, client=SIDECAR) as client:
         resp = client.get("/echo", headers={PEER_IDENTITY_HEADER: "root"})
-        assert resp.status_code == 200
+        assert resp.status_code == _HTTP_OK
         assert resp.json() == {"peer": None}
 
 
@@ -70,7 +74,7 @@ def test_header_stripped_when_trust_unset(monkeypatch: pytest.MonkeyPatch) -> No
     app.add_middleware(PeerIdentityMiddleware)
     with TestClient(app, client=SIDECAR) as client:
         resp = client.get("/echo", headers={PEER_IDENTITY_HEADER: "alt-backend"})
-        assert resp.status_code == 200
+        assert resp.status_code == _HTTP_OK
         assert resp.json() == {"peer": None}
 
 
@@ -81,7 +85,7 @@ def test_header_stripped_when_not_from_sidecar(monkeypatch: pytest.MonkeyPatch) 
     app = _build_app(monkeypatch, verify_client="on")
     with TestClient(app, client=DIRECT) as client:
         resp = client.get("/echo", headers={PEER_IDENTITY_HEADER: "alt-backend"})
-        assert resp.status_code == 200
+        assert resp.status_code == _HTTP_OK
         assert resp.json() == {"peer": None}
 
 
@@ -93,7 +97,7 @@ def test_strict_rejects_peer_from_non_sidecar_transport(
     app = _build_app(monkeypatch, allowed=["alt-backend"], strict=True)
     with TestClient(app, client=DIRECT) as client:
         resp = client.get("/echo", headers={PEER_IDENTITY_HEADER: "alt-backend"})
-        assert resp.status_code == 401
+        assert resp.status_code == _HTTP_UNAUTHORIZED
 
 
 def test_allowed_peers_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -108,7 +112,7 @@ def test_tls_peer_cn_wins_over_spoofed_header(monkeypatch: pytest.MonkeyPatch) -
         app = _build_app(monkeypatch, allowed=["recap-worker"], strict=True, verify_client="off")
         with TestClient(app, client=client) as http:
             resp = http.get("/echo", headers={PEER_IDENTITY_HEADER: "root"})
-            assert resp.status_code == 200
+            assert resp.status_code == _HTTP_OK
             assert resp.json() == {"peer": "recap-worker"}
     finally:
         forget_tls_peer(client)
@@ -121,7 +125,7 @@ def test_tls_peer_cn_is_allowlisted(monkeypatch: pytest.MonkeyPatch) -> None:
         app = _build_app(monkeypatch, allowed=["recap-worker"], strict=True, verify_client="on")
         with TestClient(app, client=client) as http:
             resp = http.get("/echo", headers={PEER_IDENTITY_HEADER: "recap-worker"})
-            assert resp.status_code == 403
+            assert resp.status_code == _HTTP_FORBIDDEN
     finally:
         forget_tls_peer(client)
 
@@ -141,7 +145,7 @@ def test_tls_peer_not_allowlisted_rejected_even_when_not_strict(
         app = _build_app(monkeypatch, allowed=["recap-worker"], strict=False)
         with TestClient(app, client=client) as http:
             resp = http.get("/echo")
-            assert resp.status_code == 403
+            assert resp.status_code == _HTTP_FORBIDDEN
     finally:
         forget_tls_peer(client)
 
@@ -155,7 +159,7 @@ def test_tls_peer_allowlisted_passes_even_when_not_strict(
         app = _build_app(monkeypatch, allowed=["recap-worker"], strict=False)
         with TestClient(app, client=client) as http:
             resp = http.get("/echo")
-            assert resp.status_code == 200
+            assert resp.status_code == _HTTP_OK
             assert resp.json() == {"peer": "recap-worker"}
     finally:
         forget_tls_peer(client)
@@ -170,7 +174,7 @@ def test_plaintext_origin_without_cert_unaffected_by_tls_allowlist(
     app = _build_app(monkeypatch, allowed=["recap-worker"], strict=False, verify_client="off")
     with TestClient(app, client=DIRECT) as http:
         resp = http.get("/echo")
-        assert resp.status_code == 200
+        assert resp.status_code == _HTTP_OK
         assert resp.json() == {"peer": None}
 
 
@@ -184,7 +188,7 @@ def test_health_on_tls_port_exempt_from_allowlist(
         app.add_middleware(PeerIdentityMiddleware, allowed=["recap-worker"], strict=False)
         with TestClient(app, client=client) as http:
             resp = http.get("/health")
-            assert resp.status_code == 200
+            assert resp.status_code == _HTTP_OK
     finally:
         forget_tls_peer(client)
 
@@ -198,7 +202,7 @@ def test_tls_peer_empty_cn_rejected_even_when_not_strict(
         app = _build_app(monkeypatch, allowed=["recap-worker"], strict=False)
         with TestClient(app, client=client) as http:
             resp = http.get("/echo")
-            assert resp.status_code == 403
+            assert resp.status_code == _HTTP_FORBIDDEN
     finally:
         forget_tls_peer(client)
 
@@ -212,7 +216,7 @@ def test_tls_peer_empty_cn_rejected_without_allowlist(
         app = _build_app(monkeypatch, allowed=None, strict=False)
         with TestClient(app, client=client) as http:
             resp = http.get("/echo")
-            assert resp.status_code == 403
+            assert resp.status_code == _HTTP_FORBIDDEN
     finally:
         forget_tls_peer(client)
 
@@ -227,7 +231,7 @@ def test_health_on_tls_port_with_empty_cn_exempt_from_allowlist(
         app.add_middleware(PeerIdentityMiddleware, allowed=["recap-worker"], strict=False)
         with TestClient(app, client=client) as http:
             resp = http.get("/health")
-            assert resp.status_code == 200
+            assert resp.status_code == _HTTP_OK
             assert resp.json() == {"peer": None}
     finally:
         forget_tls_peer(client)
@@ -256,5 +260,5 @@ def test_health_and_metrics_on_plaintext_port_exempt_when_strict_true(
     app.add_middleware(PeerIdentityMiddleware, allowed=["recap-worker"], strict=True)
     with TestClient(app, client=client_addr) as http:
         resp = http.get(path)
-        assert resp.status_code == 200
+        assert resp.status_code == _HTTP_OK
         assert resp.json() == {"peer": None}

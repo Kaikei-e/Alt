@@ -4,7 +4,6 @@
 // Returns the ory_kratos_session cookie value for subsequent requests.
 
 import http from "k6/http";
-import { CookieJar } from "k6/http";
 
 const NGINX_BASE = "http://nginx";
 

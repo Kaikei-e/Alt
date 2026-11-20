@@ -1,6 +1,6 @@
 """Evaluation HTTP handlers (thin)."""
 
-from typing import Any
+from typing import Annotated, Any
 from uuid import UUID
 
 import structlog
@@ -28,23 +28,22 @@ router = APIRouter(prefix="/api/v1")
 async def list_evaluations(
     request: Request,
     evaluation_type: str | None = None,
-    limit: int = Query(default=30, ge=1, le=100),
+    limit: Annotated[int, Query(ge=1, le=100)] = 30,
 ) -> EvaluationListResponse:
     get_metrics: Any = request.app.state.get_metrics
     history = await get_metrics.get_evaluation_history(evaluation_type=evaluation_type, limit=limit)
 
-    evaluations = []
-    for run in history:
-        evaluations.append(
-            EvaluationRunResponse(
-                evaluation_id=str(run["evaluation_id"]),
-                evaluation_type=run["evaluation_type"],
-                job_ids=[str(jid) for jid in run.get("job_ids", [])],
-                created_at=run["created_at"],
-                window_days=run.get("metrics", {}).get("window_days", 14),
-                overall_alert_level=run.get("metrics", {}).get("overall_alert_level", "ok"),
-            )
+    evaluations = [
+        EvaluationRunResponse(
+            evaluation_id=str(run["evaluation_id"]),
+            evaluation_type=run["evaluation_type"],
+            job_ids=[str(jid) for jid in run.get("job_ids", [])],
+            created_at=run["created_at"],
+            window_days=run.get("metrics", {}).get("window_days", 14),
+            overall_alert_level=run.get("metrics", {}).get("overall_alert_level", "ok"),
         )
+        for run in history
+    ]
 
     return EvaluationListResponse(evaluations=evaluations, total=len(evaluations))
 

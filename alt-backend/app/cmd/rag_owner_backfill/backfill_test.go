@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"testing"
@@ -70,7 +69,7 @@ func (f *fakeOwnerBackfillClient) BackfillDocumentOwnersWithResponse(
 }
 
 func TestProcessPairs_BatchingAndSumming(t *testing.T) {
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 
 	// Create 1250 test pairs
 	const totalItems = 1250
@@ -106,7 +105,7 @@ func TestProcessPairs_BatchingAndSumming(t *testing.T) {
 }
 
 func TestProcessPairs_DryRun(t *testing.T) {
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 
 	pairs := []ArticleOwnerPair{
 		{ArticleID: "a1", UserID: "u1"},
@@ -126,7 +125,7 @@ func TestProcessPairs_DryRun(t *testing.T) {
 }
 
 func TestProcessPairs_ExitsNonZeroOn4xx(t *testing.T) {
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 
 	pairs := []ArticleOwnerPair{
 		{ArticleID: "a1", UserID: "u1"},
@@ -143,7 +142,7 @@ func TestProcessPairs_ExitsNonZeroOn4xx(t *testing.T) {
 }
 
 func TestProcessPairs_ExitsNonZeroOn5xx(t *testing.T) {
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 
 	pairs := []ArticleOwnerPair{
 		{ArticleID: "a1", UserID: "u1"},
@@ -160,7 +159,7 @@ func TestProcessPairs_ExitsNonZeroOn5xx(t *testing.T) {
 }
 
 func TestProcessPairs_ExitsNonZeroOnNetworkError(t *testing.T) {
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 
 	pairs := []ArticleOwnerPair{
 		{ArticleID: "a1", UserID: "u1"},
@@ -196,7 +195,7 @@ func (f *fakeArticlePageFetcher) FetchPage(_ context.Context, startAfterID strin
 }
 
 func TestStreamAndBackfill_KeysetPaginationAndDelegation(t *testing.T) {
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 
 	fetcher := &fakeArticlePageFetcher{
 		pages: [][]ArticleOwnerPair{
@@ -226,7 +225,7 @@ func TestStreamAndBackfill_KeysetPaginationAndDelegation(t *testing.T) {
 }
 
 func TestStreamAndBackfill_DryRun_NoRPCs(t *testing.T) {
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 
 	fetcher := &fakeArticlePageFetcher{
 		pages: [][]ArticleOwnerPair{
@@ -248,7 +247,7 @@ func TestStreamAndBackfill_DryRun_NoRPCs(t *testing.T) {
 }
 
 func TestStreamAndBackfill_ResumeFromStartAfterID(t *testing.T) {
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 
 	fetcher := &fakeArticlePageFetcher{
 		pages: [][]ArticleOwnerPair{
@@ -268,7 +267,7 @@ func TestStreamAndBackfill_ResumeFromStartAfterID(t *testing.T) {
 }
 
 func TestStreamAndBackfill_FetchError_ReturnsError(t *testing.T) {
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 
 	fetcher := &fakeArticlePageFetcher{
 		err: errors.New("db query error"),
@@ -282,7 +281,7 @@ func TestStreamAndBackfill_FetchError_ReturnsError(t *testing.T) {
 }
 
 func TestStreamAndBackfill_ClientError_ReturnsError(t *testing.T) {
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 
 	fetcher := &fakeArticlePageFetcher{
 		pages: [][]ArticleOwnerPair{
@@ -303,7 +302,7 @@ func TestStreamAndBackfill_ClientError_ReturnsError(t *testing.T) {
 }
 
 func TestProcessBatch_SetsBoundedTimeoutAndSurfacesDeadlineExceeded(t *testing.T) {
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	items := []rag_gateway.OwnerBackfillItem{{ArticleId: "a1", UserId: "u1"}}
 
 	t.Run("attaches per-batch timeout to background context", func(t *testing.T) {

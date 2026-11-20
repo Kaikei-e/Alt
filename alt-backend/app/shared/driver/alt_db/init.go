@@ -123,11 +123,3 @@ func loadDBConnectionConfig(ctx context.Context) (*DatabaseConfig, string, error
 
 	return config, config.BuildConnectionString(), nil
 }
-
-func envChecker(env string, variable string) (string, error) {
-	if env == "" {
-		logger.Logger.ErrorContext(context.Background(), "Environment variable is not set", "variable", variable)
-		return "", fmt.Errorf("environment variable is not set: %s", variable)
-	}
-	return env, nil
-}

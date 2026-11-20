@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import logging
 import re
+import shutil
 import subprocess
 import time
 from dataclasses import dataclass
+from functools import cache
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -14,6 +16,45 @@ logger = logging.getLogger(__name__)
 # Gap between the two /proc/stat samples used to compute instantaneous CPU
 # usage (see `_read_proc_stat_times` / `get_cpu_info`).
 PROC_STAT_SAMPLE_INTERVAL_SEC = 0.1
+_PROC_STAT_IDLE_INDEX = 4
+_PROC_STAT_IOWAIT_INDEX = 5
+_COMMAND_TIMEOUT_SEC = 5
+_TOP_TIMEOUT_SEC = 2
+_NVIDIA_SMI_FIELD_COUNT = 5
+_PS_MIN_LINES_WITH_HEADER = 2
+_PS_AUX_FIELD_COUNT = 11
+_PS_AUX_COMMAND_INDEX = 10
+_KIB_PER_MIB = 1024
+
+
+@cache
+def _resolve_tool(name: str) -> str | None:
+    """Resolve an external tool path once via shutil.which."""
+    return shutil.which(name)
+
+
+def _require_tool(name: str) -> str:
+    """Return resolved executable path or raise FileNotFoundError."""
+    resolved = _resolve_tool(name)
+    if resolved is None:
+        raise FileNotFoundError(name)
+    return resolved
+
+
+def _run_tool(
+    name: str,
+    *args: str,
+    timeout: int = _COMMAND_TIMEOUT_SEC,
+) -> subprocess.CompletedProcess[str]:
+    """Run a fixed system tool resolved via PATH."""
+    exe = _require_tool(name)
+    return subprocess.run(  # noqa: S603  # executable resolved via shutil.which for fixed literal tool/args
+        [exe, *args],
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=timeout,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,34 +103,40 @@ def _read_proc_stat_times() -> tuple[int, int]:
     text = Path("/proc/stat").read_text(encoding="utf-8")
     cpu_line = next((line for line in text.splitlines() if line.startswith("cpu ")), None)
     if cpu_line is None:
-        raise ValueError("no aggregate cpu line in /proc/stat")
+        msg = "no aggregate cpu line in /proc/stat"
+        raise ValueError(msg)
     fields = cpu_line.split()
     total = sum(int(fields[i]) for i in range(1, len(fields)))
-    idle = int(fields[4]) + (int(fields[5]) if len(fields) > 5 else 0)
+    iowait = int(fields[_PROC_STAT_IOWAIT_INDEX]) if len(fields) > _PROC_STAT_IOWAIT_INDEX else 0
+    idle = int(fields[_PROC_STAT_IDLE_INDEX]) + iowait
     return total, idle
+
+
+def _parse_free_output(stdout: str) -> MemoryInfo:
+    """Parse `free -g` stdout into a MemoryInfo snapshot."""
+    lines = stdout.strip().split("\n")
+    mem_line = next((line for line in lines if line.startswith("Mem:")), None)
+    if mem_line is None:
+        msg = "no Mem: line in free output"
+        raise ValueError(msg)
+    parts = mem_line.split()
+    total = int(parts[1])
+    used = int(parts[2])
+    available = int(parts[6])
+    percent = (used / total * 100) if total > 0 else 0
+    return MemoryInfo(
+        total=total,
+        used=used,
+        available=available,
+        percent=round(percent, 1),
+    )
 
 
 def get_memory_info() -> MemoryInfo:
     """メモリ使用状況を取得"""
     try:
-        result = subprocess.run(
-            ["free", "-g"], capture_output=True, text=True, check=True, timeout=5
-        )
-        lines = result.stdout.strip().split("\n")
-        mem_line = next((line for line in lines if line.startswith("Mem:")), None)
-        if mem_line is None:
-            raise ValueError("no Mem: line in free output")
-        parts = mem_line.split()
-        total = int(parts[1])
-        used = int(parts[2])
-        available = int(parts[6])
-        percent = (used / total * 100) if total > 0 else 0
-        return MemoryInfo(
-            total=total,
-            used=used,
-            available=available,
-            percent=round(percent, 1),
-        )
+        result = _run_tool("free", "-g")
+        return _parse_free_output(result.stdout)
     except (
         subprocess.CalledProcessError,
         subprocess.TimeoutExpired,
@@ -104,7 +151,7 @@ def get_memory_info() -> MemoryInfo:
 def get_cpu_info() -> CpuInfo:
     """CPU使用率を取得"""
     try:
-        import psutil
+        import psutil  # noqa: PLC0415  # lazy import so ImportError triggers /proc/stat fallback
 
         percent = psutil.cpu_percent(interval=1)
         return CpuInfo(percent=round(percent, 1))
@@ -120,20 +167,12 @@ def get_cpu_info() -> CpuInfo:
             idle_delta = idle_2 - idle_1
             usage = round((1 - idle_delta / total_delta) * 100, 1) if total_delta > 0 else 0.0
             return CpuInfo(percent=usage)
-        except (OSError, IndexError, ValueError):
+        except OSError, IndexError, ValueError:
             logger.exception("Failed to compute CPU usage from /proc/stat")
             # 最後の手段としてtopを使用
             try:
-                result = subprocess.run(
-                    ["top", "-bn2", "-d", "0.5"],
-                    capture_output=True,
-                    text=True,
-                    check=True,
-                    timeout=2,
-                )
-                cpu_lines = [
-                    line for line in result.stdout.split("\n") if "Cpu(s)" in line
-                ]
+                result = _run_tool("top", "-bn2", "-d", "0.5", timeout=_TOP_TIMEOUT_SEC)
+                cpu_lines = [line for line in result.stdout.split("\n") if "Cpu(s)" in line]
                 if cpu_lines:
                     cpu_line = cpu_lines[-1]
                     match = re.search(r"(\d+\.\d+)%id", cpu_line)
@@ -157,9 +196,7 @@ def get_cpu_info() -> CpuInfo:
 def get_hanging_processes() -> int:
     """ハングプロセス数を取得"""
     try:
-        result = subprocess.run(
-            ["ps", "aux"], capture_output=True, text=True, check=True, timeout=5
-        )
+        result = _run_tool("ps", "aux")
         return len(
             [
                 line
@@ -167,7 +204,7 @@ def get_hanging_processes() -> int:
                 if "spawn_main" in line or "multiprocessing-fork" in line
             ]
         )
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
+    except subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError:
         logger.exception("Failed to count hanging processes via 'ps aux'")
         return 0
 
@@ -175,17 +212,11 @@ def get_hanging_processes() -> int:
 def get_recap_processes() -> int:
     """Recap関連プロセス数を取得"""
     try:
-        result = subprocess.run(
-            ["ps", "aux"], capture_output=True, text=True, check=True, timeout=5
-        )
+        result = _run_tool("ps", "aux")
         return len(
-            [
-                line
-                for line in result.stdout.split("\n")
-                if "recap" in line or "gunicorn" in line
-            ]
+            [line for line in result.stdout.split("\n") if "recap" in line or "gunicorn" in line]
         )
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
+    except subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError:
         logger.exception("Failed to count recap processes via 'ps aux'")
         return 0
 
@@ -193,12 +224,10 @@ def get_recap_processes() -> int:
 def get_gpu_info() -> GpuInfo:
     """GPU使用状況を取得（nvidia-smiを使用）"""
     try:
-        result = subprocess.run(
-            ["nvidia-smi", "--query-gpu=utilization.gpu,memory.used,memory.total,temperature.gpu,name", "--format=csv,noheader,nounits"],
-            capture_output=True,
-            text=True,
-            check=True,
-            timeout=5,
+        result = _run_tool(
+            "nvidia-smi",
+            "--query-gpu=utilization.gpu,memory.used,memory.total,temperature.gpu,name",
+            "--format=csv,noheader,nounits",
         )
         lines = result.stdout.strip().split("\n")
         if not lines or not lines[0]:
@@ -209,7 +238,7 @@ def get_gpu_info() -> GpuInfo:
             if not line.strip():
                 continue
             parts = [p.strip() for p in line.split(",")]
-            if len(parts) >= 5:
+            if len(parts) >= _NVIDIA_SMI_FIELD_COUNT:
                 try:
                     memory_total = int(parts[2])
                     gpus.append(
@@ -225,7 +254,7 @@ def get_gpu_info() -> GpuInfo:
                             ),
                         )
                     )
-                except (ValueError, IndexError):
+                except ValueError, IndexError:
                     continue
 
         return GpuInfo(available=True, gpus=tuple(gpus), total_gpus=len(gpus))
@@ -242,15 +271,9 @@ def get_gpu_info() -> GpuInfo:
 def get_top_processes(limit: int = 5) -> list[ProcessInfo]:
     """メモリ使用量の多いプロセスを取得"""
     try:
-        result = subprocess.run(
-            ["ps", "aux", "--sort=-%mem"],
-            capture_output=True,
-            text=True,
-            check=True,
-            timeout=5,  # タイムアウトを追加
-        )
+        result = _run_tool("ps", "aux", "--sort=-%mem")
         lines = result.stdout.strip().split("\n")
-        if len(lines) < 2:  # ヘッダー行のみの場合
+        if len(lines) < _PS_MIN_LINES_WITH_HEADER:  # ヘッダー行のみの場合
             return []
 
         # ヘッダーを除外して、指定された数のプロセスを取得
@@ -259,8 +282,10 @@ def get_top_processes(limit: int = 5) -> list[ProcessInfo]:
         for line in process_lines:
             if not line.strip():
                 continue
-            parts = line.split(None, 10)  # 最大11個のフィールドに分割（コマンドは最後にまとめる）
-            if len(parts) >= 11:
+            parts = line.split(
+                None, _PS_AUX_FIELD_COUNT - 1
+            )  # 最大11個のフィールドに分割（コマンドは最後にまとめる）
+            if len(parts) >= _PS_AUX_FIELD_COUNT:
                 try:
                     processes.append(
                         ProcessInfo(
@@ -268,16 +293,17 @@ def get_top_processes(limit: int = 5) -> list[ProcessInfo]:
                             pid=parts[1],
                             cpu=float(parts[2]),
                             mem=float(parts[3]),
-                            rss=int(parts[5]) // 1024,  # KBをMBに変換
-                            command=parts[10] if len(parts) > 10 else "",
+                            rss=int(parts[5]) // _KIB_PER_MIB,  # KBをMBに変換
+                            command=parts[_PS_AUX_COMMAND_INDEX],
                         )
                     )
-                except (ValueError, IndexError):
+                except ValueError, IndexError:
                     # 個別のプロセス行のパースエラーは無視して続行
                     continue
-        return processes
     except subprocess.TimeoutExpired:
         return []
-    except (subprocess.CalledProcessError, FileNotFoundError):
+    except subprocess.CalledProcessError, FileNotFoundError:
         logger.exception("Failed to get top processes via 'ps aux --sort=-%mem'")
         return []
+    else:
+        return processes

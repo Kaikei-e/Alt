@@ -37,6 +37,7 @@ func (e *frozenExecutor) RunWithOutput(ctx context.Context, cmd string, args []s
 }
 
 func (e *frozenExecutor) RunWithPipes(ctx context.Context, cmd string, args []string, stdout, stderr io.Writer) error {
+	// #nosec G204 -- cmd is caller-supplied binary (production callers pass "docker"); args are separate argv elements without a shell
 	c := exec.CommandContext(ctx, cmd, args...)
 	c.Dir = e.workDir
 	c.Env = e.env

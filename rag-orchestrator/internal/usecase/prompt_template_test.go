@@ -141,7 +141,7 @@ func TestTemplateRegistry_EstimateSystemTokens_Positive(t *testing.T) {
 	}
 
 	tokens := reg.EstimateSystemTokens(input)
-	assert.Greater(t, tokens, 0, "system token estimate should be positive")
+	assert.Positive(t, tokens, "system token estimate should be positive")
 	assert.Less(t, tokens, 2000, "system token estimate should be reasonable")
 }
 

@@ -1,7 +1,9 @@
-
-import streamlit as st
 import pandas as pd
+import streamlit as st
+
 from utils import fetch_metrics
+
+_PER_GENRE_PARTS_COUNT = 3
 
 
 def render_classification(window_seconds: int) -> None:
@@ -13,7 +15,7 @@ def render_classification(window_seconds: int) -> None:
         return
 
     # Ensure expected top-level columns exist and handle NaN values
-    for col in ['accuracy', 'macro_f1', 'hamming_loss']:
+    for col in ["accuracy", "macro_f1", "hamming_loss"]:
         if col not in df_cls.columns:
             df_cls[col] = 0.0
         else:
@@ -23,12 +25,14 @@ def render_classification(window_seconds: int) -> None:
     st.subheader("Overall Performance Over Time")
     col1, col2 = st.columns([3, 1])
     with col1:
-        st.line_chart(df_cls.set_index("timestamp")[['accuracy', 'macro_f1']])
+        st.line_chart(df_cls.set_index("timestamp")[["accuracy", "macro_f1"]])
     with col2:
         latest = df_cls.iloc[0]
-        accuracy = latest.get('accuracy', 0.0) if not pd.isna(latest.get('accuracy')) else 0.0
-        macro_f1 = latest.get('macro_f1', 0.0) if not pd.isna(latest.get('macro_f1')) else 0.0
-        hamming_loss = latest.get('hamming_loss', 0.0) if not pd.isna(latest.get('hamming_loss')) else 0.0
+        accuracy = latest.get("accuracy", 0.0) if not pd.isna(latest.get("accuracy")) else 0.0
+        macro_f1 = latest.get("macro_f1", 0.0) if not pd.isna(latest.get("macro_f1")) else 0.0
+        hamming_loss = (
+            latest.get("hamming_loss", 0.0) if not pd.isna(latest.get("hamming_loss")) else 0.0
+        )
         st.metric("Latest Accuracy", f"{accuracy:.2%}")
         st.metric("Latest Macro F1", f"{macro_f1:.2f}")
         st.metric("Hamming Loss", f"{hamming_loss:.4f}")
@@ -45,11 +49,11 @@ def render_classification(window_seconds: int) -> None:
         # Example col: per_genre.sports.f1-score
         genres = set()
         for c in per_genre_cols:
-            parts = c.split('.')
-            if len(parts) >= 3:
+            parts = c.split(".")
+            if len(parts) >= _PER_GENRE_PARTS_COUNT:
                 genres.add(parts[1])
 
-        genres_list = sorted(list(genres))
+        genres_list = sorted(genres)
 
         # Build a dataframe for the latest run
         genre_data = []
@@ -74,9 +78,18 @@ def render_classification(window_seconds: int) -> None:
 
         if not df_genes.empty:
             st.dataframe(
-                df_genes.style.background_gradient(subset=['Precision', 'Recall', 'F1'], cmap="viridis", vmin=0, vmax=1)
-                        .format({"Precision": "{:.2%}", "Recall": "{:.2%}", "F1": "{:.2f}", "Threshold": "{:.2f}", "Support": "{:.0f}"}),
-                use_container_width=True
+                df_genes.style.background_gradient(
+                    subset=["Precision", "Recall", "F1"], cmap="viridis", vmin=0, vmax=1
+                ).format(
+                    {
+                        "Precision": "{:.2%}",
+                        "Recall": "{:.2%}",
+                        "F1": "{:.2f}",
+                        "Threshold": "{:.2f}",
+                        "Support": "{:.0f}",
+                    }
+                ),
+                use_container_width=True,
             )
 
             # Visualization of Thresholds
@@ -91,4 +104,3 @@ def render_classification(window_seconds: int) -> None:
     # Usually confusion matrix is too large to flatten properly in simple tabular logs,
     # but if stored as a json string or blob, we might handle it.
     # For now, we skip unless we see a clear pattern.
-

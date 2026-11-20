@@ -61,21 +61,23 @@ def audit_init_edges(
     allowlist: set[str],
 ) -> list[str]:
     present = {edge_key(consumer, target) for consumer, target in init_edges(services)}
-    violations: list[str] = []
-    for edge in sorted(present - allowlist):
-        violations.append(f"unlisted one-shot SCS edge {edge}")
-    for edge in sorted(allowlist - present):
-        violations.append(f"stale allowlist row {edge} (no such production edge)")
+    violations = [f"unlisted one-shot SCS edge {edge}" for edge in sorted(present - allowlist)]
+    violations.extend(
+        f"stale allowlist row {edge} (no such production edge)"
+        for edge in sorted(allowlist - present)
+    )
     return violations
 
 
 def load_allowlist(path: Path) -> set[str]:
     if not path.is_file():
-        raise SystemExit(f"missing ops-surface baseline: {path}")
+        msg = f"missing ops-surface baseline: {path}"
+        raise SystemExit(msg)
     data = json.loads(path.read_text(encoding="utf-8"))
     rows = data.get("init_edges_allowlist")
     if not isinstance(rows, list):
-        raise SystemExit(f"init_edges_allowlist missing from {path}")
+        msg = f"init_edges_allowlist missing from {path}"
+        raise SystemExit(msg)
     return {row for row in rows if isinstance(row, str) and row.strip()}
 
 
@@ -89,18 +91,17 @@ def main() -> int:
     allowlist = load_allowlist(Path(args.baseline))
     found = audit_init_edges(production_services(), allowlist)
     if found:
-        print("compose-init-edge-audit FAILED — one-shot SCS edges drifted:")
+        sys.stdout.write("compose-init-edge-audit FAILED — one-shot SCS edges drifted:\n")
         for v in found:
-            print(f"  - {v}")
-        print(
+            sys.stdout.write(f"  - {v}\n")
+        sys.stdout.write(
             "\nAdd the edge to scripts/ops-surface-baseline.json "
             "init_edges_allowlist only with a reason, or (Wave 1) replace "
-            "the init container with a pre_start hook and drop the row."
+            "the init container with a pre_start hook and drop the row.\n"
         )
         return 1
-    print(
-        f"OK: {len(allowlist)} one-shot service_completed_successfully "
-        "edge(s) match the allowlist"
+    sys.stdout.write(
+        f"OK: {len(allowlist)} one-shot service_completed_successfully edge(s) match the allowlist\n"
     )
     return 0
 

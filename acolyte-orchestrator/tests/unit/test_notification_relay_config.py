@@ -13,6 +13,10 @@ import pytest
 
 from acolyte.config.settings import Settings
 
+CONFIGURED_BATCH_SIZE = 50
+CONFIGURED_INTERVAL_SECONDS = 2.5
+CONFIGURED_TTL_SECONDS = 3600
+
 
 @pytest.fixture(autouse=True)
 def _base_env(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -85,18 +89,18 @@ def test_enabled_with_unreadable_client_cert_refuses_to_start(
 def test_a_fully_configured_relay_resolves(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("NOTIFICATIONS_ENABLED", "true")
     monkeypatch.setenv("DATAHUB_URL", "https://alt-data-hub:9443/")
-    monkeypatch.setenv("NOTIFICATION_RELAY_BATCH_SIZE", "50")
-    monkeypatch.setenv("NOTIFICATION_RELAY_INTERVAL_SECONDS", "2.5")
-    monkeypatch.setenv("NOTIFICATION_TTL_SECONDS", "3600")
+    monkeypatch.setenv("NOTIFICATION_RELAY_BATCH_SIZE", str(CONFIGURED_BATCH_SIZE))
+    monkeypatch.setenv("NOTIFICATION_RELAY_INTERVAL_SECONDS", str(CONFIGURED_INTERVAL_SECONDS))
+    monkeypatch.setenv("NOTIFICATION_TTL_SECONDS", str(CONFIGURED_TTL_SECONDS))
     _write_mtls_material(tmp_path, monkeypatch)
 
     cfg = Settings().resolve_notification_relay_config()
 
     assert cfg is not None
     assert cfg.datahub_url == "https://alt-data-hub:9443"
-    assert cfg.batch_size == 50
-    assert cfg.interval_seconds == 2.5
-    assert cfg.ttl_seconds == 3600
+    assert cfg.batch_size == CONFIGURED_BATCH_SIZE
+    assert cfg.interval_seconds == CONFIGURED_INTERVAL_SECONDS
+    assert cfg.ttl_seconds == CONFIGURED_TTL_SECONDS
     assert cfg.cert_file == str(tmp_path / "cert.pem")
     assert cfg.key_file == str(tmp_path / "key.pem")
     assert cfg.ca_file == str(tmp_path / "ca.pem")

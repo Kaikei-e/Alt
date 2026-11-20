@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	"alt/domain"
@@ -73,7 +74,7 @@ func TestGetOvernightUpdates(t *testing.T) {
 	updates, err := usecase.GetOvernightUpdates(ctx, userIDStr)
 
 	// Verify
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Len(t, updates, 1)
 	assert.Equal(t, groupID, updates[0].GroupID)
 	assert.Equal(t, "Primary Article", updates[0].PrimaryArticle.Title)

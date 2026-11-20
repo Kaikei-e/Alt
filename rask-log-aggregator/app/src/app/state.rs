@@ -23,7 +23,7 @@ impl AppState {
     /// Create `AppState` from configuration settings.
     ///
     /// Spawns a background `BatchWriter` task that aggregates rows from
-    /// channels and flushes them to ClickHouse periodically.
+    /// channels and flushes them to `ClickHouse` periodically.
     #[must_use]
     pub fn from_settings(settings: &Settings, shutdown_token: CancellationToken) -> Self {
         let client = Client::default()

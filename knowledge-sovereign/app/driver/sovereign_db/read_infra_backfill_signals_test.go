@@ -157,7 +157,7 @@ func TestBuildAppendRecallSignalArgs(t *testing.T) {
 			assert.Equal(t, userID, args[1])
 			assert.Equal(t, "article:123", args[2])
 			assert.Equal(t, "open", args[3])
-			assert.Equal(t, 0.9, args[4])
+			assert.InEpsilon(t, 0.9, args[4], 1e-9)
 			assert.Equal(t, t0, args[5])
 			assert.Equal(t, tt.want, string(args[6].(json.RawMessage)))
 		})

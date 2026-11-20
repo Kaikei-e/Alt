@@ -31,7 +31,12 @@ func performHealthCheck() {
 		Timeout: 5 * time.Second,
 	}
 
-	resp, err := client.Get(urlParsed.String()) // #nosec G107 G704 -- health check targets fixed localhost endpoint
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, urlParsed.String(), nil) // #nosec G107 G704 -- health check targets fixed localhost endpoint
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "health check failed: %v\n", err)
+		os.Exit(1)
+	}
+	resp, err := client.Do(req) // #nosec G704 -- health check targets fixed localhost endpoint
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "health check failed: %v\n", err)
 		os.Exit(1)

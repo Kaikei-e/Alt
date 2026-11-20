@@ -110,17 +110,17 @@ func TestHandler_SearchArticles_Success(t *testing.T) {
 		t.Fatalf("SearchArticles() error = %v", err)
 	}
 
-	if resp.Msg.Query != "test" {
-		t.Errorf("Query = %q, want %q", resp.Msg.Query, "test")
+	if resp.Msg.GetQuery() != "test" {
+		t.Errorf("Query = %q, want %q", resp.Msg.GetQuery(), "test")
 	}
-	if len(resp.Msg.Hits) != 1 {
-		t.Fatalf("Hits count = %d, want 1", len(resp.Msg.Hits))
+	if len(resp.Msg.GetHits()) != 1 {
+		t.Fatalf("Hits count = %d, want 1", len(resp.Msg.GetHits()))
 	}
-	if resp.Msg.Hits[0].Id != "1" {
-		t.Errorf("Hit ID = %q, want %q", resp.Msg.Hits[0].Id, "1")
+	if resp.Msg.GetHits()[0].GetId() != "1" {
+		t.Errorf("Hit ID = %q, want %q", resp.Msg.GetHits()[0].GetId(), "1")
 	}
-	if resp.Msg.EstimatedTotalHits != 1 {
-		t.Errorf("EstimatedTotalHits = %d, want 1", resp.Msg.EstimatedTotalHits)
+	if resp.Msg.GetEstimatedTotalHits() != 1 {
+		t.Errorf("EstimatedTotalHits = %d, want 1", resp.Msg.GetEstimatedTotalHits())
 	}
 }
 
@@ -147,7 +147,11 @@ func TestHandler_SearchArticles_EmptyQuery(t *testing.T) {
 	connectErr := new(connect.Error)
 	if !connect.IsNotModifiedError(err) {
 		// Check it's an invalid argument error
-		if ok := err.(*connect.Error); ok != nil {
+		if ok := func() *connect.Error {
+			target := &connect.Error{}
+			_ = errors.As(err, &target)
+			return target
+		}(); ok != nil {
 			connectErr = ok
 		}
 	}
@@ -328,14 +332,14 @@ func TestHandler_SearchRecaps_WithQuery(t *testing.T) {
 		t.Fatalf("SearchRecaps() error = %v", err)
 	}
 
-	if len(resp.Msg.Hits) != 1 {
-		t.Fatalf("Hits count = %d, want 1", len(resp.Msg.Hits))
+	if len(resp.Msg.GetHits()) != 1 {
+		t.Fatalf("Hits count = %d, want 1", len(resp.Msg.GetHits()))
 	}
-	if resp.Msg.Hits[0].Genre != "tech" {
-		t.Errorf("Genre = %q, want %q", resp.Msg.Hits[0].Genre, "tech")
+	if resp.Msg.GetHits()[0].GetGenre() != "tech" {
+		t.Errorf("Genre = %q, want %q", resp.Msg.GetHits()[0].GetGenre(), "tech")
 	}
-	if resp.Msg.EstimatedTotalHits != 1 {
-		t.Errorf("EstimatedTotalHits = %d, want 1", resp.Msg.EstimatedTotalHits)
+	if resp.Msg.GetEstimatedTotalHits() != 1 {
+		t.Errorf("EstimatedTotalHits = %d, want 1", resp.Msg.GetEstimatedTotalHits())
 	}
 	// Verify the query was passed to the search engine
 	if recapEngine.lastQuery != "technology ai" {
@@ -407,7 +411,8 @@ func TestHandler_SearchRecaps_NeitherQueryNorTagName(t *testing.T) {
 		t.Fatal("SearchRecaps() should return error when neither query nor tag_name is set")
 	}
 
-	connectErr, ok := err.(*connect.Error)
+	connectErr := &connect.Error{}
+	ok := errors.As(err, &connectErr)
 	if !ok {
 		t.Fatalf("Expected *connect.Error, got %T", err)
 	}

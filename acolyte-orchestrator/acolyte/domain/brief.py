@@ -77,6 +77,5 @@ class ReportBrief:
             scope["entities"] = ",".join(self.entities)
         if self.exclude_topics:
             scope["exclude"] = ",".join(self.exclude_topics)
-        for k, v in self.constraints.items():
-            scope[k] = v
+        scope.update(self.constraints)
         return scope

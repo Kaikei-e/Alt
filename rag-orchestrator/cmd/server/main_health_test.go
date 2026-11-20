@@ -51,7 +51,7 @@ func TestRagOrchestratorHealthcheck_Non200(t *testing.T) {
 
 func TestRagOrchestratorHealthcheck_ConnectionRefused(t *testing.T) {
 	// Pick an unused port by briefly binding and releasing
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	listener, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("failed to listen: %v", err)
 	}

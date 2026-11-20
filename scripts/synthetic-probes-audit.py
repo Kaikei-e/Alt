@@ -22,11 +22,13 @@ import pathlib
 import re
 import sys
 from dataclasses import dataclass, field
+from typing import NamedTuple
 
 try:
     import yaml
 except ImportError as exc:  # pragma: no cover - CI installs PyYAML
-    raise SystemExit("PyYAML is required: pip install 'pyyaml==6.*'") from exc
+    msg = "PyYAML is required: pip install 'pyyaml==6.*'"
+    raise SystemExit(msg) from exc
 
 try:
     import tomllib
@@ -86,7 +88,8 @@ def _read(path: pathlib.Path) -> str:
 
 def parse_plecto_routes(manifest_text: str) -> list[PlectoRoute]:
     if tomllib is None:
-        raise RuntimeError("tomllib is required to parse plecto/manifest.toml")
+        msg = "tomllib is required to parse plecto/manifest.toml"
+        raise RuntimeError(msg)
     data = tomllib.loads(manifest_text)
     routes: list[PlectoRoute] = []
     for item in data.get("route") or []:
@@ -272,11 +275,12 @@ def _audit_secrets(node: object, path: str, violations: list[str]) -> None:
                     violations.append(
                         f"secret at {child} must be a {{{{PLACEHOLDER}}}} or provider_secret:NAME"
                     )
-            if lowered == "password_ref" and isinstance(value, str):
-                if not PROVIDER_SECRET_RE.match(value):
-                    violations.append(
-                        f"{child} must be provider_secret:NAME, got {value!r}"
-                    )
+            if (
+                lowered == "password_ref"
+                and isinstance(value, str)
+                and not PROVIDER_SECRET_RE.match(value)
+            ):
+                violations.append(f"{child} must be provider_secret:NAME, got {value!r}")
             _audit_secrets(value, child, violations)
         return
     if isinstance(node, list):
@@ -290,23 +294,23 @@ def _audit_secrets(node: object, path: str, violations: list[str]) -> None:
             violations.append(f"secret-like value at {path}")
 
 
-def audit(doc: object, catalog: RouteCatalog) -> list[str]:
-    """Return human-readable violations. Empty means the spec is clean."""
-    if not isinstance(doc, dict):
-        return ["probes.yaml root must be a mapping"]
+class _ConnectRequest(NamedTuple):
+    pid: str
+    method: str
+    headers: dict[str, str]
+    body: object
+    service: str
+    rpc: str
 
-    violations: list[str] = []
-    defaults = doc.get("defaults") if isinstance(doc.get("defaults"), dict) else {}
-    paging = doc.get("paging") if isinstance(doc.get("paging"), dict) else {}
-    scheduling = doc.get("scheduling") if isinstance(doc.get("scheduling"), dict) else {}
 
+def _audit_timing_and_paging(
+    defaults: dict, paging: dict, scheduling: dict, violations: list[str]
+) -> None:
     interval_s = _as_float(defaults.get("interval_s"))
     if interval_s is None:
         violations.append("defaults.interval_s is required (>= 60s)")
     elif interval_s < MIN_INTERVAL_S:
-        violations.append(
-            f"defaults.interval_s must be >= {MIN_INTERVAL_S}s, got {interval_s:g}"
-        )
+        violations.append(f"defaults.interval_s must be >= {MIN_INTERVAL_S}s, got {interval_s:g}")
 
     gap_s = _as_float(defaults.get("min_external_interval_s"))
     if gap_s is None:
@@ -316,9 +320,7 @@ def audit(doc: object, catalog: RouteCatalog) -> list[str]:
             "defaults.min_external_interval_s (or scheduling.min_gap_s) is required (>= 5s)"
         )
     elif gap_s < MIN_EXTERNAL_GAP_S:
-        violations.append(
-            f"external probe gap must be >= {MIN_EXTERNAL_GAP_S}s, got {gap_s:g}"
-        )
+        violations.append(f"external probe gap must be >= {MIN_EXTERNAL_GAP_S}s, got {gap_s:g}")
 
     timeout_ms = _as_float(defaults.get("timeout_ms"))
     if timeout_ms is None:
@@ -326,9 +328,8 @@ def audit(doc: object, catalog: RouteCatalog) -> list[str]:
     elif timeout_ms <= 0:
         violations.append("defaults.timeout_ms must be > 0")
 
-    consec = paging.get("consecutive_failures")
-    consec_n = _as_float(consec)
-    if consec_n is None or consec_n < 3:
+    consec_n = _as_float(paging.get("consecutive_failures"))
+    if consec_n is None or consec_n < 3:  # noqa: PLR2004 -- minimum 3 consecutive probe failures matches alertmanager rule
         violations.append("paging.consecutive_failures must be >= 3")
     on_first = str(paging.get("on_first_failure") or "").strip().lower()
     if on_first and on_first != "observe":
@@ -336,11 +337,11 @@ def audit(doc: object, catalog: RouteCatalog) -> list[str]:
             "paging.on_first_failure must be observe (page on consecutive failures, not the first)"
         )
 
+
+def _audit_cookie_defaults(defaults: dict, violations: list[str]) -> object:
     follow = defaults.get("follow_redirects")
     if follow is True:
-        violations.append(
-            "follow_redirects: true forwards session cookies across hosts; set false"
-        )
+        violations.append("follow_redirects: true forwards session cookies across hosts; set false")
 
     cookies = defaults.get("cookies") if isinstance(defaults.get("cookies"), dict) else {}
     credentials = (
@@ -362,6 +363,135 @@ def audit(doc: object, catalog: RouteCatalog) -> list[str]:
     cred_mode = str(credentials.get("mode") or "").strip().lower().replace("_", "-")
     if cred_mode and cred_mode not in {"same-origin"}:
         violations.append("defaults.credentials.mode must be same-origin")
+    return follow
+
+
+def _audit_connect_probe(
+    req: _ConnectRequest,
+    catalog: RouteCatalog,
+    violations: list[str],
+) -> None:
+    if not catalog.connect_proxy:
+        violations.append(f"{req.pid}: SvelteKit /api/v2 Connect proxy is missing")
+    if req.service not in catalog.public_services:
+        violations.append(f"{req.pid}: {req.service} is not a public Connect service")
+    known = catalog.rpcs.get(req.service, set())
+    if req.rpc not in known:
+        listed = ", ".join(sorted(known)) or "(none)"
+        violations.append(
+            f"{req.pid}: unknown Connect RPC {req.service}/{req.rpc}; known: {listed}"
+        )
+    if req.method != "POST":
+        violations.append(f"{req.pid}: Connect unary {req.rpc} must be POST, got {req.method}")
+    if str(_header(req.headers, "Connect-Protocol-Version")).strip() != "1":
+        violations.append(f"{req.pid}: Connect-Protocol-Version: 1 is required")
+    content_type = _header(req.headers, "Content-Type").lower()
+    if "application/json" not in content_type:
+        violations.append(f"{req.pid}: Connect JSON requires Content-Type: application/json")
+    if req.rpc == "SearchArticles":
+        query = _json_field(req.body or {}, "query")
+        if not isinstance(query, str) or not query.strip():
+            violations.append(f"{req.pid}: SearchArticles body.json.query is required")
+    if req.rpc == "GetKnowledgeHome" and req.body is None:
+        violations.append(f"{req.pid}: GetKnowledgeHome requires a Connect JSON body")
+
+
+def _audit_probe_route_and_target(
+    probe: dict,
+    defaults: dict,
+    path: str,
+    catalog: RouteCatalog,
+    violations: list[str],
+) -> None:
+    pid = str(probe.get("id") or "<unknown>")
+    method = str(probe.get("method") or "GET").upper()
+    route = catalog.longest_plecto(path)
+    if route is None:
+        violations.append(f"{pid}: {path} matches no Plecto route")
+        return
+    if route.prefix == "/" and route.upstream == "alt-frontend-sv":
+        violations.append(
+            f"{pid}: {path} is served by the Plecto SPA catch-all "
+            "(HTML 200 masquerade); use /ory/ or /api/"
+        )
+        return
+
+    if route.upstream == "kratos":
+        if path != KRATOS_WHOAMI or method != "GET":
+            violations.append(
+                f"{pid}: login whoami must be GET {KRATOS_WHOAMI}, got {method} {path}"
+            )
+        if probe.get("bff_observation") is True:
+            violations.append(f"{pid}: login whoami is Kratos and cannot set bff_observation true")
+        return
+
+    connect = CONNECT_PATH_RE.match(path)
+    if connect:
+        req = _ConnectRequest(
+            pid=pid,
+            method=method,
+            headers=_merged_headers(defaults, probe),
+            body=_body_json(probe),
+            service=connect.group(1),
+            rpc=connect.group(2),
+        )
+        _audit_connect_probe(req, catalog, violations)
+        return
+
+    allowed = catalog.svelte_methods.get(path)
+    if allowed is None:
+        violations.append(f"{pid}: unknown endpoint {method} {path} (no SvelteKit +server.ts)")
+        return
+    if method not in {item.upper() for item in allowed}:
+        violations.append(f"{pid}: {path} does not allow {method}")
+
+
+def _audit_single_probe(
+    probe: object,
+    catalog: RouteCatalog,
+    default_follow: object,
+    defaults: dict,
+    violations: list[str],
+) -> None:
+    if not isinstance(probe, dict):
+        violations.append("probe entry must be a mapping")
+        return
+    pid = str(probe.get("id") or "<unknown>")
+    journey = str(probe.get("journey") or "")
+    _audit_bff_observation(probe, pid, journey, violations)
+    url = str(probe.get("url") or "")
+    if not url.startswith("{{EDGE_BASE_URL}}"):
+        violations.append(f"{pid}: url must start with {{{{EDGE_BASE_URL}}}}")
+    path = _edge_path(url)
+    if path is None:
+        violations.append(f"{pid}: could not parse edge path from {url!r}")
+        return
+
+    probe_interval = probe.get("interval_s")
+    if probe_interval is not None:
+        value = _as_float(probe_interval)
+        if value is None or value < MIN_INTERVAL_S:
+            violations.append(f"{pid}: interval_s must be >= {MIN_INTERVAL_S}s")
+
+    auth = probe.get("auth") if isinstance(probe.get("auth"), dict) else {}
+    follow_probe = probe.get("follow_redirects", default_follow)
+    if follow_probe is True and auth.get("type") == "session_cookie":
+        violations.append(f"{pid}: follow_redirects true with session_cookie forwards credentials")
+
+    _audit_probe_route_and_target(probe, defaults, path, catalog, violations)
+
+
+def audit(doc: object, catalog: RouteCatalog) -> list[str]:
+    """Return human-readable violations. Empty means the spec is clean."""
+    if not isinstance(doc, dict):
+        return ["probes.yaml root must be a mapping"]
+
+    violations: list[str] = []
+    defaults = doc.get("defaults") if isinstance(doc.get("defaults"), dict) else {}
+    paging = doc.get("paging") if isinstance(doc.get("paging"), dict) else {}
+    scheduling = doc.get("scheduling") if isinstance(doc.get("scheduling"), dict) else {}
+    _audit_timing_and_paging(defaults, paging, scheduling, violations)
+    default_follow = _audit_cookie_defaults(defaults, violations)
 
     _audit_secrets(doc, "", violations)
     _audit_heartbeat(doc, violations)
@@ -372,96 +502,7 @@ def audit(doc: object, catalog: RouteCatalog) -> list[str]:
         return violations
 
     for probe in probes:
-        if not isinstance(probe, dict):
-            violations.append("probe entry must be a mapping")
-            continue
-        pid = str(probe.get("id") or "<unknown>")
-        journey = str(probe.get("journey") or "")
-        _audit_bff_observation(probe, pid, journey, violations)
-        method = str(probe.get("method") or "GET").upper()
-        url = str(probe.get("url") or "")
-        if not url.startswith("{{EDGE_BASE_URL}}"):
-            violations.append(f"{pid}: url must start with {{{{EDGE_BASE_URL}}}}")
-        path = _edge_path(url)
-        if path is None:
-            violations.append(f"{pid}: could not parse edge path from {url!r}")
-            continue
-
-        probe_interval = probe.get("interval_s")
-        if probe_interval is not None:
-            value = _as_float(probe_interval)
-            if value is None or value < MIN_INTERVAL_S:
-                violations.append(f"{pid}: interval_s must be >= {MIN_INTERVAL_S}s")
-
-        auth = probe.get("auth") if isinstance(probe.get("auth"), dict) else {}
-        follow_probe = probe.get("follow_redirects", follow)
-        if follow_probe is True and auth.get("type") == "session_cookie":
-            violations.append(
-                f"{pid}: follow_redirects true with session_cookie forwards credentials"
-            )
-
-        route = catalog.longest_plecto(path)
-        if route is None:
-            violations.append(f"{pid}: {path} matches no Plecto route")
-            continue
-        if route.prefix == "/" and route.upstream == "alt-frontend-sv":
-            violations.append(
-                f"{pid}: {path} is served by the Plecto SPA catch-all "
-                "(HTML 200 masquerade); use /ory/ or /api/"
-            )
-            continue
-
-        if route.upstream == "kratos":
-            if path != KRATOS_WHOAMI or method != "GET":
-                violations.append(
-                    f"{pid}: login whoami must be GET {KRATOS_WHOAMI}, got {method} {path}"
-                )
-            if probe.get("bff_observation") is True:
-                violations.append(
-                    f"{pid}: login whoami is Kratos and cannot set bff_observation true"
-                )
-            continue
-
-        headers = _merged_headers(defaults, probe)
-        body = _body_json(probe)
-        connect = CONNECT_PATH_RE.match(path)
-        if connect:
-            service, rpc = connect.group(1), connect.group(2)
-            if not catalog.connect_proxy:
-                violations.append(f"{pid}: SvelteKit /api/v2 Connect proxy is missing")
-            if service not in catalog.public_services:
-                violations.append(f"{pid}: {service} is not a public Connect service")
-            known = catalog.rpcs.get(service, set())
-            if rpc not in known:
-                listed = ", ".join(sorted(known)) or "(none)"
-                violations.append(
-                    f"{pid}: unknown Connect RPC {service}/{rpc}; known: {listed}"
-                )
-            if method != "POST":
-                violations.append(f"{pid}: Connect unary {rpc} must be POST, got {method}")
-            if str(_header(headers, "Connect-Protocol-Version")).strip() != "1":
-                violations.append(f"{pid}: Connect-Protocol-Version: 1 is required")
-            content_type = _header(headers, "Content-Type").lower()
-            if "application/json" not in content_type:
-                violations.append(
-                    f"{pid}: Connect JSON requires Content-Type: application/json"
-                )
-            if rpc == "SearchArticles":
-                query = _json_field(body or {}, "query")
-                if not isinstance(query, str) or not query.strip():
-                    violations.append(f"{pid}: SearchArticles body.json.query is required")
-            if rpc == "GetKnowledgeHome" and body is None:
-                violations.append(f"{pid}: GetKnowledgeHome requires a Connect JSON body")
-            continue
-
-        allowed = catalog.svelte_methods.get(path)
-        if allowed is None:
-            violations.append(
-                f"{pid}: unknown endpoint {method} {path} (no SvelteKit +server.ts)"
-            )
-            continue
-        if method not in {item.upper() for item in allowed}:
-            violations.append(f"{pid}: {path} does not allow {method}")
+        _audit_single_probe(probe, catalog, default_follow, defaults, violations)
 
     return violations
 
@@ -476,9 +517,7 @@ def _audit_heartbeat(doc: dict, violations: list[str]) -> None:
         return
     metric = str(heartbeat.get("metric") or "").strip()
     if metric != HEARTBEAT_METRIC:
-        violations.append(
-            f"heartbeat.metric must be {HEARTBEAT_METRIC}, got {metric!r}"
-        )
+        violations.append(f"heartbeat.metric must be {HEARTBEAT_METRIC}, got {metric!r}")
     freshness = str(heartbeat.get("freshness") or "").strip()
     if freshness not in HEARTBEAT_FRESHNESS:
         violations.append("heartbeat.freshness must be 15m (UserJourneyNoObservation window)")
@@ -486,9 +525,7 @@ def _audit_heartbeat(doc: dict, violations: list[str]) -> None:
     required = labels.get("required") or []
     required_set = {str(item) for item in required} if isinstance(required, list) else set()
     if not HEARTBEAT_LABELS.issubset(required_set):
-        violations.append(
-            "heartbeat.labels.required must include journey and probe"
-        )
+        violations.append("heartbeat.labels.required must include journey and probe")
     listed = heartbeat.get("bff_observation_journeys") or []
     listed_set = {str(item) for item in listed} if isinstance(listed, list) else set()
     if listed_set != BFF_OBSERVATION_JOURNEYS:
@@ -498,21 +535,15 @@ def _audit_heartbeat(doc: dict, violations: list[str]) -> None:
         )
 
 
-def _audit_bff_observation(
-    probe: dict, pid: str, journey: str, violations: list[str]
-) -> None:
+def _audit_bff_observation(probe: dict, pid: str, journey: str, violations: list[str]) -> None:
     obs = probe.get("bff_observation")
     if obs not in (True, False):
         violations.append(f"{pid}: bff_observation must be true or false")
         return
     if journey in LOGIN_JOURNEYS and obs is True:
-        violations.append(
-            f"{pid}: login whoami is Kratos and cannot set bff_observation true"
-        )
+        violations.append(f"{pid}: login whoami is Kratos and cannot set bff_observation true")
     if journey in BFF_OBSERVATION_JOURNEYS and obs is False:
-        violations.append(
-            f"{pid}: {journey} synthetic traverses BFF; bff_observation must be true"
-        )
+        violations.append(f"{pid}: {journey} synthetic traverses BFF; bff_observation must be true")
     if (
         journey
         and journey not in LOGIN_JOURNEYS
@@ -520,8 +551,7 @@ def _audit_bff_observation(
         and obs is True
     ):
         violations.append(
-            f"{pid}: {journey} is not a BFF user-journey SLO probe; "
-            "bff_observation must be false"
+            f"{pid}: {journey} is not a BFF user-journey SLO probe; bff_observation must be false"
         )
 
 
@@ -551,9 +581,7 @@ def audit_no_observation_rules(rules_text: str) -> list[str]:
             "(login whoami cannot increment the BFF login counter)"
         )
     if re.search(r"and\s+on\(\s*\)", rules_text):
-        violations.append(
-            "no-observation must join on(journey), not on() broadcast"
-        )
+        violations.append("no-observation must join on(journey), not on() broadcast")
     return violations
 
 
@@ -568,11 +596,11 @@ def main(argv: list[str] | None = None) -> int:
     doc = load_probes(probes_path)
     violations = audit(doc, catalog)
     if violations:
-        print(f"FAIL  {probes_path} ({len(violations)} violation(s))")
+        sys.stdout.write(f"FAIL  {probes_path} ({len(violations)} violation(s))\n")
         for item in violations:
-            print(f"  - {item}")
+            sys.stdout.write(f"  - {item}\n")
         return 1
-    print(f"OK    {probes_path}")
+    sys.stdout.write(f"OK    {probes_path}\n")
     return 0
 
 

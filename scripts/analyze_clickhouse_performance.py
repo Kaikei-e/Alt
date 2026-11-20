@@ -18,6 +18,8 @@ import logging
 import os
 import re
 import sys
+import traceback
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -27,12 +29,38 @@ import clickhouse_connect
 from clickhouse_connect.driver.client import Client
 from clickhouse_connect.driver.exceptions import ClickHouseError
 
-
 # =============================================================================
 # Configuration
 # =============================================================================
 
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+logger = logging.getLogger(__name__)
+
+# Health scoring and reporting thresholds
+ERROR_RATE_CRITICAL = 10
+ERROR_RATE_HIGH = 5
+ERROR_RATE_LOW = 0.5
+LATENCY_CRITICAL_MS = 10000
+LATENCY_HIGH_MS = 5000
+LATENCY_WARN_MS = 1000
+LATENCY_LOW_MS = 500
+LOG_GAP_CRITICAL_MIN = 10
+LOG_GAP_WARN_MIN = 5
+HEALTH_HEALTHY_MIN = 90
+HEALTH_WARNING_MIN = 70
+HEALTH_DEGRADED_MIN = 50
+MIN_DEP_CALL_COUNT = 10
+DEP_ERROR_RATE_THRESHOLD = 0.05
+MIN_VOLUME_SAMPLES = 2
+LOG_VOLUME_SPIKE_FACTOR = 2
+
+
+def _validate_identifier(name: str) -> str:
+    """Validate a ClickHouse database/table identifier against _IDENTIFIER_RE."""
+    if not _IDENTIFIER_RE.match(name):
+        msg = f"Invalid SQL identifier: {name!r}"
+        raise ValueError(msg)
+    return name
 
 
 @dataclass
@@ -57,7 +85,8 @@ class ClickHouseConfig:
 
         database = os.getenv("APP_CLICKHOUSE_DATABASE", "rask_logs")
         if not _IDENTIFIER_RE.match(database):
-            raise ValueError(f"Invalid APP_CLICKHOUSE_DATABASE identifier: {database!r}")
+            msg = f"Invalid APP_CLICKHOUSE_DATABASE identifier: {database!r}"
+            raise ValueError(msg)
 
         return cls(
             host=os.getenv("APP_CLICKHOUSE_HOST", "localhost"),
@@ -132,36 +161,34 @@ class AnalysisResult:
 # =============================================================================
 
 
-def calculate_health_score(
-    error_rate: float, p95_ms: float, log_gap_minutes: float
-) -> int:
+def calculate_health_score(error_rate: float, p95_ms: float, log_gap_minutes: float) -> int:
     """Calculate health score (0-100) for a service."""
     score = 100
 
     # Error rate penalty
-    if error_rate > 10:
+    if error_rate > ERROR_RATE_CRITICAL:
         score -= 40
-    elif error_rate > 5:
+    elif error_rate > ERROR_RATE_HIGH:
         score -= 25
     elif error_rate > 1:
         score -= 10
-    elif error_rate > 0.5:
+    elif error_rate > ERROR_RATE_LOW:
         score -= 5
 
     # Latency penalty
-    if p95_ms > 10000:
+    if p95_ms > LATENCY_CRITICAL_MS:
         score -= 30
-    elif p95_ms > 5000:
+    elif p95_ms > LATENCY_HIGH_MS:
         score -= 20
-    elif p95_ms > 1000:
+    elif p95_ms > LATENCY_WARN_MS:
         score -= 10
-    elif p95_ms > 500:
+    elif p95_ms > LATENCY_LOW_MS:
         score -= 5
 
     # Log gap penalty (service might be down)
-    if log_gap_minutes > 10:
+    if log_gap_minutes > LOG_GAP_CRITICAL_MIN:
         score -= 30
-    elif log_gap_minutes > 5:
+    elif log_gap_minutes > LOG_GAP_WARN_MIN:
         score -= 15
 
     return max(0, score)
@@ -169,14 +196,13 @@ def calculate_health_score(
 
 def get_health_status(score: int) -> str:
     """Get health status label from score."""
-    if score >= 90:
+    if score >= HEALTH_HEALTHY_MIN:
         return "Healthy"
-    elif score >= 70:
+    if score >= HEALTH_WARNING_MIN:
         return "Warning"
-    elif score >= 50:
+    if score >= HEALTH_DEGRADED_MIN:
         return "Degraded"
-    else:
-        return "Critical"
+    return "Critical"
 
 
 # =============================================================================
@@ -184,10 +210,9 @@ def get_health_status(score: int) -> str:
 # =============================================================================
 
 
-def collect_service_stats(
-    client: Client, database: str, hours: int
-) -> list[dict[str, Any]]:
+def collect_service_stats(client: Client, database: str, hours: int) -> list[dict[str, Any]]:
     """Collect service-level statistics."""
+    db = _validate_identifier(database)
     query = f"""
     SELECT
         service_name,
@@ -197,23 +222,22 @@ def collect_service_stats(
         round(countIf(level IN ('Error', 'Fatal')) / count() * 100, 3) as error_rate,
         max(timestamp) as last_seen,
         dateDiff('minute', max(timestamp), now()) as minutes_since_last_log
-    FROM {database}.logs
+    FROM {db}.logs
     WHERE timestamp >= now() - INTERVAL %(hours)s HOUR
     GROUP BY service_name
     ORDER BY error_rate DESC, total_logs DESC
-    """
+    """  # noqa: S608 — db validated against _IDENTIFIER_RE above
     try:
         result = client.query(query, parameters={"hours": hours})
-        return [dict(zip(result.column_names, row)) for row in result.result_rows]
+        return [dict(zip(result.column_names, row, strict=True)) for row in result.result_rows]
     except ClickHouseError as exc:
-        logging.warning("%s query failed: %s", "collect_service_stats", exc)
+        logger.warning("%s query failed: %s", "collect_service_stats", exc)
         return []
 
 
-def collect_error_trends(
-    client: Client, database: str, hours: int
-) -> list[dict[str, Any]]:
+def collect_error_trends(client: Client, database: str, hours: int) -> list[dict[str, Any]]:
     """Collect hourly error trends by service."""
+    db = _validate_identifier(database)
     query = f"""
     SELECT
         toStartOfHour(timestamp) as hour,
@@ -221,24 +245,23 @@ def collect_error_trends(
         countIf(level IN ('Error', 'Fatal')) as error_count,
         count() as total_count,
         round(countIf(level IN ('Error', 'Fatal')) / count() * 100, 2) as error_rate
-    FROM {database}.logs
+    FROM {db}.logs
     WHERE timestamp >= now() - INTERVAL %(hours)s HOUR
     GROUP BY hour, service_name
     HAVING total_count > 0
     ORDER BY hour DESC, error_count DESC
-    """
+    """  # noqa: S608 — db validated against _IDENTIFIER_RE above
     try:
         result = client.query(query, parameters={"hours": hours})
-        return [dict(zip(result.column_names, row)) for row in result.result_rows]
+        return [dict(zip(result.column_names, row, strict=True)) for row in result.result_rows]
     except ClickHouseError as exc:
-        logging.warning("%s query failed: %s", "collect_error_trends", exc)
+        logger.warning("%s query failed: %s", "collect_error_trends", exc)
         return []
 
 
-def collect_api_performance(
-    client: Client, database: str, hours: int
-) -> list[dict[str, Any]]:
+def collect_api_performance(client: Client, database: str, hours: int) -> list[dict[str, Any]]:
     """Collect API endpoint performance metrics."""
+    db = _validate_identifier(database)
     query = f"""
     SELECT
         ServiceName as service,
@@ -250,26 +273,25 @@ def collect_api_performance(
         round(quantile(0.99)(DurationMs), 2) as p99_ms,
         round(max(DurationMs), 2) as max_ms,
         countIf(StatusCode = 'ERROR') as error_spans
-    FROM {database}.otel_traces
+    FROM {db}.otel_traces
     WHERE Timestamp >= now() - INTERVAL %(hours)s HOUR
       AND SpanName != ''
     GROUP BY ServiceName, SpanName
     HAVING request_count >= 5
     ORDER BY p95_ms DESC
     LIMIT 30
-    """
+    """  # noqa: S608 — db validated against _IDENTIFIER_RE above
     try:
         result = client.query(query, parameters={"hours": hours})
-        return [dict(zip(result.column_names, row)) for row in result.result_rows]
+        return [dict(zip(result.column_names, row, strict=True)) for row in result.result_rows]
     except ClickHouseError as exc:
-        logging.warning("%s query failed: %s", "collect_api_performance", exc)
+        logger.warning("%s query failed: %s", "collect_api_performance", exc)
         return []
 
 
-def collect_bottlenecks(
-    client: Client, database: str, hours: int
-) -> list[dict[str, Any]]:
+def collect_bottlenecks(client: Client, database: str, hours: int) -> list[dict[str, Any]]:
     """Identify performance bottlenecks (slow operations)."""
+    db = _validate_identifier(database)
     query = f"""
     SELECT
         ServiceName as service,
@@ -278,50 +300,48 @@ def collect_bottlenecks(
         round(avg(DurationMs), 2) as avg_ms,
         round(quantile(0.95)(DurationMs), 2) as p95_ms,
         round(sum(DurationMs) / 1000, 2) as total_time_sec
-    FROM {database}.otel_traces
+    FROM {db}.otel_traces
     WHERE Timestamp >= now() - INTERVAL %(hours)s HOUR
       AND DurationMs > 1000
     GROUP BY ServiceName, SpanName
     HAVING occurrences >= 3
     ORDER BY total_time_sec DESC
     LIMIT 15
-    """
+    """  # noqa: S608 — db validated against _IDENTIFIER_RE above
     try:
         result = client.query(query, parameters={"hours": hours})
-        return [dict(zip(result.column_names, row)) for row in result.result_rows]
+        return [dict(zip(result.column_names, row, strict=True)) for row in result.result_rows]
     except ClickHouseError as exc:
-        logging.warning("%s query failed: %s", "collect_bottlenecks", exc)
+        logger.warning("%s query failed: %s", "collect_bottlenecks", exc)
         return []
 
 
-def collect_error_types(
-    client: Client, database: str, hours: int
-) -> list[dict[str, Any]]:
+def collect_error_types(client: Client, database: str, hours: int) -> list[dict[str, Any]]:
     """Collect error types and their frequency."""
+    db = _validate_identifier(database)
     query = f"""
     SELECT
         ServiceName as service,
         if(ExceptionType = '', 'Unknown', ExceptionType) as error_type,
         count() as error_count,
         any(substring(Body, 1, 150)) as sample_message
-    FROM {database}.otel_error_logs
+    FROM {db}.otel_error_logs
     WHERE Timestamp >= now() - INTERVAL %(hours)s HOUR
     GROUP BY ServiceName, ExceptionType
     ORDER BY error_count DESC
     LIMIT 20
-    """
+    """  # noqa: S608 — db validated against _IDENTIFIER_RE above
     try:
         result = client.query(query, parameters={"hours": hours})
-        return [dict(zip(result.column_names, row)) for row in result.result_rows]
+        return [dict(zip(result.column_names, row, strict=True)) for row in result.result_rows]
     except ClickHouseError as exc:
-        logging.warning("%s query failed: %s", "collect_error_types", exc)
+        logger.warning("%s query failed: %s", "collect_error_types", exc)
         return []
 
 
-def collect_recent_errors(
-    client: Client, database: str, hours: int
-) -> list[dict[str, Any]]:
+def collect_recent_errors(client: Client, database: str, hours: int) -> list[dict[str, Any]]:
     """Collect most recent error logs."""
+    db = _validate_identifier(database)
     query = f"""
     SELECT
         ServiceName as service,
@@ -329,16 +349,16 @@ def collect_recent_errors(
         substring(Body, 1, 200) as message,
         if(ExceptionType = '', '-', ExceptionType) as error_type,
         formatDateTime(Timestamp, '%%Y-%%m-%%d %%H:%%M:%%S') as timestamp
-    FROM {database}.otel_error_logs
+    FROM {db}.otel_error_logs
     WHERE Timestamp >= now() - INTERVAL %(hours)s HOUR
     ORDER BY Timestamp DESC
     LIMIT 25
-    """
+    """  # noqa: S608 — db validated against _IDENTIFIER_RE above
     try:
         result = client.query(query, parameters={"hours": hours})
-        return [dict(zip(result.column_names, row)) for row in result.result_rows]
+        return [dict(zip(result.column_names, row, strict=True)) for row in result.result_rows]
     except ClickHouseError as exc:
-        logging.warning("%s query failed: %s", "collect_recent_errors", exc)
+        logger.warning("%s query failed: %s", "collect_recent_errors", exc)
         return []
 
 
@@ -347,10 +367,9 @@ def collect_recent_errors(
 # =============================================================================
 
 
-def collect_http_endpoint_stats(
-    client: Client, database: str, hours: int
-) -> list[dict[str, Any]]:
+def collect_http_endpoint_stats(client: Client, database: str, hours: int) -> list[dict[str, Any]]:
     """Collect detailed HTTP endpoint performance statistics."""
+    db = _validate_identifier(database)
     query = f"""
     SELECT
         ServiceName as service,
@@ -363,18 +382,18 @@ def collect_http_endpoint_stats(
         countIf(HttpStatusCode >= 200 AND HttpStatusCode < 300) as status_2xx,
         countIf(HttpStatusCode >= 400 AND HttpStatusCode < 500) as status_4xx,
         countIf(HttpStatusCode >= 500) as status_5xx
-    FROM {database}.otel_http_requests
+    FROM {db}.otel_http_requests
     WHERE Timestamp >= now() - INTERVAL %(hours)s HOUR
       AND HttpRoute != ''
     GROUP BY ServiceName, HttpRoute
     ORDER BY request_count DESC
     LIMIT 30
-    """
+    """  # noqa: S608 — db validated against _IDENTIFIER_RE above
     try:
         result = client.query(query, parameters={"hours": hours})
-        return [dict(zip(result.column_names, row)) for row in result.result_rows]
+        return [dict(zip(result.column_names, row, strict=True)) for row in result.result_rows]
     except ClickHouseError as exc:
-        logging.warning("%s query failed: %s", "collect_http_endpoint_stats", exc)
+        logger.warning("%s query failed: %s", "collect_http_endpoint_stats", exc)
         return []
 
 
@@ -382,6 +401,7 @@ def collect_http_status_distribution(
     client: Client, database: str, hours: int
 ) -> list[dict[str, Any]]:
     """Collect HTTP status code distribution by service."""
+    db = _validate_identifier(database)
     query = f"""
     SELECT
         ServiceName as service,
@@ -391,23 +411,22 @@ def collect_http_status_distribution(
         countIf(HttpStatusCode >= 400 AND HttpStatusCode < 500) as status_4xx,
         countIf(HttpStatusCode >= 500) as status_5xx,
         round(countIf(HttpStatusCode >= 500) / count() * 100, 2) as error_5xx_rate
-    FROM {database}.otel_http_requests
+    FROM {db}.otel_http_requests
     WHERE Timestamp >= now() - INTERVAL %(hours)s HOUR
     GROUP BY ServiceName
     ORDER BY total_requests DESC
-    """
+    """  # noqa: S608 — db validated against _IDENTIFIER_RE above
     try:
         result = client.query(query, parameters={"hours": hours})
-        return [dict(zip(result.column_names, row)) for row in result.result_rows]
+        return [dict(zip(result.column_names, row, strict=True)) for row in result.result_rows]
     except ClickHouseError as exc:
-        logging.warning("%s query failed: %s", "collect_http_status_distribution", exc)
+        logger.warning("%s query failed: %s", "collect_http_status_distribution", exc)
         return []
 
 
-def collect_span_type_stats(
-    client: Client, database: str, hours: int
-) -> list[dict[str, Any]]:
+def collect_span_type_stats(client: Client, database: str, hours: int) -> list[dict[str, Any]]:
     """Collect trace span type statistics."""
+    db = _validate_identifier(database)
     query = f"""
     SELECT
         ServiceName as service,
@@ -416,23 +435,22 @@ def collect_span_type_stats(
         round(avg(DurationMs), 2) as avg_duration_ms,
         round(quantile(0.95)(DurationMs), 2) as p95_duration_ms,
         countIf(StatusCode = 'ERROR') as error_count
-    FROM {database}.otel_traces
+    FROM {db}.otel_traces
     WHERE Timestamp >= now() - INTERVAL %(hours)s HOUR
     GROUP BY ServiceName, SpanKind
     ORDER BY span_count DESC
-    """
+    """  # noqa: S608 — db validated against _IDENTIFIER_RE above
     try:
         result = client.query(query, parameters={"hours": hours})
-        return [dict(zip(result.column_names, row)) for row in result.result_rows]
+        return [dict(zip(result.column_names, row, strict=True)) for row in result.result_rows]
     except ClickHouseError as exc:
-        logging.warning("%s query failed: %s", "collect_span_type_stats", exc)
+        logger.warning("%s query failed: %s", "collect_span_type_stats", exc)
         return []
 
 
-def collect_error_spans(
-    client: Client, database: str, hours: int
-) -> list[dict[str, Any]]:
+def collect_error_spans(client: Client, database: str, hours: int) -> list[dict[str, Any]]:
     """Collect detailed error span information."""
+    db = _validate_identifier(database)
     query = f"""
     SELECT
         ServiceName as service,
@@ -441,25 +459,24 @@ def collect_error_spans(
         count() as error_count,
         round(avg(DurationMs), 2) as avg_duration_ms,
         formatDateTime(max(Timestamp), '%%Y-%%m-%%d %%H:%%M:%%S') as last_occurrence
-    FROM {database}.otel_traces
+    FROM {db}.otel_traces
     WHERE Timestamp >= now() - INTERVAL %(hours)s HOUR
       AND StatusCode = 'ERROR'
     GROUP BY ServiceName, SpanName, StatusMessage
     ORDER BY error_count DESC
     LIMIT 20
-    """
+    """  # noqa: S608 — db validated against _IDENTIFIER_RE above
     try:
         result = client.query(query, parameters={"hours": hours})
-        return [dict(zip(result.column_names, row)) for row in result.result_rows]
+        return [dict(zip(result.column_names, row, strict=True)) for row in result.result_rows]
     except ClickHouseError as exc:
-        logging.warning("%s query failed: %s", "collect_error_spans", exc)
+        logger.warning("%s query failed: %s", "collect_error_spans", exc)
         return []
 
 
-def collect_service_dependencies(
-    client: Client, database: str, hours: int
-) -> list[dict[str, Any]]:
+def collect_service_dependencies(client: Client, database: str, hours: int) -> list[dict[str, Any]]:
     """Collect service-to-service call dependencies."""
+    db = _validate_identifier(database)
     query = f"""
     SELECT
         s1.ServiceName as caller,
@@ -468,20 +485,20 @@ def collect_service_dependencies(
         round(avg(s1.DurationMs), 2) as avg_duration_ms,
         round(quantile(0.95)(s1.DurationMs), 2) as p95_duration_ms,
         countIf(s1.StatusCode = 'ERROR') as error_count
-    FROM {database}.otel_traces s1
-    JOIN {database}.otel_traces s2
+    FROM {db}.otel_traces s1
+    JOIN {db}.otel_traces s2
         ON s1.TraceId = s2.TraceId AND s1.SpanId = s2.ParentSpanId
     WHERE s1.Timestamp >= now() - INTERVAL %(hours)s HOUR
       AND s1.ServiceName != s2.ServiceName
     GROUP BY s1.ServiceName, s2.ServiceName
     ORDER BY call_count DESC
     LIMIT 20
-    """
+    """  # noqa: S608 — db validated against _IDENTIFIER_RE above
     try:
         result = client.query(query, parameters={"hours": hours})
-        return [dict(zip(result.column_names, row)) for row in result.result_rows]
+        return [dict(zip(result.column_names, row, strict=True)) for row in result.result_rows]
     except ClickHouseError as exc:
-        logging.warning("%s query failed: %s", "collect_service_dependencies", exc)
+        logger.warning("%s query failed: %s", "collect_service_dependencies", exc)
         return []
 
 
@@ -489,6 +506,7 @@ def collect_log_severity_distribution(
     client: Client, database: str, hours: int
 ) -> list[dict[str, Any]]:
     """Collect log severity distribution by service."""
+    db = _validate_identifier(database)
     query = f"""
     SELECT
         ServiceName as service,
@@ -499,23 +517,22 @@ def collect_log_severity_distribution(
         countIf(SeverityText = 'ERROR' OR (SeverityNumber > 12 AND SeverityNumber <= 16)) as error_count,
         countIf(SeverityText = 'FATAL' OR SeverityText = 'CRITICAL' OR SeverityNumber > 20) as fatal_count,
         round(countIf(SeverityNumber >= 17) / count() * 100, 2) as error_rate
-    FROM {database}.otel_logs
+    FROM {db}.otel_logs
     WHERE Timestamp >= now() - INTERVAL %(hours)s HOUR
     GROUP BY ServiceName
     ORDER BY total_logs DESC
-    """
+    """  # noqa: S608 — db validated against _IDENTIFIER_RE above
     try:
         result = client.query(query, parameters={"hours": hours})
-        return [dict(zip(result.column_names, row)) for row in result.result_rows]
+        return [dict(zip(result.column_names, row, strict=True)) for row in result.result_rows]
     except ClickHouseError as exc:
-        logging.warning("%s query failed: %s", "collect_log_severity_distribution", exc)
+        logger.warning("%s query failed: %s", "collect_log_severity_distribution", exc)
         return []
 
 
-def collect_log_volume_trends(
-    client: Client, database: str, hours: int
-) -> list[dict[str, Any]]:
+def collect_log_volume_trends(client: Client, database: str, hours: int) -> list[dict[str, Any]]:
     """Collect hourly log volume trends."""
+    db = _validate_identifier(database)
     query = f"""
     SELECT
         toStartOfHour(Timestamp) as hour,
@@ -523,41 +540,40 @@ def collect_log_volume_trends(
         count() as log_count,
         countIf(SeverityNumber >= 17) as error_count,
         round(countIf(SeverityNumber >= 17) / count() * 100, 2) as error_rate
-    FROM {database}.otel_logs
+    FROM {db}.otel_logs
     WHERE Timestamp >= now() - INTERVAL %(hours)s HOUR
     GROUP BY hour, ServiceName
     ORDER BY hour DESC, log_count DESC
-    """
+    """  # noqa: S608 — db validated against _IDENTIFIER_RE above
     try:
         result = client.query(query, parameters={"hours": hours})
-        return [dict(zip(result.column_names, row)) for row in result.result_rows]
+        return [dict(zip(result.column_names, row, strict=True)) for row in result.result_rows]
     except ClickHouseError as exc:
-        logging.warning("%s query failed: %s", "collect_log_volume_trends", exc)
+        logger.warning("%s query failed: %s", "collect_log_volume_trends", exc)
         return []
 
 
-def collect_sli_trends(
-    client: Client, database: str, hours: int
-) -> list[dict[str, Any]]:
+def collect_sli_trends(client: Client, database: str, hours: int) -> list[dict[str, Any]]:
     """Collect SLI metric trends (error_rate, log_throughput)."""
+    db = _validate_identifier(database)
     query = f"""
     SELECT
         toStartOfFiveMinutes(Timestamp) as time_bucket,
         ServiceName as service,
         Metric as metric,
         round(avg(Value), 4) as value
-    FROM {database}.sli_metrics
+    FROM {db}.sli_metrics
     WHERE Timestamp >= now() - INTERVAL %(hours)s HOUR
       AND Metric IN ('error_rate', 'log_throughput')
     GROUP BY time_bucket, ServiceName, Metric
     ORDER BY time_bucket DESC, ServiceName, Metric
     LIMIT 500
-    """
+    """  # noqa: S608 — db validated against _IDENTIFIER_RE above
     try:
         result = client.query(query, parameters={"hours": hours})
-        return [dict(zip(result.column_names, row)) for row in result.result_rows]
+        return [dict(zip(result.column_names, row, strict=True)) for row in result.result_rows]
     except ClickHouseError as exc:
-        logging.warning("%s query failed: %s", "collect_sli_trends", exc)
+        logger.warning("%s query failed: %s", "collect_sli_trends", exc)
         return []
 
 
@@ -565,27 +581,28 @@ def collect_slo_violations(
     client: Client, database: str, hours: int, error_rate_threshold: float = 1.0
 ) -> list[dict[str, Any]]:
     """Detect SLO violations where error rate exceeds threshold."""
+    db = _validate_identifier(database)
     query = f"""
     SELECT
         ServiceName as service,
         toStartOfFiveMinutes(Timestamp) as time_bucket,
         round(avg(Value) * 100, 2) as error_rate_pct,
         count() as sample_count
-    FROM {database}.sli_metrics
+    FROM {db}.sli_metrics
     WHERE Timestamp >= now() - INTERVAL %(hours)s HOUR
       AND Metric = 'error_rate'
     GROUP BY ServiceName, time_bucket
     HAVING avg(Value) > %(error_rate_threshold)s
     ORDER BY time_bucket DESC, error_rate_pct DESC
     LIMIT 50
-    """
+    """  # noqa: S608 — db validated against _IDENTIFIER_RE above
     try:
         result = client.query(
             query, parameters={"hours": hours, "error_rate_threshold": error_rate_threshold / 100}
         )
-        return [dict(zip(result.column_names, row)) for row in result.result_rows]
+        return [dict(zip(result.column_names, row, strict=True)) for row in result.result_rows]
     except ClickHouseError as exc:
-        logging.warning("%s query failed: %s", "collect_slo_violations", exc)
+        logger.warning("%s query failed: %s", "collect_slo_violations", exc)
         return []
 
 
@@ -594,13 +611,10 @@ def collect_slo_violations(
 # =============================================================================
 
 
-def analyze_health(result: AnalysisResult) -> None:
-    """Analyze data and generate health scores and recommendations."""
-    service_latencies = {
-        s["service"]: s.get("p95_ms", 0) for s in result.api_performance
-    }
+def _populate_service_health(result: AnalysisResult) -> None:
+    """Populate per-service health scores and compute overall health score."""
+    service_latencies = {s["service"]: s.get("p95_ms", 0) for s in result.api_performance}
 
-    # Calculate per-service health
     for stats in result.service_stats:
         service = ServiceHealth(
             name=stats["service_name"],
@@ -617,29 +631,26 @@ def analyze_health(result: AnalysisResult) -> None:
         )
         result.service_health.append(service)
 
-    # Calculate overall health score
     if result.service_health:
-        result.overall_health_score = sum(
-            s.health_score for s in result.service_health
-        ) // len(result.service_health)
+        result.overall_health_score = sum(s.health_score for s in result.service_health) // len(
+            result.service_health
+        )
 
-    # Generate critical issues
+
+def _collect_health_alerts(result: AnalysisResult) -> None:
+    """Record critical health issues and core service warnings."""
     for svc in result.service_health:
-        if svc.health_score < 50:
+        if svc.health_score < HEALTH_DEGRADED_MIN:
             result.critical_issues.append(
                 f"**{svc.name}** is in critical state (score: {svc.health_score}). "
                 f"Error rate: {svc.error_rate}%, p95: {svc.p95_latency_ms}ms"
             )
 
-    # Generate warnings
     high_error_services = [s for s in result.service_health if s.error_rate > 1]
     if high_error_services:
         names = ", ".join(s.name for s in high_error_services[:3])
-        result.warnings.append(
-            f"Services with elevated error rates (>1%): {names}"
-        )
+        result.warnings.append(f"Services with elevated error rates (>1%): {names}")
 
-    # Check for bottlenecks
     if result.bottlenecks:
         top_bottleneck = result.bottlenecks[0]
         result.warnings.append(
@@ -647,8 +658,10 @@ def analyze_health(result: AnalysisResult) -> None:
             f"(p95: {top_bottleneck['p95_ms']}ms, total time: {top_bottleneck['total_time_sec']}s)"
         )
 
-    # Generate recommendations
-    slow_apis = [a for a in result.api_performance if a.get("p95_ms", 0) > 1000]
+
+def _collect_recommendations(result: AnalysisResult) -> None:
+    """Generate actionable recommendations from API latency, errors, and stale logs."""
+    slow_apis = [a for a in result.api_performance if a.get("p95_ms", 0) > LATENCY_WARN_MS]
     if slow_apis:
         result.recommendations.append(
             f"Optimize slow endpoints: {len(slow_apis)} APIs have p95 > 1s. "
@@ -663,19 +676,17 @@ def analyze_health(result: AnalysisResult) -> None:
         )
 
     stale_services = [
-        s for s in result.service_stats
-        if s.get("minutes_since_last_log", 0) > 5
+        s for s in result.service_stats if s.get("minutes_since_last_log", 0) > LOG_GAP_WARN_MIN
     ]
     if stale_services:
         names = ", ".join(s["service_name"] for s in stale_services[:3])
-        result.recommendations.append(
-            f"Check services with no recent logs: {names}"
-        )
+        result.recommendations.append(f"Check services with no recent logs: {names}")
 
-    # Enhanced analysis: HTTP 5xx error rate
+
+def _collect_enhanced_alerts(result: AnalysisResult) -> None:
+    """Record alerts for HTTP 5xx rates, SLO violations, error spans, and dependencies."""
     high_5xx_services = [
-        s for s in result.http_status_distribution
-        if s.get("error_5xx_rate", 0) > 1
+        s for s in result.http_status_distribution if s.get("error_5xx_rate", 0) > 1
     ]
     if high_5xx_services:
         for svc in high_5xx_services[:3]:
@@ -684,16 +695,14 @@ def analyze_health(result: AnalysisResult) -> None:
                 f"({svc['error_5xx_rate']}% of {svc['total_requests']} requests)"
             )
 
-    # Enhanced analysis: SLO violations
     if result.slo_violations:
         violation_count = len(result.slo_violations)
-        affected_services = set(v["service"] for v in result.slo_violations)
+        affected_services = {v["service"] for v in result.slo_violations}
         result.critical_issues.append(
             f"SLO violations detected: {violation_count} periods with error rate >1% "
             f"across {len(affected_services)} services"
         )
 
-    # Enhanced analysis: Error spans
     if result.error_spans:
         top_error_span = result.error_spans[0]
         result.warnings.append(
@@ -701,11 +710,12 @@ def analyze_health(result: AnalysisResult) -> None:
             f"({top_error_span['error_count']} errors)"
         )
 
-    # Enhanced analysis: Service dependencies with high error rates
     high_error_deps = [
-        d for d in result.service_dependencies
-        if d.get("call_count", 0) > 10 and d.get("error_count", 0) > 0
-        and (d["error_count"] / d["call_count"]) > 0.05
+        d
+        for d in result.service_dependencies
+        if d.get("call_count", 0) > MIN_DEP_CALL_COUNT
+        and d.get("error_count", 0) > 0
+        and (d["error_count"] / d["call_count"]) > DEP_ERROR_RATE_THRESHOLD
     ]
     if high_error_deps:
         for dep in high_error_deps[:2]:
@@ -715,24 +725,36 @@ def analyze_health(result: AnalysisResult) -> None:
                 f"({error_pct}% errors, {dep['call_count']} calls)"
             )
 
-    # Enhanced analysis: Log volume anomalies
-    if result.log_volume_trends:
-        # Check for sudden log volume spikes
-        service_volumes: dict[str, list[int]] = {}
-        for trend in result.log_volume_trends:
-            svc = trend.get("service", "")
-            if svc:
-                service_volumes.setdefault(svc, []).append(trend.get("log_count", 0))
 
-        for svc, volumes in service_volumes.items():
-            if len(volumes) >= 2:
-                recent = volumes[0]
-                previous = volumes[1]
-                if previous > 0 and recent > previous * 2:
-                    result.warnings.append(
-                        f"Log volume spike detected: {svc} "
-                        f"({recent} logs vs {previous} previous hour, {round(recent/previous, 1)}x increase)"
-                    )
+def _collect_log_volume_anomalies(result: AnalysisResult) -> None:
+    """Detect sudden hourly log volume spikes per service."""
+    if not result.log_volume_trends:
+        return
+
+    service_volumes: dict[str, list[int]] = {}
+    for trend in result.log_volume_trends:
+        svc = trend.get("service", "")
+        if svc:
+            service_volumes.setdefault(svc, []).append(trend.get("log_count", 0))
+
+    for svc, volumes in service_volumes.items():
+        if len(volumes) >= MIN_VOLUME_SAMPLES:
+            recent = volumes[0]
+            previous = volumes[1]
+            if previous > 0 and recent > previous * LOG_VOLUME_SPIKE_FACTOR:
+                result.warnings.append(
+                    f"Log volume spike detected: {svc} "
+                    f"({recent} logs vs {previous} previous hour, {round(recent / previous, 1)}x increase)"
+                )
+
+
+def analyze_health(result: AnalysisResult) -> None:
+    """Analyze data and generate health scores and recommendations."""
+    _populate_service_health(result)
+    _collect_health_alerts(result)
+    _collect_recommendations(result)
+    _collect_enhanced_alerts(result)
+    _collect_log_volume_anomalies(result)
 
 
 # =============================================================================
@@ -753,31 +775,28 @@ def format_table(data: list[dict[str, Any]], columns: list[str] | None = None) -
         values = [str(row.get(c, ""))[:60] for c in cols]
         rows.append("| " + " | ".join(values) + " |")
 
-    return "\n".join([header, separator] + rows) + "\n"
+    return "\n".join([header, separator, *rows]) + "\n"
 
 
-def generate_report(result: AnalysisResult) -> str:
-    """Generate Markdown report from analysis results."""
-    report = []
-
-    # Header
+def _append_report_summary(report: list[str], result: AnalysisResult) -> None:
+    """Append header, overall health score, and executive summary to report."""
     report.append("# Alt System Health Report")
     report.append("")
     report.append(f"**Generated**: {result.generated_at.strftime('%Y-%m-%d %H:%M:%S')}")
     report.append(f"**Analysis Period**: Last {result.hours_analyzed} hours")
     report.append("")
 
-    # Overall Health Score
     status = get_health_status(result.overall_health_score)
     status_emoji = {"Healthy": "+", "Warning": "!", "Degraded": "!!", "Critical": "!!!"}
-    report.append(f"## Overall System Health: {result.overall_health_score}/100 [{status}] {status_emoji.get(status, '')}")
+    report.append(
+        f"## Overall System Health: {result.overall_health_score}/100 [{status}] {status_emoji.get(status, '')}"
+    )
     report.append("")
 
-    # Executive Summary
     total_logs = sum(s.total_logs for s in result.service_health)
     total_errors = sum(s.error_count for s in result.service_health)
-    healthy_count = len([s for s in result.service_health if s.health_score >= 90])
-    degraded_count = len([s for s in result.service_health if s.health_score < 70])
+    healthy_count = len([s for s in result.service_health if s.health_score >= HEALTH_HEALTHY_MIN])
+    degraded_count = len([s for s in result.service_health if s.health_score < HEALTH_WARNING_MIN])
 
     report.append("### Summary")
     report.append(f"- **Total Log Entries**: {total_logs:,}")
@@ -787,31 +806,27 @@ def generate_report(result: AnalysisResult) -> str:
     report.append(f"- **Degraded/Critical Services**: {degraded_count}")
     report.append("")
 
-    # Critical Issues
+
+def _append_alerts_and_dashboard(report: list[str], result: AnalysisResult) -> None:
+    """Append critical issues, warnings, recommendations, and service health table."""
     if result.critical_issues:
         report.append("## Critical Issues")
         report.append("")
-        for issue in result.critical_issues:
-            report.append(f"- {issue}")
+        report.extend(f"- {issue}" for issue in result.critical_issues)
         report.append("")
 
-    # Warnings
     if result.warnings:
         report.append("## Warnings")
         report.append("")
-        for warning in result.warnings:
-            report.append(f"- {warning}")
+        report.extend(f"- {warning}" for warning in result.warnings)
         report.append("")
 
-    # Recommendations
     if result.recommendations:
         report.append("## Recommendations")
         report.append("")
-        for rec in result.recommendations:
-            report.append(f"- {rec}")
+        report.extend(f"- {rec}" for rec in result.recommendations)
         report.append("")
 
-    # Service Health Dashboard
     report.append("## Service Health Dashboard")
     report.append("")
     health_data = [
@@ -825,180 +840,191 @@ def generate_report(result: AnalysisResult) -> str:
         }
         for s in sorted(result.service_health, key=lambda x: x.health_score)
     ]
-    report.append(format_table(health_data, ["service", "score", "status", "error_rate", "p95_ms", "logs"]))
+    report.append(
+        format_table(health_data, ["service", "score", "status", "error_rate", "p95_ms", "logs"])
+    )
 
-    # API Performance
-    report.append("## API Performance (Top by p95 Latency)")
+
+def _append_table_section(
+    report: list[str],
+    heading: str,
+    rows: list[dict[str, Any]],
+    columns: list[str],
+    empty_message: str,
+) -> None:
+    """Append a Markdown section containing a formatted table or fallback line."""
+    report.append(heading)
     report.append("")
-    if result.api_performance:
-        report.append(format_table(
-            result.api_performance[:15],
-            ["service", "endpoint", "request_count", "avg_ms", "p95_ms", "p99_ms"]
-        ))
+    if rows:
+        report.append(format_table(rows, columns))
     else:
-        report.append("_No trace data available_\n")
+        report.append(empty_message)
 
-    # Bottlenecks
-    report.append("## Performance Bottlenecks (>1s operations)")
-    report.append("")
-    if result.bottlenecks:
-        report.append(format_table(
-            result.bottlenecks,
-            ["service", "operation", "occurrences", "avg_ms", "p95_ms", "total_time_sec"]
-        ))
-    else:
-        report.append("_No significant bottlenecks detected_\n")
 
-    # Error Analysis
-    report.append("## Error Analysis by Type")
-    report.append("")
-    if result.error_types:
-        report.append(format_table(
-            result.error_types,
-            ["service", "error_type", "error_count", "sample_message"]
-        ))
-    else:
-        report.append("_No error data available_\n")
-
-    # Recent Errors
-    report.append("## Recent Errors (Last 25)")
-    report.append("")
-    if result.recent_errors:
-        report.append(format_table(
-            result.recent_errors,
-            ["timestamp", "service", "level", "error_type", "message"]
-        ))
-    else:
-        report.append("_No recent errors_\n")
-
-    # Hourly Error Trends (compact)
-    report.append("## Error Trends (Last 6 Hours)")
-    report.append("")
+def _append_core_sections(report: list[str], result: AnalysisResult) -> None:
+    """Append core performance, bottleneck, and error report sections."""
+    _append_table_section(
+        report,
+        "## API Performance (Top by p95 Latency)",
+        result.api_performance[:15],
+        ["service", "endpoint", "request_count", "avg_ms", "p95_ms", "p99_ms"],
+        "_No trace data available_\n",
+    )
+    _append_table_section(
+        report,
+        "## Performance Bottlenecks (>1s operations)",
+        result.bottlenecks,
+        ["service", "operation", "occurrences", "avg_ms", "p95_ms", "total_time_sec"],
+        "_No significant bottlenecks detected_\n",
+    )
+    _append_table_section(
+        report,
+        "## Error Analysis by Type",
+        result.error_types,
+        ["service", "error_type", "error_count", "sample_message"],
+        "_No error data available_\n",
+    )
+    _append_table_section(
+        report,
+        "## Recent Errors (Last 25)",
+        result.recent_errors,
+        ["timestamp", "service", "level", "error_type", "message"],
+        "_No recent errors_\n",
+    )
     recent_trends = [t for t in result.error_trends if t.get("error_count", 0) > 0][:30]
-    if recent_trends:
-        report.append(format_table(
-            recent_trends,
-            ["hour", "service_name", "error_count", "total_count", "error_rate"]
-        ))
-    else:
-        report.append("_No error trends available_\n")
+    _append_table_section(
+        report,
+        "## Error Trends (Last 6 Hours)",
+        recent_trends,
+        ["hour", "service_name", "error_count", "total_count", "error_rate"],
+        "_No error trends available_\n",
+    )
 
-    # ==========================================================================
-    # Enhanced Sections
-    # ==========================================================================
 
-    # HTTP Endpoint Performance
-    report.append("## HTTP Endpoint Performance")
-    report.append("")
-    if result.http_endpoint_stats:
-        report.append(format_table(
-            result.http_endpoint_stats[:20],
-            ["service", "route", "request_count", "avg_duration_ms", "p95_duration_ms", "error_rate"]
-        ))
-    else:
-        report.append("_No HTTP endpoint data available_\n")
+def _append_enhanced_sections(report: list[str], result: AnalysisResult) -> None:
+    """Append HTTP, trace span, log, and SLO report sections."""
+    _append_table_section(
+        report,
+        "## HTTP Endpoint Performance",
+        result.http_endpoint_stats[:20],
+        [
+            "service",
+            "route",
+            "request_count",
+            "avg_duration_ms",
+            "p95_duration_ms",
+            "error_rate",
+        ],
+        "_No HTTP endpoint data available_\n",
+    )
+    _append_table_section(
+        report,
+        "## HTTP Status Distribution by Service",
+        result.http_status_distribution,
+        [
+            "service",
+            "total_requests",
+            "status_2xx",
+            "status_4xx",
+            "status_5xx",
+            "error_5xx_rate",
+        ],
+        "_No HTTP status data available_\n",
+    )
+    _append_table_section(
+        report,
+        "## Trace Span Analysis",
+        result.span_type_stats[:20],
+        [
+            "service",
+            "span_kind",
+            "span_count",
+            "avg_duration_ms",
+            "p95_duration_ms",
+            "error_count",
+        ],
+        "_No trace span data available_\n",
+    )
+    _append_table_section(
+        report,
+        "## Error Spans (Trace Errors)",
+        result.error_spans[:15],
+        ["service", "operation", "error_count", "avg_duration_ms", "last_occurrence"],
+        "_No error spans detected_\n",
+    )
+    _append_table_section(
+        report,
+        "## Service Dependencies",
+        result.service_dependencies,
+        [
+            "caller",
+            "callee",
+            "call_count",
+            "avg_duration_ms",
+            "p95_duration_ms",
+            "error_count",
+        ],
+        "_No service dependencies detected_\n",
+    )
+    _append_table_section(
+        report,
+        "## Log Severity Distribution",
+        result.log_severity_distribution,
+        [
+            "service",
+            "total_logs",
+            "debug_count",
+            "info_count",
+            "warn_count",
+            "error_count",
+            "error_rate",
+        ],
+        "_No log severity data available_\n",
+    )
+    _append_table_section(
+        report,
+        "## Log Volume Trends (Hourly)",
+        result.log_volume_trends[:24],
+        ["hour", "service", "log_count", "error_count", "error_rate"],
+        "_No log volume trend data available_\n",
+    )
+    _append_table_section(
+        report,
+        "## SLO Violations (Error Rate > 1%)",
+        result.slo_violations[:20],
+        ["service", "time_bucket", "error_rate_pct", "sample_count"],
+        "_No SLO violations detected_\n",
+    )
 
-    # HTTP Status Distribution
-    report.append("## HTTP Status Distribution by Service")
-    report.append("")
-    if result.http_status_distribution:
-        report.append(format_table(
-            result.http_status_distribution,
-            ["service", "total_requests", "status_2xx", "status_4xx", "status_5xx", "error_5xx_rate"]
-        ))
-    else:
-        report.append("_No HTTP status data available_\n")
 
-    # Trace Span Analysis
-    report.append("## Trace Span Analysis")
-    report.append("")
-    if result.span_type_stats:
-        report.append(format_table(
-            result.span_type_stats[:20],
-            ["service", "span_kind", "span_count", "avg_duration_ms", "p95_duration_ms", "error_count"]
-        ))
-    else:
-        report.append("_No trace span data available_\n")
-
-    # Error Spans
-    report.append("## Error Spans (Trace Errors)")
-    report.append("")
-    if result.error_spans:
-        report.append(format_table(
-            result.error_spans[:15],
-            ["service", "operation", "error_count", "avg_duration_ms", "last_occurrence"]
-        ))
-    else:
-        report.append("_No error spans detected_\n")
-
-    # Service Dependencies
-    report.append("## Service Dependencies")
-    report.append("")
-    if result.service_dependencies:
-        report.append(format_table(
-            result.service_dependencies,
-            ["caller", "callee", "call_count", "avg_duration_ms", "p95_duration_ms", "error_count"]
-        ))
-    else:
-        report.append("_No service dependencies detected_\n")
-
-    # Log Severity Distribution
-    report.append("## Log Severity Distribution")
-    report.append("")
-    if result.log_severity_distribution:
-        report.append(format_table(
-            result.log_severity_distribution,
-            ["service", "total_logs", "debug_count", "info_count", "warn_count", "error_count", "error_rate"]
-        ))
-    else:
-        report.append("_No log severity data available_\n")
-
-    # Log Volume Trends (last 12 hours, top services)
-    report.append("## Log Volume Trends (Hourly)")
-    report.append("")
-    if result.log_volume_trends:
-        # Show top entries
-        report.append(format_table(
-            result.log_volume_trends[:24],
-            ["hour", "service", "log_count", "error_count", "error_rate"]
-        ))
-    else:
-        report.append("_No log volume trend data available_\n")
-
-    # SLO Violations
-    report.append("## SLO Violations (Error Rate > 1%)")
-    report.append("")
-    if result.slo_violations:
-        report.append(format_table(
-            result.slo_violations[:20],
-            ["service", "time_bucket", "error_rate_pct", "sample_count"]
-        ))
-    else:
-        report.append("_No SLO violations detected_\n")
-
-    # SLI Trends Summary
+def _append_sli_and_footer(report: list[str], result: AnalysisResult) -> None:
+    """Append SLI trends summary and report footer."""
     report.append("## SLI Trends Summary")
     report.append("")
     if result.sli_trends:
-        # Group by service and metric, show latest values
         latest_sli: dict[str, dict[str, Any]] = {}
         for trend in result.sli_trends:
             key = f"{trend.get('service', '')}-{trend.get('metric', '')}"
             if key not in latest_sli:
                 latest_sli[key] = trend
         sli_summary = list(latest_sli.values())[:20]
-        report.append(format_table(
-            sli_summary,
-            ["service", "metric", "value", "time_bucket"]
-        ))
+        report.append(format_table(sli_summary, ["service", "metric", "value", "time_bucket"]))
     else:
         report.append("_No SLI trend data available_\n")
 
-    # Footer
     report.append("---")
     report.append("")
     report.append("*Report generated by Alt System Health Analyzer (Enhanced)*")
 
+
+def generate_report(result: AnalysisResult) -> str:
+    """Generate Markdown report from analysis results."""
+    report: list[str] = []
+    _append_report_summary(report, result)
+    _append_alerts_and_dashboard(report, result)
+    _append_core_sections(report, result)
+    _append_enhanced_sections(report, result)
+    _append_sli_and_footer(report, result)
     return "\n".join(report)
 
 
@@ -1007,10 +1033,37 @@ def generate_report(result: AnalysisResult) -> str:
 # =============================================================================
 
 
+_COLLECTION_STEPS: list[tuple[str, str, Callable[[Client, str, int], list[dict[str, Any]]]]] = [
+    ("service_stats", "Collecting service statistics...", collect_service_stats),
+    ("error_trends", "Collecting error trends...", collect_error_trends),
+    ("api_performance", "Collecting API performance...", collect_api_performance),
+    ("bottlenecks", "Identifying bottlenecks...", collect_bottlenecks),
+    ("error_types", "Collecting error types...", collect_error_types),
+    ("recent_errors", "Collecting recent errors...", collect_recent_errors),
+    ("http_endpoint_stats", "Collecting HTTP endpoint statistics...", collect_http_endpoint_stats),
+    (
+        "http_status_distribution",
+        "Collecting HTTP status distribution...",
+        collect_http_status_distribution,
+    ),
+    ("span_type_stats", "Collecting trace span statistics...", collect_span_type_stats),
+    ("error_spans", "Collecting error spans...", collect_error_spans),
+    ("service_dependencies", "Collecting service dependencies...", collect_service_dependencies),
+    (
+        "log_severity_distribution",
+        "Collecting log severity distribution...",
+        collect_log_severity_distribution,
+    ),
+    ("log_volume_trends", "Collecting log volume trends...", collect_log_volume_trends),
+    ("sli_trends", "Collecting SLI trends...", collect_sli_trends),
+    ("slo_violations", "Detecting SLO violations...", collect_slo_violations),
+]
+
+
 def run_analysis(config: ClickHouseConfig, hours: int, verbose: bool = False) -> AnalysisResult:
     """Run complete analysis and return results."""
     if verbose:
-        print(f"Connecting to ClickHouse at {config.host}:{config.port}...")
+        sys.stdout.write(f"Connecting to ClickHouse at {config.host}:{config.port}...\n")
 
     client = clickhouse_connect.get_client(
         host=config.host,
@@ -1024,69 +1077,13 @@ def run_analysis(config: ClickHouseConfig, hours: int, verbose: bool = False) ->
     with contextlib.closing(client):
         result = AnalysisResult(hours_analyzed=hours)
 
-        if verbose:
-            print("Collecting service statistics...")
-        result.service_stats = collect_service_stats(client, config.database, hours)
+        for attr, message, collector in _COLLECTION_STEPS:
+            if verbose:
+                sys.stdout.write(f"{message}\n")
+            setattr(result, attr, collector(client, config.database, hours))
 
         if verbose:
-            print("Collecting error trends...")
-        result.error_trends = collect_error_trends(client, config.database, hours)
-
-        if verbose:
-            print("Collecting API performance...")
-        result.api_performance = collect_api_performance(client, config.database, hours)
-
-        if verbose:
-            print("Identifying bottlenecks...")
-        result.bottlenecks = collect_bottlenecks(client, config.database, hours)
-
-        if verbose:
-            print("Collecting error types...")
-        result.error_types = collect_error_types(client, config.database, hours)
-
-        if verbose:
-            print("Collecting recent errors...")
-        result.recent_errors = collect_recent_errors(client, config.database, hours)
-
-        # Enhanced metrics collection
-        if verbose:
-            print("Collecting HTTP endpoint statistics...")
-        result.http_endpoint_stats = collect_http_endpoint_stats(client, config.database, hours)
-
-        if verbose:
-            print("Collecting HTTP status distribution...")
-        result.http_status_distribution = collect_http_status_distribution(client, config.database, hours)
-
-        if verbose:
-            print("Collecting trace span statistics...")
-        result.span_type_stats = collect_span_type_stats(client, config.database, hours)
-
-        if verbose:
-            print("Collecting error spans...")
-        result.error_spans = collect_error_spans(client, config.database, hours)
-
-        if verbose:
-            print("Collecting service dependencies...")
-        result.service_dependencies = collect_service_dependencies(client, config.database, hours)
-
-        if verbose:
-            print("Collecting log severity distribution...")
-        result.log_severity_distribution = collect_log_severity_distribution(client, config.database, hours)
-
-        if verbose:
-            print("Collecting log volume trends...")
-        result.log_volume_trends = collect_log_volume_trends(client, config.database, hours)
-
-        if verbose:
-            print("Collecting SLI trends...")
-        result.sli_trends = collect_sli_trends(client, config.database, hours)
-
-        if verbose:
-            print("Detecting SLO violations...")
-        result.slo_violations = collect_slo_violations(client, config.database, hours)
-
-        if verbose:
-            print("Analyzing health and generating recommendations...")
+            sys.stdout.write("Analyzing health and generating recommendations...\n")
         analyze_health(result)
 
         return result
@@ -1123,24 +1120,23 @@ def main() -> int:
         report = generate_report(result)
 
         args.output_dir.mkdir(parents=True, exist_ok=True)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S")
         output_file = args.output_dir / f"system_health_{timestamp}.md"
         output_file.write_text(report)
 
-        print(f"Report generated: {output_file}")
+        sys.stdout.write(f"Report generated: {output_file}\n")
 
         if args.verbose:
-            print("\n" + "=" * 80)
-            print(report)
+            sys.stdout.write("\n" + "=" * 80 + "\n")
+            sys.stdout.write(f"{report}\n")
 
-        return 0
-
-    except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
+    except Exception as e:  # noqa: BLE001 — top-level CLI boundary logs error and exits non-zero
+        sys.stderr.write(f"Error: {e}\n")
         if args.verbose:
-            import traceback
             traceback.print_exc()
         return 1
+    else:
+        return 0
 
 
 if __name__ == "__main__":

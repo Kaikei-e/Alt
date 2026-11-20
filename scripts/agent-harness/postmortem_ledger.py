@@ -24,13 +24,16 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
-from dataclasses import asdict, dataclass
 import datetime
 import json
 import pathlib
 import re
+import shutil
 import subprocess
 import sys
+from dataclasses import asdict, dataclass
+
+MIN_REASON_CHARS = 10
 
 PM_FILENAME_RE = re.compile(r"^(PM-\d{4}-\d{3})-(.+)\.md$")
 PM_ID_RE = re.compile(r"\b(PM-\d{4}-\d{3})\b")
@@ -166,8 +169,7 @@ def normalise_status(raw_status: str) -> str:
 def _subheading_to_category(heading: str) -> str:
     if "カテゴリの説明" in heading:
         return ""
-    cleaned = re.sub(r"\s*[（(][^）)]*[）)]\s*$", "", heading).strip()
-    return cleaned
+    return re.sub(r"\s*[（(][^）)]*[）)]\s*$", "", heading).strip()
 
 
 def _map_columns(header_cells: list[str]) -> dict[str, int]:
@@ -197,9 +199,73 @@ def _extract_checklist_owner_due(action: str) -> tuple[str, str]:
     return owner, due
 
 
-def parse_action_items(
-    pm_id: str, filename: str, text: str
-) -> ParsedActionItems:
+def _row_cell(col_map: dict[str, int], cells: list[str], key: str) -> str:
+    idx = col_map.get(key)
+    if idx is None or idx >= len(cells):
+        return ""
+    return cells[idx]
+
+
+def _parse_md_table_rows(
+    lines: list[str],
+    start_idx: int,
+    pm_id: str,
+    filename: str,
+    current_cat: str,
+) -> tuple[list[ActionRow], int, int]:
+    header_cells = split_md_row(lines[start_idx])
+    col_map = _map_columns(header_cells)
+    i = start_idx + 2
+    total = len(lines)
+    if "action" not in col_map:
+        while i < total and lines[i].lstrip().startswith("|"):
+            i += 1
+        return [], 1, i
+
+    rows: list[ActionRow] = []
+    while i < total and lines[i].lstrip().startswith("|"):
+        cells = split_md_row(lines[i])
+        category = _row_cell(col_map, cells, "category") or current_cat
+        status = _row_cell(col_map, cells, "status")
+        rows.append(
+            ActionRow(
+                postmortem_id=pm_id,
+                file=filename,
+                item_id=_row_cell(col_map, cells, "item_id"),
+                category=category,
+                action=_row_cell(col_map, cells, "action"),
+                owner=_row_cell(col_map, cells, "owner"),
+                due=_row_cell(col_map, cells, "due"),
+                status=status,
+                normalised_status=normalise_status(status),
+            )
+        )
+        i += 1
+    return rows, 0, i
+
+
+def _parse_checklist_body(lines: list[str], start_idx: int, initial_text: str) -> tuple[str, int]:
+    body_parts = [initial_text]
+    i = start_idx
+    total = len(lines)
+    while i < total:
+        nxt = lines[i]
+        if (
+            not nxt.strip()
+            or FENCE_RE.match(nxt)
+            or H2_RE.match(nxt)
+            or H3_RE.match(nxt)
+            or CHECKLIST_ITEM_RE.match(nxt)
+            or nxt.lstrip().startswith("|")
+            or re.match(r"^\s*[-*]\s+", nxt)
+        ):
+            break
+        body_parts.append(nxt.strip())
+        i += 1
+    return " ".join(part for part in body_parts if part), i
+
+
+def parse_action_items(pm_id: str, filename: str, text: str) -> ParsedActionItems:
     """Parse action-item tables and checklists under the 'アクションアイテム' heading."""
     lines = text.splitlines()
     in_ai = False
@@ -238,67 +304,18 @@ def parse_action_items(
             i += 1
             continue
 
-        if (
-            line.lstrip().startswith("|")
-            and i + 1 < total
-            and TABLE_SEP_RE.match(lines[i + 1])
-        ):
-            header_cells = split_md_row(line)
-            col_map = _map_columns(header_cells)
-            i += 2
-            if "action" not in col_map:
-                unmapped_tables += 1
-                while i < total and lines[i].lstrip().startswith("|"):
-                    i += 1
-                continue
-
-            while i < total and lines[i].lstrip().startswith("|"):
-                cells = split_md_row(lines[i])
-
-                def cell(key: str) -> str:
-                    idx = col_map.get(key)
-                    if idx is None or idx >= len(cells):
-                        return ""
-                    return cells[idx]
-
-                category = cell("category") or current_cat
-                status = cell("status")
-                table_rows.append(
-                    ActionRow(
-                        postmortem_id=pm_id,
-                        file=filename,
-                        item_id=cell("item_id"),
-                        category=category,
-                        action=cell("action"),
-                        owner=cell("owner"),
-                        due=cell("due"),
-                        status=status,
-                        normalised_status=normalise_status(status),
-                    )
-                )
-                i += 1
+        if line.lstrip().startswith("|") and i + 1 < total and TABLE_SEP_RE.match(lines[i + 1]):
+            parsed_rows, unmapped_delta, i = _parse_md_table_rows(
+                lines, i, pm_id, filename, current_cat
+            )
+            table_rows.extend(parsed_rows)
+            unmapped_tables += unmapped_delta
             continue
 
         cl_match = CHECKLIST_ITEM_RE.match(line)
         if cl_match is not None:
             mark = cl_match.group(1)
-            body_parts = [cl_match.group(2).strip()]
-            i += 1
-            while i < total:
-                nxt = lines[i]
-                if (
-                    not nxt.strip()
-                    or FENCE_RE.match(nxt)
-                    or H2_RE.match(nxt)
-                    or H3_RE.match(nxt)
-                    or CHECKLIST_ITEM_RE.match(nxt)
-                    or nxt.lstrip().startswith("|")
-                    or re.match(r"^\s*[-*]\s+", nxt)
-                ):
-                    break
-                body_parts.append(nxt.strip())
-                i += 1
-            action = " ".join(part for part in body_parts if part)
+            action, i = _parse_checklist_body(lines, i + 1, cl_match.group(2).strip())
             owner, due = _extract_checklist_owner_due(action)
             checklist_rows.append(
                 ActionRow(
@@ -361,38 +378,36 @@ def _row_cites_other_pm(row: ActionRow) -> bool:
         if cited != row.postmortem_id:
             return True
     own_short = row.postmortem_id.rsplit("-", 1)[1]
-    for short_num in PM_SHORT_ID_RE.findall(row.action):
-        if short_num != own_short:
-            return True
-    return False
+    return any(short_num != own_short for short_num in PM_SHORT_ID_RE.findall(row.action))
 
 
-def _filter_rows(
-    rows: list[ActionRow],
-    only_open: bool,
-    only_overdue: bool,
-    today: datetime.date,
-    match_re: re.Pattern[str] | None,
-    only_carried: bool,
-) -> list[ActionRow]:
+@dataclass(frozen=True)
+class LedgerFilter:
+    only_open: bool
+    only_overdue: bool
+    today: datetime.date
+    match_re: re.Pattern[str] | None
+    only_carried: bool
+
+
+def _filter_rows(rows: list[ActionRow], flt: LedgerFilter) -> list[ActionRow]:
     result: list[ActionRow] = []
     for row in rows:
-        if only_open and row.normalised_status not in ("open", "unknown"):
+        if flt.only_open and row.normalised_status not in ("open", "unknown"):
             continue
-        if only_overdue:
+        if flt.only_overdue:
             if row.normalised_status not in ("open", "unknown"):
                 continue
             due_date = _parse_leading_date(row.due)
-            if due_date is None or due_date >= today:
+            if due_date is None or due_date >= flt.today:
                 continue
-        if match_re is not None:
-            if not (
-                match_re.search(row.action)
-                or match_re.search(row.owner)
-                or match_re.search(row.file)
-            ):
-                continue
-        if only_carried and not _row_cites_other_pm(row):
+        if flt.match_re is not None and not (
+            flt.match_re.search(row.action)
+            or flt.match_re.search(row.owner)
+            or flt.match_re.search(row.file)
+        ):
+            continue
+        if flt.only_carried and not _row_cites_other_pm(row):
             continue
         result.append(row)
     return result
@@ -406,16 +421,13 @@ def _truncate(text: str, limit: int) -> str:
 
 def run_ledger(
     root: pathlib.Path,
-    only_open: bool,
-    only_overdue: bool,
-    today: datetime.date,
-    match_re: re.Pattern[str] | None,
-    only_carried: bool,
+    flt: LedgerFilter,
+    *,
     as_json: bool,
 ) -> int:
     pm_dir = root / "docs" / "postmortems"
     if not pm_dir.is_dir():
-        print(f"error: postmortems directory does not exist: {pm_dir}", file=sys.stderr)
+        sys.stderr.write(f"error: postmortems directory does not exist: {pm_dir}\n")
         return 2
 
     files = list_postmortem_files(pm_dir)
@@ -431,14 +443,7 @@ def run_ledger(
         else:
             all_rows.extend(rows)
 
-    filtered = _filter_rows(
-        all_rows,
-        only_open=only_open,
-        only_overdue=only_overdue,
-        today=today,
-        match_re=match_re,
-        only_carried=only_carried,
-    )
+    filtered = _filter_rows(all_rows, flt)
 
     counts = {
         "postmortems": len(files),
@@ -457,32 +462,36 @@ def run_ledger(
             "summary": counts,
             "note": "statuses are as recorded in the postmortem files and may lag behind the code",
         }
-        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        sys.stdout.write(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
         return 0
 
     if filtered:
-        print("PM          | ID   | Cat      | Norm    | Due        | Owner            | Action")
-        print("------------+------+----------+---------+------------+------------------+-------")
+        sys.stdout.write(
+            "PM          | ID   | Cat      | Norm    | Due        | Owner            | Action\n"
+        )
+        sys.stdout.write(
+            "------------+------+----------+---------+------------+------------------+-------\n"
+        )
         for r in filtered:
-            print(
+            sys.stdout.write(
                 f"{r.postmortem_id:<11} | "
                 f"{_truncate(r.item_id or '-', 4):<4} | "
                 f"{_truncate(r.category or '-', 8):<8} | "
                 f"{r.normalised_status:<7} | "
                 f"{_truncate(r.due or '-', 10):<10} | "
                 f"{_truncate(r.owner or '-', 16):<16} | "
-                f"{_truncate(r.action, 72)}"
+                f"{_truncate(r.action, 72)}\n"
             )
     else:
-        print("(no matching action items)")
+        sys.stdout.write("(no matching action items)\n")
 
     if unparsed:
-        print(f"\nUnparsed ({len(unparsed)}): {', '.join(unparsed)}")
+        sys.stdout.write(f"\nUnparsed ({len(unparsed)}): {', '.join(unparsed)}\n")
 
-    print(
-        "\nNote: statuses are as recorded in the postmortem files and may lag behind the code."
+    sys.stdout.write(
+        "\nNote: statuses are as recorded in the postmortem files and may lag behind the code.\n"
     )
-    print(
+    sys.stdout.write(
         "Summary: "
         f"postmortems={counts['postmortems']} "
         f"rows={counts['rows']} "
@@ -490,14 +499,18 @@ def run_ledger(
         f"done={counts['done']} "
         f"dropped={counts['dropped']} "
         f"unknown={counts['unknown']} "
-        f"unparsed={counts['unparsed']}"
+        f"unparsed={counts['unparsed']}\n"
     )
     return 0
 
 
 def _run_git(cwd: pathlib.Path, *args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ["git", "-C", str(cwd), *args],
+    git_bin = shutil.which("git")
+    if git_bin is None:
+        msg = "git executable not found on PATH"
+        raise FileNotFoundError(msg)
+    return subprocess.run(  # noqa: S603 -- git resolved via shutil.which with explicit args
+        [git_bin, "-C", str(cwd), *args],
         capture_output=True,
         text=True,
         check=False,
@@ -603,18 +616,8 @@ def _parse_failure_pattern_section(
     return found_section, immediately_after_rca, fields
 
 
-def _validate_added_postmortem(
-    pm_id: str,
-    path: pathlib.Path,
-    root: pathlib.Path,
-    existing_pm_ids: set[str],
-    valid_fp_ids: set[str],
-) -> list[str]:
+def _validate_table_rows(rel: str, parsed: ParsedActionItems, root: pathlib.Path) -> list[str]:
     findings: list[str] = []
-    text = path.read_text(encoding="utf-8")
-    rel = f"docs/postmortems/{path.name}"
-
-    parsed = parse_action_items(pm_id, path.name, text)
     if parsed.unmapped_tables > 0:
         findings.append(
             f"P1 {rel}: table under 'アクションアイテム' could not be mapped (missing action column)"
@@ -623,102 +626,122 @@ def _validate_added_postmortem(
         findings.append(
             f"P1 {rel}: action-item table under 'アクションアイテム' is missing or has no rows"
         )
-    else:
-        for idx, row in enumerate(parsed.table_rows, 1):
-            label = row.item_id or f"row#{idx}"
-            if row.owner.strip().casefold() in PLACEHOLDER_OWNERS:
-                findings.append(
-                    f"P2 {rel} ({label}): owner is empty or placeholder ({row.owner!r})"
-                )
-            if _parse_date(row.due) is None:
-                findings.append(
-                    f"P3 {rel} ({label}): due date {row.due!r} is not valid YYYY-MM-DD"
-                )
-            status = row.status.strip(" *\t")
-            if status not in GATE_ALLOWED_STATUSES:
-                findings.append(
-                    f"P4 {rel} ({label}): status {row.status!r} must be one of TODO, 進行中, 完了, 破棄"
-                )
-            elif status == "完了" and not _has_completion_evidence(row, root):
-                findings.append(
-                    f"P5 {rel} ({label}): completed item cites no evidence (existing [[NNNNNN]], PR #N or /pull/N, 7-40 hex commit, or existing backtick repo path)"
-                )
-            elif status == "破棄":
-                drop_m = DROP_REASON_RE.search(row.action)
-                drop_reason = drop_m.group(1).strip().rstrip("）)") if drop_m else ""
-                if len(drop_reason) < 10:
-                    findings.append(
-                        f"P12 {rel} ({label}): 破棄 item must state '破棄理由:' followed by at least 10 characters in the action cell"
-                    )
+        return findings
 
-    found_fp_sec, after_rca, fp_fields = _parse_failure_pattern_section(text)
-    if not found_fp_sec:
-        findings.append(f"P6 {rel}: missing section '## 失敗の型と再発'")
-    else:
-        if not after_rca:
+    for idx, row in enumerate(parsed.table_rows, 1):
+        label = row.item_id or f"row#{idx}"
+        if row.owner.strip().casefold() in PLACEHOLDER_OWNERS:
+            findings.append(f"P2 {rel} ({label}): owner is empty or placeholder ({row.owner!r})")
+        if _parse_date(row.due) is None:
+            findings.append(f"P3 {rel} ({label}): due date {row.due!r} is not valid YYYY-MM-DD")
+        status = row.status.strip(" *\t")
+        if status not in GATE_ALLOWED_STATUSES:
             findings.append(
-                f"P6 {rel}: section '## 失敗の型と再発' must immediately follow '## 根本原因分析'"
+                f"P4 {rel} ({label}): status {row.status!r} must be one of TODO, 進行中, 完了, 破棄"
             )
-        for key in FAILURE_PATTERN_KEYS:
-            if key not in fp_fields or not fp_fields[key].strip():
+        elif status == "完了" and not _has_completion_evidence(row, root):
+            findings.append(
+                f"P5 {rel} ({label}): completed item cites no evidence (existing [[NNNNNN]], PR #N or /pull/N, 7-40 hex commit, or existing backtick repo path)"
+            )
+        elif status == "破棄":
+            drop_m = DROP_REASON_RE.search(row.action)
+            drop_reason = drop_m.group(1).strip().rstrip("）)") if drop_m else ""
+            if len(drop_reason) < MIN_REASON_CHARS:
                 findings.append(
-                    f"P6 {rel}: section '## 失敗の型と再発' missing or empty '{key}:'"
+                    f"P12 {rel} ({label}): 破棄 item must state '破棄理由:' followed by at least 10 characters in the action cell"
                 )
-
-        fp_val = fp_fields.get("失敗の型", "").strip()
-        if fp_val.startswith("型の外"):
-            reason = re.sub(r"^[：:\s()（）・、。-]+", "", fp_val[len("型の外") :]).strip()
-            if len(reason) < 10:
-                findings.append(
-                    f"P7 {rel}: 失敗の型 '型の外' must include a reason of at least 10 characters"
-                )
-        elif fp_val:
-            tokens = [t for t in re.split(r"[,、/\s]+", fp_val) if t]
-            if not tokens or any(not FP_ID_RE.match(t) for t in tokens):
-                findings.append(
-                    f"P7 {rel}: 失敗の型 ({fp_val!r}) must be a list of FP-NN ids or start with '型の外'"
-                )
-            else:
-                unknown = [t for t in tokens if t not in valid_fp_ids]
-                if unknown:
-                    findings.append(
-                        f"P7 {rel}: 失敗の型 cites unknown pattern id(s): {', '.join(unknown)}"
-                    )
-
-        for ref_key in ("再発", "持ち越し"):
-            ref_val = fp_fields.get(ref_key, "").strip()
-            if not ref_val:
-                continue
-            for cited_pm in PM_ID_RE.findall(ref_val):
-                if cited_pm not in existing_pm_ids:
-                    findings.append(
-                        f"P8 {rel}: {ref_key} cites nonexistent postmortem {cited_pm}"
-                    )
-
     return findings
 
 
-def _added_postmortems_since(
-    repo_root: pathlib.Path, base_rev: str
-) -> tuple[list[pathlib.Path], list[pathlib.Path], str, str | None]:
+def _validate_failure_pattern(
+    rel: str, text: str, existing_pm_ids: set[str], valid_fp_ids: set[str]
+) -> list[str]:
+    found_fp_sec, after_rca, fp_fields = _parse_failure_pattern_section(text)
+    if not found_fp_sec:
+        return [f"P6 {rel}: missing section '## 失敗の型と再発'"]
+
+    findings: list[str] = []
+    if not after_rca:
+        findings.append(
+            f"P6 {rel}: section '## 失敗の型と再発' must immediately follow '## 根本原因分析'"
+        )
+    findings.extend(
+        f"P6 {rel}: section '## 失敗の型と再発' missing or empty '{key}:'"
+        for key in FAILURE_PATTERN_KEYS
+        if key not in fp_fields or not fp_fields[key].strip()
+    )
+
+    fp_val = fp_fields.get("失敗の型", "").strip()
+    if fp_val.startswith("型の外"):
+        reason = re.sub(r"^[：:\s()（）・、。-]+", "", fp_val[len("型の外") :]).strip()
+        if len(reason) < MIN_REASON_CHARS:
+            findings.append(
+                f"P7 {rel}: 失敗の型 '型の外' must include a reason of at least 10 characters"
+            )
+    elif fp_val:
+        tokens = [t for t in re.split(r"[,、/\s]+", fp_val) if t]
+        if not tokens or any(not FP_ID_RE.match(t) for t in tokens):
+            findings.append(
+                f"P7 {rel}: 失敗の型 ({fp_val!r}) must be a list of FP-NN ids or start with '型の外'"
+            )
+        else:
+            unknown = [t for t in tokens if t not in valid_fp_ids]
+            if unknown:
+                findings.append(
+                    f"P7 {rel}: 失敗の型 cites unknown pattern id(s): {', '.join(unknown)}"
+                )
+
+    for ref_key in ("再発", "持ち越し"):
+        ref_val = fp_fields.get(ref_key, "").strip()
+        if not ref_val:
+            continue
+        findings.extend(
+            f"P8 {rel}: {ref_key} cites nonexistent postmortem {cited_pm}"
+            for cited_pm in PM_ID_RE.findall(ref_val)
+            if cited_pm not in existing_pm_ids
+        )
+    return findings
+
+
+def _validate_added_postmortem(
+    pm_id: str,
+    path: pathlib.Path,
+    root: pathlib.Path,
+    existing_pm_ids: set[str],
+    valid_fp_ids: set[str],
+) -> list[str]:
+    text = path.read_text(encoding="utf-8")
+    rel = f"docs/postmortems/{path.name}"
+    parsed = parse_action_items(pm_id, path.name, text)
+    findings = _validate_table_rows(rel, parsed, root)
+    findings.extend(_validate_failure_pattern(rel, text, existing_pm_ids, valid_fp_ids))
+    return findings
+
+
+def _resolve_merge_base(repo_root: pathlib.Path, base_rev: str) -> tuple[str | None, str | None]:
     if not base_rev or base_rev.startswith("-"):
-        return [], [], "", f"error: invalid base revision: {base_rev!r}"
+        return None, f"error: invalid base revision: {base_rev!r}"
 
     top_res = _run_git(repo_root, "rev-parse", "--show-toplevel")
     if top_res.returncode != 0:
-        return [], [], "", f"error: {repo_root} is not inside a git repository: {top_res.stderr.strip()}"
+        return (
+            None,
+            f"error: {repo_root} is not inside a git repository: {top_res.stderr.strip()}",
+        )
 
-    rev_res = _run_git(
-        repo_root, "rev-parse", "--verify", "--quiet", f"{base_rev}^{{commit}}"
-    )
+    rev_res = _run_git(repo_root, "rev-parse", "--verify", "--quiet", f"{base_rev}^{{commit}}")
     if rev_res.returncode != 0:
-        return [], [], "", f"error: unknown base revision: {base_rev}"
+        return None, f"error: unknown base revision: {base_rev}"
 
     mb_res = _run_git(repo_root, "merge-base", base_rev, "HEAD")
     if mb_res.returncode != 0:
-        return [], [], "", f"error: git merge-base failed for {base_rev}: {mb_res.stderr.strip()}"
-    merge_base = mb_res.stdout.strip()
+        return None, f"error: git merge-base failed for {base_rev}: {mb_res.stderr.strip()}"
+    return mb_res.stdout.strip(), None
 
+
+def _collect_added_rel_paths(
+    repo_root: pathlib.Path, merge_base: str
+) -> tuple[set[str] | None, str | None]:
     diff_res = _run_git(
         repo_root,
         "diff",
@@ -731,7 +754,7 @@ def _added_postmortems_since(
         "docs/postmortems",
     )
     if diff_res.returncode != 0:
-        return [], [], "", f"error: git diff failed: {diff_res.stderr.strip()}"
+        return None, f"error: git diff failed: {diff_res.stderr.strip()}"
 
     untracked_res = _run_git(
         repo_root,
@@ -743,22 +766,34 @@ def _added_postmortems_since(
         "docs/postmortems",
     )
     if untracked_res.returncode != 0:
-        return [], [], "", f"error: git ls-files failed: {untracked_res.stderr.strip()}"
+        return None, f"error: git ls-files failed: {untracked_res.stderr.strip()}"
 
-    rel_paths: set[str] = set()
-    for out in (diff_res.stdout, untracked_res.stdout):
-        for token in out.split("\0"):
-            if token:
-                rel_paths.add(token)
+    rel_paths = {
+        token
+        for out in (diff_res.stdout, untracked_res.stdout)
+        for token in out.split("\0")
+        if token
+    }
+    return rel_paths, None
+
+
+def _added_postmortems_since(
+    repo_root: pathlib.Path, base_rev: str
+) -> tuple[list[pathlib.Path], list[pathlib.Path], str, str | None]:
+    merge_base, mb_err = _resolve_merge_base(repo_root, base_rev)
+    if mb_err is not None or merge_base is None:
+        return [], [], "", mb_err
+
+    rel_paths, collect_err = _collect_added_rel_paths(repo_root, merge_base)
+    if collect_err is not None or rel_paths is None:
+        return [], [], "", collect_err
 
     pm_dir = (repo_root / "docs" / "postmortems").resolve()
     valid_added: list[pathlib.Path] = []
     invalid_added: list[pathlib.Path] = []
     for rel in sorted(rel_paths):
         p = (repo_root / rel).resolve()
-        if not p.is_file() or p.suffix.lower() != ".md":
-            continue
-        if p == pm_dir / "README.md":
+        if not p.is_file() or p.suffix.lower() != ".md" or p == pm_dir / "README.md":
             continue
         if p.parent == pm_dir and PM_FILENAME_RE.match(p.name):
             valid_added.append(p)
@@ -767,15 +802,53 @@ def _added_postmortems_since(
     return valid_added, invalid_added, merge_base, None
 
 
+def _check_added_postmortems(
+    root: pathlib.Path, base_rev: str, existing_pm_ids: set[str]
+) -> tuple[list[str], int | None]:
+    valid_added, invalid_added, merge_base, git_err = _added_postmortems_since(root, base_rev)
+    if git_err is not None:
+        sys.stderr.write(f"{git_err}\n")
+        return [], 2
+
+    root_resolved = root.resolve()
+    findings = [
+        f"P11 {bad_path.relative_to(root_resolved).as_posix()}: Markdown file under docs/postmortems/ must be named PM-YYYY-NNN-<slug>.md (except README.md)"
+        for bad_path in invalid_added
+    ]
+
+    if valid_added:
+        valid_fp_ids = _load_valid_fp_ids(root)
+        if valid_fp_ids is None:
+            sys.stderr.write(
+                "error: patterns reference not found at "
+                ".claude/skills/failure-pattern-review/references/patterns.md\n"
+            )
+            return [], 2
+        for path in valid_added:
+            match = PM_FILENAME_RE.match(path.name)
+            if match is None:
+                msg = f"unexpected non-postmortem filename: {path.name}"
+                raise RuntimeError(msg)
+            pm_id = match.group(1)
+            findings.extend(
+                _validate_added_postmortem(pm_id, path, root, existing_pm_ids, valid_fp_ids)
+            )
+    elif not invalid_added:
+        sys.stdout.write(
+            f"No added postmortems relative to merge base {merge_base}; running index consistency check.\n"
+        )
+    return findings, None
+
+
 def run_check(root: pathlib.Path, base_rev: str | None) -> int:
     pm_dir = root / "docs" / "postmortems"
     if not pm_dir.is_dir():
-        print(f"error: postmortems directory does not exist: {pm_dir}", file=sys.stderr)
+        sys.stderr.write(f"error: postmortems directory does not exist: {pm_dir}\n")
         return 2
 
     readme_path = pm_dir / "README.md"
     if not readme_path.is_file():
-        print(f"error: postmortems README does not exist: {readme_path}", file=sys.stderr)
+        sys.stderr.write(f"error: postmortems README does not exist: {readme_path}\n")
         return 2
 
     files = list_postmortem_files(pm_dir)
@@ -786,40 +859,10 @@ def run_check(root: pathlib.Path, base_rev: str | None) -> int:
 
     # Added-file gate (B)
     if base_rev is not None:
-        valid_added, invalid_added, merge_base, git_err = _added_postmortems_since(
-            root, base_rev
-        )
-        if git_err is not None:
-            print(git_err, file=sys.stderr)
-            return 2
-
-        root_resolved = root.resolve()
-        for bad_path in invalid_added:
-            rel_bad = bad_path.relative_to(root_resolved).as_posix()
-            findings.append(
-                f"P11 {rel_bad}: Markdown file under docs/postmortems/ must be named PM-YYYY-NNN-<slug>.md (except README.md)"
-            )
-
-        if valid_added:
-            valid_fp_ids = _load_valid_fp_ids(root)
-            if valid_fp_ids is None:
-                print(
-                    "error: patterns reference not found at "
-                    ".claude/skills/failure-pattern-review/references/patterns.md",
-                    file=sys.stderr,
-                )
-                return 2
-            for path in valid_added:
-                match = PM_FILENAME_RE.match(path.name)
-                assert match is not None
-                pm_id = match.group(1)
-                findings.extend(
-                    _validate_added_postmortem(pm_id, path, root, existing_pm_ids, valid_fp_ids)
-                )
-        elif not invalid_added:
-            print(
-                f"No added postmortems relative to merge base {merge_base}; running index consistency check."
-            )
+        added_findings, err_code = _check_added_postmortems(root, base_rev, existing_pm_ids)
+        if err_code is not None:
+            return err_code
+        findings.extend(added_findings)
 
     # Index consistency (C) across all files and README.md
     for pm_id, path in files:
@@ -827,22 +870,20 @@ def run_check(root: pathlib.Path, base_rev: str | None) -> int:
             findings.append(
                 f"P9 docs/postmortems/{path.name}: {pm_id} has no row in docs/postmortems/README.md"
             )
-    for cited_id in sorted(readme_ids - existing_pm_ids):
-        findings.append(
-            f"P10 docs/postmortems/README.md: {cited_id} has a row in README.md but no file in docs/postmortems/"
-        )
+    findings.extend(
+        f"P10 docs/postmortems/README.md: {cited_id} has a row in README.md but no file in docs/postmortems/"
+        for cited_id in sorted(readme_ids - existing_pm_ids)
+    )
 
     for finding in findings:
-        print(finding)
+        sys.stdout.write(f"{finding}\n")
 
-    print(f"Summary: {len(findings)} finding(s)")
+    sys.stdout.write(f"Summary: {len(findings)} finding(s)\n")
     return 1 if findings else 0
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Postmortem action-item ledger and CI gate."
-    )
+    parser = argparse.ArgumentParser(description="Postmortem action-item ledger and CI gate.")
     parser.add_argument(
         "--root",
         default=None,
@@ -891,21 +932,21 @@ def main(argv: list[str] | None = None) -> int:
         else pathlib.Path(__file__).resolve().parents[2]
     )
     if not root.is_dir():
-        print(f"error: root directory does not exist: {root}", file=sys.stderr)
+        sys.stderr.write(f"error: root directory does not exist: {root}\n")
         return 2
 
     if args.base is not None and not args.check:
-        print("error: --base requires --check", file=sys.stderr)
+        sys.stderr.write("error: --base requires --check\n")
         return 2
 
     if args.check:
         return run_check(root, args.base)
 
-    today = datetime.date.today()
+    today = datetime.datetime.now(datetime.UTC).astimezone().date()
     if args.today is not None:
         parsed_today = _parse_date(args.today)
         if parsed_today is None:
-            print(f"error: invalid --today date (expected YYYY-MM-DD): {args.today!r}", file=sys.stderr)
+            sys.stderr.write(f"error: invalid --today date (expected YYYY-MM-DD): {args.today!r}\n")
             return 2
         today = parsed_today
 
@@ -914,18 +955,17 @@ def main(argv: list[str] | None = None) -> int:
         try:
             match_re = re.compile(args.match)
         except re.error as exc:
-            print(f"error: invalid --match regex {args.match!r}: {exc}", file=sys.stderr)
+            sys.stderr.write(f"error: invalid --match regex {args.match!r}: {exc}\n")
             return 2
 
-    return run_ledger(
-        root=root,
+    flt = LedgerFilter(
         only_open=args.open,
         only_overdue=args.overdue,
         today=today,
         match_re=match_re,
         only_carried=args.carried,
-        as_json=args.json,
     )
+    return run_ledger(root, flt, as_json=args.json)
 
 
 if __name__ == "__main__":

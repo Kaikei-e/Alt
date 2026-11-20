@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 class ModelWarmupService:
     """Service for warming up Ollama models with keep_alive."""
 
-    def __init__(self, config: NewsCreatorConfig, driver: OllamaDriver):
+    def __init__(self, config: NewsCreatorConfig, driver: OllamaDriver) -> None:
         """
         Initialize model warmup service.
 
@@ -57,8 +57,10 @@ class ModelWarmupService:
 
             if len(models_to_warmup) > 0:
                 logger.info(
-                    f"Warming up {len(models_to_warmup)} model(s): {', '.join(models_to_warmup)} "
-                    f"(keep_alive: {keep_alive_str})"
+                    "Warming up %s model(s): %s (keep_alive: %s)",
+                    len(models_to_warmup),
+                    ", ".join(models_to_warmup),
+                    keep_alive_str,
                 )
 
             # Warm up models in parallel
@@ -71,17 +73,18 @@ class ModelWarmupService:
             results = await asyncio.gather(*warmup_tasks, return_exceptions=True)
 
             # Log results (errors only)
-            for model, result in zip(models_to_warmup, results):
+            for model, result in zip(models_to_warmup, results, strict=True):
                 if isinstance(result, Exception):
                     logger.warning(
-                        f"Failed to warm up model {model}: {result}",
+                        "Failed to warm up model %s: %s",
+                        model,
+                        result,
                         exc_info=result,
                     )
 
-        except Exception as e:
-            logger.error(
-                f"Error during model warmup: {e}. Continuing without warmup.",
-                exc_info=True,
+        except Exception:
+            logger.exception(
+                "Error during model warmup. Continuing without warmup.",
             )
 
     async def _warmup_single_model(self, model_name: str, keep_alive: str) -> None:
@@ -113,20 +116,23 @@ class ModelWarmupService:
                 "options": warmup_options,
             }
 
-            logger.debug(f"Warming up model {model_name}...")
+            logger.debug("Warming up model %s...", model_name)
             response = await self.driver.generate(payload)
 
             if "response" in response:
-                logger.debug(f"Model {model_name} warmed up (keep_alive: {keep_alive})")
+                logger.debug(
+                    "Model %s warmed up (keep_alive: %s)", model_name, keep_alive
+                )
             else:
                 logger.warning(
-                    f"Model {model_name} warmup response missing 'response' field",
+                    "Model %s warmup response missing 'response' field",
+                    model_name,
                     extra={"response_keys": list(response.keys())},
                 )
 
-        except Exception as e:
-            logger.error(
-                f"Failed to warm up model {model_name}: {e}",
-                exc_info=True,
+        except Exception:
+            logger.exception(
+                "Failed to warm up model %s",
+                model_name,
             )
             raise

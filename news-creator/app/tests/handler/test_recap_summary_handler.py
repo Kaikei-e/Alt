@@ -1,8 +1,12 @@
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
+from http import HTTPStatus
+from typing import Any
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from news_creator.domain.errors import PreemptedException, QueueFullError
 from news_creator.domain.models import (
     BatchRecapSummaryError,
     BatchRecapSummaryResponse,
@@ -13,7 +17,7 @@ from news_creator.domain.models import (
 from news_creator.handler.recap_summary_handler import create_recap_summary_router
 
 
-def _build_request_payload():
+def _build_request_payload() -> dict[str, Any]:
     return {
         "job_id": str(uuid4()),
         "genre": "world",
@@ -28,7 +32,7 @@ def _build_request_payload():
     }
 
 
-def test_recap_summary_handler_success():
+def test_recap_summary_handler_success() -> None:
     usecase = AsyncMock()
     response = RecapSummaryResponse(
         job_id=uuid4(),
@@ -49,14 +53,14 @@ def test_recap_summary_handler_success():
     payload = _build_request_payload()
     resp = client.post("/v1/summary/generate", json=payload)
 
-    assert resp.status_code == 200
+    assert resp.status_code == HTTPStatus.OK
     assert resp.json()["summary"]["title"] == "世界情勢のまとめ"
     usecase.generate_summary.assert_awaited_once()
 
 
-def test_recap_summary_handler_value_error():
+def test_recap_summary_handler_value_error() -> None:
     usecase = AsyncMock()
-    secret = "invalid payload at /app/news_creator/usecase/recap_summary_usecase.py:80"
+    secret = "invalid payload at /app/news_creator/usecase/recap_summary_usecase.py:80"  # noqa: S105 - test fixture string simulating leaked internal detail
     usecase.generate_summary.side_effect = ValueError(secret)
 
     app = FastAPI()
@@ -66,14 +70,14 @@ def test_recap_summary_handler_value_error():
     payload = _build_request_payload()
     resp = client.post("/v1/summary/generate", json=payload)
 
-    assert resp.status_code == 400
+    assert resp.status_code == HTTPStatus.BAD_REQUEST
     assert resp.json()["detail"] == "Invalid request"
     assert secret not in resp.text
 
 
-def test_recap_summary_handler_runtime_error():
+def test_recap_summary_handler_runtime_error() -> None:
     usecase = AsyncMock()
-    secret = "llm failure at http://ollama.internal:11434"
+    secret = "llm failure at http://ollama.internal:11434"  # noqa: S105 - test fixture string simulating leaked internal detail
     usecase.generate_summary.side_effect = RuntimeError(secret)
 
     app = FastAPI()
@@ -83,18 +87,16 @@ def test_recap_summary_handler_runtime_error():
     payload = _build_request_payload()
     resp = client.post("/v1/summary/generate", json=payload)
 
-    assert resp.status_code == 502
+    assert resp.status_code == HTTPStatus.BAD_GATEWAY
     assert resp.json()["detail"] == "Upstream service error"
     assert secret not in resp.text
 
 
-def test_recap_summary_handler_queue_full_returns_429():
+def test_recap_summary_handler_queue_full_returns_429() -> None:
     """Queue saturation is expected backpressure (2026-02 queue-saturation design);
     it must surface as HTTP 429 with Retry-After, mirroring /api/v1/summarize and
     /api/chat, never fall through to the generic 500 branch.
     """
-    from news_creator.domain.errors import QueueFullError
-
     usecase = AsyncMock()
     usecase.generate_summary.side_effect = QueueFullError("Queue depth 10 >= max 10")
 
@@ -105,12 +107,12 @@ def test_recap_summary_handler_queue_full_returns_429():
     payload = _build_request_payload()
     resp = client.post("/v1/summary/generate", json=payload)
 
-    assert resp.status_code == 429
+    assert resp.status_code == HTTPStatus.TOO_MANY_REQUESTS
     assert "queue full" in resp.json()["error"]
     assert resp.headers.get("Retry-After") == "30"
 
 
-def test_recap_summary_handler_preempted_returns_502():
+def test_recap_summary_handler_preempted_returns_502() -> None:
     """Pins the contract: PreemptedException must surface as HTTP 502 (retryable
     upstream signal) — never 500.
 
@@ -120,10 +122,8 @@ def test_recap_summary_handler_preempted_returns_502():
     retry.' That mistranslation is what produced the May 3 2026 17:20-17:36
     error storm.
     """
-    from news_creator.domain.errors import PreemptedException
-
     usecase = AsyncMock()
-    secret = "request preempted during generation at slot 3"
+    secret = "request preempted during generation at slot 3"  # noqa: S105 - test fixture string simulating leaked internal detail
     usecase.generate_summary.side_effect = PreemptedException(secret)
 
     app = FastAPI()
@@ -133,7 +133,7 @@ def test_recap_summary_handler_preempted_returns_502():
     payload = _build_request_payload()
     resp = client.post("/v1/summary/generate", json=payload)
 
-    assert resp.status_code == 502
+    assert resp.status_code == HTTPStatus.BAD_GATEWAY
     assert resp.json()["detail"] == "Upstream service error"
     assert secret not in resp.text
 
@@ -143,7 +143,7 @@ def test_recap_summary_handler_preempted_returns_502():
 # ============================================================================
 
 
-def _build_batch_request_payload():
+def _build_batch_request_payload() -> dict[str, Any]:
     """Build a batch request payload for testing."""
     return {
         "requests": [
@@ -177,7 +177,7 @@ def _build_batch_request_payload():
     }
 
 
-def test_batch_recap_summary_handler_success():
+def test_batch_recap_summary_handler_success() -> None:
     """Test batch endpoint with successful responses."""
     usecase = AsyncMock()
 
@@ -218,16 +218,16 @@ def test_batch_recap_summary_handler_success():
     payload = _build_batch_request_payload()
     resp = client.post("/v1/summary/generate/batch", json=payload)
 
-    assert resp.status_code == 200
+    assert resp.status_code == HTTPStatus.OK
     data = resp.json()
-    assert len(data["responses"]) == 2
+    assert len(data["responses"]) == len(batch_response.responses)
     assert len(data["errors"]) == 0
     assert data["responses"][0]["genre"] == "tech"
     assert data["responses"][1]["genre"] == "politics"
     usecase.generate_batch_summary.assert_awaited_once()
 
 
-def test_batch_recap_summary_handler_partial_failure():
+def test_batch_recap_summary_handler_partial_failure() -> None:
     """Test batch endpoint with partial failures."""
     usecase = AsyncMock()
 
@@ -266,14 +266,14 @@ def test_batch_recap_summary_handler_partial_failure():
     payload = _build_batch_request_payload()
     resp = client.post("/v1/summary/generate/batch", json=payload)
 
-    assert resp.status_code == 200
+    assert resp.status_code == HTTPStatus.OK
     data = resp.json()
     assert len(data["responses"]) == 1
     assert len(data["errors"]) == 1
     assert data["errors"][0]["genre"] == "politics"
 
 
-def test_batch_recap_summary_handler_invalid_request():
+def test_batch_recap_summary_handler_invalid_request() -> None:
     """Test batch endpoint with invalid request (empty requests)."""
     usecase = AsyncMock()
 
@@ -285,4 +285,4 @@ def test_batch_recap_summary_handler_invalid_request():
     payload = {"requests": []}
     resp = client.post("/v1/summary/generate/batch", json=payload)
 
-    assert resp.status_code == 422  # Validation error
+    assert resp.status_code == HTTPStatus.UNPROCESSABLE_ENTITY  # Validation error

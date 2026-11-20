@@ -157,12 +157,12 @@ func TestRecordThemeOpenedUsecase(t *testing.T) {
 		ap := &fakeAppendPort{seq: 1}
 		uc := NewRecordThemeOpenedUsecase(ap, fixedNow)
 
-		assert.ErrorIs(t, uc.Execute(context.Background(), uuid.Nil, tenantID, themeID.String(), 1, clientEventID.String(), openedAt), domain.ErrInvalidThemeInput)
-		assert.ErrorIs(t, uc.Execute(context.Background(), userID, tenantID, "not-uuid", 1, clientEventID.String(), openedAt), domain.ErrInvalidThemeInput)
-		assert.ErrorIs(t, uc.Execute(context.Background(), userID, tenantID, themeID.String(), 0, clientEventID.String(), openedAt), domain.ErrInvalidThemeInput)
-		assert.ErrorIs(t, uc.Execute(context.Background(), userID, tenantID, themeID.String(), -2, clientEventID.String(), openedAt), domain.ErrInvalidThemeInput)
-		assert.ErrorIs(t, uc.Execute(context.Background(), userID, tenantID, themeID.String(), 1, "not-uuid", openedAt), domain.ErrInvalidThemeInput)
-		assert.ErrorIs(t, uc.Execute(context.Background(), userID, tenantID, themeID.String(), 1, clientEventID.String(), time.Time{}), domain.ErrInvalidThemeInput)
+		require.ErrorIs(t, uc.Execute(context.Background(), uuid.Nil, tenantID, themeID.String(), 1, clientEventID.String(), openedAt), domain.ErrInvalidThemeInput)
+		require.ErrorIs(t, uc.Execute(context.Background(), userID, tenantID, "not-uuid", 1, clientEventID.String(), openedAt), domain.ErrInvalidThemeInput)
+		require.ErrorIs(t, uc.Execute(context.Background(), userID, tenantID, themeID.String(), 0, clientEventID.String(), openedAt), domain.ErrInvalidThemeInput)
+		require.ErrorIs(t, uc.Execute(context.Background(), userID, tenantID, themeID.String(), -2, clientEventID.String(), openedAt), domain.ErrInvalidThemeInput)
+		require.ErrorIs(t, uc.Execute(context.Background(), userID, tenantID, themeID.String(), 1, "not-uuid", openedAt), domain.ErrInvalidThemeInput)
+		require.ErrorIs(t, uc.Execute(context.Background(), userID, tenantID, themeID.String(), 1, clientEventID.String(), time.Time{}), domain.ErrInvalidThemeInput)
 		assert.Empty(t, ap.events)
 	})
 

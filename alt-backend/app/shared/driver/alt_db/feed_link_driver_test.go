@@ -67,7 +67,7 @@ func TestFetchFeedLinkIDByURL_QueryErrorPropagated(t *testing.T) {
 
 	gotID, err := repo.FetchFeedLinkIDByURL(context.Background(), feedURL)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, dbErr)
+	require.ErrorIs(t, err, dbErr)
 	assert.Nil(t, gotID)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
@@ -153,7 +153,7 @@ func TestFetchFeedLinksWithAvailability_QueryError(t *testing.T) {
 		WillReturnError(errors.New("db connection error"))
 
 	links, err := repo.FetchFeedLinksWithAvailability(context.Background())
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, links)
 
 	require.NoError(t, mock.ExpectationsWereMet())

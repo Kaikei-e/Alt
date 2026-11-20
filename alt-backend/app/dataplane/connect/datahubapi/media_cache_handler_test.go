@@ -3,7 +3,6 @@ package datahubapi
 import (
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"testing"
 	"time"
@@ -216,7 +215,7 @@ func newMediaHandler(f mediaFakes) (*Handler, mediaFakes) {
 		f.scraping = &fakeScrapingPort{}
 	}
 
-	h := &Handler{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	h := &Handler{logger: slog.New(slog.DiscardHandler)}
 	WithMediaCapabilities(
 		outbox_usecase.NewOutboxUsecase(f.outbox),
 		f.ogImage,
@@ -399,7 +398,7 @@ func TestGetArticleHeadLeavesFieldUnsetOnMiss(t *testing.T) {
 	resp, err := h.GetArticleHead(context.Background(),
 		connect.NewRequest(&datahubv1.GetArticleHeadRequest{ArticleId: "a1"}))
 	require.NoError(t, err)
-	assert.Nil(t, resp.Msg.Head)
+	assert.Nil(t, resp.Msg.GetHead())
 }
 
 func TestGetArticleHeadReturnsStoredRow(t *testing.T) {
@@ -543,7 +542,7 @@ func TestGetImageProxyCacheLeavesFieldUnsetOnMiss(t *testing.T) {
 	resp, err := h.GetImageProxyCache(context.Background(),
 		connect.NewRequest(&datahubv1.GetImageProxyCacheRequest{UrlHash: "abc"}))
 	require.NoError(t, err)
-	assert.Nil(t, resp.Msg.Entry)
+	assert.Nil(t, resp.Msg.GetEntry())
 }
 
 func TestPutImageProxyCacheRoundTripsBytes(t *testing.T) {
@@ -590,7 +589,7 @@ func TestGetScrapingDomainByDomainLeavesFieldUnsetForUnknownHost(t *testing.T) {
 	resp, err := h.GetScrapingDomainByDomain(context.Background(),
 		connect.NewRequest(&datahubv1.GetScrapingDomainByDomainRequest{Domain: "unknown.example"}))
 	require.NoError(t, err)
-	assert.Nil(t, resp.Msg.ScrapingDomain)
+	assert.Nil(t, resp.Msg.GetScrapingDomain())
 }
 
 // TestSaveScrapingDomainReturnsAssignedIdentity replaces the driver's in-place

@@ -41,7 +41,7 @@ func (h *Handler) SearchEverything(
 	ctx context.Context,
 	req *connect.Request[searchv2.SearchEverythingRequest],
 ) (*connect.Response[searchv2.SearchEverythingResponse], error) {
-	query := req.Msg.Query
+	query := req.Msg.GetQuery()
 	if query == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("query is required"))
 	}
@@ -49,9 +49,9 @@ func (h *Handler) SearchEverything(
 	result, err := h.globalSearchUsecase.Execute(
 		ctx,
 		query,
-		int(req.Msg.ArticleLimit),
-		int(req.Msg.RecapLimit),
-		int(req.Msg.TagLimit),
+		int(req.Msg.GetArticleLimit()),
+		int(req.Msg.GetRecapLimit()),
+		int(req.Msg.GetTagLimit()),
 	)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "global search failed", "error", err, "query", query)

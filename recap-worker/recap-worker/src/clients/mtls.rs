@@ -231,6 +231,10 @@ pub(crate) fn build_mtls_client_builder(
 ) -> Result<reqwest::ClientBuilder> {
     // Installing the default crypto provider is idempotent; callers that
     // already installed one (e.g. `main`) will see this as a no-op.
+    #[expect(
+        clippy::let_underscore_must_use,
+        reason = "install_default is idempotent and returns Err if already installed"
+    )]
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 
     let ca_pem = std::fs::read(&paths.ca)
@@ -283,6 +287,10 @@ mod tests {
 
     fn install_crypto_provider() {
         // Installing is idempotent per-process; tests may share the process.
+        #[expect(
+            clippy::let_underscore_must_use,
+            reason = "install_default is idempotent and returns Err if already installed in test process"
+        )]
         let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     }
 

@@ -7,8 +7,8 @@ Following Python 3.14 best practices:
 
 from __future__ import annotations
 
-import os
 import logging
+import os
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -81,7 +81,8 @@ def _get_int(name: str, default: int) -> int:
     try:
         return int(raw)
     except ValueError as exc:
-        raise ValueError(f"Invalid integer value for {name}: {raw!r}") from exc
+        msg = f"Invalid integer value for {name}: {raw!r}"
+        raise ValueError(msg) from exc
 
 
 def _get_float(name: str, default: float) -> float:
@@ -92,4 +93,5 @@ def _get_float(name: str, default: float) -> float:
     try:
         return float(raw)
     except ValueError as exc:
-        raise ValueError(f"Invalid float value for {name}: {raw!r}") from exc
+        msg = f"Invalid float value for {name}: {raw!r}"
+        raise ValueError(msg) from exc

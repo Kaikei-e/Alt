@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import shutil
 import ssl
 import subprocess
 import tempfile
@@ -22,11 +23,14 @@ from acolyte.infra.mtls_client import (
 
 def _write_test_identity(dir_path: Path, cn: str) -> tuple[Path, Path]:
     """Generate a throwaway self-signed cert + key PEM pair via openssl."""
+    openssl = shutil.which("openssl")
+    if openssl is None:
+        pytest.fail("openssl is required for mTLS tests")
     cert_path = dir_path / f"{cn}-cert.pem"
     key_path = dir_path / f"{cn}-key.pem"
-    subprocess.run(
+    subprocess.run(  # noqa: S603 - fixed argv built in this test
         [
-            "openssl",
+            openssl,
             "req",
             "-x509",
             "-newkey",

@@ -3,6 +3,7 @@ package stack
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -11,7 +12,7 @@ import (
 // the file's stem-relative helpers useful in table-driven assertions.
 func writeComposeFixture(t *testing.T, dir, name, body string) {
 	t.Helper()
-	if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
 		t.Fatalf("writing fixture %s: %v", name, err)
 	}
 }
@@ -202,15 +203,7 @@ func TestNewRegistry_MissingComposeDirErrors(t *testing.T) {
 }
 
 func equalStrings(got, want []string) bool {
-	if len(got) != len(want) {
-		return false
-	}
-	for i := range got {
-		if got[i] != want[i] {
-			return false
-		}
-	}
-	return true
+	return slices.Equal(got, want)
 }
 
 // --- Real repository consistency checks -------------------------------

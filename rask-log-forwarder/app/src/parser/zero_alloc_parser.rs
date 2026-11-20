@@ -5,6 +5,12 @@ pub struct ZeroAllocParser;
 
 impl ZeroAllocParser {
     /// Memory-safe u16 parsing with zero allocations
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParseError::EmptyInput`] if `input` is empty, [`ParseError::TooLong`] if it
+    /// exceeds 5 bytes, [`ParseError::InvalidCharacter`] on a non-ASCII-digit byte, or
+    /// [`ParseError::Overflow`] if the parsed value exceeds `u16::MAX`.
     pub fn parse_u16_safe(input: &str) -> Result<u16, ParseError> {
         if input.is_empty() {
             return Err(ParseError::EmptyInput);
@@ -28,7 +34,7 @@ impl ZeroAllocParser {
                 });
             }
 
-            let digit = (byte - b'0') as u16;
+            let digit = u16::from(byte - b'0');
 
             // Overflow check
             if let Some(new_result) = result.checked_mul(10) {
@@ -37,13 +43,13 @@ impl ZeroAllocParser {
                 } else {
                     return Err(ParseError::Overflow {
                         input: input.to_string(),
-                        max_value: u16::MAX as u64,
+                        max_value: u64::from(u16::MAX),
                     });
                 }
             } else {
                 return Err(ParseError::Overflow {
                     input: input.to_string(),
-                    max_value: u16::MAX as u64,
+                    max_value: u64::from(u16::MAX),
                 });
             }
         }
@@ -52,6 +58,12 @@ impl ZeroAllocParser {
     }
 
     /// Memory-safe u64 parsing with zero allocations
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParseError::EmptyInput`] if `input` is empty, [`ParseError::TooLong`] if it
+    /// exceeds 20 bytes, [`ParseError::InvalidCharacter`] on a non-ASCII-digit byte (except
+    /// `"-"`), or [`ParseError::Overflow`] if the parsed value exceeds `u64::MAX`.
     pub fn parse_u64_safe(input: &str) -> Result<u64, ParseError> {
         if input.is_empty() {
             return Err(ParseError::EmptyInput);
@@ -79,7 +91,7 @@ impl ZeroAllocParser {
                 });
             }
 
-            let digit = (byte - b'0') as u64;
+            let digit = u64::from(byte - b'0');
 
             // Overflow check
             if let Some(new_result) = result.checked_mul(10) {
@@ -103,15 +115,18 @@ impl ZeroAllocParser {
     }
 
     /// Fallback-enabled parsing with default values
+    #[must_use]
     pub fn parse_u16_with_fallback(input: &str, fallback: u16) -> u16 {
         Self::parse_u16_safe(input).unwrap_or(fallback)
     }
 
+    #[must_use]
     pub fn parse_u64_with_fallback(input: &str, fallback: u64) -> u64 {
         Self::parse_u64_safe(input).unwrap_or(fallback)
     }
 
     /// Safe parsing operations with error recovery
+    #[must_use]
     pub fn parse_u16_with_recovery(input: &str) -> u16 {
         safe_parse_operation(|| Self::parse_u16_safe(input)).unwrap_or_else(|e| {
             tracing::debug!("Failed to parse u16 '{}': {}, using fallback", input, e);
@@ -119,6 +134,7 @@ impl ZeroAllocParser {
         })
     }
 
+    #[must_use]
     pub fn parse_u64_with_recovery(input: &str) -> u64 {
         safe_parse_operation(|| Self::parse_u64_safe(input)).unwrap_or_else(|e| {
             tracing::debug!("Failed to parse u64 '{}': {}, using fallback", input, e);
@@ -223,12 +239,25 @@ mod tests {
     #[test]
     fn test_zero_allocation_performance() {
         // This test ensures we don't allocate during parsing
-        let test_strings = ["200", "404", "1024", "0", "-", "999999"];
+        let test_cases = [
+            ("200", 200_u16, 200_u64),
+            ("404", 404, 404),
+            ("1024", 1024, 1024),
+            ("0", 0, 0),
+            ("-", 0, 0),
+            ("999999", 0, 999_999),
+        ];
 
-        for input in test_strings {
+        for (input, expected_u16, expected_u64) in test_cases {
             // These should not allocate memory during parsing
-            let _ = ZeroAllocParser::parse_u16_with_recovery(input);
-            let _ = ZeroAllocParser::parse_u64_with_recovery(input);
+            assert_eq!(
+                ZeroAllocParser::parse_u16_with_recovery(input),
+                expected_u16
+            );
+            assert_eq!(
+                ZeroAllocParser::parse_u64_with_recovery(input),
+                expected_u64
+            );
         }
     }
 }

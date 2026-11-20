@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from http import HTTPStatus
 from uuid import uuid4
 
 import httpx
@@ -124,7 +125,7 @@ async def test_search_articles_fails_without_owner_jwt(content_store: MemoryCont
     finally:
         current_user_jwt.reset(token_var)
 
-    assert exc_info.value.status_code == 401
+    assert exc_info.value.status_code == HTTPStatus.UNAUTHORIZED
 
 
 @pytest.mark.asyncio

@@ -109,84 +109,24 @@ impl SubworkerClient {
         let idempotency_key = format!("{}::{}::{}", job_id, corpus.genre, corpus_digest);
         let document_count = request_payload.documents.len();
 
-        if document_count < self.min_documents_per_genre {
-            if document_count >= MIN_FALLBACK_DOCUMENTS {
-                warn!(
-                    job_id = %job_id,
-                    genre = %corpus.genre,
-                    document_count,
-                    min_required = self.min_documents_per_genre,
-                    "using fallback single-cluster response due to insufficient documents"
-                );
-                return Ok(Self::create_fallback_response(job_id, corpus));
-            }
-            warn!(
-                job_id = %job_id,
-                genre = %corpus.genre,
-                document_count,
-                min_fallback = MIN_FALLBACK_DOCUMENTS,
-                "skipping clustering because document count is below minimum fallback threshold"
-            );
-            return Err(RecapError::InsufficientDocuments {
-                min: MIN_FALLBACK_DOCUMENTS,
-                found: document_count,
-            });
+        if let Some(fallback) =
+            self.check_min_documents_or_fallback(job_id, corpus, document_count)?
+        {
+            return Ok(fallback);
         }
 
         let response = self
-            .client
-            .post(runs_url.clone())
-            .json(&request_payload)
-            .header("X-Alt-Job-Id", job_id.to_string())
-            .header("X-Alt-Genre", &corpus.genre)
-            .header("Idempotency-Key", idempotency_key)
-            .send()
-            .await
-            .map_err(|e| RecapError::Clustering(format!("clustering request failed: {e}")))?;
+            .post_clustering_request(
+                &runs_url,
+                job_id,
+                &corpus.genre,
+                &request_payload,
+                &idempotency_key,
+            )
+            .await?;
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            let truncated_body = truncate_error_message(&body);
-            return Err(RecapError::Clustering(format!(
-                "clustering endpoint returned error status {status}: {truncated_body}"
-            )));
-        }
-
-        let response_json: Value = response.json().await.map_err(|e| {
-            RecapError::Clustering(format!(
-                "failed to deserialize clustering response as JSON: {e}"
-            ))
-        })?;
-
-        let validation = validate_json(&CLUSTERING_RESPONSE_SCHEMA, &response_json);
-        if !validation.valid {
-            let summarized_errors = summarize_validation_errors(&validation.errors);
-            warn!(
-                job_id = %job_id,
-                genre = %corpus.genre,
-                error_count = validation.errors.len(),
-                first_error = %summarized_errors.first().map_or("unknown", String::as_str),
-                "clustering response failed JSON Schema validation"
-            );
-            return Err(RecapError::Clustering(format!(
-                "clustering response validation failed: {} errors (first: {})",
-                validation.errors.len(),
-                summarized_errors.first().map_or("unknown", String::as_str)
-            )));
-        }
-
-        debug!(
-            job_id = %job_id,
-            genre = %corpus.genre,
-            "clustering response passed JSON Schema validation"
-        );
-
-        let mut run: ClusteringResponse = serde_json::from_value(response_json).map_err(|e| {
-            RecapError::Clustering(format!(
-                "failed to deserialize validated clustering response: {e}"
-            ))
-        })?;
+        let mut run =
+            parse_and_validate_clustering_response(job_id, &corpus.genre, response).await?;
 
         if run.status.is_running() {
             run = self
@@ -202,6 +142,69 @@ impl SubworkerClient {
         }
 
         Ok(run)
+    }
+
+    fn check_min_documents_or_fallback(
+        &self,
+        job_id: Uuid,
+        corpus: &EvidenceCorpus,
+        document_count: usize,
+    ) -> Result<Option<ClusteringResponse>> {
+        if document_count >= self.min_documents_per_genre {
+            return Ok(None);
+        }
+        if document_count >= MIN_FALLBACK_DOCUMENTS {
+            warn!(
+                job_id = %job_id,
+                genre = %corpus.genre,
+                document_count,
+                min_required = self.min_documents_per_genre,
+                "using fallback single-cluster response due to insufficient documents"
+            );
+            return Ok(Some(Self::create_fallback_response(job_id, corpus)));
+        }
+        warn!(
+            job_id = %job_id,
+            genre = %corpus.genre,
+            document_count,
+            min_fallback = MIN_FALLBACK_DOCUMENTS,
+            "skipping clustering because document count is below minimum fallback threshold"
+        );
+        Err(RecapError::InsufficientDocuments {
+            min: MIN_FALLBACK_DOCUMENTS,
+            found: document_count,
+        })
+    }
+
+    async fn post_clustering_request(
+        &self,
+        runs_url: &Url,
+        job_id: Uuid,
+        genre: &str,
+        request_payload: &ClusterJobRequest<'_>,
+        idempotency_key: &str,
+    ) -> Result<reqwest::Response> {
+        let response = self
+            .client
+            .post(runs_url.clone())
+            .json(request_payload)
+            .header("X-Alt-Job-Id", job_id.to_string())
+            .header("X-Alt-Genre", genre)
+            .header("Idempotency-Key", idempotency_key)
+            .send()
+            .await
+            .map_err(|e| RecapError::Clustering(format!("clustering request failed: {e}")))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            let truncated_body = truncate_error_message(&body);
+            return Err(RecapError::Clustering(format!(
+                "clustering endpoint returned error status {status}: {truncated_body}"
+            )));
+        }
+
+        Ok(response)
     }
 
     /// 経過時間ベースのdeadline付きでpollingを実行する。
@@ -449,6 +452,57 @@ impl SubworkerClient {
             ))),
         }
     }
+}
+
+async fn parse_and_validate_clustering_response(
+    job_id: Uuid,
+    genre: &str,
+    response: reqwest::Response,
+) -> Result<ClusteringResponse> {
+    let response_json: Value = response.json().await.map_err(|e| {
+        RecapError::Clustering(format!(
+            "failed to deserialize clustering response as JSON: {e}"
+        ))
+    })?;
+
+    validate_clustering_response_json(job_id, genre, &response_json)?;
+
+    serde_json::from_value(response_json).map_err(|e| {
+        RecapError::Clustering(format!(
+            "failed to deserialize validated clustering response: {e}"
+        ))
+    })
+}
+
+fn validate_clustering_response_json(
+    job_id: Uuid,
+    genre: &str,
+    response_json: &Value,
+) -> Result<()> {
+    let validation = validate_json(&CLUSTERING_RESPONSE_SCHEMA, response_json);
+    if !validation.valid {
+        let summarized_errors = summarize_validation_errors(&validation.errors);
+        warn!(
+            job_id = %job_id,
+            genre = %genre,
+            error_count = validation.errors.len(),
+            first_error = %summarized_errors.first().map_or("unknown", String::as_str),
+            "clustering response failed JSON Schema validation"
+        );
+        return Err(RecapError::Clustering(format!(
+            "clustering response validation failed: {} errors (first: {})",
+            validation.errors.len(),
+            summarized_errors.first().map_or("unknown", String::as_str)
+        )));
+    }
+
+    debug!(
+        job_id = %job_id,
+        genre = %genre,
+        "clustering response passed JSON Schema validation"
+    );
+
+    Ok(())
 }
 
 fn build_runs_url(base: &Url) -> Result<Url> {
@@ -784,5 +838,382 @@ mod tests {
                 part
             );
         }
+    }
+
+    fn sample_corpus(genre: &str, article_count: usize) -> EvidenceCorpus {
+        use crate::pipeline::evidence::{CorpusMetadata, EvidenceArticle};
+        use std::collections::HashMap;
+
+        let articles = (0..article_count)
+            .map(|i| EvidenceArticle {
+                article_id: format!("art-{i}"),
+                title: Some(format!("Title {i}")),
+                sentences: vec![
+                    "This is a sufficiently long sentence for clustering tests.".to_string(),
+                ],
+                language: "en".to_string(),
+                published_at: None,
+                source_url: None,
+                score: 1.0,
+                genre_scores: None,
+                confidence: None,
+                signals: None,
+            })
+            .collect();
+
+        let mut lang_dist = HashMap::new();
+        lang_dist.insert("en".to_string(), article_count);
+
+        EvidenceCorpus {
+            genre: genre.to_string(),
+            articles,
+            total_sentences: article_count,
+            metadata: CorpusMetadata {
+                article_count,
+                sentence_count: article_count,
+                primary_language: "en".to_string(),
+                language_distribution: lang_dist,
+                character_count: article_count * 58,
+                classifier: None,
+            },
+        }
+    }
+
+    fn valid_clustering_response_json(
+        run_id: i64,
+        job_id: Uuid,
+        genre: &str,
+        status: &str,
+        with_cluster: bool,
+    ) -> Value {
+        let clusters = if with_cluster {
+            vec![serde_json::json!({
+                "cluster_id": 0,
+                "size": 3,
+                "label": genre,
+                "top_terms": ["ai", "model"],
+                "stats": {},
+                "representatives": [{
+                    "article_id": "art-0",
+                    "paragraph_idx": 0,
+                    "sentence_text": "This is a sufficiently long sentence for clustering tests.",
+                    "lang": "en",
+                    "score": 0.9
+                }]
+            })]
+        } else {
+            Vec::new()
+        };
+
+        serde_json::json!({
+            "run_id": run_id,
+            "job_id": job_id.to_string(),
+            "genre": genre,
+            "status": status,
+            "cluster_count": clusters.len(),
+            "clusters": clusters,
+            "diagnostics": {}
+        })
+    }
+
+    #[tokio::test]
+    async fn cluster_corpus_with_timeout_returns_fallback_when_below_min_documents() {
+        use wiremock::matchers::method;
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(500))
+            .expect(0)
+            .mount(&server)
+            .await;
+
+        let client = SubworkerClient::new(server.uri(), 3, None).expect("client should build");
+        let job_id = Uuid::new_v4();
+        let corpus = sample_corpus("ai", 1);
+
+        let res = client
+            .cluster_corpus_with_timeout(job_id, &corpus, Duration::from_secs(5), None)
+            .await
+            .expect("single article below min_documents_per_genre should return fallback");
+
+        assert_eq!(res.run_id, 0);
+        assert_eq!(res.cluster_count, 1);
+        assert_eq!(res.clusters.len(), 1);
+        server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn cluster_corpus_with_timeout_errors_when_zero_documents() {
+        use wiremock::matchers::method;
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(500))
+            .expect(0)
+            .mount(&server)
+            .await;
+
+        let client = SubworkerClient::new(server.uri(), 3, None).expect("client should build");
+        let corpus = sample_corpus("ai", 0);
+
+        let err = client
+            .cluster_corpus_with_timeout(Uuid::new_v4(), &corpus, Duration::from_secs(5), None)
+            .await
+            .expect_err("zero documents must fail");
+
+        assert!(matches!(
+            err,
+            RecapError::InsufficientDocuments { min: 1, found: 0 }
+        ));
+        server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn cluster_corpus_with_timeout_sends_expected_request_and_accepts_succeeded_and_partial()
+    {
+        use wiremock::matchers::{header, header_exists, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        let job_id = Uuid::new_v4();
+        let corpus = sample_corpus("ai", 3);
+
+        Mock::given(method("POST"))
+            .and(path("/v1/runs"))
+            .and(header("x-alt-job-id", job_id.to_string().as_str()))
+            .and(header("x-alt-genre", "ai"))
+            .and(header_exists("idempotency-key"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(valid_clustering_response_json(
+                    42,
+                    job_id,
+                    "ai",
+                    "succeeded",
+                    true,
+                )),
+            )
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+
+        let client = SubworkerClient::new(server.uri(), 2, None).expect("client should build");
+        let succeeded = client
+            .cluster_corpus_with_timeout(job_id, &corpus, Duration::from_secs(5), None)
+            .await
+            .expect("succeeded clustering response should be accepted");
+        assert_eq!(succeeded.run_id, 42);
+        assert_eq!(succeeded.clusters.len(), 1);
+
+        Mock::given(method("POST"))
+            .and(path("/v1/runs"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(valid_clustering_response_json(
+                    43, job_id, "ai", "partial", true,
+                )),
+            )
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+
+        let partial = client
+            .cluster_corpus_with_timeout(job_id, &corpus, Duration::from_secs(5), None)
+            .await
+            .expect("partial clustering response is treated as success");
+        assert_eq!(partial.run_id, 43);
+        assert_eq!(partial.status, ClusterJobStatus::Partial);
+    }
+
+    #[tokio::test]
+    async fn cluster_corpus_with_timeout_polls_running_run_until_succeeded() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        let job_id = Uuid::new_v4();
+        let corpus = sample_corpus("tech", 3);
+
+        Mock::given(method("POST"))
+            .and(path("/v1/runs"))
+            .respond_with(
+                ResponseTemplate::new(202).set_body_json(valid_clustering_response_json(
+                    99, job_id, "tech", "running", false,
+                )),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(path("/v1/runs/99"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(valid_clustering_response_json(
+                    99,
+                    job_id,
+                    "tech",
+                    "succeeded",
+                    true,
+                )),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = SubworkerClient::new(server.uri(), 2, None).expect("client should build");
+        let res = client
+            .cluster_corpus_with_timeout(job_id, &corpus, Duration::from_secs(60), None)
+            .await
+            .expect("running then succeeded poll should complete");
+
+        assert_eq!(res.status, ClusterJobStatus::Succeeded);
+        assert_eq!(res.clusters.len(), 1);
+        server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn cluster_corpus_with_timeout_times_out_immediately_when_deadline_zero() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        let job_id = Uuid::new_v4();
+        let corpus = sample_corpus("tech", 3);
+
+        Mock::given(method("POST"))
+            .and(path("/v1/runs"))
+            .respond_with(
+                ResponseTemplate::new(202).set_body_json(valid_clustering_response_json(
+                    55, job_id, "tech", "running", false,
+                )),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(path("/v1/runs/55"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(0)
+            .mount(&server)
+            .await;
+
+        let client = SubworkerClient::new(server.uri(), 2, None).expect("client should build");
+        let err = client
+            .cluster_corpus_with_timeout(job_id, &corpus, Duration::ZERO, None)
+            .await
+            .expect_err("zero deadline must time out before polling");
+
+        assert!(err.to_string().contains("did not complete within timeout"));
+        server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn cluster_corpus_with_timeout_rejects_non_2xx_and_invalid_bodies() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        let client = SubworkerClient::new(server.uri(), 2, None).expect("client should build");
+        let corpus = sample_corpus("ai", 3);
+
+        for status in [401u16, 403, 400, 500] {
+            Mock::given(method("POST"))
+                .and(path("/v1/runs"))
+                .respond_with(ResponseTemplate::new(status).set_body_string("error body"))
+                .up_to_n_times(1)
+                .mount(&server)
+                .await;
+
+            let err = client
+                .cluster_corpus_with_timeout(Uuid::new_v4(), &corpus, Duration::from_secs(5), None)
+                .await
+                .expect_err("non-2xx must fail");
+            assert!(err.to_string().contains(&format!(
+                "clustering endpoint returned error status {status}"
+            )));
+        }
+
+        Mock::given(method("POST"))
+            .and(path("/v1/runs"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("not-json"))
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+        let err_json = client
+            .cluster_corpus_with_timeout(Uuid::new_v4(), &corpus, Duration::from_secs(5), None)
+            .await
+            .expect_err("invalid json must fail");
+        assert!(
+            err_json
+                .to_string()
+                .contains("failed to deserialize clustering response as JSON")
+        );
+
+        Mock::given(method("POST"))
+            .and(path("/v1/runs"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "run_id": 1
+            })))
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+        let err_schema = client
+            .cluster_corpus_with_timeout(Uuid::new_v4(), &corpus, Duration::from_secs(5), None)
+            .await
+            .expect_err("schema invalid json must fail");
+        assert!(
+            err_schema
+                .to_string()
+                .contains("clustering response validation failed")
+        );
+    }
+
+    #[tokio::test]
+    async fn cluster_corpus_with_timeout_fails_on_terminal_failed_status_and_transport_error() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        let job_id = Uuid::new_v4();
+        let corpus = sample_corpus("ai", 3);
+
+        Mock::given(method("POST"))
+            .and(path("/v1/runs"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(valid_clustering_response_json(
+                    77, job_id, "ai", "failed", false,
+                )),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = SubworkerClient::new(server.uri(), 2, None).expect("client should build");
+        let err_failed = client
+            .cluster_corpus_with_timeout(job_id, &corpus, Duration::from_secs(5), None)
+            .await
+            .expect_err("terminal failed status must error");
+        assert!(
+            err_failed
+                .to_string()
+                .contains("clustering run 77 finished with status failed")
+        );
+        server.verify().await;
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind ephemeral port");
+        let addr = listener.local_addr().expect("local addr");
+        drop(listener);
+        let dead_client =
+            SubworkerClient::new(format!("http://{addr}/"), 2, None).expect("client should build");
+        let err_transport = dead_client
+            .cluster_corpus_with_timeout(job_id, &corpus, Duration::from_secs(5), None)
+            .await
+            .expect_err("unreachable endpoint must fail");
+        assert!(
+            err_transport
+                .to_string()
+                .contains("clustering request failed")
+        );
     }
 }

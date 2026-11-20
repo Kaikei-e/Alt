@@ -42,7 +42,7 @@ export async function streamFeedStats(
 	const abortController = new AbortController();
 
 	// Start streaming in background
-	(async () => {
+	void (async () => {
 		try {
 			if (debug)
 				console.log("[streamFeedStats] Calling client.streamFeedStats()...");
@@ -401,7 +401,7 @@ export function streamSummarizeWithAbort(
 	};
 
 	// Start streaming in background
-	performStream(0);
+	void performStream(0);
 
 	return abortController;
 }

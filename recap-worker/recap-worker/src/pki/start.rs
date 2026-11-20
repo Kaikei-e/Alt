@@ -63,9 +63,12 @@ impl Handle {
                     }
                 }),
             );
-            let _ = axum::serve(listener, app)
+            if let Err(err) = axum::serve(listener, app)
                 .with_graceful_shutdown(async move { cancel.cancelled().await })
-                .await;
+                .await
+            {
+                tracing::warn!(error = %err, "pki_metrics_server_failed");
+            }
         });
         *self.metrics_task.lock().await = Some(task);
         Ok(())
@@ -185,7 +188,11 @@ pub async fn start_with(
     let run_cancel = cancel.clone();
     let run_mgr = Arc::clone(&mgr);
     let task = tokio::spawn(async move {
-        let _ = run_mgr.run(&run_cancel).await;
+        if let Err(err) = run_mgr.run(&run_cancel).await
+            && !err.is_canceled()
+        {
+            tracing::error!(error = %err, "pki_enrollment_loop_failed");
+        }
     });
     Ok(Some(Handle {
         cancel,
@@ -234,11 +241,7 @@ mod tests {
             _sans: &[String],
         ) -> Result<(Vec<u8>, Vec<u8>), PkiError> {
             let nb = std::time::SystemTime::now();
-            Ok(self_signed_pem(
-                subject,
-                nb,
-                nb + Duration::from_secs(24 * 3600),
-            ))
+            Ok(self_signed_pem(subject, nb, nb + Duration::from_hours(24)))
         }
     }
 

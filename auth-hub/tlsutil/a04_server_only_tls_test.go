@@ -47,14 +47,18 @@ func writeSelfSignedCert(t *testing.T, cn string) (certPath, keyPath string) {
 	certPath = filepath.Join(dir, "cert.pem")
 	keyPath = filepath.Join(dir, "key.pem")
 
-	certFile, err := os.Create(certPath)
+	root, err := os.OpenRoot(dir)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = root.Close() })
+
+	certFile, err := root.Create("cert.pem")
 	require.NoError(t, err)
 	require.NoError(t, pem.Encode(certFile, &pem.Block{Type: "CERTIFICATE", Bytes: certDER}))
 	require.NoError(t, certFile.Close())
 
 	keyDER, err := x509.MarshalECPrivateKey(key)
 	require.NoError(t, err)
-	keyFile, err := os.Create(keyPath)
+	keyFile, err := root.Create("key.pem")
 	require.NoError(t, err)
 	require.NoError(t, pem.Encode(keyFile, &pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER}))
 	require.NoError(t, keyFile.Close())

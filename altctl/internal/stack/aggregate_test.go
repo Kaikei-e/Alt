@@ -161,7 +161,7 @@ func TestRealRepo_FindByService_UnknownService(t *testing.T) {
 func TestFindByService_AmbiguousAcrossTwoIsolatedStacks_ReturnsError(t *testing.T) {
 	dir := t.TempDir()
 	composeDir := filepath.Join(dir, "compose")
-	if err := os.MkdirAll(composeDir, 0o755); err != nil {
+	if err := os.MkdirAll(composeDir, 0o750); err != nil {
 		t.Fatal(err)
 	}
 	writeComposeFixture(t, composeDir, "compose.yaml", "name: alt\ninclude:\n  - core.yaml\n")

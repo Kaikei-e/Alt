@@ -46,23 +46,23 @@ func TestListUntaggedArticles_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(resp.Msg.Articles) != 2 {
-		t.Fatalf("expected 2 articles, got %d", len(resp.Msg.Articles))
+	if len(resp.Msg.GetArticles()) != 2 {
+		t.Fatalf("expected 2 articles, got %d", len(resp.Msg.GetArticles()))
 	}
-	if resp.Msg.Articles[0].Id != "a1" {
-		t.Errorf("expected first article ID a1, got %s", resp.Msg.Articles[0].Id)
+	if resp.Msg.GetArticles()[0].GetId() != "a1" {
+		t.Errorf("expected first article ID a1, got %s", resp.Msg.GetArticles()[0].GetId())
 	}
-	if resp.Msg.Articles[0].CreatedAt == nil {
+	if resp.Msg.GetArticles()[0].GetCreatedAt() == nil {
 		t.Error("expected created_at to be set on article")
 	}
-	if resp.Msg.NextId != "a2" {
-		t.Errorf("expected next_id a2, got %s", resp.Msg.NextId)
+	if resp.Msg.GetNextId() != "a2" {
+		t.Errorf("expected next_id a2, got %s", resp.Msg.GetNextId())
 	}
-	if resp.Msg.NextCreatedAt == nil {
+	if resp.Msg.GetNextCreatedAt() == nil {
 		t.Fatal("expected next_created_at to be set")
 	}
-	if resp.Msg.TotalCount != 5 {
-		t.Errorf("expected total_count 5, got %d", resp.Msg.TotalCount)
+	if resp.Msg.GetTotalCount() != 5 {
+		t.Errorf("expected total_count 5, got %d", resp.Msg.GetTotalCount())
 	}
 }
 
@@ -89,8 +89,8 @@ func TestListUntaggedArticles_WithCursor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(resp.Msg.Articles) != 0 {
-		t.Fatalf("expected 0 articles, got %d", len(resp.Msg.Articles))
+	if len(resp.Msg.GetArticles()) != 0 {
+		t.Fatalf("expected 0 articles, got %d", len(resp.Msg.GetArticles()))
 	}
 }
 
@@ -139,20 +139,20 @@ func TestBatchGetTagsByArticleIDs_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got := len(resp.Msg.Items); got != 2 {
+	if got := len(resp.Msg.GetItems()); got != 2 {
 		t.Fatalf("expected 2 items, got %d", got)
 	}
-	if resp.Msg.Items[0].ArticleId != "a1" {
-		t.Errorf("expected first article_id=a1, got %s", resp.Msg.Items[0].ArticleId)
+	if resp.Msg.GetItems()[0].GetArticleId() != "a1" {
+		t.Errorf("expected first article_id=a1, got %s", resp.Msg.GetItems()[0].GetArticleId())
 	}
-	if got := len(resp.Msg.Items[0].Tags); got != 2 {
+	if got := len(resp.Msg.GetItems()[0].GetTags()); got != 2 {
 		t.Errorf("expected 2 tags on a1, got %d", got)
 	}
-	if resp.Msg.Items[0].Tags[0].TagName != "go" || resp.Msg.Items[0].Tags[0].Confidence < 0.89 {
-		t.Errorf("unexpected first tag on a1: %+v", resp.Msg.Items[0].Tags[0])
+	if resp.Msg.GetItems()[0].GetTags()[0].GetTagName() != "go" || resp.Msg.GetItems()[0].GetTags()[0].GetConfidence() < 0.89 {
+		t.Errorf("unexpected first tag on a1: %+v", resp.Msg.GetItems()[0].GetTags()[0])
 	}
-	if resp.Msg.Items[0].Tags[0].UpdatedAt == nil || !resp.Msg.Items[0].Tags[0].UpdatedAt.AsTime().Equal(updatedAt) {
-		t.Errorf("expected updated_at passthrough, got %+v", resp.Msg.Items[0].Tags[0].UpdatedAt)
+	if resp.Msg.GetItems()[0].GetTags()[0].GetUpdatedAt() == nil || !resp.Msg.GetItems()[0].GetTags()[0].GetUpdatedAt().AsTime().Equal(updatedAt) {
+		t.Errorf("expected updated_at passthrough, got %+v", resp.Msg.GetItems()[0].GetTags()[0].GetUpdatedAt())
 	}
 }
 
@@ -169,8 +169,8 @@ func TestBatchGetTagsByArticleIDs_EmptyRequestReturnsEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(resp.Msg.Items) != 0 {
-		t.Errorf("expected empty items, got %d", len(resp.Msg.Items))
+	if len(resp.Msg.GetItems()) != 0 {
+		t.Errorf("expected empty items, got %d", len(resp.Msg.GetItems()))
 	}
 }
 

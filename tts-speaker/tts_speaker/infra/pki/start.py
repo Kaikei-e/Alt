@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from dataclasses import dataclass
 
 from prometheus_client import CollectorRegistry
 
@@ -12,12 +13,21 @@ from tts_speaker.infra.pki.config import MODE_ENABLED, Config, load_config
 from tts_speaker.infra.pki.ctx import CancelledError, Ctx
 from tts_speaker.infra.pki.manager import Issuer, Manager, NopObserver, Observer
 from tts_speaker.infra.pki.metrics import PromObserver
+from tts_speaker.infra.pki.native_issuer import NativeStepCAIssuer
 from tts_speaker.infra.pki.ops import OpsHandle, start_ops
 
 logger = logging.getLogger(__name__)
 
 _JOIN_SLACK_SECONDS = 5.0
 _DEFAULT_ISSUE_TIMEOUT = 15.0
+
+
+@dataclass(frozen=True, slots=True)
+class _HandleOptions:
+    issuer: Issuer | None = None
+    ops: OpsHandle | None = None
+    registry: CollectorRegistry | None = None
+    join_timeout: float = _DEFAULT_ISSUE_TIMEOUT + _JOIN_SLACK_SECONDS
 
 
 class Handle:
@@ -27,19 +37,16 @@ class Handle:
         self,
         ctx: Ctx,
         thread: threading.Thread,
-        *,
-        issuer: Issuer | None = None,
-        ops: OpsHandle | None = None,
-        registry: CollectorRegistry | None = None,
-        join_timeout: float = _DEFAULT_ISSUE_TIMEOUT + _JOIN_SLACK_SECONDS,
+        options: _HandleOptions | None = None,
     ) -> None:
+        opts = options or _HandleOptions()
         self._ctx = ctx
         self._thread = thread
-        self._issuer = issuer
-        self._ops = ops
-        self.registry = registry
-        self.ops_addr = ops.addr if ops is not None else None
-        self._join_timeout = join_timeout
+        self._issuer = opts.issuer
+        self._ops = opts.ops
+        self.registry = opts.registry
+        self.ops_addr = opts.ops.addr if opts.ops is not None else None
+        self._join_timeout = opts.join_timeout
         self._once = threading.Lock()
         self._stopped = False
 
@@ -54,9 +61,8 @@ class Handle:
                 closer()
         self._thread.join(timeout=self._join_timeout)
         if self._thread.is_alive():
-            raise RuntimeError(
-                "pki: enrollment loop did not stop within join deadline; in-flight write was not abandoned"
-            )
+            msg = "pki: enrollment loop did not stop within join deadline; in-flight write was not abandoned"
+            raise RuntimeError(msg)
         if self._ops is not None:
             self._ops.aclose_sync()
 
@@ -98,8 +104,6 @@ def start_with_observer(
     )
     minted = issuer
     if minted is None:
-        from tts_speaker.infra.pki.native_issuer import NativeStepCAIssuer
-
         minted = NativeStepCAIssuer(
             ca_url=cfg.ca_url,
             root_file=cfg.root_file,
@@ -130,10 +134,12 @@ def start_with_observer(
     return Handle(
         ctx,
         thread,
-        issuer=minted,
-        ops=ops,
-        registry=registry,
-        join_timeout=timeout + _JOIN_SLACK_SECONDS,
+        _HandleOptions(
+            issuer=minted,
+            ops=ops,
+            registry=registry,
+            join_timeout=timeout + _JOIN_SLACK_SECONDS,
+        ),
     )
 
 

@@ -5,9 +5,16 @@ from __future__ import annotations
 import hashlib
 import os
 import tempfile
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, Never
 from unittest.mock import AsyncMock
+
+if TYPE_CHECKING:
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
 
 import numpy as np
 import pytest
@@ -16,23 +23,28 @@ from recap_subworker.domain.models import (
     ClusterDocument,
     EvidenceConstraints,
     EvidenceRequest,
+    HDBSCANSettings,
 )
 from recap_subworker.infra.config import Settings
-from recap_subworker.services.clusterer import ClusterResult, HDBSCANSettings
+from recap_subworker.port.clusterer import ClusterResult
 
 
-_rask_test_directory: tempfile.TemporaryDirectory[str] | None = None
-_original_rask_token_file: str | None = None
-_original_otel_enabled: str | None = None
+@dataclass
+class _RaskEnvState:
+    test_directory: tempfile.TemporaryDirectory[str] | None = None
+    original_rask_token_file: str | None = None
+    original_otel_enabled: str | None = None
+
+
+_RASK_ENV_STATE = _RaskEnvState()
 
 
 def pytest_configure() -> None:
     """Provide a test-only credential before test-module application imports."""
-    global _rask_test_directory, _original_rask_token_file, _original_otel_enabled
-    _original_rask_token_file = os.environ.get("RASK_INGEST_TOKEN_FILE")
-    _original_otel_enabled = os.environ.get("OTEL_ENABLED")
-    _rask_test_directory = tempfile.TemporaryDirectory(prefix="recap-test-rask-")
-    token_path = Path(_rask_test_directory.name) / "ingest-token"
+    _RASK_ENV_STATE.original_rask_token_file = os.environ.get("RASK_INGEST_TOKEN_FILE")
+    _RASK_ENV_STATE.original_otel_enabled = os.environ.get("OTEL_ENABLED")
+    _RASK_ENV_STATE.test_directory = tempfile.TemporaryDirectory(prefix="recap-test-rask-")
+    token_path = Path(_RASK_ENV_STATE.test_directory.name) / "ingest-token"
     token_path.write_text("TestRaskIngestToken1234567890", encoding="utf-8")
     os.environ["RASK_INGEST_TOKEN_FILE"] = str(token_path)
     # Wire tests explicitly enable the real SDK in isolated child processes.
@@ -41,16 +53,16 @@ def pytest_configure() -> None:
 
 def pytest_unconfigure() -> None:
     """Restore the caller environment and remove the test-only credential."""
-    if _original_rask_token_file is None:
+    if _RASK_ENV_STATE.original_rask_token_file is None:
         os.environ.pop("RASK_INGEST_TOKEN_FILE", None)
     else:
-        os.environ["RASK_INGEST_TOKEN_FILE"] = _original_rask_token_file
-    if _original_otel_enabled is None:
+        os.environ["RASK_INGEST_TOKEN_FILE"] = _RASK_ENV_STATE.original_rask_token_file
+    if _RASK_ENV_STATE.original_otel_enabled is None:
         os.environ.pop("OTEL_ENABLED", None)
     else:
-        os.environ["OTEL_ENABLED"] = _original_otel_enabled
-    if _rask_test_directory is not None:
-        _rask_test_directory.cleanup()
+        os.environ["OTEL_ENABLED"] = _RASK_ENV_STATE.original_otel_enabled
+    if _RASK_ENV_STATE.test_directory is not None:
+        _RASK_ENV_STATE.test_directory.cleanup()
 
 
 class HashEmbedder:
@@ -89,7 +101,19 @@ class FakeClusterer:
     def __init__(self, n_clusters: int = 3) -> None:
         self.n_clusters = n_clusters
 
-    def cluster(self, embeddings, *, min_cluster_size, min_samples):
+    def cluster(  # noqa: PLR0913 - matches ClustererPort.cluster signature
+        self,
+        embeddings: np.ndarray,
+        *,
+        min_cluster_size: int,
+        min_samples: int,
+        umap_n_neighbors: int | None = None,
+        umap_n_components: int | None = None,
+        umap_min_dist: float | None = None,
+        hdbscan_cluster_selection_epsilon: float | None = None,
+        hdbscan_cluster_selection_method: str | None = None,
+        hdbscan_allow_single_cluster: bool | None = None,
+    ) -> ClusterResult:
         n = embeddings.shape[0]
         labels = np.array([i % self.n_clusters for i in range(n)], dtype=int)
         probs = np.ones(n, dtype=float)
@@ -103,19 +127,41 @@ class FakeClusterer:
             ),
         )
 
-    def optimize_clustering(
-        self, embeddings, *, min_cluster_size_range, min_samples_range, **kwargs
-    ):
+    def optimize_clustering(  # noqa: PLR0913 - matches ClustererPort.optimize_clustering signature
+        self,
+        embeddings: np.ndarray,
+        *,
+        min_cluster_size_range: Sequence[int] | None = None,
+        min_samples_range: Sequence[int | None] | None = None,
+        umap_n_neighbors_range: Sequence[int | None] | None = None,
+        umap_n_components_range: Sequence[int | None] | None = None,
+        hdbscan_cluster_selection_method: str = "eom",
+        hdbscan_allow_single_cluster: bool = False,
+        token_counts: np.ndarray | None = None,
+    ) -> ClusterResult:
+        min_cluster_size = min_cluster_size_range[0] if min_cluster_size_range else 3
+        first_samples = min_samples_range[0] if min_samples_range else None
+        min_samples = first_samples if first_samples is not None else 2
         return self.cluster(
             embeddings,
-            min_cluster_size=min_cluster_size_range[0],
-            min_samples=min_samples_range[0],
+            min_cluster_size=min_cluster_size,
+            min_samples=min_samples,
         )
 
-    def subcluster_other(self, embeddings, token_counts=None):
+    def subcluster_other(
+        self,
+        embeddings: np.ndarray,
+        token_counts: np.ndarray | Sequence[int] | None = None,
+    ) -> ClusterResult:
         return self.cluster(embeddings, min_cluster_size=3, min_samples=2)
 
-    def recursive_cluster(self, embeddings, labels, probabilities, token_counts):
+    def recursive_cluster(
+        self,
+        embeddings: np.ndarray,
+        labels: np.ndarray,
+        probabilities: np.ndarray,
+        token_counts: np.ndarray | Sequence[int] | None,
+    ) -> tuple[np.ndarray, np.ndarray]:
         return labels, probabilities
 
 
@@ -142,8 +188,6 @@ def _allow_embedding_drift_in_tests() -> None:
     every test that touches Settings without this opt-out. Production is
     unaffected — the env var defaults to False and the validator runs.
     """
-    import os
-
     os.environ.setdefault("RECAP_SUBWORKER_ALLOW_EMBEDDING_DRIFT", "true")
 
 
@@ -158,8 +202,6 @@ def _default_admin_auth_disabled_in_tests() -> None:
     token file. `tests/unit/test_admin_auth.py` opts back in per-test via
     `monkeypatch.setenv`, which overrides this default for that test only.
     """
-    import os
-
     os.environ.setdefault("ADMIN_AUTH", "disabled")
 
 
@@ -172,8 +214,6 @@ def _default_inference_auth_disabled_in_tests() -> None:
     `tests/unit/test_inference_auth_wiring.py` opts back in per-test via
     `monkeypatch.delenv`.
     """
-    import os
-
     os.environ.setdefault("INFERENCE_AUTH", "disabled")
 
 
@@ -232,42 +272,58 @@ def make_evidence_request(
 
 
 class _StubRunManager:
-    async def create_run(self, submission):
+    async def create_run(self, submission: object) -> Never:
         raise NotImplementedError(
             "Install a purpose-built RunManager stub via "
             "app.dependency_overrides[deps.get_submit_run_usecase_dep]"
         )
 
-    async def create_classification_run(self, submission):
+    async def create_classification_run(self, submission: object) -> Never:
         raise NotImplementedError(
             "Install a purpose-built RunManager stub via "
             "app.dependency_overrides[deps.get_submit_classification_run_usecase_dep]"
         )
 
-    async def get_run(self, run_id: int):
+    async def get_run(self, run_id: int) -> None:
         return None
 
 
 class _StubClassifier:
-    def predict_batch(self, *args, **kwargs):
+    def predict_batch(
+        self,
+        *args: object,
+        **kwargs: object,
+    ) -> list[object]:
         return []
 
 
 class _StubClassificationRunner:
-    async def submit_run(self, *args, **kwargs):
+    async def submit_run(
+        self,
+        *args: object,
+        **kwargs: object,
+    ) -> None:
         return None
 
-    async def get_run(self, run_id):
+    async def get_run(self, run_id: int) -> None:
         return None
 
 
 class _StubContentExtractor:
-    async def extract(self, *args, **kwargs):
+    async def extract(
+        self,
+        *args: object,
+        **kwargs: object,
+    ) -> str:
         return ""
 
 
 class _StubCoarseClassifier:
-    def classify(self, *args, **kwargs):
+    def classify(
+        self,
+        *args: object,
+        **kwargs: object,
+    ) -> dict[str, object]:
         return {"top_genres": [], "confidence": 0.0}
 
 
@@ -275,26 +331,26 @@ class _StubAdminJobService:
     async def shutdown(self) -> None:
         return None
 
-    async def enqueue_graph_job(self):
+    async def enqueue_graph_job(self) -> str:
         return "stub-job"
 
-    async def enqueue_learning_job(self):
+    async def enqueue_learning_job(self) -> str:
         return "stub-job"
 
-    async def get_job(self, job_id):
+    async def get_job(self, job_id: str) -> None:
         return None
 
 
 class _StubLearningClient:
-    async def send_learning_payload(self, payload):
-        return type("R", (), {"status_code": 200, "headers": {}, "json": lambda self: {}})()
+    async def send_learning_payload(self, payload: object) -> SimpleNamespace:
+        return SimpleNamespace(status_code=200, headers={}, json=dict)
 
     async def close(self) -> None:
         return None
 
 
 @pytest.fixture(autouse=True)
-def _override_heavy_dependencies(request):
+def _override_heavy_dependencies(request: pytest.FixtureRequest) -> Iterator[None]:
     """Default unit-test dependency overrides.
 
     Applied to every test that instantiates ``create_app()`` unless the test
@@ -309,24 +365,33 @@ def _override_heavy_dependencies(request):
 
     # Lazy import inside the fixture so test files that never spin up the
     # app do not pay the import cost.
-    import asyncio as _asyncio
+    import asyncio as _asyncio  # noqa: PLC0415 - lazy import avoids FastAPI/app cost in non-app tests
 
-    from fastapi.testclient import TestClient as _TestClient
+    from fastapi import (  # noqa: PLC0415 - lazy import avoids FastAPI/app cost in non-app tests
+        FastAPI as _FastAPI,
+    )
+    from fastapi.testclient import (  # noqa: PLC0415 - lazy import avoids FastAPI/app cost in non-app tests
+        TestClient as _TestClient,
+    )
 
-    from recap_subworker.app import deps as _deps
-    from recap_subworker.app.main import create_app as _create_app
+    from recap_subworker.app import (  # noqa: PLC0415 - lazy import avoids FastAPI/app cost in non-app tests
+        deps as _deps,
+    )
+    from recap_subworker.app.main import (  # noqa: PLC0415 - lazy import avoids FastAPI/app cost in non-app tests
+        create_app as _create_app,
+    )
 
     # Patch TestClient to inject the overrides the moment an app is built.
     original_create_app = _deps.__dict__.get("__create_app_sentinel__")
     if original_create_app is None:
         original_create_app = _create_app
 
-    def _install(app) -> None:
+    def _install(app: FastAPI) -> None:
         # Per-operation usecase stubs delegate to the same _StubRunManager
         # so handler tests never hit the container's heavy properties.
         stub_manager = _StubRunManager()
 
-        from recap_subworker.usecase.submit_run import (
+        from recap_subworker.usecase.submit_run import (  # noqa: PLC0415 - lazy import avoids FastAPI/app cost in non-app tests
             GetClassificationRunUsecase,
             GetRunUsecase,
             SubmitClassificationRunUsecase,
@@ -345,12 +410,12 @@ def _override_heavy_dependencies(request):
             _deps.get_get_classification_run_usecase_dep: lambda: GetClassificationRunUsecase(
                 reader=stub_manager
             ),
-            _deps.get_classifier_dep: lambda: _StubClassifier(),
-            _deps.get_classification_runner_dep: lambda: _StubClassificationRunner(),
-            _deps.get_content_extractor_dep: lambda: _StubContentExtractor(),
-            _deps.get_coarse_classifier_dep: lambda: _StubCoarseClassifier(),
-            _deps.get_admin_job_service_dep: lambda: _StubAdminJobService(),
-            _deps.get_learning_client: lambda: _StubLearningClient(),
+            _deps.get_classifier_dep: _StubClassifier,
+            _deps.get_classification_runner_dep: _StubClassificationRunner,
+            _deps.get_content_extractor_dep: _StubContentExtractor,
+            _deps.get_coarse_classifier_dep: _StubCoarseClassifier,
+            _deps.get_admin_job_service_dep: _StubAdminJobService,
+            _deps.get_learning_client: _StubLearningClient,
             _deps.get_extract_semaphore_dep: lambda: _asyncio.Semaphore(1),
         }
         for key, value in overrides.items():
@@ -360,7 +425,12 @@ def _override_heavy_dependencies(request):
     # before lifespan startup proceeds.
     original_enter = _TestClient.__enter__
 
-    def _patched_enter(self, *args, **kwargs):
+    def _patched_enter(
+        self: TestClient,
+        *args: object,
+        **kwargs: object,
+    ) -> TestClient:
+        assert isinstance(self.app, _FastAPI)
         _install(self.app)
         return original_enter(self, *args, **kwargs)
 

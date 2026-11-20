@@ -25,7 +25,7 @@ fn memory_manager(max_memory: usize) -> MemoryManager {
 async fn test_memory_manager_allocation() {
     let manager = memory_manager(10240); // 10KB
 
-    manager.allocate(1024).await;
+    manager.allocate(1024);
 
     let usage = manager.memory_usage();
     assert_eq!(usage, 1024);
@@ -47,12 +47,12 @@ async fn test_memory_manager_pressure_escalation() {
     assert!(manager.memory_usage_ratio() < 0.8);
 
     // Allocate to warning level (85%)
-    manager.allocate(850).await;
+    manager.allocate(850);
     assert_eq!(manager.current_pressure(), MemoryPressure::Warning);
     assert!(manager.memory_usage_ratio() > 0.8);
 
     // Allocate to critical level (98%)
-    manager.allocate(130).await; // Total: 980 bytes
+    manager.allocate(130); // Total: 980 bytes
     assert_eq!(manager.current_pressure(), MemoryPressure::Critical);
     assert!(manager.memory_usage_ratio() > 0.95);
 }
@@ -70,7 +70,7 @@ async fn test_memory_manager_backpressure_decision() {
     assert!(!decision.should_drop);
 
     // Push usage into critical territory (>= 95%).
-    manager.allocate(1000).await; // ~97.7%
+    manager.allocate(1000); // ~97.7%
     let decision = manager.calculate_backpressure();
     assert!(
         decision.should_drop,
@@ -84,11 +84,11 @@ async fn test_memory_manager_deallocation() {
     let manager = memory_manager(4096); // 4KB
 
     // Test allocation
-    manager.allocate(2048).await;
+    manager.allocate(2048);
     assert_eq!(manager.memory_usage(), 2048);
 
     // Test deallocation
-    manager.deallocate(1024).await;
+    manager.deallocate(1024);
     assert_eq!(manager.memory_usage(), 1024);
 
     // Over-deallocation must saturate at zero, not underflow. `AtomicUsize`
@@ -97,7 +97,7 @@ async fn test_memory_manager_deallocation() {
     // silently around to a value near `usize::MAX`. That would leave
     // `memory_usage()` reporting an astronomical figure and
     // `current_pressure()` stuck at `Critical` forever.
-    manager.deallocate(2048).await;
+    manager.deallocate(2048);
     assert_eq!(
         manager.memory_usage(),
         0,
@@ -142,7 +142,7 @@ async fn test_buffer_send_recv_round_trip_under_backpressure() {
         backpressure_delay: Duration::from_micros(100),
     };
 
-    let buffer = LogBuffer::new_with_config(config).await.unwrap();
+    let buffer = LogBuffer::new_with_config(config).unwrap();
     let (sender, mut receiver) = buffer.split().expect("Failed to split buffer");
 
     // Send a batch of distinctly-identifiable entries, retrying briefly on
@@ -181,18 +181,18 @@ async fn test_memory_manager_realistic_scenario() {
 
     // Simulate gradual memory usage
     let allocations = [100 * 1024, 200 * 1024, 300 * 1024, 250 * 1024]; // 850KB total (~81%)
-    for allocation in allocations.iter() {
-        manager.allocate(*allocation).await;
+    for allocation in &allocations {
+        manager.allocate(*allocation);
     }
 
     // Should be in warning state (850KB / 1MB ~= 81%)
     assert_eq!(manager.current_pressure(), MemoryPressure::Warning);
 
     // Add more to reach critical (>= 95%)
-    manager.allocate(150 * 1024).await; // Total: 1,000KB (~95.4%)
+    manager.allocate(150 * 1024); // Total: 1,000KB (~95.4%)
     assert_eq!(manager.current_pressure(), MemoryPressure::Critical);
 
     // Deallocate to reduce pressure back below warning (< 80%)
-    manager.deallocate(400 * 1024).await; // Down to 600KB (~57.2%)
+    manager.deallocate(400 * 1024); // Down to 600KB (~57.2%)
     assert_eq!(manager.current_pressure(), MemoryPressure::None);
 }

@@ -26,7 +26,7 @@ func TestLoadConfig(t *testing.T) {
 				assert.Equal(t, 3, c.Retry.MaxAttempts)
 				assert.Equal(t, 5*time.Second, c.RateLimit.DefaultInterval)
 				assert.Equal(t, "Mozilla/5.0 (compatible; AltBot/1.0; +https://alt.example.com/bot)", c.HTTP.UserAgent)
-				assert.Equal(t, true, c.Metrics.Enabled)
+				assert.True(t, c.Metrics.Enabled)
 			},
 		},
 		"custom values": {
@@ -42,9 +42,9 @@ func TestLoadConfig(t *testing.T) {
 				assert.Equal(t, 8080, c.Server.Port)
 				assert.Equal(t, 60*time.Second, c.HTTP.Timeout)
 				assert.Equal(t, 5, c.Retry.MaxAttempts)
-				assert.Equal(t, 3.0, c.Retry.BackoffFactor)
+				assert.InDelta(t, 3.0, c.Retry.BackoffFactor, 1e-9)
 				assert.Equal(t, 10*time.Second, c.RateLimit.DefaultInterval)
-				assert.Equal(t, false, c.Metrics.Enabled)
+				assert.False(t, c.Metrics.Enabled)
 			},
 		},
 		"invalid port": {
@@ -362,12 +362,12 @@ func TestLoadFromEnv(t *testing.T) {
 		assert.Equal(t, 5, config.Retry.MaxAttempts)
 		assert.Equal(t, 2*time.Second, config.Retry.BaseDelay)
 		assert.Equal(t, 60*time.Second, config.Retry.MaxDelay)
-		assert.Equal(t, 3.0, config.Retry.BackoffFactor)
-		assert.Equal(t, 0.2, config.Retry.JitterFactor)
+		assert.InDelta(t, 3.0, config.Retry.BackoffFactor, 1e-9)
+		assert.InDelta(t, 0.2, config.Retry.JitterFactor, 1e-9)
 		assert.Equal(t, 10*time.Second, config.RateLimit.DefaultInterval)
 		assert.Equal(t, 2, config.RateLimit.BurstSize)
-		assert.Equal(t, true, config.RateLimit.EnableAdaptive)
-		assert.Equal(t, false, config.Metrics.Enabled)
+		assert.True(t, config.RateLimit.EnableAdaptive)
+		assert.False(t, config.Metrics.Enabled)
 		assert.Equal(t, 9202, config.Metrics.Port)
 		assert.Equal(t, 5*time.Second, config.Metrics.UpdateInterval)
 	})

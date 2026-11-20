@@ -64,7 +64,7 @@ func TestGetFeedURLsByArticleIDs_ArticleWithoutFeed(t *testing.T) {
 
 	assert.Equal(t, "https://example.com/orphan-post", results[0].URL)
 	assert.Equal(t, "article-orphan", results[0].ArticleID)
-	assert.Equal(t, "", results[0].FeedID)
+	assert.Empty(t, results[0].FeedID)
 
 	require.NoError(t, mock.ExpectationsWereMet())
 }

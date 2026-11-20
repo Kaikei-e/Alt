@@ -10,27 +10,42 @@ from __future__ import annotations
 import json
 import os
 import pathlib
-import re
+import shutil
 import subprocess
 import sys
 import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SCRIPT_PATH = ROOT / "scripts" / "agent-harness" / "postmortem_ledger.py"
+GIT_BIN = shutil.which("git")
+assert GIT_BIN is not None, "git executable not found in PATH"
 
-PASS = 0
-FAIL = 0
+FIXTURE_PM_COUNT = 3
+FIXTURE_ROW_COUNT = 8
+FIXTURE_OPEN_ROW_COUNT = 4
+PM1_ROW_COUNT = 2
+MIXED_ROW_COUNT = 2
+USAGE_EXIT_CODE = 2
+CHECKLIST_ROW_COUNT = 4
+
+
+class _Results:
+    def __init__(self) -> None:
+        self.passed = 0
+        self.failed = 0
+
+
+RESULTS = _Results()
 
 
 def check(name: str, condition: bool, detail: str = "") -> None:
-    global PASS, FAIL
     if condition:
-        print(f"  PASS  {name}")
-        PASS += 1
+        sys.stdout.write(f"  PASS  {name}\n")
+        RESULTS.passed += 1
     else:
         suffix = f" ({detail})" if detail else ""
-        print(f"  FAIL  {name}{suffix}")
-        FAIL += 1
+        sys.stdout.write(f"  FAIL  {name}{suffix}\n")
+        RESULTS.failed += 1
 
 
 def git_env() -> dict[str, str]:
@@ -47,8 +62,9 @@ def git_env() -> dict[str, str]:
 
 
 def run_git(repo: pathlib.Path, *args: str) -> str:
-    res = subprocess.run(
-        ["git", "-C", str(repo), *args],
+    assert GIT_BIN is not None
+    res = subprocess.run(  # noqa: S603 - fixed argv built in this test
+        [GIT_BIN, "-C", str(repo), *args],
         env=git_env(),
         capture_output=True,
         text=True,
@@ -136,7 +152,7 @@ def make_valid_pm(
 
 
 def run_cli(repo: pathlib.Path, *args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
+    return subprocess.run(  # noqa: S603 - fixed argv built in this test
         [sys.executable, str(SCRIPT_PATH), "--root", str(repo), *args],
         capture_output=True,
         text=True,
@@ -144,15 +160,13 @@ def run_cli(repo: pathlib.Path, *args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-print("1. ledger parses current table, legacy D-1 table, and unparsed file")
+sys.stdout.write("1. ledger parses current table, legacy D-1 table, and unparsed file\n")
 with tempfile.TemporaryDirectory() as td:
     repo = init_repo(pathlib.Path(td))
     pm1 = "PM-2026-001-current-style.md"
     pm2 = "PM-2026-002-legacy-style.md"
     pm3 = "PM-2026-003-no-table.md"
-    (repo / "docs" / "postmortems" / pm1).write_text(
-        make_valid_pm("PM-2026-001"), encoding="utf-8"
-    )
+    (repo / "docs" / "postmortems" / pm1).write_text(make_valid_pm("PM-2026-001"), encoding="utf-8")
     (repo / "docs" / "postmortems" / pm2).write_text(
         "# PM-2026-002: Legacy\n\n"
         "## アクションアイテム\n\n"
@@ -171,9 +185,7 @@ with tempfile.TemporaryDirectory() as td:
         encoding="utf-8",
     )
     (repo / "docs" / "postmortems" / pm3).write_text(
-        "# PM-2026-003: Prose only\n\n"
-        "## アクションアイテム\n\n"
-        "No table or checklist here.\n",
+        "# PM-2026-003: Prose only\n\n## アクションアイテム\n\nNo table or checklist here.\n",
         encoding="utf-8",
     )
     write_readme(
@@ -193,8 +205,12 @@ with tempfile.TemporaryDirectory() as td:
         rows = data.get("rows", [])
         summary = data.get("summary", {})
         unparsed = data.get("unparsed", [])
-        check("summary counts 3 postmortems", summary.get("postmortems") == 3, str(summary))
-        check("summary counts 8 rows", summary.get("rows") == 8, str(summary))
+        check(
+            "summary counts 3 postmortems",
+            summary.get("postmortems") == FIXTURE_PM_COUNT,
+            str(summary),
+        )
+        check("summary counts 8 rows", summary.get("rows") == FIXTURE_ROW_COUNT, str(summary))
         check("summary counts 1 unparsed", summary.get("unparsed") == 1, str(summary))
         check("pm3 listed in unparsed", any(pm3 in u for u in unparsed), str(unparsed))
         by_id = {(r["postmortem_id"], r["item_id"]): r for r in rows}
@@ -230,7 +246,7 @@ with tempfile.TemporaryDirectory() as td:
             str(by_id.get(("PM-2026-002", "D-4"))),
         )
 
-    print("2. ledger filters (--open, --overdue, --match, --carried) and text output")
+    sys.stdout.write("2. ledger filters (--open, --overdue, --match, --carried) and text output\n")
     txt_res = run_cli(repo)
     check(
         "text output has summary and lag disclaimer",
@@ -245,7 +261,7 @@ with tempfile.TemporaryDirectory() as td:
     open_rows = json.loads(open_res.stdout).get("rows", []) if open_res.returncode == 0 else []
     check(
         "--open includes open and unknown only (4 rows)",
-        len(open_rows) == 4
+        len(open_rows) == FIXTURE_OPEN_ROW_COUNT
         and all(r["normalised_status"] in {"open", "unknown"} for r in open_rows),
         str(open_rows),
     )
@@ -262,9 +278,7 @@ with tempfile.TemporaryDirectory() as td:
     )
 
     match_res = run_cli(repo, "--match", "carol", "--json")
-    match_rows = (
-        json.loads(match_res.stdout).get("rows", []) if match_res.returncode == 0 else []
-    )
+    match_rows = json.loads(match_res.stdout).get("rows", []) if match_res.returncode == 0 else []
     check(
         "--match matches owner",
         len(match_rows) == 1 and match_rows[0]["item_id"] == "D-1",
@@ -273,22 +287,18 @@ with tempfile.TemporaryDirectory() as td:
 
     match_file_res = run_cli(repo, "--match", "current-style", "--json")
     match_file_rows = (
-        json.loads(match_file_res.stdout).get("rows", [])
-        if match_file_res.returncode == 0
-        else []
+        json.loads(match_file_res.stdout).get("rows", []) if match_file_res.returncode == 0 else []
     )
     check(
         "--match matches postmortem filename",
-        len(match_file_rows) == 2
+        len(match_file_rows) == PM1_ROW_COUNT
         and all(r["postmortem_id"] == "PM-2026-001" for r in match_file_rows),
         str(match_file_rows),
     )
 
     carried_res = run_cli(repo, "--carried", "--json")
     carried_rows = (
-        json.loads(carried_res.stdout).get("rows", [])
-        if carried_res.returncode == 0
-        else []
+        json.loads(carried_res.stdout).get("rows", []) if carried_res.returncode == 0 else []
     )
     check(
         "--carried returns only D-1 citing PM-2026-001",
@@ -296,7 +306,7 @@ with tempfile.TemporaryDirectory() as td:
         str(carried_rows),
     )
 
-print("3. gate passes well-formed new postmortem and ignores existing malformed one")
+sys.stdout.write("3. gate passes well-formed new postmortem and ignores existing malformed one\n")
 with tempfile.TemporaryDirectory() as td:
     repo = init_repo(pathlib.Path(td))
     old_pm = "PM-2026-001-old-malformed.md"
@@ -341,7 +351,7 @@ with tempfile.TemporaryDirectory() as td:
         f"rc={res.returncode}, out={res.stdout!r}, err={res.stderr!r}",
     )
 
-print("4. gate reports each of P1..P10 individually")
+sys.stdout.write("4. gate reports each of P1..P10 individually\n")
 
 
 def run_single_violation(
@@ -362,9 +372,7 @@ def run_single_violation(
         entries = [("PM-2026-001", base_pm)]
         if pm_content is not None:
             new_pm = "PM-2026-002-new.md"
-            (repo / "docs" / "postmortems" / new_pm).write_text(
-                pm_content, encoding="utf-8"
-            )
+            (repo / "docs" / "postmortems" / new_pm).write_text(pm_content, encoding="utf-8")
             entries.append(("PM-2026-002", new_pm))
         if readme_entries is not None:
             entries = readme_entries
@@ -396,7 +404,9 @@ r_p3 = run_single_violation(
         action_rows=["| 1 | 予防 | Do something | alice | 来月 | TODO |"],
     )
 )
-check("P3 triggered on non-YYYY-MM-DD due", r_p3.returncode == 1 and "P3" in r_p3.stdout, r_p3.stdout)
+check(
+    "P3 triggered on non-YYYY-MM-DD due", r_p3.returncode == 1 and "P3" in r_p3.stdout, r_p3.stdout
+)
 
 r_p4 = run_single_violation(
     make_valid_pm(
@@ -404,15 +414,23 @@ r_p4 = run_single_violation(
         action_rows=["| 1 | 予防 | Do something | alice | 2026-05-01 | 未着手 |"],
     )
 )
-check("P4 triggered on non-standard status", r_p4.returncode == 1 and "P4" in r_p4.stdout, r_p4.stdout)
+check(
+    "P4 triggered on non-standard status", r_p4.returncode == 1 and "P4" in r_p4.stdout, r_p4.stdout
+)
 
 r_p5 = run_single_violation(
     make_valid_pm(
         "PM-2026-002",
-        action_rows=["| 1 | 予防 | Fixed the bug without citing anything | alice | 2026-05-01 | 完了 |"],
+        action_rows=[
+            "| 1 | 予防 | Fixed the bug without citing anything | alice | 2026-05-01 | 完了 |"
+        ],
     )
 )
-check("P5 triggered on 完了 without evidence", r_p5.returncode == 1 and "P5" in r_p5.stdout, r_p5.stdout)
+check(
+    "P5 triggered on 完了 without evidence",
+    r_p5.returncode == 1 and "P5" in r_p5.stdout,
+    r_p5.stdout,
+)
 
 r_p6 = run_single_violation(
     make_valid_pm(
@@ -454,7 +472,11 @@ r_p7b = run_single_violation(
         ),
     )
 )
-check("P7 triggered on non-FP prose without 型の外", r_p7b.returncode == 1 and "P7" in r_p7b.stdout, r_p7b.stdout)
+check(
+    "P7 triggered on non-FP prose without 型の外",
+    r_p7b.returncode == 1 and "P7" in r_p7b.stdout,
+    r_p7b.stdout,
+)
 
 r_p8 = run_single_violation(
     make_valid_pm(
@@ -468,13 +490,19 @@ r_p8 = run_single_violation(
         ),
     )
 )
-check("P8 triggered on missing PM-2026-999", r_p8.returncode == 1 and "P8" in r_p8.stdout, r_p8.stdout)
+check(
+    "P8 triggered on missing PM-2026-999", r_p8.returncode == 1 and "P8" in r_p8.stdout, r_p8.stdout
+)
 
 r_p9 = run_single_violation(
     make_valid_pm("PM-2026-002"),
     readme_entries=[("PM-2026-001", "PM-2026-001-base.md")],
 )
-check("P9 triggered when README misses PM-2026-002", r_p9.returncode == 1 and "P9" in r_p9.stdout, r_p9.stdout)
+check(
+    "P9 triggered when README misses PM-2026-002",
+    r_p9.returncode == 1 and "P9" in r_p9.stdout,
+    r_p9.stdout,
+)
 
 r_p10 = run_single_violation(
     None,
@@ -483,7 +511,11 @@ r_p10 = run_single_violation(
         ("PM-2026-999", "PM-2026-999-ghost.md"),
     ],
 )
-check("P10 triggered when README cites nonexistent PM-2026-999", r_p10.returncode == 1 and "P10" in r_p10.stdout, r_p10.stdout)
+check(
+    "P10 triggered when README cites nonexistent PM-2026-999",
+    r_p10.returncode == 1 and "P10" in r_p10.stdout,
+    r_p10.stdout,
+)
 
 r_p1_checklist = run_single_violation(
     "# PM-2026-002: Checklist instead of table\n\n"
@@ -499,7 +531,7 @@ check(
     r_p1_checklist.stdout,
 )
 
-print("4b. review follow-up gate & ledger checks (L1..L9)")
+sys.stdout.write("4b. review follow-up gate & ledger checks (L1..L9)\n")
 
 # L1: accidental P5 evidence strings must all be rejected; real ADR/PR/hash/path accepted
 accidental_evidence_cases = [
@@ -631,7 +663,7 @@ with tempfile.TemporaryDirectory() as td:
     mix_rows = json.loads(mix_res.stdout).get("rows", []) if mix_res.returncode == 0 else []
     check(
         "L4 ledger parses both table and checklist when both present",
-        len(mix_rows) == 2,
+        len(mix_rows) == MIXED_ROW_COUNT,
         str(mix_rows),
     )
 
@@ -681,7 +713,11 @@ r_p6_missing = run_single_violation(
     "|---|---|---|---|---|---|\n"
     "| 1 | 予防 | Do something | alice | 2026-05-01 | TODO |\n"
 )
-check("L9 P6 missing section", r_p6_missing.returncode == 1 and "P6" in r_p6_missing.stdout, r_p6_missing.stdout)
+check(
+    "L9 P6 missing section",
+    r_p6_missing.returncode == 1 and "P6" in r_p6_missing.stdout,
+    r_p6_missing.stdout,
+)
 
 r_p6_pos = run_single_violation(
     "# PM-2026-002: Wrong position\n\n"
@@ -694,7 +730,11 @@ r_p6_pos = run_single_violation(
     "|---|---|---|---|---|---|\n"
     "| 1 | 予防 | Do something | alice | 2026-05-01 | TODO |\n"
 )
-check("L7/L9 P6 wrong section position", r_p6_pos.returncode == 1 and "P6" in r_p6_pos.stdout, r_p6_pos.stdout)
+check(
+    "L7/L9 P6 wrong section position",
+    r_p6_pos.returncode == 1 and "P6" in r_p6_pos.stdout,
+    r_p6_pos.stdout,
+)
 
 r_p7_short = run_single_violation(
     make_valid_pm(
@@ -706,7 +746,11 @@ r_p7_short = run_single_violation(
         ),
     )
 )
-check("L7 P7 rejects 型の外 with <10 char reason", r_p7_short.returncode == 1 and "P7" in r_p7_short.stdout, r_p7_short.stdout)
+check(
+    "L7 P7 rejects 型の外 with <10 char reason",
+    r_p7_short.returncode == 1 and "P7" in r_p7_short.stdout,
+    r_p7_short.stdout,
+)
 
 r_p8_carried = run_single_violation(
     make_valid_pm(
@@ -718,7 +762,11 @@ r_p8_carried = run_single_violation(
         ),
     )
 )
-check("L9 P8 triggered on 持ち越し citing nonexistent PM", r_p8_carried.returncode == 1 and "P8" in r_p8_carried.stdout, r_p8_carried.stdout)
+check(
+    "L9 P8 triggered on 持ち越し citing nonexistent PM",
+    r_p8_carried.returncode == 1 and "P8" in r_p8_carried.stdout,
+    r_p8_carried.stdout,
+)
 
 r_p12_missing = run_single_violation(
     make_valid_pm(
@@ -726,7 +774,11 @@ r_p12_missing = run_single_violation(
         action_rows=["| 1 | 予防 | Drop this item | alice | 2026-05-01 | 破棄 |"],
     )
 )
-check("L7/L9 P12 triggered when 破棄 lacks 破棄理由:", r_p12_missing.returncode == 1 and "P12" in r_p12_missing.stdout, r_p12_missing.stdout)
+check(
+    "L7/L9 P12 triggered when 破棄 lacks 破棄理由:",
+    r_p12_missing.returncode == 1 and "P12" in r_p12_missing.stdout,
+    r_p12_missing.stdout,
+)
 
 r_p12_short = run_single_violation(
     make_valid_pm(
@@ -734,9 +786,13 @@ r_p12_short = run_single_violation(
         action_rows=["| 1 | 予防 | Drop item 破棄理由: 不要 | alice | 2026-05-01 | 破棄 |"],
     )
 )
-check("L7/L9 P12 triggered when 破棄理由: <10 chars", r_p12_short.returncode == 1 and "P12" in r_p12_short.stdout, r_p12_short.stdout)
+check(
+    "L7/L9 P12 triggered when 破棄理由: <10 chars",
+    r_p12_short.returncode == 1 and "P12" in r_p12_short.stdout,
+    r_p12_short.stdout,
+)
 
-print("5. usage / git errors exit 2 & no-added-PM check prints merge base")
+sys.stdout.write("5. usage / git errors exit 2 & no-added-PM check prints merge base\n")
 with tempfile.TemporaryDirectory() as td:
     repo = init_repo(pathlib.Path(td))
     write_readme(repo, [])
@@ -744,11 +800,15 @@ with tempfile.TemporaryDirectory() as td:
     run_git(repo, "commit", "-m", "base")
     base_rev = run_git(repo, "rev-parse", "HEAD")
     res_bad_rev = run_cli(repo, "--check", "--base", "does-not-exist")
-    check("unknown base rev exits 2", res_bad_rev.returncode == 2, f"rc={res_bad_rev.returncode}")
+    check(
+        "unknown base rev exits 2",
+        res_bad_rev.returncode == USAGE_EXIT_CODE,
+        f"rc={res_bad_rev.returncode}",
+    )
     res_base_no_check = run_cli(repo, "--base", base_rev)
     check(
         "L9 --base without --check exits 2 with usage message",
-        res_base_no_check.returncode == 2 and bool(res_base_no_check.stderr.strip()),
+        res_base_no_check.returncode == USAGE_EXIT_CODE and bool(res_base_no_check.stderr.strip()),
         f"rc={res_base_no_check.returncode}, err={res_base_no_check.stderr!r}",
     )
     res_no_add = run_cli(repo, "--check", "--base", base_rev)
@@ -758,7 +818,7 @@ with tempfile.TemporaryDirectory() as td:
         f"rc={res_no_add.returncode}, out={res_no_add.stdout!r}",
     )
 
-print("6. ledger parses Markdown checklists under category subheadings")
+sys.stdout.write("6. ledger parses Markdown checklists under category subheadings\n")
 with tempfile.TemporaryDirectory() as td:
     repo = init_repo(pathlib.Path(td))
     pm_cl = "PM-2026-028-checklist-style.md"
@@ -783,7 +843,7 @@ with tempfile.TemporaryDirectory() as td:
     cl_rows = cl_data.get("rows", [])
     cl_summary = cl_data.get("summary", {})
     check("checklist summary unparsed == 0", cl_summary.get("unparsed") == 0, str(cl_summary))
-    check("checklist parsed 4 rows", len(cl_rows) == 4, str(cl_rows))
+    check("checklist parsed 4 rows", len(cl_rows) == CHECKLIST_ROW_COUNT, str(cl_rows))
     by_cl_id = {r["item_id"]: r for r in cl_rows}
     check(
         "item 1: category=予防, norm=done, owner='', due='', no checkbox prefix",
@@ -817,15 +877,21 @@ with tempfile.TemporaryDirectory() as td:
         str(by_cl_id.get("4")),
     )
 
-print("7. real-repository run")
-expected_pm_count = len(list((ROOT / "docs" / "postmortems").glob("PM-[0-9][0-9][0-9][0-9]-[0-9][0-9][0-9]-*.md")))
-real_res = subprocess.run(
+sys.stdout.write("7. real-repository run\n")
+expected_pm_count = len(
+    list((ROOT / "docs" / "postmortems").glob("PM-[0-9][0-9][0-9][0-9]-[0-9][0-9][0-9]-*.md"))
+)
+real_res = subprocess.run(  # noqa: S603 - fixed argv built in this test
     [sys.executable, str(SCRIPT_PATH), "--json"],
     capture_output=True,
     text=True,
     check=False,
 )
-check("real repository ledger exits 0", real_res.returncode == 0, f"rc={real_res.returncode}, err={real_res.stderr}")
+check(
+    "real repository ledger exits 0",
+    real_res.returncode == 0,
+    f"rc={real_res.returncode}, err={real_res.stderr}",
+)
 if real_res.returncode == 0:
     real_data = json.loads(real_res.stdout)
     check(
@@ -859,5 +925,5 @@ if real_res.returncode == 0:
             f"got={(len(pm_rows), got_done, got_open)}",
         )
 
-print(f"\n{PASS} passed, {FAIL} failed")
-sys.exit(1 if FAIL else 0)
+sys.stdout.write(f"\n{RESULTS.passed} passed, {RESULTS.failed} failed\n")
+sys.exit(1 if RESULTS.failed else 0)

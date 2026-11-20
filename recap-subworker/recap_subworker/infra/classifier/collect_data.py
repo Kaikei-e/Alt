@@ -1,6 +1,8 @@
 import json
 import logging
+import traceback
 from collections import Counter
+from collections.abc import Sequence
 from pathlib import Path
 
 import pandas as pd
@@ -12,6 +14,8 @@ DATA_DIR = Path("data")
 ALT_EXPORT_PATH = DATA_DIR / "alt_export.csv"
 GOLDEN_PATH = DATA_DIR / "golden_classification.json"
 OUTPUT_PATH = DATA_DIR / "training_data.csv"
+_MIN_CONFIDENCE_THRESHOLD = 0.5
+_MIN_CONTENT_LENGTH = 50
 
 # Tag Mapping Strategy (Granular 30 Genres)
 TAG_TO_GENRE = {
@@ -304,7 +308,7 @@ TAG_TO_GENRE = {
 }
 
 
-def decide_genre(tags_list):
+def decide_genre(tags_list: Sequence[object] | None) -> tuple[str | None, float]:
     """
     Decide genre based on a list of tags.
     Returns (genre, confidence_score) or (None, 0).
@@ -334,84 +338,80 @@ def decide_genre(tags_list):
     # If mixed (e.g. 1 tech, 1 business), confidence is 0.5. We might drop these or pick the more specific one?
     # For now, let's require > 0.5 to be sure, or accept 0.5 if total_votes == 1?
     # If 1 vote, conf is 1.0.
-    if confidence >= 0.5:
+    if confidence >= _MIN_CONFIDENCE_THRESHOLD:
         return top_genre, confidence
 
     return None, confidence
 
 
-def collect_data():
-    dfs = []
+def _load_alt_export_df() -> pd.DataFrame | None:
+    if not ALT_EXPORT_PATH.exists():
+        return None
+    logger.info("Loading exported raw data from %s...", ALT_EXPORT_PATH)
+    try:
+        raw_df = pd.read_csv(ALT_EXPORT_PATH)
+        logger.info("Loaded %d raw rows (content-tag pairs).", len(raw_df))
+        # Group tags by content
+        # This aggregates all tags for the same article content
+        grouped = raw_df.groupby("content")["tag_name"].apply(list).reset_index()
+        logger.info("Unique articles: %d", len(grouped))
+        # Apply voting
+        results = grouped["tag_name"].apply(decide_genre)
+        grouped["genre"] = [r[0] for r in results]
+        grouped["confidence"] = [r[1] for r in results]
 
-    # 1. Load Raw Export from Alt DB (Content + Tags)
-    if ALT_EXPORT_PATH.exists():
-        logger.info(f"Loading exported raw data from {ALT_EXPORT_PATH}...")
-        try:
-            raw_df = pd.read_csv(ALT_EXPORT_PATH)
-            logger.info(f"Loaded {len(raw_df)} raw rows (content-tag pairs).")
-            # Group tags by content
-            # This aggregates all tags for the same article content
-            grouped = raw_df.groupby("content")["tag_name"].apply(list).reset_index()
-            logger.info(f"Unique articles: {len(grouped)}")
-            # Apply voting
-            results = grouped["tag_name"].apply(decide_genre)
-            grouped["genre"] = [r[0] for r in results]
-            grouped["confidence"] = [r[1] for r in results]
+        # Filter
+        clean_df = grouped.dropna(subset=["genre"])
+        logger.info("Articles with resolved genre: %d", len(clean_df))
+        return clean_df[["content", "genre"]]
+    except Exception as e:  # noqa: BLE001  # script continues collecting from other sources if one fails
+        logger.info("Error processing alt export: %s", e)
+        traceback.print_exc()
+        return None
 
-            # Filter
-            clean_df = grouped.dropna(subset=["genre"])
-            logger.info(f"Articles with resolved genre: {len(clean_df)}")
-            dfs.append(clean_df[["content", "genre"]])
 
-        except Exception as e:
-            logger.info(f"Error processing alt export: {e}")
-            import traceback
+def _load_golden_df() -> pd.DataFrame | None:
+    if not GOLDEN_PATH.exists():
+        return None
+    logger.info("Loading golden set from %s...", GOLDEN_PATH)
+    try:
+        with GOLDEN_PATH.open() as f:
+            golden = json.load(f)
 
-            traceback.print_exc()
+        golden_rows = []
+        for item in golden["items"]:
+            genre = item.get("primary_genre")
+            if not genre:
+                continue
+            if item.get("content_ja"):
+                golden_rows.append({"content": item["content_ja"], "genre": genre})
+            if item.get("content_en"):
+                golden_rows.append({"content": item["content_en"], "genre": genre})
 
-    # 2. Load Golden Set
-    if GOLDEN_PATH.exists():
-        logger.info(f"Loading golden set from {GOLDEN_PATH}...")
-        try:
-            with open(GOLDEN_PATH) as f:
-                golden = json.load(f)
+        golden_df = pd.DataFrame(golden_rows)
+        logger.info("Loaded %d samples from golden set.", len(golden_df))
+    except Exception as e:  # noqa: BLE001  # script continues collecting from other sources if golden load fails
+        logger.info("Error loading golden set: %s", e)
+        return None
+    else:
+        return golden_df
 
-            golden_rows = []
-            for item in golden["items"]:
-                genre = item.get("primary_genre")
-                if not genre:
-                    continue
-                if item.get("content_ja"):
-                    golden_rows.append({"content": item["content_ja"], "genre": genre})
-                if item.get("content_en"):
-                    golden_rows.append({"content": item["content_en"], "genre": genre})
 
-            golden_df = pd.DataFrame(golden_rows)
-            logger.info(f"Loaded {len(golden_df)} samples from golden set.")
-            dfs.append(golden_df)
-        except Exception as e:
-            logger.info(f"Error loading golden set: {e}")
-    # 3. Load External Data (Livedoor / AG News)
-    EXTERNAL_PATH = DATA_DIR / "external_data.csv"
-    if EXTERNAL_PATH.exists():
-        logger.info(f"Loading external data from {EXTERNAL_PATH}...")
-        try:
-            ext_df = pd.read_csv(EXTERNAL_PATH)
-            logger.info(f"Loaded {len(ext_df)} external samples.")
-            dfs.append(ext_df[["content", "genre"]])
-        except Exception as e:
-            logger.info(f"Error loading external data: {e}")
-    if not dfs:
-        logger.info("No data collected!")
-        return
+def _load_external_df() -> pd.DataFrame | None:
+    external_path = DATA_DIR / "external_data.csv"
+    if not external_path.exists():
+        return None
+    logger.info("Loading external data from %s...", external_path)
+    try:
+        ext_df = pd.read_csv(external_path)
+        logger.info("Loaded %d external samples.", len(ext_df))
+        return ext_df[["content", "genre"]]
+    except Exception as e:  # noqa: BLE001  # script continues collecting from other sources if external load fails
+        logger.info("Error loading external data: %s", e)
+        return None
 
-    # 4. Combine
-    full_df = pd.concat(dfs, ignore_index=True)
-    full_df = full_df[full_df["content"].str.len() > 50]
 
-    logger.info("Combined Distribution:")
-    logger.info(full_df["genre"].value_counts())
-    # 5. Balance
+def _balance_genres(full_df: pd.DataFrame) -> pd.DataFrame:
     # If 'consumer_tech' is huge, downsample it.
     min_samples = 20  # Lowered to keep more genres (e.g. ai_data ~47)
     max_samples = 2000
@@ -419,18 +419,38 @@ def collect_data():
     balanced_dfs = []
     for genre, group in full_df.groupby("genre"):
         if len(group) < min_samples:
-            logger.info(f"Dropping genre '{genre}' (count {len(group)} < {min_samples})")
+            logger.info("Dropping genre '%s' (count %d < %d)", genre, len(group), min_samples)
             continue
 
         if len(group) > max_samples:
-            group = group.sample(n=max_samples, random_state=42)
+            group = group.sample(n=max_samples, random_state=42)  # noqa: PLW2901  # intentional subsample of DataFrame group
 
         balanced_dfs.append(group)
 
-    final_df = pd.concat(balanced_dfs, ignore_index=True)
+    return pd.concat(balanced_dfs, ignore_index=True)
+
+
+def collect_data() -> None:
+    dfs = [
+        df
+        for df in (_load_alt_export_df(), _load_golden_df(), _load_external_df())
+        if df is not None
+    ]
+    if not dfs:
+        logger.info("No data collected!")
+        return
+
+    # 4. Combine
+    full_df = pd.concat(dfs, ignore_index=True)
+    full_df = full_df[full_df["content"].str.len() > _MIN_CONTENT_LENGTH]
+
+    logger.info("Combined Distribution:")
+    logger.info(full_df["genre"].value_counts())
+    # 5. Balance
+    final_df = _balance_genres(full_df)
 
     # 6. Save
-    logger.info(f"Saving {len(final_df)} samples to {OUTPUT_PATH}")
+    logger.info("Saving %d samples to %s", len(final_df), OUTPUT_PATH)
     final_df.to_csv(OUTPUT_PATH, index=False)
     logger.info("Final Distribution:")
 

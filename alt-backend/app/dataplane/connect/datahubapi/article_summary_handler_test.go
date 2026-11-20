@@ -43,7 +43,7 @@ func TestSaveArticleSummary_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !resp.Msg.Success {
+	if !resp.Msg.GetSuccess() {
 		t.Error("expected success to be true")
 	}
 }
@@ -115,7 +115,7 @@ func TestSaveArticleSummary_SummaryVersionEventFailureFailsRPC(t *testing.T) {
 
 	resp, err := h.SaveArticleSummary(context.Background(), req)
 	if err == nil {
-		t.Fatalf("expected SaveArticleSummary to fail when the SummaryVersionCreated append fails, got success=%v", resp.Msg.Success)
+		t.Fatalf("expected SaveArticleSummary to fail when the SummaryVersionCreated append fails, got success=%v", resp.Msg.GetSuccess())
 	}
 	if connect.CodeOf(err) != connect.CodeUnavailable {
 		t.Errorf("expected CodeUnavailable so the caller retries, got %v", connect.CodeOf(err))
@@ -168,19 +168,19 @@ func TestListUnsummarizedArticles_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(resp.Msg.Articles) != 2 {
-		t.Fatalf("expected 2 articles, got %d", len(resp.Msg.Articles))
+	if len(resp.Msg.GetArticles()) != 2 {
+		t.Fatalf("expected 2 articles, got %d", len(resp.Msg.GetArticles()))
 	}
-	if resp.Msg.Articles[0].Id != "a1" {
-		t.Errorf("expected first article ID a1, got %s", resp.Msg.Articles[0].Id)
+	if resp.Msg.GetArticles()[0].GetId() != "a1" {
+		t.Errorf("expected first article ID a1, got %s", resp.Msg.GetArticles()[0].GetId())
 	}
-	if resp.Msg.Articles[0].Url != "http://example.com/1" {
-		t.Errorf("expected first article URL http://example.com/1, got %s", resp.Msg.Articles[0].Url)
+	if resp.Msg.GetArticles()[0].GetUrl() != "http://example.com/1" {
+		t.Errorf("expected first article URL http://example.com/1, got %s", resp.Msg.GetArticles()[0].GetUrl())
 	}
-	if resp.Msg.NextId != "a2" {
-		t.Errorf("expected next_id a2, got %s", resp.Msg.NextId)
+	if resp.Msg.GetNextId() != "a2" {
+		t.Errorf("expected next_id a2, got %s", resp.Msg.GetNextId())
 	}
-	if resp.Msg.NextCreatedAt == nil {
+	if resp.Msg.GetNextCreatedAt() == nil {
 		t.Fatal("expected next_created_at to be set")
 	}
 }
@@ -208,8 +208,8 @@ func TestListUnsummarizedArticles_WithCursor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(resp.Msg.Articles) != 0 {
-		t.Fatalf("expected 0 articles, got %d", len(resp.Msg.Articles))
+	if len(resp.Msg.GetArticles()) != 0 {
+		t.Fatalf("expected 0 articles, got %d", len(resp.Msg.GetArticles()))
 	}
 }
 
@@ -263,7 +263,7 @@ func TestHasUnsummarizedArticles_True(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !resp.Msg.HasUnsummarized {
+	if !resp.Msg.GetHasUnsummarized() {
 		t.Error("expected has_unsummarized to be true")
 	}
 }
@@ -284,7 +284,7 @@ func TestHasUnsummarizedArticles_False(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if resp.Msg.HasUnsummarized {
+	if resp.Msg.GetHasUnsummarized() {
 		t.Error("expected has_unsummarized to be false")
 	}
 }

@@ -2,19 +2,21 @@
 
 import asyncio
 import time
+from unittest.mock import MagicMock, patch
 
-import pytest
-from unittest.mock import patch, MagicMock
 import numpy as np
+import pytest
 
 from news_creator.usecase.rerank_usecase import RerankUsecase
+
+MIN_HEARTBEAT_TICKS = 5
 
 
 class TestRerankUsecase:
     """Test suite for RerankUsecase."""
 
     @pytest.fixture
-    def mock_cross_encoder(self):
+    def mock_cross_encoder(self) -> MagicMock:
         """Create a mock CrossEncoder."""
         mock = MagicMock()
         # Return descending scores: [0.9, 0.7, 0.5] -> indices [0, 1, 2]
@@ -22,24 +24,27 @@ class TestRerankUsecase:
         return mock
 
     @pytest.fixture
-    def usecase(self):
+    def usecase(self) -> RerankUsecase:
         """Create RerankUsecase instance."""
         return RerankUsecase(model_name="test-model")
 
     @pytest.mark.asyncio
-    async def test_rerank_success(self, usecase, mock_cross_encoder):
+    async def test_rerank_success(
+        self, usecase: RerankUsecase, mock_cross_encoder: MagicMock
+    ) -> None:
         """Test successful re-ranking."""
+        candidates = ["candidate 1", "candidate 2", "candidate 3"]
         with patch(
             "news_creator.usecase.rerank_usecase._get_cross_encoder",
             return_value=mock_cross_encoder,
         ):
             results, model, time_ms = await usecase.rerank(
                 query="test query",
-                candidates=["candidate 1", "candidate 2", "candidate 3"],
+                candidates=candidates,
             )
 
         # Results should be sorted by score descending
-        assert len(results) == 3
+        assert len(results) == len(candidates)
         assert results[0] == (0, 0.9)  # Highest score
         assert results[1] == (1, 0.7)
         assert results[2] == (2, 0.5)  # Lowest score
@@ -50,56 +55,61 @@ class TestRerankUsecase:
         # Verify CrossEncoder was called with correct pairs
         mock_cross_encoder.predict.assert_called_once()
         call_args = mock_cross_encoder.predict.call_args[0][0]
-        assert len(call_args) == 3
+        assert len(call_args) == len(candidates)
         assert call_args[0] == ("test query", "candidate 1")
         assert call_args[1] == ("test query", "candidate 2")
         assert call_args[2] == ("test query", "candidate 3")
 
     @pytest.mark.asyncio
-    async def test_rerank_with_top_k(self, usecase, mock_cross_encoder):
+    async def test_rerank_with_top_k(
+        self, usecase: RerankUsecase, mock_cross_encoder: MagicMock
+    ) -> None:
         """Test re-ranking with top_k limit."""
+        top_k = 2
         with patch(
             "news_creator.usecase.rerank_usecase._get_cross_encoder",
             return_value=mock_cross_encoder,
         ):
-            results, model, time_ms = await usecase.rerank(
+            results, _model, _time_ms = await usecase.rerank(
                 query="test query",
                 candidates=["candidate 1", "candidate 2", "candidate 3"],
-                top_k=2,
+                top_k=top_k,
             )
 
         # Only top 2 results should be returned
-        assert len(results) == 2
+        assert len(results) == top_k
         assert results[0] == (0, 0.9)
         assert results[1] == (1, 0.7)
 
     @pytest.mark.asyncio
-    async def test_rerank_empty_query(self, usecase):
+    async def test_rerank_empty_query(self, usecase: RerankUsecase) -> None:
         """Test re-ranking with empty query raises ValueError."""
         with pytest.raises(ValueError, match="query cannot be empty"):
             await usecase.rerank(query="", candidates=["candidate"])
 
     @pytest.mark.asyncio
-    async def test_rerank_empty_candidates(self, usecase):
+    async def test_rerank_empty_candidates(self, usecase: RerankUsecase) -> None:
         """Test re-ranking with empty candidates raises ValueError."""
         with pytest.raises(ValueError, match="candidates list cannot be empty"):
             await usecase.rerank(query="test query", candidates=[])
 
     @pytest.mark.asyncio
-    async def test_rerank_model_error(self, usecase):
+    async def test_rerank_model_error(self, usecase: RerankUsecase) -> None:
         """Test re-ranking handles model errors gracefully."""
         mock_encoder = MagicMock()
         mock_encoder.predict.side_effect = RuntimeError("Model failed")
 
-        with patch(
-            "news_creator.usecase.rerank_usecase._get_cross_encoder",
-            return_value=mock_encoder,
+        with (
+            patch(
+                "news_creator.usecase.rerank_usecase._get_cross_encoder",
+                return_value=mock_encoder,
+            ),
+            pytest.raises(RuntimeError, match="Re-ranking failed"),
         ):
-            with pytest.raises(RuntimeError, match="Re-ranking failed"):
-                await usecase.rerank(query="test query", candidates=["candidate 1"])
+            await usecase.rerank(query="test query", candidates=["candidate 1"])
 
     @pytest.mark.asyncio
-    async def test_rerank_scores_sorted_correctly(self, usecase):
+    async def test_rerank_scores_sorted_correctly(self, usecase: RerankUsecase) -> None:
         """Test that results are correctly sorted by score descending."""
         mock_encoder = MagicMock()
         # Return scores in non-sorted order: middle score highest
@@ -119,23 +129,25 @@ class TestRerankUsecase:
         assert results[2] == (0, 0.3)  # "a"
         assert results[3] == (2, 0.1)  # "c"
 
-    def test_default_model(self):
+    def test_default_model(self) -> None:
         """Test default model is set correctly."""
         usecase = RerankUsecase()
         assert usecase.model_name == "BAAI/bge-reranker-v2-m3"
 
-    def test_custom_model(self):
+    def test_custom_model(self) -> None:
         """Test custom model is accepted."""
         usecase = RerankUsecase(model_name="custom/model")
         assert usecase.model_name == "custom/model"
 
     @pytest.mark.asyncio
-    async def test_rerank_does_not_block_event_loop(self, usecase):
+    async def test_rerank_does_not_block_event_loop(
+        self, usecase: RerankUsecase
+    ) -> None:
         """CrossEncoder.predict() is CPU-heavy and synchronous; it must run
         off the event loop (asyncio.to_thread) so other coroutines (e.g. SSE
         heartbeats) keep making progress while inference runs."""
 
-        def blocking_predict(pairs):
+        def blocking_predict(pairs: list[tuple[str, str]]) -> np.ndarray:
             time.sleep(0.3)
             return np.array([0.9, 0.5])
 
@@ -144,7 +156,7 @@ class TestRerankUsecase:
 
         heartbeat_ticks = 0
 
-        async def heartbeat():
+        async def heartbeat() -> None:
             nonlocal heartbeat_ticks
             while True:
                 await asyncio.sleep(0.02)
@@ -160,13 +172,13 @@ class TestRerankUsecase:
             finally:
                 heartbeat_task.cancel()
 
-        assert heartbeat_ticks >= 5, (
+        assert heartbeat_ticks >= MIN_HEARTBEAT_TICKS, (
             "event loop was blocked during predict(): only "
             f"{heartbeat_ticks} heartbeat ticks observed during a 0.3s call"
         )
 
     @pytest.mark.asyncio
-    async def test_warmup_preloads_cross_encoder(self, usecase):
+    async def test_warmup_preloads_cross_encoder(self, usecase: RerankUsecase) -> None:
         """warmup() eagerly triggers model loading so the first real request
         doesn't pay the (possibly multi-second) load cost synchronously."""
         mock_encoder = MagicMock()
@@ -179,16 +191,18 @@ class TestRerankUsecase:
         mock_get.assert_called_once_with("test-model")
 
     @pytest.mark.asyncio
-    async def test_warmup_does_not_block_event_loop(self, usecase):
+    async def test_warmup_does_not_block_event_loop(
+        self, usecase: RerankUsecase
+    ) -> None:
         """Model loading inside warmup() must also run off the event loop."""
 
-        def blocking_load(model_name):
+        def blocking_load(model_name: str) -> MagicMock:
             time.sleep(0.3)
             return MagicMock()
 
         heartbeat_ticks = 0
 
-        async def heartbeat():
+        async def heartbeat() -> None:
             nonlocal heartbeat_ticks
             while True:
                 await asyncio.sleep(0.02)
@@ -204,13 +218,15 @@ class TestRerankUsecase:
             finally:
                 heartbeat_task.cancel()
 
-        assert heartbeat_ticks >= 5, (
+        assert heartbeat_ticks >= MIN_HEARTBEAT_TICKS, (
             "event loop was blocked during warmup(): only "
             f"{heartbeat_ticks} heartbeat ticks observed during a 0.3s load"
         )
 
     @pytest.mark.asyncio
-    async def test_warmup_does_not_raise_on_model_load_failure(self, usecase):
+    async def test_warmup_does_not_raise_on_model_load_failure(
+        self, usecase: RerankUsecase
+    ) -> None:
         """warmup() is a startup optimization, not a hard requirement -- a
         network-isolated environment (no egress to the model hub) must not
         crash the whole service at boot. The lazy-load fallback in rerank()

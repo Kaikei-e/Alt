@@ -25,11 +25,11 @@ func (h *Handler) FetchArticlesByTag(
 		return nil, err
 	}
 
-	limit := clampPageLimit(req.Msg.Limit, 20, maxArticlesPageSize)
+	limit := clampPageLimit(req.Msg.GetLimit(), 20, maxArticlesPageSize)
 
 	var cursor *time.Time
-	if req.Msg.Cursor != nil && *req.Msg.Cursor != "" {
-		parsed, err := time.Parse(time.RFC3339, *req.Msg.Cursor)
+	if req.Msg.Cursor != nil && req.Msg.GetCursor() != "" {
+		parsed, err := time.Parse(time.RFC3339, req.Msg.GetCursor())
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInvalidArgument,
 				fmt.Errorf("invalid cursor format, expected RFC3339: %w", err))
@@ -40,10 +40,10 @@ func (h *Handler) FetchArticlesByTag(
 	var articles []*domain.TagTrailArticle
 	var err error
 
-	if req.Msg.TagName != nil && *req.Msg.TagName != "" {
-		articles, err = h.deps.FetchArticlesByTag.ExecuteByTagName(ctx, *req.Msg.TagName, cursor, limit+1)
-	} else if req.Msg.TagId != nil && *req.Msg.TagId != "" {
-		articles, err = h.deps.FetchArticlesByTag.Execute(ctx, *req.Msg.TagId, cursor, limit+1)
+	if req.Msg.TagName != nil && req.Msg.GetTagName() != "" {
+		articles, err = h.deps.FetchArticlesByTag.ExecuteByTagName(ctx, req.Msg.GetTagName(), cursor, limit+1)
+	} else if req.Msg.TagId != nil && req.Msg.GetTagId() != "" {
+		articles, err = h.deps.FetchArticlesByTag.Execute(ctx, req.Msg.GetTagId(), cursor, limit+1)
 	} else {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("either tag_id or tag_name is required"))
@@ -85,7 +85,7 @@ func (h *Handler) FetchArticleTags(
 		return nil, err
 	}
 
-	articleID := req.Msg.ArticleId
+	articleID := req.Msg.GetArticleId()
 	if articleID == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("article_id is required"))
@@ -125,7 +125,7 @@ func (h *Handler) StreamArticleTags(
 		return err
 	}
 
-	articleID := req.Msg.ArticleId
+	articleID := req.Msg.GetArticleId()
 	if articleID == "" {
 		return connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("article_id is required"))
@@ -196,7 +196,7 @@ func (h *Handler) FetchTagCloud(
 		return nil, err
 	}
 
-	limit := clampPageLimit(req.Msg.Limit, 300, 500)
+	limit := clampPageLimit(req.Msg.GetLimit(), 300, 500)
 
 	items, edges, err := h.deps.FetchTagCloud.Execute(ctx, limit)
 	if err != nil {

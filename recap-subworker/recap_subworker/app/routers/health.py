@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
@@ -33,7 +34,7 @@ def build_deep_health_runner(settings: Settings) -> DeepHealthRunner:
 
 async def get_deep_health_runner(
     request: Request,
-    settings: Settings = Depends(get_settings_dep),
+    settings: Annotated[Settings, Depends(get_settings_dep)],
 ) -> DeepHealthRunner:
     existing = getattr(request.app.state, "deep_health_runner", None)
     if existing is not None:
@@ -49,8 +50,8 @@ async def get_deep_health_runner(
 
 @router.get("/health", response_model=HealthResponse)
 async def health(
-    settings: Settings = Depends(get_settings_dep),
-    embedder: Embedder = Depends(get_embedder_dep),
+    settings: Annotated[Settings, Depends(get_settings_dep)],
+    embedder: Annotated[Embedder, Depends(get_embedder_dep)],
 ) -> HealthResponse:
     return HealthResponse(
         status="ok", model_id=embedder.config.model_id, backend=embedder.config.backend
@@ -59,7 +60,7 @@ async def health(
 
 @router.get("/health/deep")
 async def health_deep(
-    runner: DeepHealthRunner = Depends(get_deep_health_runner),
+    runner: Annotated[DeepHealthRunner, Depends(get_deep_health_runner)],
 ) -> JSONResponse:
     """Classifier / artefact readiness. Compose probes must not hit this path."""
     report = await runner.run()

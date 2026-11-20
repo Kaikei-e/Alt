@@ -1,12 +1,6 @@
-#![allow(dead_code)]
-
 use crate::error::{RecapError, Result};
 use sqlx::{PgConnection, Row};
 use uuid::Uuid;
-
-pub(crate) fn idempotency_key(job_id: Uuid, genre: &str) -> String {
-    format!("{job_id}:{genre}")
-}
 
 /// UUIDを64ビットの整数キーに変換し、PostgreSQLのアドバイザリロックで使用できるようにする。
 ///

@@ -5,6 +5,7 @@ import logging
 import sys
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse, urlunparse
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -18,7 +19,7 @@ project_root = current_dir.parent.parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from recap_subworker.infra.config import Settings
+from recap_subworker.infra.config import Settings  # noqa: E402  # import after sys.path setup
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -29,7 +30,7 @@ async def fetch_articles(db_url: str, limit: int, days: int) -> list[dict[str, A
     engine = create_async_engine(db_url)
 
     async with engine.connect() as conn:
-        logger.info(f"Querying articles from last {days} days (Limit: {limit})...")
+        logger.info("Querying articles from last %d days (Limit: %d)...", days, limit)
 
         # We need to query recap_job_articles
         # Note: We want unique articles. The same article might be in multiple jobs maybe?
@@ -53,7 +54,7 @@ async def fetch_articles(db_url: str, limit: int, days: int) -> list[dict[str, A
         result = await conn.execute(query, {"days": days, "limit": limit})
         articles = []
 
-        import trafilatura
+        import trafilatura  # noqa: PLC0415  # defer heavy trafilatura import until article extraction
 
         for row in result:
             text_content = ""
@@ -94,8 +95,6 @@ def get_db_url_with_password(settings: Settings) -> str:
         logger.info("Adjusting DB URL for local execution...")
         db_url = db_url.replace("recap-db", "localhost").replace("5432", "5435")
 
-    from urllib.parse import urlparse, urlunparse
-
     # Try to find secrets directory
     # Assume we are in recap-subworker/learning_machine/scripts/mine_articles.py
     # Repo root is ../../../
@@ -103,7 +102,7 @@ def get_db_url_with_password(settings: Settings) -> str:
 
     if secret_path.exists():
         try:
-            with open(secret_path) as f:
+            with secret_path.open() as f:
                 password = f.read().strip()
 
             u = urlparse(db_url)
@@ -119,13 +118,19 @@ def get_db_url_with_password(settings: Settings) -> str:
                 new_netloc = f"{new_user_pass}@{host_port}"
                 db_url = urlunparse((u.scheme, new_netloc, u.path, u.params, u.query, u.fragment))
                 logger.info("Injected password from secrets.")
-        except Exception as e:
-            logger.warning(f"Failed to read password secret: {e}")
+        except (OSError, ValueError) as e:
+            logger.warning("Failed to read password secret: %s", e)
 
     return db_url
 
 
-async def main():
+def _write_articles_jsonl(output_path: Path, articles: list[dict[str, Any]]) -> None:
+    with output_path.open("w", encoding="utf-8") as f:
+        for article in articles:
+            f.write(json.dumps(article, ensure_ascii=False) + "\n")
+
+
+async def main() -> None:
     parser = argparse.ArgumentParser(description="Mine articles from recap-db")
     parser.add_argument("--days", type=int, default=180, help="Lookback days")
     parser.add_argument("--limit", type=int, default=20000, help="Max articles")
@@ -136,16 +141,14 @@ async def main():
     db_url = get_db_url_with_password(settings)
 
     articles = await fetch_articles(db_url, args.limit, args.days)
-    logger.info(f"Fetched {len(articles)} articles.")
+    logger.info("Fetched %d articles.", len(articles))
 
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    with open(output_path, "w", encoding="utf-8") as f:
-        for article in articles:
-            f.write(json.dumps(article, ensure_ascii=False) + "\n")
+    await asyncio.to_thread(_write_articles_jsonl, output_path, articles)
 
-    logger.info(f"Saved to {output_path}")
+    logger.info("Saved to %s", output_path)
 
 
 if __name__ == "__main__":

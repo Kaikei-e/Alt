@@ -1,5 +1,6 @@
 """Tests for batch processor mutual recursion prevention."""
 
+from typing import TypedDict
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -8,11 +9,20 @@ from tag_generator.batch_processor import BatchProcessor
 from tag_generator.config import TagGeneratorConfig
 
 
+class _MockDeps(TypedDict):
+    config: TagGeneratorConfig
+    article_fetcher: MagicMock
+    tag_extractor: MagicMock
+    tag_inserter: MagicMock
+    cascade_controller: MagicMock
+    cursor_manager: MagicMock
+
+
 class TestBatchProcessorRecursionGuard:
     """Test cases for preventing mutual recursion between forward and backfill processing."""
 
     @pytest.fixture
-    def mock_dependencies(self):
+    def mock_dependencies(self) -> _MockDeps:
         """Create mock dependencies for BatchProcessor."""
         config = TagGeneratorConfig()
         article_fetcher = MagicMock()
@@ -31,7 +41,7 @@ class TestBatchProcessorRecursionGuard:
         }
 
     @pytest.fixture
-    def batch_processor(self, mock_dependencies):
+    def batch_processor(self, mock_dependencies: _MockDeps) -> BatchProcessor:
         """Create a BatchProcessor with mocked dependencies."""
         return BatchProcessor(
             mock_dependencies["config"],
@@ -42,7 +52,9 @@ class TestBatchProcessorRecursionGuard:
             mock_dependencies["cursor_manager"],
         )
 
-    def test_forward_does_not_recurse_to_backfill_when_called_from_backfill(self, batch_processor, mock_dependencies):
+    def test_forward_does_not_recurse_to_backfill_when_called_from_backfill(
+        self, batch_processor: BatchProcessor, mock_dependencies: _MockDeps
+    ) -> None:
         """When forward is called from backfill, it should NOT call backfill again."""
         # Setup: backfill not completed, no new articles
         batch_processor.backfill_completed = False
@@ -65,7 +77,9 @@ class TestBatchProcessorRecursionGuard:
         mock_backfill.assert_not_called()
         assert result["total_processed"] == 0
 
-    def test_forward_calls_backfill_when_not_from_backfill(self, batch_processor, mock_dependencies):
+    def test_forward_calls_backfill_when_not_from_backfill(
+        self, batch_processor: BatchProcessor, mock_dependencies: _MockDeps
+    ) -> None:
         """When forward is called normally (not from backfill), it should call backfill."""
         # Setup: backfill not completed, no new articles
         batch_processor.backfill_completed = False
@@ -86,7 +100,9 @@ class TestBatchProcessorRecursionGuard:
         # Assert: backfill SHOULD have been called
         mock_backfill.assert_called_once()
 
-    def test_backfill_passes_from_backfill_flag_to_forward(self, batch_processor, mock_dependencies):
+    def test_backfill_passes_from_backfill_flag_to_forward(
+        self, batch_processor: BatchProcessor, mock_dependencies: _MockDeps
+    ) -> None:
         """Backfill should pass _from_backfill=True when calling forward."""
         # Setup: hybrid mode active (forward cursors exist)
         mock_dependencies["cursor_manager"].forward_cursor_created_at = "2024-01-01T00:00:00Z"
@@ -103,7 +119,7 @@ class TestBatchProcessorRecursionGuard:
         # Spy on the forward method to check the argument
         call_args_list = []
 
-        def capturing_forward(*args, **kwargs):
+        def capturing_forward(*args: object, **kwargs: object) -> dict[str, int]:
             call_args_list.append((args, kwargs))
             return {"successful": 0, "total_processed": 0}
 
@@ -115,7 +131,9 @@ class TestBatchProcessorRecursionGuard:
         _, kwargs = call_args_list[0]
         assert kwargs.get("_from_backfill") is True, "_from_backfill should be True when called from backfill"
 
-    def test_no_infinite_recursion_with_empty_articles(self, batch_processor, mock_dependencies):
+    def test_no_infinite_recursion_with_empty_articles(
+        self, batch_processor: BatchProcessor, mock_dependencies: _MockDeps
+    ) -> None:
         """Ensure no infinite recursion when both forward and backfill return empty."""
         # Setup the recursion trigger conditions
         batch_processor.backfill_completed = False

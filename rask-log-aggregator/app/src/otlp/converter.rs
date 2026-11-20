@@ -197,7 +197,7 @@ fn convert_single_span(
     }
 }
 
-/// Convert OTLP attributes to HashMap
+/// Convert OTLP attributes to `HashMap`
 fn convert_attributes(attrs: &[KeyValue]) -> HashMap<String, String> {
     attrs
         .iter()
@@ -240,7 +240,7 @@ fn extract_body(body: Option<&AnyValue>) -> String {
     body.and_then(extract_string_value).unwrap_or_default()
 }
 
-/// Encode trace_id bytes to 32-char hex string
+/// Encode `trace_id` bytes to 32-char hex string
 fn encode_trace_id(bytes: &[u8]) -> String {
     if bytes.is_empty() || bytes.iter().all(|&b| b == 0) {
         return "0".repeat(32);
@@ -253,7 +253,7 @@ fn encode_trace_id(bytes: &[u8]) -> String {
     hex::encode(padded)
 }
 
-/// Encode span_id bytes to 16-char hex string
+/// Encode `span_id` bytes to 16-char hex string
 fn encode_span_id(bytes: &[u8]) -> String {
     if bytes.is_empty() || bytes.iter().all(|&b| b == 0) {
         return "0".repeat(16);

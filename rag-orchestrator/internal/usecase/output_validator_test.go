@@ -182,7 +182,7 @@ func TestOutputValidator_Validate_EmptyAnswerRejection(t *testing.T) {
 	}`
 
 	result, err := validator.Validate(input, nil)
-	assert.Error(t, err, "should reject empty answer without fallback")
+	require.Error(t, err, "should reject empty answer without fallback")
 	assert.Nil(t, result)
 	assert.Contains(t, err.Error(), "empty answer without fallback")
 }
@@ -199,7 +199,7 @@ func TestOutputValidator_Validate_EmptyAnswerWithFallback(t *testing.T) {
 	}`
 
 	result, err := validator.Validate(input, nil)
-	assert.NoError(t, err, "empty answer with fallback=true should be valid")
+	require.NoError(t, err, "empty answer with fallback=true should be valid")
 	assert.True(t, result.Fallback)
 }
 
@@ -215,7 +215,7 @@ func TestOutputValidator_Validate_WhitespaceOnlyAnswerRejection(t *testing.T) {
 	}`
 
 	result, err := validator.Validate(input, nil)
-	assert.Error(t, err, "should reject whitespace-only answer without fallback")
+	require.Error(t, err, "should reject whitespace-only answer without fallback")
 	assert.Nil(t, result)
 }
 

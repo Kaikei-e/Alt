@@ -134,13 +134,13 @@ func TestHandler_ListThemes(t *testing.T) {
 	assert.Equal(t, int32(2), t1.GetLatestVersion())
 	assert.Equal(t, int32(5), t1.GetArticleCount())
 	assert.Equal(t, updatedAt, t1.GetUpdatedAt().AsTime())
-	require.NotNil(t, t1.LastOpenedAt)
+	require.NotNil(t, t1.GetLastOpenedAt())
 	assert.Equal(t, openedAt, t1.GetLastOpenedAt().AsTime())
 	assert.Equal(t, int32(1), t1.GetLastOpenedVersion())
 
 	t2 := resp.Msg.GetThemes()[1]
 	assert.Equal(t, theme2.String(), t2.GetThemeId())
-	assert.Nil(t, t2.LastOpenedAt)
+	assert.Nil(t, t2.GetLastOpenedAt())
 	assert.Equal(t, int32(0), t2.GetLastOpenedVersion())
 
 	t.Run("upstream failure maps to Internal", func(t *testing.T) {
@@ -267,7 +267,7 @@ func TestHandler_RecordThemeOpened(t *testing.T) {
 		var raw map[string]any
 		require.NoError(t, json.Unmarshal(ap.events[0].Payload, &raw))
 		assert.Equal(t, themeID.String(), raw["theme_id"])
-		assert.Equal(t, float64(2), raw["version"])
+		assert.InDelta(t, float64(2), raw["version"], 1e-9)
 		assert.Equal(t, "2026-11-18T00:00:00Z", raw["opened_at"])
 	})
 

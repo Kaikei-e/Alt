@@ -184,6 +184,7 @@ test.describe("Visual Preview — a resolution that lands late", () => {
 		// Bounded: the ladder is three asks, not an open-ended poll of a server
 		// that is not answering.
 		const settled = calls;
+		// biome-ignore lint/nursery/noPlaywrightWaitForTimeout: negative assertion verifying no 4th retry fires after the bounded ladder stops
 		await page.waitForTimeout(3000);
 		expect(calls).toBe(settled);
 		expect(calls).toBeLessThanOrEqual(3);

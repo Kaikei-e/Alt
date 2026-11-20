@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -18,7 +17,7 @@ import (
 	"rag-orchestrator/internal/usecase"
 
 	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -96,7 +95,7 @@ func TestHandler_AnswerWithRAG_TPU(t *testing.T) {
 		Done: true,
 	}
 
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 	answerUC := usecase.NewAnswerWithRAGUsecase(
 		retrieve,
 		usecase.NewXMLPromptBuilder("Answer in Japanese."),
@@ -113,7 +112,7 @@ func TestHandler_AnswerWithRAG_TPU(t *testing.T) {
 	handler := rag_http.NewHandler(retrieve, answerUC, nil, nil, nil, testLogger)
 
 	body := bytes.NewBufferString(`{"query":"TPU","user_id":"` + uuid.NewString() + `"}`)
-	req := httptest.NewRequest(http.MethodPost, "/v1/rag/answer", body)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/rag/answer", body)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
@@ -126,7 +125,7 @@ func TestHandler_AnswerWithRAG_TPU(t *testing.T) {
 		assert.NotNil(t, resp.Answer)
 		assert.False(t, *resp.Fallback)
 		assert.NotNil(t, resp.Citations)
-		assert.Equal(t, 1, len(*resp.Citations))
+		assert.Len(t, *resp.Citations, 1)
 		assert.Equal(t, chunkID.String(), *(*resp.Citations)[0].ChunkId)
 	}
 }
@@ -163,10 +162,10 @@ func TestHandler_AnswerWithRAGStream(t *testing.T) {
 	}
 	close(events)
 
-	handler := rag_http.NewHandler(nil, &stubStreamUsecase{events: events}, nil, nil, nil, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+	handler := rag_http.NewHandler(nil, &stubStreamUsecase{events: events}, nil, nil, nil, slog.New(slog.DiscardHandler))
 
 	body := bytes.NewBufferString(`{"query":"streaming","user_id":"` + uuid.NewString() + `"}`)
-	req := httptest.NewRequest(http.MethodPost, "/v1/rag/answer/stream", body)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/rag/answer/stream", body)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
@@ -219,7 +218,7 @@ const testUserID = "a0000000-0000-0000-0000-000000000001"
 func TestUpsertIndex_PassesUrlToUsecase(t *testing.T) {
 	e := echo.New()
 	dummy := &dummyIndexUsecase{}
-	handler := rag_http.NewHandler(nil, nil, dummy, nil, nil, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+	handler := rag_http.NewHandler(nil, nil, dummy, nil, nil, slog.New(slog.DiscardHandler))
 
 	// Prepare request with URL field populated
 	reqBody := openapi.UpsertIndexRequest{
@@ -231,9 +230,9 @@ func TestUpsertIndex_PassesUrlToUsecase(t *testing.T) {
 	}
 
 	bodyBytes, err := json.Marshal(reqBody)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/rag/index/upsert", bytes.NewReader(bodyBytes))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/rag/index/upsert", bytes.NewReader(bodyBytes))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
@@ -242,7 +241,7 @@ func TestUpsertIndex_PassesUrlToUsecase(t *testing.T) {
 	err = handler.UpsertIndex(c)
 
 	// Verify URL was passed to usecase (not empty string)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Equal(t, "https://example.com/test-article", dummy.capturedURL, "URL should be passed from request to usecase")
 	assert.Equal(t, "Test Article Title", dummy.capturedTitle, "Title should be passed correctly")
@@ -257,7 +256,7 @@ func TestUpsertIndex_PassesUrlToUsecase(t *testing.T) {
 func TestUpsertIndex_RejectsBlankArticleID(t *testing.T) {
 	e := echo.New()
 	dummy := &dummyIndexUsecase{}
-	handler := rag_http.NewHandler(nil, nil, dummy, nil, nil, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+	handler := rag_http.NewHandler(nil, nil, dummy, nil, nil, slog.New(slog.DiscardHandler))
 
 	reqBody := openapi.UpsertIndexRequest{
 		ArticleId: "",
@@ -268,16 +267,16 @@ func TestUpsertIndex_RejectsBlankArticleID(t *testing.T) {
 	}
 
 	bodyBytes, err := json.Marshal(reqBody)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/rag/index/upsert", bytes.NewReader(bodyBytes))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/rag/index/upsert", bytes.NewReader(bodyBytes))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
 	err = handler.UpsertIndex(c)
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 	assert.False(t, dummy.called, "Upsert usecase must not be invoked for a blank article_id")
 }
@@ -287,7 +286,7 @@ func TestUpsertIndex_RejectsBlankArticleID(t *testing.T) {
 func TestUpsertIndex_RejectsWhitespaceOnlyArticleID(t *testing.T) {
 	e := echo.New()
 	dummy := &dummyIndexUsecase{}
-	handler := rag_http.NewHandler(nil, nil, dummy, nil, nil, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+	handler := rag_http.NewHandler(nil, nil, dummy, nil, nil, slog.New(slog.DiscardHandler))
 
 	reqBody := openapi.UpsertIndexRequest{
 		ArticleId: "   ",
@@ -298,16 +297,16 @@ func TestUpsertIndex_RejectsWhitespaceOnlyArticleID(t *testing.T) {
 	}
 
 	bodyBytes, err := json.Marshal(reqBody)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/rag/index/upsert", bytes.NewReader(bodyBytes))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/rag/index/upsert", bytes.NewReader(bodyBytes))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
 	err = handler.UpsertIndex(c)
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 	assert.False(t, dummy.called, "Upsert usecase must not be invoked for a whitespace-only article_id")
 }
@@ -317,7 +316,7 @@ func TestUpsertIndex_ReturnsErrorWhenUsecaseFails(t *testing.T) {
 	dummy := &dummyIndexUsecase{
 		returnError: errors.New("indexing failed"),
 	}
-	handler := rag_http.NewHandler(nil, nil, dummy, nil, nil, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+	handler := rag_http.NewHandler(nil, nil, dummy, nil, nil, slog.New(slog.DiscardHandler))
 
 	reqBody := openapi.UpsertIndexRequest{
 		ArticleId: "test-article-123",
@@ -328,23 +327,23 @@ func TestUpsertIndex_ReturnsErrorWhenUsecaseFails(t *testing.T) {
 	}
 
 	bodyBytes, err := json.Marshal(reqBody)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/rag/index/upsert", bytes.NewReader(bodyBytes))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/rag/index/upsert", bytes.NewReader(bodyBytes))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
 	err = handler.UpsertIndex(c)
 
-	assert.NoError(t, err) // handler doesn't return error, but sends error response
+	require.NoError(t, err) // handler doesn't return error, but sends error response
 	assert.Equal(t, http.StatusInternalServerError, rec.Code)
 }
 
 func TestUpsertIndex_ContextHasServerSideTimeout(t *testing.T) {
 	e := echo.New()
 	dummy := &dummyIndexUsecase{}
-	handler := rag_http.NewHandler(nil, nil, dummy, nil, nil, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+	handler := rag_http.NewHandler(nil, nil, dummy, nil, nil, slog.New(slog.DiscardHandler))
 
 	reqBody := openapi.UpsertIndexRequest{
 		ArticleId: "art-timeout",
@@ -355,13 +354,13 @@ func TestUpsertIndex_ContextHasServerSideTimeout(t *testing.T) {
 	}
 	bodyBytes, _ := json.Marshal(reqBody)
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/rag/index/upsert", bytes.NewReader(bodyBytes))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/rag/index/upsert", bytes.NewReader(bodyBytes))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
 	err := handler.UpsertIndex(c)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, rec.Code)
 
 	// The context passed to Upsert should have a server-side deadline
@@ -398,11 +397,11 @@ func newOverrideHandler(
 	indexUsecaseFactory := func(_ domain.VectorEncoder) usecase.IndexArticleUsecase {
 		return overrideUsecase
 	}
-	return rag_http.NewHandler(nil, nil, defaultUsecase, nil, nil, slog.New(slog.NewJSONHandler(io.Discard, nil)),
+	return rag_http.NewHandler(nil, nil, defaultUsecase, nil, nil, slog.New(slog.DiscardHandler),
 		rag_http.WithEmbedderOverride(embedderFactory, indexUsecaseFactory, "model", 30, allowedOrigins))
 }
 
-func upsertReqWithEmbedderOverride(t *testing.T, embedderURL string) (echo.Context, *httptest.ResponseRecorder) {
+func upsertReqWithEmbedderOverride(t *testing.T, embedderURL string) (*echo.Context, *httptest.ResponseRecorder) {
 	t.Helper()
 	e := echo.New()
 	reqBody := openapi.UpsertIndexRequest{
@@ -413,9 +412,9 @@ func upsertReqWithEmbedderOverride(t *testing.T, embedderURL string) (echo.Conte
 		UserId:    testUserID,
 	}
 	bodyBytes, err := json.Marshal(reqBody)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/rag/index/upsert", bytes.NewReader(bodyBytes))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/rag/index/upsert", bytes.NewReader(bodyBytes))
 	req.Header.Set("Content-Type", "application/json")
 	if embedderURL != "" {
 		req.Header.Set("X-Embedder-URL", embedderURL)
@@ -440,7 +439,7 @@ func TestUpsertIndex_RejectsDisallowedEmbedderOverrideOrigin(t *testing.T) {
 
 	err := handler.UpsertIndex(c)
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, rec.Code, "an unallowlisted X-Embedder-URL must be rejected")
 	assert.False(t, factoryCalled, "embedderFactory must never see a disallowed origin")
 	assert.Empty(t, defaultUsecase.capturedURL, "the request must be rejected outright, not silently fall back")
@@ -462,7 +461,7 @@ func TestUpsertIndex_RejectsEmbedderOverrideOriginThatOnlyPartiallyMatches(t *te
 
 	err := handler.UpsertIndex(c)
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, rec.Code, "a lookalike host must not pass the allowlist")
 	assert.False(t, factoryCalled)
 }
@@ -481,7 +480,7 @@ func TestUpsertIndex_AllowsAllowlistedEmbedderOverrideOrigin(t *testing.T) {
 
 	err := handler.UpsertIndex(c)
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.True(t, factoryCalled)
 	assert.Equal(t, "http://backfill-hyperboost:11434", capturedFactoryURL)
@@ -495,13 +494,13 @@ func TestUpsertIndex_AllowsAllowlistedEmbedderOverrideOrigin(t *testing.T) {
 // consulted, so the default usecase always runs.
 func TestUpsertIndex_IgnoresEmbedderOverride_WhenFeatureNotWired(t *testing.T) {
 	dummy := &dummyIndexUsecase{}
-	handler := rag_http.NewHandler(nil, nil, dummy, nil, nil, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+	handler := rag_http.NewHandler(nil, nil, dummy, nil, nil, slog.New(slog.DiscardHandler))
 
 	c, rec := upsertReqWithEmbedderOverride(t, "http://backfill-hyperboost:11434")
 
 	err := handler.UpsertIndex(c)
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Equal(t, "https://example.com/test-article", dummy.capturedURL)
 }
@@ -509,7 +508,7 @@ func TestUpsertIndex_IgnoresEmbedderOverride_WhenFeatureNotWired(t *testing.T) {
 func TestUpsertIndex_RejectsBlankUserID(t *testing.T) {
 	e := echo.New()
 	dummy := &dummyIndexUsecase{}
-	handler := rag_http.NewHandler(nil, nil, dummy, nil, nil, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+	handler := rag_http.NewHandler(nil, nil, dummy, nil, nil, slog.New(slog.DiscardHandler))
 
 	reqBody := openapi.UpsertIndexRequest{
 		ArticleId: "test-article-123",
@@ -519,13 +518,13 @@ func TestUpsertIndex_RejectsBlankUserID(t *testing.T) {
 		UserId:    "",
 	}
 	bodyBytes, _ := json.Marshal(reqBody)
-	req := httptest.NewRequest(http.MethodPost, "/v1/rag/index/upsert", bytes.NewReader(bodyBytes))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/rag/index/upsert", bytes.NewReader(bodyBytes))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
 	err := handler.UpsertIndex(c)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
@@ -534,7 +533,7 @@ func TestUpsertIndex_Returns409OnOwnerConflict(t *testing.T) {
 	dummy := &dummyIndexUsecase{
 		returnError: usecase.ErrOwnerConflict,
 	}
-	handler := rag_http.NewHandler(nil, nil, dummy, nil, nil, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+	handler := rag_http.NewHandler(nil, nil, dummy, nil, nil, slog.New(slog.DiscardHandler))
 
 	reqBody := openapi.UpsertIndexRequest{
 		ArticleId: "test-article-123",
@@ -544,13 +543,13 @@ func TestUpsertIndex_Returns409OnOwnerConflict(t *testing.T) {
 		UserId:    testUserID,
 	}
 	bodyBytes, _ := json.Marshal(reqBody)
-	req := httptest.NewRequest(http.MethodPost, "/v1/rag/index/upsert", bytes.NewReader(bodyBytes))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/rag/index/upsert", bytes.NewReader(bodyBytes))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
 	err := handler.UpsertIndex(c)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, http.StatusConflict, rec.Code)
 	assert.Contains(t, rec.Body.String(), "document owned by another user")
 	assert.NotContains(t, rec.Body.String(), "indexArticleUsecase:")
@@ -565,7 +564,7 @@ func TestUpsertIndex_Returns409WithDuplicateKeyCodeOnDuplicateKeyError(t *testin
 	dummy := &dummyIndexUsecase{
 		returnError: errors.New("ERROR: duplicate key value violates unique constraint \"rag_documents_article_id_key\" (SQLSTATE 23505)"),
 	}
-	handler := rag_http.NewHandler(nil, nil, dummy, nil, nil, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+	handler := rag_http.NewHandler(nil, nil, dummy, nil, nil, slog.New(slog.DiscardHandler))
 
 	reqBody := openapi.UpsertIndexRequest{
 		ArticleId: "test-article-123",
@@ -575,7 +574,7 @@ func TestUpsertIndex_Returns409WithDuplicateKeyCodeOnDuplicateKeyError(t *testin
 		UserId:    testUserID,
 	}
 	bodyBytes, _ := json.Marshal(reqBody)
-	req := httptest.NewRequest(http.MethodPost, "/v1/rag/index/upsert", bytes.NewReader(bodyBytes))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/rag/index/upsert", bytes.NewReader(bodyBytes))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
@@ -592,7 +591,7 @@ func TestUpsertIndex_Returns409WithDuplicateKeyCodeOnDuplicateKeyError(t *testin
 func TestBackfillDocumentOwners(t *testing.T) {
 	e := echo.New()
 	dummy := &dummyIndexUsecase{}
-	handler := rag_http.NewHandler(nil, nil, dummy, nil, nil, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+	handler := rag_http.NewHandler(nil, nil, dummy, nil, nil, slog.New(slog.DiscardHandler))
 
 	reqBody := openapi.OwnerBackfillRequest{
 		Items: []openapi.OwnerBackfillItem{
@@ -601,17 +600,17 @@ func TestBackfillDocumentOwners(t *testing.T) {
 		},
 	}
 	bodyBytes, _ := json.Marshal(reqBody)
-	req := httptest.NewRequest(http.MethodPost, "/v1/documents/owners", bytes.NewReader(bodyBytes))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/documents/owners", bytes.NewReader(bodyBytes))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
 	err := handler.BackfillDocumentOwners(c)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, rec.Code)
 
 	var resp openapi.OwnerBackfillResponse
-	assert.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	assert.Equal(t, int64(2), resp.Updated)
 }
 
@@ -620,7 +619,7 @@ func TestBackfillDocumentOwners_Returns400OnValidationError(t *testing.T) {
 	dummy := &dummyIndexUsecase{
 		backfillError: usecase.ErrInvalidUserID,
 	}
-	handler := rag_http.NewHandler(nil, nil, dummy, nil, nil, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+	handler := rag_http.NewHandler(nil, nil, dummy, nil, nil, slog.New(slog.DiscardHandler))
 
 	reqBody := openapi.OwnerBackfillRequest{
 		Items: []openapi.OwnerBackfillItem{
@@ -628,13 +627,13 @@ func TestBackfillDocumentOwners_Returns400OnValidationError(t *testing.T) {
 		},
 	}
 	bodyBytes, _ := json.Marshal(reqBody)
-	req := httptest.NewRequest(http.MethodPost, "/v1/documents/owners", bytes.NewReader(bodyBytes))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/documents/owners", bytes.NewReader(bodyBytes))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
 	err := handler.BackfillDocumentOwners(c)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
@@ -643,7 +642,7 @@ func TestBackfillDocumentOwners_Returns500OnInternalError(t *testing.T) {
 	dummy := &dummyIndexUsecase{
 		backfillError: errors.New("db connection down"),
 	}
-	handler := rag_http.NewHandler(nil, nil, dummy, nil, nil, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+	handler := rag_http.NewHandler(nil, nil, dummy, nil, nil, slog.New(slog.DiscardHandler))
 
 	reqBody := openapi.OwnerBackfillRequest{
 		Items: []openapi.OwnerBackfillItem{
@@ -651,52 +650,52 @@ func TestBackfillDocumentOwners_Returns500OnInternalError(t *testing.T) {
 		},
 	}
 	bodyBytes, _ := json.Marshal(reqBody)
-	req := httptest.NewRequest(http.MethodPost, "/v1/documents/owners", bytes.NewReader(bodyBytes))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/documents/owners", bytes.NewReader(bodyBytes))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
 	err := handler.BackfillDocumentOwners(c)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, http.StatusInternalServerError, rec.Code)
 }
 
 func TestRetrieveContext_RequiresUserID(t *testing.T) {
 	e := echo.New()
-	handler := rag_http.NewHandler(&dummyRetrieveUsecase{}, nil, nil, nil, nil, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+	handler := rag_http.NewHandler(&dummyRetrieveUsecase{}, nil, nil, nil, nil, slog.New(slog.DiscardHandler))
 
 	// Missing user_id
 	body := bytes.NewBufferString(`{"query":"test"}`)
-	req := httptest.NewRequest(http.MethodPost, "/v1/rag/retrieve", body)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/rag/retrieve", body)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
 	err := handler.RetrieveContext(c)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 
 	// Valid user_id in JSON
 	body = bytes.NewBufferString(`{"query":"test","user_id":"` + testUserID + `"}`)
-	req = httptest.NewRequest(http.MethodPost, "/v1/rag/retrieve", body)
+	req = httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/rag/retrieve", body)
 	req.Header.Set("Content-Type", "application/json")
 	rec = httptest.NewRecorder()
 	c = e.NewContext(req, rec)
 
 	err = handler.RetrieveContext(c)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, rec.Code)
 
 	// Valid user_id via header
 	body = bytes.NewBufferString(`{"query":"test"}`)
-	req = httptest.NewRequest(http.MethodPost, "/v1/rag/retrieve", body)
+	req = httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/rag/retrieve", body)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Alt-User-Id", testUserID)
 	rec = httptest.NewRecorder()
 	c = e.NewContext(req, rec)
 
 	err = handler.RetrieveContext(c)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, rec.Code)
 }
 
@@ -720,54 +719,54 @@ func (s *stubJobRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status str
 func TestBackfill_RequiresUserID_AndEnqueuesOwner(t *testing.T) {
 	e := echo.New()
 	jobRepo := &stubJobRepo{}
-	handler := rag_http.NewHandler(nil, nil, nil, jobRepo, nil, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+	handler := rag_http.NewHandler(nil, nil, nil, jobRepo, nil, slog.New(slog.DiscardHandler))
 
 	articleID := uuid.New().String()
 
 	// 1. Missing user_id -> 400
 	body := bytes.NewBufferString(`{"article_id":"` + articleID + `","title":"Test","body":"Content"}`)
-	req := httptest.NewRequest(http.MethodPost, "/internal/rag/backfill", body)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/internal/rag/backfill", body)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
 	err := handler.Backfill(c)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 	assert.Contains(t, rec.Body.String(), "user_id")
 
 	// 2. Invalid user_id -> 400
 	body = bytes.NewBufferString(`{"article_id":"` + articleID + `","user_id":"not-a-uuid","title":"Test","body":"Content"}`)
-	req = httptest.NewRequest(http.MethodPost, "/internal/rag/backfill", body)
+	req = httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/internal/rag/backfill", body)
 	req.Header.Set("Content-Type", "application/json")
 	rec = httptest.NewRecorder()
 	c = e.NewContext(req, rec)
 
 	err = handler.Backfill(c)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 
 	// 2b. Nil UUID user_id -> 400
 	body = bytes.NewBufferString(`{"article_id":"` + articleID + `","user_id":"00000000-0000-0000-0000-000000000000","title":"Test","body":"Content"}`)
-	req = httptest.NewRequest(http.MethodPost, "/internal/rag/backfill", body)
+	req = httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/internal/rag/backfill", body)
 	req.Header.Set("Content-Type", "application/json")
 	rec = httptest.NewRecorder()
 	c = e.NewContext(req, rec)
 
 	err = handler.Backfill(c)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 
 	// 3. Valid user_id in JSON body -> 202 and user_id in job payload
 	validUserID := "00000000-0000-0000-0000-000000000001"
 	body = bytes.NewBufferString(`{"article_id":"` + articleID + `","user_id":"` + validUserID + `","title":"Test","body":"Content"}`)
-	req = httptest.NewRequest(http.MethodPost, "/internal/rag/backfill", body)
+	req = httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/internal/rag/backfill", body)
 	req.Header.Set("Content-Type", "application/json")
 	rec = httptest.NewRecorder()
 	c = e.NewContext(req, rec)
 
 	err = handler.Backfill(c)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, http.StatusAccepted, rec.Code)
 	require.Len(t, jobRepo.enqueued, 1)
 	assert.Equal(t, validUserID, jobRepo.enqueued[0].Payload["user_id"])
@@ -775,14 +774,14 @@ func TestBackfill_RequiresUserID_AndEnqueuesOwner(t *testing.T) {
 	// 4. Valid user_id via X-Alt-User-Id header -> 202 and user_id in job payload
 	articleID2 := uuid.New().String()
 	body = bytes.NewBufferString(`{"article_id":"` + articleID2 + `","title":"Test 2","body":"Content 2"}`)
-	req = httptest.NewRequest(http.MethodPost, "/internal/rag/backfill", body)
+	req = httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/internal/rag/backfill", body)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Alt-User-Id", validUserID)
 	rec = httptest.NewRecorder()
 	c = e.NewContext(req, rec)
 
 	err = handler.Backfill(c)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, http.StatusAccepted, rec.Code)
 	require.Len(t, jobRepo.enqueued, 2)
 	assert.Equal(t, validUserID, jobRepo.enqueued[1].Payload["user_id"])
@@ -809,7 +808,7 @@ func (c *captureAnswerUsecase) Stream(_ context.Context, input usecase.AnswerWit
 func TestAnswerWithRAG_BoundsBodyMaxChunksAndQueryLength(t *testing.T) {
 	e := echo.New()
 	capUC := &captureAnswerUsecase{}
-	handler := rag_http.NewHandler(nil, capUC, nil, nil, nil, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+	handler := rag_http.NewHandler(nil, capUC, nil, nil, nil, slog.New(slog.DiscardHandler))
 	validUserID := uuid.NewString()
 
 	t.Run("clamps excessive max_chunks to 50 and query to 4000 runes", func(t *testing.T) {
@@ -822,7 +821,7 @@ func TestAnswerWithRAG_BoundsBodyMaxChunksAndQueryLength(t *testing.T) {
 		raw, err := json.Marshal(payload)
 		require.NoError(t, err)
 
-		req := httptest.NewRequest(http.MethodPost, "/v1/rag/answer", bytes.NewReader(raw))
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/rag/answer", bytes.NewReader(raw))
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
@@ -830,7 +829,7 @@ func TestAnswerWithRAG_BoundsBodyMaxChunksAndQueryLength(t *testing.T) {
 		require.NoError(t, handler.AnswerWithRAG(c))
 		assert.Equal(t, http.StatusOK, rec.Code)
 		assert.Equal(t, 50, capUC.capturedInput.MaxChunks)
-		assert.Equal(t, 4000, len([]rune(capUC.capturedInput.Query)))
+		assert.Len(t, []rune(capUC.capturedInput.Query), 4000)
 	})
 
 	t.Run("clamps non-positive max_chunks to 1", func(t *testing.T) {
@@ -842,7 +841,7 @@ func TestAnswerWithRAG_BoundsBodyMaxChunksAndQueryLength(t *testing.T) {
 		raw, err := json.Marshal(payload)
 		require.NoError(t, err)
 
-		req := httptest.NewRequest(http.MethodPost, "/v1/rag/answer", bytes.NewReader(raw))
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/rag/answer", bytes.NewReader(raw))
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
@@ -854,7 +853,7 @@ func TestAnswerWithRAG_BoundsBodyMaxChunksAndQueryLength(t *testing.T) {
 
 	t.Run("rejects request body exceeding 1 MiB", func(t *testing.T) {
 		oversized := `{"query":"` + string(bytes.Repeat([]byte("x"), (1<<20)+1024)) + `","user_id":"` + validUserID + `"}`
-		req := httptest.NewRequest(http.MethodPost, "/v1/rag/answer", bytes.NewBufferString(oversized))
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/rag/answer", bytes.NewBufferString(oversized))
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)

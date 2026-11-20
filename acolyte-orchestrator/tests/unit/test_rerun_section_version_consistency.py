@@ -36,6 +36,8 @@ from tests.conftest import TEST_USER_ID, make_request_ctx
 if TYPE_CHECKING:
     from acolyte.domain.brief import ReportBrief
 
+EXPECTED_RERUN_REPORT_VERSION = 2
+
 
 class _LockingRepo:
     """In-memory ReportRepositoryPort with real optimistic-lock semantics.
@@ -356,9 +358,11 @@ async def test_rerun_commits_body_and_version_together_when_uncontended() -> Non
         ctx=make_request_ctx("RerunSection"),
     )
 
-    assert repo.report.current_version == 2
-    assert repo.change_items[2] == [ChangeItem(field_name="section:summary", change_kind="regenerated")]
-    assert repo.section_bodies[("summary", 2)] == "Regenerated summary body."
+    assert repo.report.current_version == EXPECTED_RERUN_REPORT_VERSION
+    assert repo.change_items[EXPECTED_RERUN_REPORT_VERSION] == [
+        ChangeItem(field_name="section:summary", change_kind="regenerated")
+    ]
+    assert repo.section_bodies[("summary", EXPECTED_RERUN_REPORT_VERSION)] == "Regenerated summary body."
 
 
 @pytest.mark.asyncio

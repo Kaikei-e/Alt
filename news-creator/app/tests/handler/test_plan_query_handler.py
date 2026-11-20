@@ -1,6 +1,8 @@
 """Tests for plan_query_handler."""
 
+from http import HTTPStatus
 from unittest.mock import AsyncMock
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -32,7 +34,7 @@ def _successful_response() -> PlanQueryResponse:
     )
 
 
-def test_plan_query_success():
+def test_plan_query_success() -> None:
     """POST /api/v1/plan-query returns 200 with valid PlanQueryResponse."""
     mock_usecase = AsyncMock()
     mock_usecase.plan_query.return_value = _successful_response()
@@ -40,7 +42,7 @@ def test_plan_query_success():
 
     resp = client.post("/api/v1/plan-query", json={"query": "テストクエリ"})
 
-    assert resp.status_code == 200
+    assert resp.status_code == HTTPStatus.OK
     body = resp.json()
     assert body["plan"]["intent"] == "general"
     assert body["plan"]["resolved_query"] == "テスト検索クエリ"
@@ -48,67 +50,68 @@ def test_plan_query_success():
     assert body["model"] == "gemma4-e4b-12k"
 
 
-def test_plan_query_with_history():
+def test_plan_query_with_history() -> None:
     """POST /api/v1/plan-query with conversation history passes it to usecase."""
     mock_usecase = AsyncMock()
     mock_usecase.plan_query.return_value = _successful_response()
     client = _make_app(mock_usecase)
 
+    conversation_history = [
+        {"role": "user", "content": "AIの最新動向は？"},
+        {"role": "assistant", "content": "LLMの進化が著しいです。"},
+    ]
     resp = client.post(
         "/api/v1/plan-query",
         json={
             "query": "それについて詳しく",
-            "conversation_history": [
-                {"role": "user", "content": "AIの最新動向は？"},
-                {"role": "assistant", "content": "LLMの進化が著しいです。"},
-            ],
+            "conversation_history": conversation_history,
         },
     )
 
-    assert resp.status_code == 200
+    assert resp.status_code == HTTPStatus.OK
     call_args = mock_usecase.plan_query.call_args[0][0]
-    assert len(call_args.conversation_history) == 2
+    assert len(call_args.conversation_history) == len(conversation_history)
 
 
-def test_plan_query_empty_query_returns_422():
+def test_plan_query_empty_query_returns_422() -> None:
     """POST /api/v1/plan-query with empty query returns 422 (Pydantic validation)."""
     mock_usecase = AsyncMock()
     client = _make_app(mock_usecase)
 
     resp = client.post("/api/v1/plan-query", json={"query": ""})
 
-    assert resp.status_code == 422
+    assert resp.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
 
 
-def test_plan_query_llm_error_returns_502():
+def test_plan_query_llm_error_returns_502() -> None:
     """POST /api/v1/plan-query returns 502 when LLM fails with RuntimeError."""
     mock_usecase = AsyncMock()
-    secret = "Ollama connection refused at http://ollama.internal:11434"
+    secret = "Ollama connection refused at http://ollama.internal:11434"  # noqa: S105 - test fixture string simulating leaked internal detail
     mock_usecase.plan_query.side_effect = RuntimeError(secret)
     client = _make_app(mock_usecase)
 
     resp = client.post("/api/v1/plan-query", json={"query": "テスト"})
 
-    assert resp.status_code == 502
+    assert resp.status_code == HTTPStatus.BAD_GATEWAY
     assert resp.json()["detail"] == "Upstream service error"
     assert secret not in resp.text
 
 
-def test_plan_query_value_error_does_not_leak_exception_text():
+def test_plan_query_value_error_does_not_leak_exception_text() -> None:
     """Regression: ValueError from usecase must not leak to the client body."""
     mock_usecase = AsyncMock()
-    secret = "internal validation failed at /app/news_creator/usecase/plan_query_usecase.py:90"
+    secret = "internal validation failed at /app/news_creator/usecase/plan_query_usecase.py:90"  # noqa: S105 - test fixture string simulating leaked internal detail
     mock_usecase.plan_query.side_effect = ValueError(secret)
     client = _make_app(mock_usecase)
 
     resp = client.post("/api/v1/plan-query", json={"query": "テスト"})
 
-    assert resp.status_code == 400
+    assert resp.status_code == HTTPStatus.BAD_REQUEST
     assert resp.json()["detail"] == "Invalid request"
     assert secret not in resp.text
 
 
-def test_plan_query_unexpected_error_returns_500():
+def test_plan_query_unexpected_error_returns_500() -> None:
     """POST /api/v1/plan-query returns 500 on unexpected errors."""
     mock_usecase = AsyncMock()
     mock_usecase.plan_query.side_effect = Exception("unexpected")
@@ -116,5 +119,5 @@ def test_plan_query_unexpected_error_returns_500():
 
     resp = client.post("/api/v1/plan-query", json={"query": "テスト"})
 
-    assert resp.status_code == 500
+    assert resp.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
     assert resp.json()["detail"] == "Internal server error"

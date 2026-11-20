@@ -46,7 +46,9 @@ describe("useConnectAdminMetrics — picker-driven config", () => {
 
 		await vi.waitFor(() => expect(watchSpy).toHaveBeenCalled());
 
-		const req = watchSpy.mock.calls[0]![0];
+		const firstCall = watchSpy.mock.calls[0];
+		if (!firstCall) throw new Error("expected watchSpy call");
+		const req = firstCall[0];
 		expect(req.keys).toEqual(["http_latency_p50", "availability_burn_1h"]);
 		expect(req.window).toBe(RangeWindow.RANGE_WINDOW_24H);
 		expect(req.step).toBe(Step.STEP_5M);
@@ -60,7 +62,9 @@ describe("useConnectAdminMetrics — picker-driven config", () => {
 
 		await vi.waitFor(() => expect(watchSpy).toHaveBeenCalled());
 
-		const req = watchSpy.mock.calls[0]![0];
+		const firstCall = watchSpy.mock.calls[0];
+		if (!firstCall) throw new Error("expected watchSpy call");
+		const req = firstCall[0];
 		expect(req.keys.length).toBeGreaterThan(0);
 		expect(req.keys).toContain("http_latency_p95");
 		expect(req.window).toBe(RangeWindow.RANGE_WINDOW_UNSPECIFIED);

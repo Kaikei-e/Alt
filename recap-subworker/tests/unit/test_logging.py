@@ -7,9 +7,26 @@ from __future__ import annotations
 
 import json
 import logging
+import time as time_module
 from io import StringIO
+from logging.handlers import QueueHandler
 
+import pytest
 import structlog
+from structlog.contextvars import get_contextvars
+
+from recap_subworker.infra.logging import (
+    DBLogHandler,
+    add_business_context,
+    clear_context,
+    configure_logging,
+    get_article_id,
+    get_job_id,
+    get_processing_stage,
+    set_article_id,
+    set_job_id,
+    set_processing_stage,
+)
 
 
 class TestAddBusinessContext:
@@ -17,8 +34,6 @@ class TestAddBusinessContext:
 
     def test_renames_job_id_to_alt_format(self) -> None:
         """job_id should be renamed to alt.job.id."""
-        from recap_subworker.infra.logging import add_business_context
-
         event_dict = {"event": "test", "job_id": "job-123"}
         result = add_business_context(None, "info", event_dict)
 
@@ -28,8 +43,6 @@ class TestAddBusinessContext:
 
     def test_renames_article_id_to_alt_format(self) -> None:
         """article_id should be renamed to alt.article.id."""
-        from recap_subworker.infra.logging import add_business_context
-
         event_dict = {"event": "test", "article_id": "article-456"}
         result = add_business_context(None, "info", event_dict)
 
@@ -39,8 +52,6 @@ class TestAddBusinessContext:
 
     def test_adds_ai_pipeline_identifier(self) -> None:
         """Always adds alt.ai.pipeline = 'recap-classification'."""
-        from recap_subworker.infra.logging import add_business_context
-
         event_dict = {"event": "test"}
         result = add_business_context(None, "info", event_dict)
 
@@ -49,13 +60,12 @@ class TestAddBusinessContext:
 
     def test_preserves_other_fields(self) -> None:
         """Other fields should be preserved unchanged."""
-        from recap_subworker.infra.logging import add_business_context
-
-        event_dict = {"event": "test", "custom_field": "value", "count": 42}
+        expected_count = 42
+        event_dict = {"event": "test", "custom_field": "value", "count": expected_count}
         result = add_business_context(None, "info", event_dict)
 
         assert result["custom_field"] == "value"
-        assert result["count"] == 42
+        assert result["count"] == expected_count
         assert result["event"] == "test"
 
 
@@ -64,12 +74,6 @@ class TestContextVars:
 
     def test_set_and_get_job_id(self) -> None:
         """set_job_id and get_job_id should work correctly."""
-        from recap_subworker.infra.logging import (
-            clear_context,
-            get_job_id,
-            set_job_id,
-        )
-
         clear_context()
         assert get_job_id() is None
 
@@ -81,12 +85,6 @@ class TestContextVars:
 
     def test_set_and_get_article_id(self) -> None:
         """set_article_id and get_article_id should work correctly."""
-        from recap_subworker.infra.logging import (
-            clear_context,
-            get_article_id,
-            set_article_id,
-        )
-
         clear_context()
         assert get_article_id() is None
 
@@ -98,12 +96,6 @@ class TestContextVars:
 
     def test_set_and_get_processing_stage(self) -> None:
         """set_processing_stage and get_processing_stage should work correctly."""
-        from recap_subworker.infra.logging import (
-            clear_context,
-            get_processing_stage,
-            set_processing_stage,
-        )
-
         clear_context()
         assert get_processing_stage() is None
 
@@ -115,16 +107,6 @@ class TestContextVars:
 
     def test_clear_context_clears_all(self) -> None:
         """clear_context should clear all context variables."""
-        from recap_subworker.infra.logging import (
-            clear_context,
-            get_article_id,
-            get_job_id,
-            get_processing_stage,
-            set_article_id,
-            set_job_id,
-            set_processing_stage,
-        )
-
         set_job_id("job")
         set_article_id("article")
         set_processing_stage("stage")
@@ -141,24 +123,10 @@ class TestMergeContextVarsProcessor:
 
     def test_context_vars_merged_via_bind_contextvars(self) -> None:
         """Context variables set via bind_contextvars should be available in logs."""
-        from recap_subworker.infra.logging import (
-            clear_context,
-            set_article_id,
-            set_job_id,
-            set_processing_stage,
-        )
-
         clear_context()
         set_job_id("merged-job")
         set_article_id("merged-article")
         set_processing_stage("merged-stage")
-
-        # Verify context is set correctly
-        from recap_subworker.infra.logging import (
-            get_article_id,
-            get_job_id,
-            get_processing_stage,
-        )
 
         assert get_job_id() == "merged-job"
         assert get_article_id() == "merged-article"
@@ -166,9 +134,6 @@ class TestMergeContextVarsProcessor:
 
         # Also test structlog.contextvars.bind_contextvars integration
         structlog.contextvars.bind_contextvars(job_id="bound-job")
-
-        # Get bound context
-        from structlog.contextvars import get_contextvars
 
         bound = get_contextvars()
         assert bound.get("job_id") == "bound-job"
@@ -183,8 +148,6 @@ class TestConfigureLoggingWithBusinessContext:
 
     def test_json_output_includes_alt_keys(self) -> None:
         """JSON output should include alt.* prefixed keys."""
-        from recap_subworker.infra.logging import configure_logging
-
         # Capture stdout
         stream = StringIO()
         handler = logging.StreamHandler(stream)
@@ -226,10 +189,6 @@ class TestDBLogHandlerNonBlocking:
     in-memory enqueue."""
 
     def test_configure_logging_installs_queue_handler_for_db_writes(self) -> None:
-        from logging.handlers import QueueHandler
-
-        from recap_subworker.infra.logging import configure_logging
-
         configure_logging("INFO")
 
         root = logging.getLogger()
@@ -240,16 +199,12 @@ class TestDBLogHandlerNonBlocking:
             for h in [h for h in root.handlers if isinstance(h, QueueHandler)]:
                 root.removeHandler(h)
 
-    def test_slow_db_write_does_not_block_caller(self, monkeypatch) -> None:
+    def test_slow_db_write_does_not_block_caller(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """A slow/hanging DB write must not block the thread that calls
         logger.error() (simulates a DB outage under logging load)."""
-        import time as time_module
-
-        from recap_subworker.infra.logging import DBLogHandler, configure_logging
-
         slow_seconds = 1.0
 
-        def slow_emit(self, record):
+        def slow_emit(self: object, record: logging.LogRecord) -> None:
             time_module.sleep(slow_seconds)
 
         monkeypatch.setattr(DBLogHandler, "emit", slow_emit)
@@ -271,7 +226,5 @@ class TestDBLogHandlerNonBlocking:
         time_module.sleep(slow_seconds)
 
         root = logging.getLogger()
-        from logging.handlers import QueueHandler
-
         for h in [h for h in root.handlers if isinstance(h, QueueHandler)]:
             root.removeHandler(h)

@@ -243,7 +243,7 @@ func TestRecordFeedLinkFailure_UnknownURLIsAnError(t *testing.T) {
 		"https://unknown.example.com/feed.xml", "boom", 5)
 
 	require.Error(t, err)
-	assert.ErrorIs(t, err, pgx.ErrNoRows,
+	require.ErrorIs(t, err, pgx.ErrNoRows,
 		"the caller distinguishes an unknown URL from a database fault, so the sentinel must survive the wrap")
 	require.NoError(t, mock.ExpectationsWereMet())
 }

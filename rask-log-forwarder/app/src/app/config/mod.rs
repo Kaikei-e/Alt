@@ -62,6 +62,7 @@ pub enum Protocol {
 ///
 /// This is a stopgap: the underlying fix is routing OTLP batches through
 /// `ReliabilityManager` like NDJSON already does (see `pipeline::flush_batch`).
+#[must_use]
 pub fn reliability_gap_warning(protocol: Protocol) -> Option<&'static str> {
     match protocol {
         Protocol::Otlp => Some(

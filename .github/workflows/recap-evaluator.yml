@@ -7,6 +7,7 @@ on:
     branches: [main, develop]
     paths:
       - "recap-evaluator/**"
+      - "scripts/lint/**"
       - ".github/workflows/recap-evaluator.yml"
       - ".github/workflows/reusable-test-python.yaml"
       - "!**/CLAUDE.md"
@@ -16,6 +17,7 @@ on:
     branches: [main, develop]
     paths:
       - "recap-evaluator/**"
+      - "scripts/lint/**"
       - ".github/workflows/recap-evaluator.yml"
       - ".github/workflows/reusable-test-python.yaml"
       - "!**/CLAUDE.md"
@@ -53,31 +55,16 @@ jobs:
     permissions:
       contents: read
 
-  typecheck:
-    uses: ./.github/workflows/reusable-test-python.yaml
-    with:
-      working-directory: "recap-evaluator"
-      python-version: "3.14"
-      sparse-checkout: "recap-evaluator"
-      job-type: "typecheck"
-    permissions:
-      contents: read
-
-  # NOTE: The `security` job-type is deliberately absent: bandit is not in
-  # recap-evaluator's dev dependency group. ruff's `S` ruleset is selected in
-  # pyproject.toml, so bandit rules run in the lint job.
-
   quality-gate:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    needs: [tests, lint, typecheck]
+    needs: [tests, lint]
     if: always()
     steps:
       - name: Check all jobs passed
         run: |
           if [ "${{ needs.tests.result }}" != "success" ] || \
-             [ "${{ needs.lint.result }}" != "success" ] || \
-             [ "${{ needs.typecheck.result }}" != "success" ]; then
+             [ "${{ needs.lint.result }}" != "success" ]; then
             echo "One or more quality gates failed"
             exit 1
           fi

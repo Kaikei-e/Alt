@@ -125,8 +125,9 @@ func (e *Enqueuer) Run(ctx context.Context) (EnqueueStats, error) {
 		if err != nil || parsedUserID == uuid.Nil {
 			e.logger.Warn("rebuild_enqueue_skipped_missing_owner",
 				slog.String("article_id", a.ID),
-				slog.String("user_id", a.UserID))
-			return nil
+				slog.String("user_id", a.UserID),
+				slog.Any("error", err))
+			return nil //nolint:nilerr // intentional: skip articles without a valid owner and continue scanning
 		}
 		a.UserID = parsedUserID.String()
 		if _, ok := upToDate[a.ID]; ok {

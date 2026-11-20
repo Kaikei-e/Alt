@@ -12,6 +12,11 @@ from collections.abc import Callable
 from tag_generator.stream_consumer import supervise
 
 
+class _RedisDownError(ConnectionError):
+    def __init__(self) -> None:
+        super().__init__("redis went away")
+
+
 class _Recorder:
     def __init__(self) -> None:
         self.health: dict[str, bool] = {}
@@ -31,18 +36,19 @@ def _flaky(failures: int) -> tuple[list[int], Callable[[], None]]:
     def run() -> None:
         calls.append(len(calls) + 1)
         if len(calls) <= failures:
-            raise ConnectionError("redis went away")
+            raise _RedisDownError
 
     return calls, run
 
 
 def test_restarts_until_the_consumer_stays_up() -> None:
-    calls, run = _flaky(failures=2)
+    failures = 2
+    calls, run = _flaky(failures=failures)
     rec = _Recorder()
 
     supervise("articles", run, on_health=rec.on_health, sleep=rec.sleep, max_attempts=10)
 
-    assert len(calls) == 3
+    assert len(calls) == failures + 1
     assert rec.health["articles"] is True
 
 
@@ -61,7 +67,7 @@ def test_reports_unhealthy_while_down() -> None:
     seen: list[bool] = []
 
     def run() -> None:
-        raise ConnectionError("redis went away")
+        raise _RedisDownError
 
     def on_health(_name: str, healthy: bool) -> None:
         seen.append(healthy)
@@ -74,21 +80,22 @@ def test_reports_unhealthy_while_down() -> None:
 
 def test_gives_up_only_after_the_attempt_budget() -> None:
     calls: list[int] = []
+    attempt_budget = 4
 
     def run() -> None:
         calls.append(1)
-        raise ConnectionError("redis went away")
+        raise _RedisDownError
 
     rec = _Recorder()
-    supervise("articles", run, on_health=rec.on_health, sleep=rec.sleep, max_attempts=4)
+    supervise("articles", run, on_health=rec.on_health, sleep=rec.sleep, max_attempts=attempt_budget)
 
-    assert len(calls) == 4
+    assert len(calls) == attempt_budget
     assert rec.health["articles"] is False
 
 
 def test_backoff_grows_and_is_capped() -> None:
     def run() -> None:
-        raise ConnectionError("redis went away")
+        raise _RedisDownError
 
     rec = _Recorder()
     supervise(

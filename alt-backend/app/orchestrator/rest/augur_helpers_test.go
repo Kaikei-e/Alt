@@ -1,7 +1,6 @@
 package rest
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -117,10 +116,10 @@ func TestSanitizeMetaEvent(t *testing.T) {
 				assert.Equal(t, tt.exact, got)
 			}
 			for _, c := range tt.contains {
-				assert.True(t, strings.Contains(got, c), "expected %q to contain %q", got, c)
+				assert.Contains(t, got, c, "expected %q to contain %q", got, c)
 			}
 			for _, o := range tt.omits {
-				assert.False(t, strings.Contains(got, o), "expected %q not to contain %q", got, o)
+				assert.NotContains(t, got, o, "expected %q not to contain %q", got, o)
 			}
 		})
 	}

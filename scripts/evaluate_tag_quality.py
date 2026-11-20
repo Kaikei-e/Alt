@@ -15,6 +15,7 @@ import argparse
 import json
 import os
 import sys
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -56,22 +57,20 @@ class GoldenSample:
 
 def load_golden_dataset(path: str) -> list[GoldenSample]:
     """Load golden dataset from JSON file."""
-    with open(path, encoding="utf-8") as f:
+    with Path(path).open(encoding="utf-8") as f:
         data = json.load(f)
 
-    samples = []
-    for item in data.get("samples", []):
-        samples.append(
-            GoldenSample(
-                id=item["id"],
-                title=item["title"],
-                content=item["content"],
-                expected_tags=item["expected_tags"],
-                language=item.get("language", "ja"),
-                source=item.get("source", "manual"),
-            )
+    return [
+        GoldenSample(
+            id=item["id"],
+            title=item["title"],
+            content=item["content"],
+            expected_tags=item["expected_tags"],
+            language=item.get("language", "ja"),
+            source=item.get("source", "manual"),
         )
-    return samples
+        for item in data.get("samples", [])
+    ]
 
 
 def save_golden_dataset(samples: list[GoldenSample], path: str) -> None:
@@ -91,8 +90,9 @@ def save_golden_dataset(samples: list[GoldenSample], path: str) -> None:
             for s in samples
         ],
     }
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
+    out_path = Path(path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with out_path.open("w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
@@ -235,23 +235,23 @@ def evaluate_extractor(
 
 def print_metrics(metrics: EvaluationMetrics, extractor_name: str) -> None:
     """Print evaluation metrics in a formatted table."""
-    print(f"\n{'=' * 60}")
-    print(f"Evaluation Results: {extractor_name}")
-    print(f"{'=' * 60}")
-    print(f"Total Samples: {metrics.total_samples}")
-    print(f"\n{'Metric':<25} {'Value':<15}")
-    print("-" * 40)
-    print(f"{'Precision@5':<25} {metrics.precision_at_5:.3f}")
-    print(f"{'Precision@10':<25} {metrics.precision_at_10:.3f}")
-    print(f"{'Recall@5':<25} {metrics.recall_at_5:.3f}")
-    print(f"{'Recall@10':<25} {metrics.recall_at_10:.3f}")
-    print(f"{'F1@5':<25} {metrics.f1_at_5:.3f}")
-    print(f"{'F1@10':<25} {metrics.f1_at_10:.3f}")
-    print(f"{'Diversity Score':<25} {metrics.diversity_score:.3f}")
-    print(f"{'Avg Tag Count':<25} {metrics.avg_tag_count:.1f}")
-    print(f"{'Empty Tag Rate':<25} {metrics.empty_tag_rate:.1%}")
-    print(f"{'Avg Inference (ms)':<25} {metrics.avg_inference_ms:.1f}")
-    print("=" * 60)
+    sys.stdout.write(f"\n{'=' * 60}\n")
+    sys.stdout.write(f"Evaluation Results: {extractor_name}\n")
+    sys.stdout.write(f"{'=' * 60}\n")
+    sys.stdout.write(f"Total Samples: {metrics.total_samples}\n")
+    sys.stdout.write(f"\n{'Metric':<25} {'Value':<15}\n")
+    sys.stdout.write("-" * 40 + "\n")
+    sys.stdout.write(f"{'Precision@5':<25} {metrics.precision_at_5:.3f}\n")
+    sys.stdout.write(f"{'Precision@10':<25} {metrics.precision_at_10:.3f}\n")
+    sys.stdout.write(f"{'Recall@5':<25} {metrics.recall_at_5:.3f}\n")
+    sys.stdout.write(f"{'Recall@10':<25} {metrics.recall_at_10:.3f}\n")
+    sys.stdout.write(f"{'F1@5':<25} {metrics.f1_at_5:.3f}\n")
+    sys.stdout.write(f"{'F1@10':<25} {metrics.f1_at_10:.3f}\n")
+    sys.stdout.write(f"{'Diversity Score':<25} {metrics.diversity_score:.3f}\n")
+    sys.stdout.write(f"{'Avg Tag Count':<25} {metrics.avg_tag_count:.1f}\n")
+    sys.stdout.write(f"{'Empty Tag Rate':<25} {metrics.empty_tag_rate:.1%}\n")
+    sys.stdout.write(f"{'Avg Inference (ms)':<25} {metrics.avg_inference_ms:.1f}\n")
+    sys.stdout.write("=" * 60 + "\n")
 
 
 def create_extractor_fn(
@@ -266,10 +266,10 @@ def create_extractor_fn(
     Returns:
         Function that takes (title, content) and returns (tags, inference_ms)
     """
-    import time
-
     if extractor_type == "current":
-        from tag_extractor.extract import TagExtractor
+        from tag_extractor.extract import (  # noqa: PLC0415 -- optional heavy ML extractor loaded on demand
+            TagExtractor,
+        )
 
         extractor = TagExtractor()
 
@@ -279,8 +279,10 @@ def create_extractor_fn(
 
         return extract_current
 
-    elif extractor_type == "hybrid":
-        from tag_extractor.hybrid_extractor import HybridExtractor
+    if extractor_type == "hybrid":
+        from tag_extractor.hybrid_extractor import (  # noqa: PLC0415 -- optional heavy ML extractor loaded on demand
+            HybridExtractor,
+        )
 
         extractor = HybridExtractor()
 
@@ -292,8 +294,10 @@ def create_extractor_fn(
 
         return extract_hybrid
 
-    elif extractor_type == "ginza":
-        from tag_extractor.ginza_extractor import GinzaExtractor
+    if extractor_type == "ginza":
+        from tag_extractor.ginza_extractor import (  # noqa: PLC0415 -- optional heavy ML extractor loaded on demand
+            GinzaExtractor,
+        )
 
         extractor = GinzaExtractor()
 
@@ -309,11 +313,11 @@ def create_extractor_fn(
 
         return extract_ginza
 
-    else:
-        raise ValueError(f"Unknown extractor type: {extractor_type}")
+    msg = f"Unknown extractor type: {extractor_type}"
+    raise ValueError(msg)
 
 
-def create_dataset_from_db(
+def create_dataset_from_db(  # noqa: PLR0913 - CLI entry point; one argument per command-line option
     db_url: str,
     output_path: str,
     limit: int = 200,
@@ -332,9 +336,9 @@ def create_dataset_from_db(
         min_tags: Minimum number of tags per article
         language: Target language ('ja' or 'en')
     """
-    import psycopg2
+    import psycopg2  # noqa: PLC0415 -- optional DB dependency needed only for --create-dataset
 
-    print(f"Connecting to database...")
+    sys.stdout.write("Connecting to database...\n")
 
     # Query to get high-quality tagged articles
     query = """
@@ -377,9 +381,9 @@ def create_dataset_from_db(
                 )
             )
 
-    print(f"Extracted {len(samples)} samples from database")
+    sys.stdout.write(f"Extracted {len(samples)} samples from database\n")
     save_golden_dataset(samples, output_path)
-    print(f"Saved golden dataset to {output_path}")
+    sys.stdout.write(f"Saved golden dataset to {output_path}\n")
 
 
 def main() -> None:
@@ -454,7 +458,7 @@ Examples:
 
     if args.create_dataset:
         if not args.db_url:
-            print("Error: --db-url is required for dataset creation")
+            sys.stdout.write("Error: --db-url is required for dataset creation\n")
             sys.exit(1)
         create_dataset_from_db(
             db_url=args.db_url,
@@ -465,22 +469,22 @@ Examples:
         return
 
     if not args.dataset:
-        print("Error: --dataset is required for evaluation")
+        sys.stdout.write("Error: --dataset is required for evaluation\n")
         parser.print_help()
         sys.exit(1)
 
-    if not os.path.exists(args.dataset):
-        print(f"Error: Dataset file not found: {args.dataset}")
+    if not Path(args.dataset).exists():
+        sys.stdout.write(f"Error: Dataset file not found: {args.dataset}\n")
         sys.exit(1)
 
-    print(f"Loading golden dataset from {args.dataset}...")
+    sys.stdout.write(f"Loading golden dataset from {args.dataset}...\n")
     samples = load_golden_dataset(args.dataset)
-    print(f"Loaded {len(samples)} samples")
+    sys.stdout.write(f"Loaded {len(samples)} samples\n")
 
-    print(f"Creating {args.extractor} extractor...")
+    sys.stdout.write(f"Creating {args.extractor} extractor...\n")
     extract_fn = create_extractor_fn(args.extractor)
 
-    print(f"Evaluating {args.extractor} extractor...")
+    sys.stdout.write(f"Evaluating {args.extractor} extractor...\n")
     metrics = evaluate_extractor(samples, extract_fn)
 
     print_metrics(metrics, args.extractor)
@@ -504,9 +508,9 @@ Examples:
             },
             "per_sample_results": metrics.per_sample_results,
         }
-        with open(args.output_json, "w", encoding="utf-8") as f:
+        with Path(args.output_json).open("w", encoding="utf-8") as f:
             json.dump(result, f, ensure_ascii=False, indent=2)
-        print(f"\nDetailed results saved to {args.output_json}")
+        sys.stdout.write(f"\nDetailed results saved to {args.output_json}\n")
 
 
 if __name__ == "__main__":

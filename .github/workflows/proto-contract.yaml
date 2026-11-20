@@ -66,6 +66,7 @@ on:
       - 'scripts/publish-pact-bridge.py'
       - 'scripts/tests/**'
       - 'scripts/ci/**'
+      - 'scripts/lint/**'
       - 'playbooks/publish-manual-verifications.yml'
       - 'playbooks/_publish-bridge.yml'
       - '!**/CLAUDE.md'
@@ -110,6 +111,7 @@ on:
       - 'scripts/publish-pact-bridge.py'
       - 'scripts/tests/**'
       - 'scripts/ci/**'
+      - 'scripts/lint/**'
       - 'playbooks/publish-manual-verifications.yml'
       - 'playbooks/_publish-bridge.yml'
       - '!**/CLAUDE.md'
@@ -135,20 +137,19 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Resolve pinned buf version
+        id: buf_version
+        run: |
+          buf_version="$(sed -n 's/^readonly BUF_VERSION="\([^"]*\)"/\1/p' scripts/lint/proto.sh | head -n 1)"
+          test -n "$buf_version"
+          echo "version=$buf_version" >> "$GITHUB_OUTPUT"
+
       # buf-setup-action / buf-breaking-action are archived; buf-action with
       # setup_only installs the CLI and leaves lint/breaking to explicit steps.
       - uses: bufbuild/buf-action@37ac33d8960807670a6e9719080e885197b09cc6  # v1.7.0
         with:
           setup_only: true
-
-      - name: Buf lint
-        working-directory: proto
-        run: buf lint
-
-      - name: Buf breaking change detection
-        if: github.event_name == 'pull_request'
-        working-directory: proto
-        run: buf breaking --against 'https://github.com/Kaikei-e/Alt.git#branch=main,subdir=proto'
+          version: ${{ steps.buf_version.outputs.version }}
 
       # The public-API allowlist gate lives in this job rather than a new one so
       # it is blocking from the first run: "Buf Lint & Breaking Change Detection"
@@ -156,7 +157,7 @@ jobs:
       # non-blocking until branch protection is re-wired.
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
-          go-version: "1.27.1"
+          go-version: "1.27.4"
           # check-latest matches reusable-test-go: the runner's preinstalled Go
           # lags patch releases, and setup-go v7 sets GOTOOLCHAIN=local, so a
           # stale 1.27.x here fails every go.mod that already moved on.
@@ -169,29 +170,10 @@ jobs:
         working-directory: proto/tools/protovis
         run: go test ./...
 
-      # ADR-000955: the (alt.api.v1.visibility) option on each alt.* service is
-      # the single source of truth for what is public API. protovis derives the
-      # BFF Go allowlist and the frontend TS allowlist from it and exits
-      # non-zero on any alt.* service that declares nothing, so a new service
-      # cannot become browser-reachable by omission.
-      - name: Regenerate public-API allowlists
-        working-directory: proto
-        run: |
-          buf build --exclude-source-info -o "${RUNNER_TEMP}/descriptor.binpb"
-          cd tools/protovis
-          go run . -desc "${RUNNER_TEMP}/descriptor.binpb" -root "${GITHUB_WORKSPACE}"
-
-      # `git status --porcelain`, not `git diff --exit-code`: a newly declared
-      # service can produce a generated file that does not exist in the commit
-      # at all, and diff reports a clean tree while the artifact is untracked.
-      - name: Fail on allowlist drift
-        run: |
-          if [[ -n "$(git status --porcelain)" ]]; then
-            echo "::error::Generated allowlists are stale. Re-run protovis and commit the result."
-            git status --porcelain
-            git diff
-            exit 1
-          fi
+      - name: Buf lint, breaking check, and allowlist drift
+        env:
+          TARGET: proto
+        run: ./scripts/lint/run.sh "$TARGET"
 
   contract-conformance:
     name: Contract Conformance Tests (FE)
@@ -288,7 +270,7 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
-          go-version: "1.27.1"
+          go-version: "1.27.4"
           # check-latest matches reusable-test-go: the runner's preinstalled Go
           # lags patch releases, and setup-go v7 sets GOTOOLCHAIN=local, so a
           # stale 1.27.x here fails every go.mod that already moved on.
@@ -444,7 +426,7 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
-          go-version: "1.27.1"
+          go-version: "1.27.4"
           # check-latest matches reusable-test-go: the runner's preinstalled Go
           # lags patch releases, and setup-go v7 sets GOTOOLCHAIN=local, so a
           # stale 1.27.x here fails every go.mod that already moved on.

@@ -4,11 +4,12 @@ from unittest.mock import MagicMock
 import pytest
 import structlog
 
+import tag_generator.service
 from main import TagGeneratorConfig, TagGeneratorService
 
 
 @pytest.fixture(autouse=True)
-def setup_test_logging(monkeypatch):
+def setup_test_logging(monkeypatch: pytest.MonkeyPatch) -> None:
     """Override conftest.py's logging configuration to use stdlib logger for caplog."""
     # Set service name for tests via environment variable
     monkeypatch.setenv("SERVICE_NAME", "tag-generator-test")
@@ -42,13 +43,11 @@ def setup_test_logging(monkeypatch):
     root_logger.handlers = []  # Remove all handlers so caplog can add its own
 
     # Re-initialize module-level loggers to use new configuration
-    import tag_generator.service
-
     tag_generator.service.logger = structlog.get_logger(tag_generator.service.__name__)
 
 
 @pytest.fixture
-def mock_tag_generator_service():
+def mock_tag_generator_service() -> TagGeneratorService:
     config = TagGeneratorConfig(
         processing_interval=1,
         error_retry_interval=1,
@@ -63,7 +62,10 @@ def mock_tag_generator_service():
     return service
 
 
-def test_tag_generator_service_initialization_logs(mock_tag_generator_service, caplog):
+def test_tag_generator_service_initialization_logs(
+    mock_tag_generator_service: TagGeneratorService,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     """Test that TagGeneratorService logs initialization messages properly."""
     with caplog.at_level(logging.INFO):
         caplog.clear()

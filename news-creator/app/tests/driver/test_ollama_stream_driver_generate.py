@@ -1,5 +1,7 @@
 """Unit tests for OllamaStreamDriver.generate_stream() and option merging."""
 
+from collections.abc import AsyncIterator
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
@@ -69,7 +71,9 @@ def _make_generate_session(
     session = MagicMock()
     session.closed = False
 
-    def _post(url: str, json: dict | None = None, **kwargs):
+    def _post(
+        url: str, json: dict[str, Any] | None = None, **kwargs: object
+    ) -> AsyncMock:
         captured["url"] = url
         captured["json"] = json
         captured["kwargs"] = kwargs
@@ -83,8 +87,12 @@ class TestGenerateStreamHappyPath:
     """Happy path tests for OllamaStreamDriver.generate_stream()."""
 
     @pytest.mark.asyncio
-    async def test_yields_ndjson_chunks_and_done_final_chunk(self, driver):
+    async def test_yields_ndjson_chunks_and_done_final_chunk(
+        self, driver: OllamaStreamDriver
+    ) -> None:
         """generate_stream() yields parsed NDJSON dicts up to done=True."""
+        expected_chunk_count = 3
+        expected_eval_count = 2
         lines: list[bytes | Exception] = [
             b'{"model":"gemma4-e4b-12k","response":"Hello","done":false}\n',
             b"\n",  # empty line skipped
@@ -102,19 +110,22 @@ class TestGenerateStreamHappyPath:
 
         chunks = [chunk async for chunk in driver.generate_stream(payload)]
 
-        assert len(chunks) == 3
+        assert len(chunks) == expected_chunk_count
         assert chunks[0]["response"] == "Hello"
         assert chunks[0]["done"] is False
         assert chunks[1]["response"] == " world"
         assert chunks[1]["done"] is False
         assert chunks[2]["done"] is True
-        assert chunks[2]["eval_count"] == 2
+        assert chunks[2]["eval_count"] == expected_eval_count
         assert captured["url"] == "http://127.0.0.1:11435/api/generate"
         assert captured["kwargs"].get("allow_redirects") is False
 
     @pytest.mark.asyncio
-    async def test_skips_malformed_json_line_and_continues_to_done(self, driver):
+    async def test_skips_malformed_json_line_and_continues_to_done(
+        self, driver: OllamaStreamDriver
+    ) -> None:
         """Malformed NDJSON lines are logged and skipped if stream still completes with done=true."""
+        expected_chunk_count = 2
         lines: list[bytes | Exception] = [
             b'{"model":"gemma4-e4b-12k","response":"First","done":false}\n',
             b"{malformed-json\n",
@@ -130,7 +141,7 @@ class TestGenerateStreamHappyPath:
         }
 
         chunks = [chunk async for chunk in driver.generate_stream(payload)]
-        assert len(chunks) == 2
+        assert len(chunks) == expected_chunk_count
         assert chunks[0]["response"] == "First"
         assert chunks[1]["done"] is True
 
@@ -138,10 +149,13 @@ class TestGenerateStreamHappyPath:
 class TestThinkFalseAndMergeOptions:
     """Tests for think=False enforcement and _RUNNER_STARTUP_PARAMS stripping."""
 
-    def test_merge_options_strips_all_runner_startup_params(self, driver):
+    def test_merge_options_strips_all_runner_startup_params(
+        self, driver: OllamaStreamDriver
+    ) -> None:
         """_merge_options() strips num_ctx, num_batch, num_keep, and num_gpu."""
-        assert _RUNNER_STARTUP_PARAMS == frozenset(
-            {"num_ctx", "num_batch", "num_keep", "num_gpu"}
+        assert (
+            frozenset({"num_ctx", "num_batch", "num_keep", "num_gpu"})
+            == _RUNNER_STARTUP_PARAMS
         )
         base = driver.config.get_llm_options()
         caller_options = {
@@ -159,16 +173,18 @@ class TestThinkFalseAndMergeOptions:
         assert merged["num_batch"] == base["num_batch"]
         assert merged["num_keep"] == base["num_keep"]
         assert merged["num_gpu"] == base["num_gpu"]
-        assert merged["temperature"] == 0.42
-        assert merged["num_predict"] == 777
+        assert merged["temperature"] == caller_options["temperature"]
+        assert merged["num_predict"] == caller_options["num_predict"]
 
     @pytest.mark.asyncio
-    async def test_chat_stream_forces_think_false_and_merges_options(self, driver):
+    async def test_chat_stream_forces_think_false_and_merges_options(
+        self, driver: OllamaStreamDriver
+    ) -> None:
         """chat_stream() forces think=False and strips runner startup params."""
         mock_resp = AsyncMock()
         mock_resp.status = 200
 
-        async def _iter_lines():
+        async def _iter_lines() -> AsyncIterator[bytes]:
             yield b'{"message":{"role":"assistant","content":"ok"},"done":true}\n'
 
         mock_resp.content = _iter_lines()
@@ -176,11 +192,13 @@ class TestThinkFalseAndMergeOptions:
         ctx.__aenter__ = AsyncMock(return_value=mock_resp)
         ctx.__aexit__ = AsyncMock(return_value=False)
 
-        captured: dict = {}
+        captured: dict[str, Any] = {}
         session = MagicMock()
         session.closed = False
 
-        def _post(url: str, json: dict | None = None, **kwargs):
+        def _post(
+            url: str, json: dict[str, Any] | None = None, **kwargs: object
+        ) -> AsyncMock:
             captured["url"] = url
             captured["json"] = json
             return ctx
@@ -189,10 +207,15 @@ class TestThinkFalseAndMergeOptions:
         driver.session = session
 
         base = driver.config.get_llm_options()
+        caller_temperature = 0.15
         payload = {
             "model": "gemma4-e4b-12k",
             "messages": [{"role": "user", "content": "hi"}],
-            "options": {"num_ctx": 65536, "num_gpu": 0, "temperature": 0.15},
+            "options": {
+                "num_ctx": 65536,
+                "num_gpu": 0,
+                "temperature": caller_temperature,
+            },
         }
 
         chunks = [c async for c in driver.chat_stream(payload)]
@@ -200,7 +223,7 @@ class TestThinkFalseAndMergeOptions:
         assert captured["json"]["think"] is False
         assert captured["json"]["options"]["num_ctx"] == base["num_ctx"]
         assert captured["json"]["options"]["num_gpu"] == base["num_gpu"]
-        assert captured["json"]["options"]["temperature"] == 0.15
+        assert captured["json"]["options"]["temperature"] == caller_temperature
 
 
 class TestTruncatedStreamInvariant:
@@ -208,8 +231,8 @@ class TestTruncatedStreamInvariant:
 
     @pytest.mark.asyncio
     async def test_raises_runtime_error_when_eof_reached_without_done_true(
-        self, driver
-    ):
+        self, driver: OllamaStreamDriver
+    ) -> None:
         """Stream yielding data chunks then hitting EOF without done=true raises RuntimeError."""
         lines: list[bytes | Exception] = [
             b'{"model":"gemma4-e4b-12k","response":"partial 1","done":false}\n',
@@ -224,19 +247,23 @@ class TestTruncatedStreamInvariant:
             "stream": True,
         }
 
-        yielded = []
-        with pytest.raises(RuntimeError, match="response is truncated"):
-            async for chunk in driver.generate_stream(payload):
-                yielded.append(chunk)
+        yielded: list[dict[str, Any]] = []
 
-        assert len(yielded) == 2
+        async def _consume() -> None:
+            async for chunk in driver.generate_stream(payload):
+                yielded.append(chunk)  # noqa: PERF401 - retain partial chunks yielded before mid-stream error
+
+        with pytest.raises(RuntimeError, match="response is truncated"):
+            await _consume()
+
+        assert len(yielded) == len(lines)
         assert yielded[0]["response"] == "partial 1"
         assert yielded[1]["response"] == "partial 2"
 
     @pytest.mark.asyncio
     async def test_raises_runtime_error_when_connection_drops_mid_stream_without_done(
-        self, driver
-    ):
+        self, driver: OllamaStreamDriver
+    ) -> None:
         """Mid-stream ClientConnectionError after yielding partial chunks without done=true raises RuntimeError."""
         lines: list[bytes | Exception] = [
             b'{"model":"gemma4-e4b-12k","response":"partial","done":false}\n',
@@ -252,9 +279,13 @@ class TestTruncatedStreamInvariant:
         }
 
         yielded = []
-        with pytest.raises(RuntimeError, match="response is truncated"):
+
+        async def _consume() -> None:
             async for chunk in driver.generate_stream(payload):
-                yielded.append(chunk)
+                yielded.append(chunk)  # noqa: PERF401 - retain partial chunks yielded before mid-stream error
+
+        with pytest.raises(RuntimeError, match="response is truncated"):
+            await _consume()
 
         assert len(yielded) == 1
 
@@ -263,21 +294,25 @@ class TestGenerateStreamErrorHandling:
     """Tests for error conditions in OllamaStreamDriver.generate_stream()."""
 
     @pytest.mark.asyncio
-    async def test_raises_on_empty_prompt(self, driver):
+    async def test_raises_on_empty_prompt(self, driver: OllamaStreamDriver) -> None:
         """Empty or missing prompt raises ValueError."""
         with pytest.raises(ValueError, match="payload must contain 'prompt'"):
             async for _ in driver.generate_stream({"prompt": "", "stream": True}):
                 pass
 
     @pytest.mark.asyncio
-    async def test_raises_when_stream_flag_not_true(self, driver):
+    async def test_raises_when_stream_flag_not_true(
+        self, driver: OllamaStreamDriver
+    ) -> None:
         """stream=False raises ValueError."""
         with pytest.raises(ValueError, match="requires stream=True"):
             async for _ in driver.generate_stream({"prompt": "hello", "stream": False}):
                 pass
 
     @pytest.mark.asyncio
-    async def test_raises_runtime_error_on_http_non_200(self, driver):
+    async def test_raises_runtime_error_on_http_non_200(
+        self, driver: OllamaStreamDriver
+    ) -> None:
         """HTTP status != 200 raises RuntimeError with status code."""
         session, _ = _make_generate_session(
             status=500, text_body="internal ollama error"
@@ -297,7 +332,9 @@ class TestGenerateStreamErrorHandling:
                 pass
 
     @pytest.mark.asyncio
-    async def test_raises_when_session_remains_uninitialized(self, driver):
+    async def test_raises_when_session_remains_uninitialized(
+        self, driver: OllamaStreamDriver
+    ) -> None:
         """If initialize() leaves session as None, generate_stream raises AssertionError."""
         driver.session = None
         driver.initialize = AsyncMock()  # no-op so driver.session stays None
@@ -314,8 +351,8 @@ class TestGenerateStreamErrorHandling:
 
     @pytest.mark.asyncio
     async def test_propagates_client_connection_error_when_no_data_received(
-        self, driver
-    ):
+        self, driver: OllamaStreamDriver
+    ) -> None:
         """aiohttp.ClientConnectionError before any data chunk is propagated directly."""
         lines: list[bytes | Exception] = [
             aiohttp.ClientConnectionError("connection refused before data"),
@@ -336,7 +373,9 @@ class TestGenerateStreamErrorHandling:
                 pass
 
     @pytest.mark.asyncio
-    async def test_initialize_and_cleanup_lifecycle(self, config):
+    async def test_initialize_and_cleanup_lifecycle(
+        self, config: NewsCreatorConfig
+    ) -> None:
         """initialize() creates an aiohttp.ClientSession and cleanup() closes it."""
         drv = OllamaStreamDriver(config)
         await drv.initialize()

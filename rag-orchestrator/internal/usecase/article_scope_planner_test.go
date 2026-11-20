@@ -2,7 +2,6 @@ package usecase_test
 
 import (
 	"context"
-	"io"
 	"log/slog"
 	"testing"
 
@@ -40,7 +39,7 @@ func TestBuildPrompt_ArticleScopedSurvivesPlannerIntent(t *testing.T) {
 	mockLLM := new(mockLLMClient)
 	mockQP := new(mockQueryPlannerPort)
 	articleStrategy := &mockRetrievalStrategy{name: "article_scoped"}
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	mockQP.On("PlanQuery", mock.Anything, mock.Anything).Return(&domain.QueryPlan{
 		ResolvedQuery:   "この記事の要点は何ですか",
@@ -101,7 +100,7 @@ func TestBuildPrompt_ArticleScopedPassesCandidateArticleID(t *testing.T) {
 	mockLLM := new(mockLLMClient)
 	mockQP := new(mockQueryPlannerPort)
 	articleStrategy := &mockRetrievalStrategy{name: "article_scoped"}
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	mockQP.On("PlanQuery", mock.Anything, mock.Anything).Return(&domain.QueryPlan{
 		ResolvedQuery:   "この記事の背景",
@@ -160,7 +159,7 @@ func TestBuildPrompt_ArticleScopedNotIndexed_FallsBackToConstrainedGeneral(t *te
 	mockLLM := new(mockLLMClient)
 	mockQP := new(mockQueryPlannerPort)
 	articleStrategy := &mockRetrievalStrategy{name: "article_scoped"}
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	mockQP.On("PlanQuery", mock.Anything, mock.Anything).Return(&domain.QueryPlan{
 		ResolvedQuery:   "この記事の要点",
@@ -224,7 +223,7 @@ func TestBuildPrompt_ArticleScopedFollowUp_InheritsScopeAndSetsArticleContext(t 
 	mockQP := new(mockQueryPlannerPort)
 	articleStrategy := &mockRetrievalStrategy{name: "article_scoped"}
 	promptBuilder := &recordingPromptBuilder{inner: usecase.NewXMLPromptBuilder()}
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	var seenQPInput domain.QueryPlannerInput
 	mockQP.On("PlanQuery", mock.Anything, mock.Anything).

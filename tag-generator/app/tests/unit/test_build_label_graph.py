@@ -35,10 +35,11 @@ def test_aggregate_tag_edges_basic() -> None:
         min_support=1,
     )
 
-    assert len(edges) == 2
+    expected_edge_count = 2
+    assert len(edges) == expected_edge_count
     ai_edge = next(e for e in edges if e.tag == "ai")
     assert ai_edge.genre == "tech"
-    assert ai_edge.sample_size == 2
+    assert ai_edge.sample_size == len(rows)
     assert ai_edge.last_observed_at == _ts(2)
     assert ai_edge.weight == pytest.approx((0.9 + 0.7) / 2, abs=1e-6)
 

@@ -3,7 +3,6 @@ package service_test
 import (
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"sync"
 	"sync/atomic"
@@ -25,13 +24,17 @@ func noRefill(context.Context) (bool, error) {
 }
 
 func discardLogger() *slog.Logger {
-	return slog.New(slog.NewTextHandler(io.Discard, nil))
+	return slog.New(slog.DiscardHandler)
 }
 
 type signalLogHandler struct {
 	slog.Handler
 	targetMsg string
 	onMatch   func()
+}
+
+func (h *signalLogHandler) Enabled(context.Context, slog.Level) bool {
+	return true
 }
 
 func (h *signalLogHandler) Handle(ctx context.Context, r slog.Record) error {
@@ -738,7 +741,7 @@ func TestSummarizeQueueWorker_ProcessQueue_DequeueErrorStopsWorkersAndWaitsForIn
 	select {
 	case err := <-doneCh:
 		require.ErrorIs(t, err, dequeueErr)
-		assert.ErrorContains(t, err, "failed to dequeue jobs")
+		require.ErrorContains(t, err, "failed to dequeue jobs")
 	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for ProcessQueue to finish after DequeueJobs error")
 	}

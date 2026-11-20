@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 // MockCSRFTokenGateway is a mock implementation of CSRF token gateway
@@ -76,11 +77,11 @@ func TestCSRFTokenUsecase_GenerateToken(t *testing.T) {
 
 			// Verify results
 			if tt.expectError {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.expectedErrMsg)
 				assert.Empty(t, token)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.Equal(t, tt.expectedToken, token)
 			}
 
@@ -153,11 +154,11 @@ func TestCSRFTokenUsecase_ValidateToken(t *testing.T) {
 
 			// Verify results
 			if tt.expectError {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.expectedErrMsg)
 				assert.False(t, valid)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.Equal(t, tt.expectValid, valid)
 			}
 
@@ -217,10 +218,10 @@ func TestCSRFTokenUsecase_InvalidateToken(t *testing.T) {
 
 			// Verify results
 			if tt.expectError {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.expectedErrMsg)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}
 
 			// Verify mock expectations
@@ -273,11 +274,11 @@ func TestCSRFTokenUsecase_TokenExpiration(t *testing.T) {
 
 			// Verify results
 			if tt.expectError {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.expectedErrMsg)
 				assert.False(t, valid)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.Equal(t, tt.expectValid, valid)
 			}
 

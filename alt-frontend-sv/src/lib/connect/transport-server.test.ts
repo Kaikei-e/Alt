@@ -50,7 +50,9 @@ describe("createServerTransportWithToken", () => {
 		};
 		const mockNext = vi.fn().mockResolvedValue({ status: 200 });
 
-		const wrappedNext = interceptors[0]!(mockNext);
+		const interceptor = interceptors[0];
+		if (!interceptor) throw new Error("expected interceptor");
+		const wrappedNext = interceptor(mockNext);
 		await wrappedNext(mockReq);
 
 		expect(mockReq.header.set).toHaveBeenCalledWith(

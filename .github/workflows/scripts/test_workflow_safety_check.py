@@ -471,6 +471,135 @@ class TestWorkflowSafetyCheckHardening(unittest.TestCase):
                 self.assertEqual(len(errs), 1)
                 self.assertIn("sample.yaml:1: swallowed failure without a reason.", errs[0])
 
+    def test_direct_lint_tool_invocations_in_run_are_rejected(self) -> None:
+        forbidden_commands = [
+            "golangci-lint run ./...",
+            "gofmt -l .",
+            "go vet ./...",
+            "gosec ./...",
+            "govulncheck ./...",
+            "ruff check .",
+            "bandit -r .",
+            "pyrefly check",
+            "cargo fmt --check",
+            "cargo clippy -- -D warnings",
+            "biome check .",
+            "svelte-check",
+            "deno fmt --check",
+            "deno lint",
+            "actionlint -shellcheck=",
+            "buf lint",
+            "buf breaking --against origin/main",
+            "uv run --no-sync ruff check .",
+            "python3 -m bandit -r .",
+            "bunx svelte-check",
+            "files=$(gofmt -l .)",
+            '"$GOPATH/bin/govulncheck" ./...',
+            "go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12",
+            "env FOO=1 cargo clippy",
+            "docdag validate --format github --immutable-since origin/main",
+            "docdag lint --strict --format github",
+            "promtool check rules observability/prometheus/rules/*.yml",
+            "amtool check-config observability/alertmanager/alertmanager.yml",
+            "lkal check --json deploy/desired-env.lkal",
+            "python3 scripts/compose-port-audit.py --overlays",
+            "python3 scripts/compose-netns-cascade-audit.py",
+            "python3 scripts/compose-feature-gate.py --gate-report",
+            "python3 scripts/compose-image-audit.py",
+            "./scripts/check-compose-variables.sh",
+            "bash scripts/tests/test_compose_wiring.sh",
+            "python3 scripts/kisage-env.py verify",
+            "python3 scripts/regen-service-registry.py --check",
+            "scripts/observability-validate.sh",
+            "python3 scripts/agent-harness/harness_selfcheck.py",
+            "python3 scripts/agent-harness/postmortem_ledger.py --check --base origin/main",
+            "python3 scripts/agent-harness/migration_destructive_gate.py --base origin/main",
+            "python3 scripts/agent-harness/adr_supersede_gate.py --base origin/main",
+            "bash e2e/playwright/_lib/check-suites.sh",
+            "python3 .github/workflows/scripts/workflow-safety-check.py",
+        ]
+        for cmd in forbidden_commands:
+            with self.subTest(cmd=cmd):
+                wf = base_workflow(
+                    {
+                        "runs-on": "ubuntu-latest",
+                        "timeout-minutes": 10,
+                        "steps": [{"run": cmd}],
+                    }
+                )
+                errs = self.mod.check_workflow_doc("sample.yaml", wf)
+                self.assertTrue(
+                    any("scripts/lint/run.sh" in err for err in errs),
+                    f"Expected direct-lint error for {cmd!r}, got: {errs}",
+                )
+
+    def test_allowed_run_commands_and_mentions_pass(self) -> None:
+        allowed_steps = [
+            {"run": './scripts/lint/run.sh "$TARGET"'},
+            {
+                "run": (
+                    "# comment: golangci-lint gofmt go vet gosec govulncheck "
+                    "ruff bandit pyrefly cargo fmt cargo clippy biome "
+                    "svelte-check deno fmt deno lint actionlint buf lint buf breaking\n"
+                    'echo "Run gofmt -w or ruff check or golangci-lint"\n'
+                    "printf '::error title=gofmt::Run gofmt -w\\n'\n"
+                )
+            },
+            {"run": "go install github.com/securego/gosec/v2/cmd/gosec@v2.22.11"},
+            {"run": "go install golang.org/x/vuln/cmd/govulncheck@latest"},
+            {"run": 'go install "github.com/Kaikei-e/DocDag/cmd/docdag@v0.6.0"'},
+            {"run": "make install-lkal install-kisage"},
+            {"run": "python3 scripts/tests/test-compose-image-audit.py"},
+            {"run": "python3 scripts/tests/test-kisage-env.py"},
+            {"run": "pip install --quiet ruff bandit pyrefly"},
+            {"run": "uv tool install ruff"},
+            {"run": "mkdir -p /tmp/ruff-cache\nCACHE_KEY=golangci-lint-v2"},
+            {"run": "go test ./...\ngo build ./...\ngo run . -desc out.binpb"},
+            {"run": "cargo test --locked\ncargo check"},
+            {"run": "deno test --allow-all tests/"},
+            {"run": "buf build --exclude-source-info -o out.binpb"},
+            {
+                "uses": f"actions/cache@{'a' * 40}",
+                "with": {"path": "~/.cache", "key": "golangci-lint-ruff-biome"},
+            },
+            {
+                "uses": f"bufbuild/buf-action@{'b' * 40}",
+                "with": {"setup_only": True},
+            },
+        ]
+        wf = base_workflow(
+            {
+                "runs-on": "ubuntu-latest",
+                "timeout-minutes": 10,
+                "steps": allowed_steps,
+            }
+        )
+        self.assertEqual(self.mod.check_workflow_doc("sample.yaml", wf), [])
+
+    def test_lint_actions_and_docker_images_in_uses_are_rejected(self) -> None:
+        forbidden_uses = [
+            {"uses": f"golangci/golangci-lint-action@{'c' * 40}"},
+            {"uses": f"docker://rhysd/actionlint:1.7.12@sha256:{DIGEST_A}"},
+            {"uses": f"astral-sh/ruff-action@{'d' * 40}"},
+            {"uses": f"bufbuild/buf-lint-action@{'e' * 40}"},
+            {"uses": f"bufbuild/buf-breaking-action@{'f' * 40}"},
+            {"uses": f"bufbuild/buf-action@{'1' * 40}"},
+        ]
+        for step in forbidden_uses:
+            with self.subTest(uses=step["uses"]):
+                wf = base_workflow(
+                    {
+                        "runs-on": "ubuntu-latest",
+                        "timeout-minutes": 10,
+                        "steps": [step],
+                    }
+                )
+                errs = self.mod.check_workflow_doc("sample.yaml", wf)
+                self.assertTrue(
+                    any("scripts/lint/run.sh" in err for err in errs),
+                    f"Expected lint-action error for {step['uses']!r}, got: {errs}",
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

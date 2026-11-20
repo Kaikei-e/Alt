@@ -77,6 +77,8 @@ func (t *streamTelemetry) observeEvent(event usecase.StreamEvent) {
 		if !output.Debug.CacheHit {
 			t.rerankKnown, t.rerankApplied = true, output.Debug.RerankApplied
 		}
+	default:
+		// Non-terminal events (meta, delta, thinking, progress, heartbeat) do not set terminal outcome.
 	}
 }
 

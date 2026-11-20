@@ -269,12 +269,6 @@ func (r *PostgreSQLArticleRepository) CreateBatchWithResult(ctx context.Context,
 	return result
 }
 
-// createArticleWithValidation creates a single article with pre-validation
-func (r *PostgreSQLArticleRepository) createArticleWithValidation(ctx context.Context, article *models.Article) error {
-	_, err := r.createArticleWithValidationAndResult(ctx, article)
-	return err
-}
-
 // UnresolvableReason names why an article can never be stored, no matter how
 // often the page is refetched: the subscription it belongs to could not be
 // resolved or auto-created, or the feed entry carries no URL. It returns an

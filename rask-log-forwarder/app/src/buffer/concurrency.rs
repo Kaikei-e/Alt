@@ -29,6 +29,7 @@ pub enum ConcurrencyError {
 
 impl ConcurrencyError {
     /// Provides memory-safe recovery strategy for different error types
+    #[must_use]
     pub fn recovery_strategy(&self) -> RecoveryStrategy {
         match self {
             ConcurrencyError::MutexPoisoned { .. } => RecoveryStrategy::ResetState,
@@ -74,12 +75,18 @@ impl<T> RobustMutex<T> {
         }
     }
 
+    #[must_use]
     pub fn with_timeout(mut self, timeout: Duration) -> Self {
         self.timeout_duration = timeout;
         self
     }
 
     /// Memory-safe lock acquisition with automatic recovery from poisoned state
+    ///
+    /// # Errors
+    ///
+    /// Currently recovers automatically from poisoned mutexes and always returns `Ok`; the `Result`
+    /// signature is retained for fallible-lock API compatibility.
     pub fn lock_safe(&self) -> Result<std::sync::MutexGuard<'_, T>, ConcurrencyError> {
         match self.inner.lock() {
             Ok(guard) => Ok(guard),
@@ -96,6 +103,11 @@ impl<T> RobustMutex<T> {
     }
 
     /// Non-blocking lock attempt with automatic poisoning recovery
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ConcurrencyError::ConcurrentAccessViolation`] if the mutex is currently held by
+    /// another thread.
     pub fn try_lock_safe(&self) -> Result<std::sync::MutexGuard<'_, T>, ConcurrencyError> {
         match self.inner.try_lock() {
             Ok(guard) => Ok(guard),
@@ -115,7 +127,7 @@ impl<T> RobustMutex<T> {
     }
 }
 
-/// High-performance RwLock wrapper for read-heavy workloads
+/// High-performance `RwLock` wrapper for read-heavy workloads
 pub struct RobustRwLock<T> {
     inner: Arc<RwLock<T>>,
     operation_name: String,
@@ -144,6 +156,7 @@ impl<T> RobustRwLock<T> {
         }
     }
 
+    #[must_use]
     pub fn with_timeouts(mut self, read_timeout: Duration, write_timeout: Duration) -> Self {
         self.read_timeout = read_timeout;
         self.write_timeout = write_timeout;
@@ -151,26 +164,38 @@ impl<T> RobustRwLock<T> {
     }
 
     /// High-performance read lock with timeout protection
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ConcurrencyError::LockTimeout`] if acquiring the read lock exceeds `read_timeout`.
     pub async fn read_safe(&self) -> Result<tokio::sync::RwLockReadGuard<'_, T>, ConcurrencyError> {
+        // Configured read_timeout in ms cannot reach u64::MAX (~584M years).
+        let timeout_ms = u64::try_from(self.read_timeout.as_millis()).unwrap_or(u64::MAX);
         timeout(self.read_timeout, self.inner.read())
             .await
-            .map_err(|_| ConcurrencyError::LockTimeout {
-                timeout_ms: self.read_timeout.as_millis() as u64,
-            })
+            .map_err(|_| ConcurrencyError::LockTimeout { timeout_ms })
     }
 
     /// Write lock for mutations with timeout protection
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ConcurrencyError::LockTimeout`] if acquiring the write lock exceeds `write_timeout`.
     pub async fn write_safe(
         &self,
     ) -> Result<tokio::sync::RwLockWriteGuard<'_, T>, ConcurrencyError> {
+        // Configured write_timeout in ms cannot reach u64::MAX (~584M years).
+        let timeout_ms = u64::try_from(self.write_timeout.as_millis()).unwrap_or(u64::MAX);
         timeout(self.write_timeout, self.inner.write())
             .await
-            .map_err(|_| ConcurrencyError::LockTimeout {
-                timeout_ms: self.write_timeout.as_millis() as u64,
-            })
+            .map_err(|_| ConcurrencyError::LockTimeout { timeout_ms })
     }
 
     /// Non-blocking read attempt
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ConcurrencyError::ConcurrentAccessViolation`] if a writer currently holds the lock.
     pub fn try_read(&self) -> Result<tokio::sync::RwLockReadGuard<'_, T>, ConcurrencyError> {
         self.inner
             .try_read()
@@ -180,6 +205,11 @@ impl<T> RobustRwLock<T> {
     }
 
     /// Non-blocking write attempt
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ConcurrencyError::ConcurrentAccessViolation`] if any reader or writer currently
+    /// holds the lock.
     pub fn try_write(&self) -> Result<tokio::sync::RwLockWriteGuard<'_, T>, ConcurrencyError> {
         self.inner
             .try_write()

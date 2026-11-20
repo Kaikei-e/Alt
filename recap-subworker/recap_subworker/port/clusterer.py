@@ -27,7 +27,7 @@ class ClusterResult:
 class ClustererPort(Protocol):
     """Port for clustering embedding vectors."""
 
-    def cluster(
+    def cluster(  # noqa: PLR0913 - port signature; implementers outside this change
         self,
         embeddings: np.ndarray,
         *,
@@ -58,7 +58,7 @@ class ClustererPort(Protocol):
         """
         ...
 
-    def optimize_clustering(
+    def optimize_clustering(  # noqa: PLR0913 - port signature; implementers outside this change
         self,
         embeddings: np.ndarray,
         *,

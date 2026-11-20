@@ -73,7 +73,7 @@ export class ScreenshotCapture {
   async capture(
     page: Page,
     name: string,
-    options: Partial<ScreenshotOptions> = {}
+    options: Partial<ScreenshotOptions> = {},
   ): Promise<ScreenshotResult> {
     const mergedOptions = { ...DEFAULT_SCREENSHOT_OPTIONS, ...options };
     const timestamp = Date.now();
@@ -81,7 +81,9 @@ export class ScreenshotCapture {
 
     // Generate filename
     const sanitizedName = name.replace(/[^a-zA-Z0-9-_]/g, "_");
-    const filename = `${this.screenshotCount.toString().padStart(3, "0")}_${sanitizedName}_${timestamp}.${mergedOptions.format}`;
+    const filename = `${
+      this.screenshotCount.toString().padStart(3, "0")
+    }_${sanitizedName}_${timestamp}.${mergedOptions.format}`;
     const filepath = join(this.outputDir, filename);
 
     debug("Capturing screenshot", { name, filepath });
@@ -132,7 +134,7 @@ export class ScreenshotCapture {
   async captureOnError(
     page: Page,
     error: Error,
-    context: string
+    context: string,
   ): Promise<ScreenshotResult | null> {
     try {
       const errorName = error.name || "Error";
@@ -153,7 +155,7 @@ export class ScreenshotCapture {
   async captureBeforeAfter<T>(
     page: Page,
     operationName: string,
-    operation: () => Promise<T>
+    operation: () => Promise<T>,
   ): Promise<{ result: T; before: ScreenshotResult; after: ScreenshotResult }> {
     const before = await this.capture(page, `${operationName}_before`);
 
@@ -165,7 +167,7 @@ export class ScreenshotCapture {
       await this.captureOnError(
         page,
         error instanceof Error ? error : new Error(String(error)),
-        operationName
+        operationName,
       );
       throw error;
     }
@@ -190,7 +192,7 @@ export class ScreenshotCapture {
  * Create a screenshot capture instance
  */
 export function createScreenshotCapture(
-  outputDir?: string
+  outputDir?: string,
 ): ScreenshotCapture {
   return new ScreenshotCapture(outputDir);
 }

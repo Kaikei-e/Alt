@@ -7,6 +7,7 @@
 import { create, fromBinary, toBinary } from "@bufbuild/protobuf";
 import { describe, expect, it } from "vitest";
 import { GetThreeDayRecapResponseSchema } from "#lib/gen/alt/recap/v2/recap_pb.js";
+import { assertDefined } from "#lib/test-utils/assert.js";
 import {
 	buildConnectRecapResponse,
 	buildRecapGenre,
@@ -39,7 +40,7 @@ describe("Recap API Contract", () => {
 		});
 
 		expect(response.genres).toHaveLength(2);
-		expect(response.genres[0]!.genre).toBe("Technology");
+		expect(assertDefined(response.genres[0]).genre).toBe("Technology");
 		expect(response.totalArticles).toBe(3);
 	});
 
@@ -75,7 +76,7 @@ describe("Recap API Contract", () => {
 		const deserialized = fromBinary(GetThreeDayRecapResponseSchema, binary);
 
 		expect(deserialized.genres).toHaveLength(1);
-		expect(deserialized.genres[0]!.genre).toBe("Tech");
+		expect(assertDefined(deserialized.genres[0]).genre).toBe("Tech");
 		expect(deserialized.totalArticles).toBe(1);
 	});
 
@@ -85,7 +86,9 @@ describe("Recap API Contract", () => {
 		expect(genre.genre).toBe("Science");
 		expect(genre.articleCount).toBe(3);
 		expect(genre.evidenceLinks).toHaveLength(3);
-		expect(genre.evidenceLinks[0]!.articleId).toContain("science");
+		expect(assertDefined(genre.evidenceLinks[0]).articleId).toContain(
+			"science",
+		);
 		expect(genre.bullets).toHaveLength(1);
 	});
 });

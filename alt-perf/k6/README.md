@@ -4,9 +4,12 @@ Industry-standard scenario-based load testing using [Grafana K6](https://k6.io/)
 
 ## Ethical Constraints (Multi-Layer Defense)
 
-1. **Layer 1 (Endpoint Exclusion)**: Only endpoints accessing local resources (PostgreSQL, Meilisearch) are tested. External API endpoints are excluded.
-2. **Layer 2 (10s Cooldown)**: Every scenario iteration ends with `sleep(10)` to rate-limit requests.
-3. **Layer 3 (Whitelist)**: Test targets are explicitly defined in `helpers/endpoints.js`. Changes require code review.
+1. **Layer 1 (Endpoint Exclusion)**: Only endpoints accessing local resources (PostgreSQL,
+   Meilisearch) are tested. External API endpoints are excluded.
+2. **Layer 2 (10s Cooldown)**: Every scenario iteration ends with `sleep(10)` to rate-limit
+   requests.
+3. **Layer 3 (Whitelist)**: Test targets are explicitly defined in `helpers/endpoints.js`. Changes
+   require code review.
 
 ## Quick Start
 
@@ -39,14 +42,14 @@ docker compose -f compose/compose.yaml -p alt run --rm k6 run \
 
 ## Environment Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `K6_BASE_URL` | `http://alt-backend:9000` | Backend URL (direct, bypassing edge proxy) |
-| `K6_API_TOKEN` | (from `K6_API_TOKEN_FILE`) | Pre-minted `EdDSA` (Ed25519) backend JWT for `X-Alt-Backend-Token` (issued by `auth-hub`; k6 holds no signing key and fails fast at init when unset) |
-| `K6_API_TOKEN_FILE` | `/run/secrets/k6_api_token` | File path read into `K6_API_TOKEN` by `docker-entrypoint.sh` |
-| `K6_TEST_USER_ID` | — | Test user UUID |
-| `K6_TEST_TENANT_ID` | — | Test tenant UUID |
-| `K6_TEST_USER_EMAIL` | — | Test user email |
+| Variable             | Default                     | Description                                                                                                                                          |
+| -------------------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `K6_BASE_URL`        | `http://alt-backend:9000`   | Backend URL (direct, bypassing edge proxy)                                                                                                           |
+| `K6_API_TOKEN`       | (from `K6_API_TOKEN_FILE`)  | Pre-minted `EdDSA` (Ed25519) backend JWT for `X-Alt-Backend-Token` (issued by `auth-hub`; k6 holds no signing key and fails fast at init when unset) |
+| `K6_API_TOKEN_FILE`  | `/run/secrets/k6_api_token` | File path read into `K6_API_TOKEN` by `docker-entrypoint.sh`                                                                                         |
+| `K6_TEST_USER_ID`    | —                           | Test user UUID                                                                                                                                       |
+| `K6_TEST_TENANT_ID`  | —                           | Test tenant UUID                                                                                                                                     |
+| `K6_TEST_USER_EMAIL` | —                           | Test user email                                                                                                                                      |
 
 ```bash
 # Specify test user
@@ -56,21 +59,21 @@ docker compose -f compose/compose.yaml -p alt run --rm \
 
 ## Scenarios
 
-| Scenario | Executor | VUs | Duration | Purpose |
-|----------|----------|-----|----------|---------|
-| smoke | constant-vus | 1 | 1m | Endpoint reachability check |
-| load | ramping-vus | 0→10→20→0 | 16m | Normal traffic simulation |
-| stress | ramping-vus | 0→20→50→100→0 | 19m | Breaking point discovery |
-| soak | constant-vus | 10 | 30m | Memory leak / connection exhaustion detection |
-| spike | ramping-vus | 5→100→5→0 | 6m | Burst traffic resilience |
+| Scenario | Executor     | VUs           | Duration | Purpose                                       |
+| -------- | ------------ | ------------- | -------- | --------------------------------------------- |
+| smoke    | constant-vus | 1             | 1m       | Endpoint reachability check                   |
+| load     | ramping-vus  | 0→10→20→0     | 16m      | Normal traffic simulation                     |
+| stress   | ramping-vus  | 0→20→50→100→0 | 19m      | Breaking point discovery                      |
+| soak     | constant-vus | 10            | 30m      | Memory leak / connection exhaustion detection |
+| spike    | ramping-vus  | 5→100→5→0     | 6m       | Burst traffic resilience                      |
 
 ## Thresholds
 
-| Scenario | p(50) | p(95) | p(99) | Error Rate |
-|----------|-------|-------|-------|------------|
-| smoke | — | < 300ms | — | < 1% |
-| load / soak | < 200ms | < 500ms | < 1000ms | < 1% |
-| stress / spike | — | < 1000ms | — | < 5% |
+| Scenario       | p(50)   | p(95)    | p(99)    | Error Rate |
+| -------------- | ------- | -------- | -------- | ---------- |
+| smoke          | —       | < 300ms  | —        | < 1%       |
+| load / soak    | < 200ms | < 500ms  | < 1000ms | < 1%       |
+| stress / spike | —       | < 1000ms | —        | < 5%       |
 
 ## Custom Metrics
 

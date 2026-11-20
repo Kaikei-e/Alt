@@ -7,7 +7,9 @@ from urllib.parse import urlparse
 
 import nh3
 import structlog
+from lxml.html import fromstring
 from pydantic import BaseModel, Field, field_validator
+from readability import Document
 
 # Code block pattern for stripping before readability
 _CODE_BLOCK_PATTERN = re.compile(
@@ -36,6 +38,44 @@ URL_PATTERN = re.compile(
 
 logger = structlog.get_logger(__name__)
 
+_MAX_TITLE_LENGTH = 1000
+_MAX_CONTENT_LENGTH = 100_000
+_MAX_URL_LENGTH = 2048
+_MIN_PRINTABLE_ORD = 32
+_MIN_HTML_TAG_COUNT = 3
+_MIN_READABILITY_TEXT_LENGTH = 20
+_EXCESSIVE_UPPERCASE_RATIO = 0.7
+
+
+class _InputValidationError(ValueError):
+    @classmethod
+    def title_too_short(cls) -> _InputValidationError:
+        return cls("Title too short")
+
+    @classmethod
+    def title_too_long(cls) -> _InputValidationError:
+        return cls("Title too long")
+
+    @classmethod
+    def content_too_short(cls) -> _InputValidationError:
+        return cls("Content too short")
+
+    @classmethod
+    def content_too_long(cls) -> _InputValidationError:
+        return cls("Content too long")
+
+    @classmethod
+    def control_chars(cls) -> _InputValidationError:
+        return cls("Contains control characters")
+
+    @classmethod
+    def url_too_long(cls) -> _InputValidationError:
+        return cls("URL too long")
+
+    @classmethod
+    def invalid_url(cls) -> _InputValidationError:
+        return cls("Invalid URL format")
+
 
 class SanitizationConfig(BaseModel):
     """Configuration for input sanitization."""
@@ -63,40 +103,45 @@ class ArticleInput(BaseModel):
     url: str | None = Field(default=None, max_length=2048)
 
     @field_validator("title", mode="before")
-    def validate_title(cls, v):
+    @classmethod
+    def validate_title(cls, v: object) -> str:
         """Validate title content."""
-        if not v or len(v.strip()) == 0:
-            raise ValueError("Title too short")
-        if len(v) > 1000:
-            raise ValueError("Title too long")
+        if not isinstance(v, str) or len(v.strip()) == 0:
+            raise _InputValidationError.title_too_short()
+        if len(v) > _MAX_TITLE_LENGTH:
+            raise _InputValidationError.title_too_long()
         # Check for control characters
-        if any(ord(c) < 32 and c not in "\t\n\r" for c in v):
-            raise ValueError("Contains control characters")
+        if any(ord(c) < _MIN_PRINTABLE_ORD and c not in "\t\n\r" for c in v):
+            raise _InputValidationError.control_chars()
         return v
 
     @field_validator("content", mode="before")
-    def validate_content(cls, v):
+    @classmethod
+    def validate_content(cls, v: object) -> str:
         """Validate content."""
-        if not v or len(v.strip()) == 0:
-            raise ValueError("Content too short")
-        if len(v) > 100000:
-            raise ValueError("Content too long")
+        if not isinstance(v, str) or len(v.strip()) == 0:
+            raise _InputValidationError.content_too_short()
+        if len(v) > _MAX_CONTENT_LENGTH:
+            raise _InputValidationError.content_too_long()
         # Check for control characters
-        if any(ord(c) < 32 and c not in "\t\n\r" for c in v):
-            raise ValueError("Contains control characters")
+        if any(ord(c) < _MIN_PRINTABLE_ORD and c not in "\t\n\r" for c in v):
+            raise _InputValidationError.control_chars()
         return v
 
     @field_validator("url", mode="before")
-    def validate_url(cls, v):
+    @classmethod
+    def validate_url(cls, v: object) -> str | None:
         """Validate URL format."""
         if v is None:
-            return v
+            return None
+        if not isinstance(v, str):
+            raise _InputValidationError.invalid_url()
         try:
             parsed = urlparse(v)
-            if not parsed.scheme or not parsed.netloc:
-                raise ValueError("Invalid URL format")
-        except Exception as e:
-            raise ValueError("Invalid URL format") from e
+        except ValueError as e:
+            raise _InputValidationError.invalid_url() from e
+        if not parsed.scheme or not parsed.netloc:
+            raise _InputValidationError.invalid_url()
         return v
 
     @staticmethod
@@ -128,7 +173,7 @@ class SanitizationResult(BaseModel):
 class InputSanitizer:
     """Main input sanitization class."""
 
-    def __init__(self, config: SanitizationConfig | None = None):
+    def __init__(self, config: SanitizationConfig | None = None) -> None:
         self.config = config or SanitizationConfig()
 
         self.allowed_tags: tuple[str, ...] = (
@@ -171,6 +216,28 @@ class InputSanitizer:
         # We do not preserve the inner text of stripped scripting and embedding tags.
         self._nh3_clean_content_tags: set[str] = set()
 
+    def _validate_raw_inputs(self, title: str, content: str, url: str | None) -> str | None:
+        checks: tuple[tuple[bool, str], ...] = (
+            (not title or len(title.strip()) == 0 or len(title) < self.config.min_title_length, "Title too short"),
+            (len(title) > self.config.max_title_length, "Title too long"),
+            (
+                not content or len(content.strip()) == 0 or len(content) < self.config.min_content_length,
+                "Content too short",
+            ),
+            (len(content) > self.config.max_content_length, "Content too long"),
+            (
+                any(ord(c) < _MIN_PRINTABLE_ORD and c not in "\t\n\r" for c in title)
+                or any(ord(c) < _MIN_PRINTABLE_ORD and c not in "\t\n\r" for c in content),
+                "Contains control characters",
+            ),
+            (bool(url and len(url) > _MAX_URL_LENGTH), "URL too long"),
+            (bool(url and not ArticleInput._is_valid_url(url)), "Invalid URL format"),
+        )
+        for failed, message in checks:
+            if failed:
+                return message
+        return None
+
     def sanitize(self, title: str, content: str, url: str | None = None) -> SanitizationResult:
         """
         Sanitize input text and return sanitization result.
@@ -183,8 +250,8 @@ class InputSanitizer:
         Returns:
             SanitizationResult with validation status and sanitized input
         """
-        violations = []
-        warnings = []
+        violations: list[str] = []
+        warnings: list[str] = []
 
         # Store original lengths
         original_title_length = len(title)
@@ -192,39 +259,9 @@ class InputSanitizer:
         original_total_length = original_title_length + original_content_length
 
         try:
-            # Step 1: Basic validation using config limits instead of hardcoded Pydantic model
-            try:
-                # Manual validation using config
-                if not title or len(title.strip()) == 0:
-                    raise ValueError("Title too short")
-                if len(title) < self.config.min_title_length:
-                    raise ValueError("Title too short")
-                if len(title) > self.config.max_title_length:
-                    raise ValueError("Title too long")
-
-                if not content or len(content.strip()) == 0:
-                    raise ValueError("Content too short")
-                if len(content) < self.config.min_content_length:
-                    raise ValueError("Content too short")
-                if len(content) > self.config.max_content_length:
-                    raise ValueError("Content too long")
-
-                # Check for control characters in title
-                if any(ord(c) < 32 and c not in "\t\n\r" for c in title):
-                    raise ValueError("Contains control characters")
-
-                # Check for control characters in content
-                if any(ord(c) < 32 and c not in "\t\n\r" for c in content):
-                    raise ValueError("Contains control characters")
-
-                # URL validation if provided
-                if url and len(url) > 2048:
-                    raise ValueError("URL too long")
-                if url and not ArticleInput._is_valid_url(url):
-                    raise ValueError("Invalid URL format")
-
-            except ValueError as e:
-                violations.append(str(e))
+            validation_error = self._validate_raw_inputs(title, content, url)
+            if validation_error is not None:
+                violations.append(validation_error)
                 return SanitizationResult(
                     is_valid=False,
                     sanitized_input=None,
@@ -276,8 +313,8 @@ class InputSanitizer:
             )
 
         except (ValueError, TypeError) as e:
-            logger.error("Sanitization failed", error=str(e))
-            violations.append(f"Sanitization error: {str(e)}")
+            logger.exception("Sanitization failed", error=str(e))
+            violations.append(f"Sanitization error: {e!s}")
             return SanitizationResult(
                 is_valid=False,
                 sanitized_input=None,
@@ -316,9 +353,7 @@ class InputSanitizer:
         text = WHITESPACE_PATTERN.sub(" ", text).strip()
 
         # Remove control characters (except common whitespace)
-        text = "".join(char for char in text if ord(char) >= 32 or char in "\t\n\r")
-
-        return text
+        return "".join(char for char in text if ord(char) >= _MIN_PRINTABLE_ORD or char in "\t\n\r")
 
     def _normalize_unicode(self, text: str) -> str:
         """Normalize Unicode text."""
@@ -343,10 +378,7 @@ class InputSanitizer:
             return True
 
         # Check for unusual character frequency
-        if self._has_unusual_character_frequency(text):
-            return True
-
-        return False
+        return bool(self._has_unusual_character_frequency(text))
 
     def _is_cjk_text(self, text: str) -> bool:
         """
@@ -381,7 +413,7 @@ class InputSanitizer:
             return False
         # Count HTML-like tags; threshold avoids false positives on plain text with angle brackets
         tag_count = len(re.findall(r"<[a-zA-Z/][^>]*>", text))
-        return tag_count >= 3
+        return tag_count >= _MIN_HTML_TAG_COUNT
 
     def _extract_readable_text(self, html: str) -> str:
         """Extract readable article text from HTML using readability-lxml.
@@ -390,9 +422,6 @@ class InputSanitizer:
         and finally extracts plain text via lxml.
         """
         try:
-            from lxml.html import fromstring
-            from readability import Document
-
             # Strip code blocks before readability to reduce noise
             cleaned = _CODE_BLOCK_PATTERN.sub(" ", html)
 
@@ -406,10 +435,10 @@ class InputSanitizer:
             # Normalize whitespace
             text = WHITESPACE_PATTERN.sub(" ", text).strip()
 
-            if len(text) > 20:
+            if len(text) > _MIN_READABILITY_TEXT_LENGTH:
                 return text
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - any parser failure falls back to the raw HTML
             logger.warning("readability extraction failed, falling back to raw content", error=str(e))
 
         return html
@@ -432,7 +461,4 @@ class InputSanitizer:
 
         # Check for excessive uppercase
         uppercase_chars = sum(1 for c in text if c.isupper())
-        if uppercase_chars > len(text) * 0.7:  # More than 70% uppercase
-            return True
-
-        return False
+        return uppercase_chars > len(text) * _EXCESSIVE_UPPERCASE_RATIO

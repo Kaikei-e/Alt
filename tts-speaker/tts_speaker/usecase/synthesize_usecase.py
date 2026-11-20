@@ -24,37 +24,47 @@ class ChunkAudio:
     duration_seconds: float
 
 
+@dataclass(frozen=True, slots=True)
+class SynthesisConfig:
+    """Text synthesis limits and pacing configuration."""
+
+    max_chunk_chars: int
+    max_text_chars: int
+    chunk_gap_ms: int
+    queue_timeout_seconds: float
+    default_speed: float
+
+
 class SynthesizeUsecase:
     """Orchestrates speech synthesis workflow."""
 
     def __init__(
         self,
         synthesizer: SpeechSynthesizerPort,
-        max_chunk_chars: int,
-        max_text_chars: int,
-        chunk_gap_ms: int,
-        queue_timeout_seconds: float,
-        default_speed: float,
+        config: SynthesisConfig,
     ) -> None:
         self._synthesizer = synthesizer
-        self._max_chunk_chars = max_chunk_chars
-        self._max_text_chars = max_text_chars
-        self._chunk_gap_ms = chunk_gap_ms
-        self._queue_timeout_seconds = queue_timeout_seconds
-        self._default_speed = default_speed
+        self._max_chunk_chars = config.max_chunk_chars
+        self._max_text_chars = config.max_text_chars
+        self._chunk_gap_ms = config.chunk_gap_ms
+        self._queue_timeout_seconds = config.queue_timeout_seconds
+        self._default_speed = config.default_speed
         self._lock = asyncio.Lock()
 
     async def stream(self, text: str, speed: float | None = None) -> AsyncGenerator[ChunkAudio]:
         """Synthesize input text into streamed speech audio chunks."""
         if not text or not text.strip():
-            raise EmptyTextError("Input text cannot be empty")
+            msg = "Input text cannot be empty"
+            raise EmptyTextError(msg)
         if len(text) > self._max_text_chars:
-            raise TextTooLongError(f"Input text length {len(text)} exceeds maximum of {self._max_text_chars}")
+            msg = f"Input text length {len(text)} exceeds maximum of {self._max_text_chars}"
+            raise TextTooLongError(msg)
 
         normalized = normalize_for_tts(text)
         chunks = split_into_chunks(normalized, max_chars=self._max_chunk_chars)
         if not chunks:
-            raise EmptyTextError("Input text contains no synthesizable content")
+            msg = "Input text contains no synthesizable content"
+            raise EmptyTextError(msg)
 
         effective_speed = self._default_speed if speed is None else speed
 
@@ -62,7 +72,8 @@ class SynthesizeUsecase:
             async with asyncio.timeout(self._queue_timeout_seconds):
                 await self._lock.acquire()
         except TimeoutError as err:
-            raise SynthesisBusyError(f"Queue wait exceeded {self._queue_timeout_seconds}s deadline") from err
+            msg = f"Queue wait exceeded {self._queue_timeout_seconds}s deadline"
+            raise SynthesisBusyError(msg) from err
 
         try:
             for i, chunk_text in enumerate(chunks):

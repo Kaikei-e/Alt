@@ -156,11 +156,12 @@ async def test_tick_issuer_fails_propagates(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_enroll_retries_then_fails(tmp_path: Path) -> None:
+    expected_retries = 3
     issuer = FakeIssuer(err=PkiError("CA down"))
     mgr, _, obs = _manager(tmp_path, issuer, datetime.now(tz=UTC))
     with pytest.raises(PkiError, match="enroll failed"):
         await mgr.enroll()
-    assert issuer.calls == 3
+    assert issuer.calls == expected_retries
     assert obs.retries > 0
 
 

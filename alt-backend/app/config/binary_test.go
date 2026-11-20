@@ -12,11 +12,12 @@ func baseConfig() *Config {
 	return &Config{
 		AppEnv: "development",
 		Server: ServerConfig{
-			Port:         9000,
-			ConnectPort:  9101,
-			ReadTimeout:  300 * time.Second,
-			WriteTimeout: 300 * time.Second,
-			IdleTimeout:  120 * time.Second,
+			Port:               9000,
+			ConnectPort:        9101,
+			ReadTimeout:        300 * time.Second,
+			WriteTimeout:       300 * time.Second,
+			IdleTimeout:        120 * time.Second,
+			CORSAllowedOrigins: []string{"http://localhost:3000"},
 		},
 		SearchIndexer: SearchIndexerConfig{ConnectURL: "http://search-indexer:9301"},
 		PreProcessor:  PreProcessorConfig{URL: "http://pre-processor:9200", ConnectURL: "http://pre-processor:9202"},
@@ -425,6 +426,10 @@ func TestValidateBinaryConfig(t *testing.T) {
 			mutate: func(c *Config) { c.ReadingQueue.TTLHours = 0 }, wantErr: "READING_QUEUE_TTL_HOURS"},
 		{name: "backend rejects negative reading queue ttl hours", validate: ValidateBackendConfig,
 			mutate: func(c *Config) { c.ReadingQueue.TTLHours = -5 }, wantErr: "READING_QUEUE_TTL_HOURS"},
+		{name: "backend rejects empty cors allowed origins", validate: ValidateBackendConfig,
+			mutate: func(c *Config) { c.Server.CORSAllowedOrigins = nil }, wantErr: "CORS_ALLOWED_ORIGINS"},
+		{name: "backend rejects blank cors allowed origin entry", validate: ValidateBackendConfig,
+			mutate: func(c *Config) { c.Server.CORSAllowedOrigins = []string{"http://localhost:3000", ""} }, wantErr: "CORS_ALLOWED_ORIGINS"},
 
 		{name: "harvester accepts a complete config without backend token key", validate: ValidateHarvesterConfig,
 			verifyKeyValue: new(string), mutate: func(c *Config) { c.ReadingQueue = ReadingQueueConfig{} }},
@@ -576,6 +581,109 @@ func TestLoadDataHubListenAddr(t *testing.T) {
 			}
 			if got != tt.want {
 				t.Errorf("LoadDataHubListenAddr() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestValidateBackendConfig_CORSAllowedOrigins(t *testing.T) {
+	_, verifyPEM := marshalTestEd25519SPKIPEM(t)
+	verifyKeyFile := writeBackendVerifyKeyFile(t, verifyPEM)
+
+	tests := []struct {
+		name        string
+		origins     []string
+		wantErr     bool
+		errContains []string
+	}{
+		{
+			name:    "accepts single http localhost origin",
+			origins: []string{"http://localhost:3000"},
+		},
+		{
+			name:    "accepts default multi-origin list",
+			origins: []string{"http://localhost:3000", "http://localhost:80", "http://localhost:4173", "https://curionoah.com"},
+		},
+		{
+			name:    "accepts IPv4, IPv6, and non-default https port",
+			origins: []string{"http://127.0.0.1:3000", "http://[::1]:3000", "https://sub.example.com:8443"},
+		},
+		{
+			name:        "rejects trailing slash naming entry",
+			origins:     []string{"https://example.com/"},
+			wantErr:     true,
+			errContains: []string{"https://example.com/"},
+		},
+		{
+			name:        "rejects path naming entry",
+			origins:     []string{"https://example.com/api"},
+			wantErr:     true,
+			errContains: []string{"https://example.com/api"},
+		},
+		{
+			name:        "rejects query string naming entry",
+			origins:     []string{"https://example.com?a=1"},
+			wantErr:     true,
+			errContains: []string{"https://example.com?a=1"},
+		},
+		{
+			name:        "rejects fragment naming entry",
+			origins:     []string{"https://example.com#frag"},
+			wantErr:     true,
+			errContains: []string{"https://example.com#frag"},
+		},
+		{
+			name:        "rejects missing scheme naming entry",
+			origins:     []string{"example.com"},
+			wantErr:     true,
+			errContains: []string{"example.com"},
+		},
+		{
+			name:        "rejects host:port without scheme naming entry",
+			origins:     []string{"localhost:3000"},
+			wantErr:     true,
+			errContains: []string{"localhost:3000"},
+		},
+		{
+			name:        "rejects non-http(s) scheme naming entry",
+			origins:     []string{"ftp://example.com"},
+			wantErr:     true,
+			errContains: []string{"ftp://example.com"},
+		},
+		{
+			name:        "rejects wildcard subdomain pattern naming entry and explaining unsupported pattern",
+			origins:     []string{"https://*.example.com"},
+			wantErr:     true,
+			errContains: []string{"https://*.example.com", "not supported"},
+		},
+		{
+			name:        "rejects bare wildcard naming entry and explaining unsupported pattern",
+			origins:     []string{"*"},
+			wantErr:     true,
+			errContains: []string{"*", "not supported"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("BACKEND_TOKEN_VERIFY_KEY_FILE", verifyKeyFile)
+			cfg := baseConfig()
+			cfg.Server.CORSAllowedOrigins = tt.origins
+
+			err := ValidateBackendConfig(cfg)
+			if !tt.wantErr {
+				if err != nil {
+					t.Fatalf("ValidateBackendConfig() unexpected error: %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("ValidateBackendConfig() expected error for origins %v, got nil", tt.origins)
+			}
+			for _, sub := range tt.errContains {
+				if !strings.Contains(err.Error(), sub) {
+					t.Errorf("ValidateBackendConfig() error = %q, want it to contain %q", err.Error(), sub)
+				}
 			}
 		})
 	}

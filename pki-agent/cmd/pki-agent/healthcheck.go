@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/http"
@@ -19,19 +20,19 @@ import (
 //     PROXY_LISTEN; this branch is retained for the binary's proxy mode.
 //
 // Returns nil when every probe succeeds; the first error otherwise.
-func runHealthcheck(metricsAddr, proxyListen string) error {
-	if err := probeMetrics(metricsAddr); err != nil {
+func runHealthcheck(ctx context.Context, metricsAddr, proxyListen string) error {
+	if err := probeMetrics(ctx, metricsAddr); err != nil {
 		return err
 	}
 	if proxyListen != "" {
-		if err := probeProxy(proxyListen); err != nil {
+		if err := probeProxy(ctx, proxyListen); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func probeMetrics(addr string) error {
+func probeMetrics(ctx context.Context, addr string) error {
 	if addr == "" {
 		addr = ":9510"
 	}
@@ -39,8 +40,12 @@ func probeMetrics(addr string) error {
 		addr = "127.0.0.1" + addr
 	}
 	url := "http://" + addr + "/healthz"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil) // #nosec G107 G704 -- healthcheck probes local metrics listener configured via METRICS_ADDR
+	if err != nil {
+		return fmt.Errorf("metrics /healthz: %w", err)
+	}
 	client := &http.Client{Timeout: 2 * time.Second}
-	resp, err := client.Get(url) // #nosec G107 G704 -- healthcheck probes local metrics listener configured via METRICS_ADDR
+	resp, err := client.Do(req) // #nosec G107 G704 -- healthcheck probes local metrics listener configured via METRICS_ADDR
 	if err != nil {
 		return fmt.Errorf("metrics /healthz: %w", err)
 	}
@@ -51,12 +56,13 @@ func probeMetrics(addr string) error {
 	return nil
 }
 
-func probeProxy(listen string) error {
+func probeProxy(ctx context.Context, listen string) error {
 	addr := listen
 	if addr[0] == ':' {
 		addr = "127.0.0.1" + addr
 	}
-	conn, err := net.DialTimeout("tcp", addr, 2*time.Second) // #nosec G704 -- healthcheck dials local proxy listener configured via PROXY_LISTEN
+	dialer := &net.Dialer{Timeout: 2 * time.Second}
+	conn, err := dialer.DialContext(ctx, "tcp", addr) // #nosec G704 -- healthcheck dials local proxy listener configured via PROXY_LISTEN
 	if err != nil {
 		return fmt.Errorf("proxy listener %s: %w", addr, err)
 	}

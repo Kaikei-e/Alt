@@ -17,6 +17,11 @@ from tag_generator.domain.models import Article, BatchResult, Tag, TagExtraction
 # Strategies
 # ---------------------------------------------------------------------------
 
+_MAX_TITLE_LENGTH = 1000
+_MIN_PRINTABLE_ASCII = 32
+_MIN_TAG_LENGTH = 2
+_MAX_TAG_LENGTH = 15
+
 # Printable text that avoids control characters (which InputSanitizer rejects)
 safe_text = st.text(
     alphabet=st.characters(
@@ -50,7 +55,7 @@ class TestInputSanitizerProperties:
 
     @given(title=safe_text, content=safe_text)
     @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
-    def test_sanitize_never_raises(self, title, content):
+    def test_sanitize_never_raises(self, title: str, content: str) -> None:
         """Sanitize should never raise an unhandled exception."""
         sanitizer = InputSanitizer()
         result = sanitizer.sanitize(title, content)
@@ -59,9 +64,9 @@ class TestInputSanitizerProperties:
         assert isinstance(result.is_valid, bool)
         assert isinstance(result.violations, list)
 
-    @given(title=safe_text.filter(lambda t: 1 <= len(t.strip()) <= 1000), content=safe_text)
+    @given(title=safe_text.filter(lambda t: 1 <= len(t.strip()) <= _MAX_TITLE_LENGTH), content=safe_text)
     @settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow])
-    def test_sanitized_output_is_nfc_normalized(self, title, content):
+    def test_sanitized_output_is_nfc_normalized(self, title: str, content: str) -> None:
         """Valid sanitized output must be NFC-normalized Unicode."""
         sanitizer = InputSanitizer()
         result = sanitizer.sanitize(title, content)
@@ -71,19 +76,19 @@ class TestInputSanitizerProperties:
 
     @given(title=safe_text, content=safe_text)
     @settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow])
-    def test_sanitized_output_has_no_control_chars(self, title, content):
+    def test_sanitized_output_has_no_control_chars(self, title: str, content: str) -> None:
         """Sanitized output must not contain control characters."""
         sanitizer = InputSanitizer()
         result = sanitizer.sanitize(title, content)
         if result.is_valid and result.sanitized_input:
             for char in result.sanitized_input.title + result.sanitized_input.content:
-                assert ord(char) >= 32 or char in "\t\n\r"
+                assert ord(char) >= _MIN_PRINTABLE_ASCII or char in "\t\n\r"
 
     @given(
         title=st.text(min_size=1001, max_size=1050, alphabet=st.characters(whitelist_categories=("L",))),
     )
     @settings(max_examples=10)
-    def test_title_over_limit_is_invalid(self, title):
+    def test_title_over_limit_is_invalid(self, title: str) -> None:
         """Titles exceeding max length must be rejected."""
         sanitizer = InputSanitizer()
         result = sanitizer.sanitize(title, "valid content")
@@ -99,30 +104,30 @@ class TestTagValidatorProperties:
     """Property-based tests for Japanese tag validator."""
 
     @given(tag=st.text(min_size=0, max_size=1))
-    def test_short_tags_always_rejected(self, tag):
+    def test_short_tags_always_rejected(self, tag: str) -> None:
         """Tags shorter than 2 characters are always invalid."""
         assert not is_valid_japanese_tag(tag)
 
     @given(tag=st.text(min_size=16, max_size=50, alphabet=st.characters(whitelist_categories=("L",))))
-    def test_long_tags_rejected_at_default_limit(self, tag):
+    def test_long_tags_rejected_at_default_limit(self, tag: str) -> None:
         """Tags longer than 15 characters (default) are invalid."""
         assert not is_valid_japanese_tag(tag)
 
     @given(num=st.integers(min_value=0, max_value=999999))
-    def test_number_only_tags_rejected(self, num):
+    def test_number_only_tags_rejected(self, num: int) -> None:
         """Numeric-only strings are never valid tags."""
         assert not is_valid_japanese_tag(str(num))
 
-    @given(tag=japanese_text.filter(lambda t: 2 <= len(t) <= 15))
+    @given(tag=japanese_text.filter(lambda t: _MIN_TAG_LENGTH <= len(t) <= _MAX_TAG_LENGTH))
     @settings(max_examples=100)
-    def test_clean_noun_phrase_never_longer(self, tag):
+    def test_clean_noun_phrase_never_longer(self, tag: str) -> None:
         """clean_noun_phrase should never make a phrase longer."""
         cleaned = clean_noun_phrase(tag)
         assert len(cleaned) <= len(tag)
 
-    @given(tag=japanese_text.filter(lambda t: 2 <= len(t) <= 15))
+    @given(tag=japanese_text.filter(lambda t: _MIN_TAG_LENGTH <= len(t) <= _MAX_TAG_LENGTH))
     @settings(max_examples=50)
-    def test_clean_noun_phrase_converges(self, tag):
+    def test_clean_noun_phrase_converges(self, tag: str) -> None:
         """Repeated cleaning must eventually converge (fixed point)."""
         current = tag
         for _ in range(10):
@@ -136,7 +141,7 @@ class TestTagValidatorProperties:
     @given(
         fragment=st.sampled_from(["https", "www", "com", "org", "html", "gt", "lt", "amp", "nbsp"]),
     )
-    def test_url_html_fragments_rejected(self, fragment):
+    def test_url_html_fragments_rejected(self, fragment: str) -> None:
         """URL/HTML fragments are always invalid tags."""
         assert not is_valid_japanese_tag(fragment)
 
@@ -153,7 +158,7 @@ class TestDomainModelProperties:
         name=st.text(min_size=1, max_size=50, alphabet=st.characters(whitelist_categories=("L", "N"))),
         confidence=st.floats(min_value=0.0, max_value=1.0, allow_nan=False),
     )
-    def test_tag_confidence_preserved(self, name, confidence):
+    def test_tag_confidence_preserved(self, name: str, confidence: float) -> None:
         """Tag always preserves its confidence value."""
         tag = Tag(name=name, confidence=confidence)
         assert tag.name == name
@@ -169,7 +174,7 @@ class TestDomainModelProperties:
             max_size=10,
         )
     )
-    def test_extraction_result_tag_names_matches_tags(self, tags):
+    def test_extraction_result_tag_names_matches_tags(self, tags: list[tuple[str, float]]) -> None:
         """tag_names property must always match the tags list."""
         tag_objects = [Tag(name=n, confidence=c) for n, c in tags]
         result = TagExtractionResult(
@@ -187,7 +192,7 @@ class TestDomainModelProperties:
         successful=st.integers(min_value=0, max_value=10000),
         failed=st.integers(min_value=0, max_value=10000),
     )
-    def test_batch_result_is_success_iff_no_failures(self, total, successful, failed):
+    def test_batch_result_is_success_iff_no_failures(self, total: int, successful: int, failed: int) -> None:
         """BatchResult.is_success is True exactly when failed == 0."""
         result = BatchResult(total_processed=total, successful=successful, failed=failed)
         assert result.is_success == (failed == 0)
@@ -197,7 +202,7 @@ class TestDomainModelProperties:
         title=st.text(min_size=1, max_size=100),
         content=st.text(min_size=1, max_size=500),
     )
-    def test_article_roundtrip(self, article_id, title, content):
+    def test_article_roundtrip(self, article_id: str, title: str, content: str) -> None:
         """Article.from_dict(a.to_dict()) preserves key fields."""
         article = Article(id=article_id, title=title, content=content, created_at="2024-01-01T00:00:00")
         roundtripped = Article.from_dict(article.to_dict())

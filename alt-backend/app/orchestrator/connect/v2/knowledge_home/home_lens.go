@@ -33,7 +33,7 @@ func (h *Handler) CreateLens(
 			fmt.Errorf("lens feature is not enabled for this user"))
 	}
 
-	if req.Msg.Name == "" {
+	if req.Msg.GetName() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("name is required"))
 	}
@@ -41,18 +41,18 @@ func (h *Handler) CreateLens(
 	input := create_lens_usecase.CreateLensInput{
 		UserID:      user.UserID,
 		TenantID:    user.TenantID,
-		Name:        req.Msg.Name,
-		Description: req.Msg.Description,
+		Name:        req.Msg.GetName(),
+		Description: req.Msg.GetDescription(),
 	}
 
-	if req.Msg.Version != nil {
-		input.QueryText = req.Msg.Version.QueryText
-		input.TagIDs = req.Msg.Version.TagIds
-		input.SourceIDs = req.Msg.Version.SourceIds
-		input.TimeWindow = req.Msg.Version.TimeWindow
-		input.IncludeRecap = req.Msg.Version.IncludeRecap
-		input.IncludePulse = req.Msg.Version.IncludePulse
-		input.SortMode = req.Msg.Version.SortMode
+	if req.Msg.GetVersion() != nil {
+		input.QueryText = req.Msg.GetVersion().GetQueryText()
+		input.TagIDs = req.Msg.GetVersion().GetTagIds()
+		input.SourceIDs = req.Msg.GetVersion().GetSourceIds()
+		input.TimeWindow = req.Msg.GetVersion().GetTimeWindow()
+		input.IncludeRecap = req.Msg.GetVersion().GetIncludeRecap()
+		input.IncludePulse = req.Msg.GetVersion().GetIncludePulse()
+		input.SortMode = req.Msg.GetVersion().GetSortMode()
 	}
 
 	result, err := h.createLensUsecase.Execute(ctx, input)
@@ -80,7 +80,7 @@ func (h *Handler) UpdateLens(
 			fmt.Errorf("lens feature is not enabled for this user"))
 	}
 
-	lensID, err := parseUUID(req.Msg.LensId, "lens_id")
+	lensID, err := parseUUID(req.Msg.GetLensId(), "lens_id")
 	if err != nil {
 		return nil, err
 	}
@@ -90,14 +90,14 @@ func (h *Handler) UpdateLens(
 		UserID: user.UserID,
 	}
 
-	if req.Msg.Version != nil {
-		input.QueryText = req.Msg.Version.QueryText
-		input.TagIDs = req.Msg.Version.TagIds
-		input.SourceIDs = req.Msg.Version.SourceIds
-		input.TimeWindow = req.Msg.Version.TimeWindow
-		input.IncludeRecap = req.Msg.Version.IncludeRecap
-		input.IncludePulse = req.Msg.Version.IncludePulse
-		input.SortMode = req.Msg.Version.SortMode
+	if req.Msg.GetVersion() != nil {
+		input.QueryText = req.Msg.GetVersion().GetQueryText()
+		input.TagIDs = req.Msg.GetVersion().GetTagIds()
+		input.SourceIDs = req.Msg.GetVersion().GetSourceIds()
+		input.TimeWindow = req.Msg.GetVersion().GetTimeWindow()
+		input.IncludeRecap = req.Msg.GetVersion().GetIncludeRecap()
+		input.IncludePulse = req.Msg.GetVersion().GetIncludePulse()
+		input.SortMode = req.Msg.GetVersion().GetSortMode()
 	}
 
 	version, err := h.updateLensUsecase.Execute(ctx, input)
@@ -110,7 +110,7 @@ func (h *Handler) UpdateLens(
 
 	return connect.NewResponse(&knowledgehomev1.UpdateLensResponse{
 		Lens: &knowledgehomev1.Lens{
-			LensId:         req.Msg.LensId,
+			LensId:         req.Msg.GetLensId(),
 			CurrentVersion: convertLensVersionToProto(*version),
 		},
 	}), nil
@@ -131,7 +131,7 @@ func (h *Handler) DeleteLens(
 			fmt.Errorf("lens feature is not enabled for this user"))
 	}
 
-	lensID, err := parseUUID(req.Msg.LensId, "lens_id")
+	lensID, err := parseUUID(req.Msg.GetLensId(), "lens_id")
 	if err != nil {
 		return nil, err
 	}
@@ -195,8 +195,8 @@ func (h *Handler) SelectLens(
 	}
 
 	lensID := uuid.Nil
-	if req.Msg.LensId != "" {
-		parsedLensID, err := parseUUID(req.Msg.LensId, "lens_id")
+	if req.Msg.GetLensId() != "" {
+		parsedLensID, err := parseUUID(req.Msg.GetLensId(), "lens_id")
 		if err != nil {
 			return nil, err
 		}

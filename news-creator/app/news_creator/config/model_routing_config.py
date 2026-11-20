@@ -7,8 +7,8 @@ Following Python 3.14 best practices:
 
 from __future__ import annotations
 
-import os
 import logging
+import os
 from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
@@ -32,7 +32,7 @@ class ModelRoutingConfig:
     # Derived field for quick lookup
     _bucket_model_names: frozenset[str] = field(default_factory=frozenset, repr=False)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Initialize derived fields after dataclass construction."""
         # Use object.__setattr__ because frozen=True
         object.__setattr__(
@@ -76,4 +76,5 @@ def _get_int(name: str, default: int) -> int:
     try:
         return int(raw)
     except ValueError as exc:
-        raise ValueError(f"Invalid integer value for {name}: {raw!r}") from exc
+        msg = f"Invalid integer value for {name}: {raw!r}"
+        raise ValueError(msg) from exc

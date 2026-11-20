@@ -14,6 +14,8 @@ from acolyte.port.llm_provider import LLMMode, LLMResponse
 from acolyte.usecase.rerun_section_uc import RerunSectionUsecase
 from tests.conftest import TEST_USER_ID
 
+EXPECTED_BUMPED_REPORT_VERSION = 2
+
 
 class FakeLLM:
     def __init__(self, text: str = "Regenerated section content.") -> None:
@@ -188,7 +190,7 @@ async def test_rerun_section_bumps_report_version() -> None:
 
     new_v = await uc.execute(rid, "summary", user_id=TEST_USER_ID)
 
-    assert new_v == 2
+    assert new_v == EXPECTED_BUMPED_REPORT_VERSION
     assert len(repo.bumped_versions) == 1
     assert "summary" in repo.bumped_versions[0][2]
 

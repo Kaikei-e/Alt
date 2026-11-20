@@ -35,9 +35,11 @@ const (
 	SecretClassPKIProvisioner SecretClass = "pki-provisioner"
 	// SecretClassEd25519SigningKey is the PKCS#8 PEM private half of an
 	// Ed25519 key pair; altctl writes it together with its Partner.
+	// #nosec G101 -- secret class identifier, not a credential
 	SecretClassEd25519SigningKey SecretClass = "ed25519-signing-key"
 	// SecretClassEd25519VerifyKey is the SPKI PEM public half, written by
 	// the same step as its signing key Partner.
+	// #nosec G101 -- secret class identifier, not a credential
 	SecretClassEd25519VerifyKey SecretClass = "ed25519-verify-key"
 )
 
@@ -194,6 +196,7 @@ type secretFileEntry struct {
 // is the single source of truth for which secret files `altctl init` must
 // generate -- compose/base.yaml, not a hand-maintained Go list.
 func secretNamesFromComposeFile(path string) ([]string, error) {
+	// #nosec G304 -- path is compose/base.yaml from operator project root
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("reading compose file %s: %w", path, err)
@@ -215,7 +218,11 @@ func secretNamesFromComposeFile(path string) ([]string, error) {
 		if err := valueNode.Decode(&entry); err != nil || entry.File == "" {
 			continue
 		}
-		names = append(names, filepath.Base(entry.File))
+		base := filepath.Base(entry.File)
+		if base == "." || base == ".." || base == string(filepath.Separator) {
+			return nil, fmt.Errorf("invalid secret file path %q in %s", entry.File, path)
+		}
+		names = append(names, base)
 	}
 	sort.Strings(names)
 	return names, nil
@@ -459,6 +466,7 @@ func fileExists(path string) (bool, error) {
 // symlink, is an error and is left alone) and removes the file again if it
 // cannot finish writing it.
 func writeSecretFile(path string, content []byte) error {
+	// #nosec G304 -- path joins secretsDir with validated base secret filename
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, secretFileMode)
 	if err != nil {
 		return fmt.Errorf("creating secret %s: %w", filepath.Base(path), err)

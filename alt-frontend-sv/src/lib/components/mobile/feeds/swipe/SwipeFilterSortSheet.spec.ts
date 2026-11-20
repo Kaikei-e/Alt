@@ -56,14 +56,18 @@ describe("SwipeFilterSortSheet logic", () => {
 		it("filters sources by URL substring case-insensitively", () => {
 			const result = filterSources(mockSources, "tech");
 			expect(result).toHaveLength(2);
-			expect(result[0]!.id).toBe("uuid-1");
-			expect(result[1]!.id).toBe("uuid-3");
+			const [first, second] = result;
+			if (!first || !second) throw new Error("expected 2 results");
+			expect(first.id).toBe("uuid-1");
+			expect(second.id).toBe("uuid-3");
 		});
 
 		it("returns single match for specific domain", () => {
 			const result = filterSources(mockSources, "wired");
 			expect(result).toHaveLength(1);
-			expect(result[0]!.id).toBe("uuid-2");
+			const [first] = result;
+			if (!first) throw new Error("expected 1 result");
+			expect(first.id).toBe("uuid-2");
 		});
 
 		it("returns no matches for non-existent query", () => {

@@ -13,7 +13,7 @@ import (
 	"alt/config"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 type jwtContextKey string
@@ -83,7 +83,7 @@ func NewJWTAuthMiddleware(logger *slog.Logger, cfg config.AuthConfig) *JWTAuthMi
 // RequireJWT ensures that a valid JWT token is present before allowing the request to proceed
 func (m *JWTAuthMiddleware) RequireJWT() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+		return func(c *echo.Context) error {
 			userCtx, err := m.validateJWT(c)
 			if err != nil {
 				switch {
@@ -113,7 +113,7 @@ func (m *JWTAuthMiddleware) RequireJWT() echo.MiddlewareFunc {
 }
 
 // validateJWT validates the JWT token and returns user context
-func (m *JWTAuthMiddleware) validateJWT(c echo.Context) (*UserContext, error) {
+func (m *JWTAuthMiddleware) validateJWT(c *echo.Context) (*UserContext, error) {
 	tokenStr := c.Request().Header.Get(backendTokenHeader)
 	if tokenStr == "" {
 		return nil, errMissingToken
@@ -128,7 +128,7 @@ func (m *JWTAuthMiddleware) validateJWT(c echo.Context) (*UserContext, error) {
 	}, jwt.WithExpirationRequired(), jwt.WithValidMethods([]string{jwt.SigningMethodEdDSA.Alg()}))
 
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", errInvalidToken, err)
+		return nil, fmt.Errorf("%w: %w", errInvalidToken, err)
 	}
 
 	if !parsed.Valid {
@@ -190,7 +190,7 @@ func (m *JWTAuthMiddleware) validateJWT(c echo.Context) (*UserContext, error) {
 }
 
 // GetUserContext extracts user context from request context
-func GetUserContext(c echo.Context) (*UserContext, bool) {
+func GetUserContext(c *echo.Context) (*UserContext, bool) {
 	ctx := c.Request().Context()
 	userCtx, ok := ctx.Value(userContextKey).(*UserContext)
 	return userCtx, ok

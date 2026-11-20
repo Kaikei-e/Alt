@@ -95,7 +95,7 @@ func (d *EmbedderSettingsDriver) GetEmbedders(ctx context.Context) (map[string]E
 	if err != nil {
 		return nil, &DriverError{Op: "GetEmbedders", Err: err}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	raw, err := readBounded(resp.Body)
 	if err != nil {
@@ -118,6 +118,7 @@ func (d *EmbedderSettingsDriver) GetEmbedders(ctx context.Context) (map[string]E
 // The task is not awaited: any change here makes Meilisearch re-embed every
 // document in the index, which takes minutes, and startup must not block on it.
 func (d *EmbedderSettingsDriver) UpdateEmbedders(ctx context.Context, payload map[string]*EmbedderSpec) (int64, error) {
+	// #nosec G117 -- Meilisearch embedders API requires the apiKey JSON field; EmbedderSpec.LogValue redacts it
 	encoded, err := json.Marshal(payload)
 	if err != nil {
 		return 0, &DriverError{Op: "UpdateEmbedders", Err: err}
@@ -130,7 +131,7 @@ func (d *EmbedderSettingsDriver) UpdateEmbedders(ctx context.Context, payload ma
 	if err != nil {
 		return 0, &DriverError{Op: "UpdateEmbedders", Err: err}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	raw, err := readBounded(resp.Body)
 	if err != nil {

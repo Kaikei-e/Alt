@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
+	"github.com/labstack/echo/v5"
+	"github.com/labstack/echo/v5/middleware"
 	"github.com/stretchr/testify/require"
 )
 
@@ -26,13 +26,13 @@ func buildHeaderEchoForSecure() *echo.Echo {
 		ContentSecurityPolicy: "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; report-uri /security/csp-report",
 		ReferrerPolicy:        "strict-origin-when-cross-origin",
 	}))
-	e.GET("/v1/health", func(c echo.Context) error { return c.NoContent(http.StatusOK) })
+	e.GET("/v1/health", func(c *echo.Context) error { return c.NoContent(http.StatusOK) })
 	return e
 }
 
 func TestSecurityHeaders_CSPHardened(t *testing.T) {
 	e := buildHeaderEchoForSecure()
-	req := httptest.NewRequest(http.MethodGet, "/v1/health", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/health", nil)
 	res := httptest.NewRecorder()
 	e.ServeHTTP(res, req)
 
@@ -45,7 +45,7 @@ func TestSecurityHeaders_CSPHardened(t *testing.T) {
 
 func TestSecurityHeaders_ReferrerPolicySet(t *testing.T) {
 	e := buildHeaderEchoForSecure()
-	req := httptest.NewRequest(http.MethodGet, "/v1/health", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/health", nil)
 	res := httptest.NewRecorder()
 	e.ServeHTTP(res, req)
 	require.Equal(t,
@@ -57,7 +57,7 @@ func TestSecurityHeaders_ReferrerPolicySet(t *testing.T) {
 
 func TestSecurityHeaders_HSTSWithPreload(t *testing.T) {
 	e := buildHeaderEchoForSecure()
-	req := httptest.NewRequest(http.MethodGet, "/v1/health", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/health", nil)
 	// Echo's Secure middleware only emits HSTS when the request is TLS.
 	req.TLS = &tls.ConnectionState{}
 	res := httptest.NewRecorder()
@@ -66,8 +66,8 @@ func TestSecurityHeaders_HSTSWithPreload(t *testing.T) {
 	sts := res.Header().Get("Strict-Transport-Security")
 	require.NotEmpty(t, sts)
 	require.Contains(t, sts, "max-age=31536000")
-	require.True(t,
-		strings.Contains(sts, "preload"),
+	require.Contains(t,
+		sts, "preload",
 		"HSTS must include preload when HSTSPreloadEnabled is true, got: %s", sts,
 	)
 }
@@ -78,7 +78,7 @@ func buildHeaderEchoForCORS() *echo.Echo {
 	e := echo.New()
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
 		AllowOrigins: []string{"https://example.com"},
-		AllowMethods: []string{echo.GET, echo.POST, echo.PUT, echo.DELETE, echo.OPTIONS},
+		AllowMethods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodOptions},
 		AllowHeaders: []string{
 			echo.HeaderOrigin,
 			echo.HeaderContentType,
@@ -89,14 +89,15 @@ func buildHeaderEchoForCORS() *echo.Echo {
 			"X-CSRF-Token",
 			"X-Alt-Backend-Token",
 		},
+		MaxAge: 86400,
 	}))
-	e.POST("/v1/feeds/search", func(c echo.Context) error { return c.NoContent(http.StatusOK) })
+	e.POST("/v1/feeds/search", func(c *echo.Context) error { return c.NoContent(http.StatusOK) })
 	return e
 }
 
 func TestCORS_AllowsAltBackendTokenHeader(t *testing.T) {
 	e := buildHeaderEchoForCORS()
-	req := httptest.NewRequest(http.MethodOptions, "/v1/feeds/search", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodOptions, "/v1/feeds/search", nil)
 	req.Header.Set("Origin", "https://example.com")
 	req.Header.Set("Access-Control-Request-Method", "POST")
 	req.Header.Set("Access-Control-Request-Headers", "x-alt-backend-token")
@@ -106,4 +107,63 @@ func TestCORS_AllowsAltBackendTokenHeader(t *testing.T) {
 	allowHeaders := strings.ToLower(res.Header().Get("Access-Control-Allow-Headers"))
 	require.Contains(t, allowHeaders, "x-alt-backend-token",
 		"preflight must allow X-Alt-Backend-Token so browser CORS does not block JWT requests")
+}
+
+func TestCORS_EffectivePolicy(t *testing.T) {
+	e := buildHeaderEchoForCORS()
+
+	t.Run("allowed origin receives ACAO and no credentials header", func(t *testing.T) {
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/feeds/search", nil)
+		req.Header.Set("Origin", "https://example.com")
+		res := httptest.NewRecorder()
+		e.ServeHTTP(res, req)
+
+		require.Equal(t, http.StatusOK, res.Code)
+		require.Equal(t, "https://example.com", res.Header().Get("Access-Control-Allow-Origin"))
+		require.Empty(t, res.Header().Get("Access-Control-Allow-Credentials"))
+	})
+
+	t.Run("disallowed origin on simple request omits ACAO", func(t *testing.T) {
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/feeds/search", nil)
+		req.Header.Set("Origin", "https://evil.example")
+		res := httptest.NewRecorder()
+		e.ServeHTTP(res, req)
+
+		require.Equal(t, http.StatusOK, res.Code)
+		require.Empty(t, res.Header().Get("Access-Control-Allow-Origin"))
+		require.Empty(t, res.Header().Get("Access-Control-Allow-Credentials"))
+	})
+
+	t.Run("disallowed origin on preflight returns 204 without ACAO", func(t *testing.T) {
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodOptions, "/v1/feeds/search", nil)
+		req.Header.Set("Origin", "https://evil.example")
+		req.Header.Set("Access-Control-Request-Method", "POST")
+		res := httptest.NewRecorder()
+		e.ServeHTTP(res, req)
+
+		require.Equal(t, http.StatusNoContent, res.Code)
+		require.Empty(t, res.Header().Get("Access-Control-Allow-Origin"))
+	})
+
+	t.Run("allowed origin preflight returns 204 with methods headers and max-age", func(t *testing.T) {
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodOptions, "/v1/feeds/search", nil)
+		req.Header.Set("Origin", "https://example.com")
+		req.Header.Set("Access-Control-Request-Method", "POST")
+		res := httptest.NewRecorder()
+		e.ServeHTTP(res, req)
+
+		require.Equal(t, http.StatusNoContent, res.Code)
+		require.Equal(t, "https://example.com", res.Header().Get("Access-Control-Allow-Origin"))
+		require.Equal(t, "GET,POST,PUT,DELETE,OPTIONS", res.Header().Get("Access-Control-Allow-Methods"))
+		require.Equal(t, "86400", res.Header().Get("Access-Control-Max-Age"))
+		require.Empty(t, res.Header().Get("Access-Control-Allow-Credentials"))
+	})
+
+	t.Run("wildcard with AllowCredentials true is rejected in v5", func(t *testing.T) {
+		_, err := middleware.CORSConfig{
+			AllowOrigins:     []string{"*"},
+			AllowCredentials: true,
+		}.ToMiddleware()
+		require.Error(t, err)
+	})
 }

@@ -28,8 +28,8 @@ func (c *Client) GetReadingQueue(ctx context.Context, userID uuid.UUID, asOf tim
 		return nil, fmt.Errorf("sovereign GetReadingQueue: %w", err)
 	}
 
-	out := make([]domain.ReadingQueueEntry, 0, len(resp.Msg.Items))
-	for _, pb := range resp.Msg.Items {
+	out := make([]domain.ReadingQueueEntry, 0, len(resp.Msg.GetItems()))
+	for _, pb := range resp.Msg.GetItems() {
 		articleID, err := uuid.Parse(pb.GetArticleId())
 		if err != nil {
 			return nil, fmt.Errorf("sovereign GetReadingQueue invalid article_id %q: %w", pb.GetArticleId(), err)

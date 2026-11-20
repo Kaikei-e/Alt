@@ -153,8 +153,8 @@ async function loadReport() {
 		sections = rpt.sections ?? [];
 		versions = ver.versions ?? [];
 		lastActiveRun = rpt.activeRun;
-		if (sections.length > 0 && !activeSection) {
-			activeSection = sections[0]!.sectionKey;
+		if (sections[0] && !activeSection) {
+			activeSection = sections[0].sectionKey;
 		}
 	} catch (e) {
 		error = e instanceof Error ? e.message : "Failed to load report";
@@ -193,7 +193,7 @@ async function handleRerun(key: string) {
 
 function refreshAfterUpdate() {
 	pendingUpdate = false;
-	loadReport();
+	void loadReport();
 }
 
 function dismissUpdate() {

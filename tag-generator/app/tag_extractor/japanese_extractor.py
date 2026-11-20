@@ -2,17 +2,36 @@
 
 import re
 from collections import Counter
-from typing import Any
+from collections.abc import Callable, Sequence
 
 import structlog
 
-from .config import TagExtractionConfig
+from .config import JapaneseTaggerLike, JapaneseTokenLike, KeyBERTLike, TagExtractionConfig
 from .tag_validator import is_valid_japanese_tag as _shared_is_valid_japanese_tag
 
 logger = structlog.get_logger(__name__)
 
 _EXCLUDED_UNIDIC_POS2 = frozenset({"数詞", "助動詞語幹"})
 _EXCLUDED_UNIDIC_POS3 = frozenset({"副詞可能", "助数詞可能"})
+_PROPER_NOUN_POS2 = frozenset({"固有名詞", "組織", "人名", "地域"})
+_MIN_COMPOUND_TOKEN_COUNT = 2
+_MIN_COMPOUND_CHAR_LEN = 3
+_MIN_SINGLE_NOUN_LEN = 2
+_MAX_SINGLE_NOUN_LEN = 10
+_MIN_FALLBACK_FREQ = 2
+_MIN_FALLBACK_LEN = 4
+_MIN_KEYBERT_CANDIDATES = 2
+
+
+class _JapaneseTaggerNotInitializedError(RuntimeError):
+    def __init__(self) -> None:
+        super().__init__("Japanese tagger not initialized")
+
+
+class _KeyBERTNotInitializedError(RuntimeError):
+    def __init__(self) -> None:
+        super().__init__("KeyBERT not initialized")
+
 
 # Tags that can connect nouns (e.g., の between nouns)
 CONNECTOR_SURFACES = {"の", "・", "＝", "－", "-"}
@@ -43,7 +62,7 @@ COMPOUND_PATTERNS = [
 
 
 def is_japanese_noun(
-    token: Any,
+    token: object,
     allowed_pos_tags: set[str] | tuple[str, ...] | None = None,
 ) -> bool:
     """Return True when a Fugashi token is a noun (including numerals/counters for compound chaining)."""
@@ -57,7 +76,7 @@ def is_japanese_noun(
 
 
 def is_topical_japanese_noun(
-    token: Any,
+    token: object,
     allowed_pos_tags: set[str] | tuple[str, ...] | None = None,
 ) -> bool:
     """Return True when a Fugashi token represents a topical noun rather than a numeral, counter, or temporal noun."""
@@ -70,13 +89,10 @@ def is_topical_japanese_noun(
         return False
 
     pos3 = getattr(feature, "pos3", "")
-    if isinstance(pos3, str) and pos3 in _EXCLUDED_UNIDIC_POS3:
-        return False
-
-    return True
+    return not (isinstance(pos3, str) and pos3 in _EXCLUDED_UNIDIC_POS3)
 
 
-def _is_compound_chain_token(token: Any, next_token: Any | None, has_preceding: bool) -> bool:
+def _is_compound_chain_token(token: object, next_token: object | None, has_preceding: bool) -> bool:
     """Check if token belongs in a contiguous Japanese noun compound chain."""
     if is_japanese_noun(token):
         return True
@@ -85,23 +101,27 @@ def _is_compound_chain_token(token: Any, next_token: Any | None, has_preceding: 
     pos2 = getattr(feature, "pos2", "")
     if pos1 == "接頭辞" and getattr(token, "surface", "") == "第":
         return next_token is not None and is_japanese_noun(next_token)
-    if has_preceding and pos1 == "接尾辞" and pos2 == "名詞的":
-        return True
-    return False
+    return bool(has_preceding and pos1 == "接尾辞" and pos2 == "名詞的")
 
 
-def _finalize_compound(tokens: list[Any], compounds: list[str], max_length: int) -> None:
+def _finalize_compound(tokens: Sequence[JapaneseTokenLike], compounds: list[str], max_length: int) -> None:
     """Append joined compound if it has >=2 tokens, contains a topical noun, and passes tag validation."""
-    if len(tokens) < 2:
+    if len(tokens) < _MIN_COMPOUND_TOKEN_COUNT:
         return
     if not any(is_topical_japanese_noun(tok) for tok in tokens):
         return
     compound = "".join(tok.surface for tok in tokens)
-    if 3 <= len(compound) <= max_length and _shared_is_valid_japanese_tag(compound, max_length=max_length):
+    if _MIN_COMPOUND_CHAR_LEN <= len(compound) <= max_length and _shared_is_valid_japanese_tag(
+        compound, max_length=max_length
+    ):
         compounds.append(compound)
 
 
-def extract_compound_nouns_fugashi(text: str, ja_tagger: Any, max_length: int = 15) -> list[str]:
+def extract_compound_nouns_fugashi(
+    text: str,
+    ja_tagger: JapaneseTaggerLike | None,
+    max_length: int = 15,
+) -> list[str]:
     """
     Extract compound nouns by chaining consecutive noun tokens.
 
@@ -119,7 +139,7 @@ def extract_compound_nouns_fugashi(text: str, ja_tagger: Any, max_length: int = 
         List of compound nouns (2+ consecutive tokens joined)
     """
     if ja_tagger is None:
-        raise RuntimeError("Japanese tagger not initialized")
+        raise _JapaneseTaggerNotInitializedError
 
     # Split on line breaks before invoking MeCab because MeCab discards whitespace
     # tokens and would otherwise glue the last noun of a title/paragraph onto the
@@ -129,7 +149,7 @@ def extract_compound_nouns_fugashi(text: str, ja_tagger: Any, max_length: int = 
 
     for segment in segments:
         parsed = list(ja_tagger(segment))
-        current_tokens: list[Any] = []
+        current_tokens: list[JapaneseTokenLike] = []
 
         for i, token in enumerate(parsed):
             surface = token.surface
@@ -137,9 +157,7 @@ def extract_compound_nouns_fugashi(text: str, ja_tagger: Any, max_length: int = 
             is_chainable = _is_compound_chain_token(token, next_tok, bool(current_tokens))
             is_connector = surface in CONNECTOR_SURFACES
 
-            if is_chainable:
-                current_tokens.append(token)
-            elif (
+            if is_chainable or (
                 is_connector
                 and current_tokens
                 and any(is_topical_japanese_noun(tok) for tok in current_tokens)
@@ -156,7 +174,54 @@ def extract_compound_nouns_fugashi(text: str, ja_tagger: Any, max_length: int = 
     return compounds
 
 
-def extract_compound_japanese_words(text: str, ja_tagger: Any, config: TagExtractionConfig) -> list[str]:
+def _extract_proper_noun_compounds(
+    text: str,
+    ja_tagger: JapaneseTaggerLike,
+    config: TagExtractionConfig,
+) -> list[str]:
+    parsed = list(ja_tagger(text))
+    compounds: list[str] = []
+    i = 0
+    while i < len(parsed):
+        pos1 = getattr(parsed[i].feature, "pos1", "")
+        pos2 = getattr(parsed[i].feature, "pos2", "")
+        if pos1 not in config.japanese_pos_tags or pos2 not in _PROPER_NOUN_POS2:
+            i += 1
+            continue
+
+        compound = parsed[i].surface
+        j = i + 1
+        while j < len(parsed):
+            tok = parsed[j]
+            tok_pos1 = getattr(tok.feature, "pos1", "")
+            tok_pos2 = getattr(tok.feature, "pos2", "")
+            if tok_pos1 in config.japanese_pos_tags:
+                if tok_pos2 in _PROPER_NOUN_POS2:
+                    compound += tok.surface
+                    j += 1
+                else:
+                    break
+            elif (
+                tok.surface in {"・", "＝", "－"}
+                and j + 1 < len(parsed)
+                and getattr(parsed[j + 1].feature, "pos1", "") in config.japanese_pos_tags
+            ):
+                compound += tok.surface + parsed[j + 1].surface
+                j += 2
+            else:
+                break
+
+        if _MIN_COMPOUND_CHAR_LEN <= len(compound) <= config.max_tag_length:
+            compounds.append(compound)
+        i = j
+    return compounds
+
+
+def extract_compound_japanese_words(
+    text: str,
+    ja_tagger: JapaneseTaggerLike | None,
+    config: TagExtractionConfig,
+) -> list[str]:
     """Extract compound words and important phrases from Japanese text.
 
     Args:
@@ -181,46 +246,8 @@ def extract_compound_japanese_words(text: str, ja_tagger: Any, config: TagExtrac
 
     # Phase 3: Use fugashi for proper noun sequence extraction
     if ja_tagger is None:
-        raise RuntimeError("Japanese tagger not initialized")
-    parsed = list(ja_tagger(text))
-    i = 0
-    while i < len(parsed):
-        if parsed[i].feature.pos1 in config.japanese_pos_tags:
-            # Check if it's a proper noun or organization
-            if parsed[i].feature.pos2 in ["固有名詞", "組織", "人名", "地域"]:
-                compound = parsed[i].surface
-                j = i + 1
-
-                # Look for connected proper nouns
-                while j < len(parsed):
-                    if parsed[j].feature.pos1 in config.japanese_pos_tags:
-                        if parsed[j].feature.pos2 in [
-                            "固有名詞",
-                            "組織",
-                            "人名",
-                            "地域",
-                        ]:
-                            compound += parsed[j].surface
-                            j += 1
-                        else:
-                            break
-                    elif parsed[j].surface in ["・", "＝", "－"]:
-                        # Include connectors in proper nouns
-                        if j + 1 < len(parsed) and parsed[j + 1].feature.pos1 in config.japanese_pos_tags:
-                            compound += parsed[j].surface + parsed[j + 1].surface
-                            j += 2
-                        else:
-                            break
-                    else:
-                        break
-
-                if 3 <= len(compound) <= config.max_tag_length:  # Length bounds for compound words
-                    compound_words.append(compound)
-                i = j
-            else:
-                i += 1
-        else:
-            i += 1
+        raise _JapaneseTaggerNotInitializedError
+    compound_words.extend(_extract_proper_noun_compounds(text, ja_tagger, config))
 
     # Deduplicate while preserving order
     seen: set[str] = set()
@@ -236,7 +263,7 @@ def extract_compound_japanese_words(text: str, ja_tagger: Any, config: TagExtrac
     return unique_compounds
 
 
-def make_japanese_analyzer(ja_tagger: Any):
+def make_japanese_analyzer(ja_tagger: JapaneseTaggerLike | None) -> Callable[[str], list[str]]:
     """Create a custom analyzer for CountVectorizer that uses Fugashi.
 
     The default token_pattern in CountVectorizer uses word boundaries (\\b)
@@ -272,12 +299,12 @@ def make_japanese_analyzer(ja_tagger: Any):
     return analyzer
 
 
-def score_japanese_candidates_with_keybert(
+def score_japanese_candidates_with_keybert(  # noqa: PLR0913 - language-specific scoring pipeline inputs
     text: str,
     candidates: list[str],
     freq_counter: Counter[str],
-    keybert: Any,
-    ja_tagger: Any,
+    keybert: KeyBERTLike | None,
+    ja_tagger: JapaneseTaggerLike | None,
     config: TagExtractionConfig,
     ja_stopwords: set[str],
 ) -> tuple[list[str], dict[str, float]]:
@@ -303,13 +330,15 @@ def score_japanese_candidates_with_keybert(
         Tuple of (tag_list, tag_confidences_dict)
     """
     if keybert is None:
-        raise RuntimeError("KeyBERT not initialized")
+        raise _KeyBERTNotInitializedError
 
     # CRITICAL FIX (ADR-176, Phase 2): Use custom CountVectorizer with:
     # 1. lowercase=False - Preserve case to match uppercase candidates (GitHub, AWS, etc.)
     # 2. analyzer=make_japanese_analyzer() - Use Fugashi for Japanese tokenization
     #    (the default token_pattern uses word boundaries \b which don't work for Japanese)
-    from sklearn.feature_extraction.text import CountVectorizer
+    from sklearn.feature_extraction.text import (  # noqa: PLC0415 - optional ml dependency loaded lazily
+        CountVectorizer,
+    )
 
     vectorizer = CountVectorizer(
         analyzer=make_japanese_analyzer(ja_tagger),
@@ -391,31 +420,21 @@ def score_candidates_by_frequency(
     return result, tag_confidences
 
 
-def fallback_japanese(
+def _build_japanese_candidates(
     text: str,
-    ja_tagger: Any,
+    ja_tagger: JapaneseTaggerLike,
     ja_stopwords: set[str],
     config: TagExtractionConfig,
-) -> list[str]:
-    """Frequency-only Japanese fallback (no KeyBERT).
-
-    Distinct from ``extract_keywords_japanese`` so a primary KeyBERT/semantic
-    failure does not re-run the same failing path.
-    """
-    if ja_tagger is None:
-        return []
-
+) -> tuple[list[str], Counter[str]]:
     compounds = extract_compound_japanese_words(text, ja_tagger, config)
     term_freq = Counter(compounds)
-
-    single_nouns: list[str] = []
-    for word in ja_tagger(text):
-        if (
-            is_topical_japanese_noun(word, config.japanese_pos_tags)
-            and 2 <= len(word.surface) <= 10
-            and word.surface not in ja_stopwords
-        ):
-            single_nouns.append(word.surface)
+    single_nouns = [
+        word.surface
+        for word in ja_tagger(text)
+        if is_topical_japanese_noun(word, config.japanese_pos_tags)
+        and _MIN_SINGLE_NOUN_LEN <= len(word.surface) <= _MAX_SINGLE_NOUN_LEN
+        and word.surface not in ja_stopwords
+    ]
     single_freq = Counter(single_nouns)
 
     combined_freq: Counter[str] = Counter()
@@ -428,9 +447,27 @@ def fallback_japanese(
     candidates = [
         term
         for term, freq in combined_freq.most_common(config.top_keywords * 5)
-        if (freq >= 2 or len(term) >= 4) and _shared_is_valid_japanese_tag(term, max_length=config.max_tag_length)
+        if (freq >= _MIN_FALLBACK_FREQ or len(term) >= _MIN_FALLBACK_LEN)
+        and _shared_is_valid_japanese_tag(term, max_length=config.max_tag_length)
     ][: config.top_keywords * 3]
+    return candidates, combined_freq
 
+
+def fallback_japanese(
+    text: str,
+    ja_tagger: JapaneseTaggerLike | None,
+    ja_stopwords: set[str],
+    config: TagExtractionConfig,
+) -> list[str]:
+    """Frequency-only Japanese fallback (no KeyBERT).
+
+    Distinct from ``extract_keywords_japanese`` so a primary KeyBERT/semantic
+    failure does not re-run the same failing path.
+    """
+    if ja_tagger is None:
+        return []
+
+    candidates, combined_freq = _build_japanese_candidates(text, ja_tagger, ja_stopwords, config)
     if not candidates:
         return []
 
@@ -440,8 +477,8 @@ def fallback_japanese(
 
 def extract_keywords_japanese(
     text: str,
-    ja_tagger: Any,
-    keybert: Any,
+    ja_tagger: JapaneseTaggerLike | None,
+    keybert: KeyBERTLike | None,
     ja_stopwords: set[str],
     config: TagExtractionConfig,
 ) -> tuple[list[str], dict[str, float]]:
@@ -462,49 +499,15 @@ def extract_keywords_japanese(
     Returns:
         Tuple of (tag_list, tag_confidences_dict)
     """
-    # Extract compound words and important terms
-    compounds = extract_compound_japanese_words(text, ja_tagger, config)
-
-    # Count frequencies
-    term_freq = Counter(compounds)
-
-    # Also extract single important nouns
     if ja_tagger is None:
-        raise RuntimeError("Japanese tagger not initialized")
-    single_nouns = []
-    for word in ja_tagger(text):
-        if (
-            is_topical_japanese_noun(word, config.japanese_pos_tags)
-            and 2 <= len(word.surface) <= 10
-            and word.surface not in ja_stopwords
-        ):
-            single_nouns.append(word.surface)
+        raise _JapaneseTaggerNotInitializedError
 
-    # Add single noun frequencies
-    single_freq = Counter(single_nouns)
-
-    # Combine frequencies, giving priority to compounds
-    combined_freq: Counter[str] = Counter()
-    for term, freq in term_freq.items():
-        combined_freq[term] = freq * 2  # Boost compound words
-
-    for term, freq in single_freq.items():
-        if term not in combined_freq:
-            combined_freq[term] = freq
-
-    # Filter candidates by frequency, length, and quality validation
-    # Get more candidates initially to account for filtering
-    candidates = [
-        term
-        for term, freq in combined_freq.most_common(config.top_keywords * 5)
-        if (freq >= 2 or len(term) >= 4) and _shared_is_valid_japanese_tag(term, max_length=config.max_tag_length)
-    ][: config.top_keywords * 3]  # Limit after filtering
-
+    candidates, combined_freq = _build_japanese_candidates(text, ja_tagger, ja_stopwords, config)
     if not candidates:
         return [], {}
 
     # Try semantic scoring with KeyBERT
-    if config.use_japanese_semantic and keybert is not None and len(candidates) >= 2:
+    if config.use_japanese_semantic and keybert is not None and len(candidates) >= _MIN_KEYBERT_CANDIDATES:
         return score_japanese_candidates_with_keybert(
             text, candidates, combined_freq, keybert, ja_tagger, config, ja_stopwords
         )

@@ -119,8 +119,10 @@ impl ClientStats {
 
     pub fn record_request(&self, success: bool, response_time: Duration) {
         self.total_requests.fetch_add(1, Ordering::Relaxed);
+        // HTTP response latency in ms cannot reach u64::MAX (~584M years).
+        let response_ms = u64::try_from(response_time.as_millis()).unwrap_or(u64::MAX);
         self.total_response_time
-            .fetch_add(response_time.as_millis() as u64, Ordering::Relaxed);
+            .fetch_add(response_ms, Ordering::Relaxed);
 
         if success {
             self.successful_requests.fetch_add(1, Ordering::Relaxed);
@@ -131,7 +133,13 @@ impl ClientStats {
 }
 
 impl HttpClient {
-    pub async fn new(config: ClientConfig) -> Result<Self, ClientError> {
+    /// Creates a new [`HttpClient`] from `config`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ClientError::InvalidConfiguration`] if `config.endpoint` is not a valid URL or
+    /// building the underlying `reqwest::Client` fails.
+    pub fn new(config: ClientConfig) -> Result<Self, ClientError> {
         // Validate endpoint URL
         let endpoint_url: Url = config
             .endpoint
@@ -143,10 +151,10 @@ impl HttpClient {
             endpoint_url.clone()
         } else {
             let mut url = endpoint_url.clone();
-            if !url.path().ends_with('/') {
-                url.set_path(&format!("{}/v1/aggregate", url.path()));
-            } else {
+            if url.path().ends_with('/') {
                 url.set_path(&format!("{}v1/aggregate", url.path()));
+            } else {
+                url.set_path(&format!("{}/v1/aggregate", url.path()));
             }
             url
         };
@@ -179,10 +187,18 @@ impl HttpClient {
         })
     }
 
+    #[must_use]
     pub fn endpoint(&self) -> &str {
         &self.config.endpoint
     }
 
+    /// Performs a `GET /v1/health` request against the configured endpoint.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ClientError::RequestTimeout`] if the request exceeds `config.timeout`,
+    /// [`ClientError::NetworkError`] if the HTTP request fails, or [`ClientError::HttpError`]
+    /// if the server responds with a non-success status code.
     pub async fn health_check(&self) -> Result<(), ClientError> {
         let mut health_url = self.endpoint_url.clone();
         health_url.set_path("/v1/health");

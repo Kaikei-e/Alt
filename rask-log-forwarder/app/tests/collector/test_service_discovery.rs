@@ -27,15 +27,17 @@ impl MockServiceDiscovery {
 }
 
 impl ServiceDiscoveryTrait for MockServiceDiscovery {
-    async fn find_container_by_service(
+    fn find_container_by_service(
         &self,
         service_name: &str,
-    ) -> Result<ContainerInfo, DiscoveryError> {
-        self.available_containers
-            .iter()
-            .find(|container| container.service_name == service_name)
-            .cloned()
-            .ok_or_else(|| DiscoveryError::ContainerNotFound(service_name.to_string()))
+    ) -> impl std::future::Future<Output = Result<ContainerInfo, DiscoveryError>> {
+        std::future::ready(
+            self.available_containers
+                .iter()
+                .find(|container| container.service_name == service_name)
+                .cloned()
+                .ok_or_else(|| DiscoveryError::ContainerNotFound(service_name.to_string())),
+        )
     }
 
     fn get_target_service(&self) -> Result<String, DiscoveryError> {

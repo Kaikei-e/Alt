@@ -21,7 +21,7 @@ class HdbscanClustererGateway:
     def __init__(self, settings: Settings) -> None:
         self._clusterer = Clusterer(settings)
 
-    def cluster(
+    def cluster(  # noqa: PLR0913 - port signature; implementers outside this change
         self,
         embeddings: np.ndarray,
         *,
@@ -55,7 +55,7 @@ class HdbscanClustererGateway:
             used_fallback=result.used_fallback,
         )
 
-    def optimize_clustering(
+    def optimize_clustering(  # noqa: PLR0913 - port signature; implementers outside this change
         self,
         embeddings: np.ndarray,
         *,

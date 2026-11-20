@@ -12,18 +12,23 @@ from recap_subworker.services.g_eval import (
     GEvalResult,
 )
 
+PARSED_SCORE_FOUR = 4.0
+PARSED_SCORE_THREE_HALF = 3.5
+PARSED_SCORE_MAX = 5.0
+PARSED_SCORE_FALLBACK = 3.0
+
 
 class TestEvaluationDimension:
     """Tests for EvaluationDimension enum."""
 
-    def test_all_dimensions_exist(self):
+    def test_all_dimensions_exist(self) -> None:
         """Should have all required evaluation dimensions."""
         assert EvaluationDimension.COHERENCE
         assert EvaluationDimension.CONSISTENCY
         assert EvaluationDimension.FLUENCY
         assert EvaluationDimension.RELEVANCE
 
-    def test_dimension_values(self):
+    def test_dimension_values(self) -> None:
         """Should have correct string values."""
         assert EvaluationDimension.COHERENCE.value == "coherence"
         assert EvaluationDimension.CONSISTENCY.value == "consistency"
@@ -32,7 +37,7 @@ class TestEvaluationDimension:
 class TestGEvalResult:
     """Tests for GEvalResult dataclass."""
 
-    def test_result_creation(self):
+    def test_result_creation(self) -> None:
         """Should create result with required fields."""
         result = GEvalResult(
             coherence=4.5,
@@ -45,7 +50,7 @@ class TestGEvalResult:
         assert result.fluency == pytest.approx(5.0)
         assert result.relevance == pytest.approx(3.5)
 
-    def test_result_average(self):
+    def test_result_average(self) -> None:
         """Should compute average score correctly."""
         result = GEvalResult(
             coherence=4.0,
@@ -55,7 +60,7 @@ class TestGEvalResult:
         )
         assert result.average == pytest.approx(4.0)
 
-    def test_result_to_dict(self):
+    def test_result_to_dict(self) -> None:
         """Should convert to dictionary."""
         result = GEvalResult(
             coherence=4.5,
@@ -68,7 +73,7 @@ class TestGEvalResult:
         assert d["consistency"] == pytest.approx(4.0)
         assert "average" in d
 
-    def test_result_with_explanations(self):
+    def test_result_with_explanations(self) -> None:
         """Should support optional explanations."""
         result = GEvalResult(
             coherence=4.5,
@@ -87,7 +92,7 @@ class TestGEvalResult:
 class TestGEvalEvaluator:
     """Tests for GEvalEvaluator class."""
 
-    def test_default_dimensions(self):
+    def test_default_dimensions(self) -> None:
         """Should have default evaluation dimensions."""
         evaluator = GEvalEvaluator()
         assert EvaluationDimension.COHERENCE in evaluator.dimensions
@@ -95,15 +100,14 @@ class TestGEvalEvaluator:
         assert EvaluationDimension.FLUENCY in evaluator.dimensions
         assert EvaluationDimension.RELEVANCE in evaluator.dimensions
 
-    def test_custom_dimensions(self):
+    def test_custom_dimensions(self) -> None:
         """Should accept custom dimensions."""
-        evaluator = GEvalEvaluator(
-            dimensions=[EvaluationDimension.COHERENCE, EvaluationDimension.FLUENCY]
-        )
-        assert len(evaluator.dimensions) == 2
+        dims = [EvaluationDimension.COHERENCE, EvaluationDimension.FLUENCY]
+        evaluator = GEvalEvaluator(dimensions=dims)
+        assert len(evaluator.dimensions) == len(dims)
         assert EvaluationDimension.CONSISTENCY not in evaluator.dimensions
 
-    def test_get_prompt_for_dimension(self):
+    def test_get_prompt_for_dimension(self) -> None:
         """Should generate evaluation prompt for each dimension."""
         evaluator = GEvalEvaluator()
 
@@ -115,10 +119,11 @@ class TestGEvalEvaluator:
 
         assert "coherence" in prompt.lower()
         assert "AI is evolving rapidly" in prompt
-        assert "1" in prompt and "5" in prompt  # Rating scale
+        assert "1" in prompt
+        assert "5" in prompt  # Rating scale
 
     @pytest.mark.asyncio
-    async def test_call_llm_raises_loudly_when_unconfigured(self):
+    async def test_call_llm_raises_loudly_when_unconfigured(self) -> None:
         """Regression: `_call_llm` used to silently return a hardcoded mock
         `"Score: 3"` response when no `llm_client` was configured (a silent
         fallback for an unwired dependency — CLAUDE.md rule 8 / ADR-000928).
@@ -130,7 +135,7 @@ class TestGEvalEvaluator:
             await evaluator._call_llm("some prompt")
 
     @pytest.mark.asyncio
-    async def test_call_llm_raises_not_implemented_when_configured(self):
+    async def test_call_llm_raises_not_implemented_when_configured(self) -> None:
         """The 'configured' path is a dead API (not implemented yet); it
         must still fail loudly rather than falling through to a mock."""
         evaluator = GEvalEvaluator(llm_client=object())
@@ -139,7 +144,7 @@ class TestGEvalEvaluator:
             await evaluator._call_llm("some prompt")
 
     @pytest.mark.asyncio
-    async def test_evaluate_single_dimension(self):
+    async def test_evaluate_single_dimension(self) -> None:
         """Should evaluate a single dimension."""
         evaluator = GEvalEvaluator()
 
@@ -156,7 +161,7 @@ class TestGEvalEvaluator:
             assert explanation is not None
 
     @pytest.mark.asyncio
-    async def test_evaluate_returns_all_dimensions(self):
+    async def test_evaluate_returns_all_dimensions(self) -> None:
         """Should return scores for all dimensions."""
         evaluator = GEvalEvaluator()
 
@@ -175,7 +180,7 @@ class TestGEvalEvaluator:
             assert result.relevance is not None
 
     @pytest.mark.asyncio
-    async def test_evaluate_with_explanations(self):
+    async def test_evaluate_with_explanations(self) -> None:
         """Should include explanations when requested."""
         evaluator = GEvalEvaluator()
 
@@ -192,49 +197,50 @@ class TestGEvalEvaluator:
             assert len(result.explanations) > 0
 
     @pytest.mark.asyncio
-    async def test_evaluate_batch(self):
+    async def test_evaluate_batch(self) -> None:
         """Should evaluate multiple summaries."""
         evaluator = GEvalEvaluator()
 
         with patch.object(evaluator, "_call_llm", new_callable=AsyncMock) as mock_llm:
             mock_llm.return_value = "Score: 4\nExplanation: Good."
 
+            summaries = ["Summary 1.", "Summary 2."]
             results = await evaluator.evaluate_batch(
-                summaries=["Summary 1.", "Summary 2."],
+                summaries=summaries,
                 sources=["Source 1.", "Source 2."],
             )
 
-            assert len(results) == 2
+            assert len(results) == len(summaries)
             assert all(isinstance(r, GEvalResult) for r in results)
 
-    def test_parse_score_from_response(self):
+    def test_parse_score_from_response(self) -> None:
         """Should parse score from LLM response."""
         evaluator = GEvalEvaluator()
 
         # Various response formats
-        assert evaluator._parse_score("Score: 4") == 4.0
-        assert evaluator._parse_score("4/5") == 4.0
-        assert evaluator._parse_score("Rating: 3.5") == 3.5
-        assert evaluator._parse_score("The score is 5.") == 5.0
+        assert evaluator._parse_score("Score: 4") == PARSED_SCORE_FOUR
+        assert evaluator._parse_score("4/5") == PARSED_SCORE_FOUR
+        assert evaluator._parse_score("Rating: 3.5") == PARSED_SCORE_THREE_HALF
+        assert evaluator._parse_score("The score is 5.") == PARSED_SCORE_MAX
 
-    def test_parse_score_clamps_range(self):
+    def test_parse_score_clamps_range(self) -> None:
         """Should clamp scores to valid range [1, 5]."""
         evaluator = GEvalEvaluator()
 
         assert evaluator._parse_score("Score: 0") == 1.0  # Clamped to min
-        assert evaluator._parse_score("Score: 6") == 5.0  # Clamped to max
+        assert evaluator._parse_score("Score: 6") == PARSED_SCORE_MAX  # Clamped to max
 
-    def test_parse_score_default_on_failure(self):
+    def test_parse_score_default_on_failure(self) -> None:
         """Should return default score when parsing fails."""
         evaluator = GEvalEvaluator()
 
-        assert evaluator._parse_score("No score here") == 3.0  # Default mid-range
+        assert evaluator._parse_score("No score here") == PARSED_SCORE_FALLBACK  # Default mid-range
 
 
 class TestGEvalPrompts:
     """Tests for G-Eval prompt templates."""
 
-    def test_coherence_prompt_contains_criteria(self):
+    def test_coherence_prompt_contains_criteria(self) -> None:
         """Coherence prompt should mention logical flow."""
         evaluator = GEvalEvaluator()
         prompt = evaluator._get_prompt_for_dimension(
@@ -245,7 +251,7 @@ class TestGEvalPrompts:
         # Should mention coherence-related terms
         assert any(term in prompt.lower() for term in ["coherence", "logical", "flow", "structure"])
 
-    def test_consistency_prompt_contains_criteria(self):
+    def test_consistency_prompt_contains_criteria(self) -> None:
         """Consistency prompt should mention factual alignment."""
         evaluator = GEvalEvaluator()
         prompt = evaluator._get_prompt_for_dimension(
@@ -257,7 +263,7 @@ class TestGEvalPrompts:
             term in prompt.lower() for term in ["consistency", "factual", "accurate", "source"]
         )
 
-    def test_fluency_prompt_contains_criteria(self):
+    def test_fluency_prompt_contains_criteria(self) -> None:
         """Fluency prompt should mention language quality."""
         evaluator = GEvalEvaluator()
         prompt = evaluator._get_prompt_for_dimension(
@@ -267,7 +273,7 @@ class TestGEvalPrompts:
         )
         assert any(term in prompt.lower() for term in ["fluency", "grammar", "readable", "natural"])
 
-    def test_relevance_prompt_contains_criteria(self):
+    def test_relevance_prompt_contains_criteria(self) -> None:
         """Relevance prompt should mention information coverage."""
         evaluator = GEvalEvaluator()
         prompt = evaluator._get_prompt_for_dimension(

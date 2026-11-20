@@ -3,11 +3,17 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import multiprocessing
+import sys
+from typing import TYPE_CHECKING
 
 import structlog
 
 from recap_subworker.infra.config import get_settings
+
+if TYPE_CHECKING:
+    from gunicorn.arbiter import Arbiter
 
 _settings = get_settings()
 logger = structlog.get_logger(__name__)
@@ -39,10 +45,14 @@ def _run_scheduler_process() -> None:
 
     This function (and the imported modules) will only be loaded in the spawned process.
     """
-    import structlog
+    import structlog  # noqa: PLC0415  # keep scheduler imports out of Gunicorn master process
 
-    from recap_subworker.infra.config import get_settings
-    from recap_subworker.services.learning_scheduler import LearningScheduler
+    from recap_subworker.infra.config import (  # noqa: PLC0415  # keep scheduler imports out of Gunicorn master process
+        get_settings,
+    )
+    from recap_subworker.services.learning_scheduler import (  # noqa: PLC0415  # keep scheduler imports out of Gunicorn master process
+        LearningScheduler,
+    )
 
     # Re-configure logging for the child process if necessary
     # (structlog configuration is usually preserved or re-run via side-effects of imports if configured at module level)
@@ -65,8 +75,8 @@ def _run_scheduler_process() -> None:
             loop.run_until_complete(scheduler.start())
 
             # Monitor loop to keep process alive until scheduler stops
-            async def monitor_scheduler():
-                while scheduler.is_running:
+            async def monitor_scheduler() -> None:
+                while scheduler.is_running:  # noqa: ASYNC110  # polls boolean flag across process lifecycle
                     await asyncio.sleep(1.0)
                 loop.stop()
 
@@ -74,37 +84,31 @@ def _run_scheduler_process() -> None:
         except KeyboardInterrupt:
             logger.info("scheduler process received interrupt")
         except Exception as exc:
-            logger.error(
+            logger.exception(
                 "scheduler loop failed",
                 error=str(exc),
                 error_type=type(exc).__name__,
-                exc_info=True,
             )
         finally:
             # Cleanup
             if scheduler.is_running:
                 try:
                     loop.run_until_complete(scheduler.stop())
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001  # best-effort scheduler stop during worker cleanup
                     logger.warning("error stopping scheduler", error=str(exc))
             loop.close()
 
     except Exception as exc:
         logger.critical("failed to start scheduler process", error=str(exc), exc_info=True)
-        import sys
-
         sys.exit(1)
 
 
-import logging
-
-
 class NoisyPathFilter(logging.Filter):
-    def filter(self, record):
+    def filter(self, record: logging.LogRecord) -> bool:
         return "/v1/extract" not in record.getMessage()
 
 
-def on_starting(server) -> None:
+def on_starting(server: Arbiter) -> None:
     """Called just before the master process is initialized."""
     # Add filter to Gunicorn access logger
     gunicorn_logger = logging.getLogger("gunicorn.access")
@@ -113,7 +117,7 @@ def on_starting(server) -> None:
     uvicorn_logger = logging.getLogger("uvicorn.access")
     uvicorn_logger.addFilter(NoisyPathFilter())
 
-    global _scheduler_process
+    global _scheduler_process  # noqa: PLW0603  # master-process singleton handle for learning scheduler
 
     if not _settings.learning_scheduler_enabled:
         logger.info("learning scheduler disabled, skipping")
@@ -134,10 +138,8 @@ def on_starting(server) -> None:
     logger.info("learning scheduler process started", pid=proc.pid)
 
 
-def on_exit(server) -> None:
+def on_exit(server: Arbiter) -> None:
     """Called just before exiting Gunicorn."""
-    global _scheduler_process
-
     if _scheduler_process is not None and _scheduler_process.is_alive():
         logger.info("stopping learning scheduler process")
         _scheduler_process.terminate()

@@ -409,18 +409,6 @@ func BuildDependencies(ctx context.Context, log *slog.Logger, otelEnabled bool) 
 	}, cleanup, nil
 }
 
-// readSecret reads a secret value, supporting both direct env var and _FILE suffix
-// for Docker Secrets compatibility.
-func readSecret(key string) string {
-	if filePath := os.Getenv(key + "_FILE"); filePath != "" {
-		content, err := os.ReadFile(filePath) // #nosec G304 G703 -- filePath comes from trusted env var for Docker Secrets
-		if err == nil {
-			return strings.TrimSpace(string(content))
-		}
-	}
-	return os.Getenv(key)
-}
-
 func getEnvOrDefault(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
 		return value

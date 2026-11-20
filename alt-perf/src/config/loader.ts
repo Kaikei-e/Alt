@@ -207,7 +207,8 @@ function getDefaultAuth(): AuthConfig {
     authHubUrl: `${baseUrl}/api/auth`,
     credentials: {
       // Support PERF_TEST_*, TEST_EMAIL/TEST_PASSWORD environment variables
-      email: Deno.env.get("PERF_TEST_EMAIL") || Deno.env.get("TEST_EMAIL") || Deno.env.get("TEST_USER") || "",
+      email: Deno.env.get("PERF_TEST_EMAIL") || Deno.env.get("TEST_EMAIL") ||
+        Deno.env.get("TEST_USER") || "",
       password: Deno.env.get("PERF_TEST_PASSWORD") || Deno.env.get("TEST_PASSWORD") || "",
     },
   };
@@ -235,7 +236,7 @@ export async function loadRoutesConfig(configDir: string): Promise<RoutesConfig>
 
 // Load thresholds configuration
 export async function loadThresholdsConfig(
-  configDir: string
+  configDir: string,
 ): Promise<ThresholdsConfig> {
   const thresholdsPath = path.join(configDir, "thresholds.yaml");
   try {

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import shutil
 import socket
 import ssl
 import subprocess
@@ -27,13 +28,20 @@ from news_creator.infra.inbound_tls import (
 )
 
 
+def _openssl_bin() -> str:
+    openssl = shutil.which("openssl")
+    if openssl is None:
+        pytest.fail("openssl is required for inbound TLS tests")
+    return openssl
+
+
 def _write_leaf(dir_path: Path, cn: str, days: int) -> tuple[Path, Path, Path]:
     """Self-signed leaf used as both server cert and trust anchor."""
     cert_path = dir_path / f"{cn}-{days}d-cert.pem"
     key_path = dir_path / f"{cn}-{days}d-key.pem"
-    subprocess.run(  # noqa: S603, S607 — test-only openssl
+    subprocess.run(  # noqa: S603 - test-only openssl with fixed arguments
         [
-            "openssl",
+            _openssl_bin(),
             "req",
             "-x509",
             "-newkey",
@@ -61,13 +69,13 @@ def _write_leaf(dir_path: Path, cn: str, days: int) -> tuple[Path, Path, Path]:
 def _atomic_replace(dest: Path, src: Path) -> None:
     tmp = dest.with_suffix(dest.suffix + ".tmp")
     tmp.write_bytes(src.read_bytes())
-    os.replace(tmp, dest)
+    tmp.replace(dest)
 
 
 def _not_after_from_der(der: bytes) -> str:
     pem = ssl.DER_cert_to_PEM_cert(der)
-    out = subprocess.run(  # noqa: S603, S607
-        ["openssl", "x509", "-noout", "-enddate"],
+    out = subprocess.run(  # noqa: S603 - test-only openssl with fixed arguments
+        [_openssl_bin(), "x509", "-noout", "-enddate"],
         input=pem,
         check=True,
         capture_output=True,
@@ -84,11 +92,13 @@ def _handshake_enddate(port: int) -> str:
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
     assert ctx.minimum_version >= ssl.TLSVersion.TLSv1_2
-    with socket.create_connection(("127.0.0.1", port), timeout=5) as sock:
-        with ctx.wrap_socket(sock, server_hostname="localhost") as ssock:
-            der = ssock.getpeercert(binary_form=True)
-            assert der is not None
-            return _not_after_from_der(der)
+    with (
+        socket.create_connection(("127.0.0.1", port), timeout=5) as sock,
+        ctx.wrap_socket(sock, server_hostname="localhost") as ssock,
+    ):
+        der = ssock.getpeercert(binary_form=True)
+        assert der is not None
+        return _not_after_from_der(der)
 
 
 class _TLSServer:
@@ -163,7 +173,7 @@ def test_inbound_handshake_shows_new_not_after_after_atomic_replace(
             "restarting the process"
         )
         assert server.thread_ident is not None
-        assert server._thread.is_alive(), "listener thread must survive cert rotation"  # noqa: SLF001
+        assert server._thread.is_alive(), "listener thread must survive cert rotation"
     finally:
         server.close()
 
@@ -229,22 +239,15 @@ def test_inbound_listener_has_no_response_header_timeout() -> None:
     )
 
 
-def test_slow_first_byte_is_not_cut_by_header_timeout(tmp_path: Path) -> None:
-    """A delayed first response byte must still complete.
-
-    pki-agent's default ResponseHeaderTimeout is 15s; news-creator's sidecar
-    raises that to 960s. The in-process listener has no such cutoff, so a
-    request that waits 2s before writing headers must return 200.
-    """
-    cert, key, ca = _write_leaf(tmp_path, "news-creator", days=1)
-    ctx = build_inbound_ssl_context(str(cert), str(key), str(ca))
+def _start_slow_header_server(
+    ctx: ssl.SSLContext, delay: float
+) -> tuple[socket.socket, int, threading.Event, threading.Thread]:
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.bind(("127.0.0.1", 0))
     sock.listen(1)
     sock.settimeout(5)
     port = sock.getsockname()[1]
-    delay = 2.0
     stop = threading.Event()
 
     def loop() -> None:
@@ -267,6 +270,20 @@ def test_slow_first_byte_is_not_cut_by_header_timeout(tmp_path: Path) -> None:
 
     thread = threading.Thread(target=loop, daemon=True)
     thread.start()
+    return sock, port, stop, thread
+
+
+def test_slow_first_byte_is_not_cut_by_header_timeout(tmp_path: Path) -> None:
+    """A delayed first response byte must still complete.
+
+    pki-agent's default ResponseHeaderTimeout is 15s; news-creator's sidecar
+    raises that to 960s. The in-process listener has no such cutoff, so a
+    request that waits 2s before writing headers must return 200.
+    """
+    cert, key, ca = _write_leaf(tmp_path, "news-creator", days=1)
+    ctx = build_inbound_ssl_context(str(cert), str(key), str(ca))
+    delay = 2.0
+    sock, port, stop, thread = _start_slow_header_server(ctx, delay)
     try:
         client_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
         client_ctx.minimum_version = ssl.TLSVersion.TLSv1_2

@@ -45,7 +45,7 @@ func TestGetTrendingTags_DetectsSurge(t *testing.T) {
 
 	gw := NewTrendingTagsGateway(mock, 30*time.Minute)
 	tags, err := gw.GetTrendingTags(context.Background(), uuid.New())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// AI: recent=10, baseline=12/4=3.0, surge=10/3.0=3.33 → trending
 	// Go: recent=2, below min threshold (3) → not trending
@@ -69,7 +69,7 @@ func TestGetTrendingTags_FiltersLowCount(t *testing.T) {
 
 	gw := NewTrendingTagsGateway(mock, 30*time.Minute)
 	tags, err := gw.GetTrendingTags(context.Background(), uuid.New())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Empty(t, tags, "tags below min count should be filtered")
 }
 
@@ -87,7 +87,7 @@ func TestGetTrendingTags_NoSurge(t *testing.T) {
 
 	gw := NewTrendingTagsGateway(mock, 30*time.Minute)
 	tags, err := gw.GetTrendingTags(context.Background(), uuid.New())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Empty(t, tags, "tags at baseline should not be trending")
 }
 
@@ -105,7 +105,7 @@ func TestGetTrendingTags_NewTag(t *testing.T) {
 
 	gw := NewTrendingTagsGateway(mock, 30*time.Minute)
 	tags, err := gw.GetTrendingTags(context.Background(), uuid.New())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Len(t, tags, 1, "brand new tag with enough articles should be trending")
 	assert.Equal(t, "NewTech", tags[0].TagName)
 }
@@ -145,12 +145,12 @@ func TestCalculateTrendingWindows(t *testing.T) {
 func TestCalculateSurgeRatio(t *testing.T) {
 	t.Run("zero baseline returns recentCount as float", func(t *testing.T) {
 		ratio := calculateSurgeRatio(5, 0)
-		assert.Equal(t, 5.0, ratio)
+		assert.InDelta(t, 5.0, ratio, 1e-9)
 	})
 
 	t.Run("positive baseline calculates ratio relative to weekly average", func(t *testing.T) {
 		ratio := calculateSurgeRatio(10, 20)
-		assert.Equal(t, 2.0, ratio)
+		assert.InDelta(t, 2.0, ratio, 1e-9)
 	})
 }
 
@@ -201,17 +201,28 @@ func TestGetTrendingTags_NoConcurrentSelfContentionAndSingleflightDedup(t *testi
 	gw := NewTrendingTagsGateway(tracker, 30*time.Minute)
 	userID := uuid.New()
 
+	type callResult struct {
+		tags []knowledge_home_port.TrendingTag
+		err  error
+	}
+	results := make(chan callResult, 4)
+
 	var wg sync.WaitGroup
 	for i := 0; i < 4; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			tags, err := gw.GetTrendingTags(context.Background(), userID)
-			require.NoError(t, err)
-			assert.NotEmpty(t, tags)
+			results <- callResult{tags: tags, err: err}
 		}()
 	}
 	wg.Wait()
+	close(results)
+
+	for res := range results {
+		require.NoError(t, res.err)
+		assert.NotEmpty(t, res.tags)
+	}
 
 	assert.Equal(t, int32(1), tracker.maxInFlight.Load(),
 		"FetchTagArticleCounts must run sequentially per user to avoid concurrent buffer I/O contention on identical tag/article pages")

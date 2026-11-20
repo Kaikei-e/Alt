@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
+from http import HTTPStatus
+
 from fastapi import FastAPI
 from starlette.testclient import TestClient
 
 from recap_subworker.app import deps
 from recap_subworker.app.routers import story_clustering
 from recap_subworker.services.story_clusterer import StoryClustererService
+
+EXPECTED_THRESHOLD = 0.78
+EXPECTED_TIME_DECAY = 0.02
+EXPECTED_CLUSTER_COUNT = 2
+EXPECTED_MERGED_SIZE = 2
 
 
 def _build_app() -> FastAPI:
@@ -19,7 +26,7 @@ def _build_app() -> FastAPI:
     return app
 
 
-def test_cluster_stories_success():
+def test_cluster_stories_success() -> None:
     """Verify POST /v1/cluster-stories returns 200 with valid clusters and echoed params."""
     app = _build_app()
     client = TestClient(app)
@@ -43,29 +50,29 @@ def test_cluster_stories_success():
             },
         ],
         "params": {
-            "threshold": 0.78,
+            "threshold": EXPECTED_THRESHOLD,
             "linkage": "average",
-            "time_decay_per_day": 0.02,
+            "time_decay_per_day": EXPECTED_TIME_DECAY,
             "min_cluster_size": 1,
         },
     }
 
     response = client.post("/v1/cluster-stories", json=payload)
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
 
     data = response.json()
     assert "clusters" in data
     assert "params" in data
-    assert data["params"]["threshold"] == 0.78
+    assert data["params"]["threshold"] == EXPECTED_THRESHOLD
     assert data["params"]["linkage"] == "average"
-    assert data["params"]["time_decay_per_day"] == 0.02
+    assert data["params"]["time_decay_per_day"] == EXPECTED_TIME_DECAY
     assert data["params"]["min_cluster_size"] == 1
 
     # First cluster should be the merged pair (size 2)
-    assert len(data["clusters"]) == 2
+    assert len(data["clusters"]) == EXPECTED_CLUSTER_COUNT
     c0 = data["clusters"][0]
     assert c0["cluster_id"] == 0
-    assert len(c0["member_ids"]) == 2
+    assert len(c0["member_ids"]) == EXPECTED_MERGED_SIZE
     assert c0["member_ids"] == [
         "11111111-1111-1111-1111-111111111111",
         "22222222-2222-2222-2222-222222222222",
@@ -76,16 +83,16 @@ def test_cluster_stories_success():
     assert c1["member_ids"] == ["33333333-3333-3333-3333-333333333333"]
 
 
-def test_cluster_stories_validation_empty_items_422():
+def test_cluster_stories_validation_empty_items_422() -> None:
     """Verify POST /v1/cluster-stories returns 422 when items list is empty (< 1 item)."""
     app = _build_app()
     client = TestClient(app)
 
     response = client.post("/v1/cluster-stories", json={"items": []})
-    assert response.status_code == 422
+    assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
 
 
-def test_cluster_stories_validation_dimension_mismatch_422():
+def test_cluster_stories_validation_dimension_mismatch_422() -> None:
     """Verify POST /v1/cluster-stories returns 422 when embeddings have differing dimensions."""
     app = _build_app()
     client = TestClient(app)
@@ -106,10 +113,10 @@ def test_cluster_stories_validation_dimension_mismatch_422():
     }
 
     response = client.post("/v1/cluster-stories", json=payload)
-    assert response.status_code == 422
+    assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
 
 
-def test_cluster_stories_validation_threshold_outside_range_422():
+def test_cluster_stories_validation_threshold_outside_range_422() -> None:
     """Verify POST /v1/cluster-stories returns 422 when threshold is <= 0 or > 1."""
     app = _build_app()
     client = TestClient(app)
@@ -125,24 +132,24 @@ def test_cluster_stories_validation_threshold_outside_range_422():
         "/v1/cluster-stories",
         json={"items": [base_item], "params": {"threshold": 0.0}},
     )
-    assert res0.status_code == 422
+    assert res0.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
 
     # threshold = -0.5
     res_neg = client.post(
         "/v1/cluster-stories",
         json={"items": [base_item], "params": {"threshold": -0.5}},
     )
-    assert res_neg.status_code == 422
+    assert res_neg.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
 
     # threshold = 1.05
     res_high = client.post(
         "/v1/cluster-stories",
         json={"items": [base_item], "params": {"threshold": 1.05}},
     )
-    assert res_high.status_code == 422
+    assert res_high.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
 
 
-def test_cluster_stories_validation_threshold_boundary_1_success():
+def test_cluster_stories_validation_threshold_boundary_1_success() -> None:
     """Verify POST /v1/cluster-stories accepts threshold = 1.0 (boundary of (0, 1])."""
     app = _build_app()
     client = TestClient(app)
@@ -156,11 +163,11 @@ def test_cluster_stories_validation_threshold_boundary_1_success():
         "/v1/cluster-stories",
         json={"items": [item], "params": {"threshold": 1.0}},
     )
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     assert response.json()["params"]["threshold"] == 1.0
 
 
-def test_cluster_stories_validation_unknown_linkage_422():
+def test_cluster_stories_validation_unknown_linkage_422() -> None:
     """Verify POST /v1/cluster-stories returns 422 on unknown or unsupported linkage."""
     app = _build_app()
     client = TestClient(app)
@@ -176,17 +183,17 @@ def test_cluster_stories_validation_unknown_linkage_422():
         "/v1/cluster-stories",
         json={"items": [item], "params": {"linkage": "ward"}},
     )
-    assert res_ward.status_code == 422
+    assert res_ward.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
 
     # unknown linkage
     res_unknown = client.post(
         "/v1/cluster-stories",
         json={"items": [item], "params": {"linkage": "centroid"}},
     )
-    assert res_unknown.status_code == 422
+    assert res_unknown.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
 
 
-def test_cluster_stories_default_params_echoed():
+def test_cluster_stories_default_params_echoed() -> None:
     """Verify POST /v1/cluster-stories fills in and echoes default params when omitted."""
     app = _build_app()
     client = TestClient(app)
@@ -197,15 +204,15 @@ def test_cluster_stories_default_params_echoed():
         "published_at": "2026-09-21T00:00:00Z",
     }
     response = client.post("/v1/cluster-stories", json={"items": [item]})
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     params = response.json()["params"]
-    assert params["threshold"] == 0.78
+    assert params["threshold"] == EXPECTED_THRESHOLD
     assert params["linkage"] == "average"
-    assert params["time_decay_per_day"] == 0.02
+    assert params["time_decay_per_day"] == EXPECTED_TIME_DECAY
     assert params["min_cluster_size"] == 1
 
 
-def test_cluster_stories_per_language_min_size():
+def test_cluster_stories_per_language_min_size() -> None:
     """Verify POST /v1/cluster-stories supports language field and min_cluster_size_by_language."""
     app = _build_app()
     client = TestClient(app)
@@ -230,7 +237,7 @@ def test_cluster_stories_per_language_min_size():
         },
     }
     response = client.post("/v1/cluster-stories", json=payload)
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     data = response.json()
     assert len(data["clusters"]) == 1
     assert data["params"]["min_cluster_size_by_language"] == {"ja": 2, "en": 3}

@@ -23,7 +23,7 @@ fn test_nginx_access_log_parsing() {
 fn test_nginx_error_log_parsing() {
     let parser = NginxParser::new();
 
-    let nginx_error = r#"2024/01/01 12:00:00 [error] 123#0: *456 connect() failed (111: Connection refused) while connecting to upstream"#;
+    let nginx_error = r"2024/01/01 12:00:00 [error] 123#0: *456 connect() failed (111: Connection refused) while connecting to upstream";
 
     let entry = parser.parse_log(nginx_error).unwrap();
 
@@ -53,7 +53,7 @@ fn test_postgres_log_parsing() {
     let parser = PostgresParser::new();
 
     let pg_log =
-        r#"2024-01-01 12:00:00.123 UTC [123] LOG:  statement: SELECT * FROM users WHERE id = $1"#;
+        r"2024-01-01 12:00:00.123 UTC [123] LOG:  statement: SELECT * FROM users WHERE id = $1";
 
     let entry = parser.parse_log(pg_log).unwrap();
 

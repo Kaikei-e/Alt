@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func setupDownTest(t *testing.T) {
@@ -12,9 +14,9 @@ func setupDownTest(t *testing.T) {
 	cfg = testConfig(t, []string{"db", "auth", "core", "workers"})
 	dryRun = true
 	quiet = false
-	downCmd.Flags().Set("volumes", "false")
-	downCmd.Flags().Set("with-deps", "false")
-	downCmd.Flags().Set("remove-orphans", "false")
+	require.NoError(t, downCmd.Flags().Set("volumes", "false"))
+	require.NoError(t, downCmd.Flags().Set("with-deps", "false"))
+	require.NoError(t, downCmd.Flags().Set("remove-orphans", "false"))
 }
 
 func TestDown_NoArgs(t *testing.T) {

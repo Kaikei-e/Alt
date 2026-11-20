@@ -36,13 +36,19 @@ class _OpsHTTPServer(ThreadingHTTPServer):
 
 
 class _OpsHandler(BaseHTTPRequestHandler):
-    def log_message(self, format: str, *args: object) -> None:
+    def log_message(
+        self,
+        format: str,  # noqa: A002 - BaseHTTPRequestHandler.log_message override signature
+        *args: object,
+    ) -> None:
         _ = (format, args)
 
     def do_GET(self) -> None:
         path = self.path.split("?", 1)[0]
         server = self.server
-        assert isinstance(server, _OpsHTTPServer)
+        if not isinstance(server, _OpsHTTPServer):
+            msg = f"Expected _OpsHTTPServer, got {type(server).__name__}"
+            raise TypeError(msg)
         if path == "/health":
             body = json.dumps(
                 {"status": "healthy", "service": server.service_name}

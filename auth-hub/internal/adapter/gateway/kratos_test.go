@@ -3,7 +3,6 @@ package gateway
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -12,6 +11,7 @@ import (
 	"auth-hub/internal/domain"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestKratosGateway_GetFirstIdentityID_Success(t *testing.T) {
@@ -20,14 +20,16 @@ func TestKratosGateway_GetFirstIdentityID_Success(t *testing.T) {
 		assert.Equal(t, "1", r.URL.Query().Get("page_size"))
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode([]adminIdentity{{ID: "user-abc-123"}})
+		if err := json.NewEncoder(w).Encode([]adminIdentity{{ID: "user-abc-123"}}); err != nil {
+			t.Errorf("encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 
 	gw := NewKratosGateway("http://unused", server.URL, 5*time.Second)
 	userID, err := gw.GetFirstIdentityID(context.Background())
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "user-abc-123", userID)
 }
 
@@ -36,13 +38,15 @@ func TestKratosGateway_GetFirstIdentityID_AdminNotConfigured(t *testing.T) {
 	userID, err := gw.GetFirstIdentityID(context.Background())
 
 	assert.Empty(t, userID)
-	assert.True(t, errors.Is(err, domain.ErrAdminNotConfigured))
+	assert.ErrorIs(t, err, domain.ErrAdminNotConfigured)
 }
 
 func TestKratosGateway_GetFirstIdentityID_NoIdentities(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode([]adminIdentity{})
+		if err := json.NewEncoder(w).Encode([]adminIdentity{}); err != nil {
+			t.Errorf("encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -50,7 +54,7 @@ func TestKratosGateway_GetFirstIdentityID_NoIdentities(t *testing.T) {
 	userID, err := gw.GetFirstIdentityID(context.Background())
 
 	assert.Empty(t, userID)
-	assert.True(t, errors.Is(err, domain.ErrNoIdentitiesFound))
+	assert.ErrorIs(t, err, domain.ErrNoIdentitiesFound)
 }
 
 func TestKratosGateway_GetFirstIdentityID_ServerError(t *testing.T) {
@@ -63,7 +67,7 @@ func TestKratosGateway_GetFirstIdentityID_ServerError(t *testing.T) {
 	userID, err := gw.GetFirstIdentityID(context.Background())
 
 	assert.Empty(t, userID)
-	assert.True(t, errors.Is(err, domain.ErrKratosUnavailable))
+	assert.ErrorIs(t, err, domain.ErrKratosUnavailable)
 }
 
 func TestKratosGateway_ValidateSession_429_ReturnsRateLimited(t *testing.T) {
@@ -76,7 +80,7 @@ func TestKratosGateway_ValidateSession_429_ReturnsRateLimited(t *testing.T) {
 	identity, err := gw.ValidateSession(context.Background(), "ory_kratos_session=test-cookie")
 
 	assert.Nil(t, identity)
-	assert.True(t, errors.Is(err, domain.ErrRateLimited))
+	assert.ErrorIs(t, err, domain.ErrRateLimited)
 }
 
 func TestKratosGateway_ValidateSession_EmptyCookie(t *testing.T) {
@@ -84,7 +88,7 @@ func TestKratosGateway_ValidateSession_EmptyCookie(t *testing.T) {
 	identity, err := gw.ValidateSession(context.Background(), "")
 
 	assert.Nil(t, identity)
-	assert.True(t, errors.Is(err, domain.ErrSessionNotFound))
+	assert.ErrorIs(t, err, domain.ErrSessionNotFound)
 }
 
 func TestKratosGateway_ValidateSession_401_ReturnsAuthFailed(t *testing.T) {
@@ -97,7 +101,7 @@ func TestKratosGateway_ValidateSession_401_ReturnsAuthFailed(t *testing.T) {
 	identity, err := gw.ValidateSession(context.Background(), "ory_kratos_session=expired-cookie")
 
 	assert.Nil(t, identity)
-	assert.True(t, errors.Is(err, domain.ErrAuthFailed))
+	assert.ErrorIs(t, err, domain.ErrAuthFailed)
 }
 
 func TestKratosGateway_ValidateSession_500_ReturnsKratosUnavailable(t *testing.T) {
@@ -110,7 +114,7 @@ func TestKratosGateway_ValidateSession_500_ReturnsKratosUnavailable(t *testing.T
 	identity, err := gw.ValidateSession(context.Background(), "ory_kratos_session=test-cookie")
 
 	assert.Nil(t, identity)
-	assert.True(t, errors.Is(err, domain.ErrKratosUnavailable))
+	assert.ErrorIs(t, err, domain.ErrKratosUnavailable)
 }
 
 func TestKratosGateway_ValidateSession_TransportError_ReturnsKratosUnavailable(t *testing.T) {
@@ -120,13 +124,15 @@ func TestKratosGateway_ValidateSession_TransportError_ReturnsKratosUnavailable(t
 	identity, err := gw.ValidateSession(context.Background(), "ory_kratos_session=test-cookie")
 
 	assert.Nil(t, identity)
-	assert.True(t, errors.Is(err, domain.ErrKratosUnavailable))
+	assert.ErrorIs(t, err, domain.ErrKratosUnavailable)
 }
 
 func TestKratosGateway_ValidateSession_InactiveSession_ReturnsSessionInactive(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"id":"sess-1","active":false,"identity":{"id":"user-1","schema_id":"default","schema_url":"http://x/schema","traits":{"email":"a@example.com"}}}`))
+		if _, err := w.Write([]byte(`{"id":"sess-1","active":false,"identity":{"id":"user-1","schema_id":"default","schema_url":"http://x/schema","traits":{"email":"a@example.com"}}}`)); err != nil {
+			t.Errorf("write response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -134,13 +140,15 @@ func TestKratosGateway_ValidateSession_InactiveSession_ReturnsSessionInactive(t 
 	identity, err := gw.ValidateSession(context.Background(), "ory_kratos_session=inactive-cookie")
 
 	assert.Nil(t, identity)
-	assert.True(t, errors.Is(err, domain.ErrSessionInactive))
+	assert.ErrorIs(t, err, domain.ErrSessionInactive)
 }
 
 func TestKratosGateway_ValidateSession_MissingIdentity_ReturnsMissingIdentity(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"id":"sess-1","active":true}`))
+		if _, err := w.Write([]byte(`{"id":"sess-1","active":true}`)); err != nil {
+			t.Errorf("write response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -148,7 +156,7 @@ func TestKratosGateway_ValidateSession_MissingIdentity_ReturnsMissingIdentity(t 
 	identity, err := gw.ValidateSession(context.Background(), "ory_kratos_session=no-identity-cookie")
 
 	assert.Nil(t, identity)
-	assert.True(t, errors.Is(err, domain.ErrMissingIdentity))
+	assert.ErrorIs(t, err, domain.ErrMissingIdentity)
 }
 
 // TestKratosGateway_ValidateSession_RoleParsing is the auth-critical
@@ -211,14 +219,16 @@ func TestKratosGateway_ValidateSession_RoleParsing(t *testing.T) {
 			body := `{"id":"sess-1","active":true,"identity":{"id":"user-1","schema_id":"default","schema_url":"http://x/schema","traits":` + tc.traitsJSON + `}}`
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
-				w.Write([]byte(body))
+				if _, err := w.Write([]byte(body)); err != nil {
+					t.Errorf("write response: %v", err)
+				}
 			}))
 			defer server.Close()
 
 			gw := NewKratosGateway(server.URL, "", 5*time.Second)
 			identity, err := gw.ValidateSession(context.Background(), "ory_kratos_session=cookie")
 
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			if assert.NotNil(t, identity) {
 				assert.Equal(t, tc.wantRole, identity.Role)
 				assert.Equal(t, tc.wantEmail, identity.Email)
@@ -232,14 +242,16 @@ func TestKratosGateway_ValidateSession_RoleParsing(t *testing.T) {
 func TestKratosGateway_ValidateSession_Success_PopulatesCreatedAt(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"id":"sess-1","active":true,"identity":{"id":"user-1","schema_id":"default","schema_url":"http://x/schema","traits":{"email":"a@example.com"},"created_at":"2024-06-15T12:00:00Z"}}`))
+		if _, err := w.Write([]byte(`{"id":"sess-1","active":true,"identity":{"id":"user-1","schema_id":"default","schema_url":"http://x/schema","traits":{"email":"a@example.com"},"created_at":"2024-06-15T12:00:00Z"}}`)); err != nil {
+			t.Errorf("write response: %v", err)
+		}
 	}))
 	defer server.Close()
 
 	gw := NewKratosGateway(server.URL, "", 5*time.Second)
 	identity, err := gw.ValidateSession(context.Background(), "ory_kratos_session=cookie")
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	if assert.NotNil(t, identity) {
 		assert.Equal(t, time.Date(2024, 6, 15, 12, 0, 0, 0, time.UTC), identity.CreatedAt)
 	}

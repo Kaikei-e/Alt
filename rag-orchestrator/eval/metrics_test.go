@@ -13,21 +13,21 @@ func TestRecallAtK_AllRelevantFound(t *testing.T) {
 	relevant := []string{"Example Systems outage", "Example Systems recall impact"}
 	retrieved := []string{"Example Systems outage", "Example Systems recall impact", "Unrelated article"}
 	got := RecallAtK(relevant, retrieved, 3)
-	assert.Equal(t, 1.0, got)
+	assert.InDelta(t, 1.0, got, 1e-9)
 }
 
 func TestRecallAtK_PartialRelevant(t *testing.T) {
 	relevant := []string{"Example Systems outage", "Example Systems recall impact"}
 	retrieved := []string{"Orchard Gardening Weekly", "Example Systems outage", "Example Protocol Digest"}
 	got := RecallAtK(relevant, retrieved, 3)
-	assert.Equal(t, 0.5, got)
+	assert.InDelta(t, 0.5, got, 1e-9)
 }
 
 func TestRecallAtK_NoneRelevant(t *testing.T) {
 	relevant := []string{"Example Systems outage"}
 	retrieved := []string{"Orchard Gardening Weekly", "Example Protocol Digest", "Meadow Pricing Roundup"}
 	got := RecallAtK(relevant, retrieved, 3)
-	assert.Equal(t, 0.0, got)
+	assert.InDelta(t, 0.0, got, 1e-9)
 }
 
 func TestRecallAtK_KSmallerThanRetrieved(t *testing.T) {
@@ -35,12 +35,12 @@ func TestRecallAtK_KSmallerThanRetrieved(t *testing.T) {
 	retrieved := []string{"Unrelated", "Example Systems outage", "Example Systems recall impact"}
 	// At K=1, only "Unrelated" is checked
 	got := RecallAtK(relevant, retrieved, 1)
-	assert.Equal(t, 0.0, got)
+	assert.InDelta(t, 0.0, got, 1e-9)
 }
 
 func TestRecallAtK_EmptyRelevant(t *testing.T) {
 	got := RecallAtK([]string{}, []string{"anything"}, 5)
-	assert.Equal(t, 0.0, got)
+	assert.InDelta(t, 0.0, got, 1e-9)
 }
 
 // --- NDCGAtK ---
@@ -73,13 +73,13 @@ func TestNDCGAtK_ReversedRanking(t *testing.T) {
 func TestNDCGAtK_EmptyRetrieved(t *testing.T) {
 	relevance := map[string]int{"Example Systems outage": 2}
 	got := NDCGAtK(relevance, []string{}, 10)
-	assert.Equal(t, 0.0, got)
+	assert.InDelta(t, 0.0, got, 1e-9)
 }
 
 func TestNDCGAtK_NoRelevantDocs(t *testing.T) {
 	relevance := map[string]int{}
 	got := NDCGAtK(relevance, []string{"A", "B"}, 2)
-	assert.Equal(t, 0.0, got)
+	assert.InDelta(t, 0.0, got, 1e-9)
 }
 
 // --- Top1Precision ---
@@ -89,7 +89,7 @@ func TestTop1Precision_Relevant(t *testing.T) {
 		[]string{"Example Systems outage", "Example Systems recall"},
 		[]string{"Example Systems outage", "Unrelated"},
 	)
-	assert.Equal(t, 1.0, got)
+	assert.InDelta(t, 1.0, got, 1e-9)
 }
 
 func TestTop1Precision_Irrelevant(t *testing.T) {
@@ -97,12 +97,12 @@ func TestTop1Precision_Irrelevant(t *testing.T) {
 		[]string{"Example Systems outage"},
 		[]string{"Orchard Gardening Weekly", "Example Systems outage"},
 	)
-	assert.Equal(t, 0.0, got)
+	assert.InDelta(t, 0.0, got, 1e-9)
 }
 
 func TestTop1Precision_EmptyRetrieved(t *testing.T) {
 	got := Top1Precision([]string{"Example Systems outage"}, []string{})
-	assert.Equal(t, 0.0, got)
+	assert.InDelta(t, 0.0, got, 1e-9)
 }
 
 // --- Faithfulness ---
@@ -112,7 +112,7 @@ func TestFaithfulness_AllEntitiesInBoth(t *testing.T) {
 	chunks := []string{"エグザンプル社に対する新規制が供給網を停止させた"}
 	entities := []string{"エグザンプル", "供給", "規制"}
 	got := Faithfulness(answer, chunks, entities)
-	assert.Equal(t, 1.0, got)
+	assert.InDelta(t, 1.0, got, 1e-9)
 }
 
 func TestFaithfulness_EntityInAnswerButNotContext(t *testing.T) {
@@ -120,7 +120,7 @@ func TestFaithfulness_EntityInAnswerButNotContext(t *testing.T) {
 	chunks := []string{"Orchard Gardening Weekly is a growing trend"}
 	entities := []string{"エグザンプル", "供給", "規制"}
 	got := Faithfulness(answer, chunks, entities)
-	assert.Equal(t, 0.0, got)
+	assert.InDelta(t, 0.0, got, 1e-9)
 }
 
 func TestFaithfulness_PartialSupport(t *testing.T) {
@@ -134,7 +134,7 @@ func TestFaithfulness_PartialSupport(t *testing.T) {
 
 func TestFaithfulness_EmptyEntities(t *testing.T) {
 	got := Faithfulness("some answer", []string{"some context"}, []string{})
-	assert.Equal(t, 0.0, got)
+	assert.InDelta(t, 0.0, got, 1e-9)
 }
 
 // --- CitationCorrectness ---
@@ -143,26 +143,26 @@ func TestCitationCorrectness_AllCitedRelevant(t *testing.T) {
 	cited := []string{"Example Systems outage", "Example Systems recall"}
 	relevant := []string{"Example Systems outage", "Example Systems recall", "Example Systems earnings"}
 	got := CitationCorrectness(cited, relevant)
-	assert.Equal(t, 1.0, got)
+	assert.InDelta(t, 1.0, got, 1e-9)
 }
 
 func TestCitationCorrectness_NoneCitedRelevant(t *testing.T) {
 	cited := []string{"Orchard Gardening Weekly", "Example Protocol Digest"}
 	relevant := []string{"Example Systems outage"}
 	got := CitationCorrectness(cited, relevant)
-	assert.Equal(t, 0.0, got)
+	assert.InDelta(t, 0.0, got, 1e-9)
 }
 
 func TestCitationCorrectness_Partial(t *testing.T) {
 	cited := []string{"Example Systems outage", "Orchard Gardening Weekly"}
 	relevant := []string{"Example Systems outage", "Example Systems recall"}
 	got := CitationCorrectness(cited, relevant)
-	assert.Equal(t, 0.5, got)
+	assert.InDelta(t, 0.5, got, 1e-9)
 }
 
 func TestCitationCorrectness_EmptyCited(t *testing.T) {
 	got := CitationCorrectness([]string{}, []string{"Example Systems outage"})
-	assert.Equal(t, 0.0, got)
+	assert.InDelta(t, 0.0, got, 1e-9)
 }
 
 // --- ContainsIrrelevant ---
@@ -394,7 +394,7 @@ func TestRunOfflineEval_NoStructureExpected(t *testing.T) {
 
 	report := RunOfflineEval(cases, results)
 	// No structure expectations → adherence rate should be 0 (no denominator)
-	assert.Equal(t, 0.0, report.Metrics.InstructionAdherenceRate)
+	assert.InDelta(t, 0.0, report.Metrics.InstructionAdherenceRate, 1e-9)
 	assert.InDelta(t, 500.0, report.Metrics.MeanPromptTokens, 0.01)
 }
 

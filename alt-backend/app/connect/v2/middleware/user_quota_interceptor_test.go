@@ -15,7 +15,7 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -500,13 +500,13 @@ func TestEchoUserQuotaMiddleware_RateConcurrencyAndUnauthenticated(t *testing.T)
 	e := echo.New()
 	var handlerCalls atomic.Int32
 	mw := EchoUserQuotaMiddleware(limiter, OpAugurChat)
-	e.POST("/sse/v1/rag/answer", func(c echo.Context) error {
+	e.POST("/sse/v1/rag/answer", func(c *echo.Context) error {
 		handlerCalls.Add(1)
 		return c.String(http.StatusOK, "ok")
 	}, mw)
 
 	// Unauthenticated request is rejected without reaching handler.
-	unauthReq := httptest.NewRequest(http.MethodPost, "/sse/v1/rag/answer", strings.NewReader("{}"))
+	unauthReq := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/sse/v1/rag/answer", strings.NewReader("{}"))
 	unauthRec := httptest.NewRecorder()
 	e.ServeHTTP(unauthRec, unauthReq)
 	assert.Equal(t, http.StatusUnauthorized, unauthRec.Code)
@@ -514,14 +514,14 @@ func TestEchoUserQuotaMiddleware_RateConcurrencyAndUnauthenticated(t *testing.T)
 
 	// Authenticated userA: 1st passes, 2nd returns 429 with Retry-After.
 	userA := uuid.New()
-	req1 := httptest.NewRequest(http.MethodPost, "/sse/v1/rag/answer", strings.NewReader("{}"))
+	req1 := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/sse/v1/rag/answer", strings.NewReader("{}"))
 	req1 = req1.WithContext(testUserCtx(userA))
 	rec1 := httptest.NewRecorder()
 	e.ServeHTTP(rec1, req1)
 	assert.Equal(t, http.StatusOK, rec1.Code)
 	assert.Equal(t, int32(1), handlerCalls.Load())
 
-	req2 := httptest.NewRequest(http.MethodPost, "/sse/v1/rag/answer", strings.NewReader("{}"))
+	req2 := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/sse/v1/rag/answer", strings.NewReader("{}"))
 	req2 = req2.WithContext(testUserCtx(userA))
 	rec2 := httptest.NewRecorder()
 	e.ServeHTTP(rec2, req2)
@@ -535,7 +535,7 @@ func TestEchoUserQuotaMiddleware_RateConcurrencyAndUnauthenticated(t *testing.T)
 
 	// UserB still passes.
 	userB := uuid.New()
-	reqB := httptest.NewRequest(http.MethodPost, "/sse/v1/rag/answer", strings.NewReader("{}"))
+	reqB := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/sse/v1/rag/answer", strings.NewReader("{}"))
 	reqB = reqB.WithContext(testUserCtx(userB))
 	recB := httptest.NewRecorder()
 	e.ServeHTTP(recB, reqB)
@@ -596,7 +596,7 @@ func TestUserQuotaInterceptor_ReleasesOnPanicAndStreamCancel(t *testing.T) {
 	e := echo.New()
 	mw := EchoUserQuotaMiddleware(limiter, OpAugurChat)
 	shouldPanic := true
-	e.POST("/sse/v1/rag/answer", func(c echo.Context) error {
+	e.POST("/sse/v1/rag/answer", func(c *echo.Context) error {
 		if shouldPanic {
 			panic("boom")
 		}
@@ -604,13 +604,13 @@ func TestUserQuotaInterceptor_ReleasesOnPanicAndStreamCancel(t *testing.T) {
 	}, mw)
 
 	assert.Panics(t, func() {
-		req := httptest.NewRequest(http.MethodPost, "/sse/v1/rag/answer", strings.NewReader("{}"))
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/sse/v1/rag/answer", strings.NewReader("{}"))
 		req = req.WithContext(testUserCtx(userA))
 		e.ServeHTTP(httptest.NewRecorder(), req)
 	})
 
 	shouldPanic = false
-	reqAfterPanic := httptest.NewRequest(http.MethodPost, "/sse/v1/rag/answer", strings.NewReader("{}"))
+	reqAfterPanic := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/sse/v1/rag/answer", strings.NewReader("{}"))
 	reqAfterPanic = reqAfterPanic.WithContext(testUserCtx(userA))
 	recAfterPanic := httptest.NewRecorder()
 	e.ServeHTTP(recAfterPanic, reqAfterPanic)
@@ -813,11 +813,11 @@ func TestUserQuotaLimiter_MissingUserIsAuthenticationError(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = limiter.Acquire(context.Background(), OpSummarize)
-	assert.ErrorIs(t, err, ErrQuotaUnauthenticated)
+	require.ErrorIs(t, err, ErrQuotaUnauthenticated)
 
 	nilUser := domain.SetUserContext(context.Background(), &domain.UserContext{UserID: uuid.Nil})
 	_, err = limiter.Acquire(nilUser, OpSummarize)
-	assert.ErrorIs(t, err, ErrQuotaUnauthenticated)
+	require.ErrorIs(t, err, ErrQuotaUnauthenticated)
 }
 
 func TestUserQuotaInterceptor_GatesRetrieveContextAndArticleTagsPerClass(t *testing.T) {
@@ -927,8 +927,8 @@ func TestUserQuotaLimiter_ChargeSummarizationRequiresAuthentication(t *testing.T
 	require.NoError(t, err)
 
 	err = limiter.ChargeSummarization(context.Background())
-	assert.ErrorIs(t, err, ErrQuotaUnauthenticated)
-	assert.NotErrorIs(t, err, summarize_quota_port.ErrBudgetExhausted)
+	require.ErrorIs(t, err, ErrQuotaUnauthenticated)
+	require.NotErrorIs(t, err, summarize_quota_port.ErrBudgetExhausted)
 }
 
 func TestEchoUserInFlightMiddleware_CapsConcurrencyWithoutSpendingTokens(t *testing.T) {
@@ -940,7 +940,7 @@ func TestEchoUserInFlightMiddleware_CapsConcurrencyWithoutSpendingTokens(t *test
 	entered := make(chan struct{})
 	release := make(chan struct{})
 	var calls atomic.Int32
-	e.POST("/batch", func(c echo.Context) error {
+	e.POST("/batch", func(c *echo.Context) error {
 		if calls.Add(1) == 1 {
 			close(entered)
 			<-release
@@ -949,7 +949,7 @@ func TestEchoUserInFlightMiddleware_CapsConcurrencyWithoutSpendingTokens(t *test
 	}, EchoUserInFlightMiddleware(limiter, OpSummarize))
 
 	do := func(ctx context.Context) *httptest.ResponseRecorder {
-		req := httptest.NewRequest(http.MethodPost, "/batch", strings.NewReader("{}")).WithContext(ctx)
+		req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/batch", strings.NewReader("{}"))
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, req)
 		return rec

@@ -75,19 +75,19 @@ func TestArticleRepository_FetchOgImageURLsByArticleIDsForUser_RejectsMissingUse
 
 	urls, err := repo.FetchOgImageURLsByArticleIDsForUser(context.Background(), []string{articleID}, nil)
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "user")
+	require.ErrorContains(t, err, "user")
 	assert.Nil(t, urls)
 
 	nilUUID := uuid.Nil
 	urls, err = repo.FetchOgImageURLsByArticleIDsForUser(context.Background(), []string{articleID}, &nilUUID)
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "user")
+	require.ErrorContains(t, err, "user")
 	assert.Nil(t, urls)
 
 	ctxWithUser := domain.SetUserContext(context.Background(), &domain.UserContext{UserID: uuid.New()})
 	urls, err = repo.FetchOgImageURLsByArticleIDsForUser(ctxWithUser, []string{articleID}, nil)
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "user")
+	require.ErrorContains(t, err, "user")
 	assert.Nil(t, urls)
 
 	require.NoError(t, mock.ExpectationsWereMet())

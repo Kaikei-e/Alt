@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -65,7 +66,8 @@ func NewSupervisor(log *slog.Logger) *Supervisor {
 }
 
 // AddServer registers a listener. start blocks until the listener stops;
-// shutdown performs the graceful stop. Registration order is shutdown order.
+// shutdown performs the graceful stop. All registered servers are shut down
+// concurrently on a shared timeout context after tasks have stopped.
 func (s *Supervisor) AddServer(name string, start func() error, shutdown func(context.Context) error) {
 	s.servers = append(s.servers, managedServer{name: name, start: start, shutdown: shutdown})
 }
@@ -132,9 +134,9 @@ func (s *Supervisor) Wait(ctx context.Context) Outcome {
 	}
 }
 
-// GracefulShutdown stops tasks first, then every server in registration order,
-// bounded by timeout. A hook that fails is logged and the remaining hooks
-// still run: one wedged listener must not leak the others.
+// GracefulShutdown stops tasks first, then shuts down every server concurrently
+// on a shared context bounded by timeout. A hook that fails is logged and the
+// remaining hooks still run: one wedged listener must not block or leak the others.
 func (s *Supervisor) GracefulShutdown(ctx context.Context, timeout time.Duration) {
 	for _, task := range s.tasks {
 		started := time.Now()
@@ -146,15 +148,21 @@ func (s *Supervisor) GracefulShutdown(ctx context.Context, timeout time.Duration
 	shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
 	defer cancel()
 
+	var wg sync.WaitGroup
 	for _, srv := range s.servers {
 		if srv.shutdown == nil {
 			continue
 		}
-		s.log.InfoContext(shutdownCtx, "server shutdown starting", "server", srv.name, "timeout", timeout.String())
-		if err := srv.shutdown(shutdownCtx); err != nil {
-			s.log.ErrorContext(shutdownCtx, "server shutdown failed", "server", srv.name, "error", err)
-			continue
-		}
-		s.log.InfoContext(shutdownCtx, "server shutdown completed", "server", srv.name)
+		wg.Add(1)
+		go func(srv managedServer) {
+			defer wg.Done()
+			s.log.InfoContext(shutdownCtx, "server shutdown starting", "server", srv.name, "timeout", timeout.String())
+			if err := srv.shutdown(shutdownCtx); err != nil {
+				s.log.ErrorContext(shutdownCtx, "server shutdown failed", "server", srv.name, "error", err)
+				return
+			}
+			s.log.InfoContext(shutdownCtx, "server shutdown completed", "server", srv.name)
+		}(srv)
 	}
+	wg.Wait()
 }

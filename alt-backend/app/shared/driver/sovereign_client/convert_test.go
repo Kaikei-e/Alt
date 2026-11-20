@@ -139,7 +139,7 @@ func TestProtoToTrailFootprint(t *testing.T) {
 	}
 
 	fp := protoToTrailFootprint(pb)
-	if fp.FootprintKey != pb.FootprintKey || fp.Verb != pb.Verb || fp.ItemKey != pb.ItemKey {
+	if fp.FootprintKey != pb.GetFootprintKey() || fp.Verb != pb.GetVerb() || fp.ItemKey != pb.GetItemKey() {
 		t.Errorf("unexpected footprint fields: %+v", fp)
 	}
 	if fp.ContactCount != 3 || fp.Wear != "0.85" {
@@ -347,7 +347,7 @@ func TestEventsConversion(t *testing.T) {
 	}
 
 	pb := domainEventToProto(evt)
-	if pb.EventId != eventID.String() || pb.EventSeq != 42 || pb.TenantId != tenantID.String() {
+	if pb.GetEventId() != eventID.String() || pb.GetEventSeq() != 42 || pb.GetTenantId() != tenantID.String() {
 		t.Fatalf("unexpected proto event: %+v", pb)
 	}
 
@@ -375,7 +375,7 @@ func TestProjectionVersionConversion(t *testing.T) {
 	}
 
 	pb := domainToProtoVersion(v)
-	if pb.Version != 3 || pb.Description != "v3 schema" || pb.Status != "active" {
+	if pb.GetVersion() != 3 || pb.GetDescription() != "v3 schema" || pb.GetStatus() != "active" {
 		t.Fatalf("unexpected proto version: %+v", pb)
 	}
 

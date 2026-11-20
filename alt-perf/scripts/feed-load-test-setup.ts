@@ -31,11 +31,11 @@ import {
   journalIdentity,
   journalPendingExternal,
   manifestPath,
+  readManifest,
   type RunManifest,
   validateRunId,
   withManifestLock,
   writeManifestAtomic,
-  readManifest,
 } from "./manifest.ts";
 
 export interface TestUser {
@@ -148,7 +148,9 @@ export async function lookupIdentityByEmail(
   email: string,
   kratosAdmin: string,
   fetchFn: typeof fetch = fetch,
-): Promise<{ id: string; emailFromApi: string; runIdMarker?: string; intentNonce?: string } | null> {
+): Promise<
+  { id: string; emailFromApi: string; runIdMarker?: string; intentNonce?: string } | null
+> {
   const listRes = await fetchFn(
     `${kratosAdmin}/admin/identities?credentials_identifier=${encodeURIComponent(email)}`,
     fetchOpts(),
@@ -197,7 +199,12 @@ export async function createUser(
       password = generateCryptoRandomPassword();
       intentNonce = crypto.randomUUID();
       intentNewlyGenerated = true;
-      await persistCredentialIncremental(cJournalPath, { email, password, userId: "", intentNonce });
+      await persistCredentialIncremental(cJournalPath, {
+        email,
+        password,
+        userId: "",
+        intentNonce,
+      });
     }
   } else {
     password = generateCryptoRandomPassword();
@@ -249,33 +256,47 @@ export async function createUser(
 
         const existing = await lookupIdentityByEmail(email, kratosAdmin, fetchFn);
         if (!existing || !existing.id) {
-          console.error(`  FAIL: 409 but could not look up existing identity for ${email}. Skipping.`);
+          console.error(
+            `  FAIL: 409 but could not look up existing identity for ${email}. Skipping.`,
+          );
           return null;
         }
 
-        const ownedByThisRun = existing.runIdMarker === manifest.runId && isSyntheticEmail(existing.emailFromApi);
+        const ownedByThisRun = existing.runIdMarker === manifest.runId &&
+          isSyntheticEmail(existing.emailFromApi);
         if (!ownedByThisRun) {
           console.error(
-            `  FAIL: identity ${email} exists but metadata run_id does not match this run. Refusing to use or delete unknown identity.`
+            `  FAIL: identity ${email} exists but metadata run_id does not match this run. Refusing to use or delete unknown identity.`,
           );
           return null;
         }
 
         // Exact nonce match
         if (existing.intentNonce !== intentNonce) {
-           console.error(`  FAIL: identity ${email} owned by this run, but intent_nonce mismatch. Corrupted intent fail closed.`);
-           return null;
+          console.error(
+            `  FAIL: identity ${email} owned by this run, but intent_nonce mismatch. Corrupted intent fail closed.`,
+          );
+          return null;
         }
 
         if (cJournalPath) {
           if (intentNewlyGenerated) {
-             console.error(`  FAIL: identity ${email} owned by this run, but missing from credentials intent prior to this attempt. Corrupted intent fail closed.`);
-             return null;
+            console.error(
+              `  FAIL: identity ${email} owned by this run, but missing from credentials intent prior to this attempt. Corrupted intent fail closed.`,
+            );
+            return null;
           }
           const saved = loadExactRunCredentials(cJournalPath);
           if (saved.has(email)) {
-            console.warn(`  Recovered owned identity ${email} (id=${existing.id}) using prior creation intent.`);
-            const testUser: TestUser = { email, password: saved.get(email)!.password, userId: existing.id, intentNonce };
+            console.warn(
+              `  Recovered owned identity ${email} (id=${existing.id}) using prior creation intent.`,
+            );
+            const testUser: TestUser = {
+              email,
+              password: saved.get(email)!.password,
+              userId: existing.id,
+              intentNonce,
+            };
             await persistCredentialIncremental(cJournalPath, testUser);
             const rec: IdentityRecord = {
               kratosId: existing.id,
@@ -285,12 +306,16 @@ export async function createUser(
             await journalIdentity(manifest, mPath, rec);
             return testUser;
           } else {
-             console.error(`  FAIL: identity ${email} owned by this run, but missing from credentials intent. Corrupted intent fail closed.`);
-             return null;
+            console.error(
+              `  FAIL: identity ${email} owned by this run, but missing from credentials intent. Corrupted intent fail closed.`,
+            );
+            return null;
           }
         }
 
-        console.error(`  FAIL: identity ${email} owned by this run, but no credential journal path provided.`);
+        console.error(
+          `  FAIL: identity ${email} owned by this run, but no credential journal path provided.`,
+        );
         return null;
       }
 

@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/require"
 )
 
@@ -58,7 +58,7 @@ func (s *limitRecordingByTagPort) FetchArticlesByTagName(_ context.Context, _ st
 func recordArticleLimitRequest(t *testing.T, handler echo.HandlerFunc, target string) *httptest.ResponseRecorder {
 	t.Helper()
 
-	req := httptest.NewRequest(http.MethodGet, target, nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, target, nil)
 	req = req.WithContext(domain.SetUserContext(req.Context(), &domain.UserContext{
 		UserID:    uuid.New(),
 		Email:     "test@example.com",

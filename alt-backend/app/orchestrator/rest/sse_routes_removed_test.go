@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/require"
 )
 
@@ -19,7 +19,7 @@ func TestSSEFeedStatsRouteIsRemoved(t *testing.T) {
 	// Just a stub /v1 group so the router has something to fall through.
 	e.Group("/v1")
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/sse/feeds/stats", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/sse/feeds/stats", nil)
 	res := httptest.NewRecorder()
 	e.ServeHTTP(res, req)
 

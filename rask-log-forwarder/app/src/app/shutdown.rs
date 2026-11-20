@@ -24,9 +24,11 @@ pub struct ShutdownHandle {
     shutdown_tx: mpsc::UnboundedSender<()>,
     signal_handler: SignalHandler,
     processing_loop: tokio::task::JoinHandle<()>,
+    background_tasks: Vec<tokio::task::JoinHandle<()>>,
 }
 
 impl ShutdownHandle {
+    #[must_use]
     pub fn new(
         shutdown_tx: mpsc::UnboundedSender<()>,
         signal_handler: SignalHandler,
@@ -36,9 +38,25 @@ impl ShutdownHandle {
             shutdown_tx,
             signal_handler,
             processing_loop,
+            background_tasks: Vec::new(),
         }
     }
 
+    /// Attaches background task handles that should be joined or aborted when
+    /// shutdown completes.
+    #[must_use]
+    pub fn with_background_tasks(mut self, tasks: Vec<tokio::task::JoinHandle<()>>) -> Self {
+        self.background_tasks = tasks;
+        self
+    }
+
+    /// Signals the processing loop to shut down and waits up to
+    /// `SHUTDOWN_TIMEOUT` for it to drain and flush.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ServiceError::ShutdownTimeout`] if the processing loop panics
+    /// or fails to complete within `SHUTDOWN_TIMEOUT`.
     pub async fn shutdown(self) -> Result<(), ServiceError> {
         info!("Initiating graceful shutdown...");
 
@@ -51,22 +69,48 @@ impl ShutdownHandle {
         // polling a flag it sets - this resolves the instant the task exits
         // instead of up to 100ms late, and doesn't spin a wakeup every tick
         // while shutdown is in progress.
-        match tokio::time::timeout(SHUTDOWN_TIMEOUT, self.processing_loop).await {
+        let deadline = tokio::time::Instant::now() + SHUTDOWN_TIMEOUT;
+        match tokio::time::timeout_at(deadline, self.processing_loop).await {
             Ok(Ok(())) => {
+                for task in self.background_tasks {
+                    match tokio::time::timeout_at(deadline, task).await {
+                        Ok(Ok(())) => {}
+                        Ok(Err(e)) => {
+                            warn!("Background task panicked during shutdown: {e}");
+                        }
+                        Err(_) => {
+                            warn!("Background task did not stop before shutdown deadline");
+                        }
+                    }
+                }
                 info!("Graceful shutdown completed");
                 Ok(())
             }
             Ok(Err(e)) => {
+                for task in &self.background_tasks {
+                    task.abort();
+                }
                 error!("Processing loop task panicked during shutdown: {e}");
                 Err(ServiceError::ShutdownTimeout)
             }
             Err(_) => {
+                for task in &self.background_tasks {
+                    task.abort();
+                }
                 error!("Shutdown timeout exceeded");
                 Err(ServiceError::ShutdownTimeout)
             }
         }
     }
 
+    /// Waits for either a termination signal (triggering graceful shutdown) or
+    /// an unexpected exit of the processing loop.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ServiceError::ShutdownTimeout`] if graceful shutdown times
+    /// out or panics, or [`ServiceError::CollectorError`] if the processing
+    /// loop exits without a shutdown signal.
     pub async fn wait_for_shutdown(mut self) -> Result<(), ServiceError> {
         tokio::select! {
             () = self.signal_handler.wait() => {
@@ -103,17 +147,18 @@ pub struct SignalHandler {
 }
 
 impl SignalHandler {
-    pub async fn new(shutdown_tx: mpsc::UnboundedSender<()>) -> Self {
+    #[must_use]
+    pub fn new(shutdown_tx: mpsc::UnboundedSender<()>) -> Self {
         let handler = Self {
             shutdown_tx,
             shutdown_token: CancellationToken::new(),
         };
 
-        handler.setup_handlers().await;
+        handler.setup_handlers();
         handler
     }
 
-    async fn setup_handlers(&self) {
+    fn setup_handlers(&self) {
         let shutdown_tx = self.shutdown_tx.clone();
         let shutdown_token = self.shutdown_token.clone();
 
@@ -183,6 +228,7 @@ impl SignalHandler {
         });
     }
 
+    #[must_use]
     pub fn is_active(&self) -> bool {
         !self.shutdown_token.is_cancelled()
     }
@@ -197,6 +243,8 @@ impl SignalHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
     use tokio::time::{Duration as TokioDuration, timeout};
 
     fn test_handler() -> SignalHandler {
@@ -311,8 +359,8 @@ mod tests {
 
     /// The deadline and compose's `stop_grace_period` are one contract living in
     /// two files. Parse the container spec rather than trusting the local
-    /// constant, so raising STOP_GRACE_PERIOD here without touching
-    /// compose/logging.yaml fails the build here instead of in production.
+    /// constant, so raising `STOP_GRACE_PERIOD` here without touching
+    /// `compose/logging.yaml` fails the build here instead of in production.
     #[test]
     fn stop_grace_period_matches_the_compose_service_spec() {
         const LOGGING_COMPOSE: &str = include_str!(concat!(
@@ -388,6 +436,169 @@ mod tests {
         assert!(
             result.is_ok(),
             "signal-triggered graceful shutdown must return Ok(()), got {result:?}"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn shutdown_awaits_background_task_finishing_after_processing_loop() {
+        // Background tasks may still be winding down after the processing loop
+        // exits; shutdown must wait for them before returning so their final
+        // work is not dropped.
+        let (tx, processing_loop) = fake_processing_loop(Duration::from_millis(50));
+        let completed = Arc::new(AtomicBool::new(false));
+        let completed_task = Arc::clone(&completed);
+        let task_duration = Duration::from_secs(2);
+        let bg = tokio::spawn(async move {
+            tokio::time::sleep(task_duration).await;
+            completed_task.store(true, Ordering::Release);
+        });
+
+        let started = tokio::time::Instant::now();
+        let result = ShutdownHandle::new(tx, test_handler(), processing_loop)
+            .with_background_tasks(vec![bg])
+            .shutdown()
+            .await;
+
+        assert!(
+            result.is_ok(),
+            "shutdown must return Ok(()) once background task finishes in time, got {result:?}"
+        );
+        assert!(
+            completed.load(Ordering::Acquire),
+            "shutdown returned before the background task finished its work"
+        );
+        assert!(
+            started.elapsed() >= task_duration,
+            "shutdown returned after {:?}, earlier than the {task_duration:?} background task",
+            started.elapsed()
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn shutdown_shares_deadline_when_background_task_never_finishes() {
+        // The processing loop and background tasks share one deadline derived
+        // from stop_grace_period; restarting the clock for background work
+        // would push shutdown past Docker's SIGKILL.
+        let (tx, processing_loop) = fake_processing_loop(Duration::from_secs(3));
+        let bg = tokio::spawn(async {
+            tokio::time::sleep(Duration::from_secs(300)).await;
+        });
+
+        let started = tokio::time::Instant::now();
+        let result = ShutdownHandle::new(tx, test_handler(), processing_loop)
+            .with_background_tasks(vec![bg])
+            .shutdown()
+            .await;
+
+        assert!(
+            result.is_ok(),
+            "a hung background task must log a warning and still return Ok(()), got {result:?}"
+        );
+        assert!(
+            started.elapsed() >= SHUTDOWN_TIMEOUT,
+            "shutdown gave up after {:?}, short of the {SHUTDOWN_TIMEOUT:?} shared deadline",
+            started.elapsed()
+        );
+        assert!(
+            started.elapsed() < STOP_GRACE_PERIOD,
+            "shutdown gave up after {:?}, at or past the {STOP_GRACE_PERIOD:?} stop_grace_period - \
+             deadline was not shared with the processing loop",
+            started.elapsed()
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn shutdown_bounds_multiple_never_finishing_background_tasks_to_shared_deadline() {
+        // Regression guard against a per-task timeout: two hung background
+        // tasks must still stop waiting at the single shared deadline rather
+        // than multiplying the wait time.
+        let (tx, processing_loop) = fake_processing_loop(Duration::from_secs(3));
+        let bg1 = tokio::spawn(async {
+            tokio::time::sleep(Duration::from_secs(300)).await;
+        });
+        let bg2 = tokio::spawn(async {
+            tokio::time::sleep(Duration::from_secs(300)).await;
+        });
+
+        let started = tokio::time::Instant::now();
+        let result = ShutdownHandle::new(tx, test_handler(), processing_loop)
+            .with_background_tasks(vec![bg1, bg2])
+            .shutdown()
+            .await;
+
+        assert!(
+            result.is_ok(),
+            "multiple hung background tasks must still return Ok(()), got {result:?}"
+        );
+        assert!(
+            started.elapsed() >= SHUTDOWN_TIMEOUT,
+            "shutdown gave up after {:?}, short of the {SHUTDOWN_TIMEOUT:?} shared deadline",
+            started.elapsed()
+        );
+        assert!(
+            started.elapsed() < STOP_GRACE_PERIOD,
+            "shutdown gave up after {:?}, at or past the {STOP_GRACE_PERIOD:?} stop_grace_period - \
+             background tasks appear to each get their own deadline",
+            started.elapsed()
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn shutdown_returns_ok_when_background_task_panics() {
+        // A panicked background task should be logged as a warning without
+        // turning an otherwise clean processing-loop flush into an error exit.
+        let (tx, processing_loop) = fake_processing_loop(Duration::from_millis(50));
+        let bg = tokio::spawn(async {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            panic!("simulated background task panic");
+        });
+
+        let result = ShutdownHandle::new(tx, test_handler(), processing_loop)
+            .with_background_tasks(vec![bg])
+            .shutdown()
+            .await;
+
+        assert!(
+            result.is_ok(),
+            "panicking background task must not fail shutdown, got {result:?}"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn shutdown_aborts_background_tasks_when_processing_loop_times_out() {
+        // When the processing loop itself hangs past the deadline, remaining
+        // background tasks must be aborted so they do not linger past timeout.
+        struct DropFlag(Arc<AtomicBool>);
+        impl Drop for DropFlag {
+            fn drop(&mut self) {
+                self.0.store(true, Ordering::Release);
+            }
+        }
+
+        let (tx, processing_loop) = fake_processing_loop(Duration::from_secs(300));
+        let aborted = Arc::new(AtomicBool::new(false));
+        let guard = DropFlag(Arc::clone(&aborted));
+        let bg = tokio::spawn(async move {
+            std::future::pending::<()>().await;
+            drop(guard);
+        });
+
+        let result = ShutdownHandle::new(tx, test_handler(), processing_loop)
+            .with_background_tasks(vec![bg])
+            .shutdown()
+            .await;
+
+        assert!(
+            matches!(result, Err(ServiceError::ShutdownTimeout)),
+            "timed-out processing loop must return Err(ServiceError::ShutdownTimeout), got {result:?}"
+        );
+
+        for _ in 0..4 {
+            tokio::task::yield_now().await;
+        }
+        assert!(
+            aborted.load(Ordering::Acquire),
+            "background task was not aborted when processing loop timed out"
         );
     }
 }

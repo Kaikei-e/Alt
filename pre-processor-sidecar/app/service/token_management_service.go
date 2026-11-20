@@ -261,7 +261,7 @@ func (s *TokenManagementService) ValidateAndRecoverToken(ctx context.Context) er
 func (s *TokenManagementService) loadTokenFromStorage(ctx context.Context) (*models.OAuth2Token, error) {
 	token, err := s.tokenRepo.GetCurrentToken(ctx)
 	if err != nil {
-		if err == repository.ErrTokenNotFound {
+		if errors.Is(err, repository.ErrTokenNotFound) {
 			return nil, fmt.Errorf("no OAuth2 token found in storage - run oauth-init tool first")
 		}
 		return nil, fmt.Errorf("storage access error: %w", err)
@@ -518,7 +518,8 @@ func (s *TokenManagementService) updateTokenWithRotation(
 func (s *TokenManagementService) GetTokenStatus(ctx context.Context) (*OldTokenStatus, error) {
 	token, err := s.loadTokenFromStorage(ctx)
 	if err != nil {
-		return &OldTokenStatus{
+		s.logger.Warn("Failed to load token from storage for status check", "error", err)
+		return &OldTokenStatus{ //nolint:nilerr // intentional degradation: status struct reports load failure via ErrorMessage
 			Exists:       false,
 			IsValid:      false,
 			IsExpired:    true,

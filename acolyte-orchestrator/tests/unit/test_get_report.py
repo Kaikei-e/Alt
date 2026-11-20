@@ -116,7 +116,7 @@ async def test_get_existing_report() -> None:
 
     assert result_report is not None
     assert result_report.title == "Test Report"
-    assert len(result_sections) == 2
+    assert len(result_sections) == len(repo.sections[rid])
 
 
 @pytest.mark.asyncio

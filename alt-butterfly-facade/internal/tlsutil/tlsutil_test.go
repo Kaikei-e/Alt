@@ -51,24 +51,30 @@ func writeTestPKI(t *testing.T, dir, cn string) (certPath, keyPath, caPath strin
 	leafDER, err := x509.CreateCertificate(rand.Reader, leafTmpl, caTmpl, &leafKey.PublicKey, caKey)
 	require.NoError(t, err)
 
-	certPath = filepath.Join(dir, "svc-cert.pem")
-	keyPath = filepath.Join(dir, "svc-key.pem")
-	caPath = filepath.Join(dir, "ca-bundle.pem")
+	certName := "svc-cert.pem"
+	keyName := "svc-key.pem"
+	caName := "ca-bundle.pem"
+	certPath = filepath.Join(dir, certName)
+	keyPath = filepath.Join(dir, keyName)
+	caPath = filepath.Join(dir, caName)
 
-	writePEM(t, certPath, "CERTIFICATE", leafDER)
+	writePEM(t, dir, certName, "CERTIFICATE", leafDER)
 	leafKeyDER, err := x509.MarshalECPrivateKey(leafKey)
 	require.NoError(t, err)
-	writePEM(t, keyPath, "EC PRIVATE KEY", leafKeyDER)
-	writePEM(t, caPath, "CERTIFICATE", caDER)
+	writePEM(t, dir, keyName, "EC PRIVATE KEY", leafKeyDER)
+	writePEM(t, dir, caName, "CERTIFICATE", caDER)
 
 	return certPath, keyPath, caPath
 }
 
-func writePEM(t *testing.T, path, blockType string, der []byte) {
+func writePEM(t *testing.T, dir, name, blockType string, der []byte) {
 	t.Helper()
-	f, err := os.Create(path)
+	root, err := os.OpenRoot(dir)
 	require.NoError(t, err)
-	defer f.Close()
+	defer func() { assert.NoError(t, root.Close()) }()
+	f, err := root.Create(name)
+	require.NoError(t, err)
+	defer func() { assert.NoError(t, f.Close()) }()
 	require.NoError(t, pem.Encode(f, &pem.Block{Type: blockType, Bytes: der}))
 }
 

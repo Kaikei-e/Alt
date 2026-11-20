@@ -52,7 +52,7 @@ func TestHandleError_NormalizedPathDoesNotEchoMessage(t *testing.T) {
 func TestBFFHandler_AuthErrorDoesNotWriteHTMLWithRequestBytes(t *testing.T) {
 	h := createTestBFFHandler(t, BFFConfig{})
 
-	req := httptest.NewRequest(http.MethodPost, "/alt.feeds.v2.FeedService/GetFeedStats", bytes.NewReader([]byte(xssPayload)))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/alt.feeds.v2.FeedService/GetFeedStats", bytes.NewReader([]byte(xssPayload)))
 	req.Header.Set("X-Alt-Backend-Token", xssPayload)
 	req.URL.RawQuery = "q=" + xssPayload
 	rec := httptest.NewRecorder()
@@ -73,7 +73,7 @@ func TestAggregationHandler_ValidationErrorDoesNotReflectRequestBody(t *testing.
 	reqBody, err := json.Marshal(AggregationRequest{Queries: queries})
 	require.NoError(t, err)
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/aggregate", bytes.NewReader(reqBody))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/aggregate", bytes.NewReader(reqBody))
 	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, testPrivateKey))
 	rec := httptest.NewRecorder()
 
@@ -98,7 +98,7 @@ func TestAggregationHandler_UnknownQueryJSONIsNotHTML(t *testing.T) {
 	reqBody, err := json.Marshal(AggregationRequest{Queries: []string{xssPayload}})
 	require.NoError(t, err)
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/aggregate", bytes.NewReader(reqBody))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/aggregate", bytes.NewReader(reqBody))
 	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, testPrivateKey))
 	rec := httptest.NewRecorder()
 

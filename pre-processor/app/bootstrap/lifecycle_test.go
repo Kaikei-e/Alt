@@ -3,7 +3,6 @@ package bootstrap
 import (
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"testing"
 
@@ -64,7 +63,7 @@ func TestStartJobs_SkipsSyncAndBackfillWhenArticleSyncDisabled(t *testing.T) {
 		HealthHandler:      healthHandler,
 		ArticleSyncEnabled: false,
 	}
-	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	log := slog.New(slog.DiscardHandler)
 
 	require.NoError(t, startJobs(context.Background(), deps, log))
 }
@@ -89,7 +88,7 @@ func TestStartJobs_StartsSyncAndBackfillWhenArticleSyncEnabled(t *testing.T) {
 		HealthHandler:      healthHandler,
 		ArticleSyncEnabled: true,
 	}
-	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	log := slog.New(slog.DiscardHandler)
 
 	require.NoError(t, startJobs(context.Background(), deps, log))
 }

@@ -65,7 +65,7 @@ func ListenOps(ctx context.Context, log *slog.Logger, serviceName string, metric
 		log = slog.Default()
 	}
 	addr := OpsListenAddr()
-	ln, err := net.Listen("tcp", addr)
+	ln, err := (&net.ListenConfig{}).Listen(ctx, "tcp", addr)
 	if err != nil {
 		return nil, fmt.Errorf("pki: ops listen %s: %w", addr, err)
 	}

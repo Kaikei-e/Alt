@@ -39,8 +39,12 @@ function calculateNextFeedUrl(
 	}
 
 	// Otherwise, return the item at the same index (which was the next item)
+	const nextFeed = remainingFeeds[currentIndex];
+	if (!nextFeed) {
+		throw new Error("Expected next feed at currentIndex");
+	}
 	return {
-		nextFeedUrl: remainingFeeds[currentIndex]!.normalizedUrl,
+		nextFeedUrl: nextFeed.normalizedUrl,
 		totalCount,
 	};
 }

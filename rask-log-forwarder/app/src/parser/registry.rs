@@ -13,9 +13,9 @@ use std::sync::Arc;
 /// Manages parser instances and service-to-parser mappings,
 /// enabling runtime configuration of log parsing behavior.
 pub struct ServiceParserRegistry {
-    /// Map of parser_type -> parser instance
+    /// Map of `parser_type` -> parser instance
     parsers: HashMap<String, Arc<dyn ServiceParser>>,
-    /// Map of service_name -> parser_type
+    /// Map of `service_name` -> `parser_type`
     service_mappings: HashMap<String, String>,
     /// Ordered list of parsers for auto-detection (sorted by priority)
     detection_order: Vec<String>,
@@ -29,6 +29,7 @@ impl Default for ServiceParserRegistry {
 
 impl ServiceParserRegistry {
     /// Create a new empty registry.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             parsers: HashMap::new(),
@@ -82,12 +83,14 @@ impl ServiceParserRegistry {
     /// Get the parser for a specific service.
     ///
     /// Returns `None` if the service is not mapped to any parser.
+    #[must_use]
     pub fn get_parser_for_service(&self, service_name: &str) -> Option<Arc<dyn ServiceParser>> {
         let parser_type = self.service_mappings.get(service_name)?;
         self.parsers.get(parser_type).cloned()
     }
 
     /// Get a parser by its type name.
+    #[must_use]
     pub fn get_parser(&self, parser_type: &str) -> Option<Arc<dyn ServiceParser>> {
         self.parsers.get(parser_type).cloned()
     }
@@ -112,6 +115,11 @@ impl ServiceParserRegistry {
     ///
     /// If the service is mapped to a parser, uses that parser.
     /// Otherwise, tries auto-detection.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParseError::InvalidFormat`] if neither a mapped parser nor auto-detection matches,
+    /// or propagates any [`ParseError`] returned by the selected parser.
     pub fn parse_log(&self, log: &str, service_name: &str) -> Result<ParsedLogEntry, ParseError> {
         // Try mapped parser first
         if let Some(parser) = self.get_parser_for_service(service_name) {
@@ -124,8 +132,7 @@ impl ServiceParserRegistry {
         }
 
         Err(ParseError::InvalidFormat(format!(
-            "No suitable parser found for service '{}' and log format",
-            service_name
+            "No suitable parser found for service '{service_name}' and log format"
         )))
     }
 
@@ -135,11 +142,16 @@ impl ServiceParserRegistry {
     /// Example: `nginx:nginx,myapp:go,custom:python`
     pub fn load_mappings_from_env(&mut self, env_var: &str) {
         if let Ok(mappings_str) = std::env::var(env_var) {
-            for mapping in mappings_str.split(',') {
-                let parts: Vec<&str> = mapping.trim().split(':').collect();
-                if parts.len() == 2 {
-                    self.map_service(parts[0].trim(), parts[1].trim());
-                }
+            self.load_mappings_from_str(&mappings_str);
+        }
+    }
+
+    /// Load service mappings from a comma-separated `service:parser` string.
+    pub fn load_mappings_from_str(&mut self, mappings_str: &str) {
+        for mapping in mappings_str.split(',') {
+            let parts: Vec<&str> = mapping.trim().split(':').collect();
+            if parts.len() == 2 {
+                self.map_service(parts[0].trim(), parts[1].trim());
             }
         }
     }
@@ -150,16 +162,19 @@ impl ServiceParserRegistry {
     }
 
     /// Get all service mappings.
+    #[must_use]
     pub fn service_mappings(&self) -> &HashMap<String, String> {
         &self.service_mappings
     }
 
     /// Check if a parser type is registered.
+    #[must_use]
     pub fn has_parser(&self, parser_type: &str) -> bool {
         self.parsers.contains_key(parser_type)
     }
 
     /// Check if a service is mapped.
+    #[must_use]
     pub fn has_service_mapping(&self, service_name: &str) -> bool {
         self.service_mappings.contains_key(service_name)
     }
@@ -374,15 +389,7 @@ mod tests {
 
         registry.register_parser("go", parser);
 
-        // SAFETY: This is a test and we're only modifying a test-specific env var
-        // that won't affect other threads in a meaningful way
-        unsafe {
-            std::env::set_var("TEST_MAPPINGS_REGISTRY", "service1:go,service2:go");
-        }
-        registry.load_mappings_from_env("TEST_MAPPINGS_REGISTRY");
-        unsafe {
-            std::env::remove_var("TEST_MAPPINGS_REGISTRY");
-        }
+        registry.load_mappings_from_str("service1:go,service2:go");
 
         assert!(registry.has_service_mapping("service1"));
         assert!(registry.has_service_mapping("service2"));

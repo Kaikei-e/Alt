@@ -66,7 +66,7 @@ func (h *Handler) StreamChat(
 	}
 
 	// Validate request has user message
-	query := extractLastUserQuery(req.Msg.Messages)
+	query := extractLastUserQuery(req.Msg.GetMessages())
 	if query == "" {
 		h.logger.WarnContext(ctx, "no user message found in request")
 		return connect.NewError(connect.CodeInvalidArgument, nil)
@@ -84,14 +84,14 @@ func (h *Handler) StreamChat(
 	if err != nil {
 		return errorhandler.HandleUpstreamError(ctx, h.logger, err, "StreamChat.RagConnectClient")
 	}
-	defer ragStream.Close()
+	defer func() { _ = ragStream.Close() }()
 
 	// Forward events from rag-orchestrator to client
 	for ragStream.Receive() {
 		event := ragStream.Msg()
 
 		// Sanitize meta payload to remove sensitive data
-		if event.Kind == "meta" {
+		if event.GetKind() == "meta" {
 			if meta := event.GetMeta(); meta != nil {
 				event = h.sanitizeMetaEvent(event)
 			}
@@ -153,7 +153,7 @@ func (h *Handler) RetrieveContext(
 		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 
-	query := req.Msg.Query
+	query := req.Msg.GetQuery()
 	if query == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, nil)
 	}
@@ -264,8 +264,8 @@ func (h *Handler) DeleteConversation(
 // extractLastUserQuery scans messages in reverse order to find the last user message.
 func extractLastUserQuery(messages []*augurv2.ChatMessage) string {
 	for i := len(messages) - 1; i >= 0; i-- {
-		if messages[i].Role == "user" {
-			return messages[i].Content
+		if messages[i].GetRole() == "user" {
+			return messages[i].GetContent()
 		}
 	}
 	return ""

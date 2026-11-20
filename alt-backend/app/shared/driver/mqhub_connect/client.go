@@ -184,7 +184,7 @@ func (c *Client) PublishArticleCreated(ctx context.Context, payload ArticleCreat
 		return "", err
 	}
 
-	return resp.Msg.MessageId, nil
+	return resp.Msg.GetMessageId(), nil
 }
 
 // PublishArticleUpdated publishes an ArticleUpdated event.
@@ -215,7 +215,7 @@ func (c *Client) PublishArticleUpdated(ctx context.Context, payload ArticleCreat
 		return "", err
 	}
 
-	return resp.Msg.MessageId, nil
+	return resp.Msg.GetMessageId(), nil
 }
 
 // PublishSummarizeRequested publishes a SummarizeRequested event.
@@ -246,7 +246,7 @@ func (c *Client) PublishSummarizeRequested(ctx context.Context, payload Summariz
 		return "", err
 	}
 
-	return resp.Msg.MessageId, nil
+	return resp.Msg.GetMessageId(), nil
 }
 
 // PublishIndexArticle publishes an IndexArticle event.
@@ -277,7 +277,7 @@ func (c *Client) PublishIndexArticle(ctx context.Context, payload IndexArticlePa
 		return "", err
 	}
 
-	return resp.Msg.MessageId, nil
+	return resp.Msg.GetMessageId(), nil
 }
 
 // GenerateTagsRequest represents a request for synchronous tag generation.
@@ -337,21 +337,21 @@ func (c *Client) GenerateTagsForArticle(ctx context.Context, req GenerateTagsReq
 	}
 
 	// Convert proto tags to domain tags
-	tags := make([]GeneratedTag, len(resp.Msg.Tags))
-	for i, protoTag := range resp.Msg.Tags {
+	tags := make([]GeneratedTag, len(resp.Msg.GetTags()))
+	for i, protoTag := range resp.Msg.GetTags() {
 		tags[i] = GeneratedTag{
-			ID:         protoTag.Id,
-			Name:       protoTag.Name,
-			Confidence: protoTag.Confidence,
+			ID:         protoTag.GetId(),
+			Name:       protoTag.GetName(),
+			Confidence: protoTag.GetConfidence(),
 		}
 	}
 
 	return &GenerateTagsResponse{
-		Success:      resp.Msg.Success,
-		ArticleID:    resp.Msg.ArticleId,
+		Success:      resp.Msg.GetSuccess(),
+		ArticleID:    resp.Msg.GetArticleId(),
 		Tags:         tags,
-		InferenceMs:  resp.Msg.InferenceMs,
-		ErrorMessage: resp.Msg.ErrorMessage,
+		InferenceMs:  resp.Msg.GetInferenceMs(),
+		ErrorMessage: resp.Msg.GetErrorMessage(),
 	}, nil
 }
 

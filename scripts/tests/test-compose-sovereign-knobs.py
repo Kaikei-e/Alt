@@ -21,7 +21,7 @@ from collections.abc import Callable
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from compose_include import load_yaml  # noqa: E402
+from compose_include import load_yaml  # noqa: E402 - needs the sys.path entry added above
 
 SERVICE = "knowledge-sovereign"
 PREFIX = "KNOWLEDGE_SOVEREIGN_"
@@ -32,32 +32,35 @@ COMPOSE_TARGETS = (
 APP_DIR = ROOT / "knowledge-sovereign" / "app"
 CONFIG_GO = APP_DIR / "config" / "config.go"
 
-INTERP_RE = re.compile(
-    r"\$\{(?P<var>[A-Za-z_][A-Za-z0-9_]*)(?::?-(?P<default>[^}]*))?\}"
-)
+INTERP_RE = re.compile(r"\$\{(?P<var>[A-Za-z_][A-Za-z0-9_]*)(?::?-(?P<default>[^}]*))?\}")
 PARSE_INT_RE = re.compile(
     r'parseIntEnv\(\s*"(?P<var>KNOWLEDGE_SOVEREIGN_[A-Za-z0-9_]+)"\s*,\s*(?P<default>\d+)\s*\)'
 )
 
-PASS = 0
-FAIL = 0
+
+class _Results:
+    def __init__(self) -> None:
+        self.passed = 0
+        self.failed = 0
+
+
+_RESULTS = _Results()
 
 
 def check(name: str, condition: Callable[[], bool], detail: str = "") -> None:
-    global PASS, FAIL
     try:
         ok = bool(condition())
-    except Exception as exc:
-        print(f"  FAIL  {name} ({type(exc).__name__}: {exc})")
-        FAIL += 1
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, RuntimeError) as exc:
+        sys.stdout.write(f"  FAIL  {name} ({type(exc).__name__}: {exc})\n")
+        _RESULTS.failed += 1
         return
     if ok:
-        print(f"  PASS  {name}")
-        PASS += 1
+        sys.stdout.write(f"  PASS  {name}\n")
+        _RESULTS.passed += 1
     else:
         suffix = f" — {detail}" if detail else ""
-        print(f"  FAIL  {name}{suffix}")
-        FAIL += 1
+        sys.stdout.write(f"  FAIL  {name}{suffix}\n")
+        _RESULTS.failed += 1
 
 
 def env_map(svc: dict) -> dict[str, str]:
@@ -72,9 +75,7 @@ def env_map(svc: dict) -> dict[str, str]:
 
 
 def non_test_go_sources(app_dir: pathlib.Path) -> str:
-    files = sorted(
-        p for p in app_dir.rglob("*.go") if not p.name.endswith("_test.go")
-    )
+    files = sorted(p for p in app_dir.rglob("*.go") if not p.name.endswith("_test.go"))
     return "\n".join(p.read_text(encoding="utf-8") for p in files)
 
 
@@ -90,15 +91,15 @@ def sovereign_env_vars(env: dict[str, str]) -> set[str]:
 
 def config_int_defaults(config_go: pathlib.Path) -> dict[str, str]:
     text = config_go.read_text(encoding="utf-8")
-    return {
-        m.group("var"): m.group("default") for m in PARSE_INT_RE.finditer(text)
-    }
+    return {m.group("var"): m.group("default") for m in PARSE_INT_RE.finditer(text)}
 
 
 go_text = non_test_go_sources(APP_DIR)
 int_defaults = config_int_defaults(CONFIG_GO)
 
-print("knowledge-sovereign compose KNOWLEDGE_SOVEREIGN_* knobs are read by the service")
+sys.stdout.write(
+    "knowledge-sovereign compose KNOWLEDGE_SOVEREIGN_* knobs are read by the service\n"
+)
 for compose_path in COMPOSE_TARGETS:
     rel = compose_path.relative_to(ROOT)
     services = load_yaml(compose_path).get("services") or {}
@@ -109,11 +110,7 @@ for compose_path in COMPOSE_TARGETS:
         f"{rel} declares {PREFIX}* environment knobs on {SERVICE}",
         lambda declared=declared: len(declared) > 0,
     )
-    dead = [
-        name
-        for name in declared
-        if f'"{name}"' not in go_text and f"`{name}`" not in go_text
-    ]
+    dead = [name for name in declared if f'"{name}"' not in go_text and f"`{name}`" not in go_text]
     check(
         f"{rel} {SERVICE} has no dead {PREFIX}* knobs",
         lambda dead=dead: not dead,
@@ -121,10 +118,7 @@ for compose_path in COMPOSE_TARGETS:
     )
 
 prod_env = env_map(
-    (load_yaml(ROOT / "compose" / "sovereign.yaml").get("services") or {}).get(
-        SERVICE
-    )
-    or {}
+    (load_yaml(ROOT / "compose" / "sovereign.yaml").get("services") or {}).get(SERVICE) or {}
 )
 mismatched_defaults: list[str] = []
 for key, raw_val in sorted(prod_env.items()):
@@ -135,9 +129,7 @@ for key, raw_val in sorted(prod_env.items()):
         compose_def = m.group("default") or ""
         code_def = int_defaults[key]
         if compose_def != code_def:
-            mismatched_defaults.append(
-                f"{key} (compose={compose_def!r}, config.go={code_def!r})"
-            )
+            mismatched_defaults.append(f"{key} (compose={compose_def!r}, config.go={code_def!r})")
 
 check(
     "compose/sovereign.yaml ${VAR:-default} fallbacks match config.go defaults",
@@ -145,5 +137,5 @@ check(
     detail=", ".join(mismatched_defaults),
 )
 
-print(f"\n{PASS} passed, {FAIL} failed")
-sys.exit(1 if FAIL else 0)
+sys.stdout.write(f"\n{_RESULTS.passed} passed, {_RESULTS.failed} failed\n")
+sys.exit(1 if _RESULTS.failed else 0)

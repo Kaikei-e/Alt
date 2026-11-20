@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -35,6 +36,7 @@ func CollectComposeReferencedVars(composeRootFile string) ([]string, error) {
 		return nil, fmt.Errorf("resolve compose root path: %w", err)
 	}
 
+	rootDir := filepath.Dir(absRoot)
 	visited := make(map[string]bool)
 	vars := make(map[string]bool)
 	queue := []string{absRoot}
@@ -47,6 +49,7 @@ func CollectComposeReferencedVars(composeRootFile string) ([]string, error) {
 		}
 		visited[cur] = true
 
+		// #nosec G304 -- cur is composeRootFile or an include validated to stay under rootDir
 		raw, err := os.ReadFile(cur)
 		if err != nil {
 			return nil, fmt.Errorf("read compose file %s: %w", filepath.Base(cur), err)
@@ -70,7 +73,14 @@ func CollectComposeReferencedVars(composeRootFile string) ([]string, error) {
 				return nil, fmt.Errorf("invalid include in %s: %w", filepath.Base(cur), err)
 			}
 			for _, rel := range paths {
+				if filepath.IsAbs(rel) {
+					return nil, fmt.Errorf("include path %q in %s must be relative", rel, filepath.Base(cur))
+				}
 				next := filepath.Clean(filepath.Join(baseDir, rel))
+				relToRoot, err := filepath.Rel(rootDir, next)
+				if err != nil || relToRoot == ".." || strings.HasPrefix(relToRoot, ".."+string(filepath.Separator)) {
+					return nil, fmt.Errorf("include path %q in %s escapes compose root", rel, filepath.Base(cur))
+				}
 				if !visited[next] {
 					queue = append(queue, next)
 				}
@@ -199,7 +209,11 @@ func extractIncludePaths(node yaml.Node) ([]string, error) {
 			if len(paths) > 0 {
 				return paths, nil
 			}
+		default:
+			// Falls through to invalid include entry error.
 		}
+	default:
+		// Falls through to invalid include entry error.
 	}
 	return nil, fmt.Errorf("invalid include entry")
 }

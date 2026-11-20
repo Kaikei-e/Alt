@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/alt-project/altctl/internal/config"
 	"github.com/alt-project/altctl/internal/output"
+	"github.com/stretchr/testify/require"
 )
 
 func setupInitTest(t *testing.T) string {
@@ -17,7 +19,7 @@ func setupInitTest(t *testing.T) string {
 
 	// Create .env.example
 	example := "POSTGRES_DB=alt\nPOSTGRES_USER=alt_user\n"
-	if err := os.WriteFile(filepath.Join(tmpDir, ".env.example"), []byte(example), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(tmpDir, ".env.example"), []byte(example), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -32,8 +34,8 @@ func setupInitTest(t *testing.T) string {
 	quiet = false
 
 	// Reset flags to defaults
-	initCmd.Flags().Set("force", "false")
-	initCmd.Flags().Set("skip-secrets", "false")
+	require.NoError(t, initCmd.Flags().Set("force", "false"))
+	require.NoError(t, initCmd.Flags().Set("skip-secrets", "false"))
 
 	return tmpDir
 }
@@ -60,7 +62,8 @@ func assertInitDeterministicOutcome(t *testing.T, tmpDir string) {
 	}
 
 	if err != nil {
-		cliErr, ok := err.(*output.CLIError)
+		cliErr := &output.CLIError{}
+		ok := errors.As(err, &cliErr)
 		if !ok {
 			t.Fatalf("expected *output.CLIError on failure, got %T: %v", err, err)
 		}

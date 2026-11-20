@@ -9,11 +9,11 @@ class TestCJKTextHandling:
     """Test CJK (Japanese/Chinese/Korean) text handling."""
 
     @pytest.fixture
-    def sanitizer(self):
+    def sanitizer(self) -> InputSanitizer:
         """Create a sanitizer instance for testing."""
         return InputSanitizer()
 
-    def test_japanese_text_not_blocked(self, sanitizer):
+    def test_japanese_text_not_blocked(self, sanitizer: InputSanitizer) -> None:
         """Japanese text should not be blocked by unusual character check."""
         result = sanitizer.sanitize(
             title="AIが変える未来の働き方",
@@ -21,7 +21,7 @@ class TestCJKTextHandling:
         )
         assert result.is_valid, f"Japanese text blocked: {result.violations}"
 
-    def test_japanese_with_punctuation(self, sanitizer):
+    def test_japanese_with_punctuation(self, sanitizer: InputSanitizer) -> None:
         """Japanese text with heavy punctuation should pass."""
         result = sanitizer.sanitize(
             title="「新機能」のお知らせ",
@@ -29,7 +29,7 @@ class TestCJKTextHandling:
         )
         assert result.is_valid, f"Japanese with punctuation blocked: {result.violations}"
 
-    def test_japanese_with_many_quotes(self, sanitizer):
+    def test_japanese_with_many_quotes(self, sanitizer: InputSanitizer) -> None:
         """Japanese text with many quotation marks should pass."""
         result = sanitizer.sanitize(
             title="「」『』の使い方",
@@ -37,7 +37,7 @@ class TestCJKTextHandling:
         )
         assert result.is_valid, f"Japanese with quotes blocked: {result.violations}"
 
-    def test_chinese_text_not_blocked(self, sanitizer):
+    def test_chinese_text_not_blocked(self, sanitizer: InputSanitizer) -> None:
         """Chinese text should not be blocked by unusual character check."""
         result = sanitizer.sanitize(
             title="机器学习入门指南",
@@ -45,7 +45,7 @@ class TestCJKTextHandling:
         )
         assert result.is_valid, f"Chinese text blocked: {result.violations}"
 
-    def test_korean_text_not_blocked(self, sanitizer):
+    def test_korean_text_not_blocked(self, sanitizer: InputSanitizer) -> None:
         """Korean text should not be blocked by unusual character check."""
         result = sanitizer.sanitize(
             title="인공지능 기술 동향",
@@ -53,7 +53,7 @@ class TestCJKTextHandling:
         )
         assert result.is_valid, f"Korean text blocked: {result.violations}"
 
-    def test_english_text_still_checked(self, sanitizer):
+    def test_english_text_still_checked(self, sanitizer: InputSanitizer) -> None:
         """English text should still be checked for unusual patterns."""
         # Text with >30% special characters should be blocked
         result = sanitizer.sanitize(
@@ -63,7 +63,7 @@ class TestCJKTextHandling:
         assert not result.is_valid
         assert any("suspicious" in v.lower() for v in result.violations)
 
-    def test_mixed_cjk_and_english(self, sanitizer):
+    def test_mixed_cjk_and_english(self, sanitizer: InputSanitizer) -> None:
         """Mixed CJK and English text should pass."""
         result = sanitizer.sanitize(
             title="AI/人工知能の最新動向",
@@ -71,7 +71,7 @@ class TestCJKTextHandling:
         )
         assert result.is_valid, f"Mixed text blocked: {result.violations}"
 
-    def test_cjk_detection_threshold(self, sanitizer):
+    def test_cjk_detection_threshold(self, sanitizer: InputSanitizer) -> None:
         """CJK detection should work with >10% CJK characters."""
         # 90% English, 10% CJK - should be treated as CJK
         result = sanitizer.sanitize(
@@ -80,7 +80,7 @@ class TestCJKTextHandling:
         )
         assert result.is_valid, f"Text with small CJK portion blocked: {result.violations}"
 
-    def test_is_cjk_text_method(self, sanitizer):
+    def test_is_cjk_text_method(self, sanitizer: InputSanitizer) -> None:
         """Test _is_cjk_text method directly."""
         # Pure Japanese
         assert sanitizer._is_cjk_text("これは日本語です") is True

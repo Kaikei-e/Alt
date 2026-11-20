@@ -187,86 +187,352 @@ impl SubworkerClient {
                 ));
             }
 
-            let response = self
-                .client
-                .get(url.clone())
-                .timeout(Duration::from_secs(POLL_REQUEST_TIMEOUT_SECS))
-                .send()
-                .await
-                .with_context(|| {
-                    format!(
-                        "admin job polling request failed for job_id {} at {}",
-                        job_id, endpoint
-                    )
-                })?;
-
-            let status = response.status();
-            if !status.is_success() {
-                let body = response.text().await.unwrap_or_default();
-                if SubworkerAuthError::is_auth_status(status) {
-                    return Err(SubworkerAuthError::new("admin/jobs poll", status, &body).into());
-                }
-                return Err(anyhow!(
-                    "admin job polling endpoint returned error status {} for job_id {}: {}",
-                    status,
-                    job_id,
-                    truncate_error_message(&body)
-                ));
-            }
-
-            let body: AdminJobStatusResponse = response.json().await.with_context(|| {
-                format!(
-                    "failed to deserialize admin job status for job_id {}",
-                    job_id
-                )
-            })?;
-
+            let body = self.fetch_admin_job_status(&url, endpoint, job_id).await?;
             poll_count += 1;
-            let elapsed = deadline.saturating_duration_since(Instant::now());
+            let progress = AdminPollProgress {
+                poll_count,
+                elapsed: deadline.saturating_duration_since(Instant::now()),
+                backoff,
+            };
 
-            match body.status.as_str() {
-                "succeeded" | "partial" => {
-                    tracing::info!(
-                        job_id = %job_id,
-                        endpoint,
-                        status = %body.status,
-                        poll_count,
-                        "admin job completed successfully"
-                    );
-                    return Ok(());
-                }
-                "failed" => {
-                    return Err(anyhow!(
-                        "admin job {} failed: {}",
-                        job_id,
-                        body.error.unwrap_or_else(|| "unknown error".to_string())
-                    ));
-                }
-                _ => {
-                    if poll_count.is_multiple_of(10) {
-                        tracing::info!(
-                            job_id = %job_id,
-                            endpoint,
-                            status = %body.status,
-                            poll_count,
-                            elapsed_seconds = elapsed.as_secs(),
-                            backoff_ms = backoff.as_millis(),
-                            "admin job still running"
-                        );
-                    } else {
-                        tracing::debug!(
-                            job_id = %job_id,
-                            status = %body.status,
-                            poll_count,
-                            backoff_ms = backoff.as_millis(),
-                            "admin job still running"
-                        );
-                    }
+            match handle_admin_job_status(endpoint, job_id, body, progress)? {
+                AdminPollDecision::Completed => return Ok(()),
+                AdminPollDecision::StillRunning => {
                     tokio::time::sleep(backoff).await;
                     backoff =
                         std::cmp::min(backoff * 2, Duration::from_millis(ADMIN_JOB_MAX_BACKOFF_MS));
                 }
             }
         }
+    }
+
+    async fn fetch_admin_job_status(
+        &self,
+        url: &reqwest::Url,
+        endpoint: &str,
+        job_id: Uuid,
+    ) -> Result<AdminJobStatusResponse> {
+        let response = self
+            .client
+            .get(url.clone())
+            .timeout(Duration::from_secs(POLL_REQUEST_TIMEOUT_SECS))
+            .send()
+            .await
+            .with_context(|| {
+                format!(
+                    "admin job polling request failed for job_id {} at {}",
+                    job_id, endpoint
+                )
+            })?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            if SubworkerAuthError::is_auth_status(status) {
+                return Err(SubworkerAuthError::new("admin/jobs poll", status, &body).into());
+            }
+            return Err(anyhow!(
+                "admin job polling endpoint returned error status {} for job_id {}: {}",
+                status,
+                job_id,
+                truncate_error_message(&body)
+            ));
+        }
+
+        response.json().await.with_context(|| {
+            format!(
+                "failed to deserialize admin job status for job_id {}",
+                job_id
+            )
+        })
+    }
+}
+
+enum AdminPollDecision {
+    Completed,
+    StillRunning,
+}
+
+struct AdminPollProgress {
+    poll_count: u32,
+    elapsed: Duration,
+    backoff: Duration,
+}
+
+fn handle_admin_job_status(
+    endpoint: &str,
+    job_id: Uuid,
+    body: AdminJobStatusResponse,
+    progress: AdminPollProgress,
+) -> Result<AdminPollDecision> {
+    match body.status.as_str() {
+        "succeeded" | "partial" => {
+            tracing::info!(
+                job_id = %job_id,
+                endpoint,
+                status = %body.status,
+                poll_count = progress.poll_count,
+                "admin job completed successfully"
+            );
+            Ok(AdminPollDecision::Completed)
+        }
+        "failed" => Err(anyhow!(
+            "admin job {} failed: {}",
+            job_id,
+            body.error.unwrap_or_else(|| "unknown error".to_string())
+        )),
+        _ => {
+            log_admin_poll_running(endpoint, job_id, &body.status, &progress);
+            Ok(AdminPollDecision::StillRunning)
+        }
+    }
+}
+
+fn log_admin_poll_running(
+    endpoint: &str,
+    job_id: Uuid,
+    status: &str,
+    progress: &AdminPollProgress,
+) {
+    if progress.poll_count.is_multiple_of(10) {
+        tracing::info!(
+            job_id = %job_id,
+            endpoint,
+            status = %status,
+            poll_count = progress.poll_count,
+            elapsed_seconds = progress.elapsed.as_secs(),
+            backoff_ms = progress.backoff.as_millis(),
+            "admin job still running"
+        );
+    } else {
+        tracing::debug!(
+            job_id = %job_id,
+            status = %status,
+            poll_count = progress.poll_count,
+            backoff_ms = progress.backoff.as_millis(),
+            "admin job still running"
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::clients::subworker::is_subworker_auth_error;
+    use wiremock::matchers::{header, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[tokio::test]
+    async fn poll_admin_job_sends_get_with_auth_and_succeeds_immediately() {
+        let server = MockServer::start().await;
+        let job_id = Uuid::new_v4();
+        let expected_path = format!("/admin/graph-jobs/{job_id}");
+
+        Mock::given(method("GET"))
+            .and(path(expected_path))
+            .and(header("authorization", "Bearer test-admin-token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "job_id": job_id,
+                "kind": "graph",
+                "status": "succeeded",
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = SubworkerClient::new(server.uri(), 10, Some("test-admin-token".to_string()))
+            .expect("client should build");
+
+        client
+            .poll_admin_job("admin/graph-jobs", job_id)
+            .await
+            .expect("succeeded status should complete Ok");
+        server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn poll_admin_job_accepts_partial_status() {
+        let server = MockServer::start().await;
+        let job_id = Uuid::new_v4();
+
+        Mock::given(method("GET"))
+            .and(path(format!("/admin/learning-jobs/{job_id}")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "job_id": job_id,
+                "kind": "learning",
+                "status": "partial",
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = SubworkerClient::new(server.uri(), 10, None).expect("client should build");
+        client
+            .poll_admin_job("admin/learning-jobs", job_id)
+            .await
+            .expect("partial status should succeed");
+        server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn poll_admin_job_returns_error_on_failed_status_with_and_without_message() {
+        let server = MockServer::start().await;
+        let job_with_msg = Uuid::new_v4();
+        let job_without_msg = Uuid::new_v4();
+
+        Mock::given(method("GET"))
+            .and(path(format!("/admin/graph-jobs/{job_with_msg}")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "job_id": job_with_msg,
+                "kind": "graph",
+                "status": "failed",
+                "error": "graph build boom",
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(path(format!("/admin/graph-jobs/{job_without_msg}")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "job_id": job_without_msg,
+                "kind": "graph",
+                "status": "failed",
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = SubworkerClient::new(server.uri(), 10, None).expect("client should build");
+
+        let err_with = client
+            .poll_admin_job("admin/graph-jobs", job_with_msg)
+            .await
+            .expect_err("failed status must error");
+        assert!(err_with.to_string().contains("failed: graph build boom"));
+
+        let err_without = client
+            .poll_admin_job("admin/graph-jobs", job_without_msg)
+            .await
+            .expect_err("failed status without message must error");
+        assert!(err_without.to_string().contains("failed: unknown error"));
+        server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn poll_admin_job_returns_auth_error_on_401_and_403() {
+        let server = MockServer::start().await;
+        let job_401 = Uuid::new_v4();
+        let job_403 = Uuid::new_v4();
+
+        Mock::given(method("GET"))
+            .and(path(format!("/admin/graph-jobs/{job_401}")))
+            .respond_with(ResponseTemplate::new(401).set_body_string("unauthorized"))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(format!("/admin/graph-jobs/{job_403}")))
+            .respond_with(ResponseTemplate::new(403).set_body_string("forbidden"))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = SubworkerClient::new(server.uri(), 10, None).expect("client should build");
+
+        let err_401 = client
+            .poll_admin_job("admin/graph-jobs", job_401)
+            .await
+            .expect_err("401 must fail");
+        assert!(is_subworker_auth_error(&err_401));
+        assert!(format!("{err_401:#}").contains("401 Unauthorized"));
+
+        let err_403 = client
+            .poll_admin_job("admin/graph-jobs", job_403)
+            .await
+            .expect_err("403 must fail");
+        assert!(is_subworker_auth_error(&err_403));
+        assert!(format!("{err_403:#}").contains("403 Forbidden"));
+        server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn poll_admin_job_returns_error_on_404_and_500_with_truncation() {
+        let server = MockServer::start().await;
+        let job_404 = Uuid::new_v4();
+        let job_500 = Uuid::new_v4();
+        let long_body = "x".repeat(600);
+
+        Mock::given(method("GET"))
+            .and(path(format!("/admin/graph-jobs/{job_404}")))
+            .respond_with(ResponseTemplate::new(404).set_body_string("missing job"))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(format!("/admin/graph-jobs/{job_500}")))
+            .respond_with(ResponseTemplate::new(500).set_body_string(long_body))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = SubworkerClient::new(server.uri(), 10, None).expect("client should build");
+
+        let err_404 = client
+            .poll_admin_job("admin/graph-jobs", job_404)
+            .await
+            .expect_err("404 must fail");
+        assert!(!is_subworker_auth_error(&err_404));
+        assert!(err_404.to_string().contains("404 Not Found"));
+
+        let err_500 = client
+            .poll_admin_job("admin/graph-jobs", job_500)
+            .await
+            .expect_err("500 must fail");
+        assert!(!is_subworker_auth_error(&err_500));
+        let msg_500 = err_500.to_string();
+        assert!(msg_500.contains("500 Internal Server Error"));
+        assert!(msg_500.contains("truncated, 600 chars"));
+        server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn poll_admin_job_rejects_invalid_json_200_body() {
+        let server = MockServer::start().await;
+        let job_id = Uuid::new_v4();
+
+        Mock::given(method("GET"))
+            .and(path(format!("/admin/graph-jobs/{job_id}")))
+            .respond_with(ResponseTemplate::new(200).set_body_string("not-json"))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = SubworkerClient::new(server.uri(), 10, None).expect("client should build");
+        let err = client
+            .poll_admin_job("admin/graph-jobs", job_id)
+            .await
+            .expect_err("invalid json must fail");
+        assert!(
+            err.to_string()
+                .contains("failed to deserialize admin job status")
+        );
+        server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn poll_admin_job_propagates_transport_error_on_unreachable_endpoint() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind ephemeral port");
+        let addr = listener.local_addr().expect("local addr");
+        drop(listener);
+
+        let client =
+            SubworkerClient::new(format!("http://{addr}/"), 10, None).expect("client should build");
+        let job_id = Uuid::new_v4();
+        let err = client
+            .poll_admin_job("admin/graph-jobs", job_id)
+            .await
+            .expect_err("unreachable endpoint must fail");
+        assert!(err.to_string().contains("admin job polling request failed"));
     }
 }

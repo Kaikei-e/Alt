@@ -173,7 +173,9 @@ export class WebVitalsCollector {
     debug("Collecting Web Vitals");
 
     const vitals = await page.evaluate(() => {
-      const wv = (globalThis as unknown as { __WEB_VITALS__: Record<string, number | null | boolean> }).__WEB_VITALS__;
+      const wv =
+        (globalThis as unknown as { __WEB_VITALS__: Record<string, number | null | boolean> })
+          .__WEB_VITALS__;
       return {
         lcp: wv.lcp as number | null,
         inp: wv.inp as number | null,
@@ -239,7 +241,7 @@ export class WebVitalsCollector {
  * Create a configured Web Vitals collector
  */
 export function createWebVitalsCollector(
-  options?: { stabilizationDelay?: number }
+  options?: { stabilizationDelay?: number },
 ): WebVitalsCollector {
   return new WebVitalsCollector(options);
 }
@@ -249,7 +251,7 @@ export function createWebVitalsCollector(
  */
 export function calculateScore(
   vitals: WebVitalsResult,
-  weights = DEFAULT_THRESHOLDS.scoring.weights
+  weights = DEFAULT_THRESHOLDS.scoring.weights,
 ): number {
   const ratingScores: Record<VitalRating, number | null> = {
     good: 100,
@@ -274,8 +276,7 @@ export function calculateScore(
   const totalWeight = entries.reduce((a, b) => a + b.weight, 0);
   if (totalWeight === 0) return 0;
 
-  const weightedScore =
-    entries.reduce((sum, e) => sum + e.score * e.weight, 0) / totalWeight;
+  const weightedScore = entries.reduce((sum, e) => sum + e.score * e.weight, 0) / totalWeight;
 
   return Math.round(weightedScore);
 }

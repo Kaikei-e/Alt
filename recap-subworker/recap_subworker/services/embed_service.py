@@ -14,6 +14,21 @@ from pydantic import BaseModel
 
 from ..port.embedder import EmbedderPort
 
+_EXPECTED_EMBEDDING_NDIM = 2
+
+
+def _resolve_identity_from_config(config: object) -> str | None:
+    backend = getattr(config, "backend", None)
+    if backend == "ollama-remote":
+        model = getattr(config, "ollama_embed_model", None)
+    elif backend == "onnx":
+        model = getattr(config, "onnx_tokenizer_name", None) or getattr(config, "model_id", None)
+    else:
+        model = getattr(config, "model_id", None)
+    if model and str(model).strip():
+        return str(model).strip()
+    return None
+
 
 class EmbedResponse(BaseModel):
     """Response payload for text embedding."""
@@ -59,43 +74,18 @@ class EmbedService:
         # 2. Inspect embedder.config (Embedder / StEmbedderGateway / HashEmbedder)
         config = getattr(self.embedder, "config", None)
         if config is not None:
-            backend = getattr(config, "backend", None)
-            if backend == "ollama-remote":
-                model = getattr(config, "ollama_embed_model", None)
-                if model and str(model).strip():
-                    return str(model).strip()
-            elif backend == "sentence-transformers":
-                model = getattr(config, "model_id", None)
-                if model and str(model).strip():
-                    return str(model).strip()
-            elif backend == "onnx":
-                model = getattr(config, "onnx_tokenizer_name", None) or getattr(
-                    config, "model_id", None
-                )
-                if model and str(model).strip():
-                    return str(model).strip()
-            elif backend == "hash":
-                model = getattr(config, "model_id", None)
-                if model and str(model).strip():
-                    return str(model).strip()
-            elif getattr(config, "model_id", None):
-                model = str(config.model_id).strip()
-                if model:
-                    return model
+            resolved = _resolve_identity_from_config(config)
+            if resolved is not None:
+                return resolved
 
         # 3. Attributes directly on embedder
-        if hasattr(self.embedder, "model_id"):
-            model = getattr(self.embedder, "model_id", None)
-            if model and str(model).strip():
-                return str(model).strip()
-        if hasattr(self.embedder, "model_name"):
-            model = getattr(self.embedder, "model_name", None)
+        for attr in ("model_id", "model_name"):
+            model = getattr(self.embedder, attr, None)
             if model and str(model).strip():
                 return str(model).strip()
 
-        raise UnresolvableModelIdentityError(
-            "Embedder backend did not report a canonical model identity; failing closed."
-        )
+        msg = "Embedder backend did not report a canonical model identity; failing closed."
+        raise UnresolvableModelIdentityError(msg)
 
     def embed(
         self,
@@ -121,9 +111,8 @@ class EmbedService:
         if not texts:
             dim = getattr(self.embedder, "dim", None) or getattr(self.embedder, "dimension", None)
             if dim is None or int(dim) <= 0:
-                raise UnresolvableDimensionError(
-                    "Embedder backend did not produce vectors or report embedding dimension."
-                )
+                msg = "Embedder backend did not produce vectors or report embedding dimension."
+                raise UnresolvableDimensionError(msg)
             return EmbedResponse(
                 model=model_id,
                 dim=int(dim),
@@ -134,15 +123,15 @@ class EmbedService:
         try:
             vectors = self.embedder.encode(texts)
         except Exception as exc:
-            raise EmbedderError(f"Embedder backend encode failed: {exc}") from exc
+            msg = f"Embedder backend encode failed: {exc}"
+            raise EmbedderError(msg) from exc
 
         if not isinstance(vectors, np.ndarray):
             vectors = np.array(vectors, dtype=np.float32)
 
-        if vectors.ndim != 2 or vectors.shape[1] <= 0:
-            raise UnresolvableDimensionError(
-                f"Embedder backend returned invalid vector shape {vectors.shape}; expected 2D with dim > 0."
-            )
+        if vectors.ndim != _EXPECTED_EMBEDDING_NDIM or vectors.shape[1] <= 0:
+            msg = f"Embedder backend returned invalid vector shape {vectors.shape}; expected 2D with dim > 0."
+            raise UnresolvableDimensionError(msg)
 
         dim = int(vectors.shape[1])
 

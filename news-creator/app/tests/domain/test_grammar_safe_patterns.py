@@ -23,7 +23,7 @@ fails in CI rather than at 04:29 JST in production.
 from __future__ import annotations
 
 import re
-from typing import Any, Iterable
+from collections.abc import Iterable
 
 import pytest
 from pydantic import BaseModel
@@ -34,7 +34,6 @@ from news_creator.domain.models import (
     RecapSummary,
     ThemePageLLMOutput,
 )
-
 
 # Models whose ``model_json_schema()`` is sent to Ollama as
 # ``format=<schema>``. Keep this list in sync with every call site of
@@ -63,7 +62,7 @@ SCHEMAS_FORWARDED_TO_OLLAMA: list[type[BaseModel]] = [
 _DISALLOWED_ESCAPES = (r"\d", r"\D", r"\w", r"\W", r"\s", r"\S", r"\-")
 
 
-def _walk_patterns(node: Any) -> Iterable[tuple[str, str]]:
+def _walk_patterns(node: object) -> Iterable[tuple[str, str]]:
     """Yield every ``(json_pointer, pattern)`` pair found inside a JSON Schema."""
 
     if isinstance(node, dict):
@@ -90,15 +89,15 @@ def test_pattern_avoids_unsupported_gbnf_escapes(model_cls: type[BaseModel]) -> 
     schema = model_cls.model_json_schema()
     offenders: list[str] = []
     for pointer, pattern in _walk_patterns(schema):
-        for escape in _DISALLOWED_ESCAPES:
-            # Detect the literal escape sequence as it would arrive in
-            # GBNF (single backslash + char). ``re.escape`` lets us
-            # build the search pattern without re-applying Python
-            # string-escape rules on top.
-            if re.search(re.escape(escape), pattern):
-                offenders.append(
-                    f"  - {model_cls.__name__} :: {pointer}: pattern={pattern!r} contains unsupported escape {escape!r}"
-                )
+        # Detect the literal escape sequence as it would arrive in
+        # GBNF (single backslash + char). ``re.escape`` lets us
+        # build the search pattern without re-applying Python
+        # string-escape rules on top.
+        offenders.extend(
+            f"  - {model_cls.__name__} :: {pointer}: pattern={pattern!r} contains unsupported escape {escape!r}"
+            for escape in _DISALLOWED_ESCAPES
+            if re.search(re.escape(escape), pattern)
+        )
 
     assert not offenders, (
         "Pydantic Field(pattern=...) reachable from a schema forwarded "
@@ -126,6 +125,9 @@ def test_morning_letter_section_key_pattern_uses_dash_not_escape() -> None:
     )
     # Sanity: the dash is still literally present (we did not lose
     # the by_genre suffix character class entirely).
-    assert "by_genre:[" in pattern and "-" in pattern, (
+    assert "by_genre:[" in pattern, (
         f"MorningLetterSection.key pattern lost its by_genre suffix: {pattern!r}"
+    )
+    assert "-" in pattern, (
+        f"MorningLetterSection.key pattern lost its '-' in character class: {pattern!r}"
     )

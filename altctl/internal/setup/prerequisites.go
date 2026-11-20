@@ -1,6 +1,7 @@
 package setup
 
 import (
+	"context"
 	"os/exec"
 	"strings"
 )
@@ -14,15 +15,18 @@ type CheckResult struct {
 }
 
 // CheckPrerequisites verifies that required tools are available
-func CheckPrerequisites() []CheckResult {
+func CheckPrerequisites(ctx context.Context) []CheckResult {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	return []CheckResult{
-		checkDockerCLI(),
-		checkDockerCompose(),
-		checkDockerDaemon(),
+		checkDockerCLI(ctx),
+		checkDockerCompose(ctx),
+		checkDockerDaemon(ctx),
 	}
 }
 
-func checkDockerCLI() CheckResult {
+func checkDockerCLI(ctx context.Context) CheckResult {
 	r := CheckResult{Name: "Docker CLI"}
 
 	path, err := exec.LookPath("docker")
@@ -31,7 +35,8 @@ func checkDockerCLI() CheckResult {
 		return r
 	}
 
-	out, err := exec.Command(path, "version", "--format", "{{.Client.Version}}").Output()
+	// #nosec G204 -- path resolved by exec.LookPath("docker") with constant argv; no shell
+	out, err := exec.CommandContext(ctx, path, "version", "--format", "{{.Client.Version}}").Output()
 	if err != nil {
 		r.Detail = "failed to get docker version"
 		return r
@@ -42,10 +47,10 @@ func checkDockerCLI() CheckResult {
 	return r
 }
 
-func checkDockerCompose() CheckResult {
+func checkDockerCompose(ctx context.Context) CheckResult {
 	r := CheckResult{Name: "Docker Compose"}
 
-	out, err := exec.Command("docker", "compose", "version", "--short").Output()
+	out, err := exec.CommandContext(ctx, "docker", "compose", "version", "--short").Output()
 	if err != nil {
 		r.Detail = "docker compose not available (requires Docker Compose V2)"
 		return r
@@ -56,10 +61,10 @@ func checkDockerCompose() CheckResult {
 	return r
 }
 
-func checkDockerDaemon() CheckResult {
+func checkDockerDaemon(ctx context.Context) CheckResult {
 	r := CheckResult{Name: "Docker Daemon"}
 
-	err := exec.Command("docker", "info").Run()
+	err := exec.CommandContext(ctx, "docker", "info").Run()
 	if err != nil {
 		r.Detail = "Docker daemon is not running"
 		return r

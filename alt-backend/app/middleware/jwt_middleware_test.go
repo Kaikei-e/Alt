@@ -3,6 +3,7 @@ package middleware
 import (
 	"crypto/ed25519"
 	"crypto/rand"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -12,7 +13,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -63,14 +64,14 @@ func TestJWTAuthMiddleware_EdDSAContract(t *testing.T) {
 		require.NoError(t, err)
 
 		e := echo.New()
-		req := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/feeds", nil)
 		req.Header.Set(backendTokenHeader, signed)
 		res := httptest.NewRecorder()
 		c := e.NewContext(req, res)
 
 		mw := NewJWTAuthMiddleware(nil, testAuthConfig())
 		called := false
-		h := mw.RequireJWT()(func(c echo.Context) error {
+		h := mw.RequireJWT()(func(c *echo.Context) error {
 			called = true
 			userCtx, ok := GetUserContext(c)
 			require.True(t, ok)
@@ -167,20 +168,21 @@ func TestJWTAuthMiddleware_EdDSAContract(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			signed := tc.makeToken(t)
 			e := echo.New()
-			req := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/feeds", nil)
 			req.Header.Set(backendTokenHeader, signed)
 			res := httptest.NewRecorder()
 			c := e.NewContext(req, res)
 
 			mw := NewJWTAuthMiddleware(nil, testAuthConfig())
 			called := false
-			h := mw.RequireJWT()(func(c echo.Context) error {
+			h := mw.RequireJWT()(func(c *echo.Context) error {
 				called = true
 				return c.NoContent(http.StatusOK)
 			})
 			err := h(c)
 			require.Error(t, err)
-			httpErr, ok := err.(*echo.HTTPError)
+			httpErr := &echo.HTTPError{}
+			ok := errors.As(err, &httpErr)
 			require.True(t, ok)
 			assert.Equal(t, http.StatusUnauthorized, httpErr.Code)
 			assert.False(t, called)

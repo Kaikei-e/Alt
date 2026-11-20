@@ -67,7 +67,7 @@ func newTestRESTProxyHandler(t *testing.T, backendURL string) *RESTProxyHandler 
 func TestRESTProxyHandler_MissingToken(t *testing.T) {
 	handler := newTestRESTProxyHandler(t, "http://localhost:1")
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/health", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/health", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -79,7 +79,7 @@ func TestRESTProxyHandler_MissingToken(t *testing.T) {
 func TestRESTProxyHandler_InvalidToken(t *testing.T) {
 	handler := newTestRESTProxyHandler(t, "http://localhost:1")
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/health", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/health", nil)
 	req.Header.Set("X-Alt-Backend-Token", "invalid-token")
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -103,14 +103,14 @@ func TestRESTProxyHandler_GET_Forward(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 	}))
 	defer backend.Close()
 
 	handler := newTestRESTProxyHandler(t, backend.URL)
 	token := createTestJWT(t)
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/health", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/health", nil)
 	req.Header.Set("X-Alt-Backend-Token", token)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -136,7 +136,7 @@ func TestRESTProxyHandler_POST_Forward(t *testing.T) {
 			t.Errorf("expected application/json Content-Type, got %s", ct)
 		}
 		w.WriteHeader(http.StatusCreated)
-		w.Write([]byte(`{"id":"123"}`))
+		_, _ = w.Write([]byte(`{"id":"123"}`))
 	}))
 	defer backend.Close()
 
@@ -144,7 +144,7 @@ func TestRESTProxyHandler_POST_Forward(t *testing.T) {
 	token := createTestJWT(t)
 
 	body := strings.NewReader(`{"key":"value"}`)
-	req := httptest.NewRequest(http.MethodPost, "/v1/feeds", body)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/feeds", body)
 	req.Header.Set("X-Alt-Backend-Token", token)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -167,7 +167,7 @@ func TestRESTProxyHandler_PUT_Forward(t *testing.T) {
 	handler := newTestRESTProxyHandler(t, backend.URL)
 	token := createTestJWT(t)
 
-	req := httptest.NewRequest(http.MethodPut, "/v1/feeds/1", strings.NewReader(`{"name":"updated"}`))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPut, "/v1/feeds/1", strings.NewReader(`{"name":"updated"}`))
 	req.Header.Set("X-Alt-Backend-Token", token)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -193,7 +193,7 @@ func TestRESTProxyHandler_DELETE_Forward(t *testing.T) {
 	handler := newTestRESTProxyHandler(t, backend.URL)
 	token := createTestJWT(t)
 
-	req := httptest.NewRequest(http.MethodDelete, "/v1/feeds/123", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodDelete, "/v1/feeds/123", nil)
 	req.Header.Set("X-Alt-Backend-Token", token)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -216,14 +216,14 @@ func TestRESTProxyHandler_HeaderForwarding(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("X-Request-Id", "req-123")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{}`))
+		_, _ = w.Write([]byte(`{}`))
 	}))
 	defer backend.Close()
 
 	handler := newTestRESTProxyHandler(t, backend.URL)
 	token := createTestJWT(t)
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/feeds", nil)
 	req.Header.Set("X-Alt-Backend-Token", token)
 	req.Header.Set("Accept", "application/json")
 	rec := httptest.NewRecorder()
@@ -243,14 +243,14 @@ func TestRESTProxyHandler_QueryParams(t *testing.T) {
 			t.Errorf("expected query params forwarded, got %s", r.URL.RawQuery)
 		}
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{}`))
+		_, _ = w.Write([]byte(`{}`))
 	}))
 	defer backend.Close()
 
 	handler := newTestRESTProxyHandler(t, backend.URL)
 	token := createTestJWTWithRole(t, "admin")
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/dashboard/overview?window=24h&limit=10", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/dashboard/overview?window=24h&limit=10", nil)
 	req.Header.Set("X-Alt-Backend-Token", token)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -265,7 +265,7 @@ func TestRESTProxyHandler_AdminRoute_RequiresAdminRole(t *testing.T) {
 	userToken := createTestJWTWithRole(t, "user")
 
 	for _, path := range []string{"/v1/dashboard/overview", "/v1/admin/scraping-domains"} {
-		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil)
 		req.Header.Set("X-Alt-Backend-Token", userToken)
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, req)
@@ -282,6 +282,8 @@ func TestRESTProxyHandler_MultipartFormData(t *testing.T) {
 			t.Errorf("expected multipart/form-data, got %s", r.Header.Get("Content-Type"))
 		}
 		// Parse the multipart form
+		r.Body = http.MaxBytesReader(w, r.Body, 10<<20)
+		// #nosec G120 -- test mock server bounds request body via http.MaxBytesReader above.
 		err := r.ParseMultipartForm(10 << 20)
 		if err != nil {
 			t.Fatalf("failed to parse multipart form: %v", err)
@@ -290,7 +292,7 @@ func TestRESTProxyHandler_MultipartFormData(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to get form file: %v", err)
 		}
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 		if header.Filename != "feeds.opml" {
 			t.Errorf("expected filename feeds.opml, got %s", header.Filename)
 		}
@@ -299,7 +301,7 @@ func TestRESTProxyHandler_MultipartFormData(t *testing.T) {
 			t.Errorf("expected OPML content, got %s", string(content))
 		}
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"imported":5}`))
+		_, _ = w.Write([]byte(`{"imported":5}`))
 	}))
 	defer backend.Close()
 
@@ -313,10 +315,14 @@ func TestRESTProxyHandler_MultipartFormData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	part.Write([]byte(`<opml version="2.0"><head><title>Test</title></head><body></body></opml>`))
-	writer.Close()
+	if _, err := part.Write([]byte(`<opml version="2.0"><head><title>Test</title></head><body></body></opml>`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/rss-feed-link/import/opml", &buf)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/rss-feed-link/import/opml", &buf)
 	req.Header.Set("X-Alt-Backend-Token", token)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	rec := httptest.NewRecorder()
@@ -330,14 +336,14 @@ func TestRESTProxyHandler_MultipartFormData(t *testing.T) {
 func TestRESTProxyHandler_BackendError(t *testing.T) {
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(`{"error":"internal error"}`))
+		_, _ = w.Write([]byte(`{"error":"internal error"}`))
 	}))
 	defer backend.Close()
 
 	handler := newTestRESTProxyHandler(t, backend.URL)
 	token := createTestJWT(t)
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/feeds", nil)
 	req.Header.Set("X-Alt-Backend-Token", token)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)

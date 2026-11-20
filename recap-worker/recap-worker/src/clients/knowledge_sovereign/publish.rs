@@ -42,6 +42,85 @@ pub(crate) struct PublishOutcome {
     pub(crate) skipped_empty_terms: usize,
 }
 
+#[derive(Clone, Copy)]
+struct TopicSnapshotContext {
+    user_id: Uuid,
+    tenant_id: Uuid,
+    window_start: DateTime<Utc>,
+    window_end: DateTime<Utc>,
+}
+
+fn log_topic_snapshot_emit_error(
+    user_id: Uuid,
+    cluster_id: i64,
+    snapshot_id: Uuid,
+    err: &anyhow::Error,
+) {
+    let err_str = format!("{err:#}");
+    if err_str.contains("status 401") || err_str.contains("status 403") {
+        error!(
+            user_id = %user_id,
+            cluster_id = cluster_id,
+            snapshot_id = %snapshot_id,
+            error = ?err,
+            "recap.topic_snapshotted.v1 emit unauthenticated/forbidden; verify sovereign event token"
+        );
+    } else {
+        warn!(
+            user_id = %user_id,
+            cluster_id = cluster_id,
+            snapshot_id = %snapshot_id,
+            error = ?err,
+            "recap.topic_snapshotted.v1 emit failed (non-fatal)"
+        );
+    }
+}
+
+async fn publish_single_topic_snapshot(
+    client: &KnowledgeSovereignClient,
+    ctx: TopicSnapshotContext,
+    cluster: &ConfirmedCluster,
+) -> bool {
+    let snapshot_id = deterministic_snapshot_id(
+        ctx.user_id,
+        cluster.cluster_id,
+        ctx.window_start,
+        ctx.window_end,
+    );
+    let aggregate_id = format!(
+        "recap-topic-snapshot:{}:{}",
+        ctx.user_id,
+        ctx.window_start.to_rfc3339()
+    );
+
+    let input = TopicSnapshottedInput {
+        user_id: ctx.user_id,
+        tenant_id: ctx.tenant_id,
+        recap_topic_snapshot_id: snapshot_id,
+        aggregate_id,
+        top_terms: cluster.top_terms.clone(),
+        cluster_id: cluster.cluster_id,
+        snapshot_window_start: ctx.window_start,
+        snapshot_window_end: ctx.window_end,
+    };
+
+    match client.emit_recap_topic_snapshotted(&input).await {
+        Ok(()) => {
+            debug!(
+                user_id = %ctx.user_id,
+                cluster_id = cluster.cluster_id,
+                snapshot_id = %snapshot_id,
+                "recap.topic_snapshotted.v1 emit ok"
+            );
+            true
+        }
+        Err(err) => {
+            log_topic_snapshot_emit_error(ctx.user_id, cluster.cluster_id, snapshot_id, &err);
+            false
+        }
+    }
+}
+
 /// Publish each confirmed cluster as `recap.topic_snapshotted.v1` against
 /// the supplied client.
 ///
@@ -71,6 +150,13 @@ pub(crate) async fn publish_topic_snapshots(
         return outcome;
     }
 
+    let ctx = TopicSnapshotContext {
+        user_id,
+        tenant_id,
+        window_start: snapshot_window_start,
+        window_end: snapshot_window_end,
+    };
+
     for cluster in clusters {
         if cluster.top_terms.is_empty() {
             outcome.skipped_empty_terms += 1;
@@ -78,60 +164,10 @@ pub(crate) async fn publish_topic_snapshots(
         }
         outcome.attempted += 1;
 
-        let snapshot_id = deterministic_snapshot_id(
-            user_id,
-            cluster.cluster_id,
-            snapshot_window_start,
-            snapshot_window_end,
-        );
-        let aggregate_id = format!(
-            "recap-topic-snapshot:{}:{}",
-            user_id,
-            snapshot_window_start.to_rfc3339()
-        );
-
-        let input = TopicSnapshottedInput {
-            user_id,
-            tenant_id,
-            recap_topic_snapshot_id: snapshot_id,
-            aggregate_id,
-            top_terms: cluster.top_terms.clone(),
-            cluster_id: cluster.cluster_id,
-            snapshot_window_start,
-            snapshot_window_end,
-        };
-
-        match client.emit_recap_topic_snapshotted(&input).await {
-            Ok(()) => {
-                debug!(
-                    user_id = %user_id,
-                    cluster_id = cluster.cluster_id,
-                    snapshot_id = %snapshot_id,
-                    "recap.topic_snapshotted.v1 emit ok"
-                );
-                outcome.succeeded += 1;
-            }
-            Err(err) => {
-                let err_str = format!("{err:#}");
-                if err_str.contains("status 401") || err_str.contains("status 403") {
-                    error!(
-                        user_id = %user_id,
-                        cluster_id = cluster.cluster_id,
-                        snapshot_id = %snapshot_id,
-                        error = ?err,
-                        "recap.topic_snapshotted.v1 emit unauthenticated/forbidden; verify sovereign event token"
-                    );
-                } else {
-                    warn!(
-                        user_id = %user_id,
-                        cluster_id = cluster.cluster_id,
-                        snapshot_id = %snapshot_id,
-                        error = ?err,
-                        "recap.topic_snapshotted.v1 emit failed (non-fatal)"
-                    );
-                }
-                outcome.failed += 1;
-            }
+        if publish_single_topic_snapshot(client, ctx, cluster).await {
+            outcome.succeeded += 1;
+        } else {
+            outcome.failed += 1;
         }
     }
 

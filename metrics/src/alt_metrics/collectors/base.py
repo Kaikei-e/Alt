@@ -46,12 +46,13 @@ def collect_service_stats(client: Client, database: str, hours: int) -> list[Ser
 
     try:
         result = client.query(query, parameters={"database": database, "hours": hours})
-        data = [ServiceStat(**dict(zip(result.column_names, row))) for row in result.result_rows]
-        log.info("データ収集完了", count=len(data))
-        return data
+        data = [ServiceStat(**dict(zip(result.column_names, row, strict=True))) for row in result.result_rows]
     except ClickHouseError as e:
         log.exception("クエリ実行エラー", query=query[:200])
         raise CollectorError("service_stats", str(e)) from e
+    else:
+        log.info("データ収集完了", count=len(data))
+        return data
 
 
 def collect_error_trends(client: Client, database: str, hours: int) -> list[ErrorTrend]:
@@ -86,9 +87,10 @@ def collect_error_trends(client: Client, database: str, hours: int) -> list[Erro
 
     try:
         result = client.query(query, parameters={"database": database, "hours": hours})
-        data = [ErrorTrend(**dict(zip(result.column_names, row))) for row in result.result_rows]
-        log.info("データ収集完了", count=len(data))
-        return data
+        data = [ErrorTrend(**dict(zip(result.column_names, row, strict=True))) for row in result.result_rows]
     except ClickHouseError as e:
         log.exception("クエリ実行エラー", query=query[:200])
         raise CollectorError("error_trends", str(e)) from e
+    else:
+        log.info("データ収集完了", count=len(data))
+        return data

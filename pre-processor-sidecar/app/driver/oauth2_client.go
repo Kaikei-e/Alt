@@ -242,7 +242,11 @@ func (c *OAuth2Client) attemptRefreshToken(ctx context.Context, refreshToken str
 			"proxy_disabled", proxyDisabled)
 		return nil, fmt.Errorf("failed to execute refresh token request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			c.logger.Warn("Failed to close response body", "error", closeErr)
+		}
+	}()
 
 	// Check for HTTP errors FIRST before parsing JSON
 	if resp.StatusCode != http.StatusOK {
@@ -346,7 +350,11 @@ func (c *OAuth2Client) ValidateToken(ctx context.Context, accessToken string) (b
 	if err != nil {
 		return false, fmt.Errorf("failed to execute token validation request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			c.logger.Warn("Failed to close response body", "error", closeErr)
+		}
+	}()
 
 	// Token is valid if we get 200 OK
 	switch resp.StatusCode {
@@ -385,7 +393,11 @@ func (c *OAuth2Client) MakeAuthenticatedRequest(ctx context.Context, accessToken
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute authenticated request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			c.logger.Warn("Failed to close response body", "error", closeErr)
+		}
+	}()
 
 	// Check for rate limit or authentication errors
 	if resp.StatusCode == http.StatusTooManyRequests {
@@ -478,7 +490,11 @@ func (c *OAuth2Client) MakeAuthenticatedRequestWithHeaders(ctx context.Context, 
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to execute authenticated request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			c.logger.Warn("Failed to close response body", "error", closeErr)
+		}
+	}()
 
 	// Extract headers
 	headers := make(map[string]string)
@@ -551,7 +567,11 @@ func (c *OAuth2Client) DebugDirectRequest(ctx context.Context, accessToken, endp
 	if err != nil {
 		return fmt.Errorf("direct debug request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			c.logger.Warn("Failed to close response body", "error", closeErr)
+		}
+	}()
 
 	if resp.StatusCode == http.StatusOK {
 		return nil // Success
@@ -603,21 +623,20 @@ func isNetworkError(err error) bool {
 		}
 
 		// Check underlying syscall error
-		if errno, ok := syscallErr.Err.(syscall.Errno); ok {
+		var errno syscall.Errno
+		if errors.As(syscallErr.Err, &errno) {
 			switch errno {
 			case syscall.ECONNREFUSED, syscall.EHOSTUNREACH, syscall.ENETUNREACH:
 				return true
+			default:
+				return false
 			}
 		}
 	}
 
 	// DNS resolution errors
 	var dnsErr *net.DNSError
-	if errors.As(err, &dnsErr) {
-		return true
-	}
-
-	return false
+	return errors.As(err, &dnsErr)
 }
 
 // getTimeoutFromEnv reads timeout configuration from environment variable with fallback to default

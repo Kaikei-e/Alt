@@ -3,7 +3,6 @@ package datahubapi
 import (
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"testing"
 	"time"
@@ -140,7 +139,7 @@ func newArticleHandler(f articleFakes) (*Handler, articleFakes) {
 		f.backfill = &fakeKnowledgeBackfillPort{}
 	}
 
-	h := &Handler{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	h := &Handler{logger: slog.New(slog.DiscardHandler)}
 	WithArticleCapabilities(f.write, f.read, f.backfill)(h)
 	return h, f
 }

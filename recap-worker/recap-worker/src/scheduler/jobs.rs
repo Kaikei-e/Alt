@@ -331,7 +331,6 @@ impl Scheduler {
     /// `retry_most_recent_failed_job` and the manual `/v1/generate/recaps/*`
     /// handlers acquire theirs up front via `try_acquire_run_permit` so they
     /// can report `409 Conflict` synchronously before spawning.
-    #[allow(clippy::too_many_lines)]
     pub(crate) async fn run_job_locked(
         &self,
         context: JobContext,
@@ -347,169 +346,162 @@ impl Scheduler {
         match self.pipeline.execute(&context).await {
             Ok(persist_result) => {
                 // Check if the job actually succeeded based on PersistResult contents
-                let job_outcome = Self::evaluate_job_outcome(
+                match Self::evaluate_job_outcome(
                     &persist_result,
                     self.config.max_degraded_genre_ratio(),
-                );
-
-                match job_outcome {
-                    JobOutcome::Success => {
-                        if let Err(err) = self
-                            .recap_dao
-                            .update_job_status_with_history(
-                                context.job_id,
-                                JobStatus::Completed,
-                                None,
-                                None,
-                            )
-                            .await
-                        {
-                            self.pipeline.metrics().jobs_failed.inc();
-                            if context.window_days() == 3 {
-                                crate::observability::surface_health::record_failure(
-                                    self.pipeline.metrics(),
-                                    crate::observability::surface_health::SurfaceHealthTarget::ThreeDayRecap,
-                                );
-                            }
-                            return Err(err.into());
-                        }
-
-                        self.pipeline.metrics().jobs_completed.inc();
-                        if context.window_days() == 3 {
-                            match self.recap_dao.get_job_completed_at(context.job_id).await {
-                                Ok(Some(completed_at)) => {
-                                    crate::observability::surface_health::record_success(
-                                        self.pipeline.metrics(),
-                                        crate::observability::surface_health::SurfaceHealthTarget::ThreeDayRecap,
-                                        completed_at,
-                                    );
-                                }
-                                Ok(None) => {
-                                    tracing::error!(
-                                        job_id = %context.job_id,
-                                        "completed 3-day recap job has no recap_outputs.created_at; leaving surface_last_success_timestamp_seconds unchanged"
-                                    );
-                                }
-                                Err(err) => {
-                                    tracing::error!(
-                                        job_id = %context.job_id,
-                                        error = %err,
-                                        "failed to load completed 3-day recap output timestamp; leaving surface_last_success_timestamp_seconds unchanged"
-                                    );
-                                }
-                            }
-                        }
-
-                        // Run classification evaluation after successful job completion
-                        if self.config.classification_eval_enabled() {
-                            if let Err(e) = self.run_classification_evaluation(context.job_id).await
-                            {
-                                if crate::clients::subworker::is_subworker_auth_error(&e) {
-                                    tracing::error!(
-                                        job_id = %context.job_id,
-                                        error = %format!("{e:#}"),
-                                        "failed to run classification evaluation due to subworker authentication error"
-                                    );
-                                } else {
-                                    warn!(
-                                        job_id = %context.job_id,
-                                        error = %format!("{e:#}"),
-                                        "failed to run classification evaluation (job still marked as completed)"
-                                    );
-                                }
-                            }
-                        }
-
-                        Ok(())
-                    }
+                ) {
+                    JobOutcome::Success => self.handle_job_success(&context).await,
                     JobOutcome::Failed(reason) => {
-                        // Pipeline completed but no genres were stored - this is a failure
-                        tracing::error!(
-                            job_id = %context.job_id,
-                            genres_stored = persist_result.genres_stored,
-                            genres_failed = persist_result.genres_failed,
-                            genres_skipped = persist_result.genres_skipped,
-                            genres_no_evidence = persist_result.genres_no_evidence,
-                            total_genres = persist_result.total_genres,
-                            "job completed but no genres were stored - marking as failed"
-                        );
-
-                        if let Err(dao_err) = self
-                            .recap_dao
-                            .update_job_status_with_history(
-                                context.job_id,
-                                JobStatus::Failed,
-                                None,
-                                Some(&reason),
-                            )
+                        self.handle_outcome_failure(&context, &persist_result, reason)
                             .await
-                        {
-                            tracing::error!(job_id = %context.job_id, error = %dao_err, "failed to update job status to failed");
-                        }
-
-                        // Log failed task details
-                        if let Err(log_err) = self
-                            .recap_dao
-                            .insert_failed_task(context.job_id, "persist", None, Some(&reason))
-                            .await
-                        {
-                            tracing::error!(job_id = %context.job_id, error = %log_err, "failed to insert failed task log");
-                        }
-
-                        self.pipeline.metrics().jobs_failed.inc();
-                        if context.window_days() == 3 {
-                            crate::observability::surface_health::record_failure(
-                                self.pipeline.metrics(),
-                                crate::observability::surface_health::SurfaceHealthTarget::ThreeDayRecap,
-                            );
-                        }
-
-                        Err(anyhow!(reason))
                     }
                 }
             }
-            Err(e) => {
-                tracing::error!(job_id = %context.job_id, error = %e, "job execution failed");
-                // Attempt to record failure status with error reason, but preserve original error
-                let error_reason = format!("{:#}", e);
-                if let Err(dao_err) = self
-                    .recap_dao
-                    .update_job_status_with_history(
-                        context.job_id,
-                        JobStatus::Failed,
-                        None,
-                        Some(&error_reason),
-                    )
-                    .await
-                {
-                    tracing::error!(job_id = %context.job_id, error = %dao_err, "failed to update job status to failed");
-                }
+            Err(e) => self.handle_pipeline_failure(&context, e).await,
+        }
+    }
 
-                // Log failed task details with full error chain
-                let stage = context
-                    .current_stage
-                    .as_deref()
-                    .unwrap_or("pipeline_execution");
-                // Use {:#} format to include full error chain (Caused by: ...)
-                let error_msg = format!("{:#}", e);
-                if let Err(log_err) = self
-                    .recap_dao
-                    .insert_failed_task(context.job_id, stage, None, Some(&error_msg))
-                    .await
-                {
-                    tracing::error!(job_id = %context.job_id, error = %log_err, "failed to insert failed task log");
-                }
+    async fn handle_job_success(&self, context: &JobContext) -> Result<()> {
+        if let Err(err) = self
+            .recap_dao
+            .update_job_status_with_history(context.job_id, JobStatus::Completed, None, None)
+            .await
+        {
+            self.pipeline.metrics().jobs_failed.inc();
+            self.record_three_day_surface_failure(context.window_days());
+            return Err(err.into());
+        }
 
-                self.pipeline.metrics().jobs_failed.inc();
-                if context.window_days() == 3 {
-                    crate::observability::surface_health::record_failure(
-                        self.pipeline.metrics(),
-                        crate::observability::surface_health::SurfaceHealthTarget::ThreeDayRecap,
-                    );
-                }
+        self.pipeline.metrics().jobs_completed.inc();
+        if context.window_days() == 3 {
+            self.record_three_day_surface_success(context.job_id).await;
+        }
 
-                Err(e)
+        // Run classification evaluation after successful job completion
+        if self.config.classification_eval_enabled() {
+            self.run_and_log_classification_evaluation(context.job_id)
+                .await;
+        }
+
+        Ok(())
+    }
+
+    async fn record_three_day_surface_success(&self, job_id: Uuid) {
+        match self.recap_dao.get_job_completed_at(job_id).await {
+            Ok(Some(completed_at)) => {
+                crate::observability::surface_health::record_success(
+                    self.pipeline.metrics(),
+                    crate::observability::surface_health::SurfaceHealthTarget::ThreeDayRecap,
+                    completed_at,
+                );
             }
+            Ok(None) => {
+                tracing::error!(
+                    job_id = %job_id,
+                    "completed 3-day recap job has no recap_outputs.created_at; leaving surface_last_success_timestamp_seconds unchanged"
+                );
+            }
+            Err(err) => {
+                tracing::error!(
+                    job_id = %job_id,
+                    error = %err,
+                    "failed to load completed 3-day recap output timestamp; leaving surface_last_success_timestamp_seconds unchanged"
+                );
+            }
+        }
+    }
+
+    async fn run_and_log_classification_evaluation(&self, job_id: Uuid) {
+        if let Err(e) = self.run_classification_evaluation(job_id).await {
+            if crate::clients::subworker::is_subworker_auth_error(&e) {
+                tracing::error!(
+                    job_id = %job_id,
+                    error = %format!("{e:#}"),
+                    "failed to run classification evaluation due to subworker authentication error"
+                );
+            } else {
+                warn!(
+                    job_id = %job_id,
+                    error = %format!("{e:#}"),
+                    "failed to run classification evaluation (job still marked as completed)"
+                );
+            }
+        }
+    }
+
+    async fn handle_outcome_failure(
+        &self,
+        context: &JobContext,
+        persist_result: &PersistResult,
+        reason: String,
+    ) -> Result<()> {
+        // Pipeline completed but no genres were stored - this is a failure
+        tracing::error!(
+            job_id = %context.job_id,
+            genres_stored = persist_result.genres_stored,
+            genres_failed = persist_result.genres_failed,
+            genres_skipped = persist_result.genres_skipped,
+            genres_no_evidence = persist_result.genres_no_evidence,
+            total_genres = persist_result.total_genres,
+            "job completed but no genres were stored - marking as failed"
+        );
+
+        self.record_job_failure_in_store_and_metrics(context, "persist", &reason)
+            .await;
+
+        Err(anyhow!(reason))
+    }
+
+    async fn handle_pipeline_failure(
+        &self,
+        context: &JobContext,
+        err: anyhow::Error,
+    ) -> Result<()> {
+        tracing::error!(job_id = %context.job_id, error = %err, "job execution failed");
+        // Attempt to record failure status with error reason, but preserve original error
+        let error_reason = format!("{:#}", err);
+        let stage = context
+            .current_stage
+            .as_deref()
+            .unwrap_or("pipeline_execution");
+        self.record_job_failure_in_store_and_metrics(context, stage, &error_reason)
+            .await;
+
+        Err(err)
+    }
+
+    async fn record_job_failure_in_store_and_metrics(
+        &self,
+        context: &JobContext,
+        stage: &str,
+        reason: &str,
+    ) {
+        if let Err(dao_err) = self
+            .recap_dao
+            .update_job_status_with_history(context.job_id, JobStatus::Failed, None, Some(reason))
+            .await
+        {
+            tracing::error!(job_id = %context.job_id, error = %dao_err, "failed to update job status to failed");
+        }
+
+        if let Err(log_err) = self
+            .recap_dao
+            .insert_failed_task(context.job_id, stage, None, Some(reason))
+            .await
+        {
+            tracing::error!(job_id = %context.job_id, error = %log_err, "failed to insert failed task log");
+        }
+
+        self.pipeline.metrics().jobs_failed.inc();
+        self.record_three_day_surface_failure(context.window_days());
+    }
+
+    fn record_three_day_surface_failure(&self, window_days: u32) {
+        if window_days == 3 {
+            crate::observability::surface_health::record_failure(
+                self.pipeline.metrics(),
+                crate::observability::surface_health::SurfaceHealthTarget::ThreeDayRecap,
+            );
         }
     }
 
@@ -716,6 +708,22 @@ impl Scheduler {
     }
 }
 
+async fn record_morning_job_status(
+    recap_dao: &dyn RecapDao,
+    job_id: Uuid,
+    status: JobStatus,
+    last_stage: Option<&str>,
+    reason: Option<&str>,
+    failure_log_message: &'static str,
+) {
+    if let Err(dao_err) = recap_dao
+        .update_job_status_with_history(job_id, status, last_stage, reason)
+        .await
+    {
+        tracing::error!(%job_id, error = %dao_err, "{failure_log_message}");
+    }
+}
+
 /// Seal the `recap_jobs` row a morning-update tick created, mirroring how
 /// [`Scheduler::run_job`] seals batch jobs: success → [`JobStatus::MorningCompleted`],
 /// failure → [`JobStatus::Failed`] (with the error chain as the reason). A DAO
@@ -727,30 +735,43 @@ async fn finalize_morning_job<T>(
 ) -> Result<T> {
     match outcome {
         Ok(value) => {
-            if let Err(dao_err) = recap_dao
-                .update_job_status_with_history(
-                    job_id,
-                    JobStatus::MorningCompleted,
-                    Some("persist"),
-                    None,
-                )
-                .await
-            {
-                tracing::error!(%job_id, error = %dao_err, "failed to mark morning update job completed");
-            }
+            record_morning_job_status(
+                recap_dao,
+                job_id,
+                JobStatus::MorningCompleted,
+                Some("persist"),
+                None,
+                "failed to mark morning update job completed",
+            )
+            .await;
             Ok(value)
         }
         Err(e) => {
             let reason = format!("{:#}", e);
             tracing::error!(%job_id, error = %reason, "morning update job execution failed");
-            if let Err(dao_err) = recap_dao
-                .update_job_status_with_history(job_id, JobStatus::Failed, None, Some(&reason))
-                .await
-            {
-                tracing::error!(%job_id, error = %dao_err, "failed to mark morning update job failed");
-            }
+            record_morning_job_status(
+                recap_dao,
+                job_id,
+                JobStatus::Failed,
+                None,
+                Some(&reason),
+                "failed to mark morning update job failed",
+            )
+            .await;
             Err(e)
         }
+    }
+}
+
+async fn sweep_abandoned_jobs(recap_dao: &dyn RecapDao, keep_job_id: Option<Uuid>) {
+    match recap_dao.mark_abandoned_jobs(keep_job_id).await {
+        Ok(updated) if updated > 0 => tracing::info!(
+            ?keep_job_id,
+            marked_failed = updated,
+            "sealed orphaned recap jobs as failed"
+        ),
+        Ok(_) => {}
+        Err(err) => tracing::error!(error = %err, "boot-time hygiene: mark_abandoned_jobs failed"),
     }
 }
 
@@ -778,15 +799,7 @@ async fn boot_time_resumable_target(
     };
 
     let keep_job_id = resumable_target.as_ref().map(|(id, _, _, _)| *id);
-    match recap_dao.mark_abandoned_jobs(keep_job_id).await {
-        Ok(updated) if updated > 0 => tracing::info!(
-            ?keep_job_id,
-            marked_failed = updated,
-            "sealed orphaned recap jobs as failed"
-        ),
-        Ok(_) => {}
-        Err(err) => tracing::error!(error = %err, "boot-time hygiene: mark_abandoned_jobs failed"),
-    }
+    sweep_abandoned_jobs(recap_dao, keep_job_id).await;
 
     resumable_target
 }
@@ -1900,5 +1913,568 @@ mod tests {
         assert!(captured.contains("INFO"));
         assert!(!captured.contains("ERROR"));
         assert!(captured.contains("morning_update_skipped_in_flight"));
+    }
+
+    struct FailingFetchStage;
+    #[async_trait::async_trait]
+    impl crate::pipeline::fetch::FetchStage for FailingFetchStage {
+        async fn fetch(
+            &self,
+            _job: &JobContext,
+        ) -> crate::error::Result<crate::pipeline::fetch::FetchedCorpus> {
+            Err(crate::error::RecapError::Fetch(
+                "simulated fetch failure".to_string(),
+            ))
+        }
+    }
+
+    struct AllFailedPersistStage;
+    #[async_trait::async_trait]
+    impl crate::pipeline::persist::PersistStage for AllFailedPersistStage {
+        async fn persist(
+            &self,
+            job: &JobContext,
+            _result: crate::pipeline::dispatch::DispatchResult,
+        ) -> crate::error::Result<PersistResult> {
+            Ok(PersistResult {
+                job_id: job.job_id,
+                genres_stored: 0,
+                genres_failed: 3,
+                genres_skipped: 0,
+                genres_no_evidence: 0,
+                total_genres: 3,
+            })
+        }
+    }
+
+    fn build_custom_test_scheduler(
+        dao: Arc<crate::store::dao::mock::MockRecapDao>,
+        metrics: Arc<crate::observability::metrics::Metrics>,
+        fetch_stage: Arc<dyn crate::pipeline::fetch::FetchStage>,
+        persist_stage: Arc<dyn crate::pipeline::persist::PersistStage>,
+        classification_eval_enabled: bool,
+        subworker_url: Option<String>,
+    ) -> Scheduler {
+        use crate::{
+            clients::NewsCreatorClient,
+            config::ENV_MUTEX,
+            queue::{ClassificationJobQueue, QueueStore},
+        };
+        use sqlx::postgres::PgPoolOptions;
+
+        let subworker_base = subworker_url.unwrap_or_else(|| "http://localhost:8002/".to_string());
+        let eval_flag = if classification_eval_enabled {
+            "true"
+        } else {
+            "false"
+        };
+
+        let config = {
+            let _lock = ENV_MUTEX
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            temp_env::with_vars(
+                [
+                    (
+                        "RECAP_DB_DSN",
+                        Some("postgres://recap:recap@localhost:5555/recap_db"),
+                    ),
+                    ("NEWS_CREATOR_BASE_URL", Some("http://localhost:8001/")),
+                    ("SUBWORKER_BASE_URL", Some(subworker_base.as_str())),
+                    ("ALT_BACKEND_BASE_URL", Some("http://localhost:9000/")),
+                    ("RECAP_KNOWLEDGE_EMIT", Some("false")),
+                    ("RECAP_ADMIN_AUTH", Some("disabled")),
+                    ("MTLS_ALLOWED_PEERS", Some("disabled")),
+                    ("RECAP_EVAL_LISTENER", Some("disabled")),
+                    ("RECAP_CARDS_JOB", Some("disabled")),
+                    ("RECAP_THEMES_ENABLED", Some("false")),
+                    ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
+                    ("CLASSIFICATION_EVAL_ENABLED", Some(eval_flag)),
+                    ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
+                    ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
+                    ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
+                    ("MTLS_ENFORCE", None),
+                ],
+                || Arc::new(Config::from_env().expect("config loads")),
+            )
+        };
+
+        let recap_dao: Arc<dyn RecapDao> = dao;
+        let subworker = Arc::new(
+            SubworkerClient::new(
+                config.subworker_base_url(),
+                config.min_documents_per_genre(),
+                None,
+            )
+            .expect("subworker client"),
+        );
+        let news_creator = Arc::new(NewsCreatorClient::new_for_test(
+            config.news_creator_base_url(),
+        ));
+        let pool = PgPoolOptions::new()
+            .connect_lazy("postgres://recap:recap@localhost:5555/recap_db")
+            .expect("lazy pool");
+        let classification_queue = Arc::new(ClassificationJobQueue::new(
+            QueueStore::new(pool),
+            (*subworker).clone(),
+            0,
+            10,
+            3,
+            1000,
+        ));
+
+        let pipeline = Arc::new(
+            PipelineOrchestrator::builder(Arc::clone(&config))
+                .with_fetch_stage(fetch_stage)
+                .with_preprocess_stage(Arc::new(UnreachablePreprocess))
+                .with_dedup_stage(Arc::new(UnreachableDedup))
+                .with_genre_stage(Arc::new(NoopGenre))
+                .with_select_stage(Arc::new(UnreachableSelect))
+                .with_dispatch_stage(Arc::new(UnreachableDispatch))
+                .with_persist_stage(persist_stage)
+                .with_metrics(metrics)
+                .build(
+                    Arc::clone(&recap_dao),
+                    Arc::clone(&subworker),
+                    classification_queue,
+                    None,
+                )
+                .expect("pipeline builds"),
+        );
+        let morning_pipeline = {
+            let _lock = ENV_MUTEX
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            temp_env::with_vars([("MTLS_ENFORCE", None::<&str>)], || {
+                Arc::new(
+                    MorningPipeline::new(
+                        Arc::clone(&config),
+                        Arc::clone(&recap_dao),
+                        news_creator,
+                        Arc::clone(&subworker),
+                    )
+                    .expect("morning pipeline builds"),
+                )
+            })
+        };
+        Scheduler::new(pipeline, morning_pipeline, config, recap_dao, subworker)
+    }
+
+    #[tokio::test]
+    async fn run_job_locked_success_records_running_then_completed_for_seven_day_job() {
+        use crate::{
+            observability::{
+                metrics::Metrics,
+                surface_health::{SurfaceHealthTarget, record_success},
+            },
+            store::dao::mock::MockRecapDao,
+        };
+        use chrono::{DateTime, Utc};
+        use prometheus::Registry;
+
+        let dao = Arc::new(MockRecapDao::new());
+        let metrics = Arc::new(Metrics::new(Registry::new().into()).expect("metrics"));
+        let seeded_ts = DateTime::parse_from_rfc3339("2026-01-25T12:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        record_success(&metrics, SurfaceHealthTarget::ThreeDayRecap, seeded_ts);
+
+        let scheduler = build_three_day_test_scheduler(Arc::clone(&dao), Arc::clone(&metrics));
+        let job_id = Uuid::new_v4();
+        save_stub_dispatch_state(&dao, job_id).await;
+
+        let permit = scheduler
+            .try_acquire_run_permit()
+            .expect("run permit available");
+        let ctx = JobContext::new_with_window(job_id, vec!["ai".to_string()], 7)
+            .with_stage("dispatch".to_string());
+        scheduler
+            .run_job_locked(ctx, permit)
+            .await
+            .expect("7-day job should succeed");
+
+        let transitions = dao.status_transitions();
+        assert_eq!(transitions.len(), 2);
+        assert_eq!(transitions[0].job_id, job_id);
+        assert_eq!(transitions[0].status, JobStatus::Running);
+        assert_eq!(transitions[0].last_stage.as_deref(), Some("persist"));
+        assert_eq!(transitions[1].job_id, job_id);
+        assert_eq!(transitions[1].status, JobStatus::Completed);
+        assert!(transitions[1].last_stage.is_none());
+        assert!(transitions[1].reason.is_none());
+
+        assert!((metrics.jobs_completed.get() - 1.0).abs() < f64::EPSILON);
+        assert!((metrics.jobs_failed.get() - 0.0).abs() < f64::EPSILON);
+        assert!(
+            (metrics
+                .surface_last_success_timestamp_seconds
+                .with_label_values(&[SurfaceHealthTarget::ThreeDayRecap.as_str()])
+                .get()
+                - seeded_ts.timestamp() as f64)
+                .abs()
+                < f64::EPSILON,
+            "7-day job must not mutate ThreeDayRecap surface health"
+        );
+    }
+
+    #[tokio::test]
+    async fn run_job_locked_three_day_completion_at_error_keeps_surface_health_unchanged() {
+        use crate::{
+            error::RecapError,
+            observability::{
+                metrics::Metrics,
+                surface_health::{SurfaceHealthTarget, record_success},
+            },
+            store::dao::mock::MockRecapDao,
+        };
+        use chrono::{DateTime, Utc};
+        use prometheus::Registry;
+
+        let dao = Arc::new(MockRecapDao::new());
+        let metrics = Arc::new(Metrics::new(Registry::new().into()).expect("metrics"));
+        let seeded_ts = DateTime::parse_from_rfc3339("2026-01-25T12:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        record_success(&metrics, SurfaceHealthTarget::ThreeDayRecap, seeded_ts);
+
+        let scheduler = build_three_day_test_scheduler(Arc::clone(&dao), Arc::clone(&metrics));
+        let job_id = Uuid::new_v4();
+        dao.set_job_completed_at(job_id, Err(RecapError::Db("query error".to_string())));
+        save_stub_dispatch_state(&dao, job_id).await;
+
+        let permit = scheduler
+            .try_acquire_run_permit()
+            .expect("run permit available");
+        let ctx = JobContext::new_with_window(job_id, vec!["ai".to_string()], 3)
+            .with_stage("dispatch".to_string());
+        scheduler
+            .run_job_locked(ctx, permit)
+            .await
+            .expect("get_job_completed_at error must not fail completed job");
+
+        assert!((metrics.jobs_completed.get() - 1.0).abs() < f64::EPSILON);
+        assert!(
+            (metrics
+                .surface_last_success_timestamp_seconds
+                .with_label_values(&[SurfaceHealthTarget::ThreeDayRecap.as_str()])
+                .get()
+                - seeded_ts.timestamp() as f64)
+                .abs()
+                < f64::EPSILON
+        );
+    }
+
+    #[tokio::test]
+    async fn run_job_locked_records_failed_status_and_persist_task_when_job_outcome_fails() {
+        use crate::{
+            observability::{metrics::Metrics, surface_health::SurfaceHealthTarget},
+            store::dao::mock::MockRecapDao,
+        };
+        use prometheus::Registry;
+
+        let dao = Arc::new(MockRecapDao::new());
+        let metrics = Arc::new(Metrics::new(Registry::new().into()).expect("metrics"));
+        let scheduler = build_custom_test_scheduler(
+            Arc::clone(&dao),
+            Arc::clone(&metrics),
+            Arc::new(UnreachableFetch),
+            Arc::new(AllFailedPersistStage),
+            false,
+            None,
+        );
+
+        let job_3d = Uuid::new_v4();
+        save_stub_dispatch_state(&dao, job_3d).await;
+        let err_3d = scheduler
+            .run_job(
+                JobContext::new_with_window(job_3d, vec!["ai".to_string()], 3)
+                    .with_stage("dispatch".to_string()),
+            )
+            .await
+            .expect_err("all-failed persist must fail job");
+        assert!(err_3d.to_string().contains("No genres were stored"));
+
+        let transitions = dao.status_transitions();
+        assert_eq!(transitions.len(), 2);
+        assert_eq!(transitions[0].status, JobStatus::Running);
+        assert_eq!(transitions[1].status, JobStatus::Failed);
+        assert!(
+            transitions[1]
+                .reason
+                .as_deref()
+                .unwrap_or_default()
+                .contains("No genres were stored")
+        );
+
+        let failed_tasks = dao.failed_tasks();
+        assert_eq!(failed_tasks.len(), 1);
+        assert_eq!(failed_tasks[0].job_id, job_3d);
+        assert_eq!(failed_tasks[0].stage, "persist");
+        assert!((metrics.jobs_failed.get() - 1.0).abs() < f64::EPSILON);
+        assert!(
+            (metrics
+                .surface_consecutive_failures
+                .with_label_values(&[SurfaceHealthTarget::ThreeDayRecap.as_str()])
+                .get()
+                - 1.0)
+                .abs()
+                < f64::EPSILON
+        );
+
+        let job_7d = Uuid::new_v4();
+        save_stub_dispatch_state(&dao, job_7d).await;
+        let err_7d = scheduler
+            .run_job(
+                JobContext::new_with_window(job_7d, vec!["ai".to_string()], 7)
+                    .with_stage("dispatch".to_string()),
+            )
+            .await
+            .expect_err("all-failed persist must fail 7-day job");
+        assert!(err_7d.to_string().contains("No genres were stored"));
+        assert!((metrics.jobs_failed.get() - 2.0).abs() < f64::EPSILON);
+        assert!(
+            (metrics
+                .surface_consecutive_failures
+                .with_label_values(&[SurfaceHealthTarget::ThreeDayRecap.as_str()])
+                .get()
+                - 1.0)
+                .abs()
+                < f64::EPSILON,
+            "7-day failure must not increment ThreeDayRecap surface failures"
+        );
+    }
+
+    #[tokio::test]
+    async fn run_job_locked_records_pipeline_failure_with_and_without_current_stage() {
+        use crate::{
+            observability::{metrics::Metrics, surface_health::SurfaceHealthTarget},
+            store::dao::mock::MockRecapDao,
+        };
+        use prometheus::Registry;
+
+        let dao = Arc::new(MockRecapDao::new());
+        let metrics = Arc::new(Metrics::new(Registry::new().into()).expect("metrics"));
+        let scheduler = build_custom_test_scheduler(
+            Arc::clone(&dao),
+            Arc::clone(&metrics),
+            Arc::new(FailingFetchStage),
+            Arc::new(StubSuccessPersist),
+            false,
+            None,
+        );
+
+        let job_resumed = Uuid::new_v4();
+        let err_resumed = scheduler
+            .run_job(
+                JobContext::new_with_window(job_resumed, vec!["ai".to_string()], 3)
+                    .with_stage("dispatch".to_string()),
+            )
+            .await
+            .expect_err("missing saved stage state must fail");
+        assert!(
+            format!("{err_resumed:#}").contains("State not found for stage: dispatch"),
+            "{err_resumed:#}"
+        );
+
+        let job_fresh = Uuid::new_v4();
+        let err_fresh = scheduler
+            .run_job(JobContext::new_with_window(
+                job_fresh,
+                vec!["ai".to_string()],
+                7,
+            ))
+            .await
+            .expect_err("fetch failure must fail fresh job");
+        assert!(format!("{err_fresh:#}").contains("simulated fetch failure"));
+
+        let transitions = dao.status_transitions();
+        assert_eq!(transitions.len(), 2);
+        assert_eq!(transitions[0].job_id, job_resumed);
+        assert_eq!(transitions[0].status, JobStatus::Failed);
+        assert_eq!(transitions[1].job_id, job_fresh);
+        assert_eq!(transitions[1].status, JobStatus::Failed);
+
+        let failed_tasks = dao.failed_tasks();
+        assert_eq!(failed_tasks.len(), 2);
+        assert_eq!(failed_tasks[0].stage, "dispatch");
+        assert_eq!(failed_tasks[1].stage, "pipeline_execution");
+        assert!((metrics.jobs_failed.get() - 2.0).abs() < f64::EPSILON);
+        assert!(
+            (metrics
+                .surface_consecutive_failures
+                .with_label_values(&[SurfaceHealthTarget::ThreeDayRecap.as_str()])
+                .get()
+                - 1.0)
+                .abs()
+                < f64::EPSILON
+        );
+    }
+
+    #[tokio::test]
+    async fn run_job_rejects_when_run_permit_is_already_held() {
+        use crate::{observability::metrics::Metrics, store::dao::mock::MockRecapDao};
+        use prometheus::Registry;
+
+        let dao = Arc::new(MockRecapDao::new());
+        let metrics = Arc::new(Metrics::new(Registry::new().into()).expect("metrics"));
+        let scheduler = build_three_day_test_scheduler(Arc::clone(&dao), Arc::clone(&metrics));
+
+        let _held = scheduler
+            .try_acquire_run_permit()
+            .expect("initial run permit should succeed");
+        let job_id = Uuid::new_v4();
+        let err = scheduler
+            .run_job(JobContext::new_with_window(job_id, vec!["ai".into()], 3))
+            .await
+            .expect_err("concurrent run_job must reject when permit is held");
+
+        assert!(
+            err.to_string()
+                .contains("another recap pipeline run is already in progress")
+        );
+        assert!(dao.status_transitions().is_empty());
+        assert!((metrics.jobs_failed.get() - 0.0).abs() < f64::EPSILON);
+    }
+
+    fn stub_eval_success_body() -> serde_json::Value {
+        serde_json::json!({
+            "accuracy": 0.9,
+            "macro_precision": 0.9,
+            "macro_recall": 0.9,
+            "macro_f1": 0.9,
+            "micro_precision": 0.9,
+            "micro_recall": 0.9,
+            "micro_f1": 0.9,
+            "per_genre_metrics": {
+                "ai": {
+                    "tp": 9,
+                    "fp": 1,
+                    "fn": 1,
+                    "support": 10,
+                    "precision": 0.9,
+                    "recall": 0.9,
+                    "f1": 0.9
+                }
+            },
+            "total_samples": 10
+        })
+    }
+
+    async fn run_eval_job_case(
+        scheduler: &Scheduler,
+        dao: &crate::store::dao::mock::MockRecapDao,
+        server: &wiremock::MockServer,
+        response: wiremock::ResponseTemplate,
+        expected_total_calls: usize,
+        label: &str,
+    ) -> Uuid {
+        use wiremock::Mock;
+        use wiremock::matchers::{method, path};
+
+        Mock::given(method("POST"))
+            .and(path("/v1/evaluation/genres"))
+            .respond_with(response)
+            .up_to_n_times(1)
+            .expect(1)
+            .mount(server)
+            .await;
+
+        let job_id = Uuid::new_v4();
+        save_stub_dispatch_state(dao, job_id).await;
+        scheduler
+            .run_job(
+                JobContext::new_with_window(job_id, vec!["ai".into()], 7)
+                    .with_stage("dispatch".to_string()),
+            )
+            .await
+            .expect(label);
+
+        let requests = server
+            .received_requests()
+            .await
+            .expect("wiremock records requests");
+        assert_eq!(
+            requests.len(),
+            expected_total_calls,
+            "classification evaluation must be invoked for {label}"
+        );
+        job_id
+    }
+
+    #[tokio::test]
+    async fn run_job_locked_runs_classification_eval_and_tolerates_eval_errors() {
+        use crate::{observability::metrics::Metrics, store::dao::mock::MockRecapDao};
+        use prometheus::Registry;
+        use wiremock::{MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        let dao = Arc::new(MockRecapDao::new());
+        let metrics = Arc::new(Metrics::new(Registry::new().into()).expect("metrics"));
+        let scheduler = build_custom_test_scheduler(
+            Arc::clone(&dao),
+            Arc::clone(&metrics),
+            Arc::new(UnreachableFetch),
+            Arc::new(StubSuccessPersist),
+            true,
+            Some(server.uri()),
+        );
+
+        let job_ok = run_eval_job_case(
+            &scheduler,
+            &dao,
+            &server,
+            ResponseTemplate::new(200).set_body_json(stub_eval_success_body()),
+            1,
+            "job with 200 eval should succeed",
+        )
+        .await;
+        let job_401 = run_eval_job_case(
+            &scheduler,
+            &dao,
+            &server,
+            ResponseTemplate::new(401).set_body_string("unauthorized"),
+            2,
+            "401 eval failure must leave completed job Ok",
+        )
+        .await;
+        let job_500 = run_eval_job_case(
+            &scheduler,
+            &dao,
+            &server,
+            ResponseTemplate::new(500).set_body_string("eval down"),
+            3,
+            "500 eval failure must leave completed job Ok",
+        )
+        .await;
+
+        // (a) Eval was invoked once per completed job (3 times total) on /v1/evaluation/genres.
+        let requests = server
+            .received_requests()
+            .await
+            .expect("wiremock records requests");
+        assert_eq!(
+            requests.len(),
+            3,
+            "classification evaluation must be invoked once per completed job"
+        );
+        assert!(
+            requests
+                .iter()
+                .all(|req| req.method.as_str() == "POST"
+                    && req.url.path() == "/v1/evaluation/genres"),
+            "all eval requests must POST to /v1/evaluation/genres"
+        );
+        server.verify().await;
+
+        // (b) In the error cases (401, 500), the eval error did not fail the job.
+        assert!((metrics.jobs_completed.get() - 3.0).abs() < f64::EPSILON);
+        assert!((metrics.jobs_failed.get() - 0.0).abs() < f64::EPSILON);
+        let completed_jobs: Vec<Uuid> = dao
+            .status_transitions()
+            .into_iter()
+            .filter(|t| t.status == JobStatus::Completed)
+            .map(|t| t.job_id)
+            .collect();
+        assert_eq!(completed_jobs, vec![job_ok, job_401, job_500]);
     }
 }

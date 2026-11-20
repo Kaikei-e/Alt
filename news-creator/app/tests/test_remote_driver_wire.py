@@ -2,6 +2,10 @@
 
 import json
 import logging
+from collections.abc import AsyncIterator
+from pathlib import Path
+from typing import Any
+from unittest.mock import patch
 
 import pytest
 import pytest_asyncio
@@ -9,18 +13,21 @@ from aiohttp import web
 
 from news_creator.config import inference_token
 from news_creator.config.config import NewsCreatorConfig
+from news_creator.config.distributed_be_config import RemoteTarget
 from news_creator.config.llm_config import LLMConfig
 from news_creator.driver.ollama_driver import OllamaDriver
 from news_creator.driver.ollama_stream_driver import OllamaStreamDriver
+from news_creator.gateway import bounded_body
+from news_creator.gateway.remote_chat_driver import RemoteChatDriver
 from news_creator.gateway.remote_health_checker import RemoteHealthChecker
 
 
 @pytest_asyncio.fixture
-async def wire_server():
-    received_requests = []
+async def wire_server() -> AsyncIterator[dict[str, Any]]:
+    received_requests: list[dict[str, Any]] = []
     dest_counter = {"count": 0}
 
-    async def handle_generate(request):
+    async def handle_generate(request: web.Request) -> web.Response:
         body = await request.json()
         received_requests.append(
             {
@@ -41,7 +48,7 @@ async def wire_server():
             }
         )
 
-    async def handle_chat(request):
+    async def handle_chat(request: web.Request) -> web.StreamResponse:
         body = await request.json()
         received_requests.append(
             {
@@ -69,7 +76,7 @@ async def wire_server():
         await response.write_eof()
         return response
 
-    async def handle_tags(request):
+    async def handle_tags(request: web.Request) -> web.Response:
         received_requests.append(
             {
                 "path": request.path,
@@ -79,7 +86,7 @@ async def wire_server():
         )
         return web.json_response({"models": [{"name": "test-model"}]})
 
-    async def handle_v1_chat_completions(request):
+    async def handle_v1_chat_completions(request: web.Request) -> web.Response:
         body = await request.json()
         received_requests.append(
             {
@@ -105,7 +112,7 @@ async def wire_server():
             }
         )
 
-    async def handle_v1_models(request):
+    async def handle_v1_models(request: web.Request) -> web.Response:
         received_requests.append(
             {
                 "path": request.path,
@@ -120,13 +127,13 @@ async def wire_server():
             }
         )
 
-    async def handle_307(request):
+    async def handle_307(_request: web.Request) -> web.Response:
         return web.Response(
             status=307,
             headers={"Location": "/destination-counter"},
         )
 
-    async def handle_destination(request):
+    async def handle_destination(_request: web.Request) -> web.Response:
         dest_counter["count"] += 1
         return web.json_response({"status": "reached"})
 
@@ -160,27 +167,11 @@ async def wire_server():
     await runner.cleanup()
 
 
-@pytest.mark.asyncio
-async def test_production_constructors_wire_auth_and_no_redirect(
-    wire_server, tmp_path, monkeypatch, dummy_redis_password_file
-):
-    """Local drivers emit Bearer and refuse 307; remote chat/health drivers NEVER emit Bearer and refuse 307."""
-    from news_creator.config.distributed_be_config import RemoteTarget
-    from news_creator.gateway.remote_chat_driver import RemoteChatDriver
-
-    token_val = "prod-test-secret-token123="
-    token_file = tmp_path / "inference.token"
-    token_file.write_text(token_val, encoding="utf-8")
-
-    monkeypatch.delenv("INFERENCE_AUTH", raising=False)
-    monkeypatch.setenv("INFERENCE_SERVICE_TOKEN_FILE", str(token_file))
-    monkeypatch.setenv("LLM_SERVICE_URL", wire_server["base_url"])
-    monkeypatch.setenv("LLM_MODEL", "test-model")
-
-    cfg = NewsCreatorConfig()
-    assert cfg.llm.inference_service_token == token_val
-
-    # 1. OllamaDriver: non-streaming generate + list_tags
+async def _exercise_local_drivers(
+    cfg: NewsCreatorConfig,
+    redirect_cfg: NewsCreatorConfig,
+    dest_counter: dict[str, int],
+) -> None:
     driver = OllamaDriver(cfg)
     await driver.initialize()
     resp = await driver.generate({"prompt": "hello world", "model": "test-model"})
@@ -190,27 +181,23 @@ async def test_production_constructors_wire_auth_and_no_redirect(
     assert "models" in tags
     assert tags["models"][0]["name"] == "test-model"
 
-    # OllamaDriver 307 redirect defense
-    monkeypatch.setenv("LLM_SERVICE_URL", f"{wire_server['base_url']}/redirect-307")
-    redirect_cfg = NewsCreatorConfig()
     redirect_driver = OllamaDriver(redirect_cfg)
     await redirect_driver.initialize()
     with pytest.raises(RuntimeError):
         await redirect_driver.generate({"prompt": "test prompt", "model": "test-model"})
-    assert wire_server["dest_counter"]["count"] == 0
+    assert dest_counter["count"] == 0
 
-    # 2. OllamaStreamDriver: streaming chat
     stream_driver = OllamaStreamDriver(cfg)
     await stream_driver.initialize()
-    chunks = []
-    async for chunk in stream_driver.chat_stream(
-        {"messages": [{"role": "user", "content": "hi"}], "model": "test-model"}
-    ):
-        chunks.append(chunk)
+    chunks = [
+        chunk
+        async for chunk in stream_driver.chat_stream(
+            {"messages": [{"role": "user", "content": "hi"}], "model": "test-model"}
+        )
+    ]
     assert len(chunks) == 1
     assert chunks[0]["message"]["content"] == "streamed-token"
 
-    # OllamaStreamDriver 307 redirect defense
     redirect_stream_driver = OllamaStreamDriver(redirect_cfg)
     await redirect_stream_driver.initialize()
     with pytest.raises(RuntimeError):
@@ -218,13 +205,19 @@ async def test_production_constructors_wire_auth_and_no_redirect(
             {"messages": [{"role": "user", "content": "hi"}], "model": "test-model"}
         ):
             pass
-    assert wire_server["dest_counter"]["count"] == 0
+    assert dest_counter["count"] == 0
 
-    # 3. RemoteChatDriver: POST /v1/chat/completions without Authorization header
+    await driver.cleanup()
+    await redirect_driver.cleanup()
+    await stream_driver.cleanup()
+    await redirect_stream_driver.cleanup()
+
+
+async def _exercise_remote_drivers(base_url: str, dest_counter: dict[str, int]) -> None:
     remote_driver = RemoteChatDriver(timeout_seconds=5, reasoning_effort=None)
     await remote_driver.initialize()
     target = RemoteTarget(
-        base_url=wire_server["base_url"],
+        base_url=base_url,
         model="provider-a/model-a:latest",
         num_ctx=32768,
     )
@@ -237,9 +230,8 @@ async def test_production_constructors_wire_auth_and_no_redirect(
     )
     assert rem_resp.response == "remote-ok"
 
-    # RemoteChatDriver 307 redirect defense
     redirect_target = RemoteTarget(
-        base_url=f"{wire_server['base_url']}/redirect-307",
+        base_url=f"{base_url}/redirect-307",
         model="provider-a/model-a:latest",
         num_ctx=32768,
     )
@@ -251,9 +243,8 @@ async def test_production_constructors_wire_auth_and_no_redirect(
             temperature=0.5,
             top_p=0.85,
         )
-    assert wire_server["dest_counter"]["count"] == 0
+    assert dest_counter["count"] == 0
 
-    # 4. RemoteHealthChecker: GET /v1/models without Authorization header
     checker = RemoteHealthChecker(
         targets=[target],
         interval_seconds=30,
@@ -263,7 +254,6 @@ async def test_production_constructors_wire_auth_and_no_redirect(
     await checker.start()
     assert checker.status()[0]["healthy"] is True
 
-    # RemoteHealthChecker 307 redirect defense
     redirect_checker = RemoteHealthChecker(
         targets=[redirect_target],
         interval_seconds=30,
@@ -272,28 +262,55 @@ async def test_production_constructors_wire_auth_and_no_redirect(
     )
     await redirect_checker.start()
     assert redirect_checker.status()[0]["healthy"] is False
-    assert wire_server["dest_counter"]["count"] == 0
+    assert dest_counter["count"] == 0
 
-    # Local Ollama requests carry Authorization; remote /v1/* requests NEVER carry Authorization
-    local_reqs = [r for r in wire_server["received"] if r["path"].startswith("/api/")]
-    remote_reqs = [r for r in wire_server["received"] if r["path"].startswith("/v1/")]
-    assert len(local_reqs) == 3
-    assert len(remote_reqs) == 2
-    for req in local_reqs:
-        assert req["headers"].get("Authorization") == f"Bearer {token_val}"
-    for req in remote_reqs:
-        assert "Authorization" not in req["headers"]
-
-    await driver.cleanup()
-    await redirect_driver.cleanup()
-    await stream_driver.cleanup()
-    await redirect_stream_driver.cleanup()
     await remote_driver.cleanup()
     await checker.stop()
     await redirect_checker.stop()
 
 
-def test_token_file_validation_paths(tmp_path, monkeypatch):
+@pytest.mark.asyncio
+async def test_production_constructors_wire_auth_and_no_redirect(
+    wire_server: dict[str, Any],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    dummy_redis_password_file: Path,
+) -> None:
+    """Local drivers emit Bearer and refuse 307; remote chat/health drivers NEVER emit Bearer and refuse 307."""
+    expected_local_requests = 3
+    expected_remote_requests = 2
+    token_val = "prod-test-secret-token123="  # noqa: S105 - test fixture bearer token
+    token_file = tmp_path / "inference.token"
+    token_file.write_text(token_val, encoding="utf-8")
+
+    monkeypatch.delenv("INFERENCE_AUTH", raising=False)
+    monkeypatch.setenv("INFERENCE_SERVICE_TOKEN_FILE", str(token_file))
+    monkeypatch.setenv("LLM_SERVICE_URL", wire_server["base_url"])
+    monkeypatch.setenv("LLM_MODEL", "test-model")
+
+    cfg = NewsCreatorConfig()
+    assert cfg.llm.inference_service_token == token_val
+
+    monkeypatch.setenv("LLM_SERVICE_URL", f"{wire_server['base_url']}/redirect-307")
+    redirect_cfg = NewsCreatorConfig()
+
+    await _exercise_local_drivers(cfg, redirect_cfg, wire_server["dest_counter"])
+    await _exercise_remote_drivers(wire_server["base_url"], wire_server["dest_counter"])
+
+    # Local Ollama requests carry Authorization; remote /v1/* requests NEVER carry Authorization
+    local_reqs = [r for r in wire_server["received"] if r["path"].startswith("/api/")]
+    remote_reqs = [r for r in wire_server["received"] if r["path"].startswith("/v1/")]
+    assert len(local_reqs) == expected_local_requests
+    assert len(remote_reqs) == expected_remote_requests
+    for req in local_reqs:
+        assert req["headers"].get("Authorization") == f"Bearer {token_val}"
+    for req in remote_reqs:
+        assert "Authorization" not in req["headers"]
+
+
+def test_token_file_validation_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Every token file failure mode, including an unset path, fails startup."""
     monkeypatch.delenv("INFERENCE_AUTH", raising=False)
 
@@ -326,12 +343,12 @@ def test_token_file_validation_paths(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_explicit_auth_disabled_sends_no_authorization_header(
-    wire_server, monkeypatch, caplog, dummy_redis_password_file
-):
+    wire_server: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    dummy_redis_password_file: Path,
+) -> None:
     """INFERENCE_AUTH=disabled logs once and every driver omits the bearer."""
-    from news_creator.config.distributed_be_config import RemoteTarget
-    from news_creator.gateway.remote_chat_driver import RemoteChatDriver
-
     monkeypatch.setattr(inference_token, "_disabled_logged", False)
     monkeypatch.setenv("INFERENCE_AUTH", "disabled")
     monkeypatch.delenv("INFERENCE_SERVICE_TOKEN_FILE", raising=False)
@@ -382,11 +399,8 @@ async def test_explicit_auth_disabled_sends_no_authorization_header(
 
 
 @pytest.mark.asyncio
-async def test_remote_chat_driver_wire_rejects_response_body_just_over_4_mib():
+async def test_remote_chat_driver_wire_rejects_response_body_just_over_4_mib() -> None:
     """S1: Wire server returning a /v1/chat/completions body just over 4 MiB raises RuntimeError."""
-    from news_creator.config.distributed_be_config import RemoteTarget
-    from news_creator.gateway.remote_chat_driver import RemoteChatDriver
-
     four_mib = 4 * 1024 * 1024
     oversized_content = "x" * (four_mib + 64)
     oversized_payload = json.dumps(
@@ -405,7 +419,7 @@ async def test_remote_chat_driver_wire_rejects_response_body_just_over_4_mib():
     ).encode("utf-8")
     assert len(oversized_payload) > four_mib
 
-    async def handle_v1_chat(_request):
+    async def handle_v1_chat(_request: web.Request) -> web.Response:
         return web.Response(
             status=200,
             body=oversized_payload,
@@ -443,14 +457,10 @@ async def test_remote_chat_driver_wire_rejects_response_body_just_over_4_mib():
 
 
 @pytest.mark.asyncio
-async def test_remote_chat_driver_wire_rejects_chunked_response_body_without_content_length_over_4_mib():
+async def test_remote_chat_driver_wire_rejects_chunked_response_body_without_content_length_over_4_mib() -> (
+    None
+):
     """L2: Wire server serving an oversized CHUNKED /v1/chat/completions body with no Content-Length raises RuntimeError via bounded_body."""
-    from unittest.mock import patch
-
-    from news_creator.config.distributed_be_config import RemoteTarget
-    from news_creator.gateway import bounded_body
-    from news_creator.gateway.remote_chat_driver import RemoteChatDriver
-
     four_mib = 4 * 1024 * 1024
     prefix = (
         b'{"id":"chatcmpl-chunked","object":"chat.completion",'
@@ -460,7 +470,7 @@ async def test_remote_chat_driver_wire_rejects_chunked_response_body_without_con
     suffix = b'"},"finish_reason":"stop"}]}'
     chunk = b"x" * (1024 * 1024)
 
-    async def handle_v1_chat(request):
+    async def handle_v1_chat(request: web.Request) -> web.StreamResponse:
         resp = web.StreamResponse(
             status=200,
             headers={"Content-Type": "application/json"},

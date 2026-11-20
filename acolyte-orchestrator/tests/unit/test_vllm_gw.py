@@ -13,6 +13,14 @@ from acolyte.config.settings import Settings
 from acolyte.gateway.vllm_gw import VllmGateway
 from acolyte.port.llm_provider import LLMMode, LLMProviderError
 
+LONGFORM_DEFAULT_TEMPERATURE = 0.7
+SAMPLE_PROMPT_TOKENS = 120
+SAMPLE_COMPLETION_TOKENS = 450
+EXPLICIT_MAX_TOKENS = 4096
+STRUCTURED_NUM_PREDICT = 2048
+LONGFORM_NUM_PREDICT = 6000
+EXPLICIT_OVERRIDE_TEMPERATURE = 0.5
+
 
 def _make_settings(**overrides: Any) -> Settings:  # noqa: ANN401 — heterogeneous Settings field overrides
     defaults: dict[str, Any] = {
@@ -160,7 +168,7 @@ async def test_longform_mode_temperature_default() -> None:
     await gw.generate("test", mode=LLMMode.LONGFORM)
 
     body = json.loads(captured[0].content)
-    assert body["temperature"] == 0.7
+    assert body["temperature"] == LONGFORM_DEFAULT_TEMPERATURE
 
 
 # --- Response parsing ---
@@ -171,15 +179,18 @@ async def test_response_extracts_content_and_usage() -> None:
     """LLMResponse must populate text, model, prompt_tokens, completion_tokens."""
 
     async def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json=_openai_response("hello world", "qwen3.5-27b", 120, 450))
+        return httpx.Response(
+            200,
+            json=_openai_response("hello world", "qwen3.5-27b", SAMPLE_PROMPT_TOKENS, SAMPLE_COMPLETION_TOKENS),
+        )
 
     gw = VllmGateway(_mock_transport(handler), _make_settings())
     result = await gw.generate("test")
 
     assert result.text == "hello world"
     assert result.model == "qwen3.5-27b"
-    assert result.prompt_tokens == 120
-    assert result.completion_tokens == 450
+    assert result.prompt_tokens == SAMPLE_PROMPT_TOKENS
+    assert result.completion_tokens == SAMPLE_COMPLETION_TOKENS
 
 
 # --- num_predict → max_tokens mapping ---
@@ -195,10 +206,10 @@ async def test_num_predict_maps_to_max_tokens() -> None:
         return httpx.Response(200, json=_openai_response())
 
     gw = VllmGateway(_mock_transport(handler), _make_settings())
-    await gw.generate("test", num_predict=4096)
+    await gw.generate("test", num_predict=EXPLICIT_MAX_TOKENS)
 
     body = json.loads(captured[0].content)
-    assert body["max_tokens"] == 4096
+    assert body["max_tokens"] == EXPLICIT_MAX_TOKENS
 
 
 @pytest.mark.asyncio
@@ -210,11 +221,11 @@ async def test_structured_num_predict_from_settings() -> None:
         captured.append(request)
         return httpx.Response(200, json=_openai_response())
 
-    gw = VllmGateway(_mock_transport(handler), _make_settings(structured_num_predict=2048))
+    gw = VllmGateway(_mock_transport(handler), _make_settings(structured_num_predict=STRUCTURED_NUM_PREDICT))
     await gw.generate("test", output_schema={"type": "object"}, mode=LLMMode.STRUCTURED)
 
     body = json.loads(captured[0].content)
-    assert body["max_tokens"] == 2048
+    assert body["max_tokens"] == STRUCTURED_NUM_PREDICT
 
 
 @pytest.mark.asyncio
@@ -226,11 +237,11 @@ async def test_longform_num_predict_from_settings() -> None:
         captured.append(request)
         return httpx.Response(200, json=_openai_response())
 
-    gw = VllmGateway(_mock_transport(handler), _make_settings(longform_num_predict=6000))
+    gw = VllmGateway(_mock_transport(handler), _make_settings(longform_num_predict=LONGFORM_NUM_PREDICT))
     await gw.generate("test", mode=LLMMode.LONGFORM)
 
     body = json.loads(captured[0].content)
-    assert body["max_tokens"] == 6000
+    assert body["max_tokens"] == LONGFORM_NUM_PREDICT
 
 
 # --- Explicit kwargs override mode defaults ---
@@ -246,10 +257,15 @@ async def test_explicit_temperature_overrides_mode_default() -> None:
         return httpx.Response(200, json=_openai_response())
 
     gw = VllmGateway(_mock_transport(handler), _make_settings())
-    await gw.generate("test", output_schema={"type": "object"}, mode=LLMMode.STRUCTURED, temperature=0.5)
+    await gw.generate(
+        "test",
+        output_schema={"type": "object"},
+        mode=LLMMode.STRUCTURED,
+        temperature=EXPLICIT_OVERRIDE_TEMPERATURE,
+    )
 
     body = json.loads(captured[0].content)
-    assert body["temperature"] == 0.5
+    assert body["temperature"] == EXPLICIT_OVERRIDE_TEMPERATURE
 
 
 # --- Authorization header ---

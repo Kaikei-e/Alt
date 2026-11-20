@@ -28,6 +28,7 @@ if TYPE_CHECKING:
 
     from starlette.requests import Request
     from starlette.responses import Response
+    from starlette.types import ASGIApp
 
 PEER_IDENTITY_HEADER = "x-alt-peer-identity"
 
@@ -73,7 +74,7 @@ class PeerIdentityMiddleware(BaseHTTPMiddleware):
 
     def __init__(
         self,
-        app,
+        app: ASGIApp,
         allowed: Iterable[str] | None = None,
         *,
         strict: bool = False,

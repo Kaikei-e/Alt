@@ -43,7 +43,7 @@ func TestOAuth2Client_RefreshToken_WithoutProxy(t *testing.T) {
 
 		// Parse and verify form data
 		err := r.ParseForm()
-		require.NoError(t, err)
+		assert.NoError(t, err)
 
 		assert.Equal(t, "refresh_token", r.Form.Get("grant_type"))
 		assert.Equal(t, "test_refresh_token", r.Form.Get("refresh_token"))
@@ -61,7 +61,7 @@ func TestOAuth2Client_RefreshToken_WithoutProxy(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(response)
+		assert.NoError(t, json.NewEncoder(w).Encode(response))
 	}))
 	defer server.Close()
 
@@ -102,7 +102,9 @@ func TestOAuth2Client_RefreshToken_TimeoutWithoutProxy(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(2 * time.Second) // Sleep longer than client timeout
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"access_token":"token"}`))
+		if _, writeErr := w.Write([]byte(`{"access_token":"token"}`)); writeErr != nil {
+			t.Logf("mock write after client timeout: %v", writeErr)
+		}
 	}))
 	defer server.Close()
 
@@ -122,7 +124,7 @@ func TestOAuth2Client_RefreshToken_TimeoutWithoutProxy(t *testing.T) {
 	result, err := client.RefreshToken(ctx, "test_refresh_token")
 
 	// Should get timeout error
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, result)
 	assert.Contains(t, err.Error(), "failed to execute refresh token request")
 
@@ -163,7 +165,8 @@ func TestOAuth2Client_WithProxyConfiguration(t *testing.T) {
 		}
 		// For HTTP requests, act as a transparent proxy
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"access_token":"proxy_token","token_type":"Bearer","expires_in":3600}`))
+		_, writeErr := w.Write([]byte(`{"access_token":"proxy_token","token_type":"Bearer","expires_in":3600}`))
+		assert.NoError(t, writeErr)
 	}))
 	defer proxyServer.Close()
 
@@ -177,7 +180,7 @@ func TestOAuth2Client_WithProxyConfiguration(t *testing.T) {
 			"scope":         "read",
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(response)
+		assert.NoError(t, json.NewEncoder(w).Encode(response))
 	}))
 	defer targetServer.Close()
 
@@ -224,7 +227,7 @@ func TestOAuth2Client_ProxyFallbackToDirect(t *testing.T) {
 			"scope":         "read",
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(response)
+		assert.NoError(t, json.NewEncoder(w).Encode(response))
 	}))
 	defer targetServer.Close()
 
@@ -311,7 +314,9 @@ func TestOAuth2Client_TimeoutConfiguration(t *testing.T) {
 					"scope":         "read",
 				}
 				w.Header().Set("Content-Type", "application/json")
-				json.NewEncoder(w).Encode(response)
+				if encErr := json.NewEncoder(w).Encode(response); encErr != nil {
+					t.Logf("mock encode after client timeout: %v", encErr)
+				}
 			}))
 			defer server.Close()
 
@@ -327,11 +332,11 @@ func TestOAuth2Client_TimeoutConfiguration(t *testing.T) {
 			result, err := client.RefreshToken(ctx, "test_refresh_token")
 
 			if tt.expectSuccess {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.NotNil(t, result)
 				assert.Equal(t, "test_token", result.AccessToken)
 			} else {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Nil(t, result)
 				if tt.expectError != "" {
 					assert.Contains(t, err.Error(), tt.expectError)

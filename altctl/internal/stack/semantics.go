@@ -87,6 +87,7 @@ func LoadSemanticsConfig(path string) (*SemanticsConfig, error) {
 		return &SemanticsConfig{}, nil
 	}
 
+	// #nosec G304 -- path comes from operator config location or project root
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {

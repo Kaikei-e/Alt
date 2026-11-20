@@ -3,7 +3,6 @@ package usecase_test
 import (
 	"context"
 	"fmt"
-	"io"
 	"log/slog"
 	"rag-orchestrator/internal/domain"
 	"rag-orchestrator/internal/usecase"
@@ -12,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 // MockVectorEncoder
@@ -58,7 +58,7 @@ func TestRetrieveContext_Execute_Success(t *testing.T) {
 	mockEncoder := new(MockVectorEncoder)
 	mockLLM := new(mockLLMClient) // Defined in answer_with_rag_usecase_test.go
 	mockQueryExpander := new(MockQueryExpander)
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	uc := usecase.NewRetrieveContextUsecase(mockChunkRepo, mockDocRepo, mockEncoder, mockLLM, nil, mockQueryExpander, usecase.DefaultRetrievalConfig(), testLogger)
 
@@ -115,12 +115,12 @@ func TestRetrieveContext_Execute_Success(t *testing.T) {
 	output, err := uc.Execute(ctx, input)
 
 	// Assert
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	// We might get duplicates if search returns same chunk, but we deduplicate in code
 	// Since we return same chunk for all 5 searches, we expect 1 unique context
 	assert.Len(t, output.Contexts, 1)
 	assert.Equal(t, "Found content", output.Contexts[0].ChunkText)
-	assert.Equal(t, float32(0.95), output.Contexts[0].Score)
+	assert.InDelta(t, float32(0.95), output.Contexts[0].Score, 1e-6)
 }
 
 func TestRetrieveContext_ExpandedEmbeddingFailure_NonFatal(t *testing.T) {
@@ -129,7 +129,7 @@ func TestRetrieveContext_ExpandedEmbeddingFailure_NonFatal(t *testing.T) {
 	mockEncoder := new(MockVectorEncoder)
 	mockLLM := new(mockLLMClient)
 	mockQueryExpander := new(MockQueryExpander)
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	uc := usecase.NewRetrieveContextUsecase(mockChunkRepo, mockDocRepo, mockEncoder, mockLLM, nil, mockQueryExpander, usecase.DefaultRetrievalConfig(), testLogger)
 
@@ -174,7 +174,7 @@ func TestRetrieveContext_ExpandedEmbeddingFailure_NonFatal(t *testing.T) {
 	// Execute — should succeed despite expanded embedding failure
 	output, err := uc.Execute(ctx, input)
 
-	assert.NoError(t, err, "expanded embedding failure should be non-fatal")
+	require.NoError(t, err, "expanded embedding failure should be non-fatal")
 	assert.NotNil(t, output)
 	assert.GreaterOrEqual(t, len(output.Contexts), 1, "should return results from original query")
 }
@@ -186,7 +186,7 @@ func TestRetrieveContext_OriginalEmbeddingFailure_DegradesToBM25(t *testing.T) {
 	mockLLM := new(mockLLMClient)
 	mockQueryExpander := new(MockQueryExpander)
 	mockBM25 := new(MockBM25Searcher)
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	uc := usecase.NewRetrieveContextUsecase(
 		mockChunkRepo, mockDocRepo, mockEncoder, mockLLM, nil, mockQueryExpander,
@@ -227,9 +227,9 @@ func TestRetrieveContext_OriginalEmbeddingFailure_DegradesToBM25(t *testing.T) {
 	// Execute — should succeed with BM25-only results
 	output, err := uc.Execute(ctx, input)
 
-	assert.NoError(t, err, "original embedding failure should degrade to BM25-only, not fail")
+	require.NoError(t, err, "original embedding failure should degrade to BM25-only, not fail")
 	assert.NotNil(t, output)
-	assert.Greater(t, output.BM25HitCount, 0, "should report BM25 hits")
+	assert.Positive(t, output.BM25HitCount, "should report BM25 hits")
 }
 
 func TestRetrieveContext_EmbedderDown_NoBM25_ReturnsEmpty(t *testing.T) {
@@ -238,7 +238,7 @@ func TestRetrieveContext_EmbedderDown_NoBM25_ReturnsEmpty(t *testing.T) {
 	mockEncoder := new(MockVectorEncoder)
 	mockLLM := new(mockLLMClient)
 	mockQueryExpander := new(MockQueryExpander)
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	uc := usecase.NewRetrieveContextUsecase(
 		mockChunkRepo, mockDocRepo, mockEncoder, mockLLM, nil, mockQueryExpander,
@@ -260,7 +260,7 @@ func TestRetrieveContext_EmbedderDown_NoBM25_ReturnsEmpty(t *testing.T) {
 	// No BM25 searcher configured — complete gracefully with empty results
 	output, err := uc.Execute(ctx, input)
 
-	assert.NoError(t, err, "should complete gracefully even with no search path available")
+	require.NoError(t, err, "should complete gracefully even with no search path available")
 	assert.NotNil(t, output)
 	assert.Empty(t, output.Contexts)
 }
@@ -285,7 +285,7 @@ func TestRetrieveContext_BM25AndExpandedBothFail_StillSucceeds(t *testing.T) {
 	mockLLM := new(mockLLMClient)
 	mockQueryExpander := new(MockQueryExpander)
 	mockBM25 := new(MockBM25Searcher)
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	uc := usecase.NewRetrieveContextUsecase(
 		mockChunkRepo, mockDocRepo, mockEncoder, mockLLM, nil, mockQueryExpander,
@@ -336,7 +336,7 @@ func TestRetrieveContext_BM25AndExpandedBothFail_StillSucceeds(t *testing.T) {
 	// Execute — should succeed: both BM25 and expanded embedding are non-fatal
 	output, err := uc.Execute(ctx, input)
 
-	assert.NoError(t, err, "BM25 + expanded embedding failures should both be non-fatal")
+	require.NoError(t, err, "BM25 + expanded embedding failures should both be non-fatal")
 	assert.NotNil(t, output)
 	assert.GreaterOrEqual(t, len(output.Contexts), 1, "should return results from original vector search")
 }
@@ -350,7 +350,7 @@ func TestRetrieveContext_SearchQueries_BypassExpansion(t *testing.T) {
 	mockLLM := new(mockLLMClient)
 	mockQueryExpander := new(MockQueryExpander)
 	mockBM25 := new(MockBM25Searcher)
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	uc := usecase.NewRetrieveContextUsecase(
 		mockChunkRepo, mockDocRepo, mockEncoder, mockLLM, nil, mockQueryExpander,
@@ -390,7 +390,7 @@ func TestRetrieveContext_SearchQueries_BypassExpansion(t *testing.T) {
 
 	output, err := uc.Execute(ctx, input)
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotNil(t, output)
 	// Planner queries should appear as expanded queries
 	assert.Equal(t, input.SearchQueries, output.ExpandedQueries)
@@ -398,7 +398,7 @@ func TestRetrieveContext_SearchQueries_BypassExpansion(t *testing.T) {
 	mockQueryExpander.AssertNotCalled(t, "ExpandQuery")
 	mockQueryExpander.AssertNotCalled(t, "ExpandQueryWithHistory")
 	// BM25 should have results
-	assert.Greater(t, output.BM25HitCount, 0)
+	assert.Positive(t, output.BM25HitCount)
 }
 
 // MockHybridSearcher is a test double for domain.HybridSearcher.
@@ -435,7 +435,7 @@ func TestRetrieveContext_WithHybridSearcher_UsesInDBHybridSearch(t *testing.T) {
 	mockLLM := new(mockLLMClient)
 	mockQueryExpander := new(MockQueryExpander)
 	mockHybrid := new(MockHybridSearcher)
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	config := usecase.DefaultRetrievalConfig()
 	config.HybridSearch.Enabled = true
@@ -470,7 +470,7 @@ func TestRetrieveContext_WithHybridSearcher_UsesInDBHybridSearch(t *testing.T) {
 
 	output, err := uc.Execute(ctx, input)
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotNil(t, output)
 	assert.Len(t, output.Contexts, 1)
 	assert.Equal(t, "Fused hybrid result", output.Contexts[0].ChunkText)
@@ -485,7 +485,7 @@ func TestRetrieveContext_EmptyUserID_ReturnsError(t *testing.T) {
 	mockEncoder := new(MockVectorEncoder)
 	mockLLM := new(mockLLMClient)
 	mockQueryExpander := new(MockQueryExpander)
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	uc := usecase.NewRetrieveContextUsecase(mockChunkRepo, mockDocRepo, mockEncoder, mockLLM, nil, mockQueryExpander, usecase.DefaultRetrievalConfig(), testLogger)
 

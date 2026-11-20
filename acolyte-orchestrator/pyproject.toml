@@ -101,22 +101,26 @@ select = [
     "SIM",   # simplify
     "RUF",   # ruff-specific
     "PL",    # pylint
+    "DTZ",   # flake8-datetimez
+    "PT",    # flake8-pytest-style
+    "LOG",   # flake8-logging
+    "G",     # flake8-logging-format
+    "T20",   # flake8-print
+    "A",     # flake8-builtins
+    "RET",   # flake8-return
+    "PERF",  # perflint
 ]
 ignore = [
-    "S101",    # assert in tests
-    "S104",    # bind all interfaces (intentional for containers)
-    "E501",    # line too long (formatter handles)
-    "RUF001",  # ambiguous unicode chars — intentional full-width JP punctuation in prompts/comments
-    "RUF002",
-    "RUF003",
+    "E501",   # Line too long (handled by formatter when possible)
+    "RUF001", # ambiguous unicode chars in strings — intentional Japanese text
+    "RUF002", # ambiguous unicode chars in docstrings — intentional Japanese text
+    "RUF003", # ambiguous unicode chars in comments — intentional Japanese text
 ]
 
 [tool.ruff.lint.per-file-ignores]
-# PLR2004: asserting against literal expected counts/values is the idiomatic
-# test pattern here — each assertion's literal is a one-off fixture expectation,
-# not a repeated business-logic constant worth naming.
-"tests/**" = ["S101", "S105", "S106", "S603", "S607", "S110", "PLR2004"]
-"evaluation/tests/**" = ["S101", "PLR2004"]
+"tests/**" = ["S101"]
+"test_*.py" = ["S101"]
+"evaluation/tests/**" = ["S101"]
 
 [tool.pyrefly]
 project-includes = ["."]

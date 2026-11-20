@@ -44,6 +44,7 @@ from tests.backend_token import sign_backend_token
 
 _TOPIC = "AI trends 2026"
 _SIGNING_KEY = Ed25519PrivateKey.generate()
+CUSTOM_CONTENT_STORE_MAX_SIZE = 42
 
 
 class FakeLLM:
@@ -276,14 +277,16 @@ def test_resume_run_announces_that_its_content_store_starts_empty() -> None:
     hydrates 0/N — the operator must be told that up front instead of inferring
     it from the failure code much later."""
     with capture_logs() as logs:
-        _hyde_generator, content_store = _build_pipeline_deps(Settings(content_store_max_size=42), MagicMock())
+        _hyde_generator, content_store = _build_pipeline_deps(
+            Settings(content_store_max_size=CUSTOM_CONTENT_STORE_MAX_SIZE), MagicMock()
+        )
 
     assert isinstance(content_store, MemoryContentStore)
     assert len(content_store) == 0
     warnings = [e for e in logs if e.get("log_level") == "warning"]
     assert warnings, "an empty content store on resume must be logged, not silent"
     assert warnings[0].get("hydration_failure_code") == "content_store_miss"
-    assert warnings[0].get("max_size") == 42
+    assert warnings[0].get("max_size") == CUSTOM_CONTENT_STORE_MAX_SIZE
 
 
 # --- Sanity: the brief round-trip resume_run.py performs stays intact ---

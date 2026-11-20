@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import pathlib
 import re
+import shutil
 import stat
 import subprocess
 import sys
@@ -20,10 +21,18 @@ SCRIPTS = ROOT / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-import safe_log  # noqa: E402
-from safe_log import check  # noqa: E402
+import safe_log  # noqa: E402 - needs the sys.path entry added above
+from safe_log import check  # noqa: E402 - needs the sys.path entry added above
 
 safe_log.reset()
+
+BASH = shutil.which("bash")
+assert BASH is not None, "bash executable not found in PATH"
+
+MODE_OWNER_RW = 0o600
+MODE_OWNER_RW_GROUP_R = 0o640
+EXPECTED_WORKLOAD_COUNT = 16
+EXPECTED_CLEANUP_CALLS = 2
 
 BOOTSTRAP = ROOT / "pki-agent" / "scripts" / "bootstrap-pki-provisioner.sh"
 VERIFY = ROOT / "pki-agent" / "scripts" / "verify-cn-allowlist.sh"
@@ -63,9 +72,11 @@ def shell_function(text: str, name: str) -> str:
     return m.group(0) if m else ""
 
 
-def run_shell_function(definition: str, call: str, *args: str) -> subprocess.CompletedProcess[bytes]:
-    return subprocess.run(
-        ["bash", "-c", f"{definition}\n{call}", "pki-test", *args],
+def run_shell_function(
+    definition: str, call: str, *args: str
+) -> subprocess.CompletedProcess[bytes]:
+    return subprocess.run(  # noqa: S603 - fixed argv built in this test
+        [BASH, "-c", f"{definition}\n{call}", "pki-test", *args],
         capture_output=True,
         check=False,
     )
@@ -74,7 +85,7 @@ def run_shell_function(definition: str, call: str, *args: str) -> subprocess.Com
 bootstrap = BOOTSTRAP.read_text(encoding="utf-8")
 verify = VERIFY.read_text(encoding="utf-8")
 
-print("subject-scoped bootstrap mapping")
+sys.stdout.write("subject-scoped bootstrap mapping\n")
 
 check(
     "bootstrap does not add a shared JWK via `step ca provisioner add pki-agent`",
@@ -83,9 +94,7 @@ check(
 check(
     "bootstrap never uses the CA root password as a provisioner --password-file",
     "--password-file" in bootstrap
-    and "step_ca_root_password" not in re.findall(
-        r"--password-file\s+(\S+)", bootstrap
-    ),
+    and "step_ca_root_password" not in re.findall(r"--password-file\s+(\S+)", bootstrap),
 )
 check(
     "bootstrap names provisioners pki-agent-<subject> via helper",
@@ -98,7 +107,7 @@ check(
 check(
     "bootstrap does not echo password file contents",
     not re.search(r"echo\s+.*password", bootstrap, re.I)
-    and "cat \"$host_pw\"" not in bootstrap
+    and 'cat "$host_pw"' not in bootstrap
     and "cat $host_pw" not in bootstrap,
 )
 check(
@@ -106,33 +115,35 @@ check(
     "localhost" in bootstrap and "skip provisioner for allowlist-only name localhost" in bootstrap,
 )
 
-print("bootstrap host password files stay readable by the deploy runner")
+sys.stdout.write("bootstrap host password files stay readable by the deploy runner\n")
 ensure_pw = shell_function(bootstrap, "ensure_host_password_file")
 with tempfile.TemporaryDirectory() as tmp:
     new_file = pathlib.Path(tmp) / "store" / "pki-agent-example-jwk.txt"
     # A restrictive caller umask must not leak into the canonical store mode.
-    created = run_shell_function(ensure_pw, 'umask 077; ensure_host_password_file "$1"', str(new_file))
+    created = run_shell_function(
+        ensure_pw, 'umask 077; ensure_host_password_file "$1"', str(new_file)
+    )
     check(
         "a new host password file is created non-empty with mode 0600",
         created.returncode == 0
         and new_file.is_file()
         and new_file.stat().st_size > 0
-        and stat.S_IMODE(new_file.stat().st_mode) == 0o600,
+        and stat.S_IMODE(new_file.stat().st_mode) == MODE_OWNER_RW,
         f"rc={created.returncode}",
     )
     existing = pathlib.Path(tmp) / "pki-agent-existing-jwk.txt"
     existing.write_bytes(b"existing-placeholder\n")
-    existing.chmod(0o640)
+    existing.chmod(MODE_OWNER_RW_GROUP_R)
     kept = run_shell_function(ensure_pw, 'ensure_host_password_file "$1"', str(existing))
     check(
         "an existing host password file keeps its bytes and its mode",
         kept.returncode == 0
         and existing.read_bytes() == b"existing-placeholder\n"
-        and stat.S_IMODE(existing.stat().st_mode) == 0o640,
+        and stat.S_IMODE(existing.stat().st_mode) == MODE_OWNER_RW_GROUP_R,
         f"rc={kept.returncode}",
     )
 
-print("the X.509 template never touches a fixed host path")
+sys.stdout.write("the X.509 template never touches a fixed host path\n")
 # The template decides which SANs a provisioner may sign. A predictable host
 # path under /tmp can be pre-created or symlinked by any local user between the
 # write and the `docker cp`, so the bytes are streamed into step-ca instead.
@@ -187,13 +198,17 @@ check(
 )
 check(
     "all 16 production workload CNs are in the allowlist",
-    set(WORKLOAD).issubset(set(boot_subjects)) and len(WORKLOAD) == 16,
+    set(WORKLOAD).issubset(set(boot_subjects)) and len(WORKLOAD) == EXPECTED_WORKLOAD_COUNT,
     f"missing={sorted(set(WORKLOAD) - set(boot_subjects))}",
 )
 
-print("compose declares 16 subject-scoped JWK secrets; no shared workload provisioner")
+sys.stdout.write("compose declares 16 subject-scoped JWK secrets; no shared workload provisioner\n")
 
-from compose_include import load_yaml, production_compose_files, production_services  # noqa: E402
+from compose_include import (  # noqa: E402 - needs the sys.path entry added above
+    load_yaml,
+    production_compose_files,
+    production_services,
+)
 
 
 def _env_map(svc: dict) -> dict[str, str]:
@@ -222,12 +237,12 @@ def _secret_names(svc: dict) -> set[str]:
     return names
 
 
-compose_secrets: dict[str, dict] = {}
-for path in production_compose_files():
-    data = load_yaml(path)
-    for name, spec in (data.get("secrets") or {}).items():
-        if isinstance(spec, dict):
-            compose_secrets[name] = spec
+compose_secrets: dict[str, dict] = {
+    name: spec
+    for path in production_compose_files()
+    for name, spec in (load_yaml(path).get("secrets") or {}).items()
+    if isinstance(spec, dict)
+}
 
 for subject in WORKLOAD:
     secret_id = f"pki-agent-{subject}-jwk"
@@ -277,7 +292,7 @@ for subject in WORKLOAD:
         f"PKI_ENROLLMENT={env.get('PKI_ENROLLMENT')!r} provisioner={env.get('STEP_CA_PROVISIONER')!r}",
     )
 
-print("verify script source")
+sys.stdout.write("verify script source\n")
 check(
     "verify mints with a subject-scoped provisioner helper, not a shared name",
     "provisioner_name_for" in verify and "SMOKE_PROVISIONER" in verify,
@@ -291,7 +306,7 @@ check(
     "SMOKE_SUBJECT=alt-backend" in verify,
 )
 
-print("verify rejection assertions prove no certificate was issued")
+sys.stdout.write("verify rejection assertions prove no certificate was issued\n")
 attempt = shell_function(verify, "attempt_issue")
 rejected_with = shell_function(verify, "rejected_with")
 check(
@@ -300,7 +315,7 @@ check(
 )
 check(
     "attempt_issue clears /tmp/c.pem /tmp/k.pem before and after the request",
-    attempt.count("rm -f /tmp/c.pem /tmp/k.pem") >= 2,
+    attempt.count("rm -f /tmp/c.pem /tmp/k.pem") >= EXPECTED_CLEANUP_CALLS,
 )
 check(
     "attempt_issue reports NO_TOKEN instead of requesting with an empty token",
@@ -308,7 +323,10 @@ check(
 )
 check(
     "attempt_issue says REJECTED only on non-zero exit with no cert file, else ISSUED",
-    "-ne 0" in attempt and "! -e /tmp/c.pem" in attempt and "REJECTED" in attempt and "ISSUED" in attempt,
+    "-ne 0" in attempt
+    and "! -e /tmp/c.pem" in attempt
+    and "REJECTED" in attempt
+    and "ISSUED" in attempt,
 )
 check(
     "verify no longer greps a pipe whose exit status is discarded",
@@ -332,7 +350,12 @@ REJECTION_CASES = (
     ("rejected for another reason", "not allowed by policy\nREJECTED\n", "sub mismatch", False),
     ("no token minted", "NO_TOKEN\n", "sub mismatch", False),
     ("no output", "", "sub mismatch", False),
-    ("verdict not last", "sub mismatch\nREJECTED\nError response from daemon\n", "sub mismatch", False),
+    (
+        "verdict not last",
+        "sub mismatch\nREJECTED\nError response from daemon\n",
+        "sub mismatch",
+        False,
+    ),
 )
 for label, output, expected, should_pass in REJECTION_CASES:
     result = run_shell_function(rejected_with, 'rejected_with "$1" "$2"', output, expected)
@@ -342,7 +365,7 @@ for label, output, expected, should_pass in REJECTION_CASES:
         f"rc={result.returncode}",
     )
 
-print("verify leaves no signed leaf or key behind in the step-ca container")
+sys.stdout.write("verify leaves no signed leaf or key behind in the step-ca container\n")
 check(
     "every step ca certificate call goes through attempt_issue's cleanup",
     verify.count("step ca certificate") == 1 and attempt.count("step ca certificate") == 1,
@@ -372,7 +395,13 @@ with tempfile.TemporaryDirectory() as tmp:
     fake_step.write_text(FAKE_STEP, encoding="utf-8")
     fake_step.chmod(0o755)
     cert, key = tmpdir / "c.pem", tmpdir / "k.pem"
-    local_attempt = attempt.replace("/tmp/c.pem", str(cert)).replace("/tmp/k.pem", str(key))
+    local_attempt = attempt.replace(
+        "/tmp/c.pem",  # noqa: S108 - test fixture value
+        str(cert),
+    ).replace(
+        "/tmp/k.pem",  # noqa: S108 - test fixture value
+        str(key),
+    )
     fake_docker = 'docker() { shift 4; PATH="$FAKE_BIN:$PATH" sh -c "$3"; }'
     for mode, verdict in (("issue", "ISSUED"), ("reject", "REJECTED"), ("notoken", "NO_TOKEN")):
         cert.write_text("stale\n", encoding="utf-8")
@@ -380,7 +409,7 @@ with tempfile.TemporaryDirectory() as tmp:
         result = run_shell_function(
             f"{fake_docker}\n{local_attempt}",
             'export MODE="$1" FAKE_BIN="$2"; STEP_CA=step-ca SMOKE_PROVISIONER=pki-agent-alt-backend '
-            'SMOKE_PW_CA=/nonexistent; attempt_issue alt-backend alt-backend',
+            "SMOKE_PW_CA=/nonexistent; attempt_issue alt-backend alt-backend",
             mode,
             str(tmpdir / "bin"),
         )
@@ -391,7 +420,7 @@ with tempfile.TemporaryDirectory() as tmp:
             f"last={lines[-1:]!r} cert={cert.exists()} key={key.exists()}",
         )
 
-print("provisioner claims and revocation prerequisites")
+sys.stdout.write("provisioner claims and revocation prerequisites\n")
 check(
     "bootstrap sets explicit default and max leaf durations on every provisioner",
     "--x509-default-dur" in bootstrap and "--x509-max-dur" in bootstrap,
@@ -418,7 +447,7 @@ check(
 )
 db_fn = shell_function(bootstrap, "check_certificate_database")
 for label, rc, expect_msg in (("db present", 0, False), ("db absent", 1, True)):
-    fake = f'docker() {{ return {rc}; }}\nSTEP_CA=x CA_CONFIG=/c.json'
+    fake = f"docker() {{ return {rc}; }}\nSTEP_CA=x CA_CONFIG=/c.json"
     res = run_shell_function(f"{fake}\n{db_fn}", "check_certificate_database")
     msg = res.stderr.decode("utf-8", "replace")
     check(
@@ -427,8 +456,7 @@ for label, rc, expect_msg in (("db present", 0, False), ("db absent", 1, True)):
         f"rc={res.returncode} stderr={msg!r}",
     )
 
-print("compose-audit path coverage for provisioner scripts")
-from compose_include import load_yaml  # noqa: E402
+sys.stdout.write("compose-audit path coverage for provisioner scripts\n")
 
 workflow_cfg = load_yaml(WORKFLOW) if WORKFLOW.is_file() else {}
 on = workflow_cfg.get("on")
@@ -445,5 +473,5 @@ for event in ("push", "pull_request"):
         f"missing {PKI_SCRIPTS_GLOB}; provisioner contract would skip",
     )
 
-print(f"\n{safe_log.PASS} passed, {safe_log.FAIL} failed")
+sys.stdout.write(f"\n{safe_log.PASS} passed, {safe_log.FAIL} failed\n")
 sys.exit(1 if safe_log.FAIL else 0)

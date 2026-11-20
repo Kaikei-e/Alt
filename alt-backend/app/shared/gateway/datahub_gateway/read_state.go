@@ -8,6 +8,7 @@ import (
 	"alt/domain"
 	datahubv1 "alt/gen/proto/services/datahub/v1"
 	"alt/gen/proto/services/datahub/v1/datahubv1connect"
+	"alt/utils/safeconv"
 
 	"connectrpc.com/connect"
 	"github.com/google/uuid"
@@ -197,7 +198,7 @@ func (g *ReadStateGateway) Unsubscribe(ctx context.Context, userID uuid.UUID, fe
 func (g *ReadStateGateway) SetSubscriptionDailyCap(ctx context.Context, userID uuid.UUID, feedLinkID uuid.UUID, dailyCap *int) error {
 	var pbCap *int32
 	if dailyCap != nil {
-		v := int32(*dailyCap)
+		v := safeconv.Int32(*dailyCap)
 		pbCap = &v
 	}
 	_, err := g.client.SetSubscriptionDailyCap(ctx, connect.NewRequest(&datahubv1.SetSubscriptionDailyCapRequest{

@@ -12,6 +12,23 @@ from alt_metrics.config import (
     ReportConfig,
 )
 
+_DEFAULT_ERROR_RATE_CRITICAL = 10.0
+_DEFAULT_ERROR_RATE_HIGH = 5.0
+_DEFAULT_ERROR_RATE_WARNING = 1.0
+_DEFAULT_ERROR_RATE_MINOR = 0.5
+_DEFAULT_LATENCY_CRITICAL_MS = 10000
+_DEFAULT_LATENCY_HIGH_MS = 5000
+_DEFAULT_LATENCY_WARNING_MS = 1000
+_DEFAULT_LATENCY_MINOR_MS = 500
+_DEFAULT_LOG_GAP_CRITICAL_MIN = 10
+_DEFAULT_LOG_GAP_WARNING_MIN = 5
+
+_CUSTOM_ERROR_RATE_CRITICAL = 20.0
+_CUSTOM_LATENCY_CRITICAL_MS = 15000
+
+_DEFAULT_CH_PORT = 8123
+_CUSTOM_CH_PORT = 9000
+
 
 class TestHealthThresholds:
     """HealthThresholds のテスト"""
@@ -19,16 +36,16 @@ class TestHealthThresholds:
     def test_default_values(self) -> None:
         """デフォルト値が正しく設定される"""
         t = HealthThresholds()
-        assert t.error_rate_critical == 10.0
-        assert t.error_rate_high == 5.0
+        assert t.error_rate_critical == _DEFAULT_ERROR_RATE_CRITICAL
+        assert t.error_rate_high == _DEFAULT_ERROR_RATE_HIGH
         assert t.error_rate_warning == 1.0
-        assert t.error_rate_minor == 0.5
-        assert t.latency_critical_ms == 10000
-        assert t.latency_high_ms == 5000
-        assert t.latency_warning_ms == 1000
-        assert t.latency_minor_ms == 500
-        assert t.log_gap_critical_min == 10
-        assert t.log_gap_warning_min == 5
+        assert t.error_rate_minor == _DEFAULT_ERROR_RATE_MINOR
+        assert t.latency_critical_ms == _DEFAULT_LATENCY_CRITICAL_MS
+        assert t.latency_high_ms == _DEFAULT_LATENCY_HIGH_MS
+        assert t.latency_warning_ms == _DEFAULT_LATENCY_WARNING_MS
+        assert t.latency_minor_ms == _DEFAULT_LATENCY_MINOR_MS
+        assert t.log_gap_critical_min == _DEFAULT_LOG_GAP_CRITICAL_MIN
+        assert t.log_gap_warning_min == _DEFAULT_LOG_GAP_WARNING_MIN
         assert t.slo_error_rate_threshold == 1.0
 
     def test_from_env_with_no_env_vars(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -39,23 +56,23 @@ class TestHealthThresholds:
                 monkeypatch.delenv(key, raising=False)
 
         t = HealthThresholds.from_env()
-        assert t.error_rate_critical == 10.0
+        assert t.error_rate_critical == _DEFAULT_ERROR_RATE_CRITICAL
 
     def test_from_env_with_custom_values(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """環境変数からカスタム値を読み込む"""
-        monkeypatch.setenv("METRICS_THRESHOLD_ERROR_RATE_CRITICAL", "20.0")
-        monkeypatch.setenv("METRICS_THRESHOLD_LATENCY_CRITICAL_MS", "15000")
+        monkeypatch.setenv("METRICS_THRESHOLD_ERROR_RATE_CRITICAL", str(_CUSTOM_ERROR_RATE_CRITICAL))
+        monkeypatch.setenv("METRICS_THRESHOLD_LATENCY_CRITICAL_MS", str(_CUSTOM_LATENCY_CRITICAL_MS))
 
         t = HealthThresholds.from_env()
-        assert t.error_rate_critical == 20.0
-        assert t.latency_critical_ms == 15000
+        assert t.error_rate_critical == _CUSTOM_ERROR_RATE_CRITICAL
+        assert t.latency_critical_ms == _CUSTOM_LATENCY_CRITICAL_MS
 
     def test_from_env_ignores_invalid_values(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """不正な値は無視してデフォルト値を使用"""
         monkeypatch.setenv("METRICS_THRESHOLD_ERROR_RATE_CRITICAL", "not_a_number")
 
         t = HealthThresholds.from_env()
-        assert t.error_rate_critical == 10.0
+        assert t.error_rate_critical == _DEFAULT_ERROR_RATE_CRITICAL
 
 
 class TestClickHouseConfig:
@@ -65,7 +82,7 @@ class TestClickHouseConfig:
         """デフォルト値が正しく設定される"""
         c = ClickHouseConfig()
         assert c.host == "localhost"
-        assert c.port == 8123
+        assert c.port == _DEFAULT_CH_PORT
         assert c.user == "default"
         assert c.password == ""
         assert c.database == "rask_logs"
@@ -78,21 +95,21 @@ class TestClickHouseConfig:
 
         c = ClickHouseConfig.from_env()
         assert c.host == "localhost"
-        assert c.port == 8123
+        assert c.port == _DEFAULT_CH_PORT
 
     def test_from_env_with_custom_values(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """環境変数からカスタム値を読み込む"""
         monkeypatch.setenv("APP_CLICKHOUSE_HOST", "clickhouse.example.com")
-        monkeypatch.setenv("APP_CLICKHOUSE_PORT", "9000")
+        monkeypatch.setenv("APP_CLICKHOUSE_PORT", str(_CUSTOM_CH_PORT))
         monkeypatch.setenv("APP_CLICKHOUSE_USER", "admin")
         monkeypatch.setenv("APP_CLICKHOUSE_PASSWORD", "secret")
         monkeypatch.setenv("APP_CLICKHOUSE_DATABASE", "custom_db")
 
         c = ClickHouseConfig.from_env()
         assert c.host == "clickhouse.example.com"
-        assert c.port == 9000
+        assert c.port == _CUSTOM_CH_PORT
         assert c.user == "admin"
-        assert c.password == "secret"
+        assert c.password == "secret"  # noqa: S105 - test fixture value, not a credential
         assert c.database == "custom_db"
 
     def test_from_env_reads_password_from_file(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -104,7 +121,7 @@ class TestClickHouseConfig:
         monkeypatch.delenv("APP_CLICKHOUSE_PASSWORD", raising=False)
 
         c = ClickHouseConfig.from_env()
-        assert c.password == "file_password"
+        assert c.password == "file_password"  # noqa: S105 - test fixture value, not a credential
 
     def test_file_password_takes_precedence(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         """_FILEはプレーン環境変数より優先される"""
@@ -115,7 +132,7 @@ class TestClickHouseConfig:
         monkeypatch.setenv("APP_CLICKHOUSE_PASSWORD_FILE", str(secret_file))
 
         c = ClickHouseConfig.from_env()
-        assert c.password == "file_password"
+        assert c.password == "file_password"  # noqa: S105 - test fixture value, not a credential
 
 
 class TestReportConfig:
@@ -131,12 +148,12 @@ class TestReportConfig:
     def test_from_env_with_custom_values(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """環境変数からカスタム値を読み込む"""
         monkeypatch.setenv("METRICS_REPORT_LANGUAGE", "en")
-        monkeypatch.setenv("METRICS_OUTPUT_DIR", "/tmp/reports")
+        monkeypatch.setenv("METRICS_OUTPUT_DIR", "/tmp/reports")  # noqa: S108 - fixture string; nothing is written there
         monkeypatch.setenv("METRICS_INCLUDE_RAW_DATA", "true")
 
         r = ReportConfig.from_env()
         assert r.language == "en"
-        assert r.output_dir == Path("/tmp/reports")
+        assert r.output_dir == Path("/tmp/reports")  # noqa: S108 - fixture string; nothing is written there
         assert r.include_raw_data is True
 
 

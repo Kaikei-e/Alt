@@ -10,7 +10,7 @@ import structlog
 
 from ..infra.config import Settings
 from ..infra.db.session import DatabaseResources, create_database_resources
-from .genre_learning import GenreLearningService, build_learning_payload
+from .genre_learning import GenreLearningResult, GenreLearningService, build_learning_payload
 from .learning_client import LearningClient
 from .tag_label_graph_builder import TagLabelGraphBuilder
 
@@ -78,10 +78,9 @@ class LearningScheduler:
             except asyncio.CancelledError:
                 break
             except Exception as exc:
-                logger.error(
+                logger.exception(
                     "learning scheduler task failed",
                     error=str(exc),
-                    exc_info=True,
                 )
 
             if not self._running:
@@ -127,11 +126,10 @@ class LearningScheduler:
                                 edge_count=edge_count,
                             )
                 except Exception as exc:
-                    logger.error(
+                    logger.exception(
                         "failed to rebuild tag_label_graph",
                         error=str(exc),
                         error_type=type(exc).__name__,
-                        exc_info=True,
                     )
                     # Continue with learning even if graph rebuild fails
 
@@ -217,11 +215,10 @@ class LearningScheduler:
                         total_records=learning_result.summary.total_records,
                     )
                 except Exception as send_exc:
-                    logger.error(
+                    logger.exception(
                         "failed to send learning payload",
                         error=str(send_exc),
                         error_type=type(send_exc).__name__,
-                        exc_info=True,
                     )
                     raise
                 finally:
@@ -230,15 +227,14 @@ class LearningScheduler:
 
         except Exception as exc:
             duration = (datetime.now(UTC) - start_time).total_seconds()
-            logger.error(
+            logger.exception(
                 "scheduled learning task failed",
                 error=str(exc),
                 error_type=type(exc).__name__,
                 duration_seconds=duration,
-                exc_info=True,
             )
 
-    def _build_learning_payload(self, result) -> dict[str, object]:
+    def _build_learning_payload(self, result: GenreLearningResult) -> dict[str, object]:
         """Build the learning payload for recap-worker.
 
         Delegates to the shared builder used by AdminJobService so the

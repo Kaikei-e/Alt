@@ -3,7 +3,6 @@ package datahubapi
 import (
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"testing"
 	"time"
@@ -190,7 +189,7 @@ func newFeedHandler(f feedFakes) (*Handler, feedFakes) {
 		f.feed = &fakeFeedPort{}
 	}
 
-	h := &Handler{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	h := &Handler{logger: slog.New(slog.DiscardHandler)}
 	WithFeedCapabilities(f.feedLink, f.availability, f.feed)(h)
 	return h, f
 }
@@ -539,14 +538,14 @@ func TestFeedReadsSurfaceAsInternalRatherThanAsAnEmptyList(t *testing.T) {
 }
 
 func TestListFeedsCursor_UserBFeedListingNeverCarriesUserAArticleID(t *testing.T) {
-	logger.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger.Logger = slog.New(slog.DiscardHandler)
 
 	mock, err := pgxmock.NewPool()
 	require.NoError(t, err)
 	defer mock.Close()
 
 	feedGW := datahub_capability_gateway.NewFeedGateway(alt_db.NewAltDBRepository(mock))
-	h := &Handler{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	h := &Handler{logger: slog.New(slog.DiscardHandler)}
 	WithFeedCapabilities(&fakeFeedLinkPort{}, &fakeFeedLinkAvailabilityPort{}, feedGW)(h)
 
 	userA := uuid.MustParse("11111111-1111-4111-8111-111111111111")

@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "alt-perf/**"
+      - "scripts/lint/**"
       - ".github/workflows/alt-perf.yaml"
       - ".github/workflows/reusable-test-deno.yaml"
       - "!**/CLAUDE.md"
@@ -14,6 +15,7 @@ on:
     branches: [main]
     paths:
       - "alt-perf/**"
+      - "scripts/lint/**"
       - ".github/workflows/alt-perf.yaml"
       - ".github/workflows/reusable-test-deno.yaml"
       - "!**/CLAUDE.md"
@@ -33,16 +35,15 @@ jobs:
   # running stack (not started in this gate; the scheduled k6 smoke workflow
   # was removed because it ran against a backend that was never started).
   #
-  # NOTE: `check-fmt` and `check-lint` stay off. `deno fmt --check` reports 41
-  # of 58 files unformatted, `deno lint` 13 findings, and `deno check main.ts`
-  # fails on src/report/cli-reporter.ts. `deno test` still type-checks every
-  # module the tests import, so this gate is real rather than decorative. Turn
-  # the other two on as that debt is cleared.
+  # NOTE: Static checks run in a separate `lint` job via `./scripts/lint/run.sh`
+  # using the Deno version pinned in `alt-perf/.dvmrc` (matching
+  # `alt-perf/Dockerfile`), so pre-existing `deno lint` findings fail `lint`
+  # without blocking `test-deno`. `deno check main.ts` fails with 1 error in
+  # `src/report/cli-reporter.ts` and is not part of CI; `deno test` still
+  # type-checks every module the tests import.
   test:
     uses: ./.github/workflows/reusable-test-deno.yaml
     with:
       working-directory: "alt-perf"
-      # Must match the Deno version in alt-perf/Dockerfile FROM line.
-      deno-version: "v2.4.0"
       sparse-checkout: "alt-perf"
       test-command: "deno test --allow-all tests/"

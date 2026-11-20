@@ -72,12 +72,13 @@ func (s *StepCACLI) Issue(ctx context.Context, subject string, sans []string) (c
 	}
 	tokenArgs = append(tokenArgs, s.TokenExtraArgs...)
 	var tokOut bytes.Buffer
+	// #nosec G204 -- step binary and args come from agent config and validateCLIArg-checked subject/SANs
 	cmd := exec.CommandContext(ctx, step, tokenArgs...)
 	cmd.Stdout = &tokOut
 	cmd.Stderr = io.Discard
 	if err := cmd.Run(); err != nil {
 		slog.Debug("step ca token failed", "subject", subject, "reason", "step_cli_failed")
-		return nil, nil, fmt.Errorf("%w: token command failed: %v", domain.ErrTokenSign, err)
+		return nil, nil, fmt.Errorf("%w: token command failed: %w", domain.ErrTokenSign, err)
 	}
 	ott := bytes.TrimSpace(tokOut.Bytes())
 	if len(ott) == 0 {
@@ -109,17 +110,20 @@ func (s *StepCACLI) Issue(ctx context.Context, subject string, sans []string) (c
 		"--force",
 	}
 	certArgs = append(certArgs, s.CertExtraArgs...)
+	// #nosec G204 -- step binary and args come from agent config and validateCLIArg-checked subject/SANs
 	cmd = exec.CommandContext(ctx, step, certArgs...)
 	cmd.Stderr = io.Discard
 	if err := cmd.Run(); err != nil {
 		slog.Debug("step ca certificate failed", "subject", subject, "reason", "step_cli_failed")
-		return nil, nil, fmt.Errorf("%w: certificate command failed: %v", domain.ErrCARejected, err)
+		return nil, nil, fmt.Errorf("%w: certificate command failed: %w", domain.ErrCARejected, err)
 	}
 
+	// #nosec G304 -- certTmp is filepath.Join of agent tempDir and fixed filename
 	certPEM, err = os.ReadFile(certTmp)
 	if err != nil {
 		return nil, nil, fmt.Errorf("read issued cert: %w", err)
 	}
+	// #nosec G304 -- keyTmp is filepath.Join of agent tempDir and fixed filename
 	keyPEM, err = os.ReadFile(keyTmp)
 	if err != nil {
 		return nil, nil, fmt.Errorf("read issued key: %w", err)

@@ -31,14 +31,14 @@ func TestSSRFValidator_CreateSecureHTTPClient(t *testing.T) {
 	assert.Equal(t, 30*time.Second, client.Timeout)
 
 	// Test a valid redirect (should be allowed)
-	req := httptest.NewRequest("GET", "http://93.184.216.34", nil)
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "http://93.184.216.34", nil)
 	err := client.CheckRedirect(req, nil)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Test an invalid redirect (should be blocked)
-	reqBlocked := httptest.NewRequest("GET", "http://169.254.169.254/latest/meta-data/", nil)
+	reqBlocked := httptest.NewRequestWithContext(t.Context(), "GET", "http://169.254.169.254/latest/meta-data/", nil)
 	err = client.CheckRedirect(reqBlocked, nil)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "redirect blocked by SSRF policy")
 }
 
@@ -123,7 +123,7 @@ func TestSSRFValidator_ComprehensiveAttackScenarios(t *testing.T) {
 			err = validator.ValidateURL(context.Background(), u)
 
 			if tt.wantErr {
-				assert.Error(t, err, "Expected error for: %s", tt.description)
+				require.Error(t, err, "Expected error for: %s", tt.description)
 				if tt.errorType != "" {
 					assert.Contains(t, err.Error(), tt.errorType, "Test: %s", tt.description)
 				}
@@ -140,20 +140,20 @@ func TestSSRFValidator_ComprehensiveAttackScenarios(t *testing.T) {
 func TestSSRFValidator_ValidateDialIP(t *testing.T) {
 	validator := NewSSRFValidator()
 
-	assert.Error(t, validator.ValidateDialIP("tcp", "127.0.0.1:80"))
-	assert.Error(t, validator.ValidateDialIP("tcp", "10.0.0.1:80"))
-	assert.Error(t, validator.ValidateDialIP("tcp", "169.254.169.254:80"))
-	assert.Error(t, validator.ValidateDialIP("tcp", "not-an-ip:80"))
-	assert.Error(t, validator.ValidateDialIP("tcp", "bad-format"))
+	require.Error(t, validator.ValidateDialIP("tcp", "127.0.0.1:80"))
+	require.Error(t, validator.ValidateDialIP("tcp", "10.0.0.1:80"))
+	require.Error(t, validator.ValidateDialIP("tcp", "169.254.169.254:80"))
+	require.Error(t, validator.ValidateDialIP("tcp", "not-an-ip:80"))
+	require.Error(t, validator.ValidateDialIP("tcp", "bad-format"))
 	assert.NoError(t, validator.ValidateDialIP("tcp", "8.8.8.8:80"))
 }
 
 func TestSSRFValidator_ValidateConnectionAddress(t *testing.T) {
 	validator := NewSSRFValidator()
 
-	assert.Error(t, validator.validateConnectionAddress("tcp", "invalid-format"))
-	assert.Error(t, validator.validateConnectionAddress("tcp", "not-an-ip:443"))
-	assert.Error(t, validator.validateConnectionAddress("tcp", "127.0.0.1:443"))
-	assert.Error(t, validator.validateConnectionAddress("tcp", "8.8.8.8:22")) // Port 22 blocked
+	require.Error(t, validator.validateConnectionAddress("tcp", "invalid-format"))
+	require.Error(t, validator.validateConnectionAddress("tcp", "not-an-ip:443"))
+	require.Error(t, validator.validateConnectionAddress("tcp", "127.0.0.1:443"))
+	require.Error(t, validator.validateConnectionAddress("tcp", "8.8.8.8:22")) // Port 22 blocked
 	assert.NoError(t, validator.validateConnectionAddress("tcp", "8.8.8.8:443"))
 }

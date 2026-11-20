@@ -7,7 +7,7 @@ import (
 
 	"pre-processor/internal/auth"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 type ContextKey string
@@ -26,7 +26,7 @@ func NewAuthMiddleware(authClient *auth.Client) *AuthMiddleware {
 
 func (m *AuthMiddleware) RequireAuth() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+		return func(c *echo.Context) error {
 			authHeader := c.Request().Header.Get("Authorization")
 			if authHeader == "" {
 				return echo.NewHTTPError(http.StatusUnauthorized, "Authorization header required")
@@ -58,7 +58,7 @@ func (m *AuthMiddleware) RequireServiceAuth() echo.MiddlewareFunc {
 // オプショナル認証ミドルウェア
 func (m *AuthMiddleware) OptionalAuth() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+		return func(c *echo.Context) error {
 			authHeader := c.Request().Header.Get("Authorization")
 			if authHeader == "" {
 				// 認証なしで続行

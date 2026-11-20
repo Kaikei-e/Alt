@@ -19,6 +19,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"sync"
@@ -98,7 +99,8 @@ func (g *Gateway) FetchOgImage(ctx context.Context, pageURL string) (string, dom
 		// robots.txt being unreachable is not permission to ignore it, but it
 		// is also not a refusal by the site. Treat it as a transient fetch
 		// problem so it is retried rather than recorded as a standing no.
-		return "", domain.OgImageFetchError, nil
+		slog.WarnContext(ctx, "og_resolve_gateway: robots check failed", "host", parsed.Host, "error", err)
+		return "", domain.OgImageFetchError, nil //nolint:nilerr // robots.txt failure is surfaced as OgImageFetchError refusal rather than fatal error
 	}
 	if !allowed {
 		return "", domain.OgImageRefusedByRobots, nil
@@ -170,7 +172,8 @@ func (g *Gateway) robotsGroup(ctx context.Context, target *url.URL) (*robotstxt.
 func (g *Gateway) get(ctx context.Context, target *url.URL, referer string) (string, domain.OgImageRefusal, error) {
 	body, status, err := g.rawGetWithReferer(ctx, target, referer)
 	if err != nil {
-		return "", domain.OgImageFetchError, nil
+		slog.WarnContext(ctx, "og_resolve_gateway: page fetch failed", "host", target.Host, "error", err)
+		return "", domain.OgImageFetchError, nil //nolint:nilerr // origin fetch failure is surfaced as OgImageFetchError refusal
 	}
 
 	refusal, ok := mapHTTPStatusToRefusal(status)

@@ -8,7 +8,7 @@ import (
 )
 
 func TestHandleFeed_NormalOperation(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/feeds/001/rss.xml", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/feeds/001/rss.xml", nil)
 	req.Host = "mock-rss-001:8080"
 	w := httptest.NewRecorder()
 
@@ -27,7 +27,7 @@ func TestHandleFeed_NormalOperation(t *testing.T) {
 }
 
 func TestHandleFeed_XSSInFeedID(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/feeds/<script>alert(1)</script>/rss.xml", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/feeds/<script>alert(1)</script>/rss.xml", nil)
 	w := httptest.NewRecorder()
 
 	handleFeed(w, req)
@@ -38,7 +38,7 @@ func TestHandleFeed_XSSInFeedID(t *testing.T) {
 }
 
 func TestHandleFeed_XSSInHost(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/feeds/001/rss.xml", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/feeds/001/rss.xml", nil)
 	req.Host = `"><script>alert(1)</script>`
 	w := httptest.NewRecorder()
 
@@ -57,7 +57,7 @@ func TestHandleFeed_XSSInHost(t *testing.T) {
 }
 
 func TestHandleArticle_NormalOperation(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/articles/feed-001/item-1", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/articles/feed-001/item-1", nil)
 	req.Host = "mock-rss-001:8080"
 	w := httptest.NewRecorder()
 
@@ -73,7 +73,7 @@ func TestHandleArticle_NormalOperation(t *testing.T) {
 }
 
 func TestHandleArticle_XSSInFeedID(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/articles/feed-<script>alert(1)</script>/item-1", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/articles/feed-<script>alert(1)</script>/item-1", nil)
 	w := httptest.NewRecorder()
 
 	handleArticle(w, req)
@@ -84,7 +84,7 @@ func TestHandleArticle_XSSInFeedID(t *testing.T) {
 }
 
 func TestHandleArticle_XSSInHost(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/articles/feed-001/item-1", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/articles/feed-001/item-1", nil)
 	req.Host = `"><script>alert(1)</script>`
 	w := httptest.NewRecorder()
 
@@ -103,7 +103,7 @@ func TestHandleArticle_XSSInHost(t *testing.T) {
 }
 
 func TestHandleArticle_InvalidItemNum(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/articles/feed-001/item-abc", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/articles/feed-001/item-abc", nil)
 	w := httptest.NewRecorder()
 
 	handleArticle(w, req)

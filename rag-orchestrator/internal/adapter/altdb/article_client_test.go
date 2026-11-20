@@ -2,7 +2,6 @@ package altdb
 
 import (
 	"context"
-	"io"
 	"log/slog"
 	"testing"
 
@@ -15,7 +14,7 @@ import (
 )
 
 func testLogger() *slog.Logger {
-	return slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelError}))
+	return slog.New(slog.DiscardHandler)
 }
 
 // stubDataHubClient records the ListRecentArticles request and returns a
@@ -79,8 +78,8 @@ func TestDataHubArticleClient_GetRecentArticles_SendsBothOptionalFields(t *testi
 				"within_hours must be sent explicitly, never left to the server default")
 			require.NotNil(t, stub.gotRequest.Limit,
 				"limit must be sent explicitly; an unset limit means 100, not unlimited")
-			assert.Equal(t, tt.wantWithinHours, *stub.gotRequest.WithinHours)
-			assert.Equal(t, tt.wantLimit, *stub.gotRequest.Limit)
+			assert.Equal(t, tt.wantWithinHours, stub.gotRequest.GetWithinHours())
+			assert.Equal(t, tt.wantLimit, stub.gotRequest.GetLimit())
 		})
 	}
 }

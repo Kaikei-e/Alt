@@ -7,6 +7,7 @@ import (
 
 	rssFeed "github.com/mmcdole/gofeed"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCalculate403Backoff(t *testing.T) {
@@ -143,7 +144,7 @@ func TestValidateFeedURL_Pure(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			parsed, err := url.Parse(tt.rawURL)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			validateErr := validateFeedURL(*parsed)
 			if tt.wantErr {
 				assert.Error(t, validateErr)

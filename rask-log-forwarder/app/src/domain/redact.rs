@@ -1,38 +1,46 @@
 use super::log_entry::EnrichedLogEntry;
 use regex::{Captures, Regex};
 use std::borrow::Cow;
-use std::sync::LazyLock;
 
 const REDACTED: &str = "[REDACTED]";
 
-static QUERY_PARAM: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r#"([?&;])([A-Za-z0-9_.\-]+)=([^&\s"'#]*)"#).unwrap());
+/// Compiled regex patterns used to strip credentials from log entries before
+/// they leave the host. Constructed once at startup via [`compile_patterns`]
+/// so any invalid pattern fails startup instead of silently disabling
+/// redaction.
+#[derive(Debug, Clone)]
+pub struct RedactionPatterns {
+    query_param: Regex,
+    bare_key_value: Regex,
+    cookie_header: Regex,
+    token_header: Regex,
+    json_container_key: Regex,
+    json_string_pair: Regex,
+}
 
-static BARE_KEY_VALUE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r#"(^|[\s,])([A-Za-z0-9_.\-]+)=([^\s,&;"'#]+)"#).unwrap());
-
-// Cookie headers hold `name=value; name=value` pairs, so the value runs to the
-// end of the line or the next unescaped quote.
-static COOKIE_HEADER: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"(?i)\b(set-cookie|cookie)(\s*[:=]\s*)(?:[^\r\n"\\]|\\.)*"#).unwrap()
-});
-
-// Single-credential headers: an optional auth scheme plus one token.
-static TOKEN_HEADER: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(
-        r#"(?i)\b((?:proxy-)?authorization\s*[:=]\s*(?:(?:bearer|basic|digest|token|negotiate)\s+)?|x-[a-z0-9-]*-(?:token|secret|key)\s*[:=]\s*)(?:[^\s,;"\\]|\\.)+"#,
-    )
-    .unwrap()
-});
-
-static JSON_CONTAINER_KEY: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r#""([A-Za-z0-9_.\-]+)"\s*:\s*[\[{]"#).unwrap());
-
-static JSON_STRING_PAIR: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r#""([A-Za-z0-9_.\-]+)"(\s*:\s*)"(?:[^"\\]|\\.)*""#).unwrap());
+/// Compile every secret-redaction regex once at startup. Any pattern that
+/// fails to compile is propagated as an error rather than skipped.
+///
+/// # Errors
+///
+/// Returns [`regex::Error`] if any built-in redaction pattern fails to compile.
+pub fn compile_patterns() -> Result<RedactionPatterns, regex::Error> {
+    Ok(RedactionPatterns {
+        query_param: Regex::new(r#"([?&;])([A-Za-z0-9_.\-]+)=([^&\s"'#]*)"#)?,
+        bare_key_value: Regex::new(r#"(^|[\s,])([A-Za-z0-9_.\-]+)=([^\s,&;"'#]+)"#)?,
+        // Cookie headers hold `name=value; name=value` pairs, so the value runs to the
+        // end of the line or the next unescaped quote.
+        cookie_header: Regex::new(r#"(?i)\b(set-cookie|cookie)(\s*[:=]\s*)(?:[^\r\n"\\]|\\.)*"#)?,
+        // Single-credential headers: an optional auth scheme plus one token.
+        token_header: Regex::new(
+            r#"(?i)\b((?:proxy-)?authorization\s*[:=]\s*(?:(?:bearer|basic|digest|token|negotiate)\s+)?|x-[a-z0-9-]*-(?:token|secret|key)\s*[:=]\s*)(?:[^\s,;"\\]|\\.)+"#,
+        )?,
+        json_container_key: Regex::new(r#""([A-Za-z0-9_.\-]+)"\s*:\s*[\[{]"#)?,
+        json_string_pair: Regex::new(r#""([A-Za-z0-9_.\-]+)"(\s*:\s*)"(?:[^"\\]|\\.)*""#)?,
+    })
+}
 
 fn is_sensitive_name(name: &str) -> bool {
-    let n = name.to_ascii_lowercase().replace('-', "_");
     const EXACT: &[&str] = &[
         "authorization",
         "proxy_authorization",
@@ -59,6 +67,7 @@ fn is_sensitive_name(name: &str) -> bool {
         "_apikey",
         "_credential",
     ];
+    let n = name.to_ascii_lowercase().replace('-', "_");
     EXACT.contains(&n.as_str())
         || SUFFIXES.iter().any(|s| n.ends_with(s))
         || (n.starts_with("x_")
@@ -98,16 +107,28 @@ fn container_end(text: &str, open: usize) -> usize {
     bytes.len()
 }
 
-fn redact_json_containers(input: &str) -> Cow<'_, str> {
+fn redact_json_containers<'a>(input: &'a str, json_container_key: &Regex) -> Cow<'a, str> {
     let mut out = String::new();
     let mut copied = 0;
     let mut pos = 0;
-    while let Some(c) = JSON_CONTAINER_KEY.captures_at(input, pos) {
-        let whole = c.get(0).unwrap();
-        if is_sensitive_name(&c[1]) {
-            let end = container_end(input, whole.end() - 1);
-            out.push_str(&input[copied..whole.start()]);
-            out.push_str(&format!("\"{}\":\"{REDACTED}\"", &c[1]));
+    while let Some(c) = json_container_key.captures_at(input, pos) {
+        let Some(whole) = c.get(0) else {
+            break;
+        };
+        let Some(key) = c.get(1).map(|m| m.as_str()) else {
+            pos = whole.end();
+            continue;
+        };
+        if is_sensitive_name(key) {
+            let end = container_end(input, whole.end().saturating_sub(1));
+            if let Some(prefix) = input.get(copied..whole.start()) {
+                out.push_str(prefix);
+            }
+            out.push('"');
+            out.push_str(key);
+            out.push_str("\":\"");
+            out.push_str(REDACTED);
+            out.push('"');
             copied = end;
             pos = end;
         } else {
@@ -117,14 +138,16 @@ fn redact_json_containers(input: &str) -> Cow<'_, str> {
     if copied == 0 {
         return Cow::Borrowed(input);
     }
-    out.push_str(&input[copied..]);
+    if let Some(tail) = input.get(copied..) {
+        out.push_str(tail);
+    }
     Cow::Owned(out)
 }
 
-fn redact_text(input: &str) -> Cow<'_, str> {
+fn redact_text<'a>(input: &'a str, patterns: &RedactionPatterns) -> Cow<'a, str> {
     let mut text = Cow::Borrowed(input);
     if text.contains('=') {
-        let replaced = QUERY_PARAM.replace_all(&text, |c: &Captures| {
+        let replaced = patterns.query_param.replace_all(&text, |c: &Captures| {
             if is_sensitive_query_name(&c[2]) {
                 format!("{}{}={REDACTED}", &c[1], &c[2])
             } else {
@@ -135,14 +158,20 @@ fn redact_text(input: &str) -> Cow<'_, str> {
             text = Cow::Owned(s);
         }
     }
-    if let Cow::Owned(s) = COOKIE_HEADER.replace_all(&text, format!("${{1}}${{2}}{REDACTED}")) {
+    if let Cow::Owned(s) = patterns
+        .cookie_header
+        .replace_all(&text, format!("${{1}}${{2}}{REDACTED}"))
+    {
         text = Cow::Owned(s);
     }
-    if let Cow::Owned(s) = TOKEN_HEADER.replace_all(&text, format!("${{1}}{REDACTED}")) {
+    if let Cow::Owned(s) = patterns
+        .token_header
+        .replace_all(&text, format!("${{1}}{REDACTED}"))
+    {
         text = Cow::Owned(s);
     }
     if text.contains('=') {
-        let replaced = BARE_KEY_VALUE.replace_all(&text, |c: &Captures| {
+        let replaced = patterns.bare_key_value.replace_all(&text, |c: &Captures| {
             if is_sensitive_name(&c[2]) {
                 format!("{}{}={REDACTED}", &c[1], &c[2])
             } else {
@@ -154,16 +183,18 @@ fn redact_text(input: &str) -> Cow<'_, str> {
         }
     }
     if text.contains('"') {
-        if let Cow::Owned(s) = redact_json_containers(&text) {
+        if let Cow::Owned(s) = redact_json_containers(&text, &patterns.json_container_key) {
             text = Cow::Owned(s);
         }
-        let replaced = JSON_STRING_PAIR.replace_all(&text, |c: &Captures| {
-            if is_sensitive_name(&c[1]) {
-                format!("\"{}\"{}\"{REDACTED}\"", &c[1], &c[2])
-            } else {
-                c[0].to_string()
-            }
-        });
+        let replaced = patterns
+            .json_string_pair
+            .replace_all(&text, |c: &Captures| {
+                if is_sensitive_name(&c[1]) {
+                    format!("\"{}\"{}\"{REDACTED}\"", &c[1], &c[2])
+                } else {
+                    c[0].to_string()
+                }
+            });
         if let Cow::Owned(s) = replaced {
             text = Cow::Owned(s);
         }
@@ -175,16 +206,16 @@ impl EnrichedLogEntry {
     /// Masks credentials that HTTP access logs and application logs can carry:
     /// sensitive query parameters, auth/cookie header text, and sensitive
     /// JSON/field names. Runs before the entry leaves the forwarder.
-    pub fn redact_sensitive(&mut self) {
-        self.message = redact_text(&self.message).into_owned();
+    pub fn redact_sensitive(&mut self, patterns: &RedactionPatterns) {
+        self.message = redact_text(&self.message, patterns).into_owned();
         if let Some(path) = &self.path {
-            self.path = Some(redact_text(path).into_owned());
+            self.path = Some(redact_text(path, patterns).into_owned());
         }
         for (key, value) in &mut self.fields {
             if is_sensitive_name(key) {
                 *value = REDACTED.to_string();
             } else {
-                *value = redact_text(value).into_owned();
+                *value = redact_text(value, patterns).into_owned();
             }
         }
     }
@@ -218,13 +249,23 @@ mod tests {
         }
     }
 
+    fn patterns() -> RedactionPatterns {
+        compile_patterns().expect("built-in redaction regex literals must compile")
+    }
+
+    #[test]
+    fn compile_patterns_succeeds() {
+        compile_patterns().expect("built-in redaction regex literals must compile");
+    }
+
     #[test]
     fn sensitive_query_params_are_redacted_in_path_and_message() {
+        let p = patterns();
         let mut e = entry(
             r#"1.2.3.4 - - "GET /api/feeds?access_token=abc123&page=2 HTTP/1.1" 200 5"#,
             Some("/api/feeds?access_token=abc123&page=2&api_key=k1"),
         );
-        e.redact_sensitive();
+        e.redact_sensitive(&p);
         assert_eq!(
             e.path.as_deref(),
             Some("/api/feeds?access_token=[REDACTED]&page=2&api_key=[REDACTED]")
@@ -235,6 +276,7 @@ mod tests {
 
     #[test]
     fn auth_style_headers_in_message_text_are_redacted() {
+        let p = patterns();
         for (input, secret) in [
             ("Authorization: Bearer abc.def.ghi", "abc.def.ghi"),
             ("cookie: sid=s3cr3t; theme=dark", "s3cr3t"),
@@ -242,7 +284,7 @@ mod tests {
             ("X-Alt-Backend-Token: tok-999", "tok-999"),
         ] {
             let mut e = entry(input, None);
-            e.redact_sensitive();
+            e.redact_sensitive(&p);
             assert!(!e.message.contains(secret), "leaked in {:?}", e.message);
             assert!(e.message.contains("[REDACTED]"));
         }
@@ -250,11 +292,12 @@ mod tests {
 
     #[test]
     fn json_string_values_for_sensitive_keys_are_redacted() {
+        let p = patterns();
         let mut e = entry(
             r#"{"msg":"req","authorization":"Bearer abc","client_secret":"zzz","status":"200"}"#,
             None,
         );
-        e.redact_sensitive();
+        e.redact_sensitive(&p);
         assert!(!e.message.contains("abc"));
         assert!(!e.message.contains("zzz"));
         assert!(e.message.contains(r#""status":"200""#));
@@ -262,6 +305,7 @@ mod tests {
 
     #[test]
     fn sensitive_field_names_and_embedded_urls_are_redacted() {
+        let p = patterns();
         let mut e = entry("ok", None);
         e.fields
             .insert("x-alt-backend-token".to_string(), "tok".to_string());
@@ -272,7 +316,7 @@ mod tests {
         );
         e.fields.insert("max_tokens".to_string(), "512".to_string());
         e.fields.insert("user".to_string(), "alice".to_string());
-        e.redact_sensitive();
+        e.redact_sensitive(&p);
         assert_eq!(e.fields["x-alt-backend-token"], "[REDACTED]");
         assert_eq!(e.fields["Cookie"], "[REDACTED]");
         assert_eq!(
@@ -285,23 +329,25 @@ mod tests {
 
     #[test]
     fn benign_entries_are_unchanged() {
+        let p = patterns();
         let mut e = entry(
-            r#"GET /health?author=bob&page=3 HTTP/1.1 200"#,
+            r"GET /health?author=bob&page=3 HTTP/1.1 200",
             Some("/health?author=bob&page=3"),
         );
         let before = e.clone();
-        e.redact_sensitive();
+        e.redact_sensitive(&p);
         assert_eq!(e.message, before.message);
         assert_eq!(e.path, before.path);
     }
 
     #[test]
     fn json_array_and_object_values_for_sensitive_keys_are_redacted() {
+        let p = patterns();
         let mut e = entry(
             r#"{"authorization":["Bearer abc","Basic def"],"cookie":{"sid":"ghi"},"ok":["keep"]}"#,
             None,
         );
-        e.redact_sensitive();
+        e.redact_sensitive(&p);
         for secret in ["abc", "def", "ghi"] {
             assert!(
                 !e.message.contains(secret),
@@ -314,11 +360,12 @@ mod tests {
 
     #[test]
     fn escaped_quotes_do_not_end_a_redacted_value_early() {
+        let p = patterns();
         let mut e = entry(
             r#"{"client_secret":"abc\"TAIL-SECRET","status":"200"}"#,
             None,
         );
-        e.redact_sensitive();
+        e.redact_sensitive(&p);
         assert!(!e.message.contains("TAIL-SECRET"), "{}", e.message);
         assert!(e.message.contains(r#""status":"200""#));
 
@@ -326,12 +373,13 @@ mod tests {
             r#"{"msg":"Authorization: Bearer abc\"TAIL-SECRET","n":"1"}"#,
             None,
         );
-        h.redact_sensitive();
+        h.redact_sensitive(&p);
         assert!(!h.message.contains("TAIL-SECRET"), "{}", h.message);
     }
 
     #[test]
     fn plain_key_value_text_is_redacted_without_a_query_delimiter() {
+        let p = patterns();
         for (input, secret) in [
             ("password=hunter2 user=bob", "hunter2"),
             ("login failed, passwd=hunter2, retrying", "hunter2"),
@@ -342,39 +390,42 @@ mod tests {
             ("authorization=Bearer abc.def", "abc.def"),
         ] {
             let mut e = entry(input, None);
-            e.redact_sensitive();
+            e.redact_sensitive(&p);
             assert!(!e.message.contains(secret), "leaked in {:?}", e.message);
         }
         let mut e = entry("password=hunter2 user=bob", None);
-        e.redact_sensitive();
+        e.redact_sensitive(&p);
         assert!(e.message.contains("user=bob"));
     }
 
     #[test]
     fn x_api_key_header_is_redacted() {
+        let p = patterns();
         let mut e = entry("X-Api-Key: key-123 accept: */*", None);
-        e.redact_sensitive();
+        e.redact_sensitive(&p);
         assert!(!e.message.contains("key-123"));
         assert!(e.message.contains("accept: */*"));
         let mut j = entry(r#"{"x-api-key":"key-123"}"#, None);
-        j.redact_sensitive();
+        j.redact_sensitive(&p);
         assert!(!j.message.contains("key-123"));
     }
 
     #[test]
     fn single_token_header_values_stop_at_the_value_boundary() {
+        let p = patterns();
         let mut e = entry("X-Alt-Backend-Token: tok-9 status=200", None);
-        e.redact_sensitive();
+        e.redact_sensitive(&p);
         assert!(!e.message.contains("tok-9"));
         assert!(e.message.contains("status=200"), "{}", e.message);
         let mut a = entry("Authorization: Bearer abc.def next=1", None);
-        a.redact_sensitive();
+        a.redact_sensitive(&p);
         assert!(!a.message.contains("abc.def"));
         assert!(a.message.contains("next=1"), "{}", a.message);
     }
 
     #[test]
     fn ordinary_numeric_and_named_fields_stay_readable() {
+        let p = patterns();
         let mut e = entry(
             r#"{"max_tokens":512,"prompt_tokens":10,"msg":"max_tokens=512 prompt_tokens=10 author=bob"}"#,
             None,
@@ -386,17 +437,18 @@ mod tests {
             .insert("completion_tokens".to_string(), "7".to_string());
         e.fields.insert("author".to_string(), "bob".to_string());
         let before = e.clone();
-        e.redact_sensitive();
+        e.redact_sensitive(&p);
         assert_eq!(e.message, before.message);
         assert_eq!(e.fields, before.fields);
     }
 
     #[test]
     fn next_page_token_is_knowingly_redacted() {
+        let p = patterns();
         let mut e = entry("ok", None);
         e.fields
             .insert("next_page_token".to_string(), "p2".to_string());
-        e.redact_sensitive();
+        e.redact_sensitive(&p);
         assert_eq!(e.fields["next_page_token"], "[REDACTED]");
     }
 }

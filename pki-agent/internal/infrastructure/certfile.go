@@ -49,7 +49,7 @@ func (c *CertFile) Load(_ context.Context) (*x509.Certificate, error) {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, domain.ErrCertNotFound
 		}
-		return nil, fmt.Errorf("%w: %v", domain.ErrCertParseFailed, err)
+		return nil, fmt.Errorf("%w: %w", domain.ErrCertParseFailed, err)
 	}
 	block, _ := pem.Decode(raw)
 	if block == nil {
@@ -57,17 +57,17 @@ func (c *CertFile) Load(_ context.Context) (*x509.Certificate, error) {
 	}
 	cert, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", domain.ErrCertParseFailed, err)
+		return nil, fmt.Errorf("%w: %w", domain.ErrCertParseFailed, err)
 	}
 	keyRaw, err := os.ReadFile(c.KeyPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, domain.ErrCertNotFound
 		}
-		return nil, fmt.Errorf("%w: %v", domain.ErrCertParseFailed, err)
+		return nil, fmt.Errorf("%w: %w", domain.ErrCertParseFailed, err)
 	}
 	if _, err := tls.X509KeyPair(raw, keyRaw); err != nil {
-		return nil, fmt.Errorf("%w: %v", domain.ErrCertKeyMismatch, err)
+		return nil, fmt.Errorf("%w: %w", domain.ErrCertKeyMismatch, err)
 	}
 	return cert, nil
 }

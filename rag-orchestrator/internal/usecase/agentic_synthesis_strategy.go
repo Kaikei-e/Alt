@@ -138,7 +138,6 @@ func (s *AgenticSynthesisStrategy) runAgentLoop(
 			if text := strings.TrimSpace(resp.Text); text != "" {
 				supplementary = append(supplementary, text)
 			}
-			messages = append(messages, domain.Message{Role: "assistant", Content: resp.Text})
 			break
 		}
 

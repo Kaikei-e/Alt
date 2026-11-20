@@ -22,7 +22,7 @@ use super::ports::{
     ThemesJobRunner,
 };
 use crate::clients::datahub::{DataHubArticle, DataHubClient};
-use crate::clients::knowledge_sovereign::KnowledgeSovereignClient;
+use crate::clients::knowledge_sovereign::{KnowledgeSovereignClient, ReadingSourceEntry};
 use crate::clients::news_creator::NewsCreatorClient;
 use crate::clients::news_creator::models::{
     ThemeGenerateItemInput, ThemeGenerateOutcome, ThemeGenerateRequest, ThemeGenerateResponse,
@@ -46,9 +46,13 @@ use crate::store::dao::themes::{
     ThemeVersionDetail, ThemesDaoOps, UnpublishedThemeVersion,
 };
 
+#[expect(
+    clippy::expect_used,
+    reason = "compile-time literal regex is valid by construction"
+)]
 static TRAILING_CITATION_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?:\s*\[\s*\d{1,2}(?:\s*,\s*\d{1,2})*\s*\])+\s*$")
-        .expect("valid trailing citation regex")
+        .expect("compile-time literal regex is valid by construction")
 });
 
 /// Outcome counters returned by a single themes pipeline run.
@@ -443,7 +447,6 @@ impl ThemesPipeline {
         }
     }
 
-    #[allow(clippy::too_many_lines)]
     async fn execute_run(
         &self,
         run_id: Uuid,
@@ -457,49 +460,114 @@ impl ThemesPipeline {
             .await?;
         progress.publish_failures = initial_publish_failures;
 
+        let (source_count, articles, missing_bodies, empty_bodies) = match self
+            .load_prepared_articles(
+                run_id,
+                owner.user_id,
+                run_time,
+                params.min_theme_articles,
+                progress,
+            )
+            .await?
+        {
+            PreparedCorpusOutcome::Ready {
+                source_count,
+                articles,
+                missing_bodies,
+                empty_bodies,
+            } => (source_count, articles, missing_bodies, empty_bodies),
+            PreparedCorpusOutcome::EarlyExit(result) => return Ok(result),
+        };
+        let articles_with_body = articles.len();
+
+        let (
+            eligible_clusters,
+            article_by_id,
+            embedding_by_id,
+            embed_cache_hits,
+            embed_cache_misses,
+        ) = self
+            .embed_and_cluster_articles(run_id, articles, params)
+            .await?;
+        let clusters_eligible = eligible_clusters.len();
+
+        let (ranked_candidates, themes_unchanged, versions_deferred) = self
+            .rank_changed_candidates(run_id, owner.user_id, &eligible_clusters, params)
+            .await?;
+        progress.versions_deferred = versions_deferred;
+
+        let candidate_ctx = CandidateRunContext {
+            run_id,
+            owner,
+            run_time,
+            params,
+            article_by_id: &article_by_id,
+            embedding_by_id: &embedding_by_id,
+        };
+        for (_, candidate) in ranked_candidates {
+            let outcome = self.process_candidate(&candidate_ctx, candidate).await?;
+            match outcome {
+                CandidateOutcome::Created { publish_failed } => {
+                    progress.versions_created += 1;
+                    if publish_failed {
+                        progress.publish_failures += 1;
+                    }
+                }
+                CandidateOutcome::GenerationRejected => progress.generation_rejected += 1,
+                CandidateOutcome::VerificationDropped => progress.verification_dropped += 1,
+            }
+        }
+
+        Ok(ThemesPipelineResult {
+            run_id,
+            source_count,
+            articles_with_body,
+            missing_bodies,
+            empty_bodies,
+            clusters_eligible,
+            themes_unchanged,
+            versions_created: progress.versions_created,
+            versions_deferred,
+            generation_rejected: progress.generation_rejected,
+            verification_dropped: progress.verification_dropped,
+            publish_failures: progress.publish_failures,
+            embed_cache_hits,
+            embed_cache_misses,
+        })
+    }
+
+    async fn load_prepared_articles(
+        &self,
+        run_id: Uuid,
+        user_id: Uuid,
+        run_time: DateTime<Utc>,
+        min_theme_articles: usize,
+        progress: &mut RunProgress,
+    ) -> Result<PreparedCorpusOutcome> {
         let raw_sources = self
             .knowledge
-            .list_reading_sources_in_window(owner.user_id, DateTime::<Utc>::UNIX_EPOCH, run_time)
+            .list_reading_sources_in_window(user_id, DateTime::<Utc>::UNIX_EPOCH, run_time)
             .await
             .context("failed to list reading sources")?;
 
-        let mut source_first_read: HashMap<Uuid, DateTime<Utc>> = HashMap::new();
-        for entry in raw_sources {
-            source_first_read
-                .entry(entry.article_id)
-                .and_modify(|ts| {
-                    if entry.first_read_at < *ts {
-                        *ts = entry.first_read_at;
-                    }
-                })
-                .or_insert(entry.first_read_at);
-        }
-
+        let source_first_read = collect_first_read_dates(raw_sources);
         let source_count = source_first_read.len();
         progress.source_count = source_count;
-        if source_count < params.min_theme_articles {
+        if source_count < min_theme_articles {
             info!(
                 %run_id,
                 source_count,
-                min_theme_articles = params.min_theme_articles,
+                min_theme_articles,
                 "fewer than minimum sources, completing run with zero counts"
             );
-            return Ok(ThemesPipelineResult {
+            return Ok(PreparedCorpusOutcome::EarlyExit(early_exit_result(
                 run_id,
                 source_count,
-                articles_with_body: 0,
-                missing_bodies: 0,
-                empty_bodies: 0,
-                clusters_eligible: 0,
-                themes_unchanged: 0,
-                versions_created: 0,
-                versions_deferred: 0,
-                generation_rejected: 0,
-                verification_dropped: 0,
-                publish_failures: progress.publish_failures,
-                embed_cache_hits: 0,
-                embed_cache_misses: 0,
-            });
+                0,
+                0,
+                0,
+                progress.publish_failures,
+            )));
         }
 
         let mut article_ids: Vec<Uuid> = source_first_read.keys().copied().collect();
@@ -523,25 +591,37 @@ impl ThemesPipeline {
             "themes article bodies prepared"
         );
 
-        if articles_with_body < params.min_theme_articles {
-            return Ok(ThemesPipelineResult {
+        if articles_with_body < min_theme_articles {
+            return Ok(PreparedCorpusOutcome::EarlyExit(early_exit_result(
                 run_id,
                 source_count,
                 articles_with_body,
                 missing_bodies,
                 empty_bodies,
-                clusters_eligible: 0,
-                themes_unchanged: 0,
-                versions_created: 0,
-                versions_deferred: 0,
-                generation_rejected: 0,
-                verification_dropped: 0,
-                publish_failures: progress.publish_failures,
-                embed_cache_hits: 0,
-                embed_cache_misses: 0,
-            });
+                progress.publish_failures,
+            )));
         }
 
+        Ok(PreparedCorpusOutcome::Ready {
+            source_count,
+            articles,
+            missing_bodies,
+            empty_bodies,
+        })
+    }
+
+    async fn embed_and_cluster_articles(
+        &self,
+        run_id: Uuid,
+        articles: Vec<PreparedArticle>,
+        params: &ThemesParams,
+    ) -> Result<(
+        Vec<EligibleCluster>,
+        HashMap<Uuid, PreparedArticle>,
+        HashMap<Uuid, Vec<f32>>,
+        usize,
+        usize,
+    )> {
         let texts: Vec<String> = articles
             .iter()
             .map(|a| format!("{} — {}", a.title, a.lede))
@@ -593,16 +673,31 @@ impl ThemesPipeline {
             &article_by_id,
             params.min_theme_articles,
         );
-        let clusters_eligible = eligible_clusters.len();
 
+        Ok((
+            eligible_clusters,
+            article_by_id,
+            embedding_by_id,
+            embed_cache_hits,
+            embed_cache_misses,
+        ))
+    }
+
+    async fn rank_changed_candidates(
+        &self,
+        run_id: Uuid,
+        user_id: Uuid,
+        eligible_clusters: &[EligibleCluster],
+        params: &ThemesParams,
+    ) -> Result<(Vec<(usize, ThemeCandidate)>, usize, usize)> {
         let latest_versions = self
             .dao
-            .latest_versions_for_user(owner.user_id)
+            .latest_versions_for_user(user_id)
             .await
             .context("failed to fetch latest theme versions for user")?;
 
         let assignments = assign_clusters_to_themes(
-            &eligible_clusters,
+            eligible_clusters,
             &latest_versions,
             params.theta_continuation,
             run_id,
@@ -624,7 +719,7 @@ impl ThemesPipeline {
             HashMap::new()
         } else {
             self.dao
-                .generation_attempt_counts_for_user(owner.user_id)
+                .generation_attempt_counts_for_user(user_id)
                 .await
                 .context("failed to query prior theme generation attempts")?
         };
@@ -653,49 +748,9 @@ impl ThemesPipeline {
         let versions_deferred = ranked_candidates
             .len()
             .saturating_sub(params.max_generations_per_run);
-        progress.versions_deferred = versions_deferred;
         ranked_candidates.truncate(params.max_generations_per_run);
 
-        for (_, candidate) in ranked_candidates {
-            let outcome = self
-                .process_candidate(
-                    run_id,
-                    owner,
-                    run_time,
-                    params,
-                    candidate,
-                    &article_by_id,
-                    &embedding_by_id,
-                )
-                .await?;
-            match outcome {
-                CandidateOutcome::Created { publish_failed } => {
-                    progress.versions_created += 1;
-                    if publish_failed {
-                        progress.publish_failures += 1;
-                    }
-                }
-                CandidateOutcome::GenerationRejected => progress.generation_rejected += 1,
-                CandidateOutcome::VerificationDropped => progress.verification_dropped += 1,
-            }
-        }
-
-        Ok(ThemesPipelineResult {
-            run_id,
-            source_count,
-            articles_with_body,
-            missing_bodies,
-            empty_bodies,
-            clusters_eligible,
-            themes_unchanged,
-            versions_created: progress.versions_created,
-            versions_deferred,
-            generation_rejected: progress.generation_rejected,
-            verification_dropped: progress.verification_dropped,
-            publish_failures: progress.publish_failures,
-            embed_cache_hits,
-            embed_cache_misses,
-        })
+        Ok((ranked_candidates, themes_unchanged, versions_deferred))
     }
 
     async fn publish_pending_versions(
@@ -738,35 +793,213 @@ impl ThemesPipeline {
         Ok(outcome.failed)
     }
 
-    #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
+    async fn load_previous_theme_detail(
+        &self,
+        user_id: Uuid,
+        matched_latest: Option<&LatestThemeVersion>,
+    ) -> Result<Option<ThemeVersionDetail>> {
+        let Some(latest) = matched_latest else {
+            return Ok(None);
+        };
+        let detail = self
+            .dao
+            .get_theme_version(user_id, latest.theme_id, Some(latest.version))
+            .await
+            .context("failed to load previous theme version detail")?
+            .with_context(|| {
+                format!(
+                    "missing previous theme version {} for theme {}",
+                    latest.version, latest.theme_id
+                )
+            })?;
+        Ok(Some(detail))
+    }
+
+    async fn generate_or_record_rejection(
+        &self,
+        ctx: &CandidateRunContext<'_>,
+        candidate: &ThemeCandidate,
+        gen_req: &ThemeGenerateRequest,
+        phase: GenerationPhase,
+    ) -> Result<Option<ThemeGenerateResponse>> {
+        let theme_id = candidate.theme_id;
+        let run_id = ctx.run_id;
+        let outcome =
+            self.generator
+                .generate_theme(gen_req)
+                .await
+                .with_context(|| match phase {
+                    GenerationPhase::Initial => {
+                        format!("theme generation failed for theme {theme_id}")
+                    }
+                    GenerationPhase::Regeneration => {
+                        format!("theme regeneration failed for theme {theme_id}")
+                    }
+                })?;
+        match outcome {
+            ThemeGenerateOutcome::Success(resp) => Ok(Some(resp)),
+            ThemeGenerateOutcome::Rejected(rej) => {
+                match phase {
+                    GenerationPhase::Initial => warn!(
+                        %run_id,
+                        %theme_id,
+                        reason = %rej.reason,
+                        attempts = rej.attempts,
+                        "theme generation rejected, skipping theme"
+                    ),
+                    GenerationPhase::Regeneration => warn!(
+                        %run_id,
+                        %theme_id,
+                        reason = %rej.reason,
+                        attempts = rej.attempts,
+                        "theme regeneration rejected, skipping theme"
+                    ),
+                }
+                self.record_generation_attempt(
+                    run_id,
+                    ctx.owner.user_id,
+                    theme_id,
+                    &candidate.cluster.membership_hash,
+                    ThemeAttemptOutcome::GenerationRejected,
+                    ctx.run_time,
+                )
+                .await?;
+                Ok(None)
+            }
+        }
+    }
+
+    async fn verify_and_maybe_regenerate(
+        &self,
+        ctx: &CandidateRunContext<'_>,
+        candidate: &ThemeCandidate,
+        selected_items: &[SelectedItem],
+        gen_req: &mut ThemeGenerateRequest,
+        mut generated: ThemeGenerateResponse,
+    ) -> Result<
+        Option<(
+            ThemeGenerateResponse,
+            Vec<(VerifySection, usize)>,
+            VerifyCardResponse,
+        )>,
+    > {
+        let theme_id = candidate.theme_id;
+        strip_response_citation_markers(&mut generated);
+        let (verify_req, mut sentence_map) = build_verify_request(
+            ctx.run_id,
+            theme_id,
+            &generated,
+            selected_items,
+            ctx.params.tau_a,
+        );
+        let mut verify_resp = self.verify_sentences(&verify_req, theme_id).await?;
+
+        let failure_notes = build_failure_notes(&verify_resp, ctx.params.tau_a);
+        if !failure_notes.is_empty() {
+            gen_req.failure_notes = failure_notes;
+            let Some(regenerated) = self
+                .generate_or_record_rejection(
+                    ctx,
+                    candidate,
+                    gen_req,
+                    GenerationPhase::Regeneration,
+                )
+                .await?
+            else {
+                return Ok(None);
+            };
+            generated = regenerated;
+            strip_response_citation_markers(&mut generated);
+            let rebuilt = build_verify_request(
+                ctx.run_id,
+                theme_id,
+                &generated,
+                selected_items,
+                ctx.params.tau_a,
+            );
+            sentence_map = rebuilt.1;
+            verify_resp = self.verify_sentences(&rebuilt.0, theme_id).await?;
+        }
+
+        Ok(Some((generated, sentence_map, verify_resp)))
+    }
+
+    async fn persist_and_publish_version(
+        &self,
+        ctx: &CandidateRunContext<'_>,
+        candidate: ThemeCandidate,
+        generated_title: &str,
+        body: ThemeBody,
+    ) -> Result<bool> {
+        let run_id = ctx.run_id;
+        let theme_id = candidate.theme_id;
+        let next_version = candidate
+            .matched_latest
+            .as_ref()
+            .map_or(1, |prev| prev.version + 1);
+        let version_id = Uuid::new_v4();
+        let title = clip_chars(generated_title.trim(), MAX_TITLE_CHARS);
+        let new_version = NewThemeVersion {
+            version_id,
+            user_id: ctx.owner.user_id,
+            theme_id,
+            version: next_version,
+            run_id,
+            title,
+            member_article_ids: candidate.cluster.member_ids,
+            membership_hash: candidate.cluster.membership_hash,
+            centroid: candidate.cluster.centroid,
+            body,
+            created_at: ctx.run_time,
+        };
+
+        self.dao
+            .insert_theme_version(&new_version)
+            .await
+            .context("failed to insert new theme version")?;
+
+        let unpublished = UnpublishedThemeVersion {
+            version_id,
+            user_id: ctx.owner.user_id,
+            theme_id,
+            version: next_version,
+            title: new_version.title,
+            member_article_ids: new_version.member_article_ids,
+            created_at: ctx.run_time,
+        };
+        let pub_outcome = self
+            .knowledge
+            .publish_theme_versions(ctx.owner.user_id, ctx.owner.tenant_id, &[unpublished])
+            .await;
+
+        if pub_outcome.succeeded_version_ids.contains(&version_id) {
+            self.dao
+                .mark_published(ctx.owner.user_id, version_id, ctx.run_time)
+                .await
+                .context("failed to mark new theme version published")?;
+            Ok(false)
+        } else {
+            error!(
+                %run_id,
+                %theme_id,
+                %version_id,
+                version = next_version,
+                "failed to publish theme version event; leaving version unpublished for retry"
+            );
+            Ok(true)
+        }
+    }
+
     async fn process_candidate(
         &self,
-        run_id: Uuid,
-        owner: KnowledgeOwnerIds,
-        run_time: DateTime<Utc>,
-        params: &ThemesParams,
+        ctx: &CandidateRunContext<'_>,
         candidate: ThemeCandidate,
-        article_by_id: &HashMap<Uuid, PreparedArticle>,
-        embedding_by_id: &HashMap<Uuid, Vec<f32>>,
     ) -> Result<CandidateOutcome> {
         let theme_id = candidate.theme_id;
-        let prev_detail = match candidate.matched_latest.as_ref() {
-            Some(latest) => {
-                let detail = self
-                    .dao
-                    .get_theme_version(owner.user_id, latest.theme_id, Some(latest.version))
-                    .await
-                    .context("failed to load previous theme version detail")?
-                    .with_context(|| {
-                        format!(
-                            "missing previous theme version {} for theme {}",
-                            latest.version, latest.theme_id
-                        )
-                    })?;
-                Some(detail)
-            }
-            None => None,
-        };
+        let run_id = ctx.run_id;
+        let prev_detail = self
+            .load_previous_theme_detail(ctx.owner.user_id, candidate.matched_latest.as_ref())
+            .await?;
 
         let (selected_items, new_item_ns) = select_candidate_items(
             &candidate.cluster.member_ids,
@@ -774,105 +1007,32 @@ impl ThemesPipeline {
             prev_detail
                 .as_ref()
                 .map(|d| d.member_article_ids.as_slice()),
-            article_by_id,
-            embedding_by_id,
-            params.max_items_per_generation,
+            ctx.article_by_id,
+            ctx.embedding_by_id,
+            ctx.params.max_items_per_generation,
         )?;
 
-        let req_items: Vec<ThemeGenerateItemInput> = selected_items
-            .iter()
-            .map(|it| ThemeGenerateItemInput {
-                n: it.n,
-                title: it.article.title.clone(),
-                published_at: it.article.published_date.clone(),
-                text: it.article.lede.clone(),
-            })
-            .collect();
-
-        let previous = candidate.matched_latest.as_ref().map(build_previous_input);
-        let mut gen_req = ThemeGenerateRequest {
-            job_id: run_id,
+        let mut gen_req = build_theme_generate_request(
+            run_id,
             theme_id,
-            language: "ja".to_string(),
-            items: req_items,
+            &selected_items,
             new_item_ns,
-            previous,
-            failure_notes: Vec::new(),
+            &candidate,
+        );
+
+        let Some(generated) = self
+            .generate_or_record_rejection(ctx, &candidate, &gen_req, GenerationPhase::Initial)
+            .await?
+        else {
+            return Ok(CandidateOutcome::GenerationRejected);
         };
 
-        let mut generated = match self
-            .generator
-            .generate_theme(&gen_req)
-            .await
-            .with_context(|| format!("theme generation failed for theme {theme_id}"))?
-        {
-            ThemeGenerateOutcome::Success(resp) => resp,
-            ThemeGenerateOutcome::Rejected(rej) => {
-                warn!(
-                    %run_id,
-                    %theme_id,
-                    reason = %rej.reason,
-                    attempts = rej.attempts,
-                    "theme generation rejected, skipping theme"
-                );
-                self.record_generation_attempt(
-                    run_id,
-                    owner.user_id,
-                    theme_id,
-                    &candidate.cluster.membership_hash,
-                    ThemeAttemptOutcome::GenerationRejected,
-                    run_time,
-                )
-                .await?;
-                return Ok(CandidateOutcome::GenerationRejected);
-            }
+        let Some((generated, sentence_map, verify_resp)) = self
+            .verify_and_maybe_regenerate(ctx, &candidate, &selected_items, &mut gen_req, generated)
+            .await?
+        else {
+            return Ok(CandidateOutcome::GenerationRejected);
         };
-
-        strip_response_citation_markers(&mut generated);
-
-        let (mut verify_req, mut sentence_map) =
-            build_verify_request(run_id, theme_id, &generated, &selected_items, params.tau_a);
-
-        let mut verify_resp = self.verify_sentences(&verify_req, theme_id).await?;
-
-        let failure_notes = build_failure_notes(&verify_resp, params.tau_a);
-        if !failure_notes.is_empty() {
-            gen_req.failure_notes = failure_notes;
-            generated = match self
-                .generator
-                .generate_theme(&gen_req)
-                .await
-                .with_context(|| format!("theme regeneration failed for theme {theme_id}"))?
-            {
-                ThemeGenerateOutcome::Success(resp) => resp,
-                ThemeGenerateOutcome::Rejected(rej) => {
-                    warn!(
-                        %run_id,
-                        %theme_id,
-                        reason = %rej.reason,
-                        attempts = rej.attempts,
-                        "theme regeneration rejected, skipping theme"
-                    );
-                    self.record_generation_attempt(
-                        run_id,
-                        owner.user_id,
-                        theme_id,
-                        &candidate.cluster.membership_hash,
-                        ThemeAttemptOutcome::GenerationRejected,
-                        run_time,
-                    )
-                    .await?;
-                    return Ok(CandidateOutcome::GenerationRejected);
-                }
-            };
-            strip_response_citation_markers(&mut generated);
-            let rebuilt =
-                build_verify_request(run_id, theme_id, &generated, &selected_items, params.tau_a);
-            verify_req = rebuilt.0;
-            sentence_map = rebuilt.1;
-
-            verify_resp = self.verify_sentences(&verify_req, theme_id).await?;
-        }
 
         let body =
             build_verified_theme_body(&generated, &selected_items, &sentence_map, &verify_resp);
@@ -884,71 +1044,19 @@ impl ThemesPipeline {
             );
             self.record_generation_attempt(
                 run_id,
-                owner.user_id,
+                ctx.owner.user_id,
                 theme_id,
                 &candidate.cluster.membership_hash,
                 ThemeAttemptOutcome::VerificationDropped,
-                run_time,
+                ctx.run_time,
             )
             .await?;
             return Ok(CandidateOutcome::VerificationDropped);
         }
 
-        let next_version = candidate
-            .matched_latest
-            .as_ref()
-            .map_or(1, |prev| prev.version + 1);
-        let version_id = Uuid::new_v4();
-        let title = clip_chars(generated.title.trim(), MAX_TITLE_CHARS);
-        let new_version = NewThemeVersion {
-            version_id,
-            user_id: owner.user_id,
-            theme_id,
-            version: next_version,
-            run_id,
-            title,
-            member_article_ids: candidate.cluster.member_ids,
-            membership_hash: candidate.cluster.membership_hash,
-            centroid: candidate.cluster.centroid,
-            body,
-            created_at: run_time,
-        };
-
-        self.dao
-            .insert_theme_version(&new_version)
-            .await
-            .context("failed to insert new theme version")?;
-
-        let unpublished = UnpublishedThemeVersion {
-            version_id,
-            user_id: owner.user_id,
-            theme_id,
-            version: next_version,
-            title: new_version.title,
-            member_article_ids: new_version.member_article_ids,
-            created_at: run_time,
-        };
-        let pub_outcome = self
-            .knowledge
-            .publish_theme_versions(owner.user_id, owner.tenant_id, &[unpublished])
-            .await;
-
-        let publish_failed = if pub_outcome.succeeded_version_ids.contains(&version_id) {
-            self.dao
-                .mark_published(owner.user_id, version_id, run_time)
-                .await
-                .context("failed to mark new theme version published")?;
-            false
-        } else {
-            error!(
-                %run_id,
-                %theme_id,
-                %version_id,
-                version = next_version,
-                "failed to publish theme version event; leaving version unpublished for retry"
-            );
-            true
-        };
+        let publish_failed = self
+            .persist_and_publish_version(ctx, candidate, &generated.title, body)
+            .await?;
 
         Ok(CandidateOutcome::Created { publish_failed })
     }
@@ -1000,6 +1108,59 @@ impl ThemesPipeline {
     }
 }
 
+struct CandidateRunContext<'a> {
+    run_id: Uuid,
+    owner: KnowledgeOwnerIds,
+    run_time: DateTime<Utc>,
+    params: &'a ThemesParams,
+    article_by_id: &'a HashMap<Uuid, PreparedArticle>,
+    embedding_by_id: &'a HashMap<Uuid, Vec<f32>>,
+}
+
+#[derive(Clone, Copy)]
+enum GenerationPhase {
+    Initial,
+    Regeneration,
+}
+
+fn build_theme_generate_request(
+    run_id: Uuid,
+    theme_id: Uuid,
+    selected_items: &[SelectedItem],
+    new_item_ns: Vec<usize>,
+    candidate: &ThemeCandidate,
+) -> ThemeGenerateRequest {
+    let items = selected_items
+        .iter()
+        .map(|it| ThemeGenerateItemInput {
+            n: it.n,
+            title: it.article.title.clone(),
+            published_at: it.article.published_date.clone(),
+            text: it.article.lede.clone(),
+        })
+        .collect();
+    let previous = candidate.matched_latest.as_ref().map(build_previous_input);
+    ThemeGenerateRequest {
+        job_id: run_id,
+        theme_id,
+        language: "ja".to_string(),
+        items,
+        new_item_ns,
+        previous,
+        failure_notes: Vec::new(),
+    }
+}
+
+enum PreparedCorpusOutcome {
+    Ready {
+        source_count: usize,
+        articles: Vec<PreparedArticle>,
+        missing_bodies: usize,
+        empty_bodies: usize,
+    },
+    EarlyExit(ThemesPipelineResult),
+}
+
 enum CandidateOutcome {
     Created { publish_failed: bool },
     GenerationRejected,
@@ -1009,6 +1170,47 @@ enum CandidateOutcome {
 #[must_use]
 pub(crate) fn clip_chars(value: &str, max_chars: usize) -> String {
     value.chars().take(max_chars).collect()
+}
+
+fn collect_first_read_dates(raw_sources: Vec<ReadingSourceEntry>) -> HashMap<Uuid, DateTime<Utc>> {
+    let mut source_first_read: HashMap<Uuid, DateTime<Utc>> = HashMap::new();
+    for entry in raw_sources {
+        source_first_read
+            .entry(entry.article_id)
+            .and_modify(|ts| {
+                if entry.first_read_at < *ts {
+                    *ts = entry.first_read_at;
+                }
+            })
+            .or_insert(entry.first_read_at);
+    }
+    source_first_read
+}
+
+fn early_exit_result(
+    run_id: Uuid,
+    source_count: usize,
+    articles_with_body: usize,
+    missing_bodies: usize,
+    empty_bodies: usize,
+    publish_failures: usize,
+) -> ThemesPipelineResult {
+    ThemesPipelineResult {
+        run_id,
+        source_count,
+        articles_with_body,
+        missing_bodies,
+        empty_bodies,
+        clusters_eligible: 0,
+        themes_unchanged: 0,
+        versions_created: 0,
+        versions_deferred: 0,
+        generation_rejected: 0,
+        verification_dropped: 0,
+        publish_failures,
+        embed_cache_hits: 0,
+        embed_cache_misses: 0,
+    }
 }
 
 #[must_use]

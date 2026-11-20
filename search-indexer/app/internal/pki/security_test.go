@@ -7,7 +7,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -140,7 +139,7 @@ func TestHandle_StopWaitsForInFlightRun(t *testing.T) {
 		RetryBackoff:    time.Millisecond,
 	}
 	ctx := withT(context.Background(), t)
-	h, err := StartWith(ctx, slog.New(slog.NewTextHandler(io.Discard, nil)), cfg, sticky)
+	h, err := StartWith(ctx, slog.New(slog.DiscardHandler), cfg, sticky)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,7 +191,7 @@ func TestHandle_StopClosesIdleConnections(t *testing.T) {
 		RetryBackoff:    time.Millisecond,
 	}
 	ctx := withT(context.Background(), t)
-	h, err := StartWith(ctx, slog.New(slog.NewTextHandler(io.Discard, nil)), cfg, iss)
+	h, err := StartWith(ctx, slog.New(slog.DiscardHandler), cfg, iss)
 	if err != nil {
 		t.Fatal(err)
 	}

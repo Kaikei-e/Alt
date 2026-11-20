@@ -142,13 +142,13 @@ func (d *Client) SearchArticles(ctx context.Context, query string, userID string
 		return nil, err
 	}
 
-	hits := make([]ArticleHit, len(resp.Msg.Hits))
-	for i, hit := range resp.Msg.Hits {
+	hits := make([]ArticleHit, len(resp.Msg.GetHits()))
+	for i, hit := range resp.Msg.GetHits() {
 		hits[i] = ArticleHit{
-			ID:      hit.Id,
-			Title:   hit.Title,
-			Content: hit.Content,
-			Tags:    hit.Tags,
+			ID:      hit.GetId(),
+			Title:   hit.GetTitle(),
+			Content: hit.GetContent(),
+			Tags:    hit.GetTags(),
 		}
 	}
 
@@ -167,17 +167,17 @@ func (d *Client) SearchArticlesWithPagination(ctx context.Context, query string,
 		return nil, 0, err
 	}
 
-	hits := make([]ArticleHit, len(resp.Msg.Hits))
-	for i, hit := range resp.Msg.Hits {
+	hits := make([]ArticleHit, len(resp.Msg.GetHits()))
+	for i, hit := range resp.Msg.GetHits() {
 		hits[i] = ArticleHit{
-			ID:      hit.Id,
-			Title:   hit.Title,
-			Content: hit.Content,
-			Tags:    hit.Tags,
+			ID:      hit.GetId(),
+			Title:   hit.GetTitle(),
+			Content: hit.GetContent(),
+			Tags:    hit.GetTags(),
 		}
 	}
 
-	return hits, resp.Msg.EstimatedTotalHits, nil
+	return hits, resp.Msg.GetEstimatedTotalHits(), nil
 }
 
 // SearchRecapsByTag searches recap genres by tag name via search-indexer's Meilisearch.
@@ -190,17 +190,17 @@ func (d *Client) SearchRecapsByTag(ctx context.Context, tagName string, limit in
 		return nil, err
 	}
 
-	results := make([]RecapHit, len(resp.Msg.Hits))
-	for i, hit := range resp.Msg.Hits {
+	results := make([]RecapHit, len(resp.Msg.GetHits()))
+	for i, hit := range resp.Msg.GetHits() {
 		results[i] = RecapHit{
-			JobID:      hit.JobId,
-			ExecutedAt: hit.ExecutedAt,
-			WindowDays: int(hit.WindowDays),
-			Genre:      hit.Genre,
-			Summary:    hit.Summary,
-			TopTerms:   hit.TopTerms,
-			Tags:       hit.Tags,
-			Bullets:    hit.Bullets,
+			JobID:      hit.GetJobId(),
+			ExecutedAt: hit.GetExecutedAt(),
+			WindowDays: int(hit.GetWindowDays()),
+			Genre:      hit.GetGenre(),
+			Summary:    hit.GetSummary(),
+			TopTerms:   hit.GetTopTerms(),
+			Tags:       hit.GetTags(),
+			Bullets:    hit.GetBullets(),
 		}
 	}
 
@@ -218,19 +218,19 @@ func (d *Client) SearchRecapsByQuery(ctx context.Context, query string, limit in
 		return nil, 0, err
 	}
 
-	results := make([]RecapHit, len(resp.Msg.Hits))
-	for i, hit := range resp.Msg.Hits {
+	results := make([]RecapHit, len(resp.Msg.GetHits()))
+	for i, hit := range resp.Msg.GetHits() {
 		results[i] = RecapHit{
-			JobID:      hit.JobId,
-			ExecutedAt: hit.ExecutedAt,
-			WindowDays: int(hit.WindowDays),
-			Genre:      hit.Genre,
-			Summary:    hit.Summary,
-			TopTerms:   hit.TopTerms,
-			Tags:       hit.Tags,
-			Bullets:    hit.Bullets,
+			JobID:      hit.GetJobId(),
+			ExecutedAt: hit.GetExecutedAt(),
+			WindowDays: int(hit.GetWindowDays()),
+			Genre:      hit.GetGenre(),
+			Summary:    hit.GetSummary(),
+			TopTerms:   hit.GetTopTerms(),
+			Tags:       hit.GetTags(),
+			Bullets:    hit.GetBullets(),
 		}
 	}
 
-	return results, resp.Msg.EstimatedTotalHits, nil
+	return results, resp.Msg.GetEstimatedTotalHits(), nil
 }

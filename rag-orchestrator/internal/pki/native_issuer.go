@@ -346,6 +346,8 @@ func requireDualEKU(leaf *x509.Certificate) error {
 			client = true
 		case x509.ExtKeyUsageServerAuth:
 			server = true
+		default:
+			// Other EKUs are permitted alongside the required dual EKU.
 		}
 	}
 	if !client || !server {

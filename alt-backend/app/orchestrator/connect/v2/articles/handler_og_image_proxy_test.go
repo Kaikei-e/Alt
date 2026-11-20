@@ -54,13 +54,13 @@ func TestFetchArticleContent_SignsTheOgImageURL(t *testing.T) {
 		}))
 
 	require.NoError(t, err)
-	assert.Equal(t, signer.GenerateProxyURL(rawOgImage), resp.Msg.OgImageProxyUrl)
-	assert.True(t, strings.HasPrefix(resp.Msg.OgImageProxyUrl, "/v1/images/proxy/"),
-		"the proxy URL must be the HMAC-gated path, got %q", resp.Msg.OgImageProxyUrl)
+	assert.Equal(t, signer.GenerateProxyURL(rawOgImage), resp.Msg.GetOgImageProxyUrl())
+	assert.True(t, strings.HasPrefix(resp.Msg.GetOgImageProxyUrl(), "/v1/images/proxy/"),
+		"the proxy URL must be the HMAC-gated path, got %q", resp.Msg.GetOgImageProxyUrl())
 	// The raw URL still travels — a caller that wants the origin's own URL for
 	// something other than an <img src> is not the problem being fixed — but it
 	// is no longer the only thing on offer.
-	assert.Equal(t, rawOgImage, resp.Msg.OgImageUrl)
+	assert.Equal(t, rawOgImage, resp.Msg.GetOgImageUrl())
 }
 
 // An article with no og:image gets no signed URL, rather than a signature over
@@ -80,7 +80,7 @@ func TestFetchArticleContent_NoOgImage_LeavesProxyURLEmpty(t *testing.T) {
 		}))
 
 	require.NoError(t, err)
-	assert.Empty(t, resp.Msg.OgImageProxyUrl)
+	assert.Empty(t, resp.Msg.GetOgImageProxyUrl())
 }
 
 // IMAGE_PROXY_ENABLED=false is an explicit operator decision, announced by
@@ -106,7 +106,7 @@ func TestFetchArticleContent_ImageProxyDisabled_LeavesProxyURLEmpty(t *testing.T
 		}))
 
 	require.NoError(t, err)
-	assert.Empty(t, resp.Msg.OgImageProxyUrl)
+	assert.Empty(t, resp.Msg.GetOgImageProxyUrl())
 }
 
 func TestBatchPrefetchImages_ImageProxyDisabled_ReturnsUnimplemented(t *testing.T) {

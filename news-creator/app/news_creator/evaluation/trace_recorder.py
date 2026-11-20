@@ -1,8 +1,8 @@
 """Trace recorder for recap summary evaluation runs."""
 
 import json
-from dataclasses import dataclass, asdict
-from datetime import datetime, timezone
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -34,23 +34,23 @@ class TraceRecorder:
     The filename is based on the current timestamp.
     """
 
-    def __init__(self, output_dir: Path):
+    def __init__(self, output_dir: Path) -> None:
         self._output_dir = output_dir
         self._output_dir.mkdir(parents=True, exist_ok=True)
-        ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         self._file_path = self._output_dir / f"trace_{ts}.jsonl"
 
     def record(self, trace: TraceRecord) -> None:
         """Append a trace record to the JSONL file."""
-        with open(self._file_path, "a", encoding="utf-8") as f:
+        with self._file_path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(asdict(trace), ensure_ascii=False) + "\n")
 
     def load_traces(self, path: Path) -> list[TraceRecord]:
         """Load trace records from a JSONL file."""
         records: list[TraceRecord] = []
-        with open(path, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
+        with path.open(encoding="utf-8") as f:
+            for raw_line in f:
+                line = raw_line.strip()
                 if not line:
                     continue
                 data = json.loads(line)

@@ -9,7 +9,7 @@ import (
 	"alt/config"
 	"alt/di"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 const (
@@ -19,7 +19,7 @@ const (
 
 func routePaths(e *echo.Echo) map[string]bool {
 	paths := make(map[string]bool)
-	for _, r := range e.Routes() {
+	for _, r := range e.Router().Routes() {
 		paths[r.Path] = true
 	}
 	return paths
@@ -36,7 +36,10 @@ func routePaths(e *echo.Echo) map[string]bool {
 // route is unregistered, moved to another binary, or retired outright.
 func TestRegisterRoutes_DoesNotExposeInternalRoutes(t *testing.T) {
 	e := echo.New()
-	RegisterRoutes(context.Background(), e, &di.ApplicationComponents{UserQuotaLimiter: newTestQuotaLimiter(t)}, &config.Config{Auth: testAuthCfg()})
+	RegisterRoutes(context.Background(), e, &di.ApplicationComponents{UserQuotaLimiter: newTestQuotaLimiter(t)}, &config.Config{
+		Auth:   testAuthCfg(),
+		Server: config.ServerConfig{CORSAllowedOrigins: []string{"http://localhost:3000"}},
+	})
 
 	paths := routePaths(e)
 	for _, p := range []string{systemUserPath, recentArticlesPath} {
@@ -47,7 +50,7 @@ func TestRegisterRoutes_DoesNotExposeInternalRoutes(t *testing.T) {
 
 	for _, p := range []string{systemUserPath, recentArticlesPath + "?limit=0"} {
 		res := httptest.NewRecorder()
-		e.ServeHTTP(res, httptest.NewRequest(http.MethodGet, p, nil))
+		e.ServeHTTP(res, httptest.NewRequestWithContext(t.Context(), http.MethodGet, p, nil))
 		if res.Code != http.StatusNotFound {
 			t.Errorf("GET %s on the browser-facing REST router = %d, want 404", p, res.Code)
 		}

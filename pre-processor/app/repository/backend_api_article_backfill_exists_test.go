@@ -46,10 +46,10 @@ type fakeDataHub struct {
 
 func (f *fakeDataHub) GetFeedID(_ context.Context, req *connect.Request[datahubv1.GetFeedIDRequest]) (*connect.Response[datahubv1.GetFeedIDResponse], error) {
 	f.mu.Lock()
-	f.getFeedIDURLs = append(f.getFeedIDURLs, req.Msg.FeedUrl)
+	f.getFeedIDURLs = append(f.getFeedIDURLs, req.Msg.GetFeedUrl())
 	f.mu.Unlock()
 
-	feedID, ok := f.feedIDByFeedURL[req.Msg.FeedUrl]
+	feedID, ok := f.feedIDByFeedURL[req.Msg.GetFeedUrl()]
 	if !ok {
 		return nil, connect.NewError(connect.CodeNotFound, errors.New("feed not found by URL"))
 	}
@@ -60,7 +60,7 @@ func (f *fakeDataHub) GetEmptyFeedID(_ context.Context, req *connect.Request[dat
 	if f.getEmptyFeedIDErr != nil {
 		return nil, f.getEmptyFeedIDErr
 	}
-	feedID := f.emptyFeedIDByFeedURL[req.Msg.FeedUrl]
+	feedID := f.emptyFeedIDByFeedURL[req.Msg.GetFeedUrl()]
 	return connect.NewResponse(&datahubv1.GetEmptyFeedIDResponse{FeedId: feedID}), nil
 }
 
@@ -75,19 +75,19 @@ func (f *fakeDataHub) CheckArticleExists(_ context.Context, req *connect.Request
 
 	// Mirrors the handler's argument validation so a caller that forgets the
 	// feed_id fails here the way it would in production.
-	if req.Msg.FeedId == "" {
+	if req.Msg.GetFeedId() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("feed_id is required"))
 	}
 
-	feedID, ok := f.existing[req.Msg.Url]
+	feedID, ok := f.existing[req.Msg.GetUrl()]
 	return connect.NewResponse(&datahubv1.CheckArticleExistsResponse{
-		Exists: ok && feedID == req.Msg.FeedId,
+		Exists: ok && feedID == req.Msg.GetFeedId(),
 	}), nil
 }
 
 func (f *fakeDataHub) CreateArticle(_ context.Context, req *connect.Request[datahubv1.CreateArticleRequest]) (*connect.Response[datahubv1.CreateArticleResponse], error) {
 	f.mu.Lock()
-	f.createdURLs = append(f.createdURLs, req.Msg.Url)
+	f.createdURLs = append(f.createdURLs, req.Msg.GetUrl())
 	f.mu.Unlock()
 
 	return connect.NewResponse(&datahubv1.CreateArticleResponse{ArticleId: "art-new"}), nil
@@ -145,9 +145,9 @@ func TestUpsertArticlesWithFeedID_SkipsArticleAlreadyStoredUnderItsFeed(t *testi
 	assert.Empty(t, feedLookups,
 		"the caller already resolved FeedID; GetFeedID must not be re-issued on the article URL, which can never match feed_links.url")
 	require.Len(t, checks, 1, "expected exactly one CheckArticleExists call")
-	assert.Equal(t, "feed-001", checks[0].FeedId,
+	assert.Equal(t, "feed-001", checks[0].GetFeedId(),
 		"CheckArticleExists must carry the resolved FeedID")
-	assert.Equal(t, "https://example.com/articles/go-126", checks[0].Url)
+	assert.Equal(t, "https://example.com/articles/go-126", checks[0].GetUrl())
 }
 
 // TestUpsertArticlesWithFeedID_CreatesArticleAbsentFromItsFeed is the other
@@ -178,7 +178,7 @@ func TestUpsertArticlesWithFeedID_CreatesArticleAbsentFromItsFeed(t *testing.T) 
 func newStubBackfillPool(t *testing.T, rows []driver.InoreaderArticleRow) *pgxpool.Pool {
 	t.Helper()
 
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = ln.Close() })
 

@@ -25,31 +25,28 @@ def _resolve_import_targets(
 ) -> list[str]:
     targets: list[str] = []
     if isinstance(node, ast.Import):
-        for alias in node.names:
-            targets.append(alias.name)
+        targets.extend(alias.name for alias in node.names)
     elif isinstance(node, ast.ImportFrom):
         if node.level > 0:
             rel_path = py_file.resolve().relative_to(src_dir.resolve())
             package_parts = rel_path.parent.parts
             cutoff = len(package_parts) - (node.level - 1)
             if cutoff < 0:
-                raise ValueError(
-                    f"Relative import level {node.level} goes beyond src root in {py_file}"
-                )
+                msg = f"Relative import level {node.level} goes beyond src root in {py_file}"
+                raise ValueError(msg)
             base_parts = list(package_parts[:cutoff])
             if node.module:
                 full_module = ".".join([*base_parts, node.module])
                 targets.append(full_module)
-                for alias in node.names:
-                    targets.append(f"{full_module}.{alias.name}")
+                targets.extend(f"{full_module}.{alias.name}" for alias in node.names)
             else:
-                for alias in node.names:
-                    targets.append(".".join([*base_parts, alias.name]))
+                targets.extend(".".join([*base_parts, alias.name]) for alias in node.names)
         else:
             module = node.module or ""
             targets.append(module)
-            for alias in node.names:
-                targets.append(f"{module}.{alias.name}" if module else alias.name)
+            targets.extend(
+                f"{module}.{alias.name}" if module else alias.name for alias in node.names
+            )
     return targets
 
 
@@ -82,7 +79,7 @@ def _get_src_dir() -> Path:
     return Path(__file__).resolve().parents[2] / "src"
 
 
-def test_handler_does_not_import_gateway_or_infra():
+def test_handler_does_not_import_gateway_or_infra() -> None:
     src_dir = _get_src_dir()
     base_dir = src_dir / "recap_evaluator" / "handler"
     violations = _scan_violations(
@@ -97,7 +94,7 @@ def test_handler_does_not_import_gateway_or_infra():
     assert not violations, f"Handler layer violations: {violations}"
 
 
-def test_usecase_does_not_import_gateway_or_infra():
+def test_usecase_does_not_import_gateway_or_infra() -> None:
     src_dir = _get_src_dir()
     base_dir = src_dir / "recap_evaluator" / "usecase"
     violations = _scan_violations(
@@ -114,7 +111,7 @@ def test_usecase_does_not_import_gateway_or_infra():
     assert not violations, f"Usecase layer violations: {violations}"
 
 
-def test_evaluator_does_not_import_forbidden_layers():
+def test_evaluator_does_not_import_forbidden_layers() -> None:
     src_dir = _get_src_dir()
     base_dir = src_dir / "recap_evaluator" / "evaluator"
     violations = _scan_violations(
@@ -132,7 +129,7 @@ def test_evaluator_does_not_import_forbidden_layers():
     assert not violations, f"Evaluator layer violations: {violations}"
 
 
-def test_port_does_not_import_outer_layers():
+def test_port_does_not_import_outer_layers() -> None:
     src_dir = _get_src_dir()
     base_dir = src_dir / "recap_evaluator" / "port"
     violations = _scan_violations(
@@ -151,7 +148,7 @@ def test_port_does_not_import_outer_layers():
     assert not violations, f"Port layer violations: {violations}"
 
 
-def test_domain_does_not_import_outer_layers():
+def test_domain_does_not_import_outer_layers() -> None:
     src_dir = _get_src_dir()
     base_dir = src_dir / "recap_evaluator" / "domain"
     violations = _scan_violations(
@@ -171,7 +168,7 @@ def test_domain_does_not_import_outer_layers():
     assert not violations, f"Domain layer violations: {violations}"
 
 
-def test_scheduler_does_not_import_gateway_or_driver():
+def test_scheduler_does_not_import_gateway_or_driver() -> None:
     src_dir = _get_src_dir()
     base_dir = src_dir / "recap_evaluator" / "scheduler"
     violations = _scan_violations(
@@ -186,7 +183,7 @@ def test_scheduler_does_not_import_gateway_or_driver():
     assert not violations, f"Scheduler layer violations: {violations}"
 
 
-def test_architecture_rule_detector_flags_forbidden_import(tmp_path: Path):
+def test_architecture_rule_detector_flags_forbidden_import(tmp_path: Path) -> None:
     src_dir = tmp_path / "src"
     test_dir = src_dir / "recap_evaluator" / "evaluator"
     test_dir.mkdir(parents=True)
@@ -197,7 +194,7 @@ def test_architecture_rule_detector_flags_forbidden_import(tmp_path: Path):
     assert "bad.py:1: import from recap_evaluator.gateway.ollama_gateway" in violations[0]
 
 
-def test_architecture_rule_detector_resolves_relative_imports(tmp_path: Path):
+def test_architecture_rule_detector_resolves_relative_imports(tmp_path: Path) -> None:
     src_dir = tmp_path / "src"
     test_dir = src_dir / "recap_evaluator" / "evaluator"
     test_dir.mkdir(parents=True)
@@ -208,7 +205,7 @@ def test_architecture_rule_detector_resolves_relative_imports(tmp_path: Path):
     assert "eval.py:1: import from recap_evaluator.gateway.ollama_gateway" in violations[0]
 
 
-def test_architecture_fails_on_empty_directory(tmp_path: Path):
+def test_architecture_fails_on_empty_directory(tmp_path: Path) -> None:
     empty_dir = tmp_path / "empty"
     empty_dir.mkdir()
     with pytest.raises(AssertionError, match="No python files found"):

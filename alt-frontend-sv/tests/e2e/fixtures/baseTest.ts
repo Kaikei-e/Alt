@@ -38,7 +38,7 @@ function isLocalUrl(url: URL): boolean {
 
 export type BaseFixtures = {
 	/** Auto-fixture; nothing to consume. Installs the third-party request guard. */
-	blockExternalOrigins: void;
+	blockExternalOrigins: undefined;
 	/**
 	 * Uncaught page exceptions observed during the test, in order. Read it to
 	 * assert on an error the app is *supposed* to raise.

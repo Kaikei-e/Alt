@@ -73,9 +73,10 @@ function setup(
 
 /** Per-emission growth of the revealed prefix, in characters. */
 function increments(emissions: { text: string }[]): number[] {
-	return emissions.map(
-		(e, i) => e.text.length - (i === 0 ? 0 : emissions[i - 1]!.text.length),
-	);
+	return emissions.map((e, i) => {
+		const prev = i === 0 ? undefined : emissions[i - 1];
+		return e.text.length - (prev ? prev.text.length : 0);
+	});
 }
 
 function pump(scheduler: FakeScheduler, frames: number, dtMs = FRAME_MS): void {
@@ -118,7 +119,9 @@ describe("createTypewriterReveal", () => {
 		pump(scheduler, 12);
 
 		expect(emissions.map((e) => e.text)).toEqual(["H", "Hi"]);
-		const gap = emissions[1]!.t - emissions[0]!.t;
+		const [first, second] = emissions;
+		if (!first || !second) throw new Error("expected 2 emissions");
+		const gap = second.t - first.t;
 		expect(gap).toBeGreaterThanOrEqual(32);
 		expect(gap).toBeLessThanOrEqual(64);
 	});
@@ -175,7 +178,9 @@ describe("createTypewriterReveal", () => {
 		scheduler.tick(5000);
 
 		expect(emissions).toHaveLength(1);
-		expect(emissions[0]!.text.length).toBeLessThanOrEqual(24);
+		const first = emissions[0];
+		if (!first) throw new Error("expected 1 emission");
+		expect(first.text.length).toBeLessThanOrEqual(24);
 	});
 
 	it("stops scheduling once the backlog is drained", () => {

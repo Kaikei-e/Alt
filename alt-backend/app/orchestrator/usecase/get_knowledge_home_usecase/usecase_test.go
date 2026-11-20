@@ -326,7 +326,7 @@ func TestGetKnowledgeHomeUsecase_DigestEnrichment(t *testing.T) {
 		require.NoError(t, err)
 		// Without enrichment ports, digest keeps original values
 		assert.Equal(t, 3, result.Digest.NeedToKnowCount)
-		assert.Equal(t, "", result.Digest.DigestFreshness)
+		assert.Empty(t, result.Digest.DigestFreshness)
 	})
 
 	t.Run("enrichDigest preserves availability flags from read model", func(t *testing.T) {
@@ -412,7 +412,7 @@ func TestGetKnowledgeHomeUsecase_ServiceQuality(t *testing.T) {
 	t.Run("ServiceQuality zero value treated as full by handler", func(t *testing.T) {
 		// When ServiceQuality is not set explicitly (legacy path), it should default
 		result := &Result{GeneratedAt: time.Now()}
-		assert.Equal(t, "", result.ServiceQuality, "zero value is empty string")
+		assert.Empty(t, result.ServiceQuality, "zero value is empty string")
 	})
 }
 

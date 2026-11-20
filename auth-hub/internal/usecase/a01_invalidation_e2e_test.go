@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
-	"errors"
 	"log/slog"
 	"testing"
 	"time"
@@ -112,8 +111,8 @@ func TestA01_InvalidateViaUsecasePreventsReissuance(t *testing.T) {
 	// Step 4: Attacker tries to reuse the stolen cookie. Cache is empty so
 	// GetSession falls through to Kratos, which reports revoked → fail.
 	_, err = getUC.Execute(ctx, rawCookie)
-	assert.Error(t, err, "A01: revoked+invalidated session must be rejected")
-	assert.True(t, errors.Is(err, domain.ErrAuthFailed))
+	require.Error(t, err, "A01: revoked+invalidated session must be rejected")
+	assert.ErrorIs(t, err, domain.ErrAuthFailed)
 }
 
 // TestA01_CacheRefillResidual documents the bounded residual risk:
@@ -150,7 +149,7 @@ func TestA01_CacheRefillResidual(t *testing.T) {
 	// Step 3: Attacker tries the cookie. Cache hit → still succeeds.
 	// This is the documented bounded residual: up to MaxCacheTTL (60s).
 	resStale, err := getUC.Execute(ctx, rawCookie)
-	assert.NoError(t, err, "A01 residual: cache hit still succeeds before invalidation — "+
+	require.NoError(t, err, "A01 residual: cache hit still succeeds before invalidation — "+
 		"bounded to MaxCacheTTL=60s (was 5m pre-fix)")
 	assert.NotNil(t, resStale)
 
@@ -161,8 +160,8 @@ func TestA01_CacheRefillResidual(t *testing.T) {
 
 	// Step 5: Attacker tries again → must fail now.
 	_, err = getUC.Execute(ctx, rawCookie)
-	assert.Error(t, err, "A01: post-invalidation must fail closed")
-	assert.True(t, errors.Is(err, domain.ErrAuthFailed))
+	require.Error(t, err, "A01: post-invalidation must fail closed")
+	assert.ErrorIs(t, err, domain.ErrAuthFailed)
 }
 
 // TestA01_RealIssuer_CacheTTLAndTokenTTLBounds verifies the production

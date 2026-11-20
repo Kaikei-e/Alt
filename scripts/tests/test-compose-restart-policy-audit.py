@@ -24,22 +24,28 @@ AUDIT_SCRIPT = SCRIPTS / "compose-restart-policy-audit.py"
 sys.path.insert(0, str(SCRIPTS))
 
 spec = importlib.util.spec_from_file_location("restart_policy_audit", AUDIT_SCRIPT)
-assert spec is not None and spec.loader is not None, "audit script missing"
+assert spec is not None, "audit script missing"
+assert spec.loader is not None, "audit script missing"
 audit = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(audit)
 
-PASS = 0
-FAIL = 0
+
+class _Results:
+    def __init__(self) -> None:
+        self.passed = 0
+        self.failed = 0
+
+
+RESULTS = _Results()
 
 
 def check(name: str, condition: bool) -> None:
-    global PASS, FAIL
     if condition:
-        print(f"  PASS  {name}")
-        PASS += 1
+        sys.stdout.write(f"  PASS  {name}\n")
+        RESULTS.passed += 1
     else:
-        print(f"  FAIL  {name}")
-        FAIL += 1
+        sys.stdout.write(f"  FAIL  {name}\n")
+        RESULTS.failed += 1
 
 
 def write_tree(base: pathlib.Path, files: dict[str, str]) -> pathlib.Path:
@@ -50,16 +56,12 @@ def write_tree(base: pathlib.Path, files: dict[str, str]) -> pathlib.Path:
     return base / "compose" / "compose.yaml"
 
 
-print("compliant chain")
+sys.stdout.write("compliant chain\n")
 with tempfile.TemporaryDirectory() as tmp:
     root = write_tree(
         pathlib.Path(tmp),
         {
-            "compose/compose.yaml": (
-                "include:\n"
-                "  - core.yaml\n"
-                "  - workers.yaml\n"
-            ),
+            "compose/compose.yaml": ("include:\n  - core.yaml\n  - workers.yaml\n"),
             "compose/core.yaml": (
                 "services:\n"
                 "  alt-backend:\n"
@@ -85,28 +87,22 @@ with tempfile.TemporaryDirectory() as tmp:
         audit.audit_compose(root) == [],
     )
 
-print("long-running service without restart")
+sys.stdout.write("long-running service without restart\n")
 with tempfile.TemporaryDirectory() as tmp:
     root = write_tree(
         pathlib.Path(tmp),
         {
             "compose/compose.yaml": "include:\n  - workers.yaml\n",
-            "compose/workers.yaml": (
-                "services:\n"
-                "  search-indexer:\n"
-                "    image: search-indexer\n"
-            ),
+            "compose/workers.yaml": ("services:\n  search-indexer:\n    image: search-indexer\n"),
         },
     )
     found = audit.audit_compose(root)
     check(
         "long-running service omitting restart fails",
-        len(found) == 1
-        and "search-indexer" in found[0]
-        and "workers.yaml" in found[0],
+        len(found) == 1 and "search-indexer" in found[0] and "workers.yaml" in found[0],
     )
 
-print("restart: no on a long-running service")
+sys.stdout.write("restart: no on a long-running service\n")
 with tempfile.TemporaryDirectory() as tmp:
     root = write_tree(
         pathlib.Path(tmp),
@@ -124,7 +120,7 @@ with tempfile.TemporaryDirectory() as tmp:
     )
     found = audit.audit_compose(root)
     check(
-        "quoted restart: \"no\" on a long-running service fails",
+        'quoted restart: "no" on a long-running service fails',
         any("quoted-no" in v for v in found),
     )
     check(
@@ -132,7 +128,7 @@ with tempfile.TemporaryDirectory() as tmp:
         any("unquoted-no" in v for v in found),
     )
 
-print("exempt init service")
+sys.stdout.write("exempt init service\n")
 with tempfile.TemporaryDirectory() as tmp:
     root = write_tree(
         pathlib.Path(tmp),
@@ -161,29 +157,23 @@ with tempfile.TemporaryDirectory() as tmp:
         audit.audit_compose(root) == [],
     )
 
-print("service inherited through an include")
+sys.stdout.write("service inherited through an include\n")
 with tempfile.TemporaryDirectory() as tmp:
     root = write_tree(
         pathlib.Path(tmp),
         {
             "compose/compose.yaml": "include:\n  - sub/nested.yaml\n",
             "compose/sub/nested.yaml": "include:\n  - leaf.yaml\n",
-            "compose/sub/leaf.yaml": (
-                "services:\n"
-                "  inherited-worker:\n"
-                "    image: worker\n"
-            ),
+            "compose/sub/leaf.yaml": ("services:\n  inherited-worker:\n    image: worker\n"),
         },
     )
     found = audit.audit_compose(root)
     check(
         "service without restart in nested include is caught with its file",
-        len(found) == 1
-        and "inherited-worker" in found[0]
-        and "leaf.yaml" in found[0],
+        len(found) == 1 and "inherited-worker" in found[0] and "leaf.yaml" in found[0],
     )
 
-print("profiled service")
+sys.stdout.write("profiled service\n")
 with tempfile.TemporaryDirectory() as tmp:
     root = write_tree(
         pathlib.Path(tmp),
@@ -222,32 +212,24 @@ with tempfile.TemporaryDirectory() as tmp:
         not any("profiled-migrator" in v for v in found),
     )
 
-print("allowlist handling")
+sys.stdout.write("allowlist handling\n")
 with tempfile.TemporaryDirectory() as tmp:
     root = write_tree(
         pathlib.Path(tmp),
         {
             "compose/compose.yaml": (
-                "services:\n"
-                "  special-svc:\n"
-                "    image: app\n"
-                '    restart: "no"\n'
+                'services:\n  special-svc:\n    image: app\n    restart: "no"\n'
             ),
         },
     )
     check(
         "ONE_SHOT_ALLOWLIST lists only genuine one-shots with reasons",
         set(audit.ONE_SHOT_ALLOWLIST) == {"alt-perf", "k6"}
-        and all(
-            isinstance(r, str) and bool(r.strip())
-            for r in audit.ONE_SHOT_ALLOWLIST.values()
-        ),
+        and all(isinstance(r, str) and bool(r.strip()) for r in audit.ONE_SHOT_ALLOWLIST.values()),
     )
     check(
         "explicit allowlist with reason exempts the service",
-        audit.audit_compose(
-            root, allowlist={"special-svc": "runs one-shot job to completion"}
-        )
+        audit.audit_compose(root, allowlist={"special-svc": "runs one-shot job to completion"})
         == [],
     )
     check(
@@ -255,7 +237,7 @@ with tempfile.TemporaryDirectory() as tmp:
         len(audit.audit_compose(root, allowlist={"special-svc": "   "})) == 1,
     )
 
-print("unresolvable restart and unmodeled compose keys (R2/R3)")
+sys.stdout.write("unresolvable restart and unmodeled compose keys (R2/R3)\n")
 with tempfile.TemporaryDirectory() as tmp:
     root = write_tree(
         pathlib.Path(tmp),
@@ -275,64 +257,50 @@ with tempfile.TemporaryDirectory() as tmp:
                 "    deploy:\n"
                 "      restart_policy:\n"
                 "        condition: on-failure\n"
-        ),
+            ),
         },
     )
     found = audit.audit_compose(root, allowlist={})
     check(
         "${X:-no} restart policy is rejected as unresolvable asking for literal",
-        any(
-            "interp-restart" in v and "literal" in v.lower()
-            for v in found
-        ),
+        any("interp-restart" in v and "literal" in v.lower() for v in found),
     )
     check(
         "extends: fails with explicit 'does not model' message",
-        any(
-            "extends-svc" in v and "does not model" in v.lower()
-            for v in found
-        ),
+        any("extends-svc" in v and "does not model" in v.lower() for v in found),
     )
     check(
         "deploy.restart_policy fails with explicit 'does not model' message",
-        any(
-            "deploy-restart-svc" in v and "does not model" in v.lower()
-            for v in found
-        ),
+        any("deploy-restart-svc" in v and "does not model" in v.lower() for v in found),
     )
 
-print("cli exit codes")
+sys.stdout.write("cli exit codes\n")
 with tempfile.TemporaryDirectory() as tmp:
     clean_root = write_tree(
         pathlib.Path(tmp) / "ok",
         {
             "compose/compose.yaml": (
-                "services:\n"
-                "  api:\n"
-                "    image: api\n"
-                "    restart: unless-stopped\n"
+                "services:\n  api:\n    image: api\n    restart: unless-stopped\n"
             ),
         },
     )
     bad_root = write_tree(
         pathlib.Path(tmp) / "bad",
         {
-            "compose/compose.yaml": (
-                "services:\n"
-                "  api:\n"
-                "    image: api\n"
-            ),
+            "compose/compose.yaml": ("services:\n  api:\n    image: api\n"),
         },
     )
-    res_ok = subprocess.run(
+    res_ok = subprocess.run(  # noqa: S603 - fixed argv built in this test
         [sys.executable, str(AUDIT_SCRIPT), "--compose", str(clean_root)],
         capture_output=True,
         text=True,
+        check=False,
     )
-    res_bad = subprocess.run(
+    res_bad = subprocess.run(  # noqa: S603 - fixed argv built in this test
         [sys.executable, str(AUDIT_SCRIPT), "--compose", str(bad_root)],
         capture_output=True,
         text=True,
+        check=False,
     )
     check("CLI exits 0 on clean compose", res_ok.returncode == 0)
     check(
@@ -340,5 +308,5 @@ with tempfile.TemporaryDirectory() as tmp:
         res_bad.returncode == 1 and "api" in res_bad.stdout,
     )
 
-print(f"\n{PASS} passed, {FAIL} failed")
-sys.exit(1 if FAIL else 0)
+sys.stdout.write(f"\n{RESULTS.passed} passed, {RESULTS.failed} failed\n")
+sys.exit(1 if RESULTS.failed else 0)

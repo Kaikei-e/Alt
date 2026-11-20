@@ -22,7 +22,7 @@ func ResolveRedisPassword(logger *slog.Logger) (string, error) {
 		return "", nil
 	}
 
-	envKey := "REDIS_PASSWORD_FILE"
+	var envKey string
 	filePath, set := os.LookupEnv("REDIS_STREAMS_PASSWORD_FILE")
 	if set && strings.TrimSpace(filePath) != "" {
 		envKey = "REDIS_STREAMS_PASSWORD_FILE"
@@ -40,6 +40,7 @@ func ResolveRedisPassword(logger *slog.Logger) (string, error) {
 		return "", fmt.Errorf("%s is set but empty; set REDIS_AUTH=disabled to run with redis auth disabled explicitly", envKey)
 	}
 
+	// #nosec G304 -- trimmedPath comes from operator-configured REDIS_*_PASSWORD_FILE env var, not user input
 	content, err := os.ReadFile(trimmedPath)
 	if err != nil {
 		logger.Error("redis_password_file_read_failed", "file", trimmedPath, "error", err)

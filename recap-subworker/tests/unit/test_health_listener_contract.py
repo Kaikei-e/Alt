@@ -5,8 +5,10 @@ from __future__ import annotations
 import re
 import urllib.error
 import urllib.request
+from http import HTTPStatus
 from pathlib import Path
 
+import pytest
 from prometheus_client import CollectorRegistry
 
 from recap_subworker.app.infra.pki.ops import start_ops
@@ -47,13 +49,10 @@ def test_pki_ops_listener_returns_404_for_deep_health() -> None:
     handle = start_ops("recap-subworker", CollectorRegistry(), listen="127.0.0.1:0")
     try:
         with urllib.request.urlopen(f"http://{handle.addr}/health", timeout=2) as resp:
-            assert resp.status == 200
-        try:
+            assert resp.status == HTTPStatus.OK
+        with pytest.raises(urllib.error.HTTPError) as exc_info:
             urllib.request.urlopen(f"http://{handle.addr}/health/deep", timeout=2)
-        except urllib.error.HTTPError as exc:
-            assert exc.code == 404
-        else:
-            raise AssertionError("PKI ops must not serve /health/deep")
+        assert exc_info.value.code == HTTPStatus.NOT_FOUND
     finally:
         handle.aclose_sync()
 

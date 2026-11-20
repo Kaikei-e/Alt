@@ -56,7 +56,7 @@ onMount(() => {
 			`${url.pathname}${url.search}${url.hash}`,
 		);
 	}
-	loadReports();
+	void loadReports();
 });
 </script>
 

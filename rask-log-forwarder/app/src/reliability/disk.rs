@@ -34,7 +34,7 @@ pub struct DiskConfig {
     pub max_disk_usage: u64, // bytes
     pub retention_period: Duration,
     pub compression: bool,
-    /// Mirrors ENABLE_DISK_FALLBACK. When false the store is never constructed,
+    /// Mirrors `ENABLE_DISK_FALLBACK`. When false the store is never constructed,
     /// so no directory is created and no batch is ever written; a batch that
     /// exhausts its retry budget is then dropped loudly instead of persisted.
     pub enabled: bool,
@@ -44,8 +44,8 @@ impl Default for DiskConfig {
     fn default() -> Self {
         Self {
             storage_path: PathBuf::from("/tmp/rask-log-forwarder/fallback"),
-            max_disk_usage: 1024 * 1024 * 1024, // 1GB
-            retention_period: Duration::from_secs(24 * 3600), // 24 hours
+            max_disk_usage: 1024 * 1024 * 1024,         // 1GB
+            retention_period: Duration::from_hours(24), // 24 hours
             compression: true,
             enabled: true,
         }
@@ -68,6 +68,12 @@ pub struct DiskFallback {
 }
 
 impl DiskFallback {
+    /// Creates a new [`DiskFallback`] store and initializes its storage directory.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DiskError::IoError`] if creating `config.storage_path`, setting directory
+    /// permissions, or scanning existing files to compute disk usage fails.
     pub async fn new(config: DiskConfig) -> Result<Self, DiskError> {
         // Create storage directory if it doesn't exist
         fs::create_dir_all(&config.storage_path).await?;
@@ -87,6 +93,14 @@ impl DiskFallback {
         })
     }
 
+    /// Persists `batch` to disk fallback storage, optionally gzip-compressed.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DiskError::SystemTimeError`] if the system clock precedes `UNIX_EPOCH`,
+    /// [`DiskError::SerializationError`] if bincode serialization fails,
+    /// [`DiskError::DiskSpaceExceeded`] if storing the batch would exceed `max_disk_usage`, or
+    /// [`DiskError::IoError`] if compression or atomic file creation/write/rename fails.
     pub async fn store_batch(&mut self, batch: Batch) -> Result<(), DiskError> {
         let batch_id = batch.id().to_string();
         let batch_type = batch.batch_type();
@@ -166,7 +180,15 @@ impl DiskFallback {
         Ok(())
     }
 
+    /// Loads and reconstructs a stored [`Batch`] by `batch_id`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DiskError::BatchNotFound`] if the batch file does not exist,
+    /// [`DiskError::IoError`] if reading the file fails, or
+    /// [`DiskError::DeserializationError`] if bincode decoding fails.
     pub async fn retrieve_batch(&self, batch_id: &str) -> Result<Batch, DiskError> {
+        const MAX_DECOMPRESSED_BATCH_BYTES: usize = 64 * 1024 * 1024;
         let file_path = self.get_batch_file_path(batch_id);
 
         if !fs::try_exists(&file_path).await.unwrap_or(false) {
@@ -179,14 +201,13 @@ impl DiskFallback {
         file.read_to_end(&mut data).await?;
 
         // Decompress if needed (try both compressed and uncompressed)
-        let deserialized_data = if let Ok(decompressed) = self.decompress_data(&data) {
+        let deserialized_data = if let Ok(decompressed) = Self::decompress_data(&data) {
             decompressed
         } else {
             data // Assume uncompressed
         };
 
         // Deserialize with an explicit allocation limit (64 MiB)
-        const MAX_DECOMPRESSED_BATCH_BYTES: usize = 64 * 1024 * 1024;
         let bincode_cfg = bincode::config::standard().with_limit::<MAX_DECOMPRESSED_BATCH_BYTES>();
         let (stored_batch, _): (StoredBatch, usize) =
             bincode::serde::decode_from_slice(&deserialized_data, bincode_cfg)?;
@@ -209,6 +230,12 @@ impl DiskFallback {
             .unwrap_or(false)
     }
 
+    /// Deletes the stored batch file for `batch_id` and updates tracked disk usage.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DiskError::BatchNotFound`] if the batch file does not exist, or
+    /// [`DiskError::IoError`] if inspecting metadata or deleting the file fails.
     pub async fn delete_batch(&mut self, batch_id: &str) -> Result<(), DiskError> {
         let file_path = self.get_batch_file_path(batch_id);
 
@@ -229,13 +256,23 @@ impl DiskFallback {
         Ok(())
     }
 
+    fn is_batch_file_name(file_name: &str) -> bool {
+        Path::new(file_name).extension() == Some(std::ffi::OsStr::new("batch"))
+            || file_name == ".batch"
+    }
+
+    /// Lists the IDs of all batches currently stored on disk.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DiskError::IoError`] if reading entries from `config.storage_path` fails.
     pub async fn list_stored_batches(&self) -> Result<Vec<String>, DiskError> {
         let mut batch_ids = Vec::new();
         let mut entries = fs::read_dir(&self.config.storage_path).await?;
 
         while let Some(entry) = entries.next_entry().await? {
             if let Some(file_name) = entry.file_name().to_str()
-                && file_name.ends_with(".batch")
+                && Self::is_batch_file_name(file_name)
             {
                 let batch_id = file_name.trim_end_matches(".batch");
                 batch_ids.push(batch_id.to_string());
@@ -245,6 +282,12 @@ impl DiskFallback {
         Ok(batch_ids)
     }
 
+    /// Deletes stored batches whose age meets or exceeds `config.retention_period`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DiskError::SystemTimeError`] if the system clock precedes `UNIX_EPOCH`, or
+    /// propagates any [`DiskError`] from [`DiskFallback::list_stored_batches`].
     pub async fn cleanup_old_batches(&mut self) -> Result<u32, DiskError> {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -311,10 +354,16 @@ impl DiskFallback {
         Ok(deleted_count)
     }
 
+    #[must_use]
     pub fn current_disk_usage(&self) -> u64 {
         self.current_usage
     }
 
+    #[must_use]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "disk byte counters converted to f64 for usage percentage"
+    )]
     pub fn disk_usage_percentage(&self) -> f64 {
         (self.current_usage as f64 / self.config.max_disk_usage as f64) * 100.0
     }
@@ -328,18 +377,18 @@ impl DiskFallback {
     }
 
     async fn load_stored_batch(&self, batch_id: &str) -> Result<StoredBatch, DiskError> {
+        const MAX_DECOMPRESSED_BATCH_BYTES: usize = 64 * 1024 * 1024;
         let file_path = self.get_batch_file_path(batch_id);
         let mut file = fs::File::open(&file_path).await?;
         let mut data = Vec::new();
         file.read_to_end(&mut data).await?;
 
-        let deserialized_data = if let Ok(decompressed) = self.decompress_data(&data) {
+        let deserialized_data = if let Ok(decompressed) = Self::decompress_data(&data) {
             decompressed
         } else {
             data
         };
 
-        const MAX_DECOMPRESSED_BATCH_BYTES: usize = 64 * 1024 * 1024;
         let bincode_cfg = bincode::config::standard().with_limit::<MAX_DECOMPRESSED_BATCH_BYTES>();
         let (stored_batch, _): (StoredBatch, usize) =
             bincode::serde::decode_from_slice(&deserialized_data, bincode_cfg)
@@ -347,7 +396,7 @@ impl DiskFallback {
         Ok(stored_batch)
     }
 
-    fn decompress_data(&self, data: &[u8]) -> Result<Vec<u8>, std::io::Error> {
+    fn decompress_data(data: &[u8]) -> Result<Vec<u8>, std::io::Error> {
         const MAX_DECOMPRESSED_BATCH_BYTES: u64 = 64 * 1024 * 1024;
         let decoder = GzDecoder::new(data);
         let mut limited = decoder.take(MAX_DECOMPRESSED_BATCH_BYTES + 1);
@@ -388,5 +437,30 @@ impl DiskFallback {
         }
 
         Ok(total_size)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::DiskFallback;
+
+    #[test]
+    fn batch_extension_filter_matches_original_suffix_logic() {
+        let cases = [
+            ("abc.batch", true),
+            (".batch", true),
+            ("abc.BATCH", false),
+            ("abc.batch.tmp", false),
+            ("batch", false),
+            ("abc.batch.gz", false),
+        ];
+
+        for (name, expected) in cases {
+            assert_eq!(
+                DiskFallback::is_batch_file_name(name),
+                expected,
+                "mismatch for {name}"
+            );
+        }
     }
 }

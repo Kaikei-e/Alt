@@ -5,6 +5,7 @@ using a cross-encoder model for improved relevance scoring.
 """
 
 import logging
+
 from fastapi import APIRouter, HTTPException
 
 from news_creator.domain.models import (
@@ -14,12 +15,18 @@ from news_creator.domain.models import (
 )
 from news_creator.usecase.rerank_usecase import RerankUsecase
 from news_creator.utils.context_logger import (
+    clear_context,
     set_ai_pipeline,
     set_processing_stage,
-    clear_context,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _validate_rerank_model(model: str | None) -> None:
+    if model is not None and model not in RerankUsecase.ALLOWED_MODELS:
+        msg = f"Unsupported rerank model: {model}"
+        raise ValueError(msg)
 
 
 def create_rerank_router(rerank_usecase: RerankUsecase) -> APIRouter:
@@ -69,11 +76,7 @@ def create_rerank_router(rerank_usecase: RerankUsecase) -> APIRouter:
                     "top_k": request.top_k,
                 },
             )
-            if (
-                request.model is not None
-                and request.model not in RerankUsecase.ALLOWED_MODELS
-            ):
-                raise ValueError(f"Unsupported rerank model: {request.model}")
+            _validate_rerank_model(request.model)
             usecase = rerank_usecase
 
             results, model, processing_time_ms = await usecase.rerank(
@@ -101,14 +104,13 @@ def create_rerank_router(rerank_usecase: RerankUsecase) -> APIRouter:
             raise HTTPException(status_code=400, detail="Invalid request") from exc
 
         except RuntimeError as exc:
-            logger.error(
+            logger.exception(
                 "Failed to rerank candidates",
                 extra={
                     "error": str(exc),
                     "query": request.query[:100] if request.query else "",
                     "candidate_count": len(request.candidates),
                 },
-                exc_info=True,
             )
             raise HTTPException(
                 status_code=502, detail="Upstream service error"

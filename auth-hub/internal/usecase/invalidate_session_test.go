@@ -8,6 +8,7 @@ import (
 	"auth-hub/internal/domain"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestInvalidateSession_Success(t *testing.T) {
@@ -19,7 +20,7 @@ func TestInvalidateSession_Success(t *testing.T) {
 
 	uc := NewInvalidateSession(cache, slog.Default())
 	err := uc.Execute(context.Background(), "test-cookie-1")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	_, found = cache.Get("test-cookie-1")
 	assert.False(t, found)

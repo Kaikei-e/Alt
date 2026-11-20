@@ -85,7 +85,7 @@ export function useKnowledgeHomeAdmin(
 	let inFlight: Promise<void> | null = null;
 
 	const fetchData = async () => {
-		if (inFlight) {
+		if (inFlight !== null) {
 			return inFlight;
 		}
 
@@ -129,7 +129,9 @@ export function useKnowledgeHomeAdmin(
 	const startPolling = (intervalMs = 10000) => {
 		stopPolling();
 		void fetchData();
-		pollTimer = setInterval(fetchData, intervalMs);
+		pollTimer = setInterval(() => {
+			void fetchData();
+		}, intervalMs);
 	};
 
 	const stopPolling = () => {

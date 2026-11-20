@@ -3,16 +3,18 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import statistics
 from collections import Counter
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from functools import partial
-from typing import Any
+from typing import Any, SupportsFloat
 
 import numpy as np
 import pandas as pd
+import structlog
 from sklearn.cluster import KMeans
 from sklearn.metrics import accuracy_score, silhouette_score
 from sklearn.model_selection import train_test_split
@@ -21,6 +23,8 @@ from skopt import gp_minimize
 from skopt.space import Integer, Real
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = structlog.get_logger(__name__)
 
 DEFAULT_GRAPH_MARGIN = 0.15
 DEFAULT_SNAPSHOT_DAYS = 7
@@ -31,36 +35,37 @@ DEFAULT_CLUSTER_MIN_SAMPLES = 10
 DEFAULT_BAYES_ITERATIONS = 30
 DEFAULT_BAYES_SEED = 42
 DEFAULT_BAYES_MIN_SAMPLES = 100
+_MIN_CLUSTER_COUNT = 2
 
 
-def _coerce_json(value: Any) -> Any:
+def _coerce_json(value: object) -> object:
     if value is None:
         return None
     if isinstance(value, str):
         try:
-            import json
-
             return json.loads(value)
         except ValueError, TypeError:
             return None
     return value
 
 
-def _ensure_dict(value: Any) -> dict[str, Any]:
+def _ensure_dict(value: object) -> dict[str, Any]:
     parsed = _coerce_json(value)
     if isinstance(parsed, dict):
         return parsed
     return {}
 
 
-def _ensure_list(value: Any) -> list[dict[str, Any]]:
+def _ensure_list(value: object) -> list[dict[str, Any]]:
     parsed = _coerce_json(value)
     if isinstance(parsed, list):
         return [item for item in parsed if isinstance(item, dict)]
     return []
 
 
-def _ensure_confidence(value: Any) -> float | None:
+def _ensure_confidence(value: object) -> float | None:
+    if not isinstance(value, (SupportsFloat, str)):
+        return None
     try:
         return float(value)
     except TypeError, ValueError:
@@ -82,7 +87,7 @@ def _compute_boosted_scores(candidates: list[dict[str, Any]]) -> tuple[float, fl
     return margin, top_boost, len(boosted)
 
 
-def _format_timestamp(value: Any) -> str:
+def _format_timestamp(value: object) -> str:
     if isinstance(value, datetime):
         return value.astimezone(UTC).isoformat()
     if value is None:
@@ -124,7 +129,7 @@ def build_graph_boost_snapshot_entries(
 
 
 class ClusterBuilder:
-    def __init__(self, max_clusters: int = DEFAULT_CLUSTER_MAX_K, random_state: int = 42):
+    def __init__(self, max_clusters: int = DEFAULT_CLUSTER_MAX_K, random_state: int = 42) -> None:
         self.max_clusters = max(2, max_clusters)
         self.random_state = random_state
 
@@ -169,20 +174,19 @@ class ClusterBuilder:
         genre: str,
         entries: list[dict[str, Any]],
     ) -> dict[str, Any] | None:
-        feature_matrix: list[list[float]] = []
-        for entry in entries:
-            feature_matrix.append(
-                [
-                    float(entry.get("margin") or 0.0),
-                    float(entry.get("top_boost") or 0.0),
-                    float(entry.get("tag_count") or 0),
-                    float(entry.get("candidate_count") or 0),
-                    float(entry.get("tag_entropy") or 0.0),
-                    1.0 if entry.get("graph_boost_available") else 0.0,
-                ]
-            )
+        feature_matrix: list[list[float]] = [
+            [
+                float(entry.get("margin") or 0.0),
+                float(entry.get("top_boost") or 0.0),
+                float(entry.get("tag_count") or 0),
+                float(entry.get("candidate_count") or 0),
+                float(entry.get("tag_entropy") or 0.0),
+                1.0 if entry.get("graph_boost_available") else 0.0,
+            ]
+            for entry in entries
+        ]
 
-        if len(feature_matrix) < 2:
+        if len(feature_matrix) < _MIN_CLUSTER_COUNT:
             return None
 
         features = np.asarray(feature_matrix, dtype=float)
@@ -194,7 +198,7 @@ class ClusterBuilder:
         for k in range(2, max_k + 1):
             kmeans = KMeans(n_clusters=k, random_state=self.random_state, n_init=10)
             labels = kmeans.fit_predict(scaled)
-            if len(set(labels)) < 2:
+            if len(set(labels)) < _MIN_CLUSTER_COUNT:
                 continue
             try:
                 score = silhouette_score(scaled, labels)
@@ -288,13 +292,12 @@ def _prepare_dataframe_from_entries(entries: list[dict[str, Any]]) -> pd.DataFra
     # Filter out rows with missing required fields
     df = df.dropna(subset=["margin", "top_boost", "tag_count", "strategy"]).copy()
     df = df[df["strategy"].isin({"graph_boost", "weighted_score"})]
-    df = df.assign(
+    return df.assign(
         label=df["strategy"] == "graph_boost",
         margin=df["margin"].astype(float),
         top_boost=df["top_boost"].astype(float),
         tag_count=df["tag_count"].astype(int),
     )
-    return df
 
 
 def _objective_bayes(params: Sequence[float], df: pd.DataFrame) -> float:
@@ -371,9 +374,6 @@ def run_bayes_optimization(
     if len(df) < min_samples_for_split:
         # For small datasets, use all data for training and return same accuracy for both
         # This maintains backward compatibility while warning about statistical validity
-        import structlog
-
-        logger = structlog.get_logger(__name__)
         logger.warning(
             "insufficient samples for train/test split, using all data for training",
             sample_count=len(df),
@@ -392,7 +392,9 @@ def run_bayes_optimization(
             random_state=seed,
             acq_func="EI",
         )
-        assert result is not None, "gp_minimize must return a result"
+        if result is None:
+            msg = "gp_minimize must return a result"
+            raise RuntimeError(msg)
         best_params = _params_from_raw(result.x)
         train_accuracy = 1.0 - result.fun
         # For small datasets, we can't provide a reliable test accuracy
@@ -421,7 +423,9 @@ def run_bayes_optimization(
         random_state=seed,
         acq_func="EI",
     )
-    assert result is not None, "gp_minimize must return a result"
+    if result is None:
+        msg = "gp_minimize must return a result"
+        raise RuntimeError(msg)
 
     best_params = _params_from_raw(result.x)
     train_accuracy = 1.0 - result.fun
@@ -491,7 +495,7 @@ def build_learning_payload(result: GenreLearningResult, *, now: datetime) -> dic
 
 
 class GenreLearningService:
-    def __init__(
+    def __init__(  # noqa: PLR0913 - constructor injection of session and config; callers outside services/
         self,
         session: AsyncSession,
         graph_margin: float = DEFAULT_GRAPH_MARGIN,
@@ -529,10 +533,6 @@ class GenreLearningService:
         Returns:
             List of genre names sorted alphabetically
         """
-        import structlog
-
-        logger = structlog.get_logger(__name__)
-
         logger.debug(
             "fetching available genres",
             days=days,
@@ -569,10 +569,6 @@ class GenreLearningService:
 
     async def _fetch_graph_edges(self) -> dict[tuple[str, str], float]:
         """Fetch graph edges from database (async)."""
-        import structlog
-
-        logger = structlog.get_logger(__name__)
-
         # Load tag_label_graph into memory
         query = text("""
             SELECT genre, tag, weight
@@ -605,10 +601,6 @@ class GenreLearningService:
         self, rows: list[dict[str, Any]], graph_edges: dict[tuple[str, str], float]
     ) -> None:
         """Apply graph boosts to rows using graph_edges (CPU-bound)."""
-        import structlog
-
-        logger = structlog.get_logger(__name__)
-
         # Statistics for debugging
         total_candidates = 0
         candidates_with_boost = 0
@@ -707,10 +699,6 @@ class GenreLearningService:
         days: int = DEFAULT_SNAPSHOT_DAYS,
         limit: int = DEFAULT_SNAPSHOT_LIMIT,
     ) -> list[dict[str, Any]]:
-        import structlog
-
-        logger = structlog.get_logger(__name__)
-
         logger.debug(
             "fetching snapshot rows from recap_job_articles and recap_genre_learning_results",
             days=days,
@@ -750,182 +738,165 @@ class GenreLearningService:
         )
         return rows
 
+    def _empty_learning_result(self) -> GenreLearningResult:
+        empty_summary = GenreLearningSummary(
+            total_records=0,
+            graph_boost_count=0,
+            graph_boost_percentage=0.0,
+            avg_margin=None,
+            avg_top_boost=None,
+            avg_confidence=None,
+            tag_coverage_pct=0.0,
+            graph_margin_reference=self.graph_margin,
+            boost_threshold_reference=None,
+            tag_count_threshold_reference=None,
+            accuracy_estimate=None,
+            test_accuracy=None,
+        )
+        return GenreLearningResult(
+            summary=empty_summary,
+            entries=[],
+            cluster_draft=None,
+        )
+
+    @staticmethod
+    def _log_top_boost_distribution(entries: list[dict[str, Any]]) -> None:
+        top_boosts = [float(entry.get("top_boost") or 0.0) for entry in entries]
+        non_zero_boosts = [b for b in top_boosts if b > 0]
+        if not top_boosts:
+            logger.warning("no entries found after building snapshot entries")
+            return
+        logger.info(
+            "top_boost distribution before Bayes optimization",
+            total_entries=len(entries),
+            non_zero_count=len(non_zero_boosts),
+            zero_count=len(top_boosts) - len(non_zero_boosts),
+            min_boost=round(min(top_boosts), 6),
+            max_boost=round(max(top_boosts), 6),
+            avg_boost=round(sum(top_boosts) / len(top_boosts), 6),
+            avg_non_zero_boost=round(sum(non_zero_boosts) / len(non_zero_boosts), 6)
+            if non_zero_boosts
+            else 0.0,
+        )
+
+    async def _maybe_run_bayes_optimization(
+        self,
+        entries: list[dict[str, Any]],
+        summary: GenreLearningSummary,
+        loop: asyncio.AbstractEventLoop,
+    ) -> None:
+        if not self.bayes_enabled:
+            logger.debug("Bayes optimization disabled")
+            return
+        if len(entries) < self.bayes_min_samples:
+            logger.debug(
+                "insufficient samples for Bayes optimization",
+                entry_count=len(entries),
+                min_samples=self.bayes_min_samples,
+            )
+            return
+
+        logger.info(
+            "running Bayes optimization",
+            entry_count=len(entries),
+            iterations=self.bayes_iterations,
+        )
+        try:
+            df = _prepare_dataframe_from_entries(entries)
+            if len(df) < self.bayes_min_samples:
+                logger.warning(
+                    "insufficient samples for Bayes optimization after filtering",
+                    filtered_count=len(df),
+                    min_samples=self.bayes_min_samples,
+                )
+                return
+            if not (df["top_boost"] > 0).any():
+                logger.warning(
+                    "all top_boost values are zero - skipping Bayes optimization",
+                    hint="tag_label_graph may be empty, waiting for next rebuild cycle",
+                )
+                summary.boost_threshold_reference = 0.0
+                summary.tag_count_threshold_reference = 0
+                return
+
+            best_params, train_accuracy, test_accuracy = await loop.run_in_executor(
+                None,
+                partial(run_bayes_optimization, df, self.bayes_iterations, self.bayes_seed),
+            )
+            summary.boost_threshold_reference = best_params.boost_threshold
+            summary.tag_count_threshold_reference = best_params.tag_count_threshold
+            summary.accuracy_estimate = train_accuracy
+            summary.test_accuracy = test_accuracy
+            summary.graph_margin_reference = best_params.graph_margin
+
+            logger.info(
+                "Bayes optimization completed",
+                graph_margin=best_params.graph_margin,
+                boost_threshold=best_params.boost_threshold,
+                tag_count_threshold=best_params.tag_count_threshold,
+                train_accuracy=train_accuracy,
+                test_accuracy=test_accuracy,
+            )
+        except Exception as exc:
+            logger.exception(
+                "Bayes optimization failed",
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
+
+    async def _resolve_cluster_genres(self, *, days: int, limit: int) -> list[str]:
+        genres_to_cluster = list(self.cluster_genres) if self.cluster_genres else []
+        if not self.auto_detect_genres:
+            return genres_to_cluster
+        logger.debug("auto-detecting genres from database")
+        try:
+            available_genres = await self.fetch_available_genres(days=days, limit=limit)
+            if available_genres:
+                logger.info(
+                    "auto-detected genres",
+                    genre_count=len(available_genres),
+                    genres=available_genres,
+                )
+                return available_genres
+            logger.warning(
+                "no genres found in database, falling back to default genres",
+                default_genres=DEFAULT_CLUSTER_GENRES,
+            )
+        except Exception as exc:  # noqa: BLE001 - auto-detect genre query failure falls back to DEFAULT_CLUSTER_GENRES
+            logger.warning(
+                "failed to auto-detect genres, falling back to default genres",
+                error=str(exc),
+                error_type=type(exc).__name__,
+                default_genres=DEFAULT_CLUSTER_GENRES,
+                exc_info=True,
+            )
+        return DEFAULT_CLUSTER_GENRES
+
     async def generate_learning_result(
         self,
         days: int = DEFAULT_SNAPSHOT_DAYS,
         limit: int = DEFAULT_SNAPSHOT_LIMIT,
     ) -> GenreLearningResult:
-        import structlog
-
-        logger = structlog.get_logger(__name__)
-
         rows = await self.fetch_snapshot_rows(days=days, limit=limit)
-
         if not rows:
-            logger.warning(
-                "no snapshot rows found",
-                days=days,
-                limit=limit,
-            )
-            # Return empty result
-            empty_summary = GenreLearningSummary(
-                total_records=0,
-                graph_boost_count=0,
-                graph_boost_percentage=0.0,
-                avg_margin=None,
-                avg_top_boost=None,
-                avg_confidence=None,
-                tag_coverage_pct=0.0,
-                graph_margin_reference=self.graph_margin,
-                boost_threshold_reference=None,
-                tag_count_threshold_reference=None,
-                accuracy_estimate=None,
-                test_accuracy=None,
-            )
-            return GenreLearningResult(
-                summary=empty_summary,
-                entries=[],
-                cluster_draft=None,
-            )
+            logger.warning("no snapshot rows found", days=days, limit=limit)
+            return self._empty_learning_result()
 
-        logger.debug(
-            "building graph boost snapshot entries",
-            row_count=len(rows),
-        )
-        # Recompute graph_boost from tag_label_graph
+        logger.debug("building graph boost snapshot entries", row_count=len(rows))
         await self._recompute_graph_boosts(rows)
 
         loop = asyncio.get_running_loop()
         entries = await loop.run_in_executor(
             None, partial(build_graph_boost_snapshot_entries, rows, self.graph_margin)
         )
+        self._log_top_boost_distribution(entries)
 
-        # Debug: Check top_boost distribution before Bayes optimization
-        top_boosts = [float(entry.get("top_boost") or 0.0) for entry in entries]
-        non_zero_boosts = [b for b in top_boosts if b > 0]
-        if top_boosts:
-            logger.info(
-                "top_boost distribution before Bayes optimization",
-                total_entries=len(entries),
-                non_zero_count=len(non_zero_boosts),
-                zero_count=len(top_boosts) - len(non_zero_boosts),
-                min_boost=round(min(top_boosts), 6),
-                max_boost=round(max(top_boosts), 6),
-                avg_boost=round(sum(top_boosts) / len(top_boosts), 6) if top_boosts else 0.0,
-                avg_non_zero_boost=round(sum(non_zero_boosts) / len(non_zero_boosts), 6)
-                if non_zero_boosts
-                else 0.0,
-            )
-        else:
-            logger.warning("no entries found after building snapshot entries")
-
-        logger.debug(
-            "summarizing entries",
-            entry_count=len(entries),
-        )
+        logger.debug("summarizing entries", entry_count=len(entries))
         summary = self._summarize_entries(entries)
+        await self._maybe_run_bayes_optimization(entries, summary, loop)
 
-        # Run Bayes optimization if enabled and sufficient samples
-        if self.bayes_enabled and len(entries) >= self.bayes_min_samples:
-            logger.info(
-                "running Bayes optimization",
-                entry_count=len(entries),
-                iterations=self.bayes_iterations,
-            )
-            try:
-                df = _prepare_dataframe_from_entries(entries)
-                if len(df) >= self.bayes_min_samples:
-                    # Check if top_boost has any non-zero values
-                    has_boost_values = (df["top_boost"] > 0).any()
-                    if not has_boost_values:
-                        logger.warning(
-                            "all top_boost values are zero - skipping Bayes optimization",
-                            hint="tag_label_graph may be empty, waiting for next rebuild cycle",
-                        )
-                        # Skip Bayes optimization and use default values
-                        # Set default values to ensure graph_override is populated
-                        summary.boost_threshold_reference = 0.0
-                        summary.tag_count_threshold_reference = 0
-                    else:
-                        best_params, train_accuracy, test_accuracy = await loop.run_in_executor(
-                            None,
-                            partial(
-                                run_bayes_optimization, df, self.bayes_iterations, self.bayes_seed
-                            ),
-                        )
-
-                        summary.boost_threshold_reference = best_params.boost_threshold
-                        summary.tag_count_threshold_reference = best_params.tag_count_threshold
-                        summary.accuracy_estimate = train_accuracy
-                        summary.test_accuracy = test_accuracy
-                        # Update graph_margin_reference with optimized value
-                        summary.graph_margin_reference = best_params.graph_margin
-
-                        logger.info(
-                            "Bayes optimization completed",
-                            graph_margin=best_params.graph_margin,
-                            boost_threshold=best_params.boost_threshold,
-                            tag_count_threshold=best_params.tag_count_threshold,
-                            train_accuracy=train_accuracy,
-                            test_accuracy=test_accuracy,
-                        )
-                else:
-                    logger.warning(
-                        "insufficient samples for Bayes optimization after filtering",
-                        filtered_count=len(df),
-                        min_samples=self.bayes_min_samples,
-                    )
-            except Exception as exc:
-                logger.error(
-                    "Bayes optimization failed",
-                    error=str(exc),
-                    error_type=type(exc).__name__,
-                    exc_info=True,
-                )
-                # Continue with default values (graph_margin_reference only)
-        else:
-            if not self.bayes_enabled:
-                logger.debug("Bayes optimization disabled")
-            else:
-                logger.debug(
-                    "insufficient samples for Bayes optimization",
-                    entry_count=len(entries),
-                    min_samples=self.bayes_min_samples,
-                )
-
-        # Auto-detect genres if enabled
-        genres_to_cluster = list(self.cluster_genres) if self.cluster_genres else []
-        if self.auto_detect_genres:
-            logger.debug("auto-detecting genres from database")
-            try:
-                available_genres = await self.fetch_available_genres(days=days, limit=limit)
-                if available_genres:
-                    genres_to_cluster = available_genres
-                    logger.info(
-                        "auto-detected genres",
-                        genre_count=len(genres_to_cluster),
-                        genres=genres_to_cluster,
-                    )
-                else:
-                    logger.warning(
-                        "no genres found in database, falling back to default genres",
-                        default_genres=DEFAULT_CLUSTER_GENRES,
-                    )
-                    genres_to_cluster = DEFAULT_CLUSTER_GENRES
-            except Exception as exc:
-                logger.warning(
-                    "failed to auto-detect genres, falling back to default genres",
-                    error=str(exc),
-                    error_type=type(exc).__name__,
-                    default_genres=DEFAULT_CLUSTER_GENRES,
-                    exc_info=True,
-                )
-                genres_to_cluster = DEFAULT_CLUSTER_GENRES
-
-        logger.debug(
-            "building cluster draft",
-            cluster_genres=genres_to_cluster,
-        )
+        genres_to_cluster = await self._resolve_cluster_genres(days=days, limit=limit)
+        logger.debug("building cluster draft", cluster_genres=genres_to_cluster)
 
         cluster_builder = ClusterBuilder()
         cluster_draft = await loop.run_in_executor(
@@ -937,7 +908,6 @@ class GenreLearningService:
                 min_samples=DEFAULT_CLUSTER_MIN_SAMPLES,
             ),
         )
-
         if cluster_draft:
             logger.debug(
                 "cluster draft created",

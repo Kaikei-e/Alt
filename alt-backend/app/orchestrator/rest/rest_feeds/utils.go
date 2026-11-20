@@ -7,18 +7,18 @@ import (
 	"strings"
 	"time"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 // HandleError converts errors to appropriate HTTP responses using enhanced error handling.
 // IMPORTANT: This function ensures internal error details are NEVER exposed to clients.
 // All error messages are sanitized using SafeMessage() before being returned.
-func HandleError(c echo.Context, err error, operation string) error {
+func HandleError(c *echo.Context, err error, operation string) error {
 	return resterr.HandleFeedError(c, err, operation)
 }
 
 // HandleValidationError handles validation errors
-func HandleValidationError(c echo.Context, message string, field string, value interface{}) error {
+func HandleValidationError(c *echo.Context, message string, field string, value interface{}) error {
 	return resterr.HandleValidationError(c, message, field, value)
 }
 

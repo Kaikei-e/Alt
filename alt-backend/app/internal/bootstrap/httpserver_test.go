@@ -1,16 +1,12 @@
 package bootstrap
 
 import (
-	"context"
-	"crypto/tls"
 	"io"
 	"net"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
-
-	"golang.org/x/net/http2"
 
 	"alt/config"
 )
@@ -123,7 +119,7 @@ func TestConnectServer_H2CStreamOutlivesReadHeaderTimeout(t *testing.T) {
 		}
 	})
 
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
@@ -134,15 +130,12 @@ func TestConnectServer_H2CStreamOutlivesReadHeaderTimeout(t *testing.T) {
 	go func() { _ = srv.Serve(ln) }()
 	t.Cleanup(func() { _ = srv.Close() })
 
-	tr := &http2.Transport{
-		AllowHTTP: true,
-		DialTLSContext: func(ctx context.Context, network, addr string, _ *tls.Config) (net.Conn, error) {
-			return (&net.Dialer{}).DialContext(ctx, network, addr)
-		},
-	}
+	p := new(http.Protocols)
+	p.SetUnencryptedHTTP2(true)
+	tr := &http.Transport{Protocols: p}
 	t.Cleanup(tr.CloseIdleConnections)
 
-	req, err := http.NewRequest(http.MethodGet, "http://"+ln.Addr().String()+"/stream", nil)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "http://"+ln.Addr().String()+"/stream", nil)
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}

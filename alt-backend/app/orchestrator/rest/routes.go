@@ -7,12 +7,12 @@ import (
 	"alt/orchestrator/rest/rest_feeds"
 	"alt/utils/logger"
 	"context"
-	"fmt"
+	"net/http"
 	"net/netip"
 	"strings"
 
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
+	"github.com/labstack/echo/v5"
+	"github.com/labstack/echo/v5/middleware"
 )
 
 // ctx bounds the lifetime of any background goroutines route registration
@@ -28,7 +28,7 @@ func RegisterRoutes(ctx context.Context, e *echo.Echo, container *di.Application
 	e.Use(middleware.Recover())
 
 	// 2.5. Body size limit: 2 MiB covers the 1 MB OPML import ceiling plus multipart overhead and the 1 MiB HTML-parser article cap.
-	e.Use(middleware.BodyLimit(fmt.Sprintf("%dB", config.MaxRequestBodyBytes)))
+	e.Use(middleware.BodyLimit(config.MaxRequestBodyBytes))
 
 	// 3. Security headers - セキュリティ設定を早期に適用 (M-008)
 	// alt-backend は HTML を返さない API なので CSP は最小許可。frame-ancestors,
@@ -50,7 +50,7 @@ func RegisterRoutes(ctx context.Context, e *echo.Echo, container *di.Application
 	// 設定する想定。
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
 		AllowOrigins: cfg.Server.CORSAllowedOrigins,
-		AllowMethods: []string{echo.GET, echo.POST, echo.PUT, echo.DELETE, echo.OPTIONS},
+		AllowMethods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodOptions},
 		AllowHeaders: []string{
 			echo.HeaderOrigin,
 			echo.HeaderContentType,
@@ -79,13 +79,15 @@ func RegisterRoutes(ctx context.Context, e *echo.Echo, container *di.Application
 	e.Use(middleware_custom.CSRFMiddleware(container.CSRFTokenUsecase))
 
 	// 7. Request timeout - リクエスト処理時間の制限
-	e.Use(middleware.TimeoutWithConfig(middleware.TimeoutConfig{
-		Timeout: cfg.Server.ReadTimeout,
-		Skipper: func(c echo.Context) bool {
-			// Skip timeout for SSE and streaming endpoints
-			return strings.Contains(c.Path(), "/sse/") || strings.Contains(c.Path(), "/stream")
-		},
-	}))
+	if cfg.Server.ReadTimeout > 0 {
+		e.Use(middleware.ContextTimeoutWithConfig(middleware.ContextTimeoutConfig{
+			Timeout: cfg.Server.ReadTimeout,
+			Skipper: func(c *echo.Context) bool {
+				// Skip timeout for SSE and streaming endpoints
+				return strings.Contains(c.Path(), "/sse/") || strings.Contains(c.Path(), "/stream")
+			},
+		}))
+	}
 
 	// 8. Validation middleware - リクエスト内容の検証
 	e.Use(middleware_custom.ValidationMiddleware())
@@ -96,7 +98,7 @@ func RegisterRoutes(ctx context.Context, e *echo.Echo, container *di.Application
 	// 10. Compression middleware last - レスポンス時の圧縮（最後に実行）
 	e.Use(middleware.GzipWithConfig(middleware.GzipConfig{
 		Level: 5, // Balanced compression level
-		Skipper: func(c echo.Context) bool {
+		Skipper: func(c *echo.Context) bool {
 			// Skip compression for already compressed content, SSE endpoints,
 			// and /metrics. Prometheus 3.x reports the gzip-framed response as
 			// "expected a valid start token, got \x1f" for this endpoint, and

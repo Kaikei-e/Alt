@@ -22,12 +22,12 @@ func (h *SovereignHandler) ListReadingThemes(
 	req *connect.Request[sovereignv1.ListReadingThemesRequest],
 ) (*connect.Response[sovereignv1.ListReadingThemesResponse], error) {
 	msg := req.Msg
-	userID, err := parseUUIDField("user_id", msg.UserId)
+	userID, err := parseUUIDField("user_id", msg.GetUserId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 
-	limit := int(msg.Limit)
+	limit := int(msg.GetLimit())
 	if limit <= 0 {
 		limit = defaultReadingThemesLimit
 	} else if limit > maxReadingThemesLimit {

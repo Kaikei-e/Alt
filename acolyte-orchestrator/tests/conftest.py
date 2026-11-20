@@ -43,7 +43,7 @@ os.environ["BACKEND_TOKEN_VERIFY_KEY_FILE"] = str(_TEST_VERIFY_KEY_FILE)
 # Force (not setdefault) before any Settings()/main imports during collection,
 # so a CI-provided ACOLYTE_DB_DSN cannot leak into unit tests that import main.
 os.environ["ACOLYTE_DB_DSN"] = _TEST_DB_DSN
-os.environ["BACKEND_TOKEN_VERIFICATION"] = "disabled"
+os.environ["BACKEND_TOKEN_VERIFICATION"] = "disabled"  # noqa: S105 - verification mode flag for tests, not a credential
 os.environ["USER_IDENTITY_DEV_USER_ID"] = _TEST_DEV_USER_ID
 os.environ["OTEL_ENABLED"] = "false"
 

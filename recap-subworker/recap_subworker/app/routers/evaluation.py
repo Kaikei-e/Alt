@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
+from typing import Annotated
 from uuid import UUID
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...db.dao import SubworkerDAO
 from ...infra.config import Settings
@@ -111,13 +114,37 @@ class EvaluateResponse(BaseModel):
     cv_results: dict | None = Field(None, description="Cross-Validation結果")
 
 
+def _validate_suffix(path: Path, allowed: set[str], message: str) -> None:
+    if path.suffix.lower() not in allowed:
+        raise ValueError(message)
+
+
+def _resolve_validated_path(
+    raw_path: str,
+    allowed_suffixes: set[str],
+    suffix_error: str,
+    not_found_label: str,
+) -> Path:
+    try:
+        resolved = require_existing_path(raw_path, ALLOWED_BASE_DIRS)
+        _validate_suffix(resolved, allowed_suffixes, suffix_error)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=404,
+            detail=f"{not_found_label}: {raw_path}",
+        ) from None
+    return resolved
+
+
 @router.post("/genres", response_model=EvaluateResponse)
 async def evaluate_genres(
     request: EvaluateRequest,
+    settings: Annotated[Settings, Depends(get_settings_dep)],
+    container: Annotated[ServiceContainer, Depends(get_container)],
+    session: Annotated[AsyncSession, Depends(get_session)],
     language: str | None = None,
-    settings: Settings = Depends(get_settings_dep),
-    session=Depends(get_session),
-    container: ServiceContainer = Depends(get_container),
 ) -> EvaluateResponse:
     """ジャンル分類の評価を実行。
 
@@ -127,32 +154,22 @@ async def evaluate_genres(
     """
     # デフォルトパスの設定 — require_existing_path が allow-list + exists を一括処理
     golden_raw = request.golden_data_path or "/app/data/golden_classification.json"
-    try:
-        golden_data_path = require_existing_path(golden_raw, ALLOWED_BASE_DIRS)
-        if golden_data_path.suffix.lower() not in {".json", ".jsonl"}:
-            raise ValueError("Golden dataset path must have a .json or .jsonl extension")
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
-    except FileNotFoundError:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Golden dataset file not found: {golden_raw}",
-        ) from None
-
-    if request.weights_path:
-        try:
-            weights_path = require_existing_path(request.weights_path, ALLOWED_BASE_DIRS)
-            if weights_path.suffix.lower() != ".joblib":
-                raise ValueError("Weights path must have a .joblib extension")
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e)) from e
-        except FileNotFoundError:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Weights file not found: {request.weights_path}",
-            ) from None
-    else:
-        weights_path = None
+    golden_data_path = _resolve_validated_path(
+        golden_raw,
+        {".json", ".jsonl"},
+        "Golden dataset path must have a .json or .jsonl extension",
+        "Golden dataset file not found",
+    )
+    weights_path = (
+        _resolve_validated_path(
+            request.weights_path,
+            {".joblib"},
+            "Weights path must have a .joblib extension",
+            "Weights file not found",
+        )
+        if request.weights_path
+        else None
+    )
 
     try:
         if weights_path is not None:
@@ -223,7 +240,7 @@ async def evaluate_genres(
                     undefined_genre_count=None,
                     per_genre_metrics=per_genre_list,
                 )
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001  # best-effort DB save; evaluation response must still be returned
                 # データベース保存に失敗しても評価結果は返す
                 logger.warning("Failed to save evaluation results to database", error=str(e))
 
@@ -259,7 +276,7 @@ async def evaluate_genres(
                     metrics=system_metrics,
                     job_id=run_id,  # reusing run_id as the ID for this record
                 )
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001  # best-effort dashboard metrics write; evaluation response must still be returned
                 logger.warning("Failed to save system metrics for dashboard", error=str(e))
 
         # レスポンスを構築
@@ -339,13 +356,10 @@ async def evaluate_genres(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
-        import structlog
-
-        structlog.get_logger(__name__).error(
+        logger.exception(
             "evaluation_failed",
             error=str(e),
             error_type=type(e).__name__,
-            exc_info=True,
         )
         raise HTTPException(status_code=500, detail="Evaluation failed") from e
 
@@ -372,9 +386,9 @@ class EvaluateSummaryResponse(BaseModel):
 @router.post("/summary", response_model=EvaluateSummaryResponse)
 async def evaluate_summary(
     request: EvaluateSummaryRequest,
-    settings: Settings = Depends(get_settings_dep),
-    session=Depends(get_session),
-    container: ServiceContainer = Depends(get_container),
+    settings: Annotated[Settings, Depends(get_settings_dep)],
+    container: Annotated[ServiceContainer, Depends(get_container)],
+    session: Annotated[AsyncSession, Depends(get_session)],
 ) -> EvaluateSummaryResponse:
     """要約の品質を評価。
 
@@ -414,7 +428,7 @@ async def evaluate_summary(
                 metrics=system_metrics,
                 job_id=job_id,
             )
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001  # best-effort dashboard metrics write; summary evaluation must still be returned
             logger.warning("Failed to save summary metrics", error=str(e))
 
     return EvaluateSummaryResponse(

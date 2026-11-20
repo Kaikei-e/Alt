@@ -83,7 +83,7 @@ func TestMetricsIntegration_EnvoyVsDirect(t *testing.T) {
 
 		// Create raw HTTP client to add custom headers
 		rawClient := &http.Client{Timeout: 30 * time.Second}
-		req, err := http.NewRequest("GET", testURL, nil)
+		req, err := http.NewRequestWithContext(t.Context(), "GET", testURL, nil)
 		if err != nil {
 			t.Fatalf("Failed to create request: %v", err)
 		}

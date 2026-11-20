@@ -56,22 +56,22 @@ func (c *Client) ListRecallSignalsByUser(ctx context.Context, userID uuid.UUID, 
 		return nil, fmt.Errorf("sovereign ListRecallSignalsByUser: %w", err)
 	}
 
-	signals := make([]domain.RecallSignal, len(resp.Msg.Signals))
-	for i, pb := range resp.Msg.Signals {
+	signals := make([]domain.RecallSignal, len(resp.Msg.GetSignals()))
+	for i, pb := range resp.Msg.GetSignals() {
 		var payload map[string]any
-		if len(pb.Payload) > 0 {
-			_ = json.Unmarshal(pb.Payload, &payload)
+		if len(pb.GetPayload()) > 0 {
+			_ = json.Unmarshal(pb.GetPayload(), &payload)
 		}
 		sig := domain.RecallSignal{
-			SignalID:       parseUUID(pb.SignalId),
-			UserID:         parseUUID(pb.UserId),
-			ItemKey:        pb.ItemKey,
-			SignalType:     pb.SignalType,
-			SignalStrength: pb.SignalStrength,
+			SignalID:       parseUUID(pb.GetSignalId()),
+			UserID:         parseUUID(pb.GetUserId()),
+			ItemKey:        pb.GetItemKey(),
+			SignalType:     pb.GetSignalType(),
+			SignalStrength: pb.GetSignalStrength(),
 			Payload:        payload,
 		}
-		if pb.OccurredAt != nil {
-			sig.OccurredAt = pb.OccurredAt.AsTime()
+		if pb.GetOccurredAt() != nil {
+			sig.OccurredAt = pb.GetOccurredAt().AsTime()
 		}
 		signals[i] = sig
 	}

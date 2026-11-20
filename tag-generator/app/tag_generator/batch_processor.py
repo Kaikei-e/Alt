@@ -13,6 +13,12 @@ logger = structlog.get_logger(__name__)
 # Cap process-local poison-pill tracking to avoid unbounded growth.
 _EMPTY_EXTRACTION_COUNTS_MAX = 10_000
 
+
+class _BatchFailedError(BatchProcessingError):
+    def __init__(self, failed_count: int) -> None:
+        super().__init__(f"Batch processing failed for {failed_count} articles")
+
+
 if TYPE_CHECKING:
     from tag_generator.cascade import CascadeController
     from tag_generator.config import TagGeneratorConfig
@@ -23,7 +29,7 @@ if TYPE_CHECKING:
 class BatchProcessor:
     """Handles batch processing of articles for tag generation."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - dependency-injected collaborators
         self,
         config: TagGeneratorConfig,
         article_fetcher: ArticleFetcherPort,
@@ -31,7 +37,7 @@ class BatchProcessor:
         tag_inserter: TagInserterPort,
         cascade_controller: CascadeController,
         cursor_manager: CursorManager,
-    ):
+    ) -> None:
         """Initialize batch processor with dependencies."""
         self.config = config
         self.article_fetcher = article_fetcher
@@ -66,7 +72,7 @@ class BatchProcessor:
         if self.config.enable_gc_collection:
             gc.collect()
 
-    def _page_past_poison_pills(self, conn: Any, articles: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def _page_past_poison_pills(self, conn: object, articles: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """When all articles on the current page are known poison pills,
         paginate to the next page using backward keyset pagination.
 
@@ -107,7 +113,106 @@ class BatchProcessor:
 
         return articles
 
-    def process_articles_as_batch(self, conn: Any, articles: list[dict[str, Any]]) -> dict[str, Any]:
+    def _filter_poison_pilled_articles(self, articles: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int]:
+        max_retries = self.config.max_empty_extraction_retries
+        filtered: list[dict[str, Any]] = []
+        skipped = 0
+        for article in articles:
+            if self._empty_extraction_counts.get(article["id"], 0) >= max_retries:
+                skipped += 1
+                continue
+            filtered.append(article)
+        if skipped:
+            logger.info(
+                "Skipped articles after repeated empty extraction",
+                skipped_articles=skipped,
+                threshold=max_retries,
+            )
+        return filtered, skipped
+
+    def _handle_empty_extraction(self, article_id: str) -> None:
+        max_retries = self.config.max_empty_extraction_retries
+        count = self._record_empty_extraction(article_id)
+        if count == max_retries:
+            logger.warning(
+                "Article reached empty-extraction skip threshold",
+                article_id=article_id,
+                failure_count=count,
+                threshold=max_retries,
+            )
+
+    def _extract_batch_tag_payloads(
+        self,
+        articles: list[dict[str, Any]],
+        batch_stats: dict[str, int],
+    ) -> list[dict[str, Any]]:
+        article_tags_batch: list[dict[str, Any]] = []
+        cascade_refine_requests = 0
+
+        for i, article in enumerate(articles):
+            try:
+                article_id = article["id"]
+                outcome = self.tag_extractor.extract_tags_with_metrics(article["title"], article["content"])
+                if not outcome.tags:
+                    self._handle_empty_extraction(article_id)
+                    continue
+
+                self._empty_extraction_counts.pop(article_id, None)
+                decision = self.cascade_controller.evaluate(outcome)
+                if decision.needs_refine:
+                    cascade_refine_requests += 1
+
+                article_tags_batch.append(
+                    {
+                        "article_id": article_id,
+                        "feed_id": article.get("feed_id", ""),
+                        "tags": outcome.tags,
+                        "tag_confidences": outcome.tag_confidences,
+                        "cascade": decision.as_dict(),
+                    }
+                )
+                logger.debug("Cascade decision recorded", article_id=article_id, **decision.as_dict())
+                if (i + 1) % self.config.progress_log_interval == 0:
+                    logger.debug("Extracted tags progress", completed=i + 1, total=len(articles))
+                if (i + 1) % self.config.memory_cleanup_interval == 0:
+                    self._cleanup_memory()
+            except ModelLoadError:
+                raise
+            except Exception as e:
+                article_id = article.get("id", "unknown")
+                logger.exception("Error extracting tags for article", article_id=article_id, error=str(e))
+                if "id" in article:
+                    self._handle_empty_extraction(article["id"])
+                batch_stats["failed"] += 1
+
+        logger.info(
+            "Prepared batch with cascade metrics",
+            batch_articles=len(article_tags_batch),
+            refine_candidates=cascade_refine_requests,
+        )
+        return article_tags_batch
+
+    def _upsert_batch_tags(
+        self,
+        conn: object,
+        articles: list[dict[str, Any]],
+        article_tags_batch: list[dict[str, Any]],
+        batch_stats: dict[str, int],
+    ) -> None:
+        logger.info("Upserting tags via API", article_count=len(article_tags_batch))
+        result = self.tag_inserter.batch_upsert_tags_no_commit(conn, article_tags_batch)
+        batch_stats["successful"] = result.get("processed_articles", 0)
+        batch_stats["failed"] += result.get("failed_articles", 0)
+        batch_stats["total_processed"] = len(articles)
+
+        if result.get("success"):
+            logger.info("Successfully batch processed articles", successful=batch_stats["successful"])
+            return
+        logger.warning("Batch processing completed with failures", failed=batch_stats["failed"])
+        if batch_stats["failed"] > 0:
+            raise _BatchFailedError(batch_stats["failed"])
+
+    def process_articles_as_batch(self, conn: object, articles: list[dict[str, Any]]) -> dict[str, Any]:
         """
         Process multiple articles as a single batch transaction.
 
@@ -125,127 +230,16 @@ class BatchProcessor:
             "skipped": 0,
         }
 
-        # Filter out articles that have exceeded the empty-extraction threshold
-        max_retries = self.config.max_empty_extraction_retries
-        filtered_articles = []
-        skipped_articles = 0
-
-        for article in articles:
-            article_id = article["id"]
-            if self._empty_extraction_counts.get(article_id, 0) >= max_retries:
-                skipped_articles += 1
-                continue
-            filtered_articles.append(article)
-
+        articles, skipped_articles = self._filter_poison_pilled_articles(articles)
         batch_stats["skipped"] = skipped_articles
 
-        if skipped_articles:
-            logger.info(
-                "Skipped articles after repeated empty extraction",
-                skipped_articles=skipped_articles,
-                threshold=max_retries,
-            )
+        article_tags_batch = self._extract_batch_tag_payloads(articles, batch_stats)
 
-        articles = filtered_articles
-
-        # Prepare batch data for tag insertion
-        article_tags_batch = []
-        cascade_refine_requests = 0
-
-        # Extract tags for all articles first
-        for i, article in enumerate(articles):
-            try:
-                article_id = article["id"]
-                title = article["title"]
-                content = article["content"]
-
-                outcome = self.tag_extractor.extract_tags_with_metrics(title, content)
-
-                if not outcome.tags:
-                    count = self._record_empty_extraction(article_id)
-                    if count == max_retries:
-                        logger.warning(
-                            "Article reached empty-extraction skip threshold",
-                            article_id=article_id,
-                            failure_count=count,
-                            threshold=max_retries,
-                        )
-                    continue
-
-                # Successful extraction — clear any accumulated empty-extraction count
-                self._empty_extraction_counts.pop(article_id, None)
-
-                decision = self.cascade_controller.evaluate(outcome)
-                if decision.needs_refine:
-                    cascade_refine_requests += 1
-
-                article_tags_batch.append(
-                    {
-                        "article_id": article_id,
-                        "feed_id": article.get("feed_id", ""),
-                        "tags": outcome.tags,
-                        "tag_confidences": outcome.tag_confidences,
-                        "cascade": decision.as_dict(),
-                    }
-                )
-
-                logger.debug(
-                    "Cascade decision recorded",
-                    article_id=article_id,
-                    **decision.as_dict(),
-                )
-
-                # Log progress during tag extraction
-                if (i + 1) % self.config.progress_log_interval == 0:
-                    logger.debug("Extracted tags progress", completed=i + 1, total=len(articles))
-
-                # Periodic memory cleanup during batch processing
-                if (i + 1) % self.config.memory_cleanup_interval == 0:
-                    self._cleanup_memory()
-
-            except ModelLoadError:
-                raise
-            except Exception as e:  # noqa: BLE001 - one poisoned article must not abort the whole batch
-                article_id = article.get("id", "unknown")
-                logger.error("Error extracting tags for article", article_id=article_id, error=str(e))
-                if "id" in article:
-                    count = self._record_empty_extraction(article["id"])
-                    if count == max_retries:
-                        logger.warning(
-                            "Article reached empty-extraction skip threshold",
-                            article_id=article["id"],
-                            failure_count=count,
-                            threshold=max_retries,
-                        )
-                batch_stats["failed"] += 1
-                continue
-
-        logger.info(
-            "Prepared batch with cascade metrics",
-            batch_articles=len(article_tags_batch),
-            refine_candidates=cascade_refine_requests,
-        )
-
-        # Perform batch upsert of all tags
         if article_tags_batch:
             try:
-                logger.info("Upserting tags via API", article_count=len(article_tags_batch))
-
-                result = self.tag_inserter.batch_upsert_tags_no_commit(conn, article_tags_batch)
-
-                batch_stats["successful"] = result.get("processed_articles", 0)
-                batch_stats["failed"] += result.get("failed_articles", 0)
-                batch_stats["total_processed"] = len(articles)
-
-                if result.get("success"):
-                    logger.info("Successfully batch processed articles", successful=batch_stats["successful"])
-                else:
-                    logger.warning("Batch processing completed with failures", failed=batch_stats["failed"])
-                    if batch_stats["failed"] > 0:
-                        raise BatchProcessingError(f"Batch processing failed for {batch_stats['failed']} articles")
-
+                self._upsert_batch_tags(conn, articles, article_tags_batch, batch_stats)
             except Exception as e:
-                logger.error("Batch upsert failed", error=str(e))
+                logger.exception("Batch upsert failed", error=str(e))
                 batch_stats["failed"] = len(articles)
                 batch_stats["total_processed"] = len(articles)
                 raise
@@ -256,7 +250,7 @@ class BatchProcessor:
         return batch_stats
 
     def process_article_batch_forward(
-        self, conn: Any, cursor_manager: CursorManager, _from_backfill: bool = False
+        self, conn: object, cursor_manager: CursorManager, _from_backfill: bool = False
     ) -> dict[str, Any]:
         """Process articles newer than the current forward cursor.
         If no new articles are found and backfill is not completed, fall back to backfill processing.
@@ -287,7 +281,7 @@ class BatchProcessor:
             if not self.backfill_completed and not _from_backfill:
                 logger.info("Backfill not completed, falling back to backfill processing")
                 return self.process_article_batch_backfill(conn, cursor_manager)
-            elif _from_backfill:
+            if _from_backfill:
                 logger.debug("Called from backfill, skipping backfill fallback to prevent recursion")
             return batch_stats
 
@@ -323,7 +317,105 @@ class BatchProcessor:
 
         return batch_stats
 
-    def process_article_batch_backfill(self, conn: Any, cursor_manager: CursorManager) -> dict[str, Any]:
+    def _try_hybrid_forward_batch(
+        self, conn: object, cursor_manager: CursorManager
+    ) -> tuple[int, dict[str, Any] | None]:
+        if not (cursor_manager.forward_cursor_created_at and cursor_manager.forward_cursor_id):
+            return 0, None
+        try:
+            forward_stats = self.process_article_batch_forward(conn, cursor_manager, _from_backfill=True)
+            new_articles_processed = cast(int, forward_stats.get("successful", 0))
+            if new_articles_processed > 0:
+                logger.info(
+                    "Hybrid mode: processed new articles before backfill",
+                    new_articles_processed=new_articles_processed,
+                )
+                if cast(int, forward_stats.get("total_processed", 0)) >= self.config.batch_limit:
+                    return new_articles_processed, forward_stats
+        except ModelLoadError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - hybrid forward-batch failure must not abort backfill
+            logger.warning("Hybrid mode: failed to process new articles, continuing with backfill", error=str(exc))
+            return 0, None
+        return new_articles_processed, None
+
+    def _collect_backfill_articles(
+        self, conn: object, last_created_at: str, last_id: str
+    ) -> tuple[list[dict[str, Any]], str, str]:
+        articles_to_process: list[dict[str, Any]] = []
+        while len(articles_to_process) < int(self.config.batch_limit):
+            try:
+                articles = self.article_fetcher.fetch_articles(conn, last_created_at, last_id)
+                if not articles:
+                    self.consecutive_empty_backfill_fetches += 1
+                    logger.info("No articles found with cursor pagination")
+                    if (
+                        self.consecutive_empty_backfill_fetches >= self.max_empty_backfill_fetches
+                        and not self.backfill_completed
+                    ):
+                        logger.info("Backfill completed: no more articles found in consecutive fetches")
+                        self.backfill_completed = True
+                    logger.info(
+                        "No more articles found. Collected articles for batch processing",
+                        collected=len(articles_to_process),
+                    )
+                    break
+
+                logger.debug("Fetched articles", article_count=len(articles))
+                self.consecutive_empty_backfill_fetches = 0
+
+                for article in articles:
+                    if len(articles_to_process) >= self.config.batch_limit:
+                        logger.info("Reached batch limit", batch_limit=self.config.batch_limit)
+                        break
+                    articles_to_process.append(article)
+                    last_created_at = (
+                        article["created_at"]
+                        if isinstance(article["created_at"], str)
+                        else article["created_at"].isoformat()
+                    )
+                    last_id = article["id"]
+
+                if len(articles_to_process) >= self.config.batch_limit:
+                    break
+            except Exception as e:
+                logger.exception("Error during article collection", error=str(e))
+                break
+        return articles_to_process, last_created_at, last_id
+
+    def _advance_cursors_after_backfill(
+        self,
+        cursor_manager: CursorManager,
+        articles_to_process: list[dict[str, Any]],
+        batch_stats: dict[str, Any],
+        last_created_at: str,
+        last_id: str,
+    ) -> None:
+        total_processed = cast(int, batch_stats.get("total_processed", 0))
+        failed = cast(int, batch_stats.get("failed", 0))
+        successful = cast(int, batch_stats.get("successful", 0))
+        skipped = cast(int, batch_stats.get("skipped", 0))
+
+        if (total_processed > 0 or skipped > 0) and failed == 0:
+            cursor_manager.update_cursor_position(last_created_at, last_id)
+            newest_article = articles_to_process[0]
+            newest_created_at = (
+                newest_article["created_at"]
+                if isinstance(newest_article["created_at"], str)
+                else newest_article["created_at"].isoformat()
+            )
+            cursor_manager.update_forward_cursor_position(newest_created_at, newest_article["id"])
+            logger.info(
+                "Cursor advanced",
+                total_processed=total_processed,
+                successful=successful,
+                position=last_created_at,
+                last_id=last_id,
+            )
+        elif failed > 0:
+            logger.warning("Batch had processing errors", failed=failed)
+
+    def process_article_batch_backfill(self, conn: object, cursor_manager: CursorManager) -> dict[str, Any]:
         """
         Process a batch of articles for tag generation using true batch processing.
         In hybrid mode, checks for new articles first, then processes backfill.
@@ -335,28 +427,13 @@ class BatchProcessor:
         Returns:
             Dictionary with batch processing results
         """
-        # Hybrid mode: Check for new articles first if forward cursor is available
-        new_articles_processed = 0
-        if cursor_manager.forward_cursor_created_at and cursor_manager.forward_cursor_id:
-            try:
-                forward_stats = self.process_article_batch_forward(conn, cursor_manager, _from_backfill=True)
-                new_articles_processed = cast(int, forward_stats.get("successful", 0))
-                if new_articles_processed > 0:
-                    logger.info(
-                        "Hybrid mode: processed new articles before backfill",
-                        new_articles_processed=new_articles_processed,
-                    )
-                    # If we processed new articles and reached batch limit, return early
-                    if cast(int, forward_stats.get("total_processed", 0)) >= self.config.batch_limit:
-                        return forward_stats
-            except ModelLoadError:
-                raise
-            except Exception as exc:
-                logger.warning("Hybrid mode: failed to process new articles, continuing with backfill", error=str(exc))
+        new_articles_processed, early_stats = self._try_hybrid_forward_batch(conn, cursor_manager)
+        if early_stats is not None:
+            return early_stats
 
         last_created_at, last_id = cursor_manager.get_initial_cursor_position()
 
-        batch_stats = {
+        batch_stats: dict[str, Any] = {
             "total_processed": 0,
             "successful": 0,
             "failed": 0,
@@ -365,12 +442,10 @@ class BatchProcessor:
             "has_more_pending": False,
         }
 
-        # Avoid heavy processing when nothing is pending
         try:
             untagged_count = self.article_fetcher.count_untagged_articles(conn)
             if untagged_count == 0:
                 logger.info("No untagged articles available; skipping backfill batch")
-                # If we processed new articles in hybrid mode, return those stats
                 if new_articles_processed > 0:
                     return {
                         "total_processed": new_articles_processed,
@@ -379,100 +454,29 @@ class BatchProcessor:
                         "has_more_pending": False,
                     }
                 return batch_stats
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - diagnostic untagged-count failure must not abort backfill
             logger.warning("Could not count untagged articles before backfill", error=str(exc))
 
-        # Collect articles for batch processing
-        articles_to_process: list[dict[str, Any]] = []
-
-        while len(articles_to_process) < int(self.config.batch_limit):
-            try:
-                # Fetch articles using cursor pagination
-                articles = self.article_fetcher.fetch_articles(conn, last_created_at, last_id)
-
-                if not articles:
-                    self.consecutive_empty_backfill_fetches += 1
-                    logger.info("No articles found with cursor pagination")
-
-                    # Check if backfill should be considered complete
-                    if self.consecutive_empty_backfill_fetches >= self.max_empty_backfill_fetches:
-                        if not self.backfill_completed:
-                            logger.info("Backfill completed: no more articles found in consecutive fetches")
-                            self.backfill_completed = True
-                    logger.info(
-                        f"No more articles found. Collected {len(articles_to_process)} articles for batch processing"
-                    )
-                    break
-
-                logger.debug("Fetched articles", article_count=len(articles))
-                self.consecutive_empty_backfill_fetches = 0  # Reset backfill completion counter
-
-                # Add articles to batch, respecting the batch limit
-                for article in articles:
-                    if len(articles_to_process) >= self.config.batch_limit:
-                        logger.info("Reached batch limit", batch_limit=self.config.batch_limit)
-                        break
-
-                    articles_to_process.append(article)
-
-                    # Update cursor position for next fetch (convert datetime to string)
-                    if isinstance(article["created_at"], str):
-                        last_created_at = article["created_at"]
-                    else:
-                        last_created_at = article["created_at"].isoformat()
-                    last_id = article["id"]
-
-                # Break if we've reached the batch limit
-                if len(articles_to_process) >= self.config.batch_limit:
-                    break
-
-            except Exception as e:
-                logger.error("Error during article collection", error=str(e))
-                break
+        articles_to_process, last_created_at, last_id = self._collect_backfill_articles(conn, last_created_at, last_id)
 
         if articles_to_process:
             logger.info("Processing batch", article_count=len(articles_to_process))
             batch_stats = self.process_articles_as_batch(conn, articles_to_process)
-            # Ensure string format for batch stats
             batch_stats["last_created_at"] = last_created_at
             batch_stats["last_id"] = last_id
             batch_stats["has_more_pending"] = len(articles_to_process) >= self.config.batch_limit
-
-            total_processed = cast(int, batch_stats.get("total_processed", 0))
-            failed = cast(int, batch_stats.get("failed", 0))
-            successful = cast(int, batch_stats.get("successful", 0))
-            skipped = cast(int, batch_stats.get("skipped", 0))
-
-            if (total_processed > 0 or skipped > 0) and failed == 0:
-                # Update cursor even if all articles were skipped (no tags extracted)
-                cursor_manager.update_cursor_position(last_created_at, last_id)
-                newest_article = articles_to_process[0]
-                newest_created_at = (
-                    newest_article["created_at"]
-                    if isinstance(newest_article["created_at"], str)
-                    else newest_article["created_at"].isoformat()
-                )
-                cursor_manager.update_forward_cursor_position(newest_created_at, newest_article["id"])
-                logger.info(
-                    "Cursor advanced",
-                    total_processed=total_processed,
-                    successful=successful,
-                    position=last_created_at,
-                    last_id=last_id,
-                )
-            elif failed > 0:
-                logger.warning("Batch had processing errors", failed=failed)
-        else:
-            # No articles to process
-            if new_articles_processed > 0:
-                batch_stats["total_processed"] = new_articles_processed
-                batch_stats["successful"] = new_articles_processed
-                batch_stats["failed"] = 0
-                return batch_stats
+            self._advance_cursors_after_backfill(
+                cursor_manager, articles_to_process, batch_stats, last_created_at, last_id
+            )
+        elif new_articles_processed > 0:
+            batch_stats["total_processed"] = new_articles_processed
+            batch_stats["successful"] = new_articles_processed
+            batch_stats["failed"] = 0
+            return batch_stats
 
         return batch_stats
 
-    def process_article_batch(self, conn: Any, cursor_manager: CursorManager) -> dict[str, Any]:
+    def process_article_batch(self, conn: object, cursor_manager: CursorManager) -> dict[str, Any]:
         """Choose processing strategy based on tagging state and backfill completion."""
         # If backfill is completed, prioritize forward processing
         if self.backfill_completed:
@@ -482,9 +486,99 @@ class BatchProcessor:
         # This will also check for new articles in hybrid mode
         return self.process_article_batch_backfill(conn, cursor_manager)
 
+    def _extract_regeneration_payloads(
+        self,
+        articles: list[dict[str, Any]],
+        batch_stats: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        article_tags_batch: list[dict[str, Any]] = []
+        cascade_refine_requests = 0
+
+        for i, article in enumerate(articles):
+            try:
+                article_id = article["id"]
+                outcome = self.tag_extractor.extract_tags_with_metrics(article["title"], article["content"])
+                if not outcome.tags:
+                    logger.debug("No tags extracted for article during regeneration", article_id=article_id)
+                    continue
+
+                decision = self.cascade_controller.evaluate(outcome)
+                if decision.needs_refine:
+                    cascade_refine_requests += 1
+
+                article_tags_batch.append(
+                    {
+                        "article_id": article_id,
+                        "feed_id": article.get("feed_id", ""),
+                        "tags": outcome.tags,
+                        "tag_confidences": outcome.tag_confidences,
+                        "cascade": decision.as_dict(),
+                        "old_avg_confidence": article.get("avg_confidence"),
+                        "new_confidence": outcome.confidence,
+                    }
+                )
+                logger.debug(
+                    "Regeneration cascade decision recorded",
+                    article_id=article_id,
+                    old_confidence=article.get("avg_confidence"),
+                    new_confidence=outcome.confidence,
+                    **decision.as_dict(),
+                )
+                if (i + 1) % self.config.progress_log_interval == 0:
+                    logger.debug("Regenerated tags progress", completed=i + 1, total=len(articles))
+                if (i + 1) % self.config.memory_cleanup_interval == 0:
+                    self._cleanup_memory()
+            except ModelLoadError:
+                raise
+            except Exception as e:
+                logger.exception(
+                    "Error extracting tags for article during regeneration",
+                    article_id=article.get("id", "unknown"),
+                    error=str(e),
+                )
+                batch_stats["failed"] += 1
+
+        logger.info(
+            "Prepared regeneration batch with cascade metrics",
+            batch_articles=len(article_tags_batch),
+            refine_candidates=cascade_refine_requests,
+        )
+        return article_tags_batch
+
+    def _upsert_regeneration_tags(
+        self,
+        conn: object,
+        articles: list[dict[str, Any]],
+        article_tags_batch: list[dict[str, Any]],
+        batch_stats: dict[str, Any],
+    ) -> None:
+        try:
+            logger.info("Upserting regenerated tags", article_count=len(article_tags_batch))
+            result = self.tag_inserter.batch_upsert_tags_with_comparison(conn, article_tags_batch)
+            batch_stats["successful"] = result.get("processed_articles", 0)
+            batch_stats["failed"] += result.get("failed_articles", 0)
+            batch_stats["total_processed"] = len(articles)
+            batch_stats["skipped_lower_confidence"] = result.get("skipped_lower_confidence", 0)
+            batch_stats["updated_higher_confidence"] = result.get("updated_higher_confidence", 0)
+
+            if result.get("success"):
+                logger.info(
+                    "Successfully regenerated tags",
+                    processed=batch_stats["successful"],
+                    updated=batch_stats.get("updated_higher_confidence", 0),
+                    skipped=batch_stats.get("skipped_lower_confidence", 0),
+                )
+            else:
+                logger.warning("Regeneration batch completed with failures", failed=batch_stats["failed"])
+        except Exception as e:
+            logger.exception("Regeneration batch upsert failed", error=str(e))
+            batch_stats["failed"] = len(articles)
+            batch_stats["total_processed"] = len(articles)
+            batch_stats["error"] = str(e)
+
     def process_regeneration_batch(
         self,
-        conn: Any,
+        conn: object,
         confidence_threshold: float = 0.5,
     ) -> dict[str, Any]:
         """
@@ -509,7 +603,6 @@ class BatchProcessor:
             "confidence_threshold": confidence_threshold,
         }
 
-        # Fetch articles with low-confidence tags
         try:
             articles = self.article_fetcher.fetch_low_confidence_articles(
                 conn,
@@ -517,125 +610,20 @@ class BatchProcessor:
                 limit=self.config.batch_limit,
             )
         except Exception as e:
-            logger.error("Failed to fetch low-confidence articles", error=str(e))
+            logger.exception("Failed to fetch low-confidence articles", error=str(e))
             batch_stats["failed"] = 1
             batch_stats["error"] = str(e)
             return batch_stats
 
         if not articles:
-            logger.info(
-                "No low-confidence articles found for regeneration",
-                threshold=confidence_threshold,
-            )
+            logger.info("No low-confidence articles found for regeneration", threshold=confidence_threshold)
             return batch_stats
 
-        logger.info(
-            "Processing regeneration batch",
-            article_count=len(articles),
-            threshold=confidence_threshold,
-        )
+        logger.info("Processing regeneration batch", article_count=len(articles), threshold=confidence_threshold)
+        article_tags_batch = self._extract_regeneration_payloads(articles, batch_stats)
 
-        # Prepare batch data for tag regeneration
-        article_tags_batch = []
-        cascade_refine_requests = 0
-
-        # Extract tags for all articles
-        for i, article in enumerate(articles):
-            try:
-                article_id = article["id"]
-                title = article["title"]
-                content = article["content"]
-
-                # Extract tags with the current logic
-                outcome = self.tag_extractor.extract_tags_with_metrics(title, content)
-
-                if not outcome.tags:
-                    logger.debug(
-                        "No tags extracted for article during regeneration",
-                        article_id=article_id,
-                    )
-                    continue
-
-                decision = self.cascade_controller.evaluate(outcome)
-                if decision.needs_refine:
-                    cascade_refine_requests += 1
-
-                article_tags_batch.append(
-                    {
-                        "article_id": article_id,
-                        "feed_id": article.get("feed_id", ""),
-                        "tags": outcome.tags,
-                        "tag_confidences": outcome.tag_confidences,
-                        "cascade": decision.as_dict(),
-                        "old_avg_confidence": article.get("avg_confidence"),
-                        "new_confidence": outcome.confidence,
-                    }
-                )
-
-                logger.debug(
-                    "Regeneration cascade decision recorded",
-                    article_id=article_id,
-                    old_confidence=article.get("avg_confidence"),
-                    new_confidence=outcome.confidence,
-                    **decision.as_dict(),
-                )
-
-                # Log progress during tag extraction
-                if (i + 1) % self.config.progress_log_interval == 0:
-                    logger.debug("Regenerated tags progress", completed=i + 1, total=len(articles))
-
-                # Periodic memory cleanup during batch processing
-                if (i + 1) % self.config.memory_cleanup_interval == 0:
-                    self._cleanup_memory()
-
-            except ModelLoadError:
-                raise
-            except Exception as e:
-                logger.error(
-                    "Error extracting tags for article during regeneration",
-                    article_id=article.get("id", "unknown"),
-                    error=str(e),
-                )
-                batch_stats["failed"] += 1
-                continue
-
-        logger.info(
-            "Prepared regeneration batch with cascade metrics",
-            batch_articles=len(article_tags_batch),
-            refine_candidates=cascade_refine_requests,
-        )
-
-        # Perform batch upsert with confidence comparison
         if article_tags_batch:
-            try:
-                logger.info("Upserting regenerated tags", article_count=len(article_tags_batch))
-
-                result = self.tag_inserter.batch_upsert_tags_with_comparison(conn, article_tags_batch)
-
-                batch_stats["successful"] = result.get("processed_articles", 0)
-                batch_stats["failed"] += result.get("failed_articles", 0)
-                batch_stats["total_processed"] = len(articles)
-                batch_stats["skipped_lower_confidence"] = result.get("skipped_lower_confidence", 0)
-                batch_stats["updated_higher_confidence"] = result.get("updated_higher_confidence", 0)
-
-                if result.get("success"):
-                    logger.info(
-                        "Successfully regenerated tags",
-                        processed=batch_stats["successful"],
-                        updated=batch_stats.get("updated_higher_confidence", 0),
-                        skipped=batch_stats.get("skipped_lower_confidence", 0),
-                    )
-                else:
-                    logger.warning(
-                        "Regeneration batch completed with failures",
-                        failed=batch_stats["failed"],
-                    )
-
-            except Exception as e:
-                logger.error("Regeneration batch upsert failed", error=str(e))
-                batch_stats["failed"] = len(articles)
-                batch_stats["total_processed"] = len(articles)
-                batch_stats["error"] = str(e)
+            self._upsert_regeneration_tags(conn, articles, article_tags_batch, batch_stats)
         else:
             logger.warning("No articles with regenerated tags to process")
             batch_stats["total_processed"] = len(articles)

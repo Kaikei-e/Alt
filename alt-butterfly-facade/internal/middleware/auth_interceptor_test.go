@@ -68,7 +68,7 @@ func TestAuthInterceptor_ValidateToken_MissingToken(t *testing.T) {
 
 	_, err := interceptor.ValidateToken("")
 
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "missing")
 }
 
@@ -102,7 +102,7 @@ func TestAuthInterceptor_ValidateToken_WrongIssuer(t *testing.T) {
 
 	_, err := interceptor.ValidateToken(token)
 
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "issuer")
 }
 
@@ -115,7 +115,7 @@ func TestAuthInterceptor_ValidateToken_WrongAudience(t *testing.T) {
 
 	_, err := interceptor.ValidateToken(token)
 
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "audience")
 }
 
@@ -195,7 +195,7 @@ func TestAuthInterceptor_Interceptor(t *testing.T) {
 
 	assert.NotNil(t, i)
 	// Verify it implements connect.Interceptor interface
-	var _ connect.Interceptor = i
+	var _ connect.Interceptor = (*authInterceptorImpl)(nil)
 }
 
 // Helper function to create test JWT tokens
@@ -238,6 +238,6 @@ func TestGetUserContext(t *testing.T) {
 func TestGetUserContext_NoContext(t *testing.T) {
 	_, err := domain.GetUserContext(context.Background())
 
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Equal(t, domain.ErrNoUserContext, err)
 }

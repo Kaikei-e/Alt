@@ -3,10 +3,11 @@
 package middleware
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 
 	apperrors "pre-processor/utils/errors"
 )
@@ -16,12 +17,12 @@ import (
 //
 // Error handling priority:
 // 1. AppContextError - uses ToSecureHTTPResponse() for consistent format
-// 2. echo.HTTPError - preserves Echo's error format for backward compatibility
+// 2. *echo.HTTPError / echo.HTTPStatusCoder - preserves Echo's error format for backward compatibility
 // 3. Unknown errors - returns generic 500 response to hide internal details
 func CustomHTTPErrorHandler(logger *slog.Logger) echo.HTTPErrorHandler {
-	return func(err error, c echo.Context) {
+	return func(c *echo.Context, err error) {
 		// Don't write to already committed responses
-		if c.Response().Committed {
+		if resp, uErr := echo.UnwrapResponse(c.Response()); uErr == nil && resp.Committed {
 			return
 		}
 
@@ -37,50 +38,38 @@ func CustomHTTPErrorHandler(logger *slog.Logger) echo.HTTPErrorHandler {
 		var status int
 
 		// Handle different error types
-		switch e := err.(type) {
-		case *apperrors.AppContextError:
-			status = e.HTTPStatusCode()
-			response = e.ToSecureHTTPResponse()
+		var appErr *apperrors.AppContextError
+		var httpErr *echo.HTTPError
+		var statusCoder echo.HTTPStatusCoder
+		switch {
+		case errors.As(err, &appErr):
+			status = appErr.HTTPStatusCode()
+			response = appErr.ToSecureHTTPResponse()
 
 			// Log full error details for internal debugging
 			logger.Error("application error",
 				"request_id", requestID,
-				"error_id", e.ErrorID,
-				"code", e.Code,
-				"message", e.Message,
-				"layer", e.Layer,
-				"component", e.Component,
-				"operation", e.Operation,
-				"cause", e.Cause,
-				"context", e.Context,
+				"error_id", appErr.ErrorID,
+				"code", appErr.Code,
+				"message", appErr.Message,
+				"layer", appErr.Layer,
+				"component", appErr.Component,
+				"operation", appErr.Operation,
+				"cause", appErr.Cause,
+				"context", appErr.Context,
 			)
 
-		case *echo.HTTPError:
-			status = e.Code
-			msg := "An error occurred"
-			if m, ok := e.Message.(string); ok {
-				msg = m
+		case errors.As(err, &httpErr):
+			status = httpErr.Code
+			msg := httpErr.Message
+			if msg == "" {
+				msg = "An error occurred"
 			}
+			response = buildHTTPErrorResponse(logger, requestID, status, msg, msg)
 
-			// For 5xx errors, hide the actual message
-			safeMsg := msg
-			if status >= 500 {
-				safeMsg = "An unexpected error occurred. Please try again later."
-			}
-
-			response = apperrors.SecureHTTPResponse{
-				Error: apperrors.SecureErrorDetail{
-					Code:      "HTTP_ERROR",
-					Message:   safeMsg,
-					Retryable: apperrors.IsRetryableHTTPStatus(status),
-				},
-			}
-
-			logger.Warn("HTTP error",
-				"request_id", requestID,
-				"status", status,
-				"message", msg,
-			)
+		case errors.As(err, &statusCoder) && statusCoder.StatusCode() != 0:
+			status = statusCoder.StatusCode()
+			response = buildHTTPErrorResponse(logger, requestID, status, http.StatusText(status), err.Error())
 
 		default:
 			// Unknown error type - treat as internal error
@@ -108,5 +97,27 @@ func CustomHTTPErrorHandler(logger *slog.Logger) echo.HTTPErrorHandler {
 				"error", err,
 			)
 		}
+	}
+}
+
+func buildHTTPErrorResponse(logger *slog.Logger, requestID string, status int, clientMsg, logMsg string) apperrors.SecureHTTPResponse {
+	// For 5xx errors, hide the actual message
+	safeMsg := clientMsg
+	if status >= 500 {
+		safeMsg = "An unexpected error occurred. Please try again later."
+	}
+
+	logger.Warn("HTTP error",
+		"request_id", requestID,
+		"status", status,
+		"message", logMsg,
+	)
+
+	return apperrors.SecureHTTPResponse{
+		Error: apperrors.SecureErrorDetail{
+			Code:      "HTTP_ERROR",
+			Message:   safeMsg,
+			Retryable: apperrors.IsRetryableHTTPStatus(status),
+		},
 	}
 }

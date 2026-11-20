@@ -49,6 +49,14 @@ _STRUCTURE_PATTERNS: list[tuple[str, re.Pattern]] = [
 ]
 
 
+_READABILITY_MIN_CHARS = 200
+_READABILITY_IDEAL_MIN_CHARS = 400
+_READABILITY_IDEAL_MAX_CHARS = 1200
+_READABILITY_MAX_CHARS = 1600
+_READABILITY_RAMP_SPAN = _READABILITY_IDEAL_MIN_CHARS - _READABILITY_MIN_CHARS
+_READABILITY_DECAY_SPAN = _READABILITY_MAX_CHARS - _READABILITY_IDEAL_MAX_CHARS
+
+
 class RecapQualityEvaluator:
     """Evaluate recap summary quality using deterministic heuristics."""
 
@@ -90,8 +98,7 @@ class RecapQualityEvaluator:
 
         # Penalize both dangling markers and unused references
         errors = len(dangling) + len(unused)
-        score = max(0.0, 1.0 - errors / total_items)
-        return score
+        return max(0.0, 1.0 - errors / total_items)
 
     def evaluate_redundancy(self, summary: RecapSummary) -> float:
         """Score inter-bullet redundancy via bigram overlap.
@@ -137,12 +144,20 @@ class RecapQualityEvaluator:
         for bullet in summary.bullets:
             bullet_len = len(bullet)
             # Length score: 0.0 outside range, 1.0 in sweet spot
-            if 400 <= bullet_len <= 1200:
+            if (
+                _READABILITY_IDEAL_MIN_CHARS
+                <= bullet_len
+                <= _READABILITY_IDEAL_MAX_CHARS
+            ):
                 length_score = 1.0
-            elif 200 <= bullet_len < 400:
-                length_score = (bullet_len - 200) / 200  # linear ramp
-            elif 1200 < bullet_len <= 1600:
-                length_score = (1600 - bullet_len) / 400  # linear decay
+            elif _READABILITY_MIN_CHARS <= bullet_len < _READABILITY_IDEAL_MIN_CHARS:
+                length_score = (
+                    bullet_len - _READABILITY_MIN_CHARS
+                ) / _READABILITY_RAMP_SPAN  # linear ramp
+            elif _READABILITY_IDEAL_MAX_CHARS < bullet_len <= _READABILITY_MAX_CHARS:
+                length_score = (
+                    _READABILITY_MAX_CHARS - bullet_len
+                ) / _READABILITY_DECAY_SPAN  # linear decay
             else:
                 length_score = 0.0
 

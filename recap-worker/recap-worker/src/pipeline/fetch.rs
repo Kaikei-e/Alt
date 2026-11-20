@@ -81,6 +81,47 @@ impl AltBackendFetchStage {
         }
     }
 
+    fn log_fetch_success(attempt: usize, count: usize, elapsed: std::time::Duration) {
+        info!(
+            attempt,
+            count,
+            elapsed_ms = elapsed.as_millis(),
+            "fetch call succeeded"
+        );
+        if attempt > 0 {
+            info!(attempt, "fetch succeeded after retry");
+        }
+    }
+
+    fn next_article_retry_delay(
+        &self,
+        attempt: usize,
+        err: anyhow::Error,
+    ) -> anyhow::Result<std::time::Duration> {
+        if !self.retry_config.can_retry(attempt) {
+            warn!(
+                attempt,
+                max_attempts = self.retry_config.max_attempts,
+                "fetch failed after all retries"
+            );
+            return Err(err);
+        }
+
+        let is_retryable = is_retryable_fetch_error(&err);
+        if !is_retryable {
+            warn!(?err, "error is not retryable");
+            return Err(err);
+        }
+
+        let delay = self.retry_config.delay_for_attempt(attempt);
+        warn!(
+            attempt,
+            delay_ms = delay.as_millis(),
+            "fetch failed, retrying after delay"
+        );
+        Ok(delay)
+    }
+
     /// 再試行付きで記事を取得する。
     ///
     /// `AltBackendClient` は `reqwest::Error` と `AltBackendStatusError`（非2xx）を
@@ -99,16 +140,7 @@ impl AltBackendFetchStage {
             let start = std::time::Instant::now();
             match self.client.fetch_articles(from, to).await {
                 Ok(articles) => {
-                    let elapsed = start.elapsed();
-                    info!(
-                        attempt,
-                        count = articles.len(),
-                        elapsed_ms = elapsed.as_millis(),
-                        "fetch call succeeded"
-                    );
-                    if attempt > 0 {
-                        info!(attempt, "fetch succeeded after retry");
-                    }
+                    Self::log_fetch_success(attempt, articles.len(), start.elapsed());
                     return Ok(articles);
                 }
                 Err(err) => {
@@ -121,33 +153,39 @@ impl AltBackendFetchStage {
                     );
                     attempt += 1;
 
-                    if !self.retry_config.can_retry(attempt) {
-                        warn!(
-                            attempt,
-                            max_attempts = self.retry_config.max_attempts,
-                            "fetch failed after all retries"
-                        );
-                        return Err(err);
-                    }
-
-                    let is_retryable = is_retryable_fetch_error(&err);
-
-                    if !is_retryable {
-                        warn!(?err, "error is not retryable");
-                        return Err(err);
-                    }
-
-                    let delay = self.retry_config.delay_for_attempt(attempt);
-                    warn!(
-                        attempt,
-                        delay_ms = delay.as_millis(),
-                        "fetch failed, retrying after delay"
-                    );
-
+                    let delay = self.next_article_retry_delay(attempt, err)?;
                     tokio::time::sleep(delay).await;
                 }
             }
         }
+    }
+
+    fn next_tag_retry_delay(
+        &self,
+        attempt: usize,
+        err: anyhow::Error,
+    ) -> anyhow::Result<std::time::Duration> {
+        if !self.retry_config.can_retry(attempt) {
+            warn!(
+                attempt,
+                max_attempts = self.retry_config.max_attempts,
+                "tag fetch failed after all retries"
+            );
+            return Err(err);
+        }
+
+        if !is_retryable_fetch_error(&err) {
+            warn!(?err, "tag fetch error is not retryable");
+            return Err(err);
+        }
+
+        let delay = self.retry_config.delay_for_attempt(attempt);
+        warn!(
+            attempt,
+            delay_ms = delay.as_millis(),
+            "tag fetch failed, retrying after delay"
+        );
+        Ok(delay)
     }
 
     /// タグをリトライ付きで取得する（`fetch_with_retry` と同じ再試行意味論、
@@ -170,30 +208,7 @@ impl AltBackendFetchStage {
                 }
                 Err(err) => {
                     attempt += 1;
-
-                    if !self.retry_config.can_retry(attempt) {
-                        warn!(
-                            attempt,
-                            max_attempts = self.retry_config.max_attempts,
-                            "tag fetch failed after all retries"
-                        );
-                        return Err(err);
-                    }
-
-                    let is_retryable = is_retryable_fetch_error(&err);
-
-                    if !is_retryable {
-                        warn!(?err, "tag fetch error is not retryable");
-                        return Err(err);
-                    }
-
-                    let delay = self.retry_config.delay_for_attempt(attempt);
-                    warn!(
-                        attempt,
-                        delay_ms = delay.as_millis(),
-                        "tag fetch failed, retrying after delay"
-                    );
-
+                    let delay = self.next_tag_retry_delay(attempt, err)?;
                     tokio::time::sleep(delay).await;
                 }
             }

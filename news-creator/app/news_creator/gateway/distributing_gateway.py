@@ -52,7 +52,7 @@ class DistributingGateway(LLMProviderPort):
         health_checker: RemoteHealthChecker,
         remote_driver: RemoteChatDriver,
         enabled: bool = True,
-    ):
+    ) -> None:
         self._local = local_gateway
         self._health_checker = health_checker
         self._remote_driver = remote_driver
@@ -79,7 +79,7 @@ class DistributingGateway(LLMProviderPort):
     ) -> dict[str, Any]:
         return await self._local.chat_generate(payload, priority=priority)
 
-    async def generate(
+    async def generate(  # noqa: PLR0913 - implements LLMProviderPort interface
         self,
         prompt: str,
         *,
@@ -87,7 +87,7 @@ class DistributingGateway(LLMProviderPort):
         num_predict: int | None = None,
         stream: bool = False,
         keep_alive: int | str | None = None,
-        format: str | dict[str, Any] | None = None,
+        format: str | dict[str, Any] | None = None,  # noqa: A002 - implements LLMProviderPort keyword API
         options: dict[str, Any] | None = None,
         priority: str = "low",
     ) -> LLMGenerateResponse | AsyncIterator[LLMGenerateResponse]:
@@ -103,7 +103,9 @@ class DistributingGateway(LLMProviderPort):
         )
 
     @asynccontextmanager
-    async def hold_slot(self, is_high_priority: bool = False):
+    async def hold_slot(
+        self, is_high_priority: bool = False
+    ) -> AsyncIterator[tuple[float, asyncio.Event | None, str | None]]:
         if is_high_priority or not self._enabled:
             token = _deferred_be_slot.set(None)
             try:
@@ -125,16 +127,117 @@ class DistributingGateway(LLMProviderPort):
                 state.closed = True
                 _deferred_be_slot.reset(token)
 
-    async def generate_raw(
+    def _prepare_remote_chat_request(
         self,
         prompt: str,
         *,
-        cancel_event: Any | None = None,
+        num_predict: int | None,
+        options: dict[str, Any] | None,
+    ) -> tuple[list[dict[str, str]], int, float, float, int]:
+        messages = gemma_prompt_to_messages(prompt)
+        merged_options = self._merge_options(num_predict=num_predict, options=options)
+        max_tokens = int(merged_options.get("num_predict", 1200))
+        temperature = float(merged_options.get("temperature", 0.7))
+        top_p = float(merged_options.get("top_p", 0.85))
+
+        utf8_bytes = sum(len(m["content"].encode("utf-8")) for m in messages)
+        estimated_prompt_tokens = math.ceil(utf8_bytes / 3)
+        required_ctx = (
+            estimated_prompt_tokens + max_tokens + _TOKEN_BUDGET_SAFETY_MARGIN
+        )
+        return messages, max_tokens, temperature, top_p, required_ctx
+
+    async def _dispatch_remote_chat(
+        self,
+        prompt: str,
+        *,
+        num_predict: int | None,
+        options: dict[str, Any] | None,
+    ) -> LLMGenerateResponse | None:
+        messages, max_tokens, temperature, top_p, required_ctx = (
+            self._prepare_remote_chat_request(
+                prompt, num_predict=num_predict, options=options
+            )
+        )
+        tried: set[RemoteTarget] = set()
+        last_failed_target: RemoteTarget | None = None
+        last_failure_reason = "error"
+
+        def _fits(target: RemoteTarget) -> bool:
+            return target not in tried and required_ctx <= target.num_ctx
+
+        while True:
+            target = self._health_checker.acquire_idle_target(_fits)
+            if target is None:
+                if last_failed_target is not None:
+                    dispatch_metrics.record_fallback(
+                        from_remote_url=last_failed_target.base_url,
+                        to="local",
+                        reason=(
+                            "rejected"
+                            if last_failure_reason == "rejected"
+                            else "exhausted"
+                        ),
+                    )
+                return None
+
+            if last_failed_target is not None:
+                dispatch_metrics.record_fallback(
+                    from_remote_url=last_failed_target.base_url,
+                    to="next_remote",
+                    reason=last_failure_reason,
+                )
+
+            try:
+                async with dispatch_metrics.dispatch_context(
+                    remote_url=target.base_url,
+                    model=target.model,
+                ) as obs:
+                    response = await self._remote_driver.chat(
+                        target,
+                        messages,
+                        max_tokens=max_tokens,
+                        temperature=temperature,
+                        top_p=top_p,
+                    )
+                    obs.set_outcome("success")
+                self._health_checker.mark_success(target)
+                logger.info(
+                    "Remote BE chat dispatch succeeded (served_model=%s)",
+                    response.model,
+                    extra={
+                        "dispatch_target": "remote",
+                        "remote_url": target.base_url,
+                        "model": target.model,
+                        "served_model": response.model,
+                    },
+                )
+            except RemoteRequestRejectedError:
+                tried.add(target)
+                last_failed_target = target
+                last_failure_reason = "rejected"
+                self._health_checker.release_target(target)
+            except RuntimeError:
+                tried.add(target)
+                last_failed_target = target
+                last_failure_reason = "error"
+                self._health_checker.mark_failure(target)
+            except BaseException:
+                self._health_checker.release_target(target)
+                raise
+            else:
+                return response
+
+    async def generate_raw(  # noqa: PLR0913 - implements LLMProviderPort interface
+        self,
+        prompt: str,
+        *,
+        cancel_event: asyncio.Event | None = None,
         task_id: str | None = None,
         model: str | None = None,
         num_predict: int | None = None,
         keep_alive: int | str | None = None,
-        format: str | dict[str, Any] | None = None,
+        format: str | dict[str, Any] | None = None,  # noqa: A002 - implements LLMProviderPort keyword API
         options: dict[str, Any] | None = None,
     ) -> LLMGenerateResponse:
         slot_state = _deferred_be_slot.get(None)
@@ -151,99 +254,21 @@ class DistributingGateway(LLMProviderPort):
             )
 
         if slot_state.closed or slot_state.owner_task is not asyncio.current_task():
-            raise RuntimeError(
-                "Deferred BE slot must only be used by its owning task while open"
-            )
+            msg = "Deferred BE slot must only be used by its owning task while open"
+            raise RuntimeError(msg)
 
         if format is not None:
-            raise ValueError(
-                "Structured output format is not supported on remote BE chat dispatch"
-            )
+            msg = "Structured output format is not supported on remote BE chat dispatch"
+            raise ValueError(msg)
 
         prompt = prepare_raw_prompt(prompt)
 
         if not slot_state.local_acquired:
-            messages = gemma_prompt_to_messages(prompt)
-            merged_options = self._merge_options(
-                num_predict=num_predict, options=options
+            remote_response = await self._dispatch_remote_chat(
+                prompt, num_predict=num_predict, options=options
             )
-            max_tokens = int(merged_options.get("num_predict", 1200))
-            temperature = float(merged_options.get("temperature", 0.7))
-            top_p = float(merged_options.get("top_p", 0.85))
-
-            utf8_bytes = sum(len(m["content"].encode("utf-8")) for m in messages)
-            estimated_prompt_tokens = math.ceil(utf8_bytes / 3)
-            required_ctx = (
-                estimated_prompt_tokens + max_tokens + _TOKEN_BUDGET_SAFETY_MARGIN
-            )
-
-            tried: set[RemoteTarget] = set()
-            last_failed_target: RemoteTarget | None = None
-            last_failure_reason = "error"
-
-            def _fits(target: RemoteTarget) -> bool:
-                return target not in tried and required_ctx <= target.num_ctx
-
-            while True:
-                target = self._health_checker.acquire_idle_target(_fits)
-                if target is None:
-                    if last_failed_target is not None:
-                        dispatch_metrics.record_fallback(
-                            from_remote_url=last_failed_target.base_url,
-                            to="local",
-                            reason=(
-                                "rejected"
-                                if last_failure_reason == "rejected"
-                                else "exhausted"
-                            ),
-                        )
-                    break
-
-                if last_failed_target is not None:
-                    dispatch_metrics.record_fallback(
-                        from_remote_url=last_failed_target.base_url,
-                        to="next_remote",
-                        reason=last_failure_reason,
-                    )
-
-                try:
-                    async with dispatch_metrics.dispatch_context(
-                        remote_url=target.base_url,
-                        model=target.model,
-                    ) as obs:
-                        response = await self._remote_driver.chat(
-                            target,
-                            messages,
-                            max_tokens=max_tokens,
-                            temperature=temperature,
-                            top_p=top_p,
-                        )
-                        obs.set_outcome("success")
-                    self._health_checker.mark_success(target)
-                    logger.info(
-                        "Remote BE chat dispatch succeeded (served_model=%s)",
-                        response.model,
-                        extra={
-                            "dispatch_target": "remote",
-                            "remote_url": target.base_url,
-                            "model": target.model,
-                            "served_model": response.model,
-                        },
-                    )
-                    return response
-                except RemoteRequestRejectedError:
-                    tried.add(target)
-                    last_failed_target = target
-                    last_failure_reason = "rejected"
-                    self._health_checker.release_target(target)
-                except RuntimeError:
-                    tried.add(target)
-                    last_failed_target = target
-                    last_failure_reason = "error"
-                    self._health_checker.mark_failure(target)
-                except BaseException:
-                    self._health_checker.release_target(target)
-                    raise
+            if remote_response is not None:
+                return remote_response
 
             (
                 _,

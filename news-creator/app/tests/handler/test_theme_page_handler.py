@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from http import HTTPStatus
+from typing import Any
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
@@ -23,8 +26,8 @@ from news_creator.domain.models import (
 from news_creator.handler.theme_page_handler import create_theme_page_router
 
 
-def _build_theme_request_payload(**overrides):
-    payload = {
+def _build_theme_request_payload(**overrides: object) -> dict[str, Any]:
+    payload: dict[str, Any] = {
         "job_id": str(uuid4()),
         "theme_id": str(uuid4()),
         "language": "ja",
@@ -60,7 +63,7 @@ def _build_app(usecase: AsyncMock) -> FastAPI:
     return app
 
 
-def test_theme_page_handler_success_200():
+def test_theme_page_handler_success_200() -> None:
     usecase = AsyncMock()
     usecase.generate_theme_page.return_value = ThemeGenerateResponse(
         title="ソラリス社の分散ログ基盤",
@@ -84,7 +87,7 @@ def test_theme_page_handler_success_200():
     client = TestClient(_build_app(usecase))
     resp = client.post("/v1/themes/generate", json=_build_theme_request_payload())
 
-    assert resp.status_code == 200
+    assert resp.status_code == HTTPStatus.OK
     data = resp.json()
     assert data == {
         "title": "ソラリス社の分散ログ基盤",
@@ -288,7 +291,9 @@ def test_theme_page_handler_success_200():
         lambda p: p.update({"failure_notes": ["   "]}),
     ],
 )
-def test_theme_page_handler_validation_422(mutator):
+def test_theme_page_handler_validation_422(
+    mutator: Callable[[dict[str, Any]], None],
+) -> None:
     usecase = AsyncMock()
     client = TestClient(_build_app(usecase))
     payload = _build_theme_request_payload()
@@ -296,80 +301,81 @@ def test_theme_page_handler_validation_422(mutator):
 
     resp = client.post("/v1/themes/generate", json=payload)
 
-    assert resp.status_code == 422
+    assert resp.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
     assert resp.headers.get("X-Card-Rejection") is None
     usecase.generate_theme_page.assert_not_called()
 
 
-def test_theme_page_handler_rejected_422():
+def test_theme_page_handler_rejected_422() -> None:
+    rejected_attempts = 2
     usecase = AsyncMock()
     usecase.generate_theme_page.side_effect = CardGenerationRejectedError(
         reason="empty_output",
-        attempts=2,
+        attempts=rejected_attempts,
         raw_text='{"title":"テスト","key_points":[]}',
     )
 
     client = TestClient(_build_app(usecase))
     resp = client.post("/v1/themes/generate", json=_build_theme_request_payload())
 
-    assert resp.status_code == 422
+    assert resp.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
     assert resp.headers.get("X-Card-Rejection") == "1"
     data = resp.json()
     assert data["reason"] == "empty_output"
-    assert data["attempts"] == 2
+    assert data["attempts"] == rejected_attempts
 
 
-def test_theme_page_handler_queue_full_429():
+def test_theme_page_handler_queue_full_429() -> None:
     usecase = AsyncMock()
     usecase.generate_theme_page.side_effect = QueueFullError("Queue depth exceeded")
 
     client = TestClient(_build_app(usecase))
     resp = client.post("/v1/themes/generate", json=_build_theme_request_payload())
 
-    assert resp.status_code == 429
+    assert resp.status_code == HTTPStatus.TOO_MANY_REQUESTS
     assert resp.json() == {"error": "queue full"}
     assert resp.headers.get("Retry-After") == "30"
 
 
-def test_theme_page_handler_value_error_400():
+def test_theme_page_handler_value_error_400() -> None:
     usecase = AsyncMock()
     usecase.generate_theme_page.side_effect = ValueError("bad request")
 
     client = TestClient(_build_app(usecase))
     resp = client.post("/v1/themes/generate", json=_build_theme_request_payload())
 
-    assert resp.status_code == 400
+    assert resp.status_code == HTTPStatus.BAD_REQUEST
     assert resp.json()["detail"] == "Invalid request"
 
 
-def test_theme_page_handler_preempted_502():
+def test_theme_page_handler_preempted_502() -> None:
     usecase = AsyncMock()
     usecase.generate_theme_page.side_effect = PreemptedException("preempted")
 
     client = TestClient(_build_app(usecase))
     resp = client.post("/v1/themes/generate", json=_build_theme_request_payload())
 
-    assert resp.status_code == 502
+    assert resp.status_code == HTTPStatus.BAD_GATEWAY
     assert resp.json()["detail"] == "Upstream service error"
 
 
-def test_theme_page_handler_runtime_error_502():
+def test_theme_page_handler_runtime_error_502() -> None:
     usecase = AsyncMock()
     usecase.generate_theme_page.side_effect = RuntimeError("Ollama unavailable")
 
     client = TestClient(_build_app(usecase))
     resp = client.post("/v1/themes/generate", json=_build_theme_request_payload())
 
-    assert resp.status_code == 502
+    assert resp.status_code == HTTPStatus.BAD_GATEWAY
     assert resp.json()["detail"] == "Upstream service error"
 
 
-def test_theme_page_handler_invariant_error_500():
+def test_theme_page_handler_invariant_error_500() -> None:
     usecase = AsyncMock()
     usecase.generate_theme_page.side_effect = CardGenerationInvariantError("invariant")
 
     client = TestClient(_build_app(usecase))
     resp = client.post("/v1/themes/generate", json=_build_theme_request_payload())
 
-    assert resp.status_code == 500
+    assert resp.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
     assert resp.json()["detail"] == "Internal server error"

@@ -12,7 +12,7 @@ import (
 	"strconv"
 
 	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 // ScrapingDomainResponse represents the response structure for scraping domain operations
@@ -60,7 +60,7 @@ func registerScrapingDomainRoutes(v1 *echo.Group, container *di.ApplicationCompo
 
 // handleListScrapingDomains handles GET /v1/admin/scraping-domains
 func handleListScrapingDomains(container *di.ApplicationComponents) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		ctx := c.Request().Context()
 
 		// Parse query parameters
@@ -87,7 +87,7 @@ func handleListScrapingDomains(container *di.ApplicationComponents) echo.Handler
 
 // handleGetScrapingDomain handles GET /v1/admin/scraping-domains/:id
 func handleGetScrapingDomain(container *di.ApplicationComponents) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		ctx := c.Request().Context()
 
 		idStr := c.Param("id")
@@ -111,7 +111,7 @@ func handleGetScrapingDomain(container *di.ApplicationComponents) echo.HandlerFu
 
 // handleUpdateScrapingDomainPolicy handles PATCH /v1/admin/scraping-domains/:id
 func handleUpdateScrapingDomainPolicy(container *di.ApplicationComponents) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		ctx := c.Request().Context()
 
 		idStr := c.Param("id")
@@ -142,7 +142,7 @@ func handleUpdateScrapingDomainPolicy(container *di.ApplicationComponents) echo.
 
 // handleRefreshRobotsTxt handles POST /v1/admin/scraping-domains/:id/refresh-robots
 func handleRefreshRobotsTxt(container *di.ApplicationComponents) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		ctx := c.Request().Context()
 
 		idStr := c.Param("id")

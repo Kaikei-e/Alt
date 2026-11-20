@@ -178,7 +178,7 @@ func TestSearchByUserUsecase_ExecuteWithSecurityValidation(t *testing.T) {
 		{"carriage return", "test\r\n", true},
 		{"vertical tab", "test\v", true},
 		{"form feed", "test\f", true},
-		{"zero width characters", "test​‌‍", true},
+		{"zero width characters", "test\u200b\u200c\u200d", true},
 
 		// Length limit stays enforced.
 		{"very long query", string(make([]byte, 1001)), true},

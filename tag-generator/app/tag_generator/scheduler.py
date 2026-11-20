@@ -10,10 +10,15 @@ if TYPE_CHECKING:
     from tag_generator.service import TagGeneratorService
 
 
+class _ServiceConfigNotInitializedError(RuntimeError):
+    def __init__(self) -> None:
+        super().__init__("Service config is not initialized")
+
+
 class ProcessingScheduler:
     """Coordinate the recurring processing loop for tag generation."""
 
-    def __init__(self, service: TagGeneratorService, sleep_fn: Callable[[float], None] | None = None):
+    def __init__(self, service: TagGeneratorService, sleep_fn: Callable[[float], None] | None = None) -> None:
         self.service = service
         self._sleep = sleep_fn or time.sleep
 
@@ -26,7 +31,7 @@ class ProcessingScheduler:
         - 何も処理されておらず、未処理記事も無い場合は待機間隔 ``processing_interval`` を使う。
         """
         if self.service.config is None:
-            raise RuntimeError("Service config is not initialized")
+            raise _ServiceConfigNotInitializedError
 
         # まだ処理すべき記事がある、または今回のサイクルで1件以上処理していれば
         # アクティブ運転用の短いインターバルで次のサイクルを実行
@@ -40,7 +45,7 @@ class ProcessingScheduler:
         """Run a single processing cycle and return the sleep interval."""
         service = self.service
         if service.config is None:
-            raise RuntimeError("Service config is not initialized")
+            raise _ServiceConfigNotInitializedError
 
         result = service._run_processing_cycle_with_monitoring()
 
@@ -87,7 +92,7 @@ class ProcessingScheduler:
         except KeyboardInterrupt:
             logger.info("service_stopped_by_user")
         except Exception as e:
-            logger.error("service_crashed", error=str(e), exc_info=True)
+            logger.exception("service_crashed", error=str(e))
             raise
         finally:
             self.service._cleanup()

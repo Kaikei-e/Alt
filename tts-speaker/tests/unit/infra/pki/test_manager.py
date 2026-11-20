@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ssl
 import threading
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
@@ -93,7 +94,7 @@ def _cfg(tmp_path: Path) -> Config:
         ca_url="https://127.0.0.1:1",
         root_file=str(tmp_path / "root.pem"),
         provisioner="pki-agent-tts-speaker",
-        password_file="/run/secrets/pki-agent-tts-speaker-jwk",
+        password_file="/run/secrets/pki-agent-tts-speaker-jwk",  # noqa: S106 - test fixture value, not a credential
         renew_at_fraction=0.66,
         retry_attempts=3,
         retry_backoff=0.001,
@@ -162,7 +163,7 @@ def test_enroll_retries_then_fails(tmp_path: Path) -> None:
     mgr, _, obs = _mgr(tmp_path, iss, datetime.now(UTC))
     with pytest.raises(RuntimeError, match="enroll failed"):
         mgr.enroll(Ctx())
-    assert iss.call_count() == 3
+    assert iss.call_count() == mgr.cfg.retry_attempts
     assert obs.retries > 0
 
 
@@ -177,7 +178,7 @@ def test_enroll_canceled(tmp_path: Path) -> None:
         try:
             mgr.enroll(ctx)
             done.append(None)
-        except BaseException as exc:
+        except BaseException as exc:  # noqa: BLE001 - worker thread captures any failure for assertion
             done.append(exc)
 
     thread = threading.Thread(target=run)
@@ -187,7 +188,8 @@ def test_enroll_canceled(tmp_path: Path) -> None:
     block.set()
     thread.join(timeout=2)
     assert thread.is_alive() is False
-    assert done and isinstance(done[0], CancelledError)
+    assert done
+    assert isinstance(done[0], CancelledError)
 
 
 def test_run_stops_on_cancel(tmp_path: Path) -> None:
@@ -204,7 +206,7 @@ def test_run_stops_on_cancel(tmp_path: Path) -> None:
         try:
             mgr.run(ctx)
             done.append(None)
-        except BaseException as exc:
+        except BaseException as exc:  # noqa: BLE001 - worker thread captures any failure for assertion
             done.append(exc)
 
     thread = threading.Thread(target=run)
@@ -212,7 +214,8 @@ def test_run_stops_on_cancel(tmp_path: Path) -> None:
     ctx.cancel()
     thread.join(timeout=2)
     assert thread.is_alive() is False
-    assert done and isinstance(done[0], CancelledError)
+    assert done
+    assert isinstance(done[0], CancelledError)
 
 
 def test_tick_mismatched_pair_never_classifies_fresh(tmp_path: Path) -> None:
@@ -245,7 +248,6 @@ def test_tick_atomic_write_loadable(tmp_path: Path) -> None:
     mgr.tick(Ctx())
     second = Path(files.cert_path).read_bytes()
     assert first != second
-    import ssl
 
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     ctx.load_cert_chain(files.cert_path, files.key_path)

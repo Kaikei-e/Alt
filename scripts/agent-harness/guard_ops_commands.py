@@ -66,9 +66,7 @@ COMPOSE_VALUE_FLAGS = frozenset(
     }
 )
 
-PRUNE_GROUPS = frozenset(
-    {"system", "image", "container", "volume", "network", "builder", "buildx"}
-)
+PRUNE_GROUPS = frozenset({"system", "image", "container", "volume", "network", "builder", "buildx"})
 
 RULE_REASONS: dict[str, str] = {
     "O1": (
@@ -133,100 +131,180 @@ def _pick_higher_rule(current: str | None, candidate: str | None) -> str | None:
     return current
 
 
+@dataclass
+class _SplitState:
+    command: str
+    length: int
+    segments: list[list[Token]]
+    current_seg: list[Token]
+    buf: list[str]
+    has_token: bool = False
+    has_quote: bool = False
+    quote: str = "NORMAL"
+
+    def flush_token(self) -> None:
+        if self.has_token:
+            self.current_seg.append(Token("".join(self.buf), self.has_quote))
+            self.buf.clear()
+            self.has_token = False
+            self.has_quote = False
+
+    def flush_segment(self) -> None:
+        self.flush_token()
+        if self.current_seg:
+            self.segments.append(list(self.current_seg))
+            self.current_seg.clear()
+
+
+def _scan_single(state: _SplitState, i: int) -> int:
+    ch = state.command[i]
+    if ch == "'":
+        state.quote = "NORMAL"
+    else:
+        state.buf.append(ch)
+    return i + 1
+
+
+def _scan_double(state: _SplitState, i: int) -> int:
+    ch = state.command[i]
+    if ch == "\\":
+        if i + 1 < state.length and state.command[i + 1] == "\n":
+            return i + 2
+        if i + 1 < state.length:
+            state.buf.append(state.command[i + 1])
+            return i + 2
+    elif ch == '"':
+        state.quote = "NORMAL"
+        return i + 1
+    state.buf.append(ch)
+    return i + 1
+
+
+def _scan_normal_backslash(state: _SplitState, i: int) -> int:
+    if i + 1 < state.length and state.command[i + 1] == "\n":
+        return i + 2
+    if i + 1 < state.length:
+        state.buf.append(state.command[i + 1])
+        state.has_token = True
+        return i + 2
+    return i + 1
+
+
+def _scan_normal(state: _SplitState, i: int) -> int:
+    ch = state.command[i]
+    if ch in ("'", '"'):
+        state.quote = "SINGLE" if ch == "'" else "DOUBLE"
+        state.has_token = True
+        state.has_quote = True
+        return i + 1
+    if ch == "\\":
+        return _scan_normal_backslash(state, i)
+    if ch == "#" and not state.has_token:
+        while i < state.length and state.command[i] != "\n":
+            i += 1
+        return i
+    if ch in ("\n", ";", "(", ")", "&", "|"):
+        state.flush_segment()
+        step = 2 if ch in ("&", "|") and i + 1 < state.length and state.command[i + 1] == ch else 1
+        return i + step
+    if ch.isspace():
+        state.flush_token()
+        return i + 1
+    state.buf.append(ch)
+    state.has_token = True
+    return i + 1
+
+
+_SPLIT_HANDLERS = {
+    "SINGLE": _scan_single,
+    "DOUBLE": _scan_double,
+    "NORMAL": _scan_normal,
+}
+
+
 def _split_shell_segments(command: str) -> list[list[Token]]:
     """Tokenize a shell command and split it on ; && || | & ( ) and newlines."""
-    segments: list[list[Token]] = []
-    current_seg: list[Token] = []
-    buf: list[str] = []
-    has_token = False
-    has_quote = False
-    state = "NORMAL"
+    state = _SplitState(
+        command=command,
+        length=len(command),
+        segments=[],
+        current_seg=[],
+        buf=[],
+    )
     i = 0
-    n = len(command)
+    while i < state.length:
+        i = _SPLIT_HANDLERS[state.quote](state, i)
+    state.flush_segment()
+    return state.segments
 
-    def flush_token() -> None:
-        nonlocal has_token, has_quote
-        if has_token:
-            current_seg.append(Token("".join(buf), has_quote))
-            buf.clear()
-            has_token = False
-            has_quote = False
 
-    def flush_segment() -> None:
-        flush_token()
-        if current_seg:
-            segments.append(list(current_seg))
-            current_seg.clear()
+@dataclass
+class _SubScanState:
+    command: str
+    length: int
+    depth: int = 1
+    quote: str = "NORMAL"
 
-    while i < n:
-        ch = command[i]
-        if state == "SINGLE":
-            if ch == "'":
-                state = "NORMAL"
-            else:
-                buf.append(ch)
-            i += 1
+
+def _scan_sub_single(state: _SubScanState, j: int) -> int:
+    if state.command[j] == "'":
+        state.quote = "NORMAL"
+    return j + 1
+
+
+def _scan_sub_double(state: _SubScanState, j: int) -> int:
+    c = state.command[j]
+    if c == "\\" and j + 1 < state.length:
+        return j + 2
+    if c == '"':
+        state.quote = "NORMAL"
+    return j + 1
+
+
+def _scan_sub_normal(state: _SubScanState, j: int) -> int:
+    c = state.command[j]
+    if c == "\\" and j + 1 < state.length:
+        return j + 2
+    if c == "'":
+        state.quote = "SINGLE"
+        return j + 1
+    if c == '"':
+        state.quote = "DOUBLE"
+        return j + 1
+    if c == "(":
+        state.depth += 1
+        return j + 1
+    if c == ")":
+        state.depth -= 1
+        return j if state.depth == 0 else j + 1
+    return j + 1
+
+
+_SUB_HANDLERS = {
+    "SINGLE": _scan_sub_single,
+    "DOUBLE": _scan_sub_double,
+    "NORMAL": _scan_sub_normal,
+}
+
+
+def _scan_dollar_paren(command: str, start: int, length: int) -> tuple[str, int]:
+    state = _SubScanState(command=command, length=length)
+    j = start
+    while j < length and state.depth > 0:
+        j = _SUB_HANDLERS[state.quote](state, j)
+    return command[start:j], j + 1
+
+
+def _scan_backtick(command: str, start: int, length: int) -> tuple[str, int]:
+    j = start
+    while j < length:
+        if command[j] == "\\" and j + 1 < length:
+            j += 2
             continue
-
-        if state == "DOUBLE":
-            if ch == "\\":
-                if i + 1 < n and command[i + 1] == "\n":
-                    i += 2
-                    continue
-                if i + 1 < n:
-                    buf.append(command[i + 1])
-                    i += 2
-                    continue
-            elif ch == '"':
-                state = "NORMAL"
-                i += 1
-                continue
-            buf.append(ch)
-            i += 1
-            continue
-
-        # NORMAL state
-        if ch == "'":
-            state = "SINGLE"
-            has_token = True
-            has_quote = True
-            i += 1
-        elif ch == '"':
-            state = "DOUBLE"
-            has_token = True
-            has_quote = True
-            i += 1
-        elif ch == "\\":
-            if i + 1 < n and command[i + 1] == "\n":
-                i += 2
-            elif i + 1 < n:
-                buf.append(command[i + 1])
-                has_token = True
-                i += 2
-            else:
-                i += 1
-        elif ch == "#" and not has_token:
-            while i < n and command[i] != "\n":
-                i += 1
-        elif ch in ("\n", ";", "(", ")"):
-            flush_segment()
-            i += 1
-        elif ch in ("&", "|"):
-            flush_segment()
-            if i + 1 < n and command[i + 1] == ch:
-                i += 2
-            else:
-                i += 1
-        elif ch.isspace():
-            flush_token()
-            i += 1
-        else:
-            buf.append(ch)
-            has_token = True
-            i += 1
-
-    flush_segment()
-    return segments
+        if command[j] == "`":
+            break
+        j += 1
+    return command[start:j], j + 1
 
 
 def _extract_substitutions(command: str) -> list[str]:
@@ -240,74 +318,27 @@ def _extract_substitutions(command: str) -> list[str]:
         ch = command[i]
         if ch == "\\" and i + 1 < n:
             i += 2
-            continue
-        if not in_double and ch == "'":
+        elif not in_double and ch == "'":
             i += 1
             while i < n and command[i] != "'":
                 i += 1
             i += 1
-            continue
-        if ch == '"':
+        elif ch == '"':
             in_double = not in_double
             i += 1
-            continue
-        if ch == "$" and i + 1 < n and command[i + 1] == "(":
-            start = i + 2
-            j = start
-            depth = 1
-            sub_state = "NORMAL"
-            while j < n and depth > 0:
-                c = command[j]
-                if sub_state == "SINGLE":
-                    if c == "'":
-                        sub_state = "NORMAL"
-                    j += 1
-                    continue
-                if sub_state == "DOUBLE":
-                    if c == "\\" and j + 1 < n:
-                        j += 2
-                        continue
-                    if c == '"':
-                        sub_state = "NORMAL"
-                    j += 1
-                    continue
-                if c == "\\" and j + 1 < n:
-                    j += 2
-                    continue
-                if c == "'":
-                    sub_state = "SINGLE"
-                elif c == '"':
-                    sub_state = "DOUBLE"
-                elif c == "(":
-                    depth += 1
-                elif c == ")":
-                    depth -= 1
-                    if depth == 0:
-                        break
-                j += 1
-            subs.append(command[start:j])
-            i = j + 1
-            continue
-        if ch == "`":
-            start = i + 1
-            j = start
-            while j < n:
-                if command[j] == "\\" and j + 1 < n:
-                    j += 2
-                    continue
-                if command[j] == "`":
-                    break
-                j += 1
-            subs.append(command[start:j])
-            i = j + 1
-            continue
-        i += 1
+        elif ch == "$" and i + 1 < n and command[i + 1] == "(":
+            inner, i = _scan_dollar_paren(command, i + 2, n)
+            subs.append(inner)
+        elif ch == "`":
+            inner, i = _scan_backtick(command, i + 1, n)
+            subs.append(inner)
+        else:
+            i += 1
 
     return subs
 
 
-def _classify_compose(args: list[str], env_vars: dict[str, str]) -> str | None:
-    """Classify a docker compose / docker-compose argument list into O2, O3, O4, or None."""
+def _parse_compose_args(args: list[str]) -> tuple[str | None, str | None, bool]:
     cli_project: str | None = None
     compose_subcmd: str | None = None
     has_build_or_recreate = False
@@ -325,11 +356,7 @@ def _classify_compose(args: list[str], env_vars: dict[str, str]) -> str | None:
                 continue
             i += 1
             continue
-        if tok.startswith("--project-name="):
-            cli_project = tok.split("=", 1)[1]
-            i += 1
-            continue
-        if tok.startswith("-p="):
+        if tok.startswith(("--project-name=", "-p=")):
             cli_project = tok.split("=", 1)[1]
             i += 1
             continue
@@ -344,6 +371,13 @@ def _classify_compose(args: list[str], env_vars: dict[str, str]) -> str | None:
         if compose_subcmd is None:
             compose_subcmd = tok
         i += 1
+
+    return cli_project, compose_subcmd, has_build_or_recreate
+
+
+def _classify_compose(args: list[str], env_vars: dict[str, str]) -> str | None:
+    """Classify a docker compose / docker-compose argument list into O2, O3, O4, or None."""
+    cli_project, compose_subcmd, has_build_or_recreate = _parse_compose_args(args)
 
     if compose_subcmd not in ("up", "down", "rm", "stop", "kill"):
         return None
@@ -363,7 +397,26 @@ def _classify_compose(args: list[str], env_vars: dict[str, str]) -> str | None:
     return "O3"
 
 
-def _classify_docker_segment(tokens: list[str], env_vars: dict[str, str]) -> str | None:
+def _first_positional_arg(
+    tokens: list[str], start_idx: int, value_flags: frozenset[str]
+) -> tuple[str | None, int]:
+    i = start_idx
+    n = len(tokens)
+    while i < n:
+        tok = tokens[i]
+        if tok == "--":
+            break
+        if tok in value_flags:
+            i += 2
+            continue
+        if tok.startswith("-"):
+            i += 1
+            continue
+        return tok, i + 1
+    return None, n
+
+
+def _classify_docker_segment(tokens: list[str], env_vars: dict[str, str]) -> str | None:  # noqa: PLR0911 — one return per distinct verdict
     """Classify a docker / docker-compose invocation starting at tokens[0]."""
     exe = PurePosixPath(tokens[0]).name
     if exe == "docker-compose":
@@ -371,40 +424,17 @@ def _classify_docker_segment(tokens: list[str], env_vars: dict[str, str]) -> str
     if exe != "docker":
         return None
 
-    i = 1
-    n = len(tokens)
-    subcmd: str | None = None
-    while i < n:
-        tok = tokens[i]
-        if tok == "--":
-            break
-        if tok in DOCKER_VALUE_FLAGS:
-            i += 2
-            continue
-        if tok.startswith("-"):
-            i += 1
-            continue
-        subcmd = tok
-        i += 1
-        break
-
+    subcmd, next_idx = _first_positional_arg(tokens, 1, DOCKER_VALUE_FLAGS)
     if subcmd is None:
         return None
     if subcmd == "compose":
-        return _classify_compose(tokens[i:], env_vars)
+        return _classify_compose(tokens[next_idx:], env_vars)
     if subcmd == "rmi":
         return "O1"
     if subcmd in ("rm", "stop", "kill"):
         return "O2"
 
-    action: str | None = None
-    for tok in tokens[i:]:
-        if tok == "--":
-            break
-        if tok.startswith("-"):
-            continue
-        action = tok
-        break
+    action, _ = _first_positional_arg(tokens, next_idx, frozenset())
 
     if subcmd in PRUNE_GROUPS and action == "prune":
         return "O1"
@@ -461,7 +491,8 @@ def _classify_tokens(tokens: list[Token], *, depth: int) -> str | None:
 def classify_command(command: str, *, depth: int = 0) -> str | None:
     """Return matching rule id (O1..O4) for a shell command string, or None."""
     if depth > MAX_RECURSION_DEPTH:
-        raise ValueError("command nesting exceeded maximum recursion depth")
+        msg = "command nesting exceeded maximum recursion depth"
+        raise ValueError(msg)
     if not command.strip():
         return None
 
@@ -499,28 +530,33 @@ def parse_shell_hook_stdin(raw: str) -> str | list[str] | None:
     try:
         payload = json.loads(raw)
     except json.JSONDecodeError as exc:
-        raise HookPayloadError(f"invalid JSON ({exc.msg})") from exc
+        msg = f"invalid JSON ({exc.msg})"
+        raise HookPayloadError(msg) from exc
 
     if not isinstance(payload, dict):
-        raise HookPayloadError("expected a JSON object")
+        msg = "expected a JSON object"
+        raise HookPayloadError(msg)
 
     tool_name = payload.get("tool_name")
     if not isinstance(tool_name, str) or not tool_name.strip():
-        raise HookPayloadError("missing tool_name")
+        msg = "missing tool_name"
+        raise HookPayloadError(msg)
 
     if tool_name not in WATCHED_SHELL_TOOLS:
         return None
 
     tool_input = payload.get("tool_input")
     if not isinstance(tool_input, dict):
-        raise HookPayloadError(f"missing tool_input for {tool_name}")
+        msg = f"missing tool_input for {tool_name}"
+        raise HookPayloadError(msg)
 
     cmd = tool_input.get("command")
     if isinstance(cmd, str):
         return cmd
     if isinstance(cmd, list) and all(isinstance(part, str) for part in cmd):
         return cmd
-    raise HookPayloadError(f"missing or invalid command for {tool_name}")
+    msg = f"missing or invalid command for {tool_name}"
+    raise HookPayloadError(msg)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -542,19 +578,16 @@ def main(argv: list[str] | None = None) -> int:
         command = parse_shell_hook_stdin(raw)
         if command is None:
             return 0
-        if isinstance(command, list):
-            rule = classify_argv(command)
-        else:
-            rule = classify_command(command)
-    except (HookPayloadError, UnicodeDecodeError, RecursionError, Exception):
-        print(json.dumps(_decision(on_match, UNREADABLE_REASON)))
+        rule = classify_argv(command) if isinstance(command, list) else classify_command(command)
+    except Exception:  # noqa: BLE001 — fail-closed hook boundary must emit ask/deny on any parse/classification error
+        sys.stdout.write(json.dumps(_decision(on_match, UNREADABLE_REASON)) + "\n")
         return 0
 
     if rule is not None:
         reason = RULE_REASONS[rule]
         if on_match == "deny":
             reason = f"{reason} {DENY_GUIDANCE_SENTENCE}"
-        print(json.dumps(_decision(on_match, reason)))
+        sys.stdout.write(json.dumps(_decision(on_match, reason)) + "\n")
     return 0
 
 

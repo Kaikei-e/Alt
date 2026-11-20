@@ -144,6 +144,7 @@ func extractHeredocTemplates(t *testing.T) (subjectTpl, localhostTpl string) {
 		t.Fatalf("cannot find repo root: %v", err)
 	}
 	scriptPath := filepath.Join(repoRoot, "pki-agent", "scripts", "bootstrap-pki-provisioner.sh")
+	// #nosec G304 -- reads fixed repo script bootstrap-pki-provisioner.sh from findRepoRoot()
 	data, err := os.ReadFile(scriptPath)
 	if err != nil {
 		t.Fatalf("cannot read bootstrap script %s: %v", scriptPath, err)
@@ -444,6 +445,7 @@ func TestBootstrapScript_UsesRestrictivePasswordPermissions(t *testing.T) {
 		t.Fatalf("cannot find repo root: %v", err)
 	}
 	scriptPath := filepath.Join(repoRoot, "pki-agent", "scripts", "bootstrap-pki-provisioner.sh")
+	// #nosec G304 -- reads fixed repo script bootstrap-pki-provisioner.sh from findRepoRoot()
 	data, err := os.ReadFile(scriptPath)
 	if err != nil {
 		t.Fatalf("cannot read bootstrap script %s: %v", scriptPath, err)

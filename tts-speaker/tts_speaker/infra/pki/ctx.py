@@ -29,8 +29,10 @@ class Ctx:
         if not self.cancelled():
             return
         if self._cancel.is_set():
-            raise CancelledError("canceled") from None
-        raise CancelledError("timed out") from None
+            msg = "canceled"
+            raise CancelledError(msg) from None
+        msg = "timed out"
+        raise CancelledError(msg) from None
 
     def remaining(self) -> float | None:
         if self._deadline is None:

@@ -10,31 +10,33 @@ Sanitize policy:
   untrusted / log-derived tabular content.
 """
 
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from pydantic import BaseModel
 
-from alt_metrics.analysis import get_health_status, get_health_status_emoji
+from alt_metrics.analysis import (
+    HEALTH_SCORE_HEALTHY,
+    HEALTH_SCORE_WARNING,
+    get_health_status,
+    get_health_status_emoji,
+)
 from alt_metrics.models import AnalysisResult
 
-_TEMPLATE_ENV: Environment | None = None
 
-
+@lru_cache(maxsize=1)
 def _get_template_env() -> Environment:
     """Jinja2環境を取得（モジュールレベルでキャッシュ）"""
-    global _TEMPLATE_ENV
-    if _TEMPLATE_ENV is None:
-        template_dir = Path(__file__).parent / "templates"
-        _TEMPLATE_ENV = Environment(
-            loader=FileSystemLoader(template_dir),
-            # Markdown は autoescape 対象外。セル値は format_table/_escape_cell でサニタイズする。
-            autoescape=select_autoescape(["html", "xml"]),
-            trim_blocks=True,
-            lstrip_blocks=True,
-        )
-    return _TEMPLATE_ENV
+    template_dir = Path(__file__).parent / "templates"
+    return Environment(
+        loader=FileSystemLoader(template_dir),
+        # Markdown は autoescape 対象外。セル値は format_table/_escape_cell でサニタイズする。
+        autoescape=select_autoescape(["html", "xml"]),
+        trim_blocks=True,
+        lstrip_blocks=True,
+    )
 
 
 def _row_keys(row: dict[str, Any] | BaseModel) -> list[str]:
@@ -42,12 +44,12 @@ def _row_keys(row: dict[str, Any] | BaseModel) -> list[str]:
     return list(row.model_fields.keys()) if isinstance(row, BaseModel) else list(row.keys())
 
 
-def _row_value(row: dict[str, Any] | BaseModel, column: str) -> Any:
+def _row_value(row: dict[str, Any] | BaseModel, column: str) -> object:
     """行データ（dictまたはPydanticモデル）からカラム値を取得"""
     return getattr(row, column, "") if isinstance(row, BaseModel) else row.get(column, "")
 
 
-def _escape_cell(value: Any) -> str:
+def _escape_cell(value: object) -> str:
     """Markdownテーブルセルの値をエスケープ
 
     `|` と改行はログ本文由来の値に含まれうるため、テーブル崩壊や
@@ -100,8 +102,8 @@ def generate_japanese_report(result: AnalysisResult) -> str:
     # サマリー統計
     total_logs = sum(s.total_logs for s in result.service_health)
     total_errors = sum(s.error_count for s in result.service_health)
-    healthy_count = len([s for s in result.service_health if s.health_score >= 90])
-    degraded_count = len([s for s in result.service_health if s.health_score < 70])
+    healthy_count = len([s for s in result.service_health if s.health_score >= HEALTH_SCORE_HEALTHY])
+    degraded_count = len([s for s in result.service_health if s.health_score < HEALTH_SCORE_WARNING])
 
     # サービス健全性データを準備
     service_health_data = [

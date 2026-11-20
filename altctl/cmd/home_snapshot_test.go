@@ -19,11 +19,13 @@ func TestSnapshotListCommand(t *testing.T) {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{
 			"snapshots": []map[string]interface{}{
 				{"snapshot_id": "snap-1", "status": "valid", "projection_version": 2, "event_seq_boundary": 1139408, "items_row_count": 122297, "snapshot_at": "2026-07-20T00:00:00Z"},
 			},
-		})
+		}); err != nil {
+			t.Errorf("encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -46,7 +48,9 @@ func TestSnapshotListCommand_Empty(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"snapshots": []map[string]interface{}{}})
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{"snapshots": []map[string]interface{}{}}); err != nil {
+			t.Errorf("encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -72,14 +76,16 @@ func TestSnapshotLatestCommand(t *testing.T) {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{
 			"snapshot_id":        "snap-latest",
 			"status":             "valid",
 			"projection_version": 2,
 			"items_row_count":    122297,
 			"digest_row_count":   3400,
 			"recall_row_count":   980,
-		})
+		}); err != nil {
+			t.Errorf("encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -109,11 +115,13 @@ func TestSnapshotCreateCommand(t *testing.T) {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{
 			"snapshot_id":     "snap-new",
 			"status":          "valid",
 			"items_row_count": 122300,
-		})
+		}); err != nil {
+			t.Errorf("encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 

@@ -31,9 +31,10 @@ def test_domain_error_hierarchy(error_cls: type[TTSError]) -> None:
 
 
 def test_upstream_rejected_error() -> None:
-    err = UpstreamRejectedError(status_code=400, detail="Invalid voice format")
+    status_code = 400
+    err = UpstreamRejectedError(status_code=status_code, detail="Invalid voice format")
     assert isinstance(err, TTSError)
-    assert err.status_code == 400
+    assert err.status_code == status_code
     assert err.detail == "Invalid voice format"
     assert "400" in str(err)
     assert "Invalid voice format" in str(err)

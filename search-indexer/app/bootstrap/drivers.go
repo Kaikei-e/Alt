@@ -67,6 +67,7 @@ func initArticleDriver(cfg *config.Config) (gateway.ArticleDriver, error) {
 // by key+"_FILE" if set (Docker Secrets convention).
 func readSecretEnv(key string) (string, error) {
 	if fileEnv := os.Getenv(key + "_FILE"); fileEnv != "" {
+		// #nosec G304 G703 -- fileEnv comes from operator-configured *_FILE env var, not user input
 		content, err := os.ReadFile(fileEnv)
 		if err != nil {
 			return "", fmt.Errorf("read %s_FILE %q: %w", key, fileEnv, err)
@@ -186,11 +187,4 @@ func sleepOrDone(ctx context.Context, d time.Duration) error {
 	case <-timer.C:
 		return nil
 	}
-}
-
-// initMeilisearchClient preserves the single-client API for existing callers
-// (recap indexer today). New code should prefer initMeilisearchClients.
-func initMeilisearchClient(ctx context.Context) (meilisearch.ServiceManager, error) {
-	admin, _, err := initMeilisearchClients(ctx)
-	return admin, err
 }

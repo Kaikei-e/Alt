@@ -14,7 +14,7 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 
 	"alt/config"
 	"alt/domain"
@@ -351,7 +351,7 @@ func EchoUserInFlightMiddleware(limiter *UserQuotaLimiter, op OperationClass) ec
 
 func echoQuotaMiddleware(acquire func(context.Context, OperationClass) (func(), error), op OperationClass) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+		return func(c *echo.Context) error {
 			release, err := acquire(c.Request().Context(), op)
 			if err != nil {
 				if errors.Is(err, ErrQuotaUnauthenticated) {

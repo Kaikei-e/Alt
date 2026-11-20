@@ -10,7 +10,7 @@ def _make_usecase() -> RecapSummaryUsecase:
     return RecapSummaryUsecase(config=Mock(), llm_provider=Mock())
 
 
-def test_multi_source_cluster_scores_higher_than_solo_cluster():
+def test_multi_source_cluster_scores_higher_than_solo_cluster() -> None:
     usecase = _make_usecase()
     sent_a = RepresentativeSentence(
         text="TechFusion が Nova Labs の買収を発表した。",
@@ -31,7 +31,7 @@ def test_multi_source_cluster_scores_higher_than_solo_cluster():
     )
 
 
-def test_same_source_twice_does_not_boost():
+def test_same_source_twice_does_not_boost() -> None:
     usecase = _make_usecase()
     sent_a = RepresentativeSentence(
         text="イベントA が発表された。", source_url="https://same.example.com/1"

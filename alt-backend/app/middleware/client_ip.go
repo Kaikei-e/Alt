@@ -6,7 +6,7 @@ import (
 	"net/netip"
 	"strings"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 func NewTrustedProxyIPExtractor(trustedProxies []netip.Prefix) echo.IPExtractor {

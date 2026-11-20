@@ -9,6 +9,7 @@ import (
 	"pre-processor-sidecar/models"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
 
@@ -140,7 +141,7 @@ func TestInoreaderService_GetCurrentAPIUsageInfo(t *testing.T) {
 			if tc.expectError {
 				assert.Error(t, err)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.NotNil(t, info)
 				assert.Equal(t, tc.expectedUsage, info.Zone1Requests)
 			}

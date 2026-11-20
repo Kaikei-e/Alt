@@ -67,7 +67,7 @@ func (c *CertFile) Load(ctx context.Context) (*x509.Certificate, error) {
 		if isNotExist(err) {
 			return nil, ErrCertNotFound
 		}
-		return nil, fmt.Errorf("%w: %v", ErrCertParseFailed, err)
+		return nil, fmt.Errorf("%w: %w", ErrCertParseFailed, err)
 	}
 	block, _ := pem.Decode(raw)
 	if block == nil {
@@ -75,7 +75,7 @@ func (c *CertFile) Load(ctx context.Context) (*x509.Certificate, error) {
 	}
 	cert, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrCertParseFailed, err)
+		return nil, fmt.Errorf("%w: %w", ErrCertParseFailed, err)
 	}
 	if err := c.requirePair(); err != nil {
 		return nil, err
@@ -89,17 +89,17 @@ func (c *CertFile) requirePair() error {
 		if isNotExist(err) {
 			return ErrCertNotFound
 		}
-		return fmt.Errorf("%w: %v", ErrCertPairMismatch, err)
+		return fmt.Errorf("%w: %w", ErrCertPairMismatch, err)
 	}
 	keyPEM, err := readRegularNoFollow(c.KeyPath, maxRootPEMBytes)
 	if err != nil {
 		if isNotExist(err) {
 			return fmt.Errorf("%w: missing key", ErrCertPairMismatch)
 		}
-		return fmt.Errorf("%w: %v", ErrCertPairMismatch, err)
+		return fmt.Errorf("%w: %w", ErrCertPairMismatch, err)
 	}
 	if _, err := tls.X509KeyPair(certPEM, keyPEM); err != nil {
-		return fmt.Errorf("%w: %v", ErrCertPairMismatch, err)
+		return fmt.Errorf("%w: %w", ErrCertPairMismatch, err)
 	}
 	return nil
 }

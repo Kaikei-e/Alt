@@ -18,7 +18,7 @@ func (h *SovereignHandler) GetReprojectRun(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.GetReprojectRunRequest],
 ) (*connect.Response[sovereignv1.GetReprojectRunResponse], error) {
-	runID, err := parseUUIDField("run_id", req.Msg.RunId)
+	runID, err := parseUUIDField("run_id", req.Msg.GetRunId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
@@ -37,7 +37,7 @@ func (h *SovereignHandler) ListReprojectRuns(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.ListReprojectRunsRequest],
 ) (*connect.Response[sovereignv1.ListReprojectRunsResponse], error) {
-	runs, err := h.readDB.ListReprojectRuns(ctx, req.Msg.StatusFilter, clampReadLimit(int(req.Msg.Limit), defaultReadLimit))
+	runs, err := h.readDB.ListReprojectRuns(ctx, req.Msg.GetStatusFilter(), clampReadLimit(int(req.Msg.GetLimit()), defaultReadLimit))
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("ListReprojectRuns: %w", err))
 	}
@@ -52,7 +52,7 @@ func (h *SovereignHandler) CreateReprojectRun(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.CreateReprojectRunRequest],
 ) (*connect.Response[sovereignv1.CreateReprojectRunResponse], error) {
-	run, err := protoToReprojectRun(req.Msg.Run)
+	run, err := protoToReprojectRun(req.Msg.GetRun())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
@@ -66,7 +66,7 @@ func (h *SovereignHandler) UpdateReprojectRun(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.UpdateReprojectRunRequest],
 ) (*connect.Response[sovereignv1.UpdateReprojectRunResponse], error) {
-	run, err := protoToReprojectRun(req.Msg.Run)
+	run, err := protoToReprojectRun(req.Msg.GetRun())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
@@ -82,7 +82,7 @@ func (h *SovereignHandler) CompareProjections(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.CompareProjectionsRequest],
 ) (*connect.Response[sovereignv1.CompareProjectionsResponse], error) {
-	summary, err := h.readDB.CompareProjections(ctx, req.Msg.FromVersion, req.Msg.ToVersion)
+	summary, err := h.readDB.CompareProjections(ctx, req.Msg.GetFromVersion(), req.Msg.GetToVersion())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("CompareProjections: %w", err))
 	}
@@ -102,7 +102,7 @@ func (h *SovereignHandler) ListProjectionAudits(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.ListProjectionAuditsRequest],
 ) (*connect.Response[sovereignv1.ListProjectionAuditsResponse], error) {
-	audits, err := h.readDB.ListProjectionAudits(ctx, req.Msg.ProjectionName, clampReadLimit(int(req.Msg.Limit), defaultReadLimit))
+	audits, err := h.readDB.ListProjectionAudits(ctx, req.Msg.GetProjectionName(), clampReadLimit(int(req.Msg.GetLimit()), defaultReadLimit))
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("ListProjectionAudits: %w", err))
 	}
@@ -125,7 +125,7 @@ func (h *SovereignHandler) CreateProjectionAudit(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.CreateProjectionAuditRequest],
 ) (*connect.Response[sovereignv1.CreateProjectionAuditResponse], error) {
-	audit, err := validateAndBuildProjectionAudit(req.Msg.Audit)
+	audit, err := validateAndBuildProjectionAudit(req.Msg.GetAudit())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
@@ -141,7 +141,7 @@ func (h *SovereignHandler) GetBackfillJob(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.GetBackfillJobRequest],
 ) (*connect.Response[sovereignv1.GetBackfillJobResponse], error) {
-	jobID, err := parseUUIDField("job_id", req.Msg.JobId)
+	jobID, err := parseUUIDField("job_id", req.Msg.GetJobId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
@@ -175,7 +175,7 @@ func (h *SovereignHandler) CreateBackfillJob(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.CreateBackfillJobRequest],
 ) (*connect.Response[sovereignv1.CreateBackfillJobResponse], error) {
-	j, err := protoToBackfillJob(req.Msg.Job)
+	j, err := protoToBackfillJob(req.Msg.GetJob())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
@@ -189,7 +189,7 @@ func (h *SovereignHandler) UpdateBackfillJob(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.UpdateBackfillJobRequest],
 ) (*connect.Response[sovereignv1.UpdateBackfillJobResponse], error) {
-	j, err := protoToBackfillJob(req.Msg.Job)
+	j, err := protoToBackfillJob(req.Msg.GetJob())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
@@ -205,20 +205,20 @@ func validateAndBuildProjectionAudit(pa *sovereignv1.ProjectionAudit) (sovereign
 	if pa == nil {
 		return sovereign_db.ProjectionAudit{}, fmt.Errorf("audit is required")
 	}
-	auditID, err := parseUUIDField("audit_id", pa.AuditId)
+	auditID, err := parseUUIDField("audit_id", pa.GetAuditId())
 	if err != nil {
 		return sovereign_db.ProjectionAudit{}, err
 	}
 	audit := sovereign_db.ProjectionAudit{
 		AuditID:           auditID,
-		ProjectionName:    pa.ProjectionName,
-		ProjectionVersion: pa.ProjectionVersion,
-		SampleSize:        int(pa.SampleSize),
-		MismatchCount:     int(pa.MismatchCount),
-		DetailsJSON:       pa.DetailsJson,
+		ProjectionName:    pa.GetProjectionName(),
+		ProjectionVersion: pa.GetProjectionVersion(),
+		SampleSize:        int(pa.GetSampleSize()),
+		MismatchCount:     int(pa.GetMismatchCount()),
+		DetailsJSON:       pa.GetDetailsJson(),
 	}
-	if pa.CheckedAt != nil {
-		audit.CheckedAt = pa.CheckedAt.AsTime()
+	if pa.GetCheckedAt() != nil {
+		audit.CheckedAt = pa.GetCheckedAt().AsTime()
 	}
 	return audit, nil
 }
@@ -258,43 +258,43 @@ func protoToReprojectRun(pb *sovereignv1.ReprojectRun) (sovereign_db.ReprojectRu
 	if pb == nil {
 		return sovereign_db.ReprojectRun{}, nil
 	}
-	reprojectRunID, err := parseUUIDField("reproject_run_id", pb.ReprojectRunId)
+	reprojectRunID, err := parseUUIDField("reproject_run_id", pb.GetReprojectRunId())
 	if err != nil {
 		return sovereign_db.ReprojectRun{}, err
 	}
-	initiatedBy, err := parseUUIDPtrField("initiated_by", pb.InitiatedBy)
+	initiatedBy, err := parseUUIDPtrField("initiated_by", pb.GetInitiatedBy())
 	if err != nil {
 		return sovereign_db.ReprojectRun{}, err
 	}
 	r := sovereign_db.ReprojectRun{
 		ReprojectRunID:    reprojectRunID,
-		ProjectionName:    pb.ProjectionName,
-		FromVersion:       pb.FromVersion,
-		ToVersion:         pb.ToVersion,
+		ProjectionName:    pb.GetProjectionName(),
+		FromVersion:       pb.GetFromVersion(),
+		ToVersion:         pb.GetToVersion(),
 		InitiatedBy:       initiatedBy,
-		Mode:              pb.Mode,
-		Status:            pb.Status,
-		CheckpointPayload: pb.CheckpointPayload,
-		StatsJSON:         pb.StatsJson,
-		DiffSummaryJSON:   pb.DiffSummaryJson,
+		Mode:              pb.GetMode(),
+		Status:            pb.GetStatus(),
+		CheckpointPayload: pb.GetCheckpointPayload(),
+		StatsJSON:         pb.GetStatsJson(),
+		DiffSummaryJSON:   pb.GetDiffSummaryJson(),
 	}
-	if pb.CreatedAt != nil {
-		r.CreatedAt = pb.CreatedAt.AsTime()
+	if pb.GetCreatedAt() != nil {
+		r.CreatedAt = pb.GetCreatedAt().AsTime()
 	}
-	if pb.RangeStart != nil {
-		t := pb.RangeStart.AsTime()
+	if pb.GetRangeStart() != nil {
+		t := pb.GetRangeStart().AsTime()
 		r.RangeStart = &t
 	}
-	if pb.RangeEnd != nil {
-		t := pb.RangeEnd.AsTime()
+	if pb.GetRangeEnd() != nil {
+		t := pb.GetRangeEnd().AsTime()
 		r.RangeEnd = &t
 	}
-	if pb.StartedAt != nil {
-		t := pb.StartedAt.AsTime()
+	if pb.GetStartedAt() != nil {
+		t := pb.GetStartedAt().AsTime()
 		r.StartedAt = &t
 	}
-	if pb.FinishedAt != nil {
-		t := pb.FinishedAt.AsTime()
+	if pb.GetFinishedAt() != nil {
+		t := pb.GetFinishedAt().AsTime()
 		r.FinishedAt = &t
 	}
 	return r, nil
@@ -334,49 +334,49 @@ func protoToBackfillJob(pb *sovereignv1.BackfillJob) (sovereign_db.BackfillJob, 
 	if pb == nil {
 		return sovereign_db.BackfillJob{}, nil
 	}
-	jobID, err := parseUUIDField("job_id", pb.JobId)
+	jobID, err := parseUUIDField("job_id", pb.GetJobId())
 	if err != nil {
 		return sovereign_db.BackfillJob{}, err
 	}
-	cursorUserID, err := parseUUIDPtrField("cursor_user_id", pb.CursorUserId)
+	cursorUserID, err := parseUUIDPtrField("cursor_user_id", pb.GetCursorUserId())
 	if err != nil {
 		return sovereign_db.BackfillJob{}, err
 	}
-	cursorArticleID, err := parseUUIDPtrField("cursor_article_id", pb.CursorArticleId)
+	cursorArticleID, err := parseUUIDPtrField("cursor_article_id", pb.GetCursorArticleId())
 	if err != nil {
 		return sovereign_db.BackfillJob{}, err
 	}
 	j := sovereign_db.BackfillJob{
 		JobID:             jobID,
-		Status:            pb.Status,
-		Kind:              pb.Kind,
-		ProjectionVersion: int(pb.ProjectionVersion),
-		TotalEvents:       int(pb.TotalEvents),
-		ProcessedEvents:   int(pb.ProcessedEvents),
-		ErrorMessage:      pb.ErrorMessage,
+		Status:            pb.GetStatus(),
+		Kind:              pb.GetKind(),
+		ProjectionVersion: int(pb.GetProjectionVersion()),
+		TotalEvents:       int(pb.GetTotalEvents()),
+		ProcessedEvents:   int(pb.GetProcessedEvents()),
+		ErrorMessage:      pb.GetErrorMessage(),
 		CursorUserID:      cursorUserID,
 		CursorArticleID:   cursorArticleID,
 	}
-	if pb.CursorDate != "" {
-		t, err := time.Parse("2006-01-02", pb.CursorDate)
+	if pb.GetCursorDate() != "" {
+		t, err := time.Parse("2006-01-02", pb.GetCursorDate())
 		if err != nil {
-			return sovereign_db.BackfillJob{}, fmt.Errorf("invalid cursor_date %q: %w", pb.CursorDate, err)
+			return sovereign_db.BackfillJob{}, fmt.Errorf("invalid cursor_date %q: %w", pb.GetCursorDate(), err)
 		}
 		j.CursorDate = &t
 	}
-	if pb.CreatedAt != nil {
-		j.CreatedAt = pb.CreatedAt.AsTime()
+	if pb.GetCreatedAt() != nil {
+		j.CreatedAt = pb.GetCreatedAt().AsTime()
 	}
-	if pb.StartedAt != nil {
-		t := pb.StartedAt.AsTime()
+	if pb.GetStartedAt() != nil {
+		t := pb.GetStartedAt().AsTime()
 		j.StartedAt = &t
 	}
-	if pb.CompletedAt != nil {
-		t := pb.CompletedAt.AsTime()
+	if pb.GetCompletedAt() != nil {
+		t := pb.GetCompletedAt().AsTime()
 		j.CompletedAt = &t
 	}
-	if pb.UpdatedAt != nil {
-		j.UpdatedAt = pb.UpdatedAt.AsTime()
+	if pb.GetUpdatedAt() != nil {
+		j.UpdatedAt = pb.GetUpdatedAt().AsTime()
 	}
 	return j, nil
 }

@@ -19,6 +19,8 @@ import numpy as np
 import pytest
 from sklearn.linear_model import LogisticRegression
 
+from recap_subworker.services.classifier import GenreClassifierService
+
 
 @pytest.fixture
 def sklearn_1_8_model(tmp_path: Path) -> Path:
@@ -47,8 +49,6 @@ def mock_embedder() -> MagicMock:
 def test_ensure_model_does_not_force_multi_class_attribute(
     sklearn_1_8_model: Path, mock_embedder: MagicMock
 ) -> None:
-    from recap_subworker.services.classifier import GenreClassifierService
-
     service = GenreClassifierService(str(sklearn_1_8_model), mock_embedder)
     service._ensure_model()
 
@@ -63,8 +63,6 @@ def test_ensure_model_does_not_force_multi_class_attribute(
 def test_ensure_model_does_not_print_debug_to_stdout(
     sklearn_1_8_model: Path, mock_embedder: MagicMock, capsys: pytest.CaptureFixture
 ) -> None:
-    from recap_subworker.services.classifier import GenreClassifierService
-
     service = GenreClassifierService(str(sklearn_1_8_model), mock_embedder)
     service._ensure_model()
 

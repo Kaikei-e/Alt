@@ -10,7 +10,7 @@ import (
 	"alt/utils/errors"
 	"alt/utils/logger"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -19,9 +19,10 @@ func init() {
 	logger.InitLogger()
 }
 
-func newTestEchoContext(method, path string) (echo.Context, *httptest.ResponseRecorder) {
+func newTestEchoContext(t *testing.T, method, path string) (*echo.Context, *httptest.ResponseRecorder) {
+	t.Helper()
 	e := echo.New()
-	req := httptest.NewRequest(method, path, nil)
+	req := httptest.NewRequestWithContext(t.Context(), method, path, nil)
 	req.Header.Set("X-Request-ID", "test-req-123")
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
@@ -29,7 +30,7 @@ func newTestEchoContext(method, path string) (echo.Context, *httptest.ResponseRe
 }
 
 func TestHandleFeedError_WrappedAppContextError(t *testing.T) {
-	c, rec := newTestEchoContext(http.MethodGet, "/v1/feeds")
+	c, rec := newTestEchoContext(t, http.MethodGet, "/v1/feeds")
 
 	baseErr := errors.NewAppContextError(
 		"RATE_LIMIT_ERROR",
@@ -59,7 +60,7 @@ func TestHandleFeedError_WrappedAppContextError(t *testing.T) {
 }
 
 func TestHandleFeedError_WrappedAppError(t *testing.T) {
-	c, rec := newTestEchoContext(http.MethodPost, "/v1/feeds")
+	c, rec := newTestEchoContext(t, http.MethodPost, "/v1/feeds")
 
 	baseErr := errors.ValidationError("invalid feed URL", map[string]interface{}{"field": "url"})
 	wrappedErr := fmt.Errorf("feed processing error: %w", baseErr)
@@ -80,7 +81,7 @@ func TestHandleFeedError_WrappedAppError(t *testing.T) {
 }
 
 func TestHandleError_RestLayerLabel(t *testing.T) {
-	c, rec := newTestEchoContext(http.MethodGet, "/v1/articles")
+	c, rec := newTestEchoContext(t, http.MethodGet, "/v1/articles")
 
 	baseErr := errors.NewAppContextError(
 		"FEED_NOT_FOUND",
@@ -108,7 +109,7 @@ func TestHandleError_RestLayerLabel(t *testing.T) {
 }
 
 func TestHandleError_UnknownError(t *testing.T) {
-	c, rec := newTestEchoContext(http.MethodGet, "/v1/dashboard")
+	c, rec := newTestEchoContext(t, http.MethodGet, "/v1/dashboard")
 
 	rawErr := fmt.Errorf("unexpected database connection drop")
 	enriched := BuildAppContextError(c, rawErr, "rest", "get_metrics")
@@ -121,7 +122,7 @@ func TestHandleError_UnknownError(t *testing.T) {
 }
 
 func TestHandleValidationError(t *testing.T) {
-	c, rec := newTestEchoContext(http.MethodPost, "/v1/images/fetch")
+	c, rec := newTestEchoContext(t, http.MethodPost, "/v1/images/fetch")
 
 	err := HandleValidationError(c, "URL is required", "url", "")
 	require.NoError(t, err)

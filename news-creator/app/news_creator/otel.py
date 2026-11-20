@@ -3,11 +3,14 @@
 import logging
 import os
 import re
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
+from typing import Any
 
 import requests as _requests
+from fastapi import FastAPI
 from opentelemetry import metrics, trace
+from opentelemetry._logs import get_logger_provider, set_logger_provider
 from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.exporter.prometheus import PrometheusMetricReader
@@ -23,7 +26,6 @@ from opentelemetry.sdk.metrics.view import (
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry._logs import set_logger_provider
 
 _DISPATCH_DURATION_BUCKETS = [0.5, 1, 2, 5, 10, 20, 30, 60, 120, 180, 300]
 
@@ -66,7 +68,12 @@ class _NoRedirectSession(_requests.Session):
     Timeouts are capped at 7 seconds to prevent unbounded hangs.
     """
 
-    def request(self, method, url, **kwargs):  # type: ignore[override]
+    def request(  # type: ignore[override]
+        self,
+        method: str | bytes,
+        url: str | bytes,
+        **kwargs: Any,  # noqa: ANN401 - forwards arbitrary requests.Session.request kwargs
+    ) -> _requests.Response:
         kwargs["allow_redirects"] = False
         t = kwargs.get("timeout")
         if t is None and "timeout" not in kwargs:
@@ -86,26 +93,23 @@ def load_rask_ingest_token() -> str:
     try:
         raw = Path(token_file).read_text(encoding="utf-8")
     except OSError as exc:
-        raise RuntimeError(
-            f"RASK_INGEST_TOKEN_FILE ({token_file}) could not be read: {exc}"
-        ) from exc
+        msg = f"RASK_INGEST_TOKEN_FILE ({token_file}) could not be read: {exc}"
+        raise RuntimeError(msg) from exc
     except UnicodeDecodeError:
-        raise RuntimeError(
-            f"RASK_INGEST_TOKEN_FILE ({token_file}) contains invalid characters"
-        ) from None
+        msg = f"RASK_INGEST_TOKEN_FILE ({token_file}) contains invalid characters"
+        raise RuntimeError(msg) from None
 
     token = raw.strip()
     if not token or not _RFC6750_B64TOKEN.match(token):
-        raise RuntimeError(
-            f"RASK_INGEST_TOKEN_FILE ({token_file}) contains invalid characters"
-        )
+        msg = f"RASK_INGEST_TOKEN_FILE ({token_file}) contains invalid characters"
+        raise RuntimeError(msg)
     return token
 
 
 class OTelConfig:
     """OpenTelemetry configuration from environment variables."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.service_name = os.getenv("OTEL_SERVICE_NAME", "news-creator")
         self.service_version = os.getenv("SERVICE_VERSION", "2.0.0")
         self.environment = os.getenv("DEPLOYMENT_ENV", "development")
@@ -202,7 +206,7 @@ def init_otel_provider(config: OTelConfig | None = None) -> Callable[[], None]:
         },
     )
 
-    def shutdown():
+    def shutdown() -> None:
         """Shutdown OTel providers gracefully."""
         logging.getLogger().removeHandler(otel_handler)
         tracer_provider.shutdown()
@@ -228,13 +232,11 @@ def get_otel_logging_handler() -> LoggingHandler | None:
     if not config.enabled:
         return None
 
-    from opentelemetry._logs import get_logger_provider
-
     logger_provider = get_logger_provider()
     return LoggingHandler(logger_provider=logger_provider)
 
 
-def instrument_fastapi(app):
+def instrument_fastapi(app: FastAPI) -> None:
     """
     Instrument a FastAPI application with OpenTelemetry.
 

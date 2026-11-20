@@ -3,7 +3,6 @@ package datahubapi
 import (
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"reflect"
 	"testing"
@@ -22,7 +21,7 @@ import (
 )
 
 func testLogger() *slog.Logger {
-	return slog.New(slog.NewTextHandler(io.Discard, nil))
+	return slog.New(slog.DiscardHandler)
 }
 
 // -----------------------------------------------------------------------------
@@ -147,7 +146,7 @@ func TestGetSystemUser(t *testing.T) {
 
 		resp, err := h.GetSystemUser(context.Background(), connect.NewRequest(&datahubv1.GetSystemUserRequest{}))
 		require.NoError(t, err)
-		assert.Equal(t, "identity-1", resp.Msg.UserId)
+		assert.Equal(t, "identity-1", resp.Msg.GetUserId())
 	})
 
 	t.Run("maps a lookup failure to Internal", func(t *testing.T) {

@@ -17,15 +17,15 @@ func (h *SovereignHandler) GetReadingQueue(
 	req *connect.Request[sovereignv1.GetReadingQueueRequest],
 ) (*connect.Response[sovereignv1.GetReadingQueueResponse], error) {
 	msg := req.Msg
-	userID, err := parseUUIDField("user_id", msg.UserId)
+	userID, err := parseUUIDField("user_id", msg.GetUserId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	if msg.AsOf == nil || !msg.AsOf.IsValid() {
+	if msg.GetAsOf() == nil || !msg.GetAsOf().IsValid() {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("as_of timestamp is required"))
 	}
 
-	items, err := h.readDB.GetActiveReadingQueue(ctx, userID, msg.AsOf.AsTime())
+	items, err := h.readDB.GetActiveReadingQueue(ctx, userID, msg.GetAsOf().AsTime())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("GetReadingQueue: %w", err))
 	}
@@ -52,15 +52,15 @@ func (h *SovereignHandler) CountReadingSourcesSince(
 	req *connect.Request[sovereignv1.CountReadingSourcesSinceRequest],
 ) (*connect.Response[sovereignv1.CountReadingSourcesSinceResponse], error) {
 	msg := req.Msg
-	userID, err := parseUUIDField("user_id", msg.UserId)
+	userID, err := parseUUIDField("user_id", msg.GetUserId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	if msg.Since == nil || !msg.Since.IsValid() {
+	if msg.GetSince() == nil || !msg.GetSince().IsValid() {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("since timestamp is required"))
 	}
 
-	count, err := h.readDB.CountReadingSourcesSince(ctx, userID, msg.Since.AsTime())
+	count, err := h.readDB.CountReadingSourcesSince(ctx, userID, msg.GetSince().AsTime())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("CountReadingSourcesSince: %w", err))
 	}
@@ -77,18 +77,18 @@ func (h *SovereignHandler) ListReadingSourcesInWindow(
 	req *connect.Request[sovereignv1.ListReadingSourcesInWindowRequest],
 ) (*connect.Response[sovereignv1.ListReadingSourcesInWindowResponse], error) {
 	msg := req.Msg
-	userID, err := parseUUIDField("user_id", msg.UserId)
+	userID, err := parseUUIDField("user_id", msg.GetUserId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	if msg.From == nil || !msg.From.IsValid() {
+	if msg.GetFrom() == nil || !msg.GetFrom().IsValid() {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("from timestamp is required"))
 	}
-	if msg.To == nil || !msg.To.IsValid() {
+	if msg.GetTo() == nil || !msg.GetTo().IsValid() {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("to timestamp is required"))
 	}
-	from := msg.From.AsTime()
-	to := msg.To.AsTime()
+	from := msg.GetFrom().AsTime()
+	to := msg.GetTo().AsTime()
 	if to.Before(from) {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("to timestamp must not be before from"))
 	}

@@ -17,31 +17,44 @@ import importlib.util
 import io
 import os
 import pathlib
+import shutil
 import subprocess
 import sys
 import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 GATE_PATH = ROOT / "scripts" / "agent-harness" / "migration_destructive_gate.py"
+EXIT_USAGE_ERROR = 2
+
+GIT_BIN = shutil.which("git")
+if GIT_BIN is None:
+    msg = "git executable not found on PATH"
+    raise FileNotFoundError(msg)
 
 spec = importlib.util.spec_from_file_location("migration_destructive_gate", GATE_PATH)
-assert spec is not None and spec.loader is not None, "gate script missing"
+assert spec is not None, "gate script missing"
+assert spec.loader is not None, "gate script missing"
 gate = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(gate)
 
-PASS = 0
-FAIL = 0
+
+class _Results:
+    def __init__(self) -> None:
+        self.passed: int = 0
+        self.failed: int = 0
+
+
+RESULTS = _Results()
 
 
 def check(name: str, condition: bool, detail: str = "") -> None:
-    global PASS, FAIL
     if condition:
-        print(f"  PASS  {name}")
-        PASS += 1
+        sys.stdout.write(f"  PASS  {name}\n")
+        RESULTS.passed += 1
     else:
         suffix = f" ({detail})" if detail else ""
-        print(f"  FAIL  {name}{suffix}")
-        FAIL += 1
+        sys.stdout.write(f"  FAIL  {name}{suffix}\n")
+        RESULTS.failed += 1
 
 
 def git_env() -> dict[str, str]:
@@ -58,8 +71,8 @@ def git_env() -> dict[str, str]:
 
 
 def run_git(repo: pathlib.Path, *args: str) -> str:
-    res = subprocess.run(
-        ["git", "-C", str(repo), *args],
+    res = subprocess.run(  # noqa: S603 - fixed argv built in this test
+        [GIT_BIN, "-C", str(repo), *args],
         env=git_env(),
         capture_output=True,
         text=True,
@@ -97,7 +110,7 @@ def invoke_gate(repo: pathlib.Path, base: str) -> tuple[int, str, str]:
     return rc, stdout_buf.getvalue(), stderr_buf.getvalue()
 
 
-print("1. each destructive statement kind in an added migration fails")
+sys.stdout.write("1. each destructive statement kind in an added migration fails\n")
 DESTRUCTIVE_CASES = [
     ("DROP TABLE", "migrations-atlas/migrations/20260101_drop.sql", "DROP TABLE old_feeds;\n"),
     (
@@ -144,14 +157,13 @@ for label, rel, sql in DESTRUCTIVE_CASES:
             f"rc={rc}, out={out!r}, err={err!r}",
         )
 
-print("2. added migration with valid destructive-ok comment passes")
+sys.stdout.write("2. added migration with valid destructive-ok comment passes\n")
 for label, rel, sql in DESTRUCTIVE_CASES:
     with tempfile.TemporaryDirectory() as td:
         repo = init_repo(pathlib.Path(td))
         base_rev = run_git(repo, "rev-parse", "HEAD")
         documented = (
-            "-- destructive-ok: table is a disposable projection rebuilt from the event log\n"
-            + sql
+            "-- destructive-ok: table is a disposable projection rebuilt from the event log\n" + sql
         )
         write_file_and_add(repo, rel, documented)
         run_git(repo, "commit", "-m", f"add {label} with reason")
@@ -162,7 +174,7 @@ for label, rel, sql in DESTRUCTIVE_CASES:
             f"rc={rc}, out={out!r}, err={err!r}",
         )
 
-print("3. short destructive-ok comment (under 20 characters) fails")
+sys.stdout.write("3. short destructive-ok comment (under 20 characters) fails\n")
 with tempfile.TemporaryDirectory() as td:
     repo = init_repo(pathlib.Path(td))
     base_rev = run_git(repo, "rev-parse", "HEAD")
@@ -185,7 +197,7 @@ with tempfile.TemporaryDirectory() as td:
     rc, out, err = invoke_gate(repo, base_rev)
     check("whitespace-only comment fails", rc == 1, f"rc={rc}, out={out!r}")
 
-print("4. destructive text inside comments and string literals is ignored")
+sys.stdout.write("4. destructive text inside comments and string literals is ignored\n")
 with tempfile.TemporaryDirectory() as td:
     repo = init_repo(pathlib.Path(td))
     base_rev = run_git(repo, "rev-parse", "HEAD")
@@ -206,7 +218,7 @@ with tempfile.TemporaryDirectory() as td:
     rc, out, err = invoke_gate(repo, base_rev)
     check("comments and string literals ignored -> exit 0", rc == 0, f"rc={rc}, out={out!r}")
 
-print("5. DELETE and UPDATE with WHERE pass")
+sys.stdout.write("5. DELETE and UPDATE with WHERE pass\n")
 with tempfile.TemporaryDirectory() as td:
     repo = init_repo(pathlib.Path(td))
     base_rev = run_git(repo, "rev-parse", "HEAD")
@@ -221,7 +233,7 @@ with tempfile.TemporaryDirectory() as td:
     rc, out, err = invoke_gate(repo, base_rev)
     check("DELETE/UPDATE with WHERE exits 0", rc == 0, f"rc={rc}, out={out!r}")
 
-print("6. destructive statement in an existing file at base is not reported")
+sys.stdout.write("6. destructive statement in an existing file at base is not reported\n")
 with tempfile.TemporaryDirectory() as td:
     repo = init_repo(pathlib.Path(td))
     write_file_and_add(
@@ -242,7 +254,7 @@ with tempfile.TemporaryDirectory() as td:
     rc, out, err = invoke_gate(repo, base_rev)
     check("existing migration at base is not examined", rc == 0, f"rc={rc}, out={out!r}")
 
-print("7. non-migration .sql file and untracked file are ignored")
+sys.stdout.write("7. non-migration .sql file and untracked file are ignored\n")
 with tempfile.TemporaryDirectory() as td:
     repo = init_repo(pathlib.Path(td))
     base_rev = run_git(repo, "rev-parse", "HEAD")
@@ -253,7 +265,7 @@ with tempfile.TemporaryDirectory() as td:
     rc, out, err = invoke_gate(repo, base_rev)
     check("non-migration and untracked sql ignored -> exit 0", rc == 0, f"rc={rc}, out={out!r}")
 
-print("8. accurate line number reporting after block comment")
+sys.stdout.write("8. accurate line number reporting after block comment\n")
 with tempfile.TemporaryDirectory() as td:
     repo = init_repo(pathlib.Path(td))
     base_rev = run_git(repo, "rev-parse", "HEAD")
@@ -269,25 +281,35 @@ with tempfile.TemporaryDirectory() as td:
         f"rc={rc}, out={out!r}",
     )
 
-print("9. unknown base revision and non-git root exit 2")
+sys.stdout.write("9. unknown base revision and non-git root exit 2\n")
 with tempfile.TemporaryDirectory() as td:
     repo = init_repo(pathlib.Path(td))
-    res_rev = subprocess.run(
+    res_rev = subprocess.run(  # noqa: S603 - fixed argv built in this test
         [sys.executable, str(GATE_PATH), "--base", "does-not-exist", "--root", str(repo)],
         capture_output=True,
         text=True,
+        check=False,
     )
-    check("unknown --base exits 2", res_rev.returncode == 2, f"rc={res_rev.returncode}")
+    check(
+        "unknown --base exits 2", res_rev.returncode == EXIT_USAGE_ERROR, f"rc={res_rev.returncode}"
+    )
 
 with tempfile.TemporaryDirectory() as td:
-    res_nogit = subprocess.run(
+    res_nogit = subprocess.run(  # noqa: S603 - fixed argv built in this test
         [sys.executable, str(GATE_PATH), "--base", "HEAD", "--root", td],
         capture_output=True,
         text=True,
+        check=False,
     )
-    check("non-git --root exits 2", res_nogit.returncode == 2, f"rc={res_nogit.returncode}")
+    check(
+        "non-git --root exits 2",
+        res_nogit.returncode == EXIT_USAGE_ERROR,
+        f"rc={res_nogit.returncode}",
+    )
 
-print("10. M1: WHERE before keyword or at deeper paren depth does not hide unconditional delete/update")
+sys.stdout.write(
+    "10. M1: WHERE before keyword or at deeper paren depth does not hide unconditional delete/update\n"
+)
 M1_PROBES = [
     (
         "DO block IF EXISTS WHERE then DELETE",
@@ -329,11 +351,16 @@ with tempfile.TemporaryDirectory() as td:
     rc, out, err = invoke_gate(repo, base_rev)
     check("M1 top-level WHERE after USING subquery passes", rc == 0, f"rc={rc}, out={out!r}")
 
-print("11. M2: E'' backslash escapes and dollar-quoted strings cannot mask following SQL")
+sys.stdout.write(
+    "11. M2: E'' backslash escapes and dollar-quoted strings cannot mask following SQL\n"
+)
 M2_PROBES = [
     ("E'' escaped apostrophe", r"INSERT INTO notes VALUES (E'it\'s fine');  DROP TABLE users;"),
     ("dollar-quoted apostrophe", "COMMENT ON TABLE t IS $$it's a table$$;  DROP TABLE users;"),
-    ("tagged dollar-quoted apostrophe", "COMMENT ON TABLE t IS $msg$it's a table$msg$;  DROP TABLE users;"),
+    (
+        "tagged dollar-quoted apostrophe",
+        "COMMENT ON TABLE t IS $msg$it's a table$msg$;  DROP TABLE users;",
+    ),
 ]
 for label, sql in M2_PROBES:
     with tempfile.TemporaryDirectory() as td:
@@ -347,10 +374,18 @@ for label, sql in M2_PROBES:
             f"rc={rc}, out={out!r}",
         )
 
-print("12. M3: optional COLUMN, parenthesized USING (NULL::...), new destructive kinds and safe neighbours")
+sys.stdout.write(
+    "12. M3: optional COLUMN, parenthesized USING (NULL::...), new destructive kinds and safe neighbours\n"
+)
 M3_POSITIVES = [
-    ("ALTER TABLE ALTER TYPE USING NULL (no COLUMN)", "ALTER TABLE t ALTER c TYPE text USING NULL;\n"),
-    ("USING (NULL::vector(1024))", "ALTER TABLE rag_chunks ALTER COLUMN embedding TYPE vector(1024) USING (NULL::vector(1024));\n"),
+    (
+        "ALTER TABLE ALTER TYPE USING NULL (no COLUMN)",
+        "ALTER TABLE t ALTER c TYPE text USING NULL;\n",
+    ),
+    (
+        "USING (NULL::vector(1024))",
+        "ALTER TABLE rag_chunks ALTER COLUMN embedding TYPE vector(1024) USING (NULL::vector(1024));\n",
+    ),
     ("ALTER TABLE DROP col (no COLUMN)", "ALTER TABLE t DROP c;\n"),
     ("DROP SCHEMA", "DROP SCHEMA legacy_schema;\n"),
     ("DROP DATABASE", "DROP DATABASE legacy_db;\n"),
@@ -358,7 +393,10 @@ M3_POSITIVES = [
     ("DROP VIEW CASCADE", "DROP VIEW old_view CASCADE;\n"),
     ("ClickHouse DROP PARTITION", "ALTER TABLE logs DROP PARTITION '202601';\n"),
     ("ClickHouse ALTER TABLE DELETE without WHERE", "ALTER TABLE logs DELETE;\n"),
-    ("ClickHouse ALTER TABLE DELETE with WHERE", "ALTER TABLE logs DELETE WHERE level = 'DEBUG';\n"),
+    (
+        "ClickHouse ALTER TABLE DELETE with WHERE",
+        "ALTER TABLE logs DELETE WHERE level = 'DEBUG';\n",
+    ),
     ("ClickHouse MODIFY TTL", "ALTER TABLE logs MODIFY TTL timestamp + INTERVAL 1 DAY DELETE;\n"),
 ]
 for label, sql in M3_POSITIVES:
@@ -377,7 +415,10 @@ M3_NEGATIVES = [
     ("DROP IDENTITY", "ALTER TABLE t ALTER c DROP IDENTITY IF EXISTS;\n"),
     ("DROP INDEX", "DROP INDEX IF EXISTS idx_old;\n"),
     ("DROP VIEW", "DROP VIEW IF EXISTS v_old;\n"),
-    ("ADD CONSTRAINT ON DELETE CASCADE", "ALTER TABLE t DROP CONSTRAINT fk, ADD CONSTRAINT fk FOREIGN KEY (x) REFERENCES p(x) ON DELETE CASCADE;\n"),
+    (
+        "ADD CONSTRAINT ON DELETE CASCADE",
+        "ALTER TABLE t DROP CONSTRAINT fk, ADD CONSTRAINT fk FOREIGN KEY (x) REFERENCES p(x) ON DELETE CASCADE;\n",
+    ),
 ]
 for label, sql in M3_NEGATIVES:
     with tempfile.TemporaryDirectory() as td:
@@ -387,7 +428,7 @@ for label, sql in M3_NEGATIVES:
         rc, out, err = invoke_gate(repo, base_rev)
         check(f"M3 negative: {label} -> exit 0", rc == 0, f"rc={rc}, out={out!r}")
 
-print("13. M4: destructive-ok is per-statement and ignored in block comments/strings")
+sys.stdout.write("13. M4: destructive-ok is per-statement and ignored in block comments/strings\n")
 with tempfile.TemporaryDirectory() as td:
     repo = init_repo(pathlib.Path(td))
     base_rev = run_git(repo, "rev-parse", "HEAD")
@@ -455,7 +496,9 @@ with tempfile.TemporaryDirectory() as td:
         ),
     )
     rc, out, err = invoke_gate(repo, base_rev)
-    check("M4 inner ok-comment in DO block excuses that statement", rc == 0, f"rc={rc}, out={out!r}")
+    check(
+        "M4 inner ok-comment in DO block excuses that statement", rc == 0, f"rc={rc}, out={out!r}"
+    )
 
 with tempfile.TemporaryDirectory() as td:
     repo = init_repo(pathlib.Path(td))
@@ -475,7 +518,7 @@ with tempfile.TemporaryDirectory() as td:
     rc, out, err = invoke_gate(repo, base_rev)
     check("M4 ok-comment directly above DO statement excuses it", rc == 0, f"rc={rc}, out={out!r}")
 
-print("14. M5: explicit message with merge base when 0 migration files are added")
+sys.stdout.write("14. M5: explicit message with merge base when 0 migration files are added\n")
 with tempfile.TemporaryDirectory() as td:
     repo = init_repo(pathlib.Path(td))
     base_rev = run_git(repo, "rev-parse", "HEAD")
@@ -486,16 +529,13 @@ with tempfile.TemporaryDirectory() as td:
         f"rc={rc}, out={out!r}",
     )
 
-print("15. smoke detector across all existing tracked migration files in repo")
-ls_out = subprocess.run(
-    ["git", "-C", str(ROOT), "ls-files", "-z"],
+sys.stdout.write("15. smoke detector across all existing tracked migration files in repo\n")
+ls_out = subprocess.run(  # noqa: S603 - fixed argv built in this test
+    [GIT_BIN, "-C", str(ROOT), "ls-files", "-z"],
     capture_output=True,
     check=True,
 ).stdout
-mig_files = [
-    p for p in ls_out.decode("utf-8").split("\0")
-    if p and gate.is_migration_sql(p)
-]
+mig_files = [p for p in ls_out.decode("utf-8").split("\0") if p and gate.is_migration_sql(p)]
 flagged_existing: list[str] = []
 raised_err: Exception | None = None
 for rel in mig_files:
@@ -504,7 +544,7 @@ for rel in mig_files:
         found = gate.find_destructive_statements(text)
         if found:
             flagged_existing.append(f"{rel} ({len(found)}: {', '.join(k for _, k in found)})")
-    except Exception as exc:  # pragma: no cover
+    except (OSError, ValueError, RuntimeError) as exc:  # fmt: skip # pragma: no cover
         raised_err = exc
         break
 check(
@@ -512,9 +552,11 @@ check(
     len(mig_files) > 0 and raised_err is None,
     f"err={raised_err!r}",
 )
-print(f"  INFO  existing migration files with findings: {len(flagged_existing)}/{len(mig_files)}")
+sys.stdout.write(
+    f"  INFO  existing migration files with findings: {len(flagged_existing)}/{len(mig_files)}\n"
+)
 for item in flagged_existing:
-    print(f"    - {item}")
+    sys.stdout.write(f"    - {item}\n")
 
-print(f"\n{PASS} passed, {FAIL} failed")
-sys.exit(1 if FAIL else 0)
+sys.stdout.write(f"\n{RESULTS.passed} passed, {RESULTS.failed} failed\n")
+sys.exit(1 if RESULTS.failed else 0)

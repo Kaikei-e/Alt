@@ -13,7 +13,7 @@ fn benchmark_simd_nginx_parsing(c: &mut Criterion) {
         let parser = SimdParser::new();
         b.iter(|| {
             let bytes = Bytes::from(std::hint::black_box(access_log));
-            parser.parse_docker_log(bytes)
+            parser.parse_docker_log(&bytes)
         });
     });
 
@@ -21,7 +21,7 @@ fn benchmark_simd_nginx_parsing(c: &mut Criterion) {
         let parser = SimdParser::new();
         b.iter(|| {
             let bytes = Bytes::from(std::hint::black_box(access_log));
-            parser.parse_nginx_log(bytes)
+            parser.parse_nginx_log(&bytes)
         });
     });
 
@@ -29,7 +29,7 @@ fn benchmark_simd_nginx_parsing(c: &mut Criterion) {
         let parser = SimdParser::new();
         b.iter(|| {
             let bytes = Bytes::from(std::hint::black_box(error_log));
-            parser.parse_nginx_log(bytes)
+            parser.parse_nginx_log(&bytes)
         });
     });
 
@@ -48,7 +48,7 @@ fn benchmark_throughput_target(c: &mut Criterion) {
         b.iter(|| {
             for log in &sample_logs {
                 let bytes = Bytes::from(*log);
-                std::hint::black_box(parser.parse_nginx_log(bytes).ok());
+                std::hint::black_box(parser.parse_nginx_log(&bytes).ok());
             }
         });
     });

@@ -21,13 +21,13 @@ func (h *Handler) UpsertArticleTags(ctx context.Context, req *connect.Request[da
 	if h.upsertArticleTags == nil {
 		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("not yet implemented"))
 	}
-	if req.Msg.ArticleId == "" {
+	if req.Msg.GetArticleId() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("article_id is required"))
 	}
 
-	tags := tagItemsFromProto(req.Msg.Tags)
+	tags := tagItemsFromProto(req.Msg.GetTags())
 
-	count, err := h.upsertArticleTags.UpsertArticleTags(ctx, req.Msg.ArticleId, req.Msg.FeedId, tags)
+	count, err := h.upsertArticleTags.UpsertArticleTags(ctx, req.Msg.GetArticleId(), req.Msg.GetFeedId(), tags)
 	if err != nil {
 		h.logger.Error("UpsertArticleTags failed", "error", err)
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to upsert article tags"))
@@ -35,9 +35,9 @@ func (h *Handler) UpsertArticleTags(ctx context.Context, req *connect.Request[da
 
 	// Also create tag set version + knowledge event for Knowledge Home
 	if len(tags) > 0 {
-		articleUUID, parseErr := uuid.Parse(req.Msg.ArticleId)
+		articleUUID, parseErr := uuid.Parse(req.Msg.GetArticleId())
 		if parseErr == nil {
-			if err := h.recordTagSetVersion(ctx, req.Msg.ArticleId, articleUUID, tags); err != nil {
+			if err := h.recordTagSetVersion(ctx, req.Msg.GetArticleId(), articleUUID, tags); err != nil {
 				return nil, err
 			}
 		}
@@ -54,12 +54,12 @@ func (h *Handler) BatchUpsertArticleTags(ctx context.Context, req *connect.Reque
 		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("not yet implemented"))
 	}
 
-	items := make([]internal_tag_port.BatchUpsertItem, len(req.Msg.Items))
-	for i, item := range req.Msg.Items {
+	items := make([]internal_tag_port.BatchUpsertItem, len(req.Msg.GetItems()))
+	for i, item := range req.Msg.GetItems() {
 		items[i] = internal_tag_port.BatchUpsertItem{
-			ArticleID: item.ArticleId,
-			FeedID:    item.FeedId,
-			Tags:      tagItemsFromProto(item.Tags),
+			ArticleID: item.GetArticleId(),
+			FeedID:    item.GetFeedId(),
+			Tags:      tagItemsFromProto(item.GetTags()),
 		}
 	}
 
@@ -70,20 +70,20 @@ func (h *Handler) BatchUpsertArticleTags(ctx context.Context, req *connect.Reque
 	}
 
 	// Create tag set version + knowledge event for each article
-	for _, item := range req.Msg.Items {
-		if len(item.Tags) == 0 {
+	for _, item := range req.Msg.GetItems() {
+		if len(item.GetTags()) == 0 {
 			continue
 		}
-		if item.FeedId == "" {
-			h.logger.Warn("skipping tag set version creation for article without feed_id", "article_id", item.ArticleId)
+		if item.GetFeedId() == "" {
+			h.logger.Warn("skipping tag set version creation for article without feed_id", "article_id", item.GetArticleId())
 			continue
 		}
-		articleUUID, parseErr := uuid.Parse(item.ArticleId)
+		articleUUID, parseErr := uuid.Parse(item.GetArticleId())
 		if parseErr != nil {
 			continue
 		}
-		batchTags := tagItemsFromProto(item.Tags)
-		if err := h.recordTagSetVersion(ctx, item.ArticleId, articleUUID, batchTags); err != nil {
+		batchTags := tagItemsFromProto(item.GetTags())
+		if err := h.recordTagSetVersion(ctx, item.GetArticleId(), articleUUID, batchTags); err != nil {
 			return nil, err
 		}
 	}

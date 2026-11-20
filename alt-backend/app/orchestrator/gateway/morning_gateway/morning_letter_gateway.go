@@ -121,7 +121,7 @@ func (g *MorningLetterGateway) fetchLetter(ctx context.Context, url string) (*do
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch morning letter: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, nil
@@ -150,7 +150,7 @@ func (g *MorningLetterGateway) GetLetterSources(ctx context.Context, letterID st
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch letter sources: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
@@ -275,7 +275,7 @@ func (g *MorningLetterGateway) RegenerateLatest(ctx context.Context, editionTime
 	if err != nil {
 		return nil, fmt.Errorf("failed to call recap-worker regenerate: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusConflict {
 		return nil, domain.ErrMorningRegenerationInFlight

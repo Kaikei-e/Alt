@@ -78,7 +78,7 @@ EMBEDDING_LOOKUP: dict[str, list[float]] = {
 class FeatureVector:
     """特徴ベクトル。"""
 
-    def __init__(self, tfidf: list[float], bm25: list[float], embedding: list[float]):
+    def __init__(self, tfidf: list[float], bm25: list[float], embedding: list[float]) -> None:
         self.tfidf = tfidf
         self.bm25 = bm25
         self.embedding = embedding
@@ -93,7 +93,7 @@ class FeatureVector:
 class EmbeddingStats:
     """Embedding統計情報（Z-score正規化用）。"""
 
-    def __init__(self, mean: list[float], std: list[float]):
+    def __init__(self, mean: list[float], std: list[float]) -> None:
         self.mean = mean
         self.std = std
 
@@ -145,7 +145,7 @@ class FeatureExtractor:
         bm25_k1: float = FALLBACK_BM25_K1,
         bm25_b: float = FALLBACK_BM25_B,
         average_doc_len: float = FALLBACK_AVG_DOC_LEN,
-    ):
+    ) -> None:
         self.vocab_index = {word: i for i, word in enumerate(vocab)}
         self.idf = idf
         self.bm25_k1 = bm25_k1

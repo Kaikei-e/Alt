@@ -71,7 +71,9 @@ def test_load_config_enabled_subject_scoped_defaults(monkeypatch: pytest.MonkeyP
     monkeypatch.setenv("CERT_SUBJECT", "recap-subworker")
     cfg = load_config("recap-subworker")
     assert cfg.provisioner == "pki-agent-recap-subworker"
-    assert cfg.password_file == "/run/secrets/pki-agent-recap-subworker-jwk"
+    assert (
+        cfg.password_file == "/run/secrets/pki-agent-recap-subworker-jwk"  # noqa: S105 - test fixture value, not a credential
+    )
 
 
 def test_load_config_distinct_subjects_do_not_share_identity(

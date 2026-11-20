@@ -17,16 +17,19 @@ import argparse
 import json
 import random
 import re
+import sys
 import time
 from pathlib import Path
 
 import httpx
 import pandas as pd
 
+PROGRESS_LOG_INTERVAL = 10
+
 
 def load_genre_definitions(golden_path: Path) -> dict:
     """Load genre definitions from golden_classification.json."""
-    with open(golden_path) as f:
+    with golden_path.open() as f:
         data = json.load(f)
 
     genres = {}
@@ -52,7 +55,7 @@ class OllamaSyntheticGenerator:
         model: str = "gemma3:4b",
         timeout: float = 120.0,
         rate_limit_delay: float = 2.0,
-    ):
+    ) -> None:
         self.ollama_url = ollama_url.rstrip("/")
         self.model = model
         self.timeout = timeout
@@ -77,9 +80,14 @@ class OllamaSyntheticGenerator:
             )
             response.raise_for_status()
             result = response.json()
+            if not isinstance(result, dict):
+                sys.stdout.write(
+                    f"Ollama API error: expected JSON object, got {type(result).__name__}\n"
+                )
+                return None
             return result.get("response", "").strip()
-        except Exception as e:
-            print(f"Ollama API error: {e}")
+        except (httpx.HTTPError, ValueError) as e:
+            sys.stdout.write(f"Ollama API error: {e}\n")
             return None
 
     def generate_japanese_sample(
@@ -136,7 +144,7 @@ Article body:"""
         time.sleep(self.rate_limit_delay)
         return result
 
-    def close(self):
+    def close(self) -> None:
         """Close HTTP client."""
         self.client.close()
 
@@ -187,14 +195,10 @@ def validate_synthetic_sample(text: str, min_length: int = 100) -> bool:
         r"^(Title|タイトル|Headline|見出し):",
     ]
 
-    for pattern in failure_patterns:
-        if re.search(pattern, text, re.IGNORECASE):
-            return False
-
-    return True
+    return all(not re.search(pattern, text, re.IGNORECASE) for pattern in failure_patterns)
 
 
-def main():
+def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="LLM-based synthetic data generation for genre classification"
     )
@@ -252,137 +256,154 @@ def main():
         default=42,
         help="Random seed",
     )
+    return parser.parse_args()
 
-    args = parser.parse_args()
-    random.seed(args.seed)
 
-    # Load genre definitions
-    print(f"Loading genre definitions from {args.golden_path}...")
-    genre_definitions = load_genre_definitions(args.golden_path)
-    print(f"Loaded {len(genre_definitions)} genre definitions")
-
-    # Parse target genres
-    target_genres = [g.strip() for g in args.genres.split(",")]
-
-    # Validate genres exist
+def _resolve_target_genres(raw_genres: str, genre_definitions: dict) -> list[str]:
+    target_genres = [g.strip() for g in raw_genres.split(",")]
+    valid_genres = []
     for genre in target_genres:
         if genre not in genre_definitions:
-            print(f"WARNING: Genre '{genre}' not found in golden_classification.json")
-            target_genres.remove(genre)
+            sys.stdout.write(f"WARNING: Genre '{genre}' not found in golden_classification.json\n")
+        else:
+            valid_genres.append(genre)
+    return valid_genres
 
+
+def _generate_genre_samples(
+    genre: str,
+    genre_info: dict,
+    generator: OllamaSyntheticGenerator,
+    samples_per_genre: int,
+    ja_ratio: float,
+) -> list[dict[str, str]]:
+    sys.stdout.write(f"\nGenerating samples for {genre} ({genre_info['name_en']})...\n")
+
+    ja_samples_target = int(samples_per_genre * ja_ratio)
+    en_samples_target = samples_per_genre - ja_samples_target
+    generated_ja = 0
+    generated_en = 0
+    failed = 0
+    max_attempts = samples_per_genre * 3
+    samples: list[dict[str, str]] = []
+
+    for _attempt in range(max_attempts):
+        if generated_ja >= ja_samples_target and generated_en >= en_samples_target:
+            break
+
+        choose_ja = generated_ja < ja_samples_target and (
+            generated_en >= en_samples_target or random.random() < ja_ratio  # noqa: S311 - non-cryptographic synthetic sample generation
+        )
+        if choose_ja:
+            hint = random.choice(VARIATION_HINTS_JA)  # noqa: S311 - non-cryptographic synthetic sample generation
+            text = generator.generate_japanese_sample(genre, genre_info, hint)
+            lang = "ja"
+            target_count = ja_samples_target
+            current_count = generated_ja
+        else:
+            hint = random.choice(VARIATION_HINTS_EN)  # noqa: S311 - non-cryptographic synthetic sample generation
+            text = generator.generate_english_sample(genre, genre_info, hint)
+            lang = "en"
+            target_count = en_samples_target
+            current_count = generated_en
+
+        if current_count >= target_count:
+            continue
+
+        if text is not None and validate_synthetic_sample(text):
+            samples.append(
+                {
+                    "content": text,
+                    "genre": genre,
+                    "augmentation_method": "llm_synthetic",
+                    "source_language": lang,
+                    "source_genre": genre,
+                }
+            )
+            if lang == "ja":
+                generated_ja += 1
+            else:
+                generated_en += 1
+
+            total = generated_ja + generated_en
+            if total % PROGRESS_LOG_INTERVAL == 0:
+                sys.stdout.write(f"  Progress: {total}/{samples_per_genre}\n")
+        else:
+            failed += 1
+
+    sys.stdout.write(f"  Generated: JA={generated_ja}, EN={generated_en}, Failed={failed}\n")
+    return samples
+
+
+def _write_output(all_samples: list[dict[str, str]], output_path: Path) -> None:
+    if all_samples:
+        df = pd.DataFrame(all_samples)
+        sys.stdout.write(f"\nTotal synthetic samples: {len(df)}\n")
+
+        df.to_csv(output_path, index=False)
+        sys.stdout.write(f"Saved to {output_path}\n")
+
+        sys.stdout.write("\nSynthetic samples by genre:\n")
+        for genre, count in df["genre"].value_counts().items():
+            sys.stdout.write(f"  {genre}: {count}\n")
+
+        sys.stdout.write("\nSynthetic samples by language:\n")
+        for lang, count in df["source_language"].value_counts().items():
+            sys.stdout.write(f"  {lang}: {count}\n")
+    else:
+        sys.stdout.write("\nNo samples were generated.\n")
+        pd.DataFrame(
+            columns=["content", "genre", "augmentation_method", "source_language", "source_genre"]
+        ).to_csv(output_path, index=False)
+
+
+def main() -> None:
+    args = _parse_args()
+    random.seed(args.seed)
+
+    sys.stdout.write(f"Loading genre definitions from {args.golden_path}...\n")
+    genre_definitions = load_genre_definitions(args.golden_path)
+    sys.stdout.write(f"Loaded {len(genre_definitions)} genre definitions\n")
+
+    target_genres = _resolve_target_genres(args.genres, genre_definitions)
     if not target_genres:
-        print("ERROR: No valid genres specified")
+        sys.stdout.write("ERROR: No valid genres specified\n")
         return
 
-    print(f"Target genres: {target_genres}")
-    print(f"Samples per genre: {args.samples_per_genre}")
-    print(f"Japanese ratio: {args.ja_ratio}")
+    sys.stdout.write(f"Target genres: {target_genres}\n")
+    sys.stdout.write(f"Samples per genre: {args.samples_per_genre}\n")
+    sys.stdout.write(f"Japanese ratio: {args.ja_ratio}\n")
 
-    # Initialize generator
-    print(f"\nInitializing Ollama generator (model: {args.model})...")
+    sys.stdout.write(f"\nInitializing Ollama generator (model: {args.model})...\n")
     generator = OllamaSyntheticGenerator(
         ollama_url=args.ollama_url,
         model=args.model,
         rate_limit_delay=args.rate_limit,
     )
 
-    # Test connection
-    print("Testing Ollama connection...")
+    sys.stdout.write("Testing Ollama connection...\n")
     test_result = generator._call_ollama("Say 'OK' if you can read this.")
     if test_result:
-        print(f"Connection OK. Test result: {test_result[:50]}...")
+        sys.stdout.write(f"Connection OK. Test result: {test_result[:50]}...\n")
     else:
-        print("WARNING: Ollama connection test failed. Check if Ollama is running.")
+        sys.stdout.write("WARNING: Ollama connection test failed. Check if Ollama is running.\n")
         generator.close()
         return
 
-    # Generate samples
-    all_samples = []
-
+    all_samples: list[dict[str, str]] = []
     for genre in target_genres:
-        genre_info = genre_definitions[genre]
-        print(f"\nGenerating samples for {genre} ({genre_info['name_en']})...")
-
-        ja_samples_target = int(args.samples_per_genre * args.ja_ratio)
-        en_samples_target = args.samples_per_genre - ja_samples_target
-
-        generated_ja = 0
-        generated_en = 0
-        failed = 0
-        max_attempts = args.samples_per_genre * 3  # Allow some failures
-
-        for attempt in range(max_attempts):
-            if generated_ja >= ja_samples_target and generated_en >= en_samples_target:
-                break
-
-            # Decide language for this attempt
-            if generated_ja < ja_samples_target and (
-                generated_en >= en_samples_target or random.random() < args.ja_ratio
-            ):
-                # Generate Japanese
-                hint = random.choice(VARIATION_HINTS_JA)
-                text = generator.generate_japanese_sample(genre, genre_info, hint)
-                lang = "ja"
-                target_count = ja_samples_target
-                current_count = generated_ja
-            else:
-                # Generate English
-                hint = random.choice(VARIATION_HINTS_EN)
-                text = generator.generate_english_sample(genre, genre_info, hint)
-                lang = "en"
-                target_count = en_samples_target
-                current_count = generated_en
-
-            if current_count >= target_count:
-                continue
-
-            if text is not None and validate_synthetic_sample(text):
-                all_samples.append(
-                    {
-                        "content": text,
-                        "genre": genre,
-                        "augmentation_method": "llm_synthetic",
-                        "source_language": lang,
-                        "source_genre": genre,
-                    }
-                )
-
-                if lang == "ja":
-                    generated_ja += 1
-                else:
-                    generated_en += 1
-
-                total = generated_ja + generated_en
-                if total % 10 == 0:
-                    print(f"  Progress: {total}/{args.samples_per_genre}")
-            else:
-                failed += 1
-
-        print(f"  Generated: JA={generated_ja}, EN={generated_en}, Failed={failed}")
+        all_samples.extend(
+            _generate_genre_samples(
+                genre,
+                genre_definitions[genre],
+                generator,
+                args.samples_per_genre,
+                args.ja_ratio,
+            )
+        )
 
     generator.close()
-
-    # Save results
-    if all_samples:
-        df = pd.DataFrame(all_samples)
-        print(f"\nTotal synthetic samples: {len(df)}")
-
-        df.to_csv(args.output, index=False)
-        print(f"Saved to {args.output}")
-
-        # Print summary
-        print("\nSynthetic samples by genre:")
-        for genre, count in df["genre"].value_counts().items():
-            print(f"  {genre}: {count}")
-
-        print("\nSynthetic samples by language:")
-        for lang, count in df["source_language"].value_counts().items():
-            print(f"  {lang}: {count}")
-    else:
-        print("\nNo samples were generated.")
-        pd.DataFrame(
-            columns=["content", "genre", "augmentation_method", "source_language", "source_genre"]
-        ).to_csv(args.output, index=False)
+    _write_output(all_samples, args.output)
 
 
 if __name__ == "__main__":

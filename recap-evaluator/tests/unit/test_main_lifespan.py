@@ -37,7 +37,8 @@ def lifespan_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> list[str]:
 
     async def fake_create_pool(**_: object) -> None:
         calls.append("db")
-        raise RuntimeError("recap-db unavailable")
+        msg = "recap-db unavailable"
+        raise RuntimeError(msg)
 
     monkeypatch.setattr(mtls_client, "start_pki_enrollment", fake_start)
     monkeypatch.setattr(main.asyncpg, "create_pool", fake_create_pool)

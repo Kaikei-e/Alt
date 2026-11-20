@@ -16,6 +16,8 @@ from acolyte.port.evidence_provider import ArticleHit, EvidenceProviderError
 from acolyte.usecase.graph.nodes.gatherer_node import GathererNode
 from tests.conftest import TEST_USER_ID
 
+MIN_VARIANT_SEARCH_CALL_COUNT = 2
+
 
 def _article_hit(article_id: str, title: str = "", score: float = 0.0) -> ArticleHit:
     return ArticleHit(article_id=article_id, title=title or f"Article {article_id}", score=score)
@@ -60,7 +62,7 @@ async def test_multi_query_calls_variants() -> None:
     await node(state)
 
     # Should call search_articles more than once (primary + broad + possibly narrow)
-    assert evidence.search_articles.call_count >= 2
+    assert evidence.search_articles.call_count >= MIN_VARIANT_SEARCH_CALL_COUNT
 
 
 @pytest.mark.asyncio

@@ -5,7 +5,6 @@ package repository
 
 import (
 	"context"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -13,7 +12,7 @@ import (
 )
 
 func newRemoteTestLogger() *slog.Logger {
-	return slog.New(slog.NewTextHandler(io.Discard, nil))
+	return slog.New(slog.DiscardHandler)
 }
 
 // TestRemoteTokenRepository_GetCurrentToken_SendsInternalAuthHeader asserts that every

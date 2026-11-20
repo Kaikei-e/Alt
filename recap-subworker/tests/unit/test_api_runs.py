@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from http import HTTPStatus
 from uuid import uuid4
 
 import pytest
@@ -11,12 +12,13 @@ from recap_subworker.app import deps
 from recap_subworker.app.main import create_app
 from recap_subworker.db.dao import RunRecord
 from recap_subworker.services.run_manager import RunSubmission
+from recap_subworker.usecase.submit_run import GetRunUsecase, SubmitRunUsecase
 
 pytestmark = pytest.mark.usefixtures("stub_startup_sweep")
 
 
 class FakeRunManager:
-    def __init__(self, record: RunRecord | None = None):
+    def __init__(self, record: RunRecord | None = None) -> None:
         self.record = record
         self.created = False
 
@@ -29,7 +31,7 @@ class FakeRunManager:
         return self.record
 
 
-def _make_payload():
+def _make_payload() -> dict[str, object]:
     documents = [
         {
             "article_id": f"art-{i}",
@@ -48,7 +50,7 @@ def _make_payload():
     }
 
 
-def test_post_runs_returns_accepted(monkeypatch):
+def test_post_runs_returns_accepted(monkeypatch: pytest.MonkeyPatch) -> None:
     job_id = uuid4()
     record = RunRecord(
         run_id=1,
@@ -62,7 +64,6 @@ def test_post_runs_returns_accepted(monkeypatch):
     )
     manager = FakeRunManager(record)
     app = create_app()
-    from recap_subworker.usecase.submit_run import GetRunUsecase, SubmitRunUsecase
 
     app.dependency_overrides[deps.get_submit_run_usecase_dep] = lambda: SubmitRunUsecase(
         submitter=manager,
@@ -78,26 +79,24 @@ def test_post_runs_returns_accepted(monkeypatch):
             headers={"X-Alt-Job-Id": str(job_id), "X-Alt-Genre": "ai"},
         )
 
-    assert response.status_code == 202
+    assert response.status_code == HTTPStatus.ACCEPTED
     assert response.json()["run_id"] == 1
 
 
-def test_post_runs_requires_job_id_header():
+def test_post_runs_requires_job_id_header() -> None:
     app = create_app()
     with TestClient(app) as client:
         response = client.post("/v1/runs", json=_make_payload(), headers={"X-Alt-Genre": "ai"})
 
-    assert response.status_code == 422
+    assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
 
 
-def test_get_runs_not_found(monkeypatch):
+def test_get_runs_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
     app = create_app()
 
     class EmptyManager(FakeRunManager):
-        async def get_run(self, run_id: int):  # type: ignore[override]
+        async def get_run(self, run_id: int) -> None:  # type: ignore[override]
             return None
-
-    from recap_subworker.usecase.submit_run import GetRunUsecase
 
     app.dependency_overrides[deps.get_get_run_usecase_dep] = lambda: GetRunUsecase(
         reader=EmptyManager(),
@@ -105,4 +104,4 @@ def test_get_runs_not_found(monkeypatch):
     with TestClient(app) as client:
         response = client.get("/v1/runs/999")
 
-    assert response.status_code == 404
+    assert response.status_code == HTTPStatus.NOT_FOUND

@@ -125,7 +125,7 @@ func (c *Client) Health(ctx context.Context) error {
 	if err != nil {
 		return classifyTransport(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return &QueryError{Kind: ErrKindUnavailable, Status: resp.StatusCode, Message: "prometheus not ready"}
 	}
@@ -145,7 +145,7 @@ func (c *Client) get(ctx context.Context, path string, q url.Values) ([]byte, er
 	if err != nil {
 		return nil, classifyTransport(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("prometheus_client: read body: %w", err)

@@ -1,7 +1,6 @@
 package augur
 
 import (
-	"io"
 	"log/slog"
 	"testing"
 
@@ -13,7 +12,7 @@ import (
 
 func newTestHandler() *Handler {
 	return &Handler{
-		logger: slog.New(slog.NewJSONHandler(io.Discard, nil)),
+		logger: slog.New(slog.DiscardHandler),
 	}
 }
 
@@ -39,7 +38,7 @@ func TestConvertStreamEvent_Progress(t *testing.T) {
 
 			require.NotNil(t, protoEvent, "progress event should produce a proto event")
 			assert.True(t, shouldContinue, "progress event should continue the stream")
-			assert.Equal(t, "progress", protoEvent.Kind)
+			assert.Equal(t, "progress", protoEvent.GetKind())
 
 			// Progress reuses delta payload as carrier
 			delta := protoEvent.GetDelta()
@@ -60,11 +59,11 @@ func TestConvertStreamEvent_Heartbeat(t *testing.T) {
 
 	require.NotNil(t, protoEvent, "heartbeat event should produce a proto event")
 	assert.True(t, shouldContinue, "heartbeat event should continue the stream")
-	assert.Equal(t, "heartbeat", protoEvent.Kind)
+	assert.Equal(t, "heartbeat", protoEvent.GetKind())
 
 	// Heartbeat reuses delta payload as carrier (empty string)
 	delta := protoEvent.GetDelta()
-	assert.Equal(t, "", delta)
+	assert.Empty(t, delta)
 }
 
 func TestConvertStreamEvent_ProgressInvalidPayload(t *testing.T) {

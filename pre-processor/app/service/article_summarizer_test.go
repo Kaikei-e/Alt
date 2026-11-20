@@ -12,6 +12,7 @@ import (
 	"pre-processor/repository"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func testLoggerSummarizer() *slog.Logger {
@@ -43,7 +44,7 @@ func TestArticleSummarizerService_SummarizeArticles(t *testing.T) {
 
 		result, err := service.SummarizeArticles(context.Background(), 10)
 
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.Equal(t, 0, result.ProcessedCount)
 		assert.Equal(t, 0, result.SuccessCount)
@@ -64,7 +65,7 @@ func TestArticleSummarizerService_HasUnsummarizedArticles(t *testing.T) {
 
 		hasArticles, err := service.HasUnsummarizedArticles(context.Background())
 
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.False(t, hasArticles)
 	})
 }
@@ -163,7 +164,7 @@ func TestArticleSummarizerService_SummarizeArticles_FailureTracker(t *testing.T)
 		// Run batch 3 times to hit maxBatchFailures
 		for i := 0; i < maxBatchFailures; i++ {
 			result, err := svc.SummarizeArticles(context.Background(), 10)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, 1, result.ErrorCount, "attempt %d should fail", i+1)
 		}
 
@@ -172,7 +173,7 @@ func TestArticleSummarizerService_SummarizeArticles_FailureTracker(t *testing.T)
 
 		// 4th attempt: article should be blocked
 		result, err := svc.SummarizeArticles(context.Background(), 10)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, 0, result.ErrorCount, "blocked article should be skipped, not counted as error")
 		assert.Equal(t, maxBatchFailures, apiRepo.callCount,
 			"API should not be called for blocked article")
@@ -244,7 +245,7 @@ func TestArticleSummarizerService_SummarizeArticles_ContextCanceled(t *testing.T
 
 		result, err := svc.SummarizeArticles(ctx, 10)
 
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.NotNil(t, result)
 		// Only the first article should have been processed via the API
 		assert.Equal(t, 1, apiRepo.callCount,
@@ -273,7 +274,7 @@ func TestArticleSummarizerService_SummarizeArticles_ContextCanceled(t *testing.T
 
 		result, err := svc.SummarizeArticles(ctx, 10)
 
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.Equal(t, 0, apiRepo.callCount,
 			"no articles should be processed when context is already canceled")

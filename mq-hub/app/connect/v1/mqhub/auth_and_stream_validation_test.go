@@ -152,7 +152,7 @@ func TestC03_MQHub_AuthInterceptor_EveryBusinessRPC(t *testing.T) {
 		req := connect.NewRequest(&mqhubv1.HealthCheckRequest{})
 		resp, err := client.HealthCheck(ctx, req)
 		require.NoError(t, err)
-		assert.True(t, resp.Msg.Healthy)
+		assert.True(t, resp.Msg.GetHealthy())
 		mockPort.AssertExpectations(t)
 	})
 
@@ -174,8 +174,8 @@ func TestC03_MQHub_AuthInterceptor_EveryBusinessRPC(t *testing.T) {
 		req.Header().Set("Authorization", "Bearer "+validToken)
 		resp, err := client.Publish(ctx, req)
 		require.NoError(t, err)
-		assert.True(t, resp.Msg.Success)
-		assert.Equal(t, "1000-0", resp.Msg.MessageId)
+		assert.True(t, resp.Msg.GetSuccess())
+		assert.Equal(t, "1000-0", resp.Msg.GetMessageId())
 		mockPort.AssertExpectations(t)
 	})
 }
@@ -281,7 +281,7 @@ func TestC03_StreamValidation_ZeroRedisWrites(t *testing.T) {
 
 			resp, err := handler.Publish(ctx, req)
 			require.NoError(t, err, "Stream %s should be valid", s)
-			assert.True(t, resp.Msg.Success)
+			assert.True(t, resp.Msg.GetSuccess())
 		}
 		mockPort.AssertExpectations(t)
 	})

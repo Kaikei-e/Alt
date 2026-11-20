@@ -196,6 +196,8 @@ func extractText(sb *strings.Builder, n *htmlpkg.Node, skipRemaining bool) bool 
 			}
 		}
 		return skipRemaining
+	default:
+		// Ignore ErrorNode, CommentNode, DoctypeNode, and RawNode.
 	}
 
 	return skipRemaining

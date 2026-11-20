@@ -90,6 +90,7 @@ func (r *certReloader) load() (*tls.Certificate, error) {
 }
 
 func loadRootCAs(caPath string) (*x509.CertPool, error) {
+	// #nosec G304 -- caPath comes from server startup configuration or test fixture, not untrusted input.
 	pem, err := os.ReadFile(caPath)
 	if err != nil {
 		return nil, fmt.Errorf("read ca bundle %q: %w", caPath, err)

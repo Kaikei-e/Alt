@@ -15,8 +15,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
-	echomiddleware "github.com/labstack/echo/v4/middleware"
+	"github.com/labstack/echo/v5"
+	echomiddleware "github.com/labstack/echo/v5/middleware"
 	"github.com/stretchr/testify/require"
 )
 
@@ -57,7 +57,7 @@ func TestRegisterAugurRoutes_RequiresAuth(t *testing.T) {
 			v1 := e.Group("/v1")
 			RegisterAugurRoutes(e, v1, &di.ApplicationComponents{UserQuotaLimiter: newTestQuotaLimiter(t)}, testAuthCfg())
 
-			req := httptest.NewRequest(tt.method, tt.target, strings.NewReader(tt.body))
+			req := httptest.NewRequestWithContext(t.Context(), tt.method, tt.target, strings.NewReader(tt.body))
 			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 			rec := httptest.NewRecorder()
 			e.ServeHTTP(rec, req)
@@ -94,7 +94,7 @@ func TestAugurHandler_RetrieveContext_Unauthenticated_Returns401(t *testing.T) {
 	h := NewAugurHandler(stubUC, nil)
 
 	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/v1/rag/context?q=test", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/rag/context?q=test", nil)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
@@ -114,7 +114,7 @@ func TestAugurHandler_RetrieveContext_Authenticated_ForwardsUserID(t *testing.T)
 	h := NewAugurHandler(stubUC, nil)
 
 	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/v1/rag/context?q=test", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/rag/context?q=test", nil)
 	userCtx := domain.SetUserContext(req.Context(), &domain.UserContext{
 		UserID:    userID,
 		TenantID:  uuid.New(),
@@ -132,4 +132,40 @@ func TestAugurHandler_RetrieveContext_Authenticated_ForwardsUserID(t *testing.T)
 	require.Equal(t, "test", stubUC.capturedQuery)
 	require.Equal(t, userID.String(), stubUC.capturedUserID,
 		"authenticated user_id must be forwarded to RetrieveContext usecase")
+}
+
+type stubStreamAnswerUsecase struct {
+	chunks []string
+}
+
+func (s *stubStreamAnswerUsecase) Execute(_ context.Context, _ rag_integration_port.AnswerInput) (<-chan string, error) {
+	ch := make(chan string, len(s.chunks))
+	for _, c := range s.chunks {
+		ch <- c
+	}
+	close(ch)
+	return ch, nil
+}
+
+func TestAugurHandler_Answer_StreamingFlushesRecorder(t *testing.T) {
+	h := NewAugurHandler(nil, &stubStreamAnswerUsecase{
+		chunks: []string{
+			"event:meta\ndata:{\"Contexts\":[{\"ChunkText\":\"secret\",\"URL\":\"https://example.com/a\",\"Title\":\"Title A\",\"PublishedAt\":\"2026-01-01\"}],\"Debug\":\"trace\"}\n\n",
+			"data:{\"answer\":\"hello\"}\n\n",
+		},
+	})
+
+	e := echo.New()
+	e.POST("/sse/v1/rag/answer", h.Answer)
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/sse/v1/rag/answer", strings.NewReader(`{"messages":[{"role":"user","content":"hi"}],"stream":true}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.True(t, rec.Flushed, "Augur SSE handler must flush httptest.ResponseRecorder")
+	require.Contains(t, rec.Body.String(), "event:meta\n")
+	require.Contains(t, rec.Body.String(), "data:{\"answer\":\"hello\"}")
+	require.NotContains(t, rec.Body.String(), "secret")
 }

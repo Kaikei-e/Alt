@@ -10,6 +10,7 @@ import (
 
 	"alt/domain"
 	"alt/orchestrator/usecase/knowledge_url_backfill_usecase"
+	"alt/utils/safeconv"
 )
 
 func TestConvertBackfillJob(t *testing.T) {
@@ -67,22 +68,22 @@ func TestConvertBackfillJob(t *testing.T) {
 				return
 			}
 			require.NotNil(t, got)
-			assert.Equal(t, tt.input.JobID.String(), got.JobId)
-			assert.Equal(t, tt.input.Status, got.Status)
-			assert.Equal(t, int32(tt.input.ProjectionVersion), got.ProjectionVersion)
-			assert.Equal(t, int32(tt.input.TotalEvents), got.TotalEvents)
-			assert.Equal(t, int32(tt.input.ProcessedEvents), got.ProcessedEvents)
-			assert.Equal(t, tt.input.ErrorMessage, got.ErrorMessage)
-			assert.Equal(t, tt.input.CreatedAt.Format(time.RFC3339), got.CreatedAt)
+			assert.Equal(t, tt.input.JobID.String(), got.GetJobId())
+			assert.Equal(t, tt.input.Status, got.GetStatus())
+			assert.Equal(t, safeconv.Int32(tt.input.ProjectionVersion), got.GetProjectionVersion())
+			assert.Equal(t, safeconv.Int32(tt.input.TotalEvents), got.GetTotalEvents())
+			assert.Equal(t, safeconv.Int32(tt.input.ProcessedEvents), got.GetProcessedEvents())
+			assert.Equal(t, tt.input.ErrorMessage, got.GetErrorMessage())
+			assert.Equal(t, tt.input.CreatedAt.Format(time.RFC3339), got.GetCreatedAt())
 			if tt.input.StartedAt != nil {
-				assert.Equal(t, tt.input.StartedAt.Format(time.RFC3339), got.StartedAt)
+				assert.Equal(t, tt.input.StartedAt.Format(time.RFC3339), got.GetStartedAt())
 			} else {
-				assert.Empty(t, got.StartedAt)
+				assert.Empty(t, got.GetStartedAt())
 			}
 			if tt.input.CompletedAt != nil {
-				assert.Equal(t, tt.input.CompletedAt.Format(time.RFC3339), got.CompletedAt)
+				assert.Equal(t, tt.input.CompletedAt.Format(time.RFC3339), got.GetCompletedAt())
 			} else {
-				assert.Empty(t, got.CompletedAt)
+				assert.Empty(t, got.GetCompletedAt())
 			}
 		})
 	}
@@ -146,17 +147,17 @@ func TestConvertReprojectRun(t *testing.T) {
 				return
 			}
 			require.NotNil(t, got)
-			assert.Equal(t, tt.input.ReprojectRunID.String(), got.ReprojectRunId)
-			assert.Equal(t, tt.input.ProjectionName, got.ProjectionName)
-			assert.Equal(t, tt.input.FromVersion, got.FromVersion)
-			assert.Equal(t, tt.input.ToVersion, got.ToVersion)
-			assert.Equal(t, tt.input.Mode, got.Mode)
-			assert.Equal(t, tt.input.Status, got.Status)
-			assert.Equal(t, string(tt.input.StatsJSON), got.StatsJson)
-			assert.Equal(t, string(tt.input.DiffSummaryJSON), got.DiffSummaryJson)
-			assert.Equal(t, tt.input.CreatedAt.Format(time.RFC3339), got.CreatedAt)
+			assert.Equal(t, tt.input.ReprojectRunID.String(), got.GetReprojectRunId())
+			assert.Equal(t, tt.input.ProjectionName, got.GetProjectionName())
+			assert.Equal(t, tt.input.FromVersion, got.GetFromVersion())
+			assert.Equal(t, tt.input.ToVersion, got.GetToVersion())
+			assert.Equal(t, tt.input.Mode, got.GetMode())
+			assert.Equal(t, tt.input.Status, got.GetStatus())
+			assert.Equal(t, string(tt.input.StatsJSON), got.GetStatsJson())
+			assert.Equal(t, string(tt.input.DiffSummaryJSON), got.GetDiffSummaryJson())
+			assert.Equal(t, tt.input.CreatedAt.Format(time.RFC3339), got.GetCreatedAt())
 			if tt.input.InitiatedBy != nil {
-				assert.Equal(t, tt.input.InitiatedBy.String(), got.InitiatedBy)
+				assert.Equal(t, tt.input.InitiatedBy.String(), got.GetInitiatedBy())
 			}
 		})
 	}
@@ -186,14 +187,14 @@ func TestConvertReprojectDiff(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got := convertReprojectDiff(tt.input)
 			require.NotNil(t, got)
-			assert.Equal(t, tt.input.FromItemCount, got.FromItemCount)
-			assert.Equal(t, tt.input.ToItemCount, got.ToItemCount)
-			assert.Equal(t, tt.input.FromEmptyCount, got.FromEmptyCount)
-			assert.Equal(t, tt.input.ToEmptyCount, got.ToEmptyCount)
-			assert.InDelta(t, tt.input.FromAvgScore, got.FromAvgScore, 0.001)
-			assert.InDelta(t, tt.input.ToAvgScore, got.ToAvgScore, 0.001)
-			assert.Contains(t, got.FromWhyDistribution, "recency")
-			assert.Contains(t, got.ToWhyDistribution, "hotspot")
+			assert.Equal(t, tt.input.FromItemCount, got.GetFromItemCount())
+			assert.Equal(t, tt.input.ToItemCount, got.GetToItemCount())
+			assert.Equal(t, tt.input.FromEmptyCount, got.GetFromEmptyCount())
+			assert.Equal(t, tt.input.ToEmptyCount, got.GetToEmptyCount())
+			assert.InDelta(t, tt.input.FromAvgScore, got.GetFromAvgScore(), 0.001)
+			assert.InDelta(t, tt.input.ToAvgScore, got.GetToAvgScore(), 0.001)
+			assert.Contains(t, got.GetFromWhyDistribution(), "recency")
+			assert.Contains(t, got.GetToWhyDistribution(), "hotspot")
 		})
 	}
 }
@@ -238,12 +239,12 @@ func TestConvertSLIStatuses(t *testing.T) {
 			got := convertSLIStatuses(tt.input)
 			assert.Len(t, got, tt.expected)
 			for i, sli := range tt.input {
-				assert.Equal(t, sli.Name, got[i].Name)
-				assert.Equal(t, sli.CurrentValue, got[i].CurrentValue)
-				assert.Equal(t, sli.TargetValue, got[i].TargetValue)
-				assert.Equal(t, sli.Unit, got[i].Unit)
-				assert.Equal(t, sli.Status, got[i].Status)
-				assert.Equal(t, sli.ErrorBudgetConsumedPct, got[i].ErrorBudgetConsumedPct)
+				assert.Equal(t, sli.Name, got[i].GetName())
+				assert.InDelta(t, sli.CurrentValue, got[i].GetCurrentValue(), 1e-9)
+				assert.InDelta(t, sli.TargetValue, got[i].GetTargetValue(), 1e-9)
+				assert.Equal(t, sli.Unit, got[i].GetUnit())
+				assert.Equal(t, sli.Status, got[i].GetStatus())
+				assert.InDelta(t, sli.ErrorBudgetConsumedPct, got[i].GetErrorBudgetConsumedPct(), 1e-9)
 			}
 		})
 	}
@@ -281,11 +282,11 @@ func TestConvertAlertSummaries(t *testing.T) {
 			got := convertAlertSummaries(tt.input)
 			assert.Len(t, got, tt.expected)
 			if len(tt.input) > 0 {
-				assert.Equal(t, tt.input[0].AlertName, got[0].AlertName)
-				assert.Equal(t, tt.input[0].Severity, got[0].Severity)
-				assert.Equal(t, tt.input[0].Status, got[0].Status)
-				assert.Equal(t, tt.input[0].FiredAt.Format(time.RFC3339), got[0].FiredAt)
-				assert.Equal(t, tt.input[0].Description, got[0].Description)
+				assert.Equal(t, tt.input[0].AlertName, got[0].GetAlertName())
+				assert.Equal(t, tt.input[0].Severity, got[0].GetSeverity())
+				assert.Equal(t, tt.input[0].Status, got[0].GetStatus())
+				assert.Equal(t, tt.input[0].FiredAt.Format(time.RFC3339), got[0].GetFiredAt())
+				assert.Equal(t, tt.input[0].Description, got[0].GetDescription())
 			}
 		})
 	}
@@ -317,13 +318,13 @@ func TestConvertProjectionAudit(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got := convertProjectionAudit(tt.input)
 			require.NotNil(t, got)
-			assert.Equal(t, tt.input.AuditID.String(), got.AuditId)
-			assert.Equal(t, tt.input.ProjectionName, got.ProjectionName)
-			assert.Equal(t, tt.input.ProjectionVersion, got.ProjectionVersion)
-			assert.Equal(t, tt.input.CheckedAt.Format(time.RFC3339), got.CheckedAt)
-			assert.Equal(t, int32(tt.input.SampleSize), got.SampleSize)
-			assert.Equal(t, int32(tt.input.MismatchCount), got.MismatchCount)
-			assert.Equal(t, string(tt.input.DetailsJSON), got.DetailsJson)
+			assert.Equal(t, tt.input.AuditID.String(), got.GetAuditId())
+			assert.Equal(t, tt.input.ProjectionName, got.GetProjectionName())
+			assert.Equal(t, tt.input.ProjectionVersion, got.GetProjectionVersion())
+			assert.Equal(t, tt.input.CheckedAt.Format(time.RFC3339), got.GetCheckedAt())
+			assert.Equal(t, safeconv.Int32(tt.input.SampleSize), got.GetSampleSize())
+			assert.Equal(t, safeconv.Int32(tt.input.MismatchCount), got.GetMismatchCount())
+			assert.Equal(t, string(tt.input.DetailsJSON), got.GetDetailsJson())
 		})
 	}
 }
@@ -407,15 +408,15 @@ func TestConvertSystemMetrics(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got := convertSystemMetrics(tt.input)
 			require.NotNil(t, got)
-			assert.Equal(t, tt.input.Projector.EventsProcessed, got.Projector.EventsProcessed)
-			assert.Equal(t, tt.input.Handler.PagesServed, got.Handler.PagesServed)
-			assert.Equal(t, tt.input.Tracking.ItemsExposed, got.Tracking.ItemsExposed)
-			assert.Equal(t, tt.input.Stream.ConnectionsTotal, got.Stream.ConnectionsTotal)
-			assert.Equal(t, tt.input.Correctness.EmptyResponses, got.Correctness.EmptyResponses)
-			assert.Equal(t, tt.input.Sovereign.MutationsApplied, got.Sovereign.MutationsApplied)
-			assert.Equal(t, tt.input.Recall.SignalsAppended, got.Recall.SignalsAppended)
-			require.Len(t, got.ServiceHealth, 1)
-			assert.Equal(t, "sovereign", got.ServiceHealth[0].ServiceName)
+			assert.Equal(t, tt.input.Projector.EventsProcessed, got.GetProjector().GetEventsProcessed())
+			assert.Equal(t, tt.input.Handler.PagesServed, got.GetHandler().GetPagesServed())
+			assert.Equal(t, tt.input.Tracking.ItemsExposed, got.GetTracking().GetItemsExposed())
+			assert.Equal(t, tt.input.Stream.ConnectionsTotal, got.GetStream().GetConnectionsTotal())
+			assert.Equal(t, tt.input.Correctness.EmptyResponses, got.GetCorrectness().GetEmptyResponses())
+			assert.Equal(t, tt.input.Sovereign.MutationsApplied, got.GetSovereign().GetMutationsApplied())
+			assert.Equal(t, tt.input.Recall.SignalsAppended, got.GetRecall().GetSignalsAppended())
+			require.Len(t, got.GetServiceHealth(), 1)
+			assert.Equal(t, "sovereign", got.GetServiceHealth()[0].GetServiceName())
 		})
 	}
 }
@@ -441,11 +442,11 @@ func TestConvertEmitArticleUrlBackfillResponse(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got := convertEmitArticleUrlBackfillResponse(tt.input)
 			require.NotNil(t, got)
-			assert.Equal(t, int32(tt.input.ArticlesScanned), got.ArticlesScanned)
-			assert.Equal(t, int32(tt.input.EventsAppended), got.EventsAppended)
-			assert.Equal(t, int32(tt.input.SkippedBlockedScheme), got.SkippedBlockedScheme)
-			assert.Equal(t, int32(tt.input.SkippedDuplicate), got.SkippedDuplicate)
-			assert.Equal(t, tt.input.MoreRemaining, got.MoreRemaining)
+			assert.Equal(t, safeconv.Int32(tt.input.ArticlesScanned), got.GetArticlesScanned())
+			assert.Equal(t, safeconv.Int32(tt.input.EventsAppended), got.GetEventsAppended())
+			assert.Equal(t, safeconv.Int32(tt.input.SkippedBlockedScheme), got.GetSkippedBlockedScheme())
+			assert.Equal(t, safeconv.Int32(tt.input.SkippedDuplicate), got.GetSkippedDuplicate())
+			assert.Equal(t, tt.input.MoreRemaining, got.GetMoreRemaining())
 		})
 	}
 }

@@ -14,8 +14,8 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
-	echomiddleware "github.com/labstack/echo/v4/middleware"
+	"github.com/labstack/echo/v5"
+	echomiddleware "github.com/labstack/echo/v5/middleware"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -119,7 +119,7 @@ func signRESTTestToken(t *testing.T, role domain.UserRole) string {
 
 func injectUserContextMiddleware(role domain.UserRole) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+		return func(c *echo.Context) error {
 			uid := uuid.MustParse("11111111-2222-3333-4444-555555555555")
 			ctx := domain.SetUserContext(c.Request().Context(), &domain.UserContext{
 				UserID:    uid,
@@ -182,7 +182,7 @@ func TestScrapingDomainRoutes_Unauthenticated_Returns401(t *testing.T) {
 			v1 := e.Group("/v1")
 			registerScrapingDomainRoutes(v1, &di.ApplicationComponents{}, testAuthCfg())
 
-			req := httptest.NewRequest(rt.method, rt.target, strings.NewReader(rt.body))
+			req := httptest.NewRequestWithContext(t.Context(), rt.method, rt.target, strings.NewReader(rt.body))
 			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 			rec := httptest.NewRecorder()
 			e.ServeHTTP(rec, req)
@@ -204,7 +204,7 @@ func TestScrapingDomainRoutes_NonAdminUserContext_Returns403(t *testing.T) {
 			v1 := e.Group("/v1")
 			registerScrapingDomainRoutes(v1, &di.ApplicationComponents{}, testAuthCfg())
 
-			req := httptest.NewRequest(rt.method, rt.target, strings.NewReader(rt.body))
+			req := httptest.NewRequestWithContext(t.Context(), rt.method, rt.target, strings.NewReader(rt.body))
 			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 			req.Header.Set("X-Alt-Backend-Token", userToken)
 			rec := httptest.NewRecorder()
@@ -222,7 +222,7 @@ func TestScrapingDomainRoutes_NonAdminUserContext_Returns403(t *testing.T) {
 			admin.PATCH("/:id", handleUpdateScrapingDomainPolicy(&di.ApplicationComponents{}))
 			admin.POST("/:id/refresh-robots", handleRefreshRobotsTxt(&di.ApplicationComponents{}))
 
-			req := httptest.NewRequest(rt.method, rt.target, strings.NewReader(rt.body))
+			req := httptest.NewRequestWithContext(t.Context(), rt.method, rt.target, strings.NewReader(rt.body))
 			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 			rec := httptest.NewRecorder()
 			e.ServeHTTP(rec, req)
@@ -276,7 +276,7 @@ func TestScrapingDomainRoutes_AdminRole_SucceedsAcrossAll4Routes(t *testing.T) {
 	adminToken := signRESTTestToken(t, domain.UserRoleAdmin)
 
 	t.Run("GET /v1/admin/scraping-domains lists domains", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/v1/admin/scraping-domains?limit=10&offset=0", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/admin/scraping-domains?limit=10&offset=0", nil)
 		req.Header.Set("X-Alt-Backend-Token", adminToken)
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, req)
@@ -290,7 +290,7 @@ func TestScrapingDomainRoutes_AdminRole_SucceedsAcrossAll4Routes(t *testing.T) {
 	})
 
 	t.Run("GET /v1/admin/scraping-domains/:id gets single domain", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/v1/admin/scraping-domains/"+domainID.String(), nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/admin/scraping-domains/"+domainID.String(), nil)
 		req.Header.Set("X-Alt-Backend-Token", adminToken)
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, req)
@@ -304,7 +304,7 @@ func TestScrapingDomainRoutes_AdminRole_SucceedsAcrossAll4Routes(t *testing.T) {
 
 	t.Run("PATCH /v1/admin/scraping-domains/:id updates policy", func(t *testing.T) {
 		body := bytes.NewBufferString(`{"allow_fetch_body":false,"allow_cache_days":14}`)
-		req := httptest.NewRequest(http.MethodPatch, "/v1/admin/scraping-domains/"+domainID.String(), body)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPatch, "/v1/admin/scraping-domains/"+domainID.String(), body)
 		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 		req.Header.Set("X-Alt-Backend-Token", adminToken)
 		rec := httptest.NewRecorder()
@@ -320,7 +320,7 @@ func TestScrapingDomainRoutes_AdminRole_SucceedsAcrossAll4Routes(t *testing.T) {
 	})
 
 	t.Run("POST /v1/admin/scraping-domains/:id/refresh-robots refreshes robots.txt", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/v1/admin/scraping-domains/"+domainID.String()+"/refresh-robots", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/admin/scraping-domains/"+domainID.String()+"/refresh-robots", nil)
 		req.Header.Set("X-Alt-Backend-Token", adminToken)
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, req)

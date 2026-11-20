@@ -50,6 +50,6 @@ func TestListFeedLinksWithHealthUsecase_Execute_Error(t *testing.T) {
 	usecase := NewListFeedLinksWithHealthUsecase(mockPort)
 	result, err := usecase.Execute(context.Background())
 
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, result)
 }

@@ -4,25 +4,42 @@ import pickle
 import sys
 from pathlib import Path
 
-# Add project root to sys.path to allow imports from recap_subworker
-project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
-
 import joblib
-
-# from imblearn.over_sampling import SMOTE
-# from sudachipy import tokenizer, dictionary # Removed, inside SudachiTokenizer now
+import numpy as np
 import pandas as pd
 import scipy.sparse as sp
+import torch
 from sentence_transformers import SentenceTransformer
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.model_selection import train_test_split
 
+# Add project root to sys.path to allow imports from recap_subworker
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
 # Import SudachiTokenizer from the service module where it is defined cleanly
-from recap_subworker.services.classifier import SudachiTokenizer
+from recap_subworker.services.classifier import (  # noqa: E402 - import after sys.path setup
+    SudachiTokenizer,
+)
+
+MIN_STRATIFY_SAMPLES = 2
 
 
-def main():
+class InputFileNotFoundError(FileNotFoundError):
+    """Raised when the input golden dataset file does not exist."""
+
+    def __init__(self, path: Path) -> None:
+        super().__init__(f"Input file not found: {path}")
+
+
+class InvalidGoldenDatasetError(ValueError):
+    """Raised when the golden dataset JSON structure is invalid."""
+
+    def __init__(self) -> None:
+        super().__init__("Golden dataset has invalid structure")
+
+
+def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Prepare dataset for genre classification")
     parser.add_argument(
         "--input", type=str, required=True, help="Path to golden_classification.json"
@@ -40,14 +57,28 @@ def main():
         default="both",
         help="Language filter: 'ja' for Japanese only, 'en' for English only, 'both' for both (ja priority)",
     )
-    args = parser.parse_args()
+    return parser.parse_args()
 
-    # Load Golden Dataset
-    input_path = Path(args.input)
+
+def _extract_item_text(item: dict, language: str) -> str:
+    if language == "ja":
+        return item["content_ja"].strip() if item.get("content_ja") else ""
+    if language == "en":
+        return item["content_en"].strip() if item.get("content_en") else ""
+    if item.get("content_ja"):
+        return item["content_ja"].strip()
+    if "content" in item:
+        return item["content"].strip()
+    if item.get("content_en"):
+        return item["content_en"].strip()
+    return ""
+
+
+def _load_records(input_path: Path, language: str) -> pd.DataFrame:
     if not input_path.exists():
-        raise FileNotFoundError(f"Input file not found: {input_path}")
+        raise InputFileNotFoundError(input_path)
 
-    with open(input_path) as f:
+    with input_path.open() as f:
         data = json.load(f)
 
     if isinstance(data, dict) and "items" in data:
@@ -55,71 +86,38 @@ def main():
     elif isinstance(data, list):
         items = data
     else:
-        raise ValueError("Golden dataset has invalid structure")
+        raise InvalidGoldenDatasetError
 
-    # Extract text and labels
     records = []
     for item in items:
-        text = None
         genres = item.get("expected_genres", [])
-
         if not genres:
             continue
-
-        # Language filtering based on --language argument
-        if args.language == "ja":
-            # Japanese only: require content_ja
-            if "content_ja" in item and item.get("content_ja"):
-                text = item["content_ja"].strip()
-            else:
-                continue
-        elif args.language == "en":
-            # English only: require content_en
-            if "content_en" in item and item.get("content_en"):
-                text = item["content_en"].strip()
-            else:
-                continue
-        else:  # args.language == "both"
-            # Both: ja priority, fallback to content, then content_en
-            if "content_ja" in item and item.get("content_ja"):
-                text = item["content_ja"].strip()
-            elif "content" in item:
-                text = item["content"].strip()
-            elif "content_en" in item and item.get("content_en"):
-                text = item["content_en"].strip()
-            else:
-                text = ""
-
+        text = _extract_item_text(item, language)
         if not text:
             continue
-
-        primary_label = genres[0]
-        # For E5, we add prefix
-        # We store raw text for TF-IDF, and "passage: " text for E5 separately if needed.
-        # But let's keep it simple: pass raw text to TF-IDF. E5 needs "passage: ".
-        records.append({"text": text, "label": primary_label})
+        records.append({"text": text, "label": genres[0]})
 
     df = pd.DataFrame(records)
-    print(f"Total records: {len(df)}")
-
-    # Filter rare labels
+    sys.stdout.write(f"Total records: {len(df)}\n")
     vc = df["label"].value_counts()
     valid_labels = vc[vc >= 1].index
     df = df[df["label"].isin(valid_labels)]
-    print(f"Records after filtering: {len(df)}")
+    sys.stdout.write(f"Records after filtering: {len(df)}\n")
+    return df
 
-    # Split Data
-    # Stratified split 50/50 Train/Temp, then Temp -> 50/50 Valid/Test
+
+def _split_dataset(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     try:
         train_df, temp_df = train_test_split(
             df, test_size=0.5, stratify=df["label"], random_state=42
         )
     except ValueError:
-        print("Warning: Stratified split failed. Random split.")
+        sys.stdout.write("Warning: Stratified split failed. Random split.\n")
         train_df, temp_df = train_test_split(df, test_size=0.5, random_state=42)
 
     try:
-        if len(temp_df) < 2:
+        if len(temp_df) < MIN_STRATIFY_SAMPLES:
             valid_df = temp_df.copy()
             test_df = temp_df.copy()
         else:
@@ -134,99 +132,69 @@ def main():
     except ValueError:
         valid_df, test_df = train_test_split(temp_df, test_size=0.5, random_state=42)
 
-    print(f"Train: {len(train_df)}, Valid: {len(valid_df)}, Test: {len(test_df)}")
+    sys.stdout.write(f"Train: {len(train_df)}, Valid: {len(valid_df)}, Test: {len(test_df)}\n")
+    return train_df, valid_df, test_df
 
-    # 1. Tokenization + TF-IDF (language-specific)
-    print("Computing TF-IDF features...")
-    # Japanese: use SudachiTokenizer, English: use default tokenizer (word tokenization)
-    if args.language == "ja":
-        tokenizer = SudachiTokenizer(mode="C")
-        vectorizer = TfidfVectorizer(tokenizer=tokenizer, max_features=5000)
-    elif args.language == "en":
-        # English: use default TfidfVectorizer tokenizer (word tokenization)
-        vectorizer = TfidfVectorizer(max_features=5000)
-    else:  # both
-        # For "both", use SudachiTokenizer (ja priority fallback)
-        tokenizer = SudachiTokenizer(mode="C")
-        vectorizer = TfidfVectorizer(tokenizer=tokenizer, max_features=5000)
 
-    X_train_tfidf = vectorizer.fit_transform(train_df["text"])
-    X_valid_tfidf = vectorizer.transform(valid_df["text"])
-    X_test_tfidf = vectorizer.transform(test_df["text"])
+def _build_vectorizer(language: str) -> TfidfVectorizer:
+    if language == "en":
+        return TfidfVectorizer(max_features=5000)
+    tokenizer = SudachiTokenizer(mode="C")
+    return TfidfVectorizer(tokenizer=tokenizer, max_features=5000)
 
-    # 2. E5 Embeddings
-    import torch
+
+def _embed_texts(model: SentenceTransformer, texts: list[str]) -> np.ndarray:
+    prefixed = [f"passage: {t}" for t in texts]
+    return model.encode(prefixed, normalize_embeddings=True, show_progress_bar=True)
+
+
+def main() -> None:
+    args = _parse_args()
+    df = _load_records(Path(args.input), args.language)
+    train_df, valid_df, test_df = _split_dataset(df)
+
+    sys.stdout.write("Computing TF-IDF features...\n")
+    vectorizer = _build_vectorizer(args.language)
+    x_train_tfidf = vectorizer.fit_transform(train_df["text"])
+    x_valid_tfidf = vectorizer.transform(valid_df["text"])
+    x_test_tfidf = vectorizer.transform(test_df["text"])
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"Loading model: {args.model_name} on {device}")
+    sys.stdout.write(f"Loading model: {args.model_name} on {device}\n")
     model = SentenceTransformer(args.model_name, device=device)
 
-    def embed(texts):
-        # E5 expects "passage: " prefix for documents
-        prefixed = [f"passage: {t}" for t in texts]
-        return model.encode(prefixed, normalize_embeddings=True, show_progress_bar=True)
+    sys.stdout.write("Embedding Train set...\n")
+    x_train_emb = _embed_texts(model, train_df["text"].tolist())
+    sys.stdout.write("Embedding Valid set...\n")
+    x_valid_emb = _embed_texts(model, valid_df["text"].tolist())
+    sys.stdout.write("Embedding Test set...\n")
+    x_test_emb = _embed_texts(model, test_df["text"].tolist())
 
-    print("Embedding Train set...")
-    X_train_emb = embed(train_df["text"].tolist())
-    print("Embedding Valid set...")
-    X_valid_emb = embed(valid_df["text"].tolist())
-    print("Embedding Test set...")
-    X_test_emb = embed(test_df["text"].tolist())
-
-    # 3. Concatenate Features
-    # X_train_tfidf is sparse, X_train_emb is dense (numpy)
-    # Convert embedding to sparse or tfidf to dense?
-    # Embeddings are 1024 dim. TF-IDF is 5000.
-    # Let's stack them as dense arrays for simplicity, assuming memory fits (small dataset for now).
-    # Or keep sparse? SMOTE supports sparse.
-
-    X_train_combined = sp.hstack([X_train_emb, X_train_tfidf], format="csr")
-    X_valid_combined = sp.hstack([X_valid_emb, X_valid_tfidf], format="csr")
-    X_test_combined = sp.hstack([X_test_emb, X_test_tfidf], format="csr")
+    x_train_combined = sp.hstack([x_train_emb, x_train_tfidf], format="csr")
+    x_valid_combined = sp.hstack([x_valid_emb, x_valid_tfidf], format="csr")
+    x_test_combined = sp.hstack([x_test_emb, x_test_tfidf], format="csr")
 
     y_train = train_df["label"].values
     y_valid = valid_df["label"].values
     y_test = test_df["label"].values
 
-    # 4. SMOTE Oversampling on Train -> SKIPPED (Dependency Hell)
-    print("Skipping SMOTE (using original data)...")
-    X_train_res, y_train_res = X_train_combined, y_train
+    sys.stdout.write("Skipping SMOTE (using original data)...\n")
+    x_train_res, y_train_res = x_train_combined, y_train
 
-    # print("Applying SMOTE to training data...")
-    # # Check min samples for SMOTE k_neighbors (default 5)
-    # min_samples = pd.Series(y_train).value_counts().min()
-    # k_neighbors = min(min_samples - 1, 5) if min_samples > 1 else 1
-
-    # if min_samples > 1:
-    #     smote = SMOTE(k_neighbors=k_neighbors, random_state=42)
-    #     try:
-    #         X_train_res, y_train_res = smote.fit_resample(X_train_combined, y_train)
-    #         print(f"Resampled Train shape: {X_train_res.shape}")
-    #     except ValueError as e:
-    #         print(f"SMOTE failed: {e}. Using original data.")
-    #         X_train_res, y_train_res = X_train_combined, y_train
-    # else:
-    #      print("Validation too small for SMOTE. Using original data.")
-    #      X_train_res, y_train_res = X_train_combined, y_train
-
-    # Save
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    with open(output_dir / "dataset_train.pkl", "wb") as f:
-        pickle.dump((X_train_res, y_train_res), f)
+    with (output_dir / "dataset_train.pkl").open("wb") as f:
+        pickle.dump((x_train_res, y_train_res), f)
 
-    with open(output_dir / "dataset_valid.pkl", "wb") as f:
-        pickle.dump((X_valid_combined, y_valid), f)
+    with (output_dir / "dataset_valid.pkl").open("wb") as f:
+        pickle.dump((x_valid_combined, y_valid), f)
 
-    with open(output_dir / "dataset_test.pkl", "wb") as f:
-        pickle.dump((X_test_combined, y_test), f)
-
-    # Save Vectorizer
+    with (output_dir / "dataset_test.pkl").open("wb") as f:
+        pickle.dump((x_test_combined, y_test), f)
 
     joblib.dump(vectorizer, output_dir / "tfidf_vectorizer.joblib")
-
-    print(f"Saved datasets and vectorizer to {output_dir}")
+    sys.stdout.write(f"Saved datasets and vectorizer to {output_dir}\n")
 
 
 if __name__ == "__main__":

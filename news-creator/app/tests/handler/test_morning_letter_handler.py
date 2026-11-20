@@ -1,3 +1,5 @@
+from http import HTTPStatus
+from typing import Any
 from unittest.mock import AsyncMock
 
 from fastapi import FastAPI
@@ -12,14 +14,14 @@ from news_creator.domain.models import (
 from news_creator.handler.morning_letter_handler import create_morning_letter_router
 
 
-def _build_request_payload():
+def _build_request_payload() -> dict[str, Any]:
     return {
         "target_date": "2026-04-17",
         "overnight_groups": [],
     }
 
 
-def test_morning_letter_handler_success_200():
+def test_morning_letter_handler_success_200() -> None:
     """Happy path returns 200 OK with MorningLetterResponse."""
     usecase = AsyncMock()
     usecase.generate_letter.return_value = MorningLetterResponse(
@@ -49,7 +51,7 @@ def test_morning_letter_handler_success_200():
 
     resp = client.post("/v1/morning-letter/generate", json=_build_request_payload())
 
-    assert resp.status_code == 200
+    assert resp.status_code == HTTPStatus.OK
     body = resp.json()
     assert body["target_date"] == "2026-04-17"
     assert body["edition_timezone"] == "Asia/Tokyo"
@@ -59,13 +61,13 @@ def test_morning_letter_handler_success_200():
     usecase.generate_letter.assert_awaited_once()
 
 
-def test_value_error_returns_generic_message_not_exception_text():
+def test_value_error_returns_generic_message_not_exception_text() -> None:
     """Regression: ValueError from usecase must not leak to the client body.
 
     CodeQL py/stack-trace-exposure flagged the old ``str(e)`` path.
     """
     usecase = AsyncMock()
-    secret = "internal validation failed at /app/news_creator/usecase/step3.py:214"
+    secret = "internal validation failed at /app/news_creator/usecase/step3.py:214"  # noqa: S105 - test fixture string simulating leaked internal detail
     usecase.generate_letter.side_effect = ValueError(secret)
 
     app = FastAPI()
@@ -74,16 +76,16 @@ def test_value_error_returns_generic_message_not_exception_text():
 
     resp = client.post("/v1/morning-letter/generate", json=_build_request_payload())
 
-    assert resp.status_code == 400
+    assert resp.status_code == HTTPStatus.BAD_REQUEST
     body = resp.json()
     assert body.get("error") == "Invalid request"
     assert secret not in resp.text
 
 
-def test_unexpected_exception_returns_500_without_leaking_details():
+def test_unexpected_exception_returns_500_without_leaking_details() -> None:
     """Unexpected exception returns 500 with generic error message."""
     usecase = AsyncMock()
-    secret = "database connection pool exhausted at internal host"
+    secret = "database connection pool exhausted at internal host"  # noqa: S105 - test fixture string simulating leaked internal detail
     usecase.generate_letter.side_effect = RuntimeError(secret)
 
     app = FastAPI()
@@ -92,13 +94,13 @@ def test_unexpected_exception_returns_500_without_leaking_details():
 
     resp = client.post("/v1/morning-letter/generate", json=_build_request_payload())
 
-    assert resp.status_code == 500
+    assert resp.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
     body = resp.json()
     assert body.get("error") == "Internal server error"
     assert secret not in resp.text
 
 
-def test_missing_target_date_returns_422():
+def test_missing_target_date_returns_422() -> None:
     """Missing required target_date fails Pydantic validation with 422."""
     usecase = AsyncMock()
 
@@ -108,5 +110,5 @@ def test_missing_target_date_returns_422():
 
     resp = client.post("/v1/morning-letter/generate", json={"overnight_groups": []})
 
-    assert resp.status_code == 422
+    assert resp.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
     usecase.generate_letter.assert_not_called()

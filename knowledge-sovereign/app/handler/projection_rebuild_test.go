@@ -43,7 +43,7 @@ func TestProjectionRebuildHandler_RebuildsAllowlistedTarget(t *testing.T) {
 		CheckpointBefore: 1379513,
 	}}
 
-	req := httptest.NewRequest(http.MethodPost, "/admin/projections/rebuild",
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/admin/projections/rebuild",
 		strings.NewReader(`{"target":"knowledge-home"}`))
 	rec := httptest.NewRecorder()
 	rebuildMux(repo).ServeHTTP(rec, req)
@@ -83,7 +83,7 @@ func TestProjectionRebuildHandler_RejectsAnythingOutsideTheAllowlist(t *testing.
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			repo := &fakeRebuildRepo{}
-			req := httptest.NewRequest(http.MethodPost, "/admin/projections/rebuild", strings.NewReader(tc.body))
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/admin/projections/rebuild", strings.NewReader(tc.body))
 			rec := httptest.NewRecorder()
 			rebuildMux(repo).ServeHTTP(rec, req)
 
@@ -98,7 +98,7 @@ func TestProjectionRebuildHandler_RejectsAnythingOutsideTheAllowlist(t *testing.
 func TestProjectionRebuildHandler_RepositoryFailureIsServerError(t *testing.T) {
 	repo := &fakeRebuildRepo{err: wrappedInternalErr()}
 
-	req := httptest.NewRequest(http.MethodPost, "/admin/projections/rebuild",
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/admin/projections/rebuild",
 		strings.NewReader(`{"target":"knowledge-trail"}`))
 	rec := httptest.NewRecorder()
 	rebuildMux(repo).ServeHTTP(rec, req)
@@ -112,7 +112,7 @@ func TestProjectionRebuildHandler_RepositoryFailureIsServerError(t *testing.T) {
 // a rebuild would empty and which checkpoint it would reset, before anything is
 // destroyed.
 func TestProjectionRebuildHandler_ListsRebuildableTargets(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/admin/projections/rebuild/targets", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/admin/projections/rebuild/targets", nil)
 	rec := httptest.NewRecorder()
 	rebuildMux(&fakeRebuildRepo{}).ServeHTTP(rec, req)
 
@@ -163,9 +163,9 @@ func TestProjectionRebuildHandler_RoutesAreAdminScoped(t *testing.T) {
 		{http.MethodPost, "/admin/projections/rebuild"},
 		{http.MethodGet, "/admin/projections/rebuild/targets"},
 	} {
-		_, pattern := mux.Handler(httptest.NewRequest(probe.method, probe.path, nil))
+		_, pattern := mux.Handler(httptest.NewRequestWithContext(t.Context(), probe.method, probe.path, nil))
 		require.NotEmpty(t, pattern, "%s %s must be registered", probe.method, probe.path)
-		assert.True(t, strings.Contains(pattern, "/admin/"),
+		assert.Contains(t, pattern, "/admin/",
 			"route %q must sit under /admin/ so the admin token gate covers it", pattern)
 	}
 }

@@ -14,10 +14,14 @@ import (
 func (p *LightweightProxy) HandleHealthCheck(w http.ResponseWriter, r *http.Request) {
 	if p.ready.Load() {
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, "Lightweight Proxy Sidecar OK\nVersion: 1.0.0\nUpstream Resolution: ACTIVE\nEnvoy Target: %s\n", p.config.EnvoyUpstream)
+		if _, err := fmt.Fprintf(w, "Lightweight Proxy Sidecar OK\nVersion: 1.0.0\nUpstream Resolution: ACTIVE\nEnvoy Target: %s\n", p.config.EnvoyUpstream); err != nil {
+			p.logger.Printf("HandleHealthCheck write error: %v", err)
+		}
 	} else {
 		w.WriteHeader(http.StatusServiceUnavailable)
-		fmt.Fprint(w, "Not Ready")
+		if _, err := fmt.Fprint(w, "Not Ready"); err != nil {
+			p.logger.Printf("HandleHealthCheck write error: %v", err)
+		}
 	}
 }
 
@@ -29,18 +33,24 @@ func (p *LightweightProxy) HandleHealthCheck(w http.ResponseWriter, r *http.Requ
 func (p *LightweightProxy) HandleReadinessCheck(w http.ResponseWriter, r *http.Request) {
 	if !p.ready.Load() || p.dnsResolver == nil || p.server == nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
-		fmt.Fprint(w, "Not Ready")
+		if _, err := fmt.Fprint(w, "Not Ready"); err != nil {
+			p.logger.Printf("HandleReadinessCheck write error: %v", err)
+		}
 		return
 	}
 
 	w.WriteHeader(http.StatusOK)
-	fmt.Fprint(w, "Ready")
+	if _, err := fmt.Fprint(w, "Ready"); err != nil {
+		p.logger.Printf("HandleReadinessCheck write error: %v", err)
+	}
 }
 
 func (p *LightweightProxy) HandleMetrics(w http.ResponseWriter, r *http.Request) {
 	metrics := p.metrics.GetMetrics()
 	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprintf(w, "%s", metrics)
+	if _, err := fmt.Fprintf(w, "%s", metrics); err != nil {
+		p.logger.Printf("HandleMetrics write error: %v", err)
+	}
 }
 
 func (p *LightweightProxy) HandleDNSDebug(w http.ResponseWriter, r *http.Request) {
@@ -57,7 +67,9 @@ func (p *LightweightProxy) HandleDNSDebug(w http.ResponseWriter, r *http.Request
 		"learned_domain_count": len(learnedDomains),
 	}
 
-	json.NewEncoder(w).Encode(debugInfo)
+	if err := json.NewEncoder(w).Encode(debugInfo); err != nil {
+		p.logger.Printf("HandleDNSDebug encode error: %v", err)
+	}
 }
 
 func (p *LightweightProxy) HandleConfigDebug(w http.ResponseWriter, r *http.Request) {
@@ -137,7 +149,9 @@ func (p *LightweightProxy) HandleAutoLearnAdmin(w http.ResponseWriter, r *http.R
 		}
 
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(response)
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			p.logger.Printf("HandleAutoLearnAdmin encode error: %v", err)
+		}
 
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -188,5 +202,7 @@ func (p *LightweightProxy) HandleAutoLearnMetrics(w http.ResponseWriter, r *http
 		LastUpdate:      time.Now().Format(time.RFC3339),
 	}
 
-	json.NewEncoder(w).Encode(metrics)
+	if err := json.NewEncoder(w).Encode(metrics); err != nil {
+		p.logger.Printf("HandleAutoLearnMetrics encode error: %v", err)
+	}
 }

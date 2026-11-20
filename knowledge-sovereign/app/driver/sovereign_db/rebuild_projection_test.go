@@ -406,15 +406,15 @@ func TestRebuildProjection_LogsStartAndFinish(t *testing.T) {
 	start, ok := records["projection.rebuild.start"]
 	require.True(t, ok, "a rebuild must log that it started; got %s", buf.String())
 	assert.Equal(t, "knowledge-home", start["target"])
-	assert.Equal(t, float64(3), start["tables"])
+	assert.InEpsilon(t, float64(3), start["tables"], 1e-9)
 	assert.Equal(t, "knowledge-home-projector", start["projector_name"])
 
 	done, ok := records["projection.rebuild.done"]
 	require.True(t, ok, "a rebuild must log that it finished; got %s", buf.String())
 	assert.Equal(t, "knowledge-home", done["target"])
-	assert.Equal(t, float64(3), done["tables"])
+	assert.InEpsilon(t, float64(3), done["tables"], 1e-9)
 	assert.Equal(t, "knowledge-home-projector", done["projector_name"])
-	assert.Equal(t, float64(1379513), done["checkpoint_reset_from"],
+	assert.InEpsilon(t, float64(1379513), done["checkpoint_reset_from"], 1e-9,
 		"the finish log must carry the checkpoint value the rebuild reset from")
 }
 

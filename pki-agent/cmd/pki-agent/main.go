@@ -37,7 +37,7 @@ import (
 
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
-		if err := runHealthcheck(os.Getenv("METRICS_ADDR"), os.Getenv("PROXY_LISTEN")); err != nil {
+		if err := runHealthcheck(context.Background(), os.Getenv("METRICS_ADDR"), os.Getenv("PROXY_LISTEN")); err != nil {
 			fmt.Fprintln(os.Stderr, "healthcheck:", err)
 			os.Exit(1)
 		}

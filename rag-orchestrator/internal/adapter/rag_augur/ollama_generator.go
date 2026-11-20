@@ -326,7 +326,7 @@ func (g *OllamaGenerator) GenerateStream(ctx context.Context, prompt string, max
 		req.Header.Set("Authorization", "Bearer "+g.InferenceToken)
 	}
 
-	resp, err := g.Client.Do(req)
+	resp, err := g.Client.Do(req) //nolint:bodyclose // resp.Body is closed in the non-200 branch below or via defer inside the streaming goroutine
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to call stream endpoint: %w", err)
 	}
@@ -690,7 +690,7 @@ func (g *OllamaGenerator) ChatStream(ctx context.Context, messages []domain.Mess
 		slog.String("request_id", requestID),
 		slog.String("url", url))
 
-	resp, err := g.Client.Do(req)
+	resp, err := g.Client.Do(req) //nolint:bodyclose // resp.Body is closed in the non-200 branch below or via defer inside the streaming goroutine
 	if err != nil {
 		g.logger.Warn("ollama_chat_stream_failed",
 			slog.String("request_id", requestID),

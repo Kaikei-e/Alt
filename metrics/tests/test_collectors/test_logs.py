@@ -1,6 +1,6 @@
 """collectors/logs.py のテスト"""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 import pytest
@@ -33,17 +33,18 @@ class TestCollectErrorTypes:
             "error_count",
             "sample_message",
         ]
-        mock_client.query.return_value.result_rows = [
+        rows = [
             ("auth-hub", "AuthenticationError", 100, "Invalid token"),
             ("alt-backend", "DatabaseError", 50, "Connection refused"),
         ]
+        mock_client.query.return_value.result_rows = rows
 
         result = collect_error_types(mock_client, "rask_logs", 24)
 
-        assert len(result) == 2
+        assert len(result) == len(rows)
         assert all(isinstance(row, ErrorTypeStat) for row in result)
         assert result[0].error_type == "AuthenticationError"
-        assert result[0].error_count == 100
+        assert result[0].error_count == rows[0][2]
         assert result[1].service == "alt-backend"
 
     def test_empty_result_returns_empty_list(self) -> None:
@@ -72,7 +73,7 @@ class TestCollectErrorTypes:
         mock_client = MagicMock()
         mock_client.query.side_effect = ValueError("unexpected bug")
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="unexpected bug"):
             collect_error_types(mock_client, "rask_logs", 24)
 
 
@@ -89,14 +90,15 @@ class TestCollectRecentErrors:
             "error_type",
             "timestamp",
         ]
-        mock_client.query.return_value.result_rows = [
+        rows = [
             ("auth-hub", "ERROR", "Login failed", "AuthError", "2026-01-19 12:00:00"),
             ("alt-backend", "ERROR", "DB timeout", "DBError", "2026-01-19 11:55:00"),
         ]
+        mock_client.query.return_value.result_rows = rows
 
         result = collect_recent_errors(mock_client, "rask_logs", 24)
 
-        assert len(result) == 2
+        assert len(result) == len(rows)
         assert all(isinstance(row, RecentError) for row in result)
         assert result[0].service == "auth-hub"
         assert result[0].level == "ERROR"
@@ -130,18 +132,19 @@ class TestCollectLogSeverityDistribution:
             "fatal_count",
             "error_rate",
         ]
-        mock_client.query.return_value.result_rows = [
+        rows = [
             ("alt-backend", 10000, 1000, 8000, 500, 400, 100, 5.0),
             ("auth-hub", 5000, 500, 4000, 200, 250, 50, 6.0),
         ]
+        mock_client.query.return_value.result_rows = rows
 
         result = collect_log_severity_distribution(mock_client, "rask_logs", 24)
 
-        assert len(result) == 2
+        assert len(result) == len(rows)
         assert all(isinstance(row, LogSeverityDistribution) for row in result)
-        assert result[0].total_logs == 10000
-        assert result[0].error_count == 400
-        assert result[0].error_rate == 5.0
+        assert result[0].total_logs == rows[0][1]
+        assert result[0].error_count == rows[0][5]
+        assert result[0].error_rate == rows[0][7]
 
     def test_raises_collector_error_on_exception(self) -> None:
         """例外発生時はCollectorErrorを投げる"""
@@ -168,16 +171,17 @@ class TestCollectLogVolumeTrends:
             "error_count",
             "error_rate",
         ]
-        mock_client.query.return_value.result_rows = [
-            (datetime(2026, 1, 19, 12, 0, 0), "alt-backend", 5000, 50, 1.0),
-            (datetime(2026, 1, 19, 11, 0, 0), "alt-backend", 4500, 45, 1.0),
+        rows = [
+            (datetime(2026, 1, 19, 12, 0, 0, tzinfo=UTC), "alt-backend", 5000, 50, 1.0),
+            (datetime(2026, 1, 19, 11, 0, 0, tzinfo=UTC), "alt-backend", 4500, 45, 1.0),
         ]
+        mock_client.query.return_value.result_rows = rows
 
         result = collect_log_volume_trends(mock_client, "rask_logs", 24)
 
-        assert len(result) == 2
+        assert len(result) == len(rows)
         assert all(isinstance(row, LogVolumeTrend) for row in result)
-        assert result[0].log_count == 5000
+        assert result[0].log_count == rows[0][2]
         assert result[0].error_rate == 1.0
 
     def test_raises_collector_error_on_exception(self) -> None:

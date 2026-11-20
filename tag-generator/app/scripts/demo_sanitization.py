@@ -4,16 +4,22 @@ Demonstration script for input sanitization functionality.
 Shows how the new Pydantic-based input sanitizer protects against prompt injection.
 """
 
-import os
 import sys
+from pathlib import Path
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from tag_extractor.input_sanitizer import InputSanitizer, SanitizationConfig
 
+_PREVIEW_LEN = 50
 
-def main():
-    print("=== Tag Generator Input Sanitization Demo ===\n")
+
+def _out(text: str = "") -> None:
+    sys.stdout.write(f"{text}\n")
+
+
+def main() -> None:
+    _out("=== Tag Generator Input Sanitization Demo ===\n")
 
     # Create sanitizer with default config
     sanitizer = InputSanitizer()
@@ -65,50 +71,54 @@ def main():
     ]
 
     for i, test_case in enumerate(test_cases, 1):
-        print(f"{i}. {test_case['name']}")
-        print(f"   Title: {test_case['title'][:50]}{'...' if len(test_case['title']) > 50 else ''}")
-        print(f"   Content: {test_case['content'][:50]}{'...' if len(test_case['content']) > 50 else ''}")
+        _out(f"{i}. {test_case['name']}")
+        _out(f"   Title: {test_case['title'][:_PREVIEW_LEN]}{'...' if len(test_case['title']) > _PREVIEW_LEN else ''}")
+        _out(
+            f"   Content: {test_case['content'][:_PREVIEW_LEN]}"
+            f"{'...' if len(test_case['content']) > _PREVIEW_LEN else ''}"
+        )
 
         # Perform sanitization
         result = sanitizer.sanitize(test_case["title"], test_case["content"])
 
         if result.is_valid:
-            print("   ✅ VALID - Input accepted and sanitized")
+            _out("   ✅ VALID - Input accepted and sanitized")
             if result.sanitized_input:
-                print(
-                    f"   📝 Sanitized title: {result.sanitized_input.title[:50]}{'...' if len(result.sanitized_input.title) > 50 else ''}"
+                _out(
+                    f"   📝 Sanitized title: {result.sanitized_input.title[:_PREVIEW_LEN]}"
+                    f"{'...' if len(result.sanitized_input.title) > _PREVIEW_LEN else ''}"
                 )
-                print(
+                _out(
                     f"   📝 Original length: {result.sanitized_input.original_length}, Sanitized length: {result.sanitized_input.sanitized_length}"
                 )
         else:
-            print("   ❌ BLOCKED - Input rejected")
-            print(f"   🚨 Violations: {', '.join(result.violations)}")
+            _out("   ❌ BLOCKED - Input rejected")
+            _out(f"   🚨 Violations: {', '.join(result.violations)}")
 
-        print()
+        _out()
 
-    print("=== Custom Configuration Demo ===\n")
+    _out("=== Custom Configuration Demo ===\n")
 
     # Test with custom configuration
     custom_config = SanitizationConfig(max_title_length=100, max_content_length=500, allow_html=True)
     custom_sanitizer = InputSanitizer(custom_config)
 
-    print("Testing with custom config (max_title_length=100, allow_html=True):")
+    _out("Testing with custom config (max_title_length=100, allow_html=True):")
     result = custom_sanitizer.sanitize(
         "Machine Learning Tutorial with <em>emphasis</em>",
         "This is a <strong>short</strong> article about machine learning.",
     )
 
     if result.is_valid:
-        print("✅ VALID with HTML preserved")
+        _out("✅ VALID with HTML preserved")
         if result.sanitized_input:
-            print(f"📝 Sanitized title: {result.sanitized_input.title}")
-            print(f"📝 Sanitized content: {result.sanitized_input.content}")
+            _out(f"📝 Sanitized title: {result.sanitized_input.title}")
+            _out(f"📝 Sanitized content: {result.sanitized_input.content}")
     else:
-        print("❌ BLOCKED")
-        print(f"🚨 Violations: {', '.join(result.violations)}")
+        _out("❌ BLOCKED")
+        _out(f"🚨 Violations: {', '.join(result.violations)}")
 
-    print("\n=== Demo Complete ===")
+    _out("\n=== Demo Complete ===")
 
 
 if __name__ == "__main__":

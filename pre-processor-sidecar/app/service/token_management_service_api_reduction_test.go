@@ -10,10 +10,11 @@ import (
 	"testing"
 	"time"
 
+	"pre-processor-sidecar/models"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"pre-processor-sidecar/models"
 )
 
 // TestValidateAndRecoverToken_SkipsAPICallWhenTokenValid tests that API validation is skipped when token has sufficient time

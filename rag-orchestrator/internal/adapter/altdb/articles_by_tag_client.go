@@ -39,8 +39,9 @@ func (c *DataHubArticlesByTagClient) FetchArticlesByTag(ctx context.Context, tag
 
 	req := connect.NewRequest(&datahubv1.FetchArticlesByTagRequest{
 		TagName: tagName,
-		Limit:   int32(min(limit, math.MaxInt32)), //nolint:gosec // value clamped to MaxInt32
-		UserId:  userID,
+		// #nosec G115 -- value clamped to MaxInt32
+		Limit:  int32(min(limit, math.MaxInt32)),
+		UserId: userID,
 	})
 
 	resp, err := c.client.FetchArticlesByTag(ctx, req)

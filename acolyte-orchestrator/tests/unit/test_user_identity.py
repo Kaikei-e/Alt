@@ -193,7 +193,10 @@ async def test_server_stream_interceptor_sets_acting_user() -> None:
 def test_valid_verify_key_file_loads_an_ed25519_public_key(tmp_path: Path) -> None:
     key = Ed25519PrivateKey.generate()
     path = write_public_key(key, tmp_path / "verify.pem")
-    settings = Settings(backend_token_verify_key_file=str(path), backend_token_verification="enabled")
+    settings = Settings(
+        backend_token_verify_key_file=str(path),
+        backend_token_verification="enabled",  # noqa: S106 - test fixture value, not a credential
+    )
 
     loaded = settings.resolve_backend_token_verify_key()
 
@@ -208,14 +211,17 @@ def public_key_pem_of(public_key: Ed25519PublicKey) -> bytes:
 def test_missing_verify_key_file_raises_at_startup(tmp_path: Path) -> None:
     settings = Settings(
         backend_token_verify_key_file=str(tmp_path / "does_not_exist.pem"),
-        backend_token_verification="enabled",
+        backend_token_verification="enabled",  # noqa: S106 - test fixture value, not a credential
     )
     with pytest.raises(RuntimeError, match="missing or unreadable"):
         settings.resolve_backend_token_verify_key()
 
 
 def test_empty_verify_key_path_raises_at_startup() -> None:
-    settings = Settings(backend_token_verify_key_file="", backend_token_verification="enabled")
+    settings = Settings(
+        backend_token_verify_key_file="",
+        backend_token_verification="enabled",  # noqa: S106 - test fixture value, not a credential
+    )
     with pytest.raises(RuntimeError, match="BACKEND_TOKEN_VERIFY_KEY_FILE"):
         settings.resolve_backend_token_verify_key()
 
@@ -223,7 +229,10 @@ def test_empty_verify_key_path_raises_at_startup() -> None:
 def test_garbage_verify_key_file_raises_at_startup(tmp_path: Path) -> None:
     path = tmp_path / "garbage.pem"
     path.write_text("not a pem")
-    settings = Settings(backend_token_verify_key_file=str(path), backend_token_verification="enabled")
+    settings = Settings(
+        backend_token_verify_key_file=str(path),
+        backend_token_verification="enabled",  # noqa: S106 - test fixture value, not a credential
+    )
     with pytest.raises(RuntimeError, match="Ed25519"):
         settings.resolve_backend_token_verify_key()
 
@@ -234,7 +243,10 @@ def test_non_ed25519_verify_key_file_raises_at_startup(tmp_path: Path) -> None:
     path.write_bytes(
         rsa_public.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
     )
-    settings = Settings(backend_token_verify_key_file=str(path), backend_token_verification="enabled")
+    settings = Settings(
+        backend_token_verify_key_file=str(path),
+        backend_token_verification="enabled",  # noqa: S106 - test fixture value, not a credential
+    )
     with pytest.raises(RuntimeError, match="Ed25519"):
         settings.resolve_backend_token_verify_key()
 
@@ -246,7 +258,10 @@ def test_private_key_file_is_not_accepted_as_a_verify_key(tmp_path: Path) -> Non
             serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()
         )
     )
-    settings = Settings(backend_token_verify_key_file=str(path), backend_token_verification="enabled")
+    settings = Settings(
+        backend_token_verify_key_file=str(path),
+        backend_token_verification="enabled",  # noqa: S106 - test fixture value, not a credential
+    )
     with pytest.raises(RuntimeError, match="Ed25519"):
         settings.resolve_backend_token_verify_key()
 
@@ -261,11 +276,17 @@ def test_unsupported_key_type_in_verify_key_file_raises_a_startup_error(
         raise UnsupportedAlgorithm(msg)
 
     monkeypatch.setattr("acolyte.config.settings.serialization.load_pem_public_key", _unsupported)
-    settings = Settings(backend_token_verify_key_file=str(path), backend_token_verification="enabled")
+    settings = Settings(
+        backend_token_verify_key_file=str(path),
+        backend_token_verification="enabled",  # noqa: S106 - test fixture value, not a credential
+    )
     with pytest.raises(RuntimeError, match="Ed25519"):
         settings.resolve_backend_token_verify_key()
 
 
 def test_disabled_verification_returns_none() -> None:
-    settings = Settings(backend_token_verify_key_file="", backend_token_verification="disabled")
+    settings = Settings(
+        backend_token_verify_key_file="",
+        backend_token_verification="disabled",  # noqa: S106 - test fixture value, not a credential
+    )
     assert settings.resolve_backend_token_verify_key() is None

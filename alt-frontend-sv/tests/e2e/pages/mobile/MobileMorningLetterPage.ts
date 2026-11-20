@@ -40,9 +40,9 @@ export class MobileMorningLetterPage extends BasePage {
 	 */
 	async waitForChatReady(): Promise<void> {
 		// Wait for page to load first
-		await this.page
-			.waitForLoadState("networkidle", { timeout: 15000 })
-			.catch(() => {});
+		await expect(this.chatToggle.or(this.chatInput)).toBeVisible({
+			timeout: 15000,
+		});
 
 		// Mobile layout uses disclosure pattern — try to open it
 		const toggle = this.chatToggle;

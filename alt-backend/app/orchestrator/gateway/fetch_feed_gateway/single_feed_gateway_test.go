@@ -51,7 +51,8 @@ func TestSingleFeedGateway_FetchSingleFeed_LoggerNilCase(t *testing.T) {
 	}
 
 	// Verify it's an AppContextError
-	if appErr, ok := err.(*errors.AppContextError); ok {
+	appErr := &errors.AppContextError{}
+	if stderrors.As(err, &appErr) {
 		t.Logf("Success: Got expected AppContextError: %s", appErr.Message)
 	} else {
 		t.Errorf("Expected AppContextError, got %T", err)
@@ -79,7 +80,8 @@ func TestSingleFeedGateway_FetchSingleFeed_DatabaseNil(t *testing.T) {
 	}
 
 	// Verify error type
-	if appErr, ok := err.(*errors.AppContextError); ok {
+	appErr := &errors.AppContextError{}
+	if stderrors.As(err, &appErr) {
 		if appErr.Code != "DATABASE_ERROR" {
 			t.Errorf("Expected DATABASE_ERROR error code, got %s", appErr.Code)
 		}

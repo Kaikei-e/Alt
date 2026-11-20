@@ -188,15 +188,15 @@ impl Issuer for StickyIssuer {
     ) -> Result<(Vec<u8>, Vec<u8>), PkiError> {
         self.entered.fetch_add(1, Ordering::SeqCst);
         if let Some(rx) = self.gate.lock().await.take() {
+            #[expect(
+                clippy::let_underscore_must_use,
+                reason = "test gate unblocks whether sender fires or is dropped"
+            )]
             let _ = rx.await;
         }
         self.writes.fetch_add(1, Ordering::SeqCst);
         let nb = self.inner_nb;
-        Ok(self_signed_pem(
-            subject,
-            nb,
-            nb + Duration::from_secs(24 * 3600),
-        ))
+        Ok(self_signed_pem(subject, nb, nb + Duration::from_hours(24)))
     }
 }
 
@@ -251,7 +251,7 @@ async fn handle_stop_waits_for_in_flight_run_and_does_not_write_after() {
     let writes_before_release = sticky.writes.load(Ordering::SeqCst);
     let released = tokio::spawn(async move {
         tokio::time::sleep(Duration::from_millis(80)).await;
-        let _ = tx.send(());
+        tx.send(()).expect("release sticky issuer");
     });
     let start = tokio::time::Instant::now();
     h.stop().await;
@@ -294,7 +294,9 @@ async fn start_does_not_register_on_default_or_app_registry() {
     let default_body = {
         use prometheus::{Encoder, TextEncoder};
         let mut buf = Vec::new();
-        let _ = TextEncoder::new().encode(&prometheus::default_registry().gather(), &mut buf);
+        TextEncoder::new()
+            .encode(&prometheus::default_registry().gather(), &mut buf)
+            .expect("encode default registry");
         String::from_utf8(buf).unwrap_or_default()
     };
     assert!(
@@ -325,11 +327,7 @@ impl Issuer for StubNow {
         _sans: &[String],
     ) -> Result<(Vec<u8>, Vec<u8>), PkiError> {
         let nb = SystemTime::now();
-        Ok(self_signed_pem(
-            subject,
-            nb,
-            nb + Duration::from_secs(24 * 3600),
-        ))
+        Ok(self_signed_pem(subject, nb, nb + Duration::from_hours(24)))
     }
 }
 

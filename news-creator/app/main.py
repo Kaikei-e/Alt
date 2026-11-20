@@ -15,6 +15,7 @@ import asyncio
 import contextlib
 import logging
 import os
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Response
@@ -23,36 +24,36 @@ from prometheus_client import CONTENT_TYPE_LATEST, generate_latest, make_asgi_ap
 from news_creator.config.config import NewsCreatorConfig
 from news_creator.gateway.ollama_gateway import OllamaGateway
 from news_creator.gateway.redis_cache_gateway import NullCacheGateway, RedisCacheGateway
-from news_creator.port.cache_port import CachePort
-from news_creator.port.llm_provider_port import LLMProviderPort
-from news_creator.otel import (
-    init_otel_provider,
-    instrument_fastapi,
-    get_otel_logging_handler,
-)
-from news_creator.services.event_loop_lag_probe import run_event_loop_lag_probe
-from news_creator.services.model_warmup import ModelWarmupService
-from news_creator.usecase.summarize_usecase import SummarizeUsecase
-from news_creator.usecase.recap_summary_usecase import RecapSummaryUsecase
-from news_creator.usecase.recap_card_usecase import RecapCardUsecase
-from news_creator.usecase.theme_page_usecase import ThemePageUsecase
-from news_creator.usecase.expand_query_usecase import ExpandQueryUsecase
-from news_creator.usecase.plan_query_usecase import PlanQueryUsecase
-from news_creator.usecase.rerank_usecase import RerankUsecase
 from news_creator.handler import (
-    create_summarize_router,
-    create_generate_router,
-    create_recap_summary_router,
-    create_recap_card_router,
-    create_theme_page_router,
     create_expand_query_router,
+    create_generate_router,
     create_health_router,
+    create_recap_card_router,
+    create_recap_summary_router,
+    create_summarize_router,
+    create_theme_page_router,
 )
 from news_creator.handler.chat_handler import create_chat_router
 from news_creator.handler.morning_letter_handler import create_morning_letter_router
 from news_creator.handler.plan_query_handler import create_plan_query_router
 from news_creator.handler.rerank_handler import create_rerank_router
+from news_creator.otel import (
+    get_otel_logging_handler,
+    init_otel_provider,
+    instrument_fastapi,
+)
+from news_creator.port.cache_port import CachePort
+from news_creator.port.llm_provider_port import LLMProviderPort
+from news_creator.services.event_loop_lag_probe import run_event_loop_lag_probe
+from news_creator.services.model_warmup import ModelWarmupService
+from news_creator.usecase.expand_query_usecase import ExpandQueryUsecase
 from news_creator.usecase.morning_letter_usecase import MorningLetterUsecase
+from news_creator.usecase.plan_query_usecase import PlanQueryUsecase
+from news_creator.usecase.recap_card_usecase import RecapCardUsecase
+from news_creator.usecase.recap_summary_usecase import RecapSummaryUsecase
+from news_creator.usecase.rerank_usecase import RerankUsecase
+from news_creator.usecase.summarize_usecase import SummarizeUsecase
+from news_creator.usecase.theme_page_usecase import ThemePageUsecase
 from news_creator.utils.context_logger import (
     BusinessContextFilter,
     BusinessContextJSONFormatter,
@@ -91,7 +92,7 @@ logger = logging.getLogger(__name__)
 class DependencyContainer:
     """Dependency Injection Container for News Creator Service."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize all dependencies with proper layering."""
         # Config layer
         self.config = NewsCreatorConfig()
@@ -102,9 +103,15 @@ class DependencyContainer:
         # Distributed BE dispatch (optional, default OFF)
         self.llm_provider: LLMProviderPort
         if self.config.distributed_be_enabled:
-            from news_creator.gateway.distributing_gateway import DistributingGateway
-            from news_creator.gateway.remote_chat_driver import RemoteChatDriver
-            from news_creator.gateway.remote_health_checker import RemoteHealthChecker
+            from news_creator.gateway.distributing_gateway import (  # noqa: PLC0415 - optional distributed-BE module imported only when enabled
+                DistributingGateway,
+            )
+            from news_creator.gateway.remote_chat_driver import (  # noqa: PLC0415 - optional distributed-BE module imported only when enabled
+                RemoteChatDriver,
+            )
+            from news_creator.gateway.remote_health_checker import (  # noqa: PLC0415 - optional distributed-BE module imported only when enabled
+                RemoteHealthChecker,
+            )
 
             remote_driver = RemoteChatDriver(
                 timeout_seconds=self.config.distributed_be_timeout_seconds,
@@ -216,7 +223,7 @@ container = DependencyContainer()
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Application lifespan management."""
     await container.initialize()
     lag_probe_task = asyncio.create_task(
@@ -304,4 +311,4 @@ app.include_router(
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8001)  # nosec B104
+    uvicorn.run(app, host="0.0.0.0", port=8001)  # nosec B104  # noqa: S104 - container service intentionally binds all interfaces

@@ -44,8 +44,14 @@ func writeTestPKIWithHosts(t *testing.T, dir string, cn string, dnsNames []strin
 	if err != nil {
 		t.Fatal(err)
 	}
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = root.Close() }()
+
 	caPath = filepath.Join(dir, "ca.pem")
-	caOut, err := os.Create(caPath)
+	caOut, err := root.Create("ca.pem")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +81,7 @@ func writeTestPKIWithHosts(t *testing.T, dir string, cn string, dnsNames []strin
 		t.Fatal(err)
 	}
 	certPath = filepath.Join(dir, "cert.pem")
-	certOut, err := os.Create(certPath)
+	certOut, err := root.Create("cert.pem")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +93,7 @@ func writeTestPKIWithHosts(t *testing.T, dir string, cn string, dnsNames []strin
 	}
 
 	keyPath = filepath.Join(dir, "key.pem")
-	keyOut, err := os.Create(keyPath)
+	keyOut, err := root.Create("key.pem")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +122,7 @@ func TestDataHubComponents_KratosClientPresentsInternalAuthSecret(t *testing.T) 
 		t.Fatal(err)
 	}
 
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +174,7 @@ func TestDataHubComponents_MTLSClientValidWire(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -220,7 +226,7 @@ func TestDataHubComponents_MTLSClientRejectsWrongCA(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -268,7 +274,7 @@ func TestDataHubComponents_MTLSClientRejectsWrongHostname(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -317,7 +323,7 @@ func TestDataHubComponents_MTLSClientRejectsMissingClientCert(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -333,7 +339,12 @@ func TestDataHubComponents_MTLSClientRejectsMissingClientCert(t *testing.T) {
 	}()
 
 	// Client trusts CA, but presents NO client certificate (standard TLS client)
-	caPEM, err := os.ReadFile(caPath)
+	caRoot, err := os.OpenRoot(filepath.Dir(caPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = caRoot.Close() }()
+	caPEM, err := caRoot.ReadFile(filepath.Base(caPath))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -13,6 +13,9 @@ from recap_subworker.services.story_clusterer import (
     StoryClusterParams,
 )
 
+EXPECTED_SORTED_CLUSTER_COUNT = 4
+EXPECTED_PAIR_CLUSTER_SIZE = 2
+
 
 def _make_item(
     item_id: str,
@@ -24,7 +27,7 @@ def _make_item(
     return ClusterStoryItem(id=item_id, embedding=vec, published_at=dt, language=language)
 
 
-def test_story_clusterer_single_item():
+def test_story_clusterer_single_item() -> None:
     """Verify that a single item forms a cluster of size 1."""
     service = StoryClustererService()
     items = [_make_item("item-1", [1.0, 0.0, 0.0])]
@@ -38,7 +41,7 @@ def test_story_clusterer_single_item():
     assert np.isclose(response.clusters[0].centroid, [1.0, 0.0, 0.0]).all()
 
 
-def test_story_clusterer_time_decay_merge_vs_split():
+def test_story_clusterer_time_decay_merge_vs_split() -> None:
     """Verify that two near-identical vectors merge when published 0 days apart,
     but do not merge when published 30 days apart with time_decay_per_day=0.05.
     """
@@ -68,12 +71,12 @@ def test_story_clusterer_time_decay_merge_vs_split():
         _make_item("item-2", v2, "2026-10-01T00:00:00Z"),
     ]
     res_30_days = service.cluster_stories(items_30_days, params)
-    assert len(res_30_days.clusters) == 2
+    assert len(res_30_days.clusters) == len(items_30_days)
     assert res_30_days.clusters[0].member_ids == ["item-1"]
     assert res_30_days.clusters[1].member_ids == ["item-2"]
 
 
-def test_story_clusterer_determinism():
+def test_story_clusterer_determinism() -> None:
     """Verify that identical input generates strictly identical output across runs."""
     service = StoryClustererService()
     rng = np.random.default_rng(42)
@@ -103,7 +106,7 @@ def test_story_clusterer_determinism():
     assert run1.model_dump() == run2.model_dump()
 
 
-def test_story_clusterer_sorting_order():
+def test_story_clusterer_sorting_order() -> None:
     """Verify clusters are sorted by size descending, then by smallest member_id
     ascending, and member_ids within each cluster are sorted.
     """
@@ -143,26 +146,19 @@ def test_story_clusterer_sorting_order():
     )
     response = service.cluster_stories(items, params)
 
-    assert len(response.clusters) == 4
-
-    # Cluster 0: size 3, member_ids sorted
-    assert response.clusters[0].cluster_id == 0
-    assert response.clusters[0].member_ids == ["uuid-3", "uuid-7", "uuid-9"]
-
-    # Cluster 1: size 2, smallest member uuid-1
-    assert response.clusters[1].cluster_id == 1
-    assert response.clusters[1].member_ids == ["uuid-1", "uuid-5"]
-
-    # Cluster 2: size 2, smallest member uuid-2
-    assert response.clusters[2].cluster_id == 2
-    assert response.clusters[2].member_ids == ["uuid-2", "uuid-6"]
-
-    # Cluster 3: size 1, smallest member uuid-0
-    assert response.clusters[3].cluster_id == 3
-    assert response.clusters[3].member_ids == ["uuid-0"]
+    expected_clusters = [
+        ["uuid-3", "uuid-7", "uuid-9"],
+        ["uuid-1", "uuid-5"],
+        ["uuid-2", "uuid-6"],
+        ["uuid-0"],
+    ]
+    assert len(response.clusters) == len(expected_clusters)
+    for expected_id, expected_members in enumerate(expected_clusters):
+        assert response.clusters[expected_id].cluster_id == expected_id
+        assert response.clusters[expected_id].member_ids == expected_members
 
 
-def test_story_clusterer_centroid_re_normalization():
+def test_story_clusterer_centroid_re_normalization() -> None:
     """Verify that centroid is the L2-re-normalized mean of member embeddings."""
     service = StoryClustererService()
     v1 = [1.0, 0.0, 0.0]
@@ -185,7 +181,7 @@ def test_story_clusterer_centroid_re_normalization():
     assert np.allclose(centroid, expected, atol=1e-5)
 
 
-def test_story_clusterer_singletons_preserved():
+def test_story_clusterer_singletons_preserved() -> None:
     """Verify that singletons are preserved as clusters of size 1 (no noise bucket)."""
     service = StoryClustererService()
     # Three orthogonal vectors, threshold = 0.8 (distance_threshold = 0.2)
@@ -202,12 +198,12 @@ def test_story_clusterer_singletons_preserved():
     )
     response = service.cluster_stories(items, params)
 
-    assert len(response.clusters) == 3
+    assert len(response.clusters) == len(items)
     for cluster in response.clusters:
         assert len(cluster.member_ids) == 1
 
 
-def test_story_clusterer_min_cluster_size_filter():
+def test_story_clusterer_min_cluster_size_filter() -> None:
     """Verify that min_cluster_size > 1 filters out singletons."""
     service = StoryClustererService()
     items = [
@@ -226,7 +222,7 @@ def test_story_clusterer_min_cluster_size_filter():
     assert response.clusters[0].member_ids == ["item-1", "item-2"]
 
 
-def test_story_clusterer_min_cluster_size_by_language_filtering():
+def test_story_clusterer_min_cluster_size_by_language_filtering() -> None:
     """Verify majority-language min cluster size filtering logic."""
     service = StoryClustererService()
     v_ja = [1.0, 0.0, 0.0]
@@ -288,7 +284,7 @@ def test_story_clusterer_min_cluster_size_by_language_filtering():
     assert len(res_c.clusters) == 0
 
 
-def test_story_clusterer_single_item_with_language_filter():
+def test_story_clusterer_single_item_with_language_filter() -> None:
     """Verify single-item (n=1) edge case with language filtering."""
     service = StoryClustererService()
     item_ja = _make_item("ja-single", [1.0, 0.0, 0.0], language="ja")
@@ -309,7 +305,7 @@ def test_story_clusterer_single_item_with_language_filter():
     assert res_keep.clusters[0].member_ids == ["ja-single"]
 
 
-def test_story_clusterer_language_keys_case_insensitive():
+def test_story_clusterer_language_keys_case_insensitive() -> None:
     """Verify that min_cluster_size_by_language keys are matched case-insensitively."""
     service = StoryClustererService()
     items = [
@@ -327,7 +323,7 @@ def test_story_clusterer_language_keys_case_insensitive():
     assert len(res.clusters) == 0
 
 
-def test_story_clusterer_majority_language_tie_break_alphabetical():
+def test_story_clusterer_majority_language_tie_break_alphabetical() -> None:
     """Verify that ties in language counts break canonically by alphabetical order."""
     service = StoryClustererService()
     # 1 'ja', 1 'en' -> tie in count (1 vs 1). 'en' < 'ja' alphabetically -> majority is 'en'
@@ -357,7 +353,7 @@ def test_story_clusterer_majority_language_tie_break_alphabetical():
     assert len(res_en_first.clusters) == 0
 
 
-def test_story_clusterer_distance_exceeds_one_no_upper_clip():
+def test_story_clusterer_distance_exceeds_one_no_upper_clip() -> None:
     """Verify that distances > 1.0 are not clipped at 1.0, preventing far-apart items from collapsing."""
     service = StoryClustererService()
     v1 = [1.0, 0.0, 0.0]
@@ -377,6 +373,6 @@ def test_story_clusterer_distance_exceeds_one_no_upper_clip():
         time_decay_per_day=0.05,
     )
     res = service.cluster_stories(items, params)
-    assert len(res.clusters) == 2
+    assert len(res.clusters) == len(items)
     assert res.clusters[0].member_ids == ["item-1"]
     assert res.clusters[1].member_ids == ["item-2"]

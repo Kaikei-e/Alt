@@ -4,13 +4,23 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from collections.abc import Iterable, Sequence
 from dataclasses import replace
-from uuid import uuid4
+from types import TracebackType
+from typing import TYPE_CHECKING, Never, cast
+from unittest.mock import MagicMock
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy.exc import InterfaceError
+from sqlalchemy.sql import ClauseElement, Executable
+from structlog.testing import capture_logs
 
-from recap_subworker.db.dao import RunRecord
+if TYPE_CHECKING:
+    from recap_subworker.services.pipeline import EvidencePipeline
+    from recap_subworker.services.pipeline_runner import PipelineTaskRunner
+
+from recap_subworker.db.dao import RunRecord, SubworkerDAO
 from recap_subworker.domain.models import (
     ClassificationJobPayload,
     ClusterDocument,
@@ -36,47 +46,77 @@ from recap_subworker.services.run_manager import (
     _hash_payload,
 )
 
+INSERTED_RUN_ID = 7
+TIMED_OUT_RUN_ID = 11
+MIN_REPRESENTATIVE_CHARS = 20
+EXPECTED_SESSION_COUNT = 3
+
+
+class _UnexpectedCallError(AssertionError):
+    """Raised when a test stub is unexpectedly invoked or not cancelled."""
+
+    @classmethod
+    def predict_batch_unexpected(cls) -> _UnexpectedCallError:
+        return cls("predict_batch should not be called in this test")
+
+    @classmethod
+    def predict_batch_not_cancelled(cls) -> _UnexpectedCallError:
+        return cls("predict_batch must be cancelled, not completed")
+
+    @classmethod
+    def run_not_cancelled(cls) -> _UnexpectedCallError:
+        return cls("run must be cancelled, not completed")
+
 
 class DummySessionContext:
-    def __init__(self, session):
+    def __init__(self, session: FakeSession | None) -> None:
         self.session = session
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> FakeSession | None:
         return self.session
 
-    async def __aexit__(self, exc_type, exc, tb):
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> bool:
         return False
 
 
 class FakeSession:
-    def __init__(self):
+    def __init__(self) -> None:
         self.commit_called = False
         self.rollback_called = False
 
-    async def commit(self):
+    async def commit(self) -> None:
         self.commit_called = True
 
-    async def rollback(self):
+    async def rollback(self) -> None:
         self.rollback_called = True
 
 
 class FakeDAO:
-    def __init__(self, session):
+    def __init__(self, session: FakeSession | None) -> None:
         self.session = session
-        self.inserted = []
+        self.inserted: list[object] = []
         self.idempotent_record: RunRecord | None = None
         self.running = False
         self.fetched_record: RunRecord | None = None
-        self.persisted_clusters = None
-        self.diagnostic_entries = None
-        self.success_status = None
-        self.failure_status = None
+        self.persisted_clusters: tuple[int, list[object]] | None = None
+        self.diagnostic_entries: tuple[int, list[object]] | None = None
+        self.success_status: tuple[int, int, str] | None = None
+        self.failure_status: tuple[int, str, str] | None = None
         self.orphan_sweeps: list[str] = []
 
-    async def find_run_by_idempotency(self, *args, **kwargs):
+    async def find_run_by_idempotency(
+        self,
+        *args: object,
+        **kwargs: object,
+    ) -> RunRecord | None:
         return self.idempotent_record
 
-    async def fail_orphaned_runs(self, error_message):
+    async def fail_orphaned_runs(self, error_message: str) -> int:
         self.orphan_sweeps.append(error_message)
         if self.idempotent_record is None or self.idempotent_record.status != "running":
             return 0
@@ -85,46 +125,57 @@ class FakeDAO:
         )
         return 1
 
-    async def has_running_run(self, *args, **kwargs):
+    async def has_running_run(
+        self,
+        *args: object,
+        **kwargs: object,
+    ) -> bool:
         return self.running
 
-    async def insert_run(self, run):
+    async def insert_run(
+        self,
+        run: RunRecord | RunSubmission,
+    ) -> int:
         self.inserted.append(run)
-        return 7
+        return INSERTED_RUN_ID
 
-    async def fetch_run(self, run_id):
+    async def fetch_run(self, run_id: int) -> RunRecord | None:
         return self.fetched_record
 
-    async def insert_clusters(self, run_id, clusters):
-        self.persisted_clusters = (run_id, clusters)
+    async def insert_clusters(self, run_id: int, clusters: Sequence[object]) -> None:
+        self.persisted_clusters = (run_id, list(clusters))
 
-    async def upsert_diagnostics(self, run_id, entries):
+    async def upsert_diagnostics(self, run_id: int, entries: Iterable[object]) -> None:
         self.diagnostic_entries = (run_id, list(entries))
 
-    async def insert_system_metrics(self, metric_type, metrics, job_id=None):
+    async def insert_system_metrics(
+        self, metric_type: str, metrics: dict[str, object], job_id: UUID | None = None
+    ) -> None:
         # No-op for tests; just store last call
         self.system_metrics = (metric_type, metrics, job_id)
 
-    async def mark_run_success(self, run_id, cluster_count, payload, status="succeeded"):
+    async def mark_run_success(
+        self, run_id: int, cluster_count: int, payload: object, status: str = "succeeded"
+    ) -> None:
         self.success_status = (run_id, cluster_count, status)
 
-    async def mark_run_failure(self, run_id, status, error_message):
+    async def mark_run_failure(self, run_id: int, status: str, error_message: str) -> None:
         self.failure_status = (run_id, status, error_message)
 
 
 class PipelineRunnerStub:
-    def __init__(self, response, delay: float = 0.0):
+    def __init__(self, response: EvidenceResponse, delay: float = 0.0) -> None:
         self.response = response
         self.delay = delay
         self.called_with: list[EvidenceRequest] = []
 
-    async def run(self, request):
+    async def run(self, request: EvidenceRequest) -> EvidenceResponse:
         self.called_with.append(request)
         if self.delay:
             await asyncio.sleep(self.delay)
         return self.response
 
-    async def warmup(self):  # pragma: no cover - not used in tests
+    async def warmup(self) -> None:  # pragma: no cover - not used in tests
         return None
 
 
@@ -133,8 +184,10 @@ class ClassificationRunnerStub:
     non-None sentinel (e.g. idempotency short-circuit paths that never
     actually invoke predict_batch)."""
 
-    async def predict_batch(self, texts):  # pragma: no cover - not expected to run
-        raise AssertionError("predict_batch should not be called in this test")
+    async def predict_batch(
+        self, texts: list[str]
+    ) -> Never:  # pragma: no cover - not expected to run
+        raise _UnexpectedCallError.predict_batch_unexpected()
 
 
 @pytest.fixture
@@ -153,13 +206,13 @@ def make_manager(
     session: FakeSession,
     *,
     settings: Settings | None = None,
-    pipeline=None,
-    pipeline_runner=None,
+    pipeline: EvidencePipeline | None = None,
+    pipeline_runner: PipelineTaskRunner | None = None,
 ) -> RunManager:
-    def session_factory():
+    def session_factory() -> DummySessionContext:
         return DummySessionContext(session)
 
-    def dao_factory(session):
+    def dao_factory(session: object) -> FakeDAO:
         return dao
 
     return RunManager(
@@ -172,13 +225,13 @@ def make_manager(
 
 
 @pytest.mark.asyncio
-async def test_create_run_inserts_and_schedules(payload):
+async def test_create_run_inserts_and_schedules(payload: ClusterJobPayload) -> None:
     session = FakeSession()
     dao = FakeDAO(session)
     manager = make_manager(dao, session)
     scheduled = {}
 
-    def recorder(record):
+    def recorder(record: RunRecord) -> None:
         scheduled["run_id"] = record.run_id
 
     manager._schedule_background = recorder  # type: ignore[attr-defined]
@@ -186,14 +239,14 @@ async def test_create_run_inserts_and_schedules(payload):
 
     record = await manager.create_run(submission)
 
-    assert record.run_id == 7
+    assert record.run_id == INSERTED_RUN_ID
     assert session.commit_called
-    assert scheduled["run_id"] == 7
+    assert scheduled["run_id"] == INSERTED_RUN_ID
     assert dao.inserted
 
 
 @pytest.mark.asyncio
-async def test_create_run_reuses_existing_idempotent(payload):
+async def test_create_run_reuses_existing_idempotent(payload: ClusterJobPayload) -> None:
     session = FakeSession()
     dao = FakeDAO(session)
     job_id = uuid4()
@@ -225,7 +278,7 @@ async def test_create_run_reuses_existing_idempotent(payload):
 
 
 @pytest.mark.asyncio
-async def test_create_run_retries_failed_idempotent(payload):
+async def test_create_run_retries_failed_idempotent(payload: ClusterJobPayload) -> None:
     session = FakeSession()
     dao = FakeDAO(session)
     existing = RunRecord(
@@ -242,7 +295,7 @@ async def test_create_run_retries_failed_idempotent(payload):
     manager = make_manager(dao, session)
     scheduled = {}
 
-    def recorder(record):
+    def recorder(record: RunRecord) -> None:
         scheduled["run_id"] = record.run_id
 
     manager._schedule_background = recorder  # type: ignore[attr-defined]
@@ -252,14 +305,14 @@ async def test_create_run_retries_failed_idempotent(payload):
 
     record = await manager.create_run(submission)
 
-    assert record.run_id == 7
+    assert record.run_id == INSERTED_RUN_ID
     assert session.commit_called
     assert dao.inserted
-    assert scheduled["run_id"] == 7
+    assert scheduled["run_id"] == INSERTED_RUN_ID
 
 
 @pytest.mark.asyncio
-async def test_create_run_detects_idempotency_mismatch(payload):
+async def test_create_run_detects_idempotency_mismatch(payload: ClusterJobPayload) -> None:
     session = FakeSession()
     dao = FakeDAO(session)
     dao.idempotent_record = RunRecord(
@@ -282,7 +335,7 @@ async def test_create_run_detects_idempotency_mismatch(payload):
 
 
 @pytest.mark.asyncio
-async def test_create_run_blocks_when_running(payload):
+async def test_create_run_blocks_when_running(payload: ClusterJobPayload) -> None:
     session = FakeSession()
     dao = FakeDAO(session)
     dao.running = True
@@ -294,7 +347,7 @@ async def test_create_run_blocks_when_running(payload):
 
 
 @pytest.mark.asyncio
-async def test_create_classification_run_retries_failed_idempotent():
+async def test_create_classification_run_retries_failed_idempotent() -> None:
     session = FakeSession()
     dao = FakeDAO(session)
     payload = ClassificationJobPayload(texts=["classification text"])
@@ -320,13 +373,13 @@ async def test_create_classification_run_retries_failed_idempotent():
     )
     record = await manager.create_classification_run(submission)
 
-    assert record.run_id == 7
+    assert record.run_id == INSERTED_RUN_ID
     assert session.commit_called
     assert dao.inserted
 
 
 @pytest.mark.asyncio
-async def test_get_run_uses_dao(payload):
+async def test_get_run_uses_dao(payload: ClusterJobPayload) -> None:
     session = FakeSession()
     dao = FakeDAO(session)
     record = RunRecord(
@@ -349,7 +402,7 @@ async def test_get_run_uses_dao(payload):
 
 
 @pytest.mark.asyncio
-async def test_process_run_persists_clusters(payload):
+async def test_process_run_persists_clusters(payload: ClusterJobPayload) -> None:
     session = FakeSession()
     dao = FakeDAO(session)
     job_id = uuid4()
@@ -391,10 +444,10 @@ async def test_process_run_persists_clusters(payload):
     )
 
     class PipelineStub:
-        def __init__(self, response):
+        def __init__(self, response: EvidenceResponse) -> None:
             self.response = response
 
-        def run(self, request):
+        def run(self, request: EvidenceRequest) -> EvidenceResponse:
             return self.response
 
     manager = RunManager(
@@ -412,7 +465,7 @@ async def test_process_run_persists_clusters(payload):
 
 
 @pytest.mark.asyncio
-async def test_process_run_uses_pipeline_runner(payload):
+async def test_process_run_uses_pipeline_runner(payload: ClusterJobPayload) -> None:
     session = FakeSession()
     dao = FakeDAO(session)
     job_id = uuid4()
@@ -437,7 +490,9 @@ async def test_process_run_uses_pipeline_runner(payload):
     )
     runner = PipelineRunnerStub(pipeline_response)
     settings = Settings(max_background_runs=1, pipeline_mode="processpool")
-    manager = make_manager(dao, session, settings=settings, pipeline_runner=runner)
+    manager = make_manager(
+        dao, session, settings=settings, pipeline_runner=cast("PipelineTaskRunner", runner)
+    )
 
     await manager._process_run(9)
 
@@ -446,12 +501,12 @@ async def test_process_run_uses_pipeline_runner(payload):
 
 
 @pytest.mark.asyncio
-async def test_process_run_times_out(payload):
+async def test_process_run_times_out(payload: ClusterJobPayload) -> None:
     session = FakeSession()
     dao = FakeDAO(session)
     job_id = uuid4()
     record = RunRecord(
-        run_id=11,
+        run_id=TIMED_OUT_RUN_ID,
         job_id=job_id,
         genre="ai",
         status="running",
@@ -471,18 +526,20 @@ async def test_process_run_times_out(payload):
     )
     runner = PipelineRunnerStub(pipeline_response, delay=0.05)
     settings = Settings(max_background_runs=1, pipeline_mode="processpool")
-    manager = make_manager(dao, session, settings=settings, pipeline_runner=runner)
+    manager = make_manager(
+        dao, session, settings=settings, pipeline_runner=cast("PipelineTaskRunner", runner)
+    )
     manager._run_timeout = 0.01
 
-    await manager._process_run(11)
+    await manager._process_run(TIMED_OUT_RUN_ID)
 
     assert dao.failure_status is not None
-    assert dao.failure_status[0] == 11
+    assert dao.failure_status[0] == TIMED_OUT_RUN_ID
     assert "timed out" in dao.failure_status[2]
 
 
 @pytest.mark.asyncio
-async def test_process_run_filters_short_sentences_in_response(payload):
+async def test_process_run_filters_short_sentences_in_response(payload: ClusterJobPayload) -> None:
     """Test that run manager filters out short sentences from API response without failing."""
     session = FakeSession()
     dao = FakeDAO(session)
@@ -529,7 +586,9 @@ async def test_process_run_filters_short_sentences_in_response(payload):
     )
     runner = PipelineRunnerStub(pipeline_response)
     settings = Settings(max_background_runs=1, pipeline_mode="processpool")
-    manager = make_manager(dao, session, settings=settings, pipeline_runner=runner)
+    manager = make_manager(
+        dao, session, settings=settings, pipeline_runner=cast("PipelineTaskRunner", runner)
+    )
 
     # Should not raise ValidationError
     await manager._process_run(12)
@@ -541,7 +600,7 @@ async def test_process_run_filters_short_sentences_in_response(payload):
 
 
 @pytest.mark.asyncio
-async def test_convert_cluster_to_api_filters_short_sentences():
+async def test_convert_cluster_to_api_filters_short_sentences() -> None:
     """Test that _convert_cluster_to_api filters out short sentences."""
     session = FakeSession()
     dao = FakeDAO(session)
@@ -575,9 +634,10 @@ async def test_convert_cluster_to_api_filters_short_sentences():
     result = manager._convert_cluster_to_api(cluster)
 
     # Should only include sentences with length >= 20
-    assert len(result.representatives) == 2
+    expected_valid_count = 2
+    assert len(result.representatives) == expected_valid_count
     for rep in result.representatives:
-        assert len(rep.sentence_text) >= 20
+        assert len(rep.sentence_text) >= MIN_REPRESENTATIVE_CHARS
 
 
 class BlockingClassificationRunnerStub:
@@ -586,10 +646,10 @@ class BlockingClassificationRunnerStub:
     def __init__(self) -> None:
         self.started = asyncio.Event()
 
-    async def predict_batch(self, texts):
+    async def predict_batch(self, texts: list[str]) -> Never:
         self.started.set()
         await asyncio.sleep(3600)
-        raise AssertionError("predict_batch must be cancelled, not completed")
+        raise _UnexpectedCallError.predict_batch_not_cancelled()
 
 
 class BlockingPipelineRunnerStub:
@@ -598,17 +658,19 @@ class BlockingPipelineRunnerStub:
     def __init__(self) -> None:
         self.started = asyncio.Event()
 
-    async def run(self, request):
+    async def run(self, request: EvidenceRequest) -> Never:
         self.started.set()
         await asyncio.sleep(3600)
-        raise AssertionError("run must be cancelled, not completed")
+        raise _UnexpectedCallError.run_not_cancelled()
 
-    async def warmup(self):  # pragma: no cover - not used in tests
+    async def warmup(self) -> None:  # pragma: no cover - not used in tests
         return None
 
 
 @pytest.mark.asyncio
-async def test_create_run_sweeps_orphaned_running_run_from_previous_process(payload):
+async def test_create_run_sweeps_orphaned_running_run_from_previous_process(
+    payload: ClusterJobPayload,
+) -> None:
     session = FakeSession()
     dao = FakeDAO(session)
     job_id = uuid4()
@@ -630,7 +692,7 @@ async def test_create_run_sweeps_orphaned_running_run_from_previous_process(payl
     record = await manager.create_run(submission)
 
     assert dao.orphan_sweeps, "orphaned 'running' rows must be swept before the idempotency lookup"
-    assert record.run_id == 7, "a zombie 'running' run must not be reused"
+    assert record.run_id == INSERTED_RUN_ID, "a zombie 'running' run must not be reused"
     assert dao.inserted
 
     await manager.create_run(submission)
@@ -639,7 +701,9 @@ async def test_create_run_sweeps_orphaned_running_run_from_previous_process(payl
 
 
 @pytest.mark.asyncio
-async def test_create_classification_run_sweeps_orphaned_running_run_from_previous_process():
+async def test_create_classification_run_sweeps_orphaned_running_run_from_previous_process() -> (
+    None
+):
     session = FakeSession()
     dao = FakeDAO(session)
     job_id = uuid4()
@@ -664,20 +728,20 @@ async def test_create_classification_run_sweeps_orphaned_running_run_from_previo
     record = await manager.create_classification_run(submission)
 
     assert dao.orphan_sweeps, "orphaned 'running' rows must be swept before the idempotency lookup"
-    assert record.run_id == 7, "a zombie 'running' run must not be reused"
+    assert record.run_id == INSERTED_RUN_ID, "a zombie 'running' run must not be reused"
     assert dao.inserted
 
     await manager.shutdown()
 
 
 @pytest.mark.asyncio
-async def test_shutdown_marks_cancelled_classification_run_failed():
+async def test_shutdown_marks_cancelled_classification_run_failed() -> None:
     session = FakeSession()
     dao = FakeDAO(session)
     job_id = uuid4()
     payload = ClassificationJobPayload(texts=["classification text"])
     dao.fetched_record = RunRecord(
-        run_id=7,
+        run_id=INSERTED_RUN_ID,
         job_id=job_id,
         genre="classification",
         status="running",
@@ -698,17 +762,17 @@ async def test_shutdown_marks_cancelled_classification_run_failed():
     await manager.shutdown()
 
     assert dao.failure_status is not None, "a cancelled run must not stay 'running'"
-    assert dao.failure_status[0] == 7
+    assert dao.failure_status[0] == INSERTED_RUN_ID
     assert dao.failure_status[1] == "failed"
 
 
 @pytest.mark.asyncio
-async def test_shutdown_marks_cancelled_cluster_run_failed(payload):
+async def test_shutdown_marks_cancelled_cluster_run_failed(payload: ClusterJobPayload) -> None:
     session = FakeSession()
     dao = FakeDAO(session)
     job_id = uuid4()
     dao.fetched_record = RunRecord(
-        run_id=7,
+        run_id=INSERTED_RUN_ID,
         job_id=job_id,
         genre="ai",
         status="running",
@@ -719,7 +783,9 @@ async def test_shutdown_marks_cancelled_cluster_run_failed(payload):
     )
     runner = BlockingPipelineRunnerStub()
     settings = Settings(max_background_runs=1, pipeline_mode="processpool")
-    manager = make_manager(dao, session, settings=settings, pipeline_runner=runner)
+    manager = make_manager(
+        dao, session, settings=settings, pipeline_runner=cast("PipelineTaskRunner", runner)
+    )
     submission = RunSubmission(job_id=job_id, genre="ai", payload=payload, idempotency_key=None)
 
     await manager.create_run(submission)
@@ -727,15 +793,17 @@ async def test_shutdown_marks_cancelled_cluster_run_failed(payload):
     await manager.shutdown()
 
     assert dao.failure_status is not None, "a cancelled run must not stay 'running'"
-    assert dao.failure_status[0] == 7
+    assert dao.failure_status[0] == INSERTED_RUN_ID
     assert dao.failure_status[1] == "failed"
 
 
 @pytest.mark.asyncio
-async def test_process_run_marks_failed_when_connection_closed_on_mark_success(payload):
+async def test_process_run_marks_failed_when_connection_closed_on_mark_success(
+    payload: ClusterJobPayload,
+) -> None:
     sessions: list[FakeSession] = []
 
-    def session_factory():
+    def session_factory() -> DummySessionContext:
         s = FakeSession()
         sessions.append(s)
         return DummySessionContext(s)
@@ -753,10 +821,12 @@ async def test_process_run_marks_failed_when_connection_closed_on_mark_success(p
         error_message=None,
     )
 
-    async def _failing_mark_success(run_id, cluster_count, response_payload, status="succeeded"):
+    async def _failing_mark_success(
+        run_id: int, cluster_count: int, response_payload: object, status: str = "succeeded"
+    ) -> Never:
         raise InterfaceError("UPDATE", {}, Exception("connection is closed"))
 
-    async def _recording_mark_failure(run_id, status, error_message):
+    async def _recording_mark_failure(run_id: int, status: str, error_message: str) -> None:
         dao.failure_status = (run_id, status, error_message)
         if dao.fetched_record is not None:
             dao.fetched_record = replace(
@@ -790,24 +860,27 @@ async def test_process_run_marks_failed_when_connection_closed_on_mark_success(p
     assert dao.failure_status is not None
     assert dao.failure_status[0] == 1
     assert dao.failure_status[1] == "failed"
-    assert len(sessions) == 3
+    assert len(sessions) == EXPECTED_SESSION_COUNT
     assert sessions[-1].commit_called
 
 
 @pytest.mark.asyncio
-async def test_process_classification_run_marks_failed_when_connection_closed_on_mark_success():
+async def test_process_classification_run_marks_failed_when_connection_closed_on_mark_success() -> (
+    None
+):
     sessions: list[FakeSession] = []
 
-    def session_factory():
+    def session_factory() -> DummySessionContext:
         s = FakeSession()
         sessions.append(s)
         return DummySessionContext(s)
 
     dao = FakeDAO(None)
     job_id = uuid4()
+    target_run_id = 2
     payload = ClassificationJobPayload(texts=["classification text"])
     dao.fetched_record = RunRecord(
-        run_id=2,
+        run_id=target_run_id,
         job_id=job_id,
         genre="classification",
         status="running",
@@ -817,10 +890,12 @@ async def test_process_classification_run_marks_failed_when_connection_closed_on
         error_message=None,
     )
 
-    async def _failing_mark_success(run_id, cluster_count, response_payload, status="succeeded"):
+    async def _failing_mark_success(
+        run_id: int, cluster_count: int, response_payload: object, status: str = "succeeded"
+    ) -> Never:
         raise InterfaceError("UPDATE", {}, Exception("underlying connection is closed"))
 
-    async def _recording_mark_failure(run_id, status, error_message):
+    async def _recording_mark_failure(run_id: int, status: str, error_message: str) -> None:
         dao.failure_status = (run_id, status, error_message)
         if dao.fetched_record is not None:
             dao.fetched_record = replace(
@@ -831,7 +906,7 @@ async def test_process_classification_run_marks_failed_when_connection_closed_on
     dao.mark_run_failure = _recording_mark_failure  # type: ignore[method-assign]
 
     class _OkClassificationRunner:
-        async def predict_batch(self, texts):
+        async def predict_batch(self, texts: list[str]) -> list[dict[str, object]]:
             return [{"top_genre": "ai", "confidence": 0.9, "scores": {"ai": 0.9}}]
 
     manager = RunManager(
@@ -842,39 +917,39 @@ async def test_process_classification_run_marks_failed_when_connection_closed_on
     )
 
     with contextlib.suppress(InterfaceError):
-        await manager._process_classification_run(2)
+        await manager._process_classification_run(target_run_id)
 
     assert dao.fetched_record is not None
     assert dao.fetched_record.status == "failed"
     assert dao.failure_status is not None
-    assert dao.failure_status[0] == 2
+    assert dao.failure_status[0] == target_run_id
     assert dao.failure_status[1] == "failed"
-    assert len(sessions) == 3
+    assert len(sessions) == EXPECTED_SESSION_COUNT
     assert sessions[-1].commit_called
 
 
 @pytest.mark.asyncio
-async def test_handle_failure_does_not_overwrite_succeeded_run():
-    from unittest.mock import MagicMock
-
-    from structlog.testing import capture_logs
-
-    from recap_subworker.db.dao import SubworkerDAO
-
-    row: dict[str, object] = {"id": 3, "status": "succeeded", "error_message": None}
+async def test_handle_failure_does_not_overwrite_succeeded_run() -> None:
+    target_run_id = 3
+    row: dict[str, object] = {"id": target_run_id, "status": "succeeded", "error_message": None}
 
     class _StatusAwareSession(FakeSession):
-        async def execute(self, stmt):
+        async def execute(
+            self,
+            stmt: Executable,
+        ) -> MagicMock:
+            assert isinstance(stmt, ClauseElement)
             compiled = stmt.compile()
             sql = str(compiled)
             params = compiled.params
+            assert params is not None
             result = MagicMock()
             if "AND recap_subworker_runs.status = " in sql and "running" in params.values():
                 result.all = MagicMock(return_value=[])
                 return result
             row["status"] = "failed"
             row["error_message"] = "connection is closed"
-            result.all = MagicMock(return_value=[(3,)])
+            result.all = MagicMock(return_value=[(target_run_id,)])
             return result
 
     session = _StatusAwareSession()
@@ -885,9 +960,9 @@ async def test_handle_failure_does_not_overwrite_succeeded_run():
     )
 
     with capture_logs() as cap_logs:
-        await manager._handle_failure(3, "connection is closed")
+        await manager._handle_failure(target_run_id, "connection is closed")
 
     assert row["status"] == "succeeded"
     assert row["error_message"] is None
     assert session.commit_called
-    assert any(log.get("run_id") == 3 for log in cap_logs)
+    assert any(log.get("run_id") == target_run_id for log in cap_logs)

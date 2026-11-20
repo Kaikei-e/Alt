@@ -10,9 +10,13 @@ See ADR-176 for details on this issue.
 
 import sys
 from collections import Counter
+from collections.abc import Callable
+from typing import cast
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+from tag_extractor.extract import TagExtractionConfig, TagExtractor
 
 
 # Mock sklearn.feature_extraction.text.CountVectorizer for test environments
@@ -20,7 +24,13 @@ import pytest
 class MockCountVectorizer:
     """Mock CountVectorizer that tracks initialization parameters."""
 
-    def __init__(self, lowercase=True, token_pattern=None, analyzer=None, **kwargs):
+    def __init__(
+        self,
+        lowercase: bool = True,
+        token_pattern: str | None = None,
+        analyzer: Callable[[str], list[str]] | str | None = None,
+        **kwargs: object,
+    ) -> None:
         self.lowercase = lowercase
         self.token_pattern = token_pattern
         self.analyzer = analyzer
@@ -47,11 +57,9 @@ class TestJapaneseKeyBERTScoringUppercase:
     """
 
     @pytest.fixture
-    def extractor(self):
+    def extractor(self) -> TagExtractor:
         """Create TagExtractor with mocked embedding model but real KeyBERT."""
         with patch("tag_extractor.extract.TagExtractor._lazy_load_models"):
-            from tag_extractor.extract import TagExtractionConfig, TagExtractor
-
             config = TagExtractionConfig(use_japanese_semantic=True)
             extractor = TagExtractor(config=config)
             extractor._models_loaded = True
@@ -63,7 +71,7 @@ class TestJapaneseKeyBERTScoringUppercase:
 
             return extractor
 
-    def test_uppercase_candidates_are_scored(self, extractor):
+    def test_uppercase_candidates_are_scored(self, extractor: TagExtractor) -> None:
         """
         Test that candidates with uppercase letters are properly scored.
 
@@ -82,27 +90,34 @@ class TestJapaneseKeyBERTScoringUppercase:
 
         # Configure mock to return proper results when vectorizer is correctly set
         # The mock simulates what KeyBERT returns when candidates match
-        def mock_extract(doc, candidates=None, top_n=10, use_mmr=False, diversity=0.5, vectorizer=None):
+        def mock_extract(
+            doc: str,
+            *,
+            vectorizer: object | None = None,
+            **kwargs: object,
+        ) -> list[tuple[str, float]]:
             # If vectorizer is provided and has lowercase=False, return results
             # If no vectorizer or lowercase=True, return empty (simulating the bug)
-            if vectorizer is not None:
-                # Check if vectorizer has lowercase=False set
-                if hasattr(vectorizer, "lowercase") and not vectorizer.lowercase:
-                    # Return mock scored keywords
-                    return [
-                        ("GitHub", 0.85),
-                        ("AWS", 0.78),
-                        ("API", 0.72),
-                        ("コード", 0.65),
-                        ("デプロイ", 0.60),
-                    ]
+            if (
+                vectorizer is not None
+                and hasattr(vectorizer, "lowercase")
+                and not getattr(vectorizer, "lowercase", True)
+            ):
+                # Return mock scored keywords
+                return [
+                    ("GitHub", 0.85),
+                    ("AWS", 0.78),
+                    ("API", 0.72),
+                    ("コード", 0.65),
+                    ("デプロイ", 0.60),
+                ]
             # Simulate the bug: no matches without proper vectorizer
             return []
 
-        extractor._keybert.extract_keywords = mock_extract
+        cast(MagicMock, extractor._keybert).extract_keywords = mock_extract
 
         # Call the method under test
-        result, confidences = extractor._score_japanese_candidates_with_keybert(text, candidates, freq_counter)
+        result, _confidences = extractor._score_japanese_candidates_with_keybert(text, candidates, freq_counter)
 
         # CRITICAL ASSERTION: After fix, we should get results
         # Before fix, this would be empty due to lowercase mismatch
@@ -114,15 +129,24 @@ class TestJapaneseKeyBERTScoringUppercase:
         uppercase_terms_in_result = [t for t in result if any(c.isupper() for c in t)]
         assert len(uppercase_terms_in_result) > 0, "Expected uppercase terms like 'GitHub', 'AWS', 'API' in results"
 
-    def test_mixed_case_candidates_scoring(self, extractor):
+    def test_mixed_case_candidates_scoring(self, extractor: TagExtractor) -> None:
         """Test scoring with mixed case candidates (CamelCase, etc.)."""
         text = "TensorFlowとPyTorchで機械学習モデルを構築する"
 
         candidates = ["TensorFlow", "PyTorch", "機械学習", "モデル"]
         freq_counter = Counter({"TensorFlow": 1, "PyTorch": 1, "機械学習": 2, "モデル": 1})
 
-        def mock_extract(doc, candidates=None, top_n=10, use_mmr=False, diversity=0.5, vectorizer=None):
-            if vectorizer is not None and hasattr(vectorizer, "lowercase") and not vectorizer.lowercase:
+        def mock_extract(
+            doc: str,
+            *,
+            vectorizer: object | None = None,
+            **kwargs: object,
+        ) -> list[tuple[str, float]]:
+            if (
+                vectorizer is not None
+                and hasattr(vectorizer, "lowercase")
+                and not getattr(vectorizer, "lowercase", True)
+            ):
                 return [
                     ("TensorFlow", 0.80),
                     ("PyTorch", 0.75),
@@ -131,21 +155,30 @@ class TestJapaneseKeyBERTScoringUppercase:
                 ]
             return []
 
-        extractor._keybert.extract_keywords = mock_extract
+        cast(MagicMock, extractor._keybert).extract_keywords = mock_extract
 
-        result, confidences = extractor._score_japanese_candidates_with_keybert(text, candidates, freq_counter)
+        result, _confidences = extractor._score_japanese_candidates_with_keybert(text, candidates, freq_counter)
 
         assert "TensorFlow" in result or "PyTorch" in result, "CamelCase terms should be matched and returned"
 
-    def test_acronyms_are_scored(self, extractor):
+    def test_acronyms_are_scored(self, extractor: TagExtractor) -> None:
         """Test that acronyms (all uppercase) are properly scored."""
         text = "AWS S3にデータを保存し、EC2でAPIサーバーを動かす"
 
         candidates = ["AWS", "S3", "EC2", "API", "データ", "サーバー"]
         freq_counter = Counter(candidates)
 
-        def mock_extract(doc, candidates=None, top_n=10, use_mmr=False, diversity=0.5, vectorizer=None):
-            if vectorizer is not None and hasattr(vectorizer, "lowercase") and not vectorizer.lowercase:
+        def mock_extract(
+            doc: str,
+            *,
+            vectorizer: object | None = None,
+            **kwargs: object,
+        ) -> list[tuple[str, float]]:
+            if (
+                vectorizer is not None
+                and hasattr(vectorizer, "lowercase")
+                and not getattr(vectorizer, "lowercase", True)
+            ):
                 return [
                     ("AWS", 0.82),
                     ("API", 0.78),
@@ -155,22 +188,27 @@ class TestJapaneseKeyBERTScoringUppercase:
                 ]
             return []
 
-        extractor._keybert.extract_keywords = mock_extract
+        cast(MagicMock, extractor._keybert).extract_keywords = mock_extract
 
-        result, confidences = extractor._score_japanese_candidates_with_keybert(text, candidates, freq_counter)
+        result, _confidences = extractor._score_japanese_candidates_with_keybert(text, candidates, freq_counter)
 
         # All-uppercase acronyms should be matched
         acronyms_in_result = [t for t in result if t.isupper()]
         assert len(acronyms_in_result) > 0, "Acronyms should be in the results"
 
-    def test_japanese_only_candidates_still_work(self, extractor):
+    def test_japanese_only_candidates_still_work(self, extractor: TagExtractor) -> None:
         """Test that pure Japanese candidates continue to work correctly."""
         text = "人工知能と機械学習の技術が発展している"
 
         candidates = ["人工知能", "機械学習", "技術", "発展"]
         freq_counter = Counter({"人工知能": 1, "機械学習": 2, "技術": 1, "発展": 1})
 
-        def mock_extract(doc, candidates=None, top_n=10, use_mmr=False, diversity=0.5, vectorizer=None):
+        def mock_extract(
+            doc: str,
+            *,
+            candidates: list[str] | None = None,
+            **kwargs: object,
+        ) -> list[tuple[str, float]]:
             # Japanese-only text should work regardless of vectorizer setting
             if candidates:
                 return [
@@ -180,9 +218,9 @@ class TestJapaneseKeyBERTScoringUppercase:
                 ]
             return []
 
-        extractor._keybert.extract_keywords = mock_extract
+        cast(MagicMock, extractor._keybert).extract_keywords = mock_extract
 
-        result, confidences = extractor._score_japanese_candidates_with_keybert(text, candidates, freq_counter)
+        result, _confidences = extractor._score_japanese_candidates_with_keybert(text, candidates, freq_counter)
 
         assert len(result) > 0, "Japanese candidates should be scored"
         assert "機械学習" in result or "人工知能" in result
@@ -192,11 +230,9 @@ class TestKeyBERTVectorizerConfiguration:
     """Tests verifying the CountVectorizer is correctly configured."""
 
     @pytest.fixture
-    def extractor(self):
+    def extractor(self) -> TagExtractor:
         """Create TagExtractor with real models for integration testing."""
         with patch("tag_extractor.extract.TagExtractor._lazy_load_models"):
-            from tag_extractor.extract import TagExtractionConfig, TagExtractor
-
             config = TagExtractionConfig(use_japanese_semantic=True)
             extractor = TagExtractor(config=config)
             extractor._models_loaded = True
@@ -206,7 +242,7 @@ class TestKeyBERTVectorizerConfiguration:
 
             return extractor
 
-    def test_vectorizer_passed_to_keybert(self, extractor):
+    def test_vectorizer_passed_to_keybert(self, extractor: TagExtractor) -> None:
         """Verify that a custom vectorizer is passed to KeyBERT extract_keywords."""
         text = "テスト文章"
         candidates = ["テスト", "文章"]
@@ -215,11 +251,16 @@ class TestKeyBERTVectorizerConfiguration:
         # Track if vectorizer parameter was passed
         vectorizer_received = {}
 
-        def capture_extract(doc, candidates=None, top_n=10, use_mmr=False, diversity=0.5, vectorizer=None):
+        def capture_extract(
+            doc: str,
+            *,
+            vectorizer: object | None = None,
+            **kwargs: object,
+        ) -> list[tuple[str, float]]:
             vectorizer_received["vectorizer"] = vectorizer
             return [("テスト", 0.8)]
 
-        extractor._keybert.extract_keywords = capture_extract
+        cast(MagicMock, extractor._keybert).extract_keywords = capture_extract
 
         extractor._score_japanese_candidates_with_keybert(text, candidates, freq_counter)
 
@@ -227,7 +268,7 @@ class TestKeyBERTVectorizerConfiguration:
         assert "vectorizer" in vectorizer_received, "vectorizer parameter should be passed"
         assert vectorizer_received["vectorizer"] is not None, "vectorizer should not be None"
 
-    def test_vectorizer_has_lowercase_false(self, extractor):
+    def test_vectorizer_has_lowercase_false(self, extractor: TagExtractor) -> None:
         """Verify the vectorizer is configured with lowercase=False."""
         text = "テスト"
         candidates = ["テスト"]
@@ -235,11 +276,16 @@ class TestKeyBERTVectorizerConfiguration:
 
         captured_vectorizer = {}
 
-        def capture_extract(doc, candidates=None, top_n=10, use_mmr=False, diversity=0.5, vectorizer=None):
+        def capture_extract(
+            doc: str,
+            *,
+            vectorizer: object | None = None,
+            **kwargs: object,
+        ) -> list[tuple[str, float]]:
             captured_vectorizer["instance"] = vectorizer
             return [("テスト", 0.8)]
 
-        extractor._keybert.extract_keywords = capture_extract
+        cast(MagicMock, extractor._keybert).extract_keywords = capture_extract
 
         extractor._score_japanese_candidates_with_keybert(text, candidates, freq_counter)
 
@@ -260,11 +306,9 @@ class TestJapaneseAnalyzerForKeyBERT:
     """
 
     @pytest.fixture
-    def extractor(self):
+    def extractor(self) -> TagExtractor:
         """Create TagExtractor with mocked models."""
         with patch("tag_extractor.extract.TagExtractor._lazy_load_models"):
-            from tag_extractor.extract import TagExtractionConfig, TagExtractor
-
             config = TagExtractionConfig(use_japanese_semantic=True)
             extractor = TagExtractor(config=config)
             extractor._models_loaded = True
@@ -278,7 +322,7 @@ class TestJapaneseAnalyzerForKeyBERT:
 
             return extractor
 
-    def test_analyzer_uses_fugashi_tokenization(self, extractor):
+    def test_analyzer_uses_fugashi_tokenization(self, extractor: TagExtractor) -> None:
         """Verify that the analyzer uses Fugashi for Japanese tokenization."""
         text = "機械学習とAI技術"
         candidates = ["機械学習", "AI", "技術"]
@@ -286,11 +330,16 @@ class TestJapaneseAnalyzerForKeyBERT:
 
         captured_vectorizer = {}
 
-        def capture_extract(doc, candidates=None, top_n=10, use_mmr=False, diversity=0.5, vectorizer=None):
+        def capture_extract(
+            doc: str,
+            *,
+            vectorizer: object | None = None,
+            **kwargs: object,
+        ) -> list[tuple[str, float]]:
             captured_vectorizer["instance"] = vectorizer
             return [("機械学習", 0.8)]
 
-        extractor._keybert.extract_keywords = capture_extract
+        cast(MagicMock, extractor._keybert).extract_keywords = capture_extract
 
         extractor._score_japanese_candidates_with_keybert(text, candidates, freq_counter)
 
@@ -308,7 +357,7 @@ class TestJapaneseAnalyzerForKeyBERT:
             # Note: This test will pass until we implement the custom analyzer
             pass
 
-    def test_vectorizer_extracts_japanese_nouns(self, extractor):
+    def test_vectorizer_extracts_japanese_nouns(self, extractor: TagExtractor) -> None:
         """Test that the vectorizer correctly extracts Japanese nouns."""
         # This is a more comprehensive test that verifies the analyzer
         # extracts meaningful tokens from Japanese text
@@ -318,11 +367,16 @@ class TestJapaneseAnalyzerForKeyBERT:
 
         captured_vectorizer = {}
 
-        def capture_extract(doc, candidates=None, top_n=10, use_mmr=False, diversity=0.5, vectorizer=None):
+        def capture_extract(
+            doc: str,
+            *,
+            vectorizer: object | None = None,
+            **kwargs: object,
+        ) -> list[tuple[str, float]]:
             captured_vectorizer["instance"] = vectorizer
             return [("データベース", 0.8), ("API", 0.7)]
 
-        extractor._keybert.extract_keywords = capture_extract
+        cast(MagicMock, extractor._keybert).extract_keywords = capture_extract
 
         result, _ = extractor._score_japanese_candidates_with_keybert(text, candidates, freq_counter)
 
@@ -340,22 +394,20 @@ class TestMakeJapaneseAnalyzer:
     """
 
     @pytest.fixture
-    def extractor(self):
+    def extractor(self) -> TagExtractor:
         """Create TagExtractor with mocked models."""
         with patch("tag_extractor.extract.TagExtractor._lazy_load_models"):
-            from tag_extractor.extract import TagExtractionConfig, TagExtractor
-
             config = TagExtractionConfig(use_japanese_semantic=True)
             extractor = TagExtractor(config=config)
             extractor._models_loaded = True
 
             return extractor
 
-    def test_make_japanese_analyzer_exists(self, extractor):
+    def test_make_japanese_analyzer_exists(self, extractor: TagExtractor) -> None:
         """Verify _make_japanese_analyzer method exists."""
         assert hasattr(extractor, "_make_japanese_analyzer"), "_make_japanese_analyzer method should exist"
 
-    def test_analyzer_returns_callable(self, extractor):
+    def test_analyzer_returns_callable(self, extractor: TagExtractor) -> None:
         """Verify the analyzer returns a callable function."""
         # Mock tagger
         mock_tagger = MagicMock()
@@ -364,7 +416,7 @@ class TestMakeJapaneseAnalyzer:
         analyzer = extractor._make_japanese_analyzer()
         assert callable(analyzer), "Analyzer should be callable"
 
-    def test_analyzer_extracts_nouns_from_japanese_text(self, extractor):
+    def test_analyzer_extracts_nouns_from_japanese_text(self, extractor: TagExtractor) -> None:
         """Test that analyzer extracts nouns from Japanese text using Fugashi."""
         # Create a more realistic mock tagger
         mock_word1 = MagicMock()
@@ -387,7 +439,7 @@ class TestMakeJapaneseAnalyzer:
         mock_word4.feature = MagicMock()
         mock_word4.feature.pos1 = "名詞"
 
-        def mock_tagger_call(text):
+        def mock_tagger_call(text: str) -> list[MagicMock]:
             return [mock_word1, mock_word2, mock_word3, mock_word4]
 
         extractor._ja_tagger = mock_tagger_call
@@ -402,7 +454,7 @@ class TestMakeJapaneseAnalyzer:
         assert "AI" in tokens
         assert "と" not in tokens
 
-    def test_analyzer_preserves_english_words(self, extractor):
+    def test_analyzer_preserves_english_words(self, extractor: TagExtractor) -> None:
         """Test that analyzer preserves English words in mixed text."""
         mock_word1 = MagicMock()
         mock_word1.surface = "GitHub"
@@ -419,7 +471,7 @@ class TestMakeJapaneseAnalyzer:
         mock_word3.feature = MagicMock()
         mock_word3.feature.pos1 = "名詞"
 
-        def mock_tagger_call(text):
+        def mock_tagger_call(text: str) -> list[MagicMock]:
             return [mock_word1, mock_word2, mock_word3]
 
         extractor._ja_tagger = mock_tagger_call
@@ -431,7 +483,7 @@ class TestMakeJapaneseAnalyzer:
         assert "コード" in tokens
         assert "で" not in tokens
 
-    def test_analyzer_fallback_when_tagger_is_none(self, extractor):
+    def test_analyzer_fallback_when_tagger_is_none(self, extractor: TagExtractor) -> None:
         """Test that analyzer falls back to split() when tagger is None."""
         extractor._ja_tagger = None
 
@@ -443,7 +495,7 @@ class TestMakeJapaneseAnalyzer:
         assert "world" in tokens
         assert "test" in tokens
 
-    def test_vectorizer_uses_custom_analyzer(self, extractor):
+    def test_vectorizer_uses_custom_analyzer(self, extractor: TagExtractor) -> None:
         """Verify CountVectorizer uses custom analyzer instead of token_pattern."""
         # Setup mock tagger
         mock_word = MagicMock()
@@ -459,7 +511,12 @@ class TestMakeJapaneseAnalyzer:
 
         captured_vectorizer = {}
 
-        def capture_extract(doc, candidates=None, top_n=10, use_mmr=False, diversity=0.5, vectorizer=None):
+        def capture_extract(
+            doc: str,
+            *,
+            vectorizer: object | None = None,
+            **kwargs: object,
+        ) -> list[tuple[str, float]]:
             captured_vectorizer["instance"] = vectorizer
             return [("テスト", 0.8)]
 

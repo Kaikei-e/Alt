@@ -1,7 +1,5 @@
 """Typed enrollment config. PKI_ENROLLMENT defaults to disabled."""
 
-# ruff: noqa: TRY003, PLC0415, PTH120
-
 from __future__ import annotations
 
 import os
@@ -105,18 +103,25 @@ def _get_env(environ: Mapping[str, str], key: str, fallback: str) -> str:
     if _has(environ, file_key):
         file_ref = environ.get(file_key, "")
         if not str(file_ref).strip():
-            raise PkiError(f"pki: {file_key} is empty")
-        from tag_generator.infra.pki.filesafe import MAX_ENV_FILE_BYTES, read_regular_no_follow
+            msg = f"pki: {file_key} is empty"
+            raise PkiError(msg)
+        from tag_generator.infra.pki.filesafe import (  # noqa: PLC0415 - breaks circular import with tag_generator.infra.pki.filesafe
+            MAX_ENV_FILE_BYTES,
+            read_regular_no_follow,
+        )
 
         try:
             raw = read_regular_no_follow(str(file_ref), MAX_ENV_FILE_BYTES)
         except FileNotFoundError as err:
-            raise PkiError(f"pki: read {file_key}") from err
+            msg = f"pki: read {file_key}"
+            raise PkiError(msg) from err
         except PkiError as err:
-            raise PkiError(f"pki: read {file_key}: {err}") from err
+            msg = f"pki: read {file_key}: {err}"
+            raise PkiError(msg) from err
         text = raw.decode("utf-8").strip()
         if not text:
-            raise PkiError(f"pki: {file_key} is empty")
+            msg = f"pki: {file_key} is empty"
+            raise PkiError(msg)
         return text
     if _has(environ, key):
         return environ[key]
@@ -171,13 +176,15 @@ def _load_enrollment_mode(env: Mapping[str, str]) -> str:
     if _has(env, "PKI_ENROLLMENT_FILE"):
         raw = _get_env(env, "PKI_ENROLLMENT", "").strip().lower()
         if raw not in {MODE_ENABLED, MODE_DISABLED}:
-            raise PkiError(f"pki: PKI_ENROLLMENT={raw!r} must be {MODE_ENABLED!r} or {MODE_DISABLED!r}")
+            msg = f"pki: PKI_ENROLLMENT={raw!r} must be {MODE_ENABLED!r} or {MODE_DISABLED!r}"
+            raise PkiError(msg)
         return raw
     if not _has(env, "PKI_ENROLLMENT"):
         return MODE_DISABLED
     mode = env["PKI_ENROLLMENT"].strip().lower()
     if mode not in {MODE_ENABLED, MODE_DISABLED}:
-        raise PkiError(f"pki: PKI_ENROLLMENT={env['PKI_ENROLLMENT']!r} must be {MODE_ENABLED!r} or {MODE_DISABLED!r}")
+        msg = f"pki: PKI_ENROLLMENT={env['PKI_ENROLLMENT']!r} must be {MODE_ENABLED!r} or {MODE_DISABLED!r}"
+        raise PkiError(msg)
     return mode
 
 
@@ -213,7 +220,8 @@ def _parse_duration_seconds(raw: str) -> float:
 def require_https(raw: str) -> None:
     parsed = urlparse(raw)
     if parsed.scheme != "https" or not parsed.netloc:
-        raise InsecureCAURLError(f"pki: STEP_CA_URL must use https (got {raw!r})")
+        msg = f"pki: STEP_CA_URL must use https (got {raw!r})"
+        raise InsecureCAURLError(msg)
 
 
 def _validate(cfg: EnrollmentConfig) -> None:
@@ -226,26 +234,26 @@ def _validate(cfg: EnrollmentConfig) -> None:
     if cfg.mode != MODE_ENABLED:
         return
     if cfg.provisioner in {"pki-agent", ""}:
-        raise SharedProvisionerError(
-            f"pki: shared provisioner pki-agent is forbidden for in-process enrollment (got {cfg.provisioner!r})"
-        )
+        msg = f"pki: shared provisioner pki-agent is forbidden for in-process enrollment (got {cfg.provisioner!r})"
+        raise SharedProvisionerError(msg)
     want_prov = provisioner_name(cfg.subject)
     if cfg.provisioner != want_prov:
-        raise PkiError(f"pki: provisioner {cfg.provisioner!r} must be exactly {want_prov!r}")
+        msg = f"pki: provisioner {cfg.provisioner!r} must be exactly {want_prov!r}"
+        raise PkiError(msg)
     if "step_ca_root_password" in cfg.password_file:
-        raise SharedRootSecretError(
-            f"pki: provisioner password file must not be the shared step_ca_root_password secret (got {cfg.password_file!r})"
+        msg = (
+            "pki: provisioner password file must not be the shared "
+            f"step_ca_root_password secret (got {cfg.password_file!r})"
         )
+        raise SharedRootSecretError(msg)
     want_base = provisioner_password_basename(cfg.subject)
     if Path(cfg.password_file).name != want_base:
-        raise PkiError(
-            f"pki: provisioner password file basename {Path(cfg.password_file).name!r} must be exactly {want_base!r}"
-        )
+        msg = f"pki: provisioner password file basename {Path(cfg.password_file).name!r} must be exactly {want_base!r}"
+        raise PkiError(msg)
     cleaned = os.path.normpath(cfg.password_file)
-    if os.path.dirname(cleaned) == "/run/secrets" and cleaned != provisioner_password_file(cfg.subject):
-        raise PkiError(
-            f"pki: provisioner password file {cfg.password_file!r} must be {provisioner_password_file(cfg.subject)!r}"
-        )
+    if Path(cleaned).parent == Path("/run/secrets") and cleaned != provisioner_password_file(cfg.subject):
+        msg = f"pki: provisioner password file {cfg.password_file!r} must be {provisioner_password_file(cfg.subject)!r}"
+        raise PkiError(msg)
     required = (
         ("CERT_PATH", cfg.cert_path),
         ("KEY_PATH", cfg.key_path),

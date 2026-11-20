@@ -263,7 +263,7 @@ func TestLoggingPerformance_GoroutineLeaks(t *testing.T) {
 			defer func() { done <- true }()
 
 			ctx := logger.WithRequestID(context.Background(),
-				"goroutine-test-"+string(rune(workerID+48)))
+				fmt.Sprintf("goroutine-test-%d", workerID))
 
 			for j := 0; j < operationsPerWorker; j++ {
 				contextLogger.WithContext(ctx).Info("goroutine test operation",
@@ -392,7 +392,7 @@ func TestLoggingPerformance_ConcurrentSafety(t *testing.T) {
 	t.Logf("  Ops per second:   %.2f", opsPerSecond)
 
 	// Verify no data races or corruption in output
-	assert.Greater(t, len(capturedOutput), 0, "should generate log output")
+	assert.NotEmpty(t, capturedOutput, "should generate log output")
 
 	// Count successful log entries (basic validation)
 	lines := strings.Split(capturedOutput, "\n")
@@ -404,7 +404,7 @@ func TestLoggingPerformance_ConcurrentSafety(t *testing.T) {
 	}
 
 	// Just verify we got some valid lines
-	assert.Greater(t, validLines, 0, "should generate at least some log lines")
+	assert.Positive(t, validLines, "should generate at least some log lines")
 
 	t.Logf("Test completed successfully without hanging")
 }

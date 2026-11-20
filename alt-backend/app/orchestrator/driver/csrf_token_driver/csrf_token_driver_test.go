@@ -26,11 +26,11 @@ func TestStoreToken_CapsMapAtMaxCSRFTokensAndSweepsExpiredFirst(t *testing.T) {
 	for i := 0; i < maxCSRFTokens/2; i++ {
 		require.NoError(t, d.StoreToken(ctx, fmt.Sprintf("valid-%d", i), future))
 	}
-	require.Equal(t, maxCSRFTokens, len(d.tokens))
+	require.Len(t, d.tokens, maxCSRFTokens)
 
 	// Storing one more token should sweep the expired ones first
 	require.NoError(t, d.StoreToken(ctx, "new-token", future))
-	assert.Equal(t, maxCSRFTokens/2+1, len(d.tokens))
+	assert.Len(t, d.tokens, maxCSRFTokens/2+1)
 	_, err := d.GetToken(ctx, "new-token")
 	require.NoError(t, err)
 	_, err = d.GetToken(ctx, "valid-0")
@@ -47,7 +47,7 @@ func TestStoreToken_EvictsWhenAtCapacityWithUnexpiredTokens(t *testing.T) {
 	for i := 0; i < maxCSRFTokens; i++ {
 		require.NoError(t, d.StoreToken(ctx, fmt.Sprintf("tok-%d", i), base.Add(time.Duration(i)*time.Millisecond)))
 	}
-	require.Equal(t, maxCSRFTokens, len(d.tokens))
+	require.Len(t, d.tokens, maxCSRFTokens)
 
 	// Storing extra tokens must never grow the map beyond maxCSRFTokens
 	for i := 0; i < 100; i++ {

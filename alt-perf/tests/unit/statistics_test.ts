@@ -2,14 +2,13 @@
  * Statistics module unit tests
  * TDD: These tests define the expected behavior of the statistics module
  */
-import { assertEquals, assertAlmostEquals } from "@std/assert";
+import { assertAlmostEquals, assertEquals } from "@std/assert";
 import { describe, it } from "@std/testing/bdd";
 import {
-  calculateStatistics,
   calculateConfidenceInterval,
+  calculateStatistics,
   detectOutliers,
   isStable,
-  type StatisticalSummary,
 } from "../../src/measurement/statistics.ts";
 
 describe("Statistics Module", () => {

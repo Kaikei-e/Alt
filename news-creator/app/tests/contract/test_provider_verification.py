@@ -12,15 +12,18 @@ and verify it against pact contracts. Contracts are loaded from either:
 - Local filesystem (fallback) — used in local development
 """
 
+import http.client
 import importlib
 import logging
 import os
 import socket
 import threading
 import time
+import urllib.error
 import urllib.request
+from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
@@ -28,7 +31,41 @@ import uvicorn
 from fastapi import FastAPI
 from pact import Verifier
 
-from news_creator.domain.models import SummaryMetadata
+import news_creator.handler.chat_handler as chat_mod
+import news_creator.handler.morning_letter_handler as morning_letter_mod
+import news_creator.handler.plan_query_handler as plan_query_mod
+import news_creator.handler.recap_card_handler as recap_card_mod
+import news_creator.handler.recap_summary_handler as recap_summary_mod
+import news_creator.handler.summarize_handler as summarize_mod
+import news_creator.handler.theme_page_handler as theme_page_mod
+from news_creator.domain.errors import QueueFullError
+from news_creator.domain.models import (
+    BatchRecapSummaryRequest,
+    BatchRecapSummaryResponse,
+    CardContent,
+    CardGenerateRequest,
+    CardGenerateResponse,
+    CardGenerationMetadata,
+    CardGenerationRejectedError,
+    CardSentence,
+    MorningLetterContent,
+    MorningLetterRequest,
+    MorningLetterResponse,
+    MorningLetterSection,
+    PlanQueryRequest,
+    PlanQueryResponse,
+    QueryPlan,
+    RecapSummary,
+    RecapSummaryMetadata,
+    RecapSummaryRequest,
+    RecapSummaryResponse,
+    Reference,
+    SummaryMetadata,
+    ThemeGenerateRequest,
+    ThemeGenerateResponse,
+    ThemeSentence,
+    ThemeTimelineEntry,
+)
 
 from ._pact_state import StateRegistry, dispatch
 
@@ -78,25 +115,16 @@ def _get_free_port() -> int:
         return s.getsockname()[1]
 
 
-def _create_provider_app() -> FastAPI:
-    """Create a FastAPI app with mocked dependencies for provider verification."""
-    app = FastAPI()
-
-    # --- Mock summarize usecase ---
-    import news_creator.handler.summarize_handler as summarize_mod
-
+def _register_summarize_routes(app: FastAPI, provider_state: dict[str, Any]) -> None:
     importlib.reload(summarize_mod)
-
-    # Track provider state to switch mock behavior
-    provider_state: dict[str, Any] = {"mode": "default"}
-
     mock_summarize_usecase = Mock()
 
-    async def _dynamic_generate_summary(*args: Any, **kwargs: Any):
+    async def _dynamic_generate_summary(
+        *_args: object, **_kwargs: object
+    ) -> tuple[str, SummaryMetadata]:
         if provider_state["mode"] == "queue_full":
-            from news_creator.domain.errors import QueueFullError
-
-            raise QueueFullError("Queue depth 20 >= max 20")
+            msg = "Queue depth 20 >= max 20"
+            raise QueueFullError(msg)
         return (
             "これはテスト記事の要約です。",
             SummaryMetadata(
@@ -110,18 +138,14 @@ def _create_provider_app() -> FastAPI:
     mock_summarize_usecase.generate_summary = AsyncMock(
         side_effect=_dynamic_generate_summary
     )
-    router = summarize_mod.create_summarize_router(mock_summarize_usecase)
-    app.include_router(router)
+    app.include_router(summarize_mod.create_summarize_router(mock_summarize_usecase))
 
-    # --- Mock chat handler ---
-    import news_creator.handler.chat_handler as chat_mod
 
+def _register_chat_routes(app: FastAPI) -> None:
     importlib.reload(chat_mod)
-
     mock_ollama_gateway = Mock()
 
-    # Non-streaming: gateway.chat_generate(payload=payload) -> dict
-    async def _mock_chat_generate(payload: dict) -> Dict[str, Any]:
+    async def _mock_chat_generate(payload: dict[str, Any]) -> dict[str, Any]:
         return {
             "message": {"content": "This is a non-streaming response."},
             "done": True,
@@ -129,8 +153,9 @@ def _create_provider_app() -> FastAPI:
 
     mock_ollama_gateway.chat_generate = AsyncMock(side_effect=_mock_chat_generate)
 
-    # Streaming: gateway.chat_stream(payload=payload) -> async iterable of dict
-    async def _mock_chat_stream_iter(payload: dict):
+    async def _mock_chat_stream_iter(
+        payload: dict[str, Any],
+    ) -> AsyncIterator[dict[str, Any]]:
         chunks = [
             {"message": {"content": "Hello"}, "done": False},
             {"message": {"content": " world"}, "done": False},
@@ -139,34 +164,27 @@ def _create_provider_app() -> FastAPI:
         for chunk in chunks:
             yield chunk
 
-    # chat_stream is awaited then iterated, so return the async generator directly
     mock_ollama_gateway.chat_stream = AsyncMock(
         return_value=_mock_chat_stream_iter(payload={})
     )
 
     mock_config = MagicMock()
     mock_config.model_routing_enabled = False
-    chat_router = chat_mod.create_chat_router(mock_ollama_gateway, mock_config)
-    app.include_router(chat_router)
+    app.include_router(chat_mod.create_chat_router(mock_ollama_gateway, mock_config))
 
-    # --- Mock recap summary handler (real router + Pydantic validation) ---
-    import news_creator.handler.recap_summary_handler as recap_summary_mod
 
+def _register_recap_summary_routes(
+    app: FastAPI, provider_state: dict[str, Any]
+) -> None:
     importlib.reload(recap_summary_mod)
-
     mock_recap_summary_usecase = Mock()
 
-    async def _mock_generate_recap_summary(request: Any) -> Any:
-        from news_creator.domain.errors import QueueFullError
-        from news_creator.domain.models import (
-            RecapSummary,
-            RecapSummaryMetadata,
-            RecapSummaryResponse,
-            Reference,
-        )
-
+    async def _mock_generate_recap_summary(
+        request: RecapSummaryRequest,
+    ) -> RecapSummaryResponse:
         if provider_state["mode"] == "queue_full":
-            raise QueueFullError("Queue depth 20 >= max 20")
+            msg = "Queue depth 20 >= max 20"
+            raise QueueFullError(msg)
 
         return RecapSummaryResponse(
             job_id=request.job_id,
@@ -187,14 +205,9 @@ def _create_provider_app() -> FastAPI:
             metadata=RecapSummaryMetadata(model="gemma4-e4b-q4km"),
         )
 
-    async def _mock_generate_batch_recap_summary(batch_request: Any) -> Any:
-        from news_creator.domain.models import (
-            BatchRecapSummaryResponse,
-            RecapSummary,
-            RecapSummaryMetadata,
-            RecapSummaryResponse,
-        )
-
+    async def _mock_generate_batch_recap_summary(
+        batch_request: BatchRecapSummaryRequest,
+    ) -> BatchRecapSummaryResponse:
         responses = [
             RecapSummaryResponse(
                 job_id=req.job_id,
@@ -216,30 +229,21 @@ def _create_provider_app() -> FastAPI:
     mock_recap_summary_usecase.generate_batch_summary = AsyncMock(
         side_effect=_mock_generate_batch_recap_summary
     )
-    recap_summary_router = recap_summary_mod.create_recap_summary_router(
-        mock_recap_summary_usecase
+    app.include_router(
+        recap_summary_mod.create_recap_summary_router(mock_recap_summary_usecase)
     )
-    app.include_router(recap_summary_router)
 
-    # --- Mock recap card handler (real router + Pydantic validation) ---
-    import news_creator.handler.recap_card_handler as recap_card_mod
 
+def _register_recap_card_routes(app: FastAPI, provider_state: dict[str, Any]) -> None:
     importlib.reload(recap_card_mod)
-
     mock_recap_card_usecase = Mock()
 
-    async def _mock_generate_card(request: Any) -> Any:
-        from news_creator.domain.errors import QueueFullError
-        from news_creator.domain.models import (
-            CardContent,
-            CardGenerateResponse,
-            CardGenerationMetadata,
-            CardGenerationRejectedError,
-            CardSentence,
-        )
-
+    async def _mock_generate_card(
+        request: CardGenerateRequest,
+    ) -> CardGenerateResponse:
         if provider_state["mode"] == "queue_full":
-            raise QueueFullError("Queue depth 20 >= max 20")
+            msg = "Queue depth 20 >= max 20"
+            raise QueueFullError(msg)
         if provider_state["mode"] == "card_generation_rejected":
             raise CardGenerationRejectedError(
                 reason="parse_failed",
@@ -284,27 +288,19 @@ def _create_provider_app() -> FastAPI:
         )
 
     mock_recap_card_usecase.generate_card = AsyncMock(side_effect=_mock_generate_card)
-    recap_card_router = recap_card_mod.create_recap_card_router(mock_recap_card_usecase)
-    app.include_router(recap_card_router)
+    app.include_router(recap_card_mod.create_recap_card_router(mock_recap_card_usecase))
 
-    # --- Mock theme page handler (real router + Pydantic validation) ---
-    import news_creator.handler.theme_page_handler as theme_page_mod
 
+def _register_theme_page_routes(app: FastAPI, provider_state: dict[str, Any]) -> None:
     importlib.reload(theme_page_mod)
-
     mock_theme_page_usecase = Mock()
 
-    async def _mock_generate_theme_page(request: Any) -> Any:
-        from news_creator.domain.errors import QueueFullError
-        from news_creator.domain.models import (
-            CardGenerationRejectedError,
-            ThemeGenerateResponse,
-            ThemeSentence,
-            ThemeTimelineEntry,
-        )
-
+    async def _mock_generate_theme_page(
+        request: ThemeGenerateRequest,
+    ) -> ThemeGenerateResponse:
         if provider_state["mode"] == "queue_full":
-            raise QueueFullError("Queue depth 20 >= max 20")
+            msg = "Queue depth 20 >= max 20"
+            raise QueueFullError(msg)
         if provider_state["mode"] == "theme_generation_rejected":
             raise CardGenerationRejectedError(
                 reason="empty_output",
@@ -335,24 +331,16 @@ def _create_provider_app() -> FastAPI:
     mock_theme_page_usecase.generate_theme_page = AsyncMock(
         side_effect=_mock_generate_theme_page
     )
-    theme_page_router = theme_page_mod.create_theme_page_router(mock_theme_page_usecase)
-    app.include_router(theme_page_router)
+    app.include_router(theme_page_mod.create_theme_page_router(mock_theme_page_usecase))
 
-    # --- Mock morning letter handler (real router + Pydantic validation) ---
-    import news_creator.handler.morning_letter_handler as morning_letter_mod
 
+def _register_morning_letter_routes(app: FastAPI) -> None:
     importlib.reload(morning_letter_mod)
-
     mock_morning_letter_usecase = Mock()
 
-    async def _mock_generate_letter(request: Any) -> Any:
-        from news_creator.domain.models import (
-            MorningLetterContent,
-            MorningLetterResponse,
-            MorningLetterSection,
-            RecapSummaryMetadata,
-        )
-
+    async def _mock_generate_letter(
+        request: MorningLetterRequest,
+    ) -> MorningLetterResponse:
         return MorningLetterResponse(
             target_date=request.target_date,
             edition_timezone=request.edition_timezone,
@@ -378,21 +366,16 @@ def _create_provider_app() -> FastAPI:
     mock_morning_letter_usecase.generate_letter = AsyncMock(
         side_effect=_mock_generate_letter
     )
-    morning_letter_router = morning_letter_mod.create_morning_letter_router(
-        mock_morning_letter_usecase
+    app.include_router(
+        morning_letter_mod.create_morning_letter_router(mock_morning_letter_usecase)
     )
-    app.include_router(morning_letter_router)
 
-    # --- Mock plan-query handler ---
-    import news_creator.handler.plan_query_handler as plan_query_mod
 
+def _register_plan_query_routes(app: FastAPI) -> None:
     importlib.reload(plan_query_mod)
-
     mock_plan_query_usecase = Mock()
 
-    async def _mock_plan_query(request: Any) -> Any:
-        from news_creator.domain.models import PlanQueryResponse, QueryPlan
-
+    async def _mock_plan_query(request: PlanQueryRequest) -> PlanQueryResponse:
         return PlanQueryResponse(
             plan=QueryPlan(
                 reasoning="The user is asking about the causes of Iran's oil crisis. This requires causal analysis.",
@@ -410,9 +393,21 @@ def _create_provider_app() -> FastAPI:
         )
 
     mock_plan_query_usecase.plan_query = AsyncMock(side_effect=_mock_plan_query)
+    app.include_router(plan_query_mod.create_plan_query_router(mock_plan_query_usecase))
 
-    plan_query_router = plan_query_mod.create_plan_query_router(mock_plan_query_usecase)
-    app.include_router(plan_query_router)
+
+def _create_provider_app() -> FastAPI:
+    """Create a FastAPI app with mocked dependencies for provider verification."""
+    app = FastAPI()
+    provider_state: dict[str, Any] = {"mode": "default"}
+
+    _register_summarize_routes(app, provider_state)
+    _register_chat_routes(app)
+    _register_recap_summary_routes(app, provider_state)
+    _register_recap_card_routes(app, provider_state)
+    _register_theme_page_routes(app, provider_state)
+    _register_morning_letter_routes(app)
+    _register_plan_query_routes(app)
 
     # --- Provider state registry ---
     async def _set_default(_params: dict[str, Any]) -> None:
@@ -449,7 +444,7 @@ def _create_provider_app() -> FastAPI:
 
 
 @pytest.fixture(scope="module")
-def provider_url():
+def provider_url() -> tuple[str, int]:
     """Start the provider server on a free port for all tests in this module."""
     port = _get_free_port()
     app = _create_provider_app()
@@ -464,14 +459,14 @@ def provider_url():
     base_url = f"http://127.0.0.1:{port}"
     for _ in range(100):
         try:
-            urllib.request.urlopen(f"{base_url}/openapi.json")  # nosec B310
+            urllib.request.urlopen(f"{base_url}/openapi.json")  # nosec B310  # noqa: S310 - local test provider health poll over http://127.0.0.1
             break
-        except Exception:
+        except (urllib.error.URLError, OSError, http.client.HTTPException):
             time.sleep(0.05)
     else:
         pytest.fail("Provider server did not start")
 
-    yield base_url, port
+    return base_url, port
 
 
 def _configure_verifier(
@@ -548,7 +543,7 @@ def _configure_verifier(
     not PACT_BROKER_URL and not PRE_PROCESSOR_PACT.exists(),
     reason=f"No Broker URL and pact file not found: {PRE_PROCESSOR_PACT}",
 )
-def test_verify_pre_processor_contract(provider_url: tuple[str, int]):
+def test_verify_pre_processor_contract(provider_url: tuple[str, int]) -> None:
     """Verify news-creator satisfies pre-processor's contract."""
     base_url, port = provider_url
 
@@ -568,7 +563,7 @@ def test_verify_pre_processor_contract(provider_url: tuple[str, int]):
     not PACT_BROKER_URL and not RAG_ORCHESTRATOR_PACT.exists(),
     reason=f"No Broker URL and pact file not found: {RAG_ORCHESTRATOR_PACT}",
 )
-def test_verify_rag_orchestrator_contract(provider_url: tuple[str, int]):
+def test_verify_rag_orchestrator_contract(provider_url: tuple[str, int]) -> None:
     """Verify news-creator satisfies rag-orchestrator's contract."""
     base_url, port = provider_url
 
@@ -588,7 +583,7 @@ def test_verify_rag_orchestrator_contract(provider_url: tuple[str, int]):
     not PACT_BROKER_URL and not ACOLYTE_ORCHESTRATOR_PACT.exists(),
     reason=f"No Broker URL and pact file not found: {ACOLYTE_ORCHESTRATOR_PACT}",
 )
-def test_verify_acolyte_orchestrator_contract(provider_url: tuple[str, int]):
+def test_verify_acolyte_orchestrator_contract(provider_url: tuple[str, int]) -> None:
     """Verify news-creator satisfies acolyte-orchestrator's contract."""
     base_url, port = provider_url
 
@@ -608,7 +603,7 @@ def test_verify_acolyte_orchestrator_contract(provider_url: tuple[str, int]):
     not PACT_BROKER_URL and not RECAP_WORKER_PACT.exists(),
     reason=f"No Broker URL and pact file not found: {RECAP_WORKER_PACT}",
 )
-def test_verify_recap_worker_contract(provider_url: tuple[str, int]):
+def test_verify_recap_worker_contract(provider_url: tuple[str, int]) -> None:
     """Verify news-creator satisfies recap-worker's contract for /v1/summary/*."""
     base_url, port = provider_url
 

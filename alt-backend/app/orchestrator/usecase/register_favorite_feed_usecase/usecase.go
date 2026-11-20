@@ -56,7 +56,7 @@ func (u *RegisterFavoriteFeedUsecase) Execute(ctx context.Context, url string) e
 	if lookupErr != nil {
 		logger.Logger.WarnContext(ctx, "failed to look up article by URL for favorite feed home open sync",
 			"error_kind", "article_lookup_failed")
-		return nil
+		return nil //nolint:nilerr // home-open sync is best-effort; favorite registration already succeeded
 	}
 	if article != nil && article.ID != "" {
 		if openErr := u.openFn(ctx, user.UserID, user.TenantID, "article:"+article.ID); openErr != nil {

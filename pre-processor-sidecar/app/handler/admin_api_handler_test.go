@@ -131,7 +131,7 @@ func TestAdminAPIHandler_HandleTokenStatus(t *testing.T) {
 			)
 
 			// Create request
-			req := httptest.NewRequest(tc.method, "/admin/token/status", nil)
+			req := httptest.NewRequestWithContext(t.Context(), tc.method, "/admin/token/status", nil)
 			req.Header.Set("Authorization", "Bearer test_token")
 
 			// Create response recorder
@@ -154,7 +154,7 @@ func TestAdminAPIHandler_HandleTokenStatus(t *testing.T) {
 func TestAdminAPIHandler_HandleTokenStatus_InvalidToken_Returns401(t *testing.T) {
 	handler := newTestAdminAPIHandler(denyingAuthenticator{}, &MockRateLimiter{})
 
-	req := httptest.NewRequest(http.MethodGet, "/admin/oauth2/token-status", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/admin/oauth2/token-status", nil)
 	req.Header.Set("Authorization", "Bearer bad-token")
 	recorder := httptest.NewRecorder()
 
@@ -166,7 +166,7 @@ func TestAdminAPIHandler_HandleTokenStatus_InvalidToken_Returns401(t *testing.T)
 func TestAdminAPIHandler_HandleTokenStatus_InsufficientPermissions_Returns403(t *testing.T) {
 	handler := newTestAdminAPIHandler(noAdminPermissionAuthenticator{}, &MockRateLimiter{})
 
-	req := httptest.NewRequest(http.MethodGet, "/admin/oauth2/token-status", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/admin/oauth2/token-status", nil)
 	req.Header.Set("Authorization", "Bearer some-token")
 	recorder := httptest.NewRecorder()
 
@@ -193,7 +193,7 @@ func TestAdminAPIHandler_HandleRefreshTokenUpdate(t *testing.T) {
 	)
 
 	// Test GET method not allowed
-	req := httptest.NewRequest(http.MethodGet, "/admin/oauth2/refresh-token", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/admin/oauth2/refresh-token", nil)
 	recorder := httptest.NewRecorder()
 
 	handler.HandleRefreshTokenUpdate(recorder, req)

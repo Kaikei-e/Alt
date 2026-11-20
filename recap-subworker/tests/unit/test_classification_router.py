@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import Sequence
+from http import HTTPStatus
 
 import httpx
 import pytest
@@ -51,7 +53,13 @@ class _BlockingClassifier:
 
     embedder = _FakeEmbedder()
 
-    def predict_batch(self, texts, multi_label=False, top_k=5, threshold_overrides=None):
+    def predict_batch(
+        self,
+        texts: Sequence[str],
+        multi_label: bool = False,
+        top_k: int = 5,
+        threshold_overrides: dict[str, float] | None = None,
+    ) -> list[dict[str, object]]:
         time.sleep(_BLOCK_SECONDS)
         return [
             {
@@ -68,7 +76,7 @@ class _BlockingClassifier:
 async def test_classify_offloads_blocking_call_to_thread() -> None:
     """Two concurrent /v1/classify calls must overlap, not serialize."""
     app = _build_app()
-    app.dependency_overrides[deps.get_classifier_dep] = lambda: _BlockingClassifier()
+    app.dependency_overrides[deps.get_classifier_dep] = _BlockingClassifier
 
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
@@ -80,7 +88,7 @@ async def test_classify_offloads_blocking_call_to_thread() -> None:
         elapsed = time.monotonic() - start
 
     for response in responses:
-        assert response.status_code == 200, response.text
+        assert response.status_code == HTTPStatus.OK, response.text
 
     # Serialized (blocking) execution would take >= 2 * _BLOCK_SECONDS.
     assert elapsed < _BLOCK_SECONDS * 1.5, (

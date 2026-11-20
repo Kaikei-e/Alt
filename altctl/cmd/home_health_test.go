@@ -16,14 +16,16 @@ func TestHomeHealthCommand(t *testing.T) {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{
 			"activeVersion": 2,
 			"checkpointSeq": 1139408,
 			"lastUpdated":   "2026-03-25T10:00:00Z",
 			"backfillJobs": []map[string]interface{}{
 				{"jobId": "bf-1", "status": "completed", "projectionVersion": 2, "totalEvents": 786000, "processedEvents": 786000},
 			},
-		})
+		}); err != nil {
+			t.Errorf("encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 

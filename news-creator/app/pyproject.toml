@@ -68,3 +68,47 @@ missing-module-attribute = false
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py314"
+line-length = 88
+exclude = [".git", "__pycache__", ".venv", "build", "dist"]
+
+[tool.ruff.lint]
+select = [
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # pyflakes
+    "I",     # isort
+    "B",     # flake8-bugbear
+    "UP",    # pyupgrade
+    "SIM",   # simplify
+    "N",     # pep8-naming
+    "ANN",   # annotations
+    "S",     # bandit (security)
+    "PTH",   # use-pathlib
+    "C4",    # flake8-comprehensions
+    "BLE",   # blind-except
+    "ASYNC", # async best practices
+    "TRY",   # tryceratops
+    "RUF",   # ruff-specific
+    "PL",    # pylint
+    "DTZ",   # flake8-datetimez
+    "PT",    # flake8-pytest-style
+    "LOG",   # flake8-logging
+    "G",     # flake8-logging-format
+    "T20",   # flake8-print
+    "A",     # flake8-builtins
+    "RET",   # flake8-return
+    "PERF",  # perflint
+    "FAST",  # FastAPI
+]
+ignore = [
+    "E501",   # line too long (conflicts with formatter)
+    "RUF001", # ambiguous unicode chars in strings — intentional Japanese text
+    "RUF002", # ambiguous unicode chars in docstrings — intentional Japanese text
+    "RUF003", # ambiguous unicode chars in comments — intentional Japanese text
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"] # pytest uses bare assert

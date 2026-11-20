@@ -18,6 +18,8 @@ from acolyte.domain.report import ChangeItem
 from acolyte.gateway.memory_report_gw import MemoryReportGateway
 from tests.conftest import TEST_USER_ID
 
+EXPECTED_FINAL_VERSION = 3
+
 
 @pytest.mark.asyncio
 async def test_bump_version_increments_correctly() -> None:
@@ -53,7 +55,7 @@ async def test_bump_version_records_change_items() -> None:
     await repo.bump_version(report.report_id, 0, "Initial", items)
 
     recorded = await repo.get_change_items(report.report_id, 1)
-    assert len(recorded) == 2
+    assert len(recorded) == len(items)
     assert recorded[0].field_name == "scope"
     assert recorded[1].change_kind == "updated"
     assert recorded[1].old_fingerprint == "abc"
@@ -105,9 +107,9 @@ async def test_sequential_bumps() -> None:
         [ChangeItem(field_name="section:executive_summary", change_kind="regenerated")],
     )
 
-    assert v3 == 3
+    assert v3 == EXPECTED_FINAL_VERSION
     updated = await repo.get_report(report.report_id)
     assert updated is not None
-    assert updated.current_version == 3
+    assert updated.current_version == EXPECTED_FINAL_VERSION
     versions, _cursor = await repo.list_report_versions(report.report_id, None, 10)
-    assert len(versions) == 3
+    assert len(versions) == EXPECTED_FINAL_VERSION

@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 
 	"github.com/alt-project/altctl/internal/compose"
 	"github.com/alt-project/altctl/internal/output"
@@ -152,7 +154,7 @@ func outputStatusTable(printer *output.Printer, registry *stack.Registry, status
 			continue
 		}
 
-		printer.Header(fmt.Sprintf("%s Stack", strings.Title(s.Name)))
+		printer.Header(fmt.Sprintf("%s Stack", cases.Title(language.English).String(s.Name)))
 
 		table := output.NewTable([]string{"SERVICE", "STATE", "HEALTH", "PORTS"})
 		for _, status := range runningServices {

@@ -166,7 +166,7 @@ func TestParseUpsertRecallCandidateMutation_Table(t *testing.T) {
 			}`,
 			check: func(t *testing.T, m upsertRecallCandidateMutation) {
 				assert.Equal(t, "article:rec", m.ItemKey)
-				assert.Equal(t, 0.42, m.RecallScore)
+				assert.InEpsilon(t, 0.42, m.RecallScore, 1e-9)
 				assert.JSONEq(t, `[{"type":"t1","description":"d1"}]`, m.ReasonJSON)
 				assert.Equal(t, 2, m.ProjectionVersion)
 			},

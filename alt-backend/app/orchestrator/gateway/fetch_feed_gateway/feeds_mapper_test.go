@@ -167,7 +167,7 @@ func TestParseFeedID(t *testing.T) {
 }
 
 func TestDerefString(t *testing.T) {
-	assert.Equal(t, "", derefString(nil))
+	assert.Empty(t, derefString(nil))
 	val := "hello"
 	assert.Equal(t, "hello", derefString(&val))
 }

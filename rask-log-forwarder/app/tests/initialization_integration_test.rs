@@ -11,7 +11,7 @@ fn create_test_config() -> Config {
         endpoint: "http://localhost:9600/v1/aggregate".to_string(),
         batch_size: 1000,
         flush_interval_ms: 500,
-        buffer_capacity: 100000,
+        buffer_capacity: 100_000,
         log_level: LogLevel::Info,
         enable_metrics: false,
         metrics_port: 9090,
@@ -27,9 +27,9 @@ fn create_test_config() -> Config {
         // Derived fields
         flush_interval: Duration::from_millis(500),
         connection_timeout: Duration::from_secs(30),
-        retry_config: Default::default(),
-        disk_fallback_config: Default::default(),
-        metrics_config: Default::default(),
+        retry_config: rask_log_forwarder::app::config::RetryConfig::default(),
+        disk_fallback_config: rask_log_forwarder::app::config::DiskFallbackConfig::default(),
+        metrics_config: rask_log_forwarder::app::config::MetricsConfig::default(),
         ingest_token_file: None,
         ingest_token: String::new(),
     }
@@ -123,7 +123,7 @@ fn test_configuration_validation() {
         // Empty endpoint
         {
             let mut config = create_test_config();
-            config.endpoint = "".to_string();
+            config.endpoint = String::new();
             config
         },
         // Invalid endpoint scheme

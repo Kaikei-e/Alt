@@ -76,26 +76,26 @@ func TestListRecapArticles_SuccessMapsDomainToProto(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if resp.Msg.Total != 1 {
-		t.Errorf("Total = %d, want 1", resp.Msg.Total)
+	if resp.Msg.GetTotal() != 1 {
+		t.Errorf("Total = %d, want 1", resp.Msg.GetTotal())
 	}
-	if resp.Msg.Range.From != "2026-04-14T00:00:00Z" {
-		t.Errorf("Range.From = %q", resp.Msg.Range.From)
+	if resp.Msg.GetRange().GetFrom() != "2026-04-14T00:00:00Z" {
+		t.Errorf("Range.From = %q", resp.Msg.GetRange().GetFrom())
 	}
-	if len(resp.Msg.Articles) != 1 {
-		t.Fatalf("Articles len = %d, want 1", len(resp.Msg.Articles))
+	if len(resp.Msg.GetArticles()) != 1 {
+		t.Fatalf("Articles len = %d, want 1", len(resp.Msg.GetArticles()))
 	}
-	got := resp.Msg.Articles[0]
-	if got.ArticleId != articleID.String() {
-		t.Errorf("ArticleId = %q", got.ArticleId)
+	got := resp.Msg.GetArticles()[0]
+	if got.GetArticleId() != articleID.String() {
+		t.Errorf("ArticleId = %q", got.GetArticleId())
 	}
-	if got.Title == nil || *got.Title != title {
+	if got.Title == nil || got.GetTitle() != title {
 		t.Errorf("Title = %v", got.Title)
 	}
-	if got.Fulltext != "Body text here." {
-		t.Errorf("Fulltext = %q", got.Fulltext)
+	if got.GetFulltext() != "Body text here." {
+		t.Errorf("Fulltext = %q", got.GetFulltext())
 	}
-	if got.PublishedAt == nil || *got.PublishedAt != "2026-04-15T12:00:00Z" {
+	if got.PublishedAt == nil || got.GetPublishedAt() != "2026-04-15T12:00:00Z" {
 		t.Errorf("PublishedAt = %v", got.PublishedAt)
 	}
 	if uc.lastCall.page != 2 || uc.lastCall.pageSize != 100 {
@@ -113,7 +113,8 @@ func TestListRecapArticles_InvalidFromMissing(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	connErr, ok := err.(*connect.Error)
+	connErr := &connect.Error{}
+	ok := errors.As(err, &connErr)
 	if !ok || connErr.Code() != connect.CodeInvalidArgument {
 		t.Errorf("expected InvalidArgument, got %v", err)
 	}
@@ -129,7 +130,8 @@ func TestListRecapArticles_InvalidFromNotRFC3339(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	connErr, ok := err.(*connect.Error)
+	connErr := &connect.Error{}
+	ok := errors.As(err, &connErr)
 	if !ok || connErr.Code() != connect.CodeInvalidArgument {
 		t.Errorf("expected InvalidArgument, got %v", err)
 	}
@@ -148,7 +150,8 @@ func TestListRecapArticles_UsecaseErrorMapsToInvalidArgument(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	connErr, ok := err.(*connect.Error)
+	connErr := &connect.Error{}
+	ok := errors.As(err, &connErr)
 	if !ok || connErr.Code() != connect.CodeInvalidArgument {
 		t.Errorf("expected InvalidArgument, got %v", err)
 	}
@@ -166,7 +169,8 @@ func TestListRecapArticles_NotConfiguredReturnsUnimplemented(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	connErr, ok := err.(*connect.Error)
+	connErr := &connect.Error{}
+	ok := errors.As(err, &connErr)
 	if !ok || connErr.Code() != connect.CodeUnimplemented {
 		t.Errorf("expected Unimplemented, got %v", err)
 	}
@@ -243,54 +247,54 @@ func TestListFeedsInWindow_SuccessMapsDomainToProto(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if resp.Msg.Total != 2064 {
-		t.Errorf("Total = %d, want 2064", resp.Msg.Total)
+	if resp.Msg.GetTotal() != 2064 {
+		t.Errorf("Total = %d, want 2064", resp.Msg.GetTotal())
 	}
-	if resp.Msg.Page != 1 {
-		t.Errorf("Page = %d, want 1", resp.Msg.Page)
+	if resp.Msg.GetPage() != 1 {
+		t.Errorf("Page = %d, want 1", resp.Msg.GetPage())
 	}
-	if resp.Msg.PageSize != 500 {
-		t.Errorf("PageSize = %d, want 500", resp.Msg.PageSize)
+	if resp.Msg.GetPageSize() != 500 {
+		t.Errorf("PageSize = %d, want 500", resp.Msg.GetPageSize())
 	}
-	if !resp.Msg.HasMore {
-		t.Errorf("HasMore = %v, want true", resp.Msg.HasMore)
+	if !resp.Msg.GetHasMore() {
+		t.Errorf("HasMore = %v, want true", resp.Msg.GetHasMore())
 	}
-	if len(resp.Msg.Feeds) != 1 {
-		t.Fatalf("Feeds len = %d, want 1", len(resp.Msg.Feeds))
+	if len(resp.Msg.GetFeeds()) != 1 {
+		t.Fatalf("Feeds len = %d, want 1", len(resp.Msg.GetFeeds()))
 	}
 
-	f := resp.Msg.Feeds[0]
-	if f.Id != feedID {
-		t.Errorf("Id = %q, want %q", f.Id, feedID)
+	f := resp.Msg.GetFeeds()[0]
+	if f.GetId() != feedID {
+		t.Errorf("Id = %q, want %q", f.GetId(), feedID)
 	}
-	if f.Title != title {
-		t.Errorf("Title = %q, want %q", f.Title, title)
+	if f.GetTitle() != title {
+		t.Errorf("Title = %q, want %q", f.GetTitle(), title)
 	}
-	if f.Description != description {
-		t.Errorf("Description = %q, want %q", f.Description, description)
+	if f.GetDescription() != description {
+		t.Errorf("Description = %q, want %q", f.GetDescription(), description)
 	}
-	if f.WebsiteUrl != websiteURL {
-		t.Errorf("WebsiteUrl = %q, want %q", f.WebsiteUrl, websiteURL)
+	if f.GetWebsiteUrl() != websiteURL {
+		t.Errorf("WebsiteUrl = %q, want %q", f.GetWebsiteUrl(), websiteURL)
 	}
-	if f.PubDate == nil || !f.PubDate.AsTime().Equal(pubDate) {
-		t.Errorf("PubDate = %v, want %v", f.PubDate, pubDate)
+	if f.GetPubDate() == nil || !f.GetPubDate().AsTime().Equal(pubDate) {
+		t.Errorf("PubDate = %v, want %v", f.GetPubDate(), pubDate)
 	}
-	if f.CreatedAt == nil || !f.CreatedAt.AsTime().Equal(createdAt) {
-		t.Errorf("CreatedAt = %v, want %v", f.CreatedAt, createdAt)
+	if f.GetCreatedAt() == nil || !f.GetCreatedAt().AsTime().Equal(createdAt) {
+		t.Errorf("CreatedAt = %v, want %v", f.GetCreatedAt(), createdAt)
 	}
-	if f.UpdatedAt == nil || !f.UpdatedAt.AsTime().Equal(updatedAt) {
-		t.Errorf("UpdatedAt = %v, want %v", f.UpdatedAt, updatedAt)
+	if f.GetUpdatedAt() == nil || !f.GetUpdatedAt().AsTime().Equal(updatedAt) {
+		t.Errorf("UpdatedAt = %v, want %v", f.GetUpdatedAt(), updatedAt)
 	}
-	if f.ArticleId == nil || *f.ArticleId != articleID {
+	if f.ArticleId == nil || f.GetArticleId() != articleID {
 		t.Errorf("ArticleId = %v, want %v", f.ArticleId, articleID)
 	}
-	if f.IsRead != false {
-		t.Errorf("IsRead = %v, want false", f.IsRead)
+	if f.GetIsRead() != false {
+		t.Errorf("IsRead = %v, want false", f.GetIsRead())
 	}
-	if f.FeedLinkId == nil || *f.FeedLinkId != feedLinkID {
+	if f.FeedLinkId == nil || f.GetFeedLinkId() != feedLinkID {
 		t.Errorf("FeedLinkId = %v, want %v", f.FeedLinkId, feedLinkID)
 	}
-	if f.OgImageUrl == nil || *f.OgImageUrl != ogImageURL {
+	if f.OgImageUrl == nil || f.GetOgImageUrl() != ogImageURL {
 		t.Errorf("OgImageUrl = %v, want %v", f.OgImageUrl, ogImageURL)
 	}
 
@@ -309,7 +313,8 @@ func TestListFeedsInWindow_InvalidFromMissing(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	connErr, ok := err.(*connect.Error)
+	connErr := &connect.Error{}
+	ok := errors.As(err, &connErr)
 	if !ok || connErr.Code() != connect.CodeInvalidArgument {
 		t.Errorf("expected InvalidArgument, got %v", err)
 	}
@@ -325,7 +330,8 @@ func TestListFeedsInWindow_InvalidFromNotRFC3339(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	connErr, ok := err.(*connect.Error)
+	connErr := &connect.Error{}
+	ok := errors.As(err, &connErr)
 	if !ok || connErr.Code() != connect.CodeInvalidArgument {
 		t.Errorf("expected InvalidArgument, got %v", err)
 	}
@@ -341,7 +347,8 @@ func TestListFeedsInWindow_InvalidToMissing(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	connErr, ok := err.(*connect.Error)
+	connErr := &connect.Error{}
+	ok := errors.As(err, &connErr)
 	if !ok || connErr.Code() != connect.CodeInvalidArgument {
 		t.Errorf("expected InvalidArgument, got %v", err)
 	}
@@ -357,7 +364,8 @@ func TestListFeedsInWindow_InvalidToNotRFC3339(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	connErr, ok := err.(*connect.Error)
+	connErr := &connect.Error{}
+	ok := errors.As(err, &connErr)
 	if !ok || connErr.Code() != connect.CodeInvalidArgument {
 		t.Errorf("expected InvalidArgument, got %v", err)
 	}
@@ -378,7 +386,8 @@ func TestListFeedsInWindow_InvalidPage(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	connErr, ok := err.(*connect.Error)
+	connErr := &connect.Error{}
+	ok := errors.As(err, &connErr)
 	if !ok || connErr.Code() != connect.CodeInvalidArgument {
 		t.Errorf("expected InvalidArgument, got %v", err)
 	}
@@ -397,7 +406,8 @@ func TestListFeedsInWindow_UsecaseErrorMapsToInvalidArgument(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	connErr, ok := err.(*connect.Error)
+	connErr := &connect.Error{}
+	ok := errors.As(err, &connErr)
 	if !ok || connErr.Code() != connect.CodeInvalidArgument {
 		t.Errorf("expected InvalidArgument, got %v", err)
 	}
@@ -415,7 +425,8 @@ func TestListFeedsInWindow_NotConfiguredReturnsUnimplemented(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	connErr, ok := err.(*connect.Error)
+	connErr := &connect.Error{}
+	ok := errors.As(err, &connErr)
 	if !ok || connErr.Code() != connect.CodeUnimplemented {
 		t.Errorf("expected Unimplemented, got %v", err)
 	}

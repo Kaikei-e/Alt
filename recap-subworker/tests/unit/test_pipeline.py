@@ -2,31 +2,51 @@
 
 from __future__ import annotations
 
+import os
+from collections.abc import Sequence
+
 import numpy as np
 
-from recap_subworker.domain.models import ClusterDocument, EvidenceRequest
+from recap_subworker.domain.models import (
+    ClusterDocument,
+    CorpusClassifierStats,
+    CorpusMetadata,
+    EvidenceRequest,
+)
 from recap_subworker.infra.config import Settings
 from recap_subworker.services.clusterer import ClusterResult, HDBSCANSettings
 from recap_subworker.services.pipeline import EvidencePipeline, normalize_text
+
+MIN_REPRESENTATIVE_CHARS = 20
+BASE_DEDUP_THRESHOLD = 0.92
+AI_DEDUP_THRESHOLD = 0.91
+POLITICS_DEDUP_THRESHOLD = 0.94
+MAX_DEDUP_THRESHOLD = 0.97
+MIN_DEDUP_THRESHOLD = 0.82
+HIGH_SIMILARITY_MIN = 0.9
+LOW_SIMILARITY_MAX = 0.1
+LAMBDA_TOLERANCE = 0.01
 
 
 class FakeEmbedder:
     def __init__(self) -> None:
         self.config = type("Cfg", (), {"backend": "sentence-transformers", "model_id": "fake"})()
 
-    def encode(self, sentences):
+    def encode(self, sentences: Sequence[str]) -> np.ndarray:
         size = max(1, len(sentences))
         return np.eye(size, dtype=np.float32)
 
-    def warmup(self, samples):
+    def warmup(self, samples: Sequence[str]) -> int:
         return len(list(samples))
 
-    def close(self):
+    def close(self) -> None:
         pass
 
 
 class FakeClusterer:
-    def cluster(self, embeddings, *, min_cluster_size, min_samples):
+    def cluster(
+        self, embeddings: np.ndarray, *, min_cluster_size: int, min_samples: int
+    ) -> ClusterResult:
         labels = np.zeros((embeddings.shape[0],), dtype=int)
         probs = np.ones_like(labels, dtype=float)
         return ClusterResult(
@@ -37,8 +57,13 @@ class FakeClusterer:
         )
 
     def optimize_clustering(
-        self, embeddings, *, min_cluster_size_range, min_samples_range, **kwargs
-    ):
+        self,
+        embeddings: np.ndarray,
+        *,
+        min_cluster_size_range: Sequence[int],
+        min_samples_range: Sequence[int],
+        **_kwargs: object,
+    ) -> ClusterResult:
         return self.cluster(
             embeddings, min_cluster_size=min_cluster_size_range[0], min_samples=min_samples_range[0]
         )
@@ -47,7 +72,9 @@ class FakeClusterer:
 class SplitClusterer:
     """Clusterer that forces each sentence into its own cluster."""
 
-    def cluster(self, embeddings, *, min_cluster_size, min_samples):
+    def cluster(
+        self, embeddings: np.ndarray, *, min_cluster_size: int, min_samples: int
+    ) -> ClusterResult:
         labels = np.arange(embeddings.shape[0], dtype=int)
         probs = np.ones_like(labels, dtype=float)
         return ClusterResult(
@@ -58,14 +85,19 @@ class SplitClusterer:
         )
 
     def optimize_clustering(
-        self, embeddings, *, min_cluster_size_range, min_samples_range, **kwargs
-    ):
+        self,
+        embeddings: np.ndarray,
+        *,
+        min_cluster_size_range: Sequence[int],
+        min_samples_range: Sequence[int],
+        **_kwargs: object,
+    ) -> ClusterResult:
         return self.cluster(
             embeddings, min_cluster_size=min_cluster_size_range[0], min_samples=min_samples_range[0]
         )
 
 
-def test_pipeline_basic_flow():
+def test_pipeline_basic_flow() -> None:
     settings = Settings(model_id="fake")
     pipeline = EvidencePipeline(settings=settings, embedder=FakeEmbedder(), process_pool=None)
     pipeline.clusterer = FakeClusterer()  # type: ignore[assignment]
@@ -96,7 +128,7 @@ def test_pipeline_basic_flow():
     assert response.evidence_budget.sentences > 0
 
 
-def test_pipeline_keeps_clusters_non_empty_even_when_articles_reused():
+def test_pipeline_keeps_clusters_non_empty_even_when_articles_reused() -> None:
     settings = Settings(model_id="fake", max_sentences_per_cluster=1)
     pipeline = EvidencePipeline(settings=settings, embedder=FakeEmbedder(), process_pool=None)
     pipeline.clusterer = SplitClusterer()  # type: ignore[assignment]
@@ -117,7 +149,8 @@ def test_pipeline_keeps_clusters_non_empty_even_when_articles_reused():
 
     response = pipeline.run(request)
 
-    assert len(response.clusters) >= 2
+    min_clusters = 2
+    assert len(response.clusters) >= min_clusters
     for cluster in response.clusters[:2]:
         assert cluster.representatives, (
             "cluster should retain at least one representative even after reuse"
@@ -127,7 +160,7 @@ def test_pipeline_keeps_clusters_non_empty_even_when_articles_reused():
         )
 
 
-def test_normalize_text_url_replacement():
+def test_normalize_text_url_replacement() -> None:
     """Test that URLs are replaced with placeholders."""
     text = "Visit https://example.com for more info."
     result = normalize_text(text)
@@ -135,7 +168,7 @@ def test_normalize_text_url_replacement():
     assert "https://example.com" not in result
 
 
-def test_normalize_text_email_replacement():
+def test_normalize_text_email_replacement() -> None:
     """Test that email addresses are replaced with placeholders."""
     text = "Contact us at user@example.com for support."
     result = normalize_text(text)
@@ -143,7 +176,7 @@ def test_normalize_text_email_replacement():
     assert "user@example.com" not in result
 
 
-def test_normalize_text_punctuation_reduction():
+def test_normalize_text_punctuation_reduction() -> None:
     """Test that excessive punctuation is reduced."""
     text = "This is important!!! Really important。。。"
     result = normalize_text(text)
@@ -153,7 +186,7 @@ def test_normalize_text_punctuation_reduction():
     assert "!" in result or "。" in result
 
 
-def test_normalize_text_whitespace_normalization():
+def test_normalize_text_whitespace_normalization() -> None:
     """Test that excessive whitespace is normalized."""
     text = "This   has    multiple    spaces\n\nand newlines."
     result = normalize_text(text)
@@ -163,7 +196,7 @@ def test_normalize_text_whitespace_normalization():
     assert "\n" not in result
 
 
-def test_normalize_text_unicode_normalization():
+def test_normalize_text_unicode_normalization() -> None:
     """Test that full-width characters are normalized."""
     text = "Ｈｅｌｌｏ　Ｗｏｒｌｄ"  # Full-width
     result = normalize_text(text)
@@ -171,24 +204,22 @@ def test_normalize_text_unicode_normalization():
     assert "Ｈ" not in result  # Full-width H should be normalized
 
 
-def test_normalize_text_preserves_content():
+def test_normalize_text_preserves_content() -> None:
     """Test that normalization doesn't remove important content."""
     text = "This is a sentence with important information. It should remain readable."
     result = normalize_text(text)
     assert "important information" in result
-    assert len(result) > 20  # Should not be too short
+    assert len(result) > MIN_REPRESENTATIVE_CHARS  # Should not be too short
 
 
-def test_normalize_text_empty_string():
+def test_normalize_text_empty_string() -> None:
     """Test that empty strings are handled."""
     assert normalize_text("") == ""
     assert normalize_text("   ") == ""
 
 
-def test_adjust_dedup_threshold_genre_override():
+def test_adjust_dedup_threshold_genre_override() -> None:
     """Test that genre-specific dedup thresholds override base threshold."""
-    import os
-
     # Temporarily clear environment variable to avoid interference
     old_val = os.environ.pop("RECAP_SUBWORKER_GENRE_DEDUP_THRESHOLDS", None)
     try:
@@ -196,31 +227,32 @@ def test_adjust_dedup_threshold_genre_override():
         settings = Settings(model_id="fake")
         settings.genre_dedup_thresholds = '{"ai": 0.91, "politics": 0.94}'
         # Verify the property works
-        assert settings.genre_dedup_thresholds_dict == {"ai": 0.91, "politics": 0.94}
+        assert settings.genre_dedup_thresholds_dict == {
+            "ai": AI_DEDUP_THRESHOLD,
+            "politics": POLITICS_DEDUP_THRESHOLD,
+        }
 
         pipeline = EvidencePipeline(settings=settings, embedder=FakeEmbedder(), process_pool=None)
 
         # Test genre override
-        threshold_ai = pipeline._adjust_dedup_threshold(0.92, None, "ai")
-        assert threshold_ai == 0.91
+        threshold_ai = pipeline._adjust_dedup_threshold(BASE_DEDUP_THRESHOLD, None, "ai")
+        assert threshold_ai == AI_DEDUP_THRESHOLD
 
-        threshold_politics = pipeline._adjust_dedup_threshold(0.92, None, "politics")
-        assert threshold_politics == 0.94
+        threshold_politics = pipeline._adjust_dedup_threshold(
+            BASE_DEDUP_THRESHOLD, None, "politics"
+        )
+        assert threshold_politics == POLITICS_DEDUP_THRESHOLD
 
         # Test genre without override (should use base)
-        threshold_other = pipeline._adjust_dedup_threshold(0.92, None, "other")
-        assert threshold_other == 0.92
+        threshold_other = pipeline._adjust_dedup_threshold(BASE_DEDUP_THRESHOLD, None, "other")
+        assert threshold_other == BASE_DEDUP_THRESHOLD
     finally:
         if old_val is not None:
             os.environ["RECAP_SUBWORKER_GENRE_DEDUP_THRESHOLDS"] = old_val
 
 
-def test_adjust_dedup_threshold_classifier_adjustment():
+def test_adjust_dedup_threshold_classifier_adjustment() -> None:
     """Test that classifier-based adjustment works when genre override is not set."""
-    import os
-
-    from recap_subworker.domain.models import CorpusClassifierStats, CorpusMetadata
-
     # Temporarily clear environment variable
     old_val = os.environ.pop("RECAP_SUBWORKER_GENRE_DEDUP_THRESHOLDS", None)
     try:
@@ -238,9 +270,11 @@ def test_adjust_dedup_threshold_classifier_adjustment():
                 avg_confidence=0.30, max_confidence=0.40, min_confidence=0.20, coverage_ratio=0.5
             ),
         )
-        threshold_low = pipeline._adjust_dedup_threshold(0.92, low_conf_metadata, "ai")
-        assert threshold_low > 0.92
-        assert threshold_low <= 0.97
+        threshold_low = pipeline._adjust_dedup_threshold(
+            BASE_DEDUP_THRESHOLD, low_conf_metadata, "ai"
+        )
+        assert threshold_low > BASE_DEDUP_THRESHOLD
+        assert threshold_low <= MAX_DEDUP_THRESHOLD
 
         # High confidence: should decrease threshold
         high_conf_metadata = CorpusMetadata(
@@ -252,20 +286,18 @@ def test_adjust_dedup_threshold_classifier_adjustment():
                 avg_confidence=0.80, max_confidence=0.90, min_confidence=0.70, coverage_ratio=0.7
             ),
         )
-        threshold_high = pipeline._adjust_dedup_threshold(0.92, high_conf_metadata, "ai")
-        assert threshold_high < 0.92
-        assert threshold_high >= 0.82
+        threshold_high = pipeline._adjust_dedup_threshold(
+            BASE_DEDUP_THRESHOLD, high_conf_metadata, "ai"
+        )
+        assert threshold_high < BASE_DEDUP_THRESHOLD
+        assert threshold_high >= MIN_DEDUP_THRESHOLD
     finally:
         if old_val is not None:
             os.environ["RECAP_SUBWORKER_GENRE_DEDUP_THRESHOLDS"] = old_val
 
 
-def test_adjust_dedup_threshold_genre_override_priority():
+def test_adjust_dedup_threshold_genre_override_priority() -> None:
     """Test that genre override takes priority over classifier adjustment."""
-    import os
-
-    from recap_subworker.domain.models import CorpusClassifierStats, CorpusMetadata
-
     # Temporarily clear environment variable
     old_val = os.environ.pop("RECAP_SUBWORKER_GENRE_DEDUP_THRESHOLDS", None)
     try:
@@ -284,14 +316,14 @@ def test_adjust_dedup_threshold_genre_override_priority():
                 avg_confidence=0.30, max_confidence=0.40, min_confidence=0.20, coverage_ratio=0.5
             ),
         )
-        threshold = pipeline._adjust_dedup_threshold(0.92, low_conf_metadata, "ai")
-        assert threshold == 0.91  # Genre override, not classifier adjustment
+        threshold = pipeline._adjust_dedup_threshold(BASE_DEDUP_THRESHOLD, low_conf_metadata, "ai")
+        assert threshold == AI_DEDUP_THRESHOLD  # Genre override, not classifier adjustment
     finally:
         if old_val is not None:
             os.environ["RECAP_SUBWORKER_GENRE_DEDUP_THRESHOLDS"] = old_val
 
 
-def test_avg_pairwise_cosine_sim_high_similarity():
+def test_avg_pairwise_cosine_sim_high_similarity() -> None:
     """Test avg_sim calculation for highly similar (homogeneous) cluster."""
     settings = Settings(model_id="fake")
     pipeline = EvidencePipeline(settings=settings, embedder=FakeEmbedder(), process_pool=None)
@@ -315,10 +347,10 @@ def test_avg_pairwise_cosine_sim_high_similarity():
 
     avg_sim = pipeline._avg_pairwise_cosine_sim(embeddings)
     assert avg_sim is not None
-    assert avg_sim > 0.9  # High similarity
+    assert avg_sim > HIGH_SIMILARITY_MIN  # High similarity
 
 
-def test_avg_pairwise_cosine_sim_low_similarity():
+def test_avg_pairwise_cosine_sim_low_similarity() -> None:
     """Test avg_sim calculation for diverse (orthogonal-like) cluster."""
     settings = Settings(model_id="fake")
     pipeline = EvidencePipeline(settings=settings, embedder=FakeEmbedder(), process_pool=None)
@@ -338,10 +370,10 @@ def test_avg_pairwise_cosine_sim_low_similarity():
 
     avg_sim = pipeline._avg_pairwise_cosine_sim(embeddings)
     assert avg_sim is not None
-    assert avg_sim < 0.1  # Low similarity (orthogonal vectors have cos=0)
+    assert avg_sim < LOW_SIMILARITY_MAX  # Low similarity (orthogonal vectors have cos=0)
 
 
-def test_avg_pairwise_cosine_sim_single_vector():
+def test_avg_pairwise_cosine_sim_single_vector() -> None:
     """Test avg_sim returns None for single vector."""
     settings = Settings(model_id="fake")
     pipeline = EvidencePipeline(settings=settings, embedder=FakeEmbedder(), process_pool=None)
@@ -351,29 +383,31 @@ def test_avg_pairwise_cosine_sim_single_vector():
     assert avg_sim is None
 
 
-def test_lambda_from_avg_sim_high_similarity():
+def test_lambda_from_avg_sim_high_similarity() -> None:
     """Test lambda calculation for high avg_sim (homogeneous cluster)."""
     settings = Settings(model_id="fake")
     pipeline = EvidencePipeline(settings=settings, embedder=FakeEmbedder(), process_pool=None)
 
     base_lambda = 0.7
-    # High avg_sim (e.g., 0.95) -> lambda should be close to 0.5
-    lambda_param = pipeline._lambda_from_avg_sim(0.95, base_lambda)
-    assert abs(lambda_param - 0.515) < 0.01  # 0.5 + 0.3 * (1 - 0.95) = 0.515
+    avg_sim = 0.95
+    expected_lambda = 0.5 + 0.3 * (1 - avg_sim)
+    lambda_param = pipeline._lambda_from_avg_sim(avg_sim, base_lambda)
+    assert abs(lambda_param - expected_lambda) < LAMBDA_TOLERANCE
 
 
-def test_lambda_from_avg_sim_low_similarity():
+def test_lambda_from_avg_sim_low_similarity() -> None:
     """Test lambda calculation for low avg_sim (diverse cluster)."""
     settings = Settings(model_id="fake")
     pipeline = EvidencePipeline(settings=settings, embedder=FakeEmbedder(), process_pool=None)
 
     base_lambda = 0.7
-    # Low avg_sim (e.g., 0.1) -> lambda should be close to 0.8
-    lambda_param = pipeline._lambda_from_avg_sim(0.1, base_lambda)
-    assert abs(lambda_param - 0.77) < 0.01  # 0.5 + 0.3 * (1 - 0.1) = 0.77
+    avg_sim = 0.1
+    expected_lambda = 0.5 + 0.3 * (1 - avg_sim)
+    lambda_param = pipeline._lambda_from_avg_sim(avg_sim, base_lambda)
+    assert abs(lambda_param - expected_lambda) < LAMBDA_TOLERANCE
 
 
-def test_lambda_from_avg_sim_none():
+def test_lambda_from_avg_sim_none() -> None:
     """Test lambda calculation falls back to base_lambda when avg_sim is None."""
     settings = Settings(model_id="fake")
     pipeline = EvidencePipeline(settings=settings, embedder=FakeEmbedder(), process_pool=None)
@@ -383,7 +417,7 @@ def test_lambda_from_avg_sim_none():
     assert lambda_param == base_lambda
 
 
-def test_lambda_from_avg_sim_clipping():
+def test_lambda_from_avg_sim_clipping() -> None:
     """Test lambda parameter is clipped to [0.0, 1.0] range."""
     settings = Settings(model_id="fake")
     pipeline = EvidencePipeline(settings=settings, embedder=FakeEmbedder(), process_pool=None)
@@ -397,7 +431,7 @@ def test_lambda_from_avg_sim_clipping():
     assert 0.0 <= lambda_param_low <= 1.0
 
 
-def test_is_valid_representative_text_short_text():
+def test_is_valid_representative_text_short_text() -> None:
     """Test that text shorter than 20 characters is rejected."""
     settings = Settings(model_id="fake")
     pipeline = EvidencePipeline(settings=settings, embedder=FakeEmbedder(), process_pool=None)
@@ -408,7 +442,7 @@ def test_is_valid_representative_text_short_text():
     assert pipeline._is_valid_representative_text("This is a valid sentence with enough length.")
 
 
-def test_is_valid_representative_text_stack_trace():
+def test_is_valid_representative_text_stack_trace() -> None:
     """Test that stack trace-like text is rejected."""
     settings = Settings(model_id="fake")
     pipeline = EvidencePipeline(settings=settings, embedder=FakeEmbedder(), process_pool=None)
@@ -420,7 +454,7 @@ def test_is_valid_representative_text_stack_trace():
     assert not pipeline._is_valid_representative_text("Error: something went wrong")
 
 
-def test_is_valid_representative_text_code_fragments():
+def test_is_valid_representative_text_code_fragments() -> None:
     """Test that code fragment-like text is rejected."""
     settings = Settings(model_id="fake")
     pipeline = EvidencePipeline(settings=settings, embedder=FakeEmbedder(), process_pool=None)
@@ -433,7 +467,7 @@ def test_is_valid_representative_text_code_fragments():
     assert not pipeline._is_valid_representative_text("() { }")
 
 
-def test_pipeline_filters_short_sentences():
+def test_pipeline_filters_short_sentences() -> None:
     """Test that pipeline filters out short sentences from representatives."""
     settings = Settings(model_id="fake")
     pipeline = EvidencePipeline(settings=settings, embedder=FakeEmbedder(), process_pool=None)
@@ -465,10 +499,12 @@ def test_pipeline_filters_short_sentences():
     # All representatives should have valid text (>= 20 chars)
     for cluster in response.clusters:
         for rep in cluster.representatives:
-            assert len(rep.text) >= 20, f"Representative text too short: {rep.text}"
+            assert len(rep.text) >= MIN_REPRESENTATIVE_CHARS, (
+                f"Representative text too short: {rep.text}"
+            )
 
 
-def test_pipeline_filters_code_fragments():
+def test_pipeline_filters_code_fragments() -> None:
     """Test that pipeline filters out code fragment-like sentences from representatives."""
     settings = Settings(model_id="fake")
     pipeline = EvidencePipeline(settings=settings, embedder=FakeEmbedder(), process_pool=None)
@@ -500,16 +536,18 @@ def test_pipeline_filters_code_fragments():
     # All representatives should have valid text (no code fragments)
     for cluster in response.clusters:
         for rep in cluster.representatives:
-            assert len(rep.text) >= 20, f"Representative text too short: {rep.text}"
+            assert len(rep.text) >= MIN_REPRESENTATIVE_CHARS, (
+                f"Representative text too short: {rep.text}"
+            )
             assert "stackTrace" not in rep.text.lower()
             assert "}){" not in rep.text
 
 
-def test_pipeline_succeeds_when_genre_reduces_to_single_sentence_after_dedup():
+def test_pipeline_succeeds_when_genre_reduces_to_single_sentence_after_dedup() -> None:
     """A genre that deduplicates down to one sentence must succeed with one cluster."""
 
     class DuplicateEmbedder(FakeEmbedder):
-        def encode(self, sentences):
+        def encode(self, sentences: Sequence[str]) -> np.ndarray:
             vec = np.array([[1.0, 0.0, 0.0, 0.0]], dtype=np.float32)
             return np.repeat(vec, max(1, len(sentences)), axis=0)
 

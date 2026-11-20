@@ -34,7 +34,7 @@ func TestRequireAdminToken_EnabledGatesAdminPaths(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodPost, tc.path, nil)
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, tc.path, nil)
 			if tc.auth != "" {
 				req.Header.Set("Authorization", tc.auth)
 			}
@@ -51,7 +51,7 @@ func TestRequireAdminToken_EnabledGatesAdminPaths(t *testing.T) {
 func TestRequireAdminToken_EmptyTokenWhileEnabledDenies(t *testing.T) {
 	h := requireAdminToken("", true, okHandler())
 
-	req := httptest.NewRequest(http.MethodPost, "/admin/snapshots/create", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/admin/snapshots/create", nil)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
@@ -63,7 +63,7 @@ func TestRequireAdminToken_EmptyTokenWhileEnabledDenies(t *testing.T) {
 func TestRequireAdminToken_ExplicitlyDisabledPassesThrough(t *testing.T) {
 	h := requireAdminToken("", false, okHandler())
 
-	req := httptest.NewRequest(http.MethodPost, "/admin/snapshots/create", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/admin/snapshots/create", nil)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 

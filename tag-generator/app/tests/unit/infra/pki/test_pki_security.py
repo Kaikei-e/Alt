@@ -1,22 +1,21 @@
 """Security contract tests for F-001..F-011 (Python PKI)."""
 
-# ruff: noqa: TRY003, PLC0415, PTH110
-
 from __future__ import annotations
 
 import asyncio
 import base64
 import json
-import os
 import ssl
 import tempfile
 import threading
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
+from http import HTTPStatus
 from pathlib import Path
 
 import httpx
 import pytest
+from cryptography import x509 as cx509
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509 import ObjectIdentifier
 from cryptography.x509.oid import ExtendedKeyUsageOID
@@ -167,7 +166,7 @@ def test_pbes2_rejects_malformed_and_oversized_header() -> None:
 
 def test_pbes2_lock_restores_cap_under_concurrency() -> None:
     key = JWK.generate(kty="EC", crv="P-256")
-    password = "concurrent-pw"
+    password = "concurrent-pw"  # noqa: S105 - test fixture value, not a credential
     compact = encrypt_step_ca_provisioner_jwk(key, password)
     before = default_max_pbkdf2_iterations
     errors: list[BaseException] = []
@@ -189,7 +188,7 @@ def test_pbes2_lock_restores_cap_under_concurrency() -> None:
 
 @pytest.mark.asyncio
 async def test_rejects_redirects(tmp_path: Path) -> None:
-    password = "redirect-pw"
+    password = "redirect-pw"  # noqa: S105 - test fixture value, not a credential
     ca = FakeStepCA("pki-agent-tag-generator", password)
     ca.redirect_sign = 307
     url, root = ca.start(tmp_path)
@@ -218,7 +217,7 @@ async def test_http_client_requires_https(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_rejects_tls12_only_ca(tmp_path: Path) -> None:
-    password = "tls12-pw"
+    password = "tls12-pw"  # noqa: S105 - test fixture value, not a credential
     ca = FakeStepCA("pki-agent-tag-generator", password)
     ca.tls_max = ssl.TLSVersion.TLSv1_2
     url, root = ca.start(tmp_path)
@@ -235,8 +234,8 @@ async def test_rejects_tls12_only_ca(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_ca_error_is_sentinel_without_body(tmp_path: Path) -> None:
-    password = "sentinel-pw"
-    secret = "super-secret-jwk-password-and-ott"
+    password = "sentinel-pw"  # noqa: S105 - test fixture value, not a credential
+    secret = "super-secret-jwk-password-and-ott"  # noqa: S105 - test fixture value, not a credential
     ca = FakeStepCA("pki-agent-tag-generator", password)
     ca.sign_status = 401
     ca.sign_body = json.dumps({"status": 401, "message": secret}).encode()
@@ -255,7 +254,7 @@ async def test_ca_error_is_sentinel_without_body(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_provisioner_page_cap(tmp_path: Path) -> None:
-    password = "pages-pw"
+    password = "pages-pw"  # noqa: S105 - test fixture value, not a credential
     ca = FakeStepCA("pki-agent-tag-generator", password)
     ca.endless_provisioners = True
     url, root = ca.start(tmp_path)
@@ -272,7 +271,7 @@ async def test_provisioner_page_cap(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_response_size_cap(tmp_path: Path) -> None:
-    password = "huge-pw"
+    password = "huge-pw"  # noqa: S105 - test fixture value, not a credential
     ca = FakeStepCA("pki-agent-tag-generator", password)
     ca.sign_status = 201
     ca.sign_body = b"A" * (MAX_RESPONSE_BYTES + 8)
@@ -290,7 +289,7 @@ async def test_response_size_cap(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_password_symlink_rejected(tmp_path: Path) -> None:
-    password = "symlink-pw"
+    password = "symlink-pw"  # noqa: S105 - test fixture value, not a credential
     ca = FakeStepCA("pki-agent-tag-generator", password)
     url, root = ca.start(tmp_path)
     real = write_password_file(tmp_path, "pki-agent-tag-generator-jwk", password)
@@ -308,7 +307,7 @@ async def test_password_symlink_rejected(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_password_size_cap(tmp_path: Path) -> None:
-    password = "cap-pw"
+    password = "cap-pw"  # noqa: S105 - test fixture value, not a credential
     ca = FakeStepCA("pki-agent-tag-generator", password)
     url, root = ca.start(tmp_path)
     path = write_password_file(tmp_path, "pki-agent-tag-generator-jwk", "x" * (MAX_PASSWORD_BYTES + 1))
@@ -324,14 +323,14 @@ async def test_password_size_cap(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("eku",),
+    "eku",
     [
-        ([ExtendedKeyUsageOID.SERVER_AUTH],),
-        ([ExtendedKeyUsageOID.CLIENT_AUTH],),
+        [ExtendedKeyUsageOID.SERVER_AUTH],
+        [ExtendedKeyUsageOID.CLIENT_AUTH],
     ],
 )
 async def test_rejects_one_sided_eku(tmp_path: Path, eku: list[ObjectIdentifier]) -> None:
-    password = "one-sided-eku"
+    password = "one-sided-eku"  # noqa: S105 - test fixture value, not a credential
     ca = FakeStepCA("pki-agent-tag-generator", password)
     ca.eku = eku
     url, root = ca.start(tmp_path)
@@ -348,9 +347,7 @@ async def test_rejects_one_sided_eku(tmp_path: Path, eku: list[ObjectIdentifier]
 
 @pytest.mark.asyncio
 async def test_rejects_extra_dns(tmp_path: Path) -> None:
-    from cryptography import x509 as cx509
-
-    password = "extra-dns"
+    password = "extra-dns"  # noqa: S105 - test fixture value, not a credential
     ca = FakeStepCA("pki-agent-tag-generator", password)
     ca.mutate_sans = lambda names: [*names, cx509.DNSName("evil.example")]
     url, root = ca.start(tmp_path)
@@ -367,9 +364,7 @@ async def test_rejects_extra_dns(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_exact_ip_and_uri_sans(tmp_path: Path) -> None:
-    from cryptography import x509 as cx509
-
-    password = "typed-san"
+    password = "typed-san"  # noqa: S105 - test fixture value, not a credential
     ca = FakeStepCA("pki-agent-tag-generator", password)
     url, root = ca.start(tmp_path)
     pw = write_password_file(tmp_path, "pki-agent-tag-generator-jwk", password)
@@ -391,7 +386,7 @@ async def test_exact_ip_and_uri_sans(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_rejects_mismatched_leaf_key(tmp_path: Path) -> None:
-    password = "key-mismatch"
+    password = "key-mismatch"  # noqa: S105 - test fixture value, not a credential
     ca = FakeStepCA("pki-agent-tag-generator", password)
     url, root = ca.start(tmp_path)
     pw = write_password_file(tmp_path, "pki-agent-tag-generator-jwk", password)
@@ -435,7 +430,8 @@ async def test_enroll_cancel_during_backoff_is_cancelled(tmp_path: Path) -> None
     class _Fail:
         async def issue(self, subject: str, sans: Sequence[str]) -> tuple[bytes, bytes]:
             _ = (subject, sans)
-            raise PkiError("CA down")
+            msg = "CA down"
+            raise PkiError(msg)
 
     mgr = Manager(
         subject=SUBJECT,
@@ -455,7 +451,7 @@ async def test_enroll_cancel_during_backoff_is_cancelled(tmp_path: Path) -> None
 
 @pytest.mark.asyncio
 async def test_rekey_does_not_use_named_tmp(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    password = "memfd-pw"
+    password = "memfd-pw"  # noqa: S105 - test fixture value, not a credential
     ca = FakeStepCA("pki-agent-tag-generator", password)
     url, root = ca.start(tmp_path)
     pw = write_password_file(tmp_path, "pki-agent-tag-generator-jwk", password)
@@ -464,7 +460,8 @@ async def test_rekey_does_not_use_named_tmp(tmp_path: Path, monkeypatch: pytest.
     )
 
     def _boom(*_args: object, **_kwargs: object) -> object:
-        raise AssertionError("named tempfile must not be used for rekey mTLS")
+        msg = "named tempfile must not be used for rekey mTLS"
+        raise AssertionError(msg)
 
     monkeypatch.setattr(tempfile, "mkstemp", _boom)
     try:
@@ -508,9 +505,9 @@ async def test_start_uses_private_registry_and_ops(tmp_path: Path, monkeypatch: 
         async with httpx.AsyncClient() as client:
             health = await client.get(f"http://{handle.ops_addr}/health")
             metrics = await client.get(f"http://{handle.ops_addr}/metrics")
-        assert health.status_code == 200
+        assert health.status_code == HTTPStatus.OK
         assert "tag-generator" in health.text
-        assert metrics.status_code == 200
+        assert metrics.status_code == HTTPStatus.OK
         assert "pki_enrollment_healthy" in metrics.text
         leaked = generate_latest(DEFAULT_REGISTRY).decode()
         assert 'subject="tag-generator"' not in leaked or "pki_enrollment_healthy" not in leaked
@@ -519,5 +516,6 @@ async def test_start_uses_private_registry_and_ops(tmp_path: Path, monkeypatch: 
 
 
 def test_pbes2_constant_is_step_ca_default() -> None:
-    assert STEP_CA_PBES2_P2C == 600_000
-    assert os.path.exists("/proc/self/fd")
+    expected_p2c = 600_000
+    assert expected_p2c == STEP_CA_PBES2_P2C
+    assert Path("/proc/self/fd").exists()

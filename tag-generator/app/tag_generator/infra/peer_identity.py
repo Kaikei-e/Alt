@@ -30,8 +30,11 @@ if TYPE_CHECKING:
 
     from starlette.requests import Request
     from starlette.responses import Response
+    from starlette.types import ASGIApp
 
 PEER_IDENTITY_HEADER = "x-alt-peer-identity"
+_HTTP_UNAUTHORIZED = 401
+_HTTP_FORBIDDEN = 403
 
 # Exact application probes are exempt from the CN allowlist; TLS client-
 # certificate validation still applies.
@@ -115,7 +118,7 @@ class PeerIdentityMiddleware(BaseHTTPMiddleware):
 
     def __init__(
         self,
-        app,
+        app: ASGIApp,
         allowed: Iterable[str] | None = None,
         *,
         strict: bool = True,
@@ -123,6 +126,21 @@ class PeerIdentityMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self._allowed = {c for c in (allowed or []) if c}
         self._strict = strict
+
+    def _reject_disallowed_peer(self, peer: str, path: str, *, missing_status: int) -> Response | None:
+        if not peer:
+            if missing_status == _HTTP_UNAUTHORIZED:
+                logger.warning("peer_identity.missing", path=path)
+                return PlainTextResponse("unauthenticated peer", status_code=_HTTP_UNAUTHORIZED)
+            logger.warning("peer_identity.forbidden", reason="peer_cn_missing", path=path)
+            return PlainTextResponse("peer not allowlisted", status_code=_HTTP_FORBIDDEN)
+        if not self._allowed:
+            logger.warning("peer_identity.forbidden", reason="no_peers_allowlisted", path=path)
+            return PlainTextResponse("peer not allowlisted", status_code=_HTTP_FORBIDDEN)
+        if peer not in self._allowed:
+            logger.warning("peer_identity.forbidden", peer=peer, path=path)
+            return PlainTextResponse("peer not allowlisted", status_code=_HTTP_FORBIDDEN)
+        return None
 
     async def dispatch(
         self,
@@ -133,47 +151,15 @@ class PeerIdentityMiddleware(BaseHTTPMiddleware):
         if is_tls_request(request):
             peer = tls_authenticated_cn(request)
             if not is_probe:
-                if not peer:
-                    logger.warning(
-                        "peer_identity.forbidden",
-                        reason="peer_cn_missing",
-                        path=request.url.path,
-                    )
-                    return PlainTextResponse("peer not allowlisted", status_code=403)
-                if not self._allowed:
-                    logger.warning(
-                        "peer_identity.forbidden",
-                        reason="no_peers_allowlisted",
-                        path=request.url.path,
-                    )
-                    return PlainTextResponse("peer not allowlisted", status_code=403)
-                if peer not in self._allowed:
-                    logger.warning(
-                        "peer_identity.forbidden",
-                        peer=peer,
-                        path=request.url.path,
-                    )
-                    return PlainTextResponse("peer not allowlisted", status_code=403)
+                rejected = self._reject_disallowed_peer(peer, request.url.path, missing_status=_HTTP_FORBIDDEN)
+                if rejected is not None:
+                    return rejected
         else:
             peer = resolve_authenticated_peer(request)
             if self._strict and not is_probe:
-                if not peer:
-                    logger.warning("peer_identity.missing", path=request.url.path)
-                    return PlainTextResponse("unauthenticated peer", status_code=401)
-                if not self._allowed:
-                    logger.warning(
-                        "peer_identity.forbidden",
-                        reason="no_peers_allowlisted",
-                        path=request.url.path,
-                    )
-                    return PlainTextResponse("peer not allowlisted", status_code=403)
-                if peer not in self._allowed:
-                    logger.warning(
-                        "peer_identity.forbidden",
-                        peer=peer,
-                        path=request.url.path,
-                    )
-                    return PlainTextResponse("peer not allowlisted", status_code=403)
+                rejected = self._reject_disallowed_peer(peer, request.url.path, missing_status=_HTTP_UNAUTHORIZED)
+                if rejected is not None:
+                    return rejected
 
         request.state.peer_identity = peer or None
 

@@ -17,11 +17,11 @@ func (h *SovereignHandler) ListRecallSignals(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.ListRecallSignalsRequest],
 ) (*connect.Response[sovereignv1.ListRecallSignalsResponse], error) {
-	userID, err := parseUUIDField("user_id", req.Msg.UserId)
+	userID, err := parseUUIDField("user_id", req.Msg.GetUserId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	signals, err := h.readDB.ListRecallSignalsByUser(ctx, userID, int(req.Msg.SinceDays))
+	signals, err := h.readDB.ListRecallSignalsByUser(ctx, userID, int(req.Msg.GetSinceDays()))
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("ListRecallSignals: %w", err))
 	}
@@ -44,7 +44,7 @@ func (h *SovereignHandler) AppendRecallSignal(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.AppendRecallSignalRequest],
 ) (*connect.Response[sovereignv1.AppendRecallSignalResponse], error) {
-	s, err := validateAndBuildRecallSignal(req.Msg.Signal)
+	s, err := validateAndBuildRecallSignal(req.Msg.GetSignal())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
@@ -59,24 +59,24 @@ func validateAndBuildRecallSignal(ps *sovereignv1.RecallSignal) (sovereign_db.Re
 	if ps == nil {
 		return sovereign_db.RecallSignal{}, fmt.Errorf("signal is required")
 	}
-	signalID, err := parseUUIDField("signal_id", ps.SignalId)
+	signalID, err := parseUUIDField("signal_id", ps.GetSignalId())
 	if err != nil {
 		return sovereign_db.RecallSignal{}, err
 	}
-	signalUserID, err := parseUUIDField("user_id", ps.UserId)
+	signalUserID, err := parseUUIDField("user_id", ps.GetUserId())
 	if err != nil {
 		return sovereign_db.RecallSignal{}, err
 	}
-	if ps.OccurredAt == nil {
+	if ps.GetOccurredAt() == nil {
 		return sovereign_db.RecallSignal{}, fmt.Errorf("occurred_at is required")
 	}
 	return sovereign_db.RecallSignal{
 		SignalID:       signalID,
 		UserID:         signalUserID,
-		ItemKey:        ps.ItemKey,
-		SignalType:     ps.SignalType,
-		SignalStrength: ps.SignalStrength,
-		Payload:        ps.Payload,
-		OccurredAt:     ps.OccurredAt.AsTime(),
+		ItemKey:        ps.GetItemKey(),
+		SignalType:     ps.GetSignalType(),
+		SignalStrength: ps.GetSignalStrength(),
+		Payload:        ps.GetPayload(),
+		OccurredAt:     ps.GetOccurredAt().AsTime(),
 	}, nil
 }

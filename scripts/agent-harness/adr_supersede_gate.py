@@ -20,8 +20,11 @@ from __future__ import annotations
 import argparse
 import pathlib
 import re
+import shutil
 import subprocess
 import sys
+
+QUOTED_MIN_LEN = 2
 
 ADR_FILENAME_RE = re.compile(r"^(\d{6})\.md$")
 WIKILINK_RE = re.compile(r"\[\[(\d{6})(?:\|[^\]\n]*)?\]\]")
@@ -117,7 +120,7 @@ def _split_inline_list(inner: str) -> list[str]:
 def _normalize_adr_id(token: str) -> str | None:
     """Extract a 6-digit ADR id from bare, quoted, or wikilink frontmatter items."""
     val = token.strip()
-    if len(val) >= 2 and val[0] == val[-1] and val[0] in ('"', "'"):
+    if len(val) >= QUOTED_MIN_LEN and val[0] == val[-1] and val[0] in ('"', "'"):
         val = val[1:-1].strip()
     match = SUPERSEDES_ENTRY_RE.match(val)
     if match is None:
@@ -186,17 +189,19 @@ def body_wikilink_ids(body: str) -> set[str]:
 
 
 def _run_git(cwd: pathlib.Path, *args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ["git", "-C", str(cwd), *args],
+    git_bin = shutil.which("git")
+    if git_bin is None:
+        msg = "git executable not found on PATH"
+        raise FileNotFoundError(msg)
+    return subprocess.run(  # noqa: S603 -- git resolved via shutil.which with explicit subcommand args
+        [git_bin, "-C", str(cwd), *args],
         capture_output=True,
         text=True,
         check=False,
     )
 
 
-def _git_show_file(
-    repo_root: pathlib.Path, rev: str, rel_path: str
-) -> str | None:
+def _git_show_file(repo_root: pathlib.Path, rev: str, rel_path: str) -> str | None:
     """Return file text at rev:rel_path via git show, or None if absent at rev."""
     res = _run_git(repo_root, "show", f"{rev}:{rel_path}")
     if res.returncode != 0:
@@ -214,47 +219,56 @@ def format_finding(src: str, dst: str) -> str:
     )
 
 
-def run_gate(base_rev: str, adr_dir: pathlib.Path) -> int:
-    """Execute the supersede gate against base_rev for all NNNNNN.md in adr_dir."""
+def _resolve_adr_repo(
+    base_rev: str, adr_dir: pathlib.Path
+) -> tuple[pathlib.Path | None, pathlib.Path | None]:
     if not adr_dir.is_dir():
-        print(f"error: ADR directory does not exist: {adr_dir}", file=sys.stderr)
-        return 2
+        sys.stderr.write(f"error: ADR directory does not exist: {adr_dir}\n")
+        return None, None
 
     if not base_rev or base_rev.startswith("-"):
-        print(f"error: invalid base revision: {base_rev!r}", file=sys.stderr)
-        return 2
+        sys.stderr.write(f"error: invalid base revision: {base_rev!r}\n")
+        return None, None
 
     top_res = _run_git(adr_dir, "rev-parse", "--show-toplevel")
     if top_res.returncode != 0:
-        print(
-            f"error: {adr_dir} is not inside a git repository: {top_res.stderr.strip()}",
-            file=sys.stderr,
+        sys.stderr.write(
+            f"error: {adr_dir} is not inside a git repository: {top_res.stderr.strip()}\n"
         )
-        return 2
+        return None, None
 
     repo_root = pathlib.Path(top_res.stdout.strip()).resolve()
     rev_res = _run_git(repo_root, "rev-parse", "--verify", "--quiet", f"{base_rev}^{{commit}}")
     if rev_res.returncode != 0:
-        print(f"error: unknown base revision: {base_rev}", file=sys.stderr)
-        return 2
+        sys.stderr.write(f"error: unknown base revision: {base_rev}\n")
+        return None, None
 
     try:
         dir_rel = adr_dir.resolve().relative_to(repo_root)
     except ValueError:
-        print(
-            f"error: {adr_dir} is outside git repository {repo_root}",
-            file=sys.stderr,
-        )
-        return 2
+        sys.stderr.write(f"error: {adr_dir} is outside git repository {repo_root}\n")
+        return None, None
+    return repo_root, dir_rel
 
-    adr_entries: list[tuple[str, pathlib.Path]] = []
+
+def _collect_adr_entries(adr_dir: pathlib.Path) -> list[tuple[str, pathlib.Path]]:
+    entries: list[tuple[str, pathlib.Path]] = []
     for entry in sorted(adr_dir.iterdir(), key=lambda p: p.name):
         if not entry.is_file():
             continue
         match = ADR_FILENAME_RE.match(entry.name)
         if match is not None:
-            adr_entries.append((match.group(1), entry))
+            entries.append((match.group(1), entry))
+    return entries
 
+
+def run_gate(base_rev: str, adr_dir: pathlib.Path) -> int:
+    """Execute the supersede gate against base_rev for all NNNNNN.md in adr_dir."""
+    repo_root, dir_rel = _resolve_adr_repo(base_rev, adr_dir)
+    if repo_root is None or dir_rel is None:
+        return 2
+
+    adr_entries = _collect_adr_entries(adr_dir)
     findings: list[str] = []
     newly_superseded: set[str] = set()
 
@@ -284,12 +298,14 @@ def run_gate(base_rev: str, adr_dir: pathlib.Path) -> int:
                 findings.append(format_finding(src_id, dst))
 
     for finding in findings:
-        print(finding)
+        sys.stdout.write(f"{finding}\n")
 
     superseded_list = sorted(newly_superseded)
     noun = "ADR" if len(superseded_list) == 1 else "ADRs"
     ids_text = ", ".join(superseded_list) if superseded_list else "none"
-    print(f"Summary: {len(superseded_list)} {noun} superseded by new edges: {ids_text}")
+    sys.stdout.write(
+        f"Summary: {len(superseded_list)} {noun} superseded by new edges: {ids_text}\n"
+    )
 
     return 1 if findings else 0
 

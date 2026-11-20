@@ -3,7 +3,6 @@ package usecase_test
 import (
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"strings"
 	"testing"
@@ -136,7 +135,7 @@ func TestAnswerWithRAG_Success(t *testing.T) {
 	mockRetrieve := new(mockRetrieveContextUsecase)
 	mockLLM := new(mockLLMClient)
 	builder := usecase.NewXMLPromptBuilder()
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	uc := usecase.NewAnswerWithRAGUsecase(mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(0), 10, 512, 6000, "alpha-v1", "ja", testLogger)
 
@@ -174,7 +173,7 @@ func TestAnswerWithRAG_Success(t *testing.T) {
 	}), mock.Anything).Return(&domain.LLMResponse{Text: llmResponse, Done: true}, nil)
 
 	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "query", UserID: defaultTestUserID})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.False(t, output.Fallback)
 	assert.Equal(t, "Hello world [chunk_1]", output.Answer)
 	assert.Len(t, output.Citations, 1)
@@ -186,7 +185,7 @@ func TestAnswerWithRAG_Fallback(t *testing.T) {
 	mockRetrieve := new(mockRetrieveContextUsecase)
 	mockLLM := new(mockLLMClient)
 	builder := usecase.NewXMLPromptBuilder()
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	uc := usecase.NewAnswerWithRAGUsecase(mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(0), 7, 512, 6000, "alpha-v1", "ja", testLogger)
 
@@ -215,11 +214,11 @@ func TestAnswerWithRAG_Fallback(t *testing.T) {
 	}), mock.Anything).Return(&domain.LLMResponse{Text: fallbackResponse, Done: true}, nil)
 
 	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "query", UserID: defaultTestUserID})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.True(t, output.Fallback)
 	assert.Equal(t, "insufficient evidence", output.Reason)
 	assert.Equal(t, usecase.FallbackLLMFallback, output.FallbackCategory)
-	assert.Len(t, output.Citations, 0)
+	assert.Empty(t, output.Citations)
 }
 
 func contains(s, substr string) bool {
@@ -243,7 +242,7 @@ func TestStream_SendsThinkingEventFirst(t *testing.T) {
 	mockRetrieve := new(mockRetrieveContextUsecase)
 	mockLLM := new(mockLLMClient)
 	builder := usecase.NewXMLPromptBuilder()
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	uc := usecase.NewAnswerWithRAGUsecase(mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(0), 10, 512, 6000, "alpha-v1", "ja", testLogger)
 
@@ -286,7 +285,7 @@ func TestStream_SendsThinkingEventFirst(t *testing.T) {
 	// Assert: first event must be thinking (Cloudflare 524 prevention)
 	assert.GreaterOrEqual(t, len(events), 2, "should have at least thinking and meta events")
 	assert.Equal(t, usecase.StreamEventKindThinking, events[0].Kind, "first event should be thinking for Cloudflare 524 prevention")
-	assert.Equal(t, "", events[0].Payload, "initial thinking event should be empty (signals processing started)")
+	assert.Empty(t, events[0].Payload, "initial thinking event should be empty (signals processing started)")
 
 	// Assert: meta event should come after thinking
 	var metaIdx int
@@ -296,7 +295,7 @@ func TestStream_SendsThinkingEventFirst(t *testing.T) {
 			break
 		}
 	}
-	assert.Greater(t, metaIdx, 0, "meta event should come after thinking event")
+	assert.Positive(t, metaIdx, "meta event should come after thinking event")
 }
 
 // TestStream_HeartbeatDuringSlowBuildPrompt verifies that heartbeat events are
@@ -308,7 +307,7 @@ func TestStream_HeartbeatDuringSlowBuildPrompt(t *testing.T) {
 	mockRetrieve := new(mockRetrieveContextUsecase)
 	mockLLM := new(mockLLMClient)
 	builder := usecase.NewXMLPromptBuilder()
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	// Use a short heartbeat interval for testing (100ms instead of 5s)
 	uc := usecase.NewAnswerWithRAGUsecase(
@@ -374,7 +373,7 @@ func TestStream_HeartbeatDuringSlowBuildPrompt(t *testing.T) {
 	// Verify heartbeat payload is empty string
 	for _, e := range events {
 		if e.Kind == usecase.StreamEventKindHeartbeat {
-			assert.Equal(t, "", e.Payload, "heartbeat payload should be empty")
+			assert.Empty(t, e.Payload, "heartbeat payload should be empty")
 		}
 	}
 
@@ -390,7 +389,7 @@ func TestStream_NoHeartbeatWhenBuildPromptFast(t *testing.T) {
 	mockRetrieve := new(mockRetrieveContextUsecase)
 	mockLLM := new(mockLLMClient)
 	builder := usecase.NewXMLPromptBuilder()
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	// Use a long heartbeat interval so no heartbeats fire during fast buildPrompt
 	uc := usecase.NewAnswerWithRAGUsecase(
@@ -453,7 +452,7 @@ func TestStream_HeartbeatDuringChatStreamSetup(t *testing.T) {
 	mockRetrieve := new(mockRetrieveContextUsecase)
 	mockLLM := new(mockLLMClient)
 	builder := usecase.NewXMLPromptBuilder()
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	uc := usecase.NewAnswerWithRAGUsecase(
 		mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(0),
@@ -525,7 +524,7 @@ func TestStream_HeartbeatDuringLLMStreaming(t *testing.T) {
 	mockRetrieve := new(mockRetrieveContextUsecase)
 	mockLLM := new(mockLLMClient)
 	builder := usecase.NewXMLPromptBuilder()
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	uc := usecase.NewAnswerWithRAGUsecase(
 		mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(0),
@@ -603,7 +602,7 @@ func TestPromptBuilder_ContainsGroundingInstructions(t *testing.T) {
 			{ChunkID: "1", Title: "Test", ChunkText: "content"},
 		},
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Len(t, messages, 2, "system + user messages")
 
 	// Grounding instructions should be in system message
@@ -629,7 +628,7 @@ func TestPromptBuilder_ArticleContext(t *testing.T) {
 			Truncated: false,
 		},
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Len(t, messages, 2, "system + user messages")
 
 	// Article context should be in user message
@@ -656,7 +655,7 @@ func TestPromptBuilder_ArticleContextTruncated(t *testing.T) {
 			Truncated: true,
 		},
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Article context (truncated) should be in user message
 	userContent := messages[1].Content
@@ -675,7 +674,7 @@ func TestPromptBuilder_GeneralNoArticleContext(t *testing.T) {
 			{ChunkID: "1", Title: "Test", ChunkText: "content"},
 		},
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// User message should not contain article context when not set
 	userContent := messages[1].Content
@@ -687,7 +686,7 @@ func TestExecute_ArticleScopedQuery_UsesNormalizedQuery(t *testing.T) {
 	mockRetrieve := new(mockRetrieveContextUsecase)
 	mockLLM := new(mockLLMClient)
 	builder := usecase.NewXMLPromptBuilder()
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	uc := usecase.NewAnswerWithRAGUsecase(mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(0), 10, 512, 6000, "alpha-v1", "ja", testLogger)
 
@@ -718,7 +717,7 @@ func TestExecute_ArticleScopedQuery_UsesNormalizedQuery(t *testing.T) {
 	// so it falls through to generalStrategy
 	rawQuery := "Regarding the article: OpenAI GPT-5 [articleId: aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee]\n\nQuestion:\nWhat are the key improvements?"
 	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: rawQuery, UserID: defaultTestUserID})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.False(t, output.Fallback)
 	// Strategy should be "general" since no article_scoped strategy was registered
 	// and it will first try article_scoped (not found), fall through to general
@@ -729,7 +728,7 @@ func TestExecute_DebugIncludesStrategy(t *testing.T) {
 	mockRetrieve := new(mockRetrieveContextUsecase)
 	mockLLM := new(mockLLMClient)
 	builder := usecase.NewXMLPromptBuilder()
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	uc := usecase.NewAnswerWithRAGUsecase(mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(0), 10, 512, 6000, "alpha-v1", "ja", testLogger)
 
@@ -744,7 +743,7 @@ func TestExecute_DebugIncludesStrategy(t *testing.T) {
 	mockLLM.On("Chat", mock.Anything, mock.Anything, mock.Anything).Return(&domain.LLMResponse{Text: llmResponse, Done: true}, nil)
 
 	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "general question", UserID: defaultTestUserID})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "general", output.Debug.StrategyUsed)
 }
 
@@ -753,7 +752,7 @@ func TestStream_DebugIncludesStrategy(t *testing.T) {
 	mockRetrieve := new(mockRetrieveContextUsecase)
 	mockLLM := new(mockLLMClient)
 	builder := usecase.NewXMLPromptBuilder()
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	uc := usecase.NewAnswerWithRAGUsecase(mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(0), 10, 512, 6000, "alpha-v1", "ja", testLogger)
 
@@ -792,7 +791,7 @@ func TestExecute_ArticleScopedFollowUp_InheritsScopeFromHistory(t *testing.T) {
 	mockRetrieve := new(mockRetrieveContextUsecase)
 	mockLLM := new(mockLLMClient)
 	builder := usecase.NewXMLPromptBuilder()
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 	articleStrategy := &mockRetrievalStrategy{name: "article_scoped"}
 
 	uc := usecase.NewAnswerWithRAGUsecase(
@@ -852,7 +851,7 @@ func TestExecute_ArticleScopedFollowUp_InheritsScopeFromHistory(t *testing.T) {
 			{Role: "assistant", Content: "It improved several areas."},
 		},
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.False(t, output.Fallback)
 	assert.Equal(t, "article_scoped+general", output.Debug.StrategyUsed)
 }
@@ -862,7 +861,7 @@ func TestExecute_ArticleScopedFollowUp_FromHistory_ClassifiesCritiqueAndPreserve
 	mockRetrieve := new(mockRetrieveContextUsecase)
 	mockLLM := new(mockLLMClient)
 	builder := usecase.NewXMLPromptBuilder()
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 	articleStrategy := &mockRetrievalStrategy{name: "article_scoped"}
 	classifier := usecase.NewQueryClassifier(nil, 0)
 
@@ -919,7 +918,7 @@ func TestExecute_ArticleScopedFollowUp_FromHistory_ClassifiesCritiqueAndPreserve
 			{Role: "assistant", Content: "記事の要点は..."},
 		},
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.False(t, output.Fallback)
 	assert.Equal(t, "article_scoped", output.Debug.StrategyUsed)
 	assert.Equal(t, "critique", output.Debug.SubIntentType)
@@ -932,7 +931,7 @@ func TestExecute_ArticleScopedFollowUp_ReRetrievesFromGlobalIndex(t *testing.T) 
 	mockRetrieve := new(mockRetrieveContextUsecase)
 	mockLLM := new(mockLLMClient)
 	builder := usecase.NewXMLPromptBuilder()
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 	articleStrategy := &mockRetrievalStrategy{name: "article_scoped"}
 
 	uc := usecase.NewAnswerWithRAGUsecase(
@@ -971,7 +970,7 @@ func TestExecute_ArticleScopedFollowUp_ReRetrievesFromGlobalIndex(t *testing.T) 
 			{Role: "assistant", Content: "The article discusses a fuel crisis in Australia."},
 		},
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.False(t, output.Fallback)
 
 	// General strategy should have been called for re-retrieval (agentic pattern)
@@ -987,7 +986,7 @@ func TestExecute_FallbackDebugPreservesStrategyUsed(t *testing.T) {
 	mockRetrieve := new(mockRetrieveContextUsecase)
 	mockLLM := new(mockLLMClient)
 	builder := usecase.NewXMLPromptBuilder()
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	uc := usecase.NewAnswerWithRAGUsecase(mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(0), 10, 512, 6000, "alpha-v1", "ja", testLogger)
 
@@ -1001,7 +1000,7 @@ func TestExecute_FallbackDebugPreservesStrategyUsed(t *testing.T) {
 	mockLLM.On("Chat", mock.Anything, mock.Anything, mock.Anything).Return(nil, assert.AnError)
 
 	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "general question", UserID: defaultTestUserID})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.True(t, output.Fallback)
 	assert.Equal(t, "general", output.Debug.StrategyUsed)
 }
@@ -1011,7 +1010,7 @@ func TestExecute_ArticleScopedMaxChunksMarksPromptAsTruncated(t *testing.T) {
 	mockRetrieve := new(mockRetrieveContextUsecase)
 	mockLLM := new(mockLLMClient)
 	builder := usecase.NewXMLPromptBuilder()
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 	articleStrategy := &mockRetrievalStrategy{name: "article_scoped"}
 
 	uc := usecase.NewAnswerWithRAGUsecase(
@@ -1043,7 +1042,7 @@ func TestExecute_ArticleScopedMaxChunksMarksPromptAsTruncated(t *testing.T) {
 		Query:  "Regarding the article: Large Article [articleId: 11111111-1111-1111-1111-111111111111]\n\nQuestion:\nSummarize it.",
 		UserID: defaultTestUserID,
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.False(t, output.Fallback)
 	assert.Len(t, output.Contexts, 1)
 }
@@ -1058,7 +1057,7 @@ func TestExecute_LegacyPath_NilRetrievalReturnsFallbackInsteadOfPanic(t *testing
 	mockRetrieve := new(mockRetrieveContextUsecase)
 	mockLLM := new(mockLLMClient)
 	builder := usecase.NewXMLPromptBuilder()
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 	causalStrategy := &mockRetrievalStrategy{name: "causal"}
 
 	uc := usecase.NewAnswerWithRAGUsecase(
@@ -1077,7 +1076,7 @@ func TestExecute_LegacyPath_NilRetrievalReturnsFallbackInsteadOfPanic(t *testing
 			UserID: defaultTestUserID,
 		})
 
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.NotNil(t, output)
 		assert.True(t, output.Fallback)
 		assert.Contains(t, output.Reason, "no context returned")
@@ -1099,7 +1098,7 @@ func TestPromptBuilder_MultiTurnCoreferenceInstruction(t *testing.T) {
 			{Role: "assistant", Content: "AIとは人工知能のことです。"},
 		},
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Multi-turn: system + 2 history messages + 1 current user message = 4
 	assert.Len(t, messages, 4)
@@ -1139,7 +1138,7 @@ func TestQualityGate_GoodQuality_NoRetry(t *testing.T) {
 	mockRetrieve := new(mockRetrieveContextUsecase)
 	mockLLM := new(mockLLMClient)
 	builder := usecase.NewXMLPromptBuilder()
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	assessor := usecase.NewRetrievalQualityAssessor(0.5, 0.25, 1)
 
@@ -1161,7 +1160,7 @@ func TestQualityGate_GoodQuality_NoRetry(t *testing.T) {
 		Return(&domain.LLMResponse{Text: llmResponse, Done: true}, nil)
 
 	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "test", UserID: defaultTestUserID})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.False(t, output.Fallback)
 	assert.Equal(t, "good", output.Debug.RetrievalQuality)
 	assert.Equal(t, 0, output.Debug.RetryCount)
@@ -1172,7 +1171,7 @@ func TestQualityGate_InsufficientQuality_GeneratesWithLowConfidence(t *testing.T
 	mockRetrieve := new(mockRetrieveContextUsecase)
 	mockLLM := new(mockLLMClient)
 	builder := usecase.NewXMLPromptBuilder()
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	assessor := usecase.NewRetrievalQualityAssessor(0.5, 0.25, 1)
 
@@ -1198,7 +1197,7 @@ func TestQualityGate_InsufficientQuality_GeneratesWithLowConfidence(t *testing.T
 	}), mock.Anything).Return(&domain.LLMResponse{Text: llmResponse, Done: true}, nil)
 
 	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "test", UserID: defaultTestUserID})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.False(t, output.Fallback, "should NOT fallback - should generate with low confidence")
 	assert.Equal(t, "Limited answer based on available context", output.Answer)
 }
@@ -1209,7 +1208,7 @@ func TestQualityGate_MarginalQuality_TriggersRetry(t *testing.T) {
 	mockLLM := new(mockLLMClient)
 	mockExpander := new(mockQueryExpander)
 	builder := usecase.NewXMLPromptBuilder()
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	assessor := usecase.NewRetrievalQualityAssessor(0.5, 0.25, 1)
 
@@ -1245,7 +1244,7 @@ func TestQualityGate_MarginalQuality_TriggersRetry(t *testing.T) {
 		Return(&domain.LLMResponse{Text: llmResponse, Done: true}, nil)
 
 	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "test", UserID: defaultTestUserID})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.False(t, output.Fallback)
 	assert.Equal(t, 1, output.Debug.RetryCount)
 	assert.Contains(t, output.Debug.StrategyUsed, "retried")
@@ -1257,7 +1256,7 @@ func TestExecute_ShortAnswer_TriggersCorrectiveRetry(t *testing.T) {
 	mockRetrieve := new(mockRetrieveContextUsecase)
 	mockLLM := new(mockLLMClient)
 	builder := usecase.NewXMLPromptBuilder()
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	uc := usecase.NewAnswerWithRAGUsecase(
 		mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(20),
@@ -1286,7 +1285,7 @@ func TestExecute_ShortAnswer_TriggersCorrectiveRetry(t *testing.T) {
 		Return(&domain.LLMResponse{Text: longResponse, Done: true}, nil).Once()
 
 	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "世界的な物流混乱はなぜ起きた？", UserID: defaultTestUserID})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.False(t, output.Fallback)
 	assert.Contains(t, output.Answer, "供給制約")
 	assert.Len(t, output.Citations, 2)
@@ -1297,7 +1296,7 @@ func TestStream_ShortAnswer_TriggersCorrectiveRetry(t *testing.T) {
 	mockRetrieve := new(mockRetrieveContextUsecase)
 	mockLLM := new(mockLLMClient)
 	builder := usecase.NewXMLPromptBuilder()
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	uc := usecase.NewAnswerWithRAGUsecase(
 		mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(20),
@@ -1344,6 +1343,7 @@ func TestStream_ShortAnswer_TriggersCorrectiveRetry(t *testing.T) {
 			gotAnswer = event.Payload.(string)
 		case usecase.StreamEventKindDone:
 			doneSeen = true
+		default:
 		}
 	}
 
@@ -1356,7 +1356,7 @@ func TestExecute_ShortAnswer_RetryStillShortButGroundedReturnsAnswer(t *testing.
 	mockRetrieve := new(mockRetrieveContextUsecase)
 	mockLLM := new(mockLLMClient)
 	builder := usecase.NewXMLPromptBuilder()
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	uc := usecase.NewAnswerWithRAGUsecase(
 		mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(80),
@@ -1385,7 +1385,7 @@ func TestExecute_ShortAnswer_RetryStillShortButGroundedReturnsAnswer(t *testing.
 		Return(&domain.LLMResponse{Text: stillShortButGrounded, Done: true}, nil).Once()
 
 	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "世界的な物流混乱はなぜ起きた？", UserID: defaultTestUserID})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.False(t, output.Fallback)
 	assert.Contains(t, output.Answer, "供給制約")
 	assert.Equal(t, 1, output.Debug.RetryCount)
@@ -1396,7 +1396,7 @@ func TestStream_ShortAnswer_RetryStillShortButGroundedReturnsAnswer(t *testing.T
 	mockRetrieve := new(mockRetrieveContextUsecase)
 	mockLLM := new(mockLLMClient)
 	builder := usecase.NewXMLPromptBuilder()
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	uc := usecase.NewAnswerWithRAGUsecase(
 		mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(80),
@@ -1443,6 +1443,7 @@ func TestStream_ShortAnswer_RetryStillShortButGroundedReturnsAnswer(t *testing.T
 			gotAnswer = event.Payload.(string)
 		case usecase.StreamEventKindFallback:
 			fallbackSeen = true
+		default:
 		}
 	}
 
@@ -1455,7 +1456,7 @@ func TestExecute_CausalShortGroundedAnswer_DoesNotRetry(t *testing.T) {
 	mockRetrieve := new(mockRetrieveContextUsecase)
 	mockLLM := new(mockLLMClient)
 	builder := usecase.NewXMLPromptBuilder()
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	uc := usecase.NewAnswerWithRAGUsecase(
 		mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(500),
@@ -1474,7 +1475,7 @@ func TestExecute_CausalShortGroundedAnswer_DoesNotRetry(t *testing.T) {
 		Return(&domain.LLMResponse{Text: groundedButShort, Done: true}, nil).Once()
 
 	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "世界的な物流混乱はなぜ起きた？", UserID: defaultTestUserID})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.False(t, output.Fallback)
 	assert.Contains(t, output.Answer, "供給制約")
 	assert.Equal(t, 0, output.Debug.RetryCount)
@@ -1486,7 +1487,7 @@ func TestStream_CausalShortGroundedAnswer_DoesNotRetry(t *testing.T) {
 	mockRetrieve := new(mockRetrieveContextUsecase)
 	mockLLM := new(mockLLMClient)
 	builder := usecase.NewXMLPromptBuilder()
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	uc := usecase.NewAnswerWithRAGUsecase(
 		mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(500),
@@ -1530,7 +1531,7 @@ func TestExecute_DetailedCausalShortGroundedAnswer_TriggersRetry(t *testing.T) {
 	mockRetrieve := new(mockRetrieveContextUsecase)
 	mockLLM := new(mockLLMClient)
 	builder := usecase.NewXMLPromptBuilder()
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	uc := usecase.NewAnswerWithRAGUsecase(
 		mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(500),
@@ -1559,7 +1560,7 @@ func TestExecute_DetailedCausalShortGroundedAnswer_TriggersRetry(t *testing.T) {
 		Return(&domain.LLMResponse{Text: longerRetry, Done: true}, nil).Once()
 
 	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "世界的な物流混乱はなぜ起きた？詳しく教えて。", UserID: defaultTestUserID})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.False(t, output.Fallback)
 	assert.Contains(t, output.Answer, "構造要因")
 	assert.Equal(t, 1, output.Debug.RetryCount)
@@ -1571,7 +1572,7 @@ func TestStream_DetailedCausalShortGroundedAnswer_TriggersRetry(t *testing.T) {
 	mockRetrieve := new(mockRetrieveContextUsecase)
 	mockLLM := new(mockLLMClient)
 	builder := usecase.NewXMLPromptBuilder()
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	uc := usecase.NewAnswerWithRAGUsecase(
 		mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(500),
@@ -1629,7 +1630,7 @@ func TestStream_DetailedQuery_EmitsRefiningBeforeRetryStarts(t *testing.T) {
 	ctx := context.Background()
 	mockRetrieve := new(mockRetrieveContextUsecase)
 	builder := usecase.NewXMLPromptBuilder()
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	firstChunkID := uuid.New()
 	secondChunkID := uuid.New()
@@ -1714,7 +1715,7 @@ func TestExecute_CorrectiveRetryContextDisclaimer_KeepsOriginalAnswer(t *testing
 	mockRetrieve := new(mockRetrieveContextUsecase)
 	mockLLM := new(mockLLMClient)
 	builder := usecase.NewXMLPromptBuilder()
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	uc := usecase.NewAnswerWithRAGUsecase(
 		mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(220),
@@ -1743,7 +1744,7 @@ func TestExecute_CorrectiveRetryContextDisclaimer_KeepsOriginalAnswer(t *testing
 		Return(&domain.LLMResponse{Text: retryContextDisclaimer, Done: true}, nil).Once()
 
 	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "世界的な物流混乱はなぜ起きた？", UserID: defaultTestUserID})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.False(t, output.Fallback)
 	assert.Contains(t, output.Answer, "供給制約")
 	assert.NotContains(t, output.Answer, "提供されたコンテキストには")
@@ -1754,7 +1755,7 @@ func TestExecute_ShortAnswer_RetryStillShortAndUngroundedFallsBack(t *testing.T)
 	mockRetrieve := new(mockRetrieveContextUsecase)
 	mockLLM := new(mockLLMClient)
 	builder := usecase.NewXMLPromptBuilder()
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	uc := usecase.NewAnswerWithRAGUsecase(
 		mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(80),
@@ -1783,7 +1784,7 @@ func TestExecute_ShortAnswer_RetryStillShortAndUngroundedFallsBack(t *testing.T)
 		Return(&domain.LLMResponse{Text: stillShortAndUngrounded, Done: true}, nil).Once()
 
 	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "What caused the global logistics disruption?", UserID: defaultTestUserID})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.True(t, output.Fallback)
 	assert.Equal(t, usecase.FallbackShortUnderGrounded, output.FallbackCategory)
 }
@@ -1800,7 +1801,7 @@ func TestPromptBuilder_ComparisonIntent_AddsInstruction(t *testing.T) {
 			{ChunkID: "1", Title: "Rust", ChunkText: "Rust info", Score: 0.9},
 		},
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Contains(t, messages[0].Content, "比較")
 }
 
@@ -1814,7 +1815,7 @@ func TestPromptBuilder_TemporalIntent_AddsInstruction(t *testing.T) {
 			{ChunkID: "1", Title: "AI News", ChunkText: "AI info", Score: 0.9},
 		},
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Contains(t, messages[0].Content, "最新")
 }
 
@@ -1828,7 +1829,7 @@ func TestPromptBuilder_FactCheckIntent_AddsInstruction(t *testing.T) {
 			{ChunkID: "1", Title: "Quantum", ChunkText: "Quantum info", Score: 0.9},
 		},
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Contains(t, messages[0].Content, "根拠")
 }
 
@@ -1842,7 +1843,7 @@ func TestPromptBuilder_GeneralIntent_NoExtraInstruction(t *testing.T) {
 			{ChunkID: "1", Title: "AI", ChunkText: "AI info", Score: 0.9},
 		},
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	// General should NOT have comparison/temporal/factcheck-specific instructions
 	assert.NotContains(t, messages[0].Content, "両者を公平に比較")
 	assert.NotContains(t, messages[0].Content, "根拠と判定を構造化")
@@ -1861,7 +1862,7 @@ func TestPromptBuilder_SingleTurn_DetailSubIntent_DirectAnswerFormat(t *testing.
 			{ChunkID: "1", Title: "Article", ChunkText: "content", Score: 0.9},
 		},
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	content := messages[0].Content
 	assert.Contains(t, content, "質問に直接回答")
 	assert.NotContains(t, content, "## 概要\\n...\\n## 詳細\\n...\\n## まとめ")
@@ -1878,7 +1879,7 @@ func TestPromptBuilder_SingleTurn_RelatedArticlesSubIntent_ListFormat(t *testing
 			{ChunkID: "1", Title: "Article", ChunkText: "content", Score: 0.9},
 		},
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	content := messages[0].Content
 	assert.Contains(t, content, "ランク付きリスト")
 }
@@ -1894,7 +1895,7 @@ func TestPromptBuilder_SingleTurn_EvidenceSubIntent_CitedPassages(t *testing.T) 
 			{ChunkID: "1", Title: "Article", ChunkText: "content", Score: 0.9},
 		},
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	content := messages[0].Content
 	assert.Contains(t, content, "引用付き")
 }
@@ -1910,7 +1911,7 @@ func TestPromptBuilder_SingleTurn_SummaryRefreshSubIntent_Concise(t *testing.T) 
 			{ChunkID: "1", Title: "Article", ChunkText: "content", Score: 0.9},
 		},
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	content := messages[0].Content
 	assert.NotContains(t, content, "800文字以上")
 	assert.Contains(t, content, "簡潔")
@@ -1931,7 +1932,7 @@ func TestPromptBuilder_MultiTurn_DetailSubIntent_AddsGuidance(t *testing.T) {
 			{ChunkID: "1", Title: "Article", ChunkText: "content", Score: 0.9},
 		},
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	// Detail guidance should be in system message
 	assert.Contains(t, messages[0].Content, "技術的")
 }
@@ -1946,7 +1947,7 @@ func TestPromptBuilder_ToolOnly_RelatedArticlesSubIntent_DoesNotRequireContextCh
 		Contexts:          []usecase.PromptContext{}, // Empty — tool-only path
 		SupplementaryInfo: []string{"Related articles:\n- Article A\n- Article B"},
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	// Supplementary info is in user message, instructions in system
 	userContent := messages[1].Content
 	assert.Contains(t, userContent, "Article A")
@@ -1961,7 +1962,7 @@ func TestExecute_ArticleScopedFollowUp_DetailSubIntent_SkipsGeneralReRetrieval(t
 	mockRetrieve := new(mockRetrieveContextUsecase)
 	mockLLM := new(mockLLMClient)
 	builder := usecase.NewXMLPromptBuilder()
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 	articleStrategy := &mockRetrievalStrategy{name: "article_scoped"}
 
 	uc := usecase.NewAnswerWithRAGUsecase(
@@ -1990,7 +1991,7 @@ func TestExecute_ArticleScopedFollowUp_DetailSubIntent_SkipsGeneralReRetrieval(t
 			{Role: "assistant", Content: "記事は暗記のコツについてです。"},
 		},
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// General strategy (mockRetrieve) must NOT be called — detail subintent stays article-only
 	mockRetrieve.AssertNotCalled(t, "Execute", mock.Anything, mock.Anything)
@@ -2001,7 +2002,7 @@ func TestExecute_ArticleScopedFollowUp_NoneSubIntent_KeepsGeneralReRetrieval(t *
 	mockRetrieve := new(mockRetrieveContextUsecase)
 	mockLLM := new(mockLLMClient)
 	builder := usecase.NewXMLPromptBuilder()
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 	articleStrategy := &mockRetrievalStrategy{name: "article_scoped"}
 
 	uc := usecase.NewAnswerWithRAGUsecase(
@@ -2040,7 +2041,7 @@ func TestExecute_ArticleScopedFollowUp_NoneSubIntent_KeepsGeneralReRetrieval(t *
 			{Role: "assistant", Content: "テスト記事です。"},
 		},
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// General strategy SHOULD be called for backward compatibility
 	mockRetrieve.AssertCalled(t, "Execute", mock.Anything, mock.Anything)
@@ -2057,7 +2058,7 @@ func TestExecute_CacheKey_DiffersByConversationHistory(t *testing.T) {
 	mockRetrieve := new(mockRetrieveContextUsecase)
 	mockLLM := new(mockLLMClient)
 	builder := usecase.NewXMLPromptBuilder()
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	uc := usecase.NewAnswerWithRAGUsecase(mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(0), 10, 512, 6000, "alpha-v1", "ja", testLogger)
 
@@ -2116,7 +2117,7 @@ func TestExecute_CacheKey_DiffersByUserID(t *testing.T) {
 	mockRetrieve := new(mockRetrieveContextUsecase)
 	mockLLM := new(mockLLMClient)
 	builder := usecase.NewXMLPromptBuilder()
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	uc := usecase.NewAnswerWithRAGUsecase(mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(0), 10, 512, 6000, "alpha-v1", "ja", testLogger)
 
@@ -2148,7 +2149,7 @@ func TestExecute_CausalSkeletonAnswer_TriggersCorrectiveRetry(t *testing.T) {
 	mockRetrieve := new(mockRetrieveContextUsecase)
 	mockLLM := new(mockLLMClient)
 	builder := usecase.NewXMLPromptBuilder()
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 	mockQP := new(mockQueryPlannerPort)
 	mockQP.On("PlanQuery", mock.Anything, mock.Anything).Return(&domain.QueryPlan{
 		ResolvedQuery:   "エネルギー価格の高騰の原因",
@@ -2192,7 +2193,7 @@ func TestExecute_CausalSkeletonAnswer_TriggersCorrectiveRetry(t *testing.T) {
 		Return(&domain.LLMResponse{Text: fullResponse, Done: true}, nil).Once()
 
 	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "エネルギー価格の高騰はなぜ起きた？", UserID: defaultTestUserID})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.False(t, output.Fallback)
 	assert.Contains(t, output.Answer, "構造的背景")
 	assert.Equal(t, 1, output.Debug.RetryCount)
@@ -2204,7 +2205,7 @@ func TestExecute_CausalAnswerAboveRetryFloor_DoesNotRetry(t *testing.T) {
 	mockRetrieve := new(mockRetrieveContextUsecase)
 	mockLLM := new(mockLLMClient)
 	builder := usecase.NewXMLPromptBuilder()
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 	mockQP := new(mockQueryPlannerPort)
 	mockQP.On("PlanQuery", mock.Anything, mock.Anything).Return(&domain.QueryPlan{
 		ResolvedQuery:   "エネルギー価格の高騰の原因",
@@ -2237,7 +2238,7 @@ func TestExecute_CausalAnswerAboveRetryFloor_DoesNotRetry(t *testing.T) {
 		Return(&domain.LLMResponse{Text: response, Done: true}, nil).Once()
 
 	output, err := uc.Execute(ctx, usecase.AnswerWithRAGInput{Query: "エネルギー価格の高騰はなぜ起きた？", UserID: defaultTestUserID})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.False(t, output.Fallback)
 	assert.Equal(t, 0, output.Debug.RetryCount)
 	mockLLM.AssertNumberOfCalls(t, "Chat", 1)
@@ -2248,7 +2249,7 @@ func TestExecute_CorrectiveRetryPromptBuildFails_KeepsOriginalAnswer(t *testing.
 	mockRetrieve := new(mockRetrieveContextUsecase)
 	mockLLM := new(mockLLMClient)
 	builder := usecase.NewXMLPromptBuilder()
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	uc := usecase.NewAnswerWithRAGUsecase(
 		mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(20),
@@ -2278,16 +2279,16 @@ func TestExecute_CorrectiveRetryPromptBuildFails_KeepsOriginalAnswer(t *testing.
 }
 
 func TestAnswerWithRAG_EmptyUserID_ReturnsError(t *testing.T) {
-	uc := usecase.NewAnswerWithRAGUsecase(nil, nil, nil, usecase.NewOutputValidator(0), 10, 512, 6000, "alpha-v1", "ja", slog.New(slog.NewJSONHandler(io.Discard, nil)))
+	uc := usecase.NewAnswerWithRAGUsecase(nil, nil, nil, usecase.NewOutputValidator(0), 10, 512, 6000, "alpha-v1", "ja", slog.New(slog.DiscardHandler))
 	_, err := uc.Execute(context.Background(), usecase.AnswerWithRAGInput{Query: "test", UserID: ""})
-	assert.ErrorIs(t, err, usecase.ErrEmptyUserID)
+	require.ErrorIs(t, err, usecase.ErrEmptyUserID)
 
 	eventCh := uc.Stream(context.Background(), usecase.AnswerWithRAGInput{Query: "test", UserID: ""})
 	var events []usecase.StreamEvent
 	for ev := range eventCh {
 		events = append(events, ev)
 	}
-	assert.True(t, len(events) > 0)
+	assert.NotEmpty(t, events)
 	var foundErr bool
 	for _, ev := range events {
 		if ev.Kind == usecase.StreamEventKindError {
@@ -2299,16 +2300,16 @@ func TestAnswerWithRAG_EmptyUserID_ReturnsError(t *testing.T) {
 }
 
 func TestAnswerWithRAG_InvalidUserID_ReturnsError(t *testing.T) {
-	uc := usecase.NewAnswerWithRAGUsecase(nil, nil, nil, usecase.NewOutputValidator(0), 10, 512, 6000, "alpha-v1", "ja", slog.New(slog.NewJSONHandler(io.Discard, nil)))
+	uc := usecase.NewAnswerWithRAGUsecase(nil, nil, nil, usecase.NewOutputValidator(0), 10, 512, 6000, "alpha-v1", "ja", slog.New(slog.DiscardHandler))
 	_, err := uc.Execute(context.Background(), usecase.AnswerWithRAGInput{Query: "test", UserID: "invalid-uuid"})
-	assert.ErrorIs(t, err, usecase.ErrInvalidUserID)
+	require.ErrorIs(t, err, usecase.ErrInvalidUserID)
 
 	eventCh := uc.Stream(context.Background(), usecase.AnswerWithRAGInput{Query: "test", UserID: "invalid-uuid"})
 	var events []usecase.StreamEvent
 	for ev := range eventCh {
 		events = append(events, ev)
 	}
-	assert.True(t, len(events) > 0)
+	assert.NotEmpty(t, events)
 	var foundErr bool
 	for _, ev := range events {
 		if ev.Kind == usecase.StreamEventKindError {

@@ -1,14 +1,15 @@
 """Plan Query handler - REST endpoint for Augur structured query planning."""
 
 import logging
+
 from fastapi import APIRouter, HTTPException
 
 from news_creator.domain.models import PlanQueryRequest, PlanQueryResponse
 from news_creator.usecase.plan_query_usecase import PlanQueryUsecase
 from news_creator.utils.context_logger import (
+    clear_context,
     set_ai_pipeline,
     set_processing_stage,
-    clear_context,
 )
 
 logger = logging.getLogger(__name__)
@@ -39,17 +40,14 @@ def create_plan_query_router(plan_query_usecase: PlanQueryUsecase) -> APIRouter:
                 },
             )
 
-            response = await plan_query_usecase.plan_query(request)
-            return response
+            return await plan_query_usecase.plan_query(request)
 
         except ValueError as exc:
             logger.warning("Invalid plan-query request", extra={"error": str(exc)})
             raise HTTPException(status_code=400, detail="Invalid request") from exc
 
         except RuntimeError as exc:
-            logger.error(
-                "Failed to plan query", extra={"error": str(exc)}, exc_info=True
-            )
+            logger.exception("Failed to plan query", extra={"error": str(exc)})
             raise HTTPException(
                 status_code=502, detail="Upstream service error"
             ) from exc

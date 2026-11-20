@@ -50,8 +50,10 @@ class _SyntheticEmbedder:
         pass
 
 
-def test_embed_service_normalizes_embeddings():
+def test_embed_service_normalizes_embeddings() -> None:
     """Verify that EmbedService returns L2-normalized embeddings when normalize=True."""
+    expected_dim = 3
+    expected_count = 2
     synthetic_vectors = {
         "Example headline 1": [3.0, 4.0, 0.0],  # norm = 5.0 -> normalized: [0.6, 0.8, 0.0]
         "Example headline 2": [0.0, 0.0, 2.0],  # norm = 2.0 -> normalized: [0.0, 0.0, 1.0]
@@ -62,8 +64,8 @@ def test_embed_service_normalizes_embeddings():
     result = service.embed(["Example headline 1", "Example headline 2"], normalize=True)
 
     assert result.model == "test-embed-model"
-    assert result.dim == 3
-    assert len(result.embeddings) == 2
+    assert result.dim == expected_dim
+    assert len(result.embeddings) == expected_count
 
     # Check L2 norm is 1.0
     vec1 = np.array(result.embeddings[0])
@@ -74,7 +76,7 @@ def test_embed_service_normalizes_embeddings():
     assert vec1[1] == pytest.approx(0.8, rel=1e-5)
 
 
-def test_embed_service_unnormalized():
+def test_embed_service_unnormalized() -> None:
     """Verify that EmbedService preserves unnormalized embeddings when normalize=False."""
     synthetic_vectors = {
         "Example headline 1": [3.0, 4.0, 0.0],
@@ -90,7 +92,7 @@ def test_embed_service_unnormalized():
     assert vec[1] == pytest.approx(4.0, rel=1e-5)
 
 
-def test_embed_service_preserves_input_order():
+def test_embed_service_preserves_input_order() -> None:
     """Verify that EmbedService maintains exact input order for returned embeddings."""
     synthetic_vectors = {
         "Example headline 1": [1.0, 0.0, 0.0],
@@ -103,24 +105,25 @@ def test_embed_service_preserves_input_order():
     texts = ["Example headline 3", "Example headline 1", "Example headline 2"]
     result = service.embed(texts, normalize=True)
 
-    assert len(result.embeddings) == 3
+    assert len(result.embeddings) == len(texts)
     assert result.embeddings[0] == [0.0, 0.0, 1.0]
     assert result.embeddings[1] == [1.0, 0.0, 0.0]
     assert result.embeddings[2] == [0.0, 1.0, 0.0]
 
 
-def test_embed_service_resolves_model_identity():
+def test_embed_service_resolves_model_identity() -> None:
     """Verify that EmbedService resolves model identity from embedder configuration."""
+    expected_dim = 2
     synthetic_vectors = {"Example headline 1": [1.0, 2.0]}
     embedder = _SyntheticEmbedder(synthetic_vectors, model_id="bge-m3")
     service = EmbedService(embedder=embedder)
 
     result = service.embed(["Example headline 1"], normalize=True)
     assert result.model == "bge-m3"
-    assert result.dim == 2
+    assert result.dim == expected_dim
 
 
-def test_embed_service_unresolvable_identity_fails_closed():
+def test_embed_service_unresolvable_identity_fails_closed() -> None:
     """Verify that EmbedService raises UnresolvableModelIdentityError when identity cannot be resolved."""
 
     class _AnonymousEmbedder:
@@ -141,7 +144,7 @@ def test_embed_service_unresolvable_identity_fails_closed():
         service.embed(["Example text"])
 
 
-def test_embed_service_unresolvable_dimension_fails_closed():
+def test_embed_service_unresolvable_dimension_fails_closed() -> None:
     """Verify that EmbedService raises UnresolvableDimensionError when dimensions are invalid."""
 
     class _BadShapeEmbedder:

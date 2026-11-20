@@ -35,7 +35,7 @@ func TestChunker_Chunk(t *testing.T) {
 		// Short paragraphs will be merged due to MinChunkLength
 		body := "Paragraph 1.\n\nParagraph 2.\n\nParagraph 3."
 		chunks, err := chunker.Chunk(body)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		// All three short paragraphs will be merged into one chunk
 		assert.Len(t, chunks, 1)
 		assert.Contains(t, chunks[0].Content, "Paragraph 1.")
@@ -47,7 +47,7 @@ func TestChunker_Chunk(t *testing.T) {
 	t.Run("Ignores empty paragraphs and merges short ones", func(t *testing.T) {
 		body := "Para 1\n\n\n\nPara 2"
 		chunks, err := chunker.Chunk(body)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		// Short paragraphs will be merged
 		assert.Len(t, chunks, 1)
 		assert.Contains(t, chunks[0].Content, "Para 1")
@@ -83,7 +83,7 @@ func TestChunker_Chunk(t *testing.T) {
 		// Create short paragraphs that should be merged with the following long paragraph
 		body := "Short.\n\nAlso short.\n\nThis is a longer paragraph that exceeds the minimum chunk length and should stand alone."
 		chunks, err := chunker.Chunk(body)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// Short paragraphs merge forward into the following long paragraph
 		assert.Len(t, chunks, 1)
@@ -100,7 +100,7 @@ func TestChunker_Chunk(t *testing.T) {
 		}
 
 		chunks, err := chunker.Chunk(longText)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// Should split into multiple chunks
 		assert.Greater(t, len(chunks), 1)
@@ -121,7 +121,7 @@ func TestChunker_Chunk(t *testing.T) {
 		body := shortPara + "\n\n" + "Tag 2" + "\n\n" + longPara
 
 		chunks, err := chunker.Chunk(body)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// Should have merged short tags and kept long paragraph separate
 		assert.GreaterOrEqual(t, len(chunks), 1)
@@ -145,7 +145,7 @@ func TestChunker_Chunk(t *testing.T) {
 		// Japanese text with 。 as sentence terminator
 		body := "これは最初の文です。これは二番目の文です。これは三番目の文です。"
 		chunks, err := chunker.Chunk(body)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.NotEmpty(t, chunks)
 	})
 
@@ -157,7 +157,7 @@ func TestChunker_Chunk(t *testing.T) {
 			"This should be preserved in the chunks."
 
 		chunks, err := chunker.Chunk(body)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// Plain-text input: the fragments are not headings, so they merge
 		// forward into the article content instead of being discarded.
@@ -171,7 +171,7 @@ func TestChunker_Chunk(t *testing.T) {
 		// Simulates title (27 chars) + navigation menu (multiple short items) + first long paragraph
 		body := "Short Title Here 1234567890\n\nMenu1\n\nMenu2\n\nMenu3\n\nThis is a long enough paragraph that exceeds the minimum chunk length requirement of 80 characters. It needs to be a bit longer now."
 		chunks, err := chunker.Chunk(body)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// All chunks should be >= MinChunkLength
 		for i, chunk := range chunks {
@@ -197,7 +197,7 @@ func TestChunker_Chunk(t *testing.T) {
 			`</div>`
 
 		chunks, err := chunker.Chunk(htmlBody)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.NotEmpty(t, chunks)
 
 		for _, chunk := range chunks {
@@ -262,7 +262,7 @@ func TestChunkerV10_InvalidConfigFailsFast(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			c, err := domain.NewChunkerWithConfig(tt.cfg)
-			assert.Error(t, err, "invalid config must fail loudly, not be silently clamped")
+			require.Error(t, err, "invalid config must fail loudly, not be silently clamped")
 			assert.Nil(t, c)
 		})
 	}

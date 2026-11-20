@@ -88,7 +88,7 @@ func TestParseQueryIntent_EmptyQuestion(t *testing.T) {
 
 	assert.Equal(t, IntentArticleScoped, intent.IntentType)
 	assert.Equal(t, "11111111-1111-1111-1111-111111111111", intent.ArticleID)
-	assert.Equal(t, "", intent.UserQuestion)
+	assert.Empty(t, intent.UserQuestion)
 }
 
 func TestParseQueryIntent_QuestionContainsQuestionKeyword(t *testing.T) {

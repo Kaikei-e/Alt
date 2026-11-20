@@ -15,7 +15,7 @@ func TestRateLimit_AllowsBelowLimit(t *testing.T) {
 	handler := rl.Middleware(newTestHandler())
 
 	for i := 0; i < 3; i++ {
-		req := httptest.NewRequest(http.MethodGet, "/v1/search", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/search", nil)
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, req)
 		if rec.Code != http.StatusOK {
@@ -33,7 +33,7 @@ func TestRateLimit_RejectsBurstOverCapacity(t *testing.T) {
 
 	statuses := make([]int, 3)
 	for i := range statuses {
-		req := httptest.NewRequest(http.MethodGet, "/v1/search", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/search", nil)
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, req)
 		statuses[i] = rec.Code
@@ -56,11 +56,11 @@ func TestRateLimit_SetsRetryAfterHeader(t *testing.T) {
 	handler := rl.Middleware(newTestHandler())
 
 	// Consume the token.
-	r1 := httptest.NewRequest(http.MethodGet, "/v1/search", nil)
+	r1 := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/search", nil)
 	handler.ServeHTTP(httptest.NewRecorder(), r1)
 
 	// Immediate second call is rejected.
-	r2 := httptest.NewRequest(http.MethodGet, "/v1/search", nil)
+	r2 := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/search", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, r2)
 

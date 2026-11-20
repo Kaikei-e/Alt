@@ -6,19 +6,19 @@ backward compatibility with existing attribute access patterns.
 
 from __future__ import annotations
 
-import os
 import logging
+import os
 
 from news_creator.config.distributed_be_config import (
     RemoteTarget,
     parse_distributed_be_reasoning_effort,
     parse_distributed_be_targets,
 )
-from news_creator.config.llm_config import LLMConfig
-from news_creator.config.scheduling_config import SchedulingConfig
 from news_creator.config.hierarchical_config import HierarchicalConfig
+from news_creator.config.llm_config import LLMConfig
 from news_creator.config.model_routing_config import ModelRoutingConfig
 from news_creator.config.redis_auth import resolve_redis_password
+from news_creator.config.scheduling_config import SchedulingConfig
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ class NewsCreatorConfig:
     with direct attribute access (e.g., config.llm_service_url).
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize configuration from environment variables."""
         # Auth service URL (kept for forward-compatible references; auth
         # itself is now established at the TLS transport layer).
@@ -65,10 +65,11 @@ class NewsCreatorConfig:
             "DISTRIBUTED_BE_UNHEALTHY_THRESHOLD", 2
         )
         if self.distributed_be_unhealthy_threshold < 1:
-            raise ValueError(
+            msg = (
                 "DISTRIBUTED_BE_UNHEALTHY_THRESHOLD must be >= 1, "
                 f"got {self.distributed_be_unhealthy_threshold}"
             )
+            raise ValueError(msg)
 
         self.distributed_be_targets: list[RemoteTarget]
         self.distributed_be_reasoning_effort: str | None
@@ -76,9 +77,8 @@ class NewsCreatorConfig:
             raw_targets = os.getenv("DISTRIBUTED_BE_TARGETS", "")
             self.distributed_be_targets = parse_distributed_be_targets(raw_targets)
             if not self.distributed_be_targets:
-                raise ValueError(
-                    "DISTRIBUTED_BE_ENABLED=true requires non-empty DISTRIBUTED_BE_TARGETS"
-                )
+                msg = "DISTRIBUTED_BE_ENABLED=true requires non-empty DISTRIBUTED_BE_TARGETS"
+                raise ValueError(msg)
             self.distributed_be_reasoning_effort = (
                 parse_distributed_be_reasoning_effort(
                     os.getenv("DISTRIBUTED_BE_REASONING_EFFORT")
@@ -475,7 +475,8 @@ class NewsCreatorConfig:
         try:
             return int(raw)
         except ValueError as exc:
-            raise ValueError(f"Invalid integer value for {name}: {raw!r}") from exc
+            msg = f"Invalid integer value for {name}: {raw!r}"
+            raise ValueError(msg) from exc
 
     def _get_float(self, name: str, default: float) -> float:
         """Get float value from environment variable with fallback."""

@@ -1,7 +1,5 @@
 """Atomic PEM leaf + key install with durable journal recovery."""
 
-# ruff: noqa: TRY003
-
 from __future__ import annotations
 
 import json
@@ -89,21 +87,27 @@ class CertFile:
         try:
             raw = read_regular_no_follow(str(self.cert_path), MAX_ROOT_PEM_BYTES)
         except FileNotFoundError as err:
-            raise CertNotFoundError("pki: cert not found") from err
+            msg = "pki: cert not found"
+            raise CertNotFoundError(msg) from err
         except PkiError as err:
-            raise CertParseFailedError("pki: cert parse failed") from err
+            msg = "pki: cert parse failed"
+            raise CertParseFailedError(msg) from err
         try:
             key_raw = read_regular_no_follow(str(self.key_path), MAX_ROOT_PEM_BYTES)
         except FileNotFoundError as err:
-            raise CertPairMismatchError("pki: cert/key pair mismatch") from err
+            msg = "pki: cert/key pair mismatch"
+            raise CertPairMismatchError(msg) from err
         except PkiError as err:
-            raise CertParseFailedError("pki: cert parse failed") from err
+            msg = "pki: cert parse failed"
+            raise CertParseFailedError(msg) from err
         try:
             cert = x509.load_pem_x509_certificate(raw)
         except ValueError as err:
-            raise CertParseFailedError("pki: cert parse failed") from err
+            msg = "pki: cert parse failed"
+            raise CertParseFailedError(msg) from err
         if not _pair_matches(raw, key_raw):
-            raise CertPairMismatchError("pki: cert/key pair mismatch")
+            msg = "pki: cert/key pair mismatch"
+            raise CertPairMismatchError(msg)
         self._assert_ssl_pair()
         return cert
 
@@ -137,7 +141,8 @@ class CertFile:
         try:
             self._assert_ssl_pair()
             if not _pair_matches(cert_pem, key_pem):
-                raise CertPairMismatchError("pki: cert/key pair mismatch")
+                msg = "pki: cert/key pair mismatch"
+                raise CertPairMismatchError(msg)
         except (
             OSError,
             ssl.SSLError,
@@ -246,7 +251,8 @@ class CertFile:
         try:
             ctx.load_cert_chain(certfile=str(self.cert_path), keyfile=str(self.key_path))
         except (ssl.SSLError, OSError) as err:
-            raise CertPairMismatchError("pki: cert/key pair mismatch") from err
+            msg = "pki: cert/key pair mismatch"
+            raise CertPairMismatchError(msg) from err
 
 
 def _write_temp(final_path: Path, data: bytes, mode: int) -> Path:

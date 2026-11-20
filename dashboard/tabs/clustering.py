@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import streamlit as st
+
 from utils import fetch_metrics, safe_float, safe_int
 
 
@@ -16,12 +17,11 @@ def render_clustering(window_seconds: int) -> None:
     for col in ["silhouette_score", "dbcv_score", "num_clusters", "noise_ratio"]:
         if col not in df_clu.columns:
             df_clu[col] = 0.0
+        # Fill NaN values with appropriate defaults
+        elif col == "num_clusters":
+            df_clu[col] = df_clu[col].fillna(0).astype(float)
         else:
-            # Fill NaN values with appropriate defaults
-            if col == "num_clusters":
-                df_clu[col] = df_clu[col].fillna(0).astype(float)
-            else:
-                df_clu[col] = df_clu[col].fillna(0.0)
+            df_clu[col] = df_clu[col].fillna(0.0)
 
     # Overview Charts
     st.subheader("Clustering Quality Over Time")
@@ -36,9 +36,7 @@ def render_clustering(window_seconds: int) -> None:
         f"{safe_float(latest.get('dbcv_score', 0.0)):.3f}",
         help="Density-Based Clustering Validation. Higher is better.",
     )
-    col2.metric(
-        "Silhouette Score", f"{safe_float(latest.get('silhouette_score', 0.0)):.3f}"
-    )
+    col2.metric("Silhouette Score", f"{safe_float(latest.get('silhouette_score', 0.0)):.3f}")
     col3.metric("Num Clusters", safe_int(latest.get("num_clusters", 0)))
     col4.metric(
         "Noise Ratio",
@@ -63,8 +61,7 @@ def render_clustering(window_seconds: int) -> None:
             # Create a dataframe for the bar chart
             # We want labels like "4-6", "6-8"
             bin_labels = [
-                f"{int(bin_edges[i])}-{int(bin_edges[i + 1])}"
-                for i in range(len(bin_edges) - 1)
+                f"{int(bin_edges[i])}-{int(bin_edges[i + 1])}" for i in range(len(bin_edges) - 1)
             ]
             hist_df = pd.DataFrame({"Count": counts}, index=bin_labels)
             st.bar_chart(hist_df)
@@ -72,7 +69,7 @@ def render_clustering(window_seconds: int) -> None:
             st.caption(
                 f"Min Size: {min(sizes)}, Max Size: {max(sizes)}, Median: {np.median(sizes)}"
             )
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             st.error("Error plotting cluster sizes.")
             st.write(sizes)
     elif "cluster_sizes" not in latest:

@@ -34,6 +34,10 @@ from acolyte.usecase.get_report_uc import GetReportUsecase
 from acolyte.usecase.list_reports_uc import ListReportsUsecase
 from tests.conftest import TEST_USER_ID
 
+EXPECTED_SINGLE_OWNER_UPDATED_COUNT = 2
+SELECT_AND_UPDATE_QUERY_COUNT = 2
+FAKE_BACKFILL_ROW_COUNT = 42
+
 
 def _create_report(repo: MemoryReportGateway, *, user_id: UUID | None = None) -> Report:
     """Helper to insert a report with explicit or None user_id into memory gateway."""
@@ -80,7 +84,7 @@ async def test_backfill_explicit_single_owner_assignment_leaves_existing_owners_
     uc = BackfillReportOwnersUsecase(repo)
     updated_count = await uc.execute(single_owner_id=target_owner)
 
-    assert updated_count == 2
+    assert updated_count == EXPECTED_SINGLE_OWNER_UPDATED_COUNT
     assert repo._reports[legacy_1.report_id].user_id == target_owner
     assert repo._reports[legacy_2.report_id].user_id == target_owner
     assert repo._reports[already_owned.report_id].user_id == existing_owner
@@ -99,7 +103,7 @@ async def test_backfill_per_report_mapping_assignment() -> None:
     uc = BackfillReportOwnersUsecase(repo)
     updated_count = await uc.execute(mapping=mapping)
 
-    assert updated_count == 2
+    assert updated_count == len(mapping)
     assert repo._reports[rep_a.report_id].user_id == owner_a
     assert repo._reports[rep_b.report_id].user_id == owner_b
 
@@ -311,7 +315,7 @@ async def test_postgres_gateway_backfill_transaction_lock_and_atomicity() -> Non
     owner_id = uuid4()
     count = await gw.backfill_owners(single_owner_id=owner_id)
     assert count == 1
-    assert mock_conn.execute.call_count == 2
+    assert mock_conn.execute.call_count == SELECT_AND_UPDATE_QUERY_COUNT
     mock_tx.__aenter__.assert_awaited_once()
     mock_tx.__aexit__.assert_awaited_once_with(None, None, None)
 
@@ -338,9 +342,9 @@ async def test_report_owner_backfill_port_segregation() -> None:
             single_owner_id: UUID | None = None,
             mapping: dict[UUID, UUID] | None = None,
         ) -> int:
-            return 42
+            return FAKE_BACKFILL_ROW_COUNT
 
     repo: ReportOwnerBackfillPort = _MinimalBackfillRepo()
     uc = BackfillReportOwnersUsecase(repo)
     result = await uc.execute(single_owner_id=uuid4())
-    assert result == 42
+    assert result == FAKE_BACKFILL_ROW_COUNT

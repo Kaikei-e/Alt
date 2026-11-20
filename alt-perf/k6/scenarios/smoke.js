@@ -9,9 +9,9 @@ import http from "k6/http";
 import { group, sleep } from "k6";
 import { getConfig } from "../helpers/config.js";
 import { getAuthHeaders, getPublicHeaders, validateAuthHubToken } from "../helpers/auth.js";
-import { PUBLIC_ENDPOINTS, AUTH_ENDPOINTS } from "../helpers/endpoints.js";
-import { checkResponse, checkHealth, checkAuthResponse } from "../helpers/checks.js";
-import { recordResponseTime, recordError } from "../helpers/metrics.js";
+import { AUTH_ENDPOINTS, PUBLIC_ENDPOINTS } from "../helpers/endpoints.js";
+import { checkAuthResponse, checkHealth, checkResponse } from "../helpers/checks.js";
+import { recordError, recordResponseTime } from "../helpers/metrics.js";
 import { smokeThresholds } from "../config/thresholds.js";
 import { handleSummary } from "../helpers/summary.js";
 

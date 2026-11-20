@@ -1,8 +1,10 @@
 import logging
 import os
+from http import HTTPStatus
 
 import requests
 import streamlit as st
+
 from tabs import (
     admin_jobs,
     classification,
@@ -31,32 +33,30 @@ logging.basicConfig(
 def check_sse_server_health() -> bool:
     """Check if the SSE server (running as separate process) is healthy."""
     logger = logging.getLogger(__name__)
-    sse_port = int(os.getenv("SSE_PORT", 8000))
+    sse_port = int(os.getenv("SSE_PORT", "8000"))
     health_url = f"http://localhost:{sse_port}/health"
 
     try:
         logger.info("Checking SSE server health at %s (SSE_PORT=%s)", health_url, sse_port)
         response = requests.get(health_url, timeout=5)
-        if response.status_code == 200:
+        if response.status_code == HTTPStatus.OK:
             health_data = response.json()
             logger.info("SSE server health check passed: %s", health_data)
             return True
-        else:
-            logger.warning(
-                "SSE server health check returned status %s (expected 200)",
-                response.status_code,
-            )
-            return False
     except requests.exceptions.Timeout:
         logger.warning("SSE server health check timed out. Server may still be starting.")
         return False
     except requests.exceptions.ConnectionError:
-        logger.warning(
-            "SSE server health check connection error. Server may still be starting."
-        )
+        logger.warning("SSE server health check connection error. Server may still be starting.")
         return False
     except requests.exceptions.RequestException as e:
         logger.warning("SSE server health check failed: %s", e)
+        return False
+    else:
+        logger.warning(
+            "SSE server health check returned status %s (expected 200)",
+            response.status_code,
+        )
         return False
 
 

@@ -15,7 +15,18 @@ import (
 	"testing"
 
 	"github.com/alt-project/altctl/internal/compose"
+	"github.com/stretchr/testify/require"
 )
+
+func readFileIn(t *testing.T, dir, name string) []byte {
+	t.Helper()
+	root, err := os.OpenRoot(dir)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, root.Close()) })
+	b, err := root.ReadFile(name)
+	require.NoError(t, err)
+	return b
+}
 
 const (
 	sentinelSecretEnv     = "SENTINEL_SECRET_CANDIDATE_ENV_995"
@@ -272,11 +283,7 @@ func containsArg(args []string, target string) bool {
 
 func mustReadFixture(t *testing.T, name string) []byte {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join("testdata", name))
-	if err != nil {
-		t.Fatalf("read fixture %s: %v", name, err)
-	}
-	return b
+	return readFileIn(t, "testdata", name)
 }
 
 func setupFakeProject(t *testing.T) (projectDir string, candidateEnvPath string, candidateBytes []byte, liveEnvBytes []byte, composeFiles map[string][]byte) {
@@ -287,18 +294,18 @@ func setupFakeProject(t *testing.T) (projectDir string, candidateEnvPath string,
 	if err := os.WriteFile(filepath.Join(projectDir, ".env"), liveEnvBytes, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(projectDir, ".altctl.yaml"), []byte("defaults:\n  stacks: [core]\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(projectDir, ".altctl.yaml"), []byte("defaults:\n  stacks: [core]\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(filepath.Join(projectDir, "scripts"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(projectDir, "scripts"), 0o750); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(projectDir, "scripts", "marker.txt"), []byte("marker"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(projectDir, "scripts", "marker.txt"), []byte("marker"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
 	composeDir := filepath.Join(projectDir, "compose")
-	if err := os.MkdirAll(composeDir, 0o755); err != nil {
+	if err := os.MkdirAll(composeDir, 0o750); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Symlink("../.env", filepath.Join(composeDir, ".env")); err != nil {
@@ -337,7 +344,7 @@ func setupFakeProject(t *testing.T) (projectDir string, candidateEnvPath string,
 		"ai.yaml":      aiYAML,
 	}
 	for name, content := range composeFiles {
-		if err := os.WriteFile(filepath.Join(composeDir, name), content, 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(composeDir, name), content, 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -419,10 +426,7 @@ func TestValidate_BaselineStagingAndFrozenEnv(t *testing.T) {
 		if stageEnvInfo.Mode().Perm() != 0o600 {
 			t.Errorf("stage .env perm = %o, want 0600", stageEnvInfo.Mode().Perm())
 		}
-		gotEnvBytes, err := os.ReadFile(stageEnvPath)
-		if err != nil {
-			t.Fatalf("read stage .env: %v", err)
-		}
+		gotEnvBytes := readFileIn(t, capturedStageDir, ".env")
 		if !bytes.Equal(gotEnvBytes, candidateBytes) {
 			t.Errorf("stage .env bytes mismatch")
 		}
@@ -436,10 +440,7 @@ func TestValidate_BaselineStagingAndFrozenEnv(t *testing.T) {
 		if linkTarget != "../.env" {
 			t.Errorf("compose/.env symlink target = %q, want %q", linkTarget, "../.env")
 		}
-		gotViaComposeEnv, err := os.ReadFile(composeEnvLink)
-		if err != nil {
-			t.Fatalf("readFile compose/.env: %v", err)
-		}
+		gotViaComposeEnv := readFileIn(t, capturedStageDir, filepath.Join("compose", ".env"))
 		if !bytes.Equal(gotViaComposeEnv, candidateBytes) || bytes.Equal(gotViaComposeEnv, liveEnvBytes) {
 			t.Fatalf("compose/.env did not resolve to candidate bytes")
 		}
@@ -454,10 +455,7 @@ func TestValidate_BaselineStagingAndFrozenEnv(t *testing.T) {
 			if !fi.Mode().IsRegular() {
 				t.Errorf("staged compose/%s must be regular file (not symlink), mode=%v", name, fi.Mode())
 			}
-			gotBytes, err := os.ReadFile(p)
-			if err != nil {
-				t.Fatalf("read staged compose/%s: %v", name, err)
-			}
+			gotBytes := readFileIn(t, filepath.Join(capturedStageDir, "compose"), name)
 			if !bytes.Equal(gotBytes, wantBytes) {
 				t.Errorf("staged compose/%s bytes differ from source", name)
 			}
@@ -566,18 +564,12 @@ func TestValidate_StaleAllowlistOverrideFailsAndLeavesLiveTreeUntouched(t *testi
 		t.Errorf("expected caller_not_in_allowed_peers:CERT_SUBJECT,MTLS_ALLOWED_PEERS, got %v", cv.Reasons)
 	}
 
-	gotLiveEnv, err := os.ReadFile(filepath.Join(projectDir, ".env"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	gotLiveEnv := readFileIn(t, projectDir, ".env")
 	if !bytes.Equal(gotLiveEnv, liveEnvBytes) {
 		t.Error("live .env was modified")
 	}
 	for name, want := range composeFiles {
-		got, err := os.ReadFile(filepath.Join(projectDir, "compose", name))
-		if err != nil {
-			t.Fatal(err)
-		}
+		got := readFileIn(t, filepath.Join(projectDir, "compose"), name)
 		if !bytes.Equal(got, want) {
 			t.Errorf("live compose/%s was modified", name)
 		}
@@ -1102,16 +1094,16 @@ services:
   seq_svc:
     image: repo/img:$UNBRACED_VAR
 `
-		if err := os.WriteFile(rootFile, []byte(rootYAML), 0o644); err != nil {
+		if err := os.WriteFile(rootFile, []byte(rootYAML), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(incFile, []byte(incYAML), 0o644); err != nil {
+		if err := os.WriteFile(incFile, []byte(incYAML), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(singleFile, []byte(singleYAML), 0o644); err != nil {
+		if err := os.WriteFile(singleFile, []byte(singleYAML), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(seqFile, []byte(seqYAML), 0o644); err != nil {
+		if err := os.WriteFile(seqFile, []byte(seqYAML), 0o600); err != nil {
 			t.Fatal(err)
 		}
 
@@ -1140,7 +1132,7 @@ include:
   - unknown_key: other.yaml
 services: {}
 `
-		if err := os.WriteFile(rootFile, []byte(rootYAML), 0o644); err != nil {
+		if err := os.WriteFile(rootFile, []byte(rootYAML), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := CollectComposeReferencedVars(rootFile); err == nil {
@@ -1159,10 +1151,10 @@ include:
       - nested: invalid
 services: {}
 `
-		if err := os.WriteFile(rootFile, []byte(rootYAML), 0o644); err != nil {
+		if err := os.WriteFile(rootFile, []byte(rootYAML), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(okFile, []byte("services: {}\n"), 0o644); err != nil {
+		if err := os.WriteFile(okFile, []byte("services: {}\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := CollectComposeReferencedVars(rootFile); err == nil {
@@ -1175,7 +1167,7 @@ services: {}
 		rootFile := filepath.Join(dir, "compose.yaml")
 		incFile := filepath.Join(dir, "inc.yaml")
 		extFile := filepath.Join(dir, "ext.yaml")
-		if err := os.WriteFile(rootFile, []byte("name: alt\ninclude:\n  - inc.yaml\n"), 0o644); err != nil {
+		if err := os.WriteFile(rootFile, []byte("name: alt\ninclude:\n  - inc.yaml\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		incYAML := `services:
@@ -1184,10 +1176,10 @@ services: {}
       file: ext.yaml
       service: ext_svc
 `
-		if err := os.WriteFile(incFile, []byte(incYAML), 0o644); err != nil {
+		if err := os.WriteFile(incFile, []byte(incYAML), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(extFile, []byte("services:\n  ext_svc:\n    image: repo/img:latest\n"), 0o644); err != nil {
+		if err := os.WriteFile(extFile, []byte("services:\n  ext_svc:\n    image: repo/img:latest\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		_, err := CollectComposeReferencedVars(rootFile)
@@ -1196,6 +1188,35 @@ services: {}
 		}
 		if !strings.Contains(err.Error(), "inc.yaml") {
 			t.Errorf("error %q does not name compose file inc.yaml", err.Error())
+		}
+	})
+
+	t.Run("include escaping compose root fails closed", func(t *testing.T) {
+		parent := t.TempDir()
+		composeDir := filepath.Join(parent, "compose")
+		require.NoError(t, os.MkdirAll(composeDir, 0o750))
+		require.NoError(t, os.WriteFile(filepath.Join(parent, "outside.yaml"), []byte("services: {}\n"), 0o600))
+		rootFile := filepath.Join(composeDir, "compose.yaml")
+		require.NoError(t, os.WriteFile(rootFile, []byte("name: alt\ninclude:\n  - ../outside.yaml\n"), 0o600))
+
+		_, err := CollectComposeReferencedVars(rootFile)
+		require.Error(t, err)
+		if !strings.Contains(err.Error(), "escapes compose root") {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("absolute include path fails closed", func(t *testing.T) {
+		dir := t.TempDir()
+		outside := filepath.Join(t.TempDir(), "outside.yaml")
+		require.NoError(t, os.WriteFile(outside, []byte("services: {}\n"), 0o600))
+		rootFile := filepath.Join(dir, "compose.yaml")
+		require.NoError(t, os.WriteFile(rootFile, []byte("name: alt\ninclude:\n  - "+outside+"\n"), 0o600))
+
+		_, err := CollectComposeReferencedVars(rootFile)
+		require.Error(t, err)
+		if !strings.Contains(err.Error(), "must be relative") {
+			t.Errorf("unexpected error: %v", err)
 		}
 	})
 }

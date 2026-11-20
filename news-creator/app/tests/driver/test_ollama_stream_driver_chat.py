@@ -5,6 +5,7 @@ Ensures chat_stream() and chat_generate() merge config base options
 model reload from parameter mismatch between batch and chat requests.
 """
 
+from typing import Any, Self
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -14,9 +15,12 @@ from news_creator.driver.ollama_stream_driver import OllamaStreamDriver
 
 pytestmark = pytest.mark.usefixtures("dummy_redis_password_file")
 
+DEFAULT_NUM_PREDICT = 1200
+DEFAULT_NUM_BATCH = 1024
+
 
 @pytest.fixture
-def config():
+def config() -> NewsCreatorConfig:
     """Create a config with known LLM options."""
     with patch.dict(
         "os.environ",
@@ -29,8 +33,64 @@ def config():
 
 
 @pytest.fixture
-def driver(config):
+def driver(config: NewsCreatorConfig) -> OllamaStreamDriver:
     return OllamaStreamDriver(config)
+
+
+class _AsyncLineIterator:
+    """Async iterator over bytes lines, mimicking aiohttp StreamReader."""
+
+    def __init__(self, lines: list[bytes]) -> None:
+        self._lines = lines
+        self._index = 0
+
+    def __aiter__(self) -> Self:
+        return self
+
+    async def __anext__(self) -> bytes:
+        if self._index >= len(self._lines):
+            raise StopAsyncIteration
+        line = self._lines[self._index]
+        self._index += 1
+        return line
+
+
+def _make_mock_session(
+    response_lines: list[bytes] | None = None, json_body: dict[str, Any] | None = None
+) -> tuple[MagicMock, dict[str, Any]]:
+    """Create a mock aiohttp session that captures the POSTed URL and payload.
+
+    Returns (session, captured) where captured is a dict with 'url', 'json',
+    and 'kwargs' (additional keyword arguments such as allow_redirects).
+    """
+    captured: dict[str, Any] = {}
+
+    mock_resp = AsyncMock()
+    mock_resp.status = 200
+
+    if response_lines is not None:
+        mock_resp.content = _AsyncLineIterator(response_lines)
+    if json_body is not None:
+        mock_resp.json = AsyncMock(return_value=json_body)
+
+    ctx = AsyncMock()
+    ctx.__aenter__ = AsyncMock(return_value=mock_resp)
+    ctx.__aexit__ = AsyncMock(return_value=False)
+
+    session = MagicMock()
+    session.closed = False
+
+    def _post(
+        url: str, json: dict[str, Any] | None = None, **kwargs: object
+    ) -> AsyncMock:
+        captured["url"] = url
+        captured["json"] = json
+        captured["kwargs"] = kwargs
+        return ctx
+
+    session.post = _post
+
+    return session, captured
 
 
 class TestChatStreamOptionsMerge:
@@ -45,7 +105,9 @@ class TestChatStreamOptionsMerge:
     """
 
     @pytest.mark.asyncio
-    async def test_base_options_included_when_caller_has_no_options(self, driver):
+    async def test_base_options_included_when_caller_has_no_options(
+        self, driver: OllamaStreamDriver
+    ) -> None:
         """When caller sends no options, config base options reach Ollama."""
         lines = [b'{"message":{"role":"assistant","content":"hi"},"done":true}\n']
         session, captured = _make_mock_session(response_lines=lines)
@@ -65,31 +127,38 @@ class TestChatStreamOptionsMerge:
         assert sent_options["stop"] == base_opts["stop"]
 
     @pytest.mark.asyncio
-    async def test_caller_options_override_base(self, driver):
+    async def test_caller_options_override_base(
+        self, driver: OllamaStreamDriver
+    ) -> None:
         """Caller's num_predict/temperature reach Ollama; base fields survive."""
         lines = [b'{"message":{"role":"assistant","content":"hi"},"done":true}\n']
         session, captured = _make_mock_session(response_lines=lines)
         driver.session = session
 
         base_opts = driver.config.get_llm_options()
-        assert base_opts["num_predict"] == 1200  # config default (sanity check)
+        assert base_opts["num_predict"] == DEFAULT_NUM_PREDICT  # config default
 
+        caller_num_predict = 2048
+        caller_temperature = 0.3
         payload = {
             "model": "gemma4-e4b-12k",
             "messages": [{"role": "user", "content": "test"}],
-            "options": {"num_predict": 2048, "temperature": 0.3},
+            "options": {
+                "num_predict": caller_num_predict,
+                "temperature": caller_temperature,
+            },
         }
         async for _ in driver.chat_stream(payload):
             pass
 
         sent_options = captured["json"]["options"]
-        assert sent_options["num_predict"] == 2048
-        assert sent_options["temperature"] == 0.3
+        assert sent_options["num_predict"] == caller_num_predict
+        assert sent_options["temperature"] == caller_temperature
         # Base (unrelated to the override) options still present
         assert sent_options["num_batch"] == base_opts["num_batch"]
         assert sent_options["num_keep"] == base_opts["num_keep"]
 
-    def test_config_base_options_structure(self, config):
+    def test_config_base_options_structure(self, config: NewsCreatorConfig) -> None:
         """Config base options contain all required Ollama parameters."""
         opts = config.get_llm_options()
         required_keys = {
@@ -114,7 +183,7 @@ class TestChatGenerateOptionsMerge:
     """
 
     @pytest.mark.asyncio
-    async def test_base_options_included(self, driver):
+    async def test_base_options_included(self, driver: OllamaStreamDriver) -> None:
         """Non-streaming chat_generate forwards config base options."""
         body = {"message": {"role": "assistant", "content": "ok"}, "done": True}
         session, captured = _make_mock_session(json_body=body)
@@ -127,27 +196,28 @@ class TestChatGenerateOptionsMerge:
         await driver.chat_generate(payload)
 
         sent_options = captured["json"]["options"]
-        assert sent_options["num_batch"] == 1024
+        assert sent_options["num_batch"] == DEFAULT_NUM_BATCH
         assert sent_options["num_keep"] == 0
         assert "<turn|>" in sent_options["stop"]
 
     @pytest.mark.asyncio
-    async def test_caller_options_override(self, driver):
+    async def test_caller_options_override(self, driver: OllamaStreamDriver) -> None:
         """Caller options override config defaults in chat_generate."""
         body = {"message": {"role": "assistant", "content": "ok"}, "done": True}
         session, captured = _make_mock_session(json_body=body)
         driver.session = session
 
+        caller_num_predict = 4096
         payload = {
             "model": "gemma4-e4b-12k",
             "messages": [{"role": "user", "content": "test"}],
-            "options": {"num_predict": 4096},
+            "options": {"num_predict": caller_num_predict},
         }
         await driver.chat_generate(payload)
 
         sent_options = captured["json"]["options"]
-        assert sent_options["num_predict"] == 4096
-        assert sent_options["num_batch"] == 1024  # preserved from base
+        assert sent_options["num_predict"] == caller_num_predict
+        assert sent_options["num_batch"] == DEFAULT_NUM_BATCH  # preserved from base
 
 
 # ---------------------------------------------------------------------------
@@ -157,65 +227,11 @@ class TestChatGenerateOptionsMerge:
 # ---------------------------------------------------------------------------
 
 
-class _AsyncLineIterator:
-    """Async iterator over bytes lines, mimicking aiohttp StreamReader."""
-
-    def __init__(self, lines: list[bytes]):
-        self._lines = lines
-        self._index = 0
-
-    def __aiter__(self):
-        return self
-
-    async def __anext__(self):
-        if self._index >= len(self._lines):
-            raise StopAsyncIteration
-        line = self._lines[self._index]
-        self._index += 1
-        return line
-
-
-def _make_mock_session(
-    response_lines: list[bytes] | None = None, json_body: dict | None = None
-):
-    """Create a mock aiohttp session that captures the POSTed URL and payload.
-
-    Returns (session, captured) where captured is a dict with 'url', 'json',
-    and 'kwargs' (additional keyword arguments such as allow_redirects).
-    """
-    captured: dict = {}
-
-    mock_resp = AsyncMock()
-    mock_resp.status = 200
-
-    if response_lines is not None:
-        mock_resp.content = _AsyncLineIterator(response_lines)
-    if json_body is not None:
-        mock_resp.json = AsyncMock(return_value=json_body)
-
-    ctx = AsyncMock()
-    ctx.__aenter__ = AsyncMock(return_value=mock_resp)
-    ctx.__aexit__ = AsyncMock(return_value=False)
-
-    session = MagicMock()
-    session.closed = False
-
-    def _post(url, json=None, **kwargs):
-        captured["url"] = url
-        captured["json"] = json
-        captured["kwargs"] = kwargs
-        return ctx
-
-    session.post = _post
-
-    return session, captured
-
-
 class TestChatStreamUsesApiChat:
     """chat_stream() must call /api/chat (not /api/generate) and set think=false."""
 
     @pytest.mark.asyncio
-    async def test_calls_api_chat_endpoint(self, driver):
+    async def test_calls_api_chat_endpoint(self, driver: OllamaStreamDriver) -> None:
         """Downstream URL must be /api/chat, not /api/generate."""
         lines = [b'{"message":{"role":"assistant","content":"hi"},"done":true}\n']
         session, captured = _make_mock_session(response_lines=lines)
@@ -225,9 +241,7 @@ class TestChatStreamUsesApiChat:
             "model": "gemma4-e4b-12k",
             "messages": [{"role": "user", "content": "test"}],
         }
-        chunks = []
-        async for chunk in driver.chat_stream(payload):
-            chunks.append(chunk)
+        _ = [chunk async for chunk in driver.chat_stream(payload)]
 
         assert captured["url"].endswith("/api/chat"), (
             f"Expected /api/chat, got {captured['url']}"
@@ -238,7 +252,7 @@ class TestChatStreamUsesApiChat:
         )
 
     @pytest.mark.asyncio
-    async def test_includes_think_false(self, driver):
+    async def test_includes_think_false(self, driver: OllamaStreamDriver) -> None:
         """think=false must be in the downstream payload."""
         lines = [b'{"message":{"role":"assistant","content":"hi"},"done":true}\n']
         session, captured = _make_mock_session(response_lines=lines)
@@ -254,7 +268,7 @@ class TestChatStreamUsesApiChat:
         assert captured["json"].get("think") is False
 
     @pytest.mark.asyncio
-    async def test_no_raw_parameter(self, driver):
+    async def test_no_raw_parameter(self, driver: OllamaStreamDriver) -> None:
         """raw must NOT be in the downstream payload."""
         lines = [b'{"message":{"role":"assistant","content":"hi"},"done":true}\n']
         session, captured = _make_mock_session(response_lines=lines)
@@ -270,7 +284,9 @@ class TestChatStreamUsesApiChat:
         assert "raw" not in captured["json"]
 
     @pytest.mark.asyncio
-    async def test_forwards_messages_not_prompt(self, driver):
+    async def test_forwards_messages_not_prompt(
+        self, driver: OllamaStreamDriver
+    ) -> None:
         """Messages must be forwarded as-is; no 'prompt' key in downstream payload."""
         lines = [b'{"message":{"role":"assistant","content":"hi"},"done":true}\n']
         session, captured = _make_mock_session(response_lines=lines)
@@ -289,22 +305,29 @@ class TestChatStreamUsesApiChat:
         assert captured["json"]["messages"] == messages
 
     @pytest.mark.asyncio
-    async def test_preserves_caller_num_predict_in_downstream_options(self, driver):
+    async def test_preserves_caller_num_predict_in_downstream_options(
+        self, driver: OllamaStreamDriver
+    ) -> None:
         """Streaming /api/chat must preserve caller-provided num_predict."""
         lines = [b'{"message":{"role":"assistant","content":"hi"},"done":true}\n']
         session, captured = _make_mock_session(response_lines=lines)
         driver.session = session
 
+        caller_num_predict = 3072
+        caller_temperature = 0.1
         payload = {
             "model": "gemma4-e4b-12k",
             "messages": [{"role": "user", "content": "test"}],
-            "options": {"num_predict": 3072, "temperature": 0.1},
+            "options": {
+                "num_predict": caller_num_predict,
+                "temperature": caller_temperature,
+            },
         }
         async for _ in driver.chat_stream(payload):
             pass
 
-        assert captured["json"]["options"]["num_predict"] == 3072
-        assert captured["json"]["options"]["temperature"] == 0.1
+        assert captured["json"]["options"]["num_predict"] == caller_num_predict
+        assert captured["json"]["options"]["temperature"] == caller_temperature
 
 
 class TestMergeOptionsRunnerParamGuard:
@@ -316,22 +339,22 @@ class TestMergeOptionsRunnerParamGuard:
     num_predict, stop, think) remain caller-priority, unchanged.
     """
 
-    def test_strips_caller_num_ctx(self, driver):
+    def test_strips_caller_num_ctx(self, driver: OllamaStreamDriver) -> None:
         base_num_ctx = driver.config.get_llm_options()["num_ctx"]
         merged = driver._merge_options({"num_ctx": base_num_ctx + 4096})
         assert merged["num_ctx"] == base_num_ctx
 
-    def test_strips_caller_num_batch(self, driver):
+    def test_strips_caller_num_batch(self, driver: OllamaStreamDriver) -> None:
         base_num_batch = driver.config.get_llm_options()["num_batch"]
         merged = driver._merge_options({"num_batch": base_num_batch + 512})
         assert merged["num_batch"] == base_num_batch
 
-    def test_strips_caller_num_keep(self, driver):
+    def test_strips_caller_num_keep(self, driver: OllamaStreamDriver) -> None:
         base_num_keep = driver.config.get_llm_options()["num_keep"]
         merged = driver._merge_options({"num_keep": base_num_keep + 10})
         assert merged["num_keep"] == base_num_keep
 
-    def test_strips_caller_num_gpu(self, driver):
+    def test_strips_caller_num_gpu(self, driver: OllamaStreamDriver) -> None:
         """A caller must not be able to move the model off the GPU.
 
         num_gpu decides the offload split at runner startup; a caller-supplied
@@ -342,7 +365,9 @@ class TestMergeOptionsRunnerParamGuard:
         merged = driver._merge_options({"num_gpu": 0})
         assert merged["num_gpu"] == base_num_gpu
 
-    def test_sampling_params_still_caller_priority(self, driver):
+    def test_sampling_params_still_caller_priority(
+        self, driver: OllamaStreamDriver
+    ) -> None:
         caller_options = {
             "temperature": 0.05,
             "top_p": 0.5,
@@ -356,7 +381,9 @@ class TestMergeOptionsRunnerParamGuard:
         for key, value in caller_options.items():
             assert merged[key] == value
 
-    def test_acolyte_sends_same_runner_values_unaffected(self, driver):
+    def test_acolyte_sends_same_runner_values_unaffected(
+        self, driver: OllamaStreamDriver
+    ) -> None:
         """Acolyte's current behavior -- sending the same runner values as
         config base -- must keep working identically after the strip guard."""
         base = driver.config.get_llm_options()
@@ -372,7 +399,9 @@ class TestMergeOptionsRunnerParamGuard:
         assert merged["num_keep"] == base["num_keep"]
         assert merged["temperature"] == base["temperature"]
 
-    def test_rag_orchestrator_sends_no_options_unaffected(self, driver):
+    def test_rag_orchestrator_sends_no_options_unaffected(
+        self, driver: OllamaStreamDriver
+    ) -> None:
         """rag-orchestrator sends no options at all -- merge must fall back to
         config base options unchanged."""
         merged = driver._merge_options(None)
@@ -384,29 +413,35 @@ class TestChatStreamStripsRunnerParams:
     num_ctx never reaches the downstream Ollama /api/chat payload."""
 
     @pytest.mark.asyncio
-    async def test_caller_num_ctx_does_not_reach_downstream(self, driver):
+    async def test_caller_num_ctx_does_not_reach_downstream(
+        self, driver: OllamaStreamDriver
+    ) -> None:
         lines = [b'{"message":{"role":"assistant","content":"hi"},"done":true}\n']
         session, captured = _make_mock_session(response_lines=lines)
         driver.session = session
 
         base_num_ctx = driver.config.get_llm_options()["num_ctx"]
+        caller_temperature = 0.2
         payload = {
             "model": "gemma4-e4b-12k",
             "messages": [{"role": "user", "content": "test"}],
-            "options": {"num_ctx": base_num_ctx + 4096, "temperature": 0.2},
+            "options": {
+                "num_ctx": base_num_ctx + 4096,
+                "temperature": caller_temperature,
+            },
         }
         async for _ in driver.chat_stream(payload):
             pass
 
         assert captured["json"]["options"]["num_ctx"] == base_num_ctx
-        assert captured["json"]["options"]["temperature"] == 0.2
+        assert captured["json"]["options"]["temperature"] == caller_temperature
 
 
 class TestChatGenerateUsesApiChat:
     """chat_generate() must call /api/chat and omit raw (non-streaming)."""
 
     @pytest.mark.asyncio
-    async def test_calls_api_chat_endpoint(self, driver):
+    async def test_calls_api_chat_endpoint(self, driver: OllamaStreamDriver) -> None:
         """Downstream URL must be /api/chat, not /api/generate."""
         body = {
             "message": {"role": "assistant", "content": "Hello!"},
@@ -429,7 +464,7 @@ class TestChatGenerateUsesApiChat:
         )
 
     @pytest.mark.asyncio
-    async def test_omits_think_parameter(self, driver):
+    async def test_omits_think_parameter(self, driver: OllamaStreamDriver) -> None:
         """think should be omitted in the downstream payload."""
         body = {"message": {"role": "assistant", "content": "ok"}, "done": True}
         session, captured = _make_mock_session(json_body=body)
@@ -444,7 +479,7 @@ class TestChatGenerateUsesApiChat:
         assert "think" not in captured["json"]
 
     @pytest.mark.asyncio
-    async def test_no_raw_parameter(self, driver):
+    async def test_no_raw_parameter(self, driver: OllamaStreamDriver) -> None:
         """raw must NOT be in the downstream payload."""
         body = {"message": {"role": "assistant", "content": "ok"}, "done": True}
         session, captured = _make_mock_session(json_body=body)
@@ -459,7 +494,9 @@ class TestChatGenerateUsesApiChat:
         assert "raw" not in captured["json"]
 
     @pytest.mark.asyncio
-    async def test_forwards_messages_not_prompt(self, driver):
+    async def test_forwards_messages_not_prompt(
+        self, driver: OllamaStreamDriver
+    ) -> None:
         """Messages must be forwarded, not converted to prompt."""
         body = {"message": {"role": "assistant", "content": "ok"}, "done": True}
         session, captured = _make_mock_session(json_body=body)
@@ -473,18 +510,25 @@ class TestChatGenerateUsesApiChat:
         assert captured["json"]["messages"] == messages
 
     @pytest.mark.asyncio
-    async def test_preserves_caller_num_predict_in_downstream_options(self, driver):
+    async def test_preserves_caller_num_predict_in_downstream_options(
+        self, driver: OllamaStreamDriver
+    ) -> None:
         """Non-streaming /api/chat must preserve caller-provided num_predict."""
         body = {"message": {"role": "assistant", "content": "ok"}, "done": True}
         session, captured = _make_mock_session(json_body=body)
         driver.session = session
 
+        caller_num_predict = 2048
+        caller_temperature = 0.2
         payload = {
             "model": "gemma4-e4b-12k",
             "messages": [{"role": "user", "content": "test"}],
-            "options": {"num_predict": 2048, "temperature": 0.2},
+            "options": {
+                "num_predict": caller_num_predict,
+                "temperature": caller_temperature,
+            },
         }
         await driver.chat_generate(payload)
 
-        assert captured["json"]["options"]["num_predict"] == 2048
-        assert captured["json"]["options"]["temperature"] == 0.2
+        assert captured["json"]["options"]["num_predict"] == caller_num_predict
+        assert captured["json"]["options"]["temperature"] == caller_temperature

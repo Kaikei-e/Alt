@@ -213,7 +213,8 @@ func TestStreamHandler_LensIDProvidedAndUnresolvable_ReturnsNotFound(t *testing.
 	err := h.StreamKnowledgeHomeUpdates(testUserContext(), req, nil)
 
 	require.Error(t, err)
-	connectErr, ok := err.(*connect.Error)
+	connectErr := &connect.Error{}
+	ok := errors.As(err, &connectErr)
 	require.True(t, ok)
 	assert.Equal(t, connect.CodeNotFound, connectErr.Code(),
 		"unowned/missing lens must surface as NotFound to avoid existence oracle")

@@ -42,7 +42,7 @@ func TestOTelStatusHandler_2xxResponse_StatusUnset(t *testing.T) {
 
 	wrappedHandler := OTelStatusHandler(handler, "/test")
 
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	rec := httptest.NewRecorder()
 
 	wrappedHandler.ServeHTTP(rec, req)
@@ -75,7 +75,7 @@ func TestOTelStatusHandler_4xxResponse_StatusUnset(t *testing.T) {
 
 	wrappedHandler := OTelStatusHandler(handler, "/notfound")
 
-	req := httptest.NewRequest(http.MethodGet, "/notfound", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/notfound", nil)
 	rec := httptest.NewRecorder()
 
 	wrappedHandler.ServeHTTP(rec, req)
@@ -108,7 +108,7 @@ func TestOTelStatusHandler_5xxResponse_StatusError(t *testing.T) {
 
 	wrappedHandler := OTelStatusHandler(handler, "/error")
 
-	req := httptest.NewRequest(http.MethodGet, "/error", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/error", nil)
 	rec := httptest.NewRecorder()
 
 	wrappedHandler.ServeHTTP(rec, req)
@@ -142,7 +142,7 @@ func TestOTelStatusHandler_ServiceUnavailable(t *testing.T) {
 
 	wrappedHandler := OTelStatusHandler(handler, "/busy")
 
-	req := httptest.NewRequest(http.MethodGet, "/busy", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/busy", nil)
 	rec := httptest.NewRecorder()
 
 	wrappedHandler.ServeHTTP(rec, req)
@@ -166,7 +166,7 @@ func TestOTelStatusHandler_DefaultStatusOK(t *testing.T) {
 
 	wrappedHandler := OTelStatusHandler(handler, "/default")
 
-	req := httptest.NewRequest(http.MethodGet, "/default", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/default", nil)
 	rec := httptest.NewRecorder()
 
 	wrappedHandler.ServeHTTP(rec, req)

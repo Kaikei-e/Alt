@@ -201,7 +201,7 @@ async fn test_concurrent_batch_parsing() {
 
             for batch_idx in 0..batches_per_thread {
                 let batch: Vec<&[u8]> = test_logs_clone.iter().map(|log| log.as_bytes()).collect();
-                let batch_results = parser_clone.parse_batch(batch, &container_info_clone).await;
+                let batch_results = parser_clone.parse_batch(batch, &container_info_clone);
 
                 // Verify batch parsing works correctly under concurrency
                 assert_eq!(
@@ -210,7 +210,7 @@ async fn test_concurrent_batch_parsing() {
                     "Thread {thread_id} batch {batch_idx} wrong length"
                 );
                 assert!(
-                    batch_results.iter().all(|r| r.is_ok()),
+                    batch_results.iter().all(std::result::Result::is_ok),
                     "Thread {thread_id} batch {batch_idx} had parsing errors"
                 );
 

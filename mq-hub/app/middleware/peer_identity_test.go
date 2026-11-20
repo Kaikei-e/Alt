@@ -28,7 +28,7 @@ func TestPeerIdentity_AllowedCallerPasses(t *testing.T) {
 		}
 		w.WriteHeader(http.StatusOK)
 	}))
-	req := httptest.NewRequest(http.MethodPost, "/events", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/events", nil)
 	req.TLS = tlsStateWithCN("search-indexer")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -42,7 +42,7 @@ func TestPeerIdentity_DisallowedCallerRejected(t *testing.T) {
 	h := m.Require(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Fatal("handler must not be invoked for disallowed peer")
 	}))
-	req := httptest.NewRequest(http.MethodPost, "/events", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/events", nil)
 	req.TLS = tlsStateWithCN("evil")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -56,7 +56,7 @@ func TestPeerIdentity_MissingTLSRejected(t *testing.T) {
 	h := m.Require(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Fatal("handler must not be invoked for plaintext request")
 	}))
-	req := httptest.NewRequest(http.MethodPost, "/events", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/events", nil)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusUnauthorized {
@@ -69,7 +69,7 @@ func TestPeerIdentity_EmptyAllowlistRejectsAll(t *testing.T) {
 	h := m.Require(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Fatal("handler must not be invoked when allowlist is empty")
 	}))
-	req := httptest.NewRequest(http.MethodPost, "/events", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/events", nil)
 	req.TLS = tlsStateWithCN("search-indexer")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -85,7 +85,7 @@ func TestPeerIdentity_ClientHeaderIsOverwritten(t *testing.T) {
 		seen = r.Header.Get(PeerIdentityHeader)
 		w.WriteHeader(http.StatusOK)
 	}))
-	req := httptest.NewRequest(http.MethodPost, "/events", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/events", nil)
 	req.Header.Set(PeerIdentityHeader, "root")
 	req.TLS = tlsStateWithCN("search-indexer")
 	rec := httptest.NewRecorder()

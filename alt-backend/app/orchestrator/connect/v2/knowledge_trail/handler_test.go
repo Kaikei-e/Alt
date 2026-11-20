@@ -100,12 +100,12 @@ func TestGetTrail_MapsCollapsedContactFields(t *testing.T) {
 
 	resp, err := h.GetTrail(userCtx(), connect.NewRequest(&knowledgetrailv1.GetTrailRequest{Limit: 20}))
 	require.NoError(t, err)
-	require.Len(t, resp.Msg.Footprints, 1)
+	require.Len(t, resp.Msg.GetFootprints(), 1)
 
-	fp := resp.Msg.Footprints[0]
-	assert.Equal(t, int32(2), fp.ContactCount)
-	assert.Equal(t, "2026-06-27T18:37:00Z", fp.FirstOccurredAt)
-	assert.Equal(t, "2026-07-07T22:20:00Z", fp.OccurredAt)
+	fp := resp.Msg.GetFootprints()[0]
+	assert.Equal(t, int32(2), fp.GetContactCount())
+	assert.Equal(t, "2026-06-27T18:37:00Z", fp.GetFirstOccurredAt())
+	assert.Equal(t, "2026-07-07T22:20:00Z", fp.GetOccurredAt())
 }
 
 // A single-contact footprint still reports itself honestly: count 1 and a
@@ -124,9 +124,9 @@ func TestGetTrail_SingleContactKeepsCountOne(t *testing.T) {
 
 	resp, err := h.GetTrail(userCtx(), connect.NewRequest(&knowledgetrailv1.GetTrailRequest{Limit: 20}))
 	require.NoError(t, err)
-	require.Len(t, resp.Msg.Footprints, 1)
-	assert.Equal(t, int32(1), resp.Msg.Footprints[0].ContactCount)
-	assert.Equal(t, resp.Msg.Footprints[0].OccurredAt, resp.Msg.Footprints[0].FirstOccurredAt)
+	require.Len(t, resp.Msg.GetFootprints(), 1)
+	assert.Equal(t, int32(1), resp.Msg.GetFootprints()[0].GetContactCount())
+	assert.Equal(t, resp.Msg.GetFootprints()[0].GetOccurredAt(), resp.Msg.GetFootprints()[0].GetFirstOccurredAt())
 }
 
 func TestMapFootprint_ContactCountDoesNotWrapOnOverflow(t *testing.T) {
@@ -135,8 +135,8 @@ func TestMapFootprint_ContactCountDoesNotWrapOnOverflow(t *testing.T) {
 		OccurredAt:   time.Date(2026, 8, 15, 0, 0, 0, 0, time.UTC),
 	})
 	require.NotNil(t, fp)
-	assert.Equal(t, int32(math.MaxInt32), fp.ContactCount, "ContactCount must clamp to MaxInt32, not wrap negative")
-	assert.Greater(t, fp.ContactCount, int32(0))
+	assert.Equal(t, int32(math.MaxInt32), fp.GetContactCount(), "ContactCount must clamp to MaxInt32, not wrap negative")
+	assert.Positive(t, fp.GetContactCount())
 }
 
 // Episodes (D24/D30, Wave 8) map through to the wire, keyed/ordered exactly
@@ -155,13 +155,13 @@ func TestGetTrail_MapsEpisodes(t *testing.T) {
 
 	resp, err := h.GetTrail(userCtx(), connect.NewRequest(&knowledgetrailv1.GetTrailRequest{Limit: 20}))
 	require.NoError(t, err)
-	require.Len(t, resp.Msg.Episodes, 1)
-	ep := resp.Msg.Episodes[0]
-	assert.Equal(t, "ep:open:article:1", ep.EpisodeKey)
-	assert.Equal(t, "deep", ep.Wear)
-	require.Len(t, ep.Footprints, 1)
-	assert.Equal(t, "article:1", ep.Footprints[0].ItemKey)
-	assert.Empty(t, ep.ThumbnailUrl, "no OG image was resolved, so the card must degrade to text")
+	require.Len(t, resp.Msg.GetEpisodes(), 1)
+	ep := resp.Msg.GetEpisodes()[0]
+	assert.Equal(t, "ep:open:article:1", ep.GetEpisodeKey())
+	assert.Equal(t, "deep", ep.GetWear())
+	require.Len(t, ep.GetFootprints(), 1)
+	assert.Equal(t, "article:1", ep.GetFootprints()[0].GetItemKey())
+	assert.Empty(t, ep.GetThumbnailUrl(), "no OG image was resolved, so the card must degrade to text")
 }
 
 // D29: a resolved OG image is signed through the existing image-proxy signer
@@ -186,8 +186,8 @@ func TestGetTrail_SignsEpisodeThumbnailWhenRawURLPresent(t *testing.T) {
 
 	resp, err := h.GetTrail(userCtx(), connect.NewRequest(&knowledgetrailv1.GetTrailRequest{Limit: 20}))
 	require.NoError(t, err)
-	require.Len(t, resp.Msg.Episodes, 1)
-	assert.Equal(t, signedURL, resp.Msg.Episodes[0].ThumbnailUrl)
+	require.Len(t, resp.Msg.GetEpisodes(), 1)
+	assert.Equal(t, signedURL, resp.Msg.GetEpisodes()[0].GetThumbnailUrl())
 }
 
 // A raw thumbnail URL must never reach the wire unsigned: with no image
@@ -204,8 +204,8 @@ func TestGetTrail_NoImageProxyLeavesThumbnailEmpty(t *testing.T) {
 
 	resp, err := h.GetTrail(userCtx(), connect.NewRequest(&knowledgetrailv1.GetTrailRequest{Limit: 20}))
 	require.NoError(t, err)
-	require.Len(t, resp.Msg.Episodes, 1)
-	assert.Empty(t, resp.Msg.Episodes[0].ThumbnailUrl)
+	require.Len(t, resp.Msg.GetEpisodes(), 1)
+	assert.Empty(t, resp.Msg.GetEpisodes()[0].GetThumbnailUrl())
 }
 
 // SearchTrail (Wave 9, D25) maps the usecase's episodes and matched item keys
@@ -224,12 +224,12 @@ func TestSearchTrail_MapsEpisodesAndMatchedItemKeys(t *testing.T) {
 
 	resp, err := h.SearchTrail(userCtx(), connect.NewRequest(&knowledgetrailv1.SearchTrailRequest{Query: "llm", Limit: 20}))
 	require.NoError(t, err)
-	require.Len(t, resp.Msg.Episodes, 1)
-	assert.Equal(t, "ep:open:article:1", resp.Msg.Episodes[0].EpisodeKey)
-	assert.Equal(t, "worn", resp.Msg.Episodes[0].Wear)
-	require.Len(t, resp.Msg.Episodes[0].Footprints, 1)
-	assert.Equal(t, "article:"+articleID, resp.Msg.Episodes[0].Footprints[0].ItemKey)
-	assert.Equal(t, []string{"article:" + articleID}, resp.Msg.MatchedItemKeys)
+	require.Len(t, resp.Msg.GetEpisodes(), 1)
+	assert.Equal(t, "ep:open:article:1", resp.Msg.GetEpisodes()[0].GetEpisodeKey())
+	assert.Equal(t, "worn", resp.Msg.GetEpisodes()[0].GetWear())
+	require.Len(t, resp.Msg.GetEpisodes()[0].GetFootprints(), 1)
+	assert.Equal(t, "article:"+articleID, resp.Msg.GetEpisodes()[0].GetFootprints()[0].GetItemKey())
+	assert.Equal(t, []string{"article:" + articleID}, resp.Msg.GetMatchedItemKeys())
 }
 
 func TestSearchTrail_MapsBranches(t *testing.T) {
@@ -258,19 +258,19 @@ func TestSearchTrail_MapsBranches(t *testing.T) {
 
 	resp, err := h.SearchTrail(userCtx(), connect.NewRequest(&knowledgetrailv1.SearchTrailRequest{Query: "rust", Limit: 20}))
 	require.NoError(t, err)
-	require.Len(t, resp.Msg.Branches, 1)
-	b := resp.Msg.Branches[0]
-	assert.Equal(t, "cluster:u:article:z", b.BranchKey)
-	assert.Equal(t, anchorKey, b.AnchorItemKey)
-	assert.Equal(t, "cluster", b.RelationKind)
-	assert.Contains(t, b.Why, "US military courts in the UK")
-	assert.Equal(t, "plausible", b.Confidence)
-	assert.Equal(t, "article:z", b.TargetItemKey)
-	assert.Equal(t, "Async Rust", b.TargetTitle)
-	require.Len(t, b.EvidenceRefs, 1)
-	assert.Equal(t, "rust", b.EvidenceRefs[0].RefId)
-	assert.Equal(t, "rust", b.EvidenceRefs[0].Label)
-	assert.Equal(t, "tag", b.EvidenceRefs[0].Kind)
+	require.Len(t, resp.Msg.GetBranches(), 1)
+	b := resp.Msg.GetBranches()[0]
+	assert.Equal(t, "cluster:u:article:z", b.GetBranchKey())
+	assert.Equal(t, anchorKey, b.GetAnchorItemKey())
+	assert.Equal(t, "cluster", b.GetRelationKind())
+	assert.Contains(t, b.GetWhy(), "US military courts in the UK")
+	assert.Equal(t, "plausible", b.GetConfidence())
+	assert.Equal(t, "article:z", b.GetTargetItemKey())
+	assert.Equal(t, "Async Rust", b.GetTargetTitle())
+	require.Len(t, b.GetEvidenceRefs(), 1)
+	assert.Equal(t, "rust", b.GetEvidenceRefs()[0].GetRefId())
+	assert.Equal(t, "rust", b.GetEvidenceRefs()[0].GetLabel())
+	assert.Equal(t, "tag", b.GetEvidenceRefs()[0].GetKind())
 }
 
 // D29: an OG image resolved for the episode's representative article must be
@@ -299,8 +299,8 @@ func TestSearchTrail_SignsEpisodeThumbnailWhenRawURLPresent(t *testing.T) {
 
 	resp, err := h.SearchTrail(userCtx(), connect.NewRequest(&knowledgetrailv1.SearchTrailRequest{Query: "llm", Limit: 20}))
 	require.NoError(t, err)
-	require.Len(t, resp.Msg.Episodes, 1)
-	assert.Equal(t, signedURL, resp.Msg.Episodes[0].ThumbnailUrl)
+	require.Len(t, resp.Msg.GetEpisodes(), 1)
+	assert.Equal(t, signedURL, resp.Msg.GetEpisodes()[0].GetThumbnailUrl())
 }
 
 // Unauthenticated requests are rejected before the usecase is ever reached.
@@ -363,11 +363,11 @@ func TestGetItemBranches_ReturnsMappedBranches(t *testing.T) {
 		ItemKey: "article:1", Limit: 2,
 	}))
 	require.NoError(t, err)
-	require.Len(t, resp.Msg.Branches, 1)
-	b := resp.Msg.Branches[0]
-	assert.Equal(t, "cluster:u:article:z", b.BranchKey)
-	assert.Contains(t, b.Why, "US military courts in the UK")
-	assert.Equal(t, "plausible", b.Confidence)
+	require.Len(t, resp.Msg.GetBranches(), 1)
+	b := resp.Msg.GetBranches()[0]
+	assert.Equal(t, "cluster:u:article:z", b.GetBranchKey())
+	assert.Contains(t, b.GetWhy(), "US military courts in the UK")
+	assert.Equal(t, "plausible", b.GetConfidence())
 }
 
 func TestGetItemBranches_UnauthenticatedReturnsUnauthenticated(t *testing.T) {
@@ -425,7 +425,7 @@ func TestResolveBranch_ForwardsDismissReason(t *testing.T) {
 		DismissReason:      "not_following_topic",
 	}))
 	require.NoError(t, err)
-	assert.True(t, resp.Msg.Ok)
+	assert.True(t, resp.Msg.GetOk())
 
 	require.Len(t, port.events, 1)
 	var payload map[string]string

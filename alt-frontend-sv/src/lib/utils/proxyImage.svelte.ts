@@ -224,19 +224,25 @@ export function createProxyImage(options: ProxyImageOptions): ProxyImage {
 		const ac = new AbortController();
 		abortController = ac;
 
-		load(url, ac.signal).then((result) => {
-			// A superseded load must not paint into the card that has since been
-			// handed a different feed.
-			if (ac.signal.aborted) return;
-			if (result.status === "loaded") {
-				// The captured `url`, never a fresh `effectiveUrl()`: only the URL
-				// this load actually probed has been shown to answer 200.
-				src = url;
-				state = "loaded";
-			} else {
-				state = "absent";
-			}
-		});
+		void load(url, ac.signal)
+			.then((result) => {
+				// A superseded load must not paint into the card that has since been
+				// handed a different feed.
+				if (ac.signal.aborted) return;
+				if (result.status === "loaded") {
+					// The captured `url`, never a fresh `effectiveUrl()`: only the URL
+					// this load actually probed has been shown to answer 200.
+					src = url;
+					state = "loaded";
+				} else {
+					state = "absent";
+				}
+			})
+			.catch(() => {
+				if (!ac.signal.aborted) {
+					state = "absent";
+				}
+			});
 	});
 
 	onDestroy(() => {

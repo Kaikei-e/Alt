@@ -109,6 +109,8 @@ describe("SearchResults Alt-Paper compliance", () => {
 		expect(ctx?.surface).toBe(ReadingSurface.OTHER);
 		expect(ctx?.currentIndex).toBe(1);
 		expect(ctx?.items).toHaveLength(searchResultsFixture.length);
-		expect(ctx?.items?.[1]?.url).toBe(searchResultsFixture[1]!.link);
+		const expectedResult = searchResultsFixture[1];
+		if (!expectedResult) throw new Error("expected second search fixture");
+		expect(ctx?.items?.[1]?.url).toBe(expectedResult.link);
 	});
 });

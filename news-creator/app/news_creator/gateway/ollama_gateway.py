@@ -4,17 +4,19 @@ import asyncio
 import logging
 import uuid
 import weakref
-from contextlib import aclosing, asynccontextmanager
-from typing import Any, AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
+from contextlib import aclosing, asynccontextmanager, suppress
+from dataclasses import dataclass
+from typing import Any
 
 from news_creator.config.config import NewsCreatorConfig
+from news_creator.domain.errors import PreemptedException
 from news_creator.domain.models import LLMGenerateResponse
 from news_creator.driver.ollama_driver import OllamaDriver
 from news_creator.driver.ollama_stream_driver import (
     _RUNNER_STARTUP_PARAMS,
     OllamaStreamDriver,
 )
-from news_creator.domain.errors import PreemptedException
 from news_creator.gateway.hybrid_priority_semaphore import HybridPrioritySemaphore
 from news_creator.gateway.model_router import ModelRouter
 from news_creator.gateway.oom_detector import OOMDetector
@@ -22,12 +24,40 @@ from news_creator.gateway.payload_builder import prepare_raw_prompt
 from news_creator.port.llm_provider_port import LLMProviderPort
 
 logger = logging.getLogger(__name__)
+_LARGE_UNKNOWN_MODEL_TOKEN_THRESHOLD = 16000
+_ABNORMAL_PROMPT_PREVIEW_MIN_CHARS = 1000
+_ABNORMAL_PROMPT_THRESHOLD_CHARS = 100_000
+_COLD_START_THRESHOLD_SECONDS = 0.1
+_SLOW_GENERATION_THRESHOLD_TPS = 30
+_MIN_EVAL_COUNT_FOR_SPEED_WARNING = 20
+_NANOSECONDS_PER_SECOND = 1_000_000_000
+
+
+def _nanos_to_seconds(duration_ns: int | None) -> float | None:
+    return round(duration_ns / _NANOSECONDS_PER_SECOND, 2) if duration_ns else None
+
+
+def _tokens_per_second(count: int | None, duration_ns: int | None) -> float | None:
+    return (
+        round(count / (duration_ns / _NANOSECONDS_PER_SECOND), 2)
+        if count and duration_ns
+        else None
+    )
+
+
+@dataclass(frozen=True)
+class _OomRetryContext:
+    prompt: str
+    model: str | None
+    num_predict: int | None
+    cancel_event: asyncio.Event | None
+    task_id: str | None
 
 
 class OllamaGateway(LLMProviderPort):
     """Gateway for Ollama LLM service - Anti-Corruption Layer."""
 
-    def __init__(self, config: NewsCreatorConfig):
+    def __init__(self, config: NewsCreatorConfig) -> None:
         """Initialize Ollama gateway."""
         self.config = config
         self.driver = OllamaDriver(config)
@@ -67,7 +97,7 @@ class OllamaGateway(LLMProviderPort):
         await self.stream_driver.cleanup()
         logger.info("Ollama gateway cleaned up")
 
-    async def generate(
+    async def generate(  # noqa: PLR0913 - implements LLMProviderPort interface
         self,
         prompt: str,
         *,
@@ -75,7 +105,7 @@ class OllamaGateway(LLMProviderPort):
         num_predict: int | None = None,
         stream: bool = False,
         keep_alive: int | str | None = None,
-        format: str | dict[str, Any] | None = None,
+        format: str | dict[str, Any] | None = None,  # noqa: A002 - implements LLMProviderPort keyword API
         options: dict[str, Any] | None = None,
         priority: str = "low",
     ) -> LLMGenerateResponse | AsyncIterator[LLMGenerateResponse]:
@@ -101,100 +131,9 @@ class OllamaGateway(LLMProviderPort):
             RuntimeError: If Ollama service fails
         """
         prepared_prompt = prepare_raw_prompt(prompt)
-
-        # Select model using router
-        # - If routing enabled and model is None: use router
-        # - If routing enabled and model is base model name (e.g., "gemma4-e4b-q4km"): use router to auto-map
-        # - If routing enabled and model is bucket model name (e.g., "gemma4-e4b-12k"): use as-is
-        # - If routing disabled: use provided model or default
-        if self.config.model_routing_enabled:
-            if model is None:
-                # No model specified - use router
-                selected_model, bucket_size = self.model_router.select_model(
-                    prompt, max_new_tokens=num_predict
-                )
-                model = selected_model
-                logger.debug(
-                    f"Model router selected: {selected_model} (bucket: {bucket_size})",
-                    extra={"model": selected_model, "bucket": bucket_size},
-                )
-            elif self.config.is_base_model_name(model):
-                # Base model name specified (e.g., "gemma4-e4b-q4km") - auto-map using router
-                original_model = model
-                selected_model, bucket_size = self.model_router.select_model(
-                    prompt, max_new_tokens=num_predict
-                )
-                model = selected_model
-                logger.info(
-                    f"Base model name '{original_model}' auto-mapped to bucket model: {selected_model} (bucket: {bucket_size})",
-                    extra={
-                        "original_model": original_model,
-                        "mapped_model": selected_model,
-                        "bucket": bucket_size,
-                    },
-                )
-            elif self.config.is_bucket_model_name(model):
-                # Bucket model name explicitly specified (e.g., "gemma4-e4b-12k") - use as-is
-                logger.debug(
-                    f"Bucket model explicitly specified, using as-is: {model}",
-                    extra={"model": model, "prompt_length": len(prompt)},
-                )
-            else:
-                # Unknown model name - use as-is but warn if prompt is very large
-                prompt_length = len(prompt)
-                estimated_tokens = prompt_length // 4
-                if estimated_tokens > 16000:  # >16K tokens
-                    logger.warning(
-                        f"Large prompt detected with unknown model: {model}. "
-                        f"Prompt length: {prompt_length} chars, estimated tokens: {estimated_tokens}. "
-                        f"Consider using base model name or bucket model name for automatic routing.",
-                        extra={
-                            "model": model,
-                            "prompt_length": prompt_length,
-                            "estimated_tokens": estimated_tokens,
-                        },
-                    )
-                logger.debug(
-                    f"Unknown model name specified, using as-is: {model}",
-                    extra={"model": model, "prompt_length": prompt_length},
-                )
-        else:
-            # Routing disabled - use provided model or default
-            model = model or self.config.model_name
-            logger.debug(
-                f"Model routing disabled, using: {model}",
-                extra={"model": model},
-            )
-
-        # Build options from config and overrides
-        llm_options = self.config.get_llm_options()
-        if options:
-            # CRITICAL: Strip runner startup params (num_ctx/num_batch/num_keep)
-            # from caller options. They are fixed by config/Modelfile; a caller
-            # value that differs from the base triggers an Ollama runner reload
-            # (GPU contention), mirroring OllamaStreamDriver._merge_options.
-            options_filtered = {
-                k: v for k, v in options.items() if k not in _RUNNER_STARTUP_PARAMS
-            }
-            llm_options.update(options_filtered)
-
-        # Apply num_predict override if provided
-        if num_predict is not None:
-            llm_options["num_predict"] = num_predict
-
-        # Determine keep_alive value based on model (best practice: model-specific keep_alive)
-        # If keep_alive is explicitly provided, use it; otherwise, use model-specific default
-        if keep_alive is not None:
-            # Explicit keep_alive provided - use it
-            final_keep_alive = keep_alive
-        else:
-            # Use model-specific keep_alive based on best practices
-            # 16K model: 24h (keep in GPU memory)
-            final_keep_alive = self.config.get_keep_alive_for_model(model)
-            logger.debug(
-                f"Using model-specific keep_alive: {final_keep_alive} for model: {model}",
-                extra={"model": model, "keep_alive": final_keep_alive},
-            )
+        model = self._resolve_model(prompt, model, num_predict)
+        llm_options = self._build_llm_options(options, num_predict)
+        final_keep_alive = self._resolve_keep_alive(model, keep_alive)
 
         # Build payload for Ollama API
         # raw=True: prompts already contain <|turn>/<turn|> (Gemma 4) chat template.
@@ -213,41 +152,7 @@ class OllamaGateway(LLMProviderPort):
             payload["format"] = format
             logger.debug("Using structured output format", extra={"format": format})
 
-        prompt_length = len(prompt)
-        estimated_tokens = prompt_length // 4  # Rough estimate: 1 token ≈ 4 chars
-        # Context window is now fixed in Modelfile, so we don't include it in options
-        # Use bucket size from router if available, otherwise use config default
-        context_window = (
-            self.model_router.current_bucket
-            if self.model_router.current_bucket
-            else self.config.llm_num_ctx
-        )
-
-        # Validate prompt size - detect abnormal amplification
-        ABNORMAL_PROMPT_THRESHOLD = 100_000  # characters (>25K tokens)
-        if prompt_length > ABNORMAL_PROMPT_THRESHOLD:
-            logger.error(
-                "ABNORMAL PROMPT SIZE DETECTED in ollama_gateway",
-                extra={
-                    "prompt_length": prompt_length,
-                    "estimated_tokens": estimated_tokens,
-                    "context_window": context_window,
-                    "model": payload["model"],
-                    "prompt_preview_start": prompt[:500],
-                    "prompt_preview_end": prompt[-500:] if prompt_length > 1000 else "",
-                    "num_predict": llm_options.get("num_predict"),
-                },
-            )
-
-        # Log model loading strategy (16K/60K on-demand)
-        # model_loading_strategy = "always-loaded" if payload['model'] == self.config.model_8k_name else "on-demand"  # 8kモデルは使用しない
-        model_loading_strategy = "on-demand"
-        logger.info(
-            f"Generating with Ollama: model={payload['model']}, loading_strategy={model_loading_strategy}, "
-            f"prompt_length={prompt_length} chars, estimated_tokens={estimated_tokens}, "
-            f"num_predict={llm_options.get('num_predict')}, context_window={context_window}, "
-            f"usage_percent={round((estimated_tokens / context_window) * 100, 1) if context_window > 0 else 0}%"
-        )
+        prompt_length, context_window = self._log_generate_request_info(prompt, payload)
 
         # Determine if this request should be HIGH PRIORITY
         # HIGH PRIORITY: streaming OR explicit priority="high"
@@ -265,7 +170,8 @@ class OllamaGateway(LLMProviderPort):
             )
             priority_label = "HIGH PRIORITY" if is_high_priority else "LOW PRIORITY"
             logger.info(
-                f"Acquired semaphore ({priority_label}), returning streaming generator",
+                "Acquired semaphore (%s), returning streaming generator",
+                priority_label,
                 extra={
                     "model": payload["model"],
                     "prompt_length": len(prompt),
@@ -276,86 +182,9 @@ class OllamaGateway(LLMProviderPort):
                     "slot_id": acquired_slot_id,
                 },
             )
-
-            async def response_generator():
-                try:
-                    logger.debug(
-                        "Starting stream iteration (semaphore pre-acquired)",
-                        extra={
-                            "model": payload["model"],
-                            "is_high_priority": is_high_priority,
-                        },
-                    )
-                    # Use stream driver for streaming requests
-                    stream_iterator = self.stream_driver.generate_stream(payload)
-                    # Handle streaming response
-                    async with aclosing(  # pyrefly: ignore[bad-specialization]
-                        stream_iterator
-                    ):
-                        async for chunk in stream_iterator:
-                            # Map chunk to LLMGenerateResponse
-                            yield LLMGenerateResponse(
-                                response=chunk.get("response", ""),
-                                model=str(chunk.get("model", payload["model"])),
-                                done=chunk.get("done", False),
-                                done_reason=chunk.get("done_reason"),
-                                prompt_eval_count=chunk.get("prompt_eval_count"),
-                                eval_count=chunk.get("eval_count"),
-                                total_duration=chunk.get("total_duration"),
-                                load_duration=chunk.get("load_duration"),
-                                prompt_eval_duration=chunk.get("prompt_eval_duration"),
-                                eval_duration=chunk.get("eval_duration"),
-                            )
-                except GeneratorExit:
-                    logger.info(
-                        "Stream generator closed by client disconnect or explicit aclose()",
-                        extra={
-                            "model": payload["model"],
-                            "is_high_priority": is_high_priority,
-                        },
-                    )
-                    raise
-                except Exception:
-                    logger.error(
-                        "Stream generator error",
-                        extra={
-                            "model": payload["model"],
-                            "is_high_priority": is_high_priority,
-                        },
-                        exc_info=True,
-                    )
-                    raise
-                finally:
-                    # Release semaphore when generator completes (normal, abort, or GC)
-                    _release_slot()
-
-            released = False
-
-            def _release_slot() -> None:
-                nonlocal released
-                if released:
-                    return
-                released = True
-                self._semaphore.release(
-                    slot_id=acquired_slot_id, was_high_priority=is_high_priority
-                )
-                logger.info(
-                    "Released semaphore after streaming",
-                    extra={
-                        "model": payload["model"],
-                        "is_high_priority": is_high_priority,
-                        "slot_id": acquired_slot_id,
-                    },
-                )
-
-            gen = response_generator()
-            # An async generator's own `try/finally` never runs if the caller
-            # discards it without ever calling __anext__() -- the function
-            # body is never entered, so nothing is there to clean up. Guard
-            # against that leaking this slot for the full leak-check window
-            # by also releasing when `gen` itself is garbage collected.
-            weakref.finalize(gen, _release_slot)
-            return gen
+            return self._build_streaming_generator(
+                payload, acquired_slot_id, is_high_priority
+            )
 
         # Handle non-streaming requests
         # For BE requests, create a cancel event for preemption support
@@ -375,7 +204,8 @@ class OllamaGateway(LLMProviderPort):
                 )
 
             logger.info(
-                f"Acquired semaphore ({priority_label}), processing Ollama request (non-streaming)",
+                "Acquired semaphore (%s), processing Ollama request (non-streaming)",
+                priority_label,
                 extra={
                     "model": payload["model"],
                     "prompt_length": len(prompt),
@@ -389,7 +219,14 @@ class OllamaGateway(LLMProviderPort):
             )
             # Call appropriate driver based on stream flag
             response_data = await self._generate_with_oom_retry(
-                payload, prompt, model, num_predict, cancel_event, task_id
+                payload,
+                _OomRetryContext(
+                    prompt=prompt,
+                    model=model,
+                    num_predict=num_predict,
+                    cancel_event=cancel_event,
+                    task_id=task_id,
+                ),
             )
         finally:
             # Unregister BE request from active tracking
@@ -399,30 +236,287 @@ class OllamaGateway(LLMProviderPort):
                 slot_id=acquired_slot_id, was_high_priority=is_high_priority
             )
 
-        # Validate response (Non-streaming only)
+        return self._build_generate_response(
+            response_data, payload, prompt_length, context_window
+        )
+
+    def _resolve_model(
+        self, prompt: str, model: str | None, num_predict: int | None
+    ) -> str:
+        """Select model using router when enabled, or fall back to explicit/default model."""
+        # - If routing enabled and model is None: use router
+        # - If routing enabled and model is base model name (e.g., "gemma4-e4b-q4km"): use router to auto-map
+        # - If routing enabled and model is bucket model name (e.g., "gemma4-e4b-12k"): use as-is
+        # - If routing disabled: use provided model or default
+        if not self.config.model_routing_enabled:
+            resolved = model or self.config.model_name
+            logger.debug(
+                "Model routing disabled, using: %s",
+                resolved,
+                extra={"model": resolved},
+            )
+            return resolved
+
+        if model is None:
+            selected_model, bucket_size = self.model_router.select_model(
+                prompt, max_new_tokens=num_predict
+            )
+            logger.debug(
+                "Model router selected: %s (bucket: %s)",
+                selected_model,
+                bucket_size,
+                extra={"model": selected_model, "bucket": bucket_size},
+            )
+            return selected_model
+
+        if self.config.is_base_model_name(model):
+            selected_model, bucket_size = self.model_router.select_model(
+                prompt, max_new_tokens=num_predict
+            )
+            logger.info(
+                "Base model name '%s' auto-mapped to bucket model: %s (bucket: %s)",
+                model,
+                selected_model,
+                bucket_size,
+                extra={
+                    "original_model": model,
+                    "mapped_model": selected_model,
+                    "bucket": bucket_size,
+                },
+            )
+            return selected_model
+
+        if self.config.is_bucket_model_name(model):
+            logger.debug(
+                "Bucket model explicitly specified, using as-is: %s",
+                model,
+                extra={"model": model, "prompt_length": len(prompt)},
+            )
+            return model
+
+        prompt_length = len(prompt)
+        estimated_tokens = prompt_length // 4
+        if estimated_tokens > _LARGE_UNKNOWN_MODEL_TOKEN_THRESHOLD:  # >16K tokens
+            logger.warning(
+                "Large prompt detected with unknown model: %s. "
+                "Prompt length: %s chars, estimated tokens: %s. "
+                "Consider using base model name or bucket model name for automatic routing.",
+                model,
+                prompt_length,
+                estimated_tokens,
+                extra={
+                    "model": model,
+                    "prompt_length": prompt_length,
+                    "estimated_tokens": estimated_tokens,
+                },
+            )
+        logger.debug(
+            "Unknown model name specified, using as-is: %s",
+            model,
+            extra={"model": model, "prompt_length": prompt_length},
+        )
+        return model
+
+    def _build_llm_options(
+        self, options: dict[str, Any] | None, num_predict: int | None
+    ) -> dict[str, Any]:
+        """Build Ollama options from config, stripping runner startup parameters."""
+        llm_options = self.config.get_llm_options()
+        if options:
+            # CRITICAL: Strip runner startup params (num_ctx/num_batch/num_keep)
+            # from caller options. They are fixed by config/Modelfile; a caller
+            # value that differs from the base triggers an Ollama runner reload
+            # (GPU contention), mirroring OllamaStreamDriver._merge_options.
+            options_filtered = {
+                k: v for k, v in options.items() if k not in _RUNNER_STARTUP_PARAMS
+            }
+            llm_options.update(options_filtered)
+
+        if num_predict is not None:
+            llm_options["num_predict"] = num_predict
+        return llm_options
+
+    def _resolve_keep_alive(
+        self, model: str, keep_alive: int | str | None
+    ) -> int | str:
+        """Resolve keep_alive duration from explicit override or model-specific default."""
+        if keep_alive is not None:
+            return keep_alive
+        # Use model-specific keep_alive based on best practices
+        # 16K model: 24h (keep in GPU memory)
+        final_keep_alive = self.config.get_keep_alive_for_model(model)
+        logger.debug(
+            "Using model-specific keep_alive: %s for model: %s",
+            final_keep_alive,
+            model,
+            extra={"model": model, "keep_alive": final_keep_alive},
+        )
+        return final_keep_alive
+
+    def _log_generate_request_info(
+        self, prompt: str, payload: dict[str, Any]
+    ) -> tuple[int, int]:
+        """Validate prompt length, log request metrics, and return (prompt_length, context_window)."""
+        prompt_length = len(prompt)
+        estimated_tokens = prompt_length // 4  # Rough estimate: 1 token ≈ 4 chars
+        # Context window is now fixed in Modelfile, so we don't include it in options
+        # Use bucket size from router if available, otherwise use config default
+        context_window = (
+            self.model_router.current_bucket
+            if self.model_router.current_bucket
+            else self.config.llm_num_ctx
+        )
+
+        # Validate prompt size - detect abnormal amplification
+        if prompt_length > _ABNORMAL_PROMPT_THRESHOLD_CHARS:
+            logger.error(
+                "ABNORMAL PROMPT SIZE DETECTED in ollama_gateway",
+                extra={
+                    "prompt_length": prompt_length,
+                    "estimated_tokens": estimated_tokens,
+                    "context_window": context_window,
+                    "model": payload["model"],
+                    "prompt_preview_start": prompt[:500],
+                    "prompt_preview_end": prompt[-500:]
+                    if prompt_length > _ABNORMAL_PROMPT_PREVIEW_MIN_CHARS
+                    else "",
+                    "num_predict": payload["options"].get("num_predict"),
+                },
+            )
+
+        # Log model loading strategy (16K/60K on-demand)
+        model_loading_strategy = "on-demand"
+        logger.info(
+            "Generating with Ollama: model=%s, loading_strategy=%s, "
+            "prompt_length=%s chars, estimated_tokens=%s, "
+            "num_predict=%s, context_window=%s, "
+            "usage_percent=%s%%",
+            payload["model"],
+            model_loading_strategy,
+            prompt_length,
+            estimated_tokens,
+            payload["options"].get("num_predict"),
+            context_window,
+            round((estimated_tokens / context_window) * 100, 1)
+            if context_window > 0
+            else 0,
+        )
+        return prompt_length, context_window
+
+    def _build_streaming_generator(
+        self,
+        payload: dict[str, Any],
+        acquired_slot_id: int,
+        is_high_priority: bool,
+    ) -> AsyncIterator[LLMGenerateResponse]:
+        """Create the streaming response generator with deterministic and GC-backed slot release."""
+        released = False
+
+        def _release_slot() -> None:
+            nonlocal released
+            if released:
+                return
+            released = True
+            self._semaphore.release(
+                slot_id=acquired_slot_id, was_high_priority=is_high_priority
+            )
+            logger.info(
+                "Released semaphore after streaming",
+                extra={
+                    "model": payload["model"],
+                    "is_high_priority": is_high_priority,
+                    "slot_id": acquired_slot_id,
+                },
+            )
+
+        async def response_generator() -> AsyncIterator[LLMGenerateResponse]:
+            try:
+                logger.debug(
+                    "Starting stream iteration (semaphore pre-acquired)",
+                    extra={
+                        "model": payload["model"],
+                        "is_high_priority": is_high_priority,
+                    },
+                )
+                stream_iterator = self.stream_driver.generate_stream(payload)
+                async with aclosing(  # pyrefly: ignore[bad-specialization]
+                    stream_iterator
+                ):
+                    async for chunk in stream_iterator:
+                        yield LLMGenerateResponse(
+                            response=chunk.get("response", ""),
+                            model=str(chunk.get("model", payload["model"])),
+                            done=chunk.get("done", False),
+                            done_reason=chunk.get("done_reason"),
+                            prompt_eval_count=chunk.get("prompt_eval_count"),
+                            eval_count=chunk.get("eval_count"),
+                            total_duration=chunk.get("total_duration"),
+                            load_duration=chunk.get("load_duration"),
+                            prompt_eval_duration=chunk.get("prompt_eval_duration"),
+                            eval_duration=chunk.get("eval_duration"),
+                        )
+            except GeneratorExit:
+                logger.info(
+                    "Stream generator closed by client disconnect or explicit aclose()",
+                    extra={
+                        "model": payload["model"],
+                        "is_high_priority": is_high_priority,
+                    },
+                )
+                raise
+            except Exception:
+                logger.exception(
+                    "Stream generator error",
+                    extra={
+                        "model": payload["model"],
+                        "is_high_priority": is_high_priority,
+                    },
+                )
+                raise
+            finally:
+                _release_slot()
+
+        gen = response_generator()
+        # An async generator's own `try/finally` never runs if the caller
+        # discards it without ever calling __anext__() -- the function
+        # body is never entered, so nothing is there to clean up. Guard
+        # against that leaking this slot for the full leak-check window
+        # by also releasing when `gen` itself is garbage collected.
+        weakref.finalize(gen, _release_slot)
+        return gen
+
+    def _build_generate_response(
+        self,
+        response_data: dict[str, Any],
+        payload: dict[str, Any],
+        prompt_length: int,
+        context_window: int,
+    ) -> LLMGenerateResponse:
+        """Validate non-streaming response, log TTFT/performance metrics, and map to domain model."""
         if "response" not in response_data:
             logger.error(
                 "Ollama response missing 'response' field",
                 extra={"keys": list(response_data.keys())},
             )
-            raise RuntimeError("Invalid Ollama response format")
+            msg = "Invalid Ollama response format"
+            raise RuntimeError(msg)
 
-        # Extract performance metrics from response
         prompt_eval_count = response_data.get("prompt_eval_count")
         eval_count = response_data.get("eval_count")
         total_duration = response_data.get("total_duration")
         load_duration = response_data.get("load_duration")
         prompt_eval_duration = response_data.get("prompt_eval_duration")
         eval_duration = response_data.get("eval_duration")
-        actual_model = str(response_data.get("model", payload["model"]))
-
-        # Check if actual model matches requested model (model loading strategy validation)
         requested_model = payload["model"]
+        actual_model = str(response_data.get("model", requested_model))
+
         if actual_model != requested_model:
             logger.warning(
-                f"Model mismatch detected: requested={requested_model}, actual={actual_model}. "
-                f"This may indicate that Ollama used a different model than requested, "
-                f"possibly due to model loading strategy or OLLAMA_MAX_LOADED_MODELS setting.",
+                "Model mismatch detected: requested=%s, actual=%s. "
+                "This may indicate that Ollama used a different model than requested, "
+                "possibly due to model loading strategy or OLLAMA_MAX_LOADED_MODELS setting.",
+                requested_model,
+                actual_model,
                 extra={
                     "requested_model": requested_model,
                     "actual_model": actual_model,
@@ -431,51 +525,17 @@ class OllamaGateway(LLMProviderPort):
             )
         else:
             logger.debug(
-                f"Model match confirmed: {requested_model}",
+                "Model match confirmed: %s",
+                requested_model,
                 extra={"model": requested_model},
             )
 
-        # Log performance metrics to understand why inference takes time
-        duration_seconds = (
-            round(total_duration / 1_000_000_000, 2) if total_duration else None
-        )
-        tokens_per_second = (
-            round(eval_count / (total_duration / 1_000_000_000), 2)
-            if eval_count and total_duration
-            else None
-        )
+        load_duration_seconds = _nanos_to_seconds(load_duration)
+        prompt_eval_duration_seconds = _nanos_to_seconds(prompt_eval_duration)
+        eval_duration_seconds = _nanos_to_seconds(eval_duration)
+        decode_tokens_per_second = _tokens_per_second(eval_count, eval_duration)
 
-        # Calculate detailed timing metrics
-        load_duration_seconds = (
-            round(load_duration / 1_000_000_000, 2) if load_duration else None
-        )
-        prompt_eval_duration_seconds = (
-            round(prompt_eval_duration / 1_000_000_000, 2)
-            if prompt_eval_duration
-            else None
-        )
-        eval_duration_seconds = (
-            round(eval_duration / 1_000_000_000, 2) if eval_duration else None
-        )
-
-        # Calculate prefill and decode speeds
-        prefill_tokens_per_second = (
-            round(prompt_eval_count / (prompt_eval_duration / 1_000_000_000), 2)
-            if prompt_eval_count and prompt_eval_duration
-            else None
-        )
-        decode_tokens_per_second = (
-            round(eval_count / (eval_duration / 1_000_000_000), 2)
-            if eval_count and eval_duration
-            else None
-        )
-
-        # TTFT (Time To First Token) Breakdown Logging
-        # TTFT = queue_wait_time + load_duration + prompt_eval_duration
-        # Get queue wait time from semaphore
         queue_wait_time_seconds = round(self._semaphore.last_wait_time, 4)
-
-        # Calculate TTFT (in seconds)
         ttft_seconds = queue_wait_time_seconds
         if load_duration_seconds:
             ttft_seconds += load_duration_seconds
@@ -483,17 +543,18 @@ class OllamaGateway(LLMProviderPort):
             ttft_seconds += prompt_eval_duration_seconds
         ttft_seconds = round(ttft_seconds, 2)
 
-        # Log TTFT breakdown for diagnostics. DEBUG (not INFO): this fires
-        # unconditionally on every non-streaming round trip, so at INFO it
-        # multiplies log volume by every chunk/reduce call in a large
-        # hierarchical job. See _generate_hierarchical_summary's aggregate
-        # job-level log for the INFO-level summary instead.
         logger.debug(
-            f"TTFT breakdown: ttft={ttft_seconds}s "
-            f"(queue_wait={queue_wait_time_seconds}s + "
-            f"load_duration={load_duration_seconds}s + "
-            f"prompt_eval_duration={prompt_eval_duration_seconds}s), "
-            f"model={actual_model}, prompt_tokens={prompt_eval_count}",
+            "TTFT breakdown: ttft=%ss "
+            "(queue_wait=%ss + "
+            "load_duration=%ss + "
+            "prompt_eval_duration=%ss), "
+            "model=%s, prompt_tokens=%s",
+            ttft_seconds,
+            queue_wait_time_seconds,
+            load_duration_seconds,
+            prompt_eval_duration_seconds,
+            actual_model,
+            prompt_eval_count,
             extra={
                 "ttft_seconds": ttft_seconds,
                 "queue_wait_time_seconds": queue_wait_time_seconds,
@@ -504,62 +565,60 @@ class OllamaGateway(LLMProviderPort):
             },
         )
 
-        # Cold start detection: warn if load_duration > 0.1s (100ms)
-        # load_duration > 0.1s indicates model was not in VRAM (cold start)
-        COLD_START_THRESHOLD_SECONDS = 0.1
         if (
             load_duration_seconds
-            and load_duration_seconds > COLD_START_THRESHOLD_SECONDS
+            and load_duration_seconds > _COLD_START_THRESHOLD_SECONDS
         ):
             logger.warning(
-                f"COLD_START detected: load_duration={load_duration_seconds}s > {COLD_START_THRESHOLD_SECONDS}s. "
-                f"Model '{actual_model}' was not in VRAM and required disk-to-VRAM loading. "
-                f"This adds {load_duration_seconds}s to TTFT. "
-                f"Consider: (1) increasing OLLAMA_MAX_LOADED_MODELS, "
-                f"(2) extending keep_alive duration, or "
-                f"(3) ensuring warmup runs on startup.",
+                "COLD_START detected: load_duration=%ss > %ss. "
+                "Model '%s' was not in VRAM and required disk-to-VRAM loading. "
+                "This adds %ss to TTFT. "
+                "Consider: (1) increasing OLLAMA_MAX_LOADED_MODELS, "
+                "(2) extending keep_alive duration, or "
+                "(3) ensuring warmup runs on startup.",
+                load_duration_seconds,
+                _COLD_START_THRESHOLD_SECONDS,
+                actual_model,
+                load_duration_seconds,
                 extra={
                     "load_duration_seconds": load_duration_seconds,
-                    "cold_start_threshold": COLD_START_THRESHOLD_SECONDS,
+                    "cold_start_threshold": _COLD_START_THRESHOLD_SECONDS,
                     "model": actual_model,
                     "ttft_seconds": ttft_seconds,
                 },
             )
 
-        # DEBUG (not INFO): same routine per-round-trip volume concern as the
-        # TTFT breakdown above.
         logger.debug(
-            f"Ollama generation completed: requested_model={requested_model}, actual_model={actual_model}, "
-            f"prompt_length={prompt_length} chars, prompt_eval_count={prompt_eval_count} tokens, "
-            f"eval_count={eval_count} tokens, num_predict={llm_options.get('num_predict')}, "
-            f"duration={duration_seconds}s, tokens_per_second={tokens_per_second}, "
-            f"load_duration={load_duration_seconds}s, prompt_eval_duration={prompt_eval_duration_seconds}s "
-            f"(prefill: {prefill_tokens_per_second} tok/s), eval_duration={eval_duration_seconds}s "
-            f"(decode: {decode_tokens_per_second} tok/s)"
+            "Ollama generation completed: requested_model=%s, actual_model=%s, "
+            "prompt_length=%s chars, prompt_eval_count=%s tokens, "
+            "eval_count=%s tokens, num_predict=%s, "
+            "duration=%ss, tokens_per_second=%s, "
+            "load_duration=%ss, prompt_eval_duration=%ss "
+            "(prefill: %s tok/s), eval_duration=%ss "
+            "(decode: %s tok/s)",
+            requested_model,
+            actual_model,
+            prompt_length,
+            prompt_eval_count,
+            eval_count,
+            payload["options"].get("num_predict"),
+            _nanos_to_seconds(total_duration),
+            _tokens_per_second(eval_count, total_duration),
+            load_duration_seconds,
+            prompt_eval_duration_seconds,
+            _tokens_per_second(prompt_eval_count, prompt_eval_duration),
+            eval_duration_seconds,
+            decode_tokens_per_second,
         )
-
-        # Performance monitoring: Warn if generation is slow
-        # RTX 4060 expected performance: 50-100 tokens/sec (decode speed)
-        # Threshold: <30 tokens/sec is considered slow for RTX 4060
-        #
-        # IMPORTANT: Use decode_tokens_per_second (eval_count / eval_duration), NOT
-        # tokens_per_second (eval_count / total_duration). The total_duration includes
-        # load_duration and prompt_eval_duration, which would cause false positive warnings
-        # when the actual decode speed is fast but prefill/load took a long time.
-        #
-        # Also require minimum eval_count >= 20 to avoid false positives from short
-        # generations (e.g., rerank/expand-query with early stop token termination).
-        SLOW_GENERATION_THRESHOLD_TPS = 30  # tokens per second
-        MIN_EVAL_COUNT_FOR_SPEED_WARNING = 20  # Minimum tokens to trigger speed warning
 
         is_slow_decode = (
             decode_tokens_per_second is not None
-            and decode_tokens_per_second < SLOW_GENERATION_THRESHOLD_TPS
+            and decode_tokens_per_second < _SLOW_GENERATION_THRESHOLD_TPS
             and eval_count is not None
-            and eval_count >= MIN_EVAL_COUNT_FOR_SPEED_WARNING
+            and eval_count >= _MIN_EVAL_COUNT_FOR_SPEED_WARNING
         )
-
         if is_slow_decode:
+            estimated_tokens = prompt_length // 4
             warning_msg = (
                 f"Slow LLM generation detected: decode_speed={decode_tokens_per_second} tok/s "
                 f"(expected: 50-100 for RTX 4060), eval_count={eval_count}, "
@@ -573,7 +632,6 @@ class OllamaGateway(LLMProviderPort):
                 f"or model loading issues. Consider checking OLLAMA_NUM_BATCH and "
                 f"OLLAMA_MAX_LOADED_MODELS settings."
             )
-
             logger.warning(
                 warning_msg,
                 extra={
@@ -589,11 +647,9 @@ class OllamaGateway(LLMProviderPort):
                 },
             )
 
-        # Map to domain model (use actual model from response, not requested model)
-        # This ensures we track which model was actually used
         return LLMGenerateResponse(
             response=response_data.get("response", ""),
-            model=actual_model,  # Use actual model from response
+            model=actual_model,
             done=response_data.get("done"),
             done_reason=response_data.get("done_reason"),
             prompt_eval_count=prompt_eval_count,
@@ -605,7 +661,9 @@ class OllamaGateway(LLMProviderPort):
         )
 
     @asynccontextmanager
-    async def hold_slot(self, is_high_priority: bool = False):
+    async def hold_slot(
+        self, is_high_priority: bool = False
+    ) -> AsyncIterator[tuple[float, asyncio.Event | None, str | None]]:
         """Hold a semaphore slot for the duration of the context.
 
         Use this when you need to make multiple LLM calls (e.g., retries)
@@ -636,16 +694,16 @@ class OllamaGateway(LLMProviderPort):
                 slot_id=acquired_slot_id, was_high_priority=is_high_priority
             )
 
-    async def generate_raw(
+    async def generate_raw(  # noqa: PLR0913 - implements LLMProviderPort interface
         self,
         prompt: str,
         *,
-        cancel_event=None,
-        task_id=None,
+        cancel_event: asyncio.Event | None = None,
+        task_id: str | None = None,
         model: str | None = None,
         num_predict: int | None = None,
         keep_alive: int | str | None = None,
-        format: str | dict[str, Any] | None = None,
+        format: str | dict[str, Any] | None = None,  # noqa: A002 - implements LLMProviderPort keyword API
         options: dict[str, Any] | None = None,
     ) -> LLMGenerateResponse:
         """Generate text without acquiring semaphore (for use inside hold_slot).
@@ -670,12 +728,7 @@ class OllamaGateway(LLMProviderPort):
 
         # Model routing
         if self.config.model_routing_enabled:
-            if model is None:
-                selected_model, _ = self.model_router.select_model(
-                    prompt, max_new_tokens=num_predict
-                )
-                model = selected_model
-            elif self.config.is_base_model_name(model):
+            if model is None or self.config.is_base_model_name(model):
                 selected_model, _ = self.model_router.select_model(
                     prompt, max_new_tokens=num_predict
                 )
@@ -711,11 +764,19 @@ class OllamaGateway(LLMProviderPort):
             payload["format"] = format
 
         response_data = await self._generate_with_oom_retry(
-            payload, prompt, model, num_predict, cancel_event, task_id
+            payload,
+            _OomRetryContext(
+                prompt=prompt,
+                model=model,
+                num_predict=num_predict,
+                cancel_event=cancel_event,
+                task_id=task_id,
+            ),
         )
 
         if "response" not in response_data:
-            raise RuntimeError("Invalid Ollama response format")
+            msg = "Invalid Ollama response format"
+            raise RuntimeError(msg)
 
         return LLMGenerateResponse(
             response=response_data.get("response", ""),
@@ -733,67 +794,67 @@ class OllamaGateway(LLMProviderPort):
     async def _generate_with_oom_retry(
         self,
         payload: dict[str, Any],
-        prompt: str,
-        model: str | None,
-        num_predict: int | None,
-        cancel_event: asyncio.Event | None,
-        task_id: str | None,
+        ctx: _OomRetryContext,
     ) -> dict[str, Any]:
         try:
             response_data = await self._generate_with_cancellation(
-                payload, cancel_event, task_id
+                payload, ctx.cancel_event, ctx.task_id
             )
             if self.oom_detector.detect_oom_from_response(response_data):
                 logger.warning(
                     "OOM detected in response, retrying with 2-model mode",
-                    extra={"original_model": model},
+                    extra={"original_model": ctx.model},
                 )
                 selected_model, _ = self.model_router.select_model(
-                    prompt, max_new_tokens=num_predict
+                    ctx.prompt, max_new_tokens=ctx.num_predict
                 )
-                if selected_model != model:
+                if selected_model != ctx.model:
                     payload["model"] = selected_model
                     logger.info(
-                        f"Retrying with model {selected_model} (2-model mode)",
+                        "Retrying with model %s (2-model mode)",
+                        selected_model,
                         extra={
-                            "original_model": model,
+                            "original_model": ctx.model,
                             "new_model": selected_model,
                         },
                     )
                     response_data = await self._generate_with_cancellation(
-                        payload, cancel_event, task_id
+                        payload, ctx.cancel_event, ctx.task_id
                     )
-            return response_data
         except PreemptedException:
             logger.info(
-                f"Request {task_id} preempted, will retry later",
-                extra={"task_id": task_id, "model": payload["model"]},
+                "Request %s preempted, will retry later",
+                ctx.task_id,
+                extra={"task_id": ctx.task_id, "model": payload["model"]},
             )
             raise
         except Exception as e:
             if self.oom_detector.detect_oom_from_exception(e):
                 logger.warning(
                     "OOM detected from exception, retrying with 2-model mode",
-                    extra={"original_model": model, "error": str(e)},
+                    extra={"original_model": ctx.model, "error": str(e)},
                 )
                 selected_model, _ = self.model_router.select_model(
-                    prompt, max_new_tokens=num_predict
+                    ctx.prompt, max_new_tokens=ctx.num_predict
                 )
-                if selected_model != model:
+                if selected_model != ctx.model:
                     payload["model"] = selected_model
                     logger.info(
-                        f"Retrying with model {selected_model} (2-model mode)",
+                        "Retrying with model %s (2-model mode)",
+                        selected_model,
                         extra={
-                            "original_model": model,
+                            "original_model": ctx.model,
                             "new_model": selected_model,
                         },
                     )
                     payload["stream"] = False
                     return await self._generate_with_cancellation(
-                        payload, cancel_event, task_id
+                        payload, ctx.cancel_event, ctx.task_id
                     )
                 raise
             raise
+        else:
+            return response_data
 
     async def _generate_with_cancellation(
         self,
@@ -828,7 +889,8 @@ class OllamaGateway(LLMProviderPort):
 
         # BE request - check for preemption before generation
         if cancel_event.is_set():
-            raise PreemptedException(f"Request {task_id} preempted before generation")
+            msg = f"Request {task_id} preempted before generation"
+            raise PreemptedException(msg)
 
         # Race generate() against cancel_event.wait() so preemption
         # can interrupt an in-flight Ollama HTTP request.
@@ -847,17 +909,15 @@ class OllamaGateway(LLMProviderPort):
                 # which closes the HTTP connection. Ollama detects the disconnect
                 # and stops inference, freeing GPU resources immediately.
                 generate_task.cancel()
-                try:
+                with suppress(asyncio.CancelledError):
                     await generate_task
-                except asyncio.CancelledError:
-                    pass
                 logger.warning(
-                    f"Request {task_id} preempted during generation — HTTP connection cancelled",
+                    "Request %s preempted during generation — HTTP connection cancelled",
+                    task_id,
                     extra={"task_id": task_id},
                 )
-                raise PreemptedException(
-                    f"Request {task_id} preempted during generation"
-                )
+                msg = f"Request {task_id} preempted during generation"
+                raise PreemptedException(msg)
 
             return generate_task.result()
         finally:
@@ -884,17 +944,19 @@ class OllamaGateway(LLMProviderPort):
             tags_response = await self.driver.list_tags()
             models = tags_response.get("models", [])
             logger.debug(
-                f"Found {len(models)} models in Ollama", extra={"count": len(models)}
+                "Found %s models in Ollama", len(models), extra={"count": len(models)}
             )
-            return models
         except Exception as err:
-            logger.error("Failed to list Ollama models", extra={"error": str(err)})
-            raise RuntimeError(f"Failed to list Ollama models: {err}") from err
+            logger.exception("Failed to list Ollama models", extra={"error": str(err)})
+            msg = f"Failed to list Ollama models: {err}"
+            raise RuntimeError(msg) from err
+        else:
+            return models
 
     async def chat_stream(
         self,
         payload: dict[str, Any],
-    ) -> AsyncIterator[dict[str, Any]]:
+    ) -> AsyncGenerator[dict[str, Any]]:
         """Stream Ollama /api/chat through semaphore with HIGH priority.
 
         This is a transparent proxy for Ask Augur chat requests. It acquires
@@ -922,7 +984,7 @@ class OllamaGateway(LLMProviderPort):
             },
         )
 
-        async def _stream():
+        async def _stream() -> AsyncGenerator[dict[str, Any]]:
             try:
                 async for chunk in self.stream_driver.chat_stream(payload):
                     yield chunk
@@ -930,7 +992,7 @@ class OllamaGateway(LLMProviderPort):
                 logger.info("Chat stream closed by client disconnect")
                 raise
             except Exception:
-                logger.error("Chat stream error", exc_info=True)
+                logger.exception("Chat stream error")
                 raise
             finally:
                 _release_slot()
@@ -981,7 +1043,8 @@ class OllamaGateway(LLMProviderPort):
             high_priority=is_high_priority
         )
         logger.info(
-            f"Acquired semaphore ({'HIGH' if is_high_priority else 'LOW'} PRIORITY) for chat generate proxy",
+            "Acquired semaphore (%s PRIORITY) for chat generate proxy",
+            "HIGH" if is_high_priority else "LOW",
             extra={
                 "model": payload.get("model", "unknown"),
                 "message_count": len(payload.get("messages", [])),
@@ -994,7 +1057,7 @@ class OllamaGateway(LLMProviderPort):
         try:
             return await self.stream_driver.chat_generate(payload)
         except Exception:
-            logger.error("Chat generate error", exc_info=True)
+            logger.exception("Chat generate error")
             raise
         finally:
             self._semaphore.release(

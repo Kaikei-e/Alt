@@ -92,7 +92,7 @@ impl Manager {
                 Err(err) if err.is_canceled() => return Err(err),
                 Err(err) => last = Some(err),
             }
-            let err = last.as_ref().map(ToString::to_string).unwrap_or_default();
+            let err = last.as_ref().map_or_else(String::new, ToString::to_string);
             self.observer.on_retry(i, &err);
             error!(
                 subject = %self.cfg.subject,
@@ -111,7 +111,7 @@ impl Manager {
         }
         Err(PkiError::other(format!(
             "enroll failed after {attempts} attempts: {}",
-            last.map(|e| e.to_string()).unwrap_or_default()
+            last.map_or_else(String::new, |e| e.to_string())
         )))
     }
 
@@ -251,7 +251,7 @@ impl Manager {
     pub async fn run(&self, cancel: &CancellationToken) -> Result<(), PkiError> {
         let mut interval = self.cfg.tick_interval;
         if interval.is_zero() {
-            interval = Duration::from_secs(5 * 60);
+            interval = Duration::from_mins(5);
         }
         let mut ticker = tokio::time::interval(interval);
         ticker.tick().await; // skip immediate tick; Enroll already ran
@@ -439,7 +439,7 @@ mod tests {
     #[tokio::test]
     async fn tick_missing_triggers_issue() {
         let nb = ts(1_755_475_200);
-        let iss = FakeIssuer::new(nb, Duration::from_secs(24 * 3600));
+        let iss = FakeIssuer::new(nb, Duration::from_hours(24));
         let (mgr, _dir, obs) = new_manager(Arc::clone(&iss) as Arc<dyn Issuer>, nb);
         let state = mgr.tick(&CancellationToken::new()).await.unwrap();
         assert_eq!(state, State::Fresh);
@@ -451,11 +451,11 @@ mod tests {
     async fn tick_mismatch_classifies_corrupt_and_reissues() {
         let nb = ts(1_755_475_200);
         let now = nb + Duration::from_secs(3600);
-        let iss = FakeIssuer::new(now, Duration::from_secs(24 * 3600));
+        let iss = FakeIssuer::new(now, Duration::from_hours(24));
         let (mgr, _dir, obs) = new_manager(Arc::clone(&iss) as Arc<dyn Issuer>, now);
-        let (cert, key) = self_signed_pem("recap-worker", nb, nb + Duration::from_secs(24 * 3600));
+        let (cert, key) = self_signed_pem("recap-worker", nb, nb + Duration::from_hours(24));
         let (_other_cert, other_key) =
-            self_signed_pem("recap-worker", nb, nb + Duration::from_secs(24 * 3600));
+            self_signed_pem("recap-worker", nb, nb + Duration::from_hours(24));
         mgr.files.write(&cert, &key).unwrap();
         let mut perms = fs::metadata(&mgr.files.key_path).unwrap().permissions();
         perms.set_mode(0o600);
@@ -483,12 +483,12 @@ mod tests {
     #[tokio::test]
     async fn tick_fresh_noop() {
         let nb = ts(1_755_475_200);
-        let iss = FakeIssuer::new(nb, Duration::from_secs(24 * 3600));
+        let iss = FakeIssuer::new(nb, Duration::from_hours(24));
         let (mgr, _dir, _obs) = new_manager(
             Arc::clone(&iss) as Arc<dyn Issuer>,
             nb + Duration::from_secs(3600),
         );
-        let (cert, key) = self_signed_pem("recap-worker", nb, nb + Duration::from_secs(24 * 3600));
+        let (cert, key) = self_signed_pem("recap-worker", nb, nb + Duration::from_hours(24));
         mgr.files.write(&cert, &key).unwrap();
         mgr.tick(&CancellationToken::new()).await.unwrap();
         assert_eq!(iss.call_count(), 0);
@@ -497,10 +497,10 @@ mod tests {
     #[tokio::test]
     async fn tick_near_expiry_reissues() {
         let nb = ts(1_755_475_200);
-        let now = nb + Duration::from_secs(16 * 3600);
-        let iss = FakeIssuer::new(now, Duration::from_secs(24 * 3600));
+        let now = nb + Duration::from_hours(16);
+        let iss = FakeIssuer::new(now, Duration::from_hours(24));
         let (mgr, _dir, obs) = new_manager(Arc::clone(&iss) as Arc<dyn Issuer>, now);
-        let (cert, key) = self_signed_pem("recap-worker", nb, nb + Duration::from_secs(24 * 3600));
+        let (cert, key) = self_signed_pem("recap-worker", nb, nb + Duration::from_hours(24));
         mgr.files.write(&cert, &key).unwrap();
         mgr.tick(&CancellationToken::new()).await.unwrap();
         assert_eq!(iss.call_count(), 1);
@@ -510,10 +510,10 @@ mod tests {
     #[tokio::test]
     async fn tick_expired_reenrolls_not_renews() {
         let nb = ts(1_755_475_200);
-        let now = nb + Duration::from_secs(25 * 3600);
-        let iss = FakeIssuer::new(now, Duration::from_secs(24 * 3600));
+        let now = nb + Duration::from_hours(25);
+        let iss = FakeIssuer::new(now, Duration::from_hours(24));
         let (mgr, _dir, obs) = new_manager(Arc::clone(&iss) as Arc<dyn Issuer>, now);
-        let (cert, key) = self_signed_pem("recap-worker", nb, nb + Duration::from_secs(24 * 3600));
+        let (cert, key) = self_signed_pem("recap-worker", nb, nb + Duration::from_hours(24));
         mgr.files.write(&cert, &key).unwrap();
         mgr.tick(&CancellationToken::new()).await.unwrap();
         assert_eq!(iss.call_count(), 1);
@@ -555,10 +555,10 @@ mod tests {
     #[tokio::test]
     async fn run_stops_on_cancel() {
         let nb = ts(1_755_475_200);
-        let iss = FakeIssuer::new(nb, Duration::from_secs(24 * 3600));
+        let iss = FakeIssuer::new(nb, Duration::from_hours(24));
         let (mut mgr, _dir, _obs) = new_manager(Arc::clone(&iss) as Arc<dyn Issuer>, nb);
         mgr.cfg.tick_interval = Duration::from_millis(30);
-        let (cert, key) = self_signed_pem("recap-worker", nb, nb + Duration::from_secs(24 * 3600));
+        let (cert, key) = self_signed_pem("recap-worker", nb, nb + Duration::from_hours(24));
         mgr.files.write(&cert, &key).unwrap();
         let cancel = CancellationToken::new();
         let cancel2 = cancel.clone();
@@ -570,6 +570,10 @@ mod tests {
 
     #[tokio::test]
     async fn tick_atomic_write_visible_to_rustls_reloader() {
+        #[expect(
+            clippy::let_underscore_must_use,
+            reason = "install_default is idempotent and returns Err if already installed in test process"
+        )]
         let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
         let nb = ts(1_755_475_200);
         let iss = FakeIssuer::new(nb, Duration::from_secs(3600));
@@ -584,7 +588,7 @@ mod tests {
         let first = resolver.current().expect("first");
         let first_der = first.cert[0].to_vec();
 
-        let now = nb + Duration::from_secs(50 * 60);
+        let now = nb + Duration::from_mins(50);
         // Replace the on-disk cert with an old one, then tick near-expiry
         // so the manager issues a replacement the resolver must observe.
         let (old_cert, old_key) =
@@ -608,18 +612,18 @@ mod tests {
     #[tokio::test]
     async fn tick_near_expiry_uses_rekey_when_available() {
         let nb = ts(1_755_475_200);
-        let now = nb + Duration::from_secs(16 * 3600);
+        let now = nb + Duration::from_hours(16);
         let iss = Arc::new(FakeIssuer {
             calls: AtomicU32::new(0),
             err: Mutex::new(None),
             not_before: Mutex::new(now),
-            lifetime: Duration::from_secs(24 * 3600),
+            lifetime: Duration::from_hours(24),
             block: tokio::sync::Mutex::new(None),
             rekey_calls: AtomicU32::new(0),
             rekey: true,
         });
         let (mgr, _dir, obs) = new_manager(Arc::clone(&iss) as Arc<dyn Issuer>, now);
-        let (cert, key) = self_signed_pem("recap-worker", nb, nb + Duration::from_secs(24 * 3600));
+        let (cert, key) = self_signed_pem("recap-worker", nb, nb + Duration::from_hours(24));
         mgr.files.write(&cert, &key).unwrap();
         mgr.tick(&CancellationToken::new()).await.unwrap();
         assert_eq!(iss.rekey_calls.load(Ordering::SeqCst), 1);
@@ -630,18 +634,18 @@ mod tests {
     #[tokio::test]
     async fn tick_expired_does_not_rekey() {
         let nb = ts(1_755_475_200);
-        let now = nb + Duration::from_secs(25 * 3600);
+        let now = nb + Duration::from_hours(25);
         let iss = Arc::new(FakeIssuer {
             calls: AtomicU32::new(0),
             err: Mutex::new(None),
             not_before: Mutex::new(now),
-            lifetime: Duration::from_secs(24 * 3600),
+            lifetime: Duration::from_hours(24),
             block: tokio::sync::Mutex::new(None),
             rekey_calls: AtomicU32::new(0),
             rekey: true,
         });
         let (mgr, _dir, obs) = new_manager(Arc::clone(&iss) as Arc<dyn Issuer>, now);
-        let (cert, key) = self_signed_pem("recap-worker", nb, nb + Duration::from_secs(24 * 3600));
+        let (cert, key) = self_signed_pem("recap-worker", nb, nb + Duration::from_hours(24));
         mgr.files.write(&cert, &key).unwrap();
         mgr.tick(&CancellationToken::new()).await.unwrap();
         assert_eq!(iss.rekey_calls.load(Ordering::SeqCst), 0);

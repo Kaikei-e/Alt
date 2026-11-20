@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 // Note: ErrNoSubscriptions is now aliased from domain.ErrNoSubscriptions
@@ -49,7 +50,7 @@ func TestFetchRandomSubscriptionUsecase_Execute_Success(t *testing.T) {
 	result, err := usecase.Execute(context.Background())
 
 	// Assert
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.Equal(t, expectedFeed.ID, result.ID)
 	assert.Equal(t, expectedFeed.Title, result.Title)
@@ -69,9 +70,9 @@ func TestFetchRandomSubscriptionUsecase_Execute_NoFeeds(t *testing.T) {
 	result, err := usecase.Execute(context.Background())
 
 	// Assert
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, result)
-	assert.True(t, errors.Is(err, ErrNoSubscriptions))
+	require.ErrorIs(t, err, ErrNoSubscriptions)
 	mockPort.AssertExpectations(t)
 }
 
@@ -87,7 +88,7 @@ func TestFetchRandomSubscriptionUsecase_Execute_DatabaseError(t *testing.T) {
 	result, err := usecase.Execute(context.Background())
 
 	// Assert
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, result)
 	assert.Contains(t, err.Error(), "database connection failed")
 	mockPort.AssertExpectations(t)

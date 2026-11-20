@@ -1,7 +1,6 @@
 package image_fetch_gateway
 
 import (
-	"errors"
 	"math"
 	"strconv"
 	"testing"
@@ -56,20 +55,20 @@ func TestValidateImageHeaders(t *testing.T) {
 	t.Run("invalid content type", func(t *testing.T) {
 		_, err := validateImageHeaders("text/html", "100", maxSize)
 		require.Error(t, err)
-		require.True(t, errors.Is(err, errInvalidContentType))
+		require.ErrorIs(t, err, errInvalidContentType)
 	})
 
 	t.Run("content length exceeds max size", func(t *testing.T) {
 		_, err := validateImageHeaders("image/webp", strconv.Itoa(maxSize+1), maxSize)
 		require.Error(t, err)
-		require.True(t, errors.Is(err, errImageTooLarge))
+		require.ErrorIs(t, err, errImageTooLarge)
 	})
 
 	t.Run("content length exceeds int32 max", func(t *testing.T) {
 		tooBig := strconv.FormatInt(int64(math.MaxInt32)+1, 10)
 		_, err := validateImageHeaders("image/gif", tooBig, math.MaxInt32)
 		require.Error(t, err)
-		require.True(t, errors.Is(err, errImageTooLarge))
+		require.ErrorIs(t, err, errImageTooLarge)
 	})
 
 	t.Run("invalid content length format ignored", func(t *testing.T) {

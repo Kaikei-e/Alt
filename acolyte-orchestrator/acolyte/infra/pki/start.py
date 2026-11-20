@@ -1,10 +1,9 @@
 """Composition-root hook: enroll before any listener consumes certs."""
 
-# ruff: noqa: SIM105
-
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from collections.abc import Mapping
 
 import structlog
@@ -46,10 +45,8 @@ class EnrollmentHandle:
             if task is None or task.done():
                 continue
             task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await task
-            except asyncio.CancelledError:
-                pass
         if self._ops is not None:
             await self._ops.aclose()
 
@@ -100,10 +97,8 @@ async def start_enrollment(
         await enroll_task
     except asyncio.CancelledError:
         enroll_task.cancel()
-        try:
+        with contextlib.suppress(asyncio.CancelledError):
             await enroll_task
-        except asyncio.CancelledError:
-            pass
         raise
     # Bind before the loop exists: a bind error must not strand a renewal
     # task that no handle can cancel.
@@ -146,10 +141,8 @@ async def start_enrollment_with(
         await enroll_task
     except asyncio.CancelledError:
         enroll_task.cancel()
-        try:
+        with contextlib.suppress(asyncio.CancelledError):
             await enroll_task
-        except asyncio.CancelledError:
-            pass
         raise
     task = asyncio.create_task(mgr.run(), name="pki-enrollment-loop")
     return EnrollmentHandle(task, enroll_task=enroll_task)

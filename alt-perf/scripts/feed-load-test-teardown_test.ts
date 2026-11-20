@@ -37,7 +37,7 @@ Deno.test("teardownDatabaseAtomic generates exact single transaction", async () 
 
   let executedSql = "";
 
-  const mockExecSQL = async (
+  const mockExecSQL = (
     _parts: string[],
     _lbl: string,
     _svc: string,
@@ -46,7 +46,7 @@ Deno.test("teardownDatabaseAtomic generates exact single transaction", async () 
     sql: string,
   ) => {
     executedSql = sql;
-    return { success: true, stdout: "ok" };
+    return Promise.resolve({ success: true, stdout: "ok" });
   };
 
   const ok = await teardownDatabaseAtomic(
@@ -148,7 +148,7 @@ Deno.test("teardownDatabaseAtomic article-only: partially empty SQL fallback wit
   };
 
   let executedSql = "";
-  const mockExecSQL = async (
+  const mockExecSQL = (
     _parts: string[],
     _lbl: string,
     _svc: string,
@@ -157,7 +157,7 @@ Deno.test("teardownDatabaseAtomic article-only: partially empty SQL fallback wit
     sql: string,
   ) => {
     executedSql = sql;
-    return { success: true, stdout: "ok" };
+    return Promise.resolve({ success: true, stdout: "ok" });
   };
 
   const mPath = `${tmpDir}/mock-path-art.json`;
@@ -232,7 +232,7 @@ Deno.test("teardownDatabaseAtomic feed-only: partially empty SQL fallback and fo
   };
 
   let executedSql = "";
-  const mockExecSQL = async (
+  const mockExecSQL = (
     _parts: string[],
     _lbl: string,
     _svc: string,
@@ -241,7 +241,7 @@ Deno.test("teardownDatabaseAtomic feed-only: partially empty SQL fallback and fo
     sql: string,
   ) => {
     executedSql = sql;
-    return { success: true, stdout: "ok" };
+    return Promise.resolve({ success: true, stdout: "ok" });
   };
 
   const mPath = `${tmpDir}/mock-path-feed.json`;
@@ -330,7 +330,7 @@ Deno.test("teardownDatabaseAtomic exact matching owner union: identities and art
   };
 
   let executedSql = "";
-  const mockExecSQL = async (
+  const mockExecSQL = (
     _parts: string[],
     _lbl: string,
     _svc: string,
@@ -339,7 +339,7 @@ Deno.test("teardownDatabaseAtomic exact matching owner union: identities and art
     sql: string,
   ) => {
     executedSql = sql;
-    return { success: true, stdout: "ok" };
+    return Promise.resolve({ success: true, stdout: "ok" });
   };
 
   const mPath = `${tmpDir}/mock-path-union.json`;

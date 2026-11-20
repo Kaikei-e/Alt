@@ -187,7 +187,7 @@ func (a *AugurAdapter) Answer(ctx context.Context, input rag_integration_port.An
 	resultChan := make(chan string)
 
 	if input.Stream {
-		resp, err := a.client.AnswerWithRAGStream(ctx, reqBody)
+		resp, err := a.client.AnswerWithRAGStream(ctx, reqBody) //nolint:bodyclose // resp.Body is closed in non-200 branch and streaming goroutine below
 		if err != nil {
 			return nil, fmt.Errorf("failed to call AnswerWithRAGStream: %w", err)
 		}

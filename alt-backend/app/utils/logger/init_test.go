@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
-	"os"
 	"testing"
 
 	"go.opentelemetry.io/otel"
@@ -28,16 +27,7 @@ func TestInitLoggerWithOTelDisabled_JSONFormat_IncludesTraceContext(t *testing.T
 	otel.SetTracerProvider(provider)
 	defer func() { _ = provider.Shutdown(context.Background()) }()
 
-	// Save original env and restore after test
-	originalFormat := os.Getenv("LOG_FORMAT")
-	defer func() {
-		if originalFormat == "" {
-			os.Unsetenv("LOG_FORMAT")
-		} else {
-			os.Setenv("LOG_FORMAT", originalFormat)
-		}
-	}()
-	os.Setenv("LOG_FORMAT", "json")
+	t.Setenv("LOG_FORMAT", "json")
 
 	// Create a buffer to capture output
 	var buf bytes.Buffer

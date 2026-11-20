@@ -1,6 +1,7 @@
 package setup
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -24,13 +25,14 @@ func DefaultMigrationDirs() []MigrationDir {
 
 // RegenerateAtlasHash runs atlas migrate hash for the given migration directory.
 // Uses Docker to run the Atlas CLI to avoid requiring a local Atlas install.
-func RegenerateAtlasHash(projectRoot string, dir MigrationDir) error {
+func RegenerateAtlasHash(ctx context.Context, projectRoot string, dir MigrationDir) error {
 	absPath := filepath.Join(projectRoot, dir.Path)
 	if _, err := os.Stat(absPath); os.IsNotExist(err) {
 		return fmt.Errorf("migration directory not found: %s", dir.Path)
 	}
 
-	cmd := exec.Command("docker", "run", "--rm",
+	// #nosec G204 -- constant binary "docker" with separate argv elements; absPath joins projectRoot with MigrationDir.Path
+	cmd := exec.CommandContext(ctx, "docker", "run", "--rm",
 		"-v", absPath+":/migrations:rw",
 		"--user", "0:0",
 		"--entrypoint", "atlas",

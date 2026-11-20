@@ -7,9 +7,13 @@ use super::normalize::NormalizedItem;
 
 /// Title noise pattern (case-insensitive):
 /// crossword|sudoku|quiz|sponsored|buy .*accounts
+#[expect(
+    clippy::expect_used,
+    reason = "compile-time literal regex is valid by construction"
+)]
 static NOISE_TITLE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)(crossword|sudoku|quiz|sponsored|buy .*accounts)")
-        .expect("valid noise title regex")
+        .expect("compile-time literal regex is valid by construction")
 });
 
 /// Named noise filtering rules.

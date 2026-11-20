@@ -12,11 +12,47 @@ _ROLE_MAP: dict[str, str] = {
 }
 
 
+def _parse_single_turn(body: str, pos: int) -> tuple[dict[str, str], int]:
+    if not body.startswith(_TURN_START, pos):
+        msg = "Unexpected text outside <|turn> block"
+        raise ValueError(msg)
+
+    role_start = pos + len(_TURN_START)
+    end_idx = body.find(_TURN_END, role_start)
+    if end_idx == -1:
+        msg = "Unclosed <|turn> block"
+        raise ValueError(msg)
+
+    newline_idx = body.find("\n", role_start, end_idx)
+    if newline_idx == -1:
+        msg = "Missing newline after <|turn> role"
+        raise ValueError(msg)
+
+    raw_role = body[role_start:newline_idx].strip()
+    mapped_role = _ROLE_MAP.get(raw_role)
+    if mapped_role is None:
+        msg = f"Unknown turn role: {raw_role!r}"
+        raise ValueError(msg)
+
+    turn_content_raw = body[newline_idx + 1 : end_idx]
+    if _TURN_START in turn_content_raw or _TURN_END in turn_content_raw:
+        msg = "Nested or stray turn marker inside turn body"
+        raise ValueError(msg)
+
+    content = turn_content_raw.strip()
+    if not content:
+        msg = "Turn content must not be empty"
+        raise ValueError(msg)
+
+    return {"role": mapped_role, "content": content}, end_idx + len(_TURN_END)
+
+
 def gemma_prompt_to_messages(prompt: str) -> list[dict[str, str]]:
     """Parse a Gemma-4 raw prompt into an OpenAI-compatible messages list."""
     stripped = prompt.strip()
     if not stripped:
-        raise ValueError("Prompt must not be empty")
+        msg = "Prompt must not be empty"
+        raise ValueError(msg)
 
     if stripped.endswith(_TRAILING_MODEL_HEADER):
         body = stripped[: -len(_TRAILING_MODEL_HEADER)].strip()
@@ -24,7 +60,8 @@ def gemma_prompt_to_messages(prompt: str) -> list[dict[str, str]]:
         body = stripped
 
     if not body:
-        raise ValueError("Prompt contains no closed turns")
+        msg = "Prompt contains no closed turns"
+        raise ValueError(msg)
 
     messages: list[dict[str, str]] = []
     pos = 0
@@ -36,38 +73,15 @@ def gemma_prompt_to_messages(prompt: str) -> list[dict[str, str]]:
         if pos >= length:
             break
 
-        if not body.startswith(_TURN_START, pos):
-            raise ValueError("Unexpected text outside <|turn> block")
-
-        role_start = pos + len(_TURN_START)
-        end_idx = body.find(_TURN_END, role_start)
-        if end_idx == -1:
-            raise ValueError("Unclosed <|turn> block")
-
-        newline_idx = body.find("\n", role_start, end_idx)
-        if newline_idx == -1:
-            raise ValueError("Missing newline after <|turn> role")
-
-        raw_role = body[role_start:newline_idx].strip()
-        mapped_role = _ROLE_MAP.get(raw_role)
-        if mapped_role is None:
-            raise ValueError(f"Unknown turn role: {raw_role!r}")
-
-        turn_content_raw = body[newline_idx + 1 : end_idx]
-        if _TURN_START in turn_content_raw or _TURN_END in turn_content_raw:
-            raise ValueError("Nested or stray turn marker inside turn body")
-
-        content = turn_content_raw.strip()
-        if not content:
-            raise ValueError("Turn content must not be empty")
-
-        messages.append({"role": mapped_role, "content": content})
-        pos = end_idx + len(_TURN_END)
+        message, pos = _parse_single_turn(body, pos)
+        messages.append(message)
 
     if not messages:
-        raise ValueError("No messages parsed from prompt")
+        msg = "No messages parsed from prompt"
+        raise ValueError(msg)
 
     if messages[-1]["role"] != "user":
-        raise ValueError("Last message in prompt must have role 'user'")
+        msg = "Last message in prompt must have role 'user'"
+        raise ValueError(msg)
 
     return messages

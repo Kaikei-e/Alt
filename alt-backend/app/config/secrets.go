@@ -12,7 +12,8 @@ import (
 )
 
 const (
-	minSovereignEventTokenLen    = 24
+	minSovereignEventTokenLen = 24
+	// #nosec G101 -- env var name constant, not a credential
 	backendTokenVerifyKeyFileEnv = "BACKEND_TOKEN_VERIFY_KEY_FILE"
 )
 

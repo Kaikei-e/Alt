@@ -82,7 +82,9 @@ class PostgresReportGateway:
                 [title, report_type, user_id],
             )
             r = await row.fetchone()
-            assert r is not None
+            if r is None:
+                msg = f"INSERT INTO reports RETURNING returned no row for title={title!r}"
+                raise RuntimeError(msg)
             return Report(
                 report_id=r[0],
                 title=r[1],

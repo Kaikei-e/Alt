@@ -76,7 +76,7 @@ test.describe("Desktop Tag Articles", () => {
 		desktopTagArticlesPage,
 	}) => {
 		await desktopTagArticlesPage.gotoWithTag("C++");
-		await expect(page.url()).toContain("tag=C%2B%2B");
+		expect(page.url()).toContain("tag=C%2B%2B");
 	});
 
 	test("renders articles in a grid layout", async ({

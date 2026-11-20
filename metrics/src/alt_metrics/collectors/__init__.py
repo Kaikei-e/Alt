@@ -32,27 +32,21 @@ from alt_metrics.collectors.traces import (
 )
 
 __all__ = [
-    # Base collectors
-    "collect_service_stats",
-    "collect_error_trends",
-    # Trace collectors
     "collect_api_performance",
     "collect_bottlenecks",
-    "collect_span_type_stats",
     "collect_error_spans",
-    "collect_service_dependencies",
-    # Log collectors
+    "collect_error_trends",
     "collect_error_types",
-    "collect_recent_errors",
-    "collect_log_severity_distribution",
-    "collect_log_volume_trends",
-    # HTTP collectors
     "collect_http_endpoint_stats",
     "collect_http_status_distribution",
-    # SLI collectors
+    "collect_log_severity_distribution",
+    "collect_log_volume_trends",
+    "collect_queue_saturation",
+    "collect_recent_errors",
+    "collect_resource_utilization",
+    "collect_service_dependencies",
+    "collect_service_stats",
     "collect_sli_trends",
     "collect_slo_violations",
-    # Saturation collectors (Golden Signals)
-    "collect_resource_utilization",
-    "collect_queue_saturation",
+    "collect_span_type_stats",
 ]

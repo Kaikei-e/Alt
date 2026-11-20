@@ -108,7 +108,10 @@ func main() {
 	// Output results
 	switch *outputFormat {
 	case "json":
-		outputJSON(results)
+		if err := outputJSON(results); err != nil {
+			logger.Error("Failed to encode JSON output", "error", err)
+			os.Exit(1)
+		}
 	case "prometheus":
 		outputPrometheus(results)
 	default:
@@ -344,7 +347,9 @@ func (c *CredentialHealthChecker) checkInoreaderConnectivity(ctx context.Context
 	} else {
 		// Always close and discard response body to prevent HTML output
 		if resp.Body != nil {
-			resp.Body.Close()
+			if closeErr := resp.Body.Close(); closeErr != nil {
+				c.logger.Warn("Failed to close response body", "error", closeErr)
+			}
 		}
 
 		if resp.StatusCode == 401 {
@@ -421,7 +426,9 @@ func (c *CredentialHealthChecker) validateOAuth2TokenWithAPI(ctx context.Context
 	}
 	defer func() {
 		if resp.Body != nil {
-			resp.Body.Close()
+			if closeErr := resp.Body.Close(); closeErr != nil {
+				c.logger.Warn("Failed to close response body", "error", closeErr)
+			}
 		}
 	}()
 
@@ -460,13 +467,13 @@ func (c *CredentialHealthChecker) validateOAuth2TokenWithAPI(ctx context.Context
 
 // Output functions
 
-func outputJSON(results []HealthCheckResult) {
+func outputJSON(results []HealthCheckResult) error {
 	output := map[string]interface{}{
 		"timestamp":      time.Now(),
 		"overall_status": getOverallStatus(results),
 		"checks":         results,
 	}
-	json.NewEncoder(os.Stdout).Encode(output)
+	return json.NewEncoder(os.Stdout).Encode(output)
 }
 
 func outputPrometheus(results []HealthCheckResult) {

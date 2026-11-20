@@ -95,16 +95,16 @@ func TestSessionCache_Delete(t *testing.T) {
 
 func TestSessionCache_SHA256KeyHashing(t *testing.T) {
 	c := NewSessionCache(5 * time.Minute)
-	rawToken := "raw-kratos-session-cookie-secret-token"
+	rawCookie := "raw-kratos-session-cookie-test-value"
 
-	c.Set(rawToken, domain.CachedSession{UserID: "user-hash"})
+	c.Set(rawCookie, domain.CachedSession{UserID: "user-hash"})
 
-	sum := sha256.Sum256([]byte(rawToken))
+	sum := sha256.Sum256([]byte(rawCookie))
 	expectedHash := hex.EncodeToString(sum[:])
-	assert.Equal(t, expectedHash, hashKey(rawToken))
+	assert.Equal(t, expectedHash, hashKey(rawCookie))
 
 	c.mu.RLock()
-	_, rawExists := c.entries[rawToken]
+	_, rawExists := c.entries[rawCookie]
 	_, hashExists := c.entries[expectedHash]
 	c.mu.RUnlock()
 

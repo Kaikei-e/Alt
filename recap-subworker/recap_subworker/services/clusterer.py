@@ -5,19 +5,26 @@ from __future__ import annotations
 import concurrent.futures
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from typing import TYPE_CHECKING, NamedTuple
 
 import numpy as np
 import structlog
-from sklearn.cluster import HDBSCAN, BisectingKMeans, MiniBatchKMeans
+from sklearn.cluster import HDBSCAN, BisectingKMeans, KMeans, MiniBatchKMeans
 from sklearn.metrics import silhouette_score
 
 from ..domain.models import HDBSCANSettings
 from ..infra.config import Settings
 
+if TYPE_CHECKING:
+    import optuna
+
 _LOGGER = structlog.get_logger(__name__)
+_MIN_CLUSTER_COUNT = 2
+_MIN_UMAP_POINTS = 3
+_SMALL_DATASET_SAMPLE_THRESHOLD = 100
 
 _NATIVE_CLUSTERING_LOCK = threading.Lock()
 _ABANDONED_HDBSCAN_FUTURE: concurrent.futures.Future | None = None
@@ -26,12 +33,12 @@ _ABANDONED_HDBSCAN_LOCK = threading.Lock()
 
 def _set_abandoned_hdbscan_future(future: concurrent.futures.Future) -> None:
     with _ABANDONED_HDBSCAN_LOCK:
-        global _ABANDONED_HDBSCAN_FUTURE
+        global _ABANDONED_HDBSCAN_FUTURE  # noqa: PLW0603 - per-process singleton tracking abandoned HDBSCAN future
         _ABANDONED_HDBSCAN_FUTURE = future
 
     def _on_done(fut: concurrent.futures.Future) -> None:
         with _ABANDONED_HDBSCAN_LOCK:
-            global _ABANDONED_HDBSCAN_FUTURE
+            global _ABANDONED_HDBSCAN_FUTURE  # noqa: PLW0603 - per-process singleton tracking abandoned HDBSCAN future
             if _ABANDONED_HDBSCAN_FUTURE is fut:
                 _ABANDONED_HDBSCAN_FUTURE = None
 
@@ -40,7 +47,7 @@ def _set_abandoned_hdbscan_future(future: concurrent.futures.Future) -> None:
 
 def _is_abandoned_hdbscan_running() -> bool:
     with _ABANDONED_HDBSCAN_LOCK:
-        global _ABANDONED_HDBSCAN_FUTURE
+        global _ABANDONED_HDBSCAN_FUTURE  # noqa: PLW0603 - per-process singleton tracking abandoned HDBSCAN future
         if _ABANDONED_HDBSCAN_FUTURE is not None:
             if not _ABANDONED_HDBSCAN_FUTURE.done():
                 return True
@@ -49,7 +56,7 @@ def _is_abandoned_hdbscan_running() -> bool:
 
 
 @contextmanager
-def _guard_native_clustering():
+def _guard_native_clustering() -> Iterator[None]:
     # WHY: Held by the waiting thread across the native section so timeouts release
     # cleanly and abandoned background threads cannot acquire or deadlock the lock.
     wait_start = time.monotonic()
@@ -85,7 +92,7 @@ def compute_knn_faiss(embeddings: np.ndarray, n_neighbors: int) -> tuple[np.ndar
     Returns:
         (knn_indices, knn_dists): Arrays of shape (N, n_neighbors)
     """
-    import faiss
+    import faiss  # noqa: PLC0415 - heavy faiss/OpenMP import deferred until k-NN is invoked
 
     _n_samples, dim = embeddings.shape
 
@@ -127,6 +134,244 @@ class ClusterResult:
     dbcv_score: float | None = None
     silhouette_score: float | None = None
     used_fallback: bool = False  # True if MiniBatchKMeans fallback was used
+
+
+@dataclass(frozen=True, slots=True)
+class _OptimizeConfig:
+    """Search configuration passed from optimize_clustering to grid/Optuna backends."""
+
+    min_cluster_size_range: list[int] | None = None
+    min_samples_range: list[int | None] | None = None
+    umap_n_neighbors_range: list[int | None] | None = None
+    umap_n_components_range: list[int | None] | None = None
+    hdbscan_cluster_selection_method: str = "eom"
+    hdbscan_allow_single_cluster: bool = False
+    token_counts: np.ndarray | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _ResolvedSearchRanges:
+    """Concrete hyperparameter candidate lists with defaults applied."""
+
+    min_cluster_size_range: list[int]
+    min_samples_range: list[int | None]
+    umap_n_neighbors_range: list[int | None]
+    umap_n_components_range: list[int | None]
+
+
+@dataclass(frozen=True, slots=True)
+class _GridCandidate:
+    """Single hyperparameter combination evaluated during grid search."""
+
+    n_neighbors: int | None
+    n_components: int | None
+    min_cluster_size: int
+    min_samples: int
+
+
+class _BestGridResult(NamedTuple):
+    score: float
+    result: ClusterResult | None
+
+
+class _GridEvaluation(NamedTuple):
+    result: ClusterResult
+    score: float
+    min_cluster_size: int
+    min_samples: int
+
+
+@dataclass(frozen=True, slots=True)
+class _OptunaSearchSpace:
+    """Bounded Optuna parameter ranges derived from dataset size."""
+
+    mcs_min: int
+    mcs_max: int
+    ms_max: int
+    umap_n_neighbors_list: list[int]
+    umap_n_components_list: list[int]
+
+
+def _build_optuna_search_space(
+    n_data_points: int,
+    ranges: _ResolvedSearchRanges,
+) -> _OptunaSearchSpace:
+    """Compute bounded Optuna search ranges with fallbacks for small datasets."""
+    valid_mcs = [mcs for mcs in ranges.min_cluster_size_range if mcs < n_data_points]
+    if not valid_mcs:
+        mcs_min = max(2, n_data_points // 10)
+        mcs_max = max(mcs_min, n_data_points // 4)
+        _LOGGER.warning(
+            "min_cluster_size_range_adjusted",
+            original_range=ranges.min_cluster_size_range,
+            n_data_points=n_data_points,
+            adjusted_min=mcs_min,
+            adjusted_max=mcs_max,
+        )
+    else:
+        mcs_min = min(valid_mcs)
+        mcs_max = max(valid_mcs)
+    ms_max = max(ms if ms is not None else mcs_max for ms in ranges.min_samples_range)
+
+    # UMAP pynndescent is unstable when n_neighbors is close to dataset size
+    max_safe_neighbors = max(2, n_data_points // 3)
+    umap_n_neighbors_list = [
+        n for n in ranges.umap_n_neighbors_range if n is not None and n <= max_safe_neighbors
+    ]
+    if not umap_n_neighbors_list:
+        umap_n_neighbors_list = [max_safe_neighbors]
+        _LOGGER.info(
+            "umap_n_neighbors_adjusted",
+            original_range=ranges.umap_n_neighbors_range,
+            n_data_points=n_data_points,
+            safe_limit=max_safe_neighbors,
+        )
+    umap_n_components_list = [n for n in ranges.umap_n_components_range if n is not None]
+    return _OptunaSearchSpace(
+        mcs_min=mcs_min,
+        mcs_max=mcs_max,
+        ms_max=ms_max,
+        umap_n_neighbors_list=umap_n_neighbors_list,
+        umap_n_components_list=umap_n_components_list,
+    )
+
+
+def _suggest_optuna_umap_param(
+    trial: optuna.Trial,
+    name: str,
+    choices: list[int],
+) -> int | None:
+    """Suggest a categorical UMAP parameter when multiple choices exist, else return fixed value."""
+    if len(choices) > 1:
+        return trial.suggest_categorical(name, choices)
+    return choices[0] if choices else None
+
+
+@dataclass(frozen=True, slots=True)
+class _UmapOptions:
+    """Optional per-call UMAP hyperparameter overrides."""
+
+    n_neighbors: int | None
+    n_components: int | None
+    min_dist: float | None
+
+
+@dataclass(frozen=True, slots=True)
+class _HdbscanOptions:
+    """Per-call HDBSCAN parameters passed into fallback-guarded execution."""
+
+    min_cluster_size: int
+    min_samples: int
+    cluster_selection_epsilon: float | None
+    cluster_selection_method: str | None
+    allow_single_cluster: bool | None
+
+
+class _HdbscanRunOutcome(NamedTuple):
+    labels: np.ndarray
+    probs: np.ndarray
+    used_umap: bool
+    used_fallback: bool
+
+
+def _empty_cluster_result() -> ClusterResult:
+    """Return a zero-length ClusterResult for invalid or empty input."""
+    empty = np.empty((0,), dtype=int)
+    return ClusterResult(
+        empty, empty, False, HDBSCANSettings(min_cluster_size=0, min_samples=0), 0.0
+    )
+
+
+def _validate_cluster_input(embeddings: np.ndarray) -> ClusterResult | None:
+    """Return an empty ClusterResult if embeddings are empty, non-finite, or have zero norms."""
+    if embeddings.size == 0 or not np.isfinite(embeddings).all():
+        return _empty_cluster_result()
+    if (np.linalg.norm(embeddings, axis=1) == 0).any():
+        return _empty_cluster_result()
+    return None
+
+
+def _find_best_noise_k(noise_embeddings: np.ndarray, max_k: int) -> int:
+    """Select the KMeans cluster count for noise points maximizing silhouette score."""
+    best_k = _MIN_CLUSTER_COUNT
+    best_sil = -1.0
+
+    for k in range(2, max_k + 1):
+        try:
+            kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
+            kmeans_labels = kmeans.fit_predict(noise_embeddings)
+
+            if (
+                len(set(kmeans_labels)) >= _MIN_CLUSTER_COUNT
+                and len(kmeans_labels) >= _MIN_CLUSTER_COUNT
+            ):
+                sil = silhouette_score(noise_embeddings, kmeans_labels)
+                if sil > best_sil:
+                    best_sil = sil
+                    best_k = k
+        except (ValueError, RuntimeError) as exc:
+            _LOGGER.debug(
+                "noise_recluster.kmeans_k_search_failed",
+                k=k,
+                error=str(exc),
+            )
+            continue
+
+    return best_k
+
+
+def _resolve_search_ranges(config: _OptimizeConfig) -> _ResolvedSearchRanges:
+    """Apply default search ranges where callers passed None."""
+    return _ResolvedSearchRanges(
+        min_cluster_size_range=(
+            config.min_cluster_size_range
+            if config.min_cluster_size_range is not None
+            else [3, 4, 6, 8, 10, 12]
+        ),
+        min_samples_range=(
+            config.min_samples_range if config.min_samples_range is not None else [1, 2, 4, 6]
+        ),
+        umap_n_neighbors_range=(
+            config.umap_n_neighbors_range
+            if config.umap_n_neighbors_range is not None
+            else [10, 15, 30]
+        ),
+        umap_n_components_range=(
+            config.umap_n_components_range if config.umap_n_components_range is not None else [8]
+        ),
+    )
+
+
+def _is_invalid_optimization_input(embeddings: np.ndarray) -> bool:
+    """Return True when embeddings cannot be searched for cluster hyperparameters."""
+    return bool(
+        embeddings.size == 0
+        or embeddings.shape[0] < _MIN_CLUSTER_COUNT
+        or not np.isfinite(embeddings).all()
+    )
+
+
+def _composite_score(result: ClusterResult) -> float:
+    """Compute weighted clustering quality score (0.6*silhouette + 0.4*DBCV)."""
+    return 0.6 * (result.silhouette_score or 0.0) + 0.4 * (result.dbcv_score or 0.0)
+
+
+def _select_better_grid_result(
+    best: _BestGridResult,
+    candidate: _GridEvaluation,
+) -> _BestGridResult:
+    """Select the higher-scoring grid result, breaking exact ties by larger mcs then ms."""
+    if candidate.score > best.score:
+        return _BestGridResult(score=candidate.score, result=candidate.result)
+    if candidate.score == best.score and best.result:
+        better_mcs = candidate.min_cluster_size > best.result.params.min_cluster_size
+        same_mcs_better_ms = (
+            candidate.min_cluster_size == best.result.params.min_cluster_size
+            and candidate.min_samples > best.result.params.min_samples
+        )
+        if better_mcs or same_mcs_better_ms:
+            return _BestGridResult(score=best.score, result=candidate.result)
+    return best
 
 
 class Clusterer:
@@ -242,14 +487,176 @@ class Clusterer:
             Estimated optimal number of clusters
         """
         # For small datasets, use simple heuristic
-        if n_samples < 100:
+        if n_samples < _SMALL_DATASET_SAMPLE_THRESHOLD:
             return max(2, n_samples // 10)
 
         # For larger datasets, use sqrt(N/2) heuristic
         # This is a common rule of thumb for clustering
         return max(2, min(50, int(np.sqrt(n_samples / 2))))
 
-    def cluster(
+    def _maybe_reduce_with_umap(
+        self,
+        embeddings: np.ndarray,
+        options: _UmapOptions,
+    ) -> tuple[np.ndarray, bool]:
+        """Reduce embeddings with UMAP + FAISS k-NN when enabled and sample count permits."""
+        use_umap = bool(
+            self.settings.enable_umap_force
+            or (
+                self.settings.enable_umap_auto
+                and embeddings.shape[0] >= self.settings.umap_threshold_sentences
+            )
+        )
+        if not use_umap:
+            return embeddings, False
+
+        from umap import (  # noqa: PLC0415 - heavy umap/numba import deferred until UMAP is invoked
+            UMAP,
+        )
+
+        n_data_points = embeddings.shape[0]
+        requested_n_neighbors = options.n_neighbors or self.settings.umap_n_neighbors
+        # Safety margin: limit n_neighbors to at most N/3 for stability
+        safety_limit = max(2, n_data_points // 3)
+        adjusted_n_neighbors = max(2, min(requested_n_neighbors, safety_limit))
+
+        if n_data_points < _MIN_UMAP_POINTS:
+            return embeddings, False
+
+        try:
+            # Use FAISS for k-NN to avoid pynndescent 0.6.0 integer overflow
+            knn_indices, knn_dists = compute_knn_faiss(embeddings, adjusted_n_neighbors)
+            reducer = UMAP(
+                n_components=options.n_components or self.settings.umap_n_components,
+                n_neighbors=adjusted_n_neighbors,
+                metric="cosine",
+                min_dist=options.min_dist or self.settings.umap_min_dist,
+                random_state=42,
+                n_jobs=1,
+                precomputed_knn=(knn_indices, knn_dists),
+            )
+            return reducer.fit_transform(embeddings), True
+        except Exception as e:  # noqa: BLE001 - FAISS/UMAP failure falls back to non-UMAP clustering
+            _LOGGER.warning(
+                "faiss_knn_failed_fallback_no_umap",
+                error=str(e),
+                n_samples=n_data_points,
+            )
+            return embeddings, False
+
+    def _run_hdbscan_with_fallback(
+        self,
+        reduced: np.ndarray,
+        n_original: int,
+        use_umap: bool,
+        options: _HdbscanOptions,
+    ) -> _HdbscanRunOutcome:
+        """Run HDBSCAN with timeout and MiniBatchKMeans fallback when needed."""
+        effective_mcs = (
+            options.min_cluster_size
+            if options.min_cluster_size > 0
+            else self.settings.hdbscan_min_cluster_size
+        )
+        effective_ms = (
+            options.min_samples if options.min_samples > 0 else self.settings.hdbscan_min_samples
+        )
+
+        if reduced.shape[0] < max(2, effective_mcs, effective_ms):
+            labels = np.arange(n_original, dtype=int)
+            probs = np.ones_like(labels, dtype=float)
+            return _HdbscanRunOutcome(labels, probs, used_umap=False, used_fallback=False)
+
+        def run_hdbscan() -> tuple[np.ndarray, np.ndarray]:
+            clusterer = HDBSCAN(
+                min_cluster_size=effective_mcs,
+                min_samples=effective_ms,
+                metric="euclidean",
+                cluster_selection_epsilon=options.cluster_selection_epsilon
+                if options.cluster_selection_epsilon is not None
+                else 0.0,
+                allow_single_cluster=options.allow_single_cluster
+                if options.allow_single_cluster is not None
+                else False,
+                cluster_selection_method=options.cluster_selection_method
+                or self.settings.hdbscan_cluster_selection_method,
+            )
+            clusterer.fit(reduced)
+            return clusterer.labels_, clusterer.probabilities_
+
+        used_fallback = False
+        if _is_abandoned_hdbscan_running():
+            _LOGGER.warning(
+                "abandoned_hdbscan_still_running",
+                reason="abandoned_hdbscan_still_running",
+                n_samples=reduced.shape[0],
+                min_cluster_size=effective_mcs,
+            )
+            labels, probs = self._fallback_minibatch_kmeans(reduced)
+            used_fallback = True
+        else:
+            timeout_seconds = self.settings.hdbscan_timeout_seconds
+            result = self._run_with_timeout(run_hdbscan, timeout_seconds, track_abandoned=True)
+            if result is not None:
+                labels, probs = result
+            else:
+                _LOGGER.warning(
+                    "hdbscan_fallback_triggered",
+                    timeout_seconds=timeout_seconds,
+                    n_samples=reduced.shape[0],
+                    min_cluster_size=effective_mcs,
+                )
+                labels, probs = self._fallback_minibatch_kmeans(reduced)
+                used_fallback = True
+
+        if (labels >= 0).sum() == 0:
+            labels = np.arange(n_original, dtype=int)
+            probs = np.ones_like(labels, dtype=float)
+            use_umap = False
+
+        return _HdbscanRunOutcome(labels, probs, used_umap=use_umap, used_fallback=used_fallback)
+
+    def _recluster_noise(
+        self,
+        reduced: np.ndarray,
+        labels: np.ndarray,
+        probs: np.ndarray,
+        min_cluster_size: int,
+    ) -> None:
+        """Attempt to cluster HDBSCAN noise points (-1) in place using KMeans."""
+        if not self.settings.noise_recluster_enabled:
+            return
+
+        noise_mask = labels == -1
+        n_noise = noise_mask.sum()
+        if n_noise < self.settings.noise_recluster_min_points:
+            return
+
+        noise_embeddings = reduced[noise_mask]
+        max_k = min(
+            self.settings.noise_recluster_max_clusters,
+            n_noise // max(2, min_cluster_size),
+        )
+        if max_k < _MIN_CLUSTER_COUNT:
+            return
+
+        best_k = _find_best_noise_k(noise_embeddings, max_k)
+        if best_k >= _MIN_CLUSTER_COUNT:
+            try:
+                kmeans = KMeans(n_clusters=best_k, random_state=42, n_init=10)
+                noise_labels = kmeans.fit_predict(noise_embeddings)
+
+                max_existing_label = labels.max() if labels.size > 0 else -1
+                base_id = max_existing_label + 1
+                labels[noise_mask] = base_id + noise_labels
+                probs[noise_mask] = 1.0
+            except (ValueError, RuntimeError) as exc:
+                _LOGGER.warning(
+                    "noise_recluster.kmeans_apply_failed",
+                    best_k=best_k,
+                    error=str(exc),
+                )
+
+    def cluster(  # noqa: PLR0913 - public clustering entry point; callers pass these by keyword
         self,
         embeddings: np.ndarray,
         *,
@@ -262,219 +669,54 @@ class Clusterer:
         hdbscan_cluster_selection_method: str | None = None,
         hdbscan_allow_single_cluster: bool | None = None,
     ) -> ClusterResult:
-        if embeddings.size == 0:
-            empty = np.empty((0,), dtype=int)
-            return ClusterResult(
-                empty, empty, False, HDBSCANSettings(min_cluster_size=0, min_samples=0), 0.0
-            )
-
-        # Validation: Check for NaNs or Infs
-        if not np.isfinite(embeddings).all():
-            empty = np.empty((0,), dtype=int)
-            return ClusterResult(
-                empty, empty, False, HDBSCANSettings(min_cluster_size=0, min_samples=0), 0.0
-            )
-
-        # Validation: Check for zero vectors (which break cosine metric)
-        norms = np.linalg.norm(embeddings, axis=1)
-        if (norms == 0).any():
-            empty = np.empty((0,), dtype=int)
-            return ClusterResult(
-                empty, empty, False, HDBSCANSettings(min_cluster_size=0, min_samples=0), 0.0
-            )
+        if invalid := _validate_cluster_input(embeddings):
+            return invalid
 
         with _guard_native_clustering():
-            # Force UMAP if enabled, otherwise use threshold-based auto-enable
-            use_umap = bool(
-                self.settings.enable_umap_force
-                or (
-                    self.settings.enable_umap_auto
-                    and embeddings.shape[0] >= self.settings.umap_threshold_sentences
-                )
+            reduced, use_umap = self._maybe_reduce_with_umap(
+                embeddings,
+                _UmapOptions(
+                    n_neighbors=umap_n_neighbors,
+                    n_components=umap_n_components,
+                    min_dist=umap_min_dist,
+                ),
             )
-            reduced = embeddings
-            if use_umap:
-                from umap import UMAP  # lazy import
-
-                n_data_points = embeddings.shape[0]
-                requested_n_neighbors = umap_n_neighbors or self.settings.umap_n_neighbors
-                # Safety margin: limit n_neighbors to at most N/3 for stability
-                safety_limit = max(2, n_data_points // 3)
-                adjusted_n_neighbors = max(2, min(requested_n_neighbors, safety_limit))
-
-                # If we have very few data points, skip UMAP to avoid issues
-                if n_data_points < 3:
-                    use_umap = False
-                else:
-                    # Use FAISS for k-NN computation instead of pynndescent
-                    # This avoids the integer overflow bug in pynndescent 0.6.0
-                    try:
-                        knn_indices, knn_dists = compute_knn_faiss(embeddings, adjusted_n_neighbors)
-
-                        reducer = UMAP(
-                            n_components=umap_n_components or self.settings.umap_n_components,
-                            n_neighbors=adjusted_n_neighbors,
-                            metric="cosine",
-                            min_dist=umap_min_dist or self.settings.umap_min_dist,
-                            random_state=42,  # reproducible
-                            n_jobs=1,
-                            precomputed_knn=(knn_indices, knn_dists),
-                        )
-                        reduced = reducer.fit_transform(embeddings)
-                    except Exception as e:
-                        # Fallback: skip UMAP if FAISS fails
-                        _LOGGER.warning(
-                            "faiss_knn_failed_fallback_no_umap",
-                            error=str(e),
-                            n_samples=n_data_points,
-                        )
-                        use_umap = False
-
-            # HDBSCAN (using sklearn.cluster.HDBSCAN) with timeout and fallback
-            used_fallback = False
-            effective_mcs = (
-                min_cluster_size if min_cluster_size > 0 else self.settings.hdbscan_min_cluster_size
+            outcome = self._run_hdbscan_with_fallback(
+                reduced,
+                embeddings.shape[0],
+                use_umap,
+                _HdbscanOptions(
+                    min_cluster_size=min_cluster_size,
+                    min_samples=min_samples,
+                    cluster_selection_epsilon=hdbscan_cluster_selection_epsilon,
+                    cluster_selection_method=hdbscan_cluster_selection_method,
+                    allow_single_cluster=hdbscan_allow_single_cluster,
+                ),
             )
-            effective_ms = min_samples if min_samples > 0 else self.settings.hdbscan_min_samples
-
-            def run_hdbscan() -> tuple[np.ndarray, np.ndarray]:
-                clusterer = HDBSCAN(
-                    min_cluster_size=effective_mcs,
-                    min_samples=effective_ms,
-                    metric="euclidean",
-                    cluster_selection_epsilon=hdbscan_cluster_selection_epsilon
-                    if hdbscan_cluster_selection_epsilon is not None
-                    else 0.0,
-                    allow_single_cluster=hdbscan_allow_single_cluster
-                    if hdbscan_allow_single_cluster is not None
-                    else False,
-                    cluster_selection_method=hdbscan_cluster_selection_method
-                    or self.settings.hdbscan_cluster_selection_method,
-                )
-                clusterer.fit(reduced)
-                return clusterer.labels_, clusterer.probabilities_
-
-            # Run HDBSCAN with timeout or fallback if abandoned HDBSCAN still running
-            if reduced.shape[0] < max(2, effective_mcs, effective_ms):
-                labels = np.arange(embeddings.shape[0], dtype=int)
-                probs = np.ones_like(labels, dtype=float)
-                use_umap = False
-            elif _is_abandoned_hdbscan_running():
-                _LOGGER.warning(
-                    "abandoned_hdbscan_still_running",
-                    reason="abandoned_hdbscan_still_running",
-                    n_samples=reduced.shape[0],
-                    min_cluster_size=effective_mcs,
-                )
-                labels, probs = self._fallback_minibatch_kmeans(reduced)
-                used_fallback = True
-            else:
-                timeout_seconds = self.settings.hdbscan_timeout_seconds
-                result = self._run_with_timeout(run_hdbscan, timeout_seconds, track_abandoned=True)
-
-                if result is not None:
-                    labels, probs = result
-                else:
-                    # Fallback to MiniBatchKMeans
-                    _LOGGER.warning(
-                        "hdbscan_fallback_triggered",
-                        timeout_seconds=timeout_seconds,
-                        n_samples=reduced.shape[0],
-                        min_cluster_size=effective_mcs,
-                    )
-                    labels, probs = self._fallback_minibatch_kmeans(reduced)
-                    used_fallback = True
-
-            if (labels >= 0).sum() == 0:
-                labels = np.arange(embeddings.shape[0], dtype=int)
-                probs = np.ones_like(labels, dtype=float)
-                use_umap = False
-
-            # Noise reclustering: attempt to cluster noise points (-1) using KMeans
-            if self.settings.noise_recluster_enabled:
-                noise_mask = labels == -1
-                n_noise = noise_mask.sum()
-
-                if n_noise >= self.settings.noise_recluster_min_points:
-                    noise_embeddings = reduced[noise_mask]
-
-                    # Determine optimal number of clusters for noise points
-                    # Use silhouette score to select k
-                    max_k = min(
-                        self.settings.noise_recluster_max_clusters,
-                        n_noise // max(2, min_cluster_size),
-                    )
-
-                    if max_k >= 2:
-                        best_k = 2
-                        best_sil = -1.0
-
-                        for k in range(2, max_k + 1):
-                            try:
-                                from sklearn.cluster import KMeans
-
-                                kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
-                                kmeans_labels = kmeans.fit_predict(noise_embeddings)
-
-                                # Calculate silhouette for this k
-                                if len(set(kmeans_labels)) >= 2 and len(kmeans_labels) >= 2:
-                                    sil = silhouette_score(noise_embeddings, kmeans_labels)
-                                    if sil > best_sil:
-                                        best_sil = sil
-                                        best_k = k
-                            except (ValueError, RuntimeError) as exc:
-                                _LOGGER.debug(
-                                    "noise_recluster.kmeans_k_search_failed",
-                                    k=k,
-                                    error=str(exc),
-                                )
-                                continue
-
-                        # Apply best k clustering
-                        if best_k >= 2:
-                            try:
-                                from sklearn.cluster import KMeans
-
-                                kmeans = KMeans(n_clusters=best_k, random_state=42, n_init=10)
-                                noise_labels = kmeans.fit_predict(noise_embeddings)
-
-                                # Assign new cluster IDs (starting from max existing label + 1)
-                                max_existing_label = labels.max() if labels.size > 0 else -1
-                                base_id = max_existing_label + 1
-                                new_noise_labels = base_id + noise_labels
-
-                                # Update labels and probabilities
-                                labels[noise_mask] = new_noise_labels
-                                probs[noise_mask] = 1.0  # Hard clustering
-                            except (ValueError, RuntimeError) as exc:
-                                # If reclustering fails, keep noise as -1
-                                _LOGGER.warning(
-                                    "noise_recluster.kmeans_apply_failed",
-                                    best_k=best_k,
-                                    error=str(exc),
-                                )
+            self._recluster_noise(reduced, outcome.labels, outcome.probs, min_cluster_size)
 
             # Calculate DBCV score using the reduced space (or embeddings if UMAP not used)
-            # This ensures consistency with the space HDBSCAN actually operated on
-            dbcv = self._calculate_dbcv(reduced, labels)
-
-            # Recalculate silhouette after potential noise reclustering
-            sil_score = self._calculate_silhouette(reduced, labels)
+            dbcv = self._calculate_dbcv(reduced, outcome.labels)
+            sil_score = self._calculate_silhouette(reduced, outcome.labels)
 
             return ClusterResult(
-                labels=labels,
-                probabilities=probs,
-                used_umap=use_umap,
+                labels=outcome.labels,
+                probabilities=outcome.probs,
+                used_umap=outcome.used_umap,
                 params=HDBSCANSettings(
                     min_cluster_size=min_cluster_size,
                     min_samples=min_samples,
                 ),
                 dbcv_score=dbcv,
                 silhouette_score=sil_score,
-                used_fallback=used_fallback,
+                used_fallback=outcome.used_fallback,
             )
 
-    def _calculate_dbcv(self, X: np.ndarray, labels: np.ndarray) -> float | None:
+    def _calculate_dbcv(
+        self,
+        X: np.ndarray,  # noqa: N803  # ML matrix convention
+        labels: np.ndarray,
+    ) -> float | None:
         """
         Calculate DBCV (Density-Based Clustering Validation) score using hdbscan.validity.validity_index.
 
@@ -488,7 +730,9 @@ class Clusterer:
             callers must not treat this as a measured 0.0.
         """
         try:
-            from hdbscan.validity import validity_index
+            from hdbscan.validity import (  # noqa: PLC0415 - heavy hdbscan/numba import deferred until DBCV evaluation
+                validity_index,
+            )
         except ImportError:
             # hdbscan is not available (e.g., build issues) — not measured.
             return None
@@ -496,14 +740,14 @@ class Clusterer:
         try:
             # Filter out noise points (-1) for DBCV calculation
             mask = labels != -1
-            if mask.sum() < 2:
+            if mask.sum() < _MIN_CLUSTER_COUNT:
                 return None
 
-            filtered_X = X[mask]
+            filtered_X = X[mask]  # noqa: N806 - ML feature matrix convention
             filtered_labels = labels[mask]
 
             # DBCV requires at least 2 distinct clusters
-            if len(set(filtered_labels)) < 2:
+            if len(set(filtered_labels)) < _MIN_CLUSTER_COUNT:
                 return None
 
             dbcv = float(validity_index(filtered_X, filtered_labels, metric="euclidean"))
@@ -511,8 +755,6 @@ class Clusterer:
             # Ensure result is finite (handle NaN/Inf)
             if not np.isfinite(dbcv):
                 return None
-
-            return dbcv
         except (ValueError, ArithmeticError) as exc:
             _LOGGER.warning(
                 "clusterer.dbcv_calculation_failed",
@@ -520,6 +762,8 @@ class Clusterer:
                 error_type=type(exc).__name__,
             )
             return None
+        else:
+            return dbcv
 
     def _calculate_silhouette(self, embeddings: np.ndarray, labels: np.ndarray) -> float | None:
         """Returns None (not a measured 0.0) when the score can't be computed."""
@@ -532,7 +776,10 @@ class Clusterer:
             filtered_embeddings = embeddings[non_noise_indices]
             filtered_labels = labels[non_noise_indices]
 
-            if len(set(filtered_labels)) < 2 or len(filtered_labels) < 2:
+            if (
+                len(set(filtered_labels)) < _MIN_CLUSTER_COUNT
+                or len(filtered_labels) < _MIN_CLUSTER_COUNT
+            ):
                 return None
 
             return float(silhouette_score(filtered_embeddings, filtered_labels))
@@ -544,7 +791,7 @@ class Clusterer:
             )
             return None
 
-    def optimize_clustering(
+    def optimize_clustering(  # noqa: PLR0913 - implements port signature
         self,
         embeddings: np.ndarray,
         *,
@@ -561,22 +808,7 @@ class Clusterer:
         Uses composite score (0.6*silhouette + 0.4*DBCV) to select the best configuration.
         If use_bayes_opt is True, uses Optuna for Bayesian optimization.
         """
-        # Use Optuna if enabled
-        if self.settings.use_bayes_opt:
-            return self._optimize_clustering_optuna(
-                embeddings,
-                min_cluster_size_range=min_cluster_size_range,
-                min_samples_range=min_samples_range,
-                umap_n_neighbors_range=umap_n_neighbors_range,
-                umap_n_components_range=umap_n_components_range,
-                hdbscan_cluster_selection_method=hdbscan_cluster_selection_method,
-                hdbscan_allow_single_cluster=hdbscan_allow_single_cluster,
-                token_counts=token_counts,
-            )
-
-        # Use grid search implementation
-        return self._optimize_clustering_grid(
-            embeddings,
+        config = _OptimizeConfig(
             min_cluster_size_range=min_cluster_size_range,
             min_samples_range=min_samples_range,
             umap_n_neighbors_range=umap_n_neighbors_range,
@@ -585,114 +817,103 @@ class Clusterer:
             hdbscan_allow_single_cluster=hdbscan_allow_single_cluster,
             token_counts=token_counts,
         )
+        if self.settings.use_bayes_opt:
+            return self._optimize_clustering_optuna(embeddings, config)
+
+        return self._optimize_clustering_grid(embeddings, config)
+
+    def _evaluate_grid_candidate(
+        self,
+        embeddings: np.ndarray,
+        candidate: _GridCandidate,
+        config: _OptimizeConfig,
+    ) -> _GridEvaluation:
+        """Cluster one grid candidate and compute its composite optimization score."""
+        result = self.cluster(
+            embeddings,
+            min_cluster_size=candidate.min_cluster_size,
+            min_samples=candidate.min_samples,
+            umap_n_neighbors=candidate.n_neighbors,
+            umap_n_components=candidate.n_components,
+            # Plan item 3: epsilon=0.5 for merging close clusters
+            hdbscan_cluster_selection_epsilon=0.5,
+            hdbscan_cluster_selection_method=config.hdbscan_cluster_selection_method,
+            hdbscan_allow_single_cluster=config.hdbscan_allow_single_cluster,
+        )
+        return _GridEvaluation(
+            result=result,
+            score=_composite_score(result),
+            min_cluster_size=candidate.min_cluster_size,
+            min_samples=candidate.min_samples,
+        )
+
+    def _grid_empty_fallback(self, embeddings: np.ndarray, n_data_points: int) -> ClusterResult:
+        """Fallback clustering when no grid candidate yields a result."""
+        return self.cluster(embeddings, min_cluster_size=max(3, n_data_points // 5), min_samples=1)
+
+    def _apply_recursive_clustering(
+        self,
+        embeddings: np.ndarray,
+        result: ClusterResult,
+        token_counts: np.ndarray | None,
+    ) -> ClusterResult:
+        """Recursively split oversized clusters when token counts are supplied."""
+        if token_counts is not None and result.labels.size > 0:
+            new_labels, new_probs = self.recursive_cluster(
+                embeddings, result.labels, result.probabilities, token_counts
+            )
+            result.labels = new_labels
+            result.probabilities = new_probs
+        return result
 
     def _optimize_clustering_grid(
         self,
         embeddings: np.ndarray,
-        *,
-        min_cluster_size_range: list[int] | None = None,
-        min_samples_range: list[int | None] | None = None,
-        umap_n_neighbors_range: list[int | None] | None = None,
-        umap_n_components_range: list[int | None] | None = None,
-        hdbscan_cluster_selection_method: str = "eom",
-        hdbscan_allow_single_cluster: bool = False,
-        token_counts: np.ndarray | None = None,
+        config: _OptimizeConfig,
     ) -> ClusterResult:
         """
         Grid search hyperparameter optimization (original implementation).
         Extracted to allow Optuna fallback.
         """
-        n_data_points = embeddings.shape[0]
-        if min_cluster_size_range is None:
-            min_cluster_size_range = [3, 4, 6, 8, 10, 12]
-        if min_samples_range is None:
-            min_samples_range = [1, 2, 4, 6]
-        if umap_n_neighbors_range is None:
-            umap_n_neighbors_range = [10, 15, 30]
-        if umap_n_components_range is None:
-            umap_n_components_range = [8]
-
-        best_score = -2.0
-        best_result = None
+        ranges = _resolve_search_ranges(config)
 
         # Pre-validation
-        if embeddings.size == 0 or n_data_points < 2 or not np.isfinite(embeddings).all():
+        if _is_invalid_optimization_input(embeddings):
             return self.cluster(embeddings, min_cluster_size=5, min_samples=2)
 
         n_data_points = embeddings.shape[0]
+        best = _BestGridResult(score=-2.0, result=None)
 
-        for n_neighbors in umap_n_neighbors_range:
-            for n_components in umap_n_components_range:
+        for n_neighbors in ranges.umap_n_neighbors_range:
+            for n_components in ranges.umap_n_components_range:
                 # Run HDBSCAN grid on this UMAP output
-
-                # To optimize: In a real high-perf scenario we'd cache the UMAP result here.
-                # Since 'cluster' method encapsulates UMAP + HDBSCAN, we are re-running UMAP.
-                # However, UMAP is stochastic unless random_state is fixed (which it is in our code).
-                # For now, we accept the overhead as we move to Rust later, or we could refactor.
-                # Refactoring `cluster` to accept `pre_reduced` would be cleaner but let's stick to the interface for now
-                # to avoid breaking changes in other calls. We rely on the fact that this is "optimization" mode.
-
-                for mcs in min_cluster_size_range:
-                    # Filter mcs based on dataset size
+                for mcs in ranges.min_cluster_size_range:
                     if mcs >= n_data_points:
                         continue
 
-                    for ms in min_samples_range:
-                        # ms can be None -> same as mcs. But our list has ints.
+                    for ms in ranges.min_samples_range:
                         current_ms = ms if ms is not None else mcs
-
-                        # Skip invalid
                         if current_ms > mcs:
                             continue
 
-                        # Perform clustering
-                        result = self.cluster(
+                        evaluation = self._evaluate_grid_candidate(
                             embeddings,
-                            min_cluster_size=mcs,
-                            min_samples=current_ms,
-                            umap_n_neighbors=n_neighbors,
-                            umap_n_components=n_components,
-                            # Plan item 3: epsilon=0.5 for merging close clusters
-                            hdbscan_cluster_selection_epsilon=0.5,
-                            hdbscan_cluster_selection_method=hdbscan_cluster_selection_method,
-                            hdbscan_allow_single_cluster=hdbscan_allow_single_cluster,
+                            _GridCandidate(
+                                n_neighbors=n_neighbors,
+                                n_components=n_components,
+                                min_cluster_size=mcs,
+                                min_samples=current_ms,
+                            ),
+                            config,
                         )
+                        best = _select_better_grid_result(best, evaluation)
 
-                        # Optimization metric: composite score (0.6 * silhouette + 0.4 * DBCV)
-                        # Both scores are typically in [-1, 1] range, so weighted sum is reasonable
-                        score = 0.6 * (result.silhouette_score or 0.0) + 0.4 * (
-                            result.dbcv_score or 0.0
-                        )
-
-                        # Tie-breaking logic:
-                        # 1. Higher composite score (better cluster separation and density validity)
-                        # 2. If equal, prefer larger min_cluster_size (more stable, fewer micro-clusters)
-                        # 3. If still equal, prefer larger min_samples (better noise resistance)
-                        if score > best_score:
-                            best_score = score
-                            best_result = result
-                        elif score == best_score and best_result:
-                            if mcs > best_result.params.min_cluster_size or (
-                                mcs == best_result.params.min_cluster_size
-                                and current_ms > best_result.params.min_samples
-                            ):
-                                best_result = result
-
-        if best_result is None:
-            # Fallback for very small data or failed searches
-            best_result = self.cluster(
-                embeddings, min_cluster_size=max(3, n_data_points // 5), min_samples=1
-            )
-
-        # Recursive step to break down large clusters
-        if token_counts is not None and best_result.labels.size > 0:
-            new_labels, new_probs = self.recursive_cluster(
-                embeddings, best_result.labels, best_result.probabilities, token_counts
-            )
-            best_result.labels = new_labels
-            best_result.probabilities = new_probs
-
-        return best_result
+        best_result = (
+            best.result
+            if best.result is not None
+            else self._grid_empty_fallback(embeddings, n_data_points)
+        )
+        return self._apply_recursive_clustering(embeddings, best_result, config.token_counts)
 
     def recursive_cluster(
         self,
@@ -826,162 +1047,91 @@ class Clusterer:
 
         return current_labels, current_probs
 
+    def _evaluate_optuna_trial(
+        self,
+        embeddings: np.ndarray,
+        trial: optuna.Trial,
+        space: _OptunaSearchSpace,
+        config: _OptimizeConfig,
+    ) -> float:
+        """Suggest hyperparameters for one Optuna trial and return its composite score."""
+        logged_params: dict[str, int | None] = {
+            "min_cluster_size": None,
+            "min_samples": None,
+            "n_neighbors": None,
+            "n_components": None,
+        }
+        try:
+            mcs = trial.suggest_int("min_cluster_size", space.mcs_min, space.mcs_max)
+            logged_params["min_cluster_size"] = mcs
+            ms_upper = min(space.ms_max, mcs)
+            ms = trial.suggest_int("min_samples", 1, ms_upper)
+            logged_params["min_samples"] = ms
+            n_neighbors = _suggest_optuna_umap_param(
+                trial, "umap_n_neighbors", space.umap_n_neighbors_list
+            )
+            logged_params["n_neighbors"] = n_neighbors
+            n_components = _suggest_optuna_umap_param(
+                trial, "umap_n_components", space.umap_n_components_list
+            )
+            logged_params["n_components"] = n_components
+
+            result = self.cluster(
+                embeddings,
+                min_cluster_size=mcs,
+                min_samples=ms,
+                umap_n_neighbors=n_neighbors,
+                umap_n_components=n_components,
+                hdbscan_cluster_selection_epsilon=0.5,
+                hdbscan_cluster_selection_method=config.hdbscan_cluster_selection_method,
+                hdbscan_allow_single_cluster=config.hdbscan_allow_single_cluster,
+            )
+            return _composite_score(result)
+        except (IndexError, ValueError, RuntimeError, TypeError) as e:
+            _LOGGER.warning(
+                "optuna_trial_failed",
+                trial_number=trial.number,
+                params=logged_params,
+                error=str(e),
+            )
+            return float("-inf")
+
     def _optimize_clustering_optuna(
         self,
         embeddings: np.ndarray,
-        *,
-        min_cluster_size_range: list[int] | None = None,
-        min_samples_range: list[int | None] | None = None,
-        umap_n_neighbors_range: list[int | None] | None = None,
-        umap_n_components_range: list[int | None] | None = None,
-        hdbscan_cluster_selection_method: str = "eom",
-        hdbscan_allow_single_cluster: bool = False,
-        token_counts: np.ndarray | None = None,
+        config: _OptimizeConfig,
     ) -> ClusterResult:
         """
         Bayesian hyperparameter optimization using Optuna (TPE sampler).
         Uses composite score (0.6*silhouette + 0.4*DBCV) as the objective.
         """
         try:
-            import optuna
-            from optuna.samplers import TPESampler
-        except ImportError:
-            # Fallback to grid search if Optuna is not available
-            return self._optimize_clustering_grid(
-                embeddings,
-                min_cluster_size_range=min_cluster_size_range,
-                min_samples_range=min_samples_range,
-                umap_n_neighbors_range=umap_n_neighbors_range,
-                umap_n_components_range=umap_n_components_range,
-                hdbscan_cluster_selection_method=hdbscan_cluster_selection_method,
-                hdbscan_allow_single_cluster=hdbscan_allow_single_cluster,
-                token_counts=token_counts,
+            import optuna  # noqa: PLC0415 - optional heavy optuna import deferred until Bayes optimization
+            from optuna.samplers import (  # noqa: PLC0415 - optional heavy optuna import deferred until Bayes optimization
+                TPESampler,
             )
+        except ImportError:
+            return self._optimize_clustering_grid(embeddings, config)
 
-        n_data_points = embeddings.shape[0]
-
-        # Pre-validation
-        if embeddings.size == 0 or n_data_points < 2 or not np.isfinite(embeddings).all():
+        if _is_invalid_optimization_input(embeddings):
             return self.cluster(embeddings, min_cluster_size=5, min_samples=2)
 
-        # Set default ranges if not provided
-        if min_cluster_size_range is None:
-            min_cluster_size_range = [3, 4, 6, 8, 10, 12]
-        if min_samples_range is None:
-            min_samples_range = [1, 2, 4, 6]
-        if umap_n_neighbors_range is None:
-            umap_n_neighbors_range = [10, 15, 30]
-        if umap_n_components_range is None:
-            umap_n_components_range = [8]
+        ranges = _resolve_search_ranges(config)
+        space = _build_optuna_search_space(embeddings.shape[0], ranges)
 
-        # Determine valid ranges with robust fallback
-        valid_mcs = [mcs for mcs in min_cluster_size_range if mcs < n_data_points]
-        if not valid_mcs:
-            # All candidates are >= data size, use sensible defaults
-            mcs_min = max(2, n_data_points // 10)
-            mcs_max = max(mcs_min, n_data_points // 4)
-            _LOGGER.warning(
-                "min_cluster_size_range_adjusted",
-                original_range=min_cluster_size_range,
-                n_data_points=n_data_points,
-                adjusted_min=mcs_min,
-                adjusted_max=mcs_max,
-            )
-        else:
-            mcs_min = min(valid_mcs)
-            mcs_max = max(valid_mcs)
-        ms_max = max(ms if ms is not None else mcs_max for ms in min_samples_range)
+        def objective(trial: optuna.Trial) -> float:
+            return self._evaluate_optuna_trial(embeddings, trial, space, config)
 
-        # Convert UMAP ranges to lists, limiting n_neighbors for stability
-        # UMAP pynndescent is unstable when n_neighbors is close to dataset size
-        max_safe_neighbors = max(2, n_data_points // 3)
-        umap_n_neighbors_list = [
-            n for n in umap_n_neighbors_range if n is not None and n <= max_safe_neighbors
-        ]
-        # Fallback if all n_neighbors values exceed the safety limit
-        if not umap_n_neighbors_list:
-            umap_n_neighbors_list = [max_safe_neighbors]
-            _LOGGER.info(
-                "umap_n_neighbors_adjusted",
-                original_range=umap_n_neighbors_range,
-                n_data_points=n_data_points,
-                safe_limit=max_safe_neighbors,
-            )
-        umap_n_components_list = [n for n in umap_n_components_range if n is not None]
-
-        def objective(trial):
-            # Initialize params for error logging
-            mcs = None
-            ms = None
-            n_neighbors = None
-            n_components = None
-
-            try:
-                # Suggest hyperparameters
-                mcs = trial.suggest_int("min_cluster_size", mcs_min, mcs_max)
-                # Ensure min_samples <= min_cluster_size
-                ms_upper = min(ms_max, mcs)
-                ms = trial.suggest_int("min_samples", 1, ms_upper)
-
-                # UMAP parameters (categorical if multiple options, otherwise fixed)
-                if len(umap_n_neighbors_list) > 1:
-                    n_neighbors = trial.suggest_categorical(
-                        "umap_n_neighbors", umap_n_neighbors_list
-                    )
-                else:
-                    n_neighbors = umap_n_neighbors_list[0] if umap_n_neighbors_list else None
-
-                if len(umap_n_components_list) > 1:
-                    n_components = trial.suggest_categorical(
-                        "umap_n_components", umap_n_components_list
-                    )
-                else:
-                    n_components = umap_n_components_list[0] if umap_n_components_list else None
-
-                # Perform clustering
-                result = self.cluster(
-                    embeddings,
-                    min_cluster_size=mcs,
-                    min_samples=ms,
-                    umap_n_neighbors=n_neighbors,
-                    umap_n_components=n_components,
-                    hdbscan_cluster_selection_epsilon=0.5,
-                    hdbscan_cluster_selection_method=hdbscan_cluster_selection_method,
-                    hdbscan_allow_single_cluster=hdbscan_allow_single_cluster,
-                )
-
-                # Return composite score (to maximize)
-                return 0.6 * (result.silhouette_score or 0.0) + 0.4 * (result.dbcv_score or 0.0)
-
-            except (IndexError, ValueError, RuntimeError, TypeError) as e:
-                _LOGGER.warning(
-                    "optuna_trial_failed",
-                    trial_number=trial.number,
-                    params={
-                        "min_cluster_size": mcs,
-                        "min_samples": ms,
-                        "n_neighbors": n_neighbors,
-                        "n_components": n_components,
-                    },
-                    error=str(e),
-                )
-                # Return worst score to discourage this parameter region
-                return float("-inf")
-
-        # Create study with TPE sampler and seed for reproducibility
         sampler = TPESampler(seed=42)
         study = optuna.create_study(direction="maximize", sampler=sampler)
 
-        # Optimize with timeout if specified
         timeout = self.settings.bayes_opt_timeout_seconds
         n_trials = self.settings.bayes_opt_trials
-
         if timeout is not None:
             study.optimize(objective, n_trials=n_trials, timeout=timeout)
         else:
             study.optimize(objective, n_trials=n_trials)
 
-        # Get best parameters and run final clustering
         best_params = study.best_params
         best_result = self.cluster(
             embeddings,
@@ -990,105 +1140,10 @@ class Clusterer:
             umap_n_neighbors=best_params.get("umap_n_neighbors"),
             umap_n_components=best_params.get("umap_n_components"),
             hdbscan_cluster_selection_epsilon=0.5,
-            hdbscan_cluster_selection_method=hdbscan_cluster_selection_method,
-            hdbscan_allow_single_cluster=hdbscan_allow_single_cluster,
+            hdbscan_cluster_selection_method=config.hdbscan_cluster_selection_method,
+            hdbscan_allow_single_cluster=config.hdbscan_allow_single_cluster,
         )
-
-        # Recursive step to break down large clusters
-        if token_counts is not None and best_result.labels.size > 0:
-            new_labels, new_probs = self.recursive_cluster(
-                embeddings, best_result.labels, best_result.probabilities, token_counts
-            )
-            best_result.labels = new_labels
-            best_result.probabilities = new_probs
-
-        return best_result
-
-    def _optimize_clustering_grid(
-        self,
-        embeddings: np.ndarray,
-        *,
-        min_cluster_size_range: list[int] | None = None,
-        min_samples_range: list[int | None] | None = None,
-        umap_n_neighbors_range: list[int | None] | None = None,
-        umap_n_components_range: list[int | None] | None = None,
-        hdbscan_cluster_selection_method: str = "eom",
-        hdbscan_allow_single_cluster: bool = False,
-        token_counts: np.ndarray | None = None,
-    ) -> ClusterResult:
-        """
-        Grid search hyperparameter optimization (original implementation).
-        Extracted to allow Optuna fallback.
-        """
-        n_data_points = embeddings.shape[0]
-        if min_cluster_size_range is None:
-            min_cluster_size_range = [3, 4, 6, 8, 10, 12]
-        if min_samples_range is None:
-            min_samples_range = [1, 2, 4, 6]
-        if umap_n_neighbors_range is None:
-            umap_n_neighbors_range = [10, 15, 30]
-        if umap_n_components_range is None:
-            umap_n_components_range = [8]
-
-        best_score = -2.0
-        best_result = None
-
-        # Pre-validation
-        if embeddings.size == 0 or n_data_points < 2 or not np.isfinite(embeddings).all():
-            return self.cluster(embeddings, min_cluster_size=5, min_samples=2)
-
-        n_data_points = embeddings.shape[0]
-
-        for n_neighbors in umap_n_neighbors_range:
-            for n_components in umap_n_components_range:
-                for mcs in min_cluster_size_range:
-                    if mcs >= n_data_points:
-                        continue
-
-                    for ms in min_samples_range:
-                        current_ms = ms if ms is not None else mcs
-
-                        if current_ms > mcs:
-                            continue
-
-                        result = self.cluster(
-                            embeddings,
-                            min_cluster_size=mcs,
-                            min_samples=current_ms,
-                            umap_n_neighbors=n_neighbors,
-                            umap_n_components=n_components,
-                            hdbscan_cluster_selection_epsilon=0.5,
-                            hdbscan_cluster_selection_method=hdbscan_cluster_selection_method,
-                            hdbscan_allow_single_cluster=hdbscan_allow_single_cluster,
-                        )
-
-                        score = 0.6 * (result.silhouette_score or 0.0) + 0.4 * (
-                            result.dbcv_score or 0.0
-                        )
-
-                        if score > best_score:
-                            best_score = score
-                            best_result = result
-                        elif score == best_score and best_result:
-                            if mcs > best_result.params.min_cluster_size or (
-                                mcs == best_result.params.min_cluster_size
-                                and current_ms > best_result.params.min_samples
-                            ):
-                                best_result = result
-
-        if best_result is None:
-            best_result = self.cluster(
-                embeddings, min_cluster_size=max(3, n_data_points // 5), min_samples=1
-            )
-
-        if token_counts is not None and best_result.labels.size > 0:
-            new_labels, new_probs = self.recursive_cluster(
-                embeddings, best_result.labels, best_result.probabilities, token_counts
-            )
-            best_result.labels = new_labels
-            best_result.probabilities = new_probs
-
-        return best_result
+        return self._apply_recursive_clustering(embeddings, best_result, config.token_counts)
 
     def subcluster_other(
         self, embeddings: np.ndarray, token_counts: np.ndarray | None = None

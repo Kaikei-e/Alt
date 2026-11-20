@@ -569,7 +569,7 @@ func TestValidateArticleResponseHeaders(t *testing.T) {
 		err := validateArticleResponseHeaders(http.StatusNotFound, 100, "https://example.com/art")
 		require.Error(t, err)
 		var httpErr *domain.ExternalHTTPError
-		require.True(t, errors.As(err, &httpErr))
+		require.ErrorAs(t, err, &httpErr)
 		assert.Equal(t, http.StatusNotFound, httpErr.StatusCode)
 		assert.Equal(t, "https://example.com/art", httpErr.URL)
 	})

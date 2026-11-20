@@ -133,8 +133,8 @@ func TestUpdateFeedStatus_NoFeedForURLIsErrFeedNotFound(t *testing.T) {
 	require.NoError(t, err)
 
 	err = repo.UpdateFeedStatus(ctx, *parsedURL, userUUID)
-	assert.ErrorIs(t, err, domain.ErrFeedNotFound, "expected the domain error")
-	assert.NotErrorIs(t, err, pgx.ErrNoRows, "the database error must not reach the caller")
+	require.ErrorIs(t, err, domain.ErrFeedNotFound, "expected the domain error")
+	require.NotErrorIs(t, err, pgx.ErrNoRows, "the database error must not reach the caller")
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -157,7 +157,7 @@ func TestUpdateFeedStatus_ExecFailureRollsBack(t *testing.T) {
 
 	err = repo.UpdateFeedStatus(ctx, *parsedURL, userUUID)
 	require.Error(t, err)
-	assert.NotErrorIs(t, err, domain.ErrFeedNotFound,
+	require.NotErrorIs(t, err, domain.ErrFeedNotFound,
 		"a database failure is not the same answer as a URL nobody subscribes to")
 	assert.NoError(t, mock.ExpectationsWereMet())
 }
@@ -211,9 +211,9 @@ func TestMarkArticleAsRead_SharesTheFeedNotFoundSemantics(t *testing.T) {
 
 			err = repo.MarkArticleAsRead(context.Background(), *parsedURL, userID)
 			if tt.wantNoErr {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			} else {
-				assert.ErrorIs(t, err, domain.ErrFeedNotFound)
+				require.ErrorIs(t, err, domain.ErrFeedNotFound)
 			}
 			assert.NoError(t, mock.ExpectationsWereMet())
 		})

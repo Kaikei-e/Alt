@@ -10,7 +10,7 @@ def _make_usecase() -> RecapSummaryUsecase:
     return RecapSummaryUsecase(config=Mock(), llm_provider=Mock())
 
 
-def test_numeric_fact_sentence_outranks_plain():
+def test_numeric_fact_sentence_outranks_plain() -> None:
     usecase = _make_usecase()
     plain = RepresentativeSentence(text="テック企業が新しい方針を発表した。")
     numeric = RepresentativeSentence(text="売上高は 35% 増の 2,400 億円に達した。")
@@ -25,7 +25,7 @@ def test_numeric_fact_sentence_outranks_plain():
     )
 
 
-def test_percent_only_sentence_still_boosted():
+def test_percent_only_sentence_still_boosted() -> None:
     usecase = _make_usecase()
     plain = RepresentativeSentence(text="The market changed in some way today.")
     pct = RepresentativeSentence(text="The market fell 4.2% today.")
@@ -34,7 +34,7 @@ def test_percent_only_sentence_still_boosted():
     ) > usecase._score_sentence_for_packing(plain, [plain])
 
 
-def test_date_only_sentence_still_boosted():
+def test_date_only_sentence_still_boosted() -> None:
     usecase = _make_usecase()
     plain = RepresentativeSentence(text="An announcement was made recently.")
     dated = RepresentativeSentence(text="On 2026-04-22 the acquisition was announced.")

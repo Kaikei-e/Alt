@@ -1,6 +1,6 @@
 """Health monitoring for tag generator service."""
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import structlog
 
@@ -8,6 +8,7 @@ logger = structlog.get_logger(__name__)
 
 if TYPE_CHECKING:
     from tag_generator.config import TagGeneratorConfig
+    from tag_generator.ports import ArticleFetcherPort
 
 
 class HealthMonitor:
@@ -16,8 +17,8 @@ class HealthMonitor:
     def __init__(
         self,
         config: TagGeneratorConfig,
-        article_fetcher: Any,
-    ):
+        article_fetcher: ArticleFetcherPort,
+    ) -> None:
         """Initialize health monitor with dependencies."""
         self.config = config
         self.article_fetcher = article_fetcher
@@ -62,10 +63,9 @@ class HealthMonitor:
                 untagged_count = self.article_fetcher.count_untagged_articles(None)
                 logger.info("health_diagnostic", untagged_count=untagged_count)
             except Exception as e:
-                logger.error(
+                logger.exception(
                     "health_diagnostic_failed",
                     error=str(e),
-                    exc_info=True,
                 )
 
         logger.debug("health_check_finished")

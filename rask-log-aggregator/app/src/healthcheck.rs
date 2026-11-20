@@ -16,11 +16,23 @@ impl std::fmt::Display for HealthcheckError {
 impl std::error::Error for HealthcheckError {}
 
 /// Perform a health check against the default port (9600)
+///
+/// # Errors
+///
+/// Returns [`HealthcheckError`] if building the HTTP client fails, the
+/// request to `http://127.0.0.1:9600/v1/health` fails, or the endpoint
+/// responds with a non-success status code.
 pub async fn healthcheck() -> Result<(), HealthcheckError> {
     healthcheck_with_port(DEFAULT_HTTP_PORT).await
 }
 
 /// Perform a health check against a specific port
+///
+/// # Errors
+///
+/// Returns [`HealthcheckError`] if constructing the `reqwest` client fails,
+/// the `GET` request to `http://127.0.0.1:{port}/v1/health` errors, or the
+/// response status is not 2xx.
 pub async fn healthcheck_with_port(port: u16) -> Result<(), HealthcheckError> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(2))

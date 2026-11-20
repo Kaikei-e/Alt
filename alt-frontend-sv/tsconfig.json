@@ -4,7 +4,8 @@
 		"rewriteRelativeImportExtensions": true,
 		"sourceMap": true,
 		"strict": true,
-		"noUncheckedIndexedAccess": true
+		"noUncheckedIndexedAccess": true,
+		"noFallthroughCasesInSwitch": true
 	},
 	"include": ["src", "tests", "*"],
 	"exclude": ["src/service-worker", "tests/**/*.js", "tests/**/*.cjs"]

@@ -18,6 +18,7 @@ import { getReadFeedsWithCursorClient } from "#lib/api/client/feeds.js";
 import { openReaderOverlay } from "#lib/reader/reader-overlay.svelte.js";
 import { ReadingSurface } from "#lib/reading/reading-events.js";
 import type { RenderFeed } from "#lib/schema/feed.js";
+import { assertDefined } from "#lib/test-utils/assert.js";
 import { createRenderFeed } from "../../../../../tests/fixtures/feeds";
 
 vi.mock("#lib/api/client/feeds.js", { spy: true });
@@ -139,8 +140,11 @@ describe("Morgue Desk page continuity across a rotation", () => {
 		render(Page);
 		await settle(400);
 
+		const firstFiled = assertDefined(FILED[0]);
+		const secondFiled = assertDefined(FILED[1]);
+
 		await page
-			.getByRole("button", { name: `Show details for ${FILED[0]!.title}` })
+			.getByRole("button", { name: `Show details for ${firstFiled.title}` })
 			.click();
 
 		expect(openReaderOverlay).toHaveBeenCalledTimes(1);
@@ -154,13 +158,15 @@ describe("Morgue Desk page continuity across a rotation", () => {
 		await page.viewport(1280, 800);
 		await settle(400);
 
-		await page.getByRole("button", { name: `Open ${FILED[1]!.title}` }).click();
+		await page
+			.getByRole("button", { name: `Open ${secondFiled.title}` })
+			.click();
 
 		expect(openReaderOverlay).toHaveBeenCalledTimes(1);
 		const desktopCtx = vi.mocked(openReaderOverlay).mock.calls[0]?.[0];
 		expect(desktopCtx?.surface).toBe(ReadingSurface.OTHER);
 		expect(desktopCtx?.currentIndex).toBe(1);
-		expect(desktopCtx?.items?.[1]?.url).toBe(FILED[1]!.normalizedUrl);
+		expect(desktopCtx?.items?.[1]?.url).toBe(secondFiled.normalizedUrl);
 		expect(document.querySelector('[role="dialog"]')).toBeNull();
 	});
 });

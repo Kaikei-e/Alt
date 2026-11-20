@@ -63,7 +63,9 @@ export function validateAuthHubToken(token, cfg = getConfig(), options = {}) {
     throw new Error("Token missing or invalid iat claim");
   }
   if (claims.iat > now + CLOCK_SKEW_SECONDS) {
-    throw new Error(`Token iat is in the future. iat=${claims.iat} now=${now} skew=${CLOCK_SKEW_SECONDS}`);
+    throw new Error(
+      `Token iat is in the future. iat=${claims.iat} now=${now} skew=${CLOCK_SKEW_SECONDS}`,
+    );
   }
 
   // Validate exp (Expiration Time)
@@ -82,12 +84,20 @@ export function validateAuthHubToken(token, cfg = getConfig(), options = {}) {
 
   // Enforce maximum token validity window (exp - iat <= 300 seconds)
   if (claims.exp - claims.iat > MAX_TTL_SECONDS) {
-    throw new Error(`Token validity duration (exp - iat) exceeds maximum allowed 5 minutes (${MAX_TTL_SECONDS}s). exp=${claims.exp} iat=${claims.iat} diff=${claims.exp - claims.iat}`);
+    throw new Error(
+      `Token validity duration (exp - iat) exceeds maximum allowed 5 minutes (${MAX_TTL_SECONDS}s). exp=${claims.exp} iat=${claims.iat} diff=${
+        claims.exp - claims.iat
+      }`,
+    );
   }
 
   // Token remaining validity from current time must not exceed 5 minutes + clock skew
   if (claims.exp > now + MAX_TTL_SECONDS + CLOCK_SKEW_SECONDS) {
-    throw new Error(`Token lifetime/expiration exceeds maximum allowed 5 minutes. exp=${claims.exp} maxAllowed=${now + MAX_TTL_SECONDS}`);
+    throw new Error(
+      `Token lifetime/expiration exceeds maximum allowed 5 minutes. exp=${claims.exp} maxAllowed=${
+        now + MAX_TTL_SECONDS
+      }`,
+    );
   }
 
   // Bounded cohort remaining validity check at init/request time
@@ -97,7 +107,9 @@ export function validateAuthHubToken(token, cfg = getConfig(), options = {}) {
     : (options.cohortDuration ? options.cohortDuration + 30 : 0);
 
   if (requiredRemaining > 0 && remaining < requiredRemaining) {
-    throw new Error(`Token remaining validity (${remaining}s) is insufficient (required >= ${requiredRemaining}s)`);
+    throw new Error(
+      `Token remaining validity (${remaining}s) is insufficient (required >= ${requiredRemaining}s)`,
+    );
   }
 
   // Validate Issuer
@@ -127,7 +139,9 @@ export function validateAuthHubToken(token, cfg = getConfig(), options = {}) {
       throw new Error(`Token tenant_id claim must be a valid UUID, got ${tenantId}`);
     }
     if (cfg.testTenantId && tenantId !== cfg.testTenantId) {
-      throw new Error(`Token tenant_id claim mismatch. expected=${cfg.testTenantId} got=${tenantId}`);
+      throw new Error(
+        `Token tenant_id claim mismatch. expected=${cfg.testTenantId} got=${tenantId}`,
+      );
     }
   } else if (cfg.testTenantId) {
     throw new Error(`Token missing tenant_id claim while testTenantId is configured`);

@@ -88,7 +88,7 @@ func snapshotMux(t *testing.T, repo SnapshotRepository) *http.ServeMux {
 func TestCreateSnapshot_DoesNotLeakInternalError(t *testing.T) {
 	repo := &fakeSnapshotRepo{maxSeqErr: wrappedInternalErr()}
 
-	req := httptest.NewRequest(http.MethodPost, "/admin/snapshots/create", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/admin/snapshots/create", nil)
 	rec := httptest.NewRecorder()
 	snapshotMux(t, repo).ServeHTTP(rec, req)
 
@@ -100,7 +100,7 @@ func TestCreateSnapshot_DoesNotLeakInternalError(t *testing.T) {
 func TestListSnapshots_DoesNotLeakInternalError(t *testing.T) {
 	repo := &fakeSnapshotRepo{listErr: wrappedInternalErr()}
 
-	req := httptest.NewRequest(http.MethodGet, "/admin/snapshots/list", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/admin/snapshots/list", nil)
 	rec := httptest.NewRecorder()
 	snapshotMux(t, repo).ServeHTTP(rec, req)
 
@@ -112,7 +112,7 @@ func TestListSnapshots_DoesNotLeakInternalError(t *testing.T) {
 func TestGetLatestSnapshot_DoesNotLeakInternalError(t *testing.T) {
 	repo := &fakeSnapshotRepo{latestErr: wrappedInternalErr()}
 
-	req := httptest.NewRequest(http.MethodGet, "/admin/snapshots/latest", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/admin/snapshots/latest", nil)
 	rec := httptest.NewRecorder()
 	snapshotMux(t, repo).ServeHTTP(rec, req)
 
@@ -125,19 +125,19 @@ func TestSnapshotHandler_HappyPaths(t *testing.T) {
 	repo := &fakeSnapshotRepo{}
 	mux := snapshotMux(t, repo)
 
-	reqCreate := httptest.NewRequest(http.MethodPost, "/admin/snapshots/create", nil)
+	reqCreate := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/admin/snapshots/create", nil)
 	recCreate := httptest.NewRecorder()
 	mux.ServeHTTP(recCreate, reqCreate)
 	require.Equal(t, http.StatusOK, recCreate.Code, "body: %s", recCreate.Body.String())
 	assert.Contains(t, recCreate.Body.String(), `"status":"valid"`)
 
-	reqList := httptest.NewRequest(http.MethodGet, "/admin/snapshots/list", nil)
+	reqList := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/admin/snapshots/list", nil)
 	recList := httptest.NewRecorder()
 	mux.ServeHTTP(recList, reqList)
 	require.Equal(t, http.StatusOK, recList.Code)
 	assert.Contains(t, recList.Body.String(), `"snapshots":[]`)
 
-	reqLatest := httptest.NewRequest(http.MethodGet, "/admin/snapshots/latest", nil)
+	reqLatest := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/admin/snapshots/latest", nil)
 	recLatest := httptest.NewRecorder()
 	mux.ServeHTTP(recLatest, reqLatest)
 	require.Equal(t, http.StatusOK, recLatest.Code)

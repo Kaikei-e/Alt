@@ -10,6 +10,7 @@ import (
 	"pre-processor/repository"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // stubRefusingArticleRepo mirrors the backend_api write path: an article whose
@@ -79,13 +80,13 @@ func TestSyncArticles_RedeliversArticlesTheWritePathRefused(t *testing.T) {
 
 		// Run 1: the feed is not registered in alt-db yet, so the write path
 		// refuses the article while reporting success to the caller.
-		assert.NoError(t, svc.SyncArticles(context.Background()))
+		require.NoError(t, svc.SyncArticles(context.Background()))
 		assert.Empty(t, articleRepo.written)
 
 		// The feed gets registered between the two hourly runs.
 		articleRepo.knownFeeds["https://example.com/feed"] = true
 
-		assert.NoError(t, svc.SyncArticles(context.Background()))
+		require.NoError(t, svc.SyncArticles(context.Background()))
 
 		assert.Equal(t, []string{"https://example.com/article1"}, articleRepo.written,
 			"an article the write path refused must stay inside the next run's window")
@@ -129,13 +130,13 @@ func TestSyncArticles_WatermarkStopsBelowTheOldestRefusedRow(t *testing.T) {
 		}
 		svc := NewArticleSyncService(articleRepo, testSyncOwnerUserID, testLoggerBackfill())
 
-		assert.NoError(t, svc.SyncArticles(context.Background()))
+		require.NoError(t, svc.SyncArticles(context.Background()))
 
 		assert.Len(t, articleRepo.sinceValues, 1)
 
 		// Run 2 while feed is still unregistered: known2 (already accepted on
 		// run 1) must NOT be re-sent while the watermark is held below unknown.
-		assert.NoError(t, svc.SyncArticles(context.Background()))
+		require.NoError(t, svc.SyncArticles(context.Background()))
 		assert.Equal(t, []string{
 			"https://example.com/known1",
 			"https://example.com/known2",
@@ -144,7 +145,7 @@ func TestSyncArticles_WatermarkStopsBelowTheOldestRefusedRow(t *testing.T) {
 		// Run 3 after the feed is registered: unknown is now written, without
 		// re-sending known2.
 		articleRepo.knownFeeds["https://example.com/unregistered-feed"] = true
-		assert.NoError(t, svc.SyncArticles(context.Background()))
+		require.NoError(t, svc.SyncArticles(context.Background()))
 
 		assert.Equal(t, now.Add(-3*time.Hour), articleRepo.sinceValues[1],
 			"the watermark must stop below the oldest refused row, not at the newest scanned one")
@@ -229,7 +230,7 @@ func TestSyncArticles_UpsertsRepairedRowAboveHeldWatermark(t *testing.T) {
 		}
 		svc := NewArticleSyncService(articleRepo, testSyncOwnerUserID, testLoggerBackfill())
 
-		assert.NoError(t, svc.SyncArticles(context.Background()))
+		require.NoError(t, svc.SyncArticles(context.Background()))
 		assert.Equal(t, []string{
 			"https://example.com/article-a",
 			"https://example.com/article-b",
@@ -245,7 +246,7 @@ func TestSyncArticles_UpsertsRepairedRowAboveHeldWatermark(t *testing.T) {
 			CreatedAt: t5,
 		}
 
-		assert.NoError(t, svc.SyncArticles(context.Background()))
+		require.NoError(t, svc.SyncArticles(context.Background()))
 		assert.Equal(t, []string{
 			"https://example.com/article-a",
 			"https://example.com/article-b",
@@ -289,8 +290,8 @@ func TestSyncArticles_UpsertsRepairedRowAboveHeldWatermark(t *testing.T) {
 		}
 		svc := NewArticleSyncService(articleRepo, testSyncOwnerUserID, testLoggerBackfill())
 
-		assert.NoError(t, svc.SyncArticles(context.Background()))
-		assert.NoError(t, svc.SyncArticles(context.Background()))
+		require.NoError(t, svc.SyncArticles(context.Background()))
+		require.NoError(t, svc.SyncArticles(context.Background()))
 		assert.Equal(t, []string{
 			"https://example.com/article-a",
 			"https://example.com/article-b",

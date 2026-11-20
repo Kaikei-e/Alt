@@ -11,9 +11,9 @@ func TestDefaultTemporalBoostConfig(t *testing.T) {
 
 	// Current defaults - these values are application-specific
 	// and should be validated through A/B testing in production
-	assert.Equal(t, float32(1.3), cfg.Boost6h, "boost for 0-6 hours")
-	assert.Equal(t, float32(1.15), cfg.Boost12h, "boost for 6-12 hours")
-	assert.Equal(t, float32(1.05), cfg.Boost18h, "boost for 12-18 hours")
+	assert.InDelta(t, float32(1.3), cfg.Boost6h, 1e-6, "boost for 0-6 hours")
+	assert.InDelta(t, float32(1.15), cfg.Boost12h, 1e-6, "boost for 6-12 hours")
+	assert.InDelta(t, float32(1.05), cfg.Boost18h, 1e-6, "boost for 12-18 hours")
 }
 
 func TestTemporalBoostConfig_GetBoostFactor(t *testing.T) {
@@ -69,7 +69,7 @@ func TestTemporalBoostConfig_GetBoostFactor(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := cfg.GetBoostFactor(tt.hoursSince)
-			assert.Equal(t, tt.expected, result)
+			assert.InDelta(t, tt.expected, result, 1e-6)
 		})
 	}
 }

@@ -40,7 +40,7 @@ class OverrideLoader(yaml.SafeLoader):
     """Tolerate the `!override` tag that compose files use for anchor merges."""
 
 
-def _construct_override(loader, node):  # type: ignore[no-untyped-def]
+def _construct_override(loader: OverrideLoader, node: yaml.Node) -> object:
     if isinstance(node, yaml.MappingNode):
         return loader.construct_mapping(node, deep=True)
     if isinstance(node, yaml.SequenceNode):
@@ -57,6 +57,7 @@ CASCADE_SCRIPT = REPO_ROOT / "scripts" / "cascade-pki-sidecars.sh"
 
 # Matches the COMPOSE_PROJECT default the retired cascade script used.
 COMPOSE_PROJECT = "alt"
+NETNS_SIDECAR_FIELD_COUNT = 3
 
 NETNS_PARENT_RE = re.compile(r"^service:(.+)$")
 # One NETNS_SIDECARS entry: a double-quoted colon-separated triplet.
@@ -70,7 +71,7 @@ def resolve_included(path: Path, seen: set[Path]) -> list[Path]:
         return []
     seen.add(path)
     out: list[Path] = [path]
-    data = yaml.load(path.read_text(encoding="utf-8"), Loader=OverrideLoader)
+    data = yaml.load(path.read_text(encoding="utf-8"), Loader=OverrideLoader)  # noqa: S506 — OverrideLoader subclasses SafeLoader for !override
     for inc in (data or {}).get("include", []) or []:
         inc_path = (path.parent / inc).resolve()
         if inc_path.is_file() and inc_path.suffix in (".yml", ".yaml"):
@@ -81,13 +82,18 @@ def resolve_included(path: Path, seen: set[Path]) -> list[Path]:
 def production_services() -> dict[str, dict]:
     """Merge `services:` across compose.yaml and everything it includes."""
     if not ROOT_COMPOSE.is_file():
-        raise SystemExit(f"missing root compose file: {ROOT_COMPOSE}")
+        msg = f"missing root compose file: {ROOT_COMPOSE}"
+        raise SystemExit(msg)
     services: dict[str, dict] = {}
     for path in resolve_included(ROOT_COMPOSE, set()):
-        data = yaml.load(path.read_text(encoding="utf-8"), Loader=OverrideLoader)
-        for name, svc in ((data or {}).get("services") or {}).items():
-            if isinstance(svc, dict):
-                services[name] = svc
+        data = yaml.load(path.read_text(encoding="utf-8"), Loader=OverrideLoader)  # noqa: S506 — OverrideLoader subclasses SafeLoader for !override
+        services.update(
+            {
+                name: svc
+                for name, svc in ((data or {}).get("services") or {}).items()
+                if isinstance(svc, dict)
+            }
+        )
     return services
 
 
@@ -131,11 +137,12 @@ def parse_cascade_rows(text: str) -> list[tuple[str, str, str]]:
         code = line.split("#", 1)[0]
         for raw in ROW_RE.findall(code):
             parts = raw.split(":")
-            if len(parts) != 3:
-                raise SystemExit(
+            if len(parts) != NETNS_SIDECAR_FIELD_COUNT:
+                msg = (
                     f"malformed NETNS_SIDECARS row {raw!r}: expected "
                     "'sidecar-service:sidecar-container:parent-container'"
                 )
+                raise SystemExit(msg)
             rows.append((parts[0], parts[1], parts[2]))
     return rows
 
@@ -160,11 +167,11 @@ def audit() -> list[str]:
     if CASCADE_SCRIPT.is_file():
         text = CASCADE_SCRIPT.read_text(encoding="utf-8")
         rows = parse_cascade_rows(text)
-        for row in rows:
-            violations.append(
-                f"{row[0]} has a NETNS_SIDECARS row in the retired cascade "
-                "script; drop the array — Wave 4 left no netns to repair"
-            )
+        violations.extend(
+            f"{row[0]} has a NETNS_SIDECARS row in the retired cascade "
+            "script; drop the array — Wave 4 left no netns to repair"
+            for row in rows
+        )
 
     return violations
 
@@ -182,7 +189,7 @@ def main() -> int:
             sys.stderr.write(f"  - {v}\n")
         return 1
 
-    print("compose-netns-cascade-audit OK — 0 forbidden netns pki sidecar(s).")
+    sys.stdout.write("compose-netns-cascade-audit OK — 0 forbidden netns pki sidecar(s).\n")
     return 0
 
 

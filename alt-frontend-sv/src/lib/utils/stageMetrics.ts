@@ -74,8 +74,7 @@ export function calculateStageDurations(
 	> = new Map();
 
 	// Process transitions to extract timing
-	for (let i = 0; i < sortedTransitions.length; i++) {
-		const transition = sortedTransitions[i]!;
+	for (const transition of sortedTransitions) {
 		const stage = transition.stage;
 
 		if (!stage) continue;
@@ -116,8 +115,9 @@ export function calculateStageDurations(
 	// by using the start time of the next stage
 	const stageOrder = PIPELINE_STAGES;
 	for (let i = 0; i < stageOrder.length - 1; i++) {
-		const currentStage = stageOrder[i]!;
-		const nextStage = stageOrder[i + 1]!;
+		const currentStage = stageOrder[i];
+		const nextStage = stageOrder[i + 1];
+		if (!currentStage || !nextStage) continue;
 		const current = stageTiming.get(currentStage);
 		const next = stageTiming.get(nextStage);
 
@@ -133,7 +133,8 @@ export function calculateStageDurations(
 	// This handles stages like "evidence" that may not record status transitions
 	if (jobStatus === "completed") {
 		for (let i = 0; i < stageOrder.length; i++) {
-			const stage = stageOrder[i]!;
+			const stage = stageOrder[i];
+			if (!stage) continue;
 			const timing = stageTiming.get(stage);
 
 			// Skip stages that already have complete timing data (both start and end)
@@ -144,18 +145,21 @@ export function calculateStageDurations(
 			// Infer timing from surrounding stages
 			let inferredStart: string | null = timing?.start ?? null;
 			let inferredEnd: string | null = timing?.end ?? null;
+			const prevStage = i > 0 ? stageOrder[i - 1] : undefined;
+			const nextStage =
+				i < stageOrder.length - 1 ? stageOrder[i + 1] : undefined;
 
 			// Use previous stage's end time as start
-			if (!inferredStart && i > 0) {
-				const prevTiming = stageTiming.get(stageOrder[i - 1]!);
+			if (!inferredStart && prevStage) {
+				const prevTiming = stageTiming.get(prevStage);
 				if (prevTiming?.end) {
 					inferredStart = prevTiming.end;
 				}
 			}
 
 			// Use next stage's start time as end
-			if (!inferredEnd && i < stageOrder.length - 1) {
-				const nextTiming = stageTiming.get(stageOrder[i + 1]!);
+			if (!inferredEnd && nextStage) {
+				const nextTiming = stageTiming.get(nextStage);
 				if (nextTiming?.start) {
 					inferredEnd = nextTiming.start;
 				}
@@ -168,8 +172,7 @@ export function calculateStageDurations(
 			}
 
 			// Update the previous stage's end if it's missing (this completes the chain)
-			if (i > 0) {
-				const prevStage = stageOrder[i - 1]!;
+			if (prevStage) {
 				const prevTiming = stageTiming.get(prevStage);
 				if (prevTiming?.start && !prevTiming.end && inferredStart) {
 					prevTiming.end = inferredStart;

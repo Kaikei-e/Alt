@@ -118,7 +118,7 @@ func TestServer_RejectsServiceToServiceConnectPaths(t *testing.T) {
 
 	for _, path := range paths {
 		t.Run(path, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{}`))
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, path, strings.NewReader(`{}`))
 			req.Header.Set("Content-Type", "application/json")
 			req.Header.Set("X-Alt-Backend-Token", createValidToken(t, testPrivateKey))
 
@@ -160,7 +160,7 @@ func TestServer_RejectsPathsOutsideGeneratedAllowlist(t *testing.T) {
 
 	for _, path := range paths {
 		t.Run(path, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{}`))
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, path, strings.NewReader(`{}`))
 			req.Header.Set("Content-Type", "application/json")
 			req.Header.Set("X-Alt-Backend-Token", createValidToken(t, testPrivateKey))
 
@@ -193,7 +193,7 @@ func TestServer_ForwardsUserFacingConnectPaths(t *testing.T) {
 	}
 	h := NewServerWithTransport(cfg, nil, http.DefaultTransport)
 
-	req := httptest.NewRequest(http.MethodPost, "/alt.feeds.v2.FeedService/GetFeedStats", strings.NewReader(`{}`))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/alt.feeds.v2.FeedService/GetFeedStats", strings.NewReader(`{}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, testPrivateKey))
 
@@ -233,7 +233,7 @@ func TestServer_AdminProxyTargetsInternalListener(t *testing.T) {
 	}
 	h := NewServerWithTransport(cfg, nil, http.DefaultTransport)
 
-	req := httptest.NewRequest(http.MethodPost,
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost,
 		"/alt.knowledge_home.v1.KnowledgeHomeAdminService/GetProjectionHealth",
 		strings.NewReader(`{}`))
 	req.Header.Set("Content-Type", "application/json")

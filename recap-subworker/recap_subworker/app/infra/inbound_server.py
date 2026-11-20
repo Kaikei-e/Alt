@@ -6,10 +6,15 @@ import asyncio
 import contextlib
 import logging
 import os
-from typing import Any
+import ssl
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import uvicorn
 from uvicorn.protocols.http.h11_impl import H11Protocol
+
+if TYPE_CHECKING:
+    from fastapi import FastAPI
 
 from recap_subworker.app.infra.inbound_tls import (
     InboundCertReloader,
@@ -48,41 +53,46 @@ def serve_app(*, host: str, port: int, log_level: str) -> None:
             handle.stop()
 
 
+@dataclass(frozen=True, slots=True)
+class _DualServerConfig:
+    host: str
+    plaintext_port: int
+    log_level: str
+    keep_alive: int
+
+
 async def _serve_dual(
     *,
-    app: Any,
-    host: str,
-    plaintext_port: int,
-    log_level: str,
-    keep_alive: int,
-    ctx: Any,
+    app: FastAPI,
+    server_cfg: _DualServerConfig,
+    ctx: ssl.SSLContext,
     reloader: InboundCertReloader,
 ) -> None:
     mtls_port = inbound_mtls_port()
     plain = uvicorn.Server(
         uvicorn.Config(
             app,
-            host=host,
-            port=plaintext_port,
-            log_level=log_level,
-            timeout_keep_alive=keep_alive,
+            host=server_cfg.host,
+            port=server_cfg.plaintext_port,
+            log_level=server_cfg.log_level,
+            timeout_keep_alive=server_cfg.keep_alive,
         )
     )
     mtls = uvicorn.Server(
         uvicorn.Config(
             app,
-            host=host,
+            host=server_cfg.host,
             port=mtls_port,
-            log_level=log_level,
+            log_level=server_cfg.log_level,
             lifespan="off",
             http=wrap_http_protocol(H11Protocol),
             ssl_context_factory=ssl_context_factory_for(ctx),
-            timeout_keep_alive=keep_alive,
+            timeout_keep_alive=server_cfg.keep_alive,
         )
     )
     logger.info(
         "inbound_mtls_listener plaintext=%s mtls=%s response_header_timeout=%s",
-        plaintext_port,
+        server_cfg.plaintext_port,
         mtls_port,
         inbound_listener_timeouts().response_header_timeout,
     )
@@ -114,10 +124,12 @@ def _serve_after_enrollment(*, host: str, port: int, log_level: str, keep_alive:
     asyncio.run(
         _serve_dual(
             app=app,
-            host=host,
-            plaintext_port=port,
-            log_level=log_level,
-            keep_alive=keep_alive,
+            server_cfg=_DualServerConfig(
+                host=host,
+                plaintext_port=port,
+                log_level=log_level,
+                keep_alive=keep_alive,
+            ),
             ctx=ctx,
             reloader=reloader,
         )

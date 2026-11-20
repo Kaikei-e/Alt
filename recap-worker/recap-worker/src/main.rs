@@ -28,7 +28,9 @@ mod cli;
 /// in-flight work or flush telemetry.
 async fn wait_for_shutdown_signal() {
     let ctrl_c = async {
-        let _ = tokio::signal::ctrl_c().await;
+        if let Err(e) = tokio::signal::ctrl_c().await {
+            warn!(error = %e, "failed to listen for SIGINT/Ctrl-C");
+        }
     };
 
     #[cfg(unix)]
@@ -94,6 +96,10 @@ fn arm_startup_deadline() -> anyhow::Result<(recap_worker::startup::StartupGuard
         // blocking task to finish, and a stuck blocking task is precisely the
         // state this fires in. `exit` runs no destructors, so the line above has
         // to have been written already — the fmt layer writes synchronously.
+        #[expect(
+            clippy::exit,
+            reason = "watchdog runs on a detached OS thread to break out of a stalled runtime; returning to main would drop the runtime and hang on the stuck blocking task"
+        )]
         std::process::exit(1);
     });
     Ok((guard, deadline))
@@ -180,6 +186,14 @@ fn maybe_spawn_batch_daemons(
     }
 }
 
+fn log_cards_catchup_status(catchup_enabled: bool) {
+    if catchup_enabled {
+        info!("cards_catchup_enabled");
+    } else {
+        info!("cards_catchup_disabled");
+    }
+}
+
 fn maybe_spawn_cards_batch_daemon(
     config: &recap_worker::config::Config,
     registry: &ComponentRegistry,
@@ -193,11 +207,7 @@ fn maybe_spawn_cards_batch_daemon(
             user_id,
         } => {
             info!(utc_hour, utc_minute, %user_id, "cards_job_enabled");
-            if config.cards_catchup_enabled() {
-                info!("cards_catchup_enabled");
-            } else {
-                info!("cards_catchup_disabled");
-            }
+            log_cards_catchup_status(config.cards_catchup_enabled());
             Some(recap_worker::scheduler::daemon::spawn_cards_batch_daemon(
                 registry.cards_runner(),
                 registry.cards_run_in_flight(),
@@ -290,11 +300,23 @@ async fn maybe_spawn_eval_listener(
     }
 }
 
+async fn join_shutdown_task(task: Option<tokio::task::JoinHandle<()>>, name: &str) {
+    if let Some(task) = task
+        && let Err(e) = task.await
+    {
+        warn!(task = name, error = %e, "background task failed during shutdown");
+    }
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Install rustls default crypto provider (required by rustls 0.23 when
     // multiple providers may be linked transitively, e.g. via reqwest +
     // axum-server). Ignore error if already installed by another path.
+    #[expect(
+        clippy::let_underscore_must_use,
+        reason = "install_default returns Err only when another code path already installed the process-wide CryptoProvider, which is harmless"
+    )]
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 
     let args: Vec<String> = env::args().collect();
@@ -387,15 +409,9 @@ async fn main() -> anyhow::Result<()> {
     // observing the same token), and the classification queue workers.
     shutdown_token.cancel();
     mtls_handle.graceful_shutdown(Some(Duration::from_secs(10)));
-    if let Some(task) = mtls_listener_task {
-        let _ = task.await;
-    }
-    if let Some(task) = eval_listener_task {
-        let _ = task.await;
-    }
-    if let Some(task) = notification_relay_task {
-        let _ = task.await;
-    }
+    join_shutdown_task(mtls_listener_task, "mtls_listener").await;
+    join_shutdown_task(eval_listener_task, "eval_listener").await;
+    join_shutdown_task(notification_relay_task, "notification_relay").await;
 
     scheduler.shutdown().await;
     if let Some(handle) = pki {

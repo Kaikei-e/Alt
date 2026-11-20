@@ -1,11 +1,14 @@
 """Cursor position management for article pagination."""
 
 from datetime import UTC, datetime
-from typing import Any
 
 import structlog
 
 logger = structlog.get_logger(__name__)
+
+_FUTURE_CURSOR_MAX_SECONDS = 3600
+_SECONDS_PER_DAY = 86400
+_BACKFILL_CURSOR_MAX_DAYS = 365
 
 
 class CursorManager:
@@ -45,28 +48,28 @@ class CursorManager:
                 cursor_is_poisoned = False
                 reason = ""
 
-                if time_diff.total_seconds() > 3600:  # More than 1 hour in future
+                if time_diff.total_seconds() > _FUTURE_CURSOR_MAX_SECONDS:  # More than 1 hour in future
                     cursor_is_poisoned = True
-                    reason = f"cursor {time_diff.total_seconds() / 3600:.1f} hours in future"
+                    reason = f"cursor {time_diff.total_seconds() / _FUTURE_CURSOR_MAX_SECONDS:.1f} hours in future"
                 # Note: Backfill mode may process articles older than 30 days, so use 365 days threshold
-                elif time_diff.total_seconds() < -86400 * 365:  # More than 365 days old
+                elif (
+                    time_diff.total_seconds() < -_SECONDS_PER_DAY * _BACKFILL_CURSOR_MAX_DAYS
+                ):  # More than 365 days old
                     cursor_is_poisoned = True
-                    reason = f"cursor {abs(time_diff.total_seconds()) / 86400:.1f} days old"
+                    reason = f"cursor {abs(time_diff.total_seconds()) / _SECONDS_PER_DAY:.1f} days old"
 
                 if cursor_is_poisoned:
                     logger.warning("cursor_poisoning_detected", reason=reason)
                     logger.warning("switching_to_newest_article_start_mode")
                     return self._get_fallback_cursor_position()
-                else:
-                    # Continue from where we left off
-                    last_created_at = self.last_processed_created_at
-                    last_id = self.last_processed_id
-                    logger.info(
-                        "continuing_from_cursor",
-                        last_created_at=last_created_at,
-                        last_id=last_id,
-                    )
-                    return last_created_at, last_id
+                # Continue from where we left off
+                last_created_at = self.last_processed_created_at
+                last_id = self.last_processed_id
+                logger.info(
+                    "continuing_from_cursor",
+                    last_created_at=last_created_at,
+                    last_id=last_id,
+                )
 
             except (ValueError, TypeError) as e:
                 logger.warning(
@@ -76,6 +79,8 @@ class CursorManager:
                 )
                 logger.warning("switching_to_newest_article_start_mode", reason="invalid_format")
                 return self._get_fallback_cursor_position()
+            else:
+                return last_created_at, last_id
         else:
             # First run - start from current time (API mode)
             logger.info("first_run_starting_from_current_time")
@@ -101,7 +106,7 @@ class CursorManager:
         """
         return self._get_fallback_cursor_position()
 
-    def get_forward_cursor_position(self, conn: Any) -> tuple[str, str]:
+    def get_forward_cursor_position(self, conn: object) -> tuple[str, str]:
         """Get the cursor for forward processing starting point."""
         if self.forward_cursor_created_at and self.forward_cursor_id:
             return self.forward_cursor_created_at, self.forward_cursor_id

@@ -125,7 +125,7 @@ func TestAppendKnowledgeEventUsecase_WrapsPortError(t *testing.T) {
 		Payload:       []byte(`{}`),
 	})
 	require.Error(t, err)
-	assert.ErrorIs(t, err, portErr)
+	require.ErrorIs(t, err, portErr)
 	assert.Contains(t, err.Error(), "append knowledge event")
 }
 

@@ -63,6 +63,7 @@ func (p *LightweightProxy) HandleCONNECTRequest(w http.ResponseWriter, r *http.R
 	connectPath := fmt.Sprintf("/connect/%s:443/", targetHost)
 
 	// Create new request with /connect/ path
+	// #nosec G704 -- connectPath is a relative in-process path (/connect/<allowlisted-host>:443/), never sent as an outbound HTTP request.
 	connectReq, err := http.NewRequestWithContext(r.Context(), "GET", connectPath, nil)
 	if err != nil {
 		p.logger.Printf("[%s] Failed to create /connect/ request: %v", traceID, err)

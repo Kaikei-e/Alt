@@ -9,175 +9,177 @@ Run:
 from __future__ import annotations
 
 import importlib.util
+import json
 import pathlib
+import subprocess
 import sys
+import tempfile
+from unittest import mock
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
-spec = importlib.util.spec_from_file_location(
-    "port_audit", SCRIPTS / "compose-port-audit.py"
-)
-assert spec is not None and spec.loader is not None
+spec = importlib.util.spec_from_file_location("port_audit", SCRIPTS / "compose-port-audit.py")
+assert spec is not None
+assert spec.loader is not None
 audit = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(audit)
 
-PASS = 0
-FAIL = 0
+
+class _Results:
+    def __init__(self) -> None:
+        self.passed = 0
+        self.failed = 0
+
+
+RESULTS = _Results()
+WILDCARD_IPV4 = "0.0.0.0"  # noqa: S104 - test fixture value
 
 
 def check(name: str, condition: bool) -> None:
-    global PASS, FAIL
     if condition:
-        print(f"  PASS  {name}")
-        PASS += 1
+        sys.stdout.write(f"  PASS  {name}\n")
+        RESULTS.passed += 1
     else:
-        print(f"  FAIL  {name}")
-        FAIL += 1
+        sys.stdout.write(f"  FAIL  {name}\n")
+        RESULTS.failed += 1
 
 
-print("is_loopback")
+sys.stdout.write("is_loopback\n")
 check("127.0.0.1 is loopback", audit.is_loopback("127.0.0.1"))
 check("127.0.0.2 is loopback", audit.is_loopback("127.0.0.2"))
 check("::1 is loopback", audit.is_loopback("::1"))
-check("0.0.0.0 is not loopback", not audit.is_loopback("0.0.0.0"))
+check("0.0.0.0 is not loopback", not audit.is_loopback(WILDCARD_IPV4))
 check(":: is not loopback", not audit.is_loopback("::"))
 check("public IP is not loopback", not audit.is_loopback("192.168.1.1"))
 check("invalid IP is not loopback", not audit.is_loopback("invalid-host"))
 
 
-print("violations (base stack port binding rules)")
+sys.stdout.write("violations (base stack port binding rules)\n")
 check(
     "loopback dict port is accepted",
-    audit.violations({
-        "services": {
-            "web": {
-                "ports": [{"host_ip": "127.0.0.1", "target": 8080, "published": "8080"}]
+    audit.violations(
+        {
+            "services": {
+                "web": {"ports": [{"host_ip": "127.0.0.1", "target": 8080, "published": "8080"}]}
             }
         }
-    }) == [],
+    )
+    == [],
 )
 check(
     "0.0.0.0 dict port is flagged",
-    len(audit.violations({
-        "services": {
-            "web": {
-                "ports": [{"host_ip": "0.0.0.0", "target": 8080, "published": "8080"}]
+    len(
+        audit.violations(
+            {
+                "services": {
+                    "web": {
+                        "ports": [{"host_ip": WILDCARD_IPV4, "target": 8080, "published": "8080"}]
+                    }
+                }
             }
-        }
-    })) == 1,
+        )
+    )
+    == 1,
 )
 check(
     "missing host_ip defaults to 0.0.0.0 and is flagged",
-    len(audit.violations({
-        "services": {
-            "web": {
-                "ports": [{"target": 8080, "published": "8080"}]
-            }
-        }
-    })) == 1,
+    len(audit.violations({"services": {"web": {"ports": [{"target": 8080, "published": "8080"}]}}}))
+    == 1,
 )
 check(
     "edge allowlist (plecto-proxy:8443) on 0.0.0.0 is permitted",
-    audit.violations({
-        "services": {
-            "plecto-proxy": {
-                "ports": [{"host_ip": "0.0.0.0", "target": 8443, "published": "80"}]
+    audit.violations(
+        {
+            "services": {
+                "plecto-proxy": {
+                    "ports": [{"host_ip": WILDCARD_IPV4, "target": 8443, "published": "80"}]
+                }
             }
         }
-    }) == [],
+    )
+    == [],
 )
 check(
     "pact-broker allowlist (pact-broker:9292) on non-loopback IP is permitted",
-    audit.violations({
-        "services": {
-            "pact-broker": {
-                "ports": [{"host_ip": "100.64.0.1", "target": 9292, "published": "9292"}]
+    audit.violations(
+        {
+            "services": {
+                "pact-broker": {
+                    "ports": [{"host_ip": "100.64.0.1", "target": 9292, "published": "9292"}]
+                }
             }
         }
-    }) == [],
+    )
+    == [],
 )
 check(
     "short syntax loopback string is accepted",
-    audit.violations({
-        "services": {
-            "web": {
-                "ports": ["127.0.0.1:9000:9000"]
-            }
-        }
-    }) == [],
+    audit.violations({"services": {"web": {"ports": ["127.0.0.1:9000:9000"]}}}) == [],
 )
 check(
     "short syntax 0.0.0.0 string is flagged",
-    len(audit.violations({
-        "services": {
-            "web": {
-                "ports": ["9000:9000"]
-            }
-        }
-    })) == 1,
+    len(audit.violations({"services": {"web": {"ports": ["9000:9000"]}}})) == 1,
 )
 check(
     "grafana loopback IPv4 (127.0.0.1) is accepted",
-    audit.violations({
-        "services": {
-            "grafana": {
-                "ports": ["127.0.0.1:3001:3000"]
-            }
-        }
-    }) == [],
+    audit.violations({"services": {"grafana": {"ports": ["127.0.0.1:3001:3000"]}}}) == [],
 )
 check(
     "grafana loopback IPv6 (::1) is accepted",
-    audit.violations({
-        "services": {
-            "grafana": {
-                "ports": [{"host_ip": "::1", "target": 3000, "published": "3001"}]
+    audit.violations(
+        {
+            "services": {
+                "grafana": {"ports": [{"host_ip": "::1", "target": 3000, "published": "3001"}]}
             }
         }
-    }) == [],
+    )
+    == [],
 )
 check(
     "grafana published on 0.0.0.0 is flagged",
-    len(audit.violations({
-        "services": {
-            "grafana": {
-                "ports": [{"host_ip": "0.0.0.0", "target": 3000, "published": "3001"}]
+    len(
+        audit.violations(
+            {
+                "services": {
+                    "grafana": {
+                        "ports": [{"host_ip": WILDCARD_IPV4, "target": 3000, "published": "3001"}]
+                    }
+                }
             }
-        }
-    })) == 1,
+        )
+    )
+    == 1,
 )
 check(
     "grafana published on IPv6 wildcard :: is flagged",
-    len(audit.violations({
-        "services": {
-            "grafana": {
-                "ports": [{"host_ip": "::", "target": 3000, "published": "3001"}]
+    len(
+        audit.violations(
+            {
+                "services": {
+                    "grafana": {"ports": [{"host_ip": "::", "target": 3000, "published": "3001"}]}
+                }
             }
-        }
-    })) == 1,
+        )
+    )
+    == 1,
 )
 check(
     "grafana short syntax 0.0.0.0 is flagged",
-    len(audit.violations({
-        "services": {
-            "grafana": {
-                "ports": ["3001:3000"]
-            }
-        }
-    })) == 1,
+    len(audit.violations({"services": {"grafana": {"ports": ["3001:3000"]}}})) == 1,
 )
 
 
-print("overlay allowlist policy")
+sys.stdout.write("overlay allowlist policy\n")
+EXPECTED_AUGUR_VIOLATIONS = 2
 augur_cfg = {
     "services": {
         "knowledge-augur": {
-            "ports": [{"host_ip": "0.0.0.0", "target": 11434, "published": "11435"}]
+            "ports": [{"host_ip": WILDCARD_IPV4, "target": 11434, "published": "11435"}]
         },
         "knowledge-embedder": {
-            "ports": [{"host_ip": "0.0.0.0", "target": 11434, "published": "11436"}]
+            "ports": [{"host_ip": WILDCARD_IPV4, "target": 11434, "published": "11436"}]
         },
     }
 }
@@ -187,16 +189,16 @@ check(
 )
 check(
     "compose.augur.yaml ports without overlay context are flagged as violations",
-    len(audit.violations(augur_cfg, overlay_path=None)) == 2,
+    len(audit.violations(augur_cfg, overlay_path=None)) == EXPECTED_AUGUR_VIOLATIONS,
 )
 
 augur_unallowlisted_cfg = {
     "services": {
         "knowledge-augur": {
-            "ports": [{"host_ip": "0.0.0.0", "target": 11434, "published": "11435"}]
+            "ports": [{"host_ip": WILDCARD_IPV4, "target": 11434, "published": "11435"}]
         },
         "unauthorized-worker": {
-            "ports": [{"host_ip": "0.0.0.0", "target": 8888, "published": "8888"}]
+            "ports": [{"host_ip": WILDCARD_IPV4, "target": 8888, "published": "8888"}]
         },
     }
 }
@@ -213,13 +215,11 @@ dev_cfg = {
     "services": {
         "mock-auth": {
             "ports": [
-                {"host_ip": "0.0.0.0", "target": 4001, "published": "4001"},
-                {"host_ip": "0.0.0.0", "target": 4002, "published": "4002"},
+                {"host_ip": WILDCARD_IPV4, "target": 4001, "published": "4001"},
+                {"host_ip": WILDCARD_IPV4, "target": 4002, "published": "4002"},
             ]
         },
-        "alt-backend": {
-            "ports": [{"host_ip": "0.0.0.0", "target": 9000, "published": "9000"}]
-        },
+        "alt-backend": {"ports": [{"host_ip": WILDCARD_IPV4, "target": 9000, "published": "9000"}]},
     }
 }
 check(
@@ -244,69 +244,62 @@ check(
 )
 
 
-print("zero_publish_violations")
+sys.stdout.write("zero_publish_violations\n")
 check(
     "alt-data-hub without ports is accepted in base stack",
-    audit.zero_publish_violations({
-        "services": {
-            "alt-data-hub": {"ports": []}
-        }
-    }, is_overlay=False) == [],
+    audit.zero_publish_violations({"services": {"alt-data-hub": {"ports": []}}}, is_overlay=False)
+    == [],
 )
 check(
     "alt-data-hub publishing loopback port is flagged",
-    len(audit.zero_publish_violations({
-        "services": {
-            "alt-data-hub": {
-                "ports": [{"host_ip": "127.0.0.1", "target": 9443, "published": "9443"}]
-            }
-        }
-    }, is_overlay=False)) == 1,
+    len(
+        audit.zero_publish_violations(
+            {
+                "services": {
+                    "alt-data-hub": {
+                        "ports": [{"host_ip": "127.0.0.1", "target": 9443, "published": "9443"}]
+                    }
+                }
+            },
+            is_overlay=False,
+        )
+    )
+    == 1,
 )
 check(
     "missing alt-data-hub in base stack is flagged (prevents silent rename)",
-    len(audit.zero_publish_violations({
-        "services": {
-            "other-service": {}
-        }
-    }, is_overlay=False)) == 1,
+    len(audit.zero_publish_violations({"services": {"other-service": {}}}, is_overlay=False)) == 1,
 )
 check(
     "missing alt-data-hub in overlay stack is permitted",
-    audit.zero_publish_violations({
-        "services": {
-            "other-service": {}
-        }
-    }, is_overlay=True) == [],
+    audit.zero_publish_violations({"services": {"other-service": {}}}, is_overlay=True) == [],
 )
 check(
     "alt-data-hub defined in overlay with published port is flagged",
-    len(audit.zero_publish_violations({
-        "services": {
-            "alt-data-hub": {
-                "ports": ["127.0.0.1:9443:9443"]
-            }
-        }
-    }, is_overlay=True)) == 1,
+    len(
+        audit.zero_publish_violations(
+            {"services": {"alt-data-hub": {"ports": ["127.0.0.1:9443:9443"]}}}, is_overlay=True
+        )
+    )
+    == 1,
 )
 
 
-print("non-standalone overlay skip handling")
+sys.stdout.write("non-standalone overlay skip handling\n")
 orig_resolved_config = audit.resolved_config
 try:
+
     def fake_resolved_config(compose_file: pathlib.Path) -> dict:
         if "failing-overlay.yaml" in str(compose_file):
-            raise audit.ComposeConfigError(
-                "service depends on undefined network: alt-network\nsecond line of docker error",
-                1,
+            err_msg = (
+                "service depends on undefined network: alt-network\nsecond line of docker error"
             )
+            raise audit.ComposeConfigError(err_msg, 1)
         return {"services": {}}
 
     audit.resolved_config = fake_resolved_config
 
-    failed, ports = audit.audit_file(
-        pathlib.Path("compose/failing-overlay.yaml"), is_overlay=True
-    )
+    failed, ports = audit.audit_file(pathlib.Path("compose/failing-overlay.yaml"), is_overlay=True)
     check("audit_file skips non-standalone overlay without failing", not failed and ports == 0)
 
     base_raised_system_exit = False
@@ -314,12 +307,15 @@ try:
         audit.audit_file(pathlib.Path("compose/failing-overlay.yaml"), is_overlay=False)
     except SystemExit:
         base_raised_system_exit = True
-    check("audit_file raises SystemExit when base stack config resolution fails", base_raised_system_exit)
+    check(
+        "audit_file raises SystemExit when base stack config resolution fails",
+        base_raised_system_exit,
+    )
 finally:
     audit.resolved_config = orig_resolved_config
 
 
-print("real repository overlay discovery")
+sys.stdout.write("real repository overlay discovery\n")
 repo_overlays = audit.find_overlay_files(ROOT)
 repo_overlay_names = {p.name for p in repo_overlays}
 check(
@@ -336,5 +332,29 @@ check(
 )
 
 
-print(f"\n{PASS} passed, {FAIL} failed")
-sys.exit(1 if FAIL else 0)
+sys.stdout.write("repo-root staging support\n")
+
+with tempfile.TemporaryDirectory() as _stage_dir:
+    _stage = pathlib.Path(_stage_dir)
+    (_stage / ".env").write_text("DOCKER_GROUP_ID=0\n", encoding="utf-8")
+    fake_proc = subprocess.CompletedProcess(
+        args=[], returncode=0, stdout=json.dumps({"services": {}}), stderr=""
+    )
+    with mock.patch.object(audit.subprocess, "run", return_value=fake_proc) as mocked_run:
+        audit.resolved_config(_stage / "compose" / "compose.yaml", repo_root=_stage)
+    argv = mocked_run.call_args.args[0]
+    check(
+        "resolved_config uses repo_root/.env and cwd=repo_root without --no-env-resolution",
+        argv[:4] == ["docker", "compose", "--env-file", str(_stage / ".env")]
+        and "--no-env-resolution" not in argv
+        and mocked_run.call_args.kwargs.get("cwd") == _stage,
+    )
+    check(
+        "relative_path_str preserves staged symlink path relative to repo_root",
+        audit.relative_path_str(_stage / "compose.augur.yaml", repo_root=_stage)
+        == "compose.augur.yaml",
+    )
+
+
+sys.stdout.write(f"\n{RESULTS.passed} passed, {RESULTS.failed} failed\n")
+sys.exit(1 if RESULTS.failed else 0)

@@ -14,6 +14,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -68,16 +69,34 @@ func NewProxyHandler(targetURL *url.URL, expectedToken string, responseHeaderTim
 		ForceAttemptHTTP2:      true,
 	}
 
-	proxy := httputil.NewSingleHostReverseProxy(targetURL)
-	proxy.Transport = transport
-	proxy.FlushInterval = -1 // Immediate flush for streaming responses
-	originalDirector := proxy.Director
-	proxy.Director = func(req *http.Request) {
-		originalDirector(req)
-		req.Host = targetURL.Host // Required for some upstreams
-		// Strip Authorization header before forwarding to upstream.
-		// Service credentials must not be leaked to the raw upstream handler.
-		req.Header.Del("Authorization")
+	proxy := &httputil.ReverseProxy{
+		Transport:     transport,
+		FlushInterval: -1, // Immediate flush for streaming responses
+		Rewrite: func(pr *httputil.ProxyRequest) {
+			pr.SetURL(targetURL)
+			pr.Out.Host = targetURL.Host // Required for some upstreams
+			// Match Director's forwarding-header semantics: preserve any inbound
+			// Forwarded / X-Forwarded-* headers and append clientIP to X-Forwarded-For
+			// without synthesizing X-Forwarded-Host or X-Forwarded-Proto.
+			for _, h := range []string{"Forwarded", "X-Forwarded-For", "X-Forwarded-Host", "X-Forwarded-Proto"} {
+				if vals, ok := pr.In.Header[h]; ok {
+					pr.Out.Header[h] = slices.Clone(vals)
+				}
+			}
+			if clientIP, _, err := net.SplitHostPort(pr.In.RemoteAddr); err == nil {
+				prior, ok := pr.Out.Header["X-Forwarded-For"]
+				omit := ok && prior == nil
+				if len(prior) > 0 {
+					clientIP = strings.Join(prior, ", ") + ", " + clientIP
+				}
+				if !omit {
+					pr.Out.Header.Set("X-Forwarded-For", clientIP)
+				}
+			}
+			// Strip Authorization header before forwarding to upstream.
+			// Service credentials must not be leaked to the raw upstream handler.
+			pr.Out.Header.Del("Authorization")
+		},
 	}
 
 	mux := http.NewServeMux()
@@ -320,17 +339,23 @@ func runHealthcheck(port string, client *http.Client) int {
 	}
 
 	url := fmt.Sprintf("http://127.0.0.1:%d/health", portNum)
+	// #nosec G704 -- host is hardcoded 127.0.0.1 and portNum is validated integer 1..65535 by validateHealthPort.
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "healthcheck request build failed: %v\n", err)
 		return 1
 	}
+	// #nosec G704 -- host is hardcoded 127.0.0.1 and portNum is validated integer 1..65535 by validateHealthPort.
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "healthcheck failed: %v\n", err)
 		return 1
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "healthcheck close error: %v\n", err)
+		}
+	}()
 
 	// Body bounded to max 4KiB (4096 bytes); oversize fails closed.
 	const maxHealthBodyBytes int64 = 4096

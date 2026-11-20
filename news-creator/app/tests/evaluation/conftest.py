@@ -9,7 +9,6 @@ from news_creator.domain.models import (
     Reference,
 )
 
-
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 
@@ -90,25 +89,25 @@ def _make_short_bullets_summary() -> RecapSummary:
 
 
 @pytest.fixture
-def good_summary():
+def good_summary() -> RecapSummary:
     return _make_summary_with_refs()
 
 
 @pytest.fixture
-def broken_refs_summary():
+def broken_refs_summary() -> RecapSummary:
     return _make_summary_broken_refs()
 
 
 @pytest.fixture
-def no_refs_summary():
+def no_refs_summary() -> RecapSummary:
     return _make_summary_no_refs()
 
 
 @pytest.fixture
-def redundant_summary():
+def redundant_summary() -> RecapSummary:
     return _make_redundant_summary()
 
 
 @pytest.fixture
-def short_summary():
+def short_summary() -> RecapSummary:
     return _make_short_bullets_summary()

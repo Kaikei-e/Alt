@@ -101,11 +101,17 @@ async function handleTriggerJob() {
 			? `Job ${result.job_id.slice(0, 8)}... started with ${result.genres.length} genres`
 			: `Job ${result.job_id.slice(0, 8)}... started`;
 
-		scheduleTriggerTimer(async () => {
-			await jobProgress.refresh();
-			if (jobProgress.data?.active_job) {
-				justStartedJobId = null;
-			}
+		scheduleTriggerTimer(() => {
+			void jobProgress
+				.refresh()
+				.then(() => {
+					if (jobProgress.data?.active_job) {
+						justStartedJobId = null;
+					}
+				})
+				.catch((err) => {
+					console.error("Failed to refresh job progress:", err);
+				});
 		}, 1000);
 
 		scheduleTriggerTimer(() => {
@@ -144,11 +150,17 @@ async function handleTriggerCardsJob() {
 		justStartedJobId = result.job_id;
 		triggerSuccess = "Topic cards job started";
 
-		scheduleTriggerTimer(async () => {
-			await jobProgress.refresh();
-			if (jobProgress.data?.active_job) {
-				justStartedJobId = null;
-			}
+		scheduleTriggerTimer(() => {
+			void jobProgress
+				.refresh()
+				.then(() => {
+					if (jobProgress.data?.active_job) {
+						justStartedJobId = null;
+					}
+				})
+				.catch((err) => {
+					console.error("Failed to refresh job progress:", err);
+				});
 		}, 1000);
 
 		scheduleTriggerTimer(() => {

@@ -2,7 +2,6 @@ package retrieval
 
 import (
 	"context"
-	"io"
 	"log/slog"
 	"strings"
 	"testing"
@@ -510,7 +509,7 @@ func TestExpandQueries_TagQueriesFilteredAndBounded(t *testing.T) {
 		},
 	}
 
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	err := ExpandQueries(context.Background(), sc, nil, nil, searchClient, stubOriginalEncoder{}, logger)
 	require.NoError(t, err)
 

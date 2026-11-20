@@ -4,6 +4,7 @@ import { render } from "vitest-browser-svelte";
 import type { TagTrailArticle, TagTrailTag } from "#lib/connect/index.js";
 import { openReaderOverlay } from "#lib/reader/reader-overlay.svelte.js";
 import { ReadingSurface } from "#lib/reading/reading-events.js";
+import { assertDefined } from "#lib/test-utils/assert.js";
 
 const {
 	fetchArticlesByTagMock,
@@ -220,28 +221,30 @@ describe("/feeds/tag-trail page", () => {
 		await page.getByRole("button", { name: "AI" }).click();
 		await settle(250);
 
+		const firstArticle = assertDefined(ARTICLES[0]);
+
 		await page
-			.getByRole("button", { name: `Show details for ${ARTICLES[0]!.title}` })
+			.getByRole("button", { name: `Show details for ${firstArticle.title}` })
 			.click();
 
 		expect(openReaderOverlay).toHaveBeenCalledTimes(1);
 		const desktopCtx = vi.mocked(openReaderOverlay).mock.calls[0]?.[0];
 		expect(desktopCtx?.surface).toBe(ReadingSurface.OTHER);
 		expect(desktopCtx?.currentIndex).toBe(0);
-		expect(desktopCtx?.items?.[0]?.url).toBe(ARTICLES[0]!.link);
+		expect(desktopCtx?.items?.[0]?.url).toBe(firstArticle.link);
 
 		vi.mocked(openReaderOverlay).mockReset();
 		await page.viewport(PORTRAIT.width, PORTRAIT.height);
 		await settle(250);
 
 		await page
-			.getByRole("button", { name: `Show details for ${ARTICLES[0]!.title}` })
+			.getByRole("button", { name: `Show details for ${firstArticle.title}` })
 			.click();
 
 		expect(openReaderOverlay).toHaveBeenCalledTimes(1);
 		const mobileCtx = vi.mocked(openReaderOverlay).mock.calls[0]?.[0];
 		expect(mobileCtx?.surface).toBe(ReadingSurface.OTHER);
 		expect(mobileCtx?.currentIndex).toBe(0);
-		expect(mobileCtx?.items?.[0]?.url).toBe(ARTICLES[0]!.link);
+		expect(mobileCtx?.items?.[0]?.url).toBe(firstArticle.link);
 	});
 });

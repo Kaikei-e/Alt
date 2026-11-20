@@ -2,7 +2,6 @@ package usecase_test
 
 import (
 	"context"
-	"io"
 	"log/slog"
 	"testing"
 
@@ -53,7 +52,7 @@ func setupStreamTest(t *testing.T) (*mockRetrieveContextUsecase, *mockLLMClient,
 	mockRetrieve := new(mockRetrieveContextUsecase)
 	mockLLM := new(mockLLMClient)
 	builder := usecase.NewXMLPromptBuilder()
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	uc := usecase.NewAnswerWithRAGUsecase(mockRetrieve, builder, mockLLM, usecase.NewOutputValidator(0), 10, 512, 6000, "alpha-v1", "ja", testLogger)
 
@@ -318,13 +317,14 @@ func TestStreamParser_EventSequence(t *testing.T) {
 			}
 		case usecase.StreamEventKindDone:
 			doneIdx = i
+		default:
 		}
 	}
 
-	assert.True(t, progressIdx > 0, "progress should come after thinking")
-	assert.True(t, metaIdx > progressIdx, "meta should come after progress")
-	assert.True(t, deltaIdx > metaIdx, "delta should come after meta")
-	assert.True(t, doneIdx > deltaIdx, "done should be last")
+	assert.Positive(t, progressIdx, "progress should come after thinking")
+	assert.Greater(t, metaIdx, progressIdx, "meta should come after progress")
+	assert.Greater(t, deltaIdx, metaIdx, "delta should come after meta")
+	assert.Greater(t, doneIdx, deltaIdx, "done should be last")
 }
 
 func TestStreamParser_UnescapedQuoteInAnswer(t *testing.T) {

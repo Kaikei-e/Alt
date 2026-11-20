@@ -54,7 +54,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 	// Phase 1: Prerequisites
 	printer.Header("Prerequisites")
-	checks := setup.CheckPrerequisites()
+	checks := setup.CheckPrerequisites(cmd.Context())
 	allOK := true
 	for _, c := range checks {
 		if c.OK {
@@ -160,7 +160,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 				printer.Info("Skipped %s (directory not found)", dir.Name)
 				continue
 			}
-			if err := setup.RegenerateAtlasHash(root, dir); err != nil {
+			if err := setup.RegenerateAtlasHash(cmd.Context(), root, dir); err != nil {
 				printer.Warning("Failed to hash %s: %v", dir.Name, err)
 			} else {
 				printer.Success("Regenerated atlas.sum for %s", dir.Name)

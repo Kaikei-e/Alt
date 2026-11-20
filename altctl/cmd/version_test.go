@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/alt-project/altctl/internal/config"
+	"github.com/stretchr/testify/require"
 )
 
 func setupVersionTest(t *testing.T) {
@@ -21,8 +22,8 @@ func setupVersionTest(t *testing.T) {
 		},
 	}
 	// Reset flags between test runs to avoid state leaking
-	versionCmd.Flags().Set("short", "false")
-	versionCmd.Flags().Set("json", "false")
+	require.NoError(t, versionCmd.Flags().Set("short", "false"))
+	require.NoError(t, versionCmd.Flags().Set("json", "false"))
 }
 
 func TestVersionOutput_ContainsFields(t *testing.T) {

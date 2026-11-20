@@ -57,7 +57,11 @@ $effect(() => {
 
 	const swipeHandler = (event: Event) => {
 		if (hasSwiped) return;
-		handleSwipe(event as CustomEvent<{ direction: SwipeDirection }>);
+		void handleSwipe(event as CustomEvent<{ direction: SwipeDirection }>).catch(
+			(err) => {
+				console.error("Swipe handler failed:", err);
+			},
+		);
 	};
 
 	const swipeMoveHandler = (event: Event) => {
@@ -99,11 +103,15 @@ async function handleSwipe(event: CustomEvent<{ direction: SwipeDirection }>) {
 	const width = swipeElement?.clientWidth ?? window.innerWidth;
 	const target = dir === "left" ? -width : width;
 
-	await x.set(target, { preserveMomentum: 120 });
-	await onDismiss(dir === "left" ? -1 : 1);
-
-	hasSwiped = false;
-	await x.set(0, { instant: true });
+	try {
+		await x.set(target, { preserveMomentum: 120 });
+		await onDismiss(dir === "left" ? -1 : 1);
+	} catch (err) {
+		console.error("Failed to dismiss recap card:", err);
+	} finally {
+		hasSwiped = false;
+		await x.set(0, { instant: true });
+	}
 }
 </script>
 

@@ -66,7 +66,7 @@ func TestWrapDomainTool_UsesToolSpecificSchema(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, info.ParamsOneOf)
 
-	schema, err := info.ParamsOneOf.ToJSONSchema()
+	schema, err := info.ToJSONSchema()
 	require.NoError(t, err)
 	_, ok := schema.Properties.Get("topic")
 	require.True(t, ok)

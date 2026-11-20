@@ -4,13 +4,17 @@ import pytest
 from recap_subworker.infra.config import Settings
 from recap_subworker.services.clusterer import Clusterer
 
+MIN_CLUSTER_SIZE_RANGE = [5, 15]
+MIN_SAMPLES_RANGE = [1, 3]
+MIN_EXPECTED_CLUSTERS = 2
+
 
 @pytest.fixture
-def settings():
+def settings() -> Settings:
     return Settings()
 
 
-def test_optimize_clustering_finds_best_params(settings):
+def test_optimize_clustering_finds_best_params(settings: Settings) -> None:
     clusterer = Clusterer(settings)
 
     # Create 3 distinct clusters of 10 points each
@@ -24,24 +28,27 @@ def test_optimize_clustering_finds_best_params(settings):
     # If we set min_cluster_size=5, it should find the clusters.
     # If we set min_cluster_size=20, it might merge them or find nothing.
 
+    min_samples_range: list[int | None] = list(MIN_SAMPLES_RANGE)
     result = clusterer.optimize_clustering(
-        embeddings, min_cluster_size_range=[5, 15], min_samples_range=[1, 3]
+        embeddings,
+        min_cluster_size_range=MIN_CLUSTER_SIZE_RANGE,
+        min_samples_range=min_samples_range,
     )
 
-    assert result.labels.size == 30
+    assert result.labels.size == embeddings.shape[0]
     assert result.dbcv_score is not None
     assert -1.0 <= result.dbcv_score <= 1.0
     # We expect it to find 3 clusters (labels 0, 1, 2) plus maybe noise (-1)
     unique_labels = set(result.labels)
     unique_labels.discard(-1)
-    assert len(unique_labels) >= 2  # Should find at least 2 clusters
+    assert len(unique_labels) >= MIN_EXPECTED_CLUSTERS  # Should find at least 2 clusters
 
     # Check that it selected valid params within the search range
-    assert 5 <= result.params.min_cluster_size <= 15
-    assert 1 <= result.params.min_samples <= 3
+    assert MIN_CLUSTER_SIZE_RANGE[0] <= result.params.min_cluster_size <= MIN_CLUSTER_SIZE_RANGE[1]
+    assert MIN_SAMPLES_RANGE[0] <= result.params.min_samples <= MIN_SAMPLES_RANGE[1]
 
 
-def test_optimize_clustering_handles_empty(settings):
+def test_optimize_clustering_handles_empty(settings: Settings) -> None:
     clusterer = Clusterer(settings)
     embeddings = np.empty((0, 2))
     result = clusterer.optimize_clustering(embeddings)

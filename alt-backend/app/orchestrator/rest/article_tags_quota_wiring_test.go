@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -83,14 +83,16 @@ func newTagRouteServer(t *testing.T, fx *restTagFixture, budget, inFlight int) (
 		BackendTokenAudience:  "alt-backend",
 	}}
 	cfg.Server.ReadTimeout = 5 * time.Second
+	cfg.Server.CORSAllowedOrigins = []string{"http://localhost:3000"}
 
 	e := echo.New()
 	RegisterRoutes(context.Background(), e, container, cfg)
 	return e, signRESTTestJWT(t, priv, uuid.New())
 }
 
-func getTags(e *echo.Echo, token, id string) *httptest.ResponseRecorder {
-	req := httptest.NewRequest(http.MethodGet, "/v1/articles/"+id+"/tags", nil)
+func getTags(t *testing.T, e *echo.Echo, token, id string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/articles/"+id+"/tags", nil)
 	req.Header.Set("X-Alt-Backend-Token", token)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
@@ -103,7 +105,7 @@ func TestArticleTagsRoute_GenerationIsBoundedByBudget(t *testing.T) {
 
 	refused := 0
 	for i := 0; i < 6; i++ {
-		rec := getTags(e, token, uuid.NewString())
+		rec := getTags(t, e, token, uuid.NewString())
 		if rec.Code == http.StatusTooManyRequests {
 			refused++
 			assert.NotEmpty(t, rec.Header().Get("Retry-After"))
@@ -122,10 +124,10 @@ func TestArticleTagsRoute_StoredReadsConsumeNothing(t *testing.T) {
 	for i := 0; i < 30; i++ {
 		id := uuid.NewString()
 		fx.stored[id] = true
-		assert.Equal(t, http.StatusOK, getTags(e, token, id).Code)
+		assert.Equal(t, http.StatusOK, getTags(t, e, token, id).Code)
 	}
 	assert.Equal(t, int32(0), fx.generations.Load())
-	assert.Equal(t, http.StatusOK, getTags(e, token, uuid.NewString()).Code)
+	assert.Equal(t, http.StatusOK, getTags(t, e, token, uuid.NewString()).Code)
 	assert.Equal(t, int32(1), fx.generations.Load())
 }
 
@@ -134,6 +136,6 @@ func TestArticleTagsRoute_SlotIsReleasedAfterGeneratorFailure(t *testing.T) {
 	e, token := newTagRouteServer(t, fx, 10, 1)
 
 	for i := 0; i < 5; i++ {
-		assert.Equal(t, http.StatusOK, getTags(e, token, uuid.NewString()).Code, "call %d", i)
+		assert.Equal(t, http.StatusOK, getTags(t, e, token, uuid.NewString()).Code, "call %d", i)
 	}
 }

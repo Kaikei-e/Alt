@@ -9,8 +9,12 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
+import sys
 import threading
 import time
+import types
+from http import HTTPStatus
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -23,7 +27,7 @@ from rerank_server import (
     DEFAULT_MODEL,
     MAX_CANDIDATE_LENGTH,
     MAX_CANDIDATES,
-    InferenceDeadlineExceeded,
+    InferenceDeadlineError,
     app,
 )
 
@@ -57,9 +61,7 @@ def client() -> TestClient:
 
 @pytest.fixture
 def fake_model() -> MagicMock:
-    return scoring_model(
-        {"a": 1.0, "b": 2.0, "c": 3.0, "low": 0.1, "mid": 0.5, "high": 0.9}
-    )
+    return scoring_model({"a": 1.0, "b": 2.0, "c": 3.0, "low": 0.1, "mid": 0.5, "high": 0.9})
 
 
 # --------------------------------------------------------------------------
@@ -79,9 +81,7 @@ def test_resolve_model_reads_env(monkeypatch: pytest.MonkeyPatch) -> None:
     assert rerank_server._resolve_model() == JAPANESE_MODEL
 
 
-@pytest.mark.parametrize(
-    "value", ["", "no-slash", "../../etc/passwd", "org/na me", "a/b/c"]
-)
+@pytest.mark.parametrize("value", ["", "no-slash", "../../etc/passwd", "org/na me", "a/b/c"])
 def test_resolve_model_rejects_malformed_repo_id(
     monkeypatch: pytest.MonkeyPatch, value: str
 ) -> None:
@@ -101,9 +101,7 @@ def test_resolve_model_rejects_malformed_repo_id(
         RURI_MODEL,
     ],
 )
-def test_known_good_models_are_valid_repo_ids(
-    monkeypatch: pytest.MonkeyPatch, model: str
-) -> None:
+def test_known_good_models_are_valid_repo_ids(monkeypatch: pytest.MonkeyPatch, model: str) -> None:
     assert model in rerank_server.SUPPORTED_MODELS
     monkeypatch.setenv("RERANK_MODEL", model)
 
@@ -117,10 +115,7 @@ def test_ruri_model_is_selectable_and_cached_separately(
     monkeypatch.delenv("RERANK_MODEL_DIR", raising=False)
     monkeypatch.delenv("RERANK_MODEL_CACHE_ROOT", raising=False)
 
-    assert (
-        rerank_server._resolve_model_dir(RURI_MODEL)
-        == "/models/ruri-v3-reranker-310m-onnx"
-    )
+    assert rerank_server._resolve_model_dir(RURI_MODEL) == "/models/ruri-v3-reranker-310m-onnx"
 
 
 def test_ruri_model_is_accepted_end_to_end(
@@ -129,11 +124,9 @@ def test_ruri_model_is_accepted_end_to_end(
     monkeypatch.setattr(rerank_server, "RERANK_MODEL", RURI_MODEL)
     app.state.model = fake_model
 
-    resp = client.post(
-        "/v1/rerank", json={"query": "q", "candidates": ["a"], "model": RURI_MODEL}
-    )
+    resp = client.post("/v1/rerank", json={"query": "q", "candidates": ["a"], "model": RURI_MODEL})
 
-    assert resp.status_code == 200
+    assert resp.status_code == HTTPStatus.OK
     assert resp.json()["model"] == RURI_MODEL
 
 
@@ -144,19 +137,16 @@ def test_resolve_model_dir_derives_the_default_cache_path(
     monkeypatch.delenv("RERANK_MODEL_DIR", raising=False)
     monkeypatch.delenv("RERANK_MODEL_CACHE_ROOT", raising=False)
 
-    assert (
-        rerank_server._resolve_model_dir(DEFAULT_MODEL)
-        == "/models/ruri-v3-reranker-310m-onnx"
-    )
+    assert rerank_server._resolve_model_dir(DEFAULT_MODEL) == "/models/ruri-v3-reranker-310m-onnx"
 
 
 def test_resolve_model_dir_differs_per_model(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("RERANK_MODEL_DIR", raising=False)
     monkeypatch.delenv("RERANK_MODEL_CACHE_ROOT", raising=False)
 
-    assert rerank_server._resolve_model_dir(
-        JAPANESE_MODEL
-    ) != rerank_server._resolve_model_dir(DEFAULT_MODEL)
+    assert rerank_server._resolve_model_dir(JAPANESE_MODEL) != rerank_server._resolve_model_dir(
+        DEFAULT_MODEL
+    )
 
 
 def test_resolve_model_dir_honours_explicit_env(
@@ -178,7 +168,7 @@ def test_rerank_accepts_the_configured_model(
         json={"query": "q", "candidates": ["a"], "model": JAPANESE_MODEL},
     )
 
-    assert resp.status_code == 200
+    assert resp.status_code == HTTPStatus.OK
     assert resp.json()["model"] == JAPANESE_MODEL
 
 
@@ -193,7 +183,7 @@ def test_rerank_rejects_a_model_other_than_the_configured_one(
         json={"query": "q", "candidates": ["a"], "model": DEFAULT_MODEL},
     )
 
-    assert resp.status_code == 422
+    assert resp.status_code == HTTPStatus.UNPROCESSABLE_CONTENT
     assert JAPANESE_MODEL in resp.text
     fake_model.predict.assert_not_called()
 
@@ -205,7 +195,7 @@ def test_rerank_accepts_a_request_without_a_model_field(
 
     resp = client.post("/v1/rerank", json={"query": "q", "candidates": ["a"]})
 
-    assert resp.status_code == 200
+    assert resp.status_code == HTTPStatus.OK
 
 
 def test_health_reports_the_configured_model(
@@ -216,7 +206,7 @@ def test_health_reports_the_configured_model(
 
     resp = client.get("/health")
 
-    assert resp.status_code == 200
+    assert resp.status_code == HTTPStatus.OK
     assert resp.json()["model"] == JAPANESE_MODEL
 
 
@@ -230,36 +220,36 @@ def test_rerank_without_loaded_model_returns_503(client: TestClient) -> None:
 
     resp = client.post("/v1/rerank", json={"query": "q", "candidates": ["a", "b"]})
 
-    assert resp.status_code == 503
+    assert resp.status_code == HTTPStatus.SERVICE_UNAVAILABLE
 
 
 def test_rerank_returns_results_sorted_by_score_desc(
     client: TestClient, fake_model: MagicMock
 ) -> None:
     app.state.model = fake_model
+    high_index = 2
 
-    resp = client.post(
-        "/v1/rerank", json={"query": "q", "candidates": ["low", "mid", "high"]}
-    )
+    resp = client.post("/v1/rerank", json={"query": "q", "candidates": ["low", "mid", "high"]})
 
-    assert resp.status_code == 200
+    assert resp.status_code == HTTPStatus.OK
     body = resp.json()
     scores = [r["score"] for r in body["results"]]
     assert scores == sorted(scores, reverse=True)
     # "high" scores 0.9 and sits at original index 2
-    assert body["results"][0]["index"] == 2
+    assert body["results"][0]["index"] == high_index
 
 
 def test_rerank_respects_top_k(client: TestClient, fake_model: MagicMock) -> None:
     app.state.model = fake_model
+    top_k = 2
 
     resp = client.post(
         "/v1/rerank",
-        json={"query": "q", "candidates": ["a", "b", "c"], "top_k": 2},
+        json={"query": "q", "candidates": ["a", "b", "c"], "top_k": top_k},
     )
 
-    assert resp.status_code == 200
-    assert len(resp.json()["results"]) == 2
+    assert resp.status_code == HTTPStatus.OK
+    assert len(resp.json()["results"]) == top_k
 
 
 def test_rerank_empty_candidates_returns_empty_results(
@@ -269,14 +259,12 @@ def test_rerank_empty_candidates_returns_empty_results(
 
     resp = client.post("/v1/rerank", json={"query": "q", "candidates": []})
 
-    assert resp.status_code == 200
+    assert resp.status_code == HTTPStatus.OK
     assert resp.json()["results"] == []
     fake_model.predict.assert_not_called()
 
 
-def test_rerank_rejects_too_many_candidates(
-    client: TestClient, fake_model: MagicMock
-) -> None:
+def test_rerank_rejects_too_many_candidates(client: TestClient, fake_model: MagicMock) -> None:
     app.state.model = fake_model
 
     resp = client.post(
@@ -284,7 +272,7 @@ def test_rerank_rejects_too_many_candidates(
         json={"query": "q", "candidates": ["x"] * (MAX_CANDIDATES + 1)},
     )
 
-    assert resp.status_code == 422
+    assert resp.status_code == HTTPStatus.UNPROCESSABLE_CONTENT
     # The rejection has to name the knob and the reason, not just "too long".
     assert "RERANK_MAX_CANDIDATES" in resp.text
     assert "RERANK_SERVER_TIMEOUT" in resp.text
@@ -294,14 +282,15 @@ def test_rerank_rejects_too_many_candidates(
 def test_rerank_accepts_a_candidate_list_at_the_limit(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(rerank_server, "MAX_CANDIDATES", 40)
-    candidates = [f"c{i}" for i in range(40)]
+    limit = 40
+    monkeypatch.setattr(rerank_server, "MAX_CANDIDATES", limit)
+    candidates = [f"c{i}" for i in range(limit)]
     app.state.model = scoring_model({c: float(i) for i, c in enumerate(candidates)})
 
     resp = client.post("/v1/rerank", json={"query": "q", "candidates": candidates})
 
-    assert resp.status_code == 200
-    assert len(resp.json()["results"]) == 40
+    assert resp.status_code == HTTPStatus.OK
+    assert len(resp.json()["results"]) == limit
 
 
 def test_rerank_rejects_candidate_exceeding_max_length(
@@ -314,7 +303,7 @@ def test_rerank_rejects_candidate_exceeding_max_length(
         json={"query": "q", "candidates": ["x" * (MAX_CANDIDATE_LENGTH + 1)]},
     )
 
-    assert resp.status_code == 422
+    assert resp.status_code == HTTPStatus.UNPROCESSABLE_CONTENT
 
 
 def test_rerank_rejects_query_exceeding_max_length(
@@ -327,7 +316,7 @@ def test_rerank_rejects_query_exceeding_max_length(
         json={"query": "q" * 4097, "candidates": ["c1"]},
     )
 
-    assert resp.status_code == 422
+    assert resp.status_code == HTTPStatus.UNPROCESSABLE_CONTENT
 
 
 def test_health_returns_503_while_model_not_loaded(client: TestClient) -> None:
@@ -335,18 +324,16 @@ def test_health_returns_503_while_model_not_loaded(client: TestClient) -> None:
 
     resp = client.get("/health")
 
-    assert resp.status_code == 503
+    assert resp.status_code == HTTPStatus.SERVICE_UNAVAILABLE
     assert resp.json()["status"] == "loading"
 
 
-def test_health_returns_200_when_model_loaded(
-    client: TestClient, fake_model: MagicMock
-) -> None:
+def test_health_returns_200_when_model_loaded(client: TestClient, fake_model: MagicMock) -> None:
     app.state.model = fake_model
 
     resp = client.get("/health")
 
-    assert resp.status_code == 200
+    assert resp.status_code == HTTPStatus.OK
     assert resp.json()["status"] == "ok"
 
 
@@ -361,10 +348,11 @@ def test_predict_sync_splits_pairs_into_chunks(monkeypatch: pytest.MonkeyPatch) 
     candidates = [f"c{i}" for i in range(5)]
     model = scoring_model({c: float(i) for i, c in enumerate(candidates)})
     pairs = [("q", c) for c in candidates]
+    expected_chunks = 3
 
     rerank_server._predict_sync(model, pairs, NO_DEADLINE)
 
-    assert model.predict.call_count == 3
+    assert model.predict.call_count == expected_chunks
 
 
 def test_predict_sync_maps_scores_back_to_original_indices(
@@ -439,7 +427,7 @@ def test_predict_sync_refuses_to_start_after_the_deadline(
     monkeypatch.setattr(rerank_server, "RERANK_BACKEND", "torch")
     model = scoring_model({"a": 1.0})
 
-    with pytest.raises(InferenceDeadlineExceeded):
+    with pytest.raises(InferenceDeadlineError):
         rerank_server._predict_sync(model, [("q", "a")], time.monotonic() - 1)
 
     model.predict.assert_not_called()
@@ -461,7 +449,7 @@ def test_predict_sync_stops_at_the_next_chunk_boundary_after_the_deadline(
     model.predict.side_effect = slow_predict
     pairs = [("q", c) for c in candidates]
 
-    with pytest.raises(InferenceDeadlineExceeded):
+    with pytest.raises(InferenceDeadlineError):
         rerank_server._predict_sync(model, pairs, time.monotonic() + 0.12)
 
     assert model.predict.call_count < len(candidates)
@@ -485,7 +473,7 @@ def test_rerank_returns_504_when_the_deadline_passes_mid_request(
         "/v1/rerank", json={"query": "q", "candidates": [f"c{i}" for i in range(10)]}
     )
 
-    assert resp.status_code == 504
+    assert resp.status_code == HTTPStatus.GATEWAY_TIMEOUT
 
 
 # --------------------------------------------------------------------------
@@ -501,7 +489,7 @@ def test_default_server_timeout_stays_under_the_client_timeout() -> None:
     """
     client_timeout_seconds = 12.0
 
-    assert rerank_server.SERVER_TIMEOUT_SECONDS < client_timeout_seconds
+    assert client_timeout_seconds > rerank_server.SERVER_TIMEOUT_SECONDS
 
 
 def test_default_max_candidates_fits_the_server_budget() -> None:
@@ -510,8 +498,10 @@ def test_default_max_candidates_fits_the_server_budget() -> None:
     ADR-000951's long-passage rate (~250ms/candidate at ~500 tokens) over the
     default 10s budget is where the 40 comes from.
     """
-    assert rerank_server._default_max_candidates() == 40
-    assert MAX_CANDIDATES == 40
+    expected_max_candidates = 40
+
+    assert rerank_server._default_max_candidates() == expected_max_candidates
+    assert expected_max_candidates == MAX_CANDIDATES
 
 
 def test_default_max_candidates_admits_the_client_side_cap() -> None:
@@ -542,9 +532,7 @@ def test_default_max_candidates_is_derived_from_timeout_and_budget(
     assert rerank_server._default_max_candidates() == expected
 
 
-def test_rerank_timeout_returns_504(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_rerank_timeout_returns_504(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     def slow_predict(pairs: list[tuple[str, str]]) -> list[float]:
         time.sleep(0.3)
         return [0.0] * len(pairs)
@@ -556,7 +544,7 @@ def test_rerank_timeout_returns_504(
 
     resp = client.post("/v1/rerank", json={"query": "q", "candidates": ["a"]})
 
-    assert resp.status_code == 504
+    assert resp.status_code == HTTPStatus.GATEWAY_TIMEOUT
 
 
 def test_rerank_timeout_releases_semaphore(
@@ -625,7 +613,7 @@ def test_rerank_timeout_does_not_allow_concurrent_model_access(
 
     statuses = asyncio.run(_run())
 
-    assert 504 in statuses
+    assert HTTPStatus.GATEWAY_TIMEOUT in statuses
     assert state["observed_concurrent"] is False
 
 
@@ -654,10 +642,7 @@ def test_load_onnx_model_skips_export_when_quantized_file_present(
     cross_encoder_mock.assert_called_once()
     _, call_kwargs = cross_encoder_mock.call_args
     assert call_kwargs["backend"] == "onnx"
-    assert (
-        call_kwargs["model_kwargs"]["file_name"]
-        == rerank_server.ONNX_QUANTIZED_FILE_NAME
-    )
+    assert call_kwargs["model_kwargs"]["file_name"] == rerank_server.ONNX_QUANTIZED_FILE_NAME
 
 
 def test_load_onnx_model_exports_when_quantized_file_missing(
@@ -778,7 +763,8 @@ def test_load_model_leaves_state_none_on_failure(
     monkeypatch.setattr(rerank_server, "RERANK_BACKEND", "torch")
 
     def _boom() -> MagicMock:
-        raise RuntimeError("model load failed")
+        msg = "model load failed"
+        raise RuntimeError(msg)
 
     monkeypatch.setattr(rerank_server, "_load_torch_model", _boom)
     fake_app = MagicMock()
@@ -797,8 +783,6 @@ _FULL_SHA = "0123456789abcdef0123456789abcdef01234567"
 
 
 def test_every_supported_model_has_a_pinned_revision() -> None:
-    import re
-
     assert set(rerank_server.MODEL_REVISIONS) == set(rerank_server.SUPPORTED_MODELS)
     for sha in rerank_server.MODEL_REVISIONS.values():
         assert re.fullmatch(r"[0-9a-f]{40}", sha)
@@ -845,9 +829,6 @@ def test_resolve_model_revision_requires_env_for_unlisted_model(
 def test_export_loads_base_model_at_pinned_revision(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    import sys
-    import types
-
     backend = types.ModuleType("sentence_transformers.backend")
     backend.export_dynamic_quantized_onnx_model = MagicMock()  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "sentence_transformers.backend", backend)

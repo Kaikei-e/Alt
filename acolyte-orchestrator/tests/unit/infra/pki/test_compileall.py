@@ -69,7 +69,7 @@ def test_python_313_ast_parse_and_py_compile() -> None:
     if py313 is None:
         pytest.skip("python3.13 is not installed")
     for path in _startup_files():
-        subprocess.run(
+        subprocess.run(  # noqa: S603 - fixed argv built in this test
             [
                 py313,
                 "-c",
@@ -78,7 +78,7 @@ def test_python_313_ast_parse_and_py_compile() -> None:
             ],
             check=True,
         )
-        subprocess.run([py313, "-m", "py_compile", str(path)], check=True)
+        subprocess.run([py313, "-m", "py_compile", str(path)], check=True)  # noqa: S603 - fixed argv built in this test
 
 
 @pytest.mark.asyncio

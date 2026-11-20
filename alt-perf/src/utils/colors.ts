@@ -125,7 +125,7 @@ export function brightBlue(text: string): string {
 
 // Rating-based color
 export function ratingColor(
-  rating: "good" | "needs-improvement" | "poor"
+  rating: "good" | "needs-improvement" | "poor",
 ): (text: string) => string {
   switch (rating) {
     case "good":

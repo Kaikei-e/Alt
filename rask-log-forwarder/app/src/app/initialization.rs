@@ -35,23 +35,25 @@ pub enum InitializationError {
 
 impl InitializationError {
     /// 回復可能性の判定
+    #[must_use]
     pub fn is_recoverable(&self) -> bool {
         match self {
-            InitializationError::InvalidLogLevel { .. } => true,
-            InitializationError::InvalidDirectiveFormat { .. } => true,
-            InitializationError::EmptyTarget { .. } => true,
-            InitializationError::LoggingInitFailed { .. } => false,
-            InitializationError::ConfigValidationFailed { .. } => true,
-            InitializationError::ResourceInitFailed { .. } => false,
+            InitializationError::InvalidLogLevel { .. }
+            | InitializationError::InvalidDirectiveFormat { .. }
+            | InitializationError::EmptyTarget { .. }
+            | InitializationError::ConfigValidationFailed { .. } => true,
+            InitializationError::LoggingInitFailed { .. }
+            | InitializationError::ResourceInitFailed { .. } => false,
         }
     }
 
     /// フォールバック戦略
+    #[must_use]
     pub fn fallback_strategy(&self) -> FallbackStrategy {
         match self {
             InitializationError::InvalidLogLevel { .. } => FallbackStrategy::UseDefaultLevel,
-            InitializationError::InvalidDirectiveFormat { .. } => FallbackStrategy::SkipDirective,
-            InitializationError::EmptyTarget { .. } => FallbackStrategy::SkipDirective,
+            InitializationError::InvalidDirectiveFormat { .. }
+            | InitializationError::EmptyTarget { .. } => FallbackStrategy::SkipDirective,
             InitializationError::LoggingInitFailed { .. } => FallbackStrategy::UseStdoutLogging,
             InitializationError::ConfigValidationFailed { .. } => FallbackStrategy::UseDefaults,
             InitializationError::ResourceInitFailed { .. } => FallbackStrategy::AbortStartup,
@@ -102,6 +104,7 @@ impl FromStr for LogLevel {
 }
 
 impl LogLevel {
+    #[must_use]
     pub fn as_str(&self) -> &'static str {
         match self {
             LogLevel::Error => "error",
@@ -140,6 +143,13 @@ impl LogDirective {
     }
 
     /// メモリセーフなパース（unwrap一切なし）
+    ///
+    /// # Errors
+    ///
+    /// Returns [`InitializationError::InvalidDirectiveFormat`] if `directive`
+    /// is not of the form `target=level`, [`InitializationError::EmptyTarget`]
+    /// if the target is empty, or [`InitializationError::InvalidLogLevel`] if
+    /// the level is unrecognized.
     pub fn parse(directive: &str) -> Result<Self, InitializationError> {
         let parts: Vec<&str> = directive.split('=').collect();
 
@@ -164,7 +174,8 @@ impl LogDirective {
         Ok(LogDirective::new(target, parsed_level))
     }
 
-    /// tracing_subscriber::EnvFilter用の文字列変換
+    /// `tracing_subscriber::EnvFilter` 用の文字列変換
+    #[must_use]
     pub fn to_filter_string(&self) -> String {
         format!("{}={}", self.target, self.level.as_str())
     }

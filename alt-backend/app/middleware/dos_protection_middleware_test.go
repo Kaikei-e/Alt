@@ -2,13 +2,14 @@ package middleware
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -133,7 +134,7 @@ func TestDOSProtectionMiddleware(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			middleware := DOSProtectionMiddleware(context.Background(), tt.config)
 
-			handler := middleware(func(c echo.Context) error {
+			handler := middleware(func(c *echo.Context) error {
 				return c.String(http.StatusOK, "OK")
 			})
 
@@ -141,7 +142,7 @@ func TestDOSProtectionMiddleware(t *testing.T) {
 			e := echo.New()
 
 			for i, req := range tt.requests {
-				httpReq := httptest.NewRequest(req.method, req.path, nil)
+				httpReq := httptest.NewRequestWithContext(t.Context(), req.method, req.path, nil)
 				httpReq.RemoteAddr = req.ip + ":12345"
 				rec := httptest.NewRecorder()
 				c := e.NewContext(httpReq, rec)
@@ -150,7 +151,8 @@ func TestDOSProtectionMiddleware(t *testing.T) {
 
 				if tt.expectedStatus[i] == 429 {
 					require.Error(t, err)
-					if httpErr, ok := err.(*echo.HTTPError); ok {
+					httpErr := &echo.HTTPError{}
+					if errors.As(err, &httpErr) {
 						assert.Equal(t, tt.expectedStatus[i], httpErr.Code,
 							"Request %d failed: %s", i+1, tt.description)
 					} else {
@@ -185,7 +187,7 @@ func TestDOSProtectionMiddleware_CircuitBreaker(t *testing.T) {
 
 	// Handler that simulates failures
 	failureCount := 0
-	handler := middleware(func(c echo.Context) error {
+	handler := middleware(func(c *echo.Context) error {
 		failureCount++
 		if failureCount <= 5 {
 			return echo.NewHTTPError(http.StatusInternalServerError, "Service error")
@@ -197,25 +199,33 @@ func TestDOSProtectionMiddleware_CircuitBreaker(t *testing.T) {
 
 	// First 5 requests should return 500 (service errors)
 	for i := 0; i < 5; i++ {
-		req := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/feeds", nil)
 		req.RemoteAddr = "192.168.1.1:12345"
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
 
 		err := handler(c)
 		require.Error(t, err)
-		assert.Equal(t, http.StatusInternalServerError, err.(*echo.HTTPError).Code)
+		assert.Equal(t, http.StatusInternalServerError, func() *echo.HTTPError {
+			target := &echo.HTTPError{}
+			_ = errors.As(err, &target)
+			return target
+		}().Code)
 	}
 
 	// Next request should trigger circuit breaker (503)
-	req := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/feeds", nil)
 	req.RemoteAddr = "192.168.1.1:12345"
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
 	err := handler(c)
 	require.Error(t, err)
-	assert.Equal(t, http.StatusServiceUnavailable, err.(*echo.HTTPError).Code)
+	assert.Equal(t, http.StatusServiceUnavailable, func() *echo.HTTPError {
+		target := &echo.HTTPError{}
+		_ = errors.As(err, &target)
+		return target
+	}().Code)
 }
 
 func TestDOSProtectionMiddleware_CircuitBreaker_IgnoresClientErrors(t *testing.T) {
@@ -237,7 +247,7 @@ func TestDOSProtectionMiddleware_CircuitBreaker_IgnoresClientErrors(t *testing.T
 
 	// Handler that returns 4xx client errors (should NOT trip circuit breaker)
 	requestCount := 0
-	handler := middleware(func(c echo.Context) error {
+	handler := middleware(func(c *echo.Context) error {
 		requestCount++
 		// Return various 4xx errors - these should NOT trip the circuit breaker
 		switch requestCount {
@@ -259,20 +269,21 @@ func TestDOSProtectionMiddleware_CircuitBreaker_IgnoresClientErrors(t *testing.T
 	// Send 4 requests with 4xx errors - circuit breaker should NOT trip
 	clientErrors := []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusBadRequest}
 	for i, expectedCode := range clientErrors {
-		req := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/feeds", nil)
 		req.RemoteAddr = "192.168.1.1:12345"
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
 
 		err := handler(c)
 		require.Error(t, err, "Request %d should return error", i+1)
-		httpErr, ok := err.(*echo.HTTPError)
+		httpErr := &echo.HTTPError{}
+		ok := errors.As(err, &httpErr)
 		require.True(t, ok, "Error should be echo.HTTPError")
 		assert.Equal(t, expectedCode, httpErr.Code, "Request %d should return %d", i+1, expectedCode)
 	}
 
 	// 5th request should succeed (circuit NOT tripped by 4xx errors)
-	req := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/feeds", nil)
 	req.RemoteAddr = "192.168.1.1:12345"
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
@@ -292,7 +303,7 @@ func TestDOSProtectionMiddleware_ConcurrentRequests(t *testing.T) {
 	}
 
 	middleware := DOSProtectionMiddleware(context.Background(), config)
-	handler := middleware(func(c echo.Context) error {
+	handler := middleware(func(c *echo.Context) error {
 		return c.String(http.StatusOK, "OK")
 	})
 
@@ -308,14 +319,15 @@ func TestDOSProtectionMiddleware_ConcurrentRequests(t *testing.T) {
 	for i := 0; i < numGoroutines; i++ {
 		go func() {
 			for j := 0; j < requestsPerGoroutine; j++ {
-				req := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
+				req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/feeds", nil)
 				req.RemoteAddr = "192.168.1.1:12345"
 				rec := httptest.NewRecorder()
 				c := e.NewContext(req, rec)
 
 				err := handler(c)
 				if err != nil {
-					if httpErr, ok := err.(*echo.HTTPError); ok {
+					httpErr := &echo.HTTPError{}
+					if errors.As(err, &httpErr) {
 						results <- httpErr.Code
 					} else {
 						results <- 500 // Unexpected error type
@@ -337,9 +349,10 @@ func TestDOSProtectionMiddleware_ConcurrentRequests(t *testing.T) {
 	successCount := 0
 	rateLimitedCount := 0
 	for _, code := range statusCodes {
-		if code == http.StatusOK {
+		switch code {
+		case http.StatusOK:
 			successCount++
-		} else if code == http.StatusTooManyRequests {
+		case http.StatusTooManyRequests:
 			rateLimitedCount++
 		}
 	}
@@ -352,15 +365,15 @@ func TestDOSProtectionMiddleware_ConcurrentRequests(t *testing.T) {
 func TestDOSProtectionMiddleware_EdgeCases(t *testing.T) {
 	tests := []struct {
 		name        string
-		setupFunc   func() (echo.Context, *httptest.ResponseRecorder)
+		setupFunc   func() (*echo.Context, *httptest.ResponseRecorder)
 		expectError bool
 		description string
 	}{
 		{
 			name: "missing_ip_header",
-			setupFunc: func() (echo.Context, *httptest.ResponseRecorder) {
+			setupFunc: func() (*echo.Context, *httptest.ResponseRecorder) {
 				e := echo.New()
-				req := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
+				req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/feeds", nil)
 				// No X-Real-IP header
 				rec := httptest.NewRecorder()
 				return e.NewContext(req, rec), rec
@@ -370,9 +383,9 @@ func TestDOSProtectionMiddleware_EdgeCases(t *testing.T) {
 		},
 		{
 			name: "invalid_ip_address",
-			setupFunc: func() (echo.Context, *httptest.ResponseRecorder) {
+			setupFunc: func() (*echo.Context, *httptest.ResponseRecorder) {
 				e := echo.New()
-				req := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
+				req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/feeds", nil)
 				req.Header.Set("X-Real-IP", "invalid.ip.address")
 				rec := httptest.NewRecorder()
 				return e.NewContext(req, rec), rec
@@ -382,9 +395,9 @@ func TestDOSProtectionMiddleware_EdgeCases(t *testing.T) {
 		},
 		{
 			name: "empty_ip_header",
-			setupFunc: func() (echo.Context, *httptest.ResponseRecorder) {
+			setupFunc: func() (*echo.Context, *httptest.ResponseRecorder) {
 				e := echo.New()
-				req := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
+				req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/feeds", nil)
 				req.Header.Set("X-Real-IP", "")
 				rec := httptest.NewRecorder()
 				return e.NewContext(req, rec), rec
@@ -403,7 +416,7 @@ func TestDOSProtectionMiddleware_EdgeCases(t *testing.T) {
 	}
 
 	middleware := DOSProtectionMiddleware(context.Background(), config)
-	handler := middleware(func(c echo.Context) error {
+	handler := middleware(func(c *echo.Context) error {
 		return c.String(http.StatusOK, "OK")
 	})
 
@@ -416,7 +429,7 @@ func TestDOSProtectionMiddleware_EdgeCases(t *testing.T) {
 			if tt.expectError {
 				assert.Error(t, err, tt.description)
 			} else {
-				assert.NoError(t, err, tt.description)
+				require.NoError(t, err, tt.description)
 				assert.Equal(t, http.StatusOK, rec.Code, tt.description)
 			}
 		})
@@ -585,7 +598,7 @@ func TestDOSProtectionMiddleware_DirectPeerOutsideTrustedListIgnoresHeaders(t *t
 		BlockDuration: 5 * time.Minute,
 	}
 	mw := DOSProtectionMiddleware(context.Background(), cfg)
-	handler := mw(func(c echo.Context) error {
+	handler := mw(func(c *echo.Context) error {
 		return c.String(http.StatusOK, "OK")
 	})
 
@@ -593,7 +606,7 @@ func TestDOSProtectionMiddleware_DirectPeerOutsideTrustedListIgnoresHeaders(t *t
 	spoofedHeaders := []string{"1.1.1.1", "2.2.2.2", "3.3.3.3"}
 	wantCodes := []int{http.StatusOK, http.StatusOK, http.StatusTooManyRequests}
 	for i, spoof := range spoofedHeaders {
-		req := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/feeds", nil)
 		req.RemoteAddr = "198.51.100.25:40000"
 		req.Header.Set("X-Forwarded-For", spoof)
 		req.Header.Set("X-Real-IP", spoof)
@@ -601,7 +614,11 @@ func TestDOSProtectionMiddleware_DirectPeerOutsideTrustedListIgnoresHeaders(t *t
 		err := handler(e.NewContext(req, rec))
 		if wantCodes[i] == http.StatusTooManyRequests {
 			require.Error(t, err)
-			assert.Equal(t, http.StatusTooManyRequests, err.(*echo.HTTPError).Code)
+			assert.Equal(t, http.StatusTooManyRequests, func() *echo.HTTPError {
+				target := &echo.HTTPError{}
+				_ = errors.As(err, &target)
+				return target
+			}().Code)
 		} else {
 			require.NoError(t, err)
 			assert.Equal(t, http.StatusOK, rec.Code)
@@ -625,7 +642,7 @@ func TestDOSProtectionMiddleware_CircuitBreakerDoesNotBlockOtherClients(t *testi
 	}
 
 	mw := DOSProtectionMiddleware(context.Background(), cfg)
-	handler := mw(func(c echo.Context) error {
+	handler := mw(func(c *echo.Context) error {
 		if c.Request().Header.Get("X-Fail") == "1" {
 			return echo.NewHTTPError(http.StatusInternalServerError, "upstream failed")
 		}
@@ -635,23 +652,31 @@ func TestDOSProtectionMiddleware_CircuitBreakerDoesNotBlockOtherClients(t *testi
 	e := echo.New()
 
 	for i := 0; i < 3; i++ {
-		req := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/feeds", nil)
 		req.RemoteAddr = "192.168.1.1:12345"
 		req.Header.Set("X-Fail", "1")
 		rec := httptest.NewRecorder()
 		err := handler(e.NewContext(req, rec))
 		require.Error(t, err)
-		assert.Equal(t, http.StatusInternalServerError, err.(*echo.HTTPError).Code)
+		assert.Equal(t, http.StatusInternalServerError, func() *echo.HTTPError {
+			target := &echo.HTTPError{}
+			_ = errors.As(err, &target)
+			return target
+		}().Code)
 	}
 
-	blockedReq := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
+	blockedReq := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/feeds", nil)
 	blockedReq.RemoteAddr = "192.168.1.1:12345"
 	blockedRec := httptest.NewRecorder()
 	err := handler(e.NewContext(blockedReq, blockedRec))
 	require.Error(t, err)
-	assert.Equal(t, http.StatusServiceUnavailable, err.(*echo.HTTPError).Code)
+	assert.Equal(t, http.StatusServiceUnavailable, func() *echo.HTTPError {
+		target := &echo.HTTPError{}
+		_ = errors.As(err, &target)
+		return target
+	}().Code)
 
-	otherClientReq := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
+	otherClientReq := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/feeds", nil)
 	otherClientReq.RemoteAddr = "192.168.1.2:54321"
 	otherClientRec := httptest.NewRecorder()
 	err = handler(e.NewContext(otherClientReq, otherClientRec))

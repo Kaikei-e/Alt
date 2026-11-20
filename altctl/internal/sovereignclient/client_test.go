@@ -3,6 +3,7 @@ package sovereignclient
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -29,11 +30,13 @@ func TestGet_Success(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{
 			"snapshots": []map[string]string{
 				{"snapshot_id": "snap-1", "status": "valid"},
 			},
-		})
+		}); err != nil {
+			t.Errorf("encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -78,9 +81,11 @@ func TestPost_Success(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{
+		if err := json.NewEncoder(w).Encode(map[string]string{
 			"status": "completed",
-		})
+		}); err != nil {
+			t.Errorf("encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -100,7 +105,9 @@ func TestPost_Success(t *testing.T) {
 func TestGet_Error(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(`{"error": "database unavailable"}`))
+		if _, err := w.Write([]byte(`{"error": "database unavailable"}`)); err != nil {
+			t.Errorf("write response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -111,7 +118,8 @@ func TestGet_Error(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for 500 response, got nil")
 	}
-	apiErr, ok := err.(*APIError)
+	apiErr := &APIError{}
+	ok := errors.As(err, &apiErr)
 	if !ok {
 		t.Fatalf("expected *APIError, got %T: %v", err, err)
 	}

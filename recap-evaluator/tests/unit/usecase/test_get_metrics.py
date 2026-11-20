@@ -16,9 +16,14 @@ from recap_evaluator.domain.models import (
 from recap_evaluator.usecase.get_metrics import GetMetricsUsecase
 from tests.fixtures.job_data import SAMPLE_JOB
 
+EXPECTED_LATEST_MACRO_F1 = 0.82
+MIN_TREND_METRICS = 2
+EXPECTED_CURRENT_MACRO_F1 = 0.85
+EXPECTED_TREND_POINTS = 2
+
 
 @pytest.fixture
-def mock_genre_eval():
+def mock_genre_eval() -> AsyncMock:
     m = AsyncMock()
     m.fetch_latest_evaluation.return_value = GenreEvaluationResult(
         macro_f1=0.82, alert_level=AlertLevel.OK
@@ -27,21 +32,26 @@ def mock_genre_eval():
 
 
 @pytest.fixture
-def mock_cluster_eval():
+def mock_cluster_eval() -> AsyncMock:
     m = AsyncMock()
     m.evaluate_batch.return_value = {"technology": ClusterMetrics(silhouette_score=0.35)}
     return m
 
 
 @pytest.fixture
-def mock_pipeline_eval():
+def mock_pipeline_eval() -> AsyncMock:
     m = AsyncMock()
     m.evaluate_batch.return_value = PipelineMetrics(success_rate=0.95, alert_level=AlertLevel.OK)
     return m
 
 
 @pytest.fixture
-def get_metrics_uc(mock_genre_eval, mock_cluster_eval, mock_pipeline_eval, mock_db):
+def get_metrics_uc(
+    mock_genre_eval: AsyncMock,
+    mock_cluster_eval: AsyncMock,
+    mock_pipeline_eval: AsyncMock,
+    mock_db: AsyncMock,
+) -> GetMetricsUsecase:
     return GetMetricsUsecase(
         genre_evaluator=mock_genre_eval,
         cluster_evaluator=mock_cluster_eval,
@@ -52,26 +62,32 @@ def get_metrics_uc(mock_genre_eval, mock_cluster_eval, mock_pipeline_eval, mock_
 
 
 class TestGetMetricsUsecase:
-    async def test_get_latest_returns_all_dimensions(self, get_metrics_uc, mock_db):
+    async def test_get_latest_returns_all_dimensions(
+        self, get_metrics_uc: GetMetricsUsecase, mock_db: AsyncMock
+    ) -> None:
         mock_db.fetch_recent_jobs.return_value = [SAMPLE_JOB]
 
         result = await get_metrics_uc.get_latest()
 
         assert "genre_macro_f1" in result
-        assert result["genre_macro_f1"] == 0.82
+        assert result["genre_macro_f1"] == EXPECTED_LATEST_MACRO_F1
         assert "pipeline_success_rate" in result
         assert "cluster_avg_silhouette" in result
 
-    async def test_get_latest_no_jobs(self, get_metrics_uc, mock_db):
+    async def test_get_latest_no_jobs(
+        self, get_metrics_uc: GetMetricsUsecase, mock_db: AsyncMock
+    ) -> None:
         mock_db.fetch_recent_jobs.return_value = []
         # Also mock genre to return None to test empty path
-        get_metrics_uc._genre.fetch_latest_evaluation.return_value = None
+        get_metrics_uc._genre.fetch_latest_evaluation.return_value = None  # type: ignore[attr-defined]
 
         result = await get_metrics_uc.get_latest()
 
         assert "pipeline_success_rate" not in result
 
-    async def test_get_evaluation_by_id(self, get_metrics_uc, mock_db):
+    async def test_get_evaluation_by_id(
+        self, get_metrics_uc: GetMetricsUsecase, mock_db: AsyncMock
+    ) -> None:
         eval_id = uuid4()
         mock_db.fetch_evaluation_by_id.return_value = {
             "evaluation_id": eval_id,
@@ -83,7 +99,9 @@ class TestGetMetricsUsecase:
         assert result is not None
         assert result["evaluation_id"] == eval_id
 
-    async def test_get_evaluation_history(self, get_metrics_uc, mock_db):
+    async def test_get_evaluation_history(
+        self, get_metrics_uc: GetMetricsUsecase, mock_db: AsyncMock
+    ) -> None:
         mock_db.fetch_evaluation_history.return_value = [
             {"evaluation_id": uuid4(), "evaluation_type": "full"}
         ]
@@ -93,7 +111,9 @@ class TestGetMetricsUsecase:
         assert len(result) == 1
         mock_db.fetch_evaluation_history.assert_called_once_with(evaluation_type=None, limit=10)
 
-    async def test_get_trends_returns_metrics_from_history(self, get_metrics_uc, mock_db):
+    async def test_get_trends_returns_metrics_from_history(
+        self, get_metrics_uc: GetMetricsUsecase, mock_db: AsyncMock
+    ) -> None:
         ts1 = datetime(2025, 1, 1, tzinfo=UTC)
         ts2 = datetime(2025, 1, 2, tzinfo=UTC)
         mock_db.fetch_evaluation_history.return_value = [
@@ -117,23 +137,27 @@ class TestGetMetricsUsecase:
 
         trends = await get_metrics_uc.get_trends(window_days=7)
 
-        assert len(trends) >= 2
+        assert len(trends) >= MIN_TREND_METRICS
         metric_names = {t["metric_name"] for t in trends}
         assert "genre_macro_f1" in metric_names
         assert "pipeline_success_rate" in metric_names
 
         genre_trend = next(t for t in trends if t["metric_name"] == "genre_macro_f1")
-        assert genre_trend["current_value"] == 0.85
-        assert len(genre_trend["data_points"]) == 2
+        assert genre_trend["current_value"] == EXPECTED_CURRENT_MACRO_F1
+        assert len(genre_trend["data_points"]) == EXPECTED_TREND_POINTS
 
-    async def test_get_trends_empty_history(self, get_metrics_uc, mock_db):
+    async def test_get_trends_empty_history(
+        self, get_metrics_uc: GetMetricsUsecase, mock_db: AsyncMock
+    ) -> None:
         mock_db.fetch_evaluation_history.return_value = []
 
         trends = await get_metrics_uc.get_trends(window_days=30)
 
         assert trends == []
 
-    async def test_get_trends_skips_none_cluster_silhouette(self, get_metrics_uc, mock_db):
+    async def test_get_trends_skips_none_cluster_silhouette(
+        self, get_metrics_uc: GetMetricsUsecase, mock_db: AsyncMock
+    ) -> None:
         ts = datetime(2025, 1, 1, tzinfo=UTC)
         mock_db.fetch_evaluation_history.return_value = [
             {

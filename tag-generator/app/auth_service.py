@@ -8,13 +8,25 @@ import asyncio
 import inspect
 import os
 import threading
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from functools import wraps
-from typing import Any
+from types import TracebackType
+from typing import Any, Never, Protocol, cast
 
 import structlog
 from fastapi import FastAPI, HTTPException, Request
+from pydantic import BaseModel, Field
+
+from tag_generator.infra.inbound_tls import resolve_inbound_tls_bind, start_inbound_tls_listener
+from tag_generator.infra.peer_identity import (
+    PeerIdentityMiddleware,
+    allowed_peers_from_env,
+    resolve_authenticated_peer,
+    strict_from_env,
+)
+from tag_generator.infra.pki import start_enrollment
 
 try:  # Prefer shared auth client when available
     from alt_auth.client import AuthClient, AuthConfig, UserContext, require_auth  # type: ignore
@@ -40,16 +52,24 @@ except ModuleNotFoundError:
     class AuthClient:
         """Fallback authentication client that performs no external validation."""
 
-        def __init__(self, config: AuthConfig):
+        def __init__(self, config: AuthConfig) -> None:
             self.config = config
 
         async def __aenter__(self) -> AuthClient:
             return self
 
-        async def __aexit__(self, exc_type, exc, tb) -> bool:
+        async def __aexit__(
+            self,
+            exc_type: type[BaseException] | None,
+            exc: BaseException | None,
+            tb: TracebackType | None,
+        ) -> bool:
             return False
 
-    def require_auth(_client: AuthClient | None = None):
+    class _AuthDecorator(Protocol):
+        def __call__[F: Callable[..., object]](self, func: F) -> F: ...
+
+    def require_auth(_client: AuthClient | None = None) -> _AuthDecorator:
         """Fallback decorator used when alt_auth.client is not installed.
 
         Fails closed: every call to a route wrapped with this decorator is
@@ -59,43 +79,38 @@ except ModuleNotFoundError:
         a missing auth module must fail closed, not disable authentication).
         """
 
-        def decorator(func):
+        def decorator[F: Callable[..., object]](func: F) -> F:
             if inspect.iscoroutinefunction(func):
 
                 @wraps(func)
-                async def async_wrapper(*args, **kwargs):
-                    logger.error(
-                        "auth_route_rejected",
-                        reason="alt_auth.client is not installed; refusing to serve authenticated route",
-                        func=func.__name__,
-                    )
-                    raise HTTPException(
-                        status_code=503,
-                        detail="Authentication is unavailable (alt_auth.client not installed)",
-                    )
+                async def async_wrapper(*args: object, **kwargs: object) -> Never:
+                    _reject_unauthenticated_route(func.__name__)
 
-                return async_wrapper
+                return cast("F", async_wrapper)
 
             @wraps(func)
-            def sync_wrapper(*args, **kwargs):
-                logger.error(
-                    "auth_route_rejected",
-                    reason="alt_auth.client is not installed; refusing to serve authenticated route",
-                    func=func.__name__,
-                )
-                raise HTTPException(
-                    status_code=503,
-                    detail="Authentication is unavailable (alt_auth.client not installed)",
-                )
+            def sync_wrapper(*args: object, **kwargs: object) -> Never:
+                _reject_unauthenticated_route(func.__name__)
 
-            return sync_wrapper
+            return cast("F", sync_wrapper)
 
         return decorator
 
 
-from pydantic import BaseModel, Field
-
 logger = structlog.get_logger(__name__)
+
+
+def _reject_unauthenticated_route(func_name: str) -> Never:
+    logger.error(
+        "auth_route_rejected",
+        reason="alt_auth.client is not installed; refusing to serve authenticated route",
+        func=func_name,
+    )
+    raise HTTPException(
+        status_code=503,
+        detail="Authentication is unavailable (alt_auth.client not installed)",
+    )
+
 
 if _ALT_AUTH_AVAILABLE:
     logger.info("auth_enabled", detail="alt_auth.client is installed; per-user authentication is enforced")
@@ -130,7 +145,7 @@ class AuthenticatedTagGeneratorService:
     transport layer (mTLS); the legacy AuthConfig.service_secret field is
     set to an empty string for forward-compatible struct construction."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.auth_config = AuthConfig(
             auth_service_url=os.getenv(
                 "AUTH_SERVICE_URL",
@@ -141,20 +156,20 @@ class AuthenticatedTagGeneratorService:
             token_ttl=3600,
         )
 
-        self.auth_client = None
+        self.auth_client: AuthClient | None = None
         logger.info(
             "Authenticated tag generator service initialized",
             auth_service_url=self.auth_config.auth_service_url,
             service_name=self.auth_config.service_name,
         )
 
-    async def initialize(self):
+    async def initialize(self) -> None:
         """Initialize the authentication client."""
         self.auth_client = AuthClient(self.auth_config)
         await self.auth_client.__aenter__()
         logger.info("Authentication client initialized")
 
-    async def cleanup(self):
+    async def cleanup(self) -> None:
         """Cleanup authentication client."""
         if self.auth_client:
             await self.auth_client.__aexit__(None, None, None)
@@ -189,10 +204,8 @@ class AuthenticatedTagGeneratorService:
                 tag_count=len(tags),
             )
 
-            return tags
-
         except Exception as e:
-            logger.error(
+            logger.exception(
                 "Failed to generate personalized tags",
                 user_id=user_context.user_id,
                 tenant_id=user_context.tenant_id,
@@ -200,6 +213,8 @@ class AuthenticatedTagGeneratorService:
                 error=str(e),
             )
             raise
+        else:
+            return tags
 
     async def _get_user_tag_preferences(self, tenant_id: str, user_id: str) -> dict[str, Any]:
         """Get user's tag generation preferences."""
@@ -261,9 +276,7 @@ class AuthenticatedTagGeneratorService:
                         )
 
         # Sort by confidence and limit to max_tags
-        tags = sorted(tags, key=lambda x: x.confidence, reverse=True)[:max_tags]
-
-        return tags
+        return sorted(tags, key=lambda x: x.confidence, reverse=True)[:max_tags]
 
     async def _save_user_tags(self, tenant_id: str, user_id: str, article_id: str, tags: list[TagResult]) -> None:
         """Save generated tags to user-specific storage."""
@@ -285,7 +298,6 @@ tag_service = AuthenticatedTagGeneratorService()
 
 # Background tag generation service
 _background_tag_service = None
-_background_thread = None
 _CONSUMER_SHUTDOWN_TIMEOUT_SECONDS = 10.0
 _stream_consumers: list[Any] = []
 _consumer_threads: list[threading.Thread] = []
@@ -313,16 +325,24 @@ def _unhealthy_consumers() -> list[str]:
     return [name for name, healthy in _consumer_health.items() if not healthy]
 
 
-def _run_background_tag_generation():
+def _run_background_tag_generation() -> None:
     """Run tag generation service in background thread."""
-    global _background_tag_service, _background_service_healthy
+    global _background_tag_service, _background_service_healthy  # noqa: PLW0603 - module-level runtime state patched directly in unit tests
     try:
-        import asyncio
-
-        from tag_generator.config import TagGeneratorConfig
-        from tag_generator.service import TagGeneratorService
-        from tag_generator.stream_consumer import ConsumerConfig, StreamConsumer, supervise
-        from tag_generator.stream_event_handler import TagGeneratorEventHandler
+        from tag_generator.config import (  # noqa: PLC0415 - heavy ML import stays in the background thread so the API binds first and a load failure is reported through /health
+            TagGeneratorConfig,
+        )
+        from tag_generator.service import (  # noqa: PLC0415 - heavy ML import stays in the background thread so the API binds first and a load failure is reported through /health
+            TagGeneratorService,
+        )
+        from tag_generator.stream_consumer import (  # noqa: PLC0415 - heavy ML import stays in the background thread so the API binds first and a load failure is reported through /health
+            ConsumerConfig,
+            StreamConsumer,
+            supervise,
+        )
+        from tag_generator.stream_event_handler import (  # noqa: PLC0415 - heavy ML import stays in the background thread so the API binds first and a load failure is reported through /health
+            TagGeneratorEventHandler,
+        )
 
         logger.info("Starting background tag generation service")
         config = TagGeneratorConfig()
@@ -400,21 +420,15 @@ def _run_background_tag_generation():
         # Run batch processing service (blocking)
         _background_tag_service.run_service()
     except Exception as e:
-        logger.error("Background tag generation service failed", error=str(e), exc_info=True)
+        logger.exception("Background tag generation service failed", error=str(e))
         # Don't raise - allow API server to continue running, but stop
         # reporting healthy: batch tag generation is dead.
         _background_service_healthy = False
 
 
-from tag_generator.infra.inbound_tls import resolve_inbound_tls_bind, start_inbound_tls_listener  # noqa: E402
-from tag_generator.infra.pki import start_enrollment  # noqa: E402
-
-
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Application lifespan management."""
-    global _background_thread, tag_service
-
     logger.info("FastAPI lifespan: startup phase")
 
     # Initialize API service
@@ -428,26 +442,26 @@ async def lifespan(app: FastAPI):
     inbound_tls_runtime = await start_inbound_tls_listener(
         app,
         resolve_inbound_tls_bind(
-            plaintext_host="0.0.0.0",  # nosec B104
+            plaintext_host="0.0.0.0",  # noqa: S104 - container listener; exposure is controlled by the compose network  # nosec B104
             plaintext_port=int(os.getenv("PORT", "9400")),
         ),
     )
 
     # Start background tag generation service in a separate thread
     logger.info("Starting background tag generation service thread")
-    _background_thread = threading.Thread(
+    background_thread = threading.Thread(
         target=_run_background_tag_generation, daemon=True, name="tag-generation-service"
     )
-    _background_thread.start()
+    background_thread.start()
     logger.info("Background tag generation service thread started")
 
     yield
 
     # Cleanup
     logger.info("FastAPI lifespan: shutdown phase")
-    for consumer in list(_stream_consumers):
+    for consumer in tuple(_stream_consumers):
         consumer.stop()
-    for consumer_thread in list(_consumer_threads):
+    for consumer_thread in tuple(_consumer_threads):
         if consumer_thread.is_alive():
             await asyncio.to_thread(consumer_thread.join, _CONSUMER_SHUTDOWN_TIMEOUT_SECONDS)
     _stream_consumers.clear()
@@ -467,12 +481,6 @@ app = FastAPI(title="Tag Generator Service", version="1.0.0", lifespan=lifespan)
 # Wave 4 in-process mTLS injects the verified client-cert CN into
 # request.state. The sidecar header is honoured only on the plaintext
 # loopback dual-run path until compose/pki.yaml drops PROXY_LISTEN.
-from tag_generator.infra.peer_identity import (  # noqa: E402
-    PeerIdentityMiddleware,
-    allowed_peers_from_env,
-    strict_from_env,
-)
-
 app.add_middleware(
     PeerIdentityMiddleware,
     allowed=allowed_peers_from_env(),
@@ -509,7 +517,7 @@ async def generate_tags_endpoint(request: TagGenerationRequest, user_context: Us
         }
 
     except Exception as e:
-        logger.error(
+        logger.exception(
             "Tag generation endpoint failed",
             user_id=user_context.user_id,
             article_id=request.article_id,
@@ -519,7 +527,7 @@ async def generate_tags_endpoint(request: TagGenerationRequest, user_context: Us
 
 
 @app.get("/health")
-async def health_check():
+async def health_check() -> dict[str, str]:
     """Health check endpoint.
 
     Reports unhealthy if the background batch tag-generation service or a
@@ -561,8 +569,6 @@ def verify_service_token(request: Request) -> None:
     Fails closed: rejects anonymous, missing, or spoofed peer identity before inference.
     Valid recap-worker mTLS extraction passes without any unrelated extra token.
     """
-    from tag_generator.infra.peer_identity import allowed_peers_from_env, resolve_authenticated_peer
-
     peer = getattr(request.state, "peer_identity", None)
     if not peer:
         peer = resolve_authenticated_peer(request)
@@ -589,7 +595,7 @@ def verify_service_token(request: Request) -> None:
             status_code=403,
             detail="no peers allowlisted",
         )
-    elif peer not in allowed:
+    if peer not in allowed:
         logger.warning(
             "service_peer_identity_forbidden",
             path=request.url.path,
@@ -628,7 +634,10 @@ async def extract_tags_endpoint(
         outcome = await asyncio.to_thread(
             _background_tag_service.tag_extractor.extract_tags_with_metrics, body.title, body.content
         )
-
+    except Exception as e:
+        logger.exception("Tag extraction failed", error=str(e), title=body.title[:50])
+        raise HTTPException(status_code=500, detail="Tag extraction failed") from e
+    else:
         return {
             "success": True,
             "tags": outcome.tags,
@@ -636,10 +645,6 @@ async def extract_tags_endpoint(
             "inference_ms": outcome.inference_ms,
             "language": outcome.language,
         }
-
-    except Exception as e:
-        logger.error("Tag extraction failed", error=str(e), title=body.title[:50])
-        raise HTTPException(status_code=500, detail="Tag extraction failed") from e
 
 
 if __name__ == "__main__":
@@ -649,4 +654,4 @@ if __name__ == "__main__":
     # only. East-west mTLS is INBOUND_TLS_HOST:INBOUND_TLS_PORT (:9443) when
     # INBOUND_TLS_ENABLED=true — that port has no plaintext fallback.
     port = int(os.getenv("PORT", "9400"))
-    uvicorn.run(app, host="0.0.0.0", port=port)  # nosec B104
+    uvicorn.run(app, host="0.0.0.0", port=port)  # noqa: S104 - container listener; exposure is controlled by the compose network  # nosec B104

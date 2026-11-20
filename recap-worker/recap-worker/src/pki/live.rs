@@ -42,7 +42,15 @@ async fn disposable_live_ca() {
     let tmp = tempfile::TempDir::new().unwrap();
     let _cleanup = LiveCleanup;
 
+    #[expect(
+        clippy::let_underscore_must_use,
+        reason = "best-effort pre-test cleanup when container may not exist"
+    )]
     let _ = docker(&["rm", "-f", LIVE_CONTAINER]);
+    #[expect(
+        clippy::let_underscore_must_use,
+        reason = "best-effort pre-test cleanup when network may not exist"
+    )]
     let _ = docker(&["network", "rm", LIVE_NETWORK]);
     docker(&["network", "create", LIVE_NETWORK]).expect("network create");
     docker(&[
@@ -183,7 +191,15 @@ struct LiveCleanup;
 
 impl Drop for LiveCleanup {
     fn drop(&mut self) {
+        #[expect(
+            clippy::let_underscore_must_use,
+            reason = "best-effort Drop cleanup in live test"
+        )]
         let _ = docker(&["rm", "-f", LIVE_CONTAINER]);
+        #[expect(
+            clippy::let_underscore_must_use,
+            reason = "best-effort Drop cleanup in live test"
+        )]
         let _ = docker(&["network", "rm", LIVE_NETWORK]);
     }
 }

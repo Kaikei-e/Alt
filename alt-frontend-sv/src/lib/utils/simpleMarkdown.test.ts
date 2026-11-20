@@ -302,7 +302,9 @@ describe("parseMarkdown", () => {
 
 	describe("links are never rendered as anchors", () => {
 		it("keeps the label of [text](url) as plain text", () => {
-			const result = parseMarkdown("Visit [Example](https://example.com) today");
+			const result = parseMarkdown(
+				"Visit [Example](https://example.com) today",
+			);
 			expect(result).not.toContain("<a");
 			expect(result).not.toContain("href");
 			expect(result).toContain("Visit Example today");

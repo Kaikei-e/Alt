@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from http import HTTPStatus
 
 from starlette.testclient import TestClient
 
@@ -10,7 +11,7 @@ from starlette.testclient import TestClient
 def test_health_endpoint_returns_ok(client: TestClient) -> None:
     """GET /health returns 200 with service status."""
     resp = client.get("/health")
-    assert resp.status_code == 200
+    assert resp.status_code == HTTPStatus.OK
     data = resp.json()
     assert data["status"] == "ok"
     assert data["service"] == "acolyte-orchestrator"
@@ -23,7 +24,7 @@ def test_connect_health_check_returns_ok(client: TestClient) -> None:
         content=json.dumps({}),
         headers={"Content-Type": "application/json"},
     )
-    assert resp.status_code == 200
+    assert resp.status_code == HTTPStatus.OK
     data = resp.json()
     assert data["status"] == "ok"
 
@@ -36,4 +37,4 @@ def test_unimplemented_rpc_returns_error(client: TestClient) -> None:
         headers={"Content-Type": "application/json"},
     )
     # Connect-RPC returns 501 for unimplemented
-    assert resp.status_code == 501
+    assert resp.status_code == HTTPStatus.NOT_IMPLEMENTED

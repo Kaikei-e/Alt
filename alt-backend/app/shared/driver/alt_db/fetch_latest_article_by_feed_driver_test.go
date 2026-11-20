@@ -6,18 +6,19 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestAltDBRepository_FetchLatestArticleByFeedID_NilRepository(t *testing.T) {
 	var r *ArticleRepository
 	_, err := r.FetchLatestArticleByFeedID(context.Background(), uuid.New())
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "database connection not available")
 }
 
 func TestAltDBRepository_FetchLatestArticleByFeedID_NilPool(t *testing.T) {
 	r := &ArticleRepository{pool: nil}
 	_, err := r.FetchLatestArticleByFeedID(context.Background(), uuid.New())
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "database connection not available")
 }

@@ -15,7 +15,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -104,7 +104,7 @@ func TestRESTRoutes_EnforceUserQuotaWith429AndRetryAfter(t *testing.T) {
 	token := signRESTTestJWT(t, priv, uid)
 	body := `{"messages":[{"role":"user","content":"hello"}],"stream":false}`
 
-	req1 := httptest.NewRequest(http.MethodPost, "/sse/v1/rag/answer", strings.NewReader(body))
+	req1 := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/sse/v1/rag/answer", strings.NewReader(body))
 	req1.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	req1.Header.Set("X-Alt-Backend-Token", token)
 	rec1 := httptest.NewRecorder()
@@ -112,7 +112,7 @@ func TestRESTRoutes_EnforceUserQuotaWith429AndRetryAfter(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rec1.Code)
 	assert.Equal(t, 1, answerUC.calls)
 
-	req2 := httptest.NewRequest(http.MethodPost, "/sse/v1/rag/answer", strings.NewReader(body))
+	req2 := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/sse/v1/rag/answer", strings.NewReader(body))
 	req2.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	req2.Header.Set("X-Alt-Backend-Token", token)
 	rec2 := httptest.NewRecorder()
@@ -122,7 +122,7 @@ func TestRESTRoutes_EnforceUserQuotaWith429AndRetryAfter(t *testing.T) {
 	assert.Equal(t, 1, answerUC.calls)
 
 	sumBody := `{"feed_url":"https://example.com/a","content":"body text","title":"T","force_refresh":true}`
-	sReq1 := httptest.NewRequest(http.MethodPost, "/v1/feeds/summarize/stream", strings.NewReader(sumBody))
+	sReq1 := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/feeds/summarize/stream", strings.NewReader(sumBody))
 	sReq1.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	sReq1.Header.Set("X-Alt-Backend-Token", token)
 	sRec1 := httptest.NewRecorder()
@@ -130,7 +130,7 @@ func TestRESTRoutes_EnforceUserQuotaWith429AndRetryAfter(t *testing.T) {
 	assert.Equal(t, http.StatusOK, sRec1.Code)
 	assert.Len(t, repo.savedSummaryIDs, 1)
 
-	sReq2 := httptest.NewRequest(http.MethodPost, "/v1/feeds/summarize/stream", strings.NewReader(sumBody))
+	sReq2 := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/feeds/summarize/stream", strings.NewReader(sumBody))
 	sReq2.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	sReq2.Header.Set("X-Alt-Backend-Token", token)
 	sRec2 := httptest.NewRecorder()
@@ -303,7 +303,7 @@ func TestNonStreamingSummarizeRoutes_EnforcePerUserQuotaAndIsolateUsers(t *testi
 			userBToken := signRESTTestJWT(t, priv, uuid.New())
 
 			doCall := func(tok string) *httptest.ResponseRecorder {
-				req := httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(tc.body))
+				req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, tc.path, strings.NewReader(tc.body))
 				req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 				req.Header.Set("X-Alt-Backend-Token", tok)
 				rec := httptest.NewRecorder()
@@ -348,7 +348,7 @@ func TestSummarizeRoutes_ShareSinglePerUserBudgetAcrossStreamingAndNonStreaming(
 	userBToken := signRESTTestJWT(t, priv, uuid.New())
 
 	doPost := func(path, body, tok string) *httptest.ResponseRecorder {
-		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, path, strings.NewReader(body))
 		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 		req.Header.Set("X-Alt-Backend-Token", tok)
 		rec := httptest.NewRecorder()
@@ -420,7 +420,7 @@ func TestRESTRoutes_RetrieveContextIsGatedByItsOwnClass(t *testing.T) {
 	RegisterAugurRoutes(e, v1, container, cfg.Auth)
 
 	get := func(token string) *httptest.ResponseRecorder {
-		req := httptest.NewRequest(http.MethodGet, "/v1/rag/context?q=ai", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/rag/context?q=ai", nil)
 		req.Header.Set("X-Alt-Backend-Token", token)
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, req)
@@ -435,7 +435,7 @@ func TestRESTRoutes_RetrieveContextIsGatedByItsOwnClass(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, get(signRESTTestJWT(t, priv, uuid.New())).Code, "another account keeps working")
 
-	unauth := httptest.NewRequest(http.MethodGet, "/v1/rag/context?q=ai", nil)
+	unauth := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/rag/context?q=ai", nil)
 	unauthRec := httptest.NewRecorder()
 	e.ServeHTTP(unauthRec, unauth)
 	assert.Equal(t, http.StatusUnauthorized, unauthRec.Code)
@@ -461,7 +461,7 @@ func TestFetchSummaryRoute_ChargesOneTokenPerGeneratedSummary(t *testing.T) {
 	body := `{"feed_urls":[` + strings.Join(urls, ",") + `]}`
 
 	post := func() *httptest.ResponseRecorder {
-		req := httptest.NewRequest(http.MethodPost, "/v1/feeds/fetch/summary", strings.NewReader(body))
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/feeds/fetch/summary", strings.NewReader(body))
 		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 		req.Header.Set("X-Alt-Backend-Token", token)
 		rec := httptest.NewRecorder()

@@ -85,7 +85,7 @@ func TestArticleUrlBackfilledPayload_AcceptsEmptyOriginalOccurredAt(t *testing.T
 	var asMap map[string]any
 	require.NoError(t, json.Unmarshal(raw, &asMap))
 	assert.Contains(t, asMap, "original_occurred_at")
-	assert.Equal(t, "", asMap["original_occurred_at"])
+	assert.Empty(t, asMap["original_occurred_at"])
 }
 
 // Round-trip: a producer-emitted bytestream with "url" can be read back

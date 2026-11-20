@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/log"
-	"go.opentelemetry.io/otel/log/global"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 
@@ -24,10 +24,10 @@ import (
 
 func TestProvider_InitAndExport(t *testing.T) {
 	originalTracer := otel.GetTracerProvider()
-	originalLogger := global.GetLoggerProvider()
+	originalLogger := otel.GetLoggerProvider()
 	defer func() {
 		otel.SetTracerProvider(originalTracer)
-		global.SetLoggerProvider(originalLogger)
+		otel.SetLoggerProvider(originalLogger)
 	}()
 
 	var traceReqCount, logReqCount int32
@@ -40,15 +40,16 @@ func TestProvider_InitAndExport(t *testing.T) {
 		mu.Lock()
 		defer mu.Unlock()
 
-		if r.URL.Path == "/v1/traces" {
+		switch r.URL.Path {
+		case "/v1/traces":
 			atomic.AddInt32(&traceReqCount, 1)
 			traceAuth = r.Header.Get("Authorization")
 			lastTraceBody = body
-		} else if r.URL.Path == "/v1/logs" {
+		case "/v1/logs":
 			atomic.AddInt32(&logReqCount, 1)
 			logAuth = r.Header.Get("Authorization")
 			lastLogBody = body
-		} else {
+		default:
 			t.Errorf("Unexpected path: %s", r.URL.Path)
 		}
 
@@ -65,13 +66,14 @@ func TestProvider_InitAndExport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp file: %v", err)
 	}
-	defer os.Remove(tmpFile.Name())
-	tmpFile.Write([]byte(tokenContent))
-	tmpFile.Close()
+	t.Cleanup(func() { require.NoError(t, os.Remove(tmpFile.Name())) })
+	_, err = tmpFile.Write([]byte(tokenContent))
+	require.NoError(t, err)
+	require.NoError(t, tmpFile.Close())
 
-	os.Setenv("RASK_INGEST_TOKEN_FILE", tmpFile.Name())
-	os.Setenv("RASK_INGEST_TOKEN", tokenContent)
-	os.Setenv("OTEL_TRACE_SAMPLE_RATIO", "1.0")
+	t.Setenv("RASK_INGEST_TOKEN_FILE", tmpFile.Name())
+	t.Setenv("RASK_INGEST_TOKEN", tokenContent)
+	t.Setenv("OTEL_TRACE_SAMPLE_RATIO", "1.0")
 
 	cfg := ConfigFromEnv()
 	cfg.Enabled = true
@@ -93,7 +95,7 @@ func TestProvider_InitAndExport(t *testing.T) {
 	_, span := tracer.Start(ctx, "test-span")
 	span.End()
 
-	logger := global.GetLoggerProvider().Logger("test-logger")
+	logger := otel.GetLoggerProvider().Logger("test-logger")
 	var rec log.Record
 	logger.Emit(ctx, rec)
 
@@ -101,13 +103,13 @@ func TestProvider_InitAndExport(t *testing.T) {
 	defer flushCancel()
 
 	if tp, ok := otel.GetTracerProvider().(*sdktrace.TracerProvider); ok {
-		tp.ForceFlush(ctxFlush)
+		require.NoError(t, tp.ForceFlush(ctxFlush))
 	} else {
 		t.Errorf("TracerProvider is not sdktrace.TracerProvider")
 	}
 
-	if lp, ok := global.GetLoggerProvider().(*sdklog.LoggerProvider); ok {
-		lp.ForceFlush(ctxFlush)
+	if lp, ok := otel.GetLoggerProvider().(*sdklog.LoggerProvider); ok {
+		require.NoError(t, lp.ForceFlush(ctxFlush))
 	} else {
 		t.Errorf("LoggerProvider is not sdklog.LoggerProvider")
 	}
@@ -135,11 +137,11 @@ func TestProvider_InitAndExport(t *testing.T) {
 	if err := proto.Unmarshal(lastTraceBody, &traceReq); err != nil {
 		t.Fatalf("Failed to decode trace req: %v", err)
 	}
-	if len(traceReq.ResourceSpans) == 0 {
+	if len(traceReq.GetResourceSpans()) == 0 {
 		t.Errorf("Expected non-empty ResourceSpans")
-	} else if len(traceReq.ResourceSpans[0].ScopeSpans) == 0 {
+	} else if len(traceReq.GetResourceSpans()[0].GetScopeSpans()) == 0 {
 		t.Errorf("Expected non-empty ScopeSpans")
-	} else if len(traceReq.ResourceSpans[0].ScopeSpans[0].Spans) == 0 {
+	} else if len(traceReq.GetResourceSpans()[0].GetScopeSpans()[0].GetSpans()) == 0 {
 		t.Errorf("Expected non-empty Spans")
 	}
 
@@ -147,21 +149,21 @@ func TestProvider_InitAndExport(t *testing.T) {
 	if err := proto.Unmarshal(lastLogBody, &logReq); err != nil {
 		t.Fatalf("Failed to decode log req: %v", err)
 	}
-	if len(logReq.ResourceLogs) == 0 {
+	if len(logReq.GetResourceLogs()) == 0 {
 		t.Errorf("Expected non-empty ResourceLogs")
-	} else if len(logReq.ResourceLogs[0].ScopeLogs) == 0 {
+	} else if len(logReq.GetResourceLogs()[0].GetScopeLogs()) == 0 {
 		t.Errorf("Expected non-empty ScopeLogs")
-	} else if len(logReq.ResourceLogs[0].ScopeLogs[0].LogRecords) == 0 {
+	} else if len(logReq.GetResourceLogs()[0].GetScopeLogs()[0].GetLogRecords()) == 0 {
 		t.Errorf("Expected non-empty LogRecords")
 	}
 }
 
 func TestProvider_RedirectFail(t *testing.T) {
 	originalTracer := otel.GetTracerProvider()
-	originalLogger := global.GetLoggerProvider()
+	originalLogger := otel.GetLoggerProvider()
 	defer func() {
 		otel.SetTracerProvider(originalTracer)
-		global.SetLoggerProvider(originalLogger)
+		otel.SetLoggerProvider(originalLogger)
 	}()
 
 	var reqCount int32
@@ -180,7 +182,7 @@ func TestProvider_RedirectFail(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	os.Setenv("OTEL_TRACE_SAMPLE_RATIO", "1.0")
+	t.Setenv("OTEL_TRACE_SAMPLE_RATIO", "1.0")
 	cfg := ConfigFromEnv()
 	cfg.Enabled = true
 	cfg.OTLPEndpoint = ts.URL

@@ -50,8 +50,7 @@ def _collect_imports(tree: ast.Module, file_path: Path) -> list[tuple[str, int]]
     imports: list[tuple[str, int]] = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
-            for alias in node.names:
-                imports.append((alias.name, node.lineno))
+            imports.extend((alias.name, node.lineno) for alias in node.names)
         elif isinstance(node, ast.ImportFrom):
             if node.level and node.level > 0:
                 mod = _resolve_relative_import(file_path, node.level, node.module)

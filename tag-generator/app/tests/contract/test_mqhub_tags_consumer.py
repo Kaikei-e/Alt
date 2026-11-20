@@ -39,7 +39,7 @@ REPLY_TO = "alt:replies:tags:7c9e6679-7425-40de-944b-e07fc1f90ae7"
 # The key shape tag-generator answers; any other reply_to is dropped unanswered,
 # so the pact holds mq-hub to it rather than to "some string".
 REPLY_TO_PATTERN = f"^{_REPLY_STREAM_KEY.pattern}$"
-TEST_REDIS_PASSWORD = "contract-test-redis-password"
+TEST_REDIS_PASSWORD = "contract-test-redis-password"  # noqa: S105 - test fixture value, not a credential
 
 
 @pytest.fixture(autouse=True)
@@ -86,7 +86,7 @@ def _redis_fields(envelope: dict[str, Any]) -> dict[str, str]:
     return fields
 
 
-def test_consume_tag_generation_requested_event():
+def test_consume_tag_generation_requested_event() -> None:
     """Pin the request mq-hub puts on alt:events:tags and answer it for real."""
     pact = _new_pact()
     service = _stub_service()
@@ -162,7 +162,7 @@ def test_consume_tag_generation_requested_event():
     pact.write_file(PACT_DIR)
 
 
-def test_tags_consumer_reads_the_stream_mq_hub_publishes_to():
+def test_tags_consumer_reads_the_stream_mq_hub_publishes_to() -> None:
     """The pact names a stream; this is what binds that name to the consumer.
 
     mq-hub publishes to domain.StreamKeyTags ("alt:events:tags"). Nothing else
@@ -176,7 +176,7 @@ def test_tags_consumer_reads_the_stream_mq_hub_publishes_to():
     assert config.redis_password == TEST_REDIS_PASSWORD
 
 
-def test_tag_generation_request_payload_binds_only_contracted_fields():
+def test_tag_generation_request_payload_binds_only_contracted_fields() -> None:
     """Consumer-side half of the guarantee the pact above encodes.
 
     The pact says what mq-hub must send; this says what tag-generator is allowed

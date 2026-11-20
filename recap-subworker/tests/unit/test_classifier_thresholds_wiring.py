@@ -16,12 +16,13 @@ Review reference: docs/review/3days-recap-rustbert-cache-recovery-2026-04-22.md
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from recap_subworker.app.container import ServiceContainer
 
 
-def test_container_classifier_passes_language_specific_thresholds(tmp_path) -> None:
+def test_container_classifier_passes_language_specific_thresholds(tmp_path: Path) -> None:
     """ServiceContainer.classifier must pass thresholds_path pointing at the
     30-genre Japanese thresholds file, not the deprecated default.
     """
@@ -33,9 +34,9 @@ def test_container_classifier_passes_language_specific_thresholds(tmp_path) -> N
     settings_stub.genre_classifier_model_path = str(model_file)
     settings_stub.genre_thresholds_path_ja = str(thresholds_file)
 
-    captured_kwargs: dict = {}
+    captured_kwargs: dict[str, object] = {}
 
-    def fake_init(self, model_path, embedder, **kwargs):
+    def fake_init(self: object, model_path: str, embedder: object, **kwargs: object) -> None:
         captured_kwargs["model_path"] = model_path
         captured_kwargs.update(kwargs)
 

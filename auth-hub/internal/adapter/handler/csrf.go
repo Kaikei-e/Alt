@@ -8,7 +8,7 @@ import (
 	"auth-hub/internal/domain"
 	"auth-hub/internal/usecase"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 // CSRFHandler handles CSRF token requests.
@@ -29,7 +29,7 @@ type csrfResponse struct {
 }
 
 // Handle processes CSRF token requests.
-func (h *CSRFHandler) Handle(c echo.Context) error {
+func (h *CSRFHandler) Handle(c *echo.Context) error {
 	ctx := c.Request().Context()
 
 	rawCookie := c.Request().Header.Get("Cookie")

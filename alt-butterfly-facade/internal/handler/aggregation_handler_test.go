@@ -64,7 +64,7 @@ func TestAggregationRequest_Parse(t *testing.T) {
 			if tt.wantErr {
 				assert.Error(t, err)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.Equal(t, tt.queries, req.Queries)
 			}
 		})
@@ -77,10 +77,10 @@ func TestAggregationHandler_ServeHTTP_Success(t *testing.T) {
 		switch r.URL.Path {
 		case "/alt.feeds.v2.FeedService/GetFeedStats":
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{"total_feeds": 10}`))
+			_, _ = w.Write([]byte(`{"total_feeds": 10}`))
 		case "/alt.feeds.v2.FeedService/GetUnreadCount":
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{"unread_count": 5}`))
+			_, _ = w.Write([]byte(`{"unread_count": 5}`))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -108,7 +108,7 @@ func TestAggregationHandler_ServeHTTP_Success(t *testing.T) {
 	)
 
 	reqBody := `{"queries": ["feed_stats", "unread_count"]}`
-	req := httptest.NewRequest("POST", "/v1/aggregate", bytes.NewReader([]byte(reqBody)))
+	req := httptest.NewRequestWithContext(t.Context(), "POST", "/v1/aggregate", bytes.NewReader([]byte(reqBody)))
 	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, testPrivateKey))
 	rec := httptest.NewRecorder()
 
@@ -127,7 +127,7 @@ func TestAggregationHandler_ServeHTTP_Success(t *testing.T) {
 func TestAggregationHandler_ServeHTTP_InvalidMethod(t *testing.T) {
 	handler := NewAggregationHandler(nil, testPublicKey, "auth-hub", "alt-backend", nil)
 
-	req := httptest.NewRequest("GET", "/v1/aggregate", nil)
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/v1/aggregate", nil)
 	rec := httptest.NewRecorder()
 
 	handler.ServeHTTP(rec, req)
@@ -138,7 +138,7 @@ func TestAggregationHandler_ServeHTTP_InvalidMethod(t *testing.T) {
 func TestAggregationHandler_ServeHTTP_InvalidBody(t *testing.T) {
 	handler := NewAggregationHandler(nil, testPublicKey, "auth-hub", "alt-backend", nil)
 
-	req := httptest.NewRequest("POST", "/v1/aggregate", bytes.NewReader([]byte(`{invalid`)))
+	req := httptest.NewRequestWithContext(t.Context(), "POST", "/v1/aggregate", bytes.NewReader([]byte(`{invalid`)))
 	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, testPrivateKey))
 	rec := httptest.NewRecorder()
 
@@ -156,7 +156,7 @@ func TestAggregationHandler_ServeHTTP_UnknownQuery(t *testing.T) {
 	)
 
 	reqBody := `{"queries": ["unknown_query"]}`
-	req := httptest.NewRequest("POST", "/v1/aggregate", bytes.NewReader([]byte(reqBody)))
+	req := httptest.NewRequestWithContext(t.Context(), "POST", "/v1/aggregate", bytes.NewReader([]byte(reqBody)))
 	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, testPrivateKey))
 	rec := httptest.NewRecorder()
 
@@ -204,7 +204,7 @@ func TestAggregationHandler_ParallelFetch(t *testing.T) {
 	)
 
 	reqBody := `{"queries": ["feed_stats", "unread_count", "trends"]}`
-	req := httptest.NewRequest("POST", "/v1/aggregate", bytes.NewReader([]byte(reqBody)))
+	req := httptest.NewRequestWithContext(t.Context(), "POST", "/v1/aggregate", bytes.NewReader([]byte(reqBody)))
 	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, testPrivateKey))
 	rec := httptest.NewRecorder()
 
@@ -297,7 +297,7 @@ func TestAggregationHandler_PartialFailure(t *testing.T) {
 	)
 
 	reqBody := `{"queries": ["feed_stats", "unread_count"]}`
-	req := httptest.NewRequest("POST", "/v1/aggregate", bytes.NewReader([]byte(reqBody)))
+	req := httptest.NewRequestWithContext(t.Context(), "POST", "/v1/aggregate", bytes.NewReader([]byte(reqBody)))
 	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, testPrivateKey))
 	rec := httptest.NewRecorder()
 
@@ -335,7 +335,7 @@ func TestAggregationHandler_ReadBody(t *testing.T) {
 	)
 
 	reqBody := `{"queries": ["feed_stats"]}`
-	req := httptest.NewRequest("POST", "/v1/aggregate", bytes.NewReader([]byte(reqBody)))
+	req := httptest.NewRequestWithContext(t.Context(), "POST", "/v1/aggregate", bytes.NewReader([]byte(reqBody)))
 	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, testPrivateKey))
 	rec := httptest.NewRecorder()
 
@@ -361,7 +361,7 @@ func TestAggregationHandler_TokenForwarding(t *testing.T) {
 	)
 
 	reqBody := `{"queries": ["feed_stats"]}`
-	req := httptest.NewRequest("POST", "/v1/aggregate", bytes.NewReader([]byte(reqBody)))
+	req := httptest.NewRequestWithContext(t.Context(), "POST", "/v1/aggregate", bytes.NewReader([]byte(reqBody)))
 	token := createValidToken(t, testPrivateKey)
 	req.Header.Set("X-Alt-Backend-Token", token)
 	rec := httptest.NewRecorder()
@@ -389,7 +389,7 @@ func TestMaxQueries(t *testing.T) {
 	}
 
 	reqBody, _ := json.Marshal(AggregationRequest{Queries: queries})
-	req := httptest.NewRequest("POST", "/v1/aggregate", bytes.NewReader(reqBody))
+	req := httptest.NewRequestWithContext(t.Context(), "POST", "/v1/aggregate", bytes.NewReader(reqBody))
 	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, testPrivateKey))
 	rec := httptest.NewRecorder()
 
@@ -422,7 +422,7 @@ func TestAggregationHandler_NonJSONBackendBodyBecomesQueryError(t *testing.T) {
 	)
 
 	reqBody := `{"queries": ["feed_stats", "unread_count"]}`
-	req := httptest.NewRequest("POST", "/v1/aggregate", bytes.NewReader([]byte(reqBody)))
+	req := httptest.NewRequestWithContext(t.Context(), "POST", "/v1/aggregate", bytes.NewReader([]byte(reqBody)))
 	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, testPrivateKey))
 	rec := httptest.NewRecorder()
 

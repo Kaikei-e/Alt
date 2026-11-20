@@ -12,16 +12,23 @@ pub struct InitializationResult {
 pub struct ApplicationInitializer;
 
 impl ApplicationInitializer {
+    #[must_use]
     pub fn new() -> Self {
         Self
     }
 
     /// 段階的初期化（失敗時の詳細情報提供）
+    ///
+    /// # Errors
+    ///
+    /// Returns [`InitializationError::LoggingInitFailed`] if initializing the
+    /// tracing subscriber fails, or [`InitializationError::ConfigValidationFailed`]
+    /// if configuration validation fails.
     pub fn initialize(&self, config: &Config) -> Result<InitializationResult, InitializationError> {
         let start_time = std::time::Instant::now();
 
         // Phase 1: ログシステムの初期化
-        self.initialize_logging(config.log_level).map_err(|e| {
+        Self::initialize_logging(config.log_level).map_err(|e| {
             eprintln!("Failed to initialize logging: {e}");
             e
         })?;
@@ -36,10 +43,9 @@ impl ApplicationInitializer {
         tracing::info!("Application initialization completed in {elapsed:?}");
 
         // Use microseconds to ensure we capture sub-millisecond durations
-        // Convert to milliseconds, ensuring at least 1ms if any time passed
-        // Safety: truncation is acceptable - initialization time won't exceed u64::MAX milliseconds
-        #[allow(clippy::cast_possible_truncation)]
-        let time_ms = (elapsed.as_micros() / 1000) as u64;
+        // Convert to milliseconds, ensuring at least 1ms if any time passed.
+        // Initialization time cannot exceed `u64::MAX` ms (~584 million years) in practice.
+        let time_ms = u64::try_from(elapsed.as_micros() / 1000).unwrap_or(u64::MAX);
         let initialization_time_ms = if time_ms == 0 && elapsed.as_nanos() > 0 {
             1 // At least 1ms if any time passed
         } else {
@@ -53,7 +59,7 @@ impl ApplicationInitializer {
         })
     }
 
-    fn initialize_logging(&self, log_level: LogLevel) -> Result<(), InitializationError> {
+    fn initialize_logging(log_level: LogLevel) -> Result<(), InitializationError> {
         // Use the memory-safe logging setup
         setup_logging_safe(log_level)?;
 
@@ -61,6 +67,15 @@ impl ApplicationInitializer {
         Ok(())
     }
 
+    /// Validates configuration values and prepares the disk-fallback directory
+    /// when disk fallback is enabled.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`InitializationError::ConfigValidationFailed`] if endpoint,
+    /// batch size, buffer capacity, timing, metrics port, or disk-fallback
+    /// settings are invalid, or if creating/chmodding the fallback directory
+    /// fails.
     pub fn validate_configuration(&self, config: &Config) -> Result<(), InitializationError> {
         // Validate endpoint
         if config.endpoint.is_empty() {
@@ -157,6 +172,7 @@ impl ApplicationInitializer {
     }
 
     /// 設定に基づく初期化戦略の決定
+    #[must_use]
     pub fn determine_initialization_strategy(&self, config: &Config) -> InitializationStrategy {
         if config.target_service.is_none() {
             InitializationStrategy::AutoDetection
@@ -186,6 +202,7 @@ pub enum InitializationStrategy {
 
 #[cfg(test)]
 mod tests {
+    use super::super::config::{DiskFallbackConfig, MetricsConfig, RetryConfig};
     use super::*;
     use std::path::PathBuf;
     use std::time::Duration;
@@ -212,9 +229,9 @@ mod tests {
             // Derived fields
             flush_interval: Duration::from_millis(500),
             connection_timeout: Duration::from_secs(30),
-            retry_config: Default::default(),
-            disk_fallback_config: Default::default(),
-            metrics_config: Default::default(),
+            retry_config: RetryConfig::default(),
+            disk_fallback_config: DiskFallbackConfig::default(),
+            metrics_config: MetricsConfig::default(),
             ingest_token_file: None,
             ingest_token: String::new(),
         }
@@ -281,7 +298,7 @@ mod tests {
 
         // Empty endpoint
         let mut config = create_valid_config();
-        config.endpoint = "".to_string();
+        config.endpoint = String::new();
         assert!(initializer.validate_configuration(&config).is_err());
 
         // Invalid URL scheme
@@ -379,7 +396,7 @@ mod tests {
         let initializer = ApplicationInitializer::new();
 
         let mut config = create_valid_config();
-        config.endpoint = "".to_string(); // Invalid
+        config.endpoint = String::new(); // Invalid
 
         let result = initializer.initialize(&config);
         assert!(result.is_err(), "Should fail with invalid config");

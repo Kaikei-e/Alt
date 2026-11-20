@@ -93,7 +93,7 @@ func (c *authHubClientImpl) GetFirstIdentityID(ctx context.Context) (string, err
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch system user: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("failed to fetch system user: status %d", resp.StatusCode)

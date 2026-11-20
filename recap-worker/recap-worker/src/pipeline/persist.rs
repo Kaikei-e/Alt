@@ -20,8 +20,13 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 /// `[1]` / `[42]` 形式の出典マーカーを抽出する。news-creator の REFERENCE_MARKER_RE と対称。
-static REFERENCE_MARKER_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\[(\d+)\]").expect("REFERENCE_MARKER_RE must compile"));
+#[expect(
+    clippy::expect_used,
+    reason = "compile-time literal regex is valid by construction"
+)]
+static REFERENCE_MARKER_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"\[(\d+)\]").expect("compile-time literal regex is valid by construction")
+});
 
 /// `references[].article_id` を信用してよいかを shape で判定する。
 /// 本物の article_id は常に UUID。production で LLM がドメイン文字列を返す事例が出たため
@@ -45,6 +50,32 @@ fn url_host(url: &str) -> Option<String> {
     } else {
         Some(host.to_ascii_lowercase())
     }
+}
+
+/// Resolve a single `Reference` to all matching known `article_id`s via UUID-shape check and URL/host lookup.
+fn resolve_reference_article_ids(
+    reference: &Reference,
+    url_to_article: &HashMap<String, String>,
+    host_to_articles: &HashMap<String, Vec<String>>,
+) -> BTreeSet<String> {
+    let mut article_ids = BTreeSet::new();
+
+    // Path 1: UUID-shape article_id を採用 (verbatim 信用ではなく、shape を見てから DB 照合)
+    if let Some(aid) = reference.article_id.as_ref().filter(|a| is_uuid_shape(a)) {
+        article_ids.insert(aid.clone());
+    }
+
+    // Path 2: URL match を常に併走。完全一致 → host 単位一致 (multi-match 許容)。
+    if let Some(a) = url_to_article.get(&reference.url) {
+        article_ids.insert(a.clone());
+    }
+    if let Some(rh) = url_host(&reference.url) {
+        if let Some(aids) = host_to_articles.get(&rh) {
+            article_ids.extend(aids.iter().cloned());
+        }
+    }
+
+    article_ids
 }
 
 /// bullet 内の `[n]` を `references[n-1]` 経由で article_id に解決し、
@@ -73,35 +104,17 @@ fn reconcile_bullet_citations(
     }
 
     for cap in REFERENCE_MARKER_RE.captures_iter(bullet) {
-        let n: usize = match cap[1].parse() {
-            Ok(v) if v >= 1 && v <= refs.len() => v,
-            Ok(_) | Err(_) => {
-                debug!(marker = %&cap[0], refs_len = refs.len(),
-                    "ignoring out-of-range citation marker");
-                continue;
-            }
+        let Some(n) = cap[1]
+            .parse::<usize>()
+            .ok()
+            .filter(|&v| v >= 1 && v <= refs.len())
+        else {
+            debug!(marker = %&cap[0], refs_len = refs.len(),
+                "ignoring out-of-range citation marker");
+            continue;
         };
         let r = &refs[n - 1];
-        let mut article_ids: BTreeSet<String> = BTreeSet::new();
-
-        // Path 1: UUID-shape article_id を採用 (verbatim 信用ではなく、shape を見てから DB 照合)
-        if let Some(aid) = r.article_id.as_ref() {
-            if is_uuid_shape(aid) {
-                article_ids.insert(aid.clone());
-            }
-        }
-
-        // Path 2: URL match を常に併走。完全一致 → host 単位一致 (multi-match 許容)。
-        if let Some(a) = url_to_article.get(&r.url) {
-            article_ids.insert(a.clone());
-        }
-        if let Some(rh) = url_host(&r.url) {
-            if let Some(aids) = host_to_articles.get(&rh) {
-                for a in aids {
-                    article_ids.insert(a.clone());
-                }
-            }
-        }
+        let article_ids = resolve_reference_article_ids(r, url_to_article, host_to_articles);
 
         if article_ids.is_empty() {
             warn!(
@@ -254,74 +267,8 @@ impl FinalSectionPersistStage {
         ) {
             (Some(summary_id), Some(response)) => Ok((summary_id.clone(), response.clone())),
             (Some(summary_id), None) => {
-                // リジューム時: データベースから再取得
-                match self.dao.get_recap_output_body_json(job.job_id, genre).await {
-                    Ok(Some(body_json)) => {
-                        match serde_json::from_value::<crate::clients::news_creator::SummaryResponse>(
-                            body_json,
-                        ) {
-                            Ok(response) => {
-                                info!(
-                                    job_id = %job.job_id,
-                                    genre = %genre,
-                                    "recovered summary_response from database"
-                                );
-                                Ok((summary_id.clone(), response))
-                            }
-                            Err(e) => {
-                                warn!(
-                                    job_id = %job.job_id,
-                                    genre = %genre,
-                                    error = ?e,
-                                    "failed to deserialize summary_response from database"
-                                );
-                                record_failed_genre(
-                                    self.dao.as_ref(),
-                                    job.job_id,
-                                    "persist_lookup",
-                                    genre,
-                                    &format!("deserialize summary_response failed: {e}"),
-                                )
-                                .await;
-                                Err(())
-                            }
-                        }
-                    }
-                    Ok(None) => {
-                        warn!(
-                            job_id = %job.job_id,
-                            genre = %genre,
-                            summary_id = %summary_id,
-                            "summary_response not found in database"
-                        );
-                        record_failed_genre(
-                            self.dao.as_ref(),
-                            job.job_id,
-                            "persist_lookup",
-                            genre,
-                            &format!("summary_response not found in database for id {summary_id}"),
-                        )
-                        .await;
-                        Err(())
-                    }
-                    Err(e) => {
-                        warn!(
-                            job_id = %job.job_id,
-                            genre = %genre,
-                            error = ?e,
-                            "failed to fetch summary_response from database"
-                        );
-                        record_failed_genre(
-                            self.dao.as_ref(),
-                            job.job_id,
-                            "persist_lookup",
-                            genre,
-                            &format!("fetch summary_response failed: {e}"),
-                        )
-                        .await;
-                        Err(())
-                    }
-                }
+                self.recover_summary_response_from_db(job.job_id, genre, summary_id)
+                    .await
             }
             (None, _) => {
                 warn!(
@@ -335,6 +282,94 @@ impl FinalSectionPersistStage {
                     "persist_lookup",
                     genre,
                     "genre missing summary_response_id",
+                )
+                .await;
+                Err(())
+            }
+        }
+    }
+
+    /// Resume path: re-fetch persisted `body_json` from `recap_outputs` and
+    /// deserialize it into `SummaryResponse`, recording a `persist_lookup`
+    /// failure if missing or unreadable.
+    async fn recover_summary_response_from_db(
+        &self,
+        job_id: uuid::Uuid,
+        genre: &str,
+        summary_id: &str,
+    ) -> Result<(String, crate::clients::news_creator::SummaryResponse), ()> {
+        // リジューム時: データベースから再取得
+        match self.dao.get_recap_output_body_json(job_id, genre).await {
+            Ok(Some(body_json)) => {
+                self.deserialize_recovered_summary(job_id, genre, summary_id, body_json)
+                    .await
+            }
+            Ok(None) => {
+                warn!(
+                    job_id = %job_id,
+                    genre = %genre,
+                    summary_id = %summary_id,
+                    "summary_response not found in database"
+                );
+                record_failed_genre(
+                    self.dao.as_ref(),
+                    job_id,
+                    "persist_lookup",
+                    genre,
+                    &format!("summary_response not found in database for id {summary_id}"),
+                )
+                .await;
+                Err(())
+            }
+            Err(e) => {
+                warn!(
+                    job_id = %job_id,
+                    genre = %genre,
+                    error = ?e,
+                    "failed to fetch summary_response from database"
+                );
+                record_failed_genre(
+                    self.dao.as_ref(),
+                    job_id,
+                    "persist_lookup",
+                    genre,
+                    &format!("fetch summary_response failed: {e}"),
+                )
+                .await;
+                Err(())
+            }
+        }
+    }
+
+    async fn deserialize_recovered_summary(
+        &self,
+        job_id: uuid::Uuid,
+        genre: &str,
+        summary_id: &str,
+        body_json: serde_json::Value,
+    ) -> Result<(String, crate::clients::news_creator::SummaryResponse), ()> {
+        match serde_json::from_value::<crate::clients::news_creator::SummaryResponse>(body_json) {
+            Ok(response) => {
+                info!(
+                    job_id = %job_id,
+                    genre = %genre,
+                    "recovered summary_response from database"
+                );
+                Ok((summary_id.to_string(), response))
+            }
+            Err(e) => {
+                warn!(
+                    job_id = %job_id,
+                    genre = %genre,
+                    error = ?e,
+                    "failed to deserialize summary_response from database"
+                );
+                record_failed_genre(
+                    self.dao.as_ref(),
+                    job_id,
+                    "persist_lookup",
+                    genre,
+                    &format!("deserialize summary_response failed: {e}"),
                 )
                 .await;
                 Err(())
@@ -621,6 +656,79 @@ impl FinalSectionPersistStage {
         Ok(GenreOutcome::Stored)
     }
 
+    /// Classify a pre-existing dispatch error into a `GenreOutcome` and record
+    /// genuine failures in `recap_failed_tasks`.
+    async fn classify_dispatch_error(
+        &self,
+        job: &JobContext,
+        genre: &str,
+        error_msg: &str,
+        genre_result: &GenreResult,
+    ) -> GenreOutcome {
+        // `error_kind` を見て分類する。文字列 (`error_msg`) は診断用に
+        // 保持するのみで、分類には使わない — 任意のエラーメッセージが
+        // 偶然 "no evidence" 等の部分文字列を含んでいても、本物の
+        // no-evidence/insufficient-documents 状態と誤分類されない。
+        match &genre_result.error_kind {
+            Some(RecapError::NoEvidence) => GenreOutcome::NoEvidence,
+            Some(RecapError::InsufficientDocuments { .. }) => GenreOutcome::Skipped,
+            _ => {
+                // その他のエラー（クラスタリング失敗、サマリー生成失敗など）
+                warn!(
+                    job_id = %job.job_id,
+                    genre = %genre,
+                    error = ?genre_result.error,
+                    "skipping genre with error"
+                );
+                record_failed_genre(
+                    self.dao.as_ref(),
+                    job.job_id,
+                    "dispatch_summary",
+                    genre,
+                    error_msg,
+                )
+                .await;
+                GenreOutcome::Failed
+            }
+        }
+    }
+
+    /// Extract semantic tags via tag-generator when configured, warning and
+    /// continuing with an empty list on error.
+    async fn extract_genre_tags(
+        &self,
+        job_id: uuid::Uuid,
+        genre: &str,
+        sanitized_summary: &str,
+    ) -> Vec<String> {
+        let Some(ref tg) = self.tag_generator else {
+            return Vec::new();
+        };
+        // `sanitized_summary` is already `summary_bullets.join("\n")`
+        // run through `sanitize_title`; appending the unsanitized
+        // bullets again here just sent the same content twice.
+        match tg.extract_tags(genre, sanitized_summary).await {
+            Ok(tags) => {
+                debug!(
+                    job_id = %job_id,
+                    genre = %genre,
+                    tag_count = tags.len(),
+                    "extracted semantic tags for genre"
+                );
+                tags
+            }
+            Err(e) => {
+                warn!(
+                    job_id = %job_id,
+                    genre = %genre,
+                    error = ?e,
+                    "failed to extract semantic tags, continuing without tags"
+                );
+                Vec::new()
+            }
+        }
+    }
+
     /// Persist a single genre's final section: classify a pre-existing
     /// dispatch error, resolve the summary response, build sources and
     /// citations, extract tags, and write the output row. Returns the
@@ -633,32 +741,9 @@ impl FinalSectionPersistStage {
     ) -> Result<GenreOutcome> {
         // エラーがある場合は分類
         if let Some(error_msg) = &genre_result.error {
-            // `error_kind` を見て分類する。文字列 (`error_msg`) は診断用に
-            // 保持するのみで、分類には使わない — 任意のエラーメッセージが
-            // 偶然 "no evidence" 等の部分文字列を含んでいても、本物の
-            // no-evidence/insufficient-documents 状態と誤分類されない。
-            return Ok(match &genre_result.error_kind {
-                Some(RecapError::NoEvidence) => GenreOutcome::NoEvidence,
-                Some(RecapError::InsufficientDocuments { .. }) => GenreOutcome::Skipped,
-                _ => {
-                    // その他のエラー（クラスタリング失敗、サマリー生成失敗など）
-                    warn!(
-                        job_id = %job.job_id,
-                        genre = %genre,
-                        error = ?genre_result.error,
-                        "skipping genre with error"
-                    );
-                    record_failed_genre(
-                        self.dao.as_ref(),
-                        job.job_id,
-                        "dispatch_summary",
-                        genre,
-                        error_msg,
-                    )
-                    .await;
-                    GenreOutcome::Failed
-                }
-            });
+            return Ok(self
+                .classify_dispatch_error(job, genre, error_msg, genre_result)
+                .await);
         }
 
         // summary_responseがNoneの場合、データベースから再取得を試みる
@@ -689,33 +774,9 @@ impl FinalSectionPersistStage {
         let sanitized_summary = sanitize_title(&summary_text);
 
         // tag-generatorでセマンティックタグを抽出
-        let tags = if let Some(ref tg) = self.tag_generator {
-            // `sanitized_summary` is already `summary_bullets.join("\n")`
-            // run through `sanitize_title`; appending the unsanitized
-            // bullets again here just sent the same content twice.
-            match tg.extract_tags(genre, &sanitized_summary).await {
-                Ok(tags) => {
-                    debug!(
-                        job_id = %job.job_id,
-                        genre = %genre,
-                        tag_count = tags.len(),
-                        "extracted semantic tags for genre"
-                    );
-                    tags
-                }
-                Err(e) => {
-                    warn!(
-                        job_id = %job.job_id,
-                        genre = %genre,
-                        error = ?e,
-                        "failed to extract semantic tags, continuing without tags"
-                    );
-                    Vec::new()
-                }
-            }
-        } else {
-            Vec::new()
-        };
+        let tags = self
+            .extract_genre_tags(job.job_id, genre, &sanitized_summary)
+            .await;
 
         let output = RecapOutput::new(
             job.job_id,

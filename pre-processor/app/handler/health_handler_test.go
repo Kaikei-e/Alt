@@ -194,8 +194,8 @@ func TestHealthHandler_CheckSLACompliance(t *testing.T) {
 
 			// Verify expected values
 			assert.Equal(t, tc.expectedMeetsSLA, result["meets_sla"])
-			assert.Equal(t, 99.9, result["target_availability"])
-			assert.Equal(t, tc.expectedAvail, result["current_availability"])
+			assert.InDelta(t, 99.9, result["target_availability"], 1e-9)
+			assert.InDelta(t, tc.expectedAvail, result["current_availability"], 1e-9)
 
 			expectedStatus := "compliant"
 			if !tc.expectedMeetsSLA {
@@ -292,19 +292,19 @@ func TestHealthHandler_MetricsCollectorNotConfigured(t *testing.T) {
 
 	// Test all metrics endpoints should return error
 	_, err := handler.GetHealthMetrics(ctx)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "metrics collector not configured")
 
 	_, err = handler.GetExtendedHealthMetrics(ctx)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "metrics collector not configured")
 
 	_, err = handler.CheckSLACompliance(ctx)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "metrics collector not configured")
 
 	_, err = handler.GetHealthAlerts(ctx)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "metrics collector not configured")
 }
 
@@ -320,7 +320,7 @@ func TestHealthHandler_ExistingMethods(t *testing.T) {
 
 	// Test CheckHealth
 	err := handler.CheckHealth(ctx)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Test CheckDependencies
 	err = handler.CheckDependencies(ctx)

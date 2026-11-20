@@ -40,12 +40,12 @@ func (h *SovereignHandler) GetTrailFootprints(
 	req *connect.Request[sovereignv1.GetTrailFootprintsRequest],
 ) (*connect.Response[sovereignv1.GetTrailFootprintsResponse], error) {
 	msg := req.Msg
-	userID, err := parseUUIDField("user_id", msg.UserId)
+	userID, err := parseUUIDField("user_id", msg.GetUserId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 
-	offset, err := parseEpisodeCursor(msg.Cursor)
+	offset, err := parseEpisodeCursor(msg.GetCursor())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
@@ -53,13 +53,13 @@ func (h *SovereignHandler) GetTrailFootprints(
 	// Episodes derive over a fixed window of the read model, independent of
 	// the client's page cursor/limit — those apply to the derived episode
 	// list, not the underlying footprint fetch.
-	window, _, _, err := h.readDB.GetTrailFootprints(ctx, userID, "", episodeWindowRows, msg.FilterTags)
+	window, _, _, err := h.readDB.GetTrailFootprints(ctx, userID, "", episodeWindowRows, msg.GetFilterTags())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("GetTrailFootprints: %w", err))
 	}
 	episodes := trail_episodes.Derive(window)
-	episodes = filterEpisodesByItemKeys(episodes, msg.FilterItemKeys)
-	if len(msg.FilterItemKeys) > 0 && len(episodes) == 0 {
+	episodes = filterEpisodesByItemKeys(episodes, msg.GetFilterItemKeys())
+	if len(msg.GetFilterItemKeys()) > 0 && len(episodes) == 0 {
 		// Episodes derive over a fixed episodeWindowRows window (above), so a
 		// filtered-to-empty result is indistinguishable here from "the item
 		// exists but fell outside the window" vs. a genuine no-match. Loud by
@@ -69,7 +69,7 @@ func (h *SovereignHandler) GetTrailFootprints(
 			"user_id", userID.String(), "window_rows", episodeWindowRows)
 	}
 
-	limit := clampReadLimit(int(msg.Limit), defaultReadLimit)
+	limit := clampReadLimit(int(msg.GetLimit()), defaultReadLimit)
 	if offset > len(episodes) {
 		offset = len(episodes)
 	}
@@ -120,15 +120,15 @@ func (h *SovereignHandler) GetTrailBranchesForAnchor(
 	req *connect.Request[sovereignv1.GetTrailBranchesForAnchorRequest],
 ) (*connect.Response[sovereignv1.GetTrailBranchesForAnchorResponse], error) {
 	msg := req.Msg
-	userID, err := parseUUIDField("user_id", msg.UserId)
+	userID, err := parseUUIDField("user_id", msg.GetUserId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	anchorItemKey := strings.TrimSpace(msg.AnchorItemKey)
+	anchorItemKey := strings.TrimSpace(msg.GetAnchorItemKey())
 	if anchorItemKey == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("anchor_item_key required"))
 	}
-	limit := int(msg.Limit)
+	limit := int(msg.GetLimit())
 	if limit <= 0 {
 		limit = defaultAnchorBranchLimit
 	}

@@ -1,15 +1,20 @@
 # SV Connect-RPC Composite 10m Load Test
 
-`alt-frontend-sv` の実運用経路に合わせて、`/api/v2/*` の Connect-RPC を 10 分間まとめて叩く複合負荷試験です（旧パス `/sv/api/v2/*` はリバースプロキシの歴史的構成）。
+`alt-frontend-sv` の実運用経路に合わせて、`/api/v2/*` の Connect-RPC を 10
+分間まとめて叩く複合負荷試験です（旧パス `/sv/api/v2/*` はリバースプロキシの歴史的構成）。
 
 - 対象経路: browser 相当の `plecto-proxy -> /api/v2 -> SvelteKit proxy -> alt-backend`
-  - 注: `scenarios/sv-connect-composite-10m.js` はデフォルトで `http://nginx/sv/api/v2` を参照します。`plecto-proxy` の `/api/v2` 経路に向ける場合は `K6_APP_BASE_URL`（例: `K6_APP_BASE_URL="http://localhost/api/v2"` やコンテナ内 `http://plecto-proxy/api/v2`）を設定してください。
+  - 注: `scenarios/sv-connect-composite-10m.js` はデフォルトで `http://nginx/sv/api/v2`
+    を参照します。`plecto-proxy` の `/api/v2` 経路に向ける場合は `K6_APP_BASE_URL`（例:
+    `K6_APP_BASE_URL="http://localhost/api/v2"` やコンテナ内
+    `http://plecto-proxy/api/v2`）を設定してください。
 - 外部HTTP: **mock-rss-server のみ**
 - 目的: 「何 sessions/sec まで閾値内でさばけるか」を測り、そこから同時ユーザー数を推定する
 
 ## なぜこのモデルか
 
-- SV フロントの本番入口である `/api/v2` を通すので、SvelteKit proxy・`hooks.server.ts`・auth-hub のコストも含めて測れる
+- SV フロントの本番入口である `/api/v2` を通すので、SvelteKit proxy・`hooks.server.ts`・auth-hub
+  のコストも含めて測れる
 - k6 は `ramping-arrival-rate` を使う open model
   - セッション開始レートを固定できる
   - サーバーが遅くなっても発火レートが下がらず、処理限界を見つけやすい
@@ -19,12 +24,12 @@
 
 重みは SV フロントで使われている Connect-RPC クライアントに寄せています。
 
-| Flow | 比率 | Connect-RPC |
-|------|------|-------------|
-| Browse | 45% | `GetUnreadCount` → `GetUnreadFeeds` → `GetAllFeeds` |
-| Read | 25% | `GetUnreadFeeds` → `FetchArticlesCursor` → `FetchArticleContent` → `MarkAsRead` |
-| Discovery | 20% | `GetFeedStats` → `GetDetailedFeedStats` → `SearchFeeds` → `GetReadFeeds` → `GetFavoriteFeeds` |
-| Manage Feeds | 10% | `ListRSSFeedLinks` → `RegisterRSSFeed` → `RegisterFavoriteFeed` → `ListRSSFeedLinks` |
+| Flow         | 比率 | Connect-RPC                                                                                   |
+| ------------ | ---- | --------------------------------------------------------------------------------------------- |
+| Browse       | 45%  | `GetUnreadCount` → `GetUnreadFeeds` → `GetAllFeeds`                                           |
+| Read         | 25%  | `GetUnreadFeeds` → `FetchArticlesCursor` → `FetchArticleContent` → `MarkAsRead`               |
+| Discovery    | 20%  | `GetFeedStats` → `GetDetailedFeedStats` → `SearchFeeds` → `GetReadFeeds` → `GetFavoriteFeeds` |
+| Manage Feeds | 10%  | `ListRSSFeedLinks` → `RegisterRSSFeed` → `RegisterFavoriteFeed` → `ListRSSFeedLinks`          |
 
 ## 外部リクエストの扱い
 
@@ -35,22 +40,24 @@
 - `FetchArticleContent`
   - mock article HTML を取得
 
-mock サーバーは [`alt-perf/k6/mock-rss-server/main.go`](./mock-rss-server/main.go) で、RSS/記事HTML/OG画像を返します。遅延は環境変数で調整できます。
+mock サーバーは [`alt-perf/k6/mock-rss-server/main.go`](./mock-rss-server/main.go)
+で、RSS/記事HTML/OG画像を返します。遅延は環境変数で調整できます。
 
 ## インフラ設定のオーバーライド
 
-実行スクリプトは `compose/sv-connect-load-test-generated.yaml` を生成し、負荷試験に必要な設定を一時的に上書きします。
+実行スクリプトは `compose/sv-connect-load-test-generated.yaml`
+を生成し、負荷試験に必要な設定を一時的に上書きします。
 
-| サービス | 環境変数 | デフォルト | オーバーライド | 理由 |
-|----------|---------|-----------|--------------|------|
-| alt-backend | `FEED_ALLOWED_HOSTS` | (空) | `mock-rss-001` | mock-rss-server への SSRF 許可 |
-| alt-backend | `DOS_PROTECTION_RATE_LIMIT` | 100 | 5000 | VU 並列リクエストでの 429 回避 |
-| alt-backend | `DOS_PROTECTION_BURST_LIMIT` | 200 | 10000 | 同上 |
-| alt-backend | `RATE_LIMIT_EXTERNAL_API_INTERVAL` | 10s | 10ms | mock-rss への per-host レート制限緩和 (100 req/s) |
-| alt-backend | `RATE_LIMIT_EXTERNAL_API_BURST` | 3 | 500 | mock-rss へのバースト許容量増加 |
-| alt-backend | `RATE_LIMIT_EXTERNAL_API_UNSAFE_FAST` | false | true | sub-second interval のバリデーションバイパス（要: alt-backend コード一時変更、後述） |
-| auth-hub | `VALIDATE_RATE_LIMIT` | ~1.67 req/s | 1000 req/s | `/validate` 認証検証のボトルネック回避 |
-| auth-hub | `SESSION_RATE_LIMIT` | 0.5 req/s (30 req/min) | 1000 req/s | `/session` JWT取得のボトルネック回避 |
+| サービス    | 環境変数                              | デフォルト             | オーバーライド | 理由                                                                                 |
+| ----------- | ------------------------------------- | ---------------------- | -------------- | ------------------------------------------------------------------------------------ |
+| alt-backend | `FEED_ALLOWED_HOSTS`                  | (空)                   | `mock-rss-001` | mock-rss-server への SSRF 許可                                                       |
+| alt-backend | `DOS_PROTECTION_RATE_LIMIT`           | 100                    | 5000           | VU 並列リクエストでの 429 回避                                                       |
+| alt-backend | `DOS_PROTECTION_BURST_LIMIT`          | 200                    | 10000          | 同上                                                                                 |
+| alt-backend | `RATE_LIMIT_EXTERNAL_API_INTERVAL`    | 10s                    | 10ms           | mock-rss への per-host レート制限緩和 (100 req/s)                                    |
+| alt-backend | `RATE_LIMIT_EXTERNAL_API_BURST`       | 3                      | 500            | mock-rss へのバースト許容量増加                                                      |
+| alt-backend | `RATE_LIMIT_EXTERNAL_API_UNSAFE_FAST` | false                  | true           | sub-second interval のバリデーションバイパス（要: alt-backend コード一時変更、後述） |
+| auth-hub    | `VALIDATE_RATE_LIMIT`                 | ~1.67 req/s            | 1000 req/s     | `/validate` 認証検証のボトルネック回避                                               |
+| auth-hub    | `SESSION_RATE_LIMIT`                  | 0.5 req/s (30 req/min) | 1000 req/s     | `/session` JWT取得のボトルネック回避                                                 |
 
 ### リクエストフロー
 
@@ -64,44 +71,66 @@ k6 VU → plecto-proxy (/api/v2/*) → alt-frontend-sv (SvelteKit proxy)
 
 ### なぜこれらが必要か
 
-1. **FEED_ALLOWED_HOSTS**: alt-backend は SSRF 防止のため、外部 HTTP リクエスト先を `FEED_ALLOWED_HOSTS` でホワイトリスト管理している。mock-rss-server のホスト名 `mock-rss-001` を許可しないと `RegisterRSSFeed` / `FetchArticleContent` が失敗する
-2. **DOS_PROTECTION**: デフォルトは 100 req/min。数十 VU が各セッションで 3〜6 回の RPC を叩くと瞬時に超過する。5000 に緩和することで負荷試験中の誤ブロックを防ぐ
-3. **RATE_LIMIT_EXTERNAL_API**: `FetchArticleContent` が `HostRateLimiter` (`golang.org/x/time/rate` の token bucket) でホスト単位に制御される。`rate.Every(interval)` が定常レートを決め、`burst` は初期トークン数。デフォルト 10s 間隔（0.1 req/s）・バースト 3 では全 VU が `mock-rss-001` に集中するため即座にタイムアウトする。高負荷試験では interval=10ms（100 req/s）・burst=500 に緩和。**interval < 1s にはバリデーションの 1 秒最小値ガードがあるため、`RATE_LIMIT_EXTERNAL_API_UNSAFE_FAST=true` が必須**
-4. **VALIDATE_RATE_LIMIT**: 旧 Next.js パス (`/api/backend/*`) はエッジプロキシ `auth_request` → auth-hub `/validate` を通過していた。デフォルト ~1.67 req/s では負荷試験時に詰まるため緩和
-5. **SESSION_RATE_LIMIT**: フロントエンドパス (`/api/v2/*`) は SvelteKit `hooks.server.ts` → auth-hub `/session` で JWT を取得する。デフォルト 0.5 req/s (30 req/min) では 2 VU でも即座に 429 が返るため 1000 req/s に緩和
+1. **FEED_ALLOWED_HOSTS**: alt-backend は SSRF 防止のため、外部 HTTP リクエスト先を
+   `FEED_ALLOWED_HOSTS` でホワイトリスト管理している。mock-rss-server のホスト名 `mock-rss-001`
+   を許可しないと `RegisterRSSFeed` / `FetchArticleContent` が失敗する
+2. **DOS_PROTECTION**: デフォルトは 100 req/min。数十 VU が各セッションで 3〜6 回の RPC
+   を叩くと瞬時に超過する。5000 に緩和することで負荷試験中の誤ブロックを防ぐ
+3. **RATE_LIMIT_EXTERNAL_API**: `FetchArticleContent` が `HostRateLimiter` (`golang.org/x/time/rate`
+   の token bucket) でホスト単位に制御される。`rate.Every(interval)` が定常レートを決め、`burst`
+   は初期トークン数。デフォルト 10s 間隔（0.1 req/s）・バースト 3 では全 VU が `mock-rss-001`
+   に集中するため即座にタイムアウトする。高負荷試験では interval=10ms（100 req/s）・burst=500
+   に緩和。**interval < 1s にはバリデーションの 1
+   秒最小値ガードがあるため、`RATE_LIMIT_EXTERNAL_API_UNSAFE_FAST=true` が必須**
+4. **VALIDATE_RATE_LIMIT**: 旧 Next.js パス (`/api/backend/*`) はエッジプロキシ `auth_request` →
+   auth-hub `/validate` を通過していた。デフォルト ~1.67 req/s では負荷試験時に詰まるため緩和
+5. **SESSION_RATE_LIMIT**: フロントエンドパス (`/api/v2/*`) は SvelteKit `hooks.server.ts` →
+   auth-hub `/session` で JWT を取得する。デフォルト 0.5 req/s (30 req/min) では 2 VU でも即座に 429
+   が返るため 1000 req/s に緩和
 
 ### SSRF バリデータについて
 
-Docker ネットワーク内では `mock-rss-001` がプライベート IP（172.x.x.x）に解決されるため、`SSRFValidator` が DNS rebinding 攻撃と誤検知してブロックします。これを回避するにはコードの一時変更が必要です（「負荷試験時の alt-backend コード一時変更」セクション参照）。
+Docker ネットワーク内では `mock-rss-001` がプライベート
+IP（172.x.x.x）に解決されるため、`SSRFValidator` が DNS rebinding
+攻撃と誤検知してブロックします。これを回避するにはコードの一時変更が必要です（「負荷試験時の
+alt-backend コード一時変更」セクション参照）。
 
 ### mock-rss-server の 3 レプリカ化
 
-高負荷試験 (1000 VU+) では mock-rss-server を 3 レプリカに増やし、Docker DNS ラウンドロビンで負荷分散する。
+高負荷試験 (1000 VU+) では mock-rss-server を 3 レプリカに増やし、Docker DNS
+ラウンドロビンで負荷分散する。
 
 **オーバーレイでの変更点:**
 
 ```yaml
 mock-rss-server:
-  ports: !reset []          # ホストポート 8091:8080 を無効化（レプリカ間でポート競合するため）
+  ports: !reset [] # ホストポート 8091:8080 を無効化（レプリカ間でポート競合するため）
   deploy:
-    replicas: 3             # 3 レプリカで負荷分散
+    replicas: 3 # 3 レプリカで負荷分散
   networks:
     alt-network:
       aliases:
-        - mock-rss-001      # 全レプリカが同一 DNS エイリアスを共有
+        - mock-rss-001 # 全レプリカが同一 DNS エイリアスを共有
 ```
 
-- `ports: !reset []` — ホストポートマッピングを無効化。複数レプリカではポート 8091 が競合するため必須
-- ヘルスチェックは `docker compose exec -T mock-rss-server wget --spider -q http://localhost:8080/health` に変更（ホストポート経由が使えないため）
+- `ports: !reset []` — ホストポートマッピングを無効化。複数レプリカではポート 8091
+  が競合するため必須
+- ヘルスチェックは
+  `docker compose exec -T mock-rss-server wget --spider -q http://localhost:8080/health`
+  に変更（ホストポート経由が使えないため）
 - DNS エイリアス `mock-rss-001` は全レプリカで共有され、Docker 内部 DNS がラウンドロビンで振り分ける
 
 ### 負荷試験時の alt-backend コード一時変更
 
-高負荷試験では alt-backend のセキュリティバリデーションを一時的に緩和する必要がある。**これらの変更は本番コードにマージしないこと。試験後に必ず `git checkout -- alt-backend/` で revert する。**
+高負荷試験では alt-backend
+のセキュリティバリデーションを一時的に緩和する必要がある。**これらの変更は本番コードにマージしないこと。試験後に必ず
+`git checkout -- alt-backend/` で revert する。**
 
 #### 1. レート制限 interval < 1s の許可
 
-`HostRateLimiter` は `rate.Every(interval)` で定常レートを設定する。interval=1s だとバースト消費後は **1 req/s** しか通らない。高負荷試験で interval を 1 秒未満にするには、以下 2 ファイルを一時変更する:
+`HostRateLimiter` は `rate.Every(interval)` で定常レートを設定する。interval=1s だとバースト消費後は
+**1 req/s** しか通らない。高負荷試験で interval を 1 秒未満にするには、以下 2
+ファイルを一時変更する:
 
 **`alt-backend/app/config/config.go`** — `RateLimitConfig` にフィールドを追加:
 
@@ -129,7 +158,9 @@ if !config.ExternalAPIUnsafeFast && config.ExternalAPIInterval < time.Second {
 
 #### 2. SSRF AllowList による private IP 許可
 
-Docker ネットワーク内では `mock-rss-001` がプライベート IP (172.x.x.x) に解決されるため、`SSRFValidator` が DNS rebinding 攻撃と誤検知する。`FEED_ALLOWED_HOSTS` 環境変数だけでは不十分で、バリデータに IP 承認ロジックが必要:
+Docker ネットワーク内では `mock-rss-001` がプライベート IP (172.x.x.x)
+に解決されるため、`SSRFValidator` が DNS rebinding 攻撃と誤検知する。`FEED_ALLOWED_HOSTS`
+環境変数だけでは不十分で、バリデータに IP 承認ロジックが必要:
 
 **`alt-backend/app/utils/security/ssrf_validator.go`** — 3 箇所を変更:
 
@@ -180,28 +211,29 @@ git checkout -- alt-backend/app/config/config.go alt-backend/app/config/validati
 
 ### トラブルシューティング
 
-| 症状 | k6 カウンター | 対処 |
-|------|-------------|------|
-| 429 が多発 | `rate_limit_hits` 増加 | `DOS_PROTECTION_RATE_LIMIT` を上げる |
-| 401/403 が多発 | `auth_errors` 増加 | `SESSION_RATE_LIMIT` / `VALIDATE_RATE_LIMIT` を確認、auth-hub ログで 429 を確認 |
-| RegisterRSSFeed で 5xx | `server_errors` 増加 | `FEED_ALLOWED_HOSTS` にホスト名が含まれているか確認 |
-| login 失敗 | `login_errors` 増加 | Kratos が起動しているか、テストユーザーが作成されたか確認 |
+| 症状                   | k6 カウンター          | 対処                                                                            |
+| ---------------------- | ---------------------- | ------------------------------------------------------------------------------- |
+| 429 が多発             | `rate_limit_hits` 増加 | `DOS_PROTECTION_RATE_LIMIT` を上げる                                            |
+| 401/403 が多発         | `auth_errors` 増加     | `SESSION_RATE_LIMIT` / `VALIDATE_RATE_LIMIT` を確認、auth-hub ログで 429 を確認 |
+| RegisterRSSFeed で 5xx | `server_errors` 増加   | `FEED_ALLOWED_HOSTS` にホスト名が含まれているか確認                             |
+| login 失敗             | `login_errors` 増加    | Kratos が起動しているか、テストユーザーが作成されたか確認                       |
 
 ## 10分プロファイル
 
 デフォルトのセッション開始レート:
 
-| 区間 | 長さ | sessions/sec |
-|------|------|--------------|
-| warm-up | 1m | 2 |
-| ramp | 2m | 2 → 5 |
-| stable | 4m | 5 |
-| ramp | 2m | 5 → 8 |
-| peak | 1m | 8 |
+| 区間    | 長さ | sessions/sec |
+| ------- | ---- | ------------ |
+| warm-up | 1m   | 2            |
+| ramp    | 2m   | 2 → 5        |
+| stable  | 4m   | 5            |
+| ramp    | 2m   | 5 → 8        |
+| peak    | 1m   | 8            |
 
 調整用の主な env:
 
-- `K6_APP_BASE_URL`（デフォルト: `http://nginx/sv/api/v2`。plecto-proxy 経路を指定する場合は `http://localhost/api/v2` 等）
+- `K6_APP_BASE_URL`（デフォルト: `http://nginx/sv/api/v2`。plecto-proxy 経路を指定する場合は
+  `http://localhost/api/v2` 等）
 - `SESSION_RATE_BASE`
 - `SESSION_RATE_TARGET`
 - `SESSION_RATE_PEAK`
@@ -246,7 +278,8 @@ SESSION_RATE_BASE=20 SESSION_RATE_TARGET=100 SESSION_RATE_PEAK=120 \
 
 ## ユーザー数の推定方法
 
-この試験は「同時接続 VU 数」ではなく「セッション流入レート」を測ります。推定は Little の法則で行います。
+この試験は「同時接続 VU 数」ではなく「セッション流入レート」を測ります。推定は Little
+の法則で行います。
 
 1. 閾値を満たした最後の plateau を採用する
 2. `successful session rate` をその plateau の実効 sessions/sec とみなす
@@ -265,7 +298,8 @@ estimated_concurrent_users =
 6.5 sessions/sec × 9.8 sec ≒ 63 users
 ```
 
-これは「その時点で Alt が同時に抱えていたアクティブユーザー相当」の目安です。限界を探るときは `SESSION_RATE_PEAK` を段階的に上げ、**閾値を最後に通過した run** を採用します。
+これは「その時点で Alt が同時に抱えていたアクティブユーザー相当」の目安です。限界を探るときは
+`SESSION_RATE_PEAK` を段階的に上げ、**閾値を最後に通過した run** を採用します。
 
 ## 見るべきメトリクス
 
@@ -284,17 +318,19 @@ JSON レポートは `alt-perf/reports/k6-*.json` に出ます。
 
 ## pprof プロファイリング
 
-負荷試験時に alt-backend のランタイムプロファイリングを有効化できます。`PPROF_ENABLED=true`（デフォルト有効）を設定すると、alt-backend が `net/http/pprof` エンドポイントをポート 6060 で起動します。
+負荷試験時に alt-backend
+のランタイムプロファイリングを有効化できます。`PPROF_ENABLED=true`（デフォルト有効）を設定すると、alt-backend
+が `net/http/pprof` エンドポイントをポート 6060 で起動します。
 
 ### 自動収集
 
 実行スクリプトは k6 シナリオ終了後、以下のプロファイルを自動収集します:
 
-| プロファイル | 出力先 |
-|-------------|--------|
-| heap (in-use) | `/tmp/pprof-heap-sv-composite.pb.gz` |
-| allocs (cumulative) | `/tmp/pprof-allocs-sv-composite.pb.gz` |
-| goroutine | `/tmp/pprof-goroutine-sv-composite.pb.gz` |
+| プロファイル        | 出力先                                    |
+| ------------------- | ----------------------------------------- |
+| heap (in-use)       | `/tmp/pprof-heap-sv-composite.pb.gz`      |
+| allocs (cumulative) | `/tmp/pprof-allocs-sv-composite.pb.gz`    |
+| goroutine           | `/tmp/pprof-goroutine-sv-composite.pb.gz` |
 
 ### 試験中の手動取得
 
@@ -329,7 +365,10 @@ PPROF_ENABLED=false ./alt-perf/scripts/run-sv-connect-composite-test.sh
 
 - 直接 `alt-backend:9101` を叩く既存シナリオより重く出るのは正常です
   - この試験は `alt-frontend-sv` と auth 周辺も含むため
-  - 1 RPC あたり plecto-proxy → SvelteKit proxy → auth-hub `/session` → alt-backend の 4 hop を経由する
-- 外部依存を real site に向けないため、`FetchArticleContent` も `RegisterRSSFeed` も mock URL のみ使います
-- 生成オーバーライド (`compose/sv-connect-load-test-generated.yaml`) はスクリプト終了時に自動削除されます
+  - 1 RPC あたり plecto-proxy → SvelteKit proxy → auth-hub `/session` → alt-backend の 4 hop
+    を経由する
+- 外部依存を real site に向けないため、`FetchArticleContent` も `RegisterRSSFeed` も mock URL
+  のみ使います
+- 生成オーバーライド (`compose/sv-connect-load-test-generated.yaml`)
+  はスクリプト終了時に自動削除されます
 - 設定オーバーライドの詳細は「インフラ設定のオーバーライド」セクションを参照してください

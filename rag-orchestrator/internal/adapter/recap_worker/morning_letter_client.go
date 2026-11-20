@@ -56,7 +56,7 @@ func (c *Client) fetch(ctx context.Context, url string) (*domain.MorningLetterDo
 	if err != nil {
 		return nil, fmt.Errorf("recap_worker: request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, nil

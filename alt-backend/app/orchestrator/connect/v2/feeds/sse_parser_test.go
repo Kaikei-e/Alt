@@ -82,7 +82,7 @@ func TestExtractSSEData(t *testing.T) {
 
 func TestExtractSSEEvent_ErrorEvent(t *testing.T) {
 	data, err := extractSSEEvent("event: error\ndata: {\"error\": \"summary generation failed\"}\n")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "summary generation failed")
 	assert.Empty(t, data)
 }

@@ -66,7 +66,7 @@ func (h *Handler) GetTheme(
 
 	var version *int32
 	if req.Msg.Version != nil {
-		v := *req.Msg.Version
+		v := req.Msg.GetVersion()
 		version = &v
 	}
 

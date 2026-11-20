@@ -1,6 +1,7 @@
 package httpclient
 
 import (
+	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -25,7 +26,11 @@ func TestNewPooledClient_FailedMTLSLoadRefusesPlaintext(t *testing.T) {
 	defer srv.Close()
 
 	c := NewPooledClient(2 * time.Second)
-	resp, err := c.Get(srv.URL)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL, nil)
+	if err != nil {
+		t.Fatalf("failed to build request: %v", err)
+	}
+	resp, err := c.Do(req)
 	if err == nil {
 		if resp != nil {
 			_ = resp.Body.Close()

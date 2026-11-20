@@ -18,7 +18,7 @@ use tokio_util::sync::CancellationToken;
 
 pub struct ReliabilityManager {
     retry_manager: Arc<Mutex<RetryManager>>,
-    /// `None` when ENABLE_DISK_FALLBACK is false. Not a "might not be wired
+    /// `None` when `ENABLE_DISK_FALLBACK` is false. Not a "might not be wired
     /// yet" option: the two states are distinguished by a startup log, and the
     /// disabled branch fails loudly rather than pretending the batch was saved.
     disk_fallback: Option<Arc<Mutex<DiskFallback>>>,
@@ -29,6 +29,12 @@ pub struct ReliabilityManager {
 }
 
 impl ReliabilityManager {
+    /// Creates a new [`ReliabilityManager`] with retry, optional disk fallback, metrics, and health tracking.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `disk_config.enabled` is `true` and [`DiskFallback::new`] fails to
+    /// initialize or scan the fallback directory.
     pub async fn new(
         retry_config: RetryConfig,
         disk_config: DiskConfig,
@@ -54,7 +60,7 @@ impl ReliabilityManager {
             None
         };
         let metrics_collector = Arc::new(Mutex::new(
-            MetricsCollector::new(metrics_config).unwrap_or_else(|e| {
+            MetricsCollector::new(&metrics_config).unwrap_or_else(|e| {
                 tracing::error!(
                     "Failed to create metrics collector: {}, using legacy fallback",
                     e
@@ -74,6 +80,12 @@ impl ReliabilityManager {
         })
     }
 
+    /// Sends `batch` with configured retries, falling back to disk storage if retries are exhausted.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TransmissionError::ClientError`] if all transmission retries fail and either disk
+    /// fallback is disabled or storing the batch to disk fails.
     pub async fn send_batch_with_reliability(&self, batch: Batch) -> Result<(), TransmissionError> {
         let batch_id = batch.id().to_string();
         let entry_count = batch.size();
@@ -90,23 +102,20 @@ impl ReliabilityManager {
         // Record metrics
         {
             let mut metrics = self.metrics_collector.lock().await;
-            match &result {
-                Ok(_) => {
-                    metrics
-                        .record_batch_sent(entry_count, true, std::time::Duration::from_millis(0))
-                        .await;
-                    self.health_monitor
-                        .record_health_check("transmission", true)
-                        .await;
-                }
-                Err(_) => {
-                    metrics
-                        .record_batch_sent(entry_count, false, std::time::Duration::from_millis(0))
-                        .await;
-                    self.health_monitor
-                        .record_health_check("transmission", false)
-                        .await;
-                }
+            if let Ok(()) = &result {
+                metrics
+                    .record_batch_sent(entry_count, true, std::time::Duration::from_millis(0))
+                    .await;
+                self.health_monitor
+                    .record_health_check("transmission", true)
+                    .await;
+            } else {
+                metrics
+                    .record_batch_sent(entry_count, false, std::time::Duration::from_millis(0))
+                    .await;
+                self.health_monitor
+                    .record_health_check("transmission", false)
+                    .await;
             }
         }
 
@@ -255,6 +264,9 @@ impl ReliabilityManager {
     /// policy). Without this, disk fallback is a write-only sink: it
     /// protects against data loss on the wire, but nothing ever reads the
     /// data back out and forwards it on.
+    /// # Errors
+    ///
+    /// Propagates any [`DiskError`] returned by [`DiskFallback::list_stored_batches`].
     pub async fn replay_stored_batches(&self) -> Result<usize, DiskError> {
         // Nothing was ever written when the store is off, so there is nothing
         // to replay. Not a silent skip: construction already logged
@@ -312,6 +324,7 @@ impl ReliabilityManager {
     /// Spawns a periodic task that replays disk-fallback batches, running one
     /// pass immediately so batches persisted before a restart aren't stuck
     /// until the first interval tick. Stops once `cancel_token` is cancelled.
+    #[must_use]
     pub fn start_disk_replay_task(
         self: Arc<Self>,
         interval: Duration,
@@ -326,8 +339,8 @@ impl ReliabilityManager {
                 }
 
                 tokio::select! {
-                    _ = cancel_token.cancelled() => break,
-                    _ = tokio::time::sleep(interval) => {}
+                    () = cancel_token.cancelled() => break,
+                    () = tokio::time::sleep(interval) => {}
                 }
             }
         })
@@ -337,6 +350,9 @@ impl ReliabilityManager {
     /// period. Without a caller running this, batches that permanently fail
     /// to replay (e.g. the aggregator rejects them with a persistent 4xx)
     /// stay on disk forever and eventually trip `DiskSpaceExceeded`.
+    /// # Errors
+    ///
+    /// Propagates any [`DiskError`] from [`DiskFallback::cleanup_old_batches`].
     pub async fn cleanup_disk_fallback(&self) -> Result<u32, DiskError> {
         // Nothing is stored when the fallback is off, so there is nothing to
         // reap. Construction already logged disk_fallback_disabled.
@@ -361,6 +377,7 @@ impl ReliabilityManager {
     /// retention period, so the `store_batch` disk-usage cap can't be
     /// permanently exhausted by batches that keep failing to replay. Stops
     /// once `cancel_token` is cancelled.
+    #[must_use]
     pub fn start_disk_cleanup_task(
         self: Arc<Self>,
         interval: Duration,
@@ -369,8 +386,8 @@ impl ReliabilityManager {
         tokio::spawn(async move {
             loop {
                 tokio::select! {
-                    _ = cancel_token.cancelled() => break,
-                    _ = tokio::time::sleep(interval) => {}
+                    () = cancel_token.cancelled() => break,
+                    () = tokio::time::sleep(interval) => {}
                 }
 
                 match self.cleanup_disk_fallback().await {
@@ -428,7 +445,7 @@ mod replay_tests {
         endpoint: String,
         storage_path: std::path::PathBuf,
     ) -> ReliabilityManager {
-        build_manager_with_retention(endpoint, storage_path, Duration::from_secs(24 * 3600)).await
+        build_manager_with_retention(endpoint, storage_path, Duration::from_hours(24)).await
     }
 
     async fn build_manager_with_retention(
@@ -443,7 +460,6 @@ mod replay_tests {
             ingest_token: "test-token-valid".to_string(),
             ..Default::default()
         })
-        .await
         .unwrap();
 
         ReliabilityManager::new(
@@ -586,7 +602,7 @@ mod replay_tests {
             build_manager_with_retention(
                 "http://127.0.0.1:1".to_string(),
                 storage_dir.path().to_path_buf(),
-                Duration::from_secs(24 * 3600),
+                Duration::from_hours(24),
             )
             .await,
         );
@@ -605,10 +621,10 @@ mod replay_tests {
             .expect("disk cleanup task must not panic");
     }
 
-    /// ENABLE_DISK_FALLBACK=false must actually turn the disk store off.
+    /// `ENABLE_DISK_FALLBACK=false` must actually turn the disk store off.
     /// The flag was parsed into Config and then never read, so every forwarder
     /// kept gzipping batches into its fallback directory regardless — up to
-    /// max_disk_usage per container, on hosts where an operator had explicitly
+    /// `max_disk_usage` per container, on hosts where an operator had explicitly
     /// said no.
     #[tokio::test]
     async fn disk_fallback_is_not_created_when_disabled_in_config() {
@@ -622,7 +638,6 @@ mod replay_tests {
             ingest_token: "test-token-valid".to_string(),
             ..Default::default()
         })
-        .await
         .unwrap();
 
         let _manager = ReliabilityManager::new(

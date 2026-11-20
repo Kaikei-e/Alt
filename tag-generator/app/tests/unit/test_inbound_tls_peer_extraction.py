@@ -8,13 +8,16 @@ rejected at handshake and never reaches the app.
 from __future__ import annotations
 
 import json
+import shutil
 import ssl
 import subprocess
+from http import HTTPStatus
 from pathlib import Path
 
 import httpx
 import pytest
 from starlette.applications import Starlette
+from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 from starlette.types import Receive, Scope, Send
@@ -26,12 +29,20 @@ from tag_generator.infra.inbound_tls import (
 from tag_generator.infra.peer_identity import PEER_IDENTITY_HEADER, PeerIdentityMiddleware
 
 
+def _openssl() -> str:
+    exe = shutil.which("openssl")
+    if exe is None:
+        msg = "openssl executable not found"
+        raise FileNotFoundError(msg)
+    return exe
+
+
 def _write_ca(dir_path: Path, name: str) -> tuple[Path, Path]:
     cert_path = dir_path / f"{name}-ca-cert.pem"
     key_path = dir_path / f"{name}-ca-key.pem"
-    subprocess.run(  # noqa: S603, S607
+    subprocess.run(  # noqa: S603 - fixed argv built in this test
         [
-            "openssl",  # noqa: S607 — test-only openssl
+            _openssl(),
             "req",
             "-x509",
             "-newkey",
@@ -56,9 +67,10 @@ def _write_signed_leaf(dir_path: Path, cn: str, ca_cert: Path, ca_key: Path) -> 
     key_path = dir_path / f"{cn}-key.pem"
     csr_path = dir_path / f"{cn}.csr"
     cert_path = dir_path / f"{cn}-cert.pem"
-    subprocess.run(  # noqa: S603, S607
+    openssl = _openssl()
+    subprocess.run(  # noqa: S603 - fixed argv built in this test
         [
-            "openssl",  # noqa: S607 — test-only openssl
+            openssl,
             "req",
             "-new",
             "-newkey",
@@ -76,9 +88,9 @@ def _write_signed_leaf(dir_path: Path, cn: str, ca_cert: Path, ca_key: Path) -> 
         check=True,
         capture_output=True,
     )
-    subprocess.run(  # noqa: S603, S607
+    subprocess.run(  # noqa: S603 - fixed argv built in this test
         [
-            "openssl",  # noqa: S607 — test-only openssl
+            openssl,
             "x509",
             "-req",
             "-in",
@@ -101,7 +113,7 @@ def _write_signed_leaf(dir_path: Path, cn: str, ca_cert: Path, ca_key: Path) -> 
     return cert_path, key_path
 
 
-def _echo_peer(request):
+def _echo_peer(request: Request) -> JSONResponse:
     header = request.headers.get(PEER_IDENTITY_HEADER)
     return JSONResponse(
         {
@@ -111,7 +123,7 @@ def _echo_peer(request):
     )
 
 
-def _app(*, allowed=None, strict=True):
+def _app(*, allowed: list[str] | None = None, strict: bool = True) -> Starlette:
     app = Starlette(routes=[Route("/echo", _echo_peer)])
     app.add_middleware(PeerIdentityMiddleware, allowed=allowed, strict=strict)
     return app
@@ -143,7 +155,7 @@ async def test_spoofed_peer_header_is_ignored_for_tls_client(tmp_path: Path) -> 
                 f"https://127.0.0.1:{port}/echo",
                 headers={PEER_IDENTITY_HEADER: "spoofed-root"},
             )
-        assert resp.status_code == 200
+        assert resp.status_code == HTTPStatus.OK
         body = resp.json()
         assert body["peer"] == "recap-worker"
         assert body["header"] == "recap-worker"

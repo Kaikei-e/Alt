@@ -12,6 +12,8 @@ from acolyte.port.llm_provider import LLMResponse
 from acolyte.usecase.graph.nodes.writer_node import WriterNode
 from acolyte.usecase.graph.state import PlannedClaimDict, ReportGenerationState
 
+MAX_REVISION_PROMPT_DELTA_CHARS = 50
+
 
 class FakeLLM:
     def __init__(self, responses: list[str] | None = None, default: str = "Regenerated.") -> None:
@@ -106,7 +108,7 @@ async def test_revision_prompt_length_does_not_grow() -> None:
     rev2_prompt_len = len(llm2.prompts[0])
 
     # Prompt length should be approximately the same (not growing)
-    assert abs(rev2_prompt_len - rev1_prompt_len) < 50
+    assert abs(rev2_prompt_len - rev1_prompt_len) < MAX_REVISION_PROMPT_DELTA_CHARS
 
 
 @pytest.mark.asyncio

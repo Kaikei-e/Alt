@@ -19,7 +19,9 @@ func TestRetentionRunDryRun(t *testing.T) {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
 		var body map[string]interface{}
-		json.NewDecoder(r.Body).Decode(&body)
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode request: %v", err)
+		}
 		if body["dry_run"] != true {
 			t.Errorf("expected dry_run true, got %v", body["dry_run"])
 		}
@@ -28,12 +30,14 @@ func TestRetentionRunDryRun(t *testing.T) {
 		// contract (dry_run/actions/error) documented in home_retention.go —
 		// a bare {status, partitions_read, rows_exported} fixture would
 		// leave the actions table permanently untested.
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{
 			"dry_run": true,
 			"actions": []map[string]interface{}{
 				{"action": "export", "table": "knowledge_events", "partition": "y2025m11", "rows": 50000, "status": "would_export"},
 			},
-		})
+		}); err != nil {
+			t.Errorf("encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -61,11 +65,13 @@ func TestRetentionRunReportsError(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{
 			"dry_run": false,
 			"actions": []map[string]interface{}{},
 			"error":   "partition y2025m11 is locked by concurrent snapshot",
-		})
+		}); err != nil {
+			t.Errorf("encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -96,11 +102,13 @@ func TestRetentionStatusCommand(t *testing.T) {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{
 			"logs": []map[string]interface{}{
 				{"action": "export", "target_table": "knowledge_events", "target_partition": "y2025m10", "rows_affected": 40000, "dry_run": false, "status": "completed", "run_at": "2026-07-01T00:00:00Z"},
 			},
-		})
+		}); err != nil {
+			t.Errorf("encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -122,7 +130,9 @@ func TestRetentionStatusCommand_Empty(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"logs": []map[string]interface{}{}})
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{"logs": []map[string]interface{}{}}); err != nil {
+			t.Errorf("encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -147,11 +157,13 @@ func TestRetentionEligibleCommand(t *testing.T) {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{
 			"partitions": []map[string]interface{}{
 				{"table_name": "knowledge_events", "partition_name": "y2025m11", "row_count": 50000, "size_bytes": 5 * 1024 * 1024},
 			},
-		})
+		}); err != nil {
+			t.Errorf("encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 

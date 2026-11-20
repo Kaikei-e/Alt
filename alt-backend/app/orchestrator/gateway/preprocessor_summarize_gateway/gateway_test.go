@@ -56,8 +56,14 @@ func TestGateway_QueueSummarize_ForwardsOrigin(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			var receivedBody map[string]string
+			decodeErrCh := make(chan error, 1)
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				require.NoError(t, json.NewDecoder(r.Body).Decode(&receivedBody))
+				decodeErr := json.NewDecoder(r.Body).Decode(&receivedBody)
+				decodeErrCh <- decodeErr
+				if decodeErr != nil {
+					http.Error(w, decodeErr.Error(), http.StatusBadRequest)
+					return
+				}
 				w.WriteHeader(http.StatusAccepted)
 				_ = json.NewEncoder(w).Encode(map[string]string{
 					"job_id": "job-1",
@@ -69,6 +75,7 @@ func TestGateway_QueueSummarize_ForwardsOrigin(t *testing.T) {
 			gw := NewGateway(preprocessor_client.NewClientWithTransport(server.URL, server.Client().Transport))
 			jobID, err := gw.QueueSummarize(context.Background(), "article-1", "title", tc.origin)
 			require.NoError(t, err)
+			require.NoError(t, <-decodeErrCh)
 			assert.Equal(t, "job-1", jobID)
 			assert.Equal(t, tc.expectedOrigin, receivedBody["origin"])
 		})

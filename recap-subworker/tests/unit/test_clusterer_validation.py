@@ -6,11 +6,11 @@ from recap_subworker.services.clusterer import Clusterer
 
 
 @pytest.fixture
-def settings():
+def settings() -> Settings:
     return Settings()
 
 
-def test_clusterer_handles_nan_embeddings(settings):
+def test_clusterer_handles_nan_embeddings(settings: Settings) -> None:
     clusterer = Clusterer(settings)
     embeddings = np.array([[1.0, np.nan], [0.5, 0.5]])
     result = clusterer.cluster(embeddings, min_cluster_size=2, min_samples=1)
@@ -18,37 +18,37 @@ def test_clusterer_handles_nan_embeddings(settings):
     assert result.probabilities.size == 0
 
 
-def test_clusterer_handles_inf_embeddings(settings):
+def test_clusterer_handles_inf_embeddings(settings: Settings) -> None:
     clusterer = Clusterer(settings)
     embeddings = np.array([[1.0, np.inf], [0.5, 0.5]])
     result = clusterer.cluster(embeddings, min_cluster_size=2, min_samples=1)
     assert result.labels.size == 0
 
 
-def test_clusterer_handles_zero_embeddings(settings):
+def test_clusterer_handles_zero_embeddings(settings: Settings) -> None:
     clusterer = Clusterer(settings)
     embeddings = np.array([[0.0, 0.0], [0.5, 0.5]])
     result = clusterer.cluster(embeddings, min_cluster_size=2, min_samples=1)
     assert result.labels.size == 0
 
 
-def test_clusterer_handles_valid_embeddings(settings):
+def test_clusterer_handles_valid_embeddings(settings: Settings) -> None:
     clusterer = Clusterer(settings)
     # 5 points, 2 clusters
     embeddings = np.array([[1.0, 0.0], [0.9, 0.1], [0.0, 1.0], [0.1, 0.9], [0.5, 0.5]])
     result = clusterer.cluster(embeddings, min_cluster_size=2, min_samples=1)
     # Should return valid labels (size match input)
-    assert result.labels.size == 5
+    assert result.labels.size == embeddings.shape[0]
 
 
-def test_clusterer_handles_single_row_input(settings):
+def test_clusterer_handles_single_row_input(settings: Settings) -> None:
     clusterer = Clusterer(settings)
     result = clusterer.cluster(np.array([[1.0, 0.0]]), min_cluster_size=3, min_samples=1)
     assert result.labels.size == 1
     assert result.probabilities.size == 1
 
 
-def test_optimize_clustering_handles_single_row_input(settings):
+def test_optimize_clustering_handles_single_row_input(settings: Settings) -> None:
     clusterer = Clusterer(settings)
     embeddings = np.ones((1, 8), dtype=np.float32)
     result = clusterer.optimize_clustering(embeddings)

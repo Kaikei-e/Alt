@@ -3,14 +3,14 @@
 from news_creator.usecase.control_token_filter import ControlTokenFilter
 
 
-def test_exact_match_tokens_are_dropped():
+def test_exact_match_tokens_are_dropped() -> None:
     f = ControlTokenFilter()
     assert f.push("<|turn>") == ""
     assert f.push("hello") == "hello"
     assert f.flush() == ""
 
 
-def test_split_control_token_across_chunks_is_buffered():
+def test_split_control_token_across_chunks_is_buffered() -> None:
     f = ControlTokenFilter()
     assert f.push("<|tu") == ""
     assert f.push("rn>") == ""
@@ -18,14 +18,14 @@ def test_split_control_token_across_chunks_is_buffered():
     assert f.flush() == ""
 
 
-def test_partial_prefix_that_is_not_token_is_released():
+def test_partial_prefix_that_is_not_token_is_released() -> None:
     f = ControlTokenFilter()
     assert f.push("<|tu") == ""
     assert f.push("rnX") == "<|turnX"
     assert f.flush() == ""
 
 
-def test_flush_releases_buffered_prefix():
+def test_flush_releases_buffered_prefix() -> None:
     f = ControlTokenFilter()
     assert f.push("<|tu") == ""
     assert f.flush() == "<|tu"

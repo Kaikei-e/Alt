@@ -2,6 +2,7 @@ package validation
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -223,7 +224,8 @@ func (e *ValidationErrorType) Error() string {
 
 // AsValidationError attempts to convert an error to a ValidationErrorType
 func AsValidationError(err error) (*ValidationErrorType, bool) {
-	if verr, ok := err.(*ValidationErrorType); ok {
+	verr := &ValidationErrorType{}
+	if errors.As(err, &verr) {
 		return verr, true
 	}
 	return nil, false

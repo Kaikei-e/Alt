@@ -45,7 +45,7 @@ func TestServer_ForwardsReadingServiceRecordReadingEvents(t *testing.T) {
 	h := NewServerWithTransport(cfg, nil, http.DefaultTransport)
 
 	const path = "/alt.reading.v1.ReadingService/RecordReadingEvents"
-	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{}`))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, path, strings.NewReader(`{}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Alt-Backend-Token", createValidToken(t, testPrivateKey))
 
@@ -99,7 +99,7 @@ func TestServer_ForwardsFeedInflowAndDailyCapRPCs(t *testing.T) {
 			}
 			h := NewServerWithTransport(cfg, nil, http.DefaultTransport)
 
-			req := httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(tc.body))
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, tc.path, strings.NewReader(tc.body))
 			req.Header.Set("Content-Type", "application/json")
 			req.Header.Set("X-Alt-Backend-Token", createValidToken(t, testPrivateKey))
 

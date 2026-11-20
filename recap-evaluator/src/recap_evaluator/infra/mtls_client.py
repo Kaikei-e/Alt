@@ -129,7 +129,7 @@ async def watch_cert_rotation(
             reloader.maybe_reload()
         except asyncio.CancelledError:
             raise
-        except Exception:
+        except Exception:  # noqa: BLE001 — keep background cert-rotation watcher alive across transient errors
             # Never let a transient error take the task down.
             logger.debug("mtls_cert_rotation_watch_error", exc_info=True)
             continue

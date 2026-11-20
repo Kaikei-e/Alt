@@ -200,10 +200,8 @@ waitHybridChatStream:
 		parsedAnswer.Answer, input.Query, parsedAnswer.Citations, promptData.intentType, promptData.expandedQueries,
 	)
 
-	finalAnswerText := parsedAnswer.Answer
 	if answerBuilder.Len() > 0 {
-		finalAnswerText = strings.TrimSpace(answerBuilder.String())
-		parsedAnswer.Answer = finalAnswerText
+		parsedAnswer.Answer = strings.TrimSpace(answerBuilder.String())
 	}
 
 	willRetry := profile.maxRetries > 0 &&
@@ -240,8 +238,7 @@ waitHybridChatStream:
 
 	promptData = finalPromptData
 	parsedAnswer = finalAnswer
-	qualityFlags = finalFlags
-	finalAnswerText = strings.TrimSpace(parsedAnswer.Answer)
+	finalAnswerText := strings.TrimSpace(parsedAnswer.Answer)
 
 	// Build final output
 	finalCitations := u.buildCitations(promptData.contexts, parsedAnswer.Citations)

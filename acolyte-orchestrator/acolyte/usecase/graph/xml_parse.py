@@ -117,8 +117,7 @@ def extract_tag_block(text: str, root_tag: str) -> str | None:
 def _repair_xml(text: str) -> str:
     """Apply lightweight repairs for common LLM XML issues."""
     # Replace bare & (not already escaped) with &amp;
-    text = re.sub(r"&(?!amp;|lt;|gt;|quot;|apos;|#)", "&amp;", text)
-    return text
+    return re.sub(r"&(?!amp;|lt;|gt;|quot;|apos;|#)", "&amp;", text)
 
 
 def parse_xmlish_block(text: str, root_tag: str) -> ET.Element:

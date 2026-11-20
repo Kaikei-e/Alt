@@ -2,7 +2,6 @@ package security
 
 import (
 	"log/slog"
-	"os"
 	"testing"
 	"time"
 
@@ -125,8 +124,7 @@ func TestIsDevelopmentEnvironment_StillWorksForExistingBehavior(t *testing.T) {
 		namespace: "prod",
 	}
 
-	os.Setenv("ENVIRONMENT", "development")
-	defer os.Unsetenv("ENVIRONMENT")
+	t.Setenv("ENVIRONMENT", "development")
 
 	assert.True(t, auth.isDevelopmentEnvironment())
 }

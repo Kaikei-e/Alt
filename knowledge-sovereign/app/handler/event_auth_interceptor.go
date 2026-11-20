@@ -200,12 +200,12 @@ func (i *policyAuthInterceptor) authorize(ctx context.Context, principal *Princi
 	//    until explicitly authorized in the switch.
 	switch m := msg.(type) {
 	case *sovereignv1.AppendKnowledgeEventRequest:
-		if m.Event == nil {
+		if m.GetEvent() == nil {
 			return connect.NewError(connect.CodeInvalidArgument, errors.New("event is required"))
 		}
-		if !principal.AllowedEvents[m.Event.EventType] {
+		if !principal.AllowedEvents[m.GetEvent().GetEventType()] {
 			return connect.NewError(connect.CodePermissionDenied,
-				fmt.Errorf("service %q is not authorized to append event type %q", principal.Name, m.Event.EventType))
+				fmt.Errorf("service %q is not authorized to append event type %q", principal.Name, m.GetEvent().GetEventType()))
 		}
 		// B-02 fix: RequireUserToken ALWAYS enforces user delegation for
 		// AppendKnowledgeEvent, regardless of whether UserId is empty.
@@ -213,35 +213,35 @@ func (i *policyAuthInterceptor) authorize(ctx context.Context, principal *Princi
 		// present a valid delegation token — the subject becomes the
 		// authoritative user identity.
 		if principal.RequireUserToken {
-			if err := i.verifyUserDelegation(ctx, header, m.Event.UserId, m.Event.TenantId); err != nil {
+			if err := i.verifyUserDelegation(ctx, header, m.GetEvent().GetUserId(), m.GetEvent().GetTenantId()); err != nil {
 				return err
 			}
 		}
 
 	case *sovereignv1.AppendKnowledgeUserEventRequest:
-		if m.Event == nil {
+		if m.GetEvent() == nil {
 			return connect.NewError(connect.CodeInvalidArgument, errors.New("event is required"))
 		}
 		// B-02 fix: enforce event-type capability allowlist for user events.
-		if !principal.AllowedEvents[m.Event.EventType] {
+		if !principal.AllowedEvents[m.GetEvent().GetEventType()] {
 			return connect.NewError(connect.CodePermissionDenied,
-				fmt.Errorf("service %q is not authorized to append user event type %q", principal.Name, m.Event.EventType))
+				fmt.Errorf("service %q is not authorized to append user event type %q", principal.Name, m.GetEvent().GetEventType()))
 		}
 		if principal.RequireUserToken {
-			if err := i.verifyUserDelegation(ctx, header, m.Event.UserId, m.Event.TenantId); err != nil {
+			if err := i.verifyUserDelegation(ctx, header, m.GetEvent().GetUserId(), m.GetEvent().GetTenantId()); err != nil {
 				return err
 			}
 		}
 
 	case *sovereignv1.ListKnowledgeEventsRequest:
-		if m.UserId == "" {
+		if m.GetUserId() == "" {
 			if !principal.AllowSystemScope {
 				return connect.NewError(connect.CodePermissionDenied,
 					fmt.Errorf("service %q lacks system scope: global event log scan requires system replication scope", principal.Name))
 			}
 		} else {
 			if principal.RequireUserToken {
-				if err := i.verifyUserDelegation(ctx, header, m.UserId, m.TenantId); err != nil {
+				if err := i.verifyUserDelegation(ctx, header, m.GetUserId(), m.GetTenantId()); err != nil {
 					return err
 				}
 			}
@@ -249,87 +249,87 @@ func (i *policyAuthInterceptor) authorize(ctx context.Context, principal *Princi
 
 	case *sovereignv1.GetLatestEventSeqRequest:
 		if principal.RequireUserToken {
-			if err := i.verifyUserDelegation(ctx, header, m.UserId, m.TenantId); err != nil {
+			if err := i.verifyUserDelegation(ctx, header, m.GetUserId(), m.GetTenantId()); err != nil {
 				return err
 			}
 		}
 
 	case *sovereignv1.GetKnowledgeHomeItemsRequest:
 		if principal.RequireUserToken {
-			if err := i.verifyUserDelegation(ctx, header, m.UserId, ""); err != nil {
+			if err := i.verifyUserDelegation(ctx, header, m.GetUserId(), ""); err != nil {
 				return err
 			}
 		}
 
 	case *sovereignv1.GetTodayDigestRequest:
 		if principal.RequireUserToken {
-			if err := i.verifyUserDelegation(ctx, header, m.UserId, ""); err != nil {
+			if err := i.verifyUserDelegation(ctx, header, m.GetUserId(), ""); err != nil {
 				return err
 			}
 		}
 
 	case *sovereignv1.GetRecallCandidatesRequest:
 		if principal.RequireUserToken {
-			if err := i.verifyUserDelegation(ctx, header, m.UserId, ""); err != nil {
+			if err := i.verifyUserDelegation(ctx, header, m.GetUserId(), ""); err != nil {
 				return err
 			}
 		}
 
 	case *sovereignv1.GetTrailFootprintsRequest:
 		if principal.RequireUserToken {
-			if err := i.verifyUserDelegation(ctx, header, m.UserId, ""); err != nil {
+			if err := i.verifyUserDelegation(ctx, header, m.GetUserId(), ""); err != nil {
 				return err
 			}
 		}
 
 	case *sovereignv1.GetTrailBranchesForAnchorRequest:
 		if principal.RequireUserToken {
-			if err := i.verifyUserDelegation(ctx, header, m.UserId, ""); err != nil {
+			if err := i.verifyUserDelegation(ctx, header, m.GetUserId(), ""); err != nil {
 				return err
 			}
 		}
 
 	case *sovereignv1.GetReadingQueueRequest:
 		if principal.RequireUserToken {
-			if err := i.verifyUserDelegation(ctx, header, m.UserId, ""); err != nil {
+			if err := i.verifyUserDelegation(ctx, header, m.GetUserId(), ""); err != nil {
 				return err
 			}
 		}
 
 	case *sovereignv1.CountReadingSourcesSinceRequest:
 		if principal.RequireUserToken {
-			if err := i.verifyUserDelegation(ctx, header, m.UserId, ""); err != nil {
+			if err := i.verifyUserDelegation(ctx, header, m.GetUserId(), ""); err != nil {
 				return err
 			}
 		}
 
 	case *sovereignv1.ListReadingSourcesInWindowRequest:
 		if principal.RequireUserToken {
-			if err := i.verifyUserDelegation(ctx, header, m.UserId, ""); err != nil {
+			if err := i.verifyUserDelegation(ctx, header, m.GetUserId(), ""); err != nil {
 				return err
 			}
 		}
 
 	case *sovereignv1.ListReadingThemesRequest:
 		if principal.RequireUserToken {
-			if err := i.verifyUserDelegation(ctx, header, m.UserId, ""); err != nil {
+			if err := i.verifyUserDelegation(ctx, header, m.GetUserId(), ""); err != nil {
 				return err
 			}
 		}
 
 	case *sovereignv1.ListRecallSignalsRequest:
 		if principal.RequireUserToken {
-			if err := i.verifyUserDelegation(ctx, header, m.UserId, ""); err != nil {
+			if err := i.verifyUserDelegation(ctx, header, m.GetUserId(), ""); err != nil {
 				return err
 			}
 		}
 
 	case *sovereignv1.AppendRecallSignalRequest:
-		if m.Signal == nil {
+		if m.GetSignal() == nil {
 			return connect.NewError(connect.CodeInvalidArgument, errors.New("signal is required"))
 		}
 		if principal.RequireUserToken {
-			if err := i.verifyUserDelegation(ctx, header, m.Signal.UserId, ""); err != nil {
+			if err := i.verifyUserDelegation(ctx, header, m.GetSignal().GetUserId(), ""); err != nil {
 				return err
 			}
 		}
@@ -340,21 +340,21 @@ func (i *policyAuthInterceptor) authorize(ctx context.Context, principal *Princi
 	// becomes the authoritative user identity for the mutation.
 	case *sovereignv1.ApplyProjectionMutationRequest:
 		if principal.RequireUserToken {
-			if err := i.verifyMutationDelegation(ctx, header, []byte(m.Payload), m.MutationType); err != nil {
+			if err := i.verifyMutationDelegation(ctx, header, []byte(m.GetPayload()), m.GetMutationType()); err != nil {
 				return err
 			}
 		}
 
 	case *sovereignv1.ApplyRecallMutationRequest:
 		if principal.RequireUserToken {
-			if err := i.verifyMutationDelegation(ctx, header, []byte(m.Payload), m.MutationType); err != nil {
+			if err := i.verifyMutationDelegation(ctx, header, []byte(m.GetPayload()), m.GetMutationType()); err != nil {
 				return err
 			}
 		}
 
 	case *sovereignv1.ApplyCurationMutationRequest:
 		if principal.RequireUserToken {
-			if err := i.verifyMutationDelegation(ctx, header, []byte(m.Payload), m.MutationType); err != nil {
+			if err := i.verifyMutationDelegation(ctx, header, []byte(m.GetPayload()), m.GetMutationType()); err != nil {
 				return err
 			}
 		}
@@ -392,14 +392,14 @@ func (i *policyAuthInterceptor) authorize(ctx context.Context, principal *Princi
 	// --- B-02 fix: Lens RPCs require user delegation ---
 	case *sovereignv1.AreArticlesVisibleInLensRequest:
 		if principal.RequireUserToken {
-			if err := i.verifyUserDelegation(ctx, header, m.UserId, m.TenantId); err != nil {
+			if err := i.verifyUserDelegation(ctx, header, m.GetUserId(), m.GetTenantId()); err != nil {
 				return err
 			}
 		}
 
 	case *sovereignv1.ListLensesRequest:
 		if principal.RequireUserToken {
-			if err := i.verifyUserDelegation(ctx, header, m.UserId, ""); err != nil {
+			if err := i.verifyUserDelegation(ctx, header, m.GetUserId(), ""); err != nil {
 				return err
 			}
 		}
@@ -417,30 +417,30 @@ func (i *policyAuthInterceptor) authorize(ctx context.Context, principal *Princi
 
 	case *sovereignv1.GetCurrentLensSelectionRequest:
 		if principal.RequireUserToken {
-			if err := i.verifyUserDelegation(ctx, header, m.UserId, ""); err != nil {
+			if err := i.verifyUserDelegation(ctx, header, m.GetUserId(), ""); err != nil {
 				return err
 			}
 		}
 
 	case *sovereignv1.ResolveLensFilterRequest:
 		if principal.RequireUserToken {
-			if err := i.verifyUserDelegation(ctx, header, m.UserId, ""); err != nil {
+			if err := i.verifyUserDelegation(ctx, header, m.GetUserId(), ""); err != nil {
 				return err
 			}
 		}
 
 	case *sovereignv1.CreateLensRequest:
-		if m.Lens == nil {
+		if m.GetLens() == nil {
 			return connect.NewError(connect.CodeInvalidArgument, errors.New("lens is required"))
 		}
 		if principal.RequireUserToken {
-			if err := i.verifyUserDelegation(ctx, header, m.Lens.UserId, m.Lens.TenantId); err != nil {
+			if err := i.verifyUserDelegation(ctx, header, m.GetLens().GetUserId(), m.GetLens().GetTenantId()); err != nil {
 				return err
 			}
 		}
 
 	case *sovereignv1.CreateLensVersionRequest:
-		if m.Version == nil {
+		if m.GetVersion() == nil {
 			return connect.NewError(connect.CodeInvalidArgument, errors.New("version is required"))
 		}
 		if principal.RequireUserToken {
@@ -450,18 +450,18 @@ func (i *policyAuthInterceptor) authorize(ctx context.Context, principal *Princi
 		}
 
 	case *sovereignv1.SelectCurrentLensRequest:
-		if m.Selection == nil {
+		if m.GetSelection() == nil {
 			return connect.NewError(connect.CodeInvalidArgument, errors.New("selection is required"))
 		}
 		if principal.RequireUserToken {
-			if err := i.verifyUserDelegation(ctx, header, m.Selection.UserId, ""); err != nil {
+			if err := i.verifyUserDelegation(ctx, header, m.GetSelection().GetUserId(), ""); err != nil {
 				return err
 			}
 		}
 
 	case *sovereignv1.ClearCurrentLensRequest:
 		if principal.RequireUserToken {
-			if err := i.verifyUserDelegation(ctx, header, m.UserId, ""); err != nil {
+			if err := i.verifyUserDelegation(ctx, header, m.GetUserId(), ""); err != nil {
 				return err
 			}
 		}
@@ -482,7 +482,7 @@ func (i *policyAuthInterceptor) authorize(ctx context.Context, principal *Princi
 
 	case *sovereignv1.CountNeedToKnowItemsRequest:
 		if principal.RequireUserToken {
-			if err := i.verifyUserDelegation(ctx, header, m.UserId, ""); err != nil {
+			if err := i.verifyUserDelegation(ctx, header, m.GetUserId(), ""); err != nil {
 				return err
 			}
 		}

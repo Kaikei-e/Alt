@@ -3,7 +3,6 @@ package knowledge_home_admin
 import (
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"testing"
 
@@ -35,7 +34,7 @@ func (s *stubURLBackfillUsecase) Emit(_ context.Context, max int, dryRun bool) (
 }
 
 func newHandlerForURLBackfill(stub URLBackfillUsecase) *Handler {
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	h := &Handler{
 		urlBackfillUsecase: stub,
 		logger:             logger,
@@ -66,11 +65,11 @@ func TestEmitArticleUrlBackfill_PassesRequestThroughAndMapsResponse(t *testing.T
 	assert.Equal(t, 100, stub.gotMax)
 	assert.False(t, stub.gotDryRun)
 
-	assert.Equal(t, int32(100), resp.Msg.ArticlesScanned)
-	assert.Equal(t, int32(80), resp.Msg.EventsAppended)
-	assert.Equal(t, int32(5), resp.Msg.SkippedBlockedScheme)
-	assert.Equal(t, int32(15), resp.Msg.SkippedDuplicate)
-	assert.True(t, resp.Msg.MoreRemaining)
+	assert.Equal(t, int32(100), resp.Msg.GetArticlesScanned())
+	assert.Equal(t, int32(80), resp.Msg.GetEventsAppended())
+	assert.Equal(t, int32(5), resp.Msg.GetSkippedBlockedScheme())
+	assert.Equal(t, int32(15), resp.Msg.GetSkippedDuplicate())
+	assert.True(t, resp.Msg.GetMoreRemaining())
 }
 
 func TestEmitArticleUrlBackfill_DryRunPropagates(t *testing.T) {

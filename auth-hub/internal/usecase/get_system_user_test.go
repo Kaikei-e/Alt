@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // mockIdentityProvider implements domain.IdentityProvider for testing.
@@ -26,7 +27,7 @@ func TestGetSystemUser_Success(t *testing.T) {
 	uc := NewGetSystemUser(provider, logger)
 	userID, err := uc.Execute(context.Background())
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "system-user-001", userID)
 }
 
@@ -37,7 +38,7 @@ func TestGetSystemUser_ProviderError(t *testing.T) {
 	uc := NewGetSystemUser(provider, logger)
 	userID, err := uc.Execute(context.Background())
 
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Empty(t, userID)
 	assert.Contains(t, err.Error(), "admin API not configured")
 }

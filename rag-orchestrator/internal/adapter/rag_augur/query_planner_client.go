@@ -106,7 +106,7 @@ func (c *QueryPlannerClient) PlanQuery(ctx context.Context, input domain.QueryPl
 	if err != nil {
 		return nil, fmt.Errorf("plan-query request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("plan-query returned status: %d", resp.StatusCode)

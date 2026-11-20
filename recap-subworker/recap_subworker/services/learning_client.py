@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+import structlog
 
 from ..domain.errors import LearningClientTimeoutError
 from ..infra.path_validation import ALLOWED_BASE_DIRS, validate_path
@@ -58,8 +59,10 @@ class LearningClient:
         # Enforce a floor on the read stage so the connect < read invariant
         # holds even if a caller passes a tiny budget.
         read_timeout = max(timeout_seconds, _CONNECT_TIMEOUT_SECONDS + 0.5)
-        from recap_subworker.app.infra.admin_auth import load_admin_auth_config
-        from recap_subworker.app.infra.mtls_client import (
+        from recap_subworker.app.infra.admin_auth import (  # noqa: PLC0415 - deferred import from app.infra to avoid circular dependency with app.container
+            load_admin_auth_config,
+        )
+        from recap_subworker.app.infra.mtls_client import (  # noqa: PLC0415 - deferred import from app.infra to avoid circular dependency with app.container
             SslContextReloader,
             build_ssl_context,
         )
@@ -97,8 +100,6 @@ class LearningClient:
         )
 
     async def send_learning_payload(self, payload: dict[str, Any]) -> httpx.Response:
-        import structlog
-
         logger = structlog.get_logger(__name__)
 
         # Pick up any cert rotation done by pki-agent before opening a new
@@ -125,19 +126,17 @@ class LearningClient:
                 endpoint=endpoint,
             )
             response.raise_for_status()
-            return response
         except (TimeoutError, httpx.TimeoutException) as exc:
-            logger.error(
+            logger.error(  # noqa: TRY400 - expected timeout path; raises LearningClientTimeoutError without noisy traceback
                 "learning client timed out",
                 endpoint=endpoint,
                 outer_budget_seconds=outer_budget,
                 error_type=type(exc).__name__,
             )
-            raise LearningClientTimeoutError(
-                f"{endpoint} exceeded {outer_budget:.1f}s budget"
-            ) from exc
+            msg = f"{endpoint} exceeded {outer_budget:.1f}s budget"
+            raise LearningClientTimeoutError(msg) from exc
         except httpx.HTTPStatusError as exc:
-            logger.error(
+            logger.error(  # noqa: TRY400 - expected HTTP status error; status and snippet logged without noisy traceback
                 "HTTP error response",
                 status_code=exc.response.status_code,
                 endpoint=endpoint,
@@ -145,13 +144,15 @@ class LearningClient:
             )
             raise
         except httpx.RequestError as exc:
-            logger.error(
+            logger.error(  # noqa: TRY400 - expected request error; error type logged without noisy traceback
                 "HTTP request error",
                 error=str(exc),
                 error_type=type(exc).__name__,
                 endpoint=endpoint,
             )
             raise
+        else:
+            return response
 
     async def close(self) -> None:
         await self._client.aclose()

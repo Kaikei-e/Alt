@@ -18,6 +18,8 @@ import argparse
 import importlib.util
 import pathlib
 import re
+import sys
+import types
 from typing import Any
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -36,24 +38,35 @@ _RAG_DEFAULT_ALLOWLIST_RE = re.compile(
     r"^\$\{RAG_ORCHESTRATOR_ALLOWED_PEERS:-(?P<default>[^}]*)\}$"
 )
 
-PASS = 0
-FAIL = 0
+
+class _Results:
+    def __init__(self) -> None:
+        self.passed = 0
+        self.failed = 0
+
+    def reset(self) -> None:
+        self.passed = 0
+        self.failed = 0
+
+
+_RESULTS = _Results()
 
 
 def check(name: str, condition: bool, detail: str = "") -> None:
-    global PASS, FAIL
     if condition:
-        print(f"  PASS  {name}")
-        PASS += 1
+        sys.stdout.write(f"  PASS  {name}\n")
+        _RESULTS.passed += 1
     else:
-        print(f"  FAIL  {name}" + (f" ({detail})" if detail else ""))
-        FAIL += 1
+        suffix = f" ({detail})" if detail else ""
+        sys.stdout.write(f"  FAIL  {name}{suffix}\n")
+        _RESULTS.failed += 1
 
 
-def _load_module(name: str, path: pathlib.Path) -> Any:
+def _load_module(name: str, path: pathlib.Path) -> types.ModuleType:
     spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:
-        raise RuntimeError(f"cannot load {path}")
+        msg = f"cannot load {path}"
+        raise RuntimeError(msg)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -97,7 +110,7 @@ def _resolve_value(raw: str, upstreams: dict[str, Any]) -> str:
 
 
 def _read_lkal_declaration(
-    kisage_env: Any,
+    kisage_env: types.ModuleType,
     decl_path: pathlib.Path,
     *,
     lkal_bin: str | None = None,
@@ -143,49 +156,43 @@ def _read_lkal_declaration(
     return {p.strip() for p in raw_peers}, upstream_map
 
 
+def _load_yaml_checked(
+    compose_include: types.ModuleType,
+    path: pathlib.Path,
+    check_name: str,
+) -> tuple[object, bool]:
+    label = _display_path(path)
+    try:
+        return compose_include.load_yaml(path), True
+    except OSError as exc:
+        check(check_name, False, f"cannot read {label}: {exc.strerror}")
+    except UnicodeDecodeError:
+        check(check_name, False, f"{label} is not valid UTF-8")
+    except compose_include.yaml.YAMLError:
+        check(check_name, False, f"invalid YAML in {label}")
+    return None, False
+
+
 def _read_rag_compose_allowlist(
-    compose_include: Any, rag_compose_path: pathlib.Path
+    compose_include: types.ModuleType, rag_compose_path: pathlib.Path
 ) -> set[str] | None:
     label = _display_path(rag_compose_path)
-    try:
-        doc = compose_include.load_yaml(rag_compose_path)
-    except OSError as exc:
-        check(
-            f"read PEER_IDENTITY_ALLOWED_PEERS default from {label}",
-            False,
-            f"cannot read {label}: {exc.strerror}",
-        )
-        return None
-    except UnicodeDecodeError:
-        check(
-            f"read PEER_IDENTITY_ALLOWED_PEERS default from {label}",
-            False,
-            f"{label} is not valid UTF-8",
-        )
-        return None
-    except compose_include.yaml.YAMLError:
-        check(
-            f"read PEER_IDENTITY_ALLOWED_PEERS default from {label}",
-            False,
-            f"invalid YAML in {label}",
-        )
+    check_name = f"read PEER_IDENTITY_ALLOWED_PEERS default from {label}"
+    doc, ok = _load_yaml_checked(compose_include, rag_compose_path, check_name)
+    if not ok:
         return None
 
     services = doc.get("services") if isinstance(doc, dict) else None
     rag_svc = services.get("rag-orchestrator") if isinstance(services, dict) else None
     if not isinstance(rag_svc, dict):
-        check(
-            f"read PEER_IDENTITY_ALLOWED_PEERS default from {label}",
-            False,
-            f"missing rag-orchestrator service in {label}",
-        )
+        check(check_name, False, f"missing rag-orchestrator service in {label}")
         return None
 
     raw_entry = _service_env(rag_svc).get("PEER_IDENTITY_ALLOWED_PEERS", "")
     match = _RAG_DEFAULT_ALLOWLIST_RE.fullmatch(raw_entry)
     if match is None:
         check(
-            f"read PEER_IDENTITY_ALLOWED_PEERS default from {label}",
+            check_name,
             False,
             f"expected PEER_IDENTITY_ALLOWED_PEERS=${{{ALLOWLIST_KEY}:-...}} in {label}",
         )
@@ -193,41 +200,18 @@ def _read_rag_compose_allowlist(
 
     peers = {p.strip() for p in match.group("default").split(",") if p.strip()}
     if not peers:
-        check(
-            f"read PEER_IDENTITY_ALLOWED_PEERS default from {label}",
-            False,
-            f"empty PEER_IDENTITY_ALLOWED_PEERS default in {label}",
-        )
+        check(check_name, False, f"empty PEER_IDENTITY_ALLOWED_PEERS default in {label}")
         return None
     return peers
 
 
 def _read_host_prereqs_allowlist(
-    compose_include: Any, manifest_path: pathlib.Path
+    compose_include: types.ModuleType, manifest_path: pathlib.Path
 ) -> set[str] | None:
     label = _display_path(manifest_path)
-    try:
-        doc = compose_include.load_yaml(manifest_path)
-    except OSError as exc:
-        check(
-            f"read {ALLOWLIST_KEY} required list from {label}",
-            False,
-            f"cannot read {label}: {exc.strerror}",
-        )
-        return None
-    except UnicodeDecodeError:
-        check(
-            f"read {ALLOWLIST_KEY} required list from {label}",
-            False,
-            f"{label} is not valid UTF-8",
-        )
-        return None
-    except compose_include.yaml.YAMLError:
-        check(
-            f"read {ALLOWLIST_KEY} required list from {label}",
-            False,
-            f"invalid YAML in {label}",
-        )
+    check_name = f"read {ALLOWLIST_KEY} required list from {label}"
+    doc, ok = _load_yaml_checked(compose_include, manifest_path, check_name)
+    if not ok:
         return None
 
     entries = doc.get("env_allowlists") if isinstance(doc, dict) else None
@@ -238,7 +222,7 @@ def _read_host_prereqs_allowlist(
     ]
     if len(matches) != 1:
         check(
-            f"read {ALLOWLIST_KEY} required list from {label}",
+            check_name,
             False,
             f"expected exactly one env_allowlists entry for {ALLOWLIST_KEY} in {label}",
         )
@@ -251,7 +235,7 @@ def _read_host_prereqs_allowlist(
         or not all(isinstance(p, str) and p.strip() for p in required)
     ):
         check(
-            f"read {ALLOWLIST_KEY} required list from {label}",
+            check_name,
             False,
             f"missing or empty required list for {ALLOWLIST_KEY} in {label}",
         )
@@ -259,8 +243,48 @@ def _read_host_prereqs_allowlist(
     return {p.strip() for p in required}
 
 
+def _extract_https_caller_subject(
+    svc: dict[str, Any],
+    svc_name: str,
+    file_label: str,
+    upstreams: dict[str, Any],
+) -> str | None:
+    env = _service_env(svc)
+    present_keys = [k for k in CALLER_ENV_KEYS if k in env]
+    if not present_keys:
+        return None
+
+    has_https_target = False
+    for key in present_keys:
+        resolved = _resolve_value(env[key], upstreams).strip()
+        if resolved.startswith("https://"):
+            has_https_target = True
+        elif resolved.startswith("http://") or resolved in {"disabled", ""}:
+            # Plaintext http:// entries belong to E2E stub stacks where inbound mTLS is disabled.
+            continue
+        else:
+            check(
+                f"resolve {key} scheme for {file_label}:{svc_name}",
+                False,
+                f"unexpected scheme or unresolved interpolation for {key} in {file_label}:{svc_name}",
+            )
+
+    if not has_https_target:
+        return None
+
+    subject = _resolve_value(env.get("CERT_SUBJECT", ""), upstreams).strip()
+    if not subject or "$" in subject:
+        check(
+            f"read CERT_SUBJECT for {file_label}:{svc_name}",
+            False,
+            f"missing CERT_SUBJECT on mTLS caller {svc_name} in {file_label}",
+        )
+        return None
+    return subject
+
+
 def _discover_mtls_callers(
-    compose_include: Any,
+    compose_include: types.ModuleType,
     compose_dir: pathlib.Path,
     upstreams: dict[str, Any],
 ) -> dict[str, list[str]]:
@@ -276,28 +300,8 @@ def _discover_mtls_callers(
     callers: dict[str, list[str]] = {}
     for compose_file in compose_files:
         file_label = _display_path(compose_file)
-        try:
-            doc = compose_include.load_yaml(compose_file)
-        except OSError as exc:
-            check(
-                f"parse {file_label}",
-                False,
-                f"cannot read {file_label}: {exc.strerror}",
-            )
-            continue
-        except UnicodeDecodeError:
-            check(
-                f"parse {file_label}",
-                False,
-                f"{file_label} is not valid UTF-8",
-            )
-            continue
-        except compose_include.yaml.YAMLError:
-            check(
-                f"parse {file_label}",
-                False,
-                f"invalid YAML in {file_label}",
-            )
+        doc, ok = _load_yaml_checked(compose_include, compose_file, f"parse {file_label}")
+        if not ok:
             continue
 
         services = doc.get("services") if isinstance(doc, dict) else None
@@ -307,51 +311,15 @@ def _discover_mtls_callers(
         for svc_name, svc in services.items():
             if not isinstance(svc, dict):
                 continue
-            env = _service_env(svc)
-            present_keys = [k for k in CALLER_ENV_KEYS if k in env]
-            if not present_keys:
-                continue
-
-            has_https_target = False
-            for key in present_keys:
-                resolved = _resolve_value(env[key], upstreams).strip()
-                if resolved.startswith("https://"):
-                    has_https_target = True
-                elif (
-                    resolved.startswith("http://")
-                    or resolved == "disabled"
-                    or resolved == ""
-                ):
-                    # Plaintext http:// entries belong to E2E stub stacks where inbound mTLS is disabled.
-                    continue
-                else:
-                    check(
-                        f"resolve {key} scheme for {file_label}:{svc_name}",
-                        False,
-                        f"unexpected scheme or unresolved interpolation for {key} in {file_label}:{svc_name}",
-                    )
-
-            if not has_https_target:
-                continue
-
-            subject = _resolve_value(env.get("CERT_SUBJECT", ""), upstreams).strip()
-            if not subject or "$" in subject:
-                check(
-                    f"read CERT_SUBJECT for {file_label}:{svc_name}",
-                    False,
-                    f"missing CERT_SUBJECT on mTLS caller {svc_name} in {file_label}",
-                )
-                continue
-
-            callers.setdefault(subject, []).append(f"{file_label}:{svc_name}")
+            subject = _extract_https_caller_subject(svc, svc_name, file_label, upstreams)
+            if subject is not None:
+                callers.setdefault(subject, []).append(f"{file_label}:{svc_name}")
 
     return callers
 
 
 def main(argv: list[str] | None = None) -> int:
-    global PASS, FAIL
-    PASS = 0
-    FAIL = 0
+    _RESULTS.reset()
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -381,12 +349,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    compose_include = _load_module(
-        "compose_include", ROOT / "scripts" / "compose_include.py"
-    )
+    compose_include = _load_module("compose_include", ROOT / "scripts" / "compose_include.py")
     kisage_env = _load_module("kisage_env", ROOT / "scripts" / "kisage-env.py")
 
-    print("rag-orchestrator mTLS caller allowlist parity")
+    sys.stdout.write("rag-orchestrator mTLS caller allowlist parity\n")
 
     lkal_peers, upstreams = _read_lkal_declaration(
         kisage_env, args.declaration, lkal_bin=args.lkal_bin
@@ -395,7 +361,7 @@ def main(argv: list[str] | None = None) -> int:
     prereq_peers = _read_host_prereqs_allowlist(compose_include, args.manifest)
     callers = _discover_mtls_callers(compose_include, args.compose_dir, upstreams)
 
-    if not callers and FAIL == 0:
+    if not callers and _RESULTS.failed == 0:
         check(
             f"discover mTLS callers in {_display_path(args.compose_dir)}/*.yaml",
             False,
@@ -429,8 +395,8 @@ def main(argv: list[str] | None = None) -> int:
                 "" if present else f"missing caller {caller} in {site_label}",
             )
 
-    print(f"\n{PASS} passed, {FAIL} failed")
-    return 1 if FAIL else 0
+    sys.stdout.write(f"\n{_RESULTS.passed} passed, {_RESULTS.failed} failed\n")
+    return 1 if _RESULTS.failed else 0
 
 
 if __name__ == "__main__":

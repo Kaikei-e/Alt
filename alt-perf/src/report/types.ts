@@ -1,7 +1,7 @@
 /**
  * Report type definitions
  */
-import type { WebVitalsResult, NavigationTimingResult } from "../measurement/vitals.ts";
+import type { NavigationTimingResult, WebVitalsResult } from "../measurement/vitals.ts";
 
 // Statistical metrics for a single vital
 export interface StatisticalMetrics {

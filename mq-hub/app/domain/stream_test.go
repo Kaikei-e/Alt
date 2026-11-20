@@ -5,21 +5,22 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestStreamKey_Constants(t *testing.T) {
 	// Verify stream key constants are defined correctly
-	assert.Equal(t, StreamKey("alt:events:articles"), StreamKeyArticles)
-	assert.Equal(t, StreamKey("alt:events:summaries"), StreamKeySummaries)
-	assert.Equal(t, StreamKey("alt:events:tags"), StreamKeyTags)
-	assert.Equal(t, StreamKey("alt:events:index"), StreamKeyIndex)
+	assert.Equal(t, StreamKeyArticles, StreamKey("alt:events:articles"))
+	assert.Equal(t, StreamKeySummaries, StreamKey("alt:events:summaries"))
+	assert.Equal(t, StreamKeyTags, StreamKey("alt:events:tags"))
+	assert.Equal(t, StreamKeyIndex, StreamKey("alt:events:index"))
 }
 
 func TestConsumerGroup_Constants(t *testing.T) {
 	// Verify consumer group constants are defined correctly
-	assert.Equal(t, ConsumerGroup("pre-processor-group"), ConsumerGroupPreProcessor)
-	assert.Equal(t, ConsumerGroup("tag-generator-group"), ConsumerGroupTagGenerator)
-	assert.Equal(t, ConsumerGroup("search-indexer-group"), ConsumerGroupSearchIndexer)
+	assert.Equal(t, ConsumerGroupPreProcessor, ConsumerGroup("pre-processor-group"))
+	assert.Equal(t, ConsumerGroupTagGenerator, ConsumerGroup("tag-generator-group"))
+	assert.Equal(t, ConsumerGroupSearchIndexer, ConsumerGroup("search-indexer-group"))
 }
 
 func TestStreamKey_IsValid(t *testing.T) {
@@ -118,9 +119,9 @@ func TestPartialPublishError_ErrorsAs(t *testing.T) {
 	wrapped := errors.New("publish batch to alt:events:articles: " + original.Error())
 
 	var target *PartialPublishError
-	assert.False(t, errors.As(wrapped, &target), "a plain wrapped string must not be mistaken for the typed error")
+	assert.NotErrorAs(t, wrapped, &target, "a plain wrapped string must not be mistaken for the typed error")
 
 	var direct *PartialPublishError
-	assert.True(t, errors.As(error(original), &direct))
+	require.ErrorAs(t, error(original), &direct)
 	assert.Same(t, original, direct)
 }

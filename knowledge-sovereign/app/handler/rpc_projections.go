@@ -17,25 +17,25 @@ func (h *SovereignHandler) GetKnowledgeHomeItems(
 	req *connect.Request[sovereignv1.GetKnowledgeHomeItemsRequest],
 ) (*connect.Response[sovereignv1.GetKnowledgeHomeItemsResponse], error) {
 	msg := req.Msg
-	userID, err := parseUUIDField("user_id", msg.UserId)
+	userID, err := parseUUIDField("user_id", msg.GetUserId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 
 	var filter *sovereign_db.LensFilter
-	if msg.Filter != nil {
+	if msg.GetFilter() != nil {
 		filter = &sovereign_db.LensFilter{
-			QueryText:    msg.Filter.QueryText,
-			TagNames:     msg.Filter.TagIds,
-			SourceIDs:    msg.Filter.SourceIds,
-			TimeWindow:   msg.Filter.TimeWindow,
-			IncludeRecap: msg.Filter.IncludeRecap,
-			IncludePulse: msg.Filter.IncludePulse,
-			SortMode:     msg.Filter.SortMode,
+			QueryText:    msg.GetFilter().GetQueryText(),
+			TagNames:     msg.GetFilter().GetTagIds(),
+			SourceIDs:    msg.GetFilter().GetSourceIds(),
+			TimeWindow:   msg.GetFilter().GetTimeWindow(),
+			IncludeRecap: msg.GetFilter().GetIncludeRecap(),
+			IncludePulse: msg.GetFilter().GetIncludePulse(),
+			SortMode:     msg.GetFilter().GetSortMode(),
 		}
 	}
 
-	items, nextCursor, hasMore, err := h.readDB.GetKnowledgeHomeItems(ctx, userID, msg.Cursor, clampReadLimit(int(msg.Limit), defaultReadLimit), filter)
+	items, nextCursor, hasMore, err := h.readDB.GetKnowledgeHomeItems(ctx, userID, msg.GetCursor(), clampReadLimit(int(msg.GetLimit()), defaultReadLimit), filter)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("GetKnowledgeHomeItems: %w", err))
 	}
@@ -56,11 +56,11 @@ func (h *SovereignHandler) GetTodayDigest(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.GetTodayDigestRequest],
 ) (*connect.Response[sovereignv1.GetTodayDigestResponse], error) {
-	userID, err := parseUUIDField("user_id", req.Msg.UserId)
+	userID, err := parseUUIDField("user_id", req.Msg.GetUserId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	date, err := parseDateField("date", req.Msg.Date)
+	date, err := parseDateField("date", req.Msg.GetDate())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
@@ -94,11 +94,11 @@ func (h *SovereignHandler) GetRecallCandidates(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.GetRecallCandidatesRequest],
 ) (*connect.Response[sovereignv1.GetRecallCandidatesResponse], error) {
-	userID, err := parseUUIDField("user_id", req.Msg.UserId)
+	userID, err := parseUUIDField("user_id", req.Msg.GetUserId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	candidates, err := h.readDB.GetRecallCandidates(ctx, userID, clampReadLimit(int(req.Msg.Limit), defaultReadLimit))
+	candidates, err := h.readDB.GetRecallCandidates(ctx, userID, clampReadLimit(int(req.Msg.GetLimit()), defaultReadLimit))
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("GetRecallCandidates: %w", err))
 	}
@@ -151,11 +151,11 @@ func (h *SovereignHandler) CountNeedToKnowItems(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.CountNeedToKnowItemsRequest],
 ) (*connect.Response[sovereignv1.CountNeedToKnowItemsResponse], error) {
-	userID, err := parseUUIDField("user_id", req.Msg.UserId)
+	userID, err := parseUUIDField("user_id", req.Msg.GetUserId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	date, err := parseDateField("date", req.Msg.Date)
+	date, err := parseDateField("date", req.Msg.GetDate())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from http import HTTPStatus
 from pathlib import Path
 
 import pytest
@@ -14,6 +15,7 @@ from recap_subworker.app.infra.admin_auth import (
     load_admin_auth_config,
     require_admin_token,
 )
+from recap_subworker.app.main import create_app
 
 pytestmark = pytest.mark.usefixtures("stub_startup_sweep")
 
@@ -29,91 +31,105 @@ def _protected_app(config: AdminAuthConfig) -> FastAPI:
     return app
 
 
-def test_missing_authorization_header_is_unauthorized():
-    app = _protected_app(AdminAuthConfig(token="expected-token-0123456789"))
+def test_missing_authorization_header_is_unauthorized() -> None:
+    app = _protected_app(
+        AdminAuthConfig(token="expected-token-0123456789")  # noqa: S106 - test fixture value, not a credential
+    )
     with TestClient(app) as client:
         response = client.get("/protected")
-    assert response.status_code == 401
+    assert response.status_code == HTTPStatus.UNAUTHORIZED
     assert response.headers["www-authenticate"] == "Bearer"
 
 
-def test_wrong_token_is_unauthorized():
-    app = _protected_app(AdminAuthConfig(token="expected-token-0123456789"))
+def test_wrong_token_is_unauthorized() -> None:
+    app = _protected_app(
+        AdminAuthConfig(token="expected-token-0123456789")  # noqa: S106 - test fixture value, not a credential
+    )
     with TestClient(app) as client:
         response = client.get(
             "/protected", headers={"Authorization": "Bearer wrong-token-0123456789"}
         )
-    assert response.status_code == 401
+    assert response.status_code == HTTPStatus.UNAUTHORIZED
     assert response.headers["www-authenticate"] == "Bearer"
 
 
-def test_missing_and_wrong_token_responses_are_indistinguishable():
+def test_missing_and_wrong_token_responses_are_indistinguishable() -> None:
     """Body/detail must be stable across failure modes so a caller can't
     use the response to tell "no token sent" apart from "wrong token
     sent"."""
-    app = _protected_app(AdminAuthConfig(token="expected-token-0123456789"))
+    app = _protected_app(
+        AdminAuthConfig(token="expected-token-0123456789")  # noqa: S106 - test fixture value, not a credential
+    )
     with TestClient(app) as client:
         missing = client.get("/protected")
         wrong = client.get("/protected", headers={"Authorization": "Bearer wrong-token-0123456789"})
-    assert missing.status_code == wrong.status_code == 401
+    assert missing.status_code == wrong.status_code == HTTPStatus.UNAUTHORIZED
     assert missing.json() == wrong.json()
 
 
 @pytest.mark.asyncio
-async def test_non_ascii_authorization_header_is_unauthorized_not_500():
+async def test_non_ascii_authorization_header_is_unauthorized_not_500() -> None:
     """Starlette decodes the raw Authorization header as latin-1, so a
     non-ASCII byte sequence reaches `require_admin_token` as a non-ASCII
     `str`. `hmac.compare_digest` raises `TypeError` on non-ASCII `str`
     arguments, so the comparison must happen on encoded bytes instead."""
-    config = AdminAuthConfig(token="expected-token-0123456789")
+    config = AdminAuthConfig(
+        token="expected-token-0123456789"  # noqa: S106 - test fixture value, not a credential
+    )
     with pytest.raises(HTTPException) as exc_info:
         await require_admin_token(
             authorization="Bearer éééwrong-token",
             auth_config=config,
         )
-    assert exc_info.value.status_code == 401
+    assert exc_info.value.status_code == HTTPStatus.UNAUTHORIZED
 
 
-def test_correct_token_passes_through():
-    app = _protected_app(AdminAuthConfig(token="expected-token-0123456789"))
+def test_correct_token_passes_through() -> None:
+    app = _protected_app(
+        AdminAuthConfig(token="expected-token-0123456789")  # noqa: S106 - test fixture value, not a credential
+    )
     with TestClient(app) as client:
         response = client.get(
             "/protected",
             headers={"Authorization": "Bearer expected-token-0123456789"},
         )
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     assert response.json() == {"ok": True}
 
 
-def test_disabled_auth_passes_through_without_header():
+def test_disabled_auth_passes_through_without_header() -> None:
     app = _protected_app(AdminAuthConfig(token=None))
     with TestClient(app) as client:
         response = client.get("/protected")
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
 
 
 class TestLoadAdminAuthConfig:
-    def test_disabled_mode_returns_none_token(self, monkeypatch):
+    def test_disabled_mode_returns_none_token(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("ADMIN_AUTH", "disabled")
         monkeypatch.delenv("ADMIN_TOKEN_FILE", raising=False)
         config = load_admin_auth_config()
         assert config.token is None
 
-    def test_unset_auth_and_missing_token_file_raises(self, monkeypatch):
+    def test_unset_auth_and_missing_token_file_raises(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.delenv("ADMIN_AUTH", raising=False)
         monkeypatch.delenv("ADMIN_TOKEN_FILE", raising=False)
         with pytest.raises(RuntimeError, match="ADMIN_TOKEN_FILE"):
             load_admin_auth_config()
 
-    def test_valid_token_file_resolves_token(self, tmp_path: Path, monkeypatch):
+    def test_valid_token_file_resolves_token(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         token_path = tmp_path / "admin_token"
         token_path.write_text("test-recap-subworker-token-42\n")
         monkeypatch.delenv("ADMIN_AUTH", raising=False)
         monkeypatch.setenv("ADMIN_TOKEN_FILE", str(token_path))
         config = load_admin_auth_config()
-        assert config.token == "test-recap-subworker-token-42"
+        assert config.token == "test-recap-subworker-token-42"  # noqa: S105 - test fixture value, not a credential
 
-    def test_short_token_is_rejected(self, tmp_path: Path, monkeypatch):
+    def test_short_token_is_rejected(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         token_path = tmp_path / "short_token"
         token_path.write_text("too-short")
         monkeypatch.delenv("ADMIN_AUTH", raising=False)
@@ -121,32 +137,34 @@ class TestLoadAdminAuthConfig:
         with pytest.raises(RuntimeError, match="at least 24 characters"):
             load_admin_auth_config()
 
-    def test_missing_token_file_is_rejected(self, tmp_path: Path, monkeypatch):
+    def test_missing_token_file_is_rejected(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.delenv("ADMIN_AUTH", raising=False)
         monkeypatch.setenv("ADMIN_TOKEN_FILE", str(tmp_path / "does-not-exist"))
         with pytest.raises(RuntimeError, match="failed to read token file"):
             load_admin_auth_config()
 
 
-def test_create_app_auth_required_for_v1_cards_endpoints(monkeypatch, tmp_path: Path):
+def test_create_app_auth_required_for_v1_cards_endpoints(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """Verify that create_app mounts /v1/embed, /v1/cluster-stories, /v1/verify with admin auth."""
     token_path = tmp_path / "admin_token"
     token_path.write_text("test-recap-subworker-token-42\n")
     monkeypatch.delenv("ADMIN_AUTH", raising=False)
     monkeypatch.setenv("ADMIN_TOKEN_FILE", str(token_path))
 
-    from recap_subworker.app.main import create_app
-
     app = create_app()
     with TestClient(app) as client:
         # 1. /v1/embed without bearer -> 401
         res_embed = client.post("/v1/embed", json={"texts": ["test text"]})
-        assert res_embed.status_code == 401
+        assert res_embed.status_code == HTTPStatus.UNAUTHORIZED
         assert res_embed.headers["www-authenticate"] == "Bearer"
 
         # 2. /v1/cluster-stories without bearer -> 401
         res_cluster = client.post("/v1/cluster-stories", json={"items": []})
-        assert res_cluster.status_code == 401
+        assert res_cluster.status_code == HTTPStatus.UNAUTHORIZED
         assert res_cluster.headers["www-authenticate"] == "Bearer"
 
         # 3. /v1/verify without bearer -> 401
@@ -160,25 +178,25 @@ def test_create_app_auth_required_for_v1_cards_endpoints(monkeypatch, tmp_path: 
                 "items": [],
             },
         )
-        assert res_verify.status_code == 401
+        assert res_verify.status_code == HTTPStatus.UNAUTHORIZED
         assert res_verify.headers["www-authenticate"] == "Bearer"
 
         # 4. /v1/evaluation/genres without bearer -> 401
         res_eval = client.post("/v1/evaluation/genres", json={})
-        assert res_eval.status_code == 401
+        assert res_eval.status_code == HTTPStatus.UNAUTHORIZED
         assert res_eval.headers["www-authenticate"] == "Bearer"
 
         # 5. /v1/classify without bearer -> 401
         res_classify = client.post("/v1/classify", json={"texts": ["hello"]})
-        assert res_classify.status_code == 401
+        assert res_classify.status_code == HTTPStatus.UNAUTHORIZED
         assert res_classify.headers["www-authenticate"] == "Bearer"
 
         # 6. /v1/extract without bearer -> 401
         res_extract = client.post("/v1/extract", json={"html": "<p>test</p>"})
-        assert res_extract.status_code == 401
+        assert res_extract.status_code == HTTPStatus.UNAUTHORIZED
         assert res_extract.headers["www-authenticate"] == "Bearer"
 
         # 7. /v1/classify-runs without bearer -> 401
         res_classify_runs = client.post("/v1/classify-runs", json={"texts": ["hello"]})
-        assert res_classify_runs.status_code == 401
+        assert res_classify_runs.status_code == HTTPStatus.UNAUTHORIZED
         assert res_classify_runs.headers["www-authenticate"] == "Bearer"

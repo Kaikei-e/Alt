@@ -13,15 +13,15 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-def main():
+def main() -> None:
     output_path = Path("recap_subworker/learning_machine/data/gold_seed.jsonl")
 
     # Synthetic Data (2 JA + 2 EN per genre)
     new_items = []
 
-    logger.info(f"Adding {len(new_items)} items to {output_path}")
+    logger.info("Adding %d items to %s", len(new_items), output_path)
 
-    with open(output_path, "a", encoding="utf-8") as f:
+    with output_path.open("a", encoding="utf-8") as f:
         for item in new_items:
             item["source"] = "gold_augment_synthetic"
             f.write(json.dumps(item, ensure_ascii=False) + "\n")

@@ -15,6 +15,7 @@ dependencies = [
 dev = [
     "pyrefly>=1.1.1",
     "pytest>=9.1.1",
+    "ruff>=0.15.20,<0.16",
 ]
 
 [tool.uv]
@@ -38,3 +39,47 @@ python-version = "3.14"
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py314"
+line-length = 100
+exclude = [".git", "__pycache__", ".venv", "build", "dist"]
+
+[tool.ruff.lint]
+select = [
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # pyflakes
+    "I",     # isort
+    "B",     # flake8-bugbear
+    "C4",    # flake8-comprehensions
+    "UP",    # pyupgrade
+    "S",     # bandit (security)
+    "N",     # pep8-naming
+    "ANN",   # annotations
+    "PTH",   # use-pathlib
+    "BLE",   # blind-except
+    "ASYNC", # async best practices
+    "TRY",   # tryceratops
+    "SIM",   # simplify
+    "RUF",   # ruff-specific
+    "PL",    # pylint
+    "DTZ",   # flake8-datetimez
+    "PT",    # flake8-pytest-style
+    "LOG",   # flake8-logging
+    "G",     # flake8-logging-format
+    "T20",   # flake8-print
+    "A",     # flake8-builtins
+    "RET",   # flake8-return
+    "PERF",  # perflint
+]
+ignore = [
+    "E501",   # line too long (handled by ruff format)
+    "RUF001", # ambiguous-unicode-character-string (project contains Japanese text)
+    "RUF002", # ambiguous-unicode-character-docstring (project contains Japanese text)
+    "RUF003", # ambiguous-unicode-character-comment (project contains Japanese text)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"] # pytest uses bare assert
+"test_*.py" = ["S101"] # pytest uses bare assert

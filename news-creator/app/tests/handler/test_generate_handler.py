@@ -1,10 +1,13 @@
 """Tests for generate handler - HTTP 429 queue full behavior and Gemma prompt boundary."""
 
 import logging
+from collections.abc import Callable
+from http import HTTPStatus
+from unittest.mock import AsyncMock, Mock
+
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-import pytest
-from unittest.mock import AsyncMock, Mock
 
 from news_creator.domain.errors import QueueFullError
 from news_creator.domain.models import LLMGenerateResponse
@@ -13,13 +16,16 @@ from news_creator.handler.generate_handler import create_generate_router
 from news_creator.port.llm_provider_port import LLMProviderPort
 
 
-def _make_client(mock_provider):
+def _make_client(mock_provider: Mock) -> TestClient:
     app = FastAPI()
     app.include_router(create_generate_router(mock_provider))
     return TestClient(app)
 
 
-def _make_mock_provider(return_value=None, side_effect=None):
+def _make_mock_provider(
+    return_value: LLMGenerateResponse | None = None,
+    side_effect: Exception | Callable[..., object] | None = None,
+) -> Mock:
     mock = Mock(spec=LLMProviderPort)
     if side_effect:
         mock.generate = AsyncMock(side_effect=side_effect)
@@ -36,7 +42,7 @@ def _make_mock_provider(return_value=None, side_effect=None):
     return mock
 
 
-def test_generate_returns_429_when_queue_full():
+def test_generate_returns_429_when_queue_full() -> None:
     """Queue saturation is expected backpressure; must surface as 429, not 500."""
     mock_provider = _make_mock_provider(
         side_effect=QueueFullError("Queue depth 10 >= max 10")
@@ -45,23 +51,23 @@ def test_generate_returns_429_when_queue_full():
 
     response = client.post("/api/generate", json={"prompt": "hello"})
 
-    assert response.status_code == 429
+    assert response.status_code == HTTPStatus.TOO_MANY_REQUESTS
     data = response.json()
     assert "queue full" in data["error"]
     assert response.headers.get("Retry-After") == "30"
 
 
-def test_generate_returns_200_on_success():
+def test_generate_returns_200_on_success() -> None:
     mock_provider = _make_mock_provider()
     client = _make_client(mock_provider)
 
     response = client.post("/api/generate", json={"prompt": "hello"})
 
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     assert response.json()["response"] == "hello"
 
 
-def test_generate_prompt_over_cap_keeps_its_validation_detail():
+def test_generate_prompt_over_cap_keeps_its_validation_detail() -> None:
     """The prompt-length 400 is static validation feedback, not internal detail.
 
     The E2E contract asserts /prompt too long/i on this response; collapsing it
@@ -76,62 +82,63 @@ def test_generate_prompt_over_cap_keeps_its_validation_detail():
         "/api/generate", json={"prompt": "a" * 240_001, "stream": False}
     )
 
-    assert response.status_code == 400
+    assert response.status_code == HTTPStatus.BAD_REQUEST
     assert "prompt too long" in response.json()["detail"].lower()
     mock_provider.generate.assert_not_awaited()
 
 
-def test_generate_value_error_does_not_leak_exception_text():
+def test_generate_value_error_does_not_leak_exception_text() -> None:
     """Regression: ValueError must not leak to the client body."""
     secret = (
-        "invalid generate payload at /app/news_creator/gateway/ollama_gateway.py:88"
+        "invalid generate payload at /app/news_creator/gateway/ollama_gateway.py:88"  # noqa: S105 - test fixture string simulating leaked internal detail
     )
     mock_provider = _make_mock_provider(side_effect=ValueError(secret))
     client = _make_client(mock_provider)
 
     response = client.post("/api/generate", json={"prompt": "hello"})
 
-    assert response.status_code == 400
+    assert response.status_code == HTTPStatus.BAD_REQUEST
     assert response.json()["detail"] == "Invalid request"
     assert secret not in response.text
 
 
-def test_generate_runtime_error_does_not_leak_exception_text():
+def test_generate_runtime_error_does_not_leak_exception_text() -> None:
     """Regression: RuntimeError must not leak to the client body."""
-    secret = "Ollama connection refused at http://ollama.internal:11434"
+    secret = "Ollama connection refused at http://ollama.internal:11434"  # noqa: S105 - test fixture string simulating leaked internal detail
     mock_provider = _make_mock_provider(side_effect=RuntimeError(secret))
     client = _make_client(mock_provider)
 
     response = client.post("/api/generate", json={"prompt": "hello"})
 
-    assert response.status_code == 502
+    assert response.status_code == HTTPStatus.BAD_GATEWAY
     assert response.json()["detail"] == "Upstream service error"
     assert secret not in response.text
 
 
-def test_generate_timeout_does_not_leak_exception_text():
+def test_generate_timeout_does_not_leak_exception_text() -> None:
     """Regression: timeout errors must not leak host details to the client."""
-    import asyncio
 
-    secret = "timed out connecting to ollama.internal:11434"
-    mock_provider = _make_mock_provider(side_effect=asyncio.TimeoutError(secret))
+    secret = "timed out connecting to ollama.internal:11434"  # noqa: S105 - test fixture string simulating leaked internal detail
+    mock_provider = _make_mock_provider(side_effect=TimeoutError(secret))
     client = _make_client(mock_provider)
 
     response = client.post("/api/generate", json={"prompt": "hello"})
 
-    assert response.status_code == 502
+    assert response.status_code == HTTPStatus.BAD_GATEWAY
     assert response.json()["detail"] == "Upstream service error"
     assert secret not in response.text
 
 
-def test_generate_wraps_untemplated_prompt_and_logs_wrapped_true(caplog):
+def test_generate_wraps_untemplated_prompt_and_logs_wrapped_true(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     mock_provider = _make_mock_provider()
     client = _make_client(mock_provider)
 
     with caplog.at_level(logging.INFO):
         response = client.post("/api/generate", json={"prompt": "hello world"})
 
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     mock_provider.generate.assert_awaited_once()
     sent_prompt = mock_provider.generate.call_args.kwargs["prompt"]
     assert sent_prompt == "<|turn>user\nhello world\n<turn|>\n<|turn>model\n"
@@ -160,27 +167,31 @@ def test_generate_wraps_untemplated_prompt_and_logs_wrapped_true(caplog):
     ],
 )
 def test_generate_neutralizes_control_tokens_before_wrapping_untemplated_prompt(
-    caplog, raw_prompt: str, expected_user_body: str, expected_removed: int
-):
+    caplog: pytest.LogCaptureFixture,
+    raw_prompt: str,
+    expected_user_body: str,
+    expected_removed: int,
+) -> None:
+    expected_turn_open_count = 2
     mock_provider = _make_mock_provider()
     client = _make_client(mock_provider)
 
     with caplog.at_level(logging.INFO):
         response = client.post("/api/generate", json={"prompt": raw_prompt})
 
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     mock_provider.generate.assert_awaited_once()
     sent_prompt = mock_provider.generate.call_args.kwargs["prompt"]
     assert sent_prompt == f"<|turn>user\n{expected_user_body}\n<turn|>\n<|turn>model\n"
-    assert sent_prompt.count("<|turn>") == 2
+    assert sent_prompt.count("<|turn>") == expected_turn_open_count
     assert sent_prompt.count("<turn|>") == 1
     assert "generate_prompt_wrapped=true" in caplog.text
     assert f"control_tokens_removed={expected_removed}" in caplog.text
 
 
 def test_generate_passes_already_templated_prompt_unchanged_and_logs_wrapped_false(
-    caplog,
-):
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     mock_provider = _make_mock_provider()
     client = _make_client(mock_provider)
     templated_prompt = "<|turn>user\nhello world<turn|>\n<|turn>model\n"
@@ -188,7 +199,7 @@ def test_generate_passes_already_templated_prompt_unchanged_and_logs_wrapped_fal
     with caplog.at_level(logging.INFO):
         response = client.post("/api/generate", json={"prompt": templated_prompt})
 
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     mock_provider.generate.assert_awaited_once()
     sent_prompt = mock_provider.generate.call_args.kwargs["prompt"]
     assert sent_prompt == templated_prompt
@@ -197,10 +208,12 @@ def test_generate_passes_already_templated_prompt_unchanged_and_logs_wrapped_fal
 
 
 def test_generate_rejects_malformed_templated_prompt_missing_model_turn_with_400(
-    caplog,
-):
-    async def _guarding_generate(**kwargs):
-        prepare_raw_prompt(kwargs["prompt"])
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    async def _guarding_generate(
+        *, prompt: str, **_kwargs: object
+    ) -> LLMGenerateResponse:
+        prepare_raw_prompt(prompt)
         return LLMGenerateResponse(
             response="ok",
             model="test-model",
@@ -215,7 +228,7 @@ def test_generate_rejects_malformed_templated_prompt_missing_model_turn_with_400
     with caplog.at_level(logging.INFO):
         response = client.post("/api/generate", json={"prompt": malformed_prompt})
 
-    assert response.status_code == 400
+    assert response.status_code == HTTPStatus.BAD_REQUEST
     assert response.json()["detail"] == "Invalid request"
     mock_provider.generate.assert_awaited_once()
     sent_prompt = mock_provider.generate.call_args.kwargs["prompt"]

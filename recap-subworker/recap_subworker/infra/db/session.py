@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from ..config import Settings
+from ..config import Settings, get_settings
 
 logger = structlog.get_logger(__name__)
 
@@ -91,8 +91,6 @@ async def get_session() -> AsyncIterator[AsyncSession]:  # pragma: no cover - le
     New code should inject ``ServiceContainer`` via ``deps.get_container``
     and take sessions from ``container.db.session_factory``.
     """
-    from ..config import get_settings
-
     resources = create_database_resources(get_settings())
     try:
         async with resources.session_factory() as session:

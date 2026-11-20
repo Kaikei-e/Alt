@@ -10,33 +10,34 @@ from unittest.mock import MagicMock, mock_open, patch
 import pytest
 
 from tag_extractor.model_manager import ModelConfig, ModelManager, get_model_manager, reset_model_manager
+from tag_generator.domain.errors import ModelLoadError
 
 
 class TestModelManager:
     """Test cases for ModelManager functionality."""
 
-    def setup_method(self):
+    def setup_method(self) -> None:
         """Reset shared ModelManager instance for each test."""
         reset_model_manager()
 
-    def test_get_model_manager_returns_shared_instance(self):
+    def test_get_model_manager_returns_shared_instance(self) -> None:
         """Test that get_model_manager returns the same instance."""
         manager1 = get_model_manager()
         manager2 = get_model_manager()
         assert manager1 is manager2
         assert isinstance(manager1, ModelManager)
 
-    def test_new_instances_are_independent(self):
+    def test_new_instances_are_independent(self) -> None:
         """Test that direct construction creates independent instances."""
         manager1 = ModelManager()
         manager2 = ModelManager()
         assert manager1 is not manager2
 
-    def test_get_model_manager_thread_safety(self):
+    def test_get_model_manager_thread_safety(self) -> None:
         """Test that get_model_manager is thread-safe."""
         instances = []
 
-        def create_manager():
+        def create_manager() -> None:
             instances.append(get_model_manager())
 
         threads = [threading.Thread(target=create_manager) for _ in range(10)]
@@ -48,7 +49,7 @@ class TestModelManager:
         # All instances should be the same shared object
         assert all(instance is instances[0] for instance in instances)
 
-    def test_models_loaded_initially_false(self):
+    def test_models_loaded_initially_false(self) -> None:
         """Test that models are not loaded initially."""
         manager = ModelManager()
         assert not manager.is_loaded()
@@ -56,7 +57,9 @@ class TestModelManager:
     @patch("tag_extractor.model_manager.SentenceTransformer")
     @patch("tag_extractor.model_manager.KeyBERT")
     @patch("tag_extractor.model_manager.Tagger")
-    def test_get_models_loads_successfully(self, mock_tagger, mock_keybert, mock_sentence_transformer):
+    def test_get_models_loads_successfully(
+        self, mock_tagger: MagicMock, mock_keybert: MagicMock, mock_sentence_transformer: MagicMock
+    ) -> None:
         """Test successful model loading."""
         # Arrange
         mock_embedder = MagicMock()
@@ -82,7 +85,9 @@ class TestModelManager:
     @patch("tag_extractor.model_manager.OnnxEmbeddingModel")
     @patch("tag_extractor.model_manager.KeyBERT")
     @patch("tag_extractor.model_manager.Tagger")
-    def test_runtime_metadata_reports_onnx_backend(self, mock_tagger, mock_keybert, mock_onnx):
+    def test_runtime_metadata_reports_onnx_backend(
+        self, mock_tagger: MagicMock, mock_keybert: MagicMock, mock_onnx: MagicMock
+    ) -> None:
         """Ensure runtime metadata exposes ONNX backend details."""
         mock_embedder = MagicMock()
         mock_embedder.describe.return_value = {
@@ -116,11 +121,12 @@ class TestModelManager:
     @patch("tag_extractor.model_manager.KeyBERT")
     @patch("tag_extractor.model_manager.Tagger")
     def test_runtime_metadata_reports_sentence_transformer_backend(
-        self, mock_tagger, mock_keybert, mock_sentence_transformer
-    ):
+        self, mock_tagger: MagicMock, mock_keybert: MagicMock, mock_sentence_transformer: MagicMock
+    ) -> None:
         """Ensure runtime metadata exposes SentenceTransformer backend details."""
         mock_embedder = MagicMock()
-        mock_embedder.get_sentence_embedding_dimension.return_value = 384
+        expected_embedding_dim = 384
+        mock_embedder.get_sentence_embedding_dimension.return_value = expected_embedding_dim
         mock_kb = MagicMock()
         mock_ja_tagger = MagicMock()
 
@@ -137,13 +143,11 @@ class TestModelManager:
         assert metadata["embedder_backend"] == "sentence_transformer"
         assert metadata["embedder_metadata"]["model_name"] == "test-model"
         assert metadata["embedder_metadata"]["device"] == "cpu"
-        assert metadata["embedder_metadata"]["embedding_dimension"] == 384
+        assert metadata["embedder_metadata"]["embedding_dimension"] == expected_embedding_dim
 
-    def test_get_models_handles_none_models(self):
+    def test_get_models_handles_none_models(self) -> None:
         """Missing ML libraries must surface as a diagnosable ModelLoadError,
         not a generic 'NoneType' object is not callable' TypeError."""
-        from tag_generator.domain.errors import ModelLoadError
-
         manager = ModelManager()
         config = ModelConfig()
 
@@ -152,14 +156,16 @@ class TestModelManager:
             patch("tag_extractor.model_manager.SentenceTransformer", None),
             patch("tag_extractor.model_manager.KeyBERT", None),
             patch("tag_extractor.model_manager.Tagger", None),
+            pytest.raises(ModelLoadError, match="Missing ML dependency"),
         ):
-            with pytest.raises(ModelLoadError, match="Missing ML dependency"):
-                manager.get_models(config)
+            manager.get_models(config)
 
     @patch("tag_extractor.model_manager.SentenceTransformer")
     @patch("tag_extractor.model_manager.KeyBERT")
     @patch("tag_extractor.model_manager.Tagger")
-    def test_get_models_handles_loading_failure(self, mock_tagger, mock_keybert, mock_sentence_transformer):
+    def test_get_models_handles_loading_failure(
+        self, mock_tagger: MagicMock, mock_keybert: MagicMock, mock_sentence_transformer: MagicMock
+    ) -> None:
         """Test model loading failure handling."""
         # Arrange - make model loading fail
         mock_sentence_transformer.side_effect = Exception("Model loading failed")
@@ -174,7 +180,7 @@ class TestModelManager:
         # Models should not be marked as loaded
         assert not manager.is_loaded()
 
-    def test_get_models_caches_loaded_models(self):
+    def test_get_models_caches_loaded_models(self) -> None:
         """Test that models are cached and not reloaded unnecessarily."""
         with patch.object(ModelManager, "_load_models") as mock_load:
             manager = ModelManager()
@@ -193,7 +199,7 @@ class TestModelManager:
             # _load_models should not be called since models are already loaded
             mock_load.assert_not_called()
 
-    def test_get_models_reloads_on_config_change(self):
+    def test_get_models_reloads_on_config_change(self) -> None:
         """Test that models are reloaded when configuration changes."""
         with patch.object(ModelManager, "_load_models") as mock_load:
             manager = ModelManager()
@@ -214,7 +220,7 @@ class TestModelManager:
 
     @patch("pathlib.Path.open", new_callable=lambda: mock_open(read_data="TestWord\n"))
     @patch("nltk.corpus.stopwords.words")
-    def test_get_stopwords_loads_successfully(self, mock_nltk_stopwords, mock_path_open):
+    def test_get_stopwords_loads_successfully(self, mock_nltk_stopwords: MagicMock, mock_path_open: MagicMock) -> None:
         """Test successful stopwords loading combines file content with NLTK.
 
         Regression note: this used to `@patch("builtins.open")`, but
@@ -237,17 +243,15 @@ class TestModelManager:
         assert en_stopwords == {"testword", "the", "a", "an"}
 
     @patch("pathlib.Path.open", side_effect=FileNotFoundError("missing stopwords"))
-    def test_get_stopwords_raises_on_missing_file(self, mock_path_open):
+    def test_get_stopwords_raises_on_missing_file(self, mock_path_open: MagicMock) -> None:
         """Missing stopword files must fail fast with ModelLoadError rather than
         silently returning empty sets that disable stopword filtering."""
-        from tag_generator.domain.errors import ModelLoadError
-
         manager = ModelManager()
 
         with pytest.raises(ModelLoadError):
             manager.get_stopwords()
 
-    def test_clear_models_resets_state(self):
+    def test_clear_models_resets_state(self) -> None:
         """Test that clear_models resets all model state."""
         manager = ModelManager()
 
@@ -275,19 +279,19 @@ class TestModelManager:
 class TestModelConfig:
     """Test cases for ModelConfig dataclass."""
 
-    def test_default_config(self):
+    def test_default_config(self) -> None:
         """Test ModelConfig default values."""
         config = ModelConfig()
         assert config.model_name == "paraphrase-multilingual-MiniLM-L12-v2"
         assert config.device == "cpu"
 
-    def test_custom_config(self):
+    def test_custom_config(self) -> None:
         """Test ModelConfig with custom values."""
         config = ModelConfig(model_name="custom-model", device="cuda")
         assert config.model_name == "custom-model"
         assert config.device == "cuda"
 
-    def test_config_equality(self):
+    def test_config_equality(self) -> None:
         """Test ModelConfig equality comparison."""
         config1 = ModelConfig(model_name="test", device="cpu")
         config2 = ModelConfig(model_name="test", device="cpu")
@@ -300,7 +304,7 @@ class TestModelConfig:
 class TestModelRevisionPinning:
     """Embedding model and tokenizer downloads must name a full commit sha."""
 
-    def test_default_revisions_are_full_commit_shas(self):
+    def test_default_revisions_are_full_commit_shas(self) -> None:
         config = ModelConfig()
         assert re.fullmatch(r"[0-9a-f]{40}", config.model_revision)
         assert re.fullmatch(r"[0-9a-f]{40}", config.onnx_tokenizer_revision)
@@ -308,7 +312,9 @@ class TestModelRevisionPinning:
     @patch("tag_extractor.model_manager.SentenceTransformer")
     @patch("tag_extractor.model_manager.KeyBERT")
     @patch("tag_extractor.model_manager.Tagger")
-    def test_sentence_transformer_loaded_with_pinned_revision(self, mock_tagger, mock_keybert, mock_st):
+    def test_sentence_transformer_loaded_with_pinned_revision(
+        self, mock_tagger: MagicMock, mock_keybert: MagicMock, mock_st: MagicMock
+    ) -> None:
         config = ModelConfig(device="cpu", use_onnx=False)
         ModelManager().get_models(config)
         assert mock_st.call_args.kwargs["revision"] == config.model_revision
@@ -316,7 +322,9 @@ class TestModelRevisionPinning:
     @patch("tag_extractor.model_manager.OnnxEmbeddingModel")
     @patch("tag_extractor.model_manager.KeyBERT")
     @patch("tag_extractor.model_manager.Tagger")
-    def test_onnx_tokenizer_uses_pinned_revision(self, mock_tagger, mock_keybert, mock_onnx):
+    def test_onnx_tokenizer_uses_pinned_revision(
+        self, mock_tagger: MagicMock, mock_keybert: MagicMock, mock_onnx: MagicMock
+    ) -> None:
         config = ModelConfig(use_onnx=True, onnx_model_path="/models/onnx/model.onnx")
         ModelManager().get_models(config)
         onnx_config = mock_onnx.call_args.args[0]

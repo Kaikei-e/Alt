@@ -1,4 +1,4 @@
-//! Python structlog JSONRenderer() log parser.
+//! Python structlog `JSONRenderer()` log parser.
 //!
 //! Handles the specific format produced by `structlog.JSONRenderer()`:
 //! ```json
@@ -12,7 +12,7 @@ use super::{LogLevel, ParsedLogEntry, ServiceParser};
 use crate::parser::docker::ParseError;
 use serde_json::Value;
 
-/// Parser for Python structlog JSONRenderer() logs.
+/// Parser for Python structlog `JSONRenderer()` logs.
 pub struct PythonStructlogParser;
 
 impl Default for PythonStructlogParser {
@@ -22,6 +22,7 @@ impl Default for PythonStructlogParser {
 }
 
 impl PythonStructlogParser {
+    #[must_use]
     pub fn new() -> Self {
         Self
     }
@@ -39,7 +40,7 @@ impl PythonStructlogParser {
 }
 
 impl ServiceParser for PythonStructlogParser {
-    fn service_type(&self) -> &str {
+    fn service_type(&self) -> &'static str {
         "python-structlog"
     }
 
@@ -51,8 +52,9 @@ impl ServiceParser for PythonStructlogParser {
     fn can_parse(&self, log: &str) -> bool {
         let trimmed = log.trim();
 
-        if let Some(start) = trimmed.find('{') {
-            let json_part = &trimmed[start..];
+        if let Some(start) = trimmed.find('{')
+            && let Some(json_part) = trimmed.get(start..)
+        {
             // Python structlog JSONRenderer() has "event" key at top level
             // but does NOT have "msg" (Go slog) or "fields":{ (Rust tracing)
             json_part.contains("\"event\"")
@@ -67,9 +69,9 @@ impl ServiceParser for PythonStructlogParser {
     fn parse_log(&self, log: &str) -> Result<ParsedLogEntry, ParseError> {
         let trimmed_log = log.trim();
 
-        if let Some(start_brace_pos) = trimmed_log.find('{') {
-            let potential_json_slice = &trimmed_log[start_brace_pos..];
-
+        if let Some(start_brace_pos) = trimmed_log.find('{')
+            && let Some(potential_json_slice) = trimmed_log.get(start_brace_pos..)
+        {
             match serde_json::from_str::<Value>(potential_json_slice) {
                 Ok(json) => {
                     if let Some(obj) = json.as_object() {
@@ -85,7 +87,6 @@ impl ServiceParser for PythonStructlogParser {
 
                         let level = match level_str {
                             "DEBUG" | "debug" => LogLevel::Debug,
-                            "INFO" | "info" => LogLevel::Info,
                             "WARN" | "warn" | "WARNING" | "warning" => LogLevel::Warn,
                             "ERROR" | "error" => LogLevel::Error,
                             "FATAL" | "fatal" | "CRITICAL" | "critical" => LogLevel::Fatal,
@@ -213,8 +214,7 @@ mod tests {
             ("critical", LogLevel::Fatal),
         ] {
             let log = format!(
-                r#"{{"event":"test","level":"{}","timestamp":"2026-03-03T10:00:00Z"}}"#,
-                level_str
+                r#"{{"event":"test","level":"{level_str}","timestamp":"2026-03-03T10:00:00Z"}}"#
             );
             let entry = parser.parse_log(&log).unwrap();
             assert_eq!(entry.level, Some(expected), "Failed for level {level_str}");

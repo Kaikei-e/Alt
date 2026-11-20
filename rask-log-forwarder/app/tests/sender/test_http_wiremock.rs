@@ -27,7 +27,7 @@ async fn test_http_client_with_wiremock_success() {
         ..Default::default()
     };
 
-    let client = HttpClient::new(config).await.unwrap();
+    let client = HttpClient::new(config).unwrap();
 
     // Test health check
     let result = client.health_check().await;
@@ -57,7 +57,7 @@ async fn test_http_client_with_wiremock_server_error() {
         ..Default::default()
     };
 
-    let client = HttpClient::new(config).await.unwrap();
+    let client = HttpClient::new(config).unwrap();
 
     // Test health check should fail
     let result = client.health_check().await;
@@ -90,7 +90,7 @@ async fn test_http_client_with_wiremock_timeout() {
         ..Default::default()
     };
 
-    let client = HttpClient::new(config).await.unwrap();
+    let client = HttpClient::new(config).unwrap();
 
     // Test should timeout
     let result = client.health_check().await;
@@ -137,7 +137,7 @@ async fn test_http_client_with_wiremock_multiple_endpoints() {
         ..Default::default()
     };
 
-    let client = HttpClient::new(config).await.unwrap();
+    let client = HttpClient::new(config).unwrap();
 
     // Test health check
     let health_result = client.health_check().await;
@@ -173,7 +173,7 @@ async fn test_http_client_with_wiremock_user_agent() {
         ..Default::default()
     };
 
-    let client = HttpClient::new(config).await.unwrap();
+    let client = HttpClient::new(config).unwrap();
 
     // This should succeed if user agent is correctly set
     let result = client.health_check().await;
@@ -189,11 +189,11 @@ async fn test_http_client_with_wiremock_auth_header_for_ndjson_and_otlp() {
     #[cfg(feature = "otlp")]
     use rask_log_forwarder::sender::transmission::OtlpBatchTransmitter;
     use std::collections::HashMap;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     let mock_server = MockServer::start().await;
 
     // Generate random runtime credential
-    use std::time::{SystemTime, UNIX_EPOCH};
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
@@ -221,7 +221,7 @@ async fn test_http_client_with_wiremock_auth_header_for_ndjson_and_otlp() {
         ..Default::default()
     };
 
-    let client = HttpClient::new(config).await.unwrap();
+    let client = HttpClient::new(config).unwrap();
 
     // Send NDJSON Batch
     let transmitter = BatchTransmitter::new(client.clone());

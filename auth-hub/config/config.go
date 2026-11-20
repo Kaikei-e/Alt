@@ -10,6 +10,7 @@ import (
 	"math"
 	"net/netip"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -173,8 +174,31 @@ func Load() (*Config, error) {
 	return config, nil
 }
 
+func readConfigFile(path string) ([]byte, error) {
+	if path == "" {
+		return nil, fmt.Errorf("empty file path")
+	}
+	for _, seg := range strings.Split(filepath.ToSlash(path), "/") {
+		if seg == ".." {
+			return nil, fmt.Errorf("file path %q must not contain '..'", path)
+		}
+	}
+	clean := filepath.Clean(path)
+	dir := filepath.Dir(clean)
+	base := filepath.Base(clean)
+	if base == "." || base == ".." || strings.ContainsRune(base, filepath.Separator) {
+		return nil, fmt.Errorf("invalid file path %q", path)
+	}
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = root.Close() }()
+	return root.ReadFile(base)
+}
+
 func loadEd25519SigningKey(path string) (ed25519.PrivateKey, error) {
-	raw, err := os.ReadFile(path)
+	raw, err := readConfigFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read BACKEND_TOKEN_SIGNING_KEY_FILE: %w", err)
 	}
@@ -292,7 +316,7 @@ func (c *Config) Validate() error {
 func getEnv(key, fallback string) string {
 	// Check for _FILE suffix
 	if fileValue := os.Getenv(key + "_FILE"); fileValue != "" {
-		content, err := os.ReadFile(fileValue)
+		content, err := readConfigFile(fileValue)
 		if err == nil {
 			return strings.TrimSpace(string(content))
 		}

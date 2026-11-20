@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 // --- Mocks ---
@@ -203,7 +204,7 @@ func TestRetrievalGraph_Execute_FullPipeline(t *testing.T) {
 	})
 
 	// Assert
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.NotEmpty(t, result.Contexts)
 	assert.Equal(t, "chunk content", result.Contexts[0].ChunkText)
@@ -225,7 +226,7 @@ func TestRetrievalGraph_Execute_EmptyQuery_ReturnsError(t *testing.T) {
 		UserID: uuid.New().String(),
 	})
 
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, result)
 	assert.Contains(t, err.Error(), "query is empty")
 }
@@ -244,7 +245,7 @@ func TestRetrievalGraph_Execute_EmptyUserID_ReturnsError(t *testing.T) {
 		Query: "test query",
 	})
 
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, result)
 	assert.Contains(t, err.Error(), "user_id is required")
 }
@@ -275,7 +276,7 @@ func TestRetrievalGraph_Execute_Stage1EmbedderDown_DegradesToEmpty(t *testing.T)
 		UserID: testUUID.String(),
 	})
 
-	assert.NoError(t, err, "embedder failure should degrade gracefully, not error")
+	require.NoError(t, err, "embedder failure should degrade gracefully, not error")
 	assert.NotNil(t, result)
 	assert.Empty(t, result.Contexts, "no contexts available without embedder or BM25")
 }
@@ -336,7 +337,7 @@ func TestRetrievalGraph_Execute_WithReranker(t *testing.T) {
 		UserID: testUUID.String(),
 	})
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.NotEmpty(t, result.Contexts)
 	reranker.AssertCalled(t, "Rerank", mock.Anything, "rerank query", mock.Anything)
@@ -396,10 +397,10 @@ func TestRetrievalGraph_Execute_WithBM25(t *testing.T) {
 		UserID: testUUID.String(),
 	})
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.NotEmpty(t, result.Contexts)
-	assert.Greater(t, result.BM25HitCount, 0)
+	assert.Positive(t, result.BM25HitCount)
 	bm25.AssertCalled(t, "SearchBM25", mock.Anything, "hybrid query", 50, testUUID.String())
 }
 
@@ -457,7 +458,7 @@ func TestRetrievalGraph_Execute_WithConversationHistory(t *testing.T) {
 		UserID:              testUUID.String(),
 	})
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotNil(t, result)
 	expander.AssertCalled(t, "ExpandQueryWithHistory", mock.Anything, "tell me more", history, 1, 3)
 }
@@ -527,7 +528,7 @@ func TestRetrievalGraph_Execute_PlannerQueries_SkipsExpanderCall(t *testing.T) {
 		UserID:        testUUID.String(),
 	})
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotNil(t, result)
 	// Planner queries should appear as expanded queries
 	assert.Equal(t, plannerQueries, result.ExpandedQueries)
@@ -535,7 +536,7 @@ func TestRetrievalGraph_Execute_PlannerQueries_SkipsExpanderCall(t *testing.T) {
 	expander.AssertNotCalled(t, "ExpandQuery")
 	expander.AssertNotCalled(t, "ExpandQueryWithHistory")
 	// BM25 should have been called with planner queries
-	assert.Greater(t, result.BM25HitCount, 0)
+	assert.Positive(t, result.BM25HitCount)
 }
 
 func TestRetrievalGraph_Execute_EmptyPlannerQueries_CallsExpander(t *testing.T) {
@@ -574,7 +575,7 @@ func TestRetrievalGraph_Execute_EmptyPlannerQueries_CallsExpander(t *testing.T) 
 		UserID: testUUID.String(),
 	})
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotNil(t, result)
 	// Expander SHOULD have been called
 	expander.AssertCalled(t, "ExpandQuery", mock.Anything, "fallback query", 1, 3)
@@ -620,7 +621,7 @@ func TestRetrievalGraph_Execute_ExpandQueryAllFiltered_FallsBackToOriginalQuery(
 		UserID: testUUID.String(),
 	})
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.NotEmpty(t, result.ExpandedQueries, "must not degrade to zero expanded queries when the LLM returned output")
 	assert.Equal(t, []string{"supply chain disruption causes"}, result.ExpandedQueries)
@@ -673,7 +674,7 @@ func TestRetrievalGraph_Execute_WithCandidateArticleIDs(t *testing.T) {
 		UserID:              testUUID.String(),
 	})
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.NotEmpty(t, result.Contexts)
 	chunkRepo.AssertCalled(t, "SearchWithinArticles", mock.Anything, queryVec, articleIDs, 50, testUUID)

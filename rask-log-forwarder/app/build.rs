@@ -1,6 +1,5 @@
 // Build-time regex pattern validation
 use regex::Regex;
-use std::fmt::Write as FmtWrite;
 use std::fs::File;
 use std::io::Write;
 
@@ -86,11 +85,14 @@ fn main() {
     }
 
     if !invalid_patterns.is_empty() {
-        let mut error_msg = String::from("❌ Build failed due to invalid regex patterns:\n");
-        for (pattern, name, error) in &invalid_patterns {
-            writeln!(error_msg, "  - '{name}': {error} (pattern: {pattern})").unwrap();
-        }
-        panic!("{}", error_msg);
+        let details: Vec<String> = invalid_patterns
+            .iter()
+            .map(|(pattern, name, error)| format!("  - '{name}': {error} (pattern: {pattern})"))
+            .collect();
+        panic!(
+            "❌ Build failed due to invalid regex patterns:\n{}",
+            details.join("\n")
+        );
     }
 
     // Generate validated regex patterns file
@@ -147,6 +149,7 @@ fn generate_validated_regexes(patterns: &[(&str, &str)]) -> Result<(), Box<dyn s
 
     writeln!(file)?;
     writeln!(file, "/// Pattern name lookup")?;
+    writeln!(file, "#[must_use]")?;
     writeln!(
         file,
         "pub fn get_pattern_name(index: usize) -> Option<&'static str> {{"

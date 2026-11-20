@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator
+from typing import Annotated
 
+import structlog
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -47,10 +49,11 @@ def get_container(request: Request) -> ServiceContainer:
     """
     container = getattr(request.app.state, "container", None)
     if container is None:
-        raise RuntimeError(
+        msg = (
             "ServiceContainer is not initialized on app.state. "
             "Ensure create_app()'s lifespan is active."
         )
+        raise RuntimeError(msg)
     return container
 
 
@@ -59,67 +62,67 @@ def get_settings_dep() -> Settings:
 
 
 def get_pipeline_dep(
-    container: ServiceContainer = Depends(get_container),
+    container: Annotated[ServiceContainer, Depends(get_container)],
 ) -> EvidencePipeline:
     return container.pipeline
 
 
 def get_embedder_dep(
-    container: ServiceContainer = Depends(get_container),
+    container: Annotated[ServiceContainer, Depends(get_container)],
 ) -> Embedder:
     return container.embedder
 
 
 def get_run_manager_dep(
-    container: ServiceContainer = Depends(get_container),
+    container: Annotated[ServiceContainer, Depends(get_container)],
 ) -> RunManager:
     return container.run_manager
 
 
 def get_submit_run_usecase_dep(
-    container: ServiceContainer = Depends(get_container),
+    container: Annotated[ServiceContainer, Depends(get_container)],
 ) -> SubmitRunUsecase:
     return container.submit_run_usecase
 
 
 def get_get_run_usecase_dep(
-    container: ServiceContainer = Depends(get_container),
+    container: Annotated[ServiceContainer, Depends(get_container)],
 ) -> GetRunUsecase:
     return container.get_run_usecase
 
 
 def get_submit_classification_run_usecase_dep(
-    container: ServiceContainer = Depends(get_container),
+    container: Annotated[ServiceContainer, Depends(get_container)],
 ) -> SubmitClassificationRunUsecase:
     return container.submit_classification_run_usecase
 
 
 def get_get_classification_run_usecase_dep(
-    container: ServiceContainer = Depends(get_container),
+    container: Annotated[ServiceContainer, Depends(get_container)],
 ) -> GetClassificationRunUsecase:
     return container.get_classification_run_usecase
 
 
 def get_pipeline_runner_dep(
-    container: ServiceContainer = Depends(get_container),
+    container: Annotated[ServiceContainer, Depends(get_container)],
 ) -> PipelineTaskRunner | None:
     return container.pipeline_runner
 
 
 def get_classifier_dep(
-    container: ServiceContainer = Depends(get_container),
+    container: Annotated[ServiceContainer, Depends(get_container)],
 ) -> GenreClassifierService:
     return container.classifier
 
 
 def get_classification_runner_dep(
-    container: ServiceContainer = Depends(get_container),
+    container: Annotated[ServiceContainer, Depends(get_container)],
 ) -> ClassificationRunner:
     return container.classification_runner
 
 
 async def get_session(
-    container: ServiceContainer = Depends(get_container),
+    container: Annotated[ServiceContainer, Depends(get_container)],
 ) -> AsyncIterator[AsyncSession]:
     """FastAPI dependency that yields an AsyncSession owned by the container."""
     async with container.db.session_factory() as session:
@@ -127,11 +130,9 @@ async def get_session(
 
 
 def get_learning_service(
-    container: ServiceContainer = Depends(get_container),
-    session: AsyncSession = Depends(get_session),
+    container: Annotated[ServiceContainer, Depends(get_container)],
+    session: Annotated[AsyncSession, Depends(get_session)],
 ) -> GenreLearningService:
-    import structlog
-
     logger = structlog.get_logger(__name__)
     settings = container.settings
     should_auto_detect = (
@@ -165,60 +166,60 @@ def get_learning_service(
 
 
 def get_learning_client(
-    container: ServiceContainer = Depends(get_container),
+    container: Annotated[ServiceContainer, Depends(get_container)],
 ) -> LearningClient:
     return container.learning_client
 
 
 def get_admin_job_service_dep(
-    container: ServiceContainer = Depends(get_container),
+    container: Annotated[ServiceContainer, Depends(get_container)],
 ) -> AdminJobService:
     return container.admin_job_service
 
 
 def get_extract_semaphore_dep(
-    container: ServiceContainer = Depends(get_container),
+    container: Annotated[ServiceContainer, Depends(get_container)],
 ) -> asyncio.Semaphore:
     return container.extract_semaphore
 
 
 def get_content_extractor_dep(
-    container: ServiceContainer = Depends(get_container),
+    container: Annotated[ServiceContainer, Depends(get_container)],
 ) -> ContentExtractor:
     return container.content_extractor
 
 
 def get_coarse_classifier_dep(
-    container: ServiceContainer = Depends(get_container),
+    container: Annotated[ServiceContainer, Depends(get_container)],
 ) -> CoarseClassifier:
     return container.coarse_classifier
 
 
 def get_clusterer_gateway_dep(
-    container: ServiceContainer = Depends(get_container),
+    container: Annotated[ServiceContainer, Depends(get_container)],
 ) -> HdbscanClustererGateway:
     return container.clusterer_gateway
 
 
 def get_evaluation_service_dep(
-    container: ServiceContainer = Depends(get_container),
+    container: Annotated[ServiceContainer, Depends(get_container)],
 ) -> EvaluationService:
     return container.evaluation_service
 
 
 def get_embed_service_dep(
-    container: ServiceContainer = Depends(get_container),
+    container: Annotated[ServiceContainer, Depends(get_container)],
 ) -> EmbedService:
     return container.embed_service
 
 
 def get_story_clusterer_service_dep(
-    container: ServiceContainer = Depends(get_container),
+    container: Annotated[ServiceContainer, Depends(get_container)],
 ) -> StoryClustererService:
     return container.story_clusterer_service
 
 
 def get_card_verifier_service_dep(
-    container: ServiceContainer = Depends(get_container),
+    container: Annotated[ServiceContainer, Depends(get_container)],
 ) -> CardVerifierService:
     return container.card_verifier_service

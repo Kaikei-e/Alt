@@ -13,6 +13,18 @@ from acolyte.config.settings import Settings
 from acolyte.gateway.ollama_gw import OllamaGateway
 from acolyte.port.llm_provider import LLMMode, LLMProviderError, LLMTimeoutError
 
+USER_ONLY_TURN_OPEN_COUNT = 2
+EXPECTED_EVAL_COUNT = 512
+EXPECTED_PROMPT_EVAL_COUNT = 100
+LONGFORM_DEFAULT_TEMPERATURE = 0.7
+EXPLICIT_OVERRIDE_TEMPERATURE = 0.5
+STRUCTURED_NUM_PREDICT = 2048
+GEMMA4_TOP_P = 0.95
+GEMMA4_TOP_K = 64
+EXPLICIT_TOP_P = 0.9
+EXPLICIT_TOP_K = 40
+LONGFORM_NUM_PREDICT = 6000
+
 
 def _make_settings(**overrides: Any) -> Settings:  # noqa: ANN401 — heterogeneous Settings field overrides
     defaults: dict[str, Any] = {
@@ -156,7 +168,7 @@ async def test_freetext_wraps_prompt_starting_with_turn_but_missing_model_suffix
     prompt = body["prompt"]
     assert prompt.startswith("<|turn>user\n")
     assert prompt.endswith("<|turn>model\n")
-    assert prompt.count("<|turn>") == 2
+    assert prompt.count("<|turn>") == USER_ONLY_TURN_OPEN_COUNT
     assert prompt.count("<turn|>") == 1
 
 
@@ -187,7 +199,7 @@ async def test_freetext_strips_injected_turn_tokens_from_unwrapped_prompt() -> N
     prompt = body["prompt"]
     assert prompt.startswith("<|turn>user\n")
     assert prompt.endswith("<|turn>model\n")
-    assert prompt.count("<|turn>") == 2
+    assert prompt.count("<|turn>") == USER_ONLY_TURN_OPEN_COUNT
     assert prompt.count("<turn|>") == 1
     assert "<|think|>" not in prompt
 
@@ -202,8 +214,8 @@ async def test_chat_response_extracts_eval_count() -> None:
             json={
                 "message": {"content": '{"result": "ok"}'},
                 "model": "gemma4:26b",
-                "eval_count": 512,
-                "prompt_eval_count": 100,
+                "eval_count": EXPECTED_EVAL_COUNT,
+                "prompt_eval_count": EXPECTED_PROMPT_EVAL_COUNT,
             },
         )
 
@@ -212,8 +224,8 @@ async def test_chat_response_extracts_eval_count() -> None:
 
     result = await gw.generate("test", output_schema={"type": "object"}, temperature=0)
 
-    assert result.completion_tokens == 512
-    assert result.prompt_tokens == 100
+    assert result.completion_tokens == EXPECTED_EVAL_COUNT
+    assert result.prompt_tokens == EXPECTED_PROMPT_EVAL_COUNT
 
 
 @pytest.mark.asyncio
@@ -300,7 +312,7 @@ async def test_longform_mode_uses_chat_endpoint() -> None:
     assert len(captured_requests) == 1
     assert "/api/chat" in str(captured_requests[0].url)
     body = json.loads(captured_requests[0].content)
-    assert body["options"]["temperature"] == 0.7
+    assert body["options"]["temperature"] == LONGFORM_DEFAULT_TEMPERATURE
     # think=false must be top-level, NOT inside options
     assert body["think"] is False
     assert "think" not in body.get("options", {})
@@ -389,10 +401,15 @@ async def test_mode_defaults_overridden_by_explicit_kwargs() -> None:
     client = _mock_transport(handler)
     gw = OllamaGateway(client, _make_settings())
 
-    await gw.generate("test", output_schema={"type": "object"}, mode=LLMMode.STRUCTURED, temperature=0.5)
+    await gw.generate(
+        "test",
+        output_schema={"type": "object"},
+        mode=LLMMode.STRUCTURED,
+        temperature=EXPLICIT_OVERRIDE_TEMPERATURE,
+    )
 
     body = json.loads(captured_requests[0].content)
-    assert body["options"]["temperature"] == 0.5
+    assert body["options"]["temperature"] == EXPLICIT_OVERRIDE_TEMPERATURE
 
 
 @pytest.mark.asyncio
@@ -436,12 +453,12 @@ async def test_structured_mode_num_predict_from_settings() -> None:
         )
 
     client = _mock_transport(handler)
-    gw = OllamaGateway(client, _make_settings(structured_num_predict=2048))
+    gw = OllamaGateway(client, _make_settings(structured_num_predict=STRUCTURED_NUM_PREDICT))
 
     await gw.generate("test", output_schema={"type": "object"}, mode=LLMMode.STRUCTURED)
 
     body = json.loads(captured_requests[0].content)
-    assert body["options"]["num_predict"] == 2048
+    assert body["options"]["num_predict"] == STRUCTURED_NUM_PREDICT
 
 
 @pytest.mark.asyncio
@@ -505,11 +522,11 @@ async def test_freetext_forwards_top_p_and_top_k_into_options() -> None:
     client = _mock_transport(handler)
     gw = OllamaGateway(client, _make_settings())
 
-    await gw.generate("test", temperature=1.0, top_p=0.95, top_k=64)
+    await gw.generate("test", temperature=1.0, top_p=GEMMA4_TOP_P, top_k=GEMMA4_TOP_K)
 
     body = json.loads(captured_requests[0].content)
-    assert body["options"]["top_p"] == 0.95
-    assert body["options"]["top_k"] == 64
+    assert body["options"]["top_p"] == GEMMA4_TOP_P
+    assert body["options"]["top_k"] == GEMMA4_TOP_K
     assert body["options"]["temperature"] == 1.0
 
 
@@ -532,11 +549,11 @@ async def test_chat_freetext_forwards_top_p_and_top_k_into_options() -> None:
     client = _mock_transport(handler)
     gw = OllamaGateway(client, _make_settings())
 
-    await gw.generate("test", mode=LLMMode.LONGFORM, top_p=0.9, top_k=40)
+    await gw.generate("test", mode=LLMMode.LONGFORM, top_p=EXPLICIT_TOP_P, top_k=EXPLICIT_TOP_K)
 
     body = json.loads(captured_requests[0].content)
-    assert body["options"]["top_p"] == 0.9
-    assert body["options"]["top_k"] == 40
+    assert body["options"]["top_p"] == EXPLICIT_TOP_P
+    assert body["options"]["top_k"] == EXPLICIT_TOP_K
 
 
 @pytest.mark.asyncio
@@ -584,12 +601,12 @@ async def test_longform_mode_num_predict_from_settings() -> None:
         )
 
     client = _mock_transport(handler)
-    gw = OllamaGateway(client, _make_settings(longform_num_predict=6000))
+    gw = OllamaGateway(client, _make_settings(longform_num_predict=LONGFORM_NUM_PREDICT))
 
     await gw.generate("test", mode=LLMMode.LONGFORM)
 
     body = json.loads(captured_requests[0].content)
-    assert body["options"]["num_predict"] == 6000
+    assert body["options"]["num_predict"] == LONGFORM_NUM_PREDICT
 
 
 @pytest.mark.asyncio

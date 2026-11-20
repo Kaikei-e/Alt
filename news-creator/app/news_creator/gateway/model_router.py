@@ -20,7 +20,7 @@ class ModelRouter:
         self,
         config: NewsCreatorConfig,
         oom_detector: OOMDetector | None = None,
-    ):
+    ) -> None:
         """
         Initialize model router.
 
@@ -63,15 +63,105 @@ class ModelRouter:
         # Normal 2-model mode (8K, 60K)
         return self._select_model_3mode(prompt, max_new_tokens)
 
+    def _select_bucket_for_tokens(
+        self, needed_tokens: int, prompt_tokens: int
+    ) -> tuple[str, int]:
+        model_60k_enabled = getattr(self.config, "model_60k_enabled", True)
+        if not model_60k_enabled:
+            if needed_tokens > self.BUCKET_8K:
+                logger.warning(
+                    "Token count (%s) exceeds 8K bucket but 60K is disabled. "
+                    "Hierarchical summarization should handle this.",
+                    needed_tokens,
+                    extra={
+                        "needed_tokens": needed_tokens,
+                        "prompt_tokens": prompt_tokens,
+                    },
+                )
+            return self.config.model_8k_name, self.BUCKET_8K
+        if needed_tokens <= self.BUCKET_8K:
+            return self.config.model_8k_name, self.BUCKET_8K
+        if needed_tokens <= self.BUCKET_60K:
+            return self.config.model_60k_name, self.BUCKET_60K
+        logger.warning(
+            "Token count (%s) exceeds 60K bucket. Using 60K model.",
+            needed_tokens,
+            extra={"needed_tokens": needed_tokens, "prompt_tokens": prompt_tokens},
+        )
+        return self.config.model_60k_name, self.BUCKET_60K
+
+    def _apply_hysteresis(
+        self, selected_model: str, selected_bucket: int, needed_tokens: int
+    ) -> tuple[str, int]:
+        if self._current_bucket is None:
+            self._current_bucket = selected_bucket
+            return selected_model, selected_bucket
+
+        if selected_bucket < self._current_bucket:
+            if self._current_bucket >= selected_bucket * 2:
+                logger.info(
+                    "Switching bucket: %s -> %s (2x rule satisfied)",
+                    self._current_bucket,
+                    selected_bucket,
+                    extra={
+                        "old_bucket": self._current_bucket,
+                        "new_bucket": selected_bucket,
+                        "needed_tokens": needed_tokens,
+                    },
+                )
+                self._current_bucket = selected_bucket
+                return selected_model, selected_bucket
+
+            logger.debug(
+                "Keeping current bucket %s (2x rule: %s * 2 = %s > %s)",
+                self._current_bucket,
+                selected_bucket,
+                selected_bucket * 2,
+                self._current_bucket,
+                extra={
+                    "current_bucket": self._current_bucket,
+                    "requested_bucket": selected_bucket,
+                    "needed_tokens": needed_tokens,
+                },
+            )
+            held_model = (
+                self.config.model_8k_name
+                if self._current_bucket == self.BUCKET_8K
+                else self.config.model_60k_name
+            )
+            return held_model, self._current_bucket
+
+        if selected_bucket > self._current_bucket:
+            logger.info(
+                "Switching bucket: %s -> %s (upgrade allowed)",
+                self._current_bucket,
+                selected_bucket,
+                extra={
+                    "old_bucket": self._current_bucket,
+                    "new_bucket": selected_bucket,
+                    "needed_tokens": needed_tokens,
+                },
+            )
+            self._current_bucket = selected_bucket
+            return selected_model, selected_bucket
+
+        logger.debug(
+            "Using current bucket: %s",
+            self._current_bucket,
+            extra={
+                "bucket": self._current_bucket,
+                "needed_tokens": needed_tokens,
+            },
+        )
+        return selected_model, selected_bucket
+
     def _select_model_3mode(
         self, prompt: str, max_new_tokens: int | None = None
     ) -> tuple[str, int]:
         """Select model in 2-model mode (8K, 60K) or 8K-only mode."""
-        # Calculate token count
         prompt_tokens = count_tokens(prompt)
         max_new = max_new_tokens or self.config.llm_num_predict
 
-        # Log token count for debugging
         logger.debug(
             "Token count calculation",
             extra={
@@ -81,14 +171,12 @@ class ModelRouter:
             },
         )
 
-        # Calculate safety margin (use larger of percentage or fixed)
         safety_margin_percent = (
             prompt_tokens * self.config.token_safety_margin_percent // 100
         )
         safety_margin = max(
             safety_margin_percent, self.config.token_safety_margin_fixed
         )
-
         needed_tokens = prompt_tokens + max_new + safety_margin
 
         logger.debug(
@@ -101,103 +189,20 @@ class ModelRouter:
             },
         )
 
-        # Check if 60K model is disabled (8K-only mode)
-        model_60k_enabled = getattr(self.config, "model_60k_enabled", True)
+        selected_model, selected_bucket = self._select_bucket_for_tokens(
+            needed_tokens, prompt_tokens
+        )
+        selected_model, selected_bucket = self._apply_hysteresis(
+            selected_model, selected_bucket, needed_tokens
+        )
 
-        if not model_60k_enabled:
-            # 8K-only mode: always use 8K model
-            # Hierarchical summarization should handle large inputs upstream
-            if needed_tokens > self.BUCKET_8K:
-                logger.warning(
-                    f"Token count ({needed_tokens}) exceeds 8K bucket but 60K is disabled. "
-                    f"Hierarchical summarization should handle this.",
-                    extra={
-                        "needed_tokens": needed_tokens,
-                        "prompt_tokens": prompt_tokens,
-                    },
-                )
-            selected_bucket = self.BUCKET_8K
-            selected_model = self.config.model_8k_name
-        # Select bucket (8K, or 60K) - only when 60K is enabled
-        elif needed_tokens <= self.BUCKET_8K:
-            selected_bucket = self.BUCKET_8K
-            selected_model = self.config.model_8k_name
-        elif needed_tokens <= self.BUCKET_60K:
-            selected_bucket = self.BUCKET_60K
-            selected_model = self.config.model_60k_name
-        else:
-            # Exceeds 60K, use 60K anyway (will need hierarchical summarization)
-            logger.warning(
-                f"Token count ({needed_tokens}) exceeds 60K bucket. Using 60K model.",
-                extra={"needed_tokens": needed_tokens, "prompt_tokens": prompt_tokens},
-            )
-            selected_bucket = self.BUCKET_60K
-            selected_model = self.config.model_60k_name
-
-        # Apply 2x rule: only switch if current bucket is 2x or more larger
-        if self._current_bucket is not None:
-            if selected_bucket < self._current_bucket:
-                # Switching to smaller bucket - check 2x rule
-                if self._current_bucket >= selected_bucket * 2:
-                    logger.info(
-                        f"Switching bucket: {self._current_bucket} -> {selected_bucket} "
-                        f"(2x rule satisfied)",
-                        extra={
-                            "old_bucket": self._current_bucket,
-                            "new_bucket": selected_bucket,
-                            "needed_tokens": needed_tokens,
-                        },
-                    )
-                    self._current_bucket = selected_bucket
-                else:
-                    # Keep current bucket (2x rule not satisfied)
-                    logger.debug(
-                        f"Keeping current bucket {self._current_bucket} "
-                        f"(2x rule: {selected_bucket} * 2 = {selected_bucket * 2} > {self._current_bucket})",
-                        extra={
-                            "current_bucket": self._current_bucket,
-                            "requested_bucket": selected_bucket,
-                            "needed_tokens": needed_tokens,
-                        },
-                    )
-                    # Find model for current bucket
-                    if self._current_bucket == self.BUCKET_8K:
-                        selected_model = self.config.model_8k_name
-                    else:
-                        selected_model = self.config.model_60k_name
-                    selected_bucket = self._current_bucket
-            else:
-                # Switching to larger bucket or same bucket
-                if selected_bucket > self._current_bucket:
-                    # Switching to larger bucket - always allowed
-                    logger.info(
-                        f"Switching bucket: {self._current_bucket} -> {selected_bucket} "
-                        f"(upgrade allowed)",
-                        extra={
-                            "old_bucket": self._current_bucket,
-                            "new_bucket": selected_bucket,
-                            "needed_tokens": needed_tokens,
-                        },
-                    )
-                    self._current_bucket = selected_bucket
-                else:
-                    # Same bucket - no switch needed
-                    logger.debug(
-                        f"Using current bucket: {self._current_bucket}",
-                        extra={
-                            "bucket": self._current_bucket,
-                            "needed_tokens": needed_tokens,
-                        },
-                    )
-        else:
-            # First selection
-            self._current_bucket = selected_bucket
-
-        # Log model loading strategy (8K/60K on-demand)
         loading_strategy = "on-demand"
         logger.info(
-            f"Selected model: {selected_model} (bucket: {selected_bucket}, "
-            f"needed: {needed_tokens} tokens, loading_strategy: {loading_strategy})",
+            "Selected model: %s (bucket: %s, needed: %s tokens, loading_strategy: %s)",
+            selected_model,
+            selected_bucket,
+            needed_tokens,
+            loading_strategy,
             extra={
                 "model": selected_model,
                 "bucket": selected_bucket,

@@ -15,6 +15,8 @@ import pytest
 from acolyte.port.llm_provider import LLMResponse
 from acolyte.usecase.graph.nodes.curator_node import CuratorNode
 
+MAX_EVIDENCE_CAP = 3
+
 
 class EchoAllLLM:
     """Returns every candidate ID it was shown, in the given relevance order."""
@@ -44,7 +46,7 @@ async def test_curator_caps_llm_selection_at_max_evidence() -> None:
     """A model that selects everything must still yield at most max_evidence items."""
     evidence = _evidence(12)
     llm = EchoAllLLM([e["id"] for e in evidence])
-    node = CuratorNode(llm, max_evidence=3)
+    node = CuratorNode(llm, max_evidence=MAX_EVIDENCE_CAP)
 
     result = await node(
         {
@@ -54,8 +56,8 @@ async def test_curator_caps_llm_selection_at_max_evidence() -> None:
         }
     )
 
-    assert len(result["curated_by_section"]["market"]) == 3
-    assert len(result["curated"]) == 3
+    assert len(result["curated_by_section"]["market"]) == MAX_EVIDENCE_CAP
+    assert len(result["curated"]) == MAX_EVIDENCE_CAP
 
 
 @pytest.mark.asyncio

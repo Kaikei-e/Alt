@@ -15,6 +15,8 @@ from recap_evaluator.port.recap_worker_port import RecapWorkerPort
 
 logger = structlog.get_logger()
 
+_HIGH_CONFIDENCE_THRESHOLD = 0.7
+
 
 class GenreEvaluator:
     """Evaluates genre classification quality via recap-worker API."""
@@ -45,20 +47,19 @@ class GenreEvaluator:
         return self._parse_evaluation_response(data)
 
     def _parse_evaluation_response(self, data: dict) -> GenreEvaluationResult:
-        per_genre = []
-        for genre_data in data.get("per_genre_metrics", []):
-            per_genre.append(
-                GenreMetrics(
-                    genre=genre_data.get("genre", ""),
-                    tp=genre_data.get("tp", 0),
-                    fp=genre_data.get("fp", 0),
-                    fn=genre_data.get("fn_count", 0),
-                    precision=genre_data.get("precision", 0.0),
-                    recall=genre_data.get("recall", 0.0),
-                    f1_score=genre_data.get("f1_score", 0.0),
-                    support=genre_data.get("tp", 0) + genre_data.get("fn_count", 0),
-                )
+        per_genre = [
+            GenreMetrics(
+                genre=genre_data.get("genre", ""),
+                tp=genre_data.get("tp", 0),
+                fp=genre_data.get("fp", 0),
+                fn=genre_data.get("fn_count", 0),
+                precision=genre_data.get("precision", 0.0),
+                recall=genre_data.get("recall", 0.0),
+                f1_score=genre_data.get("f1_score", 0.0),
+                support=genre_data.get("tp", 0) + genre_data.get("fn_count", 0),
             )
+            for genre_data in data.get("per_genre_metrics", [])
+        ]
 
         result = GenreEvaluationResult(
             macro_precision=data.get("macro_precision", 0.0),
@@ -111,7 +112,7 @@ class GenreEvaluator:
             else:
                 refined += 1
 
-            if confidence >= 0.7:
+            if confidence >= _HIGH_CONFIDENCE_THRESHOLD:
                 high_confidence += 1
             else:
                 low_confidence += 1

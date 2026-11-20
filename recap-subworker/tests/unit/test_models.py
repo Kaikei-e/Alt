@@ -21,7 +21,7 @@ def _make_document(paragraph: str = "x" * 64) -> ClusterDocument:
     )
 
 
-def test_cluster_job_payload_requires_minimum_documents():
+def test_cluster_job_payload_requires_minimum_documents() -> None:
     params = ClusterJobParams(
         max_sentences_total=2000, umap_n_components=25, hdbscan_min_cluster_size=5, mmr_lambda=0.35
     )
@@ -32,7 +32,7 @@ def test_cluster_job_payload_requires_minimum_documents():
         ClusterJobPayload(params=params, documents=[_make_document()])
 
 
-def test_cluster_document_enforces_paragraph_length():
+def test_cluster_document_enforces_paragraph_length() -> None:
     params = ClusterJobParams(
         max_sentences_total=2000, umap_n_components=25, hdbscan_min_cluster_size=5, mmr_lambda=0.35
     )
@@ -46,7 +46,7 @@ def test_cluster_document_enforces_paragraph_length():
         )
 
 
-def test_cluster_job_response_serialization_includes_status():
+def test_cluster_job_response_serialization_includes_status() -> None:
     response = ClusterJobResponse(
         run_id=1,
         job_id="job",

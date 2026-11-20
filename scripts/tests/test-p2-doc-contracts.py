@@ -13,20 +13,25 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
-PASS = 0
-FAIL = 0
+
+class _Results:
+    def __init__(self) -> None:
+        self.passed = 0
+        self.failed = 0
+
+
+_RESULTS = _Results()
 
 
 def check(name: str, condition: bool, detail: str = "") -> None:
-    global PASS, FAIL
     if condition:
-        print(f"  PASS  {name}")
-        PASS += 1
+        sys.stdout.write(f"  PASS  {name}\n")
+        _RESULTS.passed += 1
         return
-    print(f"  FAIL  {name}")
+    sys.stdout.write(f"  FAIL  {name}\n")
     if detail:
-        print(f"        {detail}")
-    FAIL += 1
+        sys.stdout.write(f"        {detail}\n")
+    _RESULTS.failed += 1
 
 
 def read(rel: str) -> str:
@@ -35,7 +40,7 @@ def read(rel: str) -> str:
     return path.read_text(encoding="utf-8") if path.is_file() else ""
 
 
-print("P2 documentation contracts")
+sys.stdout.write("P2 documentation contracts\n")
 
 claude = read("pki-agent/CLAUDE.md")
 check(
@@ -63,8 +68,7 @@ check(
 )
 check(
     "pki-agent provisioner is subject-scoped; shared pki-agent is not a current compose override",
-    "until cutover" not in claude
-    and "may still override to the shared" not in claude,
+    "until cutover" not in claude and "may still override to the shared" not in claude,
 )
 
 adr978 = read("docs/ADR/000978.md")
@@ -128,8 +132,7 @@ check(
 catalog = read("docs/services/MICROSERVICES.md")
 check(
     "MICROSERVICES does not call AI/Recap/RAG/logging optional compose profiles",
-    "複数のプロファイルでオプションの AI、Recap、RAG" not in catalog
-    and "include:" in catalog,
+    "複数のプロファイルでオプションの AI、Recap、RAG" not in catalog and "include:" in catalog,
     "those stacks are production include:; profiled-only are alt-perf / docker-socket-proxy / k6 / restic-backup",
 )
 
@@ -141,13 +144,16 @@ check(
 
 readme = read("docs/runbooks/README.md")
 cert_row = next(
-    (line for line in readme.splitlines() if "cert" in line.lower() and "pki-agent-recovery" in line),
+    (
+        line
+        for line in readme.splitlines()
+        if "cert" in line.lower() and "pki-agent-recovery" in line
+    ),
     "",
 )
 check(
     "symptom index sends cert incidents to pki-agent-recovery, not live mtls-cutover",
-    "[[pki-agent-recovery]]" in cert_row
-    and "[[mtls-cutover]]" not in cert_row,
+    "[[pki-agent-recovery]]" in cert_row and "[[mtls-cutover]]" not in cert_row,
     f"row={cert_row!r}",
 )
 
@@ -196,8 +202,7 @@ check(
 acolyte = read("docs/services/acolyte-orchestrator.md")
 check(
     "acolyte mTLS stale-cert recovery recreates the parent, not a TLS sidecar",
-    "acolyte-orchestrator" in acolyte
-    and "Restart the sidecar" not in acolyte,
+    "acolyte-orchestrator" in acolyte and "Restart the sidecar" not in acolyte,
     "inbound TLS is in the parent; recreate acolyte-orchestrator",
 )
 
@@ -208,5 +213,5 @@ check(
     and ("step-ca-bootstrap" in altctl or "cross-stack" in altctl or "cross-file" in altctl),
 )
 
-print(f"\n{PASS} passed, {FAIL} failed")
-sys.exit(1 if FAIL else 0)
+sys.stdout.write(f"\n{_RESULTS.passed} passed, {_RESULTS.failed} failed\n")
+sys.exit(1 if _RESULTS.failed else 0)

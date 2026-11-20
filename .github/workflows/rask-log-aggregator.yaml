@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'rask-log-aggregator/**'
+      - 'scripts/lint/**'
       - '.github/workflows/rask-log-aggregator.yaml'
       - '.github/workflows/reusable-test-rust.yaml'
       - '!**/CLAUDE.md'
@@ -14,6 +15,7 @@ on:
     branches: [main]
     paths:
       - 'rask-log-aggregator/**'
+      - 'scripts/lint/**'
       - '.github/workflows/rask-log-aggregator.yaml'
       - '.github/workflows/reusable-test-rust.yaml'
       - '!**/CLAUDE.md'
@@ -28,34 +30,6 @@ permissions:
   contents: read
 
 jobs:
-  fmt:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Read Rust toolchain channel
-        id: toolchain
-        working-directory: rask-log-aggregator/app
-        run: |
-          channel=$(sed -n 's/^channel *= *"\([^"]*\)".*/\1/p' rust-toolchain.toml)
-          if [ -z "$channel" ]; then
-            echo "Failed to read channel from rust-toolchain.toml" >&2
-            exit 1
-          fi
-          echo "channel=$channel" >> "$GITHUB_OUTPUT"
-
-      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4  # 2026-07-16
-        with:
-          toolchain: ${{ steps.toolchain.outputs.channel }}
-          components: rustfmt
-
-      - name: Check formatting
-        working-directory: rask-log-aggregator/app
-        run: cargo fmt --all -- --check
-
   test:
     uses: ./.github/workflows/reusable-test-rust.yaml
     with:

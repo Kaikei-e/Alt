@@ -40,19 +40,19 @@ func TestListArticlesWithTags_Success(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if len(resp.Msg.Articles) != 2 {
-		t.Fatalf("expected 2 articles, got %d", len(resp.Msg.Articles))
+	if len(resp.Msg.GetArticles()) != 2 {
+		t.Fatalf("expected 2 articles, got %d", len(resp.Msg.GetArticles()))
 	}
-	if resp.Msg.Articles[0].Id != "a1" {
-		t.Errorf("expected first article ID a1, got %s", resp.Msg.Articles[0].Id)
+	if resp.Msg.GetArticles()[0].GetId() != "a1" {
+		t.Errorf("expected first article ID a1, got %s", resp.Msg.GetArticles()[0].GetId())
 	}
-	if resp.Msg.Articles[0].Tags[0] != "go" {
-		t.Errorf("expected first tag 'go', got %s", resp.Msg.Articles[0].Tags[0])
+	if resp.Msg.GetArticles()[0].GetTags()[0] != "go" {
+		t.Errorf("expected first tag 'go', got %s", resp.Msg.GetArticles()[0].GetTags()[0])
 	}
-	if resp.Msg.NextId != "a2" {
-		t.Errorf("expected next_id a2, got %s", resp.Msg.NextId)
+	if resp.Msg.GetNextId() != "a2" {
+		t.Errorf("expected next_id a2, got %s", resp.Msg.GetNextId())
 	}
-	if resp.Msg.NextCreatedAt == nil {
+	if resp.Msg.GetNextCreatedAt() == nil {
 		t.Fatal("expected next_created_at to be set")
 	}
 }
@@ -74,14 +74,14 @@ func TestListArticlesWithTags_PropagatesLanguage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if resp.Msg.Articles[0].Language != "ja" {
-		t.Errorf("expected Language ja, got %q", resp.Msg.Articles[0].Language)
+	if resp.Msg.GetArticles()[0].GetLanguage() != "ja" {
+		t.Errorf("expected Language ja, got %q", resp.Msg.GetArticles()[0].GetLanguage())
 	}
-	if resp.Msg.Articles[1].Language != "en" {
-		t.Errorf("expected Language en, got %q", resp.Msg.Articles[1].Language)
+	if resp.Msg.GetArticles()[1].GetLanguage() != "en" {
+		t.Errorf("expected Language en, got %q", resp.Msg.GetArticles()[1].GetLanguage())
 	}
-	if resp.Msg.Articles[2].Language != "" {
-		t.Errorf("expected Language empty default, got %q", resp.Msg.Articles[2].Language)
+	if resp.Msg.GetArticles()[2].GetLanguage() != "" {
+		t.Errorf("expected Language empty default, got %q", resp.Msg.GetArticles()[2].GetLanguage())
 	}
 }
 
@@ -105,8 +105,8 @@ func TestListArticlesWithTags_WithCursor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(resp.Msg.Articles) != 0 {
-		t.Fatalf("expected 0 articles, got %d", len(resp.Msg.Articles))
+	if len(resp.Msg.GetArticles()) != 0 {
+		t.Fatalf("expected 0 articles, got %d", len(resp.Msg.GetArticles()))
 	}
 }
 
@@ -152,8 +152,8 @@ func TestListArticlesWithTagsForward_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(resp.Msg.Articles) != 1 {
-		t.Fatalf("expected 1 article, got %d", len(resp.Msg.Articles))
+	if len(resp.Msg.GetArticles()) != 1 {
+		t.Fatalf("expected 1 article, got %d", len(resp.Msg.GetArticles()))
 	}
 }
 
@@ -176,11 +176,11 @@ func TestListDeletedArticles_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(resp.Msg.Articles) != 1 {
-		t.Fatalf("expected 1 deleted article, got %d", len(resp.Msg.Articles))
+	if len(resp.Msg.GetArticles()) != 1 {
+		t.Fatalf("expected 1 deleted article, got %d", len(resp.Msg.GetArticles()))
 	}
-	if resp.Msg.Articles[0].Id != "d1" {
-		t.Errorf("expected ID d1, got %s", resp.Msg.Articles[0].Id)
+	if resp.Msg.GetArticles()[0].GetId() != "d1" {
+		t.Errorf("expected ID d1, got %s", resp.Msg.GetArticles()[0].GetId())
 	}
 }
 
@@ -199,7 +199,7 @@ func TestGetLatestArticleTimestamp_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if resp.Msg.LatestCreatedAt == nil {
+	if resp.Msg.GetLatestCreatedAt() == nil {
 		t.Fatal("expected latest_created_at to be set")
 	}
 }
@@ -218,7 +218,7 @@ func TestGetLatestArticleTimestamp_NoArticles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if resp.Msg.LatestCreatedAt != nil {
+	if resp.Msg.GetLatestCreatedAt() != nil {
 		t.Error("expected latest_created_at to be nil")
 	}
 }
@@ -242,8 +242,8 @@ func TestGetArticleByID_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if resp.Msg.Article.Id != "a1" {
-		t.Errorf("expected ID a1, got %s", resp.Msg.Article.Id)
+	if resp.Msg.GetArticle().GetId() != "a1" {
+		t.Errorf("expected ID a1, got %s", resp.Msg.GetArticle().GetId())
 	}
 }
 
@@ -286,15 +286,15 @@ func TestGetArticleByID_PublishedAt(t *testing.T) {
 			}
 
 			if !tt.wantSet {
-				if resp.Msg.Article.PublishedAt != nil {
-					t.Fatalf("expected published_at to stay unset, got %v", resp.Msg.Article.PublishedAt.AsTime())
+				if resp.Msg.GetArticle().GetPublishedAt() != nil {
+					t.Fatalf("expected published_at to stay unset, got %v", resp.Msg.GetArticle().GetPublishedAt().AsTime())
 				}
 				return
 			}
-			if resp.Msg.Article.PublishedAt == nil {
+			if resp.Msg.GetArticle().GetPublishedAt() == nil {
 				t.Fatal("expected published_at to be set")
 			}
-			if got := resp.Msg.Article.PublishedAt.AsTime(); !got.Equal(publishedAt) {
+			if got := resp.Msg.GetArticle().GetPublishedAt().AsTime(); !got.Equal(publishedAt) {
 				t.Errorf("published_at = %v, want %v", got, publishedAt)
 			}
 		})
@@ -379,14 +379,14 @@ func TestGetArticleContent_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if resp.Msg.ArticleId != "article-1" {
-		t.Errorf("expected article_id article-1, got %s", resp.Msg.ArticleId)
+	if resp.Msg.GetArticleId() != "article-1" {
+		t.Errorf("expected article_id article-1, got %s", resp.Msg.GetArticleId())
 	}
-	if resp.Msg.Title != "Title" {
-		t.Errorf("expected title Title, got %s", resp.Msg.Title)
+	if resp.Msg.GetTitle() != "Title" {
+		t.Errorf("expected title Title, got %s", resp.Msg.GetTitle())
 	}
-	if resp.Msg.UserId != "user-123" {
-		t.Errorf("expected user_id user-123, got %s", resp.Msg.UserId)
+	if resp.Msg.GetUserId() != "user-123" {
+		t.Errorf("expected user_id user-123, got %s", resp.Msg.GetUserId())
 	}
 }
 

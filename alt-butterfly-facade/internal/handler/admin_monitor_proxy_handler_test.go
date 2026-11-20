@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"alt-butterfly-facade/internal/client"
 )
@@ -40,7 +41,7 @@ func TestAdminMonitorProxy_RequiresAdminRole(t *testing.T) {
 	defer backend.Close()
 	h := newMonitorProxy(t, backend.URL)
 
-	req := httptest.NewRequest(http.MethodPost, "/alt.admin_monitor.v1.AdminMonitorService/Snapshot", strings.NewReader("{}"))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/alt.admin_monitor.v1.AdminMonitorService/Snapshot", strings.NewReader("{}"))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Alt-Backend-Token", createRoleToken(t, testPrivateKey, "user"))
 
@@ -56,7 +57,7 @@ func TestAdminMonitorProxy_RequiresAuth(t *testing.T) {
 	defer backend.Close()
 	h := newMonitorProxy(t, backend.URL)
 
-	req := httptest.NewRequest(http.MethodPost, "/alt.admin_monitor.v1.AdminMonitorService/Snapshot", strings.NewReader("{}"))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/alt.admin_monitor.v1.AdminMonitorService/Snapshot", strings.NewReader("{}"))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -76,7 +77,7 @@ func TestAdminMonitorProxy_ForwardsUnary(t *testing.T) {
 	defer backend.Close()
 	h := newMonitorProxy(t, backend.URL)
 
-	req := httptest.NewRequest(http.MethodPost, "/alt.admin_monitor.v1.AdminMonitorService/Snapshot", strings.NewReader("{}"))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/alt.admin_monitor.v1.AdminMonitorService/Snapshot", strings.NewReader("{}"))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Alt-Backend-Token", createRoleToken(t, testPrivateKey, "admin"))
 
@@ -125,13 +126,13 @@ func TestAdminMonitorProxy_StreamingFlushesChunks(t *testing.T) {
 
 	body := strings.NewReader(`{"keys":["availability_services"]}`)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, srv.URL+"/alt.admin_monitor.v1.AdminMonitorService/Watch", body)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	req.Header.Set("Content-Type", "application/connect+json")
 	req.Header.Set("X-Alt-Backend-Token", createRoleToken(t, testPrivateKey, "admin"))
 
 	resp, err := http.DefaultClient.Do(req)
-	assert.NoError(t, err)
-	defer resp.Body.Close()
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	// Backbone headers must survive the hop.
 	assert.Equal(t, "no", resp.Header.Get("X-Accel-Buffering"))

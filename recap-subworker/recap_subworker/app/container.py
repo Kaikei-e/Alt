@@ -12,10 +12,11 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import inspect
 import multiprocessing
+from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
-from typing import Any
 
 import structlog
 
@@ -137,10 +138,11 @@ class ServiceContainer:
         if self._classifier is None:
             model_path = Path(self.settings.genre_classifier_model_path)
             if not model_path.exists():
-                raise FileNotFoundError(
+                msg = (
                     f"Classification model not found at {model_path}. "
                     "Please ensure the model file exists."
                 )
+                raise FileNotFoundError(msg)
             self._classifier = GenreClassifierService(
                 model_path=self.settings.genre_classifier_model_path,
                 embedder=self.embedder,
@@ -333,57 +335,68 @@ class ServiceContainer:
 
     # --- Lifecycle ---
 
+    async def _close_component(self, label: str, fn: Callable[[], object]) -> None:
+        try:
+            result = fn()
+            if inspect.isawaitable(result):
+                await result
+        except Exception as exc:  # noqa: BLE001  # best-effort shutdown cleanup across heterogeneous component types
+            msg = f"error {label}"
+            logger.warning(msg, error=str(exc))
+
     async def shutdown(self) -> None:
         """Graceful shutdown of all managed resources."""
         logger.info("shutting down ServiceContainer")
 
-        if self._run_manager is not None:
-            try:
-                await self._run_manager.shutdown()
-            except Exception as exc:
-                logger.warning("error shutting down RunManager", error=str(exc))
-
-        if self._pipeline_runner is not None:
-            try:
-                self._pipeline_runner.shutdown()
-            except Exception as exc:
-                logger.warning("error shutting down pipeline runner", error=str(exc))
-
-        if self._classification_runner is not None:
-            try:
-                self._classification_runner.shutdown()
-            except Exception as exc:
-                logger.warning("error shutting down classification runner", error=str(exc))
-
-        if self._process_pool is not None:
-            try:
-                self._process_pool.shutdown(wait=False)
-            except Exception as exc:
-                logger.warning("error shutting down process pool", error=str(exc))
-
-        if self._embedder is not None:
-            try:
-                self._embedder.close()
-            except Exception as exc:
-                logger.warning("error closing embedder", error=str(exc))
-
-        if self._learning_client is not None:
-            try:
-                await self._learning_client.close()
-            except Exception as exc:
-                logger.warning("error closing learning client", error=str(exc))
-
-        if self._admin_job_service is not None:
-            try:
-                await self._admin_job_service.shutdown()
-            except Exception as exc:
-                logger.warning("error shutting down admin job service", error=str(exc))
-
-        if self._db is not None:
-            try:
-                await self._db.aclose()
-            except Exception as exc:
-                logger.warning("error disposing database engine", error=str(exc))
+        steps: tuple[tuple[object | None, str, Callable[[], object] | None], ...] = (
+            (
+                self._run_manager,
+                "shutting down RunManager",
+                self._run_manager.shutdown if self._run_manager is not None else None,
+            ),
+            (
+                self._pipeline_runner,
+                "shutting down pipeline runner",
+                self._pipeline_runner.shutdown if self._pipeline_runner is not None else None,
+            ),
+            (
+                self._classification_runner,
+                "shutting down classification runner",
+                self._classification_runner.shutdown
+                if self._classification_runner is not None
+                else None,
+            ),
+            (
+                self._process_pool,
+                "shutting down process pool",
+                (lambda: self._process_pool.shutdown(wait=False))
+                if self._process_pool is not None
+                else None,
+            ),
+            (
+                self._embedder,
+                "closing embedder",
+                self._embedder.close if self._embedder is not None else None,
+            ),
+            (
+                self._learning_client,
+                "closing learning client",
+                self._learning_client.close if self._learning_client is not None else None,
+            ),
+            (
+                self._admin_job_service,
+                "shutting down admin job service",
+                self._admin_job_service.shutdown if self._admin_job_service is not None else None,
+            ),
+            (
+                self._db,
+                "disposing database engine",
+                self._db.aclose if self._db is not None else None,
+            ),
+        )
+        for component, label, fn in steps:
+            if component is not None and fn is not None:
+                await self._close_component(label, fn)
 
         logger.info("ServiceContainer shutdown complete")
 
@@ -394,10 +407,10 @@ class ServiceContainer:
         cls,
         settings: Settings,
         *,
-        embedder: Any | None = None,
-        clusterer: Any | None = None,
-        pipeline: Any | None = None,
-        run_manager: Any | None = None,
+        embedder: Embedder | None = None,
+        clusterer: HdbscanClustererGateway | None = None,
+        pipeline: EvidencePipeline | None = None,
+        run_manager: RunManager | None = None,
     ) -> ServiceContainer:
         """Factory for test instances with injectable fakes.
 

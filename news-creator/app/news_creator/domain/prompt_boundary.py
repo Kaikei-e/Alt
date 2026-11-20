@@ -45,8 +45,32 @@ _CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 # invisibles (U+2060-U+206F), BOM (U+FEFF), soft hyphen (U+00AD).
 _ZERO_WIDTH_RE = re.compile(r"[\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff\u00ad]")
 
-# HTML comments used to conceal prompt injection instructions
-_HTML_COMMENT_RE = re.compile(r"<!--.*?-->", flags=re.DOTALL)
+# HTML comment delimiters stripped in a single linear pass
+_HTML_COMMENT_OPEN = "<!--"
+_HTML_COMMENT_CLOSE = "-->"
+
+
+def _strip_html_comments(text: str) -> str:
+    """Remove ``<!-- ... -->`` HTML comments in a single linear pass."""
+    if _HTML_COMMENT_OPEN not in text:
+        return text
+    parts: list[str] = []
+    pos = 0
+    length = len(text)
+    open_len = len(_HTML_COMMENT_OPEN)
+    close_len = len(_HTML_COMMENT_CLOSE)
+    while pos < length:
+        start = text.find(_HTML_COMMENT_OPEN, pos)
+        if start == -1:
+            parts.append(text[pos:])
+            break
+        end = text.find(_HTML_COMMENT_CLOSE, start + open_len)
+        if end == -1:
+            parts.append(text[pos:])
+            break
+        parts.append(text[pos:start])
+        pos = end + close_len
+    return "".join(parts)
 
 
 @dataclass(frozen=True)
@@ -70,7 +94,7 @@ def _strip_hidden(text: str) -> tuple[str, int]:
     """Drop invisible characters and HTML comments, counting what went."""
     cleaned = _CONTROL_CHARS_RE.sub("", text)
     cleaned = _ZERO_WIDTH_RE.sub("", cleaned)
-    cleaned = _HTML_COMMENT_RE.sub("", cleaned)
+    cleaned = _strip_html_comments(cleaned)
     return cleaned, len(text) - len(cleaned)
 
 

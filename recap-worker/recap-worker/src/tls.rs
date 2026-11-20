@@ -62,7 +62,7 @@ pub(crate) fn extract_cert_peer_names(
         .subject_alternative_name()
         .ok()
         .flatten()
-        .map(|ext| {
+        .map_or_else(Vec::new, |ext| {
             ext.value
                 .general_names
                 .iter()
@@ -71,8 +71,7 @@ pub(crate) fn extract_cert_peer_names(
                     _ => None,
                 })
                 .collect()
-        })
-        .unwrap_or_default();
+        });
 
     Ok(CertPeerNames {
         common_names,
@@ -385,6 +384,10 @@ mod tests {
 
     #[test]
     fn load_server_config_uses_passed_peer_identity_without_re_reading_env_and_rejects_bad_peers() {
+        #[expect(
+            clippy::let_underscore_must_use,
+            reason = "install_default is idempotent and returns Err if already installed in test process"
+        )]
         let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
         let temp_dir = tempfile::tempdir().unwrap();
         let ca_params = rcgen::CertificateParams::new(vec!["alt-ca".to_string()]).unwrap();
@@ -452,6 +455,10 @@ mod tests {
 
     #[test]
     fn allowed_names_verifier_accepts_permitted_peer_and_rejects_unlisted_peer() {
+        #[expect(
+            clippy::let_underscore_must_use,
+            reason = "install_default is idempotent and returns Err if already installed in test process"
+        )]
         let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 
         let ca_params = rcgen::CertificateParams::new(vec!["alt-ca".to_string()]).unwrap();
@@ -555,6 +562,10 @@ mod tests {
             }
         }
 
+        #[expect(
+            clippy::let_underscore_must_use,
+            reason = "install_default is idempotent and returns Err if already installed in test process"
+        )]
         let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 
         let mut ca_params = rcgen::CertificateParams::new(vec!["alt-ca".to_string()]).unwrap();

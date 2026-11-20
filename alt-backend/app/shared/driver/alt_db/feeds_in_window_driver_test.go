@@ -161,19 +161,19 @@ func TestFeedRepository_FetchFeedsInWindow_Validation(t *testing.T) {
 	// Nil receiver or pool
 	var nilRepo *FeedRepository
 	_, err = nilRepo.FetchFeedsInWindow(context.Background(), domain.FeedsInWindowQuery{From: from, To: to, Page: 1, PageSize: 500})
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	repoNoPool := &FeedRepository{}
 	_, err = repoNoPool.FetchFeedsInWindow(context.Background(), domain.FeedsInWindowQuery{From: from, To: to, Page: 1, PageSize: 500})
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	// Page <= 0
 	_, err = repo.FetchFeedsInWindow(context.Background(), domain.FeedsInWindowQuery{From: from, To: to, Page: 0, PageSize: 500})
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	// PageSize <= 0
 	_, err = repo.FetchFeedsInWindow(context.Background(), domain.FeedsInWindowQuery{From: from, To: to, Page: 1, PageSize: 0})
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	// PageSize > constants.MaxRecapPageSize
 	_, err = repo.FetchFeedsInWindow(context.Background(), domain.FeedsInWindowQuery{From: from, To: to, Page: 1, PageSize: constants.MaxRecapPageSize + 1})

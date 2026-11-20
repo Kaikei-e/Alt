@@ -35,7 +35,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import glob
 import hashlib
 import json
 import os
@@ -43,8 +42,11 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 import yaml
+
+METRIC_LINE_PARTS = 2
 
 PROMETHEUS_CONFIG = "observability/prometheus/prometheus.yml"
 PROMETHEUS_RULES_DIR = "observability/prometheus/rules"
@@ -54,7 +56,7 @@ DEFAULT_PROMETHEUS_URL = "http://127.0.0.1:9090"
 DEFAULT_ALERTMANAGER_URL = "http://127.0.0.1:9093"
 
 
-class Unreachable(Exception):
+class UnreachableError(Exception):
     pass
 
 
@@ -74,7 +76,7 @@ def read_metric(exposition: str, name: str) -> float | None:
         if line.startswith("#"):
             continue
         parts = line.split(None, 1)
-        if len(parts) == 2 and parts[0] == name:
+        if len(parts) == METRIC_LINE_PARTS and parts[0] == name:
             try:
                 return float(parts[1])
             except ValueError:
@@ -108,10 +110,7 @@ def check_alertmanager_config(disk: bytes, exposition: str) -> str | None:
         )
 
     if loaded != alertmanager_config_hash(disk):
-        return (
-            "alertmanager.yml on disk is not the config Alertmanager loaded — "
-            "reload it too"
-        )
+        return "alertmanager.yml on disk is not the config Alertmanager loaded — reload it too"
 
     return None
 
@@ -121,7 +120,8 @@ def http_get(url: str, timeout: float) -> bytes:
         with urllib.request.urlopen(url, timeout=timeout) as resp:  # noqa: S310
             return resp.read()
     except (urllib.error.URLError, urllib.error.HTTPError, OSError) as exc:
-        raise Unreachable(f"{url}: {exc}") from exc
+        msg = f"{url}: {exc}"
+        raise UnreachableError(msg) from exc
 
 
 def get_json(url: str, timeout: float) -> dict:
@@ -144,13 +144,14 @@ def parse_metrics(text: str) -> dict[str, float]:
     return out
 
 
-def disk_rule_index(root: str) -> set[tuple[str, str, str]]:
+def disk_rule_index(root: str | Path) -> set[tuple[str, str, str]]:
     index: set[tuple[str, str, str]] = set()
+    rules_dir = Path(root) / PROMETHEUS_RULES_DIR
     for ext in ("*.yml", "*.yaml"):
-        for path in glob.glob(os.path.join(root, PROMETHEUS_RULES_DIR, ext)):
-            with open(path, encoding="utf-8") as handle:
+        for path in rules_dir.glob(ext):
+            with path.open(encoding="utf-8") as handle:
                 doc = yaml.safe_load(handle) or {}
-            base = os.path.basename(path)
+            base = path.name
             for group in doc.get("groups") or []:
                 gname = group.get("name", "<unnamed>")
                 for rule in group.get("rules") or []:
@@ -162,7 +163,7 @@ def disk_rule_index(root: str) -> set[tuple[str, str, str]]:
 def loaded_rule_index(api: dict) -> set[tuple[str, str, str]]:
     index: set[tuple[str, str, str]] = set()
     for group in api.get("data", {}).get("groups", []):
-        base = os.path.basename(group.get("file", ""))
+        base = Path(group.get("file", "")).name
         gname = group.get("name", "<unnamed>")
         for rule in group.get("rules", []):
             index.add((base, gname, rule.get("name", "<unnamed>")))
@@ -182,11 +183,94 @@ def alertmanager_targets(cfg: dict) -> list[str]:
     )
 
 
+def _check_reload_and_uptime(
+    metrics: dict[str, float],
+    max_reload_age: float,
+    findings: list[str],
+    notes: list[str],
+) -> None:
+    ok = metrics.get("prometheus_config_last_reload_successful")
+    reload_ts = metrics.get("prometheus_config_last_reload_success_timestamp_seconds")
+    start_ts = metrics.get("process_start_time_seconds")
+    if ok is not None and ok == 0:
+        findings.append(
+            "last config reload FAILED — the process is still evaluating the "
+            "previously loaded config. Check `docker logs` for the parse error."
+        )
+    if reload_ts:
+        age = time.time() - reload_ts
+        notes.append(
+            f"last successful reload : {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(reload_ts))} "
+            f"({age / 3600:.1f}h ago)"
+        )
+        if max_reload_age and age > max_reload_age:
+            findings.append(
+                f"last successful reload is {age / 3600:.1f}h old, older than the "
+                f"{max_reload_age / 3600:.1f}h budget — the reload path itself "
+                f"is not running"
+            )
+    if start_ts:
+        notes.append(
+            f"process started        : "
+            f"{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(start_ts))}"
+        )
+
+
+def _check_alertmanager_sync(
+    root: Path,
+    am_url: str,
+    timeout: float,
+    findings: list[str],
+    notes: list[str],
+) -> None:
+    am_path = root / ALERTMANAGER_CONFIG
+    if not am_path.is_file():
+        return
+    try:
+        exposition = http_get(f"{am_url}/metrics", timeout).decode("utf-8")
+        with am_path.open("rb") as handle:
+            on_disk = handle.read()
+        finding = check_alertmanager_config(on_disk, exposition)
+        if finding:
+            findings.append(finding)
+        else:
+            notes.append("alertmanager config     : in sync")
+    except UnreachableError:
+        notes.append(
+            f"alertmanager config     : not checked ({am_url} unreachable — "
+            f"the service may not be started yet)"
+        )
+    except (KeyError, ValueError) as exc:
+        notes.append(f"alertmanager config     : not checked ({exc})")
+
+
+def _emit_drift_report(notes: list[str], findings: list[str], *, quiet: bool) -> int:
+    def emit(line: str) -> None:
+        if not quiet:
+            sys.stdout.write(f"{line}\n")
+
+    for note in notes:
+        emit(note)
+
+    if findings:
+        emit("")
+        emit(f"DRIFT: {len(findings)} difference(s) between disk and running config")
+        for finding in findings:
+            emit(f"  - {finding}")
+        emit("")
+        emit("Reconcile with: scripts/observability-reload.sh")
+        return 1
+
+    emit("")
+    emit("OK: running config matches the tree on disk")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--repo-root",
-        default=os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."),
+        default=str(Path(__file__).absolute().parent.parent),
     )
     parser.add_argument(
         "--prometheus-url",
@@ -210,20 +294,16 @@ def main() -> int:
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args()
 
-    root = os.path.abspath(args.repo_root)
+    root = Path(os.path.normpath(Path(args.repo_root).absolute()))
     prom = args.prometheus_url.rstrip("/")
     findings: list[str] = []
     notes: list[str] = []
 
-    def emit(line: str) -> None:
-        if not args.quiet:
-            print(line)
-
-    disk_path = os.path.join(root, PROMETHEUS_CONFIG)
-    if not os.path.isfile(disk_path):
-        print(f"ERROR: {PROMETHEUS_CONFIG} not found under {root}", file=sys.stderr)
+    disk_path = root / PROMETHEUS_CONFIG
+    if not disk_path.is_file():
+        sys.stderr.write(f"ERROR: {PROMETHEUS_CONFIG} not found under {root}\n")
         return 2
-    with open(disk_path, encoding="utf-8") as handle:
+    with disk_path.open(encoding="utf-8") as handle:
         disk_cfg = yaml.safe_load(handle) or {}
 
     try:
@@ -231,51 +311,27 @@ def main() -> int:
         loaded_cfg = yaml.safe_load(status["data"]["yaml"]) or {}
         rules_api = get_json(f"{prom}/api/v1/rules", args.timeout)
         metrics = parse_metrics(http_get(f"{prom}/metrics", args.timeout).decode())
-    except Unreachable as exc:
-        print(f"ERROR: Prometheus unreachable — {exc}", file=sys.stderr)
+    except UnreachableError as exc:
+        sys.stderr.write(f"ERROR: Prometheus unreachable — {exc}\n")
         return 2
     except (KeyError, ValueError) as exc:
-        print(f"ERROR: unexpected Prometheus API response — {exc}", file=sys.stderr)
+        sys.stderr.write(f"ERROR: unexpected Prometheus API response — {exc}\n")
         return 2
 
     # --- reload health -------------------------------------------------------
-    ok = metrics.get("prometheus_config_last_reload_successful")
-    reload_ts = metrics.get("prometheus_config_last_reload_success_timestamp_seconds")
-    start_ts = metrics.get("process_start_time_seconds")
-    if ok is not None and ok == 0:
-        findings.append(
-            "last config reload FAILED — the process is still evaluating the "
-            "previously loaded config. Check `docker logs` for the parse error."
-        )
-    if reload_ts:
-        age = time.time() - reload_ts
-        notes.append(
-            f"last successful reload : {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(reload_ts))} "
-            f"({age / 3600:.1f}h ago)"
-        )
-        if args.max_reload_age and age > args.max_reload_age:
-            findings.append(
-                f"last successful reload is {age / 3600:.1f}h old, older than the "
-                f"{args.max_reload_age / 3600:.1f}h budget — the reload path itself "
-                f"is not running"
-            )
-    if start_ts:
-        notes.append(
-            f"process started        : "
-            f"{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(start_ts))}"
-        )
+    _check_reload_and_uptime(metrics, args.max_reload_age, findings, notes)
 
     # --- scrape jobs ---------------------------------------------------------
     disk_jobs = job_names(disk_cfg)
     live_jobs = job_names(loaded_cfg)
     missing = [j for j in disk_jobs if j not in live_jobs]
     extra = [j for j in live_jobs if j not in disk_jobs]
-    for job in missing:
-        findings.append(f"scrape job '{job}' is on disk but not loaded — never scraped")
-    for job in extra:
-        findings.append(
-            f"scrape job '{job}' is loaded but absent from disk — a reload removes it"
-        )
+    findings.extend(
+        f"scrape job '{job}' is on disk but not loaded — never scraped" for job in missing
+    )
+    findings.extend(
+        f"scrape job '{job}' is loaded but absent from disk — a reload removes it" for job in extra
+    )
 
     # --- alertmanager wiring -------------------------------------------------
     disk_ams = alertmanager_targets(disk_cfg)
@@ -307,41 +363,9 @@ def main() -> int:
     notes.append(f"rules on disk / loaded  : {len(disk_rules)} / {len(live_rules)}")
 
     # --- alertmanager config text -------------------------------------------
-    am_path = os.path.join(root, ALERTMANAGER_CONFIG)
-    if os.path.isfile(am_path):
-        am_url = args.alertmanager_url.rstrip("/")
-        try:
-            exposition = http_get(f"{am_url}/metrics", args.timeout).decode("utf-8")
-            with open(am_path, "rb") as handle:
-                on_disk = handle.read()
-            finding = check_alertmanager_config(on_disk, exposition)
-            if finding:
-                findings.append(finding)
-            else:
-                notes.append("alertmanager config     : in sync")
-        except Unreachable:
-            notes.append(
-                f"alertmanager config     : not checked ({am_url} unreachable — "
-                f"the service may not be started yet)"
-            )
-        except (KeyError, ValueError) as exc:
-            notes.append(f"alertmanager config     : not checked ({exc})")
+    _check_alertmanager_sync(root, args.alertmanager_url.rstrip("/"), args.timeout, findings, notes)
 
-    for note in notes:
-        emit(note)
-
-    if findings:
-        emit("")
-        emit(f"DRIFT: {len(findings)} difference(s) between disk and running config")
-        for finding in findings:
-            emit(f"  - {finding}")
-        emit("")
-        emit("Reconcile with: scripts/observability-reload.sh")
-        return 1
-
-    emit("")
-    emit("OK: running config matches the tree on disk")
-    return 0
+    return _emit_drift_report(notes, findings, quiet=args.quiet)
 
 
 if __name__ == "__main__":

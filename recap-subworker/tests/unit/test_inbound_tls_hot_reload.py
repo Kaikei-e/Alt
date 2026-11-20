@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import shutil
 import socket
 import ssl
 import subprocess
@@ -27,13 +28,21 @@ from recap_subworker.app.infra.inbound_tls import (
 )
 
 
+def _openssl_bin() -> str:
+    openssl = shutil.which("openssl")
+    if openssl is None:
+        msg = "openssl binary is required on PATH"
+        raise FileNotFoundError(msg)
+    return openssl
+
+
 def _write_leaf(dir_path: Path, cn: str, days: int) -> tuple[Path, Path, Path]:
     """Self-signed leaf used as both server cert and trust anchor."""
     cert_path = dir_path / f"{cn}-{days}d-cert.pem"
     key_path = dir_path / f"{cn}-{days}d-key.pem"
-    subprocess.run(
+    subprocess.run(  # noqa: S603 - invokes system openssl resolved via shutil.which with test paths
         [
-            "openssl",
+            _openssl_bin(),
             "req",
             "-x509",
             "-newkey",
@@ -66,8 +75,8 @@ def _atomic_replace(dest: Path, src: Path) -> None:
 
 def _not_after_from_der(der: bytes) -> str:
     pem = ssl.DER_cert_to_PEM_cert(der)
-    out = subprocess.run(
-        ["openssl", "x509", "-noout", "-enddate"],
+    out = subprocess.run(  # noqa: S603 - invokes system openssl resolved via shutil.which with PEM bytes
+        [_openssl_bin(), "x509", "-noout", "-enddate"],
         input=pem,
         check=True,
         capture_output=True,
@@ -234,23 +243,15 @@ def test_inbound_listener_has_no_response_header_timeout() -> None:
     )
 
 
-def test_slow_first_byte_is_not_cut_by_header_timeout(tmp_path: Path) -> None:
-    """A delayed first response byte must still complete.
-
-    pki-agent's default ResponseHeaderTimeout is 15s; recap's sidecar raises
-    that to 1560s. The in-process listener has no such cutoff, so a request
-    that waits 2s before writing headers (far above a mistaken 1s default,
-    cheap enough for CI) must return 200.
-    """
-    cert, key, ca = _write_leaf(tmp_path, "recap-subworker", days=1)
-    ctx = build_inbound_ssl_context(str(cert), str(key), str(ca))
+def _start_delayed_tls_server(
+    ctx: ssl.SSLContext, delay: float
+) -> tuple[int, threading.Event, threading.Thread, socket.socket]:
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.bind(("127.0.0.1", 0))
     sock.listen(1)
     sock.settimeout(5)
     port = sock.getsockname()[1]
-    delay = 2.0
     stop = threading.Event()
 
     def loop() -> None:
@@ -265,11 +266,7 @@ def test_slow_first_byte_is_not_cut_by_header_timeout(tmp_path: Path) -> None:
                     ssock.read(1)
                 time.sleep(delay)
                 ssock.sendall(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok")
-        except ssl.SSLError:
-            pass
-        except OSError:
-            pass
-        except TimeoutError:
+        except (ssl.SSLError, OSError, TimeoutError):  # fmt: skip
             pass
         finally:
             conn.close()
@@ -277,14 +274,34 @@ def test_slow_first_byte_is_not_cut_by_header_timeout(tmp_path: Path) -> None:
 
     thread = threading.Thread(target=loop, daemon=True)
     thread.start()
+    return port, stop, thread, sock
+
+
+def _build_mtls_client_ctx(cert: Path, key: Path) -> ssl.SSLContext:
+    client_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    client_ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+    client_ctx.maximum_version = ssl.TLSVersion.TLSv1_3
+    client_ctx.check_hostname = False
+    client_ctx.verify_mode = ssl.CERT_NONE
+    assert client_ctx.minimum_version >= ssl.TLSVersion.TLSv1_2
+    client_ctx.load_cert_chain(str(cert), str(key))
+    return client_ctx
+
+
+def test_slow_first_byte_is_not_cut_by_header_timeout(tmp_path: Path) -> None:
+    """A delayed first response byte must still complete.
+
+    pki-agent's default ResponseHeaderTimeout is 15s; recap's sidecar raises
+    that to 1560s. The in-process listener has no such cutoff, so a request
+    that waits 2s before writing headers (far above a mistaken 1s default,
+    cheap enough for CI) must return 200.
+    """
+    cert, key, ca = _write_leaf(tmp_path, "recap-subworker", days=1)
+    ctx = build_inbound_ssl_context(str(cert), str(key), str(ca))
+    delay = 2.0
+    port, stop, thread, sock = _start_delayed_tls_server(ctx, delay)
     try:
-        client_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-        client_ctx.minimum_version = ssl.TLSVersion.TLSv1_2
-        client_ctx.maximum_version = ssl.TLSVersion.TLSv1_3
-        client_ctx.check_hostname = False
-        client_ctx.verify_mode = ssl.CERT_NONE
-        assert client_ctx.minimum_version >= ssl.TLSVersion.TLSv1_2
-        client_ctx.load_cert_chain(str(cert), str(key))
+        client_ctx = _build_mtls_client_ctx(cert, key)
         started = time.monotonic()
         with (
             socket.create_connection(("127.0.0.1", port), timeout=10) as raw,

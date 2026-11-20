@@ -31,7 +31,7 @@ const {
 
 onMount(() => {
 	if (autoSearch && searchQuery.query?.trim()) {
-		handleSearch();
+		void handleSearch();
 	}
 });
 
@@ -147,7 +147,7 @@ const handleFormSubmit = (e: Event) => {
 		validationError = validationResult;
 		return;
 	}
-	handleSearch();
+	void handleSearch();
 };
 
 const handleKeyPress = (e: KeyboardEvent) => {
@@ -160,7 +160,7 @@ const handleKeyPress = (e: KeyboardEvent) => {
 			return;
 		}
 
-		handleSearch();
+		void handleSearch();
 	}
 };
 

@@ -5,6 +5,7 @@ package errors
 import (
 	"context"
 	crand "crypto/rand"
+	"errors"
 	"fmt"
 	"math/big"
 	"time"
@@ -120,7 +121,8 @@ func ShouldRetry(err error) bool {
 	}
 
 	// Check if it's an OperationError and if it's marked as retryable
-	if opErr, ok := err.(*OperationError); ok {
+	var opErr *OperationError
+	if errors.As(err, &opErr) {
 		return opErr.Retryable
 	}
 

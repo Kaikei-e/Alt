@@ -77,8 +77,11 @@ func (r *articleRepository) Create(ctx context.Context, article *domain.Article)
 	if err != nil {
 		return fmt.Errorf("CreateArticle: %w", err)
 	}
+	if resp == nil || resp.Msg == nil {
+		return fmt.Errorf("CreateArticle: empty response")
+	}
 
-	article.ID = resp.Msg.ArticleId
+	article.ID = resp.Msg.GetArticleId()
 	return nil
 }
 
@@ -118,7 +121,7 @@ func (r *articleRepository) CheckExists(ctx context.Context, urls []string) (boo
 		if err != nil {
 			return false, fmt.Errorf("CheckArticleExists for %s: %w", u, err)
 		}
-		if resp.Msg.Exists {
+		if resp.Msg.GetExists() {
 			return true, nil
 		}
 	}
@@ -149,7 +152,7 @@ func (r *articleRepository) CheckExistsWithFeedID(ctx context.Context, feedID st
 		if err != nil {
 			return false, fmt.Errorf("CheckArticleExists for %s: %w", u, err)
 		}
-		if resp.Msg.Exists {
+		if resp.Msg.GetExists() {
 			return true, nil
 		}
 	}
@@ -175,28 +178,34 @@ func (r *articleRepository) FindForSummarization(ctx context.Context, cursor *do
 	if err != nil {
 		return nil, nil, fmt.Errorf("ListUnsummarizedArticles: %w", err)
 	}
+	if resp == nil || resp.Msg == nil {
+		return nil, nil, fmt.Errorf("ListUnsummarizedArticles: empty response")
+	}
 
-	articles := make([]*domain.Article, len(resp.Msg.Articles))
-	for i, a := range resp.Msg.Articles {
-		articles[i] = &domain.Article{
-			ID:      a.Id,
-			Title:   a.Title,
-			Content: a.Content,
-			URL:     a.Url,
-			UserID:  a.UserId,
+	articles := make([]*domain.Article, len(resp.Msg.GetArticles()))
+	for i, a := range resp.Msg.GetArticles() {
+		if a == nil {
+			return nil, nil, fmt.Errorf("ListUnsummarizedArticles: nil article at index %d", i)
 		}
-		if a.CreatedAt != nil {
-			articles[i].CreatedAt = a.CreatedAt.AsTime()
+		articles[i] = &domain.Article{
+			ID:      a.GetId(),
+			Title:   a.GetTitle(),
+			Content: a.GetContent(),
+			URL:     a.GetUrl(),
+			UserID:  a.GetUserId(),
+		}
+		if a.GetCreatedAt() != nil {
+			articles[i].CreatedAt = a.GetCreatedAt().AsTime()
 		}
 	}
 
 	var nextCursor *domain.Cursor
-	if resp.Msg.NextId != "" {
+	if resp.Msg.GetNextId() != "" {
 		nextCursor = &domain.Cursor{
-			LastID: resp.Msg.NextId,
+			LastID: resp.Msg.GetNextId(),
 		}
-		if resp.Msg.NextCreatedAt != nil {
-			t := resp.Msg.NextCreatedAt.AsTime()
+		if resp.Msg.GetNextCreatedAt() != nil {
+			t := resp.Msg.GetNextCreatedAt().AsTime()
 			nextCursor.LastCreatedAt = &t
 		}
 	}
@@ -215,7 +224,7 @@ func (r *articleRepository) HasUnsummarizedArticles(ctx context.Context) (bool, 
 		return false, fmt.Errorf("HasUnsummarizedArticles: %w", err)
 	}
 
-	return resp.Msg.HasUnsummarized, nil
+	return resp.Msg.GetHasUnsummarized(), nil
 }
 
 // FindByID finds an article by its ID.
@@ -228,13 +237,16 @@ func (r *articleRepository) FindByID(ctx context.Context, articleID string) (*do
 	if err != nil {
 		return nil, fmt.Errorf("GetArticleContent: %w", err)
 	}
+	if resp == nil || resp.Msg == nil {
+		return nil, fmt.Errorf("GetArticleContent: empty response")
+	}
 
 	return &domain.Article{
-		ID:      resp.Msg.ArticleId,
-		Title:   resp.Msg.Title,
-		Content: resp.Msg.Content,
-		URL:     resp.Msg.Url,
-		UserID:  resp.Msg.UserId,
+		ID:      resp.Msg.GetArticleId(),
+		Title:   resp.Msg.GetTitle(),
+		Content: resp.Msg.GetContent(),
+		URL:     resp.Msg.GetUrl(),
+		UserID:  resp.Msg.GetUserId(),
 	}, nil
 }
 
@@ -464,7 +476,7 @@ func (r *articleRepository) getEmptyFeedID(ctx context.Context, feedURL string) 
 	if err != nil {
 		return "", err
 	}
-	return resp.Msg.FeedId, nil
+	return resp.Msg.GetFeedId(), nil
 }
 
 func (r *articleRepository) getFeedID(ctx context.Context, feedURL string) (string, error) {
@@ -476,7 +488,7 @@ func (r *articleRepository) getFeedID(ctx context.Context, feedURL string) (stri
 	if err != nil {
 		return "", err
 	}
-	return resp.Msg.FeedId, nil
+	return resp.Msg.GetFeedId(), nil
 }
 
 // isNotFoundError reports whether err is a Connect-RPC error carrying

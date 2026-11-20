@@ -162,7 +162,7 @@ func TestHealthCheckerService_CheckNewsCreatorHealth(t *testing.T) {
 
 		err := service.CheckNewsCreatorHealth(context.Background())
 
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "health check failed")
 	})
 }
@@ -180,7 +180,7 @@ func TestHealthCheckerService_WaitForHealthy(t *testing.T) {
 
 		err := service.WaitForHealthy(ctx)
 
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Equal(t, context.Canceled, err)
 	})
 
@@ -213,7 +213,7 @@ func TestHealthCheckerService_WaitForHealthy(t *testing.T) {
 
 		err := service.WaitForHealthy(ctx)
 
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Equal(t, context.DeadlineExceeded, err)
 	})
 }

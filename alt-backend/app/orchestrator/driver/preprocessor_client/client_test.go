@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"alt/utils/authcontext"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -39,7 +40,10 @@ func TestClient_Summarize_Success(t *testing.T) {
 		assert.Equal(t, http.MethodPost, r.Method)
 
 		var body map[string]string
-		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+		if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&body)) {
+			http.Error(w, "invalid body", http.StatusBadRequest)
+			return
+		}
 		assert.Equal(t, "article-1", body["article_id"])
 
 		w.WriteHeader(http.StatusOK)
@@ -163,7 +167,10 @@ func TestClient_QueueSummarize_Success(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, "/api/v1/summarize/queue", r.URL.Path)
 				assert.Equal(t, http.MethodPost, r.Method)
-				require.NoError(t, json.NewDecoder(r.Body).Decode(&receivedBody))
+				if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&receivedBody)) {
+					http.Error(w, "invalid body", http.StatusBadRequest)
+					return
+				}
 				w.WriteHeader(http.StatusAccepted)
 				_ = json.NewEncoder(w).Encode(map[string]interface{}{
 					"job_id": "job-123",

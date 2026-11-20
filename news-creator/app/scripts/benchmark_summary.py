@@ -19,10 +19,12 @@ import argparse
 import asyncio
 import json
 import statistics
+import sys
 from dataclasses import asdict, dataclass
 from datetime import datetime
+from http import HTTPStatus
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import aiohttp
 
@@ -50,7 +52,7 @@ class BenchmarkResult:
 
     # Status
     success: bool
-    error: Optional[str] = None
+    error: str | None = None
     model: str = ""
     timestamp: str = ""
 
@@ -176,7 +178,7 @@ def generate_test_input(case_config: dict) -> tuple[str, int]:
 
 def build_prompt(genre: str, cluster_section: str) -> str:
     """Build the recap summary prompt (simplified version of jinja template)."""
-    prompt = f"""あなたは熟練したニュース編集者です。
+    return f"""あなたは熟練したニュース編集者です。
 以下の入力だけを根拠に、ジャンル {genre} で直近に起きた
 主な出来事・技術トレンドを要約してください。
 
@@ -214,7 +216,6 @@ def build_prompt(genre: str, cluster_section: str) -> str:
 ### 出力
 上記の仕様をすべて満たす JSON オブジェクトのみを出力してください。
 """
-    return prompt
 
 
 async def call_ollama(
@@ -245,9 +246,10 @@ async def call_ollama(
     async with session.post(
         url, json=payload, timeout=aiohttp.ClientTimeout(total=config.timeout_seconds)
     ) as response:
-        if response.status != 200:
+        if response.status != HTTPStatus.OK:
             error_text = await response.text()
-            raise RuntimeError(f"Ollama API error: {response.status} - {error_text}")
+            msg = f"Ollama API error: {response.status} - {error_text}"
+            raise RuntimeError(msg)
         return await response.json()
 
 
@@ -288,7 +290,7 @@ def extract_metrics(response: dict[str, Any], input_chars: int) -> BenchmarkResu
         decode_tok_per_sec=decode_tok_per_sec,
         success=True,
         model=response.get("model", ""),
-        timestamp=datetime.now().isoformat(),
+        timestamp=datetime.now().astimezone().isoformat(),
     )
 
 
@@ -370,34 +372,42 @@ async def run_benchmark(
         config.model_16k if case_config["expected_model"] == "16k" else config.model_80k
     )
 
-    print(f"\n{'=' * 60}")
-    print(f"Case: {case_name} - {case_config['description']}")
-    print(f"Model: {model}")
-    print(f"Iterations: {iterations}")
-    print("=" * 60)
+    sys.stdout.write(f"\n{'=' * 60}\n")
+    sys.stdout.write(f"Case: {case_name} - {case_config['description']}\n")
+    sys.stdout.write(f"Model: {model}\n")
+    sys.stdout.write(f"Iterations: {iterations}\n")
+    sys.stdout.write(f"{'=' * 60}\n")
 
     # Generate test input
     cluster_section, input_chars = generate_test_input(case_config)
     prompt = build_prompt("テクノロジー", cluster_section)
 
-    print(f"Input size: {input_chars:,} chars")
-    print(f"Prompt size: {len(prompt):,} chars (~{len(prompt) // 4:,} tokens)")
+    sys.stdout.write(f"Input size: {input_chars:,} chars\n")
+    sys.stdout.write(
+        f"Prompt size: {len(prompt):,} chars (~{len(prompt) // 4:,} tokens)\n"
+    )
 
     results: list[BenchmarkResult] = []
 
     async with aiohttp.ClientSession() as session:
         # Warmup
         if config.warmup_iterations > 0:
-            print(f"\nWarmup ({config.warmup_iterations} iteration(s))...")
+            sys.stdout.write(f"\nWarmup ({config.warmup_iterations} iteration(s))...\n")
             for i in range(config.warmup_iterations):
                 try:
                     await call_ollama(session, config, model, prompt)
-                    print(f"  Warmup {i + 1} complete")
-                except Exception as e:
-                    print(f"  Warmup {i + 1} failed: {e}")
+                    sys.stdout.write(f"  Warmup {i + 1} complete\n")
+                except (
+                    aiohttp.ClientError,
+                    TimeoutError,
+                    OSError,
+                    ValueError,
+                    KeyError,
+                ) as e:
+                    sys.stdout.write(f"  Warmup {i + 1} failed: {e}\n")
 
         # Benchmark iterations
-        print(f"\nRunning {iterations} iterations...")
+        sys.stdout.write(f"\nRunning {iterations} iterations...\n")
         for i in range(iterations):
             try:
                 response = await call_ollama(session, config, model, prompt)
@@ -406,14 +416,20 @@ async def run_benchmark(
                 result.iteration = i + 1
                 results.append(result)
 
-                print(
+                sys.stdout.write(
                     f"  [{i + 1}/{iterations}] "
                     f"TTFT: {result.ttft_s:.2f}s, "
                     f"Decode: {result.decode_tok_per_sec:.1f} tok/s, "
-                    f"Total: {result.total_duration_s:.2f}s"
+                    f"Total: {result.total_duration_s:.2f}s\n"
                 )
 
-            except Exception as e:
+            except (
+                aiohttp.ClientError,
+                TimeoutError,
+                OSError,
+                ValueError,
+                KeyError,
+            ) as e:
                 error_result = BenchmarkResult(
                     case_name=case_name,
                     iteration=i + 1,
@@ -429,10 +445,10 @@ async def run_benchmark(
                     decode_tok_per_sec=0,
                     success=False,
                     error=str(e),
-                    timestamp=datetime.now().isoformat(),
+                    timestamp=datetime.now().astimezone().isoformat(),
                 )
                 results.append(error_result)
-                print(f"  [{i + 1}/{iterations}] ERROR: {e}")
+                sys.stdout.write(f"  [{i + 1}/{iterations}] ERROR: {e}\n")
 
     stats = calculate_stats(results)
     return results, stats
@@ -440,33 +456,33 @@ async def run_benchmark(
 
 def print_stats(stats: BenchmarkStats) -> None:
     """Print formatted statistics."""
-    print(f"\n{'─' * 60}")
-    print(f"Stats for: {stats.case_name}")
-    print(f"{'─' * 60}")
-    print(
-        f"Iterations: {stats.iterations} (Success: {stats.success_count}, Errors: {stats.error_count})"
+    sys.stdout.write(f"\n{'─' * 60}\n")
+    sys.stdout.write(f"Stats for: {stats.case_name}\n")
+    sys.stdout.write(f"{'─' * 60}\n")
+    sys.stdout.write(
+        f"Iterations: {stats.iterations} (Success: {stats.success_count}, Errors: {stats.error_count})\n"
     )
-    print()
-    print("TTFT (Time To First Token):")
-    print(
-        f"  Mean: {stats.ttft_mean:.2f}s, P50: {stats.ttft_p50:.2f}s, P95: {stats.ttft_p95:.2f}s"
+    sys.stdout.write("\n")
+    sys.stdout.write("TTFT (Time To First Token):\n")
+    sys.stdout.write(
+        f"  Mean: {stats.ttft_mean:.2f}s, P50: {stats.ttft_p50:.2f}s, P95: {stats.ttft_p95:.2f}s\n"
     )
-    print(f"  Min: {stats.ttft_min:.2f}s, Max: {stats.ttft_max:.2f}s")
-    print()
-    print("Decode Speed (tokens/sec):")
-    print(
-        f"  Mean: {stats.decode_mean:.1f}, P50: {stats.decode_p50:.1f}, P95: {stats.decode_p95:.1f}"
+    sys.stdout.write(f"  Min: {stats.ttft_min:.2f}s, Max: {stats.ttft_max:.2f}s\n")
+    sys.stdout.write("\n")
+    sys.stdout.write("Decode Speed (tokens/sec):\n")
+    sys.stdout.write(
+        f"  Mean: {stats.decode_mean:.1f}, P50: {stats.decode_p50:.1f}, P95: {stats.decode_p95:.1f}\n"
     )
-    print(f"  Min: {stats.decode_min:.1f}, Max: {stats.decode_max:.1f}")
-    print()
-    print("Prefill Speed (tokens/sec):")
-    print(
-        f"  Mean: {stats.prefill_mean:.1f}, P50: {stats.prefill_p50:.1f}, P95: {stats.prefill_p95:.1f}"
+    sys.stdout.write(f"  Min: {stats.decode_min:.1f}, Max: {stats.decode_max:.1f}\n")
+    sys.stdout.write("\n")
+    sys.stdout.write("Prefill Speed (tokens/sec):\n")
+    sys.stdout.write(
+        f"  Mean: {stats.prefill_mean:.1f}, P50: {stats.prefill_p50:.1f}, P95: {stats.prefill_p95:.1f}\n"
     )
-    print()
-    print("Total Latency:")
-    print(
-        f"  Mean: {stats.latency_mean:.2f}s, P50: {stats.latency_p50:.2f}s, P95: {stats.latency_p95:.2f}s"
+    sys.stdout.write("\n")
+    sys.stdout.write("Total Latency:\n")
+    sys.stdout.write(
+        f"  Mean: {stats.latency_mean:.2f}s, P50: {stats.latency_p50:.2f}s, P95: {stats.latency_p95:.2f}s\n"
     )
 
 
@@ -479,19 +495,19 @@ def save_results(
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S")
 
     # Save detailed results
     results_file = output_path / f"benchmark_results_{timestamp}.json"
-    with open(results_file, "w") as f:
+    with results_file.open("w", encoding="utf-8") as f:
         json.dump([asdict(r) for r in all_results], f, indent=2, ensure_ascii=False)
-    print(f"\nResults saved to: {results_file}")
+    sys.stdout.write(f"\nResults saved to: {results_file}\n")
 
     # Save stats summary
     stats_file = output_path / f"benchmark_stats_{timestamp}.json"
-    with open(stats_file, "w") as f:
+    with stats_file.open("w", encoding="utf-8") as f:
         json.dump([asdict(s) for s in all_stats], f, indent=2, ensure_ascii=False)
-    print(f"Stats saved to: {stats_file}")
+    sys.stdout.write(f"Stats saved to: {stats_file}\n")
 
 
 async def main() -> None:
@@ -501,7 +517,7 @@ async def main() -> None:
     )
     parser.add_argument(
         "--case",
-        choices=list(TEST_CASES.keys()) + ["all"],
+        choices=[*list(TEST_CASES.keys()), "all"],
         default="all",
         help="Test case to run (default: all)",
     )
@@ -557,14 +573,14 @@ async def main() -> None:
 
     cases_to_run = list(TEST_CASES.keys()) if args.case == "all" else [args.case]
 
-    print("=" * 60)
-    print("News-Creator Summary Benchmark")
-    print("=" * 60)
-    print(f"Ollama URL: {config.ollama_url}")
-    print(f"Models: 16K={config.model_16k}, 80K={config.model_80k}")
-    print(f"Cases: {', '.join(cases_to_run)}")
-    print(f"Iterations per case: {args.iterations}")
-    print(f"Warmup iterations: {config.warmup_iterations}")
+    sys.stdout.write(f"{'=' * 60}\n")
+    sys.stdout.write("News-Creator Summary Benchmark\n")
+    sys.stdout.write(f"{'=' * 60}\n")
+    sys.stdout.write(f"Ollama URL: {config.ollama_url}\n")
+    sys.stdout.write(f"Models: 16K={config.model_16k}, 80K={config.model_80k}\n")
+    sys.stdout.write(f"Cases: {', '.join(cases_to_run)}\n")
+    sys.stdout.write(f"Iterations per case: {args.iterations}\n")
+    sys.stdout.write(f"Warmup iterations: {config.warmup_iterations}\n")
 
     all_results: list[BenchmarkResult] = []
     all_stats: list[BenchmarkStats] = []
@@ -576,26 +592,26 @@ async def main() -> None:
         print_stats(stats)
 
     # Summary
-    print("\n" + "=" * 60)
-    print("SUMMARY")
-    print("=" * 60)
-    print(
-        f"{'Case':<12} {'TTFT P50':>10} {'Decode P50':>12} {'Latency P50':>12} {'Errors':>8}"
+    sys.stdout.write(f"\n{'=' * 60}\n")
+    sys.stdout.write("SUMMARY\n")
+    sys.stdout.write(f"{'=' * 60}\n")
+    sys.stdout.write(
+        f"{'Case':<12} {'TTFT P50':>10} {'Decode P50':>12} {'Latency P50':>12} {'Errors':>8}\n"
     )
-    print("-" * 60)
+    sys.stdout.write(f"{'-' * 60}\n")
     for stats in all_stats:
-        print(
+        sys.stdout.write(
             f"{stats.case_name:<12} "
             f"{stats.ttft_p50:>9.2f}s "
             f"{stats.decode_p50:>10.1f} tok/s "
             f"{stats.latency_p50:>10.2f}s "
-            f"{stats.error_count:>8}"
+            f"{stats.error_count:>8}\n"
         )
 
     # Evaluation against targets
-    print("\n" + "=" * 60)
-    print("EVALUATION vs TARGETS")
-    print("=" * 60)
+    sys.stdout.write(f"\n{'=' * 60}\n")
+    sys.stdout.write("EVALUATION vs TARGETS\n")
+    sys.stdout.write(f"{'=' * 60}\n")
     targets = {
         "ttft": 2.0,  # < 2 seconds
         "decode": 40.0,  # > 40 tok/s
@@ -605,10 +621,14 @@ async def main() -> None:
         ttft_ok = "PASS" if stats.ttft_p50 < targets["ttft"] else "FAIL"
         decode_ok = "PASS" if stats.decode_p50 > targets["decode"] else "FAIL"
         prefill_ok = "PASS" if stats.prefill_p50 > targets["prefill"] else "FAIL"
-        print(f"{stats.case_name}:")
-        print(f"  TTFT < 2s: {ttft_ok} ({stats.ttft_p50:.2f}s)")
-        print(f"  Decode > 40 tok/s: {decode_ok} ({stats.decode_p50:.1f} tok/s)")
-        print(f"  Prefill > 500 tok/s: {prefill_ok} ({stats.prefill_p50:.1f} tok/s)")
+        sys.stdout.write(f"{stats.case_name}:\n")
+        sys.stdout.write(f"  TTFT < 2s: {ttft_ok} ({stats.ttft_p50:.2f}s)\n")
+        sys.stdout.write(
+            f"  Decode > 40 tok/s: {decode_ok} ({stats.decode_p50:.1f} tok/s)\n"
+        )
+        sys.stdout.write(
+            f"  Prefill > 500 tok/s: {prefill_ok} ({stats.prefill_p50:.1f} tok/s)\n"
+        )
 
     # Save results
     save_results(all_results, all_stats, config.output_dir)

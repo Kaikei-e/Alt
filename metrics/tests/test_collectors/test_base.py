@@ -1,6 +1,6 @@
 """collectors/base.py のテスト"""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 import pytest
@@ -26,19 +26,20 @@ class TestCollectServiceStats:
             "last_seen",
             "minutes_since_last_log",
         ]
-        mock_client.query.return_value.result_rows = [
-            ("alt-backend", 10000, 50, 100, 0.5, datetime(2026, 1, 19, 12, 0, 0), 1),
-            ("auth-hub", 5000, 500, 200, 10.0, datetime(2026, 1, 19, 11, 58, 0), 2),
+        rows = [
+            ("alt-backend", 10000, 50, 100, 0.5, datetime(2026, 1, 19, 12, 0, 0, tzinfo=UTC), 1),
+            ("auth-hub", 5000, 500, 200, 10.0, datetime(2026, 1, 19, 11, 58, 0, tzinfo=UTC), 2),
         ]
+        mock_client.query.return_value.result_rows = rows
 
         result = collect_service_stats(mock_client, "rask_logs", 24)
 
-        assert len(result) == 2
+        assert len(result) == len(rows)
         assert all(isinstance(row, ServiceStat) for row in result)
         assert result[0].service_name == "alt-backend"
-        assert result[0].total_logs == 10000
+        assert result[0].total_logs == rows[0][1]
         assert result[1].service_name == "auth-hub"
-        assert result[1].error_rate == 10.0
+        assert result[1].error_rate == rows[1][4]
 
     def test_empty_result_returns_empty_list(self) -> None:
         """空の結果は空リストを返す"""
@@ -86,17 +87,18 @@ class TestCollectErrorTrends:
             "total_count",
             "error_rate",
         ]
-        mock_client.query.return_value.result_rows = [
-            (datetime(2026, 1, 19, 12, 0, 0), "alt-backend", 10, 1000, 1.0),
-            (datetime(2026, 1, 19, 11, 0, 0), "alt-backend", 5, 800, 0.625),
+        rows = [
+            (datetime(2026, 1, 19, 12, 0, 0, tzinfo=UTC), "alt-backend", 10, 1000, 1.0),
+            (datetime(2026, 1, 19, 11, 0, 0, tzinfo=UTC), "alt-backend", 5, 800, 0.625),
         ]
+        mock_client.query.return_value.result_rows = rows
 
         result = collect_error_trends(mock_client, "rask_logs", 6)
 
-        assert len(result) == 2
+        assert len(result) == len(rows)
         assert all(isinstance(row, ErrorTrend) for row in result)
-        assert result[0].error_count == 10
-        assert result[1].error_rate == 0.625
+        assert result[0].error_count == rows[0][2]
+        assert result[1].error_rate == rows[1][4]
 
     def test_raises_collector_error_on_exception(self) -> None:
         """例外発生時はCollectorErrorを投げる"""

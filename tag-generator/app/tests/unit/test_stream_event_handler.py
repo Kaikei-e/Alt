@@ -1,6 +1,6 @@
 """Unit tests for stream event handler."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -13,7 +13,7 @@ REPLY_TO = "alt:replies:tags:0f8e3c1a-5b2d-4c7e-9a10-3d4f5e6a7b8c"
 
 
 @pytest.fixture
-def mock_service():
+def mock_service() -> MagicMock:
     """Create a mock TagGeneratorService."""
     service = MagicMock()
     # Mock tag_extractor
@@ -26,7 +26,7 @@ def mock_service():
 
 
 @pytest.fixture
-def mock_stream_consumer():
+def mock_stream_consumer() -> MagicMock:
     """Create a mock StreamConsumer."""
     consumer = MagicMock()
     consumer.publish_reply = AsyncMock(return_value="msg-123")
@@ -34,20 +34,20 @@ def mock_stream_consumer():
 
 
 @pytest.fixture
-def handler(mock_service, mock_stream_consumer):
+def handler(mock_service: MagicMock, mock_stream_consumer: MagicMock) -> TagGeneratorEventHandler:
     """Create handler with mocks."""
     return TagGeneratorEventHandler(mock_service, mock_stream_consumer)
 
 
 @pytest.fixture
-def tag_generation_request_event():
+def tag_generation_request_event() -> Event:
     """Create a TagGenerationRequested event."""
     return Event(
         message_id="msg-1",
         event_id="evt-1",
         event_type="TagGenerationRequested",
         source="mq-hub",
-        created_at=datetime.now(),
+        created_at=datetime.now(tz=UTC),
         payload={
             "article_id": "article-123",
             "title": "Test Article Title",
@@ -65,7 +65,9 @@ class TestTagGeneratorEventHandler:
     """Tests for TagGeneratorEventHandler."""
 
     @pytest.mark.anyio
-    async def test_handle_event_routes_tag_generation_requested(self, handler, tag_generation_request_event):
+    async def test_handle_event_routes_tag_generation_requested(
+        self, handler: TagGeneratorEventHandler, tag_generation_request_event: Event
+    ) -> None:
         """Test that TagGenerationRequested events are routed correctly."""
         with patch.object(handler, "_handle_tag_generation_requested", new_callable=AsyncMock) as mock_handle:
             await handler.handle_event(tag_generation_request_event)
@@ -73,8 +75,12 @@ class TestTagGeneratorEventHandler:
 
     @pytest.mark.anyio
     async def test_handle_tag_generation_requested_success(
-        self, handler, mock_service, mock_stream_consumer, tag_generation_request_event
-    ):
+        self,
+        handler: TagGeneratorEventHandler,
+        mock_service: MagicMock,
+        mock_stream_consumer: MagicMock,
+        tag_generation_request_event: Event,
+    ) -> None:
         """Test successful tag generation with reply."""
         await handler._handle_tag_generation_requested(tag_generation_request_event)
 
@@ -94,18 +100,21 @@ class TestTagGeneratorEventHandler:
         assert event_data["event_type"] == "TagGenerationCompleted"
         assert event_data["payload"]["success"] is True
         assert event_data["payload"]["article_id"] == "article-123"
-        assert len(event_data["payload"]["tags"]) == 2
+        expected_tags = mock_service.tag_extractor.extract_tags_with_metrics.return_value.tags
+        assert len(event_data["payload"]["tags"]) == len(expected_tags)
         assert event_data["payload"]["tags"][0]["name"] == "technology"
 
     @pytest.mark.anyio
-    async def test_handle_tag_generation_requested_missing_reply_to(self, handler, mock_stream_consumer):
+    async def test_handle_tag_generation_requested_missing_reply_to(
+        self, handler: TagGeneratorEventHandler, mock_stream_consumer: MagicMock
+    ) -> None:
         """Test that missing reply_to is handled gracefully."""
         event = Event(
             message_id="msg-1",
             event_id="evt-1",
             event_type="TagGenerationRequested",
             source="mq-hub",
-            created_at=datetime.now(),
+            created_at=datetime.now(tz=UTC),
             payload={"article_id": "article-123"},
             metadata={},  # No reply_to
         )
@@ -128,8 +137,12 @@ class TestTagGeneratorEventHandler:
         ],
     )
     async def test_handle_tag_generation_requested_rejects_forged_reply_to(
-        self, handler, mock_service, mock_stream_consumer, reply_to
-    ):
+        self,
+        handler: TagGeneratorEventHandler,
+        mock_service: MagicMock,
+        mock_stream_consumer: MagicMock,
+        reply_to: object,
+    ) -> None:
         """A reply_to that mq-hub could not have generated is dropped: XADD with
         MAXLEN would otherwise write into, and trim, any stream it names."""
         event = Event(
@@ -137,9 +150,9 @@ class TestTagGeneratorEventHandler:
             event_id="evt-1",
             event_type="TagGenerationRequested",
             source="mq-hub",
-            created_at=datetime.now(),
+            created_at=datetime.now(tz=UTC),
             payload={"article_id": "article-123", "title": "Title", "content": "Content"},
-            metadata={"correlation_id": "corr-123", "reply_to": reply_to},
+            metadata={"correlation_id": "corr-123", "reply_to": reply_to},  # type: ignore[dict-item]
         )
 
         await handler._handle_tag_generation_requested(event)
@@ -148,7 +161,9 @@ class TestTagGeneratorEventHandler:
         mock_service.tag_extractor.extract_tags_with_metrics.assert_not_called()
 
     @pytest.mark.anyio
-    async def test_handle_tag_generation_requested_no_consumer(self, mock_service, tag_generation_request_event):
+    async def test_handle_tag_generation_requested_no_consumer(
+        self, mock_service: MagicMock, tag_generation_request_event: Event
+    ) -> None:
         """An unwired stream_consumer must raise RuntimeError before extraction so
         StreamConsumer withholds XACK instead of silently dropping the request.
         """
@@ -160,7 +175,7 @@ class TestTagGeneratorEventHandler:
         mock_service.tag_extractor.extract_tags_with_metrics.assert_not_called()
 
     @pytest.mark.anyio
-    async def test_publish_reply_without_consumer_raises(self, mock_service):
+    async def test_publish_reply_without_consumer_raises(self, mock_service: MagicMock) -> None:
         """Direct _publish_reply with stream_consumer=None must also raise RuntimeError."""
         handler = TagGeneratorEventHandler(mock_service, stream_consumer=None)
 
@@ -169,8 +184,12 @@ class TestTagGeneratorEventHandler:
 
     @pytest.mark.anyio
     async def test_handle_tag_generation_requested_extraction_error(
-        self, handler, mock_service, mock_stream_consumer, tag_generation_request_event
-    ):
+        self,
+        handler: TagGeneratorEventHandler,
+        mock_service: MagicMock,
+        mock_stream_consumer: MagicMock,
+        tag_generation_request_event: Event,
+    ) -> None:
         """Test error handling during tag extraction."""
         mock_service.tag_extractor.extract_tags_with_metrics.side_effect = Exception("Model inference failed")
 
@@ -185,14 +204,16 @@ class TestTagGeneratorEventHandler:
         assert "Model inference failed" in event_data["payload"]["error_message"]
 
     @pytest.mark.anyio
-    async def test_handle_tag_generation_requested_invalid_payload(self, handler, mock_service, mock_stream_consumer):
+    async def test_handle_tag_generation_requested_invalid_payload(
+        self, handler: TagGeneratorEventHandler, mock_service: MagicMock, mock_stream_consumer: MagicMock
+    ) -> None:
         """Test that oversized or invalid payloads are rejected with error reply."""
         event = Event(
             message_id="msg-1",
             event_id="evt-1",
             event_type="TagGenerationRequested",
             source="mq-hub",
-            created_at=datetime.now(),
+            created_at=datetime.now(tz=UTC),
             payload={
                 "article_id": "",  # Empty article_id should fail validation
                 "title": "Title",
@@ -215,14 +236,16 @@ class TestTagGeneratorEventHandler:
         assert "Invalid payload" in event_data["payload"]["error_message"]
 
     @pytest.mark.anyio
-    async def test_handle_article_created_passes_feed_id(self, handler, mock_service):
+    async def test_handle_article_created_passes_feed_id(
+        self, handler: TagGeneratorEventHandler, mock_service: MagicMock
+    ) -> None:
         """Test that feed_id from event payload is supplemented into the article dict."""
         event = Event(
             message_id="msg-1",
             event_id="evt-1",
             event_type="ArticleCreated",
             source="alt-backend",
-            created_at=datetime.now(),
+            created_at=datetime.now(tz=UTC),
             payload={
                 "article_id": "article-123",
                 "title": "Test Article",
@@ -244,14 +267,16 @@ class TestTagGeneratorEventHandler:
         assert mock_service.tag_inserter.upsert_tags.call_args[0][3] == "feed-456"
 
     @pytest.mark.anyio
-    async def test_handle_article_created_without_feed_id(self, handler, mock_service):
+    async def test_handle_article_created_without_feed_id(
+        self, handler: TagGeneratorEventHandler, mock_service: MagicMock
+    ) -> None:
         """Test that missing feed_id in payload preserves existing behavior."""
         event = Event(
             message_id="msg-1",
             event_id="evt-1",
             event_type="ArticleCreated",
             source="alt-backend",
-            created_at=datetime.now(),
+            created_at=datetime.now(tz=UTC),
             payload={
                 "article_id": "article-123",
                 "title": "Test Article",
@@ -270,14 +295,16 @@ class TestTagGeneratorEventHandler:
         assert mock_service.tag_inserter.upsert_tags.call_args[0][3] == ""
 
     @pytest.mark.anyio
-    async def test_handle_article_created_does_not_overwrite_existing_feed_id(self, handler, mock_service):
+    async def test_handle_article_created_does_not_overwrite_existing_feed_id(
+        self, handler: TagGeneratorEventHandler, mock_service: MagicMock
+    ) -> None:
         """Test that existing feed_id on article is not overwritten."""
         event = Event(
             message_id="msg-1",
             event_id="evt-1",
             event_type="ArticleCreated",
             source="alt-backend",
-            created_at=datetime.now(),
+            created_at=datetime.now(tz=UTC),
             payload={
                 "article_id": "article-123",
                 "title": "Test Article",
@@ -298,14 +325,16 @@ class TestTagGeneratorEventHandler:
         assert mock_service.tag_inserter.upsert_tags.call_args[0][3] == "feed-existing"
 
     @pytest.mark.anyio
-    async def test_handle_event_ignores_unknown_events(self, handler, mock_stream_consumer):
+    async def test_handle_event_ignores_unknown_events(
+        self, handler: TagGeneratorEventHandler, mock_stream_consumer: MagicMock
+    ) -> None:
         """Test that unknown events are ignored."""
         event = Event(
             message_id="msg-1",
             event_id="evt-1",
             event_type="SomeUnknownEvent",
             source="test",
-            created_at=datetime.now(),
+            created_at=datetime.now(tz=UTC),
             payload={},
             metadata={},
         )
@@ -316,7 +345,9 @@ class TestTagGeneratorEventHandler:
         mock_stream_consumer.publish_reply.assert_not_called()
 
     @pytest.mark.anyio
-    async def test_handle_article_created_raises_when_upsert_fails(self, handler, mock_service):
+    async def test_handle_article_created_raises_when_upsert_fails(
+        self, handler: TagGeneratorEventHandler, mock_service: MagicMock
+    ) -> None:
         """A failed upsert must propagate as an exception so the stream consumer
         does not XACK the message -- otherwise the article's tags are silently
         lost with no redelivery/DLQ path (see event-stream-consumer.md ACK
@@ -327,7 +358,7 @@ class TestTagGeneratorEventHandler:
             event_id="evt-1",
             event_type="ArticleCreated",
             source="alt-backend",
-            created_at=datetime.now(),
+            created_at=datetime.now(tz=UTC),
             payload={"article_id": "article-123", "title": "Test Article"},
             metadata={},
         )
@@ -343,7 +374,9 @@ class TestTagGeneratorEventHandler:
             await handler._handle_article_created(event)
 
     @pytest.mark.anyio
-    async def test_handle_article_created_does_not_raise_when_nothing_is_extractable(self, handler, mock_service):
+    async def test_handle_article_created_does_not_raise_when_nothing_is_extractable(
+        self, handler: TagGeneratorEventHandler, mock_service: MagicMock
+    ) -> None:
         """The counterpart: zero extracted tags is a terminal answer, not a
         failure. Raising here re-ran the ML pipeline on every reclaim pass and
         dead-lettered the article on the fifth.
@@ -353,7 +386,7 @@ class TestTagGeneratorEventHandler:
             event_id="evt-1",
             event_type="ArticleCreated",
             source="alt-backend",
-            created_at=datetime.now(),
+            created_at=datetime.now(tz=UTC),
             payload={"article_id": "article-123", "title": "Test Article"},
             metadata={},
         )
@@ -371,8 +404,8 @@ class TestTagGeneratorEventHandler:
 
     @pytest.mark.anyio
     async def test_handle_tag_generation_requested_raises_when_reply_publish_returns_none(
-        self, handler, mock_stream_consumer, tag_generation_request_event
-    ):
+        self, handler: TagGeneratorEventHandler, mock_stream_consumer: MagicMock, tag_generation_request_event: Event
+    ) -> None:
         """A failed reply publish must raise so StreamConsumer does not XACK."""
         mock_stream_consumer.publish_reply.return_value = None
 

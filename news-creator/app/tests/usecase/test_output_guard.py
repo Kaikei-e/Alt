@@ -22,7 +22,7 @@ from news_creator.domain.output_guard import (
 class TestOutputGuardLinks:
     """Tests for link policy enforcement in generated markdown."""
 
-    def test_preserves_valid_https_and_http_links(self):
+    def test_preserves_valid_https_and_http_links(self) -> None:
         text = (
             "詳細は [公式発表](https://example.com/press) および "
             "[アーカイブ](http://example.org/archive) を参照。"
@@ -31,20 +31,20 @@ class TestOutputGuardLinks:
         assert "[公式発表](https://example.com/press)" in guarded
         assert "[アーカイブ](http://example.org/archive)" in guarded
 
-    def test_drops_javascript_scheme_links(self):
+    def test_drops_javascript_scheme_links(self) -> None:
         text = "悪意のあるリンク: [クリックしてください](javascript:alert(document.cookie))"
         guarded = sanitize_output_markdown(text)
         assert "javascript:" not in guarded
         assert "クリックしてください" in guarded
         assert "(javascript:" not in guarded
 
-    def test_drops_data_scheme_links(self):
+    def test_drops_data_scheme_links(self) -> None:
         text = "[画像](data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==)"
         guarded = sanitize_output_markdown(text)
         assert "data:" not in guarded
         assert "画像" in guarded
 
-    def test_drops_vbscript_and_file_scheme_links(self):
+    def test_drops_vbscript_and_file_scheme_links(self) -> None:
         text = (
             "[スクリプト](vbscript:msgbox(1)) と [ローカルファイル](file:///etc/passwd)"
         )
@@ -54,12 +54,12 @@ class TestOutputGuardLinks:
         assert "スクリプト" in guarded
         assert "ローカルファイル" in guarded
 
-    def test_drops_html_anchor_dangerous_hrefs(self):
+    def test_drops_html_anchor_dangerous_hrefs(self) -> None:
         text = 'HTML link: <a href="javascript:alert(1)">Click</a>'
         guarded = sanitize_output_markdown(text)
         assert "javascript:" not in guarded
 
-    def test_preserves_plain_text_and_markdown_formatting(self):
+    def test_preserves_plain_text_and_markdown_formatting(self) -> None:
         text = (
             "## 要約タイトル\n\n"
             "- **重要事実**: 売上高は100億円（前年同期比+15%）に達した。\n"
@@ -73,7 +73,7 @@ class TestOutputGuardLinks:
 class TestOutputGuardDelimiters:
     """Tests for handling delimiter tags leaked into LLM output."""
 
-    def test_marks_or_strips_delimiters_in_permissive_mode(self):
+    def test_marks_or_strips_delimiters_in_permissive_mode(self) -> None:
         text = (
             "要約本文です。\n"
             "<article_content>漏洩したタグ</article_content>\n"
@@ -85,18 +85,18 @@ class TestOutputGuardDelimiters:
         assert "</article_content>" not in res.text
         assert "漏洩したタグ" in res.text
 
-    def test_rejects_delimiters_in_strict_mode(self):
+    def test_rejects_delimiters_in_strict_mode(self) -> None:
         text = "悪意の要約。<article_content>偽装命令</article_content>"
         with pytest.raises(OutputGuardError, match="delimiter"):
             guard_output_markdown(text, reject_on_delimiters=True)
 
-    def test_detects_closing_tag_only(self):
+    def test_detects_closing_tag_only(self) -> None:
         text = "予期しない終了タグ </article_content> の混入"
         res = guard_output_markdown(text, reject_on_delimiters=False)
         assert res.contains_delimiters is True
         assert "</article_content>" not in res.text
 
-    def test_clean_output_passes_unmodified(self):
+    def test_clean_output_passes_unmodified(self) -> None:
         clean_text = "正常なニュース要約です。数値は123件でした。"
         res = guard_output_markdown(clean_text, reject_on_delimiters=True)
         assert res.contains_delimiters is False
@@ -107,73 +107,74 @@ class TestOutputGuardDelimiters:
 class TestOutputGuardLinkEdgeCases:
     """Link shapes that a naive [label](url) match leaves half-parsed."""
 
-    def test_preserves_mailto_links(self):
+    def test_preserves_mailto_links(self) -> None:
         text = "連絡先: [編集部](mailto:editor@example.com)"
         guarded = sanitize_output_markdown(text)
         assert "[編集部](mailto:editor@example.com)" in guarded
 
-    def test_preserves_urls_containing_parentheses(self):
+    def test_preserves_urls_containing_parentheses(self) -> None:
         text = "[記事](https://example.com/wiki/Foo_(bar)) を参照。"
         guarded = sanitize_output_markdown(text)
         assert guarded == text
 
-    def test_drops_dangerous_urls_containing_parentheses_without_debris(self):
+    def test_drops_dangerous_urls_containing_parentheses_without_debris(self) -> None:
         text = "[クリック](javascript:alert(document.cookie)) はこちら。"
         guarded = sanitize_output_markdown(text)
         assert guarded == "クリック はこちら。"
 
-    def test_drops_dangerous_image_links_entirely(self):
+    def test_drops_dangerous_image_links_entirely(self) -> None:
         text = "![alt](javascript:alert(1)) の画像"
         guarded = sanitize_output_markdown(text)
         assert guarded == " の画像"
         assert "!" not in guarded
         assert ")" not in guarded
 
-    def test_keeps_safe_image_links(self):
+    def test_keeps_safe_image_links(self) -> None:
         text = "![図1](https://example.com/chart.png)"
         assert sanitize_output_markdown(text) == text
 
-    def test_counts_every_dropped_link(self):
+    def test_counts_every_dropped_link(self) -> None:
         text = "![a](data:text/html,x) と [b](vbscript:msgbox(1))"
         result = guard_output_markdown(text)
-        assert result.dropped_links_count == 2
+        expected_dropped_links = 2
+        assert result.dropped_links_count == expected_dropped_links
 
 
 class TestStreamingOutputGuard:
     """The stream must be guarded without waiting for the whole summary."""
 
-    def test_plain_tokens_flow_through_immediately(self):
+    def test_plain_tokens_flow_through_immediately(self) -> None:
         guard = StreamingOutputGuard()
         assert guard.push("東京都は") == "東京都は"
         assert guard.push("2026年に発表した。") == "2026年に発表した。"
         assert guard.flush() == ""
 
-    def test_link_split_across_chunks_is_guarded_before_it_is_emitted(self):
+    def test_link_split_across_chunks_is_guarded_before_it_is_emitted(self) -> None:
         guard = StreamingOutputGuard()
 
         assert guard.push("詳細は [ここ](java") == "詳細は "
         assert guard.push("script:alert(1)) を参照。") == "ここ を参照。"
         assert guard.flush() == ""
 
-    def test_safe_link_split_across_chunks_survives_intact(self):
+    def test_safe_link_split_across_chunks_survives_intact(self) -> None:
         guard = StreamingOutputGuard()
 
         emitted = guard.push("[公式](https://exa") + guard.push("mple.com/a) を参照")
         assert emitted == "[公式](https://example.com/a) を参照"
 
-    def test_reference_markers_are_not_withheld_past_the_line(self):
+    def test_reference_markers_are_not_withheld_past_the_line(self) -> None:
         guard = StreamingOutputGuard()
 
         emitted = guard.push("売上は100億円 [1]\n") + guard.flush()
         assert emitted == "売上は100億円 [1]\n"
 
-    def test_unclosed_bracket_is_released_by_flush(self):
+    def test_unclosed_bracket_is_released_by_flush(self) -> None:
         guard = StreamingOutputGuard()
 
         assert guard.push("本文 [未完") == "本文 "
         assert guard.flush() == "[未完"
 
-    def test_unclosed_bracket_is_released_at_the_size_cap(self):
+    def test_unclosed_bracket_is_released_at_the_size_cap(self) -> None:
         guard = StreamingOutputGuard()
         filler = "あ" * (StreamingOutputGuard.MAX_PENDING_CHARS + 1)
 
@@ -181,7 +182,7 @@ class TestStreamingOutputGuard:
         assert guard.push(filler) == "[" + filler
         assert guard.flush() == ""
 
-    def test_leaked_delimiter_tags_are_stripped_from_the_stream(self):
+    def test_leaked_delimiter_tags_are_stripped_from_the_stream(self) -> None:
         guard = StreamingOutputGuard()
 
         emitted = guard.push("要約本文</article_content>続き") + guard.flush()

@@ -5,19 +5,15 @@ import type { PerfConfig, RouteConfig } from "../config/schema.ts";
 import { createBrowserManager } from "../browser/astral.ts";
 import { getAuthCookies } from "../auth/kratos-session.ts";
 import {
-  createWebVitalsCollector,
   calculateScore,
+  createWebVitalsCollector,
   identifyBottlenecks,
 } from "../measurement/vitals.ts";
-import type {
-  PerformanceReport,
-  RouteMeasurement,
-  ReportSummary,
-} from "../report/types.ts";
-import { printCliReport, printCompactSummary } from "../report/cli-reporter.ts";
-import { saveJsonReport, printJsonReport } from "../report/json-reporter.ts";
+import type { PerformanceReport, ReportSummary, RouteMeasurement } from "../report/types.ts";
+import { printCliReport } from "../report/cli-reporter.ts";
+import { printJsonReport, saveJsonReport } from "../report/json-reporter.ts";
 import { printMarkdownReport, saveMarkdownReport } from "../report/markdown-reporter.ts";
-import { info, error, warn, progress, section, debug } from "../utils/logger.ts";
+import { debug, error, info, progress, section, warn } from "../utils/logger.ts";
 import { DEFAULT_THRESHOLDS } from "../config/schema.ts";
 import { calculateStatistics, excludeOutliers } from "../measurement/statistics.ts";
 
@@ -80,19 +76,19 @@ function generateRecommendations(routes: RouteMeasurement[]): string[] {
   if (poorLcp.length > 0) {
     const paths = uniquePaths(poorLcp);
     recommendations.push(
-      `Optimize LCP on ${paths.length} route(s): ${paths.join(", ")}`
+      `Optimize LCP on ${paths.length} route(s): ${paths.join(", ")}`,
     );
   }
   if (poorCls.length > 0) {
     const paths = uniquePaths(poorCls);
     recommendations.push(
-      `Fix layout shifts on ${paths.length} route(s): ${paths.join(", ")}`
+      `Fix layout shifts on ${paths.length} route(s): ${paths.join(", ")}`,
     );
   }
   if (poorInp.length > 0) {
     const paths = uniquePaths(poorInp);
     recommendations.push(
-      `Improve interactivity on ${paths.length} route(s): ${paths.join(", ")}`
+      `Improve interactivity on ${paths.length} route(s): ${paths.join(", ")}`,
     );
   }
 
@@ -233,7 +229,8 @@ export async function runScan(config: PerfConfig, options: ScanOptions): Promise
             score: 0,
             passed: false,
             status: "skipped",
-            skipReason: "Authentication credentials not configured (PERF_TEST_EMAIL/PERF_TEST_PASSWORD)",
+            skipReason:
+              "Authentication credentials not configured (PERF_TEST_EMAIL/PERF_TEST_PASSWORD)",
             bottlenecks: [],
           });
           continue;
@@ -242,7 +239,9 @@ export async function runScan(config: PerfConfig, options: ScanOptions): Promise
         try {
           // Multi-run measurement for statistical accuracy
           const runVitals: Array<Awaited<ReturnType<typeof vitalsCollector.collect>>> = [];
-          const runTimings: Array<Awaited<ReturnType<typeof vitalsCollector.collectNavigationTiming>>> = [];
+          const runTimings: Array<
+            Awaited<ReturnType<typeof vitalsCollector.collectNavigationTiming>>
+          > = [];
 
           for (let run = 0; run < measurementRuns; run++) {
             let page = null;
@@ -264,7 +263,11 @@ export async function runScan(config: PerfConfig, options: ScanOptions): Promise
               runTimings.push(timing);
 
               if (measurementRuns > 1) {
-                debug(`Run ${run + 1}/${measurementRuns}: LCP=${vitals.lcp.value}ms, TTFB=${vitals.ttfb.value}ms`);
+                debug(
+                  `Run ${
+                    run + 1
+                  }/${measurementRuns}: LCP=${vitals.lcp.value}ms, TTFB=${vitals.ttfb.value}ms`,
+                );
               }
             } finally {
               if (page) {
@@ -319,11 +322,32 @@ export async function runScan(config: PerfConfig, options: ScanOptions): Promise
             return "poor";
           };
 
-          vitals.lcp.rating = getRating(vitals.lcp.value, DEFAULT_THRESHOLDS.vitals.lcp.good, DEFAULT_THRESHOLDS.vitals.lcp.poor);
-          vitals.inp.rating = getRating(vitals.inp.value, DEFAULT_THRESHOLDS.vitals.inp.good, DEFAULT_THRESHOLDS.vitals.inp.poor);
-          vitals.cls.rating = getRating(vitals.cls.value, DEFAULT_THRESHOLDS.vitals.cls.good, DEFAULT_THRESHOLDS.vitals.cls.poor, true);
-          vitals.fcp.rating = getRating(vitals.fcp.value, DEFAULT_THRESHOLDS.vitals.fcp.good, DEFAULT_THRESHOLDS.vitals.fcp.poor);
-          vitals.ttfb.rating = getRating(vitals.ttfb.value, DEFAULT_THRESHOLDS.vitals.ttfb.good, DEFAULT_THRESHOLDS.vitals.ttfb.poor);
+          vitals.lcp.rating = getRating(
+            vitals.lcp.value,
+            DEFAULT_THRESHOLDS.vitals.lcp.good,
+            DEFAULT_THRESHOLDS.vitals.lcp.poor,
+          );
+          vitals.inp.rating = getRating(
+            vitals.inp.value,
+            DEFAULT_THRESHOLDS.vitals.inp.good,
+            DEFAULT_THRESHOLDS.vitals.inp.poor,
+          );
+          vitals.cls.rating = getRating(
+            vitals.cls.value,
+            DEFAULT_THRESHOLDS.vitals.cls.good,
+            DEFAULT_THRESHOLDS.vitals.cls.poor,
+            true,
+          );
+          vitals.fcp.rating = getRating(
+            vitals.fcp.value,
+            DEFAULT_THRESHOLDS.vitals.fcp.good,
+            DEFAULT_THRESHOLDS.vitals.fcp.poor,
+          );
+          vitals.ttfb.rating = getRating(
+            vitals.ttfb.value,
+            DEFAULT_THRESHOLDS.vitals.ttfb.good,
+            DEFAULT_THRESHOLDS.vitals.ttfb.poor,
+          );
 
           const timing = {
             domContentLoaded: aggregateTiming("domContentLoaded"),
@@ -390,10 +414,9 @@ export async function runScan(config: PerfConfig, options: ScanOptions): Promise
   const measuredRoutes = measurements.filter((m) => m.status !== "skipped");
   const passedRoutes = measuredRoutes.filter((m) => m.passed).length;
   const failedRoutes = measuredRoutes.filter((m) => !m.passed).length;
-  const overallScore =
-    measuredRoutes.length > 0
-      ? Math.round(measuredRoutes.reduce((sum, m) => sum + m.score, 0) / measuredRoutes.length)
-      : 0;
+  const overallScore = measuredRoutes.length > 0
+    ? Math.round(measuredRoutes.reduce((sum, m) => sum + m.score, 0) / measuredRoutes.length)
+    : 0;
 
   const summary: ReportSummary = {
     totalRoutes: measurements.length,
@@ -402,8 +425,7 @@ export async function runScan(config: PerfConfig, options: ScanOptions): Promise
     skippedRoutes,
     measuredRoutes: measuredRoutes.length,
     overallScore,
-    overallRating:
-      overallScore >= 90 ? "good" : overallScore >= 50 ? "needs-improvement" : "poor",
+    overallRating: overallScore >= 90 ? "good" : overallScore >= 50 ? "needs-improvement" : "poor",
   };
 
   // Generate report

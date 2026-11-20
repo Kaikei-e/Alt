@@ -1,21 +1,62 @@
 import argparse
 import json
 import pickle
+import sys
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 import joblib
 import numpy as np
 import torch
-import torch.nn as nn
-import torch.optim as optim
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import classification_report, f1_score, precision_recall_curve
 from sklearn.preprocessing import label_binarize
+from torch import nn, optim
 from torch.utils.data import DataLoader, TensorDataset
 
+BINARY_CLASS_COUNT = 2
+LOG_EPOCH_INTERVAL = 10
 
-def main():
+
+@dataclass(frozen=True)
+class TrainingData:
+    """Prepared training and validation tensors."""
+
+    train_loader: DataLoader
+    x_valid_tensor: torch.Tensor
+    y_valid_tensor: torch.Tensor
+    y_valid_idx: np.ndarray
+    num_classes: int
+    device: torch.device
+    pos_weight_tensor: torch.Tensor | None
+
+
+class FocalLoss(nn.Module):
+    """Focal loss for multi-label/OVR classification."""
+
+    def __init__(
+        self,
+        alpha: torch.Tensor | None = None,
+        gamma: float = 2.0,
+        reduction: str = "mean",
+    ) -> None:
+        super().__init__()
+        self.alpha = alpha
+        self.gamma = gamma
+        self.reduction = reduction
+        self.bce = nn.BCEWithLogitsLoss(pos_weight=alpha, reduction="none")
+
+    def forward(self, inputs: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+        bce_loss = self.bce(inputs, targets)
+        pt = torch.exp(-bce_loss)
+        focal_loss = ((1 - pt) ** self.gamma) * bce_loss
+        if self.reduction == "mean":
+            return focal_loss.mean()
+        return focal_loss.sum()
+
+
+def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train genre classifier (GPU accelerated)")
     parser.add_argument(
         "--data_dir", type=str, default="data/dataset", help="Directory containing pickle files"
@@ -43,232 +84,151 @@ def main():
         "--label_smoothing", type=float, default=0.0, help="Label smoothing epsilon"
     )
     parser.add_argument("--no_class_weights", action="store_true", help="Disable class weights")
-    args = parser.parse_args()
+    return parser.parse_args()
 
-    data_dir = Path(args.data_dir)
-    print(f"Loading datasets from {data_dir}...")
 
-    # Load data
-    with open(data_dir / "dataset_train.pkl", "rb") as f:
-        X_train, y_train = pickle.load(f)
+def _to_float_tensor(matrix: np.ndarray) -> torch.Tensor:
+    if hasattr(matrix, "toarray"):
+        return torch.tensor(matrix.toarray(), dtype=torch.float32)
+    return torch.tensor(matrix, dtype=torch.float32)
 
-    with open(data_dir / "dataset_valid.pkl", "rb") as f:
-        X_valid, y_valid = pickle.load(f)
 
-    with open(data_dir / "dataset_test.pkl", "rb") as f:
-        X_test, y_test = pickle.load(f)
+def _compute_pos_weights(
+    y_train_idx: np.ndarray,
+    num_classes: int,
+    device: torch.device,
+) -> torch.Tensor:
+    sys.stdout.write("Calculating class weights...\n")
+    class_counts = np.bincount(y_train_idx, minlength=num_classes)
+    total_samples = len(y_train_idx)
+    pos_weights = [(total_samples - count) / count if count > 0 else 1.0 for count in class_counts]
+    sys.stdout.write(
+        f"Class weights enabled (min/max): {min(pos_weights):.2f} / {max(pos_weights):.2f}\n"
+    )
+    return torch.tensor(pos_weights, dtype=torch.float32).to(device)
 
-    print(f"Train shape: {X_train.shape}, Labels: {len(set(y_train))}")
 
-    # Encode labels to integers
-    classes = sorted(list(set(y_train)))
-    class_to_idx = {cls: i for i, cls in enumerate(classes)}
-    idx_to_class = {i: cls for i, cls in enumerate(classes)}
-
-    y_train_idx = np.array([class_to_idx[y] for y in y_train])
-    y_valid_idx = np.array([class_to_idx[y] for y in y_valid])
-    y_test_idx = np.array([class_to_idx[y] for y in y_test])
-
-    # Convert to Tensors
-    # Handle Sparse Matrix if needed
-    if hasattr(X_train, "toarray"):
-        print("Converting sparse matrix to dense for GPU training (ensure memory is sufficient)...")
-        # For very large sparse data, we might need a sparse tensor or batch-wise conversion.
-        # Given 60k x 6000 float32 ~ 1.4GB, it should fit in RAM and GPU VRAM.
-        X_train_tensor = torch.tensor(X_train.toarray(), dtype=torch.float32)
-        X_valid_tensor = torch.tensor(X_valid.toarray(), dtype=torch.float32)
-        X_test_tensor = torch.tensor(X_test.toarray(), dtype=torch.float32)
-    else:
-        X_train_tensor = torch.tensor(X_train, dtype=torch.float32)
-        X_valid_tensor = torch.tensor(X_valid, dtype=torch.float32)
-        X_test_tensor = torch.tensor(X_test, dtype=torch.float32)
-
-    y_train_tensor = torch.tensor(y_train_idx, dtype=torch.long)
-    y_valid_tensor = torch.tensor(y_valid_idx, dtype=torch.long)
-
-    # Move to GPU
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device}")
-
-    X_train_tensor = X_train_tensor.to(device)
-    y_train_tensor = y_train_tensor.to(device)
-    X_valid_tensor = X_valid_tensor.to(device)
-    y_valid_tensor = y_valid_tensor.to(device)
-
-    # Create DataLoader
-    train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
-
-    # Define Model (Standard Logistic Regression is linear layer + CrossEntropy/BCE)
-    # Sklearn's LogisticRegression(multi_class='ovr') fits N binary classifiers.
-    # To mimic this exactly, we can use BCEWithLogitsLoss with one-hot targets,
-    # or just use CrossEntropyLoss if we want multinomial (Softmax).
-    # BUT, the "refine_plan" emphasized OVR and independent probabilities.
-    # Also, "genre_thresholds.json" optimization relies on independent probabilities.
-    # So we should likely train using BCEWithLogitsLoss (Multi-label style logic, or OVR).
-    # Even if targets are single-class, OVR is fine.
-
-    input_dim = X_train.shape[1]
-    num_classes = len(classes)
-
-    # Calculate Class Weights for Imbalance Handling
-    # pos_weight for BCEWithLogitsLoss should be (num_neg / num_pos) for each class
-    # or just inverse frequency.
-    pos_weight_tensor = None
-    if not args.no_class_weights:
-        print("Calculating class weights...")
-        class_counts = np.bincount(y_train_idx, minlength=num_classes)
-        total_samples = len(y_train_idx)
-        pos_weights = []
-        for count in class_counts:
-            if count > 0:
-                weight = (total_samples - count) / count
-            else:
-                weight = 1.0
-            pos_weights.append(weight)
-        pos_weight_tensor = torch.tensor(pos_weights, dtype=torch.float32).to(device)
-        print(f"Class weights enabled (min/max): {min(pos_weights):.2f} / {max(pos_weights):.2f}")
-    else:
-        print("Class weights disabled.")
-
-    # Focal Loss Implementation
-    class FocalLoss(nn.Module):
-        def __init__(self, alpha=None, gamma=2.0, reduction="mean"):
-            super().__init__()
-            self.alpha = alpha  # Alpha can be pos_weight
-            self.gamma = gamma
-            self.reduction = reduction
-            self.bce = nn.BCEWithLogitsLoss(pos_weight=alpha, reduction="none")
-
-        def forward(self, inputs, targets):
-            bce_loss = self.bce(inputs, targets)
-            pt = torch.exp(-bce_loss)  # prevent numerical instability
-            focal_loss = ((1 - pt) ** self.gamma) * bce_loss
-            if self.reduction == "mean":
-                return focal_loss.mean()
-            return focal_loss.sum()
-
-    # Linear layer: input -> num_classes logits
-    model = nn.Linear(input_dim, num_classes)
-    model.to(device)
-
-    # Loss Selection
+def _train_model(
+    model: nn.Linear,
+    data: TrainingData,
+    args: argparse.Namespace,
+) -> None:
     if args.loss_type == "focal":
-        print("Using Focal Loss (gamma=2.0)")
-        criterion = FocalLoss(alpha=pos_weight_tensor, gamma=2.0)
+        sys.stdout.write("Using Focal Loss (gamma=2.0)\n")
+        criterion: nn.Module = FocalLoss(alpha=data.pos_weight_tensor, gamma=2.0)
     else:
-        print("Using BCE With Logits Loss")
-        criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight_tensor)
+        sys.stdout.write("Using BCE With Logits Loss\n")
+        criterion = nn.BCEWithLogitsLoss(pos_weight=data.pos_weight_tensor)
 
     optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
-    scheduler = None
     if args.scheduler == "onecycle":
-        print("Using OneCycleLR Scheduler")
-        scheduler = optim.lr_scheduler.OneCycleLR(
-            optimizer, max_lr=args.lr, epochs=args.epochs, steps_per_epoch=len(train_loader)
+        sys.stdout.write("Using OneCycleLR Scheduler\n")
+        optim.lr_scheduler.OneCycleLR(
+            optimizer, max_lr=args.lr, epochs=args.epochs, steps_per_epoch=len(data.train_loader)
         )
 
-    print("Starting training...")
+    sys.stdout.write("Starting training...\n")
     start_time = time.time()
 
     for epoch in range(args.epochs):
         model.train()
-        total_loss = 0
+        total_loss = 0.0
 
-        for batch_X, batch_y in train_loader:
+        for batch_x, batch_y in data.train_loader:
             optimizer.zero_grad()
-
-            # One-hot encode targets for BCE
-            # batch_y is (Batch,) indices
-            # Need (Batch, NumClasses)
-            one_hot_targets = torch.zeros(batch_X.size(0), num_classes, device=device)
+            one_hot_targets = torch.zeros(batch_x.size(0), data.num_classes, device=data.device)
             one_hot_targets.scatter_(1, batch_y.unsqueeze(1), 1.0)
-
-            outputs = model(batch_X)
+            outputs = model(batch_x)
             loss = criterion(outputs, one_hot_targets)
-
             loss.backward()
             optimizer.step()
-
             total_loss += loss.item()
 
-        avg_loss = total_loss / len(train_loader)
+        avg_loss = total_loss / len(data.train_loader)
 
-        # Validation
         model.eval()
         with torch.no_grad():
-            # OVR validation
-            val_outputs = model(X_valid_tensor)
-            # BCE loss
-            val_one_hot = torch.zeros(X_valid_tensor.size(0), num_classes, device=device)
-            val_one_hot.scatter_(1, y_valid_tensor.unsqueeze(1), 1.0)
+            val_outputs = model(data.x_valid_tensor)
+            val_one_hot = torch.zeros(
+                data.x_valid_tensor.size(0), data.num_classes, device=data.device
+            )
+            val_one_hot.scatter_(1, data.y_valid_tensor.unsqueeze(1), 1.0)
             val_loss = criterion(val_outputs, val_one_hot).item()
-
-            # Argmax F1 equivalent check
             val_preds = torch.argmax(val_outputs, dim=1)
-            val_f1 = f1_score(y_valid_idx, val_preds.cpu().numpy(), average="macro")
+            val_f1 = f1_score(data.y_valid_idx, val_preds.cpu().numpy(), average="macro")
 
-        if (epoch + 1) % 10 == 0 or epoch == 0:
-            print(
-                f"Epoch {epoch + 1}/{args.epochs} | Loss: {avg_loss:.4f} | Val Loss: {val_loss:.4f} | Val Macro F1: {val_f1:.4f}"
+        if (epoch + 1) % LOG_EPOCH_INTERVAL == 0 or epoch == 0:
+            sys.stdout.write(
+                f"Epoch {epoch + 1}/{args.epochs} | Loss: {avg_loss:.4f} | Val Loss: {val_loss:.4f} | Val Macro F1: {val_f1:.4f}\n"
             )
 
-    print(f"Training finished in {time.time() - start_time:.2f}s")
+    sys.stdout.write(f"Training finished in {time.time() - start_time:.2f}s\n")
 
-    # Export Weights to Sklearn
-    print("Exporting model to Sklearn LogisticRegression format...")
+
+def _load_split_datasets(
+    data_dir: Path,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    with (data_dir / "dataset_train.pkl").open("rb") as f:
+        x_train, y_train = pickle.load(f)  # noqa: S301 - loads local dataset pickle generated by prepare_dataset.py
+
+    with (data_dir / "dataset_valid.pkl").open("rb") as f:
+        x_valid, y_valid = pickle.load(f)  # noqa: S301 - loads local dataset pickle generated by prepare_dataset.py
+
+    with (data_dir / "dataset_test.pkl").open("rb") as f:
+        x_test, y_test = pickle.load(f)  # noqa: S301 - loads local dataset pickle generated by prepare_dataset.py
+
+    return x_train, y_train, x_valid, y_valid, x_test, y_test
+
+
+def _export_and_evaluate(
+    model: nn.Linear,
+    classes: list[str],
+    x_test_tensor: torch.Tensor,
+    y_test: np.ndarray,
+    args: argparse.Namespace,
+) -> tuple[LogisticRegression, np.ndarray]:
+    sys.stdout.write("Exporting model to Sklearn LogisticRegression format...\n")
     model.eval()
-
-    # Sklearn expected attributes for LogisticRegression
-    # coef_: (n_classes, n_features)
-    # intercept_: (n_classes,)
-    # classes_: array of class labels
-
-    weights = model.weight.data.cpu().numpy()  # (n_classes, n_features)
-    bias = model.bias.data.cpu().numpy()  # (n_classes,)
-
     sklearn_model = LogisticRegression(solver="liblinear")
-    # Use standard attributes
     sklearn_model.classes_ = np.array(classes)
-    sklearn_model.coef_ = weights
-    sklearn_model.intercept_ = bias
-
-    # Hack to allow using predict/predict_proba without calling fit
+    sklearn_model.coef_ = model.weight.data.cpu().numpy()
+    sklearn_model.intercept_ = model.bias.data.cpu().numpy()
     sklearn_model.n_iter_ = np.array([args.epochs])
 
-    # Verify export on Test Set
-    X_test_cpu = X_test_tensor.cpu().numpy()
-    sk_preds = sklearn_model.predict(X_test_cpu)
-
-    # Calculate Test F1
+    x_test_cpu = x_test_tensor.cpu().numpy()
+    sk_preds = sklearn_model.predict(x_test_cpu)
     test_f1 = f1_score(y_test, sk_preds, average="macro")
-    print(f"Exported Sklearn Model Test Macro F1: {test_f1:.4f}")
+    sys.stdout.write(f"Exported Sklearn Model Test Macro F1: {test_f1:.4f}\n")
 
-    # Save Model
     output_model_path = Path(args.output_model)
     output_model_path.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump(sklearn_model, output_model_path)
-    print(f"Model saved to {output_model_path}")
+    sys.stdout.write(f"Model saved to {output_model_path}\n")
+    return sklearn_model, sk_preds
 
-    # Optimizing Thresholds (Reused logic)
-    print("Optimizing Thresholds on Validation Set...")
-    best_model = sklearn_model
-    X_valid_cpu = X_valid_tensor.cpu().numpy()
 
-    y_valid_proba = best_model.predict_proba(X_valid_cpu)
-    y_valid_bin = label_binarize(y_valid, classes=best_model.classes_)
+def _optimize_and_save_thresholds(
+    sklearn_model: LogisticRegression,
+    x_valid_tensor: torch.Tensor,
+    y_valid: np.ndarray,
+    output_thresholds: str,
+) -> None:
+    sys.stdout.write("Optimizing Thresholds on Validation Set...\n")
+    x_valid_cpu = x_valid_tensor.cpu().numpy()
 
-    thresholds_map = {}
-    n_classes = len(best_model.classes_)
+    y_valid_proba = sklearn_model.predict_proba(x_valid_cpu)
+    y_valid_bin = label_binarize(y_valid, classes=sklearn_model.classes_)
 
-    for i, class_label in enumerate(best_model.classes_):
-        if n_classes == 2:
+    thresholds_map: dict[str, float] = {}
+    n_classes = len(sklearn_model.classes_)
+
+    for i, class_label in enumerate(sklearn_model.classes_):
+        if n_classes == BINARY_CLASS_COUNT:
             y_true_col = y_valid_bin[:, 0] if i == 1 else 1 - y_valid_bin[:, 0]
-            y_score_col = y_valid_proba[:, i]
         else:
             y_true_col = y_valid_bin[:, i]
-            y_score_col = y_valid_proba[:, i]
+        y_score_col = y_valid_proba[:, i]
 
         if np.sum(y_true_col) == 0:
             thresholds_map[class_label] = 0.5
@@ -277,23 +237,69 @@ def main():
         precisions, recalls, thresholds = precision_recall_curve(y_true_col, y_score_col)
         f1_scores = 2 * (precisions * recalls) / (precisions + recalls + 1e-10)
         best_idx = np.argmax(f1_scores)
-
-        if best_idx < len(thresholds):
-            best_thresh = thresholds[best_idx]
-        else:
-            best_thresh = 0.5
+        best_thresh = thresholds[best_idx] if best_idx < len(thresholds) else 0.5
 
         thresholds_map[class_label] = float(best_thresh)
-        print(f"Class: {class_label}, Best Threshold: {best_thresh:.4f}")
+        sys.stdout.write(f"Class: {class_label}, Best Threshold: {best_thresh:.4f}\n")
 
-    output_thresholds_path = Path(args.output_thresholds)
-    with open(output_thresholds_path, "w") as f:
+    output_thresholds_path = Path(output_thresholds)
+    with output_thresholds_path.open("w") as f:
         json.dump(thresholds_map, f, indent=2)
-    print(f"Thresholds saved to {output_thresholds_path}")
+    sys.stdout.write(f"Thresholds saved to {output_thresholds_path}\n")
 
-    # Final Report
-    print("\n--- Standard ArgMax Evaluation on Test ---")
-    print(classification_report(y_test, sk_preds))
+
+def main() -> None:
+    args = _parse_args()
+    data_dir = Path(args.data_dir)
+    sys.stdout.write(f"Loading datasets from {data_dir}...\n")
+    x_train, y_train, x_valid, y_valid, x_test, y_test = _load_split_datasets(data_dir)
+    sys.stdout.write(f"Train shape: {x_train.shape}, Labels: {len(set(y_train))}\n")
+
+    classes = sorted(set(y_train))
+    class_to_idx = {cls: i for i, cls in enumerate(classes)}
+    y_train_idx = np.array([class_to_idx[y] for y in y_train])
+    y_valid_idx = np.array([class_to_idx[y] for y in y_valid])
+
+    if hasattr(x_train, "toarray"):
+        sys.stdout.write(
+            "Converting sparse matrix to dense for GPU training (ensure memory is sufficient)...\n"
+        )
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    sys.stdout.write(f"Using device: {device}\n")
+
+    x_train_tensor = _to_float_tensor(x_train).to(device)
+    y_train_tensor = torch.tensor(y_train_idx, dtype=torch.long).to(device)
+    x_valid_tensor = _to_float_tensor(x_valid).to(device)
+    y_valid_tensor = torch.tensor(y_valid_idx, dtype=torch.long).to(device)
+    x_test_tensor = _to_float_tensor(x_test)
+
+    train_loader = DataLoader(
+        TensorDataset(x_train_tensor, y_train_tensor), batch_size=args.batch_size, shuffle=True
+    )
+    num_classes = len(classes)
+    pos_weight_tensor = (
+        None if args.no_class_weights else _compute_pos_weights(y_train_idx, num_classes, device)
+    )
+    if args.no_class_weights:
+        sys.stdout.write("Class weights disabled.\n")
+
+    model = nn.Linear(x_train.shape[1], num_classes).to(device)
+    training_data = TrainingData(
+        train_loader=train_loader,
+        x_valid_tensor=x_valid_tensor,
+        y_valid_tensor=y_valid_tensor,
+        y_valid_idx=y_valid_idx,
+        num_classes=num_classes,
+        device=device,
+        pos_weight_tensor=pos_weight_tensor,
+    )
+    _train_model(model, training_data, args)
+
+    sklearn_model, sk_preds = _export_and_evaluate(model, classes, x_test_tensor, y_test, args)
+    _optimize_and_save_thresholds(sklearn_model, x_valid_tensor, y_valid, args.output_thresholds)
+
+    sys.stdout.write("\n--- Standard ArgMax Evaluation on Test ---\n")
+    sys.stdout.write(f"{classification_report(y_test, sk_preds)}\n")
 
 
 if __name__ == "__main__":

@@ -94,7 +94,8 @@ def run_analysis(
         )
     except ClickHouseError as e:
         log.exception("ClickHouse接続エラー")
-        raise ClickHouseConnectionError(f"接続失敗: {e}") from e
+        msg = f"接続失敗: {e}"
+        raise ClickHouseConnectionError(msg) from e
 
     with closing(client):
         result = AnalysisResult(hours_analyzed=hours)
@@ -177,15 +178,15 @@ def cmd_analyze(args: argparse.Namespace) -> int:
         if args.verbose:
             logger.info("レポート本文", report=report)
 
-        return 0
-
     except MetricsError as e:
-        print(f"エラー: {e}", file=sys.stderr)
+        sys.stderr.write(f"エラー: {e}\n")
         return 1
     except Exception as e:
         logger.exception("予期せぬエラー", error=str(e))
-        print(f"予期せぬエラー: {e}", file=sys.stderr)
+        sys.stderr.write(f"予期せぬエラー: {e}\n")
         return 1
+    else:
+        return 0
 
 
 def cmd_validate(args: argparse.Namespace) -> int:
@@ -225,12 +226,12 @@ def cmd_validate(args: argparse.Namespace) -> int:
             except ClickHouseError as e:
                 log.warning("テーブルアクセス不可", table=table, error=str(e))
 
-        return 0
-
     except ClickHouseError as e:
         log.exception("接続失敗")
-        print(f"❌ 接続失敗: {e}", file=sys.stderr)
+        sys.stderr.write(f"❌ 接続失敗: {e}\n")
         return 1
+    else:
+        return 0
 
 
 def create_parser() -> argparse.ArgumentParser:

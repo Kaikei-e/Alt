@@ -29,7 +29,7 @@ export function useTrendStats() {
 
 	function setWindow(window: TimeWindow) {
 		if (window !== currentWindow) {
-			fetchData(window);
+			void fetchData(window);
 		}
 	}
 

@@ -14,6 +14,7 @@ impl Default for GoStructuredParser {
 }
 
 impl GoStructuredParser {
+    #[must_use]
     pub fn new() -> Self {
         Self
     }
@@ -31,16 +32,16 @@ impl GoStructuredParser {
 }
 
 impl ServiceParser for GoStructuredParser {
-    fn service_type(&self) -> &str {
+    fn service_type(&self) -> &'static str {
         "go"
     }
 
     fn parse_log(&self, log: &str) -> Result<ParsedLogEntry, ParseError> {
         let trimmed_log = log.trim();
 
-        if let Some(start_brace_pos) = trimmed_log.find('{') {
-            let potential_json_slice = &trimmed_log[start_brace_pos..];
-
+        if let Some(start_brace_pos) = trimmed_log.find('{')
+            && let Some(potential_json_slice) = trimmed_log.get(start_brace_pos..)
+        {
             // 切り出したスライスがJSONとしてパース可能か試す
             match serde_json::from_str::<Value>(potential_json_slice) {
                 Ok(json) => {
@@ -49,7 +50,6 @@ impl ServiceParser for GoStructuredParser {
 
                         let level = match level_str {
                             "debug" | "DEBUG" => LogLevel::Debug,
-                            "info" | "INFO" => LogLevel::Info,
                             "warn" | "warning" | "WARN" | "WARNING" => LogLevel::Warn,
                             "error" | "ERROR" => LogLevel::Error,
                             "fatal" | "panic" | "FATAL" | "PANIC" => LogLevel::Fatal,
@@ -68,9 +68,12 @@ impl ServiceParser for GoStructuredParser {
                             .and_then(|v| v.as_str())
                             .map(str::to_string);
                         let path = obj.get("path").and_then(|v| v.as_str()).map(str::to_string);
-                        #[allow(clippy::cast_possible_truncation)]
-                        let status_code =
-                            obj.get("status").and_then(|v| v.as_u64()).map(|n| n as u16);
+                        // HTTP status codes are 3-digit values (100..=599), well within u16;
+                        // saturate rather than wrapping or dropping the log record on malformed input.
+                        let status_code = obj
+                            .get("status")
+                            .and_then(serde_json::Value::as_u64)
+                            .map(|n| u16::try_from(n).unwrap_or(u16::MAX));
 
                         let timestamp = obj
                             .get("time")
@@ -139,8 +142,9 @@ impl ServiceParser for GoStructuredParser {
         let trimmed = log.trim();
 
         // Find JSON object
-        if let Some(start) = trimmed.find('{') {
-            let json_part = &trimmed[start..];
+        if let Some(start) = trimmed.find('{')
+            && let Some(json_part) = trimmed.get(start..)
+        {
             // Quick check for common Go log fields before full parse
             if json_part.contains("\"level\"")
                 || json_part.contains("\"msg\"")

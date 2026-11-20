@@ -48,7 +48,7 @@ func (h *SovereignHandler) CreateProjectionVersion(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.CreateProjectionVersionRequest],
 ) (*connect.Response[sovereignv1.CreateProjectionVersionResponse], error) {
-	v, err := validateAndBuildProjectionVersion(req.Msg.Version, time.Now())
+	v, err := validateAndBuildProjectionVersion(req.Msg.GetVersion(), time.Now())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
@@ -62,7 +62,7 @@ func (h *SovereignHandler) ActivateProjectionVersion(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.ActivateProjectionVersionRequest],
 ) (*connect.Response[sovereignv1.ActivateProjectionVersionResponse], error) {
-	if err := h.readDB.ActivateProjectionVersion(ctx, int(req.Msg.Version)); err != nil {
+	if err := h.readDB.ActivateProjectionVersion(ctx, int(req.Msg.GetVersion())); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("ActivateProjectionVersion: %w", err))
 	}
 	return connect.NewResponse(&sovereignv1.ActivateProjectionVersionResponse{}), nil
@@ -74,7 +74,7 @@ func (h *SovereignHandler) GetProjectionCheckpoint(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.GetProjectionCheckpointRequest],
 ) (*connect.Response[sovereignv1.GetProjectionCheckpointResponse], error) {
-	seq, err := h.readDB.GetProjectionCheckpoint(ctx, req.Msg.ProjectorName)
+	seq, err := h.readDB.GetProjectionCheckpoint(ctx, req.Msg.GetProjectorName())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("GetProjectionCheckpoint: %w", err))
 	}
@@ -85,7 +85,7 @@ func (h *SovereignHandler) UpdateProjectionCheckpoint(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.UpdateProjectionCheckpointRequest],
 ) (*connect.Response[sovereignv1.UpdateProjectionCheckpointResponse], error) {
-	if err := h.readDB.UpdateProjectionCheckpoint(ctx, req.Msg.ProjectorName, req.Msg.LastEventSeq); err != nil {
+	if err := h.readDB.UpdateProjectionCheckpoint(ctx, req.Msg.GetProjectorName(), req.Msg.GetLastEventSeq()); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("UpdateProjectionCheckpoint: %w", err))
 	}
 	return connect.NewResponse(&sovereignv1.UpdateProjectionCheckpointResponse{}), nil
@@ -95,7 +95,7 @@ func (h *SovereignHandler) GetProjectionFreshness(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.GetProjectionFreshnessRequest],
 ) (*connect.Response[sovereignv1.GetProjectionFreshnessResponse], error) {
-	t, err := h.readDB.GetProjectionFreshness(ctx, req.Msg.ProjectorName)
+	t, err := h.readDB.GetProjectionFreshness(ctx, req.Msg.GetProjectorName())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("GetProjectionFreshness: %w", err))
 	}
@@ -128,17 +128,17 @@ func validateAndBuildProjectionVersion(pv *sovereignv1.ProjectionVersion, refTim
 		return sovereign_db.ProjectionVersion{}, fmt.Errorf("version is required")
 	}
 	v := sovereign_db.ProjectionVersion{
-		Version:     int(pv.Version),
-		Description: pv.Description,
-		Status:      pv.Status,
+		Version:     int(pv.GetVersion()),
+		Description: pv.GetDescription(),
+		Status:      pv.GetStatus(),
 	}
-	if pv.CreatedAt != nil {
-		v.CreatedAt = pv.CreatedAt.AsTime()
+	if pv.GetCreatedAt() != nil {
+		v.CreatedAt = pv.GetCreatedAt().AsTime()
 	} else {
 		v.CreatedAt = refTime
 	}
-	if pv.ActivatedAt != nil {
-		t := pv.ActivatedAt.AsTime()
+	if pv.GetActivatedAt() != nil {
+		t := pv.GetActivatedAt().AsTime()
 		v.ActivatedAt = &t
 	}
 	return v, nil

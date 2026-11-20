@@ -2,28 +2,32 @@ import pytest
 
 from news_creator.usecase.recap_card_parser import (
     CardParseResult,
+    clean_raw_output,
     parse_card_output,
     split_sentences,
+    strip_source_latin_runs,
 )
 
 
-def test_split_sentences():
+def test_split_sentences() -> None:
     text = "ソラリス社はバージョン3.0を公開した。[1] メモリ使用量を40%削減した。[1][2]"
     sentences = split_sentences(text)
-    assert len(sentences) == 2
+    expected_sentence_count = 2
+    assert len(sentences) == expected_sentence_count
     assert sentences[0] == "ソラリス社はバージョン3.0を公開した。[1]"
     assert sentences[1] == "メモリ使用量を40%削減した。[1][2]"
 
 
-def test_split_sentences_newlines():
+def test_split_sentences_newlines() -> None:
     text = "文1が発生した。[1]\n文2が続いた。[2]"
     sentences = split_sentences(text)
-    assert len(sentences) == 2
+    expected_sentence_count = 2
+    assert len(sentences) == expected_sentence_count
     assert sentences[0] == "文1が発生した。[1]"
     assert sentences[1] == "文2が続いた。[2]"
 
 
-def test_parse_happy_path():
+def test_parse_happy_path() -> None:
     raw_text = """
 【見出し】
 ソラリス社、分散ログ基盤の次期版を公開
@@ -37,10 +41,11 @@ def test_parse_happy_path():
 [1] [2]
 """
     result: CardParseResult = parse_card_output(raw_text, valid_refs={1, 2})
+    expected_what_count = 3
     assert result.success is True
     assert result.card is not None
     assert result.card.headline_ja == "ソラリス社、分散ログ基盤の次期版を公開"
-    assert len(result.card.what_ja) == 3
+    assert len(result.card.what_ja) == expected_what_count
     assert result.card.what_ja[0].refs == [1]
     assert result.card.what_ja[2].refs == [2]
     assert result.card.why_ja is not None
@@ -48,7 +53,7 @@ def test_parse_happy_path():
     assert result.card.used_refs == [1, 2]
 
 
-def test_parse_why_ja_none_on_gaitou_nashi():
+def test_parse_why_ja_none_on_gaitou_nashi() -> None:
     raw_text = """
 【見出し】
 ソラリス社、分散ログ基盤の次期版を公開
@@ -67,7 +72,7 @@ def test_parse_why_ja_none_on_gaitou_nashi():
     assert result.card.used_refs == [1]
 
 
-def test_parse_multiple_refs_per_sentence():
+def test_parse_multiple_refs_per_sentence() -> None:
     raw_text = """
 【見出し】
 複数出典のテスト見出し
@@ -86,7 +91,7 @@ def test_parse_multiple_refs_per_sentence():
     assert result.card.used_refs == [1, 2]
 
 
-def test_parse_missing_tag():
+def test_parse_missing_tag() -> None:
     raw_text = """
 【何が起きた】
 見出しタグが存在しないテキスト。[1]
@@ -100,14 +105,14 @@ def test_parse_missing_tag():
     assert result.detail == "missing_tag"
 
 
-def test_parse_empty_output():
+def test_parse_empty_output() -> None:
     result = parse_card_output("   \n\t  ", valid_refs={1})
     assert result.success is False
     assert result.reason == "empty_output"
     assert result.detail is None
 
 
-def test_parse_unknown_ref():
+def test_parse_unknown_ref() -> None:
     raw_text = """
 【見出し】
 未知の参照テスト
@@ -125,7 +130,7 @@ def test_parse_unknown_ref():
     assert result.detail is None
 
 
-def test_parse_sentence_count_bounds():
+def test_parse_sentence_count_bounds() -> None:
     # 1 sentence in what_ja (< 2)
     raw_text_1_sentence = """
 【見出し】
@@ -174,7 +179,7 @@ def test_parse_sentence_count_bounds():
     assert result2.detail == "why_format"
 
 
-def test_parse_sentence_missing_ref():
+def test_parse_sentence_missing_ref() -> None:
     raw_text = """
 【見出し】
 参照欠落テスト
@@ -190,7 +195,7 @@ def test_parse_sentence_missing_ref():
     assert result.detail == "missing_citation"
 
 
-def test_parse_language_gate():
+def test_parse_language_gate() -> None:
     raw_text = """
 【見出し】
 English Only Headline For Test
@@ -205,9 +210,10 @@ This is the second English sentence without Japanese chars.[1]
     assert result.reason == "language"
 
 
-def test_parse_headline_bounds():
+def test_parse_headline_bounds() -> None:
     # 60 chars is the max allowed length
-    valid_headline = "あ" * 60
+    max_headline_length = 60
+    valid_headline = "あ" * max_headline_length
     raw_text_valid = f"""
 【見出し】
 {valid_headline}
@@ -220,7 +226,7 @@ def test_parse_headline_bounds():
     result_valid = parse_card_output(raw_text_valid, valid_refs={1})
     assert result_valid.success is True
     assert result_valid.card is not None
-    assert len(result_valid.card.headline_ja) == 60
+    assert len(result_valid.card.headline_ja) == max_headline_length
 
     # 61 chars exceeds the limit
     long_headline = "あ" * 61
@@ -239,7 +245,7 @@ def test_parse_headline_bounds():
     assert result.detail == "headline_too_long"
 
 
-def test_parse_strips_thinking_blocks_and_turn_tokens():
+def test_parse_strips_thinking_blocks_and_turn_tokens() -> None:
     raw_text = """<|channel>thought
 Here is some inner thinking that should be stripped
 <channel|>
@@ -259,7 +265,7 @@ Here is some inner thinking that should be stripped
     assert result.card.headline_ja == "思考ブロック除去テスト"
 
 
-def test_parse_unterminated_thinking_only_returns_empty_output():
+def test_parse_unterminated_thinking_only_returns_empty_output() -> None:
     raw_text = """<|channel>thought
 【見出し】
 思考中の下書き見出し
@@ -273,7 +279,7 @@ def test_parse_unterminated_thinking_only_returns_empty_output():
     assert result.reason == "empty_output"
 
 
-def test_parse_keeps_text_before_unterminated_thinking_block():
+def test_parse_keeps_text_before_unterminated_thinking_block() -> None:
     raw_text = """【見出し】
 未終了思考ブロック前の見出し
 【何が起きた】
@@ -291,16 +297,14 @@ def test_parse_keeps_text_before_unterminated_thinking_block():
     assert result.card.why_ja.text == "重要な理由です。[1]"
 
 
-def test_clean_raw_output_reuses_neutralize_control_tokens():
-    from news_creator.usecase.recap_card_parser import clean_raw_output
-
+def test_clean_raw_output_reuses_neutralize_control_tokens() -> None:
     nested = "<|tur<|turn>n>テスト"
     cleaned = clean_raw_output(nested)
     assert "<|turn>" not in cleaned
     assert "テスト" in cleaned
 
 
-def test_parse_why_ja_startswith_gaitou_nashi():
+def test_parse_why_ja_startswith_gaitou_nashi() -> None:
     raw_text = """
 【見出し】
 プレフィックス判定テスト
@@ -318,7 +322,7 @@ def test_parse_why_ja_startswith_gaitou_nashi():
     assert result.card.why_ja is None
 
 
-def test_clean_raw_output_strips_hidden_and_bidi_characters():
+def test_clean_raw_output_strips_hidden_and_bidi_characters() -> None:
     # Headline and body containing zero-width space (U+200B), BOM (U+FEFF), and BiDi override (U+202E)
     raw_text = (
         "【見出し】\n"
@@ -377,18 +381,19 @@ LLMがコードフェンスで囲んで出力した場合でも正常にパー�
 ```""",
     ],
 )
-def test_parse_strips_markdown_code_fences(raw_text: str):
+def test_parse_strips_markdown_code_fences(raw_text: str) -> None:
     """Verify parser strips leading/trailing markdown code fences with/without lang tags."""
     result = parse_card_output(raw_text, valid_refs={1})
+    expected_what_count = 2
     assert result.success is True
     assert result.card is not None
     assert result.card.headline_ja == "コードフェンス付き出力テスト"
-    assert len(result.card.what_ja) == 2
+    assert len(result.card.what_ja) == expected_what_count
     assert result.card.why_ja is not None
     assert result.card.why_ja.refs == [1]
 
 
-def test_parse_accepts_citations_before_or_after_punctuation():
+def test_parse_accepts_citations_before_or_after_punctuation() -> None:
     """Verify citations placed either before or after terminal punctuation are accepted."""
     raw_text = """
 【見出し】
@@ -403,9 +408,10 @@ def test_parse_accepts_citations_before_or_after_punctuation():
 [1] [2]
 """
     result = parse_card_output(raw_text, valid_refs={1, 2})
+    expected_what_count = 3
     assert result.success is True
     assert result.card is not None
-    assert len(result.card.what_ja) == 3
+    assert len(result.card.what_ja) == expected_what_count
     assert result.card.what_ja[0].refs == [1]
     assert result.card.what_ja[1].refs == [1]
     assert result.card.what_ja[2].refs == [1, 2]
@@ -413,7 +419,7 @@ def test_parse_accepts_citations_before_or_after_punctuation():
     assert result.card.why_ja.refs == [1]
 
 
-def test_parse_normalizes_full_width_brackets():
+def test_parse_normalizes_full_width_brackets() -> None:
     """Verify full-width brackets ［1］ are normalized to [1] and accepted."""
     raw_text = """
 【見出し】
@@ -435,7 +441,7 @@ def test_parse_normalizes_full_width_brackets():
     assert result.card.used_refs == [1]
 
 
-def test_parse_language_gate_records_ratio_and_counts():
+def test_parse_language_gate_records_ratio_and_counts() -> None:
     """Verify language gate rejection records measured_ratio and character_counts."""
     raw_text = """
 【見出し】
@@ -451,9 +457,10 @@ LayerX TechHarmony architecture was showcased today.[1]
     result = parse_card_output(raw_text, valid_refs={1})
     assert result.success is False
     assert result.reason == "language"
+    min_ja_ratio_threshold = 0.6
     assert result.measured_ratio is not None
     assert isinstance(result.measured_ratio, float)
-    assert result.measured_ratio < 0.6
+    assert result.measured_ratio < min_ja_ratio_threshold
     assert result.character_counts is not None
     assert "japanese" in result.character_counts
     assert "substantive" in result.character_counts
@@ -463,7 +470,7 @@ LayerX TechHarmony architecture was showcased today.[1]
     assert result.character_counts["total"] > 0
 
 
-def test_parse_four_sentences_rejected():
+def test_parse_four_sentences_rejected() -> None:
     raw_text = """【見出し】
 DroidKaigi 2026への各企業の参加と活動報告
 【何が起きた】
@@ -478,7 +485,7 @@ STORESはスポンサーとしてDroidKaigi 2026に現地で参加した[1]。�
     assert result.detail == "sentence_count"
 
 
-def test_parse_bullet_separator():
+def test_parse_bullet_separator() -> None:
     raw_text = """【見出し】
 Logitechが開発者向けAI操作キーパッドMX Keypadを発売
 【何が起きた】
@@ -492,7 +499,7 @@ Logitechは、コーディングやAIワークフロー向けのアクセサリ�
     assert result.card is not None
 
 
-def test_parse_long_headline_with_latin_names():
+def test_parse_long_headline_with_latin_names() -> None:
     raw_text = """【見出し】
 Tschabalala Selfの「Lady in Blue」がトラファルガー広場の第四台座に登場
 【何が起きた】
@@ -506,7 +513,7 @@ Tschabalala Selfによる青い女性像である「Lady in Blue」がロンド�
     assert result.card is not None
 
 
-def test_parse_bracket_comma_and_oyobi():
+def test_parse_bracket_comma_and_oyobi() -> None:
     raw_text = """【見出し】
 Apple、新型AirPods 5を発表しノイズキャンセリングを強化
 【何が起きた】
@@ -520,7 +527,7 @@ AppleはiPhone発表イベントで次世代の完全ワイヤレスイヤホン
     assert result.card is not None
 
 
-def test_parse_citation_then_touten():
+def test_parse_citation_then_touten() -> None:
     raw_text = """【見出し】
 Go Conference 2026の開催概要と参加レポート
 【何が起きた】
@@ -534,7 +541,7 @@ Go Conference 2026は2026年9月11日に中野セントラルパークカンフ�
     assert result.card is not None
 
 
-def test_parse_unknown_citation_format_detail():
+def test_parse_unknown_citation_format_detail() -> None:
     raw_text = """【見出し】
 引用形式不正テスト
 【何が起きた】
@@ -550,7 +557,7 @@ def test_parse_unknown_citation_format_detail():
     assert result.detail == "unknown_citation_format"
 
 
-def test_parse_sources_tag_detail():
+def test_parse_sources_tag_detail() -> None:
     raw_text = """【見出し】
 出典タグ空テスト
 【何が起きた】
@@ -566,10 +573,10 @@ def test_parse_sources_tag_detail():
     assert result.detail == "sources_tag"
 
 
-def test_strip_source_latin_runs_preserves_ten_token_lede_with_commas_and_strips_brand():
-    from news_creator.usecase.recap_card_parser import strip_source_latin_runs
-
-    ten_token_lede = "According to recent industry reports, major tech companies announced significant updates yesterday."
+def test_strip_source_latin_runs_preserves_ten_token_lede_with_commas_and_strips_brand() -> (
+    None
+):
+    ten_token_lede = "According to recent industry reports, major tech companies announced significant updates yesterday."  # noqa: S105 - test fixture sentence, "token" refers to word count
     source_texts = [
         ten_token_lede,
         "Samsung Galaxy Z Fold8: next-generation foldable device.",
@@ -582,9 +589,7 @@ def test_strip_source_latin_runs_preserves_ten_token_lede_with_commas_and_strips
     assert strip_source_latin_runs(brand_text, source_texts) == ""
 
 
-def test_strip_source_latin_runs_adjacent_to_kana():
-    from news_creator.usecase.recap_card_parser import strip_source_latin_runs
-
+def test_strip_source_latin_runs_adjacent_to_kana() -> None:
     source_texts = [
         "iPhone Duo: specifications and features.",
         "Node.js: modern JavaScript runtime.",
@@ -594,7 +599,7 @@ def test_strip_source_latin_runs_adjacent_to_kana():
     assert strip_source_latin_runs(card_snippet, source_texts) == "との連携"
 
 
-def test_parse_latin_names_in_source_stripped_before_language_check():
+def test_parse_latin_names_in_source_stripped_before_language_check() -> None:
     """Verify Latin product names occurring in source items are stripped before measuring Japanese ratio."""
     raw_text = """【見出し】
 iPhone DuoとSamsung Galaxy Z Fold8の比較検証
@@ -625,7 +630,7 @@ iPhone DuoとSamsung Galaxy Z Fold8の比較検証
     )
 
 
-def test_parse_unrelated_latin_prose_still_fails_language_check_with_sources():
+def test_parse_unrelated_latin_prose_still_fails_language_check_with_sources() -> None:
     """Verify unrelated Latin prose still fails language check even when source items are provided."""
     raw_text = """【見出し】
 Tech News Weekly Update
@@ -645,7 +650,7 @@ Another sentence written purely in Latin script describing events.[1]
     assert res.reason == "language"
 
 
-def test_parse_strips_citation_markers_from_headline():
+def test_parse_strips_citation_markers_from_headline() -> None:
     raw_text = """【見出し】
 AppleがiPhone 18シリーズを発表：折りたたみモデルや可変絞りカメラ搭載 [1] [3]
 【何が起きた】
@@ -663,7 +668,7 @@ Appleは新製品発表会で次世代スマートフォン「iPhone 18」シリ
     )
 
 
-def test_parse_headline_only_citations_fails_as_missing_tag():
+def test_parse_headline_only_citations_fails_as_missing_tag() -> None:
     raw_text = """【見出し】
 [1] [3]
 【何が起きた】

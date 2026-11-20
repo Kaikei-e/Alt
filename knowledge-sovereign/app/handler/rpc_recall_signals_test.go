@@ -2,7 +2,6 @@ package handler
 
 import (
 	"context"
-	"encoding/json"
 	"testing"
 	"time"
 
@@ -82,8 +81,8 @@ func TestValidateAndBuildRecallSignal(t *testing.T) {
 				assert.Equal(t, validUserID, got.UserID.String())
 				assert.Equal(t, "article:456", got.ItemKey)
 				assert.Equal(t, "dwell_time", got.SignalType)
-				assert.Equal(t, 0.85, got.SignalStrength)
-				assert.Equal(t, json.RawMessage(`{"dwell_ms":12000}`), got.Payload)
+				assert.InEpsilon(t, 0.85, got.SignalStrength, 1e-9)
+				assert.JSONEq(t, `{"dwell_ms":12000}`, string(got.Payload))
 				assert.True(t, got.OccurredAt.Equal(occurred))
 			}
 		})
@@ -115,5 +114,5 @@ func TestRecallSignalsRPCHandlers(t *testing.T) {
 		SinceDays: 7,
 	}))
 	require.NoError(t, err)
-	assert.Empty(t, listResp.Msg.Signals)
+	assert.Empty(t, listResp.Msg.GetSignals())
 }

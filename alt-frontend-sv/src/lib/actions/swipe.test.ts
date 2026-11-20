@@ -171,7 +171,9 @@ describe("swipe action", () => {
 		);
 
 		expect(swipeHandler).toHaveBeenCalled();
-		const detail = (swipeHandler.mock.calls[0]![0] as CustomEvent).detail;
+		const rightCall = swipeHandler.mock.calls[0];
+		if (!rightCall) throw new Error("expected swipe call");
+		const detail = (rightCall[0] as CustomEvent).detail;
 		expect(detail.direction).toBe("right");
 		expect(detail.deltaX).toBe(100);
 	});
@@ -193,7 +195,9 @@ describe("swipe action", () => {
 		);
 
 		expect(swipeHandler).toHaveBeenCalled();
-		const detail = (swipeHandler.mock.calls[0]![0] as CustomEvent).detail;
+		const leftCall = swipeHandler.mock.calls[0];
+		if (!leftCall) throw new Error("expected swipe call");
+		const detail = (leftCall[0] as CustomEvent).detail;
 		expect(detail.direction).toBe("left");
 		expect(detail.deltaX).toBe(-100);
 	});
@@ -215,7 +219,9 @@ describe("swipe action", () => {
 		);
 
 		expect(swipeHandler).toHaveBeenCalled();
-		const detail = (swipeHandler.mock.calls[0]![0] as CustomEvent).detail;
+		const downCall = swipeHandler.mock.calls[0];
+		if (!downCall) throw new Error("expected swipe call");
+		const detail = (downCall[0] as CustomEvent).detail;
 		expect(detail.direction).toBe("down");
 		expect(detail.deltaY).toBe(100);
 	});
@@ -237,7 +243,9 @@ describe("swipe action", () => {
 		);
 
 		expect(swipeHandler).toHaveBeenCalled();
-		const detail = (swipeHandler.mock.calls[0]![0] as CustomEvent).detail;
+		const upCall = swipeHandler.mock.calls[0];
+		if (!upCall) throw new Error("expected swipe call");
+		const detail = (upCall[0] as CustomEvent).detail;
 		expect(detail.direction).toBe("up");
 		expect(detail.deltaY).toBe(-100);
 	});

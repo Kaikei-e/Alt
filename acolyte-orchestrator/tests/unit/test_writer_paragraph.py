@@ -117,10 +117,10 @@ async def test_writer_generates_one_paragraph_per_claim() -> None:
     result = await node(state)
 
     # Must have made 3 LLM calls (one per claim)
-    assert len(llm.prompts) == 3
+    assert len(llm.prompts) == len(claims)
     # section_paragraphs should contain 3 paragraphs
     paras = result.get("section_paragraphs", {}).get("analysis", [])
-    assert len(paras) == 3
+    assert len(paras) == len(claims)
     assert paras[0]["body"] == "Paragraph A."
     assert paras[1]["body"] == "Paragraph B."
     assert paras[2]["body"] == "Paragraph C."
@@ -163,7 +163,7 @@ async def test_writer_empty_paragraph_preserves_others() -> None:
     result = await node(state)
 
     paras = result["section_paragraphs"]["analysis"]
-    assert len(paras) == 2
+    assert len(paras) == len(claims)
     assert paras[0]["body"] == "Good paragraph."
     assert paras[0]["status"] == "accepted"
     assert paras[1]["body"] == ""
@@ -549,7 +549,8 @@ async def test_writer_skips_citation_rule_for_evidence_less_claim() -> None:
 
     prompt = llm.prompts[0]
     assert "[S1], [S2] の形式のみ" not in prompt
-    assert "出典マーカー" in prompt and "使わない" in prompt
+    assert "出典マーカー" in prompt
+    assert "使わない" in prompt
 
 
 @pytest.mark.asyncio

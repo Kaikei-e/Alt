@@ -37,12 +37,17 @@ func main() {
 // runHealthcheck performs a health check against the local HTTP server.
 func runHealthcheck() int {
 	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Get("http://127.0.0.1" + config.HTTPAddr + "/health")
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://127.0.0.1"+config.HTTPAddr+"/health", nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "healthcheck failed: %v\n", err)
 		return 1
 	}
-	defer resp.Body.Close()
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "healthcheck failed: %v\n", err)
+		return 1
+	}
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return 0
@@ -70,7 +75,7 @@ func runProvisionConsumerGroup() int {
 		opts.Password = cfg.RedisPassword
 	}
 	client := redis.NewClient(opts)
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()

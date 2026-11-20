@@ -3,17 +3,18 @@ package bootstrap
 import (
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"os"
+	"slices"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
 )
 
 func testLogger() *slog.Logger {
-	return slog.New(slog.NewTextHandler(io.Discard, nil))
+	return slog.New(slog.DiscardHandler)
 }
 
 // The supervisor replaces main.go's serverExit channel. A server that returns
@@ -87,10 +88,12 @@ func TestSupervisorWait_ReturnsOnSignalWithNoServers(t *testing.T) {
 
 // main.go cancels the root context, waits for the job scheduler, and only then
 // shuts the listeners down. Reversing that order made scheduler.Shutdown block
-// for up to one job interval, so the order is pinned here.
+// for up to one job interval, so every task's stop must complete before the
+// first server's shutdown hook is entered.
 func TestSupervisorGracefulShutdown_StopsTasksBeforeServers(t *testing.T) {
 	var mu sync.Mutex
 	var order []string
+	var tasksDone atomic.Int32
 	record := func(s string) {
 		mu.Lock()
 		defer mu.Unlock()
@@ -98,27 +101,41 @@ func TestSupervisorGracefulShutdown_StopsTasksBeforeServers(t *testing.T) {
 	}
 
 	sup := NewSupervisor(testLogger())
-	sup.AddServer("rest", func() error { return nil }, func(context.Context) error {
-		record("server:rest")
-		return nil
+	for _, name := range []string{"rest", "connect", "operator", "ops"} {
+		srvName := name
+		sup.AddServer(srvName, func() error { return nil }, func(context.Context) error {
+			if got := tasksDone.Load(); got != 2 {
+				t.Errorf("server %s entered shutdown before all tasks finished (tasksDone=%d, want 2)", srvName, got)
+			}
+			record("server:" + srvName)
+			return nil
+		})
+	}
+	sup.AddTask("scheduler", func() {
+		time.Sleep(15 * time.Millisecond)
+		tasksDone.Add(1)
+		record("task:scheduler")
 	})
-	sup.AddServer("connect", func() error { return nil }, func(context.Context) error {
-		record("server:connect")
-		return nil
+	sup.AddTask("flusher", func() {
+		time.Sleep(10 * time.Millisecond)
+		tasksDone.Add(1)
+		record("task:flusher")
 	})
-	sup.AddTask("scheduler", func() { record("task:scheduler") })
 
-	sup.GracefulShutdown(context.Background(), 100*time.Millisecond)
+	sup.GracefulShutdown(t.Context(), 500*time.Millisecond)
 
 	mu.Lock()
 	defer mu.Unlock()
-	want := []string{"task:scheduler", "server:rest", "server:connect"}
-	if len(order) != len(want) {
-		t.Fatalf("shutdown order = %v, want %v", order, want)
+	if len(order) != 6 {
+		t.Fatalf("shutdown order = %v, want 6 events", order)
 	}
-	for i := range want {
-		if order[i] != want[i] {
-			t.Fatalf("shutdown order = %v, want %v", order, want)
+	if order[0] != "task:scheduler" || order[1] != "task:flusher" {
+		t.Fatalf("shutdown order = %v, want task:scheduler then task:flusher before any server", order)
+	}
+	servers := order[2:]
+	for _, want := range []string{"server:rest", "server:connect", "server:operator", "server:ops"} {
+		if !slices.Contains(servers, want) {
+			t.Fatalf("shutdown order = %v, missing %s after tasks", order, want)
 		}
 	}
 }
@@ -140,5 +157,108 @@ func TestSupervisorGracefulShutdown_ContinuesAfterShutdownError(t *testing.T) {
 
 	if stopped != 1 {
 		t.Fatalf("healthy server shutdown ran %d times, want 1", stopped)
+	}
+}
+
+// A slow listener (e.g. an open SSE stream on restSrv) must not block other
+// listeners from draining on the shared timeout, and GracefulShutdown must not
+// return until every listener has finished stopping.
+func TestSupervisorGracefulShutdown_ShutsServersDownConcurrently(t *testing.T) {
+	restEntered := make(chan struct{})
+	restRelease := make(chan struct{})
+	otherDone := make(chan string, 3)
+
+	sup := NewSupervisor(testLogger())
+	sup.AddServer("rest", func() error { return nil }, func(ctx context.Context) error {
+		close(restEntered)
+		select {
+		case <-restRelease:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	})
+	for _, name := range []string{"connect", "operator", "ops"} {
+		srvName := name
+		sup.AddServer(srvName, func() error { return nil }, func(context.Context) error {
+			otherDone <- srvName
+			return nil
+		})
+	}
+
+	shutdownDone := make(chan struct{})
+	go func() {
+		sup.GracefulShutdown(t.Context(), 2*time.Second)
+		close(shutdownDone)
+	}()
+
+	<-restEntered
+
+	// All three sibling listeners must finish before rest is released.
+	for i := range 3 {
+		select {
+		case <-otherDone:
+		case <-time.After(300 * time.Millisecond):
+			close(restRelease)
+			t.Fatalf("only %d/3 sibling listeners finished while rest was draining; shutdown is still sequential", i)
+		}
+	}
+
+	// Post-shutdown cleanup must still wait for all listeners.
+	select {
+	case <-shutdownDone:
+		t.Fatal("GracefulShutdown returned while rest was still draining")
+	default:
+	}
+
+	close(restRelease)
+
+	select {
+	case <-shutdownDone:
+	case <-time.After(time.Second):
+		t.Fatal("GracefulShutdown did not return after rest finished draining")
+	}
+}
+
+// GracefulShutdown must not return until every server hook has returned,
+// including when one hook fails with an error and another blocks until the
+// shared shutdown context expires.
+func TestSupervisorGracefulShutdown_WaitsForAllServersOnErrorAndTimeout(t *testing.T) {
+	var fastReturned atomic.Bool
+	var erroredReturned atomic.Bool
+	var blockedReturned atomic.Bool
+	var blockedCtxErr atomic.Value
+
+	sup := NewSupervisor(testLogger())
+	sup.AddServer("fast", func() error { return nil }, func(context.Context) error {
+		fastReturned.Store(true)
+		return nil
+	})
+	sup.AddServer("errored", func() error { return nil }, func(context.Context) error {
+		erroredReturned.Store(true)
+		return errors.New("shutdown failed")
+	})
+	sup.AddServer("blocked", func() error { return nil }, func(ctx context.Context) error {
+		<-ctx.Done()
+		blockedCtxErr.Store(ctx.Err())
+		time.Sleep(15 * time.Millisecond)
+		blockedReturned.Store(true)
+		return ctx.Err()
+	})
+
+	sup.GracefulShutdown(t.Context(), 30*time.Millisecond)
+
+	if !fastReturned.Load() {
+		t.Fatal("fast server shutdown hook had not returned when GracefulShutdown exited")
+	}
+	if !erroredReturned.Load() {
+		t.Fatal("errored server shutdown hook had not returned when GracefulShutdown exited")
+	}
+	if !blockedReturned.Load() {
+		t.Fatal("blocked server shutdown hook had not returned when GracefulShutdown exited")
+	}
+	gotErr, _ := blockedCtxErr.Load().(error)
+	if !errors.Is(gotErr, context.DeadlineExceeded) {
+		t.Fatalf("blocked hook ctx.Err() = %v, want %v", gotErr, context.DeadlineExceeded)
 	}
 }

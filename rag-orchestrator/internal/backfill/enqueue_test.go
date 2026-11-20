@@ -47,7 +47,7 @@ func testEnqueueConfig(target RebuildTarget) EnqueueConfig {
 func TestNewEnqueuer_FailsFastWithoutTarget(t *testing.T) {
 	_, err := NewEnqueuer(&stubArticleSource{}, newStubVersionState(), newStubJobQueue(),
 		testEnqueueConfig(RebuildTarget{ChunkerVersion: "v10"}), rebuildTestLogger())
-	assert.Error(t, err, "an enqueue without a target embedder version must not run")
+	require.Error(t, err, "an enqueue without a target embedder version must not run")
 
 	_, err = NewEnqueuer(&stubArticleSource{}, newStubVersionState(), newStubJobQueue(),
 		testEnqueueConfig(RebuildTarget{EmbedderVersion: "test-model/1024"}), rebuildTestLogger())

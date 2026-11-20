@@ -68,8 +68,70 @@ def normalize_citations(text: str) -> str:
         return " ".join(f"[{d}]" for d in digits)
 
     text = re.sub(r"\[\d+(?:\s*[,、]\s*\d+)+\]", _expand_bracket_commas, text)
-    text = re.sub(r"(?<=\])\s*(?:・|および|、|,)\s*(?=\[\d+\])", " ", text)
-    return text
+    return re.sub(r"(?<=\])\s*(?:・|および|、|,)\s*(?=\[\d+\])", " ", text)
+
+
+_SENTENCE_END_CHARS = ("。", "！", "？", "!", "?")
+_WHITESPACE_CHARS = (" ", "\u3000", "\t")
+_MAX_ALLOWED_LATIN_TOKENS = 4
+_MIN_WHAT_SENTENCES = 2
+_MAX_WHAT_SENTENCES = 3
+_MAX_HEADLINE_CHARS = 60
+
+
+def _consume_whitespace(line: str, idx: int) -> int:
+    n = len(line)
+    while idx < n and line[idx] in _WHITESPACE_CHARS:
+        idx += 1
+    return idx
+
+
+def _consume_citations(line: str, idx: int) -> int:
+    n = len(line)
+    while idx < n and line[idx] == "[":
+        close_idx = line.find("]", idx)
+        if close_idx != -1 and line[idx + 1 : close_idx].isdigit():
+            idx = _consume_whitespace(line, close_idx + 1)
+        else:
+            break
+    return idx
+
+
+def _split_line_sentences(line: str) -> list[str]:
+    sentences: list[str] = []
+    start = 0
+    i = 0
+    n = len(line)
+    while i < n:
+        if line[i] in _SENTENCE_END_CHARS:
+            i = _consume_citations(line, _consume_whitespace(line, i + 1))
+            if i < n and line[i] in _SENTENCE_END_CHARS:
+                i += 1
+            sent = line[start:i].strip()
+            if sent:
+                sentences.append(sent)
+            start = i
+        elif line[i] == "[":
+            after_cites = _consume_citations(line, i)
+            if after_cites == i:
+                i += 1
+                continue
+            i = after_cites
+            if i < n and line[i] in _SENTENCE_END_CHARS:
+                i += 1
+            if i >= n or line[i] not in (*_SENTENCE_END_CHARS, "[", "、", ","):
+                sent = line[start:i].strip()
+                if sent:
+                    sentences.append(sent)
+                start = i
+        else:
+            i += 1
+
+    if start < n:
+        sent = line[start:n].strip()
+        if sent:
+            sentences.append(sent)
+    return sentences
 
 
 def split_sentences(text: str) -> list[str]:
@@ -80,67 +142,8 @@ def split_sentences(text: str) -> list[str]:
 
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     sentences: list[str] = []
-
     for line in lines:
-        start = 0
-        i = 0
-        n = len(line)
-        while i < n:
-            if line[i] in ("。", "！", "？", "!", "?"):
-                i += 1
-                # Consume any trailing whitespace
-                while i < n and line[i] in (" ", "\u3000", "\t"):
-                    i += 1
-                # Consume any trailing [digits] citation tags
-                while i < n and line[i] == "[":
-                    close_idx = line.find("]", i)
-                    if close_idx != -1 and line[i + 1 : close_idx].isdigit():
-                        i = close_idx + 1
-                        while i < n and line[i] in (" ", "\u3000", "\t"):
-                            i += 1
-                    else:
-                        break
-                # Optional trailing punctuation after citation (e.g. [1]。)
-                if i < n and line[i] in ("。", "！", "？", "!", "?"):
-                    i += 1
-                sent = line[start:i].strip()
-                if sent:
-                    sentences.append(sent)
-                start = i
-            elif line[i] == "[":
-                # Check if this is a citation at end of sentence missing terminal punctuation
-                close_idx = line.find("]", i)
-                if close_idx != -1 and line[i + 1 : close_idx].isdigit():
-                    i = close_idx + 1
-                    while i < n and line[i] in (" ", "\u3000", "\t"):
-                        i += 1
-                    while i < n and line[i] == "[":
-                        c2 = line.find("]", i)
-                        if c2 != -1 and line[i + 1 : c2].isdigit():
-                            i = c2 + 1
-                            while i < n and line[i] in (" ", "\u3000", "\t"):
-                                i += 1
-                        else:
-                            break
-                    if i < n and line[i] in ("。", "！", "？", "!", "?"):
-                        i += 1
-                    if i >= n or (
-                        i < n
-                        and line[i] not in ("。", "！", "？", "!", "?", "[", "、", ",")
-                    ):
-                        sent = line[start:i].strip()
-                        if sent:
-                            sentences.append(sent)
-                        start = i
-                else:
-                    i += 1
-            else:
-                i += 1
-        if start < n:
-            sent = line[start:n].strip()
-            if sent:
-                sentences.append(sent)
-
+        sentences.extend(_split_line_sentences(line))
     return sentences
 
 
@@ -183,7 +186,7 @@ def strip_source_latin_runs(text: str, source_texts: list[str]) -> str:
             run = m.group(0)
             if any("a" <= c <= "z" or "A" <= c <= "Z" for c in run):
                 tokens = run.split()
-                if len(tokens) <= 4:
+                if len(tokens) <= _MAX_ALLOWED_LATIN_TOKENS:
                     allowed_runs.add(run.lower())
 
     if not allowed_runs:
@@ -229,6 +232,91 @@ def measure_japanese_ratio(
     return sufficient, round(raw_ratio, 4), character_counts
 
 
+def _parse_what_sentences(
+    what_raw: str,
+    valid_refs: set[int],
+    all_refs: set[int],
+) -> tuple[list[CardSentence] | None, CardParseResult | None]:
+    what_sentences_text = split_sentences(what_raw)
+    if (
+        len(what_sentences_text) < _MIN_WHAT_SENTENCES
+        or len(what_sentences_text) > _MAX_WHAT_SENTENCES
+    ):
+        return None, CardParseResult(
+            success=False, reason="parse_failed", detail="sentence_count"
+        )
+
+    what_ja: list[CardSentence] = []
+    for sent_text in what_sentences_text:
+        refs = [int(m) for m in REF_EXTRACTION_RE.findall(sent_text)]
+        if not refs:
+            return None, CardParseResult(
+                success=False, reason="parse_failed", detail="missing_citation"
+            )
+        if not ENDS_WITH_REF_RE.search(sent_text):
+            return None, CardParseResult(
+                success=False, reason="parse_failed", detail="unknown_citation_format"
+            )
+        for r in refs:
+            if r not in valid_refs:
+                return None, CardParseResult(success=False, reason="unknown_ref")
+            all_refs.add(r)
+        what_ja.append(CardSentence(text=sent_text, refs=refs))
+    return what_ja, None
+
+
+def _parse_why_sentence(
+    why_raw: str,
+    valid_refs: set[int],
+    all_refs: set[int],
+) -> tuple[CardSentence | None, CardParseResult | None]:
+    if not why_raw or why_raw.startswith("該当なし"):
+        return None, None
+
+    normalized_why = normalize_citations(why_raw)
+    why_sentences_text = split_sentences(normalized_why)
+    if len(why_sentences_text) != 1:
+        return None, CardParseResult(
+            success=False, reason="parse_failed", detail="why_format"
+        )
+
+    why_text = why_sentences_text[0]
+    why_refs = [int(m) for m in REF_EXTRACTION_RE.findall(why_text)]
+    if not why_refs or not ENDS_WITH_REF_RE.search(why_text):
+        return None, CardParseResult(
+            success=False, reason="parse_failed", detail="why_format"
+        )
+    for r in why_refs:
+        if r not in valid_refs:
+            return None, CardParseResult(success=False, reason="unknown_ref")
+        all_refs.add(r)
+    return CardSentence(text=why_text, refs=why_refs), None
+
+
+def _validate_sections_and_headline(
+    sections: dict[str, str],
+) -> tuple[str | None, CardParseResult | None]:
+    if "見出し" not in sections or "何が起きた" not in sections:
+        return None, CardParseResult(
+            success=False, reason="parse_failed", detail="missing_tag"
+        )
+    if "出典" in sections and not sections["出典"].strip():
+        return None, CardParseResult(
+            success=False, reason="parse_failed", detail="sources_tag"
+        )
+    headline = normalize_citations(sections["見出し"].strip())
+    headline = re.sub(r"(?:\s*\[\d+\]\s*)+", " ", headline).strip()
+    if not headline:
+        return None, CardParseResult(
+            success=False, reason="parse_failed", detail="missing_tag"
+        )
+    if len(headline) > _MAX_HEADLINE_CHARS:
+        return None, CardParseResult(
+            success=False, reason="parse_failed", detail="headline_too_long"
+        )
+    return headline, None
+
+
 def parse_card_output(
     raw_text: str,
     valid_refs: set[int],
@@ -252,79 +340,24 @@ def parse_card_output(
         return CardParseResult(success=False, reason="empty_output")
 
     sections = extract_sections(cleaned)
-    if "見出し" not in sections or "何が起きた" not in sections:
-        return CardParseResult(
+    headline, err = _validate_sections_and_headline(sections)
+    if err is not None or headline is None:
+        return err or CardParseResult(
             success=False, reason="parse_failed", detail="missing_tag"
         )
 
-    if "出典" in sections and not sections["出典"].strip():
-        return CardParseResult(
-            success=False, reason="parse_failed", detail="sources_tag"
-        )
-
-    headline = normalize_citations(sections["見出し"].strip())
-    headline = re.sub(r"(?:\s*\[\d+\]\s*)+", " ", headline).strip()
-    if not headline:
-        return CardParseResult(
-            success=False, reason="parse_failed", detail="missing_tag"
-        )
-    if len(headline) > 60:
-        return CardParseResult(
-            success=False, reason="parse_failed", detail="headline_too_long"
-        )
-
+    all_refs: set[int] = set()
     what_raw = normalize_citations(sections["何が起きた"].strip())
-    what_sentences_text = split_sentences(what_raw)
-    if len(what_sentences_text) < 2 or len(what_sentences_text) > 3:
-        return CardParseResult(
+    what_ja, what_err = _parse_what_sentences(what_raw, valid_refs, all_refs)
+    if what_err is not None or what_ja is None:
+        return what_err or CardParseResult(
             success=False, reason="parse_failed", detail="sentence_count"
         )
 
-    what_ja: list[CardSentence] = []
-    all_refs: set[int] = set()
-
-    for sent_text in what_sentences_text:
-        refs = [int(m) for m in REF_EXTRACTION_RE.findall(sent_text)]
-        if not refs:
-            return CardParseResult(
-                success=False, reason="parse_failed", detail="missing_citation"
-            )
-        if not ENDS_WITH_REF_RE.search(sent_text):
-            return CardParseResult(
-                success=False, reason="parse_failed", detail="unknown_citation_format"
-            )
-
-        for r in refs:
-            if r not in valid_refs:
-                return CardParseResult(success=False, reason="unknown_ref")
-            all_refs.add(r)
-
-        what_ja.append(CardSentence(text=sent_text, refs=refs))
-
-    why_ja: CardSentence | None = None
     why_raw = sections.get("なぜ重要", "").strip()
-
-    if why_raw and not why_raw.startswith("該当なし"):
-        why_raw = normalize_citations(why_raw)
-        why_sentences_text = split_sentences(why_raw)
-        if len(why_sentences_text) != 1:
-            return CardParseResult(
-                success=False, reason="parse_failed", detail="why_format"
-            )
-
-        why_text = why_sentences_text[0]
-        why_refs = [int(m) for m in REF_EXTRACTION_RE.findall(why_text)]
-        if not why_refs or not ENDS_WITH_REF_RE.search(why_text):
-            return CardParseResult(
-                success=False, reason="parse_failed", detail="why_format"
-            )
-
-        for r in why_refs:
-            if r not in valid_refs:
-                return CardParseResult(success=False, reason="unknown_ref")
-            all_refs.add(r)
-
-        why_ja = CardSentence(text=why_text, refs=why_refs)
+    why_ja, why_err = _parse_why_sentence(why_raw, valid_refs, all_refs)
+    if why_err is not None:
+        return why_err
 
     full_card_text = headline + " " + " ".join(s.text for s in what_ja)
     if why_ja:
@@ -341,13 +374,11 @@ def parse_card_output(
             character_counts=char_counts,
         )
 
-    used_refs = sorted(list(all_refs))
-
     card_content = CardContent(
         headline_ja=headline,
         what_ja=what_ja,
         why_ja=why_ja,
-        used_refs=used_refs,
+        used_refs=sorted(all_refs),
     )
 
     return CardParseResult(

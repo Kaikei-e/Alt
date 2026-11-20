@@ -11,11 +11,11 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 func RestHandleRegisterRSSFeed(container *di.ApplicationComponents) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		ctx := c.Request().Context()
 		var rssFeedLink RssFeedLink
 		err := c.Bind(&rssFeedLink)
@@ -66,7 +66,7 @@ func RestHandleRegisterRSSFeed(container *di.ApplicationComponents) echo.Handler
 }
 
 func RestHandleListRSSFeedLinks(container *di.ApplicationComponents) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		links, err := container.ListFeedLinksWithHealthUsecase.Execute(c.Request().Context())
 		if err != nil {
 			return HandleError(c, err, "list_feed_links")
@@ -100,7 +100,7 @@ func RestHandleListRSSFeedLinks(container *di.ApplicationComponents) echo.Handle
 }
 
 func RestHandleDeleteRSSFeedLink(container *di.ApplicationComponents) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		ctx := c.Request().Context()
 		idParam := c.Param("id")
 		linkID, err := uuid.Parse(idParam)

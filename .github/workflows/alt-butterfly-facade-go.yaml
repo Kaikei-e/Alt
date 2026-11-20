@@ -3,10 +3,10 @@ name: BFF Tests
 on:
   push:
     branches: [main]
-    paths: ['alt-butterfly-facade/**', '.github/workflows/alt-butterfly-facade-go.yaml', '.github/workflows/reusable-test-go.yaml', '!**/CLAUDE.md', '!**/AGENTS.md', '!**/README.md']
+    paths: ['alt-butterfly-facade/**', '.github/workflows/alt-butterfly-facade-go.yaml', '.github/workflows/reusable-test-go.yaml', '.github/workflows/reusable-go-quality-gates.yaml', '.golangci.yml', 'scripts/lint/**', '!**/CLAUDE.md', '!**/AGENTS.md', '!**/README.md']
   pull_request:
     branches: [main]
-    paths: ['alt-butterfly-facade/**', '.github/workflows/alt-butterfly-facade-go.yaml', '.github/workflows/reusable-test-go.yaml', '!**/CLAUDE.md', '!**/AGENTS.md', '!**/README.md']
+    paths: ['alt-butterfly-facade/**', '.github/workflows/alt-butterfly-facade-go.yaml', '.github/workflows/reusable-test-go.yaml', '.github/workflows/reusable-go-quality-gates.yaml', '.golangci.yml', 'scripts/lint/**', '!**/CLAUDE.md', '!**/AGENTS.md', '!**/README.md']
   workflow_dispatch:
 
 concurrency:
@@ -27,3 +27,27 @@ jobs:
       coverage-flags: 'alt-butterfly-facade'
       use-oidc: false
       sparse-checkout: 'alt-butterfly-facade'
+
+  quality:
+    permissions:
+      contents: read
+      security-events: write
+    uses: ./.github/workflows/reusable-go-quality-gates.yaml
+    with:
+      working-directory: 'alt-butterfly-facade'
+      upload-sarif: true
+
+  quality-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [test, quality]
+    if: always()
+    steps:
+      - name: Check all jobs passed
+        run: |
+          if [ "${{ needs.test.result }}" != "success" ] || \
+             [ "${{ needs.quality.result }}" != "success" ]; then
+            echo "One or more quality gates failed"
+            exit 1
+          fi
+          echo "All quality gates passed"

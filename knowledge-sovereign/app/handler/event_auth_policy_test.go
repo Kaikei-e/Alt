@@ -149,9 +149,10 @@ func setupPolicyTestServer(t *testing.T, pol *config.AuthPolicy, verifier *confi
 
 func TestPolicyAuth_Enforcement(t *testing.T) {
 	const (
-		backendToken     = "backend-secret-token-long-enough-1234"
-		recapToken       = "recap-secret-token-long-enough-5678"
-		ragToken         = "rag-secret-token-long-enough-9012"
+		backendToken = "backend-secret-token-long-enough-1234"
+		recapToken   = "recap-secret-token-long-enough-5678"
+		ragToken     = "rag-secret-token-long-enough-9012"
+		// #nosec G101 -- test-only dummy token fixture
 		replicationToken = "replication-secret-token-long-3456"
 		jwtIssuer        = "auth-hub"
 		jwtAudience      = "alt-backend"
@@ -394,7 +395,7 @@ func TestPolicyAuth_Enforcement(t *testing.T) {
 
 		resp, err := client.AppendKnowledgeEvent(context.Background(), req)
 		require.NoError(t, err)
-		assert.Equal(t, int64(100), resp.Msg.EventSeq)
+		assert.Equal(t, int64(100), resp.Msg.GetEventSeq())
 	})
 
 	t.Run("valid RAG append event succeeds without user JWT", func(t *testing.T) {
@@ -413,7 +414,7 @@ func TestPolicyAuth_Enforcement(t *testing.T) {
 
 		resp, err := client.AppendKnowledgeEvent(context.Background(), req)
 		require.NoError(t, err)
-		assert.Equal(t, int64(100), resp.Msg.EventSeq)
+		assert.Equal(t, int64(100), resp.Msg.GetEventSeq())
 	})
 }
 
@@ -753,7 +754,7 @@ func TestPolicyAuth_WrapStreamingHandler_WatchProjectorEvents(t *testing.T) {
 		defer func() { _ = stream.Close() }()
 
 		require.True(t, stream.Receive())
-		assert.Equal(t, int64(200), stream.Msg().LatestEventSeq)
+		assert.Equal(t, int64(200), stream.Msg().GetLatestEventSeq())
 		cancel()
 	})
 }
@@ -892,7 +893,7 @@ func TestPolicyAuth_ReadingThemesAndRecapSourcesAccess(t *testing.T) {
 		req.Header().Set("X-Alt-Backend-Token", validJWT)
 		resp, err := client.AppendKnowledgeEvent(context.Background(), req)
 		require.NoError(t, err)
-		assert.Equal(t, int64(100), resp.Msg.EventSeq)
+		assert.Equal(t, int64(100), resp.Msg.GetEventSeq())
 	})
 
 	t.Run("recap-worker may call ListReadingSourcesInWindow and append reading.theme_version_created.v1 without user JWT", func(t *testing.T) {
@@ -919,7 +920,7 @@ func TestPolicyAuth_ReadingThemesAndRecapSourcesAccess(t *testing.T) {
 		appendReq.Header().Set("Authorization", "Bearer "+recapToken)
 		resp, err := client.AppendKnowledgeEvent(context.Background(), appendReq)
 		require.NoError(t, err)
-		assert.Equal(t, int64(100), resp.Msg.EventSeq)
+		assert.Equal(t, int64(100), resp.Msg.GetEventSeq())
 	})
 
 	t.Run("recap-worker cannot call ListReadingThemes or append reading.theme_opened.v1", func(t *testing.T) {

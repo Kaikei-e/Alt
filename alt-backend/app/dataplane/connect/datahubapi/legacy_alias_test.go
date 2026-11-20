@@ -52,7 +52,7 @@ func TestLegacyNamespaceAlias_RewritesOnlyTheRetiredDataHubName(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			rec := httptest.NewRecorder()
-			h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, tt.path, nil))
+			h.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodPost, tt.path, nil))
 			if gotPath != tt.wantPath {
 				t.Fatalf("next saw path %q, want %q", gotPath, tt.wantPath)
 			}
@@ -69,7 +69,7 @@ func TestLegacyNamespaceAlias_DoesNotMutateTheOriginalRequest(t *testing.T) {
 	})
 	h := LegacyNamespaceAlias(next)
 
-	req := httptest.NewRequest(http.MethodPost, "/alt.datahub.v1.DataHubService/CreateArticle", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/alt.datahub.v1.DataHubService/CreateArticle", nil)
 	h.ServeHTTP(httptest.NewRecorder(), req)
 
 	if req.URL.Path != "/alt.datahub.v1.DataHubService/CreateArticle" {

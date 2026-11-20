@@ -10,8 +10,10 @@ describe("MobileRecallSection logic", () => {
 		];
 		const displayed = candidates.slice(0, 2);
 		expect(displayed).toHaveLength(2);
-		expect(displayed[0]!.itemKey).toBe("a");
-		expect(displayed[1]!.itemKey).toBe("b");
+		const [first, second] = displayed;
+		if (!first || !second) throw new Error("expected 2 displayed items");
+		expect(first.itemKey).toBe("a");
+		expect(second.itemKey).toBe("b");
 	});
 
 	it("shows all if fewer than 2", () => {

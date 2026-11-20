@@ -33,7 +33,7 @@ import argparse
 import json
 import re
 import sys
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 _SCRIPTS = Path(__file__).resolve().parent
@@ -67,6 +67,7 @@ def _init_edge_keys(services: dict[str, dict]) -> list[str]:
             if restart_is_no(target):
                 keys.append(f"{name} -> {dep}")
     return keys
+
 
 ONESHOT_NAME_RE = re.compile(r"(migrat|bootstrap$|-init$)", re.IGNORECASE)
 
@@ -160,19 +161,15 @@ def drift(current: dict, baseline: dict) -> list[str]:
     for group in ("long_running", "ephemeral", "profiled"):
         got = set(current[group])
         want = set(baseline[group])
-        for name in sorted(got - want):
-            violations.append(f"{group}: added {name}")
-        for name in sorted(want - got):
-            violations.append(f"{group}: removed {name}")
+        violations.extend(f"{group}: added {name}" for name in sorted(got - want))
+        violations.extend(f"{group}: removed {name}" for name in sorted(want - got))
     disc = baseline.get("discrepancy") or {}
     for key in RENDER_COUNT_KEYS:
         computed = current["counts"].get(key)
         if computed is None:
             continue
         if key in disc and disc.get(key) != computed:
-            violations.append(
-                f"discrepancy.{key}: {disc.get(key)} != computed {computed}"
-            )
+            violations.append(f"discrepancy.{key}: {disc.get(key)} != computed {computed}")
     return violations
 
 
@@ -208,23 +205,24 @@ def load_units_inventory(path: Path) -> dict:
     Long-running names themselves come from compose, not from this file.
     """
     if not path.is_file():
-        raise SystemExit(f"missing ops-surface inventory: {path}")
+        msg = f"missing ops-surface inventory: {path}"
+        raise SystemExit(msg)
     data = load_yaml(path)
     raw_units = data.get("units")
     if not isinstance(raw_units, dict) or not raw_units:
-        raise SystemExit(f"units mapping missing from {path}")
-    units: dict[str, dict] = {}
-    for name, meta in raw_units.items():
-        if isinstance(name, str) and isinstance(meta, dict):
-            units[name] = meta
+        msg = f"units mapping missing from {path}"
+        raise SystemExit(msg)
+    units = {
+        name: meta
+        for name, meta in raw_units.items()
+        if isinstance(name, str) and isinstance(meta, dict)
+    }
     try:
         accidental_cap = int(data["accidental_osu_baseline"])
         long_running_cap = int(data["long_running_osu_baseline"])
     except (KeyError, TypeError, ValueError) as exc:
-        raise SystemExit(
-            f"accidental_osu_baseline / long_running_osu_baseline "
-            f"missing or invalid in {path}"
-        ) from exc
+        msg = f"accidental_osu_baseline / long_running_osu_baseline missing or invalid in {path}"
+        raise SystemExit(msg) from exc
     return {
         "units": units,
         "accidental_osu_baseline": accidental_cap,
@@ -330,85 +328,49 @@ def _must_be_accidental(name: str, kind: object) -> bool:
     return kind_s.startswith("sidecar-") or name.endswith("-logs")
 
 
-def budget_violations(
+def _long_running_unit_violations(
+    name: str,
     services: dict[str, dict],
     units: dict[str, dict],
-    baseline: dict,
-    *,
-    accidental_osu_baseline: int,
-    long_running_osu_baseline: int,
     today: date,
 ) -> list[str]:
-    """P2-14 fitness functions F1–F5. Empty list means the budget holds."""
-    classified = classify_services(services)
-    long_running = classified["long_running"]
-    baseline_lr = set(baseline.get("long_running") or [])
+    meta = units.get(name)
+    if meta is None:
+        return [f"F1: {name} missing from inventory"]
+
     violations: list[str] = []
-
-    for name in sorted(set(units) - set(services)):
-        violations.append(f"F1: stale inventory row {name} (not in production compose)")
-
-    for name in long_running:
-        meta = units.get(name)
-        if meta is None:
-            violations.append(f"F1: {name} missing from inventory")
-            continue
-        class_ = meta.get("class")
-        kind = meta.get("kind")
-        if class_ not in ALLOWED_CLASSES:
-            violations.append(f"F1: {name} has invalid class {class_!r}")
-        elif class_ == "ephemeral":
-            violations.append(f"F1: {name} is long-running but class is ephemeral")
-        if kind not in ALLOWED_KINDS:
-            violations.append(f"F1: {name} has invalid kind {kind!r}")
-        if _must_be_accidental(name, kind) and class_ != "accidental":
-            violations.append(
-                f"F1: {name} kind {kind!r} / *-logs must be class accidental, "
-                f"got {class_!r}"
-            )
-
-        fault = _exception_fault(meta, today)
-        if fault:
-            violations.append(f"F4: {name} {fault}")
-
-        if isinstance(kind, str) and kind.startswith("sidecar-"):
-            parent = sidecar_parent(name, services.get(name) or {}, meta)
-            if not parent or parent not in services:
-                label = parent or "unresolved"
-                violations.append(
-                    f"F5: {name} kind {kind} has no live parent {label} in compose"
-                )
-
-    for name in sorted(services):
-        if name in long_running:
-            continue
-        meta = units.get(name) or {}
-        class_ = meta.get("class")
-        kind = meta.get("kind")
-        if _must_be_accidental(name, kind) and class_ != "accidental":
-            violations.append(
-                f"F1: {name} kind {kind!r} / *-logs must be class accidental, "
-                f"got {class_!r}"
-            )
-
-    uncapped_accidental = [
-        name
-        for name in long_running
-        if (units.get(name) or {}).get("class") == "accidental"
-        and not exception_is_live(units.get(name) or {}, today)
-    ]
-    if len(uncapped_accidental) > accidental_osu_baseline:
-        extras = [name for name in uncapped_accidental if name not in baseline_lr]
-        msg = (
-            f"F2: accidental OSU {len(uncapped_accidental)} exceeds baseline "
-            f"{accidental_osu_baseline}"
+    class_ = meta.get("class")
+    kind = meta.get("kind")
+    if class_ not in ALLOWED_CLASSES:
+        violations.append(f"F1: {name} has invalid class {class_!r}")
+    elif class_ == "ephemeral":
+        violations.append(f"F1: {name} is long-running but class is ephemeral")
+    if kind not in ALLOWED_KINDS:
+        violations.append(f"F1: {name} has invalid kind {kind!r}")
+    if _must_be_accidental(name, kind) and class_ != "accidental":
+        violations.append(
+            f"F1: {name} kind {kind!r} / *-logs must be class accidental, got {class_!r}"
         )
-        if extras:
-            msg += f"; new non-excepted: {', '.join(extras)}"
-        violations.append(msg)
 
-    added = [name for name in long_running if name not in baseline_lr]
-    removed = {name for name in baseline_lr if name not in long_running}
+    fault = _exception_fault(meta, today)
+    if fault:
+        violations.append(f"F4: {name} {fault}")
+
+    if isinstance(kind, str) and kind.startswith("sidecar-"):
+        parent = sidecar_parent(name, services.get(name) or {}, meta)
+        if not parent or parent not in services:
+            label = parent or "unresolved"
+            violations.append(f"F5: {name} kind {kind} has no live parent {label} in compose")
+    return violations
+
+
+def _added_unit_violations(
+    added: list[str],
+    removed: set[str],
+    units: dict[str, dict],
+    today: date,
+) -> list[str]:
+    violations: list[str] = []
     claimed: set[str] = set()
     for name in added:
         meta = units.get(name) or {}
@@ -432,23 +394,73 @@ def budget_violations(
             f"F3: {name} is a new long-running unit; set offset_of or an "
             "unexpired exception with sunset"
         )
+    return violations
 
-    counted = [
+
+def budget_violations(  # noqa: PLR0913 — public API and test-pinned keyword options
+    services: dict[str, dict],
+    units: dict[str, dict],
+    baseline: dict,
+    *,
+    accidental_osu_baseline: int,
+    long_running_osu_baseline: int,
+    today: date,
+) -> list[str]:
+    """P2-14 fitness functions F1–F5. Empty list means the budget holds."""
+    classified = classify_services(services)
+    long_running = classified["long_running"]
+    baseline_lr = set(baseline.get("long_running") or [])
+    violations = [
+        f"F1: stale inventory row {name} (not in production compose)"
+        for name in sorted(set(units) - set(services))
+    ]
+
+    for name in long_running:
+        violations.extend(_long_running_unit_violations(name, services, units, today))
+
+    for name in sorted(services):
+        if name in long_running:
+            continue
+        meta = units.get(name) or {}
+        class_ = meta.get("class")
+        kind = meta.get("kind")
+        if _must_be_accidental(name, kind) and class_ != "accidental":
+            violations.append(
+                f"F1: {name} kind {kind!r} / *-logs must be class accidental, got {class_!r}"
+            )
+
+    uncapped_accidental = [
         name
         for name in long_running
-        if not exception_is_live(units.get(name) or {}, today)
+        if (units.get(name) or {}).get("class") == "accidental"
+        and not exception_is_live(units.get(name) or {}, today)
     ]
+    if len(uncapped_accidental) > accidental_osu_baseline:
+        extras = [name for name in uncapped_accidental if name not in baseline_lr]
+        msg = (
+            f"F2: accidental OSU {len(uncapped_accidental)} exceeds baseline "
+            f"{accidental_osu_baseline}"
+        )
+        if extras:
+            msg += f"; new non-excepted: {', '.join(extras)}"
+        violations.append(msg)
+
+    added = [name for name in long_running if name not in baseline_lr]
+    removed = {name for name in baseline_lr if name not in long_running}
+    violations.extend(_added_unit_violations(added, removed, units, today))
+
+    counted = [name for name in long_running if not exception_is_live(units.get(name) or {}, today)]
     if len(counted) > long_running_osu_baseline:
         violations.append(
-            f"F3: long-running OSU {len(counted)} exceeds cap "
-            f"{long_running_osu_baseline}"
+            f"F3: long-running OSU {len(counted)} exceeds cap {long_running_osu_baseline}"
         )
     return violations
 
 
 def load_baseline(path: Path) -> dict:
     if not path.is_file():
-        raise SystemExit(f"missing ops-surface baseline: {path}")
+        msg = f"missing ops-surface baseline: {path}"
+        raise SystemExit(msg)
     return json.loads(path.read_text(encoding="utf-8"))
 
 
@@ -458,9 +470,7 @@ def init_edges_allowlist_update(
 ) -> tuple[list[str], list[str]]:
     """Preserve the PM-037 allowlist; refuse silent growth."""
     if isinstance(existing_allowlist, list):
-        preserved = [
-            row for row in existing_allowlist if isinstance(row, str) and row.strip()
-        ]
+        preserved = [row for row in existing_allowlist if isinstance(row, str) and row.strip()]
     else:
         preserved = []
     growth = sorted(set(live_keys) - set(preserved))
@@ -509,7 +519,7 @@ def prepare_baseline_write(
         return None, found
     payload = {
         **current,
-        "measured_at": date.today().isoformat(),
+        "measured_at": datetime.now(UTC).astimezone().date().isoformat(),
         "discrepancy": discrepancy_for(current),
         "classification": CLASSIFICATION,
         "init_edges_allowlist": preserved,
@@ -520,16 +530,14 @@ def prepare_baseline_write(
 def write_baseline(path: Path, current: dict) -> list[str]:
     services = production_services()
     existing = load_baseline(path) if path.is_file() else {}
-    loaded = load_units_inventory(
-        Path(REPO_ROOT / "scripts" / "ops-surface-inventory.yaml")
-    )
+    loaded = load_units_inventory(Path(REPO_ROOT / "scripts" / "ops-surface-inventory.yaml"))
     budget_found = budget_violations(
         services,
         loaded["units"],
         existing if existing else current,
         accidental_osu_baseline=loaded["accidental_osu_baseline"],
         long_running_osu_baseline=loaded["long_running_osu_baseline"],
-        today=date.today(),
+        today=datetime.now(UTC).astimezone().date(),
     )
     payload, found = prepare_baseline_write(
         current,
@@ -560,7 +568,8 @@ def main() -> int:
     path = Path(args.baseline)
     loaded = load_units_inventory(Path(args.inventory))
     if not path.is_file() and not args.write_baseline:
-        raise SystemExit(f"missing ops-surface baseline: {path}")
+        msg = f"missing ops-surface baseline: {path}"
+        raise SystemExit(msg)
     existing = load_baseline(path) if path.is_file() else {}
     budget_found = budget_violations(
         services,
@@ -568,7 +577,7 @@ def main() -> int:
         existing if existing else {"long_running": []},
         accidental_osu_baseline=loaded["accidental_osu_baseline"],
         long_running_osu_baseline=loaded["long_running_osu_baseline"],
-        today=date.today(),
+        today=datetime.now(UTC).astimezone().date(),
     )
     if args.write_baseline:
         payload, found = prepare_baseline_write(
@@ -578,32 +587,32 @@ def main() -> int:
             budget_found,
         )
         if found or payload is None:
-            print("compose-ops-surface-audit --write-baseline FAILED:")
+            sys.stdout.write("compose-ops-surface-audit --write-baseline FAILED:\n")
             for v in found:
-                print(f"  - {v}")
-            print(
+                sys.stdout.write(f"  - {v}\n")
+            sys.stdout.write(
                 "\nFix F1–F5 first. --write-baseline does not expand "
                 "init_edges_allowlist or skip budget violations. Add a new "
                 "SCS edge with an explicit reason in "
-                "scripts/ops-surface-baseline.json."
+                "scripts/ops-surface-baseline.json.\n"
             )
             return 1
         path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-        print(f"wrote {path}")
+        sys.stdout.write(f"wrote {path}\n")
         return 0
     found = drift(current, existing)
     found.extend(budget_found)
     if found:
-        print("compose-ops-surface-audit FAILED — inventory drifted:")
+        sys.stdout.write("compose-ops-surface-audit FAILED — inventory drifted:\n")
         for v in found:
-            print(f"  - {v}")
-        print(
+            sys.stdout.write(f"  - {v}\n")
+        sys.stdout.write(
             "\nIf the change is intentional, regenerate with "
             "--write-baseline and explain the offset in the PR. "
             "A new long-running unit is operational-surface debt: it needs "
             "offset_of or an unexpired exception with sunset in "
             "scripts/ops-surface-inventory.yaml. See "
-            "docs/runbooks/ops-surface-budget.md."
+            "docs/runbooks/ops-surface-budget.md.\n"
         )
         return 1
     counts = current["counts"]
@@ -612,12 +621,12 @@ def main() -> int:
         for name in current["long_running"]
         if loaded["units"].get(name, {}).get("class") == "accidental"
     )
-    print(
+    sys.stdout.write(
         f"OK: declared={counts['declared_total']} "
         f"long_running={counts['long_running']} "
         f"ephemeral={counts['ephemeral']} "
         f"profiled={counts['profiled']} "
-        f"accidental_osu={accidental}/{loaded['accidental_osu_baseline']}"
+        f"accidental_osu={accidental}/{loaded['accidental_osu_baseline']}\n"
     )
     return 0
 

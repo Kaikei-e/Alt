@@ -16,17 +16,17 @@ import json
 import logging
 import time
 import traceback
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from pydantic import ValidationError
 
 from news_creator.config.config import NewsCreatorConfig
-from news_creator.domain.prompt_boundary import sanitize_untrusted_content
 from news_creator.domain.models import (
     PlanQueryRequest,
     PlanQueryResponse,
     QueryPlan,
 )
+from news_creator.domain.prompt_boundary import sanitize_untrusted_content
 from news_creator.port.llm_provider_port import LLMProviderPort
 
 logger = logging.getLogger(__name__)
@@ -74,15 +74,20 @@ Current Date: {current_date}
 """
 
 
+_MAX_HISTORY_CONTENT_CHARS = 300
+
+
 class PlanQueryUsecase:
     """Plans retrieval strategy for a user query using LLM structured output."""
 
-    def __init__(self, config: NewsCreatorConfig, llm_provider: LLMProviderPort):
+    def __init__(
+        self, config: NewsCreatorConfig, llm_provider: LLMProviderPort
+    ) -> None:
         self.config = config
         self.llm_provider = llm_provider
 
     @property
-    def PLANNING_MODEL(self) -> str:
+    def PLANNING_MODEL(self) -> str:  # noqa: N802 - public property name kept for compatibility
         """Model for query planning (from config)."""
         configured = getattr(self.config, "rag_query_model", "gemma4-e4b-12k")
         return configured if isinstance(configured, str) else "gemma4-e4b-12k"
@@ -92,7 +97,7 @@ class PlanQueryUsecase:
 
         try:
             plan = await self._plan_with_llm(request)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - LLM planning failure falls back to deterministic plan
             logger.warning(
                 "plan_query_llm_failed",
                 extra={
@@ -158,7 +163,11 @@ class PlanQueryUsecase:
             for msg in request.conversation_history[-6:]:
                 # History quotes earlier answers, which quote article bodies.
                 content = sanitize_untrusted_content(msg.content)
-                content = content[:300] + "..." if len(content) > 300 else content
+                content = (
+                    content[:_MAX_HISTORY_CONTENT_CHARS] + "..."
+                    if len(content) > _MAX_HISTORY_CONTENT_CHARS
+                    else content
+                )
                 lines.append(f"{msg.role}: {content}")
             context_section += "Conversation:\n" + "\n".join(lines) + "\n\n"
 
@@ -168,7 +177,7 @@ class PlanQueryUsecase:
                 f"Article scope: {article_title} [id: {request.article_id}]\n\n"
             )
 
-        current_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        current_date = datetime.now(UTC).strftime("%Y-%m-%d")
 
         return PLAN_QUERY_PROMPT.format(
             current_date=current_date,

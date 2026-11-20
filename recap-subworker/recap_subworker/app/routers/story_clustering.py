@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from typing import Annotated
 
 from fastapi import APIRouter, Depends
 
@@ -19,7 +20,7 @@ router = APIRouter()
 @router.post("/cluster-stories", response_model=ClusterStoriesResponse)
 async def cluster_stories_endpoint(
     request: ClusterStoriesRequest,
-    service: StoryClustererService = Depends(get_story_clusterer_service_dep),
+    service: Annotated[StoryClustererService, Depends(get_story_clusterer_service_dep)],
 ) -> ClusterStoriesResponse:
     """Cluster story items using agglomerative clustering with cosine distance and time decay."""
     return await asyncio.to_thread(

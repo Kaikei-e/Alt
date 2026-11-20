@@ -8,6 +8,10 @@ import pytest
 
 from acolyte.domain.hyde import build_hyde_messages, build_hyde_prompt, sanitize_hyde_output
 
+CUSTOM_HYDE_MAX_CHARS = 120
+MIN_REASONABLE_EN_HYDE_CHARS = 80
+MIN_REASONABLE_JA_HYDE_CHARS = 40
+
 
 class TestBuildHydePrompt:
     def test_en_target_builds_english_instructions(self) -> None:
@@ -90,9 +94,9 @@ class TestSanitizeHydeOutput:
 
     def test_caps_length_to_max_chars(self) -> None:
         raw = "a" * 2000 + " The 2026 AI chip market continues to expand."
-        out = sanitize_hyde_output(raw, "en", max_chars=120)
+        out = sanitize_hyde_output(raw, "en", max_chars=CUSTOM_HYDE_MAX_CHARS)
         assert out is not None
-        assert len(out) <= 120
+        assert len(out) <= CUSTOM_HYDE_MAX_CHARS
 
     def test_accepts_reasonable_english_hyde(self) -> None:
         raw = (
@@ -104,7 +108,7 @@ class TestSanitizeHydeOutput:
         )
         out = sanitize_hyde_output(raw, "en")
         assert out is not None
-        assert len(out) > 80
+        assert len(out) > MIN_REASONABLE_EN_HYDE_CHARS
 
     def test_rejects_ja_output_without_enough_cjk(self) -> None:
         raw = "short"
@@ -118,7 +122,7 @@ class TestSanitizeHydeOutput:
         )
         out = sanitize_hyde_output(raw, "ja")
         assert out is not None
-        assert len(out) > 40
+        assert len(out) > MIN_REASONABLE_JA_HYDE_CHARS
 
     def test_rejects_passage_with_injection_like_tag_bleed(self) -> None:
         # The model returns nothing but XML — after stripping we get empty.

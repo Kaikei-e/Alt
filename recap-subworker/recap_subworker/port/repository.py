@@ -58,7 +58,7 @@ class RunRepositoryPort(Protocol):
         """Upsert diagnostic entries for a run."""
         ...
 
-    async def upsert_run_diagnostics(
+    async def upsert_run_diagnostics(  # noqa: PLR0913 - port signature; implementers outside this change
         self,
         run_id: int,
         *,

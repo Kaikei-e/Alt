@@ -15,7 +15,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -67,7 +67,7 @@ func TestRestHandleExportOPML_Success(t *testing.T) {
 
 	container := createExportContainer(links, nil)
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/rss-feed-link/export/opml", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/rss-feed-link/export/opml", nil)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
@@ -103,7 +103,7 @@ func TestRestHandleImportOPML_Success(t *testing.T) {
 
 	body, contentType := createMultipartForm(t, "file", "feeds.opml", opmlContent)
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/rss-feed-link/import/opml", body)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/rss-feed-link/import/opml", body)
 	req.Header.Set("Content-Type", contentType)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
@@ -127,7 +127,7 @@ func TestRestHandleImportOPML_MissingFile(t *testing.T) {
 
 	container := createImportContainer(nil, nil)
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/rss-feed-link/import/opml", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/rss-feed-link/import/opml", nil)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
@@ -146,7 +146,7 @@ func TestRestHandleImportOPML_FileTooLarge(t *testing.T) {
 	largeContent := strings.Repeat("x", maxOPMLFileSize+1)
 	body, contentType := createMultipartForm(t, "file", "large.opml", largeContent)
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/rss-feed-link/import/opml", body)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/rss-feed-link/import/opml", body)
 	req.Header.Set("Content-Type", contentType)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)

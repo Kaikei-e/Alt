@@ -15,18 +15,20 @@ Usage:
 
 import argparse
 import dataclasses
+import sys
 from pathlib import Path
 
+import joblib
 import numpy as np
 import pandas as pd
 from sklearn.metrics.pairwise import cosine_similarity
 
+from recap_subworker.infra.config import get_settings
+from recap_subworker.services.embedder import Embedder, EmbedderConfig
 
-def load_embedder():
+
+def load_embedder() -> Embedder:
     """Load the E5 embedder."""
-    from recap_subworker.infra.config import get_settings
-    from recap_subworker.services.embedder import Embedder, EmbedderConfig
-
     settings = get_settings()
 
     config = dataclasses.replace(
@@ -39,7 +41,7 @@ def load_embedder():
     return Embedder(config)
 
 
-def compute_embeddings(texts: list[str], embedder) -> np.ndarray:
+def compute_embeddings(texts: list[str], embedder: Embedder) -> np.ndarray:
     """Compute E5 embeddings for texts."""
     # E5 expects "passage: " prefix
     prefixed = [f"passage: {t}" for t in texts]
@@ -49,7 +51,7 @@ def compute_embeddings(texts: list[str], embedder) -> np.ndarray:
 def validate_semantic_similarity(
     augmented_texts: list[str],
     original_texts: list[str],
-    embedder,
+    embedder: Embedder,
     min_similarity: float = 0.7,
     batch_size: int = 100,
 ) -> list[tuple[int, float]]:
@@ -73,7 +75,7 @@ def validate_semantic_similarity(
         orig_embs = compute_embeddings(orig_batch, embedder)
 
         # Compute pairwise similarities
-        for i, (aug_emb, orig_emb) in enumerate(zip(aug_embs, orig_embs)):
+        for i, (aug_emb, orig_emb) in enumerate(zip(aug_embs, orig_embs, strict=True)):
             similarity = cosine_similarity(aug_emb.reshape(1, -1), orig_emb.reshape(1, -1))[0, 0]
 
             if similarity >= min_similarity:
@@ -96,7 +98,7 @@ def validate_length_ratio(
     """
     valid_samples = []
 
-    for i, (aug, orig) in enumerate(zip(augmented_texts, original_texts)):
+    for i, (aug, orig) in enumerate(zip(augmented_texts, original_texts, strict=True)):
         if len(orig) == 0:
             continue
 
@@ -120,14 +122,12 @@ def validate_label_consistency(
         List of (index, confidence) for samples where classifier agrees
     """
     try:
-        import joblib
-
         clf = joblib.load(Path("data/genre_classifier.joblib"))
         tfidf = joblib.load(Path("data/tfidf_vectorizer.joblib"))
         svd = joblib.load(Path("data/tfidf_svd.joblib"))
         scaler = joblib.load(Path("data/feature_scaler.joblib"))
     except FileNotFoundError:
-        print("WARNING: Classifier not found, skipping label consistency check")
+        sys.stdout.write("WARNING: Classifier not found, skipping label consistency check\n")
         return [(i, 1.0) for i in range(len(texts))]
 
     valid_samples = []
@@ -156,7 +156,9 @@ def validate_label_consistency(
         predictions = clf.predict(combined_scaled)
         classes = clf.classes_
 
-        for i, (pred, prob, expected) in enumerate(zip(predictions, probs, batch_labels)):
+        for i, (pred, prob, expected) in enumerate(
+            zip(predictions, probs, batch_labels, strict=True)
+        ):
             global_idx = batch_start + i
 
             if pred == expected:
@@ -170,7 +172,7 @@ def validate_label_consistency(
     return valid_samples
 
 
-def main():
+def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Validate augmented data quality")
     parser.add_argument(
         "--input",
@@ -225,182 +227,199 @@ def main():
         action="store_true",
         help="Skip label consistency check",
     )
+    return parser.parse_args()
 
-    args = parser.parse_args()
 
-    # Load augmented data
-    print("Loading augmented data...")
+def _load_augmented_data(paths: list[Path]) -> pd.DataFrame | None:
+    sys.stdout.write("Loading augmented data...\n")
     aug_dfs = []
-    for path in args.input:
+    for path in paths:
         if path.exists():
             df = pd.read_csv(path)
             df["source_file"] = path.name
             aug_dfs.append(df)
-            print(f"  Loaded {len(df)} samples from {path}")
+            sys.stdout.write(f"  Loaded {len(df)} samples from {path}\n")
         else:
-            print(f"  WARNING: {path} not found")
+            sys.stdout.write(f"  WARNING: {path} not found\n")
 
     if not aug_dfs:
-        print("ERROR: No augmented data files found")
-        return
+        sys.stdout.write("ERROR: No augmented data files found\n")
+        return None
 
     aug_df = pd.concat(aug_dfs, ignore_index=True)
-    print(f"Total augmented samples: {len(aug_df)}")
+    sys.stdout.write(f"Total augmented samples: {len(aug_df)}\n")
+    return aug_df
 
-    # Load original data for similarity comparison
-    print(f"Loading original data from {args.original}...")
-    orig_df = pd.read_csv(args.original)
-    orig_df = orig_df.dropna(subset=["content", "genre"])
-    print(f"Original samples: {len(orig_df)}")
 
-    # Create lookup for original samples by genre
-    orig_by_genre = {}
-    for genre, group in orig_df.groupby("genre"):
-        orig_by_genre[genre] = group["content"].tolist()
-
-    # Track validation results
-    validation_mask = np.ones(len(aug_df), dtype=bool)
-    similarity_scores = np.zeros(len(aug_df))
-    confidence_scores = np.zeros(len(aug_df))
-
-    # 1. Length ratio validation
-    print("\n1. Validating length ratios...")
+def _validate_lengths(
+    aug_df: pd.DataFrame,
+    orig_by_genre: dict[object, list[str]],
+    validation_mask: np.ndarray,
+    min_ratio: float,
+    max_ratio: float,
+) -> None:
+    sys.stdout.write("\n1. Validating length ratios...\n")
     valid_length = 0
     for i, row in aug_df.iterrows():
         genre = row["genre"]
         aug_text = row["content"]
 
         if orig_by_genre.get(genre):
-            # Compare to average original length
             avg_orig_len = np.mean([len(t) for t in orig_by_genre[genre]])
             ratio = len(aug_text) / avg_orig_len
-
-            if not (args.length_ratio_min <= ratio <= args.length_ratio_max):
+            if not (min_ratio <= ratio <= max_ratio):
                 validation_mask[i] = False
             else:
                 valid_length += 1
         else:
-            # No original samples to compare, pass by default
             valid_length += 1
 
-    print(f"  Length ratio valid: {valid_length}/{len(aug_df)}")
+    sys.stdout.write(f"  Length ratio valid: {valid_length}/{len(aug_df)}\n")
 
-    # 2. Semantic similarity validation
-    if not args.skip_similarity:
-        print("\n2. Validating semantic similarity...")
-        embedder = load_embedder()
 
-        # For each augmented sample, compare to a random original from same genre
-        batch_size = 100
-        valid_sim = 0
-        batch_end = 0
+def _validate_similarities(
+    aug_df: pd.DataFrame,
+    orig_by_genre: dict[object, list[str]],
+    validation_mask: np.ndarray,
+    similarity_scores: np.ndarray,
+    min_similarity: float,
+) -> None:
+    sys.stdout.write("\n2. Validating semantic similarity...\n")
+    embedder = load_embedder()
+    batch_size = 100
+    valid_sim = 0
+    batch_end = 0
 
-        for batch_start in range(0, len(aug_df), batch_size):
-            batch_end = min(batch_start + batch_size, len(aug_df))
-            batch = aug_df.iloc[batch_start:batch_end]
+    for batch_start in range(0, len(aug_df), batch_size):
+        batch_end = min(batch_start + batch_size, len(aug_df))
+        batch = aug_df.iloc[batch_start:batch_end]
+        aug_texts = batch["content"].tolist()
+        genres = batch["genre"].tolist()
 
-            aug_texts = batch["content"].tolist()
-            genres = batch["genre"].tolist()
+        orig_refs = [
+            orig_by_genre[genre][0] if orig_by_genre.get(genre) else aug_texts[genres.index(genre)]
+            for genre in genres
+        ]
 
-            # Get reference originals
-            orig_refs = []
-            for genre in genres:
-                if orig_by_genre.get(genre):
-                    orig_refs.append(orig_by_genre[genre][0])  # First sample as reference
-                else:
-                    orig_refs.append(aug_texts[genres.index(genre)])  # Self reference
+        aug_embs = compute_embeddings(aug_texts, embedder)
+        orig_embs = compute_embeddings(orig_refs, embedder)
 
-            # Compute similarities
-            aug_embs = compute_embeddings(aug_texts, embedder)
-            orig_embs = compute_embeddings(orig_refs, embedder)
+        for i, (aug_emb, orig_emb) in enumerate(zip(aug_embs, orig_embs, strict=True)):
+            global_idx = batch_start + i
+            if not validation_mask[global_idx]:
+                continue
 
-            for i, (aug_emb, orig_emb) in enumerate(zip(aug_embs, orig_embs)):
-                global_idx = batch_start + i
+            similarity = cosine_similarity(aug_emb.reshape(1, -1), orig_emb.reshape(1, -1))[0, 0]
+            similarity_scores[global_idx] = similarity
 
-                if not validation_mask[global_idx]:
-                    continue
+            if similarity < min_similarity:
+                validation_mask[global_idx] = False
+            else:
+                valid_sim += 1
 
-                similarity = cosine_similarity(aug_emb.reshape(1, -1), orig_emb.reshape(1, -1))[
-                    0, 0
-                ]
+        if batch_end % 500 == 0:
+            sys.stdout.write(f"  Processed {batch_end}/{len(aug_df)}...\n")
 
-                similarity_scores[global_idx] = similarity
+    sys.stdout.write(
+        f"  Semantic similarity valid: {valid_sim}/{sum(validation_mask[:batch_end])}\n"
+    )
 
-                if similarity < args.min_similarity:
-                    validation_mask[global_idx] = False
-                else:
-                    valid_sim += 1
 
-            if batch_end % 500 == 0:
-                print(f"  Processed {batch_end}/{len(aug_df)}...")
+def _validate_labels(
+    aug_df: pd.DataFrame,
+    validation_mask: np.ndarray,
+    confidence_scores: np.ndarray,
+    min_confidence: float,
+) -> None:
+    sys.stdout.write("\n3. Validating label consistency...\n")
+    valid_indices = np.where(validation_mask)[0]
+    if len(valid_indices) == 0:
+        return
 
-        print(f"  Semantic similarity valid: {valid_sim}/{sum(validation_mask[:batch_end])}")
-    else:
-        print("\n2. Skipping semantic similarity check")
-        similarity_scores[:] = 1.0
+    valid_texts = aug_df.iloc[valid_indices]["content"].tolist()
+    valid_labels = aug_df.iloc[valid_indices]["genre"].tolist()
+    consistent = validate_label_consistency(
+        valid_texts, valid_labels, min_confidence=min_confidence
+    )
 
-    # 3. Label consistency validation
-    if not args.skip_label_check:
-        print("\n3. Validating label consistency...")
+    consistent_map = dict(consistent)
+    for i, global_idx in enumerate(valid_indices):
+        if i not in consistent_map:
+            validation_mask[global_idx] = False
+        else:
+            confidence_scores[global_idx] = consistent_map[i]
 
-        # Only validate samples that passed previous checks
-        valid_indices = np.where(validation_mask)[0]
+    sys.stdout.write(f"  Label consistency valid: {len(consistent)}/{len(valid_indices)}\n")
 
-        if len(valid_indices) > 0:
-            valid_texts = aug_df.iloc[valid_indices]["content"].tolist()
-            valid_labels = aug_df.iloc[valid_indices]["genre"].tolist()
 
-            consistent = validate_label_consistency(
-                valid_texts,
-                valid_labels,
-                min_confidence=args.min_confidence,
-            )
-
-            # Update mask based on consistency results
-            consistent_set = set(idx for idx, _ in consistent)
-            for i, global_idx in enumerate(valid_indices):
-                if i not in consistent_set:
-                    validation_mask[global_idx] = False
-                else:
-                    # Find confidence for this index
-                    for idx, conf in consistent:
-                        if idx == i:
-                            confidence_scores[global_idx] = conf
-                            break
-
-            print(f"  Label consistency valid: {len(consistent)}/{len(valid_indices)}")
-    else:
-        print("\n3. Skipping label consistency check")
-        confidence_scores[:] = 1.0
-
-    # Create validated dataframe
+def _report_and_save(
+    aug_df: pd.DataFrame,
+    validation_mask: np.ndarray,
+    similarity_scores: np.ndarray,
+    confidence_scores: np.ndarray,
+    output_path: Path,
+) -> None:
     validated_df = aug_df[validation_mask].copy()
     validated_df["similarity_score"] = similarity_scores[validation_mask]
     validated_df["confidence_score"] = confidence_scores[validation_mask]
 
-    print("\n=== Validation Summary ===")
-    print(f"Input samples: {len(aug_df)}")
-    print(f"Validated samples: {len(validated_df)}")
-    print(f"Validation rate: {len(validated_df) / len(aug_df) * 100:.1f}%")
+    sys.stdout.write("\n=== Validation Summary ===\n")
+    sys.stdout.write(f"Input samples: {len(aug_df)}\n")
+    sys.stdout.write(f"Validated samples: {len(validated_df)}\n")
+    sys.stdout.write(f"Validation rate: {len(validated_df) / len(aug_df) * 100:.1f}%\n")
 
-    # Print by genre
-    print("\nValidated samples by genre:")
+    sys.stdout.write("\nValidated samples by genre:\n")
     for genre, count in validated_df["genre"].value_counts().items():
         orig_count = len(aug_df[aug_df["genre"] == genre])
         rate = count / orig_count * 100 if orig_count > 0 else 0
-        print(f"  {genre}: {count}/{orig_count} ({rate:.1f}%)")
+        sys.stdout.write(f"  {genre}: {count}/{orig_count} ({rate:.1f}%)\n")
 
-    # Print by augmentation method
     if "augmentation_method" in validated_df.columns:
-        print("\nValidated samples by augmentation method:")
+        sys.stdout.write("\nValidated samples by augmentation method:\n")
         for method, count in validated_df["augmentation_method"].value_counts().items():
             orig_count = len(aug_df[aug_df["augmentation_method"] == method])
             rate = count / orig_count * 100 if orig_count > 0 else 0
-            print(f"  {method}: {count}/{orig_count} ({rate:.1f}%)")
+            sys.stdout.write(f"  {method}: {count}/{orig_count} ({rate:.1f}%)\n")
 
-    # Save validated data
-    validated_df.to_csv(args.output, index=False)
-    print(f"\nSaved validated data to {args.output}")
+    validated_df.to_csv(output_path, index=False)
+    sys.stdout.write(f"\nSaved validated data to {output_path}\n")
+
+
+def main() -> None:
+    args = _parse_args()
+    aug_df = _load_augmented_data(args.input)
+    if aug_df is None:
+        return
+
+    sys.stdout.write(f"Loading original data from {args.original}...\n")
+    orig_df = pd.read_csv(args.original)
+    orig_df = orig_df.dropna(subset=["content", "genre"])
+    sys.stdout.write(f"Original samples: {len(orig_df)}\n")
+
+    orig_by_genre = {genre: group["content"].tolist() for genre, group in orig_df.groupby("genre")}
+    validation_mask = np.ones(len(aug_df), dtype=bool)
+    similarity_scores = np.zeros(len(aug_df))
+    confidence_scores = np.zeros(len(aug_df))
+
+    _validate_lengths(
+        aug_df, orig_by_genre, validation_mask, args.length_ratio_min, args.length_ratio_max
+    )
+
+    if not args.skip_similarity:
+        _validate_similarities(
+            aug_df, orig_by_genre, validation_mask, similarity_scores, args.min_similarity
+        )
+    else:
+        sys.stdout.write("\n2. Skipping semantic similarity check\n")
+        similarity_scores[:] = 1.0
+
+    if not args.skip_label_check:
+        _validate_labels(aug_df, validation_mask, confidence_scores, args.min_confidence)
+    else:
+        sys.stdout.write("\n3. Skipping label consistency check\n")
+        confidence_scores[:] = 1.0
+
+    _report_and_save(aug_df, validation_mask, similarity_scores, confidence_scores, args.output)
 
 
 if __name__ == "__main__":

@@ -9,6 +9,7 @@ import (
 	"alt/orchestrator/usecase/fetch_article_usecase"
 	"alt/orchestrator/usecase/fetch_articles_usecase"
 	"alt/shared/usecase/fetch_articles_by_tag_usecase"
+
 	// Note: driver/gateway imports are used to construct the usecase, not for direct handler access.
 	"alt/utils/logger"
 	"alt/utils/security"
@@ -25,8 +26,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // stubArticleRepository stands in for the repository fetch_article_usecase
@@ -96,7 +98,7 @@ func (m *MockRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 
 func TestHandleFetchArticle_Compliance(t *testing.T) {
 	// Initialize Logger
-	logger.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger.Logger = slog.New(slog.DiscardHandler)
 
 	// 1. Setup
 	t.Setenv("FEED_ALLOWED_HOSTS", "example.com")
@@ -127,9 +129,9 @@ func TestHandleFetchArticle_Compliance(t *testing.T) {
 	domainStr := "example.com"
 
 	// Helper to create context with user
-	createContext := func() (echo.Context, *httptest.ResponseRecorder) {
+	createContext := func() (*echo.Context, *httptest.ResponseRecorder) {
 		e := echo.New()
-		req := httptest.NewRequest(http.MethodGet, "/?url="+url.QueryEscape(targetURLStr), nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/?url="+url.QueryEscape(targetURLStr), nil)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
 
@@ -160,7 +162,7 @@ func TestHandleFetchArticle_Compliance(t *testing.T) {
 		err := handler(c)
 
 		// Assertions
-		assert.NoError(t, err) // Handler returns error via c.JSON usually, or nil if handled
+		require.NoError(t, err) // Handler returns error via c.JSON usually, or nil if handled
 		assert.Equal(t, http.StatusForbidden, rec.Code)
 		assert.Contains(t, rec.Body.String(), "The request was declined")
 		// A domain already on the list is not written again — the check short
@@ -190,7 +192,7 @@ func TestHandleFetchArticle_Compliance(t *testing.T) {
 		handler := handleFetchArticle(container)
 		err := handler(c)
 
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, http.StatusForbidden, rec.Code)
 		assert.Contains(t, rec.Body.String(), "The request was declined")
 		// The refusal is recorded, so the next reader does not re-fetch
@@ -235,7 +237,7 @@ func TestHandleFetchArticle_Compliance(t *testing.T) {
 		handler := handleFetchArticle(container)
 		err := handler(c)
 
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, http.StatusOK, rec.Code)
 		assert.Contains(t, rec.Body.String(), "Content") // Extracted text
 		assert.Empty(t, repo.declinedSaved, "an allowed fetch must not record a decline")
@@ -277,7 +279,7 @@ func (s *stubArticlesByTagPort) FetchArticlesByTagName(_ context.Context, _ stri
 func callArticleHandler(t *testing.T, handler echo.HandlerFunc, target string, out interface{}) {
 	t.Helper()
 
-	req := httptest.NewRequest(http.MethodGet, target, nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, target, nil)
 	req = req.WithContext(domain.SetUserContext(req.Context(), &domain.UserContext{
 		UserID:    uuid.New(),
 		Email:     "test@example.com",
@@ -385,7 +387,7 @@ func TestHandleFetchArticleTags_RejectsMalformedUUID(t *testing.T) {
 		FetchArticleTagsUsecase: fetch_article_tags_usecase.NewFetchArticleTagsUsecase(port),
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/articles/not-a-uuid/tags", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/articles/not-a-uuid/tags", nil)
 	loginAt := time.Date(2026, 3, 1, 10, 0, 0, 0, time.UTC)
 	req = req.WithContext(domain.SetUserContext(req.Context(), &domain.UserContext{
 		UserID:    uuid.New(),
@@ -398,11 +400,10 @@ func TestHandleFetchArticleTags_RejectsMalformedUUID(t *testing.T) {
 	}))
 	rec := httptest.NewRecorder()
 	c := echo.New().NewContext(req, rec)
-	c.SetParamNames("id")
-	c.SetParamValues("not-a-uuid")
+	c.SetPathValues(echo.PathValues{{Name: "id", Value: "not-a-uuid"}})
 
 	err := handler(c)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 	assert.False(t, port.called)
 }

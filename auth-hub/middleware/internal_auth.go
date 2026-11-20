@@ -4,7 +4,7 @@ import (
 	"crypto/subtle"
 	"net/http"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 const internalAuthHeader = "X-Internal-Auth"
@@ -14,7 +14,7 @@ const internalAuthHeader = "X-Internal-Auth"
 func InternalAuth(sharedSecret string) echo.MiddlewareFunc {
 	secretBytes := []byte(sharedSecret)
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+		return func(c *echo.Context) error {
 			provided := []byte(c.Request().Header.Get(internalAuthHeader))
 			if len(provided) == 0 {
 				return echo.NewHTTPError(http.StatusUnauthorized, "missing internal auth header")

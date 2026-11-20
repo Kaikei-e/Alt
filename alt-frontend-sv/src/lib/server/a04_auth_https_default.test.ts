@@ -20,7 +20,7 @@ describe("A04 — durable Bun default fetch with startup NODE_EXTRA_CA_CERTS", (
 			installedBunVersion = execSync("bun --version", {
 				encoding: "utf-8",
 			}).trim();
-		} catch (err) {
+		} catch {
 			installedBunVersion = "unknown";
 		}
 

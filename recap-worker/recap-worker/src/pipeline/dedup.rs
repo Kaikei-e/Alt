@@ -109,6 +109,77 @@ struct DedupState<'a> {
 }
 
 impl HashDedupStage {
+    fn try_match_exact(
+        signature: &ArticleSignature,
+        articles: &[PreprocessedArticle],
+        state: &mut DedupState<'_>,
+    ) -> bool {
+        let Some(&unique_idx) = state.exact_hashes.get(&signature.primary_hash) else {
+            return false;
+        };
+        let existing_idx = state.unique_signatures[unique_idx].index;
+        if articles[existing_idx].body != articles[signature.index].body {
+            return false;
+        }
+        state.keep_flags[signature.index] = false;
+        state.stats.duplicate_articles += 1;
+        debug!(
+            article_id = %articles[signature.index].id,
+            "dropped duplicate article (exact match)"
+        );
+        state
+            .duplicates_map
+            .entry(unique_idx)
+            .or_default()
+            .push(articles[signature.index].id.clone());
+        true
+    }
+
+    fn try_match_near(
+        &self,
+        signature: &ArticleSignature,
+        articles: &[PreprocessedArticle],
+        state: &mut DedupState<'_>,
+    ) -> bool {
+        let mut candidates: FxHashSet<usize> = FxHashSet::default();
+        for hash in &signature.window_keys {
+            if let Some(indices) = state.window_index.get(hash) {
+                candidates.extend(indices.iter().copied());
+            }
+        }
+
+        for unique_idx in candidates {
+            let other = &state.unique_signatures[unique_idx];
+            if window_similarity(other, signature) >= self.near_duplicate_threshold {
+                state.keep_flags[signature.index] = false;
+                state.stats.duplicate_articles += 1;
+                debug!("dropped duplicate article (near match)");
+                state
+                    .duplicates_map
+                    .entry(unique_idx)
+                    .or_default()
+                    .push(articles[signature.index].id.clone());
+                return true;
+            }
+        }
+        false
+    }
+
+    fn register_unique_signature(signature: ArticleSignature, state: &mut DedupState<'_>) {
+        let unique_idx = state.unique_signatures.len();
+        for hash in &signature.window_keys {
+            state
+                .window_index
+                .entry(*hash)
+                .or_default()
+                .push(unique_idx);
+        }
+        state
+            .exact_hashes
+            .insert(signature.primary_hash, unique_idx);
+        state.unique_signatures.push(signature);
+    }
+
     /// 署名を処理して重複を検出し、keep_flagsとインデックスを更新する。
     fn process_signatures(
         &self,
@@ -123,64 +194,14 @@ impl HashDedupStage {
         for signature in signatures {
             processed_articles += 1;
 
-            if let Some(&unique_idx) = state.exact_hashes.get(&signature.primary_hash) {
-                let existing_idx = state.unique_signatures[unique_idx].index;
-                if articles[existing_idx].body == articles[signature.index].body {
-                    state.keep_flags[signature.index] = false;
-                    state.stats.duplicate_articles += 1;
-                    debug!(
-                        article_id = %articles[signature.index].id,
-                        "dropped duplicate article (exact match)"
-                    );
-                    state
-                        .duplicates_map
-                        .entry(unique_idx)
-                        .or_default()
-                        .push(articles[signature.index].id.clone());
-                    continue;
-                }
+            if Self::try_match_exact(&signature, articles, state) {
+                continue;
             }
-
-            let mut candidates: FxHashSet<usize> = FxHashSet::default();
-            for hash in signature.window_keys.iter() {
-                if let Some(indices) = state.window_index.get(hash) {
-                    candidates.extend(indices.iter().copied());
-                }
-            }
-
-            let mut is_duplicate = false;
-            for unique_idx in candidates {
-                let other = &state.unique_signatures[unique_idx];
-                if window_similarity(other, &signature) >= self.near_duplicate_threshold {
-                    state.keep_flags[signature.index] = false;
-                    state.stats.duplicate_articles += 1;
-                    debug!("dropped duplicate article (near match)");
-                    state
-                        .duplicates_map
-                        .entry(unique_idx)
-                        .or_default()
-                        .push(articles[signature.index].id.clone());
-                    is_duplicate = true;
-                    break;
-                }
-            }
-
-            if is_duplicate {
+            if self.try_match_near(&signature, articles, state) {
                 continue;
             }
 
-            let unique_idx = state.unique_signatures.len();
-            for hash in signature.window_keys.iter() {
-                state
-                    .window_index
-                    .entry(*hash)
-                    .or_default()
-                    .push(unique_idx);
-            }
-            state
-                .exact_hashes
-                .insert(signature.primary_hash, unique_idx);
-            state.unique_signatures.push(signature);
+            Self::register_unique_signature(signature, state);
 
             if processed_articles.is_multiple_of(DEDUP_PROGRESS_INTERVAL) {
                 debug!(
@@ -206,10 +227,11 @@ impl HashDedupStage {
             let semaphore = Arc::clone(&self.semaphore);
 
             let task = tokio::spawn(async move {
+                #[expect(clippy::expect_used, reason = "private semaphore is never closed")]
                 let _permit = semaphore
                     .acquire()
                     .await
-                    .expect("semaphore should not be closed");
+                    .expect("private semaphore is never closed");
 
                 match tokio::task::spawn_blocking(move || deduplicate_sentences(article)).await {
                     Ok(result) => Ok(result),

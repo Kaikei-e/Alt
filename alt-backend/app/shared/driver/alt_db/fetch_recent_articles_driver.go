@@ -94,7 +94,7 @@ func (r *ArticleRepository) FetchRecentArticles(ctx context.Context, since time.
 			&tags,
 		)
 		if err != nil {
-			if err == pgx.ErrNoRows {
+			if errors.Is(err, pgx.ErrNoRows) {
 				logger.Logger.InfoContext(ctx, "no recent articles found", "since", since)
 				return articles, nil
 			}

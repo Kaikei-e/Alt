@@ -16,11 +16,8 @@ fn truncate_for_log(s: &str, max_len: usize) -> &str {
     if s.len() <= max_len {
         return s;
     }
-    let mut end = max_len;
-    while !s.is_char_boundary(end) {
-        end -= 1;
-    }
-    &s[..end]
+    let end = s.floor_char_boundary(max_len);
+    s.get(..end).unwrap_or("")
 }
 
 /// Handler for POST /v1/aggregate (legacy NDJSON logs from rask-log-forwarder)
@@ -144,7 +141,7 @@ mod tests {
 
     /// The 200 this handler returns is a durability ack: rask-log-forwarder
     /// drops its only copy of the batch on any 2xx. Claiming a completed
-    /// ClickHouse write for rows the export port has merely taken makes an
+    /// `ClickHouse` write for rows the export port has merely taken makes an
     /// unrecoverable loss (SIGKILL before the batch is flushed) look like a
     /// clean success in the log.
     #[tokio::test]
@@ -218,5 +215,17 @@ mod tests {
             .expect("handler must answer once the export port resolves")
             .unwrap();
         assert_eq!(status, StatusCode::OK);
+    }
+
+    #[test]
+    fn truncate_for_log_handles_multibyte_utf8_boundaries() {
+        // "日" is 3 bytes (indices 3..6), "本" is 3 bytes (6..9).
+        let input = "abc日本語def";
+        assert_eq!(truncate_for_log(input, 3), "abc");
+        assert_eq!(truncate_for_log(input, 4), "abc");
+        assert_eq!(truncate_for_log(input, 5), "abc");
+        assert_eq!(truncate_for_log(input, 6), "abc日");
+        assert_eq!(truncate_for_log(input, 7), "abc日");
+        assert_eq!(truncate_for_log(input, input.len()), input);
     }
 }

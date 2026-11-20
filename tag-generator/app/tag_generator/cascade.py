@@ -47,7 +47,7 @@ class CascadeDecision:
 class CascadeController:
     """Decision helper implementing a Cost-Sensitive Cascade / EERO-style gating heuristic."""
 
-    def __init__(self, config: CascadeConfig | None = None):
+    def __init__(self, config: CascadeConfig | None = None) -> None:
         self.config = config or CascadeConfig()
         self._lock = threading.Lock()
         self.total_evaluated = 0

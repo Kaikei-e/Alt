@@ -1,9 +1,11 @@
 """reports/japanese.py のテスト"""
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from alt_metrics.models import AnalysisResult, SliTrend
 from alt_metrics.reports.japanese import format_table, generate_japanese_report
+
+_EXPECTED_SINGLE_ROW_TABLE_LINES = 3  # header + separator + 1 data row
 
 
 class TestFormatTable:
@@ -54,7 +56,7 @@ class TestFormatTable:
 
         rows = result.strip().split("\n")
         # ヘッダー・セパレーター行を除いたデータ行は1行のみ（注入されていない）
-        assert len(rows) == 3
+        assert len(rows) == _EXPECTED_SINGLE_ROW_TABLE_LINES
         assert "error \\| injected \\| row" in result
 
     def test_escapes_newlines_in_values(self) -> None:
@@ -63,7 +65,7 @@ class TestFormatTable:
         result = format_table(data)
 
         rows = result.strip().split("\n")
-        assert len(rows) == 3
+        assert len(rows) == _EXPECTED_SINGLE_ROW_TABLE_LINES
         assert "line1 line2 line3" in result
 
 
@@ -139,13 +141,13 @@ class TestGenerateJapaneseReport:
             hours_analyzed=24,
             sli_trends=[
                 SliTrend(
-                    time_bucket=datetime(2026, 1, 19, 12, 0, 0),
+                    time_bucket=datetime(2026, 1, 19, 12, 0, 0, tzinfo=UTC),
                     service="alt-backend",
                     metric="error_rate",
                     value=0.005,
                 ),
                 SliTrend(
-                    time_bucket=datetime(2026, 1, 19, 11, 55, 0),
+                    time_bucket=datetime(2026, 1, 19, 11, 55, 0, tzinfo=UTC),
                     service="alt-backend",
                     metric="error_rate",
                     value=0.01,

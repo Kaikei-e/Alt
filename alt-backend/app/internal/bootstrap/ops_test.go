@@ -52,7 +52,7 @@ func TestNewOpsHandler(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			rec := httptest.NewRecorder()
-			h.ServeHTTP(rec, httptest.NewRequest(tt.method, tt.path, nil))
+			h.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), tt.method, tt.path, nil))
 			if rec.Code != tt.wantStatus {
 				t.Errorf("%s %s = %d, want %d", tt.method, tt.path, rec.Code, tt.wantStatus)
 			}
@@ -65,7 +65,7 @@ func TestNewOpsHandlerHealthBody(t *testing.T) {
 	h := NewOpsHandler("alt-data-hub", stubMetrics())
 
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health", nil))
+	h.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health", nil))
 
 	if got := rec.Header().Get("Content-Type"); got != "application/json" {
 		t.Errorf("Content-Type = %q, want application/json", got)
@@ -92,7 +92,7 @@ func TestNewOpsHandlerWithoutMetrics(t *testing.T) {
 	h := NewOpsHandler("alt-backend", nil)
 
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	h.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/metrics", nil))
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Errorf("GET /metrics without an exporter = %d, want %d", rec.Code, http.StatusServiceUnavailable)
 	}
@@ -100,7 +100,7 @@ func TestNewOpsHandlerWithoutMetrics(t *testing.T) {
 	// /health must still answer: the container is running, only the exporter
 	// is absent, and failing the probe would restart-loop a healthy process.
 	rec = httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health", nil))
+	h.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health", nil))
 	if rec.Code != http.StatusOK {
 		t.Errorf("GET /health without an exporter = %d, want 200", rec.Code)
 	}
@@ -115,14 +115,14 @@ func TestNewOpsHandlerWithDeepHealth(t *testing.T) {
 	h := NewOpsHandler("alt-backend", stubMetrics(), WithDeepHealth(deep))
 
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health/deep", nil))
+	h.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health/deep", nil))
 	if rec.Code != http.StatusOK {
 		t.Errorf("GET /health/deep = %d, want 200", rec.Code)
 	}
 
 	// Cheap liveness must stay independent of the deep handler.
 	rec = httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health", nil))
+	h.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health", nil))
 	if rec.Code != http.StatusOK {
 		t.Errorf("GET /health = %d, want 200", rec.Code)
 	}

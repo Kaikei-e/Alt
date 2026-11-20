@@ -129,18 +129,19 @@ class BERTScoreEvaluator:
             RuntimeError: If bert-score is not available.
         """
         if not BERT_SCORE_AVAILABLE:
-            raise RuntimeError("bert-score is not installed. Install with: pip install bert-score")
+            msg = "bert-score is not installed. Install with: pip install bert-score"
+            raise RuntimeError(msg)
 
         if len(candidates) != len(references):
-            raise ValueError(
+            msg = (
                 f"Mismatched lengths: {len(candidates)} candidates vs {len(references)} references"
             )
+            raise ValueError(msg)
 
         model_type = self.MODEL_MAP.get(lang)
         if model_type is None:
-            raise ValueError(
-                f"Unsupported language: {lang}. Supported: {list(self.MODEL_MAP.keys())}"
-            )
+            msg = f"Unsupported language: {lang}. Supported: {list(self.MODEL_MAP.keys())}"
+            raise ValueError(msg)
 
         logger.debug(
             "Computing BERTScore",
@@ -151,8 +152,9 @@ class BERTScoreEvaluator:
         )
 
         if bert_score is None:
-            raise RuntimeError("bert_score should be available (checked above)")
-        P, R, F1 = bert_score(
+            msg = "bert_score should be available (checked above)"
+            raise RuntimeError(msg)
+        precision_scores, recall_scores, f1_scores = bert_score(
             candidates,
             references,
             model_type=model_type,
@@ -165,15 +167,15 @@ class BERTScoreEvaluator:
         )
 
         result = BERTScoreResult(
-            precision=P.mean().item(),
-            recall=R.mean().item(),
-            f1=F1.mean().item(),
+            precision=precision_scores.mean().item(),
+            recall=recall_scores.mean().item(),
+            f1=f1_scores.mean().item(),
         )
 
         if return_individual:
-            p_list = P.tolist()
-            r_list = R.tolist()
-            f1_list = F1.tolist()
+            p_list = precision_scores.tolist()
+            r_list = recall_scores.tolist()
+            f1_list = f1_scores.tolist()
             result.individual_scores = [
                 {"precision": p, "recall": r, "f1": f}
                 for p, r, f in zip(p_list, r_list, f1_list, strict=True)

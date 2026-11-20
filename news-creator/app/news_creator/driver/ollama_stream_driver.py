@@ -2,7 +2,11 @@
 
 import json
 import logging
-from typing import Any, AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
+from dataclasses import dataclass
+from http import HTTPStatus
+from typing import Any
+
 import aiohttp
 
 from news_creator.config.config import NewsCreatorConfig
@@ -13,12 +17,219 @@ logger = logging.getLogger(__name__)
 # the model runner. They are fixed by config/Modelfile, never caller-supplied,
 # mirroring the /api/generate path's defense (ollama_gateway.py).
 _RUNNER_STARTUP_PARAMS = frozenset({"num_ctx", "num_batch", "num_keep", "num_gpu"})
+_INITIAL_CHUNK_LOG_LIMIT = 3
+
+
+@dataclass(frozen=True)
+class _StreamSummary:
+    has_data: bool
+    received_done: bool
+    chunks_yielded: int
+    lines_read: int
+    url: str
+    model: str
+    connection_closed_gracefully: bool
+
+
+def _ensure_stream_completed(summary: _StreamSummary) -> None:
+    if not summary.has_data:
+        logger.warning(
+            "Stream completed but no data was received",
+            extra={
+                "lines_read": summary.lines_read,
+                "url": summary.url,
+                "model": summary.model,
+                "connection_closed_gracefully": summary.connection_closed_gracefully,
+            },
+        )
+        return
+    if not summary.received_done:
+        # The stream ended (EOF or a mid-stream connection drop
+        # that was previously treated as a graceful close) without
+        # ever yielding a done=true chunk. Without this check the
+        # partial response looked identical to a complete one to
+        # every downstream consumer.
+        logger.error(
+            "Stream ended without a done=true chunk; response is truncated",
+            extra={
+                "chunks_yielded": summary.chunks_yielded,
+                "lines_read": summary.lines_read,
+                "url": summary.url,
+                "model": summary.model,
+                "connection_closed_gracefully": summary.connection_closed_gracefully,
+            },
+        )
+        msg = (
+            f"Ollama stream for model={summary.model} ended before a done=true chunk was "
+            f"received (chunks_yielded={summary.chunks_yielded}); response is truncated"
+        )
+        raise RuntimeError(msg)
+    logger.info(
+        "Stream completed successfully",
+        extra={
+            "chunks_yielded": summary.chunks_yielded,
+            "lines_read": summary.lines_read,
+            "url": summary.url,
+            "model": summary.model,
+            "connection_closed_gracefully": summary.connection_closed_gracefully,
+        },
+    )
+
+
+@dataclass
+class _StreamProgress:
+    url: str
+    model: str
+    lines_read: int = 0
+    chunks_yielded: int = 0
+    has_data: bool = False
+    received_done: bool = False
+    connection_closed_gracefully: bool = False
+
+
+def _validate_stream_payload(payload: dict[str, Any]) -> tuple[str, str]:
+    if not payload.get("prompt"):
+        msg = "payload must contain 'prompt'"
+        raise ValueError(msg)
+
+    if not payload.get("stream", False):
+        msg = "OllamaStreamDriver requires stream=True. Use OllamaDriver for non-streaming requests."
+        raise ValueError(msg)
+
+    model = str(payload.get("model", "unknown"))
+    prompt = str(payload.get("prompt", ""))
+    prompt_length = len(prompt)
+    payload_size_estimate = len(json.dumps(payload))
+    estimated_tokens = prompt_length // 4  # Rough estimate: 1 token ≈ 4 chars
+
+    logger.info(
+        "Sending streaming prompt to Ollama: prompt_length=%s chars, "
+        "estimated_tokens=%s, model=%s, payload_size=%s bytes",
+        prompt_length,
+        estimated_tokens,
+        model,
+        payload_size_estimate,
+    )
+    return model, prompt
+
+
+async def _raise_for_stream_error(
+    response: aiohttp.ClientResponse, url: str, model: str
+) -> None:
+    text_body = await response.text()
+    error_msg = (
+        f"Ollama API returned error: HTTP {response.status}. "
+        f"Response body: {text_body[:500]}"
+    )
+    logger.error(
+        error_msg,
+        extra={
+            "status": response.status,
+            "body": text_body[:500],
+            "url": url,
+            "model": model,
+        },
+    )
+    msg = f"Ollama API error: HTTP {response.status} - {text_body[:200]}"
+    raise RuntimeError(msg)
+
+
+def _decode_stream_line(line: str, progress: _StreamProgress) -> dict[str, Any] | None:
+    try:
+        parsed = json.loads(line)
+    except json.JSONDecodeError:
+        logger.exception(
+            "Failed to decode stream line",
+            extra={
+                "line_preview": line[:200] if line else None,
+                "lines_read": progress.lines_read,
+                "url": progress.url,
+                "model": progress.model,
+            },
+        )
+        return None
+    progress.chunks_yielded += 1
+    if parsed.get("done"):
+        progress.received_done = True
+    if (
+        progress.chunks_yielded <= _INITIAL_CHUNK_LOG_LIMIT
+        or progress.chunks_yielded % 50 == 0
+    ):
+        logger.info(
+            "Yielding chunk from Ollama stream",
+            extra={
+                "chunk_number": progress.chunks_yielded,
+                "lines_read": progress.lines_read,
+                "url": progress.url,
+                "model": progress.model,
+            },
+        )
+    return parsed
+
+
+def _handle_inner_connection_error(
+    conn_err: aiohttp.ClientConnectionError, progress: _StreamProgress
+) -> None:
+    if progress.has_data:
+        logger.warning(
+            "Connection closed during streaming, but data was received",
+            extra={
+                "error": str(conn_err),
+                "error_type": type(conn_err).__name__,
+                "lines_read": progress.lines_read,
+                "chunks_yielded": progress.chunks_yielded,
+                "url": progress.url,
+                "model": progress.model,
+                "has_data": progress.has_data,
+            },
+        )
+        progress.connection_closed_gracefully = True
+        return
+    logger.exception(
+        "Connection closed before any data was received",
+        extra={
+            "error": str(conn_err),
+            "error_type": type(conn_err).__name__,
+            "url": progress.url,
+            "model": progress.model,
+        },
+    )
+    raise conn_err
+
+
+def _handle_outer_connection_error(
+    conn_err: aiohttp.ClientConnectionError, progress: _StreamProgress
+) -> None:
+    if not progress.has_data:
+        logger.exception(
+            "Connection error during streaming with no data received",
+            extra={
+                "error": str(conn_err),
+                "error_type": type(conn_err).__name__,
+                "lines_read": progress.lines_read,
+                "chunks_yielded": progress.chunks_yielded,
+                "url": progress.url,
+                "model": progress.model,
+            },
+        )
+        raise conn_err
+    logger.warning(
+        "Connection error during streaming, but partial data was received",
+        extra={
+            "error": str(conn_err),
+            "error_type": type(conn_err).__name__,
+            "lines_read": progress.lines_read,
+            "chunks_yielded": progress.chunks_yielded,
+            "url": progress.url,
+            "model": progress.model,
+        },
+    )
 
 
 class OllamaStreamDriver:
     """HTTP client for Ollama API (streaming requests only)."""
 
-    def __init__(self, config: NewsCreatorConfig):
+    def __init__(self, config: NewsCreatorConfig) -> None:
         """Initialize Ollama stream driver with configuration."""
         self.config = config
         self.session: aiohttp.ClientSession | None = None
@@ -76,7 +287,7 @@ class OllamaStreamDriver:
 
     async def chat_stream(
         self, payload: dict[str, Any]
-    ) -> AsyncIterator[dict[str, Any]]:
+    ) -> AsyncGenerator[dict[str, Any]]:
         """Proxy chat requests through Ollama /api/chat with think=false.
 
         Forwards messages directly to Ollama's /api/chat endpoint, letting
@@ -93,7 +304,8 @@ class OllamaStreamDriver:
             Response chunks in /api/chat format (with message.role and message.content)
         """
         if not payload.get("messages"):
-            raise ValueError("payload must contain 'messages'")
+            msg = "payload must contain 'messages'"
+            raise ValueError(msg)
 
         if self.session is None or self.session.closed:
             await self.initialize()
@@ -123,15 +335,17 @@ class OllamaStreamDriver:
         )
 
         if self.session is None:
-            raise RuntimeError("HTTP session is not initialized")
+            msg = "HTTP session is not initialized"
+            raise RuntimeError(msg)
         async with self.session.post(
             url, json=chat_payload, allow_redirects=False
         ) as response:
-            if response.status != 200:
+            if response.status != HTTPStatus.OK:
                 text_body = await response.text()
-                raise RuntimeError(
+                msg = (
                     f"Ollama chat API error: HTTP {response.status} - {text_body[:200]}"
                 )
+                raise RuntimeError(msg)
 
             async for line_bytes in response.content:
                 line = line_bytes.decode("utf-8").strip()
@@ -162,7 +376,8 @@ class OllamaStreamDriver:
             RuntimeError: If Ollama returns an error
         """
         if not payload.get("messages"):
-            raise ValueError("payload must contain 'messages'")
+            msg = "payload must contain 'messages'"
+            raise ValueError(msg)
 
         if self.session is None or self.session.closed:
             await self.initialize()
@@ -197,15 +412,17 @@ class OllamaStreamDriver:
         )
 
         if self.session is None:
-            raise RuntimeError("HTTP session is not initialized")
+            msg = "HTTP session is not initialized"
+            raise RuntimeError(msg)
         async with self.session.post(
             url, json=chat_payload, allow_redirects=False
         ) as response:
-            if response.status != 200:
+            if response.status != HTTPStatus.OK:
                 text_body = await response.text()
-                raise RuntimeError(
+                msg = (
                     f"Ollama chat API error: HTTP {response.status} - {text_body[:200]}"
                 )
+                raise RuntimeError(msg)
 
             return await response.json()
 
@@ -225,229 +442,74 @@ class OllamaStreamDriver:
             ValueError: If payload is invalid or stream is not True
             RuntimeError: If Ollama service returns error
         """
-        if not payload.get("prompt"):
-            raise ValueError("payload must contain 'prompt'")
-
-        if not payload.get("stream", False):
-            raise ValueError(
-                "OllamaStreamDriver requires stream=True. Use OllamaDriver for non-streaming requests."
-            )
+        model, _ = _validate_stream_payload(payload)
 
         if self.session is None or self.session.closed:
             await self.initialize()
 
         url = f"{self.config.llm_service_url.rstrip('/')}/api/generate"
-        model = payload.get("model", "unknown")
-        prompt = payload.get("prompt", "")
-        prompt_length = len(prompt)
-        payload_size_estimate = len(json.dumps(payload))
-        estimated_tokens = prompt_length // 4  # Rough estimate: 1 token ≈ 4 chars
+        if self.session is None:
+            msg = "Session not initialized. Call initialize() first."
+            raise AssertionError(msg)
 
-        logger.info(
-            f"Sending streaming prompt to Ollama: prompt_length={prompt_length} chars, "
-            f"estimated_tokens={estimated_tokens}, model={model}, payload_size={payload_size_estimate} bytes"
-        )
-
-        if not (self.session is not None):
-            raise AssertionError("Session not initialized. Call initialize() first.")
         async with self.session.post(
             url, json=payload, allow_redirects=False
         ) as response:
-            if response.status != 200:
-                text_body = await response.text()
-                error_msg = (
-                    f"Ollama API returned error: HTTP {response.status}. "
-                    f"Response body: {text_body[:500]}"
-                )
-                logger.error(
-                    error_msg,
-                    extra={
-                        "status": response.status,
-                        "body": text_body[:500],
-                        "url": url,
-                        "model": model,
-                    },
-                )
-                raise RuntimeError(
-                    f"Ollama API error: HTTP {response.status} - {text_body[:200]}"
-                )
+            if response.status != HTTPStatus.OK:
+                await _raise_for_stream_error(response, url, model)
 
             logger.info(
                 "Starting to read streaming response from Ollama",
-                extra={
-                    "url": url,
-                    "model": model,
-                },
+                extra={"url": url, "model": model},
             )
-
-            lines_read = 0
-            chunks_yielded = 0
-            has_data = False
-            received_done = False
-            connection_closed_gracefully = False
+            progress = _StreamProgress(url=url, model=model)
 
             try:
-                # Read line by line (Ollama returns NDJSON - newline-delimited JSON)
                 while True:
                     try:
                         line_bytes = await response.content.readline()
                         if not line_bytes:
-                            # EOF reached
-                            connection_closed_gracefully = True
+                            progress.connection_closed_gracefully = True
                             break
 
-                        lines_read += 1
-                        # Decode bytes to string and strip whitespace
+                        progress.lines_read += 1
                         line = line_bytes.decode("utf-8").strip()
-
                         if not line:
-                            # Empty line, skip
                             continue
 
-                        has_data = True
-                        try:
-                            parsed = json.loads(line)
-                            chunks_yielded += 1
-                            if parsed.get("done"):
-                                received_done = True
-                            if chunks_yielded <= 3 or chunks_yielded % 50 == 0:
-                                logger.info(
-                                    "Yielding chunk from Ollama stream",
-                                    extra={
-                                        "chunk_number": chunks_yielded,
-                                        "lines_read": lines_read,
-                                        "url": url,
-                                        "model": model,
-                                    },
-                                )
+                        progress.has_data = True
+                        parsed = _decode_stream_line(line, progress)
+                        if parsed is not None:
                             yield parsed
-                        except json.JSONDecodeError:
-                            logger.error(
-                                "Failed to decode stream line",
-                                extra={
-                                    "line_preview": line[:200] if line else None,
-                                    "lines_read": lines_read,
-                                    "url": url,
-                                    "model": model,
-                                },
-                                exc_info=True,
-                            )
-
                     except aiohttp.ClientConnectionError as conn_err:
-                        # Connection was closed - this can happen during streaming
-                        # If we have data, log warning but don't raise - let the stream end naturally
-                        if has_data:
-                            logger.warning(
-                                "Connection closed during streaming, but data was received",
-                                extra={
-                                    "error": str(conn_err),
-                                    "error_type": type(conn_err).__name__,
-                                    "lines_read": lines_read,
-                                    "chunks_yielded": chunks_yielded,
-                                    "url": url,
-                                    "model": model,
-                                    "has_data": has_data,
-                                },
-                            )
-                            # Break the loop to end the stream gracefully
-                            connection_closed_gracefully = True
-                            break
-                        else:
-                            # No data received, this is a real error
-                            logger.error(
-                                "Connection closed before any data was received",
-                                extra={
-                                    "error": str(conn_err),
-                                    "error_type": type(conn_err).__name__,
-                                    "url": url,
-                                    "model": model,
-                                },
-                                exc_info=True,
-                            )
-                            raise
+                        _handle_inner_connection_error(conn_err, progress)
+                        break
 
-                if not has_data:
-                    logger.warning(
-                        "Stream completed but no data was received",
-                        extra={
-                            "lines_read": lines_read,
-                            "url": url,
-                            "model": model,
-                            "connection_closed_gracefully": connection_closed_gracefully,
-                        },
+                _ensure_stream_completed(
+                    _StreamSummary(
+                        has_data=progress.has_data,
+                        received_done=progress.received_done,
+                        chunks_yielded=progress.chunks_yielded,
+                        lines_read=progress.lines_read,
+                        url=url,
+                        model=model,
+                        connection_closed_gracefully=progress.connection_closed_gracefully,
                     )
-                elif not received_done:
-                    # The stream ended (EOF or a mid-stream connection drop
-                    # that was previously treated as a graceful close) without
-                    # ever yielding a done=true chunk. Without this check the
-                    # partial response looked identical to a complete one to
-                    # every downstream consumer.
-                    logger.error(
-                        "Stream ended without a done=true chunk; response is truncated",
-                        extra={
-                            "chunks_yielded": chunks_yielded,
-                            "lines_read": lines_read,
-                            "url": url,
-                            "model": model,
-                            "connection_closed_gracefully": connection_closed_gracefully,
-                        },
-                    )
-                    raise RuntimeError(
-                        f"Ollama stream for model={model} ended before a done=true chunk was "
-                        f"received (chunks_yielded={chunks_yielded}); response is truncated"
-                    )
-                else:
-                    logger.info(
-                        "Stream completed successfully",
-                        extra={
-                            "chunks_yielded": chunks_yielded,
-                            "lines_read": lines_read,
-                            "url": url,
-                            "model": model,
-                            "connection_closed_gracefully": connection_closed_gracefully,
-                        },
-                    )
-
-            except aiohttp.ClientConnectionError as conn_err:
-                # Re-raise connection errors if no data was received
-                if not has_data:
-                    logger.error(
-                        "Connection error during streaming with no data received",
-                        extra={
-                            "error": str(conn_err),
-                            "error_type": type(conn_err).__name__,
-                            "lines_read": lines_read,
-                            "chunks_yielded": chunks_yielded,
-                            "url": url,
-                            "model": model,
-                        },
-                        exc_info=True,
-                    )
-                    raise
-                # If we have data, log and let the stream end naturally
-                logger.warning(
-                    "Connection error during streaming, but partial data was received",
-                    extra={
-                        "error": str(conn_err),
-                        "error_type": type(conn_err).__name__,
-                        "lines_read": lines_read,
-                        "chunks_yielded": chunks_yielded,
-                        "url": url,
-                        "model": model,
-                    },
                 )
 
+            except aiohttp.ClientConnectionError as conn_err:
+                _handle_outer_connection_error(conn_err, progress)
+
             except Exception as stream_err:
-                logger.error(
+                logger.exception(
                     "Error reading from Ollama stream",
                     extra={
                         "error": str(stream_err),
                         "error_type": type(stream_err).__name__,
-                        "lines_read": lines_read,
-                        "chunks_yielded": chunks_yielded,
+                        "lines_read": progress.lines_read,
+                        "chunks_yielded": progress.chunks_yielded,
                         "url": url,
                         "model": model,
                     },
-                    exc_info=True,
                 )
                 raise

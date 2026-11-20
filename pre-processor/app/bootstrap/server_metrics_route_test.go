@@ -19,7 +19,7 @@ func TestHTTPServer_ServesNoMetricsOnTheAPIListener(t *testing.T) {
 	srv := NewHTTPServer(deps, false, "")
 
 	for _, path := range []string{"/metrics", "/metrics/prometheus"} {
-		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil)
 		res := httptest.NewRecorder()
 
 		srv.ServeHTTP(res, req)

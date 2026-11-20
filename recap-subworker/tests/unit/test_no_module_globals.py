@@ -58,8 +58,9 @@ def test_no_forbidden_module_globals() -> None:
         tree = ast.parse(file_path.read_text(encoding="utf-8"), filename=str(file_path))
         assigned = _module_level_assignments(tree)
         violations = assigned & FORBIDDEN_NAMES
-        for name in violations:
-            offenders.append(f"{file_path.relative_to(PACKAGE_ROOT.parent)}: {name}")
+        offenders.extend(
+            f"{file_path.relative_to(PACKAGE_ROOT.parent)}: {name}" for name in violations
+        )
     assert not offenders, "Forbidden module-level globals detected:\n  " + "\n  ".join(
         sorted(offenders)
     )

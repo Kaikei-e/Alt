@@ -16,7 +16,7 @@ func (h *SovereignHandler) ListLenses(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.ListLensesRequest],
 ) (*connect.Response[sovereignv1.ListLensesResponse], error) {
-	userID, err := parseUUIDField("user_id", req.Msg.UserId)
+	userID, err := parseUUIDField("user_id", req.Msg.GetUserId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
@@ -44,7 +44,7 @@ func (h *SovereignHandler) GetLens(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.GetLensRequest],
 ) (*connect.Response[sovereignv1.GetLensResponse], error) {
-	lensID, err := parseUUIDField("lens_id", req.Msg.LensId)
+	lensID, err := parseUUIDField("lens_id", req.Msg.GetLensId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
@@ -79,7 +79,7 @@ func (h *SovereignHandler) GetCurrentLensSelection(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.GetCurrentLensSelectionRequest],
 ) (*connect.Response[sovereignv1.GetCurrentLensSelectionResponse], error) {
-	userID, err := parseUUIDField("user_id", req.Msg.UserId)
+	userID, err := parseUUIDField("user_id", req.Msg.GetUserId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
@@ -103,7 +103,7 @@ func (h *SovereignHandler) GetCurrentLensSelection(
 			}
 		}
 
-		if resp.Found {
+		if resp.GetFound() {
 			storedVersion, err := h.readDB.GetLensVersion(ctx, sel.LensVersionID)
 			if err != nil {
 				return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("GetLensVersion: %w", err))
@@ -113,7 +113,7 @@ func (h *SovereignHandler) GetCurrentLensSelection(
 			}
 		}
 
-		if resp.Found {
+		if resp.GetFound() {
 			resp.Selection = &sovereignv1.CurrentLensSelection{
 				UserId:        sel.UserID.String(),
 				LensId:        sel.LensID.String(),
@@ -131,11 +131,11 @@ func (h *SovereignHandler) ResolveLensFilter(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.ResolveLensFilterRequest],
 ) (*connect.Response[sovereignv1.ResolveLensFilterResponse], error) {
-	userID, err := parseUUIDField("user_id", req.Msg.UserId)
+	userID, err := parseUUIDField("user_id", req.Msg.GetUserId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	lensID, err := parseUUIDPtrField("lens_id", req.Msg.LensId)
+	lensID, err := parseUUIDPtrField("lens_id", req.Msg.GetLensId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
@@ -207,32 +207,32 @@ func (h *SovereignHandler) CreateLens(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.CreateLensRequest],
 ) (*connect.Response[sovereignv1.CreateLensResponse], error) {
-	pl := req.Msg.Lens
+	pl := req.Msg.GetLens()
 	if pl == nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("lens is required"))
 	}
-	lensID, err := parseUUIDField("lens_id", pl.LensId)
+	lensID, err := parseUUIDField("lens_id", pl.GetLensId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	userID, err := parseUUIDField("user_id", pl.UserId)
+	userID, err := parseUUIDField("user_id", pl.GetUserId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	tenantID, err := parseUUIDField("tenant_id", pl.TenantId)
+	tenantID, err := parseUUIDField("tenant_id", pl.GetTenantId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	if pl.CreatedAt == nil {
+	if pl.GetCreatedAt() == nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("created_at is required"))
 	}
 	l := sovereign_db.KnowledgeLens{
 		LensID:      lensID,
 		UserID:      userID,
 		TenantID:    tenantID,
-		Name:        pl.Name,
-		Description: pl.Description,
-		CreatedAt:   pl.CreatedAt.AsTime(),
+		Name:        pl.GetName(),
+		Description: pl.GetDescription(),
+		CreatedAt:   pl.GetCreatedAt().AsTime(),
 	}
 	l.UpdatedAt = l.CreatedAt
 	if err := h.readDB.CreateLens(ctx, l); err != nil {
@@ -245,19 +245,19 @@ func (h *SovereignHandler) CreateLensVersion(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.CreateLensVersionRequest],
 ) (*connect.Response[sovereignv1.CreateLensVersionResponse], error) {
-	pv := req.Msg.Version
+	pv := req.Msg.GetVersion()
 	if pv == nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("version is required"))
 	}
-	lensVersionID, err := parseUUIDField("lens_version_id", pv.LensVersionId)
+	lensVersionID, err := parseUUIDField("lens_version_id", pv.GetLensVersionId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	lensID, err := parseUUIDField("lens_id", pv.LensId)
+	lensID, err := parseUUIDField("lens_id", pv.GetLensId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	if pv.CreatedAt == nil {
+	if pv.GetCreatedAt() == nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("created_at is required"))
 	}
 	storedLens, err := h.readDB.GetLens(ctx, lensID)
@@ -279,14 +279,14 @@ func (h *SovereignHandler) CreateLensVersion(
 	v := sovereign_db.KnowledgeLensVersion{
 		LensVersionID: lensVersionID,
 		LensID:        lensID,
-		QueryText:     pv.QueryText,
-		TagIDs:        pv.TagIds,
-		SourceIDs:     pv.SourceIds,
-		TimeWindow:    pv.TimeWindow,
-		IncludeRecap:  pv.IncludeRecap,
-		IncludePulse:  pv.IncludePulse,
-		SortMode:      pv.SortMode,
-		CreatedAt:     pv.CreatedAt.AsTime(),
+		QueryText:     pv.GetQueryText(),
+		TagIDs:        pv.GetTagIds(),
+		SourceIDs:     pv.GetSourceIds(),
+		TimeWindow:    pv.GetTimeWindow(),
+		IncludeRecap:  pv.GetIncludeRecap(),
+		IncludePulse:  pv.GetIncludePulse(),
+		SortMode:      pv.GetSortMode(),
+		CreatedAt:     pv.GetCreatedAt().AsTime(),
 	}
 	if err := h.readDB.CreateLensVersion(ctx, v); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("CreateLensVersion: %w", err))
@@ -298,23 +298,23 @@ func (h *SovereignHandler) SelectCurrentLens(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.SelectCurrentLensRequest],
 ) (*connect.Response[sovereignv1.SelectCurrentLensResponse], error) {
-	ps := req.Msg.Selection
+	ps := req.Msg.GetSelection()
 	if ps == nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("selection is required"))
 	}
-	userID, err := parseUUIDField("user_id", ps.UserId)
+	userID, err := parseUUIDField("user_id", ps.GetUserId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	lensID, err := parseUUIDField("lens_id", ps.LensId)
+	lensID, err := parseUUIDField("lens_id", ps.GetLensId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	lensVersionID, err := parseUUIDField("lens_version_id", ps.LensVersionId)
+	lensVersionID, err := parseUUIDField("lens_version_id", ps.GetLensVersionId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	if ps.SelectedAt == nil {
+	if ps.GetSelectedAt() == nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("selected_at is required"))
 	}
 	// Check stored owner/tenant
@@ -350,7 +350,7 @@ func (h *SovereignHandler) SelectCurrentLens(
 		UserID:        userID,
 		LensID:        lensID,
 		LensVersionID: lensVersionID,
-		SelectedAt:    ps.SelectedAt.AsTime(),
+		SelectedAt:    ps.GetSelectedAt().AsTime(),
 	}
 	if err := h.readDB.SelectCurrentLens(ctx, c); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("SelectCurrentLens: %w", err))
@@ -362,7 +362,7 @@ func (h *SovereignHandler) ClearCurrentLens(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.ClearCurrentLensRequest],
 ) (*connect.Response[sovereignv1.ClearCurrentLensResponse], error) {
-	userID, err := parseUUIDField("user_id", req.Msg.UserId)
+	userID, err := parseUUIDField("user_id", req.Msg.GetUserId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
@@ -381,7 +381,7 @@ func (h *SovereignHandler) ArchiveLens(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.ArchiveLensRequest],
 ) (*connect.Response[sovereignv1.ArchiveLensResponse], error) {
-	lensID, err := parseUUIDField("lens_id", req.Msg.LensId)
+	lensID, err := parseUUIDField("lens_id", req.Msg.GetLensId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
@@ -451,23 +451,23 @@ func (h *SovereignHandler) AreArticlesVisibleInLens(
 	req *connect.Request[sovereignv1.AreArticlesVisibleInLensRequest],
 ) (*connect.Response[sovereignv1.AreArticlesVisibleInLensResponse], error) {
 	msg := req.Msg
-	if msg.TenantId == "" || msg.UserId == "" {
+	if msg.GetTenantId() == "" || msg.GetUserId() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("tenant_id and user_id are required"))
 	}
-	tenantID, err := uuid.Parse(msg.TenantId)
+	tenantID, err := uuid.Parse(msg.GetTenantId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("invalid tenant_id: %w", err))
 	}
-	userID, err := uuid.Parse(msg.UserId)
+	userID, err := uuid.Parse(msg.GetUserId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("invalid user_id: %w", err))
 	}
 
-	articleIDs := make([]uuid.UUID, 0, len(msg.ArticleIds))
-	for _, idStr := range msg.ArticleIds {
+	articleIDs := make([]uuid.UUID, 0, len(msg.GetArticleIds()))
+	for _, idStr := range msg.GetArticleIds() {
 		id, err := uuid.Parse(idStr)
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInvalidArgument,
@@ -476,7 +476,7 @@ func (h *SovereignHandler) AreArticlesVisibleInLens(
 		articleIDs = append(articleIDs, id)
 	}
 
-	filter := validateAndBuildLensFilter(msg.Filter)
+	filter := validateAndBuildLensFilter(msg.GetFilter())
 
 	visibleMap, err := h.readDB.AreArticlesVisibleInLens(ctx, tenantID, userID, articleIDs, filter)
 	if err != nil {
@@ -495,12 +495,12 @@ func validateAndBuildLensFilter(pb *sovereignv1.LensFilter) *sovereign_db.LensFi
 		return nil
 	}
 	return &sovereign_db.LensFilter{
-		QueryText:    pb.QueryText,
-		TagNames:     pb.TagIds,
-		SourceIDs:    pb.SourceIds,
-		TimeWindow:   pb.TimeWindow,
-		IncludeRecap: pb.IncludeRecap,
-		IncludePulse: pb.IncludePulse,
-		SortMode:     pb.SortMode,
+		QueryText:    pb.GetQueryText(),
+		TagNames:     pb.GetTagIds(),
+		SourceIDs:    pb.GetSourceIds(),
+		TimeWindow:   pb.GetTimeWindow(),
+		IncludeRecap: pb.GetIncludeRecap(),
+		IncludePulse: pb.GetIncludePulse(),
+		SortMode:     pb.GetSortMode(),
 	}
 }

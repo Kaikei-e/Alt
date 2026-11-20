@@ -17,8 +17,7 @@ export function checkResponse(res, name) {
 export function checkHealth(res) {
   const passed = check(res, {
     "health: status 200": (r) => r.status === 200,
-    'health: body contains "healthy"': (r) =>
-      r.body && r.body.includes("healthy"),
+    'health: body contains "healthy"': (r) => r.body && r.body.includes("healthy"),
   });
   successfulChecks.add(passed ? 1 : 0);
   return passed;

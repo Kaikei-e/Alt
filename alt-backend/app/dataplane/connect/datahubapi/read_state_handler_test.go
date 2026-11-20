@@ -3,7 +3,6 @@ package datahubapi
 import (
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"testing"
 	"time"
@@ -184,7 +183,7 @@ func newReadStateHandler(readState *fakeReadStatePort, tagRead *fakeTagReadPort)
 	if tagRead == nil {
 		tagRead = &fakeTagReadPort{}
 	}
-	h := &Handler{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	h := &Handler{logger: slog.New(slog.DiscardHandler)}
 	WithReadStateAndTagCapabilities(readState, tagRead)(h)
 	return h, readState, tagRead
 }
@@ -531,12 +530,12 @@ func TestListSubscriptions_OmitsSubscribedAtForUnfollowedLinks(t *testing.T) {
 
 	followed := resp.Msg.GetSubscriptions()[0]
 	assert.True(t, followed.GetIsSubscribed())
-	require.NotNil(t, followed.SubscribedAt)
+	require.NotNil(t, followed.GetSubscribedAt())
 	assert.Equal(t, subscribedAt, followed.GetSubscribedAt().AsTime())
 
 	unfollowed := resp.Msg.GetSubscriptions()[1]
 	assert.False(t, unfollowed.GetIsSubscribed())
-	assert.Nil(t, unfollowed.SubscribedAt, "a coalesced now() is not a subscription date")
+	assert.Nil(t, unfollowed.GetSubscribedAt(), "a coalesced now() is not a subscription date")
 }
 
 func TestSubscribe_UnknownFeedLinkReturnsNotFound(t *testing.T) {
@@ -659,7 +658,7 @@ func TestFeedTagsToProto_LeavesUnsetTimestampsAbsent(t *testing.T) {
 	tag := resp.Msg.GetTags()[0]
 	assert.Equal(t, "AI", tag.GetTagName())
 	assert.Equal(t, created, tag.GetCreatedAt().AsTime())
-	assert.Nil(t, tag.UpdatedAt, "a column the query never selects must not arrive as an epoch")
+	assert.Nil(t, tag.GetUpdatedAt(), "a column the query never selects must not arrive as an epoch")
 	assert.Empty(t, tag.GetFeedId())
 }
 

@@ -19,24 +19,21 @@ import sys
 try:
     import yaml
 except ImportError as exc:  # pragma: no cover - CI installs PyYAML
-    raise SystemExit("PyYAML is required: pip install 'pyyaml==6.*'") from exc
+    msg = "PyYAML is required: pip install 'pyyaml==6.*'"
+    raise SystemExit(msg) from exc
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 DEFAULT_COMPOSE = REPO_ROOT / "compose" / "observability.yaml"
 
 # GitHub release assets want 3.1.0, compose pins prom/prometheus:v3.1.0.
-PINNED_TAG_RE = re.compile(
-    r"^(?P<repo>[^:@\s]+/[^:@\s]+):(?P<tag>v?(?P<version>\d+(?:\.\d+)+))$"
-)
+PINNED_TAG_RE = re.compile(r"^(?P<repo>[^:@\s]+/[^:@\s]+):(?P<tag>v?(?P<version>\d+(?:\.\d+)+))$")
 EXPECTED_REPOS = {
     "prometheus": "prom/prometheus",
     "alertmanager": "prom/alertmanager",
 }
 
 
-def parse_tool_images(
-    path: pathlib.Path, *, require_alertmanager: bool = True
-) -> dict[str, str]:
+def parse_tool_images(path: pathlib.Path, *, require_alertmanager: bool = True) -> dict[str, str]:
     """Return pinned images/versions from the compose services mapping.
 
     Raises ValueError when the pin is missing, :latest, or unpinned.
@@ -44,15 +41,18 @@ def parse_tool_images(
     try:
         raw = path.read_text(encoding="utf-8")
     except OSError as exc:
-        raise ValueError(f"cannot read compose file {path}: {exc}") from exc
+        msg = f"cannot read compose file {path}: {exc}"
+        raise ValueError(msg) from exc
 
     doc = yaml.safe_load(raw)
     if not isinstance(doc, dict):
-        raise ValueError(f"{path}: compose root must be a mapping")
+        msg = f"{path}: compose root must be a mapping"
+        raise ValueError(msg)  # noqa: TRY004 — main()/tests catch ValueError
 
     services = doc.get("services")
     if not isinstance(services, dict):
-        raise ValueError(f"{path}: compose file has no services mapping")
+        msg = f"{path}: compose file has no services mapping"
+        raise ValueError(msg)  # noqa: TRY004 — main()/tests catch ValueError
 
     prometheus_image = _service_image(services, "prometheus", path)
     result = {
@@ -63,11 +63,10 @@ def parse_tool_images(
     if require_alertmanager or "alertmanager" in services:
         alertmanager_image = _service_image(services, "alertmanager", path)
         result["alertmanager_image"] = alertmanager_image
-        result["alertmanager_version"] = _pinned_version(
-            alertmanager_image, "alertmanager"
-        )
+        result["alertmanager_version"] = _pinned_version(alertmanager_image, "alertmanager")
     elif require_alertmanager:
-        raise ValueError(f"{path}: missing alertmanager image")
+        msg = f"{path}: missing alertmanager image"
+        raise ValueError(msg)
 
     return result
 
@@ -75,14 +74,15 @@ def parse_tool_images(
 def _service_image(services: dict, name: str, path: pathlib.Path) -> str:
     service = services.get(name)
     if not isinstance(service, dict):
-        raise ValueError(f"{path}: missing {name} service")
+        msg = f"{path}: missing {name} service"
+        raise ValueError(msg)  # noqa: TRY004 — main()/tests catch ValueError
     image = service.get("image")
     if image is None or (isinstance(image, str) and not image.strip()):
-        raise ValueError(f"{path}: missing {name} image")
+        msg = f"{path}: missing {name} image"
+        raise ValueError(msg)
     if not isinstance(image, str):
-        raise ValueError(
-            f"{path}: {name} image must be a string pin, got {type(image).__name__}"
-        )
+        msg = f"{path}: {name} image must be a string pin, got {type(image).__name__}"
+        raise ValueError(msg)  # noqa: TRY004 — main()/tests catch ValueError
     return image.strip()
 
 
@@ -90,18 +90,17 @@ def _pinned_version(image: str, service: str) -> str:
     expected_repo = EXPECTED_REPOS[service]
     lowered = image.lower()
     if lowered.endswith(":latest") or lowered.endswith("/latest"):
-        raise ValueError(f"{service} image must not use :latest, got {image!r}")
+        msg = f"{service} image must not use :latest, got {image!r}"
+        raise ValueError(msg)
 
     match = PINNED_TAG_RE.match(image)
     if match is None:
-        raise ValueError(
-            f"{service} image must be {expected_repo}:vMAJOR.MINOR.PATCH, got {image!r}"
-        )
+        msg = f"{service} image must be {expected_repo}:vMAJOR.MINOR.PATCH, got {image!r}"
+        raise ValueError(msg)
     repo = match.group("repo")
     if repo != expected_repo:
-        raise ValueError(
-            f"{service} image repo must be {expected_repo}, got {repo!r}"
-        )
+        msg = f"{service} image repo must be {expected_repo}, got {repo!r}"
+        raise ValueError(msg)
     return match.group("version")
 
 
@@ -143,11 +142,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     try:
-        parsed = parse_tool_images(
-            args.compose, require_alertmanager=args.require_alertmanager
-        )
+        parsed = parse_tool_images(args.compose, require_alertmanager=args.require_alertmanager)
     except ValueError as exc:
-        print(f"::error::{exc}", file=sys.stderr)
+        sys.stderr.write(f"::error::{exc}\n")
         return 1
     if args.github_output:
         sys.stdout.write(github_output_lines(parsed))
@@ -155,13 +152,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.export_shell:
         sys.stdout.write(shell_export_lines(parsed))
         return 0
-    sys.stdout.write(
-        f"prometheus {parsed['prometheus_image']} (v{parsed['prometheus_version']})\n"
-    )
+    sys.stdout.write(f"prometheus {parsed['prometheus_image']} (v{parsed['prometheus_version']})\n")
     if "alertmanager_image" in parsed:
         sys.stdout.write(
-            f"alertmanager {parsed['alertmanager_image']} "
-            f"(v{parsed['alertmanager_version']})\n"
+            f"alertmanager {parsed['alertmanager_image']} (v{parsed['alertmanager_version']})\n"
         )
     return 0
 

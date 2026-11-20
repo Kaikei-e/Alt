@@ -2,7 +2,6 @@ package usecase_test
 
 import (
 	"context"
-	"io"
 	"log/slog"
 	"testing"
 
@@ -11,11 +10,12 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 func TestComparisonStrategy_MergesResults(t *testing.T) {
 	mockRetrieve := new(mockRetrieveContextUsecase)
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	strategy := usecase.NewComparisonStrategy(mockRetrieve, logger)
 
 	assert.Equal(t, "comparison", strategy.Name())
@@ -38,13 +38,13 @@ func TestComparisonStrategy_MergesResults(t *testing.T) {
 	intent := usecase.QueryIntent{IntentType: usecase.IntentComparison, UserQuestion: "RustとGoの違い"}
 
 	output, err := strategy.Retrieve(ctx, input, intent)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotNil(t, output)
-	assert.Greater(t, len(output.Contexts), 0)
+	assert.NotEmpty(t, output.Contexts)
 }
 
 func TestComparisonStrategy_Name(t *testing.T) {
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	strategy := usecase.NewComparisonStrategy(nil, logger)
 	assert.Equal(t, "comparison", strategy.Name())
 }

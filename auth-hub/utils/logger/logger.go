@@ -6,9 +6,9 @@ import (
 	"os"
 	"strings"
 
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/log"
-	"go.opentelemetry.io/otel/log/global"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -59,7 +59,7 @@ type OTelHandler struct {
 
 func NewOTelHandler(level slog.Level) *OTelHandler {
 	return &OTelHandler{
-		logger: global.GetLoggerProvider().Logger("slog-otel-bridge"),
+		logger: otel.GetLoggerProvider().Logger("slog-otel-bridge"),
 		level:  level,
 	}
 }

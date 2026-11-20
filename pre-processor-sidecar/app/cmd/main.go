@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -27,22 +26,6 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
-
-// getNamespace gets the current Kubernetes namespace
-func getNamespace() string {
-	// Try to read from mounted service account token
-	if data, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/namespace"); err == nil {
-		return strings.TrimSpace(string(data))
-	}
-
-	// Fallback to environment variable
-	if ns := os.Getenv("KUBERNETES_NAMESPACE"); ns != "" {
-		return strings.TrimSpace(ns)
-	}
-
-	// Default namespace
-	return "alt-processing"
-}
 
 // SimpleAdminAPIMetricsCollector はシンプルなメトリクス収集実装
 type SimpleAdminAPIMetricsCollector struct {
@@ -134,6 +117,7 @@ func main() {
 	// Use RemoteTokenRepository - Centralized Token Management
 	authTokenManagerURL := os.Getenv("AUTH_TOKEN_MANAGER_URL")
 	if authTokenManagerURL == "" {
+		// #nosec G101 -- default internal service URL, not a credential
 		authTokenManagerURL = "http://auth-token-manager:9201"
 	}
 	logger.Info("Using remote token repository", "url", authTokenManagerURL)

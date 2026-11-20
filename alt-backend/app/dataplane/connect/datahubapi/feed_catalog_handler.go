@@ -313,11 +313,11 @@ func (h *Handler) GetFeedID(ctx context.Context, req *connect.Request[datahubv1.
 	if h.getFeedID == nil {
 		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("not yet implemented"))
 	}
-	if req.Msg.FeedUrl == "" {
+	if req.Msg.GetFeedUrl() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("feed_url is required"))
 	}
 
-	feedID, err := h.getFeedID.GetFeedID(ctx, req.Msg.FeedUrl)
+	feedID, err := h.getFeedID.GetFeedID(ctx, req.Msg.GetFeedUrl())
 	if err != nil {
 		// pre-processor reads NotFound as "this feed is not registered": it
 		// skips every article of the batch and treats the URL as unknown on
@@ -327,7 +327,7 @@ func (h *Handler) GetFeedID(ctx context.Context, req *connect.Request[datahubv1.
 		if errors.Is(err, alt_db.ErrFeedNotFoundByURL) {
 			return nil, connect.NewError(connect.CodeNotFound, errors.New("feed not found"))
 		}
-		h.logger.Error("GetFeedID failed", "feed_url", req.Msg.FeedUrl, "error", err)
+		h.logger.Error("GetFeedID failed", "feed_url", req.Msg.GetFeedUrl(), "error", err)
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to get feed ID"))
 	}
 
@@ -341,8 +341,8 @@ func (h *Handler) ListFeedURLs(ctx context.Context, req *connect.Request[datahub
 		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("not yet implemented"))
 	}
 
-	limit := clampLimit(int(req.Msg.Limit))
-	feeds, nextCursor, hasMore, err := h.listFeedURLs.ListFeedURLs(ctx, req.Msg.Cursor, limit)
+	limit := clampLimit(int(req.Msg.GetLimit()))
+	feeds, nextCursor, hasMore, err := h.listFeedURLs.ListFeedURLs(ctx, req.Msg.GetCursor(), limit)
 	if err != nil {
 		h.logger.Error("ListFeedURLs failed", "error", err)
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to list feed URLs"))
@@ -369,11 +369,11 @@ func (h *Handler) GetEmptyFeedID(ctx context.Context, req *connect.Request[datah
 	if h.getEmptyFeedID == nil {
 		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("not yet implemented"))
 	}
-	if req.Msg.FeedUrl == "" {
+	if req.Msg.GetFeedUrl() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("feed_url is required"))
 	}
 
-	feedID, err := h.getEmptyFeedID.GetEmptyFeedID(ctx, req.Msg.FeedUrl)
+	feedID, err := h.getEmptyFeedID.GetEmptyFeedID(ctx, req.Msg.GetFeedUrl())
 	if err != nil {
 		h.logger.Error("GetEmptyFeedID failed", "error", err)
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to get empty feed ID"))

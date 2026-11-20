@@ -66,6 +66,12 @@ type JobCompletedAtMap =
     std::collections::HashMap<Uuid, Result<Option<chrono::DateTime<chrono::Utc>>>>;
 
 #[cfg(test)]
+type RecordedWorkerConfig = (String, serde_json::Value, String, Option<serde_json::Value>);
+
+#[cfg(test)]
+type RecordedGenreEvaluation = (GenreEvaluationRun, Vec<GenreEvaluationMetric>);
+
+#[cfg(test)]
 /// テスト用のモックRecapDao（DB接続なしで動作）
 #[allow(dead_code)]
 #[derive(Clone, Default)]
@@ -99,6 +105,10 @@ pub(crate) struct MockRecapDao {
     update_job_status_with_history_error: Arc<Mutex<Option<String>>>,
     stage_states: Arc<Mutex<std::collections::HashMap<(Uuid, String), serde_json::Value>>>,
     job_completed_at: Arc<Mutex<JobCompletedAtMap>>,
+    recorded_worker_configs: Arc<Mutex<Vec<RecordedWorkerConfig>>>,
+    insert_worker_config_error: Arc<Mutex<Option<String>>>,
+    recorded_genre_evaluations: Arc<Mutex<Vec<RecordedGenreEvaluation>>>,
+    save_genre_evaluation_error: Arc<Mutex<Option<String>>>,
 }
 
 #[cfg(test)]
@@ -248,6 +258,34 @@ impl MockRecapDao {
             .lock()
             .expect("job_completed_at mutex poisoned")
             .insert(job_id, result);
+    }
+
+    pub(crate) fn worker_configs(&self) -> Vec<RecordedWorkerConfig> {
+        self.recorded_worker_configs
+            .lock()
+            .expect("recorded_worker_configs mutex poisoned")
+            .clone()
+    }
+
+    pub(crate) fn set_insert_worker_config_error(&self, err: &str) {
+        *self
+            .insert_worker_config_error
+            .lock()
+            .expect("insert_worker_config_error mutex poisoned") = Some(err.to_string());
+    }
+
+    pub(crate) fn genre_evaluations(&self) -> Vec<RecordedGenreEvaluation> {
+        self.recorded_genre_evaluations
+            .lock()
+            .expect("recorded_genre_evaluations mutex poisoned")
+            .clone()
+    }
+
+    pub(crate) fn set_save_genre_evaluation_error(&self, err: &str) {
+        *self
+            .save_genre_evaluation_error
+            .lock()
+            .expect("save_genre_evaluation_error mutex poisoned") = Some(err.to_string());
     }
 }
 
@@ -522,11 +560,28 @@ impl RecapDao for MockRecapDao {
 
     async fn insert_worker_config(
         &self,
-        _config_type: &str,
-        _config_payload: &serde_json::Value,
-        _source: &str,
-        _metadata: Option<&serde_json::Value>,
+        config_type: &str,
+        config_payload: &serde_json::Value,
+        source: &str,
+        metadata: Option<&serde_json::Value>,
     ) -> Result<()> {
+        if let Some(err) = self
+            .insert_worker_config_error
+            .lock()
+            .expect("insert_worker_config_error mutex poisoned")
+            .take()
+        {
+            return Err(crate::error::RecapError::Db(err));
+        }
+        self.recorded_worker_configs
+            .lock()
+            .expect("recorded_worker_configs mutex poisoned")
+            .push((
+                config_type.to_string(),
+                config_payload.clone(),
+                source.to_string(),
+                metadata.cloned(),
+            ));
         Ok(())
     }
 
@@ -747,9 +802,21 @@ impl RecapDao for MockRecapDao {
     // Evaluation
     async fn save_genre_evaluation(
         &self,
-        _run: &GenreEvaluationRun,
-        _metrics: &[GenreEvaluationMetric],
+        run: &GenreEvaluationRun,
+        metrics: &[GenreEvaluationMetric],
     ) -> Result<()> {
+        if let Some(err) = self
+            .save_genre_evaluation_error
+            .lock()
+            .expect("save_genre_evaluation_error mutex poisoned")
+            .take()
+        {
+            return Err(crate::error::RecapError::Db(err));
+        }
+        self.recorded_genre_evaluations
+            .lock()
+            .expect("recorded_genre_evaluations mutex poisoned")
+            .push((run.clone(), metrics.to_vec()));
         Ok(())
     }
 

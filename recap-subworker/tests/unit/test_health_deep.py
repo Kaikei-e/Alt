@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
+from http import HTTPStatus
 from pathlib import Path
 from types import SimpleNamespace
 
+import httpx
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -12,6 +15,12 @@ from fastapi.testclient import TestClient
 from recap_subworker.app.deps import get_embedder_dep, get_settings_dep
 from recap_subworker.app.routers.health import router
 from recap_subworker.infra.artefact_health import assert_classifier_artefacts, assert_paths_ready
+from recap_subworker.infra.health_deep import Check, DeepHealthRunner
+
+
+class _MissingRuntimeError(AssertionError):
+    def __init__(self) -> None:
+        super().__init__("expected RuntimeError")
 
 
 def test_assert_paths_ready_accepts_files(tmp_path: Path) -> None:
@@ -23,13 +32,9 @@ def test_assert_paths_ready_accepts_files(tmp_path: Path) -> None:
 def test_assert_paths_ready_rejects_directory(tmp_path: Path) -> None:
     stub = tmp_path / "genre_classifier.joblib"
     stub.mkdir()
-    try:
+    with pytest.raises(RuntimeError, match="unavailable") as exc_info:
         assert_paths_ready([str(stub)], must_be_file=True)
-    except RuntimeError as exc:
-        assert "unavailable" in str(exc)
-        assert str(stub) not in str(exc)
-    else:
-        raise AssertionError("expected RuntimeError")
+    assert str(stub) not in str(exc_info.value)
 
 
 def test_assert_paths_ready_rejects_missing(tmp_path: Path) -> None:
@@ -38,7 +43,7 @@ def test_assert_paths_ready_rejects_missing(tmp_path: Path) -> None:
         assert_paths_ready([str(missing)], must_be_file=True)
     except RuntimeError:
         return
-    raise AssertionError("expected RuntimeError")
+    raise _MissingRuntimeError
 
 
 def test_assert_classifier_artefacts_joblib_ok(tmp_path: Path) -> None:
@@ -85,7 +90,7 @@ def test_deep_health_fails_when_artefact_is_directory(tmp_path: Path) -> None:
     )
     client = _client_with_settings(settings)
     response = client.get("/health/deep")
-    assert response.status_code == 503
+    assert response.status_code == HTTPStatus.SERVICE_UNAVAILABLE
     body = response.json()
     assert body["status"] == "fail"
     assert body["service"] == "recap-subworker"
@@ -109,7 +114,7 @@ def test_deep_health_passes_when_artefact_is_file(tmp_path: Path) -> None:
     )
     client = _client_with_settings(settings)
     response = client.get("/health/deep")
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     body = response.json()
     assert body["status"] == "pass"
 
@@ -130,9 +135,9 @@ def test_cheap_health_stays_ok_when_deep_fails(tmp_path: Path) -> None:
     client = _client_with_settings(settings)
     cheap = client.get("/health")
     deep = client.get("/health/deep")
-    assert cheap.status_code == 200
+    assert cheap.status_code == HTTPStatus.OK
     assert cheap.json()["status"] == "ok"
-    assert deep.status_code == 503
+    assert deep.status_code == HTTPStatus.SERVICE_UNAVAILABLE
 
 
 def test_deep_health_runner_is_app_scoped_not_per_request(tmp_path: Path) -> None:
@@ -152,8 +157,8 @@ def test_deep_health_runner_is_app_scoped_not_per_request(tmp_path: Path) -> Non
     client = TestClient(app)
     first = client.get("/health/deep")
     second = client.get("/health/deep")
-    assert first.status_code == 200
-    assert second.status_code == 200
+    assert first.status_code == HTTPStatus.OK
+    assert second.status_code == HTTPStatus.OK
     runner = getattr(app.state, "deep_health_runner", None)
     assert runner is not None
     assert second.json()["cached"] is True
@@ -161,12 +166,6 @@ def test_deep_health_runner_is_app_scoped_not_per_request(tmp_path: Path) -> Non
 
 @pytest.mark.asyncio
 async def test_concurrent_deep_health_shares_one_probe(tmp_path: Path) -> None:
-    import asyncio
-
-    import httpx
-
-    from recap_subworker.infra.health_deep import Check, DeepHealthRunner
-
     artefact = tmp_path / "genre_classifier_ja.joblib"
     artefact.write_bytes(b"ok")
     settings = SimpleNamespace(
@@ -205,7 +204,7 @@ async def test_concurrent_deep_health_shares_one_probe(tmp_path: Path) -> None:
         release.set()
         responses = [await first, *(await asyncio.gather(*rest))]
     assert calls == 1
-    assert all(r.status_code == 200 for r in responses)
+    assert all(r.status_code == HTTPStatus.OK for r in responses)
     assert all(r.json()["status"] == "pass" for r in responses)
 
 
@@ -213,12 +212,6 @@ async def test_concurrent_deep_health_shares_one_probe(tmp_path: Path) -> None:
 async def test_cancelled_deep_health_request_does_not_poison_runner(
     tmp_path: Path,
 ) -> None:
-    import asyncio
-
-    import httpx
-
-    from recap_subworker.infra.health_deep import Check, DeepHealthRunner
-
     artefact = tmp_path / "genre_classifier_ja.joblib"
     artefact.write_bytes(b"ok")
     settings = SimpleNamespace(
@@ -261,8 +254,8 @@ async def test_cancelled_deep_health_request_does_not_poison_runner(
         release.set()
         response = await survivor
     assert calls == 1
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     assert response.json()["status"] == "pass"
     follow = client.get("/health/deep")
-    assert follow.status_code == 200
+    assert follow.status_code == HTTPStatus.OK
     assert follow.json()["cached"] is True

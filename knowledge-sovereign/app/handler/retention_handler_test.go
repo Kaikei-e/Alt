@@ -82,7 +82,7 @@ func actionsField(t *testing.T, body []byte) string {
 func TestRunRetention_PlansNothingAndStillEncodesAnActionsArray(t *testing.T) {
 	repo := &fakeRetentionRepo{snapshot: &sovereign_db.SnapshotMetadata{Status: "valid"}}
 
-	req := httptest.NewRequest(http.MethodPost, "/admin/retention/run", strings.NewReader(`{"dry_run":true}`))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/admin/retention/run", strings.NewReader(`{"dry_run":true}`))
 	rec := httptest.NewRecorder()
 	retentionMux(repo, t.TempDir()).ServeHTTP(rec, req)
 
@@ -98,7 +98,7 @@ func TestRunRetention_PlansNothingAndStillEncodesAnActionsArray(t *testing.T) {
 func TestRunRetention_MissingSnapshotStillEncodesAnActionsArray(t *testing.T) {
 	repo := &fakeRetentionRepo{}
 
-	req := httptest.NewRequest(http.MethodPost, "/admin/retention/run", strings.NewReader(`{"dry_run":false}`))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/admin/retention/run", strings.NewReader(`{"dry_run":false}`))
 	rec := httptest.NewRecorder()
 	retentionMux(repo, t.TempDir()).ServeHTTP(rec, req)
 
@@ -112,7 +112,7 @@ func TestRunRetention_MissingSnapshotStillEncodesAnActionsArray(t *testing.T) {
 func TestRunRetention_SnapshotLookupErrorStaysGeneric(t *testing.T) {
 	repo := &fakeRetentionRepo{snapshotErr: wrappedInternalErr()}
 
-	req := httptest.NewRequest(http.MethodPost, "/admin/retention/run", strings.NewReader(`{"dry_run":false}`))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/admin/retention/run", strings.NewReader(`{"dry_run":false}`))
 	rec := httptest.NewRecorder()
 	retentionMux(repo, t.TempDir()).ServeHTTP(rec, req)
 
@@ -124,7 +124,7 @@ func TestRunRetention_SnapshotLookupErrorStaysGeneric(t *testing.T) {
 func TestRunRetention_InvalidBodyDoesNotLeakDecoderError(t *testing.T) {
 	repo := &fakeRetentionRepo{snapshot: &sovereign_db.SnapshotMetadata{Status: "valid"}}
 
-	req := httptest.NewRequest(http.MethodPost, "/admin/retention/run", strings.NewReader(`{not-json`))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/admin/retention/run", strings.NewReader(`{not-json`))
 	rec := httptest.NewRecorder()
 	retentionMux(repo, t.TempDir()).ServeHTTP(rec, req)
 
@@ -140,7 +140,7 @@ func TestRunRetention_DoesNotLeakInternalError(t *testing.T) {
 		listErr:  wrappedInternalErr(),
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/admin/retention/run", strings.NewReader(`{"dry_run":true}`))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/admin/retention/run", strings.NewReader(`{"dry_run":true}`))
 	rec := httptest.NewRecorder()
 	retentionMux(repo, t.TempDir()).ServeHTTP(rec, req)
 
@@ -162,7 +162,7 @@ func TestRetentionStatus_DoesNotLeakStoredErrorMessage(t *testing.T) {
 		}},
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/admin/retention/status", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/admin/retention/status", nil)
 	rec := httptest.NewRecorder()
 	retentionMux(repo, t.TempDir()).ServeHTTP(rec, req)
 
@@ -175,7 +175,7 @@ func TestRetentionStatus_DoesNotLeakStoredErrorMessage(t *testing.T) {
 func TestRetentionStatus_DoesNotLeakInternalError(t *testing.T) {
 	repo := &fakeRetentionRepo{logsErr: wrappedInternalErr()}
 
-	req := httptest.NewRequest(http.MethodGet, "/admin/retention/status", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/admin/retention/status", nil)
 	rec := httptest.NewRecorder()
 	retentionMux(repo, t.TempDir()).ServeHTTP(rec, req)
 
@@ -187,7 +187,7 @@ func TestRetentionStatus_DoesNotLeakInternalError(t *testing.T) {
 func TestEligiblePartitions_DoesNotLeakInternalError(t *testing.T) {
 	repo := &fakeRetentionRepo{listErr: wrappedInternalErr()}
 
-	req := httptest.NewRequest(http.MethodGet, "/admin/retention/eligible", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/admin/retention/eligible", nil)
 	rec := httptest.NewRecorder()
 	retentionMux(repo, t.TempDir()).ServeHTTP(rec, req)
 

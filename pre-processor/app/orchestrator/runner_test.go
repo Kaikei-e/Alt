@@ -61,7 +61,7 @@ func TestJobRunner_StartAndStop(t *testing.T) {
 		waitForSignal(t, called, "job did not execute within timeout")
 		runner.Stop()
 
-		assert.Greater(t, callCount.Load(), int32(0))
+		assert.Positive(t, callCount.Load())
 	})
 }
 
@@ -161,11 +161,11 @@ func TestJobRunner_NonBackoffErrorResetsInterval(t *testing.T) {
 		case calls <- struct{}{}:
 		default:
 		}
-		switch {
-		case n == 1:
+		switch n {
+		case 1:
 			phase.Store(1)
 			return errOverloaded // enter backoff (200ms)
-		case n == 2:
+		case 2:
 			phase.Store(2)
 			return errOther // non-backoff: must restore Interval
 		default:
@@ -327,7 +327,7 @@ func TestJobGroup(t *testing.T) {
 		waitForSignal(t, called2, "job-2 did not execute within timeout")
 		group.StopAll()
 
-		require.Greater(t, count1.Load(), int32(0))
-		require.Greater(t, count2.Load(), int32(0))
+		require.Positive(t, count1.Load())
+		require.Positive(t, count2.Load())
 	})
 }

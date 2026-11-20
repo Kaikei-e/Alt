@@ -4,14 +4,19 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime
+from typing import Annotated
 from uuid import UUID
 
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
+from ...db.dao import AdminJobRecord
 from ...domain.models import WarmupResponse
 from ...infra.config import Settings
 from ...services.async_jobs import AdminJobService, ConcurrentAdminJobError
+from ...services.pipeline import EvidencePipeline
+from ...services.pipeline_runner import PipelineTaskRunner
 from ...services.tag_label_graph_builder import TagLabelGraphBuilder
 from ..container import ServiceContainer
 from ..deps import (
@@ -37,8 +42,8 @@ class AdminJobResponse(BaseModel):
 
 @router.post("/warmup", response_model=WarmupResponse)
 async def warmup(
-    pipeline=Depends(get_pipeline_dep),
-    runner=Depends(get_pipeline_runner_dep),
+    pipeline: Annotated[EvidencePipeline, Depends(get_pipeline_dep)],
+    runner: Annotated[PipelineTaskRunner | None, Depends(get_pipeline_runner_dep)],
 ) -> WarmupResponse:
     if runner is not None:
         return await runner.warmup()
@@ -47,12 +52,10 @@ async def warmup(
 
 @router.post("/build-graph", status_code=status.HTTP_200_OK)
 async def build_tag_label_graph(
-    settings: Settings = Depends(get_settings_dep),
-    container: ServiceContainer = Depends(get_container),
+    settings: Annotated[Settings, Depends(get_settings_dep)],
+    container: Annotated[ServiceContainer, Depends(get_container)],
 ) -> dict[str, object]:
     """Manually trigger tag_label_graph rebuild."""
-    import structlog
-
     logger = structlog.get_logger(__name__)
     logger.info("manually triggering tag_label_graph rebuild")
 
@@ -88,11 +91,10 @@ async def build_tag_label_graph(
                 "total_edges": sum(results.values()),
             }
     except Exception as exc:
-        logger.error(
+        logger.exception(
             "failed to build tag_label_graph",
             error=str(exc),
             error_type=type(exc).__name__,
-            exc_info=True,
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -102,7 +104,7 @@ async def build_tag_label_graph(
 
 @router.post("/learning", status_code=status.HTTP_202_ACCEPTED)
 async def trigger_genre_learning(
-    service: AdminJobService = Depends(get_admin_job_service_dep),
+    service: Annotated[AdminJobService, Depends(get_admin_job_service_dep)],
 ) -> dict[str, object]:
     """Enqueue a genre learning run and return immediately.
 
@@ -110,8 +112,6 @@ async def trigger_genre_learning(
     instead of running graph rebuild + learning + recap-worker delivery
     synchronously before responding, which contradicted the declared 202.
     """
-    import structlog
-
     logger = structlog.get_logger(__name__)
     try:
         job_id = await service.enqueue_learning_job()
@@ -120,7 +120,7 @@ async def trigger_genre_learning(
         logger.warning("learning job already running", error=str(exc))
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except Exception as exc:
-        logger.error("failed to enqueue learning job", error=str(exc), exc_info=True)
+        logger.exception("failed to enqueue learning job", error=str(exc))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="failed to enqueue learning job",
@@ -128,7 +128,7 @@ async def trigger_genre_learning(
     return {"job_id": job_id}
 
 
-def _job_to_response(record) -> AdminJobResponse:
+def _job_to_response(record: AdminJobRecord) -> AdminJobResponse:
     return AdminJobResponse(
         job_id=record.job_id,
         kind=record.kind,
@@ -142,10 +142,8 @@ def _job_to_response(record) -> AdminJobResponse:
 
 @router.post("/graph-jobs", status_code=status.HTTP_202_ACCEPTED)
 async def create_graph_job(
-    service: AdminJobService = Depends(get_admin_job_service_dep),
+    service: Annotated[AdminJobService, Depends(get_admin_job_service_dep)],
 ) -> dict[str, object]:
-    import structlog
-
     logger = structlog.get_logger(__name__)
     try:
         job_id = await service.enqueue_graph_job()
@@ -154,7 +152,7 @@ async def create_graph_job(
         logger.warning("graph job already running", error=str(exc))
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except Exception as exc:
-        logger.error("failed to enqueue graph job", error=str(exc), exc_info=True)
+        logger.exception("failed to enqueue graph job", error=str(exc))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="failed to enqueue graph job",
@@ -165,7 +163,7 @@ async def create_graph_job(
 @router.get("/graph-jobs/{job_id}", response_model=AdminJobResponse)
 async def get_graph_job(
     job_id: UUID,
-    service: AdminJobService = Depends(get_admin_job_service_dep),
+    service: Annotated[AdminJobService, Depends(get_admin_job_service_dep)],
 ) -> AdminJobResponse:
     record = await service.get_job(job_id)
     if not record:
@@ -175,7 +173,7 @@ async def get_graph_job(
 
 @router.post("/learning-jobs", status_code=status.HTTP_202_ACCEPTED)
 async def create_learning_job(
-    service: AdminJobService = Depends(get_admin_job_service_dep),
+    service: Annotated[AdminJobService, Depends(get_admin_job_service_dep)],
 ) -> dict[str, object]:
     try:
         job_id = await service.enqueue_learning_job()
@@ -192,7 +190,7 @@ async def create_learning_job(
 @router.get("/learning-jobs/{job_id}", response_model=AdminJobResponse)
 async def get_learning_job(
     job_id: UUID,
-    service: AdminJobService = Depends(get_admin_job_service_dep),
+    service: Annotated[AdminJobService, Depends(get_admin_job_service_dep)],
 ) -> AdminJobResponse:
     record = await service.get_job(job_id)
     if not record:

@@ -43,7 +43,8 @@ func NewCursorManager(filePath string) *CursorManager {
 // Returns an error if the lock is already held by another process.
 func (m *CursorManager) Lock() error {
 	lockPath := m.filePath + ".lock"
-	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0644) //nolint:gosec // G304: path is controlled by application config
+	// #nosec G302 G304 -- path is controlled by application config
+	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
 		return fmt.Errorf("open lock file: %w", err)
 	}
@@ -127,7 +128,8 @@ func (m *CursorManager) Save(cursor Cursor) error {
 
 	// Write to temporary file
 	tmpPath := m.filePath + ".tmp"
-	if err := os.WriteFile(tmpPath, data, 0644); err != nil { //nolint:gosec // G306: cursor file is not sensitive
+	// #nosec G306 -- cursor file is not sensitive
+	if err := os.WriteFile(tmpPath, data, 0644); err != nil {
 		return fmt.Errorf("write temp cursor file: %w", err)
 	}
 

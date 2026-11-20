@@ -16,7 +16,7 @@ let error = $state<string | null>(null);
 let requestId = 0;
 
 $effect(() => {
-	loadData();
+	void loadData();
 });
 
 async function loadData() {

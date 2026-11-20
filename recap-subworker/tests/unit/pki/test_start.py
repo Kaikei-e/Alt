@@ -11,8 +11,8 @@ from pathlib import Path
 import pytest
 from prometheus_client import CollectorRegistry
 
-from recap_subworker.app.infra.pki.config import MODE_DISABLED, MODE_ENABLED, Config
 from recap_subworker.app.infra.pki import start as start_module
+from recap_subworker.app.infra.pki.config import MODE_DISABLED, MODE_ENABLED, Config
 from recap_subworker.app.infra.pki.ctx import Ctx
 from recap_subworker.app.infra.pki.manager import NopObserver
 from recap_subworker.app.infra.pki.start import start, start_with, start_with_observer
@@ -59,7 +59,7 @@ def test_start_with_enabled_enrolls_and_stops(
         ca_url="https://127.0.0.1:1",
         root_file=str(tmp_path / "root.pem"),
         provisioner="pki-agent-recap-subworker",
-        password_file="/run/secrets/pki-agent-recap-subworker-jwk",
+        password_file="/run/secrets/pki-agent-recap-subworker-jwk",  # noqa: S106 - test fixture value, not a credential
         renew_at_fraction=0.66,
         tick_interval=3600,
         retry_attempts=1,
@@ -83,7 +83,7 @@ def test_start_enabled_shared_secret_rejected(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setenv("PKI_ENROLLMENT", MODE_ENABLED)
     monkeypatch.setenv("CERT_SUBJECT", "recap-subworker")
     monkeypatch.setenv("STEP_CA_PROVISIONER_PASSWORD_FILE", "/run/secrets/step_ca_root_password")
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="step_ca_root_password"):
         start("recap-subworker")
 
 
@@ -107,7 +107,7 @@ def test_ops_bind_failure_does_not_strand_renewal_thread(
         ca_url="https://127.0.0.1:1",
         root_file=str(tmp_path / "root.pem"),
         provisioner="pki-agent-recap-subworker",
-        password_file="/run/secrets/pki-agent-recap-subworker-jwk",
+        password_file="/run/secrets/pki-agent-recap-subworker-jwk",  # noqa: S106 - test fixture value, not a credential
         renew_at_fraction=0.66,
         tick_interval=3600,
         retry_attempts=1,
@@ -117,7 +117,7 @@ def test_ops_bind_failure_does_not_strand_renewal_thread(
     with socket.create_server(("127.0.0.1", 0)) as taken:
         monkeypatch.setenv("OPS_LISTEN", f"127.0.0.1:{taken.getsockname()[1]}")
         try:
-            with pytest.raises(OSError):
+            with pytest.raises(OSError, match="Address already in use"):
                 start_with_observer(cfg, FakeIssuer(), NopObserver(), registry=CollectorRegistry())
             stranded = [t.name for t in threading.enumerate() if t.name == thread_name]
             assert stranded == []

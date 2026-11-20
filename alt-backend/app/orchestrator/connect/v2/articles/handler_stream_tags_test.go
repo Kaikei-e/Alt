@@ -42,11 +42,11 @@ func TestStreamArticleTagsResponse_Construction(t *testing.T) {
 		Message:   &msg,
 	}
 
-	assert.Equal(t, "article-123", event.ArticleId)
-	assert.Len(t, event.Tags, 1)
-	assert.Equal(t, articlesv2.StreamArticleTagsResponse_EVENT_TYPE_CACHED, event.EventType)
+	assert.Equal(t, "article-123", event.GetArticleId())
+	assert.Len(t, event.GetTags(), 1)
+	assert.Equal(t, articlesv2.StreamArticleTagsResponse_EVENT_TYPE_CACHED, event.GetEventType())
 	assert.NotNil(t, event.Message)
-	assert.Equal(t, "Generating tags...", *event.Message)
+	assert.Equal(t, "Generating tags...", event.GetMessage())
 }
 
 func TestStreamArticleTagsRequest_Construction(t *testing.T) {
@@ -61,9 +61,9 @@ func TestStreamArticleTagsRequest_Construction(t *testing.T) {
 		FeedId:    &feedID,
 	}
 
-	assert.Equal(t, "article-123", req.ArticleId)
+	assert.Equal(t, "article-123", req.GetArticleId())
 	assert.NotNil(t, req.Title)
-	assert.Equal(t, "Test Article", *req.Title)
+	assert.Equal(t, "Test Article", req.GetTitle())
 	assert.NotNil(t, req.Content)
 	assert.NotNil(t, req.FeedId)
 }
@@ -86,10 +86,10 @@ func TestConvertTagsToProto(t *testing.T) {
 	protoTags := convertTagsToProto(tags)
 
 	require.Len(t, protoTags, 2)
-	assert.Equal(t, "tag-1", protoTags[0].Id)
-	assert.Equal(t, "Go", protoTags[0].Name)
-	assert.Equal(t, "tag-2", protoTags[1].Id)
-	assert.Equal(t, "Testing", protoTags[1].Name)
+	assert.Equal(t, "tag-1", protoTags[0].GetId())
+	assert.Equal(t, "Go", protoTags[0].GetName())
+	assert.Equal(t, "tag-2", protoTags[1].GetId())
+	assert.Equal(t, "Testing", protoTags[1].GetName())
 }
 
 func TestConvertTagsToProto_Empty(t *testing.T) {
@@ -120,8 +120,8 @@ func TestStreamArticleTags_ReturnsCompletedWithGeneratedTags(t *testing.T) {
 	expectedProtoTags := convertTagsToProto(generatedTags)
 
 	assert.Len(t, expectedProtoTags, 2)
-	assert.Equal(t, "AI", expectedProtoTags[0].Name)
-	assert.Equal(t, "ML", expectedProtoTags[1].Name)
+	assert.Equal(t, "AI", expectedProtoTags[0].GetName())
+	assert.Equal(t, "ML", expectedProtoTags[1].GetName())
 }
 
 func TestStreamArticleTags_EventTypes_Documented(t *testing.T) {
@@ -134,7 +134,7 @@ func TestStreamArticleTags_EventTypes_Documented(t *testing.T) {
 
 	t.Run("fail_open_behavior", func(t *testing.T) {
 		err := errors.New("mq-hub connection failed")
-		assert.NotNil(t, err)
+		assert.Error(t, err)
 	})
 }
 

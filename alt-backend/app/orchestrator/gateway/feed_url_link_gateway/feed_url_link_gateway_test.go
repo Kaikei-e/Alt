@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
 
@@ -92,13 +93,13 @@ func TestFeedURLLinkGateway_GetFeedURLsByArticleIDs(t *testing.T) {
 			result, err := gateway.GetFeedURLsByArticleIDs(context.Background(), tt.articleIDs)
 
 			if tt.expectedError {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Equal(t, tt.expectedURLMap, result)
 				if tt.errorMessage != "" {
 					assert.Contains(t, err.Error(), tt.errorMessage)
 				}
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.Equal(t, tt.expectedURLMap, result)
 			}
 		})

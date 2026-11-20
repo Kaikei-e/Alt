@@ -38,6 +38,7 @@ pub struct MemoryManager {
 }
 
 impl MemoryManager {
+    #[must_use]
     pub fn new(config: MemoryConfig) -> Self {
         Self {
             config,
@@ -45,23 +46,36 @@ impl MemoryManager {
         }
     }
 
-    pub async fn allocate(&self, size: usize) {
+    pub fn allocate(&self, size: usize) {
         self.current_usage.fetch_add(size, Ordering::Relaxed);
     }
 
-    pub async fn deallocate(&self, size: usize) {
+    pub fn deallocate(&self, size: usize) {
         // `fetch_sub` on an `AtomicUsize` wraps silently on underflow (atomic
         // arithmetic is not subject to Rust's checked-overflow panics), so a
         // caller deallocating more than is currently tracked would otherwise
         // leave `current_usage` near `usize::MAX` -- permanently pinning
         // `current_pressure()` at `Critical`. Saturate at zero instead.
-        let _ = self
-            .current_usage
-            .try_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
-                Some(current.saturating_sub(size))
-            });
+        if let Ok(previous) =
+            self.current_usage
+                .try_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+                    Some(current.saturating_sub(size))
+                })
+            && size > previous
+        {
+            tracing::debug!(
+                previous,
+                size,
+                "MemoryManager::deallocate saturated underflow at zero"
+            );
+        }
     }
 
+    #[must_use]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "memory byte counts converted to f64 for pressure ratio"
+    )]
     pub fn current_pressure(&self) -> MemoryPressure {
         let current = self.current_usage.load(Ordering::Relaxed);
         let usage_ratio = current as f64 / self.config.max_memory as f64;
@@ -75,6 +89,7 @@ impl MemoryManager {
         }
     }
 
+    #[must_use]
     pub fn calculate_backpressure(&self) -> BackpressureDecision {
         match self.current_pressure() {
             MemoryPressure::None => BackpressureDecision {
@@ -92,10 +107,16 @@ impl MemoryManager {
         }
     }
 
+    #[must_use]
     pub fn memory_usage(&self) -> usize {
         self.current_usage.load(Ordering::Relaxed)
     }
 
+    #[must_use]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "memory byte counts converted to f64 for usage ratio metric"
+    )]
     pub fn memory_usage_ratio(&self) -> f64 {
         self.memory_usage() as f64 / self.config.max_memory as f64
     }

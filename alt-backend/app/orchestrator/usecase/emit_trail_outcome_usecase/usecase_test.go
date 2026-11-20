@@ -46,7 +46,7 @@ func TestExecute_AppendsActOutcomeEvent(t *testing.T) {
 	require.NoError(t, json.Unmarshal(e.Payload, &payload))
 	assert.Equal(t, "cluster:u:article:z", payload["branch_key"])
 	assert.Equal(t, "article:z", payload["item_key"])
-	assert.Equal(t, float64(42000), payload["dwell_ms"])
+	assert.InDelta(t, float64(42000), payload["dwell_ms"], 1e-9)
 	// D18: the payload is the raw measurement only — no classification field.
 	_, hasOutcome := payload["outcome"]
 	assert.False(t, hasOutcome, "payload must not bake an engagement classification into the fact")
@@ -82,7 +82,7 @@ func TestExecute_ClampsAbsurdDwell(t *testing.T) {
 	require.Len(t, port.events, 1)
 	var payload map[string]any
 	require.NoError(t, json.Unmarshal(port.events[0].Payload, &payload))
-	assert.Equal(t, float64(MaxDwellMs), payload["dwell_ms"],
+	assert.InDelta(t, float64(MaxDwellMs), payload["dwell_ms"], 1e-9,
 		"a forgotten overnight tab must not mint absurd business facts")
 }
 
@@ -91,7 +91,7 @@ func TestExecute_WrapsAppendError(t *testing.T) {
 	uc := NewEmitTrailOutcomeUsecase(&fakeAppendPort{err: boom})
 	err := uc.Execute(context.Background(), uuid.New(), uuid.New(), "b", "article:z", 1000)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, boom)
+	require.ErrorIs(t, err, boom)
 	assert.NotErrorIs(t, err, ErrInvalidRequest)
 }
 
@@ -146,5 +146,5 @@ func TestBuildOutcomePayload(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "branch-1", parsed["branch_key"])
 	assert.Equal(t, "item-1", parsed["item_key"])
-	assert.Equal(t, float64(1234), parsed["dwell_ms"])
+	assert.InDelta(t, float64(1234), parsed["dwell_ms"], 1e-9)
 }

@@ -6,8 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/labstack/echo/v4"
-	echomiddleware "github.com/labstack/echo/v4/middleware"
+	"github.com/labstack/echo/v5"
+	echomiddleware "github.com/labstack/echo/v5/middleware"
 	"github.com/stretchr/testify/require"
 )
 
@@ -27,7 +27,7 @@ func TestRegisterScrapingDomainRoutes_RequiresAuth(t *testing.T) {
 	v1 := e.Group("/v1")
 	registerScrapingDomainRoutes(v1, &di.ApplicationComponents{}, testAuthCfg())
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/admin/scraping-domains", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/admin/scraping-domains", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 

@@ -56,6 +56,9 @@ func (g *KratosGateway) ValidateSession(ctx context.Context, cookie string) (*do
 	defer cancel()
 
 	session, resp, err := g.client.FrontendAPI.ToSession(ctx).Cookie(cookie).Execute()
+	if resp != nil && resp.Body != nil {
+		defer func() { _ = resp.Body.Close() }()
+	}
 	if err != nil {
 		if resp != nil {
 			if resp.StatusCode == http.StatusUnauthorized {
@@ -148,7 +151,7 @@ func (g *KratosGateway) GetFirstIdentityID(ctx context.Context) (string, error) 
 	if err != nil {
 		return "", fmt.Errorf("%w: %w", domain.ErrKratosUnavailable, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("%w: admin API returned status %d", domain.ErrKratosUnavailable, resp.StatusCode)

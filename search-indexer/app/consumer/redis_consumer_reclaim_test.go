@@ -10,6 +10,7 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
+	"github.com/stretchr/testify/require"
 )
 
 // recordingHandler records every event it receives and always succeeds, so a
@@ -92,7 +93,7 @@ func TestReclaimPending_ClaimsAndProcessesIdleMessage(t *testing.T) {
 
 	ctx := context.Background()
 	seedClient := redis.NewClient(&redis.Options{Addr: srv.Addr()})
-	defer seedClient.Close()
+	t.Cleanup(func() { require.NoError(t, seedClient.Close()) })
 
 	msgID := seedStuckPendingMessage(t, ctx, seedClient)
 
@@ -153,7 +154,7 @@ func TestConsumer_Start_RunsReclaimLoopPeriodically(t *testing.T) {
 	defer cancel()
 
 	seedClient := redis.NewClient(&redis.Options{Addr: srv.Addr()})
-	defer seedClient.Close()
+	t.Cleanup(func() { require.NoError(t, seedClient.Close()) })
 
 	seedStuckPendingMessage(t, ctx, seedClient)
 
@@ -213,7 +214,7 @@ func TestReclaimPending_RoutesPoisonMessageToDLQAfterMaxDeliveries(t *testing.T)
 
 	ctx := context.Background()
 	seedClient := redis.NewClient(&redis.Options{Addr: srv.Addr()})
-	defer seedClient.Close()
+	t.Cleanup(func() { require.NoError(t, seedClient.Close()) })
 
 	msgID := seedStuckPendingMessage(t, ctx, seedClient)
 

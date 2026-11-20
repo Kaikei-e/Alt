@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -95,7 +95,7 @@ func TestRestHandleFetchInoreaderSummary(t *testing.T) {
 
 	t.Run("empty feed_urls returns 400 Bad Request", func(t *testing.T) {
 		e := echo.New()
-		req := httptest.NewRequest(http.MethodPost, "/v1/feeds/fetch/summary/provided", bytes.NewBufferString(`{"feed_urls":[]}`))
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/feeds/fetch/summary/provided", bytes.NewBufferString(`{"feed_urls":[]}`))
 		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
@@ -116,7 +116,7 @@ func TestRestHandleFetchInoreaderSummary(t *testing.T) {
 		require.NoError(t, err)
 
 		e := echo.New()
-		req := httptest.NewRequest(http.MethodPost, "/v1/feeds/fetch/summary/provided", bytes.NewReader(payload))
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/feeds/fetch/summary/provided", bytes.NewReader(payload))
 		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
@@ -142,7 +142,7 @@ func TestRestHandleFetchInoreaderSummary(t *testing.T) {
 				require.NoError(t, err)
 
 				e := echo.New()
-				req := httptest.NewRequest(http.MethodPost, "/v1/feeds/fetch/summary/provided", bytes.NewReader(payload))
+				req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/feeds/fetch/summary/provided", bytes.NewReader(payload))
 				req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 				rec := httptest.NewRecorder()
 				c := e.NewContext(req, rec)
@@ -169,7 +169,7 @@ func TestRestHandleFetchInoreaderSummary(t *testing.T) {
 		payload, err := json.Marshal(FeedSummaryRequest{FeedURLs: []string{"https://example.com/g1"}})
 		require.NoError(t, err)
 		e := echo.New()
-		req := withAuthenticatedUser(httptest.NewRequest(http.MethodPost, "/v1/feeds/fetch/summary", bytes.NewReader(payload)))
+		req := withAuthenticatedUser(httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/feeds/fetch/summary", bytes.NewReader(payload)))
 		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 		rec := httptest.NewRecorder()
 
@@ -210,7 +210,7 @@ func TestRestHandleFetchInoreaderSummary(t *testing.T) {
 		require.NoError(t, err)
 
 		e := echo.New()
-		req := httptest.NewRequest(http.MethodPost, "/v1/feeds/fetch/summary/provided", bytes.NewReader(payload))
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/feeds/fetch/summary/provided", bytes.NewReader(payload))
 		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
@@ -242,7 +242,7 @@ func TestRestHandleFetchArticleSummary(t *testing.T) {
 
 	t.Run("unauthenticated returns 401 Unauthorized", func(t *testing.T) {
 		e := echo.New()
-		req := httptest.NewRequest(http.MethodPost, "/v1/feeds/fetch/summary", bytes.NewBufferString(`{"feed_urls":["https://example.com/a"]}`))
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/feeds/fetch/summary", bytes.NewBufferString(`{"feed_urls":["https://example.com/a"]}`))
 		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
@@ -256,7 +256,7 @@ func TestRestHandleFetchArticleSummary(t *testing.T) {
 
 	t.Run("empty feed_urls returns 400 Bad Request", func(t *testing.T) {
 		e := echo.New()
-		req := withAuthenticatedUser(httptest.NewRequest(http.MethodPost, "/v1/feeds/fetch/summary", bytes.NewBufferString(`{"feed_urls":[]}`)))
+		req := withAuthenticatedUser(httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/feeds/fetch/summary", bytes.NewBufferString(`{"feed_urls":[]}`)))
 		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
@@ -277,7 +277,7 @@ func TestRestHandleFetchArticleSummary(t *testing.T) {
 		require.NoError(t, err)
 
 		e := echo.New()
-		req := withAuthenticatedUser(httptest.NewRequest(http.MethodPost, "/v1/feeds/fetch/summary", bytes.NewReader(payload)))
+		req := withAuthenticatedUser(httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/feeds/fetch/summary", bytes.NewReader(payload)))
 		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
@@ -303,7 +303,7 @@ func TestRestHandleFetchArticleSummary(t *testing.T) {
 				require.NoError(t, err)
 
 				e := echo.New()
-				req := withAuthenticatedUser(httptest.NewRequest(http.MethodPost, "/v1/feeds/fetch/summary", bytes.NewReader(payload)))
+				req := withAuthenticatedUser(httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/feeds/fetch/summary", bytes.NewReader(payload)))
 				req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 				rec := httptest.NewRecorder()
 				c := e.NewContext(req, rec)
@@ -343,7 +343,7 @@ func TestRestHandleFetchArticleSummary(t *testing.T) {
 		require.NoError(t, err)
 
 		e := echo.New()
-		req := withAuthenticatedUser(httptest.NewRequest(http.MethodPost, "/v1/feeds/fetch/summary", bytes.NewReader(payload)))
+		req := withAuthenticatedUser(httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/feeds/fetch/summary", bytes.NewReader(payload)))
 		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)

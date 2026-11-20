@@ -115,11 +115,11 @@ func TestGetSystemMetrics(t *testing.T) {
 		result, err := uc.GetSystemMetrics(context.Background())
 		require.NoError(t, err)
 
-		assert.Equal(t, 0.0, result.Handler.DegradedRatePct)
-		assert.Equal(t, 0.0, result.Tracking.OpenRatePct)
-		assert.Equal(t, 0.0, result.Stream.DisconnectRatePct)
-		assert.Equal(t, 100.0, result.Correctness.CorrectnessScorePct)
-		assert.Equal(t, 0.0, result.Sovereign.ErrorRatePct)
+		assert.InDelta(t, 0.0, result.Handler.DegradedRatePct, 1e-9)
+		assert.InDelta(t, 0.0, result.Tracking.OpenRatePct, 1e-9)
+		assert.InDelta(t, 0.0, result.Stream.DisconnectRatePct, 1e-9)
+		assert.InDelta(t, 100.0, result.Correctness.CorrectnessScorePct, 1e-9)
+		assert.InDelta(t, 0.0, result.Sovereign.ErrorRatePct, 1e-9)
 	})
 
 	t.Run("returns metrics even when health check fails", func(t *testing.T) {
@@ -164,11 +164,11 @@ func TestComputeDerivedRates(t *testing.T) {
 				Sovereign:   domain.SovereignMetrics{MutationsApplied: 0, MutationsErrors: 0},
 			},
 			verify: func(t *testing.T, m *domain.SystemMetrics) {
-				assert.Equal(t, 0.0, m.Handler.DegradedRatePct)
-				assert.Equal(t, 0.0, m.Tracking.OpenRatePct)
-				assert.Equal(t, 0.0, m.Stream.DisconnectRatePct)
-				assert.Equal(t, 100.0, m.Correctness.CorrectnessScorePct)
-				assert.Equal(t, 0.0, m.Sovereign.ErrorRatePct)
+				assert.InDelta(t, 0.0, m.Handler.DegradedRatePct, 1e-9)
+				assert.InDelta(t, 0.0, m.Tracking.OpenRatePct, 1e-9)
+				assert.InDelta(t, 0.0, m.Stream.DisconnectRatePct, 1e-9)
+				assert.InDelta(t, 100.0, m.Correctness.CorrectnessScorePct, 1e-9)
+				assert.InDelta(t, 0.0, m.Sovereign.ErrorRatePct, 1e-9)
 			},
 		},
 		{

@@ -36,7 +36,7 @@ func TestLiveProjectorNames_NotEmpty(t *testing.T) {
 	names := liveProjectorNames()
 	assert.NotEmpty(t, names)
 	targets := RebuildTargets()
-	assert.Equal(t, len(targets), len(names))
+	assert.Len(t, names, len(targets))
 }
 
 func TestScanProjectionCheckpoint_Success(t *testing.T) {

@@ -3,11 +3,11 @@
  */
 import type { PerfConfig, RouteConfig } from "../config/schema.ts";
 import { getAuthCookies } from "../auth/kratos-session.ts";
-import type { PerformanceReport, LoadTestResult } from "../report/types.ts";
+import type { LoadTestResult, PerformanceReport } from "../report/types.ts";
 import { printCliReport } from "../report/cli-reporter.ts";
-import { saveJsonReport, printJsonReport } from "../report/json-reporter.ts";
-import { info, error, progress, section } from "../utils/logger.ts";
-import { calculatePercentile, calculateMean } from "../utils/stats.ts";
+import { printJsonReport, saveJsonReport } from "../report/json-reporter.ts";
+import { error, info, progress, section } from "../utils/logger.ts";
+import { calculateMean, calculatePercentile } from "../utils/stats.ts";
 
 interface LoadOptions {
   route?: string;
@@ -56,7 +56,7 @@ async function runLoadTest(config: LoadTestConfig): Promise<LoadTestResult> {
         if (config.cookies?.length) {
           headers.set(
             "Cookie",
-            config.cookies.map((c) => `${c.name}=${c.value}`).join("; ")
+            config.cookies.map((c) => `${c.name}=${c.value}`).join("; "),
           );
         }
 
@@ -142,7 +142,7 @@ function getLoadTestRoutes(config: PerfConfig, pattern?: string): RouteConfig[] 
   ];
 
   const routes = [...apiRoutes, ...defaultRoutes].filter(
-    (route, index, self) => self.findIndex((r) => r.path === route.path) === index
+    (route, index, self) => self.findIndex((r) => r.path === route.path) === index,
   );
 
   if (pattern) {
@@ -168,7 +168,7 @@ export async function runLoad(config: PerfConfig, options: LoadOptions): Promise
   }
 
   info(
-    `Running load test for ${options.duration}s with ${options.concurrency} concurrent requests`
+    `Running load test for ${options.duration}s with ${options.concurrency} concurrent requests`,
   );
 
   // Get auth cookies if any route requires auth
@@ -201,7 +201,7 @@ export async function runLoad(config: PerfConfig, options: LoadOptions): Promise
     progress(
       routes.indexOf(route) + 1,
       routes.length,
-      `${result.throughput.toFixed(1)} req/s, p95: ${result.responseTimes.p95.toFixed(0)}ms`
+      `${result.throughput.toFixed(1)} req/s, p95: ${result.responseTimes.p95.toFixed(0)}ms`,
     );
   }
 
@@ -221,10 +221,9 @@ export async function runLoad(config: PerfConfig, options: LoadOptions): Promise
       skippedRoutes: 0,
       measuredRoutes: routes.length,
       overallScore: Math.round(
-        (results.filter((r) => r.errorRate < 0.01).length / routes.length) * 100
+        (results.filter((r) => r.errorRate < 0.01).length / routes.length) * 100,
       ),
-      overallRating:
-        results.every((r) => r.errorRate < 0.01) ? "good" : "needs-improvement",
+      overallRating: results.every((r) => r.errorRate < 0.01) ? "good" : "needs-improvement",
     },
     routes: [],
     loadTests: results,

@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"log/slog"
 	"net/http"
 )
 
@@ -19,6 +20,8 @@ func PlaintextHealthOnly(next http.Handler) http.Handler {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
-		w.Write([]byte(`{"error": "business endpoints require HTTPS"}`))
+		if _, err := w.Write([]byte(`{"error": "business endpoints require HTTPS"}`)); err != nil {
+			slog.WarnContext(r.Context(), "failed to write plaintext health guard response", "error", err)
+		}
 	})
 }

@@ -186,6 +186,8 @@ func (cb *CircuitBreaker) onSuccess() {
 				"threshold", cb.config.SuccessThreshold)
 			cb.setState(StateClosed)
 		}
+	case StateOpen:
+		// Requests should not complete while open; ignore late completions.
 	}
 }
 
@@ -214,6 +216,8 @@ func (cb *CircuitBreaker) onFailure(err error) {
 		cb.logger.Warn("Circuit breaker re-opening from half-open state",
 			"error", err)
 		cb.setState(StateOpen)
+	case StateOpen:
+		// Already open; late failure does not transition state.
 	}
 }
 

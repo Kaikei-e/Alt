@@ -25,13 +25,13 @@ func TestFetchArticleByIDForUser_RejectsMissingUser(t *testing.T) {
 
 	article, err := repo.FetchArticleByIDForUser(context.Background(), articleID, nil)
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "user")
+	require.ErrorContains(t, err, "user")
 	assert.Nil(t, article)
 
 	nilUUID := uuid.Nil
 	article, err = repo.FetchArticleByIDForUser(context.Background(), articleID, &nilUUID)
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "user")
+	require.ErrorContains(t, err, "user")
 	assert.Nil(t, article)
 
 	require.NoError(t, mock.ExpectationsWereMet())

@@ -239,8 +239,8 @@ func TestOAuth2Token_TimeUntilExpiry(t *testing.T) {
 	duration := token.TimeUntilExpiry()
 
 	// Should be approximately 30 minutes (allowing some test execution time)
-	assert.True(t, duration > 29*time.Minute)
-	assert.True(t, duration <= 30*time.Minute)
+	assert.Greater(t, duration, 29*time.Minute)
+	assert.LessOrEqual(t, duration, 30*time.Minute)
 
 	// Test with past expiry time
 	pastTime := time.Now().Add(-10 * time.Minute)
@@ -250,5 +250,5 @@ func TestOAuth2Token_TimeUntilExpiry(t *testing.T) {
 	}
 
 	expiredDuration := expiredToken.TimeUntilExpiry()
-	assert.True(t, expiredDuration < 0) // Should be negative
+	assert.Negative(t, expiredDuration) // Should be negative
 }

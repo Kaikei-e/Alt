@@ -65,9 +65,9 @@ func TestStreamPayload_ItemAdded_ContainsItemKey(t *testing.T) {
 	assert.Equal(t, "item_added", canonicalType)
 
 	update := buildStreamResponse(event)
-	assert.Equal(t, "item_added", update.EventType)
-	require.NotNil(t, update.Item, "item_added should include Item")
-	assert.Equal(t, "article:"+aggID, update.Item.ItemKey)
+	assert.Equal(t, "item_added", update.GetEventType())
+	require.NotNil(t, update.GetItem(), "item_added should include Item")
+	assert.Equal(t, "article:"+aggID, update.GetItem().GetItemKey())
 }
 
 func TestStreamPayload_ItemUpdated_ContainsItemKey(t *testing.T) {
@@ -80,9 +80,9 @@ func TestStreamPayload_ItemUpdated_ContainsItemKey(t *testing.T) {
 	}
 
 	update := buildStreamResponse(event)
-	assert.Equal(t, "item_updated", update.EventType)
-	require.NotNil(t, update.Item, "item_updated should include Item")
-	assert.Equal(t, "article:"+aggID, update.Item.ItemKey)
+	assert.Equal(t, "item_updated", update.GetEventType())
+	require.NotNil(t, update.GetItem(), "item_updated should include Item")
+	assert.Equal(t, "article:"+aggID, update.GetItem().GetItemKey())
 }
 
 func TestStreamPayload_DigestChanged_NoItem(t *testing.T) {
@@ -94,9 +94,9 @@ func TestStreamPayload_DigestChanged_NoItem(t *testing.T) {
 	}
 
 	update := buildStreamResponse(event)
-	assert.Equal(t, "digest_changed", update.EventType)
-	assert.Nil(t, update.Item, "digest_changed should NOT include Item")
-	assert.Nil(t, update.DigestChange, "digest_changed should NOT include DigestChange")
+	assert.Equal(t, "digest_changed", update.GetEventType())
+	assert.Nil(t, update.GetItem(), "digest_changed should NOT include Item")
+	assert.Nil(t, update.GetDigestChange(), "digest_changed should NOT include DigestChange")
 }
 
 func TestStreamPayload_RecallChanged_ContainsMinimalRecallChange(t *testing.T) {
@@ -109,10 +109,10 @@ func TestStreamPayload_RecallChanged_ContainsMinimalRecallChange(t *testing.T) {
 	}
 
 	update := buildStreamResponse(event)
-	assert.Equal(t, "recall_changed", update.EventType)
-	require.NotNil(t, update.RecallChange)
-	assert.Equal(t, "article:"+aggID, update.RecallChange.ItemKey)
-	assert.Nil(t, update.Item)
+	assert.Equal(t, "recall_changed", update.GetEventType())
+	require.NotNil(t, update.GetRecallChange())
+	assert.Equal(t, "article:"+aggID, update.GetRecallChange().GetItemKey())
+	assert.Nil(t, update.GetItem())
 }
 
 func TestCoalesceStreamEvents_EmptyInput(t *testing.T) {
@@ -152,9 +152,9 @@ func TestCoalesceStreamEvents_PreservesCanonicalClassesPerAggregate(t *testing.T
 		}
 		result := coalesceStreamEvents(events)
 		require.Len(t, result, 2)
-		assert.Equal(t, "item_added", buildStreamResponse(result[0]).EventType)
+		assert.Equal(t, "item_added", buildStreamResponse(result[0]).GetEventType())
 		assert.Equal(t, int64(1), result[0].EventSeq)
-		assert.Equal(t, "item_updated", buildStreamResponse(result[1]).EventType)
+		assert.Equal(t, "item_updated", buildStreamResponse(result[1]).GetEventType())
 		assert.Equal(t, int64(3), result[1].EventSeq)
 	})
 
@@ -165,8 +165,8 @@ func TestCoalesceStreamEvents_PreservesCanonicalClassesPerAggregate(t *testing.T
 		}
 		result := coalesceStreamEvents(events)
 		require.Len(t, result, 2)
-		assert.Equal(t, "recall_changed", buildStreamResponse(result[0]).EventType)
-		assert.Equal(t, "digest_changed", buildStreamResponse(result[1]).EventType)
+		assert.Equal(t, "recall_changed", buildStreamResponse(result[0]).GetEventType())
+		assert.Equal(t, "digest_changed", buildStreamResponse(result[1]).GetEventType())
 	})
 }
 
@@ -361,19 +361,19 @@ func TestBuildStreamResponse_Table(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got := buildStreamResponse(tt.event)
 			require.NotNil(t, got)
-			assert.Equal(t, tt.wantType, got.EventType)
-			assert.Equal(t, tt.event.OccurredAt.Format(time.RFC3339), got.OccurredAt)
+			assert.Equal(t, tt.wantType, got.GetEventType())
+			assert.Equal(t, tt.event.OccurredAt.Format(time.RFC3339), got.GetOccurredAt())
 			if tt.hasItem {
-				require.NotNil(t, got.Item)
-				assert.Equal(t, tt.wantItemKey, got.Item.ItemKey)
+				require.NotNil(t, got.GetItem())
+				assert.Equal(t, tt.wantItemKey, got.GetItem().GetItemKey())
 			} else {
-				assert.Nil(t, got.Item)
+				assert.Nil(t, got.GetItem())
 			}
 			if tt.hasRecall {
-				require.NotNil(t, got.RecallChange)
-				assert.Equal(t, tt.wantRecallKey, got.RecallChange.ItemKey)
+				require.NotNil(t, got.GetRecallChange())
+				assert.Equal(t, tt.wantRecallKey, got.GetRecallChange().GetItemKey())
 			} else {
-				assert.Nil(t, got.RecallChange)
+				assert.Nil(t, got.GetRecallChange())
 			}
 		})
 	}
@@ -392,9 +392,9 @@ func TestBuildStreamResponse_RecallChanged_HomeSessionAggregate(t *testing.T) {
 				OccurredAt:    occurredAt,
 			})
 			require.NotNil(t, resp)
-			assert.Equal(t, "recall_changed", resp.EventType)
-			require.NotNil(t, resp.RecallChange)
-			assert.Equal(t, "article:"+id, resp.RecallChange.ItemKey)
+			assert.Equal(t, "recall_changed", resp.GetEventType())
+			require.NotNil(t, resp.GetRecallChange())
+			assert.Equal(t, "article:"+id, resp.GetRecallChange().GetItemKey())
 		})
 	}
 }

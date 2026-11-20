@@ -1,7 +1,6 @@
 package repository
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -9,16 +8,16 @@ import (
 
 func TestStalePendingCleanupQueries(t *testing.T) {
 	t.Run("count query targets pending rows that already have summaries", func(t *testing.T) {
-		assert.True(t, strings.Contains(countStalePendingJobsQuery, "summarize_job_queue q"))
-		assert.True(t, strings.Contains(countStalePendingJobsQuery, "q.status = 'pending'"))
-		assert.True(t, strings.Contains(countStalePendingJobsQuery, "EXISTS ("))
-		assert.True(t, strings.Contains(countStalePendingJobsQuery, "article_summaries s"))
+		assert.Contains(t, countStalePendingJobsQuery, "summarize_job_queue q")
+		assert.Contains(t, countStalePendingJobsQuery, "q.status = 'pending'")
+		assert.Contains(t, countStalePendingJobsQuery, "EXISTS (")
+		assert.Contains(t, countStalePendingJobsQuery, "article_summaries s")
 	})
 
 	t.Run("delete query only deletes pending rows that already have summaries", func(t *testing.T) {
-		assert.True(t, strings.Contains(deleteStalePendingJobsQuery, "DELETE FROM summarize_job_queue"))
-		assert.True(t, strings.Contains(deleteStalePendingJobsQuery, "status = 'pending'"))
-		assert.True(t, strings.Contains(deleteStalePendingJobsQuery, "article_summaries s"))
-		assert.True(t, strings.Contains(deleteStalePendingJobsQuery, "RETURNING"))
+		assert.Contains(t, deleteStalePendingJobsQuery, "DELETE FROM summarize_job_queue")
+		assert.Contains(t, deleteStalePendingJobsQuery, "status = 'pending'")
+		assert.Contains(t, deleteStalePendingJobsQuery, "article_summaries s")
+		assert.Contains(t, deleteStalePendingJobsQuery, "RETURNING")
 	})
 }

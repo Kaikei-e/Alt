@@ -56,7 +56,7 @@ def _good_outcome() -> FakeOutcome:
 class _Harness:
     """Shared fixture builder for BatchProcessor tests."""
 
-    def __init__(self, max_retries: int = 3):
+    def __init__(self, max_retries: int = 3) -> None:
         config = TagGeneratorConfig()
         config.max_empty_extraction_retries = max_retries
         config.batch_limit = 75
@@ -95,7 +95,7 @@ class TestEmptyExtractionTracking:
     """Tests for the process-local empty-extraction skip mechanism."""
 
     # ------------------------------------------------------------------ 1
-    def test_empty_extraction_increments_failure_count(self):
+    def test_empty_extraction_increments_failure_count(self) -> None:
         """tags=[] should increment the per-article empty-extraction counter."""
         h = _Harness(max_retries=3)
         h.tag_extractor.extract_tags_with_metrics.return_value = _empty_outcome()
@@ -106,9 +106,10 @@ class TestEmptyExtractionTracking:
         assert h.processor._empty_extraction_counts.get("poison-1", 0) == 1
 
     # ------------------------------------------------------------------ 2
-    def test_article_at_retry_threshold_is_skipped_on_next_batch(self):
+    def test_article_at_retry_threshold_is_skipped_on_next_batch(self) -> None:
         """Once an article reaches the threshold, the NEXT batch should skip it."""
-        h = _Harness(max_retries=2)
+        max_retries = 2
+        h = _Harness(max_retries=max_retries)
         h.tag_extractor.extract_tags_with_metrics.return_value = _empty_outcome()
 
         article = _make_article("poison-1")
@@ -116,7 +117,7 @@ class TestEmptyExtractionTracking:
         # First two batches: article is processed (and fails extraction)
         h.processor.process_articles_as_batch(None, [article])
         h.processor.process_articles_as_batch(None, [article])
-        assert h.processor._empty_extraction_counts["poison-1"] == 2
+        assert h.processor._empty_extraction_counts["poison-1"] == max_retries
 
         # Third batch: article should be filtered out before processing
         h.tag_extractor.extract_tags_with_metrics.reset_mock()
@@ -128,7 +129,7 @@ class TestEmptyExtractionTracking:
         assert stats["total_processed"] == 0
 
     # ------------------------------------------------------------------ 3
-    def test_article_below_retry_threshold_is_still_processed(self):
+    def test_article_below_retry_threshold_is_still_processed(self) -> None:
         """Articles below the threshold should still be attempted."""
         h = _Harness(max_retries=3)
         h.tag_extractor.extract_tags_with_metrics.return_value = _empty_outcome()
@@ -140,16 +141,18 @@ class TestEmptyExtractionTracking:
         assert h.processor._empty_extraction_counts["almost-poison"] == 1
 
         # Second attempt: should still be processed
+        expected_failures_after_two_attempts = 2
         h.tag_extractor.extract_tags_with_metrics.reset_mock()
         h.processor.process_articles_as_batch(None, [article])
 
         h.tag_extractor.extract_tags_with_metrics.assert_called_once()
-        assert h.processor._empty_extraction_counts["almost-poison"] == 2
+        assert h.processor._empty_extraction_counts["almost-poison"] == expected_failures_after_two_attempts
 
     # ------------------------------------------------------------------ 4
-    def test_skip_state_persists_across_batch_calls_for_same_processor(self):
+    def test_skip_state_persists_across_batch_calls_for_same_processor(self) -> None:
         """The empty-extraction counter survives across multiple batch calls."""
-        h = _Harness(max_retries=2)
+        max_retries = 2
+        h = _Harness(max_retries=max_retries)
         h.tag_extractor.extract_tags_with_metrics.return_value = _empty_outcome()
 
         article = _make_article("persistent-poison")
@@ -159,7 +162,7 @@ class TestEmptyExtractionTracking:
         h.processor.process_articles_as_batch(None, [article])
 
         # Counter should be 2 after two batch calls
-        assert h.processor._empty_extraction_counts["persistent-poison"] == 2
+        assert h.processor._empty_extraction_counts["persistent-poison"] == max_retries
 
         # Third call: should be skipped
         h.tag_extractor.extract_tags_with_metrics.reset_mock()
@@ -167,7 +170,7 @@ class TestEmptyExtractionTracking:
         h.tag_extractor.extract_tags_with_metrics.assert_not_called()
 
     # ------------------------------------------------------------------ 5
-    def test_success_before_threshold_clears_failure_count(self):
+    def test_success_before_threshold_clears_failure_count(self) -> None:
         """A successful extraction before reaching threshold resets the counter."""
         h = _Harness(max_retries=3)
 
@@ -191,7 +194,7 @@ class TestEmptyExtractionTracking:
         assert "recoverable" not in h.processor._empty_extraction_counts
 
     # ------------------------------------------------------------------ 6
-    def test_empty_extraction_does_not_increment_failed_stat(self):
+    def test_empty_extraction_does_not_increment_failed_stat(self) -> None:
         """Empty extraction (tags=[]) should NOT increment the 'failed' stat.
 
         Only exceptions during extraction increment 'failed'. This preserves
@@ -206,7 +209,7 @@ class TestEmptyExtractionTracking:
         assert stats["failed"] == 0
 
     # ------------------------------------------------------------------ 7
-    def test_skipped_articles_do_not_contribute_to_total_processed(self):
+    def test_skipped_articles_do_not_contribute_to_total_processed(self) -> None:
         """Articles skipped due to empty-extraction threshold should not
         appear in total_processed. Only articles actually attempted count."""
         h = _Harness(max_retries=1)
@@ -236,7 +239,7 @@ class TestEmptyExtractionTracking:
         h.tag_extractor.extract_tags_with_metrics.assert_called_once()
 
     # ------------------------------------------------------------------ 8
-    def test_process_articles_as_batch_returns_skipped_count(self):
+    def test_process_articles_as_batch_returns_skipped_count(self) -> None:
         """batch stats must include 'skipped' count for visibility."""
         h = _Harness(max_retries=1)
         h.tag_extractor.extract_tags_with_metrics.return_value = _empty_outcome()
@@ -246,14 +249,14 @@ class TestEmptyExtractionTracking:
         h.processor.process_articles_as_batch(None, articles)
         # Second pass: both should be skipped
         stats = h.processor.process_articles_as_batch(None, articles)
-        assert stats.get("skipped") == 2
+        assert stats.get("skipped") == len(articles)
 
 
 class TestForwardHeadOfLineBlocking:
     """Tests for forward processing pagination past poison pills."""
 
     # ------------------------------------------------------------------ 9
-    def test_forward_processing_pages_past_known_poison_pills(self):
+    def test_forward_processing_pages_past_known_poison_pills(self) -> None:
         """When all first-page articles are poison-pilled, forward processing
         must paginate to next pages to find processable articles."""
         h = _Harness(max_retries=1)
@@ -277,7 +280,8 @@ class TestForwardHeadOfLineBlocking:
         h.article_fetcher.fetch_articles.return_value = [good1]
 
         # Good article: successful extraction
-        def side_effect(title, content):
+        def side_effect(title: str, content: str) -> FakeOutcome:
+            del title, content
             return _good_outcome()
 
         h.tag_extractor.extract_tags_with_metrics.side_effect = side_effect
@@ -299,14 +303,15 @@ class TestForwardHeadOfLineBlocking:
 class TestEmptyExtractionLRU:
     """Bounded LRU for _empty_extraction_counts."""
 
-    def test_empty_extraction_counts_evict_oldest_when_over_cap(self):
-        h = _Harness(max_retries=3)
-        h.processor._empty_extraction_counts_max = 3
+    def test_empty_extraction_counts_evict_oldest_when_over_cap(self) -> None:
+        lru_cap = 3
+        h = _Harness(max_retries=lru_cap)
+        h.processor._empty_extraction_counts_max = lru_cap
 
-        for i in range(4):
+        for i in range(lru_cap + 1):
             h.processor._record_empty_extraction(f"art-{i}")
 
-        assert len(h.processor._empty_extraction_counts) == 3
+        assert len(h.processor._empty_extraction_counts) == lru_cap
         assert "art-0" not in h.processor._empty_extraction_counts
         assert "art-1" in h.processor._empty_extraction_counts
         assert "art-3" in h.processor._empty_extraction_counts
@@ -315,7 +320,7 @@ class TestEmptyExtractionLRU:
 class TestExtractionExceptionHandling:
     """Distinguish infrastructure ModelLoadError from bounded per-article exceptions."""
 
-    def test_model_load_error_aborts_batch_without_counting_toward_per_article_limit(self):
+    def test_model_load_error_aborts_batch_without_counting_toward_per_article_limit(self) -> None:
         """ModelLoadError must abort the batch and not count toward per-article retry limits."""
         h = _Harness(max_retries=2)
         h.tag_extractor.extract_tags_with_metrics.side_effect = ModelLoadError("Missing ML dependency")
@@ -329,7 +334,7 @@ class TestExtractionExceptionHandling:
         assert h.tag_extractor.extract_tags_with_metrics.call_count == 1
         h.tag_inserter.batch_upsert_tags_no_commit.assert_not_called()
 
-    def test_per_article_exception_counts_toward_retry_limit_and_allows_backfill_cursor_advance(self):
+    def test_per_article_exception_counts_toward_retry_limit_and_allows_backfill_cursor_advance(self) -> None:
         """A non-ModelLoadError per-article exception increments the bounded retry counter so the
         poisoned article is skipped after max_empty_extraction_retries and backfill cursor advances."""
         h = _Harness(max_retries=2)

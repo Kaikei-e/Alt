@@ -1,11 +1,13 @@
 # alt-perf
 
-Deno-based E2E performance measurement CLI for the Alt platform. Measures Core Web Vitals (LCP, INP, CLS, FCP, TTFB) using Astral (browser automation).
+Deno-based E2E performance measurement CLI for the Alt platform. Measures Core Web Vitals (LCP, INP,
+CLS, FCP, TTFB) using Astral (browser automation).
 
 ## Features
 
 - **Automated Web Vitals Measurement**: Measure LCP, INP, CLS, FCP, and TTFB across all routes
-- **Multi-Run Statistical Analysis**: Run multiple measurements with confidence intervals and outlier detection
+- **Multi-Run Statistical Analysis**: Run multiple measurements with confidence intervals and
+  outlier detection
 - **Retry Mechanism**: Exponential backoff with configurable retry policies for transient failures
 - **Network Simulation**: Simulate slow-3g, fast-3g, 4g network conditions via CDP
 - **Debug Artifacts**: Automatic screenshot and trace capture on failures
@@ -66,13 +68,13 @@ deno task perf:load
 
 ### Command Reference
 
-| Command | Description | Example |
-|---------|-------------|---------|
-| `scan` | Scan all routes, measure Web Vitals | `deno task perf:scan` |
-| `flow` | Execute user flow tests | `deno task perf:flow` |
-| `load` | Run load tests | `deno task perf:load` |
-| `help` | Show help message | `deno task perf --help` |
-| `version` | Show version | `deno task perf --version` |
+| Command   | Description                         | Example                    |
+| --------- | ----------------------------------- | -------------------------- |
+| `scan`    | Scan all routes, measure Web Vitals | `deno task perf:scan`      |
+| `flow`    | Execute user flow tests             | `deno task perf:flow`      |
+| `load`    | Run load tests                      | `deno task perf:load`      |
+| `help`    | Show help message                   | `deno task perf --help`    |
+| `version` | Show version                        | `deno task perf --version` |
 
 ### Advanced Usage
 
@@ -176,7 +178,7 @@ debug:
   retentionDays: 7
 
 network:
-  preset: "fast-3g"  # optional
+  preset: "fast-3g" # optional
 
 cache:
   disableCache: true
@@ -185,24 +187,24 @@ cache:
 
 ## Core Web Vitals Thresholds (2025)
 
-| Metric | Description | Good | Needs Improvement | Poor |
-|--------|-------------|------|-------------------|------|
-| **LCP** | Largest Contentful Paint | < 2.5s | 2.5s - 4.0s | > 4.0s |
-| **INP** | Interaction to Next Paint | < 200ms | 200ms - 500ms | > 500ms |
-| **CLS** | Cumulative Layout Shift | < 0.1 | 0.1 - 0.25 | > 0.25 |
-| **FCP** | First Contentful Paint | < 1.8s | 1.8s - 3.0s | > 3.0s |
-| **TTFB** | Time to First Byte | < 800ms | 800ms - 1.8s | > 1.8s |
+| Metric   | Description               | Good    | Needs Improvement | Poor    |
+| -------- | ------------------------- | ------- | ----------------- | ------- |
+| **LCP**  | Largest Contentful Paint  | < 2.5s  | 2.5s - 4.0s       | > 4.0s  |
+| **INP**  | Interaction to Next Paint | < 200ms | 200ms - 500ms     | > 500ms |
+| **CLS**  | Cumulative Layout Shift   | < 0.1   | 0.1 - 0.25        | > 0.25  |
+| **FCP**  | First Contentful Paint    | < 1.8s  | 1.8s - 3.0s       | > 3.0s  |
+| **TTFB** | Time to First Byte        | < 800ms | 800ms - 1.8s      | > 1.8s  |
 
 ## Network Simulation Presets
 
-| Preset | Download | Upload | Latency |
-|--------|----------|--------|---------|
-| `fast-3g` | 1.5 Mbps | 750 Kbps | 100ms |
-| `slow-3g` | 780 Kbps | 330 Kbps | 400ms |
-| `4g` | 12 Mbps | 2 Mbps | 50ms |
-| `wifi-slow` | 5 Mbps | 1 Mbps | 20ms |
-| `wifi-fast` | 50 Mbps | 10 Mbps | 5ms |
-| `offline` | 0 | 0 | - |
+| Preset      | Download | Upload   | Latency |
+| ----------- | -------- | -------- | ------- |
+| `fast-3g`   | 1.5 Mbps | 750 Kbps | 100ms   |
+| `slow-3g`   | 780 Kbps | 330 Kbps | 400ms   |
+| `4g`        | 12 Mbps  | 2 Mbps   | 50ms    |
+| `wifi-slow` | 5 Mbps   | 1 Mbps   | 20ms    |
+| `wifi-fast` | 50 Mbps  | 10 Mbps  | 5ms     |
+| `offline`   | 0        | 0        | -       |
 
 ## Development
 
@@ -314,14 +316,15 @@ interface StatisticalSummary {
   confidenceInterval: {
     lower: number;
     upper: number;
-    level: number;  // 0.95 for 95% CI
+    level: number; // 0.95 for 95% CI
   };
   outliers: number[];
-  isStable: boolean;  // CV < 15%
+  isStable: boolean; // CV < 15%
 }
 ```
 
 Features:
+
 - **Welford's Algorithm**: Numerically stable mean/variance calculation
 - **IQR Method**: Outlier detection (values outside Q1 - 1.5×IQR to Q3 + 1.5×IQR)
 - **t-Distribution**: Confidence intervals for small samples
@@ -331,14 +334,14 @@ Features:
 
 ### Common Issues
 
-| Issue | Solution |
-|-------|----------|
-| **Chromium not found** | Run `deno install --allow-all npm:puppeteer` or use Docker |
-| **Auth failures** | Verify test credentials are correct |
-| **Flaky metrics** | Use `--runs 5` for multi-run measurement |
-| **Permission denied** | Ensure `--allow-all` flag is used |
-| **Module not found** | Run `deno cache main.ts` to refresh dependencies |
-| **Network throttling not working** | Requires Chrome with CDP support |
+| Issue                              | Solution                                                   |
+| ---------------------------------- | ---------------------------------------------------------- |
+| **Chromium not found**             | Run `deno install --allow-all npm:puppeteer` or use Docker |
+| **Auth failures**                  | Verify test credentials are correct                        |
+| **Flaky metrics**                  | Use `--runs 5` for multi-run measurement                   |
+| **Permission denied**              | Ensure `--allow-all` flag is used                          |
+| **Module not found**               | Run `deno cache main.ts` to refresh dependencies           |
+| **Network throttling not working** | Requires Chrome with CDP support                           |
 
 ### Debugging
 
@@ -489,6 +492,7 @@ artifacts/
 ## References
 
 ### Official Documentation
+
 - [Deno Documentation](https://docs.deno.com/)
 - [Deno Testing](https://docs.deno.com/runtime/fundamentals/testing/)
 - [Astral (Puppeteer for Deno)](https://jsr.io/@astral/astral)
@@ -496,12 +500,14 @@ artifacts/
 - [web-vitals Library](https://github.com/GoogleChrome/web-vitals)
 
 ### Best Practices
+
 - [Core Web Vitals](https://web.dev/vitals/)
 - [Optimize LCP](https://web.dev/optimize-lcp/)
 - [Optimize INP](https://web.dev/optimize-inp/)
 - [Optimize CLS](https://web.dev/optimize-cls/)
 
 ### Related Projects
+
 - [Lighthouse CI](https://github.com/GoogleChrome/lighthouse-ci)
 - [WebPageTest](https://www.webpagetest.org/)
 
@@ -514,6 +520,7 @@ Part of the Alt platform monorepo.
 See the main [Alt project CLAUDE.md](../CLAUDE.md) for development guidelines.
 
 ### Key Principles
+
 1. **TDD First**: Write failing tests before implementation
 2. **Clean Code**: Follow Deno style guide
 3. **Type Safety**: Use TypeScript strict mode

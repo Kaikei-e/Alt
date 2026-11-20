@@ -25,6 +25,7 @@ func ResolveGoldenCasesPath(defaultPath string) string {
 
 // LoadGoldenCases reads golden cases from a JSON file.
 func LoadGoldenCases(path string) ([]GoldenCase, error) {
+	// #nosec G304 -- offline eval runner reads configured golden cases file path
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read golden cases: %w", err)

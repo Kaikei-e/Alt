@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 from pathlib import Path
 from unittest.mock import patch
@@ -16,6 +17,7 @@ from tag_generator.driver.connect_client_factory import (
     create_backend_client,
 )
 from tag_generator.driver.connect_tag_inserter import ConnectTagInserter
+from tag_generator.gen.proto.services.datahub.v1.datahub_connect import DataHubServiceClientSync
 
 
 def _write_test_pki(dir_path: Path, cn: str) -> tuple[Path, Path, Path]:
@@ -28,8 +30,13 @@ def _write_test_pki(dir_path: Path, cn: str) -> tuple[Path, Path, Path]:
     key_path = dir_path / f"{cn}-key.pem"
     ca_path = dir_path / "ca.pem"
 
-    cmd = [  # noqa: S603, S607 — test-only openssl shell-out
-        "openssl",
+    openssl = shutil.which("openssl")
+    if openssl is None:
+        msg = "openssl executable not found"
+        raise FileNotFoundError(msg)
+
+    cmd = [
+        openssl,
         "req",
         "-x509",
         "-newkey",
@@ -44,7 +51,7 @@ def _write_test_pki(dir_path: Path, cn: str) -> tuple[Path, Path, Path]:
         "-subj",
         f"/CN={cn}",
     ]
-    subprocess.run(cmd, check=True, capture_output=True)  # noqa: S603
+    subprocess.run(cmd, check=True, capture_output=True)  # noqa: S603 - fixed argv built in this test
     # For tests, reuse the same cert as CA bundle — the reloading client
     # doesn't validate chain semantics, only that all three files are
     # readable and produce a valid SyncHTTPTransport.
@@ -80,9 +87,6 @@ class TestCreateBackendClient:
 
         assert result is not None
         client, headers = result
-        from tag_generator.gen.proto.services.datahub.v1.datahub_connect import (
-            DataHubServiceClientSync,
-        )
 
         assert isinstance(client, DataHubServiceClientSync)
         assert isinstance(headers, dict)
@@ -107,9 +111,11 @@ class TestCreateBackendClient:
     )
     def test_raises_when_mtls_enforce_true_and_mtls_url_unset_or_empty(self, env: dict[str, str]) -> None:
         """Fails closed with RuntimeError when MTLS_ENFORCE=true and BACKEND_API_MTLS_URL is unset or empty."""
-        with patch.dict(os.environ, env, clear=True):
-            with pytest.raises(RuntimeError, match="BACKEND_API_MTLS_URL is unset"):
-                create_backend_client()
+        with (
+            patch.dict(os.environ, env, clear=True),
+            pytest.raises(RuntimeError, match="BACKEND_API_MTLS_URL is unset"),
+        ):
+            create_backend_client()
 
     @pytest.mark.parametrize(
         "missing_var",
@@ -125,9 +131,11 @@ class TestCreateBackendClient:
             "MTLS_CA_FILE": "/certs/ca.pem",
         }
         del env[missing_var]
-        with patch.dict(os.environ, env, clear=True):
-            with pytest.raises(RuntimeError, match="MTLS_CERT_FILE/KEY_FILE/CA_FILE not fully set"):
-                create_backend_client()
+        with (
+            patch.dict(os.environ, env, clear=True),
+            pytest.raises(RuntimeError, match="MTLS_CERT_FILE/KEY_FILE/CA_FILE not fully set"),
+        ):
+            create_backend_client()
 
     def test_returns_reloading_client_when_mtls_enforce_and_all_env_set(self, tmp_path: Path) -> None:
         """Returns (_ReloadingBackendClient, headers) when MTLS_ENFORCE=true and all env vars are configured."""
@@ -160,21 +168,19 @@ class TestReloadingBackendClient:
             ca_file=str(ca),
             timeout_ms=1000,
         )
-        first_inner = rc._inner  # noqa: SLF001 — test-only access
+        first_inner = rc._inner
 
         # Rotate: overwrite with fresh material + bump mtime.
         new_cert, new_key, _ = _write_test_pki(tmp_path, "tag-generator")
         cert.write_bytes(new_cert.read_bytes())
         key.write_bytes(new_key.read_bytes())
-        future = rc._cert_mtime + 2.0  # noqa: SLF001
+        future = rc._cert_mtime + 2.0
         os.utime(cert, (future, future))
         os.utime(key, (future, future))
 
-        rc._maybe_reload()  # noqa: SLF001 — test-only access
+        rc._maybe_reload()
 
-        assert rc._inner is not first_inner, (  # noqa: SLF001
-            "reloading client must construct a fresh inner on cert rotation"
-        )
+        assert rc._inner is not first_inner, "reloading client must construct a fresh inner on cert rotation"
 
     def test_keeps_previous_inner_on_transient_read_failure(self, tmp_path: Path) -> None:
         cert, key, ca = _write_test_pki(tmp_path, "tag-generator")
@@ -185,19 +191,17 @@ class TestReloadingBackendClient:
             ca_file=str(ca),
             timeout_ms=1000,
         )
-        original = rc._inner  # noqa: SLF001
+        original = rc._inner
 
         # Truncate and bump mtime — next rebuild should fail internally and
         # leave the original client intact.
         cert.write_bytes(b"not a pem")
-        future = rc._cert_mtime + 2.0  # noqa: SLF001
+        future = rc._cert_mtime + 2.0
         os.utime(cert, (future, future))
 
-        rc._maybe_reload()  # noqa: SLF001 — must not raise
+        rc._maybe_reload()
 
-        assert rc._inner is original, (  # noqa: SLF001
-            "rebuild failure must keep the previously-good inner client"
-        )
+        assert rc._inner is original, "rebuild failure must keep the previously-good inner client"
 
     def test_forwards_attribute_access_to_inner(self, tmp_path: Path) -> None:
         cert, key, ca = _write_test_pki(tmp_path, "tag-generator")
@@ -221,8 +225,8 @@ class TestReloadingBackendClient:
         # must resolve to a bound method of that same inner
         # instance -- proving __getattr__ actually forwards rather than
         # merely failing closed on unknown names.
-        bound_close = rc.close  # noqa: SLF001 — real RPC-client method, forwarded via __getattr__
-        assert bound_close.__self__ is rc._inner  # noqa: SLF001
+        bound_close = rc.close
+        assert bound_close.__self__ is rc._inner
 
 
 class TestCreateArticleFetcherAndInserter:
@@ -230,9 +234,11 @@ class TestCreateArticleFetcherAndInserter:
 
     def test_raises_runtime_error_when_client_is_none(self) -> None:
         """Raises RuntimeError when create_backend_client returns None."""
-        with patch.dict(os.environ, {}, clear=True):
-            with pytest.raises(RuntimeError, match="Backend API client could not be created"):
-                create_article_fetcher_and_inserter()
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            pytest.raises(RuntimeError, match="Backend API client could not be created"),
+        ):
+            create_article_fetcher_and_inserter()
 
     def test_returns_fetcher_and_inserter_when_client_created(self) -> None:
         """Returns (ConnectArticleFetcher, ConnectTagInserter) tuple when client is available."""

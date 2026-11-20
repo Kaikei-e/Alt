@@ -68,7 +68,7 @@ func (h *AdminMonitorProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Requ
 		http.Error(w, "Bad Gateway", http.StatusBadGateway)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	copyResponseHeaders(resp.Header, w.Header())
 	// Defense in depth: always disable intermediate buffering for admin monitor.

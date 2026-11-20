@@ -29,25 +29,25 @@ func (h *Handler) ListRecapArticles(
 	}
 
 	msg := req.Msg
-	if msg == nil || strings.TrimSpace(msg.From) == "" {
+	if msg == nil || strings.TrimSpace(msg.GetFrom()) == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("from is required"))
 	}
-	if strings.TrimSpace(msg.To) == "" {
+	if strings.TrimSpace(msg.GetTo()) == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("to is required"))
 	}
 
-	from, err := time.Parse(time.RFC3339, msg.From)
+	from, err := time.Parse(time.RFC3339, msg.GetFrom())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("from must be RFC3339: %w", err))
 	}
-	to, err := time.Parse(time.RFC3339, msg.To)
+	to, err := time.Parse(time.RFC3339, msg.GetTo())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("to must be RFC3339: %w", err))
 	}
 
 	var langHint *string
 	if msg.LangHint != nil {
-		lower := strings.ToLower(strings.TrimSpace(*msg.LangHint))
+		lower := strings.ToLower(strings.TrimSpace(msg.GetLangHint()))
 		if lower != "" {
 			langHint = &lower
 		}
@@ -57,13 +57,13 @@ func (h *Handler) ListRecapArticles(
 		From:     from.UTC(),
 		To:       to.UTC(),
 		LangHint: langHint,
-		Fields:   msg.Fields,
+		Fields:   msg.GetFields(),
 	}
 	if msg.Page != nil {
-		input.Page = int(*msg.Page)
+		input.Page = int(msg.GetPage())
 	}
 	if msg.PageSize != nil {
-		input.PageSize = int(*msg.PageSize)
+		input.PageSize = int(msg.GetPageSize())
 	}
 
 	page, err := h.recapArticlesUsecase.Execute(ctx, input)
@@ -121,23 +121,23 @@ func (h *Handler) ListFeedsInWindow(
 	}
 
 	msg := req.Msg
-	if msg == nil || strings.TrimSpace(msg.From) == "" {
+	if msg == nil || strings.TrimSpace(msg.GetFrom()) == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("from is required"))
 	}
-	if strings.TrimSpace(msg.To) == "" {
+	if strings.TrimSpace(msg.GetTo()) == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("to is required"))
 	}
 
-	from, err := time.Parse(time.RFC3339, msg.From)
+	from, err := time.Parse(time.RFC3339, msg.GetFrom())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("from must be RFC3339: %w", err))
 	}
-	to, err := time.Parse(time.RFC3339, msg.To)
+	to, err := time.Parse(time.RFC3339, msg.GetTo())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("to must be RFC3339: %w", err))
 	}
 
-	if msg.Page != nil && *msg.Page < 1 {
+	if msg.Page != nil && msg.GetPage() < 1 {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("page must be >= 1"))
 	}
 
@@ -146,10 +146,10 @@ func (h *Handler) ListFeedsInWindow(
 		To:   to.UTC(),
 	}
 	if msg.Page != nil {
-		input.Page = int(*msg.Page)
+		input.Page = int(msg.GetPage())
 	}
 	if msg.PageSize != nil {
-		input.PageSize = int(*msg.PageSize)
+		input.PageSize = int(msg.GetPageSize())
 	}
 
 	page, err := h.feedsInWindowUsecase.Execute(ctx, input)

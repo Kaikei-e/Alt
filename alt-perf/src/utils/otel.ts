@@ -4,13 +4,10 @@
  */
 
 import { logs, SeverityNumber } from "@opentelemetry/api-logs";
-import { LoggerProvider, BatchLogRecordProcessor } from "@opentelemetry/sdk-logs";
+import { BatchLogRecordProcessor, LoggerProvider } from "@opentelemetry/sdk-logs";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-http";
 import { resourceFromAttributes } from "@opentelemetry/resources";
-import {
-  ATTR_SERVICE_NAME,
-  ATTR_SERVICE_VERSION,
-} from "@opentelemetry/semantic-conventions";
+import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from "@opentelemetry/semantic-conventions";
 
 const ATTR_DEPLOYMENT_ENVIRONMENT = "deployment.environment";
 
@@ -112,7 +109,7 @@ function levelToSeverity(level: string): SeverityNumber {
 export function emitOTelLog(
   level: string,
   message: string,
-  attributes: Record<string, string | number | boolean> = {}
+  attributes: Record<string, string | number | boolean> = {},
 ): void {
   if (!otelLogger) {
     return;

@@ -19,7 +19,10 @@ impl MockExporter {
     }
 
     fn get_exported_logs(&self) -> Vec<EnrichedLogEntry> {
-        self.exported_logs.lock().unwrap().clone()
+        self.exported_logs
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
     }
 }
 
@@ -30,7 +33,9 @@ impl LogExporter for MockExporter {
     ) -> Pin<Box<dyn Future<Output = Result<(), AggregatorError>> + Send + '_>> {
         let exported_logs = self.exported_logs.clone();
         Box::pin(async move {
-            let mut guard = exported_logs.lock().unwrap();
+            let mut guard = exported_logs
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             guard.extend(logs);
             Ok(())
         })
@@ -41,8 +46,7 @@ fn random_test_token() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .subsec_nanos();
+        .map_or(0, |d| d.subsec_nanos());
     format!("test-tok-{nanos:x}-{:x}", std::process::id())
 }
 
@@ -136,10 +140,10 @@ async fn test_aggregate_endpoint_accepts_valid_log_with_auth() {
     response.assert_status_ok();
 
     // Verify the log was exported
-    let exported = mock_exporter.get_exported_logs();
-    assert_eq!(exported.len(), 1);
-    assert_eq!(exported[0].service_type, "test");
-    assert_eq!(exported[0].message, "test message");
+    let received_logs = mock_exporter.get_exported_logs();
+    assert_eq!(received_logs.len(), 1);
+    assert_eq!(received_logs[0].service_type, "test");
+    assert_eq!(received_logs[0].message, "test message");
 }
 
 #[tokio::test]
@@ -175,7 +179,7 @@ async fn test_aggregate_endpoint_handles_multiple_logs_with_auth() {
 
     let body = logs
         .iter()
-        .map(|l| l.to_string())
+        .map(ToString::to_string)
         .collect::<Vec<_>>()
         .join("\n");
 
@@ -187,10 +191,10 @@ async fn test_aggregate_endpoint_handles_multiple_logs_with_auth() {
 
     response.assert_status_ok();
 
-    let exported = mock_exporter.get_exported_logs();
-    assert_eq!(exported.len(), 2);
-    assert_eq!(exported[0].service_type, "svc1");
-    assert_eq!(exported[1].service_type, "svc2");
+    let received_logs = mock_exporter.get_exported_logs();
+    assert_eq!(received_logs.len(), 2);
+    assert_eq!(received_logs[0].service_type, "svc1");
+    assert_eq!(received_logs[1].service_type, "svc2");
 }
 
 #[tokio::test]
@@ -213,8 +217,8 @@ invalid json line
 
     response.assert_status_ok();
 
-    let exported = mock_exporter.get_exported_logs();
-    assert_eq!(exported.len(), 2); // Only valid logs exported
+    let received_logs = mock_exporter.get_exported_logs();
+    assert_eq!(received_logs.len(), 2); // Only valid logs exported
 }
 
 #[tokio::test]
@@ -233,6 +237,6 @@ async fn test_aggregate_endpoint_handles_empty_body_with_auth() {
 
     response.assert_status_ok();
 
-    let exported = mock_exporter.get_exported_logs();
-    assert_eq!(exported.len(), 0);
+    let received_logs = mock_exporter.get_exported_logs();
+    assert_eq!(received_logs.len(), 0);
 }

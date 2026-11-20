@@ -8,6 +8,8 @@ import logging
 import re
 from pathlib import Path
 
+import pytest
+
 from recap_subworker.app.infra.pki.config import MODE_DISABLED
 from recap_subworker.app.infra.pki.start import start
 
@@ -53,7 +55,9 @@ def test_pki_and_inbound_tls_except_syntax_is_313_portable() -> None:
     assert offenders == []
 
 
-def test_disabled_mode_imports_and_starts(monkeypatch, caplog) -> None:
+def test_disabled_mode_imports_and_starts(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
     monkeypatch.delenv("PKI_ENROLLMENT", raising=False)
     monkeypatch.delenv("PKI_ENROLLMENT_FILE", raising=False)
     importlib.invalidate_caches()

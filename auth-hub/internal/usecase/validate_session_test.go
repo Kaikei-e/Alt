@@ -2,13 +2,13 @@ package usecase
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"testing"
 
 	"auth-hub/internal/domain"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // mockValidator implements domain.SessionValidator for testing.
@@ -64,7 +64,7 @@ func TestValidateSession_CacheHit(t *testing.T) {
 	uc := NewValidateSession(validator, cache, logger)
 	identity, err := uc.Execute(context.Background(), "cookie-abc")
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "user-123", identity.UserID)
 	assert.Equal(t, "test@example.com", identity.Email)
 	assert.Equal(t, "session-abc", identity.SessionID)
@@ -85,7 +85,7 @@ func TestValidateSession_CacheMiss(t *testing.T) {
 	uc := NewValidateSession(validator, cache, logger)
 	identity, err := uc.Execute(context.Background(), "cookie-xyz")
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "user-456", identity.UserID)
 	assert.Equal(t, "new@example.com", identity.Email)
 	assert.Equal(t, "session-xyz", identity.SessionID)
@@ -109,7 +109,7 @@ func TestValidateSession_KratosError(t *testing.T) {
 	identity, err := uc.Execute(context.Background(), "bad-session")
 
 	assert.Nil(t, identity)
-	assert.True(t, errors.Is(err, domain.ErrAuthFailed))
+	assert.ErrorIs(t, err, domain.ErrAuthFailed)
 }
 
 // TestValidateSession_CacheMiss_TenantIDFallback locks in the single-tenant
@@ -128,7 +128,7 @@ func TestValidateSession_CacheMiss_TenantIDFallback(t *testing.T) {
 	uc := NewValidateSession(validator, cache, logger)
 	identity, err := uc.Execute(context.Background(), "session-xyz")
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "user-456", identity.TenantID, "single-tenant fallback: TenantID must equal UserID")
 }
 
@@ -150,7 +150,7 @@ func TestValidateSession_AdminRole_CacheMiss(t *testing.T) {
 	uc := NewValidateSession(validator, cache, logger)
 	identity, err := uc.Execute(context.Background(), "admin-session")
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "admin", identity.Role, "Role from Kratos must be preserved on cache miss")
 
 	// Verify the cache entry itself carries Role, otherwise the very next
@@ -181,7 +181,7 @@ func TestValidateSession_CacheMiss_SessionIDIsKratosSessionID(t *testing.T) {
 	uc := NewValidateSession(validator, cache, logger)
 	identity, err := uc.Execute(context.Background(), rawCookie)
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "9f3c1b2a-0000-4d5e-8f1a-2b3c4d5e6f70", identity.SessionID)
 	assert.NotEqual(t, rawCookie, identity.SessionID, "the raw session cookie must never leave as SessionID")
 
@@ -209,7 +209,7 @@ func TestValidateSession_CacheHit_SessionIDIsKratosSessionID(t *testing.T) {
 	uc := NewValidateSession(validator, cache, logger)
 	identity, err := uc.Execute(context.Background(), rawCookie)
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "9f3c1b2a-0000-4d5e-8f1a-2b3c4d5e6f70", identity.SessionID)
 	assert.NotEqual(t, rawCookie, identity.SessionID, "the raw session cookie must never leave as SessionID")
 	assert.False(t, validator.called, "should not call Kratos on cache hit")
@@ -233,7 +233,7 @@ func TestValidateSession_AdminRole_CacheHit(t *testing.T) {
 	uc := NewValidateSession(validator, cache, logger)
 	identity, err := uc.Execute(context.Background(), "admin-session")
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "admin", identity.Role, "cache hit must not downgrade a cached admin's Role")
 	assert.False(t, validator.called, "should not call Kratos on cache hit")
 }

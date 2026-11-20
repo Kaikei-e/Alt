@@ -31,7 +31,7 @@ func TestCreateMTLSConnectServer_RejectsRequestWithoutClientCert(t *testing.T) {
 
 	// The augur procedures read X-Alt-User-Id (extractUserID); a forged
 	// header from an unverified peer must be stopped before any handler runs.
-	req := httptest.NewRequest(http.MethodPost, augurv2connect.AugurServiceGetConversationProcedure, nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, augurv2connect.AugurServiceGetConversationProcedure, nil)
 	req.Header.Set("X-Alt-User-Id", "b3b8f4a0-0000-4000-8000-000000000000")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -44,7 +44,7 @@ func TestCreateMTLSConnectServer_RejectsRequestWithoutClientCert(t *testing.T) {
 func TestCreateMTLSConnectServer_RejectsDisallowedPeer(t *testing.T) {
 	h := newMTLSHandlerForTest(t, []string{"alt-backend"})
 
-	req := httptest.NewRequest(http.MethodPost, augurv2connect.AugurServiceGetConversationProcedure, nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, augurv2connect.AugurServiceGetConversationProcedure, nil)
 	req.TLS = tlsStateWithCN("evil-service")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -57,7 +57,7 @@ func TestCreateMTLSConnectServer_RejectsDisallowedPeer(t *testing.T) {
 func TestCreateMTLSConnectServer_AllowedPeerReachesHandlers(t *testing.T) {
 	h := newMTLSHandlerForTest(t, []string{"alt-backend"})
 
-	req := httptest.NewRequest(http.MethodGet, "/connect/health", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/connect/health", nil)
 	req.TLS = tlsStateWithCN("alt-backend")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)

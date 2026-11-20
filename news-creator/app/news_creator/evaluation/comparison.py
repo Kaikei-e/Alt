@@ -72,10 +72,7 @@ def compare_runs(
         delta = after_mean - before_mean
 
         # For "lower is better" axes (like redundancy), a decrease is an improvement
-        if axis in LOWER_IS_BETTER_AXES:
-            improved = delta < 0
-        else:
-            improved = delta > 0
+        improved = delta < 0 if axis in LOWER_IS_BETTER_AXES else delta > 0
 
         axis_deltas.append(
             AxisDelta(

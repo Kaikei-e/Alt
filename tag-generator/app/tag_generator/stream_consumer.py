@@ -1,6 +1,7 @@
 """Redis Streams consumer for tag-generator service."""
 
 import asyncio
+import contextlib
 import json
 import os
 import re
@@ -87,7 +88,12 @@ def is_transient_response_error(error: redis.ResponseError) -> bool:
     return any(token in message for token in _TRANSIENT_RESPONSE_ERRORS)
 
 
-def supervise(
+class _RedisClientNotInitializedError(RuntimeError):
+    def __init__(self) -> None:
+        super().__init__("Redis client is not initialized")
+
+
+def supervise(  # noqa: PLR0913 - keyword-only supervision parameters injected for testability
     name: str,
     run: Callable[[], None],
     *,
@@ -116,14 +122,14 @@ def supervise(
         on_health(name, True)
         try:
             run()
-        except Exception as error:  # noqa: BLE001 - a consumer must survive anything its handler raises
+        except Exception as error:
             on_health(name, False)
             # No backoff before giving up — that would only delay the log that
             # tells an operator supervision has stopped.
             if max_attempts is not None and attempt >= max_attempts:
                 break
             delay = min(backoff_base_seconds * 2 ** (attempt - 1), backoff_cap_seconds)
-            logger.error(
+            logger.exception(
                 "consumer_supervisor_restarting",
                 consumer=name,
                 attempt=attempt,
@@ -170,7 +176,7 @@ class ConsumerConfig(BaseSettings):
 
     @field_validator("enabled", mode="before")
     @classmethod
-    def _parse_enabled(cls, v: Any) -> bool:
+    def _parse_enabled(cls, v: object) -> bool:
         if isinstance(v, bool):
             return v
         if v is None:
@@ -308,7 +314,7 @@ class StreamConsumer:
         only turns a loud failure into a slow one.
         """
         if self.client is None:
-            raise RuntimeError("Redis client is not initialized")
+            raise _RedisClientNotInitializedError
 
         for attempt in range(1, _GROUP_CREATE_MAX_ATTEMPTS + 1):
             try:
@@ -318,7 +324,6 @@ class StreamConsumer:
                     id="0",
                     mkstream=True,
                 )
-                return
             except redis.ResponseError as e:
                 if is_group_already_exists(e):
                     return
@@ -338,6 +343,8 @@ class StreamConsumer:
                     error=str(e),
                 )
                 await asyncio.sleep(delay)
+            else:
+                return
 
     async def _consume_loop(self) -> None:
         """Main consume loop."""
@@ -345,7 +352,7 @@ class StreamConsumer:
             try:
                 await self._read_and_process()
             except Exception as e:
-                logger.error("consume_error", error=str(e))
+                logger.exception("consume_error", error=str(e))
                 await asyncio.sleep(1)  # Back off on error
 
     async def _reclaim_loop(self) -> None:
@@ -358,7 +365,7 @@ class StreamConsumer:
             try:
                 await self._reclaim_idle_messages()
             except Exception as e:
-                logger.error("reclaim_error", error=str(e))
+                logger.exception("reclaim_error", error=str(e))
             remaining = self.config.reclaim_interval_seconds
             while not self._shutdown and remaining > 0:
                 step = min(remaining, 0.1)
@@ -368,7 +375,7 @@ class StreamConsumer:
     async def _reclaim_idle_messages(self) -> None:
         """Walk the PEL via XAUTOCLAIM, reprocessing or dead-lettering entries."""
         if self.client is None:
-            raise RuntimeError("Redis client is not initialized")
+            raise _RedisClientNotInitializedError
         cursor = "0-0"
         while not self._shutdown:
             next_cursor, messages, _deleted = await self.client.xautoclaim(
@@ -385,7 +392,7 @@ class StreamConsumer:
                 break
             cursor = next_cursor
 
-    async def _process_claimed_messages(self, messages: list[Any]) -> None:
+    async def _process_claimed_messages(self, messages: list[tuple[str, dict[str, Any]]]) -> None:
         """Reprocess reclaimed messages, dead-lettering ones over the retry limit.
 
         Every Redis call for an entry -- the PEL lookup and the dead-letter
@@ -395,7 +402,7 @@ class StreamConsumer:
         redelivery this loop exists to give them.
         """
         if self.client is None:
-            raise RuntimeError("Redis client is not initialized")
+            raise _RedisClientNotInitializedError
         for message_id, data in messages:
             event = self._parse_event(message_id, data)
             delivery_count = 0
@@ -408,7 +415,7 @@ class StreamConsumer:
                 await self.handler.handle_event(event)
                 await self.client.xack(self.config.stream_key, self.config.group_name, message_id)
             except Exception as e:
-                logger.error(
+                logger.exception(
                     "reclaimed_event_processing_failed",
                     message_id=message_id,
                     event_type=event.event_type,
@@ -420,7 +427,7 @@ class StreamConsumer:
     async def _get_delivery_count(self, message_id: str) -> int:
         """Look up how many times this message has been delivered."""
         if self.client is None:
-            raise RuntimeError("Redis client is not initialized")
+            raise _RedisClientNotInitializedError
         entries = await self.client.xpending_range(
             self.config.stream_key,
             self.config.group_name,
@@ -444,7 +451,7 @@ class StreamConsumer:
         interval, filling the very stream the cap is there to bound.
         """
         if self.client is None:
-            raise RuntimeError("Redis client is not initialized")
+            raise _RedisClientNotInitializedError
         dlq_stream = f"{self.config.stream_key}:dlq"
 
         if message_id not in self._dlq_awaiting_ack:
@@ -457,7 +464,7 @@ class StreamConsumer:
                     approximate=True,
                 )
             except Exception as e:
-                logger.error(
+                logger.exception(
                     "dlq_write_failed",
                     message_id=message_id,
                     delivery_count=delivery_count,
@@ -471,7 +478,7 @@ class StreamConsumer:
         try:
             await self.client.xack(self.config.stream_key, self.config.group_name, message_id)
         except Exception as e:
-            logger.error(
+            logger.exception(
                 "dlq_ack_failed",
                 message_id=message_id,
                 delivery_count=delivery_count,
@@ -499,7 +506,7 @@ class StreamConsumer:
     async def _read_and_process(self) -> None:
         """Read events from stream and process them."""
         if self.client is None:
-            raise RuntimeError("Redis client is not initialized")
+            raise _RedisClientNotInitializedError
 
         # New messages only (">"). Redelivery of unacked pending entries is
         # handled by _reclaim_loop via XAUTOCLAIM, not here.
@@ -530,7 +537,7 @@ class StreamConsumer:
                         message_id,
                     )
                 except Exception as e:
-                    logger.error(
+                    logger.exception(
                         "event_processing_failed",
                         message_id=message_id,
                         event_type=event.event_type,
@@ -542,24 +549,18 @@ class StreamConsumer:
         """Parse Redis Stream message to Event."""
         created_at = None
         if "created_at" in data:
-            try:
+            with contextlib.suppress(ValueError, AttributeError):
                 created_at = datetime.fromisoformat(data["created_at"].replace("Z", "+00:00"))
-            except ValueError, AttributeError:
-                pass
 
         payload = {}
         if "payload" in data:
-            try:
+            with contextlib.suppress(json.JSONDecodeError):
                 payload = json.loads(data["payload"])
-            except json.JSONDecodeError:
-                pass
 
         metadata = {}
         if "metadata" in data:
-            try:
+            with contextlib.suppress(json.JSONDecodeError):
                 metadata = json.loads(data["metadata"])
-            except json.JSONDecodeError:
-                pass
 
         return Event(
             message_id=message_id,
@@ -611,12 +612,13 @@ class StreamConsumer:
                 stream_key=stream_key,
                 message_id=message_id,
             )
-            # pyrefly: ignore [bad-return]
-            return message_id
         except Exception as e:
-            logger.error(
+            logger.exception(
                 "reply_publish_failed",
                 stream_key=stream_key,
                 error=str(e),
             )
             raise
+        else:
+            # pyrefly: ignore [bad-return]
+            return message_id

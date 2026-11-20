@@ -2,7 +2,6 @@ package retrieval_test
 
 import (
 	"fmt"
-	"io"
 	"log/slog"
 	"testing"
 	"time"
@@ -16,7 +15,7 @@ import (
 )
 
 func discardLogger() *slog.Logger {
-	return slog.New(slog.NewJSONHandler(io.Discard, nil))
+	return slog.New(slog.DiscardHandler)
 }
 
 func TestAllocate_DynamicMode_SortsByScore(t *testing.T) {

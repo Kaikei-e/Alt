@@ -1,7 +1,11 @@
 """Tests for ollama-remote embedding backend."""
 
+import http.server
+import json
+import threading
 from unittest.mock import Mock, patch
 
+import httpx
 import numpy as np
 import pytest
 from pydantic import SecretStr
@@ -9,16 +13,22 @@ from pydantic import SecretStr
 from recap_subworker.infra.config import Settings
 from recap_subworker.services.embedder import Embedder, EmbedderConfig
 
+DEFAULT_OLLAMA_EMBED_TIMEOUT = 120.0
+CUSTOM_OLLAMA_EMBED_TIMEOUT = 60.0
+EXPECTED_BATCH_COUNT = 2
+EXPECTED_RETRY_ATTEMPTS = 3
+EXPECTED_CHUNK_CALLS = 2
+
 
 class TestOllamaRemoteConfig:
     """ollama-remote 設定のテスト"""
 
-    def test_ollama_embed_url_default_none(self):
+    def test_ollama_embed_url_default_none(self) -> None:
         """ollama_embed_url のデフォルトは None"""
         settings = Settings()
         assert settings.ollama_embed_url is None
 
-    def test_ollama_embed_model_default(self):
+    def test_ollama_embed_model_default(self) -> None:
         """ollama_embed_model のデフォルトは bge-m3 (ADR-000872).
 
         production は既に bge-m3 を env override で流している。default が
@@ -28,7 +38,7 @@ class TestOllamaRemoteConfig:
         settings = Settings()
         assert settings.ollama_embed_model == "bge-m3"
 
-    def test_embedder_config_default_matches_settings_default(self):
+    def test_embedder_config_default_matches_settings_default(self) -> None:
         """EmbedderConfig の default が Settings の default と一致する。"""
         config = EmbedderConfig(
             model_id="test",
@@ -41,7 +51,7 @@ class TestOllamaRemoteConfig:
         )
         assert config.ollama_embed_model == Settings().ollama_embed_model
 
-    def test_inference_service_token_is_required_keyword(self):
+    def test_inference_service_token_is_required_keyword(self) -> None:
         """Every construction site must state the bearer; omitting it is not 'disabled'."""
         with pytest.raises(TypeError, match="inference_service_token"):
             # pyrefly: ignore [missing-argument]
@@ -54,7 +64,7 @@ class TestOllamaRemoteConfig:
                 cache_size=100,
             )
 
-    def test_ollama_embed_timeout_default(self):
+    def test_ollama_embed_timeout_default(self) -> None:
         """ollama_embed_timeout のデフォルトは 120.0 (ADR-890 followup).
 
         bge-m3 は 8192 token まで処理でき、cold model load + 長文 embed には
@@ -63,25 +73,25 @@ class TestOllamaRemoteConfig:
         の root cause だった。
         """
         settings = Settings()
-        assert settings.ollama_embed_timeout == 120.0
+        assert settings.ollama_embed_timeout == DEFAULT_OLLAMA_EMBED_TIMEOUT
 
-    def test_env_var_loading(self, monkeypatch):
+    def test_env_var_loading(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """環境変数から読み込み"""
         monkeypatch.setenv("OLLAMA_EMBED_URL", "http://remote-host:11436")
         monkeypatch.setenv("OLLAMA_EMBED_MODEL", "nomic-embed-text")
-        monkeypatch.setenv("OLLAMA_EMBED_TIMEOUT", "60.0")
+        monkeypatch.setenv("OLLAMA_EMBED_TIMEOUT", str(CUSTOM_OLLAMA_EMBED_TIMEOUT))
         settings = Settings()
         assert settings.ollama_embed_url == "http://remote-host:11436"
         assert settings.ollama_embed_model == "nomic-embed-text"
-        assert settings.ollama_embed_timeout == 60.0
+        assert settings.ollama_embed_timeout == CUSTOM_OLLAMA_EMBED_TIMEOUT
 
-    def test_prefixed_env_var_loading(self, monkeypatch):
+    def test_prefixed_env_var_loading(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """RECAP_SUBWORKER_ プレフィックス付き環境変数から読み込み"""
         monkeypatch.setenv("RECAP_SUBWORKER_OLLAMA_EMBED_URL", "http://another-host:11436")
         settings = Settings()
         assert settings.ollama_embed_url == "http://another-host:11436"
 
-    def test_model_backend_ollama_remote(self):
+    def test_model_backend_ollama_remote(self) -> None:
         """model_backend に ollama-remote を設定可能"""
         settings = Settings(model_backend="ollama-remote")
         assert settings.model_backend == "ollama-remote"
@@ -90,7 +100,7 @@ class TestOllamaRemoteConfig:
 class TestOllamaRemoteEmbedder:
     """OllamaRemoteAdapter のテスト"""
 
-    def test_ollama_remote_requires_url(self):
+    def test_ollama_remote_requires_url(self) -> None:
         """ollama_embed_url がない場合はエラー"""
         config = EmbedderConfig(
             model_id="test",
@@ -107,7 +117,7 @@ class TestOllamaRemoteEmbedder:
         with pytest.raises(ValueError, match="ollama_embed_url is required"):
             embedder.encode(["test sentence"])
 
-    def test_ollama_remote_encode(self):
+    def test_ollama_remote_encode(self) -> None:
         """OllamaRemoteAdapter で正しくエンコードできる"""
         with patch("httpx.Client") as mock_client_class:
             mock_client = Mock()
@@ -143,7 +153,7 @@ class TestOllamaRemoteEmbedder:
             assert "http://test-host:11436/api/embed" in call_args[0]
             assert call_args[1]["json"]["input"] == ["sentence 1", "sentence 2"]
 
-    def test_ollama_remote_batching(self):
+    def test_ollama_remote_batching(self) -> None:
         """短いテキストは /api/embed にまとめてバッチ送信される。"""
         with patch("httpx.Client") as mock_client_class:
             mock_client = Mock()
@@ -175,11 +185,11 @@ class TestOllamaRemoteEmbedder:
             result = embedder.encode(["s1", "s2", "s3"])
 
             assert result.shape == (3, 2)
-            assert mock_client.post.call_count == 2
+            assert mock_client.post.call_count == EXPECTED_BATCH_COUNT
             assert mock_client.post.call_args_list[0][1]["json"]["input"] == ["s1", "s2"]
             assert mock_client.post.call_args_list[1][1]["json"]["input"] == ["s3"]
 
-    def test_ollama_remote_normalization(self):
+    def test_ollama_remote_normalization(self) -> None:
         """正規化が正しく動作する"""
         with patch("httpx.Client") as mock_client_class:
             mock_client = Mock()
@@ -209,7 +219,7 @@ class TestOllamaRemoteEmbedder:
             # After normalization: [3/5, 4/5] = [0.6, 0.8]
             assert np.allclose(result[0], [0.6, 0.8])
 
-    def test_ollama_remote_empty_input(self):
+    def test_ollama_remote_empty_input(self) -> None:
         """空の入力で空の配列を返す"""
         config = EmbedderConfig(
             model_id="test",
@@ -227,7 +237,7 @@ class TestOllamaRemoteEmbedder:
 
         assert result.shape[0] == 0
 
-    def test_ollama_remote_close(self):
+    def test_ollama_remote_close(self) -> None:
         """close() でリソースが解放される"""
         with patch("httpx.Client") as mock_client_class:
             mock_client = Mock()
@@ -259,7 +269,7 @@ class TestOllamaRemoteEmbedder:
             mock_client.close.assert_called_once()
             assert embedder._model is None
 
-    def test_ollama_remote_retries_on_transient_request_error(self):
+    def test_ollama_remote_retries_on_transient_request_error(self) -> None:
         """ADR-890 followup: Ollama remote が一過性に RequestError を出した時、
         embedder は exponential backoff で再試行して最終的に成功する。
 
@@ -267,8 +277,6 @@ class TestOllamaRemoteEmbedder:
         retry されないまま全 chunk fail → classification 0 results → 3-day batch failed
         の連鎖になった。最低 3 試行で transient error を吸収する。
         """
-        import httpx
-
         with patch("httpx.Client") as mock_client_class:
             mock_client = Mock()
             mock_client_class.return_value = mock_client
@@ -301,17 +309,17 @@ class TestOllamaRemoteEmbedder:
                 result = embedder.encode(["one short sentence"])
 
             assert result.shape == (1, 2), "must produce one embedding after retries"
-            assert mock_client.post.call_count == 3, "retry must occur twice before success"
+            assert mock_client.post.call_count == EXPECTED_RETRY_ATTEMPTS, (
+                "retry must occur twice before success"
+            )
             # backoff sleeps: 1s, 2s (exponential)
             sleep_calls = [call.args[0] for call in mock_sleep.call_args_list]
             assert sleep_calls == [1.0, 2.0], (
                 f"expected exponential backoff 1s/2s; got {sleep_calls}"
             )
 
-    def test_ollama_remote_raises_after_retry_budget_exhausted(self):
+    def test_ollama_remote_raises_after_retry_budget_exhausted(self) -> None:
         """retry を尽くしても失敗するなら以前と同じ RuntimeError を上げて caller に伝える。"""
-        import httpx
-
         with patch("httpx.Client") as mock_client_class:
             mock_client = Mock()
             mock_client_class.return_value = mock_client
@@ -336,9 +344,11 @@ class TestOllamaRemoteEmbedder:
                 embedder.encode(["unrecoverable text"])
 
             # 3 attempts total (initial + 2 retries)
-            assert mock_client.post.call_count == 3, "must stop after 3 total attempts"
+            assert mock_client.post.call_count == EXPECTED_RETRY_ATTEMPTS, (
+                "must stop after 3 total attempts"
+            )
 
-    def test_ollama_remote_long_text_chunking(self):
+    def test_ollama_remote_long_text_chunking(self) -> None:
         """長いテキストはチャンク分割して平均化される"""
         with patch("httpx.Client") as mock_client_class:
             mock_client = Mock()
@@ -378,25 +388,25 @@ class TestOllamaRemoteEmbedder:
             # Norm of [0.3, 0.5] = sqrt(0.09 + 0.25) = sqrt(0.34) ≈ 0.583
             # Normalized: [0.3/0.583, 0.5/0.583] ≈ [0.514, 0.857]
             # Each chunk gets a separate API call
-            assert mock_client.post.call_count == 2
+            assert mock_client.post.call_count == EXPECTED_CHUNK_CALLS
 
 
 class TestOllamaRemoteWire:
     """Real wire tests for OllamaRemoteAdapter against actual local HTTP server."""
 
-    def test_ollama_remote_wire_auth_batch_and_no_redirect(self):
-        import http.server
-        import json
-        import threading
-
+    def test_ollama_remote_wire_auth_batch_and_no_redirect(self) -> None:
         received_requests = []
         dest_counter = [0]
 
         class WireHandler(http.server.BaseHTTPRequestHandler):
-            def log_message(self, format, *args):
+            def log_message(
+                self,
+                format: str,  # noqa: A002  # BaseHTTPRequestHandler.log_message override signature
+                *args: object,
+            ) -> None:
                 pass
 
-            def do_POST(self):
+            def do_POST(self) -> None:
                 content_len = int(self.headers.get("Content-Length", 0))
                 body = self.rfile.read(content_len).decode("utf-8")
                 path = self.path
@@ -432,7 +442,7 @@ class TestOllamaRemoteWire:
 
         base_url = f"http://127.0.0.1:{port}"
         try:
-            token_val = "recap-subworker-token-xyz="
+            token_val = "recap-subworker-token-xyz="  # noqa: S105 - test fixture value, not a credential
             token = SecretStr(token_val)
             config = EmbedderConfig(
                 model_id="test",

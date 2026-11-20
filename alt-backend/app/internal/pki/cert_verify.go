@@ -139,6 +139,7 @@ func requireDualEKU(leaf *x509.Certificate) error {
 			client = true
 		case x509.ExtKeyUsageServerAuth:
 			server = true
+		default:
 		}
 	}
 	if !client || !server {

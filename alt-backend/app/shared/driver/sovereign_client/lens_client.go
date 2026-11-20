@@ -84,8 +84,8 @@ func (c *Client) ListLenses(ctx context.Context, userID uuid.UUID) ([]domain.Kno
 		return nil, fmt.Errorf("sovereign ListLenses: %w", err)
 	}
 
-	lenses := make([]domain.KnowledgeLens, 0, len(resp.Msg.Lenses))
-	for _, pb := range resp.Msg.Lenses {
+	lenses := make([]domain.KnowledgeLens, 0, len(resp.Msg.GetLenses()))
+	for _, pb := range resp.Msg.GetLenses() {
 		lenses = append(lenses, protoToLens(pb))
 	}
 	return lenses, nil
@@ -108,10 +108,10 @@ func (c *Client) GetLens(ctx context.Context, lensID uuid.UUID) (*domain.Knowled
 		}
 	}
 
-	if resp.Msg.Lens == nil {
+	if resp.Msg.GetLens() == nil {
 		return nil, nil
 	}
-	lens := protoToLens(resp.Msg.Lens)
+	lens := protoToLens(resp.Msg.GetLens())
 	return &lens, nil
 }
 
@@ -127,18 +127,18 @@ func (c *Client) GetCurrentLensSelection(ctx context.Context, userID uuid.UUID) 
 		return nil, fmt.Errorf("sovereign GetCurrentLensSelection: %w", err)
 	}
 
-	if !resp.Msg.Found || resp.Msg.Selection == nil {
+	if !resp.Msg.GetFound() || resp.Msg.GetSelection() == nil {
 		return nil, nil
 	}
 
-	sel := resp.Msg.Selection
+	sel := resp.Msg.GetSelection()
 	current := domain.KnowledgeCurrentLens{
-		UserID:        parseUUID(sel.UserId),
-		LensID:        parseUUID(sel.LensId),
-		LensVersionID: parseUUID(sel.LensVersionId),
+		UserID:        parseUUID(sel.GetUserId()),
+		LensID:        parseUUID(sel.GetLensId()),
+		LensVersionID: parseUUID(sel.GetLensVersionId()),
 	}
-	if sel.SelectedAt != nil {
-		current.SelectedAt = sel.SelectedAt.AsTime()
+	if sel.GetSelectedAt() != nil {
+		current.SelectedAt = sel.GetSelectedAt().AsTime()
 	}
 	return &current, nil
 }
@@ -155,11 +155,11 @@ func (c *Client) GetCurrentLensVersion(ctx context.Context, lensID uuid.UUID) (*
 		return nil, fmt.Errorf("sovereign GetCurrentLensVersion: %w", err)
 	}
 
-	if resp.Msg.Lens == nil || resp.Msg.Lens.CurrentVersion == nil {
+	if resp.Msg.GetLens() == nil || resp.Msg.GetLens().GetCurrentVersion() == nil {
 		return nil, nil
 	}
 
-	v := protoToLensVersion(resp.Msg.Lens.CurrentVersion)
+	v := protoToLensVersion(resp.Msg.GetLens().GetCurrentVersion())
 	return &v, nil
 }
 
@@ -232,21 +232,21 @@ func (c *Client) ResolveKnowledgeHomeLens(ctx context.Context, userID uuid.UUID,
 		return nil, fmt.Errorf("sovereign ResolveLensFilter: %w", err)
 	}
 
-	if !resp.Msg.Found || resp.Msg.Filter == nil {
+	if !resp.Msg.GetFound() || resp.Msg.GetFilter() == nil {
 		return nil, nil
 	}
 
-	f := resp.Msg.Filter
-	sourceIDs := make([]uuid.UUID, 0, len(f.SourceIds))
-	for _, s := range f.SourceIds {
+	f := resp.Msg.GetFilter()
+	sourceIDs := make([]uuid.UUID, 0, len(f.GetSourceIds()))
+	for _, s := range f.GetSourceIds() {
 		sourceIDs = append(sourceIDs, parseUUID(s))
 	}
 
 	filter := &domain.KnowledgeHomeLensFilter{
-		QueryText:  f.QueryText,
-		TagNames:   f.TagIds,
+		QueryText:  f.GetQueryText(),
+		TagNames:   f.GetTagIds(),
 		SourceIDs:  sourceIDs,
-		TimeWindow: f.TimeWindow,
+		TimeWindow: f.GetTimeWindow(),
 	}
 	if lensID != nil {
 		filter.LensID = *lensID
@@ -258,24 +258,24 @@ func (c *Client) ResolveKnowledgeHomeLens(ctx context.Context, userID uuid.UUID,
 
 func protoToLens(pb *sovereignv1.Lens) domain.KnowledgeLens {
 	lens := domain.KnowledgeLens{
-		LensID:      parseUUID(pb.LensId),
-		UserID:      parseUUID(pb.UserId),
-		TenantID:    parseUUID(pb.TenantId),
-		Name:        pb.Name,
-		Description: pb.Description,
+		LensID:      parseUUID(pb.GetLensId()),
+		UserID:      parseUUID(pb.GetUserId()),
+		TenantID:    parseUUID(pb.GetTenantId()),
+		Name:        pb.GetName(),
+		Description: pb.GetDescription(),
 	}
-	if pb.CreatedAt != nil {
-		lens.CreatedAt = pb.CreatedAt.AsTime()
+	if pb.GetCreatedAt() != nil {
+		lens.CreatedAt = pb.GetCreatedAt().AsTime()
 	}
-	if pb.UpdatedAt != nil {
-		lens.UpdatedAt = pb.UpdatedAt.AsTime()
+	if pb.GetUpdatedAt() != nil {
+		lens.UpdatedAt = pb.GetUpdatedAt().AsTime()
 	}
-	if pb.ArchivedAt != nil {
-		t := pb.ArchivedAt.AsTime()
+	if pb.GetArchivedAt() != nil {
+		t := pb.GetArchivedAt().AsTime()
 		lens.ArchivedAt = &t
 	}
-	if pb.CurrentVersion != nil {
-		v := protoToLensVersion(pb.CurrentVersion)
+	if pb.GetCurrentVersion() != nil {
+		v := protoToLensVersion(pb.GetCurrentVersion())
 		lens.CurrentVersion = &v
 	}
 	return lens
@@ -283,19 +283,19 @@ func protoToLens(pb *sovereignv1.Lens) domain.KnowledgeLens {
 
 func protoToLensVersion(pb *sovereignv1.LensVersion) domain.KnowledgeLensVersion {
 	v := domain.KnowledgeLensVersion{
-		LensVersionID: parseUUID(pb.LensVersionId),
-		LensID:        parseUUID(pb.LensId),
-		QueryText:     pb.QueryText,
-		TagIDs:        pb.TagIds,
-		SourceIDs:     pb.SourceIds,
-		TimeWindow:    pb.TimeWindow,
-		IncludeRecap:  pb.IncludeRecap,
-		IncludePulse:  pb.IncludePulse,
-		SortMode:      pb.SortMode,
-		SupersededBy:  parseUUIDPtr(pb.SupersededBy),
+		LensVersionID: parseUUID(pb.GetLensVersionId()),
+		LensID:        parseUUID(pb.GetLensId()),
+		QueryText:     pb.GetQueryText(),
+		TagIDs:        pb.GetTagIds(),
+		SourceIDs:     pb.GetSourceIds(),
+		TimeWindow:    pb.GetTimeWindow(),
+		IncludeRecap:  pb.GetIncludeRecap(),
+		IncludePulse:  pb.GetIncludePulse(),
+		SortMode:      pb.GetSortMode(),
+		SupersededBy:  parseUUIDPtr(pb.GetSupersededBy()),
 	}
-	if pb.CreatedAt != nil {
-		v.CreatedAt = pb.CreatedAt.AsTime()
+	if pb.GetCreatedAt() != nil {
+		v.CreatedAt = pb.GetCreatedAt().AsTime()
 	}
 	return v
 }

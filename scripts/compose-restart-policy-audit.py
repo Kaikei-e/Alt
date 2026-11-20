@@ -28,6 +28,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 _SCRIPTS = Path(__file__).resolve().parent
@@ -41,11 +42,12 @@ from compose_include import (  # noqa: E402
 )
 
 
-def _load_ops_surface_classify():
+def _load_ops_surface_classify() -> Callable[[dict[str, dict]], dict[str, list[str]]]:
     path = _SCRIPTS / "compose-ops-surface-audit.py"
     spec = importlib.util.spec_from_file_location("compose_ops_surface_audit", path)
     if spec is None or spec.loader is None:
-        raise SystemExit(f"cannot load {path}")
+        msg = f"cannot load {path}"
+        raise SystemExit(msg)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module.classify_services
@@ -74,9 +76,7 @@ def _display_path(path: Path) -> str:
         return path.as_posix()
 
 
-def _unmodeled_key_violations(
-    name: str, svc: dict, file_label: str
-) -> list[str]:
+def _unmodeled_key_violations(name: str, svc: dict, file_label: str) -> list[str]:
     violations: list[str] = []
     if "extends" in svc and svc.get("extends") is not None:
         violations.append(
@@ -94,7 +94,7 @@ def _unmodeled_key_violations(
     return violations
 
 
-def _restart_violation_reason(svc: dict) -> str | None:
+def _restart_violation_reason(svc: dict) -> str | None:  # noqa: PLR0911 — one return per distinct verdict
     if "restart" not in svc or svc.get("restart") is None:
         return "missing restart policy (defaults to 'no')"
     restart = svc.get("restart")
@@ -120,8 +120,7 @@ def _classify_ignoring_profiles(
 ) -> dict[str, list[str]]:
     """Reuse shared ephemeral/long_running classification without exempting profiles."""
     unprofiled = {
-        name: {k: v for k, v in svc.items() if k != "profiles"}
-        for name, svc in services.items()
+        name: {k: v for k, v in svc.items() if k != "profiles"} for name, svc in services.items()
     }
     return classify_services(unprofiled)
 
@@ -166,13 +165,13 @@ def main() -> int:
     root = Path(args.compose)
     violations = audit_compose(root)
     if violations:
-        print("compose-restart-policy-audit FAILED:")
+        sys.stdout.write("compose-restart-policy-audit FAILED:\n")
         for v in violations:
-            print(f"  - {v}")
-        print(
+            sys.stdout.write(f"  - {v}\n")
+        sys.stdout.write(
             "\nDeclare a literal `restart: unless-stopped` (or `always` / `on-failure`) "
             "on each long-running service, or add genuine one-shot runners to "
-            "ONE_SHOT_ALLOWLIST in scripts/compose-restart-policy-audit.py."
+            "ONE_SHOT_ALLOWLIST in scripts/compose-restart-policy-audit.py.\n"
         )
         return 1
     services = {name: svc for _p, name, svc in iter_production_services(root)}
@@ -180,14 +179,13 @@ def main() -> int:
     allowlisted = [
         name
         for name in classified["long_running"]
-        if isinstance(ONE_SHOT_ALLOWLIST.get(name), str)
-        and ONE_SHOT_ALLOWLIST[name].strip()
+        if isinstance(ONE_SHOT_ALLOWLIST.get(name), str) and ONE_SHOT_ALLOWLIST[name].strip()
     ]
     audited = len(classified["long_running"]) - len(allowlisted)
-    print(
+    sys.stdout.write(
         f"OK: {audited} long-running service(s) declare a literal non-'no' restart policy "
         f"({len(classified['ephemeral'])} ephemeral, "
-        f"{len(allowlisted)} allowlisted one-shot exempt)"
+        f"{len(allowlisted)} allowlisted one-shot exempt)\n"
     )
     return 0
 

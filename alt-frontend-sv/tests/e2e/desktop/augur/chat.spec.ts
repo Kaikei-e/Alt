@@ -168,8 +168,10 @@ test.describe("Desktop Augur Chat - IME Input", () => {
 			textarea.dispatchEvent(event);
 		});
 
-		// Wait a bit to ensure no message is sent
-		await page.waitForTimeout(500);
+		// Must NOT send within a 500 ms observation window
+		await expect(
+			page.waitForRequest(CONNECT_RPC_PATHS.augurStreamChat, { timeout: 500 }),
+		).rejects.toThrow(/Timeout 500ms exceeded/);
 
 		// API should NOT have been called
 		expect(apiCalled).toBe(false);

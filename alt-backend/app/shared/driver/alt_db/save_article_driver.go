@@ -119,7 +119,7 @@ func (r *ArticleRepository) SaveArticleForUser(ctx context.Context, url, title, 
 	if err != nil {
 		return "", false, fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback(ctx) // Always rollback - no-op after successful Commit
+	defer func() { _ = tx.Rollback(ctx) }() // Always rollback - no-op after successful Commit
 
 	// 1. Upsert Article
 	articleID, created, err := r.UpsertArticleWithTx(ctx, tx, cleanTitle, cleanContent, cleanURL, userID, feedID)

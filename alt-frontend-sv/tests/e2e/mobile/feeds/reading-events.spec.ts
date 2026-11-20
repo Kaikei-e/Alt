@@ -105,7 +105,18 @@ test.describe("Gallery reading events", () => {
 		const dialog = page.getByRole("dialog");
 		await expect(dialog).toBeVisible();
 		await expect(dialog.getByText(/Paragraph 1:/)).toBeVisible();
-		await page.waitForTimeout(60);
+		await expect(
+			page.waitForRequest(
+				(req) =>
+					req.url().includes(TRACK_HOME_ACTION.replace(/^\*\*/, "")) ||
+					req
+						.url()
+						.includes(
+							CONNECT_RPC_PATHS.recordReadingEvents.replace(/^\*\*/, ""),
+						),
+				{ timeout: 60 },
+			),
+		).rejects.toThrow(/Timeout 60ms exceeded/);
 		expect(openTracked).toBe(false);
 		expect(recordedRequests).toHaveLength(0);
 

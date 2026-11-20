@@ -7,6 +7,7 @@ import (
 	"alt/utils/proxy"
 	"alt/utils/security"
 	"context"
+	stderrors "errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -304,7 +305,7 @@ func (g *ImageFetchGateway) fetchImageWithTestingOverride(ctx context.Context, i
 	contentLengthHeader := resp.Header.Get("Content-Length")
 	contentLength, err := validateImageHeaders(contentType, contentLengthHeader, options.MaxSize)
 	if err != nil {
-		if err == errInvalidContentType {
+		if stderrors.Is(err, errInvalidContentType) {
 			return nil, errors.NewValidationContextError(
 				"response is not an image",
 				"gateway",

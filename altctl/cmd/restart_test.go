@@ -3,6 +3,8 @@ package cmd
 import (
 	"bytes"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func setupRestartTest(t *testing.T) {
@@ -10,7 +12,7 @@ func setupRestartTest(t *testing.T) {
 	cfg = testConfig(t, []string{"db", "auth", "core", "workers"})
 	dryRun = true
 	quiet = false
-	restartCmd.Flags().Set("build", "false")
+	require.NoError(t, restartCmd.Flags().Set("build", "false"))
 }
 
 func TestRestart_DefaultStacks(t *testing.T) {

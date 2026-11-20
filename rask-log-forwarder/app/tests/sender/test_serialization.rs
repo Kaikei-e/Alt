@@ -158,7 +158,7 @@ fn test_compression() {
 
     // Compressed should be smaller than uncompressed
     assert!(compressed.len() < uncompressed.len());
-    assert!(!compressed.is_empty());
+    assert_ne!(compressed, [] as [u8; 0]);
 }
 
 #[test]
@@ -175,13 +175,13 @@ fn test_serialization_estimate() {
     assert!(estimate > 0, "Estimate should be positive");
     // Allow for a wider range since estimation is approximate
     assert!(
-        (estimate as f64) > (actual.len() as f64 * 0.1),
+        estimate * 10 > actual.len(),
         "Estimate {} should be at least 10% of actual {}",
         estimate,
         actual.len()
     );
     assert!(
-        (estimate as f64) < (actual.len() as f64 * 5.0),
+        estimate < actual.len() * 5,
         "Estimate {} should be no more than 500% of actual {}",
         estimate,
         actual.len()

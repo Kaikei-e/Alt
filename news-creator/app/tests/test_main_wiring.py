@@ -1,13 +1,31 @@
 """Tests for main dependency wiring."""
 
+from __future__ import annotations
+
 import asyncio
+import sys
+from http import HTTPStatus
+from pathlib import Path
 from types import ModuleType, SimpleNamespace
+from typing import TYPE_CHECKING
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from fastapi.testclient import TestClient
+
+from news_creator import otel as otel_module
+from news_creator.config.distributed_be_config import RemoteTarget
+from news_creator.gateway.distributing_gateway import DistributingGateway
+from news_creator.gateway.redis_cache_gateway import NullCacheGateway, RedisCacheGateway
+from news_creator.gateway.remote_chat_driver import RemoteChatDriver
+from news_creator.gateway.remote_health_checker import RemoteHealthChecker
+
+if TYPE_CHECKING:
+    from main import DependencyContainer
 
 
 class _DummyGateway:
-    def __init__(self, config):
+    def __init__(self, config: object) -> None:
         self.config = config
         self.driver = object()
         self.initialize_count = 0
@@ -21,7 +39,7 @@ class _DummyGateway:
 
 
 class _DummyWarmupService:
-    def __init__(self, config, driver):
+    def __init__(self, config: object, driver: object) -> None:
         self.config = config
         self.driver = driver
 
@@ -30,52 +48,58 @@ class _DummyWarmupService:
 
 
 class _DummySummarizeUsecase:
-    def __init__(self, config, llm_provider):
+    def __init__(self, config: object, llm_provider: object) -> None:
         self.config = config
         self.llm_provider = llm_provider
 
 
 class _DummyRecapUsecase:
-    def __init__(self, config, llm_provider, cache=None):
+    def __init__(
+        self, config: object, llm_provider: object, cache: object = None
+    ) -> None:
         self.config = config
         self.llm_provider = llm_provider
         self.cache = cache
 
 
 class _DummyRecapCardUsecase:
-    def __init__(self, config, llm_provider, cache=None):
+    def __init__(
+        self, config: object, llm_provider: object, cache: object = None
+    ) -> None:
         self.config = config
         self.llm_provider = llm_provider
         self.cache = cache
 
 
 class _DummyThemePageUsecase:
-    def __init__(self, config, llm_provider, cache=None):
+    def __init__(
+        self, config: object, llm_provider: object, cache: object = None
+    ) -> None:
         self.config = config
         self.llm_provider = llm_provider
         self.cache = cache
 
 
 class _DummyExpandUsecase:
-    def __init__(self, config, llm_provider):
+    def __init__(self, config: object, llm_provider: object) -> None:
         self.config = config
         self.llm_provider = llm_provider
 
 
 class _DummyPlanQueryUsecase:
-    def __init__(self, config, llm_provider):
+    def __init__(self, config: object, llm_provider: object) -> None:
         self.config = config
         self.llm_provider = llm_provider
 
 
 class _DummyMorningLetterUsecase:
-    def __init__(self, config, llm_provider):
+    def __init__(self, config: object, llm_provider: object) -> None:
         self.config = config
         self.llm_provider = llm_provider
 
 
 class _DummyRerankUsecase:
-    def __init__(self):
+    def __init__(self) -> None:
         pass
 
     async def warmup(self) -> None:
@@ -85,11 +109,11 @@ class _DummyRerankUsecase:
 class _DummyDistributedGateway:
     def __init__(
         self,
-        local_gateway,
-        health_checker,
-        remote_driver,
-        enabled=True,
-    ):
+        local_gateway: _DummyGateway,
+        health_checker: _DummyRemoteHealthChecker,
+        remote_driver: _DummyRemoteChatDriver,
+        enabled: bool = True,
+    ) -> None:
         self.local_gateway = local_gateway
         self.health_checker = health_checker
         self.remote_driver = remote_driver
@@ -109,7 +133,9 @@ class _DummyDistributedGateway:
 
 
 class _DummyRemoteChatDriver:
-    def __init__(self, timeout_seconds: int, reasoning_effort: str | None = None):
+    def __init__(
+        self, timeout_seconds: int, reasoning_effort: str | None = None
+    ) -> None:
         self.timeout_seconds = timeout_seconds
         self.reasoning_effort = reasoning_effort
         self.initialize_count = 0
@@ -125,12 +151,12 @@ class _DummyRemoteChatDriver:
 class _DummyRemoteHealthChecker:
     def __init__(
         self,
-        targets,
+        targets: list[RemoteTarget],
         interval_seconds: int = 30,
         cooldown_seconds: int = 60,
         timeout_seconds: int = 10,
         unhealthy_threshold: int = 2,
-    ):
+    ) -> None:
         self.targets = targets
         self.interval_seconds = interval_seconds
         self.cooldown_seconds = cooldown_seconds
@@ -147,13 +173,13 @@ class _DummyRemoteHealthChecker:
 
 
 @pytest.fixture(autouse=True)
-def _setup_main_wiring_env(tmp_path, monkeypatch):
+def _setup_main_wiring_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Isolate telemetry and ensure Redis authentication fail-fast contract is satisfied."""
     secret_file = tmp_path / "redis_secret.txt"
     secret_file.write_text("test-wiring-redis-password")
     monkeypatch.setenv("REDIS_PASSWORD_FILE", str(secret_file))
     monkeypatch.setenv("OTEL_ENABLED", "false")
-    import main  # noqa: F401
+    import main  # noqa: F401, PLC0415 - import after env fixture sets REDIS_PASSWORD_FILE/OTEL_ENABLED
 
 
 class _DummyCacheConfig(SimpleNamespace):
@@ -162,8 +188,8 @@ class _DummyCacheConfig(SimpleNamespace):
     def __init__(
         self,
         cache_enabled: bool,
-        cache_redis_password: str | None = "test-wiring-redis-password",
-    ):
+        cache_redis_password: str | None = "test-wiring-redis-password",  # noqa: S107 - test fixture default password
+    ) -> None:
         super().__init__(
             distributed_be_enabled=False,
             distributed_be_targets=[],
@@ -178,7 +204,7 @@ class _DummyCacheConfig(SimpleNamespace):
 class _SpyCacheGateway:
     """Records lifecycle calls without touching a real Redis connection."""
 
-    def __init__(self, config=None):
+    def __init__(self, config: object = None) -> None:
         self.config = config
         self.initialized = False
         self.cleaned_up = False
@@ -189,24 +215,21 @@ class _SpyCacheGateway:
     async def cleanup(self) -> None:
         self.cleaned_up = True
 
-    async def get(self, key):
+    async def get(self, key: str) -> None:
         return None
 
-    async def set(self, key, value, ttl_seconds=None):
+    async def set(self, key: str, value: str, ttl_seconds: int | None = None) -> bool:
         return True
 
-    async def delete(self, key):
+    async def delete(self, key: str) -> bool:
         return False
 
 
 def test_dependency_container_routes_only_summarize_usecase_through_distributing_gateway(
-    monkeypatch, caplog
-):
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
     """When enabled, only SummarizeUsecase receives DistributingGateway; all other usecases receive local ollama_gateway."""
-    import sys
-
-    import main as main_module
-    from news_creator.config.distributed_be_config import RemoteTarget
+    import main as main_module  # noqa: PLC0415 - import after env fixture sets REDIS_PASSWORD_FILE/OTEL_ENABLED
 
     targets = [
         RemoteTarget(
@@ -216,15 +239,19 @@ def test_dependency_container_routes_only_summarize_usecase_through_distributing
         )
     ]
 
+    expected_interval_seconds = 15
+    expected_timeout_seconds = 120
+    expected_cooldown_seconds = 45
+
     class _EnabledConfig(SimpleNamespace):
-        def __init__(self):
+        def __init__(self) -> None:
             super().__init__(
                 distributed_be_enabled=True,
                 distributed_be_targets=targets,
                 distributed_be_reasoning_effort="low",
-                distributed_be_health_interval_seconds=15,
-                distributed_be_timeout_seconds=120,
-                distributed_be_cooldown_seconds=45,
+                distributed_be_health_interval_seconds=expected_interval_seconds,
+                distributed_be_timeout_seconds=expected_timeout_seconds,
+                distributed_be_cooldown_seconds=expected_cooldown_seconds,
                 distributed_be_unhealthy_threshold=2,
                 cache_enabled=False,
                 cache_redis_url="redis://localhost:6379/0",
@@ -266,12 +293,12 @@ def test_dependency_container_routes_only_summarize_usecase_through_distributing
     dist_gw = container.summarize_usecase.llm_provider
     assert isinstance(dist_gw, _DummyDistributedGateway)
     assert dist_gw.local_gateway is container.ollama_gateway
-    assert dist_gw.remote_driver.timeout_seconds == 120
+    assert dist_gw.remote_driver.timeout_seconds == expected_timeout_seconds
     assert dist_gw.remote_driver.reasoning_effort == "low"
     assert dist_gw.health_checker.targets == targets
-    assert dist_gw.health_checker.interval_seconds == 15
-    assert dist_gw.health_checker.cooldown_seconds == 45
-    assert dist_gw.health_checker.timeout_seconds == 15
+    assert dist_gw.health_checker.interval_seconds == expected_interval_seconds
+    assert dist_gw.health_checker.cooldown_seconds == expected_cooldown_seconds
+    assert dist_gw.health_checker.timeout_seconds == expected_interval_seconds
 
     # All other LLM usecases must receive self.ollama_gateway directly
     assert container.recap_summary_usecase.llm_provider is container.ollama_gateway
@@ -292,10 +319,10 @@ def test_dependency_container_routes_only_summarize_usecase_through_distributing
 
 
 def test_dependency_container_logs_distributed_be_disabled_when_off(
-    monkeypatch, caplog
-):
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
     """When disabled, startup logs distributed_be_disabled and wires ollama_gateway everywhere."""
-    import main as main_module
+    import main as main_module  # noqa: PLC0415 - import after env fixture sets REDIS_PASSWORD_FILE/OTEL_ENABLED
 
     monkeypatch.setattr(
         main_module,
@@ -328,13 +355,10 @@ def test_dependency_container_logs_distributed_be_disabled_when_off(
 
 @pytest.mark.asyncio
 async def test_dependency_container_initializes_and_cleans_up_local_gateway_exactly_once(
-    monkeypatch,
-):
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """When distributed BE is enabled, local ollama_gateway is initialized and cleaned up exactly once."""
-    import sys
-
-    import main as main_module
-    from news_creator.config.distributed_be_config import RemoteTarget
+    import main as main_module  # noqa: PLC0415 - import after env fixture sets REDIS_PASSWORD_FILE/OTEL_ENABLED
 
     targets = [
         RemoteTarget(
@@ -345,7 +369,7 @@ async def test_dependency_container_initializes_and_cleans_up_local_gateway_exac
     ]
 
     class _EnabledConfig(SimpleNamespace):
-        def __init__(self):
+        def __init__(self) -> None:
             super().__init__(
                 distributed_be_enabled=True,
                 distributed_be_targets=targets,
@@ -391,15 +415,10 @@ async def test_dependency_container_initializes_and_cleans_up_local_gateway_exac
 
 @pytest.mark.asyncio
 async def test_dependency_container_real_distributing_gateway_lifecycle_initializes_and_cleans_up_local_once(
-    monkeypatch,
-):
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """T1: With DISTRIBUTED_BE_ENABLED=true and the real DistributingGateway, local gateway initialize/cleanup each run once."""
-    from unittest.mock import AsyncMock, MagicMock
-
-    import main as main_module
-    from news_creator.gateway.distributing_gateway import DistributingGateway
-    from news_creator.gateway.remote_chat_driver import RemoteChatDriver
-    from news_creator.gateway.remote_health_checker import RemoteHealthChecker
+    import main as main_module  # noqa: PLC0415 - import after env fixture sets REDIS_PASSWORD_FILE/OTEL_ENABLED
 
     monkeypatch.setenv("DISTRIBUTED_BE_ENABLED", "true")
     monkeypatch.setenv(
@@ -413,7 +432,7 @@ async def test_dependency_container_real_distributing_gateway_lifecycle_initiali
     monkeypatch.setattr(main_module, "ModelWarmupService", _DummyWarmupService)
     monkeypatch.setattr(main_module, "RerankUsecase", _DummyRerankUsecase)
 
-    def _fake_session(*_args, **_kwargs):
+    def _fake_session(*_args: object, **_kwargs: object) -> MagicMock:
         sess = MagicMock()
         sess.closed = False
         sess.headers = {}
@@ -447,24 +466,26 @@ async def test_dependency_container_real_distributing_gateway_lifecycle_initiali
 
 
 def test_dependency_container_fails_fast_when_distributed_be_enabled_with_empty_targets(
-    monkeypatch,
-):
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """DISTRIBUTED_BE_ENABLED=true with empty DISTRIBUTED_BE_TARGETS fails container construction."""
-    import main as main_module
+    import main as main_module  # noqa: PLC0415 - import after env fixture sets REDIS_PASSWORD_FILE/OTEL_ENABLED
 
     monkeypatch.setenv("DISTRIBUTED_BE_ENABLED", "true")
     monkeypatch.setenv("DISTRIBUTED_BE_TARGETS", "")
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="DISTRIBUTED_BE_TARGETS"):
         main_module.DependencyContainer()
 
 
-def _build_cache_wiring_container(monkeypatch, cache_enabled: bool):
+def _build_cache_wiring_container(
+    monkeypatch: pytest.MonkeyPatch, cache_enabled: bool
+) -> DependencyContainer:
     """Build a DependencyContainer with only the heavy Ollama-side classes
     stubbed out, keeping the real RecapSummaryUsecase / cache gateway classes
     so the actual wiring in main.py is exercised (not re-implemented in the
     test double)."""
-    import main as main_module
+    import main as main_module  # noqa: PLC0415 - import after env fixture sets REDIS_PASSWORD_FILE/OTEL_ENABLED
 
     monkeypatch.setattr(
         main_module, "NewsCreatorConfig", lambda: _DummyCacheConfig(cache_enabled)
@@ -476,13 +497,11 @@ def _build_cache_wiring_container(monkeypatch, cache_enabled: bool):
 
 
 def test_dependency_container_wires_real_cache_when_cache_enabled_true(
-    monkeypatch, caplog
-):
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
     """CACHE_ENABLED=true must produce a real RedisCacheGateway wired into
     RecapSummaryUsecase -- not a silently-ignored config value (CLAUDE.md
     rule 8 / di-wiring.md), and must not log cache_enabled before connecting."""
-    from news_creator.gateway.redis_cache_gateway import RedisCacheGateway
-
     with caplog.at_level("INFO"):
         container = _build_cache_wiring_container(monkeypatch, cache_enabled=True)
 
@@ -494,12 +513,10 @@ def test_dependency_container_wires_real_cache_when_cache_enabled_true(
 
 
 def test_dependency_container_wires_null_cache_when_cache_enabled_false(
-    monkeypatch, caplog
-):
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
     """CACHE_ENABLED=false must wire an explicit NullCacheGateway (not bare
     None) so 'disabled' is a loud, explicit state rather than an absence."""
-    from news_creator.gateway.redis_cache_gateway import NullCacheGateway
-
     with caplog.at_level("INFO"):
         container = _build_cache_wiring_container(monkeypatch, cache_enabled=False)
 
@@ -512,11 +529,11 @@ def test_dependency_container_wires_null_cache_when_cache_enabled_false(
 
 @pytest.mark.asyncio
 async def test_dependency_container_initialize_and_cleanup_manage_cache_lifecycle(
-    monkeypatch, caplog
-):
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
     """initialize()/cleanup() must drive the cache gateway's own lifecycle,
     and log cache_enabled only after initialize() succeeds."""
-    import main as main_module
+    import main as main_module  # noqa: PLC0415 - import after env fixture sets REDIS_PASSWORD_FILE/OTEL_ENABLED
 
     monkeypatch.setattr(
         main_module, "NewsCreatorConfig", lambda: _DummyCacheConfig(cache_enabled=True)
@@ -543,15 +560,16 @@ async def test_dependency_container_initialize_and_cleanup_manage_cache_lifecycl
 
 @pytest.mark.asyncio
 async def test_dependency_container_does_not_log_cache_enabled_when_connect_fails(
-    monkeypatch, caplog
-):
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
     """When cache_gateway.initialize() fails, container.initialize() must raise
     and never emit cache_enabled."""
-    import main as main_module
+    import main as main_module  # noqa: PLC0415 - import after env fixture sets REDIS_PASSWORD_FILE/OTEL_ENABLED
 
     class _FailingCacheGateway(_SpyCacheGateway):
         async def initialize(self) -> None:
-            raise ConnectionError("Connection refused")
+            msg = "Connection refused"
+            raise ConnectionError(msg)
 
     monkeypatch.setattr(
         main_module, "NewsCreatorConfig", lambda: _DummyCacheConfig(cache_enabled=True)
@@ -570,15 +588,19 @@ async def test_dependency_container_does_not_log_cache_enabled_when_connect_fail
 
 
 @pytest.mark.asyncio
-async def test_lifespan_starts_and_cancels_event_loop_lag_probe(monkeypatch):
+async def test_lifespan_starts_and_cancels_event_loop_lag_probe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """lifespan() must start the event-loop-lag probe as a background task
     at startup and cancel it cleanly at shutdown -- not leave it dangling,
     and not simply forget to start it."""
-    import main as main_module
+    import main as main_module  # noqa: PLC0415 - import after env fixture sets REDIS_PASSWORD_FILE/OTEL_ENABLED
+
+    expected_lag_warn_ms = 500
 
     class _DummyContainer:
-        def __init__(self):
-            self.config = SimpleNamespace(event_loop_lag_warn_ms=500)
+        def __init__(self) -> None:
+            self.config = SimpleNamespace(event_loop_lag_warn_ms=expected_lag_warn_ms)
 
         async def initialize(self) -> None:
             return None
@@ -591,9 +613,9 @@ async def test_lifespan_starts_and_cancels_event_loop_lag_probe(monkeypatch):
 
     probe_started = asyncio.Event()
     probe_cancelled = asyncio.Event()
-    received_threshold = None
+    received_threshold: float | None = None
 
-    async def fake_probe(*, warn_threshold_ms):
+    async def fake_probe(*, warn_threshold_ms: float) -> None:
         nonlocal received_threshold
         received_threshold = warn_threshold_ms
         probe_started.set()
@@ -608,15 +630,17 @@ async def test_lifespan_starts_and_cancels_event_loop_lag_probe(monkeypatch):
     async with main_module.lifespan(main_module.app):
         await asyncio.wait_for(probe_started.wait(), timeout=1.0)
 
-    assert received_threshold == 500
+    assert received_threshold == expected_lag_warn_ms
     assert probe_cancelled.is_set(), (
         "lifespan must cancel the lag probe task on shutdown, not leave it dangling"
     )
 
 
-def test_dependency_container_fails_fast_when_redis_auth_unconfigured(monkeypatch):
+def test_dependency_container_fails_fast_when_redis_auth_unconfigured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """DependencyContainer startup must fail fast if Redis auth is unconfigured."""
-    import main as main_module
+    import main as main_module  # noqa: PLC0415 - import after env fixture sets REDIS_PASSWORD_FILE/OTEL_ENABLED
 
     monkeypatch.delenv("REDIS_PASSWORD_FILE", raising=False)
     monkeypatch.delenv("REDIS_AUTH", raising=False)
@@ -625,9 +649,11 @@ def test_dependency_container_fails_fast_when_redis_auth_unconfigured(monkeypatc
         main_module.DependencyContainer()
 
 
-def test_dependency_container_fails_fast_when_inference_auth_unconfigured(monkeypatch):
+def test_dependency_container_fails_fast_when_inference_auth_unconfigured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Startup must fail when the generation-proxy bearer is neither set nor disabled."""
-    import main as main_module
+    import main as main_module  # noqa: PLC0415 - import after env fixture sets REDIS_PASSWORD_FILE/OTEL_ENABLED
 
     monkeypatch.delenv("INFERENCE_SERVICE_TOKEN_FILE", raising=False)
     monkeypatch.delenv("INFERENCE_AUTH", raising=False)
@@ -638,10 +664,10 @@ def test_dependency_container_fails_fast_when_inference_auth_unconfigured(monkey
 
 @pytest.mark.asyncio
 async def test_dependency_container_drivers_send_resolved_inference_token(
-    monkeypatch, tmp_path
-):
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """The container's real Ollama drivers carry the bearer read from the token file."""
-    import main as main_module
+    import main as main_module  # noqa: PLC0415 - import after env fixture sets REDIS_PASSWORD_FILE/OTEL_ENABLED
 
     token_file = tmp_path / "inference.token"
     token_file.write_text("container-wired-token\n", encoding="utf-8")
@@ -659,10 +685,11 @@ async def test_dependency_container_drivers_send_resolved_inference_token(
         await gateway.cleanup()
 
 
-def test_dependency_container_wires_resolved_redis_password(monkeypatch, tmp_path):
+def test_dependency_container_wires_resolved_redis_password(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """DependencyContainer must pass resolved Redis password to CachePort when CACHE_ENABLED=true."""
-    import main as main_module
-    from news_creator.gateway.redis_cache_gateway import RedisCacheGateway
+    import main as main_module  # noqa: PLC0415 - import after env fixture sets REDIS_PASSWORD_FILE/OTEL_ENABLED
 
     secret_file = tmp_path / "secret.txt"
     secret_file.write_text("custom-auth-password")
@@ -675,15 +702,16 @@ def test_dependency_container_wires_resolved_redis_password(monkeypatch, tmp_pat
 
     container = main_module.DependencyContainer()
 
-    assert container.config.cache_redis_password == "custom-auth-password"
+    assert container.config.cache_redis_password == "custom-auth-password"  # noqa: S105 - test fixture password
     assert isinstance(container.cache_gateway, RedisCacheGateway)
-    assert container.cache_gateway.config.cache_redis_password == "custom-auth-password"
+    assert container.cache_gateway.config.cache_redis_password == "custom-auth-password"  # noqa: S105 - test fixture password
 
 
-def test_dependency_container_accepts_explicit_redis_auth_disabled(monkeypatch):
+def test_dependency_container_accepts_explicit_redis_auth_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """DependencyContainer allows startup with None password when REDIS_AUTH=disabled."""
-    import main as main_module
-    from news_creator.gateway.redis_cache_gateway import NullCacheGateway
+    import main as main_module  # noqa: PLC0415 - import after env fixture sets REDIS_PASSWORD_FILE/OTEL_ENABLED
 
     monkeypatch.delenv("REDIS_PASSWORD_FILE", raising=False)
     monkeypatch.setenv("REDIS_AUTH", "disabled")
@@ -698,25 +726,21 @@ def test_dependency_container_accepts_explicit_redis_auth_disabled(monkeypatch):
     assert isinstance(container.cache_gateway, NullCacheGateway)
 
 
-def test_metrics_endpoint_returns_200_without_redirect():
+def test_metrics_endpoint_returns_200_without_redirect() -> None:
     """GET /metrics (without trailing slash) must return 200 directly without a 307 redirect."""
-    from fastapi.testclient import TestClient
-    import main as main_module
+    import main as main_module  # noqa: PLC0415 - import after env fixture sets REDIS_PASSWORD_FILE/OTEL_ENABLED
 
     client = TestClient(main_module.app)
     response = client.get("/metrics", follow_redirects=False)
 
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     assert "text/plain" in response.headers.get("content-type", "")
 
 
 def test_instrument_fastapi_excludes_health_metrics_and_asgi_send_receive_spans(
-    monkeypatch,
-):
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """instrument_fastapi must exclude health/metrics/api/tags URLs and ASGI receive/send spans."""
-    from unittest.mock import MagicMock
-    from news_creator import otel as otel_module
-
     monkeypatch.setenv("OTEL_ENABLED", "true")
     mock_instrument = MagicMock()
     monkeypatch.setattr(

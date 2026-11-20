@@ -95,7 +95,7 @@ mod tests {
         }
     }
 
-    /// Recording OTel exporter that stores received logs and traces and counts them.
+    /// Recording `OTel` exporter that stores received logs and traces and counts them.
     struct RecordingOTelExporter {
         exported_logs: Mutex<Vec<OTelLog>>,
         exported_traces: Mutex<Vec<OTelTrace>>,

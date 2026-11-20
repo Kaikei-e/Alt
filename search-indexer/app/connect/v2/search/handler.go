@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 
 	"connectrpc.com/connect"
@@ -50,10 +51,10 @@ func (h *Handler) SearchArticles(
 	ctx context.Context,
 	req *connect.Request[searchv2.SearchArticlesRequest],
 ) (*connect.Response[searchv2.SearchArticlesResponse], error) {
-	query := req.Msg.Query
-	userID := req.Msg.UserId
-	offset := int64(req.Msg.Offset)
-	limit := int64(req.Msg.Limit)
+	query := req.Msg.GetQuery()
+	userID := req.Msg.GetUserId()
+	offset := int64(req.Msg.GetOffset())
+	limit := int64(req.Msg.GetLimit())
 
 	if query == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("query is required"))
@@ -78,7 +79,7 @@ func (h *Handler) SearchArticles(
 	if token != "" {
 		if err := h.authUsecase.VerifyUserToken(ctx, token, userID); err != nil {
 			logger.Logger.Error("auth verification failed", "err", err, "user_id", userID)
-			return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("unauthorized: %v", err))
+			return nil, connect.NewError(connect.CodePermissionDenied, fmt.Errorf("unauthorized: %w", err))
 		}
 	} else {
 		return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("missing or invalid authorization header"))
@@ -125,9 +126,9 @@ func (h *Handler) SearchRecaps(
 		return nil, connect.NewError(connect.CodeUnimplemented, fmt.Errorf("recap search not configured"))
 	}
 
-	tagName := req.Msg.TagName
+	tagName := req.Msg.GetTagName()
 	query := req.Msg.GetQuery()
-	limit := int(req.Msg.Limit)
+	limit := int(req.Msg.GetLimit())
 
 	var result *usecase.SearchRecapsResult
 	var err error
@@ -170,7 +171,7 @@ func (h *Handler) SearchRecaps(
 			Id:         doc.ID,
 			JobId:      doc.JobID,
 			ExecutedAt: doc.ExecutedAt,
-			WindowDays: int32(doc.WindowDays),
+			WindowDays: safeInt32(doc.WindowDays),
 			Genre:      doc.Genre,
 			Summary:    doc.Summary,
 			TopTerms:   topTerms,
@@ -185,4 +186,14 @@ func (h *Handler) SearchRecaps(
 		Hits:               hits,
 		EstimatedTotalHits: result.EstimatedTotalHits,
 	}), nil
+}
+
+func safeInt32(v int) int32 {
+	if v > math.MaxInt32 {
+		return math.MaxInt32
+	}
+	if v < math.MinInt32 {
+		return math.MinInt32
+	}
+	return int32(v)
 }

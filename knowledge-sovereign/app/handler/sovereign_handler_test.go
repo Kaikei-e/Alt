@@ -9,11 +9,12 @@ import (
 	"testing"
 	"time"
 
-	"connectrpc.com/connect"
-	"github.com/google/uuid"
 	"knowledge-sovereign/driver/sovereign_db"
 	sovereignv1 "knowledge-sovereign/gen/proto/services/sovereign/v1"
 	"knowledge-sovereign/gen/proto/services/sovereign/v1/sovereignv1connect"
+
+	"connectrpc.com/connect"
+	"github.com/google/uuid"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -298,7 +299,7 @@ func TestApplyProjectionMutation_DispatchesCorrectly(t *testing.T) {
 				}))
 
 			require.NoError(t, err)
-			assert.True(t, resp.Msg.Success)
+			assert.True(t, resp.Msg.GetSuccess())
 			assert.Equal(t, tc.expectedMethod, repo.lastMethod)
 		})
 	}
@@ -452,7 +453,7 @@ func TestApplyRecallMutation_DispatchesCorrectly(t *testing.T) {
 				}))
 
 			require.NoError(t, err)
-			assert.True(t, resp.Msg.Success)
+			assert.True(t, resp.Msg.GetSuccess())
 			assert.Equal(t, tc.expectedMethod, repo.lastMethod)
 		})
 	}
@@ -470,7 +471,7 @@ func TestApplyCurationMutation_DismissCuration(t *testing.T) {
 		}))
 
 	require.NoError(t, err)
-	assert.True(t, resp.Msg.Success)
+	assert.True(t, resp.Msg.GetSuccess())
 	assert.Equal(t, "DismissKnowledgeHomeItem", repo.lastMethod)
 }
 
@@ -495,7 +496,7 @@ func TestApplyCurationMutation_UnknownTypeRejected(t *testing.T) {
 	require.Error(t, err)
 	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 	assert.Nil(t, resp)
-	assert.Equal(t, "", repo.lastMethod)
+	assert.Empty(t, repo.lastMethod)
 }
 
 func (m *mockRepo) GetLensVersion(ctx context.Context, lensVersionID uuid.UUID) (*sovereign_db.KnowledgeLensVersion, error) {

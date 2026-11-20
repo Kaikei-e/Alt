@@ -24,6 +24,9 @@ pub enum AggregatorError {
     #[error("Export error: {0}")]
     #[allow(dead_code)]
     Export(String),
+
+    #[error("{0}")]
+    Healthcheck(#[from] crate::healthcheck::HealthcheckError),
 }
 
 #[cfg(test)]

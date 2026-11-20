@@ -73,5 +73,5 @@ class TTSConnectService:
             logger.warning("TTS domain error occurred: %s", type(err).__name__)
             raise ConnectError(Code.INTERNAL, "Audio format error") from err
         except Exception as err:
-            logger.exception("Unexpected error in TTS synthesis: %s", err)
+            logger.exception("Unexpected error in TTS synthesis")
             raise ConnectError(Code.INTERNAL, "Internal server error") from err

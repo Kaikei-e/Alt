@@ -4,6 +4,7 @@
 package errors
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 )
@@ -120,7 +121,8 @@ func LogError(logger *slog.Logger, err error, operation string) {
 		return
 	}
 
-	if appErr, ok := err.(*AppError); ok {
+	appErr := &AppError{}
+	if errors.As(err, &appErr) {
 		args := []interface{}{
 			"operation", operation,
 			"error_code", string(appErr.Code),

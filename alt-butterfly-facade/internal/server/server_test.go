@@ -33,7 +33,7 @@ func TestNewServer(t *testing.T) {
 }
 
 func TestEnableCleartextHTTP2(t *testing.T) {
-	srv := &http.Server{}
+	srv := &http.Server{ReadHeaderTimeout: time.Second}
 	EnableCleartextHTTP2(srv)
 	require.NotNil(t, srv.Protocols)
 	assert.True(t, srv.Protocols.HTTP1())
@@ -55,7 +55,7 @@ func TestServer_HealthEndpoint(t *testing.T) {
 
 	handler := NewServer(cfg, nil)
 
-	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health", nil)
 	recorder := httptest.NewRecorder()
 
 	handler.ServeHTTP(recorder, req)
@@ -82,7 +82,7 @@ func TestServer_ProxyEndpoint_Unauthorized(t *testing.T) {
 
 	handler := NewServer(cfg, nil)
 
-	req := httptest.NewRequest(http.MethodPost, "/alt.feeds.v2.FeedService/GetFeedStats", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/alt.feeds.v2.FeedService/GetFeedStats", nil)
 	recorder := httptest.NewRecorder()
 
 	handler.ServeHTTP(recorder, req)
@@ -104,7 +104,7 @@ func TestServer_ErrorResponsesDoNotReflectHTMLFromRequest(t *testing.T) {
 	h := NewServerWithTransport(cfg, nil, http.DefaultTransport)
 
 	t.Run("rejected connect path", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/alt.notreal.v1.NopeService/Do", strings.NewReader(`{}`))
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/alt.notreal.v1.NopeService/Do", strings.NewReader(`{}`))
 		req.URL.Path = "/alt.notreal.v1.NopeService/" + xss
 		req.Header.Set("X-Alt-Backend-Token", createValidToken(t, testPrivateKey))
 		rec := httptest.NewRecorder()
@@ -116,7 +116,7 @@ func TestServer_ErrorResponsesDoNotReflectHTMLFromRequest(t *testing.T) {
 	})
 
 	t.Run("unauthorized allowlisted path", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/alt.feeds.v2.FeedService/GetFeedStats", strings.NewReader(`{}`))
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/alt.feeds.v2.FeedService/GetFeedStats", strings.NewReader(`{}`))
 		req.URL.RawQuery = "q=" + xss
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, req)
@@ -138,10 +138,10 @@ func TestServer_MetricsExposesUserJourneyCounter(t *testing.T) {
 	}
 	handler := NewServer(cfg, nil)
 
-	unauth := httptest.NewRequest(http.MethodPost, "/alt.feeds.v2.FeedService/GetFeedStats", nil)
+	unauth := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/alt.feeds.v2.FeedService/GetFeedStats", nil)
 	handler.ServeHTTP(httptest.NewRecorder(), unauth)
 
-	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/metrics", nil)
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, req)
 
@@ -161,7 +161,7 @@ func TestServer_ProxyEndpoint_Success(t *testing.T) {
 		assert.Equal(t, "/alt.feeds.v2.FeedService/GetFeedStats", r.URL.Path)
 		w.Header().Set("Content-Type", "application/proto")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("response"))
+		_, _ = w.Write([]byte("response"))
 	}))
 	defer backend.Close()
 
@@ -177,7 +177,7 @@ func TestServer_ProxyEndpoint_Success(t *testing.T) {
 	// Use HTTP/1.1 transport for testing
 	handler := NewServerWithTransport(cfg, nil, http.DefaultTransport)
 
-	req := httptest.NewRequest(
+	req := httptest.NewRequestWithContext(t.Context(),
 		http.MethodPost,
 		"/alt.feeds.v2.FeedService/GetFeedStats",
 		strings.NewReader("request"),
@@ -223,7 +223,7 @@ func TestServer_RESTRoute_NonAllowlistedPathIsRejected(t *testing.T) {
 
 	for _, path := range paths {
 		t.Run(path, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodGet, path, nil)
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil)
 			req.Header.Set("X-Alt-Backend-Token", createValidToken(t, testPrivateKey))
 
 			recorder := httptest.NewRecorder()
@@ -259,7 +259,7 @@ func TestServer_BFFOwnedV1Routes_OutrankRESTAllowlist(t *testing.T) {
 	assert.False(t, allowRESTPath("/v1/bff/stats"), "guard: this test is only meaningful while the path is off the allowlist")
 	assert.False(t, allowRESTPath("/v1/aggregate"), "guard: this test is only meaningful while the path is off the allowlist")
 
-	statsReq := httptest.NewRequest(http.MethodGet, "/v1/bff/stats", nil)
+	statsReq := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/bff/stats", nil)
 	statsReq.Header.Set("X-Alt-Backend-Token", createValidAdminToken(t, testPrivateKey))
 	statsRec := httptest.NewRecorder()
 	handler.ServeHTTP(statsRec, statsReq)
@@ -267,7 +267,7 @@ func TestServer_BFFOwnedV1Routes_OutrankRESTAllowlist(t *testing.T) {
 
 	// The aggregation handler rejects an unauthenticated caller itself; the
 	// point here is only that it, not the 404, answers.
-	aggReq := httptest.NewRequest(http.MethodPost, "/v1/aggregate", strings.NewReader(`{}`))
+	aggReq := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/aggregate", strings.NewReader(`{}`))
 	aggRec := httptest.NewRecorder()
 	handler.ServeHTTP(aggRec, aggReq)
 	assert.NotEqual(t, http.StatusNotFound, aggRec.Code)
@@ -320,7 +320,7 @@ func TestServer_RESTRoute_AllowlistedPathsAreForwarded(t *testing.T) {
 	for _, path := range paths {
 		t.Run(path, func(t *testing.T) {
 			seen = ""
-			req := httptest.NewRequest(http.MethodGet, path, nil)
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil)
 			if strings.HasPrefix(path, "/v1/dashboard/") || strings.HasPrefix(path, "/v1/admin/") {
 				req.Header.Set("X-Alt-Backend-Token", createValidAdminToken(t, testPrivateKey))
 			} else {
@@ -349,7 +349,7 @@ func TestServer_AcolyteRoute_Unauthorized(t *testing.T) {
 
 	handler := NewServer(cfg, nil)
 
-	req := httptest.NewRequest(http.MethodPost, "/alt.acolyte.v1.AcolyteService/HealthCheck", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/alt.acolyte.v1.AcolyteService/HealthCheck", nil)
 	recorder := httptest.NewRecorder()
 
 	handler.ServeHTTP(recorder, req)
@@ -363,7 +363,7 @@ func TestServer_AcolyteRoute_Success(t *testing.T) {
 		assert.Empty(t, r.Header.Get("X-Service-Token"), "auth is transport-layer now")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"ok"}`))
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	}))
 	defer acolyteBackend.Close()
 
@@ -384,7 +384,7 @@ func TestServer_AcolyteRoute_Success(t *testing.T) {
 
 	handler := NewServerWithTransport(cfg, nil, http.DefaultTransport)
 
-	req := httptest.NewRequest(
+	req := httptest.NewRequestWithContext(t.Context(),
 		http.MethodPost,
 		"/alt.acolyte.v1.AcolyteService/HealthCheck",
 		strings.NewReader(`{}`),
@@ -417,7 +417,7 @@ func TestServer_AcolyteRoute_NotRegistered_WhenURLEmpty(t *testing.T) {
 
 	handler := NewServerWithTransport(cfg, nil, http.DefaultTransport)
 
-	req := httptest.NewRequest(
+	req := httptest.NewRequestWithContext(t.Context(),
 		http.MethodPost,
 		"/alt.acolyte.v1.AcolyteService/HealthCheck",
 		strings.NewReader(`{}`),
@@ -487,12 +487,12 @@ func TestServer_BFFStats_KeepsItsShapeAndReportsRejections(t *testing.T) {
 
 	const endpoint = "/alt.feeds.v2.FeedService/GetUnreadFeeds"
 	for i := 0; i < 4; i++ {
-		req := httptest.NewRequest(http.MethodPost, endpoint, strings.NewReader(`{}`))
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, endpoint, strings.NewReader(`{}`))
 		req.Header.Set("X-Alt-Backend-Token", createValidAdminToken(t, testPrivateKey))
 		srv.ServeHTTP(httptest.NewRecorder(), req)
 	}
 
-	statsReq := httptest.NewRequest(http.MethodGet, "/v1/bff/stats", nil)
+	statsReq := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/bff/stats", nil)
 	statsReq.Header.Set("X-Alt-Backend-Token", createValidAdminToken(t, testPrivateKey))
 	statsRec := httptest.NewRecorder()
 	srv.ServeHTTP(statsRec, statsReq)
@@ -516,10 +516,10 @@ func TestServer_BFFStats_KeepsItsShapeAndReportsRejections(t *testing.T) {
 
 	projection := cb["projection"].(map[string]any)
 	assert.Equal(t, "OPEN", projection["state"])
-	assert.Equal(t, float64(2), projection["total_failures"])
-	assert.Equal(t, float64(2), projection["total_rejections"],
+	assert.InDelta(t, float64(2), projection["total_failures"], 1e-9)
+	assert.InDelta(t, float64(2), projection["total_rejections"], 1e-9,
 		"requests refused by the open breaker must be countable without reading the log")
-	assert.Equal(t, float64(2), cb["total_rejections"], "the rollup sums every class")
+	assert.InDelta(t, float64(2), cb["total_rejections"], 1e-9, "the rollup sums every class")
 }
 
 // TestServer_BFFStats_TelemetryOutcomesAreCountable pins the counter half of
@@ -551,7 +551,7 @@ func TestServer_BFFStats_TelemetryOutcomesAreCountable(t *testing.T) {
 
 	const endpoint = "/alt.knowledge_home.v1.KnowledgeHomeService/TrackHomeAction"
 	for i := 0; i < 3; i++ {
-		req := httptest.NewRequest(http.MethodPost, endpoint, strings.NewReader(`{}`))
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, endpoint, strings.NewReader(`{}`))
 		req.Header.Set("X-Alt-Backend-Token", createValidAdminToken(t, testPrivateKey))
 		rec := httptest.NewRecorder()
 		srv.ServeHTTP(rec, req)
@@ -559,7 +559,7 @@ func TestServer_BFFStats_TelemetryOutcomesAreCountable(t *testing.T) {
 			"ClassTelemetry has no breaker: every request must reach the backend, none short-circuited")
 	}
 
-	statsReq := httptest.NewRequest(http.MethodGet, "/v1/bff/stats", nil)
+	statsReq := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/bff/stats", nil)
 	statsReq.Header.Set("X-Alt-Backend-Token", createValidAdminToken(t, testPrivateKey))
 	statsRec := httptest.NewRecorder()
 	srv.ServeHTTP(statsRec, statsReq)
@@ -572,6 +572,6 @@ func TestServer_BFFStats_TelemetryOutcomesAreCountable(t *testing.T) {
 	require.True(t, ok)
 	telemetry, ok := cb["telemetry"].(map[string]any)
 	require.True(t, ok, "telemetry must be visible in /v1/bff/stats, not silently dropped")
-	assert.Equal(t, float64(3), telemetry["total_failures"])
-	assert.Equal(t, float64(0), telemetry["total_successes"])
+	assert.InDelta(t, float64(3), telemetry["total_failures"], 1e-9)
+	assert.InDelta(t, float64(0), telemetry["total_successes"], 1e-9)
 }

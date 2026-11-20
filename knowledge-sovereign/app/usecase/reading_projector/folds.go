@@ -95,7 +95,7 @@ func (p *Projector) foldSessionEnded(ctx context.Context, evt sovereign_db.Knowl
 		p.logger.WarnContext(ctx, "reading_projector: skipping session_ended with invalid article_id",
 			slog.String("event_id", evt.EventID.String()),
 			slog.String("article_id", payload.ArticleID))
-		return nil
+		return nil //nolint:nilerr // invalid article_id in append-only event must be skipped so projector advances
 	}
 	if !EvaluateReadRuleV1(payload.ReachedEnd, payload.ActiveDwellMs, payload.BodyLengthChars) {
 		return nil
@@ -132,7 +132,7 @@ func (p *Projector) foldHomeItemOpened(ctx context.Context, evt sovereign_db.Kno
 	}
 	articleID, err := uuid.Parse(rawArticleID)
 	if err != nil {
-		return nil
+		return nil //nolint:nilerr // legacy HomeItemOpened with non-UUID item_key is ignored
 	}
 	return p.repo.UpsertReadingSource(ctx, sovereign_db.ReadingSource{
 		UserID:          *evt.UserID,

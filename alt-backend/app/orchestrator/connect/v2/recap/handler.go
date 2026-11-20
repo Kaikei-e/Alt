@@ -69,10 +69,10 @@ func (h *Handler) GetThreeDayRecap(
 
 	resp := domainToProtoThreeDays(recap)
 
-	if req.Msg.GenreDraftId != nil && *req.Msg.GenreDraftId != "" && h.clusterDraftLoader != nil {
-		draft, err := h.clusterDraftLoader.LoadDraft(*req.Msg.GenreDraftId)
+	if req.Msg.GenreDraftId != nil && req.Msg.GetGenreDraftId() != "" && h.clusterDraftLoader != nil {
+		draft, err := h.clusterDraftLoader.LoadDraft(req.Msg.GetGenreDraftId())
 		if err != nil {
-			h.logger.WarnContext(ctx, "cluster draft loader failed", "error", err, "draft_id", *req.Msg.GenreDraftId)
+			h.logger.WarnContext(ctx, "cluster draft loader failed", "error", err, "draft_id", req.Msg.GetGenreDraftId())
 		} else if draft != nil {
 			resp.ClusterDraft = clusterDraftToProto(draft)
 		}
@@ -112,11 +112,11 @@ func (h *Handler) SearchRecapsByTag(
 	}
 
 	query := req.Msg.GetQuery()
-	tagName := req.Msg.TagName
+	tagName := req.Msg.GetTagName()
 
 	h.logger.InfoContext(ctx, "SearchRecapsByTag called", "user_id", userCtx.UserID, "tag_name", tagName, "query", query)
 
-	limit := int(req.Msg.Limit)
+	limit := int(req.Msg.GetLimit())
 	if limit <= 0 {
 		limit = 50
 	}

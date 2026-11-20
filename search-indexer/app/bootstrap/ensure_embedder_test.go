@@ -242,6 +242,7 @@ func TestEnsureEmbedderSettings_CredentialPatchWhenTokenConfigured(t *testing.T)
 	if got.APIKey != "mytoken123=" {
 		t.Fatalf("credential PATCH apiKey = %q, want %q", got.APIKey, "mytoken123=")
 	}
+	// #nosec G117 -- test asserts EmbedderSpec serializes the apiKey field required by Meilisearch
 	encoded, err := json.Marshal(got)
 	if err != nil {
 		t.Fatalf("marshal credential PATCH: %v", err)

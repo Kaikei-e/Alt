@@ -1,7 +1,6 @@
 pub(crate) mod cadence;
 pub mod daemon;
 pub(crate) mod jobs;
-pub(crate) mod ledger;
 
 /// Self-check type alias so the `spawn_jst_batch_daemon` signature-drift
 /// guard below stays readable under `clippy::type_complexity`.

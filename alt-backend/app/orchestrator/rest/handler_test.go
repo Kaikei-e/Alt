@@ -11,7 +11,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -25,7 +25,10 @@ func TestCSPReportEndpoint(t *testing.T) {
 
 	// Create minimal container and config for testing
 	container := &di.ApplicationComponents{UserQuotaLimiter: newTestQuotaLimiter(t)}
-	cfg := &config.Config{Auth: testAuthCfg()}
+	cfg := &config.Config{
+		Auth:   testAuthCfg(),
+		Server: config.ServerConfig{CORSAllowedOrigins: []string{"http://localhost:3000"}},
+	}
 
 	// Register routes
 	RegisterRoutes(context.Background(), e, container, cfg)
@@ -95,10 +98,10 @@ func TestCSPReportEndpoint(t *testing.T) {
 					body = []byte("invalid json")
 				}
 
-				req = httptest.NewRequest(tt.method, tt.path, bytes.NewReader(body))
+				req = httptest.NewRequestWithContext(t.Context(), tt.method, tt.path, bytes.NewReader(body))
 				req.Header.Set("Content-Type", "application/json")
 			} else {
-				req = httptest.NewRequest(tt.method, tt.path, nil)
+				req = httptest.NewRequestWithContext(t.Context(), tt.method, tt.path, nil)
 			}
 
 			rec = httptest.NewRecorder()

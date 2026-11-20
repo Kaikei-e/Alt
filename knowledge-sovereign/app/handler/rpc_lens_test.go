@@ -108,12 +108,12 @@ func TestLensMappers(t *testing.T) {
 
 	pbLens := lensToProto(lens)
 	require.NotNil(t, pbLens)
-	assert.Equal(t, lensID.String(), pbLens.LensId)
-	assert.Equal(t, "Tech Lens", pbLens.Name)
-	assert.True(t, pbLens.ArchivedAt.AsTime().Equal(archived))
-	require.NotNil(t, pbLens.CurrentVersion)
-	assert.Equal(t, versionID.String(), pbLens.CurrentVersion.LensVersionId)
-	assert.Equal(t, "search query", pbLens.CurrentVersion.QueryText)
+	assert.Equal(t, lensID.String(), pbLens.GetLensId())
+	assert.Equal(t, "Tech Lens", pbLens.GetName())
+	assert.True(t, pbLens.GetArchivedAt().AsTime().Equal(archived))
+	require.NotNil(t, pbLens.GetCurrentVersion())
+	assert.Equal(t, versionID.String(), pbLens.GetCurrentVersion().GetLensVersionId())
+	assert.Equal(t, "search query", pbLens.GetCurrentVersion().GetQueryText())
 }
 
 func TestGetLens_PopulatesCurrentVersion(t *testing.T) {
@@ -176,19 +176,19 @@ func TestGetLens_PopulatesCurrentVersion(t *testing.T) {
 			require.NoError(t, err)
 
 			if tt.wantNilLens {
-				assert.Nil(t, resp.Msg.Lens)
+				assert.Nil(t, resp.Msg.GetLens())
 				return
 			}
 
-			require.NotNil(t, resp.Msg.Lens)
+			require.NotNil(t, resp.Msg.GetLens())
 
 			if tt.wantVersion {
-				require.NotNil(t, resp.Msg.Lens.CurrentVersion, "CurrentVersion should be populated")
-				assert.Equal(t, versionID.String(), resp.Msg.Lens.CurrentVersion.LensVersionId)
-				assert.Equal(t, []string{"llm", "ai"}, resp.Msg.Lens.CurrentVersion.TagIds)
-				assert.Equal(t, "90d", resp.Msg.Lens.CurrentVersion.TimeWindow)
+				require.NotNil(t, resp.Msg.GetLens().GetCurrentVersion(), "CurrentVersion should be populated")
+				assert.Equal(t, versionID.String(), resp.Msg.GetLens().GetCurrentVersion().GetLensVersionId())
+				assert.Equal(t, []string{"llm", "ai"}, resp.Msg.GetLens().GetCurrentVersion().GetTagIds())
+				assert.Equal(t, "90d", resp.Msg.GetLens().GetCurrentVersion().GetTimeWindow())
 			} else {
-				assert.Nil(t, resp.Msg.Lens.CurrentVersion)
+				assert.Nil(t, resp.Msg.GetLens().GetCurrentVersion())
 			}
 		})
 	}
@@ -697,8 +697,8 @@ func TestAreArticlesVisibleInLens_HappyPath(t *testing.T) {
 	}))
 	require.NoError(t, err)
 	require.NotNil(t, resp)
-	assert.True(t, resp.Msg.Visibility[art1.String()])
-	assert.False(t, resp.Msg.Visibility[art2.String()])
+	assert.True(t, resp.Msg.GetVisibility()[art1.String()])
+	assert.False(t, resp.Msg.GetVisibility()[art2.String()])
 	require.NotNil(t, repo.gotFilter)
 	assert.Equal(t, "rust", repo.gotFilter.QueryText)
 	assert.Equal(t, []string{"systems"}, repo.gotFilter.TagNames)

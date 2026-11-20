@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -13,7 +14,7 @@ import (
 	"auth-hub/internal/infrastructure/token"
 	"auth-hub/internal/usecase"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -46,7 +47,7 @@ func TestCSRFHandler_IgnoresShadowedCookieSuffix(t *testing.T) {
 	uc := usecase.NewGenerateCSRF(validator, csrfGen, slog.Default())
 	h := NewCSRFHandler(uc)
 
-	req := httptest.NewRequest(http.MethodPost, "/csrf", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/csrf", nil)
 	// Shadowed cookie name ending with "ory_kratos_session=" must not trick extraction.
 	req.Header.Set("Cookie", "evil_ory_kratos_session=attacker-sess; ory_kratos_session=legit-sess")
 	rec := httptest.NewRecorder()
@@ -61,8 +62,8 @@ func TestCSRFHandler_IgnoresShadowedCookieSuffix(t *testing.T) {
 	require.NotEmpty(t, resp.Data.CSRFToken)
 
 	// Token must validate for "legit-sess" and NOT for "attacker-sess"
-	assert.NoError(t, csrfGen.Validate("legit-sess", resp.Data.CSRFToken))
-	assert.Error(t, csrfGen.Validate("attacker-sess", resp.Data.CSRFToken))
+	require.NoError(t, csrfGen.Validate("legit-sess", resp.Data.CSRFToken))
+	require.Error(t, csrfGen.Validate("attacker-sess", resp.Data.CSRFToken))
 	assert.Equal(t, "ory_kratos_session=legit-sess", validator.lastCookie)
 }
 
@@ -75,14 +76,15 @@ func TestCSRFHandler_RejectsWhenKratosCookieMissing(t *testing.T) {
 	uc := usecase.NewGenerateCSRF(validator, csrfGen, slog.Default())
 	h := NewCSRFHandler(uc)
 
-	req := httptest.NewRequest(http.MethodPost, "/csrf", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/csrf", nil)
 	req.Header.Set("Cookie", "unrelated_cookie=val123")
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
 	err := h.Handle(c)
 	if err != nil {
-		he, ok := err.(*echo.HTTPError)
+		he := &echo.HTTPError{}
+		ok := errors.As(err, &he)
 		require.True(t, ok)
 		assert.Equal(t, http.StatusUnauthorized, he.Code)
 	} else {
@@ -122,14 +124,15 @@ func TestCSRFHandler_ValidatorErrorMapping(t *testing.T) {
 			uc := usecase.NewGenerateCSRF(validator, csrfGen, slog.Default())
 			h := NewCSRFHandler(uc)
 
-			req := httptest.NewRequest(http.MethodPost, "/csrf", nil)
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/csrf", nil)
 			req.Header.Set("Cookie", "ory_kratos_session=sess-123")
 			rec := httptest.NewRecorder()
 			c := e.NewContext(req, rec)
 
 			err := h.Handle(c)
 			require.Error(t, err)
-			he, ok := err.(*echo.HTTPError)
+			he := &echo.HTTPError{}
+			ok := errors.As(err, &he)
 			require.True(t, ok)
 			assert.Equal(t, tt.wantStatus, he.Code)
 		})

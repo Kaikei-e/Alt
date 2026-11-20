@@ -181,7 +181,7 @@ export function streamAugurChat(
 	let completeCalled = false;
 
 	// Start streaming in background
-	(async () => {
+	void (async () => {
 		try {
 			const stream = client.streamChat(
 				{

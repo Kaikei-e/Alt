@@ -127,161 +127,136 @@ fn parse_sources(job_id: Uuid, card_id: Uuid, val: &Value) -> Result<Vec<CardSou
     })
 }
 
-#[allow(clippy::too_many_lines)]
-pub async fn get_topic_cards_with_clock(
+type CardsError = (StatusCode, &'static str);
+
+fn cards_error_response((status, message): CardsError) -> axum::response::Response {
+    (
+        status,
+        Json(ErrorResponse {
+            error: message.to_string(),
+        }),
+    )
+        .into_response()
+}
+
+async fn fetch_latest_completed_cards_job(
     dao: &impl CardsDao,
-    freshness_budget: chrono::Duration,
-    now: chrono::DateTime<chrono::Utc>,
-) -> axum::response::Response {
-    info!("Fetching latest topic cards");
-
-    let latest_job = match dao.get_latest_completed_cards_job().await {
-        Ok(job) => job,
-        Err(e) => {
-            error!("Failed to fetch latest completed cards job: {e}");
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Failed to fetch recap cards".to_string(),
-                }),
-            )
-                .into_response();
-        }
-    };
-
-    let Some(job_record) = latest_job else {
-        info!("No completed cards job found");
-        return (
-            StatusCode::OK,
-            Json(GetCardsResponse {
-                cards: Vec::new(),
-                job: None,
-                surface_status: None,
-            }),
+) -> Result<Option<PreviousCardsJobMeta>, CardsError> {
+    dao.get_latest_completed_cards_job().await.map_err(|e| {
+        error!("Failed to fetch latest completed cards job: {e}");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to fetch recap cards",
         )
-            .into_response();
-    };
+    })
+}
 
-    let latest_run_record = match dao.get_latest_cards_run().await {
-        Ok(run) => run,
-        Err(e) => {
-            error!("Failed to fetch latest cards run: {e}");
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Failed to fetch recap cards".to_string(),
-                }),
-            )
-                .into_response();
-        }
-    };
+async fn fetch_latest_cards_run_record(
+    dao: &impl CardsDao,
+) -> Result<Option<LatestCardsRun>, CardsError> {
+    dao.get_latest_cards_run().await.map_err(|e| {
+        error!("Failed to fetch latest cards run: {e}");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to fetch recap cards",
+        )
+    })
+}
 
-    let latest_run = latest_run_record
-        .as_ref()
-        .map(|r| SurfaceRun::new(r.job_id, &r.status, r.kicked_at, r.updated_at));
-
-    let mut raw_cards = match dao.get_cards_for_job(job_record.job_id).await {
-        Ok(cards) => cards,
-        Err(e) => {
-            error!(
-                job_id = %job_record.job_id,
-                error = %e,
-                "Failed to fetch cards for job"
-            );
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Failed to fetch recap cards".to_string(),
-                }),
-            )
-                .into_response();
-        }
-    };
-
+async fn fetch_sorted_cards_for_job(
+    dao: &impl CardsDao,
+    job_id: Uuid,
+) -> Result<Vec<RecapCard>, CardsError> {
+    let mut raw_cards = dao.get_cards_for_job(job_id).await.map_err(|e| {
+        error!(
+            job_id = %job_id,
+            error = %e,
+            "Failed to fetch cards for job"
+        );
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to fetch recap cards",
+        )
+    })?;
     raw_cards.sort_by_key(|c| c.rank);
+    Ok(raw_cards)
+}
 
-    let stats = match dao.get_job_stats(job_record.job_id).await {
-        Ok(Some(stats)) => stats,
+async fn fetch_cards_job_stats(
+    dao: &impl CardsDao,
+    job_id: Uuid,
+) -> Result<RecapCardJobStats, CardsError> {
+    match dao.get_job_stats(job_id).await {
+        Ok(Some(stats)) => Ok(stats),
         Ok(None) => {
             error!(
-                job_id = %job_record.job_id,
+                job_id = %job_id,
                 "missing job stats for completed cards job"
             );
-            return (
+            Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Missing job stats for completed cards job".to_string(),
-                }),
-            )
-                .into_response();
+                "Missing job stats for completed cards job",
+            ))
         }
         Err(e) => {
             error!(
-                job_id = %job_record.job_id,
+                job_id = %job_id,
                 error = %e,
                 "Failed to fetch job stats for job"
             );
-            return (
+            Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Failed to fetch job stats".to_string(),
-                }),
-            )
-                .into_response();
+                "Failed to fetch job stats",
+            ))
         }
-    };
+    }
+}
 
-    let cards_selected = stats.cards_selected;
-    let degraded = usize::try_from(cards_selected).map_or(true, |c| c < CARDS_DEGRADED_MIN_CARDS);
-
-    let generated_at = if let Some(run) = latest_run_record
-        .as_ref()
-        .filter(|r| r.job_id == job_record.job_id)
-    {
-        run.updated_at
-    } else {
-        match dao.get_job_updated_at(job_record.job_id).await {
-            Ok(Some(updated_at)) => updated_at,
-            Ok(None) => {
-                error!(
-                    job_id = %job_record.job_id,
-                    "missing updated_at for completed cards job"
-                );
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(ErrorResponse {
-                        error: "Missing updated_at for completed cards job".to_string(),
-                    }),
-                )
-                    .into_response();
-            }
-            Err(e) => {
-                error!(
-                    job_id = %job_record.job_id,
-                    error = %e,
-                    "Failed to fetch updated_at for completed cards job"
-                );
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(ErrorResponse {
-                        error: "Failed to fetch recap cards".to_string(),
-                    }),
-                )
-                    .into_response();
-            }
+async fn resolve_cards_generated_at(
+    dao: &impl CardsDao,
+    job_id: Uuid,
+    latest_run_record: Option<&LatestCardsRun>,
+) -> Result<chrono::DateTime<chrono::Utc>, CardsError> {
+    if let Some(run) = latest_run_record.filter(|r| r.job_id == job_id) {
+        return Ok(run.updated_at);
+    }
+    match dao.get_job_updated_at(job_id).await {
+        Ok(Some(updated_at)) => Ok(updated_at),
+        Ok(None) => {
+            error!(
+                job_id = %job_id,
+                "missing updated_at for completed cards job"
+            );
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Missing updated_at for completed cards job",
+            ))
         }
-    };
+        Err(e) => {
+            error!(
+                job_id = %job_id,
+                error = %e,
+                "Failed to fetch updated_at for completed cards job"
+            );
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to fetch recap cards",
+            ))
+        }
+    }
+}
 
+fn build_card_responses(
+    job_id: Uuid,
+    raw_cards: Vec<RecapCard>,
+) -> Result<Vec<CardResponse>, CardsError> {
     let mut cards = Vec::with_capacity(raw_cards.len());
     for c in raw_cards {
-        let Ok(sources) = parse_sources(job_record.job_id, c.id, &c.sources) else {
-            return (
+        let Ok(sources) = parse_sources(job_id, c.id, &c.sources) else {
+            return Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Failed to parse card sources".to_string(),
-                }),
-            )
-                .into_response();
+                "Failed to parse card sources",
+            ));
         };
         cards.push(CardResponse {
             continues_card_id: c.continues_card_id,
@@ -298,9 +273,15 @@ pub async fn get_topic_cards_with_clock(
             why_ja: c.why_ja,
         });
     }
+    Ok(cards)
+}
 
-    let window = (job_record.from_ts, job_record.to_ts);
-    let job = CardsJobResponse {
+fn build_cards_job_response(
+    job_record: &PreviousCardsJobMeta,
+    cards_selected: i32,
+    degraded: bool,
+) -> CardsJobResponse {
+    CardsJobResponse {
         cards_selected,
         degraded,
         from: job_record
@@ -310,11 +291,78 @@ pub async fn get_topic_cards_with_clock(
         kicked_at: job_record
             .kicked_at
             .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
-        params_version: job_record.params_version,
+        params_version: job_record.params_version.clone(),
         to: job_record
             .to_ts
             .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+    }
+}
+
+pub async fn get_topic_cards_with_clock(
+    dao: &impl CardsDao,
+    freshness_budget: chrono::Duration,
+    now: chrono::DateTime<chrono::Utc>,
+) -> axum::response::Response {
+    info!("Fetching latest topic cards");
+
+    let latest_job = match fetch_latest_completed_cards_job(dao).await {
+        Ok(job) => job,
+        Err(err) => return cards_error_response(err),
     };
+
+    let Some(job_record) = latest_job else {
+        info!("No completed cards job found");
+        return (
+            StatusCode::OK,
+            Json(GetCardsResponse {
+                cards: Vec::new(),
+                job: None,
+                surface_status: None,
+            }),
+        )
+            .into_response();
+    };
+
+    let latest_run_record = match fetch_latest_cards_run_record(dao).await {
+        Ok(run) => run,
+        Err(err) => return cards_error_response(err),
+    };
+
+    let latest_run = latest_run_record
+        .as_ref()
+        .map(|r| SurfaceRun::new(r.job_id, &r.status, r.kicked_at, r.updated_at));
+
+    let raw_cards = match fetch_sorted_cards_for_job(dao, job_record.job_id).await {
+        Ok(cards) => cards,
+        Err(err) => return cards_error_response(err),
+    };
+
+    let stats = match fetch_cards_job_stats(dao, job_record.job_id).await {
+        Ok(stats) => stats,
+        Err(err) => return cards_error_response(err),
+    };
+
+    let cards_selected = stats.cards_selected;
+    let degraded = usize::try_from(cards_selected).map_or(true, |c| c < CARDS_DEGRADED_MIN_CARDS);
+
+    let generated_at = match resolve_cards_generated_at(
+        dao,
+        job_record.job_id,
+        latest_run_record.as_ref(),
+    )
+    .await
+    {
+        Ok(ts) => ts,
+        Err(err) => return cards_error_response(err),
+    };
+
+    let cards = match build_card_responses(job_record.job_id, raw_cards) {
+        Ok(cards) => cards,
+        Err(err) => return cards_error_response(err),
+    };
+
+    let window = (job_record.from_ts, job_record.to_ts);
+    let job = build_cards_job_response(&job_record, cards_selected, degraded);
 
     let surface_status = build_surface_status(
         generated_at,

@@ -8,8 +8,8 @@ this spreads to a fifth service (done).
 
 from __future__ import annotations
 
-import logging
 import ipaddress
+import logging
 import os
 from typing import TYPE_CHECKING
 
@@ -24,6 +24,7 @@ if TYPE_CHECKING:
 
     from starlette.requests import Request
     from starlette.responses import Response
+    from starlette.types import ASGIApp
 
 PEER_IDENTITY_HEADER = "x-alt-peer-identity"
 
@@ -41,9 +42,7 @@ def is_exempt_path(path: str) -> bool:
         return False
     if norm in _EXEMPT_PATHS:
         return True
-    if norm == "/metrics" or norm.startswith("/metrics/"):
-        return True
-    return False
+    return bool(norm == "/metrics" or norm.startswith("/metrics/"))
 
 
 def allowed_peers_from_env(env_var: str = "MTLS_ALLOWED_PEERS") -> list[str]:
@@ -80,7 +79,7 @@ def arrived_via_sidecar(request: Request) -> bool:
 
 class PeerIdentityMiddleware(BaseHTTPMiddleware):
     def __init__(
-        self, app, allowed: Iterable[str] | None = None, *, strict: bool = True
+        self, app: ASGIApp, allowed: Iterable[str] | None = None, *, strict: bool = True
     ) -> None:
         super().__init__(app)
         self._allowed = {c for c in (allowed or []) if c}

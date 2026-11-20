@@ -6,7 +6,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 const maxOPMLFileSize = 1 * 1024 * 1024 // 1MB
@@ -14,7 +14,7 @@ const maxOPMLFileSize = 1 * 1024 * 1024 // 1MB
 // RestHandleExportOPML generates OPML 2.0 XML for all registered feeds.
 // GET /v1/rss-feed-link/export/opml
 func RestHandleExportOPML(container *di.ApplicationComponents) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		ctx := c.Request().Context()
 
 		xmlData, err := container.ExportOPMLUsecase.Execute(ctx)
@@ -30,7 +30,7 @@ func RestHandleExportOPML(container *di.ApplicationComponents) echo.HandlerFunc 
 // RestHandleImportOPML parses an uploaded OPML file and registers feeds.
 // POST /v1/rss-feed-link/import/opml
 func RestHandleImportOPML(container *di.ApplicationComponents) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		ctx := c.Request().Context()
 
 		// Read multipart file
@@ -49,7 +49,7 @@ func RestHandleImportOPML(container *di.ApplicationComponents) echo.HandlerFunc 
 			logger.Logger.ErrorContext(ctx, "Failed to open uploaded file", "error", err)
 			return HandleValidationError(c, "Failed to read uploaded file", "file", "unreadable")
 		}
-		defer src.Close()
+		defer func() { _ = src.Close() }()
 
 		// Read file content with size limit
 		data, err := io.ReadAll(io.LimitReader(src, maxOPMLFileSize+1))

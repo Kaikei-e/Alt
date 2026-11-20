@@ -90,10 +90,10 @@ fn test_buffer_error_handling() {
 async fn test_lock_free_buffer_creation() {
     // Test buffer creation with various capacities
     let test_cases = vec![
-        (0, true),       // Should fail
-        (1, false),      // Should succeed
-        (100, false),    // Should succeed
-        (100000, false), // Should succeed
+        (0, true),        // Should fail
+        (1, false),       // Should succeed
+        (100, false),     // Should succeed
+        (100_000, false), // Should succeed
     ];
 
     for (capacity, should_fail) in test_cases {
@@ -166,7 +166,7 @@ async fn test_zero_expect_buffer_operations() {
     for i in 0..10 {
         let entry = create_test_entry(&format!("message {i}"));
         match sender.send(entry).await {
-            Ok(()) => continue,
+            Ok(()) => {}
             Err(BufferError::BufferFull) => break, // Expected when full
             Err(e) => panic!("Unexpected error: {e:?}"),
         }
@@ -174,11 +174,8 @@ async fn test_zero_expect_buffer_operations() {
 
     // Try to send one more (should handle full buffer gracefully)
     match sender.send(test_entry.clone()).await {
-        Ok(()) => {
-            // Might succeed if receiver consumed some
-        }
-        Err(BufferError::BufferFull) => {
-            // Expected behavior - no panic
+        Ok(()) | Err(BufferError::BufferFull) => {
+            // Expected behavior - either receiver consumed some or buffer is full, no panic
         }
         Err(e) => panic!("Unexpected error: {e:?}"),
     }
@@ -227,9 +224,10 @@ async fn test_concurrent_buffer_safety() {
                             // Apply backpressure - wait a bit and retry
                             tokio::time::sleep(Duration::from_micros(10)).await;
                             attempts += 1;
-                            if attempts > 1000 {
-                                panic!("Too many failed attempts for producer {producer_id}");
-                            }
+                            assert!(
+                                attempts <= 1000,
+                                "Too many failed attempts for producer {producer_id}"
+                            );
                         }
                         Err(e) => panic!("Unexpected send error: {e:?}"),
                     }
@@ -242,21 +240,21 @@ async fn test_concurrent_buffer_safety() {
 
     // Start consumer task
     let consumer_handle = tokio::spawn(async move {
-        let mut received = 0;
+        let mut recv_count = 0;
         let total_expected = num_producers * messages_per_producer;
 
-        while received < total_expected {
+        while recv_count < total_expected {
             match timeout(Duration::from_secs(5), receiver.recv()).await {
                 Ok(Ok(_entry)) => {
-                    received += 1;
+                    recv_count += 1;
                 }
                 Ok(Err(BufferError::BufferClosed)) => {
-                    println!("Buffer closed, received {received} of {total_expected} messages");
+                    println!("Buffer closed, received {recv_count} of {total_expected} messages");
                     break;
                 }
                 Err(_timeout) => {
                     println!(
-                        "Timeout waiting for message, received {received} of {total_expected} messages"
+                        "Timeout waiting for message, received {recv_count} of {total_expected} messages"
                     );
                     break;
                 }
@@ -264,7 +262,7 @@ async fn test_concurrent_buffer_safety() {
             }
         }
 
-        received
+        recv_count
     });
 
     // Wait for all producers to complete
@@ -308,11 +306,8 @@ async fn test_buffer_edge_cases() {
 
     // Try to overfill
     match sender.send(entry.clone()).await {
-        Ok(()) => {
-            // Receiver might have consumed the first message
-        }
-        Err(BufferError::BufferFull) => {
-            // Expected behavior
+        Ok(()) | Err(BufferError::BufferFull) => {
+            // Expected behavior - receiver might have consumed the first message, or buffer is full
         }
         Err(e) => panic!("Unexpected error: {e:?}"),
     }
@@ -326,7 +321,7 @@ async fn test_buffer_edge_cases() {
     }
 
     // Test 2: Large buffer with rapid operations
-    let large_buffer = LogBuffer::new(100000).expect("Should create large buffer");
+    let large_buffer = LogBuffer::new(100_000).expect("Should create large buffer");
     let (large_sender, mut large_receiver) =
         large_buffer.split().expect("Should split large buffer");
 
@@ -342,13 +337,10 @@ async fn test_buffer_edge_cases() {
 
         // Immediate receive
         match timeout(Duration::from_millis(10), large_receiver.recv()).await {
-            Ok(Ok(_)) => {
-                // Success
+            Ok(Ok(_)) | Err(_) => {
+                // Success or timeout is OK for this test
             }
             Ok(Err(e)) => panic!("Unexpected receive error on iteration {i}: {e:?}"),
-            Err(_) => {
-                // Timeout is OK for this test
-            }
         }
     }
 

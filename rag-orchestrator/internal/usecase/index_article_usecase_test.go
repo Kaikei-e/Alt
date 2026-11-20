@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 // --- Mocks ---
@@ -175,7 +176,7 @@ func TestIndexArticle_Upsert_Idempotency(t *testing.T) {
 	err := uc.Upsert(ctx, articleID, testUserID, title, "", body)
 
 	// Assert
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	mockDocRepo.AssertExpectations(t)
 	mockChunkRepo.AssertExpectations(t) // Should not be called
 }
@@ -226,7 +227,7 @@ func TestIndexArticle_Upsert_NewArticle(t *testing.T) {
 	mockDocRepo.On("UpdateCurrentVersion", ctx, mock.Anything, mock.Anything).Return(nil)
 
 	err := uc.Upsert(ctx, articleID, testUserID, title, "", body)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	mockDocRepo.AssertExpectations(t)
 	mockChunkRepo.AssertExpectations(t)
 }
@@ -285,7 +286,7 @@ func TestIndexArticle_Upsert_ReindexOnChunkerVersionChange(t *testing.T) {
 	mockDocRepo.On("DeleteObsoleteVersions", ctx, docID, mock.Anything).Return(nil)
 
 	err := uc.Upsert(ctx, articleID, testUserID, title, "", body)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Verify that CreateVersion was called (i.e., not skipped by idempotency)
 	mockDocRepo.AssertCalled(t, "CreateVersion", ctx, mock.Anything)
@@ -330,7 +331,7 @@ func TestIndexArticle_Upsert_HTMLBodyProducesCleanChunks(t *testing.T) {
 	mockDocRepo.On("UpdateCurrentVersion", ctx, mock.Anything, mock.Anything).Return(nil)
 
 	err := uc.Upsert(ctx, articleID, testUserID, title, "", body)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// All chunks must be HTML-free
 	for _, chunk := range capturedChunks {
@@ -409,7 +410,7 @@ func TestIndexArticle_Upsert_Update(t *testing.T) {
 	mockDocRepo.On("DeleteObsoleteVersions", ctx, docID, mock.Anything).Return(nil)
 
 	err := uc.Upsert(ctx, articleID, testUserID, title, "", body)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	mockDocRepo.AssertExpectations(t)
 	mockChunkRepo.AssertExpectations(t)
 }
@@ -453,7 +454,7 @@ func TestIndexArticle_Upsert_EncodeHappensBeforeTransactionBegins(t *testing.T) 
 	}).Return([][]float32{embeddingOfWidth(domain.EmbeddingDimension)}, nil)
 
 	err := uc.Upsert(ctx, articleID, testUserID, title, "", body)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	assert.Equal(t, []string{"encode", "tx_begin"}, order,
 		"Encode must run before the write transaction begins")
@@ -528,7 +529,7 @@ func TestIndexArticle_Upsert_EmbedderVersionChangeForcesReindex(t *testing.T) {
 			mockDocRepo.On("DeleteObsoleteVersions", ctx, docID, mock.Anything).Return(nil).Maybe()
 
 			err := uc.Upsert(ctx, articleID, testUserID, title, "", body)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			if tc.wantReindex {
 				mockEncoder.AssertCalled(t, "Encode", ctx, mock.Anything)
@@ -588,7 +589,7 @@ func TestIndexArticle_Upsert_RejectsWrongEmbeddingWidth(t *testing.T) {
 
 	err := uc.Upsert(ctx, articleID, testUserID, title, "", body)
 
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "embedding dimension mismatch")
 	assert.Empty(t, order, "the write transaction must never begin on a dimension mismatch")
 
@@ -625,7 +626,7 @@ func TestIndexArticle_Upsert_EncodeErrorAttemptsNoWrites(t *testing.T) {
 
 	err := uc.Upsert(ctx, articleID, testUserID, title, "", body)
 
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to encode chunks")
 	assert.Empty(t, order, "the write transaction must never begin when embedding fails")
 
@@ -696,7 +697,7 @@ func TestIndexArticle_Upsert_ConcurrentUpsertReCheckedInsideTx(t *testing.T) {
 	}, nil)
 
 	err := uc.Upsert(ctx, articleID, testUserID, title, "", body)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	mockDocRepo.AssertNotCalled(t, "CreateDocument", mock.Anything, mock.Anything)
 	mockDocRepo.AssertNotCalled(t, "CreateVersion", mock.Anything, mock.Anything)
@@ -724,7 +725,7 @@ func TestIndexArticle_Upsert_RejectsBlankArticleID(t *testing.T) {
 
 			err := uc.Upsert(context.Background(), articleID, uuid.New().String(), "Title", "https://example.com", "Body")
 
-			assert.ErrorIs(t, err, usecase.ErrBlankArticleID)
+			require.ErrorIs(t, err, usecase.ErrBlankArticleID)
 			mockDocRepo.AssertNotCalled(t, "GetByArticleID", mock.Anything, mock.Anything)
 			mockDocRepo.AssertNotCalled(t, "CreateDocument", mock.Anything, mock.Anything)
 			mockChunkRepo.AssertNotCalled(t, "BulkInsertChunks", mock.Anything, mock.Anything)
@@ -745,11 +746,11 @@ func TestIndexArticle_Upsert_EmptyUserID_ReturnsError(t *testing.T) {
 
 	// Blank user_id must fail immediately without loading document
 	err := uc.Upsert(context.Background(), "art-1", "", "Title", "https://example.com", "Body")
-	assert.ErrorIs(t, err, usecase.ErrBlankUserID)
+	require.ErrorIs(t, err, usecase.ErrBlankUserID)
 
 	// Whitespace user_id must also fail
 	err = uc.Upsert(context.Background(), "art-1", "   ", "Title", "https://example.com", "Body")
-	assert.ErrorIs(t, err, usecase.ErrBlankUserID)
+	require.ErrorIs(t, err, usecase.ErrBlankUserID)
 }
 
 func TestIndexArticle_Upsert_BlankUserID_WhenDocumentExistsWithNullOwner_ReturnsError(t *testing.T) {
@@ -766,7 +767,7 @@ func TestIndexArticle_Upsert_BlankUserID_WhenDocumentExistsWithNullOwner_Returns
 	// Even if a legacy document exists in the database with null user_id,
 	// an upsert with blank user_id must be rejected with ErrBlankUserID
 	err := uc.Upsert(context.Background(), "art-legacy", "", "Title", "https://example.com", "Body")
-	assert.ErrorIs(t, err, usecase.ErrBlankUserID)
+	require.ErrorIs(t, err, usecase.ErrBlankUserID)
 	mockDocRepo.AssertNotCalled(t, "GetByArticleID", mock.Anything, mock.Anything)
 }
 
@@ -852,7 +853,7 @@ func TestIndexArticle_Upsert_UnownedDocument_ClaimsOwner(t *testing.T) {
 	}, nil)
 
 	err := uc.Upsert(context.Background(), "art-1", callerUser, "Title", "https://example.com", "Body")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	mockDocRepo.AssertCalled(t, "SetDocumentOwner", mock.Anything, docID, callerUUID)
 }
 
@@ -882,7 +883,7 @@ func TestIndexArticle_BackfillOwners_Batch(t *testing.T) {
 	}
 
 	res, err := uc.BackfillOwners(context.Background(), items)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, int64(1), res.Updated)
 	assert.Equal(t, int64(1), res.AlreadySet)
 	assert.Equal(t, int64(1), res.NotFound)

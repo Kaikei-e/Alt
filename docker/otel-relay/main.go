@@ -100,6 +100,7 @@ func loadToken(path string) (string, error) {
 	if path == "" {
 		return "", errors.New("RASK_INGEST_TOKEN_FILE must be set")
 	}
+	// #nosec G304 G703 -- path is from operator-configured RASK_INGEST_TOKEN_FILE env var (or test temp dir), not request input.
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return "", errors.New("RASK_INGEST_TOKEN_FILE: cannot read file")
@@ -138,7 +139,9 @@ func healthzHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("ok\n")) //nolint:errcheck
+	if _, err := w.Write([]byte("ok\n")); err != nil {
+		log.Printf("healthz write error: %v", err)
+	}
 }
 
 // tracesHandler handles POST /v1/traces.
@@ -187,11 +190,17 @@ func (s *server) tracesHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Bad Gateway", http.StatusBadGateway)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("upstream response close error: %v", err)
+		}
+	}()
 
 	// Propagate upstream status + body. Do not expose upstream error details.
 	w.WriteHeader(resp.StatusCode)
-	io.Copy(w, resp.Body) //nolint:errcheck
+	if _, err := io.Copy(w, resp.Body); err != nil {
+		log.Printf("response copy error: %v", err)
+	}
 }
 
 // newMux wires routes: only POST /v1/traces and GET /healthz are handled.
@@ -207,8 +216,16 @@ func main() {
 	// Deliberately skips Bearer startup — only needs the relay port to be reachable.
 	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
 		c := &http.Client{Timeout: 2 * time.Second}
-		resp, err := c.Get(healthAddr)
-		if err != nil || resp.StatusCode != http.StatusOK {
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, healthAddr, nil)
+		if err != nil {
+			os.Exit(1)
+		}
+		resp, err := c.Do(req)
+		if err != nil {
+			os.Exit(1)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
 			os.Exit(1)
 		}
 		os.Exit(0)
@@ -247,6 +264,7 @@ func main() {
 	}
 
 	go func() {
+		// #nosec G706 -- listenAddr is constant and targetURL is validated from OTEL_EXPORTER_OTLP_ENDPOINT at startup.
 		log.Printf("otel-relay listening on %s → %s", listenAddr, targetURL)
 		if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatalf("server error: %v", err)

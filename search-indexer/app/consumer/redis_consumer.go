@@ -194,7 +194,9 @@ func (c *Consumer) WaitForLoopsExit() {
 func (c *Consumer) Close() {
 	c.WaitForLoopsExit()
 	if c.client != nil {
-		c.client.Close()
+		if err := c.client.Close(); err != nil && c.logger != nil {
+			c.logger.Warn("failed to close redis client", "error", err)
+		}
 	}
 }
 

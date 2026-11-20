@@ -1,9 +1,91 @@
 """Repetition detection utility for LLM-generated text."""
 
-import re
 import logging
+import re
+from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class _RepetitionRule:
+    pattern: str
+    weight: float
+    label: str
+    flags: int = 0
+
+
+_REPETITION_RULES: tuple[_RepetitionRule, ...] = (
+    _RepetitionRule(r"\b(\w+)(?:\s+\1){2,}\b", 0.2, "Word repetition", re.IGNORECASE),
+    _RepetitionRule(r"(</?\w+[^>]*>)(?:\s*\1){2,}", 0.3, "HTML tag repetition"),
+    _RepetitionRule(r'(\w+="[^"]*")(?:\s*\1){2,}', 0.25, "Attribute repetition"),
+)
+
+_COMMON_SHORT_WORDS = frozenset(
+    {"the", "and", "or", "but", "in", "on", "at", "to", "for", "of", "with"}
+)
+_MIN_TEXT_LENGTH = 10
+_MIN_URL_REPETITIONS = 3
+_HTTP_PREFIX = "http://"
+_HTTPS_PREFIX = "https://"
+
+
+def _is_url_token(token: str) -> bool:
+    """Return True if token starts with http(s):// followed by at least one char."""
+    if token.startswith(_HTTP_PREFIX):
+        return len(token) > len(_HTTP_PREFIX)
+    if token.startswith(_HTTPS_PREFIX):
+        return len(token) > len(_HTTPS_PREFIX)
+    return False
+
+
+def _find_repeated_urls(text: str) -> list[str]:
+    """Find ``(https?://[^\\s]+)(?:\\s+\\1){2,}`` matches in linear time."""
+    if _HTTP_PREFIX not in text and _HTTPS_PREFIX not in text:
+        return []
+    tokens = re.findall(r"\S+", text)
+    count = len(tokens)
+    if count < _MIN_URL_REPETITIONS:
+        return []
+
+    matches: list[str] = []
+    idx = 0
+    offset = 0
+    while idx + 2 < count:
+        candidate = tokens[idx + 1]
+        head = tokens[idx][offset:] if offset else tokens[idx]
+        if (
+            _is_url_token(candidate)
+            and head.endswith(candidate)
+            and tokens[idx + 2].startswith(candidate)
+        ):
+            matches.append(candidate)
+            end_idx = idx + 2
+            while end_idx < count and tokens[end_idx] == candidate:
+                end_idx += 1
+            if end_idx < count and tokens[end_idx].startswith(candidate):
+                idx = end_idx
+                offset = len(candidate)
+            else:
+                idx = end_idx
+                offset = 0
+            continue
+        idx += 1
+        offset = 0
+    return matches
+
+
+def _apply_rule(
+    text: str,
+    rule: _RepetitionRule,
+    scores: list[float],
+    patterns: list[str],
+) -> None:
+    matches = re.findall(rule.pattern, text, rule.flags)
+    if matches:
+        scores.append(min(1.0, len(matches) * rule.weight))
+        patterns.append(f"{rule.label}: {len(matches)} patterns found")
+        logger.debug("%s detected: %s", rule.label, matches[:5])
 
 
 def detect_repetition(
@@ -22,90 +104,44 @@ def detect_repetition(
         - score: Repetition score (0.0-1.0), higher means more repetition
         - patterns: List of detected repetitive patterns
     """
-    if not text or len(text.strip()) < 10:
+    if not text or len(text.strip()) < _MIN_TEXT_LENGTH:
         return False, 0.0, []
 
     patterns: list[str] = []
     scores: list[float] = []
 
-    # 1. Word-level repetition: same word repeated 3+ times consecutively
-    word_pattern = r"\b(\w+)(?:\s+\1){2,}\b"
-    word_matches = re.findall(word_pattern, text, re.IGNORECASE)
-    if word_matches:
-        word_score = min(1.0, len(word_matches) * 0.2)
-        scores.append(word_score)
-        patterns.append(f"Word repetition: {len(word_matches)} patterns found")
-        logger.debug(f"Word repetition detected: {word_matches[:5]}")
+    for rule in _REPETITION_RULES:
+        _apply_rule(text, rule, scores, patterns)
 
-    # 2. HTML tag repetition: </div></div></div> or <tag><tag><tag>
-    html_pattern = r"(</?\w+[^>]*>)(?:\s*\1){2,}"
-    html_matches = re.findall(html_pattern, text)
-    if html_matches:
-        html_score = min(1.0, len(html_matches) * 0.3)
-        scores.append(html_score)
-        patterns.append(f"HTML tag repetition: {len(html_matches)} patterns found")
-        logger.debug(f"HTML tag repetition detected: {html_matches[:5]}")
-
-    # 3. JSON/attribute pattern repetition: id=" id=" id=" or src=" src=" src="
-    attr_pattern = r'(\w+="[^"]*")(?:\s*\1){2,}'
-    attr_matches = re.findall(attr_pattern, text)
-    if attr_matches:
-        attr_score = min(1.0, len(attr_matches) * 0.25)
-        scores.append(attr_score)
-        patterns.append(f"Attribute repetition: {len(attr_matches)} patterns found")
-        logger.debug(f"Attribute repetition detected: {attr_matches[:5]}")
-
-    # 4. Short string repetition: "4" 4" 4" or "word word word" (same short string 3+ times)
-    short_pattern = r"([^\s]{1,10})(?:\s+\1){2,}"
-    short_matches = re.findall(short_pattern, text)
+    # Short string repetition excluding common stopwords
+    short_matches = re.findall(r"([^\s]{1,10})(?:\s+\1){2,}", text)
     if short_matches:
-        # Filter out common words that might legitimately repeat
-        common_words = {
-            "the",
-            "and",
-            "or",
-            "but",
-            "in",
-            "on",
-            "at",
-            "to",
-            "for",
-            "of",
-            "with",
-        }
-        filtered_matches = [m for m in short_matches if m.lower() not in common_words]
+        filtered_matches = [
+            m for m in short_matches if m.lower() not in _COMMON_SHORT_WORDS
+        ]
         if filtered_matches:
-            short_score = min(1.0, len(filtered_matches) * 0.15)
-            scores.append(short_score)
+            scores.append(min(1.0, len(filtered_matches) * 0.15))
             patterns.append(
                 f"Short string repetition: {len(filtered_matches)} patterns found"
             )
-            logger.debug(f"Short string repetition detected: {filtered_matches[:5]}")
+            logger.debug("Short string repetition detected: %s", filtered_matches[:5])
 
-    # 5. URL pattern repetition: http://... http://... http://...
-    url_pattern = r"(https?://[^\s]+)(?:\s+\1){2,}"
-    url_matches = re.findall(url_pattern, text)
+    url_matches = _find_repeated_urls(text)
     if url_matches:
-        url_score = min(1.0, len(url_matches) * 0.3)
-        scores.append(url_score)
+        scores.append(min(1.0, len(url_matches) * 0.3))
         patterns.append(f"URL repetition: {len(url_matches)} patterns found")
-        logger.debug(f"URL repetition detected: {url_matches[:3]}")
+        logger.debug("URL repetition detected: %s", url_matches[:3])
 
-    # 6. Character-level repetition: "aaaa" or "----" (4+ same characters)
-    char_pattern = r"(.)\1{3,}"
-    char_matches = re.findall(char_pattern, text)
+    char_matches = re.findall(r"(.)\1{3,}", text)
     if char_matches:
-        char_score = min(1.0, len(char_matches) * 0.1)
-        scores.append(char_score)
+        scores.append(min(1.0, len(char_matches) * 0.1))
         patterns.append(f"Character repetition: {len(char_matches)} patterns found")
 
-    # Calculate overall score (weighted average, with higher weight for more severe patterns)
     if not scores:
         return False, 0.0, []
 
     # Use maximum score rather than average (if any pattern is severe, flag it)
     overall_score = max(scores)
-
     has_repetition = overall_score >= threshold
 
     if has_repetition:

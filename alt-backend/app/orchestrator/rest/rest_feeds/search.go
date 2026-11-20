@@ -5,11 +5,11 @@ import (
 	"alt/utils/logger"
 	"net/http"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 func RestHandleSearchFeeds(container *di.ApplicationComponents) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		ctx := c.Request().Context()
 		var payload FeedSearchPayload
 		err := c.Bind(&payload)

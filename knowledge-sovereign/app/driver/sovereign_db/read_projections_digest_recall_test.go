@@ -323,7 +323,7 @@ func TestMapRecallCandidateRow_Pure(t *testing.T) {
 			c := mapRecallCandidateRow(tc.raw)
 			assert.Equal(t, tc.raw.UserID, c.UserID)
 			assert.Equal(t, tc.raw.ItemKey, c.ItemKey)
-			assert.Equal(t, tc.raw.RecallScore, c.RecallScore)
+			assert.InEpsilon(t, tc.raw.RecallScore, c.RecallScore, 1e-9)
 			assert.Len(t, c.Reasons, tc.wantReasonN)
 
 			if tc.wantHasItem {
@@ -332,7 +332,7 @@ func TestMapRecallCandidateRow_Pure(t *testing.T) {
 				assert.Equal(t, 4, c.Item.ProjectionVersion)
 				assert.Equal(t, title, c.Item.Title)
 				assert.Equal(t, summary, c.Item.SummaryExcerpt)
-				assert.Equal(t, score, c.Item.Score)
+				assert.InEpsilon(t, score, c.Item.Score, 1e-9)
 				assert.Equal(t, &pubAt, c.Item.PublishedAt)
 				assert.Equal(t, summaryState, c.Item.SummaryState)
 				assert.Equal(t, url, c.Item.URL)

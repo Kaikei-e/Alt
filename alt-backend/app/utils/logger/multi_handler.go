@@ -6,7 +6,7 @@ import (
 	"os"
 
 	"go.opentelemetry.io/contrib/bridges/otelslog"
-	"go.opentelemetry.io/otel/log/global"
+	"go.opentelemetry.io/otel"
 )
 
 // MultiHandler sends logs to multiple handlers
@@ -27,7 +27,7 @@ func NewMultiHandler(level slog.Level) *MultiHandler {
 	// This properly propagates trace context from the Go context
 	otelHandler := otelslog.NewHandler(
 		"alt-backend",
-		otelslog.WithLoggerProvider(global.GetLoggerProvider()),
+		otelslog.WithLoggerProvider(otel.GetLoggerProvider()),
 	)
 
 	return &MultiHandler{

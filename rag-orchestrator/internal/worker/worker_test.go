@@ -3,7 +3,6 @@ package worker
 import (
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"sync"
 	"testing"
@@ -81,7 +80,7 @@ func makeJob() *domain.RagJob {
 }
 
 func testLogger() *slog.Logger {
-	return slog.New(slog.NewJSONHandler(io.Discard, nil))
+	return slog.New(slog.DiscardHandler)
 }
 
 // --- tests ---

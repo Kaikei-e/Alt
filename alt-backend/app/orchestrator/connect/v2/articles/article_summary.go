@@ -27,7 +27,7 @@ func (h *Handler) FetchArticleSummary(
 		return nil, err
 	}
 
-	feedUrls := req.Msg.FeedUrls
+	feedUrls := req.Msg.GetFeedUrls()
 
 	if len(feedUrls) == 0 {
 		return nil, connect.NewError(connect.CodeInvalidArgument,

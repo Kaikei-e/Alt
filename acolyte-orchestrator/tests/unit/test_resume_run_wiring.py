@@ -18,16 +18,19 @@ from acolyte.gateway.memory_content_store import MemoryContentStore
 from acolyte.gateway.news_creator_hyde_gw import NewsCreatorHyDEGenerator
 from scripts.resume_run import _build_pipeline_deps
 
+CUSTOM_HYDE_TIMEOUT_S = 5.0
+CUSTOM_CONTENT_STORE_MAX_SIZE = 42
+
 
 def test_build_pipeline_deps_wires_hyde_generator_when_enabled() -> None:
-    settings = Settings(hyde_enabled=True, hyde_timeout_s=5.0)
+    settings = Settings(hyde_enabled=True, hyde_timeout_s=CUSTOM_HYDE_TIMEOUT_S)
     llm = MagicMock()
 
     hyde_generator, _content_store = _build_pipeline_deps(settings, llm)
 
     assert isinstance(hyde_generator, NewsCreatorHyDEGenerator)
     assert hyde_generator._llm is llm
-    assert hyde_generator._timeout_s == 5.0
+    assert hyde_generator._timeout_s == CUSTOM_HYDE_TIMEOUT_S
 
 
 def test_build_pipeline_deps_omits_hyde_generator_when_disabled() -> None:
@@ -40,10 +43,10 @@ def test_build_pipeline_deps_omits_hyde_generator_when_disabled() -> None:
 
 
 def test_build_pipeline_deps_honors_content_store_max_size() -> None:
-    settings = Settings(content_store_max_size=42)
+    settings = Settings(content_store_max_size=CUSTOM_CONTENT_STORE_MAX_SIZE)
     llm = MagicMock()
 
     _hyde_generator, content_store = _build_pipeline_deps(settings, llm)
 
     assert isinstance(content_store, MemoryContentStore)
-    assert content_store._max_size == 42
+    assert content_store._max_size == CUSTOM_CONTENT_STORE_MAX_SIZE

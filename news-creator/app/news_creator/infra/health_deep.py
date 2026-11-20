@@ -119,7 +119,8 @@ class DeepHealthRunner:
         budget_s: float = DEFAULT_BUDGET_S,
     ) -> None:
         if not service:
-            raise ValueError("deep health service name is required")
+            msg = "deep health service name is required"
+            raise ValueError(msg)
         self._service = service
         self._checks = tuple(checks)
         self._cache_ttl_s = min(max(cache_ttl_s, 2.0), 5.0)

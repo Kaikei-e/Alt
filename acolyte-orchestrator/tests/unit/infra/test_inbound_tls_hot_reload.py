@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import shutil
 import socket
 import ssl
 import subprocess
@@ -30,14 +31,24 @@ from acolyte.infra.inbound_tls import (
     start_inbound_tls_listener,
 )
 
+PLAINTEXT_PORT = 8090
+DEFAULT_TLS_PORT = 9443
+
+
+def _openssl_bin() -> str:
+    openssl = shutil.which("openssl")
+    if openssl is None:
+        pytest.fail("openssl is required for TLS tests")
+    return openssl
+
 
 def _write_leaf(dir_path: Path, cn: str, days: int) -> tuple[Path, Path, Path]:
     """Self-signed leaf used as both server cert and trust anchor."""
     cert_path = dir_path / f"{cn}-{days}d-cert.pem"
     key_path = dir_path / f"{cn}-{days}d-key.pem"
-    subprocess.run(
+    subprocess.run(  # noqa: S603 - fixed argv built in this test
         [
-            "openssl",
+            _openssl_bin(),
             "req",
             "-x509",
             "-newkey",
@@ -70,8 +81,8 @@ def _atomic_replace(dest: Path, src: Path) -> None:
 
 def _not_after_from_der(der: bytes) -> str:
     pem = ssl.DER_cert_to_PEM_cert(der)
-    out = subprocess.run(
-        ["openssl", "x509", "-noout", "-enddate"],
+    out = subprocess.run(  # noqa: S603 - fixed argv built in this test
+        [_openssl_bin(), "x509", "-noout", "-enddate"],
         input=pem,
         check=True,
         capture_output=True,
@@ -252,6 +263,11 @@ def test_inbound_listener_rejects_tls12(tmp_path: Path) -> None:
         server.close()
 
 
+def _send_and_read(ssock: ssl.SSLSocket) -> None:
+    ssock.sendall(b"x")
+    ssock.read(1)
+
+
 def test_inbound_listener_rejects_untrusted_client_cert(tmp_path: Path) -> None:
     server_cert, server_key, server_ca = _write_leaf(tmp_path, "acolyte-orchestrator", days=1)
     evil_cert, evil_key, _evil_ca = _write_leaf(tmp_path, "evil-client", days=1)
@@ -271,8 +287,7 @@ def test_inbound_listener_rejects_untrusted_client_cert(tmp_path: Path) -> None:
             # server finishes CertificateVerify; the next I/O fails.
             ssock = client.wrap_socket(sock, server_hostname="localhost")
             with pytest.raises((ssl.SSLError, OSError, ConnectionResetError, BrokenPipeError)):
-                ssock.sendall(b"x")
-                ssock.read(1)
+                _send_and_read(ssock)
     finally:
         server.close()
 
@@ -319,21 +334,21 @@ def test_inbound_uvicorn_config_reuses_sslcontext(tmp_path: Path) -> None:
 
 def test_resolve_inbound_tls_bind_disabled_when_unset() -> None:
     bind = resolve_inbound_tls_bind(
-        plaintext_host="0.0.0.0",  # nosec B104
-        plaintext_port=8090,
+        plaintext_host="127.0.0.1",
+        plaintext_port=PLAINTEXT_PORT,
         environ={},
     )
     assert bind.enabled is False
     assert "unset" in bind.disable_reason
-    assert bind.plaintext_port == 8090
-    assert bind.tls_port == 9443
+    assert bind.plaintext_port == PLAINTEXT_PORT
+    assert bind.tls_port == DEFAULT_TLS_PORT
 
 
 def test_resolve_inbound_tls_bind_fails_when_enrollment_enabled_and_inbound_unset() -> None:
     with pytest.raises(RuntimeError, match="INBOUND_TLS_ENABLED"):
         resolve_inbound_tls_bind(
-            plaintext_host="0.0.0.0",  # nosec B104
-            plaintext_port=8090,
+            plaintext_host="127.0.0.1",
+            plaintext_port=PLAINTEXT_PORT,
             environ={"PKI_ENROLLMENT": "enabled"},
         )
 
@@ -341,8 +356,8 @@ def test_resolve_inbound_tls_bind_fails_when_enrollment_enabled_and_inbound_unse
 def test_resolve_inbound_tls_bind_fails_when_enrollment_enabled_and_inbound_false() -> None:
     with pytest.raises(RuntimeError, match="INBOUND_TLS_ENABLED"):
         resolve_inbound_tls_bind(
-            plaintext_host="0.0.0.0",  # nosec B104
-            plaintext_port=8090,
+            plaintext_host="127.0.0.1",
+            plaintext_port=PLAINTEXT_PORT,
             environ={"PKI_ENROLLMENT": "enabled", "INBOUND_TLS_ENABLED": "false"},
         )
 

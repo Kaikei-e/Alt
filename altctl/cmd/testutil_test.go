@@ -10,7 +10,18 @@ import (
 
 	"github.com/alt-project/altctl/internal/compose"
 	"github.com/alt-project/altctl/internal/config"
+	"github.com/stretchr/testify/require"
 )
+
+func readFileIn(t *testing.T, dir, name string) []byte {
+	t.Helper()
+	root, err := os.OpenRoot(dir)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, root.Close()) })
+	b, err := root.ReadFile(name)
+	require.NoError(t, err)
+	return b
+}
 
 // repoRootForTest locates the Alt monorepo root (the directory containing
 // both compose/ and altctl/) by walking up from the test's working

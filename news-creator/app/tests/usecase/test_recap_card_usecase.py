@@ -1,22 +1,28 @@
 """Tests for RecapCardUsecase."""
 
-import pytest
-from unittest.mock import AsyncMock, Mock
+import logging
+from unittest.mock import AsyncMock, Mock, patch
 from uuid import uuid4
 
+import pytest
+
+from news_creator.domain.errors import CardGenerationInvariantError
 from news_creator.domain.models import (
+    CardContent,
     CardGenerateRequest,
     CardGenerationRejectedError,
     CardItemInput,
     LLMGenerateResponse,
 )
+from news_creator.domain.prompt_boundary import SYSTEM_BOUNDARY_INSTRUCTION
+from news_creator.usecase.recap_card_parser import CardParseResult
 from news_creator.usecase.recap_card_usecase import RecapCardUsecase
 
 
 class InMemoryCache:
     """Simple in-memory cache for usecase tests."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.store: dict[str, str] = {}
 
     async def get(self, key: str) -> str | None:
@@ -79,7 +85,7 @@ VALID_CARD_OUTPUT = """
 """
 
 
-def _make_config():
+def _make_config() -> Mock:
     config = Mock()
     config.model_name = "gemma4-e4b-12k"
     config.llm = Mock()
@@ -91,7 +97,7 @@ def _make_config():
 
 
 @pytest.mark.asyncio
-async def test_generate_card_happy_path():
+async def test_generate_card_happy_path() -> None:
     config = _make_config()
 
     llm_provider = AsyncMock()
@@ -112,25 +118,26 @@ async def test_generate_card_happy_path():
     request = make_card_request()
     response = await usecase.generate_card(request)
 
+    expected_what_count = 3
     assert response.card.headline_ja == "ソラリス社、分散ログ基盤の次期版を公開"
-    assert len(response.card.what_ja) == 3
+    assert len(response.card.what_ja) == expected_what_count
     assert response.card.why_ja is not None
     assert response.card.used_refs == [1, 2]
     assert response.generation.cache_hit is False
     assert response.generation.model == "gemma4-e4b-12k"
     assert isinstance(response.ja_ratio, float)
-    assert response.ja_ratio >= 0.6
+    assert response.ja_ratio >= config.llm.recap_ja_ratio_threshold
     assert llm_provider.generate.call_count == 1
 
 
 @pytest.mark.asyncio
-async def test_generate_card_parse_fail_then_regenerate_success():
+async def test_generate_card_parse_fail_then_regenerate_success() -> None:
     config = _make_config()
 
     llm_provider = AsyncMock()
     # Attempt 1: bad output (missing tags); Attempt 2: valid output
     bad_output = "これはタグのない不正な出力です。"
-    llm_provider.generate.side_effect = [
+    responses = [
         LLMGenerateResponse(
             response=bad_output,
             model="gemma4-e4b-12k",
@@ -144,6 +151,7 @@ async def test_generate_card_parse_fail_then_regenerate_success():
             eval_count=80,
         ),
     ]
+    llm_provider.generate.side_effect = responses
 
     usecase = RecapCardUsecase(
         config=config,
@@ -154,7 +162,7 @@ async def test_generate_card_parse_fail_then_regenerate_success():
     request = make_card_request()
     response = await usecase.generate_card(request)
 
-    assert llm_provider.generate.call_count == 2
+    assert llm_provider.generate.call_count == len(responses)
     # Verify second call had reminder
     second_call_prompt = llm_provider.generate.call_args_list[1].kwargs["prompt"]
     assert "再生成の厳格な指示" in second_call_prompt
@@ -165,11 +173,9 @@ async def test_generate_card_parse_fail_then_regenerate_success():
 
 @pytest.mark.asyncio
 async def test_generate_card_attempt_1_failure_logs_raw_text_len_and_measured_ratio(
-    caplog,
-):
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     """Verify attempt 1 failure log includes raw_text_len and measured_ratio for language."""
-    import logging
-
     config = _make_config()
 
     llm_provider = AsyncMock()
@@ -211,20 +217,21 @@ This is the second English sentence without Japanese chars.[1]
     assert getattr(record, "raw_text_len", None) == len(english_output)
     assert getattr(record, "reason", None) == "language"
     assert getattr(record, "measured_ratio", None) is not None
-    assert getattr(record, "measured_ratio", None) < 0.6
+    assert getattr(record, "measured_ratio", None) < config.llm.recap_ja_ratio_threshold
 
 
 @pytest.mark.asyncio
-async def test_generate_card_parse_fail_twice_raises_rejected():
+async def test_generate_card_parse_fail_twice_raises_rejected() -> None:
     config = _make_config()
 
     llm_provider = AsyncMock()
     bad_output_1 = "不正出力1"
     bad_output_2 = "不正出力2"
-    llm_provider.generate.side_effect = [
+    responses = [
         LLMGenerateResponse(response=bad_output_1, model="gemma4-e4b-12k"),
         LLMGenerateResponse(response=bad_output_2, model="gemma4-e4b-12k"),
     ]
+    llm_provider.generate.side_effect = responses
 
     usecase = RecapCardUsecase(
         config=config,
@@ -236,14 +243,14 @@ async def test_generate_card_parse_fail_twice_raises_rejected():
     with pytest.raises(CardGenerationRejectedError) as exc_info:
         await usecase.generate_card(request)
 
-    assert exc_info.value.attempts == 2
+    assert exc_info.value.attempts == len(responses)
     assert exc_info.value.reason == "parse_failed"
     assert exc_info.value.raw_text == bad_output_2
-    assert llm_provider.generate.call_count == 2
+    assert llm_provider.generate.call_count == len(responses)
 
 
 @pytest.mark.asyncio
-async def test_generate_card_cache_hit():
+async def test_generate_card_cache_hit() -> None:
     config = _make_config()
 
     llm_provider = AsyncMock()
@@ -273,7 +280,7 @@ async def test_generate_card_cache_hit():
 
 
 @pytest.mark.asyncio
-async def test_generate_card_revision_note_in_prompt():
+async def test_generate_card_revision_note_in_prompt() -> None:
     config = _make_config()
 
     llm_provider = AsyncMock()
@@ -297,7 +304,7 @@ async def test_generate_card_revision_note_in_prompt():
 
 
 @pytest.mark.asyncio
-async def test_rendered_prompt_structure_gemma4_turn_tokens():
+async def test_rendered_prompt_structure_gemma4_turn_tokens() -> None:
     """Verify prompt has system and model turn tokens, boundary instruction, and no Gemma 3 markers."""
     config = _make_config()
 
@@ -321,14 +328,12 @@ async def test_rendered_prompt_structure_gemma4_turn_tokens():
     assert "<end_of_turn>" not in prompt
 
     # Assert SYSTEM_BOUNDARY_INSTRUCTION is in system turn
-    from news_creator.domain.prompt_boundary import SYSTEM_BOUNDARY_INSTRUCTION
-
     system_turn = prompt.split("<turn|>")[0]
     assert SYSTEM_BOUNDARY_INSTRUCTION in system_turn
 
 
 @pytest.mark.asyncio
-async def test_rendered_prompt_sanitizes_revision_note_in_user_turn():
+async def test_rendered_prompt_sanitizes_revision_note_in_user_turn() -> None:
     """Verify revision_note is sanitized and rendered inside user turn untrusted block, not system turn."""
     config = _make_config()
 
@@ -368,7 +373,7 @@ async def test_rendered_prompt_sanitizes_revision_note_in_user_turn():
 
 
 @pytest.mark.asyncio
-async def test_rendered_prompt_neutralizes_injection_in_item_title():
+async def test_rendered_prompt_neutralizes_injection_in_item_title() -> None:
     """Verify item title with control tokens and zero-width characters is neutralized."""
     config = _make_config()
 
@@ -422,7 +427,7 @@ async def test_rendered_prompt_neutralizes_injection_in_item_title():
 
 
 @pytest.mark.asyncio
-async def test_generate_card_passes_temperature_and_num_predict():
+async def test_generate_card_passes_temperature_and_num_predict() -> None:
     """Verify model, temperature=0.2, and num_predict=700 reach llm_provider.generate."""
     config = _make_config()
 
@@ -439,13 +444,13 @@ async def test_generate_card_passes_temperature_and_num_predict():
     await usecase.generate_card(request)
 
     call_kwargs = llm_provider.generate.call_args.kwargs
-    assert call_kwargs["model"] == "gemma4-e4b-12k"
-    assert call_kwargs["num_predict"] == 700
-    assert call_kwargs["options"]["temperature"] == 0.2
-    assert call_kwargs["options"]["num_predict"] == 700
+    assert call_kwargs["model"] == config.llm.model_name
+    assert call_kwargs["num_predict"] == config.llm.recap_card_max_new_tokens
+    assert call_kwargs["options"]["temperature"] == config.llm.recap_card_temperature
+    assert call_kwargs["options"]["num_predict"] == config.llm.recap_card_max_new_tokens
 
 
-def test_cache_key_differs_for_different_revision_notes():
+def test_cache_key_differs_for_different_revision_notes() -> None:
     """Verify different revision_note values yield different cache keys."""
     config = Mock()
     llm_provider = Mock()
@@ -465,7 +470,7 @@ def test_cache_key_differs_for_different_revision_notes():
     assert key_note1 != key_note2
 
 
-def test_rendered_prompt_contains_japanese_and_no_code_fence_directives():
+def test_rendered_prompt_contains_japanese_and_no_code_fence_directives() -> None:
     """Verify prompt explicitly requires natural Japanese for English sources, limits Latin to proper nouns, and forbids code fences."""
     config = Mock()
     llm_provider = Mock()
@@ -484,7 +489,7 @@ def test_rendered_prompt_contains_japanese_and_no_code_fence_directives():
     assert "コードフェンス" in prompt
 
 
-def test_rendered_prompt_contains_citation_format_directive():
+def test_rendered_prompt_contains_citation_format_directive() -> None:
     """Verify prompt explicitly requires space-separated citations at sentence ends."""
     config = Mock()
     llm_provider = Mock()
@@ -500,7 +505,9 @@ def test_rendered_prompt_contains_citation_format_directive():
 
 
 @pytest.mark.asyncio
-async def test_generate_card_language_fail_twice_raises_rejected_with_ratio_and_counts():
+async def test_generate_card_language_fail_twice_raises_rejected_with_ratio_and_counts() -> (
+    None
+):
     """Verify that when card generation fails language check twice, rejection error carries ratio and counts."""
     config = _make_config()
 
@@ -516,10 +523,11 @@ This is the second English sentence without Japanese chars.[1]
 【出典】
 [1]
 """
-    llm_provider.generate.side_effect = [
+    responses = [
         LLMGenerateResponse(response=english_output, model="gemma4-e4b-12k"),
         LLMGenerateResponse(response=english_output, model="gemma4-e4b-12k"),
     ]
+    llm_provider.generate.side_effect = responses
 
     usecase = RecapCardUsecase(
         config=config,
@@ -531,18 +539,18 @@ This is the second English sentence without Japanese chars.[1]
     with pytest.raises(CardGenerationRejectedError) as exc_info:
         await usecase.generate_card(request)
 
-    assert exc_info.value.attempts == 2
+    assert exc_info.value.attempts == len(responses)
     assert exc_info.value.reason == "language"
     assert exc_info.value.measured_ratio is not None
-    assert exc_info.value.measured_ratio < 0.6
+    assert exc_info.value.measured_ratio < config.llm.recap_ja_ratio_threshold
     assert exc_info.value.character_counts is not None
     assert "japanese" in exc_info.value.character_counts
     assert "substantive" in exc_info.value.character_counts
     assert "total" in exc_info.value.character_counts
-    assert llm_provider.generate.call_count == 2
+    assert llm_provider.generate.call_count == len(responses)
 
 
-def test_rendered_prompt_contains_sentence_count_directive():
+def test_rendered_prompt_contains_sentence_count_directive() -> None:
     """Verify prompt explicitly requires 2-3 sentences and multiple citations per sentence for 4+ sources."""
     config = Mock()
     llm_provider = Mock()
@@ -557,7 +565,7 @@ def test_rendered_prompt_contains_sentence_count_directive():
     )
 
 
-def test_rendered_prompt_contains_headline_no_citation_directive():
+def test_rendered_prompt_contains_headline_no_citation_directive() -> None:
     """Verify prompt explicitly instructs not to add citations to the headline."""
     config = Mock()
     llm_provider = Mock()
@@ -569,7 +577,7 @@ def test_rendered_prompt_contains_headline_no_citation_directive():
     assert "出典番号は見出しに付けない" in prompt
 
 
-def test_build_reminder_per_detail():
+def test_build_reminder_per_detail() -> None:
     """Verify regeneration reminder includes generic rule block and detail-specific line for all 7 details."""
     config = _make_config()
     usecase = RecapCardUsecase(
@@ -638,13 +646,8 @@ def test_build_reminder_per_detail():
 
 
 @pytest.mark.asyncio
-async def test_generate_card_raises_runtime_error_if_measured_ratio_missing():
+async def test_generate_card_raises_runtime_error_if_measured_ratio_missing() -> None:
     """Verify CardGenerationInvariantError is raised when parser succeeds but measured_ratio is None."""
-    from unittest.mock import patch
-    from news_creator.domain.errors import CardGenerationInvariantError
-    from news_creator.domain.models import CardContent
-    from news_creator.usecase.recap_card_parser import CardParseResult
-
     config = _make_config()
     llm_provider = AsyncMock()
     llm_provider.generate.return_value = LLMGenerateResponse(
@@ -663,19 +666,21 @@ async def test_generate_card_raises_runtime_error_if_measured_ratio_missing():
         card=Mock(spec=CardContent),
         measured_ratio=None,
     )
-    with patch(
-        "news_creator.usecase.recap_card_usecase.parse_card_output",
-        return_value=mock_result,
-    ):
-        with pytest.raises(
+    with (
+        patch(
+            "news_creator.usecase.recap_card_usecase.parse_card_output",
+            return_value=mock_result,
+        ),
+        pytest.raises(
             CardGenerationInvariantError,
             match="Parser succeeded but measured_ratio is None",
-        ):
-            await usecase.generate_card(request)
+        ),
+    ):
+        await usecase.generate_card(request)
 
 
 @pytest.mark.asyncio
-async def test_generate_card_rejection_carries_detail():
+async def test_generate_card_rejection_carries_detail() -> None:
     """Verify CardGenerationRejectedError carries detail field from parser."""
     config = _make_config()
     llm_provider = AsyncMock()

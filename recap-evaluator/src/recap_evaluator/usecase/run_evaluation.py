@@ -33,7 +33,7 @@ class RunEvaluationUsecase:
         self._pipeline = pipeline_evaluator
         self._db = db
 
-    async def execute(
+    async def execute(  # noqa: PLR0913 — public usecase entrypoint with per-dimension toggles
         self,
         window_days: int = 14,
         include_genre: bool = True,

@@ -2,9 +2,12 @@
 
 import os
 from pathlib import Path
+from typing import Self
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_WEIGHT_SUM_TOLERANCE = 0.001
 
 
 def _read_secret_file(env_name: str) -> str | None:
@@ -31,10 +34,11 @@ class EvaluatorWeights(BaseSettings):
     rouge_l: float = Field(default=0.10, description="ROUGE-L weight (10%)")
 
     @model_validator(mode="after")
-    def validate_sum(self) -> "EvaluatorWeights":
+    def validate_sum(self) -> Self:
         total = self.geval + self.bertscore + self.faithfulness + self.rouge_l
-        if abs(total - 1.0) > 0.001:
-            raise ValueError(f"Weights must sum to 1.0, got {total}")
+        if abs(total - 1.0) > _WEIGHT_SUM_TOLERANCE:
+            msg = f"Weights must sum to 1.0, got {total}"
+            raise ValueError(msg)
         return self
 
 
@@ -150,11 +154,11 @@ class Settings(BaseSettings):
     log_format: str = Field(default="json")
 
     # Server
-    host: str = Field(default="0.0.0.0")
+    host: str = Field(default="0.0.0.0")  # noqa: S104 — container ASGI listen address
     port: int = Field(default=8080)
 
     @model_validator(mode="after")
-    def build_recap_db_dsn(self) -> "Settings":
+    def build_recap_db_dsn(self) -> Self:
         """Build recap_db_dsn from discrete host/port/user/name + password
         when RECAP_DB_DSN is not set directly. Fails fast (raises) if neither
         a full DSN nor a password (via RECAP_DB_PASSWORD/_FILE) is available —
@@ -165,7 +169,8 @@ class Settings(BaseSettings):
 
         password = _read_secret_file("RECAP_DB_PASSWORD")
         if not password:
-            raise ValueError("RECAP_DB_DSN or RECAP_DB_PASSWORD/RECAP_DB_PASSWORD_FILE must be set")
+            msg = "RECAP_DB_DSN or RECAP_DB_PASSWORD/RECAP_DB_PASSWORD_FILE must be set"
+            raise ValueError(msg)
         self.recap_db_dsn = (
             f"postgres://{self.recap_db_user}:{password}"
             f"@{self.recap_db_host}:{self.recap_db_port}/{self.recap_db_name}"

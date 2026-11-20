@@ -196,8 +196,7 @@ pub(crate) fn tag_consistency_winner(
             });
 
     if unique.len() == 1 {
-        let (name, confidence) = unique.into_iter().next().unwrap();
-        return Some((name, confidence));
+        return unique.into_iter().next();
     }
 
     None

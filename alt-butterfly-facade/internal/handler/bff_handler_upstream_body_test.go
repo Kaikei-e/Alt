@@ -30,7 +30,7 @@ func TestBFFHandler_TruncatedBackendBody_IsNotServedAsSuccess(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		if !truncate.Load() {
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(fullBody))
+			_, _ = w.Write([]byte(fullBody))
 			return
 		}
 		// Promise more bytes than we deliver and flush the prefix so the
@@ -38,7 +38,7 @@ func TestBFFHandler_TruncatedBackendBody_IsNotServedAsSuccess(t *testing.T) {
 		// io.ReadAll on the client side ends in io.ErrUnexpectedEOF.
 		w.Header().Set("Content-Length", "64")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"count":4`))
+		_, _ = w.Write([]byte(`{"count":4`))
 		w.(http.Flusher).Flush()
 		panic(http.ErrAbortHandler)
 	}))
@@ -58,7 +58,7 @@ func TestBFFHandler_TruncatedBackendBody_IsNotServedAsSuccess(t *testing.T) {
 	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, testPublicKey, config)
 	token := createTestToken(t, testPrivateKey)
 
-	req := httptest.NewRequest("POST", endpoint, nil)
+	req := httptest.NewRequestWithContext(t.Context(), "POST", endpoint, nil)
 	req.Header.Set("X-Alt-Backend-Token", token)
 	rec := httptest.NewRecorder()
 
@@ -83,7 +83,7 @@ func TestBFFHandler_TruncatedBackendBody_IsNotServedAsSuccess(t *testing.T) {
 	// backend, not the truncated prefix out of a cache entry.
 	truncate.Store(false)
 
-	req2 := httptest.NewRequest("POST", endpoint, nil)
+	req2 := httptest.NewRequestWithContext(t.Context(), "POST", endpoint, nil)
 	req2.Header.Set("X-Alt-Backend-Token", token)
 	rec2 := httptest.NewRecorder()
 
@@ -105,7 +105,7 @@ func TestBFFHandler_TruncatedBackendBody_DedupPathAlsoFails(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Content-Length", "64")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"count":4`))
+		_, _ = w.Write([]byte(`{"count":4`))
 		w.(http.Flusher).Flush()
 		panic(http.ErrAbortHandler)
 	}))
@@ -124,7 +124,7 @@ func TestBFFHandler_TruncatedBackendBody_DedupPathAlsoFails(t *testing.T) {
 	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, testPublicKey, config)
 	token := createTestToken(t, testPrivateKey)
 
-	req := httptest.NewRequest("POST", endpoint, nil)
+	req := httptest.NewRequestWithContext(t.Context(), "POST", endpoint, nil)
 	req.Header.Set("X-Alt-Backend-Token", token)
 	rec := httptest.NewRecorder()
 

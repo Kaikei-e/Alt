@@ -40,7 +40,7 @@ test.describe("client chunk-load failure self-recovers via reload", () => {
 
 		await page.evaluate(() => {
 			queueMicrotask(() => {
-				Promise.reject(
+				void Promise.reject(
 					new Error(
 						"Failed to fetch dynamically imported module: /_app/immutable/chunks/synthetic-test.js",
 					),

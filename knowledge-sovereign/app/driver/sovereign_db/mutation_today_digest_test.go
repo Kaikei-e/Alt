@@ -3,7 +3,6 @@ package sovereign_db
 import (
 	"context"
 	"encoding/json"
-	"strings"
 	"testing"
 	"time"
 
@@ -62,7 +61,7 @@ func TestUpsertTodayDigest_UsesMergeSafeSQL(t *testing.T) {
 
 	assert.NotContains(t, sql, `CASE WHEN EXCLUDED.top_tags_json != '[]'::jsonb`,
 		"merge-safe rule violated: SQL contains forbidden CASE pattern — replace with COALESCE/NULLIF")
-	assert.True(t, strings.Contains(sql, `COALESCE(NULLIF(EXCLUDED.top_tags_json, '[]'::jsonb), today_digest_view.top_tags_json)`),
+	assert.Contains(t, sql, `COALESCE(NULLIF(EXCLUDED.top_tags_json, '[]'::jsonb), today_digest_view.top_tags_json)`,
 		"merge-safe rule requires canonical COALESCE/NULLIF expression")
 	assert.NotContains(t, sql, "pulse_refs_json")
 	assert.NotContains(t, sql, "evening_pulse_available")

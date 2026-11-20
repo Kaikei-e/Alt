@@ -1,10 +1,13 @@
 """Tests for module-level application entrypoint in tts_speaker.main."""
 
 import importlib
+import io
 import json
 import logging
 import struct
 import sys
+import wave
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -12,9 +15,12 @@ from fastapi.testclient import TestClient
 
 from tts_speaker.infra.inbound_tls import forget_tls_peer, remember_tls_peer
 
+_HTTP_OK = 200
+_HTTP_FORBIDDEN = 403
+
 
 @pytest.fixture(autouse=True)
-def clean_main_module():
+def clean_main_module() -> Iterator[None]:
     sys.modules.pop("tts_speaker.main", None)
     yield
     sys.modules.pop("tts_speaker.main", None)
@@ -48,7 +54,7 @@ def test_main_loads_app_with_valid_env(
 
     client = TestClient(module.app, raise_server_exceptions=False)
     resp = client.get("/health")
-    assert resp.status_code == 200
+    assert resp.status_code == _HTTP_OK
     assert resp.json() == {"status": "ok"}
 
 
@@ -154,9 +160,6 @@ def test_main_production_auth_via_in_process_tls_peer_path(
     module = importlib.import_module("tts_speaker.main")
 
     async def fake_synthesize(text: str, speed: float) -> bytes:
-        import io
-        import wave
-
         b = io.BytesIO()
         with wave.open(b, "wb") as w:
             w.setnchannels(1)
@@ -185,7 +188,7 @@ def test_main_production_auth_via_in_process_tls_peer_path(
             headers=connect_headers,
             content=connect_frame,
         )
-        assert resp.status_code == 200
+        assert resp.status_code == _HTTP_OK
         assert resp.headers.get("content-type") == "application/connect+json"
 
         # 2. Other CN -> 403
@@ -195,12 +198,12 @@ def test_main_production_auth_via_in_process_tls_peer_path(
             headers=connect_headers,
             content=connect_frame,
         )
-        assert resp.status_code == 403
+        assert resp.status_code == _HTTP_FORBIDDEN
         assert resp.text == "peer not allowlisted"
 
         # 3. /health over TLS under strict -> 200 (exempt from allowlist)
         resp = client.get("/health")
-        assert resp.status_code == 200
+        assert resp.status_code == _HTTP_OK
         assert resp.json() == {"status": "ok"}
     finally:
         forget_tls_peer(client_addr)

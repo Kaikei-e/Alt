@@ -211,6 +211,7 @@ func SaveDiff(diff ReportDiff, path string) error {
 
 // LoadReport reads a saved JSON report.
 func LoadReport(path string) (EvalReport, error) {
+	// #nosec G304 -- offline eval CLI reads user-specified report file path
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return EvalReport{}, fmt.Errorf("read report: %w", err)

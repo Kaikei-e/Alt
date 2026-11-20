@@ -11,12 +11,12 @@ import pytest
 from news_creator.infra.mtls_client import build_ssl_context, mtls_enforced
 
 
-def test_mtls_enforced_false_by_default():
+def test_mtls_enforced_false_by_default() -> None:
     os.environ.pop("MTLS_ENFORCE", None)
     assert not mtls_enforced()
 
 
-def test_mtls_enforced_true_when_env_set():
+def test_mtls_enforced_true_when_env_set() -> None:
     os.environ["MTLS_ENFORCE"] = "true"
     try:
         assert mtls_enforced()
@@ -24,12 +24,12 @@ def test_mtls_enforced_true_when_env_set():
         os.environ.pop("MTLS_ENFORCE", None)
 
 
-def test_build_ssl_context_none_when_not_enforced():
+def test_build_ssl_context_none_when_not_enforced() -> None:
     os.environ.pop("MTLS_ENFORCE", None)
     assert build_ssl_context() is None
 
 
-def test_build_ssl_context_fails_closed_when_paths_missing():
+def test_build_ssl_context_fails_closed_when_paths_missing() -> None:
     os.environ["MTLS_ENFORCE"] = "true"
     for v in ("MTLS_CERT_FILE", "MTLS_KEY_FILE", "MTLS_CA_FILE"):
         os.environ.pop(v, None)
@@ -40,7 +40,7 @@ def test_build_ssl_context_fails_closed_when_paths_missing():
         os.environ.pop("MTLS_ENFORCE", None)
 
 
-def test_build_ssl_context_fails_closed_when_cert_unreadable():
+def test_build_ssl_context_fails_closed_when_cert_unreadable() -> None:
     os.environ["MTLS_ENFORCE"] = "true"
     os.environ["MTLS_CERT_FILE"] = "/nonexistent/cert.pem"
     with tempfile.NamedTemporaryFile() as ca:

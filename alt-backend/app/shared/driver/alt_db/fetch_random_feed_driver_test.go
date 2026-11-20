@@ -86,7 +86,7 @@ func TestAltDBRepository_FetchRandomFeed(t *testing.T) {
 		require.NotNil(t, feed)
 		require.Equal(t, feedID, feed.ID)
 		require.Equal(t, expectedTitle, feed.Title)
-		require.Equal(t, "", feed.Description) // nil becomes empty string
+		require.Empty(t, feed.Description) // nil becomes empty string
 		require.Equal(t, expectedLink, feed.WebsiteURL)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})

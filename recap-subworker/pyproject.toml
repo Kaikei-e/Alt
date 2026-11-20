@@ -133,26 +133,19 @@ select = [
   "TRY",                   # tryceratops
   "RUF",                   # ruff-specific
   "PL",                    # pylint
+  "DTZ",                   # flake8-datetimez
+  "PT",                    # flake8-pytest-style
+  "LOG",                   # flake8-logging
+  "G",                     # flake8-logging-format
+  "T20",                   # flake8-print
+  "A",                     # flake8-builtins
+  "RET",                   # flake8-return
+  "PERF",                  # perflint
+  "FAST",                  # fastapi
 ]
 ignore = [
   "E501",                  # line length (formatter で扱う)
-  "B008",                  # FastAPI Depends() の引数評価は意図的
-  "B023",                  # function definition does not bind loop variable (closure パターン)
-  "S101",                  # assert in tests / intentional
-  "S104",                  # bind all interfaces (containers)
   "RUF001", "RUF002", "RUF003",  # 日本語 docstring/comment の confusable 警告は誤検出
-  "RUF012",                # mutable class attr は dataclass default で意図的
-  # DECREE §10 select is enabled above; the following are existing-debt
-  # suppressions so CI stays green until dedicated cleanup PRs land.
-  "ANN001", "ANN002", "ANN003", "ANN201", "ANN202", "ANN204", "ANN206", "ANN401",
-  "BLE001",
-  "TRY003", "TRY300", "TRY301", "TRY400", "TRY201", "TRY004",
-  "PLR0911", "PLR0912", "PLR0913", "PLR0915", "PLR2004", "PLR0402", "PLR5501", "PLR1722",
-  "PLC0415", "PLC0105",
-  "PLW0602", "PLW0603", "PLW1510", "PLW2901",
-  "N803", "N806", "N812",
-  "S110", "S112", "S310", "S607", "S608", "S202",
-  "ASYNC230", "ASYNC110",
 ]
 
 [tool.ruff.lint.isort]
@@ -164,20 +157,8 @@ ignore = [
 known-first-party = ["recap_subworker"]
 
 [tool.ruff.lint.per-file-ignores]
-# 学習スクリプトは条件付き sys.path 操作 + 後置 import が必須パターン
-"recap_subworker/learning_machine/scripts/**/*.py" = ["E402", "E722", "E701", "F841", "PTH", "B904", "SIM"]
-# infra/classifier のトレーニングスクリプトも同様
-"recap_subworker/infra/classifier/**/*.py" = ["PTH", "B904"]
-# Gunicorn 設定は postgres ライブラリの遅延 import が必要
-"recap_subworker/infra/gunicorn_conf.py" = ["E402"]
-"tests/**" = [
-  "S101", "S105", "S106", "S603", "S607", "S110", "ANN", "PLR2004", "PLW0108",
-  "PTH118", "PTH208", "E741", "E731", "C4", "SIM", "B905", "F841", "RUF059", "S311", "I001",
-]
-"scripts/**" = [
-  "E402", "PTH", "S301", "S311", "S324", "C4", "SIM", "B905", "F841", "RUF059", "B007", "I001", "E741",
-]
-"**/test_*.py" = ["S101", "ANN", "PLR2004"]
+"tests/**" = ["S101"] # pytest uses bare assert
+"**/test_*.py" = ["S101"]
 
 [tool.pyrefly]
 project-includes = ["."]

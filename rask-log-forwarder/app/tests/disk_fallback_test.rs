@@ -58,8 +58,10 @@ async fn test_list_stored_batches() {
     let stored_batches = disk_fallback.list_stored_batches().await.unwrap();
     assert_eq!(stored_batches.len(), 3);
 
-    let stored_ids: std::collections::HashSet<&str> =
-        stored_batches.iter().map(|s| s.as_str()).collect();
+    let stored_ids: std::collections::HashSet<&str> = stored_batches
+        .iter()
+        .map(std::string::String::as_str)
+        .collect();
     assert!(stored_ids.contains(batch1.id()));
     assert!(stored_ids.contains(batch2.id()));
     assert!(stored_ids.contains(batch3.id()));
@@ -161,12 +163,9 @@ async fn test_stale_temp_file_removed_on_construction_and_excluded_from_usage() 
         !stale_tmp.exists(),
         "stale .batch.tmp file must be removed on DiskFallback construction"
     );
-    assert!(
-        disk_fallback
-            .list_stored_batches()
-            .await
-            .unwrap()
-            .is_empty()
+    assert_eq!(
+        disk_fallback.list_stored_batches().await.unwrap(),
+        [] as [std::string::String; 0]
     );
     assert_eq!(
         disk_fallback.current_disk_usage(),

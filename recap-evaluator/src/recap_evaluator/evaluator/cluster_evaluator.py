@@ -26,6 +26,9 @@ _SEVERITY_RANK: Final[dict[AlertLevel, int]] = {
     AlertLevel.WARN: 1,
     AlertLevel.CRITICAL: 2,
 }
+_MIN_CLUSTERS_WARN: Final[int] = 3
+_MIN_SAMPLES_FOR_CLUSTERING: Final[int] = 2
+_MIN_CLUSTERS_FOR_SILHOUETTE: Final[int] = 2
 
 
 def _worst(levels: Iterable[AlertLevel]) -> AlertLevel:
@@ -73,7 +76,7 @@ class ClusterEvaluator:
                 max_cluster_size=max(cluster_sizes) if cluster_sizes else 0,
             )
 
-            if len(clusters) < 3:
+            if len(clusters) < _MIN_CLUSTERS_WARN:
                 metrics.alert_level = AlertLevel.WARN
             else:
                 metrics.alert_level = AlertLevel.OK
@@ -91,7 +94,7 @@ class ClusterEvaluator:
         n_samples = len(cluster_labels)
         n_clusters = len(set(cluster_labels)) - (1 if -1 in cluster_labels else 0)
 
-        if n_samples < 2 or n_clusters < 2:
+        if n_samples < _MIN_SAMPLES_FOR_CLUSTERING or n_clusters < _MIN_CLUSTERS_FOR_SILHOUETTE:
             return ClusterMetrics(num_clusters=n_clusters)
 
         try:
@@ -135,7 +138,7 @@ class ClusterEvaluator:
                 metrics.homogeneity = float(h)
                 metrics.completeness = float(c)
                 metrics.v_measure = float(v)
-            except Exception as e:
+            except (ValueError, TypeError) as e:
                 logger.warning("Failed to calculate external metrics", error=str(e))
 
         warn = self._thresholds.get_warn("clustering_silhouette")

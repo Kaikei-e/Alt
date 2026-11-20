@@ -13,7 +13,7 @@ func TestEstimateSystemPromptTokens_LegacyVersion(t *testing.T) {
 func TestEstimateSystemPromptTokens_AlphaV2UsesRegistry(t *testing.T) {
 	registry := NewTemplateRegistry()
 	causalTokens := EstimateSystemPromptTokens("alpha-v2", IntentCausalExplanation, registry)
-	assert.Greater(t, causalTokens, 0)
+	assert.Positive(t, causalTokens)
 	assert.NotEqual(t, 500, causalTokens)
 }
 

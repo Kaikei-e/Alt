@@ -1,21 +1,23 @@
 """Tests for summarize handler - HTTP 429 queue full behavior."""
 
+import importlib
 import time
+from collections.abc import AsyncIterator
+from http import HTTPStatus
+from unittest.mock import AsyncMock, Mock
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from unittest.mock import AsyncMock, Mock
 
+import news_creator.handler.summarize_handler as mod
 from news_creator.domain.errors import PreemptedException, QueueFullError
 from news_creator.domain.models import SummaryMetadata
+from news_creator.usecase.summarize_usecase import SummarizeUsecase
 
 
-def _make_client(mock_usecase):
+def _make_client(mock_usecase: Mock) -> TestClient:
     """Create a fresh test client with a fresh router (avoid module-level router reuse)."""
     # Reload module to get a fresh router each time
-    import importlib
-    import news_creator.handler.summarize_handler as mod
-
     importlib.reload(mod)
 
     app = FastAPI()
@@ -24,10 +26,11 @@ def _make_client(mock_usecase):
     return TestClient(app)
 
 
-def _make_mock_usecase(return_value=None, side_effect=None):
+def _make_mock_usecase(
+    return_value: tuple[str, SummaryMetadata] | None = None,
+    side_effect: Exception | None = None,
+) -> Mock:
     """Create a mock SummarizeUsecase."""
-    from news_creator.usecase.summarize_usecase import SummarizeUsecase
-
     mock = Mock(spec=SummarizeUsecase)
     if side_effect:
         mock.generate_summary = AsyncMock(side_effect=side_effect)
@@ -47,7 +50,7 @@ def _make_mock_usecase(return_value=None, side_effect=None):
     return mock
 
 
-def test_summarize_returns_429_when_queue_full():
+def test_summarize_returns_429_when_queue_full() -> None:
     """Test that summarize endpoint returns HTTP 429 when queue is full."""
     mock_usecase = _make_mock_usecase(
         side_effect=QueueFullError("Queue depth 20 >= max 20")
@@ -59,13 +62,13 @@ def test_summarize_returns_429_when_queue_full():
         json={"article_id": "test-123", "content": "A" * 200, "stream": False},
     )
 
-    assert response.status_code == 429
+    assert response.status_code == HTTPStatus.TOO_MANY_REQUESTS
     data = response.json()
     assert "queue full" in data["error"]
     assert response.headers.get("Retry-After") == "30"
 
 
-def test_summarize_returns_200_on_success():
+def test_summarize_returns_200_on_success() -> None:
     """Test that summarize endpoint returns 200 on success."""
     mock_usecase = _make_mock_usecase()
     client = _make_client(mock_usecase)
@@ -75,16 +78,16 @@ def test_summarize_returns_200_on_success():
         json={"article_id": "test-123", "content": "A" * 200, "stream": False},
     )
 
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     data = response.json()
     assert data["success"] is True
     assert data["summary"] == "テスト要約"
 
 
-def test_empty_summary_returns_422():
+def test_empty_summary_returns_422() -> None:
     """RuntimeError with 'empty/whitespace summary' should return HTTP 422."""
     secret = (
-        "LLM returned empty/whitespace summary 2 times consecutively for article secret-id. "
+        "LLM returned empty/whitespace summary 2 times consecutively for article secret-id. "  # noqa: S105 - test fixture string simulating leaked internal detail
         "Model may be in a bad state."
     )
     mock_usecase = _make_mock_usecase(side_effect=RuntimeError(secret))
@@ -95,14 +98,14 @@ def test_empty_summary_returns_422():
         json={"article_id": "test-123", "content": "A" * 200, "stream": False},
     )
 
-    assert response.status_code == 422
+    assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
     assert response.json()["detail"] == "Content not processable"
     assert secret not in response.text
 
 
-def test_other_runtime_error_returns_502():
+def test_other_runtime_error_returns_502() -> None:
     """RuntimeError without 'empty/whitespace' should still return HTTP 502."""
-    secret = "LLM connection timeout to ollama.internal:11434"
+    secret = "LLM connection timeout to ollama.internal:11434"  # noqa: S105 - test fixture string simulating leaked internal detail
     mock_usecase = _make_mock_usecase(side_effect=RuntimeError(secret))
     client = _make_client(mock_usecase)
 
@@ -111,15 +114,15 @@ def test_other_runtime_error_returns_502():
         json={"article_id": "test-123", "content": "A" * 200, "stream": False},
     )
 
-    assert response.status_code == 502
+    assert response.status_code == HTTPStatus.BAD_GATEWAY
     assert response.json()["detail"] == "Upstream service error"
     assert secret not in response.text
 
 
-def test_summarize_value_error_does_not_leak_exception_text():
+def test_summarize_value_error_does_not_leak_exception_text() -> None:
     """ValueError from usecase returns 400 without leaking exception text."""
     secret = (
-        "invalid summarize request at /app/news_creator/usecase/summarize_usecase.py:12"
+        "invalid summarize request at /app/news_creator/usecase/summarize_usecase.py:12"  # noqa: S105 - test fixture string simulating leaked internal detail
     )
     mock_usecase = _make_mock_usecase(side_effect=ValueError(secret))
     client = _make_client(mock_usecase)
@@ -129,18 +132,18 @@ def test_summarize_value_error_does_not_leak_exception_text():
         json={"article_id": "test-123", "content": "A" * 200, "stream": False},
     )
 
-    assert response.status_code == 400
+    assert response.status_code == HTTPStatus.BAD_REQUEST
     assert response.json()["detail"] == "Invalid request"
     assert secret not in response.text
 
 
-def test_summarize_stream_error_does_not_leak_exception_text():
+def test_summarize_stream_error_does_not_leak_exception_text() -> None:
     """SSE error events must not include exception / traceback text."""
-    secret = "Ollama crash at /usr/lib/ollama/runner.py:412"
+    secret = "Ollama crash at /usr/lib/ollama/runner.py:412"  # noqa: S105 - test fixture string simulating leaked internal detail
 
-    async def failing_stream(*args, **kwargs):
+    async def failing_stream(*_args: object, **_kwargs: object) -> AsyncIterator[str]:
         raise RuntimeError(secret)
-        yield  # pragma: no cover — marks this as an async generator
+        yield ""  # pragma: no cover — marks this as an async generator
 
     mock_usecase = _make_mock_usecase()
     mock_usecase.generate_summary_stream = failing_stream
@@ -151,12 +154,12 @@ def test_summarize_stream_error_does_not_leak_exception_text():
         json={"article_id": "test-123", "content": "A" * 200, "stream": True},
     )
 
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     assert secret not in response.text
     assert "summary generation failed" in response.text
 
 
-def test_summarize_stream_reaches_eof_right_after_last_chunk():
+def test_summarize_stream_reaches_eof_right_after_last_chunk() -> None:
     """The SSE body must reach EOF as soon as the generator is done.
 
     Downstream consumers persist the summary only after reading EOF, so any
@@ -165,7 +168,7 @@ def test_summarize_stream_reaches_eof_right_after_last_chunk():
     """
     chunks = ["Alpha", "Beta", "Gamma"]
 
-    async def fast_stream(*args, **kwargs):
+    async def fast_stream(*_args: object, **_kwargs: object) -> AsyncIterator[str]:
         for chunk in chunks:
             yield chunk
 
@@ -180,7 +183,7 @@ def test_summarize_stream_reaches_eof_right_after_last_chunk():
         "/api/v1/summarize",
         json={"article_id": "test-123", "content": "A" * 200, "stream": True},
     ) as response:
-        assert response.status_code == 200
+        assert response.status_code == HTTPStatus.OK
         for part in response.iter_text():
             body += part
     elapsed = time.monotonic() - started_at
@@ -192,7 +195,7 @@ def test_summarize_stream_reaches_eof_right_after_last_chunk():
     assert body == "".join(f'data: "{chunk}"\n\n' for chunk in chunks)
 
 
-def test_summarize_short_content_fast_path_returns_400():
+def test_summarize_short_content_fast_path_returns_400() -> None:
     """Content shorter than 100 chars is rejected with 400 before invoking usecase."""
     mock_usecase = _make_mock_usecase()
     client = _make_client(mock_usecase)
@@ -202,12 +205,12 @@ def test_summarize_short_content_fast_path_returns_400():
         json={"article_id": "short-1", "content": "Too short", "stream": False},
     )
 
-    assert response.status_code == 400
+    assert response.status_code == HTTPStatus.BAD_REQUEST
     assert "Minimum required: 100 characters" in response.json()["detail"]
     mock_usecase.generate_summary.assert_not_called()
 
 
-def test_summarize_empty_whitespace_runtime_error_returns_422():
+def test_summarize_empty_whitespace_runtime_error_returns_422() -> None:
     """RuntimeError with 'empty/whitespace summary' maps to 422 Unprocessable Entity."""
     mock_usecase = _make_mock_usecase()
     mock_usecase.generate_summary.side_effect = RuntimeError(
@@ -220,11 +223,11 @@ def test_summarize_empty_whitespace_runtime_error_returns_422():
         json={"article_id": "empty-1", "content": "A" * 200, "stream": False},
     )
 
-    assert response.status_code == 422
+    assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
     assert response.json()["detail"] == "Content not processable"
 
 
-def test_summarize_unexpected_exception_returns_500():
+def test_summarize_unexpected_exception_returns_500() -> None:
     """Unexpected generic Exception maps to 500 Internal Server Error."""
     mock_usecase = _make_mock_usecase()
     mock_usecase.generate_summary.side_effect = KeyError("unexpected internal key")
@@ -235,13 +238,13 @@ def test_summarize_unexpected_exception_returns_500():
         json={"article_id": "err-500", "content": "A" * 200, "stream": False},
     )
 
-    assert response.status_code == 500
+    assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
     assert response.json()["detail"] == "Internal server error"
 
 
-def test_summarize_preempted_returns_502():
+def test_summarize_preempted_returns_502() -> None:
     """PreemptedException must surface as HTTP 502 (matching recap handlers), never 500."""
-    secret = "request preempted during generation at slot 2"
+    secret = "request preempted during generation at slot 2"  # noqa: S105 - test fixture string simulating leaked internal detail
     mock_usecase = _make_mock_usecase(side_effect=PreemptedException(secret))
     client = _make_client(mock_usecase)
 
@@ -250,6 +253,6 @@ def test_summarize_preempted_returns_502():
         json={"article_id": "preempt-1", "content": "A" * 200, "stream": False},
     )
 
-    assert response.status_code == 502
+    assert response.status_code == HTTPStatus.BAD_GATEWAY
     assert response.json()["detail"] == "Upstream service error"
     assert secret not in response.text

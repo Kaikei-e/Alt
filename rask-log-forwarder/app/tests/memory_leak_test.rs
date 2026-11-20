@@ -50,8 +50,7 @@ async fn test_memory_leak_prevention_with_repeated_parsing() {
 
             // Change service name to trigger different code paths
             container_info.service_name = match log_idx {
-                0 => "nginx".to_string(),
-                1 => "nginx".to_string(),
+                0 | 1 => "nginx".to_string(),
                 2 => "alt-backend".to_string(),
                 3 => "postgres".to_string(),
                 _ => "unknown".to_string(),
@@ -61,10 +60,10 @@ async fn test_memory_leak_prevention_with_repeated_parsing() {
         // Every 100 iterations, also test batch parsing
         if iteration % 100 == 0 {
             let batch: Vec<&[u8]> = test_logs.iter().map(|log| log.as_bytes()).collect();
-            let batch_results = parser.parse_batch(batch, &container_info).await;
+            let batch_results = parser.parse_batch(batch, &container_info);
             assert_eq!(batch_results.len(), test_logs.len());
             assert!(
-                batch_results.iter().all(|r| r.is_ok()),
+                batch_results.iter().all(std::result::Result::is_ok),
                 "Batch parse failed at iteration {iteration}"
             );
         }

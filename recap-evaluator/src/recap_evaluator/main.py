@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator, Callable
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 
 import asyncpg
 import httpx
 import structlog
-from fastapi import FastAPI
+import uvicorn
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from recap_evaluator.config import AlertThresholds, EvaluatorWeights, Settings
@@ -22,6 +23,13 @@ from recap_evaluator.gateway.recap_worker_gateway import RecapWorkerGateway
 from recap_evaluator.handler.evaluation_handler import router as evaluation_router
 from recap_evaluator.handler.health_handler import router as health_router
 from recap_evaluator.handler.metrics_handler import router as metrics_router
+from recap_evaluator.infra import bearer_auth
+from recap_evaluator.infra.mtls_client import outbound_mtls
+from recap_evaluator.infra.peer_identity import (
+    PeerIdentityMiddleware,
+    allowed_peers_from_env,
+    strict_from_env,
+)
 from recap_evaluator.scheduler.evaluation_scheduler import EvaluationScheduler
 from recap_evaluator.usecase.get_metrics import GetMetricsUsecase
 from recap_evaluator.usecase.run_evaluation import RunEvaluationUsecase
@@ -29,6 +37,123 @@ from recap_evaluator.utils.logging import configure_logging, shutdown_logging
 from recap_evaluator.utils.otel import instrument_fastapi
 
 logger = structlog.get_logger()
+
+
+def _wire_app_state(
+    app: FastAPI,
+    thresholds: AlertThresholds,
+    weights: EvaluatorWeights,
+    pool: asyncpg.Pool,
+    http_client: httpx.AsyncClient,
+) -> tuple[SummaryEvaluator, EvaluationScheduler, OllamaGateway]:
+    cfg: Settings = app.state.settings
+    # --- Gateway layer ---
+    db_gateway = PostgresGateway(pool)
+    ollama_gateway = OllamaGateway(http_client, cfg)
+    recap_worker_gw = RecapWorkerGateway(http_client, cfg)
+
+    # --- Evaluator layer ---
+    genre_eval = GenreEvaluator(recap_worker_gw, db_gateway, thresholds)
+    cluster_eval = ClusterEvaluator(db_gateway, thresholds)
+    summary_eval = SummaryEvaluator(ollama_gateway, db_gateway, cfg, thresholds, weights)
+    pipeline_eval = PipelineEvaluator(db_gateway, thresholds)
+
+    # --- Usecase layer ---
+    run_eval_uc = RunEvaluationUsecase(
+        genre_eval, cluster_eval, summary_eval, pipeline_eval, db_gateway
+    )
+    get_metrics_uc = GetMetricsUsecase(
+        genre_eval, cluster_eval, pipeline_eval, db_gateway, thresholds
+    )
+
+    # --- Expose to handlers via app.state ---
+    app.state.run_evaluation = run_eval_uc
+    app.state.get_metrics = get_metrics_uc
+    app.state.genre_evaluator = genre_eval
+    app.state.cluster_evaluator = cluster_eval
+    app.state.summary_evaluator = summary_eval
+    app.state.db = db_gateway
+
+    scheduler = EvaluationScheduler(run_eval_uc, cfg)
+    return summary_eval, scheduler, ollama_gateway
+
+
+def _build_lifespan(
+    settings: Settings | None,
+    alert_thresholds: AlertThresholds | None,
+    evaluator_weights: EvaluatorWeights | None,
+) -> Callable[[FastAPI], AbstractAsyncContextManager[None]]:
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        cfg = settings if settings is not None else Settings()
+        thresholds = alert_thresholds if alert_thresholds is not None else AlertThresholds()
+        weights = evaluator_weights if evaluator_weights is not None else EvaluatorWeights()
+
+        configure_logging(log_level=cfg.log_level, log_format=cfg.log_format)
+        app.state.settings = cfg
+
+        if bearer_auth.EVALUATOR_AUTH_DISABLED:
+            app.state.api_token = ""
+            logger.warning(
+                "evaluator_auth_disabled",
+                detail="EVALUATOR_AUTH=disabled; /api/v1/evaluations/* accepts unauthenticated requests",
+            )
+        else:
+            app.state.api_token = bearer_auth.load_bearer_token_from_file()
+            logger.info("evaluator_auth_enabled")
+
+        logger.info(
+            "Starting recap-evaluator",
+            host=cfg.host,
+            port=cfg.port,
+        )
+
+        # Outbound identity (ADR-000978): in-process enrollment writes the leaf
+        # before the SSLContext loads it; the context object stays live and the
+        # rotation watcher reloads it in place, so the shared AsyncClient is never
+        # rebuilt.
+        async with outbound_mtls(
+            "recap-evaluator",
+            upstreams={"OLLAMA_URL": cfg.ollama_url, "RECAP_WORKER_URL": cfg.recap_worker_url},
+        ) as ssl_ctx:
+            pool = await asyncpg.create_pool(
+                dsn=cfg.recap_db_dsn,
+                min_size=cfg.db_pool_min_size,
+                max_size=cfg.db_pool_max_size,
+                init=register_jsonb_codec,
+            )
+            http_client = httpx.AsyncClient(
+                timeout=httpx.Timeout(connect=5, read=cfg.ollama_timeout, write=10, pool=5),
+                limits=httpx.Limits(max_connections=30, max_keepalive_connections=10),
+                verify=ssl_ctx if ssl_ctx is not None else True,
+            )
+
+            summary_eval, scheduler, ollama_gateway = _wire_app_state(
+                app, thresholds, weights, pool, http_client
+            )
+            scheduler.start()
+
+            ollama_healthy = await ollama_gateway.health_check()
+            if not ollama_healthy:
+                logger.warning(
+                    "Ollama is not available. G-Eval summary evaluation will fail.",
+                    ollama_url=cfg.ollama_url,
+                    model=cfg.ollama_model,
+                )
+
+            logger.info("recap-evaluator started successfully")
+
+            yield
+
+            logger.info("Shutting down recap-evaluator")
+            scheduler.stop()
+            summary_eval.shutdown()
+            await http_client.aclose()
+            await pool.close()
+        shutdown_logging()
+        logger.info("recap-evaluator stopped")
+
+    return lifespan
 
 
 def create_app(
@@ -42,118 +167,11 @@ def create_app(
     fixtures) without requiring RECAP_DB_DSN / RECAP_DB_PASSWORD. Production
     loads Settings inside lifespan — fail-fast at startup, not at import.
     """
-
-    @asynccontextmanager
-    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        cfg = settings if settings is not None else Settings()
-        thresholds = alert_thresholds if alert_thresholds is not None else AlertThresholds()
-        weights = evaluator_weights if evaluator_weights is not None else EvaluatorWeights()
-
-        from recap_evaluator.infra.bearer_auth import (
-            EVALUATOR_AUTH_DISABLED,
-            load_bearer_token_from_file,
-        )
-
-        configure_logging(log_level=cfg.log_level, log_format=cfg.log_format)
-        app.state.settings = cfg
-
-        if EVALUATOR_AUTH_DISABLED:
-            app.state.api_token = ""
-            logger.warning(
-                "evaluator_auth_disabled",
-                detail="EVALUATOR_AUTH=disabled; /api/v1/evaluations/* accepts unauthenticated requests",
-            )
-        else:
-            app.state.api_token = load_bearer_token_from_file()
-            logger.info("evaluator_auth_enabled")
-
-        logger.info(
-            "Starting recap-evaluator",
-            host=cfg.host,
-            port=cfg.port,
-        )
-
-        # Outbound identity (ADR-000978): in-process enrollment writes the leaf
-        # before the SSLContext loads it; the context object stays live and the
-        # rotation watcher reloads it in place, so the shared AsyncClient is never
-        # rebuilt.
-        from recap_evaluator.infra.mtls_client import outbound_mtls
-
-        async with outbound_mtls(
-            "recap-evaluator",
-            upstreams={"OLLAMA_URL": cfg.ollama_url, "RECAP_WORKER_URL": cfg.recap_worker_url},
-        ) as ssl_ctx:
-            # --- Driver layer ---
-            pool = await asyncpg.create_pool(
-                dsn=cfg.recap_db_dsn,
-                min_size=cfg.db_pool_min_size,
-                max_size=cfg.db_pool_max_size,
-                init=register_jsonb_codec,
-            )
-            http_client = httpx.AsyncClient(
-                timeout=httpx.Timeout(connect=5, read=cfg.ollama_timeout, write=10, pool=5),
-                limits=httpx.Limits(max_connections=30, max_keepalive_connections=10),
-                verify=ssl_ctx if ssl_ctx is not None else True,
-            )
-
-            # --- Gateway layer ---
-            db_gateway = PostgresGateway(pool)
-            ollama_gateway = OllamaGateway(http_client, cfg)
-            recap_worker_gw = RecapWorkerGateway(http_client, cfg)
-
-            # --- Evaluator layer ---
-            genre_eval = GenreEvaluator(recap_worker_gw, db_gateway, thresholds)
-            cluster_eval = ClusterEvaluator(db_gateway, thresholds)
-            summary_eval = SummaryEvaluator(ollama_gateway, db_gateway, cfg, thresholds, weights)
-            pipeline_eval = PipelineEvaluator(db_gateway, thresholds)
-
-            # --- Usecase layer ---
-            run_eval_uc = RunEvaluationUsecase(
-                genre_eval, cluster_eval, summary_eval, pipeline_eval, db_gateway
-            )
-            get_metrics_uc = GetMetricsUsecase(
-                genre_eval, cluster_eval, pipeline_eval, db_gateway, thresholds
-            )
-
-            # --- Expose to handlers via app.state ---
-            app.state.run_evaluation = run_eval_uc
-            app.state.get_metrics = get_metrics_uc
-            app.state.genre_evaluator = genre_eval
-            app.state.cluster_evaluator = cluster_eval
-            app.state.summary_evaluator = summary_eval
-            app.state.db = db_gateway
-
-            # --- Scheduler ---
-            scheduler = EvaluationScheduler(run_eval_uc, cfg)
-            scheduler.start()
-
-            # Check Ollama health
-            ollama_healthy = await ollama_gateway.health_check()
-            if not ollama_healthy:
-                logger.warning(
-                    "Ollama is not available. G-Eval summary evaluation will fail.",
-                    ollama_url=cfg.ollama_url,
-                    model=cfg.ollama_model,
-                )
-
-            logger.info("recap-evaluator started successfully")
-
-            yield
-
-            # --- Shutdown ---
-            logger.info("Shutting down recap-evaluator")
-            scheduler.stop()
-            summary_eval.shutdown()
-            await http_client.aclose()
-            await pool.close()
-        shutdown_logging()
-        logger.info("recap-evaluator stopped")
-
     application = FastAPI(
         title="Recap Evaluator",
         description="RecapJob精度評価マイクロサービス - 7日間Recapの品質を多角的に評価",
         version="0.1.0",
-        lifespan=lifespan,
+        lifespan=_build_lifespan(settings, alert_thresholds, evaluator_weights),
     )
 
     # CORS — use injected settings when available; otherwise safe defaults
@@ -170,12 +188,6 @@ def create_app(
     )
 
     # peer-identity capture for mTLS audit (ADR-000737).
-    from recap_evaluator.infra.peer_identity import (  # noqa: E402
-        PeerIdentityMiddleware,
-        allowed_peers_from_env,
-        strict_from_env,
-    )
-
     application.add_middleware(
         PeerIdentityMiddleware,
         allowed=allowed_peers_from_env(),
@@ -183,13 +195,10 @@ def create_app(
         exempt_paths={"/health"},
     )
 
-    from fastapi import Depends
-
-    from recap_evaluator.infra.bearer_auth import require_bearer_token
-
+    auth_deps = [Depends(bearer_auth.require_bearer_token)]
     application.include_router(health_router)
-    application.include_router(evaluation_router, dependencies=[Depends(require_bearer_token)])
-    application.include_router(metrics_router, dependencies=[Depends(require_bearer_token)])
+    application.include_router(evaluation_router, dependencies=auth_deps)
+    application.include_router(metrics_router, dependencies=auth_deps)
 
     instrument_fastapi(application)
     return application
@@ -201,8 +210,6 @@ app = create_app()
 
 def run() -> None:
     """Run the application with uvicorn."""
-    import uvicorn
-
     # Fail-fast on missing required env before binding the port.
     cfg = Settings()
     uvicorn.run(

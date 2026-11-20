@@ -9,7 +9,7 @@ import asyncio
 import contextlib
 import logging
 import os
-from typing import Any
+import ssl
 
 import uvicorn
 from uvicorn.protocols.http.h11_impl import H11Protocol
@@ -39,15 +39,12 @@ def serve_app(*, host: str = DEFAULT_HOST, port: int = DEFAULT_PORT, log_level: 
     port has no HTTP fallback. There is no response-header timeout — the
     sidecar's 960s bound must not be reintroduced on this path.
     """
-    timeouts = inbound_listener_timeouts()
-    keep_alive = int(timeouts.timeout_keep_alive)
     handle = start_pki_enrollment("tts-speaker")
     try:
         _serve_after_enrollment(
             host=host,
             port=port,
             log_level=log_level,
-            keep_alive=keep_alive,
         )
     finally:
         if handle is not None:
@@ -63,10 +60,11 @@ async def _serve_dual(
     host: str,
     plaintext_port: int,
     log_level: str,
-    keep_alive: int,
-    ctx: Any,
+    ctx: ssl.SSLContext,
     reloader: InboundCertReloader,
 ) -> None:
+    timeouts = inbound_listener_timeouts()
+    keep_alive = int(timeouts.timeout_keep_alive)
     mtls_port = inbound_mtls_port()
     plain = uvicorn.Server(
         uvicorn.Config(
@@ -93,7 +91,7 @@ async def _serve_dual(
         "inbound_mtls_listener plaintext=%s mtls=%s response_header_timeout=%s",
         plaintext_port,
         mtls_port,
-        inbound_listener_timeouts().response_header_timeout,
+        timeouts.response_header_timeout,
     )
     reload_task = asyncio.create_task(watch_inbound_cert_rotation(reloader))
     try:
@@ -104,9 +102,10 @@ async def _serve_dual(
             await reload_task
 
 
-def _serve_after_enrollment(*, host: str, port: int, log_level: str, keep_alive: int) -> None:
+def _serve_after_enrollment(*, host: str, port: int, log_level: str) -> None:
     ctx = load_inbound_ssl_context_from_env()
     if ctx is None:
+        keep_alive = int(inbound_listener_timeouts().timeout_keep_alive)
         uvicorn.run(
             _APP_TARGET,
             host=host,
@@ -124,7 +123,6 @@ def _serve_after_enrollment(*, host: str, port: int, log_level: str, keep_alive:
             host=host,
             plaintext_port=port,
             log_level=log_level,
-            keep_alive=keep_alive,
             ctx=ctx,
             reloader=reloader,
         )

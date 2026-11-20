@@ -4,27 +4,34 @@ import http.client
 import io
 import json
 import threading
+from collections.abc import Callable, Iterator
+from http import HTTPStatus
+from pathlib import Path
+from typing import NoReturn
 from urllib.parse import urlparse
 
 import pytest
 
 import sse_server
+from tabs.system_monitor_tab import _resolve_sse_token
+
+type ServerFactory = Callable[[str], Iterator[tuple[str, int]]]
 
 
 class TestIsAuthorized:
     def test_auth_disabled_when_no_token_configured(self) -> None:
         """With empty token, every request is authorized (disabled mode)."""
         assert (
-            sse_server.is_authorized(
-                configured_token="", token_param=None, auth_header=None
-            )
+            sse_server.is_authorized(configured_token="", token_param=None, auth_header=None)
             is True
         )
 
     def test_missing_credentials_rejected_when_token_configured(self) -> None:
         assert (
             sse_server.is_authorized(
-                configured_token="secret", token_param=None, auth_header=None
+                configured_token="secret",  # noqa: S106 - test fixture value, not a credential
+                token_param=None,
+                auth_header=None,
             )
             is False
         )
@@ -32,7 +39,9 @@ class TestIsAuthorized:
     def test_wrong_query_token_rejected(self) -> None:
         assert (
             sse_server.is_authorized(
-                configured_token="secret", token_param="wrong", auth_header=None
+                configured_token="secret",  # noqa: S106 - test fixture value, not a credential
+                token_param="wrong",  # noqa: S106 - test fixture value, not a credential
+                auth_header=None,
             )
             is False
         )
@@ -40,7 +49,9 @@ class TestIsAuthorized:
     def test_correct_query_token_accepted(self) -> None:
         assert (
             sse_server.is_authorized(
-                configured_token="secret", token_param="secret", auth_header=None
+                configured_token="secret",  # noqa: S106 - test fixture value, not a credential
+                token_param="secret",  # noqa: S106 - test fixture value, not a credential
+                auth_header=None,
             )
             is True
         )
@@ -48,7 +59,9 @@ class TestIsAuthorized:
     def test_correct_bearer_header_accepted(self) -> None:
         assert (
             sse_server.is_authorized(
-                configured_token="secret", token_param=None, auth_header="Bearer secret"
+                configured_token="secret",  # noqa: S106 - test fixture value, not a credential
+                token_param=None,
+                auth_header="Bearer secret",
             )
             is True
         )
@@ -56,7 +69,9 @@ class TestIsAuthorized:
     def test_wrong_bearer_header_rejected(self) -> None:
         assert (
             sse_server.is_authorized(
-                configured_token="secret", token_param=None, auth_header="Bearer nope"
+                configured_token="secret",  # noqa: S106 - test fixture value, not a credential
+                token_param=None,
+                auth_header="Bearer nope",
             )
             is False
         )
@@ -64,7 +79,9 @@ class TestIsAuthorized:
     def test_malformed_auth_header_rejected(self) -> None:
         assert (
             sse_server.is_authorized(
-                configured_token="secret", token_param=None, auth_header="secret"
+                configured_token="secret",  # noqa: S106 - test fixture value, not a credential
+                token_param=None,
+                auth_header="secret",
             )
             is False
         )
@@ -81,9 +98,7 @@ class TestExtractTokenParam:
 
 
 class TestLoadAuthTokenStartup:
-    def test_startup_failure_without_config(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_startup_failure_without_config(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """When neither SSE_AUTH_TOKEN_FILE nor SSE_AUTH=disabled is set, startup exits non-zero."""
         monkeypatch.delenv("SSE_AUTH_TOKEN_FILE", raising=False)
         monkeypatch.delenv("SSE_AUTH_TOKEN", raising=False)
@@ -94,7 +109,7 @@ class TestLoadAuthTokenStartup:
         assert exc_info.value.code != 0
 
     def test_startup_failure_when_token_file_missing(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         missing_file = str(tmp_path / "nonexistent_token.txt")
         monkeypatch.setenv("SSE_AUTH_TOKEN_FILE", missing_file)
@@ -105,7 +120,7 @@ class TestLoadAuthTokenStartup:
         assert exc_info.value.code != 0
 
     def test_startup_failure_when_token_file_empty(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         empty_file = tmp_path / "empty_token.txt"
         empty_file.write_text("   \n", encoding="utf-8")
@@ -132,7 +147,7 @@ class TestLoadAuthTokenStartup:
     def test_token_file_mode(
         self,
         monkeypatch: pytest.MonkeyPatch,
-        tmp_path,
+        tmp_path: Path,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         token_file = tmp_path / "valid_token.txt"
@@ -142,7 +157,7 @@ class TestLoadAuthTokenStartup:
 
         with caplog.at_level("INFO"):
             token = sse_server.load_auth_token(fail_fast=True)
-        assert token == "valid-secret-token"
+        assert token == "valid-secret-token"  # noqa: S105 - test fixture value, not a credential
         assert "sse_auth_enabled" in caplog.text
 
     def test_unresolved_returns_none_when_fail_fast_false(
@@ -155,7 +170,7 @@ class TestLoadAuthTokenStartup:
         assert sse_server.load_auth_token(fail_fast=False) is None
 
     def test_missing_file_returns_none_when_fail_fast_false(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         missing_file = str(tmp_path / "nonexistent_token.txt")
         monkeypatch.setenv("SSE_AUTH_TOKEN_FILE", missing_file)
@@ -164,7 +179,7 @@ class TestLoadAuthTokenStartup:
         assert sse_server.load_auth_token(fail_fast=False) is None
 
     def test_empty_file_returns_none_when_fail_fast_false(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         empty_file = tmp_path / "empty_token.txt"
         empty_file.write_text("   \n", encoding="utf-8")
@@ -178,12 +193,12 @@ class TestSseServerHttpEndpoints:
     """End-to-end HTTP tests exercising /health exemption and /stream auth on loopback socket."""
 
     @pytest.fixture
-    def server(self, monkeypatch: pytest.MonkeyPatch):
+    def server(self, monkeypatch: pytest.MonkeyPatch) -> ServerFactory:
         class _TestServer(sse_server.ThreadingHTTPServer):
             daemon_threads = True
             block_on_close = False
 
-        def _run_server(token: str):
+        def _run_server(token: str) -> Iterator[tuple[str, int]]:
             monkeypatch.setattr(sse_server, "AUTH_TOKEN", token)
             httpd = _TestServer(("127.0.0.1", 0), sse_server.SSEHandler)
             addr = httpd.server_address
@@ -200,49 +215,49 @@ class TestSseServerHttpEndpoints:
 
         return _run_server
 
-    def test_health_exemption_when_auth_enabled(self, server) -> None:
+    def test_health_exemption_when_auth_enabled(self, server: ServerFactory) -> None:
         """/health must return 200 without token even when SSE auth is enabled."""
         for host, port in server("configured-secret"):
             conn = http.client.HTTPConnection(host, port, timeout=5)
             try:
                 conn.request("GET", "/health")
                 resp = conn.getresponse()
-                assert resp.status == 200
+                assert resp.status == HTTPStatus.OK
                 data = json.loads(resp.read().decode("utf-8"))
                 assert data.get("status") == "ok"
                 assert data.get("service") == "sse-server"
             finally:
                 conn.close()
 
-    def test_stream_401_without_token(self, server) -> None:
+    def test_stream_401_without_token(self, server: ServerFactory) -> None:
         """/stream must return 401 unauthorized when required token is missing."""
         for host, port in server("configured-secret"):
             conn = http.client.HTTPConnection(host, port, timeout=5)
             try:
                 conn.request("GET", "/stream")
                 resp = conn.getresponse()
-                assert resp.status == 401
+                assert resp.status == HTTPStatus.UNAUTHORIZED
                 data = json.loads(resp.read().decode("utf-8"))
                 assert data.get("status") == "error"
                 assert data.get("error") == "unauthorized"
             finally:
                 conn.close()
 
-    def test_stream_200_with_query_token(self, server) -> None:
+    def test_stream_200_with_query_token(self, server: ServerFactory) -> None:
         """/stream returns 200 and text/event-stream with matching query parameter token."""
         for host, port in server("configured-secret"):
             conn = http.client.HTTPConnection(host, port, timeout=5)
             try:
                 conn.request("GET", "/stream?token=configured-secret")
                 resp = conn.getresponse()
-                assert resp.status == 200
+                assert resp.status == HTTPStatus.OK
                 assert "text/event-stream" in resp.getheader("Content-Type", "")
                 first_line = resp.fp.readline()
                 assert b"data:" in first_line
             finally:
                 conn.close()
 
-    def test_stream_200_with_bearer_token(self, server) -> None:
+    def test_stream_200_with_bearer_token(self, server: ServerFactory) -> None:
         """/stream returns 200 and text/event-stream with matching Bearer header token."""
         for host, port in server("configured-secret"):
             conn = http.client.HTTPConnection(host, port, timeout=5)
@@ -253,21 +268,21 @@ class TestSseServerHttpEndpoints:
                     headers={"Authorization": "Bearer configured-secret"},
                 )
                 resp = conn.getresponse()
-                assert resp.status == 200
+                assert resp.status == HTTPStatus.OK
                 assert "text/event-stream" in resp.getheader("Content-Type", "")
                 first_line = resp.fp.readline()
                 assert b"data:" in first_line
             finally:
                 conn.close()
 
-    def test_stream_200_in_disabled_mode(self, server) -> None:
+    def test_stream_200_in_disabled_mode(self, server: ServerFactory) -> None:
         """In disabled mode (empty token), /stream is accessible without any credentials."""
         for host, port in server(""):
             conn = http.client.HTTPConnection(host, port, timeout=5)
             try:
                 conn.request("GET", "/stream")
                 resp = conn.getresponse()
-                assert resp.status == 200
+                assert resp.status == HTTPStatus.OK
                 assert "text/event-stream" in resp.getheader("Content-Type", "")
                 first_line = resp.fp.readline()
                 assert b"data:" in first_line
@@ -275,17 +290,17 @@ class TestSseServerHttpEndpoints:
                 conn.close()
 
     def test_query_token_redacted_from_logs(
-        self, server, caplog: pytest.LogCaptureFixture
+        self, server: ServerFactory, caplog: pytest.LogCaptureFixture
     ) -> None:
         """Query parameter tokens must not leak into logs."""
-        sensitive_token = "super-secret-token-xyz"
+        sensitive_token = "super-secret-token-xyz"  # noqa: S105 - test fixture value, not a credential
         for host, port in server(sensitive_token):
             with caplog.at_level("INFO"):
                 conn = http.client.HTTPConnection(host, port, timeout=5)
                 try:
                     conn.request("GET", f"/stream?token={sensitive_token}")
                     resp = conn.getresponse()
-                    assert resp.status == 200
+                    assert resp.status == HTTPStatus.OK
                     resp.fp.readline()
                 finally:
                     conn.close()
@@ -294,18 +309,18 @@ class TestSseServerHttpEndpoints:
             assert "/stream" in caplog.text
 
     def test_unauthorized_query_token_redacted_from_logs(
-        self, server, caplog: pytest.LogCaptureFixture
+        self, server: ServerFactory, caplog: pytest.LogCaptureFixture
     ) -> None:
         """Rejected query parameter tokens must also not leak into logs."""
-        configured_token = "correct-secret-123"
-        rejected_token = "attacker-attempted-token-999"
+        configured_token = "correct-secret-123"  # noqa: S105 - test fixture value, not a credential
+        rejected_token = "attacker-attempted-token-999"  # noqa: S105 - test fixture value, not a credential
         for host, port in server(configured_token):
             with caplog.at_level("INFO"):
                 conn = http.client.HTTPConnection(host, port, timeout=5)
                 try:
                     conn.request("GET", f"/stream?token={rejected_token}")
                     resp = conn.getresponse()
-                    assert resp.status == 401
+                    assert resp.status == HTTPStatus.UNAUTHORIZED
                     resp.read()
                 finally:
                     conn.close()
@@ -316,34 +331,25 @@ class TestSseServerHttpEndpoints:
 
 class TestSystemMonitorTabTokenWiring:
     def test_does_not_auto_load_token_from_file_without_explicit_input(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         token_file = tmp_path / "tab_token.txt"
         token_file.write_text("tab-secret-value\n", encoding="utf-8")
         monkeypatch.setenv("SSE_AUTH_TOKEN_FILE", str(token_file))
         monkeypatch.delenv("SSE_AUTH", raising=False)
 
-        from tabs.system_monitor_tab import _resolve_sse_token
-
         assert _resolve_sse_token() is None
         assert _resolve_sse_token("tab-secret-value") == "tab-secret-value"
 
-    def test_disabled_mode_returns_empty_token(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_disabled_mode_returns_empty_token(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("SSE_AUTH", "disabled")
-        from tabs.system_monitor_tab import _resolve_sse_token
 
         assert _resolve_sse_token() == ""
 
-    def test_unresolved_token_returns_none(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_unresolved_token_returns_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("SSE_AUTH_TOKEN_FILE", raising=False)
         monkeypatch.delenv("SSE_AUTH_TOKEN", raising=False)
         monkeypatch.delenv("SSE_AUTH", raising=False)
-
-        from tabs.system_monitor_tab import _resolve_sse_token
 
         assert _resolve_sse_token() is None
 
@@ -354,12 +360,11 @@ class TestSseStreamSerializationError:
     ) -> None:
         monkeypatch.setattr(sse_server, "AUTH_TOKEN", "")
 
-        def _raise_value_error():
-            raise ValueError("unserializable metric payload")
+        def _raise_value_error() -> NoReturn:
+            msg = "unserializable metric payload"
+            raise ValueError(msg)
 
-        monkeypatch.setattr(
-            sse_server.system_monitor, "get_memory_info", _raise_value_error
-        )
+        monkeypatch.setattr(sse_server.system_monitor, "get_memory_info", _raise_value_error)
 
         handler = sse_server.SSEHandler.__new__(sse_server.SSEHandler)
         handler.path = "/stream"
@@ -374,4 +379,3 @@ class TestSseStreamSerializationError:
 
         assert "Data serialization error in SSE stream" in caplog.text
         assert "unserializable metric payload" in caplog.text
-

@@ -21,11 +21,13 @@ import asyncio
 import logging
 import os
 import ssl
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 WAVE4_INBOUND_TLS = "in-process inbound TLS"
+_MAX_PORT = 65535
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +70,7 @@ def inbound_mtls_port() -> int:
     except ValueError:
         msg = f"INBOUND_MTLS_PORT={raw!r} is not an integer"
         raise RuntimeError(msg) from None
-    if not 1 <= port <= 65535:
+    if not 1 <= port <= _MAX_PORT:
         msg = f"INBOUND_MTLS_PORT={port} is out of range"
         raise RuntimeError(msg)
     return port
@@ -229,7 +231,7 @@ def wrap_http_protocol(protocol_cls: type[Any]) -> type[Any]:
     return InboundMTLSProtocol
 
 
-def ssl_context_factory_for(ctx: ssl.SSLContext) -> Any:
+def ssl_context_factory_for(ctx: ssl.SSLContext) -> Callable[[object, object], ssl.SSLContext]:
     """uvicorn ``ssl_context_factory`` that serves a long-lived context."""
 
     def factory(_config: object, _default_factory: object) -> ssl.SSLContext:

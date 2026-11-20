@@ -42,7 +42,7 @@ func selfSignedPair(t *testing.T, cn string) (certPEM, keyPEM []byte) {
 
 func writeCert(t *testing.T, dir, certName, keyName string, certPEM, keyPEM []byte) {
 	t.Helper()
-	if err := os.WriteFile(filepath.Join(dir, certName), certPEM, 0o444); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, certName), certPEM, 0o400); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, keyName), keyPEM, 0o400); err != nil {
@@ -56,7 +56,7 @@ func TestNewTLSProxy_PeerIdentityHeader(t *testing.T) {
 	clientCert, clientKey := selfSignedPair(t, "test-client")
 	writeCert(t, dir, "svc-cert.pem", "svc-key.pem", serverCert, serverKey)
 	caBundlePath := filepath.Join(dir, "ca-bundle.pem")
-	_ = os.WriteFile(caBundlePath, clientCert, 0o444) // client cert is self-signed CA
+	_ = os.WriteFile(caBundlePath, clientCert, 0o400) // client cert is self-signed CA
 
 	var gotPeerIdentity string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -100,7 +100,11 @@ func TestNewTLSProxy_PeerIdentityHeader(t *testing.T) {
 		},
 	}
 
-	resp, err := client.Get("https://" + ln.Addr().String() + "/")
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "https://"+ln.Addr().String()+"/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +126,7 @@ func startProxyForUpstream(t *testing.T, upstreamURL string, responseHeaderTimeo
 	clientCert, clientKey := selfSignedPair(t, "test-client")
 	writeCert(t, dir, "svc-cert.pem", "svc-key.pem", serverCert, serverKey)
 	caBundlePath := filepath.Join(dir, "ca-bundle.pem")
-	if err := os.WriteFile(caBundlePath, clientCert, 0o444); err != nil {
+	if err := os.WriteFile(caBundlePath, clientCert, 0o400); err != nil {
 		t.Fatal(err)
 	}
 
@@ -185,7 +189,11 @@ func TestNewTLSProxy_HonorsConfiguredResponseHeaderTimeout(t *testing.T) {
 	client, addr := startProxyForUpstream(t, upstream.URL, 150*time.Millisecond)
 
 	start := time.Now()
-	resp, err := client.Get("https://" + addr + "/")
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "https://"+addr+"/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -209,7 +217,11 @@ func TestNewTLSProxy_SlowUpstreamWithinTimeoutSucceeds(t *testing.T) {
 
 	client, addr := startProxyForUpstream(t, upstream.URL, 5*time.Second)
 
-	resp, err := client.Get("https://" + addr + "/")
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "https://"+addr+"/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,7 +240,11 @@ func TestNewTLSProxy_UnreachableUpstreamReturns502(t *testing.T) {
 
 	client, addr := startProxyForUpstream(t, deadURL, 5*time.Second)
 
-	resp, err := client.Get("https://" + addr + "/")
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "https://"+addr+"/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -243,7 +259,7 @@ func TestNewTLSProxy_RejectsUnauthenticatedClient(t *testing.T) {
 	serverCert, serverKey := selfSignedPair(t, "test-server")
 	writeCert(t, dir, "svc-cert.pem", "svc-key.pem", serverCert, serverKey)
 	caBundlePath := filepath.Join(dir, "ca-bundle.pem")
-	_ = os.WriteFile(caBundlePath, serverCert, 0o444)
+	_ = os.WriteFile(caBundlePath, serverCert, 0o400)
 
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		t.Error("upstream should not be reached")
@@ -282,7 +298,14 @@ func TestNewTLSProxy_RejectsUnauthenticatedClient(t *testing.T) {
 			},
 		},
 	}
-	_, err = client.Get("https://" + ln.Addr().String() + "/")
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "https://"+ln.Addr().String()+"/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := client.Do(req)
+	if resp != nil {
+		_ = resp.Body.Close()
+	}
 	if err == nil {
 		t.Fatal("expected TLS handshake to fail without client cert")
 	}

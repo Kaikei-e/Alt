@@ -10,6 +10,7 @@ keeping the test suite fast while verifying handler + usecase glue.
 
 from __future__ import annotations
 
+from http import HTTPStatus
 from uuid import uuid4
 
 import httpx
@@ -89,11 +90,11 @@ async def test_post_then_get_runs_round_trip_via_asgi_transport() -> None:
             json=_cluster_payload(),
             headers={"X-Alt-Job-Id": job_id, "X-Alt-Genre": "ai"},
         )
-        assert create.status_code == 202
+        assert create.status_code == HTTPStatus.ACCEPTED
         run_id = create.json()["run_id"]
 
         read = await client.get(f"/v1/runs/{run_id}")
-        assert read.status_code == 200
+        assert read.status_code == HTTPStatus.OK
         body = read.json()
         assert body["run_id"] == run_id
         assert body["status"] == "running"
@@ -109,4 +110,4 @@ async def test_missing_run_returns_404_via_asgi_transport() -> None:
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
         resp = await client.get("/v1/runs/999")
-        assert resp.status_code == 404
+        assert resp.status_code == HTTPStatus.NOT_FOUND

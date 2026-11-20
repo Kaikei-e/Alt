@@ -42,10 +42,13 @@ func (r *feedRepository) GetUnprocessedFeeds(ctx context.Context, cursor *domain
 	if err != nil {
 		return nil, nil, fmt.Errorf("ListFeedURLs: %w", err)
 	}
+	if resp == nil || resp.Msg == nil {
+		return nil, nil, fmt.Errorf("ListFeedURLs: empty response")
+	}
 
-	urls := make([]*url.URL, 0, len(resp.Msg.Feeds))
-	for _, f := range resp.Msg.Feeds {
-		parsedURL, err := url.Parse(f.Url)
+	urls := make([]*url.URL, 0, len(resp.Msg.GetFeeds()))
+	for _, f := range resp.Msg.GetFeeds() {
+		parsedURL, err := url.Parse(f.GetUrl())
 		if err != nil {
 			continue
 		}
@@ -53,9 +56,9 @@ func (r *feedRepository) GetUnprocessedFeeds(ctx context.Context, cursor *domain
 	}
 
 	var newCursor *domain.Cursor
-	if resp.Msg.HasMore && resp.Msg.NextCursor != "" {
+	if resp.Msg.GetHasMore() && resp.Msg.GetNextCursor() != "" {
 		newCursor = &domain.Cursor{
-			LastID: resp.Msg.NextCursor,
+			LastID: resp.Msg.GetNextCursor(),
 		}
 	}
 
@@ -80,12 +83,15 @@ func (r *feedRepository) GetProcessingStats(ctx context.Context) (*domain.Proces
 		if err != nil {
 			return nil, fmt.Errorf("ListFeedURLs: %w", err)
 		}
+		if resp == nil || resp.Msg == nil {
+			return nil, fmt.Errorf("ListFeedURLs: empty response")
+		}
 
-		total += len(resp.Msg.Feeds)
-		if !resp.Msg.HasMore {
+		total += len(resp.Msg.GetFeeds())
+		if !resp.Msg.GetHasMore() {
 			break
 		}
-		cursor = resp.Msg.NextCursor
+		cursor = resp.Msg.GetNextCursor()
 	}
 
 	return &domain.ProcessingStatistics{

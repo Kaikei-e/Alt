@@ -2,14 +2,9 @@
 package client
 
 import (
-	"context"
-	"crypto/tls"
-	"net"
 	"net/http"
 	"strings"
 	"time"
-
-	"golang.org/x/net/http2"
 
 	"alt-butterfly-facade/internal/middleware"
 )
@@ -33,12 +28,10 @@ func NewBackendClient(baseURL string, requestTimeout, streamingTimeout time.Dura
 func NewBackendClientWithTransport(baseURL string, requestTimeout, streamingTimeout time.Duration, transport http.RoundTripper) *BackendClient {
 	if transport == nil {
 		// HTTP/2 transport for Connect-RPC (h2c - HTTP/2 cleartext)
-		transport = &http2.Transport{
-			AllowHTTP: true,
-			DialTLSContext: func(ctx context.Context, network, addr string, cfg *tls.Config) (net.Conn, error) {
-				var d net.Dialer
-				return d.DialContext(ctx, network, addr)
-			},
+		var protocols http.Protocols
+		protocols.SetUnencryptedHTTP2(true)
+		transport = &http.Transport{
+			Protocols: &protocols,
 		}
 	}
 
@@ -80,6 +73,7 @@ func (c *BackendClient) ForwardRequest(req *http.Request, token string) (*http.R
 	backendURL := c.BuildBackendURL(req.URL.Path)
 
 	// Create new request to backend
+	// #nosec G704 -- c.baseURL is fixed from server config; req.URL.Path only sets the path on that host.
 	backendReq, err := http.NewRequestWithContext(req.Context(), req.Method, backendURL, req.Body)
 	if err != nil {
 		return nil, err
@@ -91,6 +85,7 @@ func (c *BackendClient) ForwardRequest(req *http.Request, token string) (*http.R
 	// Set authentication token
 	backendReq.Header.Set(middleware.BackendTokenHeader, token)
 
+	// #nosec G704 -- destination host is fixed to c.baseURL from server config.
 	return c.httpClient.Do(backendReq)
 }
 
@@ -98,6 +93,7 @@ func (c *BackendClient) ForwardRequest(req *http.Request, token string) (*http.R
 func (c *BackendClient) ForwardStreamingRequest(req *http.Request, token string) (*http.Response, error) {
 	backendURL := c.BuildBackendURL(req.URL.Path)
 
+	// #nosec G704 -- c.baseURL is fixed from server config; req.URL.Path only sets the path on that host.
 	backendReq, err := http.NewRequestWithContext(req.Context(), req.Method, backendURL, req.Body)
 	if err != nil {
 		return nil, err
@@ -106,6 +102,7 @@ func (c *BackendClient) ForwardStreamingRequest(req *http.Request, token string)
 	copyHeaders(req.Header, backendReq.Header)
 	backendReq.Header.Set(middleware.BackendTokenHeader, token)
 
+	// #nosec G704 -- destination host is fixed to c.baseURL from server config.
 	return c.streamingClient.Do(backendReq)
 }
 
@@ -115,6 +112,7 @@ func (c *BackendClient) ForwardStreamingRequest(req *http.Request, token string)
 func (c *BackendClient) ForwardServiceRequest(req *http.Request, serviceToken string) (*http.Response, error) {
 	backendURL := c.BuildBackendURL(req.URL.Path)
 
+	// #nosec G704 -- c.baseURL is fixed from server config; req.URL.Path only sets the path on that host.
 	backendReq, err := http.NewRequestWithContext(req.Context(), req.Method, backendURL, req.Body)
 	if err != nil {
 		return nil, err
@@ -126,6 +124,7 @@ func (c *BackendClient) ForwardServiceRequest(req *http.Request, serviceToken st
 		backendReq.Header.Set("Authorization", "Bearer "+serviceToken)
 	}
 
+	// #nosec G704 -- destination host is fixed to c.baseURL from server config.
 	return c.httpClient.Do(backendReq)
 }
 
@@ -138,6 +137,7 @@ func (c *BackendClient) ForwardRESTRequest(req *http.Request, token string) (*ht
 		backendURL += "?" + req.URL.RawQuery
 	}
 
+	// #nosec G704 -- c.baseURL is fixed from server config; only path and query on that host come from req.
 	backendReq, err := http.NewRequestWithContext(req.Context(), req.Method, backendURL, req.Body)
 	if err != nil {
 		return nil, err
@@ -152,6 +152,7 @@ func (c *BackendClient) ForwardRESTRequest(req *http.Request, token string) (*ht
 	// Preserve Content-Length for proper body forwarding
 	backendReq.ContentLength = req.ContentLength
 
+	// #nosec G704 -- destination host is fixed to c.baseURL from server config.
 	return c.httpClient.Do(backendReq)
 }
 

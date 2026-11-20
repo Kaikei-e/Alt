@@ -28,7 +28,12 @@ func cohortMainFiles(t *testing.T) []string {
 
 func TestCohortMainsWireStartEnrollment(t *testing.T) {
 	for _, path := range cohortMainFiles(t) {
-		body, err := os.ReadFile(path)
+		root, err := os.OpenRoot(filepath.Dir(path))
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, err := root.ReadFile(filepath.Base(path))
+		_ = root.Close()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -44,7 +49,12 @@ func TestNotifierMainWiresStartEnrollmentBeforeDataHubClient(t *testing.T) {
 		t.Fatal("runtime.Caller failed")
 	}
 	path := filepath.Join(filepath.Dir(thisFile), "..", "..", "cmd", "notifier", "main.go")
-	body, err := os.ReadFile(path)
+	root, err := os.OpenRoot(filepath.Dir(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = root.Close() }()
+	body, err := root.ReadFile(filepath.Base(path))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -20,7 +20,7 @@ func TestHandleCSPReport_BoundsBodyAt16KiB(t *testing.T) {
 	e.POST("/security/csp-report", handleCSPReport)
 
 	oversized := bytes.Repeat([]byte("a"), 16*1024+1)
-	req := httptest.NewRequest(http.MethodPost, "/security/csp-report", bytes.NewReader(oversized))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/security/csp-report", bytes.NewReader(oversized))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
 
@@ -40,7 +40,7 @@ func TestHandleCSPReport_InvalidJSONDoesNotLogRawBody(t *testing.T) {
 	e.POST("/security/csp-report", handleCSPReport)
 
 	secretMarker := "SENSITIVE_RAW_PAYLOAD_MARKER_DO_NOT_LOG"
-	req := httptest.NewRequest(http.MethodPost, "/security/csp-report", strings.NewReader("{invalid-json:"+secretMarker))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/security/csp-report", strings.NewReader("{invalid-json:"+secretMarker))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
 

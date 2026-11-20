@@ -15,6 +15,7 @@ import (
 	"github.com/alt-project/altctl/internal/health"
 	"github.com/alt-project/altctl/internal/output"
 	"github.com/alt-project/altctl/internal/stack"
+	"github.com/stretchr/testify/require"
 )
 
 func setupUpTest(t *testing.T) {
@@ -23,12 +24,12 @@ func setupUpTest(t *testing.T) {
 	dryRun = true
 	quiet = false
 	// Reset flags that persist between test runs
-	upCmd.Flags().Set("all", "false")
-	upCmd.Flags().Set("no-deps", "false")
-	upCmd.Flags().Set("build", "false")
-	upCmd.Flags().Set("remove-orphans", "false")
-	upCmd.Flags().Set("progress", "auto")
-	upCmd.Flags().Set("detach", "false")
+	require.NoError(t, upCmd.Flags().Set("all", "false"))
+	require.NoError(t, upCmd.Flags().Set("no-deps", "false"))
+	require.NoError(t, upCmd.Flags().Set("build", "false"))
+	require.NoError(t, upCmd.Flags().Set("remove-orphans", "false"))
+	require.NoError(t, upCmd.Flags().Set("progress", "auto"))
+	require.NoError(t, upCmd.Flags().Set("detach", "false"))
 }
 
 func TestUp_DefaultStacks(t *testing.T) {

@@ -94,7 +94,7 @@ func TestKratosClient_GetFirstIdentityID(t *testing.T) {
 
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(tt.responseStatus)
-				json.NewEncoder(w).Encode(tt.responseBody)
+				assert.NoError(t, json.NewEncoder(w).Encode(tt.responseBody))
 			}))
 			defer server.Close()
 
@@ -118,7 +118,8 @@ func TestKratosClient_GetFirstIdentityID_InvalidJSON(t *testing.T) {
 		assert.Equal(t, "test-secret", r.Header.Get("X-Internal-Auth"))
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("invalid json"))
+		_, err := w.Write([]byte("invalid json"))
+		assert.NoError(t, err)
 	}))
 	defer server.Close()
 

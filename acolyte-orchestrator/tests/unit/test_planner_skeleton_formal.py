@@ -171,7 +171,7 @@ async def test_orphan_llm_queries_safely_dropped() -> None:
 
     keys = [s["key"] for s in result["outline"]]
     assert "nonexistent_section" not in keys
-    assert len(result["outline"]) == 3
+    assert len(result["outline"]) == len(EXPECTED_KEYS)
 
 
 # ---------------------------------------------------------------------------

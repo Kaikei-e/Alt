@@ -3,30 +3,27 @@
 import re
 
 
-def split_into_chunks(text: str, max_chars: int) -> list[str]:
-    """Split text into chunks satisfying max_chars constraints."""
-    if not text.strip():
-        return []
-
-    raw_sentences: list[str] = []
-    for line in text.splitlines():
-        line = line.strip()
+def _split_into_sentences(text: str) -> list[str]:
+    sentences: list[str] = []
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
         if not line:
             continue
-        parts = re.split(r"(?<=[。！？!?])(?![。！？!?])", line)
-        for part in parts:
-            part = part.strip()
+        for raw_part in re.split(r"(?<=[。！？!?])(?![。！？!?])", line):
+            part = raw_part.strip()
             if part:
-                raw_sentences.append(part)
+                sentences.append(part)
+    return sentences
 
+
+def _split_into_atomic_pieces(sentences: list[str], max_chars: int) -> list[str]:
     atomic_pieces: list[str] = []
-    for sentence in raw_sentences:
+    for sentence in sentences:
         if len(sentence) <= max_chars:
             atomic_pieces.append(sentence)
             continue
-        clauses = re.split(r"(?<=、)|(?<=,(?!\d))", sentence)
-        for clause in clauses:
-            clause = clause.strip()
+        for raw_clause in re.split(r"(?<=、)|(?<=,(?!\d))", sentence):
+            clause = raw_clause.strip()
             if not clause:
                 continue
             if len(clause) <= max_chars:
@@ -36,13 +33,13 @@ def split_into_chunks(text: str, max_chars: int) -> list[str]:
                     frag = clause[i : i + max_chars].strip()
                     if frag:
                         atomic_pieces.append(frag)
+    return [p for p in atomic_pieces if any(c.isalnum() for c in p)]
 
-    atomic_pieces = [p for p in atomic_pieces if any(c.isalnum() for c in p)]
 
+def _pack_pieces(pieces: list[str], max_chars: int) -> list[str]:
     chunks: list[str] = []
     current_chunk = ""
-
-    for piece in atomic_pieces:
+    for piece in pieces:
         if not current_chunk:
             current_chunk = piece
             continue
@@ -61,8 +58,15 @@ def split_into_chunks(text: str, max_chars: int) -> list[str]:
         else:
             chunks.append(current_chunk)
             current_chunk = piece
-
     if current_chunk:
         chunks.append(current_chunk)
-
     return chunks
+
+
+def split_into_chunks(text: str, max_chars: int) -> list[str]:
+    """Split text into chunks satisfying max_chars constraints."""
+    if not text.strip():
+        return []
+    sentences = _split_into_sentences(text)
+    atomic_pieces = _split_into_atomic_pieces(sentences, max_chars)
+    return _pack_pieces(atomic_pieces, max_chars)

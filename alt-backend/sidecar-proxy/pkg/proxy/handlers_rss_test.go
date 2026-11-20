@@ -23,7 +23,7 @@ func TestBuildEnvoyRequest_SetsHostField(t *testing.T) {
 		logger: log.New(io.Discard, "", 0),
 	}
 
-	originalReq := httptest.NewRequest("GET", "/proxy/https://zenn.dev/feed", nil)
+	originalReq := httptest.NewRequestWithContext(t.Context(), "GET", "/proxy/https://zenn.dev/feed", nil)
 	targetURL, err := url.Parse("https://zenn.dev/feed")
 	if err != nil {
 		t.Fatalf("url.Parse() error = %v", err)

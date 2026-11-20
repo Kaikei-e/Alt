@@ -17,17 +17,27 @@ Reference: docs/plan/20260706largerepocodereview.md
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
+from typing import Never
 from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from recap_subworker.app.routers import evaluation as evaluation_router
 from recap_subworker.infra.config import Settings
 
 
-def _minimal_results() -> dict:
+class _DbUnavailableError(RuntimeError):
+    """Raised by _SucceedThenFailDAO to simulate DB failure."""
+
+    def __init__(self) -> None:
+        super().__init__("db unavailable")
+
+
+def _minimal_results() -> dict[str, object]:
     return {
         "accuracy": 0.9,
         "accuracy_ci": {"point": 0.9, "lower": 0.8, "upper": 1.0, "width": 0.2},
@@ -47,7 +57,12 @@ def _minimal_results() -> dict:
 
 
 class _FakeEvaluationService:
-    def evaluate(self, golden_data_path, language=None, **kwargs):
+    def evaluate(
+        self,
+        golden_data_path: Path | None,
+        language: str | None = None,
+        **kwargs: object,
+    ) -> dict[str, object]:
         return _minimal_results()
 
 
@@ -55,33 +70,39 @@ class _SucceedThenFailDAO:
     """Mirrors the real bug scenario: save_genre_evaluation succeeds,
     insert_system_metrics fails afterwards."""
 
-    def __init__(self, session):
+    def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def save_genre_evaluation(self, **kwargs):
+    async def save_genre_evaluation(
+        self,
+        **kwargs: object,
+    ) -> object:
         return uuid4()
 
-    async def insert_system_metrics(self, **kwargs):
-        raise RuntimeError("db unavailable")
+    async def insert_system_metrics(
+        self,
+        **kwargs: object,
+    ) -> Never:
+        raise _DbUnavailableError
 
 
 @pytest.fixture
-def fake_container():
+def fake_container() -> MagicMock:
     container = MagicMock()
     container.evaluation_service = _FakeEvaluationService()
     return container
 
 
 @pytest.fixture
-def fake_settings():
+def fake_settings() -> Settings:
     return Settings(model_id="fake", allow_embedding_drift=True)
 
 
 @pytest.fixture
-def stub_existing_paths(monkeypatch):
+def stub_existing_paths(monkeypatch: pytest.MonkeyPatch) -> None:
     """Bypass filesystem checks: require_existing_path returns a Path as-is."""
 
-    def _stub(user_path: str, base_dirs=None):
+    def _stub(user_path: str, base_dirs: object = None) -> Path:
         return Path(user_path)
 
     monkeypatch.setattr(evaluation_router, "require_existing_path", _stub)
@@ -89,7 +110,10 @@ def stub_existing_paths(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_evaluate_genres_does_not_mask_db_failure_with_nameerror(
-    monkeypatch, fake_container, fake_settings, stub_existing_paths
+    monkeypatch: pytest.MonkeyPatch,
+    fake_container: MagicMock,
+    fake_settings: Settings,
+    stub_existing_paths: None,
 ) -> None:
     """insert_system_metrics failing *after* a successful
     save_genre_evaluation must not raise NameError/UnboundLocalError for
@@ -104,7 +128,7 @@ async def test_evaluate_genres_does_not_mask_db_failure_with_nameerror(
         request=request,
         language=None,
         settings=fake_settings,
-        session=object(),
+        session=MagicMock(spec=AsyncSession),
         container=fake_container,
     )
 
@@ -113,16 +137,23 @@ async def test_evaluate_genres_does_not_mask_db_failure_with_nameerror(
 
 @pytest.mark.asyncio
 async def test_evaluate_genres_reuses_container_singleton_and_offloads(
-    monkeypatch, fake_container, fake_settings, stub_existing_paths
+    monkeypatch: pytest.MonkeyPatch,
+    fake_container: MagicMock,
+    fake_settings: Settings,
+    stub_existing_paths: None,
 ) -> None:
     """`/v1/evaluation/genres` must reuse container.evaluation_service (no
     per-request EvaluationService() construction for the default weights
     path) and must call service.evaluate() via asyncio.to_thread rather than
     synchronously inline, so a CPU-heavy evaluate() run does not block the
     event loop."""
-    calls = []
+    calls: list[tuple[Callable[..., object], tuple[object, ...], dict[str, object]]] = []
 
-    async def fake_to_thread(func, *args, **kwargs):
+    async def fake_to_thread[**P, R](
+        func: Callable[P, R],
+        *args: P.args,
+        **kwargs: P.kwargs,
+    ) -> R:
         calls.append((func, args, kwargs))
         return func(*args, **kwargs)
 
@@ -134,7 +165,7 @@ async def test_evaluate_genres_reuses_container_singleton_and_offloads(
         request=request,
         language=None,
         settings=fake_settings,
-        session=object(),
+        session=MagicMock(spec=AsyncSession),
         container=fake_container,
     )
 
@@ -145,17 +176,28 @@ async def test_evaluate_genres_reuses_container_singleton_and_offloads(
 
 @pytest.mark.asyncio
 async def test_evaluate_genres_builds_adhoc_service_for_custom_weights_path(
-    monkeypatch, fake_container, fake_settings, stub_existing_paths
+    monkeypatch: pytest.MonkeyPatch,
+    fake_container: MagicMock,
+    fake_settings: Settings,
+    stub_existing_paths: None,
 ) -> None:
     """A request-supplied weights_path override must not silently reuse the
     settings-derived singleton (it needs different weights loaded)."""
-    created_kwargs = {}
+    created_kwargs: dict[str, object] = {}
 
     class _FakeCustomService:
-        def __init__(self, **kwargs):
+        def __init__(
+            self,
+            **kwargs: object,
+        ) -> None:
             created_kwargs.update(kwargs)
 
-        def evaluate(self, golden_data_path, language=None, **kwargs):
+        def evaluate(
+            self,
+            golden_data_path: Path | None,
+            language: str | None = None,
+            **kwargs: object,
+        ) -> dict[str, object]:
             return _minimal_results()
 
     monkeypatch.setattr(evaluation_router, "EvaluationService", _FakeCustomService)
@@ -170,7 +212,7 @@ async def test_evaluate_genres_builds_adhoc_service_for_custom_weights_path(
         request=request,
         language=None,
         settings=fake_settings,
-        session=object(),
+        session=MagicMock(spec=AsyncSession),
         container=fake_container,
     )
 

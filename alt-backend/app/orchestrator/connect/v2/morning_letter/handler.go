@@ -60,12 +60,12 @@ func (h *Handler) StreamChat(
 		return connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 
-	if len(req.Msg.Messages) == 0 {
+	if len(req.Msg.GetMessages()) == 0 {
 		h.logger.WarnContext(ctx, "no messages in request")
 		return connect.NewError(connect.CodeInvalidArgument, nil)
 	}
 
-	withinHours := req.Msg.WithinHours
+	withinHours := req.Msg.GetWithinHours()
 	if withinHours <= 0 {
 		withinHours = 24
 	}
@@ -74,10 +74,10 @@ func (h *Handler) StreamChat(
 	}
 
 	h.logger.InfoContext(ctx, "proxying MorningLetter.StreamChat to rag-orchestrator",
-		slog.Int("message_count", len(req.Msg.Messages)),
+		slog.Int("message_count", len(req.Msg.GetMessages())),
 		slog.Int("within_hours", int(withinHours)))
 
-	upstreamStream, err := h.streamChat.StreamChat(ctx, req.Msg.Messages, withinHours)
+	upstreamStream, err := h.streamChat.StreamChat(ctx, req.Msg.GetMessages(), withinHours)
 	if err != nil {
 		return errorhandler.HandleUpstreamError(ctx, h.logger, err, "StreamChat.ConnectUpstream")
 	}
@@ -139,11 +139,11 @@ func (h *Handler) GetLetterByDate(
 		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 
-	if req.Msg.TargetDate == "" {
+	if req.Msg.GetTargetDate() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, nil)
 	}
 
-	doc, err := h.morningLetterUC.GetLetterByDate(ctx, req.Msg.TargetDate)
+	doc, err := h.morningLetterUC.GetLetterByDate(ctx, req.Msg.GetTargetDate())
 	if err != nil {
 		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "GetLetterByDate")
 	}
@@ -165,12 +165,12 @@ func (h *Handler) GetLetterEnrichment(
 		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 
-	if req.Msg.LetterId == "" {
+	if req.Msg.GetLetterId() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, nil)
 	}
 
 	enrichments, err := h.morningLetterUC.GetLetterEnrichment(
-		ctx, req.Msg.LetterId, user.UserID.String(),
+		ctx, req.Msg.GetLetterId(), user.UserID.String(),
 	)
 	if err != nil {
 		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "GetLetterEnrichment")
@@ -216,7 +216,7 @@ func (h *Handler) RegenerateLatest(
 
 	tz := ""
 	if req.Msg.EditionTimezone != nil {
-		tz = *req.Msg.EditionTimezone
+		tz = req.Msg.GetEditionTimezone()
 	}
 
 	doc, regenerated, retryAfter, err := h.morningLetterUC.RegenerateLatest(ctx, user.UserID.String(), tz)
@@ -247,11 +247,11 @@ func (h *Handler) GetLetterSources(
 		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 
-	if req.Msg.LetterId == "" {
+	if req.Msg.GetLetterId() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, nil)
 	}
 
-	sources, err := h.morningLetterUC.GetLetterSources(ctx, req.Msg.LetterId)
+	sources, err := h.morningLetterUC.GetLetterSources(ctx, req.Msg.GetLetterId())
 	if err != nil {
 		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "GetLetterSources")
 	}

@@ -95,7 +95,7 @@ func TestMarkAsRead_Success(t *testing.T) {
 
 	require.NoError(t, err)
 	require.NotNil(t, resp)
-	assert.Equal(t, "Feed read status updated", resp.Msg.Message)
+	assert.Equal(t, "Feed read status updated", resp.Msg.GetMessage())
 }
 
 func TestMarkAsReadResponse_Construction(t *testing.T) {
@@ -103,7 +103,7 @@ func TestMarkAsReadResponse_Construction(t *testing.T) {
 		Message: "Feed read status updated",
 	}
 
-	assert.Equal(t, "Feed read status updated", resp.Message)
+	assert.Equal(t, "Feed read status updated", resp.GetMessage())
 }
 
 func TestHandler_MarkAsRead_FeedNotFound_Returns404(t *testing.T) {

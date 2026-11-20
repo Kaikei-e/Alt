@@ -23,6 +23,8 @@ import numpy as np
 import pytest
 from sklearn.linear_model import LogisticRegression
 
+from recap_subworker.infra.config import Settings
+
 
 def _fit_tiny_model(n_classes: int) -> LogisticRegression:
     """Fit a trivial LogisticRegression so ``classes_`` has length ``n_classes``."""
@@ -68,10 +70,8 @@ def _build_settings(
     ja_model: Path,
     ja_thresholds: Path,
     baseline: int | None = None,
-):
+) -> Settings:
     """Construct Settings with only the fields needed by both validators."""
-    from recap_subworker.infra.config import Settings
-
     kwargs: dict[str, object] = {
         "classification_backend": "joblib",
         "genre_classifier_model_path_ja": str(ja_model),
@@ -113,8 +113,6 @@ class TestClassifierCardinalityValidator:
         self, ja_model_path_17: Path, ja_thresholds_path: Path, tmp_path: Path
     ) -> None:
         """The joblib cardinality check must short-circuit for other backends."""
-        from recap_subworker.infra.config import Settings
-
         # learning_machine backend needs its own artefact dir
         lm_dir = tmp_path / "lm"
         lm_dir.mkdir()

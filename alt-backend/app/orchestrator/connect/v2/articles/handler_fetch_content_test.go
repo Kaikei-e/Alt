@@ -311,11 +311,15 @@ func TestFailureScope_ReachesTheWireAsAResponseHeader(t *testing.T) {
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
-	resp, err := server.Client().Post(
+	req, err := http.NewRequestWithContext(
+		t.Context(),
+		http.MethodPost,
 		server.URL+"/test.v1.Service/Method",
-		"application/json",
 		strings.NewReader(`{"url":"https://example.com/article"}`),
 	)
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := server.Client().Do(req)
 	require.NoError(t, err)
 	defer func() { _ = resp.Body.Close() }()
 

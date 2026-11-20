@@ -6,7 +6,7 @@ import (
 
 	"auth-hub/internal/usecase"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 // InternalHandler handles internal service-to-service requests.
@@ -32,7 +32,7 @@ type systemUserResponse struct {
 }
 
 // HandleSystemUser returns the system user ID for internal service operations.
-func (h *InternalHandler) HandleSystemUser(c echo.Context) error {
+func (h *InternalHandler) HandleSystemUser(c *echo.Context) error {
 	ctx := c.Request().Context()
 
 	userID, err := h.uc.Execute(ctx)
@@ -46,7 +46,7 @@ func (h *InternalHandler) HandleSystemUser(c echo.Context) error {
 }
 
 // HandleInvalidateSession purges a session from the cache on request from internal services.
-func (h *InternalHandler) HandleInvalidateSession(c echo.Context) error {
+func (h *InternalHandler) HandleInvalidateSession(c *echo.Context) error {
 	ctx := c.Request().Context()
 	var req InvalidateSessionRequest
 	if err := c.Bind(&req); err != nil {
@@ -82,7 +82,7 @@ type introspectTokenResponse struct {
 
 // HandleIntrospectToken validates a JWT token and returns its key claims.
 // This endpoint is only accessible to verified mTLS peers on the internal listener.
-func (h *InternalHandler) HandleIntrospectToken(c echo.Context) error {
+func (h *InternalHandler) HandleIntrospectToken(c *echo.Context) error {
 	ctx := c.Request().Context()
 
 	c.Request().Body = http.MaxBytesReader(c.Response(), c.Request().Body, 4096)

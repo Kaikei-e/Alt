@@ -106,7 +106,7 @@ func TestCursorManager_Lock(t *testing.T) {
 
 	// Second lock should fail
 	err = manager2.Lock()
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "locked by another process")
 
 	// Unlock first manager

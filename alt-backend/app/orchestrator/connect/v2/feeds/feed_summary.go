@@ -31,11 +31,11 @@ func (h *Handler) StreamSummarize(
 
 	feedURL := ""
 	if req.Msg.FeedUrl != nil {
-		feedURL = *req.Msg.FeedUrl
+		feedURL = req.Msg.GetFeedUrl()
 	}
 	articleID := ""
 	if req.Msg.ArticleId != nil {
-		articleID = *req.Msg.ArticleId
+		articleID = req.Msg.GetArticleId()
 	}
 
 	if feedURL == "" && articleID == "" {
@@ -45,11 +45,11 @@ func (h *Handler) StreamSummarize(
 
 	content := ""
 	if req.Msg.Content != nil {
-		content = *req.Msg.Content
+		content = req.Msg.GetContent()
 	}
 	title := ""
 	if req.Msg.Title != nil {
-		title = *req.Msg.Title
+		title = req.Msg.GetTitle()
 	}
 
 	resolvedArticleID, resolvedTitle, resolvedContent, err := h.resolveArticle(ctx, feedURL, articleID, content, title)
@@ -65,7 +65,7 @@ func (h *Handler) StreamSummarize(
 			fmt.Errorf("content cannot be empty for summarization"))
 	}
 
-	forceRefresh := req.Msg.ForceRefresh != nil && *req.Msg.ForceRefresh
+	forceRefresh := req.Msg.ForceRefresh != nil && req.Msg.GetForceRefresh()
 	if !forceRefresh {
 		existingSummary, err := h.deps.SummaryStore.FetchArticleSummaryByArticleID(ctx, resolvedArticleID)
 		if err == nil && existingSummary != nil && existingSummary.Summary != "" && !summarize_article_usecase.IsErrorPayloadSummary(existingSummary.Summary) {

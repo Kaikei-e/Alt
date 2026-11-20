@@ -21,8 +21,8 @@ func TestGetFeedStats(t *testing.T) {
 
 	require.NoError(t, err)
 	require.NotNil(t, resp)
-	assert.Equal(t, int64(10), resp.Msg.FeedAmount)
-	assert.Equal(t, int64(7), resp.Msg.SummarizedFeedAmount)
+	assert.Equal(t, int64(10), resp.Msg.GetFeedAmount())
+	assert.Equal(t, int64(7), resp.Msg.GetSummarizedFeedAmount())
 }
 
 func TestGetDetailedFeedStats(t *testing.T) {
@@ -34,9 +34,9 @@ func TestGetDetailedFeedStats(t *testing.T) {
 
 	require.NoError(t, err)
 	require.NotNil(t, resp)
-	assert.Equal(t, int64(10), resp.Msg.FeedAmount)
-	assert.Equal(t, int64(100), resp.Msg.ArticleAmount)
-	assert.Equal(t, int64(3), resp.Msg.UnsummarizedFeedAmount)
+	assert.Equal(t, int64(10), resp.Msg.GetFeedAmount())
+	assert.Equal(t, int64(100), resp.Msg.GetArticleAmount())
+	assert.Equal(t, int64(3), resp.Msg.GetUnsummarizedFeedAmount())
 }
 
 func TestGetFeedStats_RequiresAuth(t *testing.T) {
@@ -78,12 +78,12 @@ func TestStreamFeedStats_DataConstruction(t *testing.T) {
 		},
 	}
 
-	assert.Equal(t, int64(10), resp.FeedAmount)
-	assert.Equal(t, int64(3), resp.UnsummarizedFeedAmount)
-	assert.Equal(t, int64(100), resp.TotalArticles)
-	assert.NotNil(t, resp.Metadata)
-	assert.False(t, resp.Metadata.IsHeartbeat)
-	assert.Greater(t, resp.Metadata.Timestamp, int64(0))
+	assert.Equal(t, int64(10), resp.GetFeedAmount())
+	assert.Equal(t, int64(3), resp.GetUnsummarizedFeedAmount())
+	assert.Equal(t, int64(100), resp.GetTotalArticles())
+	assert.NotNil(t, resp.GetMetadata())
+	assert.False(t, resp.GetMetadata().GetIsHeartbeat())
+	assert.Positive(t, resp.GetMetadata().GetTimestamp())
 }
 
 func TestStreamFeedStats_HeartbeatConstruction(t *testing.T) {
@@ -94,8 +94,8 @@ func TestStreamFeedStats_HeartbeatConstruction(t *testing.T) {
 		},
 	}
 
-	assert.Equal(t, int64(0), heartbeat.FeedAmount)
-	assert.Equal(t, int64(0), heartbeat.UnsummarizedFeedAmount)
-	assert.Equal(t, int64(0), heartbeat.TotalArticles)
-	assert.True(t, heartbeat.Metadata.IsHeartbeat)
+	assert.Equal(t, int64(0), heartbeat.GetFeedAmount())
+	assert.Equal(t, int64(0), heartbeat.GetUnsummarizedFeedAmount())
+	assert.Equal(t, int64(0), heartbeat.GetTotalArticles())
+	assert.True(t, heartbeat.GetMetadata().GetIsHeartbeat())
 }

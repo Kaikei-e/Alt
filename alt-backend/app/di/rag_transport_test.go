@@ -188,7 +188,11 @@ func TestNewRagConnectHTTPClient_Positive_RealTLSHandshake(t *testing.T) {
 	}
 
 	// Real mTLS round-trip request over genuine factory client
-	resp, err := client.Get(srv.URL + "/health")
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL+"/health", nil)
+	if err != nil {
+		t.Fatalf("build request: %v", err)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatalf("real mTLS request with genuine client failed: %v", err)
 	}
@@ -224,7 +228,14 @@ func TestNewRagConnectHTTPClient_WrongCA_Rejected(t *testing.T) {
 	t.Setenv("MTLS_CA_FILE", caPath) // trusts server CA for server validation
 
 	client := newRagConnectHTTPClient(srv.URL)
-	_, err := client.Get(srv.URL + "/health")
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL+"/health", nil)
+	if err != nil {
+		t.Fatalf("build request: %v", err)
+	}
+	resp, err := client.Do(req)
+	if resp != nil {
+		defer func() { _ = resp.Body.Close() }()
+	}
 	if err == nil {
 		t.Fatal("expected TLS handshake error for client cert signed by wrong CA; got nil")
 	}
@@ -250,7 +261,14 @@ func TestNewRagConnectHTTPClient_WrongHostname_Rejected(t *testing.T) {
 	t.Setenv("MTLS_CA_FILE", caPath)
 
 	client := newRagConnectHTTPClient(srv.URL)
-	_, err := client.Get(srv.URL + "/health")
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL+"/health", nil)
+	if err != nil {
+		t.Fatalf("build request: %v", err)
+	}
+	resp, err := client.Do(req)
+	if resp != nil {
+		defer func() { _ = resp.Body.Close() }()
+	}
 	if err == nil {
 		t.Fatal("expected TLS hostname verification error; got nil")
 	}
@@ -313,7 +331,14 @@ func TestNewRagConnectHTTPClient_NoCertStartupFailure_Vs_MissingClientTLS(t *tes
 			t.Fatal("expected non-nil plaintext client")
 		}
 		// Attempting request to mTLS server with plaintext client fails
-		_, err := plainClient.Get(srv.URL + "/health")
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL+"/health", nil)
+		if err != nil {
+			t.Fatalf("build request: %v", err)
+		}
+		resp, err := plainClient.Do(req)
+		if resp != nil {
+			defer func() { _ = resp.Body.Close() }()
+		}
 		if err == nil {
 			t.Fatal("expected connection/TLS error when plaintext client touches mTLS server; got nil")
 		}
@@ -357,7 +382,11 @@ func TestNewRagConnectHTTPClient_RedirectSeparatedest0_NeverFollows(t *testing.T
 	// Build client using ACTUAL factory — not manually created client
 	client := newRagConnectHTTPClient(srv.URL)
 
-	resp, err := client.Get(srv.URL + "/redirect")
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL+"/redirect", nil)
+	if err != nil {
+		t.Fatalf("build request: %v", err)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatalf("request to redirect endpoint failed: %v", err)
 	}

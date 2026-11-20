@@ -1,7 +1,6 @@
 package di
 
 import (
-	"io"
 	"log/slog"
 	"testing"
 	"time"
@@ -13,7 +12,7 @@ import (
 )
 
 func discardLogger() *slog.Logger {
-	return slog.New(slog.NewTextHandler(io.Discard, nil))
+	return slog.New(slog.DiscardHandler)
 }
 
 func adminMonitorConfig(enabled bool, prometheusURL string) *config.Config {

@@ -15,7 +15,6 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
-	"go.opentelemetry.io/otel/log/global"
 	"go.opentelemetry.io/otel/propagation"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	"go.opentelemetry.io/otel/sdk/resource"
@@ -102,7 +101,7 @@ func InitProvider(ctx context.Context, cfg Config) (ShutdownFunc, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to init logger provider: %w", err)
 	}
-	global.SetLoggerProvider(loggerProvider)
+	otel.SetLoggerProvider(loggerProvider)
 
 	return func(ctx context.Context) error {
 		var errs []error
@@ -117,15 +116,6 @@ func InitProvider(ctx context.Context, cfg Config) (ShutdownFunc, error) {
 		}
 		return nil
 	}, nil
-}
-
-// otlpInsecure reports whether the OTLP exporter should disable TLS.
-//
-// Plaintext (http:// or scheme-less) is intentional for the in-cluster
-// collector on the Docker network — that hop is not mTLS-terminated today.
-// Use https:// endpoints when exporting to a TLS-capable collector.
-func otlpInsecure(endpoint string) bool {
-	return !strings.HasPrefix(strings.ToLower(endpoint), "https://")
 }
 
 // buildHTTPTransport constructs an *http.Transport that honours the standard

@@ -6,9 +6,9 @@ import asyncio
 import hmac
 import logging
 import os
-import sys
-from datetime import datetime
+from datetime import UTC, datetime
 
+import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, ConfigDict
@@ -110,7 +110,7 @@ async def collect_snapshot() -> SnapshotPayload:
         asyncio.to_thread(get_top_processes, 10),
     )
     return SnapshotPayload(
-        timestamp=datetime.now().isoformat(),
+        timestamp=datetime.now(tz=UTC).astimezone().isoformat(),
         memory=MemoryPayload(
             total=memory_info.total,
             used=memory_info.used,
@@ -723,9 +723,7 @@ async def index() -> HTMLResponse:
 async def websocket_endpoint(websocket: WebSocket) -> None:
     """WebSocketエンドポイントでリアルタイムデータを送信"""
     token = websocket.query_params.get("token") or ""
-    if WEB_TOKEN and not hmac.compare_digest(
-        token.encode("utf-8"), WEB_TOKEN.encode("utf-8")
-    ):
+    if WEB_TOKEN and not hmac.compare_digest(token.encode("utf-8"), WEB_TOKEN.encode("utf-8")):
         await websocket.close(code=4401)
         return
     await websocket.accept()
@@ -740,7 +738,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 logger.exception("Failed to collect monitoring snapshot")
                 # エラーが発生しても接続を維持し、空のデータを送信
                 fallback = SnapshotPayload(
-                    timestamp=datetime.now().isoformat(),
+                    timestamp=datetime.now(tz=UTC).astimezone().isoformat(),
                     memory=MemoryPayload(total=0, used=0, available=0, percent=0),
                     cpu=CpuPayload(percent=0.0),
                     gpu=GpuPayload(available=False, gpus=[]),
@@ -768,14 +766,6 @@ app = create_app()
 
 def main() -> None:
     """Webサーバーを起動"""
-    try:
-        import uvicorn
-    except ImportError:
-        print("エラー: uvicornがインストールされていません")
-        print("以下のコマンドでインストールしてください:")
-        print("  uv sync")
-        sys.exit(1)
-
     if WEB_TOKEN:
         logger.info("utilizer_web_auth_enabled: WS connections require ?token=")
     else:

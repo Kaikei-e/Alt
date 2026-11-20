@@ -49,7 +49,9 @@ impl KeywordMatcher {
     pub fn find_matches(&self, text: &str) -> Vec<Match> {
         let mut results = Vec::new();
         for mat in self.ac.find_iter(text) {
-            if let Some(idx) = self.lookup_index(&text[mat.start()..mat.end()]) {
+            if let Some(slice) = text.get(mat.start()..mat.end())
+                && let Some(idx) = self.lookup_index(slice)
+            {
                 results.push(Match { index: idx });
             }
         }
@@ -144,7 +146,12 @@ pub static DEFAULT_KEYWORDS: LazyLock<Vec<KeywordEntry>> = LazyLock::new(|| {
 /// 既定辞書から matcher を構築する。
 #[must_use]
 pub fn default_matcher() -> KeywordMatcher {
-    KeywordMatcher::new(&DEFAULT_KEYWORDS).expect("default keyword matcher")
+    #[expect(
+        clippy::expect_used,
+        reason = "DEFAULT_KEYWORDS is a static list of distinct ASCII phrases valid by construction"
+    )]
+    KeywordMatcher::new(&DEFAULT_KEYWORDS)
+        .expect("DEFAULT_KEYWORDS is a static list of distinct ASCII phrases valid by construction")
 }
 
 /// マッチ結果からジャンルごとの加重スコアを計算する。

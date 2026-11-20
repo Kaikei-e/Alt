@@ -78,19 +78,19 @@ func TestFetchArticleSummary_Success(t *testing.T) {
 
 	require.NoError(t, err)
 	require.NotNil(t, resp)
-	assert.Equal(t, 2, len(resp.Msg.MatchedArticles))
-	assert.Equal(t, int32(2), resp.Msg.TotalMatched)
-	assert.Equal(t, int32(2), resp.Msg.RequestedCount)
+	assert.Len(t, resp.Msg.GetMatchedArticles(), 2)
+	assert.Equal(t, int32(2), resp.Msg.GetTotalMatched())
+	assert.Equal(t, int32(2), resp.Msg.GetRequestedCount())
 
 	// Verify first article
-	assert.Equal(t, "Test Article 1", resp.Msg.MatchedArticles[0].Title)
-	assert.Equal(t, "Content 1", resp.Msg.MatchedArticles[0].Content)
-	assert.Equal(t, "Author 1", resp.Msg.MatchedArticles[0].Author)
-	assert.Equal(t, "source-1", resp.Msg.MatchedArticles[0].SourceId)
+	assert.Equal(t, "Test Article 1", resp.Msg.GetMatchedArticles()[0].GetTitle())
+	assert.Equal(t, "Content 1", resp.Msg.GetMatchedArticles()[0].GetContent())
+	assert.Equal(t, "Author 1", resp.Msg.GetMatchedArticles()[0].GetAuthor())
+	assert.Equal(t, "source-1", resp.Msg.GetMatchedArticles()[0].GetSourceId())
 
 	// Verify second article (with nil author)
-	assert.Equal(t, "Test Article 2", resp.Msg.MatchedArticles[1].Title)
-	assert.Equal(t, "", resp.Msg.MatchedArticles[1].Author)
+	assert.Equal(t, "Test Article 2", resp.Msg.GetMatchedArticles()[1].GetTitle())
+	assert.Empty(t, resp.Msg.GetMatchedArticles()[1].GetAuthor())
 }
 
 func TestFetchArticleSummary_EmptyURLs(t *testing.T) {

@@ -18,11 +18,12 @@ use super::ports::{CardGenerator, CardVerifier, EmbedCluster, FeedSource, GenreT
 use super::rank::{RankCandidatesArgs, compute_cluster_fingerprint, rank_candidates};
 use crate::clients::alt_backend::AltBackendFeed;
 use crate::clients::news_creator::models::{
-    CardContent, CardGenerateOutcome, CardGenerateRequest, CardItemInput,
+    CardContent, CardGenerateOutcome, CardGenerateRequest, CardGenerationMetadata, CardItemInput,
 };
 use crate::clients::subworker::cards::{
     ClusterOutput, ClusterStoriesRequest, ClusterStoriesResponse, ClusterStoryItem,
-    StoryClusterParams, VerifyCardRequest, VerifyItemInput, VerifySentenceInput, VerifyThresholds,
+    StoryClusterParams, VerifyCardRequest, VerifyCardResponse, VerifyItemInput,
+    VerifySentenceInput, VerifyThresholds,
 };
 use crate::store::dao::cards::{
     PreviousCardSummary, PreviousCardsJob, RecapCard, RecapCardCandidate, RecapCardJobStats,
@@ -353,6 +354,91 @@ struct PersistArgs<'a> {
     params_version: &'a str,
     replay_window_id: Option<Uuid>,
     created_at: DateTime<Utc>,
+}
+
+struct GenerationStageInput<'a> {
+    job_id: Uuid,
+    candidates: &'a [RecapCardCandidate],
+    deduped_items: &'a [NormalizedItem],
+    feeds: &'a [AltBackendFeed],
+    cluster_resp: &'a ClusterStoriesResponse,
+    params: &'a CardsParams,
+    job_created_at: DateTime<Utc>,
+    card_generator: Arc<dyn CardGenerator>,
+    card_verifier: Arc<dyn CardVerifier>,
+}
+
+struct CandidateLookup<'a> {
+    item_by_id: HashMap<Uuid, &'a NormalizedItem>,
+    feed_by_id: HashMap<Uuid, &'a AltBackendFeed>,
+    cluster_by_fp: HashMap<String, &'a ClusterOutput>,
+}
+
+struct GateRunCtx<'a> {
+    job_id: Uuid,
+    candidate_id: Uuid,
+    params: &'a CardsParams,
+    card_generator: &'a dyn CardGenerator,
+    card_verifier: &'a dyn CardVerifier,
+}
+
+struct GeneratedCardState {
+    card: CardContent,
+    generation: CardGenerationMetadata,
+    ja_ratio: f32,
+    regeneration_count: usize,
+}
+
+struct CardAttemptState<'a> {
+    gen_req: &'a mut CardGenerateRequest,
+    state: &'a mut GeneratedCardState,
+    cards_dropped: &'a mut HashMap<String, usize>,
+}
+
+struct VerifyOutcome {
+    verify_resp: VerifyCardResponse,
+    deleted_sentence_indices: Vec<usize>,
+    had_g3_fail: bool,
+    had_g4_fail: bool,
+}
+
+struct DedupEmbedOutput {
+    deduped: Vec<NormalizedItem>,
+    embeddings: Vec<Vec<f32>>,
+    embed_ms: i64,
+    total_cache_hits: usize,
+    total_cache_misses: usize,
+    personal_vector: Option<Vec<f32>>,
+}
+
+struct CardGenerationContext<'a> {
+    job_id: Uuid,
+    candidates: &'a [RecapCardCandidate],
+    deduped: &'a [NormalizedItem],
+    feeds: &'a [AltBackendFeed],
+    cluster_resp: &'a ClusterStoriesResponse,
+    params: &'a CardsParams,
+    job_created_at: DateTime<Utc>,
+}
+
+struct CardAssemblyInput<'a> {
+    job_id: Uuid,
+    candidate: &'a RecapCardCandidate,
+    lookup: &'a CandidateLookup<'a>,
+    card_items: &'a [CardItemInput],
+    state: GeneratedCardState,
+    g2_citations_valid: bool,
+    verified: VerifyOutcome,
+    card_rank: i32,
+    job_created_at: DateTime<Utc>,
+}
+
+struct CandidateCardFields {
+    story_id: Uuid,
+    continues_card_id: Option<Uuid>,
+    merged_from: Option<Vec<Uuid>>,
+    genre: Option<String>,
+    member_feed_ids: Vec<Uuid>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -986,688 +1072,388 @@ impl CardsPipeline {
         Ok(stats)
     }
 
-    #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
     async fn stage_generation_and_gates(
         &self,
-        job_id: Uuid,
-        candidates: &[RecapCardCandidate],
-        deduped_items: &[NormalizedItem],
-        feeds: &[AltBackendFeed],
-        cluster_resp: &ClusterStoriesResponse,
-        params: &CardsParams,
-        job_created_at: DateTime<Utc>,
-        card_generator: Arc<dyn CardGenerator>,
-        card_verifier: Arc<dyn CardVerifier>,
+        input: GenerationStageInput<'_>,
     ) -> Result<(Vec<RecapCard>, serde_json::Value, i64)> {
         let llm_start = Instant::now();
-        let mut item_by_id: HashMap<Uuid, &NormalizedItem> = HashMap::new();
-        for item in deduped_items {
-            item_by_id.insert(item.feed_id, item);
-        }
-
-        let mut feed_by_id: HashMap<Uuid, &AltBackendFeed> = HashMap::new();
-        for f in feeds {
-            if let Ok(id) = Uuid::parse_str(&f.id) {
-                feed_by_id.insert(id, f);
-            }
-        }
-
-        let mut cluster_by_fp: HashMap<String, &ClusterOutput> = HashMap::new();
-        for c in &cluster_resp.clusters {
-            let fp = compute_cluster_fingerprint(&c.member_ids);
-            cluster_by_fp.insert(fp, c);
-        }
+        let lookup = build_candidate_lookup(input.deduped_items, input.feeds, input.cluster_resp);
 
         let mut cards = Vec::new();
         let mut cards_dropped: HashMap<String, usize> = HashMap::new();
 
-        for candidate in candidates.iter().take(12) {
-            let candidate_items_val = candidate.items.as_array();
-            let mut card_items: Vec<CardItemInput> = Vec::new();
-            if let Some(arr) = candidate_items_val {
-                for (idx, it_val) in arr.iter().take(6).enumerate() {
-                    let feed_id_str =
-                        it_val
-                            .get("feed_id")
-                            .and_then(|v| v.as_str())
-                            .ok_or_else(|| {
-                                anyhow::anyhow!(
-                                    "recap_card_candidate {} item {} missing or invalid feed_id",
-                                    candidate.id,
-                                    idx
-                                )
-                            })?;
-                    let feed_id = Uuid::parse_str(feed_id_str).map_err(|_| {
-                        anyhow::anyhow!(
-                            "recap_card_candidate {} item {} missing or invalid feed_id",
-                            candidate.id,
-                            idx
-                        )
-                    })?;
-                    let (title, host, url, pub_date, lede) =
-                        if let Some(norm) = item_by_id.get(&feed_id) {
-                            let lede = if norm.host == "dev.to" {
-                                feed_by_id
-                                    .get(&feed_id)
-                                    .and_then(|f| f.description.as_deref())
-                                    .and_then(|desc| {
-                                        super::normalize::extract_lede_with_limit(desc, 1200)
-                                    })
-                                    .unwrap_or_else(|| norm.lede.clone())
-                            } else {
-                                norm.lede.clone()
-                            };
-                            (
-                                norm.title.clone(),
-                                norm.host.clone(),
-                                norm.url.clone(),
-                                Some(norm.pub_date.to_rfc3339()),
-                                lede,
-                            )
-                        } else {
-                            let title = it_val
-                                .get("title")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("")
-                                .to_string();
-                            let host = it_val
-                                .get("host")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("")
-                                .to_string();
-                            let url = it_val
-                                .get("url")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("")
-                                .to_string();
-                            let pub_date = it_val
-                                .get("pub_date")
-                                .and_then(|v| v.as_str())
-                                .map(ToString::to_string);
-                            (title, host, url, pub_date, String::new())
-                        };
-
-                    let n = card_items.len() + 1;
-                    card_items.push(CardItemInput {
-                        n,
-                        feed_id,
-                        title,
-                        host,
-                        url,
-                        pub_date,
-                        lede,
-                    });
-                }
+        for candidate in input.candidates.iter().take(12) {
+            let next_rank = (cards.len() + 1) as i32;
+            if let Some(card) = self
+                .process_card_candidate(&input, &lookup, candidate, &mut cards_dropped, next_rank)
+                .await?
+            {
+                cards.push(card);
             }
-
-            if card_items.is_empty() {
-                *cards_dropped.entry("empty_items".to_string()).or_insert(0) += 1;
-                continue;
-            }
-
-            let mut gen_req = CardGenerateRequest {
-                job_id,
-                candidate_id: candidate.id,
-                prompt_version: "recap_card.v1".to_string(),
-                items: card_items.clone(),
-                revision_note: None,
-            };
-
-            let outcome = card_generator.generate_card(&gen_req).await?;
-            let (mut current_card, mut generation_meta, mut current_ja_ratio) = match outcome {
-                CardGenerateOutcome::Success(resp) => (resp.card, resp.generation, resp.ja_ratio),
-                CardGenerateOutcome::Rejected(resp) => {
-                    record_rejection(
-                        &*self.dao,
-                        RejectionRecord {
-                            id: Uuid::new_v4(),
-                            job_id,
-                            candidate_id: candidate.id,
-                            stage: "generate".to_string(),
-                            reason: resp.reason.clone(),
-                            attempt: resp.attempts as i32,
-                            raw_text: Some(resp.raw_text),
-                            card: None,
-                            detail: resp.detail,
-                        },
-                        None,
-                    )
-                    .await?;
-                    *cards_dropped.entry(resp.reason).or_insert(0) += 1;
-                    continue;
-                }
-            };
-
-            let mut regeneration_count = 0;
-
-            // Gate G1
-            if current_ja_ratio < params.ja_ratio_min {
-                let card_json = serde_json::to_value(&current_card)?;
-                record_rejection(
-                    &*self.dao,
-                    RejectionRecord {
-                        id: Uuid::new_v4(),
-                        job_id,
-                        candidate_id: candidate.id,
-                        stage: "gate".to_string(),
-                        reason: "g1_language".to_string(),
-                        attempt: 1,
-                        raw_text: None,
-                        card: Some(card_json),
-                        detail: None,
-                    },
-                    Some(current_ja_ratio),
-                )
-                .await?;
-                gen_req.revision_note = Some("日本語で書き直す".to_string());
-                let outcome = card_generator.generate_card(&gen_req).await?;
-                regeneration_count += 1;
-                match outcome {
-                    CardGenerateOutcome::Success(resp) => {
-                        current_card = resp.card;
-                        generation_meta = resp.generation;
-                        current_ja_ratio = resp.ja_ratio;
-                        if current_ja_ratio < params.ja_ratio_min {
-                            let card_json = serde_json::to_value(&current_card)?;
-                            record_rejection(
-                                &*self.dao,
-                                RejectionRecord {
-                                    id: Uuid::new_v4(),
-                                    job_id,
-                                    candidate_id: candidate.id,
-                                    stage: "gate".to_string(),
-                                    reason: "g1_language".to_string(),
-                                    attempt: 2,
-                                    raw_text: None,
-                                    card: Some(card_json),
-                                    detail: None,
-                                },
-                                Some(current_ja_ratio),
-                            )
-                            .await?;
-                            *cards_dropped.entry("g1_language".to_string()).or_insert(0) += 1;
-                            continue;
-                        }
-                    }
-                    CardGenerateOutcome::Rejected(resp) => {
-                        record_rejection(
-                            &*self.dao,
-                            RejectionRecord {
-                                id: Uuid::new_v4(),
-                                job_id,
-                                candidate_id: candidate.id,
-                                stage: "generate".to_string(),
-                                reason: resp.reason.clone(),
-                                attempt: resp.attempts as i32,
-                                raw_text: Some(resp.raw_text),
-                                card: None,
-                                detail: resp.detail,
-                            },
-                            None,
-                        )
-                        .await?;
-                        *cards_dropped.entry(resp.reason).or_insert(0) += 1;
-                        continue;
-                    }
-                }
-            }
-
-            // Gate G2
-            let mut invalid_cites = Vec::new();
-            for s in &current_card.what_ja {
-                if s.refs.is_empty() {
-                    invalid_cites.push("引用なし".to_string());
-                } else {
-                    for &r in &s.refs {
-                        if r < 1 || r > card_items.len() {
-                            invalid_cites.push(format!("[{r}]"));
-                        }
-                    }
-                }
-            }
-            if let Some(ref w) = current_card.why_ja {
-                if w.refs.is_empty() {
-                    invalid_cites.push("引用なし".to_string());
-                } else {
-                    for &r in &w.refs {
-                        if r < 1 || r > card_items.len() {
-                            invalid_cites.push(format!("[{r}]"));
-                        }
-                    }
-                }
-            }
-
-            if !invalid_cites.is_empty() {
-                let card_json = serde_json::to_value(&current_card)?;
-                record_rejection(
-                    &*self.dao,
-                    RejectionRecord {
-                        id: Uuid::new_v4(),
-                        job_id,
-                        candidate_id: candidate.id,
-                        stage: "gate".to_string(),
-                        reason: "g2_citation".to_string(),
-                        attempt: 1,
-                        raw_text: None,
-                        card: Some(card_json),
-                        detail: None,
-                    },
-                    None,
-                )
-                .await?;
-                gen_req.revision_note = Some(format!("不正な引用: {}", invalid_cites.join(", ")));
-                let outcome = card_generator.generate_card(&gen_req).await?;
-                regeneration_count += 1;
-                match outcome {
-                    CardGenerateOutcome::Success(resp) => {
-                        current_card = resp.card;
-                        generation_meta = resp.generation;
-                        current_ja_ratio = resp.ja_ratio;
-                        if current_ja_ratio < params.ja_ratio_min {
-                            let card_json = serde_json::to_value(&current_card)?;
-                            record_rejection(
-                                &*self.dao,
-                                RejectionRecord {
-                                    id: Uuid::new_v4(),
-                                    job_id,
-                                    candidate_id: candidate.id,
-                                    stage: "gate".to_string(),
-                                    reason: "g1_language".to_string(),
-                                    attempt: 2,
-                                    raw_text: None,
-                                    card: Some(card_json),
-                                    detail: None,
-                                },
-                                Some(current_ja_ratio),
-                            )
-                            .await?;
-                            *cards_dropped.entry("g1_language".to_string()).or_insert(0) += 1;
-                            continue;
-                        }
-                    }
-                    CardGenerateOutcome::Rejected(resp) => {
-                        record_rejection(
-                            &*self.dao,
-                            RejectionRecord {
-                                id: Uuid::new_v4(),
-                                job_id,
-                                candidate_id: candidate.id,
-                                stage: "generate".to_string(),
-                                reason: resp.reason.clone(),
-                                attempt: resp.attempts as i32,
-                                raw_text: Some(resp.raw_text),
-                                card: None,
-                                detail: resp.detail,
-                            },
-                            None,
-                        )
-                        .await?;
-                        *cards_dropped.entry(resp.reason).or_insert(0) += 1;
-                        continue;
-                    }
-                }
-            }
-
-            let mut g2_citations_valid = validate_citations(&current_card, card_items.len());
-            let received_for_filter = current_card.clone();
-            filter_valid_citations(&mut current_card, card_items.len());
-            if current_card.what_ja.is_empty() {
-                let card_json = serde_json::to_value(&received_for_filter)?;
-                record_rejection(
-                    &*self.dao,
-                    RejectionRecord {
-                        id: Uuid::new_v4(),
-                        job_id,
-                        candidate_id: candidate.id,
-                        stage: "gate".to_string(),
-                        reason: "g2_citation".to_string(),
-                        attempt: 2,
-                        raw_text: None,
-                        card: Some(card_json),
-                        detail: None,
-                    },
-                    None,
-                )
-                .await?;
-                *cards_dropped.entry("g2_citation".to_string()).or_insert(0) += 1;
-                continue;
-            }
-
-            // Gate G3 & G4 via card_verifier
-            let mut verify_req = build_verify_request(
-                job_id,
-                candidate.id,
-                &current_card,
-                &card_items,
-                params.tau_a,
-            );
-            let mut verify_resp = card_verifier.verify_card(&verify_req).await?;
-
-            let mut failing_indices = Vec::new();
-            let mut failure_notes = Vec::new();
-            for s in &verify_resp.sentences {
-                if !s.attribution.pass || !s.filler.pass {
-                    failing_indices.push(s.idx);
-                    if !s.attribution.pass {
-                        failure_notes.push(format!(
-                            "文{}: 帰属類似度不足 (cos < {})",
-                            s.idx + 1,
-                            params.tau_a
-                        ));
-                    }
-                    if !s.filler.pass {
-                        failure_notes.push(format!(
-                            "文{}: 推測語 [{}] を含めないでください",
-                            s.idx + 1,
-                            s.filler.matched.join(", ")
-                        ));
-                    }
-                }
-            }
-
-            if !failing_indices.is_empty() {
-                let reason = if verify_resp.sentences.iter().any(|s| !s.attribution.pass) {
-                    "g3_attribution"
-                } else {
-                    "g4_filler"
-                };
-                let card_json = serde_json::to_value(&current_card)?;
-                record_rejection(
-                    &*self.dao,
-                    RejectionRecord {
-                        id: Uuid::new_v4(),
-                        job_id,
-                        candidate_id: candidate.id,
-                        stage: "gate".to_string(),
-                        reason: reason.to_string(),
-                        attempt: 1,
-                        raw_text: None,
-                        card: Some(card_json),
-                        detail: None,
-                    },
-                    None,
-                )
-                .await?;
-
-                // Regenerate ONCE with revision_note naming failing sentences
-                gen_req.revision_note = Some(failure_notes.join("; "));
-                let outcome2 = card_generator.generate_card(&gen_req).await?;
-                regeneration_count += 1;
-                match outcome2 {
-                    CardGenerateOutcome::Success(resp2) => {
-                        current_card = resp2.card;
-                        generation_meta = resp2.generation;
-                        current_ja_ratio = resp2.ja_ratio;
-
-                        // Recheck G1
-                        if current_ja_ratio < params.ja_ratio_min {
-                            let card_json = serde_json::to_value(&current_card)?;
-                            record_rejection(
-                                &*self.dao,
-                                RejectionRecord {
-                                    id: Uuid::new_v4(),
-                                    job_id,
-                                    candidate_id: candidate.id,
-                                    stage: "gate".to_string(),
-                                    reason: "g1_language".to_string(),
-                                    attempt: 2,
-                                    raw_text: None,
-                                    card: Some(card_json),
-                                    detail: None,
-                                },
-                                Some(current_ja_ratio),
-                            )
-                            .await?;
-                            *cards_dropped.entry("g1_language".to_string()).or_insert(0) += 1;
-                            continue;
-                        }
-
-                        // Recheck G2
-                        g2_citations_valid = validate_citations(&current_card, card_items.len());
-                        let received_for_recheck_filter = current_card.clone();
-                        filter_valid_citations(&mut current_card, card_items.len());
-                        if current_card.what_ja.is_empty() {
-                            let card_json = serde_json::to_value(&received_for_recheck_filter)?;
-                            record_rejection(
-                                &*self.dao,
-                                RejectionRecord {
-                                    id: Uuid::new_v4(),
-                                    job_id,
-                                    candidate_id: candidate.id,
-                                    stage: "gate".to_string(),
-                                    reason: "g2_citation".to_string(),
-                                    attempt: 2,
-                                    raw_text: None,
-                                    card: Some(card_json),
-                                    detail: None,
-                                },
-                                None,
-                            )
-                            .await?;
-                            *cards_dropped.entry("g2_citation".to_string()).or_insert(0) += 1;
-                            continue;
-                        }
-
-                        // Re-verify
-                        verify_req = build_verify_request(
-                            job_id,
-                            candidate.id,
-                            &current_card,
-                            &card_items,
-                            params.tau_a,
-                        );
-                        verify_resp = card_verifier.verify_card(&verify_req).await?;
-                    }
-                    CardGenerateOutcome::Rejected(resp2) => {
-                        record_rejection(
-                            &*self.dao,
-                            RejectionRecord {
-                                id: Uuid::new_v4(),
-                                job_id,
-                                candidate_id: candidate.id,
-                                stage: "generate".to_string(),
-                                reason: resp2.reason.clone(),
-                                attempt: resp2.attempts as i32,
-                                raw_text: Some(resp2.raw_text),
-                                card: None,
-                                detail: resp2.detail,
-                            },
-                            None,
-                        )
-                        .await?;
-                        *cards_dropped.entry(resp2.reason).or_insert(0) += 1;
-                        continue;
-                    }
-                }
-            }
-
-            // Post-verification: delete any remaining failing sentences
-            let mut deleted_sentence_indices = Vec::new();
-            let mut had_g3_fail = false;
-            let mut had_g4_fail = false;
-            let mut bad_indices = std::collections::HashSet::new();
-
-            for s in &verify_resp.sentences {
-                if !s.attribution.pass {
-                    had_g3_fail = true;
-                    bad_indices.insert(s.idx);
-                }
-                if !s.filler.pass {
-                    had_g4_fail = true;
-                    bad_indices.insert(s.idx);
-                }
-            }
-
-            if !bad_indices.is_empty() {
-                let received_before_deletion = current_card.clone();
-                let mut new_what = Vec::new();
-                for (i, s) in current_card.what_ja.into_iter().enumerate() {
-                    if bad_indices.contains(&i) {
-                        deleted_sentence_indices.push(i);
-                    } else {
-                        new_what.push(s);
-                    }
-                }
-                current_card.what_ja = new_what;
-
-                // Lookup why sentence by kind == "why"
-                if let Some(why_sent) = verify_req.sentences.iter().find(|s| s.kind == "why") {
-                    if bad_indices.contains(&why_sent.idx) {
-                        deleted_sentence_indices.push(why_sent.idx);
-                        current_card.why_ja = None;
-                    }
-                }
-
-                if current_card.what_ja.is_empty() {
-                    let reason = if had_g3_fail {
-                        "g3_attribution"
-                    } else {
-                        "g4_filler"
-                    };
-                    let card_json = serde_json::to_value(&received_before_deletion)?;
-                    record_rejection(
-                        &*self.dao,
-                        RejectionRecord {
-                            id: Uuid::new_v4(),
-                            job_id,
-                            candidate_id: candidate.id,
-                            stage: "gate".to_string(),
-                            reason: reason.to_string(),
-                            attempt: 2,
-                            raw_text: None,
-                            card: Some(card_json),
-                            detail: None,
-                        },
-                        None,
-                    )
-                    .await?;
-                    *cards_dropped.entry(reason.to_string()).or_insert(0) += 1;
-                    continue;
-                }
-            }
-
-            // Gate G6: if why_hint_present is false, drop why_ja
-            if !verify_resp.why_hint_present {
-                current_card.why_ja = None;
-            }
-
-            // Gate G5 & gates json
-            let gates_json = json!({
-                "g1_ja_ratio": current_ja_ratio,
-                "g2_citations_valid": g2_citations_valid,
-                "regeneration_count": regeneration_count,
-                "deleted_sentence_indices": deleted_sentence_indices,
-                "g3_attribution_pass": !had_g3_fail,
-                "g4_filler_pass": !had_g4_fail,
-                "g5_specificity": verify_resp.sentences.iter().map(|s| {
-                    json!({
-                        "idx": s.idx,
-                        "proper_nouns": s.specificity.proper_nouns,
-                        "numbers": s.specificity.numbers,
-                        "tokens": s.specificity.tokens,
-                        "density": s.specificity.density,
-                    })
-                }).collect::<Vec<_>>(),
-                "g6_why_hint_present": verify_resp.why_hint_present,
-                "verification_embedding": {
-                    "model": verify_resp.embedding.model,
-                    "identity": verify_resp.embedding.identity,
-                }
-            });
-
-            let card_rank = (cards.len() + 1) as i32;
-            let story_id = candidate
-                .scores
-                .get("story_id")
-                .and_then(|v| v.as_str())
-                .and_then(|s| Uuid::parse_str(s).ok())
-                .context("missing story_id in candidate scores")?;
-
-            let continues_card_id = candidate
-                .scores
-                .get("continues_card_id")
-                .and_then(|v| v.as_str())
-                .and_then(|s| Uuid::parse_str(s).ok());
-
-            let merged_from: Option<Vec<Uuid>> = candidate
-                .scores
-                .get("merged_from")
-                .and_then(|v| serde_json::from_value(v.clone()).ok());
-
-            let genre = candidate
-                .scores
-                .get("genre")
-                .and_then(|v| v.as_str())
-                .map(ToString::to_string);
-
-            let member_feed_ids = cluster_by_fp
-                .get(&candidate.cluster_fingerprint)
-                .map(|c| c.member_ids.clone())
-                .with_context(|| {
-                    format!(
-                        "missing cluster for fingerprint {}",
-                        candidate.cluster_fingerprint
-                    )
-                })?;
-
-            let sources = json!(
-                card_items
-                    .iter()
-                    .map(|it| {
-                        json!({
-                            "n": it.n,
-                            "feed_id": it.feed_id,
-                            "url": it.url,
-                            "host": it.host,
-                            "title": it.title,
-                            "pub_date": it.pub_date,
-                        })
-                    })
-                    .collect::<Vec<_>>()
-            );
-
-            let what_ja_text = current_card
-                .what_ja
-                .iter()
-                .map(|s| s.text.as_str())
-                .collect::<Vec<_>>()
-                .join(" ");
-
-            let card = RecapCard {
-                id: Uuid::new_v4(),
-                job_id,
-                rank: card_rank,
-                story_id,
-                continues_card_id,
-                merged_from,
-                headline_ja: current_card.headline_ja,
-                what_ja: what_ja_text,
-                why_ja: current_card.why_ja.map(|s| s.text),
-                genre,
-                member_feed_ids,
-                sources,
-                centroid: candidate.centroid.clone(),
-                scores: candidate.scores.clone(),
-                gates: gates_json,
-                generation: json!({
-                    "model": generation_meta.model,
-                    "prompt_version": generation_meta.prompt_version,
-                    "cache_hit": generation_meta.cache_hit,
-                    "prompt_tokens": generation_meta.prompt_tokens,
-                    "completion_tokens": generation_meta.completion_tokens,
-                    "ms": generation_meta.ms,
-                }),
-                created_at: job_created_at,
-            };
-
-            cards.push(card);
         }
 
         let llm_ms = i64::try_from(llm_start.elapsed().as_millis()).unwrap_or(i64::MAX);
         Ok((cards, json!(cards_dropped), llm_ms))
     }
 
-    #[allow(clippy::too_many_lines)]
+    async fn process_card_candidate(
+        &self,
+        input: &GenerationStageInput<'_>,
+        lookup: &CandidateLookup<'_>,
+        candidate: &RecapCardCandidate,
+        cards_dropped: &mut HashMap<String, usize>,
+        card_rank: i32,
+    ) -> Result<Option<RecapCard>> {
+        let card_items = build_card_items(candidate, lookup)?;
+        if card_items.is_empty() {
+            *cards_dropped.entry("empty_items".to_string()).or_insert(0) += 1;
+            return Ok(None);
+        }
+
+        let mut gen_req = CardGenerateRequest {
+            job_id: input.job_id,
+            candidate_id: candidate.id,
+            prompt_version: "recap_card.v1".to_string(),
+            items: card_items.clone(),
+            revision_note: None,
+        };
+
+        let ctx = GateRunCtx {
+            job_id: input.job_id,
+            candidate_id: candidate.id,
+            params: input.params,
+            card_generator: input.card_generator.as_ref(),
+            card_verifier: input.card_verifier.as_ref(),
+        };
+
+        let Some(mut state) = self
+            .generate_card_attempt(&ctx, &gen_req, cards_dropped)
+            .await?
+        else {
+            return Ok(None);
+        };
+
+        let mut attempt = CardAttemptState {
+            gen_req: &mut gen_req,
+            state: &mut state,
+            cards_dropped,
+        };
+
+        if !self.gate_g1_language(&ctx, &mut attempt).await? {
+            return Ok(None);
+        }
+
+        let Some(mut g2_citations_valid) = self
+            .gate_g2_citations(&ctx, card_items.len(), &mut attempt)
+            .await?
+        else {
+            return Ok(None);
+        };
+
+        let Some(verified) = self
+            .gate_g3_g4_verify(&ctx, &card_items, &mut attempt, &mut g2_citations_valid)
+            .await?
+        else {
+            return Ok(None);
+        };
+
+        // Gate G6: if why_hint_present is false, drop why_ja
+        if !verified.verify_resp.why_hint_present {
+            attempt.state.card.why_ja = None;
+        }
+
+        let card = assemble_recap_card(CardAssemblyInput {
+            job_id: input.job_id,
+            candidate,
+            lookup,
+            card_items: &card_items,
+            state,
+            g2_citations_valid,
+            verified,
+            card_rank,
+            job_created_at: input.job_created_at,
+        })?;
+        Ok(Some(card))
+    }
+
+    async fn generate_card_attempt(
+        &self,
+        ctx: &GateRunCtx<'_>,
+        gen_req: &CardGenerateRequest,
+        cards_dropped: &mut HashMap<String, usize>,
+    ) -> Result<Option<GeneratedCardState>> {
+        let outcome = ctx.card_generator.generate_card(gen_req).await?;
+        match outcome {
+            CardGenerateOutcome::Success(resp) => Ok(Some(GeneratedCardState {
+                card: resp.card,
+                generation: resp.generation,
+                ja_ratio: resp.ja_ratio,
+                regeneration_count: 0,
+            })),
+            CardGenerateOutcome::Rejected(resp) => {
+                record_rejection(
+                    &*self.dao,
+                    RejectionRecord {
+                        id: Uuid::new_v4(),
+                        job_id: ctx.job_id,
+                        candidate_id: ctx.candidate_id,
+                        stage: "generate".to_string(),
+                        reason: resp.reason.clone(),
+                        attempt: resp.attempts as i32,
+                        raw_text: Some(resp.raw_text),
+                        card: None,
+                        detail: resp.detail,
+                    },
+                    None,
+                )
+                .await?;
+                *cards_dropped.entry(resp.reason).or_insert(0) += 1;
+                Ok(None)
+            }
+        }
+    }
+
+    async fn record_gate_rejection(
+        &self,
+        ctx: &GateRunCtx<'_>,
+        reason: &str,
+        attempt: i32,
+        card: &CardContent,
+        ja_ratio: Option<f32>,
+    ) -> Result<()> {
+        let card_json = serde_json::to_value(card)?;
+        record_rejection(
+            &*self.dao,
+            RejectionRecord {
+                id: Uuid::new_v4(),
+                job_id: ctx.job_id,
+                candidate_id: ctx.candidate_id,
+                stage: "gate".to_string(),
+                reason: reason.to_string(),
+                attempt,
+                raw_text: None,
+                card: Some(card_json),
+                detail: None,
+            },
+            ja_ratio,
+        )
+        .await
+    }
+
+    async fn regenerate_card(
+        &self,
+        ctx: &GateRunCtx<'_>,
+        attempt: &mut CardAttemptState<'_>,
+        revision_note: String,
+    ) -> Result<bool> {
+        attempt.gen_req.revision_note = Some(revision_note);
+        let regen_count = attempt.state.regeneration_count + 1;
+        let Some(mut next_state) = self
+            .generate_card_attempt(ctx, attempt.gen_req, attempt.cards_dropped)
+            .await?
+        else {
+            return Ok(false);
+        };
+        next_state.regeneration_count = regen_count;
+        *attempt.state = next_state;
+        Ok(true)
+    }
+
+    async fn check_g1_after_regen(
+        &self,
+        ctx: &GateRunCtx<'_>,
+        attempt: &mut CardAttemptState<'_>,
+    ) -> Result<bool> {
+        if attempt.state.ja_ratio < ctx.params.ja_ratio_min {
+            self.record_gate_rejection(
+                ctx,
+                "g1_language",
+                2,
+                &attempt.state.card,
+                Some(attempt.state.ja_ratio),
+            )
+            .await?;
+            *attempt
+                .cards_dropped
+                .entry("g1_language".to_string())
+                .or_insert(0) += 1;
+            return Ok(false);
+        }
+        Ok(true)
+    }
+
+    async fn gate_g1_language(
+        &self,
+        ctx: &GateRunCtx<'_>,
+        attempt: &mut CardAttemptState<'_>,
+    ) -> Result<bool> {
+        // Gate G1
+        if attempt.state.ja_ratio < ctx.params.ja_ratio_min {
+            self.record_gate_rejection(
+                ctx,
+                "g1_language",
+                1,
+                &attempt.state.card,
+                Some(attempt.state.ja_ratio),
+            )
+            .await?;
+            if !self
+                .regenerate_card(ctx, attempt, "日本語で書き直す".to_string())
+                .await?
+            {
+                return Ok(false);
+            }
+            return self.check_g1_after_regen(ctx, attempt).await;
+        }
+        Ok(true)
+    }
+
+    async fn gate_g2_citations(
+        &self,
+        ctx: &GateRunCtx<'_>,
+        card_items_len: usize,
+        attempt: &mut CardAttemptState<'_>,
+    ) -> Result<Option<bool>> {
+        // Gate G2
+        let invalid_cites = collect_invalid_citations(&attempt.state.card, card_items_len);
+        if !invalid_cites.is_empty() {
+            self.record_gate_rejection(ctx, "g2_citation", 1, &attempt.state.card, None)
+                .await?;
+            let note = format!("不正な引用: {}", invalid_cites.join(", "));
+            if !self.regenerate_card(ctx, attempt, note).await? {
+                return Ok(None);
+            }
+            if !self.check_g1_after_regen(ctx, attempt).await? {
+                return Ok(None);
+            }
+        }
+
+        self.filter_and_check_g2(ctx, card_items_len, attempt).await
+    }
+
+    async fn filter_and_check_g2(
+        &self,
+        ctx: &GateRunCtx<'_>,
+        card_items_len: usize,
+        attempt: &mut CardAttemptState<'_>,
+    ) -> Result<Option<bool>> {
+        let g2_citations_valid = validate_citations(&attempt.state.card, card_items_len);
+        let received_for_filter = attempt.state.card.clone();
+        filter_valid_citations(&mut attempt.state.card, card_items_len);
+        if attempt.state.card.what_ja.is_empty() {
+            self.record_gate_rejection(ctx, "g2_citation", 2, &received_for_filter, None)
+                .await?;
+            *attempt
+                .cards_dropped
+                .entry("g2_citation".to_string())
+                .or_insert(0) += 1;
+            return Ok(None);
+        }
+        Ok(Some(g2_citations_valid))
+    }
+
+    async fn gate_g3_g4_verify(
+        &self,
+        ctx: &GateRunCtx<'_>,
+        card_items: &[CardItemInput],
+        attempt: &mut CardAttemptState<'_>,
+        g2_citations_valid: &mut bool,
+    ) -> Result<Option<VerifyOutcome>> {
+        // Gate G3 & G4 via card_verifier
+        let mut verify_req = build_verify_request(
+            ctx.job_id,
+            ctx.candidate_id,
+            &attempt.state.card,
+            card_items,
+            ctx.params.tau_a,
+        );
+        let mut verify_resp = ctx.card_verifier.verify_card(&verify_req).await?;
+
+        let (failing_indices, failure_notes) =
+            collect_verify_failures(&verify_resp, ctx.params.tau_a);
+
+        if !failing_indices.is_empty() {
+            let reason = if verify_resp.sentences.iter().any(|s| !s.attribution.pass) {
+                "g3_attribution"
+            } else {
+                "g4_filler"
+            };
+            self.record_gate_rejection(ctx, reason, 1, &attempt.state.card, None)
+                .await?;
+
+            // Regenerate ONCE with revision_note naming failing sentences
+            if !self
+                .regenerate_card(ctx, attempt, failure_notes.join("; "))
+                .await?
+            {
+                return Ok(None);
+            }
+            if !self.check_g1_after_regen(ctx, attempt).await? {
+                return Ok(None);
+            }
+            let Some(valid) = self
+                .filter_and_check_g2(ctx, card_items.len(), attempt)
+                .await?
+            else {
+                return Ok(None);
+            };
+            *g2_citations_valid = valid;
+
+            // Re-verify
+            verify_req = build_verify_request(
+                ctx.job_id,
+                ctx.candidate_id,
+                &attempt.state.card,
+                card_items,
+                ctx.params.tau_a,
+            );
+            verify_resp = ctx.card_verifier.verify_card(&verify_req).await?;
+        }
+
+        self.prune_failing_sentences(ctx, &verify_req, verify_resp, attempt)
+            .await
+    }
+
+    async fn prune_failing_sentences(
+        &self,
+        ctx: &GateRunCtx<'_>,
+        verify_req: &VerifyCardRequest,
+        verify_resp: VerifyCardResponse,
+        attempt: &mut CardAttemptState<'_>,
+    ) -> Result<Option<VerifyOutcome>> {
+        let mut deleted_sentence_indices = Vec::new();
+        let (had_g3_fail, had_g4_fail, bad_indices) = classify_verify_results(&verify_resp);
+
+        if !bad_indices.is_empty() {
+            let received_before_deletion = attempt.state.card.clone();
+            apply_sentence_deletions(
+                &mut attempt.state.card,
+                verify_req,
+                &bad_indices,
+                &mut deleted_sentence_indices,
+            );
+
+            if attempt.state.card.what_ja.is_empty() {
+                let reason = if had_g3_fail {
+                    "g3_attribution"
+                } else {
+                    "g4_filler"
+                };
+                self.record_gate_rejection(ctx, reason, 2, &received_before_deletion, None)
+                    .await?;
+                *attempt.cards_dropped.entry(reason.to_string()).or_insert(0) += 1;
+                return Ok(None);
+            }
+        }
+
+        Ok(Some(VerifyOutcome {
+            verify_resp,
+            deleted_sentence_indices,
+            had_g3_fail,
+            had_g4_fail,
+        }))
+    }
+
     async fn execute_stages(
         &self,
         job_id: Uuid,
@@ -1686,6 +1472,134 @@ impl CardsPipeline {
         let normalized = Self::stage_normalize_and_noise(job_id, &feeds)?;
         let items_after_noise = normalized.len();
 
+        // Stage 4, 4b, 5, 5b, 5c: Dedup, Genre Tagging, Embed, Near-dup, Personal Vector
+        let dedup_embed = self
+            .stage_dedup_and_embed(job_id, normalized, &read_items, to, params)
+            .await?;
+        let items_after_dedup = dedup_embed.deduped.len();
+
+        // Stage 6: Cluster
+        let (cluster_resp, cluster_ms) = self
+            .stage_cluster(
+                job_id,
+                &dedup_embed.deduped,
+                &dedup_embed.embeddings,
+                params,
+            )
+            .await?;
+
+        // Stage 7: Provisional Ranking
+        let rank_args = RankCandidatesArgs {
+            job_id,
+            clusters: &cluster_resp.clusters,
+            deduped_items: &dedup_embed.deduped,
+            personal_vector: dedup_embed.personal_vector.as_deref(),
+            previous_cards: &prev_cards,
+            previous_job_to: prev_job_to,
+            alpha: params.alpha,
+            theta_novelty: params.theta_novelty,
+            aggregator_hosts: &params.aggregator_hosts,
+            aggregator_host_weight: params.aggregator_host_weight,
+            max_articles_per_host: params.max_articles_per_host,
+            created_at: to,
+        };
+        let candidates = rank_candidates(rank_args)?;
+        let candidates_count = candidates.len();
+        info!(
+            job_id = %job_id,
+            candidates = candidates_count,
+            "cards ranking complete"
+        );
+
+        // Stage 7b: Card Generation & Gates
+        let gen_ctx = CardGenerationContext {
+            job_id,
+            candidates: &candidates,
+            deduped: &dedup_embed.deduped,
+            feeds: &feeds,
+            cluster_resp: &cluster_resp,
+            params,
+            job_created_at: to,
+        };
+        let (cards, cards_dropped, llm_ms) = self.stage_card_generation(&gen_ctx).await?;
+
+        // Stage 8: Persist
+        let stage_counts = StageCounts {
+            items_fetched,
+            items_after_noise,
+            items_after_dedup,
+            clusters: cluster_resp.clusters.len(),
+            candidates: candidates_count,
+            cards_dropped,
+            embed_cache_hits: dedup_embed.total_cache_hits,
+            embed_cache_misses: dedup_embed.total_cache_misses,
+        };
+        let timings = StageTimings {
+            embed: dedup_embed.embed_ms,
+            cluster: cluster_ms,
+            llm: llm_ms,
+            total: i64::try_from(total_start.elapsed().as_millis()).unwrap_or(i64::MAX),
+        };
+
+        self.stage_persist(PersistArgs {
+            job_id,
+            from,
+            to,
+            snapshot: &snapshot,
+            candidates: &candidates,
+            cards: &cards,
+            counts: stage_counts,
+            timings,
+            params_version: &params.params_version,
+            replay_window_id,
+            created_at: to,
+        })
+        .await
+    }
+
+    async fn stage_genre_tagging(
+        &self,
+        job_id: Uuid,
+        deduped_exact: &mut [NormalizedItem],
+        params: &CardsParams,
+    ) -> Result<()> {
+        if !params.genre_tagging {
+            info!(job_id = %job_id, "genre_tagging_disabled");
+            return Ok(());
+        }
+
+        info!(job_id = %job_id, "genre_tagging_enabled");
+        let texts: Vec<String> = deduped_exact
+            .iter()
+            .map(|item| format!("{} {}", item.title, item.lede))
+            .collect();
+        let batch_scores = self
+            .genre_tagger
+            .tag_genres(&texts, params.genre_concurrency)
+            .await
+            .with_context(|| format!("batch genre classification failed for job {job_id}"))?;
+        for (item, scores) in deduped_exact.iter_mut().zip(batch_scores) {
+            let mut sorted_scores: Vec<(String, f32)> = scores.into_iter().collect();
+            sorted_scores.sort_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+            item.genre = sorted_scores
+                .into_iter()
+                .next()
+                .filter(|(_, score)| *score >= params.genre_min_confidence)
+                .map(|(genre, _)| genre);
+        }
+        Ok(())
+    }
+
+    async fn stage_dedup_and_embed(
+        &self,
+        job_id: Uuid,
+        normalized: Vec<NormalizedItem>,
+        read_items: &[(DateTime<Utc>, String)],
+        to: DateTime<Utc>,
+        params: &CardsParams,
+    ) -> Result<DedupEmbedOutput> {
+        let items_after_noise = normalized.len();
+
         // Stage 4: Dedup (exact)
         let (mut deduped_exact, dedup_dropped) = deduplicate(normalized);
         info!(
@@ -1697,33 +1611,8 @@ impl CardsPipeline {
         );
 
         // Stage 4b: Genre Tagging (after exact dedup)
-        if params.genre_tagging {
-            info!(job_id = %job_id, "genre_tagging_enabled");
-            let texts: Vec<String> = deduped_exact
-                .iter()
-                .map(|item| format!("{} {}", item.title, item.lede))
-                .collect();
-            let batch_scores = self
-                .genre_tagger
-                .tag_genres(&texts, params.genre_concurrency)
-                .await
-                .with_context(|| format!("batch genre classification failed for job {job_id}"))?;
-            for (item, scores) in deduped_exact.iter_mut().zip(batch_scores) {
-                let mut sorted_scores: Vec<(String, f32)> = scores.into_iter().collect();
-                sorted_scores.sort_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-                if let Some((genre, score)) = sorted_scores.into_iter().next() {
-                    if score >= params.genre_min_confidence {
-                        item.genre = Some(genre);
-                    } else {
-                        item.genre = None;
-                    }
-                } else {
-                    item.genre = None;
-                }
-            }
-        } else {
-            info!(job_id = %job_id, "genre_tagging_disabled");
-        }
+        self.stage_genre_tagging(job_id, &mut deduped_exact, params)
+            .await?;
 
         // Stage 5: Embed
         let (embeddings_exact, embed_ms, embed_hits, embed_misses) =
@@ -1745,7 +1634,7 @@ impl CardsPipeline {
 
         // Stage 5c: Personal Vector
         let (personal_vector, pv_hits, pv_misses) = self
-            .stage_personal_vector(job_id, &read_items, to, params)
+            .stage_personal_vector(job_id, read_items, to, params)
             .await?;
 
         let total_cache_hits = embed_hits + pv_hits;
@@ -1757,39 +1646,24 @@ impl CardsPipeline {
             "embedding cache totals"
         );
 
-        // Stage 6: Cluster
-        let (cluster_resp, cluster_ms) = self
-            .stage_cluster(job_id, &deduped, &embeddings, params)
-            .await?;
+        Ok(DedupEmbedOutput {
+            deduped,
+            embeddings,
+            embed_ms,
+            total_cache_hits,
+            total_cache_misses,
+            personal_vector,
+        })
+    }
 
-        // Stage 7: Provisional Ranking
-        let rank_args = RankCandidatesArgs {
-            job_id,
-            clusters: &cluster_resp.clusters,
-            deduped_items: &deduped,
-            personal_vector: personal_vector.as_deref(),
-            previous_cards: &prev_cards,
-            previous_job_to: prev_job_to,
-            alpha: params.alpha,
-            theta_novelty: params.theta_novelty,
-            aggregator_hosts: &params.aggregator_hosts,
-            aggregator_host_weight: params.aggregator_host_weight,
-            max_articles_per_host: params.max_articles_per_host,
-            created_at: to,
-        };
-        let candidates = rank_candidates(rank_args)?;
-        let candidates_count = candidates.len();
-        info!(
-            job_id = %job_id,
-            candidates = candidates_count,
-            "cards ranking complete"
-        );
-
-        // Stage 7b: Card Generation & Gates
-        let (cards, cards_dropped, llm_ms) = match self.mode {
+    async fn stage_card_generation(
+        &self,
+        ctx: &CardGenerationContext<'_>,
+    ) -> Result<(Vec<RecapCard>, serde_json::Value, i64)> {
+        match self.mode {
             PipelineMode::SelectionOnly => {
-                info!(job_id = %job_id, "generation_skipped_selection_only");
-                (Vec::new(), json!({}), 0)
+                info!(job_id = %ctx.job_id, "generation_skipped_selection_only");
+                Ok((Vec::new(), json!({}), 0))
             }
             PipelineMode::Full => {
                 let generator = self
@@ -1802,28 +1676,28 @@ impl CardsPipeline {
                     .context("card_verifier required in full mode")?;
 
                 let (cards, dropped, llm_ms) = self
-                    .stage_generation_and_gates(
-                        job_id,
-                        &candidates,
-                        &deduped,
-                        &feeds,
-                        &cluster_resp,
-                        params,
-                        to,
-                        Arc::clone(generator),
-                        Arc::clone(verifier),
-                    )
+                    .stage_generation_and_gates(GenerationStageInput {
+                        job_id: ctx.job_id,
+                        candidates: ctx.candidates,
+                        deduped_items: ctx.deduped,
+                        feeds: ctx.feeds,
+                        cluster_resp: ctx.cluster_resp,
+                        params: ctx.params,
+                        job_created_at: ctx.job_created_at,
+                        card_generator: Arc::clone(generator),
+                        card_verifier: Arc::clone(verifier),
+                    })
                     .await?;
 
                 if cards.len() < super::CARDS_DEGRADED_MIN_CARDS {
                     tracing::warn!(
-                        job_id = %job_id,
+                        job_id = %ctx.job_id,
                         cards_selected = cards.len(),
                         "cards_job_degraded"
                     );
                     self.dao
                         .update_job_status_with_history(
-                            job_id,
+                            ctx.job_id,
                             JobStatus::Running,
                             Some("cards_job_degraded"),
                             Some(&format!(
@@ -1834,43 +1708,356 @@ impl CardsPipeline {
                         .await?;
                 }
 
-                (cards, dropped, llm_ms)
+                Ok((cards, dropped, llm_ms))
             }
-        };
-
-        // Stage 8: Persist
-        let stage_counts = StageCounts {
-            items_fetched,
-            items_after_noise,
-            items_after_dedup,
-            clusters: cluster_resp.clusters.len(),
-            candidates: candidates_count,
-            cards_dropped,
-            embed_cache_hits: total_cache_hits,
-            embed_cache_misses: total_cache_misses,
-        };
-        let timings = StageTimings {
-            embed: embed_ms,
-            cluster: cluster_ms,
-            llm: llm_ms,
-            total: i64::try_from(total_start.elapsed().as_millis()).unwrap_or(i64::MAX),
-        };
-
-        self.stage_persist(PersistArgs {
-            job_id,
-            from,
-            to,
-            snapshot: &snapshot,
-            candidates: &candidates,
-            cards: &cards,
-            counts: stage_counts,
-            timings,
-            params_version: &params.params_version,
-            replay_window_id,
-            created_at: to,
-        })
-        .await
+        }
     }
+}
+
+fn build_candidate_lookup<'a>(
+    deduped_items: &'a [NormalizedItem],
+    feeds: &'a [AltBackendFeed],
+    cluster_resp: &'a ClusterStoriesResponse,
+) -> CandidateLookup<'a> {
+    let mut item_by_id: HashMap<Uuid, &NormalizedItem> = HashMap::new();
+    for item in deduped_items {
+        item_by_id.insert(item.feed_id, item);
+    }
+
+    let mut feed_by_id: HashMap<Uuid, &AltBackendFeed> = HashMap::new();
+    for f in feeds {
+        if let Ok(id) = Uuid::parse_str(&f.id) {
+            feed_by_id.insert(id, f);
+        }
+    }
+
+    let mut cluster_by_fp: HashMap<String, &ClusterOutput> = HashMap::new();
+    for c in &cluster_resp.clusters {
+        let fp = compute_cluster_fingerprint(&c.member_ids);
+        cluster_by_fp.insert(fp, c);
+    }
+
+    CandidateLookup {
+        item_by_id,
+        feed_by_id,
+        cluster_by_fp,
+    }
+}
+
+fn resolve_card_item_fields(
+    it_val: &serde_json::Value,
+    feed_id: Uuid,
+    lookup: &CandidateLookup<'_>,
+) -> (String, String, String, Option<String>, String) {
+    if let Some(norm) = lookup.item_by_id.get(&feed_id) {
+        let lede = if norm.host == "dev.to" {
+            lookup
+                .feed_by_id
+                .get(&feed_id)
+                .and_then(|f| f.description.as_deref())
+                .and_then(|desc| super::normalize::extract_lede_with_limit(desc, 1200))
+                .unwrap_or_else(|| norm.lede.clone())
+        } else {
+            norm.lede.clone()
+        };
+        (
+            norm.title.clone(),
+            norm.host.clone(),
+            norm.url.clone(),
+            Some(norm.pub_date.to_rfc3339()),
+            lede,
+        )
+    } else {
+        let title = it_val
+            .get("title")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let host = it_val
+            .get("host")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let url = it_val
+            .get("url")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let pub_date = it_val
+            .get("pub_date")
+            .and_then(|v| v.as_str())
+            .map(ToString::to_string);
+        (title, host, url, pub_date, String::new())
+    }
+}
+
+fn build_card_items(
+    candidate: &RecapCardCandidate,
+    lookup: &CandidateLookup<'_>,
+) -> Result<Vec<CardItemInput>> {
+    let mut card_items = Vec::new();
+    let Some(arr) = candidate.items.as_array() else {
+        return Ok(card_items);
+    };
+
+    for (idx, it_val) in arr.iter().take(6).enumerate() {
+        let feed_id_str = it_val
+            .get("feed_id")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "recap_card_candidate {} item {} missing or invalid feed_id",
+                    candidate.id,
+                    idx
+                )
+            })?;
+        let feed_id = Uuid::parse_str(feed_id_str).map_err(|_| {
+            anyhow::anyhow!(
+                "recap_card_candidate {} item {} missing or invalid feed_id",
+                candidate.id,
+                idx
+            )
+        })?;
+        let (title, host, url, pub_date, lede) = resolve_card_item_fields(it_val, feed_id, lookup);
+        let n = card_items.len() + 1;
+        card_items.push(CardItemInput {
+            n,
+            feed_id,
+            title,
+            host,
+            url,
+            pub_date,
+            lede,
+        });
+    }
+
+    Ok(card_items)
+}
+
+fn push_invalid_refs(refs: &[usize], item_count: usize, invalid_cites: &mut Vec<String>) {
+    if refs.is_empty() {
+        invalid_cites.push("引用なし".to_string());
+    } else {
+        for &r in refs {
+            if r < 1 || r > item_count {
+                invalid_cites.push(format!("[{r}]"));
+            }
+        }
+    }
+}
+
+fn collect_invalid_citations(card: &CardContent, item_count: usize) -> Vec<String> {
+    let mut invalid_cites = Vec::new();
+    for s in &card.what_ja {
+        push_invalid_refs(&s.refs, item_count, &mut invalid_cites);
+    }
+    if let Some(ref w) = card.why_ja {
+        push_invalid_refs(&w.refs, item_count, &mut invalid_cites);
+    }
+    invalid_cites
+}
+
+fn collect_verify_failures(
+    verify_resp: &VerifyCardResponse,
+    tau_a: f32,
+) -> (Vec<usize>, Vec<String>) {
+    let mut failing_indices = Vec::new();
+    let mut failure_notes = Vec::new();
+    for s in &verify_resp.sentences {
+        if !s.attribution.pass || !s.filler.pass {
+            failing_indices.push(s.idx);
+            if !s.attribution.pass {
+                failure_notes.push(format!("文{}: 帰属類似度不足 (cos < {})", s.idx + 1, tau_a));
+            }
+            if !s.filler.pass {
+                failure_notes.push(format!(
+                    "文{}: 推測語 [{}] を含めないでください",
+                    s.idx + 1,
+                    s.filler.matched.join(", ")
+                ));
+            }
+        }
+    }
+    (failing_indices, failure_notes)
+}
+
+fn classify_verify_results(
+    verify_resp: &VerifyCardResponse,
+) -> (bool, bool, std::collections::HashSet<usize>) {
+    let mut had_g3_fail = false;
+    let mut had_g4_fail = false;
+    let mut bad_indices = std::collections::HashSet::new();
+    for s in &verify_resp.sentences {
+        if !s.attribution.pass {
+            had_g3_fail = true;
+            bad_indices.insert(s.idx);
+        }
+        if !s.filler.pass {
+            had_g4_fail = true;
+            bad_indices.insert(s.idx);
+        }
+    }
+    (had_g3_fail, had_g4_fail, bad_indices)
+}
+
+fn apply_sentence_deletions(
+    card: &mut CardContent,
+    verify_req: &VerifyCardRequest,
+    bad_indices: &std::collections::HashSet<usize>,
+    deleted_sentence_indices: &mut Vec<usize>,
+) {
+    let mut new_what = Vec::new();
+    for (i, s) in std::mem::take(&mut card.what_ja).into_iter().enumerate() {
+        if bad_indices.contains(&i) {
+            deleted_sentence_indices.push(i);
+        } else {
+            new_what.push(s);
+        }
+    }
+    card.what_ja = new_what;
+
+    // Lookup why sentence by kind == "why"
+    if let Some(why_sent) = verify_req.sentences.iter().find(|s| s.kind == "why") {
+        if bad_indices.contains(&why_sent.idx) {
+            deleted_sentence_indices.push(why_sent.idx);
+            card.why_ja = None;
+        }
+    }
+}
+
+fn build_gates_json(
+    state: &GeneratedCardState,
+    g2_citations_valid: bool,
+    verified: &VerifyOutcome,
+) -> serde_json::Value {
+    json!({
+        "g1_ja_ratio": state.ja_ratio,
+        "g2_citations_valid": g2_citations_valid,
+        "regeneration_count": state.regeneration_count,
+        "deleted_sentence_indices": verified.deleted_sentence_indices,
+        "g3_attribution_pass": !verified.had_g3_fail,
+        "g4_filler_pass": !verified.had_g4_fail,
+        "g5_specificity": verified.verify_resp.sentences.iter().map(|s| {
+            json!({
+                "idx": s.idx,
+                "proper_nouns": s.specificity.proper_nouns,
+                "numbers": s.specificity.numbers,
+                "tokens": s.specificity.tokens,
+                "density": s.specificity.density,
+            })
+        }).collect::<Vec<_>>(),
+        "g6_why_hint_present": verified.verify_resp.why_hint_present,
+        "verification_embedding": {
+            "model": verified.verify_resp.embedding.model,
+            "identity": verified.verify_resp.embedding.identity,
+        }
+    })
+}
+
+fn extract_candidate_card_fields(
+    candidate: &RecapCardCandidate,
+    lookup: &CandidateLookup<'_>,
+) -> Result<CandidateCardFields> {
+    let story_id = candidate
+        .scores
+        .get("story_id")
+        .and_then(|v| v.as_str())
+        .and_then(|s| Uuid::parse_str(s).ok())
+        .context("missing story_id in candidate scores")?;
+
+    let continues_card_id = candidate
+        .scores
+        .get("continues_card_id")
+        .and_then(|v| v.as_str())
+        .and_then(|s| Uuid::parse_str(s).ok());
+
+    let merged_from: Option<Vec<Uuid>> = candidate
+        .scores
+        .get("merged_from")
+        .and_then(|v| serde_json::from_value(v.clone()).ok());
+
+    let genre = candidate
+        .scores
+        .get("genre")
+        .and_then(|v| v.as_str())
+        .map(ToString::to_string);
+
+    let member_feed_ids = lookup
+        .cluster_by_fp
+        .get(&candidate.cluster_fingerprint)
+        .map(|c| c.member_ids.clone())
+        .with_context(|| {
+            format!(
+                "missing cluster for fingerprint {}",
+                candidate.cluster_fingerprint
+            )
+        })?;
+
+    Ok(CandidateCardFields {
+        story_id,
+        continues_card_id,
+        merged_from,
+        genre,
+        member_feed_ids,
+    })
+}
+
+fn assemble_recap_card(input: CardAssemblyInput<'_>) -> Result<RecapCard> {
+    let gates_json = build_gates_json(&input.state, input.g2_citations_valid, &input.verified);
+    let fields = extract_candidate_card_fields(input.candidate, input.lookup)?;
+
+    let sources = json!(
+        input
+            .card_items
+            .iter()
+            .map(|it| {
+                json!({
+                    "n": it.n,
+                    "feed_id": it.feed_id,
+                    "url": it.url,
+                    "host": it.host,
+                    "title": it.title,
+                    "pub_date": it.pub_date,
+                })
+            })
+            .collect::<Vec<_>>()
+    );
+
+    let what_ja_text = input
+        .state
+        .card
+        .what_ja
+        .iter()
+        .map(|s| s.text.as_str())
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    Ok(RecapCard {
+        id: Uuid::new_v4(),
+        job_id: input.job_id,
+        rank: input.card_rank,
+        story_id: fields.story_id,
+        continues_card_id: fields.continues_card_id,
+        merged_from: fields.merged_from,
+        headline_ja: input.state.card.headline_ja,
+        what_ja: what_ja_text,
+        why_ja: input.state.card.why_ja.map(|s| s.text),
+        genre: fields.genre,
+        member_feed_ids: fields.member_feed_ids,
+        sources,
+        centroid: input.candidate.centroid.clone(),
+        scores: input.candidate.scores.clone(),
+        gates: gates_json,
+        generation: json!({
+            "model": input.state.generation.model,
+            "prompt_version": input.state.generation.prompt_version,
+            "cache_hit": input.state.generation.cache_hit,
+            "prompt_tokens": input.state.generation.prompt_tokens,
+            "completion_tokens": input.state.generation.completion_tokens,
+            "ms": input.state.generation.ms,
+        }),
+        created_at: input.job_created_at,
+    })
 }
 
 async fn record_rejection(

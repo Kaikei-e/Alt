@@ -17,19 +17,17 @@ from tag_extractor.model_manager import ModelConfig, get_model_manager
 class TestModelSharingOptimization:
     """Test suite for model sharing optimization."""
 
-    def test_should_share_models_across_multiple_extractors(self):
+    def test_should_share_models_across_multiple_extractors(self) -> None:
         """Test that multiple TagExtractor instances share the same model instances."""
         # Arrange
-        from tag_extractor.model_manager import get_model_manager
-
         config = TagExtractionConfig(model_name="test-model")
         model_manager = get_model_manager()
         model_manager.clear_models()
 
         with patch.object(model_manager, "get_models", wraps=model_manager.get_models) as mock_get_models:
             # Act
-            extractor1 = TagExtractor(config)
-            extractor2 = TagExtractor(config)
+            extractors = [TagExtractor(config), TagExtractor(config)]
+            extractor1, extractor2 = extractors
 
             extractor1._lazy_load_models()
             extractor2._lazy_load_models()
@@ -39,9 +37,9 @@ class TestModelSharingOptimization:
             assert extractor1._keybert is extractor2._keybert, "KeyBERT models should be shared"
             assert extractor1._ja_tagger is extractor2._ja_tagger, "Japanese tagger should be shared"
             # ModelManager.get_models may be called multiple times, but underlying objects are shared
-            assert mock_get_models.call_count >= 2
+            assert mock_get_models.call_count >= len(extractors)
 
-    def test_should_support_gpu_acceleration_when_available(self):
+    def test_should_support_gpu_acceleration_when_available(self) -> None:
         """Test that GPU acceleration is used when available."""
         # Arrange
         config = TagExtractionConfig(device="cuda")
@@ -60,7 +58,7 @@ class TestModelSharingOptimization:
             assert isinstance(passed_config, ModelConfig)
             assert passed_config.device == "cuda"
 
-    def test_should_cleanup_models_on_service_shutdown(self):
+    def test_should_cleanup_models_on_service_shutdown(self) -> None:
         """Test that models are properly cleaned up on shutdown."""
         # This test should fail because cleanup_models method doesn't exist yet
         # Arrange
@@ -78,7 +76,7 @@ class TestModelSharingOptimization:
             assert get_model_manager()._keybert is None
             assert get_model_manager()._ja_tagger is None
 
-    def test_should_not_reload_models_if_already_loaded(self):
+    def test_should_not_reload_models_if_already_loaded(self) -> None:
         """Test that models are not reloaded if already loaded."""
         # Arrange
         extractor = TagExtractor()
@@ -99,7 +97,7 @@ class TestModelSharingOptimization:
             # TagExtractor should only request models once per instance
             assert mock_get_models.call_count == 1
 
-    def test_should_handle_model_loading_failure_gracefully(self):
+    def test_should_handle_model_loading_failure_gracefully(self) -> None:
         """Test that model loading failures are handled gracefully."""
         # Arrange
         extractor = TagExtractor()
@@ -107,13 +105,14 @@ class TestModelSharingOptimization:
         model_manager = get_model_manager()
         model_manager.clear_models()
 
-        with patch.object(model_manager, "_load_models", side_effect=Exception("Model loading failed")):
-            # Act & Assert: underlying ModelManager error should be propagated
-            with pytest.raises(Exception, match="Model loading failed"):
-                # This will be triggered indirectly via _lazy_load_models
-                extractor._lazy_load_models()
+        with (
+            patch.object(model_manager, "_load_models", side_effect=Exception("Model loading failed")),
+            pytest.raises(Exception, match="Model loading failed"),
+        ):
+            # This will be triggered indirectly via _lazy_load_models
+            extractor._lazy_load_models()
 
-    def test_should_extract_tags_with_shared_models(self):
+    def test_should_extract_tags_with_shared_models(self) -> None:
         """Test that tag extraction works with shared models."""
         # Arrange
         config = TagExtractionConfig()
@@ -150,7 +149,7 @@ class TestModelSharingOptimization:
 class TestModelMemoryOptimization:
     """Test suite for memory optimization in model management."""
 
-    def test_should_limit_memory_usage_during_model_loading(self):
+    def test_should_limit_memory_usage_during_model_loading(self) -> None:
         """Test that memory usage is limited during model loading."""
         # This test would require actual memory monitoring
         # For now, we'll test the structure for memory monitoring
@@ -160,7 +159,7 @@ class TestModelMemoryOptimization:
         assert hasattr(extractor, "_embedder"), "Should have embedder attribute"
         assert hasattr(extractor, "_keybert"), "Should have keybert attribute"
 
-    def test_should_cleanup_intermediate_results(self):
+    def test_should_cleanup_intermediate_results(self) -> None:
         """Test that intermediate processing results are cleaned up."""
         # Arrange
         extractor = TagExtractor()
@@ -175,7 +174,7 @@ class TestModelMemoryOptimization:
             # Assert - verify that intermediate results don't persist beyond the method call
             assert not hasattr(extractor, "_temp_candidates"), "Should not store temporary candidates"
 
-    def test_should_handle_memory_pressure_gracefully(self):
+    def test_should_handle_memory_pressure_gracefully(self) -> None:
         """Test that the system handles memory pressure gracefully."""
         # Arrange
         extractor = TagExtractor()
@@ -195,23 +194,24 @@ class TestModelMemoryOptimization:
 class TestConcurrentModelAccess:
     """Test suite for concurrent access to shared models."""
 
-    def test_should_maintain_thread_safety_during_extraction(self):
+    def test_should_maintain_thread_safety_during_extraction(self) -> None:
         """Test that model access is thread-safe during concurrent extraction."""
         # Arrange
         extractor = TagExtractor()
-        results = []
-        errors = []
+        worker_count = 5
+        results: list[list[str]] = []
+        errors: list[Exception] = []
 
-        def extract_worker(worker_id: int):
+        def extract_worker(worker_id: int) -> None:
             try:
                 outcome = extractor.extract_tags_with_metrics(f"Title {worker_id}", f"Content {worker_id}")
                 results.append(outcome.tags)
-            except Exception as e:
+            except (RuntimeError, ValueError, TypeError) as e:
                 errors.append(e)
 
         # Act
         threads = []
-        for i in range(5):
+        for i in range(worker_count):
             thread = threading.Thread(target=extract_worker, args=(i,))
             threads.append(thread)
             thread.start()
@@ -221,27 +221,35 @@ class TestConcurrentModelAccess:
 
         # Assert
         assert len(errors) == 0, f"Should not have errors during concurrent access: {errors}"
-        assert len(results) == 5, "Should complete all concurrent extractions"
+        assert len(results) == worker_count, "Should complete all concurrent extractions"
 
-    def test_should_handle_worker_failures_gracefully(self):
+    def test_should_handle_worker_failures_gracefully(self) -> None:
         """Test that worker failures don't affect other workers."""
         # Arrange
         extractor = TagExtractor()
-        results = []
-        errors = []
+        worker_count = 5
+        failed_worker_id = 2
+        results: list[list[str]] = []
+        errors: list[Exception] = []
 
-        def extract_worker(worker_id: int):
+        class _SimulatedWorkerError(ValueError):
+            def __init__(self) -> None:
+                super().__init__("Simulated worker failure")
+
+        def run_extraction(worker_id: int) -> list[str]:
+            if worker_id == failed_worker_id:
+                raise _SimulatedWorkerError
+            return extractor.extract_tags_with_metrics(f"Title {worker_id}", f"Content {worker_id}").tags
+
+        def extract_worker(worker_id: int) -> None:
             try:
-                if worker_id == 2:  # Simulate failure in worker 2
-                    raise ValueError("Simulated worker failure")
-                outcome = extractor.extract_tags_with_metrics(f"Title {worker_id}", f"Content {worker_id}")
-                results.append(outcome.tags)
-            except Exception as e:
+                results.append(run_extraction(worker_id))
+            except (RuntimeError, ValueError, TypeError) as e:
                 errors.append(e)
 
         # Act
         threads = []
-        for i in range(5):
+        for i in range(worker_count):
             thread = threading.Thread(target=extract_worker, args=(i,))
             threads.append(thread)
             thread.start()
@@ -250,14 +258,15 @@ class TestConcurrentModelAccess:
             thread.join()
 
         # Assert
-        assert len(errors) == 1, "Should have exactly one error from failed worker"
-        assert len(results) == 4, "Should complete all other extractions"
+        expected_failures = 1
+        assert len(errors) == expected_failures, "Should have exactly one error from failed worker"
+        assert len(results) == worker_count - expected_failures, "Should complete all other extractions"
 
 
 class TestModelPerformanceMetrics:
     """Test suite for model performance metrics."""
 
-    def test_should_collect_processing_time_metrics(self):
+    def test_should_collect_processing_time_metrics(self) -> None:
         """Test that processing time metrics are collected."""
         # Arrange
         extractor = TagExtractor()
@@ -272,7 +281,7 @@ class TestModelPerformanceMetrics:
         assert processing_time >= 0, "Processing time should be non-negative"
         assert isinstance(outcome.tags, list), "Should return a list of tags"
 
-    def test_should_track_memory_usage_patterns(self):
+    def test_should_track_memory_usage_patterns(self) -> None:
         """Test that memory usage patterns are tracked."""
         # Arrange
         extractor = TagExtractor()
@@ -285,7 +294,7 @@ class TestModelPerformanceMetrics:
         # Assert
         assert after_loading_memory >= initial_memory, "Memory usage should increase after model loading"
 
-    def test_should_report_throughput_statistics(self):
+    def test_should_report_throughput_statistics(self) -> None:
         """Test that throughput statistics are reported."""
         # Arrange
         extractor = TagExtractor()

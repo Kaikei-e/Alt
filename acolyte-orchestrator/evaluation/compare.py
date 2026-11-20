@@ -57,7 +57,7 @@ def main(argv: list[str] | None = None) -> int:
     for key in ("citation_precision_mean", "faithfulness_mean", "lang_en_share_mean"):
         b, a, delta = _diff_mean(before, after, key)
         lines.append(f"{key}: before={b} after={a} delta={delta}")
-    print("\n".join(lines))
+    sys.stdout.write("\n".join(lines) + "\n")
     return 0
 
 

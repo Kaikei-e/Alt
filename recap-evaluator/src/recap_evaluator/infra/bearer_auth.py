@@ -12,6 +12,7 @@ logger = structlog.get_logger()
 
 # RFC 6750 b64 alphabet: must match `^[A-Za-z0-9\-._~+/]+=*$` (non-empty)
 TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9\-._~+/]+=*\Z")
+_MIN_TOKEN_LENGTH = 16
 
 
 def load_bearer_token_from_file(
@@ -20,24 +21,27 @@ def load_bearer_token_from_file(
 ) -> str:
     path = Path(os.environ.get(env_var, default_path))
     if not path.exists():
-        raise RuntimeError(f"Bearer token file not found at {path}")
+        msg = f"Bearer token file not found at {path}"
+        raise RuntimeError(msg)
 
     try:
         with path.open(encoding="utf-8") as f:
             token = f.read().strip()
     except UnicodeDecodeError:
-        raise RuntimeError("Bearer token file contains invalid non-ASCII characters") from None
+        msg = "Bearer token file contains invalid non-ASCII characters"
+        raise RuntimeError(msg) from None
 
     if not token:
-        raise RuntimeError("Bearer token file is empty")
+        msg = "Bearer token file is empty"
+        raise RuntimeError(msg)
 
-    if len(token) < 16:
-        raise RuntimeError("Bearer token must be at least 16 characters long")
+    if len(token) < _MIN_TOKEN_LENGTH:
+        msg = "Bearer token must be at least 16 characters long"
+        raise RuntimeError(msg)
 
     if not TOKEN_PATTERN.match(token):
-        raise RuntimeError(
-            "Bearer token contains invalid characters (must be RFC 6750 b64 alphabet)"
-        )
+        msg = "Bearer token contains invalid characters (must be RFC 6750 b64 alphabet)"
+        raise RuntimeError(msg)
 
     return token
 

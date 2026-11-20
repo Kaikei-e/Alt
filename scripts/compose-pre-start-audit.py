@@ -180,13 +180,11 @@ def audit_migrated_chown_hooks(services: dict[str, dict]) -> list[str]:
         if not isinstance(hooks, list) or not any(
             is_chown_hook(hook, spec["path"], spec["uid_gid"]) for hook in hooks
         ):
-            violations.append(
-                f"{consumer} missing pre_start alpine chown hook for {spec['path']}"
-            )
+            violations.append(f"{consumer} missing pre_start alpine chown hook for {spec['path']}")
         deps = svc.get("depends_on") or {}
-        if isinstance(deps, dict) and removed in deps:
-            violations.append(f"{consumer} still depends_on {removed}")
-        elif isinstance(deps, list) and removed in deps:
+        if (isinstance(deps, dict) and removed in deps) or (
+            isinstance(deps, list) and removed in deps
+        ):
             violations.append(f"{consumer} still depends_on {removed}")
     return violations
 
@@ -209,9 +207,9 @@ def audit_wave4_pki_cert_hooks(services: dict[str, dict]) -> list[str]:
                 f"{consumer} missing pre_start alpine chown 0750 hook for {spec['path']}"
             )
         deps = svc.get("depends_on") or {}
-        if isinstance(deps, dict) and removed in deps:
-            violations.append(f"{consumer} still depends_on {removed}")
-        elif isinstance(deps, list) and removed in deps:
+        if (isinstance(deps, dict) and removed in deps) or (
+            isinstance(deps, list) and removed in deps
+        ):
             violations.append(f"{consumer} still depends_on {removed}")
     return violations
 
@@ -223,14 +221,14 @@ def main() -> int:
     found = audit_migrated_chown_hooks(services)
     found.extend(audit_wave4_pki_cert_hooks(services))
     if found:
-        print("compose-pre-start-audit FAILED — chown hooks drifted:")
+        sys.stdout.write("compose-pre-start-audit FAILED — chown hooks drifted:\n")
         for item in found:
-            print(f"  - {item}")
+            sys.stdout.write(f"  - {item}\n")
         return 1
-    print(
+    sys.stdout.write(
         f"OK: {len(MIGRATED_CHOWN_HOOKS)} Wave 1b consumer(s) and "
         f"{len(WAVE4_PKI_CERT_HOOKS)} Wave 4 PKI parent(s) carry pre_start "
-        "chown hooks; sibling init/sidecar writers are gone"
+        "chown hooks; sibling init/sidecar writers are gone\n"
     )
     return 0
 

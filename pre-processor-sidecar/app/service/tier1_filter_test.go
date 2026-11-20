@@ -69,7 +69,7 @@ func TestFilterTier1Articles(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := FilterTier1Articles(tt.articles, logger)
-			assert.Equal(t, tt.wantTier1, len(result.Tier1), "Tier1 count mismatch")
+			assert.Len(t, result.Tier1, tt.wantTier1, "Tier1 count mismatch")
 			assert.Equal(t, tt.wantFiltered, result.Filtered, "Filtered count mismatch")
 		})
 	}

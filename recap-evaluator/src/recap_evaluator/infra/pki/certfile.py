@@ -1,7 +1,5 @@
 """Atomic PEM leaf + key install with journaled rollback."""
 
-# ruff: noqa: TRY003
-
 from __future__ import annotations
 
 import ctypes
@@ -70,20 +68,25 @@ class CertFile:
         try:
             cert_raw = read_regular_no_follow(str(self.cert_path), MAX_ROOT_PEM_BYTES)
         except FileNotFoundError as err:
-            raise CertNotFoundError("pki: cert not found") from err
+            msg = "pki: cert not found"
+            raise CertNotFoundError(msg) from err
         except PkiError as err:
-            raise CertParseError("pki: cert parse failed") from err
+            msg = "pki: cert parse failed"
+            raise CertParseError(msg) from err
         try:
             key_raw = read_regular_no_follow(str(self.key_path), MAX_ROOT_PEM_BYTES)
         except FileNotFoundError as err:
-            raise CertParseError("pki: cert/key pair mismatch") from err
+            msg = "pki: cert/key pair mismatch"
+            raise CertParseError(msg) from err
         except PkiError as err:
-            raise CertParseError("pki: cert parse failed") from err
+            msg = "pki: cert parse failed"
+            raise CertParseError(msg) from err
         _assert_pair(cert_raw, key_raw)
         try:
             cert = x509.load_pem_x509_certificate(cert_raw)
         except ValueError as err:
-            raise CertParseError("pki: cert parse failed") from err
+            msg = "pki: cert parse failed"
+            raise CertParseError(msg) from err
         cn = cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME)
         name = cn[0].value if cn else ""
         if not isinstance(name, str):
@@ -227,11 +230,13 @@ def _assert_pair(cert_pem: bytes, key_pem: bytes) -> None:
         cert = x509.load_pem_x509_certificate(cert_pem)
         key = load_pem_private_key(key_pem, password=None)
     except (ValueError, TypeError) as err:
-        raise CertParseError("pki: cert/key pair parse failed") from err
+        msg = "pki: cert/key pair parse failed"
+        raise CertParseError(msg) from err
     cert_spki = cert.public_key().public_bytes(Encoding.DER, PublicFormat.SubjectPublicKeyInfo)
     key_spki = key.public_key().public_bytes(Encoding.DER, PublicFormat.SubjectPublicKeyInfo)
     if cert_spki != key_spki:
-        raise CertParseError("pki: cert/key pair mismatch")
+        msg = "pki: cert/key pair mismatch"
+        raise CertParseError(msg)
     _ssl_load_pair(cert_pem, key_pem)
 
 
@@ -248,7 +253,8 @@ def _ssl_load_pair(cert_pem: bytes, key_pem: bytes) -> None:
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         ctx.load_cert_chain(certfile=f"/proc/self/fd/{cert_fd}", keyfile=f"/proc/self/fd/{key_fd}")
     except ssl.SSLError as err:
-        raise CertParseError("pki: cert/key pair mismatch") from err
+        msg = "pki: cert/key pair mismatch"
+        raise CertParseError(msg) from err
     finally:
         if cert_fd >= 0:
             os.close(cert_fd)
@@ -261,7 +267,8 @@ def _anonymous_fd(name: str) -> int:
     if callable(create):
         fd = create(name, getattr(os, "MFD_CLOEXEC", 1))
         if not isinstance(fd, int) or fd < 0:
-            raise PkiError("pki: anonymous secret fd unavailable")
+            msg = "pki: anonymous secret fd unavailable"
+            raise PkiError(msg)
         return fd
     libc = ctypes.CDLL("libc.so.6", use_errno=True)
     libc.memfd_create.argtypes = [ctypes.c_char_p, ctypes.c_uint]
@@ -270,7 +277,8 @@ def _anonymous_fd(name: str) -> int:
     if fd >= 0:
         return fd
     err = ctypes.get_errno()
-    raise PkiError("pki: anonymous secret fd unavailable") from OSError(err, os.strerror(err))
+    msg = "pki: anonymous secret fd unavailable"
+    raise PkiError(msg) from OSError(err, os.strerror(err))
 
 
 def _install(final_path: Path, data: bytes, mode: int, prefix: str) -> None:

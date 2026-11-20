@@ -19,14 +19,27 @@ from acolyte.port.llm_provider import LLMResponse
 from acolyte.usecase.graph.nodes.compressor_node import CompressorNode
 from acolyte.usecase.graph.nodes.extractor_node import ExtractorNode
 
+SAMPLE_RELEVANCE_SCORE = 0.9
+ENGLISH_SENTENCE_COUNT = 3
+JAPANESE_SENTENCE_COUNT = 2
+MIXED_SENTENCE_COUNT = 3
+ABBREV_DECIMAL_SENTENCE_COUNT = 2
+NEWLINE_SENTENCE_COUNT = 3
+BULLET_SENTENCE_COUNT = 3
+MAX_TOKEN_LENGTH = 20
+CHAR_BUDGET_WITH_TOLERANCE = 250
+MAX_SELECTED_SENTENCES = 2
+MAX_SPAN_TEXT_LEN = 200
+QUOTE_ONLY_CONFIDENCE = 0.3
+
 # --- CompressedSpan ---
 
 
 def test_compressed_span_is_frozen_dataclass() -> None:
-    span = CompressedSpan(text="AI is growing", char_offset=0, relevance_score=0.9)
+    span = CompressedSpan(text="AI is growing", char_offset=0, relevance_score=SAMPLE_RELEVANCE_SCORE)
     assert span.text == "AI is growing"
     assert span.char_offset == 0
-    assert span.relevance_score == 0.9
+    assert span.relevance_score == SAMPLE_RELEVANCE_SCORE
     with pytest.raises(AttributeError):
         span.text = "x"  # type: ignore[misc]
 
@@ -36,26 +49,26 @@ def test_compressed_span_is_frozen_dataclass() -> None:
 
 def test_split_sentences_english() -> None:
     sents = split_sentences("First sentence. Second one. Third!")
-    assert len(sents) == 3
+    assert len(sents) == ENGLISH_SENTENCE_COUNT
     assert sents[0][0] == "First sentence."
     assert sents[0][1] == 0
 
 
 def test_split_sentences_japanese() -> None:
     sents = split_sentences("最初の文。次の文。")
-    assert len(sents) == 2
+    assert len(sents) == JAPANESE_SENTENCE_COUNT
     assert sents[0][0] == "最初の文。"
 
 
 def test_split_sentences_mixed() -> None:
     sents = split_sentences("English first. 日本語の文。More English.")
-    assert len(sents) == 3
+    assert len(sents) == MIXED_SENTENCE_COUNT
 
 
 def test_split_sentences_conservative_on_abbreviation_and_decimal() -> None:
     """U.S. and 3.14% must NOT be split mid-token."""
     sents = split_sentences("U.S. chip exports rose 3.14%. 次の文。")
-    assert len(sents) == 2
+    assert len(sents) == ABBREV_DECIMAL_SENTENCE_COUNT
 
 
 def test_split_sentences_empty() -> None:
@@ -71,12 +84,12 @@ def test_split_sentences_single_no_delimiter() -> None:
 def test_split_sentences_newline_separated() -> None:
     """Single \\n should split lines (for RSS bullet points, headlines)."""
     sents = split_sentences("Key Findings\nAI chip market grows 45%\nNVIDIA leads")
-    assert len(sents) == 3
+    assert len(sents) == NEWLINE_SENTENCE_COUNT
 
 
 def test_split_sentences_bullet_points() -> None:
     sents = split_sentences("• Item one\n• Item two\n• Item three")
-    assert len(sents) == 3
+    assert len(sents) == BULLET_SENTENCE_COUNT
 
 
 # --- score_sentence ---
@@ -129,7 +142,7 @@ def test_extract_query_terms_japanese_splits_on_punctuation() -> None:
     """Japanese punctuation (。、) must be token separators, not part of tokens."""
     terms = _extract_query_terms(["AIやLLMのチップに関して、各種メーカーの動向を分析して。"])
     # Should NOT have a single 50-char token
-    assert all(len(t) < 20 for t in terms), f"Giant token found: {terms}"
+    assert all(len(t) < MAX_TOKEN_LENGTH for t in terms), f"Giant token found: {terms}"
     # Should contain individual terms
     assert "ai" in terms or any("チップ" in t for t in terms)
 
@@ -203,7 +216,7 @@ def test_compress_article_respects_char_budget() -> None:
     body = "AI trend one. " * 100  # ~1400 chars
     spans = compress_article(body, ["AI"], char_budget=200)
     total = sum(len(s.text) for s in spans)
-    assert total <= 250  # budget + one sentence overflow tolerance
+    assert total <= CHAR_BUDGET_WITH_TOLERANCE  # budget + one sentence overflow tolerance
 
 
 # --- select_top_sentences ---
@@ -221,15 +234,15 @@ def test_select_top_sentences_returns_scored_spans() -> None:
 def test_select_top_sentences_respects_max_sentences() -> None:
     """Never returns more than max_sentences."""
     body = "Sent one about AI. Sent two about AI. Sent three about AI. Sent four about AI."
-    spans = select_top_sentences(body, ["AI"], max_sentences=2)
-    assert len(spans) <= 2
+    spans = select_top_sentences(body, ["AI"], max_sentences=MAX_SELECTED_SENTENCES)
+    assert len(spans) <= MAX_SELECTED_SENTENCES
 
 
 def test_select_top_sentences_respects_max_len() -> None:
     """Each returned span text is capped at max_len characters."""
     body = "A" * 300 + " about AI chips. Short AI fact."
-    spans = select_top_sentences(body, ["AI"], max_len=200)
-    assert all(len(s.text) <= 200 for s in spans)
+    spans = select_top_sentences(body, ["AI"], max_len=MAX_SPAN_TEXT_LEN)
+    assert all(len(s.text) <= MAX_SPAN_TEXT_LEN for s in spans)
 
 
 def test_select_top_sentences_japanese_article() -> None:
@@ -477,7 +490,7 @@ async def test_extractor_degrades_to_quote_only_on_all_failures() -> None:
     result = await node(state)
     # Should have quote-only facts (Pass 3 fallback)
     assert len(result["extracted_facts"]) >= 1
-    assert result["extracted_facts"][0]["confidence"] == 0.3  # quote-only marker
+    assert result["extracted_facts"][0]["confidence"] == QUOTE_ONLY_CONFIDENCE  # quote-only marker
 
 
 @pytest.mark.asyncio

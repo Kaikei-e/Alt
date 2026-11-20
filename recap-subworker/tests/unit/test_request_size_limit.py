@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from http import HTTPStatus
 from pathlib import Path
 
 import httpx
@@ -41,6 +42,10 @@ CLUSTER_STORIES_BODY_BYTES = (
     + REQUEST_ENVELOPE_OVERHEAD_BYTES
 )
 EXPECTED_DEFAULT_MAX_REQUEST_BODY_BYTES = 96 * 1024 * 1024
+EXACT_96_MIB_BYTES = 100_663_296
+CUSTOM_LIMIT_1_MIB_BYTES = 1_048_576
+CUSTOM_LIMIT_2_MIB_BYTES = 2_097_152
+EXPECTED_ASGI_RESPONSE_EVENTS = 2
 
 # Memory budget constants for quadratic pairwise distance/clustering allocation.
 CLUSTERING_BYTES_PER_ITEM_PAIR = 54
@@ -54,18 +59,18 @@ def test_settings_max_request_body_bytes_default(monkeypatch: pytest.MonkeyPatch
     monkeypatch.delenv("RECAP_MAX_REQUEST_BODY_BYTES", raising=False)
     settings = Settings()
     assert settings.max_request_body_bytes == EXPECTED_DEFAULT_MAX_REQUEST_BODY_BYTES
-    assert settings.max_request_body_bytes == 100663296
-    assert DEFAULT_MAX_REQUEST_BODY_BYTES == 100663296
+    assert settings.max_request_body_bytes == EXACT_96_MIB_BYTES
+    assert DEFAULT_MAX_REQUEST_BODY_BYTES == EXACT_96_MIB_BYTES
 
 
 def test_settings_max_request_body_bytes_env_override(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Settings should respect RECAP_SUBWORKER_MAX_REQUEST_BODY_BYTES env variable."""
-    monkeypatch.setenv("RECAP_SUBWORKER_MAX_REQUEST_BODY_BYTES", "1048576")
+    monkeypatch.setenv("RECAP_SUBWORKER_MAX_REQUEST_BODY_BYTES", str(CUSTOM_LIMIT_1_MIB_BYTES))
     monkeypatch.delenv("RECAP_MAX_REQUEST_BODY_BYTES", raising=False)
     settings = Settings()
-    assert settings.max_request_body_bytes == 1048576
+    assert settings.max_request_body_bytes == CUSTOM_LIMIT_1_MIB_BYTES
 
 
 def test_settings_max_request_body_bytes_alias_env_override(
@@ -73,9 +78,9 @@ def test_settings_max_request_body_bytes_alias_env_override(
 ) -> None:
     """Settings should respect RECAP_MAX_REQUEST_BODY_BYTES alias env variable."""
     monkeypatch.delenv("RECAP_SUBWORKER_MAX_REQUEST_BODY_BYTES", raising=False)
-    monkeypatch.setenv("RECAP_MAX_REQUEST_BODY_BYTES", "2097152")
+    monkeypatch.setenv("RECAP_MAX_REQUEST_BODY_BYTES", str(CUSTOM_LIMIT_2_MIB_BYTES))
     settings = Settings()
-    assert settings.max_request_body_bytes == 2097152
+    assert settings.max_request_body_bytes == CUSTOM_LIMIT_2_MIB_BYTES
 
 
 @pytest.mark.parametrize("invalid_val", ["abc", "0", "-1"])
@@ -103,7 +108,7 @@ def test_middleware_request_just_under_limit_passes() -> None:
         # A payload whose JSON encoding is under 100 bytes
         body = {"key": "under"}
         response = client.post("/echo", json=body)
-        assert response.status_code == 200
+        assert response.status_code == HTTPStatus.OK
         assert response.json() == {"received": {"key": "under"}}
 
 
@@ -122,7 +127,7 @@ def test_middleware_request_over_limit_returns_413() -> None:
         # A payload whose JSON encoding exceeds 50 bytes
         large_body = {"data": "x" * 100}
         response = client.post("/echo", json=large_body)
-        assert response.status_code == 413
+        assert response.status_code == HTTPStatus.REQUEST_ENTITY_TOO_LARGE
         assert response.headers["content-type"] == "application/json"
         assert response.json() == {"detail": "Request body too large"}
 
@@ -140,7 +145,7 @@ async def test_middleware_chunked_transfer_encoding_without_content_length_retur
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.post("/test", headers={"transfer-encoding": "chunked"})
-    assert resp.status_code == 411
+    assert resp.status_code == HTTPStatus.LENGTH_REQUIRED
     assert resp.headers["content-type"] == "application/json"
     assert resp.json() == {"detail": "Length Required"}
 
@@ -161,7 +166,7 @@ async def test_middleware_chunked_transfer_encoding_with_content_length_returns_
             "/test",
             headers={"transfer-encoding": "chunked", "content-length": "1"},
         )
-    assert resp.status_code == 411
+    assert resp.status_code == HTTPStatus.LENGTH_REQUIRED
     assert resp.headers["content-type"] == "application/json"
     assert resp.json() == {"detail": "Length Required"}
 
@@ -180,7 +185,7 @@ async def test_middleware_malformed_content_length_returns_400(invalid_length: s
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.post("/test", headers={"content-length": invalid_length})
-    assert resp.status_code == 400
+    assert resp.status_code == HTTPStatus.BAD_REQUEST
     assert resp.headers["content-type"] == "application/json"
     assert resp.json() == {"detail": "Invalid Content-Length"}
 
@@ -208,8 +213,8 @@ async def test_middleware_conflicting_content_length_headers_returns_400() -> No
         ],
     }
     await middleware(scope, dummy_receive, dummy_send)  # type: ignore[arg-type]
-    assert len(sent_events) == 2
-    assert sent_events[0]["status"] == 400
+    assert len(sent_events) == EXPECTED_ASGI_RESPONSE_EVENTS
+    assert sent_events[0]["status"] == HTTPStatus.BAD_REQUEST
     assert sent_events[1]["body"] == b'{"detail":"Invalid Content-Length"}'
 
 
@@ -248,12 +253,12 @@ def test_create_app_enforces_configured_request_size_limit(
             # Under limit: passes size middleware (not 413, proceeds to auth/validation)
             small_payload = {"items": []}
             res_small = client.post("/v1/cluster-stories", json=small_payload)
-            assert res_small.status_code != 413
+            assert res_small.status_code != HTTPStatus.REQUEST_ENTITY_TOO_LARGE
 
             # Over limit: rejected by RequestSizeLimitMiddleware (413) before route handling
             large_payload = {"items": [{"padding": "a" * (limit_bytes + 50)}]}
             res_large = client.post("/v1/cluster-stories", json=large_payload)
-            assert res_large.status_code == 413
+            assert res_large.status_code == HTTPStatus.REQUEST_ENTITY_TOO_LARGE
             assert res_large.json() == {"detail": "Request body too large"}
     finally:
         get_settings.cache_clear()
@@ -288,8 +293,10 @@ async def test_default_limit_admits_7000_story_cluster_payload(
         async def dummy_receive() -> dict[str, object]:
             return {"type": "http.request", "body": b"", "more_body": False}
 
-        async def dummy_send(event: dict[str, object]) -> None:
-            sent_events.append(event)
+        async def dummy_send(
+            event: dict[str, object], events: list[dict[str, object]] = sent_events
+        ) -> None:
+            events.append(event)
 
         middleware = RequestSizeLimitMiddleware(inner_app, max_bytes=max_bytes)
         scope: Scope = {
@@ -305,7 +312,7 @@ async def test_default_limit_admits_7000_story_cluster_payload(
         assert forwarded is True, (
             f"Expected {CLUSTER_STORIES_BODY_BYTES} bytes (7,000 stories) to fit within {max_bytes}"
         )
-        assert sent_events[0]["status"] == 200
+        assert sent_events[0]["status"] == HTTPStatus.OK
 
 
 @pytest.mark.asyncio
@@ -328,8 +335,10 @@ async def test_default_limit_rejects_one_byte_over_with_413(
         async def dummy_receive() -> dict[str, object]:
             return {"type": "http.request", "body": b"", "more_body": False}
 
-        async def dummy_send(event: dict[str, object]) -> None:
-            sent_events.append(event)
+        async def dummy_send(
+            event: dict[str, object], events: list[dict[str, object]] = sent_events
+        ) -> None:
+            events.append(event)
 
         middleware = RequestSizeLimitMiddleware(inner_app, max_bytes=max_bytes)
         scope: Scope = {
@@ -343,7 +352,7 @@ async def test_default_limit_rejects_one_byte_over_with_413(
         }
         await middleware(scope, dummy_receive, dummy_send)  # type: ignore[arg-type]
         assert forwarded is False
-        assert sent_events[0]["status"] == 413
+        assert sent_events[0]["status"] == HTTPStatus.REQUEST_ENTITY_TOO_LARGE
         assert sent_events[1]["body"] == b'{"detail":"Request body too large"}'
 
 

@@ -18,11 +18,12 @@ def test_pg_run_repository_satisfies_port() -> None:
 
 @pytest.mark.asyncio
 async def test_fail_orphaned_runs_delegates_to_dao() -> None:
+    expected_swept = 3
     repo = PgRunRepository(AsyncMock())
     repo._dao = AsyncMock()
-    repo._dao.fail_orphaned_runs.return_value = 3
+    repo._dao.fail_orphaned_runs.return_value = expected_swept
 
     swept = await repo.fail_orphaned_runs("orphaned by restart")
 
-    assert swept == 3
+    assert swept == expected_swept
     repo._dao.fail_orphaned_runs.assert_awaited_once_with("orphaned by restart")

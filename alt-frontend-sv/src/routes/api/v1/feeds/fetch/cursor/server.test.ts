@@ -11,9 +11,7 @@ vi.mock("#lib/api.js", () => ({
 import { GET } from "./+server";
 
 function makeEvent(search = "") {
-	const url = new URL(
-		`http://localhost/api/v1/feeds/fetch/cursor${search}`,
-	);
+	const url = new URL(`http://localhost/api/v1/feeds/fetch/cursor${search}`);
 	return {
 		request: new Request(url),
 		url,
@@ -31,17 +29,18 @@ describe("GET /api/v1/feeds/fetch/cursor", () => {
 		});
 	});
 
-	it.each(["abc", "10abc", "1e3", " 10", "-0"])(
-		'returns 400 when limit is "%s"',
-		async (rawLimit) => {
-			const res = await GET(
-				makeEvent(`?limit=${encodeURIComponent(rawLimit)}`),
-			);
+	it.each([
+		"abc",
+		"10abc",
+		"1e3",
+		" 10",
+		"-0",
+	])('returns 400 when limit is "%s"', async (rawLimit) => {
+		const res = await GET(makeEvent(`?limit=${encodeURIComponent(rawLimit)}`));
 
-			expect(res.status).toBe(400);
-			expect(getFeedsWithCursor).not.toHaveBeenCalled();
-		},
-	);
+		expect(res.status).toBe(400);
+		expect(getFeedsWithCursor).not.toHaveBeenCalled();
+	});
 
 	it("returns 400 when limit is non-positive", async () => {
 		const resZero = await GET(makeEvent("?limit=0"));

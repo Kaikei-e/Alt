@@ -60,7 +60,7 @@ class PgRunRepository:
     async def upsert_diagnostics(self, run_id: int, entries: list[DiagnosticEntry]) -> None:
         await self._dao.upsert_diagnostics(run_id, entries)
 
-    async def upsert_run_diagnostics(
+    async def upsert_run_diagnostics(  # noqa: PLR0913 - port signature; implementers outside this change
         self,
         run_id: int,
         *,

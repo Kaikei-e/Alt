@@ -4,11 +4,12 @@
 use std::ffi::CString;
 use std::fs::File;
 use std::io::{Read, Write};
-use std::os::fd::FromRawFd;
 use std::os::unix::ffi::OsStrExt;
-use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
-use std::os::unix::io::AsRawFd;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
+
+use rustix::fs::{AtFlags, Mode, OFlags, open, openat, renameat, unlinkat};
+use rustix::io::Errno;
 
 use super::error::PkiError;
 
@@ -68,46 +69,29 @@ pub(crate) fn read_regular_no_follow(path: &Path, max_bytes: u64) -> Result<Vec<
             path.display()
         )));
     }
-    let dir_c = CString::new(dir.as_os_str().as_bytes())
-        .map_err(|_| PkiError::other(format!("invalid parent path for {}", path.display())))?;
-    let dir_fd = unsafe {
-        libc::open(
-            dir_c.as_ptr(),
-            libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
-        )
-    };
-    if dir_fd < 0 {
-        let err = std::io::Error::last_os_error();
-        if err.raw_os_error() == Some(libc::ELOOP) {
-            return Err(PkiError::Symlink {
-                path: dir.display().to_string(),
-            });
-        }
-        return Err(PkiError::other(format!(
-            "open parent of {}: {err}",
-            path.display()
-        )));
-    }
-    let dirf = unsafe { File::from_raw_fd(dir_fd) };
+    let dir_fd = open_dir_nofollow(dir, path)?;
     let c_name = CString::new(base)
         .map_err(|_| PkiError::other(format!("invalid basename for {}", path.display())))?;
-    let fd = unsafe {
-        libc::openat(
-            dirf.as_raw_fd(),
-            c_name.as_ptr(),
-            libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
-        )
-    };
-    if fd < 0 {
-        let err = std::io::Error::last_os_error();
-        if err.raw_os_error() == Some(libc::ELOOP) {
-            return Err(PkiError::Symlink {
+    let fd = openat(
+        &dir_fd,
+        c_name.as_c_str(),
+        OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+        Mode::empty(),
+    )
+    .map_err(|errno| {
+        if errno == Errno::LOOP {
+            PkiError::Symlink {
                 path: path.display().to_string(),
-            });
+            }
+        } else {
+            PkiError::other(format!(
+                "open {}: {}",
+                path.display(),
+                std::io::Error::from(errno)
+            ))
         }
-        return Err(PkiError::other(format!("open {}: {err}", path.display())));
-    }
-    let file = unsafe { File::from_raw_fd(fd) };
+    })?;
+    let file = File::from(fd);
     let meta = file
         .metadata()
         .map_err(|e| PkiError::other(format!("fstat {}: {e}", path.display())))?;
@@ -162,24 +146,64 @@ pub(crate) fn write_temp_nofollow(
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_nanos());
     let tmp_name = dir.join(format!(".pki-enroll-{nanos}-{}", std::process::id()));
-    let mut tmp = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(mode)
-        .custom_flags(libc::O_NOFOLLOW)
-        .open(&tmp_name)
-        .map_err(|e| PkiError::other(format!("create temp: {e}")))?;
+    let tmp_fd = open(
+        &tmp_name,
+        OFlags::WRONLY | OFlags::CREATE | OFlags::EXCL | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+        Mode::from_raw_mode(mode),
+    )
+    .map_err(|errno| PkiError::other(format!("create temp: {}", std::io::Error::from(errno))))?;
+    let mut tmp = File::from(tmp_fd);
     if let Err(err) = tmp.write_all(data) {
-        let _ = std::fs::remove_file(&tmp_name);
+        remove_temp_or_warn(&tmp_name);
         return Err(PkiError::other(format!("write temp: {err}")));
     }
     if let Err(err) = tmp.sync_all() {
-        let _ = std::fs::remove_file(&tmp_name);
+        remove_temp_or_warn(&tmp_name);
         return Err(PkiError::other(format!("sync temp: {err}")));
     }
     drop(tmp);
-    let _ = std::fs::set_permissions(&tmp_name, std::fs::Permissions::from_mode(mode));
+    if let Err(err) = std::fs::set_permissions(&tmp_name, std::fs::Permissions::from_mode(mode)) {
+        tracing::warn!(
+            path = %tmp_name.display(),
+            error = %err,
+            "pki: failed to set temporary file permissions"
+        );
+    }
     Ok(tmp_name)
+}
+
+fn remove_temp_or_warn(path: &Path) {
+    if let Err(cleanup_err) = std::fs::remove_file(path) {
+        tracing::warn!(
+            path = %path.display(),
+            error = %cleanup_err,
+            "pki: failed to remove temporary file"
+        );
+    }
+}
+
+fn open_dir_nofollow(dir: &Path, full_path: &Path) -> Result<File, PkiError> {
+    let dir_c = CString::new(dir.as_os_str().as_bytes())
+        .map_err(|_| PkiError::other(format!("invalid parent path for {}", full_path.display())))?;
+    let dir_fd = open(
+        dir_c.as_c_str(),
+        OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+        Mode::empty(),
+    )
+    .map_err(|errno| {
+        if errno == Errno::LOOP {
+            PkiError::Symlink {
+                path: dir.display().to_string(),
+            }
+        } else {
+            PkiError::other(format!(
+                "open parent of {}: {}",
+                full_path.display(),
+                std::io::Error::from(errno)
+            ))
+        }
+    })?;
+    Ok(File::from(dir_fd))
 }
 
 fn parent_dir(path: &Path) -> &Path {
@@ -204,28 +228,7 @@ fn file_basename(path: &Path) -> Result<&str, PkiError> {
 
 pub(crate) fn open_parent_dirfd(path: &Path) -> Result<File, PkiError> {
     assert_trusted_parent(path)?;
-    let dir = parent_dir(path);
-    let dir_c = CString::new(dir.as_os_str().as_bytes())
-        .map_err(|_| PkiError::other(format!("invalid parent path for {}", path.display())))?;
-    let dir_fd = unsafe {
-        libc::open(
-            dir_c.as_ptr(),
-            libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
-        )
-    };
-    if dir_fd < 0 {
-        let err = std::io::Error::last_os_error();
-        if err.raw_os_error() == Some(libc::ELOOP) {
-            return Err(PkiError::Symlink {
-                path: dir.display().to_string(),
-            });
-        }
-        return Err(PkiError::other(format!(
-            "open parent of {}: {err}",
-            path.display()
-        )));
-    }
-    Ok(unsafe { File::from_raw_fd(dir_fd) })
+    open_dir_nofollow(parent_dir(path), path)
 }
 
 pub(crate) fn rename_nofollow(src: &Path, dst: &Path) -> Result<(), PkiError> {
@@ -242,22 +245,14 @@ pub(crate) fn rename_nofollow(src: &Path, dst: &Path) -> Result<(), PkiError> {
         .map_err(|_| PkiError::other(format!("invalid basename for {}", src.display())))?;
     let dst_c = CString::new(file_basename(dst)?)
         .map_err(|_| PkiError::other(format!("invalid basename for {}", dst.display())))?;
-    let rc = unsafe {
-        libc::renameat(
-            dirf.as_raw_fd(),
-            src_c.as_ptr(),
-            dirf.as_raw_fd(),
-            dst_c.as_ptr(),
-        )
-    };
-    if rc != 0 {
-        return Err(PkiError::other(format!(
+    renameat(&dirf, src_c.as_c_str(), &dirf, dst_c.as_c_str()).map_err(|errno| {
+        PkiError::other(format!(
             "rename {} -> {}: {}",
             src.display(),
             dst.display(),
-            std::io::Error::last_os_error()
-        )));
-    }
+            std::io::Error::from(errno)
+        ))
+    })?;
     Ok(())
 }
 
@@ -276,13 +271,15 @@ pub(crate) fn unlink_nofollow(path: &Path) -> Result<(), PkiError> {
     };
     let name = CString::new(file_basename(path)?)
         .map_err(|_| PkiError::other(format!("invalid basename for {}", path.display())))?;
-    let rc = unsafe { libc::unlinkat(dirf.as_raw_fd(), name.as_ptr(), 0) };
-    if rc != 0 {
-        let err = std::io::Error::last_os_error();
-        if err.kind() == std::io::ErrorKind::NotFound || err.raw_os_error() == Some(libc::ENOENT) {
+    if let Err(errno) = unlinkat(&dirf, name.as_c_str(), AtFlags::empty()) {
+        if errno == Errno::NOENT {
             return Ok(());
         }
-        return Err(PkiError::other(format!("unlink {}: {err}", path.display())));
+        return Err(PkiError::other(format!(
+            "unlink {}: {}",
+            path.display(),
+            std::io::Error::from(errno)
+        )));
     }
     Ok(())
 }
@@ -290,7 +287,13 @@ pub(crate) fn unlink_nofollow(path: &Path) -> Result<(), PkiError> {
 pub(crate) fn write_regular_nofollow(path: &Path, data: &[u8], mode: u32) -> Result<(), PkiError> {
     let tmp = write_temp_nofollow(path, data, mode)?;
     if let Err(err) = rename_nofollow(&tmp, path) {
-        let _ = unlink_nofollow(&tmp);
+        if let Err(cleanup_err) = unlink_nofollow(&tmp) {
+            tracing::warn!(
+                path = %tmp.display(),
+                error = %cleanup_err,
+                "pki: failed to remove temporary file"
+            );
+        }
         return Err(err);
     }
     Ok(())

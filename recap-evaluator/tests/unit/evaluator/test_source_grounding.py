@@ -6,12 +6,12 @@ from recap_evaluator.evaluator.source_grounding import SourceGroundingEvaluator
 
 
 class TestSourceGroundingEvaluator:
-    def test_no_bullets_returns_zero(self):
+    def test_no_bullets_returns_zero(self) -> None:
         evaluator = SourceGroundingEvaluator()
         body_json = {"bullets": []}
         assert evaluator.compute(body_json) == 0.0
 
-    def test_all_bullets_have_source_returns_one(self):
+    def test_all_bullets_have_source_returns_one(self) -> None:
         evaluator = SourceGroundingEvaluator()
         body_json = {
             "bullets": [
@@ -21,7 +21,7 @@ class TestSourceGroundingEvaluator:
         }
         assert evaluator.compute(body_json) == pytest.approx(1.0)
 
-    def test_no_bullets_have_source_returns_zero(self):
+    def test_no_bullets_have_source_returns_zero(self) -> None:
         evaluator = SourceGroundingEvaluator()
         body_json = {
             "bullets": [
@@ -31,7 +31,7 @@ class TestSourceGroundingEvaluator:
         }
         assert evaluator.compute(body_json) == 0.0
 
-    def test_partial_coverage_returns_proportion(self):
+    def test_partial_coverage_returns_proportion(self) -> None:
         evaluator = SourceGroundingEvaluator()
         body_json = {
             "bullets": [
@@ -43,11 +43,11 @@ class TestSourceGroundingEvaluator:
         }
         assert evaluator.compute(body_json) == pytest.approx(0.5)
 
-    def test_missing_bullets_key_returns_zero(self):
+    def test_missing_bullets_key_returns_zero(self) -> None:
         evaluator = SourceGroundingEvaluator()
         assert evaluator.compute({}) == 0.0
 
-    def test_batch_averages_over_outputs(self):
+    def test_batch_averages_over_outputs(self) -> None:
         evaluator = SourceGroundingEvaluator()
         outputs = [
             {

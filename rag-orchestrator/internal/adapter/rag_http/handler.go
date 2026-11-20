@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 // EmbedderFactory creates a VectorEncoder from a URL.
@@ -55,7 +55,7 @@ const (
 	maxMaxChunks        = 50
 )
 
-func bindBoundedJSON(ctx echo.Context, dst any) error {
+func bindBoundedJSON(ctx *echo.Context, dst any) error {
 	req := ctx.Request()
 	if req != nil && req.Body != nil {
 		req.Body = http.MaxBytesReader(ctx.Response(), req.Body, maxRequestBodyBytes)
@@ -175,7 +175,7 @@ func (h *Handler) isAllowedEmbedderOverride(raw string) bool {
 	return allowed
 }
 
-func wrapAuthContext(ctx echo.Context) context.Context {
+func wrapAuthContext(ctx *echo.Context) context.Context {
 	reqCtx := ctx.Request().Context()
 	if token := ctx.Request().Header.Get("X-Alt-Backend-Token"); token != "" {
 		return authcontext.WithJWT(reqCtx, token)
@@ -214,7 +214,7 @@ var _ openapi.ServerInterface = (*Handler)(nil)
 
 // Delete or tombstone an article from the index
 // (POST /internal/rag/index/delete)
-func (h *Handler) DeleteIndex(ctx echo.Context) error {
+func (h *Handler) DeleteIndex(ctx *echo.Context) error {
 	return ctx.JSON(http.StatusNotImplemented, map[string]string{"status": "not implemented"})
 }
 
@@ -227,7 +227,7 @@ const (
 
 // Upsert an article to the RAG index
 // (POST /internal/rag/index/upsert)
-func (h *Handler) UpsertIndex(ctx echo.Context) error {
+func (h *Handler) UpsertIndex(ctx *echo.Context) error {
 	var req openapi.UpsertIndexRequest
 	if err := bindBoundedJSON(ctx, &req); err != nil {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
@@ -308,7 +308,7 @@ func (h *Handler) UpsertIndex(ctx echo.Context) error {
 
 // BackfillDocumentOwners sets user_id for documents where user_id is currently NULL.
 // (POST /v1/documents/owners)
-func (h *Handler) BackfillDocumentOwners(ctx echo.Context) error {
+func (h *Handler) BackfillDocumentOwners(ctx *echo.Context) error {
 	var req openapi.OwnerBackfillRequest
 	if err := bindBoundedJSON(ctx, &req); err != nil {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
@@ -345,7 +345,7 @@ func isDuplicateKeyError(err error) bool {
 
 // Answer a query using RAG (with LLM generation)
 // (POST /v1/rag/answer)
-func (h *Handler) AnswerWithRAG(ctx echo.Context) error {
+func (h *Handler) AnswerWithRAG(ctx *echo.Context) error {
 	var req openapi.AnswerRequest
 	if err := bindBoundedJSON(ctx, &req); err != nil {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
@@ -460,7 +460,7 @@ func (h *Handler) AnswerWithRAG(ctx echo.Context) error {
 
 // AnswerWithRAGStream streams a RAG answer using Server-Sent Events.
 // (POST /v1/rag/answer/stream)
-func (h *Handler) AnswerWithRAGStream(ctx echo.Context) error {
+func (h *Handler) AnswerWithRAGStream(ctx *echo.Context) error {
 	var req openapi.AnswerRequest
 	if err := bindBoundedJSON(ctx, &req); err != nil {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
@@ -487,7 +487,7 @@ func (h *Handler) AnswerWithRAGStream(ctx echo.Context) error {
 	res.Header().Set("Cache-Control", "no-cache, no-transform")
 	res.Header().Set("Connection", "keep-alive")
 
-	flusher, ok := res.Writer.(http.Flusher)
+	flusher, ok := res.(http.Flusher)
 	if !ok {
 		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": "streaming not supported"})
 	}
@@ -504,7 +504,7 @@ func (h *Handler) AnswerWithRAGStream(ctx echo.Context) error {
 			if !ok {
 				return nil
 			}
-			if err := writeSSE(res.Writer, event.Kind, event.Payload); err != nil {
+			if err := writeSSE(res, event.Kind, event.Payload); err != nil {
 				return err
 			}
 			flusher.Flush()
@@ -512,7 +512,7 @@ func (h *Handler) AnswerWithRAGStream(ctx echo.Context) error {
 				return nil
 			}
 		case <-ticker.C:
-			if _, err := io.WriteString(res.Writer, ":\n\n"); err != nil {
+			if _, err := io.WriteString(res, ":\n\n"); err != nil {
 				return err
 			}
 			flusher.Flush()
@@ -534,7 +534,7 @@ type backfillRequest struct {
 
 // Backfill enqueues an article for indexing
 // (POST /internal/rag/backfill)
-func (h *Handler) Backfill(ctx echo.Context) error {
+func (h *Handler) Backfill(ctx *echo.Context) error {
 	var req backfillRequest
 	if err := bindBoundedJSON(ctx, &req); err != nil {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
@@ -595,7 +595,7 @@ func (h *Handler) Backfill(ctx echo.Context) error {
 
 // Retrieve context for a query (Retrieve-Only)
 // (POST /v1/rag/retrieve)
-func (h *Handler) RetrieveContext(ctx echo.Context) error {
+func (h *Handler) RetrieveContext(ctx *echo.Context) error {
 	var req openapi.RetrieveRequest
 	if err := bindBoundedJSON(ctx, &req); err != nil {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
@@ -752,7 +752,7 @@ type GenerationInfo struct {
 
 // MorningLetter extracts important topics from recent articles
 // (POST /v1/rag/morning-letter)
-func (h *Handler) MorningLetter(ctx echo.Context) error {
+func (h *Handler) MorningLetter(ctx *echo.Context) error {
 	var req MorningLetterRequest
 	if err := bindBoundedJSON(ctx, &req); err != nil {
 		return ctx.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
@@ -868,7 +868,7 @@ type CandidateSimilarityResponse struct {
 // CandidateSimilarity computes similarity between a seed article and a caller-provided
 // candidate article set under a chosen embedding representation.
 // (POST /internal/rag/candidate-similarity)
-func (h *Handler) CandidateSimilarity(ctx echo.Context) error {
+func (h *Handler) CandidateSimilarity(ctx *echo.Context) error {
 	if h.candidateSimilarityUsecase == nil {
 		panic("rag_http: candidateSimilarityUsecase is not wired")
 	}

@@ -1,6 +1,7 @@
 """Tests for evaluation handler."""
 
 from datetime import UTC, datetime
+from http import HTTPStatus
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
@@ -17,7 +18,7 @@ from recap_evaluator.handler.evaluation_handler import router
 
 
 @pytest.fixture
-def app():
+def app() -> FastAPI:
     app = FastAPI()
     app.include_router(router)
 
@@ -33,12 +34,12 @@ def app():
 
 
 @pytest.fixture
-def client(app):
+def client(app: FastAPI) -> TestClient:
     return TestClient(app)
 
 
 class TestRunFullEvaluation:
-    def test_returns_evaluation_run(self, client, app):
+    def test_returns_evaluation_run(self, client: TestClient, app: FastAPI) -> None:
         eval_id = uuid4()
         app.state.run_evaluation.execute.return_value = EvaluationRun(
             evaluation_id=eval_id,
@@ -51,12 +52,12 @@ class TestRunFullEvaluation:
 
         resp = client.post("/api/v1/evaluations/run", json={"window_days": 7})
 
-        assert resp.status_code == 200
+        assert resp.status_code == HTTPStatus.OK
         data = resp.json()
         assert data["evaluation_type"] == "full"
         assert data["overall_alert_level"] == "ok"
 
-    def test_returns_404_when_no_jobs(self, client, app):
+    def test_returns_404_when_no_jobs(self, client: TestClient, app: FastAPI) -> None:
         app.state.run_evaluation.execute.return_value = EvaluationRun(
             evaluation_id=uuid4(),
             evaluation_type=EvaluationType.FULL,
@@ -67,21 +68,21 @@ class TestRunFullEvaluation:
 
         resp = client.post("/api/v1/evaluations/run", json={"window_days": 7})
 
-        assert resp.status_code == 404
+        assert resp.status_code == HTTPStatus.NOT_FOUND
 
     @pytest.mark.parametrize("invalid_days", [0, -5, 91, 365])
-    def test_rejects_out_of_range_window_days(self, client, invalid_days):
+    def test_rejects_out_of_range_window_days(self, client: TestClient, invalid_days: int) -> None:
         for endpoint in (
             "/api/v1/evaluations/run",
             "/api/v1/evaluations/cluster",
             "/api/v1/evaluations/summary",
         ):
             resp = client.post(endpoint, json={"window_days": invalid_days})
-            assert resp.status_code == 422
+            assert resp.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
 
 
 class TestGetEvaluation:
-    def test_returns_evaluation_by_id(self, client, app):
+    def test_returns_evaluation_by_id(self, client: TestClient, app: FastAPI) -> None:
         eval_id = uuid4()
         app.state.get_metrics.get_evaluation_by_id.return_value = {
             "evaluation_id": eval_id,
@@ -93,23 +94,23 @@ class TestGetEvaluation:
 
         resp = client.get(f"/api/v1/evaluations/{eval_id}")
 
-        assert resp.status_code == 200
+        assert resp.status_code == HTTPStatus.OK
 
-    def test_returns_404_when_not_found(self, client, app):
+    def test_returns_404_when_not_found(self, client: TestClient, app: FastAPI) -> None:
         app.state.get_metrics.get_evaluation_by_id.return_value = None
 
         resp = client.get(f"/api/v1/evaluations/{uuid4()}")
 
-        assert resp.status_code == 404
+        assert resp.status_code == HTTPStatus.NOT_FOUND
 
 
 class TestListEvaluations:
-    def test_returns_empty_list(self, client, app):
+    def test_returns_empty_list(self, client: TestClient, app: FastAPI) -> None:
         app.state.get_metrics.get_evaluation_history.return_value = []
 
         resp = client.get("/api/v1/evaluations")
 
-        assert resp.status_code == 200
+        assert resp.status_code == HTTPStatus.OK
         data = resp.json()
         assert data["total"] == 0
         assert data["evaluations"] == []

@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 const (
@@ -71,7 +71,7 @@ func (m *APIAuthMiddleware) checkAuth(authHeader string) bool {
 // EchoMiddleware returns an Echo middleware function gating routes on the :9010 REST server.
 func (m *APIAuthMiddleware) EchoMiddleware() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+		return func(c *echo.Context) error {
 			if isExemptPath(c.Request().URL.Path) {
 				return next(c)
 			}

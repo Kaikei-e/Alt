@@ -8,6 +8,8 @@ import sys
 # See: https://docs.pytorch.org/docs/stable/notes/multiprocessing.html
 from typing import TYPE_CHECKING, Any
 
+import structlog
+
 from ..infra.config import Settings
 from .classifier import GenreClassifierService
 from .embedder import Embedder, EmbedderConfig
@@ -25,22 +27,22 @@ def initialize(settings_payload: dict[str, Any]) -> None:
     the classifier and embedder. If initialization fails, the error is
     logged and re-raised to prevent the worker from starting in a bad state.
     """
-    import structlog
-
     logger = structlog.get_logger(__name__)
 
     try:
         logger.info("initializing classification worker process")
         settings = Settings(**settings_payload)
 
-        global _CLASSIFIER
+        global _CLASSIFIER  # noqa: PLW0603 - process-level singleton initialized once per pool child
 
         # Check which backend to use
         backend = getattr(settings, "classification_backend", "joblib")
 
         if backend == "learning_machine":
             # Lazy import to avoid importing torch at module level
-            from .learning_machine_classifier import LearningMachineStudentClassifier
+            from .learning_machine_classifier import (  # noqa: PLC0415 - lazy import in pool child to avoid loading torch/CUDA in parent process
+                LearningMachineStudentClassifier,
+            )
 
             logger.info("using learning_machine student classifier backend")
             # Load learning machine student models
@@ -89,7 +91,6 @@ def initialize(settings_payload: dict[str, Any]) -> None:
             "classification worker initialization failed",
             error=str(exc),
             error_type=type(exc).__name__,
-            exc_info=True,
         )
         # Re-raise to prevent worker from starting in a bad state
         # This will cause the pool to fail initialization and be cleaned up
@@ -98,12 +99,12 @@ def initialize(settings_payload: dict[str, Any]) -> None:
 
 def _require_classifier() -> GenreClassifierService | LearningMachineStudentClassifier:
     if _CLASSIFIER is None:  # pragma: no cover - runtime safeguard
-        raise RuntimeError("Classification worker not initialized")
+        msg = "Classification worker not initialized"
+        raise RuntimeError(msg)
     return _CLASSIFIER
 
 
 def predict_batch(texts: list[str]) -> list[dict[str, Any]]:
     """Execute classification and return a JSON-serializable response."""
     classifier = _require_classifier()
-    results = classifier.predict_batch(texts)
-    return results
+    return classifier.predict_batch(texts)

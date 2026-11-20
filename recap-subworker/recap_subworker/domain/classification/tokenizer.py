@@ -14,6 +14,10 @@ except ImportError:
 
 logger = structlog.get_logger(__name__)
 
+_MIN_IES_STEM_LEN = 3
+_MIN_ING_STEM_LEN = 4
+_MIN_PLURAL_S_LEN = 3
+
 
 class ClassificationLanguage(Enum):
     """分類対象テキストの言語。"""
@@ -36,7 +40,7 @@ class ClassificationLanguage(Enum):
 class NormalizedDocument:
     """正規化された文書。"""
 
-    def __init__(self, tokens: list[str], normalized: str):
+    def __init__(self, tokens: list[str], normalized: str) -> None:
         self.tokens = tokens
         self.normalized = normalized
 
@@ -58,7 +62,7 @@ class Tokenizer(ABC):
 class JapaneseTokenizer(Tokenizer):
     """日本語トークナイザー（Janome使用）。"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.tokenizer = JanomeTokenizer() if JanomeTokenizer else None
         # Pythonのreモジュールでは\p{L}などが使えないため、代替パターンを使用
         self.fallback_word_re = re.compile(r"[^\w\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]+")
@@ -84,9 +88,7 @@ class JapaneseTokenizer(Tokenizer):
         normalized = normalize_text(text)
         tokens = []
         for piece in normalized.split():
-            for token in self.fallback_word_re.split(piece):
-                if token:
-                    tokens.append(token)
+            tokens.extend(token for token in self.fallback_word_re.split(piece) if token)
         return tokens
 
 
@@ -103,10 +105,9 @@ class EnglishTokenizer(Tokenizer):
         for char in normalized:
             if char.isalnum():
                 current_word.append(char)
-            else:
-                if current_word:
-                    tokens.append("".join(current_word))
-                    current_word = []
+            elif current_word:
+                tokens.append("".join(current_word))
+                current_word = []
         if current_word:
             tokens.append("".join(current_word))
 
@@ -117,11 +118,11 @@ class EnglishTokenizer(Tokenizer):
     def _normalize_token(token: str) -> str:
         """英語トークンを正規化。"""
         lower = token.lower()
-        if lower.endswith("ies") and len(lower) > 3:
+        if lower.endswith("ies") and len(lower) > _MIN_IES_STEM_LEN:
             return lower[:-3] + "y"
-        if lower.endswith("ing") and len(lower) > 4:
+        if lower.endswith("ing") and len(lower) > _MIN_ING_STEM_LEN:
             return lower[:-3]
-        if lower.endswith("s") and len(lower) > 3:
+        if lower.endswith("s") and len(lower) > _MIN_PLURAL_S_LEN:
             return lower[:-1]
         return lower
 
@@ -129,7 +130,7 @@ class EnglishTokenizer(Tokenizer):
 class FallbackTokenizer(Tokenizer):
     """フォールバックトークナイザー。"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         # Pythonのreモジュールでは\p{L}などが使えないため、代替パターンを使用
         self.split_re = re.compile(r"[^\w\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]+")
 
@@ -138,9 +139,7 @@ class FallbackTokenizer(Tokenizer):
         normalized = normalize_text(text)
         tokens = []
         for piece in normalized.split():
-            for token in self.split_re.split(piece):
-                if token:
-                    tokens.append(token.lower())
+            tokens.extend(token.lower() for token in self.split_re.split(piece) if token)
         return tokens
 
 
@@ -156,7 +155,7 @@ def apply_augmented_tokens(tokens: list[str], mapping: list[tuple[str, list[str]
 class TokenPipeline:
     """トークンパイプライン。"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.japanese = JapaneseTokenizer()
         self.english = EnglishTokenizer()
         self.fallback = FallbackTokenizer()

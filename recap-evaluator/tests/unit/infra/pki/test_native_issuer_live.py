@@ -8,35 +8,62 @@ import os
 import shutil
 import ssl
 import subprocess
+import tempfile
 import time
 from datetime import UTC, datetime, timedelta
+from http import HTTPStatus
 from pathlib import Path
 from urllib.parse import urlparse
 
 import pytest
 from cryptography import x509
+from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 
 from recap_evaluator.infra.pki.certfile import CertFile
 from recap_evaluator.infra.pki.config import MODE_ENABLED, Config
 from recap_evaluator.infra.pki.ctx import Ctx
 from recap_evaluator.infra.pki.manager import Manager
-from recap_evaluator.infra.pki.native_issuer import NativeStepCAIssuer
+from recap_evaluator.infra.pki.native_issuer import (
+    NativeStepCAIssuer,
+    _assert_sans,
+    _verify_chain,
+)
 from recap_evaluator.infra.pki.state import State
 
 LIVE_CA_IMAGE = "smallstep/step-ca:0.30.2"
 LIVE_CA_CONTAINER = "alt-pki-native-itest-recap-evaluator"
 LIVE_CA_NETWORK = "alt-pki-native-itest-recap-evaluator-net"
 LIVE_CA_HOST_PORT = "19014"
-LIVE_CA_PASSWORD = "itest-only"
-LIVE_JWK_PASSWORD = "itest-jwk-recap-evaluator"
+LIVE_CA_PASSWORD = "itest-only"  # noqa: S105 - test fixture value, not a credential
+LIVE_JWK_PASSWORD = "itest-jwk-recap-evaluator"  # noqa: S105 - test fixture value, not a credential
 LIVE_PROVISIONER = "pki-agent-recap-evaluator"
 LIVE_SUBJECT = "recap-evaluator"
 
 
+def _docker_bin() -> str:
+    docker = shutil.which("docker")
+    if docker is None:
+        pytest.fail("docker is required for the live gate")
+    return docker
+
+
+def _cleanup_live_ca(docker: str) -> None:
+    subprocess.run(  # noqa: S603 - fixed argv built in this test
+        [docker, "rm", "-f", LIVE_CA_CONTAINER],
+        check=False,
+        capture_output=True,
+    )
+    subprocess.run(  # noqa: S603 - fixed argv built in this test
+        [docker, "network", "rm", LIVE_CA_NETWORK],
+        check=False,
+        capture_output=True,
+    )
+
+
 def _docker(*args: str, timeout: float = 30) -> str:
-    result = subprocess.run(
-        ["docker", *args],
+    result = subprocess.run(  # noqa: S603 - fixed argv built in this test
+        [_docker_bin(), *args],
         check=False,
         capture_output=True,
         text=True,
@@ -53,16 +80,10 @@ def _docker(*args: str, timeout: float = 30) -> str:
 )
 def test_native_step_ca_issuer_disposable_live_ca(tmp_path: Path) -> None:
     """PKI_NATIVE_LIVE_CA=1 pytest tests/unit/pki/test_native_issuer_live.py -q  (60s, always cleanup)."""
-    if shutil.which("docker") is None:
-        pytest.fail("docker is required for the live gate")
+    docker = _docker_bin()
     deadline = time.monotonic() + 50
     try:
-        subprocess.run(["docker", "rm", "-f", LIVE_CA_CONTAINER], check=False, capture_output=True)
-        subprocess.run(
-            ["docker", "network", "rm", LIVE_CA_NETWORK],
-            check=False,
-            capture_output=True,
-        )
+        _cleanup_live_ca(docker)
         _docker("network", "create", LIVE_CA_NETWORK)
         _docker(
             "run",
@@ -161,20 +182,16 @@ def test_native_step_ca_issuer_disposable_live_ca(tmp_path: Path) -> None:
         after_missing = Path(files.cert_path).read_bytes()
         _must_live_leaf(after_missing, Path(files.key_path).read_bytes(), root_file)
     finally:
-        subprocess.run(["docker", "rm", "-f", LIVE_CA_CONTAINER], check=False, capture_output=True)
-        subprocess.run(
-            ["docker", "network", "rm", LIVE_CA_NETWORK],
-            check=False,
-            capture_output=True,
-        )
+        _cleanup_live_ca(docker)
 
 
 def _wait_live_ca_root(dest: Path, deadline: float) -> None:
+    docker = _docker_bin()
     last = ""
     while time.monotonic() < deadline:
-        probe = subprocess.run(
+        probe = subprocess.run(  # noqa: S603 - fixed argv built in this test
             [
-                "docker",
+                docker,
                 "exec",
                 LIVE_CA_CONTAINER,
                 "test",
@@ -186,9 +203,9 @@ def _wait_live_ca_root(dest: Path, deadline: float) -> None:
             text=True,
         )
         if probe.returncode == 0:
-            subprocess.run(
+            subprocess.run(  # noqa: S603 - fixed argv built in this test
                 [
-                    "docker",
+                    docker,
                     "cp",
                     f"{LIVE_CA_CONTAINER}:/home/step/certs/root_ca.crt",
                     str(dest),
@@ -199,8 +216,8 @@ def _wait_live_ca_root(dest: Path, deadline: float) -> None:
             return
         last = probe.stderr
         time.sleep(0.2)
-    logs = subprocess.run(
-        ["docker", "logs", LIVE_CA_CONTAINER],
+    logs = subprocess.run(  # noqa: S603 - fixed argv built in this test
+        [docker, "logs", LIVE_CA_CONTAINER],
         check=False,
         capture_output=True,
         text=True,
@@ -209,6 +226,7 @@ def _wait_live_ca_root(dest: Path, deadline: float) -> None:
 
 
 def _add_live_jwk_provisioner(deadline: float) -> None:
+    docker = _docker_bin()
     script = f"""set -euo pipefail
 printf '%s\\n' {LIVE_JWK_PASSWORD!r} > /tmp/pki-agent-recap-evaluator-jwk
 chmod 400 /tmp/pki-agent-recap-evaluator-jwk
@@ -217,17 +235,17 @@ step ca provisioner add {LIVE_PROVISIONER!r} --type JWK --create \\
   --ca-config /home/step/config/ca.json
 kill -HUP 1
 """
-    subprocess.run(
-        ["docker", "exec", LIVE_CA_CONTAINER, "sh", "-c", script],
+    subprocess.run(  # noqa: S603 - fixed argv built in this test
+        [docker, "exec", LIVE_CA_CONTAINER, "sh", "-c", script],
         check=True,
         capture_output=True,
         text=True,
         timeout=20,
     )
     while time.monotonic() < deadline:
-        listed = subprocess.run(
+        listed = subprocess.run(  # noqa: S603 - fixed argv built in this test
             [
-                "docker",
+                docker,
                 "exec",
                 LIVE_CA_CONTAINER,
                 "step",
@@ -268,10 +286,10 @@ def _wait_provisioner_http(ca_url: str, root_file: Path, deadline: float) -> Non
                     body = resp.read()
                 finally:
                     conn.close()
-                if resp.status == 404:
+                if resp.status == HTTPStatus.NOT_FOUND:
                     continue
                 last = f"status={resp.status} bytes={len(body)}"
-                if resp.status >= 400:
+                if resp.status >= HTTPStatus.BAD_REQUEST:
                     continue
                 payload = json.loads(body.decode("utf-8"))
                 for item in payload.get("provisioners") or []:
@@ -287,10 +305,6 @@ def _wait_provisioner_http(ca_url: str, root_file: Path, deadline: float) -> Non
 
 
 def _must_live_leaf(cert_pem: bytes, key_pem: bytes, root_file: Path) -> x509.Certificate:
-    import tempfile
-
-    from cryptography.hazmat.primitives import serialization
-
     with (
         tempfile.NamedTemporaryFile(delete=False) as cf,
         tempfile.NamedTemporaryFile(delete=False) as kf,
@@ -306,8 +320,6 @@ def _must_live_leaf(cert_pem: bytes, key_pem: bytes, root_file: Path) -> x509.Ce
     leaf = x509.load_pem_x509_certificate(cert_pem)
     cn = leaf.subject.get_attributes_for_oid(x509.oid.NameOID.COMMON_NAME)[0].value
     assert cn == LIVE_SUBJECT
-    from recap_evaluator.infra.pki.native_issuer import _assert_sans, _verify_chain
-
     _assert_sans(leaf, [LIVE_SUBJECT])
     root = x509.load_pem_x509_certificate(root_file.read_bytes())
     rest = cert_pem

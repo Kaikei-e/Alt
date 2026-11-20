@@ -1,9 +1,12 @@
 """Tests for PlanQueryUsecase."""
 
 import json
-import pytest
 from unittest.mock import AsyncMock, Mock
 
+import aiohttp
+import pytest
+
+from news_creator.domain.errors import QueueFullError
 from news_creator.domain.models import (
     ConversationMessage,
     PlanQueryRequest,
@@ -34,7 +37,7 @@ def _make_usecase() -> tuple[PlanQueryUsecase, AsyncMock]:
 
 
 @pytest.mark.asyncio
-async def test_plan_query_causal_single_turn():
+async def test_plan_query_causal_single_turn() -> None:
     """Causal query produces resolved_query and causal intent."""
     usecase, llm = _make_usecase()
     llm.chat_generate.return_value = _make_chat_response(
@@ -60,7 +63,8 @@ async def test_plan_query_causal_single_turn():
     assert response.plan.intent == "causal_explanation"
     assert response.plan.retrieval_policy == "global_only"
     assert not response.plan.should_clarify
-    assert len(response.plan.search_queries) >= 2
+    min_expected_queries = 2
+    assert len(response.plan.search_queries) >= min_expected_queries
     assert response.original_query == "イランの石油危機はなぜ起きた？"
     assert response.model == "gemma4-e4b-12k"
 
@@ -69,7 +73,7 @@ async def test_plan_query_causal_single_turn():
 
 
 @pytest.mark.asyncio
-async def test_plan_query_follow_up_resolves_coreference():
+async def test_plan_query_follow_up_resolves_coreference() -> None:
     """Follow-up with 'それ' should produce a standalone resolved_query."""
     usecase, llm = _make_usecase()
     llm.chat_generate.return_value = _make_chat_response(
@@ -111,7 +115,7 @@ async def test_plan_query_follow_up_resolves_coreference():
 
 
 @pytest.mark.asyncio
-async def test_plan_query_ambiguous_requests_clarification():
+async def test_plan_query_ambiguous_requests_clarification() -> None:
     """Ambiguous follow-up 'もっと詳しく' should request clarification."""
     usecase, llm = _make_usecase()
     llm.chat_generate.return_value = _make_chat_response(
@@ -146,7 +150,7 @@ async def test_plan_query_ambiguous_requests_clarification():
 
 
 @pytest.mark.asyncio
-async def test_plan_query_article_scoped():
+async def test_plan_query_article_scoped() -> None:
     """Article-scoped query should set article_only policy."""
     usecase, llm = _make_usecase()
     llm.chat_generate.return_value = _make_chat_response(
@@ -180,7 +184,7 @@ async def test_plan_query_article_scoped():
 
 
 @pytest.mark.asyncio
-async def test_plan_query_llm_failure_returns_fallback():
+async def test_plan_query_llm_failure_returns_fallback() -> None:
     """LLM error should produce a safe deterministic fallback plan."""
     usecase, llm = _make_usecase()
     llm.chat_generate.side_effect = RuntimeError("Ollama timeout")
@@ -195,11 +199,41 @@ async def test_plan_query_llm_failure_returns_fallback():
     assert not response.plan.should_clarify
 
 
+@pytest.mark.asyncio
+async def test_plan_query_queue_full_error_returns_fallback() -> None:
+    """QueueFullError from semaphore should fall back to deterministic plan."""
+    usecase, llm = _make_usecase()
+    llm.chat_generate.side_effect = QueueFullError("Queue depth 10 >= max 10")
+
+    request = PlanQueryRequest(query="量子コンピュータの実用化")
+    response = await usecase.plan_query(request)
+
+    assert response.plan.resolved_query == "量子コンピュータの実用化"
+    assert response.plan.intent == "general"
+    assert response.plan.retrieval_policy == "global_only"
+    assert not response.plan.should_clarify
+
+
+@pytest.mark.asyncio
+async def test_plan_query_server_disconnected_error_returns_fallback() -> None:
+    """aiohttp.ServerDisconnectedError (non-OSError) should fall back to deterministic plan."""
+    usecase, llm = _make_usecase()
+    llm.chat_generate.side_effect = aiohttp.ServerDisconnectedError("disconnected")
+
+    request = PlanQueryRequest(query="半導体市場の動向")
+    response = await usecase.plan_query(request)
+
+    assert response.plan.resolved_query == "半導体市場の動向"
+    assert response.plan.intent == "general"
+    assert response.plan.retrieval_policy == "global_only"
+    assert not response.plan.should_clarify
+
+
 # --- Invalid JSON from LLM → deterministic fallback ---
 
 
 @pytest.mark.asyncio
-async def test_plan_query_invalid_json_returns_fallback():
+async def test_plan_query_invalid_json_returns_fallback() -> None:
     """Malformed LLM response should produce a safe fallback plan."""
     usecase, llm = _make_usecase()
     llm.chat_generate.return_value = {
@@ -223,7 +257,7 @@ async def test_plan_query_invalid_json_returns_fallback():
 
 
 @pytest.mark.asyncio
-async def test_plan_query_prompt_includes_history():
+async def test_plan_query_prompt_includes_history() -> None:
     """Verify the LLM prompt includes conversation history when provided."""
     usecase, llm = _make_usecase()
     llm.chat_generate.return_value = _make_chat_response(

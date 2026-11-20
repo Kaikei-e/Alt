@@ -30,6 +30,9 @@ import numpy as np
 import pytest
 from sklearn.linear_model import LogisticRegression
 
+from recap_subworker.infra.config import Settings
+from recap_subworker.infra.embedding_identity import canonicalize_embedding_id
+
 
 def _runtime_sklearn_minor() -> str:
     full = importlib.metadata.version("scikit-learn")
@@ -80,14 +83,8 @@ def _build_settings(
     *,
     ja_model: Path,
     ja_thresholds: Path,
-    model_backend: str = "sentence-transformers",
-    model_id: str = "BAAI/bge-m3",
-    ollama_embed_model: str = "mxbai-embed-large",
-    ollama_embed_url: str | None = None,
-    onnx_tokenizer_name: str | None = None,
-):
-    from recap_subworker.infra.config import Settings
-
+    **overrides: str | None,
+) -> Settings:
     kwargs: dict[str, object] = {
         "classification_backend": "joblib",
         "genre_classifier_model_path_ja": str(ja_model),
@@ -96,12 +93,13 @@ def _build_settings(
         "genre_thresholds_path_en": "",
         "tfidf_vectorizer_path_ja": "",
         "tfidf_vectorizer_path_en": "",
-        "model_backend": model_backend,
-        "model_id": model_id,
-        "ollama_embed_model": ollama_embed_model,
-        "ollama_embed_url": ollama_embed_url,
-        "onnx_tokenizer_name": onnx_tokenizer_name,
+        "model_backend": "sentence-transformers",
+        "model_id": "BAAI/bge-m3",
+        "ollama_embed_model": "mxbai-embed-large",
+        "ollama_embed_url": None,
+        "onnx_tokenizer_name": None,
     }
+    kwargs.update(overrides)
     return Settings(**kwargs)  # type: ignore[arg-type]
 
 
@@ -157,8 +155,6 @@ class TestUnconfiguredDefaultsMatchSidecar:
     def test_ollama_remote_default_model_passes_validator(
         self, ja_model_path_30: Path, ja_thresholds_path: Path
     ) -> None:
-        from recap_subworker.infra.config import Settings
-
         _write_sidecar(ja_model_path_30, "BAAI/bge-m3")
         settings = Settings(  # type: ignore[arg-type]
             classification_backend="joblib",
@@ -174,8 +170,6 @@ class TestUnconfiguredDefaultsMatchSidecar:
     def test_sentence_transformers_default_model_id_passes_validator(
         self, ja_model_path_30: Path, ja_thresholds_path: Path
     ) -> None:
-        from recap_subworker.infra.config import Settings
-
         _write_sidecar(ja_model_path_30, "BAAI/bge-m3")
         settings = Settings(  # type: ignore[arg-type]
             classification_backend="joblib",
@@ -188,9 +182,6 @@ class TestUnconfiguredDefaultsMatchSidecar:
         assert settings.model_id == "BAAI/bge-m3"
 
     def test_backend_defaults_resolve_to_one_vector_space(self) -> None:
-        from recap_subworker.infra.config import Settings
-        from recap_subworker.infra.embedding_identity import canonicalize_embedding_id
-
         settings = Settings()
         assert canonicalize_embedding_id(settings.ollama_embed_model) == canonicalize_embedding_id(
             settings.model_id
@@ -305,8 +296,6 @@ class TestPeerValidatorTolerantPaths:
         tmp_path: Path,
     ) -> None:
         """Non-joblib classification backend short-circuits."""
-        from recap_subworker.infra.config import Settings
-
         _write_sidecar(ja_model_path_30, "BAAI/bge-m3")
         lm_dir = tmp_path / "lm"
         lm_dir.mkdir()

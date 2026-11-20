@@ -50,7 +50,7 @@ func TestAppError_Unwrap(t *testing.T) {
 	}
 
 	got := appError.Unwrap()
-	if got != cause {
+	if !errors.Is(got, cause) {
 		t.Errorf("AppError.Unwrap() = %v, want %v", got, cause)
 	}
 }
@@ -70,7 +70,7 @@ func TestDatabaseError(t *testing.T) {
 	if appError.Message != "failed to insert feed" {
 		t.Errorf("DatabaseError() Message = %v, want %v", appError.Message, "failed to insert feed")
 	}
-	if appError.Cause != cause {
+	if !errors.Is(appError.Cause, cause) {
 		t.Errorf("DatabaseError() Cause = %v, want %v", appError.Cause, cause)
 	}
 	if appError.Context == nil {
@@ -118,7 +118,7 @@ func TestRateLimitError(t *testing.T) {
 	if appError.Message != "rate limit exceeded for host" {
 		t.Errorf("RateLimitError() Message = %v, want %v", appError.Message, "rate limit exceeded for host")
 	}
-	if appError.Cause != cause {
+	if !errors.Is(appError.Cause, cause) {
 		t.Errorf("RateLimitError() Cause = %v, want %v", appError.Cause, cause)
 	}
 	if appError.Context == nil {
@@ -141,7 +141,7 @@ func TestExternalAPIError(t *testing.T) {
 	if appError.Message != "failed to fetch feed" {
 		t.Errorf("ExternalAPIError() Message = %v, want %v", appError.Message, "failed to fetch feed")
 	}
-	if appError.Cause != cause {
+	if !errors.Is(appError.Cause, cause) {
 		t.Errorf("ExternalAPIError() Cause = %v, want %v", appError.Cause, cause)
 	}
 }
@@ -161,7 +161,7 @@ func TestTimeoutError(t *testing.T) {
 	if appError.Message != "operation timed out" {
 		t.Errorf("TimeoutError() Message = %v, want %v", appError.Message, "operation timed out")
 	}
-	if appError.Cause != cause {
+	if !errors.Is(appError.Cause, cause) {
 		t.Errorf("TimeoutError() Cause = %v, want %v", appError.Cause, cause)
 	}
 }

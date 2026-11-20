@@ -25,7 +25,7 @@ func TestRunStage_BasicConcurrency(t *testing.T) {
 
 		require.Len(t, results, 5)
 		for i, r := range results {
-			assert.NoError(t, r.Err)
+			require.NoError(t, r.Err)
 			assert.Equal(t, inputs[i]*2, r.Value)
 			assert.Equal(t, i, r.Index)
 		}
@@ -63,10 +63,10 @@ func TestRunStage_ErrorHandling(t *testing.T) {
 		}, inputs)
 
 		require.Len(t, results, 3)
-		assert.NoError(t, results[0].Err)
+		require.NoError(t, results[0].Err)
 		assert.Equal(t, 10, results[0].Value)
-		assert.ErrorIs(t, results[1].Err, errBoom)
-		assert.NoError(t, results[2].Err)
+		require.ErrorIs(t, results[1].Err, errBoom)
+		require.NoError(t, results[2].Err)
 		assert.Equal(t, 30, results[2].Value)
 	})
 }
@@ -150,7 +150,7 @@ func TestRunStage_ContextCancellation(t *testing.T) {
 		var cancelledCount int
 		for _, r := range results {
 			if r.Err != nil {
-				assert.ErrorIs(t, r.Err, context.Canceled)
+				require.ErrorIs(t, r.Err, context.Canceled)
 				cancelledCount++
 			}
 		}

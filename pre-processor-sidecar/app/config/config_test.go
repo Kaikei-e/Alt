@@ -115,27 +115,10 @@ func TestLoadConfig(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			// Backup original environment
-			originalEnv := make(map[string]string)
-			for key := range tc.envVars {
-				originalEnv[key] = os.Getenv(key)
-			}
-
-			// Set test environment variables
+			// Set test environment variables (t.Setenv restores original values on cleanup)
 			for key, value := range tc.envVars {
-				os.Setenv(key, value)
+				t.Setenv(key, value)
 			}
-
-			// Restore original environment after test
-			defer func() {
-				for key := range tc.envVars {
-					if originalValue, exists := originalEnv[key]; exists {
-						os.Setenv(key, originalValue)
-					} else {
-						os.Unsetenv(key)
-					}
-				}
-			}()
 
 			cfg, err := LoadConfig()
 
@@ -356,20 +339,11 @@ func TestGetEnvOrDefault(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			// Backup original environment
-			originalValue := os.Getenv(tc.envKey)
-			defer func() {
-				if originalValue != "" {
-					os.Setenv(tc.envKey, originalValue)
-				} else {
-					os.Unsetenv(tc.envKey)
-				}
-			}()
-
 			if tc.envValue != "" {
-				os.Setenv(tc.envKey, tc.envValue)
+				t.Setenv(tc.envKey, tc.envValue)
 			} else {
-				os.Unsetenv(tc.envKey)
+				t.Setenv(tc.envKey, "")
+				require.NoError(t, os.Unsetenv(tc.envKey))
 			}
 
 			result := getEnvOrDefault(tc.envKey, tc.defaultValue)
@@ -443,27 +417,10 @@ func TestEnhancedConfigurationManagement(t *testing.T) {
 
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-			// Backup original environment
-			originalEnv := make(map[string]string)
-			for key := range tc.envVars {
-				originalEnv[key] = os.Getenv(key)
-			}
-
-			// Set test environment variables
+			// Set test environment variables (t.Setenv restores original values on cleanup)
 			for key, value := range tc.envVars {
-				os.Setenv(key, value)
+				t.Setenv(key, value)
 			}
-
-			// Restore original environment after test
-			defer func() {
-				for key := range tc.envVars {
-					if originalValue, exists := originalEnv[key]; exists {
-						os.Setenv(key, originalValue)
-					} else {
-						os.Unsetenv(key)
-					}
-				}
-			}()
 
 			cfg, err := LoadConfig()
 
@@ -484,20 +441,15 @@ func TestEnhancedConfigurationManagement(t *testing.T) {
 // TestConfigHelperFunctions tests the new helper functions
 func TestConfigHelperFunctions(t *testing.T) {
 	tests := []struct {
-		name     string
-		setup    func()
-		teardown func()
-		test     func(t *testing.T)
+		name  string
+		setup func(t *testing.T)
+		test  func(t *testing.T)
 	}{
 		{
 			name: "getEnvOrDefaultInt",
-			setup: func() {
-				os.Setenv("TEST_INT", "42")
-				os.Setenv("TEST_INVALID_INT", "not_a_number")
-			},
-			teardown: func() {
-				os.Unsetenv("TEST_INT")
-				os.Unsetenv("TEST_INVALID_INT")
+			setup: func(t *testing.T) {
+				t.Setenv("TEST_INT", "42")
+				t.Setenv("TEST_INVALID_INT", "not_a_number")
 			},
 			test: func(t *testing.T) {
 				assert.Equal(t, 42, getEnvOrDefaultInt("TEST_INT", 10))
@@ -507,13 +459,9 @@ func TestConfigHelperFunctions(t *testing.T) {
 		},
 		{
 			name: "getEnvOrDefaultDuration",
-			setup: func() {
-				os.Setenv("TEST_DURATION", "5m")
-				os.Setenv("TEST_INVALID_DURATION", "not_a_duration")
-			},
-			teardown: func() {
-				os.Unsetenv("TEST_DURATION")
-				os.Unsetenv("TEST_INVALID_DURATION")
+			setup: func(t *testing.T) {
+				t.Setenv("TEST_DURATION", "5m")
+				t.Setenv("TEST_INVALID_DURATION", "not_a_duration")
 			},
 			test: func(t *testing.T) {
 				assert.Equal(t, 5*time.Minute, getEnvOrDefaultDuration("TEST_DURATION", time.Hour))
@@ -523,15 +471,10 @@ func TestConfigHelperFunctions(t *testing.T) {
 		},
 		{
 			name: "getEnvOrDefaultBool",
-			setup: func() {
-				os.Setenv("TEST_BOOL_TRUE", "true")
-				os.Setenv("TEST_BOOL_FALSE", "false")
-				os.Setenv("TEST_INVALID_BOOL", "not_a_bool")
-			},
-			teardown: func() {
-				os.Unsetenv("TEST_BOOL_TRUE")
-				os.Unsetenv("TEST_BOOL_FALSE")
-				os.Unsetenv("TEST_INVALID_BOOL")
+			setup: func(t *testing.T) {
+				t.Setenv("TEST_BOOL_TRUE", "true")
+				t.Setenv("TEST_BOOL_FALSE", "false")
+				t.Setenv("TEST_INVALID_BOOL", "not_a_bool")
 			},
 			test: func(t *testing.T) {
 				assert.True(t, getEnvOrDefaultBool("TEST_BOOL_TRUE", false))
@@ -542,18 +485,14 @@ func TestConfigHelperFunctions(t *testing.T) {
 		},
 		{
 			name: "getEnvOrDefaultFloat",
-			setup: func() {
-				os.Setenv("TEST_FLOAT", "3.14")
-				os.Setenv("TEST_INVALID_FLOAT", "not_a_float")
-			},
-			teardown: func() {
-				os.Unsetenv("TEST_FLOAT")
-				os.Unsetenv("TEST_INVALID_FLOAT")
+			setup: func(t *testing.T) {
+				t.Setenv("TEST_FLOAT", "3.14")
+				t.Setenv("TEST_INVALID_FLOAT", "not_a_float")
 			},
 			test: func(t *testing.T) {
-				assert.Equal(t, 3.14, getEnvOrDefaultFloat("TEST_FLOAT", 2.71))
-				assert.Equal(t, 2.71, getEnvOrDefaultFloat("TEST_INVALID_FLOAT", 2.71))
-				assert.Equal(t, 2.71, getEnvOrDefaultFloat("TEST_MISSING_FLOAT", 2.71))
+				assert.InDelta(t, 3.14, getEnvOrDefaultFloat("TEST_FLOAT", 2.71), 1e-9)
+				assert.InDelta(t, 2.71, getEnvOrDefaultFloat("TEST_INVALID_FLOAT", 2.71), 1e-9)
+				assert.InDelta(t, 2.71, getEnvOrDefaultFloat("TEST_MISSING_FLOAT", 2.71), 1e-9)
 			},
 		},
 	}
@@ -561,10 +500,7 @@ func TestConfigHelperFunctions(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.setup != nil {
-				tt.setup()
-			}
-			if tt.teardown != nil {
-				defer tt.teardown()
+				tt.setup(t)
 			}
 			tt.test(t)
 		})

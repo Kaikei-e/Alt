@@ -47,7 +47,7 @@ func TestBFFHandler_Dedup_LeaderCancel_WaiterStillGets200(t *testing.T) {
 		<-release
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(okBody))
+		_, _ = w.Write([]byte(okBody))
 	}))
 	defer mockBackend.Close()
 
@@ -61,7 +61,7 @@ func TestBFFHandler_Dedup_LeaderCancel_WaiterStillGets200(t *testing.T) {
 	// Leader request carries a cancellable context; cancelling it models the
 	// leader's HTTP client hanging up mid-flight.
 	leaderCtx, cancelLeader := context.WithCancel(context.Background())
-	leaderReq := httptest.NewRequest("POST", endpoint, nil).WithContext(leaderCtx)
+	leaderReq := httptest.NewRequestWithContext(leaderCtx, "POST", endpoint, nil)
 	leaderReq.Header.Set("X-Alt-Backend-Token", token)
 	leaderRec := httptest.NewRecorder()
 
@@ -80,7 +80,7 @@ func TestBFFHandler_Dedup_LeaderCancel_WaiterStillGets200(t *testing.T) {
 	}
 
 	// The waiter joins with the same dedup key while the leader is blocked.
-	waiterReq := httptest.NewRequest("POST", endpoint, nil)
+	waiterReq := httptest.NewRequestWithContext(t.Context(), "POST", endpoint, nil)
 	waiterReq.Header.Set("X-Alt-Backend-Token", token)
 	waiterRec := httptest.NewRecorder()
 
@@ -128,7 +128,7 @@ func TestBFFHandler_Dedup_PostMutationReadDoesNotJoinPreMutationFlight(t *testin
 		if r.URL.Path == markAsReadEndpoint {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{"ok":true}`))
+			_, _ = w.Write([]byte(`{"ok":true}`))
 			return
 		}
 
@@ -145,10 +145,10 @@ func TestBFFHandler_Dedup_PostMutationReadDoesNotJoinPreMutationFlight(t *testin
 			default:
 			}
 			<-release
-			w.Write([]byte(staleBody))
+			_, _ = w.Write([]byte(staleBody))
 			return
 		}
-		w.Write([]byte(freshBody))
+		_, _ = w.Write([]byte(freshBody))
 	}))
 	defer mockBackend.Close()
 
@@ -161,7 +161,7 @@ func TestBFFHandler_Dedup_PostMutationReadDoesNotJoinPreMutationFlight(t *testin
 	handler := createTestBFFHandlerWithBackend(t, mockBackend.URL, testPublicKey, config)
 	token := createTestToken(t, testPrivateKey)
 
-	firstReq := httptest.NewRequest("POST", unreadEndpoint, strings.NewReader(reqBody))
+	firstReq := httptest.NewRequestWithContext(t.Context(), "POST", unreadEndpoint, strings.NewReader(reqBody))
 	firstReq.Header.Set("X-Alt-Backend-Token", token)
 	firstRec := httptest.NewRecorder()
 
@@ -178,13 +178,13 @@ func TestBFFHandler_Dedup_PostMutationReadDoesNotJoinPreMutationFlight(t *testin
 		t.Fatal("first GetUnreadFeeds call never reached the backend")
 	}
 
-	markReq := httptest.NewRequest("POST", markAsReadEndpoint, strings.NewReader(`{"articleUrl":"https://example.com/1"}`))
+	markReq := httptest.NewRequestWithContext(t.Context(), "POST", markAsReadEndpoint, strings.NewReader(`{"articleUrl":"https://example.com/1"}`))
 	markReq.Header.Set("X-Alt-Backend-Token", token)
 	markRec := httptest.NewRecorder()
 	handler.ServeHTTP(markRec, markReq)
 	assert.Equal(t, http.StatusOK, markRec.Code)
 
-	secondReq := httptest.NewRequest("POST", unreadEndpoint, strings.NewReader(reqBody))
+	secondReq := httptest.NewRequestWithContext(t.Context(), "POST", unreadEndpoint, strings.NewReader(reqBody))
 	secondReq.Header.Set("X-Alt-Backend-Token", token)
 	secondRec := httptest.NewRecorder()
 
@@ -199,7 +199,7 @@ func TestBFFHandler_Dedup_PostMutationReadDoesNotJoinPreMutationFlight(t *testin
 	wg.Wait()
 
 	assert.Equal(t, http.StatusOK, secondRec.Code)
-	assert.Equal(t, freshBody, secondRec.Body.String(),
+	assert.JSONEq(t, freshBody, secondRec.Body.String(),
 		"a read issued after MarkAsRead completed must not receive the pre-mutation flight's stale response")
 
 	hitsMu.Lock()

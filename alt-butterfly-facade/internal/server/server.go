@@ -140,10 +140,12 @@ func NewServerWithTransports(
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(HealthResponse{
+		if err := json.NewEncoder(w).Encode(HealthResponse{
 			Status:  "healthy",
 			Service: "alt-butterfly-facade",
-		})
+		}); err != nil && logger != nil {
+			logger.ErrorContext(r.Context(), "health response encode failed", "error", err)
+		}
 	})
 
 	// Register stats endpoint for monitoring BFF features. Exposes cache /
@@ -222,7 +224,9 @@ func NewServerWithTransports(
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(stats)
+		if err := json.NewEncoder(w).Encode(stats); err != nil && logger != nil {
+			logger.ErrorContext(r.Context(), "stats response encode failed", "error", err)
+		}
 	})
 
 	// Register aggregation endpoint
@@ -515,7 +519,7 @@ func createQueryFetcher(backendClient *client.BackendClient, requestTimeout time
 				StatusCode: http.StatusBadGateway,
 			}, nil
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		// A body that ends mid-stream is a failed fetch whatever its status
 		// line said, and the deadline above is now the ordinary way that

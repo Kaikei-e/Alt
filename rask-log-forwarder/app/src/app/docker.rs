@@ -12,6 +12,13 @@ pub struct DockerEnvironment {
 }
 
 impl DockerEnvironment {
+    /// Detects Docker environment settings from process environment variables
+    /// and the system hostname.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ConfigError::EnvError`] if neither `HOSTNAME` nor the system
+    /// hostname can be read as UTF-8.
     pub fn detect() -> Result<Self, ConfigError> {
         let hostname = env::var("HOSTNAME")
             .or_else(|_| {
@@ -49,6 +56,13 @@ impl DockerEnvironment {
         })
     }
 
+    /// Resolves the target service name from container labels or the `*-logs`
+    /// hostname pattern.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ConfigError::InvalidConfig`] if neither
+    /// `com.docker.compose.service` nor a `*-logs` hostname is present.
     pub fn detect_target_service_from_labels(&self) -> Result<String, ConfigError> {
         // Try Docker Compose service label first
         if let Some(service) = self.container_labels.get("com.docker.compose.service") {
@@ -66,12 +80,14 @@ impl DockerEnvironment {
         ))
     }
 
+    #[must_use]
     pub fn is_sidecar_mode(&self) -> bool {
         self.network_mode
             .as_ref()
             .is_some_and(|mode| mode.starts_with("service:"))
     }
 
+    #[must_use]
     pub fn get_target_service_from_network_mode(&self) -> Option<String> {
         self.network_mode.as_ref().and_then(|mode| {
             if mode.starts_with("service:") {
@@ -84,6 +100,13 @@ impl DockerEnvironment {
 }
 
 impl Config {
+    /// Builds a [`Config`] from a detected [`DockerEnvironment`], reading
+    /// `RASK_INGEST_TOKEN_FILE` from the process environment if unset.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ConfigError`] if post-processing or validation of the
+    /// resulting configuration fails.
     pub fn from_docker_environment(docker_env: &DockerEnvironment) -> Result<Self, ConfigError> {
         let mut config = Config {
             target_service: docker_env
@@ -117,13 +140,26 @@ impl Config {
         Ok(config)
     }
 
+    /// Detects the Docker Compose environment and constructs a validated [`Config`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ConfigError`] if Docker environment detection, post-processing,
+    /// or validation fails.
     pub fn for_docker_compose() -> Result<Self, ConfigError> {
         let docker_env = DockerEnvironment::detect()?;
         Self::from_docker_environment(&docker_env)
     }
 }
 
-// Dockerfile configuration validation
+/// Validates Docker-specific configuration requirements such as aggregator
+/// endpoint and disk-fallback directory accessibility.
+///
+/// # Errors
+///
+/// Returns [`ConfigError::InvalidConfig`] if `endpoint` does not reference
+/// `rask-aggregator`, or if disk fallback is enabled with an invalid or
+/// missing parent directory.
 pub fn validate_docker_requirements(config: &Config) -> Result<(), ConfigError> {
     // Ensure endpoint points to aggregator service
     if !config.endpoint.contains("rask-aggregator") {

@@ -11,6 +11,13 @@ use tracing::{error, info};
 ///
 /// Both server tasks are watched via `select!`: if either exits with an error,
 /// the other is cancelled so the process does not limp on a half-dead listener.
+///
+/// # Errors
+///
+/// Returns [`AggregatorError::Bind`] if binding the main or OTLP TCP listener
+/// fails, [`AggregatorError::Server`] if querying a listener's local address or
+/// serving requests fails with an I/O error, or [`AggregatorError::Export`] if
+/// either server task panics.
 pub async fn serve(
     main_app: Router,
     otlp_app: Router,

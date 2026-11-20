@@ -1,14 +1,15 @@
 import { page } from "@vitest/browser/context";
 import { describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
+import { assertDefined } from "#lib/test-utils/assert.js";
 import { MOCK_REPORT_SUMMARIES } from "./acolyte-fixtures";
 import MobileAcolyteReportCard from "./MobileAcolyteReportCard.svelte";
 
 describe("MobileAcolyteReportCard", () => {
-	const succeededReport = MOCK_REPORT_SUMMARIES[0]!; // succeeded
-	const runningReport = MOCK_REPORT_SUMMARIES[1]!; // running
-	const failedReport = MOCK_REPORT_SUMMARIES[2]!; // failed
-	const draftReport = MOCK_REPORT_SUMMARIES[3]!; // draft
+	const succeededReport = assertDefined(MOCK_REPORT_SUMMARIES[0]); // succeeded
+	const runningReport = assertDefined(MOCK_REPORT_SUMMARIES[1]); // running
+	const failedReport = assertDefined(MOCK_REPORT_SUMMARIES[2]); // failed
+	const draftReport = assertDefined(MOCK_REPORT_SUMMARIES[3]); // draft
 
 	it("renders report title", async () => {
 		render(MobileAcolyteReportCard, {

@@ -89,7 +89,8 @@ func processOutboxEvents(ctx context.Context, repo outboxRepository, ragIntegrat
 	logger.Logger.InfoContext(ctx, "Processing outbox events", "count", len(events))
 
 	for i, event := range events {
-		if ctx.Err() != nil {
+		select {
+		case <-ctx.Done():
 			// The job timeout canceled ctx after processing already started.
 			// events[i:] were claimed (status=PROCESSING) but never attempted;
 			// release them back to PENDING so the next tick retries them
@@ -99,6 +100,7 @@ func processOutboxEvents(ctx context.Context, repo outboxRepository, ragIntegrat
 				"remaining", len(events)-i)
 			resetClaimedEventsToPending(ctx, repo, events[i:])
 			return nil
+		default:
 		}
 
 		if event.EventType == "ARTICLE_UPSERT" {

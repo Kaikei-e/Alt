@@ -179,6 +179,7 @@ func init() {
 			if value == "" {
 				value = "<not set>"
 			}
+			// #nosec G706 -- envVar is from a fixed allowlist and value is an operator-configured process env var at startup.
 			log.Printf("   %s = %s", envVar, value)
 		}
 	}

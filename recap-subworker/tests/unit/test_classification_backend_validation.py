@@ -1,5 +1,7 @@
 """Tests for classification_backend default and learning_machine artifact validation."""
 
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
@@ -9,7 +11,9 @@ from recap_subworker.infra.config import Settings
 class TestClassificationBackendDefault:
     """classification_backend のデフォルトが joblib であることを保証する。"""
 
-    def test_default_classification_backend_is_joblib(self, monkeypatch):
+    def test_default_classification_backend_is_joblib(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.delenv("RECAP_CLASSIFICATION_BACKEND", raising=False)
         monkeypatch.delenv("RECAP_SUBWORKER_CLASSIFICATION_BACKEND", raising=False)
         settings = Settings(_env_file=None)
@@ -19,7 +23,9 @@ class TestClassificationBackendDefault:
 class TestLearningMachineArtifactValidation:
     """classification_backend='learning_machine' 時の artifact 存在チェック。"""
 
-    def test_learning_machine_backend_rejects_missing_artifacts(self, monkeypatch, tmp_path):
+    def test_learning_machine_backend_rejects_missing_artifacts(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
         monkeypatch.setenv("RECAP_CLASSIFICATION_BACKEND", "learning_machine")
         monkeypatch.setenv(
             "RECAP_LEARNING_MACHINE_STUDENT_JA_DIR", str(tmp_path / "nonexistent_ja")
@@ -33,7 +39,9 @@ class TestLearningMachineArtifactValidation:
 
         assert "learning_machine artifacts missing" in str(exc_info.value)
 
-    def test_learning_machine_backend_accepts_ja_only(self, monkeypatch, tmp_path):
+    def test_learning_machine_backend_accepts_ja_only(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
         ja_dir = tmp_path / "v0_ja"
         ja_dir.mkdir()
 
@@ -47,7 +55,9 @@ class TestLearningMachineArtifactValidation:
         assert settings.classification_backend == "learning_machine"
         assert settings.learning_machine_student_ja_dir == str(ja_dir)
 
-    def test_learning_machine_backend_accepts_en_only(self, monkeypatch, tmp_path):
+    def test_learning_machine_backend_accepts_en_only(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
         en_dir = tmp_path / "v0_en"
         en_dir.mkdir()
 
@@ -61,7 +71,9 @@ class TestLearningMachineArtifactValidation:
         assert settings.classification_backend == "learning_machine"
         assert settings.learning_machine_student_en_dir == str(en_dir)
 
-    def test_joblib_backend_skips_artifact_check(self, monkeypatch, tmp_path):
+    def test_joblib_backend_skips_artifact_check(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
         monkeypatch.setenv("RECAP_CLASSIFICATION_BACKEND", "joblib")
         monkeypatch.setenv(
             "RECAP_LEARNING_MACHINE_STUDENT_JA_DIR", str(tmp_path / "nonexistent_ja")
@@ -84,7 +96,9 @@ class TestJoblibArtifactValidation:
     タイムアウトする。Settings 構築時点で止める。
     """
 
-    def test_joblib_backend_rejects_directory_at_model_path_ja(self, monkeypatch, tmp_path):
+    def test_joblib_backend_rejects_directory_at_model_path_ja(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
         stub_dir = tmp_path / "genre_classifier_ja.joblib"
         stub_dir.mkdir()
 
@@ -98,7 +112,9 @@ class TestJoblibArtifactValidation:
         assert "joblib artefact" in msg or "is a directory" in msg
         assert str(stub_dir) in msg
 
-    def test_joblib_backend_rejects_directory_at_tfidf_path(self, monkeypatch, tmp_path):
+    def test_joblib_backend_rejects_directory_at_tfidf_path(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
         stub_dir = tmp_path / "tfidf_vectorizer_ja.joblib"
         stub_dir.mkdir()
 
@@ -110,7 +126,9 @@ class TestJoblibArtifactValidation:
 
         assert str(stub_dir) in str(exc_info.value)
 
-    def test_joblib_backend_rejects_directory_at_thresholds_path(self, monkeypatch, tmp_path):
+    def test_joblib_backend_rejects_directory_at_thresholds_path(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
         stub_dir = tmp_path / "genre_thresholds_ja.json"
         stub_dir.mkdir()
 
@@ -122,7 +140,9 @@ class TestJoblibArtifactValidation:
 
         assert str(stub_dir) in str(exc_info.value)
 
-    def test_joblib_backend_enumerates_every_misconfigured_path(self, monkeypatch, tmp_path):
+    def test_joblib_backend_enumerates_every_misconfigured_path(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
         bad_model = tmp_path / "genre_classifier_ja.joblib"
         bad_tfidf = tmp_path / "tfidf_vectorizer_ja.joblib"
         bad_model.mkdir()
@@ -139,7 +159,9 @@ class TestJoblibArtifactValidation:
         assert str(bad_model) in msg
         assert str(bad_tfidf) in msg
 
-    def test_joblib_backend_accepts_regular_file(self, monkeypatch, tmp_path):
+    def test_joblib_backend_accepts_regular_file(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
         real_model = tmp_path / "genre_classifier_ja.joblib"
         real_model.write_bytes(b"fake joblib payload")
 
@@ -150,7 +172,9 @@ class TestJoblibArtifactValidation:
         assert settings.classification_backend == "joblib"
         assert settings.genre_classifier_model_path_ja == str(real_model)
 
-    def test_joblib_backend_tolerates_missing_path(self, monkeypatch, tmp_path):
+    def test_joblib_backend_tolerates_missing_path(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
         missing = tmp_path / "nonexistent" / "genre_classifier_ja.joblib"
 
         monkeypatch.setenv("RECAP_CLASSIFICATION_BACKEND", "joblib")
@@ -162,7 +186,9 @@ class TestJoblibArtifactValidation:
         settings = Settings(_env_file=None)
         assert settings.genre_classifier_model_path_ja == str(missing)
 
-    def test_learning_machine_backend_skips_joblib_check(self, monkeypatch, tmp_path):
+    def test_learning_machine_backend_skips_joblib_check(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
         ja_dir = tmp_path / "v0_ja"
         ja_dir.mkdir()
         stub_dir = tmp_path / "genre_classifier_ja.joblib"

@@ -7,10 +7,12 @@ import pytest
 
 from recap_evaluator.evaluator.readability import ReadabilityEvaluator
 
+MAX_READABILITY_SCORE = 5.0
+
 
 class TestReadabilityEvaluator:
     @pytest.mark.asyncio
-    async def test_score_returned_within_valid_range(self):
+    async def test_score_returned_within_valid_range(self) -> None:
         mock_ollama = AsyncMock()
         mock_ollama.score_readability.return_value = 4.2
 
@@ -19,11 +21,11 @@ class TestReadabilityEvaluator:
             "本日の主要な変化: AI エージェント導入で業務自動化が進む。"
         )
 
-        assert 1.0 <= score <= 5.0
+        assert 1.0 <= score <= MAX_READABILITY_SCORE
         assert score == pytest.approx(4.2, abs=0.01)
 
     @pytest.mark.asyncio
-    async def test_empty_summary_returns_zero(self):
+    async def test_empty_summary_returns_zero(self) -> None:
         mock_ollama = AsyncMock()
         evaluator = ReadabilityEvaluator(mock_ollama)
         score = await evaluator.evaluate("")
@@ -31,7 +33,7 @@ class TestReadabilityEvaluator:
         mock_ollama.score_readability.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_batch_averages_per_item_scores(self):
+    async def test_batch_averages_per_item_scores(self) -> None:
         mock_ollama = AsyncMock()
         mock_ollama.score_readability.side_effect = [3.0, 5.0]
 
@@ -41,7 +43,7 @@ class TestReadabilityEvaluator:
         assert avg == pytest.approx(4.0, abs=0.01)
 
     @pytest.mark.asyncio
-    async def test_llm_network_failure_returns_zero(self):
+    async def test_llm_network_failure_returns_zero(self) -> None:
         """A recoverable LLM-call failure (network/HTTP) defaults to 0.0."""
         mock_ollama = AsyncMock()
         mock_ollama.score_readability.side_effect = httpx.ConnectError("ollama unreachable")
@@ -51,7 +53,7 @@ class TestReadabilityEvaluator:
         assert score == 0.0
 
     @pytest.mark.asyncio
-    async def test_unparseable_llm_response_returns_zero(self):
+    async def test_unparseable_llm_response_returns_zero(self) -> None:
         """A malformed LLM response (ValueError/KeyError) also defaults to 0.0."""
         mock_ollama = AsyncMock()
         mock_ollama.score_readability.side_effect = ValueError("no JSON found")
@@ -61,7 +63,7 @@ class TestReadabilityEvaluator:
         assert score == 0.0
 
     @pytest.mark.asyncio
-    async def test_unexpected_error_propagates(self):
+    async def test_unexpected_error_propagates(self) -> None:
         """A bug (e.g. AttributeError from a missing method) must NOT be
         silently swallowed into a fake 0.0 score — that would hide a wiring
         defect as "always low readability" (CLAUDE.md rule 8)."""

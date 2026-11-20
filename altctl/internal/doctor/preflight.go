@@ -43,6 +43,7 @@ type composeSecretsDoc struct {
 // compose file, typically "../secrets/x.txt") for every top-level secret
 // declared in a compose file's `secrets:` block.
 func readComposeSecretFiles(path string) (map[string]string, error) {
+	// #nosec G304 -- path joins configured composeDir with constant "base.yaml"
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -138,6 +139,7 @@ type composeServiceUsersDoc struct {
 // leaves every log forwarder and cAdvisor behind it without a Docker API.
 func dockerSocketGroupFinding(composeDir, socketPath string) (Finding, bool) {
 	loggingPath := filepath.Join(composeDir, "logging.yaml")
+	// #nosec G304 -- loggingPath joins configured composeDir with constant "logging.yaml"
 	data, err := os.ReadFile(loggingPath)
 	if err != nil {
 		return Finding{

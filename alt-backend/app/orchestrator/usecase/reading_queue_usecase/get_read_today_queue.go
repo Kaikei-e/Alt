@@ -9,6 +9,7 @@ import (
 
 	"alt/domain"
 	"alt/orchestrator/port/reading_queue_port"
+	"alt/utils/safeconv"
 )
 
 type GetReadTodayQueueResult struct {
@@ -90,6 +91,6 @@ func (u *GetReadTodayQueueUsecase) Execute(
 	return GetReadTodayQueueResult{
 		Items:          items,
 		Cap:            u.cap,
-		ReadCountSince: int32(readCount),
+		ReadCountSince: safeconv.Int32(readCount),
 	}, nil
 }

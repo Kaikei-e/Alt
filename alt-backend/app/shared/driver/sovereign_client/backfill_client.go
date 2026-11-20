@@ -41,10 +41,10 @@ func (c *Client) GetBackfillJob(ctx context.Context, jobID uuid.UUID) (*domain.K
 		return nil, fmt.Errorf("sovereign GetBackfillJob: %w", err)
 	}
 
-	if resp.Msg.Job == nil {
+	if resp.Msg.GetJob() == nil {
 		return nil, nil
 	}
-	job := protoToBackfillJob(resp.Msg.Job)
+	job := protoToBackfillJob(resp.Msg.GetJob())
 	return &job, nil
 }
 
@@ -72,8 +72,8 @@ func (c *Client) ListBackfillJobs(ctx context.Context) ([]domain.KnowledgeBackfi
 		return nil, fmt.Errorf("sovereign ListBackfillJobs: %w", err)
 	}
 
-	jobs := make([]domain.KnowledgeBackfillJob, 0, len(resp.Msg.Jobs))
-	for _, pb := range resp.Msg.Jobs {
+	jobs := make([]domain.KnowledgeBackfillJob, 0, len(resp.Msg.GetJobs()))
+	for _, pb := range resp.Msg.GetJobs() {
 		jobs = append(jobs, protoToBackfillJob(pb))
 	}
 	return jobs, nil
@@ -116,33 +116,33 @@ func protoToBackfillJob(pb *sovereignv1.BackfillJob) domain.KnowledgeBackfillJob
 		return domain.KnowledgeBackfillJob{}
 	}
 	j := domain.KnowledgeBackfillJob{
-		JobID:             parseUUID(pb.JobId),
-		Status:            pb.Status,
-		Kind:              pb.Kind,
-		ProjectionVersion: int(pb.ProjectionVersion),
-		TotalEvents:       int(pb.TotalEvents),
-		ProcessedEvents:   int(pb.ProcessedEvents),
-		ErrorMessage:      pb.ErrorMessage,
-		CursorUserID:      parseUUIDPtr(pb.CursorUserId),
-		CursorArticleID:   parseUUIDPtr(pb.CursorArticleId),
+		JobID:             parseUUID(pb.GetJobId()),
+		Status:            pb.GetStatus(),
+		Kind:              pb.GetKind(),
+		ProjectionVersion: int(pb.GetProjectionVersion()),
+		TotalEvents:       int(pb.GetTotalEvents()),
+		ProcessedEvents:   int(pb.GetProcessedEvents()),
+		ErrorMessage:      pb.GetErrorMessage(),
+		CursorUserID:      parseUUIDPtr(pb.GetCursorUserId()),
+		CursorArticleID:   parseUUIDPtr(pb.GetCursorArticleId()),
 	}
-	if pb.CursorDate != "" {
-		t, _ := time.Parse("2006-01-02", pb.CursorDate)
+	if pb.GetCursorDate() != "" {
+		t, _ := time.Parse("2006-01-02", pb.GetCursorDate())
 		j.CursorDate = &t
 	}
-	if pb.CreatedAt != nil {
-		j.CreatedAt = pb.CreatedAt.AsTime()
+	if pb.GetCreatedAt() != nil {
+		j.CreatedAt = pb.GetCreatedAt().AsTime()
 	}
-	if pb.StartedAt != nil {
-		t := pb.StartedAt.AsTime()
+	if pb.GetStartedAt() != nil {
+		t := pb.GetStartedAt().AsTime()
 		j.StartedAt = &t
 	}
-	if pb.CompletedAt != nil {
-		t := pb.CompletedAt.AsTime()
+	if pb.GetCompletedAt() != nil {
+		t := pb.GetCompletedAt().AsTime()
 		j.CompletedAt = &t
 	}
-	if pb.UpdatedAt != nil {
-		j.UpdatedAt = pb.UpdatedAt.AsTime()
+	if pb.GetUpdatedAt() != nil {
+		j.UpdatedAt = pb.GetUpdatedAt().AsTime()
 	}
 	return j
 }

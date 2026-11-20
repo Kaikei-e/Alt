@@ -1,7 +1,6 @@
 package config
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -104,5 +103,5 @@ func TestLoadDataHubClientConfigRejectsUnparseableURL(t *testing.T) {
 
 	_, err := LoadDataHubClientConfig()
 	require.Error(t, err)
-	assert.True(t, strings.Contains(err.Error(), "DATA_HUB_MTLS_URL"))
+	assert.Contains(t, err.Error(), "DATA_HUB_MTLS_URL")
 }

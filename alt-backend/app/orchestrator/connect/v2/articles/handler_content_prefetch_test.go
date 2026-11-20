@@ -259,8 +259,8 @@ func TestBatchPrefetchArticleContent_AtMostOneURLPerHost(t *testing.T) {
 		"https://example.org/three",
 	)
 
-	require.Equal(t, int32(2), resp.AcceptedCount)
-	require.Equal(t, int32(1), resp.SkippedSameHostCount)
+	require.Equal(t, int32(2), resp.GetAcceptedCount())
+	require.Equal(t, int32(1), resp.GetSkippedSameHostCount())
 
 	waitForCalls(t, hz.usecase, 2)
 	calls := hz.usecase.snapshot()
@@ -278,7 +278,7 @@ func TestBatchPrefetchArticleContent_TakesHostSlotBeforeAskingPolicyGate(t *test
 	hz.slots.refuse = true
 
 	resp := prefetch(t, hz.handler, prefetchTestContext(), "https://example.com/one")
-	require.Equal(t, int32(1), resp.AcceptedCount)
+	require.Equal(t, int32(1), resp.GetAcceptedCount())
 
 	select {
 	case <-hz.slots.waited:
@@ -304,7 +304,7 @@ func TestBatchPrefetchArticleContent_ShedsWithoutTouchingAnyGate(t *testing.T) {
 	first := prefetch(t, hz.handler, prefetchTestContext(),
 		"https://h1.example.com/x", "https://h2.example.com/x", "https://h3.example.com/x",
 		"https://h4.example.com/x", "https://h5.example.com/x")
-	require.Equal(t, int32(5), first.AcceptedCount)
+	require.Equal(t, int32(5), first.GetAcceptedCount())
 	waitForCalls(t, hz.usecase, 5)
 
 	// The pool holds maxConcurrentContentWarms; five are gone, so the next
@@ -314,8 +314,8 @@ func TestBatchPrefetchArticleContent_ShedsWithoutTouchingAnyGate(t *testing.T) {
 		"https://h9.example.com/x", "https://h10.example.com/x")
 
 	remaining := int32(maxConcurrentContentWarms - 5)
-	require.Equal(t, remaining, second.AcceptedCount)
-	require.Equal(t, int32(5)-remaining, second.ShedCount)
+	require.Equal(t, remaining, second.GetAcceptedCount())
+	require.Equal(t, int32(5)-remaining, second.GetShedCount())
 
 	// The shed URLs never reached the host slot, and therefore never reached
 	// the crawl-delay gate behind it.
@@ -335,8 +335,8 @@ func TestBatchPrefetchArticleContent_RejectsDisallowedURLs(t *testing.T) {
 		"::not a url::",
 	)
 
-	require.Equal(t, int32(0), resp.AcceptedCount)
-	require.Equal(t, int32(3), resp.RejectedCount)
+	require.Equal(t, int32(0), resp.GetAcceptedCount())
+	require.Equal(t, int32(3), resp.GetRejectedCount())
 	require.Never(t, func() bool { return len(hz.slots.snapshot()) > 0 },
 		200*time.Millisecond, 20*time.Millisecond,
 		"a rejected URL must not reach the host slot")
@@ -353,7 +353,7 @@ func TestBatchPrefetchArticleContent_SkipsAlreadyStoredArticles(t *testing.T) {
 	}
 
 	resp := prefetch(t, hz.handler, prefetchTestContext(), "https://example.com/one")
-	require.Equal(t, int32(1), resp.AcceptedCount)
+	require.Equal(t, int32(1), resp.GetAcceptedCount())
 
 	require.Never(t, func() bool { return len(hz.slots.snapshot()) > 0 },
 		300*time.Millisecond, 20*time.Millisecond,
@@ -384,7 +384,7 @@ func TestBatchPrefetchArticleContent_CapsTheBatch(t *testing.T) {
 	}
 	resp := prefetch(t, hz.handler, prefetchTestContext(), urls...)
 
-	require.Equal(t, int32(maxPrefetchArticleURLs), resp.AcceptedCount)
+	require.Equal(t, int32(maxPrefetchArticleURLs), resp.GetAcceptedCount())
 }
 
 func TestBatchPrefetchArticleContent_RequiresAuthentication(t *testing.T) {
@@ -405,7 +405,7 @@ func TestBatchPrefetchArticleContent_EmptyBatchIsNotAnError(t *testing.T) {
 	hz := newPrefetchHarness(t)
 
 	resp := prefetch(t, hz.handler, prefetchTestContext())
-	require.Equal(t, int32(0), resp.AcceptedCount)
+	require.Equal(t, int32(0), resp.GetAcceptedCount())
 }
 
 func waitForCalls(t *testing.T, uc *recordingPrefetchUsecase, n int) {

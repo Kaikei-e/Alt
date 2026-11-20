@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Any
+import aiohttp
 
 
 class BoundedBodyError(Exception):
     """Raised when an HTTP response body exceeds the configured byte cap."""
 
 
-async def read_bounded_text(response: Any, cap: int) -> str:
+async def read_bounded_text(response: aiohttp.ClientResponse, cap: int) -> str:
     """Read at most `cap` bytes from `response.content` and decode as UTF-8."""
     chunks: list[bytes] = []
     total = 0
@@ -21,6 +21,7 @@ async def read_bounded_text(response: Any, cap: int) -> str:
         total += len(chunk)
 
     if total > cap:
-        raise BoundedBodyError(f"Response body exceeds {cap} bytes")
+        msg = f"Response body exceeds {cap} bytes"
+        raise BoundedBodyError(msg)
 
     return b"".join(chunks).decode("utf-8", errors="replace")

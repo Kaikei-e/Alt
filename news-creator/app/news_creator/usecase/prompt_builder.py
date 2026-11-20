@@ -16,9 +16,9 @@ from typing import Protocol
 
 from news_creator.domain.prompt_boundary import SYSTEM_BOUNDARY_INSTRUCTION
 from news_creator.domain.prompts import (
-    SUMMARY_PROMPT_TEMPLATE,
     CHUNK_SUMMARY_PROMPT_TEMPLATE,
     RECAP_CLUSTER_SUMMARY_PROMPT,
+    SUMMARY_PROMPT_TEMPLATE,
 )
 
 logger = logging.getLogger(__name__)
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 class PromptBuilderProtocol(Protocol):
     """Protocol for prompt builders."""
 
-    def build(self, **kwargs) -> str:
+    def build(self, **kwargs: object) -> str:
         """Build a prompt string."""
         ...
 
@@ -57,7 +57,7 @@ class SummaryPromptBuilder:
             Formatted prompt string
         """
         if current_date is None:
-            current_date = datetime.now().strftime("%Y年%m月%d日")
+            current_date = datetime.now().astimezone().strftime("%Y年%m月%d日")
 
         return SUMMARY_PROMPT_TEMPLATE.format(
             current_date=current_date,

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -26,7 +27,7 @@ def _is_protected_env_name(name: str) -> bool:
 
 def _is_tracked_in_git(raw_path: str) -> tuple[bool, str | None]:
     """Return (should_block, reason_if_unanswerable_or_tracked) for a migrations file."""
-    abs_target = Path(os.path.abspath(raw_path))
+    abs_target = Path(raw_path).absolute()
     probe = abs_target.parent
     while not probe.is_dir():
         if probe.parent == probe:
@@ -35,10 +36,13 @@ def _is_tracked_in_git(raw_path: str) -> tuple[bool, str | None]:
 
     tail = abs_target.relative_to(probe)
     probe_real = probe.resolve()
+    git_bin = shutil.which("git")
+    if git_bin is None:
+        return True, "git could not be executed (git executable not found on PATH)"
     try:
-        res = subprocess.run(
+        res = subprocess.run(  # noqa: S603 -- git resolved via shutil.which with explicit args
             [
-                "git",
+                git_bin,
                 "-C",
                 str(probe_real),
                 "ls-files",
@@ -87,9 +91,7 @@ def check_target_path(raw_path: str) -> str | None:
     for seg in dir_parts:
         if seg in PROTECTED_DIRS:
             if seg == ".kisage":
-                next_step = (
-                    "Change host env through deploy/desired-env.lkal and the kisage tools."
-                )
+                next_step = "Change host env through deploy/desired-env.lkal and the kisage tools."
             elif seg == "secrets":
                 next_step = (
                     "Secret files are written by the host operator; ask the user to change them."
@@ -134,7 +136,7 @@ def main() -> int:
             violations.append(msg)
 
     if violations:
-        print("\n".join(violations), file=sys.stderr)
+        sys.stderr.write("\n".join(violations) + "\n")
         return 2
     return 0
 

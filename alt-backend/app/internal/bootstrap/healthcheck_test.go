@@ -92,14 +92,14 @@ func TestHealthcheck(t *testing.T) {
 	// A listener that accepts and a port that nothing holds, for the
 	// TCPTargets half — data-hub's probe has to notice a dead mTLS listener
 	// goroutine in an otherwise live process (ADR-000784).
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
 	defer func() { _ = ln.Close() }()
 	openAddr := ln.Addr().String()
 
-	closedLn, err := net.Listen("tcp", "127.0.0.1:0")
+	closedLn, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}

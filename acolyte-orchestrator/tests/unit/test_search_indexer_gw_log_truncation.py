@@ -13,6 +13,8 @@ from acolyte.gateway.memory_content_store import MemoryContentStore
 from acolyte.gateway.search_indexer_gw import SearchIndexerGateway
 from tests.conftest import TEST_USER_ID
 
+MAX_LOGGED_QUERY_CHARS = 160
+
 
 @pytest.fixture
 def settings() -> Settings:
@@ -47,7 +49,7 @@ async def test_search_articles_log_truncates_long_query(
     search_events = [e for e in logs if e.get("event") == "search_articles"]
     assert search_events, "gateway must log a search_articles event"
     logged_query = search_events[0].get("query", "")
-    assert len(logged_query) <= 160, f"logged query must be truncated; got {len(logged_query)} chars"
+    assert len(logged_query) <= MAX_LOGGED_QUERY_CHARS, f"logged query must be truncated; got {len(logged_query)} chars"
     assert logged_query.startswith("A"), "truncation should keep the leading portion"
 
 

@@ -437,6 +437,7 @@ test.describe("Read today mobile flow", () => {
 			el.scrollTop = el.scrollHeight;
 			el.dispatchEvent(new Event("scroll"));
 		});
+		// biome-ignore lint/nursery/noPlaywrightWaitForTimeout: app dwell threshold requires >= 1000ms elapsed performance.now() before overlay close
 		await page.waitForTimeout(1150);
 
 		await overlay.getByTestId("reader-overlay-close").click();

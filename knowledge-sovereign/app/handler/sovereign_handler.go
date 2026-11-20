@@ -180,21 +180,21 @@ func (h *SovereignHandler) ApplyProjectionMutation(
 	req *connect.Request[sovereignv1.ApplyProjectionMutationRequest],
 ) (*connect.Response[sovereignv1.ApplyProjectionMutationResponse], error) {
 	msg := req.Msg
-	switch msg.MutationType {
+	switch msg.GetMutationType() {
 	case MutationUpsertHomeItem, MutationDismissHomeItem, MutationClearSupersede, MutationUpsertRecallCandidate, MutationPatchHomeItemURL:
 	case MutationUpsertTodayDigest:
 		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("upsert_today_digest is restricted to local projector"))
 	default:
 		return nil, connect.NewError(connect.CodeInvalidArgument,
-			fmt.Errorf("unknown projection mutation type: %s", msg.MutationType))
+			fmt.Errorf("unknown projection mutation type: %s", msg.GetMutationType()))
 	}
 
-	payload, err := normalizeMutationPayload(ctx, json.RawMessage(msg.Payload), msg.MutationType)
+	payload, err := normalizeMutationPayload(ctx, json.RawMessage(msg.GetPayload()), msg.GetMutationType())
 	if err != nil {
 		return nil, err
 	}
 
-	switch msg.MutationType {
+	switch msg.GetMutationType() {
 	case MutationUpsertHomeItem:
 		err = h.repo.UpsertKnowledgeHomeItem(ctx, payload)
 	case MutationDismissHomeItem:
@@ -209,7 +209,7 @@ func (h *SovereignHandler) ApplyProjectionMutation(
 
 	if err != nil {
 		slog.ErrorContext(ctx, "projection mutation failed",
-			"type", msg.MutationType, "entity_id", msg.EntityId, "error", err)
+			"type", msg.GetMutationType(), "entity_id", msg.GetEntityId(), "error", err)
 		return nil, mapMutationError(err)
 	}
 
@@ -222,19 +222,19 @@ func (h *SovereignHandler) ApplyRecallMutation(
 	req *connect.Request[sovereignv1.ApplyRecallMutationRequest],
 ) (*connect.Response[sovereignv1.ApplyRecallMutationResponse], error) {
 	msg := req.Msg
-	switch msg.MutationType {
+	switch msg.GetMutationType() {
 	case MutationUpsertCandidate, MutationSnoozeCandidate, MutationDismissCandidate:
 	default:
 		return nil, connect.NewError(connect.CodeInvalidArgument,
-			fmt.Errorf("unknown recall mutation type: %s", msg.MutationType))
+			fmt.Errorf("unknown recall mutation type: %s", msg.GetMutationType()))
 	}
 
-	payload, err := normalizeMutationPayload(ctx, json.RawMessage(msg.Payload), msg.MutationType)
+	payload, err := normalizeMutationPayload(ctx, json.RawMessage(msg.GetPayload()), msg.GetMutationType())
 	if err != nil {
 		return nil, err
 	}
 
-	switch msg.MutationType {
+	switch msg.GetMutationType() {
 	case MutationUpsertCandidate:
 		err = h.repo.UpsertRecallCandidate(ctx, payload)
 	case MutationSnoozeCandidate:
@@ -245,7 +245,7 @@ func (h *SovereignHandler) ApplyRecallMutation(
 
 	if err != nil {
 		slog.ErrorContext(ctx, "recall mutation failed",
-			"type", msg.MutationType, "entity_id", msg.EntityId, "error", err)
+			"type", msg.GetMutationType(), "entity_id", msg.GetEntityId(), "error", err)
 		return nil, mapMutationError(err)
 	}
 
@@ -258,14 +258,14 @@ func (h *SovereignHandler) ApplyCurationMutation(
 	req *connect.Request[sovereignv1.ApplyCurationMutationRequest],
 ) (*connect.Response[sovereignv1.ApplyCurationMutationResponse], error) {
 	msg := req.Msg
-	switch msg.MutationType {
+	switch msg.GetMutationType() {
 	case MutationDismissCuration:
 	default:
 		return nil, connect.NewError(connect.CodeInvalidArgument,
-			fmt.Errorf("unknown curation mutation type: %s", msg.MutationType))
+			fmt.Errorf("unknown curation mutation type: %s", msg.GetMutationType()))
 	}
 
-	payload, err := normalizeMutationPayload(ctx, json.RawMessage(msg.Payload), msg.MutationType)
+	payload, err := normalizeMutationPayload(ctx, json.RawMessage(msg.GetPayload()), msg.GetMutationType())
 	if err != nil {
 		return nil, err
 	}
@@ -273,7 +273,7 @@ func (h *SovereignHandler) ApplyCurationMutation(
 	err = h.repo.DismissKnowledgeHomeItem(ctx, payload)
 	if err != nil {
 		slog.ErrorContext(ctx, "curation mutation failed",
-			"type", msg.MutationType, "entity_id", msg.EntityId, "error", err)
+			"type", msg.GetMutationType(), "entity_id", msg.GetEntityId(), "error", err)
 		return nil, mapMutationError(err)
 	}
 

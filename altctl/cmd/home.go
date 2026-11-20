@@ -50,6 +50,7 @@ func newAdminClient(cmd *cobra.Command) (*adminclient.AdminClient, error) {
 // operatorTokenFileEnv overrides the operator token file path resolved by
 // loadOperatorToken, taking priority over the default location but yielding
 // to the --operator-token-file flag.
+// #nosec G101 -- environment variable name, not a credential
 const operatorTokenFileEnv = "ALTCTL_OPERATOR_TOKEN_FILE"
 
 // loadOperatorToken resolves the operator bearer token altctl presents to
@@ -81,6 +82,7 @@ func loadOperatorToken(cmd *cobra.Command) (string, error) {
 		path = filepath.Join(getProjectRoot(), "secrets", "backend_operator_token.txt")
 	}
 
+	// #nosec G304 G703 -- path comes from --operator-token-file flag, ALTCTL_OPERATOR_TOKEN_FILE env, or project root
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) && !explicit {

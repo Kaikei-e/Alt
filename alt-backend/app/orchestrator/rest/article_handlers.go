@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 // maxArticlesPageSize is the largest page the cursor handlers will serve.
@@ -66,7 +66,7 @@ func parseArticleCursor(cursorStr string) (*time.Time, error) {
 }
 
 func handleFetchArticlesCursor(container *di.ApplicationComponents) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		ctx := c.Request().Context()
 		_, err := domain.GetUserFromContext(ctx)
 		if err != nil {
@@ -145,7 +145,7 @@ type ArticlesByTagResponse struct {
 }
 
 func handleFetchArticlesByTag(container *di.ApplicationComponents) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		ctx := c.Request().Context()
 		_, err := domain.GetUserFromContext(ctx)
 		if err != nil {
@@ -235,7 +235,7 @@ type ArticleTagsResponse struct {
 }
 
 func handleFetchArticleTags(container *di.ApplicationComponents) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		ctx := c.Request().Context()
 		_, err := domain.GetUserFromContext(ctx)
 		if err != nil {

@@ -88,9 +88,7 @@ function getTCriticalValue(df: number, level: number): number {
     }
   }
 
-  const values = closestDf !== undefined
-    ? T_CRITICAL_VALUES[closestDf]
-    : undefined;
+  const values = closestDf !== undefined ? T_CRITICAL_VALUES[closestDf] : undefined;
   if (!values) {
     return 1.96; // Fallback z-critical value for ~95% confidence
   }
@@ -238,7 +236,7 @@ export function calculateConfidenceInterval(
   mean: number,
   stdDev: number,
   n: number,
-  level: number = 0.95
+  level: number = 0.95,
 ): ConfidenceInterval {
   if (n <= 1 || stdDev === 0) {
     return { lower: mean, upper: mean, level };

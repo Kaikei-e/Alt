@@ -7,7 +7,7 @@ so handler tests can inject fakes without touching heavyweight services.
 
 from __future__ import annotations
 
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -58,7 +58,7 @@ def _make_submission() -> RunSubmission:
     )
 
 
-def _make_record(run_id: int = 1, job_id=None, status: str = "running") -> RunRecord:
+def _make_record(run_id: int = 1, job_id: UUID | None = None, status: str = "running") -> RunRecord:
     return RunRecord(
         run_id=run_id,
         job_id=job_id or uuid4(),

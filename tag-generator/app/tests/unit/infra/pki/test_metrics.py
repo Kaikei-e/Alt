@@ -47,7 +47,7 @@ async def test_start_with_observer_wires_prom_when_enabled(tmp_path: Path, monke
         ca_url="https://127.0.0.1:1",
         root_file=str(tmp_path / "root.pem"),
         provisioner="pki-agent-tag-generator-metrics",
-        password_file="/run/secrets/pki-agent-tag-generator-metrics-jwk",
+        password_file="/run/secrets/pki-agent-tag-generator-metrics-jwk",  # noqa: S106 - test fixture value, not a credential
         renew_at_fraction=0.66,
         tick_interval_seconds=3600,
         retry_backoff_seconds=0.001,

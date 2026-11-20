@@ -76,12 +76,13 @@ func (v *VolumeBackuper) Backup(ctx context.Context, spec VolumeSpec, outputPath
 		"-C", "/data", ".",
 	}
 
+	// #nosec G204 -- constant binary "docker" with separate busybox tar argv elements; no shell
 	cmd := exec.CommandContext(ctx, "docker", args...)
 	cmd.Stderr = v.logWriter("tar stderr")
 
 	if err := cmd.Run(); err != nil {
 		// Clean up failed backup file
-		os.Remove(outputPath)
+		_ = os.Remove(outputPath)
 		return fmt.Errorf("tar backup failed: %w", err)
 	}
 
@@ -164,6 +165,7 @@ func (v *VolumeBackuper) Restore(ctx context.Context, spec VolumeSpec, inputPath
 		"-C", "/data",
 	}
 
+	// #nosec G204 -- constant binary "docker" with separate busybox tar argv elements; no shell
 	cmd := exec.CommandContext(ctx, "docker", args...)
 	cmd.Stderr = v.logWriter("tar stderr")
 
@@ -188,6 +190,7 @@ func (v *VolumeBackuper) fullVolumeName(volumeName string) string {
 
 // checkVolumeExists checks if a Docker volume exists
 func (v *VolumeBackuper) checkVolumeExists(ctx context.Context, volumeName string) error {
+	// #nosec G204 -- constant binary "docker" with separate argv elements; no shell
 	cmd := exec.CommandContext(ctx, "docker", "volume", "inspect", volumeName)
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("volume %s does not exist", volumeName)
@@ -203,6 +206,7 @@ func (v *VolumeBackuper) ensureVolumeExists(ctx context.Context, volumeName stri
 	}
 
 	// Create volume
+	// #nosec G204 -- constant binary "docker" with separate argv elements; no shell
 	cmd := exec.CommandContext(ctx, "docker", "volume", "create", volumeName)
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("creating volume %s: %w", volumeName, err)
@@ -217,6 +221,7 @@ func (v *VolumeBackuper) GetVolumeSize(ctx context.Context, volumeName string) (
 	fullName := v.fullVolumeName(volumeName)
 
 	// Use du command inside busybox to get size
+	// #nosec G204 -- constant binary "docker" with separate argv elements; fullName from registry
 	cmd := exec.CommandContext(ctx, "docker", "run", "--rm",
 		"-v", fullName+":/data:ro",
 		"busybox",
@@ -266,6 +271,7 @@ func (v *VolumeBackuper) ClearVolume(ctx context.Context, volumeName string) err
 	}
 
 	// Use busybox to remove all files
+	// #nosec G204 -- constant binary "docker" with separate argv elements and fixed container command; no Go variable reaches sh -c
 	cmd := exec.CommandContext(ctx, "docker", "run", "--rm",
 		"-v", fullName+":/data",
 		"busybox",

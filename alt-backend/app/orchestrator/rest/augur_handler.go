@@ -15,7 +15,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 type AugurHandler struct {
@@ -33,7 +33,7 @@ func NewAugurHandler(
 	}
 }
 
-func (h *AugurHandler) RetrieveContext(c echo.Context) error {
+func (h *AugurHandler) RetrieveContext(c *echo.Context) error {
 	user, err := domain.GetUserFromContext(c.Request().Context())
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
@@ -74,7 +74,7 @@ func extractLastUserQuery(messages []ChatMessage) string {
 	return ""
 }
 
-func (h *AugurHandler) Answer(c echo.Context) error {
+func (h *AugurHandler) Answer(c *echo.Context) error {
 	var req AnswerRequest
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
@@ -148,7 +148,7 @@ func (h *AugurHandler) Answer(c echo.Context) error {
 						return nil
 					}
 				}
-				c.Response().Flush()
+				_ = http.NewResponseController(c.Response()).Flush()
 			}
 		}
 		return nil

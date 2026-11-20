@@ -9,6 +9,8 @@ from acolyte.domain.query_facet import (
     render_query_string,
 )
 
+MAX_RENDERED_QUERY_LEN = 120
+
 
 def test_query_facet_defaults() -> None:
     """Construct with required fields only; assert sensible defaults."""
@@ -129,7 +131,7 @@ def test_render_query_string_caps_length() -> None:
 
     rendered = render_query_string(facet)
 
-    assert len(rendered) <= 120
+    assert len(rendered) <= MAX_RENDERED_QUERY_LEN
 
 
 def test_weak_facet_threshold_is_positive() -> None:

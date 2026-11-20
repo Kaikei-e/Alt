@@ -53,8 +53,8 @@ func (h *Handler) Catalog(ctx context.Context, req *connect.Request[adminmonitor
 }
 
 func (h *Handler) Snapshot(ctx context.Context, req *connect.Request[adminmonitorv1.SnapshotRequest]) (*connect.Response[adminmonitorv1.SnapshotResponse], error) {
-	keys := toKeys(req.Msg.Keys)
-	snap, err := h.uc.GetSnapshot(ctx, keys, windowFromProto(req.Msg.Window), stepFromProto(req.Msg.Step))
+	keys := toKeys(req.Msg.GetKeys())
+	snap, err := h.uc.GetSnapshot(ctx, keys, windowFromProto(req.Msg.GetWindow()), stepFromProto(req.Msg.GetStep()))
 	if err != nil {
 		return nil, connectError(err)
 	}
@@ -72,8 +72,8 @@ func (h *Handler) Watch(ctx context.Context, req *connect.Request[adminmonitorv1
 	stream.ResponseHeader().Set("X-Accel-Buffering", "no")
 	stream.ResponseHeader().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 
-	keys := toKeys(req.Msg.Keys)
-	ch, err := h.uc.StreamSnapshots(ctx, keys, windowFromProto(req.Msg.Window), stepFromProto(req.Msg.Step))
+	keys := toKeys(req.Msg.GetKeys())
+	ch, err := h.uc.StreamSnapshots(ctx, keys, windowFromProto(req.Msg.GetWindow()), stepFromProto(req.Msg.GetStep()))
 	if err != nil {
 		return connectError(err)
 	}
@@ -145,6 +145,8 @@ func windowFromProto(w adminmonitorv1.RangeWindow) domain.RangeWindow {
 		return domain.RangeWindow6h
 	case adminmonitorv1.RangeWindow_RANGE_WINDOW_24H:
 		return domain.RangeWindow24h
+	case adminmonitorv1.RangeWindow_RANGE_WINDOW_UNSPECIFIED:
+		return ""
 	}
 	return ""
 }
@@ -159,6 +161,8 @@ func stepFromProto(s adminmonitorv1.Step) domain.Step {
 		return domain.Step1m
 	case adminmonitorv1.Step_STEP_5M:
 		return domain.Step5m
+	case adminmonitorv1.Step_STEP_UNSPECIFIED:
+		return ""
 	}
 	return ""
 }

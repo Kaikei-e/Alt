@@ -165,10 +165,10 @@ func TestImageProxyCacheEntryToProto_PixelDimsDoNotWrapOnOverflow(t *testing.T) 
 		Height: math.MaxInt32 + 1,
 	})
 	require.NotNil(t, got)
-	assert.Equal(t, int32(math.MaxInt32), got.Width, "Width must clamp to MaxInt32, not wrap negative")
-	assert.Equal(t, int32(math.MaxInt32), got.Height, "Height must clamp to MaxInt32, not wrap negative")
-	assert.GreaterOrEqual(t, got.Width, int32(0))
-	assert.GreaterOrEqual(t, got.Height, int32(0))
+	assert.Equal(t, int32(math.MaxInt32), got.GetWidth(), "Width must clamp to MaxInt32, not wrap negative")
+	assert.Equal(t, int32(math.MaxInt32), got.GetHeight(), "Height must clamp to MaxInt32, not wrap negative")
+	assert.GreaterOrEqual(t, got.GetWidth(), int32(0))
+	assert.GreaterOrEqual(t, got.GetHeight(), int32(0))
 }
 
 // Clamping, not zeroing: 0 means "caching disallowed", so coercing an
@@ -178,7 +178,7 @@ func TestScrapingDomainToProto_AllowCacheDaysClampsOnOverflow(t *testing.T) {
 		AllowCacheDays: math.MaxInt32 + 1,
 	})
 	require.NotNil(t, got)
-	assert.Equal(t, int32(math.MaxInt32), got.AllowCacheDays, "out-of-range days must clamp, not flip to 'caching disallowed'")
+	assert.Equal(t, int32(math.MaxInt32), got.GetAllowCacheDays(), "out-of-range days must clamp, not flip to 'caching disallowed'")
 }
 
 func TestScrapingDomainToProto_HTTPStatusOutOfRangeIsOmitted(t *testing.T) {
@@ -198,7 +198,7 @@ func TestScrapingDomainToProto_HTTPStatusOutOfRangeIsOmitted(t *testing.T) {
 	ok := 404
 	got = scrapingDomainToProto(&domain.ScrapingDomain{RobotsTxtLastStatus: &ok})
 	require.NotNil(t, got.RobotsTxtLastStatus)
-	assert.Equal(t, int32(404), *got.RobotsTxtLastStatus)
+	assert.Equal(t, int32(404), got.GetRobotsTxtLastStatus())
 }
 
 // Clamping, not omitting: an absent optional field reads as "no crawl delay
@@ -209,12 +209,12 @@ func TestScrapingDomainToProto_CrawlDelayClampsOnOverflow(t *testing.T) {
 	got := scrapingDomainToProto(&domain.ScrapingDomain{RobotsCrawlDelaySec: &overflow})
 	require.NotNil(t, got)
 	require.NotNil(t, got.RobotsCrawlDelaySec, "overflowing crawl delay must stay on the wire")
-	assert.Equal(t, int32(math.MaxInt32), *got.RobotsCrawlDelaySec)
+	assert.Equal(t, int32(math.MaxInt32), got.GetRobotsCrawlDelaySec())
 
 	ok := 10
 	got = scrapingDomainToProto(&domain.ScrapingDomain{RobotsCrawlDelaySec: &ok})
 	require.NotNil(t, got.RobotsCrawlDelaySec)
-	assert.Equal(t, int32(10), *got.RobotsCrawlDelaySec)
+	assert.Equal(t, int32(10), got.GetRobotsCrawlDelaySec())
 }
 
 // Clamping, not omitting: in an update message an absent optional field means
@@ -225,10 +225,10 @@ func TestScrapingPolicyUpdateToProto_AllowCacheDaysClampsOnOverflow(t *testing.T
 	got := scrapingPolicyUpdateToProto(&domain.ScrapingPolicyUpdate{AllowCacheDays: &overflow})
 	require.NotNil(t, got)
 	require.NotNil(t, got.AllowCacheDays, "a requested change must never be dropped silently")
-	assert.Equal(t, int32(math.MaxInt32), *got.AllowCacheDays)
+	assert.Equal(t, int32(math.MaxInt32), got.GetAllowCacheDays())
 
 	ok := 7
 	got = scrapingPolicyUpdateToProto(&domain.ScrapingPolicyUpdate{AllowCacheDays: &ok})
 	require.NotNil(t, got.AllowCacheDays)
-	assert.Equal(t, int32(7), *got.AllowCacheDays)
+	assert.Equal(t, int32(7), got.GetAllowCacheDays())
 }

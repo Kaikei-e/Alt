@@ -1,12 +1,13 @@
 package middleware
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 func TestValidationMiddleware_FeedRegistration(t *testing.T) {
@@ -81,7 +82,7 @@ func TestValidationMiddleware_FeedRegistration(t *testing.T) {
 			e := echo.New()
 
 			nextCalled := false
-			next := func(c echo.Context) error {
+			next := func(c *echo.Context) error {
 				nextCalled = true
 				return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
 			}
@@ -91,10 +92,10 @@ func TestValidationMiddleware_FeedRegistration(t *testing.T) {
 
 			var req *http.Request
 			if tt.body != "" {
-				req = httptest.NewRequest(tt.method, tt.path, strings.NewReader(tt.body))
+				req = httptest.NewRequestWithContext(t.Context(), tt.method, tt.path, strings.NewReader(tt.body))
 				req.Header.Set("Content-Type", "application/json")
 			} else {
-				req = httptest.NewRequest(tt.method, tt.path, nil)
+				req = httptest.NewRequestWithContext(t.Context(), tt.method, tt.path, nil)
 			}
 
 			rec := httptest.NewRecorder()
@@ -104,7 +105,8 @@ func TestValidationMiddleware_FeedRegistration(t *testing.T) {
 			err := handler(c)
 
 			if err != nil {
-				if he, ok := err.(*echo.HTTPError); ok {
+				he := &echo.HTTPError{}
+				if errors.As(err, &he) {
 					if he.Code != tt.expectedStatus {
 						t.Errorf("Expected status %d, got %d", tt.expectedStatus, he.Code)
 					}
@@ -172,7 +174,7 @@ func TestValidationMiddleware_FeedSearch(t *testing.T) {
 			e := echo.New()
 
 			nextCalled := false
-			next := func(c echo.Context) error {
+			next := func(c *echo.Context) error {
 				nextCalled = true
 				return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
 			}
@@ -180,7 +182,7 @@ func TestValidationMiddleware_FeedSearch(t *testing.T) {
 			middleware := ValidationMiddleware()
 			handler := middleware(next)
 
-			req := httptest.NewRequest(tt.method, tt.path, strings.NewReader(tt.body))
+			req := httptest.NewRequestWithContext(t.Context(), tt.method, tt.path, strings.NewReader(tt.body))
 			req.Header.Set("Content-Type", "application/json")
 			rec := httptest.NewRecorder()
 			c := e.NewContext(req, rec)
@@ -189,7 +191,8 @@ func TestValidationMiddleware_FeedSearch(t *testing.T) {
 			err := handler(c)
 
 			if err != nil {
-				if he, ok := err.(*echo.HTTPError); ok {
+				he := &echo.HTTPError{}
+				if errors.As(err, &he) {
 					if he.Code != tt.expectedStatus {
 						t.Errorf("Expected status %d, got %d", tt.expectedStatus, he.Code)
 					}
@@ -257,7 +260,7 @@ func TestValidationMiddleware_ArticleSearch(t *testing.T) {
 			e := echo.New()
 
 			nextCalled := false
-			next := func(c echo.Context) error {
+			next := func(c *echo.Context) error {
 				nextCalled = true
 				return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
 			}
@@ -270,7 +273,7 @@ func TestValidationMiddleware_ArticleSearch(t *testing.T) {
 				url += "?" + tt.query
 			}
 
-			req := httptest.NewRequest(tt.method, url, nil)
+			req := httptest.NewRequestWithContext(t.Context(), tt.method, url, nil)
 			rec := httptest.NewRecorder()
 			c := e.NewContext(req, rec)
 			c.SetPath(tt.path)
@@ -278,7 +281,8 @@ func TestValidationMiddleware_ArticleSearch(t *testing.T) {
 			err := handler(c)
 
 			if err != nil {
-				if he, ok := err.(*echo.HTTPError); ok {
+				he := &echo.HTTPError{}
+				if errors.As(err, &he) {
 					if he.Code != tt.expectedStatus {
 						t.Errorf("Expected status %d, got %d", tt.expectedStatus, he.Code)
 					}
@@ -354,7 +358,7 @@ func TestValidationMiddleware_Pagination(t *testing.T) {
 			e := echo.New()
 
 			nextCalled := false
-			next := func(c echo.Context) error {
+			next := func(c *echo.Context) error {
 				nextCalled = true
 				return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
 			}
@@ -367,7 +371,7 @@ func TestValidationMiddleware_Pagination(t *testing.T) {
 				url += "?" + tt.query
 			}
 
-			req := httptest.NewRequest(tt.method, url, nil)
+			req := httptest.NewRequestWithContext(t.Context(), tt.method, url, nil)
 			rec := httptest.NewRecorder()
 			c := e.NewContext(req, rec)
 			c.SetPath(tt.path)
@@ -375,7 +379,8 @@ func TestValidationMiddleware_Pagination(t *testing.T) {
 			err := handler(c)
 
 			if err != nil {
-				if he, ok := err.(*echo.HTTPError); ok {
+				he := &echo.HTTPError{}
+				if errors.As(err, &he) {
 					if he.Code != tt.expectedStatus {
 						t.Errorf("Expected status %d, got %d", tt.expectedStatus, he.Code)
 					}

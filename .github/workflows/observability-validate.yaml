@@ -56,6 +56,7 @@ on:
       - 'scripts/compose_include.py'
       - 'scripts/observability-drift-check.py'
       - 'scripts/tests/test-observability-drift-check.py'
+      - 'scripts/lint/**'
       - '.github/workflows/observability-validate.yaml'
   pull_request:
     branches: [main]
@@ -82,6 +83,7 @@ on:
       - 'scripts/compose_include.py'
       - 'scripts/observability-drift-check.py'
       - 'scripts/tests/test-observability-drift-check.py'
+      - 'scripts/lint/**'
       - '.github/workflows/observability-validate.yaml'
   workflow_dispatch:
 
@@ -106,64 +108,18 @@ jobs:
         # workflow-safety-lint so supply-chain drift is bounded.
         run: pip install --quiet 'pyyaml==6.*'
 
-      - name: Resolve tool versions from compose/observability.yaml
-        id: versions
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 scripts/observability-compose-tool-images.py \
-            --compose compose/observability.yaml
-          python3 scripts/observability-compose-tool-images.py --github-output \
-            --compose compose/observability.yaml >> "$GITHUB_OUTPUT"
-
       - name: Cache promtool and amtool
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           # Outside the workspace: the tools are build inputs, not repository
           # content, and nothing should have to gitignore them.
           path: ~/.cache/alt-observability-tools
-          key: observability-tools-p${{ steps.versions.outputs.prometheus }}-a${{ steps.versions.outputs.alertmanager }}
-
-      - name: Install promtool and amtool
-        shell: bash
-        env:
-          PROM_VERSION: ${{ steps.versions.outputs.prometheus }}
-          AM_VERSION: ${{ steps.versions.outputs.alertmanager }}
-        run: |
-          set -euo pipefail
-          tools="$HOME/.cache/alt-observability-tools"
-          mkdir -p "$tools"
-
-          if [[ ! -x "$tools/promtool" ]]; then
-            base_url="https://github.com/prometheus/prometheus/releases/download/v${PROM_VERSION}"
-            tarball="prometheus-${PROM_VERSION}.linux-amd64.tar.gz"
-            curl -fsSL --proto '=https' --tlsv1.2 --retry 3 -o "$RUNNER_TEMP/$tarball" "$base_url/$tarball"
-            curl -fsSL --proto '=https' --tlsv1.2 --retry 3 -o "$RUNNER_TEMP/prom-sha256sums.txt" "$base_url/sha256sums.txt"
-            (cd "$RUNNER_TEMP" && grep "  ${tarball}$" prom-sha256sums.txt | sha256sum -c -)
-            tar -xzf "$RUNNER_TEMP/$tarball" --strip-components=1 \
-              -C "$tools" "prometheus-${PROM_VERSION}.linux-amd64/promtool"
-          fi
-          "$tools/promtool" --version
-          # Exported rather than passed as a step env so the validation step
-          # never falls back to pulling a container image for the tools.
-          echo "PROMTOOL=$tools/promtool" >> "$GITHUB_ENV"
-
-          if [[ -n "$AM_VERSION" ]]; then
-            if [[ ! -x "$tools/amtool" ]]; then
-              base_url="https://github.com/prometheus/alertmanager/releases/download/v${AM_VERSION}"
-              tarball="alertmanager-${AM_VERSION}.linux-amd64.tar.gz"
-              curl -fsSL --proto '=https' --tlsv1.2 --retry 3 -o "$RUNNER_TEMP/$tarball" "$base_url/$tarball"
-              curl -fsSL --proto '=https' --tlsv1.2 --retry 3 -o "$RUNNER_TEMP/am-sha256sums.txt" "$base_url/sha256sums.txt"
-              (cd "$RUNNER_TEMP" && grep "  ${tarball}$" am-sha256sums.txt | sha256sum -c -)
-              tar -xzf "$RUNNER_TEMP/$tarball" --strip-components=1 \
-                -C "$tools" "alertmanager-${AM_VERSION}.linux-amd64/amtool"
-            fi
-            "$tools/amtool" --version
-            echo "AMTOOL=$tools/amtool" >> "$GITHUB_ENV"
-          fi
+          key: observability-tools-${{ runner.os }}-${{ hashFiles('scripts/lint/observability.sh', 'compose/observability.yaml') }}
 
       - name: Validate observability configuration
-        run: scripts/observability-validate.sh
+        env:
+          TARGET: observability
+        run: ./scripts/lint/run.sh "$TARGET"
 
       # The drift checker only runs against a live host, so nothing here can
       # exercise it end to end. Its comparison logic is pure, though, and it

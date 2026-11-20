@@ -26,7 +26,7 @@ class OverrideLoader(yaml.SafeLoader):
     """Tolerate the `!override` tag that compose files use for anchor merges."""
 
 
-def _construct_override(loader, node):  # type: ignore[no-untyped-def]
+def _construct_override(loader: OverrideLoader, node: yaml.Node) -> object:
     if isinstance(node, yaml.MappingNode):
         return loader.construct_mapping(node, deep=True)
     if isinstance(node, yaml.SequenceNode):
@@ -41,7 +41,7 @@ ROOT_COMPOSE = REPO_ROOT / "compose" / "compose.yaml"
 
 
 def load_yaml(path: Path) -> dict:
-    data = yaml.load(path.read_text(encoding="utf-8"), Loader=OverrideLoader)
+    data = yaml.load(path.read_text(encoding="utf-8"), Loader=OverrideLoader)  # noqa: S506 — OverrideLoader subclasses SafeLoader for !override
     return data or {}
 
 
@@ -64,7 +64,8 @@ def resolve_included(path: Path, seen: set[Path] | None = None) -> list[Path]:
 def production_compose_files(root: Path | None = None) -> list[Path]:
     compose = root or ROOT_COMPOSE
     if not compose.is_file():
-        raise SystemExit(f"missing root compose file: {compose}")
+        msg = f"missing root compose file: {compose}"
+        raise SystemExit(msg)
     return resolve_included(compose, set())
 
 
@@ -78,9 +79,13 @@ def production_services(root: Path | None = None) -> dict[str, dict]:
     services: dict[str, dict] = {}
     for path in production_compose_files(root):
         data = load_yaml(path)
-        for name, svc in (data.get("services") or {}).items():
-            if isinstance(svc, dict):
-                services[name] = svc
+        services.update(
+            {
+                name: svc
+                for name, svc in (data.get("services") or {}).items()
+                if isinstance(svc, dict)
+            }
+        )
     return services
 
 

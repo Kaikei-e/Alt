@@ -1,5 +1,5 @@
-import streamlit as st
 import pandas as pd
+import streamlit as st
 
 from utils import _interval_params, fetch_table_or_warn
 

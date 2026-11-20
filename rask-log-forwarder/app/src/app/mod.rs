@@ -25,18 +25,28 @@ pub struct App {
 }
 
 impl App {
-    pub async fn from_args<I, T>(args: I) -> Result<Self, Box<dyn std::error::Error + Send + Sync>>
+    /// Builds an [`App`] from CLI arguments and the process environment.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if configuration loading/validation fails or if
+    /// [`Self::from_config`] fails to initialize the application.
+    pub fn from_args<I, T>(args: I) -> Result<Self, Box<dyn std::error::Error + Send + Sync>>
     where
         I: IntoIterator<Item = T>,
         T: Into<std::ffi::OsString> + Clone,
     {
         let config = Config::from_args_and_env(args)?;
-        Self::from_config(config).await
+        Self::from_config(config)
     }
 
-    pub async fn from_config(
-        config: Config,
-    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+    /// Initializes an [`App`] from an already-constructed [`Config`].
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if [`ApplicationInitializer::initialize`] or
+    /// [`ServiceManager::new`] fails.
+    pub fn from_config(config: Config) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         // Use the comprehensive ApplicationInitializer for memory-safe initialization
         let initializer = ApplicationInitializer::new();
 
@@ -57,11 +67,17 @@ impl App {
         );
 
         // Initialize service manager
-        let service_manager = ServiceManager::new(config).await?;
+        let service_manager = ServiceManager::new(config)?;
 
         Ok(Self { service_manager })
     }
 
+    /// Runs the forwarder service until a shutdown signal is received.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if starting the service manager or waiting for shutdown
+    /// fails.
     pub async fn run(mut self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         // Start the service
         let shutdown_handle = self.service_manager.start().await?;
@@ -93,14 +109,19 @@ pub fn get_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
 
-// Main entry point for the application
+/// Main entry point for the application.
+///
+/// # Errors
+///
+/// Returns an error if the healthcheck subcommand, configuration loading, or
+/// service execution fails.
 pub async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let args: Vec<String> = std::env::args().collect();
 
     // Docker healthcheck subcommand (distroless image has no shell/curl).
     // Mirrors rask-log-aggregator: `/rask-log-forwarder healthcheck`.
     if args.get(1).map(String::as_str) == Some("healthcheck") {
-        return crate::health_check().await.map_err(|e| {
+        return crate::health_check().map_err(|e| {
             eprintln!("Healthcheck failed: {e}");
             e
         });
@@ -123,7 +144,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // flush pending log records. Propagating up to `main()` in main.rs lets
     // the runtime unwind normally - the non-zero exit code is still produced
     // via `Result`'s `Termination` impl.
-    let app = App::from_args(args).await.inspect_err(|e| {
+    let app = App::from_args(args).inspect_err(|e| {
         error!("Configuration error: {}", e);
     })?;
 

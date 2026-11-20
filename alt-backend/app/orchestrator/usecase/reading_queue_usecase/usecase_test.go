@@ -162,9 +162,9 @@ func TestQueueArticleUsecase_OutcomesAndPayload(t *testing.T) {
 		assert.Equal(t, "swipe", payload["surface"])
 		assert.Equal(t, "2026-11-18T12:00:00Z", payload["queued_at"])
 		assert.Equal(t, "2026-11-20T12:00:00Z", payload["expires_at"])
-		assert.Equal(t, float64(7), payload["cap"])
-		assert.Equal(t, float64(48), payload["ttl_hours"])
-		assert.Equal(t, float64(1), payload["queue_policy_version"])
+		assert.InDelta(t, float64(7), payload["cap"], 1e-9)
+		assert.InDelta(t, float64(48), payload["ttl_hours"], 1e-9)
+		assert.InDelta(t, float64(1), payload["queue_policy_version"], 1e-9)
 	})
 
 	t.Run("appends reading.queued.v1 and returns ALREADY_QUEUED with current items when already active", func(t *testing.T) {
@@ -205,9 +205,9 @@ func TestQueueArticleUsecase_OutcomesAndPayload(t *testing.T) {
 		assert.Equal(t, "swipe", payload["surface"])
 		assert.Equal(t, now.Format(time.RFC3339), payload["queued_at"])
 		assert.Equal(t, now.Add(48*time.Hour).Format(time.RFC3339), payload["expires_at"])
-		assert.Equal(t, float64(7), payload["cap"])
-		assert.Equal(t, float64(48), payload["ttl_hours"])
-		assert.Equal(t, float64(1), payload["queue_policy_version"])
+		assert.InDelta(t, float64(7), payload["cap"], 1e-9)
+		assert.InDelta(t, float64(48), payload["ttl_hours"], 1e-9)
+		assert.InDelta(t, float64(1), payload["queue_policy_version"], 1e-9)
 
 		require.Len(t, res.Items, 1)
 		assert.Equal(t, art1, res.Items[0].ArticleID)
@@ -305,7 +305,7 @@ func TestQueueArticleUsecase_OutcomesAndPayload(t *testing.T) {
 
 		_, err := uc.Execute(context.Background(), userID, tenantID, art2.String(), "01960000-0000-7000-8000-000000000004", now, domain.ReadingSurfaceSwipe)
 		require.Error(t, err)
-		assert.ErrorIs(t, err, ErrInvalidInput)
+		require.ErrorIs(t, err, ErrInvalidInput)
 		assert.Empty(t, ap.events)
 	})
 
@@ -319,7 +319,7 @@ func TestQueueArticleUsecase_OutcomesAndPayload(t *testing.T) {
 
 		_, err := uc.Execute(context.Background(), userID, tenantID, art2.String(), "01960000-0000-7000-8000-000000000005", now, domain.ReadingSurfaceSwipe)
 		require.Error(t, err)
-		assert.ErrorIs(t, err, ErrInvalidInput)
+		require.ErrorIs(t, err, ErrInvalidInput)
 		assert.Empty(t, ap.events)
 	})
 
@@ -334,8 +334,8 @@ func TestQueueArticleUsecase_OutcomesAndPayload(t *testing.T) {
 
 		_, err := uc.Execute(context.Background(), userID, tenantID, art2.String(), "01960000-0000-7000-8000-000000000006", now, domain.ReadingSurfaceSwipe)
 		require.Error(t, err)
-		assert.ErrorIs(t, err, lookupErr)
-		assert.NotErrorIs(t, err, ErrInvalidInput)
+		require.ErrorIs(t, err, lookupErr)
+		require.NotErrorIs(t, err, ErrInvalidInput)
 		assert.Empty(t, ap.events)
 	})
 }

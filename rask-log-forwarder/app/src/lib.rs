@@ -7,18 +7,6 @@
     clippy::inconsistent_struct_constructor
 )]
 // Noisy pedantic lints suppressed with justification:
-#![allow(
-    clippy::cast_lossless,            // Infallible casts are clear enough with `as`
-    clippy::cast_possible_truncation, // Safe within realistic value bounds (durations, sizes)
-    clippy::cast_possible_wrap,       // Safe in non-negative contexts
-    clippy::cast_precision_loss,      // Acceptable for metrics/display
-    clippy::cast_sign_loss,           // Safe where values are known non-negative
-    clippy::missing_errors_doc,       // Internal API
-    clippy::missing_panics_doc,       // Internal API
-    clippy::module_name_repetitions,  // e.g. CollectorError in collector module
-    clippy::must_use_candidate,       // Annotated selectively on critical APIs
-    clippy::doc_markdown              // Internal API
-)]
 
 pub mod app;
 pub mod buffer;
@@ -34,32 +22,45 @@ pub use app::{App, Config};
 // Version information
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-// Health check endpoint for Docker
-pub async fn health_check() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+/// Runs the Docker health check by validating the configuration loaded from the
+/// process environment.
+///
+/// # Errors
+///
+/// Returns an error if loading the configuration from the environment or
+/// validating the loaded configuration fails.
+pub fn health_check() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    health_check_with(|k| std::env::var(k).ok())
+}
+
+/// Runs the Docker health check using the supplied environment lookup closure.
+///
+/// # Errors
+///
+/// Returns an error if loading the configuration from `env` or validating the
+/// loaded configuration fails.
+pub fn health_check_with<F>(env: F) -> Result<(), Box<dyn std::error::Error + Send + Sync>>
+where
+    F: Fn(&str) -> Option<String>,
+{
     // Validate that the configuration from environment is well-formed.
-    let config = Config::from_env()?;
+    let config = Config::from_env_with(env)?;
     config.validate()?;
     Ok(())
 }
 
 #[cfg(test)]
 mod health_check_tests {
-    use serial_test::serial;
     use std::io::Write;
     use tempfile::NamedTempFile;
 
-    #[tokio::test]
-    #[serial]
-    async fn health_check_validates_default_config() {
+    #[test]
+    fn health_check_validates_default_config() {
         let mut token_file = NamedTempFile::new().unwrap();
         writeln!(token_file, "valid-token-123").unwrap();
-        unsafe {
-            std::env::set_var("RASK_INGEST_TOKEN_FILE", token_file.path());
-        }
-        let res = super::health_check().await;
-        unsafe {
-            std::env::remove_var("RASK_INGEST_TOKEN_FILE");
-        }
+        let path_str = token_file.path().to_string_lossy().into_owned();
+        let res =
+            super::health_check_with(|k| (k == "RASK_INGEST_TOKEN_FILE").then(|| path_str.clone()));
         res.expect("config with valid token must pass health check");
     }
 }

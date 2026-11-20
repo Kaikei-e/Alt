@@ -77,7 +77,7 @@ def test_load_config_enabled_subject_scoped_defaults(
     monkeypatch.setenv("CERT_SUBJECT", "tts-speaker")
     cfg = load_config("tts-speaker")
     assert cfg.provisioner == "pki-agent-tts-speaker"
-    assert cfg.password_file == "/run/secrets/pki-agent-tts-speaker-jwk"
+    assert cfg.password_file == "/run/secrets/pki-agent-tts-speaker-jwk"  # noqa: S105 - test fixture value, not a credential
 
 
 def test_load_config_distinct_subjects_do_not_share_identity(

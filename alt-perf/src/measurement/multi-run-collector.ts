@@ -4,13 +4,10 @@
  */
 import { BrowserManager, type SessionCookie } from "../browser/astral.ts";
 import { WebVitalsCollector, type WebVitalsResult } from "./vitals.ts";
-import {
-  calculateStatistics,
-  type StatisticalSummary,
-} from "./statistics.ts";
-import { RetryExecutor, DEFAULT_RETRY_POLICY, type RetryPolicy } from "../retry/retry-policy.ts";
-import { NetworkController, type NetworkCondition } from "../browser/network-conditions.ts";
-import { CacheController, type CacheConfig } from "../browser/cache-controller.ts";
+import { calculateStatistics, type StatisticalSummary } from "./statistics.ts";
+import { DEFAULT_RETRY_POLICY, RetryExecutor, type RetryPolicy } from "../retry/retry-policy.ts";
+import { type NetworkCondition, NetworkController } from "../browser/network-conditions.ts";
+import { type CacheConfig, CacheController } from "../browser/cache-controller.ts";
 import { debug, info, warn } from "../utils/logger.ts";
 
 /**
@@ -102,7 +99,7 @@ export class MultiRunCollector {
   constructor(
     browserManager: BrowserManager,
     vitalsCollector: WebVitalsCollector,
-    config: Partial<MultiRunConfig> = {}
+    config: Partial<MultiRunConfig> = {},
   ) {
     this.browserManager = browserManager;
     this.vitalsCollector = vitalsCollector;
@@ -117,7 +114,7 @@ export class MultiRunCollector {
   async collectMultiRun(
     url: string,
     device: string,
-    options: MultiRunOptions = {}
+    options: MultiRunOptions = {},
   ): Promise<MultiRunResult> {
     const startTime = performance.now();
     const retryPolicy = options.retryPolicy || DEFAULT_RETRY_POLICY;
@@ -128,7 +125,9 @@ export class MultiRunCollector {
     let failedRuns = 0;
     let totalAttempts = 0;
 
-    info(`Starting multi-run collection: ${this.config.runs} runs + ${this.config.warmupRuns} warmup`);
+    info(
+      `Starting multi-run collection: ${this.config.runs} runs + ${this.config.warmupRuns} warmup`,
+    );
 
     // Total iterations = warmup + actual runs
     const totalIterations = this.config.warmupRuns + this.config.runs;
@@ -231,10 +230,10 @@ export class MultiRunCollector {
    * Calculate statistics for all vital metrics
    */
   private calculateVitalStatistics(
-    runs: WebVitalsResult[]
+    runs: WebVitalsResult[],
   ): MultiRunResult["statistics"] {
     const extractValues = (
-      key: keyof Omit<WebVitalsResult, "timestamp">
+      key: keyof Omit<WebVitalsResult, "timestamp">,
     ): number[] => {
       return runs.map((r) => r[key].value);
     };
@@ -291,7 +290,7 @@ export class MultiRunCollector {
 export function createMultiRunCollector(
   browserManager: BrowserManager,
   vitalsCollector: WebVitalsCollector,
-  config?: Partial<MultiRunConfig>
+  config?: Partial<MultiRunConfig>,
 ): MultiRunCollector {
   return new MultiRunCollector(browserManager, vitalsCollector, config);
 }

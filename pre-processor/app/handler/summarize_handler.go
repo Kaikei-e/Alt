@@ -13,7 +13,7 @@ import (
 	apperrors "pre-processor/utils/errors"
 
 	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 // SummarizeRequest represents the request body for article summarization
@@ -53,7 +53,7 @@ func NewSummarizeHandler(apiRepo repository.ExternalAPIRepository, summaryRepo r
 }
 
 // HandleSummarize handles POST /api/v1/summarize requests
-func (h *SummarizeHandler) HandleSummarize(c echo.Context) error {
+func (h *SummarizeHandler) HandleSummarize(c *echo.Context) error {
 	ctx := c.Request().Context()
 
 	// Parse request body
@@ -157,7 +157,7 @@ type SummarizeQueueResponse struct {
 }
 
 // HandleStreamSummarize handles POST /api/v1/summarize/stream requests
-func (h *SummarizeHandler) HandleStreamSummarize(c echo.Context) error {
+func (h *SummarizeHandler) HandleStreamSummarize(c *echo.Context) error {
 	ctx := c.Request().Context()
 
 	// Parse request body
@@ -246,7 +246,9 @@ func (h *SummarizeHandler) HandleStreamSummarize(c echo.Context) error {
 				h.logger.ErrorContext(ctx, "error writing to response stream", "error", wErr, "article_id", req.ArticleID, "bytes_written", bytesWritten)
 				return wErr
 			}
-			c.Response().Flush()
+			if flusher, ok := c.Response().(http.Flusher); ok {
+				flusher.Flush()
+			}
 		}
 		if err != nil {
 			if err == io.EOF {
@@ -269,7 +271,7 @@ func (h *SummarizeHandler) HandleStreamSummarize(c echo.Context) error {
 
 // HandleSummarizeQueue handles POST /api/v1/summarize/queue requests
 // This endpoint queues a summarization job and returns immediately with a job ID
-func (h *SummarizeHandler) HandleSummarizeQueue(c echo.Context) error {
+func (h *SummarizeHandler) HandleSummarizeQueue(c *echo.Context) error {
 	ctx := c.Request().Context()
 
 	// Parse request body
@@ -362,7 +364,7 @@ type SummarizeStatusResponse struct {
 
 // HandleSummarizeStatus handles GET /api/v1/summarize/status/{job_id} requests
 // This endpoint returns the current status of a summarization job
-func (h *SummarizeHandler) HandleSummarizeStatus(c echo.Context) error {
+func (h *SummarizeHandler) HandleSummarizeStatus(c *echo.Context) error {
 	ctx := c.Request().Context()
 
 	jobID := c.Param("job_id")

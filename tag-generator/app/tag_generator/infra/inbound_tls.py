@@ -93,7 +93,7 @@ def _require_readable_file(path: str, label: str) -> Path:
     target = Path(path)
     if not path or not target.is_file():
         msg = f"inbound TLS {label} is missing or not a file: {path!r}"
-        raise RuntimeError(msg)  # noqa: TRY003 — fail-closed startup config, single call site
+        raise RuntimeError(msg)
     return target
 
 
@@ -104,7 +104,7 @@ def require_inbound_tls_when_enrollment_enabled(environ: Mapping[str, str] | Non
     if raw.lower() in {"true", "1", "on", "yes"}:
         return
     msg = "PKI_ENROLLMENT=enabled requires INBOUND_TLS_ENABLED=true (this process owns :9443); unset/false is invalid"
-    raise RuntimeError(msg)  # noqa: TRY003 — fail-closed startup config, single call site
+    raise RuntimeError(msg)
 
 
 def resolve_inbound_tls_bind(
@@ -130,7 +130,7 @@ def resolve_inbound_tls_bind(
         reason = ""
     else:
         msg = f"INBOUND_TLS_ENABLED must be true or false, got {raw!r}"
-        raise RuntimeError(msg)  # noqa: TRY003 — fail-closed startup config, single call site
+        raise RuntimeError(msg)
 
     cert = env.get("INBOUND_TLS_CERT_FILE") or env.get("MTLS_CERT_FILE") or ""
     key = env.get("INBOUND_TLS_KEY_FILE") or env.get("MTLS_KEY_FILE") or ""
@@ -168,7 +168,7 @@ def build_inbound_ssl_context(cert_path: str, key_path: str, ca_path: str) -> ss
     ca_pem = ca.read_bytes()
     if b"BEGIN CERTIFICATE" not in ca_pem:
         msg = f"inbound TLS CA bundle did not contain a PEM certificate: {ca_path!r}"
-        raise RuntimeError(msg)  # noqa: TRY003 — fail-closed startup config, single call site
+        raise RuntimeError(msg)
 
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     ctx.minimum_version = ssl.TLSVersion.TLSv1_3

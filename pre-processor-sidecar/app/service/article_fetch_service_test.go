@@ -189,7 +189,7 @@ func TestFetchArticles_TotalBatchFailure_PersistsSyncStateAndReportsError(t *tes
 
 	_, err := svc.FetchArticles(context.Background(), streamID, 100)
 	require.Error(t, err, "a total batch failure must still be surfaced to the caller")
-	assert.ErrorIs(t, err, batchErr)
+	require.ErrorIs(t, err, batchErr)
 
 	require.NotNil(t, persisted, "sync state must be persisted so the stream rotates out of the oldest-last_sync slot")
 	assert.Equal(t, currentToken, persisted.ContinuationToken,

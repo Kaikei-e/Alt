@@ -2,7 +2,6 @@ package metrics
 
 import (
 	"bytes"
-	"io"
 	"log/slog"
 	"testing"
 	"time"
@@ -14,7 +13,7 @@ import (
 
 func newTestSampler(targetChunker, targetEmbedder string) *CoverageSampler {
 	return NewCoverageSampler(nil, time.Minute, targetChunker, targetEmbedder,
-		slog.New(slog.NewJSONHandler(io.Discard, nil)))
+		slog.New(slog.DiscardHandler))
 }
 
 // The target label is the whole point: without it the census is a list of
@@ -29,10 +28,10 @@ func TestCoverageSampler_MarksTargetPair(t *testing.T) {
 		{chunkerVersion: "v9", embedderVersion: "embeddinggemma", documents: 27927},
 	})
 
-	assert.Equal(t, 1105.0,
-		testutil.ToFloat64(documentCoverage.WithLabelValues("v10", "bge-m3/1024", "true")))
-	assert.Equal(t, 27927.0,
-		testutil.ToFloat64(documentCoverage.WithLabelValues("v9", "embeddinggemma", "false")))
+	assert.InDelta(t, 1105.0,
+		testutil.ToFloat64(documentCoverage.WithLabelValues("v10", "bge-m3/1024", "true")), 1e-9)
+	assert.InDelta(t, 27927.0,
+		testutil.ToFloat64(documentCoverage.WithLabelValues("v9", "embeddinggemma", "false")), 1e-9)
 }
 
 // A pair that has been fully rebuilt away must stop reporting. A gauge that
@@ -53,8 +52,8 @@ func TestCoverageSampler_RetiresVanishedVersionPairs(t *testing.T) {
 
 	assert.Equal(t, 1, testutil.CollectAndCount(documentCoverage),
 		"the drained version pair must be dropped, not frozen at its last count")
-	assert.Equal(t, 21859.0,
-		testutil.ToFloat64(documentCoverage.WithLabelValues("v10", "bge-m3/1024", "true")))
+	assert.InDelta(t, 21859.0,
+		testutil.ToFloat64(documentCoverage.WithLabelValues("v10", "bge-m3/1024", "true")), 1e-9)
 }
 
 // A NULL embedding is invisible to the document census — the version stamp
@@ -66,8 +65,8 @@ func TestCoverageSampler_SplitsChunksByEmbeddingState(t *testing.T) {
 
 	s.publishChunkEmbeddings(2177875, 29022)
 
-	assert.Equal(t, 29022.0, testutil.ToFloat64(chunkEmbeddingCoverage.WithLabelValues("embedded")))
-	assert.Equal(t, 2148853.0, testutil.ToFloat64(chunkEmbeddingCoverage.WithLabelValues("missing")))
+	assert.InDelta(t, 29022.0, testutil.ToFloat64(chunkEmbeddingCoverage.WithLabelValues("embedded")), 1e-9)
+	assert.InDelta(t, 2148853.0, testutil.ToFloat64(chunkEmbeddingCoverage.WithLabelValues("missing")), 1e-9)
 }
 
 // The scrape timestamp is what distinguishes "the corpus is healthy" from
@@ -101,10 +100,10 @@ func TestCoverageSampler_SplitsDocumentsByOwnerStateAndWarnsWhenUnowned(t *testi
 		{chunkerVersion: "v9", embedderVersion: "embeddinggemma", documents: 120, unowned: 100},
 	})
 
-	assert.Equal(t, 50.0, testutil.ToFloat64(documentOwnerCoverage.WithLabelValues("owned", "true")))
-	assert.Equal(t, 950.0, testutil.ToFloat64(documentOwnerCoverage.WithLabelValues("unowned", "true")))
-	assert.Equal(t, 20.0, testutil.ToFloat64(documentOwnerCoverage.WithLabelValues("owned", "false")))
-	assert.Equal(t, 100.0, testutil.ToFloat64(documentOwnerCoverage.WithLabelValues("unowned", "false")))
+	assert.InDelta(t, 50.0, testutil.ToFloat64(documentOwnerCoverage.WithLabelValues("owned", "true")), 1e-9)
+	assert.InDelta(t, 950.0, testutil.ToFloat64(documentOwnerCoverage.WithLabelValues("unowned", "true")), 1e-9)
+	assert.InDelta(t, 20.0, testutil.ToFloat64(documentOwnerCoverage.WithLabelValues("owned", "false")), 1e-9)
+	assert.InDelta(t, 100.0, testutil.ToFloat64(documentOwnerCoverage.WithLabelValues("unowned", "false")), 1e-9)
 
 	logs := buf.String()
 	assert.Contains(t, logs, `"msg":"rag_document_coverage_sampled"`)
@@ -128,10 +127,10 @@ func TestCoverageSampler_UnownedOnlyOffTargetDoesNotWarn(t *testing.T) {
 		{chunkerVersion: "v9", embedderVersion: "embeddinggemma", documents: 120, unowned: 100},
 	})
 
-	assert.Equal(t, 1000.0, testutil.ToFloat64(documentOwnerCoverage.WithLabelValues("owned", "true")))
-	assert.Equal(t, 0.0, testutil.ToFloat64(documentOwnerCoverage.WithLabelValues("unowned", "true")))
-	assert.Equal(t, 20.0, testutil.ToFloat64(documentOwnerCoverage.WithLabelValues("owned", "false")))
-	assert.Equal(t, 100.0, testutil.ToFloat64(documentOwnerCoverage.WithLabelValues("unowned", "false")))
+	assert.InDelta(t, 1000.0, testutil.ToFloat64(documentOwnerCoverage.WithLabelValues("owned", "true")), 1e-9)
+	assert.InDelta(t, 0.0, testutil.ToFloat64(documentOwnerCoverage.WithLabelValues("unowned", "true")), 1e-9)
+	assert.InDelta(t, 20.0, testutil.ToFloat64(documentOwnerCoverage.WithLabelValues("owned", "false")), 1e-9)
+	assert.InDelta(t, 100.0, testutil.ToFloat64(documentOwnerCoverage.WithLabelValues("unowned", "false")), 1e-9)
 
 	logs := buf.String()
 	assert.Contains(t, logs, `"documents_unowned":100`)
@@ -151,10 +150,10 @@ func TestCoverageSampler_OmitsMissingOwnerWarnWhenAllOwned(t *testing.T) {
 		{chunkerVersion: "v10", embedderVersion: "bge-m3/1024", documents: 84367, unowned: 0},
 	})
 
-	assert.Equal(t, 84367.0, testutil.ToFloat64(documentOwnerCoverage.WithLabelValues("owned", "true")))
-	assert.Equal(t, 0.0, testutil.ToFloat64(documentOwnerCoverage.WithLabelValues("unowned", "true")))
-	assert.Equal(t, 0.0, testutil.ToFloat64(documentOwnerCoverage.WithLabelValues("owned", "false")))
-	assert.Equal(t, 0.0, testutil.ToFloat64(documentOwnerCoverage.WithLabelValues("unowned", "false")))
+	assert.InDelta(t, 84367.0, testutil.ToFloat64(documentOwnerCoverage.WithLabelValues("owned", "true")), 1e-9)
+	assert.InDelta(t, 0.0, testutil.ToFloat64(documentOwnerCoverage.WithLabelValues("unowned", "true")), 1e-9)
+	assert.InDelta(t, 0.0, testutil.ToFloat64(documentOwnerCoverage.WithLabelValues("owned", "false")), 1e-9)
+	assert.InDelta(t, 0.0, testutil.ToFloat64(documentOwnerCoverage.WithLabelValues("unowned", "false")), 1e-9)
 	assert.NotContains(t, buf.String(), "rag_documents_missing_owner")
 }
 

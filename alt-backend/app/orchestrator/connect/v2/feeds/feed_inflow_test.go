@@ -164,7 +164,7 @@ func TestSetSubscriptionDailyCap(t *testing.T) {
 		}))
 		require.NoError(t, err)
 		require.NotNil(t, resp.Msg.DailyCap)
-		assert.Equal(t, int32(2), *resp.Msg.DailyCap)
+		assert.Equal(t, int32(2), resp.Msg.GetDailyCap())
 		require.NotNil(t, subPort.subscriptions[ownerID][ownedLinkID])
 		assert.Equal(t, 2, *subPort.subscriptions[ownerID][ownedLinkID])
 
@@ -250,16 +250,16 @@ func TestGetFeedInflowStats(t *testing.T) {
 
 		resp, err := h.GetFeedInflowStats(authCtxForUser(userID), connect.NewRequest(&feedsv2.GetFeedInflowStatsRequest{}))
 		require.NoError(t, err)
-		assert.Equal(t, int32(domain.FeedInflowWindowDays), resp.Msg.WindowDays)
-		require.Len(t, resp.Msg.Stats, 1)
-		st := resp.Msg.Stats[0]
-		assert.Equal(t, linkA.String(), st.FeedLinkId)
-		assert.Equal(t, int64(10), st.InflowCount)
-		assert.Equal(t, int64(1), st.ReadCount)
-		assert.Equal(t, int64(1), st.OpenedCountLegacy)
-		assert.InDelta(t, 0.1, st.ReadRate, 1e-9)
+		assert.Equal(t, int32(domain.FeedInflowWindowDays), resp.Msg.GetWindowDays())
+		require.Len(t, resp.Msg.GetStats(), 1)
+		st := resp.Msg.GetStats()[0]
+		assert.Equal(t, linkA.String(), st.GetFeedLinkId())
+		assert.Equal(t, int64(10), st.GetInflowCount())
+		assert.Equal(t, int64(1), st.GetReadCount())
+		assert.Equal(t, int64(1), st.GetOpenedCountLegacy())
+		assert.InDelta(t, 0.1, st.GetReadRate(), 1e-9)
 		require.NotNil(t, st.DailyCap)
-		assert.Equal(t, int32(5), *st.DailyCap)
+		assert.Equal(t, int32(5), st.GetDailyCap())
 	})
 
 	t.Run("propagates error without silent fallback", func(t *testing.T) {
@@ -352,14 +352,14 @@ func TestGetUnreadFeeds_DailyCapMultiPagePagination(t *testing.T) {
 			Cursor: cursor,
 		}))
 		require.NoError(t, err)
-		if resp.Msg.HasMore {
-			assert.Len(t, resp.Msg.Data, 2, "non-final page must not be short")
+		if resp.Msg.GetHasMore() {
+			assert.Len(t, resp.Msg.GetData(), 2, "non-final page must not be short")
 			require.NotNil(t, resp.Msg.NextCursor)
 		}
-		for _, item := range resp.Msg.Data {
-			gotTitles = append(gotTitles, item.Title)
+		for _, item := range resp.Msg.GetData() {
+			gotTitles = append(gotTitles, item.GetTitle())
 		}
-		if !resp.Msg.HasMore {
+		if !resp.Msg.GetHasMore() {
 			break
 		}
 		cursor = resp.Msg.NextCursor

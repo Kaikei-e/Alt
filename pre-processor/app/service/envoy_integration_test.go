@@ -20,14 +20,14 @@ import (
 
 func requireIntegrationNetwork(t *testing.T) {
 	t.Helper()
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	listener, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Skipf("skipping integration test: local listener unavailable: %v", err)
 		return
 	}
 	_ = listener.Close()
 
-	if _, err := net.LookupIP("example.com"); err != nil {
+	if _, err := (&net.Resolver{}).LookupIPAddr(t.Context(), "example.com"); err != nil {
 		t.Skipf("skipping integration test: DNS unavailable: %v", err)
 	}
 }
@@ -366,7 +366,10 @@ func TestEnvoyIntegration_DNSResolution(t *testing.T) {
 	client := factory.CreateClient()
 
 	// Test DNS resolution with well-known domain
-	_, err := client.Get(context.Background(), "https://example.com")
+	resp, err := client.Get(context.Background(), "https://example.com")
+	if resp != nil {
+		_ = resp.Body.Close()
+	}
 
 	if err != nil {
 		t.Errorf("DNS resolution test failed: %v", err)

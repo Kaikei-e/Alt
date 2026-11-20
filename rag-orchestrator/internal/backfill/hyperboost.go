@@ -50,7 +50,8 @@ func (h *HyperBoost) Start(ctx context.Context) error {
 	)
 
 	// Check if container already exists and remove it
-	checkCmd := exec.CommandContext(ctx, "docker", "ps", "-aq", "-f", fmt.Sprintf("name=%s", hyperBoostContainerName)) //nolint:gosec // G204: args are constants
+	// #nosec G204 -- args are constants
+	checkCmd := exec.CommandContext(ctx, "docker", "ps", "-aq", "-f", fmt.Sprintf("name=%s", hyperBoostContainerName))
 	if output, err := checkCmd.Output(); err == nil && len(bytes.TrimSpace(output)) > 0 {
 		h.logger.Info("removing existing container")
 		rmCmd := exec.CommandContext(ctx, "docker", "rm", "-f", hyperBoostContainerName)
@@ -71,7 +72,8 @@ func (h *HyperBoost) Start(ctx context.Context) error {
 		hyperBoostImage,
 	}
 
-	cmd := exec.CommandContext(ctx, "docker", args...) //nolint:gosec // G204: args are controlled constants
+	// #nosec G204 -- args are controlled constants
+	cmd := exec.CommandContext(ctx, "docker", args...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

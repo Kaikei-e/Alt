@@ -6,12 +6,12 @@ import (
 	"alt/utils/logger"
 	"net/http"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 // RestHandleSummarizeFeedStatus returns the current state of an async summarization job.
 func RestHandleSummarizeFeedStatus(container *di.ApplicationComponents, cfg *config.Config) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		ctx := c.Request().Context()
 		jobID := c.Param("job_id")
 		if jobID == "" {

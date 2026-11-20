@@ -1,10 +1,15 @@
+from typing import Self
+
 import torch
-import torch.nn as nn
+from torch import nn
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
+from transformers.modeling_outputs import SequenceClassifierOutput
 
 
 class TeacherBERT(nn.Module):
-    def __init__(self, model_name: str, num_labels: int, label_map: dict[str, int] | None = None):
+    def __init__(
+        self, model_name: str, num_labels: int, label_map: dict[str, int] | None = None
+    ) -> None:
         super().__init__()
         self.model_name = model_name
         self.num_labels = num_labels
@@ -18,20 +23,26 @@ class TeacherBERT(nn.Module):
             problem_type="single_label_classification",  # Or "multi_label_classification"
         )
 
-    def forward(self, input_ids, attention_mask, labels=None):
+    def forward(
+        self,
+        input_ids: torch.Tensor,
+        attention_mask: torch.Tensor,
+        labels: torch.Tensor | None = None,
+    ) -> SequenceClassifierOutput:
         return self.bert(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
 
-    def save_pretrained(self, save_directory: str):
+    def save_pretrained(self, save_directory: str) -> None:
         self.bert.save_pretrained(save_directory)
         self.tokenizer.save_pretrained(save_directory)
 
     @classmethod
-    def from_pretrained(cls, load_directory: str, num_labels: int = 30):
+    def from_pretrained(cls, load_directory: str, num_labels: int = 30) -> Self:
         # We assume label_map needs to be passed or loaded separately if needed logic relies on it
-        instance = cls(load_directory, num_labels)
-        return instance
+        return cls(load_directory, num_labels)
 
-    def predict(self, texts: list[str], max_length: int = 256, device="cpu"):
+    def predict(
+        self, texts: list[str], max_length: int = 256, device: str | torch.device = "cpu"
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         self.eval()
         inputs = self.tokenizer(
             texts, return_tensors="pt", padding=True, truncation=True, max_length=max_length

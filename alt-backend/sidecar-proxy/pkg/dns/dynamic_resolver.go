@@ -183,7 +183,7 @@ func (dr *DynamicResolver) updateLearnedDomain(domain string) {
 // evictOldestLearnedDomain removes the least recently used domain
 func (dr *DynamicResolver) evictOldestLearnedDomain() {
 	var oldestDomain string
-	var oldestTime time.Time = time.Now()
+	oldestTime := time.Now()
 
 	for domain, entry := range dr.learnedDomains {
 		if entry.LastSeen.Before(oldestTime) {
@@ -247,7 +247,7 @@ func (dr *DynamicResolver) PreResolveDomain(domain string) error {
 // evictOldestDNSEntry removes the oldest DNS cache entry
 func (dr *DynamicResolver) evictOldestDNSEntry() {
 	var oldestDomain string
-	var oldestTime time.Time = time.Now()
+	oldestTime := time.Now()
 
 	for domain, entry := range dr.dnsCache {
 		if entry.ResolvedAt.Before(oldestTime) {

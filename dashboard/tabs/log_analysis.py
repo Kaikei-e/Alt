@@ -1,11 +1,11 @@
 import logging
 
-import streamlit as st
 import pandas as pd
-from sqlalchemy import text, inspect
+import streamlit as st
+from sqlalchemy import inspect, text
 from sqlalchemy.exc import SQLAlchemyError
 
-from utils import get_engine, filter_frame_by_window, _interval_params
+from utils import _interval_params, filter_frame_by_window, get_engine
 
 logger = logging.getLogger(__name__)
 
@@ -28,9 +28,7 @@ def _fetch_log_errors(window_seconds: int, limit: int = 2000) -> pd.DataFrame:
         """
     )
     with engine.connect() as conn:
-        return pd.read_sql(
-            query, conn, params={**_interval_params(window_seconds), "limit": limit}
-        )
+        return pd.read_sql(query, conn, params={**_interval_params(window_seconds), "limit": limit})
 
 
 def render_log_analysis(window_seconds: int) -> None:
@@ -88,9 +86,7 @@ def render_log_analysis(window_seconds: int) -> None:
     col_name = "error_message" if "error_message" in df_log.columns else "raw_line"
     for label, pattern in critical_patterns.items():
         if col_name in df_log.columns:
-            count = df_log[
-                df_log[col_name].str.contains(pattern, case=False, na=False)
-            ].shape[0]
+            count = df_log[df_log[col_name].str.contains(pattern, case=False, na=False)].shape[0]
         else:
             count = 0
         watchlist_data.append({"Error Type": label, "Count": count})
@@ -99,12 +95,9 @@ def render_log_analysis(window_seconds: int) -> None:
 
     # Detailed View
     st.subheader("Recent Error Logs")
-    error_types = ["All"] + list(df_log["error_type"].unique())
+    error_types = ["All", *df_log["error_type"].unique()]
     selected_type = st.selectbox("Filter by Error Type", error_types)
 
-    if selected_type != "All":
-        display_df = df_log[df_log["error_type"] == selected_type]
-    else:
-        display_df = df_log
+    display_df = df_log[df_log["error_type"] == selected_type] if selected_type != "All" else df_log
 
     st.dataframe(display_df)

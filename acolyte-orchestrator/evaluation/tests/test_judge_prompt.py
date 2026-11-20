@@ -12,6 +12,11 @@ from evaluation.judges.prompt import (
 )
 from evaluation.judges.shots import DEFAULT_SHOTS
 
+_TEST_EXCERPT_MAX_CHARS = 50
+_RUBRIC_BIN_HIGH = 0.75
+_RUBRIC_BIN_LOW = 0.25
+_TEST_REASON_MAX_CHARS = 40
+
 
 class TestSanitizeEvidenceExcerpt:
     def test_strips_xml_tags(self) -> None:
@@ -30,7 +35,9 @@ class TestSanitizeEvidenceExcerpt:
         assert sanitize_evidence_excerpt(None) == ""  # type: ignore[arg-type]
 
     def test_caps_length(self) -> None:
-        assert len(sanitize_evidence_excerpt("a" * 2000, max_chars=50)) == 51  # +ellipsis
+        assert (
+            len(sanitize_evidence_excerpt("a" * 2000, max_chars=_TEST_EXCERPT_MAX_CHARS)) == _TEST_EXCERPT_MAX_CHARS + 1
+        )  # +ellipsis
 
 
 class TestBuildJudgePrompt:
@@ -73,9 +80,9 @@ class TestParseJudgeOutput:
 
     def test_snaps_near_rubric_values(self) -> None:
         # 0.76 is within ±0.05 of 0.75 → snap.
-        assert parse_judge_output("<score>0.76</score>") == 0.75
+        assert parse_judge_output("<score>0.76</score>") == _RUBRIC_BIN_HIGH
         # 0.24 is within ±0.05 of 0.25 → snap.
-        assert parse_judge_output("<score>0.24</score>") == 0.25
+        assert parse_judge_output("<score>0.24</score>") == _RUBRIC_BIN_LOW
 
     def test_rejects_out_of_range(self) -> None:
         assert parse_judge_output("<score>1.5</score>") is None
@@ -103,5 +110,5 @@ class TestExtractJudgeReason:
 
     def test_caps_length(self) -> None:
         long = "a" * 500
-        out = extract_judge_reason(f"<reason>{long}</reason>", max_chars=40)
-        assert len(out) <= 41  # +ellipsis
+        out = extract_judge_reason(f"<reason>{long}</reason>", max_chars=_TEST_REASON_MAX_CHARS)
+        assert len(out) <= _TEST_REASON_MAX_CHARS + 1  # +ellipsis

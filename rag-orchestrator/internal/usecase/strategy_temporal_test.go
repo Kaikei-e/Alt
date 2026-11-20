@@ -2,7 +2,6 @@ package usecase_test
 
 import (
 	"context"
-	"io"
 	"log/slog"
 	"testing"
 
@@ -11,11 +10,12 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 func TestTemporalStrategy_AppliesStrongerBoost(t *testing.T) {
 	mockRetrieve := new(mockRetrieveContextUsecase)
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	strategy := usecase.NewTemporalStrategy(mockRetrieve, logger)
 
 	assert.Equal(t, "temporal", strategy.Name())
@@ -32,13 +32,13 @@ func TestTemporalStrategy_AppliesStrongerBoost(t *testing.T) {
 	intent := usecase.QueryIntent{IntentType: usecase.IntentTemporal, UserQuestion: "最近のAIニュース"}
 
 	output, err := strategy.Retrieve(ctx, input, intent)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotNil(t, output)
 	assert.Len(t, output.Contexts, 1)
 }
 
 func TestTemporalStrategy_Name(t *testing.T) {
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	strategy := usecase.NewTemporalStrategy(nil, logger)
 	assert.Equal(t, "temporal", strategy.Name())
 }

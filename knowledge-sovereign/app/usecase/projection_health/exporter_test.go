@@ -31,16 +31,16 @@ func TestRunOnce_NeverSeenProducerReadsAsStale(t *testing.T) {
 	require.NoError(t, New(repo, nil).RunOnce(context.Background()))
 
 	recapAge := testutil.ToFloat64(eventLastOccurrenceAge.WithLabelValues("recap.topic_snapshotted.v1"))
-	require.Equal(t, neverSeenAgeSeconds, recapAge,
+	require.InEpsilon(t, neverSeenAgeSeconds, recapAge, 1e-9,
 		"a producer that never emitted must read as extremely stale, not as an absent series")
 	themeAge := testutil.ToFloat64(eventLastOccurrenceAge.WithLabelValues("reading.theme_version_created.v1"))
-	require.Equal(t, neverSeenAgeSeconds, themeAge,
+	require.InEpsilon(t, neverSeenAgeSeconds, themeAge, 1e-9,
 		"reading.theme_version_created.v1 that never emitted must read as extremely stale")
 	augurAge := testutil.ToFloat64(eventLastOccurrenceAge.WithLabelValues("augur.conversation_linked.v1"))
-	require.Equal(t, neverSeenAgeSeconds, augurAge,
+	require.InEpsilon(t, neverSeenAgeSeconds, augurAge, 1e-9,
 		"augur.conversation_linked.v1 that never emitted must read as extremely stale")
 	require.NotContains(t, WatchedEventTypes, "recap.evening_pulse_generated.v1")
-	require.Equal(t, 30.0, testutil.ToFloat64(eventLastOccurrenceAge.WithLabelValues("SummaryVersionCreated")))
+	require.InEpsilon(t, 30.0, testutil.ToFloat64(eventLastOccurrenceAge.WithLabelValues("SummaryVersionCreated")), 1e-9)
 }
 
 // TestRunOnce_RecentStaleAndNeverSeenAreDistinguishable pins the full trio the
@@ -61,12 +61,12 @@ func TestRunOnce_RecentStaleAndNeverSeenAreDistinguishable(t *testing.T) {
 	require.NoError(t, New(repo, nil).RunOnce(context.Background()))
 
 	require.Contains(t, WatchedEventTypes, "augur.conversation_linked.v1")
-	require.Equal(t, 30.0, testutil.ToFloat64(eventLastOccurrenceAge.WithLabelValues("SummaryVersionCreated")))
-	require.Equal(t, 30.0, testutil.ToFloat64(eventLastOccurrenceAge.WithLabelValues("TagSetVersionCreated")))
-	require.Equal(t, 120.0, testutil.ToFloat64(eventLastOccurrenceAge.WithLabelValues("augur.conversation_linked.v1")))
-	require.Equal(t, fortyDays, testutil.ToFloat64(eventLastOccurrenceAge.WithLabelValues("SummarySuperseded")),
+	require.InEpsilon(t, 30.0, testutil.ToFloat64(eventLastOccurrenceAge.WithLabelValues("SummaryVersionCreated")), 1e-9)
+	require.InEpsilon(t, 30.0, testutil.ToFloat64(eventLastOccurrenceAge.WithLabelValues("TagSetVersionCreated")), 1e-9)
+	require.InEpsilon(t, 120.0, testutil.ToFloat64(eventLastOccurrenceAge.WithLabelValues("augur.conversation_linked.v1")), 1e-9)
+	require.InEpsilon(t, fortyDays, testutil.ToFloat64(eventLastOccurrenceAge.WithLabelValues("SummarySuperseded")), 1e-9,
 		"a stale producer must keep its exact age, distinct from the never-seen sentinel")
-	require.Equal(t, neverSeenAgeSeconds, testutil.ToFloat64(eventLastOccurrenceAge.WithLabelValues("recap.topic_snapshotted.v1")))
+	require.InEpsilon(t, neverSeenAgeSeconds, testutil.ToFloat64(eventLastOccurrenceAge.WithLabelValues("recap.topic_snapshotted.v1")), 1e-9)
 	require.NotEqual(t, neverSeenAgeSeconds, testutil.ToFloat64(eventLastOccurrenceAge.WithLabelValues("SummarySuperseded")),
 		"collapsing stale into the never-seen sentinel would change what the alert means")
 }

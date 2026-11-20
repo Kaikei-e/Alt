@@ -1,6 +1,6 @@
 """models.py の型安全性テスト"""
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 import pytest
 from pydantic import BaseModel, ValidationError
@@ -26,7 +26,7 @@ from alt_metrics.models import (
     SpanTypeStat,
 )
 
-_DT = datetime(2026, 1, 19, 12, 0, 0)
+_DT = datetime(2026, 1, 19, 12, 0, 0, tzinfo=UTC)
 
 _ROW_MODEL_SAMPLES: list[tuple[str, type[BaseModel], dict]] = [
     (
@@ -298,6 +298,7 @@ class TestAnalysisResultApiPerformanceTyping:
 
     def test_coerces_dict_input_into_typed_model(self) -> None:
         """ネストモデルは dict から構築できる（strict でもモデル入力として許容）"""
+        expected_p95_ms = 95.0
         result = AnalysisResult(
             api_performance=[
                 {
@@ -306,14 +307,14 @@ class TestAnalysisResultApiPerformanceTyping:
                     "request_count": 100,
                     "avg_ms": 50.0,
                     "p50_ms": 40.0,
-                    "p95_ms": 95.0,
+                    "p95_ms": expected_p95_ms,
                     "p99_ms": 99.0,
                 }
             ]
         )
 
         assert isinstance(result.api_performance[0], ApiPerformanceStats)
-        assert result.api_performance[0].p95_ms == 95.0
+        assert result.api_performance[0].p95_ms == expected_p95_ms
 
     def test_rejects_type_coercion_under_strict(self) -> None:
         """strict=True のため文字列→数値などの暗黙変換は拒否される"""

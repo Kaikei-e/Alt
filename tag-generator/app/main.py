@@ -1,6 +1,7 @@
 """Main entry point for tag generation service."""
 
 import asyncio
+import sys
 import threading
 import time
 
@@ -30,7 +31,7 @@ def run_consumer(consumer: StreamConsumer) -> None:
         try:
             asyncio.run(consumer.start())
         except Exception as e:
-            logger.error("consumer_thread_crashed", error=str(e), retry_in_seconds=backoff_seconds)
+            logger.exception("consumer_thread_crashed", error=str(e), retry_in_seconds=backoff_seconds)
             if consumer.is_stopped:
                 break
             time.sleep(backoff_seconds)
@@ -108,7 +109,7 @@ def main() -> int:
         service.run_service()
 
     except Exception as e:
-        logger.error("Failed to start service", error=e)
+        logger.exception("Failed to start service", error=e)
         return 1
     finally:
         # Stop consumers if running. stop() only signals the consumer's own
@@ -127,4 +128,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    exit(main())
+    sys.exit(main())

@@ -6,6 +6,8 @@ import sys
 from collections.abc import Sequence
 from typing import Any
 
+import structlog
+
 from ..domain.models import EvidenceRequest, WarmupResponse
 from ..infra.config import Settings
 from .embedder import Embedder, EmbedderConfig
@@ -21,8 +23,6 @@ def initialize(settings_payload: dict[str, Any]) -> None:
     the pipeline and embedder. If initialization fails, the error is
     logged and re-raised to prevent the worker from starting in a bad state.
     """
-    import structlog
-
     logger = structlog.get_logger(__name__)
 
     try:
@@ -39,7 +39,7 @@ def initialize(settings_payload: dict[str, Any]) -> None:
         embedder = Embedder(EmbedderConfig.from_settings(settings))
 
         logger.debug("creating evidence pipeline")
-        global _PIPELINE
+        global _PIPELINE  # noqa: PLW0603 - process-level singleton initialized once per pool child
         _PIPELINE = EvidencePipeline(settings=settings, embedder=embedder, process_pool=None)
 
         logger.info("pipeline worker process initialized successfully")
@@ -48,7 +48,6 @@ def initialize(settings_payload: dict[str, Any]) -> None:
             "pipeline worker initialization failed",
             error=str(exc),
             error_type=type(exc).__name__,
-            exc_info=True,
         )
         # Re-raise to prevent worker from starting in a bad state
         # This will cause the pool to fail initialization and be cleaned up
@@ -57,7 +56,8 @@ def initialize(settings_payload: dict[str, Any]) -> None:
 
 def _require_pipeline() -> EvidencePipeline:
     if _PIPELINE is None:  # pragma: no cover - runtime safeguard
-        raise RuntimeError("Pipeline worker not initialized")
+        msg = "Pipeline worker not initialized"
+        raise RuntimeError(msg)
     return _PIPELINE
 
 

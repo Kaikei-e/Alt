@@ -1,19 +1,22 @@
 """Tests for Gemma 4 raw prompt templating guard and Morning Letter output validation."""
 
-from contextlib import asynccontextmanager
 import json
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, Mock, patch
 from uuid import uuid4
 
 import pytest
 
 from news_creator.config.config import NewsCreatorConfig
+from news_creator.domain.errors import UntemplatedRawPromptError
 from news_creator.domain.models import (
     CardGenerateRequest,
     CardItemInput,
     ConversationMessage,
     LLMGenerateResponse,
+    MorningLetterContent,
     MorningLetterGroupInput,
     MorningLetterRecapInput,
     MorningLetterRequest,
@@ -29,7 +32,10 @@ from news_creator.gateway.payload_builder import (
     prepare_raw_prompt,
 )
 from news_creator.usecase.expand_query_usecase import ExpandQueryUsecase
-from news_creator.usecase.morning_letter_usecase import MorningLetterUsecase
+from news_creator.usecase.morning_letter_usecase import (
+    MIN_BULLET_LENGTH,
+    MorningLetterUsecase,
+)
 from news_creator.usecase.recap_card_usecase import RecapCardUsecase
 from news_creator.usecase.recap_summary_usecase import RecapSummaryUsecase
 from news_creator.usecase.summarize_usecase import SummarizeUsecase
@@ -152,7 +158,7 @@ def _make_valid_morning_letter_llm_response() -> LLMGenerateResponse:
 
 
 @pytest.mark.asyncio
-async def test_recap_summary_single_shot_prompt_is_gemma_templated():
+async def test_recap_summary_single_shot_prompt_is_gemma_templated() -> None:
     config = Mock()
     config.model_name = "gemma4-e4b-q4km"
     config.summary_num_predict = 400
@@ -210,7 +216,7 @@ async def test_recap_summary_single_shot_prompt_is_gemma_templated():
 
 
 @pytest.mark.asyncio
-async def test_recap_summary_hierarchical_prompts_are_gemma_templated():
+async def test_recap_summary_hierarchical_prompts_are_gemma_templated() -> None:
     config = Mock()
     config.model_name = "gemma4-e4b-q4km"
     config.summary_num_predict = 400
@@ -231,10 +237,12 @@ async def test_recap_summary_hierarchical_prompts_are_gemma_templated():
     captured_prompts: list[str] = []
 
     @asynccontextmanager
-    async def mock_hold_slot(is_high_priority=False):
+    async def mock_hold_slot(
+        is_high_priority: bool = False,
+    ) -> AsyncIterator[tuple[float, None, None]]:
         yield 0.0, None, None
 
-    async def mock_generate_raw(prompt: str, **kwargs):
+    async def mock_generate_raw(prompt: str, **kwargs: object) -> LLMGenerateResponse:
         captured_prompts.append(prompt)
         return LLMGenerateResponse(
             response=json.dumps(
@@ -247,7 +255,7 @@ async def test_recap_summary_hierarchical_prompts_are_gemma_templated():
             total_duration=200_000_000,
         )
 
-    async def mock_generate(prompt: str, **kwargs):
+    async def mock_generate(prompt: str, **kwargs: object) -> LLMGenerateResponse:
         captured_prompts.append(prompt)
         return LLMGenerateResponse(
             response=json.dumps(
@@ -285,13 +293,14 @@ async def test_recap_summary_hierarchical_prompts_are_gemma_templated():
     usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider)
     await usecase.generate_summary(request)
 
-    assert len(captured_prompts) >= 3
+    min_expected_prompts = 3
+    assert len(captured_prompts) >= min_expected_prompts
     for prompt in captured_prompts:
         _assert_gemma_raw_prompt(prompt)
 
 
 @pytest.mark.asyncio
-async def test_recap_card_prompt_is_gemma_templated():
+async def test_recap_card_prompt_is_gemma_templated() -> None:
     class _DummyCache:
         async def get(self, key: str) -> str | None:
             return None
@@ -364,7 +373,7 @@ async def test_recap_card_prompt_is_gemma_templated():
 
 
 @pytest.mark.asyncio
-async def test_expand_query_prompts_are_gemma_templated():
+async def test_expand_query_prompts_are_gemma_templated() -> None:
     config = Mock()
     llm_provider = AsyncMock()
     llm_provider.generate.return_value = LLMGenerateResponse(
@@ -391,14 +400,17 @@ async def test_expand_query_prompts_are_gemma_templated():
         ],
     )
 
-    assert llm_provider.generate.await_count == 2
+    expected_calls = 2
+    assert llm_provider.generate.await_count == expected_calls
     for call in llm_provider.generate.call_args_list:
         sent_prompt = call.args[0]
         _assert_gemma_raw_prompt(sent_prompt)
 
 
 @pytest.mark.asyncio
-async def test_summarize_single_hierarchical_and_stream_prompts_are_gemma_templated():
+async def test_summarize_single_hierarchical_and_stream_prompts_are_gemma_templated() -> (
+    None
+):
     config = Mock(spec=NewsCreatorConfig)
     config.max_repetition_retries = 1
     config.repetition_threshold = 0.3
@@ -413,10 +425,12 @@ async def test_summarize_single_hierarchical_and_stream_prompts_are_gemma_templa
     captured_prompts: list[str] = []
 
     @asynccontextmanager
-    async def mock_hold_slot(is_high_priority=False):
+    async def mock_hold_slot(
+        is_high_priority: bool = False,
+    ) -> AsyncIterator[tuple[float, None, None]]:
         yield 0.0, None, None
 
-    async def mock_generate_raw(prompt: str, **kwargs):
+    async def mock_generate_raw(prompt: str, **kwargs: object) -> LLMGenerateResponse:
         captured_prompts.append(prompt)
         return LLMGenerateResponse(
             response="これは日本語のテスト要約文です。十分な長さを持つ要約テキストを返します。",
@@ -428,10 +442,12 @@ async def test_summarize_single_hierarchical_and_stream_prompts_are_gemma_templa
             total_duration=200_000_000,
         )
 
-    async def mock_generate_stream(prompt: str, **kwargs):
+    async def mock_generate_stream(
+        prompt: str, **kwargs: object
+    ) -> AsyncIterator[LLMGenerateResponse]:
         captured_prompts.append(prompt)
 
-        async def _gen():
+        async def _gen() -> AsyncIterator[LLMGenerateResponse]:
             yield LLMGenerateResponse(
                 response="ストリーム要約チャンク",
                 model="gemma4-e4b-12k",
@@ -458,13 +474,14 @@ async def test_summarize_single_hierarchical_and_stream_prompts_are_gemma_templa
     async for _ in stream:
         pass
 
-    assert len(captured_prompts) >= 4
+    min_expected_prompts = 4
+    assert len(captured_prompts) >= min_expected_prompts
     for prompt in captured_prompts:
         _assert_gemma_raw_prompt(prompt)
 
 
 @pytest.mark.asyncio
-async def test_morning_letter_jinja_prompt_is_gemma_templated():
+async def test_morning_letter_jinja_prompt_is_gemma_templated() -> None:
     config = _make_morning_letter_config()
     llm_provider = AsyncMock()
     llm_provider.generate.return_value = _make_valid_morning_letter_llm_response()
@@ -487,7 +504,7 @@ async def test_morning_letter_jinja_prompt_is_gemma_templated():
 
 
 @pytest.mark.asyncio
-async def test_morning_letter_inline_prompt_is_gemma_templated():
+async def test_morning_letter_inline_prompt_is_gemma_templated() -> None:
     config = _make_morning_letter_config()
     llm_provider = AsyncMock()
     llm_provider.generate.return_value = _make_valid_morning_letter_llm_response()
@@ -522,9 +539,7 @@ async def test_morning_letter_inline_prompt_is_gemma_templated():
 )
 def test_prepare_raw_prompt_and_payload_builder_reject_untemplated_prompt(
     untemplated_prompt: str,
-):
-    from news_creator.domain.errors import UntemplatedRawPromptError
-
+) -> None:
     with pytest.raises(UntemplatedRawPromptError):
         prepare_raw_prompt(untemplated_prompt)
 
@@ -549,7 +564,7 @@ def test_prepare_raw_prompt_and_payload_builder_reject_untemplated_prompt(
         )
 
 
-def test_payload_builder_requires_options_and_keep_alive():
+def test_payload_builder_requires_options_and_keep_alive() -> None:
     builder = PayloadBuilder()
     templated = "<|turn>user\nHello<turn|>\n<|turn>model\n"
     with pytest.raises(TypeError):
@@ -574,9 +589,7 @@ def test_payload_builder_requires_options_and_keep_alive():
 )
 async def test_ollama_gateway_generate_and_generate_raw_reject_untemplated_prompt(
     untemplated_prompt: str,
-):
-    from news_creator.domain.errors import UntemplatedRawPromptError
-
+) -> None:
     config = Mock(spec=NewsCreatorConfig)
     config.llm_service_url = "http://localhost:11434"
     config.model_name = "test-model"
@@ -631,7 +644,7 @@ async def test_ollama_gateway_generate_and_generate_raw_reject_untemplated_promp
 
 
 @pytest.mark.asyncio
-async def test_morning_letter_retries_once_on_placeholder_and_succeeds():
+async def test_morning_letter_retries_once_on_placeholder_and_succeeds() -> None:
     config = _make_morning_letter_config()
     placeholder_content = {
         "schema_version": 1,
@@ -663,7 +676,8 @@ async def test_morning_letter_retries_once_on_placeholder_and_succeeds():
     usecase = MorningLetterUsecase(config=config, llm_provider=llm_provider)
     response = await usecase.generate_letter(_make_morning_letter_request())
 
-    assert llm_provider.generate.await_count == 2
+    expected_calls = 2
+    assert llm_provider.generate.await_count == expected_calls
     assert response.metadata.is_degraded is False
     assert response.metadata.degradation_reason is None
     assert (
@@ -674,7 +688,7 @@ async def test_morning_letter_retries_once_on_placeholder_and_succeeds():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "bad_lead,bad_bullet",
+    ("bad_lead", "bad_bullet"),
     [
         ("...", "TechFusion社がNova Labsを12億ドルで買収と発表 [1]"),
         ("……", "TechFusion社がNova Labsを12億ドルで買収と発表 [1]"),
@@ -719,7 +733,7 @@ async def test_morning_letter_retries_once_on_placeholder_and_succeeds():
 )
 async def test_morning_letter_placeholder_or_short_output_falls_back_after_retry(
     bad_lead: str, bad_bullet: str
-):
+) -> None:
     config = _make_morning_letter_config()
     bad_content = {
         "schema_version": 1,
@@ -751,7 +765,8 @@ async def test_morning_letter_placeholder_or_short_output_falls_back_after_retry
     usecase = MorningLetterUsecase(config=config, llm_provider=llm_provider)
     response = await usecase.generate_letter(_make_morning_letter_request())
 
-    assert llm_provider.generate.await_count == 2
+    expected_calls = 2
+    assert llm_provider.generate.await_count == expected_calls
     assert response.metadata.is_degraded is True
     assert response.metadata.degradation_reason == "placeholder_output"
     assert response.content.lead != bad_lead
@@ -759,7 +774,9 @@ async def test_morning_letter_placeholder_or_short_output_falls_back_after_retry
 
 
 @pytest.mark.asyncio
-async def test_morning_letter_duplicate_bullets_across_sections_falls_back_after_retry():
+async def test_morning_letter_duplicate_bullets_across_sections_falls_back_after_retry() -> (
+    None
+):
     config = _make_morning_letter_config()
     duplicate_bullet = "TechFusion社がNova Labsを12億ドルで買収と発表 [1]"
     bad_content = {
@@ -800,13 +817,14 @@ async def test_morning_letter_duplicate_bullets_across_sections_falls_back_after
     usecase = MorningLetterUsecase(config=config, llm_provider=llm_provider)
     response = await usecase.generate_letter(_make_morning_letter_request())
 
-    assert llm_provider.generate.await_count == 2
+    expected_calls = 2
+    assert llm_provider.generate.await_count == expected_calls
     assert response.metadata.is_degraded is True
     assert response.metadata.degradation_reason == "duplicate_bullets"
 
 
 @pytest.mark.asyncio
-async def test_morning_letter_low_japanese_ratio_falls_back_after_retry():
+async def test_morning_letter_low_japanese_ratio_falls_back_after_retry() -> None:
     config = _make_morning_letter_config()
     english_content = {
         "schema_version": 1,
@@ -847,16 +865,18 @@ async def test_morning_letter_low_japanese_ratio_falls_back_after_retry():
     usecase = MorningLetterUsecase(config=config, llm_provider=llm_provider)
     response = await usecase.generate_letter(_make_morning_letter_request())
 
-    assert llm_provider.generate.await_count == 2
+    expected_calls = 2
+    assert llm_provider.generate.await_count == expected_calls
     assert response.metadata.is_degraded is True
     assert response.metadata.degradation_reason == "low_japanese_ratio"
 
 
 @pytest.mark.asyncio
-async def test_morning_letter_accepts_fullwidth_alphanumeric_short_bullet_and_excludes_citations_from_ratio():
-    from news_creator.usecase.morning_letter_usecase import MIN_BULLET_LENGTH
-
-    assert MIN_BULLET_LENGTH == 4
+async def test_morning_letter_accepts_fullwidth_alphanumeric_short_bullet_and_excludes_citations_from_ratio() -> (
+    None
+):
+    expected_min_bullet_length = 4
+    assert expected_min_bullet_length == MIN_BULLET_LENGTH
 
     config = _make_morning_letter_config()
     content = {
@@ -895,7 +915,9 @@ async def test_morning_letter_accepts_fullwidth_alphanumeric_short_bullet_and_ex
     assert response.content.lead == "ＡＩ２０２６年の主要ニュースまとめ"
 
 
-def test_morning_letter_prompt_includes_narrative_guidance_in_jinja_and_inline():
+def test_morning_letter_prompt_includes_narrative_guidance_in_jinja_and_inline() -> (
+    None
+):
     config = _make_morning_letter_config()
     usecase = MorningLetterUsecase(config=config, llm_provider=AsyncMock())
     req = _make_morning_letter_request()
@@ -910,8 +932,8 @@ def test_morning_letter_prompt_includes_narrative_guidance_in_jinja_and_inline()
 
 @pytest.mark.asyncio
 async def test_morning_letter_retry_parse_failure_preserves_first_attempt_validation_reason(
-    caplog,
-):
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     config = _make_morning_letter_config()
     placeholder_content = {
         "schema_version": 1,
@@ -950,7 +972,8 @@ async def test_morning_letter_retry_parse_failure_preserves_first_attempt_valida
     with caplog.at_level(logging.WARNING):
         response = await usecase.generate_letter(_make_morning_letter_request())
 
-    assert llm_provider.generate.await_count == 2
+    expected_calls = 2
+    assert llm_provider.generate.await_count == expected_calls
     assert response.metadata.is_degraded is True
     assert response.metadata.degradation_reason == "placeholder_output"
     retry_warnings = [
@@ -963,9 +986,9 @@ async def test_morning_letter_retry_parse_failure_preserves_first_attempt_valida
 
 
 @pytest.mark.asyncio
-async def test_morning_letter_omits_generated_at_from_schema_prompt_and_response():
-    from news_creator.domain.models import MorningLetterContent
-
+async def test_morning_letter_omits_generated_at_from_schema_prompt_and_response() -> (
+    None
+):
     schema = MorningLetterContent.model_json_schema()
     assert "generated_at" not in schema.get("properties", {})
 

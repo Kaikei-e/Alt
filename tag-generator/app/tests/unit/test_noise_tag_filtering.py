@@ -6,6 +6,7 @@ import inspect
 import re
 import sys
 from collections import Counter
+from collections.abc import Callable
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
@@ -40,8 +41,8 @@ class _MinimalCountVectorizer:
         self,
         lowercase: bool = True,
         token_pattern: str | None = None,
-        analyzer: Any | None = None,
-        **kwargs: Any,
+        analyzer: Callable[[str], list[str]] | str | None = None,
+        **kwargs: object,
     ) -> None:
         self.lowercase = lowercase
         self.token_pattern = token_pattern
@@ -49,7 +50,7 @@ class _MinimalCountVectorizer:
         self._kwargs = kwargs
         self._vocabulary: list[str] = []
 
-    def build_analyzer(self) -> Any:
+    def build_analyzer(self) -> Callable[[str], list[str]]:
         if callable(self.analyzer):
             return self.analyzer
         pattern = re.compile(self.token_pattern or r"(?u)\b\w\w+\b")
@@ -198,66 +199,98 @@ NOISE_JAPANESE_TAGS = {
 class _CandidateGeneratingKeyBERT:
     """Deterministic KeyBERT test double matching KeyBERT v0.9.0 vectorizer/candidate precedence."""
 
-    def extract_keywords(
+    def extract_keywords(  # noqa: PLR0913 - mirrors KeyBERT.extract_keywords signature
         self,
         docs: str | list[str],
         candidates: list[str] | None = None,
         keyphrase_ngram_range: tuple[int, int] = (1, 1),
         stop_words: str | list[str] | None = "english",
         top_n: int = 10,
-        vectorizer: Any | None = None,
-        **_: Any,
+        vectorizer: _MinimalCountVectorizer | object | None = None,
+        **_: object,
     ) -> list[tuple[str, float]]:
         # Mirrors KeyBERT v0.9.0 (keybert/_model.py): when `vectorizer` is passed,
         # `candidates`, `keyphrase_ngram_range`, and `stop_words` are ignored and
         # the candidate vocabulary comes solely from `vectorizer.fit(docs)`.
         if vectorizer is not None:
-            doc_list = [docs] if isinstance(docs, str) else list(docs)
-            vocab: set[str] | None = None
-            if callable(getattr(vectorizer, "fit", None)):
-                fitted = cast(Any, vectorizer).fit(doc_list)
-                if callable(getattr(fitted, "get_feature_names_out", None)):
-                    vocab = set(fitted.get_feature_names_out())
-            counts: Counter[str] = Counter()
-            build_analyzer = getattr(vectorizer, "build_analyzer", None)
-            if callable(build_analyzer):
-                analyze = cast(Any, build_analyzer)()
-                for doc in doc_list:
-                    tokens = analyze(doc)
-                    counts.update(tok for tok in tokens if vocab is None or tok in vocab)
-            elif callable(getattr(vectorizer, "analyzer", None)):
-                for doc in doc_list:
-                    text_in = doc.lower() if getattr(vectorizer, "lowercase", True) else doc
-                    tokens = vectorizer.analyzer(text_in)
-                    counts.update(tok for tok in tokens if vocab is None or tok in vocab)
-            ranked = counts.most_common(top_n)
-            if not ranked:
-                return []
-            max_count = ranked[0][1]
-            return [(term, round(0.25 + 0.7 * (count / max_count), 3)) for term, count in ranked]
+            return self._extract_with_vectorizer(docs, top_n, vectorizer)
 
         if candidates is not None:
-            scored = [(cand, round(max(0.2, 0.9 - idx * 0.04), 3)) for idx, cand in enumerate(candidates[:top_n])]
-            return scored
+            return [(cand, round(max(0.2, 0.9 - idx * 0.04), 3)) for idx, cand in enumerate(candidates[:top_n])]
 
+        return self._extract_ngrams(docs, keyphrase_ngram_range, stop_words, top_n)
+
+    def _extract_with_vectorizer(
+        self,
+        docs: str | list[str],
+        top_n: int,
+        vectorizer: object,
+    ) -> list[tuple[str, float]]:
+        doc_list = [docs] if isinstance(docs, str) else list(docs)
+        vocab = self._fit_vectorizer_vocab(vectorizer, doc_list)
+        counts = self._count_vectorizer_tokens(vectorizer, doc_list, vocab)
+        return self._rank_counts(counts, top_n)
+
+    @staticmethod
+    def _fit_vectorizer_vocab(vectorizer: object, doc_list: list[str]) -> set[str] | None:
+        if not callable(getattr(vectorizer, "fit", None)):
+            return None
+        fitted = cast(Any, vectorizer).fit(doc_list)
+        if callable(getattr(fitted, "get_feature_names_out", None)):
+            return set(fitted.get_feature_names_out())
+        return None
+
+    @staticmethod
+    def _count_vectorizer_tokens(
+        vectorizer: object,
+        doc_list: list[str],
+        vocab: set[str] | None,
+    ) -> Counter[str]:
+        counts: Counter[str] = Counter()
+        build_analyzer = getattr(vectorizer, "build_analyzer", None)
+        if callable(build_analyzer):
+            analyze = cast(Any, build_analyzer)()
+            for doc in doc_list:
+                tokens = analyze(doc)
+                counts.update(tok for tok in tokens if vocab is None or tok in vocab)
+        elif callable(analyzer_fn := getattr(vectorizer, "analyzer", None)):
+            for doc in doc_list:
+                text_in = doc.lower() if getattr(vectorizer, "lowercase", True) else doc
+                tokens = cast(Callable[[str], list[str]], analyzer_fn)(text_in)
+                counts.update(tok for tok in tokens if vocab is None or tok in vocab)
+        return counts
+
+    def _extract_ngrams(
+        self,
+        docs: str | list[str],
+        keyphrase_ngram_range: tuple[int, int],
+        stop_words: str | list[str] | None,
+        top_n: int,
+    ) -> list[tuple[str, float]]:
         doc_text = docs if isinstance(docs, str) else " ".join(docs)
-        if stop_words == "english":
-            active_stopwords: set[str] = set(ENGLISH_STOP_WORDS)
-        elif isinstance(stop_words, list | set | tuple):
-            active_stopwords = {w.lower() for w in stop_words}
-        else:
-            active_stopwords = set()
-
+        active_stopwords = self._resolve_stopwords(stop_words)
         raw_tokens = re.findall(r"(?u)\b\w\w+\b", doc_text.lower())
         filtered_tokens = [tok for tok in raw_tokens if tok not in active_stopwords]
 
         min_n, max_n = keyphrase_ngram_range
-        counts = Counter()
+        counts: Counter[str] = Counter()
         for n in range(min_n, max_n + 1):
             for idx in range(len(filtered_tokens) - n + 1):
                 gram = " ".join(filtered_tokens[idx : idx + n])
                 counts[gram] += 1
 
+        return self._rank_counts(counts, top_n)
+
+    @staticmethod
+    def _resolve_stopwords(stop_words: str | list[str] | None) -> set[str]:
+        if stop_words == "english":
+            return set(ENGLISH_STOP_WORDS)
+        if isinstance(stop_words, list | set | tuple):
+            return {w.lower() for w in stop_words}
+        return set()
+
+    @staticmethod
+    def _rank_counts(counts: Counter[str], top_n: int) -> list[tuple[str, float]]:
         ranked = counts.most_common(top_n)
         if not ranked:
             return []
@@ -567,8 +600,9 @@ class TestEnglishNoiseFilteringEndToEnd:
         assert not ({"models", "patches", "boxes"} & tag_set)
 
     def test_english_stop_words_matches_exact_318_word_sklearn_set_with_single_source(self) -> None:
+        expected_sklearn_stopword_count = 318
         assert isinstance(ENGLISH_STOP_WORDS, frozenset)
-        assert len(ENGLISH_STOP_WORDS) == 318
+        assert len(ENGLISH_STOP_WORDS) == expected_sklearn_stopword_count
         assert "hereupon" in ENGLISH_STOP_WORDS
         assert not ({"hereof", "hereto", "herewith"} & ENGLISH_STOP_WORDS)
 
@@ -833,14 +867,18 @@ class TestStopwordLoadingFailFast:
     def setup_method(self) -> None:
         reset_model_manager()
 
-    @patch("pathlib.Path.open", side_effect=FileNotFoundError("stopwords file missing"))
-    def test_missing_stopword_file_raises_model_load_error(self, _mock_open: MagicMock) -> None:
+    def test_missing_stopword_file_raises_model_load_error(self) -> None:
         manager = ModelManager()
-        with pytest.raises(ModelLoadError):
+        with (
+            patch("pathlib.Path.open", side_effect=FileNotFoundError("stopwords file missing")),
+            pytest.raises(ModelLoadError),
+        ):
             manager.get_stopwords()
 
-    @patch("nltk.corpus.stopwords.words", side_effect=LookupError("Resource stopwords not found"))
-    def test_missing_nltk_stopwords_raises_model_load_error(self, _mock_nltk: MagicMock) -> None:
+    def test_missing_nltk_stopwords_raises_model_load_error(self) -> None:
         manager = ModelManager()
-        with pytest.raises(ModelLoadError):
+        with (
+            patch("nltk.corpus.stopwords.words", side_effect=LookupError("Resource stopwords not found")),
+            pytest.raises(ModelLoadError),
+        ):
             manager.get_stopwords()

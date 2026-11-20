@@ -110,7 +110,8 @@ func TestScoreCommand_EmitsReportAndJSON(t *testing.T) {
 	assert.Contains(t, output, `"summary_vector"`)
 	assert.Contains(t, output, "skipped")
 
-	savedJSON, err := os.ReadFile(jsonOutPath) //nolint:gosec // path is built from t.TempDir in this test
+	// #nosec G304 -- path is built from t.TempDir in this test
+	savedJSON, err := os.ReadFile(jsonOutPath)
 	require.NoError(t, err)
 	var decoded evalconnections.ScoreReport
 	require.NoError(t, json.Unmarshal(savedJSON, &decoded))

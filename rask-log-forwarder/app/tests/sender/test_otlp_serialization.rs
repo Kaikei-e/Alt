@@ -1,6 +1,6 @@
 //! OTLP serialization tests for rask-log-forwarder.
 //!
-//! These tests verify the conversion of EnrichedLogEntry batches to OTLP protobuf format.
+//! These tests verify the conversion of `EnrichedLogEntry` batches to OTLP protobuf format.
 
 use rask_log_forwarder::buffer::{Batch, BatchType};
 use rask_log_forwarder::parser::{EnrichedLogEntry, LogLevel};
@@ -137,8 +137,8 @@ fn test_otlp_serialization_log_level_mapping() {
     ];
 
     for (level, expected_severity) in log_levels {
-        let level_debug = format!("{:?}", level);
-        let mut entry = create_test_entry(&format!("Level test: {}", level_debug));
+        let level_debug = format!("{level:?}");
+        let mut entry = create_test_entry(&format!("Level test: {level_debug}"));
         entry.level = Some(level);
 
         let batch = Batch::new(vec![entry], BatchType::SizeBased);
@@ -151,9 +151,8 @@ fn test_otlp_serialization_log_level_mapping() {
 
         let log_record = &request.resource_logs[0].scope_logs[0].log_records[0];
         assert_eq!(
-            log_record.severity_number as u8, expected_severity,
-            "LogLevel::{} should map to severity {}",
-            level_debug, expected_severity
+            log_record.severity_number, expected_severity,
+            "LogLevel::{level_debug} should map to severity {expected_severity}"
         );
     }
 }
@@ -367,7 +366,7 @@ fn test_otlp_serialization_large_batch() {
     let serializer = OtlpSerializer::new();
 
     let entries: Vec<_> = (0..1000)
-        .map(|i| create_test_entry(&format!("Large batch message {}", i)))
+        .map(|i| create_test_entry(&format!("Large batch message {i}")))
         .collect();
 
     let batch = Batch::new(entries, BatchType::SizeBased);
@@ -397,7 +396,7 @@ fn test_otlp_protobuf_smaller_than_json() {
     let json_serializer = BatchSerializer::new();
 
     let entries: Vec<_> = (0..100)
-        .map(|i| create_test_entry(&format!("Comparison message with some content {}", i)))
+        .map(|i| create_test_entry(&format!("Comparison message with some content {i}")))
         .collect();
 
     let batch = Batch::new(entries, BatchType::SizeBased);

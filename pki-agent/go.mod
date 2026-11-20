@@ -1,6 +1,6 @@
 module pki-agent
 
-go 1.27.1
+go 1.27.4
 
 require github.com/prometheus/client_golang v1.23.2
 

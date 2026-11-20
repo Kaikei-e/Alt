@@ -46,13 +46,13 @@ class CoarseClassifier:
     Coarse genre classifier using E5 embeddings and prototype vectors.
     """
 
-    def __init__(self, embedder: Embedder):
+    def __init__(self, embedder: Embedder) -> None:
         self.embedder = embedder
         self.prototypes: dict[str, np.ndarray] = {}
         self.initialized = False
         self._lock = Lock()
 
-    def initialize_prototypes(self):
+    def initialize_prototypes(self) -> None:
         """
         Initialize genre prototypes by embedding descriptions.
         This is a 'zero-shot' initialization. ideally we would load centroids from a dataset.

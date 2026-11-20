@@ -628,9 +628,9 @@ fn determine_item_language(item: &GoldenItem) -> ClassificationLanguage {
             content_en,
             ..
         } => {
-            if content_ja.is_some() && !content_ja.as_ref().unwrap().trim().is_empty() {
+            if content_ja.as_deref().is_some_and(|s| !s.trim().is_empty()) {
                 ClassificationLanguage::Japanese
-            } else if content_en.is_some() && !content_en.as_ref().unwrap().trim().is_empty() {
+            } else if content_en.as_deref().is_some_and(|s| !s.trim().is_empty()) {
                 ClassificationLanguage::English
             } else {
                 ClassificationLanguage::Unknown
@@ -1032,6 +1032,80 @@ fn log_evaluation_results(
     );
 }
 
+fn invalid_dataset_path_response(
+    request: &EvaluateRequest,
+    err: &anyhow::Error,
+) -> axum::response::Response {
+    let requested_path = request
+        .data_path
+        .clone()
+        .unwrap_or_else(|| default_dataset_path().display().to_string());
+    error!(
+        error = %err,
+        path = %requested_path,
+        "Invalid dataset path in evaluate_genres request"
+    );
+    (
+        StatusCode::BAD_REQUEST,
+        Json(serde_json::json!({
+            "error": format!("Failed to load golden dataset: {}", err),
+            "path": requested_path,
+            "hint": "Check if the file exists and contains valid JSON array of items with 'id', 'content', and 'expected_genres' fields"
+        })),
+    )
+        .into_response()
+}
+
+fn log_language_metrics(metrics_by_lang: &[LanguageSpecificMetrics]) {
+    // 言語別メトリクスをログに出力
+    for lang_metrics in metrics_by_lang {
+        info!(
+            language = %lang_metrics.language,
+            macro_f1 = lang_metrics.macro_f1,
+            macro_precision = lang_metrics.macro_precision,
+            macro_recall = lang_metrics.macro_recall,
+            sample_count = lang_metrics.sample_count,
+            "Language-specific evaluation metrics"
+        );
+    }
+}
+
+async fn persist_evaluation_run(
+    state: &AppState,
+    evaluation_run: &GenreEvaluationRun,
+    per_genre_metrics: &[GenreEvaluationMetric],
+) -> axum::response::Response {
+    match state
+        .dao()
+        .save_genre_evaluation(evaluation_run, per_genre_metrics)
+        .await
+    {
+        Ok(()) => {
+            info!(run_id = %evaluation_run.run_id, "Evaluation results saved to database");
+            let response = EvaluateResponse {
+                run_id: evaluation_run.run_id,
+                created_at: chrono::Utc::now(),
+            };
+            (StatusCode::OK, Json(response)).into_response()
+        }
+        Err(e) => {
+            error!(
+                error = %e,
+                run_id = %evaluation_run.run_id,
+                "Failed to save evaluation results to database"
+            );
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({
+                    "error": "Failed to save evaluation results",
+                    "run_id": evaluation_run.run_id,
+                })),
+            )
+                .into_response()
+        }
+    }
+}
+
 /// POST /v1/evaluation/genres
 /// Golden Datasetを使用してジャンル分類の精度を評価する
 /// 評価結果はDBに保存され、run_idが返される
@@ -1041,26 +1115,7 @@ pub(crate) async fn evaluate_genres(
 ) -> impl IntoResponse {
     let path = match resolve_and_validate_dataset_path(&request) {
         Ok(p) => p,
-        Err(e) => {
-            let requested_path = request
-                .data_path
-                .clone()
-                .unwrap_or_else(|| default_dataset_path().display().to_string());
-            error!(
-                error = %e,
-                path = %requested_path,
-                "Invalid dataset path in evaluate_genres request"
-            );
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({
-                    "error": format!("Failed to load golden dataset: {}", e),
-                    "path": requested_path,
-                    "hint": "Check if the file exists and contains valid JSON array of items with 'id', 'content', and 'expected_genres' fields"
-                })),
-            )
-                .into_response();
-        }
+        Err(e) => return invalid_dataset_path_response(&request, &e),
     };
 
     let golden_data = match load_and_validate_dataset(&path) {
@@ -1093,50 +1148,9 @@ pub(crate) async fn evaluate_genres(
     );
 
     log_evaluation_results(&evaluation_run, &confusion_matrix, extended_metrics);
+    log_language_metrics(&metrics_by_lang);
 
-    // 言語別メトリクスをログに出力
-    for lang_metrics in &metrics_by_lang {
-        info!(
-            language = %lang_metrics.language,
-            macro_f1 = lang_metrics.macro_f1,
-            macro_precision = lang_metrics.macro_precision,
-            macro_recall = lang_metrics.macro_recall,
-            sample_count = lang_metrics.sample_count,
-            "Language-specific evaluation metrics"
-        );
-    }
-
-    match state
-        .dao()
-        .save_genre_evaluation(&evaluation_run, &per_genre_metrics)
-        .await
-    {
-        Ok(()) => {
-            info!(run_id = %evaluation_run.run_id, "Evaluation results saved to database");
-        }
-        Err(e) => {
-            error!(
-                error = %e,
-                run_id = %evaluation_run.run_id,
-                "Failed to save evaluation results to database"
-            );
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({
-                    "error": "Failed to save evaluation results",
-                    "run_id": evaluation_run.run_id,
-                })),
-            )
-                .into_response();
-        }
-    }
-
-    let response = EvaluateResponse {
-        run_id: evaluation_run.run_id,
-        created_at: chrono::Utc::now(),
-    };
-
-    (StatusCode::OK, Json(response)).into_response()
+    persist_evaluation_run(&state, &evaluation_run, &per_genre_metrics).await
 }
 
 #[derive(Serialize, Debug)]
@@ -1279,5 +1293,246 @@ mod tests {
             "parse error must not include file content preview: {rendered}"
         );
         assert!(!rendered.contains("Content preview"));
+    }
+
+    async fn build_eval_test_state(
+        mock_dao: Arc<crate::store::dao::mock::MockRecapDao>,
+    ) -> AppState {
+        let config = crate::config::Config::from_env().expect("config loads");
+        let registry = crate::app::ComponentRegistry::build(config)
+            .await
+            .expect("registry builds")
+            .with_recap_dao(mock_dao);
+        AppState::new(registry)
+    }
+
+    fn eval_test_env_vars(golden_path: &str) -> [(&str, Option<&str>); 19] {
+        [
+            (
+                "RECAP_DB_DSN",
+                Some("postgres://recap:recap@127.0.0.1:15432/recap"),
+            ),
+            ("CLASSIFICATION_QUEUE_CONCURRENCY", Some("0")),
+            ("NEWS_CREATOR_BASE_URL", Some("http://127.0.0.1:18001/")),
+            ("SUBWORKER_BASE_URL", Some("http://127.0.0.1:18002/")),
+            ("ALT_BACKEND_BASE_URL", Some("http://127.0.0.1:19000/")),
+            ("RECAP_KNOWLEDGE_EMIT", Some("false")),
+            ("RECAP_ADMIN_AUTH", Some("disabled")),
+            ("MTLS_ALLOWED_PEERS", Some("disabled")),
+            ("RECAP_EVAL_LISTENER", Some("disabled")),
+            ("RECAP_CARDS_JOB", Some("disabled")),
+            ("RECAP_THEMES_ENABLED", Some("false")),
+            ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
+            ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
+            ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
+            ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
+            ("RECAP_GENRES", Some("ai,space")),
+            ("TOKEN_COUNTER_ALLOW_DUMMY_FALLBACK", Some("true")),
+            ("RECAP_GENRE_MODEL_WEIGHTS", None),
+            ("RECAP_GOLDEN_DATASET_PATH", Some(golden_path)),
+        ]
+    }
+
+    async fn read_response_json(response: axum::response::Response) -> serde_json::Value {
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body bytes");
+        serde_json::from_slice(&bytes).expect("valid json response")
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn evaluate_genres_rejects_traversal_data_path_with_400() {
+        let _lock = crate::config::ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let dir = TempDir::new().expect("tempdir");
+        let missing_default = dir.path().join("missing.json");
+        let golden_str = missing_default.to_str().expect("utf8 path").to_string();
+        let mock_dao = Arc::new(crate::store::dao::mock::MockRecapDao::new());
+
+        let response = temp_env::async_with_vars(eval_test_env_vars(&golden_str), async {
+            let state = build_eval_test_state(Arc::clone(&mock_dao)).await;
+            evaluate_genres(
+                State(state),
+                Json(EvaluateRequest {
+                    data_path: Some("../secret.json".to_string()),
+                }),
+            )
+            .await
+            .into_response()
+        })
+        .await;
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = read_response_json(response).await;
+        assert_eq!(body["path"], "../secret.json");
+        assert!(
+            body["error"]
+                .as_str()
+                .is_some_and(|s| s.contains("Path traversal")),
+            "unexpected error: {body}"
+        );
+        assert!(body["hint"].as_str().is_some_and(|s| !s.is_empty()));
+        assert!(mock_dao.genre_evaluations().is_empty());
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn evaluate_genres_returns_400_when_default_dataset_missing() {
+        let _lock = crate::config::ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let dir = TempDir::new().expect("tempdir");
+        let missing = dir.path().join("missing_default.json");
+        let golden_str = missing.to_str().expect("utf8 path").to_string();
+        let mock_dao = Arc::new(crate::store::dao::mock::MockRecapDao::new());
+
+        let response = temp_env::async_with_vars(eval_test_env_vars(&golden_str), async {
+            let state = build_eval_test_state(Arc::clone(&mock_dao)).await;
+            evaluate_genres(State(state), Json(EvaluateRequest { data_path: None }))
+                .await
+                .into_response()
+        })
+        .await;
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = read_response_json(response).await;
+        assert_eq!(body["path"], golden_str);
+        assert!(
+            body["error"]
+                .as_str()
+                .is_some_and(|s| s.contains("does not exist")),
+            "unexpected error: {body}"
+        );
+        assert!(mock_dao.genre_evaluations().is_empty());
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn evaluate_genres_returns_400_when_dataset_file_is_invalid_json() {
+        let _lock = crate::config::ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let dir = TempDir::new().expect("tempdir");
+        let bad_file = dir.path().join("bad.json");
+        fs::write(&bad_file, "not valid json").expect("write bad json");
+        let bad_str = bad_file.to_str().expect("utf8 path").to_string();
+        let mock_dao = Arc::new(crate::store::dao::mock::MockRecapDao::new());
+
+        let response = temp_env::async_with_vars(eval_test_env_vars(&bad_str), async {
+            let state = build_eval_test_state(Arc::clone(&mock_dao)).await;
+            evaluate_genres(
+                State(state),
+                Json(EvaluateRequest {
+                    data_path: Some(bad_str.clone()),
+                }),
+            )
+            .await
+            .into_response()
+        })
+        .await;
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = read_response_json(response).await;
+        assert!(
+            body["error"]
+                .as_str()
+                .is_some_and(|s| s.contains("Failed to parse golden dataset JSON")),
+            "unexpected error: {body}"
+        );
+        assert!(mock_dao.genre_evaluations().is_empty());
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn evaluate_genres_runs_bilingual_dataset_and_persists_evaluation() {
+        let _lock = crate::config::ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let dir = TempDir::new().expect("tempdir");
+        let dataset_file = dir.path().join("golden_bilingual.json");
+        let dataset_json = serde_json::json!({
+            "schema_version": "2.2",
+            "items": [
+                {
+                    "id": "en-1",
+                    "content_en": "Artificial intelligence and machine learning models advance rapidly. Cloud APIs accelerate deployment.",
+                    "expected_genres": ["ai"]
+                },
+                {
+                    "id": "ja-1",
+                    "content_ja": "人工知能と機械学習の最新技術が発表された。クラウド基盤の活用が広がっている。",
+                    "expected_genres": ["ai"]
+                }
+            ]
+        });
+        fs::write(&dataset_file, dataset_json.to_string()).expect("write golden dataset");
+        let dataset_str = dataset_file.to_str().expect("utf8 path").to_string();
+        let canonical = fs::canonicalize(&dataset_file).expect("canonicalize");
+        let mock_dao = Arc::new(crate::store::dao::mock::MockRecapDao::new());
+
+        let response = temp_env::async_with_vars(eval_test_env_vars(&dataset_str), async {
+            let state = build_eval_test_state(Arc::clone(&mock_dao)).await;
+            evaluate_genres(
+                State(state),
+                Json(EvaluateRequest {
+                    data_path: Some(dataset_str.clone()),
+                }),
+            )
+            .await
+            .into_response()
+        })
+        .await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = read_response_json(response).await;
+        let run_id = Uuid::parse_str(body["run_id"].as_str().expect("run_id string"))
+            .expect("valid run_id uuid");
+        let created_at = body["created_at"].as_str().expect("created_at string");
+        chrono::DateTime::parse_from_rfc3339(created_at).expect("valid rfc3339 created_at");
+
+        let saved = mock_dao.genre_evaluations();
+        assert_eq!(saved.len(), 1);
+        assert_eq!(saved[0].0.run_id, run_id);
+        assert_eq!(saved[0].0.total_items, 2);
+        assert_eq!(saved[0].0.dataset_path, canonical.display().to_string());
+        assert!(!saved[0].1.is_empty());
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn evaluate_genres_returns_500_when_dao_save_fails() {
+        let _lock = crate::config::ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let dir = TempDir::new().expect("tempdir");
+        let dataset_file = dir.path().join("golden_legacy.json");
+        let dataset_json = serde_json::json!([
+            {
+                "id": "simple-1",
+                "content": "Artificial intelligence research advances. Machine learning scales.",
+                "expected_genres": ["ai"]
+            }
+        ]);
+        fs::write(&dataset_file, dataset_json.to_string()).expect("write golden dataset");
+        let dataset_str = dataset_file.to_str().expect("utf8 path").to_string();
+        let mock_dao = Arc::new(crate::store::dao::mock::MockRecapDao::new());
+        mock_dao.set_save_genre_evaluation_error("simulated evaluation save error");
+
+        let response = temp_env::async_with_vars(eval_test_env_vars(&dataset_str), async {
+            let state = build_eval_test_state(Arc::clone(&mock_dao)).await;
+            evaluate_genres(State(state), Json(EvaluateRequest { data_path: None }))
+                .await
+                .into_response()
+        })
+        .await;
+
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        let body = read_response_json(response).await;
+        assert_eq!(body["error"], "Failed to save evaluation results");
+        Uuid::parse_str(body["run_id"].as_str().expect("run_id string"))
+            .expect("valid run_id uuid");
+        assert!(mock_dao.genre_evaluations().is_empty());
     }
 }

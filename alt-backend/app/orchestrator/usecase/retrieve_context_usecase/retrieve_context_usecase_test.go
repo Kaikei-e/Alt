@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 // Mock mocks
@@ -82,7 +83,7 @@ func TestRetrieveContextUsecase_Execute(t *testing.T) {
 	contexts, err := usecase.Execute(ctx, query, userID)
 
 	// Verify
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Len(t, contexts, 1)
 	assert.Equal(t, "text1", contexts[0].ChunkText)
 
@@ -109,9 +110,9 @@ func TestRetrieveContextUsecase_Execute_RejectsBlankUserID(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			contexts, err := usecase.Execute(ctx, query, tc.userID)
-			assert.Error(t, err)
+			require.Error(t, err)
 			assert.Nil(t, contexts)
-			assert.ErrorIs(t, err, rag_integration_port.ErrMissingUserID)
+			require.ErrorIs(t, err, rag_integration_port.ErrMissingUserID)
 		})
 	}
 }

@@ -130,15 +130,15 @@ func TestProjectionVersionToProto(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			pb := projectionVersionToProto(tt.in)
 			require.NotNil(t, pb)
-			assert.Equal(t, int32(tt.in.Version), pb.Version)
-			assert.Equal(t, tt.in.Description, pb.Description)
-			assert.Equal(t, tt.in.Status, pb.Status)
-			assert.True(t, pb.CreatedAt.AsTime().Equal(created))
+			assert.Equal(t, tt.in.Version, int(pb.GetVersion()))
+			assert.Equal(t, tt.in.Description, pb.GetDescription())
+			assert.Equal(t, tt.in.Status, pb.GetStatus())
+			assert.True(t, pb.GetCreatedAt().AsTime().Equal(created))
 			if tt.hasActive {
-				require.NotNil(t, pb.ActivatedAt)
-				assert.True(t, pb.ActivatedAt.AsTime().Equal(activated))
+				require.NotNil(t, pb.GetActivatedAt())
+				assert.True(t, pb.GetActivatedAt().AsTime().Equal(activated))
 			} else {
-				assert.Nil(t, pb.ActivatedAt)
+				assert.Nil(t, pb.GetActivatedAt())
 			}
 		})
 	}
@@ -155,7 +155,7 @@ func TestGetProjectionCheckpoint_ReturnsZero(t *testing.T) {
 		}))
 
 	require.NoError(t, err)
-	assert.Equal(t, int64(0), resp.Msg.LastEventSeq)
+	assert.Equal(t, int64(0), resp.Msg.GetLastEventSeq())
 }
 
 func TestUpdateProjectionCheckpoint(t *testing.T) {
@@ -182,7 +182,7 @@ func TestGetProjectionFreshness_NotFound(t *testing.T) {
 		}))
 
 	require.NoError(t, err)
-	assert.False(t, resp.Msg.Found)
+	assert.False(t, resp.Msg.GetFound())
 }
 
 func TestGetProjectionLag(t *testing.T) {
@@ -193,8 +193,8 @@ func TestGetProjectionLag(t *testing.T) {
 		connect.NewRequest(&sovereignv1.GetProjectionLagRequest{}))
 
 	require.NoError(t, err)
-	assert.Equal(t, float64(0), resp.Msg.LagSeconds)
-	assert.Equal(t, float64(0), resp.Msg.AgeSeconds)
+	assert.InDelta(t, float64(0), resp.Msg.GetLagSeconds(), 1e-9)
+	assert.InDelta(t, float64(0), resp.Msg.GetAgeSeconds(), 1e-9)
 }
 
 func TestProjectionVersionsRPCs(t *testing.T) {
@@ -205,13 +205,13 @@ func TestProjectionVersionsRPCs(t *testing.T) {
 	activeResp, err := h.GetActiveProjectionVersion(context.Background(),
 		connect.NewRequest(&sovereignv1.GetActiveProjectionVersionRequest{}))
 	require.NoError(t, err)
-	assert.Nil(t, activeResp.Msg.Version)
+	assert.Nil(t, activeResp.Msg.GetVersion())
 
 	// ListProjectionVersions
 	listResp, err := h.ListProjectionVersions(context.Background(),
 		connect.NewRequest(&sovereignv1.ListProjectionVersionsRequest{}))
 	require.NoError(t, err)
-	assert.Empty(t, listResp.Msg.Versions)
+	assert.Empty(t, listResp.Msg.GetVersions())
 
 	// ActivateProjectionVersion
 	actResp, err := h.ActivateProjectionVersion(context.Background(),

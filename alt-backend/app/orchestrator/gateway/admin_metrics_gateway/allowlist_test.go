@@ -126,7 +126,12 @@ func findPrometheusConfig(t *testing.T) string {
 
 func prometheusScrapeJobs(t *testing.T, path string) []scrapeJob {
 	t.Helper()
-	f, err := os.Open(path)
+	root, err := os.OpenRoot(filepath.Dir(path))
+	if err != nil {
+		t.Fatalf("open root %s: %v", path, err)
+	}
+	defer func() { _ = root.Close() }()
+	f, err := root.Open(filepath.Base(path))
 	if err != nil {
 		t.Fatalf("open %s: %v", path, err)
 	}

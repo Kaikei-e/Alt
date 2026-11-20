@@ -18,10 +18,10 @@ Usage:
     tags = extractor.extract_tags(title, content)
 """
 
-import os
 import time
 from collections import Counter
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 import structlog
@@ -34,6 +34,13 @@ from .japanese_extractor import is_japanese_noun, is_topical_japanese_noun
 from .tag_validator import clean_noun_phrase, is_valid_japanese_tag
 
 logger = structlog.get_logger(__name__)
+
+_MIN_COMPOUND_TOKEN_COUNT = 2
+
+
+class _StopwordsLoadError(ModelLoadError):
+    def __init__(self, exc: OSError) -> None:
+        super().__init__(f"Failed to load stopwords: {exc}")
 
 
 @dataclass
@@ -124,7 +131,7 @@ class HybridExtractor:
 
         # Load Fugashi tagger
         try:
-            from fugashi import Tagger
+            from fugashi import Tagger  # noqa: PLC0415 - optional ml dependency loaded lazily
 
             self._fugashi_tagger = Tagger()
             logger.info("Fugashi tagger loaded")
@@ -134,8 +141,10 @@ class HybridExtractor:
         # Load KeyBERT if enabled
         if self.config.use_keybert_scoring:
             try:
-                from keybert import KeyBERT
-                from sentence_transformers import SentenceTransformer
+                from keybert import KeyBERT  # noqa: PLC0415 - optional ml dependency loaded lazily
+                from sentence_transformers import (  # noqa: PLC0415 - optional ml dependency loaded lazily
+                    SentenceTransformer,
+                )
 
                 model_name = "paraphrase-multilingual-MiniLM-L12-v2"
                 self._embedder = SentenceTransformer(model_name, device="cpu", revision=EMBEDDING_MODEL_REVISION)
@@ -151,19 +160,18 @@ class HybridExtractor:
 
     def _load_stopwords(self) -> None:
         """Load Japanese stopwords."""
-        current_dir = os.path.dirname(__file__)
-        stopwords_path = os.path.join(current_dir, "stopwords_ja.txt")
+        stopwords_path = Path(__file__).parent / "stopwords_ja.txt"
 
         try:
-            with open(stopwords_path, encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if line and not line.startswith("#"):
-                        self._stopwords.add(line)
+            with stopwords_path.open(encoding="utf-8") as f:
+                for raw_line in f:
+                    stripped = raw_line.strip()
+                    if stripped and not stripped.startswith("#"):
+                        self._stopwords.add(stripped)
             logger.debug("Loaded stopwords", count=len(self._stopwords))
         except OSError as e:
-            logger.error("Stopwords file could not be loaded", path=stopwords_path, error=str(e))
-            raise ModelLoadError(f"Failed to load stopwords: {e}") from e
+            logger.exception("Stopwords file could not be loaded", path=str(stopwords_path), error=str(e))
+            raise _StopwordsLoadError(e) from e
 
     def _extract_candidates_ginza(self, text: str) -> list[CandidateTag]:
         """Extract candidate tags using GiNZA."""
@@ -232,6 +240,24 @@ class HybridExtractor:
         """
         return is_valid_japanese_tag(tag, max_length=self.config.max_phrase_length)
 
+    def _record_fugashi_tokens(
+        self,
+        tokens: list[Any],
+        noun_pos: set[str],
+        position: int,
+        term_freq: Counter[str],
+        term_positions: dict[str, int],
+    ) -> None:
+        term: str | None = None
+        if len(tokens) >= _MIN_COMPOUND_TOKEN_COUNT and any(is_topical_japanese_noun(t, noun_pos) for t in tokens):
+            term = "".join(t.surface for t in tokens)
+        elif len(tokens) == 1 and is_topical_japanese_noun(tokens[0], noun_pos):
+            term = tokens[0].surface
+
+        if term and self.config.min_phrase_length <= len(term) <= self.config.max_phrase_length:
+            term_freq[term] += 1
+            term_positions.setdefault(term, position)
+
     def _extract_candidates_fugashi(self, text: str) -> list[CandidateTag]:
         """Extract candidate tags using Fugashi morphological analysis."""
         if self._fugashi_tagger is None:
@@ -259,40 +285,15 @@ class HybridExtractor:
 
         for token in parsed:
             surface = token.surface
-
-            is_noun = is_japanese_noun(token, noun_pos)
-
-            if is_noun and surface not in self._stopwords:
+            if is_japanese_noun(token, noun_pos) and surface not in self._stopwords:
                 current_tokens.append(token)
             else:
-                if len(current_tokens) >= 2 and any(is_topical_japanese_noun(t, noun_pos) for t in current_tokens):
-                    compound = "".join(t.surface for t in current_tokens)
-                    if self.config.min_phrase_length <= len(compound) <= self.config.max_phrase_length:
-                        term_freq[compound] += 1
-                        if compound not in term_positions:
-                            term_positions[compound] = position
-                elif len(current_tokens) == 1 and is_topical_japanese_noun(current_tokens[0], noun_pos):
-                    single = current_tokens[0].surface
-                    if self.config.min_phrase_length <= len(single) <= self.config.max_phrase_length:
-                        term_freq[single] += 1
-                        if single not in term_positions:
-                            term_positions[single] = position
+                self._record_fugashi_tokens(current_tokens, noun_pos, position, term_freq, term_positions)
                 current_tokens = []
                 position += 1
 
         # Handle remaining compound
-        if len(current_tokens) >= 2 and any(is_topical_japanese_noun(t, noun_pos) for t in current_tokens):
-            compound = "".join(t.surface for t in current_tokens)
-            if self.config.min_phrase_length <= len(compound) <= self.config.max_phrase_length:
-                term_freq[compound] += 1
-                if compound not in term_positions:
-                    term_positions[compound] = position
-        elif len(current_tokens) == 1 and is_topical_japanese_noun(current_tokens[0], noun_pos):
-            single = current_tokens[0].surface
-            if self.config.min_phrase_length <= len(single) <= self.config.max_phrase_length:
-                term_freq[single] += 1
-                if single not in term_positions:
-                    term_positions[single] = position
+        self._record_fugashi_tokens(current_tokens, noun_pos, position, term_freq, term_positions)
 
         # Convert to candidates, filtering out invalid tags
         for term, freq in term_freq.items():
@@ -321,7 +322,9 @@ class HybridExtractor:
             # By default, sklearn's CountVectorizer uses lowercase=True, which lowercases
             # the input text but NOT the candidates list. This causes uppercase candidates
             # (e.g., "GitHub", "AWS", "API") to never match the lowercased text.
-            from sklearn.feature_extraction.text import CountVectorizer
+            from sklearn.feature_extraction.text import (  # noqa: PLC0415 - optional ml dependency loaded lazily
+                CountVectorizer,
+            )
 
             vectorizer = CountVectorizer(
                 lowercase=False,  # Preserve case to match uppercase candidates
@@ -343,7 +346,7 @@ class HybridExtractor:
             for candidate in candidates:
                 candidate.semantic_score = keyword_scores.get(candidate.text, 0.0)
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - KeyBERT scoring failure falls back to frequency/position scoring
             logger.warning("KeyBERT scoring failed", error=str(e))
 
     def _compute_combined_scores(self, candidates: list[CandidateTag]) -> None:

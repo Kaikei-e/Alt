@@ -10,7 +10,7 @@ from recap_evaluator.scheduler.evaluation_scheduler import EvaluationScheduler
 
 
 @pytest.fixture
-def mock_usecase():
+def mock_usecase() -> AsyncMock:
     uc = AsyncMock()
     uc.execute.return_value = AsyncMock(
         evaluation_id="test-id",
@@ -20,7 +20,7 @@ def mock_usecase():
 
 
 @pytest.fixture
-def scheduler_settings():
+def scheduler_settings() -> Settings:
     return Settings(
         recap_db_dsn="postgres://test:test@localhost/test",
         enable_scheduler=True,
@@ -30,7 +30,7 @@ def scheduler_settings():
 
 
 class TestEvaluationScheduler:
-    def test_start_disabled(self, mock_usecase):
+    def test_start_disabled(self, mock_usecase: AsyncMock) -> None:
         settings = Settings(
             recap_db_dsn="postgres://test:test@localhost/test",
             enable_scheduler=False,
@@ -40,14 +40,18 @@ class TestEvaluationScheduler:
 
         assert not scheduler._scheduler.running
 
-    async def test_start_enabled(self, mock_usecase, scheduler_settings):
+    async def test_start_enabled(
+        self, mock_usecase: AsyncMock, scheduler_settings: Settings
+    ) -> None:
         scheduler = EvaluationScheduler(mock_usecase, scheduler_settings)
         scheduler.start()
 
         assert scheduler._scheduler.running
         scheduler.stop()
 
-    def test_stop_when_not_running(self, mock_usecase, scheduler_settings):
+    def test_stop_when_not_running(
+        self, mock_usecase: AsyncMock, scheduler_settings: Settings
+    ) -> None:
         """Idempotent no-op: stopping a scheduler that never started must not
         raise, and the underlying APScheduler must remain not-running."""
         scheduler = EvaluationScheduler(mock_usecase, scheduler_settings)
@@ -56,14 +60,18 @@ class TestEvaluationScheduler:
 
         assert not scheduler._scheduler.running
 
-    async def test_run_scheduled_evaluation_calls_usecase(self, mock_usecase, scheduler_settings):
+    async def test_run_scheduled_evaluation_calls_usecase(
+        self, mock_usecase: AsyncMock, scheduler_settings: Settings
+    ) -> None:
         scheduler = EvaluationScheduler(mock_usecase, scheduler_settings)
 
         await scheduler._run_scheduled_evaluation()
 
         mock_usecase.execute.assert_called_once_with(window_days=7)
 
-    async def test_run_scheduled_evaluation_handles_error(self, mock_usecase, scheduler_settings):
+    async def test_run_scheduled_evaluation_handles_error(
+        self, mock_usecase: AsyncMock, scheduler_settings: Settings
+    ) -> None:
         """A failed evaluation run must be logged (not silently dropped) and
         must not propagate out of the scheduled job — an uncaught exception
         here would kill the APScheduler job permanently (CLAUDE.md rule 8:

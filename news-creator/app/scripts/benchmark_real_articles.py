@@ -32,6 +32,7 @@ import statistics
 import sys
 from dataclasses import asdict, dataclass
 from datetime import datetime
+from http import HTTPStatus
 from pathlib import Path
 from typing import Any
 
@@ -133,6 +134,7 @@ class BenchmarkConfig:
 # Size thresholds (characters)
 SIZE_SMALL_MAX = 3000
 SIZE_MEDIUM_MAX = 10000
+TITLE_PREVIEW_MAX_CHARS = 50
 
 
 def get_db_connection() -> psycopg2.extensions.connection:
@@ -181,16 +183,16 @@ def fetch_articles_by_size(
             """,
             (SIZE_SMALL_MAX, config.small_count),
         )
-        for row in cur.fetchall():
-            articles.append(
-                Article(
-                    id=str(row[0]),
-                    title=row[1],
-                    content=row[2],
-                    content_length=row[3],
-                    size_category="small",
-                )
+        articles.extend(
+            Article(
+                id=str(row[0]),
+                title=row[1],
+                content=row[2],
+                content_length=row[3],
+                size_category="small",
             )
+            for row in cur.fetchall()
+        )
 
         # Fetch medium articles
         cur.execute(
@@ -205,16 +207,16 @@ def fetch_articles_by_size(
             """,
             (SIZE_SMALL_MAX, SIZE_MEDIUM_MAX, config.medium_count),
         )
-        for row in cur.fetchall():
-            articles.append(
-                Article(
-                    id=str(row[0]),
-                    title=row[1],
-                    content=row[2],
-                    content_length=row[3],
-                    size_category="medium",
-                )
+        articles.extend(
+            Article(
+                id=str(row[0]),
+                title=row[1],
+                content=row[2],
+                content_length=row[3],
+                size_category="medium",
             )
+            for row in cur.fetchall()
+        )
 
         # Fetch large articles
         cur.execute(
@@ -228,16 +230,16 @@ def fetch_articles_by_size(
             """,
             (SIZE_MEDIUM_MAX, config.large_count),
         )
-        for row in cur.fetchall():
-            articles.append(
-                Article(
-                    id=str(row[0]),
-                    title=row[1],
-                    content=row[2],
-                    content_length=row[3],
-                    size_category="large",
-                )
+        articles.extend(
+            Article(
+                id=str(row[0]),
+                title=row[1],
+                content=row[2],
+                content_length=row[3],
+                size_category="large",
             )
+            for row in cur.fetchall()
+        )
 
     return articles
 
@@ -292,16 +294,17 @@ async def call_ollama(
             json=payload,
             timeout=aiohttp.ClientTimeout(total=config.timeout_seconds),
         ) as response:
-            if response.status != 200:
+            if response.status != HTTPStatus.OK:
                 error_text = await response.text()
-                raise RuntimeError(
-                    f"Ollama API error: {response.status} - {error_text}"
-                )
+                msg = f"Ollama API error: {response.status} - {error_text}"
+                raise RuntimeError(msg)
             return await response.json()
     except aiohttp.ClientError as e:
-        raise RuntimeError(f"Connection error: {type(e).__name__}: {e}") from e
-    except asyncio.TimeoutError as e:
-        raise RuntimeError(f"Request timeout after {config.timeout_seconds}s") from e
+        msg = f"Connection error: {type(e).__name__}: {e}"
+        raise RuntimeError(msg) from e
+    except TimeoutError as e:
+        msg = f"Request timeout after {config.timeout_seconds}s"
+        raise RuntimeError(msg) from e
 
 
 def extract_metrics(
@@ -332,7 +335,11 @@ def extract_metrics(
 
     return BenchmarkResult(
         article_id=article.id,
-        title=article.title[:50] + "..." if len(article.title) > 50 else article.title,
+        title=(
+            article.title[:TITLE_PREVIEW_MAX_CHARS] + "..."
+            if len(article.title) > TITLE_PREVIEW_MAX_CHARS
+            else article.title
+        ),
         content_chars=article.content_length,
         size_category=article.size_category,
         iteration=iteration,
@@ -347,7 +354,7 @@ def extract_metrics(
         decode_tok_per_sec=decode_tok_per_sec,
         success=True,
         model=response.get("model", ""),
-        timestamp=datetime.now().isoformat(),
+        timestamp=datetime.now().astimezone().isoformat(),
     )
 
 
@@ -442,47 +449,55 @@ async def run_benchmark(
     iterations: int,
 ) -> tuple[list[BenchmarkResult], BenchmarkStats]:
     """Run benchmark for all articles."""
-    print(f"\n{'=' * 60}")
-    print("Benchmark Configuration")
-    print("=" * 60)
-    print(f"Model: {config.model}")
-    print(f"Context: {config.num_ctx}")
-    print(f"Ollama URL: {config.ollama_url}")
-    print(f"Articles: {len(articles)}")
-    print(f"Iterations per article: {iterations}")
-    print(f"Total runs: {len(articles) * iterations}")
-    print("=" * 60)
+    sys.stdout.write(f"\n{'=' * 60}\n")
+    sys.stdout.write("Benchmark Configuration\n")
+    sys.stdout.write(f"{'=' * 60}\n")
+    sys.stdout.write(f"Model: {config.model}\n")
+    sys.stdout.write(f"Context: {config.num_ctx}\n")
+    sys.stdout.write(f"Ollama URL: {config.ollama_url}\n")
+    sys.stdout.write(f"Articles: {len(articles)}\n")
+    sys.stdout.write(f"Iterations per article: {iterations}\n")
+    sys.stdout.write(f"Total runs: {len(articles) * iterations}\n")
+    sys.stdout.write(f"{'=' * 60}\n")
 
     # Show article distribution
-    print("\nArticle Distribution:")
+    sys.stdout.write("\nArticle Distribution:\n")
     for category in ["small", "medium", "large"]:
         cat_articles = [a for a in articles if a.size_category == category]
         if cat_articles:
             avg_len = sum(a.content_length for a in cat_articles) // len(cat_articles)
-            print(f"  {category}: {len(cat_articles)} articles (avg {avg_len:,} chars)")
+            sys.stdout.write(
+                f"  {category}: {len(cat_articles)} articles (avg {avg_len:,} chars)\n"
+            )
 
     results: list[BenchmarkResult] = []
 
     async with aiohttp.ClientSession() as session:
         # Warmup
         if config.warmup_iterations > 0 and articles:
-            print(f"\nWarmup ({config.warmup_iterations} iteration(s))...")
+            sys.stdout.write(f"\nWarmup ({config.warmup_iterations} iteration(s))...\n")
             warmup_article = articles[0]
             prompt = build_summary_prompt(warmup_article.content)
             for i in range(config.warmup_iterations):
                 try:
                     await call_ollama(session, config, prompt)
-                    print(f"  Warmup {i + 1} complete")
-                except Exception as e:
-                    print(f"  Warmup {i + 1} failed: {e}")
+                    sys.stdout.write(f"  Warmup {i + 1} complete\n")
+                except (
+                    aiohttp.ClientError,
+                    TimeoutError,
+                    OSError,
+                    ValueError,
+                    KeyError,
+                ) as e:
+                    sys.stdout.write(f"  Warmup {i + 1} failed: {e}\n")
 
         # Benchmark iterations
-        print("\nRunning benchmark...")
+        sys.stdout.write("\nRunning benchmark...\n")
         total_runs = len(articles) * iterations
         run_count = 0
 
         for iteration in range(1, iterations + 1):
-            print(f"\n--- Iteration {iteration}/{iterations} ---")
+            sys.stdout.write(f"\n--- Iteration {iteration}/{iterations} ---\n")
             for article in articles:
                 run_count += 1
                 prompt = build_summary_prompt(article.content)
@@ -492,15 +507,21 @@ async def run_benchmark(
                     result = extract_metrics(response, article, iteration)
                     results.append(result)
 
-                    print(
+                    sys.stdout.write(
                         f"  [{run_count}/{total_runs}] "
                         f"[{article.size_category}] "
                         f"TTFT: {result.ttft_s:.2f}s, "
                         f"Decode: {result.decode_tok_per_sec:.1f} tok/s, "
-                        f"Total: {result.total_duration_s:.2f}s"
+                        f"Total: {result.total_duration_s:.2f}s\n"
                     )
 
-                except Exception as e:
+                except (
+                    aiohttp.ClientError,
+                    TimeoutError,
+                    OSError,
+                    ValueError,
+                    KeyError,
+                ) as e:
                     error_result = BenchmarkResult(
                         article_id=article.id,
                         title=article.title[:50],
@@ -518,10 +539,10 @@ async def run_benchmark(
                         decode_tok_per_sec=0,
                         success=False,
                         error=str(e),
-                        timestamp=datetime.now().isoformat(),
+                        timestamp=datetime.now().astimezone().isoformat(),
                     )
                     results.append(error_result)
-                    print(f"  [{run_count}/{total_runs}] ERROR: {e}")
+                    sys.stdout.write(f"  [{run_count}/{total_runs}] ERROR: {e}\n")
 
     stats = calculate_stats(results)
     return results, stats
@@ -529,63 +550,65 @@ async def run_benchmark(
 
 def print_stats(stats: BenchmarkStats) -> None:
     """Print formatted statistics."""
-    print(f"\n{'=' * 60}")
-    print("RESULTS SUMMARY")
-    print("=" * 60)
-    print(
+    sys.stdout.write(f"\n{'=' * 60}\n")
+    sys.stdout.write("RESULTS SUMMARY\n")
+    sys.stdout.write(f"{'=' * 60}\n")
+    sys.stdout.write(
         f"Total: {stats.total_iterations} "
-        f"(Success: {stats.success_count}, Errors: {stats.error_count})"
+        f"(Success: {stats.success_count}, Errors: {stats.error_count})\n"
     )
 
-    print("\n--- By Size Category ---")
-    print(
-        f"{'Category':<10} {'Count':>6} {'TTFT P50':>10} {'Decode P50':>12} {'Latency P50':>12}"
+    sys.stdout.write("\n--- By Size Category ---\n")
+    sys.stdout.write(
+        f"{'Category':<10} {'Count':>6} {'TTFT P50':>10} {'Decode P50':>12} {'Latency P50':>12}\n"
     )
-    print("-" * 52)
+    sys.stdout.write(f"{'-' * 52}\n")
     for category, cat_stats in stats.by_category.items():
-        print(
+        sys.stdout.write(
             f"{category:<10} "
             f"{int(cat_stats['count']):>6} "
             f"{cat_stats['ttft_p50']:>9.2f}s "
             f"{cat_stats['decode_p50']:>10.1f} tok/s "
-            f"{cat_stats['latency_p50']:>10.2f}s"
+            f"{cat_stats['latency_p50']:>10.2f}s\n"
         )
 
-    print("\n--- Overall Statistics ---")
-    print("\nTTFT (Time To First Token):")
-    print(
-        f"  Mean: {stats.ttft_mean:.2f}s, P50: {stats.ttft_p50:.2f}s, P95: {stats.ttft_p95:.2f}s"
+    sys.stdout.write("\n--- Overall Statistics ---\n")
+    sys.stdout.write("\nTTFT (Time To First Token):\n")
+    sys.stdout.write(
+        f"  Mean: {stats.ttft_mean:.2f}s, P50: {stats.ttft_p50:.2f}s, P95: {stats.ttft_p95:.2f}s\n"
     )
-    print(f"  Min: {stats.ttft_min:.2f}s, Max: {stats.ttft_max:.2f}s")
+    sys.stdout.write(f"  Min: {stats.ttft_min:.2f}s, Max: {stats.ttft_max:.2f}s\n")
 
-    print("\nDecode Speed (tokens/sec):")
-    print(
-        f"  Mean: {stats.decode_mean:.1f}, P50: {stats.decode_p50:.1f}, P95: {stats.decode_p95:.1f}"
+    sys.stdout.write("\nDecode Speed (tokens/sec):\n")
+    sys.stdout.write(
+        f"  Mean: {stats.decode_mean:.1f}, P50: {stats.decode_p50:.1f}, P95: {stats.decode_p95:.1f}\n"
     )
-    print(f"  Min: {stats.decode_min:.1f}, Max: {stats.decode_max:.1f}")
+    sys.stdout.write(f"  Min: {stats.decode_min:.1f}, Max: {stats.decode_max:.1f}\n")
 
-    print("\nPrefill Speed (tokens/sec):")
-    print(
-        f"  Mean: {stats.prefill_mean:.1f}, P50: {stats.prefill_p50:.1f}, P95: {stats.prefill_p95:.1f}"
+    sys.stdout.write("\nPrefill Speed (tokens/sec):\n")
+    sys.stdout.write(
+        f"  Mean: {stats.prefill_mean:.1f}, P50: {stats.prefill_p50:.1f}, P95: {stats.prefill_p95:.1f}\n"
     )
 
-    print("\nTotal Latency:")
-    print(
-        f"  Mean: {stats.latency_mean:.2f}s, P50: {stats.latency_p50:.2f}s, P95: {stats.latency_p95:.2f}s"
+    sys.stdout.write("\nTotal Latency:\n")
+    sys.stdout.write(
+        f"  Mean: {stats.latency_mean:.2f}s, P50: {stats.latency_p50:.2f}s, P95: {stats.latency_p95:.2f}s\n"
     )
 
     # Evaluation against targets
-    print(f"\n{'=' * 60}")
-    print("EVALUATION vs TARGETS")
-    print("=" * 60)
+    sys.stdout.write(f"\n{'=' * 60}\n")
+    sys.stdout.write("EVALUATION vs TARGETS\n")
+    sys.stdout.write(f"{'=' * 60}\n")
     targets = {
         "ttft": 2.0,  # < 2 seconds
         "decode": 40.0,  # > 40 tok/s
     }
     ttft_ok = "✅ PASS" if stats.ttft_p50 < targets["ttft"] else "❌ FAIL"
     decode_ok = "✅ PASS" if stats.decode_p50 > targets["decode"] else "❌ FAIL"
-    print(f"  TTFT < 2s: {ttft_ok} ({stats.ttft_p50:.2f}s)")
-    print(f"  Decode > 40 tok/s: {decode_ok} ({stats.decode_p50:.1f} tok/s)")
+    sys.stdout.write(f"  TTFT < 2s: {ttft_ok} ({stats.ttft_p50:.2f}s)\n")
+    sys.stdout.write(
+        f"  Decode > 40 tok/s: {decode_ok} ({stats.decode_p50:.1f} tok/s)\n"
+    )
 
 
 def save_results(
@@ -599,11 +622,11 @@ def save_results(
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S")
     output_file = output_path / f"benchmark_real_articles_{timestamp}.json"
 
     output_data = {
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": datetime.now().astimezone().isoformat(),
         "config": {
             "model": config.model,
             "num_ctx": config.num_ctx,
@@ -635,10 +658,10 @@ def save_results(
         },
     }
 
-    with open(output_file, "w", encoding="utf-8") as f:
+    with output_file.open("w", encoding="utf-8") as f:
         json.dump(output_data, f, indent=2, ensure_ascii=False)
 
-    print(f"\nResults saved to: {output_file}")
+    sys.stdout.write(f"\nResults saved to: {output_file}\n")
     return str(output_file)
 
 
@@ -720,31 +743,31 @@ async def main() -> None:
     )
 
     # Connect to database
-    print("Connecting to database...")
+    sys.stdout.write("Connecting to database...\n")
     try:
         conn = get_db_connection()
-    except Exception as e:
-        print(f"Error: Failed to connect to database: {e}", file=sys.stderr)
-        print("\nMake sure to set environment variables:", file=sys.stderr)
-        print("  DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME", file=sys.stderr)
+    except (psycopg2.Error, OSError) as e:
+        sys.stderr.write(f"Error: Failed to connect to database: {e}\n")
+        sys.stderr.write("\nMake sure to set environment variables:\n")
+        sys.stderr.write("  DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME\n")
         sys.exit(1)
 
     # Fetch articles
-    print("Fetching articles...")
+    sys.stdout.write("Fetching articles...\n")
     try:
         articles = fetch_articles_by_size(conn, config)
-    except Exception as e:
-        print(f"Error: Failed to fetch articles: {e}", file=sys.stderr)
+    except (psycopg2.Error, OSError) as e:
+        sys.stderr.write(f"Error: Failed to fetch articles: {e}\n")
         conn.close()
         sys.exit(1)
     finally:
         conn.close()
 
     if not articles:
-        print("Error: No articles found in database", file=sys.stderr)
+        sys.stderr.write("Error: No articles found in database\n")
         sys.exit(1)
 
-    print(f"Fetched {len(articles)} articles")
+    sys.stdout.write(f"Fetched {len(articles)} articles\n")
 
     # Run benchmark
     results, stats = await run_benchmark(config, articles, args.iterations)

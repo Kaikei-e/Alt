@@ -2,7 +2,10 @@
 Unit tests for hybrid tag extractor.
 """
 
+import re
 import sys
+from collections.abc import Callable
+from typing import cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -21,7 +24,13 @@ from tag_extractor.hybrid_extractor import (
 class MockCountVectorizer:
     """Mock CountVectorizer that tracks initialization parameters."""
 
-    def __init__(self, lowercase=True, token_pattern=None, analyzer=None, **kwargs):
+    def __init__(
+        self,
+        lowercase: bool = True,
+        token_pattern: str | None = None,
+        analyzer: Callable[[str], list[str]] | str | None = None,
+        **kwargs: object,
+    ) -> None:
         self.lowercase = lowercase
         self.token_pattern = token_pattern
         self.analyzer = analyzer
@@ -40,35 +49,43 @@ if "sklearn" not in sys.modules:
 class TestHybridConfig:
     """Tests for HybridConfig."""
 
-    def test_default_config(self):
+    def test_default_config(self) -> None:
         """Test default configuration values."""
+        default_top_k = 10
+        default_min_score = 0.1
+        default_ginza_weight = 1.2
+        default_frequency_weight = 0.4
+        default_position_weight = 0.2
+        default_semantic_weight = 0.4
         config = HybridConfig()
-        assert config.top_k == 10
-        assert config.min_score == 0.1
+        assert config.top_k == default_top_k
+        assert config.min_score == default_min_score
         assert config.use_ginza is True
         assert config.use_keybert_scoring is True
-        assert config.ginza_weight == 1.2
+        assert config.ginza_weight == default_ginza_weight
         assert config.fugashi_weight == 1.0
-        assert config.frequency_weight == 0.4
-        assert config.position_weight == 0.2
-        assert config.semantic_weight == 0.4
+        assert config.frequency_weight == default_frequency_weight
+        assert config.position_weight == default_position_weight
+        assert config.semantic_weight == default_semantic_weight
 
-    def test_custom_config(self):
+    def test_custom_config(self) -> None:
         """Test custom configuration."""
+        top_k = 5
+        ginza_weight = 1.5
         config = HybridConfig(
-            top_k=5,
+            top_k=top_k,
             use_ginza=False,
-            ginza_weight=1.5,
+            ginza_weight=ginza_weight,
         )
-        assert config.top_k == 5
+        assert config.top_k == top_k
         assert config.use_ginza is False
-        assert config.ginza_weight == 1.5
+        assert config.ginza_weight == ginza_weight
 
 
 class TestCandidateTag:
     """Tests for CandidateTag dataclass."""
 
-    def test_default_values(self):
+    def test_default_values(self) -> None:
         """Test default candidate tag values."""
         tag = CandidateTag(text="機械学習", source="ginza")
         assert tag.text == "機械学習"
@@ -78,26 +95,30 @@ class TestCandidateTag:
         assert tag.semantic_score == 0.0
         assert tag.combined_score == 0.0
 
-    def test_with_values(self):
+    def test_with_values(self) -> None:
         """Test candidate tag with all values."""
+        frequency = 5
+        position = 10
+        semantic_score = 0.8
+        combined_score = 0.75
         tag = CandidateTag(
             text="AI",
             source="fugashi",
-            frequency=5,
-            position=10,
-            semantic_score=0.8,
-            combined_score=0.75,
+            frequency=frequency,
+            position=position,
+            semantic_score=semantic_score,
+            combined_score=combined_score,
         )
-        assert tag.frequency == 5
-        assert tag.position == 10
-        assert tag.semantic_score == 0.8
-        assert tag.combined_score == 0.75
+        assert tag.frequency == frequency
+        assert tag.position == position
+        assert tag.semantic_score == semantic_score
+        assert tag.combined_score == combined_score
 
 
 class TestHybridExtractionResult:
     """Tests for HybridExtractionResult dataclass."""
 
-    def test_default_metadata(self):
+    def test_default_metadata(self) -> None:
         """Test default extraction result values."""
         result = HybridExtractionResult(
             tags=["機械学習"],
@@ -106,7 +127,7 @@ class TestHybridExtractionResult:
         )
         assert result.metadata == {}
 
-    def test_with_metadata(self):
+    def test_with_metadata(self) -> None:
         """Test extraction result with metadata."""
         result = HybridExtractionResult(
             tags=["AI", "ML"],
@@ -121,28 +142,29 @@ class TestHybridExtractor:
     """Tests for HybridExtractor."""
 
     @pytest.fixture
-    def extractor(self):
+    def extractor(self) -> HybridExtractor:
         """Create a HybridExtractor for testing."""
         config = HybridConfig(use_ginza=False, use_keybert_scoring=False)
         return HybridExtractor(config)
 
-    def test_initialization(self):
+    def test_initialization(self) -> None:
         """Test extractor initialization."""
-        config = HybridConfig(top_k=5)
+        top_k = 5
+        config = HybridConfig(top_k=top_k)
         extractor = HybridExtractor(config)
-        assert extractor.config.top_k == 5
+        assert extractor.config.top_k == top_k
         assert extractor._ginza is None
         assert extractor._fugashi_tagger is None
         assert extractor._keybert is None
         assert extractor._models_loaded is False
 
     @patch("tag_extractor.hybrid_extractor.HybridExtractor._lazy_load_models")
-    def test_extract_tags_calls_lazy_load(self, mock_load, extractor):
+    def test_extract_tags_calls_lazy_load(self, mock_load: MagicMock, extractor: HybridExtractor) -> None:
         """Test that extract_tags triggers lazy loading."""
         extractor.extract_tags("タイトル", "コンテンツ")
         mock_load.assert_called_once()
 
-    def test_extract_candidates_fugashi_without_tagger(self, extractor):
+    def test_extract_candidates_fugashi_without_tagger(self, extractor: HybridExtractor) -> None:
         """Test Fugashi extraction returns empty when tagger unavailable."""
         extractor._fugashi_tagger = None
         result = extractor._extract_candidates_fugashi("テスト文章")
@@ -151,7 +173,9 @@ class TestHybridExtractor:
     @patch("tag_extractor.hybrid_extractor.HybridExtractor._extract_candidates_fugashi")
     @patch("tag_extractor.hybrid_extractor.HybridExtractor._extract_candidates_ginza")
     @patch("tag_extractor.hybrid_extractor.HybridExtractor._lazy_load_models")
-    def test_extract_tags_combines_sources(self, mock_load, mock_ginza, mock_fugashi, extractor):
+    def test_extract_tags_combines_sources(
+        self, mock_load: MagicMock, mock_ginza: MagicMock, mock_fugashi: MagicMock, extractor: HybridExtractor
+    ) -> None:
         """Test that extraction combines candidates from multiple sources."""
         mock_ginza.return_value = [
             CandidateTag(text="機械学習", source="ginza", frequency=1),
@@ -166,7 +190,7 @@ class TestHybridExtractor:
         mock_ginza.assert_called_once()
         mock_fugashi.assert_called_once()
 
-    def test_compute_combined_scores_empty(self, extractor):
+    def test_compute_combined_scores_empty(self, extractor: HybridExtractor) -> None:
         """Empty candidates must short-circuit before the max()-over-empty-sequence
         call that would otherwise raise ValueError, and return None (in-place mutation
         contract, nothing to mutate)."""
@@ -175,7 +199,7 @@ class TestHybridExtractor:
         assert result is None
         assert candidates == []
 
-    def test_compute_combined_scores(self, extractor):
+    def test_compute_combined_scores(self, extractor: HybridExtractor) -> None:
         """Test combined score computation."""
         candidates = [
             CandidateTag(text="機械学習", source="ginza", frequency=3, position=0),
@@ -187,10 +211,11 @@ class TestHybridExtractor:
         assert candidates[0].combined_score > 0
         assert candidates[1].combined_score > 0
 
-    def test_deduplicate_candidates(self, extractor):
+    def test_deduplicate_candidates(self, extractor: HybridExtractor) -> None:
         """Test candidate deduplication."""
+        higher_score = 0.8
         candidates = [
-            CandidateTag(text="機械学習", source="ginza", combined_score=0.8),
+            CandidateTag(text="機械学習", source="ginza", combined_score=higher_score),
             CandidateTag(text="機械学習", source="fugashi", combined_score=0.5),
             CandidateTag(text="AI", source="ginza", combined_score=0.7),
         ]
@@ -203,9 +228,9 @@ class TestHybridExtractor:
 
         # Should keep the higher-scoring version
         ml_candidate = next(c for c in result if c.text == "機械学習")
-        assert ml_candidate.combined_score == 0.8
+        assert ml_candidate.combined_score == higher_score
 
-    def test_score_with_keybert_without_model(self, extractor):
+    def test_score_with_keybert_without_model(self, extractor: HybridExtractor) -> None:
         """Test KeyBERT scoring with no model does nothing."""
         candidates = [CandidateTag(text="test", source="fugashi")]
         extractor._keybert = None
@@ -214,13 +239,13 @@ class TestHybridExtractor:
         assert candidates[0].semantic_score == 0.0
 
     @patch("tag_extractor.hybrid_extractor.HybridExtractor._lazy_load_models")
-    def test_extract_tags_returns_list(self, mock_load, extractor):
+    def test_extract_tags_returns_list(self, mock_load: MagicMock, extractor: HybridExtractor) -> None:
         """Test that extract_tags returns a list of strings."""
         result = extractor.extract_tags("タイトル", "コンテンツ")
         assert isinstance(result, list)
 
     @patch("tag_extractor.hybrid_extractor.HybridExtractor._lazy_load_models")
-    def test_extract_tags_with_result_returns_result(self, mock_load, extractor):
+    def test_extract_tags_with_result_returns_result(self, mock_load: MagicMock, extractor: HybridExtractor) -> None:
         """Test that extract_tags_with_result returns HybridExtractionResult."""
         result = extractor.extract_tags_with_result("タイトル", "コンテンツ")
         assert isinstance(result, HybridExtractionResult)
@@ -229,7 +254,7 @@ class TestHybridExtractor:
         assert isinstance(result.inference_ms, float)
         assert "ginza_available" in result.metadata
 
-    def test_extract_candidates_ginza_without_ginza(self, extractor):
+    def test_extract_candidates_ginza_without_ginza(self, extractor: HybridExtractor) -> None:
         """Test GiNZA extraction returns empty when not available."""
         extractor._ginza = None
         result = extractor._extract_candidates_ginza("テスト")
@@ -240,7 +265,7 @@ class TestHybridExtractorWithFugashi:
     """Tests for HybridExtractor with mocked Fugashi."""
 
     @pytest.fixture
-    def extractor_with_fugashi(self):
+    def extractor_with_fugashi(self) -> HybridExtractor:
         """Create extractor with mocked Fugashi."""
         config = HybridConfig(use_ginza=False, use_keybert_scoring=False)
         extractor = HybridExtractor(config)
@@ -271,7 +296,7 @@ class TestHybridExtractorWithFugashi:
 
         return extractor
 
-    def test_extract_candidates_fugashi_chains_nouns(self, extractor_with_fugashi):
+    def test_extract_candidates_fugashi_chains_nouns(self, extractor_with_fugashi: HybridExtractor) -> None:
         """Test that Fugashi extraction chains consecutive nouns."""
         candidates = extractor_with_fugashi._extract_candidates_fugashi("機械学習は")
 
@@ -279,7 +304,7 @@ class TestHybridExtractorWithFugashi:
         compound_texts = [c.text for c in candidates]
         assert "機械学習" in compound_texts
 
-    def test_extract_candidates_fugashi_skips_stopwords(self, extractor_with_fugashi):
+    def test_extract_candidates_fugashi_skips_stopwords(self, extractor_with_fugashi: HybridExtractor) -> None:
         """Test that stopwords are skipped."""
         extractor_with_fugashi._stopwords = {"機械"}
 
@@ -293,23 +318,24 @@ class TestHybridExtractorWithFugashi:
 class TestGetHybridExtractor:
     """Tests for get_hybrid_extractor function."""
 
-    def test_returns_extractor(self):
+    def test_returns_extractor(self) -> None:
         """Test that function returns HybridExtractor."""
         extractor = get_hybrid_extractor()
         assert isinstance(extractor, HybridExtractor)
 
-    def test_accepts_config(self):
+    def test_accepts_config(self) -> None:
         """Test that function accepts configuration."""
-        config = HybridConfig(top_k=3)
+        top_k = 3
+        config = HybridConfig(top_k=top_k)
         extractor = get_hybrid_extractor(config)
-        assert extractor.config.top_k == 3
+        assert extractor.config.top_k == top_k
 
 
 class TestHybridExtractorKeyBERTScoring:
     """Tests for HybridExtractor KeyBERT scoring with CountVectorizer fix."""
 
     @pytest.fixture
-    def extractor_with_keybert(self):
+    def extractor_with_keybert(self) -> HybridExtractor:
         """Create extractor with mocked KeyBERT."""
         config = HybridConfig(use_ginza=False, use_keybert_scoring=True)
         extractor = HybridExtractor(config)
@@ -321,7 +347,7 @@ class TestHybridExtractorKeyBERTScoring:
 
         return extractor
 
-    def test_keybert_scoring_uses_vectorizer(self, extractor_with_keybert):
+    def test_keybert_scoring_uses_vectorizer(self, extractor_with_keybert: HybridExtractor) -> None:
         """Test that KeyBERT scoring passes a custom vectorizer."""
         candidates = [
             CandidateTag(text="GitHub", source="fugashi"),
@@ -331,7 +357,7 @@ class TestHybridExtractorKeyBERTScoring:
         # Capture the vectorizer passed to KeyBERT
         captured_args = {}
 
-        def mock_extract(*args, **kwargs):
+        def mock_extract(*args: object, **kwargs: object) -> list[tuple[str, float]]:
             captured_args.update(kwargs)
             return [("GitHub", 0.8), ("AWS", 0.7)]
 
@@ -344,13 +370,13 @@ class TestHybridExtractorKeyBERTScoring:
         vectorizer = captured_args["vectorizer"]
         assert vectorizer is not None, "vectorizer should not be None"
 
-    def test_keybert_vectorizer_has_lowercase_false(self, extractor_with_keybert):
+    def test_keybert_vectorizer_has_lowercase_false(self, extractor_with_keybert: HybridExtractor) -> None:
         """Test that the vectorizer has lowercase=False for uppercase matching."""
         candidates = [CandidateTag(text="API", source="fugashi")]
 
         captured_vectorizer = {}
 
-        def mock_extract(*args, **kwargs):
+        def mock_extract(*args: object, **kwargs: object) -> list[tuple[str, float]]:
             captured_vectorizer["instance"] = kwargs.get("vectorizer")
             return [("API", 0.9)]
 
@@ -365,7 +391,7 @@ class TestHybridExtractorKeyBERTScoring:
             "Vectorizer must have lowercase=False to match uppercase candidates (ADR-176 fix)"
         )
 
-    def test_uppercase_candidates_get_scored(self, extractor_with_keybert):
+    def test_uppercase_candidates_get_scored(self, extractor_with_keybert: HybridExtractor) -> None:
         """Test that uppercase candidates are scored correctly after the fix."""
         candidates = [
             CandidateTag(text="GitHub", source="fugashi"),
@@ -373,7 +399,7 @@ class TestHybridExtractorKeyBERTScoring:
             CandidateTag(text="コード", source="fugashi"),
         ]
 
-        def mock_extract(*args, **kwargs):
+        def mock_extract(*args: object, **kwargs: object) -> list[tuple[str, float]]:
             vectorizer = kwargs.get("vectorizer")
             # Simulate proper behavior when vectorizer has lowercase=False
             if vectorizer and hasattr(vectorizer, "lowercase") and not vectorizer.lowercase:
@@ -394,51 +420,51 @@ class TestHybridExtractorTagValidation:
     """Tests for _is_valid_tag method in HybridExtractor."""
 
     @pytest.fixture
-    def extractor(self):
+    def extractor(self) -> HybridExtractor:
         """Create HybridExtractor for testing."""
         config = HybridConfig(use_ginza=False, use_keybert_scoring=False)
         return HybridExtractor(config)
 
     # Verb ending tests
-    def test_rejects_desu_ending(self, extractor):
+    def test_rejects_desu_ending(self, extractor: HybridExtractor) -> None:
         """Tags ending with です should be rejected."""
         assert extractor._is_valid_tag("便利です") is False
 
-    def test_rejects_masu_ending(self, extractor):
+    def test_rejects_masu_ending(self, extractor: HybridExtractor) -> None:
         """Tags ending with ます should be rejected."""
         assert extractor._is_valid_tag("使います") is False
 
-    def test_rejects_mashita_ending(self, extractor):
+    def test_rejects_mashita_ending(self, extractor: HybridExtractor) -> None:
         """Tags ending with ました should be rejected."""
         assert extractor._is_valid_tag("完了しました") is False
 
-    def test_rejects_teiru_ending(self, extractor):
+    def test_rejects_teiru_ending(self, extractor: HybridExtractor) -> None:
         """Tags ending with ている should be rejected."""
         assert extractor._is_valid_tag("動いている") is False
 
-    def test_rejects_shita_ending(self, extractor):
+    def test_rejects_shita_ending(self, extractor: HybridExtractor) -> None:
         """Tags ending with した should be rejected."""
         assert extractor._is_valid_tag("実装した") is False
 
-    def test_rejects_suru_ending(self, extractor):
+    def test_rejects_suru_ending(self, extractor: HybridExtractor) -> None:
         """Tags ending with する should be rejected."""
         assert extractor._is_valid_tag("実行する") is False
 
     # Number-only tests
-    def test_rejects_number_only(self, extractor):
+    def test_rejects_number_only(self, extractor: HybridExtractor) -> None:
         """Tags that are numbers only should be rejected."""
         assert extractor._is_valid_tag("2025") is False
         assert extractor._is_valid_tag("12") is False
         assert extractor._is_valid_tag("100") is False
 
-    def test_accepts_number_with_text(self, extractor):
+    def test_accepts_number_with_text(self, extractor: HybridExtractor) -> None:
         """Tags with numbers and text should be accepted."""
         assert extractor._is_valid_tag("Web3") is True
         assert extractor._is_valid_tag("5G通信") is True
         assert extractor._is_valid_tag("iOS17") is True
 
     # Valid tag tests
-    def test_accepts_valid_tags(self, extractor):
+    def test_accepts_valid_tags(self, extractor: HybridExtractor) -> None:
         """Valid tags should be accepted."""
         valid_tags = [
             "機械学習",
@@ -456,7 +482,7 @@ class TestHybridExtractorFugashiFiltering:
     """Tests for Fugashi candidate filtering with _is_valid_tag."""
 
     @pytest.fixture
-    def extractor_with_fugashi(self):
+    def extractor_with_fugashi(self) -> HybridExtractor:
         """Create extractor with mocked Fugashi."""
         config = HybridConfig(use_ginza=False, use_keybert_scoring=False)
         extractor = HybridExtractor(config)
@@ -477,7 +503,7 @@ class TestHybridExtractorFugashiFiltering:
         token.feature.pos1 = pos1
         return token
 
-    def test_filters_verb_ending_compounds(self, extractor_with_fugashi):
+    def test_filters_verb_ending_compounds(self, extractor_with_fugashi: HybridExtractor) -> None:
         """Compounds ending with verbs should be filtered."""
         # Mock tokens that would produce "実装した"
         tokens = [
@@ -492,7 +518,7 @@ class TestHybridExtractorFugashiFiltering:
         texts = [c.text for c in candidates]
         assert not any("した" in t for t in texts)
 
-    def test_filters_number_only_candidates(self, extractor_with_fugashi):
+    def test_filters_number_only_candidates(self, extractor_with_fugashi: HybridExtractor) -> None:
         """Number-only candidates should be filtered."""
         tokens = [
             self._make_token("2025", "名詞-数詞"),
@@ -513,7 +539,7 @@ class TestHybridExtractorGinzaPostProcessing:
     """
 
     @pytest.fixture
-    def extractor_with_mock_ginza(self):
+    def extractor_with_mock_ginza(self) -> HybridExtractor:
         """Create extractor with mocked GiNZA."""
         config = HybridConfig(use_ginza=True, use_keybert_scoring=False)
         extractor = HybridExtractor(config)
@@ -526,15 +552,15 @@ class TestHybridExtractorGinzaPostProcessing:
 
         return extractor
 
-    def test_cleans_particle_endings_from_ginza(self, extractor_with_mock_ginza):
+    def test_cleans_particle_endings_from_ginza(self, extractor_with_mock_ginza: HybridExtractor) -> None:
         """Noun phrases with particle endings should be cleaned."""
         # Mock GiNZA returning phrases with particles
-        extractor_with_mock_ginza._ginza.extract_noun_phrases.return_value = [
+        cast(MagicMock, extractor_with_mock_ginza._ginza).extract_noun_phrases.return_value = [
             "Databricksのセキュリティは",
             "Unity Catalog",
             "データガバナンス",
         ]
-        extractor_with_mock_ginza._ginza.extract_named_entities.return_value = []
+        cast(MagicMock, extractor_with_mock_ginza._ginza).extract_named_entities.return_value = []
 
         candidates = extractor_with_mock_ginza._extract_candidates_ginza("test")
         texts = [c.text for c in candidates]
@@ -542,13 +568,13 @@ class TestHybridExtractorGinzaPostProcessing:
         # Particle endings should not appear in final candidates
         assert not any(t.endswith("は") for t in texts)
 
-    def test_cleans_verb_endings_from_ginza(self, extractor_with_mock_ginza):
+    def test_cleans_verb_endings_from_ginza(self, extractor_with_mock_ginza: HybridExtractor) -> None:
         """Noun phrases with verb endings should be cleaned."""
-        extractor_with_mock_ginza._ginza.extract_noun_phrases.return_value = [
+        cast(MagicMock, extractor_with_mock_ginza._ginza).extract_noun_phrases.return_value = [
             "TablesはDatabricksが管理する",
             "セキュリティ設計",
         ]
-        extractor_with_mock_ginza._ginza.extract_named_entities.return_value = []
+        cast(MagicMock, extractor_with_mock_ginza._ginza).extract_named_entities.return_value = []
 
         candidates = extractor_with_mock_ginza._extract_candidates_ginza("test")
         texts = [c.text for c in candidates]
@@ -556,15 +582,15 @@ class TestHybridExtractorGinzaPostProcessing:
         # Verb endings should not appear in final candidates
         assert not any(t.endswith("する") for t in texts)
 
-    def test_preserves_valid_noun_phrases(self, extractor_with_mock_ginza):
+    def test_preserves_valid_noun_phrases(self, extractor_with_mock_ginza: HybridExtractor) -> None:
         """Valid noun phrases should be preserved unchanged."""
-        extractor_with_mock_ginza._ginza.extract_noun_phrases.return_value = [
+        cast(MagicMock, extractor_with_mock_ginza._ginza).extract_noun_phrases.return_value = [
             "Databricks",
             "セキュリティ",
             "Unity Catalog",
             "データガバナンス",
         ]
-        extractor_with_mock_ginza._ginza.extract_named_entities.return_value = []
+        cast(MagicMock, extractor_with_mock_ginza._ginza).extract_named_entities.return_value = []
 
         candidates = extractor_with_mock_ginza._extract_candidates_ginza("test")
         texts = [c.text for c in candidates]
@@ -574,30 +600,27 @@ class TestHybridExtractorGinzaPostProcessing:
         assert "セキュリティ" in texts
         assert "Unity Catalog" in texts
 
-    def test_filters_sentence_fragments(self, extractor_with_mock_ginza):
+    def test_filters_sentence_fragments(self, extractor_with_mock_ginza: HybridExtractor) -> None:
         """Long sentence fragments should be filtered out."""
-        extractor_with_mock_ginza._ginza.extract_noun_phrases.return_value = [
+        cast(MagicMock, extractor_with_mock_ginza._ginza).extract_noun_phrases.return_value = [
             "Databricks運用の重要ポイントを網羅する内容になっています",
             "がセキュリティ設計の鉄則です",
             "セキュリティ",
         ]
-        extractor_with_mock_ginza._ginza.extract_named_entities.return_value = []
+        cast(MagicMock, extractor_with_mock_ginza._ginza).extract_named_entities.return_value = []
 
         candidates = extractor_with_mock_ginza._extract_candidates_ginza("test")
         texts = [c.text for c in candidates]
 
         # Long sentence fragments should be filtered
-        assert not any(len(t) > 15 for t in texts)
+        max_tag_length = 15
+        assert not any(len(t) > max_tag_length for t in texts)
         # But valid short terms should remain
         assert "セキュリティ" in texts
 
 
 class TestHybridEmbedderRevision:
-    def test_keybert_embedder_loaded_with_full_commit_sha(self):
-        import re
-        import sys
-        from unittest.mock import patch
-
+    def test_keybert_embedder_loaded_with_full_commit_sha(self) -> None:
         fake_st = MagicMock()
         extractor = HybridExtractor(HybridConfig(use_ginza=False, use_keybert_scoring=True))
         with patch.dict(
@@ -609,3 +632,19 @@ class TestHybridEmbedderRevision:
         ):
             extractor._lazy_load_models()
         assert re.fullmatch(r"[0-9a-f]{40}", fake_st.call_args.kwargs["revision"])
+
+    def test_score_with_keybert_catches_unexpected_exception(self) -> None:
+        """Unexpected KeyBERT/sklearn failures fall back cleanly instead of failing extraction."""
+
+        class _UnexpectedLibraryError(Exception):
+            pass
+
+        extractor = HybridExtractor(HybridConfig(use_ginza=False, use_keybert_scoring=True))
+        mock_kb = MagicMock()
+        mock_kb.extract_keywords.side_effect = _UnexpectedLibraryError("unexpected")
+        extractor._keybert = mock_kb
+        candidates = [CandidateTag(text="AI", source="fugashi")]
+
+        extractor._score_with_keybert("AI text", candidates)
+
+        assert candidates[0].semantic_score == 0.0

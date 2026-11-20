@@ -23,6 +23,7 @@ import pytest
 from acolyte.gateway.postgres_notification_outbox_gw import PostgresNotificationOutboxGateway
 
 _DSN = os.getenv("ACOLYTE_TEST_DB_DSN", "")
+BACKLOG_AGE_SECONDS = 90.0
 
 pytestmark = pytest.mark.skipif(
     not _DSN,
@@ -76,54 +77,85 @@ async def _state_of(conn: psycopg.AsyncConnection[Any], notification_id: UUID) -
     return tuple(row)
 
 
+async def _exercise_claim_and_finalise(
+    conn: psycopg.AsyncConnection[Any],
+    gw: PostgresNotificationOutboxGateway,
+    occurred_at: datetime,
+) -> None:
+    async with conn.transaction():
+        first = await _insert_row(conn, f"acolyte:{uuid4()}", occurred_at)
+        second = await _insert_row(conn, f"acolyte:{uuid4()}", occurred_at)
+
+        claimed = await gw.claim_batch("relay-1", 10)
+        assert {c.notification_id for c in claimed} == {first, second}
+        assert all(c.attempts == 1 for c in claimed)
+        assert all(c.payload["kind"] == "acolyte_report_ready" for c in claimed)
+
+        state, attempts, locked_by, _, _, deferred = await _state_of(conn, first)
+        assert (state, attempts, locked_by, deferred) == ("forwarding", 1, "relay-1", True)
+
+        # The lease is the whole reclaim mechanism: a second relay must
+        # not pick the same rows up while the first is still forwarding.
+        assert await gw.claim_batch("relay-2", 10) == []
+
+        await gw.mark_forwarded(first)
+        state, _, _, last_error, forwarded_at, _ = await _state_of(conn, first)
+        assert state == "forwarded"
+        assert last_error is None
+        assert forwarded_at is not None
+
+        await gw.mark_failed(second, attempts=1, error="connection refused")
+        state, attempts, _, last_error, _, deferred = await _state_of(conn, second)
+        assert (state, attempts, last_error) == ("pending", 1, "connection refused")
+        # Retry is scheduled, but full jitter may draw ~0s, so only the
+        # state transition is asserted, not the delay.
+
+        # A backlog exists (one pending row, business time 90s old).
+        assert await gw.oldest_pending_age_seconds() >= BACKLOG_AGE_SECONDS
+
+        await gw.mark_failed(second, attempts=8, error="410 gone")
+        state, _, _, last_error, _, _ = await _state_of(conn, second)
+        assert (state, last_error) == ("dead", "410 gone")
+
+        # Terminal rows leave the claim query, so the gauge falls back
+        # to zero instead of reporting a backlog nobody can drain.
+        assert await gw.oldest_pending_age_seconds() == 0.0
+        assert await gw.claim_batch("relay-1", 10) == []
+
+        raise _RollbackError
+
+
+async def _exercise_expired_lease_death(
+    conn: psycopg.AsyncConnection[Any],
+    gw: PostgresNotificationOutboxGateway,
+) -> None:
+    async with conn.transaction():
+        stranded = await _insert_row(conn, f"acolyte:{uuid4()}", datetime.now(UTC))
+        # A relay that died mid-forward, eight times over: 'forwarding'
+        # with an expired lease and no mark_failed ever reached.
+        await conn.execute(
+            "UPDATE notification_outbox SET state = 'forwarding', attempts = 8, "
+            "next_attempt_at = clock_timestamp() - make_interval(secs => 1) WHERE id = %s",
+            [stranded],
+        )
+
+        assert await gw.claim_batch("relay-1", 10) == []
+
+        state, _, _, last_error, _, _ = await _state_of(conn, stranded)
+        assert state == "dead"
+        assert last_error == "lease expired with attempts exhausted"
+
+        raise _RollbackError
+
+
 @pytest.mark.asyncio
 async def test_claim_leases_finalise_and_backlog_age() -> None:
     async with await psycopg.AsyncConnection.connect(_DSN, autocommit=False) as conn:
         gw = PostgresNotificationOutboxGateway(_SingleConnectionPool(conn))  # type: ignore[arg-type]
-        occurred_at = datetime.now(UTC) - timedelta(seconds=90)
+        occurred_at = datetime.now(UTC) - timedelta(seconds=BACKLOG_AGE_SECONDS)
 
         with pytest.raises(_RollbackError):
-            async with conn.transaction():
-                first = await _insert_row(conn, f"acolyte:{uuid4()}", occurred_at)
-                second = await _insert_row(conn, f"acolyte:{uuid4()}", occurred_at)
-
-                claimed = await gw.claim_batch("relay-1", 10)
-                assert {c.notification_id for c in claimed} == {first, second}
-                assert all(c.attempts == 1 for c in claimed)
-                assert all(c.payload["kind"] == "acolyte_report_ready" for c in claimed)
-
-                state, attempts, locked_by, _, _, deferred = await _state_of(conn, first)
-                assert (state, attempts, locked_by, deferred) == ("forwarding", 1, "relay-1", True)
-
-                # The lease is the whole reclaim mechanism: a second relay must
-                # not pick the same rows up while the first is still forwarding.
-                assert await gw.claim_batch("relay-2", 10) == []
-
-                await gw.mark_forwarded(first)
-                state, _, _, last_error, forwarded_at, _ = await _state_of(conn, first)
-                assert state == "forwarded"
-                assert last_error is None
-                assert forwarded_at is not None
-
-                await gw.mark_failed(second, attempts=1, error="connection refused")
-                state, attempts, _, last_error, _, deferred = await _state_of(conn, second)
-                assert (state, attempts, last_error) == ("pending", 1, "connection refused")
-                # Retry is scheduled, but full jitter may draw ~0s, so only the
-                # state transition is asserted, not the delay.
-
-                # A backlog exists (one pending row, business time 90s old).
-                assert await gw.oldest_pending_age_seconds() >= 90.0
-
-                await gw.mark_failed(second, attempts=8, error="410 gone")
-                state, _, _, last_error, _, _ = await _state_of(conn, second)
-                assert (state, last_error) == ("dead", "410 gone")
-
-                # Terminal rows leave the claim query, so the gauge falls back
-                # to zero instead of reporting a backlog nobody can drain.
-                assert await gw.oldest_pending_age_seconds() == 0.0
-                assert await gw.claim_batch("relay-1", 10) == []
-
-                raise _RollbackError
+            await _exercise_claim_and_finalise(conn, gw, occurred_at)
 
 
 @pytest.mark.asyncio
@@ -132,20 +164,4 @@ async def test_a_row_a_crashed_relay_left_behind_eventually_dies() -> None:
         gw = PostgresNotificationOutboxGateway(_SingleConnectionPool(conn))  # type: ignore[arg-type]
 
         with pytest.raises(_RollbackError):
-            async with conn.transaction():
-                stranded = await _insert_row(conn, f"acolyte:{uuid4()}", datetime.now(UTC))
-                # A relay that died mid-forward, eight times over: 'forwarding'
-                # with an expired lease and no mark_failed ever reached.
-                await conn.execute(
-                    "UPDATE notification_outbox SET state = 'forwarding', attempts = 8, "
-                    "next_attempt_at = clock_timestamp() - make_interval(secs => 1) WHERE id = %s",
-                    [stranded],
-                )
-
-                assert await gw.claim_batch("relay-1", 10) == []
-
-                state, _, _, last_error, _, _ = await _state_of(conn, stranded)
-                assert state == "dead"
-                assert last_error == "lease expired with attempts exhausted"
-
-                raise _RollbackError
+            await _exercise_expired_lease_death(conn, gw)

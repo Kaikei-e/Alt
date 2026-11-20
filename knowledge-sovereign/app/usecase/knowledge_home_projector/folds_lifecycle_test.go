@@ -32,7 +32,7 @@ func TestProjector_FoldsHomeItemOpened(t *testing.T) {
 
 	item, ok := repo.homeItems[itemKey]
 	require.True(t, ok)
-	assert.Equal(t, 0.1, item.Score, "opening an item suppresses its score")
+	assert.InEpsilon(t, 0.1, item.Score, 1e-9, "opening an item suppresses its score")
 	assert.Equal(t, "set", item.ScoreOp,
 		"suppression must be authoritative (score_op=set) — under the blanket GREATEST merge repository.go used to "+
 			"apply, a 0.1 suppressed score could never overwrite a higher stored score and the suppression was unreachable")

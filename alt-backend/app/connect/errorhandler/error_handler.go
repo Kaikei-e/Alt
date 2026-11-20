@@ -20,7 +20,9 @@ func HandleConnectError(ctx context.Context, logger *slog.Logger, err error, cod
 	// Convert to AppContextError for consistent handling
 	var enrichedErr *errors.AppContextError
 
-	if appContextErr, ok := err.(*errors.AppContextError); ok {
+	var appContextErr *errors.AppContextError
+	var appErr *errors.AppError
+	if stderrors.As(err, &appContextErr) {
 		enrichedErr = errors.EnrichWithContext(
 			appContextErr,
 			"connect",
@@ -28,7 +30,7 @@ func HandleConnectError(ctx context.Context, logger *slog.Logger, err error, cod
 			operation,
 			nil,
 		)
-	} else if appErr, ok := err.(*errors.AppError); ok {
+	} else if stderrors.As(err, &appErr) {
 		enrichedErr = errors.NewAppContextError(
 			string(appErr.Code),
 			appErr.Message,

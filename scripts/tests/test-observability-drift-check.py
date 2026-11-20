@@ -28,22 +28,28 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location(
     "drift_check", ROOT / "scripts" / "observability-drift-check.py"
 )
-assert spec is not None and spec.loader is not None, "drift check script not importable"
+assert spec is not None, "drift check script not importable"
+assert spec.loader is not None, "drift check script not importable"
 drift_check = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(drift_check)
 
-PASS = 0
-FAIL = 0
+
+class _Results:
+    def __init__(self) -> None:
+        self.passed = 0
+        self.failed = 0
 
 
-def check(name, condition):
-    global PASS, FAIL
+RESULTS = _Results()
+
+
+def check(name: str, condition: bool) -> None:
     if condition:
-        print(f"  PASS  {name}")
-        PASS += 1
+        sys.stdout.write(f"  PASS  {name}\n")
+        RESULTS.passed += 1
     else:
-        print(f"  FAIL  {name}")
-        FAIL += 1
+        sys.stdout.write(f"  FAIL  {name}\n")
+        RESULTS.failed += 1
 
 
 # Values produced by Alertmanager's own md5HashAsMetricValue: the first 6 bytes
@@ -54,7 +60,7 @@ SAMPLE_HASH = 63657913343414.0
 EMPTY_HASH = 617830161876.0
 
 
-def metrics(hash_value, reload_ok=1):
+def metrics(hash_value: float, reload_ok: int = 1) -> str:
     """A slice of Alertmanager's /metrics, in the order it publishes them."""
     return (
         "# HELP alertmanager_config_hash Hash of the currently loaded config.\n"
@@ -65,7 +71,7 @@ def metrics(hash_value, reload_ok=1):
     )
 
 
-print("[hash] reproduces Alertmanager's md5HashAsMetricValue")
+sys.stdout.write("[hash] reproduces Alertmanager's md5HashAsMetricValue\n")
 check(
     "hashes a sample config to the value Alertmanager publishes",
     drift_check.alertmanager_config_hash(SAMPLE) == SAMPLE_HASH,
@@ -79,8 +85,7 @@ check(
     drift_check.alertmanager_config_hash(SAMPLE + b" ") != SAMPLE_HASH,
 )
 
-print()
-print("[drift] the loaded config is compared by hash, not by text")
+sys.stdout.write("\n[drift] the loaded config is compared by hash, not by text\n")
 check(
     "no drift when the running config is this file",
     drift_check.check_alertmanager_config(SAMPLE, metrics(SAMPLE_HASH)) is None,
@@ -90,8 +95,7 @@ check(
     drift_check.check_alertmanager_config(SAMPLE, metrics(EMPTY_HASH)) is not None,
 )
 
-print()
-print("[regression] comments and expanded defaults are not drift")
+sys.stdout.write("\n[regression] comments and expanded defaults are not drift\n")
 # The exact shape that made the old check permanently red: the file on disk
 # opens with a comment block and omits the defaults, while what Alertmanager
 # reports back has neither property. Only the bytes it hashed are the same.
@@ -104,24 +108,20 @@ check(
     is None,
 )
 
-print()
-print("[drift] a failed reload is drift even when the file matches")
+sys.stdout.write("\n[drift] a failed reload is drift even when the file matches\n")
 # The file reached the container and Alertmanager rejected it. The bytes agree;
 # the process is still running the previous config. Reporting "in sync" here
 # would be the same lie in the opposite direction.
 check(
     "reports drift when the last reload failed",
-    drift_check.check_alertmanager_config(SAMPLE, metrics(SAMPLE_HASH, reload_ok=0))
-    is not None,
+    drift_check.check_alertmanager_config(SAMPLE, metrics(SAMPLE_HASH, reload_ok=0)) is not None,
 )
 
-print()
-print("[drift] an unreadable exposition is reported, not assumed healthy")
+sys.stdout.write("\n[drift] an unreadable exposition is reported, not assumed healthy\n")
 check(
     "reports when the hash metric is absent",
     drift_check.check_alertmanager_config(SAMPLE, "# no metrics here\n") is not None,
 )
 
-print()
-print(f"Total: PASS={PASS} FAIL={FAIL}")
-sys.exit(1 if FAIL else 0)
+sys.stdout.write(f"\nTotal: PASS={RESULTS.passed} FAIL={RESULTS.failed}\n")
+sys.exit(1 if RESULTS.failed else 0)

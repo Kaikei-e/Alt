@@ -3,7 +3,6 @@ package consumer
 import (
 	"context"
 	"encoding/json"
-	"io"
 	"log/slog"
 	"testing"
 	"time"
@@ -35,7 +34,7 @@ func (s *stubSummarizeService) SummarizeArticle(_ context.Context, articleID, ti
 }
 
 func TestPreProcessorEventHandler_OriginRouting(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 
 	t.Run("ArticleCreated enqueues with system origin", func(t *testing.T) {
 		svc := &stubSummarizeService{}
@@ -106,7 +105,7 @@ func TestPreProcessorEventHandler_OriginRouting(t *testing.T) {
 }
 
 func TestSummarizeServiceAdapter_OriginPassingAndValidation(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 
 	t.Run("passes explicit origin to CreateJob", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
@@ -146,7 +145,7 @@ func TestSummarizeServiceAdapter_OriginPassingAndValidation(t *testing.T) {
 func TestConsumer_SummarizeRequestedWithoutOriginLeavesMessageUnackedAndRoutesToDLQ(t *testing.T) {
 	mr := miniredis.RunT(t)
 	ctx := context.Background()
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 
 	svc := &stubSummarizeService{}
 	handler := NewPreProcessorEventHandler(svc, logger)

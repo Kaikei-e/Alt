@@ -81,12 +81,9 @@ type cmdFakeRunner struct {
 
 func newCmdFakeRunner(t *testing.T) *cmdFakeRunner {
 	t.Helper()
+	fixtureDir := filepath.Join("..", "internal", "mtlsedge", "testdata")
 	read := func(name string) []byte {
-		b, err := os.ReadFile(filepath.Join("..", "internal", "mtlsedge", "testdata", name))
-		if err != nil {
-			t.Fatalf("read fixture %s: %v", name, err)
-		}
-		return b
+		return readFileIn(t, fixtureDir, name)
 	}
 	return &cmdFakeRunner{
 		t:                    t,
@@ -217,11 +214,11 @@ func setupMTLSCommandProject(t *testing.T) (string, string, []byte, []byte, map[
 	if err := os.WriteFile(filepath.Join(root, ".env"), liveEnv, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, ".altctl.yaml"), []byte("defaults:\n  stacks: [core]\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, ".altctl.yaml"), []byte("defaults:\n  stacks: [core]\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	compDir := filepath.Join(root, "compose")
-	if err := os.MkdirAll(compDir, 0o755); err != nil {
+	if err := os.MkdirAll(compDir, 0o750); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Symlink("../.env", filepath.Join(compDir, ".env")); err != nil {
@@ -232,7 +229,7 @@ func setupMTLSCommandProject(t *testing.T) (string, string, []byte, []byte, map[
 		"ai.yaml":      []byte("services:\n  pre-processor:\n    image: repo/pre:${IMAGE_TAG:-main}\n    environment:\n      - MTLS_ENFORCE=${PRE_PROCESSOR_MTLS_ENFORCE:-true}\n  news-creator:\n    environment:\n      - MTLS_ALLOWED_PEERS=${NEWS_CREATOR_MTLS_ALLOWED_PEERS:-pre-processor}\n"),
 	}
 	for name, b := range composeFiles {
-		if err := os.WriteFile(filepath.Join(compDir, name), b, 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(compDir, name), b, 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -305,8 +302,8 @@ func TestMTLSCmd_ValidateAndObserveEndToEnd(t *testing.T) {
 			if err != nil || link != "../.env" {
 				t.Errorf("staged compose/.env link = %q, err = %v", link, err)
 			}
-			gotViaCompEnv, err := os.ReadFile(filepath.Join(workDir, "compose", ".env"))
-			if err != nil || !bytes.Equal(gotViaCompEnv, candBytes) || bytes.Equal(gotViaCompEnv, liveEnv) {
+			gotViaCompEnv := readFileIn(t, workDir, filepath.Join("compose", ".env"))
+			if !bytes.Equal(gotViaCompEnv, candBytes) || bytes.Equal(gotViaCompEnv, liveEnv) {
 				t.Fatalf("staged compose/.env did not resolve to candidate bytes")
 			}
 			for name, want := range composeFiles {
@@ -315,7 +312,7 @@ func TestMTLSCmd_ValidateAndObserveEndToEnd(t *testing.T) {
 				if err != nil || !fi.Mode().IsRegular() {
 					t.Errorf("staged compose/%s not regular file", name)
 				}
-				got, _ := os.ReadFile(p)
+				got := readFileIn(t, filepath.Join(workDir, "compose"), name)
 				if !bytes.Equal(got, want) {
 					t.Errorf("staged compose/%s bytes differ", name)
 				}
@@ -409,12 +406,12 @@ func TestMTLSCmd_ValidateAndObserveEndToEnd(t *testing.T) {
 		}
 		assertCmdOutputNoSecret(t, outBuf.String(), errBuf.String())
 
-		gotEnv, _ := os.ReadFile(filepath.Join(root, ".env"))
+		gotEnv := readFileIn(t, root, ".env")
 		if !bytes.Equal(gotEnv, liveEnv) {
 			t.Error("live .env modified")
 		}
 		for name, want := range composeFiles {
-			got, _ := os.ReadFile(filepath.Join(root, "compose", name))
+			got := readFileIn(t, filepath.Join(root, "compose"), name)
 			if !bytes.Equal(got, want) {
 				t.Errorf("live compose/%s modified", name)
 			}

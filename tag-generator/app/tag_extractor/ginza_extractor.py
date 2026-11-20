@@ -28,6 +28,8 @@ if TYPE_CHECKING:
 
 logger = structlog.get_logger(__name__)
 
+_MIN_COMPOUND_TOKEN_COUNT = 2
+
 
 @dataclass
 class GinzaConfig:
@@ -104,7 +106,7 @@ class GinzaExtractor:
             return False
 
         try:
-            import spacy
+            import spacy  # noqa: PLC0415 - optional ml-extended dependency loaded lazily
 
             logger.info("Loading GiNZA model", model_name=self.config.model_name)
             self._nlp = spacy.load(self.config.model_name)
@@ -114,7 +116,6 @@ class GinzaExtractor:
                 model_name=self.config.model_name,
                 pipeline=self._nlp.pipe_names,
             )
-            return True
         except ImportError as e:
             logger.warning(
                 "GiNZA/spaCy not available",
@@ -132,6 +133,8 @@ class GinzaExtractor:
             )
             self._available = False
             return False
+        else:
+            return True
 
     def is_available(self) -> bool:
         """Check if GiNZA is available and model can be loaded."""
@@ -157,9 +160,8 @@ class GinzaExtractor:
 
         # Check cache
         cache_key = str(hash(text))
-        if self.config.enable_cache:
-            if cache_key in self._cache:
-                return self._cache[cache_key]
+        if self.config.enable_cache and cache_key in self._cache:
+            return self._cache[cache_key]
 
         # Parse document
         if self._nlp is None or not callable(self._nlp):
@@ -363,12 +365,11 @@ class GinzaExtractor:
                 continue
 
             # Collect all children that are part of compound
-            compound_tokens = []
-            for child in token.subtree:
-                if child.pos_ in ("NOUN", "PROPN", "NUM") or child.dep_ == "compound":
-                    compound_tokens.append(child)
+            compound_tokens = [
+                child for child in token.subtree if child.pos_ in ("NOUN", "PROPN", "NUM") or child.dep_ == "compound"
+            ]
 
-            if len(compound_tokens) >= 2:
+            if len(compound_tokens) >= _MIN_COMPOUND_TOKEN_COUNT:
                 # Sort by position and join
                 compound_tokens.sort(key=lambda t: t.i)
                 compound = "".join(t.text for t in compound_tokens)

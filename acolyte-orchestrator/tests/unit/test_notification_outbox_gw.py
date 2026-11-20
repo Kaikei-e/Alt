@@ -19,6 +19,10 @@ from acolyte.domain.notification import MAX_ATTEMPTS
 from acolyte.gateway.postgres_notification_outbox_gw import PostgresNotificationOutboxGateway
 
 _USER = UUID("55555555-5555-5555-5555-555555555555")
+CLAIM_BATCH_LIMIT = 10
+INITIAL_BACKOFF_MAX_SECONDS = 10.0
+MAX_ERROR_MESSAGE_LEN = 1000
+SAMPLE_BACKLOG_AGE_SECONDS = 123.5
 
 
 class _FakeCursor:
@@ -91,7 +95,7 @@ async def test_claim_skips_locked_rows_and_leases_them() -> None:
     )
     conn = _FakeConnection([None, [row]])
 
-    claimed = await _gw(conn).claim_batch("acolyte-1", 10)
+    claimed = await _gw(conn).claim_batch("acolyte-1", CLAIM_BATCH_LIMIT)
 
     query, params = conn.executed[1]
     assert "FOR UPDATE SKIP LOCKED" in query
@@ -101,7 +105,7 @@ async def test_claim_skips_locked_rows_and_leases_them() -> None:
     assert "attempts = notification_outbox.attempts + 1" in query
     assert params is not None
     assert "acolyte-1" in params
-    assert 10 in params
+    assert CLAIM_BATCH_LIMIT in params
 
     assert len(claimed) == 1
     assert claimed[0].dedupe_key == "acolyte:abc"
@@ -164,7 +168,7 @@ async def test_a_retryable_failure_goes_back_to_pending_with_a_jittered_delay() 
     delay = params[0]
     assert isinstance(delay, float)
     # attempt 0 (first failure) → full jitter over [0, base=10s]
-    assert 0.0 <= delay <= 10.0
+    assert 0.0 <= delay <= INITIAL_BACKOFF_MAX_SECONDS
     assert params[1] == "connection refused"
     assert params[2] == notification_id
 
@@ -190,7 +194,7 @@ async def test_error_text_is_truncated_so_one_row_cannot_bloat_the_table() -> No
 
     _, params = conn.executed[0]
     assert params is not None
-    assert len(params[1]) <= 1000
+    assert len(params[1]) <= MAX_ERROR_MESSAGE_LEN
 
 
 @pytest.mark.asyncio
@@ -207,5 +211,5 @@ async def test_oldest_pending_age_measures_business_time_and_is_zero_when_idle()
 
 @pytest.mark.asyncio
 async def test_oldest_pending_age_returns_the_backlog_age() -> None:
-    conn = _FakeConnection([[(123.5,)]])
-    assert await _gw(conn).oldest_pending_age_seconds() == 123.5
+    conn = _FakeConnection([[(SAMPLE_BACKLOG_AGE_SECONDS,)]])
+    assert await _gw(conn).oldest_pending_age_seconds() == SAMPLE_BACKLOG_AGE_SECONDS

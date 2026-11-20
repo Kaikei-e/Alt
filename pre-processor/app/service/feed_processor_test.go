@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestFeedProcessorService_ProcessFeeds(t *testing.T) {
@@ -39,7 +40,7 @@ func TestFeedProcessorService_ResetPagination(t *testing.T) {
 		service := NewFeedProcessorService(nil, testLogger())
 
 		err := service.ResetPagination()
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		err = service.ResetPagination()
 		assert.NoError(t, err)

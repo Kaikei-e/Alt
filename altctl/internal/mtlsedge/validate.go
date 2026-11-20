@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -128,6 +129,7 @@ func prepareStagingDir(absRoot string, candidateEnvBytes []byte) (string, error)
 		return "", err
 	}
 
+	// #nosec G703 -- stageDir is from os.MkdirTemp and ".env" is a constant filename
 	if err := os.WriteFile(filepath.Join(stageDir, ".env"), candidateEnvBytes, 0o600); err != nil {
 		_ = os.RemoveAll(stageDir)
 		return "", fmt.Errorf("write staged .env: %w", err)
@@ -150,6 +152,9 @@ func copyComposeDirBytes(srcComposeDir, dstComposeDir string) error {
 		if err != nil {
 			return err
 		}
+		if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return fmt.Errorf("compose path %q escapes %s", rel, srcComposeDir)
+		}
 		if rel == ".env" {
 			return nil
 		}
@@ -157,6 +162,7 @@ func copyComposeDirBytes(srcComposeDir, dstComposeDir string) error {
 		if d.IsDir() {
 			return os.MkdirAll(dstPath, 0o750)
 		}
+		// #nosec G304 G122 -- path is a WalkDir entry under srcComposeDir
 		raw, err := os.ReadFile(path)
 		if err != nil {
 			return fmt.Errorf("read compose file %s: %w", rel, err)
@@ -165,6 +171,7 @@ func copyComposeDirBytes(srcComposeDir, dstComposeDir string) error {
 		if err != nil {
 			return fmt.Errorf("stat compose file %s: %w", rel, err)
 		}
+		// #nosec G703 -- dstPath joins temp stageDir with WalkDir-relative path verified under compose/
 		if err := os.WriteFile(dstPath, raw, info.Mode().Perm()); err != nil {
 			return fmt.Errorf("write staged compose file %s: %w", rel, err)
 		}

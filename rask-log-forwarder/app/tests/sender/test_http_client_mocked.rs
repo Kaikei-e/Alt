@@ -43,7 +43,7 @@ impl MockHttpClient {
         self
     }
 
-    pub async fn health_check(&self) -> Result<(), ClientError> {
+    pub fn health_check(&self) -> Result<(), ClientError> {
         if self.should_fail
             && let Some(ref error) = self.error_type
         {
@@ -86,7 +86,7 @@ async fn test_mock_http_client_successful_health_check() {
         .with_endpoint("http://mock-server:9600/v1/aggregate");
 
     // Test the mock
-    let result = mock_client.health_check().await;
+    let result = mock_client.health_check();
     assert!(result.is_ok());
 
     let stats = mock_client.connection_stats();
@@ -115,7 +115,7 @@ async fn test_mock_http_client_failed_health_check() {
         });
 
     // Test the mock
-    let result = mock_client.health_check().await;
+    let result = mock_client.health_check();
     assert!(result.is_err());
 
     match result.unwrap_err() {
@@ -137,7 +137,7 @@ async fn test_mock_http_client_timeout() {
     ));
 
     // Test the mock
-    let result = mock_client.health_check().await;
+    let result = mock_client.health_check();
     assert!(result.is_err());
 
     match result.unwrap_err() {
@@ -160,7 +160,7 @@ async fn test_mock_http_client_multiple_scenarios() {
         average_response_time: Duration::from_millis(75),
     });
 
-    let result = success_client.health_check().await;
+    let result = success_client.health_check();
     assert!(result.is_ok());
 
     let stats = success_client.connection_stats();
@@ -173,7 +173,7 @@ async fn test_mock_http_client_multiple_scenarios() {
         "Connection timeout".to_string(),
     ));
 
-    let timeout_result = timeout_client.health_check().await;
+    let timeout_result = timeout_client.health_check();
     assert!(timeout_result.is_err());
 
     let http_error_client = MockHttpClient::new().with_error(ClientError::HttpError {
@@ -181,6 +181,6 @@ async fn test_mock_http_client_multiple_scenarios() {
         message: "Internal Server Error".to_string(),
     });
 
-    let http_result = http_error_client.health_check().await;
+    let http_result = http_error_client.health_check();
     assert!(http_result.is_err());
 }

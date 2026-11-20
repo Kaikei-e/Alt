@@ -69,7 +69,7 @@ fn test_rescue_pass_integration() {
     let result = pipeline.classify(target_id, target_content, &[target_article]);
 
     // Cleanup
-    let _ = std::fs::remove_file(path);
+    std::fs::remove_file(&path).expect("failed to remove temporary golden dataset");
 
     // Assert
     // The classify method first tries Fast Pass (GenreClassifier).
@@ -170,7 +170,7 @@ fn test_rescue_pass_with_labeled_neighbor() {
     let result = pipeline.classify(target_id, target_content, &all_articles);
 
     // Cleanup
-    let _ = std::fs::remove_file(path);
+    std::fs::remove_file(&path).expect("failed to remove temporary golden dataset");
 
     // The result could be:
     // 1. "fruit" from Rescue Pass (label propagation from neighbor)
@@ -187,6 +187,10 @@ fn test_rescue_pass_with_labeled_neighbor() {
 
 #[test]
 fn test_predict_rescue_pass() {
+    #[expect(
+        clippy::let_underscore_must_use,
+        reason = "global tracing subscriber may already be initialized by another test"
+    )]
     let _ = tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .try_init();
@@ -227,7 +231,7 @@ fn test_predict_rescue_pass() {
     let result = pipeline.predict("target_1", target_content, ClassificationLanguage::English);
 
     // Cleanup
-    let _ = std::fs::remove_file(path);
+    std::fs::remove_file(&path).expect("failed to remove temporary golden dataset");
 
     // Check result
     // The predict method uses GenreClassifier (Fast Pass) first.

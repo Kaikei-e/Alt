@@ -60,7 +60,13 @@ const feedLinksForExportByUserQuery = `
 // empty here: substituting the hostname is what the OPML renderer wants, and a
 // different caller might want something else.
 func (r *FeedRepository) FetchFeedLinksForExport(ctx context.Context) ([]*domain.FeedLinkForExport, error) {
-	rows, err := r.queryFeedLinksForExport(ctx)
+	query := feedLinksForExportQuery
+	var args []any
+	if user, userErr := domain.GetUserFromContext(ctx); userErr == nil && user != nil {
+		query = feedLinksForExportByUserQuery
+		args = []any{user.UserID}
+	}
+	rows, err := r.pool.Query(ctx, query, args...)
 	if err != nil {
 		logger.SafeErrorContext(ctx, "Error fetching feed links for export", "error", err)
 		return nil, errors.New("error fetching feed links for export")
@@ -83,16 +89,4 @@ func (r *FeedRepository) FetchFeedLinksForExport(ctx context.Context) ([]*domain
 	}
 
 	return links, nil
-}
-
-func (r *FeedRepository) queryFeedLinksForExport(ctx context.Context) (interface {
-	Close()
-	Err() error
-	Next() bool
-	Scan(dest ...any) error
-}, error) {
-	if user, err := domain.GetUserFromContext(ctx); err == nil && user != nil {
-		return r.pool.Query(ctx, feedLinksForExportByUserQuery, user.UserID)
-	}
-	return r.pool.Query(ctx, feedLinksForExportQuery)
 }

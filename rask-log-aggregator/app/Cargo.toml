@@ -67,7 +67,21 @@ codegen-units = 1
 opt-level = 3
 overflow-checks = true
 
+[lints.rust]
+rust_2018_idioms = { level = "deny", priority = -1 }
+rust_2024_compatibility = { level = "deny", priority = -1 }
+unsafe_code = "deny"
+
 [lints.clippy]
-# Mirror forwarder: warn on the clippy `all` group. Pedantic stays at the
-# crate-level `#![warn(clippy::pedantic)]` in lib.rs with targeted allows.
-all = "warn"
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+dbg_macro = "warn"
+todo = "warn"
+large_futures = "warn"
+unwrap_used = "warn"
+expect_used = "warn"
+string_slice = "warn"
+let_underscore_must_use = "warn"
+exit = "warn"
+explicit_iter_loop = "warn"
+semicolon_if_nothing_returned = "warn"

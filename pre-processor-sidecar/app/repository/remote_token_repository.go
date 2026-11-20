@@ -56,7 +56,11 @@ func (r *RemoteTokenRepository) GetCurrentToken(ctx context.Context) (*models.OA
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch token from auth-token-manager: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil && r.logger != nil {
+			r.logger.Warn("Failed to close response body", "error", closeErr)
+		}
+	}()
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, ErrTokenNotFound

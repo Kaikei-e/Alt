@@ -71,6 +71,12 @@ fn log_permanent_chunk_failure(job_id: Uuid, task: &DeferredChunk, reason: &str)
     );
 }
 
+#[derive(Default)]
+struct BatchChunkOutcome {
+    responses: Vec<SummaryResponse>,
+    errors: Vec<BatchSummaryError>,
+}
+
 /// Runs every batch-summary chunk through a first pass (one attempt each,
 /// draining the easy wins), then retries first-pass failures in deferred
 /// rounds with full-jitter backoff between rounds. Draining successes
@@ -91,10 +97,55 @@ async fn run_batch_summary_chunks(
     job_id: Uuid,
     chunks: Vec<Vec<SummaryRequest>>,
 ) -> (Vec<SummaryResponse>, Vec<BatchSummaryError>) {
-    let mut all_responses: Vec<SummaryResponse> = Vec::new();
-    let mut all_errors: Vec<BatchSummaryError> = Vec::new();
-    let mut deferred: Vec<DeferredChunk> = Vec::new();
+    let mut outcome = BatchChunkOutcome::default();
+    let mut deferred =
+        run_first_pass_chunks(news_creator_client, job_id, chunks, &mut outcome).await;
 
+    let mut round = 1usize;
+    while !deferred.is_empty() {
+        let retry_after_wait = deferred.iter().filter_map(|c| c.retry_after).max();
+        let wait = deferred_round_wait(round, retry_after_wait);
+        info!(
+            job_id = %job_id,
+            round,
+            deferred_count = deferred.len(),
+            wait_ms = wait.as_millis(),
+            "waiting before deferred batch summary retry round"
+        );
+        tokio::time::sleep(wait).await;
+
+        let round_size = deferred.len();
+        let (still_pending, failures_this_round) =
+            run_deferred_retry_round(news_creator_client, job_id, deferred, &mut outcome).await;
+
+        // Overload circuit (Google SRE: widespread failure -> stop
+        // retrying, don't hammer). Only meaningful with more than one
+        // chunk in flight this round.
+        if round_size > 1 && failures_this_round * 2 > round_size {
+            trip_overload_circuit(
+                job_id,
+                round,
+                failures_this_round,
+                round_size,
+                &still_pending,
+            );
+            return (outcome.responses, outcome.errors);
+        }
+
+        deferred = still_pending;
+        round += 1;
+    }
+
+    (outcome.responses, outcome.errors)
+}
+
+async fn run_first_pass_chunks(
+    news_creator_client: &NewsCreatorClient,
+    job_id: Uuid,
+    chunks: Vec<Vec<SummaryRequest>>,
+    outcome: &mut BatchChunkOutcome,
+) -> Vec<DeferredChunk> {
+    let mut deferred: Vec<DeferredChunk> = Vec::new();
     for (chunk_idx, chunk) in chunks.into_iter().enumerate() {
         info!(
             job_id = %job_id,
@@ -107,8 +158,8 @@ async fn run_batch_summary_chunks(
             .await
         {
             Ok(response) => {
-                all_responses.extend(response.responses);
-                all_errors.extend(response.errors);
+                outcome.responses.extend(response.responses);
+                outcome.errors.extend(response.errors);
             }
             Err(e) => {
                 warn!(
@@ -126,77 +177,65 @@ async fn run_batch_summary_chunks(
             }
         }
     }
+    deferred
+}
 
-    let mut round = 1usize;
-    while !deferred.is_empty() {
-        let retry_after_wait = deferred.iter().filter_map(|c| c.retry_after).max();
-        let wait = deferred_round_wait(round, retry_after_wait);
-        info!(
-            job_id = %job_id,
-            round,
-            deferred_count = deferred.len(),
-            wait_ms = wait.as_millis(),
-            "waiting before deferred batch summary retry round"
-        );
-        tokio::time::sleep(wait).await;
+async fn run_deferred_retry_round(
+    news_creator_client: &NewsCreatorClient,
+    job_id: Uuid,
+    deferred: Vec<DeferredChunk>,
+    outcome: &mut BatchChunkOutcome,
+) -> (Vec<DeferredChunk>, usize) {
+    let mut still_pending: Vec<DeferredChunk> = Vec::new();
+    let mut failures_this_round = 0usize;
 
-        let round_size = deferred.len();
-        let mut still_pending: Vec<DeferredChunk> = Vec::new();
-        let mut failures_this_round = 0usize;
-
-        for mut task in deferred.drain(..) {
-            match news_creator_client
-                .generate_batch_summary(task.chunk.clone())
-                .await
-            {
-                Ok(response) => {
-                    all_responses.extend(response.responses);
-                    all_errors.extend(response.errors);
-                }
-                Err(e) => {
-                    failures_this_round += 1;
-                    task.attempts += 1;
-                    task.retry_after = e.retry_after();
-                    if BATCH_SUMMARY_CHUNK_RETRY.can_retry(task.attempts) {
-                        still_pending.push(task);
-                    } else {
-                        log_permanent_chunk_failure(job_id, &task, "exhausted all attempts");
-                    }
+    for mut task in deferred {
+        match news_creator_client
+            .generate_batch_summary(task.chunk.clone())
+            .await
+        {
+            Ok(response) => {
+                outcome.responses.extend(response.responses);
+                outcome.errors.extend(response.errors);
+            }
+            Err(e) => {
+                failures_this_round += 1;
+                task.attempts += 1;
+                task.retry_after = e.retry_after();
+                if BATCH_SUMMARY_CHUNK_RETRY.can_retry(task.attempts) {
+                    still_pending.push(task);
+                } else {
+                    log_permanent_chunk_failure(job_id, &task, "exhausted all attempts");
                 }
             }
         }
-
-        // Overload circuit (Google SRE: widespread failure -> stop
-        // retrying, don't hammer). Only meaningful with more than one
-        // chunk in flight this round.
-        if round_size > 1 && failures_this_round * 2 > round_size {
-            let genres: Vec<&str> = still_pending
-                .iter()
-                .flat_map(|t| t.chunk.iter().map(|r| r.genre.as_str()))
-                .collect();
-            error!(
-                job_id = %job_id,
-                round,
-                failures_this_round,
-                round_size,
-                ?genres,
-                "batch summary overload detected: more than half of this deferred round failed again; stopping retries and degrading remaining genres immediately"
-            );
-            for task in &still_pending {
-                log_permanent_chunk_failure(
-                    job_id,
-                    task,
-                    "overload circuit: retries stopped early",
-                );
-            }
-            return (all_responses, all_errors);
-        }
-
-        deferred = still_pending;
-        round += 1;
     }
 
-    (all_responses, all_errors)
+    (still_pending, failures_this_round)
+}
+
+fn trip_overload_circuit(
+    job_id: Uuid,
+    round: usize,
+    failures_this_round: usize,
+    round_size: usize,
+    still_pending: &[DeferredChunk],
+) {
+    let genres: Vec<&str> = still_pending
+        .iter()
+        .flat_map(|t| t.chunk.iter().map(|r| r.genre.as_str()))
+        .collect();
+    error!(
+        job_id = %job_id,
+        round,
+        failures_this_round,
+        round_size,
+        ?genres,
+        "batch summary overload detected: more than half of this deferred round failed again; stopping retries and degrading remaining genres immediately"
+    );
+    for task in still_pending {
+        log_permanent_chunk_failure(job_id, task, "overload circuit: retries stopped early");
+    }
 }
 
 fn apply_recap_request_defaults(
@@ -448,23 +487,84 @@ impl SummarizationOps<'_> {
     }
 
     /// Phase 2: サマリー生成をバッチ API で実行（1回の HTTP 呼び出しで全ジャンル処理）
-    #[allow(clippy::too_many_lines)]
     pub(crate) async fn generate_summaries_with_batch(
         &self,
         job: &JobContext,
         clustering_results: HashMap<String, Result<ClusteringResponse>>,
     ) -> HashMap<String, GenreResult> {
         let total_genres = clustering_results.len();
+        Self::log_batch_summary_start(job.job_id, total_genres);
+
+        // 1. クラスタリング成功/失敗を分離
+        let (successful, mut genre_results) =
+            Self::partition_clustering_results(job.job_id, clustering_results);
+
+        if successful.is_empty() {
+            info!(
+                job_id = %job.job_id,
+                "no successful clustering results, skipping batch summary generation"
+            );
+            return genre_results;
+        }
+
+        // 2-3. 全リクエストを並列構築し、有効なリクエストを収集
+        let prepared = self
+            .build_valid_batch_requests(job, successful, &mut genre_results)
+            .await;
+
+        if prepared.valid_requests.is_empty() {
+            info!(
+                job_id = %job.job_id,
+                "no valid summary requests, skipping batch API call"
+            );
+            return genre_results;
+        }
+
+        // 4-5. バッチ API 呼び出しとレスポンスマッピング
+        self.execute_batch_summary_chunks(
+            job,
+            prepared.valid_requests,
+            prepared.genre_clustering_map,
+            &mut genre_results,
+        )
+        .await;
+
+        Self::log_batch_summary_completed(job.job_id, genre_results.len(), total_genres);
+
+        genre_results
+    }
+
+    fn log_batch_summary_start(job_id: Uuid, total_genres: usize) {
         info!(
-            job_id = %job.job_id,
+            job_id = %job_id,
             genre_count = total_genres,
             alt.processing.stage = "dispatch",
             alt.processing.phase = "summarization",
             alt.processing.progress.total = total_genres,
             "starting batch summary generation"
         );
+    }
 
-        // 1. クラスタリング成功/失敗を分離
+    fn log_batch_summary_completed(job_id: Uuid, completed_count: usize, total_genres: usize) {
+        info!(
+            job_id = %job_id,
+            completed_count,
+            alt.processing.stage = "dispatch",
+            alt.processing.phase = "summarization",
+            alt.processing.progress.current = completed_count,
+            alt.processing.progress.total = total_genres,
+            alt.processing.status = "completed",
+            "completed batch summary generation phase"
+        );
+    }
+
+    fn partition_clustering_results(
+        job_id: Uuid,
+        clustering_results: HashMap<String, Result<ClusteringResponse>>,
+    ) -> (
+        Vec<(String, ClusteringResponse)>,
+        HashMap<String, GenreResult>,
+    ) {
         let mut successful: Vec<(String, ClusteringResponse)> = Vec::new();
         let mut genre_results: HashMap<String, GenreResult> = HashMap::new();
 
@@ -475,7 +575,7 @@ impl SummarizationOps<'_> {
                 }
                 Err(e) => {
                     warn!(
-                        job_id = %job.job_id,
+                        job_id = %job_id,
                         genre = %genre,
                         error = ?e,
                         "skipping summary generation due to clustering failure"
@@ -485,15 +585,15 @@ impl SummarizationOps<'_> {
             }
         }
 
-        if successful.is_empty() {
-            info!(
-                job_id = %job.job_id,
-                "no successful clustering results, skipping batch summary generation"
-            );
-            return genre_results;
-        }
+        (successful, genre_results)
+    }
 
-        // 2. 全リクエストを並列構築
+    async fn build_valid_batch_requests(
+        &self,
+        job: &JobContext,
+        successful: Vec<(String, ClusteringResponse)>,
+        genre_results: &mut HashMap<String, GenreResult>,
+    ) -> PreparedBatchRequests {
         info!(
             job_id = %job.job_id,
             genre_count = successful.len(),
@@ -514,91 +614,101 @@ impl SummarizationOps<'_> {
 
         let request_results = futures::future::join_all(request_futures).await;
 
-        // 3. 有効なリクエストを収集し、失敗したものはエラーとして記録
-        let mut valid_requests: Vec<SummaryRequest> = Vec::new();
-        let mut genre_clustering_map: HashMap<String, ClusteringResponse> = HashMap::new();
-
+        let mut prepared = PreparedBatchRequests::default();
         for ((genre, clustering_response), req_result) in
             successful.into_iter().zip(request_results)
         {
-            match req_result {
-                Ok(mut request) => {
-                    // Filter out clusters with empty representative_sentences
-                    // This prevents 422 errors from the batch summary API
-                    let original_cluster_count = request.clusters.len();
-                    request
-                        .clusters
-                        .retain(|cluster| !cluster.representative_sentences.is_empty());
+            Self::classify_built_request(
+                job.job_id,
+                genre,
+                clustering_response,
+                req_result,
+                &mut prepared,
+                genre_results,
+            );
+        }
 
-                    let filtered_count = original_cluster_count - request.clusters.len();
-                    if filtered_count > 0 {
-                        debug!(
-                            job_id = %job.job_id,
-                            genre = %genre,
-                            filtered_count = filtered_count,
-                            remaining_count = request.clusters.len(),
-                            "filtered out clusters with empty representative_sentences"
-                        );
-                    }
+        prepared
+    }
 
-                    // If all clusters were filtered out, treat as error
-                    if request.clusters.is_empty() {
-                        warn!(
-                            job_id = %job.job_id,
-                            genre = %genre,
-                            original_cluster_count = original_cluster_count,
-                            "all clusters had empty representative_sentences"
-                        );
-                        genre_results.insert(
-                            genre.clone(),
-                            GenreResult {
-                                genre,
-                                clustering_response: Some(clustering_response),
-                                summary_response_id: None,
-                                summary_response: None,
-                                error: Some(
-                                    "All clusters had empty representative_sentences".to_string(),
-                                ),
-                                error_kind: None,
-                            },
-                        );
-                        continue;
-                    }
+    fn classify_built_request(
+        job_id: Uuid,
+        genre: String,
+        clustering_response: ClusteringResponse,
+        req_result: Result<SummaryRequest>,
+        prepared: &mut PreparedBatchRequests,
+        genre_results: &mut HashMap<String, GenreResult>,
+    ) {
+        match req_result {
+            Ok(mut request) => {
+                // Filter out clusters with empty representative_sentences
+                // This prevents 422 errors from the batch summary API
+                let original_cluster_count = request.clusters.len();
+                request
+                    .clusters
+                    .retain(|cluster| !cluster.representative_sentences.is_empty());
 
-                    genre_clustering_map.insert(genre, clustering_response);
-                    valid_requests.push(request);
-                }
-                Err(e) => {
-                    warn!(
-                        job_id = %job.job_id,
+                let filtered_count = original_cluster_count - request.clusters.len();
+                if filtered_count > 0 {
+                    debug!(
+                        job_id = %job_id,
                         genre = %genre,
-                        error = ?e,
-                        "failed to build summary request"
+                        filtered_count = filtered_count,
+                        remaining_count = request.clusters.len(),
+                        "filtered out clusters with empty representative_sentences"
+                    );
+                }
+
+                // If all clusters were filtered out, treat as error
+                if request.clusters.is_empty() {
+                    warn!(
+                        job_id = %job_id,
+                        genre = %genre,
+                        original_cluster_count = original_cluster_count,
+                        "all clusters had empty representative_sentences"
                     );
                     genre_results.insert(
                         genre.clone(),
-                        GenreResult {
+                        Self::failed_genre_result(
                             genre,
-                            clustering_response: Some(clustering_response),
-                            summary_response_id: None,
-                            summary_response: None,
-                            error: Some(format!("Failed to build request: {}", e)),
-                            error_kind: None,
-                        },
+                            clustering_response,
+                            "All clusters had empty representative_sentences".to_string(),
+                        ),
                     );
+                    return;
                 }
+
+                prepared
+                    .genre_clustering_map
+                    .insert(genre, clustering_response);
+                prepared.valid_requests.push(request);
+            }
+            Err(e) => {
+                warn!(
+                    job_id = %job_id,
+                    genre = %genre,
+                    error = ?e,
+                    "failed to build summary request"
+                );
+                genre_results.insert(
+                    genre.clone(),
+                    Self::failed_genre_result(
+                        genre,
+                        clustering_response,
+                        format!("Failed to build request: {}", e),
+                    ),
+                );
             }
         }
+    }
 
-        if valid_requests.is_empty() {
-            info!(
-                job_id = %job.job_id,
-                "no valid summary requests, skipping batch API call"
-            );
-            return genre_results;
-        }
-
-        // 4. バッチ API 呼び出し（設定可能なチャンクサイズで分割）
+    async fn execute_batch_summary_chunks(
+        &self,
+        job: &JobContext,
+        valid_requests: Vec<SummaryRequest>,
+        genre_clustering_map: HashMap<String, ClusteringResponse>,
+        genre_results: &mut HashMap<String, GenreResult>,
+    ) {
         let batch_summary_chunk_size = self.config.batch_summary_chunk_size();
         let request_count = valid_requests.len();
         let chunks: Vec<Vec<SummaryRequest>> = valid_requests
@@ -621,27 +731,8 @@ impl SummarizationOps<'_> {
             errors: all_errors,
         };
 
-        // 5. レスポンスをマッピング
-        self.process_batch_response(
-            job,
-            Ok(batch_response),
-            genre_clustering_map,
-            &mut genre_results,
-        )
-        .await;
-
-        info!(
-            job_id = %job.job_id,
-            completed_count = genre_results.len(),
-            alt.processing.stage = "dispatch",
-            alt.processing.phase = "summarization",
-            alt.processing.progress.current = genre_results.len(),
-            alt.processing.progress.total = total_genres,
-            alt.processing.status = "completed",
-            "completed batch summary generation phase"
-        );
-
-        genre_results
+        self.process_batch_response(job, Ok(batch_response), genre_clustering_map, genre_results)
+            .await;
     }
 
     /// バッチサマリーレスポンスを処理し、ジャンル結果を更新する。
@@ -661,96 +752,144 @@ impl SummarizationOps<'_> {
                     "batch summary API completed"
                 );
 
-                // 成功したレスポンスを処理
-                for summary_response in response.responses {
-                    let genre = summary_response.genre.clone();
-                    if let Some(clustering_response) = genre_clustering_map.remove(&genre) {
-                        self.save_summary_metrics(job.job_id, &genre, &summary_response)
-                            .await;
-
-                        let summary_id =
-                            format!("{}-{}", summary_response.job_id, summary_response.genre);
-                        genre_results.insert(
-                            genre.clone(),
-                            GenreResult {
-                                genre,
-                                clustering_response: Some(clustering_response),
-                                summary_response_id: Some(summary_id),
-                                summary_response: Some(summary_response),
-                                error: None,
-                                error_kind: None,
-                            },
-                        );
-                    }
-                }
-
-                // エラーを処理
-                for error in response.errors {
-                    let genre = error.genre.clone();
-                    if let Some(clustering_response) = genre_clustering_map.remove(&genre) {
-                        warn!(
-                            job_id = %job.job_id,
-                            genre = %genre,
-                            error = %error.error,
-                            "batch summary failed for genre"
-                        );
-                        genre_results.insert(
-                            genre.clone(),
-                            GenreResult {
-                                genre,
-                                clustering_response: Some(clustering_response),
-                                summary_response_id: None,
-                                summary_response: None,
-                                error: Some(error.error),
-                                error_kind: None,
-                            },
-                        );
-                    }
-                }
-
-                // 残ったジャンル（レスポンスもエラーもない）を処理
-                for (genre, clustering_response) in genre_clustering_map {
-                    warn!(
-                        job_id = %job.job_id,
-                        genre = %genre,
-                        "genre missing from batch response"
-                    );
-                    genre_results.insert(
-                        genre.clone(),
-                        GenreResult {
-                            genre,
-                            clustering_response: Some(clustering_response),
-                            summary_response_id: None,
-                            summary_response: None,
-                            error: Some("Missing from batch response".to_string()),
-                            error_kind: None,
-                        },
-                    );
-                }
+                self.record_batch_successes(
+                    job.job_id,
+                    response.responses,
+                    &mut genre_clustering_map,
+                    genre_results,
+                )
+                .await;
+                Self::record_batch_errors(
+                    job.job_id,
+                    response.errors,
+                    &mut genre_clustering_map,
+                    genre_results,
+                );
+                Self::record_missing_batch_genres(job.job_id, genre_clustering_map, genre_results);
             }
             Err(e) => {
-                // バッチ全体が失敗した場合
-                error!(
-                    job_id = %job.job_id,
-                    error = ?e,
-                    "batch summary API failed completely"
-                );
-                for (genre, clustering_response) in genre_clustering_map {
-                    genre_results.insert(
-                        genre.clone(),
-                        GenreResult {
-                            genre,
-                            clustering_response: Some(clustering_response),
-                            summary_response_id: None,
-                            summary_response: None,
-                            error: Some(format!("Batch API failed: {}", e)),
-                            error_kind: None,
-                        },
-                    );
-                }
+                Self::record_batch_api_failure(job.job_id, &e, genre_clustering_map, genre_results);
             }
         }
     }
+
+    async fn record_batch_successes(
+        &self,
+        job_id: Uuid,
+        responses: Vec<SummaryResponse>,
+        genre_clustering_map: &mut HashMap<String, ClusteringResponse>,
+        genre_results: &mut HashMap<String, GenreResult>,
+    ) {
+        for summary_response in responses {
+            let genre = summary_response.genre.clone();
+            if let Some(clustering_response) = genre_clustering_map.remove(&genre) {
+                self.save_summary_metrics(job_id, &genre, &summary_response)
+                    .await;
+
+                let summary_id = format!("{}-{}", summary_response.job_id, summary_response.genre);
+                genre_results.insert(
+                    genre.clone(),
+                    GenreResult {
+                        genre,
+                        clustering_response: Some(clustering_response),
+                        summary_response_id: Some(summary_id),
+                        summary_response: Some(summary_response),
+                        error: None,
+                        error_kind: None,
+                    },
+                );
+            }
+        }
+    }
+
+    fn record_batch_errors(
+        job_id: Uuid,
+        errors: Vec<BatchSummaryError>,
+        genre_clustering_map: &mut HashMap<String, ClusteringResponse>,
+        genre_results: &mut HashMap<String, GenreResult>,
+    ) {
+        for error in errors {
+            let genre = error.genre.clone();
+            if let Some(clustering_response) = genre_clustering_map.remove(&genre) {
+                warn!(
+                    job_id = %job_id,
+                    genre = %genre,
+                    error = %error.error,
+                    "batch summary failed for genre"
+                );
+                genre_results.insert(
+                    genre.clone(),
+                    Self::failed_genre_result(genre, clustering_response, error.error),
+                );
+            }
+        }
+    }
+
+    fn record_missing_batch_genres(
+        job_id: Uuid,
+        genre_clustering_map: HashMap<String, ClusteringResponse>,
+        genre_results: &mut HashMap<String, GenreResult>,
+    ) {
+        for (genre, clustering_response) in genre_clustering_map {
+            warn!(
+                job_id = %job_id,
+                genre = %genre,
+                "genre missing from batch response"
+            );
+            genre_results.insert(
+                genre.clone(),
+                Self::failed_genre_result(
+                    genre,
+                    clustering_response,
+                    "Missing from batch response".to_string(),
+                ),
+            );
+        }
+    }
+
+    fn record_batch_api_failure(
+        job_id: Uuid,
+        err: &RecapError,
+        genre_clustering_map: HashMap<String, ClusteringResponse>,
+        genre_results: &mut HashMap<String, GenreResult>,
+    ) {
+        error!(
+            job_id = %job_id,
+            error = ?err,
+            "batch summary API failed completely"
+        );
+        for (genre, clustering_response) in genre_clustering_map {
+            genre_results.insert(
+                genre.clone(),
+                Self::failed_genre_result(
+                    genre,
+                    clustering_response,
+                    format!("Batch API failed: {}", err),
+                ),
+            );
+        }
+    }
+
+    fn failed_genre_result(
+        genre: String,
+        clustering_response: ClusteringResponse,
+        error: String,
+    ) -> GenreResult {
+        GenreResult {
+            genre,
+            clustering_response: Some(clustering_response),
+            summary_response_id: None,
+            summary_response: None,
+            error: Some(error),
+            error_kind: None,
+        }
+    }
+}
+
+#[derive(Default)]
+struct PreparedBatchRequests {
+    valid_requests: Vec<SummaryRequest>,
+    genre_clustering_map: HashMap<String, ClusteringResponse>,
 }
 
 #[cfg(test)]
@@ -1056,5 +1195,509 @@ mod tests {
         let result = SummarizationOps::clustering_error_result("gaming", err.clone());
 
         assert_eq!(result.error_kind, Some(err));
+    }
+
+    fn test_config(news_creator_url: &str, chunk_size: &str) -> Arc<Config> {
+        let _lock = crate::config::ENV_MUTEX.lock().expect("env mutex");
+        temp_env::with_vars(
+            [
+                (
+                    "RECAP_DB_DSN",
+                    Some("postgres://recap:recap@localhost:5555/recap_db"),
+                ),
+                ("NEWS_CREATOR_BASE_URL", Some(news_creator_url)),
+                ("SUBWORKER_BASE_URL", Some("http://localhost:8002/")),
+                ("ALT_BACKEND_BASE_URL", Some("http://localhost:9000/")),
+                ("RECAP_KNOWLEDGE_EMIT", Some("false")),
+                ("RECAP_ADMIN_AUTH", Some("disabled")),
+                ("MTLS_ALLOWED_PEERS", Some("disabled")),
+                ("RECAP_EVAL_LISTENER", Some("disabled")),
+                ("RECAP_CARDS_JOB", Some("disabled")),
+                ("RECAP_THEMES_ENABLED", Some("false")),
+                ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
+                ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
+                ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
+                ("RECAP_BATCH_SUMMARY_CHUNK_SIZE", Some(chunk_size)),
+                ("RECAP_SUMMARY_TEMPERATURE", Some("0.2")),
+                ("MTLS_ENFORCE", None),
+            ],
+            || Arc::new(Config::from_env().expect("config should load")),
+        )
+    }
+
+    fn sample_clustering_response(
+        job_id: Uuid,
+        genre: &str,
+        clusters: Vec<crate::clients::subworker::ClusterInfo>,
+    ) -> ClusteringResponse {
+        ClusteringResponse {
+            run_id: 1,
+            job_id,
+            genre: genre.to_string(),
+            status: crate::clients::subworker::ClusterJobStatus::Succeeded,
+            cluster_count: clusters.len(),
+            clusters,
+            genre_highlights: None,
+            diagnostics: serde_json::json!({}),
+        }
+    }
+
+    fn valid_cluster(
+        cluster_id: i32,
+        article_id: &str,
+        text: &str,
+    ) -> crate::clients::subworker::ClusterInfo {
+        crate::clients::subworker::ClusterInfo {
+            cluster_id,
+            size: 1,
+            label: None,
+            top_terms: vec!["term".to_string()],
+            stats: serde_json::json!({}),
+            representatives: vec![crate::clients::subworker::ClusterRepresentative {
+                article_id: article_id.to_string(),
+                paragraph_idx: Some(0),
+                text: text.to_string(),
+                lang: Some("en".to_string()),
+                score: Some(0.9),
+                reasons: vec!["centrality".to_string()],
+            }],
+        }
+    }
+
+    fn empty_cluster(cluster_id: i32) -> crate::clients::subworker::ClusterInfo {
+        crate::clients::subworker::ClusterInfo {
+            cluster_id,
+            size: 1,
+            label: None,
+            top_terms: vec![],
+            stats: serde_json::json!({}),
+            representatives: vec![],
+        }
+    }
+
+    fn sample_summary_response(job_id: Uuid, genre: &str) -> SummaryResponse {
+        serde_json::from_value(serde_json::json!({
+            "job_id": job_id,
+            "genre": genre,
+            "summary": { "title": "t", "bullets": ["b"], "language": "ja" },
+            "metadata": { "model": "gemma4-e4b-q4km" }
+        }))
+        .expect("summary response json deserializes")
+    }
+
+    #[tokio::test]
+    async fn process_batch_response_handles_ok_matched_unmatched_errors_and_missing() {
+        let job_id = Uuid::new_v4();
+        let job = JobContext::new(job_id, vec![]);
+        let news_creator_client =
+            Arc::new(NewsCreatorClient::new_for_test("http://localhost:8001"));
+        let dao: Arc<dyn RecapDao> = Arc::new(crate::store::dao::mock::MockRecapDao::new());
+        let config = test_config("http://localhost:8001/", "3");
+        let ops = SummarizationOps {
+            news_creator_client: &news_creator_client,
+            dao: &dao,
+            config: &config,
+        };
+
+        let ai_clustering = sample_clustering_response(job_id, "ai", vec![]);
+        let tech_clustering = sample_clustering_response(job_id, "tech", vec![]);
+        let science_clustering = sample_clustering_response(job_id, "science", vec![]);
+        let genre_clustering_map = HashMap::from([
+            ("ai".to_string(), ai_clustering),
+            ("tech".to_string(), tech_clustering),
+            ("science".to_string(), science_clustering),
+        ]);
+
+        let ai_resp = sample_summary_response(job_id, "ai");
+        let extra_resp = sample_summary_response(job_id, "unknown_resp");
+        let batch_response = BatchSummaryResponse {
+            responses: vec![ai_resp.clone(), extra_resp],
+            errors: vec![
+                BatchSummaryError {
+                    job_id,
+                    genre: "tech".to_string(),
+                    error: "llm error".to_string(),
+                },
+                BatchSummaryError {
+                    job_id,
+                    genre: "unknown_err".to_string(),
+                    error: "ignored".to_string(),
+                },
+            ],
+        };
+
+        let mut genre_results = HashMap::new();
+        ops.process_batch_response(
+            &job,
+            Ok(batch_response),
+            genre_clustering_map,
+            &mut genre_results,
+        )
+        .await;
+
+        assert_eq!(genre_results.len(), 3);
+        let ai_res = genre_results.get("ai").expect("ai result present");
+        assert!(ai_res.clustering_response.is_some());
+        assert_eq!(
+            ai_res.summary_response_id.as_deref(),
+            Some(format!("{}-ai", ai_resp.job_id).as_str())
+        );
+        assert!(ai_res.summary_response.is_some());
+        assert_eq!(ai_res.error, None);
+        assert_eq!(ai_res.error_kind, None);
+
+        let tech_res = genre_results.get("tech").expect("tech result present");
+        assert!(tech_res.clustering_response.is_some());
+        assert_eq!(tech_res.summary_response_id, None);
+        assert!(tech_res.summary_response.is_none());
+        assert_eq!(tech_res.error.as_deref(), Some("llm error"));
+        assert_eq!(tech_res.error_kind, None);
+
+        let science_res = genre_results
+            .get("science")
+            .expect("science result present");
+        assert!(science_res.clustering_response.is_some());
+        assert_eq!(science_res.summary_response_id, None);
+        assert!(science_res.summary_response.is_none());
+        assert_eq!(
+            science_res.error.as_deref(),
+            Some("Missing from batch response")
+        );
+        assert_eq!(science_res.error_kind, None);
+    }
+
+    #[tokio::test]
+    async fn process_batch_response_marks_all_genres_failed_on_batch_err() {
+        let job_id = Uuid::new_v4();
+        let job = JobContext::new(job_id, vec![]);
+        let news_creator_client =
+            Arc::new(NewsCreatorClient::new_for_test("http://localhost:8001"));
+        let dao: Arc<dyn RecapDao> = Arc::new(crate::store::dao::mock::MockRecapDao::new());
+        let config = test_config("http://localhost:8001/", "3");
+        let ops = SummarizationOps {
+            news_creator_client: &news_creator_client,
+            dao: &dao,
+            config: &config,
+        };
+
+        let genre_clustering_map = HashMap::from([
+            (
+                "ai".to_string(),
+                sample_clustering_response(job_id, "ai", vec![]),
+            ),
+            (
+                "tech".to_string(),
+                sample_clustering_response(job_id, "tech", vec![]),
+            ),
+        ]);
+        let mut genre_results = HashMap::new();
+
+        ops.process_batch_response(
+            &job,
+            Err(RecapError::Summary("upstream down".to_string())),
+            genre_clustering_map,
+            &mut genre_results,
+        )
+        .await;
+
+        assert_eq!(genre_results.len(), 2);
+        for genre in ["ai", "tech"] {
+            let res = genre_results.get(genre).expect("genre result present");
+            assert!(res.clustering_response.is_some());
+            assert_eq!(res.summary_response_id, None);
+            assert!(res.summary_response.is_none());
+            assert_eq!(
+                res.error.as_deref(),
+                Some("Batch API failed: summary generation failed: upstream down")
+            );
+            assert_eq!(res.error_kind, None);
+        }
+    }
+
+    #[tokio::test]
+    async fn generate_summaries_with_batch_skips_api_when_all_clustering_failed() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/summary/generate/batch"))
+            .respond_with(ResponseTemplate::new(500))
+            .expect(0)
+            .mount(&server)
+            .await;
+
+        let job = JobContext::new(Uuid::new_v4(), vec![]);
+        let news_creator_client = Arc::new(NewsCreatorClient::new_for_test(server.uri()));
+        let dao: Arc<dyn RecapDao> = Arc::new(crate::store::dao::mock::MockRecapDao::new());
+        let config = test_config(&server.uri(), "3");
+        let ops = SummarizationOps {
+            news_creator_client: &news_creator_client,
+            dao: &dao,
+            config: &config,
+        };
+
+        let clustering_results = HashMap::from([
+            (
+                "ai".to_string(),
+                Err(RecapError::InsufficientDocuments { min: 1, found: 0 }),
+            ),
+            (
+                "tech".to_string(),
+                Err(RecapError::Clustering("subworker down".to_string())),
+            ),
+        ]);
+
+        let results = ops
+            .generate_summaries_with_batch(&job, clustering_results)
+            .await;
+
+        assert_eq!(results.len(), 2);
+        let ai_res = results.get("ai").expect("ai result");
+        assert!(ai_res.clustering_response.is_none());
+        assert_eq!(
+            ai_res.error_kind,
+            Some(RecapError::InsufficientDocuments { min: 1, found: 0 })
+        );
+        let tech_res = results.get("tech").expect("tech result");
+        assert!(tech_res.clustering_response.is_none());
+        assert_eq!(
+            tech_res.error_kind,
+            Some(RecapError::Clustering("subworker down".to_string()))
+        );
+        server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn generate_summaries_with_batch_skips_api_when_all_clusters_have_empty_sentences() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/summary/generate/batch"))
+            .respond_with(ResponseTemplate::new(500))
+            .expect(0)
+            .mount(&server)
+            .await;
+
+        let job_id = Uuid::new_v4();
+        let job = JobContext::new(job_id, vec![]);
+        let news_creator_client = Arc::new(NewsCreatorClient::new_for_test(server.uri()));
+        let dao: Arc<dyn RecapDao> = Arc::new(crate::store::dao::mock::MockRecapDao::new());
+        let config = test_config(&server.uri(), "3");
+        let ops = SummarizationOps {
+            news_creator_client: &news_creator_client,
+            dao: &dao,
+            config: &config,
+        };
+
+        let clustering_results = HashMap::from([(
+            "ai".to_string(),
+            Ok(sample_clustering_response(
+                job_id,
+                "ai",
+                vec![empty_cluster(0)],
+            )),
+        )]);
+
+        let results = ops
+            .generate_summaries_with_batch(&job, clustering_results)
+            .await;
+
+        assert_eq!(results.len(), 1);
+        let ai_res = results.get("ai").expect("ai result");
+        assert!(ai_res.clustering_response.is_some());
+        assert_eq!(
+            ai_res.error.as_deref(),
+            Some("All clusters had empty representative_sentences")
+        );
+        assert_eq!(ai_res.error_kind, None);
+        server.verify().await;
+    }
+
+    async fn mount_mixed_batch_mock(server: &MockServer, job_id: Uuid) {
+        Mock::given(method("POST"))
+            .and(path("/v1/summary/generate/batch"))
+            .respond_with(move |req: &wiremock::Request| {
+                let payload: serde_json::Value =
+                    serde_json::from_slice(&req.body).expect("valid batch request json");
+                let requests = payload["requests"].as_array().expect("requests array");
+                let mut responses = Vec::new();
+                let mut errors = Vec::new();
+                for item in requests {
+                    let genre = item["genre"].as_str().expect("genre str");
+                    if genre == "ai" {
+                        responses.push(serde_json::json!({
+                            "job_id": job_id,
+                            "genre": "ai",
+                            "summary": { "title": "AI", "bullets": ["bullet"], "language": "ja" },
+                            "metadata": { "model": "gemma4-e4b-q4km" }
+                        }));
+                    } else if genre == "tech" {
+                        errors.push(serde_json::json!({
+                            "job_id": job_id,
+                            "genre": "tech",
+                            "error": "rate limited"
+                        }));
+                    }
+                    // "science" intentionally omitted -> Missing from batch response
+                }
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "responses": responses,
+                    "errors": errors
+                }))
+            })
+            .expect(2)
+            .mount(server)
+            .await;
+    }
+
+    fn build_mixed_clustering_results(job_id: Uuid) -> HashMap<String, Result<ClusteringResponse>> {
+        HashMap::from([
+            (
+                "ai".to_string(),
+                Ok(sample_clustering_response(
+                    job_id,
+                    "ai",
+                    vec![
+                        valid_cluster(0, "art-ai-1", "AI representative sentence."),
+                        empty_cluster(1),
+                    ],
+                )),
+            ),
+            (
+                "tech".to_string(),
+                Ok(sample_clustering_response(
+                    job_id,
+                    "tech",
+                    vec![valid_cluster(
+                        0,
+                        "art-tech-1",
+                        "Tech representative sentence.",
+                    )],
+                )),
+            ),
+            (
+                "science".to_string(),
+                Ok(sample_clustering_response(
+                    job_id,
+                    "science",
+                    vec![valid_cluster(
+                        0,
+                        "art-sci-1",
+                        "Science representative sentence.",
+                    )],
+                )),
+            ),
+            (
+                "empty_genre".to_string(),
+                Ok(sample_clustering_response(
+                    job_id,
+                    "empty_genre",
+                    vec![empty_cluster(0)],
+                )),
+            ),
+            (
+                "broken".to_string(),
+                Err(RecapError::Clustering("boom".to_string())),
+            ),
+        ])
+    }
+
+    fn assert_mixed_batch_outcomes(results: &HashMap<String, GenreResult>) {
+        assert_eq!(results.len(), 5);
+        assert!(
+            results
+                .get("ai")
+                .is_some_and(|r| r.error.is_none() && r.summary_response.is_some())
+        );
+        assert_eq!(
+            results.get("tech").and_then(|r| r.error.as_deref()),
+            Some("rate limited")
+        );
+        assert_eq!(
+            results.get("science").and_then(|r| r.error.as_deref()),
+            Some("Missing from batch response")
+        );
+        assert_eq!(
+            results.get("empty_genre").and_then(|r| r.error.as_deref()),
+            Some("All clusters had empty representative_sentences")
+        );
+        assert_eq!(
+            results.get("broken").and_then(|r| r.error_kind.clone()),
+            Some(RecapError::Clustering("boom".to_string()))
+        );
+    }
+
+    #[tokio::test]
+    async fn generate_summaries_with_batch_filters_empty_clusters_enriches_metadata_chunks_and_merges_outcomes()
+     {
+        let server = MockServer::start().await;
+        let job_id = Uuid::new_v4();
+        mount_mixed_batch_mock(&server, job_id).await;
+
+        let job = JobContext::new_with_window(job_id, vec![], 3);
+        let news_creator_client = Arc::new(NewsCreatorClient::new_for_test(server.uri()));
+        let mock_dao = Arc::new(crate::store::dao::mock::MockRecapDao::new());
+        let published_at = chrono::DateTime::parse_from_rfc3339("2026-01-01T12:00:00Z")
+            .expect("valid timestamp")
+            .with_timezone(&chrono::Utc);
+        mock_dao.set_article_metadata(HashMap::from([(
+            "art-ai-1".to_string(),
+            (
+                Some(published_at),
+                Some("https://example.com/ai-1".to_string()),
+            ),
+        )]));
+        let dao: Arc<dyn RecapDao> = mock_dao;
+        let config = test_config(&server.uri(), "2");
+        let ops = SummarizationOps {
+            news_creator_client: &news_creator_client,
+            dao: &dao,
+            config: &config,
+        };
+
+        let results = ops
+            .generate_summaries_with_batch(&job, build_mixed_clustering_results(job_id))
+            .await;
+
+        assert_mixed_batch_outcomes(&results);
+
+        let recorded = server
+            .received_requests()
+            .await
+            .expect("request recording enabled");
+        assert_eq!(recorded.len(), 2);
+        let mut chunk_sizes: Vec<usize> = recorded
+            .iter()
+            .map(|r| {
+                let v: serde_json::Value =
+                    serde_json::from_slice(&r.body).expect("valid request body");
+                v["requests"].as_array().expect("requests").len()
+            })
+            .collect();
+        chunk_sizes.sort_unstable();
+        assert_eq!(chunk_sizes, vec![1, 2]);
+
+        let ai_req = recorded
+            .iter()
+            .find_map(|r| {
+                let v: serde_json::Value = serde_json::from_slice(&r.body).ok()?;
+                v["requests"]
+                    .as_array()?
+                    .iter()
+                    .find(|item| item["genre"] == "ai")
+                    .cloned()
+            })
+            .expect("ai request payload sent");
+        assert_eq!(ai_req["clusters"].as_array().map(Vec::len), Some(1));
+        assert_eq!(ai_req["window_days"], serde_json::json!(3));
+        assert_eq!(ai_req["options"]["temperature"], serde_json::json!(0.2));
+        assert_eq!(
+            ai_req["clusters"][0]["representative_sentences"][0]["source_url"],
+            serde_json::json!("https://example.com/ai-1")
+        );
+        assert_eq!(
+            ai_req["clusters"][0]["representative_sentences"][0]["published_at"],
+            serde_json::json!(published_at.to_rfc3339())
+        );
+
+        server.verify().await;
     }
 }

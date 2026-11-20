@@ -1,40 +1,49 @@
 """Tests for distributed BE dispatch configuration (OpenAI-compatible targets)."""
 
 import dataclasses
+import inspect
+
 import pytest
 
 from news_creator.config.config import NewsCreatorConfig
+from news_creator.config.distributed_be_config import (
+    RemoteTarget,
+    parse_distributed_be_reasoning_effort,
+    parse_distributed_be_targets,
+)
 
 pytestmark = pytest.mark.usefixtures("dummy_redis_password_file")
 
 
-def test_remote_target_is_frozen_dataclass_with_key():
-    """RemoteTarget is a frozen dataclass exposing base_url, model, num_ctx, and key."""
-    from news_creator.config.distributed_be_config import RemoteTarget
+DEFAULT_HEALTH_INTERVAL_SECONDS = 30
+DEFAULT_REMOTE_TIMEOUT_SECONDS = 300
+DEFAULT_COOLDOWN_SECONDS = 60
+DEFAULT_UNHEALTHY_THRESHOLD = 2
 
+
+def test_remote_target_is_frozen_dataclass_with_key() -> None:
+    """RemoteTarget is a frozen dataclass exposing base_url, model, num_ctx, and key."""
+    expected_num_ctx = 32768
     target = RemoteTarget(
         base_url="http://router.example:8080",
         model="provider-a/model-a:latest",
-        num_ctx=32768,
+        num_ctx=expected_num_ctx,
     )
 
     assert dataclasses.is_dataclass(target)
     assert target.base_url == "http://router.example:8080"
     assert target.model == "provider-a/model-a:latest"
-    assert target.num_ctx == 32768
+    assert target.num_ctx == expected_num_ctx
     assert target.key == "http://router.example:8080|provider-a/model-a:latest"
 
     with pytest.raises(dataclasses.FrozenInstanceError):
         target.num_ctx = 16384  # type: ignore[misc]
 
 
-def test_parse_distributed_be_targets_parses_entries_and_strips_trailing_slash():
+def test_parse_distributed_be_targets_parses_entries_and_strips_trailing_slash() -> (
+    None
+):
     """Valid comma-separated <base_url>|<model>|<num_ctx> entries are parsed."""
-    from news_creator.config.distributed_be_config import (
-        RemoteTarget,
-        parse_distributed_be_targets,
-    )
-
     raw = (
         " http://router.example:8080/ | provider-a/model-a:latest | 32768 , "
         "https://router-b.example:8443///|provider-b/model-b:q4_k_m|16384 "
@@ -56,13 +65,10 @@ def test_parse_distributed_be_targets_parses_entries_and_strips_trailing_slash()
     ]
 
 
-def test_parse_distributed_be_targets_allows_same_base_url_with_distinct_models():
+def test_parse_distributed_be_targets_allows_same_base_url_with_distinct_models() -> (
+    None
+):
     """Multiple targets may share a base_url when their model names differ."""
-    from news_creator.config.distributed_be_config import (
-        RemoteTarget,
-        parse_distributed_be_targets,
-    )
-
     raw = (
         "http://router.example:8080|provider-a/model-a:latest|32768,"
         "http://router.example:8080|provider-b/model-b:latest|16384"
@@ -84,16 +90,14 @@ def test_parse_distributed_be_targets_allows_same_base_url_with_distinct_models(
     ]
 
 
-def test_parse_distributed_be_targets_rejects_duplicate_base_url_and_model():
+def test_parse_distributed_be_targets_rejects_duplicate_base_url_and_model() -> None:
     """Duplicate (base_url, model) pairs raise ValueError naming the entry index."""
-    from news_creator.config.distributed_be_config import parse_distributed_be_targets
-
     raw = (
         "http://router.example:8080/|provider-a/model-a:latest|32768,"
         "http://router.example:8080|provider-a/model-a:latest|16384"
     )
 
-    with pytest.raises(ValueError) as exc_info:
+    with pytest.raises(ValueError, match="duplicate") as exc_info:
         parse_distributed_be_targets(raw)
 
     msg = str(exc_info.value).lower()
@@ -102,7 +106,7 @@ def test_parse_distributed_be_targets_rejects_duplicate_base_url_and_model():
 
 
 @pytest.mark.parametrize(
-    "raw,expected_index,expected_problem_fragment",
+    ("raw", "expected_index", "expected_problem_fragment"),
     [
         ("http://router.example:8080|provider-a/model-a:latest", "0", ""),
         (
@@ -142,12 +146,10 @@ def test_parse_distributed_be_targets_rejects_duplicate_base_url_and_model():
     ],
 )
 def test_parse_distributed_be_targets_invalid_entry_names_index_and_problem(
-    raw, expected_index, expected_problem_fragment
-):
+    raw: str, expected_index: str, expected_problem_fragment: str
+) -> None:
     """Invalid entries raise ValueError naming the entry index and problem."""
-    from news_creator.config.distributed_be_config import parse_distributed_be_targets
-
-    with pytest.raises(ValueError) as exc_info:
+    with pytest.raises(ValueError, match=expected_index) as exc_info:
         parse_distributed_be_targets(raw)
 
     msg = str(exc_info.value)
@@ -156,7 +158,9 @@ def test_parse_distributed_be_targets_invalid_entry_names_index_and_problem(
         assert expected_problem_fragment in msg
 
 
-def test_distributed_be_defaults_off_and_removes_legacy_fields(monkeypatch):
+def test_distributed_be_defaults_off_and_removes_legacy_fields(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """DISTRIBUTED_BE_ENABLED defaults to false; legacy remote fields are removed."""
     monkeypatch.delenv("DISTRIBUTED_BE_ENABLED", raising=False)
     monkeypatch.delenv("DISTRIBUTED_BE_TARGETS", raising=False)
@@ -167,15 +171,19 @@ def test_distributed_be_defaults_off_and_removes_legacy_fields(monkeypatch):
     assert config.distributed_be_enabled is False
     assert config.distributed_be_targets == []
     assert config.distributed_be_reasoning_effort is None
-    assert config.distributed_be_health_interval_seconds == 30
-    assert config.distributed_be_timeout_seconds == 300
-    assert config.distributed_be_cooldown_seconds == 60
+    assert (
+        config.distributed_be_health_interval_seconds == DEFAULT_HEALTH_INTERVAL_SECONDS
+    )
+    assert config.distributed_be_timeout_seconds == DEFAULT_REMOTE_TIMEOUT_SECONDS
+    assert config.distributed_be_cooldown_seconds == DEFAULT_COOLDOWN_SECONDS
     assert not hasattr(config, "distributed_be_remotes")
     assert not hasattr(config, "distributed_be_remote_model")
     assert not hasattr(config, "distributed_be_model_overrides")
 
 
-def test_distributed_be_disabled_does_not_require_targets(monkeypatch):
+def test_distributed_be_disabled_does_not_require_targets(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """When DISTRIBUTED_BE_ENABLED=false, empty targets do not fail config init."""
     monkeypatch.setenv("DISTRIBUTED_BE_ENABLED", "false")
     monkeypatch.setenv("DISTRIBUTED_BE_TARGETS", "")
@@ -186,7 +194,9 @@ def test_distributed_be_disabled_does_not_require_targets(monkeypatch):
     assert config.distributed_be_targets == []
 
 
-def test_distributed_be_enabled_with_empty_targets_raises_value_error(monkeypatch):
+def test_distributed_be_enabled_with_empty_targets_raises_value_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """When DISTRIBUTED_BE_ENABLED=true, empty DISTRIBUTED_BE_TARGETS fails fast."""
     monkeypatch.setenv("DISTRIBUTED_BE_ENABLED", "true")
     monkeypatch.setenv("DISTRIBUTED_BE_TARGETS", "   ")
@@ -195,7 +205,9 @@ def test_distributed_be_enabled_with_empty_targets_raises_value_error(monkeypatc
         NewsCreatorConfig()
 
 
-def test_distributed_be_enabled_with_invalid_target_raises_value_error(monkeypatch):
+def test_distributed_be_enabled_with_invalid_target_raises_value_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """When DISTRIBUTED_BE_ENABLED=true, an invalid target fails fast at init."""
     monkeypatch.setenv("DISTRIBUTED_BE_ENABLED", "true")
     monkeypatch.setenv(
@@ -203,24 +215,29 @@ def test_distributed_be_enabled_with_invalid_target_raises_value_error(monkeypat
         "http://router.example:8080|provider-a/model-a:latest|512",
     )
 
-    with pytest.raises(ValueError) as exc_info:
+    with pytest.raises(ValueError, match="0") as exc_info:
         NewsCreatorConfig()
 
     assert "0" in str(exc_info.value)
 
 
-def test_distributed_be_enabled_parses_targets_and_custom_intervals(monkeypatch):
+def test_distributed_be_enabled_parses_targets_and_custom_intervals(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """NewsCreatorConfig parses DISTRIBUTED_BE_TARGETS and keeps timing settings."""
-    from news_creator.config.distributed_be_config import RemoteTarget
-
+    expected_health_interval = 15
+    expected_timeout = 120
+    expected_cooldown = 30
     monkeypatch.setenv("DISTRIBUTED_BE_ENABLED", "true")
     monkeypatch.setenv(
         "DISTRIBUTED_BE_TARGETS",
         "http://router.example:8080/|provider-a/model-a:latest|32768",
     )
-    monkeypatch.setenv("DISTRIBUTED_BE_HEALTH_INTERVAL_SECONDS", "15")
-    monkeypatch.setenv("DISTRIBUTED_BE_TIMEOUT_SECONDS", "120")
-    monkeypatch.setenv("DISTRIBUTED_BE_COOLDOWN_SECONDS", "30")
+    monkeypatch.setenv(
+        "DISTRIBUTED_BE_HEALTH_INTERVAL_SECONDS", str(expected_health_interval)
+    )
+    monkeypatch.setenv("DISTRIBUTED_BE_TIMEOUT_SECONDS", str(expected_timeout))
+    monkeypatch.setenv("DISTRIBUTED_BE_COOLDOWN_SECONDS", str(expected_cooldown))
 
     config = NewsCreatorConfig()
 
@@ -232,12 +249,14 @@ def test_distributed_be_enabled_parses_targets_and_custom_intervals(monkeypatch)
             num_ctx=32768,
         )
     ]
-    assert config.distributed_be_health_interval_seconds == 15
-    assert config.distributed_be_timeout_seconds == 120
-    assert config.distributed_be_cooldown_seconds == 30
+    assert config.distributed_be_health_interval_seconds == expected_health_interval
+    assert config.distributed_be_timeout_seconds == expected_timeout
+    assert config.distributed_be_cooldown_seconds == expected_cooldown
 
 
-def test_distributed_be_reasoning_effort_unset_or_empty_is_none(monkeypatch):
+def test_distributed_be_reasoning_effort_unset_or_empty_is_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Empty or unset DISTRIBUTED_BE_REASONING_EFFORT resolves to None."""
     monkeypatch.setenv("DISTRIBUTED_BE_ENABLED", "true")
     monkeypatch.setenv(
@@ -252,7 +271,9 @@ def test_distributed_be_reasoning_effort_unset_or_empty_is_none(monkeypatch):
 
 
 @pytest.mark.parametrize("effort", ["none", "minimal", "low", "medium", "high"])
-def test_distributed_be_reasoning_effort_valid_values(monkeypatch, effort: str):
+def test_distributed_be_reasoning_effort_valid_values(
+    monkeypatch: pytest.MonkeyPatch, effort: str
+) -> None:
     """Valid DISTRIBUTED_BE_REASONING_EFFORT values are stored verbatim."""
     monkeypatch.setenv("DISTRIBUTED_BE_ENABLED", "true")
     monkeypatch.setenv(
@@ -267,8 +288,8 @@ def test_distributed_be_reasoning_effort_valid_values(monkeypatch, effort: str):
 
 
 def test_distributed_be_reasoning_effort_invalid_raises_value_error_when_enabled(
-    monkeypatch,
-):
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Invalid DISTRIBUTED_BE_REASONING_EFFORT raises ValueError when DISTRIBUTED_BE_ENABLED=true."""
     monkeypatch.setenv("DISTRIBUTED_BE_ENABLED", "true")
     monkeypatch.setenv(
@@ -282,8 +303,8 @@ def test_distributed_be_reasoning_effort_invalid_raises_value_error_when_enabled
 
 
 def test_distributed_be_disabled_ignores_malformed_targets_and_reasoning_effort(
-    monkeypatch,
-):
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """When DISTRIBUTED_BE_ENABLED=false, neither DISTRIBUTED_BE_TARGETS nor DISTRIBUTED_BE_REASONING_EFFORT is parsed even if malformed."""
     monkeypatch.setenv("DISTRIBUTED_BE_ENABLED", "false")
     monkeypatch.setenv("DISTRIBUTED_BE_TARGETS", "malformed-not-a-valid-target")
@@ -297,8 +318,8 @@ def test_distributed_be_disabled_ignores_malformed_targets_and_reasoning_effort(
 
 
 def test_distributed_be_disabled_ignores_populated_targets_and_reasoning_effort(
-    monkeypatch,
-):
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """When DISTRIBUTED_BE_ENABLED=false, populated targets and effort resolve to [] and None."""
     monkeypatch.setenv("DISTRIBUTED_BE_ENABLED", "false")
     monkeypatch.setenv(
@@ -314,14 +335,8 @@ def test_distributed_be_disabled_ignores_populated_targets_and_reasoning_effort(
     assert config.distributed_be_reasoning_effort is None
 
 
-def test_parse_distributed_be_reasoning_effort_has_no_strict_parameter():
+def test_parse_distributed_be_reasoning_effort_has_no_strict_parameter() -> None:
     """L5: parse_distributed_be_reasoning_effort takes only raw (no strict parameter)."""
-    import inspect
-
-    from news_creator.config.distributed_be_config import (
-        parse_distributed_be_reasoning_effort,
-    )
-
     sig = inspect.signature(parse_distributed_be_reasoning_effort)
     assert "strict" not in sig.parameters
     assert parse_distributed_be_reasoning_effort(None) is None
@@ -333,15 +348,20 @@ def test_parse_distributed_be_reasoning_effort_has_no_strict_parameter():
         parse_distributed_be_reasoning_effort("turbo", strict=False)  # type: ignore[call-arg]
 
 
-def test_distributed_be_unhealthy_threshold_default_override_and_invalid(monkeypatch):
+def test_distributed_be_unhealthy_threshold_default_override_and_invalid(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """(g) DISTRIBUTED_BE_UNHEALTHY_THRESHOLD defaults to 2, accepts positive int override, and rejects < 1."""
+    override_threshold = 4
     monkeypatch.delenv("DISTRIBUTED_BE_UNHEALTHY_THRESHOLD", raising=False)
     default_config = NewsCreatorConfig()
-    assert default_config.distributed_be_unhealthy_threshold == 2
+    assert (
+        default_config.distributed_be_unhealthy_threshold == DEFAULT_UNHEALTHY_THRESHOLD
+    )
 
-    monkeypatch.setenv("DISTRIBUTED_BE_UNHEALTHY_THRESHOLD", "4")
+    monkeypatch.setenv("DISTRIBUTED_BE_UNHEALTHY_THRESHOLD", str(override_threshold))
     override_config = NewsCreatorConfig()
-    assert override_config.distributed_be_unhealthy_threshold == 4
+    assert override_config.distributed_be_unhealthy_threshold == override_threshold
 
     monkeypatch.setenv("DISTRIBUTED_BE_UNHEALTHY_THRESHOLD", "0")
     with pytest.raises(ValueError, match="DISTRIBUTED_BE_UNHEALTHY_THRESHOLD"):

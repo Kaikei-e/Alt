@@ -3,6 +3,7 @@ package adminclient
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -31,7 +32,9 @@ func TestCall_SendsAuthorizationBearer(t *testing.T) {
 			t.Errorf("expected Authorization %q, got %q", "Bearer an-operator-token", got)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+		if err := json.NewEncoder(w).Encode(map[string]string{"status": "ok"}); err != nil {
+			t.Errorf("encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -52,7 +55,9 @@ func TestCall_EmptyOperatorToken_NoAuthorizationHeader(t *testing.T) {
 			t.Errorf("expected no Authorization header, got %q", got)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+		if err := json.NewEncoder(w).Encode(map[string]string{"status": "ok"}); err != nil {
+			t.Errorf("encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -91,10 +96,12 @@ func TestCall_Success(t *testing.T) {
 
 		// Write response
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{
+		if err := json.NewEncoder(w).Encode(map[string]string{
 			"runId":  "abc-123",
 			"status": "started",
-		})
+		}); err != nil {
+			t.Errorf("encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -118,10 +125,12 @@ func TestCall_ServiceError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{
+		if err := json.NewEncoder(w).Encode(map[string]string{
 			"code":    "invalid_argument",
 			"message": "missing required field: mode",
-		})
+		}); err != nil {
+			t.Errorf("encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -133,10 +142,10 @@ func TestCall_ServiceError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for 400 response, got nil")
 	}
-	if _, ok := err.(*APIError); !ok {
+	apiErr := &APIError{}
+	if !errors.As(err, &apiErr) {
 		t.Fatalf("expected *APIError, got %T: %v", err, err)
 	}
-	apiErr := err.(*APIError)
 	if apiErr.StatusCode != http.StatusBadRequest {
 		t.Errorf("expected status 400, got %d", apiErr.StatusCode)
 	}
@@ -184,7 +193,9 @@ func TestCall_EmptyBody(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+		if err := json.NewEncoder(w).Encode(map[string]string{"status": "ok"}); err != nil {
+			t.Errorf("encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 

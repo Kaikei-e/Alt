@@ -148,11 +148,16 @@ process.on("SIGTERM", async () => {
 // Auto-start when run directly (not imported as module)
 const isMainModule = import.meta.url === `file://${process.argv[1]}`;
 if (isMainModule) {
-	startMockServers().then(() => {
-		console.log("\nAll mock servers started successfully:");
-		console.log(`  Mock Kratos:  http://localhost:${KRATOS_PORT}`);
-		console.log(`  Mock AuthHub: http://localhost:${AUTH_HUB_PORT}`);
-		console.log(`  Mock Backend: http://localhost:${BACKEND_PORT}`);
-		console.log("\nPress Ctrl+C to stop.\n");
-	});
+	void startMockServers()
+		.then(() => {
+			console.log("\nAll mock servers started successfully:");
+			console.log(`  Mock Kratos:  http://localhost:${KRATOS_PORT}`);
+			console.log(`  Mock AuthHub: http://localhost:${AUTH_HUB_PORT}`);
+			console.log(`  Mock Backend: http://localhost:${BACKEND_PORT}`);
+			console.log("\nPress Ctrl+C to stop.\n");
+		})
+		.catch((err) => {
+			console.error("Failed to start mock servers:", err);
+			process.exit(1);
+		});
 }

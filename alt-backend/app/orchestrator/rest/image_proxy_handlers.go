@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 // registerImageProxyRoutes registers the image proxy REST endpoint.
@@ -31,7 +31,7 @@ func registerImageProxyRoutes(v1 *echo.Group, container *di.ApplicationComponent
 }
 
 func handleImageProxy(container *di.ApplicationComponents) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		sig := c.Param("sig")
 		encodedURL := c.Param("url")
 
@@ -52,7 +52,7 @@ func handleImageProxy(container *di.ApplicationComponents) echo.HandlerFunc {
 			if strings.Contains(errMsg, "domain not allowed") {
 				return c.String(http.StatusForbidden, "domain not allowed")
 			}
-			if context.Cause(ctx) == context.Canceled {
+			if errors.Is(context.Cause(ctx), context.Canceled) {
 				return c.NoContent(499)
 			}
 			if errors.Is(err, context.DeadlineExceeded) {

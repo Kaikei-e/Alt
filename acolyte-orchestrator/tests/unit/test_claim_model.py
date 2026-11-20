@@ -6,6 +6,9 @@ import json
 
 from acolyte.domain.claim import ClaimPlannerOutput, PlannedClaim, SectionCitation, SectionClaimPlan
 
+SAMPLE_OFFSET_START = 42
+SAMPLE_OFFSET_END = 68
+
 
 class TestPlannedClaim:
     def test_minimal_claim(self) -> None:
@@ -158,13 +161,13 @@ class TestSectionCitation:
             source_id="art-5",
             source_type="recap",
             quote="The market expanded by 20%",
-            offset_start=42,
-            offset_end=68,
+            offset_start=SAMPLE_OFFSET_START,
+            offset_end=SAMPLE_OFFSET_END,
         )
         assert citation.source_type == "recap"
         assert citation.quote == "The market expanded by 20%"
-        assert citation.offset_start == 42
-        assert citation.offset_end == 68
+        assert citation.offset_start == SAMPLE_OFFSET_START
+        assert citation.offset_end == SAMPLE_OFFSET_END
 
     def test_citation_json_roundtrip(self) -> None:
         citation = SectionCitation(
@@ -188,6 +191,6 @@ class TestSectionCitation:
         json_str = json.dumps(dumped)
         parsed = json.loads(json_str)
         restored = [SectionCitation.model_validate(d) for d in parsed]
-        assert len(restored) == 2
+        assert len(restored) == len(citations)
         assert restored[0].source_id == "art-1"
         assert restored[1].source_id == "art-2"

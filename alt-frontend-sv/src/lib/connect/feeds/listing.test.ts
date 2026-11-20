@@ -48,31 +48,36 @@ describe("feeds listing — Connect-Timeout-Ms enforcement", () => {
 	it("getUnreadFeeds passes timeoutMs: 5000 to the unary call", async () => {
 		await getUnreadFeeds(transport);
 		expect(unaryClient.getUnreadFeeds).toHaveBeenCalledTimes(1);
-		const callOptions = unaryClient.getUnreadFeeds.mock.calls[0]![1];
-		expect(callOptions).toMatchObject({ timeoutMs: 5000 });
+		const call = unaryClient.getUnreadFeeds.mock.calls[0];
+		if (!call) throw new Error("expected getUnreadFeeds call");
+		expect(call[1]).toMatchObject({ timeoutMs: 5000 });
 	});
 
 	it("getReadFeeds passes timeoutMs: 5000 to the unary call", async () => {
 		await getReadFeeds(transport);
-		const callOptions = unaryClient.getReadFeeds.mock.calls[0]![1];
-		expect(callOptions).toMatchObject({ timeoutMs: 5000 });
+		const call = unaryClient.getReadFeeds.mock.calls[0];
+		if (!call) throw new Error("expected getReadFeeds call");
+		expect(call[1]).toMatchObject({ timeoutMs: 5000 });
 	});
 
 	it("getAllFeeds passes timeoutMs: 5000 to the unary call", async () => {
 		await getAllFeeds(transport);
-		const callOptions = unaryClient.getAllFeeds.mock.calls[0]![1];
-		expect(callOptions).toMatchObject({ timeoutMs: 5000 });
+		const call = unaryClient.getAllFeeds.mock.calls[0];
+		if (!call) throw new Error("expected getAllFeeds call");
+		expect(call[1]).toMatchObject({ timeoutMs: 5000 });
 	});
 
 	it("getFavoriteFeeds passes timeoutMs: 5000 to the unary call", async () => {
 		await getFavoriteFeeds(transport);
-		const callOptions = unaryClient.getFavoriteFeeds.mock.calls[0]![1];
-		expect(callOptions).toMatchObject({ timeoutMs: 5000 });
+		const call = unaryClient.getFavoriteFeeds.mock.calls[0];
+		if (!call) throw new Error("expected getFavoriteFeeds call");
+		expect(call[1]).toMatchObject({ timeoutMs: 5000 });
 	});
 
 	it("listSubscriptions passes timeoutMs: 5000 to the unary call", async () => {
 		await listSubscriptions(transport);
-		const callOptions = unaryClient.listSubscriptions.mock.calls[0]![1];
-		expect(callOptions).toMatchObject({ timeoutMs: 5000 });
+		const call = unaryClient.listSubscriptions.mock.calls[0];
+		if (!call) throw new Error("expected listSubscriptions call");
+		expect(call[1]).toMatchObject({ timeoutMs: 5000 });
 	});
 });

@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -62,7 +61,7 @@ func (m *MockRetrieveContextUsecase) Execute(ctx context.Context, input usecase.
 func TestHandler_RetrieveContext_Success(t *testing.T) {
 	mockAnswer := new(MockAnswerWithRAGUsecase)
 	mockRetrieve := new(MockRetrieveContextUsecase)
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 
 	handler := augur.NewHandler(mockAnswer, mockRetrieve, nil, nil, logger)
 
@@ -95,16 +94,16 @@ func TestHandler_RetrieveContext_Success(t *testing.T) {
 	resp, err := handler.RetrieveContext(ctx, req)
 
 	require.NoError(t, err)
-	assert.Len(t, resp.Msg.Contexts, 2)
-	assert.Equal(t, "https://example.com/article1", resp.Msg.Contexts[0].Url)
-	assert.Equal(t, "AI記事1", resp.Msg.Contexts[0].Title)
-	assert.Equal(t, float32(0.95), resp.Msg.Contexts[0].Score)
+	assert.Len(t, resp.Msg.GetContexts(), 2)
+	assert.Equal(t, "https://example.com/article1", resp.Msg.GetContexts()[0].GetUrl())
+	assert.Equal(t, "AI記事1", resp.Msg.GetContexts()[0].GetTitle())
+	assert.InDelta(t, float32(0.95), resp.Msg.GetContexts()[0].GetScore(), 1e-6)
 }
 
 func TestHandler_RetrieveContext_Unauthenticated(t *testing.T) {
 	mockAnswer := new(MockAnswerWithRAGUsecase)
 	mockRetrieve := new(MockRetrieveContextUsecase)
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 
 	handler := augur.NewHandler(mockAnswer, mockRetrieve, nil, nil, logger)
 
@@ -116,14 +115,18 @@ func TestHandler_RetrieveContext_Unauthenticated(t *testing.T) {
 	_, err := handler.RetrieveContext(ctx, req)
 
 	require.Error(t, err)
-	connectErr := err.(*connect.Error)
+	connectErr := func() *connect.Error {
+		target := &connect.Error{}
+		_ = errors.As(err, &target)
+		return target
+	}()
 	assert.Equal(t, connect.CodeUnauthenticated, connectErr.Code())
 }
 
 func TestHandler_RetrieveContext_EmptyQuery(t *testing.T) {
 	mockAnswer := new(MockAnswerWithRAGUsecase)
 	mockRetrieve := new(MockRetrieveContextUsecase)
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 
 	handler := augur.NewHandler(mockAnswer, mockRetrieve, nil, nil, logger)
 
@@ -136,14 +139,18 @@ func TestHandler_RetrieveContext_EmptyQuery(t *testing.T) {
 	_, err := handler.RetrieveContext(ctx, req)
 
 	require.Error(t, err)
-	connectErr := err.(*connect.Error)
+	connectErr := func() *connect.Error {
+		target := &connect.Error{}
+		_ = errors.As(err, &target)
+		return target
+	}()
 	assert.Equal(t, connect.CodeInvalidArgument, connectErr.Code())
 }
 
 func TestHandler_RetrieveContext_WithLimit(t *testing.T) {
 	mockAnswer := new(MockAnswerWithRAGUsecase)
 	mockRetrieve := new(MockRetrieveContextUsecase)
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 
 	handler := augur.NewHandler(mockAnswer, mockRetrieve, nil, nil, logger)
 
@@ -177,14 +184,14 @@ func TestHandler_RetrieveContext_WithLimit(t *testing.T) {
 
 	require.NoError(t, err)
 	// Should be limited to 1 result
-	assert.Len(t, resp.Msg.Contexts, 1)
-	assert.Equal(t, "https://example.com/article1", resp.Msg.Contexts[0].Url)
+	assert.Len(t, resp.Msg.GetContexts(), 1)
+	assert.Equal(t, "https://example.com/article1", resp.Msg.GetContexts()[0].GetUrl())
 }
 
 func TestNewHandler(t *testing.T) {
 	mockAnswer := new(MockAnswerWithRAGUsecase)
 	mockRetrieve := new(MockRetrieveContextUsecase)
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 
 	handler := augur.NewHandler(mockAnswer, mockRetrieve, nil, nil, logger)
 
@@ -277,7 +284,7 @@ func TestStreamChat_ClientAbortAfterDeltas_FlushesPartialAssistantTurn(t *testin
 	mockAnswer := new(MockAnswerWithRAGUsecase)
 	mockRetrieve := new(MockRetrieveContextUsecase)
 	mockConv := new(MockAugurConversationUsecase)
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 
 	userID := uuid.New()
 	convID := uuid.New()
@@ -369,7 +376,7 @@ func TestStreamChat_ClientAbortAfterDeltas_FlushesPartialAssistantTurn(t *testin
 func TestHandler_RetrieveContext_SanitizesInvalidUTF8(t *testing.T) {
 	mockAnswer := new(MockAnswerWithRAGUsecase)
 	mockRetrieve := new(MockRetrieveContextUsecase)
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 
 	handler := augur.NewHandler(mockAnswer, mockRetrieve, nil, nil, logger)
 
@@ -401,13 +408,13 @@ func TestHandler_RetrieveContext_SanitizesInvalidUTF8(t *testing.T) {
 	resp, err := handler.RetrieveContext(ctx, req)
 
 	require.NoError(t, err)
-	require.Len(t, resp.Msg.Contexts, 1)
+	require.Len(t, resp.Msg.GetContexts(), 1)
 
-	c := resp.Msg.Contexts[0]
+	c := resp.Msg.GetContexts()[0]
 	// Invalid UTF-8 bytes must be stripped
-	assert.Equal(t, "記事タイトルテスト", c.Title, "Title should have invalid UTF-8 removed")
-	assert.Equal(t, "https://example.com/path", c.Url, "URL should have invalid UTF-8 removed")
-	assert.Equal(t, "2026-01-01", c.PublishedAt, "PublishedAt should have invalid UTF-8 removed")
+	assert.Equal(t, "記事タイトルテスト", c.GetTitle(), "Title should have invalid UTF-8 removed")
+	assert.Equal(t, "https://example.com/path", c.GetUrl(), "URL should have invalid UTF-8 removed")
+	assert.Equal(t, "2026-01-01", c.GetPublishedAt(), "PublishedAt should have invalid UTF-8 removed")
 }
 
 // fakeEventEmitter records EmitAugurConversationLinked calls so tests can
@@ -476,7 +483,7 @@ func runStreamChatEmitScenario(
 	mockAnswer := new(MockAnswerWithRAGUsecase)
 	mockRetrieve := new(MockRetrieveContextUsecase)
 	mockConv := new(MockAugurConversationUsecase)
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	if len(loggerOverride) > 0 {
 		logger = loggerOverride[0]
 	}
@@ -630,7 +637,7 @@ func TestStreamChat_IncrementsEmitterFailureMetric_OnEmitError(t *testing.T) {
 
 	require.Len(t, emitter.snapshot(), 1, "emit must still be attempted even though it will fail")
 	after := emitterFailureCount(t, "augur.conversation_linked.v1")
-	assert.Equal(t, before+1, after, "IncEmitterFailure must fire on the warn-and-continue path")
+	assert.InDelta(t, before+1, after, 1e-9, "IncEmitterFailure must fire on the warn-and-continue path")
 }
 
 // TestStreamChat_LogsFullEventFieldsForReplay_OnEmitError pins the interim
@@ -685,7 +692,7 @@ func TestStreamChat_ExcludesPersistedFallbackTurnsFromConversationHistory(t *tes
 	mockAnswer := new(MockAnswerWithRAGUsecase)
 	mockRetrieve := new(MockRetrieveContextUsecase)
 	mockConv := new(MockAugurConversationUsecase)
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 
 	userID := uuid.New()
 	convID := uuid.New()
@@ -785,7 +792,7 @@ func TestStreamChat_FallbackHistoryLookupError_FailsWithInternalAndSkipsAnswerUs
 	mockAnswer := new(MockAnswerWithRAGUsecase)
 	mockRetrieve := new(MockRetrieveContextUsecase)
 	mockConv := new(MockAugurConversationUsecase)
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 
 	userID := uuid.New()
 	convID := uuid.New()
@@ -837,7 +844,7 @@ func TestStreamChat_ExcludesPersistedPartialFallbackTurnFromConversationHistory(
 	mockAnswer := new(MockAnswerWithRAGUsecase)
 	mockRetrieve := new(MockRetrieveContextUsecase)
 	mockConv := new(MockAugurConversationUsecase)
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 
 	userID := uuid.New()
 	convID := uuid.New()
@@ -937,7 +944,7 @@ func TestStreamChat_WindowsLastSixNormalTurnsAfterExcludingFallbacks(t *testing.
 	mockAnswer := new(MockAnswerWithRAGUsecase)
 	mockRetrieve := new(MockRetrieveContextUsecase)
 	mockConv := new(MockAugurConversationUsecase)
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 
 	userID := uuid.New()
 	convID := uuid.New()

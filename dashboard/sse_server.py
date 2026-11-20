@@ -6,8 +6,8 @@ import os
 import re
 import sys
 import time
-import traceback
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
 from socketserver import ThreadingMixIn
 from urllib.parse import parse_qs, urlparse
 
@@ -21,7 +21,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Get port from environment variable or use default
-PORT = int(os.getenv("SSE_PORT", 8000))
+PORT = int(os.getenv("SSE_PORT", "8000"))
 
 # CORS: restrict to the dashboard's own origin by default. Set SSE_ALLOWED_ORIGIN
 # to override (e.g. a different nginx-fronted host), or "*" to explicitly allow any origin.
@@ -45,30 +45,27 @@ def load_auth_token(*, fail_fast: bool = True) -> str | None:
     """
     if os.getenv("SSE_AUTH") == "disabled":
         logger.warning(
-            "sse_auth_disabled: SSE_AUTH=disabled was set explicitly; "
-            "/stream is unauthenticated"
+            "sse_auth_disabled: SSE_AUTH=disabled was set explicitly; /stream is unauthenticated"
         )
         return ""
 
     token_file = os.getenv("SSE_AUTH_TOKEN_FILE")
     if token_file:
         try:
-            with open(token_file, "r", encoding="utf-8") as f:
+            with Path(token_file).open(encoding="utf-8") as f:
                 token = f.read().strip()
-            if not token:
-                logger.error("SSE_AUTH_TOKEN_FILE (%s) is empty", token_file)
-                if fail_fast:
-                    sys.exit(1)
-                return None
-            logger.info("sse_auth_enabled: loaded token from %s", token_file)
-            return token
         except OSError as e:
-            logger.error(
-                "SSE_AUTH_TOKEN_FILE (%s) could not be read: %s", token_file, e
-            )
+            logger.error("SSE_AUTH_TOKEN_FILE (%s) could not be read: %s", token_file, e)  # noqa: TRY400 - expected condition; traceback adds noise
             if fail_fast:
                 sys.exit(1)
             return None
+        if not token:
+            logger.error("SSE_AUTH_TOKEN_FILE (%s) is empty", token_file)
+            if fail_fast:
+                sys.exit(1)
+            return None
+        logger.info("sse_auth_enabled: loaded token from %s", token_file)
+        return token
 
     direct_token = os.getenv("SSE_AUTH_TOKEN", "").strip()
     if direct_token:
@@ -90,9 +87,7 @@ def extract_token_param(query: str) -> str | None:
     return values[0] if values else None
 
 
-def is_authorized(
-    configured_token: str, token_param: str | None, auth_header: str | None
-) -> bool:
+def is_authorized(configured_token: str, token_param: str | None, auth_header: str | None) -> bool:
     """Check whether a request may access /stream or /health.
 
     When ``configured_token`` is empty, auth is disabled (loopback/dev mode)
@@ -121,7 +116,7 @@ class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
 
 
 class SSEHandler(BaseHTTPRequestHandler):
-    def log_message(self, format: str, *args: object) -> None:
+    def log_message(self, format: str, *args: object) -> None:  # noqa: A002 - matches BaseHTTPRequestHandler.log_message override
         """Override to use our logger instead of stderr, stripping query params to prevent token leakage."""
         msg = format % args
         sanitized_msg = re.sub(r"\?[^\s\"']*", "", msg)
@@ -143,6 +138,128 @@ class SSEHandler(BaseHTTPRequestHandler):
         token_param = extract_token_param(parsed.query)
         auth_header = self.headers.get("Authorization")
         return is_authorized(AUTH_TOKEN, token_param, auth_header)
+
+    def _handle_stream(self) -> None:
+        try:
+            logger.info("SSE connection attempt from %s", self.client_address)
+            logger.debug(
+                "Request headers: %s",
+                {k: v for k, v in self.headers.items() if k.lower() != "authorization"},
+            )
+
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Connection", "keep-alive")
+            self.send_header("Access-Control-Allow-Origin", ALLOWED_ORIGIN)
+            self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Cache-Control, Content-Type")
+            self.send_header("X-Accel-Buffering", "no")  # Disable buffering for nginx if used
+            self.end_headers()
+
+            logger.info(
+                "SSE connection established from %s, starting data stream",
+                self.client_address,
+            )
+
+            self._stream_events()
+        except OSError:
+            logger.exception(
+                "Error setting up SSE connection for %s",
+                self.client_address,
+            )
+            try:
+                self.send_response(500)
+                self.end_headers()
+            except OSError:
+                pass
+
+    def _stream_events(self) -> None:
+        message_count = 0
+        while True:
+            try:
+                data_start = time.time()
+                data = {
+                    "memory": dataclasses.asdict(system_monitor.get_memory_info()),
+                    "cpu": system_monitor.get_cpu_info(),
+                    "gpu": system_monitor.get_gpu_info(),
+                    "hanging_count": system_monitor.count_hanging_processes(),
+                    "top_processes": system_monitor.get_top_processes(10),
+                }
+                data_gather_time = time.time() - data_start
+
+                payload = f"data: {json.dumps(data)}\n\n"
+                self.wfile.write(payload.encode("utf-8"))
+                self.wfile.flush()
+
+                message_count += 1
+                if message_count % 10 == 0:  # Log every 10th message
+                    logger.debug(
+                        "Sent %s messages to %s (data gather: %.3fs)",
+                        message_count,
+                        self.client_address,
+                        data_gather_time,
+                    )
+
+                time.sleep(2)  # Update interval
+            except BrokenPipeError:
+                logger.info(
+                    "Client %s disconnected (broken pipe)",
+                    self.client_address,
+                )
+                break
+            except ConnectionResetError:
+                logger.info(
+                    "Client %s disconnected (connection reset)",
+                    self.client_address,
+                )
+                break
+            except OSError as e:
+                logger.warning(
+                    "OSError in SSE stream for %s: %s",
+                    self.client_address,
+                    e,
+                )
+                break
+            except TypeError, ValueError:
+                logger.exception(
+                    "Data serialization error in SSE stream for %s",
+                    self.client_address,
+                )
+                break
+
+    def _handle_health(self) -> None:
+        logger.debug("Health check request from %s", self.client_address)
+        try:
+            test_memory = system_monitor.get_memory_info()
+            test_cpu = system_monitor.get_cpu_info()
+            health_status = {
+                "status": "ok",
+                "service": "sse-server",
+                "port": PORT,
+                "system_monitor": {
+                    "memory_available": test_memory.total > 0,
+                    "cpu_available": "percent" in test_cpu,
+                },
+            }
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", ALLOWED_ORIGIN)
+            self.end_headers()
+            self.wfile.write(json.dumps(health_status).encode("utf-8"))
+            logger.debug("Health check response sent to %s", self.client_address)
+        except OSError, RuntimeError, TypeError, ValueError:
+            logger.exception("Error in health check")
+            health_status = {
+                "status": "error",
+                "service": "sse-server",
+                "error": "internal server error",
+            }
+            self.send_response(500)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", ALLOWED_ORIGIN)
+            self.end_headers()
+            self.wfile.write(json.dumps(health_status).encode("utf-8"))
 
     def do_GET(self) -> None:
         path = urlparse(self.path).path
@@ -169,140 +286,9 @@ class SSEHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/stream":
-            try:
-                logger.info("SSE connection attempt from %s", self.client_address)
-                logger.debug(
-                    "Request headers: %s",
-                    {
-                        k: v
-                        for k, v in self.headers.items()
-                        if k.lower() != "authorization"
-                    },
-                )
-
-                self.send_response(200)
-                self.send_header("Content-Type", "text/event-stream")
-                self.send_header("Cache-Control", "no-cache")
-                self.send_header("Connection", "keep-alive")
-                self.send_header("Access-Control-Allow-Origin", ALLOWED_ORIGIN)
-                self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
-                self.send_header(
-                    "Access-Control-Allow-Headers", "Cache-Control, Content-Type"
-                )
-                self.send_header(
-                    "X-Accel-Buffering", "no"
-                )  # Disable buffering for nginx if used
-                self.end_headers()
-
-                logger.info(
-                    "SSE connection established from %s, starting data stream",
-                    self.client_address,
-                )
-
-                message_count = 0
-                while True:
-                    try:
-                        # Gather data
-                        data_start = time.time()
-                        data = {
-                            "memory": dataclasses.asdict(
-                                system_monitor.get_memory_info()
-                            ),
-                            "cpu": system_monitor.get_cpu_info(),
-                            "gpu": system_monitor.get_gpu_info(),
-                            "hanging_count": system_monitor.count_hanging_processes(),
-                            "top_processes": system_monitor.get_top_processes(10),
-                        }
-                        data_gather_time = time.time() - data_start
-
-                        # Format as SSE
-                        payload = f"data: {json.dumps(data)}\n\n"
-                        self.wfile.write(payload.encode("utf-8"))
-                        self.wfile.flush()
-
-                        message_count += 1
-                        if message_count % 10 == 0:  # Log every 10th message
-                            logger.debug(
-                                "Sent %s messages to %s (data gather: %.3fs)",
-                                message_count,
-                                self.client_address,
-                                data_gather_time,
-                            )
-
-                        time.sleep(2)  # Update interval
-                    except BrokenPipeError:
-                        logger.info(
-                            "Client %s disconnected (broken pipe)",
-                            self.client_address,
-                        )
-                        break
-                    except ConnectionResetError:
-                        logger.info(
-                            "Client %s disconnected (connection reset)",
-                            self.client_address,
-                        )
-                        break
-                    except OSError as e:
-                        logger.warning(
-                            "OSError in SSE stream for %s: %s",
-                            self.client_address,
-                            e,
-                        )
-                        break
-                    except (TypeError, ValueError) as e:
-                        logger.error(
-                            "Data serialization error in SSE stream for %s: %s",
-                            self.client_address,
-                            e,
-                            exc_info=True,
-                        )
-                        break
-            except OSError as e:
-                logger.error(
-                    "Error setting up SSE connection for %s: %s",
-                    self.client_address,
-                    e,
-                    exc_info=True,
-                )
-                try:
-                    self.send_response(500)
-                    self.end_headers()
-                except OSError:
-                    pass
+            self._handle_stream()
         elif path in ("/health", "/healthz", "/readyz"):
-            # Health check endpoint
-            logger.debug("Health check request from %s", self.client_address)
-            try:
-                # Quick test of system monitor functions
-                test_memory = system_monitor.get_memory_info()
-                test_cpu = system_monitor.get_cpu_info()
-                health_status = {
-                    "status": "ok",
-                    "service": "sse-server",
-                    "port": PORT,
-                    "system_monitor": {
-                        "memory_available": test_memory.total > 0,
-                        "cpu_available": "percent" in test_cpu,
-                    },
-                }
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Access-Control-Allow-Origin", ALLOWED_ORIGIN)
-                self.end_headers()
-                self.wfile.write(json.dumps(health_status).encode("utf-8"))
-                logger.debug("Health check response sent to %s", self.client_address)
-            except (OSError, RuntimeError, TypeError, ValueError) as e:
-                logger.error("Error in health check: %s", e, exc_info=True)
-                health_status = {
-                    "status": "error",
-                    "service": "sse-server",
-                    "error": "internal server error",
-                }
-                self.send_response(500)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Access-Control-Allow-Origin", ALLOWED_ORIGIN)
-                self.end_headers()
-                self.wfile.write(json.dumps(health_status).encode("utf-8"))
+            self._handle_health()
         else:
             logger.warning("404 for path: %s from %s", path, self.client_address)
             self.send_response(404)
@@ -310,7 +296,7 @@ class SSEHandler(BaseHTTPRequestHandler):
 
 
 def start_server() -> None:
-    global AUTH_TOKEN
+    global AUTH_TOKEN  # noqa: PLW0603 - updates module-level AUTH_TOKEN at server startup
     try:
         logger.info("SSE Server initialization starting...")
         logger.info("SSE Server will bind to 0.0.0.0:%s", PORT)
@@ -321,7 +307,7 @@ def start_server() -> None:
         loaded = load_auth_token(fail_fast=True)
         AUTH_TOKEN = loaded if loaded is not None else ""
 
-        server = ThreadingHTTPServer(("0.0.0.0", PORT), SSEHandler)
+        server = ThreadingHTTPServer(("0.0.0.0", PORT), SSEHandler)  # noqa: S104 - container server intentionally binds all interfaces
         logger.info("SSE Server HTTP server created successfully")
         logger.info("SSE Server starting on 0.0.0.0:%s", PORT)
         logger.info("SSE Server is ready to accept connections")
@@ -330,17 +316,15 @@ def start_server() -> None:
     except SystemExit:
         raise
     except OSError as e:
-        logger.error("Failed to start SSE server on port %s: %s", PORT, e)
-        logger.error(
+        logger.error("Failed to start SSE server on port %s: %s", PORT, e)  # noqa: TRY400 - expected condition; traceback adds noise
+        logger.error(  # noqa: TRY400 - expected condition; traceback adds noise
             "OSError details: errno=%s, strerror=%s",
             getattr(e, "errno", "N/A"),
             getattr(e, "strerror", "N/A"),
         )
         raise
-    except Exception as e:
-        logger.error("Unexpected error in SSE server: %s", e)
-        logger.error("Exception type: %s", type(e).__name__)
-        logger.error(traceback.format_exc())
+    except Exception:
+        logger.exception("Unexpected error in SSE server")
         raise
 
 

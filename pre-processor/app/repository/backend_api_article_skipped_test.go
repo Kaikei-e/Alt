@@ -19,7 +19,7 @@ import (
 func TestUpsertArticlesReportingSkipped_ReportsFeedNotFound(t *testing.T) {
 	mock := &mockDataHubClient{
 		getFeedIDFunc: func(_ context.Context, req *connect.Request[datahubv1.GetFeedIDRequest]) (*connect.Response[datahubv1.GetFeedIDResponse], error) {
-			if req.Msg.FeedUrl == "https://unknown-feed.com" {
+			if req.Msg.GetFeedUrl() == "https://unknown-feed.com" {
 				return nil, connect.NewError(connect.CodeNotFound, errors.New("feed not found"))
 			}
 			return connect.NewResponse(&datahubv1.GetFeedIDResponse{FeedId: "feed-1"}), nil

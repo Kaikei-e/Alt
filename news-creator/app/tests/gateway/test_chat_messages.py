@@ -7,15 +7,14 @@ from news_creator.domain.prompts import (
     SUMMARY_PROMPT_TEMPLATE,
     wrap_gemma_prompt,
 )
+from news_creator.gateway.chat_messages import gemma_prompt_to_messages
 
 
 def _convert(prompt: str) -> list[dict[str, str]]:
-    from news_creator.gateway.chat_messages import gemma_prompt_to_messages
-
     return gemma_prompt_to_messages(prompt)
 
 
-def test_single_user_turn_with_trailing_model_header():
+def test_single_user_turn_with_trailing_model_header() -> None:
     """Single user turn followed by <|turn>model header converts to one user message."""
     prompt = "<|turn>user\nSummarize this article.<turn|>\n<|turn>model\n"
 
@@ -24,7 +23,7 @@ def test_single_user_turn_with_trailing_model_header():
     assert messages == [{"role": "user", "content": "Summarize this article."}]
 
 
-def test_single_user_turn_with_trailing_model_header_without_newline():
+def test_single_user_turn_with_trailing_model_header_without_newline() -> None:
     """Trailing <|turn>model without trailing newline or with spaces is dropped."""
     prompt = "<|turn>user\nHello world<turn|>\n<|turn>model   \n  "
 
@@ -33,7 +32,7 @@ def test_single_user_turn_with_trailing_model_header_without_newline():
     assert messages == [{"role": "user", "content": "Hello world"}]
 
 
-def test_system_and_user_turns_from_wrap_gemma_prompt():
+def test_system_and_user_turns_from_wrap_gemma_prompt() -> None:
     """wrap_gemma_prompt output with system and user turns maps to system + user."""
     prompt = wrap_gemma_prompt(
         user_prompt="Article body here",
@@ -48,7 +47,7 @@ def test_system_and_user_turns_from_wrap_gemma_prompt():
     ]
 
 
-def test_multi_turn_maps_model_role_to_assistant():
+def test_multi_turn_maps_model_role_to_assistant() -> None:
     """Closed model turns are mapped to role='assistant' while ending on 'user'."""
     prompt = (
         "<|turn>system\nSystem rules<turn|>\n"
@@ -68,13 +67,13 @@ def test_multi_turn_maps_model_role_to_assistant():
     ]
 
 
-def test_prompt_without_turn_markers_raises_value_error():
+def test_prompt_without_turn_markers_raises_value_error() -> None:
     """A plain prompt with no Gemma turn markers is rejected."""
     with pytest.raises(ValueError, match="Unexpected text outside"):
         _convert("  Plain article text to summarize.  \n")
 
 
-def test_renders_real_summary_prompt_template_with_sample_article():
+def test_renders_real_summary_prompt_template_with_sample_article() -> None:
     """Rendered SUMMARY_PROMPT_TEMPLATE converts with no turn tokens left and keeps article."""
     article_text = (
         "Acme Corp announced on 2026-11-07 that 50 enterprise customers in Tokyo "
@@ -95,7 +94,7 @@ def test_renders_real_summary_prompt_template_with_sample_article():
     assert article_text in messages[-1]["content"]
 
 
-def test_renders_real_chunk_summary_prompt_template():
+def test_renders_real_chunk_summary_prompt_template() -> None:
     """Rendered CHUNK_SUMMARY_PROMPT_TEMPLATE converts cleanly for hierarchical map phase."""
     chunk_text = "Tokyo University researchers published 3 new findings on 2026-11-07."
     rendered = CHUNK_SUMMARY_PROMPT_TEMPLATE.format(content=chunk_text)
@@ -127,7 +126,7 @@ def test_renders_real_chunk_summary_prompt_template():
         "<|turn>user\nHi<turn|>\n<|turn>model\nAssistant ends<turn|>\n<|turn>model\n",
     ],
 )
-def test_malformed_prompt_raises_value_error(malformed_prompt):
+def test_malformed_prompt_raises_value_error(malformed_prompt: str) -> None:
     """Unknown roles, unclosed turns, stray <turn|>, empty results, or non-user tail raise ValueError."""
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=r"Prompt|turn|role|newline|text"):
         _convert(malformed_prompt)

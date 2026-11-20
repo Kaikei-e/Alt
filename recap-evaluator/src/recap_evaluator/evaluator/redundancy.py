@@ -4,6 +4,8 @@ from itertools import combinations
 
 from recap_evaluator.evaluator.rouge_eval import ROUGEEvaluator
 
+_MIN_BULLETS_FOR_PAIRWISE = 2
+
 
 class RedundancyEvaluator:
     def __init__(self, rouge: ROUGEEvaluator | None = None) -> None:
@@ -11,7 +13,7 @@ class RedundancyEvaluator:
 
     def compute(self, bullets: list[str]) -> float:
         non_empty = [b for b in bullets if b and b.strip()]
-        if len(non_empty) < 2:
+        if len(non_empty) < _MIN_BULLETS_FOR_PAIRWISE:
             return 0.0
 
         scores: list[float] = []

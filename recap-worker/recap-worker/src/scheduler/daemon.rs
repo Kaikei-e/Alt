@@ -13,6 +13,16 @@ const JST_OFFSET_HOURS: i32 = 9;
 const BATCH_HOUR: u32 = 2;
 const BATCH_MINUTE: u32 = 0;
 
+const fn fixed_offset_from_hours(hours: i32) -> FixedOffset {
+    match FixedOffset::east_opt(hours * 3600) {
+        Some(tz) => tz,
+        None => panic!("fixed offset hours must be within [-23, +23]"),
+    }
+}
+
+const JST_TZ: FixedOffset = fixed_offset_from_hours(JST_OFFSET_HOURS);
+const UTC_TZ: FixedOffset = fixed_offset_from_hours(0);
+
 /// Bind the resolved knowledge-loop owner onto a freshly-built `JobContext`.
 ///
 /// When an owner is present the context gains `user_id` + `tenant_id`, which
@@ -56,7 +66,7 @@ pub fn spawn_jst_batch_daemon(
     shutdown: CancellationToken,
 ) -> JoinHandle<()> {
     log_topic_snapshot_emit_wiring(owner, "jst_batch");
-    let tz = FixedOffset::east_opt(JST_OFFSET_HOURS * 3600).expect("valid JST offset");
+    let tz = JST_TZ;
     let cadence = DailyCadence::new(tz, BATCH_HOUR, BATCH_MINUTE)
         .unwrap_or_else(|e| panic!("batch cadence: {e}"));
     BatchDaemon::new(scheduler, cadence, genres, tz, window_days, owner, shutdown).spawn()
@@ -99,9 +109,9 @@ impl BatchDaemon {
         })
     }
 
-    async fn run(self) {
-        let state = self;
-
+    async fn run_boot_hygiene(
+        &self,
+    ) -> Option<(Uuid, crate::store::dao::JobStatus, Option<String>, u32)> {
         // Boot-time job hygiene (順序が大事):
         //   1. `find_resumable_job` で「fresh で再開する価値のある 1 件」を選ぶ。
         //      DB エラーは「再開対象なし」と混同しない — その場合は
@@ -113,81 +123,101 @@ impl BatchDaemon {
         //   3. 保持期間 (`RECAP_JOB_RETENTION_DAYS`) を超えた古い行を削除。
         //      daemon が当日走らない日は cleanup が呼ばれず累積する問題への
         //      対策で、起動時に必ず一度叩く。
-        let resumable_target = state.scheduler.resolve_boot_time_resumable_target().await;
-        match state.scheduler.cleanup_old_jobs().await {
+        let resumable_target = self.scheduler.resolve_boot_time_resumable_target().await;
+        match self.scheduler.cleanup_old_jobs().await {
             Ok(0) => {}
             Ok(n) => info!(deleted = n, "boot-time hygiene: old jobs deleted"),
             Err(err) => error!(error = %err, "boot-time hygiene: cleanup_old_jobs failed"),
         }
+        resumable_target
+    }
 
-        // 起動時に中断されたジョブの再開
-        if let Some((job_id, status, last_stage, resumed_window_days)) = resumable_target {
-            info!(
+    async fn resume_interrupted_job(
+        &self,
+        target: (Uuid, crate::store::dao::JobStatus, Option<String>, u32),
+    ) {
+        let (job_id, status, last_stage, resumed_window_days) = target;
+        info!(
+            %job_id,
+            ?status,
+            ?last_stage,
+            resumed_window_days,
+            "found resumable job, resuming..."
+        );
+
+        let mut job = apply_knowledge_owner(
+            JobContext::new_with_window(job_id, self.genres.clone(), resumed_window_days),
+            self.owner,
+        );
+        if let Some(stage) = last_stage {
+            job = job.with_stage(stage);
+        }
+
+        match self.scheduler.run_job(job).await {
+            Ok(()) => info!(%job_id, "resumed job completed"),
+            Err(err) => error!(%job_id, error = %err, "resumed job failed"),
+        }
+    }
+
+    async fn wait_for_next_scheduled_slot(&self) -> std::ops::ControlFlow<()> {
+        let now = Utc::now();
+        let next = self.cadence.next_run_from(now);
+        let wait = duration_until(next, now);
+        let next_local = next.with_timezone(&self.tz);
+        info!(
+            next_run_utc = %next.to_rfc3339(),
+            next_run_jst = %next_local.to_rfc3339(),
+            wait_seconds = wait.as_secs(),
+            window_days = self.window_days,
+            "scheduled automatic {}-day recap batch", self.window_days
+        );
+        if sleep_or_shutdown(wait, &self.shutdown).await {
+            std::ops::ControlFlow::Continue(())
+        } else {
+            info!("shutdown requested during wait, stopping jst batch daemon");
+            std::ops::ControlFlow::Break(())
+        }
+    }
+
+    async fn run_scheduled_batch(&self) {
+        let job_id = Uuid::new_v4();
+        let job = apply_knowledge_owner(
+            JobContext::new_with_window(job_id, self.genres.clone(), self.window_days),
+            self.owner,
+        );
+        match self.scheduler.run_job(job).await {
+            Ok(()) => info!(
                 %job_id,
-                ?status,
-                ?last_stage,
-                resumed_window_days,
-                "found resumable job, resuming..."
-            );
+                genres = self.genres.len(),
+                "automatic recap batch completed"
+            ),
+            Err(err) => error!(%job_id, error = %err, "automatic recap batch failed"),
+        }
+    }
 
-            let mut job = apply_knowledge_owner(
-                JobContext::new_with_window(job_id, state.genres.clone(), resumed_window_days),
-                state.owner,
-            );
-            if let Some(stage) = last_stage {
-                job = job.with_stage(stage);
-            }
+    async fn cleanup_old_jobs_after_batch(&self) {
+        if let Err(err) = self.scheduler.cleanup_old_jobs().await {
+            error!(error = %err, "failed to cleanup old jobs");
+        }
+    }
 
-            match state.scheduler.run_job(job).await {
-                Ok(()) => info!(%job_id, "resumed job completed"),
-                Err(err) => error!(%job_id, error = %err, "resumed job failed"),
-            }
+    async fn run(self) {
+        if let Some(target) = self.run_boot_hygiene().await {
+            self.resume_interrupted_job(target).await;
         }
 
         loop {
-            if state.shutdown.is_cancelled() {
+            if self.shutdown.is_cancelled() {
                 info!("shutdown requested, stopping jst batch daemon");
                 break;
             }
 
-            let now = Utc::now();
-            let next = state.cadence.next_run_from(now);
-            let wait = duration_until(next, now);
-            let next_local = next.with_timezone(&state.tz);
-            info!(
-                next_run_utc = %next.to_rfc3339(),
-                next_run_jst = %next_local.to_rfc3339(),
-                wait_seconds = wait.as_secs(),
-                window_days = state.window_days,
-                "scheduled automatic {}-day recap batch", state.window_days
-            );
-            tokio::select! {
-                () = sleep(wait) => {}
-                () = state.shutdown.cancelled() => {
-                    info!("shutdown requested during wait, stopping jst batch daemon");
-                    break;
-                }
+            if self.wait_for_next_scheduled_slot().await.is_break() {
+                break;
             }
 
-            // Start new job
-            let job_id = Uuid::new_v4();
-            let job = apply_knowledge_owner(
-                JobContext::new_with_window(job_id, state.genres.clone(), state.window_days),
-                state.owner,
-            );
-            match state.scheduler.run_job(job).await {
-                Ok(()) => info!(
-                    %job_id,
-                    genres = state.genres.len(),
-                    "automatic recap batch completed"
-                ),
-                Err(err) => error!(%job_id, error = %err, "automatic recap batch failed"),
-            }
-
-            // Clean up old jobs after batch execution
-            if let Err(err) = state.scheduler.cleanup_old_jobs().await {
-                error!(error = %err, "failed to cleanup old jobs");
-            }
+            self.run_scheduled_batch().await;
+            self.cleanup_old_jobs_after_batch().await;
         }
     }
 }
@@ -272,29 +302,35 @@ fn duration_until(next: chrono::DateTime<Utc>, now: chrono::DateTime<Utc>) -> Du
 pub use crate::pipeline::cards::CardsJobRunner;
 pub use crate::pipeline::themes::ThemesJobRunner;
 
-/// Compute the latest scheduled slot <= now for a daily UTC cadence.
-/// If today's slot has already passed, it is today's slot.
-/// Otherwise, it is yesterday's slot.
-pub fn latest_scheduled_slot(
+fn latest_scheduled_slot_for_time(
     now: chrono::DateTime<Utc>,
-    utc_hour: u32,
-    utc_minute: u32,
+    slot_time: chrono::NaiveTime,
 ) -> chrono::DateTime<Utc> {
-    let today_slot = now
-        .date_naive()
-        .and_hms_opt(utc_hour, utc_minute, 0)
-        .expect("valid UTC hour and minute")
-        .and_utc();
+    let today_slot = now.date_naive().and_time(slot_time).and_utc();
 
     if today_slot <= now {
         today_slot
     } else {
         let yesterday = now.date_naive() - chrono::Duration::days(1);
-        yesterday
-            .and_hms_opt(utc_hour, utc_minute, 0)
-            .expect("valid UTC hour and minute")
-            .and_utc()
+        yesterday.and_time(slot_time).and_utc()
     }
+}
+
+/// Compute the latest scheduled slot <= now for a daily UTC cadence.
+/// If today's slot has already passed, it is today's slot.
+/// Otherwise, it is yesterday's slot.
+#[expect(
+    clippy::expect_used,
+    reason = "callers pass validated UTC hour (0..24) and minute (0..60)"
+)]
+pub fn latest_scheduled_slot(
+    now: chrono::DateTime<Utc>,
+    utc_hour: u32,
+    utc_minute: u32,
+) -> chrono::DateTime<Utc> {
+    let slot_time = chrono::NaiveTime::from_hms_opt(utc_hour, utc_minute, 0)
+        .expect("callers pass validated UTC hour (0..24) and minute (0..60)");
+    latest_scheduled_slot_for_time(now, slot_time)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -472,6 +508,137 @@ impl ScheduledBatchTarget for ThemesBatchTarget {
     }
 }
 
+enum RetryStep {
+    ContinueWithAttempt(u32),
+    Break,
+}
+
+fn current_in_flight_id(in_flight: &std::sync::Mutex<Option<Uuid>>) -> Option<Uuid> {
+    *in_flight
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// Returns `true` if `duration` elapsed, or `false` if `shutdown` was cancelled.
+async fn sleep_or_shutdown(duration: Duration, shutdown: &CancellationToken) -> bool {
+    tokio::select! {
+        () = sleep(duration) => true,
+        () = shutdown.cancelled() => false,
+    }
+}
+
+async fn wait_for_retry_slot(
+    kind: &'static str,
+    attempt: u32,
+    max_attempts: u32,
+    retry_delay_minutes: u64,
+    shutdown: &CancellationToken,
+) -> RetryStep {
+    match decide_next_attempt(attempt, max_attempts, retry_delay_minutes) {
+        RetryDecision::Retry {
+            next_attempt,
+            delay,
+        } => {
+            info!(
+                kind,
+                attempt = next_attempt,
+                max_attempts,
+                delay_minutes = retry_delay_minutes,
+                "batch_retry_scheduled"
+            );
+            if sleep_or_shutdown(delay, shutdown).await {
+                RetryStep::ContinueWithAttempt(next_attempt)
+            } else {
+                info!(kind, "shutdown requested during retry wait");
+                RetryStep::Break
+            }
+        }
+        RetryDecision::Exhausted { attempts } => {
+            warn!(kind, attempts, "batch_retry_exhausted");
+            RetryStep::Break
+        }
+    }
+}
+
+async fn handle_target_failure(
+    target: &dyn ScheduledBatchTarget,
+    err: &anyhow::Error,
+    attempt: u32,
+    max_attempts: u32,
+    retry_delay_minutes: u64,
+    shutdown: &CancellationToken,
+) -> RetryStep {
+    let kind = target.kind();
+    if target.is_fatal_error(err) {
+        error!(
+            kind,
+            attempt,
+            max_attempts,
+            error = %format!("{err:#}"),
+            "subworker authentication error is fatal; aborting batch retry"
+        );
+        return RetryStep::Break;
+    }
+    error!(kind, attempt, error = %err, "automatic batch failed");
+    wait_for_retry_slot(kind, attempt, max_attempts, retry_delay_minutes, shutdown).await
+}
+
+fn should_skip_retry_for_in_flight(
+    kind: &'static str,
+    attempt: u32,
+    in_flight: &std::sync::Mutex<Option<Uuid>>,
+) -> bool {
+    if attempt <= 1 {
+        return false;
+    }
+    if let Some(running_id) = current_in_flight_id(in_flight) {
+        warn!(
+            kind,
+            attempt,
+            running_id = %running_id,
+            "retry skipped: another run is in flight"
+        );
+        return true;
+    }
+    false
+}
+
+async fn run_single_retry_attempt(
+    target: &dyn ScheduledBatchTarget,
+    in_flight: &std::sync::Mutex<Option<Uuid>>,
+    attempt: u32,
+    max_attempts: u32,
+    retry_delay_minutes: u64,
+    shutdown: &CancellationToken,
+) -> RetryStep {
+    let kind = target.kind();
+    if should_skip_retry_for_in_flight(kind, attempt, in_flight) {
+        return RetryStep::Break;
+    }
+
+    match target.run_once().await {
+        Ok(Some(run_id)) => {
+            info!(kind, %run_id, attempt, "automatic batch completed");
+            RetryStep::Break
+        }
+        Ok(None) => {
+            warn!(kind, attempt, "automatic batch skipped: run is in flight");
+            RetryStep::Break
+        }
+        Err(err) => {
+            handle_target_failure(
+                target,
+                &err,
+                attempt,
+                max_attempts,
+                retry_delay_minutes,
+                shutdown,
+            )
+            .await
+        }
+    }
+}
+
 async fn run_target_with_retry(
     target: &dyn ScheduledBatchTarget,
     in_flight: &std::sync::Mutex<Option<Uuid>>,
@@ -479,145 +646,157 @@ async fn run_target_with_retry(
     max_attempts: u32,
     shutdown: &CancellationToken,
 ) {
-    let kind = target.kind();
     let mut attempt = 1;
     loop {
         if shutdown.is_cancelled() {
             break;
         }
 
-        if attempt > 1 {
-            let lock = in_flight
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            if let Some(running_id) = *lock {
-                warn!(
-                    kind,
-                    attempt,
-                    running_id = %running_id,
-                    "retry skipped: another run is in flight"
-                );
-                break;
-            }
+        match run_single_retry_attempt(
+            target,
+            in_flight,
+            attempt,
+            max_attempts,
+            retry_delay_minutes,
+            shutdown,
+        )
+        .await
+        {
+            RetryStep::ContinueWithAttempt(next_attempt) => attempt = next_attempt,
+            RetryStep::Break => break,
         }
+    }
+}
 
-        match target.run_once().await {
-            Ok(Some(run_id)) => {
-                info!(kind, %run_id, attempt, "automatic batch completed");
-                break;
-            }
-            Ok(None) => {
-                warn!(kind, attempt, "automatic batch skipped: run is in flight");
-                break;
-            }
-            Err(err) => {
-                if target.is_fatal_error(&err) {
-                    error!(
-                        kind,
-                        attempt,
-                        max_attempts,
-                        error = %format!("{err:#}"),
-                        "subworker authentication error is fatal; aborting batch retry"
-                    );
-                    break;
+struct DailyBatchSchedule {
+    cadence: DailyCadence,
+    retry_delay_minutes: u64,
+    max_attempts: u32,
+    catchup_enabled: bool,
+}
+
+async fn run_catchup_after_grace<T: ScheduledBatchTarget>(
+    target: &T,
+    in_flight: &std::sync::Mutex<Option<Uuid>>,
+    schedule: &DailyBatchSchedule,
+    slot: chrono::DateTime<Utc>,
+    shutdown: &CancellationToken,
+) {
+    let kind = target.kind();
+    match target.has_completed_since(slot).await {
+        Err(err) => {
+            error!(kind, error = %err, reason = "ledger_query_failed", "batch_catchup_skipped");
+        }
+        Ok(has_completed_after_grace) => {
+            match should_catchup(schedule.catchup_enabled, slot, has_completed_after_grace) {
+                CatchupDecision::Run { .. } => {
+                    run_target_with_retry(
+                        target,
+                        in_flight,
+                        schedule.retry_delay_minutes,
+                        schedule.max_attempts,
+                        shutdown,
+                    )
+                    .await;
                 }
-                error!(kind, attempt, error = %err, "automatic batch failed");
-                match decide_next_attempt(attempt, max_attempts, retry_delay_minutes) {
-                    RetryDecision::Retry {
-                        next_attempt,
-                        delay,
-                    } => {
-                        info!(
-                            kind,
-                            attempt = next_attempt,
-                            max_attempts,
-                            delay_minutes = retry_delay_minutes,
-                            "batch_retry_scheduled"
-                        );
-                        tokio::select! {
-                            () = sleep(delay) => {
-                                attempt = next_attempt;
-                            }
-                            () = shutdown.cancelled() => {
-                                info!(kind, "shutdown requested during retry wait");
-                                break;
-                            }
-                        }
-                    }
-                    RetryDecision::Exhausted { attempts } => {
-                        warn!(kind, attempts, "batch_retry_exhausted");
-                        break;
-                    }
+                CatchupDecision::Skip { .. } => {
+                    info!(
+                        kind,
+                        reason = "completed_during_grace",
+                        "batch_catchup_skipped"
+                    );
                 }
             }
         }
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+async fn execute_catchup_after_grace<T: ScheduledBatchTarget>(
+    target: &T,
+    in_flight: &std::sync::Mutex<Option<Uuid>>,
+    schedule: &DailyBatchSchedule,
+    slot: chrono::DateTime<Utc>,
+    shutdown: &CancellationToken,
+) -> std::ops::ControlFlow<()> {
+    let kind = target.kind();
+    info!(
+        kind,
+        slot = %slot.to_rfc3339(),
+        delay_minutes = schedule.retry_delay_minutes,
+        "batch_catchup_scheduled"
+    );
+    let grace = Duration::from_mins(schedule.retry_delay_minutes);
+    if !sleep_or_shutdown(grace, shutdown).await {
+        info!(kind, "shutdown requested during catch-up grace delay");
+        return std::ops::ControlFlow::Break(());
+    }
+    run_catchup_after_grace(target, in_flight, schedule, slot, shutdown).await;
+    std::ops::ControlFlow::Continue(())
+}
+
+async fn run_startup_catchup<T: ScheduledBatchTarget>(
+    target: &T,
+    in_flight: &std::sync::Mutex<Option<Uuid>>,
+    schedule: &DailyBatchSchedule,
+    now: chrono::DateTime<Utc>,
+    shutdown: &CancellationToken,
+) -> std::ops::ControlFlow<()> {
+    let kind = target.kind();
+    let slot = latest_scheduled_slot_for_time(now, schedule.cadence.target());
+    match target.has_completed_since(slot).await {
+        Err(err) => {
+            error!(kind, error = %err, reason = "ledger_query_failed", "batch_catchup_skipped");
+            std::ops::ControlFlow::Continue(())
+        }
+        Ok(has_completed) => match should_catchup(schedule.catchup_enabled, slot, has_completed) {
+            CatchupDecision::Run { slot } => {
+                execute_catchup_after_grace(target, in_flight, schedule, slot, shutdown).await
+            }
+            CatchupDecision::Skip { reason } => {
+                info!(kind, reason, "batch_catchup_skipped");
+                std::ops::ControlFlow::Continue(())
+            }
+        },
+    }
+}
+
+async fn wait_for_next_daily_run(
+    kind: &'static str,
+    cadence: &DailyCadence,
+    shutdown: &CancellationToken,
+) -> std::ops::ControlFlow<()> {
+    let now = Utc::now();
+    let next = cadence.next_run_from(now);
+    let wait = duration_until(next, now);
+    info!(
+        kind,
+        next_run_utc = %next.to_rfc3339(),
+        wait_seconds = wait.as_secs(),
+        "scheduled automatic daily batch"
+    );
+    tokio::select! {
+        () = sleep(wait) => std::ops::ControlFlow::Continue(()),
+        () = shutdown.cancelled() => {
+            info!(kind, "shutdown requested during wait, stopping daily batch daemon");
+            std::ops::ControlFlow::Break(())
+        }
+    }
+}
+
 async fn run_daily_batch_daemon<T: ScheduledBatchTarget>(
     target: T,
     in_flight: std::sync::Arc<std::sync::Mutex<Option<Uuid>>>,
-    cadence: DailyCadence,
-    retry_delay_minutes: u64,
-    max_attempts: u32,
-    catchup_enabled: bool,
-    utc_hour: u32,
-    utc_minute: u32,
+    schedule: DailyBatchSchedule,
     shutdown: CancellationToken,
 ) {
     let kind = target.kind();
     let now = Utc::now();
-    if catchup_enabled {
-        let slot = latest_scheduled_slot(now, utc_hour, utc_minute);
-        match target.has_completed_since(slot).await {
-            Err(err) => {
-                error!(kind, error = %err, reason = "ledger_query_failed", "batch_catchup_skipped");
-            }
-            Ok(has_completed) => match should_catchup(catchup_enabled, slot, has_completed) {
-                CatchupDecision::Run { slot } => {
-                    info!(
-                        kind,
-                        slot = %slot.to_rfc3339(),
-                        delay_minutes = retry_delay_minutes,
-                        "batch_catchup_scheduled"
-                    );
-                    let grace = Duration::from_mins(retry_delay_minutes);
-                    tokio::select! {
-                        () = sleep(grace) => {
-                            match target.has_completed_since(slot).await {
-                                Err(err) => {
-                                    error!(kind, error = %err, reason = "ledger_query_failed", "batch_catchup_skipped");
-                                }
-                                Ok(has_completed_after_grace) => {
-                                    match should_catchup(catchup_enabled, slot, has_completed_after_grace) {
-                                        CatchupDecision::Run { .. } => {
-                                            run_target_with_retry(
-                                                &target,
-                                                &in_flight,
-                                                retry_delay_minutes,
-                                                max_attempts,
-                                                &shutdown,
-                                            )
-                                            .await;
-                                        }
-                                        CatchupDecision::Skip { .. } => {
-                                            info!(kind, reason = "completed_during_grace", "batch_catchup_skipped");
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        () = shutdown.cancelled() => {
-                            info!(kind, "shutdown requested during catch-up grace delay");
-                            return;
-                        }
-                    }
-                }
-                CatchupDecision::Skip { reason } => {
-                    info!(kind, reason, "batch_catchup_skipped");
-                }
-            },
+    if schedule.catchup_enabled {
+        if run_startup_catchup(&target, &in_flight, &schedule, now, &shutdown)
+            .await
+            .is_break()
+        {
+            return;
         }
     } else {
         info!(kind, reason = "catchup_disabled", "batch_catchup_skipped");
@@ -629,21 +808,11 @@ async fn run_daily_batch_daemon<T: ScheduledBatchTarget>(
             break;
         }
 
-        let now = Utc::now();
-        let next = cadence.next_run_from(now);
-        let wait = duration_until(next, now);
-        info!(
-            kind,
-            next_run_utc = %next.to_rfc3339(),
-            wait_seconds = wait.as_secs(),
-            "scheduled automatic daily batch"
-        );
-        tokio::select! {
-            () = sleep(wait) => {}
-            () = shutdown.cancelled() => {
-                info!(kind, "shutdown requested during wait, stopping daily batch daemon");
-                break;
-            }
+        if wait_for_next_daily_run(kind, &schedule.cadence, &shutdown)
+            .await
+            .is_break()
+        {
+            break;
         }
 
         if shutdown.is_cancelled() {
@@ -653,8 +822,8 @@ async fn run_daily_batch_daemon<T: ScheduledBatchTarget>(
         run_target_with_retry(
             &target,
             &in_flight,
-            retry_delay_minutes,
-            max_attempts,
+            schedule.retry_delay_minutes,
+            schedule.max_attempts,
             &shutdown,
         )
         .await;
@@ -674,65 +843,41 @@ pub fn spawn_cards_batch_daemon(
     minute: u32,
     shutdown: CancellationToken,
 ) -> JoinHandle<()> {
-    let tz = FixedOffset::east_opt(0).expect("valid UTC offset");
-    let cadence =
-        DailyCadence::new(tz, hour, minute).unwrap_or_else(|e| panic!("cards batch cadence: {e}"));
-    CardsBatchDaemon::new(
-        runner,
-        in_flight,
-        ledger,
+    let cadence = DailyCadence::new(UTC_TZ, hour, minute)
+        .unwrap_or_else(|e| panic!("cards batch cadence: {e}"));
+    let schedule = DailyBatchSchedule {
         cadence,
-        window_days,
         retry_delay_minutes,
         max_attempts,
         catchup_enabled,
-        hour,
-        minute,
-        shutdown,
-    )
-    .spawn()
+    };
+    CardsBatchDaemon::new(runner, in_flight, ledger, window_days, schedule, shutdown).spawn()
 }
 
 struct CardsBatchDaemon {
     runner: std::sync::Arc<dyn CardsJobRunner>,
     in_flight: std::sync::Arc<std::sync::Mutex<Option<Uuid>>>,
     ledger: std::sync::Arc<dyn CardsLedger>,
-    cadence: DailyCadence,
     window_days: u32,
-    retry_delay_minutes: u64,
-    max_attempts: u32,
-    catchup_enabled: bool,
-    utc_hour: u32,
-    utc_minute: u32,
+    schedule: DailyBatchSchedule,
     shutdown: CancellationToken,
 }
 
 impl CardsBatchDaemon {
-    #[allow(clippy::too_many_arguments)]
     fn new(
         runner: std::sync::Arc<dyn CardsJobRunner>,
         in_flight: std::sync::Arc<std::sync::Mutex<Option<Uuid>>>,
         ledger: std::sync::Arc<dyn CardsLedger>,
-        cadence: DailyCadence,
         window_days: u32,
-        retry_delay_minutes: u64,
-        max_attempts: u32,
-        catchup_enabled: bool,
-        utc_hour: u32,
-        utc_minute: u32,
+        schedule: DailyBatchSchedule,
         shutdown: CancellationToken,
     ) -> Self {
         Self {
             runner,
             in_flight,
             ledger,
-            cadence,
             window_days,
-            retry_delay_minutes,
-            max_attempts,
-            catchup_enabled,
-            utc_hour,
-            utc_minute,
+            schedule,
             shutdown,
         }
     }
@@ -843,18 +988,7 @@ impl CardsBatchDaemon {
             ledger: self.ledger,
             window_days: self.window_days,
         };
-        run_daily_batch_daemon(
-            target,
-            in_flight,
-            self.cadence,
-            self.retry_delay_minutes,
-            self.max_attempts,
-            self.catchup_enabled,
-            self.utc_hour,
-            self.utc_minute,
-            self.shutdown,
-        )
-        .await;
+        run_daily_batch_daemon(target, in_flight, self.schedule, self.shutdown).await;
     }
 }
 
@@ -871,25 +1005,22 @@ pub fn spawn_themes_batch_daemon(
     minute: u32,
     shutdown: CancellationToken,
 ) -> JoinHandle<()> {
-    let tz = FixedOffset::east_opt(0).expect("valid UTC offset");
-    let cadence =
-        DailyCadence::new(tz, hour, minute).unwrap_or_else(|e| panic!("themes batch cadence: {e}"));
+    let cadence = DailyCadence::new(UTC_TZ, hour, minute)
+        .unwrap_or_else(|e| panic!("themes batch cadence: {e}"));
     let target = ThemesBatchTarget {
         runner,
         in_flight: std::sync::Arc::clone(&in_flight),
         ledger,
         owner_user_id,
     };
-    tokio::spawn(run_daily_batch_daemon(
-        target,
-        in_flight,
+    let schedule = DailyBatchSchedule {
         cadence,
         retry_delay_minutes,
         max_attempts,
         catchup_enabled,
-        hour,
-        minute,
-        shutdown,
+    };
+    tokio::spawn(run_daily_batch_daemon(
+        target, in_flight, schedule, shutdown,
     ))
 }
 
@@ -1696,5 +1827,557 @@ mod tests {
         let queries = ledger.queried_slots.lock().unwrap();
         assert_eq!(queries.len(), 2);
         assert_eq!(queries[0].0, owner_id);
+    }
+
+    #[derive(Clone, Default)]
+    struct DaemonLogBuf(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+
+    impl std::io::Write for DaemonLogBuf {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    struct StubFetchStage {
+        notify: std::sync::Arc<tokio::sync::Notify>,
+        calls: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+        fail: bool,
+    }
+
+    #[async_trait::async_trait]
+    impl crate::pipeline::fetch::FetchStage for StubFetchStage {
+        async fn fetch(
+            &self,
+            job: &JobContext,
+        ) -> crate::error::Result<crate::pipeline::fetch::FetchedCorpus> {
+            self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            self.notify.notify_one();
+            if self.fail {
+                return Err(crate::error::RecapError::Fetch(
+                    "simulated daemon fetch failure".to_string(),
+                ));
+            }
+            Ok(crate::pipeline::fetch::FetchedCorpus {
+                job_id: job.job_id,
+                articles: Vec::new(),
+            })
+        }
+    }
+
+    struct StubPreprocessStage;
+    #[async_trait::async_trait]
+    impl crate::pipeline::preprocess::PreprocessStage for StubPreprocessStage {
+        async fn preprocess(
+            &self,
+            _job: &JobContext,
+            corpus: crate::pipeline::fetch::FetchedCorpus,
+        ) -> anyhow::Result<crate::pipeline::preprocess::PreprocessedCorpus> {
+            Ok(crate::pipeline::preprocess::PreprocessedCorpus {
+                job_id: corpus.job_id,
+                articles: Vec::new(),
+            })
+        }
+    }
+
+    struct StubDedupStage;
+    #[async_trait::async_trait]
+    impl crate::pipeline::dedup::DedupStage for StubDedupStage {
+        async fn deduplicate(
+            &self,
+            _job: &JobContext,
+            corpus: crate::pipeline::preprocess::PreprocessedCorpus,
+        ) -> anyhow::Result<crate::pipeline::dedup::DeduplicatedCorpus> {
+            Ok(crate::pipeline::dedup::DeduplicatedCorpus {
+                job_id: corpus.job_id,
+                articles: Vec::new(),
+                stats: crate::pipeline::dedup::DedupStats::default(),
+            })
+        }
+    }
+
+    struct StubGenreStage;
+    #[async_trait::async_trait]
+    impl crate::pipeline::genre::GenreStage for StubGenreStage {
+        async fn assign(
+            &self,
+            _job: &JobContext,
+            corpus: crate::pipeline::dedup::DeduplicatedCorpus,
+        ) -> anyhow::Result<crate::pipeline::genre::GenreBundle> {
+            Ok(crate::pipeline::genre::GenreBundle {
+                job_id: corpus.job_id,
+                assignments: Vec::new(),
+                genre_distribution: std::collections::HashMap::new(),
+            })
+        }
+
+        async fn update_config(
+            &self,
+            _overrides: &crate::pipeline::graph_override::GraphOverrideSettings,
+        ) {
+        }
+    }
+
+    struct StubSelectStage;
+    #[async_trait::async_trait]
+    impl crate::pipeline::select::SelectStage for StubSelectStage {
+        async fn select(
+            &self,
+            _job: &JobContext,
+            bundle: crate::pipeline::genre::GenreBundle,
+        ) -> anyhow::Result<crate::pipeline::select::SelectedSummary> {
+            Ok(crate::pipeline::select::SelectedSummary {
+                job_id: bundle.job_id,
+                assignments: Vec::new(),
+            })
+        }
+    }
+
+    struct StubDispatchStage;
+    #[async_trait::async_trait]
+    impl crate::pipeline::dispatch::DispatchStage for StubDispatchStage {
+        async fn dispatch(
+            &self,
+            job: &JobContext,
+            _evidence: crate::pipeline::evidence::EvidenceBundle,
+        ) -> crate::error::Result<crate::pipeline::dispatch::DispatchResult> {
+            Ok(crate::pipeline::dispatch::DispatchResult {
+                job_id: job.job_id,
+                genre_results: std::collections::HashMap::new(),
+                success_count: 1,
+                failure_count: 0,
+                all_genres: job.genres.clone(),
+            })
+        }
+    }
+
+    struct StubPersistStage {
+        notify: std::sync::Arc<tokio::sync::Notify>,
+    }
+
+    #[async_trait::async_trait]
+    impl crate::pipeline::persist::PersistStage for StubPersistStage {
+        async fn persist(
+            &self,
+            job: &JobContext,
+            _result: crate::pipeline::dispatch::DispatchResult,
+        ) -> crate::error::Result<crate::pipeline::persist::PersistResult> {
+            self.notify.notify_one();
+            Ok(crate::pipeline::persist::PersistResult {
+                job_id: job.job_id,
+                genres_stored: 1,
+                genres_failed: 0,
+                genres_skipped: 0,
+                genres_no_evidence: 0,
+                total_genres: 1,
+            })
+        }
+    }
+
+    fn build_batch_daemon_test_scheduler(
+        dao: std::sync::Arc<crate::store::dao::mock::MockRecapDao>,
+        metrics: std::sync::Arc<crate::observability::metrics::Metrics>,
+        fetch_stage: std::sync::Arc<dyn crate::pipeline::fetch::FetchStage>,
+        persist_stage: std::sync::Arc<dyn crate::pipeline::persist::PersistStage>,
+    ) -> Scheduler {
+        use crate::{
+            clients::{NewsCreatorClient, SubworkerClient},
+            config::{Config, ENV_MUTEX},
+            pipeline::{PipelineOrchestrator, morning::MorningPipeline},
+            queue::{ClassificationJobQueue, QueueStore},
+            store::dao::RecapDao,
+        };
+        use sqlx::postgres::PgPoolOptions;
+
+        let config = {
+            let _lock = ENV_MUTEX
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            temp_env::with_vars(
+                [
+                    (
+                        "RECAP_DB_DSN",
+                        Some("postgres://recap:recap@localhost:5555/recap_db"),
+                    ),
+                    ("NEWS_CREATOR_BASE_URL", Some("http://localhost:8001/")),
+                    ("SUBWORKER_BASE_URL", Some("http://localhost:8002/")),
+                    ("ALT_BACKEND_BASE_URL", Some("http://localhost:9000/")),
+                    ("RECAP_KNOWLEDGE_EMIT", Some("false")),
+                    ("RECAP_ADMIN_AUTH", Some("disabled")),
+                    ("MTLS_ALLOWED_PEERS", Some("disabled")),
+                    ("RECAP_EVAL_LISTENER", Some("disabled")),
+                    ("RECAP_CARDS_JOB", Some("disabled")),
+                    ("RECAP_THEMES_ENABLED", Some("false")),
+                    ("RECAP_PRE_REFRESH_GRAPH_ENABLED", Some("false")),
+                    ("CLASSIFICATION_EVAL_ENABLED", Some("false")),
+                    ("RECAP_FRESHNESS_THREE_DAY_RECAP_HOURS", Some("30")),
+                    ("RECAP_FRESHNESS_TOPIC_CARDS_HOURS", Some("30")),
+                    ("RECAP_FRESHNESS_MORNING_LETTER_HOURS", Some("3")),
+                    ("MTLS_ENFORCE", None),
+                ],
+                || std::sync::Arc::new(Config::from_env().expect("config loads")),
+            )
+        };
+
+        let recap_dao: std::sync::Arc<dyn RecapDao> = dao;
+        let subworker = std::sync::Arc::new(
+            SubworkerClient::new(
+                config.subworker_base_url(),
+                config.min_documents_per_genre(),
+                None,
+            )
+            .expect("subworker client"),
+        );
+        let news_creator = std::sync::Arc::new(NewsCreatorClient::new_for_test(
+            config.news_creator_base_url(),
+        ));
+        let pool = PgPoolOptions::new()
+            .connect_lazy("postgres://recap:recap@localhost:5555/recap_db")
+            .expect("lazy pool");
+        let classification_queue = std::sync::Arc::new(ClassificationJobQueue::new(
+            QueueStore::new(pool),
+            (*subworker).clone(),
+            0,
+            10,
+            3,
+            1000,
+        ));
+
+        let pipeline = std::sync::Arc::new(
+            PipelineOrchestrator::builder(std::sync::Arc::clone(&config))
+                .with_fetch_stage(fetch_stage)
+                .with_preprocess_stage(std::sync::Arc::new(StubPreprocessStage))
+                .with_dedup_stage(std::sync::Arc::new(StubDedupStage))
+                .with_genre_stage(std::sync::Arc::new(StubGenreStage))
+                .with_select_stage(std::sync::Arc::new(StubSelectStage))
+                .with_dispatch_stage(std::sync::Arc::new(StubDispatchStage))
+                .with_persist_stage(persist_stage)
+                .with_metrics(metrics)
+                .build(
+                    std::sync::Arc::clone(&recap_dao),
+                    std::sync::Arc::clone(&subworker),
+                    classification_queue,
+                    None,
+                )
+                .expect("pipeline builds"),
+        );
+        let morning_pipeline = {
+            let _lock = ENV_MUTEX
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            temp_env::with_vars([("MTLS_ENFORCE", None::<&str>)], || {
+                std::sync::Arc::new(
+                    MorningPipeline::new(
+                        std::sync::Arc::clone(&config),
+                        std::sync::Arc::clone(&recap_dao),
+                        news_creator,
+                        std::sync::Arc::clone(&subworker),
+                    )
+                    .expect("morning pipeline builds"),
+                )
+            })
+        };
+
+        Scheduler::new(pipeline, morning_pipeline, config, recap_dao, subworker)
+    }
+
+    #[tokio::test]
+    async fn test_spawn_jst_batch_daemon_shuts_down_when_cancelled_up_front() {
+        let dao = std::sync::Arc::new(crate::store::dao::mock::MockRecapDao::new());
+        let metrics = std::sync::Arc::new(
+            crate::observability::metrics::Metrics::new(prometheus::Registry::new().into())
+                .expect("metrics"),
+        );
+        let notify = std::sync::Arc::new(tokio::sync::Notify::new());
+        let fetch_calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let scheduler = build_batch_daemon_test_scheduler(
+            std::sync::Arc::clone(&dao),
+            metrics,
+            std::sync::Arc::new(StubFetchStage {
+                notify: std::sync::Arc::clone(&notify),
+                calls: std::sync::Arc::clone(&fetch_calls),
+                fail: false,
+            }),
+            std::sync::Arc::new(StubPersistStage { notify }),
+        );
+
+        let shutdown = CancellationToken::new();
+        shutdown.cancel();
+        let handle = spawn_jst_batch_daemon(scheduler, vec!["ai".into()], 3, None, shutdown);
+        handle.await.expect("jst batch daemon completes");
+
+        assert_eq!(dao.mark_abandoned_jobs_calls(), vec![None]);
+        assert!(dao.status_transitions().is_empty());
+        assert_eq!(fetch_calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn test_batch_daemon_shuts_down_during_scheduled_wait() {
+        use chrono::Timelike;
+
+        let dao = std::sync::Arc::new(crate::store::dao::mock::MockRecapDao::new());
+        let metrics = std::sync::Arc::new(
+            crate::observability::metrics::Metrics::new(prometheus::Registry::new().into())
+                .expect("metrics"),
+        );
+        let notify = std::sync::Arc::new(tokio::sync::Notify::new());
+        let fetch_calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let scheduler = build_batch_daemon_test_scheduler(
+            std::sync::Arc::clone(&dao),
+            metrics,
+            std::sync::Arc::new(StubFetchStage {
+                notify: std::sync::Arc::clone(&notify),
+                calls: std::sync::Arc::clone(&fetch_calls),
+                fail: false,
+            }),
+            std::sync::Arc::new(StubPersistStage { notify }),
+        );
+
+        let shutdown = CancellationToken::new();
+        // Schedule ~1 hour ahead in JST so the daemon parks in sleep_or_shutdown.
+        let target_jst = (Utc::now() + chrono::Duration::hours(1)).with_timezone(&JST_TZ);
+        let cadence = DailyCadence::new(JST_TZ, target_jst.hour(), target_jst.minute())
+            .expect("valid cadence");
+        let daemon = BatchDaemon::new(
+            scheduler,
+            cadence,
+            vec!["ai".into()],
+            JST_TZ,
+            3,
+            None,
+            shutdown.clone(),
+        );
+
+        let handle = tokio::spawn(daemon.run());
+        // `tokio/test-util` is not enabled in Cargo.toml, so paused-clock advance is unavailable;
+        // yield briefly (<= 100 ms) so boot hygiene finishes and the task enters the wait select.
+        tokio::time::sleep(Duration::from_millis(25)).await;
+        assert!(
+            !handle.is_finished(),
+            "batch daemon should remain parked in scheduled wait before shutdown"
+        );
+
+        shutdown.cancel();
+        tokio::time::timeout(Duration::from_secs(10), handle)
+            .await
+            .expect("batch daemon shuts down within 10s timeout")
+            .expect("batch daemon exits cleanly during wait");
+
+        assert!(dao.status_transitions().is_empty());
+        assert_eq!(fetch_calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn test_batch_daemon_resumes_interrupted_job_and_records_completion() {
+        use crate::store::dao::{JobStatus, RecapDao};
+        use tracing::instrument::WithSubscriber;
+
+        let dao = std::sync::Arc::new(crate::store::dao::mock::MockRecapDao::new());
+        let metrics = std::sync::Arc::new(
+            crate::observability::metrics::Metrics::new(prometheus::Registry::new().into())
+                .expect("metrics"),
+        );
+        let resumed_id = Uuid::new_v4();
+        let dispatch_state = crate::pipeline::dispatch::DispatchResult {
+            job_id: resumed_id,
+            genre_results: std::collections::HashMap::new(),
+            success_count: 1,
+            failure_count: 0,
+            all_genres: vec!["ai".to_string()],
+        }
+        .to_lightweight();
+        dao.save_stage_state(
+            resumed_id,
+            "dispatch",
+            &serde_json::to_value(&dispatch_state).expect("serialize dispatch state"),
+        )
+        .await
+        .expect("save dispatch state");
+        dao.set_find_resumable_job_result(Ok(Some((
+            resumed_id,
+            JobStatus::Running,
+            Some("dispatch".to_string()),
+            3,
+        ))));
+
+        let notify = std::sync::Arc::new(tokio::sync::Notify::new());
+        let scheduler = build_batch_daemon_test_scheduler(
+            std::sync::Arc::clone(&dao),
+            std::sync::Arc::clone(&metrics),
+            std::sync::Arc::new(StubFetchStage {
+                notify: std::sync::Arc::clone(&notify),
+                calls: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+                fail: false,
+            }),
+            std::sync::Arc::new(StubPersistStage { notify }),
+        );
+
+        let shutdown = CancellationToken::new();
+        shutdown.cancel();
+        let cadence = DailyCadence::new(JST_TZ, BATCH_HOUR, BATCH_MINUTE).expect("valid cadence");
+        let owner = Some(KnowledgeOwnerIds {
+            user_id: Uuid::new_v4(),
+            tenant_id: Uuid::new_v4(),
+        });
+        let daemon = BatchDaemon::new(
+            scheduler,
+            cadence,
+            vec!["ai".into()],
+            JST_TZ,
+            3,
+            owner,
+            shutdown,
+        );
+
+        let buf = DaemonLogBuf::default();
+        let writer = buf.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::INFO)
+            .without_time()
+            .with_writer(move || writer.clone())
+            .finish();
+
+        daemon.run().with_subscriber(subscriber).await;
+
+        assert_eq!(dao.mark_abandoned_jobs_calls(), vec![Some(resumed_id)]);
+        let transitions = dao.status_transitions();
+        assert_eq!(transitions.len(), 2);
+        assert_eq!(transitions[0].status, JobStatus::Running);
+        assert_eq!(transitions[1].status, JobStatus::Completed);
+        assert!((metrics.jobs_completed.get() - 1.0).abs() < f64::EPSILON);
+
+        let logs = String::from_utf8(
+            buf.0
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .clone(),
+        )
+        .expect("utf8");
+        assert!(logs.contains("found resumable job, resuming..."));
+        assert!(logs.contains("resumed job completed"));
+    }
+
+    #[tokio::test]
+    async fn test_batch_daemon_logs_error_when_resumed_job_fails_and_still_enters_loop() {
+        use crate::store::dao::JobStatus;
+        use tracing::instrument::WithSubscriber;
+
+        let dao = std::sync::Arc::new(crate::store::dao::mock::MockRecapDao::new());
+        let metrics = std::sync::Arc::new(
+            crate::observability::metrics::Metrics::new(prometheus::Registry::new().into())
+                .expect("metrics"),
+        );
+        let resumed_id = Uuid::new_v4();
+        dao.set_find_resumable_job_result(Ok(Some((
+            resumed_id,
+            JobStatus::Running,
+            Some("dispatch".to_string()),
+            3,
+        ))));
+
+        let notify = std::sync::Arc::new(tokio::sync::Notify::new());
+        let scheduler = build_batch_daemon_test_scheduler(
+            std::sync::Arc::clone(&dao),
+            std::sync::Arc::clone(&metrics),
+            std::sync::Arc::new(StubFetchStage {
+                notify: std::sync::Arc::clone(&notify),
+                calls: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+                fail: false,
+            }),
+            std::sync::Arc::new(StubPersistStage { notify }),
+        );
+
+        let shutdown = CancellationToken::new();
+        shutdown.cancel();
+        let cadence = DailyCadence::new(JST_TZ, BATCH_HOUR, BATCH_MINUTE).expect("valid cadence");
+        let daemon = BatchDaemon::new(
+            scheduler,
+            cadence,
+            vec!["ai".into()],
+            JST_TZ,
+            3,
+            None,
+            shutdown,
+        );
+
+        let buf = DaemonLogBuf::default();
+        let writer = buf.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::INFO)
+            .without_time()
+            .with_writer(move || writer.clone())
+            .finish();
+
+        daemon.run().with_subscriber(subscriber).await;
+
+        let transitions = dao.status_transitions();
+        assert_eq!(transitions.len(), 1);
+        assert_eq!(transitions[0].status, JobStatus::Failed);
+        assert!((metrics.jobs_failed.get() - 1.0).abs() < f64::EPSILON);
+
+        let logs = String::from_utf8(
+            buf.0
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .clone(),
+        )
+        .expect("utf8");
+        assert!(logs.contains("resumed job failed"));
+        assert!(logs.contains("shutdown requested, stopping jst batch daemon"));
+    }
+
+    #[tokio::test]
+    async fn test_batch_daemon_resumes_job_with_no_last_stage_from_fetch() {
+        use crate::store::dao::JobStatus;
+
+        let dao = std::sync::Arc::new(crate::store::dao::mock::MockRecapDao::new());
+        let metrics = std::sync::Arc::new(
+            crate::observability::metrics::Metrics::new(prometheus::Registry::new().into())
+                .expect("metrics"),
+        );
+        let resumed_id = Uuid::new_v4();
+        dao.set_find_resumable_job_result(Ok(Some((resumed_id, JobStatus::Running, None, 3))));
+
+        let notify = std::sync::Arc::new(tokio::sync::Notify::new());
+        let fetch_calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let scheduler = build_batch_daemon_test_scheduler(
+            std::sync::Arc::clone(&dao),
+            std::sync::Arc::clone(&metrics),
+            std::sync::Arc::new(StubFetchStage {
+                notify: std::sync::Arc::new(tokio::sync::Notify::new()),
+                calls: std::sync::Arc::clone(&fetch_calls),
+                fail: false,
+            }),
+            std::sync::Arc::new(StubPersistStage { notify }),
+        );
+
+        let shutdown = CancellationToken::new();
+        shutdown.cancel();
+        let cadence = DailyCadence::new(JST_TZ, BATCH_HOUR, BATCH_MINUTE).expect("valid cadence");
+        let daemon = BatchDaemon::new(
+            scheduler,
+            cadence,
+            vec!["ai".into()],
+            JST_TZ,
+            3,
+            None,
+            shutdown,
+        );
+
+        daemon.run().await;
+
+        assert_eq!(fetch_calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert_eq!(
+            dao.status_transitions().last().map(|t| t.status.clone()),
+            Some(JobStatus::Completed)
+        );
+        assert!((metrics.jobs_completed.get() - 1.0).abs() < f64::EPSILON);
     }
 }

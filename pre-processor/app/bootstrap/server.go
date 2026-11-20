@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -12,20 +13,21 @@ import (
 	appmiddleware "pre-processor/middleware"
 	"pre-processor/tlsutil"
 
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
-	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
+	echootel "github.com/labstack/echo-otel/v5"
+	"github.com/labstack/echo/v5"
+	"github.com/labstack/echo/v5/middleware"
 )
 
 const (
 	httpPort    = "9200" // Default HTTP port for API
 	connectPort = "9202" // Default Connect-RPC port
+	// Equals the former v4 middleware.BodyLimit("1M") decimal megabyte (gommon/bytes).
+	apiBodyLimitBytes = 1_000_000
 )
 
 // NewHTTPServer creates and configures the Echo HTTP server.
 func NewHTTPServer(deps *Dependencies, otelEnabled bool, otelServiceName string) *echo.Echo {
 	e := echo.New()
-	e.HideBanner = true
 	// CVE-2026-118653 / CVE-2026-118651: pre-processor is service-to-service
 	// only; never trust client-supplied X-Forwarded-For or X-Real-IP headers.
 	e.IPExtractor = echo.ExtractIPDirect()
@@ -35,22 +37,25 @@ func NewHTTPServer(deps *Dependencies, otelEnabled bool, otelServiceName string)
 
 	// Add OpenTelemetry tracing middleware
 	if otelEnabled {
-		e.Use(otelecho.Middleware(otelServiceName, otelecho.WithSkipper(appmiddleware.OTelSkipper)))
+		e.Use(echootel.NewMiddlewareWithConfig(echootel.Config{
+			ServerName: otelServiceName,
+			Skipper:    appmiddleware.OTelSkipper,
+		}))
 		e.Use(appmiddleware.OTelStatusMiddleware())
 	}
 
 	// Middleware
 	e.Use(middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
-		Skipper: func(c echo.Context) bool {
+		Skipper: func(c *echo.Context) bool {
 			path := c.Request().URL.Path
 			return path == "/health" || path == "/api/v1/health"
 		},
-		LogMethod:  true,
-		LogURI:     true,
-		LogStatus:  true,
-		LogLatency: true,
-		LogError:   true,
-		LogValuesFunc: func(c echo.Context, v middleware.RequestLoggerValues) error {
+		HandleError: true,
+		LogMethod:   true,
+		LogURI:      true,
+		LogStatus:   true,
+		LogLatency:  true,
+		LogValuesFunc: func(c *echo.Context, v middleware.RequestLoggerValues) error {
 			ctx := c.Request().Context()
 			deps.Logger.InfoContext(ctx, "HTTP request completed",
 				"method", v.Method,
@@ -66,10 +71,10 @@ func NewHTTPServer(deps *Dependencies, otelEnabled bool, otelServiceName string)
 	// must not be callable from a browser origin.
 
 	// Health endpoint stays unauthenticated so liveness probes keep working.
-	e.GET("/api/v1/health", func(c echo.Context) error {
+	e.GET("/api/v1/health", func(c *echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]string{"status": "healthy"})
 	})
-	e.GET("/health", func(c echo.Context) error {
+	e.GET("/health", func(c *echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]string{"status": "healthy"})
 	})
 
@@ -86,9 +91,9 @@ func NewHTTPServer(deps *Dependencies, otelEnabled bool, otelServiceName string)
 	// established at the TLS transport layer (mTLS on :9443).
 	api := e.Group("/api/v1")
 	// Cap request bodies: article content is already whitespace-collapsed by
-	// alt-backend, so 1 MiB comfortably covers real inputs while rejecting
+	// alt-backend, so 1 MB comfortably covers real inputs while rejecting
 	// DoS payloads before they reach the summarize pipeline.
-	api.Use(middleware.BodyLimit("1M"))
+	api.Use(middleware.BodyLimit(apiBodyLimitBytes))
 	api.Use(peer.EchoMiddleware())
 	api.POST("/summarize", deps.SummarizeHandler.HandleSummarize)
 	api.POST("/summarize/stream", deps.SummarizeHandler.HandleStreamSummarize)
@@ -98,23 +103,29 @@ func NewHTTPServer(deps *Dependencies, otelEnabled bool, otelServiceName string)
 	return e
 }
 
-// StartHTTPServer starts the HTTP server in a goroutine. A ListenAndServe
-// failure other than a graceful Shutdown (e.g. port already in use) is sent
-// on errCh so the caller can fail the whole process instead of running on
-// with a dead HTTP listener.
-func StartHTTPServer(e *echo.Echo, log *slog.Logger, errCh chan<- error) {
+// StartHTTPServer starts the HTTP server in a goroutine and returns the
+// *http.Server for graceful shutdown. A ListenAndServe failure other than a
+// graceful Shutdown (e.g. port already in use) is sent on errCh so the caller
+// can fail the whole process instead of running on with a dead HTTP listener.
+func StartHTTPServer(e *echo.Echo, log *slog.Logger, errCh chan<- error) *http.Server {
+	port := os.Getenv("HTTP_PORT")
+	if port == "" {
+		port = httpPort
+	}
+	addr := fmt.Sprintf(":%s", port)
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           e,
+		ReadHeaderTimeout: 10 * time.Second,
+	}
 	go func() {
-		port := os.Getenv("HTTP_PORT")
-		if port == "" {
-			port = httpPort
-		}
-		addr := fmt.Sprintf(":%s", port)
 		log.Info("Starting HTTP server", "port", port)
-		if err := e.Start(addr); err != nil && err != http.ErrServerClosed {
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Error("HTTP server error", "error", err)
 			errCh <- fmt.Errorf("HTTP server: %w", err)
 		}
 	}()
+	return srv
 }
 
 // ConnectServers holds the servers started by StartConnectServer so the
@@ -138,9 +149,13 @@ func StartConnectServer(deps *Dependencies, errCh chan<- error, echoServers ...*
 		port = connectPort
 	}
 	addr := fmt.Sprintf(":%s", port)
+	protocols := new(http.Protocols)
+	protocols.SetHTTP1(true)
+	protocols.SetUnencryptedHTTP2(true)
 	server := &http.Server{
 		Addr:        addr,
 		Handler:     connectHandler,
+		Protocols:   protocols,
 		ReadTimeout: 30 * time.Second,
 		// WriteTimeout is intentionally 0 (disabled) for server streaming RPCs.
 		// Go's http.Server WriteTimeout applies to the ENTIRE stream duration,

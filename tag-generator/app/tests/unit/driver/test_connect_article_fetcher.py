@@ -12,6 +12,9 @@ from google.protobuf.timestamp_pb2 import Timestamp
 from tag_generator.driver.connect_article_fetcher import ConnectArticleFetcher
 from tag_generator.gen.proto.services.datahub.v1 import datahub_pb2
 
+DEFAULT_BATCH_SIZE = 75
+DEFAULT_TIMEOUT_MS = 30000
+
 
 @pytest.fixture
 def mock_client() -> MagicMock:
@@ -24,29 +27,41 @@ def auth_headers() -> dict[str, str]:
 
 
 @pytest.fixture
-def fetcher(mock_client, auth_headers) -> ConnectArticleFetcher:
+def fetcher(mock_client: MagicMock, auth_headers: dict[str, str]) -> ConnectArticleFetcher:
     return ConnectArticleFetcher(mock_client, auth_headers)
 
 
 class TestFetchArticles:
     """Tests for fetch_articles method."""
 
-    def test_first_page_omits_cursor(self, fetcher, mock_client, auth_headers) -> None:
+    def test_first_page_omits_cursor(
+        self,
+        fetcher: ConnectArticleFetcher,
+        mock_client: MagicMock,
+        auth_headers: dict[str, str],
+    ) -> None:
         """First page request should NOT set cursor fields."""
+        _ = auth_headers
         mock_client.list_untagged_articles.return_value = datahub_pb2.ListUntaggedArticlesResponse(
             articles=[], total_count=0
         )
+        batch_size = 50
 
-        fetcher.fetch_articles(None, "9999-12-31T23:59:59Z", "zzzzz", custom_batch_size=50)
+        fetcher.fetch_articles(None, "9999-12-31T23:59:59Z", "zzzzz", custom_batch_size=batch_size)
 
         call_args = mock_client.list_untagged_articles.call_args
         req = call_args[0][0]
-        assert req.limit == 50
+        assert req.limit == batch_size
         # Cursor fields should NOT be set on first page
         assert not req.HasField("last_created_at")
         assert req.last_id == ""
 
-    def test_passes_cursor_params_to_rpc(self, fetcher, mock_client, auth_headers) -> None:
+    def test_passes_cursor_params_to_rpc(
+        self,
+        fetcher: ConnectArticleFetcher,
+        mock_client: MagicMock,
+        auth_headers: dict[str, str],
+    ) -> None:
         """When cursor is provided, it should be passed in the request."""
         ts = Timestamp()
         ts.FromJsonString("2026-03-17T12:00:00Z")
@@ -60,19 +75,24 @@ class TestFetchArticles:
         mock_client.list_untagged_articles.return_value = datahub_pb2.ListUntaggedArticlesResponse(
             articles=[article], total_count=1
         )
+        batch_size = 50
 
-        fetcher.fetch_articles(None, "2026-03-17T12:00:00Z", "prev-art-id", custom_batch_size=50)
+        fetcher.fetch_articles(None, "2026-03-17T12:00:00Z", "prev-art-id", custom_batch_size=batch_size)
 
         call_args = mock_client.list_untagged_articles.call_args
         req = call_args[0][0]
-        assert req.limit == 50
+        assert req.limit == batch_size
         # Cursor fields should be set
         assert req.HasField("last_created_at")
         assert req.last_id == "prev-art-id"
         assert call_args[1]["headers"] == auth_headers
-        assert call_args[1]["timeout_ms"] == 30000
+        assert call_args[1]["timeout_ms"] == DEFAULT_TIMEOUT_MS
 
-    def test_converts_protobuf_article_to_dict(self, fetcher, mock_client) -> None:
+    def test_converts_protobuf_article_to_dict(
+        self,
+        fetcher: ConnectArticleFetcher,
+        mock_client: MagicMock,
+    ) -> None:
         """Converts protobuf ArticleWithTags to dict matching old format."""
         ts = Timestamp()
         ts.FromJsonString("2024-06-15T12:30:00Z")
@@ -100,7 +120,7 @@ class TestFetchArticles:
         # created_at should be an ISO string from the timestamp
         assert "2024-06-15" in a["created_at"]
 
-    def test_default_batch_size(self, fetcher, mock_client) -> None:
+    def test_default_batch_size(self, fetcher: ConnectArticleFetcher, mock_client: MagicMock) -> None:
         """Uses default batch size of 75."""
         mock_client.list_untagged_articles.return_value = datahub_pb2.ListUntaggedArticlesResponse(
             articles=[], total_count=0
@@ -109,9 +129,9 @@ class TestFetchArticles:
         fetcher.fetch_articles(None, "", "")
 
         req = mock_client.list_untagged_articles.call_args[0][0]
-        assert req.limit == 75
+        assert req.limit == DEFAULT_BATCH_SIZE
 
-    def test_empty_cursor_does_not_set_fields(self, fetcher, mock_client) -> None:
+    def test_empty_cursor_does_not_set_fields(self, fetcher: ConnectArticleFetcher, mock_client: MagicMock) -> None:
         """Empty string cursor should not set cursor fields."""
         mock_client.list_untagged_articles.return_value = datahub_pb2.ListUntaggedArticlesResponse(
             articles=[], total_count=0
@@ -127,17 +147,26 @@ class TestFetchArticles:
 class TestFetchNewArticles:
     """Tests for fetch_new_articles method."""
 
-    def test_always_requests_first_page_regardless_of_cursor(self, fetcher, mock_client) -> None:
+    def test_always_requests_first_page_regardless_of_cursor(
+        self,
+        fetcher: ConnectArticleFetcher,
+        mock_client: MagicMock,
+    ) -> None:
         """Forward processing should always get the newest untagged articles (first page)."""
         mock_client.list_untagged_articles.return_value = datahub_pb2.ListUntaggedArticlesResponse(
             articles=[], total_count=0
         )
 
         # Even when caller passes a cursor, fetch_new_articles should NOT forward it
-        fetcher.fetch_new_articles(None, "2026-03-14T00:39:08Z", "some-article-id", custom_batch_size=75)
+        fetcher.fetch_new_articles(
+            None,
+            "2026-03-14T00:39:08Z",
+            "some-article-id",
+            custom_batch_size=DEFAULT_BATCH_SIZE,
+        )
 
         req = mock_client.list_untagged_articles.call_args[0][0]
-        assert req.limit == 75
+        assert req.limit == DEFAULT_BATCH_SIZE
         # Must NOT set cursor — first page returns newest articles
         assert not req.HasField("last_created_at")
         assert req.last_id == ""
@@ -146,22 +175,29 @@ class TestFetchNewArticles:
 class TestCountUntaggedArticles:
     """Tests for count_untagged_articles method."""
 
-    def test_returns_total_count(self, fetcher, mock_client) -> None:
+    def test_returns_total_count(self, fetcher: ConnectArticleFetcher, mock_client: MagicMock) -> None:
         """Returns total_count from RPC response."""
+        expected_count = 42
         mock_client.list_untagged_articles.return_value = datahub_pb2.ListUntaggedArticlesResponse(
-            articles=[], total_count=42
+            articles=[], total_count=expected_count
         )
 
         count = fetcher.count_untagged_articles(None)
 
-        assert count == 42
+        assert count == expected_count
 
 
 class TestFetchArticleById:
     """Tests for fetch_article_by_id method."""
 
-    def test_calls_get_article_content(self, fetcher, mock_client, auth_headers) -> None:
+    def test_calls_get_article_content(
+        self,
+        fetcher: ConnectArticleFetcher,
+        mock_client: MagicMock,
+        auth_headers: dict[str, str],
+    ) -> None:
         """Calls get_article_content RPC with correct article_id."""
+        _ = auth_headers
         mock_client.get_article_content.return_value = datahub_pb2.GetArticleContentResponse(
             article_id="art-1",
             title="Title",
@@ -180,7 +216,7 @@ class TestFetchArticleById:
         assert result["content"] == "Content"
         assert result["url"] == "https://example.com"
 
-    def test_returns_none_on_connect_error(self, fetcher, mock_client) -> None:
+    def test_returns_none_on_connect_error(self, fetcher: ConnectArticleFetcher, mock_client: MagicMock) -> None:
         """Returns None when ConnectError is Code.NOT_FOUND."""
         mock_client.get_article_content.side_effect = ConnectError(Code.NOT_FOUND, "Article not found")
 
@@ -192,7 +228,12 @@ class TestFetchArticleById:
         "code",
         [Code.UNAVAILABLE, Code.INTERNAL, Code.DEADLINE_EXCEEDED],
     )
-    def test_propagates_non_not_found_connect_error(self, fetcher, mock_client, code: Code) -> None:
+    def test_propagates_non_not_found_connect_error(
+        self,
+        fetcher: ConnectArticleFetcher,
+        mock_client: MagicMock,
+        code: Code,
+    ) -> None:
         """Transient or internal ConnectError must propagate so callers do not treat it as a missing article."""
         mock_client.get_article_content.side_effect = ConnectError(code, "upstream failure")
 
@@ -205,12 +246,16 @@ class TestFetchArticleById:
 class TestFetchArticlesByStatus:
     """Tests for fetch_articles_by_status method."""
 
-    def test_returns_empty_for_has_tags_true(self, fetcher) -> None:
+    def test_returns_empty_for_has_tags_true(self, fetcher: ConnectArticleFetcher) -> None:
         """Returns empty list when has_tags=True."""
         result = fetcher.fetch_articles_by_status(None, has_tags=True)
         assert result == []
 
-    def test_delegates_to_fetch_articles_for_untagged(self, fetcher, mock_client) -> None:
+    def test_delegates_to_fetch_articles_for_untagged(
+        self,
+        fetcher: ConnectArticleFetcher,
+        mock_client: MagicMock,
+    ) -> None:
         """Delegates to fetch_articles when has_tags=False."""
         mock_client.list_untagged_articles.return_value = datahub_pb2.ListUntaggedArticlesResponse(
             articles=[], total_count=0
@@ -224,7 +269,7 @@ class TestFetchArticlesByStatus:
 class TestFetchLowConfidenceArticles:
     """Tests for fetch_low_confidence_articles method."""
 
-    def test_returns_empty_list(self, fetcher) -> None:
+    def test_returns_empty_list(self, fetcher: ConnectArticleFetcher) -> None:
         """Not available via API — returns empty list."""
         result = fetcher.fetch_low_confidence_articles(None)
         assert result == []

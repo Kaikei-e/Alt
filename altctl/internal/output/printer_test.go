@@ -63,7 +63,9 @@ func TestResolveColors_NoColorEnv(t *testing.T) {
 
 func TestResolveColors_TermDumb(t *testing.T) {
 	// Unset NO_COLOR to test TERM=dumb path
-	os.Unsetenv("NO_COLOR")
+	if err := os.Unsetenv("NO_COLOR"); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("TERM", "dumb")
 	got := ResolveColors(ColorAuto, true)
 	if got {
@@ -72,7 +74,9 @@ func TestResolveColors_TermDumb(t *testing.T) {
 }
 
 func TestResolveColors_AutoDefault(t *testing.T) {
-	os.Unsetenv("NO_COLOR")
+	if err := os.Unsetenv("NO_COLOR"); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("TERM", "xterm-256color")
 
 	// Should follow config value

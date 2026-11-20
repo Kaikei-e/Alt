@@ -58,7 +58,7 @@ func Diagnose(ctx context.Context, opts Options) (*Report, error) {
 			},
 		})
 		report.Problems = collectProblems(report.Preflight, nil)
-		return report, nil
+		return report, nil //nolint:nilerr // daemon unreachability is recorded in report.DockerReachable and report.Preflight so caller renders diagnostics before mapping exit code
 	}
 	report.DockerReachable = true
 

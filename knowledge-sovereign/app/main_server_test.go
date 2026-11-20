@@ -57,7 +57,7 @@ func TestBuildRPCMux_HealthEndpoint(t *testing.T) {
 	}
 	mux := buildRPCMux(testSovereignHandler{}, cfg)
 
-	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health", nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 

@@ -14,26 +14,37 @@ use tokio_util::sync::CancellationToken;
 ///
 /// Kept comfortably under Docker Compose's default `stop_grace_period`
 /// (10s) so the process exits itself — logging what happened — instead of
-/// being SIGKILLed mid-flush with no trace of the loss.
+/// being `SIGKILLed` mid-flush with no trace of the loss.
 const FLUSH_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(8);
 
 /// Application entry point. Initializes tracing, configuration, and starts servers.
+///
+/// # Errors
+///
+/// Returns [`AggregatorError::Healthcheck`] if invoked with the `healthcheck`
+/// argument and the probe fails, [`AggregatorError::Config`] if loading or
+/// validating configuration fails, or [`AggregatorError::Bind`],
+/// [`AggregatorError::Server`], or [`AggregatorError::Export`] if starting or
+/// running the HTTP servers fails.
 pub async fn run() -> Result<(), AggregatorError> {
     // Handle healthcheck subcommand (for Docker healthcheck in distroless image).
     // Tracing is not fully configured yet; install a minimal stderr subscriber so
     // failures still go through the tracing facade instead of bare `eprintln!`.
     if std::env::args().nth(1).as_deref() == Some("healthcheck") {
-        let _ = tracing_subscriber::fmt()
+        if let Err(err) = tracing_subscriber::fmt()
             .with_writer(std::io::stderr)
             .with_max_level(::tracing::Level::ERROR)
-            .try_init();
-        match crate::healthcheck().await {
-            Ok(()) => std::process::exit(0),
+            .try_init()
+        {
+            ::tracing::debug!(error = %err, "Healthcheck tracing subscriber already initialized");
+        }
+        return match crate::healthcheck().await {
+            Ok(()) => Ok(()),
             Err(e) => {
                 ::tracing::error!(error = %e, "Healthcheck failed");
-                std::process::exit(1)
+                Err(e.into())
             }
-        }
+        };
     }
 
     tracing::init_tracing();
@@ -72,7 +83,7 @@ pub async fn run() -> Result<(), AggregatorError> {
 
 /// Await the `BatchWriter` flush loop's `JoinHandle`, bounded by `timeout`.
 ///
-/// The flush loop's shutdown branch can legitimately take a while (ClickHouse
+/// The flush loop's shutdown branch can legitimately take a while (`ClickHouse`
 /// retries with their own send/end timeouts), but it must never be allowed to
 /// run past the container's stop grace period: an unbounded await here means
 /// Docker SIGKILLs the process mid-flush, losing the drained-but-unwritten

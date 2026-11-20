@@ -7,8 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/labstack/echo/v4"
-	echomiddleware "github.com/labstack/echo/v4/middleware"
+	"github.com/labstack/echo/v5"
+	echomiddleware "github.com/labstack/echo/v5/middleware"
 	"github.com/stretchr/testify/require"
 )
 
@@ -30,7 +30,7 @@ func TestRegisterImageProxyRoutes_SkipsWhenEnabledButNoSecret(t *testing.T) {
 
 	registerImageProxyRoutes(v1, &di.ApplicationComponents{}, cfg)
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/images/proxy/sig/dGVzdA", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/images/proxy/sig/dGVzdA", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 

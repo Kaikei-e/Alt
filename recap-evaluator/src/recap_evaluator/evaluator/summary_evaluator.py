@@ -30,12 +30,18 @@ logger = structlog.get_logger()
 # therefore tracked by name and never inferred from a value, for the same
 # reason success_count exists for the G-Eval axis.
 _COMPOSITE_AXES: Final[frozenset[str]] = frozenset({"geval", "bertscore", "faithfulness", "rouge"})
+_MIN_BULLETS_FOR_REDUNDANCY: Final[int] = 2
+_HALLUCINATION_CRITICAL_THRESHOLD: Final[float] = 0.5
+_HALLUCINATION_WARN_THRESHOLD: Final[float] = 0.3
+_COMPOSITE_CRITICAL_THRESHOLD: Final[float] = 0.3
+_COMPOSITE_WARN_THRESHOLD: Final[float] = 0.5
+_MIN_BREACHES_FOR_ALERT: Final[int] = 2
 
 
 class SummaryEvaluator:
     """Multi-dimensional summary quality evaluator."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 — composition root DI constructor with optional test overrides
         self,
         ollama: LLMPort,
         db: DatabasePort,
@@ -266,7 +272,7 @@ class SummaryEvaluator:
         per_output_redundancy: list[float] = []
         for output in outputs:
             bullet_texts = self._extract_bullet_texts(output)
-            if len(bullet_texts) >= 2:
+            if len(bullet_texts) >= _MIN_BULLETS_FOR_REDUNDANCY:
                 per_output_redundancy.append(self._redundancy.compute(bullet_texts))
         metrics.redundancy_score = (
             sum(per_output_redundancy) / len(per_output_redundancy)
@@ -415,22 +421,22 @@ class SummaryEvaluator:
             critical_count += geval_critical
             warn_count += geval_warn
 
-        if metrics.hallucination_rate > 0.5:
+        if metrics.hallucination_rate > _HALLUCINATION_CRITICAL_THRESHOLD:
             critical_count += 1
-        elif metrics.hallucination_rate > 0.3:
+        elif metrics.hallucination_rate > _HALLUCINATION_WARN_THRESHOLD:
             warn_count += 1
 
         # Only judge the composite when every weighted axis fed it; an
         # incomplete composite is already counted above and reading it as a
         # quality signal would just double-count the same outage.
         if geval_measured and not missing_axes:
-            if metrics.overall_quality_score < 0.3:
+            if metrics.overall_quality_score < _COMPOSITE_CRITICAL_THRESHOLD:
                 critical_count += 1
-            elif metrics.overall_quality_score < 0.5:
+            elif metrics.overall_quality_score < _COMPOSITE_WARN_THRESHOLD:
                 warn_count += 1
 
-        if critical_count >= 2:
+        if critical_count >= _MIN_BREACHES_FOR_ALERT:
             return AlertLevel.CRITICAL
-        if critical_count >= 1 or warn_count >= 2:
+        if critical_count >= 1 or warn_count >= _MIN_BREACHES_FOR_ALERT:
             return AlertLevel.WARN
         return AlertLevel.OK

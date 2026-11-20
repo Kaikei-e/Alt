@@ -18,13 +18,13 @@ func (h *Handler) SaveArticleSummary(ctx context.Context, req *connect.Request[d
 	if h.saveArticleSummary == nil {
 		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("not yet implemented"))
 	}
-	if req.Msg.ArticleId == "" {
+	if req.Msg.GetArticleId() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("article_id is required"))
 	}
-	if req.Msg.Summary == "" {
+	if req.Msg.GetSummary() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("summary is required"))
 	}
-	if req.Msg.UserId == "" {
+	if req.Msg.GetUserId() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("user_id is required"))
 	}
 
@@ -54,13 +54,13 @@ func (h *Handler) SaveArticleSummary(ctx context.Context, req *connect.Request[d
 	// side reads. SUMMARY_VERSIONING_SKIP makes the caller say so.
 	if req.Msg.GetSummaryVersioning() != datahubv1.SummaryVersioning_SUMMARY_VERSIONING_SKIP &&
 		h.createSummaryVersionUsecase != nil {
-		articleUUID, parseErr := uuid.Parse(req.Msg.ArticleId)
-		userUUID, userParseErr := uuid.Parse(req.Msg.UserId)
+		articleUUID, parseErr := uuid.Parse(req.Msg.GetArticleId())
+		userUUID, userParseErr := uuid.Parse(req.Msg.GetUserId())
 		if parseErr == nil && userParseErr == nil {
 			sv := domain.SummaryVersion{
 				ArticleID:   articleUUID,
 				UserID:      userUUID,
-				SummaryText: req.Msg.Summary,
+				SummaryText: req.Msg.GetSummary(),
 				Model:       "pre-processor",
 			}
 			// Capture the article title at event-emission time so the
@@ -70,7 +70,7 @@ func (h *Handler) SaveArticleSummary(ctx context.Context, req *connect.Request[d
 			// sentence. The lookup happens here at the handler boundary —
 			// projection time stays pure (event payload only).
 			if h.getArticleByID != nil {
-				if article, lookupErr := h.getArticleByID.GetArticleByID(ctx, req.Msg.ArticleId); lookupErr == nil && article != nil {
+				if article, lookupErr := h.getArticleByID.GetArticleByID(ctx, req.Msg.GetArticleId()); lookupErr == nil && article != nil {
 					sv.ArticleTitle = article.Title
 				}
 			}
@@ -85,7 +85,7 @@ func (h *Handler) SaveArticleSummary(ctx context.Context, req *connect.Request[d
 			// the event that was lost.
 			if svErr := h.createSummaryVersionUsecase.Execute(ctx, sv); svErr != nil {
 				h.logger.Error("failed to create summary version; refusing to acknowledge the write",
-					"error", svErr, "article_id", req.Msg.ArticleId)
+					"error", svErr, "article_id", req.Msg.GetArticleId())
 				return nil, connect.NewError(connect.CodeUnavailable,
 					errors.New("summary written but its version could not be recorded; retry"))
 			}
@@ -103,11 +103,11 @@ func (h *Handler) DeleteArticleSummary(ctx context.Context, req *connect.Request
 	if h.deleteArticleSummary == nil {
 		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("not yet implemented"))
 	}
-	if req.Msg.ArticleId == "" {
+	if req.Msg.GetArticleId() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("article_id is required"))
 	}
 
-	err := h.deleteArticleSummary.DeleteArticleSummary(ctx, req.Msg.ArticleId)
+	err := h.deleteArticleSummary.DeleteArticleSummary(ctx, req.Msg.GetArticleId())
 	if err != nil {
 		h.logger.Error("DeleteArticleSummary failed", "error", err)
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to delete article summary"))
@@ -122,11 +122,11 @@ func (h *Handler) CheckArticleSummaryExists(ctx context.Context, req *connect.Re
 	if h.checkArticleSummaryExists == nil {
 		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("not yet implemented"))
 	}
-	if req.Msg.ArticleId == "" {
+	if req.Msg.GetArticleId() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("article_id is required"))
 	}
 
-	exists, summaryID, err := h.checkArticleSummaryExists.CheckArticleSummaryExists(ctx, req.Msg.ArticleId)
+	exists, summaryID, err := h.checkArticleSummaryExists.CheckArticleSummaryExists(ctx, req.Msg.GetArticleId())
 	if err != nil {
 		h.logger.Error("CheckArticleSummaryExists failed", "error", err)
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to check article summary existence"))
@@ -143,15 +143,15 @@ func (h *Handler) FindArticlesWithSummaries(ctx context.Context, req *connect.Re
 		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("not yet implemented"))
 	}
 
-	limit := clampLimit(int(req.Msg.Limit))
+	limit := clampLimit(int(req.Msg.GetLimit()))
 
 	var lastCreatedAt *time.Time
-	if req.Msg.LastCreatedAt != nil {
-		t := req.Msg.LastCreatedAt.AsTime()
+	if req.Msg.GetLastCreatedAt() != nil {
+		t := req.Msg.GetLastCreatedAt().AsTime()
 		lastCreatedAt = &t
 	}
 
-	articles, nextCreatedAt, nextID, err := h.findArticlesWithSummaries.FindArticlesWithSummaries(ctx, lastCreatedAt, req.Msg.LastId, limit)
+	articles, nextCreatedAt, nextID, err := h.findArticlesWithSummaries.FindArticlesWithSummaries(ctx, lastCreatedAt, req.Msg.GetLastId(), limit)
 	if err != nil {
 		h.logger.Error("FindArticlesWithSummaries failed", "error", err)
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to find articles with summaries"))
@@ -187,15 +187,15 @@ func (h *Handler) ListUnsummarizedArticles(ctx context.Context, req *connect.Req
 		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("not yet implemented"))
 	}
 
-	limit := clampLimit(int(req.Msg.Limit))
+	limit := clampLimit(int(req.Msg.GetLimit()))
 
 	var lastCreatedAt *time.Time
-	if req.Msg.LastCreatedAt != nil {
-		t := req.Msg.LastCreatedAt.AsTime()
+	if req.Msg.GetLastCreatedAt() != nil {
+		t := req.Msg.GetLastCreatedAt().AsTime()
 		lastCreatedAt = &t
 	}
 
-	articles, nextCreatedAt, nextID, err := h.listUnsummarized.ListUnsummarizedArticles(ctx, lastCreatedAt, req.Msg.LastId, limit)
+	articles, nextCreatedAt, nextID, err := h.listUnsummarized.ListUnsummarizedArticles(ctx, lastCreatedAt, req.Msg.GetLastId(), limit)
 	if err != nil {
 		h.logger.Error("ListUnsummarizedArticles failed", "error", err)
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to list unsummarized articles"))

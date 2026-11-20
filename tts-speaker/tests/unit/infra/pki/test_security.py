@@ -1,16 +1,14 @@
 """Security contract tests for F-001..F-011 (sync Python PKI)."""
 
-# ruff: noqa: TRY003, PLC0415, PTH110
-
 from __future__ import annotations
 
 import base64
 import json
-import os
 import ssl
 import tempfile
 import threading
 import time
+import urllib.request
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -22,7 +20,7 @@ from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 from jwcrypto.jwa import default_max_pbkdf2_iterations
 from jwcrypto.jwk import JWK
 from prometheus_client import REGISTRY as DEFAULT_REGISTRY
-from prometheus_client import generate_latest
+from prometheus_client import CollectorRegistry, generate_latest
 
 from tests.unit.infra.pki.helpers import self_signed_pem, write_password_file
 from tests.unit.infra.pki.test_manager import FakeIssuer
@@ -32,13 +30,14 @@ from tts_speaker.infra.pki.config import (
     MAX_RESPONSE_BYTES,
     MODE_ENABLED,
     CARejectedError,
+    Config,
     InsecureCAURLError,
     PasswordTooLargeError,
     PkiError,
     ProvisionerPageLimitError,
     RedirectError,
     ResponseTooLargeError,
-    UnsupportedIssuerAlgorithm,
+    UnsupportedIssuerAlgorithmError,
     load_config,
 )
 from tts_speaker.infra.pki.ctx import CancelledError, Ctx
@@ -52,6 +51,7 @@ from tts_speaker.infra.pki.native_issuer import (
     decrypt_provisioner_jwk,
     encrypt_step_ca_provisioner_jwk,
 )
+from tts_speaker.infra.pki.start import start_with_observer
 
 NB = datetime(2026, 8, 18, tzinfo=UTC)
 
@@ -181,7 +181,7 @@ def test_pbes2_rejects_malformed_and_oversized_header() -> None:
 
 def test_pbes2_lock_restores_cap_under_concurrency() -> None:
     key = JWK.generate(kty="EC", crv="P-256")
-    password = "concurrent-pw"
+    password = "concurrent-pw"  # noqa: S105 - test fixture value, not a credential
     compact = encrypt_step_ca_provisioner_jwk(key, password)
     before = default_max_pbkdf2_iterations
     errors: list[BaseException] = []
@@ -244,7 +244,7 @@ def test_rejects_tls12_only_ca(tmp_path: Path) -> None:
 
 
 def test_ca_error_is_sentinel_without_body(tmp_path: Path) -> None:
-    secret = "super-secret-jwk-password-and-ott"
+    secret = "super-secret-jwk-password-and-ott"  # noqa: S105 - test fixture value, not a credential
     ca = FakeStepCA("pki-agent-tts-speaker", "sentinel-pw")
     ca.sign_status = 401
     ca.sign_body = json.dumps({"status": 401, "message": secret}).encode()
@@ -382,14 +382,13 @@ def test_certfile_rejects_symlink_dest_and_parent(tmp_path: Path) -> None:
 
 
 def test_enroll_cancel_during_backoff_is_cancelled(tmp_path: Path) -> None:
-    from tts_speaker.infra.pki.config import Config
-
     files = CertFile(str(tmp_path / "svc-cert.pem"), str(tmp_path / "svc-key.pem"))
 
     class _Fail:
         def issue(self, ctx: Ctx, subject: str, sans: list[str]) -> tuple[bytes, bytes]:
             del ctx, subject, sans
-            raise PkiError("CA down")
+            msg = "CA down"
+            raise PkiError(msg)
 
     cfg = Config(
         mode=MODE_ENABLED,
@@ -400,7 +399,7 @@ def test_enroll_cancel_during_backoff_is_cancelled(tmp_path: Path) -> None:
         ca_url="https://127.0.0.1:1",
         root_file=str(tmp_path / "root.pem"),
         provisioner="pki-agent-tts-speaker",
-        password_file="/run/secrets/pki-agent-tts-speaker-jwk",
+        password_file="/run/secrets/pki-agent-tts-speaker-jwk",  # noqa: S106 - test fixture value, not a credential
         retry_attempts=5,
         retry_backoff=30,
     )
@@ -429,7 +428,8 @@ def test_rekey_does_not_use_named_tmp(tmp_path: Path, monkeypatch: pytest.Monkey
     iss = _new_issuer(ca, tmp_path)
 
     def _boom(*_args: object, **_kwargs: object) -> object:
-        raise AssertionError("named tempfile must not be used for rekey mTLS")
+        msg = "named tempfile must not be used for rekey mTLS"
+        raise AssertionError(msg)
 
     monkeypatch.setattr(tempfile, "mkstemp", _boom)
     try:
@@ -447,13 +447,6 @@ def test_prom_observer_rejects_default_registry() -> None:
 
 
 def test_start_uses_private_registry_and_ops(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    import urllib.request
-
-    from prometheus_client import CollectorRegistry
-
-    from tts_speaker.infra.pki.config import Config
-    from tts_speaker.infra.pki.start import start_with_observer
-
     monkeypatch.setenv("OPS_LISTEN", "127.0.0.1:0")
 
     cfg = Config(
@@ -491,8 +484,9 @@ def test_start_uses_private_registry_and_ops(tmp_path: Path, monkeypatch: pytest
     assert handle.ops_addr is not None
     assert handle.registry is not DEFAULT_REGISTRY
     try:
+        http_ok = 200
         with urllib.request.urlopen(f"http://{handle.ops_addr}/health", timeout=2) as health:  # nosec B310
-            assert health.status == 200
+            assert health.status == http_ok
             assert b"tts-speaker" in health.read()
         with urllib.request.urlopen(f"http://{handle.ops_addr}/metrics", timeout=2) as metrics:  # nosec B310
             body = metrics.read().decode()
@@ -524,15 +518,14 @@ def test_stop_during_http_closes_connections(tmp_path: Path) -> None:
     iss.close_idle_connections()
     thread.join(timeout=5)
     assert thread.is_alive() is False
-    assert done and isinstance(done[0], CancelledError)
+    assert done
+    assert isinstance(done[0], CancelledError)
     if ca.block_sign is not None:
         ca.block_sign.set()
     ca.close()
 
 
 def test_stop_during_write_does_not_abandon(tmp_path: Path) -> None:
-    from tts_speaker.infra.pki.config import Config
-
     files = CertFile(str(tmp_path / "b-cert.pem"), str(tmp_path / "b-key.pem"))
     started = threading.Event()
     orig = files.write
@@ -552,7 +545,7 @@ def test_stop_during_write_does_not_abandon(tmp_path: Path) -> None:
         ca_url="https://127.0.0.1:1",
         root_file=str(tmp_path / "root.pem"),
         provisioner="pki-agent-tts-speaker-write",
-        password_file="/run/secrets/pki-agent-tts-speaker-write-jwk",
+        password_file="/run/secrets/pki-agent-tts-speaker-write-jwk",  # noqa: S106 - test fixture value, not a credential
         retry_attempts=1,
         retry_backoff=0.001,
         tick_interval=3600,
@@ -587,8 +580,10 @@ def test_stop_during_write_does_not_abandon(tmp_path: Path) -> None:
 
 
 def test_pbes2_constant_is_step_ca_default() -> None:
-    assert STEP_CA_PBES2_P2C == 600_000
-    assert os.path.exists("/proc/self/fd")
+    actual_p2c = STEP_CA_PBES2_P2C
+    expected_p2c = 600_000
+    assert actual_p2c == expected_p2c
+    assert Path("/proc/self/fd").exists()
 
 
 def _leaf_and_ca(
@@ -685,7 +680,7 @@ def test_ed25519_directly_signed_chain_cannot_bypass_policy() -> None:
     leaf_key = ec.generate_private_key(ec.SECP256R1())
     ed_key = ed25519.Ed25519PrivateKey.generate()
     leaf, ca_cert = _leaf_and_ca(ed_key, leaf_key, None, "ed25519.example")
-    with pytest.raises(UnsupportedIssuerAlgorithm, match="unsupported issuer algorithm"):
+    with pytest.raises(UnsupportedIssuerAlgorithmError, match="unsupported issuer algorithm"):
         _verify_chain(leaf, [ca_cert], [], ["ed25519.example"])
 
 

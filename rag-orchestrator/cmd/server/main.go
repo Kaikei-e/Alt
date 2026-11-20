@@ -15,8 +15,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
+	"github.com/labstack/echo/v5"
+	"github.com/labstack/echo/v5/middleware"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
@@ -171,24 +171,26 @@ func main() {
 	// explicitly to avoid the bare http.Server defaults (unlimited = open
 	// to Slowloris). WriteTimeout stays 0 (unlimited) because the SSE
 	// streaming endpoints (handler.go writeSSE) hold the response open.
-	e.Server.Addr = fmt.Sprintf(":%s", cfg.Server.Port)
-	e.Server.ReadHeaderTimeout = 10 * time.Second
-	e.Server.ReadTimeout = 30 * time.Second
-	e.Server.IdleTimeout = 120 * time.Second
-	e.Server.MaxHeaderBytes = 1 << 20 // 1 MiB
-	e.Server.Handler = e
+	echoServer := &http.Server{
+		Addr:              fmt.Sprintf(":%s", cfg.Server.Port),
+		Handler:           e,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    1 << 20, // 1 MiB
+	}
 
 	go func() {
 		if connectTLS != nil {
-			log.Info("Starting Echo server (TLS)", "addr", e.Server.Addr)
-			e.Server.TLSConfig = connectTLS
-			if err := e.Server.ListenAndServeTLS("", ""); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Info("Starting Echo server (TLS)", "addr", echoServer.Addr)
+			echoServer.TLSConfig = connectTLS
+			if err := echoServer.ListenAndServeTLS("", ""); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				log.Error("echo tls server failed", "error", err)
 				serverErr <- err
 			}
 		} else {
-			log.Info("Starting Echo server (plaintext)", "addr", e.Server.Addr)
-			if err := e.Server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Info("Starting Echo server (plaintext)", "addr", echoServer.Addr)
+			if err := echoServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				log.Error("echo plaintext server failed", "error", err)
 				serverErr <- err
 			}
@@ -218,11 +220,10 @@ func main() {
 			os.Exit(1)
 		}
 	} else {
-		connectServer = &http.Server{
-			Addr:              fmt.Sprintf(":%s", cfg.Server.ConnectPort),
-			Handler:           connectHandler,
-			ReadHeaderTimeout: 10 * time.Second,
-		}
+		connectServer = newPlaintextConnectServer(
+			fmt.Sprintf(":%s", cfg.Server.ConnectPort),
+			connectHandler,
+		)
 	}
 	go func() {
 		log.Info("Starting Connect-RPC server", "addr", connectServer.Addr, "peer_identity_mode", string(cfg.PeerIdentity.Mode))
@@ -263,7 +264,7 @@ func main() {
 	if err := connectServer.Shutdown(ctx); err != nil {
 		log.Error("Connect-RPC server shutdown error", "error", err)
 	}
-	if err := e.Shutdown(ctx); err != nil {
+	if err := echoServer.Shutdown(ctx); err != nil {
 		log.Error("echo server shutdown error", "error", err)
 	}
 }
@@ -284,6 +285,9 @@ func newRESTEcho(
 	log *slog.Logger,
 ) *echo.Echo {
 	e := echo.New()
+	if log != nil {
+		e.Logger = log
+	}
 	// CVE-2026-118653 / CVE-2026-118651: rag-orchestrator is service-to-service
 	// only; never trust client-supplied X-Forwarded-For or X-Real-IP headers.
 	e.IPExtractor = echo.ExtractIPDirect()
@@ -309,12 +313,11 @@ func newRESTEcho(
 	openapi.RegisterHandlers(e, handler)
 	e.POST("/internal/rag/backfill", handler.Backfill)
 	e.POST("/v1/rag/morning-letter", handler.MorningLetter)
-	e.POST("/internal/rag/candidate-similarity", handler.CandidateSimilarity)
 
-	e.GET("/healthz", func(c echo.Context) error {
+	e.GET("/healthz", func(c *echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
 	})
-	e.GET("/readyz", func(c echo.Context) error {
+	e.GET("/readyz", func(c *echo.Context) error {
 		if pinger != nil {
 			if err := pinger.Ping(c.Request().Context()); err != nil {
 				log.Error("readyz db ping failed", "error", err)
@@ -369,6 +372,24 @@ func newHealthServer(addr string, pinger HealthPinger, log *slog.Logger) *http.S
 		Addr:              addr,
 		Handler:           newHealthMux(pinger, log),
 		ReadHeaderTimeout: 5 * time.Second,
+	}
+}
+
+func cleartextHTTP2() *http.Protocols {
+	p := new(http.Protocols)
+	p.SetHTTP1(true)
+	p.SetUnencryptedHTTP2(true)
+	return p
+}
+
+// newPlaintextConnectServer constructs the plaintext Connect-RPC server used
+// when PEER_IDENTITY_MODE=disabled.
+func newPlaintextConnectServer(addr string, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		Protocols:         cleartextHTTP2(),
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 }
 

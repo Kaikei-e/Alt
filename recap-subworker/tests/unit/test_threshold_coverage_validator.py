@@ -29,6 +29,10 @@ import numpy as np
 import pytest
 from sklearn.linear_model import LogisticRegression
 
+from recap_subworker.infra.config import Settings
+
+EXPECTED_CARDINALITY = 30
+
 
 def _fit_tiny_model_with_classes(class_names: list[str]) -> LogisticRegression:
     rng = np.random.default_rng(11)
@@ -99,9 +103,7 @@ def _build_settings(
     ja_model: Path,
     ja_thresholds: Path,
     baseline: int = 30,
-):
-    from recap_subworker.infra.config import Settings
-
+) -> Settings:
     return Settings(  # type: ignore[arg-type]
         classification_backend="joblib",
         genre_classifier_model_path=str(ja_model),
@@ -123,7 +125,7 @@ class TestThresholdCoverageValidator:
             ja_model=ja_model_path_30,
             ja_thresholds=ja_thresholds_full,
         )
-        assert settings.genre_baseline_cardinality == 30
+        assert settings.genre_baseline_cardinality == EXPECTED_CARDINALITY
 
     def test_partial_coverage_raises(
         self, ja_model_path_30: Path, ja_thresholds_missing_13: Path
@@ -137,7 +139,7 @@ class TestThresholdCoverageValidator:
     def test_partial_coverage_lists_missing_classes(
         self, ja_model_path_30: Path, ja_thresholds_missing_13: Path
     ) -> None:
-        with pytest.raises(ValueError) as exc:
+        with pytest.raises(ValueError, match="threshold coverage") as exc:
             _build_settings(
                 ja_model=ja_model_path_30,
                 ja_thresholds=ja_thresholds_missing_13,
@@ -155,8 +157,6 @@ class TestThresholdCoverageValidator:
         """Missing thresholds file is handled by the existing ``_validate_joblib_artifacts``
         guard for directory-shaped binds. The coverage check must not double-fire when
         the file simply does not exist (e.g. dev workstation without artefact)."""
-        from recap_subworker.infra.config import Settings
-
         non_existent = tmp_path / "missing_thresholds.json"
         # Should not raise from the coverage validator. The ``_ensure_model`` runtime
         # path will still warn, but boot stays green so dev iteration is not blocked.
@@ -177,8 +177,6 @@ class TestThresholdCoverageValidator:
         self, ja_model_path_30: Path, ja_thresholds_missing_13: Path, tmp_path: Path
     ) -> None:
         """Joblib-only validator must short-circuit for learning_machine backend."""
-        from recap_subworker.infra.config import Settings
-
         lm_dir = tmp_path / "lm"
         lm_dir.mkdir()
         settings = Settings(  # type: ignore[arg-type]

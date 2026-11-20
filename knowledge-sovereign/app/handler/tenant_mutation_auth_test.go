@@ -71,6 +71,7 @@ func setupTenantAuthTest(t *testing.T) (
 	cleanup func(),
 ) {
 	t.Helper()
+	// #nosec G101 -- test-only dummy token fixture
 	backendToken = "auth-backend-test-token-long-enough-1234"
 	pubKey, privKey, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
@@ -174,7 +175,7 @@ func TestApplyProjectionMutation_Dismiss_MissingEmptyNullTenant_NormalizedWithCl
 
 			resp, err := client.ApplyProjectionMutation(context.Background(), req)
 			require.NoError(t, err)
-			assert.True(t, resp.Msg.Success)
+			assert.True(t, resp.Msg.GetSuccess())
 
 			var captured map[string]any
 			require.NoError(t, json.Unmarshal(repo.lastPayload, &captured))
@@ -214,7 +215,7 @@ func TestApplyProjectionMutation_ClearSupersede_TenantAuth(t *testing.T) {
 	reqMissing.Header().Set("X-Alt-Backend-Token", validJWT)
 	resp, err := client.ApplyProjectionMutation(context.Background(), reqMissing)
 	require.NoError(t, err)
-	assert.True(t, resp.Msg.Success)
+	assert.True(t, resp.Msg.GetSuccess())
 
 	var captured map[string]any
 	require.NoError(t, json.Unmarshal(repo.lastPayload, &captured))
@@ -251,7 +252,7 @@ func TestApplyProjectionMutation_PatchURL_TenantAuth(t *testing.T) {
 	reqMissing.Header().Set("X-Alt-Backend-Token", validJWT)
 	resp, err := client.ApplyProjectionMutation(context.Background(), reqMissing)
 	require.NoError(t, err)
-	assert.True(t, resp.Msg.Success)
+	assert.True(t, resp.Msg.GetSuccess())
 
 	var captured map[string]any
 	require.NoError(t, json.Unmarshal(repo.lastPayload, &captured))
@@ -288,7 +289,7 @@ func TestApplyRecallMutation_SnoozeAndDismiss_TenantAuth(t *testing.T) {
 	reqSnoozeMissing.Header().Set("X-Alt-Backend-Token", validJWT)
 	resp, err := client.ApplyRecallMutation(context.Background(), reqSnoozeMissing)
 	require.NoError(t, err)
-	assert.True(t, resp.Msg.Success)
+	assert.True(t, resp.Msg.GetSuccess())
 
 	var captured map[string]any
 	require.NoError(t, json.Unmarshal(repo.lastPayload, &captured))
@@ -318,7 +319,7 @@ func TestApplyRecallMutation_SnoozeAndDismiss_TenantAuth(t *testing.T) {
 	reqDismissEmpty.Header().Set("X-Alt-Backend-Token", validJWT)
 	resp, err = client.ApplyRecallMutation(context.Background(), reqDismissEmpty)
 	require.NoError(t, err)
-	assert.True(t, resp.Msg.Success)
+	assert.True(t, resp.Msg.GetSuccess())
 
 	require.NoError(t, json.Unmarshal(repo.lastPayload, &captured))
 	assert.Equal(t, targetTenantID, captured["tenant_id"])
@@ -382,7 +383,7 @@ func TestApplyCurationMutation_Dismiss_MissingEmptyNullTenant_NormalizedWithClai
 
 			resp, err := client.ApplyCurationMutation(context.Background(), req)
 			require.NoError(t, err)
-			assert.True(t, resp.Msg.Success)
+			assert.True(t, resp.Msg.GetSuccess())
 
 			var captured map[string]any
 			require.NoError(t, json.Unmarshal(repo.lastPayload, &captured))
@@ -424,7 +425,7 @@ func TestApplyMutation_CaseVariantBypassPrevention(t *testing.T) {
 
 	resp, err := client.ApplyProjectionMutation(context.Background(), reqVariantOwn)
 	require.NoError(t, err)
-	assert.True(t, resp.Msg.Success)
+	assert.True(t, resp.Msg.GetSuccess())
 
 	var captured map[string]any
 	require.NoError(t, json.Unmarshal(repo.lastPayload, &captured))
@@ -457,6 +458,7 @@ func (f *fakePgx) Begin(ctx context.Context) (pgx.Tx, error) {
 }
 
 func TestApplyMutation_EndToEnd_CapturedDriverSQLIsolation(t *testing.T) {
+	// #nosec G101 -- test-only dummy token fixture
 	backendToken := "auth-backend-test-token-long-enough-1234"
 	pubKey, jwtSigningKey, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
@@ -526,7 +528,7 @@ func TestApplyMutation_EndToEnd_CapturedDriverSQLIsolation(t *testing.T) {
 
 	resp, err := client.ApplyProjectionMutation(context.Background(), req)
 	require.NoError(t, err)
-	assert.True(t, resp.Msg.Success)
+	assert.True(t, resp.Msg.GetSuccess())
 
 	require.Len(t, execCalls, 1)
 	assert.Contains(t, execCalls[0].sql, "AND tenant_id =", "SQL emitted to driver pool MUST enforce tenant_id")
@@ -602,7 +604,7 @@ func TestApplyRecallMutation_UpsertCandidate_HomeAssociationAuth(t *testing.T) {
 
 	resp, err := client.ApplyRecallMutation(context.Background(), reqMissingHomePositive)
 	require.NoError(t, err)
-	assert.True(t, resp.Msg.Success)
+	assert.True(t, resp.Msg.GetSuccess())
 
 	var captured map[string]any
 	require.NoError(t, json.Unmarshal(repo.lastPayload, &captured))
@@ -654,7 +656,7 @@ func TestApplyProjectionMutation_NumberPreserveExactValue_Above2Pow53(t *testing
 
 	resp, err := client.ApplyProjectionMutation(context.Background(), req)
 	require.NoError(t, err)
-	assert.True(t, resp.Msg.Success)
+	assert.True(t, resp.Msg.GetSuccess())
 	assert.Equal(t, "UpsertKnowledgeHomeItem", repo.lastMethod)
 
 	forwardedStr := string(repo.lastPayload)
@@ -682,7 +684,7 @@ func TestApplyRecallMutation_NumberPreserveExactValue_Above2Pow53(t *testing.T) 
 
 	resp, err := client.ApplyRecallMutation(context.Background(), req)
 	require.NoError(t, err)
-	assert.True(t, resp.Msg.Success)
+	assert.True(t, resp.Msg.GetSuccess())
 	assert.Equal(t, "UpsertRecallCandidate", repo.lastMethod)
 
 	forwardedStr := string(repo.lastPayload)

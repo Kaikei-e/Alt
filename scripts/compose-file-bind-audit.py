@@ -22,9 +22,10 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import shutil
 import subprocess
 import sys
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import NamedTuple
 
@@ -153,9 +154,7 @@ def looks_like_artefact_directory(source: str, target: str) -> bool:
     return any(marker in haystack for marker in ARTEFACT_DIRECTORY_MARKERS)
 
 
-def needs_create_host_path_guard(
-    source: str, target: str, compose_dir: Path | None
-) -> bool:
+def needs_create_host_path_guard(source: str, target: str, compose_dir: Path | None) -> bool:
     return looks_like_file(source, target, compose_dir) or looks_like_artefact_directory(
         source, target
     )
@@ -208,8 +207,7 @@ def file_bind_violations(
             if bind.get("create_host_path") is False:
                 continue
             found.append(
-                f"{name} long-syntax file bind {source} -> {target} "
-                f"without create_host_path: false"
+                f"{name} long-syntax file bind {source} -> {target} without create_host_path: false"
             )
     return found
 
@@ -233,8 +231,12 @@ KNOWN_WORKSPACE_SOURCES = {
 
 def _default_is_ignored(path: Path) -> bool:
     """True when git excludes `path`, so a fresh checkout will not have it."""
-    proc = subprocess.run(
-        ["git", "-C", str(REPO_ROOT), "check-ignore", "-q", str(path)],
+    git_bin = shutil.which("git")
+    if git_bin is None:
+        msg = "git executable not found on PATH"
+        raise FileNotFoundError(msg)
+    proc = subprocess.run(  # noqa: S603 -- git resolved via shutil.which with explicit args
+        [git_bin, "-C", str(REPO_ROOT), "check-ignore", "-q", str(path)],
         capture_output=True,
         check=False,
     )
@@ -244,7 +246,7 @@ def _default_is_ignored(path: Path) -> bool:
 def ephemeral_source_violations(
     services: dict[str, dict],
     compose_dir: Path | None = None,
-    is_ignored=_default_is_ignored,
+    is_ignored: Callable[[Path], bool] = _default_is_ignored,
 ) -> list[str]:
     """Bind sources that a fresh checkout of this repo would not contain.
 
@@ -352,9 +354,13 @@ def host_source(source: str) -> HostKey | None:
     return None
 
 
+SHORT_BIND_PARTS_WITH_MODE = 3
+USER_UID_GID_PARTS = 2
+
+
 def _short_read_only(entry: str) -> bool:
     bits = entry.split(":")
-    return len(bits) >= 3 and "ro" in bits[-1].split(",")
+    return len(bits) >= SHORT_BIND_PARTS_WITH_MODE and "ro" in bits[-1].split(",")
 
 
 def host_path_mounts(
@@ -402,10 +408,10 @@ def _entry_schema_violations(entry: dict) -> list[str]:
         found.append(f"host_paths entry {label}: kind must be one of {sorted(HOST_PATH_KINDS)}")
     owner = entry.get("owner")
     if owner is not None and not (isinstance(owner, str) and _OWNER.match(owner)):
-        found.append(f"host_paths entry {label}: owner must be \"uid:gid\" or null")
+        found.append(f'host_paths entry {label}: owner must be "uid:gid" or null')
     mode = entry.get("mode")
     if mode is not None and not (isinstance(mode, str) and _MODE.match(mode)):
-        found.append(f"host_paths entry {label}: mode must be a quoted octal like \"0644\" or null")
+        found.append(f'host_paths entry {label}: mode must be a quoted octal like "0644" or null')
     if not isinstance(entry.get("create_host_path"), bool):
         found.append(f"host_paths entry {label}: create_host_path must be true or false")
     provision = entry.get("provision")
@@ -430,7 +436,9 @@ def host_path_violations(
         found.extend(_entry_schema_violations(entry))
         key = (entry.get("env"), entry.get("path"))
         if key in declared:
-            found.append(f"host_paths entry {entry.get('id')}: duplicates {declared[key].get('id')}")
+            found.append(
+                f"host_paths entry {entry.get('id')}: duplicates {declared[key].get('id')}"
+            )
         declared[key] = entry
 
     for key in sorted(mounts_by_source, key=_key_label):
@@ -471,9 +479,9 @@ def host_path_violations(
     return found
 
 
-def _user_gid(user) -> str | None:
+def _user_gid(user: object) -> str | None:
     parts = str(user).split(":")
-    return parts[1] if len(parts) == 2 and parts[1].isdigit() else None
+    return parts[1] if len(parts) == USER_UID_GID_PARTS and parts[1].isdigit() else None
 
 
 def socket_group_violations(services: dict[str, dict], manifest: dict) -> list[str]:
@@ -497,9 +505,9 @@ def socket_group_violations(services: dict[str, dict], manifest: dict) -> list[s
 def _uses_nvidia(svc: dict) -> bool:
     if svc.get("runtime") == "nvidia":
         return True
-    devices = (
-        ((svc.get("deploy") or {}).get("resources") or {}).get("reservations") or {}
-    ).get("devices") or []
+    devices = (((svc.get("deploy") or {}).get("resources") or {}).get("reservations") or {}).get(
+        "devices"
+    ) or []
     return any(isinstance(d, dict) and d.get("driver") == "nvidia" for d in devices)
 
 
@@ -544,7 +552,7 @@ def required_env_violations(texts: Iterable[str], manifest: dict) -> list[str]:
     return found
 
 
-def _env_file_paths(raw) -> list[str]:
+def _env_file_paths(raw: object) -> list[str]:
     if raw is None:
         return []
     items = raw if isinstance(raw, list) else [raw]
@@ -560,7 +568,7 @@ def _env_file_paths(raw) -> list[str]:
 def env_file_violations(
     entries: Iterable[tuple[Path, str, dict]],
     manifest: dict,
-    is_ignored=_default_is_ignored,
+    is_ignored: Callable[[Path], bool] = _default_is_ignored,
     repo_root: Path = REPO_ROOT,
 ) -> list[str]:
     """Required env_files a fresh checkout lacks must be declared."""
@@ -598,9 +606,7 @@ def audit_host_prereqs(manifest_path: Path = MANIFEST_PATH) -> list[str]:
     found.extend(gpu_violations(services, manifest))
     found.extend(required_env_violations(texts, manifest))
     found.extend(
-        env_file_violations(
-            ((path.parent, name, svc) for path, name, svc in entries), manifest
-        )
+        env_file_violations(((path.parent, name, svc) for path, name, svc in entries), manifest)
     )
     return found
 
@@ -616,59 +622,61 @@ def main() -> int:
     found = audit_production()
     if args.expect_violations:
         if found:
-            print(
+            sys.stdout.write(
                 f"OK: file-bind detector is armed ({len(found)} production "
-                f"violation(s) still present; Wave 1 must clear them)"
+                f"violation(s) still present; Wave 1 must clear them)\n"
             )
             for v in found:
-                print(f"  - {v}")
+                sys.stdout.write(f"  - {v}\n")
             return 0
-        print(
+        sys.stdout.write(
             "file-bind-audit --expect-violations FAILED — production compose "
             "has no short-syntax file binds. If Wave 1 already migrated them, "
-            "drop --expect-violations and keep the zero-violation gate."
+            "drop --expect-violations and keep the zero-violation gate.\n"
         )
         return 1
     if found:
-        print("Short-syntax / unguarded file binds (PM-2026-036 class):")
+        sys.stdout.write("Short-syntax / unguarded file binds (PM-2026-036 class):\n")
         for v in found:
-            print(f"  - {v}")
-        print(
+            sys.stdout.write(f"  - {v}\n")
+        sys.stdout.write(
             "\nConvert to long-syntax bind with create_host_path: false, "
-            "or a configs: entry. Short syntax cannot refuse a missing file."
+            "or a configs: entry. Short syntax cannot refuse a missing file.\n"
         )
         return 1
     ephemeral = audit_production_sources()
     if ephemeral:
-        print("Bind sources a fresh checkout cannot provide:")
+        sys.stdout.write("Bind sources a fresh checkout cannot provide:\n")
         for v in ephemeral:
-            print(f"  - {v}")
-        print(
+            sys.stdout.write(f"  - {v}\n")
+        sys.stdout.write(
             "\nThe deploy runner checks Alt out per job, so only tracked files "
             "are there. Move the source to a host path with a ${VAR:-/var/lib/...} "
-            "default, as recap-subworker /app/data already does."
+            "default, as recap-subworker /app/data already does.\n"
         )
         return 1
     prereqs = audit_host_prereqs()
     if prereqs:
-        print(f"Host prerequisites out of sync with {MANIFEST_PATH.relative_to(REPO_ROOT)}:")
+        sys.stdout.write(
+            f"Host prerequisites out of sync with {MANIFEST_PATH.relative_to(REPO_ROOT)}:\n"
+        )
         for v in prereqs:
-            print(f"  - {v}")
-        print(
+            sys.stdout.write(f"  - {v}\n")
+        sys.stdout.write(
             "\nOperators provision hosts from that manifest's recipes, and "
             "alt-deploy's host preflight is to check hosts against it. Declare "
             "each new host path (owner, mode, provisioning recipe) there, or "
-            "drop entries compose no longer uses."
+            "drop entries compose no longer uses.\n"
         )
         return 1
     acknowledged = acknowledged_workspace_sources()
     if acknowledged:
-        print("Known gitignored bind sources (staged debt, not gating):")
+        sys.stdout.write("Known gitignored bind sources (staged debt, not gating):\n")
         for entry in acknowledged:
-            print(f"  - {entry}")
-    print(
+            sys.stdout.write(f"  - {entry}\n")
+    sys.stdout.write(
         "OK: 0 unguarded file binds, 0 unacknowledged gitignored bind sources, "
-        "host prerequisite manifest in sync"
+        "host prerequisite manifest in sync\n"
     )
     return 0
 

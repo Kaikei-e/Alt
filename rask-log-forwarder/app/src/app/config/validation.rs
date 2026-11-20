@@ -2,6 +2,17 @@ use super::{Config, ConfigError, Protocol};
 use url::Url;
 
 impl Config {
+    /// Validates URLs, numeric bounds, disk-fallback paths, and ingest token configuration.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ConfigError::InvalidUrl`] if `endpoint` (or `otlp_endpoint`
+    /// when `protocol == Protocol::Otlp`) is not a valid URL, or
+    /// [`ConfigError::InvalidConfig`] if `batch_size == 0`,
+    /// `buffer_capacity < batch_size`, the disk-fallback parent directory does
+    /// not exist when enabled, `connection_timeout_secs == 0`,
+    /// `retry_config.max_attempts == 0`, `ingest_token_file` is `None`, or
+    /// `ingest_token` is empty.
     pub fn validate(&self) -> Result<(), ConfigError> {
         // Validate endpoint URL
         Url::parse(&self.endpoint).map_err(|e| {

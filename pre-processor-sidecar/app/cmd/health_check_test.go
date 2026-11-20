@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"pre-processor-sidecar/config"
 )
@@ -28,12 +29,8 @@ func TestHealthCheckService_BasicHealth(t *testing.T) {
 // TestHealthCheckService_TokenManagerHealth tests token manager health verification
 func TestHealthCheckService_TokenManagerHealth(t *testing.T) {
 	// Set environment variables for OAuth2 credentials
-	os.Setenv("INOREADER_CLIENT_ID", "test-client-id")
-	os.Setenv("INOREADER_CLIENT_SECRET", "test-client-secret")
-	defer func() {
-		os.Unsetenv("INOREADER_CLIENT_ID")
-		os.Unsetenv("INOREADER_CLIENT_SECRET")
-	}()
+	t.Setenv("INOREADER_CLIENT_ID", "test-client-id")
+	t.Setenv("INOREADER_CLIENT_SECRET", "test-client-secret")
 
 	// Create basic config
 	cfg := &config.Config{
@@ -57,8 +54,10 @@ func TestHealthCheckService_TokenManagerHealth(t *testing.T) {
 // TestHealthCheckService_TokenManagerUnavailable tests token manager unavailable scenario
 func TestHealthCheckService_TokenManagerUnavailable(t *testing.T) {
 	// Don't set environment variables to simulate unavailable credentials
-	os.Unsetenv("INOREADER_CLIENT_ID")
-	os.Unsetenv("INOREADER_CLIENT_SECRET")
+	t.Setenv("INOREADER_CLIENT_ID", "")
+	t.Setenv("INOREADER_CLIENT_SECRET", "")
+	require.NoError(t, os.Unsetenv("INOREADER_CLIENT_ID"))
+	require.NoError(t, os.Unsetenv("INOREADER_CLIENT_SECRET"))
 
 	cfg := &config.Config{
 		OAuth2: config.OAuth2Config{
@@ -77,12 +76,8 @@ func TestHealthCheckService_TokenManagerUnavailable(t *testing.T) {
 // TestHealthCheckService_OAuth2ClientHealth tests OAuth2 client connectivity
 func TestHealthCheckService_OAuth2ClientHealth(t *testing.T) {
 	// Set environment variables for OAuth2 client
-	os.Setenv("INOREADER_CLIENT_ID", "test-client-id")
-	os.Setenv("INOREADER_CLIENT_SECRET", "test-client-secret")
-	defer func() {
-		os.Unsetenv("INOREADER_CLIENT_ID")
-		os.Unsetenv("INOREADER_CLIENT_SECRET")
-	}()
+	t.Setenv("INOREADER_CLIENT_ID", "test-client-id")
+	t.Setenv("INOREADER_CLIENT_SECRET", "test-client-secret")
 
 	cfg := &config.Config{
 		OAuth2: config.OAuth2Config{
@@ -109,12 +104,8 @@ func TestHealthCheckService_OAuth2ClientHealth(t *testing.T) {
 // TestHealthCheckService_DatabaseConnectivity tests database connectivity
 func TestHealthCheckService_DatabaseConnectivity(t *testing.T) {
 	// Set environment variables for OAuth2 credentials
-	os.Setenv("INOREADER_CLIENT_ID", "test-client-id")
-	os.Setenv("INOREADER_CLIENT_SECRET", "test-client-secret")
-	defer func() {
-		os.Unsetenv("INOREADER_CLIENT_ID")
-		os.Unsetenv("INOREADER_CLIENT_SECRET")
-	}()
+	t.Setenv("INOREADER_CLIENT_ID", "test-client-id")
+	t.Setenv("INOREADER_CLIENT_SECRET", "test-client-secret")
 
 	// For this test, we'll mock the database connectivity check
 	cfg := &config.Config{
@@ -149,12 +140,8 @@ func TestHealthCheckService_DatabaseConnectivity(t *testing.T) {
 // TestHealthCheckService_ComprehensiveHealth tests all components together
 func TestHealthCheckService_ComprehensiveHealth(t *testing.T) {
 	// Set environment variables for OAuth2 client
-	os.Setenv("INOREADER_CLIENT_ID", "test-client-id")
-	os.Setenv("INOREADER_CLIENT_SECRET", "test-client-secret")
-	defer func() {
-		os.Unsetenv("INOREADER_CLIENT_ID")
-		os.Unsetenv("INOREADER_CLIENT_SECRET")
-	}()
+	t.Setenv("INOREADER_CLIENT_ID", "test-client-id")
+	t.Setenv("INOREADER_CLIENT_SECRET", "test-client-secret")
 
 	cfg := &config.Config{
 		OAuth2: config.OAuth2Config{
@@ -194,8 +181,10 @@ func TestHealthCheckService_ComprehensiveHealth(t *testing.T) {
 // TestHealthCheckService_PartialFailure tests scenario with some components failing
 func TestHealthCheckService_PartialFailure(t *testing.T) {
 	// Don't set environment variables to simulate token manager failure
-	os.Unsetenv("INOREADER_CLIENT_ID")
-	os.Unsetenv("INOREADER_CLIENT_SECRET")
+	t.Setenv("INOREADER_CLIENT_ID", "")
+	t.Setenv("INOREADER_CLIENT_SECRET", "")
+	require.NoError(t, os.Unsetenv("INOREADER_CLIENT_ID"))
+	require.NoError(t, os.Unsetenv("INOREADER_CLIENT_SECRET"))
 
 	cfg := &config.Config{
 		OAuth2: config.OAuth2Config{

@@ -23,6 +23,50 @@ logger = structlog.get_logger(__name__)
 if TYPE_CHECKING:
     from keybert import KeyBERT  # type: ignore
     from sentence_transformers import SentenceTransformer  # type: ignore
+    from spacy.language import Language  # type: ignore
+
+
+class _ModelManagerRuntimeError(RuntimeError):
+    @classmethod
+    def models_failed(cls) -> _ModelManagerRuntimeError:
+        return cls("Models failed to load")
+
+    @classmethod
+    def stopwords_failed(cls) -> _ModelManagerRuntimeError:
+        return cls("Stopwords failed to load")
+
+
+class _MissingMLDependencyError(ImportError):
+    @classmethod
+    def tagger_missing(cls) -> _MissingMLDependencyError:
+        return cls("Tagger not available. Install with: pip install fugashi[unidic-lite]")
+
+    @classmethod
+    def sentence_transformer_missing(cls) -> _MissingMLDependencyError:
+        return cls("SentenceTransformer and KeyBERT are required")
+
+    @classmethod
+    def keybert_missing(cls) -> _MissingMLDependencyError:
+        return cls("KeyBERT is required. Install with: pip install keybert")
+
+
+class _ModelManagerLoadError(ModelLoadError):
+    @classmethod
+    def embedder_uninitialized(cls) -> _ModelManagerLoadError:
+        return cls("Embedder was not initialized")
+
+    @classmethod
+    def missing_dependency(cls, exc: BaseException) -> _ModelManagerLoadError:
+        return cls(f"Missing ML dependency: {exc}")
+
+    @classmethod
+    def load_failed(cls, exc: BaseException) -> _ModelManagerLoadError:
+        return cls(f"Failed to load models: {exc}")
+
+    @classmethod
+    def stopwords_failed(cls, exc: BaseException) -> _ModelManagerLoadError:
+        return cls(f"Failed to load stopwords: {exc}")
+
 
 try:
     from fugashi import Tagger  # pyright: ignore
@@ -81,7 +125,7 @@ class ModelManager:
                 self._config = config
 
             if self._embedder is None or self._keybert is None or self._ja_tagger is None:
-                raise RuntimeError("Models failed to load")
+                raise _ModelManagerRuntimeError.models_failed()
             return self._embedder, self._keybert, self._ja_tagger
 
     def get_stopwords(self) -> tuple[set[str], set[str]]:
@@ -96,150 +140,141 @@ class ModelManager:
                 self._load_stopwords()
 
             if self._ja_stopwords is None or self._en_stopwords is None:
-                raise RuntimeError("Stopwords failed to load")
+                raise _ModelManagerRuntimeError.stopwords_failed()
             return self._ja_stopwords, self._en_stopwords
+
+    def _reset_loaded_models(self) -> None:
+        self._embedder = None
+        self._keybert = None
+        self._ja_tagger = None
+        self._embedder_backend = None
+        self._embedder_metadata = {}
+
+    def _try_load_onnx_embedder(self, config: ModelConfig) -> bool:
+        if not config.use_onnx:
+            return False
+        if not config.onnx_model_path:
+            logger.warning(
+                "ONNX runtime is enabled but onnx_model_path is not configured; falling back to SentenceTransformer"
+            )
+            return False
+        try:
+            logger.info("Loading ONNX embedder", model_path=config.onnx_model_path)
+            onnx_config = OnnxEmbeddingConfig(
+                model_path=config.onnx_model_path,
+                tokenizer_name=config.onnx_tokenizer_name,
+                tokenizer_revision=config.onnx_tokenizer_revision,
+                pooling=config.onnx_pooling,
+                batch_size=config.onnx_batch_size,
+                max_length=config.onnx_max_length,
+            )
+            self._embedder = OnnxEmbeddingModel(onnx_config)
+            logger.info("ONNX embedder loaded successfully", model_path=config.onnx_model_path)
+            self._embedder_backend = "onnx"
+            self._embedder_metadata = self._embedder.describe()
+        except OnnxRuntimeMissing as e:
+            logger.exception("ONNX runtime dependencies missing", error=str(e))
+            logger.info("Falling back to SentenceTransformer")
+            return False
+        except Exception as e:
+            logger.exception("Failed to initialize ONNX embedder", error=str(e))
+            logger.info("Falling back to SentenceTransformer due to error")
+            return False
+        else:
+            return True
+
+    def _load_sentence_transformer_embedder(self, config: ModelConfig) -> None:
+        if SentenceTransformer is None or KeyBERT is None:
+            logger.error("SentenceTransformer/KeyBERT dependencies missing")
+            raise _MissingMLDependencyError.sentence_transformer_missing()
+
+        logger.info("Loading SentenceTransformer model", model_name=config.model_name)
+        self._embedder = SentenceTransformer(config.model_name, device=config.device, revision=config.model_revision)
+        logger.info("SentenceTransformer loaded successfully")
+
+        fp16_applied = False
+        if config.use_fp16:
+            try:
+                self._embedder.half()
+                fp16_applied = True
+                logger.info(
+                    "FP16 conversion applied to SentenceTransformer",
+                    device=config.device,
+                    expected_memory_reduction="~50%",
+                )
+            except (AttributeError, RuntimeError, TypeError) as fp16_error:
+                logger.warning("FP16 conversion failed, continuing with FP32", error=str(fp16_error))
+
+        self._embedder_backend = "sentence_transformer"
+        embedding_dim = None
+        if hasattr(self._embedder, "get_sentence_embedding_dimension"):
+            try:
+                embedding_dim = self._embedder.get_sentence_embedding_dimension()  # type: ignore[attr-defined]
+            except AttributeError, RuntimeError, TypeError:  # pragma: no cover - best effort metadata
+                embedding_dim = None
+        self._embedder_metadata = {
+            "backend": "sentence_transformer",
+            "model_name": config.model_name,
+            "device": config.device,
+            "fp16": fp16_applied,
+        }
+        if embedding_dim is not None:
+            self._embedder_metadata["embedding_dimension"] = embedding_dim
+
+    def _load_models_impl(self, config: ModelConfig) -> None:
+        self._embedder_backend = None
+        self._embedder_metadata = {}
+        if Tagger is None:
+            logger.error(
+                "Tagger (fugashi) not available",
+                help="Install with: pip install fugashi[unidic-lite]",
+            )
+            raise _MissingMLDependencyError.tagger_missing()
+
+        if not self._try_load_onnx_embedder(config):
+            self._load_sentence_transformer_embedder(config)
+
+        if self._embedder is None:
+            raise _ModelManagerLoadError.embedder_uninitialized()
+        if KeyBERT is None:
+            logger.error("KeyBERT dependency missing")
+            raise _MissingMLDependencyError.keybert_missing()
+        logger.info("Loading KeyBERT model")
+        self._keybert = KeyBERT(self._embedder)
+        logger.info(
+            "KeyBERT loaded successfully",
+            embedder_backend=self._embedder_backend,
+            embedder_class=type(self._embedder).__name__,
+        )
+
+        logger.info("Loading Japanese tagger")
+        self._ja_tagger = Tagger()
+        logger.info("Japanese tagger loaded successfully")
+
+        if config.use_ginza:
+            self._load_ginza(config.ginza_model_name)
+
+        logger.info("All models loaded successfully")
 
     def _load_models(self, config: ModelConfig) -> None:
         """Load ML models (called within lock)."""
         try:
-            self._embedder_backend = None
-            self._embedder_metadata = {}
-            if Tagger is None:
-                logger.error(
-                    "Tagger (fugashi) not available",
-                    help="Install with: pip install fugashi[unidic-lite]",
-                )
-                raise ImportError("Tagger not available. Install with: pip install fugashi[unidic-lite]")
-
-            use_onnx = config.use_onnx
-            if config.use_onnx and not config.onnx_model_path:
-                logger.warning(
-                    "ONNX runtime is enabled but onnx_model_path is not configured; falling back to SentenceTransformer"
-                )
-                use_onnx = False
-
-            if use_onnx:
-                if not config.onnx_model_path:
-                    logger.warning("ONNX model path is not set; falling back to SentenceTransformer")
-                    use_onnx = False
-                else:
-                    try:
-                        logger.info("Loading ONNX embedder", model_path=config.onnx_model_path)
-                        onnx_config = OnnxEmbeddingConfig(
-                            model_path=config.onnx_model_path,
-                            tokenizer_name=config.onnx_tokenizer_name,
-                            tokenizer_revision=config.onnx_tokenizer_revision,
-                            pooling=config.onnx_pooling,
-                            batch_size=config.onnx_batch_size,
-                            max_length=config.onnx_max_length,
-                        )
-                        self._embedder = OnnxEmbeddingModel(onnx_config)
-                        logger.info("ONNX embedder loaded successfully", model_path=config.onnx_model_path)
-                        self._embedder_backend = "onnx"
-                        self._embedder_metadata = self._embedder.describe()
-                    except OnnxRuntimeMissing as e:
-                        logger.error("ONNX runtime dependencies missing", error=str(e))
-                        use_onnx = False
-                        logger.info("Falling back to SentenceTransformer")
-                    except Exception as e:
-                        logger.error("Failed to initialize ONNX embedder", error=str(e))
-                        use_onnx = False
-                        logger.info("Falling back to SentenceTransformer due to error")
-
-            if not use_onnx:
-                if SentenceTransformer is None or KeyBERT is None:
-                    logger.error("SentenceTransformer/KeyBERT dependencies missing")
-                    raise ImportError("SentenceTransformer and KeyBERT are required")
-
-                logger.info("Loading SentenceTransformer model", model_name=config.model_name)
-                self._embedder = SentenceTransformer(
-                    config.model_name, device=config.device, revision=config.model_revision
-                )
-                logger.info("SentenceTransformer loaded successfully")
-
-                # Apply FP16 conversion for memory optimization (~50% reduction)
-                fp16_applied = False
-                if config.use_fp16:
-                    try:
-                        self._embedder.half()
-                        fp16_applied = True
-                        logger.info(
-                            "FP16 conversion applied to SentenceTransformer",
-                            device=config.device,
-                            expected_memory_reduction="~50%",
-                        )
-                    except Exception as fp16_error:
-                        logger.warning(
-                            "FP16 conversion failed, continuing with FP32",
-                            error=str(fp16_error),
-                        )
-
-                self._embedder_backend = "sentence_transformer"
-                embedding_dim = None
-                if hasattr(self._embedder, "get_sentence_embedding_dimension"):
-                    try:
-                        embedding_dim = self._embedder.get_sentence_embedding_dimension()  # type: ignore[attr-defined]
-                    except Exception:  # pragma: no cover - best effort metadata
-                        embedding_dim = None
-                self._embedder_metadata = {
-                    "backend": "sentence_transformer",
-                    "model_name": config.model_name,
-                    "device": config.device,
-                    "fp16": fp16_applied,
-                }
-                if embedding_dim is not None:
-                    self._embedder_metadata["embedding_dimension"] = embedding_dim
-
-            if self._embedder is None:
-                raise ModelLoadError("Embedder was not initialized")
-            if KeyBERT is None:
-                logger.error("KeyBERT dependency missing")
-                raise ImportError("KeyBERT is required. Install with: pip install keybert")
-            logger.info("Loading KeyBERT model")
-            self._keybert = KeyBERT(self._embedder)
-            logger.info(
-                "KeyBERT loaded successfully",
-                embedder_backend=self._embedder_backend,
-                embedder_class=type(self._embedder).__name__,
-            )
-
-            logger.info("Loading Japanese tagger")
-            self._ja_tagger = Tagger()
-            logger.info("Japanese tagger loaded successfully")
-
-            # Load GiNZA if configured
-            if config.use_ginza:
-                self._load_ginza(config.ginza_model_name)
-
-            logger.info("All models loaded successfully")
-
+            self._load_models_impl(config)
         except ImportError as e:
-            logger.error("Import error while loading models", error=str(e))
-            self._embedder = None
-            self._keybert = None
-            self._ja_tagger = None
-            self._embedder_backend = None
-            self._embedder_metadata = {}
-            raise ModelLoadError(f"Missing ML dependency: {e}") from e
+            logger.exception("Import error while loading models", error=str(e))
+            self._reset_loaded_models()
+            raise _ModelManagerLoadError.missing_dependency(e) from e
         except ModelLoadError:
-            self._embedder = None
-            self._keybert = None
-            self._ja_tagger = None
-            self._embedder_backend = None
-            self._embedder_metadata = {}
+            self._reset_loaded_models()
             raise
         except Exception as e:
-            logger.error(
+            logger.exception(
                 "Unexpected error while loading models",
                 error=str(e),
                 error_type=type(e).__name__,
             )
-            self._embedder = None
-            self._keybert = None
-            self._ja_tagger = None
-            self._embedder_backend = None
-            self._embedder_metadata = {}
-            raise ModelLoadError(f"Failed to load models: {e}") from e
+            self._reset_loaded_models()
+            raise _ModelManagerLoadError.load_failed(e) from e
 
     def _load_stopwords(self) -> None:
         """Load stopwords files and NLTK stopwords corpus (fail-fast within lock)."""
@@ -258,8 +293,8 @@ class ModelManager:
 
             en_stopwords.update(word.lower() for word in nltk.corpus.stopwords.words("english"))
         except Exception as e:
-            logger.error("Failed to load required stopword resources", error=str(e), error_type=type(e).__name__)
-            raise ModelLoadError(f"Failed to load stopwords: {e}") from e
+            logger.exception("Failed to load required stopword resources", error=str(e), error_type=type(e).__name__)
+            raise _ModelManagerLoadError.stopwords_failed(e) from e
 
         self._ja_stopwords = ja_stopwords
         self._en_stopwords = en_stopwords
@@ -272,7 +307,7 @@ class ModelManager:
     def _load_ginza(self, model_name: str) -> None:
         """Load GiNZA spaCy model for Japanese NLP."""
         try:
-            import spacy
+            import spacy  # noqa: PLC0415 - optional ml-extended dependency loaded only when use_ginza=True
 
             logger.info("Loading GiNZA model", model_name=model_name)
             self._ginza_nlp = spacy.load(model_name)
@@ -298,7 +333,7 @@ class ModelManager:
             )
             self._ginza_available = False
 
-    def get_ginza(self) -> Any | None:
+    def get_ginza(self) -> Language | None:
         """
         Get the GiNZA spaCy model if available.
 
@@ -344,24 +379,25 @@ class ModelManager:
             }
 
 
-_default_instance: ModelManager | None = None
+_default_instance_holder: list[ModelManager | None] = [None]
 _instance_lock = threading.Lock()
 
 
 def get_model_manager() -> ModelManager:
     """Get the shared application-level ModelManager instance."""
-    global _default_instance
-    if _default_instance is None:
+    instance = _default_instance_holder[0]
+    if instance is None:
         with _instance_lock:
-            if _default_instance is None:
-                _default_instance = ModelManager()
-    return _default_instance
+            instance = _default_instance_holder[0]
+            if instance is None:
+                instance = ModelManager()
+                _default_instance_holder[0] = instance
+    return instance
 
 
 def reset_model_manager() -> None:
     """Reset the shared instance (for testing)."""
-    global _default_instance
     with _instance_lock:
-        if _default_instance is not None:
-            _default_instance.clear_models()
-        _default_instance = None
+        if _default_instance_holder[0] is not None:
+            _default_instance_holder[0].clear_models()
+        _default_instance_holder[0] = None

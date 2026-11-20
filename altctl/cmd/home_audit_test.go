@@ -16,7 +16,7 @@ func TestAuditCommand(t *testing.T) {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{
 			"audit": map[string]interface{}{
 				"auditId":           "audit-1",
 				"projectionName":    "knowledge_home_items",
@@ -24,7 +24,9 @@ func TestAuditCommand(t *testing.T) {
 				"sampleSize":        100,
 				"mismatchCount":     0,
 			},
-		})
+		}); err != nil {
+			t.Errorf("encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -55,7 +57,7 @@ func TestAuditCommand_Mismatches(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{
 			"audit": map[string]interface{}{
 				"auditId":           "audit-2",
 				"projectionName":    "knowledge_home_items",
@@ -63,7 +65,9 @@ func TestAuditCommand_Mismatches(t *testing.T) {
 				"sampleSize":        100,
 				"mismatchCount":     3,
 			},
-		})
+		}); err != nil {
+			t.Errorf("encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 

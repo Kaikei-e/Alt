@@ -130,7 +130,6 @@ const RPC = {
 };
 
 let vuSessionCookie = null;
-let vuLastRegisteredFeedUrl = null;
 let vuLastRegisteredArticleUrl = null;
 
 function think(minSeconds, maxSeconds) {
@@ -196,8 +195,7 @@ function recordResponse(res, trendMetric, tagName, expectedStatuses = [200]) {
 
   const label = tagName || (res.request && res.request.tags && res.request.tags.name) || "unknown";
   return check(res, {
-    [`${label}: expected status`]: (r) =>
-      expectedStatuses.includes(r.status),
+    [`${label}: expected status`]: (r) => expectedStatuses.includes(r.status),
   });
 }
 
@@ -427,7 +425,6 @@ function flowManageFeeds() {
   ok = registerFeed.ok && ok;
 
   if (registerFeed.ok) {
-    vuLastRegisteredFeedUrl = feedUrl;
     vuLastRegisteredArticleUrl = articleUrl;
   }
 

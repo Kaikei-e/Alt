@@ -260,11 +260,14 @@ impl ComponentRegistry {
 
     #[must_use]
     pub fn cards_runner(&self) -> Arc<dyn crate::pipeline::cards::CardsJobRunner> {
-        Arc::clone(
-            self.cards_runner
-                .as_ref()
-                .expect("cards_runner unwired in ComponentRegistry"),
-        )
+        #[expect(
+            clippy::expect_used,
+            reason = "cards_runner is only called when cards feature is enabled and wired in ComponentRegistry"
+        )]
+        let runner = self.cards_runner.as_ref().expect(
+            "cards_runner is only called when cards feature is enabled and wired in ComponentRegistry",
+        );
+        Arc::clone(runner)
     }
 
     #[must_use]
@@ -284,11 +287,14 @@ impl ComponentRegistry {
 
     #[must_use]
     pub fn themes_runner(&self) -> Arc<dyn crate::pipeline::themes::ThemesJobRunner> {
-        Arc::clone(
-            self.themes_runner
-                .as_ref()
-                .expect("themes_runner unwired in ComponentRegistry"),
-        )
+        #[expect(
+            clippy::expect_used,
+            reason = "themes_runner is only called when themes feature is enabled and wired in ComponentRegistry"
+        )]
+        let runner = self.themes_runner.as_ref().expect(
+            "themes_runner is only called when themes feature is enabled and wired in ComponentRegistry",
+        );
+        Arc::clone(runner)
     }
 
     #[must_use]

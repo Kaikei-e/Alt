@@ -468,7 +468,7 @@ func (u *indexArticleUsecase) BackfillOwners(ctx context.Context, items []OwnerB
 		}
 		parsedUserID, err := uuid.Parse(strings.TrimSpace(item.UserID))
 		if err != nil {
-			return result, fmt.Errorf("%w: invalid user_id %q for article %s: %v", ErrInvalidUserID, item.UserID, item.ArticleID, err)
+			return result, fmt.Errorf("%w: invalid user_id %q for article %s: %w", ErrInvalidUserID, item.UserID, item.ArticleID, err)
 		}
 
 		updated, alreadySet, err := u.docRepo.BackfillOwnerIfNull(ctx, item.ArticleID, parsedUserID)

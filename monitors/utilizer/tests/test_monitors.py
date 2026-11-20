@@ -14,10 +14,11 @@ from __future__ import annotations
 
 import subprocess
 import sys
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Any
 from unittest.mock import Mock
 
+import psutil
 import pytest
 
 from utilizer import monitors
@@ -29,6 +30,9 @@ from utilizer.monitors import (
     ProcessInfo,
 )
 
+_EXPECTED_HANGING_COUNT = 2
+_EXPECTED_RECAP_COUNT = 2
+
 
 class _UnexpectedError(Exception):
     """A failure mode the collectors have never been designed to expect.
@@ -37,6 +41,14 @@ class _UnexpectedError(Exception):
     still a bare ``except Exception``, this would be swallowed and a zero
     default returned instead of propagating.
     """
+
+
+@pytest.fixture(autouse=True)
+def _reset_tool_cache(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    monitors._resolve_tool.cache_clear()
+    monkeypatch.setattr(monitors.shutil, "which", lambda name: f"/usr/bin/{name}")
+    yield
+    monitors._resolve_tool.cache_clear()
 
 
 def _fake_completed(stdout: str) -> Mock:
@@ -48,10 +60,10 @@ def _patch_proc_stat(monkeypatch: pytest.MonkeyPatch, texts: list[str]) -> None:
     samples = iter(texts)
     real_read_text = Path.read_text
 
-    def fake_read_text(self: Path, *args: Any, **kwargs: Any) -> str:
+    def fake_read_text(self: Path, *args: object, **kwargs: object) -> str:
         if str(self) == "/proc/stat":
             return next(samples)
-        return real_read_text(self, *args, **kwargs)
+        return real_read_text(self, *args, **kwargs)  # type: ignore[arg-type]
 
     monkeypatch.setattr(Path, "read_text", fake_read_text)
 
@@ -59,10 +71,10 @@ def _patch_proc_stat(monkeypatch: pytest.MonkeyPatch, texts: list[str]) -> None:
 def _patch_proc_stat_error(monkeypatch: pytest.MonkeyPatch, exc: Exception) -> None:
     real_read_text = Path.read_text
 
-    def fake_read_text(self: Path, *args: Any, **kwargs: Any) -> str:
+    def fake_read_text(self: Path, *args: object, **kwargs: object) -> str:
         if str(self) == "/proc/stat":
             raise exc
-        return real_read_text(self, *args, **kwargs)
+        return real_read_text(self, *args, **kwargs)  # type: ignore[arg-type]
 
     monkeypatch.setattr(Path, "read_text", fake_read_text)
 
@@ -97,7 +109,7 @@ def test_get_memory_info_parses_free_output(monkeypatch: pytest.MonkeyPatch) -> 
 def test_get_memory_info_returns_zero_default_on_expected_failures(
     monkeypatch: pytest.MonkeyPatch, exc: Exception
 ) -> None:
-    def fake_run(*_a: Any, **_k: Any) -> Mock:
+    def fake_run(*_a: object, **_k: object) -> Mock:
         raise exc
 
     monkeypatch.setattr(monitors.subprocess, "run", fake_run)
@@ -105,9 +117,18 @@ def test_get_memory_info_returns_zero_default_on_expected_failures(
     assert monitors.get_memory_info() == MemoryInfo(total=0, used=0, available=0, percent=0)
 
 
+def test_get_memory_info_returns_zero_default_when_which_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(monitors.shutil, "which", lambda _name: None)
+
+    assert monitors.get_memory_info() == MemoryInfo(total=0, used=0, available=0, percent=0)
+
+
 def test_get_memory_info_propagates_unexpected_errors(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_run(*_a: Any, **_k: Any) -> Mock:
-        raise _UnexpectedError("disk on fire")
+    def fake_run(*_a: object, **_k: object) -> Mock:
+        msg = "disk on fire"
+        raise _UnexpectedError(msg)
 
     monkeypatch.setattr(monitors.subprocess, "run", fake_run)
 
@@ -131,7 +152,7 @@ def test_get_hanging_processes_counts_matching_lines(monkeypatch: pytest.MonkeyP
     )
     monkeypatch.setattr(monitors.subprocess, "run", lambda *a, **k: _fake_completed(stdout))
 
-    assert monitors.get_hanging_processes() == 2
+    assert monitors.get_hanging_processes() == _EXPECTED_HANGING_COUNT
 
 
 @pytest.mark.parametrize(
@@ -144,7 +165,7 @@ def test_get_hanging_processes_counts_matching_lines(monkeypatch: pytest.MonkeyP
 def test_get_hanging_processes_returns_zero_on_expected_failures(
     monkeypatch: pytest.MonkeyPatch, exc: Exception
 ) -> None:
-    def fake_run(*_a: Any, **_k: Any) -> Mock:
+    def fake_run(*_a: object, **_k: object) -> Mock:
         raise exc
 
     monkeypatch.setattr(monitors.subprocess, "run", fake_run)
@@ -152,11 +173,20 @@ def test_get_hanging_processes_returns_zero_on_expected_failures(
     assert monitors.get_hanging_processes() == 0
 
 
+def test_get_hanging_processes_returns_zero_when_which_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(monitors.shutil, "which", lambda _name: None)
+
+    assert monitors.get_hanging_processes() == 0
+
+
 def test_get_hanging_processes_propagates_unexpected_errors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def fake_run(*_a: Any, **_k: Any) -> Mock:
-        raise _UnexpectedError("ps blew up")
+    def fake_run(*_a: object, **_k: object) -> Mock:
+        msg = "ps blew up"
+        raise _UnexpectedError(msg)
 
     monkeypatch.setattr(monitors.subprocess, "run", fake_run)
 
@@ -175,7 +205,7 @@ def test_get_recap_processes_counts_matching_lines(monkeypatch: pytest.MonkeyPat
     )
     monkeypatch.setattr(monitors.subprocess, "run", lambda *a, **k: _fake_completed(stdout))
 
-    assert monitors.get_recap_processes() == 2
+    assert monitors.get_recap_processes() == _EXPECTED_RECAP_COUNT
 
 
 @pytest.mark.parametrize(
@@ -188,7 +218,7 @@ def test_get_recap_processes_counts_matching_lines(monkeypatch: pytest.MonkeyPat
 def test_get_recap_processes_returns_zero_on_expected_failures(
     monkeypatch: pytest.MonkeyPatch, exc: Exception
 ) -> None:
-    def fake_run(*_a: Any, **_k: Any) -> Mock:
+    def fake_run(*_a: object, **_k: object) -> Mock:
         raise exc
 
     monkeypatch.setattr(monitors.subprocess, "run", fake_run)
@@ -199,8 +229,9 @@ def test_get_recap_processes_returns_zero_on_expected_failures(
 def test_get_recap_processes_propagates_unexpected_errors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def fake_run(*_a: Any, **_k: Any) -> Mock:
-        raise _UnexpectedError("ps blew up")
+    def fake_run(*_a: object, **_k: object) -> Mock:
+        msg = "ps blew up"
+        raise _UnexpectedError(msg)
 
     monkeypatch.setattr(monitors.subprocess, "run", fake_run)
 
@@ -240,8 +271,9 @@ def test_get_gpu_info_parses_nvidia_smi_csv(monkeypatch: pytest.MonkeyPatch) -> 
 
 
 def test_get_gpu_info_reports_missing_binary(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_run(*_a: Any, **_k: Any) -> Mock:
-        raise FileNotFoundError("nvidia-smi not found")
+    def fake_run(*_a: object, **_k: object) -> Mock:
+        msg = "nvidia-smi not found"
+        raise FileNotFoundError(msg)
 
     monkeypatch.setattr(monitors.subprocess, "run", fake_run)
 
@@ -252,8 +284,20 @@ def test_get_gpu_info_reports_missing_binary(monkeypatch: pytest.MonkeyPatch) ->
     )
 
 
+def test_get_gpu_info_reports_missing_binary_when_which_returns_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(monitors.shutil, "which", lambda _name: None)
+
+    assert monitors.get_gpu_info() == GpuInfo(
+        available=False,
+        gpus=(),
+        error="nvidia-smi not found",
+    )
+
+
 def test_get_gpu_info_reports_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_run(*_a: Any, **_k: Any) -> Mock:
+    def fake_run(*_a: object, **_k: object) -> Mock:
         raise subprocess.TimeoutExpired(cmd=["nvidia-smi"], timeout=5)
 
     monkeypatch.setattr(monitors.subprocess, "run", fake_run)
@@ -266,7 +310,7 @@ def test_get_gpu_info_reports_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_get_gpu_info_reports_non_zero_exit(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_run(*_a: Any, **_k: Any) -> Mock:
+    def fake_run(*_a: object, **_k: object) -> Mock:
         raise subprocess.CalledProcessError(1, ["nvidia-smi"], stderr="driver error")
 
     monkeypatch.setattr(monitors.subprocess, "run", fake_run)
@@ -279,8 +323,9 @@ def test_get_gpu_info_reports_non_zero_exit(monkeypatch: pytest.MonkeyPatch) -> 
 
 
 def test_get_gpu_info_propagates_unexpected_errors(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_run(*_a: Any, **_k: Any) -> Mock:
-        raise _UnexpectedError("gpu driver segfaulted")
+    def fake_run(*_a: object, **_k: object) -> Mock:
+        msg = "gpu driver segfaulted"
+        raise _UnexpectedError(msg)
 
     monkeypatch.setattr(monitors.subprocess, "run", fake_run)
 
@@ -334,7 +379,7 @@ def test_get_top_processes_returns_empty_on_header_only_output(
 def test_get_top_processes_returns_empty_on_expected_failures(
     monkeypatch: pytest.MonkeyPatch, exc: Exception
 ) -> None:
-    def fake_run(*_a: Any, **_k: Any) -> Mock:
+    def fake_run(*_a: object, **_k: object) -> Mock:
         raise exc
 
     monkeypatch.setattr(monitors.subprocess, "run", fake_run)
@@ -342,11 +387,20 @@ def test_get_top_processes_returns_empty_on_expected_failures(
     assert monitors.get_top_processes() == []
 
 
+def test_get_top_processes_returns_empty_when_which_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(monitors.shutil, "which", lambda _name: None)
+
+    assert monitors.get_top_processes() == []
+
+
 def test_get_top_processes_propagates_unexpected_errors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def fake_run(*_a: Any, **_k: Any) -> Mock:
-        raise _UnexpectedError("ps blew up")
+    def fake_run(*_a: object, **_k: object) -> Mock:
+        msg = "ps blew up"
+        raise _UnexpectedError(msg)
 
     monkeypatch.setattr(monitors.subprocess, "run", fake_run)
 
@@ -360,8 +414,6 @@ def test_get_top_processes_propagates_unexpected_errors(
 
 
 def test_get_cpu_info_uses_psutil_when_available(monkeypatch: pytest.MonkeyPatch) -> None:
-    import psutil
-
     monkeypatch.setattr(psutil, "cpu_percent", lambda interval: 37.0)
 
     assert monitors.get_cpu_info() == CpuInfo(percent=37.0)
@@ -420,10 +472,20 @@ def test_get_cpu_info_top_fallback_recovers_from_timeout(
     _force_psutil_import_error(monkeypatch)
     _patch_proc_stat_error(monkeypatch, OSError("/proc is not mounted"))
 
-    def fake_run(*_a: Any, **_k: Any) -> Mock:
+    def fake_run(*_a: object, **_k: object) -> Mock:
         raise subprocess.TimeoutExpired(cmd=["top"], timeout=2)
 
     monkeypatch.setattr(monitors.subprocess, "run", fake_run)
+
+    assert monitors.get_cpu_info() == CpuInfo(percent=0.0)
+
+
+def test_get_cpu_info_top_fallback_returns_zero_when_which_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _force_psutil_import_error(monkeypatch)
+    _patch_proc_stat_error(monkeypatch, OSError("/proc is not mounted"))
+    monkeypatch.setattr(monitors.shutil, "which", lambda _name: None)
 
     assert monitors.get_cpu_info() == CpuInfo(percent=0.0)
 
@@ -434,8 +496,9 @@ def test_get_cpu_info_top_fallback_propagates_unexpected_errors(
     _force_psutil_import_error(monkeypatch)
     _patch_proc_stat_error(monkeypatch, OSError("/proc is not mounted"))
 
-    def fake_run(*_a: Any, **_k: Any) -> Mock:
-        raise _UnexpectedError("top blew up")
+    def fake_run(*_a: object, **_k: object) -> Mock:
+        msg = "top blew up"
+        raise _UnexpectedError(msg)
 
     monkeypatch.setattr(monitors.subprocess, "run", fake_run)
 

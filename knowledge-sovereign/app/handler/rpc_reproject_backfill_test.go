@@ -66,7 +66,7 @@ func TestValidateAndBuildProjectionAudit(t *testing.T) {
 				assert.Equal(t, "v2", got.ProjectionVersion)
 				assert.Equal(t, 100, got.SampleSize)
 				assert.Equal(t, 0, got.MismatchCount)
-				assert.Equal(t, json.RawMessage(`{"status":"ok"}`), got.DetailsJSON)
+				assert.JSONEq(t, `{"status":"ok"}`, string(got.DetailsJSON))
 				assert.True(t, got.CheckedAt.Equal(checked))
 			}
 		})
@@ -100,9 +100,9 @@ func TestReprojectRunMappersRoundTrip(t *testing.T) {
 
 	pb := reprojectRunToProto(run)
 	require.NotNil(t, pb)
-	assert.Equal(t, runID.String(), pb.ReprojectRunId)
-	assert.Equal(t, "knowledge_trail", pb.ProjectionName)
-	assert.Equal(t, userID.String(), pb.InitiatedBy)
+	assert.Equal(t, runID.String(), pb.GetReprojectRunId())
+	assert.Equal(t, "knowledge_trail", pb.GetProjectionName())
+	assert.Equal(t, userID.String(), pb.GetInitiatedBy())
 
 	back, err := protoToReprojectRun(pb)
 	require.NoError(t, err)
@@ -160,10 +160,10 @@ func TestBackfillJobMappersRoundTrip(t *testing.T) {
 
 	pb := backfillJobToProto(job)
 	require.NotNil(t, pb)
-	assert.Equal(t, jobID.String(), pb.JobId)
-	assert.Equal(t, cursorUserID.String(), pb.CursorUserId)
-	assert.Equal(t, "2026-09-24", pb.CursorDate)
-	assert.Equal(t, cursorArticleID.String(), pb.CursorArticleId)
+	assert.Equal(t, jobID.String(), pb.GetJobId())
+	assert.Equal(t, cursorUserID.String(), pb.GetCursorUserId())
+	assert.Equal(t, "2026-09-24", pb.GetCursorDate())
+	assert.Equal(t, cursorArticleID.String(), pb.GetCursorArticleId())
 
 	back, err := protoToBackfillJob(pb)
 	require.NoError(t, err)

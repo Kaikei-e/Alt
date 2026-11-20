@@ -12,9 +12,6 @@ import (
 	"rag-orchestrator/internal/domain"
 	"rag-orchestrator/internal/middleware"
 	"rag-orchestrator/internal/usecase"
-
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
 )
 
 // ServerConfig holds configuration for the Connect-RPC server
@@ -83,9 +80,10 @@ func newConnectMux(
 	return mux
 }
 
-// CreateConnectServer creates the plaintext (h2c) Connect-RPC handler chain.
+// CreateConnectServer creates the plaintext Connect-RPC handler chain.
 // Only valid when PEER_IDENTITY_MODE=disabled: X-Alt-User-Id is unverified on
 // this listener, so exposure must be limited by network policy.
+// Unencrypted HTTP/2 (h2c) is enabled via http.Server.Protocols at the caller.
 func CreateConnectServer(
 	articleClient domain.ArticleClient,
 	answerUsecase usecase.AnswerWithRAGUsecase,
@@ -95,10 +93,7 @@ func CreateConnectServer(
 	letterFetcher domain.MorningLetterFetcher,
 	logger *slog.Logger,
 ) http.Handler {
-	mux := newConnectMux(articleClient, answerUsecase, retrieveUsecase, conversationUsecase, eventEmitter, letterFetcher, logger)
-
-	// Support HTTP/2 without TLS (h2c) for Connect-RPC streaming
-	return h2c.NewHandler(mux, &http2.Server{})
+	return newConnectMux(articleClient, answerUsecase, retrieveUsecase, conversationUsecase, eventEmitter, letterFetcher, logger)
 }
 
 // CreateMTLSConnectServer creates the Connect-RPC handler chain for an

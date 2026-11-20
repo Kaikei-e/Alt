@@ -2,7 +2,6 @@ package retrieval_test
 
 import (
 	"context"
-	"io"
 	"log/slog"
 	"strings"
 	"testing"
@@ -100,7 +99,7 @@ func TestEmbedAndSearch_CandidateArticles_SkipsUnfilterableBM25Arm(t *testing.T)
 	testUID := "a0000000-0000-0000-0000-000000000001"
 	testUUID := uuid.MustParse(testUID)
 
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	mockEncoder := new(MockVectorEncoder)
 	mockBM25 := new(MockBM25Searcher)
 	mockChunkRepo := new(MockRagChunkRepository)

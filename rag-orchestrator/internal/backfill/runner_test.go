@@ -179,7 +179,7 @@ func newTestRunner(t *testing.T, cursorPath, orchestratorURL string, rows []Arti
 		db:            db,
 		client:        &http.Client{Timeout: 10 * time.Second},
 		cursorManager: NewCursorManager(cursorPath),
-		logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+		logger:        slog.New(slog.DiscardHandler),
 		stats:         &Stats{StartTime: time.Now()},
 		limiter:       rate.NewLimiter(rate.Inf, 1),
 	}
@@ -503,11 +503,16 @@ func TestRunner_ConflictDistinguishesOwnerConflictFromDuplicateKey(t *testing.T)
 		testArticle("a1", base),
 	}
 
+	decodeErrCh := make(chan error, 8)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var payload struct {
 			ArticleID string `json:"article_id"`
 		}
-		require.NoError(t, json.NewDecoder(r.Body).Decode(&payload))
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			decodeErrCh <- err
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 
 		w.Header().Set("Content-Type", "application/json")
 		switch payload.ArticleID {
@@ -533,6 +538,9 @@ func TestRunner_ConflictDistinguishesOwnerConflictFromDuplicateKey(t *testing.T)
 		"owner_conflict 409 must return an error")
 
 	require.NoError(t, runner.Run(context.Background()))
+	for len(decodeErrCh) > 0 {
+		require.NoError(t, <-decodeErrCh)
+	}
 	assert.Equal(t, int64(2), atomic.LoadInt64(&runner.stats.Processed),
 		"duplicate_key (a3) and 200 OK (a1) must count as processed")
 	assert.Equal(t, int64(1), atomic.LoadInt64(&runner.stats.Failed),

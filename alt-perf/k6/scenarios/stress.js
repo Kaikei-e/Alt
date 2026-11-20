@@ -12,8 +12,8 @@ import { group, sleep } from "k6";
 import { getConfig } from "../helpers/config.js";
 import { getAuthHeaders, getPublicHeaders, validateAuthHubToken } from "../helpers/auth.js";
 import { pickWeightedEndpoint } from "../helpers/endpoints.js";
-import { checkResponse, checkHealth, checkAuthResponse } from "../helpers/checks.js";
-import { recordResponseTime, recordError } from "../helpers/metrics.js";
+import { checkAuthResponse, checkHealth, checkResponse } from "../helpers/checks.js";
+import { recordError, recordResponseTime } from "../helpers/metrics.js";
 import { stressThresholds } from "../config/thresholds.js";
 import { handleSummary } from "../helpers/summary.js";
 

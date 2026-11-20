@@ -11,6 +11,7 @@ import pytest
 from acolyte.handler.connect_service import AcolyteConnectService
 
 _USER_ID = UUID("00000000-0000-0000-0000-000000000001")
+DURABILITY_POSITIONAL_ARG_INDEX = 2
 
 
 @pytest.mark.asyncio
@@ -88,7 +89,8 @@ async def test_run_pipeline_uses_sync_durability_when_checkpoint_enabled() -> No
 
     call_kwargs = graph.ainvoke.call_args
     assert call_kwargs.kwargs.get("durability") == "sync" or (
-        len(call_kwargs.args) > 2 and call_kwargs.args[2] == "sync"
+        len(call_kwargs.args) > DURABILITY_POSITIONAL_ARG_INDEX
+        and call_kwargs.args[DURABILITY_POSITIONAL_ARG_INDEX] == "sync"
     ), "ainvoke must be called with durability='sync' when checkpointing is enabled"
 
 

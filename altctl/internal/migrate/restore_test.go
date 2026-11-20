@@ -10,7 +10,32 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
+
+func readFileIn(t *testing.T, dir, name string) []byte {
+	t.Helper()
+	root, err := os.OpenRoot(dir)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, root.Close()) })
+	b, err := root.ReadFile(name)
+	require.NoError(t, err)
+	return b
+}
+
+func readOptionalFileIn(t *testing.T, dir, name string) []byte {
+	t.Helper()
+	root, err := os.OpenRoot(dir)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, root.Close()) })
+	b, err := root.ReadFile(name)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	require.NoError(t, err)
+	return b
+}
 
 func (f *fakeBackupEngine) resolveContainer(_ context.Context, spec VolumeSpec) string {
 	return "alt-" + spec.Service
@@ -28,7 +53,7 @@ func createTestBackup(t *testing.T) string {
 
 	backupDir := filepath.Join(dir, "test_backup")
 	volumesDir := filepath.Join(backupDir, "volumes")
-	if err := os.MkdirAll(volumesDir, 0755); err != nil {
+	if err := os.MkdirAll(volumesDir, 0o750); err != nil {
 		t.Fatal(err)
 	}
 
@@ -48,7 +73,7 @@ func createTestBackup(t *testing.T) string {
 			filename = spec.Name + ".tar.gz"
 		}
 		filePath := filepath.Join(volumesDir, filename)
-		if err := os.WriteFile(filePath, []byte("test-data-"+spec.Name), 0644); err != nil {
+		if err := os.WriteFile(filePath, []byte("test-data-"+spec.Name), 0o600); err != nil {
 			t.Fatal(err)
 		}
 
@@ -68,11 +93,22 @@ func createTestBackup(t *testing.T) string {
 	manifest.Finalize()
 
 	data, _ := json.MarshalIndent(manifest, "", "  ")
-	if err := os.WriteFile(filepath.Join(backupDir, ManifestFilename), data, 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(backupDir, ManifestFilename), data, 0o600); err != nil {
 		t.Fatal(err)
 	}
 
 	return backupDir
+}
+
+func writeFakeDocker(t *testing.T, script string) {
+	t.Helper()
+	binDir := t.TempDir()
+	fakeDocker := filepath.Join(binDir, "docker")
+	// #nosec G306 -- executable fake docker script for test PATH
+	if err := os.WriteFile(fakeDocker, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir+":"+os.Getenv("PATH"))
 }
 
 func TestMigrator_Restore_DryRun_AllVolumes(t *testing.T) {
@@ -144,12 +180,10 @@ func TestMigrator_Restore_ReturnsErrorWhenAllVolumesFail(t *testing.T) {
 
 		composeDir := t.TempDir()
 		composeFile := filepath.Join(composeDir, "compose.yaml")
-		if err := os.WriteFile(composeFile, []byte("name: alt\ninclude:\n  - db.yaml\n"), 0o644); err != nil {
+		if err := os.WriteFile(composeFile, []byte("name: alt\ninclude:\n  - db.yaml\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 
-		binDir := t.TempDir()
-		fakeDocker := filepath.Join(binDir, "docker")
 		script := `#!/usr/bin/env sh
 set -e
 case "$*" in
@@ -162,10 +196,7 @@ case "$*" in
 esac
 exit 1
 `
-		if err := os.WriteFile(fakeDocker, []byte(script), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		t.Setenv("PATH", binDir+":"+os.Getenv("PATH"))
+		writeFakeDocker(t, script)
 
 		tarEngine := &fakeBackupEngine{err: errors.New("simulated tar restore failure")}
 		pgEngine := &fakeBackupEngine{err: errors.New("simulated pg_restore failure")}
@@ -195,17 +226,12 @@ exit 1
 	t.Run("fails fast without invoking docker compose up without -f when no compose files exist", func(t *testing.T) {
 		backupDir := createTestBackup(t)
 
-		binDir := t.TempDir()
 		logFile := filepath.Join(t.TempDir(), "docker.log")
-		fakeDocker := filepath.Join(binDir, "docker")
 		script := `#!/usr/bin/env sh
 printf '%s\n' "$*" >> "` + logFile + `"
 exit 1
 `
-		if err := os.WriteFile(fakeDocker, []byte(script), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		t.Setenv("PATH", binDir+":"+os.Getenv("PATH"))
+		writeFakeDocker(t, script)
 
 		tarEngine := &fakeBackupEngine{}
 		pgEngine := &fakeBackupEngine{}
@@ -228,7 +254,7 @@ exit 1
 			t.Fatal("expected Restore() to fail when no compose files exist")
 		}
 
-		raw, _ := os.ReadFile(logFile)
+		raw := readOptionalFileIn(t, filepath.Dir(logFile), filepath.Base(logFile))
 		for _, call := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
 			if strings.Contains(call, "up -d") {
 				t.Fatalf("expected startDatabaseContainers to fail fast without invoking docker compose up without -f, got docker calls: %q", strings.TrimSpace(string(raw)))
@@ -282,10 +308,10 @@ func TestMigrator_Restore_AbortsOnMissingAggregate(t *testing.T) {
 	// compose.yaml -- the layout composeFileList must refuse loudly.
 	root := t.TempDir()
 	composeDir := filepath.Join(root, "compose")
-	if err := os.MkdirAll(composeDir, 0755); err != nil {
+	if err := os.MkdirAll(composeDir, 0o750); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(composeDir, "db.yaml"), []byte("services:\n  db:\n    image: postgres\n"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(composeDir, "db.yaml"), []byte("services:\n  db:\n    image: postgres\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -320,13 +346,11 @@ func TestMigrator_Restore_StartsDatabaseServiceBeforePGRestore(t *testing.T) {
 
 		composeDir := t.TempDir()
 		composeFile := filepath.Join(composeDir, "compose.yaml")
-		if err := os.WriteFile(composeFile, []byte("name: alt\ninclude:\n  - db.yaml\n"), 0o644); err != nil {
+		if err := os.WriteFile(composeFile, []byte("name: alt\ninclude:\n  - db.yaml\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 
-		binDir := t.TempDir()
 		logFile := filepath.Join(t.TempDir(), "docker.log")
-		fakeDocker := filepath.Join(binDir, "docker")
 		script := `#!/usr/bin/env sh
 set -e
 printf '%s\n' "$*" >> "` + logFile + `"
@@ -351,10 +375,7 @@ case "$*" in
 esac
 exit 1
 `
-		if err := os.WriteFile(fakeDocker, []byte(script), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		t.Setenv("PATH", binDir+":"+os.Getenv("PATH"))
+		writeFakeDocker(t, script)
 
 		migrator := NewMigrator(composeDir, "alt", slog.Default(), false)
 		err := migrator.Restore(context.Background(), RestoreOptions{
@@ -367,10 +388,7 @@ exit 1
 			t.Fatalf("Restore() failed: %v", err)
 		}
 
-		raw, err := os.ReadFile(logFile)
-		if err != nil {
-			t.Fatalf("reading docker log: %v", err)
-		}
+		raw := readFileIn(t, filepath.Dir(logFile), filepath.Base(logFile))
 		calls := strings.Split(strings.TrimSpace(string(raw)), "\n")
 
 		upIdx := -1
@@ -400,7 +418,7 @@ exit 1
 		if restoreIdx == -1 {
 			t.Fatalf("expected %q call, got calls: %v", wantRestorePrefix, calls)
 		}
-		if !(upIdx < readyIdx && readyIdx < restoreIdx) {
+		if upIdx >= readyIdx || readyIdx >= restoreIdx {
 			t.Fatalf("expected call order up (%d) < pg_isready (%d) < pg_restore (%d), got calls: %v", upIdx, readyIdx, restoreIdx, calls)
 		}
 	})
@@ -410,13 +428,11 @@ exit 1
 
 		composeDir := t.TempDir()
 		composeFile := filepath.Join(composeDir, "compose.yaml")
-		if err := os.WriteFile(composeFile, []byte("name: alt\ninclude:\n  - db.yaml\n"), 0o644); err != nil {
+		if err := os.WriteFile(composeFile, []byte("name: alt\ninclude:\n  - db.yaml\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 
-		binDir := t.TempDir()
 		logFile := filepath.Join(t.TempDir(), "docker.log")
-		fakeDocker := filepath.Join(binDir, "docker")
 		script := `#!/usr/bin/env sh
 set -e
 printf '%s\n' "$*" >> "` + logFile + `"
@@ -431,10 +447,7 @@ case "$*" in
 esac
 exit 0
 `
-		if err := os.WriteFile(fakeDocker, []byte(script), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		t.Setenv("PATH", binDir+":"+os.Getenv("PATH"))
+		writeFakeDocker(t, script)
 
 		tarEngine := &fakeBackupEngine{}
 		pgEngine := &fakeBackupEngine{}
@@ -466,19 +479,14 @@ exit 0
 
 		composeDir := t.TempDir()
 		composeFile := filepath.Join(composeDir, "compose.yaml")
-		if err := os.WriteFile(composeFile, []byte("name: alt\ninclude:\n  - db.yaml\n"), 0o644); err != nil {
+		if err := os.WriteFile(composeFile, []byte("name: alt\ninclude:\n  - db.yaml\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 
-		binDir := t.TempDir()
-		fakeDocker := filepath.Join(binDir, "docker")
 		script := `#!/usr/bin/env sh
 exit 0
 `
-		if err := os.WriteFile(fakeDocker, []byte(script), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		t.Setenv("PATH", binDir+":"+os.Getenv("PATH"))
+		writeFakeDocker(t, script)
 
 		migrator := &Migrator{
 			registry:     NewVolumeRegistry(),
@@ -506,21 +514,16 @@ exit 0
 
 		composeDir := t.TempDir()
 		composeFile := filepath.Join(composeDir, "compose.yaml")
-		if err := os.WriteFile(composeFile, []byte("name: alt\ninclude:\n  - db.yaml\n"), 0o644); err != nil {
+		if err := os.WriteFile(composeFile, []byte("name: alt\ninclude:\n  - db.yaml\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 
-		binDir := t.TempDir()
 		logFile := filepath.Join(t.TempDir(), "docker.log")
-		fakeDocker := filepath.Join(binDir, "docker")
 		script := `#!/usr/bin/env sh
 printf '%s\n' "$*" >> "` + logFile + `"
 exit 0
 `
-		if err := os.WriteFile(fakeDocker, []byte(script), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		t.Setenv("PATH", binDir+":"+os.Getenv("PATH"))
+		writeFakeDocker(t, script)
 
 		registry := &VolumeRegistry{
 			volumes: []VolumeSpec{
@@ -555,8 +558,52 @@ exit 0
 		if err == nil {
 			t.Fatal("expected Restore() to return an error when PostgreSQL volume spec has DBPort 0")
 		}
-		if raw, _ := os.ReadFile(logFile); strings.TrimSpace(string(raw)) != "" {
+		if raw := readOptionalFileIn(t, filepath.Dir(logFile), filepath.Base(logFile)); strings.TrimSpace(string(raw)) != "" {
 			t.Fatalf("expected no docker calls before failing on DBPort 0, got: %q", strings.TrimSpace(string(raw)))
 		}
 	})
+}
+
+func TestMigrator_Restore_RejectsEscapingFilename(t *testing.T) {
+	for _, badName := range []string{"../escape.tar.gz", "/etc/passwd", "", "."} {
+		t.Run(badName, func(t *testing.T) {
+			backupDir := t.TempDir()
+			if !filepath.IsAbs(backupDir) {
+				t.Fatalf("expected t.TempDir() to be absolute, got %q", backupDir)
+			}
+			m := NewManifest("test")
+			m.AddVolume(VolumeBackup{
+				Name:       "meili_data",
+				Type:       BackupTypeTar,
+				TypeString: "tar",
+				Filename:   badName,
+				Size:       1,
+			})
+			m.Finalize()
+			require.NoError(t, m.Save(filepath.Join(backupDir, ManifestFilename)))
+
+			tarEngine := &fakeBackupEngine{}
+			pgEngine := &fakeBackupEngine{}
+			migrator := &Migrator{
+				registry:     NewVolumeRegistry(),
+				volumeBackup: tarEngine,
+				pgBackup:     pgEngine,
+				composeDir:   filepath.Join(t.TempDir(), "compose"),
+				projectName:  "alt",
+				logger:       slog.Default(),
+				dryRun:       true,
+			}
+
+			err := migrator.Restore(context.Background(), RestoreOptions{
+				BackupDir: backupDir,
+				Force:     true,
+				Verify:    false,
+				Volumes:   []string{"meili_data"},
+			})
+			require.Error(t, err)
+			if tarEngine.calls.Load() != 0 || pgEngine.calls.Load() != 0 {
+				t.Fatalf("expected restore engine not to be called on escaping filename, got tar=%d pg=%d", tarEngine.calls.Load(), pgEngine.calls.Load())
+			}
+		})
+	}
 }

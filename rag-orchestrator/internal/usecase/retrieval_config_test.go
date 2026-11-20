@@ -14,7 +14,7 @@ func TestDefaultRetrievalConfig(t *testing.T) {
 	assert.Equal(t, 50, cfg.SearchLimit, "searchLimit should be 50 (standard re-ranking pool)")
 	assert.Equal(t, 5, cfg.QuotaOriginal, "quotaOriginal should be 5")
 	assert.Equal(t, 5, cfg.QuotaExpanded, "quotaExpanded should be 5")
-	assert.Equal(t, 60.0, cfg.RRFK, "rrfK should be 60.0 (standard RRF constant)")
+	assert.InDelta(t, 60.0, cfg.RRFK, 1e-9, "rrfK should be 60.0 (standard RRF constant)")
 
 	// Reranking defaults (Pinecone, ZeroEntropy research)
 	assert.True(t, cfg.Reranking.Enabled, "reranking should be enabled by default")

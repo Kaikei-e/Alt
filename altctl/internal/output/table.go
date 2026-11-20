@@ -78,8 +78,8 @@ func (t *Table) Render() {
 		return
 	}
 	t.table.Header(t.header)
-	t.table.Bulk(t.rows)
-	t.table.Render()
+	_ = t.table.Bulk(t.rows)
+	_ = t.table.Render()
 }
 
 // SetColumnColors sets colors for specific columns (no-op in v1)

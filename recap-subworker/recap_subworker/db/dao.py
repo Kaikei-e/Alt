@@ -446,7 +446,7 @@ class SubworkerDAO:
             )
             await self.session.execute(on_conflict)
 
-    async def upsert_run_diagnostics(
+    async def upsert_run_diagnostics(  # noqa: PLR0913 - one argument per persisted column; callers outside this module
         self,
         run_id: int,
         *,
@@ -482,10 +482,13 @@ class SubworkerDAO:
             orig = e.orig if e.orig is not None else None
             sqlstate = getattr(orig, "sqlstate", None) if orig is not None else None
             if sqlstate == "42P01":
-                raise ProgrammingError(
+                msg = (
                     "Table 'recap_run_diagnostics' does not exist. "
                     "Please run database migrations: 'make recap-migrate' or "
-                    "'docker compose --profile recap run --rm recap-db-migrator'",
+                    "'docker compose --profile recap run --rm recap-db-migrator'"
+                )
+                raise ProgrammingError(
+                    msg,
                     e.params,
                     orig if orig is not None else Exception(str(e)),
                 ) from e
@@ -517,7 +520,7 @@ class SubworkerDAO:
             error_message=row.error_message,
         )
 
-    async def save_genre_evaluation(
+    async def save_genre_evaluation(  # noqa: PLR0913 - one argument per persisted column; callers outside this module
         self,
         dataset_path: str,
         total_items: int,

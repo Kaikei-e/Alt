@@ -8,12 +8,12 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 func ValidationMiddleware() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+		return func(c *echo.Context) error {
 			// Validate based on route and method
 			if err := validateRoute(c); err != nil {
 				return err
@@ -24,7 +24,7 @@ func ValidationMiddleware() echo.MiddlewareFunc {
 	}
 }
 
-func validateRoute(c echo.Context) error {
+func validateRoute(c *echo.Context) error {
 	path := c.Request().URL.Path
 	method := c.Request().Method
 
@@ -48,11 +48,11 @@ func validateRoute(c echo.Context) error {
 	}
 }
 
-func validateFeedRegistration(c echo.Context) error {
+func validateFeedRegistration(c *echo.Context) error {
 	// Read and parse request body
 	body, err := io.ReadAll(c.Request().Body)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, map[string]interface{}{
+		return NewStructuredHTTPError(http.StatusBadRequest, "Failed to read request body", map[string]any{
 			"error":   "validation_failed",
 			"message": "Failed to read request body",
 		})
@@ -63,7 +63,7 @@ func validateFeedRegistration(c echo.Context) error {
 
 	var requestData map[string]interface{}
 	if err := json.Unmarshal(body, &requestData); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, map[string]interface{}{
+		return NewStructuredHTTPError(http.StatusBadRequest, "Invalid JSON format", map[string]any{
 			"error":   "validation_failed",
 			"message": "Invalid JSON format",
 		})
@@ -73,7 +73,7 @@ func validateFeedRegistration(c echo.Context) error {
 	result := validator.Validate(c.Request().Context(), requestData)
 
 	if !result.Valid {
-		return echo.NewHTTPError(http.StatusBadRequest, map[string]interface{}{
+		return NewStructuredHTTPError(http.StatusBadRequest, "Validation failed", map[string]any{
 			"error":   "validation_failed",
 			"message": "Validation failed",
 			"details": result.Errors,
@@ -83,11 +83,11 @@ func validateFeedRegistration(c echo.Context) error {
 	return nil
 }
 
-func validateFeedTags(c echo.Context) error {
+func validateFeedTags(c *echo.Context) error {
 	// Read and parse request body
 	body, err := io.ReadAll(c.Request().Body)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, map[string]interface{}{
+		return NewStructuredHTTPError(http.StatusBadRequest, "Failed to read request body", map[string]any{
 			"error":   "validation_failed",
 			"message": "Failed to read request body",
 		})
@@ -98,7 +98,7 @@ func validateFeedTags(c echo.Context) error {
 
 	var requestData map[string]interface{}
 	if err := json.Unmarshal(body, &requestData); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, map[string]interface{}{
+		return NewStructuredHTTPError(http.StatusBadRequest, "Invalid JSON format", map[string]any{
 			"error":   "validation_failed",
 			"message": "Invalid JSON format",
 		})
@@ -107,7 +107,7 @@ func validateFeedTags(c echo.Context) error {
 	// Extract feed_url from request body
 	feedURL, exists := requestData["feed_url"]
 	if !exists {
-		return echo.NewHTTPError(http.StatusBadRequest, map[string]interface{}{
+		return NewStructuredHTTPError(http.StatusBadRequest, "feed_url is required", map[string]any{
 			"error":   "validation_failed",
 			"message": "feed_url is required",
 		})
@@ -116,7 +116,7 @@ func validateFeedTags(c echo.Context) error {
 	// Validate that feed_url is a string
 	feedURLStr, ok := feedURL.(string)
 	if !ok {
-		return echo.NewHTTPError(http.StatusBadRequest, map[string]interface{}{
+		return NewStructuredHTTPError(http.StatusBadRequest, "Validation failed", map[string]any{
 			"error":   "validation_failed",
 			"message": "Validation failed",
 			"details": fmt.Sprintf("URL must be a string, got %T", feedURL),
@@ -126,7 +126,7 @@ func validateFeedTags(c echo.Context) error {
 	result := validation.ValidateFeedTags(c.Request().Context(), feedURLStr)
 
 	if result != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, map[string]interface{}{
+		return NewStructuredHTTPError(http.StatusBadRequest, "Validation failed", map[string]any{
 			"error":   "validation_failed",
 			"message": "Validation failed",
 			"details": result,
@@ -136,11 +136,11 @@ func validateFeedTags(c echo.Context) error {
 	return nil
 }
 
-func validateFeedSearch(c echo.Context) error {
+func validateFeedSearch(c *echo.Context) error {
 	// Read and parse request body
 	body, err := io.ReadAll(c.Request().Body)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, map[string]interface{}{
+		return NewStructuredHTTPError(http.StatusBadRequest, "Failed to read request body", map[string]any{
 			"error":   "validation_failed",
 			"message": "Failed to read request body",
 		})
@@ -151,7 +151,7 @@ func validateFeedSearch(c echo.Context) error {
 
 	var requestData map[string]interface{}
 	if err := json.Unmarshal(body, &requestData); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, map[string]interface{}{
+		return NewStructuredHTTPError(http.StatusBadRequest, "Invalid JSON format", map[string]any{
 			"error":   "validation_failed",
 			"message": "Invalid JSON format",
 		})
@@ -161,7 +161,7 @@ func validateFeedSearch(c echo.Context) error {
 	result := validator.Validate(c.Request().Context(), requestData)
 
 	if !result.Valid {
-		return echo.NewHTTPError(http.StatusBadRequest, map[string]interface{}{
+		return NewStructuredHTTPError(http.StatusBadRequest, "Validation failed", map[string]any{
 			"error":   "validation_failed",
 			"message": "Validation failed",
 			"details": result.Errors,
@@ -171,11 +171,11 @@ func validateFeedSearch(c echo.Context) error {
 	return nil
 }
 
-func validateFeedDetails(c echo.Context) error {
+func validateFeedDetails(c *echo.Context) error {
 	// Read and parse request body
 	body, err := io.ReadAll(c.Request().Body)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, map[string]interface{}{
+		return NewStructuredHTTPError(http.StatusBadRequest, "Failed to read request body", map[string]any{
 			"error":   "validation_failed",
 			"message": "Failed to read request body",
 		})
@@ -186,7 +186,7 @@ func validateFeedDetails(c echo.Context) error {
 
 	var requestData map[string]interface{}
 	if err := json.Unmarshal(body, &requestData); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, map[string]interface{}{
+		return NewStructuredHTTPError(http.StatusBadRequest, "Invalid JSON format", map[string]any{
 			"error":   "validation_failed",
 			"message": "Invalid JSON format",
 		})
@@ -196,7 +196,7 @@ func validateFeedDetails(c echo.Context) error {
 	result := validator.Validate(c.Request().Context(), requestData)
 
 	if !result.Valid {
-		return echo.NewHTTPError(http.StatusBadRequest, map[string]interface{}{
+		return NewStructuredHTTPError(http.StatusBadRequest, "Validation failed", map[string]any{
 			"error":   "validation_failed",
 			"message": "Validation failed",
 			"details": result.Errors,
@@ -206,7 +206,7 @@ func validateFeedDetails(c echo.Context) error {
 	return nil
 }
 
-func validateArticleSearch(c echo.Context) error {
+func validateArticleSearch(c *echo.Context) error {
 	// Get query parameters
 	queryParams := make(map[string]interface{})
 	for key, values := range c.Request().URL.Query() {
@@ -219,7 +219,7 @@ func validateArticleSearch(c echo.Context) error {
 	result := validator.Validate(c.Request().Context(), queryParams)
 
 	if !result.Valid {
-		return echo.NewHTTPError(http.StatusBadRequest, map[string]interface{}{
+		return NewStructuredHTTPError(http.StatusBadRequest, "Validation failed", map[string]any{
 			"error":   "validation_failed",
 			"message": "Validation failed",
 			"details": result.Errors,
@@ -229,7 +229,7 @@ func validateArticleSearch(c echo.Context) error {
 	return nil
 }
 
-func validatePagination(c echo.Context) error {
+func validatePagination(c *echo.Context) error {
 	// Get query parameters
 	queryParams := make(map[string]interface{})
 	for key, values := range c.Request().URL.Query() {
@@ -242,7 +242,7 @@ func validatePagination(c echo.Context) error {
 	result := validator.Validate(c.Request().Context(), queryParams)
 
 	if !result.Valid {
-		return echo.NewHTTPError(http.StatusBadRequest, map[string]interface{}{
+		return NewStructuredHTTPError(http.StatusBadRequest, "Validation failed", map[string]any{
 			"error":   "validation_failed",
 			"message": "Validation failed",
 			"details": result.Errors,

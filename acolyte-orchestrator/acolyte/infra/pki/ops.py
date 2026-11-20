@@ -36,13 +36,15 @@ class _OpsHTTPServer(ThreadingHTTPServer):
 
 
 class _OpsHandler(BaseHTTPRequestHandler):
-    def log_message(self, format: str, *args: object) -> None:
+    def log_message(self, format: str, *args: object) -> None:  # noqa: A002 - public keyword argument
         _ = (format, args)
 
     def do_GET(self) -> None:
         path = self.path.split("?", 1)[0]
         server = self.server
-        assert isinstance(server, _OpsHTTPServer)
+        if not isinstance(server, _OpsHTTPServer):
+            msg = f"expected _OpsHTTPServer, got {type(server).__name__}"
+            raise TypeError(msg)
         if path == "/health":
             body = json.dumps({"status": "healthy", "service": server.service_name}).encode()
             self.send_response(200)
@@ -92,7 +94,7 @@ def start_ops(service_name: str, registry: CollectorRegistry | None, *, listen: 
     addr = listen if listen is not None else ops_listen_addr()
     if addr.startswith(":"):
         # OPS_LISTEN=:9110 binds all interfaces for later compose scrape.
-        host, port_s = "0.0.0.0", addr[1:]  # nosec B104
+        host, port_s = "0.0.0.0", addr[1:]  # noqa: S104 - container listener; exposure is controlled by the compose network  # nosec B104
     elif ":" in addr:
         host, port_s = addr.rsplit(":", 1)
     else:

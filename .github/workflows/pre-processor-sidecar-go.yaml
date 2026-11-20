@@ -6,6 +6,9 @@ on:
       - "pre-processor-sidecar/**"
       - ".github/workflows/pre-processor-sidecar-go.yaml"
       - ".github/workflows/reusable-test-go.yaml"
+      - ".github/workflows/reusable-go-quality-gates.yaml"
+      - ".golangci.yml"
+      - "scripts/lint/**"
       - "!**/CLAUDE.md"
       - "!**/AGENTS.md"
       - "!**/README.md"
@@ -15,6 +18,9 @@ on:
       - "pre-processor-sidecar/**"
       - ".github/workflows/pre-processor-sidecar-go.yaml"
       - ".github/workflows/reusable-test-go.yaml"
+      - ".github/workflows/reusable-go-quality-gates.yaml"
+      - ".golangci.yml"
+      - "scripts/lint/**"
       - "!**/CLAUDE.md"
       - "!**/AGENTS.md"
       - "!**/README.md"
@@ -35,3 +41,37 @@ jobs:
       working-directory: "pre-processor-sidecar/app"
       coverage-flags: "pre-processor-sidecar"
       sparse-checkout: "pre-processor-sidecar"
+
+  quality:
+    permissions:
+      contents: read
+      security-events: write
+    uses: ./.github/workflows/reusable-go-quality-gates.yaml
+    with:
+      working-directory: "pre-processor-sidecar/app"
+      upload-sarif: true
+
+  quality-credential-health-checker:
+    permissions:
+      contents: read
+      security-events: write
+    uses: ./.github/workflows/reusable-go-quality-gates.yaml
+    with:
+      working-directory: "pre-processor-sidecar/cmd/credential-health-checker"
+      upload-sarif: true
+
+  quality-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [test, quality, quality-credential-health-checker]
+    if: always()
+    steps:
+      - name: Check all jobs passed
+        run: |
+          if [ "${{ needs.test.result }}" != "success" ] || \
+             [ "${{ needs.quality.result }}" != "success" ] || \
+             [ "${{ needs.quality-credential-health-checker.result }}" != "success" ]; then
+            echo "One or more quality gates failed"
+            exit 1
+          fi
+          echo "All quality gates passed"

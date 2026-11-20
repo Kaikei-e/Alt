@@ -9,7 +9,11 @@ import threading
 import time
 from typing import Any
 
+import structlog
+
 from ..infra.config import Settings
+
+logger = structlog.get_logger(__name__)
 
 # classification_worker is lazily imported in _ensure_pool() to avoid CUDA fork issues
 # See: https://docs.pytorch.org/docs/stable/notes/multiprocessing.html
@@ -23,9 +27,6 @@ class ClassificationRunner:
     """
 
     def __init__(self, settings: Settings) -> None:
-        import structlog
-
-        logger = structlog.get_logger(__name__)
         self._settings = settings
         self._pool: multiprocessing.pool.Pool | None = None
         self._lock = threading.Lock()
@@ -41,19 +42,18 @@ class ClassificationRunner:
 
     def _ensure_pool_locked(self) -> multiprocessing.pool.Pool:
         """Ensure the worker pool is initialized, creating it if necessary (must be called with self._lock held)."""
-        import structlog
-
         # Lazy import to avoid importing torch in master process before fork
         # This prevents "Cannot re-initialize CUDA in forked subprocess" errors
-        from . import classification_worker
-
-        logger = structlog.get_logger(__name__)
+        from . import (  # noqa: PLC0415 - lazy import to avoid loading torch/CUDA in parent before spawn
+            classification_worker,
+        )
 
         if self._pool is not None:
             return self._pool
 
         if self._shutting_down:
-            raise RuntimeError("ClassificationRunner is shutting down")
+            msg = "ClassificationRunner is shutting down"
+            raise RuntimeError(msg)
 
         logger.info(
             "initializing classification worker pool",
@@ -91,15 +91,15 @@ class ClassificationRunner:
 
     def _verify_worker_initialization(self) -> None:
         """Verify that worker processes are initialized correctly with a timeout."""
-        import structlog
+        from . import (  # noqa: PLC0415 - lazy import to avoid loading torch/CUDA in parent before spawn
+            classification_worker,
+        )
 
-        from . import classification_worker  # Lazy import
-
-        logger = structlog.get_logger(__name__)
         timeout = self._settings.classification_worker_init_timeout_seconds
 
         if self._pool is None:
-            raise RuntimeError("Pool is None during verification")
+            msg = "Pool is None during verification"
+            raise RuntimeError(msg)
 
         # Try a simple warmup to verify workers are ready
         try:
@@ -110,24 +110,22 @@ class ClassificationRunner:
                 timeout_seconds=timeout,
             )
         except Exception as exc:
-            logger.error(
+            logger.exception(
                 "classification worker pool initialization failed",
                 error=str(exc),
                 error_type=type(exc).__name__,
                 timeout_seconds=timeout,
-                exc_info=True,
             )
             # Clean up failed pool
             try:
                 if self._pool is not None:
                     self._pool.terminate()
                     self._pool.join()
-            except Exception:
-                pass
+            except Exception as cleanup_exc:  # noqa: BLE001 - best-effort pool termination on init failure
+                logger.debug("failed to terminate classification pool", error=str(cleanup_exc))
             self._pool = None
-            raise RuntimeError(
-                f"Failed to initialize classification worker pool within {timeout}s"
-            ) from exc
+            msg = f"Failed to initialize classification worker pool within {timeout}s"
+            raise RuntimeError(msg) from exc
 
     def _cancel_idle_timer_locked(self) -> None:
         """Cancel the idle shutdown timer if it's running (must be called with self._lock held)."""
@@ -142,10 +140,6 @@ class ClassificationRunner:
 
     def _schedule_idle_shutdown(self) -> None:
         """Schedule shutdown of the pool after idle timeout."""
-        import structlog
-
-        logger = structlog.get_logger(__name__)
-
         with self._lock:
             # Cancel existing timer if any
             self._cancel_idle_timer_locked()
@@ -160,7 +154,7 @@ class ClassificationRunner:
                 timeout_seconds=timeout,
             )
 
-            def shutdown_after_timeout():
+            def shutdown_after_timeout() -> None:
                 with self._lock:
                     # Double-check conditions before shutting down
                     if self._pool is None or self._active_tasks > 0:
@@ -175,10 +169,6 @@ class ClassificationRunner:
 
     def _shutdown_pool_internal(self) -> None:
         """Internal method to shutdown the pool (must be called with lock held)."""
-        import structlog
-
-        logger = structlog.get_logger(__name__)
-
         if self._pool is None:
             return
 
@@ -193,7 +183,7 @@ class ClassificationRunner:
             shutdown_timeout = 30.0
             start_time = time.time()
 
-            def wait_for_completion():
+            def wait_for_completion() -> None:
                 if self._pool is not None:
                     self._pool.join()
 
@@ -216,7 +206,7 @@ class ClassificationRunner:
                     "classification process pool shutdown complete",
                     elapsed_seconds=elapsed,
                 )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - best-effort pool shutdown; must not raise
             logger.warning(
                 "error during classification process pool shutdown",
                 error=str(exc),
@@ -228,8 +218,8 @@ class ClassificationRunner:
                 if self._pool is not None:
                     self._pool.terminate()
                     self._pool.join()
-            except Exception:
-                pass
+            except Exception as cleanup_exc:  # noqa: BLE001 - best-effort pool termination on shutdown error
+                logger.debug("failed to terminate classification pool", error=str(cleanup_exc))
         finally:
             self._pool = None
 
@@ -252,7 +242,9 @@ class ClassificationRunner:
 
         The pool is initialized on-demand if not already active.
         """
-        from . import classification_worker  # Lazy import
+        from . import (  # noqa: PLC0415 - lazy import to avoid loading torch/CUDA in parent before spawn
+            classification_worker,
+        )
 
         acquire_fut = asyncio.ensure_future(asyncio.to_thread(self._acquire_pool))
         try:
@@ -303,9 +295,6 @@ class ClassificationRunner:
 
         This ensures worker processes are properly cleaned up to prevent memory leaks.
         """
-        import structlog
-
-        logger = structlog.get_logger(__name__)
         logger.info("shutting down ClassificationRunner")
 
         with self._lock:

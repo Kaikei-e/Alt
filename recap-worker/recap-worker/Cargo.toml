@@ -92,7 +92,7 @@ prometheus = { version = "0.14", default-features = false }
 # `step` CLI wrapper — NativeStepCAIssuer in alt-backend/app/internal/pki is
 # the contract this module ports.
 josekit = "=0.10.3"
-libc = "0.2"
+rustix = { version = "1", features = ["fs"] }
 rcgen = { version = "0.14", features = ["crypto", "pem", "x509-parser"] }
 x509-parser = { version = "0.17", features = ["verify"] }
 sha2 = "0.10"
@@ -174,11 +174,21 @@ overflow-checks = true
 # crate-level `#![allow]` in lib.rs; they must live here so bins/tests inherit.
 [lints.rust]
 unexpected_cfgs = "warn"
+unsafe_code = "deny"
 
 [lints.clippy]
 # Groups at priority -1 so per-lint allows below can override.
 all = { level = "warn", priority = -1 }
 pedantic = { level = "warn", priority = -1 }
+# Restriction and complexity lints.
+unwrap_used = "deny"
+expect_used = "deny"
+string_slice = "deny"
+let_underscore_must_use = "deny"
+dbg_macro = "deny"
+todo = "deny"
+exit = "deny"
+cognitive_complexity = "deny"
 # Acceptable for trait naming consistency (e.g., RecapDao, RecapDaoImpl)
 module_name_repetitions = "allow"
 # Required for ML/statistics: f64 → f32 conversions for BERT embeddings

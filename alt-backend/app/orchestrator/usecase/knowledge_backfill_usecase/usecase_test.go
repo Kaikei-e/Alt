@@ -44,16 +44,6 @@ func (m *mockUpdateBackfillJobPort) UpdateBackfillJob(_ context.Context, job dom
 	return m.err
 }
 
-// mockListBackfillJobsPort implements knowledge_backfill_port.ListBackfillJobsPort.
-type mockListBackfillJobsPort struct {
-	jobs []domain.KnowledgeBackfillJob
-	err  error
-}
-
-func (m *mockListBackfillJobsPort) ListBackfillJobs(_ context.Context) ([]domain.KnowledgeBackfillJob, error) {
-	return m.jobs, m.err
-}
-
 type mockCountBackfillArticlesPort struct {
 	count int
 	err   error

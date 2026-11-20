@@ -27,7 +27,7 @@ def resolve_redis_password() -> str | None:
     or when REDIS_PASSWORD_FILE is set but the file is missing, unreadable, or
     resolves to an empty password.
     """
-    global _disabled_logged
+    global _disabled_logged  # noqa: PLW0603 - module-level once-log guard (monkeypatched in tests)
 
     auth_mode = os.environ.get("REDIS_AUTH", "").strip()
     if auth_mode.lower() == "disabled":
@@ -40,25 +40,23 @@ def resolve_redis_password() -> str | None:
 
     file_path = os.environ.get("REDIS_PASSWORD_FILE")
     if file_path is None:
-        raise RuntimeError(
-            "redis authentication requires REDIS_PASSWORD_FILE or REDIS_AUTH=disabled"
-        )
+        msg = "redis authentication requires REDIS_PASSWORD_FILE or REDIS_AUTH=disabled"
+        raise RuntimeError(msg)
 
     trimmed_path = file_path.strip()
     if not trimmed_path:
-        raise RuntimeError(
-            "REDIS_PASSWORD_FILE is set but empty; set REDIS_AUTH=disabled to run with redis auth disabled explicitly"
-        )
+        msg = "REDIS_PASSWORD_FILE is set but empty; set REDIS_AUTH=disabled to run with redis auth disabled explicitly"
+        raise RuntimeError(msg)
 
     try:
         content = Path(trimmed_path).read_text()
     except OSError as exc:
-        raise RuntimeError(f"read REDIS_PASSWORD_FILE {trimmed_path}: {exc}") from exc
+        msg = f"read REDIS_PASSWORD_FILE {trimmed_path}: {exc}"
+        raise RuntimeError(msg) from exc
 
     password = content.strip()
     if not password:
-        raise RuntimeError(
-            f"REDIS_PASSWORD_FILE {trimmed_path} resolved to an empty password"
-        )
+        msg = f"REDIS_PASSWORD_FILE {trimmed_path} resolved to an empty password"
+        raise RuntimeError(msg)
 
     return password

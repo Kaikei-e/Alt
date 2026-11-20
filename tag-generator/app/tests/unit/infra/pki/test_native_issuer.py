@@ -1,7 +1,5 @@
 """Native step-ca issuer against an in-process TLS fake CA (no step CLI)."""
 
-# ruff: noqa: TRY003, PLC0415
-
 from __future__ import annotations
 
 import asyncio
@@ -11,6 +9,7 @@ import threading
 import time
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
+from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from ipaddress import ip_address
 from pathlib import Path
@@ -23,11 +22,12 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption, PrivateFormat
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
-from jwcrypto import jwt
+from jwcrypto import jwa, jwt
 from jwcrypto.jwk import JWK
 
 from tag_generator.infra.pki.config import PkiError, SharedProvisionerError
 from tag_generator.infra.pki.native_issuer import (
+    STEP_CA_PBES2_P2C,
     NativeStepCAIssuer,
     decrypt_provisioner_jwk,
     encrypt_step_ca_provisioner_jwk,
@@ -107,7 +107,7 @@ class FakeStepCA:
         ca = self
 
         class Handler(BaseHTTPRequestHandler):
-            def log_message(self, format: str, *args: object) -> None:
+            def log_message(self, format: str, *args: object) -> None:  # noqa: A002 - overrides BaseHTTPRequestHandler signature
                 _ = (format, args)
 
             def do_GET(self) -> None:
@@ -328,25 +328,30 @@ class FakeStepCA:
         token = jwt.JWT(key=self.jwk, jwt=ott)
         claims = json.loads(token.claims)
         if claims.get("iss") != self.provisioner:
-            raise ValueError("wrong issuer")
+            msg = "wrong issuer"
+            raise ValueError(msg)
         aud = claims.get("aud")
         auds = aud if isinstance(aud, list) else [aud]
         if not any("/1.0/sign" in str(item) for item in auds):
-            raise ValueError("wrong audience")
+            msg = "wrong audience"
+            raise ValueError(msg)
         if self.reject_expired and int(claims["exp"]) < int(time.time()):
-            raise ValueError("expired ott")
+            msg = "expired ott"
+            raise ValueError(msg)
         jti = str(claims.get("jti") or "")
         if not jti:
-            raise ValueError("missing jti")
+            msg = "missing jti"
+            raise ValueError(msg)
         if self.reject_reuse and jti in self.used_jti:
-            raise ValueError("reused ott")
+            msg = "reused ott"
+            raise ValueError(msg)
         self.used_jti.add(jti)
         return claims
 
 
 @pytest.fixture
 def issuer(tmp_path: Path) -> Iterator[tuple[NativeStepCAIssuer, FakeStepCA]]:
-    password = "subject-scoped-jwk-password"
+    password = "subject-scoped-jwk-password"  # noqa: S105 - test fixture value, not a credential
     ca = FakeStepCA(PROVISIONER, password)
     url, root = ca.start(tmp_path)
     pw = write_password_file(tmp_path, "pki-agent-tag-generator-jwk", password, 0o400)
@@ -367,12 +372,14 @@ def issuer(tmp_path: Path) -> Iterator[tuple[NativeStepCAIssuer, FakeStepCA]]:
 async def test_issue_success(issuer: tuple[NativeStepCAIssuer, FakeStepCA]) -> None:
     native, ca = issuer
     cert_pem, key_pem = await native.issue(SUBJECT, [SUBJECT])
-    assert cert_pem and key_pem
+    assert cert_pem
+    assert key_pem
     method, path, body = ca.last_sign()
     assert method == "POST"
     assert path == "/sign"
     payload = json.loads(body)
-    assert payload["ott"] and payload["csr"]
+    assert payload["ott"]
+    assert payload["csr"]
     token = jwt.JWT(key=ca.jwk, jwt=payload["ott"])
     claims = json.loads(token.claims)
     assert claims["iss"] == PROVISIONER
@@ -386,6 +393,7 @@ async def test_issue_success(issuer: tuple[NativeStepCAIssuer, FakeStepCA]) -> N
 @pytest.mark.asyncio
 async def test_mints_distinct_otts(issuer: tuple[NativeStepCAIssuer, FakeStepCA]) -> None:
     native, ca = issuer
+    expected_jti_count = 2
     await native.issue(SUBJECT, [SUBJECT])
     await native.issue(SUBJECT, [SUBJECT])
     jtis: list[str] = []
@@ -395,8 +403,9 @@ async def test_mints_distinct_otts(issuer: tuple[NativeStepCAIssuer, FakeStepCA]
         ott = json.loads(body)["ott"]
         token = jwt.JWT(key=ca.jwk, jwt=ott)
         jtis.append(json.loads(token.claims)["jti"])
-    assert len(jtis) == 2
-    assert jtis[0] and jtis[0] != jtis[1]
+    assert len(jtis) == expected_jti_count
+    assert jtis[0]
+    assert jtis[0] != jtis[1]
 
 
 @pytest.mark.asyncio
@@ -407,7 +416,7 @@ async def test_reused_ott_rejected_by_ca(issuer: tuple[NativeStepCAIssuer, FakeS
     ctx = ssl.create_default_context(cafile=native.root_file)
     async with httpx.AsyncClient(verify=ctx, trust_env=False) as client:
         resp = await client.post(native.ca_url + "/sign", content=body, headers={"Content-Type": "application/json"})
-    assert resp.status_code >= 400
+    assert resp.status_code >= HTTPStatus.BAD_REQUEST
 
 
 @pytest.mark.asyncio
@@ -425,7 +434,7 @@ async def test_wrong_ca_root(issuer: tuple[NativeStepCAIssuer, FakeStepCA], tmp_
 
 @pytest.mark.asyncio
 async def test_wrong_subject_rejected(tmp_path: Path) -> None:
-    password = "pw-sub"
+    password = "pw-sub"  # noqa: S105 - test fixture value, not a credential
     ca = FakeStepCA(PROVISIONER, password)
 
     def signed_wrong(csr: x509.CertificateSigningRequest) -> x509.Certificate:
@@ -460,7 +469,7 @@ async def test_wrong_subject_rejected(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_wrong_san_rejected(tmp_path: Path) -> None:
-    password = "pw-san"
+    password = "pw-san"  # noqa: S105 - test fixture value, not a credential
     ca = FakeStepCA(PROVISIONER, password)
 
     def mutate(builder: x509.CertificateBuilder) -> x509.CertificateBuilder:
@@ -505,7 +514,7 @@ async def test_wrong_san_rejected(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_malformed_response(tmp_path: Path) -> None:
-    password = "pw-malformed"
+    password = "pw-malformed"  # noqa: S105 - test fixture value, not a credential
     ca = FakeStepCA(PROVISIONER, password)
     ca.malformed_sign = True
     url, root = ca.start(tmp_path)
@@ -522,7 +531,7 @@ async def test_malformed_response(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_timeout(tmp_path: Path) -> None:
-    password = "pw-timeout"
+    password = "pw-timeout"  # noqa: S105 - test fixture value, not a credential
     ca = FakeStepCA(PROVISIONER, password)
     ca.sign_delay = 30.0
     url, root = ca.start(tmp_path)
@@ -530,18 +539,19 @@ async def test_timeout(tmp_path: Path) -> None:
     native = NativeStepCAIssuer(
         ca_url=url, root_file=root, provisioner=PROVISIONER, password_file=str(pw), timeout_seconds=3
     )
+    max_elapsed_seconds = 15
     started = time.monotonic()
     try:
         with pytest.raises(PkiError, match="timed out"):
             await native.issue(SUBJECT, [SUBJECT])
-        assert time.monotonic() - started < 15
+        assert time.monotonic() - started < max_elapsed_seconds
     finally:
         ca.close()
 
 
 @pytest.mark.asyncio
 async def test_canceled(tmp_path: Path) -> None:
-    password = "pw-cancel"
+    password = "pw-cancel"  # noqa: S105 - test fixture value, not a credential
     ca = FakeStepCA(PROVISIONER, password)
     ca.block_sign = threading.Event()
     url, root = ca.start(tmp_path)
@@ -566,7 +576,7 @@ async def test_canceled(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_password_file_errors(tmp_path: Path) -> None:
-    password = "pw-files"
+    password = "pw-files"  # noqa: S105 - test fixture value, not a credential
     ca = FakeStepCA(PROVISIONER, password)
     url, root = ca.start(tmp_path)
     try:
@@ -602,18 +612,16 @@ async def test_does_not_log_secrets(issuer: tuple[NativeStepCAIssuer, FakeStepCA
 
 
 def test_unwraps_step_ca_pbes2_iteration_count() -> None:
-    from jwcrypto.jwa import default_max_pbkdf2_iterations as current_max
-
-    before = current_max
+    before = jwa.default_max_pbkdf2_iterations
     key = JWK.generate(kty="EC", crv="P-256")
-    password = "subject-scoped-jwk-password"
+    password = "subject-scoped-jwk-password"  # noqa: S105 - test fixture value, not a credential
     compact = encrypt_step_ca_provisioner_jwk(key, password)
     loaded = decrypt_provisioner_jwk(compact, password.encode())
     assert loaded.get("kty") == "EC"
-    from jwcrypto.jwa import default_max_pbkdf2_iterations as after
+    after = jwa.default_max_pbkdf2_iterations
 
     assert after == before
-    assert after < 600_000
+    assert after < STEP_CA_PBES2_P2C
 
 
 @pytest.mark.asyncio
@@ -622,7 +630,7 @@ async def test_rejects_shared_provisioner() -> None:
         ca_url="https://127.0.0.1:1",
         root_file="/nonexistent/root.pem",
         provisioner="pki-agent",
-        password_file="/run/secrets/pki-agent-tag-generator-jwk",
+        password_file="/run/secrets/pki-agent-tag-generator-jwk",  # noqa: S106 - test fixture value, not a credential
     )
     with pytest.raises(SharedProvisionerError):
         await native.issue(SUBJECT, [SUBJECT])

@@ -2,14 +2,16 @@ package middleware
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 // MockCSRFTokenUsecase is a mock implementation of CSRF token usecase
@@ -128,7 +130,7 @@ func TestCSRFMiddleware(t *testing.T) {
 			middleware := CSRFMiddleware(mockUsecase)
 
 			// Create test handler
-			handler := func(c echo.Context) error {
+			handler := func(c *echo.Context) error {
 				return c.JSON(http.StatusOK, map[string]string{"message": "success"})
 			}
 
@@ -136,10 +138,10 @@ func TestCSRFMiddleware(t *testing.T) {
 			var req *http.Request
 			if tt.method == "POST" {
 				body := `{"url": "https://example.com/feed.xml"}`
-				req = httptest.NewRequest(tt.method, tt.path, strings.NewReader(body))
+				req = httptest.NewRequestWithContext(t.Context(), tt.method, tt.path, strings.NewReader(body))
 				req.Header.Set("Content-Type", "application/json")
 			} else {
-				req = httptest.NewRequest(tt.method, tt.path, nil)
+				req = httptest.NewRequestWithContext(t.Context(), tt.method, tt.path, nil)
 			}
 
 			// Add CSRF token to header if provided
@@ -160,12 +162,13 @@ func TestCSRFMiddleware(t *testing.T) {
 
 			// Check response
 			if tt.expectedStatus == http.StatusOK {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.Equal(t, tt.expectedStatus, rec.Code)
 			} else {
 				// For error cases, Echo middleware should return an error
-				assert.Error(t, err)
-				if httpErr, ok := err.(*echo.HTTPError); ok {
+				require.Error(t, err)
+				httpErr := &echo.HTTPError{}
+				if errors.As(err, &httpErr) {
 					assert.Equal(t, tt.expectedStatus, httpErr.Code)
 				}
 			}
@@ -217,7 +220,7 @@ func TestCSRFTokenGeneration(t *testing.T) {
 			handler := CSRFTokenHandler(mockUsecase)
 
 			// Create request
-			req := httptest.NewRequest(tt.method, tt.path, nil)
+			req := httptest.NewRequestWithContext(t.Context(), tt.method, tt.path, nil)
 			rec := httptest.NewRecorder()
 
 			// Create Echo context
@@ -229,15 +232,16 @@ func TestCSRFTokenGeneration(t *testing.T) {
 
 			// Check response
 			if tt.expectedStatus == http.StatusOK {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.Equal(t, tt.expectedStatus, rec.Code)
 
 				// Verify response contains token
 				assert.Contains(t, rec.Body.String(), "csrf_token")
 			} else {
 				// For error cases, check the error
-				assert.Error(t, err)
-				if httpErr, ok := err.(*echo.HTTPError); ok {
+				require.Error(t, err)
+				httpErr := &echo.HTTPError{}
+				if errors.As(err, &httpErr) {
 					assert.Equal(t, tt.expectedStatus, httpErr.Code)
 				}
 			}

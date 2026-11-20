@@ -27,7 +27,7 @@ func TestDismissKnowledgeHomeItem_MapsNotFoundToErrDismissTargetNotFound(t *test
 
 		err := client.DismissKnowledgeHomeItem(context.Background(), userID, "article:missing", 1, dismissedAt)
 		require.Error(t, err)
-		assert.True(t, errors.Is(err, knowledge_home_port.ErrDismissTargetNotFound))
+		require.ErrorIs(t, err, knowledge_home_port.ErrDismissTargetNotFound)
 		assert.Equal(t, connect.CodeNotFound, connect.CodeOf(err))
 	})
 
@@ -40,7 +40,7 @@ func TestDismissKnowledgeHomeItem_MapsNotFoundToErrDismissTargetNotFound(t *test
 
 		err := client.DismissKnowledgeHomeItem(context.Background(), userID, "article:missing", 1, dismissedAt)
 		require.Error(t, err)
-		assert.False(t, errors.Is(err, knowledge_home_port.ErrDismissTargetNotFound))
+		require.NotErrorIs(t, err, knowledge_home_port.ErrDismissTargetNotFound)
 		assert.Equal(t, connect.CodeUnavailable, connect.CodeOf(err))
 	})
 }

@@ -134,6 +134,30 @@ pub struct EvalReport {
     pub drop_metrics: Option<DropMetrics>,
 }
 
+impl std::fmt::Display for EvalReport {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "# Evaluation Report: Window `{}`\n", self.window_id)?;
+
+        format_selection_markdown(
+            f,
+            &self.selection,
+            &self.selection_with_inheritance,
+            self.inherited_candidates,
+            self.judgments_without_candidate,
+            self.judged_clusters_without_members,
+        )?;
+        format_quality_markdown(f, &self.quality)?;
+        if let Some(exec) = &self.execution {
+            format_execution_markdown(f, exec)?;
+        }
+        if let Some(drop) = &self.drop_metrics {
+            format_drop_markdown(f, drop)?;
+        }
+
+        Ok(())
+    }
+}
+
 impl EvalReport {
     /// Format report as pretty JSON string.
     pub fn to_json(&self) -> serde_json::Result<String> {
@@ -142,47 +166,28 @@ impl EvalReport {
 
     /// Format report as human-readable Markdown.
     pub fn to_markdown(&self) -> String {
-        let mut out = String::new();
-        let _ = writeln!(out, "# Evaluation Report: Window `{}`\n", self.window_id);
-
-        format_selection_markdown(
-            &mut out,
-            &self.selection,
-            &self.selection_with_inheritance,
-            self.inherited_candidates,
-            self.judgments_without_candidate,
-            self.judged_clusters_without_members,
-        );
-        format_quality_markdown(&mut out, &self.quality);
-        if let Some(exec) = &self.execution {
-            format_execution_markdown(&mut out, exec);
-        }
-        if let Some(drop) = &self.drop_metrics {
-            format_drop_markdown(&mut out, drop);
-        }
-
-        out
+        self.to_string()
     }
 }
 
 fn format_selection_markdown(
-    out: &mut String,
+    out: &mut impl Write,
     direct: &SelectionMetrics,
     with_inheritance: &SelectionMetrics,
     inherited_candidates: usize,
     judgments_without_candidate: usize,
     judged_clusters_without_members: usize,
-) {
-    let _ = writeln!(out, "## 1. Topic Selection Metrics\n");
-    let _ = writeln!(out, "### Direct-Only (No Inheritance)\n");
-    let _ = writeln!(out, "- **k**: {}", direct.k);
-    let _ = writeln!(
+) -> std::fmt::Result {
+    writeln!(out, "## 1. Topic Selection Metrics\n")?;
+    writeln!(out, "### Direct-Only (No Inheritance)\n")?;
+    writeln!(out, "- **k**: {}", direct.k)?;
+    writeln!(
         out,
         "- **Precision@{}**: {:.4}",
         direct.k, direct.precision_at_k
-    );
-    let _ = writeln!(out, "- **nDCG@{}**: {:.4}", direct.k, direct.ndcg_at_k);
-    let _ = writeln!(
+    )?;
+    writeln!(out, "- **nDCG@{}**: {:.4}", direct.k, direct.ndcg_at_k)?;
+    writeln!(
         out,
         "- **Judgments (top-{})**: {} top, {} not_top, {} noise, {} unjudged (total: {})\n",
         direct.k,
@@ -191,31 +196,31 @@ fn format_selection_markdown(
         direct.noise_count,
         direct.unjudged_count,
         direct.total_evaluated
-    );
+    )?;
 
-    let _ = writeln!(out, "### With Judgment Inheritance\n");
-    let _ = writeln!(out, "- **Inherited candidates**: {}", inherited_candidates);
-    let _ = writeln!(
+    writeln!(out, "### With Judgment Inheritance\n")?;
+    writeln!(out, "- **Inherited candidates**: {}", inherited_candidates)?;
+    writeln!(
         out,
         "- **Judgments without candidate**: {}",
         judgments_without_candidate
-    );
-    let _ = writeln!(
+    )?;
+    writeln!(
         out,
         "- **Judged clusters without members**: {}",
         judged_clusters_without_members
-    );
-    let _ = writeln!(
+    )?;
+    writeln!(
         out,
         "- **Precision@{}**: {:.4}",
         with_inheritance.k, with_inheritance.precision_at_k
-    );
-    let _ = writeln!(
+    )?;
+    writeln!(
         out,
         "- **nDCG@{}**: {:.4}",
         with_inheritance.k, with_inheritance.ndcg_at_k
-    );
-    let _ = writeln!(
+    )?;
+    writeln!(
         out,
         "- **Judgments (top-{})**: {} top, {} not_top, {} noise, {} unjudged (total: {})\n",
         with_inheritance.k,
@@ -224,56 +229,60 @@ fn format_selection_markdown(
         with_inheritance.noise_count,
         with_inheritance.unjudged_count,
         with_inheritance.total_evaluated
-    );
+    )?;
+    Ok(())
 }
 
-fn format_quality_markdown(out: &mut String, quality: &QualityMetrics) {
-    let _ = writeln!(out, "## 2. Card Quality Metrics\n");
-    let _ = writeln!(out, "- **Total Cards**: {}", quality.total_cards);
-    let _ = writeln!(out, "- **Rated Cards**: {}", quality.total_rated);
-    let _ = writeln!(out, "- **Unrated Cards**: {}", quality.unrated_count);
-    let _ = writeln!(
+fn format_quality_markdown(out: &mut impl Write, quality: &QualityMetrics) -> std::fmt::Result {
+    writeln!(out, "## 2. Card Quality Metrics\n")?;
+    writeln!(out, "- **Total Cards**: {}", quality.total_cards)?;
+    writeln!(out, "- **Rated Cards**: {}", quality.total_rated)?;
+    writeln!(out, "- **Unrated Cards**: {}", quality.unrated_count)?;
+    writeln!(
         out,
         "- **Score Distribution**: Score 2: {}, Score 1: {}, Score 0: {}",
         quality.score_2_count, quality.score_1_count, quality.score_0_count
-    );
-    let _ = writeln!(out, "- **Score >= 1 Rate**: {:.1}%", quality.score_ge_1_pct);
-    let _ = writeln!(
+    )?;
+    writeln!(out, "- **Score >= 1 Rate**: {:.1}%", quality.score_ge_1_pct)?;
+    writeln!(
         out,
         "- **Hallucination / Wrong Source Rate**: {:.1}%",
         quality.hallucination_or_wrong_source_pct
-    );
-    let _ = writeln!(out, "- **Filler Rate**: {:.1}%", quality.filler_pct);
+    )?;
+    writeln!(out, "- **Filler Rate**: {:.1}%", quality.filler_pct)?;
 
     if !quality.defect_flags.is_empty() {
-        let _ = writeln!(out, "\n### Defect Flags\n");
+        writeln!(out, "\n### Defect Flags\n")?;
         let mut sorted_flags: Vec<_> = quality.defect_flags.iter().collect();
         sorted_flags.sort_by_key(|(k, _)| *k);
         for (flag, count) in sorted_flags {
-            let _ = writeln!(out, "- `{flag}`: {count}");
+            writeln!(out, "- `{flag}`: {count}")?;
         }
     }
-    out.push('\n');
+    out.write_char('\n')
 }
 
-fn format_execution_markdown(out: &mut String, exec: &PipelineExecutionMetrics) {
-    let _ = writeln!(out, "## 3. Pipeline Execution Stats\n");
-    let _ = writeln!(out, "- **Items Fetched**: {}", exec.items_fetched);
-    let _ = writeln!(
+fn format_execution_markdown(
+    out: &mut impl Write,
+    exec: &PipelineExecutionMetrics,
+) -> std::fmt::Result {
+    writeln!(out, "## 3. Pipeline Execution Stats\n")?;
+    writeln!(out, "- **Items Fetched**: {}", exec.items_fetched)?;
+    writeln!(
         out,
         "- **After Noise Filtering**: {}",
         exec.items_after_noise
-    );
-    let _ = writeln!(out, "- **After Dedup**: {}", exec.items_after_dedup);
-    let _ = writeln!(out, "- **Clusters**: {}", exec.clusters);
-    let _ = writeln!(out, "- **Candidates**: {}", exec.candidates);
-    let _ = writeln!(out, "- **Cards Selected**: {}", exec.cards_selected);
-    let _ = writeln!(
+    )?;
+    writeln!(out, "- **After Dedup**: {}", exec.items_after_dedup)?;
+    writeln!(out, "- **Clusters**: {}", exec.clusters)?;
+    writeln!(out, "- **Candidates**: {}", exec.candidates)?;
+    writeln!(out, "- **Cards Selected**: {}", exec.cards_selected)?;
+    writeln!(
         out,
         "- **Cards Dropped (Total)**: {}",
         exec.total_cards_dropped
-    );
-    let _ = writeln!(out, "- **Drop Rate**: {:.1}%", exec.drop_rate * 100.0);
+    )?;
+    writeln!(out, "- **Drop Rate**: {:.1}%", exec.drop_rate * 100.0)?;
     let degraded_label = if exec.mode.as_deref() == Some("selection_only") {
         "n/a (selection-only)"
     } else if exec.is_degraded {
@@ -281,51 +290,52 @@ fn format_execution_markdown(out: &mut String, exec: &PipelineExecutionMetrics) 
     } else {
         "No"
     };
-    let _ = writeln!(out, "- **Degraded (< 5 cards)**: {}", degraded_label);
-    let _ = writeln!(
+    writeln!(out, "- **Degraded (< 5 cards)**: {}", degraded_label)?;
+    writeln!(
         out,
         "- **Timings (ms)**: Total {} ms (Embed: {} ms, Cluster: {} ms, LLM: {} ms)",
         exec.total_ms, exec.embed_ms, exec.cluster_ms, exec.llm_ms
-    );
+    )?;
     if !exec.cards_dropped.is_null() && exec.cards_dropped != serde_json::json!({}) {
-        let _ = writeln!(
+        writeln!(
             out,
             "- **Cards Dropped by Reason**: `{}`",
             exec.cards_dropped
-        );
+        )?;
     }
-    out.push('\n');
+    out.write_char('\n')
 }
 
-fn format_drop_markdown(out: &mut String, drop: &DropMetrics) {
-    out.push_str("## 4. Aggregate Drop & Degraded Metrics\n\n");
-    let _ = writeln!(
+fn format_drop_markdown(out: &mut impl Write, drop: &DropMetrics) -> std::fmt::Result {
+    out.write_str("## 4. Aggregate Drop & Degraded Metrics\n\n")?;
+    writeln!(
         out,
         "- **Total Cards Dropped**: {}",
         drop.total_cards_dropped
-    );
-    let _ = writeln!(
+    )?;
+    writeln!(
         out,
         "- **Total Cards Selected**: {}",
         drop.total_cards_selected
-    );
-    let _ = writeln!(
+    )?;
+    writeln!(
         out,
         "- **Aggregate Drop Rate**: {:.1}%",
         drop.drop_rate * 100.0
-    );
-    let _ = writeln!(
+    )?;
+    writeln!(
         out,
         "- **Degraded Jobs (< 5 cards)**: {} / {} ({:.1}%)",
         drop.degraded_jobs_count,
         drop.total_jobs_count,
         drop.degraded_share * 100.0
-    );
-    let _ = writeln!(
+    )?;
+    writeln!(
         out,
         "- **Jobs without mode (excluded)**: {}\n",
         drop.jobs_without_mode_excluded
-    );
+    )?;
+    Ok(())
 }
 
 /// Build a list of `JudgedCluster`s from eval windows, their candidate clusters, and latest judgments.
@@ -1963,5 +1973,129 @@ mod tests {
 
         let valid_full = serde_json::json!({"mode": "full"});
         assert_eq!(parse_snapshot_mode(&valid_full, window_id).unwrap(), "full");
+    }
+
+    fn sample_full_eval_report() -> EvalReport {
+        let mut defect_flags = HashMap::new();
+        defect_flags.insert("hallucination".to_string(), 2);
+        defect_flags.insert("filler".to_string(), 1);
+
+        EvalReport {
+            window_id: Uuid::nil(),
+            selection: SelectionMetrics {
+                k: 5,
+                precision_at_k: 0.6,
+                ndcg_at_k: 0.75,
+                top_count: 3,
+                not_top_count: 1,
+                noise_count: 0,
+                unjudged_count: 1,
+                total_evaluated: 5,
+            },
+            selection_with_inheritance: SelectionMetrics {
+                k: 5,
+                precision_at_k: 0.8,
+                ndcg_at_k: 0.9,
+                top_count: 4,
+                not_top_count: 1,
+                noise_count: 0,
+                unjudged_count: 0,
+                total_evaluated: 5,
+            },
+            inherited_candidates: 1,
+            judgments_without_candidate: 2,
+            judged_clusters_without_members: 3,
+            quality: QualityMetrics {
+                total_cards: 10,
+                total_rated: 8,
+                score_0_count: 1,
+                score_1_count: 2,
+                score_2_count: 5,
+                unrated_count: 2,
+                score_ge_1_pct: 87.5,
+                defect_flags,
+                hallucination_or_wrong_source_pct: 25.0,
+                filler_pct: 12.5,
+            },
+            execution: Some(PipelineExecutionMetrics {
+                mode: Some("full".to_string()),
+                items_fetched: 120,
+                items_after_noise: 100,
+                items_after_dedup: 80,
+                clusters: 20,
+                candidates: 15,
+                cards_selected: 8,
+                cards_dropped: serde_json::json!({"g3_attribution": 2}),
+                total_cards_dropped: 2,
+                drop_rate: 0.2,
+                is_degraded: false,
+                embed_ms: 100,
+                cluster_ms: 200,
+                llm_ms: 300,
+                total_ms: 600,
+            }),
+            drop_metrics: Some(DropMetrics {
+                total_cards_dropped: 4,
+                total_cards_selected: 16,
+                drop_rate: 0.2,
+                degraded_jobs_count: 1,
+                total_jobs_count: 4,
+                degraded_share: 0.25,
+                jobs_without_mode_excluded: 1,
+            }),
+        }
+    }
+
+    #[test]
+    fn test_to_markdown_renders_full_report_byte_identically() {
+        let report = sample_full_eval_report();
+
+        let expected = concat!(
+            "# Evaluation Report: Window `00000000-0000-0000-0000-000000000000`\n\n",
+            "## 1. Topic Selection Metrics\n\n",
+            "### Direct-Only (No Inheritance)\n\n",
+            "- **k**: 5\n",
+            "- **Precision@5**: 0.6000\n",
+            "- **nDCG@5**: 0.7500\n",
+            "- **Judgments (top-5)**: 3 top, 1 not_top, 0 noise, 1 unjudged (total: 5)\n\n",
+            "### With Judgment Inheritance\n\n",
+            "- **Inherited candidates**: 1\n",
+            "- **Judgments without candidate**: 2\n",
+            "- **Judged clusters without members**: 3\n",
+            "- **Precision@5**: 0.8000\n",
+            "- **nDCG@5**: 0.9000\n",
+            "- **Judgments (top-5)**: 4 top, 1 not_top, 0 noise, 0 unjudged (total: 5)\n\n",
+            "## 2. Card Quality Metrics\n\n",
+            "- **Total Cards**: 10\n",
+            "- **Rated Cards**: 8\n",
+            "- **Unrated Cards**: 2\n",
+            "- **Score Distribution**: Score 2: 5, Score 1: 2, Score 0: 1\n",
+            "- **Score >= 1 Rate**: 87.5%\n",
+            "- **Hallucination / Wrong Source Rate**: 25.0%\n",
+            "- **Filler Rate**: 12.5%\n",
+            "\n### Defect Flags\n\n",
+            "- `filler`: 1\n",
+            "- `hallucination`: 2\n\n",
+            "## 3. Pipeline Execution Stats\n\n",
+            "- **Items Fetched**: 120\n",
+            "- **After Noise Filtering**: 100\n",
+            "- **After Dedup**: 80\n",
+            "- **Clusters**: 20\n",
+            "- **Candidates**: 15\n",
+            "- **Cards Selected**: 8\n",
+            "- **Cards Dropped (Total)**: 2\n",
+            "- **Drop Rate**: 20.0%\n",
+            "- **Degraded (< 5 cards)**: No\n",
+            "- **Timings (ms)**: Total 600 ms (Embed: 100 ms, Cluster: 200 ms, LLM: 300 ms)\n",
+            "- **Cards Dropped by Reason**: `{\"g3_attribution\":2}`\n\n",
+            "## 4. Aggregate Drop & Degraded Metrics\n\n",
+            "- **Total Cards Dropped**: 4\n",
+            "- **Total Cards Selected**: 16\n",
+            "- **Aggregate Drop Rate**: 20.0%\n",
+            "- **Degraded Jobs (< 5 cards)**: 1 / 4 (25.0%)\n",
+            "- **Jobs without mode (excluded)**: 1\n\n",
+        );
+
+        assert_eq!(report.to_markdown(), expected);
     }
 }

@@ -48,7 +48,7 @@ func TestRetryPolicy_New(t *testing.T) {
 			assert.Equal(t, tc.expected.MaxAttempts, policy.MaxAttempts)
 			assert.Equal(t, tc.expected.BaseDelay, policy.BaseDelay)
 			assert.Equal(t, tc.expected.MaxDelay, policy.MaxDelay)
-			assert.Equal(t, tc.expected.Multiplier, policy.Multiplier)
+			assert.InDelta(t, tc.expected.Multiplier, policy.Multiplier, 1e-9)
 			assert.Equal(t, tc.expected.Jitter, policy.Jitter)
 		})
 	}
@@ -135,7 +135,7 @@ func TestRetryExecutor_Execute_Success(t *testing.T) {
 	ctx := context.Background()
 	err := executor.Execute(ctx, operation)
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, 1, callCount)
 }
 
@@ -156,7 +156,7 @@ func TestRetryExecutor_Execute_RetryableError(t *testing.T) {
 	ctx := context.Background()
 	err := executor.Execute(ctx, operation)
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, 3, callCount)
 }
 
@@ -174,11 +174,11 @@ func TestRetryExecutor_Execute_NonRetryableError(t *testing.T) {
 	ctx := context.Background()
 	err := executor.Execute(ctx, operation)
 
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Equal(t, 1, callCount) // Should not retry
 
 	var opErr *OperationError
-	require.True(t, errors.As(err, &opErr))
+	require.ErrorAs(t, err, &opErr)
 	assert.False(t, opErr.Retryable)
 }
 
@@ -196,11 +196,11 @@ func TestRetryExecutor_Execute_MaxAttemptsExceeded(t *testing.T) {
 	ctx := context.Background()
 	err := executor.Execute(ctx, operation)
 
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Equal(t, 2, callCount) // Should try MaxAttempts times
 
 	var opErr *OperationError
-	require.True(t, errors.As(err, &opErr))
+	require.ErrorAs(t, err, &opErr)
 	assert.True(t, opErr.Retryable)
 }
 
@@ -225,7 +225,7 @@ func TestRetryExecutor_Execute_ContextCancellation(t *testing.T) {
 
 	err := executor.Execute(ctx, operation)
 
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "context canceled")
 	assert.Equal(t, 1, callCount) // Should stop retrying when context is canceled
 }
@@ -244,7 +244,7 @@ func TestRetryExecutor_Execute_RegularError(t *testing.T) {
 	ctx := context.Background()
 	err := executor.Execute(ctx, operation)
 
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Equal(t, 1, callCount) // Should not retry regular errors
 	assert.Equal(t, "regular error", err.Error())
 }

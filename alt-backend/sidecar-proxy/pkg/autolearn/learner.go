@@ -3,7 +3,6 @@ package autolearn
 import (
 	"fmt"
 	"log"
-	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -146,26 +145,6 @@ func (al *AutoLearner) LearnDomain(domain, sourceURL, traceID string) error {
 	al.logSecurityEvent("DOMAIN_LEARNED", domain, fmt.Sprintf("Auto-learned from %s", sourceURL), traceID)
 
 	return nil
-}
-
-// extractDomainFromURL extracts domain from full URL
-func (al *AutoLearner) extractDomainFromURL(targetURL string) (string, error) {
-	parsedURL, err := url.Parse(targetURL)
-	if err != nil {
-		return "", fmt.Errorf("failed to parse URL: %w", err)
-	}
-
-	host := parsedURL.Host
-	if host == "" {
-		return "", fmt.Errorf("no host found in URL: %s", targetURL)
-	}
-
-	// Remove port if present
-	if colonIndex := strings.Index(host, ":"); colonIndex != -1 {
-		host = host[:colonIndex]
-	}
-
-	return host, nil
 }
 
 // assessRisk performs basic risk assessment on domain

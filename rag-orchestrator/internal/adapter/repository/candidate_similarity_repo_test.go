@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"math"
-	"strings"
 	"testing"
 
 	"rag-orchestrator/internal/domain"
@@ -323,8 +322,8 @@ func TestCandidateSimilarityRepository_GetArticleMetadataByIDs(t *testing.T) {
 	assert.Contains(t, q, "d.article_id = ANY($1)")
 	assert.Equal(t, "Title One", meta["art-1"].Title)
 	assert.Equal(t, "https://example.com/1", meta["art-1"].URL)
-	assert.Equal(t, "", meta["art-2"].Title)
-	assert.Equal(t, "", meta["art-2"].URL)
+	assert.Empty(t, meta["art-2"].Title)
+	assert.Empty(t, meta["art-2"].URL)
 
 	t.Run("empty ids skips DB", func(t *testing.T) {
 		txEmpty := &recordingTx{rows: &metadataFakeRows{}}
@@ -345,8 +344,8 @@ func TestCandidateSimilarityRepository_SQLUsesExpectedOrder(t *testing.T) {
 	for _, rep := range domain.AllSimilarityRepresentations {
 		q, err := buildCandidateSimilarityQuery(rep)
 		require.NoError(t, err)
-		assert.True(t, strings.Contains(q, "WITH "))
-		assert.True(t, strings.Contains(q, "d.user_id = $3"))
-		assert.True(t, strings.Contains(q, "d.current_version_id = c.version_id"))
+		assert.Contains(t, q, "WITH ")
+		assert.Contains(t, q, "d.user_id = $3")
+		assert.Contains(t, q, "d.current_version_id = c.version_id")
 	}
 }

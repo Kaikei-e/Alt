@@ -6,6 +6,7 @@ import (
 	"alt/utils/errors"
 	"alt/utils/logger"
 	"context"
+	stderrors "errors"
 )
 
 type FetchSingleFeedUsecase struct {
@@ -20,7 +21,8 @@ func (u *FetchSingleFeedUsecase) Execute(ctx context.Context) (*domain.RSSFeed, 
 	feed, err := u.fetchSingleFeedPort.FetchSingleFeed(ctx)
 	if err != nil {
 		// Check if it's already an AppContextError and enrich it with usecase context
-		if appContextErr, ok := err.(*errors.AppContextError); ok {
+		appContextErr := &errors.AppContextError{}
+		if stderrors.As(err, &appContextErr) {
 			enrichedErr := errors.EnrichWithContext(
 				appContextErr,
 				"usecase",
@@ -35,7 +37,8 @@ func (u *FetchSingleFeedUsecase) Execute(ctx context.Context) (*domain.RSSFeed, 
 		}
 
 		// Handle legacy AppError (for backward compatibility)
-		if appErr, ok := err.(*errors.AppError); ok {
+		appErr := &errors.AppError{}
+		if stderrors.As(err, &appErr) {
 			// Convert legacy AppError to AppContextError
 			enrichedErr := errors.NewAppContextError(
 				string(appErr.Code),
