@@ -127,7 +127,7 @@ def create_objective(
                 scoring="f1_macro",
                 n_jobs=-1,
             )
-        except (ValueError, RuntimeError, np.linalg.LinAlgError) as e:
+        except Exception as e:  # noqa: BLE001 - a failed trial scores 0.0 so the study continues
             sys.stdout.write(f"Trial failed: {e}\n")
             return 0.0
         else:

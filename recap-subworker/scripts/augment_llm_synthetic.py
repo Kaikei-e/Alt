@@ -80,6 +80,11 @@ class OllamaSyntheticGenerator:
             )
             response.raise_for_status()
             result = response.json()
+            if not isinstance(result, dict):
+                sys.stdout.write(
+                    f"Ollama API error: expected JSON object, got {type(result).__name__}\n"
+                )
+                return None
             return result.get("response", "").strip()
         except (httpx.HTTPError, ValueError) as e:
             sys.stdout.write(f"Ollama API error: {e}\n")

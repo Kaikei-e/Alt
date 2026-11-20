@@ -31,7 +31,7 @@ def _discover_ldconfig_cuda_dirs(candidates: list[str]) -> None:
                         lib_path = line.split("=>")[-1].strip()
                         if lib_path:
                             _append_if_exists(candidates, Path(lib_path).parent)
-    except (OSError, subprocess.SubprocessError) as exc:
+    except (OSError, subprocess.SubprocessError, ValueError) as exc:
         logging.getLogger(__name__).debug("ldconfig lookup skipped: %s", exc)
 
 

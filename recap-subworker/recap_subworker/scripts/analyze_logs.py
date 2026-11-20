@@ -43,7 +43,7 @@ def parse_logs(log_file_path: str) -> pd.DataFrame:
                             {
                                 "timestamp": timestamp
                                 if timestamp
-                                else datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S"),
+                                else datetime.now(UTC).astimezone().strftime("%Y-%m-%d %H:%M:%S"),
                                 "error_type": error_type,
                                 "raw_line": line.strip()[:200],  # truncate
                             }

@@ -29,7 +29,7 @@ def _discover_ldconfig_cuda_dirs(candidates: list[str]) -> None:
                         lib_path = line.split("=>")[-1].strip()
                         if lib_path:
                             _append_if_exists(candidates, Path(lib_path).parent)
-    except (OSError, subprocess.SubprocessError) as exc:
+    except (OSError, subprocess.SubprocessError, ValueError) as exc:
         logging.getLogger(__name__).debug("ldconfig lookup skipped: %s", exc)
 
 
@@ -123,7 +123,7 @@ def load_jsonl(path: Path) -> list[dict]:
 
 
 class _TeacherSample(TypedDict):
-    text: str
+    text: str | None
     label: int
     weight: float
 
@@ -239,7 +239,7 @@ def _load_teacher_items(args: argparse.Namespace, label2id: dict[str, int]) -> l
             continue
         label_str = lbls[0]
         if label_str in label2id:
-            all_items.append({"text": str(text), "label": label2id[label_str], "weight": 1.0})
+            all_items.append({"text": text, "label": label2id[label_str], "weight": 1.0})
 
     # Process Silver
     for item in silver_data:
@@ -247,7 +247,7 @@ def _load_teacher_items(args: argparse.Namespace, label2id: dict[str, int]) -> l
         label_str = item.get("label")  # external data has single 'label' field
         if label_str in label2id:
             # Lower weight for Silver data (0.2 based on request to lower it 0.1~0.3)
-            all_items.append({"text": str(text), "label": label2id[label_str], "weight": 0.2})
+            all_items.append({"text": text, "label": label2id[label_str], "weight": 0.2})
 
     return all_items
 

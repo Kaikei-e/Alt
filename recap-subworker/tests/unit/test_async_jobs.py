@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from recap_subworker.app.main import sweep_orphaned_runs
+from recap_subworker.services.admin_jobs import AdminJobFn, AdminJobManager
 from recap_subworker.services.async_jobs import (
     CANCELLED_ADMIN_JOB_MESSAGE,
     AdminJobService,
@@ -376,3 +377,30 @@ async def test_empty_exception_message_is_not_mislabeled_as_cancelled(
 
     assert fake_dao.jobs[str(job_id)]["status"] == "failed"
     assert fake_dao.jobs[str(job_id)]["error"] != CANCELLED_ADMIN_JOB_MESSAGE
+
+
+@pytest.mark.asyncio
+async def test_admin_job_manager_keeps_worker_alive_when_fn_missing() -> None:
+    manager = AdminJobManager(concurrency=1)
+
+    async def _succeed() -> dict[str, str]:
+        return {"ok": "true"}
+
+    missing_job_id = manager.enqueue("missing_fn", cast("AdminJobFn", None))
+    next_job_id = manager.enqueue("valid_fn", _succeed)
+
+    try:
+        await asyncio.wait_for(manager._queue.join(), timeout=0.5)
+    finally:
+        for task in manager._worker_tasks:
+            task.cancel()
+        await asyncio.gather(*manager._worker_tasks, return_exceptions=True)
+
+    missing_job = manager.get(missing_job_id)
+    next_job = manager.get(next_job_id)
+    assert missing_job is not None
+    assert missing_job["status"] == "failed"
+    assert missing_job["error"] == "job function missing"
+    assert next_job is not None
+    assert next_job["status"] == "succeeded"
+    assert next_job["result"] == {"ok": "true"}
