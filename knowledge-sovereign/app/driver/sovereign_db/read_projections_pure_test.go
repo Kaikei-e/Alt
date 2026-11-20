@@ -224,7 +224,7 @@ func TestBuildKnowledgeHomeFilterClauses_Table(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			clauseSQL, args, nextPos := buildKnowledgeHomeFilterClauses(tc.filter, cutoff, tc.startArgPos)
-			assert.Equal(t, tc.wantArgLen, len(args))
+			assert.Len(t, args, tc.wantArgLen)
 			assert.Equal(t, tc.wantNextPos, nextPos)
 			if tc.wantExactSQL != "" || tc.name == "nil filter" {
 				assert.Equal(t, tc.wantExactSQL, clauseSQL)
@@ -266,7 +266,7 @@ func TestBuildKnowledgeHomeQuery_Pure(t *testing.T) {
 		require.Len(t, args, 6)
 		assert.Equal(t, userID, args[0])
 		assert.Equal(t, anchor, args[1])
-		assert.Equal(t, 0.75, args[2])
+		assert.InEpsilon(t, 0.75, args[2], 1e-9)
 		assert.Equal(t, &cutoff, args[3])
 		assert.Equal(t, "article:123", args[4])
 		assert.Equal(t, 11, args[5])
@@ -296,7 +296,7 @@ func TestBuildKnowledgeHomeQuery_Pure(t *testing.T) {
 		assert.Equal(t, "%distributed%", args[2])
 		assert.Equal(t, []string{"consensus", "raft"}, args[3])
 		assert.Equal(t, cutoff, args[4])
-		assert.Equal(t, 0.82, args[5])
+		assert.InEpsilon(t, 0.82, args[5], 1e-9)
 		assert.Equal(t, &cutoff, args[6])
 		assert.Equal(t, "article:456", args[7])
 		assert.Equal(t, 10, args[8])

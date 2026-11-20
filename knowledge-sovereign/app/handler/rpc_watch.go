@@ -35,13 +35,13 @@ func (h *SovereignHandler) WatchProjectorEvents(
 	}()
 
 	slog.Info("WatchProjectorEvents: client connected",
-		"projector_name", req.Msg.ProjectorName)
+		"projector_name", req.Msg.GetProjectorName())
 
 	for {
 		payload, isTimeout, err := watcher.WaitForNotification(ctx, sovereign_db.WatchHeartbeatInterval)
 		if ctx.Err() != nil {
 			slog.Info("WatchProjectorEvents: client disconnected",
-				"projector_name", req.Msg.ProjectorName)
+				"projector_name", req.Msg.GetProjectorName())
 			return nil
 		}
 

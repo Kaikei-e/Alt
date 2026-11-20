@@ -140,9 +140,9 @@ func TestBuildUpdateReprojectRunArgs(t *testing.T) {
 	require.Len(t, args, 7)
 	assert.Equal(t, runID, args[0])
 	assert.Equal(t, "completed", args[1])
-	assert.Equal(t, json.RawMessage(`{"cursor":42}`), args[2])
-	assert.Equal(t, json.RawMessage(`{}`), args[3])
-	assert.Equal(t, json.RawMessage(`{}`), args[4])
+	assert.JSONEq(t, `{"cursor":42}`, string(args[2].(json.RawMessage)))
+	assert.JSONEq(t, `{}`, string(args[3].(json.RawMessage)))
+	assert.JSONEq(t, `{}`, string(args[4].(json.RawMessage)))
 	assert.Equal(t, &t0, args[5])
 	assert.Equal(t, &t1, args[6])
 }

@@ -34,24 +34,24 @@ func (h *SovereignHandler) ListKnowledgeEvents(
 	var events []sovereign_db.KnowledgeEvent
 	var err error
 
-	if msg.UserId != "" {
-		if msg.TenantId == "" {
+	if msg.GetUserId() != "" {
+		if msg.GetTenantId() == "" {
 			return nil, connect.NewError(connect.CodeInvalidArgument,
 				fmt.Errorf("tenant_id is required when user_id is set"))
 		}
-		userID, parseErr := uuid.Parse(msg.UserId)
+		userID, parseErr := uuid.Parse(msg.GetUserId())
 		if parseErr != nil {
 			return nil, connect.NewError(connect.CodeInvalidArgument,
 				fmt.Errorf("invalid user_id: %w", parseErr))
 		}
-		tenantID, parseErr := uuid.Parse(msg.TenantId)
+		tenantID, parseErr := uuid.Parse(msg.GetTenantId())
 		if parseErr != nil {
 			return nil, connect.NewError(connect.CodeInvalidArgument,
 				fmt.Errorf("invalid tenant_id: %w", parseErr))
 		}
-		events, err = h.readDB.ListKnowledgeEventsSinceForUser(ctx, tenantID, userID, msg.AfterSeq, clampReadLimit(int(msg.Limit), defaultReadLimit))
+		events, err = h.readDB.ListKnowledgeEventsSinceForUser(ctx, tenantID, userID, msg.GetAfterSeq(), clampReadLimit(int(msg.GetLimit()), defaultReadLimit))
 	} else {
-		events, err = h.readDB.ListKnowledgeEventsSince(ctx, msg.AfterSeq, clampReadLimit(int(msg.Limit), defaultReadLimit))
+		events, err = h.readDB.ListKnowledgeEventsSince(ctx, msg.GetAfterSeq(), clampReadLimit(int(msg.GetLimit()), defaultReadLimit))
 	}
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("ListKnowledgeEvents: %w", err))
@@ -68,16 +68,16 @@ func (h *SovereignHandler) GetLatestEventSeq(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.GetLatestEventSeqRequest],
 ) (*connect.Response[sovereignv1.GetLatestEventSeqResponse], error) {
-	if req.Msg.TenantId == "" {
+	if req.Msg.GetTenantId() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("tenant_id is required"))
 	}
-	userID, err := uuid.Parse(req.Msg.UserId)
+	userID, err := uuid.Parse(req.Msg.GetUserId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("invalid user_id: %w", err))
 	}
-	tenantID, err := uuid.Parse(req.Msg.TenantId)
+	tenantID, err := uuid.Parse(req.Msg.GetTenantId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("invalid tenant_id: %w", err))
@@ -93,7 +93,7 @@ func (h *SovereignHandler) AppendKnowledgeEvent(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.AppendKnowledgeEventRequest],
 ) (*connect.Response[sovereignv1.AppendKnowledgeEventResponse], error) {
-	event, err := validateAndBuildKnowledgeEvent(req.Msg.Event)
+	event, err := validateAndBuildKnowledgeEvent(req.Msg.GetEvent())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
@@ -128,7 +128,7 @@ func (h *SovereignHandler) AppendKnowledgeUserEvent(
 	ctx context.Context,
 	req *connect.Request[sovereignv1.AppendKnowledgeUserEventRequest],
 ) (*connect.Response[sovereignv1.AppendKnowledgeUserEventResponse], error) {
-	event, err := validateAndBuildKnowledgeUserEvent(req.Msg.Event)
+	event, err := validateAndBuildKnowledgeUserEvent(req.Msg.GetEvent())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
@@ -146,57 +146,57 @@ func validateAndBuildKnowledgeEvent(pe *sovereignv1.KnowledgeEvent) (sovereign_d
 		return sovereign_db.KnowledgeEvent{}, fmt.Errorf("event is required")
 	}
 
-	eventID, err := parseUUIDField("event_id", pe.EventId)
+	eventID, err := parseUUIDField("event_id", pe.GetEventId())
 	if err != nil {
 		return sovereign_db.KnowledgeEvent{}, err
 	}
-	tenantID, err := parseUUIDField("tenant_id", pe.TenantId)
+	tenantID, err := parseUUIDField("tenant_id", pe.GetTenantId())
 	if err != nil {
 		return sovereign_db.KnowledgeEvent{}, err
 	}
 	if tenantID == uuid.Nil {
 		return sovereign_db.KnowledgeEvent{}, fmt.Errorf("tenant_id must not be nil UUID")
 	}
-	userID, err := parseUUIDPtrField("user_id", pe.UserId)
+	userID, err := parseUUIDPtrField("user_id", pe.GetUserId())
 	if err != nil {
 		return sovereign_db.KnowledgeEvent{}, err
 	}
 	if userID != nil && *userID == uuid.Nil {
 		return sovereign_db.KnowledgeEvent{}, fmt.Errorf("user_id must not be nil UUID")
 	}
-	correlationID, err := parseUUIDPtrField("correlation_id", pe.CorrelationId)
+	correlationID, err := parseUUIDPtrField("correlation_id", pe.GetCorrelationId())
 	if err != nil {
 		return sovereign_db.KnowledgeEvent{}, err
 	}
-	causationID, err := parseUUIDPtrField("causation_id", pe.CausationId)
+	causationID, err := parseUUIDPtrField("causation_id", pe.GetCausationId())
 	if err != nil {
 		return sovereign_db.KnowledgeEvent{}, err
 	}
 
-	if pe.OccurredAt == nil {
+	if pe.GetOccurredAt() == nil {
 		return sovereign_db.KnowledgeEvent{}, fmt.Errorf("occurred_at is required")
 	}
-	if strings.TrimSpace(pe.DedupeKey) == "" {
+	if strings.TrimSpace(pe.GetDedupeKey()) == "" {
 		return sovereign_db.KnowledgeEvent{}, fmt.Errorf("dedupe_key is required")
 	}
-	if err := validateKnowledgeEventPayload(pe.Payload); err != nil {
+	if err := validateKnowledgeEventPayload(pe.GetPayload()); err != nil {
 		return sovereign_db.KnowledgeEvent{}, err
 	}
 
 	return sovereign_db.KnowledgeEvent{
 		EventID:       eventID,
-		ActorType:     pe.ActorType,
-		ActorID:       pe.ActorId,
-		EventType:     pe.EventType,
-		AggregateType: pe.AggregateType,
-		AggregateID:   pe.AggregateId,
-		DedupeKey:     pe.DedupeKey,
-		Payload:       json.RawMessage(pe.Payload),
+		ActorType:     pe.GetActorType(),
+		ActorID:       pe.GetActorId(),
+		EventType:     pe.GetEventType(),
+		AggregateType: pe.GetAggregateType(),
+		AggregateID:   pe.GetAggregateId(),
+		DedupeKey:     pe.GetDedupeKey(),
+		Payload:       json.RawMessage(pe.GetPayload()),
 		TenantID:      tenantID,
 		UserID:        userID,
 		CorrelationID: correlationID,
 		CausationID:   causationID,
-		OccurredAt:    pe.OccurredAt.AsTime(),
+		OccurredAt:    pe.GetOccurredAt().AsTime(),
 	}, nil
 }
 
@@ -230,37 +230,37 @@ func validateAndBuildKnowledgeUserEvent(pe *sovereignv1.KnowledgeUserEvent) (sov
 	if pe == nil {
 		return sovereign_db.KnowledgeUserEvent{}, fmt.Errorf("event is required")
 	}
-	userEventID, err := parseUUIDField("user_event_id", pe.UserEventId)
+	userEventID, err := parseUUIDField("user_event_id", pe.GetUserEventId())
 	if err != nil {
 		return sovereign_db.KnowledgeUserEvent{}, err
 	}
-	eventUserID, err := parseUUIDField("user_id", pe.UserId)
+	eventUserID, err := parseUUIDField("user_id", pe.GetUserId())
 	if err != nil {
 		return sovereign_db.KnowledgeUserEvent{}, err
 	}
-	eventTenantID, err := parseUUIDField("tenant_id", pe.TenantId)
+	eventTenantID, err := parseUUIDField("tenant_id", pe.GetTenantId())
 	if err != nil {
 		return sovereign_db.KnowledgeUserEvent{}, err
 	}
-	if pe.OccurredAt == nil {
+	if pe.GetOccurredAt() == nil {
 		return sovereign_db.KnowledgeUserEvent{}, fmt.Errorf("occurred_at is required")
 	}
 	// dedupe_key gates the driver's `WHERE dedupe_key != ''` partial unique
 	// index (read_events.go AppendKnowledgeUserEvent) — an empty value
 	// silently disables at-least-once dedup instead of failing, so it must
 	// be required here rather than left to the caller's discretion.
-	if strings.TrimSpace(pe.DedupeKey) == "" {
+	if strings.TrimSpace(pe.GetDedupeKey()) == "" {
 		return sovereign_db.KnowledgeUserEvent{}, fmt.Errorf("dedupe_key is required")
 	}
 	return sovereign_db.KnowledgeUserEvent{
 		UserEventID: userEventID,
 		UserID:      eventUserID,
 		TenantID:    eventTenantID,
-		EventType:   pe.EventType,
-		ItemKey:     pe.ItemKey,
-		Payload:     pe.Payload,
-		DedupeKey:   pe.DedupeKey,
-		OccurredAt:  pe.OccurredAt.AsTime(),
+		EventType:   pe.GetEventType(),
+		ItemKey:     pe.GetItemKey(),
+		Payload:     pe.GetPayload(),
+		DedupeKey:   pe.GetDedupeKey(),
+		OccurredAt:  pe.GetOccurredAt().AsTime(),
 	}, nil
 }
 

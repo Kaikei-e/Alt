@@ -27,7 +27,7 @@ func TestDeepHealth_DBFailIs503(t *testing.T) {
 		dbErr: errors.New("postgres://alt:hunter2@db.internal/sovereign"),
 	})
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health/deep", nil))
+	h.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health/deep", nil))
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want 503", rec.Code)
 	}
@@ -47,7 +47,7 @@ func TestDeepHealth_DBFailIs503(t *testing.T) {
 func TestDeepHealth_ProjectorNotReadyIs200Warn(t *testing.T) {
 	h := NewDeepHealthHandler(stubDeepPinger{projReady: false})
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health/deep", nil))
+	h.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health/deep", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}
@@ -82,7 +82,7 @@ func TestDeepHealth_ProjectorNotReadyIs200Warn(t *testing.T) {
 func TestDeepHealth_AllPass(t *testing.T) {
 	h := NewDeepHealthHandler(stubDeepPinger{projReady: true})
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health/deep", nil))
+	h.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health/deep", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d", rec.Code)
 	}
@@ -92,7 +92,7 @@ func TestDeepHealth_AllPass(t *testing.T) {
 }
 
 func TestHealthHandler_CheapLivenessUnchanged(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health", nil)
 	rec := httptest.NewRecorder()
 	HealthHandler(rec, req)
 	if rec.Code != http.StatusOK {
@@ -126,7 +126,7 @@ func TestDeepHealth_CancelledLeaderDoesNotPoisonCache(t *testing.T) {
 	leaderDone := make(chan int, 1)
 	go func() {
 		rec := httptest.NewRecorder()
-		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health/deep", nil).WithContext(leaderCtx))
+		h.ServeHTTP(rec, httptest.NewRequestWithContext(leaderCtx, http.MethodGet, "/health/deep", nil))
 		leaderDone <- rec.Code
 	}()
 	<-pinger.started
@@ -135,7 +135,7 @@ func TestDeepHealth_CancelledLeaderDoesNotPoisonCache(t *testing.T) {
 	waiterDone := make(chan int, 1)
 	go func() {
 		rec := httptest.NewRecorder()
-		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health/deep", nil))
+		h.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health/deep", nil))
 		waiterDone <- rec.Code
 	}()
 
@@ -150,7 +150,7 @@ func TestDeepHealth_CancelledLeaderDoesNotPoisonCache(t *testing.T) {
 	}
 
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health/deep", nil))
+	h.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health/deep", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("cache poisoned: %d", rec.Code)
 	}

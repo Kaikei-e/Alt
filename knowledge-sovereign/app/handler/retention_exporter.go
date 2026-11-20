@@ -11,8 +11,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/google/uuid"
 	"knowledge-sovereign/driver/sovereign_db"
+
+	"github.com/google/uuid"
 )
 
 // buildEligiblePartitionRows converts domain partition metadata to API rows.

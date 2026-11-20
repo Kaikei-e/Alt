@@ -370,7 +370,7 @@ func TestEnsurePartitions(t *testing.T) {
 
 		created, err := repo.EnsurePartitions(context.Background(), "knowledge_events", july, 3)
 		require.Error(t, err)
-		assert.ErrorIs(t, err, ErrDefaultPartitionBacklog)
+		require.ErrorIs(t, err, ErrDefaultPartitionBacklog)
 		assert.Contains(t, err.Error(), "knowledge_events_y2026m07")
 		assert.Equal(t, []string{
 			"knowledge_events_y2026m08",

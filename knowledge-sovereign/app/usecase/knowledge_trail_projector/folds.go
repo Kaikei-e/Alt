@@ -134,7 +134,7 @@ func (p *Projector) foldBranch(ctx context.Context, evt sovereign_db.KnowledgeEv
 	if err != nil {
 		p.logger.WarnContext(ctx, "trail projector: unparseable branch_proposed payload",
 			slog.String("event_id", evt.EventID.String()))
-		return nil
+		return nil //nolint:nilerr // unparseable event in append-only log must be skipped so projector advances
 	}
 	if !ok {
 		p.logger.WarnContext(ctx, "trail projector: rejecting untyped branch_proposed",
@@ -154,7 +154,7 @@ func (p *Projector) foldBranchResolved(ctx context.Context, evt sovereign_db.Kno
 	if err != nil {
 		p.logger.WarnContext(ctx, "trail projector: unparseable branch_resolved payload",
 			slog.String("event_id", evt.EventID.String()))
-		return nil
+		return nil //nolint:nilerr // unparseable event in append-only log must be skipped so projector advances
 	}
 	if !ok {
 		p.logger.WarnContext(ctx, "trail projector: rejecting invalid branch_resolved",
@@ -185,7 +185,7 @@ func (p *Projector) foldActOutcome(ctx context.Context, evt sovereign_db.Knowled
 	if err != nil {
 		p.logger.WarnContext(ctx, "trail projector: unparseable act_outcome payload",
 			slog.String("event_id", evt.EventID.String()))
-		return nil
+		return nil //nolint:nilerr // unparseable event in append-only log must be skipped so projector advances
 	}
 	if !ok {
 		msg := "trail projector: rejecting incomplete legacy act_outcome"

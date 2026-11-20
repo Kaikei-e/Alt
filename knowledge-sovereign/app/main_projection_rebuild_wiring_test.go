@@ -32,7 +32,7 @@ func TestProjectionRebuild_IsBehindTheAdminToken(t *testing.T) {
 	handler.NewProjectionRebuildHandler(repo).RegisterRoutes(mux)
 	gated := requireAdminToken("super-secret-admin-token-value", true, mux)
 
-	unauth := httptest.NewRequest(http.MethodPost, "/admin/projections/rebuild",
+	unauth := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/admin/projections/rebuild",
 		strings.NewReader(`{"target":"knowledge-home"}`))
 	rec := httptest.NewRecorder()
 	gated.ServeHTTP(rec, unauth)
@@ -43,7 +43,7 @@ func TestProjectionRebuild_IsBehindTheAdminToken(t *testing.T) {
 		t.Fatalf("an unauthenticated rebuild reached the database %d time(s)", repo.calls)
 	}
 
-	authed := httptest.NewRequest(http.MethodPost, "/admin/projections/rebuild",
+	authed := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/admin/projections/rebuild",
 		strings.NewReader(`{"target":"knowledge-home"}`))
 	authed.Header.Set("Authorization", "Bearer super-secret-admin-token-value")
 	rec = httptest.NewRecorder()

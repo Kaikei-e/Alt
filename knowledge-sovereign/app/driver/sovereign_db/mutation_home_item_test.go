@@ -3,9 +3,7 @@ package sovereign_db
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"regexp"
-	"strings"
 	"testing"
 	"time"
 
@@ -64,7 +62,7 @@ func TestUpsertKnowledgeHomeItem_UsesMergeSafeSQL(t *testing.T) {
 		`GREATEST(knowledge_home_items.summary_state, EXCLUDED.summary_state)`,
 		`COALESCE(NULLIF(EXCLUDED.url, ''), knowledge_home_items.url)`,
 	} {
-		assert.True(t, strings.Contains(sql, required),
+		assert.Contains(t, sql, required,
 			"merge-safe rule requires canonical expression %q — actual SQL omits it", required)
 	}
 }
@@ -134,7 +132,7 @@ func TestUpsertKnowledgeHomeItem_EmptyScoreOpIsAcceptedAsExplicitNoop(t *testing
 	err := repo.UpsertKnowledgeHomeItem(context.Background(), scoreOpUpsertPayload(t, &emptyOp))
 	require.NoError(t, err, "an explicitly empty score_op must be accepted (it is how no-touch folds signal intent)")
 	require.Len(t, mock.execCalls, 1)
-	assert.Equal(t, "", mock.execCalls[0].Args[22])
+	assert.Empty(t, mock.execCalls[0].Args[22])
 }
 
 func TestUpsertKnowledgeHomeItem_RejectsMissingScoreOp(t *testing.T) {
@@ -169,7 +167,7 @@ func TestDismissKnowledgeHomeItem_RequiresDismissedAtInPayload(t *testing.T) {
 	err := repo.DismissKnowledgeHomeItem(context.Background(), payload)
 	require.Error(t, err, "missing dismissed_at must error loudly, not fabricate timestamp")
 	assert.Contains(t, err.Error(), "dismissed_at is required")
-	assert.True(t, errors.Is(err, ErrInvalidMutationPayload), "missing dismissed_at error must wrap ErrInvalidMutationPayload")
+	require.ErrorIs(t, err, ErrInvalidMutationPayload, "missing dismissed_at error must wrap ErrInvalidMutationPayload")
 	assert.Empty(t, mock.execCalls, "no UPDATE should be issued when dismissed_at is missing")
 }
 
@@ -210,7 +208,7 @@ func TestDismissKnowledgeHomeItem_NotFound(t *testing.T) {
 	}`)
 
 	err := repo.DismissKnowledgeHomeItem(context.Background(), payload)
-	require.True(t, errors.Is(err, ErrDismissTargetNotFound))
+	require.ErrorIs(t, err, ErrDismissTargetNotFound)
 }
 
 func TestDismissKnowledgeHomeItem_VersionZero_NotFound(t *testing.T) {
@@ -277,7 +275,7 @@ func TestParseHomeItemMutation_Table(t *testing.T) {
 				require.NotNil(t, m.SupersedeState)
 				assert.Equal(t, "superseded", *m.SupersedeState)
 				require.NotNil(t, m.PreviousRefJSON)
-				assert.Equal(t, "{\"prev\":\"old\"}", *m.PreviousRefJSON)
+				assert.JSONEq(t, "{\"prev\":\"old\"}", *m.PreviousRefJSON)
 			},
 		},
 		{
@@ -289,7 +287,7 @@ func TestParseHomeItemMutation_Table(t *testing.T) {
 				"score_op": ""
 			}`,
 			check: func(t *testing.T, m homeItemMutation) {
-				assert.Equal(t, "", m.ScoreOp)
+				assert.Empty(t, m.ScoreOp)
 				assert.Nil(t, m.SupersedeState)
 				assert.Nil(t, m.PreviousRefJSON)
 			},

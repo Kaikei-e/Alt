@@ -9,7 +9,7 @@ import (
 )
 
 func TestHealthHandler_ReturnsOK(t *testing.T) {
-	req := httptest.NewRequest("GET", "/health", nil)
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/health", nil)
 	rec := httptest.NewRecorder()
 	HealthHandler(rec, req)
 	assert.Equal(t, http.StatusOK, rec.Code)
@@ -17,7 +17,7 @@ func TestHealthHandler_ReturnsOK(t *testing.T) {
 }
 
 func TestHealthHandler_ReturnsJSON(t *testing.T) {
-	req := httptest.NewRequest("GET", "/health", nil)
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/health", nil)
 	rec := httptest.NewRecorder()
 	HealthHandler(rec, req)
 	assert.Equal(t, "application/json", rec.Header().Get("Content-Type"))

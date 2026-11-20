@@ -24,8 +24,8 @@ func TestGetKnowledgeHomeItems_ReturnsEmpty(t *testing.T) {
 		}))
 
 	require.NoError(t, err)
-	assert.Empty(t, resp.Msg.Items)
-	assert.False(t, resp.Msg.HasMore)
+	assert.Empty(t, resp.Msg.GetItems())
+	assert.False(t, resp.Msg.GetHasMore())
 }
 
 // TestGetKnowledgeHomeItems_InvalidUserID_ReturnsInvalidArgument pins the
@@ -56,7 +56,7 @@ func TestListDistinctUserIDs_ReturnsEmpty(t *testing.T) {
 		connect.NewRequest(&sovereignv1.ListDistinctUserIDsRequest{}))
 
 	require.NoError(t, err)
-	assert.Empty(t, resp.Msg.UserIds)
+	assert.Empty(t, resp.Msg.GetUserIds())
 }
 
 func TestClampReadLimit(t *testing.T) {
@@ -80,19 +80,19 @@ func TestGetTodayDigestAndRecallCandidates_DefaultsAndMapping(t *testing.T) {
 		Date:   "2026-10-24",
 	}))
 	require.NoError(t, err)
-	assert.Nil(t, digestResp.Msg.Digest)
+	assert.Nil(t, digestResp.Msg.GetDigest())
 
 	recallResp, err := client.GetRecallCandidates(ctx, connect.NewRequest(&sovereignv1.GetRecallCandidatesRequest{
 		UserId: userID,
 		Limit:  5,
 	}))
 	require.NoError(t, err)
-	assert.Empty(t, recallResp.Msg.Candidates)
+	assert.Empty(t, recallResp.Msg.GetCandidates())
 
 	countResp, err := client.CountNeedToKnowItems(ctx, connect.NewRequest(&sovereignv1.CountNeedToKnowItemsRequest{
 		UserId: userID,
 		Date:   "2026-10-24",
 	}))
 	require.NoError(t, err)
-	assert.Equal(t, int32(0), countResp.Msg.Count)
+	assert.Equal(t, int32(0), countResp.Msg.GetCount())
 }

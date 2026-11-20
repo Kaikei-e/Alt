@@ -84,23 +84,23 @@ func TestListReadingThemes_ValidAndInvalidRequests(t *testing.T) {
 		}))
 		require.NoError(t, err)
 		assert.Equal(t, 20, repo.gotThemesLimit)
-		require.Len(t, resp.Msg.Themes, 2)
+		require.Len(t, resp.Msg.GetThemes(), 2)
 
-		first := resp.Msg.Themes[0]
-		assert.Equal(t, themeOpened.String(), first.ThemeId)
-		assert.Equal(t, "Distributed Storage", first.Title)
-		assert.Equal(t, int32(3), first.LatestVersion)
-		assert.Equal(t, int32(5), first.ArticleCount)
-		assert.Equal(t, t1, first.CreatedAt.AsTime())
-		assert.Equal(t, t2, first.UpdatedAt.AsTime())
-		require.NotNil(t, first.LastOpenedAt)
-		assert.Equal(t, openedAt, first.LastOpenedAt.AsTime())
-		assert.Equal(t, int32(2), first.LastOpenedVersion)
+		first := resp.Msg.GetThemes()[0]
+		assert.Equal(t, themeOpened.String(), first.GetThemeId())
+		assert.Equal(t, "Distributed Storage", first.GetTitle())
+		assert.Equal(t, int32(3), first.GetLatestVersion())
+		assert.Equal(t, int32(5), first.GetArticleCount())
+		assert.Equal(t, t1, first.GetCreatedAt().AsTime())
+		assert.Equal(t, t2, first.GetUpdatedAt().AsTime())
+		require.NotNil(t, first.GetLastOpenedAt())
+		assert.Equal(t, openedAt, first.GetLastOpenedAt().AsTime())
+		assert.Equal(t, int32(2), first.GetLastOpenedVersion())
 
-		second := resp.Msg.Themes[1]
-		assert.Equal(t, themeUnopened.String(), second.ThemeId)
-		assert.Nil(t, second.LastOpenedAt)
-		assert.Equal(t, int32(0), second.LastOpenedVersion)
+		second := resp.Msg.GetThemes()[1]
+		assert.Equal(t, themeUnopened.String(), second.GetThemeId())
+		assert.Nil(t, second.GetLastOpenedAt())
+		assert.Equal(t, int32(0), second.GetLastOpenedVersion())
 	})
 
 	t.Run("propagates repository error as Internal", func(t *testing.T) {

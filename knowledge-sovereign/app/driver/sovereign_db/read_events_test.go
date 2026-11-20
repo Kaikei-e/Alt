@@ -223,7 +223,7 @@ func TestAppendKnowledgeEventIfNew_CrossTenantDedupeCollisionRejected(t *testing
 		repo := NewRepository(mock)
 		seq, appended, err := repo.AppendKnowledgeEventIfNew(context.Background(), ev)
 		require.ErrorIs(t, err, ErrDedupeOwnerUnresolved)
-		assert.NotErrorIs(t, err, ErrDedupeKeyTenantMismatch)
+		require.NotErrorIs(t, err, ErrDedupeKeyTenantMismatch)
 		assert.False(t, appended)
 		assert.Zero(t, seq)
 		assert.False(t, eventInserted)

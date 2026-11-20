@@ -315,7 +315,7 @@ func TestUpsertRecallCandidate_HomeAssociationTenantGuardSQL(t *testing.T) {
 	repoDeniedInsert := &Repository{pool: mockDeniedInsert}
 	err = repoDeniedInsert.UpsertRecallCandidate(context.Background(), payload)
 	require.Error(t, err, "foreign or missing home row resulting in 0 rows affected on insert MUST be denied")
-	assert.ErrorIs(t, err, ErrRecallHomeAssociationDenied)
+	require.ErrorIs(t, err, ErrRecallHomeAssociationDenied)
 
 	// Test Own Incoming / Foreign Existing: on conflict DO UPDATE WHERE EXISTS fails (UPDATE 0) -> denied
 	mockDeniedUpdate := &mockPgx{
@@ -326,7 +326,7 @@ func TestUpsertRecallCandidate_HomeAssociationTenantGuardSQL(t *testing.T) {
 	repoDeniedUpdate := &Repository{pool: mockDeniedUpdate}
 	err = repoDeniedUpdate.UpsertRecallCandidate(context.Background(), payload)
 	require.Error(t, err, "foreign existing home row resulting in 0 rows affected on update MUST be denied")
-	assert.ErrorIs(t, err, ErrRecallHomeAssociationDenied)
+	require.ErrorIs(t, err, ErrRecallHomeAssociationDenied)
 
 	// Test Own Existing positive: on conflict DO UPDATE WHERE EXISTS succeeds (UPDATE 1)
 	mockOwnExisting := &mockPgx{

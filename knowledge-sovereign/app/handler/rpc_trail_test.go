@@ -35,10 +35,10 @@ func TestGetTrailFootprints_EpisodesPopulatedLegacyFootprintsEmpty(t *testing.T)
 	}))
 	require.NoError(t, err)
 
-	assert.Empty(t, resp.Msg.Footprints, "legacy footprints field is superseded by episodes and must stay empty")
-	require.Len(t, resp.Msg.Episodes, 1)
-	assert.Equal(t, "ep:open:article:1", resp.Msg.Episodes[0].EpisodeKey)
-	assert.Equal(t, "worn", resp.Msg.Episodes[0].Wear)
+	assert.Empty(t, resp.Msg.GetFootprints(), "legacy footprints field is superseded by episodes and must stay empty")
+	require.Len(t, resp.Msg.GetEpisodes(), 1)
+	assert.Equal(t, "ep:open:article:1", resp.Msg.GetEpisodes()[0].GetEpisodeKey())
+	assert.Equal(t, "worn", resp.Msg.GetEpisodes()[0].GetWear())
 }
 
 // Collapsed contacts (D24) and cleaned tags (D25) surface through the
@@ -65,15 +65,15 @@ func TestGetTrailFootprints_CollapsedContactsAndCleanedTagsInsideEpisodeMembers(
 		Limit:  20,
 	}))
 	require.NoError(t, err)
-	require.Len(t, resp.Msg.Episodes, 1)
-	require.Len(t, resp.Msg.Episodes[0].Footprints, 1)
+	require.Len(t, resp.Msg.GetEpisodes(), 1)
+	require.Len(t, resp.Msg.GetEpisodes()[0].GetFootprints(), 1)
 
-	fp := resp.Msg.Episodes[0].Footprints[0]
-	assert.Equal(t, int32(2), fp.ContactCount)
-	require.NotNil(t, fp.FirstOccurredAt, "the earliest collapsed contact must be mapped")
-	assert.Equal(t, first, fp.FirstOccurredAt.AsTime())
-	assert.Equal(t, latest, fp.OccurredAt.AsTime())
-	assert.Equal(t, []string{"military", "agent"}, fp.Tags,
+	fp := resp.Msg.GetEpisodes()[0].GetFootprints()[0]
+	assert.Equal(t, int32(2), fp.GetContactCount())
+	require.NotNil(t, fp.GetFirstOccurredAt(), "the earliest collapsed contact must be mapped")
+	assert.Equal(t, first, fp.GetFirstOccurredAt().AsTime())
+	assert.Equal(t, latest, fp.GetOccurredAt().AsTime())
+	assert.Equal(t, []string{"military", "agent"}, fp.GetTags(),
 		"tags must be cleaned (stopwords/digits dropped, case and plural variants merged)")
 }
 
@@ -94,7 +94,7 @@ func TestGetTrailFootprints_FetchesFixedDerivationWindowRegardlessOfClientPaging
 	}))
 	require.NoError(t, err)
 
-	assert.Equal(t, "", repo.gotTrailCursor, "the read-model fetch must always start at the beginning of the window")
+	assert.Empty(t, repo.gotTrailCursor, "the read-model fetch must always start at the beginning of the window")
 	assert.Equal(t, episodeWindowRows, repo.gotTrailLimit, "the read-model fetch must request the full derivation window")
 }
 
@@ -115,32 +115,32 @@ func TestGetTrailFootprints_EpisodePaging(t *testing.T) {
 		Limit:  1,
 	}))
 	require.NoError(t, err)
-	require.Len(t, page1.Msg.Episodes, 1)
-	assert.Equal(t, "ep:fp:c", page1.Msg.Episodes[0].EpisodeKey)
-	assert.True(t, page1.Msg.HasMore)
-	assert.Equal(t, "ep:1", page1.Msg.NextCursor)
+	require.Len(t, page1.Msg.GetEpisodes(), 1)
+	assert.Equal(t, "ep:fp:c", page1.Msg.GetEpisodes()[0].GetEpisodeKey())
+	assert.True(t, page1.Msg.GetHasMore())
+	assert.Equal(t, "ep:1", page1.Msg.GetNextCursor())
 
 	page2, err := h.GetTrailFootprints(context.Background(), connect.NewRequest(&sovereignv1.GetTrailFootprintsRequest{
 		UserId: "22222222-2222-2222-2222-222222222222",
-		Cursor: page1.Msg.NextCursor,
+		Cursor: page1.Msg.GetNextCursor(),
 		Limit:  1,
 	}))
 	require.NoError(t, err)
-	require.Len(t, page2.Msg.Episodes, 1)
-	assert.Equal(t, "ep:fp:b", page2.Msg.Episodes[0].EpisodeKey)
-	assert.True(t, page2.Msg.HasMore)
-	assert.Equal(t, "ep:2", page2.Msg.NextCursor)
+	require.Len(t, page2.Msg.GetEpisodes(), 1)
+	assert.Equal(t, "ep:fp:b", page2.Msg.GetEpisodes()[0].GetEpisodeKey())
+	assert.True(t, page2.Msg.GetHasMore())
+	assert.Equal(t, "ep:2", page2.Msg.GetNextCursor())
 
 	page3, err := h.GetTrailFootprints(context.Background(), connect.NewRequest(&sovereignv1.GetTrailFootprintsRequest{
 		UserId: "22222222-2222-2222-2222-222222222222",
-		Cursor: page2.Msg.NextCursor,
+		Cursor: page2.Msg.GetNextCursor(),
 		Limit:  1,
 	}))
 	require.NoError(t, err)
-	require.Len(t, page3.Msg.Episodes, 1)
-	assert.Equal(t, "ep:fp:a", page3.Msg.Episodes[0].EpisodeKey)
-	assert.False(t, page3.Msg.HasMore)
-	assert.Empty(t, page3.Msg.NextCursor)
+	require.Len(t, page3.Msg.GetEpisodes(), 1)
+	assert.Equal(t, "ep:fp:a", page3.Msg.GetEpisodes()[0].GetEpisodeKey())
+	assert.False(t, page3.Msg.GetHasMore())
+	assert.Empty(t, page3.Msg.GetNextCursor())
 }
 
 // FilterItemKeys (Wave 9 — trail search, D25) narrows the derived episodes to
@@ -167,10 +167,10 @@ func TestGetTrailFootprints_FilterItemKeysNarrowsToMatchingEpisodesWithFullMembe
 	}))
 	require.NoError(t, err)
 
-	require.Len(t, resp.Msg.Episodes, 1, "only the episode containing article:a should surface")
-	members := resp.Msg.Episodes[0].Footprints
+	require.Len(t, resp.Msg.GetEpisodes(), 1, "only the episode containing article:a should surface")
+	members := resp.Msg.GetEpisodes()[0].GetFootprints()
 	require.Len(t, members, 2, "the whole episode comes along, including the article:b member that did not match the filter")
-	gotItemKeys := []string{members[0].ItemKey, members[1].ItemKey}
+	gotItemKeys := []string{members[0].GetItemKey(), members[1].GetItemKey()}
 	assert.ElementsMatch(t, []string{"article:a", "article:b"}, gotItemKeys)
 }
 
@@ -190,7 +190,7 @@ func TestGetTrailFootprints_EmptyFilterItemKeysReturnsAllEpisodesUnchanged(t *te
 		Limit:  20,
 	}))
 	require.NoError(t, err)
-	assert.Len(t, resp.Msg.Episodes, 2, "no filter_item_keys means both derived episodes come back unchanged")
+	assert.Len(t, resp.Msg.GetEpisodes(), 2, "no filter_item_keys means both derived episodes come back unchanged")
 }
 
 // Paging (limit/cursor) applies AFTER filtering: the offset walks the
@@ -211,21 +211,21 @@ func TestGetTrailFootprints_FilterItemKeysPagingAppliesAfterFiltering(t *testing
 		FilterItemKeys: []string{"article:c", "article:a"},
 	}))
 	require.NoError(t, err)
-	require.Len(t, page1.Msg.Episodes, 1, "limit applies after filtering down to the matching episodes")
-	assert.Equal(t, "ep:fp:c", page1.Msg.Episodes[0].EpisodeKey)
-	assert.True(t, page1.Msg.HasMore, "one more matching episode (article:a) remains beyond the limit")
-	assert.Equal(t, "ep:1", page1.Msg.NextCursor)
+	require.Len(t, page1.Msg.GetEpisodes(), 1, "limit applies after filtering down to the matching episodes")
+	assert.Equal(t, "ep:fp:c", page1.Msg.GetEpisodes()[0].GetEpisodeKey())
+	assert.True(t, page1.Msg.GetHasMore(), "one more matching episode (article:a) remains beyond the limit")
+	assert.Equal(t, "ep:1", page1.Msg.GetNextCursor())
 
 	page2, err := h.GetTrailFootprints(context.Background(), connect.NewRequest(&sovereignv1.GetTrailFootprintsRequest{
 		UserId:         "22222222-2222-2222-2222-222222222222",
 		Limit:          1,
-		Cursor:         page1.Msg.NextCursor,
+		Cursor:         page1.Msg.GetNextCursor(),
 		FilterItemKeys: []string{"article:c", "article:a"},
 	}))
 	require.NoError(t, err)
-	require.Len(t, page2.Msg.Episodes, 1)
-	assert.Equal(t, "ep:fp:a", page2.Msg.Episodes[0].EpisodeKey, "the excluded article:b episode must not consume a page slot")
-	assert.False(t, page2.Msg.HasMore)
+	require.Len(t, page2.Msg.GetEpisodes(), 1)
+	assert.Equal(t, "ep:fp:a", page2.Msg.GetEpisodes()[0].GetEpisodeKey(), "the excluded article:b episode must not consume a page slot")
+	assert.False(t, page2.Msg.GetHasMore())
 }
 
 // episodeWindowRows bounds episode derivation to the most recent 500
@@ -251,7 +251,7 @@ func TestGetTrailFootprints_FilterItemKeysNoMatchLogsWindowExhaustedWarning(t *t
 		FilterItemKeys: []string{"article:not-in-window"},
 	}))
 	require.NoError(t, err)
-	assert.Empty(t, resp.Msg.Episodes)
+	assert.Empty(t, resp.Msg.GetEpisodes())
 	assert.Contains(t, buf.String(), "trail_search_window_exhausted")
 }
 
@@ -275,7 +275,7 @@ func TestGetTrailFootprints_FilterItemKeysWithMatchDoesNotLogWarning(t *testing.
 		FilterItemKeys: []string{"article:a"},
 	}))
 	require.NoError(t, err)
-	require.Len(t, resp.Msg.Episodes, 1)
+	require.Len(t, resp.Msg.GetEpisodes(), 1)
 	assert.NotContains(t, buf.String(), "trail_search_window_exhausted")
 }
 
@@ -320,7 +320,7 @@ func TestGetTrailFootprints_BranchesScopedToReturnedPageAnchorsNewestFirst(t *te
 		Limit:  2,
 	}))
 	require.NoError(t, err)
-	require.Len(t, resp.Msg.Episodes, 2)
+	require.Len(t, resp.Msg.GetEpisodes(), 2)
 
 	assert.Equal(t, 1, repo.openBranchesCalls)
 	assert.Equal(t, uuid.MustParse("22222222-2222-2222-2222-222222222222"), repo.gotBranchUserID,
@@ -328,9 +328,9 @@ func TestGetTrailFootprints_BranchesScopedToReturnedPageAnchorsNewestFirst(t *te
 	assert.ElementsMatch(t, []string{"article:c2", "article:c1", "article:b"}, repo.gotBranchAnchorKeys,
 		"branch query must be scoped to footprint item_keys in the returned page, excluding off-page episode anchors")
 
-	require.Len(t, resp.Msg.Branches, 2, "at most one newest open branch per anchor in the returned page")
-	assert.Equal(t, "br:b-newest", resp.Msg.Branches[0].BranchKey, "final branch list must preserve newest-first ordering")
-	assert.Equal(t, "br:c1-newest", resp.Msg.Branches[1].BranchKey, "only the newest branch for article:c1 should be returned")
+	require.Len(t, resp.Msg.GetBranches(), 2, "at most one newest open branch per anchor in the returned page")
+	assert.Equal(t, "br:b-newest", resp.Msg.GetBranches()[0].GetBranchKey(), "final branch list must preserve newest-first ordering")
+	assert.Equal(t, "br:c1-newest", resp.Msg.GetBranches()[1].GetBranchKey(), "only the newest branch for article:c1 should be returned")
 }
 
 func TestGetTrailFootprints_EmptyPageSkipsBranchQuery(t *testing.T) {
@@ -350,8 +350,8 @@ func TestGetTrailFootprints_EmptyPageSkipsBranchQuery(t *testing.T) {
 		FilterItemKeys: []string{"article:nonexistent"},
 	}))
 	require.NoError(t, err)
-	assert.Empty(t, resp.Msg.Episodes)
-	assert.Empty(t, resp.Msg.Branches, "an empty episode page must return no branches")
+	assert.Empty(t, resp.Msg.GetEpisodes())
+	assert.Empty(t, resp.Msg.GetBranches(), "an empty episode page must return no branches")
 	assert.Equal(t, 0, repo.openBranchesCalls, "must not query branches when the returned episode page has no anchors")
 }
 
@@ -373,9 +373,9 @@ func TestGetTrailFootprints_ZeroLimitDefaultsInsteadOfReturningEmptyCursorLoop(t
 		Limit:  0,
 	}))
 	require.NoError(t, err)
-	assert.Len(t, resp.Msg.Episodes, 2, "omitted/zero limit must default to a positive page size and return both episodes")
-	assert.Len(t, resp.Msg.Branches, 1, "open branch for the returned page anchor must be included")
-	assert.False(t, resp.Msg.HasMore)
-	assert.NotEqual(t, "ep:0", resp.Msg.NextCursor, "zero limit must never emit a self-looping ep:0 cursor")
-	assert.Empty(t, resp.Msg.NextCursor)
+	assert.Len(t, resp.Msg.GetEpisodes(), 2, "omitted/zero limit must default to a positive page size and return both episodes")
+	assert.Len(t, resp.Msg.GetBranches(), 1, "open branch for the returned page anchor must be included")
+	assert.False(t, resp.Msg.GetHasMore())
+	assert.NotEqual(t, "ep:0", resp.Msg.GetNextCursor(), "zero limit must never emit a self-looping ep:0 cursor")
+	assert.Empty(t, resp.Msg.GetNextCursor())
 }

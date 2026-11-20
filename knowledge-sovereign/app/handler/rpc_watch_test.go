@@ -2,7 +2,6 @@ package handler
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -101,15 +100,15 @@ func TestWatchProjectorEvents_StreamsNotificationsAndHeartbeats(t *testing.T) {
 
 	// First event: seq 101
 	require.True(t, stream.Receive())
-	assert.Equal(t, int64(101), stream.Msg().LatestEventSeq)
+	assert.Equal(t, int64(101), stream.Msg().GetLatestEventSeq())
 
 	// Second event: heartbeat (seq 0)
 	require.True(t, stream.Receive())
-	assert.Equal(t, int64(0), stream.Msg().LatestEventSeq)
+	assert.Equal(t, int64(0), stream.Msg().GetLatestEventSeq())
 
 	// Third event: seq 102
 	require.True(t, stream.Receive())
-	assert.Equal(t, int64(102), stream.Msg().LatestEventSeq)
+	assert.Equal(t, int64(102), stream.Msg().GetLatestEventSeq())
 
 	// Cancel context to trigger clean client disconnect
 	cancel()
@@ -117,7 +116,7 @@ func TestWatchProjectorEvents_StreamsNotificationsAndHeartbeats(t *testing.T) {
 	// Stream should finish
 	for stream.Receive() {
 	}
-	assert.True(t, errors.Is(stream.Err(), context.Canceled), "expected context.Canceled on client stream after cancel")
+	require.ErrorIs(t, stream.Err(), context.Canceled, "expected context.Canceled on client stream after cancel")
 
 	// Ensure the watcher Close was executed on the server
 	assert.Eventually(t, func() bool {

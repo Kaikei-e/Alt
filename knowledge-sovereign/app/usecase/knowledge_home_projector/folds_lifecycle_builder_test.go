@@ -28,7 +28,7 @@ func TestBuildHomeItemOpenedWrites(t *testing.T) {
 		}
 		item, clear, candidate, err := buildHomeItemOpenedWrites(evt, 2)
 		require.NoError(t, err)
-		assert.Equal(t, 0.1, item.Score)
+		assert.InEpsilon(t, 0.1, item.Score, 1e-9)
 		assert.Equal(t, scoreOpSet, item.ScoreOp)
 		assert.Empty(t, item.WhyReasons, "opening an item must not re-assert new_unread")
 		assert.Equal(t, itemKey, item.ItemKey)
@@ -44,7 +44,7 @@ func TestBuildHomeItemOpenedWrites(t *testing.T) {
 		assert.Equal(t, itemKey, candidate.ItemKey)
 		assert.Equal(t, userID, candidate.UserID)
 		assert.Equal(t, tenantID, candidate.TenantID)
-		assert.Equal(t, 0.5, candidate.RecallScore)
+		assert.InEpsilon(t, 0.5, candidate.RecallScore, 1e-9)
 		require.NotNil(t, candidate.FirstEligibleAt)
 		assert.True(t, occurredAt.Add(1*time.Hour).Equal(*candidate.FirstEligibleAt))
 	})

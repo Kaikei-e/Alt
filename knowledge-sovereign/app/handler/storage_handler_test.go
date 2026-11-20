@@ -40,7 +40,7 @@ func TestStorageHandler(t *testing.T) {
 		mux := http.NewServeMux()
 		NewStorageHandler(repo).RegisterRoutes(mux)
 
-		req := httptest.NewRequest(http.MethodGet, "/admin/storage/stats", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/admin/storage/stats", nil)
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, req)
 
@@ -58,7 +58,7 @@ func TestStorageHandler(t *testing.T) {
 		mux := http.NewServeMux()
 		NewStorageHandler(&fakeStorageRepo{stats: nil}).RegisterRoutes(mux)
 
-		req := httptest.NewRequest(http.MethodGet, "/admin/storage/stats", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/admin/storage/stats", nil)
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, req)
 
@@ -70,7 +70,7 @@ func TestStorageHandler(t *testing.T) {
 		mux := http.NewServeMux()
 		NewStorageHandler(&fakeStorageRepo{err: errors.New("pq: fatal database error")}).RegisterRoutes(mux)
 
-		req := httptest.NewRequest(http.MethodGet, "/admin/storage/stats", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/admin/storage/stats", nil)
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, req)
 

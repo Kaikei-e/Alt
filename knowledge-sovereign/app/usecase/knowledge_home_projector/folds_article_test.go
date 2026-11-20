@@ -52,7 +52,7 @@ func TestProjector_FoldsArticleCreated(t *testing.T) {
 	assert.True(t, occurredAt.Equal(*item.FreshnessAt), "freshness_at must derive from event.OccurredAt, not wall clock")
 	assert.True(t, occurredAt.Equal(item.GeneratedAt), "generated_at must derive from event.OccurredAt")
 	assert.True(t, occurredAt.Equal(item.UpdatedAt), "updated_at must derive from event.OccurredAt")
-	assert.Equal(t, 0.5, item.Score, "score must be a fixed quality baseline, not a freshness decay computed once at ingest")
+	assert.InEpsilon(t, 0.5, item.Score, 1e-9, "score must be a fixed quality baseline, not a freshness decay computed once at ingest")
 	assert.Equal(t, "max", item.ScoreOp, "a baseline quality score must only ever raise the stored floor, never overwrite a higher one")
 
 	digest, ok := repo.digests[user.String()]
@@ -99,7 +99,7 @@ func TestProjector_ArticleCreated_ScoreIsIndependentOfIngestTimeStaleness(t *tes
 	require.True(t, ok)
 	stale, ok := repo.homeItems[fmt.Sprintf("article:%s", staleArticle)]
 	require.True(t, ok)
-	assert.Equal(t, fresh.Score, stale.Score,
+	assert.InEpsilon(t, fresh.Score, stale.Score, 1e-9,
 		"score must not depend on published_at's age at ingest time — that is a read-time ranking concern")
 }
 

@@ -33,12 +33,12 @@ func TestOpsListenAddr_Override(t *testing.T) {
 func TestNewOpsHandler_NilMetrics503(t *testing.T) {
 	h := NewOpsHandler("knowledge-sovereign", nil)
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	h.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/metrics", nil))
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status=%d want 503", rec.Code)
 	}
 	health := httptest.NewRecorder()
-	h.ServeHTTP(health, httptest.NewRequest(http.MethodGet, "/health", nil))
+	h.ServeHTTP(health, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health", nil))
 	if health.Code != http.StatusOK {
 		t.Fatalf("health=%d", health.Code)
 	}
@@ -50,7 +50,7 @@ func TestNewOpsHandler_PrivateRegistryMetrics(t *testing.T) {
 	obs.OnClassified(StateFresh, time.Hour)
 	h := NewOpsHandler("knowledge-sovereign", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	h.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/metrics", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status=%d", rec.Code)
 	}
@@ -65,7 +65,11 @@ func TestListenOps_ShutdownIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp, err := http.Get("http://" + srv.Addr + "/health")
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "http://"+srv.Addr+"/health", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}

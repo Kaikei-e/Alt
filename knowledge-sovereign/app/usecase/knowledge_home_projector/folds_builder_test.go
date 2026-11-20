@@ -106,7 +106,7 @@ func TestBuildArticleCreatedWrites(t *testing.T) {
 			assert.Equal(t, tt.wantSummStat, item.SummaryState)
 			assert.Equal(t, tt.version, item.ProjectionVersion)
 			assert.Equal(t, scoreOpMax, item.ScoreOp)
-			assert.Equal(t, baseQualityScore, item.Score)
+			assert.InEpsilon(t, baseQualityScore, item.Score, 1e-9)
 			if tt.wantPubAt {
 				assert.NotNil(t, item.PublishedAt)
 			} else {
@@ -336,7 +336,7 @@ func TestBuildSummaryVersionCreatedWrites(t *testing.T) {
 			assert.Equal(t, articleID, *item.PrimaryRefID)
 			assert.Equal(t, tt.wantState, item.SummaryState)
 			assert.Equal(t, tt.wantExcerpt, item.SummaryExcerpt)
-			assert.Equal(t, 0.8, item.Score)
+			assert.InEpsilon(t, 0.8, item.Score, 1e-9)
 			assert.Equal(t, scoreOpMax, item.ScoreOp)
 			assert.Equal(t, tt.wantSummCount, digest.SummarizedArticles)
 			assert.Equal(t, tt.wantUnsummDiff, digest.UnsummarizedArticles)
@@ -410,7 +410,7 @@ func TestBuildTagSetVersionCreatedWrites(t *testing.T) {
 			require.NotNil(t, item.PrimaryRefID)
 			assert.Equal(t, articleID, *item.PrimaryRefID)
 			assert.Equal(t, tt.tags, item.Tags)
-			assert.Equal(t, 0.7, item.Score)
+			assert.InEpsilon(t, 0.7, item.Score, 1e-9)
 			assert.Equal(t, scoreOpMax, item.ScoreOp)
 			if tt.wantDigest {
 				require.NotNil(t, digest)

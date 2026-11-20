@@ -2,7 +2,6 @@ package sovereign_db
 
 import (
 	"context"
-	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
@@ -105,7 +104,7 @@ func TestGetProjectionLag_CaughtUpProjectionIsZeroNotNull(t *testing.T) {
 	require.Len(t, mock.queryRowCalls, 1)
 
 	sql := mock.queryRowCalls[0].SQL
-	assert.True(t, strings.Contains(sql, "COALESCE"),
+	assert.Contains(t, sql, "COALESCE",
 		"the no-unprojected-event case must resolve to 0, not NULL, or a healthy projection breaks the scan")
 	assert.Contains(t, sql, "GREATEST",
 		"a future-dated event must not report negative lag; alt-backend reads negatives as its unavailable sentinel")
