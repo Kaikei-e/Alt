@@ -91,7 +91,7 @@ class Manager:
             except CancelledError as exc:
                 msg = "pki: enroll canceled: canceled"
                 raise CancelledError(msg) from exc
-            except (OSError, RuntimeError, ValueError) as exc:
+            except Exception as exc:  # noqa: BLE001 - retry boundary captures any tick failure
                 last = exc
             self.observer.on_retry(i, last)
             logger.error(

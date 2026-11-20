@@ -1,12 +1,13 @@
 """Tests for rerank handler."""
 
 from http import HTTPStatus
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+import news_creator.handler.rerank_handler as rerank_handler_mod
 from news_creator.handler.rerank_handler import create_rerank_router
 from news_creator.usecase.rerank_usecase import RerankUsecase
 
@@ -209,3 +210,27 @@ class TestRerankHandler:
 
         assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
         mock_usecase.rerank.assert_not_called()
+
+    def test_rerank_unsupported_model_clears_context(
+        self,
+        client: TestClient,
+        mock_usecase: AsyncMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Unsupported model check inside handler must still clear logging context via finally."""
+        clear_spy = Mock()
+        monkeypatch.setattr(rerank_handler_mod, "clear_context", clear_spy)
+        monkeypatch.setattr(RerankUsecase, "ALLOWED_MODELS", frozenset())
+
+        response = client.post(
+            "/v1/rerank",
+            json={
+                "query": "test query",
+                "candidates": ["candidate 1"],
+                "model": "BAAI/bge-reranker-v2-m3",
+            },
+        )
+
+        assert response.status_code == HTTPStatus.BAD_REQUEST
+        mock_usecase.rerank.assert_not_called()
+        clear_spy.assert_called_once()

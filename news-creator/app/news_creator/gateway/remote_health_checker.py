@@ -15,7 +15,7 @@ import aiohttp
 
 from news_creator.config.distributed_be_config import RemoteTarget
 from news_creator.gateway import dispatch_metrics
-from news_creator.gateway.bounded_body import BoundedBodyError, read_bounded_text
+from news_creator.gateway.bounded_body import read_bounded_text
 
 logger = logging.getLogger(__name__)
 
@@ -325,6 +325,12 @@ class RemoteHealthChecker:
                     },
                 )
 
+    def _require_session(self) -> aiohttp.ClientSession:
+        if self._session is None:
+            msg = "Session not initialized"
+            raise RuntimeError(msg)
+        return self._session
+
     async def _probe_base_url(self, base_url: str, targets: list[RemoteTarget]) -> None:
         now = time.monotonic()
         probed_targets = [
@@ -334,12 +340,9 @@ class RemoteHealthChecker:
         ]
         models_url = f"{base_url.rstrip('/')}/v1/models"
 
-        if self._session is None:
-            msg = "Session not initialized"
-            raise RuntimeError(msg)
-
         try:
-            async with self._session.get(models_url, allow_redirects=False) as response:
+            session = self._require_session()
+            async with session.get(models_url, allow_redirects=False) as response:
                 if response.status != HTTPStatus.OK:
                     self._record_http_failure(
                         base_url, probed_targets, now, response.status
@@ -363,14 +366,7 @@ class RemoteHealthChecker:
                     base_url, probed_targets, available_ids, now
                 )
 
-        except (
-            aiohttp.ClientError,
-            BoundedBodyError,
-            TimeoutError,
-            OSError,
-            RuntimeError,
-            ValueError,
-        ) as err:
+        except Exception as err:  # noqa: BLE001 - one target's probe failure must not stop the others
             for target in probed_targets:
                 log_fn = self._record_probe_failure(target, now, type(err).__name__)
                 log_fn(

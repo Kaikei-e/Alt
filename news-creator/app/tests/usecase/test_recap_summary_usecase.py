@@ -10,7 +10,7 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
-from news_creator.domain.errors import PreemptedException
+from news_creator.domain.errors import PreemptedException, QueueFullError
 from news_creator.domain.models import (
     BatchRecapSummaryRequest,
     IntermediateSummary,
@@ -1271,6 +1271,187 @@ async def test_hierarchical_partial_map_chunk_failure_marks_degraded_and_skips_c
     assert response.metadata.is_degraded is True
     assert response.metadata.degradation_reason == "map_chunks_partial"
     cache.set.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_hierarchical_map_chunk_queue_full_error_degrades_without_exception_group() -> (
+    None
+):
+    """QueueFullError in a map chunk degrades cleanly with other chunks intact (no ExceptionGroup)."""
+    config = _make_recap_config_for_hierarchical()
+    config.hierarchical_chunk_max_chars = 250
+    config.hierarchical_chunk_overlap_ratio = 0.0
+
+    llm_provider = Mock()
+    map_call_idx = 0
+    reduce_prompts: list[str] = []
+
+    @asynccontextmanager
+    async def mock_hold_slot(
+        is_high_priority: bool = False,
+    ) -> AsyncIterator[tuple[float, None, None]]:
+        _ = is_high_priority
+        yield 0.0, None, None
+
+    async def mock_generate_raw(prompt: str, **kwargs: object) -> LLMGenerateResponse:
+        nonlocal map_call_idx
+        _ = kwargs
+        map_call_idx += 1
+        failing_chunk_idx = 2
+        if map_call_idx == failing_chunk_idx:
+            msg = "Queue depth 10 >= max 10"
+            raise QueueFullError(msg)
+        return LLMGenerateResponse(
+            response=json.dumps(
+                {
+                    "bullets": [
+                        f"保持されたチャンク{map_call_idx}の要点A",
+                        f"保持されたチャンク{map_call_idx}の要点B",
+                    ],
+                    "language": "ja",
+                }
+            ),
+            model="gemma4-e4b-q4km",
+        )
+
+    async def mock_generate(prompt: str, **kwargs: object) -> LLMGenerateResponse:
+        _ = kwargs
+        reduce_prompts.append(prompt)
+        return LLMGenerateResponse(
+            response=json.dumps(
+                {
+                    "title": "部分チャンク要約",
+                    "bullets": ["統合された要点1", "統合された要点2"],
+                    "language": "ja",
+                }
+            ),
+            model="gemma4-e4b-q4km",
+        )
+
+    llm_provider.hold_slot = mock_hold_slot
+    llm_provider.generate_raw = AsyncMock(side_effect=mock_generate_raw)
+    llm_provider.generate = AsyncMock(side_effect=mock_generate)
+
+    clusters = [
+        RecapClusterInput(
+            cluster_id=i,
+            representative_sentences=[
+                RepresentativeSentence(text=f"クラスタ{i}の本文。" + "あ" * 150)
+            ],
+            top_terms=[f"term{i}"],
+        )
+        for i in range(3)
+    ]
+
+    request = RecapSummaryRequest(
+        job_id=uuid4(),
+        genre="tech",
+        clusters=clusters,
+        options=RecapSummaryOptions(max_bullets=3),
+    )
+
+    usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider)
+    response = await usecase.generate_summary(request)
+
+    assert map_call_idx == len(clusters)
+    assert response.metadata.is_degraded is True
+    assert response.metadata.degradation_reason == "map_chunks_partial"
+    assert len(reduce_prompts) == 1
+    assert "保持されたチャンク1の要点A" in reduce_prompts[0]
+    assert "保持されたチャンク3の要点A" in reduce_prompts[0]
+
+
+@pytest.mark.asyncio
+async def test_hierarchical_reduce_group_queue_full_error_degrades_without_exception_group() -> (
+    None
+):
+    """QueueFullError in _reduce_group drops only that group and degrades with reduce_groups_partial."""
+    config = _make_recap_config_for_hierarchical()
+    config.hierarchical_chunk_max_chars = 250
+    config.hierarchical_chunk_overlap_ratio = 0.0
+    config.recursive_reduce_max_chars = 50
+    config.recursive_reduce_max_depth = 2
+    llm_provider = Mock()
+
+    map_calls = 0
+    reduce_group_calls = 0
+    final_prompts: list[str] = []
+
+    @asynccontextmanager
+    async def mock_hold_slot(
+        is_high_priority: bool = False,
+    ) -> AsyncIterator[tuple[float, None, None]]:
+        _ = is_high_priority
+        yield 0.0, None, None
+
+    async def mock_generate_raw(prompt: str, **kwargs: object) -> LLMGenerateResponse:
+        nonlocal map_calls, reduce_group_calls
+        _ = kwargs
+        if "以下の要点リストを" in prompt:
+            reduce_group_calls += 1
+            if reduce_group_calls == 1:
+                msg = "Queue depth 10 >= max 10"
+                raise QueueFullError(msg)
+            return LLMGenerateResponse(
+                response=json.dumps(
+                    {
+                        "bullets": [f"生き残ったグループ{reduce_group_calls}の要約"],
+                        "language": "ja",
+                    }
+                ),
+                model="gemma4-e4b-q4km",
+            )
+        map_calls += 1
+        return LLMGenerateResponse(
+            response=json.dumps(
+                {
+                    "bullets": [f"マップ要点{map_calls}" + "詳細" * 20],
+                    "language": "ja",
+                }
+            ),
+            model="gemma4-e4b-q4km",
+        )
+
+    async def mock_generate(prompt: str, **kwargs: object) -> LLMGenerateResponse:
+        _ = kwargs
+        final_prompts.append(prompt)
+        return LLMGenerateResponse(
+            response=json.dumps(
+                {"title": "最終要約", "bullets": ["最終要点"], "language": "ja"}
+            ),
+            model="gemma4-e4b-q4km",
+        )
+
+    llm_provider.hold_slot = mock_hold_slot
+    llm_provider.generate_raw = AsyncMock(side_effect=mock_generate_raw)
+    llm_provider.generate = AsyncMock(side_effect=mock_generate)
+
+    clusters = [
+        RecapClusterInput(
+            cluster_id=i,
+            representative_sentences=[
+                RepresentativeSentence(text=f"クラスタ{i}の本文。" + "あ" * 150)
+            ],
+            top_terms=[f"term{i}"],
+        )
+        for i in range(4)
+    ]
+    request = RecapSummaryRequest(
+        job_id=uuid4(),
+        genre="tech",
+        clusters=clusters,
+        options=RecapSummaryOptions(max_bullets=3),
+    )
+
+    usecase = RecapSummaryUsecase(config=config, llm_provider=llm_provider)
+    response = await usecase.generate_summary(request)
+
+    min_expected_group_calls = 2
+    assert reduce_group_calls >= min_expected_group_calls
+    assert response.metadata.is_degraded is True
+    assert response.metadata.degradation_reason == "reduce_groups_partial"
+    assert len(final_prompts) == 1
+    assert "生き残ったグループ2の要約" in final_prompts[0]
 
 
 @pytest.mark.asyncio

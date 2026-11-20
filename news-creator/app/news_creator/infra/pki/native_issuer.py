@@ -399,7 +399,8 @@ def _extract_verified_chain(sock: object) -> list[bytes]:
                 chain.append(ssl.PEM_cert_to_DER_cert(item))
             elif isinstance(item, bytes):
                 chain.append(item)
-        return chain
+        if chain:
+            return chain
     getpeercert = getattr(sock, "getpeercert", None)
     if callable(getpeercert):
         peer = getpeercert(binary_form=True)

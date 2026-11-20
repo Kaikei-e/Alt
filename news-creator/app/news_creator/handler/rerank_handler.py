@@ -23,6 +23,12 @@ from news_creator.utils.context_logger import (
 logger = logging.getLogger(__name__)
 
 
+def _validate_rerank_model(model: str | None) -> None:
+    if model is not None and model not in RerankUsecase.ALLOWED_MODELS:
+        msg = f"Unsupported rerank model: {model}"
+        raise ValueError(msg)
+
+
 def create_rerank_router(rerank_usecase: RerankUsecase) -> APIRouter:
     """
     Create rerank router with dependency injection.
@@ -60,18 +66,6 @@ def create_rerank_router(rerank_usecase: RerankUsecase) -> APIRouter:
         set_ai_pipeline("reranking")
         set_processing_stage("handler")
 
-        if (
-            request.model is not None
-            and request.model not in RerankUsecase.ALLOWED_MODELS
-        ):
-            logger.warning(
-                "Invalid rerank request",
-                extra={
-                    "error": f"Unsupported rerank model: {request.model}",
-                    "query": request.query[:100] if request.query else "",
-                },
-            )
-            raise HTTPException(status_code=400, detail="Invalid request")
         try:
             logger.info(
                 "Received rerank request",
@@ -82,6 +76,7 @@ def create_rerank_router(rerank_usecase: RerankUsecase) -> APIRouter:
                     "top_k": request.top_k,
                 },
             )
+            _validate_rerank_model(request.model)
             usecase = rerank_usecase
 
             results, model, processing_time_ms = await usecase.rerank(

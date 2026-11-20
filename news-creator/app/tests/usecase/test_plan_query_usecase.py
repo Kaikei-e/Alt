@@ -3,8 +3,10 @@
 import json
 from unittest.mock import AsyncMock, Mock
 
+import aiohttp
 import pytest
 
+from news_creator.domain.errors import QueueFullError
 from news_creator.domain.models import (
     ConversationMessage,
     PlanQueryRequest,
@@ -192,6 +194,36 @@ async def test_plan_query_llm_failure_returns_fallback() -> None:
 
     # Fallback: use original query as resolved_query, intent=general
     assert response.plan.resolved_query == "量子コンピュータの実用化"
+    assert response.plan.intent == "general"
+    assert response.plan.retrieval_policy == "global_only"
+    assert not response.plan.should_clarify
+
+
+@pytest.mark.asyncio
+async def test_plan_query_queue_full_error_returns_fallback() -> None:
+    """QueueFullError from semaphore should fall back to deterministic plan."""
+    usecase, llm = _make_usecase()
+    llm.chat_generate.side_effect = QueueFullError("Queue depth 10 >= max 10")
+
+    request = PlanQueryRequest(query="量子コンピュータの実用化")
+    response = await usecase.plan_query(request)
+
+    assert response.plan.resolved_query == "量子コンピュータの実用化"
+    assert response.plan.intent == "general"
+    assert response.plan.retrieval_policy == "global_only"
+    assert not response.plan.should_clarify
+
+
+@pytest.mark.asyncio
+async def test_plan_query_server_disconnected_error_returns_fallback() -> None:
+    """aiohttp.ServerDisconnectedError (non-OSError) should fall back to deterministic plan."""
+    usecase, llm = _make_usecase()
+    llm.chat_generate.side_effect = aiohttp.ServerDisconnectedError("disconnected")
+
+    request = PlanQueryRequest(query="半導体市場の動向")
+    response = await usecase.plan_query(request)
+
+    assert response.plan.resolved_query == "半導体市場の動向"
     assert response.plan.intent == "general"
     assert response.plan.retrieval_policy == "global_only"
     assert not response.plan.should_clarify

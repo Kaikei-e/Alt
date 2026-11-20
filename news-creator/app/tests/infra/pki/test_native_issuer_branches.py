@@ -11,7 +11,11 @@ import pytest
 
 from news_creator.infra.pki.config import PkiError
 from news_creator.infra.pki.ctx import Ctx
-from news_creator.infra.pki.native_issuer import _CancelableHTTP, _HttpRequest
+from news_creator.infra.pki.native_issuer import (
+    _CancelableHTTP,
+    _extract_verified_chain,
+    _HttpRequest,
+)
 
 
 def test_http_pool_request_missing_host_raises_pki_error() -> None:
@@ -73,3 +77,11 @@ def test_http_pool_request_ssl_error_raises_pki_error() -> None:
             "https://ca.example:9000",
             _HttpRequest(method="GET", path="/health", timeout=1.0),
         )
+
+
+def test_extract_verified_chain_falls_back_to_getpeercert_when_chain_empty() -> None:
+    sock = MagicMock()
+    sock.get_verified_chain.return_value = []
+    sock.getpeercert.return_value = b"peer-der-cert"
+
+    assert _extract_verified_chain(sock) == [b"peer-der-cert"]

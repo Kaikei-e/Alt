@@ -97,14 +97,7 @@ class PlanQueryUsecase:
 
         try:
             plan = await self._plan_with_llm(request)
-        except (
-            OSError,
-            TimeoutError,
-            RuntimeError,
-            ValueError,
-            TypeError,
-            KeyError,
-        ) as e:
+        except Exception as e:  # noqa: BLE001 - LLM planning failure falls back to deterministic plan
             logger.warning(
                 "plan_query_llm_failed",
                 extra={

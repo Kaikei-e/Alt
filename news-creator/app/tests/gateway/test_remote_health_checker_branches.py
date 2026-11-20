@@ -9,7 +9,7 @@ from news_creator.gateway.remote_health_checker import RemoteHealthChecker
 
 
 @pytest.mark.asyncio
-async def test_probe_base_url_raises_when_session_not_initialized() -> None:
+async def test_probe_base_url_records_failure_when_session_not_initialized() -> None:
     target = RemoteTarget(
         base_url="http://router.example:8080",
         model="provider-a/model-a:latest",
@@ -18,4 +18,9 @@ async def test_probe_base_url_raises_when_session_not_initialized() -> None:
     checker = RemoteHealthChecker([target])
 
     with pytest.raises(RuntimeError, match="Session not initialized"):
-        await checker._probe_base_url(target.base_url, [target])
+        checker._require_session()
+
+    await checker._probe_base_url(target.base_url, [target])
+
+    assert checker.status()[0]["consecutive_failures"] == 1
+    assert checker.status()[0]["healthy"] is False

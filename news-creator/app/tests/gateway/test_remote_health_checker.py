@@ -1368,3 +1368,48 @@ async def test_start_logs_unhealthy_threshold(
             )
         finally:
             await checker.stop()
+
+
+class _UnlistedProbeError(Exception):
+    """Exception outside the narrowed tuple to verify per-target isolation."""
+
+
+@pytest.mark.asyncio
+async def test_check_all_marks_failing_target_and_probes_next_on_unlisted_exception() -> (
+    None
+):
+    """An unlisted exception probing one base_url must mark its targets failed and still probe the next."""
+    target_a = RemoteTarget(
+        base_url="http://router-a.example:8080",
+        model="provider-a/model-a:latest",
+        num_ctx=8192,
+    )
+    target_b = RemoteTarget(
+        base_url="http://router-b.example:8080",
+        model="provider-b/model-b:latest",
+        num_ctx=8192,
+    )
+    checker = RemoteHealthChecker([target_a, target_b], unhealthy_threshold=1)
+
+    def _get(url: str, **_kwargs: object) -> object:
+        if "router-a" in url:
+            msg = "unexpected unlisted error"
+            raise _UnlistedProbeError(msg)
+        return _StubGetContext(
+            _make_response(
+                200,
+                json.dumps({"object": "list", "data": [{"id": target_b.model}]}),
+            )
+        )
+
+    session = MagicMock()
+    session.closed = False
+    session.get = MagicMock(side_effect=_get)
+    checker._session = session
+
+    await checker._check_all()
+
+    status = {s["base_url"]: s for s in checker.status()}
+    assert status["http://router-a.example:8080"]["consecutive_failures"] == 1
+    assert status["http://router-a.example:8080"]["healthy"] is False
+    assert status["http://router-b.example:8080"]["healthy"] is True

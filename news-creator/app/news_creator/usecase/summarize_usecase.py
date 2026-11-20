@@ -1070,14 +1070,8 @@ class SummarizeUsecase:
 
             except PreemptedException:
                 raise
-            except (
-                OSError,
-                TimeoutError,
-                RuntimeError,
-                ValueError,
-                TypeError,
-                KeyError,
-            ) as e:
+            except Exception as e:
+                # Best-effort map chunk summary skips failing chunk.
                 logger.exception(
                     "Failed to summarize chunk %s",
                     i,

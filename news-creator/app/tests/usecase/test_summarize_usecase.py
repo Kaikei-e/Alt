@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from news_creator.config.config import NewsCreatorConfig
-from news_creator.domain.errors import PreemptedException
+from news_creator.domain.errors import PreemptedException, QueueFullError
 from news_creator.domain.models import LLMGenerateResponse
 from news_creator.usecase.summarize_usecase import SummarizeUsecase
 
@@ -479,6 +479,55 @@ class TestHierarchicalUsesHoldSlotGenerateRaw:
 
         assert hold_slot_calls == 1
         assert llm_provider.generate_raw.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_hierarchical_map_phase_skips_chunk_on_queue_full_error(
+        self,
+    ) -> None:
+        """QueueFullError in one map chunk logs and skips that chunk, building summary from the rest."""
+        config = _make_config()
+        config.hierarchical_single_article_threshold = 1_000
+        config.hierarchical_single_article_chunk_size = 500
+        llm_provider = Mock()
+
+        prompts_seen: list[str] = []
+        map_call_idx = 0
+
+        @asynccontextmanager
+        async def mock_hold_slot(
+            is_high_priority: bool = False,
+        ) -> AsyncIterator[tuple[float, None, None]]:
+            _ = is_high_priority
+            yield 0.0, None, None
+
+        async def mock_generate_raw(
+            prompt: str, **kwargs: object
+        ) -> LLMGenerateResponse:
+            nonlocal map_call_idx
+            _ = kwargs
+            prompts_seen.append(prompt)
+            map_call_idx += 1
+            failing_chunk = 2
+            if map_call_idx == failing_chunk:
+                msg = "Queue depth 10 >= max 10"
+                raise QueueFullError(msg)
+            reduce_call = 4
+            if map_call_idx == reduce_call:
+                return _make_llm_response("最終統合要約です。")
+            return _make_llm_response(f"チャンク要約{map_call_idx}")
+
+        llm_provider.hold_slot = mock_hold_slot
+        llm_provider.generate_raw = AsyncMock(side_effect=mock_generate_raw)
+
+        usecase = SummarizeUsecase(config=config, llm_provider=llm_provider)
+
+        summary, _metadata = await usecase.generate_summary("art-qfull", "A" * 1_500)
+
+        expected_total_calls = 4
+        assert map_call_idx == expected_total_calls
+        assert "最終統合要約" in summary
+        assert "チャンク要約1" in prompts_seen[-1]
+        assert "チャンク要約3" in prompts_seen[-1]
 
 
 # --- Gemma 4 token cleanup tests ---

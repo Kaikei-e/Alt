@@ -123,3 +123,45 @@ def test_pki_manager_logs_exception_on_issue_write_and_rekey_failures(
     ):
         write_fail_mgr.tick(Ctx())
     assert any("pki_enrollment_failed" in r.message for r in caplog.records)
+
+
+class _UnlistedEnrollError(Exception):
+    """Custom exception outside (OSError, RuntimeError, ValueError)."""
+
+
+def test_enroll_retries_on_unlisted_tick_exception(tmp_path: Path) -> None:
+    nb = datetime(2026, 8, 18, tzinfo=UTC)
+    cfg = Config(
+        mode=MODE_ENABLED,
+        subject=SUBJECT,
+        sans=(SUBJECT,),
+        cert_path=str(tmp_path / "svc-cert.pem"),
+        key_path=str(tmp_path / "svc-key.pem"),
+        ca_url="https://127.0.0.1:1",
+        root_file=str(tmp_path / "root.pem"),
+        provisioner="pki-agent-news-creator",
+        password_file="/run/secrets/pki-agent-news-creator-jwk",  # noqa: S106 - secret path fixture
+        renew_at_fraction=0.66,
+        retry_attempts=2,
+        retry_backoff=0.001,
+        tick_interval=3600,
+    )
+    files = CertFile(cfg.cert_path, cfg.key_path)
+    issuer = _ValidRekeyIssuer(nb)
+    mgr = Manager(cfg, issuer, files, now=lambda: nb)
+
+    attempts = 0
+    original_tick = mgr.tick
+
+    def _flaky_tick(ctx: Ctx) -> object:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            msg = "transient non-std error"
+            raise _UnlistedEnrollError(msg)
+        return original_tick(ctx)
+
+    mgr.tick = _flaky_tick  # type: ignore[method-assign]
+    mgr.enroll(Ctx())
+    expected_attempts = 2
+    assert attempts == expected_attempts

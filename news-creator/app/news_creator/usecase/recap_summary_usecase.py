@@ -499,15 +499,7 @@ class RecapSummaryUsecase:
             return self._parse_intermediate_summary_json(
                 llm_response.response, task.request
             )
-        except (
-            OSError,
-            TimeoutError,
-            RuntimeError,
-            ValueError,
-            TypeError,
-            KeyError,
-            PreemptedException,
-        ) as e:
+        except Exception as e:  # noqa: BLE001 - chunk failure degrades gracefully by skipping the chunk
             logger.warning(
                 "Failed to generate intermediate summary for chunk, skipping",
                 extra={
@@ -824,15 +816,7 @@ class RecapSummaryUsecase:
                 options=llm_options,
             )
             return self._parse_intermediate_summary_json(llm_response.response, request)
-        except (
-            OSError,
-            TimeoutError,
-            RuntimeError,
-            ValueError,
-            TypeError,
-            KeyError,
-            PreemptedException,
-        ) as e:
+        except Exception as e:  # noqa: BLE001 - group reduce failure degrades gracefully by dropping the group
             logger.warning(
                 "Failed to reduce group in recursive reduce",
                 extra={
