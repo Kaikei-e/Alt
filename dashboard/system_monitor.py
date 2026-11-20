@@ -69,6 +69,14 @@ class MemoryInfo:
     error: str | None = None
 
 
+def _find_prefixed_line(lines: list[str], prefix: str) -> str:
+    line = next((entry for entry in lines if entry.startswith(prefix)), None)
+    if line is None:
+        msg = f"Missing {prefix!r} line"
+        raise IndexError(msg)
+    return line
+
+
 def get_memory_info() -> MemoryInfo:
     """
     Get memory usage statistics using 'free -b'.
@@ -83,7 +91,7 @@ def get_memory_info() -> MemoryInfo:
         lines = result.stdout.strip().split("\n")
         # Header:              total        used        free      shared  buff/cache   available
         # Mem:           67252326400  18317783040 12053950464    23134208 36880592896 48067821568
-        mem_line = next(line for line in lines if line.startswith("Mem:"))
+        mem_line = _find_prefixed_line(lines, "Mem:")
         parts = mem_line.split()
         total = int(parts[1])
         used = int(parts[2])
@@ -103,7 +111,7 @@ def _read_proc_stat_cpu_fields() -> list[int]:
     """Read the aggregate 'cpu' line from /proc/stat as a list of counters."""
     with Path("/proc/stat").open() as f:
         lines = f.readlines()
-    cpu_line = next(line for line in lines if line.startswith("cpu "))
+    cpu_line = _find_prefixed_line(lines, "cpu ")
     return [int(f) for f in cpu_line.split()[1:]]
 
 

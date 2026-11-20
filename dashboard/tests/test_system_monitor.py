@@ -4,6 +4,7 @@ All external commands (free, ps, nvidia-smi, top) are mocked at the
 subprocess.run boundary so these tests exercise only the parsing logic.
 """
 
+import io
 import subprocess
 from types import SimpleNamespace
 from typing import NoReturn
@@ -53,6 +54,24 @@ class TestGetMemoryInfo:
         assert info.total == 0
         assert info.percent == 0.0
         assert info.error is not None
+
+    def test_returns_error_marker_when_mem_line_missing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        free_output = (
+            "              total        used        free      shared  buff/cache   available\n"
+            "Swap:             0           0           0\n"
+        )
+        monkeypatch.setattr(system_monitor, "_resolve_executable", lambda name: name)
+        monkeypatch.setattr(
+            system_monitor.subprocess, "run", lambda *a, **k: _completed(free_output)
+        )
+
+        info = system_monitor.get_memory_info()
+
+        assert info == system_monitor.MemoryInfo(
+            total=0, used=0, available=0, percent=0.0, error="memory_unavailable"
+        )
 
 
 class TestGetCpuInfo:
@@ -104,6 +123,31 @@ class TestGetCpuInfo:
         result = system_monitor.get_cpu_info()
 
         assert result == {"percent": 0.0}
+
+    def test_falls_back_to_top_when_proc_stat_cpu_line_missing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        expected_cpu_percent = 25.0
+        monkeypatch.setattr(system_monitor, "_psutil", None)
+        monkeypatch.setattr(system_monitor, "_resolve_executable", lambda name: name)
+        monkeypatch.setattr(
+            system_monitor.Path,
+            "open",
+            lambda _self, *a, **k: io.StringIO("cpu0 100 0 50 800\nintr 123\n"),
+        )
+        top_calls: list[list[str]] = []
+
+        def _fake_top(cmd: list[str], **_kwargs: object) -> SimpleNamespace:
+            top_calls.append(cmd)
+            return _completed("%Cpu(s):  5.0 us,  5.0 sy,  0.0 ni, 75.0 id,  0.0 wa\n")
+
+        monkeypatch.setattr(system_monitor.subprocess, "run", _fake_top)
+
+        result = system_monitor.get_cpu_info()
+
+        assert len(top_calls) == 1
+        assert top_calls[0][0] == "top"
+        assert result == {"percent": expected_cpu_percent}
 
 
 class TestGetGpuInfo:
