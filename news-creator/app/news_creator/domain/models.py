@@ -1,8 +1,8 @@
 """Domain models for News Creator service."""
 
+import re
 from dataclasses import dataclass
 from datetime import date
-import re
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
@@ -19,13 +19,14 @@ _KEEP_ALIVE_RE = re.compile(r"^(?:\d+[smh]|-1|0)$")
 _ALLOWED_RERANK_MODELS = frozenset({"BAAI/bge-reranker-v2-m3"})
 
 
-def _parse_uuid(value: Any) -> UUID:
+def _parse_uuid(value: object) -> UUID:
     """Accept UUID instances or RFC-4122 strings at the JSON API boundary."""
     if isinstance(value, UUID):
         return value
     if isinstance(value, str):
         return UUID(value)
-    raise TypeError("UUID input should be a UUID instance or string")
+    msg = "UUID input should be a UUID instance or string"
+    raise TypeError(msg)
 
 
 ApiUUID = Annotated[UUID, BeforeValidator(_parse_uuid)]
@@ -84,7 +85,8 @@ class GenerateRequest(StrictFrozenModel):
     @classmethod
     def _validate_keep_alive(cls, v: int | str | None) -> int | str | None:
         if isinstance(v, str) and not _KEEP_ALIVE_RE.fullmatch(v):
-            raise ValueError(r"keep_alive string must match ^(?:\d+[smh]|-1|0)$")
+            msg = r"keep_alive string must match ^(?:\d+[smh]|-1|0)$"
+            raise ValueError(msg)
         return v
 
 
@@ -172,9 +174,8 @@ class RecapClusterInput(StrictFrozenModel):
                     )
                 )
         if not cleaned:
-            raise ValueError(
-                "representative_sentences must contain at least one sentence"
-            )
+            msg = "representative_sentences must contain at least one sentence"
+            raise ValueError(msg)
         return cleaned
 
 
@@ -211,7 +212,8 @@ class IntermediateSummary(StrictFrozenModel):
             if stripped:
                 cleaned.append(stripped)
         if not cleaned:
-            raise ValueError("bullets must contain at least one non-empty item")
+            msg = "bullets must contain at least one non-empty item"
+            raise ValueError(msg)
         return cleaned
 
 
@@ -249,7 +251,8 @@ class RecapSummary(StrictFrozenModel):
             if stripped:
                 cleaned.append(stripped)
         if not cleaned:
-            raise ValueError("bullets must contain at least one non-empty item")
+            msg = "bullets must contain at least one non-empty item"
+            raise ValueError(msg)
         return cleaned
 
 
@@ -356,7 +359,8 @@ class RerankRequest(StrictFrozenModel):
     @classmethod
     def _validate_model(cls, v: str | None) -> str | None:
         if v is not None and v not in _ALLOWED_RERANK_MODELS:
-            raise ValueError(f"Unsupported rerank model: {v}")
+            msg = f"Unsupported rerank model: {v}"
+            raise ValueError(msg)
         return v
 
 
@@ -653,7 +657,7 @@ class CardGenerate422Response(StrictFrozenModel):
 class CardGenerationRejectedError(Exception):
     """Exception raised when card generation fails all validation/parsing attempts."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - public exception payload fields constructed directly in existing tests
         self,
         reason: Card422Reason,
         attempts: int,
@@ -661,7 +665,7 @@ class CardGenerationRejectedError(Exception):
         detail: CardParseDetail | None = None,
         measured_ratio: float | None = None,
         character_counts: dict[str, int] | None = None,
-    ):
+    ) -> None:
         super().__init__(
             f"Card generation rejected: reason={reason}, attempts={attempts}"
         )
@@ -713,7 +717,8 @@ _THEME_DATE_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
 
 def _require_non_blank(value: str, field_name: str) -> str:
     if not value.strip():
-        raise ValueError(f"{field_name} must not be empty or whitespace-only")
+        msg = f"{field_name} must not be empty or whitespace-only"
+        raise ValueError(msg)
     return value
 
 
@@ -721,7 +726,8 @@ def _validate_iso_date(value: str | None) -> str | None:
     if value is None:
         return None
     if not _THEME_DATE_RE.fullmatch(value):
-        raise ValueError("published_at must match YYYY-MM-DD")
+        msg = "published_at must match YYYY-MM-DD"
+        raise ValueError(msg)
     date.fromisoformat(value)
     return value
 
@@ -788,9 +794,8 @@ class ThemePreviousVersion(StrictFrozenModel):
     def _validate_key_points(cls, entries: list[str]) -> list[str]:
         for idx, entry in enumerate(entries):
             if not entry.strip() or len(entry) > THEME_MAX_PREVIOUS_ENTRY_CHARS:
-                raise ValueError(
-                    f"previous.key_points[{idx}] must be 1..={THEME_MAX_PREVIOUS_ENTRY_CHARS} non-blank chars"
-                )
+                msg = f"previous.key_points[{idx}] must be 1..={THEME_MAX_PREVIOUS_ENTRY_CHARS} non-blank chars"
+                raise ValueError(msg)
         return entries
 
     @field_validator("open_questions", mode="after")
@@ -798,9 +803,8 @@ class ThemePreviousVersion(StrictFrozenModel):
     def _validate_open_questions(cls, entries: list[str]) -> list[str]:
         for idx, entry in enumerate(entries):
             if not entry.strip() or len(entry) > THEME_MAX_PREVIOUS_ENTRY_CHARS:
-                raise ValueError(
-                    f"previous.open_questions[{idx}] must be 1..={THEME_MAX_PREVIOUS_ENTRY_CHARS} non-blank chars"
-                )
+                msg = f"previous.open_questions[{idx}] must be 1..={THEME_MAX_PREVIOUS_ENTRY_CHARS} non-blank chars"
+                raise ValueError(msg)
         return entries
 
 
@@ -834,19 +838,20 @@ class ThemeGenerateRequest(StrictFrozenModel):
     def _validate_failure_notes(cls, notes: list[str]) -> list[str]:
         for idx, note in enumerate(notes):
             if not note.strip() or len(note) > THEME_MAX_FAILURE_NOTE_CHARS:
-                raise ValueError(
-                    f"failure_notes[{idx}] must be 1..={THEME_MAX_FAILURE_NOTE_CHARS} non-blank chars"
-                )
+                msg = f"failure_notes[{idx}] must be 1..={THEME_MAX_FAILURE_NOTE_CHARS} non-blank chars"
+                raise ValueError(msg)
         return notes
 
     @model_validator(mode="after")
-    def _validate_item_indices(self) -> "ThemeGenerateRequest":
+    def _validate_item_indices(self) -> ThemeGenerateRequest:
         ns = [item.n for item in self.items]
         if len(set(ns)) != len(ns):
-            raise ValueError("items[].n values must be unique")
+            msg = "items[].n values must be unique"
+            raise ValueError(msg)
         valid_ns = set(ns)
         if not set(self.new_item_ns).issubset(valid_ns):
-            raise ValueError("new_item_ns must be a subset of items[].n")
+            msg = "new_item_ns must be a subset of items[].n"
+            raise ValueError(msg)
         return self
 
 

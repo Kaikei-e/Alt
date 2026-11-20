@@ -1,7 +1,7 @@
 """Domain errors and exceptions for News Creator Service."""
 
 
-class PreemptedException(Exception):
+class PreemptedException(Exception):  # noqa: N818 - public exception name kept for compatibility
     """Raised when a BE request is preempted for RT priority."""
 
     pass

@@ -1,6 +1,5 @@
 """Morning Letter usecase — generates document-first morning briefing."""
 
-import asyncio
 import json
 import logging
 import re
@@ -16,9 +15,6 @@ except ImportError:
     json_repair = None  # type: ignore
 
 from news_creator.config.config import NewsCreatorConfig
-from news_creator.domain.output_guard import sanitize_output_markdown
-from news_creator.domain.prompt_boundary import wrap_untrusted_content_with_report
-from news_creator.domain.prompts import wrap_gemma_prompt
 from news_creator.domain.models import (
     LLMGenerateResponse,
     MorningLetterContent,
@@ -27,6 +23,9 @@ from news_creator.domain.models import (
     MorningLetterSection,
     RecapSummaryMetadata,
 )
+from news_creator.domain.output_guard import sanitize_output_markdown
+from news_creator.domain.prompt_boundary import wrap_untrusted_content_with_report
+from news_creator.domain.prompts import wrap_gemma_prompt
 from news_creator.port.llm_provider_port import LLMProviderPort
 
 logger = logging.getLogger(__name__)
@@ -63,11 +62,20 @@ _JAPANESE_CHAR_RE = re.compile(r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]")
 class MorningLetterValidationError(RuntimeError):
     """Raised when Morning Letter LLM output fails content quality validation."""
 
-    def __init__(self, reason: str, detail: str, response_head: str | None = None):
+    def __init__(
+        self, reason: str, detail: str, response_head: str | None = None
+    ) -> None:
         super().__init__(detail)
         self.reason = reason
         self.detail = detail
         self.response_head = response_head
+
+
+def _require_llm_generate_response(raw_result: object) -> LLMGenerateResponse:
+    if not isinstance(raw_result, LLMGenerateResponse):
+        msg = "Expected specific type"
+        raise TypeError(msg)
+    return raw_result
 
 
 class MorningLetterUsecase:
@@ -77,14 +85,14 @@ class MorningLetterUsecase:
         self,
         config: NewsCreatorConfig,
         llm_provider: LLMProviderPort,
-    ):
+    ) -> None:
         self.config = config
         self.llm_provider = llm_provider
         template_path = (
             Path(__file__).parent.parent.parent / "prompts" / "morning_letter.jinja"
         )
         if template_path.exists():
-            with open(template_path, "r", encoding="utf-8") as f:
+            with template_path.open(encoding="utf-8") as f:
                 self.template = Template(f.read())
         else:
             self.template = None
@@ -120,7 +128,7 @@ class MorningLetterUsecase:
                     is_degraded=True,
                     degradation_reason=degradation_reason,
                 )
-        except asyncio.TimeoutError as e:
+        except TimeoutError as e:
             content, metadata = self._fallback_with_reason(
                 request, "timeout", f"LLM call timed out: {e}", response_head=None
             )
@@ -192,9 +200,7 @@ class MorningLetterUsecase:
                     format=json_schema,
                     options=llm_options,
                 )
-                if not isinstance(raw_result, LLMGenerateResponse):
-                    raise TypeError("Expected specific type")
-                result = raw_result
+                result = _require_llm_generate_response(raw_result)
                 candidate = self._parse_content(result.response)
             except Exception as exc:
                 if last_error is not None:
@@ -233,7 +239,8 @@ class MorningLetterUsecase:
         if content is None or result is None:
             if last_error is not None:
                 raise last_error
-            raise RuntimeError("Morning Letter generation produced no content")
+            msg = "Morning Letter generation produced no content"
+            raise RuntimeError(msg)
 
         metadata = RecapSummaryMetadata(
             model=result.model,
@@ -255,14 +262,16 @@ class MorningLetterUsecase:
             if json_repair is not None:
                 data = json_repair.loads(raw_response)
             else:
-                raise RuntimeError(
-                    f"Failed to parse Morning Letter JSON: {raw_response[:200]}"
-                ) from exc
+                msg = f"Failed to parse Morning Letter JSON: {raw_response[:200]}"
+                raise RuntimeError(msg) from exc
 
         # Ensure data is a dict
         if not isinstance(data, dict):
-            raise RuntimeError(
+            msg = (
                 f"Expected JSON object, got {type(data).__name__}: {raw_response[:200]}"
+            )
+            raise RuntimeError(  # noqa: TRY004 - caller maps RuntimeError to parse_runtime degradation reason
+                msg
             )
 
         # Filter sections with invalid keys
@@ -273,7 +282,8 @@ class MorningLetterUsecase:
                 if SECTION_KEY_PATTERN.match(s.get("key", ""))
             ]
             if not data["sections"]:
-                raise RuntimeError("All sections had invalid keys after filtering")
+                msg = "All sections had invalid keys after filtering"
+                raise RuntimeError(msg)
 
         lead = data.get("lead")
         if isinstance(lead, str):
@@ -304,42 +314,44 @@ class MorningLetterUsecase:
         return bool(_PLACEHOLDER_FIELD_RE.match(cleaned))
 
     @classmethod
-    def _validate_letter_content(
+    def _validate_section(cls, section: object) -> tuple[str, str] | None:
+        title = getattr(section, "title", "")
+        key = getattr(section, "key", "")
+        bullets = getattr(section, "bullets", [])
+        narrative = getattr(section, "narrative", None)
+
+        title_cleaned = title.strip()
+        if not title_cleaned or _PLACEHOLDER_FIELD_RE.match(title_cleaned):
+            return (
+                "placeholder_output",
+                f"Invalid title in section {key}: {title!r}",
+            )
+        if not bullets:
+            return (
+                "placeholder_output",
+                f"Empty bullets in section {key}",
+            )
+        for bullet in bullets:
+            if cls._is_placeholder_or_too_short(bullet, MIN_BULLET_LENGTH):
+                return (
+                    "placeholder_output",
+                    f"Invalid bullet in section {key}: {bullet!r}",
+                )
+        if (
+            narrative is not None
+            and narrative.strip()
+            and cls._is_placeholder_or_too_short(narrative, MIN_BULLET_LENGTH)
+        ):
+            return (
+                "placeholder_output",
+                f"Invalid narrative in section {key}: {narrative!r}",
+            )
+        return None
+
+    @classmethod
+    def _validate_bullets_and_language(
         cls, content: MorningLetterContent
     ) -> tuple[str, str] | None:
-        if cls._is_placeholder_or_too_short(content.lead, MIN_LEAD_LENGTH):
-            return ("placeholder_output", f"Invalid lead field: {content.lead!r}")
-
-        if not content.sections:
-            return ("placeholder_output", "No sections in Morning Letter content")
-
-        for section in content.sections:
-            title_cleaned = section.title.strip()
-            if not title_cleaned or _PLACEHOLDER_FIELD_RE.match(title_cleaned):
-                return (
-                    "placeholder_output",
-                    f"Invalid title in section {section.key}: {section.title!r}",
-                )
-            if not section.bullets:
-                return (
-                    "placeholder_output",
-                    f"Empty bullets in section {section.key}",
-                )
-            for bullet in section.bullets:
-                if cls._is_placeholder_or_too_short(bullet, MIN_BULLET_LENGTH):
-                    return (
-                        "placeholder_output",
-                        f"Invalid bullet in section {section.key}: {bullet!r}",
-                    )
-            if section.narrative is not None and section.narrative.strip():
-                if cls._is_placeholder_or_too_short(
-                    section.narrative, MIN_BULLET_LENGTH
-                ):
-                    return (
-                        "placeholder_output",
-                        f"Invalid narrative in section {section.key}: {section.narrative!r}",
-                    )
-
         seen_bullets: set[str] = set()
         for section in content.sections:
             normalized_in_section = {
@@ -368,6 +380,22 @@ class MorningLetterUsecase:
             )
 
         return None
+
+    @classmethod
+    def _validate_letter_content(
+        cls, content: MorningLetterContent
+    ) -> tuple[str, str] | None:
+        if cls._is_placeholder_or_too_short(content.lead, MIN_LEAD_LENGTH):
+            return ("placeholder_output", f"Invalid lead field: {content.lead!r}")
+
+        if not content.sections:
+            return ("placeholder_output", "No sections in Morning Letter content")
+
+        for section in content.sections:
+            if err := cls._validate_section(section):
+                return err
+
+        return cls._validate_bullets_and_language(content)
 
     def _build_system_prompt(self, is_degraded: bool) -> str:
         lines = [
@@ -460,14 +488,15 @@ class MorningLetterUsecase:
             parts.append("### 直近3日間のRecap要約")
             for recap in request.recap_summaries:
                 parts.append(f"\n#### {recap.genre}: {recap.title}")
-                for bullet in recap.bullets:
-                    parts.append(f"- {bullet}")
+                parts.extend(f"- {bullet}" for bullet in recap.bullets)
             parts.append("")
 
         parts.append("### 本日のニュースグループ")
-        for group in request.overnight_groups:
-            for article in group.articles:
-                parts.append(f"- {article.text}")
+        parts.extend(
+            f"- {article.text}"
+            for group in request.overnight_groups
+            for article in group.articles
+        )
 
         return "\n".join(parts)
 
@@ -497,10 +526,11 @@ class MorningLetterUsecase:
 
         # Build top3 from recap summaries if available
         if request.recap_summaries:
-            top_bullets = []
-            for recap in request.recap_summaries[:3]:
-                if recap.bullets:
-                    top_bullets.append(recap.bullets[0])
+            top_bullets = [
+                recap.bullets[0]
+                for recap in request.recap_summaries[:3]
+                if recap.bullets
+            ]
             if top_bullets:
                 sections.append(
                     MorningLetterSection(
@@ -524,10 +554,11 @@ class MorningLetterUsecase:
 
         # If no sections yet, build from overnight groups
         if not sections:
-            overnight_bullets = []
-            for group in request.overnight_groups[:5]:
-                for article in group.articles[:1]:
-                    overnight_bullets.append(article.text)
+            overnight_bullets = [
+                article.text
+                for group in request.overnight_groups[:5]
+                for article in group.articles[:1]
+            ]
             if overnight_bullets:
                 sections.append(
                     MorningLetterSection(

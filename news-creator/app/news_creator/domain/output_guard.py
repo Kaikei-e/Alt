@@ -103,9 +103,8 @@ def guard_output_markdown(
     has_delimiters = tag_re.search(text) is not None
 
     if has_delimiters and reject_on_delimiters:
-        raise OutputGuardError(
-            f"Generated output contains forbidden delimiter tag <{tag}>"
-        )
+        msg = f"Generated output contains forbidden delimiter tag <{tag}>"
+        raise OutputGuardError(msg)
 
     # Strip delimiter tags from output text
     cleaned_text = tag_re.sub("", text)

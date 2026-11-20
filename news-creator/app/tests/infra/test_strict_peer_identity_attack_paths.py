@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import logging
 import secrets
+from http import HTTPStatus
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 from starlette.applications import Starlette
+from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 from starlette.testclient import TestClient
@@ -28,15 +30,15 @@ SIDECAR = ("127.0.0.1", 44444)
 DIRECT = ("172.18.0.9", 44444)
 
 
-def _echo(request):
+def _echo(request: Request) -> JSONResponse:
     return JSONResponse({"peer": getattr(request.state, "peer_identity", None)})
 
 
-def _health(request):
+def _health(request: Request) -> JSONResponse:
     return JSONResponse({"status": "healthy"})
 
 
-def _metrics(request):
+def _metrics(request: Request) -> JSONResponse:
     return JSONResponse({"metrics": "ok"})
 
 
@@ -68,7 +70,7 @@ def test_anonymous_inference_rejected_on_plaintext(
     app = _build_test_app(allowed=["recap-worker", "alt-backend"], strict=True)
     with TestClient(app, client=DIRECT) as client:
         resp = client.post("/v1/summarize")
-        assert resp.status_code == 401
+        assert resp.status_code == HTTPStatus.UNAUTHORIZED
         assert "unauthenticated peer" in resp.text
 
 
@@ -84,7 +86,7 @@ def test_spoofed_peer_header_rejected_on_direct_plaintext(
         resp = client.post(
             "/v1/summarize", headers={PEER_IDENTITY_HEADER: "alt-backend"}
         )
-        assert resp.status_code == 401
+        assert resp.status_code == HTTPStatus.UNAUTHORIZED
         assert "unauthenticated peer" in resp.text
 
 
@@ -96,7 +98,7 @@ def test_verified_sidecar_peer_passes(monkeypatch: pytest.MonkeyPatch) -> None:
         resp = client.post(
             "/v1/summarize", headers={PEER_IDENTITY_HEADER: "alt-backend"}
         )
-        assert resp.status_code == 200
+        assert resp.status_code == HTTPStatus.OK
         assert resp.json() == {"peer": "alt-backend"}
 
 
@@ -108,7 +110,7 @@ def test_verified_tls_peer_passes() -> None:
         app = _build_test_app(allowed=["recap-worker"], strict=True)
         with TestClient(app, client=client_addr) as http:
             resp = http.post("/v1/summarize")
-            assert resp.status_code == 200
+            assert resp.status_code == HTTPStatus.OK
             assert resp.json() == {"peer": "recap-worker"}
     finally:
         forget_tls_peer(client_addr)
@@ -122,7 +124,7 @@ def test_tls_peer_not_in_allowlist_rejected() -> None:
         app = _build_test_app(allowed=["recap-worker"], strict=True)
         with TestClient(app, client=client_addr) as http:
             resp = http.post("/v1/summarize")
-            assert resp.status_code == 403
+            assert resp.status_code == HTTPStatus.FORBIDDEN
             assert "peer not allowlisted" in resp.text
     finally:
         forget_tls_peer(client_addr)
@@ -135,9 +137,9 @@ def test_health_and_metrics_exempt_on_plaintext(
     monkeypatch.delenv("PEER_IDENTITY_TRUSTED", raising=False)
     app = _build_test_app(allowed=["recap-worker"], strict=True)
     with TestClient(app, client=DIRECT) as client:
-        assert client.get("/health").status_code == 200
-        assert client.get("/health/deep").status_code == 200
-        assert client.get("/metrics").status_code == 200
+        assert client.get("/health").status_code == HTTPStatus.OK
+        assert client.get("/health/deep").status_code == HTTPStatus.OK
+        assert client.get("/metrics").status_code == HTTPStatus.OK
 
 
 def test_health_and_metrics_exempt_on_tls() -> None:
@@ -147,9 +149,9 @@ def test_health_and_metrics_exempt_on_tls() -> None:
     try:
         app = _build_test_app(allowed=["recap-worker"], strict=True)
         with TestClient(app, client=client_addr) as http:
-            assert http.get("/health").status_code == 200
-            assert http.get("/health/deep").status_code == 200
-            assert http.get("/metrics").status_code == 200
+            assert http.get("/health").status_code == HTTPStatus.OK
+            assert http.get("/health/deep").status_code == HTTPStatus.OK
+            assert http.get("/metrics").status_code == HTTPStatus.OK
     finally:
         forget_tls_peer(client_addr)
 
@@ -241,7 +243,7 @@ def test_health_prefix_attack_rejected_on_plaintext(
     app = _build_test_app(allowed=["recap-worker"], strict=True)
     with TestClient(app, client=DIRECT) as client:
         resp = client.get("/health-bypass")
-        assert resp.status_code == 401
+        assert resp.status_code == HTTPStatus.UNAUTHORIZED
 
 
 def test_strict_blank_allowlist_rejects_valid_cn_on_real_tls() -> None:
@@ -252,7 +254,7 @@ def test_strict_blank_allowlist_rejects_valid_cn_on_real_tls() -> None:
         app = _build_test_app(allowed=[], strict=True)
         with TestClient(app, client=client_addr) as http:
             resp = http.post("/v1/summarize")
-            assert resp.status_code == 403
+            assert resp.status_code == HTTPStatus.FORBIDDEN
             assert "peer not allowlisted" in resp.text
     finally:
         forget_tls_peer(client_addr)
@@ -266,7 +268,7 @@ def test_strict_matching_allowlist_accepts_valid_cn_on_real_tls() -> None:
         app = _build_test_app(allowed=["alt-backend"], strict=True)
         with TestClient(app, client=client_addr) as http:
             resp = http.post("/v1/summarize")
-            assert resp.status_code == 200
+            assert resp.status_code == HTTPStatus.OK
             assert resp.json() == {"peer": "alt-backend"}
     finally:
         forget_tls_peer(client_addr)
@@ -282,7 +284,7 @@ def test_strict_blank_allowlist_rejects_valid_cn_on_trusted_proxy(
         resp = client.post(
             "/v1/summarize", headers={PEER_IDENTITY_HEADER: "alt-backend"}
         )
-        assert resp.status_code == 403
+        assert resp.status_code == HTTPStatus.FORBIDDEN
         assert "peer not allowlisted" in resp.text
 
 
@@ -296,5 +298,5 @@ def test_strict_matching_allowlist_accepts_valid_cn_on_trusted_proxy(
         resp = client.post(
             "/v1/summarize", headers={PEER_IDENTITY_HEADER: "alt-backend"}
         )
-        assert resp.status_code == 200
+        assert resp.status_code == HTTPStatus.OK
         assert resp.json() == {"peer": "alt-backend"}

@@ -18,7 +18,6 @@ from aiohttp.test_utils import TestServer
 # ollama_driver module) would also fake out the test server's own delay,
 # since both look up the same shared `asyncio` module object. Retries are
 # therefore left un-mocked; the bound comes from `asyncio.wait_for` below.
-
 from news_creator.config.config import NewsCreatorConfig
 from news_creator.driver.ollama_driver import OllamaDriver
 
@@ -37,19 +36,22 @@ def _make_config(service_url: str, timeout_seconds: int) -> NewsCreatorConfig:
 
 
 @pytest.mark.asyncio
-async def test_initialize_applies_llm_timeout_seconds_to_read_timeout():
+async def test_initialize_applies_llm_timeout_seconds_to_read_timeout() -> None:
     """The session's ClientTimeout must actually carry llm_timeout_seconds.
 
     Previously both `total` and `sock_read` were hardcoded to None, so a hung
     Ollama response would never time out regardless of this config value.
     """
-    config = _make_config("http://localhost:11435", timeout_seconds=45)
+    expected_timeout_seconds = 45
+    config = _make_config(
+        "http://localhost:11435", timeout_seconds=expected_timeout_seconds
+    )
     driver = OllamaDriver(config)
 
     await driver.initialize()
     try:
         timeout = driver.session.timeout
-        assert timeout.sock_read == 45 or timeout.total == 45, (
+        assert expected_timeout_seconds in {timeout.sock_read, timeout.total}, (
             f"llm_timeout_seconds not applied to ClientTimeout: {timeout}"
         )
     finally:
@@ -57,7 +59,7 @@ async def test_initialize_applies_llm_timeout_seconds_to_read_timeout():
 
 
 @pytest.mark.asyncio
-async def test_generate_errors_instead_of_hanging_when_ollama_stalls():
+async def test_generate_errors_instead_of_hanging_when_ollama_stalls() -> None:
     """A backend that stops responding must cause generate() to fail bounded
     in time, not hang forever holding the caller's semaphore slot.
     """
@@ -95,7 +97,7 @@ async def test_generate_errors_instead_of_hanging_when_ollama_stalls():
 
 
 @pytest.mark.asyncio
-async def test_generate_does_not_reserialize_full_payload_for_logging():
+async def test_generate_does_not_reserialize_full_payload_for_logging() -> None:
     """generate() must not re-serialize the whole payload via json.dumps()
     just to size a diagnostic log field.
 

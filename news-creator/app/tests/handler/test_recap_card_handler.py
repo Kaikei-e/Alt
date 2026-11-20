@@ -1,11 +1,20 @@
 """Tests for recap card handler."""
 
+import logging
+from http import HTTPStatus
+from typing import Any
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from news_creator.domain.errors import (
+    CardGenerationInvariantError,
+    PreemptedException,
+    QueueFullError,
+)
 from news_creator.domain.models import (
     CardContent,
     CardGenerateResponse,
@@ -13,15 +22,10 @@ from news_creator.domain.models import (
     CardGenerationRejectedError,
     CardSentence,
 )
-from news_creator.domain.errors import (
-    CardGenerationInvariantError,
-    PreemptedException,
-    QueueFullError,
-)
 from news_creator.handler.recap_card_handler import create_recap_card_router
 
 
-def _build_card_request_payload():
+def _build_card_request_payload() -> dict[str, Any]:
     return {
         "job_id": str(uuid4()),
         "candidate_id": str(uuid4()),
@@ -50,7 +54,9 @@ def _build_card_request_payload():
     }
 
 
-def test_recap_card_handler_success_200():
+def test_recap_card_handler_success_200() -> None:
+    expected_ja_ratio = 0.85
+    expected_what_count = 2
     usecase = AsyncMock()
     response = CardGenerateResponse(
         card=CardContent(
@@ -73,7 +79,7 @@ def test_recap_card_handler_success_200():
             ms=300,
             raw_text="raw output",
         ),
-        ja_ratio=0.85,
+        ja_ratio=expected_ja_ratio,
     )
     usecase.generate_card.return_value = response
 
@@ -84,11 +90,11 @@ def test_recap_card_handler_success_200():
     payload = _build_card_request_payload()
     resp = client.post("/v1/cards/generate", json=payload)
 
-    assert resp.status_code == 200
+    assert resp.status_code == HTTPStatus.OK
     data = resp.json()
-    assert data["ja_ratio"] == 0.85
+    assert data["ja_ratio"] == expected_ja_ratio
     assert data["card"]["headline_ja"] == "ソラリス社、分散ログ基盤の次期版を公開"
-    assert len(data["card"]["what_ja"]) == 2
+    assert len(data["card"]["what_ja"]) == expected_what_count
     assert data["card"]["why_ja"]["text"] == "サーバ費用が年間25%削減される。[1]"
     assert data["card"]["used_refs"] == [1, 2]
     assert data["generation"]["cache_hit"] is False
@@ -96,11 +102,12 @@ def test_recap_card_handler_success_200():
     usecase.generate_card.assert_awaited_once()
 
 
-def test_recap_card_handler_rejected_422():
+def test_recap_card_handler_rejected_422() -> None:
+    expected_attempts = 2
     usecase = AsyncMock()
     usecase.generate_card.side_effect = CardGenerationRejectedError(
         reason="parse_failed",
-        attempts=2,
+        attempts=expected_attempts,
         raw_text="不正なタグ出力",
         detail="missing_tag",
     )
@@ -112,20 +119,21 @@ def test_recap_card_handler_rejected_422():
     payload = _build_card_request_payload()
     resp = client.post("/v1/cards/generate", json=payload)
 
-    assert resp.status_code == 422
+    assert resp.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
     assert resp.headers.get("X-Card-Rejection") == "1"
     data = resp.json()
     assert data["reason"] == "parse_failed"
-    assert data["attempts"] == 2
+    assert data["attempts"] == expected_attempts
     assert data["raw_text"] == "不正なタグ出力"
     assert data["detail"] == "missing_tag"
 
 
-def test_recap_card_handler_unknown_ref_422():
+def test_recap_card_handler_unknown_ref_422() -> None:
+    expected_attempts = 2
     usecase = AsyncMock()
     usecase.generate_card.side_effect = CardGenerationRejectedError(
         reason="unknown_ref",
-        attempts=2,
+        attempts=expected_attempts,
         raw_text="未知の参照 [99] を含む出力",
     )
 
@@ -136,14 +144,14 @@ def test_recap_card_handler_unknown_ref_422():
     payload = _build_card_request_payload()
     resp = client.post("/v1/cards/generate", json=payload)
 
-    assert resp.status_code == 422
+    assert resp.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
     assert resp.headers.get("X-Card-Rejection") == "1"
     data = resp.json()
     assert data["reason"] == "unknown_ref"
-    assert data["attempts"] == 2
+    assert data["attempts"] == expected_attempts
 
 
-def test_recap_card_handler_queue_full_429():
+def test_recap_card_handler_queue_full_429() -> None:
     usecase = AsyncMock()
     usecase.generate_card.side_effect = QueueFullError("Queue depth exceeded")
 
@@ -154,12 +162,14 @@ def test_recap_card_handler_queue_full_429():
     payload = _build_card_request_payload()
     resp = client.post("/v1/cards/generate", json=payload)
 
-    assert resp.status_code == 429
+    assert resp.status_code == HTTPStatus.TOO_MANY_REQUESTS
     assert resp.json() == {"error": "queue full"}
     assert resp.headers.get("Retry-After") == "30"
 
 
-def test_recap_card_handler_request_validation_failure_422_without_rejection_header():
+def test_recap_card_handler_request_validation_failure_422_without_rejection_header() -> (
+    None
+):
     """FastAPI request-validation 422 must NOT carry X-Card-Rejection header."""
     usecase = AsyncMock()
     app = FastAPI()
@@ -169,21 +179,23 @@ def test_recap_card_handler_request_validation_failure_422_without_rejection_hea
     # Missing required fields
     resp = client.post("/v1/cards/generate", json={"invalid": "payload"})
 
-    assert resp.status_code == 422
+    assert resp.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
     assert resp.headers.get("X-Card-Rejection") is None
     data = resp.json()
     assert "detail" in data
     usecase.generate_card.assert_not_called()
 
 
-def test_recap_card_handler_language_rejection_422_includes_ratio_and_counts():
+def test_recap_card_handler_language_rejection_422_includes_ratio_and_counts() -> None:
     """Verify 422 language rejection includes measured_ratio and character_counts next to raw_text."""
+    expected_attempts = 2
+    expected_ratio = 0.42
     usecase = AsyncMock()
     usecase.generate_card.side_effect = CardGenerationRejectedError(
         reason="language",
-        attempts=2,
+        attempts=expected_attempts,
         raw_text="English headline here",
-        measured_ratio=0.42,
+        measured_ratio=expected_ratio,
         character_counts={"japanese": 42, "substantive": 100, "total": 120},
     )
 
@@ -194,13 +206,13 @@ def test_recap_card_handler_language_rejection_422_includes_ratio_and_counts():
     payload = _build_card_request_payload()
     resp = client.post("/v1/cards/generate", json=payload)
 
-    assert resp.status_code == 422
+    assert resp.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
     assert resp.headers.get("X-Card-Rejection") == "1"
     data = resp.json()
     assert data["reason"] == "language"
-    assert data["attempts"] == 2
+    assert data["attempts"] == expected_attempts
     assert data["raw_text"] == "English headline here"
-    assert data["measured_ratio"] == 0.42
+    assert data["measured_ratio"] == expected_ratio
     assert data["character_counts"] == {
         "japanese": 42,
         "substantive": 100,
@@ -209,10 +221,12 @@ def test_recap_card_handler_language_rejection_422_includes_ratio_and_counts():
     assert data["detail"] is None
 
 
-def test_recap_card_handler_structured_logging_on_rejection(caplog):
+def test_recap_card_handler_structured_logging_on_rejection(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     """Verify structured log has raw_text_len, measured_ratio for language, detail for parse_failed, and never raw_text."""
-    import logging
-
+    expected_attempts = 2
+    expected_ratio = 0.35
     usecase = AsyncMock()
     app = FastAPI()
     app.include_router(create_recap_card_router(usecase))
@@ -222,14 +236,14 @@ def test_recap_card_handler_structured_logging_on_rejection(caplog):
     # 1. Parse failed rejection: logs raw_text_len, detail, never raw_text
     usecase.generate_card.side_effect = CardGenerationRejectedError(
         reason="parse_failed",
-        attempts=2,
+        attempts=expected_attempts,
         raw_text="SECRET_RAW_TEXT_PARSE_FAILED",
         detail="missing_tag",
     )
     with caplog.at_level(logging.WARNING):
         caplog.clear()
         resp = client.post("/v1/cards/generate", json=payload)
-        assert resp.status_code == 422
+        assert resp.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
 
         rejection_records = [
             r for r in caplog.records if r.getMessage() == "Card generation rejected"
@@ -240,7 +254,7 @@ def test_recap_card_handler_structured_logging_on_rejection(caplog):
             "SECRET_RAW_TEXT_PARSE_FAILED"
         )
         assert getattr(record, "reason", None) == "parse_failed"
-        assert getattr(record, "attempts", None) == 2
+        assert getattr(record, "attempts", None) == expected_attempts
         assert getattr(record, "detail", None) == "missing_tag"
         # Never log raw_text itself in extra
         assert not hasattr(record, "raw_text")
@@ -249,15 +263,15 @@ def test_recap_card_handler_structured_logging_on_rejection(caplog):
     # 2. Language rejection: logs raw_text_len and measured_ratio
     usecase.generate_card.side_effect = CardGenerationRejectedError(
         reason="language",
-        attempts=2,
+        attempts=expected_attempts,
         raw_text="SECRET_RAW_TEXT_LANGUAGE",
-        measured_ratio=0.35,
+        measured_ratio=expected_ratio,
         character_counts={"japanese": 7, "substantive": 20, "total": 25},
     )
     with caplog.at_level(logging.WARNING):
         caplog.clear()
         resp = client.post("/v1/cards/generate", json=payload)
-        assert resp.status_code == 422
+        assert resp.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
 
         rejection_records = [
             r for r in caplog.records if r.getMessage() == "Card generation rejected"
@@ -266,13 +280,13 @@ def test_recap_card_handler_structured_logging_on_rejection(caplog):
         record = rejection_records[0]
         assert getattr(record, "raw_text_len", None) == len("SECRET_RAW_TEXT_LANGUAGE")
         assert getattr(record, "reason", None) == "language"
-        assert getattr(record, "measured_ratio", None) == 0.35
+        assert getattr(record, "measured_ratio", None) == expected_ratio
         # Never log raw_text itself in extra
         assert not hasattr(record, "raw_text")
         assert "SECRET_RAW_TEXT_LANGUAGE" not in record.getMessage()
 
 
-def test_recap_card_handler_value_error_400():
+def test_recap_card_handler_value_error_400() -> None:
     """ValueError from usecase returns 400 Invalid request."""
     usecase = AsyncMock()
     usecase.generate_card.side_effect = ValueError("invalid item count")
@@ -283,11 +297,11 @@ def test_recap_card_handler_value_error_400():
 
     resp = client.post("/v1/cards/generate", json=_build_card_request_payload())
 
-    assert resp.status_code == 400
+    assert resp.status_code == HTTPStatus.BAD_REQUEST
     assert resp.json()["detail"] == "Invalid request"
 
 
-def test_recap_card_handler_preempted_502():
+def test_recap_card_handler_preempted_502() -> None:
     """PreemptedException from usecase returns 502 Upstream service error."""
     usecase = AsyncMock()
     usecase.generate_card.side_effect = PreemptedException("preempted by RT request")
@@ -298,11 +312,11 @@ def test_recap_card_handler_preempted_502():
 
     resp = client.post("/v1/cards/generate", json=_build_card_request_payload())
 
-    assert resp.status_code == 502
+    assert resp.status_code == HTTPStatus.BAD_GATEWAY
     assert resp.json()["detail"] == "Upstream service error"
 
 
-def test_recap_card_handler_runtime_error_502():
+def test_recap_card_handler_runtime_error_502() -> None:
     """RuntimeError from usecase returns 502 Upstream service error."""
     usecase = AsyncMock()
     usecase.generate_card.side_effect = RuntimeError("Ollama API error: HTTP 503")
@@ -313,11 +327,11 @@ def test_recap_card_handler_runtime_error_502():
 
     resp = client.post("/v1/cards/generate", json=_build_card_request_payload())
 
-    assert resp.status_code == 502
+    assert resp.status_code == HTTPStatus.BAD_GATEWAY
     assert resp.json()["detail"] == "Upstream service error"
 
 
-def test_recap_card_handler_invariant_error_500():
+def test_recap_card_handler_invariant_error_500() -> None:
     """CardGenerationInvariantError from usecase returns 500 Internal server error."""
     usecase = AsyncMock()
     usecase.generate_card.side_effect = CardGenerationInvariantError(
@@ -330,5 +344,5 @@ def test_recap_card_handler_invariant_error_500():
 
     resp = client.post("/v1/cards/generate", json=_build_card_request_payload())
 
-    assert resp.status_code == 500
+    assert resp.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
     assert resp.json()["detail"] == "Internal server error"

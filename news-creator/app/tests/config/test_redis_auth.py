@@ -6,18 +6,22 @@ the explicit "auth disabled" mode (logged once), set-but-missing/empty is a
 startup error, never a silent unauthenticated connection.
 """
 
+from pathlib import Path
+
 import pytest
 
 from news_creator.config import redis_auth
 
 
 @pytest.fixture(autouse=True)
-def _reset_logged_once(monkeypatch):
+def _reset_logged_once(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(redis_auth, "_disabled_logged", False)
     monkeypatch.delenv("REDIS_AUTH", raising=False)
 
 
-def test_unset_raises_error_naming_both_variables(monkeypatch):
+def test_unset_raises_error_naming_both_variables(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.delenv("REDIS_PASSWORD_FILE", raising=False)
 
     with pytest.raises(RuntimeError) as exc_info:
@@ -26,7 +30,9 @@ def test_unset_raises_error_naming_both_variables(monkeypatch):
     assert "REDIS_AUTH" in str(exc_info.value)
 
 
-def test_explicit_disabled_returns_none_and_logs_once(monkeypatch):
+def test_explicit_disabled_returns_none_and_logs_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.delenv("REDIS_PASSWORD_FILE", raising=False)
     monkeypatch.setenv("REDIS_AUTH", "disabled")
 
@@ -37,14 +43,18 @@ def test_explicit_disabled_returns_none_and_logs_once(monkeypatch):
     assert redis_auth.resolve_redis_password() is None
 
 
-def test_explicit_disabled_is_case_insensitive(monkeypatch):
+def test_explicit_disabled_is_case_insensitive(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.delenv("REDIS_PASSWORD_FILE", raising=False)
     monkeypatch.setenv("REDIS_AUTH", "Disabled")
 
     assert redis_auth.resolve_redis_password() is None
 
 
-def test_present_file_returns_trimmed_password(tmp_path, monkeypatch):
+def test_present_file_returns_trimmed_password(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     pw_file = tmp_path / "redis_password.txt"
     pw_file.write_text("  secret-redis-password \n")
     monkeypatch.setenv("REDIS_PASSWORD_FILE", str(pw_file))
@@ -52,14 +62,16 @@ def test_present_file_returns_trimmed_password(tmp_path, monkeypatch):
     assert redis_auth.resolve_redis_password() == "secret-redis-password"
 
 
-def test_missing_file_fails_fast(tmp_path, monkeypatch):
+def test_missing_file_fails_fast(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("REDIS_PASSWORD_FILE", str(tmp_path / "does-not-exist.txt"))
 
     with pytest.raises(RuntimeError, match="REDIS_PASSWORD_FILE"):
         redis_auth.resolve_redis_password()
 
 
-def test_empty_file_fails_fast(tmp_path, monkeypatch):
+def test_empty_file_fails_fast(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     pw_file = tmp_path / "empty_password.txt"
     pw_file.write_text("   \n\t ")
     monkeypatch.setenv("REDIS_PASSWORD_FILE", str(pw_file))
@@ -68,7 +80,7 @@ def test_empty_file_fails_fast(tmp_path, monkeypatch):
         redis_auth.resolve_redis_password()
 
 
-def test_env_set_to_empty_string_fails_fast(monkeypatch):
+def test_env_set_to_empty_string_fails_fast(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("REDIS_PASSWORD_FILE", "")
 
     with pytest.raises(RuntimeError, match="REDIS_PASSWORD_FILE is set but empty"):

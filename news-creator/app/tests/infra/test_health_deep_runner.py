@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from http import HTTPStatus
 
 import pytest
 from prometheus_client import REGISTRY, generate_latest
@@ -33,10 +34,11 @@ async def test_per_check_timeout_fails_critical_without_hanging() -> None:
     start = asyncio.get_running_loop().time()
     report = await runner.run()
     elapsed = asyncio.get_running_loop().time() - start
-    assert elapsed < 0.25
+    max_elapsed_seconds = 0.25
+    assert elapsed < max_elapsed_seconds
     assert report.status == "fail"
     assert report.checks[0].reason == "timeout"
-    assert report.http_status == 503
+    assert report.http_status == HTTPStatus.SERVICE_UNAVAILABLE
 
 
 @pytest.mark.asyncio

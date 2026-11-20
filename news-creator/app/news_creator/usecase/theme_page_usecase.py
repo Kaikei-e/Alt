@@ -54,11 +54,11 @@ _ISO_DATE_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
 _CACHE_KEY_PREFIX = "theme_page:v1"
 
 
-def _is_strict_int(value: Any) -> bool:
+def _is_strict_int(value: object) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
 
 
-def _is_valid_iso_date(value: Any) -> bool:
+def _is_valid_iso_date(value: object) -> bool:
     if not isinstance(value, str) or not _ISO_DATE_RE.fullmatch(value):
         return False
     try:
@@ -85,9 +85,8 @@ class ThemePageUsecase:
     def _get_template(self) -> Template:
         if self._template is None:
             if not THEME_TEMPLATE_PATH.exists():
-                raise FileNotFoundError(
-                    f"Theme page prompt template not found: {THEME_TEMPLATE_PATH}"
-                )
+                msg = f"Theme page prompt template not found: {THEME_TEMPLATE_PATH}"
+                raise FileNotFoundError(msg)
             self._template = Template(THEME_TEMPLATE_PATH.read_text(encoding="utf-8"))
         return self._template
 
@@ -128,7 +127,7 @@ class ThemePageUsecase:
             if not cached_json:
                 return None
             return ThemeGenerateResponse.model_validate_json(cached_json)
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError, TypeError) as exc:
             logger.warning(
                 "Failed to retrieve cached theme page response",
                 extra={"cache_key": cache_key, "error": str(exc)},
@@ -142,7 +141,7 @@ class ThemePageUsecase:
             return
         try:
             await self.cache.set(cache_key, response.model_dump_json())
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError, TypeError) as exc:
             logger.warning(
                 "Failed to save theme page response to cache",
                 extra={"cache_key": cache_key, "error": str(exc)},
@@ -180,14 +179,18 @@ class ThemePageUsecase:
                 "要点:",
             ]
             if request.previous.key_points:
-                for kp in request.previous.key_points:
-                    prev_lines.append(f"- {sanitize_untrusted_content(kp)}")
+                prev_lines.extend(
+                    f"- {sanitize_untrusted_content(kp)}"
+                    for kp in request.previous.key_points
+                )
             else:
                 prev_lines.append("- なし")
             prev_lines.append("未解決の問い:")
             if request.previous.open_questions:
-                for oq in request.previous.open_questions:
-                    prev_lines.append(f"- {sanitize_untrusted_content(oq)}")
+                prev_lines.extend(
+                    f"- {sanitize_untrusted_content(oq)}"
+                    for oq in request.previous.open_questions
+                )
             else:
                 prev_lines.append("- なし")
             sections.append("### 前回の版\n" + "\n".join(prev_lines))
@@ -223,9 +226,8 @@ class ThemePageUsecase:
         elapsed_ms = int((time.perf_counter() - start_time) * 1000)
 
         if not isinstance(llm_response, LLMGenerateResponse):
-            raise CardGenerationInvariantError(
-                f"Unexpected LLM response type: {type(llm_response).__name__}"
-            )
+            msg = f"Unexpected LLM response type: {type(llm_response).__name__}"
+            raise CardGenerationInvariantError(msg)
 
         raw_text = llm_response.response or ""
         model_name = llm_response.model or model
@@ -259,11 +261,11 @@ class ThemePageUsecase:
                 raise ValueError("parse_failed") from repair_exc
 
         if not isinstance(parsed, dict):
-            raise ValueError("parse_failed")
+            raise ValueError("parse_failed")  # noqa: TRY004 - caller handles ValueError('parse_failed') for retry
         return parsed
 
     @staticmethod
-    def _clean_sentence_text(raw_text: Any) -> str | None:
+    def _clean_sentence_text(raw_text: object) -> str | None:
         if not isinstance(raw_text, str):
             return None
         text = raw_text.strip()
@@ -274,7 +276,7 @@ class ThemePageUsecase:
         return text
 
     @staticmethod
-    def _validate_refs(raw_refs: Any, valid_refs: set[int]) -> list[int] | None:
+    def _validate_refs(raw_refs: object, valid_refs: set[int]) -> list[int] | None:
         if not isinstance(raw_refs, list) or not raw_refs:
             return None
         deduped: list[int] = []
@@ -354,7 +356,7 @@ class ThemePageUsecase:
 
     def _filter_sentence_list(
         self,
-        raw_entries: Any,
+        raw_entries: object,
         *,
         valid_refs: set[int],
         cap: int,
@@ -383,7 +385,7 @@ class ThemePageUsecase:
 
     def _filter_timeline(
         self,
-        raw_entries: Any,
+        raw_entries: object,
         *,
         items_by_n: dict[int, ThemeItemInput],
         valid_refs: set[int],
@@ -404,7 +406,8 @@ class ThemePageUsecase:
             refs = self._validate_refs(entry.get("refs"), valid_refs)
             if refs is None:
                 continue
-            assert isinstance(entry_date, str)
+            if not isinstance(entry_date, str):
+                continue
             if not any(
                 items_by_n[r].published_at == entry_date
                 or entry_date in items_by_n[r].text

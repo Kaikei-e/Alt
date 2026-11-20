@@ -1,6 +1,7 @@
 """OOM (Out of Memory) detection and fallback to 2-model mode."""
 
 import logging
+from typing import ClassVar
 
 logger = logging.getLogger(__name__)
 
@@ -9,7 +10,7 @@ class OOMDetector:
     """Detects OOM errors from Ollama API responses and manages fallback mode."""
 
     # OOM error patterns to detect
-    OOM_PATTERNS = [
+    OOM_PATTERNS: ClassVar[list[str]] = [
         "out of memory",
         "oom",
         "vram",
@@ -19,7 +20,7 @@ class OOMDetector:
         "memory allocation failed",
     ]
 
-    def __init__(self, enabled: bool = True):
+    def __init__(self, enabled: bool = True) -> None:
         """
         Initialize OOM detector.
 
@@ -47,7 +48,8 @@ class OOMDetector:
         for pattern in self.OOM_PATTERNS:
             if pattern in error_lower:
                 logger.warning(
-                    f"OOM pattern detected: '{pattern}' in error message",
+                    "OOM pattern detected: '%s' in error message",
+                    pattern,
                     extra={"error_message": error_message[:200]},
                 )
                 return True
@@ -114,7 +116,7 @@ class OOMDetector:
         """Check if 2-model mode is active (16K, 60K only)."""
         return self._two_model_mode
 
-    def reset(self):
+    def reset(self) -> None:
         """Reset OOM detection state (for testing or manual recovery)."""
         self._oom_detected = False
         self._two_model_mode = False

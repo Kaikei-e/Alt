@@ -10,6 +10,7 @@ This module implements the logging requirements defined in ADR 98:
 Uses contextvars for thread-safe context propagation in async environments.
 """
 
+import json
 import logging
 from contextvars import ContextVar
 from typing import Any
@@ -52,8 +53,6 @@ class BusinessContextJSONFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         """Format log record as JSON with business context."""
-        import json
-
         # Base log fields
         log_dict: dict[str, Any] = {
             "timestamp": self.formatTime(record, self.datefmt),
@@ -81,39 +80,41 @@ class BusinessContextJSONFormatter(logging.Formatter):
 
         # Add extra fields from record (e.g., from logger.info(..., extra={...}))
         if hasattr(record, "__dict__"):
-            for key, value in record.__dict__.items():
-                # Skip standard LogRecord attributes and already processed fields
-                if key not in (
-                    "name",
-                    "msg",
-                    "args",
-                    "created",
-                    "filename",
-                    "funcName",
-                    "levelname",
-                    "levelno",
-                    "lineno",
-                    "module",
-                    "msecs",
-                    "pathname",
-                    "process",
-                    "processName",
-                    "relativeCreated",
-                    "stack_info",
-                    "exc_info",
-                    "exc_text",
-                    "thread",
-                    "threadName",
-                    "message",
-                    "alt.article.id",
-                    "alt.job.id",
-                    "alt.ai.pipeline",
-                    "alt.processing.stage",
-                    "taskName",
-                ):
-                    # Include extra fields
-                    if not key.startswith("_"):
-                        log_dict[key] = value
+            skip_keys = {
+                "name",
+                "msg",
+                "args",
+                "created",
+                "filename",
+                "funcName",
+                "levelname",
+                "levelno",
+                "lineno",
+                "module",
+                "msecs",
+                "pathname",
+                "process",
+                "processName",
+                "relativeCreated",
+                "stack_info",
+                "exc_info",
+                "exc_text",
+                "thread",
+                "threadName",
+                "message",
+                "alt.article.id",
+                "alt.job.id",
+                "alt.ai.pipeline",
+                "alt.processing.stage",
+                "taskName",
+            }
+            log_dict.update(
+                {
+                    key: value
+                    for key, value in record.__dict__.items()
+                    if key not in skip_keys and not key.startswith("_")
+                }
+            )
 
         return json.dumps(log_dict, ensure_ascii=False, default=str)
 

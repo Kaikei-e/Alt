@@ -8,8 +8,8 @@ are bounded and cardinality-safe (remote URLs and model names only).
 from __future__ import annotations
 
 import time
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
 
 from opentelemetry import metrics
 
@@ -49,21 +49,21 @@ class _Metrics:
         )
 
 
-_metrics: _Metrics | None = None
+_metrics_holder: dict[str, _Metrics | None] = {"instance": None}
 
 
 def _get() -> _Metrics:
-    global _metrics
-    if _metrics is None:
+    current = _metrics_holder["instance"]
+    if current is None:
         meter = metrics.get_meter("news_creator.distributed_be")
-        _metrics = _Metrics(meter)
-    return _metrics
+        current = _Metrics(meter)
+        _metrics_holder["instance"] = current
+    return current
 
 
 def reset_metrics_for_tests(meter: metrics.Meter | None) -> None:
     """Re-bind instruments to a test meter (or clear to defer re-init)."""
-    global _metrics
-    _metrics = _Metrics(meter) if meter is not None else None
+    _metrics_holder["instance"] = _Metrics(meter) if meter is not None else None
 
 
 class DispatchObservation:

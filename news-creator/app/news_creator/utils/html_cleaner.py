@@ -35,6 +35,10 @@ __all__ = [
 ]
 
 
+_HTML_RATIO_THRESHOLD = 0.3
+_HTML_TAG_COUNT_THRESHOLD = 50
+
+
 def clean_html_content(content: str, article_id: str = "") -> tuple[str, bool]:
     """
     Remove HTML tags and extract text content from HTML using nh3.
@@ -67,7 +71,10 @@ def clean_html_content(content: str, article_id: str = "") -> tuple[str, bool]:
     html_tag_count = len(html_tags)
     html_ratio = (len("".join(html_tags)) / len(content)) if content else 0.0
 
-    is_html = any(html_indicators) or (html_ratio > 0.3 and html_tag_count > 50)
+    is_html = any(html_indicators) or (
+        html_ratio > _HTML_RATIO_THRESHOLD
+        and html_tag_count > _HTML_TAG_COUNT_THRESHOLD
+    )
 
     if not is_html:
         # Not HTML, return as-is
@@ -140,10 +147,8 @@ def clean_html_content(content: str, article_id: str = "") -> tuple[str, bool]:
                 },
             )
 
-        return cleaned, True
-
-    except Exception as e:
-        logger.error(
+    except (ValueError, TypeError, RuntimeError) as e:
+        logger.exception(
             "Failed to clean HTML with nh3, falling back to regex",
             extra={
                 "article_id": article_id,
@@ -154,4 +159,6 @@ def clean_html_content(content: str, article_id: str = "") -> tuple[str, bool]:
         cleaned = re.sub(r"<[^>]+>", " ", content)
         cleaned = re.sub(r"&[a-zA-Z0-9#]+;", " ", cleaned)
         cleaned = re.sub(r"\s+", " ", cleaned).strip()
+        return cleaned, True
+    else:
         return cleaned, True

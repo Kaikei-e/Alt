@@ -15,32 +15,26 @@ def _make_config(
     warmup_enabled: bool = True,
     warmup_keep_alive_minutes: int = 30,
     model_routing_enabled: bool = True,
-    model_name: str = "gemma4-e4b-q4km",
     model_8k_name: str = "gemma4-e4b-12k",
-    llm_options: dict | None = None,
 ) -> Mock:
     config = Mock(spec=NewsCreatorConfig)
     config.warmup_enabled = warmup_enabled
     config.warmup_keep_alive_minutes = warmup_keep_alive_minutes
     config.model_routing_enabled = model_routing_enabled
-    config.model_name = model_name
+    config.model_name = "gemma4-e4b-q4km"
     config.model_8k_name = model_8k_name
-    config.get_llm_options.return_value = (
-        dict(llm_options)
-        if llm_options is not None
-        else {
-            "num_ctx": 12288,
-            "num_predict": 1200,
-            "num_batch": 1024,
-            "num_gpu": 99,
-            "num_keep": 0,
-            "temperature": 0.7,
-            "top_p": 0.85,
-            "top_k": 40,
-            "repeat_penalty": 1.15,
-            "stop": ["<turn|>"],
-        }
-    )
+    config.get_llm_options.return_value = {
+        "num_ctx": 12288,
+        "num_predict": 1200,
+        "num_batch": 1024,
+        "num_gpu": 99,
+        "num_keep": 0,
+        "temperature": 0.7,
+        "top_p": 0.85,
+        "top_k": 40,
+        "repeat_penalty": 1.15,
+        "stop": ["<turn|>"],
+    }
     return config
 
 
@@ -48,7 +42,7 @@ class TestModelWarmupService:
     """Specification tests for ModelWarmupService."""
 
     @pytest.mark.asyncio
-    async def test_warmup_disabled_skips_driver_calls(self):
+    async def test_warmup_disabled_skips_driver_calls(self) -> None:
         """When warmup_enabled=False, warmup_models() returns immediately without calling driver."""
         config = _make_config(warmup_enabled=False)
         driver = Mock(spec=OllamaDriver)
@@ -62,7 +56,7 @@ class TestModelWarmupService:
     @pytest.mark.asyncio
     async def test_model_routing_enabled_warms_primary_8k_model_with_clamped_keep_alive(
         self,
-    ):
+    ) -> None:
         """When model_routing_enabled=True, warms model_8k_name with keep_alive clamped to >= 1440m."""
         config = _make_config(
             warmup_enabled=True,
@@ -93,13 +87,12 @@ class TestModelWarmupService:
         )
 
     @pytest.mark.asyncio
-    async def test_model_routing_disabled_warms_default_model_name(self):
+    async def test_model_routing_disabled_warms_default_model_name(self) -> None:
         """When model_routing_enabled=False, warms config.model_name with runner startup params."""
         config = _make_config(
             warmup_enabled=True,
             warmup_keep_alive_minutes=2880,
             model_routing_enabled=False,
-            model_name="gemma4-e4b-q4km",
         )
         driver = Mock(spec=OllamaDriver)
         driver.generate = AsyncMock(return_value={"response": "pong", "done": True})
@@ -125,8 +118,8 @@ class TestModelWarmupService:
 
     @pytest.mark.asyncio
     async def test_driver_error_during_warmup_is_logged_and_does_not_raise(
-        self, caplog
-    ):
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
         """Driver exceptions during warmup are logged and swallowed so startup continues."""
         config = _make_config(
             warmup_enabled=True,
@@ -151,7 +144,9 @@ class TestModelWarmupService:
         )
 
     @pytest.mark.asyncio
-    async def test_warmup_response_missing_response_field_logs_warning(self, caplog):
+    async def test_warmup_response_missing_response_field_logs_warning(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
         """If driver returns a dict without 'response', logs warning and does not raise."""
         config = _make_config(warmup_enabled=True, model_routing_enabled=True)
         driver = Mock(spec=OllamaDriver)

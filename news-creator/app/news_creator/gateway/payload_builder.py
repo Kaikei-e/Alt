@@ -33,19 +33,20 @@ def validate_raw_prompt(prompt: str) -> str:
         or not prompt.endswith(GEMMA_MODEL_TURN_SUFFIX)
         or GEMMA_TURN_END not in prompt
     ):
-        raise UntemplatedRawPromptError(
-            "Raw Ollama prompts must start with '<|turn>' and end with '<|turn>model\\n'"
-        )
+        msg = "Raw Ollama prompts must start with '<|turn>' and end with '<|turn>model\\n'"
+        raise UntemplatedRawPromptError(msg)
     return prompt
 
 
 def prepare_raw_prompt(prompt: str) -> str:
     """Strip surrounding whitespace, keeping the newline that ends a Gemma 4 model-turn header."""
     if not isinstance(prompt, str):
-        raise UntemplatedRawPromptError("prompt cannot be empty")
+        msg = "prompt cannot be empty"
+        raise UntemplatedRawPromptError(msg)
     stripped = prompt.strip()
     if not stripped:
-        raise UntemplatedRawPromptError("prompt cannot be empty")
+        msg = "prompt cannot be empty"
+        raise UntemplatedRawPromptError(msg)
     # Without this newline the model must emit "\n" first; repeat_penalty suppresses it,
     # so <turn|> gets sampled as the first token and the response comes back empty.
     if stripped.endswith(GEMMA_MODEL_TURN_HEADER):
@@ -103,7 +104,7 @@ class GeneratePayload:
 class PayloadBuilderProtocol(Protocol):
     """Protocol for payload building strategies."""
 
-    def build(
+    def build(  # noqa: PLR0913 - public PayloadBuilderProtocol interface tested directly across test suite
         self,
         prompt: str,
         model: str,
@@ -111,7 +112,7 @@ class PayloadBuilderProtocol(Protocol):
         keep_alive: int | str,
         stream: bool = False,
         raw: bool = True,
-        format: str | dict[str, Any] | None = None,
+        format: str | dict[str, Any] | None = None,  # noqa: A002 - public PayloadBuilder.build keyword API matching Ollama
     ) -> GeneratePayload:
         """Build a generate payload."""
         ...
@@ -128,7 +129,7 @@ class PayloadBuilder:
     This class extracts lines 196-211 from OllamaGateway.generate().
     """
 
-    def build(
+    def build(  # noqa: PLR0913 - implements PayloadBuilderProtocol interface
         self,
         prompt: str,
         model: str,
@@ -136,7 +137,7 @@ class PayloadBuilder:
         keep_alive: int | str,
         stream: bool = False,
         raw: bool = True,
-        format: str | dict[str, Any] | None = None,
+        format: str | dict[str, Any] | None = None,  # noqa: A002 - public PayloadBuilder.build keyword API matching Ollama
     ) -> GeneratePayload:
         """Build a generate payload for Ollama API.
 

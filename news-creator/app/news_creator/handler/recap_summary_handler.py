@@ -1,25 +1,26 @@
 """Recap summary handler - endpoint for recap-worker structured summaries."""
 
 import logging
+
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 
+from news_creator.domain.errors import (
+    PreemptedException,
+    QueueFullError,
+)
 from news_creator.domain.models import (
     BatchRecapSummaryRequest,
     BatchRecapSummaryResponse,
     RecapSummaryRequest,
     RecapSummaryResponse,
 )
-from news_creator.domain.errors import (
-    PreemptedException,
-    QueueFullError,
-)
 from news_creator.usecase.recap_summary_usecase import RecapSummaryUsecase
 from news_creator.utils.context_logger import (
-    set_job_id,
-    set_ai_pipeline,
-    set_processing_stage,
     clear_context,
+    set_ai_pipeline,
+    set_job_id,
+    set_processing_stage,
 )
 
 logger = logging.getLogger(__name__)
@@ -90,14 +91,13 @@ def create_recap_summary_router(usecase: RecapSummaryUsecase) -> APIRouter:
             ) from exc
 
         except RuntimeError as exc:
-            logger.error(
+            logger.exception(
                 "Recap summary generation failed",
                 extra={
                     "error": str(exc),
                     "job_id": str(request.job_id),
                     "genre": request.genre,
                 },
-                exc_info=True,
             )
             raise HTTPException(
                 status_code=502, detail="Upstream service error"

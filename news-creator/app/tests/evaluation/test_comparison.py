@@ -2,8 +2,8 @@
 
 import pytest
 
+from news_creator.evaluation.comparison import ComparisonReport, compare_runs
 from news_creator.evaluation.trace_recorder import TraceRecord
-from news_creator.evaluation.comparison import compare_runs, ComparisonReport
 
 
 def _make_trace(
@@ -40,7 +40,7 @@ def _make_trace(
 class TestCompareRuns:
     """compare_runs produces correct deltas between two trace sets."""
 
-    def test_identical_runs_have_zero_delta(self):
+    def test_identical_runs_have_zero_delta(self) -> None:
         """Same scores before and after → all deltas are 0."""
         traces = [_make_trace()]
         report = compare_runs(before=traces, after=traces)
@@ -50,7 +50,7 @@ class TestCompareRuns:
             assert axis_delta.delta == pytest.approx(0.0)
         assert report.fallback_rate_delta == pytest.approx(0.0)
 
-    def test_improvement_detected(self):
+    def test_improvement_detected(self) -> None:
         """After run has higher source_grounding → positive delta, improved=True."""
         before = [
             _make_trace(
@@ -81,7 +81,7 @@ class TestCompareRuns:
         assert grounding.delta == pytest.approx(0.3)
         assert grounding.improved is True
 
-    def test_regression_detected(self):
+    def test_regression_detected(self) -> None:
         """After run has lower readability → negative delta, improved=False."""
         before = [
             _make_trace(
@@ -112,7 +112,7 @@ class TestCompareRuns:
         assert readability.delta == pytest.approx(-0.4)
         assert readability.improved is False
 
-    def test_fallback_rate_delta(self):
+    def test_fallback_rate_delta(self) -> None:
         """Fallback rate computed from is_degraded counts."""
         before = [
             _make_trace(job_id="1", is_degraded=False),
@@ -129,17 +129,19 @@ class TestCompareRuns:
         assert report.fallback_rate_after == pytest.approx(0.0)
         assert report.fallback_rate_delta == pytest.approx(-0.5)
 
-    def test_case_counts(self):
+    def test_case_counts(self) -> None:
         """Report includes trace counts for both runs."""
-        before = [_make_trace(job_id=str(i)) for i in range(5)]
-        after = [_make_trace(job_id=str(i)) for i in range(3)]
+        before_count = 5
+        after_count = 3
+        before = [_make_trace(job_id=str(i)) for i in range(before_count)]
+        after = [_make_trace(job_id=str(i)) for i in range(after_count)]
 
         report = compare_runs(before=before, after=after)
 
-        assert report.case_count_before == 5
-        assert report.case_count_after == 3
+        assert report.case_count_before == before_count
+        assert report.case_count_after == after_count
 
-    def test_subset_axes(self):
+    def test_subset_axes(self) -> None:
         """When axes is specified, only those axes appear in deltas."""
         traces = [_make_trace()]
         report = compare_runs(
@@ -151,7 +153,7 @@ class TestCompareRuns:
         axis_names = {d.axis for d in report.axis_deltas}
         assert axis_names == {"source_grounding", "readability"}
 
-    def test_redundancy_improvement_is_decrease(self):
+    def test_redundancy_improvement_is_decrease(self) -> None:
         """For redundancy, lower is better → decrease is 'improved'."""
         before = [
             _make_trace(

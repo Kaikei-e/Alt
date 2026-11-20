@@ -7,19 +7,29 @@ TDD Best Practices:
 - Use FastAPI's dependency_overrides for integration tests
 """
 
+import json
+from collections.abc import Iterator
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock
+from uuid import uuid4
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from news_creator.config.config import NewsCreatorConfig
-from news_creator.domain.models import LLMGenerateResponse
+from news_creator.domain.models import (
+    LLMGenerateResponse,
+    RecapClusterInput,
+    RecapSummaryOptions,
+    RecapSummaryRequest,
+    RepresentativeSentence,
+)
 from news_creator.port.llm_provider_port import LLMProviderPort
 
 
 @pytest.fixture(autouse=True)
-def _inference_auth_disabled_by_default(monkeypatch) -> None:
+def _inference_auth_disabled_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
     """Let tests build NewsCreatorConfig without a generation-proxy token file.
 
     LLMConfig.from_env() fails startup unless INFERENCE_SERVICE_TOKEN_FILE is
@@ -30,7 +40,7 @@ def _inference_auth_disabled_by_default(monkeypatch) -> None:
 
 
 @pytest.fixture
-def dummy_redis_password_file(tmp_path, monkeypatch) -> Path:
+def dummy_redis_password_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Provide a valid temporary REDIS_PASSWORD_FILE for tests that instantiate
     NewsCreatorConfig without exercising Redis authentication itself.
     """
@@ -116,8 +126,6 @@ def mock_llm_provider() -> AsyncMock:
 @pytest.fixture
 def mock_llm_response_success() -> LLMGenerateResponse:
     """Create a successful LLM response for recap summary tests."""
-    import json
-
     return LLMGenerateResponse(
         response=json.dumps(
             {
@@ -139,16 +147,8 @@ def mock_llm_response_success() -> LLMGenerateResponse:
 
 
 @pytest.fixture
-def sample_recap_request():
+def sample_recap_request() -> RecapSummaryRequest:
     """Create a sample RecapSummaryRequest for testing."""
-    from uuid import uuid4
-    from news_creator.domain.models import (
-        RecapSummaryRequest,
-        RecapClusterInput,
-        RepresentativeSentence,
-        RecapSummaryOptions,
-    )
-
     return RecapSummaryRequest(
         job_id=uuid4(),
         genre="tech",
@@ -222,7 +222,7 @@ See <https://example.com/docs> for details (a <-> b mapping).
 
 
 @pytest.fixture
-def test_app(mock_llm_provider):
+def test_app(mock_llm_provider: AsyncMock) -> Iterator[FastAPI]:
     """Create a test FastAPI application with mocked dependencies.
 
     This fixture overrides the OllamaGateway with a mock provider,
@@ -234,7 +234,10 @@ def test_app(mock_llm_provider):
                 response = client.get("/health")
                 assert response.status_code == 200
     """
-    from main import app, container
+    from main import (  # noqa: PLC0415 - defer main import until test_app fixture runs
+        app,
+        container,
+    )
 
     # Store original gateway
     original_gateway = container.ollama_gateway
@@ -254,7 +257,7 @@ def test_app(mock_llm_provider):
 
 
 @pytest.fixture
-def test_client(test_app):
+def test_client(test_app: FastAPI) -> Iterator[TestClient]:
     """Create a TestClient with mocked dependencies.
 
     Usage:

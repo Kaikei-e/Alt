@@ -18,9 +18,11 @@ Usage:
     assert "summarize" in fake_provider.call_history[0].lower()
 """
 
+import asyncio
 import json
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, Dict, List, Optional, Union
+from typing import Any
 
 from news_creator.domain.models import LLMGenerateResponse
 from news_creator.port.llm_provider_port import LLMProviderPort
@@ -31,11 +33,11 @@ class FakeCallRecord:
     """Record of a call made to the fake provider."""
 
     prompt: str
-    model: Optional[str] = None
-    num_predict: Optional[int] = None
+    model: str | None = None
+    num_predict: int | None = None
     stream: bool = False
-    format: Optional[Union[str, Dict[str, Any]]] = None
-    options: Optional[Dict[str, Any]] = None
+    format: str | dict[str, Any] | None = None
+    options: dict[str, Any] | None = None
 
 
 class FakeLLMProvider(LLMProviderPort):
@@ -55,9 +57,9 @@ class FakeLLMProvider(LLMProviderPort):
 
     def __init__(
         self,
-        default_response: Optional[str] = None,
+        default_response: str | None = None,
         default_model: str = "gemma4-e4b-12k",
-    ):
+    ) -> None:
         """
         Initialize the fake provider.
 
@@ -66,8 +68,8 @@ class FakeLLMProvider(LLMProviderPort):
                              If None, a generic JSON response is used.
             default_model: Model name to return in responses.
         """
-        self.call_history: List[FakeCallRecord] = []
-        self.responses: Dict[str, str] = {}
+        self.call_history: list[FakeCallRecord] = []
+        self.responses: dict[str, str] = {}
         self.default_model = default_model
         self.default_response = default_response or json.dumps(
             {
@@ -100,7 +102,7 @@ class FakeLLMProvider(LLMProviderPort):
         self.responses[pattern] = response
 
     def add_json_response(
-        self, pattern: str, title: str, bullets: List[str], language: str = "ja"
+        self, pattern: str, title: str, bullets: list[str], language: str = "ja"
     ) -> None:
         """
         Add a JSON-formatted response for recap summary testing.
@@ -147,18 +149,18 @@ class FakeLLMProvider(LLMProviderPort):
         self._fail_message = ""
         self._latency_ms = 0
 
-    async def generate(
+    async def generate(  # noqa: PLR0913 - implements LLMProviderPort.generate signature
         self,
         prompt: str,
         *,
-        model: Optional[str] = None,
-        num_predict: Optional[int] = None,
+        model: str | None = None,
+        num_predict: int | None = None,
         stream: bool = False,
-        keep_alive: Optional[Union[int, str]] = None,
-        format: Optional[Union[str, Dict[str, Any]]] = None,
-        options: Optional[Dict[str, Any]] = None,
+        keep_alive: int | str | None = None,
+        format: str | dict[str, Any] | None = None,  # noqa: A002 - implements LLMProviderPort.generate keyword API
+        options: dict[str, Any] | None = None,
         priority: str = "low",
-    ) -> Union[LLMGenerateResponse, AsyncIterator[LLMGenerateResponse]]:
+    ) -> LLMGenerateResponse | AsyncIterator[LLMGenerateResponse]:
         """
         Generate a fake response.
 
@@ -183,8 +185,6 @@ class FakeLLMProvider(LLMProviderPort):
 
         # Simulate latency if configured
         if self._latency_ms > 0:
-            import asyncio
-
             await asyncio.sleep(self._latency_ms / 1000)
 
         # Find matching response
@@ -197,7 +197,7 @@ class FakeLLMProvider(LLMProviderPort):
         # Handle streaming (simplified)
         if stream:
 
-            async def stream_generator():
+            async def stream_generator() -> AsyncIterator[LLMGenerateResponse]:
                 yield LLMGenerateResponse(
                     response=response_text,
                     model=model or self.default_model,
@@ -220,7 +220,7 @@ class FakeLLMProvider(LLMProviderPort):
             eval_duration=300_000_000,
         )
 
-    def get_last_call(self) -> Optional[FakeCallRecord]:
+    def get_last_call(self) -> FakeCallRecord | None:
         """Get the most recent call record."""
         return self.call_history[-1] if self.call_history else None
 
@@ -231,19 +231,23 @@ class FakeLLMProvider(LLMProviderPort):
     def assert_called_once(self) -> None:
         """Assert that generate() was called exactly once."""
         if len(self.call_history) != 1:
-            raise AssertionError(f"Expected 1 call, got {len(self.call_history)}")
+            msg = f"Expected 1 call, got {len(self.call_history)}"
+            raise AssertionError(msg)
 
     def assert_not_called(self) -> None:
         """Assert that generate() was never called."""
         if self.call_history:
-            raise AssertionError(f"Expected no calls, got {len(self.call_history)}")
+            msg = f"Expected no calls, got {len(self.call_history)}"
+            raise AssertionError(msg)
 
     def assert_prompt_contains(self, text: str) -> None:
         """Assert that the last prompt contains the given text."""
         last_call = self.get_last_call()
         if not last_call:
-            raise AssertionError("No calls recorded")
+            msg = "No calls recorded"
+            raise AssertionError(msg)
         if text.lower() not in last_call.prompt.lower():
-            raise AssertionError(
+            msg = (
                 f"Expected prompt to contain '{text}', got: {last_call.prompt[:200]}..."
             )
+            raise AssertionError(msg)

@@ -1,8 +1,11 @@
 """Tests for DistributingGateway with deferred BE slot and RemoteChatDriver."""
 
 import asyncio
+import contextvars
 import logging
+from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import asynccontextmanager
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import aiohttp
@@ -10,13 +13,19 @@ import pytest
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 
+from news_creator.config.distributed_be_config import RemoteTarget
+from news_creator.domain.errors import UntemplatedRawPromptError
 from news_creator.domain.models import LLMGenerateResponse
+from news_creator.gateway import dispatch_metrics
 from news_creator.gateway.distributing_gateway import DistributingGateway
+from news_creator.gateway.remote_chat_driver import (
+    RemoteChatDriver,
+    RemoteRequestRejectedError,
+)
+from news_creator.gateway.remote_health_checker import RemoteHealthChecker
 
 
-def _target_a():
-    from news_creator.config.distributed_be_config import RemoteTarget
-
+def _target_a() -> RemoteTarget:
     return RemoteTarget(
         base_url="http://router-a.example:8080",
         model="provider-a/model-a:latest",
@@ -24,9 +33,7 @@ def _target_a():
     )
 
 
-def _target_b():
-    from news_creator.config.distributed_be_config import RemoteTarget
-
+def _target_b() -> RemoteTarget:
     return RemoteTarget(
         base_url="http://router-b.example:8080",
         model="provider-b/model-b:latest",
@@ -34,9 +41,7 @@ def _target_b():
     )
 
 
-def _small_target():
-    from news_creator.config.distributed_be_config import RemoteTarget
-
+def _small_target() -> RemoteTarget:
     return RemoteTarget(
         base_url="http://router-small.example:8080",
         model="provider-s/model-small:latest",
@@ -44,7 +49,7 @@ def _small_target():
     )
 
 
-def _make_local_gateway():
+def _make_local_gateway() -> MagicMock:
     """Create a mock local OllamaGateway tracking hold_slot acquisitions."""
     gw = MagicMock()
     gw.config = MagicMock()
@@ -75,7 +80,9 @@ def _make_local_gateway():
     gw.local_task_id = "local-slot-task-id"
 
     @asynccontextmanager
-    async def _hold_slot(is_high_priority=False):
+    async def _hold_slot(
+        is_high_priority: bool = False,
+    ) -> AsyncIterator[tuple[float, asyncio.Event, str]]:
         gw.hold_slot_calls.append(is_high_priority)
         gw.active_slot_count += 1
         try:
@@ -113,28 +120,30 @@ def _make_local_gateway():
     return gw
 
 
-def _make_health_checker(targets=None):
+def _make_health_checker(targets: list[RemoteTarget] | None = None) -> MagicMock:
     """Create a mock RemoteHealthChecker that evaluates fits(target)."""
     candidate_pool = list(targets) if targets is not None else [_target_a()]
-    in_flight = set()
-    unhealthy = set()
+    in_flight: set[RemoteTarget] = set()
+    unhealthy: set[RemoteTarget] = set()
 
     hc = MagicMock()
 
-    def _acquire_idle_target(fits):
+    def _acquire_idle_target(
+        fits: Callable[[RemoteTarget], bool],
+    ) -> RemoteTarget | None:
         for t in candidate_pool:
             if t not in in_flight and t not in unhealthy and fits(t):
                 in_flight.add(t)
                 return t
         return None
 
-    def _release_target(t):
+    def _release_target(t: RemoteTarget) -> None:
         in_flight.discard(t)
 
-    def _mark_success(t):
+    def _mark_success(t: RemoteTarget) -> None:
         in_flight.discard(t)
 
-    def _mark_failure(t):
+    def _mark_failure(t: RemoteTarget) -> None:
         in_flight.discard(t)
         unhealthy.add(t)
 
@@ -148,7 +157,7 @@ def _make_health_checker(targets=None):
     return hc
 
 
-def _make_remote_driver():
+def _make_remote_driver() -> MagicMock:
     """Create a mock RemoteChatDriver."""
     driver = MagicMock()
     driver.initialize = AsyncMock()
@@ -168,8 +177,8 @@ def _make_remote_driver():
 
 def _make_gateway(
     enabled: bool = True,
-    targets=None,
-):
+    targets: list[RemoteTarget] | None = None,
+) -> tuple[DistributingGateway, MagicMock, MagicMock, MagicMock]:
     local = _make_local_gateway()
     hc = _make_health_checker(targets=targets)
     driver = _make_remote_driver()
@@ -183,9 +192,7 @@ def _make_gateway(
 
 
 @pytest.fixture
-def metrics_reader():
-    from news_creator.gateway import dispatch_metrics
-
+def metrics_reader() -> Iterator[InMemoryMetricReader]:
     reader = InMemoryMetricReader()
     provider = MeterProvider(metric_readers=[reader])
     meter = provider.get_meter("news_creator.distributed_be")
@@ -195,7 +202,7 @@ def metrics_reader():
     provider.shutdown()
 
 
-def _metric_points(reader, name):
+def _metric_points(reader: InMemoryMetricReader, name: str) -> list[Any]:
     data = reader.get_metrics_data()
     if data is None:
         return []
@@ -208,7 +215,7 @@ def _metric_points(reader, name):
     return points
 
 
-def _match(points, **attrs):
+def _match(points: list[Any], **attrs: object) -> list[Any]:
     return [
         p for p in points if all(p.attributes.get(k) == v for k, v in attrs.items())
     ]
@@ -216,8 +223,8 @@ def _match(points, **attrs):
 
 @pytest.mark.asyncio
 async def test_remote_success_takes_no_local_slot_and_logs_served_model(
-    metrics_reader, caplog
-):
+    metrics_reader: InMemoryMetricReader, caplog: pytest.LogCaptureFixture
+) -> None:
     """BE request inside deferred hold_slot dispatches to remote without taking a local slot and logs served_model."""
     target_a = _target_a()
     gw, local, hc, driver = _make_gateway(enabled=True, targets=[target_a])
@@ -258,7 +265,9 @@ async def test_remote_success_takes_no_local_slot_and_logs_served_model(
 
 
 @pytest.mark.asyncio
-async def test_prompt_too_large_for_every_target_falls_back_to_local_with_local_slot():
+async def test_prompt_too_large_for_every_target_falls_back_to_local_with_local_slot() -> (
+    None
+):
     """When estimated_prompt_tokens + max_tokens + 256 > target.num_ctx for all targets, run locally with a local BE slot."""
     small_target = _small_target()
     gw, local, hc, driver = _make_gateway(enabled=True, targets=[small_target])
@@ -280,10 +289,10 @@ async def test_prompt_too_large_for_every_target_falls_back_to_local_with_local_
 
 
 @pytest.mark.asyncio
-async def test_prompt_fitting_exact_num_ctx_boundary_dispatches_to_remote():
+async def test_prompt_fitting_exact_num_ctx_boundary_dispatches_to_remote() -> None:
     """When estimated_prompt_tokens + max_tokens + 256 == target.num_ctx, the target fits."""
     small_target = _small_target()
-    gw, local, hc, driver = _make_gateway(enabled=True, targets=[small_target])
+    gw, local, _hc, driver = _make_gateway(enabled=True, targets=[small_target])
     exact_body = "a" * 732
     prompt = f"<|turn>user\n{exact_body}<turn|>\n<|turn>model\n"
 
@@ -297,13 +306,16 @@ async def test_prompt_fitting_exact_num_ctx_boundary_dispatches_to_remote():
 
 
 @pytest.mark.asyncio
-async def test_first_target_runtime_error_falls_over_to_second_target(metrics_reader):
+async def test_first_target_runtime_error_falls_over_to_second_target(
+    metrics_reader: InMemoryMetricReader,
+) -> None:
     """If the first target raises RuntimeError, mark_failure is called and the next fitting target is used."""
     target_a = _target_a()
     target_b = _target_b()
+    targets = [target_a, target_b]
     gw, local, hc, driver = _make_gateway(
         enabled=True,
-        targets=[target_a, target_b],
+        targets=targets,
     )
     driver.chat = AsyncMock(
         side_effect=[
@@ -321,7 +333,7 @@ async def test_first_target_runtime_error_falls_over_to_second_target(metrics_re
         result = await gw.generate_raw(prompt)
 
     assert result.response == "from target B"
-    assert driver.chat.await_count == 2
+    assert driver.chat.await_count == len(targets)
     assert driver.chat.await_args_list[0].args[0] == target_a
     assert driver.chat.await_args_list[1].args[0] == target_b
     hc.mark_failure.assert_called_once_with(target_a)
@@ -339,13 +351,17 @@ async def test_first_target_runtime_error_falls_over_to_second_target(metrics_re
 
 
 @pytest.mark.asyncio
-async def test_all_targets_fail_falls_back_to_local_with_local_slot(metrics_reader):
+async def test_all_targets_fail_falls_back_to_local_with_local_slot(
+    metrics_reader: InMemoryMetricReader,
+) -> None:
     """When every fitting target raises RuntimeError, fall back to local while holding a local BE slot."""
     target_a = _target_a()
     target_b = _target_b()
+    targets = [target_a, target_b]
+    requested_num_predict = 900
     gw, local, hc, driver = _make_gateway(
         enabled=True,
-        targets=[target_a, target_b],
+        targets=targets,
     )
     driver.chat = AsyncMock(
         side_effect=[
@@ -356,18 +372,18 @@ async def test_all_targets_fail_falls_back_to_local_with_local_slot(metrics_read
     prompt = "<|turn>user\nSummarize article.<turn|>\n<|turn>model\n"
 
     async with gw.hold_slot(is_high_priority=False):
-        result = await gw.generate_raw(prompt, num_predict=900)
+        result = await gw.generate_raw(prompt, num_predict=requested_num_predict)
 
     assert result.response == "local raw response"
-    assert driver.chat.await_count == 2
-    assert hc.mark_failure.call_count == 2
+    assert driver.chat.await_count == len(targets)
+    assert hc.mark_failure.call_count == len(targets)
     assert local.hold_slot_calls == [False]
     local.generate_raw.assert_awaited_once()
     assert (
         local.generate_raw.await_args.kwargs["cancel_event"] is local.local_cancel_event
     )
     assert local.generate_raw.await_args.kwargs["task_id"] == local.local_task_id
-    assert local.generate_raw.await_args.kwargs["num_predict"] == 900
+    assert local.generate_raw.await_args.kwargs["num_predict"] == requested_num_predict
 
     fallbacks = _match(
         _metric_points(metrics_reader, "newscreator.distributed_be.fallbacks"),
@@ -379,14 +395,15 @@ async def test_all_targets_fail_falls_back_to_local_with_local_slot(metrics_read
 
 
 @pytest.mark.asyncio
-async def test_connection_refused_on_every_target_still_produces_summary_locally():
+async def test_connection_refused_on_every_target_still_produces_summary_locally() -> (
+    None
+):
     """ADR-000943 degraded contract: connection refused on every remote target still produces summary locally."""
-    from news_creator.gateway.remote_chat_driver import RemoteChatDriver
-
     target_a = _target_a()
     target_b = _target_b()
+    targets = [target_a, target_b]
     local = _make_local_gateway()
-    hc = _make_health_checker(targets=[target_a, target_b])
+    hc = _make_health_checker(targets=targets)
     real_driver = RemoteChatDriver(timeout_seconds=5, reasoning_effort=None)
     mock_session = MagicMock()
     mock_session.closed = False
@@ -412,20 +429,20 @@ async def test_connection_refused_on_every_target_still_produces_summary_locally
         result = await gw.generate_raw(prompt)
 
     assert result.response == "local raw response"
-    assert hc.mark_failure.call_count == 2
+    assert hc.mark_failure.call_count == len(targets)
     assert local.hold_slot_calls == [False]
     local.generate_raw.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_rt_passthrough_holds_real_local_slot_and_delegates_unchanged():
+async def test_rt_passthrough_holds_real_local_slot_and_delegates_unchanged() -> None:
     """RT (is_high_priority=True) acquires a real local RT slot in hold_slot and delegates generate_raw unchanged."""
     target_a = _target_a()
     gw, local, hc, driver = _make_gateway(enabled=True, targets=[target_a])
     prompt = "<|turn>user\nRT request.<turn|>\n<|turn>model\n"
 
     async with gw.hold_slot(is_high_priority=True) as (
-        wait_time,
+        _wait_time,
         cancel_event,
         task_id,
     ):
@@ -447,10 +464,10 @@ async def test_rt_passthrough_holds_real_local_slot_and_delegates_unchanged():
 
 
 @pytest.mark.asyncio
-async def test_format_parameter_inside_deferred_be_slot_raises_value_error():
+async def test_format_parameter_inside_deferred_be_slot_raises_value_error() -> None:
     """format != None inside a deferred BE slot raises ValueError; structured output is never routed remotely."""
     target_a = _target_a()
-    gw, local, hc, driver = _make_gateway(enabled=True, targets=[target_a])
+    gw, local, _hc, driver = _make_gateway(enabled=True, targets=[target_a])
     prompt = "<|turn>user\nReturn JSON.<turn|>\n<|turn>model\n"
 
     async with gw.hold_slot(is_high_priority=False):
@@ -462,10 +479,10 @@ async def test_format_parameter_inside_deferred_be_slot_raises_value_error():
 
 
 @pytest.mark.asyncio
-async def test_options_mapping_sends_only_max_tokens_temperature_and_top_p():
+async def test_options_mapping_sends_only_max_tokens_temperature_and_top_p() -> None:
     """Options merged from config + caller options + num_predict send only max_tokens, temperature, top_p."""
     target_a = _target_a()
-    gw, local, hc, driver = _make_gateway(enabled=True, targets=[target_a])
+    gw, _local, _hc, driver = _make_gateway(enabled=True, targets=[target_a])
     prompt = "<|turn>user\nSummarize this.<turn|>\n<|turn>model\n"
     caller_options = {
         "temperature": 0.35,
@@ -494,7 +511,7 @@ async def test_options_mapping_sends_only_max_tokens_temperature_and_top_p():
 
 
 @pytest.mark.asyncio
-async def test_disabled_gateway_passes_through_to_local():
+async def test_disabled_gateway_passes_through_to_local() -> None:
     """When enabled=False, hold_slot(False) and generate_raw pass through to local gateway."""
     target_a = _target_a()
     gw, local, hc, driver = _make_gateway(enabled=False, targets=[target_a])
@@ -517,10 +534,10 @@ async def test_disabled_gateway_passes_through_to_local():
 
 
 @pytest.mark.asyncio
-async def test_passthrough_methods_and_queue_status():
+async def test_passthrough_methods_and_queue_status() -> None:
     """generate(), chat_generate(), list_models() delegate to local; queue_status() includes remotes and flag."""
     target_a = _target_a()
-    gw, local, hc, driver = _make_gateway(enabled=True, targets=[target_a])
+    gw, _local, hc, driver = _make_gateway(enabled=True, targets=[target_a])
     hc.status.return_value = [
         {"url": target_a.base_url, "model": target_a.model, "healthy": True}
     ]
@@ -541,7 +558,9 @@ async def test_passthrough_methods_and_queue_status():
 
 
 @pytest.mark.asyncio
-async def test_local_fallback_reuses_single_local_slot_across_retries_and_exits_on_outer_exit():
+async def test_local_fallback_reuses_single_local_slot_across_retries_and_exits_on_outer_exit() -> (
+    None
+):
     """F1: No usable targets + 3 generate_raw calls in one deferred slot acquires local.hold_slot(False) once and releases on outer exit."""
     gw, local, hc, driver = _make_gateway(enabled=True, targets=[])
     prompt = "<|turn>user\nSummarize article.<turn|>\n<|turn>model\n"
@@ -556,12 +575,13 @@ async def test_local_fallback_reuses_single_local_slot_across_retries_and_exits_
 
     assert local.active_slot_count == 0
     assert local.slot_exit_count == 1
-    assert [r1.response, r2.response, r3.response] == [
+    responses = [r1, r2, r3]
+    assert [r.response for r in responses] == [
         "local raw response",
         "local raw response",
         "local raw response",
     ]
-    assert local.generate_raw.await_count == 3
+    assert local.generate_raw.await_count == len(responses)
     for call in local.generate_raw.await_args_list:
         assert call.kwargs["cancel_event"] is local.local_cancel_event
         assert call.kwargs["task_id"] == local.local_task_id
@@ -572,16 +592,22 @@ async def test_local_fallback_reuses_single_local_slot_across_retries_and_exits_
 
 @pytest.mark.parametrize("exc_cls", [RuntimeError, asyncio.CancelledError])
 @pytest.mark.asyncio
-async def test_local_fallback_slot_released_on_exception_or_cancellation(exc_cls):
+async def test_local_fallback_slot_released_on_exception_or_cancellation(
+    exc_cls: type[BaseException],
+) -> None:
     """F1: The reused local slot inside a deferred BE slot is released when the outer hold_slot exits on exception or cancellation."""
     gw, local, _hc, _driver = _make_gateway(enabled=True, targets=[])
     prompt = "<|turn>user\nSummarize article.<turn|>\n<|turn>model\n"
 
-    with pytest.raises(exc_cls):
+    async def _fail_inside_slot() -> None:
         async with gw.hold_slot(is_high_priority=False):
             await gw.generate_raw(prompt)
             assert local.active_slot_count == 1
-            raise exc_cls("abort inside deferred slot")
+            msg = "abort inside deferred slot"
+            raise exc_cls(msg)
+
+    with pytest.raises(exc_cls):
+        await _fail_inside_slot()
 
     assert local.hold_slot_calls == [False]
     assert local.active_slot_count == 0
@@ -589,10 +615,12 @@ async def test_local_fallback_slot_released_on_exception_or_cancellation(exc_cls
 
 
 @pytest.mark.asyncio
-async def test_nested_rt_hold_slot_inside_deferred_be_slot_clears_and_restores_deferred_flag():
+async def test_nested_rt_hold_slot_inside_deferred_be_slot_clears_and_restores_deferred_flag() -> (
+    None
+):
     """F5: hold_slot(True) inside hold_slot(False) clears the deferred flag for its duration and restores it after."""
     target_a = _target_a()
-    gw, local, hc, driver = _make_gateway(enabled=True, targets=[target_a])
+    gw, local, _hc, driver = _make_gateway(enabled=True, targets=[target_a])
     rt_prompt = "<|turn>user\nInteractive RT prompt.<turn|>\n<|turn>model\n"
     be_prompt = "<|turn>user\nBatch BE prompt.<turn|>\n<|turn>model\n"
 
@@ -627,7 +655,9 @@ async def test_nested_rt_hold_slot_inside_deferred_be_slot_clears_and_restores_d
 
 
 @pytest.mark.asyncio
-async def test_nested_disabled_passthrough_hold_slot_clears_and_restores_deferred_flag():
+async def test_nested_disabled_passthrough_hold_slot_clears_and_restores_deferred_flag() -> (
+    None
+):
     """F5: A disabled gateway's hold_slot clears the deferred flag for its duration and restores it after."""
     target_a = _target_a()
     outer_gw, _outer_local, _outer_hc, outer_driver = _make_gateway(
@@ -660,16 +690,15 @@ async def test_nested_disabled_passthrough_hold_slot_clears_and_restores_deferre
 
 @pytest.mark.asyncio
 async def test_request_rejected_error_skips_mark_failure_records_rejected_and_tries_next_then_local(
-    metrics_reader,
-):
+    metrics_reader: InMemoryMetricReader,
+) -> None:
     """F6: On RemoteRequestRejectedError, release target without mark_failure, record reason='rejected', try next target, then local."""
-    from news_creator.gateway.remote_chat_driver import RemoteRequestRejectedError
-
     target_a = _target_a()
     target_b = _target_b()
+    targets = [target_a, target_b]
     gw, local, hc, driver = _make_gateway(
         enabled=True,
-        targets=[target_a, target_b],
+        targets=targets,
     )
     driver.chat = AsyncMock(
         side_effect=[
@@ -683,7 +712,7 @@ async def test_request_rejected_error_skips_mark_failure_records_rejected_and_tr
         result = await gw.generate_raw(prompt)
 
     assert result.response == "local raw response"
-    assert driver.chat.await_count == 2
+    assert driver.chat.await_count == len(targets)
     hc.release_target.assert_any_call(target_a)
     # mark_failure must NOT be called for target_a (rejected), only for target_b (plain RuntimeError)
     hc.mark_failure.assert_called_once_with(target_b)
@@ -700,10 +729,10 @@ async def test_request_rejected_error_skips_mark_failure_records_rejected_and_tr
 
 
 @pytest.mark.asyncio
-async def test_cancelled_error_during_remote_chat_releases_target_and_propagates():
+async def test_cancelled_error_during_remote_chat_releases_target_and_propagates() -> (
+    None
+):
     """T2: CancelledError during remote chat releases the target (busy=False, in_flight_count=0) and propagates."""
-    from news_creator.gateway.remote_health_checker import RemoteHealthChecker
-
     target_a = _target_a()
     local = _make_local_gateway()
     hc = RemoteHealthChecker(targets=[target_a])
@@ -731,7 +760,9 @@ async def test_cancelled_error_during_remote_chat_releases_target_and_propagates
 
 
 @pytest.mark.asyncio
-async def test_child_task_calling_generate_raw_inside_deferred_slot_raises_runtime_error():
+async def test_child_task_calling_generate_raw_inside_deferred_slot_raises_runtime_error() -> (
+    None
+):
     """L1: A child task spawned inside hold_slot(False) is not the slot owner; generate_raw raises RuntimeError and enters no local slot."""
     gw, local, hc, driver = _make_gateway(enabled=True, targets=[])
     prompt = "<|turn>user\nSummarize article.<turn|>\n<|turn>model\n"
@@ -748,10 +779,10 @@ async def test_child_task_calling_generate_raw_inside_deferred_slot_raises_runti
 
 
 @pytest.mark.asyncio
-async def test_generate_raw_after_deferred_slot_exits_via_captured_context_raises_runtime_error():
+async def test_generate_raw_after_deferred_slot_exits_via_captured_context_raises_runtime_error() -> (
+    None
+):
     """L1: Calling generate_raw with a captured deferred-slot state after hold_slot(False) exited raises RuntimeError."""
-    import contextvars
-
     gw, local, hc, driver = _make_gateway(enabled=True, targets=[])
     prompt = "<|turn>user\nSummarize article.<turn|>\n<|turn>model\n"
 
@@ -782,9 +813,7 @@ async def test_generate_raw_after_deferred_slot_exits_via_captured_context_raise
 
 
 @pytest.mark.asyncio
-async def test_generate_raw_rejects_untemplated_prompt_before_remote_dispatch():
-    from news_creator.domain.errors import UntemplatedRawPromptError
-
+async def test_generate_raw_rejects_untemplated_prompt_before_remote_dispatch() -> None:
     target_a = _target_a()
     gw, local, hc, driver = _make_gateway(
         enabled=True,

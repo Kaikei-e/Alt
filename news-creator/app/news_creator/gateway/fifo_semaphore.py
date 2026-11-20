@@ -8,6 +8,8 @@ arrive, which is important for fairness and predictability.
 import asyncio
 import logging
 import time
+from types import TracebackType
+from typing import Self
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +28,7 @@ class FIFOSemaphore:
             await do_work()
     """
 
-    def __init__(self, value: int = 1):
+    def __init__(self, value: int = 1) -> None:
         """
         Initialize FIFO semaphore.
 
@@ -38,7 +40,8 @@ class FIFOSemaphore:
             ValueError: If value < 0
         """
         if value < 0:
-            raise ValueError("Semaphore initial value must be >= 0")
+            msg = "Semaphore initial value must be >= 0"
+            raise ValueError(msg)
 
         self._value = value
         self._max_value = value
@@ -46,7 +49,7 @@ class FIFOSemaphore:
         self._lock = asyncio.Lock()
         self._last_wait_time: float = 0.0  # Track last wait time for diagnostics
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         """String representation of the semaphore."""
         return f"<FIFOSemaphore value={self._value}/{self._max_value}, waiters={self._waiters.qsize()}>"
 
@@ -97,15 +100,16 @@ class FIFOSemaphore:
         # Wait for a slot to become available
         try:
             await future
-            wait_time = time.monotonic() - start_time
-            self._last_wait_time = wait_time
-            return wait_time
         except asyncio.CancelledError:
             # If cancelled, try to remove from queue
             # Note: The future may have already been processed, so we just cancel it
             if not future.done():
                 future.cancel()
             raise
+        else:
+            wait_time = time.monotonic() - start_time
+            self._last_wait_time = wait_time
+            return wait_time
 
     def release(self) -> None:
         """
@@ -133,12 +137,17 @@ class FIFOSemaphore:
         if self._value < self._max_value:
             self._value += 1
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> Self:
         """Async context manager entry."""
         await self.acquire()
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> bool:
         """Async context manager exit."""
         self.release()
         return False

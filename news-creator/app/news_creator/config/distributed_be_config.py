@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from urllib.parse import urlparse
 
 MIN_REMOTE_TARGET_NUM_CTX = 1024
+_TARGET_ENTRY_FIELD_COUNT = 3
 VALID_REASONING_EFFORTS: frozenset[str] = frozenset(
     {"none", "minimal", "low", "medium", "high"}
 )
@@ -35,32 +36,36 @@ def parse_distributed_be_targets(raw: str) -> list[RemoteTarget]:
     for idx, raw_entry in enumerate(raw.split(",")):
         entry = raw_entry.strip()
         parts = entry.split("|")
-        if len(parts) != 3:
-            raise ValueError(
+        if len(parts) != _TARGET_ENTRY_FIELD_COUNT:
+            msg = (
                 f"Invalid DISTRIBUTED_BE_TARGETS entry at index {idx}: "
                 f"expected '<base_url>|<model>|<num_ctx>', got {raw_entry!r}"
             )
+            raise ValueError(msg)
 
         raw_base_url, raw_model, raw_num_ctx = parts
         if not raw_base_url.isprintable():
-            raise ValueError(
+            msg = (
                 f"Invalid DISTRIBUTED_BE_TARGETS entry at index {idx}: "
                 f"base_url must not contain non-printable characters, got {raw_base_url!r}"
             )
+            raise ValueError(msg)
         stripped_base_url = raw_base_url.strip()
         if any(ch.isspace() for ch in stripped_base_url):
-            raise ValueError(
+            msg = (
                 f"Invalid DISTRIBUTED_BE_TARGETS entry at index {idx}: "
                 f"base_url must not contain whitespace, got {stripped_base_url!r}"
             )
+            raise ValueError(msg)
         parsed_url = urlparse(stripped_base_url)
         try:
             _ = parsed_url.port
         except ValueError as exc:
-            raise ValueError(
+            msg = (
                 f"Invalid DISTRIBUTED_BE_TARGETS entry at index {idx}: "
                 f"base_url has invalid port, got {stripped_base_url!r}"
-            ) from exc
+            )
+            raise ValueError(msg) from exc
         if (
             parsed_url.scheme not in ("http", "https")
             or not parsed_url.netloc
@@ -76,40 +81,45 @@ def parse_distributed_be_targets(raw: str) -> list[RemoteTarget]:
             or "#" in stripped_base_url
             or parsed_url.path.rstrip("/") != ""
         ):
-            raise ValueError(
+            msg = (
                 f"Invalid DISTRIBUTED_BE_TARGETS entry at index {idx}: "
                 f"base_url must be http or https with a host and no path, userinfo, params, query, or fragment, got {stripped_base_url!r}"
             )
+            raise ValueError(msg)
         base_url = stripped_base_url.rstrip("/")
 
         model = raw_model.strip()
         if not model:
-            raise ValueError(
+            msg = (
                 f"Invalid DISTRIBUTED_BE_TARGETS entry at index {idx}: "
                 "model must be non-empty"
             )
+            raise ValueError(msg)
 
         num_ctx_str = raw_num_ctx.strip()
         try:
             num_ctx = int(num_ctx_str)
         except ValueError as exc:
-            raise ValueError(
+            msg = (
                 f"Invalid DISTRIBUTED_BE_TARGETS entry at index {idx}: "
                 f"num_ctx must be an integer, got {num_ctx_str!r}"
-            ) from exc
+            )
+            raise ValueError(msg) from exc
 
         if num_ctx < MIN_REMOTE_TARGET_NUM_CTX:
-            raise ValueError(
+            msg = (
                 f"Invalid DISTRIBUTED_BE_TARGETS entry at index {idx}: "
                 f"num_ctx must be >= {MIN_REMOTE_TARGET_NUM_CTX}, got {num_ctx}"
             )
+            raise ValueError(msg)
 
         target = RemoteTarget(base_url=base_url, model=model, num_ctx=num_ctx)
         if target.key in seen_keys:
-            raise ValueError(
+            msg = (
                 f"Invalid DISTRIBUTED_BE_TARGETS entry at index {idx}: "
                 f"duplicate (base_url, model) pair {target.key!r}"
             )
+            raise ValueError(msg)
         seen_keys.add(target.key)
         targets.append(target)
 
@@ -125,8 +135,9 @@ def parse_distributed_be_reasoning_effort(raw: str | None) -> str | None:
         return None
     if value not in VALID_REASONING_EFFORTS:
         allowed = ", ".join(sorted(VALID_REASONING_EFFORTS))
-        raise ValueError(
+        msg = (
             f"Invalid DISTRIBUTED_BE_REASONING_EFFORT: {raw!r}; "
             f"must be one of: {allowed}"
         )
+        raise ValueError(msg)
     return value

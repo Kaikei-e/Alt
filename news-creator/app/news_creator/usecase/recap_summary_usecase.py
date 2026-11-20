@@ -7,8 +7,9 @@ import logging
 import re
 import textwrap
 import time
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, List
+from typing import Any
 from urllib.parse import urlparse
 
 from jinja2 import Template
@@ -20,33 +21,61 @@ except ImportError:
     json_repair = None  # type: ignore
 
 from news_creator.config.config import NewsCreatorConfig
+from news_creator.domain.errors import PreemptedException
+from news_creator.domain.models import (
+    BatchRecapSummaryError,
+    BatchRecapSummaryRequest,
+    BatchRecapSummaryResponse,
+    IntermediateSummary,
+    LLMGenerateResponse,
+    RecapClusterInput,
+    RecapSummary,
+    RecapSummaryMetadata,
+    RecapSummaryRequest,
+    RecapSummaryResponse,
+    Reference,
+    RepresentativeSentence,
+)
 from news_creator.domain.output_guard import sanitize_output_markdown
 from news_creator.domain.prompt_boundary import (
     sanitize_untrusted_content,
     wrap_untrusted_content_with_report,
 )
 from news_creator.domain.prompts import _THINKING_BLOCK_RE, wrap_gemma_prompt
-from news_creator.domain.models import (
-    BatchRecapSummaryError,
-    BatchRecapSummaryRequest,
-    BatchRecapSummaryResponse,
-    LLMGenerateResponse,
-    RecapClusterInput,
-    RecapSummaryRequest,
-    RecapSummaryResponse,
-    RecapSummary,
-    RecapSummaryMetadata,
-    IntermediateSummary,
-    Reference,
-    RepresentativeSentence,
-)
-from news_creator.domain.errors import PreemptedException
 from news_creator.port.cache_port import CachePort
 from news_creator.port.llm_provider_port import LLMProviderPort
 from news_creator.usecase.prompt_builder import PromptBuilderFactory
 from news_creator.utils.repetition_detector import detect_repetition
 
 logger = logging.getLogger(__name__)
+
+_THREE_DAYS_WINDOW_DAYS = 3
+_LOOKS_JAPANESE_RATIO_THRESHOLD = 0.15
+_ABNORMAL_PROMPT_PREVIEW_MIN_CHARS = 1000
+_THIN_EVIDENCE_MAX_SENTENCES = 3
+_MIN_THREE_DAYS_BULLET_CHARS = 40
+_MIN_INTERMEDIATE_BULLETS = 2
+_TITLE_PUNCTUATION_MIN_IDX = 15
+_TITLE_MAX_CHARS = 45
+
+
+@dataclass(frozen=True)
+class _ChunkSummaryTask:
+    request: RecapSummaryRequest
+    chunk_idx: int
+    chunk_clusters: list[RecapClusterInput]
+    json_schema: dict[str, Any]
+    llm_options: dict[str, Any]
+    total_chunks: int
+
+
+@dataclass(frozen=True)
+class _ReducePhaseParams:
+    max_bullets: int
+    temperature_override: float | None
+    llm_options: dict[str, Any]
+    depth: int = 0
+
 
 if json_repair is None:
     logger.warning(
@@ -83,7 +112,7 @@ def _is_safe_url_scheme(url: str) -> bool:
         return False
     try:
         return urlparse(url.strip()).scheme.lower() in ("http", "https")
-    except Exception:
+    except ValueError:
         return False
 
 
@@ -135,18 +164,18 @@ class RecapSummaryUsecase:
         config: NewsCreatorConfig,
         llm_provider: LLMProviderPort,
         cache: CachePort | None = None,
-    ):
+    ) -> None:
         self.config = config
         self.llm_provider = llm_provider
         self.cache = cache
 
         # Load prompt templates (7days default + 3days change-focused)
         prompts_dir = Path(__file__).parent.parent.parent / "prompts"
-        with open(prompts_dir / "recap_summary.jinja", "r", encoding="utf-8") as f:
+        with (prompts_dir / "recap_summary.jinja").open(encoding="utf-8") as f:
             self.template_7days = Template(f.read())
         template_3days_path = prompts_dir / "recap_summary_3days.jinja"
         if template_3days_path.exists():
-            with open(template_3days_path, "r", encoding="utf-8") as f:
+            with template_3days_path.open(encoding="utf-8") as f:
                 self.template_3days = Template(f.read())
         else:
             self.template_3days = self.template_7days  # fallback
@@ -156,7 +185,7 @@ class RecapSummaryUsecase:
     @staticmethod
     def _is_3days_request(request: RecapSummaryRequest) -> bool:
         window_days = getattr(request, "window_days", None)
-        return isinstance(window_days, int) and window_days <= 3
+        return isinstance(window_days, int) and window_days <= _THREE_DAYS_WINDOW_DAYS
 
     def _max_cluster_section_length(self, request: RecapSummaryRequest) -> int:
         return 8_000 if self._is_3days_request(request) else 12_000
@@ -175,9 +204,10 @@ class RecapSummaryUsecase:
             return None
         try:
             parsed = urlparse(url if "://" in url else f"https://{url}")
-            return parsed.netloc or None
-        except Exception:
+        except ValueError:
             return None
+        else:
+            return parsed.netloc or None
 
     def _score_sentence_for_packing(
         self,
@@ -222,7 +252,8 @@ class RecapSummaryUsecase:
     ) -> RecapSummaryResponse:
         """Produce structured summary JSON from clustering evidence."""
         if not request.clusters:
-            raise ValueError("clusters must not be empty")
+            msg = "clusters must not be empty"
+            raise ValueError(msg)
 
         # Try to get from cache first
         cache_key = self._generate_cache_key(request)
@@ -306,7 +337,9 @@ class RecapSummaryUsecase:
             min(3, self.config.ollama_request_concurrency)
         )
 
-        async def throttled_request(req: RecapSummaryRequest):
+        async def throttled_request(
+            req: RecapSummaryRequest,
+        ) -> RecapSummaryResponse | BatchRecapSummaryError:
             async with batch_semaphore:
                 return await self._generate_summary_with_error_handling(req)
 
@@ -322,7 +355,7 @@ class RecapSummaryUsecase:
         responses: list[RecapSummaryResponse] = []
         errors: list[BatchRecapSummaryError] = []
 
-        for req, result in zip(batch_request.requests, results):
+        for _req, result in zip(batch_request.requests, results, strict=True):
             if isinstance(result, BatchRecapSummaryError):
                 errors.append(result)
             else:
@@ -352,7 +385,7 @@ class RecapSummaryUsecase:
         """
         try:
             return await self.generate_summary(request)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - batch item error boundary returning BatchRecapSummaryError
             logger.warning(
                 "Failed to generate summary in batch",
                 extra={
@@ -370,7 +403,7 @@ class RecapSummaryUsecase:
             )
 
     def _should_bypass_llm(self, request: RecapSummaryRequest) -> bool:
-        if request.window_days is None or request.window_days > 3:
+        if request.window_days is None or request.window_days > _THREE_DAYS_WINDOW_DAYS:
             return False
 
         min_sources = max(1, self._config_int("recap_min_source_articles_for_llm", 1))
@@ -383,9 +416,7 @@ class RecapSummaryUsecase:
         )
         if representative_sentence_count < min_sentences:
             return True
-        if distinct_sources and distinct_sources < min_sources:
-            return True
-        return False
+        return bool(distinct_sources and distinct_sources < min_sources)
 
     def _count_request_evidence(self, request: RecapSummaryRequest) -> tuple[int, int]:
         source_keys = set()
@@ -428,47 +459,31 @@ class RecapSummaryUsecase:
 
     async def _generate_chunk_summary(
         self,
-        request: RecapSummaryRequest,
-        chunk_idx: int,
-        chunk_clusters: List,
-        json_schema: dict[str, Any],
-        llm_options: dict[str, Any],
-        total_chunks: int,
+        task: _ChunkSummaryTask,
     ) -> IntermediateSummary | None:
         """Generate an intermediate summary for a single chunk.
 
         Uses hold_slot() + generate_raw() on the local gateway with preemption retry.
-
-        Args:
-            request: Original recap summary request
-            chunk_idx: Index of the current chunk (0-based)
-            chunk_clusters: Clusters for this chunk
-            json_schema: JSON schema for intermediate summary
-            llm_options: LLM generation options
-            total_chunks: Total number of chunks
-
-        Returns:
-            IntermediateSummary if successful, None otherwise
         """
         logger.debug(
             "Map phase: Processing chunk",
             extra={
-                "job_id": str(request.job_id),
-                "genre": request.genre,
-                "chunk_index": chunk_idx + 1,
-                "total_chunks": total_chunks,
-                "clusters_in_chunk": len(chunk_clusters),
+                "job_id": str(task.request.job_id),
+                "genre": task.request.genre,
+                "chunk_index": task.chunk_idx + 1,
+                "total_chunks": task.total_chunks,
+                "clusters_in_chunk": len(task.chunk_clusters),
             },
         )
 
         # Create a temporary request for this chunk
         chunk_request = RecapSummaryRequest(
-            job_id=request.job_id,
-            genre=request.genre,
-            clusters=chunk_clusters,
+            job_id=task.request.job_id,
+            genre=task.request.genre,
+            clusters=task.chunk_clusters,
             genre_highlights=None,
-            options=request.options,
-            window_days=request.window_days,
+            options=task.request.options,
+            window_days=task.request.window_days,
         )
         chunk_prompt = self._build_prompt(
             chunk_request, max_bullets=4, intermediate=True
@@ -478,17 +493,27 @@ class RecapSummaryUsecase:
             llm_response = await self._hold_slot_generate_raw_with_preempt_retry(
                 chunk_prompt,
                 num_predict=self.config.recap_summary_num_predict // 2,
-                format=json_schema,
-                options=llm_options,
+                output_format=task.json_schema,
+                options=task.llm_options,
             )
-            return self._parse_intermediate_summary_json(llm_response.response, request)
-        except Exception as e:
+            return self._parse_intermediate_summary_json(
+                llm_response.response, task.request
+            )
+        except (
+            OSError,
+            TimeoutError,
+            RuntimeError,
+            ValueError,
+            TypeError,
+            KeyError,
+            PreemptedException,
+        ) as e:
             logger.warning(
                 "Failed to generate intermediate summary for chunk, skipping",
                 extra={
-                    "job_id": str(request.job_id),
-                    "genre": request.genre,
-                    "chunk_index": chunk_idx + 1,
+                    "job_id": str(task.request.job_id),
+                    "genre": task.request.genre,
+                    "chunk_index": task.chunk_idx + 1,
                     "error": str(e),
                 },
             )
@@ -536,15 +561,19 @@ class RecapSummaryUsecase:
             min(3, self.config.ollama_request_concurrency)
         )
 
-        async def throttled_chunk_summary(chunk_idx, chunk_clusters):
+        async def throttled_chunk_summary(
+            chunk_idx: int, chunk_clusters: list[RecapClusterInput]
+        ) -> IntermediateSummary | None:
             async with map_semaphore:
                 return await self._generate_chunk_summary(
-                    request=request,
-                    chunk_idx=chunk_idx,
-                    chunk_clusters=chunk_clusters,
-                    json_schema=json_schema_intermediate,
-                    llm_options=llm_options,
-                    total_chunks=len(chunks),
+                    _ChunkSummaryTask(
+                        request=request,
+                        chunk_idx=chunk_idx,
+                        chunk_clusters=chunk_clusters,
+                        json_schema=json_schema_intermediate,
+                        llm_options=llm_options,
+                        total_chunks=len(chunks),
+                    )
                 )
 
         map_tasks = [
@@ -582,9 +611,11 @@ class RecapSummaryUsecase:
             response, reduce_depth = await self._recursive_reduce_phase(
                 intermediate_summaries,
                 request,
-                max_bullets,
-                temperature_override,
-                llm_options,
+                _ReducePhaseParams(
+                    max_bullets=max_bullets,
+                    temperature_override=temperature_override,
+                    llm_options=llm_options,
+                ),
             )
             if dropped_map_chunks > 0 and not response.metadata.is_degraded:
                 response = response.model_copy(
@@ -619,24 +650,9 @@ class RecapSummaryUsecase:
         self,
         summaries: list[IntermediateSummary],
         request: RecapSummaryRequest,
-        max_bullets: int,
-        temperature_override: float | None,
-        llm_options: dict[str, Any],
-        depth: int = 0,
+        params: _ReducePhaseParams,
     ) -> tuple[RecapSummaryResponse, int]:
-        """Recursively reduce summaries until they fit in 12K context.
-
-        Args:
-            summaries: List of intermediate summaries to reduce
-            request: Original recap summary request
-            max_bullets: Maximum number of bullets in final summary
-            temperature_override: Optional temperature override
-            llm_options: LLM generation options
-            depth: Current recursion depth
-
-        Returns:
-            Tuple of (final RecapSummaryResponse, depth reached)
-        """
+        """Recursively reduce summaries until they fit in 12K context."""
         max_reduce_chars = getattr(self.config, "recursive_reduce_max_chars", 10_000)
         max_recursion_depth = getattr(self.config, "recursive_reduce_max_depth", 3)
 
@@ -654,16 +670,22 @@ class RecapSummaryUsecase:
                 "intermediate_count": len(summaries),
                 "combined_length": len(combined_text),
                 "max_reduce_chars": max_reduce_chars,
-                "depth": depth,
+                "depth": params.depth,
             },
         )
 
         # If combined text fits within limit or max depth reached, do final reduce
-        if len(combined_text) <= max_reduce_chars or depth >= max_recursion_depth:
+        if (
+            len(combined_text) <= max_reduce_chars
+            or params.depth >= max_recursion_depth
+        ):
             response = await self._final_reduce(
-                summaries, request, max_bullets, temperature_override
+                summaries,
+                request,
+                params.max_bullets,
+                params.temperature_override,
             )
-            return response, depth
+            return response, params.depth
 
         # Recursive reduce: Split summaries into groups and reduce each
         logger.info(
@@ -672,7 +694,7 @@ class RecapSummaryUsecase:
                 "job_id": str(request.job_id),
                 "genre": request.genre,
                 "combined_length": len(combined_text),
-                "depth": depth,
+                "depth": params.depth,
             },
         )
 
@@ -688,7 +710,9 @@ class RecapSummaryUsecase:
         # Reduce each group in parallel
         json_schema_intermediate = IntermediateSummary.model_json_schema()
         reduce_tasks = [
-            self._reduce_group(group, request, llm_options, json_schema_intermediate)
+            self._reduce_group(
+                group, request, params.llm_options, json_schema_intermediate
+            )
             for group in summary_groups
         ]
 
@@ -709,7 +733,7 @@ class RecapSummaryUsecase:
                 extra={
                     "job_id": str(request.job_id),
                     "genre": request.genre,
-                    "depth": depth,
+                    "depth": params.depth,
                     "total_groups": len(summary_groups),
                     "succeeded_groups": len(reduced_summaries),
                     "dropped_groups": dropped_groups,
@@ -723,7 +747,10 @@ class RecapSummaryUsecase:
                 extra={"job_id": str(request.job_id), "genre": request.genre},
             )
             response = await self._final_reduce(
-                summaries, request, max_bullets, temperature_override
+                summaries,
+                request,
+                params.max_bullets,
+                params.temperature_override,
             )
             if not response.metadata.is_degraded:
                 response = response.model_copy(
@@ -736,16 +763,18 @@ class RecapSummaryUsecase:
                         )
                     }
                 )
-            return response, depth
+            return response, params.depth
 
         # Recurse with reduced summaries
         response, final_depth = await self._recursive_reduce_phase(
             reduced_summaries,
             request,
-            max_bullets,
-            temperature_override,
-            llm_options,
-            depth + 1,
+            _ReducePhaseParams(
+                max_bullets=params.max_bullets,
+                temperature_override=params.temperature_override,
+                llm_options=params.llm_options,
+                depth=params.depth + 1,
+            ),
         )
         if dropped_groups > 0 and not response.metadata.is_degraded:
             response = response.model_copy(
@@ -791,11 +820,19 @@ class RecapSummaryUsecase:
             llm_response = await self._hold_slot_generate_raw_with_preempt_retry(
                 reduce_prompt,
                 num_predict=self.config.recap_summary_num_predict // 2,
-                format=json_schema,
+                output_format=json_schema,
                 options=llm_options,
             )
             return self._parse_intermediate_summary_json(llm_response.response, request)
-        except Exception as e:
+        except (
+            OSError,
+            TimeoutError,
+            RuntimeError,
+            ValueError,
+            TypeError,
+            KeyError,
+            PreemptedException,
+        ) as e:
             logger.warning(
                 "Failed to reduce group in recursive reduce",
                 extra={
@@ -811,7 +848,7 @@ class RecapSummaryUsecase:
         prompt: str,
         *,
         num_predict: int,
-        format: dict[str, Any],
+        output_format: dict[str, Any],
         options: dict[str, Any],
     ) -> LLMGenerateResponse:
         """Acquire a BE slot and run generate_raw, retrying when an RT request preempts.
@@ -835,7 +872,7 @@ class RecapSummaryUsecase:
                         cancel_event=cancel_event,
                         task_id=task_id,
                         num_predict=num_predict,
-                        format=format,
+                        format=output_format,
                         options=options,
                     )
             except PreemptedException as exc:
@@ -927,18 +964,17 @@ class RecapSummaryUsecase:
         )
 
         # Convert intermediate summaries to highlights format
-        reduce_highlights = []
-        for inter_summary in summaries:
-            for bullet in inter_summary.bullets:
-                reduce_highlights.append(
-                    RepresentativeSentence(
-                        text=bullet,
-                        published_at=None,
-                        source_url=None,
-                        article_id=None,
-                        is_centroid=False,
-                    )
-                )
+        reduce_highlights = [
+            RepresentativeSentence(
+                text=bullet,
+                published_at=None,
+                source_url=None,
+                article_id=None,
+                is_centroid=False,
+            )
+            for inter_summary in summaries
+            for bullet in inter_summary.bullets
+        ]
 
         # Create a dummy cluster to satisfy Pydantic validation
         # The genre_highlights will be used for the actual summarization
@@ -968,7 +1004,7 @@ class RecapSummaryUsecase:
             reduce_request, max_bullets, temperature_override
         )
 
-    def _split_clusters_into_chunks(self, clusters: List) -> list[List]:
+    def _split_clusters_into_chunks(self, clusters: list) -> list[list]:
         """Split clusters into chunks that fit within max_chunk_chars with overlap.
 
         Uses overlap to preserve context between chunks, preventing information
@@ -986,8 +1022,8 @@ class RecapSummaryUsecase:
             len(self._format_cluster_block(cluster)) + 2 for cluster in clusters
         ]
 
-        chunks: list[List] = []
-        current_chunk: List = []
+        chunks: list[list] = []
+        current_chunk: list = []
         current_length = 0
         chunk_start_idx = 0
 
@@ -999,7 +1035,7 @@ class RecapSummaryUsecase:
 
                 # Calculate overlap: include trailing clusters from previous chunk
                 overlap_chars = int(max_chars * overlap_ratio)
-                overlap_clusters: List = []
+                overlap_clusters: list = []
                 overlap_length = 0
 
                 # Add clusters from end of previous chunk for overlap
@@ -1012,7 +1048,7 @@ class RecapSummaryUsecase:
                         break
 
                 # Start new chunk with overlap clusters
-                current_chunk = overlap_clusters + [cluster]
+                current_chunk = [*overlap_clusters, cluster]
                 current_length = overlap_length + cluster_length
                 chunk_start_idx = idx - len(overlap_clusters)
             else:
@@ -1038,6 +1074,17 @@ class RecapSummaryUsecase:
             {"role": "user", "content": prompt_body},
         ]
 
+    @staticmethod
+    def _extract_chat_content(raw_response: object) -> str:
+        if not isinstance(raw_response, dict):
+            msg = "chat_generate returned non-dict response"
+            raise TypeError(msg)
+        content = raw_response.get("message", {}).get("content")
+        if not isinstance(content, str):
+            msg = "chat_generate response missing message.content string"
+            raise TypeError(msg)
+        return content
+
     async def _call_llm_for_recap(
         self,
         messages: list[dict[str, str]],
@@ -1062,12 +1109,7 @@ class RecapSummaryUsecase:
             raw_response = await self.llm_provider.chat_generate(
                 chat_payload, priority="low"
             )
-            # Validate that response is a proper dict with message.content
-            if not isinstance(raw_response, dict):
-                raise TypeError("chat_generate returned non-dict response")
-            content = raw_response.get("message", {}).get("content")
-            if not isinstance(content, str):
-                raise TypeError("chat_generate response missing message.content string")
+            content = self._extract_chat_content(raw_response)
             return LLMGenerateResponse(
                 response=content,
                 model=raw_response.get("model", self.config.model_name),
@@ -1075,7 +1117,7 @@ class RecapSummaryUsecase:
                 eval_count=raw_response.get("eval_count", 0),
                 total_duration=raw_response.get("total_duration", 0),
             )
-        except (NotImplementedError, TypeError):
+        except (NotImplementedError, TypeError) as err:
             # Fallback: use generate() with raw prompt (legacy path)
             opts = {**llm_options}
             num_predict = opts.pop("num_predict", self.config.recap_summary_num_predict)
@@ -1087,8 +1129,154 @@ class RecapSummaryUsecase:
                 options=opts,
             )
             if not isinstance(result, LLMGenerateResponse):
-                raise TypeError("Expected specific type")
+                msg = "Expected specific type"
+                raise TypeError(msg) from err
             return result
+
+    @staticmethod
+    def _compute_attempt_sampling(
+        base_temperature: float, attempt: int, *, is_3days: bool
+    ) -> tuple[float, float]:
+        current_temp = base_temperature
+        # Use lower repeat_penalty for recap to avoid EOS bias (ADR-632 insight)
+        current_repeat_penalty = 1.0
+        if attempt > 0:
+            if not is_3days:
+                current_temp = max(0.05, base_temperature - (0.05 * attempt))
+            current_repeat_penalty = min(1.2, current_repeat_penalty + (0.05 * attempt))
+        return current_temp, current_repeat_penalty
+
+    def _build_repair_messages(
+        self,
+        request: RecapSummaryRequest,
+        max_bullets: int,
+        raw_response: str,
+        issues: list[str],
+    ) -> list[dict[str, str]]:
+        repair_body = self._build_repair_prompt_body(
+            request,
+            max_bullets,
+            raw_response,
+            issues,
+        )
+        return [
+            {"role": "system", "content": GEMMA_RECAP_SYSTEM_PROMPT},
+            {"role": "user", "content": repair_body},
+        ]
+
+    def _check_bullet_length_gate(
+        self,
+        request: RecapSummaryRequest,
+        bullets: list[str],
+        attempt: int,
+        max_retries: int,
+    ) -> RuntimeError | None:
+        min_avg = self._config_int("recap_min_avg_bullet_length", 150)
+        if not bullets or min_avg <= 0:
+            return None
+        avg_bullet_len = sum(len(b) for b in bullets) / len(bullets)
+        if avg_bullet_len < min_avg and attempt < max_retries:
+            logger.warning(
+                "Recap bullets too short, will retry",
+                extra={
+                    "job_id": str(request.job_id),
+                    "genre": request.genre,
+                    "attempt": attempt + 1,
+                    "avg_bullet_length": avg_bullet_len,
+                    "min_required": min_avg,
+                },
+            )
+            return RuntimeError(
+                f"Bullets too short (avg: {avg_bullet_len:.0f} < {min_avg})"
+            )
+        return None
+
+    def _build_single_shot_response(
+        self,
+        request: RecapSummaryRequest,
+        summary_payload: dict[str, Any],
+        llm_response: LLMGenerateResponse,
+        current_temp: float | None,
+        json_validation_error_count: int,
+    ) -> RecapSummaryResponse:
+        summary = RecapSummary(**summary_payload)
+        metadata = RecapSummaryMetadata(
+            model=llm_response.model,
+            temperature=current_temp
+            if current_temp is not None
+            else self.config.llm_temperature,
+            prompt_tokens=llm_response.prompt_eval_count,
+            completion_tokens=llm_response.eval_count,
+            processing_time_ms=self._nanoseconds_to_milliseconds(
+                llm_response.total_duration
+            ),
+            json_validation_errors=json_validation_error_count,
+            summary_length_bullets=len(summary.bullets),
+        )
+        return RecapSummaryResponse(
+            job_id=request.job_id,
+            genre=request.genre,
+            summary=summary,
+            metadata=metadata,
+        )
+
+    def _single_shot_fallback_response(
+        self, request: RecapSummaryRequest, last_error: RuntimeError | None
+    ) -> RecapSummaryResponse:
+        if request.genre_highlights:
+            logger.warning(
+                "Falling back to genre highlights due to LLM failure",
+                extra={"job_id": str(request.job_id), "genre": request.genre},
+            )
+            return self._create_fallback_response(request)
+
+        if request.clusters:
+            logger.warning(
+                "Falling back to cluster representatives due to LLM failure",
+                extra={"job_id": str(request.job_id), "genre": request.genre},
+            )
+            return self._create_fallback_from_clusters(request)
+
+        if last_error:
+            raise last_error
+        msg = "Failed to generate recap summary"
+        raise RuntimeError(msg)
+
+    def _check_repetition_retry(
+        self,
+        text: str,
+        request: RecapSummaryRequest,
+        attempt: int,
+        max_retries: int,
+        *,
+        parsed: bool,
+    ) -> RuntimeError | None:
+        has_rep, score, patterns = detect_repetition(
+            text, threshold=self.config.repetition_threshold
+        )
+        if not (has_rep and attempt < max_retries):
+            return None
+        log_msg = (
+            "Repetition detected in parsed recap summary, will retry"
+            if parsed
+            else "Repetition detected in recap summary, will retry"
+        )
+        err_msg = (
+            f"Repetition in parsed summary (score: {score:.2f})"
+            if parsed
+            else f"Repetition detected (score: {score:.2f})"
+        )
+        logger.warning(
+            log_msg,
+            extra={
+                "job_id": str(request.job_id),
+                "genre": request.genre,
+                "attempt": attempt + 1,
+                "repetition_score": score,
+                "patterns": patterns,
+            },
+        )
+        return RuntimeError(err_msg)
 
     async def _generate_single_shot_summary(
         self,
@@ -1097,8 +1285,7 @@ class RecapSummaryUsecase:
         temperature_override: float | None,
     ) -> RecapSummaryResponse:
         """Generate summary using single-shot approach via /api/chat with thinking."""
-        messages = self._build_chat_messages(request, max_bullets)
-        active_messages = messages
+        active_messages = self._build_chat_messages(request, max_bullets)
         is_3days = self._is_3days_request(request)
 
         base_temperature = (
@@ -1106,60 +1293,32 @@ class RecapSummaryUsecase:
             if temperature_override is not None
             else self._resolve_generation_temperature(request)
         )
-        llm_options: dict[str, Any] | None = {"temperature": base_temperature}
-
         max_retries = max(2, self.config.max_repetition_retries)
         remaining_repair_attempts = max(
             0, self._config_int("recap_summary_repair_attempts", 1)
         )
-        last_error = None
+        last_error: RuntimeError | None = None
         json_validation_error_count = 0
+        json_schema = RecapSummary.model_json_schema()
 
         for attempt in range(max_retries + 1):
-            current_temp = base_temperature
-            # Use lower repeat_penalty for recap to avoid EOS bias (ADR-632 insight)
-            current_repeat_penalty = 1.0
-
-            if attempt > 0:
-                if is_3days:
-                    current_temp = base_temperature
-                else:
-                    current_temp = max(0.05, base_temperature - (0.05 * attempt))
-                current_repeat_penalty = min(
-                    1.2, current_repeat_penalty + (0.05 * attempt)
-                )
-
-            json_schema = RecapSummary.model_json_schema()
-
+            current_temp, current_repeat_penalty = self._compute_attempt_sampling(
+                base_temperature, attempt, is_3days=is_3days
+            )
             llm_options_retry = {
-                **(llm_options or {}),
                 "temperature": float(current_temp),
                 "repeat_penalty": float(current_repeat_penalty),
                 "num_predict": self.config.recap_summary_num_predict,
             }
-
             llm_response = await self._call_llm_for_recap(
                 active_messages, json_schema, llm_options_retry
             )
 
-            has_repetition, rep_score, rep_patterns = detect_repetition(
-                llm_response.response, threshold=self.config.repetition_threshold
+            raw_rep_err = self._check_repetition_retry(
+                llm_response.response, request, attempt, max_retries, parsed=False
             )
-
-            if has_repetition and attempt < max_retries:
-                logger.warning(
-                    "Repetition detected in recap summary, will retry",
-                    extra={
-                        "job_id": str(request.job_id),
-                        "genre": request.genre,
-                        "attempt": attempt + 1,
-                        "repetition_score": rep_score,
-                        "patterns": rep_patterns,
-                    },
-                )
-                last_error = RuntimeError(
-                    f"Repetition detected (score: {rep_score:.2f})"
-                )
+            if raw_rep_err is not None:
+                last_error = raw_rep_err
                 continue
 
             try:
@@ -1175,26 +1334,11 @@ class RecapSummaryUsecase:
                     + " "
                     + " ".join(summary_payload.get("bullets", []))
                 )
-                has_repetition_in_summary, rep_score_summary, rep_patterns_summary = (
-                    detect_repetition(
-                        summary_text, threshold=self.config.repetition_threshold
-                    )
+                parsed_rep_err = self._check_repetition_retry(
+                    summary_text, request, attempt, max_retries, parsed=True
                 )
-
-                if has_repetition_in_summary and attempt < max_retries:
-                    logger.warning(
-                        "Repetition detected in parsed recap summary, will retry",
-                        extra={
-                            "job_id": str(request.job_id),
-                            "genre": request.genre,
-                            "attempt": attempt + 1,
-                            "repetition_score": rep_score_summary,
-                            "patterns": rep_patterns_summary,
-                        },
-                    )
-                    last_error = RuntimeError(
-                        f"Repetition in parsed summary (score: {rep_score_summary:.2f})"
-                    )
+                if parsed_rep_err is not None:
+                    last_error = parsed_rep_err
                     continue
 
                 quality_issues = self._validate_summary_quality(
@@ -1214,61 +1358,31 @@ class RecapSummaryUsecase:
                     json_validation_error_count += len(quality_issues)
                     if remaining_repair_attempts > 0:
                         remaining_repair_attempts -= 1
-                        repair_body = self._build_repair_prompt_body(
+                        active_messages = self._build_repair_messages(
                             request,
                             max_bullets,
                             llm_response.response,
                             quality_issues,
                         )
-                        active_messages = [
-                            {"role": "system", "content": GEMMA_RECAP_SYSTEM_PROMPT},
-                            {"role": "user", "content": repair_body},
-                        ]
                         continue
                     break
 
-                # Bullet length quality gate: reject too-short bullets
-                bullets = summary_payload.get("bullets", [])
-                min_avg = self._config_int("recap_min_avg_bullet_length", 150)
-                if bullets and min_avg > 0:
-                    avg_bullet_len = sum(len(b) for b in bullets) / len(bullets)
-                    if avg_bullet_len < min_avg and attempt < max_retries:
-                        logger.warning(
-                            "Recap bullets too short, will retry",
-                            extra={
-                                "job_id": str(request.job_id),
-                                "genre": request.genre,
-                                "attempt": attempt + 1,
-                                "avg_bullet_length": avg_bullet_len,
-                                "min_required": min_avg,
-                            },
-                        )
-                        last_error = RuntimeError(
-                            f"Bullets too short (avg: {avg_bullet_len:.0f} < {min_avg})"
-                        )
-                        continue
-
-                summary = RecapSummary(**summary_payload)
-
-                metadata = RecapSummaryMetadata(
-                    model=llm_response.model,
-                    temperature=current_temp
-                    if current_temp is not None
-                    else self.config.llm_temperature,
-                    prompt_tokens=llm_response.prompt_eval_count,
-                    completion_tokens=llm_response.eval_count,
-                    processing_time_ms=self._nanoseconds_to_milliseconds(
-                        llm_response.total_duration
-                    ),
-                    json_validation_errors=json_validation_error_count,
-                    summary_length_bullets=len(summary.bullets),
+                length_err = self._check_bullet_length_gate(
+                    request,
+                    summary_payload.get("bullets", []),
+                    attempt,
+                    max_retries,
                 )
+                if length_err is not None:
+                    last_error = length_err
+                    continue
 
-                return RecapSummaryResponse(
-                    job_id=request.job_id,
-                    genre=request.genre,
-                    summary=summary,
-                    metadata=metadata,
+                return self._build_single_shot_response(
+                    request,
+                    summary_payload,
+                    llm_response,
+                    current_temp,
+                    json_validation_error_count,
                 )
             except (RuntimeError, ValidationError) as e:
                 last_error = e if isinstance(e, RuntimeError) else RuntimeError(str(e))
@@ -1277,41 +1391,18 @@ class RecapSummaryUsecase:
                     json_validation_error_count += len(validation_issues)
                     if remaining_repair_attempts > 0:
                         remaining_repair_attempts -= 1
-                        repair_body = self._build_repair_prompt_body(
+                        active_messages = self._build_repair_messages(
                             request,
                             max_bullets,
                             llm_response.response,
                             validation_issues,
                         )
-                        active_messages = [
-                            {"role": "system", "content": GEMMA_RECAP_SYSTEM_PROMPT},
-                            {"role": "user", "content": repair_body},
-                        ]
                         continue
                 if attempt < max_retries:
                     continue
-                # Last attempt failed — fall through to fallback path
                 break
 
-        # Fail-safe: If all retries fail, return fallback
-        if request.genre_highlights:
-            logger.warning(
-                "Falling back to genre highlights due to LLM failure",
-                extra={"job_id": str(request.job_id), "genre": request.genre},
-            )
-            return self._create_fallback_response(request)
-
-        # Fallback: Use representative sentences from clusters
-        if request.clusters:
-            logger.warning(
-                "Falling back to cluster representatives due to LLM failure",
-                extra={"job_id": str(request.job_id), "genre": request.genre},
-            )
-            return self._create_fallback_from_clusters(request)
-
-        if last_error:
-            raise last_error
-        raise RuntimeError("Failed to generate recap summary")
+        return self._single_shot_fallback_response(request, last_error)
 
     def _create_fallback_response(
         self, request: RecapSummaryRequest
@@ -1340,7 +1431,7 @@ class RecapSummaryUsecase:
     ) -> RecapSummaryResponse:
         """Create a degraded response when 3days evidence is too thin for reliable generation."""
         response = self._create_fallback_from_clusters(request)
-        response = response.model_copy(
+        return response.model_copy(
             update={
                 "metadata": response.metadata.model_copy(
                     update={
@@ -1351,7 +1442,6 @@ class RecapSummaryUsecase:
                 )
             }
         )
-        return response
 
     def _create_fallback_from_clusters(
         self, request: RecapSummaryRequest
@@ -1377,7 +1467,6 @@ class RecapSummaryUsecase:
             reverse=True,
         )
 
-        candidates: list[dict[str, Any]] = []
         seen_texts: set[str] = set()
 
         # Collect all valid sentences, preferring Japanese
@@ -1412,8 +1501,7 @@ class RecapSummaryUsecase:
                     other_candidates.append(entry)
 
         # Prefer Japanese sentences, then fill with others
-        candidates = (ja_candidates + other_candidates)[:max_fallback_bullets]
-        return candidates
+        return (ja_candidates + other_candidates)[:max_fallback_bullets]
 
     def _create_degraded_response(
         self,
@@ -1507,7 +1595,7 @@ class RecapSummaryUsecase:
         if not text:
             return False
         ja_count = len(JAPANESE_CHAR_RE.findall(text))
-        return ja_count / max(len(text), 1) > 0.15
+        return ja_count / max(len(text), 1) > _LOOKS_JAPANESE_RATIO_THRESHOLD
 
     @staticmethod
     def _genre_to_japanese(genre: str) -> str:
@@ -1526,7 +1614,7 @@ class RecapSummaryUsecase:
         try:
             parsed = urlparse(url if "://" in url else f"https://{url}")
             return parsed.netloc or parsed.path.split("/")[0] or url
-        except Exception:
+        except ValueError:
             return url
 
     @staticmethod
@@ -1565,7 +1653,7 @@ class RecapSummaryUsecase:
         max_bullets: int,
         intermediate: bool = False,
     ) -> tuple[str, str]:
-        MAX_CLUSTER_SECTION_LENGTH = self._max_cluster_section_length(request)
+        max_cluster_section_length = self._max_cluster_section_length(request)
 
         max_clusters = (
             len(request.clusters)
@@ -1582,7 +1670,7 @@ class RecapSummaryUsecase:
             estimated_length = (
                 cluster_section_length + len(cluster_block) + 2
             )  # +2 for "\n\n"
-            if estimated_length > MAX_CLUSTER_SECTION_LENGTH:
+            if estimated_length > max_cluster_section_length:
                 logger.warning(
                     "Cluster section truncated to fit context window",
                     extra={
@@ -1592,7 +1680,7 @@ class RecapSummaryUsecase:
                         "clusters_dropped": len(request.clusters) - len(cluster_lines),
                         "total_clusters": len(request.clusters),
                         "cluster_section_length": cluster_section_length,
-                        "max_length": MAX_CLUSTER_SECTION_LENGTH,
+                        "max_length": max_cluster_section_length,
                     },
                 )
                 break
@@ -1603,9 +1691,9 @@ class RecapSummaryUsecase:
         cluster_section = "\n\n".join(cluster_lines)
 
         # Final truncation if still too long (safety check)
-        if len(cluster_section) > MAX_CLUSTER_SECTION_LENGTH:
+        if len(cluster_section) > max_cluster_section_length:
             original_length = len(cluster_section)
-            cluster_section = cluster_section[:MAX_CLUSTER_SECTION_LENGTH]
+            cluster_section = cluster_section[:max_cluster_section_length]
             logger.warning(
                 "Cluster section truncated at final check",
                 extra={
@@ -1613,7 +1701,7 @@ class RecapSummaryUsecase:
                     "genre": request.genre,
                     "original_length": original_length,
                     "truncated_length": len(cluster_section),
-                    "max_length": MAX_CLUSTER_SECTION_LENGTH,
+                    "max_length": max_cluster_section_length,
                 },
             )
 
@@ -1706,8 +1794,8 @@ class RecapSummaryUsecase:
         estimated_tokens = prompt_length // 4  # Rough estimate: 1 token ≈ 4 chars
 
         # Validate prompt size - detect abnormal amplification
-        ABNORMAL_PROMPT_THRESHOLD = 100_000  # characters (>25K tokens)
-        if prompt_length > ABNORMAL_PROMPT_THRESHOLD:
+        abnormal_prompt_threshold = 100_000  # characters (>25K tokens)
+        if prompt_length > abnormal_prompt_threshold:
             # Check for repetition in the prompt
             has_repetition, repetition_score, repetition_patterns = detect_repetition(
                 prompt, threshold=0.3
@@ -1727,7 +1815,9 @@ class RecapSummaryUsecase:
                     if request.genre_highlights
                     else 0,
                     "prompt_preview_start": prompt[:500],
-                    "prompt_preview_end": prompt[-500:] if prompt_length > 1000 else "",
+                    "prompt_preview_end": prompt[-500:]
+                    if prompt_length > _ABNORMAL_PROMPT_PREVIEW_MIN_CHARS
+                    else "",
                     "has_repetition": has_repetition,
                     "repetition_score": repetition_score,
                     "repetition_patterns": repetition_patterns,
@@ -1793,7 +1883,10 @@ class RecapSummaryUsecase:
         request: RecapSummaryRequest,
         payload: dict[str, Any],
     ) -> list[str]:
-        is_3days = request.window_days is not None and request.window_days <= 3
+        is_3days = (
+            request.window_days is not None
+            and request.window_days <= _THREE_DAYS_WINDOW_DAYS
+        )
         if not is_3days:
             return []
 
@@ -1804,7 +1897,7 @@ class RecapSummaryUsecase:
 
         # Count total representative sentences for thin-evidence detection
         _, total_sentences = self._count_request_evidence(request)
-        is_thin_evidence = total_sentences <= 3
+        is_thin_evidence = total_sentences <= _THIN_EVIDENCE_MAX_SENTENCES
 
         if not title:
             issues.append("title must be a non-empty Japanese string")
@@ -1844,7 +1937,10 @@ class RecapSummaryUsecase:
         if cited_ids and not cited_ids.issubset(reference_ids):
             issues.append("every cited [n] marker in bullets must exist in references")
 
-        if any(len(str(bullet).strip()) < 40 for bullet in bullets):
+        if any(
+            len(str(bullet).strip()) < _MIN_THREE_DAYS_BULLET_CHARS
+            for bullet in bullets
+        ):
             issues.append(
                 "3days recap bullets must be substantive, not ultra-short stubs"
             )
@@ -1865,7 +1961,7 @@ class RecapSummaryUsecase:
 
         if language != "ja":
             issues.append("intermediate summary language must be 'ja'")
-        if len(bullets) < 2:
+        if len(bullets) < _MIN_INTERMEDIATE_BULLETS:
             issues.append("intermediate summary must contain at least 2 bullets")
         if any(self._is_placeholder_bullet(str(bullet)) for bullet in bullets):
             issues.append(
@@ -1907,7 +2003,10 @@ class RecapSummaryUsecase:
     def _resolve_max_bullets(self, request: RecapSummaryRequest) -> int:
         if request.options and request.options.max_bullets is not None:
             return request.options.max_bullets
-        if request.window_days is not None and request.window_days <= 3:
+        if (
+            request.window_days is not None
+            and request.window_days <= _THREE_DAYS_WINDOW_DAYS
+        ):
             return 7
         return 15
 
@@ -1919,7 +2018,8 @@ class RecapSummaryUsecase:
         strict_contract: bool = False,
     ) -> tuple[dict[str, Any], int]:
         if not content:
-            raise RuntimeError("LLM returned empty response for recap summary")
+            msg = "LLM returned empty response for recap summary"
+            raise RuntimeError(msg)
 
         # Strip Gemma 4 thinking blocks before JSON parse
         content = _THINKING_BLOCK_RE.sub("", content)
@@ -1939,19 +2039,20 @@ class RecapSummaryUsecase:
                 try:
                     repaired_json = json_repair.repair_json(content)
                     parsed = json.loads(repaired_json)
-                except Exception:
+                except (ValueError, TypeError, RuntimeError):
                     # If repair fails, we can't do much without heuristics,
                     # but let's assume Structured Outputs generally work.
                     # We could re-introduce heuristics if strictly necessary,
                     # but usually this means the model completely refused or broke.
-                    raise RuntimeError(
-                        f"Failed to parse structured output: {exc}"
-                    ) from exc
+                    msg = f"Failed to parse structured output: {exc}"
+                    raise RuntimeError(msg) from exc
             else:
-                raise RuntimeError(f"Failed to parse structured output: {exc}") from exc
+                msg = f"Failed to parse structured output: {exc}"
+                raise RuntimeError(msg) from exc
 
         if not isinstance(parsed, dict):
-            raise RuntimeError("LLM response must be a JSON object")
+            msg = "LLM response must be a JSON object"
+            raise RuntimeError(msg)  # noqa: TRY004 - contract raises RuntimeError for malformed JSON shape
 
         return self._sanitize_summary_payload(
             parsed,
@@ -1965,9 +2066,8 @@ class RecapSummaryUsecase:
         request: RecapSummaryRequest,
     ) -> IntermediateSummary:
         if not content:
-            raise RuntimeError(
-                "LLM returned empty response for intermediate recap summary"
-            )
+            msg = "LLM returned empty response for intermediate recap summary"
+            raise RuntimeError(msg)
 
         # Strip Gemma 4 thinking blocks before JSON parse
         content = _THINKING_BLOCK_RE.sub("", content)
@@ -1979,12 +2079,12 @@ class RecapSummaryUsecase:
                 repaired_json = json_repair.repair_json(content)
                 parsed = json.loads(repaired_json)
             else:
-                raise RuntimeError(
-                    f"Failed to parse intermediate structured output: {exc}"
-                ) from exc
+                msg = f"Failed to parse intermediate structured output: {exc}"
+                raise RuntimeError(msg) from exc
 
         if not isinstance(parsed, dict):
-            raise RuntimeError("Intermediate summary response must be a JSON object")
+            msg = "Intermediate summary response must be a JSON object"
+            raise RuntimeError(msg)  # noqa: TRY004 - contract raises RuntimeError for malformed JSON shape
 
         payload = self._sanitize_intermediate_payload(parsed)
         if not payload.get("language") and not self._is_3days_request(request):
@@ -1995,40 +2095,32 @@ class RecapSummaryUsecase:
 
         return IntermediateSummary(**payload)
 
-    def _sanitize_summary_payload(
-        self,
-        payload: dict[str, Any],
-        max_bullets: int,
-        *,
-        strict_contract: bool = False,
-    ) -> dict[str, Any]:
-        summary_section = payload.get("summary")
-        if isinstance(summary_section, dict):
-            payload = summary_section
-
+    def _sanitize_summary_title(
+        self, payload: dict[str, Any], *, strict_contract: bool
+    ) -> str:
         title = payload.get("title")
-
-        # タイトルがコードフェンス等の不正値の場合は修正
         invalid_titles = ["```json", "```", "json", "{", ""]
         if strict_contract:
-            if isinstance(title, str):
-                title = title.strip()[:200]
-            else:
-                title = ""
+            title = title.strip()[:200] if isinstance(title, str) else ""
         elif not isinstance(title, str) or title.strip().lower() in invalid_titles:
-            # bulletsの先頭から抽出を試みる
             bullets = payload.get("bullets", [])
             if bullets and isinstance(bullets[0], str):
-                # 最初のbulletから15-45文字を抽出してタイトル化
-                first_bullet = bullets[0]
-                title = self._extract_title_from_bullet(first_bullet)
+                title = self._extract_title_from_bullet(bullets[0])
             else:
                 title = "主要トピックのまとめ"
 
         if not isinstance(title, str) or not title.strip():
             title = "" if strict_contract else "主要トピックのまとめ"
-        title = sanitize_output_markdown(title).strip()[:200]
+        return sanitize_output_markdown(title).strip()[:200]
 
+    @staticmethod
+    def _sanitize_summary_bullets(
+        payload: dict[str, Any],
+        max_bullets: int,
+        title: str,
+        *,
+        strict_contract: bool,
+    ) -> list[str]:
         bullets_field = payload.get("bullets")
         if isinstance(bullets_field, list):
             bullets = [
@@ -2038,12 +2130,6 @@ class RecapSummaryUsecase:
             ]
         else:
             bullets = []
-
-        language = payload.get("language")
-        if strict_contract:
-            language = language.strip() if isinstance(language, str) else ""
-        elif not isinstance(language, str) or not language.strip():
-            language = "ja"
 
         max_allowed = min(max(1, max_bullets), 15)
         if len(bullets) > max_allowed:
@@ -2056,80 +2142,97 @@ class RecapSummaryUsecase:
             )
             bullets = bullets[:max_allowed]
 
-        # Ensure at least one bullet is present
         if not bullets and not strict_contract:
             bullets = [title]
+        return bullets
 
-        # Validate and sanitize references
-        references = payload.get("references")
-        if references is not None:
-            if not isinstance(references, list):
-                references = None
-            else:
-                # Validate reference structure and IDs
-                validated_refs = []
-                seen_ids = set()
-                for ref in references:
-                    if not isinstance(ref, dict):
-                        continue
-                    ref_id = ref.get("id")
-                    if not isinstance(ref_id, int) or ref_id < 1 or ref_id in seen_ids:
-                        continue
-                    url = ref.get("url", "")
-                    domain = ref.get("domain", "")
-                    if not url or not domain:
-                        # Try to extract domain from URL if missing
-                        if url and not domain:
-                            try:
-                                parsed = urlparse(
-                                    url if "://" in url else f"https://{url}"
-                                )
-                                domain = (
-                                    parsed.netloc or parsed.path.split("/")[0] or url
-                                )
-                            except Exception:
-                                domain = url
-                        else:
-                            continue
-                    # ADR-890 followup: a bare-domain url like "dev.to" (no scheme,
-                    # no path) cannot be disambiguated to a specific article by the
-                    # recap-worker reconciler, so drop the entire reference.
-                    if "://" not in url and "/" not in url:
-                        continue
-                    if not _is_safe_url_scheme(url):
-                        continue
-                    # ADR-890 followup: production article_id is always a UUID.
-                    # LLM hallucinations ("article_id": "dev.to") must be nulled out
-                    # so the reconciler falls back to URL resolution.
-                    raw_article_id = ref.get("article_id")
-                    article_id = (
-                        raw_article_id
-                        if isinstance(raw_article_id, str)
-                        and UUID_SHAPE_RE.match(raw_article_id)
-                        else None
-                    )
-                    ref_entry: dict[str, Any] = {
-                        "id": ref_id,
-                        "url": url,
-                        "domain": domain,
-                        "article_id": article_id,
-                    }
-                    if "source_url" in ref:
-                        raw_source_url = ref.get("source_url")
-                        if isinstance(raw_source_url, str) and _is_safe_url_scheme(
-                            raw_source_url
-                        ):
-                            ref_entry["source_url"] = raw_source_url
-                    seen_ids.add(ref_id)
-                    validated_refs.append(ref_entry)
-                references = validated_refs if validated_refs else None
+    @staticmethod
+    def _sanitize_single_reference(
+        ref: object, seen_ids: set[int]
+    ) -> dict[str, Any] | None:
+        if not isinstance(ref, dict):
+            return None
+        ref_id = ref.get("id")
+        if not isinstance(ref_id, int) or ref_id < 1 or ref_id in seen_ids:
+            return None
+        url = ref.get("url", "")
+        domain = ref.get("domain", "")
+        if not url or not domain:
+            if not (url and not domain):
+                return None
+            try:
+                parsed = urlparse(url if "://" in url else f"https://{url}")
+                domain = parsed.netloc or parsed.path.split("/")[0] or url
+            except ValueError:
+                domain = url
+        # ADR-890 followup: a bare-domain url like "dev.to" (no scheme,
+        # no path) cannot be disambiguated to a specific article by the
+        # recap-worker reconciler, so drop the entire reference.
+        if "://" not in url and "/" not in url:
+            return None
+        if not _is_safe_url_scheme(url):
+            return None
+        raw_article_id = ref.get("article_id")
+        article_id = (
+            raw_article_id
+            if isinstance(raw_article_id, str) and UUID_SHAPE_RE.match(raw_article_id)
+            else None
+        )
+        ref_entry: dict[str, Any] = {
+            "id": ref_id,
+            "url": url,
+            "domain": domain,
+            "article_id": article_id,
+        }
+        if "source_url" in ref:
+            raw_source_url = ref.get("source_url")
+            if isinstance(raw_source_url, str) and _is_safe_url_scheme(raw_source_url):
+                ref_entry["source_url"] = raw_source_url
+        seen_ids.add(ref_id)
+        return ref_entry
 
-        # Auto-inject [n] reference markers into bullets that lack them
+    @classmethod
+    def _sanitize_summary_references(
+        cls, raw_references: object
+    ) -> list[dict[str, Any]] | None:
+        if not isinstance(raw_references, list):
+            return None
+        validated_refs: list[dict[str, Any]] = []
+        seen_ids: set[int] = set()
+        for ref in raw_references:
+            entry = cls._sanitize_single_reference(ref, seen_ids)
+            if entry is not None:
+                validated_refs.append(entry)
+        return validated_refs or None
+
+    def _sanitize_summary_payload(
+        self,
+        payload: dict[str, Any],
+        max_bullets: int,
+        *,
+        strict_contract: bool = False,
+    ) -> dict[str, Any]:
+        summary_section = payload.get("summary")
+        if isinstance(summary_section, dict):
+            payload = summary_section
+
+        title = self._sanitize_summary_title(payload, strict_contract=strict_contract)
+        bullets = self._sanitize_summary_bullets(
+            payload, max_bullets, title, strict_contract=strict_contract
+        )
+
+        language = payload.get("language")
+        if strict_contract:
+            language = language.strip() if isinstance(language, str) else ""
+        elif not isinstance(language, str) or not language.strip():
+            language = "ja"
+
+        references = self._sanitize_summary_references(payload.get("references"))
+
         final_bullets = []
         for idx, bullet in enumerate(bullets):
             trimmed = sanitize_output_markdown(bullet)[:1000]
             if references and not REFERENCE_MARKER_RE.search(trimmed):
-                # Assign the reference ID round-robin from available references
                 ref_id = references[idx % len(references)]["id"]
                 trimmed = f"{trimmed} [{ref_id}]"
             final_bullets.append(trimmed)
@@ -2178,11 +2281,11 @@ class RecapSummaryUsecase:
         """bulletテキストから適切なタイトルを抽出する"""
         # 最初の句点または45文字までを取得
         for i, char in enumerate(bullet):
-            if char in "。、" and 15 <= i <= 45:
+            if char in "。、" and _TITLE_PUNCTUATION_MIN_IDX <= i <= _TITLE_MAX_CHARS:
                 return bullet[: i + 1]
-            if i >= 45:
-                return bullet[:45] + "…"
-        return bullet[:45] if len(bullet) > 45 else bullet
+            if i >= _TITLE_MAX_CHARS:
+                return bullet[:_TITLE_MAX_CHARS] + "…"
+        return bullet[:_TITLE_MAX_CHARS] if len(bullet) > _TITLE_MAX_CHARS else bullet
 
     @staticmethod
     def _nanoseconds_to_milliseconds(value: int | None) -> int | None:
@@ -2246,7 +2349,7 @@ class RecapSummaryUsecase:
 
             cached_data = json.loads(cached_json)
             return RecapSummaryResponse(**cached_data)
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError, TypeError) as e:
             logger.warning(
                 "Failed to retrieve cached response",
                 extra={"cache_key": cache_key, "error": str(e)},
@@ -2272,7 +2375,7 @@ class RecapSummaryUsecase:
                 "Cached recap summary response",
                 extra={"cache_key": cache_key},
             )
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError, TypeError) as e:
             logger.warning(
                 "Failed to cache response",
                 extra={"cache_key": cache_key, "error": str(e)},

@@ -7,6 +7,8 @@ requests (streaming/on-time) over low-priority requests (batch processing).
 import asyncio
 import logging
 import time
+from types import TracebackType
+from typing import Self
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +42,7 @@ class PrioritySemaphore:
             semaphore.release()
     """
 
-    def __init__(self, value: int = 1):
+    def __init__(self, value: int = 1) -> None:
         """
         Initialize priority semaphore.
 
@@ -52,7 +54,8 @@ class PrioritySemaphore:
             ValueError: If value < 0
         """
         if value < 0:
-            raise ValueError("Semaphore initial value must be >= 0")
+            msg = "Semaphore initial value must be >= 0"
+            raise ValueError(msg)
 
         self._value = value
         self._max_value = value
@@ -61,7 +64,7 @@ class PrioritySemaphore:
         self._lock = asyncio.Lock()
         self._last_wait_time: float = 0.0
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         """String representation of the semaphore."""
         high_count = self._high_priority_waiters.qsize()
         low_count = self._low_priority_waiters.qsize()
@@ -135,13 +138,14 @@ class PrioritySemaphore:
         # Wait for a slot to become available
         try:
             await future
-            wait_time = time.monotonic() - start_time
-            self._last_wait_time = wait_time
-            return wait_time
         except asyncio.CancelledError:
             if not future.done():
                 future.cancel()
             raise
+        else:
+            wait_time = time.monotonic() - start_time
+            self._last_wait_time = wait_time
+            return wait_time
 
     def release(self) -> None:
         """
@@ -184,12 +188,17 @@ class PrioritySemaphore:
         if self._value < self._max_value:
             self._value += 1
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> Self:
         """Async context manager entry (low priority by default)."""
         await self.acquire(high_priority=False)
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> bool:
         """Async context manager exit."""
         self.release()
         return False

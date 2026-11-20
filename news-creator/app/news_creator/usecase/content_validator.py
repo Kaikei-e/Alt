@@ -63,7 +63,7 @@ class ContentValidator:
         min_length: int = DEFAULT_MIN_LENGTH,
         max_length: int = DEFAULT_MAX_LENGTH,
         abnormal_size_threshold: int = DEFAULT_ABNORMAL_THRESHOLD,
-    ):
+    ) -> None:
         """Initialize content validator.
 
         Args:

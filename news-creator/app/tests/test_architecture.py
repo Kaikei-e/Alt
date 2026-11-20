@@ -29,11 +29,11 @@ def _scan_violations(
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
-                    for prefix in forbidden_prefixes:
-                        if alias.name == prefix or alias.name.startswith(f"{prefix}."):
-                            violations.append(
-                                f"{py_file.name}:{node.lineno}: import {alias.name}"
-                            )
+                    violations.extend(
+                        f"{py_file.name}:{node.lineno}: import {alias.name}"
+                        for prefix in forbidden_prefixes
+                        if alias.name == prefix or alias.name.startswith(f"{prefix}.")
+                    )
             elif isinstance(node, ast.ImportFrom):
                 target_module = _resolve_module(py_file, node)
                 for prefix in forbidden_prefixes:
@@ -56,7 +56,7 @@ def _scan_violations(
     return violations
 
 
-def test_handlers_do_not_import_driver_or_gateway():
+def test_handlers_do_not_import_driver_or_gateway() -> None:
     handler_dir = BASE_DIR / "handler"
     forbidden = {"news_creator.driver", "news_creator.gateway"}
     violations = _scan_violations(handler_dir, forbidden)
@@ -66,7 +66,7 @@ def test_handlers_do_not_import_driver_or_gateway():
     )
 
 
-def test_usecases_do_not_import_infra_or_outer():
+def test_usecases_do_not_import_infra_or_outer() -> None:
     usecase_dir = BASE_DIR / "usecase"
     forbidden = {
         "news_creator.driver",

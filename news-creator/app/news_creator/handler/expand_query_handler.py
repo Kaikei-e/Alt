@@ -1,6 +1,7 @@
 """Expand Query handler - REST endpoint for RAG query expansion."""
 
 import logging
+
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 
@@ -8,9 +9,9 @@ from news_creator.domain.errors import QueueFullError
 from news_creator.domain.models import ExpandQueryRequest, ExpandQueryResponse
 from news_creator.usecase.expand_query_usecase import ExpandQueryUsecase
 from news_creator.utils.context_logger import (
+    clear_context,
     set_ai_pipeline,
     set_processing_stage,
-    clear_context,
 )
 
 logger = logging.getLogger(__name__)
@@ -104,13 +105,12 @@ def create_expand_query_router(expand_query_usecase: ExpandQueryUsecase) -> APIR
             raise HTTPException(status_code=400, detail="Invalid request") from exc
 
         except RuntimeError as exc:
-            logger.error(
+            logger.exception(
                 "Failed to expand query",
                 extra={
                     "error": str(exc),
                     "query": request.query[:100] if request.query else "",
                 },
-                exc_info=True,
             )
             raise HTTPException(
                 status_code=502, detail="Upstream service error"

@@ -10,7 +10,8 @@ import asyncio
 import contextlib
 import logging
 import os
-from typing import Any
+import ssl
+from dataclasses import dataclass
 
 import uvicorn
 from uvicorn.protocols.http.h11_impl import H11Protocol
@@ -29,7 +30,7 @@ from news_creator.infra.pki.start import start as start_pki_enrollment
 logger = logging.getLogger(__name__)
 
 _APP_TARGET = "main:app"
-DEFAULT_HOST = "0.0.0.0"  # nosec B104
+DEFAULT_HOST = "0.0.0.0"  # nosec B104  # noqa: S104 - container server intentionally binds all interfaces
 DEFAULT_PORT = 11434
 
 
@@ -61,44 +62,46 @@ def main() -> None:
     serve_app()
 
 
-async def _serve_dual(
-    *,
-    host: str,
-    plaintext_port: int,
-    log_level: str,
-    keep_alive: int,
-    ctx: Any,
-    reloader: InboundCertReloader,
-) -> None:
+@dataclass(frozen=True)
+class _DualServeConfig:
+    host: str
+    plaintext_port: int
+    log_level: str
+    keep_alive: int
+    ctx: ssl.SSLContext
+    reloader: InboundCertReloader
+
+
+async def _serve_dual(cfg: _DualServeConfig) -> None:
     mtls_port = inbound_mtls_port()
     plain = uvicorn.Server(
         uvicorn.Config(
             _APP_TARGET,
-            host=host,
-            port=plaintext_port,
-            log_level=log_level,
-            timeout_keep_alive=keep_alive,
+            host=cfg.host,
+            port=cfg.plaintext_port,
+            log_level=cfg.log_level,
+            timeout_keep_alive=cfg.keep_alive,
         )
     )
     mtls = uvicorn.Server(
         uvicorn.Config(
             _APP_TARGET,
-            host=host,
+            host=cfg.host,
             port=mtls_port,
-            log_level=log_level,
+            log_level=cfg.log_level,
             lifespan="off",
             http=wrap_http_protocol(H11Protocol),
-            ssl_context_factory=ssl_context_factory_for(ctx),
-            timeout_keep_alive=keep_alive,
+            ssl_context_factory=ssl_context_factory_for(cfg.ctx),
+            timeout_keep_alive=cfg.keep_alive,
         )
     )
     logger.info(
         "inbound_mtls_listener plaintext=%s mtls=%s response_header_timeout=%s",
-        plaintext_port,
+        cfg.plaintext_port,
         mtls_port,
         inbound_listener_timeouts().response_header_timeout,
     )
-    reload_task = asyncio.create_task(watch_inbound_cert_rotation(reloader))
+    reload_task = asyncio.create_task(watch_inbound_cert_rotation(cfg.reloader))
     try:
         await asyncio.gather(plain.serve(), mtls.serve())
     finally:
@@ -126,11 +129,13 @@ def _serve_after_enrollment(
     reloader = InboundCertReloader(ctx, cert, key)
     asyncio.run(
         _serve_dual(
-            host=host,
-            plaintext_port=port,
-            log_level=log_level,
-            keep_alive=keep_alive,
-            ctx=ctx,
-            reloader=reloader,
+            _DualServeConfig(
+                host=host,
+                plaintext_port=port,
+                log_level=log_level,
+                keep_alive=keep_alive,
+                ctx=ctx,
+                reloader=reloader,
+            )
         )
     )

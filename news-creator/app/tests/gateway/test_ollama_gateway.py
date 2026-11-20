@@ -1,16 +1,23 @@
 """Tests for Ollama Gateway with semaphore-based request queuing."""
 
 import asyncio
-from typing import AsyncIterator
-import pytest
+import contextlib
+import gc
+import logging
+from collections.abc import AsyncIterator
+from typing import Any
 from unittest.mock import AsyncMock, Mock, patch
+
+import pytest
+
 from news_creator.config.config import NewsCreatorConfig
+from news_creator.domain.errors import PreemptedException, QueueFullError
 from news_creator.domain.models import LLMGenerateResponse
 from news_creator.gateway.ollama_gateway import OllamaGateway
 
 
 @pytest.fixture
-def mock_config():
+def mock_config() -> Mock:
     """Create a mock config for testing."""
     config = Mock(spec=NewsCreatorConfig)
     config.llm_service_url = "http://localhost:11434"
@@ -48,7 +55,7 @@ def mock_config():
 
 
 @pytest.fixture
-def mock_driver():
+def mock_driver() -> AsyncMock:
     """Create a mock OllamaDriver for testing."""
     driver = AsyncMock()
     driver.initialize = AsyncMock()
@@ -68,7 +75,9 @@ def mock_driver():
 
 
 @pytest.mark.asyncio
-async def test_semaphore_queues_requests(mock_config, mock_driver):
+async def test_semaphore_queues_requests(
+    mock_config: Mock, mock_driver: AsyncMock
+) -> None:
     """Test that semaphore properly queues concurrent requests."""
     with patch(
         "news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver
@@ -80,7 +89,7 @@ async def test_semaphore_queues_requests(mock_config, mock_driver):
         processing_times = []
         call_count = [0]
 
-        async def delayed_generate(payload):
+        async def delayed_generate(payload: dict[str, Any]) -> dict[str, Any]:
             """Simulate a slow Ollama response."""
             call_count[0] += 1
             processing_times.append(call_count[0])
@@ -97,29 +106,31 @@ async def test_semaphore_queues_requests(mock_config, mock_driver):
         mock_driver.generate = delayed_generate
 
         # Send 3 concurrent requests
+        prompts = [
+            "<|turn>user\nPrompt 1<turn|>\n<|turn>model\n",
+            "<|turn>user\nPrompt 2<turn|>\n<|turn>model\n",
+            "<|turn>user\nPrompt 3<turn|>\n<|turn>model\n",
+        ]
         start_time = asyncio.get_event_loop().time()
-        results = await asyncio.gather(
-            gateway.generate("<|turn>user\nPrompt 1<turn|>\n<|turn>model\n"),
-            gateway.generate("<|turn>user\nPrompt 2<turn|>\n<|turn>model\n"),
-            gateway.generate("<|turn>user\nPrompt 3<turn|>\n<|turn>model\n"),
-        )
+        results = await asyncio.gather(*(gateway.generate(p) for p in prompts))
         end_time = asyncio.get_event_loop().time()
 
         # All requests should complete
-        assert len(results) == 3
+        assert len(results) == len(prompts)
         assert all(isinstance(r, LLMGenerateResponse) for r in results)
 
         # With concurrency=1, requests should be processed sequentially
         # Total time should be at least 0.3 seconds (3 requests * 0.1s each)
-        assert end_time - start_time >= 0.25  # Allow some margin
+        min_sequential_duration_seconds = 0.25
+        assert end_time - start_time >= min_sequential_duration_seconds  # Allow margin
 
         await gateway.cleanup()
 
 
 @pytest.mark.asyncio
 async def test_semaphore_allows_concurrent_requests_when_configured(
-    mock_config, mock_driver
-):
+    mock_config: Mock, mock_driver: AsyncMock
+) -> None:
     """Test that semaphore allows concurrent requests when concurrency > 1."""
     mock_config.ollama_request_concurrency = 2
     # Set RT reserved to 0 so all slots are available for BE (low priority) requests
@@ -133,7 +144,7 @@ async def test_semaphore_allows_concurrent_requests_when_configured(
 
         call_count = [0]
 
-        async def delayed_generate(payload):
+        async def delayed_generate(payload: dict[str, Any]) -> dict[str, Any]:
             """Simulate a slow Ollama response."""
             call_count[0] += 1
             await asyncio.sleep(0.1)  # Simulate processing time
@@ -149,27 +160,31 @@ async def test_semaphore_allows_concurrent_requests_when_configured(
         mock_driver.generate = delayed_generate
 
         # Send 3 concurrent requests with concurrency=2
+        prompts = [
+            "<|turn>user\nPrompt 1<turn|>\n<|turn>model\n",
+            "<|turn>user\nPrompt 2<turn|>\n<|turn>model\n",
+            "<|turn>user\nPrompt 3<turn|>\n<|turn>model\n",
+        ]
         start_time = asyncio.get_event_loop().time()
-        results = await asyncio.gather(
-            gateway.generate("<|turn>user\nPrompt 1<turn|>\n<|turn>model\n"),
-            gateway.generate("<|turn>user\nPrompt 2<turn|>\n<|turn>model\n"),
-            gateway.generate("<|turn>user\nPrompt 3<turn|>\n<|turn>model\n"),
-        )
+        results = await asyncio.gather(*(gateway.generate(p) for p in prompts))
         end_time = asyncio.get_event_loop().time()
 
         # All requests should complete
-        assert len(results) == 3
+        assert len(results) == len(prompts)
         assert all(isinstance(r, LLMGenerateResponse) for r in results)
 
         # With concurrency=2, first 2 should run in parallel, then the 3rd
         # Total time should be around 0.2 seconds (2 batches: 0.1s + 0.1s)
-        assert end_time - start_time < 0.3  # Should be faster than sequential
+        max_parallel_duration_seconds = 0.3
+        assert end_time - start_time < max_parallel_duration_seconds
 
         await gateway.cleanup()
 
 
 @pytest.mark.asyncio
-async def test_semaphore_defaults_to_one(mock_config, mock_driver):
+async def test_semaphore_defaults_to_one(
+    mock_config: Mock, mock_driver: AsyncMock
+) -> None:
     """Test that semaphore defaults to concurrency=1 when not configured."""
     # Don't set ollama_request_concurrency
     mock_config.ollama_request_concurrency = 1
@@ -188,7 +203,7 @@ async def test_semaphore_defaults_to_one(mock_config, mock_driver):
 
 
 @pytest.mark.asyncio
-async def test_semaphore_fifo_order(mock_config, mock_driver):
+async def test_semaphore_fifo_order(mock_config: Mock, mock_driver: AsyncMock) -> None:
     """Test that semaphore processes requests in FIFO (First In First Out) order."""
     mock_config.ollama_request_concurrency = 1
     mock_config.model_routing_enabled = False
@@ -208,7 +223,9 @@ async def test_semaphore_fifo_order(mock_config, mock_driver):
         processing_order = []
         lock = asyncio.Lock()
 
-        async def delayed_generate_with_tracking(payload, request_id):
+        async def delayed_generate_with_tracking(
+            payload: dict[str, Any], request_id: int
+        ) -> dict[str, Any]:
             """Simulate a slow Ollama response and track processing order."""
             async with lock:
                 processing_order.append(request_id)
@@ -225,7 +242,7 @@ async def test_semaphore_fifo_order(mock_config, mock_driver):
         # Create a closure to track request IDs
         request_counter = [0]
 
-        async def tracked_generate(payload):
+        async def tracked_generate(payload: dict[str, Any]) -> dict[str, Any]:
             request_counter[0] += 1
             request_id = request_counter[0]
             return await delayed_generate_with_tracking(payload, request_id)
@@ -246,14 +263,14 @@ async def test_semaphore_fifo_order(mock_config, mock_driver):
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         # All requests should complete successfully
-        assert len(results) == 5
+        assert len(results) == len(tasks)
         assert all(not isinstance(r, Exception) for r in results)
 
         # Verify FIFO order: requests should be processed in the order they were submitted
         # Note: This test verifies that asyncio.Semaphore maintains FIFO order
         # If the semaphore doesn't guarantee FIFO, this test may fail
-        assert len(processing_order) == 5, (
-            f"Expected 5 processed requests, got {len(processing_order)}"
+        assert len(processing_order) == len(tasks), (
+            f"Expected {len(tasks)} processed requests, got {len(processing_order)}"
         )
 
         # Check if processing order matches submission order (FIFO)
@@ -277,7 +294,9 @@ async def test_semaphore_fifo_order(mock_config, mock_driver):
 
 
 @pytest.mark.asyncio
-async def test_high_priority_bypasses_low_priority_queue(mock_config, mock_driver):
+async def test_high_priority_bypasses_low_priority_queue(
+    mock_config: Mock, mock_driver: AsyncMock
+) -> None:
     """Test that high priority requests use the high priority queue."""
     mock_config.ollama_request_concurrency = 1
 
@@ -299,7 +318,7 @@ async def test_high_priority_bypasses_low_priority_queue(mock_config, mock_drive
 
 
 @pytest.mark.asyncio
-async def test_low_priority_default(mock_config, mock_driver):
+async def test_low_priority_default(mock_config: Mock, mock_driver: AsyncMock) -> None:
     """Test that default priority is low."""
     mock_config.ollama_request_concurrency = 1
 
@@ -322,11 +341,9 @@ async def test_low_priority_default(mock_config, mock_driver):
 
 @pytest.mark.asyncio
 async def test_ttft_metrics_logged_with_cold_start_warning(
-    mock_config, mock_driver, caplog
-):
+    mock_config: Mock, mock_driver: AsyncMock, caplog: pytest.LogCaptureFixture
+) -> None:
     """Test that TTFT metrics are logged with cold start warning when load_duration > 0.1s."""
-    import logging
-
     caplog.set_level(logging.WARNING)
 
     with patch(
@@ -367,11 +384,9 @@ async def test_ttft_metrics_logged_with_cold_start_warning(
 
 @pytest.mark.asyncio
 async def test_ttft_metrics_logged_without_cold_start_warning(
-    mock_config, mock_driver, caplog
-):
+    mock_config: Mock, mock_driver: AsyncMock, caplog: pytest.LogCaptureFixture
+) -> None:
     """Test that no cold start warning is logged when model is hot (load_duration < 0.1s)."""
-    import logging
-
     caplog.set_level(logging.WARNING)
 
     with patch(
@@ -411,15 +426,15 @@ async def test_ttft_metrics_logged_without_cold_start_warning(
 
 
 @pytest.mark.asyncio
-async def test_ttft_breakdown_logged(mock_config, mock_driver, caplog):
+async def test_ttft_breakdown_logged(
+    mock_config: Mock, mock_driver: AsyncMock, caplog: pytest.LogCaptureFixture
+) -> None:
     """TTFT breakdown must still be logged in a structured format, but at
     DEBUG (not INFO) -- it fires unconditionally on every non-streaming round
     trip, so at INFO it multiplies log volume by every chunk/reduce call in a
     large hierarchical job. DEBUG keeps it available without the routine
     per-round-trip cost at the default INFO level.
     """
-    import logging
-
     caplog.set_level(logging.DEBUG)
 
     with patch(
@@ -478,16 +493,14 @@ async def test_ttft_breakdown_logged(mock_config, mock_driver, caplog):
 
 @pytest.mark.asyncio
 async def test_generate_non_streaming_info_log_volume_bounded(
-    mock_config, mock_driver, caplog
-):
+    mock_config: Mock, mock_driver: AsyncMock, caplog: pytest.LogCaptureFixture
+) -> None:
     """A single successful non-streaming round trip (no cold-start, no slow
     decode, no model mismatch) must emit only a small, bounded number of
     INFO-level gateway log records. A large hierarchical job fans this out
     across dozens of round trips, so routine per-call INFO noise (TTFT
     breakdown, "generation completed", etc.) must live at DEBUG instead.
     """
-    import logging
-
     with patch(
         "news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver
     ):
@@ -515,8 +528,9 @@ async def test_generate_non_streaming_info_log_volume_bounded(
         await gateway.generate("<|turn>user\nTest prompt<turn|>\n<|turn>model\n")
 
         info_records = [r for r in caplog.records if r.levelno == logging.INFO]
-        assert len(info_records) <= 2, (
-            f"Expected at most 2 INFO records for a single clean non-streaming "
+        max_info_records = 2
+        assert len(info_records) <= max_info_records, (
+            f"Expected at most {max_info_records} INFO records for a single clean non-streaming "
             f"round trip, got {len(info_records)}: "
             f"{[r.message for r in info_records]}"
         )
@@ -525,7 +539,9 @@ async def test_generate_non_streaming_info_log_volume_bounded(
 
 
 @pytest.mark.asyncio
-async def test_streaming_semaphore_acquired_before_iteration(mock_config, mock_driver):
+async def test_streaming_semaphore_acquired_before_iteration(
+    mock_config: Mock, mock_driver: AsyncMock
+) -> None:
     """Test that semaphore is acquired BEFORE generator iteration starts (eager acquisition)."""
     mock_config.ollama_request_concurrency = 1
 
@@ -534,14 +550,17 @@ async def test_streaming_semaphore_acquired_before_iteration(mock_config, mock_d
     ):
         # Create a mock stream driver
         mock_stream_driver = AsyncMock()
+        total_chunks = 3
 
-        async def mock_generate_stream(payload):
+        async def mock_generate_stream(
+            payload: dict[str, Any],
+        ) -> AsyncIterator[dict[str, Any]]:
             """Simulate streaming response."""
-            for i in range(3):
+            for i in range(total_chunks):
                 yield {
                     "response": f"chunk{i}",
                     "model": "test-model",
-                    "done": i == 2,
+                    "done": i == total_chunks - 1,
                 }
 
         mock_stream_driver.generate_stream = mock_generate_stream
@@ -574,9 +593,7 @@ async def test_streaming_semaphore_acquired_before_iteration(mock_config, mock_d
             )
 
             # Consume the generator
-            chunks = []
-            async for chunk in generator:
-                chunks.append(chunk)
+            chunks = [chunk async for chunk in generator]
 
             # Verify semaphore was released after iteration
             assert gateway._semaphore._rt_available == initial_rt_available, (
@@ -584,15 +601,15 @@ async def test_streaming_semaphore_acquired_before_iteration(mock_config, mock_d
             )
 
             # Verify we got all chunks
-            assert len(chunks) == 3
+            assert len(chunks) == total_chunks
 
             await gateway.cleanup()
 
 
 @pytest.mark.asyncio
 async def test_streaming_semaphore_released_on_early_termination(
-    mock_config, mock_driver
-):
+    mock_config: Mock, mock_driver: AsyncMock
+) -> None:
     """Test that semaphore is released when generator is terminated early."""
     mock_config.ollama_request_concurrency = 1
 
@@ -602,7 +619,9 @@ async def test_streaming_semaphore_released_on_early_termination(
         # Create a mock stream driver
         mock_stream_driver = AsyncMock()
 
-        async def mock_generate_stream(payload):
+        async def mock_generate_stream(
+            payload: dict[str, Any],
+        ) -> AsyncIterator[dict[str, Any]]:
             """Simulate streaming response with many chunks."""
             for i in range(100):
                 yield {
@@ -638,10 +657,11 @@ async def test_streaming_semaphore_released_on_early_termination(
             assert gateway._semaphore._rt_available < initial_rt_available
 
             # Consume only first 3 chunks then break (early termination)
+            early_stop_chunks = 3
             chunks = []
             async for chunk in generator:
                 chunks.append(chunk)
-                if len(chunks) >= 3:
+                if len(chunks) >= early_stop_chunks:
                     break
 
             # Close the generator explicitly (simulate early termination)
@@ -659,11 +679,9 @@ async def test_streaming_semaphore_released_on_early_termination(
 
 @pytest.mark.asyncio
 async def test_streaming_high_priority_immediate_acquisition(
-    mock_config, mock_driver, caplog
-):
+    mock_config: Mock, mock_driver: AsyncMock, caplog: pytest.LogCaptureFixture
+) -> None:
     """Test that streaming (high priority) requests acquire semaphore immediately."""
-    import logging
-
     caplog.set_level(logging.INFO)
 
     mock_config.ollama_request_concurrency = 2
@@ -674,7 +692,9 @@ async def test_streaming_high_priority_immediate_acquisition(
     ):
         mock_stream_driver = AsyncMock()
 
-        async def mock_generate_stream(payload):
+        async def mock_generate_stream(
+            payload: dict[str, Any],
+        ) -> AsyncIterator[dict[str, Any]]:
             await asyncio.sleep(0.1)  # Simulate some latency
             yield {"response": "done", "model": "test-model", "done": True}
 
@@ -718,16 +738,14 @@ async def test_streaming_high_priority_immediate_acquisition(
 
 @pytest.mark.asyncio
 async def test_slow_generation_warning_uses_decode_speed(
-    mock_config, mock_driver, caplog
-):
+    mock_config: Mock, mock_driver: AsyncMock, caplog: pytest.LogCaptureFixture
+) -> None:
     """Test that slow generation warning uses decode speed (eval_duration) not total_duration.
 
     Previously, tokens_per_second was calculated as eval_count / total_duration, which
     incorrectly included load_duration and prompt_eval_duration, leading to false positive
     warnings. The fix uses eval_count / eval_duration (decode speed) for accurate detection.
     """
-    import logging
-
     caplog.set_level(logging.WARNING)
 
     with patch(
@@ -772,11 +790,9 @@ async def test_slow_generation_warning_uses_decode_speed(
 
 @pytest.mark.asyncio
 async def test_slow_generation_warning_triggers_on_slow_decode(
-    mock_config, mock_driver, caplog
-):
+    mock_config: Mock, mock_driver: AsyncMock, caplog: pytest.LogCaptureFixture
+) -> None:
     """Test that slow generation warning triggers when decode speed is actually slow."""
-    import logging
-
     caplog.set_level(logging.WARNING)
 
     with patch(
@@ -817,15 +833,13 @@ async def test_slow_generation_warning_triggers_on_slow_decode(
 
 @pytest.mark.asyncio
 async def test_slow_generation_warning_skipped_for_short_eval_count(
-    mock_config, mock_driver, caplog
-):
+    mock_config: Mock, mock_driver: AsyncMock, caplog: pytest.LogCaptureFixture
+) -> None:
     """Test that slow generation warning is skipped when eval_count is too low.
 
     Short generations (eval_count < 20) can have unstable speed measurements,
     so we skip the warning to avoid false positives from rerank/expand-query calls.
     """
-    import logging
-
     caplog.set_level(logging.WARNING)
 
     with patch(
@@ -868,10 +882,10 @@ async def test_slow_generation_warning_skipped_for_short_eval_count(
 
 
 @pytest.mark.asyncio
-async def test_generate_propagates_queue_full_error(mock_config, mock_driver):
+async def test_generate_propagates_queue_full_error(
+    mock_config: Mock, mock_driver: AsyncMock
+) -> None:
     """Test that QueueFullError from semaphore propagates through generate()."""
-    from news_creator.domain.errors import QueueFullError
-
     mock_config.ollama_request_concurrency = 1
     mock_config.max_queue_depth = 1
 
@@ -881,7 +895,7 @@ async def test_generate_propagates_queue_full_error(mock_config, mock_driver):
         gateway = OllamaGateway(mock_config)
         await gateway.initialize()
 
-        async def slow_generate(payload):
+        async def slow_generate(payload: dict[str, Any]) -> dict[str, Any]:
             await asyncio.sleep(10)  # Hold the slot
             return {
                 "response": "ok",
@@ -913,17 +927,15 @@ async def test_generate_propagates_queue_full_error(mock_config, mock_driver):
         # Cleanup
         task1.cancel()
         task2.cancel()
-        try:
+        with contextlib.suppress(Exception):
             await asyncio.gather(task1, task2, return_exceptions=True)
-        except Exception:
-            pass
         await gateway.cleanup()
 
 
 @pytest.mark.asyncio
 async def test_hold_slot_context_manager_acquires_and_releases(
-    mock_config, mock_driver
-):
+    mock_config: Mock, mock_driver: AsyncMock
+) -> None:
     """Test that hold_slot acquires semaphore on enter and releases on exit."""
     mock_config.ollama_request_concurrency = 1
     mock_config.max_queue_depth = 0
@@ -955,7 +967,9 @@ async def test_hold_slot_context_manager_acquires_and_releases(
 
 
 @pytest.mark.asyncio
-async def test_hold_slot_be_provides_cancel_event(mock_config, mock_driver):
+async def test_hold_slot_be_provides_cancel_event(
+    mock_config: Mock, mock_driver: AsyncMock
+) -> None:
     """Test that hold_slot for BE (low priority) provides cancel_event and task_id."""
     mock_config.ollama_request_concurrency = 2
     mock_config.scheduling_rt_reserved_slots = 0  # All BE
@@ -985,7 +999,9 @@ async def test_hold_slot_be_provides_cancel_event(mock_config, mock_driver):
 
 
 @pytest.mark.asyncio
-async def test_generate_raw_skips_semaphore(mock_config, mock_driver):
+async def test_generate_raw_skips_semaphore(
+    mock_config: Mock, mock_driver: AsyncMock
+) -> None:
     """Test that generate_raw does not acquire semaphore."""
     mock_config.ollama_request_concurrency = 1
     mock_config.max_queue_depth = 0
@@ -1012,7 +1028,9 @@ async def test_generate_raw_skips_semaphore(mock_config, mock_driver):
 
 
 @pytest.mark.asyncio
-async def test_generate_filters_runner_startup_params(mock_config, mock_driver):
+async def test_generate_filters_runner_startup_params(
+    mock_config: Mock, mock_driver: AsyncMock
+) -> None:
     """generate() must strip num_ctx/num_batch/num_keep from caller options.
 
     These are runner startup params fixed by config/Modelfile. Passing a
@@ -1020,6 +1038,7 @@ async def test_generate_filters_runner_startup_params(mock_config, mock_driver):
     runner reload (GPU contention / model reload), matching the fix already
     applied to OllamaStreamDriver._merge_options.
     """
+    caller_temperature = 0.5
     with patch(
         "news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver
     ):
@@ -1032,7 +1051,7 @@ async def test_generate_filters_runner_startup_params(mock_config, mock_driver):
                 "num_ctx": 8192,
                 "num_batch": 999,
                 "num_keep": 5,
-                "temperature": 0.5,
+                "temperature": caller_temperature,
             },
         )
 
@@ -1041,13 +1060,15 @@ async def test_generate_filters_runner_startup_params(mock_config, mock_driver):
         assert "num_batch" not in sent_options
         assert "num_keep" not in sent_options
         # num_ctx stays at the config/Modelfile base value, not the caller override
-        assert sent_options["num_ctx"] == 4096
+        assert sent_options["num_ctx"] == mock_config.llm_num_ctx
         # Sampling params still pass through
-        assert sent_options["temperature"] == 0.5
+        assert sent_options["temperature"] == caller_temperature
 
 
 @pytest.mark.asyncio
-async def test_generate_keeps_pinned_num_gpu(mock_config, mock_driver):
+async def test_generate_keeps_pinned_num_gpu(
+    mock_config: Mock, mock_driver: AsyncMock
+) -> None:
     """generate() must strip a caller-supplied num_gpu.
 
     The offload split is decided once at runner startup. A caller lowering it
@@ -1065,14 +1086,20 @@ async def test_generate_keeps_pinned_num_gpu(mock_config, mock_driver):
         )
 
         sent_options = mock_driver.generate.call_args.args[0]["options"]
-        assert sent_options["num_gpu"] == 99
+        assert (
+            sent_options["num_gpu"]
+            == mock_config.get_llm_options.return_value["num_gpu"]
+        )
 
         await gateway.cleanup()
 
 
 @pytest.mark.asyncio
-async def test_generate_raw_filters_runner_startup_params(mock_config, mock_driver):
+async def test_generate_raw_filters_runner_startup_params(
+    mock_config: Mock, mock_driver: AsyncMock
+) -> None:
     """generate_raw() must also strip num_ctx/num_batch/num_keep from options."""
+    caller_temperature = 0.5
     with patch(
         "news_creator.gateway.ollama_gateway.OllamaDriver", return_value=mock_driver
     ):
@@ -1085,7 +1112,7 @@ async def test_generate_raw_filters_runner_startup_params(mock_config, mock_driv
                 "num_ctx": 8192,
                 "num_batch": 999,
                 "num_keep": 5,
-                "temperature": 0.5,
+                "temperature": caller_temperature,
             },
         )
 
@@ -1093,14 +1120,16 @@ async def test_generate_raw_filters_runner_startup_params(mock_config, mock_driv
         sent_options = sent_payload["options"]
         assert "num_batch" not in sent_options
         assert "num_keep" not in sent_options
-        assert sent_options["num_ctx"] == 4096
-        assert sent_options["temperature"] == 0.5
+        assert sent_options["num_ctx"] == mock_config.llm_num_ctx
+        assert sent_options["temperature"] == caller_temperature
 
         await gateway.cleanup()
 
 
 @pytest.mark.asyncio
-async def test_preemption_cancels_inflight_generate(mock_config, mock_driver):
+async def test_preemption_cancels_inflight_generate(
+    mock_config: Mock, mock_driver: AsyncMock
+) -> None:
     """Test that preemption actually cancels an in-flight driver.generate() call.
 
     Before the fix, cancel_event was only checked before/after generate(),
@@ -1112,10 +1141,14 @@ async def test_preemption_cancels_inflight_generate(mock_config, mock_driver):
     generate_started = asyncio.Event()
     generate_cancelled = asyncio.Event()
 
-    async def slow_generate(payload):
+    async def slow_generate(payload: dict[str, Any]) -> dict[str, Any]:
         generate_started.set()
         try:
             await asyncio.sleep(60)  # Simulate long LLM inference
+        except asyncio.CancelledError:
+            generate_cancelled.set()
+            raise
+        else:
             return {
                 "response": "Should not reach here",
                 "model": "test-model",
@@ -1124,9 +1157,6 @@ async def test_preemption_cancels_inflight_generate(mock_config, mock_driver):
                 "eval_count": 50,
                 "total_duration": 1000000,
             }
-        except asyncio.CancelledError:
-            generate_cancelled.set()
-            raise
 
     mock_driver.generate = slow_generate
 
@@ -1158,8 +1188,6 @@ async def test_preemption_cancels_inflight_generate(mock_config, mock_driver):
         cancel_event.set()
 
         # The generation should be interrupted with PreemptedException
-        from news_creator.domain.errors import PreemptedException
-
         with pytest.raises(PreemptedException, match="preempted during generation"):
             await asyncio.wait_for(gen_task, timeout=2.0)
 
@@ -1173,26 +1201,27 @@ async def test_preemption_cancels_inflight_generate(mock_config, mock_driver):
 
 @pytest.mark.asyncio
 async def test_caller_cancellation_cancels_children_in_generate_with_cancellation(
-    mock_config, mock_driver
-):
+    mock_config: Mock, mock_driver: AsyncMock
+) -> None:
     """Caller cancellation during _generate_with_cancellation must cancel and await child tasks."""
     generate_started = asyncio.Event()
     never_finish = asyncio.Event()
     generate_cancelled = False
 
-    async def blocking_generate(payload):
+    async def blocking_generate(payload: dict[str, Any]) -> dict[str, Any]:
         nonlocal generate_cancelled
         generate_started.set()
         try:
             await never_finish.wait()
+        except asyncio.CancelledError:
+            generate_cancelled = True
+            raise
+        else:
             return {
                 "response": "Should not reach here",
                 "model": "test-model",
                 "done": True,
             }
-        except asyncio.CancelledError:
-            generate_cancelled = True
-            raise
 
     mock_driver.generate = blocking_generate
 
@@ -1233,7 +1262,7 @@ async def test_caller_cancellation_cancels_children_in_generate_with_cancellatio
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "input_prompt,expected_prompt",
+    ("input_prompt", "expected_prompt"),
     [
         (
             "<|turn>user\nHello world<turn|>\n<|turn>model\n",
@@ -1250,12 +1279,12 @@ async def test_caller_cancellation_cancels_children_in_generate_with_cancellatio
     ],
 )
 async def test_generate_streaming_prompt_handling(
-    mock_config, input_prompt, expected_prompt
-):
+    mock_config: Mock, input_prompt: str, expected_prompt: str
+) -> None:
     """Test that streaming generate payload preserves model-turn newline."""
     captured_payloads = []
 
-    async def mock_stream(payload):
+    async def mock_stream(payload: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:
         captured_payloads.append(payload)
         yield {"response": "test", "done": True, "model": "test-model"}
 
@@ -1274,7 +1303,7 @@ async def test_generate_streaming_prompt_handling(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "input_prompt,expected_prompt",
+    ("input_prompt", "expected_prompt"),
     [
         (
             "<|turn>user\nHello world<turn|>\n<|turn>model\n",
@@ -1290,11 +1319,15 @@ async def test_generate_streaming_prompt_handling(
         ),
     ],
 )
-async def test_generate_raw_prompt_handling(mock_config, input_prompt, expected_prompt):
+async def test_generate_raw_prompt_handling(
+    mock_config: Mock, input_prompt: str, expected_prompt: str
+) -> None:
     """Test that generate_raw payload preserves model-turn newline."""
     captured_payloads = []
 
-    async def mock_generate(payload, *args, **kwargs):
+    async def mock_generate(
+        payload: dict[str, Any], *args: object, **kwargs: object
+    ) -> dict[str, Any]:
         captured_payloads.append(payload)
         return {"response": "test", "done": True, "model": "test-model"}
 
@@ -1311,14 +1344,14 @@ async def test_generate_raw_prompt_handling(mock_config, input_prompt, expected_
 
 @pytest.mark.asyncio
 async def test_streaming_aclose_closes_inner_driver_stream_without_gc(
-    mock_config, mock_driver
-):
+    mock_config: Mock, mock_driver: AsyncMock
+) -> None:
     """Closing the outer streaming generator must deterministically close the inner driver generator."""
-    import gc
-
     inner_closed = False
 
-    async def mock_generate_stream(payload):
+    async def mock_generate_stream(
+        payload: dict[str, Any],
+    ) -> AsyncIterator[dict[str, Any]]:
         nonlocal inner_closed
         try:
             yield {"response": "chunk0", "model": "test-model", "done": False}
@@ -1364,8 +1397,8 @@ async def test_streaming_aclose_closes_inner_driver_stream_without_gc(
 
 @pytest.mark.asyncio
 async def test_generate_raw_retries_on_oom_exception_and_reraises_non_oom(
-    mock_config, mock_driver
-):
+    mock_config: Mock, mock_driver: AsyncMock
+) -> None:
     """generate_raw catches OOM exceptions, switches to 2-model mode, retries once with the routed model, and re-raises non-OOM errors."""
     mock_config.oom_detection_enabled = True
     mock_config.model_routing_enabled = True
@@ -1379,16 +1412,15 @@ async def test_generate_raw_retries_on_oom_exception_and_reraises_non_oom(
             gateway.model_router.select_model = Mock(
                 side_effect=[("gemma4-e4b-60k", 61440), ("gemma4-e4b-12k", 8192)]
             )
-            mock_driver.generate = AsyncMock(
-                side_effect=[
-                    RuntimeError("Ollama API error: HTTP 500 - CUDA out of memory"),
-                    {
-                        "response": "ok",
-                        "model": "gemma4-e4b-12k",
-                        "done": True,
-                    },
-                ]
-            )
+            driver_responses: list[object] = [
+                RuntimeError("Ollama API error: HTTP 500 - CUDA out of memory"),
+                {
+                    "response": "ok",
+                    "model": "gemma4-e4b-12k",
+                    "done": True,
+                },
+            ]
+            mock_driver.generate = AsyncMock(side_effect=driver_responses)
 
             result = await gateway.generate_raw(
                 "<|turn>user\nTest prompt<turn|>\n<|turn>model\n"
@@ -1397,7 +1429,7 @@ async def test_generate_raw_retries_on_oom_exception_and_reraises_non_oom(
             assert result.response == "ok"
             assert result.model == "gemma4-e4b-12k"
             assert gateway.oom_detector.two_model_mode is True
-            assert mock_driver.generate.call_count == 2
+            assert mock_driver.generate.call_count == len(driver_responses)
 
             gateway.model_router.select_model = Mock(
                 return_value=("gemma4-e4b-12k", 8192)

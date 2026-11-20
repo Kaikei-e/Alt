@@ -9,10 +9,11 @@ by batch summarization jobs.
 import json
 import logging
 import re
+from collections.abc import AsyncIterator
 from contextlib import aclosing
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -58,8 +59,100 @@ class ChatRequest(BaseModel):
         cls, v: int | str | bool | None
     ) -> int | str | bool | None:
         if isinstance(v, str) and not _KEEP_ALIVE_RE.fullmatch(v):
-            raise ValueError(r"keep_alive string must match ^(?:\d+[smh]|-1|0)$")
+            msg = r"keep_alive string must match ^(?:\d+[smh]|-1|0)$"
+            raise ValueError(msg)
         return v
+
+
+def _validate_chat_model(request: ChatRequest, config: NewsCreatorConfig) -> None:
+    if (
+        config.model_routing_enabled
+        and request.model
+        and not (
+            config.is_base_model_name(request.model)
+            or config.is_bucket_model_name(request.model)
+        )
+    ):
+        logger.warning(
+            "Chat proxy: rejected unknown model", extra={"model": request.model}
+        )
+        raise HTTPException(status_code=400, detail="Unknown model")
+
+
+def _build_chat_payload(request: ChatRequest, *, stream: bool) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "messages": [{"role": m.role, "content": m.content} for m in request.messages],
+    }
+    if stream:
+        payload["stream"] = True
+    if request.model:
+        payload["model"] = request.model
+    if request.keep_alive is not None:
+        payload["keep_alive"] = request.keep_alive
+    if request.format is not None:
+        payload["format"] = request.format
+    if request.think is not None:
+        payload["think"] = request.think
+    if request.options is not None:
+        payload["options"] = request.options
+    return payload
+
+
+async def _handle_chat_request(
+    gateway: LLMProviderPort,
+    config: NewsCreatorConfig,
+    request: ChatRequest,
+) -> Response:
+    set_ai_pipeline("chat-proxy")
+    set_processing_stage("handler")
+
+    _validate_chat_model(request, config)
+
+    try:
+        if not request.stream:
+            payload = _build_chat_payload(request, stream=False)
+            result = await gateway.chat_generate(payload=payload)
+            return JSONResponse(content=result)
+
+        payload = _build_chat_payload(request, stream=True)
+        stream_iter = await gateway.chat_stream(payload=payload)
+
+        async def ndjson_generator() -> AsyncIterator[str]:
+            async with aclosing(stream_iter):
+                async for chunk in stream_iter:
+                    yield json.dumps(chunk, ensure_ascii=False) + "\n"
+
+        return StreamingResponse(
+            ndjson_generator(),
+            media_type="application/x-ndjson",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
+
+    except QueueFullError:
+        logger.warning("Chat proxy: queue full, returning 429")
+        return JSONResponse(
+            status_code=429,
+            content={"error": "queue full"},
+            headers={"Retry-After": "30"},
+        )
+
+    except HTTPException:
+        raise
+
+    except RuntimeError as exc:
+        logger.exception("Chat proxy: upstream error", extra={"error": str(exc)})
+        raise HTTPException(status_code=502, detail="Upstream service error") from exc
+
+    except Exception as exc:
+        logger.exception("Chat proxy: unexpected error")
+        raise HTTPException(status_code=500, detail="Internal server error") from exc
+
+    finally:
+        clear_context()
 
 
 def create_chat_router(
@@ -69,105 +162,8 @@ def create_chat_router(
     router = APIRouter()
 
     @router.post("/api/chat")
-    async def chat_endpoint(request: ChatRequest):
+    async def chat_endpoint(request: ChatRequest) -> Response:
         """Proxy Ollama /api/chat through HybridPrioritySemaphore with HIGH priority."""
-        set_ai_pipeline("chat-proxy")
-        set_processing_stage("handler")
-
-        if (
-            config.model_routing_enabled
-            and request.model
-            and not (
-                config.is_base_model_name(request.model)
-                or config.is_bucket_model_name(request.model)
-            )
-        ):
-            logger.warning(
-                "Chat proxy: rejected unknown model", extra={"model": request.model}
-            )
-            raise HTTPException(status_code=400, detail="Unknown model")
-
-        try:
-            if not request.stream:
-                # Non-streaming chat (used by morning letter)
-                payload: dict[str, Any] = {
-                    "messages": [
-                        {"role": m.role, "content": m.content} for m in request.messages
-                    ],
-                }
-                if request.model:
-                    payload["model"] = request.model
-                if request.keep_alive is not None:
-                    payload["keep_alive"] = request.keep_alive
-                if request.format is not None:
-                    payload["format"] = request.format
-                if request.think is not None:
-                    payload["think"] = request.think
-                if request.options is not None:
-                    payload["options"] = request.options
-
-                result = await gateway.chat_generate(payload=payload)
-                return JSONResponse(content=result)
-
-            # Build payload preserving all Ollama fields
-            payload: dict[str, Any] = {
-                "messages": [
-                    {"role": m.role, "content": m.content} for m in request.messages
-                ],
-                "stream": True,
-            }
-            if request.model:
-                payload["model"] = request.model
-            if request.keep_alive is not None:
-                payload["keep_alive"] = request.keep_alive
-            if request.format is not None:
-                payload["format"] = request.format
-            if request.think is not None:
-                payload["think"] = request.think
-            if request.options is not None:
-                payload["options"] = request.options
-
-            stream_iter = await gateway.chat_stream(payload=payload)
-
-            async def ndjson_generator():
-                async with aclosing(stream_iter):  # pyrefly: ignore[bad-specialization]
-                    async for chunk in stream_iter:
-                        yield json.dumps(chunk, ensure_ascii=False) + "\n"
-
-            return StreamingResponse(
-                ndjson_generator(),
-                media_type="application/x-ndjson",
-                headers={
-                    "Cache-Control": "no-cache",
-                    "Connection": "keep-alive",
-                    "X-Accel-Buffering": "no",
-                },
-            )
-
-        except QueueFullError:
-            logger.warning("Chat proxy: queue full, returning 429")
-            return JSONResponse(
-                status_code=429,
-                content={"error": "queue full"},
-                headers={"Retry-After": "30"},
-            )
-
-        except HTTPException:
-            raise
-
-        except RuntimeError as exc:
-            logger.error("Chat proxy: upstream error", extra={"error": str(exc)})
-            raise HTTPException(
-                status_code=502, detail="Upstream service error"
-            ) from exc
-
-        except Exception as exc:
-            logger.exception("Chat proxy: unexpected error")
-            raise HTTPException(
-                status_code=500, detail="Internal server error"
-            ) from exc
-
-        finally:
-            clear_context()
+        return await _handle_chat_request(gateway, config, request)
 
     return router

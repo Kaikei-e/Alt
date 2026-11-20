@@ -1,8 +1,11 @@
 """Tests for SummarizeUsecase - retry semaphore hold behavior."""
 
-import pytest
-from unittest.mock import AsyncMock, Mock
+import logging
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from unittest.mock import AsyncMock, Mock
+
+import pytest
 
 from news_creator.config.config import NewsCreatorConfig
 from news_creator.domain.errors import PreemptedException
@@ -10,7 +13,7 @@ from news_creator.domain.models import LLMGenerateResponse
 from news_creator.usecase.summarize_usecase import SummarizeUsecase
 
 
-def _make_config():
+def _make_config() -> Mock:
     """Create a mock config."""
     config = Mock(spec=NewsCreatorConfig)
     config.max_repetition_retries = 2
@@ -25,7 +28,9 @@ def _make_config():
     return config
 
 
-def _make_llm_response(text="テスト要約。これはテスト記事の日本語要約です。"):
+def _make_llm_response(
+    text: str = "テスト要約。これはテスト記事の日本語要約です。",
+) -> LLMGenerateResponse:
     """Create a mock LLMGenerateResponse."""
     return LLMGenerateResponse(
         response=text,
@@ -45,7 +50,7 @@ class TestRetryDoesNotReacquireSemaphore:
     """Tests that retry loop uses hold_slot to keep semaphore."""
 
     @pytest.mark.asyncio
-    async def test_retry_uses_hold_slot_and_generate_raw(self):
+    async def test_retry_uses_hold_slot_and_generate_raw(self) -> None:
         """Test that retry loop acquires semaphore once via hold_slot and uses generate_raw."""
         config = _make_config()
         llm_provider = Mock()
@@ -55,12 +60,16 @@ class TestRetryDoesNotReacquireSemaphore:
         generate_raw_calls = 0
 
         @asynccontextmanager
-        async def mock_hold_slot(is_high_priority=False):
+        async def mock_hold_slot(
+            is_high_priority: bool = False,
+        ) -> AsyncIterator[tuple[float, None, None]]:
             nonlocal hold_slot_calls
             hold_slot_calls += 1
             yield 0.0, None, None
 
-        async def mock_generate_raw(prompt, **kwargs):
+        async def mock_generate_raw(
+            prompt: str, **kwargs: object
+        ) -> LLMGenerateResponse:
             nonlocal generate_raw_calls
             generate_raw_calls += 1
             if generate_raw_calls == 1:
@@ -79,7 +88,7 @@ class TestRetryDoesNotReacquireSemaphore:
         usecase = SummarizeUsecase(config=config, llm_provider=llm_provider)
         content = "A" * 200  # Sufficient content
 
-        summary, metadata = await usecase.generate_summary("test-article", content)
+        summary, _metadata = await usecase.generate_summary("test-article", content)
 
         # hold_slot should be called exactly once
         assert hold_slot_calls == 1
@@ -88,13 +97,14 @@ class TestRetryDoesNotReacquireSemaphore:
         assert summary  # Should have a non-empty summary
 
     @pytest.mark.asyncio
-    async def test_max_retries_reduced_to_2(self):
+    async def test_max_retries_reduced_to_2(self) -> None:
         """Test that max retries defaults to 2."""
+        expected_max_retries = 2
         config = _make_config()
-        assert config.max_repetition_retries == 2
+        assert config.max_repetition_retries == expected_max_retries
 
     @pytest.mark.asyncio
-    async def test_semaphore_released_even_on_error(self):
+    async def test_semaphore_released_even_on_error(self) -> None:
         """Test that hold_slot releases semaphore even if generate_raw raises."""
         config = _make_config()
         llm_provider = Mock()
@@ -102,7 +112,9 @@ class TestRetryDoesNotReacquireSemaphore:
         released = False
 
         @asynccontextmanager
-        async def mock_hold_slot(is_high_priority=False):
+        async def mock_hold_slot(
+            is_high_priority: bool = False,
+        ) -> AsyncIterator[tuple[float, None, None]]:
             nonlocal released
             try:
                 yield 0.0, None, None
@@ -124,7 +136,7 @@ class TestTokenBudgetHierarchicalFallback:
     """Token budget-based hierarchical fallback tests."""
 
     @pytest.mark.asyncio
-    async def test_token_budget_triggers_hierarchical_when_exceeded(self):
+    async def test_token_budget_triggers_hierarchical_when_exceeded(self) -> None:
         """18,000 chars content → prompt ~4,500 tokens + 1,000 predict = 5,500.
         Budget 75% of 8,192 = 6,144 → should still fit.
         But with prompt template overhead (~500 chars), total can exceed budget.
@@ -140,10 +152,14 @@ class TestTokenBudgetHierarchicalFallback:
         hierarchical_generate_raw_calls = []
 
         @asynccontextmanager
-        async def mock_hold_slot(is_high_priority=False):
+        async def mock_hold_slot(
+            is_high_priority: bool = False,
+        ) -> AsyncIterator[tuple[float, None, None]]:
             yield 0.0, None, None
 
-        async def mock_generate_raw(prompt, **kwargs):
+        async def mock_generate_raw(
+            prompt: str, **kwargs: object
+        ) -> LLMGenerateResponse:
             """Track calls — hierarchical uses hold_slot+generate_raw now."""
             hierarchical_generate_raw_calls.append(prompt)
             return _make_llm_response()
@@ -160,7 +176,7 @@ class TestTokenBudgetHierarchicalFallback:
         # 22,000 chars → exceeds token budget → triggers hierarchical
         content = "A" * 22_000
 
-        summary, metadata = await usecase.generate_summary("test-article", content)
+        summary, _metadata = await usecase.generate_summary("test-article", content)
 
         # Should have used hierarchical path (hold_slot+generate_raw)
         assert len(hierarchical_generate_raw_calls) > 0, (
@@ -169,7 +185,7 @@ class TestTokenBudgetHierarchicalFallback:
         assert summary
 
     @pytest.mark.asyncio
-    async def test_token_budget_allows_normal_when_within_budget(self):
+    async def test_token_budget_allows_normal_when_within_budget(self) -> None:
         """10,000 chars content → prompt ~2,500 tokens + 1,000 predict = 3,500.
         Budget 75% of 8,192 = 6,144 → within budget → normal path.
         """
@@ -180,7 +196,9 @@ class TestTokenBudgetHierarchicalFallback:
         llm_provider = Mock()
 
         @asynccontextmanager
-        async def mock_hold_slot(is_high_priority=False):
+        async def mock_hold_slot(
+            is_high_priority: bool = False,
+        ) -> AsyncIterator[tuple[float, None, None]]:
             yield 0.0, None, None
 
         llm_provider.hold_slot = mock_hold_slot
@@ -192,14 +210,14 @@ class TestTokenBudgetHierarchicalFallback:
         usecase = SummarizeUsecase(config=config, llm_provider=llm_provider)
         content = "A" * 10_000
 
-        summary, metadata = await usecase.generate_summary("test-article", content)
+        summary, _metadata = await usecase.generate_summary("test-article", content)
 
         # Normal path should have been used
         assert llm_provider.generate_raw.called
         assert summary
 
     @pytest.mark.asyncio
-    async def test_char_threshold_still_triggers_before_token_check(self):
+    async def test_char_threshold_still_triggers_before_token_check(self) -> None:
         """25,000 chars → char threshold (20,000) catches it first (backward compat)."""
         config = _make_config()
         config.summary_num_predict = 1000
@@ -211,10 +229,14 @@ class TestTokenBudgetHierarchicalFallback:
         hierarchical_generate_raw_called = False
 
         @asynccontextmanager
-        async def mock_hold_slot(is_high_priority=False):
+        async def mock_hold_slot(
+            is_high_priority: bool = False,
+        ) -> AsyncIterator[tuple[float, None, None]]:
             yield 0.0, None, None
 
-        async def mock_generate_raw(prompt, **kwargs):
+        async def mock_generate_raw(
+            prompt: str, **kwargs: object
+        ) -> LLMGenerateResponse:
             nonlocal hierarchical_generate_raw_called
             hierarchical_generate_raw_called = True
             return _make_llm_response()
@@ -229,7 +251,7 @@ class TestTokenBudgetHierarchicalFallback:
         usecase = SummarizeUsecase(config=config, llm_provider=llm_provider)
         content = "A" * 25_000
 
-        summary, metadata = await usecase.generate_summary("test-article", content)
+        summary, _metadata = await usecase.generate_summary("test-article", content)
 
         assert hierarchical_generate_raw_called, (
             "Char threshold should have triggered hierarchical (hold_slot+generate_raw)"
@@ -237,7 +259,7 @@ class TestTokenBudgetHierarchicalFallback:
         assert summary
 
     @pytest.mark.asyncio
-    async def test_token_budget_percent_configurable(self):
+    async def test_token_budget_percent_configurable(self) -> None:
         """Budget 90% → 18,000 chars stays within budget and uses normal path."""
         config = _make_config()
         config.summary_num_predict = 1000
@@ -246,7 +268,9 @@ class TestTokenBudgetHierarchicalFallback:
         llm_provider = Mock()
 
         @asynccontextmanager
-        async def mock_hold_slot(is_high_priority=False):
+        async def mock_hold_slot(
+            is_high_priority: bool = False,
+        ) -> AsyncIterator[tuple[float, None, None]]:
             yield 0.0, None, None
 
         llm_provider.hold_slot = mock_hold_slot
@@ -260,7 +284,7 @@ class TestTokenBudgetHierarchicalFallback:
         # Budget = 90% of 8,192 = 7,372 → within budget
         content = "A" * 18_000
 
-        summary, metadata = await usecase.generate_summary("test-article", content)
+        summary, _metadata = await usecase.generate_summary("test-article", content)
 
         assert llm_provider.generate_raw.called
         assert summary
@@ -271,7 +295,7 @@ class TestHierarchicalUsesHoldSlotGenerateRaw:
     not generate() (local-only), to avoid starving local GPU slots."""
 
     @pytest.mark.asyncio
-    async def test_hierarchical_map_phase_uses_hold_slot_generate_raw(self):
+    async def test_hierarchical_map_phase_uses_hold_slot_generate_raw(self) -> None:
         """Map phase chunks must go through hold_slot+generate_raw, not generate()."""
         config = _make_config()
         config.hierarchical_single_article_threshold = 1_000
@@ -281,7 +305,9 @@ class TestHierarchicalUsesHoldSlotGenerateRaw:
         hold_slot_calls = 0
 
         @asynccontextmanager
-        async def mock_hold_slot(is_high_priority=False):
+        async def mock_hold_slot(
+            is_high_priority: bool = False,
+        ) -> AsyncIterator[tuple[float, None, None]]:
             nonlocal hold_slot_calls
             hold_slot_calls += 1
             yield 0.0, None, None
@@ -300,7 +326,7 @@ class TestHierarchicalUsesHoldSlotGenerateRaw:
         usecase = SummarizeUsecase(config=config, llm_provider=llm_provider)
         content = "A" * 2_000  # Exceeds threshold → triggers hierarchical
 
-        summary, metadata = await usecase.generate_summary("test-article", content)
+        summary, _metadata = await usecase.generate_summary("test-article", content)
 
         assert hold_slot_calls >= 1, "hold_slot must be called for hierarchical chunks"
         assert llm_provider.generate_raw.called, (
@@ -312,7 +338,7 @@ class TestHierarchicalUsesHoldSlotGenerateRaw:
         assert summary
 
     @pytest.mark.asyncio
-    async def test_hierarchical_reduce_phase_uses_hold_slot_generate_raw(self):
+    async def test_hierarchical_reduce_phase_uses_hold_slot_generate_raw(self) -> None:
         """Reduce phase must also go through hold_slot+generate_raw."""
         config = _make_config()
         config.hierarchical_single_article_threshold = 1_000
@@ -322,10 +348,14 @@ class TestHierarchicalUsesHoldSlotGenerateRaw:
         generate_raw_calls = []
 
         @asynccontextmanager
-        async def mock_hold_slot(is_high_priority=False):
+        async def mock_hold_slot(
+            is_high_priority: bool = False,
+        ) -> AsyncIterator[tuple[float, None, None]]:
             yield 0.0, None, None
 
-        async def mock_generate_raw(prompt, **kwargs):
+        async def mock_generate_raw(
+            prompt: str, **kwargs: object
+        ) -> LLMGenerateResponse:
             generate_raw_calls.append(prompt)
             return _make_llm_response("要約テスト。")
 
@@ -340,16 +370,17 @@ class TestHierarchicalUsesHoldSlotGenerateRaw:
         usecase = SummarizeUsecase(config=config, llm_provider=llm_provider)
         content = "A" * 2_000
 
-        summary, metadata = await usecase.generate_summary("test-article", content)
+        summary, _metadata = await usecase.generate_summary("test-article", content)
 
         # Map phase chunks + reduce phase = multiple generate_raw calls
-        assert len(generate_raw_calls) >= 2, (
+        min_expected_calls = 2
+        assert len(generate_raw_calls) >= min_expected_calls, (
             f"Expected at least 2 generate_raw calls (map + reduce), got {len(generate_raw_calls)}"
         )
         assert summary
 
     @pytest.mark.asyncio
-    async def test_hierarchical_propagates_high_priority_to_hold_slot(self):
+    async def test_hierarchical_propagates_high_priority_to_hold_slot(self) -> None:
         """High-priority requests that switch to hierarchical summarization must
         acquire every map and reduce slot with is_high_priority=True."""
         config = _make_config()
@@ -358,7 +389,9 @@ class TestHierarchicalUsesHoldSlotGenerateRaw:
         recorded_priorities: list[bool] = []
 
         @asynccontextmanager
-        async def mock_hold_slot(is_high_priority=False):
+        async def mock_hold_slot(
+            is_high_priority: bool = False,
+        ) -> AsyncIterator[tuple[float, None, None]]:
             recorded_priorities.append(is_high_priority)
             yield 0.0, None, None
 
@@ -373,14 +406,15 @@ class TestHierarchicalUsesHoldSlotGenerateRaw:
             article_id="art-1", content="A" * 25_000, priority="high"
         )
 
+        min_expected_slots = 2
         assert summary
-        assert len(recorded_priorities) >= 2
+        assert len(recorded_priorities) >= min_expected_slots
         assert all(p is True for p in recorded_priorities)
 
     @pytest.mark.asyncio
     async def test_token_budget_hierarchical_propagates_high_priority_to_hold_slot(
         self,
-    ):
+    ) -> None:
         """High-priority requests that fall back to hierarchical summarization via
         the token-budget check must also pass is_high_priority=True to hold_slot."""
         config = _make_config()
@@ -392,7 +426,9 @@ class TestHierarchicalUsesHoldSlotGenerateRaw:
         recorded_priorities: list[bool] = []
 
         @asynccontextmanager
-        async def mock_hold_slot(is_high_priority=False):
+        async def mock_hold_slot(
+            is_high_priority: bool = False,
+        ) -> AsyncIterator[tuple[float, None, None]]:
             recorded_priorities.append(is_high_priority)
             yield 0.0, None, None
 
@@ -407,12 +443,13 @@ class TestHierarchicalUsesHoldSlotGenerateRaw:
             article_id="art-1", content="A" * 22_000, priority="high"
         )
 
+        min_expected_slots = 2
         assert summary
-        assert len(recorded_priorities) >= 2
+        assert len(recorded_priorities) >= min_expected_slots
         assert all(p is True for p in recorded_priorities)
 
     @pytest.mark.asyncio
-    async def test_hierarchical_map_phase_reraises_preempted_exception(self):
+    async def test_hierarchical_map_phase_reraises_preempted_exception(self) -> None:
         """PreemptedException in a map chunk must propagate immediately instead
         of being swallowed by the best-effort per-chunk except Exception handler."""
         config = _make_config()
@@ -423,7 +460,9 @@ class TestHierarchicalUsesHoldSlotGenerateRaw:
         hold_slot_calls = 0
 
         @asynccontextmanager
-        async def mock_hold_slot(is_high_priority=False):
+        async def mock_hold_slot(
+            is_high_priority: bool = False,
+        ) -> AsyncIterator[tuple[float, None, None]]:
             nonlocal hold_slot_calls
             hold_slot_calls += 1
             yield 0.0, None, None
@@ -448,7 +487,7 @@ class TestHierarchicalUsesHoldSlotGenerateRaw:
 class TestGemma4TokenCleanup:
     """Output cleanup must handle Gemma 4 turn tokens and thinking blocks."""
 
-    def test_clean_summary_text_strips_gemma4_turn_tokens(self):
+    def test_clean_summary_text_strips_gemma4_turn_tokens(self) -> None:
         """_clean_summary_text must strip Gemma 4 <|turn> and <turn|> tokens."""
         config = _make_config()
         llm_provider = AsyncMock()
@@ -460,7 +499,7 @@ class TestGemma4TokenCleanup:
         assert "<turn|>" not in cleaned
         assert "テスト要約" in cleaned
 
-    def test_clean_summary_text_strips_thinking_blocks(self):
+    def test_clean_summary_text_strips_thinking_blocks(self) -> None:
         """_clean_summary_text must strip Gemma 4 thinking channel blocks."""
         config = _make_config()
         llm_provider = AsyncMock()
@@ -477,14 +516,16 @@ class TestGemma4TokenCleanup:
     @pytest.mark.asyncio
     async def test_thinking_only_output_raises_runtime_error_not_leaked_via_fallback(
         self,
-    ):
+    ) -> None:
         """An output that is entirely a thinking block must be treated as empty and
         raise RuntimeError instead of promoting chain-of-thought text via fallback."""
         config = _make_config()
         llm_provider = Mock()
 
         @asynccontextmanager
-        async def mock_hold_slot(is_high_priority=False):
+        async def mock_hold_slot(
+            is_high_priority: bool = False,
+        ) -> AsyncIterator[tuple[float, None, None]]:
             yield 0.0, None, None
 
         llm_provider.hold_slot = mock_hold_slot
@@ -500,14 +541,16 @@ class TestGemma4TokenCleanup:
             await usecase.generate_summary("art-thought-only", "A" * 200)
 
     @pytest.mark.asyncio
-    async def test_fallback_strips_thinking_block_and_sanitizes_markdown(self):
+    async def test_fallback_strips_thinking_block_and_sanitizes_markdown(self) -> None:
         """When _clean_summary_text returns empty (e.g. bold-only line) alongside a
         thinking block, fallback must strip the thinking block body and sanitize markdown."""
         config = _make_config()
         llm_provider = Mock()
 
         @asynccontextmanager
-        async def mock_hold_slot(is_high_priority=False):
+        async def mock_hold_slot(
+            is_high_priority: bool = False,
+        ) -> AsyncIterator[tuple[float, None, None]]:
             yield 0.0, None, None
 
         llm_provider.hold_slot = mock_hold_slot
@@ -525,14 +568,16 @@ class TestGemma4TokenCleanup:
         assert "要約" in summary
 
     @pytest.mark.asyncio
-    async def test_unterminated_thinking_only_output_raises_runtime_error(self):
+    async def test_unterminated_thinking_only_output_raises_runtime_error(self) -> None:
         """An output truncated inside a thinking block without <channel|> must be
         stripped to empty by _clean_summary_text and raise RuntimeError."""
         config = _make_config()
         llm_provider = Mock()
 
         @asynccontextmanager
-        async def mock_hold_slot(is_high_priority=False):
+        async def mock_hold_slot(
+            is_high_priority: bool = False,
+        ) -> AsyncIterator[tuple[float, None, None]]:
             yield 0.0, None, None
 
         llm_provider.hold_slot = mock_hold_slot
@@ -550,14 +595,16 @@ class TestGemma4TokenCleanup:
     @pytest.mark.asyncio
     async def test_summary_followed_by_unterminated_thinking_block_returns_only_summary(
         self,
-    ):
+    ) -> None:
         """Text before an unterminated thinking block is kept while the trailing
         unterminated thinking block is stripped."""
         config = _make_config()
         llm_provider = Mock()
 
         @asynccontextmanager
-        async def mock_hold_slot(is_high_priority=False):
+        async def mock_hold_slot(
+            is_high_priority: bool = False,
+        ) -> AsyncIterator[tuple[float, None, None]]:
             yield 0.0, None, None
 
         llm_provider.hold_slot = mock_hold_slot
@@ -576,7 +623,7 @@ class TestGemma4TokenCleanup:
         assert "<|channel>thought" not in summary
         assert "Internal reasoning" not in summary
 
-    def test_two_closed_thinking_blocks_keep_text_between(self):
+    def test_two_closed_thinking_blocks_keep_text_between(self) -> None:
         """Two closed thinking blocks must not greedily span across the text between them."""
         config = _make_config()
         usecase = SummarizeUsecase(config=config, llm_provider=AsyncMock())
@@ -594,7 +641,9 @@ class TestGemma4TokenCleanup:
         assert "中間の要約テキスト。" in cleaned
         assert "末尾の要約テキスト。" in cleaned
 
-    def test_closed_thinking_block_followed_by_unterminated_keeps_middle_text(self):
+    def test_closed_thinking_block_followed_by_unterminated_keeps_middle_text(
+        self,
+    ) -> None:
         """A closed thinking block followed by text and an unterminated thinking block
         keeps only the text before the unterminated marker."""
         config = _make_config()
@@ -617,7 +666,7 @@ class TestStreamingOutputGuardIsWired:
 
     @staticmethod
     def _streaming_provider(chunks: list[str]) -> Mock:
-        async def _stream():
+        async def _stream() -> AsyncIterator[LLMGenerateResponse]:
             for index, chunk in enumerate(chunks):
                 yield LLMGenerateResponse(
                     response=chunk,
@@ -630,7 +679,9 @@ class TestStreamingOutputGuardIsWired:
         return llm_provider
 
     @pytest.mark.asyncio
-    async def test_dangerous_link_split_across_chunks_never_reaches_the_client(self):
+    async def test_dangerous_link_split_across_chunks_never_reaches_the_client(
+        self,
+    ) -> None:
         usecase = SummarizeUsecase(
             config=_make_config(),
             llm_provider=self._streaming_provider(
@@ -645,7 +696,7 @@ class TestStreamingOutputGuardIsWired:
         assert "".join(emitted) == "詳細は ここ を参照。"
 
     @pytest.mark.asyncio
-    async def test_benign_tokens_stream_through_unchanged(self):
+    async def test_benign_tokens_stream_through_unchanged(self) -> None:
         chunks = ["東京都は2026年4月1日、", "新システムの導入を発表した。"]
         usecase = SummarizeUsecase(
             config=_make_config(), llm_provider=self._streaming_provider(chunks)
@@ -662,7 +713,7 @@ class TestRetryParameterAdjustment:
     """Tests for retry behavior distinguishing empty output vs repetition."""
 
     @pytest.mark.asyncio
-    async def test_retry_after_empty_output_uses_base_parameters(self):
+    async def test_retry_after_empty_output_uses_base_parameters(self) -> None:
         """(a) first call returns an empty response, second returns a valid summary ->
         assert the SECOND call's options have repeat_penalty == base and temperature == base.
         """
@@ -670,22 +721,23 @@ class TestRetryParameterAdjustment:
         llm_provider = Mock()
 
         @asynccontextmanager
-        async def mock_hold_slot(is_high_priority=False):
+        async def mock_hold_slot(
+            is_high_priority: bool = False,
+        ) -> AsyncIterator[tuple[float, None, None]]:
             yield 0.0, None, None
 
         llm_provider.hold_slot = mock_hold_slot
-        llm_provider.generate_raw = AsyncMock(
-            side_effect=[
-                _make_llm_response(""),
-                _make_llm_response("テスト要約。これはテスト記事の日本語要約です。"),
-            ]
-        )
+        responses = [
+            _make_llm_response(""),
+            _make_llm_response("テスト要約。これはテスト記事の日本語要約です。"),
+        ]
+        llm_provider.generate_raw = AsyncMock(side_effect=responses)
 
         usecase = SummarizeUsecase(config=config, llm_provider=llm_provider)
-        summary, metadata = await usecase.generate_summary("test-article", "A" * 200)
+        summary, _metadata = await usecase.generate_summary("test-article", "A" * 200)
 
         assert summary
-        assert llm_provider.generate_raw.call_count == 2
+        assert llm_provider.generate_raw.call_count == len(responses)
         first_options = llm_provider.generate_raw.call_args_list[0].kwargs["options"]
         second_options = llm_provider.generate_raw.call_args_list[1].kwargs["options"]
 
@@ -695,7 +747,7 @@ class TestRetryParameterAdjustment:
         assert second_options["temperature"] == config.summary_temperature
 
     @pytest.mark.asyncio
-    async def test_retry_after_repetition_keeps_progressive_adjustment(self):
+    async def test_retry_after_repetition_keeps_progressive_adjustment(self) -> None:
         """(b) first call returns a repetitive summary (one that detect_repetition flags
         with the configured threshold), second returns a valid one ->
         assert the second call's repeat_penalty is higher than base and temperature lower.
@@ -704,23 +756,24 @@ class TestRetryParameterAdjustment:
         llm_provider = Mock()
 
         @asynccontextmanager
-        async def mock_hold_slot(is_high_priority=False):
+        async def mock_hold_slot(
+            is_high_priority: bool = False,
+        ) -> AsyncIterator[tuple[float, None, None]]:
             yield 0.0, None, None
 
         llm_provider.hold_slot = mock_hold_slot
         repetitive_text = "apple apple apple banana banana banana cherry cherry cherry"
-        llm_provider.generate_raw = AsyncMock(
-            side_effect=[
-                _make_llm_response(repetitive_text),
-                _make_llm_response("テスト要約。これはテスト記事の日本語要約です。"),
-            ]
-        )
+        responses = [
+            _make_llm_response(repetitive_text),
+            _make_llm_response("テスト要約。これはテスト記事の日本語要約です。"),
+        ]
+        llm_provider.generate_raw = AsyncMock(side_effect=responses)
 
         usecase = SummarizeUsecase(config=config, llm_provider=llm_provider)
-        summary, metadata = await usecase.generate_summary("test-article", "A" * 200)
+        summary, _metadata = await usecase.generate_summary("test-article", "A" * 200)
 
         assert summary
-        assert llm_provider.generate_raw.call_count == 2
+        assert llm_provider.generate_raw.call_count == len(responses)
         second_options = llm_provider.generate_raw.call_args_list[1].kwargs["options"]
 
         assert second_options["repeat_penalty"] > config.llm_repeat_penalty
@@ -733,39 +786,42 @@ class TestRetryParameterAdjustment:
         )
 
     @pytest.mark.asyncio
-    async def test_two_consecutive_empty_responses_raise_runtime_error(self):
+    async def test_two_consecutive_empty_responses_raise_runtime_error(self) -> None:
         """(c) two empty responses still raise RuntimeError containing 'empty/whitespace summary'."""
         config = _make_config()
         llm_provider = Mock()
 
         @asynccontextmanager
-        async def mock_hold_slot(is_high_priority=False):
+        async def mock_hold_slot(
+            is_high_priority: bool = False,
+        ) -> AsyncIterator[tuple[float, None, None]]:
             yield 0.0, None, None
 
         llm_provider.hold_slot = mock_hold_slot
-        llm_provider.generate_raw = AsyncMock(
-            side_effect=[
-                _make_llm_response(""),
-                _make_llm_response("   "),
-            ]
-        )
+        responses = [
+            _make_llm_response(""),
+            _make_llm_response("   "),
+        ]
+        llm_provider.generate_raw = AsyncMock(side_effect=responses)
 
         usecase = SummarizeUsecase(config=config, llm_provider=llm_provider)
         with pytest.raises(RuntimeError, match="empty/whitespace summary"):
             await usecase.generate_summary("test-article", "A" * 200)
 
-        assert llm_provider.generate_raw.call_count == 2
+        assert llm_provider.generate_raw.call_count == len(responses)
 
     @pytest.mark.asyncio
-    async def test_retry_warning_log_states_reason(self, caplog):
+    async def test_retry_warning_log_states_reason(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
         """(Requirement 3) Retry warning log states real reason (e.g. reason='empty_output')."""
-        import logging
-
         config = _make_config()
         llm_provider = Mock()
 
         @asynccontextmanager
-        async def mock_hold_slot(is_high_priority=False):
+        async def mock_hold_slot(
+            is_high_priority: bool = False,
+        ) -> AsyncIterator[tuple[float, None, None]]:
             yield 0.0, None, None
 
         llm_provider.hold_slot = mock_hold_slot
@@ -791,7 +847,7 @@ class TestRetryParameterAdjustment:
         )
 
     @pytest.mark.asyncio
-    async def test_retry_empty_then_repetition(self):
+    async def test_retry_empty_then_repetition(self) -> None:
         """First call empty (retry 1 has base params), second call repetitive
         (retry 2 has progressive adjustment based on 1 repetition).
         """
@@ -800,24 +856,25 @@ class TestRetryParameterAdjustment:
         llm_provider = Mock()
 
         @asynccontextmanager
-        async def mock_hold_slot(is_high_priority=False):
+        async def mock_hold_slot(
+            is_high_priority: bool = False,
+        ) -> AsyncIterator[tuple[float, None, None]]:
             yield 0.0, None, None
 
         llm_provider.hold_slot = mock_hold_slot
         repetitive_text = "apple apple apple banana banana banana cherry cherry cherry"
-        llm_provider.generate_raw = AsyncMock(
-            side_effect=[
-                _make_llm_response(""),
-                _make_llm_response(repetitive_text),
-                _make_llm_response("テスト要約。これはテスト記事の日本語要約です。"),
-            ]
-        )
+        responses = [
+            _make_llm_response(""),
+            _make_llm_response(repetitive_text),
+            _make_llm_response("テスト要約。これはテスト記事の日本語要約です。"),
+        ]
+        llm_provider.generate_raw = AsyncMock(side_effect=responses)
 
         usecase = SummarizeUsecase(config=config, llm_provider=llm_provider)
-        summary, metadata = await usecase.generate_summary("test-article", "A" * 200)
+        summary, _metadata = await usecase.generate_summary("test-article", "A" * 200)
 
         assert summary
-        assert llm_provider.generate_raw.call_count == 3
+        assert llm_provider.generate_raw.call_count == len(responses)
         calls = llm_provider.generate_raw.call_args_list
 
         # Call 1 (initial): base params
@@ -837,7 +894,7 @@ class TestRetryParameterAdjustment:
         )
 
     @pytest.mark.asyncio
-    async def test_retry_repetition_then_empty(self):
+    async def test_retry_repetition_then_empty(self) -> None:
         """First call repetitive (retry 1 has progressive adjustment),
         second call empty (retry 2 resets to base params).
         """
@@ -846,24 +903,25 @@ class TestRetryParameterAdjustment:
         llm_provider = Mock()
 
         @asynccontextmanager
-        async def mock_hold_slot(is_high_priority=False):
+        async def mock_hold_slot(
+            is_high_priority: bool = False,
+        ) -> AsyncIterator[tuple[float, None, None]]:
             yield 0.0, None, None
 
         llm_provider.hold_slot = mock_hold_slot
         repetitive_text = "apple apple apple banana banana banana cherry cherry cherry"
-        llm_provider.generate_raw = AsyncMock(
-            side_effect=[
-                _make_llm_response(repetitive_text),
-                _make_llm_response(""),
-                _make_llm_response("テスト要約。これはテスト記事の日本語要約です。"),
-            ]
-        )
+        responses = [
+            _make_llm_response(repetitive_text),
+            _make_llm_response(""),
+            _make_llm_response("テスト要約。これはテスト記事の日本語要約です。"),
+        ]
+        llm_provider.generate_raw = AsyncMock(side_effect=responses)
 
         usecase = SummarizeUsecase(config=config, llm_provider=llm_provider)
-        summary, metadata = await usecase.generate_summary("test-article", "A" * 200)
+        summary, _metadata = await usecase.generate_summary("test-article", "A" * 200)
 
         assert summary
-        assert llm_provider.generate_raw.call_count == 3
+        assert llm_provider.generate_raw.call_count == len(responses)
         calls = llm_provider.generate_raw.call_args_list
 
         # Call 1 (initial): base params

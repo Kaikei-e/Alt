@@ -1,5 +1,6 @@
 """Unit tests for SummarizeUsecase.generate_summary_stream()."""
 
+from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock, Mock
 
 import aiohttp
@@ -28,7 +29,9 @@ class TestGenerateSummaryStream:
     """Specification tests for SummarizeUsecase.generate_summary_stream()."""
 
     @pytest.mark.asyncio
-    async def test_happy_path_strips_control_tokens_and_forwards_high_priority(self):
+    async def test_happy_path_strips_control_tokens_and_forwards_high_priority(
+        self,
+    ) -> None:
         """Yields sanitized token chunks (stripping Gemma 4 control tokens) and passes priority='high'."""
         raw_chunks = [
             "<|tu",
@@ -38,7 +41,7 @@ class TestGenerateSummaryStream:
             "です。",
         ]
 
-        async def _stream():
+        async def _stream() -> AsyncIterator[LLMGenerateResponse]:
             for idx, text in enumerate(raw_chunks):
                 yield LLMGenerateResponse(
                     response=text,
@@ -64,7 +67,7 @@ class TestGenerateSummaryStream:
         assert call_kwargs["priority"] == "high"
 
     @pytest.mark.asyncio
-    async def test_rejects_short_content_under_100_chars(self):
+    async def test_rejects_short_content_under_100_chars(self) -> None:
         """Content shorter than 100 chars raises ValueError without calling LLM."""
         llm_provider = Mock()
         llm_provider.generate = AsyncMock()
@@ -77,10 +80,10 @@ class TestGenerateSummaryStream:
         llm_provider.generate.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_stream_ending_without_done_true_raises_truncated_error(self):
+    async def test_stream_ending_without_done_true_raises_truncated_error(self) -> None:
         """When stream ends after yielding tokens without a done=True chunk, raises RuntimeError."""
 
-        async def _truncated_stream():
+        async def _truncated_stream() -> AsyncIterator[LLMGenerateResponse]:
             yield LLMGenerateResponse(
                 response="途中までの要約テキストです。",
                 model="gemma4-e4b-12k",
@@ -92,55 +95,67 @@ class TestGenerateSummaryStream:
         usecase = SummarizeUsecase(config=_make_config(), llm_provider=llm_provider)
 
         emitted: list[str] = []
+
+        async def _consume() -> None:
+            async for token in usecase.generate_summary_stream(
+                "art-truncated", "A" * 200
+            ):
+                emitted.append(token)  # noqa: PERF401 - retain partial tokens yielded before mid-stream error
+
         with pytest.raises(
             RuntimeError,
             match="ended before a done=true chunk was received; response is truncated",
         ):
-            async for token in usecase.generate_summary_stream(
-                "art-truncated", "A" * 200
-            ):
-                emitted.append(token)
+            await _consume()
 
         assert emitted == ["途中までの要約テキストです。"]
 
     @pytest.mark.asyncio
     async def test_client_connection_error_with_partial_tokens_raises_truncated_error(
         self,
-    ):
+    ) -> None:
         """When ClientConnectionError occurs after yielding partial tokens, raises RuntimeError so SSE emits error."""
 
-        async def _interrupted_stream():
+        async def _interrupted_stream() -> AsyncIterator[LLMGenerateResponse]:
             yield LLMGenerateResponse(
                 response="途中までの要約テキストです。",
                 model="gemma4-e4b-12k",
                 done=False,
             )
-            raise aiohttp.ClientConnectionError("stream disconnected mid-generation")
+            msg = "stream disconnected mid-generation"
+            raise aiohttp.ClientConnectionError(msg)
 
         llm_provider = Mock()
         llm_provider.generate = AsyncMock(return_value=_interrupted_stream())
         usecase = SummarizeUsecase(config=_make_config(), llm_provider=llm_provider)
 
         emitted: list[str] = []
+
+        async def _consume() -> None:
+            async for token in usecase.generate_summary_stream(
+                "art-partial", "A" * 200
+            ):
+                emitted.append(token)  # noqa: PERF401 - retain partial tokens yielded before mid-stream error
+
         with pytest.raises(
             RuntimeError,
             match="connection closed after partial data was received; response is truncated",
         ):
-            async for token in usecase.generate_summary_stream(
-                "art-partial", "A" * 200
-            ):
-                emitted.append(token)
+            await _consume()
 
         assert emitted == ["途中までの要約テキストです。"]
 
     @pytest.mark.asyncio
-    async def test_client_connection_error_with_zero_tokens_raises_runtime_error(self):
+    async def test_client_connection_error_with_zero_tokens_raises_runtime_error(
+        self,
+    ) -> None:
         """When ClientConnectionError occurs before any token is yielded, raises RuntimeError."""
 
-        async def _immediate_disconnect_stream():
+        async def _immediate_disconnect_stream() -> AsyncIterator[None]:
             if False:
                 yield
-            raise aiohttp.ClientConnectionError("connection reset before first token")
+            msg = "connection reset before first token"
+            raise aiohttp.ClientConnectionError(msg)
 
         llm_provider = Mock()
         llm_provider.generate = AsyncMock(return_value=_immediate_disconnect_stream())

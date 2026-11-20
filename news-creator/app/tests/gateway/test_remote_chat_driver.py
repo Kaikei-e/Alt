@@ -1,18 +1,22 @@
 """Tests for RemoteChatDriver (OpenAI-compatible /v1/chat/completions client)."""
 
-import asyncio
 import json
+from collections.abc import AsyncIterator
+from types import TracebackType
 from unittest.mock import AsyncMock, MagicMock
 
 import aiohttp
 import pytest
 
+from news_creator.config.distributed_be_config import RemoteTarget
 from news_creator.domain.models import LLMGenerateResponse
+from news_creator.gateway.remote_chat_driver import (
+    RemoteChatDriver,
+    RemoteRequestRejectedError,
+)
 
 
-def _make_target():
-    from news_creator.config.distributed_be_config import RemoteTarget
-
+def _make_target() -> RemoteTarget:
     return RemoteTarget(
         base_url="http://router.example:8080",
         model="provider-a/model-a:latest",
@@ -20,27 +24,32 @@ def _make_target():
     )
 
 
-def _make_driver(reasoning_effort: str | None = None):
-    from news_creator.gateway.remote_chat_driver import RemoteChatDriver
-
+def _make_driver(reasoning_effort: str | None = None) -> RemoteChatDriver:
     return RemoteChatDriver(timeout_seconds=120, reasoning_effort=reasoning_effort)
 
 
 class _StubPostContext:
-    def __init__(self, response):
+    def __init__(self, response: MagicMock | None) -> None:
         self._response = response
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> MagicMock | None:
         reset_stream = getattr(self._response, "_reset_stream", None)
         if callable(reset_stream):
             reset_stream()
         return self._response
 
-    async def __aexit__(self, exc_type, exc, tb):
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> bool:
         return False
 
 
-def _make_mock_session(response=None, side_effect=None):
+def _make_mock_session(
+    response: MagicMock | None = None, side_effect: object = None
+) -> MagicMock:
     session = MagicMock()
     session.closed = False
     session.headers = {}
@@ -56,7 +65,7 @@ def _make_mock_response(
     body: str | bytes = "",
     *,
     headers: dict[str, str] | None = None,
-):
+) -> MagicMock:
     raw_bytes = body.encode("utf-8") if isinstance(body, str) else bytes(body)
     resp = MagicMock()
     resp.status = status
@@ -88,7 +97,7 @@ def _make_mock_response(
         offset += len(chunk)
         return chunk
 
-    async def _iter_chunked(n: int):
+    async def _iter_chunked(n: int) -> AsyncIterator[bytes]:
         for i in range(0, len(raw_bytes), n):
             yield raw_bytes[i : i + n]
 
@@ -102,7 +111,7 @@ def _make_mock_response(
 
 
 @pytest.mark.asyncio
-async def test_initialize_and_cleanup_omit_authorization_header():
+async def test_initialize_and_cleanup_omit_authorization_header() -> None:
     """RemoteChatDriver never attaches an Authorization header to its session."""
     drv = _make_driver(reasoning_effort=None)
     await drv.initialize()
@@ -114,10 +123,12 @@ async def test_initialize_and_cleanup_omit_authorization_header():
 
 
 @pytest.mark.asyncio
-async def test_chat_posts_exact_payload_without_reasoning_effort_when_none():
+async def test_chat_posts_exact_payload_without_reasoning_effort_when_none() -> None:
     """When reasoning_effort is None, 'reasoning_effort' is omitted from the request JSON."""
     driver = _make_driver(reasoning_effort=None)
     target = _make_target()
+    prompt_tokens = 210
+    completion_tokens = 75
     response_body = json.dumps(
         {
             "id": "chatcmpl-123",
@@ -134,9 +145,9 @@ async def test_chat_posts_exact_payload_without_reasoning_effort_when_none():
                 }
             ],
             "usage": {
-                "prompt_tokens": 210,
-                "completion_tokens": 75,
-                "total_tokens": 285,
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": prompt_tokens + completion_tokens,
             },
         }
     )
@@ -173,12 +184,12 @@ async def test_chat_posts_exact_payload_without_reasoning_effort_when_none():
     assert result.model == "model-a:latest"
     assert result.done is True
     assert result.done_reason == "stop"
-    assert result.prompt_eval_count == 210
-    assert result.eval_count == 75
+    assert result.prompt_eval_count == prompt_tokens
+    assert result.eval_count == completion_tokens
 
 
 @pytest.mark.asyncio
-async def test_chat_posts_exact_payload_with_reasoning_effort_when_configured():
+async def test_chat_posts_exact_payload_with_reasoning_effort_when_configured() -> None:
     """When reasoning_effort is set, it is included verbatim as top-level 'reasoning_effort'."""
     driver = _make_driver(reasoning_effort="none")
     target = _make_target()
@@ -225,7 +236,7 @@ async def test_chat_posts_exact_payload_with_reasoning_effort_when_configured():
 
 
 @pytest.mark.asyncio
-async def test_chat_uses_content_as_returned_and_ignores_reasoning_fields():
+async def test_chat_uses_content_as_returned_and_ignores_reasoning_fields() -> None:
     """Surrounding whitespace is stripped from content; reasoning/reasoning_content fields are ignored."""
     driver = _make_driver(reasoning_effort=None)
     target = _make_target()
@@ -262,7 +273,7 @@ async def test_chat_uses_content_as_returned_and_ignores_reasoning_fields():
 
 
 @pytest.mark.asyncio
-async def test_chat_falls_back_to_target_model_when_response_model_missing():
+async def test_chat_falls_back_to_target_model_when_response_model_missing() -> None:
     """When response omits 'model' or sets it empty, result.model defaults to target.model."""
     driver = _make_driver(reasoning_effort=None)
     target = _make_target()
@@ -292,7 +303,7 @@ async def test_chat_falls_back_to_target_model_when_response_model_missing():
 
 
 @pytest.mark.asyncio
-async def test_chat_non_200_raises_runtime_error_with_status_and_body_slice():
+async def test_chat_non_200_raises_runtime_error_with_status_and_body_slice() -> None:
     """Non-200 HTTP response raises RuntimeError including status and first 200 chars of body."""
     driver = _make_driver(reasoning_effort=None)
     target = _make_target()
@@ -315,7 +326,7 @@ async def test_chat_non_200_raises_runtime_error_with_status_and_body_slice():
 
 
 @pytest.mark.asyncio
-async def test_chat_non_json_body_raises_runtime_error():
+async def test_chat_non_json_body_raises_runtime_error() -> None:
     """200 response with non-JSON body raises RuntimeError."""
     driver = _make_driver(reasoning_effort=None)
     target = _make_target()
@@ -348,7 +359,7 @@ async def test_chat_non_json_body_raises_runtime_error():
 @pytest.mark.asyncio
 async def test_chat_missing_choices_or_empty_content_raises_runtime_error(
     bad_payload: dict,
-):
+) -> None:
     """Missing choices/message or empty/whitespace content raises RuntimeError."""
     driver = _make_driver(reasoning_effort=None)
     target = _make_target()
@@ -373,11 +384,13 @@ async def test_chat_missing_choices_or_empty_content_raises_runtime_error(
             connection_key=MagicMock(), os_error=OSError("Connection refused")
         ),
         aiohttp.ServerTimeoutError("Request timed out"),
-        asyncio.TimeoutError(),
+        TimeoutError(),
     ],
 )
 @pytest.mark.asyncio
-async def test_chat_client_error_and_timeout_raise_runtime_error(exc: BaseException):
+async def test_chat_client_error_and_timeout_raise_runtime_error(
+    exc: BaseException,
+) -> None:
     """aiohttp ClientError and timeout exceptions are wrapped in RuntimeError."""
     driver = _make_driver(reasoning_effort=None)
     target = _make_target()
@@ -395,10 +408,10 @@ async def test_chat_client_error_and_timeout_raise_runtime_error(exc: BaseExcept
 
 @pytest.mark.parametrize("status", [400, 404, 422])
 @pytest.mark.asyncio
-async def test_chat_4xx_rejection_raises_remote_request_rejected_error(status: int):
+async def test_chat_4xx_rejection_raises_remote_request_rejected_error(
+    status: int,
+) -> None:
     """HTTP 4xx other than 408/429 raises RemoteRequestRejectedError(RuntimeError)."""
-    from news_creator.gateway.remote_chat_driver import RemoteRequestRejectedError
-
     assert issubclass(RemoteRequestRejectedError, RuntimeError)
     driver = _make_driver(reasoning_effort=None)
     target = _make_target()
@@ -420,10 +433,8 @@ async def test_chat_4xx_rejection_raises_remote_request_rejected_error(status: i
 @pytest.mark.asyncio
 async def test_chat_empty_content_raises_remote_request_rejected_error(
     empty_content: str,
-):
+) -> None:
     """Empty or whitespace-only assistant content raises RemoteRequestRejectedError."""
-    from news_creator.gateway.remote_chat_driver import RemoteRequestRejectedError
-
     driver = _make_driver(reasoning_effort=None)
     target = _make_target()
     body = json.dumps(
@@ -453,10 +464,8 @@ async def test_chat_empty_content_raises_remote_request_rejected_error(
 @pytest.mark.asyncio
 async def test_chat_408_429_500_raise_plain_runtime_error_not_rejected_subclass(
     status: int,
-):
+) -> None:
     """HTTP 408, 429, and 500 raise plain RuntimeError, not RemoteRequestRejectedError."""
-    from news_creator.gateway.remote_chat_driver import RemoteRequestRejectedError
-
     driver = _make_driver(reasoning_effort=None)
     target = _make_target()
     driver._session = _make_mock_session(
@@ -476,7 +485,7 @@ async def test_chat_408_429_500_raise_plain_runtime_error_not_rejected_subclass(
 
 
 @pytest.mark.asyncio
-async def test_chat_non_utf8_200_body_never_leaks_unicode_decode_error():
+async def test_chat_non_utf8_200_body_never_leaks_unicode_decode_error() -> None:
     """A 200 body with invalid UTF-8 bytes is decoded with replacement or converted to RuntimeError."""
     driver = _make_driver(reasoning_effort=None)
     target = _make_target()
@@ -500,7 +509,7 @@ async def test_chat_non_utf8_200_body_never_leaks_unicode_decode_error():
 @pytest.mark.asyncio
 async def test_chat_response_body_over_4_mib_raises_runtime_error(
     with_content_length: bool,
-):
+) -> None:
     """A 200 chat response body larger than 4 MiB raises RuntimeError."""
     driver = _make_driver(reasoning_effort=None)
     target = _make_target()

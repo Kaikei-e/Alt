@@ -8,10 +8,16 @@ Research basis:
   - cross-encoder/ms-marco-MiniLM-L-6-v2 (English, 100M params, ~60ms)
 """
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import threading
 import time
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from sentence_transformers import CrossEncoder
 
 logger = logging.getLogger(__name__)
 
@@ -19,12 +25,11 @@ logger = logging.getLogger(__name__)
 # inside a worker thread (called via asyncio.to_thread), so concurrent first
 # requests race across real OS threads, not just coroutines -- guarded with a
 # threading.Lock, not asyncio.Lock.
-_cross_encoder = None
-_loaded_model_name = None
+_encoder_cache: dict[str, Any] = {"encoder": None, "model_name": None}
 _load_lock = threading.Lock()
 
 
-def _get_cross_encoder(model_name: str):
+def _get_cross_encoder(model_name: str) -> CrossEncoder:
     """Lazily load cross-encoder model.
 
     Args:
@@ -33,28 +38,34 @@ def _get_cross_encoder(model_name: str):
     Returns:
         CrossEncoder instance
     """
-    global _cross_encoder, _loaded_model_name
-
-    if _cross_encoder is not None and _loaded_model_name == model_name:
-        return _cross_encoder
+    if (
+        _encoder_cache["encoder"] is not None
+        and _encoder_cache["model_name"] == model_name
+    ):
+        return _encoder_cache["encoder"]
 
     with _load_lock:
         # Re-check inside the lock: another thread may have finished loading
         # while this one was waiting.
-        if _cross_encoder is None or _loaded_model_name != model_name:
-            from sentence_transformers import CrossEncoder
+        if (
+            _encoder_cache["encoder"] is None
+            or _encoder_cache["model_name"] != model_name
+        ):
+            from sentence_transformers import (  # noqa: PLC0415 - lazy-load heavy ML dependency
+                CrossEncoder,
+            )
 
             logger.info("Loading cross-encoder model", extra={"model_name": model_name})
             load_start = time.time()
-            _cross_encoder = CrossEncoder(model_name, device="cpu")
-            _loaded_model_name = model_name
+            _encoder_cache["encoder"] = CrossEncoder(model_name, device="cpu")
+            _encoder_cache["model_name"] = model_name
             load_elapsed = time.time() - load_start
             logger.info(
                 "Cross-encoder model loaded",
                 extra={"model_name": model_name, "load_time_s": round(load_elapsed, 2)},
             )
 
-    return _cross_encoder
+    return _encoder_cache["encoder"]
 
 
 class RerankUsecase:
@@ -67,7 +78,7 @@ class RerankUsecase:
     DEFAULT_MODEL = "BAAI/bge-reranker-v2-m3"
     ALLOWED_MODELS = frozenset({DEFAULT_MODEL})
 
-    def __init__(self, model_name: str | None = None):
+    def __init__(self, model_name: str | None = None) -> None:
         """Initialize rerank usecase.
 
         Args:
@@ -91,9 +102,10 @@ class RerankUsecase:
             logger.info(
                 "Cross-encoder warmup complete", extra={"model": self.model_name}
             )
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - best-effort startup warmup; falls back to lazy load on first request
             logger.warning(
-                f"Cross-encoder warmup failed, will load lazily on first use: {e}",
+                "Cross-encoder warmup failed, will load lazily on first use: %s",
+                e,
                 extra={"model": self.model_name},
                 exc_info=True,
             )
@@ -123,10 +135,12 @@ class RerankUsecase:
             RuntimeError: If model loading or inference fails
         """
         if not query or not query.strip():
-            raise ValueError("query cannot be empty")
+            msg = "query cannot be empty"
+            raise ValueError(msg)
 
         if not candidates:
-            raise ValueError("candidates list cannot be empty")
+            msg = "candidates list cannot be empty"
+            raise ValueError(msg)
 
         start_time = time.time()
 
@@ -178,11 +192,9 @@ class RerankUsecase:
                 },
             )
 
-            return results, self.model_name, elapsed_ms
-
         except Exception as e:
             elapsed_ms = (time.time() - start_time) * 1000
-            logger.error(
+            logger.exception(
                 "Re-ranking failed",
                 extra={
                     "query": query[:100],
@@ -191,6 +203,8 @@ class RerankUsecase:
                     "error_type": type(e).__name__,
                     "elapsed_ms": round(elapsed_ms, 2),
                 },
-                exc_info=True,
             )
-            raise RuntimeError(f"Re-ranking failed: {e}") from e
+            msg = f"Re-ranking failed: {e}"
+            raise RuntimeError(msg) from e
+        else:
+            return results, self.model_name, elapsed_ms

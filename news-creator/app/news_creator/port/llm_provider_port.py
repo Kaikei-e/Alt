@@ -2,8 +2,9 @@
 
 from abc import ABC, abstractmethod
 from asyncio import Event
+from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator, AsyncIterator, Any
+from typing import Any
 
 from news_creator.domain.models import LLMGenerateResponse
 
@@ -12,7 +13,7 @@ class LLMProviderPort(ABC):
     """Abstract interface for LLM providers."""
 
     @abstractmethod
-    async def generate(
+    async def generate(  # noqa: PLR0913 - public LLMProviderPort interface contract
         self,
         prompt: str,
         *,
@@ -20,7 +21,7 @@ class LLMProviderPort(ABC):
         num_predict: int | None = None,
         stream: bool = False,
         keep_alive: int | str | None = None,
-        format: str | dict[str, Any] | None = None,
+        format: str | dict[str, Any] | None = None,  # noqa: A002 - public LLMProviderPort keyword API matching Ollama
         options: dict[str, Any] | None = None,
         priority: str = "low",
     ) -> LLMGenerateResponse | AsyncIterator[LLMGenerateResponse]:
@@ -48,16 +49,16 @@ class LLMProviderPort(ABC):
         pass
 
     @abstractmethod
-    async def generate_raw(
+    async def generate_raw(  # noqa: PLR0913 - public LLMProviderPort interface contract
         self,
         prompt: str,
         *,
-        cancel_event: Any | None = None,
+        cancel_event: Event | None = None,
         task_id: str | None = None,
         model: str | None = None,
         num_predict: int | None = None,
         keep_alive: int | str | None = None,
-        format: str | dict[str, Any] | None = None,
+        format: str | dict[str, Any] | None = None,  # noqa: A002 - public LLMProviderPort keyword API matching Ollama
         options: dict[str, Any] | None = None,
     ) -> LLMGenerateResponse:
         """
@@ -81,7 +82,7 @@ class LLMProviderPort(ABC):
     @asynccontextmanager
     async def hold_slot(
         self, is_high_priority: bool = False
-    ) -> AsyncGenerator[tuple[float, Event | None, str | None], None]:
+    ) -> AsyncGenerator[tuple[float, Event | None, str | None]]:
         """Hold a semaphore slot for the duration of the context.
 
         Yields:
@@ -135,7 +136,7 @@ class LLMProviderPort(ABC):
     async def chat_stream(
         self,
         payload: dict[str, Any],
-    ) -> AsyncIterator[dict[str, Any]]:
+    ) -> AsyncGenerator[dict[str, Any]]:
         """Streaming /api/chat call through the priority semaphore.
 
         Args:

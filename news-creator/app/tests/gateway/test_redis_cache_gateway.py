@@ -3,10 +3,12 @@ CACHE_ENABLED=true actually results in cache reads/writes -- not just a
 config value that main.py forgets to wire (HIGH finding, 2026-07-06 review).
 """
 
+from typing import Never
 from unittest.mock import Mock
 from uuid import uuid4
 
 import pytest
+from redis.exceptions import AuthenticationError
 
 from news_creator.domain.models import (
     LLMGenerateResponse,
@@ -23,7 +25,7 @@ class _FakeRedisClient:
     the real `redis` package is faked; RedisCacheGateway's own get/set/init
     logic all runs for real against this fake."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.store: dict[str, str] = {}
         self.get_calls: list[str] = []
         self.set_calls: list[tuple[str, str, int | None]] = []
@@ -31,11 +33,11 @@ class _FakeRedisClient:
     async def ping(self) -> bool:
         return True
 
-    async def get(self, key: str):
+    async def get(self, key: str) -> str | None:
         self.get_calls.append(key)
         return self.store.get(key)
 
-    async def set(self, key: str, value: str, ex=None) -> bool:
+    async def set(self, key: str, value: str, ex: int | None = None) -> bool:
         self.set_calls.append((key, value, ex))
         self.store[key] = value
         return True
@@ -44,7 +46,7 @@ class _FakeRedisClient:
         return None
 
 
-def _recap_config():
+def _recap_config() -> Mock:
     config = Mock()
     config.cache_enabled = True
     config.cache_redis_url = "redis://cache-test:6379/0"
@@ -119,7 +121,9 @@ def _llm_response() -> LLMGenerateResponse:
 
 
 @pytest.mark.asyncio
-async def test_cache_enabled_results_in_real_reads_and_writes(monkeypatch):
+async def test_cache_enabled_results_in_real_reads_and_writes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """With CACHE_ENABLED=true and a wired RedisCacheGateway, generating the
     same recap summary twice must (1) actually call redis GET/SET, and
     (2) serve the second call from cache instead of calling the LLM again.
@@ -140,7 +144,7 @@ async def test_cache_enabled_results_in_real_reads_and_writes(monkeypatch):
     llm_provider = Mock()
     call_count = {"n": 0}
 
-    async def counting_generate(*args, **kwargs):
+    async def counting_generate(*args: object, **kwargs: object) -> LLMGenerateResponse:
         call_count["n"] += 1
         return _llm_response()
 
@@ -173,14 +177,16 @@ async def test_cache_enabled_results_in_real_reads_and_writes(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_cache_initialize_forwards_resolved_password(monkeypatch):
+async def test_cache_initialize_forwards_resolved_password(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """The password resolved from REDIS_PASSWORD_FILE must reach
     redis.Redis.from_url, not just the URL -- otherwise the client silently
     connects unauthenticated."""
     fake_client = _FakeRedisClient()
     captured: dict[str, object] = {}
 
-    def fake_from_url(url, **kwargs):
+    def fake_from_url(url: str, **kwargs: object) -> _FakeRedisClient:
         captured["url"] = url
         captured.update(kwargs)
         return fake_client
@@ -191,26 +197,28 @@ async def test_cache_initialize_forwards_resolved_password(monkeypatch):
     )
 
     config = _recap_config()
-    config.cache_redis_password = "hunter2"
+    config.cache_redis_password = "hunter2"  # noqa: S105 - test fixture password
     cache_gateway = RedisCacheGateway(config)
     await cache_gateway.initialize()
 
-    assert captured["password"] == "hunter2"
+    assert captured["password"] == "hunter2"  # noqa: S105 - test fixture password
     await cache_gateway.cleanup()
 
 
 @pytest.mark.asyncio
-async def test_cache_authentication_failure_is_a_loud_startup_error(monkeypatch):
+async def test_cache_authentication_failure_is_a_loud_startup_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """NOAUTH/WRONGPASS must not be swallowed into "cache will be disabled" --
     that would hide a wrong or missing REDIS_PASSWORD_FILE behind a warning
     log instead of the fail-fast startup error CLAUDE.md rule 9 requires."""
-    from redis.exceptions import AuthenticationError
 
     class _AuthFailingClient:
-        async def ping(self):
-            raise AuthenticationError("WRONGPASS invalid username-password pair")
+        async def ping(self) -> Never:
+            msg = "WRONGPASS invalid username-password pair"
+            raise AuthenticationError(msg)
 
-        async def close(self):
+        async def close(self) -> None:
             return None
 
     monkeypatch.setattr(
@@ -226,16 +234,19 @@ async def test_cache_authentication_failure_is_a_loud_startup_error(monkeypatch)
 
 
 @pytest.mark.asyncio
-async def test_cache_unreachable_connection_raises_on_initialize(monkeypatch):
+async def test_cache_unreachable_connection_raises_on_initialize(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """When CACHE_ENABLED=true, a connection failure during initialize() must
     raise so startup fails fast instead of silently disabling the cache for
     the lifetime of the process."""
 
     class _UnreachableClient:
-        async def ping(self):
-            raise ConnectionError("Connection refused")
+        async def ping(self) -> Never:
+            msg = "Connection refused"
+            raise ConnectionError(msg)
 
-        async def close(self):
+        async def close(self) -> None:
             return None
 
     monkeypatch.setattr(
@@ -251,7 +262,9 @@ async def test_cache_unreachable_connection_raises_on_initialize(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_cache_disabled_never_touches_redis(monkeypatch):
+async def test_cache_disabled_never_touches_redis(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """NullCacheGateway must be a real no-op: no redis calls, cache never
     short-circuits the LLM call."""
     fake_client = _FakeRedisClient()
@@ -266,7 +279,7 @@ async def test_cache_disabled_never_touches_redis(monkeypatch):
     llm_provider = Mock()
     call_count = {"n": 0}
 
-    async def counting_generate(*args, **kwargs):
+    async def counting_generate(*args: object, **kwargs: object) -> LLMGenerateResponse:
         call_count["n"] += 1
         return _llm_response()
 
@@ -280,6 +293,9 @@ async def test_cache_disabled_never_touches_redis(monkeypatch):
     await usecase.generate_summary(request)
     await usecase.generate_summary(request)
 
-    assert call_count["n"] == 2, "NullCacheGateway unexpectedly caused a cache hit"
+    expected_calls = 2
+    assert call_count["n"] == expected_calls, (
+        "NullCacheGateway unexpectedly caused a cache hit"
+    )
     assert not fake_client.get_calls
     assert not fake_client.set_calls

@@ -1,5 +1,8 @@
 """Tests for dispatch_metrics — distributed BE observability instruments."""
 
+from collections.abc import Iterator
+from typing import Any
+
 import pytest
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
@@ -8,14 +11,13 @@ from opentelemetry.sdk.metrics.view import (
     View,
 )
 
+from news_creator.gateway import dispatch_metrics
 
 DURATION_BUCKETS = [0.5, 1, 2, 5, 10, 20, 30, 60, 120, 180, 300]
 
 
 @pytest.fixture
-def metrics_reader():
-    from news_creator.gateway import dispatch_metrics
-
+def metrics_reader() -> Iterator[InMemoryMetricReader]:
     reader = InMemoryMetricReader()
     view = View(
         instrument_name="newscreator.distributed_be.request.duration",
@@ -29,9 +31,9 @@ def metrics_reader():
     provider.shutdown()
 
 
-def _collect(reader: InMemoryMetricReader) -> dict[str, list]:
+def _collect(reader: InMemoryMetricReader) -> dict[str, list[Any]]:
     data = reader.get_metrics_data()
-    result: dict[str, list] = {}
+    result: dict[str, list[Any]] = {}
     if data is None:
         return result
     for rm in data.resource_metrics:
@@ -41,24 +43,21 @@ def _collect(reader: InMemoryMetricReader) -> dict[str, list]:
     return result
 
 
-def _points_for(reader: InMemoryMetricReader, name: str):
+def _points_for(reader: InMemoryMetricReader, name: str) -> list[Any]:
     return _collect(reader).get(name, [])
 
 
-def _find(points, **attrs):
-    matches = [
+def _find(points: list[Any], **attrs: object) -> list[Any]:
+    return [
         p for p in points if all(p.attributes.get(k) == v for k, v in attrs.items())
     ]
-    return matches
 
 
 class TestDispatchContext:
     @pytest.mark.asyncio
     async def test_success_increments_dispatches_and_records_duration(
-        self, metrics_reader
-    ):
-        from news_creator.gateway import dispatch_metrics
-
+        self, metrics_reader: InMemoryMetricReader
+    ) -> None:
         async with dispatch_metrics.dispatch_context(
             remote_url="http://remote-be-1:11434",
             model="gemma4-e4b-q4km",
@@ -84,9 +83,9 @@ class TestDispatchContext:
         assert list(duration_points[0].explicit_bounds) == DURATION_BUCKETS
 
     @pytest.mark.asyncio
-    async def test_inflight_gauge_tracks_enter_exit(self, metrics_reader):
-        from news_creator.gateway import dispatch_metrics
-
+    async def test_inflight_gauge_tracks_enter_exit(
+        self, metrics_reader: InMemoryMetricReader
+    ) -> None:
         async with dispatch_metrics.dispatch_context(
             remote_url="http://remote-a:11434",
             model="gemma4-e4b-q4km",
@@ -110,10 +109,8 @@ class TestDispatchContext:
 
     @pytest.mark.asyncio
     async def test_exception_inside_context_records_failure_and_decrements_inflight(
-        self, metrics_reader
-    ):
-        from news_creator.gateway import dispatch_metrics
-
+        self, metrics_reader: InMemoryMetricReader
+    ) -> None:
         with pytest.raises(RuntimeError, match="boom"):
             async with dispatch_metrics.dispatch_context(
                 remote_url="http://remote-a:11434",
@@ -140,10 +137,8 @@ class TestDispatchContext:
 
     @pytest.mark.asyncio
     async def test_outcome_defaults_to_failure_when_not_set_and_no_exception(
-        self, metrics_reader
-    ):
-        from news_creator.gateway import dispatch_metrics
-
+        self, metrics_reader: InMemoryMetricReader
+    ) -> None:
         async with dispatch_metrics.dispatch_context(
             remote_url="http://remote-a:11434",
             model="gemma4-e4b-q4km",
@@ -159,9 +154,9 @@ class TestDispatchContext:
         assert dispatches[0].value == 1
 
     @pytest.mark.asyncio
-    async def test_timeout_outcome_label(self, metrics_reader):
-        from news_creator.gateway import dispatch_metrics
-
+    async def test_timeout_outcome_label(
+        self, metrics_reader: InMemoryMetricReader
+    ) -> None:
         async with dispatch_metrics.dispatch_context(
             remote_url="http://remote-a:11434",
             model="gemma4-e4b-q4km",
@@ -176,9 +171,9 @@ class TestDispatchContext:
         assert len(dispatches) == 1
 
     @pytest.mark.asyncio
-    async def test_per_remote_per_model_labels_are_independent(self, metrics_reader):
-        from news_creator.gateway import dispatch_metrics
-
+    async def test_per_remote_per_model_labels_are_independent(
+        self, metrics_reader: InMemoryMetricReader
+    ) -> None:
         async with dispatch_metrics.dispatch_context(
             remote_url="http://remote-a:11434", model="gemma4-e4b-q4km"
         ) as obs:
@@ -195,14 +190,15 @@ class TestDispatchContext:
         points = _points_for(metrics_reader, "newscreator.distributed_be.dispatches")
         a = _find(points, remote_url="http://remote-a:11434", outcome="success")
         b = _find(points, remote_url="http://remote-b:11434", outcome="success")
-        assert a[0].value == 2
+        expected_remote_a_count = 2
+        assert a[0].value == expected_remote_a_count
         assert b[0].value == 1
 
 
 class TestRecordFallback:
-    def test_counter_increments_with_labels(self, metrics_reader):
-        from news_creator.gateway import dispatch_metrics
-
+    def test_counter_increments_with_labels(
+        self, metrics_reader: InMemoryMetricReader
+    ) -> None:
         dispatch_metrics.record_fallback(
             from_remote_url="http://remote-a:11434",
             to="local",
@@ -218,9 +214,9 @@ class TestRecordFallback:
         assert len(points) == 1
         assert points[0].value == 1
 
-    def test_distinct_reasons_produce_distinct_series(self, metrics_reader):
-        from news_creator.gateway import dispatch_metrics
-
+    def test_distinct_reasons_produce_distinct_series(
+        self, metrics_reader: InMemoryMetricReader
+    ) -> None:
         dispatch_metrics.record_fallback(
             from_remote_url="http://remote-a:11434", to="next_remote", reason="error"
         )
@@ -234,14 +230,13 @@ class TestRecordFallback:
         points = _points_for(metrics_reader, "newscreator.distributed_be.fallbacks")
         retry = _find(points, to="next_remote", reason="error")
         local = _find(points, to="local", reason="exhausted")
-        assert retry[0].value == 2
+        expected_retry_count = 2
+        assert retry[0].value == expected_retry_count
         assert local[0].value == 1
 
 
 class TestRecordCooldown:
-    def test_counter_increments(self, metrics_reader):
-        from news_creator.gateway import dispatch_metrics
-
+    def test_counter_increments(self, metrics_reader: InMemoryMetricReader) -> None:
         dispatch_metrics.record_cooldown(
             remote_url="http://remote-a:11434", reason="error"
         )
@@ -254,4 +249,5 @@ class TestRecordCooldown:
             remote_url="http://remote-a:11434",
             reason="error",
         )
-        assert points[0].value == 2
+        expected_cooldown_count = 2
+        assert points[0].value == expected_cooldown_count

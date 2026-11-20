@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from news_creator.domain.errors import QueueFullError
 
 logger = logging.getLogger(__name__)
+_LONG_QUEUE_WAIT_SECONDS = 10.0
 
 
 @dataclass
@@ -87,7 +88,7 @@ class HybridPrioritySemaphore:
             wall-clock so starvation guarantees hold under low traffic too
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - constructor injection of semaphore scheduling parameters
         self,
         total_slots: int = 2,
         rt_reserved_slots: int = 1,
@@ -100,11 +101,13 @@ class HybridPrioritySemaphore:
         max_queue_depth: int = 0,
         rt_scheduling_mode: str = "fifo",
         aging_sweep_interval_releases: int = 8,
-    ):
+    ) -> None:
         if total_slots < 1:
-            raise ValueError("total_slots must be >= 1")
+            msg = "total_slots must be >= 1"
+            raise ValueError(msg)
         if rt_reserved_slots > total_slots:
-            raise ValueError("rt_reserved_slots cannot exceed total_slots")
+            msg = "rt_reserved_slots cannot exceed total_slots"
+            raise ValueError(msg)
 
         self._total_slots = total_slots
         self._rt_reserved = rt_reserved_slots
@@ -333,165 +336,40 @@ class HybridPrioritySemaphore:
         start_time = time.monotonic()
 
         async with self._lock:
-            # Check queue depth limit before allowing queuing
-            if self._max_queue_depth > 0:
-                current_depth = len(self._rt_queue) + len(self._be_queue)
-                if current_depth >= self._max_queue_depth:
-                    # Check if a slot is immediately available (no queuing needed)
-                    slot_available = False
-                    if high_priority:
-                        slot_available = self._rt_available > 0 or (
-                            self._rt_reserved == 0 and self._be_available > 0
-                        )
-                    else:
-                        slot_available = self._be_available > 0 or (
-                            self._be_slots == 0 and self._rt_available > 0
-                        )
+            self._ensure_queue_capacity(high_priority)
+            immediate_sid = self._try_acquire_immediate(high_priority)
+            if immediate_sid is not None:
+                return 0.0, immediate_sid
 
-                    if not slot_available:
-                        logger.warning(
-                            "Queue full, rejecting request",
-                            extra={
-                                "current_depth": current_depth,
-                                "max_queue_depth": self._max_queue_depth,
-                                "high_priority": high_priority,
-                            },
-                        )
-                        raise QueueFullError(
-                            f"Queue depth {current_depth} >= max {self._max_queue_depth}"
-                        )
-            if high_priority:
-                # Try RT reserved slot first
-                if self._rt_available > 0:
-                    self._rt_available -= 1
-                    self._last_wait_time = 0.0
-                    sid = self._track_acquire(
-                        is_high_priority=True, context="rt_immediate", home_pool="rt"
-                    )
-                    logger.debug(
-                        "RT slot acquired immediately",
-                        extra={"rt_available": self._rt_available},
-                    )
-                    return 0.0, sid
-                # Fallback to BE slot if no RT slots reserved (rt_reserved=0)
-                elif self._rt_reserved == 0 and self._be_available > 0:
-                    self._be_available -= 1
-                    self._last_wait_time = 0.0
-                    sid = self._track_acquire(
-                        is_high_priority=True, context="hp_be_fallback", home_pool="be"
-                    )
-                    logger.debug(
-                        "High priority acquired BE slot (no RT reserved)",
-                        extra={"be_available": self._be_available},
-                    )
-                    return 0.0, sid
-
-                # No slot available for RT - try preemption
-                if self._preemption_enabled and self._has_preemptable_be():
-                    logger.info(
-                        "RT request blocked, triggering preemption",
-                        extra={"active_requests": len(self._active_requests)},
-                    )
-                    await self._preempt_oldest_be()
-            else:
-                # Try BE slot
-                if self._be_available > 0:
-                    self._be_available -= 1
-                    self._last_wait_time = 0.0
-                    sid = self._track_acquire(
-                        is_high_priority=False, context="be_immediate", home_pool="be"
-                    )
-                    logger.debug(
-                        "BE slot acquired immediately",
-                        extra={"be_available": self._be_available},
-                    )
-                    return 0.0, sid
-                # Fallback to RT slot if no BE slots exist (all slots are RT)
-                # This prevents deadlock when rt_reserved == total_slots
-                elif self._be_slots == 0 and self._rt_available > 0:
-                    self._rt_available -= 1
-                    self._last_wait_time = 0.0
-                    sid = self._track_acquire(
-                        is_high_priority=False, context="lp_rt_fallback", home_pool="rt"
-                    )
-                    logger.debug(
-                        "Low priority acquired RT slot (no BE slots configured)",
-                        extra={"rt_available": self._rt_available},
-                    )
-                    return 0.0, sid
-
-            # No slot available, queue the request
-            future = asyncio.get_running_loop().create_future()
-            priority_score = self._compute_priority_score(high_priority, start_time)
-            # LIFO mode for RT: negate enqueue_time so newest (largest timestamp)
-            # becomes smallest value and pops first from the min-heap
-            if high_priority and self._rt_scheduling_mode == "lifo":
-                enqueue_time = -start_time
-            else:
-                enqueue_time = start_time
-            request = QueuedRequest(
-                priority_score=priority_score,
-                enqueue_time=enqueue_time,
-                future=future,
-                is_high_priority=high_priority,
-            )
-
-            if high_priority:
-                heapq.heappush(self._rt_queue, request)
+            # No slot available for RT - try preemption
+            if (
+                high_priority
+                and self._preemption_enabled
+                and self._has_preemptable_be()
+            ):
                 logger.info(
-                    "RT request queued",
-                    extra={
-                        "queue_size": len(self._rt_queue),
-                        "priority_score": priority_score,
-                    },
+                    "RT request blocked, triggering preemption",
+                    extra={"active_requests": len(self._active_requests)},
                 )
-            else:
-                heapq.heappush(self._be_queue, request)
-                logger.info(
-                    "BE request queued",
-                    extra={
-                        "queue_size": len(self._be_queue),
-                        "priority_score": priority_score,
-                    },
-                )
+                await self._preempt_oldest_be()
+
+            future = self._enqueue_waiter(high_priority, start_time)
 
         # Wait for slot
         try:
             result = await future
-            wait_time = time.monotonic() - start_time
-            self._last_wait_time = wait_time
-            # result is the home_pool of the transferred slot (str),
-            # or True for legacy callers
-            inherited_pool = result if isinstance(result, str) and result else ""
-            if not inherited_pool:
-                inherited_pool = "rt" if high_priority else "be"
-            sid = self._track_acquire(
-                is_high_priority=high_priority,
-                context="queued",
-                home_pool=inherited_pool,
+            wait_time, sid = self._record_queued_acquire(
+                result, start_time, high_priority
             )
-
-            if wait_time > 10.0:
-                logger.warning(
-                    "Long queue wait detected",
-                    extra={
-                        "wait_time_seconds": round(wait_time, 2),
-                        "high_priority": high_priority,
-                    },
-                )
-
-            return wait_time, sid
         except asyncio.CancelledError:
             if future.done() and not future.cancelled():
                 # Slot was transferred to us via set_result() in release(),
                 # but our task was cancelled before _track_acquire() ran.
                 # Recover the slot by releasing it back to the pool or
                 # forwarding it to the next queued waiter.
-                transferred_pool = future.result()
-                if isinstance(transferred_pool, str) and transferred_pool:
-                    home_pool = transferred_pool
-                else:
-                    home_pool = "rt" if high_priority else "be"
+                home_pool = self._resolve_transferred_pool(
+                    future.result(), high_priority
+                )
                 logger.info(
                     "Recovering slot from cancelled waiter",
                     extra={"home_pool": home_pool, "high_priority": high_priority},
@@ -504,6 +382,155 @@ class HybridPrioritySemaphore:
             async with self._lock:
                 self._purge_cancelled_from_queues()
             raise
+        else:
+            return wait_time, sid
+
+    def _has_immediate_slot(self, high_priority: bool) -> bool:
+        """Return True if a slot is immediately available for the given priority."""
+        if high_priority:
+            return self._rt_available > 0 or (
+                self._rt_reserved == 0 and self._be_available > 0
+            )
+        return self._be_available > 0 or (
+            self._be_slots == 0 and self._rt_available > 0
+        )
+
+    def _ensure_queue_capacity(self, high_priority: bool) -> None:
+        """Raise QueueFullError if max_queue_depth is reached and no immediate slot is free."""
+        if self._max_queue_depth <= 0:
+            return
+        current_depth = len(self._rt_queue) + len(self._be_queue)
+        if current_depth >= self._max_queue_depth and not self._has_immediate_slot(
+            high_priority
+        ):
+            logger.warning(
+                "Queue full, rejecting request",
+                extra={
+                    "current_depth": current_depth,
+                    "max_queue_depth": self._max_queue_depth,
+                    "high_priority": high_priority,
+                },
+            )
+            msg = f"Queue depth {current_depth} >= max {self._max_queue_depth}"
+            raise QueueFullError(msg)
+
+    def _try_acquire_immediate(self, high_priority: bool) -> int | None:
+        """Try to acquire an immediately available slot, returning slot_id or None."""
+        if high_priority:
+            if self._rt_available > 0:
+                self._rt_available -= 1
+                self._last_wait_time = 0.0
+                sid = self._track_acquire(
+                    is_high_priority=True, context="rt_immediate", home_pool="rt"
+                )
+                logger.debug(
+                    "RT slot acquired immediately",
+                    extra={"rt_available": self._rt_available},
+                )
+                return sid
+            if self._rt_reserved == 0 and self._be_available > 0:
+                self._be_available -= 1
+                self._last_wait_time = 0.0
+                sid = self._track_acquire(
+                    is_high_priority=True, context="hp_be_fallback", home_pool="be"
+                )
+                logger.debug(
+                    "High priority acquired BE slot (no RT reserved)",
+                    extra={"be_available": self._be_available},
+                )
+                return sid
+            return None
+
+        if self._be_available > 0:
+            self._be_available -= 1
+            self._last_wait_time = 0.0
+            sid = self._track_acquire(
+                is_high_priority=False, context="be_immediate", home_pool="be"
+            )
+            logger.debug(
+                "BE slot acquired immediately",
+                extra={"be_available": self._be_available},
+            )
+            return sid
+        if self._be_slots == 0 and self._rt_available > 0:
+            self._rt_available -= 1
+            self._last_wait_time = 0.0
+            sid = self._track_acquire(
+                is_high_priority=False, context="lp_rt_fallback", home_pool="rt"
+            )
+            logger.debug(
+                "Low priority acquired RT slot (no BE slots configured)",
+                extra={"rt_available": self._rt_available},
+            )
+            return sid
+        return None
+
+    def _enqueue_waiter(self, high_priority: bool, start_time: float) -> asyncio.Future:
+        """Create and enqueue a QueuedRequest future into the RT or BE priority queue."""
+        future = asyncio.get_running_loop().create_future()
+        priority_score = self._compute_priority_score(high_priority, start_time)
+        # LIFO mode for RT: negate enqueue_time so newest (largest timestamp)
+        # becomes smallest value and pops first from the min-heap
+        if high_priority and self._rt_scheduling_mode == "lifo":
+            enqueue_time = -start_time
+        else:
+            enqueue_time = start_time
+        request = QueuedRequest(
+            priority_score=priority_score,
+            enqueue_time=enqueue_time,
+            future=future,
+            is_high_priority=high_priority,
+        )
+
+        if high_priority:
+            heapq.heappush(self._rt_queue, request)
+            logger.info(
+                "RT request queued",
+                extra={
+                    "queue_size": len(self._rt_queue),
+                    "priority_score": priority_score,
+                },
+            )
+        else:
+            heapq.heappush(self._be_queue, request)
+            logger.info(
+                "BE request queued",
+                extra={
+                    "queue_size": len(self._be_queue),
+                    "priority_score": priority_score,
+                },
+            )
+        return future
+
+    @staticmethod
+    def _resolve_transferred_pool(result: object, high_priority: bool) -> str:
+        """Resolve home_pool from a waiter future result or fall back to caller priority."""
+        if isinstance(result, str) and result:
+            return result
+        return "rt" if high_priority else "be"
+
+    def _record_queued_acquire(
+        self, result: object, start_time: float, high_priority: bool
+    ) -> tuple[float, int]:
+        """Record wait time and slot ownership after a queued future completes."""
+        wait_time = time.monotonic() - start_time
+        self._last_wait_time = wait_time
+        inherited_pool = self._resolve_transferred_pool(result, high_priority)
+        sid = self._track_acquire(
+            is_high_priority=high_priority,
+            context="queued",
+            home_pool=inherited_pool,
+        )
+
+        if wait_time > _LONG_QUEUE_WAIT_SECONDS:
+            logger.warning(
+                "Long queue wait detected",
+                extra={
+                    "wait_time_seconds": round(wait_time, 2),
+                    "high_priority": high_priority,
+                },
+            )
+        return wait_time, sid
 
     def release(
         self, was_high_priority: bool = False, slot_id: int | None = None
@@ -520,9 +547,35 @@ class HybridPrioritySemaphore:
                 guaranteed bandwidth tracking; NOT used for pool return)
             slot_id: Optional slot_id from acquire tracking (for precise ownership)
         """
-        # Determine home_pool from acquired slot tracking.
-        # slot_id is the authoritative source of ownership. When provided,
-        # home_pool is looked up directly — no was_high_priority inference needed.
+        home_pool = self._resolve_release_home_pool(was_high_priority, slot_id)
+
+        # Recompute priorities with aging and handle promotions (throttled --
+        # see _should_run_aging_sweep()).
+        if self._should_run_aging_sweep():
+            self._apply_aging()
+
+        force_be = self._should_force_be(was_high_priority)
+
+        woke_up = False
+        if force_be:
+            woke_up = self._try_wake_from_be_queue(home_pool, guaranteed=True)
+
+        # Standard priority order: RT queue first, then BE queue
+        if not woke_up:
+            woke_up = self._try_wake_from_rt_queue(home_pool)
+        if not woke_up:
+            woke_up = self._try_wake_from_be_queue(home_pool, guaranteed=False)
+
+        # No waiters, return slot to its home pool
+        if not woke_up:
+            self._return_slot_to_pool(home_pool)
+
+        self._check_slot_invariant(home_pool, woke_up=woke_up)
+
+    def _resolve_release_home_pool(
+        self, was_high_priority: bool, slot_id: int | None
+    ) -> str:
+        """Determine home_pool from tracked slot ownership and untrack the slot."""
         home_pool = ""
         if slot_id is not None:
             slot_info = self._acquired_slots.get(slot_id)
@@ -553,74 +606,55 @@ class HybridPrioritySemaphore:
         # Last resort: infer from caller priority (only if no tracking data at all)
         if not home_pool:
             home_pool = "rt" if was_high_priority else "be"
+        return home_pool
 
-        # Recompute priorities with aging and handle promotions (throttled --
-        # see _should_run_aging_sweep()).
-        if self._should_run_aging_sweep():
-            self._apply_aging()
+    def _should_force_be(self, was_high_priority: bool) -> bool:
+        """Check guaranteed bandwidth and update consecutive RT release count."""
+        if self._guaranteed_be_ratio > 0 and self._be_queue and was_high_priority:
+            self._consecutive_rt_releases += 1
+            if self._consecutive_rt_releases >= self._guaranteed_be_ratio:
+                logger.info(
+                    "Guaranteed bandwidth triggered: forcing BE request",
+                    extra={
+                        "consecutive_rt_releases": self._consecutive_rt_releases,
+                        "guaranteed_be_ratio": self._guaranteed_be_ratio,
+                        "be_queue_size": len(self._be_queue),
+                    },
+                )
+                return True
+        return False
 
-        # Check guaranteed bandwidth: force BE after N consecutive RT releases
-        force_be = False
-        if self._guaranteed_be_ratio > 0 and self._be_queue:
-            if was_high_priority:
-                self._consecutive_rt_releases += 1
-                if self._consecutive_rt_releases >= self._guaranteed_be_ratio:
-                    force_be = True
-                    logger.info(
-                        "Guaranteed bandwidth triggered: forcing BE request",
-                        extra={
-                            "consecutive_rt_releases": self._consecutive_rt_releases,
-                            "guaranteed_be_ratio": self._guaranteed_be_ratio,
-                            "be_queue_size": len(self._be_queue),
-                        },
-                    )
-
-        woke_up = False
-
-        # If guaranteed bandwidth triggered, process BE first
-        if force_be:
-            while self._be_queue and not woke_up:
-                request = heapq.heappop(self._be_queue)
-                if self._try_wake_waiter(request, home_pool):
-                    woke_up = True
-                    self._consecutive_rt_releases = (
-                        0  # Reset counter after BE processed
-                    )
+    def _try_wake_from_be_queue(self, home_pool: str, *, guaranteed: bool) -> bool:
+        """Pop and wake the next live BE waiter, resetting consecutive RT count."""
+        while self._be_queue:
+            request = heapq.heappop(self._be_queue)
+            if self._try_wake_waiter(request, home_pool):
+                self._consecutive_rt_releases = 0
+                if guaranteed:
                     logger.debug("Woke up BE waiter (guaranteed bandwidth)")
-                    break
+                else:
+                    logger.debug("Woke up BE waiter")
+                return True
+        return False
 
-        # Standard priority order: RT queue first, then BE queue
-        if not woke_up:
-            # Try RT queue first
-            while self._rt_queue and not woke_up:
-                request = heapq.heappop(self._rt_queue)
-                if self._try_wake_waiter(request, home_pool):
-                    woke_up = True
-                    logger.debug("Woke up RT waiter")
+    def _try_wake_from_rt_queue(self, home_pool: str) -> bool:
+        """Pop and wake the next live RT waiter."""
+        while self._rt_queue:
+            request = heapq.heappop(self._rt_queue)
+            if self._try_wake_waiter(request, home_pool):
+                logger.debug("Woke up RT waiter")
+                return True
+        return False
 
-            # Try BE queue if no RT waiters
-            if not woke_up:
-                while self._be_queue:
-                    request = heapq.heappop(self._be_queue)
-                    if self._try_wake_waiter(request, home_pool):
-                        woke_up = True
-                        self._consecutive_rt_releases = (
-                            0  # Reset counter after BE processed
-                        )
-                        logger.debug("Woke up BE waiter")
-                        break
+    def _return_slot_to_pool(self, home_pool: str) -> None:
+        """Return an unconsumed slot back to its home pool counter."""
+        if home_pool == "rt":
+            self._rt_available = min(self._rt_available + 1, self._rt_reserved)
+        else:
+            self._be_available = min(self._be_available + 1, self._be_slots)
 
-        # No waiters, return slot to its home pool
-        if not woke_up:
-            if home_pool == "rt":
-                self._rt_available = min(self._rt_available + 1, self._rt_reserved)
-            else:
-                self._be_available = min(self._be_available + 1, self._be_slots)
-
-        # Invariant check: available + acquired must equal total_slots.
-        # When woke_up is True, a slot is "in transit" — removed from
-        # _acquired_slots by _track_release() but not yet tracked by
-        # _track_acquire() in the acquiring coroutine. This is normal.
+    def _check_slot_invariant(self, home_pool: str, *, woke_up: bool) -> None:
+        """Verify available + acquired equals total_slots (accounting for in-transit wake)."""
         expected_total = self._total_slots
         if woke_up:
             expected_total -= 1
@@ -692,7 +726,6 @@ class HybridPrioritySemaphore:
             return False
         try:
             request.future.set_result(home_pool)
-            return True
         except asyncio.InvalidStateError:
             # Future was cancelled between our check and set_result.
             # This should be rare but can happen under high concurrency.
@@ -701,6 +734,8 @@ class HybridPrioritySemaphore:
                 extra={"home_pool": home_pool},
             )
             return False
+        else:
+            return True
 
     def _purge_cancelled_from_queues(self) -> None:
         """Remove cancelled/done futures from both queues.

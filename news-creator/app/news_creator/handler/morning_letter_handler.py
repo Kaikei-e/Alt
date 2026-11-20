@@ -15,7 +15,9 @@ def create_morning_letter_router(usecase: MorningLetterUsecase) -> APIRouter:
     router = APIRouter(prefix="/v1/morning-letter", tags=["morning-letter"])
 
     @router.post("/generate", response_model=MorningLetterResponse)
-    async def generate_morning_letter(request: MorningLetterRequest):
+    async def generate_morning_letter(
+        request: MorningLetterRequest,
+    ) -> MorningLetterResponse | JSONResponse:
         try:
             return await usecase.generate_letter(request)
         except ValueError as e:

@@ -4,19 +4,20 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 
+from news_creator.domain.errors import (
+    CardGenerationInvariantError,
+    PreemptedException,
+    QueueFullError,
+)
 from news_creator.domain.models import (
     CardGenerate422Response,
     CardGenerateRequest,
     CardGenerateResponse,
     CardGenerationRejectedError,
-)
-from news_creator.domain.errors import (
-    CardGenerationInvariantError,
-    PreemptedException,
-    QueueFullError,
 )
 from news_creator.usecase.recap_card_usecase import RecapCardUsecase
 from news_creator.utils.context_logger import (
@@ -125,20 +126,18 @@ def create_recap_card_router(usecase: RecapCardUsecase) -> APIRouter:
             ) from exc
 
         except CardGenerationInvariantError as exc:
-            logger.error(
+            logger.exception(
                 "Recap card generation failed with invariant violation",
                 extra={"error": str(exc), "job_id": str(request.job_id)},
-                exc_info=True,
             )
             raise HTTPException(
                 status_code=500, detail="Internal server error"
             ) from exc
 
         except RuntimeError as exc:
-            logger.error(
+            logger.exception(
                 "Recap card generation failed with runtime error",
                 extra={"error": str(exc), "job_id": str(request.job_id)},
-                exc_info=True,
             )
             raise HTTPException(
                 status_code=502, detail="Upstream service error"

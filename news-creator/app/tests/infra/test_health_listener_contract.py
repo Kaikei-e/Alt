@@ -5,10 +5,11 @@ from __future__ import annotations
 import re
 import urllib.error
 import urllib.request
+from http import HTTPStatus
 from pathlib import Path
-
 from unittest.mock import AsyncMock, Mock
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from prometheus_client import REGISTRY, CollectorRegistry, generate_latest
@@ -58,13 +59,10 @@ def test_pki_ops_listener_returns_404_for_deep_health() -> None:
     handle = start_ops("news-creator", CollectorRegistry(), listen="127.0.0.1:0")
     try:
         with urllib.request.urlopen(f"http://{handle.addr}/health", timeout=2) as resp:  # nosec B310
-            assert resp.status == 200
-        try:
+            assert resp.status == HTTPStatus.OK
+        with pytest.raises(urllib.error.HTTPError) as exc_info:
             urllib.request.urlopen(f"http://{handle.addr}/health/deep", timeout=2)  # nosec B310
-        except urllib.error.HTTPError as exc:
-            assert exc.code == 404
-        else:
-            raise AssertionError("PKI ops must not serve /health/deep")
+        assert exc_info.value.code == HTTPStatus.NOT_FOUND
     finally:
         handle.aclose_sync()
 
@@ -77,7 +75,7 @@ def test_deep_health_never_returns_429_and_exports_app_metrics() -> None:
     app.include_router(create_health_router(mock))
     client = TestClient(app)
     statuses = [client.get("/health/deep").status_code for _ in range(12)]
-    assert 429 not in statuses
+    assert HTTPStatus.TOO_MANY_REQUESTS not in statuses
     bodies = [client.get("/health/deep").json() for _ in range(3)]
     assert all(b["status"] in {"pass", "warn", "fail"} for b in bodies)
     assert mock.list_models.call_count == 1

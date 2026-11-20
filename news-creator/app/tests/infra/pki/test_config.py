@@ -81,7 +81,7 @@ def test_load_config_enabled_subject_scoped_defaults(
     monkeypatch.setenv("CERT_SUBJECT", "news-creator")
     cfg = load_config("news-creator")
     assert cfg.provisioner == "pki-agent-news-creator"
-    assert cfg.password_file == "/run/secrets/pki-agent-news-creator-jwk"
+    assert cfg.password_file == "/run/secrets/pki-agent-news-creator-jwk"  # noqa: S105 - expected secret file path, not a secret
 
 
 def test_load_config_distinct_subjects_do_not_share_identity(

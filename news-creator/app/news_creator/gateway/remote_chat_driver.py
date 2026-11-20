@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from http import HTTPStatus
 from typing import Any
 
 import aiohttp
@@ -29,7 +30,7 @@ class RemoteChatDriver:
         self,
         timeout_seconds: int = 300,
         reasoning_effort: str | None = None,
-    ):
+    ) -> None:
         self._timeout_seconds = timeout_seconds
         self._reasoning_effort = reasoning_effort
         self._session: aiohttp.ClientSession | None = None
@@ -53,6 +54,102 @@ class RemoteChatDriver:
             await self._session.close()
             logger.info("Remote chat driver cleaned up")
 
+    @staticmethod
+    def _raise_for_bad_status(
+        status: int, target: RemoteTarget, text_body: str
+    ) -> None:
+        error_msg = (
+            f"Remote chat API error: HTTP {status} "
+            f"from {target.base_url} - {text_body[:200]}"
+        )
+        logger.error(
+            error_msg,
+            extra={
+                "status": status,
+                "remote_url": target.base_url,
+                "model": target.model,
+            },
+        )
+        if (
+            HTTPStatus.BAD_REQUEST <= status < HTTPStatus.INTERNAL_SERVER_ERROR
+            and status
+            not in (
+                HTTPStatus.REQUEST_TIMEOUT,
+                HTTPStatus.TOO_MANY_REQUESTS,
+            )
+        ):
+            raise RemoteRequestRejectedError(error_msg)
+        raise RuntimeError(error_msg)
+
+    @staticmethod
+    def _parse_chat_completion(
+        text_body: str, target: RemoteTarget
+    ) -> LLMGenerateResponse:
+        try:
+            data = json.loads(text_body)
+        except json.JSONDecodeError as err:
+            error_msg = (
+                f"Failed to decode remote chat response from {target.base_url}: "
+                f"{err}. Body: {text_body[:200]}"
+            )
+            logger.exception(error_msg, extra={"remote_url": target.base_url})
+            raise RuntimeError(error_msg) from err
+
+        if not isinstance(data, dict):
+            msg = f"Invalid remote chat response structure from {target.base_url}"
+            raise RuntimeError(  # noqa: TRY004 - driver raises RuntimeError for malformed upstream payloads
+                msg
+            )
+
+        choices = data.get("choices")
+        if not isinstance(choices, list) or not choices:
+            msg = f"Missing 'choices' in remote chat response from {target.base_url}"
+            raise RuntimeError(msg)
+
+        first_choice = choices[0]
+        if not isinstance(first_choice, dict):
+            msg = f"Invalid choice item in remote chat response from {target.base_url}"
+            raise RuntimeError(  # noqa: TRY004 - driver raises RuntimeError for malformed upstream payloads
+                msg
+            )
+
+        message = first_choice.get("message")
+        if not isinstance(message, dict):
+            msg = f"Missing 'message' in remote chat response from {target.base_url}"
+            raise RuntimeError(  # noqa: TRY004 - driver raises RuntimeError for malformed upstream payloads
+                msg
+            )
+
+        raw_content = message.get("content")
+        if not isinstance(raw_content, str):
+            msg = f"Missing 'content' in remote chat response from {target.base_url}"
+            raise RuntimeError(  # noqa: TRY004 - driver raises RuntimeError for malformed upstream payloads
+                msg
+            )
+
+        content = raw_content.strip()
+        if not content:
+            msg = f"Empty 'content' in remote chat response from {target.base_url}"
+            raise RemoteRequestRejectedError(msg)
+
+        raw_model = data.get("model")
+        served_model = (
+            raw_model.strip()
+            if isinstance(raw_model, str) and raw_model.strip()
+            else target.model
+        )
+        finish_reason = first_choice.get("finish_reason")
+        usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
+
+        return LLMGenerateResponse(
+            response=content,
+            model=served_model,
+            done=True,
+            done_reason=finish_reason,
+            prompt_eval_count=usage.get("prompt_tokens"),
+            eval_count=usage.get("completion_tokens"),
+        )
+
     async def chat(
         self,
         target: RemoteTarget,
@@ -63,7 +160,8 @@ class RemoteChatDriver:
         top_p: float,
     ) -> LLMGenerateResponse:
         if self._session is None or self._session.closed:
-            raise RuntimeError("RemoteChatDriver session not initialized")
+            msg = "RemoteChatDriver session not initialized"
+            raise RuntimeError(msg)
 
         url = f"{target.base_url.rstrip('/')}/v1/chat/completions"
         payload: dict[str, Any] = {
@@ -88,95 +186,18 @@ class RemoteChatDriver:
                         response, MAX_CHAT_RESPONSE_BYTES
                     )
                 except BoundedBodyError as err:
-                    raise RuntimeError(
+                    msg = (
                         f"Remote chat response from {target.base_url} exceeds "
                         f"{MAX_CHAT_RESPONSE_BYTES} bytes"
-                    ) from err
-
-                if response.status != 200:
-                    error_msg = (
-                        f"Remote chat API error: HTTP {response.status} "
-                        f"from {target.base_url} - {text_body[:200]}"
                     )
-                    logger.error(
-                        error_msg,
-                        extra={
-                            "status": response.status,
-                            "remote_url": target.base_url,
-                            "model": target.model,
-                        },
-                    )
-                    if 400 <= response.status < 500 and response.status not in (
-                        408,
-                        429,
-                    ):
-                        raise RemoteRequestRejectedError(error_msg)
-                    raise RuntimeError(error_msg)
+                    raise RuntimeError(msg) from err
 
-                try:
-                    data = json.loads(text_body)
-                except json.JSONDecodeError as err:
-                    error_msg = (
-                        f"Failed to decode remote chat response from {target.base_url}: "
-                        f"{err}. Body: {text_body[:200]}"
-                    )
-                    logger.error(error_msg, extra={"remote_url": target.base_url})
-                    raise RuntimeError(error_msg) from err
+                if response.status != HTTPStatus.OK:
+                    self._raise_for_bad_status(response.status, target, text_body)
 
-                if not isinstance(data, dict):
-                    raise RuntimeError(
-                        f"Invalid remote chat response structure from {target.base_url}"
-                    )
+                return self._parse_chat_completion(text_body, target)
 
-                choices = data.get("choices")
-                if not isinstance(choices, list) or not choices:
-                    raise RuntimeError(
-                        f"Missing 'choices' in remote chat response from {target.base_url}"
-                    )
-
-                first_choice = choices[0]
-                if not isinstance(first_choice, dict):
-                    raise RuntimeError(
-                        f"Invalid choice item in remote chat response from {target.base_url}"
-                    )
-
-                message = first_choice.get("message")
-                if not isinstance(message, dict):
-                    raise RuntimeError(
-                        f"Missing 'message' in remote chat response from {target.base_url}"
-                    )
-
-                raw_content = message.get("content")
-                if not isinstance(raw_content, str):
-                    raise RuntimeError(
-                        f"Missing 'content' in remote chat response from {target.base_url}"
-                    )
-
-                content = raw_content.strip()
-                if not content:
-                    raise RemoteRequestRejectedError(
-                        f"Empty 'content' in remote chat response from {target.base_url}"
-                    )
-
-                raw_model = data.get("model")
-                served_model = (
-                    raw_model.strip()
-                    if isinstance(raw_model, str) and raw_model.strip()
-                    else target.model
-                )
-                finish_reason = first_choice.get("finish_reason")
-                usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
-
-                return LLMGenerateResponse(
-                    response=content,
-                    model=served_model,
-                    done=True,
-                    done_reason=finish_reason,
-                    prompt_eval_count=usage.get("prompt_tokens"),
-                    eval_count=usage.get("completion_tokens"),
-                )
-
-        except (aiohttp.ClientError, asyncio.TimeoutError) as err:
+        except (TimeoutError, aiohttp.ClientError) as err:
             error_type = type(err).__name__
             is_timeout = isinstance(
                 err, (aiohttp.ServerTimeoutError, asyncio.TimeoutError)
@@ -191,7 +212,7 @@ class RemoteChatDriver:
                     f"Remote chat target at {target.base_url} request failed: "
                     f"{error_type} - {err}"
                 )
-            logger.error(
+            logger.exception(
                 error_msg,
                 extra={
                     "remote_url": target.base_url,

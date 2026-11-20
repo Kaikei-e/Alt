@@ -9,21 +9,25 @@ from __future__ import annotations
 
 import pytest
 
+from news_creator.domain.errors import UntemplatedRawPromptError
 from news_creator.domain.prompts import (
     CHUNK_SUMMARY_PROMPT_TEMPLATE,
     RECAP_CLUSTER_SUMMARY_PROMPT,
     SUMMARY_PROMPT_TEMPLATE,
     wrap_gemma_prompt,
 )
+from news_creator.gateway.payload_builder import (
+    GeneratePayload,
+    PayloadBuilder,
+    prepare_raw_prompt,
+)
 
 
 class TestPayloadBuilder:
     """Tests for PayloadBuilder class."""
 
-    def test_payload_builder_creates_basic_payload(self):
+    def test_payload_builder_creates_basic_payload(self) -> None:
         """PayloadBuilder should create basic Ollama API payload."""
-        from news_creator.gateway.payload_builder import PayloadBuilder, GeneratePayload
-
         templated = "<|turn>user\nTest prompt<turn|>\n<|turn>model\n"
         builder = PayloadBuilder()
         payload = builder.build(
@@ -41,10 +45,8 @@ class TestPayloadBuilder:
         assert payload.raw is True  # Default for Gemma 4 compatibility
         assert payload.stream is False  # Default
 
-    def test_payload_builder_strips_prompt_whitespace(self):
+    def test_payload_builder_strips_prompt_whitespace(self) -> None:
         """PayloadBuilder should strip surrounding whitespace while preserving model turn newline."""
-        from news_creator.gateway.payload_builder import PayloadBuilder
-
         builder = PayloadBuilder()
         payload = builder.build(
             prompt="  <|turn>user\nTest prompt with whitespace<turn|>\n<|turn>model\n  \n",
@@ -58,10 +60,8 @@ class TestPayloadBuilder:
             == "<|turn>user\nTest prompt with whitespace<turn|>\n<|turn>model\n"
         )
 
-    def test_payload_builder_handles_streaming(self):
+    def test_payload_builder_handles_streaming(self) -> None:
         """PayloadBuilder should set stream flag correctly."""
-        from news_creator.gateway.payload_builder import PayloadBuilder
-
         builder = PayloadBuilder()
         payload = builder.build(
             prompt="<|turn>user\nTest<turn|>\n<|turn>model\n",
@@ -73,10 +73,8 @@ class TestPayloadBuilder:
 
         assert payload.stream is True
 
-    def test_payload_builder_includes_format_when_provided(self):
+    def test_payload_builder_includes_format_when_provided(self) -> None:
         """PayloadBuilder should include format parameter when provided."""
-        from news_creator.gateway.payload_builder import PayloadBuilder
-
         templated = "<|turn>user\nTest<turn|>\n<|turn>model\n"
         builder = PayloadBuilder()
 
@@ -101,10 +99,8 @@ class TestPayloadBuilder:
         )
         assert payload2.format == schema
 
-    def test_payload_builder_format_is_none_by_default(self):
+    def test_payload_builder_format_is_none_by_default(self) -> None:
         """PayloadBuilder should have format=None when not provided."""
-        from news_creator.gateway.payload_builder import PayloadBuilder
-
         builder = PayloadBuilder()
         payload = builder.build(
             prompt="<|turn>user\nTest<turn|>\n<|turn>model\n",
@@ -115,10 +111,8 @@ class TestPayloadBuilder:
 
         assert payload.format is None
 
-    def test_payload_builder_raw_defaults_to_true(self):
+    def test_payload_builder_raw_defaults_to_true(self) -> None:
         """PayloadBuilder should default raw=True for Gemma 4 compatibility."""
-        from news_creator.gateway.payload_builder import PayloadBuilder
-
         builder = PayloadBuilder()
         payload = builder.build(
             prompt="<|turn>user\nTest<turn|>\n<|turn>model\n",
@@ -129,10 +123,8 @@ class TestPayloadBuilder:
 
         assert payload.raw is True
 
-    def test_payload_builder_allows_raw_override(self):
+    def test_payload_builder_allows_raw_override(self) -> None:
         """PayloadBuilder should allow raw to be overridden."""
-        from news_creator.gateway.payload_builder import PayloadBuilder
-
         builder = PayloadBuilder()
         payload = builder.build(
             prompt="Test",
@@ -145,7 +137,7 @@ class TestPayloadBuilder:
         assert payload.raw is False
 
     @pytest.mark.parametrize(
-        "input_prompt,expected_prompt",
+        ("input_prompt", "expected_prompt"),
         [
             (
                 "<|turn>user\nHello world<turn|>\n<|turn>model\n",
@@ -161,10 +153,10 @@ class TestPayloadBuilder:
             ),
         ],
     )
-    def test_payload_builder_raw_prompt_handling(self, input_prompt, expected_prompt):
+    def test_payload_builder_raw_prompt_handling(
+        self, input_prompt: str, expected_prompt: str
+    ) -> None:
         """PayloadBuilder should preserve model-turn trailing newline for templated raw prompts."""
-        from news_creator.gateway.payload_builder import PayloadBuilder
-
         builder = PayloadBuilder()
         payload = builder.build(
             prompt=input_prompt,
@@ -178,10 +170,8 @@ class TestPayloadBuilder:
 class TestGeneratePayload:
     """Tests for GeneratePayload dataclass."""
 
-    def test_generate_payload_to_dict(self):
+    def test_generate_payload_to_dict(self) -> None:
         """GeneratePayload should convert to dict for API call."""
-        from news_creator.gateway.payload_builder import GeneratePayload
-
         templated = "<|turn>user\nTest prompt<turn|>\n<|turn>model\n"
         payload = GeneratePayload(
             model="test-model",
@@ -203,10 +193,8 @@ class TestGeneratePayload:
         assert result["raw"] is True
         assert "format" not in result  # Should be excluded when None
 
-    def test_generate_payload_to_dict_includes_format_when_set(self):
+    def test_generate_payload_to_dict_includes_format_when_set(self) -> None:
         """GeneratePayload.to_dict() should include format when set."""
-        from news_creator.gateway.payload_builder import GeneratePayload
-
         payload = GeneratePayload(
             model="test-model",
             prompt="<|turn>user\nTest<turn|>\n<|turn>model\n",
@@ -221,10 +209,8 @@ class TestGeneratePayload:
 
         assert result["format"] == "json"
 
-    def test_generate_payload_is_frozen(self):
+    def test_generate_payload_is_frozen(self) -> None:
         """GeneratePayload should be immutable."""
-        from news_creator.gateway.payload_builder import GeneratePayload
-
         payload = GeneratePayload(
             model="test-model",
             prompt="<|turn>user\nTest<turn|>\n<|turn>model\n",
@@ -241,12 +227,8 @@ class TestGeneratePayload:
 class TestPayloadBuilderProtocol:
     """Tests for PayloadBuilder Protocol compliance."""
 
-    def test_payload_builder_implements_protocol(self):
+    def test_payload_builder_implements_protocol(self) -> None:
         """PayloadBuilder should implement PayloadBuilderProtocol."""
-        from news_creator.gateway.payload_builder import (
-            PayloadBuilder,
-        )
-
         builder = PayloadBuilder()
 
         # Should be structurally compatible with protocol
@@ -267,7 +249,7 @@ class TestPrepareRawPrompt:
     """Tests for prepare_raw_prompt helper function."""
 
     @pytest.mark.parametrize(
-        "input_prompt,expected_prompt",
+        ("input_prompt", "expected_prompt"),
         [
             (
                 "<|turn>user\nHello world<turn|>\n<|turn>model\n",
@@ -283,10 +265,8 @@ class TestPrepareRawPrompt:
             ),
         ],
     )
-    def test_prepare_raw_prompt(self, input_prompt, expected_prompt):
+    def test_prepare_raw_prompt(self, input_prompt: str, expected_prompt: str) -> None:
         """prepare_raw_prompt should preserve model-turn trailing newline for templated prompts."""
-        from news_creator.gateway.payload_builder import prepare_raw_prompt
-
         assert prepare_raw_prompt(input_prompt) == expected_prompt
 
     @pytest.mark.parametrize(
@@ -325,8 +305,6 @@ class TestPrepareRawPrompt:
     )
     def test_prepare_raw_prompt_real_templates(self, rendered_prompt: str) -> None:
         """Rendered prompt templates ending with model-turn header must end with '<|turn>model\\n' and not '\\n\\n'."""
-        from news_creator.gateway.payload_builder import prepare_raw_prompt
-
         prepared = prepare_raw_prompt(rendered_prompt)
         assert prepared.endswith("<|turn>model\n")
         assert not prepared.endswith("\n\n")
@@ -335,9 +313,6 @@ class TestPrepareRawPrompt:
         self,
     ) -> None:
         """Prompts not starting with <|turn> and ending with <|turn>model\\n must be rejected."""
-        from news_creator.domain.errors import UntemplatedRawPromptError
-        from news_creator.gateway.payload_builder import prepare_raw_prompt
-
         with pytest.raises(UntemplatedRawPromptError):
             prepare_raw_prompt("  hello  ")
 

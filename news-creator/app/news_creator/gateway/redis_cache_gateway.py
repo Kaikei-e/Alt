@@ -6,10 +6,14 @@ from typing import Any
 try:
     import redis.asyncio as redis
     from redis.exceptions import AuthenticationError as RedisAuthenticationError
+    from redis.exceptions import RedisError
 except ImportError:
     redis = None  # type: ignore
 
-    class RedisAuthenticationError(Exception):  # type: ignore[no-redef]
+    class RedisError(Exception):  # type: ignore[no-redef]
+        """Placeholder so except clauses resolve when redis is unavailable."""
+
+    class RedisAuthenticationError(RedisError):  # type: ignore[no-redef]
         """Placeholder so the except clause below still resolves when the
         redis package itself is unavailable (that path never raises it)."""
 
@@ -23,7 +27,7 @@ logger = logging.getLogger(__name__)
 class RedisCacheGateway(CachePort):
     """Gateway for Redis caching service - Anti-Corruption Layer."""
 
-    def __init__(self, config: NewsCreatorConfig):
+    def __init__(self, config: NewsCreatorConfig) -> None:
         """Initialize Redis cache gateway.
 
         Args:
@@ -68,14 +72,14 @@ class RedisCacheGateway(CachePort):
             # it as "cache disabled" would hide it behind a warning log
             # instead of the fail-fast startup error CLAUDE.md rule 9
             # requires.
-            logger.error(
+            logger.exception(
                 "Redis cache authentication failed (NOAUTH/WRONGPASS); refusing "
                 "to start with cache silently disabled",
                 extra={"url": self._sanitize_url(self.config.cache_redis_url)},
             )
             raise
         except Exception as e:
-            logger.error(
+            logger.exception(
                 "Failed to connect to Redis; refusing to start with cache silently disabled",
                 extra={
                     "url": self._sanitize_url(self.config.cache_redis_url),
@@ -105,17 +109,18 @@ class RedisCacheGateway(CachePort):
 
         try:
             value = await self._client.get(key)
-            if value is not None:
-                logger.debug("Cache hit", extra={"key": key})
-            else:
-                logger.debug("Cache miss", extra={"key": key})
-            return value
-        except Exception as e:
+        except (RedisError, OSError) as e:
             logger.warning(
                 "Cache get failed",
                 extra={"key": key, "error": str(e)},
             )
             return None
+        else:
+            if value is not None:
+                logger.debug("Cache hit", extra={"key": key})
+            else:
+                logger.debug("Cache miss", extra={"key": key})
+            return value
 
     async def set(self, key: str, value: str, ttl_seconds: int | None = None) -> bool:
         """
@@ -136,17 +141,18 @@ class RedisCacheGateway(CachePort):
 
         try:
             await self._client.set(key, value, ex=ttl)
-            logger.debug(
-                "Cache set",
-                extra={"key": key, "ttl_seconds": ttl, "value_length": len(value)},
-            )
-            return True
-        except Exception as e:
+        except (RedisError, OSError) as e:
             logger.warning(
                 "Cache set failed",
                 extra={"key": key, "error": str(e)},
             )
             return False
+        else:
+            logger.debug(
+                "Cache set",
+                extra={"key": key, "ttl_seconds": ttl, "value_length": len(value)},
+            )
+            return True
 
     async def delete(self, key: str) -> bool:
         """
@@ -163,18 +169,19 @@ class RedisCacheGateway(CachePort):
 
         try:
             result = await self._client.delete(key)
+        except (RedisError, OSError) as e:
+            logger.warning(
+                "Cache delete failed",
+                extra={"key": key, "error": str(e)},
+            )
+            return False
+        else:
             deleted = result > 0
             logger.debug(
                 "Cache delete",
                 extra={"key": key, "deleted": deleted},
             )
             return deleted
-        except Exception as e:
-            logger.warning(
-                "Cache delete failed",
-                extra={"key": key, "error": str(e)},
-            )
-            return False
 
     @staticmethod
     def _sanitize_url(url: str) -> str:

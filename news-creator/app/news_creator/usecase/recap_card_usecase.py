@@ -8,6 +8,7 @@ import logging
 import time
 from pathlib import Path
 from typing import Any
+
 from jinja2 import Template
 
 from news_creator.config.config import NewsCreatorConfig
@@ -37,6 +38,17 @@ PROMPTS_DIR = Path(__file__).resolve().parent.parent.parent / "prompts"
 CARD_TEMPLATE_PATH = PROMPTS_DIR / "recap_card.jinja"
 
 
+_DETAIL_REMINDER_SUFFIXES: dict[str, str] = {
+    "sentence_count": "\n- 【何が起きた】は 2〜3 文にまとめること。出典が多い場合は 1 文に複数の番号を [1] [2] のように付けてよい",
+    "headline_too_long": "\n- 【見出し】は60文字以内の日本語であること。60文字を超えてはならない。",
+    "missing_citation": "\n- 出典番号は文末に [1] [2] の形で、複数のときは半角スペース区切り ([1] [2]) で並べ、・ および , や [1, 2] は使わないこと",
+    "unknown_citation_format": "\n- 出典番号は文末に [1] [2] の形で、複数のときは半角スペース区切り ([1] [2]) で並べ、・ および , や [1, 2] は使わないこと",
+    "sources_tag": "\n- 【出典】タグを省略せず、使用した出典番号を [1] [2] のように必ず記載すること",
+    "why_format": "\n- 【なぜ重要】は影響・結果の客観的事実がある時だけ1文（末尾に [n]）で記述し、無ければ「該当なし」とだけ書くこと",
+    "missing_tag": "\n- 【見出し】【何が起きた】【なぜ重要】【出典】の各セクションタグを必ず含めること",
+}
+
+
 class RecapCardUsecase:
     """Usecase for generating structured recap cards from candidate items."""
 
@@ -45,7 +57,7 @@ class RecapCardUsecase:
         config: NewsCreatorConfig,
         llm_provider: LLMProviderPort,
         cache: CachePort | None = None,
-    ):
+    ) -> None:
         """
         Initialize recap card usecase.
 
@@ -63,9 +75,8 @@ class RecapCardUsecase:
         """Load and cache Jinja prompt template."""
         if self._template is None:
             if not CARD_TEMPLATE_PATH.exists():
-                raise FileNotFoundError(
-                    f"Recap card prompt template not found: {CARD_TEMPLATE_PATH}"
-                )
+                msg = f"Recap card prompt template not found: {CARD_TEMPLATE_PATH}"
+                raise FileNotFoundError(msg)
             self._template = Template(CARD_TEMPLATE_PATH.read_text(encoding="utf-8"))
         return self._template
 
@@ -117,7 +128,7 @@ class RecapCardUsecase:
                 ),
                 ja_ratio=base_response.ja_ratio,
             )
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError, TypeError) as exc:
             logger.warning(
                 "Failed to retrieve cached card response",
                 extra={"cache_key": cache_key, "error": str(exc)},
@@ -132,7 +143,7 @@ class RecapCardUsecase:
             return
         try:
             await self.cache.set(cache_key, response.model_dump_json())
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError, TypeError) as exc:
             logger.warning(
                 "Failed to save card response to cache",
                 extra={"cache_key": cache_key, "error": str(exc)},
@@ -204,9 +215,8 @@ class RecapCardUsecase:
         elapsed_ms = int((time.perf_counter() - start_time) * 1000)
 
         if not isinstance(llm_response, LLMGenerateResponse):
-            raise CardGenerationInvariantError(
-                f"Unexpected LLM response type: {type(llm_response).__name__}"
-            )
+            msg = f"Unexpected LLM response type: {type(llm_response).__name__}"
+            raise CardGenerationInvariantError(msg)
 
         raw_text = llm_response.response or ""
         model_name = llm_response.model or model
@@ -242,41 +252,11 @@ class RecapCardUsecase:
             "- 【見出し】は60文字以内の日本語であること\n"
             "- 【何が起きた】は2〜3文で、各文末に必ず入力にある出典番号 [n] を付けること\n"
             "- 【なぜ重要】は影響・結果の客観的事実がある時だけ1文（末尾に [n]）で記述し、無ければ「該当なし」とだけ書くこと\n"
-            f"- 入力に存在する出典番号 {sorted(list(valid_refs))} 以外を使用しないこと\n"
+            f"- 入力に存在する出典番号 {sorted(valid_refs)} 以外を使用しないこと\n"
             "- すべての入力アイテムが英語であっても要約カードは必ず自然な日本語で作成すること（製品名やサービス名などの固有名詞のみアルファベット表記を維持可）"
         )
-        if detail == "sentence_count":
-            return (
-                base_reminder
-                + "\n- 【何が起きた】は 2〜3 文にまとめること。出典が多い場合は 1 文に複数の番号を [1] [2] のように付けてよい"
-            )
-        if detail == "headline_too_long":
-            return (
-                base_reminder
-                + "\n- 【見出し】は60文字以内の日本語であること。60文字を超えてはならない。"
-            )
-        if detail in ("missing_citation", "unknown_citation_format"):
-            return (
-                base_reminder
-                + "\n- 出典番号は文末に [1] [2] の形で、複数のときは半角スペース区切り ([1] [2]) で並べ、・ および , や [1, 2] は使わないこと"
-            )
-        if detail == "sources_tag":
-            return (
-                base_reminder
-                + "\n- 【出典】タグを省略せず、使用した出典番号を [1] [2] のように必ず記載すること"
-            )
-        if detail == "why_format":
-            return (
-                base_reminder
-                + "\n- 【なぜ重要】は影響・結果の客観的事実がある時だけ1文（末尾に [n]）で記述し、無ければ「該当なし」とだけ書くこと"
-            )
-        if detail == "missing_tag":
-            return (
-                base_reminder
-                + "\n- 【見出し】【何が起きた】【なぜ重要】【出典】の各セクションタグを必ず含めること"
-            )
-
-        return base_reminder
+        suffix = _DETAIL_REMINDER_SUFFIXES.get(detail or "", "")
+        return base_reminder + suffix
 
     async def generate_card(self, request: CardGenerateRequest) -> CardGenerateResponse:
         """
@@ -316,9 +296,8 @@ class RecapCardUsecase:
 
         if parse_result_1.success and parse_result_1.card is not None:
             if parse_result_1.measured_ratio is None:
-                raise CardGenerationInvariantError(
-                    "Parser succeeded but measured_ratio is None"
-                )
+                msg = "Parser succeeded but measured_ratio is None"
+                raise CardGenerationInvariantError(msg)
             response = CardGenerateResponse(
                 card=parse_result_1.card,
                 generation=CardGenerationMetadata(
@@ -375,9 +354,8 @@ class RecapCardUsecase:
 
         if parse_result_2.success and parse_result_2.card is not None:
             if parse_result_2.measured_ratio is None:
-                raise CardGenerationInvariantError(
-                    "Parser succeeded but measured_ratio is None"
-                )
+                msg = "Parser succeeded but measured_ratio is None"
+                raise CardGenerationInvariantError(msg)
             response = CardGenerateResponse(
                 card=parse_result_2.card,
                 generation=CardGenerationMetadata(

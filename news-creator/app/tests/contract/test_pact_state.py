@@ -11,7 +11,7 @@ from ._pact_state import StateRegistry, dispatch
 
 
 @pytest.mark.asyncio
-async def test_dispatch_invokes_registered_action():
+async def test_dispatch_invokes_registered_action() -> None:
     seen: list[dict[str, Any]] = []
 
     async def _action(params: dict[str, Any]) -> None:
@@ -25,7 +25,9 @@ async def test_dispatch_invokes_registered_action():
 
 
 @pytest.mark.asyncio
-async def test_dispatch_warns_on_unknown_state(caplog: pytest.LogCaptureFixture):
+async def test_dispatch_warns_on_unknown_state(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     registry: StateRegistry = {}
     with caplog.at_level(logging.WARNING):
         await dispatch(registry, {"state": "never registered", "action": "setup"})
@@ -33,7 +35,7 @@ async def test_dispatch_warns_on_unknown_state(caplog: pytest.LogCaptureFixture)
 
 
 @pytest.mark.asyncio
-async def test_dispatch_skips_teardown():
+async def test_dispatch_skips_teardown() -> None:
     called = False
 
     async def _action(_params: dict[str, Any]) -> None:

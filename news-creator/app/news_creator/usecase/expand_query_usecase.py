@@ -3,7 +3,7 @@
 import logging
 import re as _re
 import time
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
 from news_creator.config.config import NewsCreatorConfig
 from news_creator.domain.errors import QueueFullError
@@ -82,13 +82,15 @@ English({english_count}):
 class ExpandQueryUsecase:
     """Usecase for generating expanded search queries for RAG retrieval."""
 
-    def __init__(self, config: NewsCreatorConfig, llm_provider: LLMProviderPort):
+    def __init__(
+        self, config: NewsCreatorConfig, llm_provider: LLMProviderPort
+    ) -> None:
         """Initialize expand query usecase."""
         self.config = config
         self.llm_provider = llm_provider
 
     @property
-    def EXPANSION_MODEL(self) -> str:
+    def EXPANSION_MODEL(self) -> str:  # noqa: N802 - public property name kept for compatibility
         """Model for query expansion (from config)."""
         configured = getattr(self.config, "rag_query_model", "gemma4-e4b-12k")
         return configured if isinstance(configured, str) else "gemma4-e4b-12k"
@@ -117,7 +119,8 @@ class ExpandQueryUsecase:
             RuntimeError: If LLM generation fails
         """
         if not query or not query.strip():
-            raise ValueError("query cannot be empty")
+            error_msg = "query cannot be empty"
+            raise ValueError(error_msg)
 
         start_time = time.time()
 
@@ -182,9 +185,7 @@ class ExpandQueryUsecase:
             )
 
             # Narrow union type: non-streaming returns LLMGenerateResponse
-            if not (isinstance(result, LLMGenerateResponse)):
-                raise AssertionError("Expected non-streaming LLMGenerateResponse")
-            llm_response: LLMGenerateResponse = result
+            llm_response = _ensure_generate_response(result)
 
             # Parse response: split by newlines and filter empty lines
             raw_text = llm_response.response
@@ -216,8 +217,6 @@ class ExpandQueryUsecase:
                 },
             )
 
-            return expanded_queries, llm_response.model, elapsed_ms
-
         except QueueFullError:
             # Expected backpressure (2026-02 queue-saturation design) — must
             # reach the handler as-is so it maps to HTTP 429, not be flattened
@@ -226,7 +225,7 @@ class ExpandQueryUsecase:
 
         except Exception as e:
             elapsed_ms = (time.time() - start_time) * 1000
-            logger.error(
+            logger.exception(
                 "Query expansion failed",
                 extra={
                     "query": query[:100],
@@ -234,9 +233,18 @@ class ExpandQueryUsecase:
                     "error_type": type(e).__name__,
                     "elapsed_ms": round(elapsed_ms, 2),
                 },
-                exc_info=True,
             )
-            raise RuntimeError(f"Query expansion failed: {e}") from e
+            error_msg = f"Query expansion failed: {e}"
+            raise RuntimeError(error_msg) from e
+        else:
+            return expanded_queries, llm_response.model, elapsed_ms
+
+
+def _ensure_generate_response(result: object) -> LLMGenerateResponse:
+    if not isinstance(result, LLMGenerateResponse):
+        error_msg = "Expected non-streaming LLMGenerateResponse"
+        raise TypeError(error_msg)
+    return result
 
 
 # --- Output parsing and validation helpers ---
@@ -302,17 +310,22 @@ def _sanitize_history_content(content: str) -> str:
     text = content[:150]
     text = _URL_PATTERN.sub("", text)
     text = _SPECIAL_CHARS_PATTERN.sub(" ", text)
-    text = " ".join(text.split())
-    return text
+    return " ".join(text.split())
+
+
+_MIN_REPEATING_LINE_LEN = 6
+_MIN_REPEATING_COUNT = 3
+_MIN_INSTRUCTION_ECHO_LEN = 20
+_MIN_META_WORD_MATCHES = 3
 
 
 def _is_repeating_pattern(line: str) -> bool:
     """Detect repetitive character patterns like ':):):):)...' or 'hahaha'."""
     stripped = line.strip()
-    if len(stripped) < 6:
+    if len(stripped) < _MIN_REPEATING_LINE_LEN:
         return False
     for pat_len in range(1, 5):
-        if len(stripped) < pat_len * 3:
+        if len(stripped) < pat_len * _MIN_REPEATING_COUNT:
             continue
         pat = stripped[:pat_len]
         repetitions = 0
@@ -321,7 +334,10 @@ def _is_repeating_pattern(line: str) -> bool:
                 repetitions += 1
             else:
                 break
-        if repetitions >= 3 and repetitions * pat_len * 3 >= len(stripped) * 2:
+        if (
+            repetitions >= _MIN_REPEATING_COUNT
+            and repetitions * pat_len * 3 >= len(stripped) * 2
+        ):
             return True
     return False
 
@@ -370,16 +386,16 @@ def _is_instruction_leak(line: str) -> bool:
         if normalized == pattern.rstrip("."):
             return True
         # High overlap: if the line contains a known instruction pattern
-        if len(pattern) > 20 and pattern.rstrip(".") in normalized:
+        if (
+            len(pattern) > _MIN_INSTRUCTION_ECHO_LEN
+            and pattern.rstrip(".") in normalized
+        ):
             return True
 
     # Meta-word density: if 3+ meta words appear, likely instruction
     words = set(normalized.split())
     meta_count = len(words & _META_WORDS)
-    if meta_count >= 3:
-        return True
-
-    return False
+    return meta_count >= _MIN_META_WORD_MATCHES
 
 
 def _is_preamble(line: str) -> bool:
@@ -394,9 +410,7 @@ def _is_xml_tag_leak(line: str) -> bool:
     # XML tags like </example>, <input>..., </task>, <rules>, etc.
     if stripped.startswith("<") and (">" in stripped):
         return True
-    if stripped.startswith("</") or stripped.endswith("/>"):
-        return True
-    return False
+    return bool(stripped.startswith("</") or stripped.endswith("/>"))
 
 
 def _filter_instruction_leaks(queries: list[str]) -> list[str]:

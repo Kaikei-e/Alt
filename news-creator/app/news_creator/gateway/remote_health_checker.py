@@ -3,24 +3,26 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import time
 from collections.abc import Callable
+from http import HTTPStatus
 from typing import Any
 
 import aiohttp
 
 from news_creator.config.distributed_be_config import RemoteTarget
 from news_creator.gateway import dispatch_metrics
-from news_creator.gateway.bounded_body import read_bounded_text
+from news_creator.gateway.bounded_body import BoundedBodyError, read_bounded_text
 
 logger = logging.getLogger(__name__)
 
 MAX_MODELS_RESPONSE_BYTES = 1 * 1024 * 1024
 
 
-def _noop_log(*_args: Any, **_kwargs: Any) -> None:
+def _noop_log(*_args: object, **_kwargs: object) -> None:
     return None
 
 
@@ -29,7 +31,7 @@ class RemoteHealthChecker:
 
     MAX_COOLDOWN_SECONDS = 900
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - constructor injection of targets and probe parameters
         self,
         targets: list[RemoteTarget],
         interval_seconds: int = 30,
@@ -38,11 +40,10 @@ class RemoteHealthChecker:
         unhealthy_threshold: int = 2,
         *,
         max_cooldown_seconds: int = MAX_COOLDOWN_SECONDS,
-    ):
+    ) -> None:
         if unhealthy_threshold < 1:
-            raise ValueError(
-                f"unhealthy_threshold must be >= 1, got {unhealthy_threshold}"
-            )
+            msg = f"unhealthy_threshold must be >= 1, got {unhealthy_threshold}"
+            raise ValueError(msg)
         self._targets = list(targets)
         self._interval_seconds = interval_seconds
         self._cooldown_seconds = cooldown_seconds
@@ -222,6 +223,108 @@ class RemoteHealthChecker:
         state["logged_unhealthy"] = True
         return log_fn
 
+    def _record_http_failure(
+        self,
+        base_url: str,
+        probed_targets: list[RemoteTarget],
+        now: float,
+        status: int,
+    ) -> None:
+        for target in probed_targets:
+            log_fn = self._record_probe_failure(target, now, f"http {status}")
+            log_fn(
+                "Remote health check failed: HTTP %d from %s",
+                status,
+                base_url,
+                extra={
+                    "remote_url": base_url,
+                    "model": target.model,
+                    "status": status,
+                },
+            )
+
+    def _decode_models_list(
+        self,
+        base_url: str,
+        probed_targets: list[RemoteTarget],
+        now: float,
+        text: str,
+    ) -> list[Any] | None:
+        try:
+            payload = json.loads(text)
+        except json.JSONDecodeError as err:
+            for target in probed_targets:
+                log_fn = self._record_probe_failure(
+                    target, now, "non-json", always_warn=True
+                )
+                log_fn(
+                    "Remote health check received non-JSON 200 response from %s: %s",
+                    base_url,
+                    err,
+                    extra={"remote_url": base_url, "model": target.model},
+                )
+            return None
+
+        data_list = payload.get("data") if isinstance(payload, dict) else None
+        if not isinstance(data_list, list):
+            for target in probed_targets:
+                log_fn = self._record_probe_failure(
+                    target, now, "missing data list", always_warn=True
+                )
+                log_fn(
+                    "Remote health check response from %s missing 'data' list",
+                    base_url,
+                    extra={"remote_url": base_url, "model": target.model},
+                )
+            return None
+        return data_list
+
+    def _update_targets_from_models(
+        self,
+        base_url: str,
+        probed_targets: list[RemoteTarget],
+        available_ids: set[str],
+        now: float,
+    ) -> None:
+        for target in probed_targets:
+            state = self._states[target]
+            if target.model in available_ids:
+                state["last_checked"] = now
+                had_failures = not state["healthy"] and (
+                    state.get("consecutive_failures", 0) > 0
+                    or state.get("logged_unhealthy", False)
+                )
+                state["healthy"] = True
+                state["last_healthy"] = now
+                state["probe_failures"] = 0
+                state["consecutive_failures"] = 0
+                state["logged_unhealthy"] = False
+                if had_failures:
+                    logger.info(
+                        "Remote target %s (%s) recovered and is healthy",
+                        base_url,
+                        target.model,
+                    )
+                else:
+                    logger.debug(
+                        "Remote target %s (%s) healthy",
+                        base_url,
+                        target.model,
+                    )
+            else:
+                log_fn = self._record_probe_failure(target, now, "missing model")
+                log_fn(
+                    "Remote %s missing required model %s (has: %s)",
+                    base_url,
+                    target.model,
+                    sorted(available_ids),
+                    extra={
+                        "remote_url": base_url,
+                        "model": target.model,
+                        "models": sorted(available_ids),
+                    },
+                )
+
     async def _probe_base_url(self, base_url: str, targets: list[RemoteTarget]) -> None:
         now = time.monotonic()
         probed_targets = [
@@ -231,105 +334,43 @@ class RemoteHealthChecker:
         ]
         models_url = f"{base_url.rstrip('/')}/v1/models"
 
-        try:
-            if self._session is None:
-                raise RuntimeError("Session not initialized")
+        if self._session is None:
+            msg = "Session not initialized"
+            raise RuntimeError(msg)
 
+        try:
             async with self._session.get(models_url, allow_redirects=False) as response:
-                if response.status != 200:
-                    for target in probed_targets:
-                        log_fn = self._record_probe_failure(
-                            target, now, f"http {response.status}"
-                        )
-                        log_fn(
-                            "Remote health check failed: HTTP %d from %s",
-                            response.status,
-                            base_url,
-                            extra={
-                                "remote_url": base_url,
-                                "model": target.model,
-                                "status": response.status,
-                            },
-                        )
+                if response.status != HTTPStatus.OK:
+                    self._record_http_failure(
+                        base_url, probed_targets, now, response.status
+                    )
                     return
 
                 text = await read_bounded_text(response, MAX_MODELS_RESPONSE_BYTES)
-                try:
-                    payload = json.loads(text)
-                except json.JSONDecodeError as err:
-                    for target in probed_targets:
-                        log_fn = self._record_probe_failure(
-                            target, now, "non-json", always_warn=True
-                        )
-                        log_fn(
-                            "Remote health check received non-JSON 200 response from %s: %s",
-                            base_url,
-                            err,
-                            extra={"remote_url": base_url, "model": target.model},
-                        )
+                data_list = self._decode_models_list(
+                    base_url, probed_targets, now, text
+                )
+                if data_list is None:
                     return
 
-                data_list = payload.get("data") if isinstance(payload, dict) else None
-                if not isinstance(data_list, list):
-                    for target in probed_targets:
-                        log_fn = self._record_probe_failure(
-                            target, now, "missing data list", always_warn=True
-                        )
-                        log_fn(
-                            "Remote health check response from %s missing 'data' list",
-                            base_url,
-                            extra={"remote_url": base_url, "model": target.model},
-                        )
-                    return
-
-                available_ids = {
-                    item.get("id")
+                available_ids: set[str] = {
+                    item_id
                     for item in data_list
-                    if isinstance(item, dict) and isinstance(item.get("id"), str)
+                    if isinstance(item, dict)
+                    and isinstance((item_id := item.get("id")), str)
                 }
+                self._update_targets_from_models(
+                    base_url, probed_targets, available_ids, now
+                )
 
-                for target in probed_targets:
-                    state = self._states[target]
-                    if target.model in available_ids:
-                        state["last_checked"] = now
-                        had_failures = not state["healthy"] and (
-                            state.get("consecutive_failures", 0) > 0
-                            or state.get("logged_unhealthy", False)
-                        )
-                        state["healthy"] = True
-                        state["last_healthy"] = now
-                        state["probe_failures"] = 0
-                        state["consecutive_failures"] = 0
-                        state["logged_unhealthy"] = False
-                        if had_failures:
-                            logger.info(
-                                "Remote target %s (%s) recovered and is healthy",
-                                base_url,
-                                target.model,
-                            )
-                        else:
-                            logger.debug(
-                                "Remote target %s (%s) healthy",
-                                base_url,
-                                target.model,
-                            )
-                    else:
-                        log_fn = self._record_probe_failure(
-                            target, now, "missing model"
-                        )
-                        log_fn(
-                            "Remote %s missing required model %s (has: %s)",
-                            base_url,
-                            target.model,
-                            sorted(available_ids),
-                            extra={
-                                "remote_url": base_url,
-                                "model": target.model,
-                                "models": sorted(available_ids),
-                            },
-                        )
-
-        except Exception as err:
+        except (
+            aiohttp.ClientError,
+            BoundedBodyError,
+            TimeoutError,
+            OSError,
+            RuntimeError,
+            ValueError,
+        ) as err:
             for target in probed_targets:
                 log_fn = self._record_probe_failure(target, now, type(err).__name__)
                 log_fn(
@@ -387,10 +428,8 @@ class RemoteHealthChecker:
     async def stop(self) -> None:
         if self._task is not None:
             self._task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._task
-            except asyncio.CancelledError:
-                pass
             self._task = None
 
         if self._session is not None and not self._session.closed:

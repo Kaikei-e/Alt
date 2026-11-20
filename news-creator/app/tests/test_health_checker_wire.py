@@ -1,19 +1,22 @@
 """Wire-level tests for RemoteHealthChecker GET /v1/models."""
 
 import json
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from aiohttp import web
 import pytest
+from aiohttp import web
 
+from news_creator.config.distributed_be_config import RemoteTarget
+from news_creator.gateway import bounded_body
 from news_creator.gateway.remote_health_checker import RemoteHealthChecker
 
 
 @pytest.mark.asyncio
-async def test_remote_health_checker_gets_v1_models_with_no_auth_and_no_redirect():
+async def test_remote_health_checker_gets_v1_models_with_no_auth_and_no_redirect() -> (
+    None
+):
     """RemoteHealthChecker probes GET {base_url}/v1/models with allow_redirects=False and no Authorization header."""
-    from news_creator.config.distributed_be_config import RemoteTarget
-
     target = RemoteTarget(
         base_url="http://router.example:8080",
         model="provider-a/model-a:latest",
@@ -57,10 +60,8 @@ async def test_remote_health_checker_gets_v1_models_with_no_auth_and_no_redirect
 
 
 @pytest.mark.asyncio
-async def test_remote_health_checker_wire_rejects_models_body_just_over_1_mib():
+async def test_remote_health_checker_wire_rejects_models_body_just_over_1_mib() -> None:
     """S1: Wire server returning a /v1/models body just over 1 MiB leaves the target unhealthy."""
-    from news_creator.config.distributed_be_config import RemoteTarget
-
     one_mib = 1 * 1024 * 1024
     padding = "p" * (one_mib + 64)
     oversized_payload = json.dumps(
@@ -74,7 +75,7 @@ async def test_remote_health_checker_wire_rejects_models_body_just_over_1_mib():
     ).encode("utf-8")
     assert len(oversized_payload) > one_mib
 
-    async def handle_v1_models(_request):
+    async def handle_v1_models(_request: web.Request) -> web.Response:
         return web.Response(
             status=200,
             body=oversized_payload,
@@ -110,17 +111,16 @@ async def test_remote_health_checker_wire_rejects_models_body_just_over_1_mib():
 
 
 @pytest.mark.asyncio
-async def test_remote_health_checker_wire_rejects_chunked_models_body_without_content_length_over_1_mib():
+async def test_remote_health_checker_wire_rejects_chunked_models_body_without_content_length_over_1_mib() -> (
+    None
+):
     """L2: Wire server serving an oversized CHUNKED /v1/models body with no Content-Length leaves target unhealthy via bounded_body."""
-    from news_creator.config.distributed_be_config import RemoteTarget
-    from news_creator.gateway import bounded_body
-
     one_mib = 1 * 1024 * 1024
     prefix = b'{"object":"list","data":[{"id":"provider-a/model-a:latest"},{"id":"'
     suffix = b'"}]}'
     chunk = b"p" * (256 * 1024)
 
-    async def handle_v1_models(request):
+    async def handle_v1_models(request: web.Request) -> web.StreamResponse:
         resp = web.StreamResponse(
             status=200,
             headers={"Content-Type": "application/json"},
@@ -173,9 +173,10 @@ async def test_remote_health_checker_wire_rejects_chunked_models_body_without_co
 
 
 def test_dependency_container_passes_unhealthy_threshold_to_remote_health_checker(
-    monkeypatch, tmp_path
-):
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     """(h) DependencyContainer passes config.distributed_be_unhealthy_threshold to RemoteHealthChecker."""
+    expected_unhealthy_threshold = 4
     secret_file = tmp_path / "redis_secret.txt"
     secret_file.write_text("test-wiring-redis-password")
     monkeypatch.setenv("REDIS_PASSWORD_FILE", str(secret_file))
@@ -187,21 +188,23 @@ def test_dependency_container_passes_unhealthy_threshold_to_remote_health_checke
         "DISTRIBUTED_BE_TARGETS",
         "http://router.example:8080|provider-a/model-a:latest|32768",
     )
-    monkeypatch.setenv("DISTRIBUTED_BE_UNHEALTHY_THRESHOLD", "4")
+    monkeypatch.setenv(
+        "DISTRIBUTED_BE_UNHEALTHY_THRESHOLD", str(expected_unhealthy_threshold)
+    )
 
-    import main as main_module
+    import main as main_module  # noqa: PLC0415 - import after env vars configured in test
 
     class _DummyGateway:
-        def __init__(self, config):
+        def __init__(self, config: object) -> None:
             self.config = config
             self.driver = object()
 
     class _DummyWarmupService:
-        def __init__(self, config, driver):
+        def __init__(self, config: object, driver: object) -> None:
             pass
 
     class _DummyRerankUsecase:
-        def __init__(self):
+        def __init__(self) -> None:
             pass
 
     monkeypatch.setattr(main_module, "OllamaGateway", _DummyGateway)
@@ -211,4 +214,4 @@ def test_dependency_container_passes_unhealthy_threshold_to_remote_health_checke
     container = main_module.DependencyContainer()
     checker = container.llm_provider._health_checker
     assert isinstance(checker, RemoteHealthChecker)
-    assert checker._unhealthy_threshold == 4
+    assert checker._unhealthy_threshold == expected_unhealthy_threshold

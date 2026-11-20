@@ -31,7 +31,7 @@ def _make_request(window_days: int) -> RecapSummaryRequest:
     )
 
 
-def test_3days_budget_is_smaller_than_7days():
+def test_3days_budget_is_smaller_than_7days() -> None:
     usecase = _make_usecase()
     budget_3d = usecase._max_cluster_section_length(_make_request(window_days=3))
     budget_7d = usecase._max_cluster_section_length(_make_request(window_days=7))
@@ -41,13 +41,15 @@ def test_3days_budget_is_smaller_than_7days():
     )
 
 
-def test_3days_budget_is_8000_chars():
+def test_3days_budget_is_8000_chars() -> None:
     usecase = _make_usecase()
+    expected_budget_3d = 8_000
     budget = usecase._max_cluster_section_length(_make_request(window_days=3))
-    assert budget == 8_000
+    assert budget == expected_budget_3d
 
 
-def test_7days_budget_is_12000_chars():
+def test_7days_budget_is_12000_chars() -> None:
     usecase = _make_usecase()
+    expected_budget_7d = 12_000
     budget = usecase._max_cluster_section_length(_make_request(window_days=7))
-    assert budget == 12_000
+    assert budget == expected_budget_7d

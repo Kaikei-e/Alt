@@ -1,22 +1,25 @@
 """Tests for FIFO Semaphore implementation."""
 
 import asyncio
+import contextlib
+
 import pytest
+
+from news_creator.gateway.fifo_semaphore import FIFOSemaphore
 
 
 @pytest.fixture
-def fifo_semaphore_module():
+def fifo_semaphore_module() -> type[FIFOSemaphore]:
     """Import FIFOSemaphore for testing."""
-    from news_creator.gateway.fifo_semaphore import FIFOSemaphore
-
     return FIFOSemaphore
 
 
 @pytest.mark.asyncio
-async def test_fifo_semaphore_basic_acquire_release(fifo_semaphore_module):
+async def test_fifo_semaphore_basic_acquire_release(
+    fifo_semaphore_module: type[FIFOSemaphore],
+) -> None:
     """Test basic acquire and release functionality."""
-    FIFOSemaphore = fifo_semaphore_module
-    semaphore = FIFOSemaphore(1)
+    semaphore = fifo_semaphore_module(1)
 
     # Should acquire immediately
     await semaphore.acquire()
@@ -28,10 +31,11 @@ async def test_fifo_semaphore_basic_acquire_release(fifo_semaphore_module):
 
 
 @pytest.mark.asyncio
-async def test_fifo_semaphore_context_manager(fifo_semaphore_module):
+async def test_fifo_semaphore_context_manager(
+    fifo_semaphore_module: type[FIFOSemaphore],
+) -> None:
     """Test FIFO semaphore as context manager."""
-    FIFOSemaphore = fifo_semaphore_module
-    semaphore = FIFOSemaphore(1)
+    semaphore = fifo_semaphore_module(1)
 
     async with semaphore:
         assert semaphore._value == 0
@@ -40,15 +44,16 @@ async def test_fifo_semaphore_context_manager(fifo_semaphore_module):
 
 
 @pytest.mark.asyncio
-async def test_fifo_semaphore_fifo_order(fifo_semaphore_module):
+async def test_fifo_semaphore_fifo_order(
+    fifo_semaphore_module: type[FIFOSemaphore],
+) -> None:
     """Test that FIFO semaphore processes tasks in FIFO order."""
-    FIFOSemaphore = fifo_semaphore_module
-    semaphore = FIFOSemaphore(1)
+    semaphore = fifo_semaphore_module(1)
 
     processing_order = []
     lock = asyncio.Lock()
 
-    async def worker(task_id: int):
+    async def worker(task_id: int) -> None:
         """Worker that processes a task."""
         await semaphore.acquire()
         try:
@@ -69,15 +74,16 @@ async def test_fifo_semaphore_fifo_order(fifo_semaphore_module):
 
 
 @pytest.mark.asyncio
-async def test_fifo_semaphore_concurrent_access(fifo_semaphore_module):
+async def test_fifo_semaphore_concurrent_access(
+    fifo_semaphore_module: type[FIFOSemaphore],
+) -> None:
     """Test FIFO semaphore with concurrent access."""
-    FIFOSemaphore = fifo_semaphore_module
-    semaphore = FIFOSemaphore(2)  # Allow 2 concurrent tasks
+    semaphore = fifo_semaphore_module(2)  # Allow 2 concurrent tasks
 
     processing_order = []
     lock = asyncio.Lock()
 
-    async def worker(task_id: int):
+    async def worker(task_id: int) -> None:
         """Worker that processes a task."""
         async with semaphore:
             async with lock:
@@ -90,7 +96,7 @@ async def test_fifo_semaphore_concurrent_access(fifo_semaphore_module):
 
     # With concurrency=2, first 2 should start together, then next 2, then last 1
     # But order within each batch may vary, so we just verify all are processed
-    assert len(processing_order) == 5
+    assert len(processing_order) == len(tasks)
     assert set(processing_order) == {1, 2, 3, 4, 5}
 
     # First two should be 1 and 2 (in some order)
@@ -98,10 +104,11 @@ async def test_fifo_semaphore_concurrent_access(fifo_semaphore_module):
 
 
 @pytest.mark.asyncio
-async def test_fifo_semaphore_cancellation(fifo_semaphore_module):
+async def test_fifo_semaphore_cancellation(
+    fifo_semaphore_module: type[FIFOSemaphore],
+) -> None:
     """Test that cancellation of a waiting task doesn't break FIFO order for others."""
-    FIFOSemaphore = fifo_semaphore_module
-    semaphore = FIFOSemaphore(1)
+    semaphore = fifo_semaphore_module(1)
 
     processing_order = []
 
@@ -110,7 +117,7 @@ async def test_fifo_semaphore_cancellation(fifo_semaphore_module):
     processing_order.append(1)
 
     # 2. Start two tasks that will wait
-    async def worker(task_id: int):
+    async def worker(task_id: int) -> None:
         try:
             await semaphore.acquire()
             processing_order.append(task_id)
@@ -127,10 +134,8 @@ async def test_fifo_semaphore_cancellation(fifo_semaphore_module):
 
     # 3. Cancel the first waiter (Task 2)
     task2.cancel()
-    try:
+    with contextlib.suppress(asyncio.CancelledError):
         await task2
-    except asyncio.CancelledError:
-        pass
 
     # 4. Release semaphore - should wake Task 3 (since 2 is cancelled)
     semaphore.release()
@@ -143,27 +148,30 @@ async def test_fifo_semaphore_cancellation(fifo_semaphore_module):
 
 
 @pytest.mark.asyncio
-async def test_fifo_semaphore_tracks_queue_wait_time(fifo_semaphore_module):
+async def test_fifo_semaphore_tracks_queue_wait_time(
+    fifo_semaphore_module: type[FIFOSemaphore],
+) -> None:
     """Test that FIFO semaphore tracks queue wait time."""
-    FIFOSemaphore = fifo_semaphore_module
-    semaphore = FIFOSemaphore(1)
+    semaphore = fifo_semaphore_module(1)
 
     # First acquire immediately - should have minimal wait time
     wait_time = await semaphore.acquire()
     assert wait_time >= 0  # Should return wait time in seconds
-    assert wait_time < 0.1  # Immediate acquire should be very fast
+    immediate_wait_max_seconds = 0.1
+    assert wait_time < immediate_wait_max_seconds  # Immediate acquire should be fast
     semaphore.release()
 
 
 @pytest.mark.asyncio
-async def test_fifo_semaphore_queue_wait_time_when_waiting(fifo_semaphore_module):
+async def test_fifo_semaphore_queue_wait_time_when_waiting(
+    fifo_semaphore_module: type[FIFOSemaphore],
+) -> None:
     """Test that queue wait time is tracked when actually waiting."""
-    FIFOSemaphore = fifo_semaphore_module
-    semaphore = FIFOSemaphore(1)
+    semaphore = fifo_semaphore_module(1)
 
     wait_times = []
 
-    async def worker(task_id: int):
+    async def worker(task_id: int) -> None:
         """Worker that tracks wait time."""
         wait_time = await semaphore.acquire()
         try:
@@ -173,38 +181,40 @@ async def test_fifo_semaphore_queue_wait_time_when_waiting(fifo_semaphore_module
             semaphore.release()
 
     # Start 3 tasks concurrently
-    await asyncio.gather(
-        worker(1),
-        worker(2),
-        worker(3),
-    )
+    workers = [worker(1), worker(2), worker(3)]
+    await asyncio.gather(*workers)
 
     # First task should have minimal wait time
     # Second task should wait ~50ms (while first is processing)
     # Third task should wait ~100ms (while first and second are processing)
-    assert len(wait_times) == 3
+    assert len(wait_times) == len(workers)
 
     # Sort by task_id to ensure predictable order for assertions
     wait_times.sort(key=lambda x: x[0])
 
     # First task should have minimal wait
-    assert wait_times[0][1] < 0.02
+    max_first_wait_seconds = 0.02
+    min_second_wait_seconds = 0.04
+    min_third_wait_seconds = 0.08
+    assert wait_times[0][1] < max_first_wait_seconds
 
     # Second task should have waited ~50ms (first task's processing time)
-    assert wait_times[1][1] >= 0.04  # Allow some margin
+    assert wait_times[1][1] >= min_second_wait_seconds  # Allow some margin
 
     # Third task should have waited ~100ms (first + second processing time)
-    assert wait_times[2][1] >= 0.08  # Allow some margin
+    assert wait_times[2][1] >= min_third_wait_seconds  # Allow some margin
 
 
 @pytest.mark.asyncio
-async def test_fifo_semaphore_context_manager_returns_wait_time(fifo_semaphore_module):
+async def test_fifo_semaphore_context_manager_returns_wait_time(
+    fifo_semaphore_module: type[FIFOSemaphore],
+) -> None:
     """Test that context manager can provide wait time."""
-    FIFOSemaphore = fifo_semaphore_module
-    semaphore = FIFOSemaphore(1)
+    semaphore = fifo_semaphore_module(1)
 
     # Context manager should work and we can get wait time via property
     async with semaphore:
         # After entering context, last_wait_time should be available
+        immediate_wait_max_seconds = 0.1
         assert semaphore.last_wait_time >= 0
-        assert semaphore.last_wait_time < 0.1  # Immediate acquire
+        assert semaphore.last_wait_time < immediate_wait_max_seconds
