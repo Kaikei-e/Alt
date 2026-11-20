@@ -256,9 +256,7 @@ describe("MobileAcolyteDetail", () => {
 		});
 
 		await expect
-			.element(
-				page.getByText(/First supporting quote from the same article\./),
-			)
+			.element(page.getByText(/First supporting quote from the same article\./))
 			.toBeInTheDocument();
 		await expect
 			.element(

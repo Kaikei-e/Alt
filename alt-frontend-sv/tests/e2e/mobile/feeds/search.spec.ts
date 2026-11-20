@@ -104,12 +104,12 @@ test.describe("mobile feeds routes - search", () => {
 		};
 
 		let requestCount = 0;
-		await page.route(CONNECT_RPC_PATHS.searchFeeds, (route) => {
+		await page.route(CONNECT_RPC_PATHS.searchFeeds, async (route) => {
 			requestCount++;
 			if (requestCount === 1) {
-				fulfillJson(route, firstPageResponse);
+				await fulfillJson(route, firstPageResponse);
 			} else {
-				fulfillJson(route, secondPageResponse);
+				await fulfillJson(route, secondPageResponse);
 			}
 		});
 

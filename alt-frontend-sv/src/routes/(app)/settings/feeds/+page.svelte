@@ -65,7 +65,7 @@ let inflowError = $state<string | null>(null);
 let showAddForm = $state(false);
 
 onMount(() => {
-	loadSubscriptions();
+	void loadSubscriptions();
 	void loadInflowStats();
 });
 

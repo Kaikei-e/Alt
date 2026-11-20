@@ -80,7 +80,7 @@ function handleFileInputChange(event: Event) {
 	const input = event.target as HTMLInputElement;
 	const file = input.files?.[0];
 	if (file) {
-		handleImportFile(file);
+		void handleImportFile(file);
 		input.value = "";
 	}
 }
@@ -90,7 +90,7 @@ function handleDrop(event: DragEvent) {
 	dragOver = false;
 	const file = event.dataTransfer?.files[0];
 	if (file) {
-		handleImportFile(file);
+		void handleImportFile(file);
 	}
 }
 

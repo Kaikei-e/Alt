@@ -119,7 +119,7 @@ onMount(() => {
 	requestAnimationFrame(() => {
 		revealed = true;
 	});
-	loadFeedSources();
+	void loadFeedSources();
 });
 
 // Safari drops connections after a long spell in the background. One recovery
@@ -128,7 +128,7 @@ $effect(() => {
 	if (!connectionRecovery) return;
 	const unsubscribe = connectionRecovery.subscribe((info) => {
 		console.info("[Feeds] Connection recovery triggered:", info.reason);
-		loadFeedSources();
+		void loadFeedSources();
 		feedGridApi?.refresh();
 	});
 	return unsubscribe;

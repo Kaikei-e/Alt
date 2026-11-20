@@ -29,10 +29,11 @@ const resolvedArticleData = $derived(data.articleData);
 // in-memory cache instead of refetching.
 onMount(() => {
 	recordSurfaceViewed(ReadingSurface.SWIPE);
-	if (data.initialFeeds.length === 0 || !resolvedArticleData.firstArticleId) {
+	const firstFeed = data.initialFeeds[0];
+	if (!firstFeed || !resolvedArticleData.firstArticleId) {
 		return;
 	}
-	const feedUrl = data.initialFeeds[0]!.normalizedUrl;
+	const feedUrl = firstFeed.normalizedUrl;
 	articlePrefetcher.seedCache(
 		feedUrl,
 		resolvedArticleData.firstArticleContent || "",

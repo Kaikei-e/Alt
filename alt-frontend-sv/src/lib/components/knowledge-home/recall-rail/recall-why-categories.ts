@@ -24,16 +24,22 @@ const COMPLETION_CODES = new Set([
 	"pulse_followup_needed",
 ]);
 
-const CATEGORY_ORDER = ["revisit", "connection", "completion", "other"];
+const CATEGORY_ORDER = [
+	"revisit",
+	"connection",
+	"completion",
+	"other",
+] as const;
+type RecallWhyCategory = (typeof CATEGORY_ORDER)[number];
 
-const CATEGORY_LABELS: Record<string, string> = {
+const CATEGORY_LABELS: Record<RecallWhyCategory, string> = {
 	revisit: "Revisit",
 	connection: "Connection",
 	completion: "Completion",
 	other: "Other",
 };
 
-function categorize(code: string): string {
+function categorize(code: string): RecallWhyCategory {
 	if (REVISIT_CODES.has(code)) return "revisit";
 	if (CONNECTION_CODES.has(code)) return "connection";
 	if (COMPLETION_CODES.has(code)) return "completion";
@@ -46,7 +52,7 @@ export function categorizeRecallReasons(
 	if (reasons.length === 0) return [];
 
 	const bucket = new Map<
-		string,
+		RecallWhyCategory,
 		Array<{ reason: RecallReasonData; displayLabel: string }>
 	>();
 
@@ -62,7 +68,7 @@ export function categorizeRecallReasons(
 	for (const key of CATEGORY_ORDER) {
 		const items = bucket.get(key);
 		if (items) {
-			groups.push({ key, label: CATEGORY_LABELS[key]!, items });
+			groups.push({ key, label: CATEGORY_LABELS[key], items });
 		}
 	}
 

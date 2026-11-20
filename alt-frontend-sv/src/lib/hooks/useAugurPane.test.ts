@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { assertDefined } from "#lib/test-utils/assert.js";
 
 // Mock #lib/connect
 const mockStreamAugurChat = vi.fn();
@@ -112,10 +113,12 @@ describe("useAugurPane", () => {
 			pane.sendMessage("What is RSS?");
 
 			expect(pane.messages).toHaveLength(2);
-			expect(pane.messages[0]!.role).toBe("user");
-			expect(pane.messages[0]!.message).toBe("What is RSS?");
-			expect(pane.messages[1]!.role).toBe("assistant");
-			expect(pane.messages[1]!.message).toBe("");
+			const userMsg = assertDefined(pane.messages[0]);
+			const assistantMsg = assertDefined(pane.messages[1]);
+			expect(userMsg.role).toBe("user");
+			expect(userMsg.message).toBe("What is RSS?");
+			expect(assistantMsg.role).toBe("assistant");
+			expect(assistantMsg.message).toBe("");
 		});
 
 		it("sets isLoading to true", () => {
@@ -176,7 +179,7 @@ describe("useAugurPane", () => {
 			pane.sendMessage("Tell me more");
 
 			// The second call should include full history (excluding the empty placeholder)
-			const secondCall = mockStreamAugurChat.mock.calls[1]!;
+			const secondCall = assertDefined(mockStreamAugurChat.mock.calls[1]);
 			const options = secondCall[1] as {
 				messages: Array<{ role: string; content: string }>;
 				conversationId: string;
@@ -201,7 +204,7 @@ describe("useAugurPane", () => {
 
 			pane.sendMessage("Tell me more");
 
-			const secondCall = mockStreamAugurChat.mock.calls[1]!;
+			const secondCall = assertDefined(mockStreamAugurChat.mock.calls[1]);
 			const options = secondCall[1] as {
 				messages: Array<{ role: string; content: string }>;
 			};
@@ -219,7 +222,7 @@ describe("useAugurPane", () => {
 
 			pane.sendMessage("Tell me more");
 
-			const secondCall = mockStreamAugurChat.mock.calls[1]!;
+			const secondCall = assertDefined(mockStreamAugurChat.mock.calls[1]);
 			const options = secondCall[1] as {
 				messages: Array<{ role: string; content: string }>;
 			};
@@ -267,12 +270,12 @@ describe("useAugurPane", () => {
 			pane.sendMessage("Hello");
 
 			capturedCallbacks.onDelta?.("live ");
-			expect(pane.messages[1]!.message).toBe("live ");
+			expect(assertDefined(pane.messages[1]).message).toBe("live ");
 
 			pane.abort();
 			capturedCallbacks.onDelta?.("ghost");
 
-			expect(pane.messages[1]!.message).toBe("live ");
+			expect(assertDefined(pane.messages[1]).message).toBe("live ");
 		});
 	});
 
@@ -285,7 +288,7 @@ describe("useAugurPane", () => {
 			capturedCallbacks.onDelta?.("is ");
 			capturedCallbacks.onDelta?.("great.");
 
-			expect(pane.messages[1]!.message).toBe("RSS is great.");
+			expect(assertDefined(pane.messages[1]).message).toBe("RSS is great.");
 		});
 
 		it("onComplete finalizes assistant message and clears isLoading", () => {
@@ -304,8 +307,9 @@ describe("useAugurPane", () => {
 				],
 			});
 
-			expect(pane.messages[1]!.message).toBe("Final answer text");
-			expect(pane.messages[1]!.citations).toEqual([
+			const assistantMsg = assertDefined(pane.messages[1]);
+			expect(assistantMsg.message).toBe("Final answer text");
+			expect(assistantMsg.citations).toEqual([
 				{
 					URL: "https://example.com",
 					Title: "Example",
@@ -324,7 +328,7 @@ describe("useAugurPane", () => {
 				{ url: "https://a.com", title: "A", publishedAt: "2026-01-01" },
 			]);
 
-			expect(pane.messages[1]!.citations).toEqual([
+			expect(assertDefined(pane.messages[1]).citations).toEqual([
 				{ URL: "https://a.com", Title: "A", PublishedAt: "2026-01-01" },
 			]);
 		});
@@ -335,7 +339,9 @@ describe("useAugurPane", () => {
 
 			capturedCallbacks.onError?.(new Error("Network failure"));
 
-			expect(pane.messages[1]!.message).toContain("Network failure");
+			expect(assertDefined(pane.messages[1]).message).toContain(
+				"Network failure",
+			);
 			expect(pane.isLoading).toBe(false);
 		});
 
@@ -345,7 +351,7 @@ describe("useAugurPane", () => {
 
 			capturedCallbacks.onFallback?.("insufficient_context");
 
-			expect(pane.messages[1]!.message).toContain(
+			expect(assertDefined(pane.messages[1]).message).toContain(
 				"Not enough indexed evidence",
 			);
 			expect(pane.isLoading).toBe(false);
@@ -377,7 +383,7 @@ describe("useAugurPane", () => {
 			vi.advanceTimersByTime(180_000);
 
 			expect(pane.isLoading).toBe(false);
-			expect(pane.messages[1]!.message).toContain("Partial text");
+			expect(assertDefined(pane.messages[1]).message).toContain("Partial text");
 
 			vi.useRealTimers();
 		});
@@ -389,13 +395,13 @@ describe("useAugurPane", () => {
 
 			capturedCallbacks.onDelta?.("Partial text");
 			vi.advanceTimersByTime(180_000);
-			expect(pane.messages[1]!.message).toContain("Partial text");
+			expect(assertDefined(pane.messages[1]).message).toContain("Partial text");
 
 			// The stream the timeout gave up on is still wired to this pane's
 			// callbacks; its late delta must not resurrect the dead turn.
 			capturedCallbacks.onDelta?.(" that arrived too late");
 
-			expect(pane.messages[1]!.message).not.toContain("too late");
+			expect(assertDefined(pane.messages[1]).message).not.toContain("too late");
 
 			vi.useRealTimers();
 		});
@@ -410,7 +416,7 @@ describe("useAugurPane", () => {
 
 			// Advance past timeout — should NOT change anything
 			vi.advanceTimersByTime(180_000);
-			expect(pane.messages[1]!.message).toBe("Done");
+			expect(assertDefined(pane.messages[1]).message).toBe("Done");
 
 			vi.useRealTimers();
 		});
@@ -578,7 +584,7 @@ describe("useAugurPane", () => {
 				"retrieval quality insufficient: context relevance too low",
 			);
 
-			expect(pane.messages[1]!.message).toContain(
+			expect(assertDefined(pane.messages[1]).message).toContain(
 				"Not enough indexed evidence",
 			);
 		});
@@ -589,7 +595,7 @@ describe("useAugurPane", () => {
 
 			capturedCallbacks.onFallback?.("validation failed");
 
-			expect(pane.messages[1]!.message).toContain(
+			expect(assertDefined(pane.messages[1]).message).toContain(
 				"I couldn't find enough information",
 			);
 		});
@@ -604,7 +610,7 @@ describe("useAugurPane", () => {
 
 			capturedCallbacks.onFallback?.("CAUSAL_TRAIL_INSUFFICIENT");
 
-			expect(pane.messages[1]!.message).toContain(
+			expect(assertDefined(pane.messages[1]).message).toContain(
 				"I couldn't establish a consistent enough evidence trail",
 			);
 		});

@@ -50,7 +50,7 @@ export function useJobProgress(options: UseJobProgressOptions = {}) {
 
 	function setWindow(window: TimeWindow) {
 		if (window !== currentWindow) {
-			fetchData(window);
+			void fetchData(window);
 		}
 	}
 

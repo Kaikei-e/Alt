@@ -134,7 +134,9 @@ describe("useTrailOutcome shallow navigation guard", () => {
 		useTrailOutcome("branch-1", "article:123");
 
 		expect(beforeNavigateCallback).not.toBeNull();
-		beforeNavigateCallback!({ shallow: true });
+		if (!beforeNavigateCallback)
+			throw new Error("expected beforeNavigateCallback");
+		beforeNavigateCallback({ shallow: true });
 
 		expect(mockEmitTrailOutcome).not.toHaveBeenCalled();
 	});
@@ -143,7 +145,9 @@ describe("useTrailOutcome shallow navigation guard", () => {
 		useTrailOutcome("branch-1", "article:123");
 
 		expect(beforeNavigateCallback).not.toBeNull();
-		beforeNavigateCallback!({ shallow: false });
+		if (!beforeNavigateCallback)
+			throw new Error("expected beforeNavigateCallback");
+		beforeNavigateCallback({ shallow: false });
 
 		expect(mockEmitTrailOutcome).toHaveBeenCalledTimes(1);
 	});

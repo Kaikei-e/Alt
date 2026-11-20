@@ -59,7 +59,7 @@ describe("ImageLoadQueue", () => {
 		await q.acquire(proxy("a.com"));
 
 		let otherGranted = false;
-		q.acquire(proxy("b.com")).then(() => {
+		await q.acquire(proxy("b.com")).then(() => {
 			otherGranted = true;
 		});
 
@@ -95,13 +95,13 @@ describe("ImageLoadQueue", () => {
 		// Only one same-host slot exists; acquiring two more must still serialize.
 		const r2 = await q.acquire(proxy("a.com"));
 		let granted = false;
-		q.acquire(proxy("a.com")).then(() => {
+		const p2 = q.acquire(proxy("a.com")).then(() => {
 			granted = true;
 		});
 		await tick();
 		expect(granted).toBe(false);
 		r2();
-		await tick();
+		await p2;
 		expect(granted).toBe(true);
 	});
 });

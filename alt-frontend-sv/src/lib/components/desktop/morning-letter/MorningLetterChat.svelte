@@ -111,6 +111,17 @@ async function handleSend() {
 	let lastUpdateTime = 0;
 	const THROTTLE_MS = 50;
 
+	const patchAssistantMessage = (
+		updater: (prev: Message) => Partial<Message>,
+	) => {
+		const current = messages[currentAssistantMessageIndex];
+		if (!current) return;
+		messages[currentAssistantMessageIndex] = {
+			...current,
+			...updater(current),
+		};
+	};
+
 	try {
 		const transport = createClientTransport();
 
@@ -126,63 +137,61 @@ async function handleSend() {
 				bufferedContent += text;
 				const now = Date.now();
 				if (now - lastUpdateTime > THROTTLE_MS) {
-					messages[currentAssistantMessageIndex] = {
-						...messages[currentAssistantMessageIndex]!,
-						message: bufferedContent,
-					};
+					patchAssistantMessage(() => ({ message: bufferedContent }));
 					lastUpdateTime = now;
 				}
 			},
 			(meta: MorningLetterMeta) => {
-				messages[currentAssistantMessageIndex] = {
-					...messages[currentAssistantMessageIndex]!,
+				patchAssistantMessage(() => ({
 					citations: convertCitations(meta.citations),
 					meta: {
 						timeWindow: meta.timeWindow,
 						articlesScanned: meta.articlesScanned,
 					},
-				};
+				}));
 			},
 			(result) => {
-				messages[currentAssistantMessageIndex] = {
-					...messages[currentAssistantMessageIndex]!,
+				patchAssistantMessage((prev) => ({
 					message: result.answer || bufferedContent,
 					citations:
 						result.citations.length > 0
 							? convertCitations(result.citations)
-							: messages[currentAssistantMessageIndex]!.citations,
-				};
+							: prev.citations,
+				}));
 				isLoading = false;
 				currentAbortController = null;
-				scrollToBottom();
+				void scrollToBottom().catch((err) =>
+					console.error("Scroll error:", err),
+				);
 			},
 			(_code) => {
-				messages[currentAssistantMessageIndex] = {
-					...messages[currentAssistantMessageIndex]!,
+				patchAssistantMessage(() => ({
 					message:
 						"I couldn't find enough recent news to answer that. Try asking about a different topic from this edition's news.",
-				};
+				}));
 				isLoading = false;
 				currentAbortController = null;
-				scrollToBottom();
+				void scrollToBottom().catch((err) =>
+					console.error("Scroll error:", err),
+				);
 			},
 			(error) => {
 				console.error("Chat error:", error);
-				messages[currentAssistantMessageIndex] = {
-					...messages[currentAssistantMessageIndex]!,
+				patchAssistantMessage(() => ({
 					message: `Error: ${error.message}. Please try again.`,
-				};
+				}));
 				isLoading = false;
 				currentAbortController = null;
-				scrollToBottom();
+				void scrollToBottom().catch((err) =>
+					console.error("Scroll error:", err),
+				);
 			},
 		);
 	} catch (error) {
 		console.error("Chat error:", error);
-		messages[currentAssistantMessageIndex] = {
-			...messages[currentAssistantMessageIndex]!,
+		patchAssistantMessage(() => ({
 			message: `Error: ${error instanceof Error ? error.message : "Unknown error"}. Please try again.`,
-		};
+		}));
 		isLoading = false;
 		await scrollToBottom();
 	}
@@ -191,12 +200,15 @@ async function handleSend() {
 function handleKeydown(event: KeyboardEvent) {
 	if (event.key === "Enter" && !event.shiftKey) {
 		event.preventDefault();
-		handleSend();
+		void handleSend().catch((err) => {
+			console.error("Chat error:", err);
+			isLoading = false;
+		});
 	}
 }
 
 onMount(() => {
-	scrollToBottom();
+	void scrollToBottom().catch((err) => console.error("Scroll error:", err));
 	return () => {
 		if (scrollTimer !== null) {
 			clearTimeout(scrollTimer);

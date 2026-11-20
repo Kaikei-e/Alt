@@ -183,6 +183,17 @@ export function useAugurPane(options: UseAugurPaneOptions = {}) {
 
 		let bufferedContent = "";
 
+		const patchAssistantMessage = (
+			updater: (prev: AugurPaneMessage) => Partial<AugurPaneMessage>,
+		) => {
+			const current = messages[assistantIndex];
+			if (!current) return;
+			messages[assistantIndex] = {
+				...current,
+				...updater(current),
+			};
+		};
+
 		// One reveal per turn; it alone writes the streaming bubble's text, so
 		// the loading pulse (gated on message === "") clears with the first
 		// revealed character.
@@ -190,10 +201,7 @@ export function useAugurPane(options: UseAugurPaneOptions = {}) {
 		reveal = createTypewriterReveal({
 			immediate: prefersReducedMotion(),
 			onReveal: (text) => {
-				messages[assistantIndex] = {
-					...messages[assistantIndex]!,
-					message: text,
-				};
+				patchAssistantMessage(() => ({ message: text }));
 			},
 		});
 
@@ -203,11 +211,10 @@ export function useAugurPane(options: UseAugurPaneOptions = {}) {
 				// Stopped before the notice is written: a reveal frame still in
 				// flight must not overwrite the recovery text.
 				reveal?.stop();
-				messages[assistantIndex] = {
-					...messages[assistantIndex]!,
+				patchAssistantMessage(() => ({
 					message: bufferedContent || "Response timed out. Please try again.",
 					retryable: true,
-				};
+				}));
 				finalize();
 			}
 		}, STREAM_TIMEOUT_MS);
@@ -228,47 +235,43 @@ export function useAugurPane(options: UseAugurPaneOptions = {}) {
 			},
 			// onMeta
 			(citations) => {
-				messages[assistantIndex] = {
-					...messages[assistantIndex]!,
+				patchAssistantMessage(() => ({
 					citations: convertCitations(citations),
-				};
+				}));
 			},
 			// onComplete — authoritative final answer replaces all provisional text
 			(result) => {
 				// Hard flush with the same value the write below uses, so the
 				// revealed text and the message state never disagree.
 				reveal?.finish(result.answer || bufferedContent);
-				messages[assistantIndex] = {
-					...messages[assistantIndex]!,
+				patchAssistantMessage((prev) => ({
 					message: result.answer || bufferedContent,
 					citations:
 						result.citations.length > 0
 							? convertCitations(result.citations)
-							: messages[assistantIndex]!.citations,
+							: prev.citations,
 					relatedCitations: convertCitations(result.relatedCitations),
-				};
+				}));
 				finalize();
 			},
 			// onFallback — clear provisional, show fallback
 			(code) => {
 				reveal?.stop();
 				isProvisional = false;
-				messages[assistantIndex] = {
-					...messages[assistantIndex]!,
+				patchAssistantMessage(() => ({
 					message: formatAugurFallbackMessage(code),
 					retryable: true,
-				};
+				}));
 				finalize();
 			},
 			// onError
 			(error) => {
 				reveal?.stop();
 				isProvisional = false;
-				messages[assistantIndex] = {
-					...messages[assistantIndex]!,
+				patchAssistantMessage(() => ({
 					message: `Error: ${error.message}. Please try again.`,
 					retryable: true,
-				};
+				}));
 				finalize();
 			},
 			// onProgress — update stage + statusText for refining

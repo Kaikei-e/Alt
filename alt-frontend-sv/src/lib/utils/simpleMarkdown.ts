@@ -66,7 +66,8 @@ export function parseMarkdown(text: string): string {
 	};
 
 	for (let i = 0; i < lines.length; i++) {
-		const line = lines[i]!;
+		const line = lines[i];
+		if (line === undefined) continue;
 		const trimmed = line.trim();
 
 		// Code Blocks

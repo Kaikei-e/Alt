@@ -49,10 +49,11 @@ test.describe("Desktop Article Detail — toolbar layout", () => {
 
 		const box = await summarizeBtn.boundingBox();
 		expect(box).not.toBeNull();
+		if (!box) throw new Error("summarize button bounding box was null");
 		// size="icon" yields a 36px square. On desktop the button must grow to
 		// fit "Summarize" + icon; anything ≤ 40px means the label is clipping
 		// the icon (the regression we're guarding against).
-		expect(box!.width).toBeGreaterThan(60);
+		expect(box.width).toBeGreaterThan(60);
 	});
 
 	test("open-original link and summarize button share the same height", async ({
@@ -68,8 +69,11 @@ test.describe("Desktop Article Detail — toolbar layout", () => {
 		const linkBox = await openOriginal.boundingBox();
 		expect(btnBox).not.toBeNull();
 		expect(linkBox).not.toBeNull();
+		if (!btnBox || !linkBox) {
+			throw new Error("toolbar control bounding box was null");
+		}
 		// Visual parity check: toolbar controls must align. Allow 2px of AA/
 		// sub-pixel rounding slack.
-		expect(Math.abs(btnBox!.height - linkBox!.height)).toBeLessThanOrEqual(2);
+		expect(Math.abs(btnBox.height - linkBox.height)).toBeLessThanOrEqual(2);
 	});
 });

@@ -234,8 +234,11 @@ test.describe("Trail closure (dwell outcome)", () => {
 			await fulfillJson(route, { ok: true });
 		});
 		await page.goto("./articles/b2");
-		await page.waitForTimeout(500);
+		await expect(
+			page.getByRole("button", { name: "Back to Home" }),
+		).toBeVisible({ timeout: 15000 });
 		await page.goBack();
+		// biome-ignore lint/nursery/noPlaywrightWaitForTimeout: negative assertion verifying organic visit never emits EmitTrailOutcome on leave
 		await page.waitForTimeout(500);
 		expect(emitted).toBe(false);
 	});
@@ -770,6 +773,8 @@ test.describe("Trail search", () => {
 		});
 
 		await page.getByTestId("trail-search").fill("submarine");
+		await expect(page.getByTestId("trail-search")).toHaveValue("submarine");
+		// biome-ignore lint/nursery/noPlaywrightWaitForTimeout: negative assertion catching an accidental input debounce timer within 500ms
 		await page.waitForTimeout(500);
 		expect(searchCalled).toBe(false);
 	});
@@ -790,7 +795,13 @@ test.describe("Trail search", () => {
 		});
 
 		await page.getByTestId("trail-search").press("Enter");
-		await page.waitForTimeout(300);
+		await expect(page.getByTestId("trail-episode")).toHaveCount(2);
+		await page.evaluate(
+			() =>
+				new Promise<void>((resolve) =>
+					requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+				),
+		);
 		expect(searchCalled).toBe(false);
 		await expect(page.getByTestId("trail-episode")).toHaveCount(2);
 	});

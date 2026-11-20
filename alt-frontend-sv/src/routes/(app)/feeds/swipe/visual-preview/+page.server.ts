@@ -45,10 +45,10 @@ export const load: ServerLoad = async ({ request, locals, fetch }) => {
 		// 1.3.x that terminator is racy enough to surface "Cannot Open the Page"
 		// on slow upstream tails. The 6s AbortController inside loadFirstArticle
 		// still caps the wait; we just no longer stream the resolution.
-		const articleData =
-			feeds.length > 0
-				? await loadFirstArticle(feeds[0]!, cookie, backendToken, fetch)
-				: emptyArticleData;
+		const firstFeed = feeds[0];
+		const articleData = firstFeed
+			? await loadFirstArticle(firstFeed, cookie, backendToken, fetch)
+			: emptyArticleData;
 
 		return {
 			initialFeeds: feeds,
@@ -120,8 +120,8 @@ async function loadFirstArticle(
 				const images = await batchPrefetchImages(transport, [
 					article.articleId,
 				]);
-				if (images.length > 0 && images[0]!.proxyUrl) {
-					firstArticleImageUrl = images[0]!.proxyUrl;
+				if (images[0]?.proxyUrl) {
+					firstArticleImageUrl = images[0].proxyUrl;
 				}
 			} catch {
 				// No signed URL from this source either; the card goes without.

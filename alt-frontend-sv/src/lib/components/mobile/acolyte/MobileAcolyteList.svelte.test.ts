@@ -1,6 +1,7 @@
 import { page } from "@vitest/browser/context";
 import { describe, expect, it } from "vitest";
 import { render } from "vitest-browser-svelte";
+import { assertDefined } from "#lib/test-utils/assert.js";
 import { MOCK_REPORT_SUMMARIES } from "./acolyte-fixtures";
 import MobileAcolyteList from "./MobileAcolyteList.svelte";
 
@@ -109,7 +110,7 @@ describe("MobileAcolyteList", () => {
 	it("renders singular report count for 1 report", async () => {
 		render(MobileAcolyteList, {
 			props: {
-				reports: [MOCK_REPORT_SUMMARIES[0]!],
+				reports: [assertDefined(MOCK_REPORT_SUMMARIES[0])],
 				loading: false,
 				error: null,
 			},

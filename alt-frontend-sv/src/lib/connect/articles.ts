@@ -600,7 +600,7 @@ export function streamArticleTags(
 	const abortController = new AbortController();
 
 	// Start streaming in background
-	(async () => {
+	void (async () => {
 		try {
 			const stream = client.streamArticleTags(
 				{ articleId },

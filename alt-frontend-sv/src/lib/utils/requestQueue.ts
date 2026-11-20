@@ -41,7 +41,8 @@ export function createRequestQueue(
 
 	function pump(): void {
 		while (active < concurrency && queue.length > 0) {
-			const item = queue.shift()!;
+			const item = queue.shift();
+			if (!item) break;
 			active++;
 			item.run();
 		}

@@ -100,6 +100,7 @@ test.describe("Desktop Acolyte: resume polling on mount via GetReport.active_run
 		await page.goto(reportPage.url);
 		// Wait long enough that one polling tick (3s) would fire if it were
 		// armed. We must observe zero calls.
+		// biome-ignore lint/nursery/noPlaywrightWaitForTimeout: negative assertion verifying a 3s polling interval was never armed
 		await page.waitForTimeout(3500);
 		expect(statusCalls).toBe(0);
 		await expect(reportPage.generateButton).toBeEnabled();

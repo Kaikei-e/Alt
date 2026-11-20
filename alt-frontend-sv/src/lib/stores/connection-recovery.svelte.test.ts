@@ -3,10 +3,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import {
-	type ConnectionRecoveryStore,
-	createConnectionRecoveryStore,
-} from "./connection-recovery.svelte";
+import type { ConnectionRecoveryStore } from "./connection-recovery.svelte";
 
 vi.mock("#lib/hooks/safari-connection-recovery.js", () => {
 	let onRecoveryCallback: ((info: { reason: string }) => void) | null = null;

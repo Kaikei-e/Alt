@@ -92,8 +92,8 @@ let hasMessages = $derived(messages.length > 0);
 // answers' citations stay reachable through the inline footer in ThreadEntry.
 let railCitations = $derived.by<Citation[]>(() => {
 	for (let i = messages.length - 1; i >= 0; i--) {
-		const m = messages[i]!;
-		if (m.role === "assistant") {
+		const m = messages[i];
+		if (m?.role === "assistant") {
 			return m.citations ?? [];
 		}
 	}
@@ -105,8 +105,8 @@ let railCitations = $derived.by<Citation[]>(() => {
 // projection) render exactly as before.
 let railRelatedCitations = $derived.by<Citation[]>(() => {
 	for (let i = messages.length - 1; i >= 0; i--) {
-		const m = messages[i]!;
-		if (m.role === "assistant") {
+		const m = messages[i];
+		if (m?.role === "assistant") {
 			return m.relatedCitations ?? [];
 		}
 	}
@@ -240,6 +240,17 @@ async function handleSend(messageText: string) {
 	progressStage = "";
 	userScrolledUp = false;
 
+	const patchAssistantMessage = (
+		updater: (prev: Message) => Partial<Message>,
+	) => {
+		const current = messages[currentAssistantMessageIndex];
+		if (!current) return;
+		messages[currentAssistantMessageIndex] = {
+			...current,
+			...updater(current),
+		};
+	};
+
 	// One reveal per turn. It is the only writer of the streaming bubble's
 	// text, so the loading pulse (gated on message === "") clears with the
 	// first revealed character, exactly as it did with the throttled writes.
@@ -247,10 +258,7 @@ async function handleSend(messageText: string) {
 	reveal = createTypewriterReveal({
 		immediate: prefersReducedMotion(),
 		onReveal: (text) => {
-			messages[currentAssistantMessageIndex] = {
-				...messages[currentAssistantMessageIndex]!,
-				message: text,
-			};
+			patchAssistantMessage(() => ({ message: text }));
 			pinToBottom();
 		},
 	});
@@ -285,10 +293,9 @@ async function handleSend(messageText: string) {
 			},
 			// onMeta: citations received
 			(citations) => {
-				messages[currentAssistantMessageIndex] = {
-					...messages[currentAssistantMessageIndex]!,
+				patchAssistantMessage(() => ({
 					citations: convertCitations(citations),
-				};
+				}));
 			},
 			// onComplete: streaming finished
 			(result) => {
@@ -297,52 +304,55 @@ async function handleSend(messageText: string) {
 				// assert the answer the moment the loading pulse clears.
 				reveal?.finish(result.answer || bufferedContent);
 				// Ensure final content is rendered
-				messages[currentAssistantMessageIndex] = {
-					...messages[currentAssistantMessageIndex]!,
+				patchAssistantMessage((prev) => ({
 					message: result.answer || bufferedContent,
 					citations:
 						result.citations.length > 0
 							? convertCitations(result.citations)
-							: messages[currentAssistantMessageIndex]!.citations,
+							: prev.citations,
 					relatedCitations: convertCitations(result.relatedCitations),
-				};
+				}));
 				isLoading = false;
 				progressStage = "";
 				statusText = "";
 				isProvisional = false;
 				currentAbortController = null;
-				scrollToBottom();
+				void scrollToBottom().catch((err) =>
+					console.error("Scroll error:", err),
+				);
 			},
 			// onFallback: insufficient context
 			(code) => {
 				reveal?.stop();
-				messages[currentAssistantMessageIndex] = {
-					...messages[currentAssistantMessageIndex]!,
+				patchAssistantMessage(() => ({
 					message: formatAugurFallbackMessage(code),
 					failed: true,
-				};
+				}));
 				isLoading = false;
 				progressStage = "";
 				statusText = "";
 				isProvisional = false;
 				currentAbortController = null;
-				scrollToBottom();
+				void scrollToBottom().catch((err) =>
+					console.error("Scroll error:", err),
+				);
 			},
 			// onError: error occurred
 			(error) => {
 				reveal?.stop();
 				console.error("Chat error:", error);
-				messages[currentAssistantMessageIndex] = {
-					...messages[currentAssistantMessageIndex]!,
+				patchAssistantMessage(() => ({
 					message: `Error: ${error.message}. Please try again.`,
 					failed: true,
-				};
+				}));
 				isLoading = false;
 				progressStage = "";
 				statusText = "";
 				isProvisional = false;
 				currentAbortController = null;
-				scrollToBottom();
+				void scrollToBottom().catch((err) =>
+					console.error("Scroll error:", err),
+				);
 			},
 			// onProgress: stage updates
 			(stage) => {
@@ -362,11 +372,10 @@ async function handleSend(messageText: string) {
 	} catch (error) {
 		reveal?.stop();
 		console.error("Chat error:", error);
-		messages[currentAssistantMessageIndex] = {
-			...messages[currentAssistantMessageIndex]!,
+		patchAssistantMessage(() => ({
 			message: `Error: ${error instanceof Error ? error.message : "Unknown error"}. Please try again.`,
 			failed: true,
-		};
+		}));
 		isLoading = false;
 		statusText = "";
 		isProvisional = false;
@@ -378,7 +387,7 @@ onMount(() => {
 	requestAnimationFrame(() => {
 		revealed = true;
 	});
-	scrollToBottom();
+	void scrollToBottom().catch((err) => console.error("Scroll error:", err));
 });
 
 // The stream is billed for as long as it runs, so it does not outlive the

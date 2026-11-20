@@ -22,6 +22,7 @@ import {
 	MarkAsReadResponseSchema,
 	ResolveOgImagesResponseSchema,
 } from "#lib/gen/alt/feeds/v2/feeds_pb.js";
+import { assertDefined } from "#lib/test-utils/assert.js";
 import {
 	buildConnectFeedItem,
 	buildConnectFeedsResponse,
@@ -46,7 +47,7 @@ describe("Feed API Contract", () => {
 		});
 
 		expect(response.data).toHaveLength(2);
-		expect(response.data[0]!.title).toBe("AI Trends");
+		expect(assertDefined(response.data[0]).title).toBe("AI Trends");
 		expect(response.hasMore).toBe(false);
 	});
 
@@ -70,7 +71,7 @@ describe("Feed API Contract", () => {
 		const deserialized = fromBinary(GetAllFeedsResponseSchema, binary);
 
 		expect(deserialized.data).toHaveLength(original.data.length);
-		expect(deserialized.data[0]!.title).toBe("Test Feed");
+		expect(assertDefined(deserialized.data[0]).title).toBe("Test Feed");
 		expect(deserialized.hasMore).toBe(false);
 	});
 
@@ -154,7 +155,7 @@ describe("ResolveOgImages Contract", () => {
 		// URL — `extractImageHost` reads the host out of it to queue loads
 		// per-host, and a fixture that is not decodable would silently bypass
 		// that queue instead of exercising it.
-		expect(decoded.images[0]!.ogImageProxyUrl).toMatch(
+		expect(assertDefined(decoded.images[0]).ogImageProxyUrl).toMatch(
 			/^\/v1\/images\/proxy\/[^/]+\/[A-Za-z0-9+/=]+$/,
 		);
 		expect(decoded.unresolved).toHaveLength(0);
@@ -169,7 +170,7 @@ describe("ResolveOgImages Contract", () => {
 		// Membership, not emptiness. `{images: []}` alone would decode just as
 		// happily and mean the opposite — see this describe block's note.
 		expect(decoded.unresolved.map((u) => u.feedId)).toEqual(["feed-1"]);
-		expect(decoded.unresolved[0]!.retryAfterSeconds).toBe(0n);
+		expect(assertDefined(decoded.unresolved[0]).retryAfterSeconds).toBe(0n);
 	});
 
 	it("leaves a feed out of both lists to mean the server never considered it", () => {
@@ -201,17 +202,20 @@ describe("ResolveOgImages Contract", () => {
 		// that way stops resembling the thing it stands in for.
 		const json = buildResolveOgImagesResponse({ failedFor: { "feed-1": 20 } });
 
-		expect(json.unresolved[0]!.retryAfterSeconds).toBe("20");
+		expect(assertDefined(json.unresolved[0]).retryAfterSeconds).toBe("20");
 
 		const decoded = fromJson(ResolveOgImagesResponseSchema, json);
-		expect(typeof decoded.unresolved[0]!.retryAfterSeconds).toBe("bigint");
-		expect(decoded.unresolved[0]!.retryAfterSeconds).toBe(20n);
+		const decodedEntry = assertDefined(decoded.unresolved[0]);
+		expect(typeof decodedEntry.retryAfterSeconds).toBe("bigint");
+		expect(decodedEntry.retryAfterSeconds).toBe(20n);
 
 		const roundTripped = fromBinary(
 			ResolveOgImagesResponseSchema,
 			toBinary(ResolveOgImagesResponseSchema, decoded),
 		);
-		expect(roundTripped.unresolved[0]!.retryAfterSeconds).toBe(20n);
+		expect(assertDefined(roundTripped.unresolved[0]).retryAfterSeconds).toBe(
+			20n,
+		);
 		expect(toJson(ResolveOgImagesResponseSchema, roundTripped)).toEqual({
 			unresolved: [{ feedId: "feed-1", retryAfterSeconds: "20" }],
 		});
@@ -233,8 +237,9 @@ describe("ResolveOgImages Contract", () => {
 		);
 
 		expect(roundTripped.unresolved).toHaveLength(1);
-		expect(roundTripped.unresolved[0]!.feedId).toBe("feed-1");
-		expect(roundTripped.unresolved[0]!.retryAfterSeconds).toBe(0n);
+		const entry = assertDefined(roundTripped.unresolved[0]);
+		expect(entry.feedId).toBe("feed-1");
+		expect(entry.retryAfterSeconds).toBe(0n);
 		// The zero is gone from the wire form; the row it belonged to is not.
 		expect(toJson(ResolveOgImagesResponseSchema, roundTripped)).toEqual({
 			unresolved: [{ feedId: "feed-1" }],

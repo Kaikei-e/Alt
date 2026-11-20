@@ -6,6 +6,7 @@ import { removeFavoriteFeedClient } from "#lib/api/client/index.js";
 import { openReaderOverlay } from "#lib/reader/reader-overlay.svelte.js";
 import { ReadingSurface } from "#lib/reading/reading-events.js";
 import type { RenderFeed } from "#lib/schema/feed.js";
+import { assertDefined } from "#lib/test-utils/assert.js";
 
 // Spy-mode automocks keep every export bound and let each test override only
 // the network calls.
@@ -225,8 +226,11 @@ describe("Clippings File continuity across a rotation", () => {
 		render(Page);
 		await settle(400);
 
+		const firstFeed = assertDefined(MANY[0]);
+		const secondFeed = assertDefined(MANY[1]);
+
 		await page
-			.getByRole("button", { name: `Show details for ${MANY[0]!.title}` })
+			.getByRole("button", { name: `Show details for ${firstFeed.title}` })
 			.click();
 
 		expect(openReaderOverlay).toHaveBeenCalledTimes(1);
@@ -240,13 +244,15 @@ describe("Clippings File continuity across a rotation", () => {
 		await page.viewport(1280, 800);
 		await settle(400);
 
-		await page.getByRole("button", { name: `Open ${MANY[1]!.title}` }).click();
+		await page
+			.getByRole("button", { name: `Open ${secondFeed.title}` })
+			.click();
 
 		expect(openReaderOverlay).toHaveBeenCalledTimes(1);
 		const desktopCtx = vi.mocked(openReaderOverlay).mock.calls[0]?.[0];
 		expect(desktopCtx?.surface).toBe(ReadingSurface.OTHER);
 		expect(desktopCtx?.currentIndex).toBe(1);
-		expect(desktopCtx?.items?.[1]?.url).toBe(MANY[1]!.normalizedUrl);
+		expect(desktopCtx?.items?.[1]?.url).toBe(secondFeed.normalizedUrl);
 		expect(document.querySelector('[role="dialog"]')).toBeNull();
 	});
 });

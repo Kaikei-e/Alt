@@ -106,7 +106,9 @@ test.describe("Mobile Swipe Feed - Page Object Model Tests", () => {
 
 			await swipePage.swipeLeft();
 			// First dismissal is held in the undo window, not committed yet
-			await page.waitForTimeout(500);
+			await expect(swipePage.swipeCard.locator("h2")).toContainText(
+				"Svelte 5 Tips",
+			);
 			expect(markAsReadCalled).toBe(false);
 
 			// Second dismissal commits the held card
@@ -140,7 +142,9 @@ test.describe("Mobile Swipe Feed - Page Object Model Tests", () => {
 			await swipePage.waitForPageReady();
 
 			await swipePage.swipeRight();
-			await page.waitForTimeout(500);
+			await expect(swipePage.swipeCard.locator("h2")).toContainText(
+				"Svelte 5 Tips",
+			);
 			expect(queueArticleCalled).toBe(false);
 			expect(markAsReadCalled).toBe(false);
 

@@ -25,19 +25,11 @@ function randBytes(n: number): Uint8Array {
 
 function freshEntropy(): { hi: number; lo: bigint } {
 	const b = randBytes(10);
+	const view = new DataView(b.buffer, b.byteOffset, b.byteLength);
 	// hi: 12 random bits (version nibble overwritten later)
-	const hi = ((b[0]! << 8) | b[1]!) & 0x0fff;
+	const hi = view.getUint16(0, false) & 0x0fff;
 	// lo: 62 random bits (variant bits overwritten later)
-	const lo =
-		((BigInt(b[2]!) << 56n) |
-			(BigInt(b[3]!) << 48n) |
-			(BigInt(b[4]!) << 40n) |
-			(BigInt(b[5]!) << 32n) |
-			(BigInt(b[6]!) << 24n) |
-			(BigInt(b[7]!) << 16n) |
-			(BigInt(b[8]!) << 8n) |
-			BigInt(b[9]!)) &
-		0x3fffffffffffffffn;
+	const lo = view.getBigUint64(2, false) & 0x3fffffffffffffffn;
 	return { hi, lo };
 }
 

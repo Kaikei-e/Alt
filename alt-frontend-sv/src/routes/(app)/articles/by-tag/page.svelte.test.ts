@@ -4,6 +4,7 @@ import { render } from "vitest-browser-svelte";
 import type { TagTrailArticle } from "#lib/connect/index.js";
 import { openReaderOverlay } from "#lib/reader/reader-overlay.svelte.js";
 import { ReadingSurface } from "#lib/reading/reading-events.js";
+import { assertDefined } from "#lib/test-utils/assert.js";
 
 const { pageState } = vi.hoisted(() => {
 	const value: { url: URL } = {
@@ -190,7 +191,7 @@ describe("/articles/by-tag page", () => {
 		expect(ctx?.surface).toBe(ReadingSurface.OTHER);
 		expect(ctx?.currentIndex).toBe(1);
 		expect(ctx?.items).toHaveLength(ARTICLES.length);
-		expect(ctx?.items?.[1]?.url).toBe(ARTICLES[1]!.link);
+		expect(ctx?.items?.[1]?.url).toBe(assertDefined(ARTICLES[1]).link);
 		expect(
 			document.querySelector('[data-testid="article-detail-panel"]'),
 		).toBeNull();
@@ -202,7 +203,9 @@ describe("/articles/by-tag page", () => {
 		await settle(350);
 
 		await page
-			.getByRole("button", { name: `Show details for ${ARTICLES[0]!.title}` })
+			.getByRole("button", {
+				name: `Show details for ${assertDefined(ARTICLES[0]).title}`,
+			})
 			.click();
 
 		expect(openReaderOverlay).toHaveBeenCalledTimes(1);

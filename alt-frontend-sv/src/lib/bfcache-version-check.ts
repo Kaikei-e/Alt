@@ -16,7 +16,7 @@
 export interface BfcacheVersionCheckOptions {
 	window: Window;
 	document: Document;
-	check: () => void | Promise<unknown>;
+	check: () => unknown;
 }
 
 export function installBfcacheVersionCheck(

@@ -306,7 +306,7 @@ async function loadArticles(tagName: string) {
 
 function handleLoadMore() {
 	if (selectedTag && nextCursor) {
-		loadArticles(selectedTag.name);
+		void loadArticles(selectedTag.name);
 	}
 }
 
@@ -333,7 +333,7 @@ function handleHopClick(index: number) {
 			selectedTag = { id: targetHop.id, name: targetHop.name };
 			articles = [];
 			nextCursor = undefined;
-			loadArticles(targetHop.name);
+			void loadArticles(targetHop.name);
 		}
 	}
 }

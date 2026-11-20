@@ -42,7 +42,7 @@ function readVersionName() {
 		process.env.PUBLIC_BUILD_ID ??
 		process.env.GIT_COMMIT_SHA ??
 		process.env.GITHUB_SHA;
-	if (fromEnv && fromEnv.trim()) return fromEnv.trim();
+	if (fromEnv?.trim()) return fromEnv.trim();
 	try {
 		return execSync("git rev-parse --short=12 HEAD", {
 			stdio: ["ignore", "pipe", "ignore"],

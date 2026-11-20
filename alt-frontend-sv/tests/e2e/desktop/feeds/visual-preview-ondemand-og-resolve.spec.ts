@@ -153,9 +153,11 @@ test.describe("Visual Preview — on-demand OG image resolution", () => {
 		// Scrolling away and back must not re-ask. A dead origin re-scraped on
 		// every scroll is the crawl behaviour this change exists to remove.
 		await page.mouse.wheel(0, 2000);
+		// biome-ignore lint/nursery/noPlaywrightWaitForTimeout: negative check verifying scroll-away does not trigger a re-request (mocked list may not overflow viewport)
 		await page.waitForTimeout(500);
 		await page.mouse.wheel(0, -2000);
 		await expect(card).toBeVisible();
+		// biome-ignore lint/nursery/noPlaywrightWaitForTimeout: negative check giving scroll/IntersectionObserver handlers a window to fire any buggy duplicate ResolveOgImages call
 		await page.waitForTimeout(1000);
 
 		expect(resolveCalls).toBe(callsAfterFirstPass);

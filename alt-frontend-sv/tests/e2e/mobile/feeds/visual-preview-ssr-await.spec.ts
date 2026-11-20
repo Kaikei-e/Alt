@@ -39,9 +39,11 @@ test.describe("visual-preview SSR returns a non-streamed payload", () => {
 		);
 
 		const response = await gotoMobileRoute(page, "/feeds/swipe/visual-preview");
-		expect(response?.status()).toBeLessThan(400);
+		expect(response).not.toBeNull();
+		if (!response) throw new Error("expected navigation response");
+		expect(response.status()).toBeLessThan(400);
 
-		const body = await response!.text();
+		const body = await response.text();
 		// The deferred-promise transport injects a script tag with the literal
 		// substring `__sveltekit_` and a Promise placeholder. The await-based
 		// load function inlines articleData directly into the JSON payload,

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { assertDefined } from "#lib/test-utils/assert.js";
 import { createRequestQueue } from "./requestQueue";
 
 describe("createRequestQueue", () => {
@@ -28,24 +29,24 @@ describe("createRequestQueue", () => {
 		expect(resolves.length).toBe(4);
 
 		// Resolve slot 0 -> task 4 starts
-		resolves[0]!("done 0");
+		assertDefined(resolves[0])("done 0");
 		await Promise.resolve();
 		expect(queue.activeCount).toBe(4);
 		expect(queue.queuedCount).toBe(1);
 		expect(resolves.length).toBe(5);
 
 		// Resolve slot 1 -> task 5 starts
-		resolves[1]!("done 1");
+		assertDefined(resolves[1])("done 1");
 		await Promise.resolve();
 		expect(queue.activeCount).toBe(4);
 		expect(queue.queuedCount).toBe(0);
 		expect(resolves.length).toBe(6);
 
 		// Resolve remaining 4 active tasks
-		resolves[2]!("done 2");
-		resolves[3]!("done 3");
-		resolves[4]!("done 4");
-		resolves[5]!("done 5");
+		assertDefined(resolves[2])("done 2");
+		assertDefined(resolves[3])("done 3");
+		assertDefined(resolves[4])("done 4");
+		assertDefined(resolves[5])("done 5");
 
 		const results = await Promise.all(tasks);
 		expect(results).toEqual([
@@ -75,7 +76,7 @@ describe("createRequestQueue", () => {
 		expect(fastResult).toBe("fast");
 
 		let slowDone = false;
-		pSlow.then(() => {
+		const slowCheck = pSlow.then(() => {
 			slowDone = true;
 		});
 		await Promise.resolve();
@@ -83,6 +84,7 @@ describe("createRequestQueue", () => {
 
 		resolveSlow("slow");
 		expect(await pSlow).toBe("slow");
+		await slowCheck;
 	});
 
 	it("starts queued task immediately when ANY active slot frees", async () => {

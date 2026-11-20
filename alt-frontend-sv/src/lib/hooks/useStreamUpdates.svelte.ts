@@ -204,7 +204,7 @@ export function useStreamUpdates(opts: StreamUpdateOptions) {
 			reconnectTimer = null;
 			retryCount++;
 			if (isLeader || !channel) {
-				connect();
+				void connect();
 			}
 		}, delay);
 	}
@@ -230,7 +230,11 @@ export function useStreamUpdates(opts: StreamUpdateOptions) {
 		pendingUpdates = [];
 		pendingCount = 0;
 		coalescedUpdates = [];
-		opts.onRefresh?.();
+		if (opts.onRefresh) {
+			void Promise.resolve(opts.onRefresh()).catch((err) => {
+				console.error("[useStreamUpdates] refresh error:", err);
+			});
+		}
 		return applied;
 	}
 
@@ -244,7 +248,7 @@ export function useStreamUpdates(opts: StreamUpdateOptions) {
 			suspended = false;
 			retryCount = 0;
 			if (isLeader || !channel) {
-				connect();
+				void connect();
 			}
 		}
 	}
@@ -254,7 +258,7 @@ export function useStreamUpdates(opts: StreamUpdateOptions) {
 		if (typeof BroadcastChannel === "undefined") {
 			// No BroadcastChannel support — connect directly as leader
 			isLeader = true;
-			connect();
+			void connect();
 			return;
 		}
 
@@ -356,7 +360,7 @@ export function useStreamUpdates(opts: StreamUpdateOptions) {
 			}
 		}, LEADER_HEARTBEAT_INTERVAL);
 
-		connect();
+		void connect();
 	}
 
 	function becomeFollower() {

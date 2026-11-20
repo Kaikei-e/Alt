@@ -7,7 +7,13 @@
 	},
 	"files": {
 		"ignoreUnknown": false,
-		"includes": ["**", "!playwright-report", "!docs", "!src/lib/gen"]
+		"includes": [
+			"**",
+			"!playwright-report",
+			"!test-results",
+			"!docs",
+			"!src/lib/gen"
+		]
 	},
 	"formatter": {
 		"enabled": true,
@@ -16,7 +22,23 @@
 	"linter": {
 		"enabled": true,
 		"rules": {
-			"recommended": true
+			"recommended": true,
+			"nursery": {
+				"noFloatingPromises": "warn",
+				"noMisusedPromises": "warn",
+				"noPlaywrightElementHandle": "error",
+				"noPlaywrightEval": "error",
+				"noPlaywrightForceOption": "error",
+				"noPlaywrightMissingAwait": "error",
+				"noPlaywrightNetworkidle": "warn",
+				"noPlaywrightPagePause": "error",
+				"noPlaywrightUselessAwait": "warn",
+				"noPlaywrightWaitForNavigation": "error",
+				"noPlaywrightWaitForSelector": "error",
+				"noPlaywrightWaitForTimeout": "warn",
+				"useExhaustiveSwitchCases": "error",
+				"usePlaywrightValidDescribeCallback": "error"
+			}
 		}
 	},
 	"javascript": {

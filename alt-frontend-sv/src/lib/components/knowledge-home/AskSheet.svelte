@@ -88,15 +88,16 @@ function handleAskSubmit() {
 const canRetry = $derived.by(() => {
 	if (pane.isLoading || pane.messages.length < 2) return false;
 	const last = pane.messages.at(-1);
-	if (!last || last.role !== "assistant") return false;
+	if (last?.role !== "assistant") return false;
 	return last.retryable === true;
 });
 
 function handleRetry() {
 	// Find last user message and resend
 	for (let i = pane.messages.length - 1; i >= 0; i--) {
-		if (pane.messages[i]!.role === "user") {
-			pane.sendMessage(pane.messages[i]!.message);
+		const msg = pane.messages[i];
+		if (msg?.role === "user") {
+			pane.sendMessage(msg.message);
 			return;
 		}
 	}

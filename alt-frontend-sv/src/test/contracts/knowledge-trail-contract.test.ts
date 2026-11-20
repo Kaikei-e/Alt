@@ -11,6 +11,7 @@ import {
 	ResolveBranchRequestSchema,
 	SearchTrailResponseSchema,
 } from "#lib/gen/alt/knowledge_trail/v1/knowledge_trail_pb.js";
+import { assertDefined } from "#lib/test-utils/assert.js";
 
 describe("Knowledge Trail API Contract", () => {
 	describe("GetTrailResponse", () => {
@@ -37,14 +38,13 @@ describe("Knowledge Trail API Contract", () => {
 			});
 
 			expect(response.footprints).toHaveLength(1);
-			expect(response.footprints[0]!.verb).toBe("read");
-			expect(response.footprints[0]!.tags).toEqual(["rust", "async"]);
-			expect(response.footprints[0]!.wear).toBe("deep");
+			const fp = assertDefined(response.footprints[0]);
+			expect(fp.verb).toBe("read");
+			expect(fp.tags).toEqual(["rust", "async"]);
+			expect(fp.wear).toBe("deep");
 			// D24 collapse fields: repeated contacts arrive as a count, not rows.
-			expect(response.footprints[0]!.contactCount).toBe(2);
-			expect(response.footprints[0]!.firstOccurredAt).toBe(
-				"2026-06-01T08:00:00Z",
-			);
+			expect(fp.contactCount).toBe(2);
+			expect(fp.firstOccurredAt).toBe("2026-06-01T08:00:00Z");
 			expect(response.hasMore).toBe(true);
 		});
 
@@ -73,7 +73,7 @@ describe("Knowledge Trail API Contract", () => {
 			const deserialized = fromBinary(GetTrailResponseSchema, binary);
 
 			expect(deserialized.footprints).toHaveLength(1);
-			expect(deserialized.footprints[0]!.verb).toBe("asked");
+			expect(assertDefined(deserialized.footprints[0]).verb).toBe("asked");
 			expect(deserialized.hasMore).toBe(false);
 		});
 	});
@@ -220,8 +220,9 @@ describe("Knowledge Trail API Contract", () => {
 				],
 			});
 			expect(res.branches).toHaveLength(1);
-			expect(res.branches[0]!.anchorItemKey).toBe("article:a1");
-			expect(res.branches[0]!.why).not.toBe("");
+			const branch = assertDefined(res.branches[0]);
+			expect(branch.anchorItemKey).toBe("article:a1");
+			expect(branch.why).not.toBe("");
 		});
 
 		it("round-trips through proto serialization", () => {
@@ -240,7 +241,9 @@ describe("Knowledge Trail API Contract", () => {
 				toBinary(GetItemBranchesResponseSchema, original),
 			);
 			expect(deserialized.branches).toHaveLength(1);
-			expect(deserialized.branches[0]!.relationKind).toBe("inquiry");
+			expect(assertDefined(deserialized.branches[0]).relationKind).toBe(
+				"inquiry",
+			);
 		});
 	});
 

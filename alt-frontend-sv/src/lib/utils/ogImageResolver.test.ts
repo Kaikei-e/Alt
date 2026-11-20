@@ -1,5 +1,6 @@
 import { Code, ConnectError } from "@connectrpc/connect";
 import { describe, expect, it, vi } from "vitest";
+import { assertDefined } from "#lib/test-utils/assert.js";
 import { createOgImageResolver } from "./ogImageResolver";
 import { OG_RETRY_CEILING_MS } from "./ogImageRetry";
 
@@ -17,7 +18,7 @@ const answer = (
 describe("createOgImageResolver", () => {
 	it("dispatches independent per-card requests for feeds revealed together", async () => {
 		const send = vi.fn().mockImplementation((ids: string[]) => {
-			const id = ids[0]!;
+			const id = assertDefined(ids[0]);
 			return Promise.resolve(answer({ [id]: `/proxy/${id}` }));
 		});
 		const resolver = createOgImageResolver({ send });
@@ -72,7 +73,7 @@ describe("createOgImageResolver", () => {
 		const send = vi.fn().mockImplementation((ids: string[]) => {
 			inFlight++;
 			maxObserved = Math.max(maxObserved, inFlight);
-			const id = ids[0]!;
+			const id = assertDefined(ids[0]);
 			started.get(id)?.();
 			return new Promise<ReturnType<typeof answer>>((resolve) => {
 				deferreds.set(id, (val) => {
@@ -95,19 +96,19 @@ describe("createOgImageResolver", () => {
 		expect(send).toHaveBeenCalledWith(["b"]);
 
 		// Free slot 1 -> "c" starts
-		deferreds.get("a")!(answer({ a: "/proxy/a" }));
+		assertDefined(deferreds.get("a"))(answer({ a: "/proxy/a" }));
 		await whenStarted("c");
 
 		expect(send).toHaveBeenCalledWith(["c"]);
 		expect(maxObserved).toBe(2);
 
 		// Resolve remaining in order
-		deferreds.get("b")!(answer({ b: "/proxy/b" }));
+		assertDefined(deferreds.get("b"))(answer({ b: "/proxy/b" }));
 		await whenStarted("d");
-		deferreds.get("c")!(answer({ c: "/proxy/c" }));
+		assertDefined(deferreds.get("c"))(answer({ c: "/proxy/c" }));
 		await whenStarted("e");
-		deferreds.get("d")!(answer({ d: "/proxy/d" }));
-		deferreds.get("e")!(answer({ e: "/proxy/e" }));
+		assertDefined(deferreds.get("d"))(answer({ d: "/proxy/d" }));
+		assertDefined(deferreds.get("e"))(answer({ e: "/proxy/e" }));
 
 		await Promise.all(promises);
 		expect(send).toHaveBeenCalledTimes(5);
@@ -134,7 +135,7 @@ describe("createOgImageResolver", () => {
 
 		// Verify slow card has not settled yet
 		let slowSettled = false;
-		slowPromise.then(() => {
+		const slowCheck = slowPromise.then(() => {
 			slowSettled = true;
 		});
 		await Promise.resolve();
@@ -143,6 +144,7 @@ describe("createOgImageResolver", () => {
 		// Now let slow card finish
 		resolveSlow(answer({ slow: "/proxy/slow.png" }));
 		const slowResult = await slowPromise;
+		await slowCheck;
 		expect(slowResult).toEqual({ status: "resolved", url: "/proxy/slow.png" });
 	});
 
@@ -196,7 +198,7 @@ describe("createOgImageResolver", () => {
 				shouldThrow = false;
 				throw new Error("sync throw in send");
 			}
-			const id = ids[0]!;
+			const id = assertDefined(ids[0]);
 			return Promise.resolve(answer({ [id]: `/proxy/${id}` }));
 		});
 		const resolver = createOgImageResolver({ send });
@@ -215,11 +217,10 @@ describe("createOgImageResolver", () => {
 
 	it("normalizes invalid or degenerate maxConcurrent options to safe positive integer", async () => {
 		for (const invalid of [NaN, Infinity, -3, 0, undefined]) {
-			const send = vi
-				.fn()
-				.mockImplementation((ids: string[]) =>
-					Promise.resolve(answer({ [ids[0]!]: `/proxy/${ids[0]!}` })),
-				);
+			const send = vi.fn().mockImplementation((ids: string[]) => {
+				const id = assertDefined(ids[0]);
+				return Promise.resolve(answer({ [id]: `/proxy/${id}` }));
+			});
 			const resolver = createOgImageResolver({ send, maxConcurrent: invalid });
 			const result = await resolver.resolve("test");
 			expect(result.status).toBe("resolved");
@@ -235,8 +236,9 @@ describe("createOgImageResolver", () => {
 		const send = vi.fn().mockImplementation((ids: string[]) => {
 			inFlight++;
 			maxObserved = Math.max(maxObserved, inFlight);
+			const id = assertDefined(ids[0]);
 			return new Promise<ReturnType<typeof answer>>((resolve) => {
-				deferreds.set(ids[0]!, resolve);
+				deferreds.set(id, resolve);
 			});
 		});
 		const resolver = createOgImageResolver({ send, maxConcurrent: 2.9 });
@@ -248,13 +250,13 @@ describe("createOgImageResolver", () => {
 		expect(maxObserved).toBe(2);
 		expect(send).toHaveBeenCalledTimes(2);
 
-		deferreds.get("f1")!(answer({ f1: "/proxy/f1" }));
+		assertDefined(deferreds.get("f1"))(answer({ f1: "/proxy/f1" }));
 		await p1;
 		await Promise.resolve();
 
 		expect(send).toHaveBeenCalledWith(["f3"]);
-		deferreds.get("f2")!(answer({ f2: "/proxy/f2" }));
-		deferreds.get("f3")!(answer({ f3: "/proxy/f3" }));
+		assertDefined(deferreds.get("f2"))(answer({ f2: "/proxy/f2" }));
+		assertDefined(deferreds.get("f3"))(answer({ f3: "/proxy/f3" }));
 		await Promise.all([p2, p3]);
 	});
 
@@ -400,7 +402,7 @@ describe("createOgImageResolver", () => {
 			// only us.
 			let aAttempts = 0;
 			const send = vi.fn().mockImplementation((ids: string[]) => {
-				const id = ids[0]!;
+				const id = assertDefined(ids[0]);
 				if (id === "a") {
 					aAttempts++;
 					if (aAttempts === 1) {

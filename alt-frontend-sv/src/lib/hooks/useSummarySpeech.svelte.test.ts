@@ -150,20 +150,24 @@ describe("useSummarySpeech", () => {
 		cleanup();
 	});
 
-	it("resumes AudioContext synchronously within play() as required by user gesture policy", () => {
+	it("resumes AudioContext synchronously within play() as required by user gesture policy", async () => {
+		const { stream, getControls } = createControllableStream();
 		let speech!: ReturnType<typeof createSummarySpeech>;
 		const cleanup = $effect.root(() => {
 			speech = createSummarySpeech({
 				audioContext: mockAudioContext,
 				createPlayer: () => mockPlayer,
+				synthesizeStream: stream,
 			});
 		});
 
-		speech.play("Test summary text");
+		const playPromise = speech.play("Test summary text");
 
 		// Crucial assertion: AudioContext.resume MUST be called synchronously inside play()
 		expect(mockResume).toHaveBeenCalledTimes(1);
 
+		getControls().finish();
+		await playPromise;
 		cleanup();
 	});
 

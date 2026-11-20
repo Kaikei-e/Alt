@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { assertDefined } from "#lib/test-utils/assert.js";
 import {
 	computeDelta,
 	type SimpleSeries,
@@ -20,32 +21,31 @@ describe("computeDelta", () => {
 	});
 
 	it("compares the trailing half to the leading half", () => {
-		const d = computeDelta(pts([10, 10, 10, 20, 20, 20]));
-		expect(d).not.toBeNull();
+		const d = assertDefined(computeDelta(pts([10, 10, 10, 20, 20, 20])));
 		// leading avg = 10, trailing avg = 20, abs delta = 10, pct = 100%
-		expect(d!.absolute).toBeCloseTo(10, 3);
-		expect(d!.percent).toBeCloseTo(100, 1);
-		expect(d!.direction).toBe("up");
+		expect(d.absolute).toBeCloseTo(10, 3);
+		expect(d.percent).toBeCloseTo(100, 1);
+		expect(d.direction).toBe("up");
 	});
 
 	it("returns direction=down and a negative percent when trend decreases", () => {
-		const d = computeDelta(pts([40, 40, 40, 20, 20, 20]));
-		expect(d!.absolute).toBeCloseTo(-20, 3);
-		expect(d!.percent).toBeCloseTo(-50, 1);
-		expect(d!.direction).toBe("down");
+		const d = assertDefined(computeDelta(pts([40, 40, 40, 20, 20, 20])));
+		expect(d.absolute).toBeCloseTo(-20, 3);
+		expect(d.percent).toBeCloseTo(-50, 1);
+		expect(d.direction).toBe("down");
 	});
 
 	it("returns direction=flat when the change is below the flat threshold", () => {
-		const d = computeDelta(pts([10, 10, 10, 10.01, 10, 10.02]));
-		expect(d!.direction).toBe("flat");
+		const d = assertDefined(computeDelta(pts([10, 10, 10, 10.01, 10, 10.02])));
+		expect(d.direction).toBe("flat");
 	});
 
 	it("handles zero leading average without blowing up", () => {
-		const d = computeDelta(pts([0, 0, 0, 5, 5, 5]));
-		expect(d!.absolute).toBeCloseTo(5, 3);
+		const d = assertDefined(computeDelta(pts([0, 0, 0, 5, 5, 5])));
+		expect(d.absolute).toBeCloseTo(5, 3);
 		// percent undefined when baseline is zero; function should report Infinity-safe value
-		expect(Number.isFinite(d!.percent)).toBe(true);
-		expect(d!.direction).toBe("up");
+		expect(Number.isFinite(d.percent)).toBe(true);
+		expect(d.direction).toBe("up");
 	});
 });
 
@@ -80,7 +80,7 @@ describe("topSeries", () => {
 			points: pts([1]),
 		};
 		const r = topSeries([s], "job", 3);
-		expect(r.head[0]!.labelValue).toContain("pool=read");
+		expect(assertDefined(r.head[0]).labelValue).toContain("pool=read");
 	});
 
 	it("returns empty head + 0 overflow for empty input", () => {
@@ -105,7 +105,9 @@ describe("serviceHealthRows", () => {
 			mk("plecto-proxy", 0),
 		]);
 		expect(rows.map((r) => r.job)).toEqual(["alt-backend", "plecto-proxy"]);
-		expect(rows.find((r) => r.job === "plecto-proxy")!.up).toBe(0);
+		expect(assertDefined(rows.find((r) => r.job === "plecto-proxy")).up).toBe(
+			0,
+		);
 	});
 
 	it("sorts rows by job name", () => {
@@ -131,7 +133,7 @@ describe("serviceHealthRows", () => {
 			mk("pki-agent", 1),
 		]);
 		expect(rows).toHaveLength(1);
-		expect(rows[0]!.up).toBe(0);
+		expect(assertDefined(rows[0]).up).toBe(0);
 	});
 
 	it("ignores series with no points and returns [] for empty input", () => {

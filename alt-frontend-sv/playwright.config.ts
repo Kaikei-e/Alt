@@ -67,10 +67,7 @@ export default defineConfig({
 	// Enhanced reporters; under PW_BLOB in CI, emit a blob report to
 	// REPORT_DIR/blob so the workflow merge job includes every shard.
 	reporter: useBlob
-		? [
-				["list"],
-				["blob", { outputDir: `${reportDir}/blob` }],
-			]
+		? [["list"], ["blob", { outputDir: `${reportDir}/blob` }]]
 		: [
 				["list"],
 				["html", { open: "never" }],

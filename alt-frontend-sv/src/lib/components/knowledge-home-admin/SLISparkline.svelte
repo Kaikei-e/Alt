@@ -48,11 +48,11 @@ const lastPoint = $derived(() => {
 	if (!d) return null;
 	const stepX = (width - padding * 2) / (values.length - 1);
 	const lastIdx = values.length - 1;
+	const lastValue = values[lastIdx];
+	if (lastValue === undefined) return null;
 	const x = padding + lastIdx * stepX;
 	const y =
-		height -
-		padding -
-		((values[lastIdx]! - d.min) / d.range) * (height - padding * 2);
+		height - padding - ((lastValue - d.min) / d.range) * (height - padding * 2);
 	return { x, y };
 });
 

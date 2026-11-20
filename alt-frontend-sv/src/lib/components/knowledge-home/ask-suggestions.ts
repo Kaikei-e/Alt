@@ -103,7 +103,10 @@ export function pickSuggestions(
 	const rng = createSeededRng(seed);
 	const preferred = resolvePreferredCategories(tags);
 	const selected = selectCategories(preferred, 3, rng);
-	return selected.map((cat) => pickWithRng(suggestionPool[cat]!, rng));
+	return selected.flatMap((cat) => {
+		const pool = suggestionPool[cat];
+		return pool && pool.length > 0 ? [pickWithRng(pool, rng)] : [];
+	});
 }
 
 function resolvePreferredCategories(tags: string[] | undefined): string[] {
@@ -159,12 +162,21 @@ function selectCategories(
 }
 
 function pickWithRng<T>(arr: T[], rng: () => number): T {
-	return arr[Math.floor(rng() * arr.length)]!;
+	const item = arr[Math.floor(rng() * arr.length)];
+	if (item === undefined) {
+		throw new Error("Cannot pick from an empty array");
+	}
+	return item;
 }
 
 function shuffleWithRng<T>(arr: T[], rng: () => number): void {
 	for (let i = arr.length - 1; i > 0; i--) {
 		const j = Math.floor(rng() * (i + 1));
-		[arr[i], arr[j]] = [arr[j]!, arr[i]!];
+		const a = arr[i];
+		const b = arr[j];
+		if (a !== undefined && b !== undefined) {
+			arr[i] = b;
+			arr[j] = a;
+		}
 	}
 }

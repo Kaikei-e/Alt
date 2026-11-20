@@ -82,7 +82,7 @@ $effect(() => {
 
 	if (
 		document.activeElement instanceof HTMLElement &&
-		(!panelEl || !panelEl.contains(document.activeElement))
+		!panelEl?.contains(document.activeElement)
 	) {
 		previouslyFocused = document.activeElement;
 	}

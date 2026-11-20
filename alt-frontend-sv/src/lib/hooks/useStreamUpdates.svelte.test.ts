@@ -1,5 +1,6 @@
 import { flushSync } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { assertDefined } from "#lib/test-utils/assert.js";
 
 // Mock modules
 vi.mock("$app/paths", () => ({
@@ -54,7 +55,10 @@ function createHangingMockStream(events: Array<Record<string, unknown>>) {
 			return {
 				next(): Promise<IteratorResult<Record<string, unknown>>> {
 					if (index < events.length) {
-						return Promise.resolve({ value: events[index++]!, done: false });
+						return Promise.resolve({
+							value: assertDefined(events[index++]),
+							done: false,
+						});
 					}
 					// Hang forever — stream stays open
 					return new Promise(() => {});
@@ -276,7 +280,9 @@ describe("useStreamUpdates (Browser / $effect)", () => {
 		await waitForEffect(() => {
 			expect(stream.pendingCount).toBe(1);
 		});
-		expect(stream.pendingUpdates[0]!.eventType).toBe("item_added");
+		expect(assertDefined(stream.pendingUpdates[0]).eventType).toBe(
+			"item_added",
+		);
 
 		cleanup();
 		restore();
@@ -326,11 +332,10 @@ describe("useStreamUpdates (Browser / $effect)", () => {
 		await waitForEffect(() => {
 			expect(stream.pendingCount).toBe(1);
 		});
-		expect(stream.pendingUpdates[0]!.eventType).toBe("recall_changed");
-		expect(stream.pendingUpdates[0]!.recallChange?.itemKey).toBe("article:1");
-		expect(stream.pendingUpdates[0]!.recallChange?.item?.title).toBe(
-			"Recovered title",
-		);
+		const update = assertDefined(stream.pendingUpdates[0]);
+		expect(update.eventType).toBe("recall_changed");
+		expect(update.recallChange?.itemKey).toBe("article:1");
+		expect(update.recallChange?.item?.title).toBe("Recovered title");
 
 		cleanup();
 		restore();
@@ -454,7 +459,9 @@ describe("useStreamUpdates (Browser / $effect)", () => {
 		await waitForEffect(() => {
 			expect(stream.pendingCount).toBe(1);
 		});
-		expect(stream.pendingUpdates[0]!.item?.itemKey).toBe("article:abc-123");
+		expect(assertDefined(stream.pendingUpdates[0]).item?.itemKey).toBe(
+			"article:abc-123",
+		);
 
 		cleanup();
 		restore();
@@ -489,7 +496,7 @@ describe("useStreamUpdates (Browser / $effect)", () => {
 		});
 		const applied = stream.applyUpdates();
 		expect(applied).toHaveLength(1);
-		expect(applied[0]!.eventType).toBe("item_added");
+		expect(assertDefined(applied[0]).eventType).toBe("item_added");
 		expect(stream.pendingCount).toBe(0);
 		expect(onRefresh).toHaveBeenCalled();
 

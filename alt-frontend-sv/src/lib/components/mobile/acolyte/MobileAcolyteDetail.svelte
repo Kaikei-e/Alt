@@ -102,8 +102,8 @@ const scopeEntries = $derived.by<Array<[string, string]>>(() => {
 
 // Set first section as active when sections load
 $effect(() => {
-	if (sections.length > 0 && !activeSection) {
-		activeSection = sections[0]!.sectionKey;
+	if (sections[0] && !activeSection) {
+		activeSection = sections[0].sectionKey;
 	}
 });
 

@@ -30,7 +30,7 @@ export function useSovereignAdmin(
 	let inFlight: Promise<void> | null = null;
 
 	const fetchData = async () => {
-		if (inFlight) return inFlight;
+		if (inFlight !== null) return inFlight;
 
 		inFlight = (async () => {
 			try {
@@ -56,7 +56,9 @@ export function useSovereignAdmin(
 	const startPolling = (intervalMs = 30000) => {
 		stopPolling();
 		void fetchData();
-		pollTimer = setInterval(fetchData, intervalMs);
+		pollTimer = setInterval(() => {
+			void fetchData();
+		}, intervalMs);
 	};
 
 	const stopPolling = () => {

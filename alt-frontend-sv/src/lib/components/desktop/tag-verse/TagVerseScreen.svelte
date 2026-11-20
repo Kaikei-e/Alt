@@ -64,7 +64,7 @@ function loadTagVerse() {
 		cancelled = true;
 	};
 
-	(async () => {
+	void (async () => {
 		try {
 			const transport = createClientTransport();
 			const [fetchedCloud, sceneModule] = await Promise.all([

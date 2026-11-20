@@ -105,7 +105,12 @@ test.describe("Gallery reading events", () => {
 		const dialog = page.getByRole("dialog");
 		await expect(dialog).toBeVisible();
 		await expect(dialog.getByText(/Paragraph 1:/)).toBeVisible();
-		await page.waitForTimeout(60);
+		await page.evaluate(
+			() =>
+				new Promise<void>((resolve) =>
+					requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+				),
+		);
 		expect(openTracked).toBe(false);
 		expect(recordedRequests).toHaveLength(0);
 

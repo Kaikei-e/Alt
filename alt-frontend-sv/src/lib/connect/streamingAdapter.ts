@@ -151,7 +151,11 @@ export async function streamSummarizeWithRenderer(
 				title: options.title,
 				forceRefresh: options.forceRefresh,
 			},
-			processor.processChunk,
+			(chunk) => {
+				void processor.processChunk(chunk).catch((err) => {
+					console.error("[StreamingAdapter] Chunk processing failed:", err);
+				});
+			},
 			(result: StreamSummarizeResult) => {
 				renderer.flush();
 				const state = processor.getState();
@@ -203,7 +207,11 @@ export function streamSummarizeWithAbortAdapter(
 			title: options.title,
 			forceRefresh: options.forceRefresh,
 		},
-		processor.processChunk,
+		(chunk) => {
+			void processor.processChunk(chunk).catch((err) => {
+				console.error("[StreamingAdapter] Chunk processing failed:", err);
+			});
+		},
 		(result: StreamSummarizeResult) => {
 			renderer.flush();
 			if (onComplete) {

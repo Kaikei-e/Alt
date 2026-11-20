@@ -13,7 +13,7 @@ let loading = $state(true);
 let error = $state<string | null>(null);
 
 $effect(() => {
-	loadData();
+	void loadData();
 });
 
 async function loadData() {

@@ -30,7 +30,7 @@ async function load() {
 $effect(() => {
 	// Runs on mount and whenever windowSeconds changes
 	if (windowSeconds) {
-		load();
+		void load();
 	}
 });
 </script>

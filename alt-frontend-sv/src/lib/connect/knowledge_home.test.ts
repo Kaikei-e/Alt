@@ -11,6 +11,7 @@ vi.mock("#lib/gen/alt/knowledge_home/v1/knowledge_home_pb.js", () => ({
 
 import type { Transport } from "@connectrpc/connect";
 import { createClient } from "@connectrpc/connect";
+import { assertDefined } from "#lib/test-utils/assert.js";
 import {
 	createKnowledgeHomeClient,
 	getKnowledgeHome,
@@ -99,11 +100,12 @@ describe("knowledge_home client", () => {
 				limit: 20,
 			});
 			expect(result.items).toHaveLength(1);
-			expect(result.items[0]!.itemKey).toBe("article:abc-123");
-			expect(result.items[0]!.why).toHaveLength(2);
-			expect(result.items[0]!.why[0]!.code).toBe("new_unread");
-			expect(result.items[0]!.why[1]!.tag).toBe("AI");
-			expect(result.items[0]!.summaryState).toBe("ready");
+			const item = assertDefined(result.items[0]);
+			expect(item.itemKey).toBe("article:abc-123");
+			expect(item.why).toHaveLength(2);
+			expect(assertDefined(item.why[0]).code).toBe("new_unread");
+			expect(assertDefined(item.why[1]).tag).toBe("AI");
+			expect(item.summaryState).toBe("ready");
 			expect(result.digest).not.toBeNull();
 			expect(result.digest?.newArticles).toBe(42);
 			expect(result.digest?.topTags).toEqual(["AI", "Go"]);
@@ -260,8 +262,9 @@ describe("knowledge_home client", () => {
 			const result = await listLenses(mockTransport);
 
 			expect(result.activeLensId).toBe("lens-123");
-			expect(result.lenses[0]!.currentVersion?.sourceIds).toEqual(["feed-1"]);
-			expect(result.lenses[0]!.currentVersion?.queryText).toBe("agents");
+			const lens = assertDefined(result.lenses[0]);
+			expect(lens.currentVersion?.sourceIds).toEqual(["feed-1"]);
+			expect(lens.currentVersion?.queryText).toBe("agents");
 		});
 
 		it("clears selected lens when null is passed", async () => {
@@ -318,7 +321,7 @@ describe("knowledge_home client", () => {
 
 			const result = await getKnowledgeHome(mockTransport, "default");
 			expect(result.recallCandidates).toHaveLength(1);
-			const r = result.recallCandidates[0]!;
+			const r = assertDefined(result.recallCandidates[0]);
 			expect(r.weightSetVersion).toBe("v2_heavy_ranker");
 			expect(r.scoreBreakdown).toEqual([
 				{
@@ -360,8 +363,9 @@ describe("knowledge_home client", () => {
 			});
 
 			const result = await getKnowledgeHome(mockTransport, "default");
-			expect(result.recallCandidates[0]!.weightSetVersion).toBeUndefined();
-			expect(result.recallCandidates[0]!.scoreBreakdown).toBeUndefined();
+			const candidate = assertDefined(result.recallCandidates[0]);
+			expect(candidate.weightSetVersion).toBeUndefined();
+			expect(candidate.scoreBreakdown).toBeUndefined();
 		});
 	});
 });

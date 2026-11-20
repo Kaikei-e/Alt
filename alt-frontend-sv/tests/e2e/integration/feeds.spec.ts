@@ -54,6 +54,7 @@ test.describe("Feeds Integration", () => {
 			await page.keyboard.press("Enter");
 
 			// Wait for search results or empty state
+			// biome-ignore lint/nursery/noPlaywrightWaitForTimeout: legacy integration search check against live Meilisearch without a dedicated search-settled selector
 			await page.waitForTimeout(2000);
 		} else {
 			test.skip(true, "Search input not available");

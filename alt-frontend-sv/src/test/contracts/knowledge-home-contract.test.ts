@@ -20,6 +20,7 @@ import {
 	TrackHomeActionRequestSchema,
 	WhyReasonSchema,
 } from "#lib/gen/alt/knowledge_home/v1/knowledge_home_pb.js";
+import { assertDefined } from "#lib/test-utils/assert.js";
 
 describe("Knowledge Home API Contract", () => {
 	describe("GetKnowledgeHomeResponse", () => {
@@ -60,7 +61,7 @@ describe("Knowledge Home API Contract", () => {
 				"2026-03-18T12:00:00Z",
 			);
 			expect(response.items).toHaveLength(1);
-			expect(response.items[0]!.itemKey).toBe("article:123");
+			expect(assertDefined(response.items[0]).itemKey).toBe("article:123");
 			expect(response.generatedAt).toBeTruthy();
 			expect(response.serviceQuality).toBe("full");
 		});
@@ -129,7 +130,9 @@ describe("Knowledge Home API Contract", () => {
 			const deserialized = fromBinary(GetKnowledgeHomeResponseSchema, binary);
 
 			expect(deserialized.items).toHaveLength(1);
-			expect(deserialized.items[0]!.title).toBe("Round-trip Test");
+			expect(assertDefined(deserialized.items[0]).title).toBe(
+				"Round-trip Test",
+			);
 			expect(deserialized.serviceQuality).toBe("full");
 		});
 	});

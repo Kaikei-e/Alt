@@ -15,7 +15,7 @@ let selectedErrorType = $state<string>("All");
 let requestId = 0;
 
 $effect(() => {
-	loadData();
+	void loadData();
 });
 
 async function loadData() {

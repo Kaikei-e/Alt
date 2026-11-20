@@ -24,17 +24,20 @@ describe("GET /api/articles/by-tag", () => {
 		getArticlesByTag.mockResolvedValue({ articles: [], has_more: false });
 	});
 
-	it.each(["abc", "10abc", "1e3", " 10", "-0"])(
-		'returns 400 when limit is "%s"',
-		async (rawLimit) => {
-			const res = await GET(
-				makeEvent(`?tag_id=tag-1&limit=${encodeURIComponent(rawLimit)}`),
-			);
+	it.each([
+		"abc",
+		"10abc",
+		"1e3",
+		" 10",
+		"-0",
+	])('returns 400 when limit is "%s"', async (rawLimit) => {
+		const res = await GET(
+			makeEvent(`?tag_id=tag-1&limit=${encodeURIComponent(rawLimit)}`),
+		);
 
-			expect(res.status).toBe(400);
-			expect(getArticlesByTag).not.toHaveBeenCalled();
-		},
-	);
+		expect(res.status).toBe(400);
+		expect(getArticlesByTag).not.toHaveBeenCalled();
+	});
 
 	it("returns 400 when limit is non-positive", async () => {
 		const resZero = await GET(makeEvent("?tag_id=tag-1&limit=0"));

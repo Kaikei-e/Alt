@@ -34,11 +34,12 @@ const excludedDomain = $derived.by(() => {
 const domainEntries = $derived.by(() => {
 	const grouped = groupSourcesByDomain(sources);
 	return [...grouped.entries()]
-		.map(([domain, items]) => ({
-			domain,
-			displayUrl: items[0]!.url,
-			count: items.length,
-		}))
+		.flatMap(([domain, items]) => {
+			const first = items[0];
+			return first
+				? [{ domain, displayUrl: first.url, count: items.length }]
+				: [];
+		})
 		.sort((a, b) => a.domain.localeCompare(b.domain));
 });
 
@@ -77,7 +78,10 @@ function handleKeydown(e: KeyboardEvent) {
 		highlightedIndex = Math.max(highlightedIndex - 1, 0);
 	} else if (e.key === "Enter" && highlightedIndex >= 0) {
 		e.preventDefault();
-		handleSelect(filteredDomains[highlightedIndex]!.domain);
+		const selected = filteredDomains[highlightedIndex];
+		if (selected) {
+			handleSelect(selected.domain);
+		}
 	} else if (e.key === "Escape") {
 		isOpen = false;
 		highlightedIndex = -1;

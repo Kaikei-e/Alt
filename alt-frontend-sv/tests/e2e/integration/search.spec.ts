@@ -32,6 +32,7 @@ test.describe("Search Integration", () => {
 		await page.keyboard.press("Enter");
 
 		// Allow time for search
+		// biome-ignore lint/nursery/noPlaywrightWaitForTimeout: negative error check after live Meilisearch search without a dedicated search-settled selector
 		await page.waitForTimeout(3000);
 
 		// Check that we got results or a proper empty state (not an error)
@@ -54,6 +55,7 @@ test.describe("Search Integration", () => {
 		await searchInput.fill("xyznonexistent99999");
 		await page.keyboard.press("Enter");
 
+		// biome-ignore lint/nursery/noPlaywrightWaitForTimeout: negative error check after live Meilisearch search without a dedicated search-settled selector
 		await page.waitForTimeout(2000);
 
 		// Should not show error state

@@ -207,7 +207,9 @@ describe("client handleError", () => {
 		});
 
 		expect(consoleSpy).toHaveBeenCalledTimes(1);
-		const logged = JSON.parse(consoleSpy.mock.calls[0]![0] as string);
+		const firstCall = consoleSpy.mock.calls[0];
+		if (!firstCall) throw new Error("expected console.error call");
+		const logged = JSON.parse(firstCall[0] as string);
 		expect(logged).toMatchObject({
 			level: "error",
 			source: "sveltekit-handleClientError",

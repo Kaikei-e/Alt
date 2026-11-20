@@ -168,8 +168,13 @@ test.describe("Desktop Augur Chat - IME Input", () => {
 			textarea.dispatchEvent(event);
 		});
 
-		// Wait a bit to ensure no message is sent
-		await page.waitForTimeout(500);
+		// Flush microtasks/frames to ensure no message is sent
+		await page.evaluate(
+			() =>
+				new Promise<void>((resolve) =>
+					requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+				),
+		);
 
 		// API should NOT have been called
 		expect(apiCalled).toBe(false);
