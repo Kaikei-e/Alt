@@ -5,14 +5,12 @@ import path from "node:path";
 
 const INPUT_DIR = path.resolve("test-results/readme-capture");
 const OUTPUT_DIR = path.resolve("../docs/images/readme");
-const HERO_ONLY_INPUTS = new Set(["home-desktop.png"]);
 
 /**
  * @param {string} filename
  * @returns {number | null}
  */
 function targetWidthFor(filename) {
-	if (HERO_ONLY_INPUTS.has(filename)) return null;
 	if (filename === "hero.png") return 2400;
 	if (filename.endsWith("-desktop.png")) return 1920;
 	if (filename.endsWith("-phone.png")) return 720;

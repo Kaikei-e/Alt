@@ -22,14 +22,94 @@ import {
 } from "./fixtures/morningLetter";
 import { mockSwipeRoutes, SWIPE_EXPECTED_TITLES } from "./fixtures/swipeDeck";
 import { mockTodayRoutes, TODAY_QUEUE_TITLES } from "./fixtures/todayQueue";
+import { browserFrame, frameDocument, phoneFrame } from "./frames";
 import {
 	CAPTURE_OUTPUT_DIR,
+	CAPTURE_RAW_DIR,
 	captureSurface,
 	DESKTOP_CONTEXT,
 	installCaptureNetworkGuard,
 	PHONE_CONTEXT,
 	prepareCapturePage,
 } from "./helpers";
+
+function readRawDataUri(filename: string): string {
+	const filePath = path.join(CAPTURE_RAW_DIR, filename);
+	return `data:image/png;base64,${fs.readFileSync(filePath).toString("base64")}`;
+}
+
+async function waitForStageAssets(
+	page: import("@playwright/test").Page,
+): Promise<void> {
+	await page.evaluate(() => document.fonts.ready);
+	await expect
+		.poll(() =>
+			page.evaluate(() => {
+				const imgs = Array.from(document.querySelectorAll("img"));
+				return (
+					imgs.length > 0 &&
+					imgs.every((img) => img.complete && img.naturalWidth > 0)
+				);
+			}),
+		)
+		.toBe(true);
+}
+
+const STAGE_CSS = `html, body {
+	margin: 0;
+	padding: 0;
+	background: transparent;
+}
+.stage {
+	display: inline-block;
+	padding: 32px 32px 56px;
+	background: transparent;
+}
+.browser-window, .phone-frame {
+	box-shadow: 0 18px 36px -18px rgba(46, 40, 31, 0.35);
+}`;
+
+const HERO_CSS = `html, body {
+	margin: 0;
+	padding: 0;
+	width: 1600px;
+	height: 1000px;
+	overflow: hidden;
+}
+body {
+	position: relative;
+	background: radial-gradient(120% 90% at 28% 12%, #f4f1ea 0%, #e8e3d9 55%, #ddd6ca 100%);
+}
+.hero-browser {
+	position: absolute;
+	left: 70px;
+	top: 80px;
+	box-shadow:
+		0 34px 70px -24px rgba(46, 40, 31, 0.40),
+		0 14px 28px -14px rgba(46, 40, 31, 0.28);
+}
+.hero-phone {
+	position: absolute;
+	right: 90px;
+	bottom: 60px;
+	box-shadow: 0 30px 60px -20px rgba(46, 40, 31, 0.55);
+}`;
+
+const DESKTOP_FRAMES = [
+	{ filename: "trail-desktop.png", address: "localhost/knowledge/trail" },
+	{ filename: "augur-desktop.png", address: "localhost/augur" },
+	{
+		filename: "morning-letter-desktop.png",
+		address: "localhost/recap/morning-letter",
+	},
+	{ filename: "acolyte-desktop.png", address: "localhost/acolyte/reports" },
+] as const;
+
+const PHONE_FRAMES = [
+	"today-phone.png",
+	"swipe-phone.png",
+	"trail-phone.png",
+] as const;
 
 test.describe("README Screenshot Captures", () => {
 	test.describe("Knowledge Home (desktop)", () => {
@@ -248,6 +328,79 @@ test.describe("README Screenshot Captures", () => {
 		});
 	});
 
+	test.describe("Frame Composition", () => {
+		test.describe("Desktop frames", () => {
+			test.use({
+				viewport: { width: 1600, height: 1200 },
+				deviceScaleFactor: 2,
+				colorScheme: "light",
+				contextOptions: { reducedMotion: "reduce" },
+				locale: "en-US",
+				timezoneId: "UTC",
+			});
+
+			for (const entry of DESKTOP_FRAMES) {
+				test(`Compose browser frame for ${entry.filename}`, async ({
+					page,
+				}) => {
+					await installCaptureNetworkGuard(page);
+
+					const html = frameDocument({
+						body: `<div class="stage">${browserFrame({
+							src: readRawDataUri(entry.filename),
+							address: entry.address,
+							width: 1440,
+						})}</div>`,
+						extraCss: STAGE_CSS,
+					});
+					await page.setContent(html);
+					await waitForStageAssets(page);
+
+					fs.mkdirSync(CAPTURE_OUTPUT_DIR, { recursive: true });
+					await page.locator(".stage").screenshot({
+						path: path.join(CAPTURE_OUTPUT_DIR, entry.filename),
+						omitBackground: true,
+						animations: "disabled",
+					});
+				});
+			}
+		});
+
+		test.describe("Phone frames", () => {
+			test.use({
+				viewport: { width: 600, height: 1100 },
+				deviceScaleFactor: 3,
+				colorScheme: "light",
+				contextOptions: { reducedMotion: "reduce" },
+				locale: "en-US",
+				timezoneId: "UTC",
+			});
+
+			for (const filename of PHONE_FRAMES) {
+				test(`Compose phone frame for ${filename}`, async ({ page }) => {
+					await installCaptureNetworkGuard(page);
+
+					const html = frameDocument({
+						body: `<div class="stage">${phoneFrame({
+							src: readRawDataUri(filename),
+							screenWidth: 393,
+						})}</div>`,
+						extraCss: STAGE_CSS,
+					});
+					await page.setContent(html);
+					await waitForStageAssets(page);
+
+					fs.mkdirSync(CAPTURE_OUTPUT_DIR, { recursive: true });
+					await page.locator(".stage").screenshot({
+						path: path.join(CAPTURE_OUTPUT_DIR, filename),
+						omitBackground: true,
+						animations: "disabled",
+					});
+				});
+			}
+		});
+	});
+
 	test.describe("Hero Composition", () => {
 		test.use({
 			viewport: { width: 1600, height: 1000 },
@@ -263,130 +416,36 @@ test.describe("README Screenshot Captures", () => {
 		}) => {
 			await installCaptureNetworkGuard(page);
 
-			const homePath = path.join(CAPTURE_OUTPUT_DIR, "home-desktop.png");
-			const todayPath = path.join(CAPTURE_OUTPUT_DIR, "today-phone.png");
-			const homeDataUri = `data:image/png;base64,${fs.readFileSync(homePath).toString("base64")}`;
-			const todayDataUri = `data:image/png;base64,${fs.readFileSync(todayPath).toString("base64")}`;
+			const homeDataUri = readRawDataUri("home-desktop.png");
+			const todayDataUri = readRawDataUri("today-phone.png");
 
-			await page.setContent(`<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,800;1,400&family=Source+Sans+3:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-    <style>
-      * { box-sizing: border-box; }
-      html, body {
-        margin: 0;
-        padding: 0;
-        width: 1600px;
-        height: 1000px;
-        overflow: hidden;
-      }
-      body {
-        position: relative;
-        background: radial-gradient(120% 90% at 28% 12%, #f4f1ea 0%, #e8e3d9 55%, #ddd6ca 100%);
-      }
-      .browser-window {
-        position: absolute;
-        left: 70px;
-        top: 80px;
-        width: 1250px;
-        border-radius: 12px;
-        border: 1px solid rgba(40, 35, 28, 0.16);
-        box-shadow:
-          0 34px 70px -24px rgba(46, 40, 31, 0.40),
-          0 14px 28px -14px rgba(46, 40, 31, 0.28);
-        overflow: hidden;
-        background: #faf9f7;
-      }
-      .title-bar {
-        position: relative;
-        height: 40px;
-        background: linear-gradient(180deg, #efedea 0%, #e7e4de 100%);
-        border-bottom: 1px solid #d6d2cb;
-        display: flex;
-        align-items: center;
-        padding: 0 16px;
-      }
-      .dots {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-      }
-      .dot {
-        width: 11px;
-        height: 11px;
-        border-radius: 50%;
-        background: #cfcac1;
-      }
-      .address-pill {
-        position: absolute;
-        left: 50%;
-        transform: translateX(-50%);
-        background: #faf9f7;
-        border: 1px solid #d6d2cb;
-        border-radius: 7px;
-        font-family: "IBM Plex Mono", monospace;
-        font-size: 12px;
-        line-height: 1.4;
-        color: #5a564f;
-        padding: 3px 28px;
-        letter-spacing: 0.01em;
-      }
-      .browser-body img {
-        display: block;
-        width: 100%;
-        height: auto;
-      }
-      .phone-frame {
-        position: absolute;
-        right: 90px;
-        bottom: 60px;
-        padding: 9px;
-        background: #26231f;
-        border-radius: 40px;
-        box-shadow: 0 30px 60px -20px rgba(46, 40, 31, 0.55);
-      }
-      .phone-frame img {
-        display: block;
-        width: 280px;
-        height: auto;
-        border-radius: 31px;
-      }
-    </style>
-  </head>
-  <body>
-    <div class="browser-window">
-      <div class="title-bar">
-        <div class="dots">
-          <span class="dot"></span>
-          <span class="dot"></span>
-          <span class="dot"></span>
-        </div>
-        <div class="address-pill">localhost/home</div>
-      </div>
-      <div class="browser-body">
-        <img id="hero-desktop" src="${homeDataUri}" alt="" />
-      </div>
-    </div>
-    <div class="phone-frame">
-      <img id="hero-phone" src="${todayDataUri}" alt="" />
-    </div>
-  </body>
-</html>`);
+			const html = frameDocument({
+				body: `${browserFrame({
+					src: homeDataUri,
+					address: "localhost/home",
+					width: 1250,
+					className: "hero-browser",
+				})}
+${phoneFrame({
+	src: todayDataUri,
+	screenWidth: 270,
+	className: "hero-phone",
+})}`,
+				extraCss: HERO_CSS,
+			});
+			await page.setContent(html);
+			await waitForStageAssets(page);
 
-			await page.evaluate(() => document.fonts.ready);
-			await expect
-				.poll(() =>
-					page.evaluate(() => {
-						const imgs = Array.from(document.querySelectorAll("img"));
-						return imgs.every((img) => img.complete && img.naturalWidth > 0);
-					}),
-				)
-				.toBe(true);
+			const phoneBox = await page.locator(".phone-frame").boundingBox();
+			expect(phoneBox).not.toBeNull();
+			if (phoneBox) {
+				expect(phoneBox.x).toBeGreaterThanOrEqual(0);
+				expect(phoneBox.y).toBeGreaterThanOrEqual(0);
+				expect(phoneBox.x + phoneBox.width).toBeLessThanOrEqual(1600);
+				expect(phoneBox.y + phoneBox.height).toBeLessThanOrEqual(1000);
+			}
 
+			fs.mkdirSync(CAPTURE_OUTPUT_DIR, { recursive: true });
 			await page.screenshot({
 				path: path.join(CAPTURE_OUTPUT_DIR, "hero.png"),
 				fullPage: false,

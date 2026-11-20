@@ -67,7 +67,7 @@ Storage, search and the language models all run on your machine under Docker Com
   </tr>
 </table>
 
-Every screenshot is the real UI rendered with synthetic fixtures. Regenerate them with `bun run capture:readme` in [`alt-frontend-sv/`](alt-frontend-sv); the export step needs `cwebp` on your PATH.
+Every screenshot is the real UI rendered with synthetic fixtures and composed into browser and phone frames. Regenerate them with `bun run capture:readme` in [`alt-frontend-sv/`](alt-frontend-sv); the export step needs `cwebp` on your PATH.
 
 ## Quick start
 

@@ -5,6 +5,7 @@ import { expect } from "@playwright/test";
 
 export const CAPTURE_NOW = "2026-11-20T09:30:00Z";
 export const CAPTURE_OUTPUT_DIR = "test-results/readme-capture";
+export const CAPTURE_RAW_DIR = path.join(CAPTURE_OUTPUT_DIR, "raw");
 
 const CAPTURE_NOW_MS = Date.parse(CAPTURE_NOW);
 
@@ -44,8 +45,8 @@ export const DESKTOP_CONTEXT = {
 
 export const PHONE_CONTEXT = {
 	...SHARED_CONTEXT_OPTIONS,
-	viewport: { width: 412, height: 732 },
-	deviceScaleFactor: 2.625,
+	viewport: { width: 393, height: 852 },
+	deviceScaleFactor: 3,
 	isMobile: true,
 	hasTouch: true,
 	userAgent:
@@ -139,9 +140,9 @@ export async function captureSurface(
 	}
 	expect(visibleTitles).toBeGreaterThanOrEqual(minVisibleTitles);
 
-	fs.mkdirSync(CAPTURE_OUTPUT_DIR, { recursive: true });
+	fs.mkdirSync(CAPTURE_RAW_DIR, { recursive: true });
 	await page.screenshot({
-		path: path.join(CAPTURE_OUTPUT_DIR, options.filename),
+		path: path.join(CAPTURE_RAW_DIR, options.filename),
 		fullPage: false,
 		animations: "disabled",
 	});
