@@ -11,6 +11,7 @@ import (
 func (p *LightweightProxy) forwardToEnvoyConnect(w http.ResponseWriter, r *http.Request, targetHost, remainingPath, traceID string, startTime time.Time) error {
 	// Create new request to Envoy - preserve the full /connect/ path
 	envoyURL := fmt.Sprintf("http://%s%s", p.config.EnvoyUpstream, r.URL.Path)
+	// #nosec G704 -- host is operator-configured EnvoyUpstream and targetHost was allowlist- and IP-validated by HandlePersistentTunnelRequest.
 	proxyReq, err := http.NewRequestWithContext(r.Context(), r.Method, envoyURL, r.Body)
 	if err != nil {
 		return fmt.Errorf("failed to create proxy request: %w", err)
@@ -40,11 +41,16 @@ func (p *LightweightProxy) forwardToEnvoyConnect(w http.ResponseWriter, r *http.
 	// in NewLightweightProxy) so keep-alive connections to Envoy are
 	// actually reused across CONNECT/persistent-tunnel requests instead of
 	// being torn down and rebuilt every call.
+	// #nosec G704 -- host is operator-configured EnvoyUpstream and targetHost was allowlist- and IP-validated by HandlePersistentTunnelRequest.
 	resp, err := p.connectHTTPClient.Do(proxyReq)
 	if err != nil {
 		return fmt.Errorf("envoy request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			p.logger.Printf("[%s] Failed to close response body: %v", traceID, err)
+		}
+	}()
 
 	// Copy response headers
 	for k, vv := range resp.Header {

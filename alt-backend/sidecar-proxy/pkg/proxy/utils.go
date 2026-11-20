@@ -7,10 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"os/signal"
-	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -27,49 +25,16 @@ func (p *LightweightProxy) generateTraceID() string {
 	return fmt.Sprintf("proxy-%s-%d", hex.EncodeToString(b[:]), traceSeq.Add(1))
 }
 
-// extractDomainFromURL extracts domain from full URL for auto-learning
-func (p *LightweightProxy) extractDomainFromURL(targetURL string) string {
-	parsedURL, err := url.Parse(targetURL)
-	if err != nil {
-		// Fallback: try to extract domain from string directly
-		if strings.HasPrefix(targetURL, "https://") {
-			targetURL = strings.TrimPrefix(targetURL, "https://")
-		} else if strings.HasPrefix(targetURL, "http://") {
-			targetURL = strings.TrimPrefix(targetURL, "http://")
-		}
-
-		// Extract domain part (before first '/')
-		if slashIndex := strings.Index(targetURL, "/"); slashIndex != -1 {
-			targetURL = targetURL[:slashIndex]
-		}
-
-		// Remove port if present
-		if colonIndex := strings.Index(targetURL, ":"); colonIndex != -1 {
-			targetURL = targetURL[:colonIndex]
-		}
-
-		return targetURL
-	}
-
-	host := parsedURL.Host
-	if host == "" {
-		return targetURL
-	}
-
-	// Remove port if present
-	if colonIndex := strings.Index(host, ":"); colonIndex != -1 {
-		host = host[:colonIndex]
-	}
-
-	return host
-}
-
 // writeErrorResponse writes a standardized error response to the client
 func (p *LightweightProxy) writeErrorResponse(w http.ResponseWriter, status int, message string, traceID string) {
-	w.Header().Set("Content-Type", "text/plain")
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("X-Trace-ID", traceID)
 	w.WriteHeader(status)
-	fmt.Fprintf(w, "Proxy Error: %s\nTrace-ID: %s\n", message, traceID)
+	// #nosec G705 -- Content-Type is text/plain; charset=utf-8 with X-Content-Type-Options: nosniff; plain-text error body is consumed by HTTP clients, not rendered as HTML.
+	if _, err := fmt.Fprintf(w, "Proxy Error: %s\nTrace-ID: %s\n", message, traceID); err != nil {
+		p.logger.Printf("[%s] Error writing error response: %v", traceID, err)
+	}
 }
 
 // copyResponse copies the Envoy response back to the client

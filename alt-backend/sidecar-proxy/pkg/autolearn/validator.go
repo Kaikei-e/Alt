@@ -1,11 +1,13 @@
 package autolearn
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net"
 	"regexp"
 	"strings"
+	"time"
 )
 
 // DomainValidator handles security validation for auto-learned domains
@@ -252,14 +254,17 @@ func (dv *DomainValidator) isPrivateNetwork(domain string) bool {
 	allRanges := append(privateRanges, specialRanges...)
 
 	// DNS解決してIPチェック（簡易実装）
-	ips, err := net.LookupIP(domain)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	ipAddrs, err := net.DefaultResolver.LookupIPAddr(ctx, domain)
 	if err != nil {
 		// DNS解決失敗は警告だが、ブロックはしない（一時的な問題の可能性）
 		dv.logger.Printf("[DomainValidator] Warning: DNS lookup failed for %s: %v", domain, err)
 		return false
 	}
 
-	for _, ip := range ips {
+	for _, ipAddr := range ipAddrs {
+		ip := ipAddr.IP
 		for _, rangeStr := range allRanges {
 			_, cidr, err := net.ParseCIDR(rangeStr)
 			if err != nil {

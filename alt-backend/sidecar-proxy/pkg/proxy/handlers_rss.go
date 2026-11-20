@@ -77,7 +77,9 @@ func (p *LightweightProxy) HandleProxyRequest(w http.ResponseWriter, r *http.Req
 			p.writeErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("Failed to read request body: %v", err), traceID)
 			return
 		}
-		r.Body.Close()
+		if err := r.Body.Close(); err != nil {
+			p.logger.Printf("[%s] Failed to close request body: %v", traceID, err)
+		}
 	}
 
 	proxyStartTime := time.Now()
@@ -94,7 +96,11 @@ func (p *LightweightProxy) HandleProxyRequest(w http.ResponseWriter, r *http.Req
 		p.writeErrorResponse(w, http.StatusBadGateway, fmt.Sprintf("Proxy error: %v", err), traceID)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			p.logger.Printf("[%s] Failed to close response body: %v", traceID, err)
+		}
+	}()
 
 	// Copy response back to client
 	p.copyResponse(w, resp, traceID)
@@ -129,6 +135,7 @@ func (p *LightweightProxy) buildEnvoyRequest(originalReq *http.Request, targetUR
 	// Create new request with absolute target URL as the request URL. The
 	// body is a fresh reader over the buffered bytes each call, so retries
 	// (which call this function again) never see an already-consumed body.
+	// #nosec G704 -- host is operator-configured EnvoyUpstream and target domain/IPs are allowlist-validated before calling buildEnvoyRequest.
 	req, err := http.NewRequestWithContext(originalReq.Context(), originalReq.Method, envoyProxyURL, bytes.NewReader(bodyBytes))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)

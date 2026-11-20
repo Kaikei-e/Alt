@@ -34,7 +34,7 @@ func TestForwardToEnvoyConnect_SetsHostToTargetDomain(t *testing.T) {
 		connectHTTPClient: &http.Client{},
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/connect/model-hub.example.com/api", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/connect/model-hub.example.com/api", nil)
 	rec := httptest.NewRecorder()
 
 	const targetHost = "model-hub.example.com"
