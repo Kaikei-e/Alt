@@ -109,6 +109,9 @@ test.describe("Mobile Swipe Feed - Page Object Model Tests", () => {
 			await expect(swipePage.swipeCard.locator("h2")).toContainText(
 				"Svelte 5 Tips",
 			);
+			await expect(
+				page.waitForRequest(CONNECT_RPC_PATHS.markAsRead, { timeout: 500 }),
+			).rejects.toThrow(/Timeout 500ms exceeded/);
 			expect(markAsReadCalled).toBe(false);
 
 			// Second dismissal commits the held card
@@ -145,6 +148,18 @@ test.describe("Mobile Swipe Feed - Page Object Model Tests", () => {
 			await expect(swipePage.swipeCard.locator("h2")).toContainText(
 				"Svelte 5 Tips",
 			);
+			await expect(
+				page.waitForRequest(
+					(req) =>
+						req
+							.url()
+							.includes(CONNECT_RPC_PATHS.queueArticle.replace(/^\*\*/, "")) ||
+						req
+							.url()
+							.includes(CONNECT_RPC_PATHS.markAsRead.replace(/^\*\*/, "")),
+					{ timeout: 500 },
+				),
+			).rejects.toThrow(/Timeout 500ms exceeded/);
 			expect(queueArticleCalled).toBe(false);
 			expect(markAsReadCalled).toBe(false);
 

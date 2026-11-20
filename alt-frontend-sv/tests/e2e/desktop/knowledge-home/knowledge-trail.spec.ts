@@ -796,12 +796,9 @@ test.describe("Trail search", () => {
 
 		await page.getByTestId("trail-search").press("Enter");
 		await expect(page.getByTestId("trail-episode")).toHaveCount(2);
-		await page.evaluate(
-			() =>
-				new Promise<void>((resolve) =>
-					requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
-				),
-		);
+		await expect(
+			page.waitForRequest(SEARCH_PATH, { timeout: 300 }),
+		).rejects.toThrow(/Timeout 300ms exceeded/);
 		expect(searchCalled).toBe(false);
 		await expect(page.getByTestId("trail-episode")).toHaveCount(2);
 	});
