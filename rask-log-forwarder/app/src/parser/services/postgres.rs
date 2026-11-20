@@ -19,28 +19,23 @@ impl PostgresParser {
     }
 
     /// Parse postgres log with memory-safe patterns
-    fn parse_postgres_log(&self, log: &str) -> Result<ParsedLogEntry, ParseError> {
+    fn parse_postgres_log(log: &str) -> Result<ParsedLogEntry, ParseError> {
         // Try with the validated postgres log pattern
         match VALIDATED_PATTERNS.get(pattern_index::POSTGRES_LOG) {
             Ok(regex) => {
                 if let Some(captures) = regex.captures(log) {
-                    let level_str = captures.get(2).map(|m| m.as_str()).unwrap_or("LOG");
+                    let level_str = captures.get(2).map_or("LOG", |m| m.as_str());
                     let level = match level_str {
                         "DEBUG" | "DEBUG1" | "DEBUG2" | "DEBUG3" | "DEBUG4" | "DEBUG5" => {
                             LogLevel::Debug
                         }
-                        "LOG" | "INFO" => LogLevel::Info,
                         "NOTICE" | "WARNING" => LogLevel::Warn,
                         "ERROR" => LogLevel::Error,
                         "FATAL" | "PANIC" => LogLevel::Fatal,
                         _ => LogLevel::Info,
                     };
 
-                    let message = captures
-                        .get(3)
-                        .map(|m| m.as_str())
-                        .unwrap_or(log)
-                        .to_string();
+                    let message = captures.get(3).map_or(log, |m| m.as_str()).to_string();
 
                     return Ok(ParsedLogEntry {
                         service_type: "postgres".to_string(),
@@ -101,13 +96,13 @@ impl PostgresParser {
 }
 
 impl ServiceParser for PostgresParser {
-    fn service_type(&self) -> &str {
+    fn service_type(&self) -> &'static str {
         "postgres"
     }
 
     fn parse_log(&self, log: &str) -> Result<ParsedLogEntry, ParseError> {
         // Use the memory-safe postgres parser
-        self.parse_postgres_log(log).or_else(|_| {
+        Self::parse_postgres_log(log).or_else(|_| {
             // Final fallback for unrecognized postgres logs
             Ok(ParsedLogEntry {
                 service_type: "postgres".to_string(),

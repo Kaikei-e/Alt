@@ -1,6 +1,7 @@
 use super::groups::{DiskFallbackConfig, MetricsConfig, RetryConfig};
 use super::serde_helpers::{
-    load_env_path, load_env_path_opt, load_env_string, load_env_string_opt, load_env_var,
+    load_env_path_opt_with, load_env_path_with, load_env_string_opt_with, load_env_string_with,
+    load_env_var_with,
 };
 use super::{ConfigError, LogLevel, Protocol};
 use clap::Parser;
@@ -201,27 +202,46 @@ impl Config {
     }
 
     pub fn from_env() -> Result<Self, ConfigError> {
+        Self::from_env_with(|k| std::env::var(k).ok())
+    }
+
+    pub fn from_env_with<F>(env: F) -> Result<Self, ConfigError>
+    where
+        F: Fn(&str) -> Option<String>,
+    {
         // First, try to load from RASK_CONFIG environment variable if it exists
-        if let Ok(rask_config) = std::env::var("RASK_CONFIG") {
+        if let Some(rask_config) = env("RASK_CONFIG") {
             let mut config: Config = toml::from_str(&rask_config)?;
-            load_env_path_opt("RASK_INGEST_TOKEN_FILE", &mut config.ingest_token_file);
+            load_env_path_opt_with(
+                "RASK_INGEST_TOKEN_FILE",
+                &mut config.ingest_token_file,
+                &env,
+            );
             config.post_process()?;
             config.validate()?;
             return Ok(config);
         }
 
         let mut config = Config::default();
+        config.apply_env_overrides(&env)?;
+        config.post_process()?;
+        config.validate()?;
+        Ok(config)
+    }
 
-        // Load from individual environment variables using helpers
-        load_env_string_opt("TARGET_SERVICE", &mut config.target_service);
-        load_env_string("RASK_ENDPOINT", &mut config.endpoint);
-        load_env_var("BATCH_SIZE", &mut config.batch_size)?;
-        load_env_var("FLUSH_INTERVAL_MS", &mut config.flush_interval_ms)?;
-        load_env_var("BUFFER_CAPACITY", &mut config.buffer_capacity)?;
+    fn apply_env_overrides<F>(&mut self, env: &F) -> Result<(), ConfigError>
+    where
+        F: Fn(&str) -> Option<String>,
+    {
+        load_env_string_opt_with("TARGET_SERVICE", &mut self.target_service, env);
+        load_env_string_with("RASK_ENDPOINT", &mut self.endpoint, env);
+        load_env_var_with("BATCH_SIZE", &mut self.batch_size, env)?;
+        load_env_var_with("FLUSH_INTERVAL_MS", &mut self.flush_interval_ms, env)?;
+        load_env_var_with("BUFFER_CAPACITY", &mut self.buffer_capacity, env)?;
 
         // LogLevel requires special handling for case-insensitive parsing
-        if let Ok(log_level) = std::env::var("LOG_LEVEL") {
-            config.log_level = match log_level.to_lowercase().as_str() {
+        if let Some(log_level) = env("LOG_LEVEL") {
+            self.log_level = match log_level.to_lowercase().as_str() {
                 "error" => LogLevel::Error,
                 "warn" => LogLevel::Warn,
                 "info" => LogLevel::Info,
@@ -235,22 +255,23 @@ impl Config {
             };
         }
 
-        load_env_var("ENABLE_METRICS", &mut config.enable_metrics)?;
-        load_env_var("METRICS_PORT", &mut config.metrics_port)?;
-        load_env_var("ENABLE_DISK_FALLBACK", &mut config.enable_disk_fallback)?;
-        load_env_path("DISK_FALLBACK_PATH", &mut config.disk_fallback_path);
-        load_env_var("MAX_DISK_USAGE_MB", &mut config.max_disk_usage_mb)?;
-        load_env_var(
+        load_env_var_with("ENABLE_METRICS", &mut self.enable_metrics, env)?;
+        load_env_var_with("METRICS_PORT", &mut self.metrics_port, env)?;
+        load_env_var_with("ENABLE_DISK_FALLBACK", &mut self.enable_disk_fallback, env)?;
+        load_env_path_with("DISK_FALLBACK_PATH", &mut self.disk_fallback_path, env);
+        load_env_var_with("MAX_DISK_USAGE_MB", &mut self.max_disk_usage_mb, env)?;
+        load_env_var_with(
             "CONNECTION_TIMEOUT_SECS",
-            &mut config.connection_timeout_secs,
+            &mut self.connection_timeout_secs,
+            env,
         )?;
-        load_env_var("MAX_CONNECTIONS", &mut config.max_connections)?;
-        load_env_path_opt("CONFIG_FILE", &mut config.config_file);
-        load_env_var("ENABLE_COMPRESSION", &mut config.enable_compression)?;
+        load_env_var_with("MAX_CONNECTIONS", &mut self.max_connections, env)?;
+        load_env_path_opt_with("CONFIG_FILE", &mut self.config_file, env);
+        load_env_var_with("ENABLE_COMPRESSION", &mut self.enable_compression, env)?;
 
         // Protocol requires special handling
-        if let Ok(protocol) = std::env::var("PROTOCOL") {
-            config.protocol = match protocol.to_lowercase().as_str() {
+        if let Some(protocol) = env("PROTOCOL") {
+            self.protocol = match protocol.to_lowercase().as_str() {
                 "ndjson" => Protocol::Ndjson,
                 "otlp" => Protocol::Otlp,
                 _ => {
@@ -260,12 +281,9 @@ impl Config {
                 }
             };
         }
-        load_env_string("OTLP_ENDPOINT", &mut config.otlp_endpoint);
-        load_env_path_opt("RASK_INGEST_TOKEN_FILE", &mut config.ingest_token_file);
-
-        config.post_process()?;
-        config.validate()?;
-        Ok(config)
+        load_env_string_with("OTLP_ENDPOINT", &mut self.otlp_endpoint, env);
+        load_env_path_opt_with("RASK_INGEST_TOKEN_FILE", &mut self.ingest_token_file, env);
+        Ok(())
     }
 
     fn parse_unvalidated_from_file<P: AsRef<Path>>(path: P) -> Result<Self, ConfigError> {
@@ -284,6 +302,15 @@ impl Config {
         I: IntoIterator<Item = T>,
         T: Into<std::ffi::OsString> + Clone,
     {
+        Self::from_args_and_env_with(args, |k| std::env::var(k).ok())
+    }
+
+    pub fn from_args_and_env_with<I, T, F>(args: I, env: F) -> Result<Self, ConfigError>
+    where
+        I: IntoIterator<Item = T>,
+        T: Into<std::ffi::OsString> + Clone,
+        F: Fn(&str) -> Option<String>,
+    {
         use clap::{CommandFactory, FromArgMatches, parser::ValueSource};
 
         let matches = Config::command()
@@ -301,7 +328,7 @@ impl Config {
 
         // Determine base configuration based on precedence: Env (RASK_CONFIG) > File > Default
         // RASK_CONFIG is evaluated first as per "env > file" precedence document exact existing convention.
-        let mut config = if let Ok(rask_config) = std::env::var("RASK_CONFIG") {
+        let mut config = if let Some(rask_config) = env("RASK_CONFIG") {
             Self::parse_unvalidated_from_rask_config_str(&rask_config)?
         } else if let Some(path) = if explicitly_set("config_file") {
             cli.config_file.as_ref()
@@ -312,6 +339,13 @@ impl Config {
         } else {
             Config::default()
         };
+
+        // Apply injected/process env overrides (skipping RASK_INGEST_TOKEN_FILE if config already has one unless overridden below)
+        let saved_token_file = config.ingest_token_file.clone();
+        config.apply_env_overrides(&env)?;
+        if config.ingest_token_file.is_none() {
+            config.ingest_token_file = saved_token_file;
+        }
 
         // Overlay explicit CLI arguments and explicitly set Env vars (via clap)
         if explicitly_set("target_service") {
@@ -368,7 +402,11 @@ impl Config {
         if explicitly_set("ingest_token_file") {
             config.ingest_token_file = cli.ingest_token_file;
         } else if config.ingest_token_file.is_none() {
-            load_env_path_opt("RASK_INGEST_TOKEN_FILE", &mut config.ingest_token_file);
+            load_env_path_opt_with(
+                "RASK_INGEST_TOKEN_FILE",
+                &mut config.ingest_token_file,
+                &env,
+            );
         }
 
         config.post_process()?;
@@ -378,13 +416,24 @@ impl Config {
 
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, ConfigError> {
         let mut config = Self::parse_unvalidated_from_file(path)?;
-        load_env_path_opt("RASK_INGEST_TOKEN_FILE", &mut config.ingest_token_file);
+        load_env_path_opt_with(
+            "RASK_INGEST_TOKEN_FILE",
+            &mut config.ingest_token_file,
+            &|k| std::env::var(k).ok(),
+        );
         config.post_process()?;
         config.validate()?;
         Ok(config)
     }
 
     pub fn detect_service_from_hostname(hostname: &str) -> Result<Self, ConfigError> {
+        Self::detect_service_from_hostname_with(hostname, |k| std::env::var(k).ok())
+    }
+
+    pub fn detect_service_from_hostname_with<F>(hostname: &str, env: F) -> Result<Self, ConfigError>
+    where
+        F: Fn(&str) -> Option<String>,
+    {
         let service_name = if hostname.ends_with("-logs") {
             hostname.trim_end_matches("-logs")
         } else {
@@ -397,19 +446,30 @@ impl Config {
             target_service: Some(service_name.to_string()),
             ..Config::default()
         };
-        load_env_path_opt("RASK_INGEST_TOKEN_FILE", &mut config.ingest_token_file);
+        load_env_path_opt_with(
+            "RASK_INGEST_TOKEN_FILE",
+            &mut config.ingest_token_file,
+            &env,
+        );
         config.post_process()?;
         config.validate()?;
         Ok(config)
     }
 
     pub fn auto_detect_service(&mut self) -> Result<(), ConfigError> {
+        self.auto_detect_service_with(|k| std::env::var(k).ok())
+    }
+
+    pub fn auto_detect_service_with<F>(&mut self, env: F) -> Result<(), ConfigError>
+    where
+        F: Fn(&str) -> Option<String>,
+    {
         if self.target_service.is_some() {
             return Ok(()); // Already configured
         }
 
         // Try environment variable first
-        if let Ok(service) = std::env::var("TARGET_SERVICE") {
+        if let Some(service) = env("TARGET_SERVICE") {
             self.target_service = Some(service);
             return Ok(());
         }
@@ -500,7 +560,11 @@ impl Config {
 
     pub fn from_rask_config_env(rask_config: &str) -> Result<Self, ConfigError> {
         let mut config: Config = toml::from_str(rask_config)?;
-        load_env_path_opt("RASK_INGEST_TOKEN_FILE", &mut config.ingest_token_file);
+        load_env_path_opt_with(
+            "RASK_INGEST_TOKEN_FILE",
+            &mut config.ingest_token_file,
+            &|k| std::env::var(k).ok(),
+        );
         config.post_process()?;
         config.validate()?;
         Ok(config)
@@ -637,66 +701,46 @@ mod tests {
 
     // Config Entry Mode 2: Environment variables
     #[test]
-    #[serial]
     fn test_entry_mode_env_valid_file() {
         let file = write_token_file("valid-env-token\n");
-        unsafe {
-            std::env::set_var("RASK_INGEST_TOKEN_FILE", file.path());
-        }
-        let res = Config::from_env();
-        unsafe {
-            std::env::remove_var("RASK_INGEST_TOKEN_FILE");
-        }
-        let config = res.unwrap();
+        let path_str = file.path().to_string_lossy().into_owned();
+        let config =
+            Config::from_env_with(|k| (k == "RASK_INGEST_TOKEN_FILE").then(|| path_str.clone()))
+                .unwrap();
         assert_eq!(config.ingest_token, "valid-env-token");
     }
 
     #[test]
-    #[serial]
     fn test_entry_mode_env_missing_file() {
-        unsafe {
-            std::env::set_var("RASK_INGEST_TOKEN_FILE", "/nonexistent/token/env");
-        }
-        let res = Config::from_env();
-        unsafe {
-            std::env::remove_var("RASK_INGEST_TOKEN_FILE");
-        }
+        let res = Config::from_env_with(|k| {
+            (k == "RASK_INGEST_TOKEN_FILE").then(|| "/nonexistent/token/env".to_string())
+        });
         assert!(res.is_err());
     }
 
     #[test]
-    #[serial]
     fn test_entry_mode_env_empty_file() {
         let file = write_token_file("   ");
-        unsafe {
-            std::env::set_var("RASK_INGEST_TOKEN_FILE", file.path());
-        }
-        let res = Config::from_env();
-        unsafe {
-            std::env::remove_var("RASK_INGEST_TOKEN_FILE");
-        }
-        let err = res.unwrap_err();
+        let path_str = file.path().to_string_lossy().into_owned();
+        let err =
+            Config::from_env_with(|k| (k == "RASK_INGEST_TOKEN_FILE").then(|| path_str.clone()))
+                .unwrap_err();
         assert!(err.to_string().contains("is empty"));
     }
 
     #[test]
-    #[serial]
     fn test_entry_mode_env_bad_token() {
         let file = write_token_file("bad\x01token");
-        unsafe {
-            std::env::set_var("RASK_INGEST_TOKEN_FILE", file.path());
-        }
-        let res = Config::from_env();
-        unsafe {
-            std::env::remove_var("RASK_INGEST_TOKEN_FILE");
-        }
-        let err = res.unwrap_err();
+        let path_str = file.path().to_string_lossy().into_owned();
+        let err =
+            Config::from_env_with(|k| (k == "RASK_INGEST_TOKEN_FILE").then(|| path_str.clone()))
+                .unwrap_err();
         assert!(err.to_string().contains("control characters"));
     }
 
     fn base_json_config(token_file: Option<&Path>) -> String {
         let config = Config {
-            ingest_token_file: token_file.map(|p| p.to_path_buf()),
+            ingest_token_file: token_file.map(std::path::Path::to_path_buf),
             ..Default::default()
         };
         serde_json::to_string(&config).unwrap()
@@ -773,80 +817,56 @@ ingest_token_file = "{token_file}"
     }
 
     #[test]
-    #[serial]
     fn test_entry_mode_rask_config_env_overlay_mounted_token_file() {
         // RASK_CONFIG has no ingest_token_file, but mounted env var RASK_INGEST_TOKEN_FILE has it
         let file = write_token_file("mounted-token-from-env");
         let toml_without_token =
             full_rask_toml("info", 10000, "").replace("ingest_token_file = \"\"\n", "");
-        unsafe {
-            std::env::set_var("RASK_CONFIG", &toml_without_token);
-            std::env::set_var("RASK_INGEST_TOKEN_FILE", file.path());
-        }
-        let res = Config::from_env();
-        unsafe {
-            std::env::remove_var("RASK_CONFIG");
-            std::env::remove_var("RASK_INGEST_TOKEN_FILE");
-        }
-        let config = res.expect("RASK_INGEST_TOKEN_FILE must overlay RASK_CONFIG");
+        let path_str = file.path().to_string_lossy().into_owned();
+        let config = Config::from_env_with(|k| match k {
+            "RASK_CONFIG" => Some(toml_without_token.clone()),
+            "RASK_INGEST_TOKEN_FILE" => Some(path_str.clone()),
+            _ => None,
+        })
+        .expect("RASK_INGEST_TOKEN_FILE must overlay RASK_CONFIG");
         assert_eq!(config.ingest_token, "mounted-token-from-env");
     }
 
     #[test]
-    #[serial]
     fn test_entry_mode_rask_config_missing_token_file_fails() {
         let toml_without_token =
             full_rask_toml("info", 10000, "").replace("ingest_token_file = \"\"\n", "");
-        unsafe {
-            std::env::set_var("RASK_CONFIG", &toml_without_token);
-            std::env::remove_var("RASK_INGEST_TOKEN_FILE");
-        }
-        let res = Config::from_env();
-        unsafe {
-            std::env::remove_var("RASK_CONFIG");
-        }
+        let res = Config::from_env_with(|k| match k {
+            "RASK_CONFIG" => Some(toml_without_token.clone()),
+            _ => None,
+        });
         assert!(res.is_err());
     }
 
     #[test]
-    #[serial]
     fn explicit_cli_default_batch_size_not_overwritten_by_rask_config() {
         let file = write_token_file("test-token");
-        unsafe {
-            std::env::set_var(
-                "RASK_CONFIG",
-                full_rask_toml("info", 42, file.path().to_str().unwrap()),
-            );
-        }
+        let toml = full_rask_toml("info", 42, file.path().to_str().unwrap());
 
-        let config = Config::from_args_and_env(["rask-log-forwarder", "--batch-size", "10000"])
+        let config =
+            Config::from_args_and_env_with(["rask-log-forwarder", "--batch-size", "10000"], |k| {
+                (k == "RASK_CONFIG").then(|| toml.clone())
+            })
             .expect("config should parse");
-
-        unsafe {
-            std::env::remove_var("RASK_CONFIG");
-        }
 
         assert_eq!(config.batch_size, 10000);
         assert_eq!(config.endpoint, "http://from-rask:9600/v1/aggregate");
     }
 
     #[test]
-    #[serial]
     fn rask_config_log_level_preserved_when_cli_omits_it() {
         let file = write_token_file("test-token");
-        unsafe {
-            std::env::set_var(
-                "RASK_CONFIG",
-                full_rask_toml("debug", 42, file.path().to_str().unwrap()),
-            );
-        }
+        let toml = full_rask_toml("debug", 42, file.path().to_str().unwrap());
 
-        let config =
-            Config::from_args_and_env(["rask-log-forwarder"]).expect("config should parse");
-
-        unsafe {
-            std::env::remove_var("RASK_CONFIG");
-        }
+        let config = Config::from_args_and_env_with(["rask-log-forwarder"], |k| {
+            (k == "RASK_CONFIG").then(|| toml.clone())
+        })
+        .expect("config should parse");
 
         assert_eq!(config.log_level, LogLevel::Debug);
     }

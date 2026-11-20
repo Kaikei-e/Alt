@@ -167,7 +167,7 @@ impl UniversalParser {
     }
 
     /// Validate input size to prevent DoS attacks and memory exhaustion
-    fn validate_input_size(&self, log_bytes: &[u8]) -> Result<(), ParseError> {
+    fn validate_input_size(log_bytes: &[u8]) -> Result<(), ParseError> {
         if log_bytes.len() > MAX_LOG_LINE_SIZE {
             return Err(ParseError::InvalidFormat(format!(
                 "Log line too large: {} bytes (max: {})",
@@ -181,10 +181,7 @@ impl UniversalParser {
     /// Validate UTF-8 and handle invalid sequences gracefully. Returns a
     /// borrowed `Cow` so the (common) valid-UTF-8 case costs no allocation -
     /// only genuinely invalid input pays for the lossy-replacement copy.
-    fn validate_utf8<'a>(
-        &self,
-        log_bytes: &'a [u8],
-    ) -> Result<std::borrow::Cow<'a, str>, ParseError> {
+    fn validate_utf8(log_bytes: &[u8]) -> Result<std::borrow::Cow<'_, str>, ParseError> {
         if log_bytes.is_empty() {
             return Err(ParseError::InvalidFormat("Empty log line".to_string()));
         }
@@ -202,7 +199,7 @@ impl UniversalParser {
     }
 
     /// Validate field size to prevent excessive memory usage
-    fn validate_field_size(&self, field: &str, field_name: &str) -> Result<(), ParseError> {
+    fn validate_field_size(field: &str, field_name: &str) -> Result<(), ParseError> {
         if field.len() > MAX_FIELD_SIZE {
             return Err(ParseError::InvalidFormat(format!(
                 "Field '{}' too large: {} bytes (max: {})",
@@ -266,13 +263,13 @@ impl UniversalParser {
         timestamp_hint: Option<chrono::DateTime<chrono::Utc>>,
     ) -> Result<EnrichedLogEntry, ParseError> {
         // Validate input size first
-        self.validate_input_size(log_bytes)?;
+        Self::validate_input_size(log_bytes)?;
 
         // Validate UTF-8 and get string representation
-        let raw_str = self.validate_utf8(log_bytes)?;
+        let raw_str = Self::validate_utf8(log_bytes)?;
 
         // Validate field sizes
-        self.validate_field_size(&raw_str, "log_line")?;
+        Self::validate_field_size(&raw_str, "log_line")?;
 
         // Check if this is already a Docker JSON format or raw application log
         let (log_content, stream, docker_timestamp) = match raw_str
@@ -285,9 +282,9 @@ impl UniversalParser {
                 let log = docker_entry.log.trim_end_matches('\n').to_string();
 
                 // Validate extracted fields
-                self.validate_field_size(&log, "log_content")?;
-                self.validate_field_size(&docker_entry.stream, "stream")?;
-                self.validate_field_size(&docker_entry.time, "timestamp")?;
+                Self::validate_field_size(&log, "log_content")?;
+                Self::validate_field_size(&docker_entry.stream, "stream")?;
+                Self::validate_field_size(&docker_entry.time, "timestamp")?;
 
                 // The demultiplexed frame wins when we have one: a payload that
                 // merely looks like json-file format (an application logging its
@@ -418,7 +415,7 @@ impl UniversalParser {
         })
     }
 
-    pub async fn parse_batch(
+    pub fn parse_batch(
         &self,
         log_lines: Vec<&[u8]>,
         container_info: &ContainerInfo,
@@ -478,23 +475,24 @@ impl UniversalParser {
         }
 
         // If regex patterns fail, use simple string parsing
-        if let Some(pos) = native_log.find('{') {
-            // Check if there's a timestamp-like pattern before the '{'
-            let prefix = &native_log[..pos];
-            if prefix.contains("T") && prefix.contains(":") && prefix.contains("-") {
-                return native_log[pos..].to_string();
-            }
+        if let Some(pos) = native_log.find('{')
+            && let Some(prefix) = native_log.get(..pos)
+            && let Some(rest) = native_log.get(pos..)
+            && prefix.contains('T')
+            && prefix.contains(':')
+            && prefix.contains('-')
+        {
+            return rest.to_string();
         }
 
         // If no JSON braces found, try to find where the timestamp ends
         // Look for common patterns after timestamps
         for &separator in &[" {", " [", " \"", "  "] {
-            if let Some(pos) = native_log.find(separator) {
-                let prefix = &native_log[..pos];
-                // Basic timestamp validation
-                if prefix.len() >= 19 && prefix.chars().nth(4) == Some('-') {
-                    return native_log[pos + separator.len()..].to_string();
-                }
+            if let Some((prefix, rest)) = native_log.split_once(separator)
+                && prefix.len() >= 19
+                && prefix.chars().nth(4) == Some('-')
+            {
+                return rest.to_string();
             }
         }
 
@@ -644,7 +642,7 @@ mod tests {
         let docker_log = r#"{"log":"test log\n","stream":"stdout","time":"2024-01-01T00:00:00Z"}"#;
         let log_lines: Vec<&[u8]> = vec![docker_log.as_bytes(); MAX_LOG_LINES_PER_BATCH + 1];
 
-        let results = parser.parse_batch(log_lines, &container_info).await;
+        let results = parser.parse_batch(log_lines, &container_info);
 
         // Should return a single error for the entire batch
         assert_eq!(results.len(), 1);
@@ -668,11 +666,11 @@ mod tests {
         let docker_log = r#"{"log":"test log\n","stream":"stdout","time":"2024-01-01T00:00:00Z"}"#;
         let log_lines: Vec<&[u8]> = vec![docker_log.as_bytes(); 10];
 
-        let results = parser.parse_batch(log_lines, &container_info).await;
+        let results = parser.parse_batch(log_lines, &container_info);
 
         // Should return results for all lines
         assert_eq!(results.len(), 10);
-        assert!(results.iter().all(|r| r.is_ok()));
+        assert!(results.iter().all(std::result::Result::is_ok));
     }
 
     #[test]

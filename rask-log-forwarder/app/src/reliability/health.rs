@@ -161,19 +161,17 @@ impl HealthMonitor {
 
     pub async fn get_component_health(&self, component: &str) -> ComponentHealth {
         let components = self.components.read().await;
-        components
-            .get(component)
-            .map(|state| state.health.clone())
-            .unwrap_or(ComponentHealth::Unhealthy(
-                "Component not found".to_string(),
-            ))
+        components.get(component).map_or(
+            ComponentHealth::Unhealthy("Component not found".to_string()),
+            |state| state.health.clone(),
+        )
     }
 
     pub async fn get_component_history(&self, component: &str) -> Vec<bool> {
         let components = self.components.read().await;
         components
             .get(component)
-            .map(|state| state.recent_checks.iter().cloned().collect())
+            .map(|state| state.recent_checks.iter().copied().collect())
             .unwrap_or_default()
     }
 

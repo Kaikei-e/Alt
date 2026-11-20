@@ -131,7 +131,7 @@ impl ClientStats {
 }
 
 impl HttpClient {
-    pub async fn new(config: ClientConfig) -> Result<Self, ClientError> {
+    pub fn new(config: ClientConfig) -> Result<Self, ClientError> {
         // Validate endpoint URL
         let endpoint_url: Url = config
             .endpoint
@@ -143,10 +143,10 @@ impl HttpClient {
             endpoint_url.clone()
         } else {
             let mut url = endpoint_url.clone();
-            if !url.path().ends_with('/') {
-                url.set_path(&format!("{}/v1/aggregate", url.path()));
-            } else {
+            if url.path().ends_with('/') {
                 url.set_path(&format!("{}v1/aggregate", url.path()));
+            } else {
+                url.set_path(&format!("{}/v1/aggregate", url.path()));
             }
             url
         };

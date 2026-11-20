@@ -8,6 +8,14 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::time;
 
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "test message counts fit within f64 mantissa for ratio check"
+)]
+fn calc_drop_ratio(dropped: u64, total: u64) -> f64 {
+    dropped as f64 / total as f64
+}
+
 #[tokio::test]
 async fn test_buffer_backpressure_handling() {
     let buffer = Arc::new(
@@ -19,7 +27,6 @@ async fn test_buffer_backpressure_handling() {
             backpressure_threshold: 0.5,
             backpressure_delay: Duration::from_millis(10),
         })
-        .await
         .unwrap(),
     ); // Small buffer
     let (backpressure_tx, mut backpressure_rx) = tokio::sync::mpsc::channel(1000);
@@ -71,8 +78,10 @@ async fn test_buffer_backpressure_handling() {
 
     // Buffer should not have excessive drops
     let metrics = buffer.metrics().snapshot();
-    let drop_ratio =
-        metrics.messages_dropped as f64 / (metrics.messages_sent + metrics.messages_dropped) as f64;
+    let drop_ratio = calc_drop_ratio(
+        metrics.messages_dropped,
+        metrics.messages_sent + metrics.messages_dropped,
+    );
     assert!(drop_ratio < 0.5, "Drop ratio too high: {drop_ratio:.2}");
 }
 
@@ -82,7 +91,7 @@ async fn test_adaptive_backpressure() {
         capacity: 100,
         ..Default::default()
     };
-    let buffer = Arc::new(LogBuffer::new_with_config(buffer_config).await.unwrap());
+    let buffer = Arc::new(LogBuffer::new_with_config(buffer_config).unwrap());
 
     // Test different backpressure strategies with smaller scope
     let strategies = vec![BackpressureStrategy::Drop, BackpressureStrategy::Yield];
@@ -93,13 +102,17 @@ async fn test_adaptive_backpressure() {
         // Fill buffer to capacity first
         for i in 0..100 {
             let log_entry = create_test_nginx_log(i);
-            let _ = buffer.push(log_entry);
+            if let Err(err) = buffer.push(log_entry) {
+                tracing::debug!("capacity fill stopped: {err}");
+            }
         }
 
         // Now try to push more with strategy
         for i in 100..120 {
             let log_entry = create_test_nginx_log(i);
-            let _ = buffer.push_with_strategy(log_entry, strategy).await;
+            if let Err(err) = buffer.push_with_strategy(log_entry, strategy).await {
+                tracing::debug!("backpressure strategy returned: {err}");
+            }
         }
 
         let metrics = buffer.metrics().snapshot();
@@ -229,7 +242,7 @@ async fn test_backpressure_triggers_correctly() {
         backpressure_threshold: 0.5, // 50% threshold
         backpressure_delay: Duration::from_millis(10),
     };
-    let buffer = Arc::new(LogBuffer::new_with_config(config).await.unwrap()); // Small buffer
+    let buffer = Arc::new(LogBuffer::new_with_config(config).unwrap()); // Small buffer
     let (sender, _receiver) = buffer.split().expect("Failed to split buffer");
 
     let mut success_count = 0;
@@ -277,7 +290,7 @@ async fn test_backpressure_delays_under_load() {
         backpressure_threshold: 0.8,
         backpressure_delay: Duration::from_millis(50), // Significant delay
     };
-    let buffer = Arc::new(LogBuffer::new_with_config(config).await.unwrap());
+    let buffer = Arc::new(LogBuffer::new_with_config(config).unwrap());
     let (sender, _receiver) = buffer.split().expect("Failed to split buffer");
 
     let start_time = std::time::Instant::now();
@@ -286,7 +299,9 @@ async fn test_backpressure_delays_under_load() {
     for i in 0..90 {
         // Should hit 80% threshold
         let entry = create_test_enriched_log(i);
-        let _ = sender.send(entry).await;
+        if let Err(err) = sender.send(entry).await {
+            tracing::debug!("backpressure send returned: {err}");
+        }
     }
 
     let elapsed = start_time.elapsed();
@@ -308,7 +323,7 @@ async fn test_no_backpressure_when_disabled() {
         backpressure_threshold: 0.5,
         backpressure_delay: Duration::from_millis(100),
     };
-    let buffer = LogBuffer::new_with_config(config).await.unwrap();
+    let buffer = LogBuffer::new_with_config(config).unwrap();
     let (sender, _receiver) = buffer.split().expect("Failed to split buffer");
 
     let start_time = std::time::Instant::now();
@@ -319,7 +334,7 @@ async fn test_no_backpressure_when_disabled() {
         let result = sender.send(entry).await;
 
         match result {
-            Ok(()) => continue,
+            Ok(()) => {}
             Err(BufferError::BufferFull) => {
                 // Expected when buffer is full
                 break;
@@ -347,27 +362,33 @@ async fn test_backpressure_recovery() {
         backpressure_threshold: 0.7,
         backpressure_delay: Duration::from_millis(1),
     };
-    let buffer = LogBuffer::new_with_config(config).await.unwrap();
+    let buffer = LogBuffer::new_with_config(config).unwrap();
     let (sender, mut receiver) = buffer.split().expect("Failed to split buffer");
 
     // Fill buffer to trigger backpressure
     for i in 0..80 {
         let entry = create_test_enriched_log(i);
-        let _ = sender.send(entry).await;
+        if let Err(err) = sender.send(entry).await {
+            tracing::debug!("backpressure fill send returned: {err}");
+        }
     }
 
     let metrics_before = buffer.metrics().snapshot();
 
     // Consume some entries to reduce pressure
     for _ in 0..30 {
-        let _ = receiver.recv_with_timeout(Duration::from_millis(10)).await;
+        if let Err(err) = receiver.recv_with_timeout(Duration::from_millis(10)).await {
+            tracing::debug!("drain recv_with_timeout returned: {err}");
+        }
     }
 
     // Now sending should be faster
     let start_time = std::time::Instant::now();
     for i in 80..85 {
         let entry = create_test_enriched_log(i);
-        let _ = sender.send(entry).await;
+        if let Err(err) = sender.send(entry).await {
+            tracing::debug!("post-drain send returned: {err}");
+        }
     }
     let elapsed = start_time.elapsed();
 

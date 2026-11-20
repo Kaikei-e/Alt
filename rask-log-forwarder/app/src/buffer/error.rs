@@ -174,17 +174,21 @@ impl BufferError {
 
     pub fn recovery_strategy(&self) -> ErrorRecovery {
         match self {
-            BufferError::BufferFull => ErrorRecovery::RetryWithFallback,
-            BufferError::SendTimeout | BufferError::ReceiveTimeout => ErrorRecovery::Retry,
-            BufferError::ConcurrencyError(_) => ErrorRecovery::Retry,
-            BufferError::BufferClosed | BufferError::Disconnected { .. } => ErrorRecovery::Fail,
-            BufferError::InvalidCapacity { .. } => ErrorRecovery::Fail,
-            BufferError::BufferPoisoned { .. } => ErrorRecovery::Fail,
-            BufferError::InitializationFailed { .. } => ErrorRecovery::Fail,
-            BufferError::ChannelConfigError { .. } => ErrorRecovery::Fail,
-            BufferError::MemoryAllocationFailed { .. } => ErrorRecovery::RetryWithFallback,
-            BufferError::BufferOverflow { .. } => ErrorRecovery::UseFallback,
-            BufferError::BufferUnderflow { .. } => ErrorRecovery::UseFallback,
+            BufferError::BufferFull | BufferError::MemoryAllocationFailed { .. } => {
+                ErrorRecovery::RetryWithFallback
+            }
+            BufferError::SendTimeout
+            | BufferError::ReceiveTimeout
+            | BufferError::ConcurrencyError(_) => ErrorRecovery::Retry,
+            BufferError::BufferClosed
+            | BufferError::Disconnected { .. }
+            | BufferError::InvalidCapacity { .. }
+            | BufferError::BufferPoisoned { .. }
+            | BufferError::InitializationFailed { .. }
+            | BufferError::ChannelConfigError { .. } => ErrorRecovery::Fail,
+            BufferError::BufferOverflow { .. } | BufferError::BufferUnderflow { .. } => {
+                ErrorRecovery::UseFallback
+            }
             BufferError::OperationFailed { .. } => ErrorRecovery::Skip,
         }
     }
@@ -233,29 +237,29 @@ impl MetricsError {
 impl ParseError {
     pub fn is_recoverable(&self) -> bool {
         match self {
-            ParseError::EmptyInput => true,
-            ParseError::TooLong { .. } => true,
-            ParseError::InvalidCharacter { .. } => true,
-            ParseError::Overflow { .. } => true,
-            ParseError::Underflow { .. } => true,
-            ParseError::InvalidFormat { .. } => true,
-            ParseError::MissingField { .. } => true,
-            ParseError::ConversionError { .. } => true,
-            ParseError::ParseTimeout { .. } => true,
+            ParseError::EmptyInput
+            | ParseError::TooLong { .. }
+            | ParseError::InvalidCharacter { .. }
+            | ParseError::Overflow { .. }
+            | ParseError::Underflow { .. }
+            | ParseError::InvalidFormat { .. }
+            | ParseError::MissingField { .. }
+            | ParseError::ConversionError { .. }
+            | ParseError::ParseTimeout { .. } => true,
             ParseError::InitializationFailed { .. } => false,
         }
     }
 
     pub fn recovery_strategy(&self) -> ErrorRecovery {
         match self {
-            ParseError::EmptyInput => ErrorRecovery::UseFallback,
-            ParseError::TooLong { .. } => ErrorRecovery::UseFallback,
-            ParseError::InvalidCharacter { .. } => ErrorRecovery::UseFallback,
-            ParseError::Overflow { .. } => ErrorRecovery::UseFallback,
-            ParseError::Underflow { .. } => ErrorRecovery::UseFallback,
-            ParseError::InvalidFormat { .. } => ErrorRecovery::UseFallback,
-            ParseError::MissingField { .. } => ErrorRecovery::UseFallback,
-            ParseError::ConversionError { .. } => ErrorRecovery::UseFallback,
+            ParseError::EmptyInput
+            | ParseError::TooLong { .. }
+            | ParseError::InvalidCharacter { .. }
+            | ParseError::Overflow { .. }
+            | ParseError::Underflow { .. }
+            | ParseError::InvalidFormat { .. }
+            | ParseError::MissingField { .. }
+            | ParseError::ConversionError { .. } => ErrorRecovery::UseFallback,
             ParseError::ParseTimeout { .. } => ErrorRecovery::Retry,
             ParseError::InitializationFailed { .. } => ErrorRecovery::Fail,
         }
@@ -409,7 +413,7 @@ mod tests {
 
         assert!(
             !MetricsError::InvalidName {
-                name: "".to_string(),
+                name: String::new(),
                 reason: "empty".to_string()
             }
             .is_recoverable()
@@ -465,7 +469,7 @@ mod tests {
         // Test failing operation
         let result: Result<&str, MetricsError> = safe_metrics_operation(|| {
             Err(MetricsError::InvalidName {
-                name: "".to_string(),
+                name: String::new(),
                 reason: "empty".to_string(),
             })
         });

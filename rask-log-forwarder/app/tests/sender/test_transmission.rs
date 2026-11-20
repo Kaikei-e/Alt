@@ -37,20 +37,17 @@ async fn test_transmitter_creation() {
         ..Default::default()
     };
 
-    let result = HttpClient::new(config).await;
+    let result = HttpClient::new(config);
 
-    match result {
-        Ok(client) => {
-            let transmitter = BatchTransmitter::new(client);
-            // Should create transmitter successfully
-            assert_eq!(
-                transmitter.client.endpoint(),
-                "http://localhost:9600/v1/aggregate"
-            );
-        }
-        Err(_) => {
-            // Expected when server is not available
-        }
+    if let Ok(client) = result {
+        let transmitter = BatchTransmitter::new(client);
+        // Should create transmitter successfully
+        assert_eq!(
+            transmitter.client.endpoint(),
+            "http://localhost:9600/v1/aggregate"
+        );
+    } else {
+        // Expected when server is not available
     }
 }
 
@@ -64,31 +61,28 @@ async fn test_payload_preparation() {
         ..Default::default()
     };
 
-    let result = HttpClient::new(config).await;
+    let result = HttpClient::new(config);
 
-    match result {
-        Ok(client) => {
-            let transmitter = BatchTransmitter::new(client);
-            let entries = vec![create_test_entry("Test transmission")];
-            let batch = Batch::new(entries, BatchType::SizeBased);
+    if let Ok(client) = result {
+        let transmitter = BatchTransmitter::new(client);
+        let entries = vec![create_test_entry("Test transmission")];
+        let batch = Batch::new(entries, BatchType::SizeBased);
 
-            // Test uncompressed payload
-            let payload = transmitter
-                .prepare_payload(&batch, false)
-                .expect("Failed to prepare payload");
-            assert!(!payload.is_empty());
+        // Test uncompressed payload
+        let payload = transmitter
+            .prepare_payload(&batch, false)
+            .expect("Failed to prepare payload");
+        assert_ne!(payload, [] as [u8; 0]);
 
-            // Verify it's valid NDJSON
-            let payload_str = String::from_utf8(payload).expect("Invalid UTF-8 in payload");
-            let lines: Vec<&str> = payload_str.lines().collect();
-            assert_eq!(lines.len(), 1);
+        // Verify it's valid NDJSON
+        let payload_str = String::from_utf8(payload).expect("Invalid UTF-8 in payload");
+        let lines: Vec<&str> = payload_str.lines().collect();
+        assert_eq!(lines.len(), 1);
 
-            let parsed: serde_json::Value = serde_json::from_str(lines[0]).expect("Invalid JSON");
-            assert_eq!(parsed["message"], "Test transmission");
-        }
-        Err(_) => {
-            // Expected when server is not available
-        }
+        let parsed: serde_json::Value = serde_json::from_str(lines[0]).expect("Invalid JSON");
+        assert_eq!(parsed["message"], "Test transmission");
+    } else {
+        // Expected when server is not available
     }
 }
 
@@ -102,32 +96,29 @@ async fn test_compression() {
         ..Default::default()
     };
 
-    let result = HttpClient::new(config).await;
+    let result = HttpClient::new(config);
 
-    match result {
-        Ok(client) => {
-            let transmitter = BatchTransmitter::new(client);
-            let entries: Vec<_> = (0..1000)
-                .map(|i| create_test_entry(&format!("Compression test message {i}")))
-                .collect();
+    if let Ok(client) = result {
+        let transmitter = BatchTransmitter::new(client);
+        let entries: Vec<_> = (0..1000)
+            .map(|i| create_test_entry(&format!("Compression test message {i}")))
+            .collect();
 
-            let batch = Batch::new(entries, BatchType::SizeBased);
+        let batch = Batch::new(entries, BatchType::SizeBased);
 
-            // Test both compressed and uncompressed
-            let uncompressed = transmitter
-                .prepare_payload(&batch, false)
-                .expect("Failed to prepare uncompressed payload");
-            let compressed = transmitter
-                .prepare_payload(&batch, true)
-                .expect("Failed to prepare compressed payload");
+        // Test both compressed and uncompressed
+        let uncompressed = transmitter
+            .prepare_payload(&batch, false)
+            .expect("Failed to prepare uncompressed payload");
+        let compressed = transmitter
+            .prepare_payload(&batch, true)
+            .expect("Failed to prepare compressed payload");
 
-            // Compressed should be smaller
-            assert!(compressed.len() < uncompressed.len());
-            assert!(!compressed.is_empty());
-        }
-        Err(_) => {
-            // Expected when server is not available
-        }
+        // Compressed should be smaller
+        assert!(compressed.len() < uncompressed.len());
+        assert_ne!(compressed, [] as [u8; 0]);
+    } else {
+        // Expected when server is not available
     }
 }
 
@@ -141,69 +132,66 @@ async fn test_header_building() {
         ..Default::default()
     };
 
-    let result = HttpClient::new(config).await;
+    let result = HttpClient::new(config);
 
-    match result {
-        Ok(client) => {
-            let transmitter = BatchTransmitter::new(client);
-            let entries = vec![create_test_entry("Header test")];
-            let batch = Batch::new(entries, BatchType::TimeBased);
+    if let Ok(client) = result {
+        let transmitter = BatchTransmitter::new(client);
+        let entries = vec![create_test_entry("Header test")];
+        let batch = Batch::new(entries, BatchType::TimeBased);
 
-            let headers = transmitter
-                .build_headers(&batch, false)
-                .expect("Failed to build headers");
+        let headers = transmitter
+            .build_headers(&batch, false)
+            .expect("Failed to build headers");
 
-            // Check required headers
-            assert_eq!(
-                headers
-                    .get("content-type")
-                    .expect("Missing content-type header")
-                    .to_str()
-                    .expect("Invalid header value"),
-                "application/x-ndjson"
-            );
-            assert_eq!(
-                headers
-                    .get("x-batch-id")
-                    .expect("Missing batch-id header")
-                    .to_str()
-                    .expect("Invalid header value"),
-                batch.id()
-            );
-            assert_eq!(
-                headers
-                    .get("x-batch-size")
-                    .expect("Missing batch-size header")
-                    .to_str()
-                    .expect("Invalid header value"),
-                "1"
-            );
-            assert!(
-                headers
-                    .get("user-agent")
-                    .expect("Missing user-agent header")
-                    .to_str()
-                    .expect("Invalid header value")
-                    .contains("test-forwarder")
-            );
-            assert!(headers.contains_key("x-forwarder-version"));
+        // Check required headers
+        assert_eq!(
+            headers
+                .get("content-type")
+                .expect("Missing content-type header")
+                .to_str()
+                .expect("Invalid header value"),
+            "application/x-ndjson"
+        );
+        assert_eq!(
+            headers
+                .get("x-batch-id")
+                .expect("Missing batch-id header")
+                .to_str()
+                .expect("Invalid header value"),
+            batch.id()
+        );
+        assert_eq!(
+            headers
+                .get("x-batch-size")
+                .expect("Missing batch-size header")
+                .to_str()
+                .expect("Invalid header value"),
+            "1"
+        );
+        assert!(
+            headers
+                .get("user-agent")
+                .expect("Missing user-agent header")
+                .to_str()
+                .expect("Invalid header value")
+                .contains("test-forwarder")
+        );
+        assert!(headers.contains_key("x-forwarder-version"));
 
-            // Test with compression
-            let headers_compressed = transmitter
-                .build_headers(&batch, true)
-                .expect("Failed to build compressed headers");
-            assert_eq!(
-                headers_compressed
-                    .get("content-encoding")
-                    .expect("Missing content-encoding header")
-                    .to_str()
-                    .expect("Invalid header value"),
-                "gzip"
-            );
-        }
-        Err(_) => {
-            // Expected when server is not available
-        }
+        // Test with compression
+        let headers_compressed = transmitter
+            .build_headers(&batch, true)
+            .expect("Failed to build compressed headers");
+        assert_eq!(
+            headers_compressed
+                .get("content-encoding")
+                .expect("Missing content-encoding header")
+                .to_str()
+                .expect("Invalid header value"),
+            "gzip"
+        );
+    } else {
+        // Expected when server is not available
     }
 }
 
@@ -216,36 +204,33 @@ async fn test_large_batch_payload() {
         ..Default::default()
     };
 
-    let result = HttpClient::new(config).await;
+    let result = HttpClient::new(config);
 
-    match result {
-        Ok(client) => {
-            let transmitter = BatchTransmitter::new(client);
+    if let Ok(client) = result {
+        let transmitter = BatchTransmitter::new(client);
 
-            // Create 10K entries
-            let entries: Vec<_> = (0..10000)
-                .map(|i| create_test_entry(&format!("Large batch entry {i}")))
-                .collect();
+        // Create 10K entries
+        let entries: Vec<_> = (0..10000)
+            .map(|i| create_test_entry(&format!("Large batch entry {i}")))
+            .collect();
 
-            let batch = Batch::new(entries, BatchType::SizeBased);
+        let batch = Batch::new(entries, BatchType::SizeBased);
 
-            // Test payload preparation for large batch
-            let payload = transmitter
-                .prepare_payload(&batch, false)
-                .expect("Failed to prepare large payload");
+        // Test payload preparation for large batch
+        let payload = transmitter
+            .prepare_payload(&batch, false)
+            .expect("Failed to prepare large payload");
 
-            // Should handle large payloads efficiently
-            assert!(payload.len() > 1_000_000); // >1MB
-            assert!(payload.len() < 50_000_000); // <50MB (reasonable for 10K entries)
+        // Should handle large payloads efficiently
+        assert!(payload.len() > 1_000_000); // >1MB
+        assert!(payload.len() < 50_000_000); // <50MB (reasonable for 10K entries)
 
-            // Verify structure
-            let payload_str = String::from_utf8(payload).expect("Invalid UTF-8 in large payload");
-            let lines: Vec<&str> = payload_str.lines().collect();
-            assert_eq!(lines.len(), 10000);
-        }
-        Err(_) => {
-            // Expected when server is not available
-        }
+        // Verify structure
+        let payload_str = String::from_utf8(payload).expect("Invalid UTF-8 in large payload");
+        let lines: Vec<&str> = payload_str.lines().collect();
+        assert_eq!(lines.len(), 10000);
+    } else {
+        // Expected when server is not available
     }
 }
 
@@ -256,33 +241,30 @@ async fn test_batch_metadata_headers() {
         ..Default::default()
     };
 
-    let result = HttpClient::new(config).await;
+    let result = HttpClient::new(config);
 
-    match result {
-        Ok(client) => {
-            let transmitter = BatchTransmitter::new(client);
-            let entries = vec![create_test_entry("Metadata test")];
-            let batch = Batch::new(entries, BatchType::MemoryBased);
+    if let Ok(client) = result {
+        let transmitter = BatchTransmitter::new(client);
+        let entries = vec![create_test_entry("Metadata test")];
+        let batch = Batch::new(entries, BatchType::MemoryBased);
 
-            let headers = transmitter
-                .build_headers(&batch, false)
-                .expect("Failed to build metadata headers");
+        let headers = transmitter
+            .build_headers(&batch, false)
+            .expect("Failed to build metadata headers");
 
-            // Check batch metadata headers
-            assert_eq!(
-                headers
-                    .get("x-batch-type")
-                    .expect("Missing batch-type header")
-                    .to_str()
-                    .expect("Invalid header value"),
-                "MemoryBased"
-            );
-            assert!(headers.get("x-batch-id").is_some());
-            assert!(headers.get("x-forwarder-version").is_some());
-        }
-        Err(_) => {
-            // Expected when server is not available
-        }
+        // Check batch metadata headers
+        assert_eq!(
+            headers
+                .get("x-batch-type")
+                .expect("Missing batch-type header")
+                .to_str()
+                .expect("Invalid header value"),
+            "MemoryBased"
+        );
+        assert!(headers.get("x-batch-id").is_some());
+        assert!(headers.get("x-forwarder-version").is_some());
+    } else {
+        // Expected when server is not available
     }
 }
 
@@ -293,19 +275,16 @@ async fn test_empty_batch_handling() {
         ..Default::default()
     };
 
-    let result = HttpClient::new(config).await;
+    let result = HttpClient::new(config);
 
-    match result {
-        Ok(client) => {
-            let transmitter = BatchTransmitter::new(client);
-            let batch = Batch::new(vec![], BatchType::SizeBased);
+    if let Ok(client) = result {
+        let transmitter = BatchTransmitter::new(client);
+        let batch = Batch::new(vec![], BatchType::SizeBased);
 
-            // Should fail to prepare payload for empty batch
-            let result = transmitter.prepare_payload(&batch, false);
-            assert!(result.is_err());
-        }
-        Err(_) => {
-            // Expected when server is not available
-        }
+        // Should fail to prepare payload for empty batch
+        let result = transmitter.prepare_payload(&batch, false);
+        assert!(result.is_err());
+    } else {
+        // Expected when server is not available
     }
 }

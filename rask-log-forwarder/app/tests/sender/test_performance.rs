@@ -32,25 +32,22 @@ fn create_test_entry(message: &str) -> EnrichedLogEntry {
 async fn test_latency_measurement() {
     let config = ClientConfig::default();
 
-    let result = HttpClient::new(config).await;
+    let result = HttpClient::new(config);
 
-    match result {
-        Ok(client) => {
-            let transmitter = BatchTransmitter::new(client);
-            let entries = vec![create_test_entry("Latency test")];
-            let batch = Batch::new(entries, BatchType::SizeBased);
+    if let Ok(client) = result {
+        let transmitter = BatchTransmitter::new(client);
+        let entries = vec![create_test_entry("Latency test")];
+        let batch = Batch::new(entries, BatchType::SizeBased);
 
-            // Measure transmission preparation time
-            let start = Instant::now();
-            let _payload = transmitter.prepare_payload(&batch, false).unwrap();
-            let preparation_time = start.elapsed();
+        // Measure transmission preparation time
+        let start = Instant::now();
+        let _payload = transmitter.prepare_payload(&batch, false).unwrap();
+        let preparation_time = start.elapsed();
 
-            // Should be fast for small batches (more lenient for CI)
-            assert!(preparation_time < Duration::from_millis(100));
-        }
-        Err(_) => {
-            // Expected when server is not available
-        }
+        // Should be fast for small batches (more lenient for CI)
+        assert!(preparation_time < Duration::from_millis(100));
+    } else {
+        // Expected when server is not available
     }
 }
 
@@ -121,42 +118,39 @@ async fn test_concurrent_transmissions() {
         ..Default::default()
     };
 
-    let result = HttpClient::new(config).await;
+    let result = HttpClient::new(config);
 
-    match result {
-        Ok(client) => {
-            let client = Arc::new(client);
+    if let Ok(client) = result {
+        let client = Arc::new(client);
 
-            // Spawn multiple transmission preparation tasks
-            let mut handles = vec![];
+        // Spawn multiple transmission preparation tasks
+        let mut handles = vec![];
 
-            for i in 0..5 {
-                let client_clone = client.clone();
-                let handle = tokio::spawn(async move {
-                    let transmitter = BatchTransmitter::new((*client_clone).clone());
+        for i in 0..5 {
+            let client_clone = client.clone();
+            let handle = tokio::spawn(async move {
+                let transmitter = BatchTransmitter::new((*client_clone).clone());
 
-                    let entries = vec![create_test_entry(&format!("Concurrent test {i}"))];
-                    let batch = Batch::new(entries, BatchType::SizeBased);
+                let entries = vec![create_test_entry(&format!("Concurrent test {i}"))];
+                let batch = Batch::new(entries, BatchType::SizeBased);
 
-                    // Test payload preparation (no actual transmission)
-                    transmitter.prepare_payload(&batch, false).unwrap()
-                });
-                handles.push(handle);
-            }
-
-            // Wait for all tasks to complete
-            for handle in handles {
-                let payload = handle.await.unwrap();
-                assert!(!payload.is_empty());
-            }
-
-            // Check connection stats
-            let stats = client.connection_stats();
-            assert_eq!(stats.max_connections, 10);
+                // Test payload preparation (no actual transmission)
+                transmitter.prepare_payload(&batch, false).unwrap()
+            });
+            handles.push(handle);
         }
-        Err(_) => {
-            // Expected when server is not available
+
+        // Wait for all tasks to complete
+        for handle in handles {
+            let payload = handle.await.unwrap();
+            assert_ne!(payload, [] as [u8; 0]);
         }
+
+        // Check connection stats
+        let stats = client.connection_stats();
+        assert_eq!(stats.max_connections, 10);
+    } else {
+        // Expected when server is not available
     }
 }
 
@@ -164,40 +158,37 @@ async fn test_concurrent_transmissions() {
 async fn test_large_batch_performance() {
     let config = ClientConfig::default();
 
-    let result = HttpClient::new(config).await;
+    let result = HttpClient::new(config);
 
-    match result {
-        Ok(client) => {
-            let transmitter = BatchTransmitter::new(client);
+    if let Ok(client) = result {
+        let transmitter = BatchTransmitter::new(client);
 
-            // Create 10K entries
-            let entries: Vec<_> = (0..10000)
-                .map(|i| create_test_entry(&format!("Performance test entry {i}")))
-                .collect();
+        // Create 10K entries
+        let entries: Vec<_> = (0..10000)
+            .map(|i| create_test_entry(&format!("Performance test entry {i}")))
+            .collect();
 
-            let batch = Batch::new(entries, BatchType::SizeBased);
+        let batch = Batch::new(entries, BatchType::SizeBased);
 
-            // Test serialization performance
-            let start = Instant::now();
-            let payload = transmitter.prepare_payload(&batch, false).unwrap();
-            let serialization_time = start.elapsed();
+        // Test serialization performance
+        let start = Instant::now();
+        let payload = transmitter.prepare_payload(&batch, false).unwrap();
+        let serialization_time = start.elapsed();
 
-            // Should serialize 10K entries reasonably quickly
-            assert!(serialization_time < Duration::from_millis(1000));
-            assert!(!payload.is_empty());
+        // Should serialize 10K entries reasonably quickly
+        assert!(serialization_time < Duration::from_millis(1000));
+        assert_ne!(payload, [] as [u8; 0]);
 
-            // Test with compression
-            let start = Instant::now();
-            let compressed_payload = transmitter.prepare_payload(&batch, true).unwrap();
-            let compression_time = start.elapsed();
+        // Test with compression
+        let start = Instant::now();
+        let compressed_payload = transmitter.prepare_payload(&batch, true).unwrap();
+        let compression_time = start.elapsed();
 
-            // Compression should be reasonably fast
-            assert!(compression_time < Duration::from_millis(2000));
-            assert!(compressed_payload.len() < payload.len());
-        }
-        Err(_) => {
-            // Expected when server is not available
-        }
+        // Compression should be reasonably fast
+        assert!(compression_time < Duration::from_millis(2000));
+        assert!(compressed_payload.len() < payload.len());
+    } else {
+        // Expected when server is not available
     }
 }
 
@@ -205,31 +196,28 @@ async fn test_large_batch_performance() {
 async fn test_memory_efficiency() {
     let config = ClientConfig::default();
 
-    let result = HttpClient::new(config).await;
+    let result = HttpClient::new(config);
 
-    match result {
-        Ok(client) => {
-            let transmitter = BatchTransmitter::new(client);
+    if let Ok(client) = result {
+        let transmitter = BatchTransmitter::new(client);
 
-            // Test multiple batches to ensure no memory leaks
-            for i in 0..10 {
-                let entries = (0..1000)
-                    .map(|j| create_test_entry(&format!("Memory test batch {i} entry {j}")))
-                    .collect();
+        // Test multiple batches to ensure no memory leaks
+        for i in 0..10 {
+            let entries = (0..1000)
+                .map(|j| create_test_entry(&format!("Memory test batch {i} entry {j}")))
+                .collect();
 
-                let batch = Batch::new(entries, BatchType::SizeBased);
-                let _payload = transmitter.prepare_payload(&batch, false).unwrap();
+            let batch = Batch::new(entries, BatchType::SizeBased);
+            let _payload = transmitter.prepare_payload(&batch, false).unwrap();
 
-                // Force garbage collection opportunity
-                tokio::task::yield_now().await;
-            }
-
-            // Memory usage should remain stable
-            // (In a real test environment, you'd measure actual memory usage)
+            // Force garbage collection opportunity
+            tokio::task::yield_now().await;
         }
-        Err(_) => {
-            // Expected when server is not available
-        }
+
+        // Memory usage should remain stable
+        // (In a real test environment, you'd measure actual memory usage)
+    } else {
+        // Expected when server is not available
     }
 }
 

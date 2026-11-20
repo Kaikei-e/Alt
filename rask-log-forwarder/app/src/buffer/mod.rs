@@ -26,13 +26,13 @@ pub struct BufferManager {
 }
 
 impl BufferManager {
-    pub async fn new(
+    pub fn new(
         buffer_config: BufferConfig,
         batch_config: BatchConfig,
         memory_config: MemoryConfig,
     ) -> Result<Self, BufferError> {
         Ok(Self {
-            buffer: LogBuffer::new_with_config(buffer_config).await?,
+            buffer: LogBuffer::new_with_config(buffer_config)?,
             batch_former: BatchFormer::new(batch_config),
             memory_manager: MemoryManager::new(memory_config),
         })

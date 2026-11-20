@@ -12,7 +12,7 @@ async fn test_basic_queue_operations() {
         ..Default::default()
     };
 
-    let buffer = LogBuffer::new_with_config(config).await.unwrap();
+    let buffer = LogBuffer::new_with_config(config).unwrap();
     let (sender, mut receiver) = buffer.split().expect("Failed to split buffer");
 
     // Create test log entry
@@ -22,12 +22,12 @@ async fn test_basic_queue_operations() {
     sender.send(log_entry.clone()).await.unwrap();
 
     // Receive log entry
-    let received = timeout(Duration::from_millis(100), receiver.recv())
+    let recv_entry = timeout(Duration::from_millis(100), receiver.recv())
         .await
         .unwrap()
         .unwrap();
 
-    assert_eq!(received.message, "test message");
+    assert_eq!(recv_entry.message, "test message");
 }
 
 #[tokio::test]
@@ -39,7 +39,7 @@ async fn test_high_throughput_operations() {
         ..Default::default()
     };
 
-    let buffer = LogBuffer::new_with_config(config).await.unwrap();
+    let buffer = LogBuffer::new_with_config(config).unwrap();
     let (sender, mut receiver) = buffer.split().expect("Failed to split buffer");
 
     let sender = Arc::new(sender);
@@ -83,7 +83,7 @@ async fn test_buffer_capacity_limits() {
         ..Default::default()
     };
 
-    let buffer = LogBuffer::new_with_config(config).await.unwrap();
+    let buffer = LogBuffer::new_with_config(config).unwrap();
     let (sender, _receiver) = buffer.split().expect("Failed to split buffer");
 
     // Fill buffer to capacity
@@ -109,7 +109,7 @@ async fn test_buffer_metrics() {
         ..Default::default()
     };
 
-    let buffer = LogBuffer::new_with_config(config).await.unwrap();
+    let buffer = LogBuffer::new_with_config(config).unwrap();
     let metrics = buffer.metrics();
     let (sender, mut receiver) = buffer.split().expect("Failed to split buffer");
 

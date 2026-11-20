@@ -1,23 +1,23 @@
 use super::fixture::{EnvGuard, create_token_in_temp_dir};
+use rask_log_forwarder::app::config::{DiskFallbackConfig, MetricsConfig, Protocol, RetryConfig};
 use rask_log_forwarder::app::{Config, LogLevel};
-use serial_test::serial;
-use std::{env, path::PathBuf, time::Duration};
+use std::{path::PathBuf, time::Duration};
 use tempfile::TempDir;
 
 // Helper function to create test config with temporary disk fallback directory.
 // The token file is written inside temp_dir so it persists for the lifetime of
 // the returned TempDir (callers must keep the TempDir alive).
-fn create_test_config_with_temp_dir() -> (Config, TempDir) {
-    let temp_dir = TempDir::new().unwrap();
+fn create_test_config_with_temp_dir() -> Result<(Config, TempDir), std::io::Error> {
+    let temp_dir = TempDir::new()?;
     let token_path = temp_dir.path().join("ingest_token");
-    std::fs::write(&token_path, "test-token").unwrap();
+    std::fs::write(&token_path, "test-token")?;
     let config = Config {
         ingest_token_file: Some(token_path),
         ingest_token: "test-token".to_string(),
         ..Default::default()
     };
 
-    (config, temp_dir)
+    Ok((config, temp_dir))
 }
 
 // Helper to disable disk fallback for simple tests
@@ -27,10 +27,9 @@ fn create_test_config_no_disk() -> Config {
 }
 
 #[test]
-#[serial]
 fn test_config_from_args() {
-    let _guard = EnvGuard::new();
-    let (token_path, _token_dir) = create_token_in_temp_dir("test-token");
+    let guard = EnvGuard::new();
+    let (token_path, _token_dir) = create_token_in_temp_dir("test-token").unwrap();
 
     let args = vec![
         "rask-log-forwarder",
@@ -48,7 +47,7 @@ fn test_config_from_args() {
         token_path.to_str().unwrap(),
     ];
 
-    let config = Config::from_args(args).unwrap();
+    let config = Config::from_args_and_env_with(args, guard.lookup()).unwrap();
 
     assert_eq!(config.target_service, Some("nginx".to_string()));
     assert_eq!(
@@ -61,19 +60,18 @@ fn test_config_from_args() {
 }
 
 #[test]
-#[serial]
 fn test_config_from_environment() {
-    let _guard = EnvGuard::new();
-    let (token_path, _token_dir) = create_token_in_temp_dir("valid-token-for-tests");
+    let mut guard = EnvGuard::new();
+    let (token_path, _token_dir) = create_token_in_temp_dir("valid-token-for-tests").unwrap();
 
-    _guard.set_var("RASK_INGEST_TOKEN_FILE", &token_path);
-    _guard.set_var("TARGET_SERVICE", "alt-backend");
-    _guard.set_var("RASK_ENDPOINT", "http://test-aggregator:9600/v1/aggregate");
-    _guard.set_var("BATCH_SIZE", "15000");
-    _guard.set_var("LOG_LEVEL", "warn");
-    _guard.set_var("ENABLE_DISK_FALLBACK", "false");
+    guard.set_var("RASK_INGEST_TOKEN_FILE", &token_path);
+    guard.set_var("TARGET_SERVICE", "alt-backend");
+    guard.set_var("RASK_ENDPOINT", "http://test-aggregator:9600/v1/aggregate");
+    guard.set_var("BATCH_SIZE", "15000");
+    guard.set_var("LOG_LEVEL", "warn");
+    guard.set_var("ENABLE_DISK_FALLBACK", "false");
 
-    let config = Config::from_env().unwrap();
+    let config = Config::from_env_with(guard.lookup()).unwrap();
 
     assert_eq!(config.target_service, Some("alt-backend".to_string()));
     assert_eq!(config.endpoint, "http://test-aggregator:9600/v1/aggregate");
@@ -84,7 +82,7 @@ fn test_config_from_environment() {
 
 #[test]
 fn test_config_validation() {
-    let (mut config, _temp_dir) = create_test_config_with_temp_dir();
+    let (mut config, _temp_dir) = create_test_config_with_temp_dir().unwrap();
 
     // Valid config should pass
     config.validate().unwrap();
@@ -105,10 +103,9 @@ fn test_config_validation() {
 }
 
 #[test]
-#[serial]
 fn test_config_file_loading() {
     let _guard = EnvGuard::new();
-    let (token_path, _token_dir) = create_token_in_temp_dir("test-token");
+    let (token_path, _token_dir) = create_token_in_temp_dir("test-token").unwrap();
     let token_path_str = token_path.to_str().unwrap().replace('\\', "/");
 
     let temp_dir = TempDir::new().unwrap();
@@ -146,36 +143,35 @@ ingest_token_file = "{token_path_str}"
 }
 
 #[test]
-#[serial]
 fn test_hostname_based_service_detection() {
-    let _guard = EnvGuard::new();
-    let (token_path, _token_dir) = create_token_in_temp_dir("valid-token-for-tests");
-    _guard.set_var("RASK_INGEST_TOKEN_FILE", &token_path);
+    let mut guard = EnvGuard::new();
+    let (token_path, _token_dir) = create_token_in_temp_dir("valid-token-for-tests").unwrap();
+    guard.set_var("RASK_INGEST_TOKEN_FILE", &token_path);
 
     // Test hostname pattern
-    let config = Config::detect_service_from_hostname("nginx-logs").unwrap();
+    let config = Config::detect_service_from_hostname_with("nginx-logs", guard.lookup()).unwrap();
     assert_eq!(config.target_service, Some("nginx".to_string()));
 
-    let config = Config::detect_service_from_hostname("alt-backend-logs").unwrap();
+    let config =
+        Config::detect_service_from_hostname_with("alt-backend-logs", guard.lookup()).unwrap();
     assert_eq!(config.target_service, Some("alt-backend".to_string()));
 
-    let config = Config::detect_service_from_hostname("db-logs").unwrap();
+    let config = Config::detect_service_from_hostname_with("db-logs", guard.lookup()).unwrap();
     assert_eq!(config.target_service, Some("db".to_string()));
 
     // Invalid hostname should fail
-    let result = Config::detect_service_from_hostname("invalid-hostname");
+    let result = Config::detect_service_from_hostname_with("invalid-hostname", guard.lookup());
     assert!(result.is_err());
 }
 
 #[test]
-#[serial]
 fn test_config_auto_detect_service() {
-    let _guard = EnvGuard::new();
-    let (token_path, _token_dir) = create_token_in_temp_dir("valid-token-for-tests");
+    let mut guard = EnvGuard::new();
+    let (token_path, _token_dir) = create_token_in_temp_dir("valid-token-for-tests").unwrap();
 
     // Verify environment is clean
     assert!(
-        env::var("TARGET_SERVICE").is_err(),
+        guard.get("TARGET_SERVICE").is_none(),
         "TARGET_SERVICE should not be set before test"
     );
 
@@ -186,31 +182,31 @@ fn test_config_auto_detect_service() {
     };
 
     // Set environment variable
-    _guard.set_var("TARGET_SERVICE", "test-service");
+    guard.set_var("TARGET_SERVICE", "test-service");
 
     // Verify environment variable is set
     assert_eq!(
-        env::var("TARGET_SERVICE").unwrap(),
-        "test-service",
+        guard.get("TARGET_SERVICE"),
+        Some("test-service"),
         "TARGET_SERVICE should be set"
     );
 
     // Test auto-detection with environment variable
-    config.auto_detect_service().unwrap();
+    config.auto_detect_service_with(guard.lookup()).unwrap();
     assert_eq!(config.target_service, Some("test-service".to_string()));
 
     // Clean up after test
-    _guard.remove_var("TARGET_SERVICE");
+    guard.remove_var("TARGET_SERVICE");
 
     // Verify cleanup
     assert!(
-        env::var("TARGET_SERVICE").is_err(),
+        guard.get("TARGET_SERVICE").is_none(),
         "TARGET_SERVICE should be cleaned up after test"
     );
 
     // Test auto-detection without environment variable (should fail or use hostname)
     let mut config2 = Config::default();
-    let result = config2.auto_detect_service();
+    let result = config2.auto_detect_service_with(guard.lookup());
 
     // In CI environment, this might fail if hostname doesn't match pattern
     // We'll accept either success (if hostname matches) or failure (if it doesn't)
@@ -236,7 +232,7 @@ fn test_config_auto_detect_service() {
 #[test]
 #[allow(clippy::field_reassign_with_default)]
 fn test_config_post_process() {
-    let (token_path, _token_dir) = create_token_in_temp_dir("valid-token-for-tests");
+    let (token_path, _token_dir) = create_token_in_temp_dir("valid-token-for-tests").unwrap();
     let mut config = Config::default();
     config.ingest_token_file = Some(token_path);
     config.ingest_token = "test-token".to_string();
@@ -249,23 +245,22 @@ fn test_config_post_process() {
 }
 
 #[test]
-#[serial]
 fn test_config_defaults() {
-    let _guard = EnvGuard::new();
-    let (token_path, _token_dir) = create_token_in_temp_dir("valid-token-for-tests");
-    _guard.set_var("RASK_INGEST_TOKEN_FILE", &token_path);
+    let mut guard = EnvGuard::new();
+    let (token_path, _token_dir) = create_token_in_temp_dir("valid-token-for-tests").unwrap();
+    guard.set_var("RASK_INGEST_TOKEN_FILE", &token_path);
 
     // Double check that critical variables are actually unset
     assert!(
-        env::var("BATCH_SIZE").is_err(),
+        guard.get("BATCH_SIZE").is_none(),
         "BATCH_SIZE should not be set"
     );
     assert!(
-        env::var("TARGET_SERVICE").is_err(),
+        guard.get("TARGET_SERVICE").is_none(),
         "TARGET_SERVICE should not be set"
     );
 
-    let config = Config::from_env().unwrap();
+    let config = Config::from_env_with(guard.lookup()).unwrap();
 
     // Test defaults - check the actual value first to debug
     println!("Actual batch_size: {}", config.batch_size);
@@ -277,37 +272,35 @@ fn test_config_defaults() {
 }
 
 #[test]
-#[serial]
 fn test_invalid_log_level() {
-    let _guard = EnvGuard::new();
-    let (token_path, _token_dir) = create_token_in_temp_dir("valid-token-for-tests");
-    _guard.set_var("RASK_INGEST_TOKEN_FILE", &token_path);
-    _guard.set_var("LOG_LEVEL", "invalid_level");
+    let mut guard = EnvGuard::new();
+    let (token_path, _token_dir) = create_token_in_temp_dir("valid-token-for-tests").unwrap();
+    guard.set_var("RASK_INGEST_TOKEN_FILE", &token_path);
+    guard.set_var("LOG_LEVEL", "invalid_level");
 
-    let result = Config::from_env();
+    let result = Config::from_env_with(guard.lookup());
     // Invalid log level should cause parsing to fail
     assert!(result.is_err());
 }
 
 #[test]
-#[serial]
 fn test_invalid_batch_size() {
-    let _guard = EnvGuard::new();
-    let (token_path, _token_dir) = create_token_in_temp_dir("valid-token-for-tests");
-    _guard.set_var("RASK_INGEST_TOKEN_FILE", &token_path);
+    let mut guard = EnvGuard::new();
+    let (token_path, _token_dir) = create_token_in_temp_dir("valid-token-for-tests").unwrap();
+    guard.set_var("RASK_INGEST_TOKEN_FILE", &token_path);
 
     // Double check that BATCH_SIZE is not set
     assert!(
-        env::var("BATCH_SIZE").is_err(),
+        guard.get("BATCH_SIZE").is_none(),
         "BATCH_SIZE should not be set before test"
     );
 
-    _guard.set_var("BATCH_SIZE", "not_a_number");
+    guard.set_var("BATCH_SIZE", "not_a_number");
 
     // Verify the environment variable is set
-    assert_eq!(env::var("BATCH_SIZE").unwrap(), "not_a_number");
+    assert_eq!(guard.get("BATCH_SIZE"), Some("not_a_number"));
 
-    let result = Config::from_env();
+    let result = Config::from_env_with(guard.lookup());
     // Invalid batch size should cause parsing to fail
     assert!(result.is_err());
 }
@@ -334,9 +327,9 @@ fn test_config_serialization() {
         otlp_endpoint: "http://rask-log-aggregator:4318/v1/logs".to_string(),
         flush_interval: Duration::from_millis(1000),
         connection_timeout: Duration::from_secs(30),
-        retry_config: Default::default(),
-        disk_fallback_config: Default::default(),
-        metrics_config: Default::default(),
+        retry_config: RetryConfig::default(),
+        disk_fallback_config: DiskFallbackConfig::default(),
+        metrics_config: MetricsConfig::default(),
         ingest_token_file: None,
         ingest_token: String::new(),
     };
@@ -351,14 +344,13 @@ fn test_config_serialization() {
 }
 
 #[test]
-#[serial]
 fn test_hostname_detection() {
-    let _guard = EnvGuard::new();
-    let (token_path, _token_dir) = create_token_in_temp_dir("valid-token-for-tests");
-    _guard.set_var("RASK_INGEST_TOKEN_FILE", &token_path);
-    _guard.set_var("TARGET_SERVICE", "test-service");
+    let mut guard = EnvGuard::new();
+    let (token_path, _token_dir) = create_token_in_temp_dir("valid-token-for-tests").unwrap();
+    guard.set_var("RASK_INGEST_TOKEN_FILE", &token_path);
+    guard.set_var("TARGET_SERVICE", "test-service");
 
-    let config = Config::from_env().unwrap();
+    let config = Config::from_env_with(guard.lookup()).unwrap();
 
     // Should detect hostname automatically if not set
     assert!(config.target_service.is_some());
@@ -366,14 +358,13 @@ fn test_hostname_detection() {
 }
 
 #[test]
-#[serial]
 fn test_protocol_configuration() {
-    let _guard = EnvGuard::new();
-    let (token_path, _token_dir) = create_token_in_temp_dir("valid-token-for-tests");
-    _guard.set_var("RASK_INGEST_TOKEN_FILE", &token_path);
+    let mut guard = EnvGuard::new();
+    let (token_path, _token_dir) = create_token_in_temp_dir("valid-token-for-tests").unwrap();
+    guard.set_var("RASK_INGEST_TOKEN_FILE", &token_path);
 
     // Test default protocol (NDJSON)
-    let config = Config::from_env().unwrap();
+    let config = Config::from_env_with(guard.lookup()).unwrap();
     assert!(
         matches!(
             config.protocol,
@@ -383,8 +374,8 @@ fn test_protocol_configuration() {
     );
 
     // Test OTLP protocol via environment
-    _guard.set_var("PROTOCOL", "otlp");
-    let config = Config::from_env().unwrap();
+    guard.set_var("PROTOCOL", "otlp");
+    let config = Config::from_env_with(guard.lookup()).unwrap();
     assert!(
         matches!(
             config.protocol,
@@ -394,15 +385,14 @@ fn test_protocol_configuration() {
     );
 
     // Test invalid protocol
-    _guard.set_var("PROTOCOL", "invalid_protocol");
-    let result = Config::from_env();
+    guard.set_var("PROTOCOL", "invalid_protocol");
+    let result = Config::from_env_with(guard.lookup());
     assert!(result.is_err(), "Invalid protocol should cause error");
 }
 
 #[test]
 fn test_otlp_endpoint_validation() {
-    let (token_path, _token_dir) = create_token_in_temp_dir("valid-token-for-tests");
-    use rask_log_forwarder::app::config::Protocol;
+    let (token_path, _token_dir) = create_token_in_temp_dir("valid-token-for-tests").unwrap();
 
     let mut config = Config {
         protocol: Protocol::Otlp,

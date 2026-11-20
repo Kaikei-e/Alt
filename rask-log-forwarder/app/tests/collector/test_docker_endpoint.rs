@@ -2,10 +2,8 @@ use bytes::Bytes;
 use chrono::{DateTime, Duration, Utc};
 use rask_log_forwarder::collector::{
     DedupeFilter, DockerCollector, DockerEndpointError, ServiceDiscovery,
-    compute_resume_log_options, get_validated_docker_endpoint, parse_log_timestamp_prefix,
-    validate_docker_endpoint,
+    compute_resume_log_options, parse_log_timestamp_prefix, validate_docker_endpoint,
 };
-use serial_test::serial;
 
 #[test]
 fn test_validate_docker_endpoint_valid_tcp() {
@@ -108,8 +106,8 @@ fn test_parse_log_timestamp_prefix_with_nanos() {
 
     assert!(ts.is_some());
     let parsed_ts = ts.unwrap();
-    assert_eq!(parsed_ts.timestamp(), 1789891200);
-    assert_eq!(parsed_ts.timestamp_subsec_nanos(), 123456789);
+    assert_eq!(parsed_ts.timestamp(), 1_789_891_200);
+    assert_eq!(parsed_ts.timestamp_subsec_nanos(), 123_456_789);
     assert_eq!(stripped, Bytes::from("test log line with nanos\n"));
 }
 
@@ -120,7 +118,7 @@ fn test_parse_log_timestamp_prefix_without_nanos() {
 
     assert!(ts.is_some());
     let parsed_ts = ts.unwrap();
-    assert_eq!(parsed_ts.timestamp(), 1789891200);
+    assert_eq!(parsed_ts.timestamp(), 1_789_891_200);
     assert_eq!(parsed_ts.timestamp_subsec_nanos(), 0);
     assert_eq!(stripped, Bytes::from("test log line without nanos\n"));
 }
@@ -134,8 +132,8 @@ fn test_parse_log_timestamp_prefix_two_line_frame() {
 
     assert!(ts.is_some());
     let parsed_ts = ts.unwrap();
-    assert_eq!(parsed_ts.timestamp(), 1789891201);
-    assert_eq!(parsed_ts.timestamp_subsec_nanos(), 200000000);
+    assert_eq!(parsed_ts.timestamp(), 1_789_891_201);
+    assert_eq!(parsed_ts.timestamp_subsec_nanos(), 200_000_000);
     assert_eq!(stripped, Bytes::from("first line\nsecond line\n"));
 }
 
@@ -174,7 +172,7 @@ fn test_compute_resume_log_options() {
         .with_timezone(&Utc);
     let resumed = compute_resume_log_options(Some(ts));
     assert_eq!(resumed.tail, "all");
-    assert_eq!(resumed.since, ts.timestamp() as i32);
+    assert_eq!(i64::from(resumed.since), ts.timestamp());
     assert!(resumed.follow);
     assert!(resumed.stdout);
     assert!(resumed.stderr);
@@ -245,134 +243,93 @@ fn test_dedupe_filter_malformed_timestamp_forwarded() {
 }
 
 #[test]
-#[serial]
 fn test_get_validated_docker_endpoint_from_env() {
+    use rask_log_forwarder::collector::get_validated_docker_endpoint_with;
+
     // Valid env var
-    unsafe {
-        std::env::set_var("DOCKER_HOST", "tcp://docker-socket-proxy-ro:2375");
-    }
     assert_eq!(
-        get_validated_docker_endpoint(),
+        get_validated_docker_endpoint_with(|k| {
+            (k == "DOCKER_HOST").then(|| "tcp://docker-socket-proxy-ro:2375".to_string())
+        }),
         Ok("tcp://docker-socket-proxy-ro:2375".to_string())
     );
 
     // Empty env var
-    unsafe {
-        std::env::set_var("DOCKER_HOST", "");
-    }
     assert_eq!(
-        get_validated_docker_endpoint(),
+        get_validated_docker_endpoint_with(|k| (k == "DOCKER_HOST").then(String::new)),
         Err(DockerEndpointError::EmptyDockerHost)
     );
 
     // Unset env var
-    unsafe {
-        std::env::remove_var("DOCKER_HOST");
-    }
     assert_eq!(
-        get_validated_docker_endpoint(),
+        get_validated_docker_endpoint_with(|_| None),
         Err(DockerEndpointError::MissingDockerHost)
     );
 }
 
-#[tokio::test]
-#[serial]
-async fn test_collector_and_discovery_fail_when_docker_host_unset() {
-    unsafe {
-        std::env::remove_var("DOCKER_HOST");
-    }
-
-    // DockerCollector::new() must fail startup loudly when DOCKER_HOST is unset
-    let collector_result = DockerCollector::new().await;
+#[test]
+fn test_collector_and_discovery_fail_when_docker_host_unset() {
+    // DockerCollector::new_with_env() must fail startup loudly when DOCKER_HOST is unset
+    let collector_result = DockerCollector::new_with_env(|_| None);
     assert!(
         collector_result.is_err(),
-        "DockerCollector::new() must fail when DOCKER_HOST is unset"
+        "DockerCollector::new_with_env() must fail when DOCKER_HOST is unset"
     );
 
-    // ServiceDiscovery::new() must also fail startup loudly when DOCKER_HOST is unset
-    let discovery_result = ServiceDiscovery::new().await;
+    // ServiceDiscovery::new_with_env() must also fail startup loudly when DOCKER_HOST is unset
+    let discovery_result = ServiceDiscovery::new_with_env(|_| None);
     assert!(
         discovery_result.is_err(),
-        "ServiceDiscovery::new() must fail when DOCKER_HOST is unset"
+        "ServiceDiscovery::new_with_env() must fail when DOCKER_HOST is unset"
     );
 }
 
-#[tokio::test]
-#[serial]
-async fn test_collector_and_discovery_fail_on_unsupported_scheme() {
-    unsafe {
-        std::env::set_var("DOCKER_HOST", "ftp://docker-socket-proxy-ro:2375");
-    }
-
-    let collector_result = DockerCollector::new().await;
+#[test]
+fn test_collector_and_discovery_fail_on_unsupported_scheme() {
+    let collector_result = DockerCollector::from_endpoint("ftp://docker-socket-proxy-ro:2375");
     assert!(
         collector_result.is_err(),
-        "DockerCollector::new() must fail on unsupported scheme"
+        "DockerCollector::from_endpoint() must fail on unsupported scheme"
     );
 
-    let discovery_result = ServiceDiscovery::new().await;
+    let discovery_result = ServiceDiscovery::from_endpoint("ftp://docker-socket-proxy-ro:2375");
     assert!(
         discovery_result.is_err(),
-        "ServiceDiscovery::new() must fail on unsupported scheme"
+        "ServiceDiscovery::from_endpoint() must fail on unsupported scheme"
     );
-
-    // Clean up
-    unsafe {
-        std::env::remove_var("DOCKER_HOST");
-    }
 }
 
-#[tokio::test]
-#[serial]
-async fn test_collector_and_discovery_succeed_construction_with_valid_tcp() {
-    unsafe {
-        std::env::set_var("DOCKER_HOST", "tcp://docker-socket-proxy-ro:2375");
-    }
-
+#[test]
+fn test_collector_and_discovery_succeed_construction_with_valid_tcp() {
     // Initializing the client object succeeds without pinging the daemon
-    let collector_result = DockerCollector::new().await;
+    let collector_result = DockerCollector::from_endpoint("tcp://docker-socket-proxy-ro:2375");
     assert!(
         collector_result.is_ok(),
-        "DockerCollector::new() must succeed client creation with valid tcp endpoint: {:?}",
+        "DockerCollector::from_endpoint() must succeed client creation with valid tcp endpoint: {:?}",
         collector_result.err()
     );
 
-    let discovery_result = ServiceDiscovery::new().await;
+    let discovery_result = ServiceDiscovery::from_endpoint("tcp://docker-socket-proxy-ro:2375");
     assert!(
         discovery_result.is_ok(),
-        "ServiceDiscovery::new() must succeed client creation with valid tcp endpoint: {:?}",
+        "ServiceDiscovery::from_endpoint() must succeed client creation with valid tcp endpoint: {:?}",
         discovery_result.err()
     );
-
-    // Clean up
-    unsafe {
-        std::env::remove_var("DOCKER_HOST");
-    }
 }
 
-#[tokio::test]
-#[serial]
-async fn test_collector_and_discovery_succeed_construction_with_valid_unix() {
-    unsafe {
-        std::env::set_var("DOCKER_HOST", "unix:///var/run/docker.sock");
-    }
-
-    let collector_result = DockerCollector::new().await;
+#[test]
+fn test_collector_and_discovery_succeed_construction_with_valid_unix() {
+    let collector_result = DockerCollector::from_endpoint("unix:///var/run/docker.sock");
     assert!(
         collector_result.is_ok(),
-        "DockerCollector::new() must succeed client creation with valid unix endpoint: {:?}",
+        "DockerCollector::from_endpoint() must succeed client creation with valid unix endpoint: {:?}",
         collector_result.err()
     );
 
-    let discovery_result = ServiceDiscovery::new().await;
+    let discovery_result = ServiceDiscovery::from_endpoint("unix:///var/run/docker.sock");
     assert!(
         discovery_result.is_ok(),
-        "ServiceDiscovery::new() must succeed client creation with valid unix endpoint: {:?}",
+        "ServiceDiscovery::from_endpoint() must succeed client creation with valid unix endpoint: {:?}",
         discovery_result.err()
     );
-
-    // Clean up
-    unsafe {
-        std::env::remove_var("DOCKER_HOST");
-    }
 }

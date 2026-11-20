@@ -6,14 +6,14 @@ use std::time::Duration;
 #[tokio::test]
 async fn test_high_throughput_single_producer() {
     let config = BufferConfig {
-        capacity: 100000,
+        capacity: 100_000,
         batch_size: 1000,
         batch_timeout: Duration::from_millis(100),
         enable_backpressure: true,
         backpressure_threshold: 0.8,
         backpressure_delay: Duration::from_micros(100),
     };
-    let buffer = LogBuffer::new_with_config(config).await.unwrap();
+    let buffer = LogBuffer::new_with_config(config).unwrap();
     let (sender, mut receiver) = buffer.split().expect("Failed to split buffer");
 
     // Send 1000 log entries
@@ -44,7 +44,7 @@ async fn test_high_throughput_multiple_producers() {
         backpressure_threshold: 0.8,
         backpressure_delay: Duration::from_micros(100),
     };
-    let buffer = Arc::new(LogBuffer::new_with_config(config).await.unwrap());
+    let buffer = Arc::new(LogBuffer::new_with_config(config).unwrap());
     let (sender, mut receiver) = buffer.split().expect("Failed to split buffer");
     let sender = Arc::new(sender);
 
@@ -56,7 +56,9 @@ async fn test_high_throughput_multiple_producers() {
         let handle = tokio::spawn(async move {
             for i in 0..100 {
                 let entry = create_test_enriched_log(producer_id * 100 + i);
-                let _ = sender_clone.send(entry).await;
+                if let Err(err) = sender_clone.send(entry).await {
+                    tracing::debug!("producer send returned: {err}");
+                }
             }
         });
         handles.push(handle);
@@ -84,20 +86,22 @@ async fn test_high_throughput_multiple_producers() {
 #[tokio::test]
 async fn test_throughput_with_backpressure() {
     let config = BufferConfig {
-        capacity: 100000,
+        capacity: 100_000,
         batch_size: 1000,
         batch_timeout: Duration::from_millis(100),
         enable_backpressure: true,
         backpressure_threshold: 0.5, // Apply backpressure at 50%
         backpressure_delay: Duration::from_millis(1),
     };
-    let buffer = LogBuffer::new_with_config(config).await.unwrap();
+    let buffer = LogBuffer::new_with_config(config).unwrap();
     let (sender, _receiver) = buffer.split().expect("Failed to split buffer");
 
     // Send many entries quickly
     for i in 0..1000 {
         let entry = create_test_enriched_log(i);
-        let _ = sender.send(entry).await;
+        if let Err(err) = sender.send(entry).await {
+            tracing::debug!("throughput send returned: {err}");
+        }
     }
 
     // Check that backpressure was applied
@@ -109,14 +113,14 @@ async fn test_throughput_with_backpressure() {
 #[tokio::test]
 async fn test_memory_usage_under_load() {
     let config = BufferConfig {
-        capacity: 1000000,
+        capacity: 1_000_000,
         batch_size: 10000,
         batch_timeout: Duration::from_millis(100),
         enable_backpressure: true,
         backpressure_threshold: 0.9,
         backpressure_delay: Duration::from_micros(10),
     };
-    let buffer = LogBuffer::new_with_config(config).await.unwrap();
+    let buffer = LogBuffer::new_with_config(config).unwrap();
     let (sender, mut receiver) = buffer.split().expect("Failed to split buffer");
 
     // Send large log entries
@@ -130,7 +134,9 @@ async fn test_memory_usage_under_load() {
 
     // Consume some entries
     for _ in 0..50 {
-        let _ = receiver.recv_with_timeout(Duration::from_millis(10)).await;
+        if let Err(err) = receiver.recv_with_timeout(Duration::from_millis(10)).await {
+            tracing::debug!("recv_with_timeout returned: {err}");
+        }
     }
 
     let metrics = buffer.metrics().snapshot();
@@ -148,21 +154,24 @@ async fn test_burst_handling() {
         backpressure_threshold: 1.0,
         backpressure_delay: Duration::from_micros(0),
     };
-    let buffer = LogBuffer::new_with_config(config).await.unwrap(); // Small buffer
+    let buffer = LogBuffer::new_with_config(config).unwrap(); // Small buffer
     let (sender, mut receiver) = buffer.split().expect("Failed to split buffer");
 
     // Send a burst of entries
     for i in 0..20 {
         let entry = create_test_enriched_log(i);
-        let _ = sender.send(entry).await; // Some may fail due to buffer size
+        if let Err(err) = sender.send(entry).await {
+            // Some may fail due to buffer size
+            tracing::debug!("burst send rejected: {err}");
+        }
     }
 
     // Consume entries
-    let mut received = 0;
+    let mut recv_count = 0;
     for _ in 0..20 {
         let result = receiver.recv_with_timeout(Duration::from_millis(10)).await;
         if result.unwrap().is_some() {
-            received += 1;
+            recv_count += 1;
         } else {
             break;
         }
@@ -170,7 +179,7 @@ async fn test_burst_handling() {
 
     let metrics = buffer.metrics().snapshot();
     assert!(metrics.messages_sent > 0);
-    assert!(received > 0);
+    assert!(recv_count > 0);
 }
 
 fn create_test_enriched_log(id: usize) -> EnrichedLogEntry {

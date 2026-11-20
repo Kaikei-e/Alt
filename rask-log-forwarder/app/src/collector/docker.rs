@@ -64,12 +64,22 @@ pub fn validate_docker_endpoint(raw: &str) -> Result<&str, DockerEndpointError> 
     Ok(trimmed)
 }
 
+static ENDPOINT_LOGGED: AtomicBool = AtomicBool::new(false);
+
 /// Reads and validates `DOCKER_HOST` from the environment.
 /// Fails fast if unset, empty, or using an unsupported scheme.
 pub fn get_validated_docker_endpoint() -> Result<String, DockerEndpointError> {
-    match std::env::var("DOCKER_HOST") {
-        Ok(val) => validate_docker_endpoint(&val).map(str::to_string),
-        Err(_) => Err(DockerEndpointError::MissingDockerHost),
+    get_validated_docker_endpoint_with(|k| std::env::var(k).ok())
+}
+
+/// Reads and validates `DOCKER_HOST` using a custom environment lookup.
+pub fn get_validated_docker_endpoint_with<F>(lookup: F) -> Result<String, DockerEndpointError>
+where
+    F: Fn(&str) -> Option<String>,
+{
+    match lookup("DOCKER_HOST") {
+        Some(val) => validate_docker_endpoint(&val).map(str::to_string),
+        None => Err(DockerEndpointError::MissingDockerHost),
     }
 }
 
@@ -78,7 +88,15 @@ pub fn get_validated_docker_endpoint() -> Result<String, DockerEndpointError> {
 /// Logs `docker_endpoint=<value>` at startup. Fails startup loudly when `DOCKER_HOST`
 /// is unset or has an unsupported scheme, avoiding silent fallback to platform defaults.
 pub fn connect_docker() -> Result<Docker, DockerConnectError> {
-    let endpoint = get_validated_docker_endpoint().map_err(|e| {
+    connect_docker_with(|k| std::env::var(k).ok())
+}
+
+/// Connects to the Docker daemon using a custom environment lookup for `DOCKER_HOST`.
+pub fn connect_docker_with<F>(lookup: F) -> Result<Docker, DockerConnectError>
+where
+    F: Fn(&str) -> Option<String>,
+{
+    let endpoint = get_validated_docker_endpoint_with(lookup).map_err(|e| {
         tracing::error!(
             error = %e,
             "Failed to initialize Docker client: invalid or missing DOCKER_HOST"
@@ -86,11 +104,10 @@ pub fn connect_docker() -> Result<Docker, DockerConnectError> {
         e
     })?;
 
-    static ENDPOINT_LOGGED: AtomicBool = AtomicBool::new(false);
-    if !ENDPOINT_LOGGED.swap(true, Ordering::Relaxed) {
-        tracing::info!(docker_endpoint = %endpoint, "Connecting to Docker daemon");
-    } else {
+    if ENDPOINT_LOGGED.swap(true, Ordering::Relaxed) {
         tracing::debug!(docker_endpoint = %endpoint, "Reconnecting to Docker daemon");
+    } else {
+        tracing::info!(docker_endpoint = %endpoint, "Connecting to Docker daemon");
     }
 
     // connect_with_host dispatches tcp:///http:// (or TLS if DOCKER_TLS_VERIFY is set) and unix://
@@ -134,6 +151,10 @@ pub struct DockerContainerInfo {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "Option flags mirror bollard::query_parameters::LogsOptions boolean fields"
+)]
 pub struct LogStreamOptions {
     pub follow: bool,
     pub stdout: bool,
@@ -303,9 +324,20 @@ impl DockerCollector {
 }
 
 impl DockerCollector {
-    pub async fn new() -> Result<Self, CollectorError> {
-        let docker = connect_docker()?;
+    pub fn new() -> Result<Self, CollectorError> {
+        Self::new_with_env(|k| std::env::var(k).ok())
+    }
+
+    pub fn new_with_env<F>(lookup: F) -> Result<Self, CollectorError>
+    where
+        F: Fn(&str) -> Option<String>,
+    {
+        let docker = connect_docker_with(lookup)?;
         Ok(Self { docker })
+    }
+
+    pub fn from_endpoint(endpoint: &str) -> Result<Self, CollectorError> {
+        Self::new_with_env(|k| (k == "DOCKER_HOST").then(|| endpoint.to_string()))
     }
 
     pub async fn can_connect(&self) -> bool {
@@ -332,13 +364,13 @@ impl DockerCollector {
 
         let container_infos = containers
             .into_iter()
-            .filter_map(|container| self.container_to_info(container))
+            .filter_map(Self::container_to_info)
             .collect();
 
         Ok(container_infos)
     }
 
-    fn container_to_info(&self, container: ContainerSummary) -> Option<DockerContainerInfo> {
+    fn container_to_info(container: ContainerSummary) -> Option<DockerContainerInfo> {
         Some(DockerContainerInfo {
             id: container.id?,
             name: container

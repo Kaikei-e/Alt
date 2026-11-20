@@ -133,9 +133,10 @@ impl SimplePatternParser {
 
             // Find quoted method and path
             if let Some(quote_start) = line.find('"')
-                && let Some(quote_end) = line[quote_start + 1..].find('"')
+                && let Some(after_open) = line.get(quote_start + 1..)
+                && let Some(quote_end) = after_open.find('"')
+                && let Some(request_line) = after_open.get(..quote_end)
             {
-                let request_line = &line[quote_start + 1..quote_start + 1 + quote_end];
                 let request_parts: Vec<&str> = request_line.split_whitespace().collect();
 
                 if request_parts.len() >= 2 {
@@ -143,7 +144,7 @@ impl SimplePatternParser {
                     let path = request_parts[1];
 
                     // Try to find status and size after the quote
-                    let after_quote = &line[quote_start + 1 + quote_end + 1..];
+                    let after_quote = after_open.get(quote_end + 1..).unwrap_or("");
                     let status_size_parts: Vec<&str> = after_quote.split_whitespace().collect();
 
                     if status_size_parts.len() >= 2 {

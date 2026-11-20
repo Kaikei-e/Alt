@@ -5,6 +5,14 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::time;
 
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "test message count fits within f64 mantissa for throughput check"
+)]
+fn calc_throughput(count: u64, duration: Duration) -> f64 {
+    count as f64 / duration.as_secs_f64()
+}
+
 #[tokio::test]
 async fn test_buffer_metrics_tracking() {
     let buffer = LogBuffer::new_with_config(BufferConfig {
@@ -15,7 +23,6 @@ async fn test_buffer_metrics_tracking() {
         backpressure_threshold: 0.0,
         backpressure_delay: Duration::from_millis(0),
     })
-    .await
     .unwrap();
 
     // Fill buffer to capacity
@@ -38,7 +45,6 @@ async fn test_memory_usage_calculation() {
         capacity: 1000,
         ..Default::default()
     })
-    .await
     .unwrap();
 
     // Add some entries
@@ -59,10 +65,9 @@ async fn test_memory_usage_calculation() {
 #[tokio::test]
 async fn test_throughput_metrics() {
     let buffer = LogBuffer::new_with_config(BufferConfig {
-        capacity: 1000000,
+        capacity: 1_000_000,
         ..Default::default()
     })
-    .await
     .unwrap();
     let start = Instant::now();
 
@@ -79,7 +84,7 @@ async fn test_throughput_metrics() {
     assert_eq!(metrics.queue_depth, 10000);
 
     // Calculate throughput - lower expectation for tokio broadcast channel
-    let throughput = metrics.messages_sent as f64 / duration.as_secs_f64();
+    let throughput = calc_throughput(metrics.messages_sent, duration);
     assert!(throughput > 10_000.0); // Should be >10K msgs/sec for tokio broadcast channel
 }
 
@@ -216,7 +221,7 @@ async fn test_basic_metrics_tracking() {
         backpressure_threshold: 0.8,
         backpressure_delay: Duration::from_micros(100),
     };
-    let buffer = LogBuffer::new_with_config(config).await.unwrap();
+    let buffer = LogBuffer::new_with_config(config).unwrap();
     let (sender, mut receiver) = buffer.split().expect("Failed to split buffer");
 
     // Send some entries
@@ -231,7 +236,9 @@ async fn test_basic_metrics_tracking() {
 
     // Receive some entries
     for _ in 0..3 {
-        let _ = receiver.recv_with_timeout(Duration::from_millis(100)).await;
+        if let Err(err) = receiver.recv_with_timeout(Duration::from_millis(100)).await {
+            tracing::debug!("recv_with_timeout returned: {err}");
+        }
     }
 
     let metrics = buffer.metrics().snapshot();
@@ -249,7 +256,7 @@ async fn test_dropped_messages_tracking() {
         backpressure_threshold: 1.0,
         backpressure_delay: Duration::from_micros(0),
     };
-    let buffer = LogBuffer::new_with_config(config).await.unwrap();
+    let buffer = LogBuffer::new_with_config(config).unwrap();
     let (sender, _receiver) = buffer.split().expect("Failed to split buffer");
 
     let mut sent_count = 0;
@@ -313,14 +320,14 @@ async fn test_dropped_messages_tracking() {
 #[tokio::test]
 async fn test_async_throughput_metrics() {
     let config = BufferConfig {
-        capacity: 1000000,
+        capacity: 1_000_000,
         batch_size: 1000,
         batch_timeout: Duration::from_millis(100),
         enable_backpressure: true,
         backpressure_threshold: 0.9,
         backpressure_delay: Duration::from_micros(10),
     };
-    let buffer = LogBuffer::new_with_config(config).await.unwrap();
+    let buffer = LogBuffer::new_with_config(config).unwrap();
     let (sender, mut receiver) = buffer.split().expect("Failed to split buffer");
 
     let start = std::time::Instant::now();
@@ -336,7 +343,9 @@ async fn test_async_throughput_metrics() {
     // Receive entries
     let start = std::time::Instant::now();
     for _ in 0..1000 {
-        let _ = receiver.recv_with_timeout(Duration::from_millis(10)).await;
+        if let Err(err) = receiver.recv_with_timeout(Duration::from_millis(10)).await {
+            tracing::debug!("recv_with_timeout returned: {err}");
+        }
     }
     let receive_duration = start.elapsed();
 
@@ -363,7 +372,7 @@ async fn test_concurrent_metrics_accuracy() {
         backpressure_threshold: 0.8,
         backpressure_delay: Duration::from_micros(100),
     };
-    let buffer = Arc::new(LogBuffer::new_with_config(config).await.unwrap());
+    let buffer = Arc::new(LogBuffer::new_with_config(config).unwrap());
     let (sender, mut receiver) = buffer.split().expect("Failed to split buffer");
     let sender = Arc::new(sender);
 
@@ -375,7 +384,9 @@ async fn test_concurrent_metrics_accuracy() {
         let handle = tokio::spawn(async move {
             for i in 0..100 {
                 let entry = create_test_enriched_log(producer_id * 100 + i);
-                let _ = sender_clone.send(entry).await;
+                if let Err(err) = sender_clone.send(entry).await {
+                    tracing::debug!("concurrent producer send returned: {err}");
+                }
             }
         });
         handles.push(handle);
@@ -384,16 +395,16 @@ async fn test_concurrent_metrics_accuracy() {
     // Spawn receiver
     let buffer_clone = Arc::clone(&buffer);
     let receiver_handle = tokio::spawn(async move {
-        let mut received = 0;
+        let mut recv_count = 0;
         for _ in 0..500 {
             let result = receiver.recv_with_timeout(Duration::from_millis(10)).await;
             if result.unwrap().is_some() {
-                received += 1;
+                recv_count += 1;
             } else {
                 break;
             }
         }
-        received
+        recv_count
     });
 
     // Wait for all tasks
@@ -409,7 +420,12 @@ async fn test_concurrent_metrics_accuracy() {
     assert_eq!(metrics.messages_received, received_count);
     assert_eq!(
         metrics.queue_depth,
-        (metrics.messages_sent as usize).saturating_sub(metrics.messages_received as usize)
+        usize::try_from(
+            metrics
+                .messages_sent
+                .saturating_sub(metrics.messages_received)
+        )
+        .expect("queue depth fits in usize")
     );
 }
 
@@ -423,13 +439,15 @@ async fn test_backpressure_metrics() {
         backpressure_threshold: 0.5, // Low threshold
         backpressure_delay: Duration::from_millis(1),
     };
-    let buffer = LogBuffer::new_with_config(config).await.unwrap();
+    let buffer = LogBuffer::new_with_config(config).unwrap();
     let (sender, _receiver) = buffer.split().expect("Failed to split buffer");
 
     // Send enough to trigger backpressure
     for i in 0..80 {
         let entry = create_test_enriched_log(i);
-        let _ = sender.send(entry).await;
+        if let Err(err) = sender.send(entry).await {
+            tracing::debug!("backpressure metrics send returned: {err}");
+        }
     }
 
     let metrics = buffer.metrics().snapshot();

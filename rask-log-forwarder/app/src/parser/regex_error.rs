@@ -26,8 +26,9 @@ impl RegexError {
     pub fn fallback_strategy(&self) -> FallbackStrategy {
         match self {
             RegexError::CompilationFailed { .. } => FallbackStrategy::UseSimpleParser,
-            RegexError::IndexOutOfBounds { .. } => FallbackStrategy::UseDefaultPattern,
-            RegexError::PatternNotFound { .. } => FallbackStrategy::UseDefaultPattern,
+            RegexError::IndexOutOfBounds { .. } | RegexError::PatternNotFound { .. } => {
+                FallbackStrategy::UseDefaultPattern
+            }
             RegexError::ExecutionFailed { .. } => FallbackStrategy::SkipEntry,
         }
     }

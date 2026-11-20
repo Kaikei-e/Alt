@@ -444,7 +444,7 @@ mod tests {
             ingest_token: String::new(),
             ..ClientConfig::default()
         };
-        let client = HttpClient::new(config).await.unwrap();
+        let client = HttpClient::new(config).unwrap();
         let transmitter = BatchTransmitter::new(client);
         let batch = Batch::new(vec![], BatchType::TimeBased);
         let err = transmitter.build_headers(&batch, false).unwrap_err();
@@ -460,7 +460,7 @@ mod tests {
             ingest_token: "valid-bearer-token".to_string(),
             ..ClientConfig::default()
         };
-        let client = HttpClient::new(config).await.unwrap();
+        let client = HttpClient::new(config).unwrap();
         let transmitter = BatchTransmitter::new(client);
         let batch = Batch::new(vec![], BatchType::TimeBased);
         let headers = transmitter.build_headers(&batch, false).unwrap();
@@ -481,7 +481,7 @@ mod tests {
             ingest_token: String::new(),
             ..ClientConfig::default()
         };
-        let client = HttpClient::new(config).await.unwrap();
+        let client = HttpClient::new(config).unwrap();
         let url = url::Url::parse("http://localhost:4318/v1/logs").unwrap();
         let transmitter = OtlpBatchTransmitter::new(client, url.as_str()).unwrap();
         let batch = Batch::new(vec![], BatchType::TimeBased);

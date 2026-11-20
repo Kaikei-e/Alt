@@ -74,6 +74,7 @@ impl<T> RobustMutex<T> {
         }
     }
 
+    #[must_use]
     pub fn with_timeout(mut self, timeout: Duration) -> Self {
         self.timeout_duration = timeout;
         self
@@ -144,6 +145,7 @@ impl<T> RobustRwLock<T> {
         }
     }
 
+    #[must_use]
     pub fn with_timeouts(mut self, read_timeout: Duration, write_timeout: Duration) -> Self {
         self.read_timeout = read_timeout;
         self.write_timeout = write_timeout;

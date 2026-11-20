@@ -3,7 +3,6 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use rask_log_forwarder::collector::DockerCollector;
-use serial_test::serial;
 use tokio::time::sleep;
 
 #[allow(dead_code)]
@@ -52,22 +51,17 @@ async fn generate_test_nginx_logs(
     Ok(())
 }
 
-async fn cleanup_test_container(container_id: String) -> Result<(), Box<dyn std::error::Error>> {
+fn cleanup_test_container(container_id: &str) -> Result<(), Box<dyn std::error::Error>> {
     Command::new("docker")
-        .args(["rm", "-f", &container_id])
+        .args(["rm", "-f", container_id])
         .output()?;
     Ok(())
 }
 
 #[tokio::test]
-#[serial]
 async fn test_zero_copy_bytes_from_docker_logs() -> Result<(), Box<dyn std::error::Error>> {
-    unsafe {
-        std::env::set_var("DOCKER_HOST", "unix:///var/run/docker.sock");
-    }
-
     // Test zero-copy functionality with graceful Docker handling
-    let collector_result = DockerCollector::new().await;
+    let collector_result = DockerCollector::from_endpoint("unix:///var/run/docker.sock");
 
     match collector_result {
         Ok(collector) => {
@@ -128,11 +122,7 @@ async fn test_zero_copy_bytes_from_docker_logs() -> Result<(), Box<dyn std::erro
                         tokio::time::sleep(Duration::from_millis(100)).await;
                     }
 
-                    let cleanup_res = cleanup_test_container(test_container).await;
-
-                    unsafe {
-                        std::env::remove_var("DOCKER_HOST");
-                    }
+                    let cleanup_res = cleanup_test_container(&test_container);
 
                     cleanup_res?;
 
@@ -155,22 +145,13 @@ async fn test_zero_copy_bytes_from_docker_logs() -> Result<(), Box<dyn std::erro
         }
     }
 
-    unsafe {
-        std::env::remove_var("DOCKER_HOST");
-    }
-
     Ok(())
 }
 
 #[tokio::test]
-#[serial]
 async fn test_zero_copy_performance() -> Result<(), Box<dyn std::error::Error>> {
-    unsafe {
-        std::env::set_var("DOCKER_HOST", "unix:///var/run/docker.sock");
-    }
-
     // Simplified performance test that validates the throughput architecture
-    let collector_result = DockerCollector::new().await;
+    let collector_result = DockerCollector::from_endpoint("unix:///var/run/docker.sock");
 
     match collector_result {
         Ok(_collector) => {
@@ -199,7 +180,7 @@ async fn test_zero_copy_performance() -> Result<(), Box<dyn std::error::Error>> 
             }
 
             let duration = start.elapsed();
-            let throughput = received_count as f64 / duration.as_secs_f64();
+            let throughput = f64::from(received_count) / duration.as_secs_f64();
 
             // Validate that our queue architecture can handle high throughput
             assert!(
@@ -218,10 +199,6 @@ async fn test_zero_copy_performance() -> Result<(), Box<dyn std::error::Error>> 
         Err(e) => {
             println!("Docker not available: {e}");
         }
-    }
-
-    unsafe {
-        std::env::remove_var("DOCKER_HOST");
     }
 
     Ok(())

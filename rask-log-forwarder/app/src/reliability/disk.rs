@@ -44,8 +44,8 @@ impl Default for DiskConfig {
     fn default() -> Self {
         Self {
             storage_path: PathBuf::from("/tmp/rask-log-forwarder/fallback"),
-            max_disk_usage: 1024 * 1024 * 1024, // 1GB
-            retention_period: Duration::from_secs(24 * 3600), // 24 hours
+            max_disk_usage: 1024 * 1024 * 1024,         // 1GB
+            retention_period: Duration::from_hours(24), // 24 hours
             compression: true,
             enabled: true,
         }
@@ -167,6 +167,7 @@ impl DiskFallback {
     }
 
     pub async fn retrieve_batch(&self, batch_id: &str) -> Result<Batch, DiskError> {
+        const MAX_DECOMPRESSED_BATCH_BYTES: usize = 64 * 1024 * 1024;
         let file_path = self.get_batch_file_path(batch_id);
 
         if !fs::try_exists(&file_path).await.unwrap_or(false) {
@@ -179,14 +180,13 @@ impl DiskFallback {
         file.read_to_end(&mut data).await?;
 
         // Decompress if needed (try both compressed and uncompressed)
-        let deserialized_data = if let Ok(decompressed) = self.decompress_data(&data) {
+        let deserialized_data = if let Ok(decompressed) = Self::decompress_data(&data) {
             decompressed
         } else {
             data // Assume uncompressed
         };
 
         // Deserialize with an explicit allocation limit (64 MiB)
-        const MAX_DECOMPRESSED_BATCH_BYTES: usize = 64 * 1024 * 1024;
         let bincode_cfg = bincode::config::standard().with_limit::<MAX_DECOMPRESSED_BATCH_BYTES>();
         let (stored_batch, _): (StoredBatch, usize) =
             bincode::serde::decode_from_slice(&deserialized_data, bincode_cfg)?;
@@ -235,7 +235,9 @@ impl DiskFallback {
 
         while let Some(entry) = entries.next_entry().await? {
             if let Some(file_name) = entry.file_name().to_str()
-                && file_name.ends_with(".batch")
+                && Path::new(file_name)
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("batch"))
             {
                 let batch_id = file_name.trim_end_matches(".batch");
                 batch_ids.push(batch_id.to_string());
@@ -328,18 +330,18 @@ impl DiskFallback {
     }
 
     async fn load_stored_batch(&self, batch_id: &str) -> Result<StoredBatch, DiskError> {
+        const MAX_DECOMPRESSED_BATCH_BYTES: usize = 64 * 1024 * 1024;
         let file_path = self.get_batch_file_path(batch_id);
         let mut file = fs::File::open(&file_path).await?;
         let mut data = Vec::new();
         file.read_to_end(&mut data).await?;
 
-        let deserialized_data = if let Ok(decompressed) = self.decompress_data(&data) {
+        let deserialized_data = if let Ok(decompressed) = Self::decompress_data(&data) {
             decompressed
         } else {
             data
         };
 
-        const MAX_DECOMPRESSED_BATCH_BYTES: usize = 64 * 1024 * 1024;
         let bincode_cfg = bincode::config::standard().with_limit::<MAX_DECOMPRESSED_BATCH_BYTES>();
         let (stored_batch, _): (StoredBatch, usize) =
             bincode::serde::decode_from_slice(&deserialized_data, bincode_cfg)
@@ -347,7 +349,7 @@ impl DiskFallback {
         Ok(stored_batch)
     }
 
-    fn decompress_data(&self, data: &[u8]) -> Result<Vec<u8>, std::io::Error> {
+    fn decompress_data(data: &[u8]) -> Result<Vec<u8>, std::io::Error> {
         const MAX_DECOMPRESSED_BATCH_BYTES: u64 = 64 * 1024 * 1024;
         let decoder = GzDecoder::new(data);
         let mut limited = decoder.take(MAX_DECOMPRESSED_BATCH_BYTES + 1);

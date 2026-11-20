@@ -35,8 +35,8 @@ impl DockerJsonParser {
         Self {}
     }
 
-    pub fn parse(&self, bytes: Bytes) -> Result<DockerLogEntry, ParseError> {
-        self.parse_slice(&bytes)
+    pub fn parse(&self, bytes: &Bytes) -> Result<DockerLogEntry, ParseError> {
+        self.parse_slice(bytes)
     }
 
     /// Same as `parse`, but takes a borrowed slice directly instead of an
@@ -76,7 +76,7 @@ impl DockerJsonParser {
     }
 
     pub fn parse_batch(&self, logs: Vec<Bytes>) -> Vec<Result<DockerLogEntry, ParseError>> {
-        logs.into_iter().map(|bytes| self.parse(bytes)).collect()
+        logs.into_iter().map(|bytes| self.parse(&bytes)).collect()
     }
 }
 
@@ -92,7 +92,7 @@ mod tests {
             r#"{"log":"Hello nginx\n","stream":"stdout","time":"2024-01-01T12:00:00.123456789Z"}"#;
         let bytes = Bytes::from(json_log);
 
-        let entry = parser.parse(bytes).unwrap();
+        let entry = parser.parse(&bytes).unwrap();
 
         assert_eq!(entry.log, "Hello nginx\n");
         assert_eq!(entry.stream, "stdout");
@@ -106,7 +106,7 @@ mod tests {
         let json_log = r#"{"log":"ERROR: Something went wrong\n","stream":"stderr","time":"2024-01-01T12:00:01.000000000Z"}"#;
         let bytes = Bytes::from(json_log);
 
-        let entry = parser.parse(bytes).unwrap();
+        let entry = parser.parse(&bytes).unwrap();
 
         assert_eq!(entry.stream, "stderr");
         assert!(entry.log.contains("ERROR"));
@@ -119,7 +119,7 @@ mod tests {
         let json_log = r#"{"log":"Line 1\nLine 2\nLine 3\n","stream":"stdout","time":"2024-01-01T12:00:00.000000000Z"}"#;
         let bytes = Bytes::from(json_log);
 
-        let entry = parser.parse(bytes).unwrap();
+        let entry = parser.parse(&bytes).unwrap();
 
         assert!(entry.log.contains("Line 1"));
         assert!(entry.log.contains("Line 2"));
@@ -133,7 +133,7 @@ mod tests {
         let invalid_json = r#"{"log":"Missing fields"}"#;
         let bytes = Bytes::from(invalid_json);
 
-        let result = parser.parse(bytes);
+        let result = parser.parse(&bytes);
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), ParseError::MissingField(_)));
     }
@@ -145,7 +145,7 @@ mod tests {
         let malformed = r#"{"log":"test""#; // Missing closing brace
         let bytes = Bytes::from(malformed);
 
-        let result = parser.parse(bytes);
+        let result = parser.parse(&bytes);
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), ParseError::JsonError(_)));
     }

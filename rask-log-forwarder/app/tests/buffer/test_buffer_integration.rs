@@ -25,9 +25,7 @@ async fn test_buffer_manager_integration() {
         critical_threshold: 0.9,
     };
 
-    let manager = BufferManager::new(buffer_config, batch_config, memory_config)
-        .await
-        .unwrap();
+    let manager = BufferManager::new(buffer_config, batch_config, memory_config).unwrap();
 
     // Test memory manager
     assert_eq!(

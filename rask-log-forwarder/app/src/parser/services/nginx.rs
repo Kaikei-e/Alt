@@ -29,7 +29,7 @@ impl NginxParser {
         match VALIDATED_PATTERNS.get(pattern_index::NGINX_ACCESS_FULL) {
             Ok(regex) => {
                 if let Some(captures) = regex.captures(log) {
-                    return self.extract_access_log_data(captures, log);
+                    return Ok(Self::extract_access_log_data(&captures, log));
                 }
             }
             Err(regex_error) => {
@@ -44,7 +44,7 @@ impl NginxParser {
         match VALIDATED_PATTERNS.get(pattern_index::NGINX_ACCESS_FALLBACK) {
             Ok(regex) => {
                 if let Some(captures) = regex.captures(log) {
-                    return self.extract_access_log_data(captures, log);
+                    return Ok(Self::extract_access_log_data(&captures, log));
                 }
             }
             Err(regex_error) => {
@@ -84,12 +84,12 @@ impl NginxParser {
     }
 
     /// Parse nginx error log with memory-safe patterns
-    fn parse_nginx_error(&self, log: &str) -> Result<ParsedLogEntry, ParseError> {
+    fn parse_nginx_error(log: &str) -> Result<ParsedLogEntry, ParseError> {
         // Try with the full nginx error pattern first
         match VALIDATED_PATTERNS.get(pattern_index::NGINX_ERROR_FULL) {
             Ok(regex) => {
                 if let Some(captures) = regex.captures(log) {
-                    return self.extract_error_log_data(captures, log);
+                    return Ok(Self::extract_error_log_data(&captures, log));
                 }
             }
             Err(regex_error) => {
@@ -104,7 +104,7 @@ impl NginxParser {
         match VALIDATED_PATTERNS.get(pattern_index::NGINX_ERROR_FALLBACK) {
             Ok(regex) => {
                 if let Some(captures) = regex.captures(log) {
-                    return self.extract_error_log_data(captures, log);
+                    return Ok(Self::extract_error_log_data(&captures, log));
                 }
             }
             Err(regex_error) => {
@@ -148,11 +148,7 @@ impl NginxParser {
     }
 
     /// Extract data from access log regex captures
-    fn extract_access_log_data(
-        &self,
-        captures: regex::Captures<'_>,
-        full_log: &str,
-    ) -> Result<ParsedLogEntry, ParseError> {
+    fn extract_access_log_data(captures: &regex::Captures<'_>, full_log: &str) -> ParsedLogEntry {
         let ip = captures.get(1).map_or("", |m| m.as_str());
         let method = captures.get(3).map_or("", |m| m.as_str());
         let path = captures.get(4).map_or("", |m| m.as_str());
@@ -167,7 +163,7 @@ impl NginxParser {
             size_str.parse().unwrap_or(0)
         };
 
-        Ok(ParsedLogEntry {
+        ParsedLogEntry {
             service_type: "nginx".to_string(),
             log_type: "access".to_string(),
             message: full_log.to_string(),
@@ -181,15 +177,11 @@ impl NginxParser {
             ip_address: Some(ip.to_string()),
             user_agent: captures.get(8).map(|m| m.as_str().to_string()),
             fields: std::collections::HashMap::new(),
-        })
+        }
     }
 
     /// Extract data from error log regex captures
-    fn extract_error_log_data(
-        &self,
-        captures: regex::Captures<'_>,
-        full_log: &str,
-    ) -> Result<ParsedLogEntry, ParseError> {
+    fn extract_error_log_data(captures: &regex::Captures<'_>, full_log: &str) -> ParsedLogEntry {
         let level_str = captures.get(2).map_or("info", |m| m.as_str());
         let level = match level_str.to_lowercase().as_str() {
             "error" => LogLevel::Error,
@@ -198,7 +190,7 @@ impl NginxParser {
             _ => LogLevel::Info,
         };
 
-        Ok(ParsedLogEntry {
+        ParsedLogEntry {
             service_type: "nginx".to_string(),
             log_type: "error".to_string(),
             message: full_log.to_string(),
@@ -212,12 +204,12 @@ impl NginxParser {
             ip_address: None,
             user_agent: None,
             fields: std::collections::HashMap::new(),
-        })
+        }
     }
 }
 
 impl ServiceParser for NginxParser {
-    fn service_type(&self) -> &str {
+    fn service_type(&self) -> &'static str {
         "nginx"
     }
 
@@ -228,7 +220,7 @@ impl ServiceParser for NginxParser {
         }
 
         // Try error log format
-        if let Ok(result) = self.parse_nginx_error(log) {
+        if let Ok(result) = Self::parse_nginx_error(log) {
             return Ok(result);
         }
 

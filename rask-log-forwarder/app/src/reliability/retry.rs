@@ -83,8 +83,7 @@ impl RetryManager {
         let current_attempt = self
             .retry_states
             .get(batch_id)
-            .map(|state| state.attempt_count)
-            .unwrap_or(0);
+            .map_or(0, |state| state.attempt_count);
 
         let new_attempt_count = current_attempt + 1;
         let next_retry_time = if new_attempt_count < self.config.max_attempts {
@@ -105,23 +104,20 @@ impl RetryManager {
     pub fn should_give_up(&self, batch_id: &str) -> bool {
         self.retry_states
             .get(batch_id)
-            .map(|state| state.attempt_count >= self.config.max_attempts)
-            .unwrap_or(true)
+            .is_none_or(|state| state.attempt_count >= self.config.max_attempts)
     }
 
     pub fn get_attempt_count(&self, batch_id: &str) -> u32 {
         self.retry_states
             .get(batch_id)
-            .map(|state| state.attempt_count)
-            .unwrap_or(0)
+            .map_or(0, |state| state.attempt_count)
     }
 
     pub fn is_ready_for_retry(&self, batch_id: &str) -> bool {
         self.retry_states
             .get(batch_id)
             .and_then(|state| state.next_retry_time)
-            .map(|next_time| Instant::now() >= next_time)
-            .unwrap_or(false)
+            .is_some_and(|next_time| Instant::now() >= next_time)
     }
 
     pub fn calculate_delay(&self, attempt: u32) -> Duration {
@@ -146,13 +142,13 @@ impl RetryManager {
 
         // Apply jitter if enabled
         if self.config.jitter {
-            self.apply_jitter(capped_delay)
+            Self::apply_jitter(capped_delay)
         } else {
             capped_delay
         }
     }
 
-    fn apply_jitter(&self, delay: Duration) -> Duration {
+    fn apply_jitter(delay: Duration) -> Duration {
         let mut rng = rand::rng();
         let jitter_factor = rng.random_range(0.5..1.5); // ±50% jitter
         // Safety: delay is bounded by max_delay (60s default), jitter_factor is 0.5-1.5
@@ -170,10 +166,7 @@ impl RetryManager {
             .iter()
             .filter(|(_, state)| {
                 !self.should_give_up(&state.batch_id)
-                    && state
-                        .next_retry_time
-                        .map(|t| Instant::now() >= t)
-                        .unwrap_or(true)
+                    && state.next_retry_time.is_none_or(|t| Instant::now() >= t)
             })
             .map(|(batch_id, _)| batch_id.clone())
             .collect()

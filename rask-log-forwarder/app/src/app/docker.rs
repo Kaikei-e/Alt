@@ -13,8 +13,16 @@ pub struct DockerEnvironment {
 
 impl DockerEnvironment {
     pub fn detect() -> Result<Self, ConfigError> {
-        let hostname = env::var("HOSTNAME")
-            .or_else(|_| {
+        Self::detect_with(|k| env::var(k).ok())
+    }
+
+    pub fn detect_with<F>(lookup: F) -> Result<Self, ConfigError>
+    where
+        F: Fn(&str) -> Option<String>,
+    {
+        let hostname = lookup("HOSTNAME")
+            .ok_or(())
+            .or_else(|()| {
                 hostname::get()
                     .map_err(|e| format!("Failed to get hostname: {e}"))?
                     .to_str()
@@ -23,20 +31,20 @@ impl DockerEnvironment {
             })
             .map_err(|e| ConfigError::EnvError(format!("Could not determine hostname: {e}")))?;
 
-        let target_service = env::var("TARGET_SERVICE").ok();
+        let target_service = lookup("TARGET_SERVICE");
 
-        let rask_endpoint = env::var("RASK_ENDPOINT")
-            .unwrap_or_else(|_| "http://rask-aggregator:9600/v1/aggregate".to_string());
+        let rask_endpoint = lookup("RASK_ENDPOINT")
+            .unwrap_or_else(|| "http://rask-aggregator:9600/v1/aggregate".to_string());
 
-        let network_mode = env::var("NETWORK_MODE").ok();
+        let network_mode = lookup("NETWORK_MODE");
 
         // In a real Docker environment, we'd read container labels from the Docker API
         // For now, we'll simulate with environment variables
         let mut container_labels = HashMap::new();
-        if let Ok(rask_group) = env::var("RASK_GROUP") {
+        if let Some(rask_group) = lookup("RASK_GROUP") {
             container_labels.insert("rask.group".to_string(), rask_group);
         }
-        if let Ok(compose_service) = env::var("COMPOSE_SERVICE") {
+        if let Some(compose_service) = lookup("COMPOSE_SERVICE") {
             container_labels.insert("com.docker.compose.service".to_string(), compose_service);
         }
 
@@ -85,6 +93,16 @@ impl DockerEnvironment {
 
 impl Config {
     pub fn from_docker_environment(docker_env: &DockerEnvironment) -> Result<Self, ConfigError> {
+        Self::from_docker_environment_with(docker_env, |k| std::env::var(k).ok())
+    }
+
+    pub fn from_docker_environment_with<F>(
+        docker_env: &DockerEnvironment,
+        env: F,
+    ) -> Result<Self, ConfigError>
+    where
+        F: Fn(&str) -> Option<String>,
+    {
         let mut config = Config {
             target_service: docker_env
                 .target_service
@@ -107,7 +125,7 @@ impl Config {
         config.disk_fallback_path = std::path::PathBuf::from("/tmp/rask-fallback");
 
         if config.ingest_token_file.is_none()
-            && let Some(val) = std::env::var_os("RASK_INGEST_TOKEN_FILE")
+            && let Some(val) = env("RASK_INGEST_TOKEN_FILE")
         {
             config.ingest_token_file = Some(std::path::PathBuf::from(val));
         }

@@ -201,9 +201,9 @@ pub struct ContainerInfo {
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct ServiceInfo {
-    pub service_name: String,
-    pub service_group: Option<String>,
-    pub service_type: String,
+    pub name: String,
+    pub group: Option<String>,
+    pub kind: String,
 }
 
 #[derive(Debug)]
@@ -216,9 +216,9 @@ impl MockLogEnricher {
     pub fn new() -> Self {
         Self {
             service_info: ServiceInfo {
-                service_name: "nginx".to_string(),
-                service_group: Some("alt-frontend".to_string()),
-                service_type: "nginx".to_string(),
+                name: "nginx".to_string(),
+                group: Some("alt-frontend".to_string()),
+                kind: "nginx".to_string(),
             },
         }
     }
@@ -228,11 +228,7 @@ impl MockLogEnricher {
         self
     }
 
-    pub fn enrich_log(
-        &self,
-        entry: ParsedLogEntry,
-        container_info: &ContainerInfo,
-    ) -> EnrichedLogEntry {
+    pub fn enrich_log(entry: ParsedLogEntry, container_info: &ContainerInfo) -> EnrichedLogEntry {
         EnrichedLogEntry {
             service_type: entry.service_type,
             log_type: entry.log_type,
@@ -240,8 +236,7 @@ impl MockLogEnricher {
             level: entry.level,
             timestamp: entry
                 .timestamp
-                .map(|dt| dt.to_rfc3339())
-                .unwrap_or_else(|| "2024-01-01T00:00:00Z".to_string()),
+                .map_or_else(|| "2024-01-01T00:00:00Z".to_string(), |dt| dt.to_rfc3339()),
             stream: entry.stream,
             method: entry.method,
             path: entry.path,
@@ -265,8 +260,6 @@ impl MockLogEnricher {
 
 #[test]
 fn test_mock_log_enricher() {
-    let mock_enricher = MockLogEnricher::new();
-
     let container_info = ContainerInfo {
         id: "container123".to_string(),
         name: "nginx".to_string(),
@@ -295,7 +288,7 @@ fn test_mock_log_enricher() {
     };
 
     // Test enrichment
-    let enriched = mock_enricher.enrich_log(parsed_entry, &container_info);
+    let enriched = MockLogEnricher::enrich_log(parsed_entry, &container_info);
 
     assert_eq!(enriched.service_name, "nginx");
     assert_eq!(enriched.service_group, Some("alt-frontend".to_string()));

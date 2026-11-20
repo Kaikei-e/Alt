@@ -15,10 +15,7 @@ fn create_test_entry(id: usize) -> EnrichedLogEntry {
     EnrichedLogEntry {
         service_type: "benchmark-service".to_string(),
         log_type: "structured".to_string(),
-        message: format!(
-            "Benchmark log message with some content and details for entry {}",
-            id
-        ),
+        message: format!("Benchmark log message with some content and details for entry {id}"),
         level: Some(LogLevel::Info),
         timestamp: "2024-01-01T00:00:00.000Z".to_string(),
         stream: "stdout".to_string(),
@@ -35,7 +32,7 @@ fn create_test_entry(id: usize) -> EnrichedLogEntry {
         span_id: Some("00f067aa0ba902b7".to_string()),
         fields: {
             let mut fields = HashMap::new();
-            fields.insert("request_id".to_string(), format!("req-{}", id));
+            fields.insert("request_id".to_string(), format!("req-{id}"));
             fields.insert("user_id".to_string(), "user-12345".to_string());
             fields
         },
@@ -47,10 +44,18 @@ fn create_batch(size: usize) -> Batch {
     Batch::new(entries, BatchType::SizeBased)
 }
 
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "benchmark payload sizes are small counts converted for percentage display"
+)]
+fn reduction_percent(otlp_size: usize, ndjson_size: usize) -> f64 {
+    (1.0 - otlp_size as f64 / ndjson_size as f64) * 100.0
+}
+
 fn bench_serialization_throughput(c: &mut Criterion) {
     let mut group = c.benchmark_group("serialization_throughput");
 
-    for batch_size in [100, 1000, 10000].iter() {
+    for batch_size in &[100, 1000, 10000] {
         let batch = create_batch(*batch_size);
         group.throughput(Throughput::Elements(*batch_size as u64));
 
@@ -59,38 +64,50 @@ fn bench_serialization_throughput(c: &mut Criterion) {
         group.bench_with_input(
             BenchmarkId::new("ndjson", batch_size),
             &batch,
-            |b, batch| b.iter(|| black_box(json_serializer.serialize_ndjson(batch).unwrap())),
+            |b, batch| {
+                b.iter(|| {
+                    let res = json_serializer
+                        .serialize_ndjson(batch)
+                        .unwrap_or_else(|e| panic!("NDJSON serialization failed: {e}"));
+                    black_box(res)
+                });
+            },
         );
 
         // OTLP serialization
         let otlp_serializer = OtlpSerializer::new();
         group.bench_with_input(BenchmarkId::new("otlp", batch_size), &batch, |b, batch| {
-            b.iter(|| black_box(otlp_serializer.serialize_batch(batch).unwrap()))
+            b.iter(|| {
+                let res = otlp_serializer
+                    .serialize_batch(batch)
+                    .unwrap_or_else(|e| panic!("OTLP serialization failed: {e}"));
+                black_box(res)
+            });
         });
     }
 
     group.finish();
 }
 
-fn bench_payload_size(c: &mut Criterion) {
+fn try_bench_payload_size(c: &mut Criterion) -> Result<(), Box<dyn std::error::Error>> {
     let mut group = c.benchmark_group("payload_size_comparison");
 
-    for batch_size in [100, 1000, 10000].iter() {
+    for batch_size in &[100, 1000, 10000] {
         let batch = create_batch(*batch_size);
 
         let json_serializer = BatchSerializer::new();
         let otlp_serializer = OtlpSerializer::new();
 
         // Measure and report sizes
-        let ndjson_size = json_serializer.serialize_ndjson(&batch).unwrap().len();
-        let otlp_size = otlp_serializer.serialize_batch(&batch).unwrap().len();
+        let ndjson_size = json_serializer.serialize_ndjson(&batch)?.len();
+        let otlp_size = otlp_serializer.serialize_batch(&batch)?.len();
 
         println!(
             "Batch size {}: NDJSON={} bytes, OTLP={} bytes, Reduction={:.1}%",
             batch_size,
             ndjson_size,
             otlp_size,
-            (1.0 - otlp_size as f64 / ndjson_size as f64) * 100.0
+            reduction_percent(otlp_size, ndjson_size)
         );
 
         // Benchmark NDJSON
@@ -99,9 +116,11 @@ fn bench_payload_size(c: &mut Criterion) {
             &batch,
             |b, batch| {
                 b.iter(|| {
-                    let data = json_serializer.serialize_ndjson(batch).unwrap();
+                    let data = json_serializer
+                        .serialize_ndjson(batch)
+                        .unwrap_or_else(|e| panic!("NDJSON serialization failed: {e}"));
                     black_box(data.len())
-                })
+                });
             },
         );
 
@@ -111,14 +130,23 @@ fn bench_payload_size(c: &mut Criterion) {
             &batch,
             |b, batch| {
                 b.iter(|| {
-                    let data = otlp_serializer.serialize_batch(batch).unwrap();
+                    let data = otlp_serializer
+                        .serialize_batch(batch)
+                        .unwrap_or_else(|e| panic!("OTLP serialization failed: {e}"));
                     black_box(data.len())
-                })
+                });
             },
         );
     }
 
     group.finish();
+    Ok(())
+}
+
+fn bench_payload_size(c: &mut Criterion) {
+    if let Err(err) = try_bench_payload_size(c) {
+        panic!("payload size benchmark failed: {err}");
+    }
 }
 
 fn bench_compression(c: &mut Criterion) {
@@ -130,23 +158,21 @@ fn bench_compression(c: &mut Criterion) {
     // NDJSON with gzip
     group.bench_function("ndjson_gzip", |b| {
         b.iter(|| {
-            black_box(
-                json_serializer
-                    .serialize_compressed(&batch, SerializationFormat::NDJSON)
-                    .unwrap(),
-            )
-        })
+            let res = json_serializer
+                .serialize_compressed(&batch, SerializationFormat::NDJSON)
+                .unwrap_or_else(|e| panic!("NDJSON compression failed: {e}"));
+            black_box(res)
+        });
     });
 
     // OTLP with gzip
     group.bench_function("otlp_gzip", |b| {
         b.iter(|| {
-            black_box(
-                json_serializer
-                    .serialize_compressed(&batch, SerializationFormat::OTLP)
-                    .unwrap(),
-            )
-        })
+            let res = json_serializer
+                .serialize_compressed(&batch, SerializationFormat::OTLP)
+                .unwrap_or_else(|e| panic!("OTLP compression failed: {e}"));
+            black_box(res)
+        });
     });
 
     group.finish();

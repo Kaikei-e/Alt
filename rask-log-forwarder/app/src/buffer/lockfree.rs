@@ -125,19 +125,16 @@ impl LogBufferSender {
         }
 
         // Try to send
-        match self.sender.send(entry) {
-            Ok(_receiver_count) => {
-                self.metrics.messages_sent.fetch_add(1, Ordering::Relaxed);
-                self.metrics.queue_depth.fetch_add(1, Ordering::Relaxed);
-                Ok(())
-            }
-            Err(_) => {
-                self.metrics.messages_sent.fetch_add(1, Ordering::Relaxed);
-                self.metrics
-                    .messages_dropped
-                    .fetch_add(1, Ordering::Relaxed);
-                Err(BufferError::BufferFull)
-            }
+        if let Ok(_receiver_count) = self.sender.send(entry) {
+            self.metrics.messages_sent.fetch_add(1, Ordering::Relaxed);
+            self.metrics.queue_depth.fetch_add(1, Ordering::Relaxed);
+            Ok(())
+        } else {
+            self.metrics.messages_sent.fetch_add(1, Ordering::Relaxed);
+            self.metrics
+                .messages_dropped
+                .fetch_add(1, Ordering::Relaxed);
+            Err(BufferError::BufferFull)
         }
     }
 
@@ -235,7 +232,7 @@ impl LogBuffer {
         })
     }
 
-    pub async fn new_with_config(config: BufferConfig) -> Result<Self, BufferError> {
+    pub fn new_with_config(config: BufferConfig) -> Result<Self, BufferError> {
         if config.capacity == 0 {
             return Err(BufferError::BufferClosed);
         }
@@ -284,19 +281,16 @@ impl LogBuffer {
             }
 
             let enriched_entry = entry.into();
-            match sender.send(enriched_entry) {
-                Ok(_receiver_count) => {
-                    self.metrics.messages_sent.fetch_add(1, Ordering::Relaxed);
-                    self.metrics.queue_depth.fetch_add(1, Ordering::Relaxed);
-                    Ok(())
-                }
-                Err(_) => {
-                    self.metrics.messages_sent.fetch_add(1, Ordering::Relaxed);
-                    self.metrics
-                        .messages_dropped
-                        .fetch_add(1, Ordering::Relaxed);
-                    Err(BufferError::BufferFull)
-                }
+            if let Ok(_receiver_count) = sender.send(enriched_entry) {
+                self.metrics.messages_sent.fetch_add(1, Ordering::Relaxed);
+                self.metrics.queue_depth.fetch_add(1, Ordering::Relaxed);
+                Ok(())
+            } else {
+                self.metrics.messages_sent.fetch_add(1, Ordering::Relaxed);
+                self.metrics
+                    .messages_dropped
+                    .fetch_add(1, Ordering::Relaxed);
+                Err(BufferError::BufferFull)
             }
         } else {
             Err(BufferError::BufferClosed)
@@ -445,18 +439,17 @@ impl LogBuffer {
                 // with a bounded sleep between attempts instead of hot-
                 // spinning on `yield_now` (which pins a CPU core at 100%
                 // while backpressured).
+                const MAX_BLOCK_DELAY: Duration = Duration::from_millis(10);
                 let mut delay = self
                     .config
                     .backpressure_delay
                     .max(Duration::from_micros(50));
-                const MAX_BLOCK_DELAY: Duration = Duration::from_millis(10);
                 loop {
                     match self.push(entry.clone()) {
                         Ok(()) => return Ok(()),
                         Err(BufferError::BufferFull) => {
                             tokio::time::sleep(delay).await;
                             delay = (delay * 2).min(MAX_BLOCK_DELAY);
-                            continue;
                         }
                         Err(e) => return Err(e),
                     }

@@ -53,7 +53,7 @@ async fn test_reliability_manager_success_path() {
         ingest_token: String::new(),
     };
 
-    let log_sender = LogSender::new(client_config).await.unwrap();
+    let log_sender = LogSender::new(client_config).unwrap();
 
     let reliability_manager = ReliabilityManager::new(
         retry_config,
@@ -110,7 +110,7 @@ async fn test_reliability_manager_metrics_collection() {
         ingest_token: String::new(),
     };
 
-    let log_sender = LogSender::new(client_config).await.unwrap();
+    let log_sender = LogSender::new(client_config).unwrap();
 
     let reliability_manager = ReliabilityManager::new(
         retry_config,
@@ -125,7 +125,9 @@ async fn test_reliability_manager_metrics_collection() {
     // Send multiple batches
     for i in 0..3 {
         let batch = create_test_batch(10 + i);
-        let _ = reliability_manager.send_batch_with_reliability(batch).await;
+        if let Err(err) = reliability_manager.send_batch_with_reliability(batch).await {
+            tracing::debug!("Expected send failure without server in test: {err}");
+        }
     }
 
     tokio::time::sleep(Duration::from_millis(100)).await;
@@ -161,7 +163,7 @@ async fn test_reliability_manager_health_monitoring() {
         ingest_token: String::new(),
     };
 
-    let log_sender = LogSender::new(client_config).await.unwrap();
+    let log_sender = LogSender::new(client_config).unwrap();
 
     let reliability_manager = ReliabilityManager::new(
         retry_config,
@@ -176,7 +178,7 @@ async fn test_reliability_manager_health_monitoring() {
     // Get initial health report
     let health_report = reliability_manager.get_health_report().await;
     assert!(health_report.uptime >= Duration::ZERO);
-    assert!(!health_report.timestamp.is_empty());
+    assert_ne!(health_report.timestamp, "");
 }
 
 fn create_test_batch(entry_count: usize) -> Batch {

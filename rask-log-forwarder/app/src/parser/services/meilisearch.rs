@@ -60,7 +60,7 @@ impl MeilisearchParser {
 }
 
 impl ServiceParser for MeilisearchParser {
-    fn service_type(&self) -> &str {
+    fn service_type(&self) -> &'static str {
         "meilisearch"
     }
 

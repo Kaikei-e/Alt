@@ -1,90 +1,40 @@
-use std::env;
-use std::ffi::OsString;
-use std::path::PathBuf;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 
-/// Complete list of environment variables read by rask-log-forwarder.
-pub const TRACKED_ENV_VARS: &[&str] = &[
-    "RASK_CONFIG",
-    "RASK_INGEST_TOKEN_FILE",
-    "TARGET_SERVICE",
-    "RASK_ENDPOINT",
-    "BATCH_SIZE",
-    "LOG_LEVEL",
-    "ENABLE_DISK_FALLBACK",
-    "ENABLE_METRICS",
-    "ENABLE_COMPRESSION",
-    "FLUSH_INTERVAL_MS",
-    "BUFFER_CAPACITY",
-    "CONNECTION_TIMEOUT_SECS",
-    "MAX_CONNECTIONS",
-    "MAX_DISK_USAGE_MB",
-    "METRICS_PORT",
-    "DISK_FALLBACK_PATH",
-    "CONFIG_FILE",
-    "PROTOCOL",
-    "OTLP_ENDPOINT",
-    "HOSTNAME",
-];
-
-/// RAII guard that snapshots the process environment on construction,
-/// clears tracked RASK variables for deterministic test isolation,
-/// and faithfully restores the original environment when dropped.
-/// This guarantees that tests neither leak environment mutations to
-/// other tests nor permanently erase the caller's pre-existing environment.
+/// Isolated in-memory environment map for configuration tests (replaces mutating
+/// process-wide `std::env`, which is `unsafe` in Rust 2024).
 pub struct EnvGuard {
-    saved: Vec<(&'static str, Option<OsString>)>,
+    vars: HashMap<String, String>,
 }
 
 impl EnvGuard {
-    /// Creates a new `EnvGuard`, capturing current values and clearing all tracked variables.
+    /// Creates an empty `EnvGuard`.
     pub fn new() -> Self {
-        let mut saved = Vec::with_capacity(TRACKED_ENV_VARS.len());
-        for &var in TRACKED_ENV_VARS {
-            saved.push((var, env::var_os(var)));
-            unsafe {
-                env::remove_var(var);
-            }
-        }
-        Self { saved }
-    }
-
-    /// Sets an environment variable within this guarded scope.
-    pub fn set_var<K: AsRef<std::ffi::OsStr>, V: AsRef<std::ffi::OsStr>>(&self, key: K, val: V) {
-        unsafe {
-            env::set_var(key, val);
+        Self {
+            vars: HashMap::new(),
         }
     }
 
-    /// Removes an environment variable within this guarded scope.
-    pub fn remove_var<K: AsRef<std::ffi::OsStr>>(&self, key: K) {
-        unsafe {
-            env::remove_var(key);
-        }
+    /// Sets an environment variable in this isolated map.
+    pub fn set_var<K: Into<String>, V: AsRef<Path>>(&mut self, key: K, val: V) {
+        self.vars
+            .insert(key.into(), val.as_ref().to_string_lossy().into_owned());
     }
-}
 
-impl Drop for EnvGuard {
-    fn drop(&mut self) {
-        for (var, original) in &self.saved {
-            unsafe {
-                match original {
-                    Some(val) => env::set_var(var, val),
-                    None => env::remove_var(var),
-                }
-            }
-        }
+    /// Removes an environment variable from this isolated map.
+    pub fn remove_var(&mut self, key: &str) {
+        self.vars.remove(key);
     }
-}
 
-/// Helper function to clean all environment variables immediately.
-/// Included for backward compatibility with legacy tests that call `clean_all_env_vars()`.
-#[allow(dead_code)]
-pub fn clean_all_env_vars() {
-    unsafe {
-        for &var in TRACKED_ENV_VARS {
-            env::remove_var(var);
-        }
+    /// Looks up a variable in this isolated map.
+    pub fn get(&self, key: &str) -> Option<&str> {
+        self.vars.get(key).map(String::as_str)
+    }
+
+    /// Returns a lookup closure suitable for `*_with` configuration entry points.
+    pub fn lookup(&self) -> impl Fn(&str) -> Option<String> + '_ {
+        move |k| self.vars.get(k).cloned()
     }
 }
 
@@ -95,9 +45,9 @@ pub fn clean_all_env_vars() {
 /// so that the directory and file remain valid until the `App` or `Config`
 /// constructor has finished reading it. On drop, `tempfile` removes the
 /// isolated folder without deleting any user files.
-pub fn create_token_in_temp_dir(token_content: &str) -> (PathBuf, TempDir) {
-    let dir = TempDir::new().expect("Failed to create temporary directory for test token");
+pub fn create_token_in_temp_dir(token_content: &str) -> Result<(PathBuf, TempDir), std::io::Error> {
+    let dir = TempDir::new()?;
     let path = dir.path().join("ingest_token");
-    std::fs::write(&path, token_content).expect("Failed to write temporary token file");
-    (path, dir)
+    std::fs::write(&path, token_content)?;
+    Ok((path, dir))
 }

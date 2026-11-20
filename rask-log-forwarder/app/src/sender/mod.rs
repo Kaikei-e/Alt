@@ -24,8 +24,8 @@ pub struct LogSender {
 }
 
 impl LogSender {
-    pub async fn new(config: ClientConfig) -> Result<Self, ClientError> {
-        let client = HttpClient::new(config).await?;
+    pub fn new(config: ClientConfig) -> Result<Self, ClientError> {
+        let client = HttpClient::new(config)?;
         let transmitter = BatchTransmitter::new(client);
         let metrics = MetricsCollector::new();
 

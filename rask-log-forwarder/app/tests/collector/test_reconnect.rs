@@ -6,6 +6,7 @@
 //! and nothing above it ever reconnected. A single container restart was
 //! enough to kill log collection for that service for good.
 use std::process::{Command, Stdio};
+use std::sync::Arc;
 use std::time::Duration;
 
 use rask_log_forwarder::collector::{CollectorConfig, LogCollector};
@@ -21,26 +22,24 @@ fn docker_ok(args: &[&str]) -> bool {
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
+        .is_ok_and(|s| s.success())
 }
 
 fn cleanup() {
-    let _ = Command::new("docker")
+    if let Err(err) = Command::new("docker")
         .args(["rm", "-f", CONTAINER_NAME])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
-        .output();
+        .output()
+    {
+        eprintln!("Failed to remove test container {CONTAINER_NAME}: {err}");
+    }
 }
 
 #[tokio::test]
 #[serial]
 async fn collector_reconnects_after_container_restart() {
     cleanup();
-
-    unsafe {
-        std::env::set_var("DOCKER_HOST", "unix:///var/run/docker.sock");
-    }
 
     let started = docker_ok(&[
         "run",
@@ -54,9 +53,6 @@ async fn collector_reconnects_after_container_restart() {
     ]);
 
     if !started {
-        unsafe {
-            std::env::remove_var("DOCKER_HOST");
-        }
         println!("Docker not available, skipping collector reconnect integration test");
         return;
     }
@@ -71,13 +67,15 @@ async fn collector_reconnects_after_container_restart() {
         buffer_size: 8192,
     };
 
-    let collector = match LogCollector::new(config).await {
+    let collector = match LogCollector::new_with_env(
+        config,
+        Arc::new(|k| (k == "DOCKER_HOST").then(|| "unix:///var/run/docker.sock".to_string())),
+    ) {
         Ok(c) => c,
         Err(e) => {
-            unsafe {
-                std::env::remove_var("DOCKER_HOST");
-            }
-            println!("LogCollector::new failed ({e}), skipping (Docker may be unavailable)");
+            println!(
+                "LogCollector::new_with_env failed ({e}), skipping (Docker may be unavailable)"
+            );
             cleanup();
             return;
         }
@@ -127,12 +125,10 @@ async fn collector_reconnects_after_container_restart() {
     }
 
     cancel_token.cancel();
-    let _ = tokio::time::timeout(Duration::from_secs(5), handle).await;
-    cleanup();
-
-    unsafe {
-        std::env::remove_var("DOCKER_HOST");
+    if let Err(err) = tokio::time::timeout(Duration::from_secs(5), handle).await {
+        eprintln!("Collector task did not stop within timeout: {err}");
     }
+    cleanup();
 
     assert!(
         windows_with_data >= 2,

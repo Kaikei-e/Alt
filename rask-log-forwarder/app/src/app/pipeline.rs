@@ -2,7 +2,7 @@ use super::protocol::SenderConfig;
 use crate::{
     buffer::{Batch, BatchType},
     collector::LogCollector,
-    domain::EnrichedLogEntry,
+    domain::{EnrichedLogEntry, RedactionPatterns},
     parser::UniversalParser,
     reliability::ReliabilityManager,
     sender::LogSender,
@@ -19,12 +19,13 @@ use tracing::{error, info};
 #[cfg(feature = "otlp")]
 type OtlpTransmitterHandle = Option<Arc<crate::sender::OtlpBatchTransmitter>>;
 #[cfg(not(feature = "otlp"))]
-type OtlpTransmitterHandle = ();
+struct OtlpTransmitterHandle;
 
 /// Bundled parameters for the main processing loop.
 pub struct ProcessingLoopParams {
     pub collector: Arc<tokio::sync::Mutex<LogCollector>>,
     pub parser: Arc<UniversalParser>,
+    pub redaction_patterns: Arc<RedactionPatterns>,
     pub reliability_manager: Arc<ReliabilityManager>,
     pub sender: Arc<LogSender>,
     pub running: Arc<RwLock<bool>>,
@@ -43,11 +44,70 @@ pub struct ProcessingLoopParams {
     pub cancel_token: CancellationToken,
 }
 
+const MAX_FALLBACK_MESSAGE_BYTES: usize = 64 * 1024;
+
+#[cfg(feature = "otlp")]
+fn build_otlp_transmitter(
+    sender: &LogSender,
+    sender_config: &SenderConfig,
+) -> OtlpTransmitterHandle {
+    use super::config::Protocol;
+    if matches!(sender_config.protocol, Protocol::Otlp) {
+        match crate::sender::OtlpBatchTransmitter::new(
+            sender.transmitter_client().clone(),
+            &sender_config.otlp_endpoint,
+        ) {
+            Ok(t) => Some(Arc::new(t)),
+            Err(e) => {
+                error!("Failed to create OTLP transmitter: {e}");
+                None
+            }
+        }
+    } else {
+        None
+    }
+}
+
+#[cfg(not(feature = "otlp"))]
+fn build_otlp_transmitter(
+    _sender: &LogSender,
+    _sender_config: &SenderConfig,
+) -> OtlpTransmitterHandle {
+    OtlpTransmitterHandle
+}
+
+fn log_collector_exit(
+    target_service: &str,
+    result: Result<Result<(), crate::collector::CollectorError>, tokio::task::JoinError>,
+) {
+    match result {
+        Ok(Ok(())) => {
+            error!(
+                "Log collector for service '{}' stopped unexpectedly; stopping processing loop",
+                target_service
+            );
+        }
+        Ok(Err(e)) => {
+            error!(
+                "Log collection failed for service '{}': {}; stopping processing loop",
+                target_service, e
+            );
+        }
+        Err(join_err) => {
+            error!(
+                "Log collector task panicked for service '{}': {}; stopping processing loop",
+                target_service, join_err
+            );
+        }
+    }
+}
+
 /// Run the main processing pipeline: collect → parse → batch → send.
 pub async fn run_processing_loop(params: ProcessingLoopParams) {
     let ProcessingLoopParams {
         collector,
         parser,
+        redaction_patterns,
         reliability_manager,
         sender,
         running,
@@ -90,68 +150,27 @@ pub async fn run_processing_loop(params: ProcessingLoopParams) {
     let mut flush_ticker = tokio::time::interval(flush_interval);
     flush_ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
-    #[cfg(feature = "otlp")]
-    let otlp_transmitter: OtlpTransmitterHandle = {
-        use super::config::Protocol;
-        if matches!(sender_config.protocol, Protocol::Otlp) {
-            match crate::sender::OtlpBatchTransmitter::new(
-                sender.transmitter_client().clone(),
-                &sender_config.otlp_endpoint,
-            ) {
-                Ok(t) => Some(Arc::new(t)),
-                Err(e) => {
-                    error!("Failed to create OTLP transmitter: {e}");
-                    None
-                }
-            }
-        } else {
-            None
-        }
-    };
-    #[cfg(not(feature = "otlp"))]
-    let otlp_transmitter: OtlpTransmitterHandle = ();
+    let otlp_transmitter: OtlpTransmitterHandle = build_otlp_transmitter(&sender, &sender_config);
 
     // Main processing loop
     loop {
         tokio::select! {
             // Process incoming log entries
             maybe_entry = log_rx.recv() => {
-                match maybe_entry {
-                    Some(log_entry) => {
-                        log_batch.push(enrich_log_entry(&parser, log_entry).await);
+                if let Some(log_entry) = maybe_entry {
+                    log_batch.push(enrich_log_entry(&parser, &log_entry, &redaction_patterns));
 
-                        // Send batch when it reaches the configured size
-                        if log_batch.len() >= batch_size {
-                            flush_batch(&mut log_batch, &reliability_manager, &sender, &sender_config, &otlp_transmitter).await;
-                        }
+                    // Send batch when it reaches the configured size
+                    if log_batch.len() >= batch_size {
+                        flush_batch(&mut log_batch, &reliability_manager, &sender, &sender_config, &otlp_transmitter).await;
                     }
-                    None => {
-                        match collector_handle.await {
-                            Ok(Ok(())) => {
-                                error!(
-                                    "Log collector for service '{}' stopped unexpectedly; stopping processing loop",
-                                    target_service
-                                );
-                            }
-                            Ok(Err(e)) => {
-                                error!(
-                                    "Log collection failed for service '{}': {}; stopping processing loop",
-                                    target_service, e
-                                );
-                            }
-                            Err(join_err) => {
-                                error!(
-                                    "Log collector task panicked for service '{}': {}; stopping processing loop",
-                                    target_service, join_err
-                                );
-                            }
-                        }
-                        cancel_token.cancel();
-                        if !log_batch.is_empty() {
-                            flush_batch(&mut log_batch, &reliability_manager, &sender, &sender_config, &otlp_transmitter).await;
-                        }
-                        break;
+                } else {
+                    log_collector_exit(&target_service, collector_handle.await);
+                    cancel_token.cancel();
+                    if !log_batch.is_empty() {
+                        flush_batch(&mut log_batch, &reliability_manager, &sender, &sender_config, &otlp_transmitter).await;
                     }
+                    break;
                 }
             }
 
@@ -172,7 +191,7 @@ pub async fn run_processing_loop(params: ProcessingLoopParams) {
                 // final flush - otherwise logs in flight at shutdown are lost.
                 log_rx.close();
                 while let Ok(log_entry) = log_rx.try_recv() {
-                    log_batch.push(enrich_log_entry(&parser, log_entry).await);
+                    log_batch.push(enrich_log_entry(&parser, &log_entry, &redaction_patterns));
                 }
 
                 // Flush any remaining logs before shutting down
@@ -195,26 +214,26 @@ pub async fn run_processing_loop(params: ProcessingLoopParams) {
 /// The container metadata and the stream both ride along on the collected
 /// entry: discovery resolved the `rask.group` label and Docker demultiplexed
 /// the stream, and neither can be reconstructed from the payload here.
-async fn enrich_log_entry(
+fn enrich_log_entry(
     parser: &UniversalParser,
-    log_entry: crate::collector::LogEntry,
+    log_entry: &crate::collector::LogEntry,
+    redaction_patterns: &RedactionPatterns,
 ) -> EnrichedLogEntry {
     let mut entry = enrich_unredacted(parser, log_entry);
-    entry.redact_sensitive();
+    entry.redact_sensitive(redaction_patterns);
     entry
 }
 
 fn enrich_unredacted(
     parser: &UniversalParser,
-    log_entry: crate::collector::LogEntry,
+    log_entry: &crate::collector::LogEntry,
 ) -> EnrichedLogEntry {
     let container = &log_entry.container;
-    match parser.parse_log_entry(&log_entry) {
+    match parser.parse_log_entry(log_entry) {
         Ok(enriched_entry) => enriched_entry,
         Err(e) => {
             error!("Failed to parse log entry: {}", e);
             // Fallback: create a plain text EnrichedLogEntry with bounded length and no NUL bytes
-            const MAX_FALLBACK_MESSAGE_BYTES: usize = 64 * 1024;
             let raw_slice = if log_entry.raw_bytes.len() > MAX_FALLBACK_MESSAGE_BYTES {
                 &log_entry.raw_bytes[..MAX_FALLBACK_MESSAGE_BYTES]
             } else {
@@ -259,12 +278,19 @@ fn enrich_unredacted(
 /// disk-fallback), instead of a bare single-attempt send. Only truly
 /// unrecoverable failures (transmission AND disk fallback both failed) reach
 /// the `error!` log below - everything else is retried or durably persisted.
+#[cfg_attr(
+    not(feature = "otlp"),
+    expect(
+        unused_variables,
+        reason = "sender_config and otlp_transmitter are only read when the otlp feature is enabled"
+    )
+)]
 async fn flush_batch(
     log_batch: &mut Vec<EnrichedLogEntry>,
     reliability_manager: &Arc<ReliabilityManager>,
     _sender: &Arc<LogSender>,
-    _sender_config: &SenderConfig,
-    _otlp_transmitter: &OtlpTransmitterHandle,
+    sender_config: &SenderConfig,
+    otlp_transmitter: &OtlpTransmitterHandle,
 ) {
     if log_batch.is_empty() {
         return;
@@ -279,8 +305,8 @@ async fn flush_batch(
     #[cfg(feature = "otlp")]
     {
         use super::config::Protocol;
-        if matches!(_sender_config.protocol, Protocol::Otlp) {
-            flush_otlp_batch(entries, _otlp_transmitter).await;
+        if matches!(sender_config.protocol, Protocol::Otlp) {
+            flush_otlp_batch(entries, otlp_transmitter).await;
             return;
         }
     }
@@ -345,16 +371,26 @@ async fn flush_otlp_batch(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::LogLevel;
+    use crate::domain::{LogLevel, compile_patterns};
     use crate::reliability::{DiskConfig, HealthConfig, MetricsConfig, RetryConfig, RetryStrategy};
     use crate::sender::ClientConfig;
     use wiremock::matchers::method;
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
+    #[cfg(feature = "otlp")]
+    fn default_otlp_handle() -> OtlpTransmitterHandle {
+        None
+    }
+
+    #[cfg(not(feature = "otlp"))]
+    fn default_otlp_handle() -> OtlpTransmitterHandle {
+        OtlpTransmitterHandle
+    }
+
     fn test_sender_config() -> SenderConfig {
         SenderConfig {
             #[cfg(feature = "otlp")]
-            protocol: Default::default(),
+            protocol: crate::app::config::Protocol::default(),
             #[cfg(feature = "otlp")]
             otlp_endpoint: String::new(),
         }
@@ -408,7 +444,7 @@ mod tests {
             ingest_token: "test-token-valid".to_string(),
             ..Default::default()
         };
-        let log_sender = LogSender::new(client_config).await.unwrap();
+        let log_sender = LogSender::new(client_config).unwrap();
 
         let retry_config = RetryConfig {
             max_attempts: 1,
@@ -455,7 +491,6 @@ mod tests {
                 ingest_token: "test-token-valid".to_string(),
                 ..Default::default()
             })
-            .await
             .unwrap(),
         );
 
@@ -466,7 +501,7 @@ mod tests {
             &reliability_manager,
             &sender,
             &test_sender_config(),
-            &OtlpTransmitterHandle::default(),
+            &default_otlp_handle(),
         )
         .await;
 
@@ -510,7 +545,11 @@ mod tests {
             raw_bytes: bytes::Bytes::from_static(b"backend is up\n"),
         };
 
-        let enriched = enrich_log_entry(&parser, collected).await;
+        let enriched = enrich_log_entry(
+            &parser,
+            &collected,
+            &compile_patterns().expect("redaction patterns must compile"),
+        );
 
         assert_eq!(
             enriched.service_group,
@@ -539,7 +578,11 @@ mod tests {
             raw_bytes: frame.into_bytes(),
         };
 
-        let enriched = enrich_log_entry(&parser, collected).await;
+        let enriched = enrich_log_entry(
+            &parser,
+            &collected,
+            &compile_patterns().expect("redaction patterns must compile"),
+        );
 
         assert_eq!(
             enriched.stream, "stderr",
@@ -565,7 +608,6 @@ mod tests {
                 ingest_token: "test-token-valid".to_string(),
                 ..Default::default()
             })
-            .await
             .unwrap(),
         );
 
@@ -576,7 +618,7 @@ mod tests {
             &reliability_manager,
             &sender,
             &test_sender_config(),
-            &OtlpTransmitterHandle::default(),
+            &default_otlp_handle(),
         )
         .await;
 
@@ -597,7 +639,11 @@ mod tests {
             ),
         };
 
-        let enriched = enrich_log_entry(&parser, collected).await;
+        let enriched = enrich_log_entry(
+            &parser,
+            &collected,
+            &compile_patterns().expect("redaction patterns must compile"),
+        );
 
         let rendered = serde_json::to_string(&enriched).unwrap();
         assert!(!rendered.contains("PARSED-SECRET"), "{rendered}");
@@ -617,7 +663,11 @@ mod tests {
             raw_bytes: bytes::Bytes::from(raw),
         };
 
-        let enriched = enrich_log_entry(&parser, collected).await;
+        let enriched = enrich_log_entry(
+            &parser,
+            &collected,
+            &compile_patterns().expect("redaction patterns must compile"),
+        );
 
         assert_eq!(enriched.log_type, "plain");
         assert!(!enriched.message.contains("FALLBACK-BEARER"));
@@ -638,7 +688,11 @@ mod tests {
             raw_bytes: bytes::Bytes::from(vec![b'x'; 65 * 1024]),
         };
 
-        let enriched = enrich_log_entry(&parser, collected).await;
+        let enriched = enrich_log_entry(
+            &parser,
+            &collected,
+            &compile_patterns().expect("redaction patterns must compile"),
+        );
 
         assert_eq!(
             enriched.timestamp, "2020-01-01T00:00:00.123456789Z",
@@ -659,7 +713,11 @@ mod tests {
             raw_bytes: bytes::Bytes::from(vec![b'x'; 65 * 1024]),
         };
 
-        let enriched = enrich_log_entry(&parser, collected).await;
+        let enriched = enrich_log_entry(
+            &parser,
+            &collected,
+            &compile_patterns().expect("redaction patterns must compile"),
+        );
 
         assert_eq!(
             enriched.fields.get("timestamp_fallback"),
@@ -668,23 +726,22 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    #[serial_test::serial]
-    async fn run_processing_loop_flushes_pending_batch_and_exits_when_collector_stops() {
-        use crate::collector::{CollectorConfig, LogCollector};
+    async fn setup_one_shot_docker_mock()
+    -> (MockServer, std::sync::Arc<std::sync::atomic::AtomicBool>) {
+        use std::sync::atomic::{AtomicBool, Ordering};
         use wiremock::matchers::{method, path, path_regex};
         use wiremock::{Request, Respond};
 
-        struct OneShotLogStreamResponder;
+        struct OneShotLogStreamResponder {
+            docker_host_enabled: Arc<AtomicBool>,
+        }
 
         impl Respond for OneShotLogStreamResponder {
             fn respond(&self, _request: &Request) -> ResponseTemplate {
-                // Remove DOCKER_HOST once the first stream is served so the
+                // Disable DOCKER_HOST once the first stream is served so the
                 // collector's subsequent reconnect hits a fatal EndpointError
                 // and exits, dropping log_tx without a shutdown signal.
-                unsafe {
-                    std::env::remove_var("DOCKER_HOST");
-                }
+                self.docker_host_enabled.store(false, Ordering::SeqCst);
                 let line = b"2024-01-01T00:00:00.000000000Z {\"level\":\"info\",\"msg\":\"pending before collector exit\"}\n";
                 let mut frame = Vec::with_capacity(8 + line.len());
                 frame.extend_from_slice(&[1, 0, 0, 0]);
@@ -695,6 +752,7 @@ mod tests {
         }
 
         let mock_server = MockServer::start().await;
+        let docker_host_enabled = Arc::new(AtomicBool::new(true));
 
         Mock::given(method("POST"))
             .and(path("/v1/aggregate"))
@@ -712,22 +770,37 @@ mod tests {
 
         Mock::given(method("GET"))
             .and(path_regex(r"/containers/abc123def456/logs$"))
-            .respond_with(OneShotLogStreamResponder)
+            .respond_with(OneShotLogStreamResponder {
+                docker_host_enabled: Arc::clone(&docker_host_enabled),
+            })
             .mount(&mock_server)
             .await;
 
-        unsafe {
-            std::env::set_var("DOCKER_HOST", mock_server.uri());
-        }
+        (mock_server, docker_host_enabled)
+    }
 
-        let collector = LogCollector::new(CollectorConfig {
-            auto_discover: false,
-            target_service: Some("alt-backend".to_string()),
-            follow_rotations: true,
-            buffer_size: 8192,
-        })
-        .await
-        .expect("LogCollector::new should succeed with mock DOCKER_HOST");
+    #[tokio::test]
+    async fn run_processing_loop_flushes_pending_batch_and_exits_when_collector_stops() {
+        use crate::collector::{CollectorConfig, LogCollector};
+        use std::sync::atomic::Ordering;
+
+        let (mock_server, docker_host_enabled) = setup_one_shot_docker_mock().await;
+
+        let docker_host = mock_server.uri();
+        let enabled_for_lookup = Arc::clone(&docker_host_enabled);
+        let collector = LogCollector::new_with_env(
+            CollectorConfig {
+                auto_discover: false,
+                target_service: Some("alt-backend".to_string()),
+                follow_rotations: true,
+                buffer_size: 8192,
+            },
+            Arc::new(move |k| {
+                (k == "DOCKER_HOST" && enabled_for_lookup.load(Ordering::SeqCst))
+                    .then(|| docker_host.clone())
+            }),
+        )
+        .expect("LogCollector::new_with_env should succeed with mock DOCKER_HOST");
 
         let aggregate_endpoint = format!("{}/v1/aggregate", mock_server.uri());
         let storage_dir = tempfile::tempdir().unwrap();
@@ -741,7 +814,6 @@ mod tests {
                 ingest_token: "test-token-valid".to_string(),
                 ..Default::default()
             })
-            .await
             .unwrap(),
         );
 
@@ -752,6 +824,9 @@ mod tests {
         let params = ProcessingLoopParams {
             collector: Arc::new(tokio::sync::Mutex::new(collector)),
             parser: Arc::new(UniversalParser::new()),
+            redaction_patterns: Arc::new(
+                compile_patterns().expect("redaction patterns must compile"),
+            ),
             reliability_manager: Arc::clone(&reliability_manager),
             sender,
             running: Arc::clone(&running),
@@ -768,10 +843,6 @@ mod tests {
 
         let loop_result =
             tokio::time::timeout(Duration::from_secs(2), run_processing_loop(params)).await;
-
-        unsafe {
-            std::env::remove_var("DOCKER_HOST");
-        }
 
         assert!(
             loop_result.is_ok(),

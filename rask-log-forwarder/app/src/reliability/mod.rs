@@ -54,7 +54,7 @@ impl ReliabilityManager {
             None
         };
         let metrics_collector = Arc::new(Mutex::new(
-            MetricsCollector::new(metrics_config).unwrap_or_else(|e| {
+            MetricsCollector::new(&metrics_config).unwrap_or_else(|e| {
                 tracing::error!(
                     "Failed to create metrics collector: {}, using legacy fallback",
                     e
@@ -90,23 +90,20 @@ impl ReliabilityManager {
         // Record metrics
         {
             let mut metrics = self.metrics_collector.lock().await;
-            match &result {
-                Ok(_) => {
-                    metrics
-                        .record_batch_sent(entry_count, true, std::time::Duration::from_millis(0))
-                        .await;
-                    self.health_monitor
-                        .record_health_check("transmission", true)
-                        .await;
-                }
-                Err(_) => {
-                    metrics
-                        .record_batch_sent(entry_count, false, std::time::Duration::from_millis(0))
-                        .await;
-                    self.health_monitor
-                        .record_health_check("transmission", false)
-                        .await;
-                }
+            if let Ok(()) = &result {
+                metrics
+                    .record_batch_sent(entry_count, true, std::time::Duration::from_millis(0))
+                    .await;
+                self.health_monitor
+                    .record_health_check("transmission", true)
+                    .await;
+            } else {
+                metrics
+                    .record_batch_sent(entry_count, false, std::time::Duration::from_millis(0))
+                    .await;
+                self.health_monitor
+                    .record_health_check("transmission", false)
+                    .await;
             }
         }
 
@@ -326,8 +323,8 @@ impl ReliabilityManager {
                 }
 
                 tokio::select! {
-                    _ = cancel_token.cancelled() => break,
-                    _ = tokio::time::sleep(interval) => {}
+                    () = cancel_token.cancelled() => break,
+                    () = tokio::time::sleep(interval) => {}
                 }
             }
         })
@@ -369,8 +366,8 @@ impl ReliabilityManager {
         tokio::spawn(async move {
             loop {
                 tokio::select! {
-                    _ = cancel_token.cancelled() => break,
-                    _ = tokio::time::sleep(interval) => {}
+                    () = cancel_token.cancelled() => break,
+                    () = tokio::time::sleep(interval) => {}
                 }
 
                 match self.cleanup_disk_fallback().await {
@@ -428,7 +425,7 @@ mod replay_tests {
         endpoint: String,
         storage_path: std::path::PathBuf,
     ) -> ReliabilityManager {
-        build_manager_with_retention(endpoint, storage_path, Duration::from_secs(24 * 3600)).await
+        build_manager_with_retention(endpoint, storage_path, Duration::from_hours(24)).await
     }
 
     async fn build_manager_with_retention(
@@ -443,7 +440,6 @@ mod replay_tests {
             ingest_token: "test-token-valid".to_string(),
             ..Default::default()
         })
-        .await
         .unwrap();
 
         ReliabilityManager::new(
@@ -586,7 +582,7 @@ mod replay_tests {
             build_manager_with_retention(
                 "http://127.0.0.1:1".to_string(),
                 storage_dir.path().to_path_buf(),
-                Duration::from_secs(24 * 3600),
+                Duration::from_hours(24),
             )
             .await,
         );
@@ -622,7 +618,6 @@ mod replay_tests {
             ingest_token: "test-token-valid".to_string(),
             ..Default::default()
         })
-        .await
         .unwrap();
 
         let _manager = ReliabilityManager::new(

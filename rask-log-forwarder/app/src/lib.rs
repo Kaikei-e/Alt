@@ -35,31 +35,32 @@ pub use app::{App, Config};
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 // Health check endpoint for Docker
-pub async fn health_check() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+pub fn health_check() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    health_check_with(|k| std::env::var(k).ok())
+}
+
+pub fn health_check_with<F>(env: F) -> Result<(), Box<dyn std::error::Error + Send + Sync>>
+where
+    F: Fn(&str) -> Option<String>,
+{
     // Validate that the configuration from environment is well-formed.
-    let config = Config::from_env()?;
+    let config = Config::from_env_with(env)?;
     config.validate()?;
     Ok(())
 }
 
 #[cfg(test)]
 mod health_check_tests {
-    use serial_test::serial;
     use std::io::Write;
     use tempfile::NamedTempFile;
 
-    #[tokio::test]
-    #[serial]
-    async fn health_check_validates_default_config() {
+    #[test]
+    fn health_check_validates_default_config() {
         let mut token_file = NamedTempFile::new().unwrap();
         writeln!(token_file, "valid-token-123").unwrap();
-        unsafe {
-            std::env::set_var("RASK_INGEST_TOKEN_FILE", token_file.path());
-        }
-        let res = super::health_check().await;
-        unsafe {
-            std::env::remove_var("RASK_INGEST_TOKEN_FILE");
-        }
+        let path_str = token_file.path().to_string_lossy().into_owned();
+        let res =
+            super::health_check_with(|k| (k == "RASK_INGEST_TOKEN_FILE").then(|| path_str.clone()));
         res.expect("config with valid token must pass health check");
     }
 }

@@ -53,25 +53,7 @@ pub struct MetricsCollector {
     config: MetricsConfig,
 
     #[cfg(feature = "metrics")]
-    registry: Arc<Registry>,
-
-    // Prometheus metrics
-    #[cfg(feature = "metrics")]
-    batches_sent: CounterVec,
-    #[cfg(feature = "metrics")]
-    entries_sent: Counter,
-    #[cfg(feature = "metrics")]
-    transmission_latency: HistogramVec,
-    #[cfg(feature = "metrics")]
-    disk_fallback_counter: Counter,
-    #[cfg(feature = "metrics")]
-    retry_attempts: CounterVec,
-    #[cfg(feature = "metrics")]
-    health_checks: CounterVec,
-    #[cfg(feature = "metrics")]
-    memory_usage: Gauge,
-    #[cfg(feature = "metrics")]
-    active_connections: Gauge,
+    prometheus: Option<PrometheusMetrics>,
 
     // Internal state
     state: Arc<RwLock<MetricsState>>,
@@ -87,12 +69,11 @@ struct MetricsState {
     health_check_failure: u64,
 }
 
-/// Placeholder Prometheus metrics used by `MetricsCollector::new_legacy`'s
-/// fallback path. Built once (see `disabled_metrics_template`) instead of
-/// re-attempting fallible construction - and panicking on failure - on every
-/// fallback invocation.
+/// Prometheus metric handles for `MetricsCollector`. Also used for
+/// `MetricsCollector::new_legacy`'s fallback path, cached via `OnceLock`.
 #[cfg(feature = "metrics")]
-struct DisabledMetricsTemplate {
+#[derive(Clone)]
+struct PrometheusMetrics {
     registry: Arc<Registry>,
     batches_sent: CounterVec,
     entries_sent: Counter,
@@ -105,59 +86,101 @@ struct DisabledMetricsTemplate {
 }
 
 #[cfg(feature = "metrics")]
-fn build_disabled_metrics_template() -> Result<DisabledMetricsTemplate, MetricsError> {
+struct PrometheusMetricNames<'a> {
+    batches: &'a str,
+    entries: &'a str,
+    latency: &'a str,
+    latency_label: &'a str,
+    disk: &'a str,
+    retry: &'a str,
+    retry_label: &'a str,
+    health: &'a str,
+    memory: &'a str,
+    connections: &'a str,
+    register_in_registry: bool,
+}
+
+#[cfg(feature = "metrics")]
+fn build_prometheus_metrics(
+    names: &PrometheusMetricNames<'_>,
+) -> Result<PrometheusMetrics, MetricsError> {
     let registry = Arc::new(Registry::new());
 
     let batches_sent = CounterVec::new(
-        prometheus::Opts::new("disabled_batches", "Disabled"),
+        prometheus::Opts::new(names.batches, "Total number of batches sent"),
         &["status"],
     )
     .map_err(|e| MetricsError::InitializationFailed {
-        reason: format!("Failed to create disabled batches_sent counter: {e}"),
+        reason: format!("Failed to create batches_sent counter: {e}"),
     })?;
-    let entries_sent = Counter::new("disabled_entries", "Disabled").map_err(|e| {
-        MetricsError::InitializationFailed {
-            reason: format!("Failed to create disabled entries_sent counter: {e}"),
-        }
-    })?;
+    let entries_sent =
+        Counter::new(names.entries, "Total number of log entries sent").map_err(|e| {
+            MetricsError::InitializationFailed {
+                reason: format!("Failed to create entries_sent counter: {e}"),
+            }
+        })?;
     let transmission_latency = HistogramVec::new(
-        prometheus::HistogramOpts::new("disabled_latency", "Disabled"),
-        &["range"],
+        prometheus::HistogramOpts::new(names.latency, "Transmission latency in seconds"),
+        &[names.latency_label],
     )
     .map_err(|e| MetricsError::InitializationFailed {
-        reason: format!("Failed to create disabled transmission_latency histogram: {e}"),
+        reason: format!("Failed to create transmission_latency histogram: {e}"),
     })?;
-    let disk_fallback_counter = Counter::new("disabled_disk", "Disabled").map_err(|e| {
-        MetricsError::InitializationFailed {
-            reason: format!("Failed to create disabled disk_fallback_counter: {e}"),
-        }
-    })?;
+    let disk_fallback_counter = Counter::new(names.disk, "Total number of batches stored to disk")
+        .map_err(|e| MetricsError::InitializationFailed {
+            reason: format!("Failed to create disk_fallback_counter: {e}"),
+        })?;
     let retry_attempts = CounterVec::new(
-        prometheus::Opts::new("disabled_retry", "Disabled"),
-        &["attempt"],
+        prometheus::Opts::new(names.retry, "Total number of retry attempts"),
+        &[names.retry_label],
     )
     .map_err(|e| MetricsError::InitializationFailed {
-        reason: format!("Failed to create disabled retry_attempts counter: {e}"),
+        reason: format!("Failed to create retry_attempts counter: {e}"),
     })?;
     let health_checks = CounterVec::new(
-        prometheus::Opts::new("disabled_health", "Disabled"),
+        prometheus::Opts::new(names.health, "Total number of health checks"),
         &["status"],
     )
     .map_err(|e| MetricsError::InitializationFailed {
-        reason: format!("Failed to create disabled health_checks counter: {e}"),
+        reason: format!("Failed to create health_checks counter: {e}"),
     })?;
-    let memory_usage = Gauge::new("disabled_memory", "Disabled").map_err(|e| {
+    let memory_usage = Gauge::new(names.memory, "Current memory usage in bytes").map_err(|e| {
         MetricsError::InitializationFailed {
-            reason: format!("Failed to create disabled memory_usage gauge: {e}"),
+            reason: format!("Failed to create memory_usage gauge: {e}"),
         }
     })?;
-    let active_connections = Gauge::new("disabled_connections", "Disabled").map_err(|e| {
-        MetricsError::InitializationFailed {
-            reason: format!("Failed to create disabled active_connections gauge: {e}"),
-        }
-    })?;
+    let active_connections = Gauge::new(names.connections, "Number of active HTTP connections")
+        .map_err(|e| MetricsError::InitializationFailed {
+            reason: format!("Failed to create active_connections gauge: {e}"),
+        })?;
 
-    Ok(DisabledMetricsTemplate {
+    if names.register_in_registry {
+        let collectors: [(&str, Box<dyn prometheus::core::Collector>); 8] = [
+            ("batches_sent", Box::new(batches_sent.clone())),
+            ("entries_sent", Box::new(entries_sent.clone())),
+            (
+                "transmission_latency",
+                Box::new(transmission_latency.clone()),
+            ),
+            (
+                "disk_fallback_counter",
+                Box::new(disk_fallback_counter.clone()),
+            ),
+            ("retry_attempts", Box::new(retry_attempts.clone())),
+            ("health_checks", Box::new(health_checks.clone())),
+            ("memory_usage", Box::new(memory_usage.clone())),
+            ("active_connections", Box::new(active_connections.clone())),
+        ];
+        for (label, collector) in collectors {
+            registry
+                .register(collector)
+                .map_err(|e| MetricsError::RegistrationFailed {
+                    details: format!("Failed to register {label} metric: {e}"),
+                })?;
+        }
+    }
+
+    Ok(PrometheusMetrics {
         registry,
         batches_sent,
         entries_sent,
@@ -170,173 +193,75 @@ fn build_disabled_metrics_template() -> Result<DisabledMetricsTemplate, MetricsE
     })
 }
 
-/// Returns the process-wide disabled-metrics template, building it at most
-/// once. The names/opts passed to `build_disabled_metrics_template` are
-/// fixed, valid literals - `disabled_metrics_template_builds_successfully`
-/// pins this down - so the `expect` below is not expected to ever run its
-/// failure branch in practice, and even if it did, it would do so once per
-/// process rather than on every fallback call.
 #[cfg(feature = "metrics")]
-fn disabled_metrics_template() -> &'static DisabledMetricsTemplate {
-    static TEMPLATE: OnceLock<DisabledMetricsTemplate> = OnceLock::new();
-    TEMPLATE.get_or_init(|| {
-        build_disabled_metrics_template()
-            .expect("disabled-metrics template uses fixed, valid Prometheus metric definitions")
+fn build_disabled_metrics_template() -> Result<PrometheusMetrics, MetricsError> {
+    build_prometheus_metrics(&PrometheusMetricNames {
+        batches: "disabled_batches",
+        entries: "disabled_entries",
+        latency: "disabled_latency",
+        latency_label: "range",
+        disk: "disabled_disk",
+        retry: "disabled_retry",
+        retry_label: "attempt",
+        health: "disabled_health",
+        memory: "disabled_memory",
+        connections: "disabled_connections",
+        register_in_registry: false,
     })
+}
+
+/// Returns the process-wide disabled-metrics template, building it at most once.
+#[cfg(feature = "metrics")]
+fn disabled_metrics_template() -> Option<&'static PrometheusMetrics> {
+    static TEMPLATE: OnceLock<Option<PrometheusMetrics>> = OnceLock::new();
+    TEMPLATE
+        .get_or_init(|| match build_disabled_metrics_template() {
+            Ok(template) => Some(template),
+            Err(err) => {
+                tracing::error!("Failed to build disabled-metrics template: {err}");
+                None
+            }
+        })
+        .as_ref()
+}
+
+fn empty_metrics_state() -> Arc<RwLock<MetricsState>> {
+    Arc::new(RwLock::new(MetricsState {
+        total_batches_sent: 0,
+        successful_batches: 0,
+        failed_batches: 0,
+        retry_count: 0,
+        health_check_total: 0,
+        health_check_success: 0,
+        health_check_failure: 0,
+    }))
 }
 
 impl MetricsCollector {
     /// Memory-safe metrics initialization with zero expect() calls.
-    pub fn new(config: MetricsConfig) -> Result<Self, MetricsError> {
+    pub fn new(config: &MetricsConfig) -> Result<Self, MetricsError> {
         #[cfg(feature = "metrics")]
         {
             let config_clone = config.clone();
             safe_metrics_operation(move || {
-                let registry = Arc::new(Registry::new());
-
-                // Initialize Prometheus metrics with safe error handling
-                let batches_sent = CounterVec::new(
-                    prometheus::Opts::new(
-                        "rask_batches_sent_total",
-                        "Total number of batches sent",
-                    ),
-                    &["status"], // success, failure
-                )
-                .map_err(|e| MetricsError::InitializationFailed {
-                    reason: format!("Failed to create batches_sent counter: {e}"),
+                let prometheus = build_prometheus_metrics(&PrometheusMetricNames {
+                    batches: "rask_batches_sent_total",
+                    entries: "rask_entries_sent_total",
+                    latency: "rask_transmission_latency_seconds",
+                    latency_label: "batch_size_range",
+                    disk: "rask_disk_fallback_total",
+                    retry: "rask_retry_attempts_total",
+                    retry_label: "attempt_number",
+                    health: "rask_health_checks_total",
+                    memory: "rask_memory_usage_bytes",
+                    connections: "rask_active_connections",
+                    register_in_registry: true,
                 })?;
-
-                registry
-                    .register(Box::new(batches_sent.clone()))
-                    .map_err(|e| MetricsError::RegistrationFailed {
-                        details: format!("Failed to register batches_sent metric: {e}"),
-                    })?;
-
-                let entries_sent = Counter::new(
-                    "rask_entries_sent_total",
-                    "Total number of log entries sent",
-                )
-                .map_err(|e| MetricsError::InitializationFailed {
-                    reason: format!("Failed to create entries_sent counter: {e}"),
-                })?;
-
-                registry
-                    .register(Box::new(entries_sent.clone()))
-                    .map_err(|e| MetricsError::RegistrationFailed {
-                        details: format!("Failed to register entries_sent metric: {e}"),
-                    })?;
-
-                let transmission_latency = HistogramVec::new(
-                    prometheus::HistogramOpts::new(
-                        "rask_transmission_latency_seconds",
-                        "Transmission latency in seconds",
-                    ),
-                    &["batch_size_range"], // small, medium, large
-                )
-                .map_err(|e| MetricsError::InitializationFailed {
-                    reason: format!("Failed to create transmission_latency histogram: {e}"),
-                })?;
-
-                registry
-                    .register(Box::new(transmission_latency.clone()))
-                    .map_err(|e| MetricsError::RegistrationFailed {
-                        details: format!("Failed to register transmission_latency metric: {e}"),
-                    })?;
-
-                let disk_fallback_counter = Counter::new(
-                    "rask_disk_fallback_total",
-                    "Total number of batches stored to disk",
-                )
-                .map_err(|e| MetricsError::InitializationFailed {
-                    reason: format!("Failed to create disk_fallback_counter: {e}"),
-                })?;
-
-                registry
-                    .register(Box::new(disk_fallback_counter.clone()))
-                    .map_err(|e| MetricsError::RegistrationFailed {
-                        details: format!("Failed to register disk_fallback_counter metric: {e}"),
-                    })?;
-
-                let retry_attempts = CounterVec::new(
-                    prometheus::Opts::new(
-                        "rask_retry_attempts_total",
-                        "Total number of retry attempts",
-                    ),
-                    &["attempt_number"],
-                )
-                .map_err(|e| MetricsError::InitializationFailed {
-                    reason: format!("Failed to create retry_attempts counter: {e}"),
-                })?;
-
-                registry
-                    .register(Box::new(retry_attempts.clone()))
-                    .map_err(|e| MetricsError::RegistrationFailed {
-                        details: format!("Failed to register retry_attempts metric: {e}"),
-                    })?;
-
-                let health_checks = CounterVec::new(
-                    prometheus::Opts::new(
-                        "rask_health_checks_total",
-                        "Total number of health checks",
-                    ),
-                    &["status"], // success, failure
-                )
-                .map_err(|e| MetricsError::InitializationFailed {
-                    reason: format!("Failed to create health_checks counter: {e}"),
-                })?;
-
-                registry
-                    .register(Box::new(health_checks.clone()))
-                    .map_err(|e| MetricsError::RegistrationFailed {
-                        details: format!("Failed to register health_checks metric: {e}"),
-                    })?;
-
-                let memory_usage =
-                    Gauge::new("rask_memory_usage_bytes", "Current memory usage in bytes")
-                        .map_err(|e| MetricsError::InitializationFailed {
-                            reason: format!("Failed to create memory_usage gauge: {e}"),
-                        })?;
-
-                registry
-                    .register(Box::new(memory_usage.clone()))
-                    .map_err(|e| MetricsError::RegistrationFailed {
-                        details: format!("Failed to register memory_usage metric: {e}"),
-                    })?;
-
-                let active_connections = Gauge::new(
-                    "rask_active_connections",
-                    "Number of active HTTP connections",
-                )
-                .map_err(|e| MetricsError::InitializationFailed {
-                    reason: format!("Failed to create active_connections gauge: {e}"),
-                })?;
-
-                registry
-                    .register(Box::new(active_connections.clone()))
-                    .map_err(|e| MetricsError::RegistrationFailed {
-                        details: format!("Failed to register active_connections metric: {e}"),
-                    })?;
 
                 Ok(Self {
                     config: config_clone.clone(),
-                    registry,
-                    batches_sent,
-                    entries_sent,
-                    transmission_latency,
-                    disk_fallback_counter,
-                    retry_attempts,
-                    health_checks,
-                    memory_usage,
-                    active_connections,
-                    state: Arc::new(RwLock::new(MetricsState {
-                        total_batches_sent: 0,
-                        successful_batches: 0,
-                        failed_batches: 0,
-                        retry_count: 0,
-                        health_check_total: 0,
-                        health_check_success: 0,
-                        health_check_failure: 0,
-                    })),
+                    prometheus: Some(prometheus),
+                    state: empty_metrics_state(),
                 })
             })
         }
@@ -344,31 +269,15 @@ impl MetricsCollector {
         #[cfg(not(feature = "metrics"))]
         {
             Ok(Self {
-                config,
-                state: Arc::new(RwLock::new(MetricsState {
-                    total_batches_sent: 0,
-                    successful_batches: 0,
-                    failed_batches: 0,
-                    retry_count: 0,
-                    health_check_total: 0,
-                    health_check_success: 0,
-                    health_check_failure: 0,
-                })),
+                config: config.clone(),
+                state: empty_metrics_state(),
             })
         }
     }
 
     /// Legacy constructor for backward compatibility - logs errors instead of panicking.
-    ///
-    /// The fallback path used to rebuild its "disabled" Prometheus metrics
-    /// from scratch on every call via `unwrap_or_else(|_| panic!(...))` (8
-    /// call sites) - reachable from production init (`reliability/mod.rs`)
-    /// any time the primary registry fails to construct. It now clones a
-    /// single `OnceLock`-cached template built (and construction-verified by
-    /// `disabled_metrics_template_builds_successfully` below) at most once
-    /// per process, so this path can no longer panic in production.
     pub fn new_legacy(config: MetricsConfig) -> Self {
-        match Self::new(config.clone()) {
+        match Self::new(&config) {
             Ok(collector) => collector,
             Err(e) => {
                 tracing::error!(
@@ -377,30 +286,13 @@ impl MetricsCollector {
                 );
                 #[cfg(feature = "metrics")]
                 {
-                    let template = disabled_metrics_template();
                     Self {
                         config: MetricsConfig {
                             enabled: false,
                             ..config
                         },
-                        registry: template.registry.clone(),
-                        batches_sent: template.batches_sent.clone(),
-                        entries_sent: template.entries_sent.clone(),
-                        transmission_latency: template.transmission_latency.clone(),
-                        disk_fallback_counter: template.disk_fallback_counter.clone(),
-                        retry_attempts: template.retry_attempts.clone(),
-                        health_checks: template.health_checks.clone(),
-                        memory_usage: template.memory_usage.clone(),
-                        active_connections: template.active_connections.clone(),
-                        state: Arc::new(RwLock::new(MetricsState {
-                            total_batches_sent: 0,
-                            successful_batches: 0,
-                            failed_batches: 0,
-                            retry_count: 0,
-                            health_check_total: 0,
-                            health_check_success: 0,
-                            health_check_failure: 0,
-                        })),
+                        prometheus: disabled_metrics_template().cloned(),
+                        state: empty_metrics_state(),
                     }
                 }
                 #[cfg(not(feature = "metrics"))]
@@ -410,15 +302,7 @@ impl MetricsCollector {
                             enabled: false,
                             ..config
                         },
-                        state: Arc::new(RwLock::new(MetricsState {
-                            total_batches_sent: 0,
-                            successful_batches: 0,
-                            failed_batches: 0,
-                            retry_count: 0,
-                            health_check_total: 0,
-                            health_check_success: 0,
-                            health_check_failure: 0,
-                        })),
+                        state: empty_metrics_state(),
                     }
                 }
             }
@@ -432,10 +316,10 @@ impl MetricsCollector {
         latency: Duration,
     ) {
         #[cfg(feature = "metrics")]
-        {
+        if let Some(prom) = &self.prometheus {
             let status = if success { "success" } else { "failure" };
-            self.batches_sent.with_label_values(&[status]).inc();
-            self.entries_sent.inc_by(entry_count as f64);
+            prom.batches_sent.with_label_values(&[status]).inc();
+            prom.entries_sent.inc_by(entry_count as f64);
 
             let size_range = match entry_count {
                 0..=100 => "small",
@@ -443,7 +327,7 @@ impl MetricsCollector {
                 _ => "large",
             };
 
-            self.transmission_latency
+            prom.transmission_latency
                 .with_label_values(&[size_range])
                 .observe(latency.as_secs_f64());
         }
@@ -459,8 +343,8 @@ impl MetricsCollector {
 
     pub fn record_disk_fallback(&self, entry_count: usize) {
         #[cfg(feature = "metrics")]
-        {
-            self.disk_fallback_counter.inc();
+        if let Some(prom) = &self.prometheus {
+            prom.disk_fallback_counter.inc();
         }
 
         tracing::info!("Batch with {} entries stored to disk fallback", entry_count);
@@ -468,8 +352,8 @@ impl MetricsCollector {
 
     pub async fn record_retry_attempt(&mut self, _batch_id: &str, attempt_number: u32) {
         #[cfg(feature = "metrics")]
-        {
-            self.retry_attempts
+        if let Some(prom) = &self.prometheus {
+            prom.retry_attempts
                 .with_label_values(&[&attempt_number.to_string()])
                 .inc();
         }
@@ -480,9 +364,9 @@ impl MetricsCollector {
 
     pub async fn record_health_check_async(&self, success: bool) {
         #[cfg(feature = "metrics")]
-        {
+        if let Some(prom) = &self.prometheus {
             let status = if success { "success" } else { "failure" };
-            self.health_checks.with_label_values(&[status]).inc();
+            prom.health_checks.with_label_values(&[status]).inc();
         }
 
         let mut state = self.state.write().await;
@@ -496,9 +380,9 @@ impl MetricsCollector {
 
     pub fn record_health_check(&self, success: bool) {
         #[cfg(feature = "metrics")]
-        {
+        if let Some(prom) = &self.prometheus {
             let status = if success { "success" } else { "failure" };
-            self.health_checks.with_label_values(&[status]).inc();
+            prom.health_checks.with_label_values(&[status]).inc();
         }
 
         // Use non-async updates for immediate recording
@@ -516,15 +400,15 @@ impl MetricsCollector {
 
     pub fn record_connection_stats(&self, active: usize, _max: usize) {
         #[cfg(feature = "metrics")]
-        {
-            self.active_connections.set(active as f64);
+        if let Some(prom) = &self.prometheus {
+            prom.active_connections.set(active as f64);
         }
     }
 
     pub fn update_memory_usage(&self, bytes: u64) {
         #[cfg(feature = "metrics")]
-        {
-            self.memory_usage.set(bytes as f64);
+        if let Some(prom) = &self.prometheus {
+            prom.memory_usage.set(bytes as f64);
         }
     }
 
@@ -540,7 +424,9 @@ impl MetricsCollector {
             total_entries_sent: {
                 #[cfg(feature = "metrics")]
                 {
-                    self.entries_sent.get() as u64
+                    self.prometheus
+                        .as_ref()
+                        .map_or(0, |p| p.entries_sent.get() as u64)
                 }
                 #[cfg(not(feature = "metrics"))]
                 {
@@ -551,7 +437,9 @@ impl MetricsCollector {
             disk_fallback_count: {
                 #[cfg(feature = "metrics")]
                 {
-                    self.disk_fallback_counter.get() as u64
+                    self.prometheus
+                        .as_ref()
+                        .map_or(0, |p| p.disk_fallback_counter.get() as u64)
                 }
                 #[cfg(not(feature = "metrics"))]
                 {
@@ -567,7 +455,9 @@ impl MetricsCollector {
             current_memory_usage: {
                 #[cfg(feature = "metrics")]
                 {
-                    self.memory_usage.get() as u64
+                    self.prometheus
+                        .as_ref()
+                        .map_or(0, |p| p.memory_usage.get() as u64)
                 }
                 #[cfg(not(feature = "metrics"))]
                 {
@@ -578,7 +468,9 @@ impl MetricsCollector {
             active_connections: {
                 #[cfg(feature = "metrics")]
                 {
-                    self.active_connections.get() as u64
+                    self.prometheus
+                        .as_ref()
+                        .map_or(0, |p| p.active_connections.get() as u64)
                 }
                 #[cfg(not(feature = "metrics"))]
                 {
@@ -609,8 +501,11 @@ impl MetricsCollector {
 
     #[cfg(feature = "metrics")]
     pub fn export_metrics(&self) -> Result<String, MetricsError> {
+        let Some(prom) = &self.prometheus else {
+            return Ok("# Metrics disabled\n".to_string());
+        };
         let encoder = TextEncoder::new();
-        let metric_families = self.registry.gather();
+        let metric_families = prom.registry.gather();
 
         let mut buffer = Vec::new();
         encoder.encode(&metric_families, &mut buffer)?;
@@ -630,10 +525,7 @@ pub struct PrometheusExporter {
 }
 
 impl PrometheusExporter {
-    pub async fn new(
-        config: MetricsConfig,
-        collector: MetricsCollector,
-    ) -> Result<Self, MetricsError> {
+    pub fn new(config: MetricsConfig, collector: MetricsCollector) -> Result<Self, MetricsError> {
         Ok(Self { config, collector })
     }
 
@@ -693,10 +585,9 @@ impl PrometheusExporter {
 mod new_legacy_tests {
     use super::*;
 
-    /// Static verification for the `OnceLock`-cached fallback template: pins
-    /// down that its fixed metric names/opts actually build successfully, so
-    /// the `expect()` inside `disabled_metrics_template()` is provably a
-    /// no-op in practice rather than a live panic risk.
+    /// Pins down that the fixed metric names/opts of the fallback template
+    /// build, so the `None` branch of `disabled_metrics_template()` is not
+    /// reachable in practice.
     #[cfg(feature = "metrics")]
     #[test]
     fn disabled_metrics_template_builds_successfully() {
@@ -706,8 +597,8 @@ mod new_legacy_tests {
     #[cfg(feature = "metrics")]
     #[test]
     fn disabled_metrics_template_is_cached_across_calls() {
-        let first = disabled_metrics_template();
-        let second = disabled_metrics_template();
+        let first = disabled_metrics_template().expect("template should build");
+        let second = disabled_metrics_template().expect("template should build");
         // Same process-wide instance: cloning per-call no longer re-runs
         // fallible construction (and therefore can no longer panic per-call).
         assert!(std::ptr::eq(first, second));
@@ -719,30 +610,16 @@ mod new_legacy_tests {
     #[cfg(feature = "metrics")]
     #[test]
     fn disabled_collector_can_be_built_from_template_without_panicking() {
-        let template = disabled_metrics_template();
+        let template = disabled_metrics_template()
+            .expect("template should build")
+            .clone();
         let collector = MetricsCollector {
             config: MetricsConfig {
                 enabled: false,
                 ..MetricsConfig::default()
             },
-            registry: template.registry.clone(),
-            batches_sent: template.batches_sent.clone(),
-            entries_sent: template.entries_sent.clone(),
-            transmission_latency: template.transmission_latency.clone(),
-            disk_fallback_counter: template.disk_fallback_counter.clone(),
-            retry_attempts: template.retry_attempts.clone(),
-            health_checks: template.health_checks.clone(),
-            memory_usage: template.memory_usage.clone(),
-            active_connections: template.active_connections.clone(),
-            state: Arc::new(RwLock::new(MetricsState {
-                total_batches_sent: 0,
-                successful_batches: 0,
-                failed_batches: 0,
-                retry_count: 0,
-                health_check_total: 0,
-                health_check_success: 0,
-                health_check_failure: 0,
-            })),
+            prometheus: Some(template),
+            state: empty_metrics_state(),
         };
         assert!(!collector.config.enabled);
     }

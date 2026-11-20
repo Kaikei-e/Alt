@@ -37,12 +37,12 @@ impl InitializationError {
     /// 回復可能性の判定
     pub fn is_recoverable(&self) -> bool {
         match self {
-            InitializationError::InvalidLogLevel { .. } => true,
-            InitializationError::InvalidDirectiveFormat { .. } => true,
-            InitializationError::EmptyTarget { .. } => true,
-            InitializationError::LoggingInitFailed { .. } => false,
-            InitializationError::ConfigValidationFailed { .. } => true,
-            InitializationError::ResourceInitFailed { .. } => false,
+            InitializationError::InvalidLogLevel { .. }
+            | InitializationError::InvalidDirectiveFormat { .. }
+            | InitializationError::EmptyTarget { .. }
+            | InitializationError::ConfigValidationFailed { .. } => true,
+            InitializationError::LoggingInitFailed { .. }
+            | InitializationError::ResourceInitFailed { .. } => false,
         }
     }
 
@@ -50,8 +50,8 @@ impl InitializationError {
     pub fn fallback_strategy(&self) -> FallbackStrategy {
         match self {
             InitializationError::InvalidLogLevel { .. } => FallbackStrategy::UseDefaultLevel,
-            InitializationError::InvalidDirectiveFormat { .. } => FallbackStrategy::SkipDirective,
-            InitializationError::EmptyTarget { .. } => FallbackStrategy::SkipDirective,
+            InitializationError::InvalidDirectiveFormat { .. }
+            | InitializationError::EmptyTarget { .. } => FallbackStrategy::SkipDirective,
             InitializationError::LoggingInitFailed { .. } => FallbackStrategy::UseStdoutLogging,
             InitializationError::ConfigValidationFailed { .. } => FallbackStrategy::UseDefaults,
             InitializationError::ResourceInitFailed { .. } => FallbackStrategy::AbortStartup,

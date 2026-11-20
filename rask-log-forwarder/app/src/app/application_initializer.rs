@@ -21,7 +21,7 @@ impl ApplicationInitializer {
         let start_time = std::time::Instant::now();
 
         // Phase 1: ログシステムの初期化
-        self.initialize_logging(config.log_level).map_err(|e| {
+        Self::initialize_logging(config.log_level).map_err(|e| {
             eprintln!("Failed to initialize logging: {e}");
             e
         })?;
@@ -53,7 +53,7 @@ impl ApplicationInitializer {
         })
     }
 
-    fn initialize_logging(&self, log_level: LogLevel) -> Result<(), InitializationError> {
+    fn initialize_logging(log_level: LogLevel) -> Result<(), InitializationError> {
         // Use the memory-safe logging setup
         setup_logging_safe(log_level)?;
 
@@ -186,6 +186,7 @@ pub enum InitializationStrategy {
 
 #[cfg(test)]
 mod tests {
+    use super::super::config::{DiskFallbackConfig, MetricsConfig, RetryConfig};
     use super::*;
     use std::path::PathBuf;
     use std::time::Duration;
@@ -212,9 +213,9 @@ mod tests {
             // Derived fields
             flush_interval: Duration::from_millis(500),
             connection_timeout: Duration::from_secs(30),
-            retry_config: Default::default(),
-            disk_fallback_config: Default::default(),
-            metrics_config: Default::default(),
+            retry_config: RetryConfig::default(),
+            disk_fallback_config: DiskFallbackConfig::default(),
+            metrics_config: MetricsConfig::default(),
             ingest_token_file: None,
             ingest_token: String::new(),
         }
@@ -281,7 +282,7 @@ mod tests {
 
         // Empty endpoint
         let mut config = create_valid_config();
-        config.endpoint = "".to_string();
+        config.endpoint = String::new();
         assert!(initializer.validate_configuration(&config).is_err());
 
         // Invalid URL scheme
@@ -379,7 +380,7 @@ mod tests {
         let initializer = ApplicationInitializer::new();
 
         let mut config = create_valid_config();
-        config.endpoint = "".to_string(); // Invalid
+        config.endpoint = String::new(); // Invalid
 
         let result = initializer.initialize(&config);
         assert!(result.is_err(), "Should fail with invalid config");

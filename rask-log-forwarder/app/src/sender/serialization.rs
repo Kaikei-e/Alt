@@ -1,5 +1,6 @@
 use crate::buffer::Batch;
 // use crate::parser::EnrichedLogEntry;
+use flate2::{Compression, write::GzEncoder};
 use serde::{Deserialize, Serialize};
 use serde_json;
 use std::io::Write;
@@ -135,7 +136,7 @@ impl BatchSerializer {
         // OTLP format is already binary (protobuf), so we handle it separately
         #[cfg(feature = "otlp")]
         if matches!(format, SerializationFormat::OTLP) {
-            return self.serialize_otlp_compressed(batch);
+            return Self::serialize_otlp_compressed(batch);
         }
 
         let data = match format {
@@ -147,8 +148,6 @@ impl BatchSerializer {
         };
 
         // Compress using gzip
-        use flate2::{Compression, write::GzEncoder};
-
         let mut encoder = GzEncoder::new(Vec::new(), Compression::fast());
         encoder.write_all(data.as_bytes())?;
         let compressed = encoder.finish()?;
@@ -158,9 +157,8 @@ impl BatchSerializer {
 
     /// Serialize batch to OTLP protobuf format (optionally compressed).
     #[cfg(feature = "otlp")]
-    fn serialize_otlp_compressed(&self, batch: &Batch) -> Result<Vec<u8>, SerializationError> {
+    fn serialize_otlp_compressed(batch: &Batch) -> Result<Vec<u8>, SerializationError> {
         use crate::sender::otlp::OtlpSerializer;
-        use flate2::{Compression, write::GzEncoder};
 
         let otlp_serializer = OtlpSerializer::new();
         let protobuf_bytes = otlp_serializer.serialize_batch(batch)?;

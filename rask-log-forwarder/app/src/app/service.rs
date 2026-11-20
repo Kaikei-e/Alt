@@ -4,6 +4,7 @@ use super::protocol::SenderConfig;
 use super::shutdown::{ShutdownHandle, SignalHandler};
 use crate::{
     collector::{CollectorConfig, LogCollector},
+    domain::{RedactionPatterns, compile_patterns},
     parser::UniversalParser,
     reliability::{HealthReport, ReliabilityManager},
     sender::{ClientConfig, LogSender},
@@ -35,6 +36,8 @@ pub enum ServiceError {
     BufferError(#[from] crate::buffer::BufferError),
     #[error("Sender error: {0}")]
     SenderError(#[from] crate::sender::ClientError),
+    #[error("Redaction pattern compilation failed: {0}")]
+    RedactionError(#[from] regex::Error),
     #[error("Service not initialized")]
     NotInitialized,
     #[error("Service already running")]
@@ -53,6 +56,7 @@ pub struct ServiceManager {
     // Components
     collector: Option<LogCollector>,
     parser: Arc<UniversalParser>,
+    redaction_patterns: Arc<RedactionPatterns>,
     sender: Option<LogSender>,
     reliability_manager: Option<ReliabilityManager>,
 
@@ -65,7 +69,7 @@ pub struct ServiceManager {
 }
 
 impl ServiceManager {
-    pub async fn new(mut config: Config) -> Result<Self, ServiceError> {
+    pub fn new(mut config: Config) -> Result<Self, ServiceError> {
         // Enforce configuration post-processing and validation before any component initialization
         config.post_process()?;
         config.validate()?;
@@ -81,6 +85,7 @@ impl ServiceManager {
 
         // Initialize parser (stateless, can be shared)
         let parser = Arc::new(UniversalParser::new());
+        let redaction_patterns = Arc::new(compile_patterns()?);
 
         // Create sender configuration for protocol-aware sending
         let sender_config = SenderConfig {
@@ -111,6 +116,7 @@ impl ServiceManager {
             start_time: Instant::now(),
             collector: None,
             parser,
+            redaction_patterns,
             sender: None,
             reliability_manager: None,
             sender_config,
@@ -137,7 +143,7 @@ impl ServiceManager {
         *self.running.write().await = true;
 
         // Setup signal handlers
-        let signal_handler = self.setup_signal_handlers().await?;
+        let signal_handler = self.setup_signal_handlers()?;
 
         // Start main processing loop
         let running = self.running.clone();
@@ -183,6 +189,7 @@ impl ServiceManager {
         let params = ProcessingLoopParams {
             collector,
             parser,
+            redaction_patterns: self.redaction_patterns.clone(),
             reliability_manager,
             sender,
             running,
@@ -220,7 +227,7 @@ impl ServiceManager {
             buffer_size: 8192,
         };
 
-        self.collector = Some(LogCollector::new(collector_config).await?);
+        self.collector = Some(LogCollector::new(collector_config)?);
 
         // Initialize sender
         let client_config = ClientConfig {
@@ -234,7 +241,7 @@ impl ServiceManager {
             retry_attempts: self.config.retry_config.max_attempts,
             ingest_token: self.config.ingest_token.clone(),
         };
-        self.sender = Some(LogSender::new(client_config).await?);
+        self.sender = Some(LogSender::new(client_config)?);
 
         // Initialize reliability manager
         let retry_config = crate::reliability::RetryConfig {
@@ -289,14 +296,14 @@ impl ServiceManager {
         Ok(())
     }
 
-    pub async fn setup_signal_handlers(&self) -> Result<SignalHandler, ServiceError> {
+    pub fn setup_signal_handlers(&self) -> Result<SignalHandler, ServiceError> {
         let shutdown_tx = self
             .shutdown_tx
             .as_ref()
             .ok_or(ServiceError::NotInitialized)?
             .clone();
 
-        Ok(SignalHandler::new(shutdown_tx).await)
+        Ok(SignalHandler::new(shutdown_tx))
     }
 
     pub fn is_initialized(&self) -> bool {
@@ -345,7 +352,7 @@ mod tests {
     #[tokio::test]
     async fn test_component_initialization_error_handling() {
         let (config, _token_file) = create_test_config();
-        let service = ServiceManager::new(config).await.unwrap();
+        let service = ServiceManager::new(config).unwrap();
 
         assert!(!service.is_initialized());
 
@@ -374,7 +381,7 @@ mod tests {
     #[tokio::test]
     async fn test_service_initialization_state() {
         let (config, _token_file) = create_test_config();
-        let service = ServiceManager::new(config).await.unwrap();
+        let service = ServiceManager::new(config).unwrap();
 
         assert!(!service.is_initialized());
         assert!(!service.is_running().await);

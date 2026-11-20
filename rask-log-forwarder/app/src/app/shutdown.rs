@@ -103,17 +103,17 @@ pub struct SignalHandler {
 }
 
 impl SignalHandler {
-    pub async fn new(shutdown_tx: mpsc::UnboundedSender<()>) -> Self {
+    pub fn new(shutdown_tx: mpsc::UnboundedSender<()>) -> Self {
         let handler = Self {
             shutdown_tx,
             shutdown_token: CancellationToken::new(),
         };
 
-        handler.setup_handlers().await;
+        handler.setup_handlers();
         handler
     }
 
-    async fn setup_handlers(&self) {
+    fn setup_handlers(&self) {
         let shutdown_tx = self.shutdown_tx.clone();
         let shutdown_token = self.shutdown_token.clone();
 

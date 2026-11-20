@@ -13,3 +13,4 @@ mod redact;
 pub use error::ForwarderError;
 pub use log_entry::EnrichedLogEntry;
 pub use log_level::LogLevel;
+pub use redact::{RedactionPatterns, compile_patterns};

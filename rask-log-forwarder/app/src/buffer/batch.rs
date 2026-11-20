@@ -40,7 +40,7 @@ impl Default for BatchConfig {
 pub struct Batch {
     id: String,
     entries: Arc<[EnrichedLogEntry]>,
-    batch_type: BatchType,
+    kind: BatchType,
     created_at: Instant,
     estimated_size: usize,
 }
@@ -52,7 +52,7 @@ impl Batch {
         Self {
             id: Uuid::new_v4().to_string(),
             entries: entries.into(),
-            batch_type,
+            kind: batch_type,
             created_at: Instant::now(),
             estimated_size,
         }
@@ -67,7 +67,7 @@ impl Batch {
         Self {
             id,
             entries: entries.into(),
-            batch_type,
+            kind: batch_type,
             created_at: Instant::now(),
             estimated_size,
         }
@@ -90,7 +90,7 @@ impl Batch {
     }
 
     pub fn batch_type(&self) -> BatchType {
-        self.batch_type
+        self.kind
     }
 
     pub fn created_at(&self) -> Instant {

@@ -124,8 +124,7 @@ impl ServiceParserRegistry {
         }
 
         Err(ParseError::InvalidFormat(format!(
-            "No suitable parser found for service '{}' and log format",
-            service_name
+            "No suitable parser found for service '{service_name}' and log format"
         )))
     }
 
@@ -135,11 +134,16 @@ impl ServiceParserRegistry {
     /// Example: `nginx:nginx,myapp:go,custom:python`
     pub fn load_mappings_from_env(&mut self, env_var: &str) {
         if let Ok(mappings_str) = std::env::var(env_var) {
-            for mapping in mappings_str.split(',') {
-                let parts: Vec<&str> = mapping.trim().split(':').collect();
-                if parts.len() == 2 {
-                    self.map_service(parts[0].trim(), parts[1].trim());
-                }
+            self.load_mappings_from_str(&mappings_str);
+        }
+    }
+
+    /// Load service mappings from a comma-separated `service:parser` string.
+    pub fn load_mappings_from_str(&mut self, mappings_str: &str) {
+        for mapping in mappings_str.split(',') {
+            let parts: Vec<&str> = mapping.trim().split(':').collect();
+            if parts.len() == 2 {
+                self.map_service(parts[0].trim(), parts[1].trim());
             }
         }
     }
@@ -374,15 +378,7 @@ mod tests {
 
         registry.register_parser("go", parser);
 
-        // SAFETY: This is a test and we're only modifying a test-specific env var
-        // that won't affect other threads in a meaningful way
-        unsafe {
-            std::env::set_var("TEST_MAPPINGS_REGISTRY", "service1:go,service2:go");
-        }
-        registry.load_mappings_from_env("TEST_MAPPINGS_REGISTRY");
-        unsafe {
-            std::env::remove_var("TEST_MAPPINGS_REGISTRY");
-        }
+        registry.load_mappings_from_str("service1:go,service2:go");
 
         assert!(registry.has_service_mapping("service1"));
         assert!(registry.has_service_mapping("service2"));

@@ -5,7 +5,7 @@ use std::sync::Arc;
 use bollard::Docker;
 use thiserror::Error;
 
-use super::docker::{DockerConnectError, DockerEndpointError, connect_docker};
+use super::docker::{DockerConnectError, DockerEndpointError, connect_docker_with};
 
 #[derive(Error, Debug, Clone)]
 pub enum DiscoveryError {
@@ -106,9 +106,20 @@ pub struct ServiceDiscovery {
 }
 
 impl ServiceDiscovery {
-    pub async fn new() -> Result<Self, DiscoveryError> {
-        let docker = connect_docker()?;
+    pub fn new() -> Result<Self, DiscoveryError> {
+        Self::new_with_env(|k| std::env::var(k).ok())
+    }
+
+    pub fn new_with_env<F>(lookup: F) -> Result<Self, DiscoveryError>
+    where
+        F: Fn(&str) -> Option<String>,
+    {
+        let docker = connect_docker_with(lookup)?;
         Ok(Self { docker })
+    }
+
+    pub fn from_endpoint(endpoint: &str) -> Result<Self, DiscoveryError> {
+        Self::new_with_env(|k| (k == "DOCKER_HOST").then(|| endpoint.to_string()))
     }
 }
 
@@ -215,13 +226,13 @@ impl ServiceDiscoveryTrait for ServiceDiscovery {
 
             return Ok(ContainerInfo {
                 id,
-                service_name: service_name.to_string(),
+                service_name: service_name.clone(),
                 labels,
                 group,
             });
         }
 
-        Err(DiscoveryError::ContainerNotFound(service_name.to_string()))
+        Err(DiscoveryError::ContainerNotFound(service_name.clone()))
     }
 }
 

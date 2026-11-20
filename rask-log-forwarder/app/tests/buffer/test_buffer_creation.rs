@@ -7,14 +7,14 @@ use std::time::Duration;
 #[tokio::test]
 async fn test_log_buffer_creation() {
     let config = BufferConfig {
-        capacity: 1000000,
+        capacity: 1_000_000,
         batch_size: 1000,
         batch_timeout: Duration::from_millis(100),
         enable_backpressure: true,
         backpressure_threshold: 0.8,
         backpressure_delay: Duration::from_micros(100),
     };
-    let buffer = LogBuffer::new_with_config(config).await.unwrap();
+    let buffer = LogBuffer::new_with_config(config).unwrap();
     let metrics = buffer.metrics().snapshot();
     assert_eq!(metrics.queue_depth, 0);
 }
@@ -29,7 +29,7 @@ async fn test_buffer_with_zero_capacity() {
         backpressure_threshold: 0.8,
         backpressure_delay: Duration::from_micros(100),
     };
-    let result = LogBuffer::new_with_config(config).await;
+    let result = LogBuffer::new_with_config(config);
     // Zero capacity should fail with tokio broadcast channel
     assert!(result.is_err());
 }
@@ -44,7 +44,7 @@ async fn test_buffer_with_max_capacity() {
         backpressure_threshold: 0.8,
         backpressure_delay: Duration::from_micros(100),
     };
-    let result = LogBuffer::new_with_config(config).await;
+    let result = LogBuffer::new_with_config(config);
     // This should succeed as the limit is reasonable
     assert!(result.is_ok());
 }
@@ -59,7 +59,7 @@ async fn test_buffer_metrics_initialization() {
         backpressure_threshold: 0.8,
         backpressure_delay: Duration::from_micros(100),
     };
-    let buffer = LogBuffer::new_with_config(config).await.unwrap();
+    let buffer = LogBuffer::new_with_config(config).unwrap();
     let metrics = buffer.metrics().snapshot();
 
     assert_eq!(metrics.queue_depth, 0);

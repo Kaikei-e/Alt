@@ -30,7 +30,8 @@ impl LoggingSystem {
                 match e.fallback_strategy() {
                     FallbackStrategy::UseDefaultLevel => {
                         eprintln!("Warning: {e}, using default level");
-                        self.add_default_directive(directive_str)
+                        self.add_default_directive(directive_str);
+                        Ok(())
                     }
                     FallbackStrategy::SkipDirective => {
                         eprintln!("Warning: {e}, skipping directive");
@@ -43,13 +44,12 @@ impl LoggingSystem {
     }
 
     /// デフォルトレベルでのディレクティブ追加
-    fn add_default_directive(&self, directive_str: &str) -> Result<(), InitializationError> {
+    fn add_default_directive(&self, directive_str: &str) {
         let target = directive_str.split('=').next().unwrap_or("unknown");
         let directive = LogDirective::new(target, self.fallback_level);
 
         let mut directives = self.directives.write();
         directives.push(directive);
-        Ok(())
     }
 
     /// 型安全なバッチ追加
@@ -83,9 +83,7 @@ impl LoggingSystem {
         })?;
 
         // Use JSON format if RUST_LOG_FORMAT=json, otherwise use human-readable format
-        let use_json = std::env::var("RUST_LOG_FORMAT")
-            .map(|v| v == "json")
-            .unwrap_or(true); // Default to JSON for production
+        let use_json = std::env::var("RUST_LOG_FORMAT").map_or(true, |v| v == "json"); // Default to JSON for production
 
         if use_json {
             let subscriber = tracing_subscriber::registry().with(env_filter).with(
@@ -334,7 +332,9 @@ mod tests {
                     ];
 
                     for directive in directives {
-                        let _ = logging_system.add_directive(&directive);
+                        if let Err(err) = logging_system.add_directive(&directive) {
+                            tracing::debug!(?err, "expected directive failure under load test");
+                        }
                     }
 
                     // Also read frequently
@@ -414,11 +414,8 @@ mod tests {
         // The function might fail due to tracing already being initialized
         // in other tests, but it shouldn't panic
         match result {
-            Ok(()) => {
-                // Success case
-            }
-            Err(InitializationError::LoggingInitFailed { .. }) => {
-                // Expected when tracing is already initialized
+            Ok(()) | Err(InitializationError::LoggingInitFailed { .. }) => {
+                // Success or expected when tracing is already initialized
             }
             Err(e) => {
                 panic!("Unexpected error type: {e:?}");
