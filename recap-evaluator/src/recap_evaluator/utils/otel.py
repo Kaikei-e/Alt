@@ -7,7 +7,7 @@ import os
 import re
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING
 
 import requests as _requests
 import structlog
@@ -15,11 +15,15 @@ from opentelemetry import trace
 from opentelemetry._logs import set_logger_provider
 from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.sdk._logs import LoggerProvider
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
+
+if TYPE_CHECKING:
+    from fastapi import FastAPI
 
 logger = structlog.get_logger()
 
@@ -56,14 +60,14 @@ class _NoRedirectSession(_requests.Session):
     Timeouts are capped at 7 seconds to prevent unbounded hangs.
     """
 
-    def request(self, method, url, **kwargs: Any):  # type: ignore[override]
+    def request(self, method: str, url: str | bytes, **kwargs: object) -> _requests.Response:  # type: ignore[override]
         kwargs["allow_redirects"] = False
         t = kwargs.get("timeout")
         if t is None and "timeout" not in kwargs:
             kwargs["timeout"] = _DEFAULT_TIMEOUT_S
         else:
             kwargs["timeout"] = _cap_timeout(t)
-        return super().request(method, url, **kwargs)
+        return super().request(method, url, **kwargs)  # pyrefly: ignore[bad-argument-type]
 
 
 def load_rask_ingest_token() -> str:
@@ -81,24 +85,23 @@ def load_rask_ingest_token() -> str:
     try:
         raw = Path(token_file).read_text(encoding="utf-8")
     except OSError as exc:
-        raise RuntimeError(
-            f"RASK_INGEST_TOKEN_FILE ({token_file}) could not be read: {exc}"
-        ) from exc
+        msg = f"RASK_INGEST_TOKEN_FILE ({token_file}) could not be read: {exc}"
+        raise RuntimeError(msg) from exc
     except UnicodeDecodeError:
-        raise RuntimeError(
-            f"RASK_INGEST_TOKEN_FILE ({token_file}) contains invalid UTF-8"
-        ) from None
+        msg = f"RASK_INGEST_TOKEN_FILE ({token_file}) contains invalid UTF-8"
+        raise RuntimeError(msg) from None
 
     token = raw.rstrip("\r\n")
     if not token or not _TOKEN68_RE.match(token):
-        raise RuntimeError(f"RASK_INGEST_TOKEN_FILE ({token_file}) contains an invalid token")
+        msg = f"RASK_INGEST_TOKEN_FILE ({token_file}) contains an invalid token"
+        raise RuntimeError(msg)
     return token
 
 
 class OTelConfig:
     """OpenTelemetry configuration from environment variables."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.service_name = os.getenv("OTEL_SERVICE_NAME", "recap-evaluator")
         self.service_version = os.getenv("SERVICE_VERSION", "0.1.0")
         self.environment = os.getenv("DEPLOYMENT_ENV", "development")
@@ -174,7 +177,7 @@ def init_otel_provider(config: OTelConfig | None = None) -> Callable[[], None]:
     return shutdown
 
 
-def instrument_fastapi(app) -> None:
+def instrument_fastapi(app: FastAPI) -> None:
     """Instrument a FastAPI application with OpenTelemetry tracing.
 
     Args:
@@ -185,12 +188,10 @@ def instrument_fastapi(app) -> None:
         return
 
     try:
-        from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-
         FastAPIInstrumentor.instrument_app(
             app,
             excluded_urls="health,metrics",
             exclude_spans=["receive", "send"],
         )
-    except Exception:
+    except Exception:  # noqa: BLE001 — optional FastAPI OTel instrumentation must not block app creation
         logger.warning("FastAPI OpenTelemetry instrumentation failed", exc_info=True)

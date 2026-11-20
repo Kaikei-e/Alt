@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from http import HTTPStatus
+
 import pytest
 from starlette.applications import Starlette
+from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 from starlette.testclient import TestClient
@@ -22,7 +25,7 @@ SIDECAR = ("127.0.0.1", 44444)
 DIRECT = ("172.18.0.9", 44444)
 
 
-def _echo_peer(request):
+def _echo_peer(request: Request) -> JSONResponse:
     return JSONResponse({"peer": getattr(request.state, "peer_identity", None)})
 
 
@@ -43,7 +46,7 @@ def test_header_propagated_when_mtls_on(monkeypatch: pytest.MonkeyPatch) -> None
     app = _build_app(monkeypatch, verify_client="on")
     with TestClient(app, client=SIDECAR) as client:
         resp = client.get("/echo", headers={PEER_IDENTITY_HEADER: "alt-backend"})
-        assert resp.status_code == 200
+        assert resp.status_code == HTTPStatus.OK
         assert resp.json() == {"peer": "alt-backend"}
 
 
@@ -53,7 +56,7 @@ def test_header_stripped_when_mtls_off(monkeypatch: pytest.MonkeyPatch) -> None:
     app = _build_app(monkeypatch, verify_client="off")
     with TestClient(app, client=SIDECAR) as client:
         resp = client.get("/echo", headers={PEER_IDENTITY_HEADER: "root"})
-        assert resp.status_code == 200
+        assert resp.status_code == HTTPStatus.OK
         assert resp.json() == {"peer": None}
 
 
@@ -66,7 +69,7 @@ def test_header_stripped_when_trust_unset(monkeypatch: pytest.MonkeyPatch) -> No
     app.add_middleware(PeerIdentityMiddleware)
     with TestClient(app, client=SIDECAR) as client:
         resp = client.get("/echo", headers={PEER_IDENTITY_HEADER: "alt-backend"})
-        assert resp.status_code == 200
+        assert resp.status_code == HTTPStatus.OK
         assert resp.json() == {"peer": None}
 
 
@@ -77,7 +80,7 @@ def test_header_stripped_when_not_from_sidecar(monkeypatch: pytest.MonkeyPatch) 
     app = _build_app(monkeypatch, verify_client="on")
     with TestClient(app, client=DIRECT) as client:
         resp = client.get("/echo", headers={PEER_IDENTITY_HEADER: "alt-backend"})
-        assert resp.status_code == 200
+        assert resp.status_code == HTTPStatus.OK
         assert resp.json() == {"peer": None}
 
 
@@ -89,7 +92,7 @@ def test_strict_rejects_peer_from_non_sidecar_transport(
     app = _build_app(monkeypatch, allowed=["alt-backend"], strict=True)
     with TestClient(app, client=DIRECT) as client:
         resp = client.get("/echo", headers={PEER_IDENTITY_HEADER: "alt-backend"})
-        assert resp.status_code == 401
+        assert resp.status_code == HTTPStatus.UNAUTHORIZED
 
 
 def test_allowed_peers_from_env(monkeypatch: pytest.MonkeyPatch) -> None:

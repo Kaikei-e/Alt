@@ -16,7 +16,7 @@ async def health_check(request: Request) -> dict:
     try:
         db = request.app.state.db
         await db.health_check()
-    except Exception:
+    except Exception:  # noqa: BLE001 — health endpoint must degrade rather than 500 on any DB check error
         checks["db"] = "unavailable"
         status = "degraded"
         logger.warning("Health check: DB unavailable")

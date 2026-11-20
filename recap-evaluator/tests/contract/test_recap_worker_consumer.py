@@ -8,19 +8,21 @@ Run with:
 """
 
 import json
+from http import HTTPStatus
 from pathlib import Path
 
 import httpx
 from pact import Pact
 
 PACT_DIR = Path(__file__).resolve().parent.parent.parent.parent / "pacts"
+EXPECTED_RUN_ID = 42
 
 
 def _new_pact() -> Pact:
     return Pact("recap-evaluator", "recap-worker")
 
 
-def test_trigger_genre_evaluation():
+def test_trigger_genre_evaluation() -> None:
     """Verify contract for POST /v1/evaluation/genres."""
     pact = _new_pact()
     (
@@ -33,7 +35,7 @@ def test_trigger_genre_evaluation():
 
     with pact.serve() as srv:
         resp = httpx.post(f"{srv.url}/v1/evaluation/genres")
-        assert resp.status_code == 200
+        assert resp.status_code == HTTPStatus.OK
         data = resp.json()
         assert data["status"] == "running"
         assert "run_id" in data
@@ -41,7 +43,7 @@ def test_trigger_genre_evaluation():
     pact.write_file(str(PACT_DIR))
 
 
-def test_fetch_latest_genre_evaluation():
+def test_fetch_latest_genre_evaluation() -> None:
     """Verify contract for GET /v1/evaluation/genres/latest."""
     pact = _new_pact()
     (
@@ -57,7 +59,7 @@ def test_fetch_latest_genre_evaluation():
 
     with pact.serve() as srv:
         resp = httpx.get(f"{srv.url}/v1/evaluation/genres/latest")
-        assert resp.status_code == 200
+        assert resp.status_code == HTTPStatus.OK
         data = resp.json()
         assert data["status"] == "succeeded"
         assert "accuracy" in data
@@ -65,7 +67,7 @@ def test_fetch_latest_genre_evaluation():
     pact.write_file(str(PACT_DIR))
 
 
-def test_fetch_genre_evaluation_by_id():
+def test_fetch_genre_evaluation_by_id() -> None:
     """Verify contract for GET /v1/evaluation/genres/{run_id}."""
     pact = _new_pact()
     (
@@ -81,9 +83,9 @@ def test_fetch_genre_evaluation_by_id():
 
     with pact.serve() as srv:
         resp = httpx.get(f"{srv.url}/v1/evaluation/genres/42")
-        assert resp.status_code == 200
+        assert resp.status_code == HTTPStatus.OK
         data = resp.json()
-        assert data["run_id"] == 42
+        assert data["run_id"] == EXPECTED_RUN_ID
         assert data["status"] == "succeeded"
 
     pact.write_file(str(PACT_DIR))

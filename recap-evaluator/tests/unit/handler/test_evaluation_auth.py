@@ -5,18 +5,25 @@ Health and metrics endpoints remain unauthed.
 """
 
 import contextlib
+import inspect
 import os
 import secrets
 import tempfile
+from collections.abc import AsyncIterator, Iterator
 from datetime import UTC, datetime
+from http import HTTPStatus
 from pathlib import Path
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
+from fastapi import FastAPI, HTTPException
+from fastapi.security import HTTPAuthorizationCredentials
 from fastapi.testclient import TestClient
 
 from recap_evaluator.domain.models import AlertLevel, EvaluationRun, EvaluationType
+from recap_evaluator.infra import bearer_auth
+from recap_evaluator.infra.bearer_auth import load_bearer_token_from_file, require_bearer_token
 from recap_evaluator.main import create_app
 
 VALID_TOKEN = secrets.token_urlsafe(32)
@@ -24,7 +31,7 @@ WRONG_TOKEN = secrets.token_urlsafe(32)
 
 
 @pytest.fixture
-def auth_file():
+def auth_file() -> Iterator[str]:
     with tempfile.NamedTemporaryFile(mode="w+", delete=False) as f:
         f.write(VALID_TOKEN)
         path = f.name
@@ -34,12 +41,12 @@ def auth_file():
 
 
 @pytest.fixture
-def test_app(auth_file):
+def test_app(auth_file: str) -> FastAPI:
     os.environ["EVALUATOR_API_TOKEN_FILE"] = auth_file
     app = create_app()
 
     @contextlib.asynccontextmanager
-    async def dummy_lifespan(app):
+    async def dummy_lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.run_evaluation = AsyncMock()
         app.state.run_evaluation.execute.return_value = EvaluationRun(
             evaluation_id=uuid4(),
@@ -69,8 +76,6 @@ def test_app(auth_file):
         app.state.db = mock_db
 
         # Load token at startup like main.py will
-        from recap_evaluator.infra.bearer_auth import load_bearer_token_from_file
-
         with contextlib.suppress(Exception):
             app.state.api_token = load_bearer_token_from_file()
 
@@ -81,95 +86,85 @@ def test_app(auth_file):
 
 
 @pytest.fixture
-def client(test_app):
+def client(test_app: FastAPI) -> Iterator[TestClient]:
     with TestClient(test_app) as c:
         yield c
 
 
-def test_evaluations_run_rejects_no_auth(client):
+def test_evaluations_run_rejects_no_auth(client: TestClient) -> None:
     resp = client.post("/api/v1/evaluations/run", json={"window_days": 7})
-    assert resp.status_code == 401
+    assert resp.status_code == HTTPStatus.UNAUTHORIZED
 
 
-def test_evaluations_run_rejects_wrong_token(client):
+def test_evaluations_run_rejects_wrong_token(client: TestClient) -> None:
     resp = client.post(
         "/api/v1/evaluations/run",
         json={"window_days": 7},
         headers={"Authorization": f"Bearer {WRONG_TOKEN}"},
     )
-    assert resp.status_code == 401
+    assert resp.status_code == HTTPStatus.UNAUTHORIZED
 
 
-def test_evaluations_run_rejects_bearer_cafe(client):
+def test_evaluations_run_rejects_bearer_cafe(client: TestClient) -> None:
     """Fast mounted dependency HTTP fixture test: Bearer cafe must return 401."""
     resp = client.post(
         "/api/v1/evaluations/run", json={"window_days": 7}, headers={"Authorization": "Bearer cafe"}
     )
-    assert resp.status_code == 401
+    assert resp.status_code == HTTPStatus.UNAUTHORIZED
     assert resp.headers.get("www-authenticate") == "Bearer"
 
 
-def test_require_bearer_token_rejects_unicode_credentials():
+def test_require_bearer_token_rejects_unicode_credentials() -> None:
     """Dependency unit test: Unicode characters in credentials must raise 401."""
-    from unittest.mock import MagicMock
-
-    from fastapi import HTTPException
-    from fastapi.security import HTTPAuthorizationCredentials
-
-    from recap_evaluator.infra.bearer_auth import require_bearer_token
-
     mock_req = MagicMock()
     mock_req.app.state.api_token = VALID_TOKEN
     creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials="cafe\u2615bad")
     with pytest.raises(HTTPException) as exc:
         require_bearer_token(mock_req, creds)
-    assert exc.value.status_code == 401
+    assert exc.value.status_code == HTTPStatus.UNAUTHORIZED
+    assert exc.value.headers is not None
     assert exc.value.headers.get("WWW-Authenticate") == "Bearer"
 
 
-def test_evaluations_run_accepts_valid_token(client):
+def test_evaluations_run_accepts_valid_token(client: TestClient) -> None:
     resp = client.post(
         "/api/v1/evaluations/run",
         json={"window_days": 7},
         headers={"Authorization": f"Bearer {VALID_TOKEN}"},
     )
-    assert resp.status_code == 200
+    assert resp.status_code == HTTPStatus.OK
 
 
-def test_health_accessible_without_auth(client):
+def test_health_accessible_without_auth(client: TestClient) -> None:
     resp = client.get("/health")
-    assert resp.status_code == 200
+    assert resp.status_code == HTTPStatus.OK
 
 
-def test_metrics_latest_rejects_no_auth(client):
+def test_metrics_latest_rejects_no_auth(client: TestClient) -> None:
     resp = client.get("/api/v1/metrics/latest")
-    assert resp.status_code == 401
+    assert resp.status_code == HTTPStatus.UNAUTHORIZED
 
 
-def test_metrics_latest_accepts_valid_token(client):
+def test_metrics_latest_accepts_valid_token(client: TestClient) -> None:
     resp = client.get(
         "/api/v1/metrics/latest",
         headers={"Authorization": f"Bearer {VALID_TOKEN}"},
     )
-    assert resp.status_code == 200
+    assert resp.status_code == HTTPStatus.OK
 
 
-def test_evaluations_list_rejects_no_auth(client):
+def test_evaluations_list_rejects_no_auth(client: TestClient) -> None:
     resp = client.get("/api/v1/evaluations")
-    assert resp.status_code == 401
+    assert resp.status_code == HTTPStatus.UNAUTHORIZED
 
 
-def test_startup_fails_on_missing_token_file(tmp_path):
-    from recap_evaluator.infra.bearer_auth import load_bearer_token_from_file
-
+def test_startup_fails_on_missing_token_file(tmp_path: Path) -> None:
     os.environ["EVALUATOR_API_TOKEN_FILE"] = str(tmp_path / "does-not-exist")
     with pytest.raises(RuntimeError):
         load_bearer_token_from_file()
 
 
-def test_startup_fails_on_empty_token():
-    from recap_evaluator.infra.bearer_auth import load_bearer_token_from_file
-
+def test_startup_fails_on_empty_token() -> None:
     with tempfile.NamedTemporaryFile(mode="w+", delete=False) as f:
         path = f.name
 
@@ -181,9 +176,7 @@ def test_startup_fails_on_empty_token():
         Path(path).unlink()
 
 
-def test_token_rfc6750_validation():
-    from recap_evaluator.infra.bearer_auth import load_bearer_token_from_file
-
+def test_token_rfc6750_validation() -> None:
     with tempfile.NamedTemporaryFile(mode="w+", delete=False) as f:
         f.write("invalid char @")
         path = f.name
@@ -196,11 +189,7 @@ def test_token_rfc6750_validation():
         Path(path).unlink()
 
 
-def test_constant_time_comparison():
+def test_constant_time_comparison() -> None:
     # Will just check if hmac is used in the module
-    import inspect
-
-    import recap_evaluator.infra.bearer_auth as ba
-
-    source = inspect.getsource(ba)
+    source = inspect.getsource(bearer_auth)
     assert "hmac.compare_digest" in source

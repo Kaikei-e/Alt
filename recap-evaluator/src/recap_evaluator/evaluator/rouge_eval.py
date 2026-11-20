@@ -101,7 +101,7 @@ class ROUGEEvaluator:
         >>> print(f"ROUGE-L F1: {result.rouge_l_f1:.3f}")
     """
 
-    def __init__(self, use_stemmer: bool = False):
+    def __init__(self, use_stemmer: bool = False) -> None:
         """Initialize the ROUGE evaluator.
 
         Args:
@@ -117,15 +117,15 @@ class ROUGEEvaluator:
         self._english_scorer: rouge_scorer.RougeScorer | None = None  # pyrefly: ignore[missing-attribute]
         self._japanese_scorer: rouge_scorer.RougeScorer | None = None  # pyrefly: ignore[missing-attribute]
 
-    def _get_scorer(self, lang: Literal["en", "ja"]) -> Any:
+    def _get_scorer(self, lang: Literal["en", "ja"]) -> rouge_scorer.RougeScorer:  # pyrefly: ignore[missing-attribute]
         """Get or create a ROUGE scorer for the specified language."""
         if not ROUGE_AVAILABLE:
-            raise RuntimeError(
-                "rouge-score is not installed. Install with: pip install rouge-score"
-            )
+            msg = "rouge-score is not installed. Install with: pip install rouge-score"
+            raise RuntimeError(msg)
 
         if rouge_scorer is None:
-            raise RuntimeError("rouge_scorer should be available (checked above)")
+            msg = "rouge_scorer should be available (checked above)"
+            raise RuntimeError(msg)
         if lang == "ja":
             if self._japanese_scorer is None:
                 self._japanese_scorer = rouge_scorer.RougeScorer(
@@ -134,13 +134,12 @@ class ROUGEEvaluator:
                     tokenizer=JapaneseTokenizer(),
                 )
             return self._japanese_scorer
-        else:
-            if self._english_scorer is None:
-                self._english_scorer = rouge_scorer.RougeScorer(
-                    ["rouge1", "rouge2", "rougeL"],
-                    use_stemmer=self.use_stemmer,
-                )
-            return self._english_scorer
+        if self._english_scorer is None:
+            self._english_scorer = rouge_scorer.RougeScorer(
+                ["rouge1", "rouge2", "rougeL"],
+                use_stemmer=self.use_stemmer,
+            )
+        return self._english_scorer
 
     def compute_rouge(
         self,
@@ -215,9 +214,10 @@ class ROUGEEvaluator:
             ValueError: If candidates and references have different lengths.
         """
         if len(candidates) != len(references):
-            raise ValueError(
+            msg = (
                 f"Mismatched lengths: {len(candidates)} candidates vs {len(references)} references"
             )
+            raise ValueError(msg)
 
         if not candidates:
             return {
@@ -240,7 +240,7 @@ class ROUGEEvaluator:
             "rouge_l_f1": 0.0,
         }
 
-        for candidate, reference in zip(candidates, references):
+        for candidate, reference in zip(candidates, references, strict=True):
             result = self.compute_rouge(candidate, reference, lang)
             result_dict = result.to_dict()
 

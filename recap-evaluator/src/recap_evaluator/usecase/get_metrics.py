@@ -15,14 +15,6 @@ from recap_evaluator.port.database_port import DatabasePort
 
 logger = structlog.get_logger()
 
-# Key metrics to extract from saved evaluation JSONB
-_TREND_METRICS: dict[str, Callable[[dict[str, Any]], float | None]] = {
-    "genre_macro_f1": lambda m: m.get("genre", {}).get("macro_f1"),
-    "cluster_avg_silhouette": lambda m: _avg_cluster_silhouette(m),
-    "pipeline_success_rate": lambda m: m.get("pipeline", {}).get("success_rate"),
-    "overall_quality_score": lambda m: m.get("summary", {}).get("overall_quality_score"),
-}
-
 
 def _avg_cluster_silhouette(metrics: dict[str, Any]) -> float | None:
     cluster = metrics.get("cluster")
@@ -32,6 +24,17 @@ def _avg_cluster_silhouette(metrics: dict[str, Any]) -> float | None:
         g["silhouette_score"] for g in cluster.values() if g.get("silhouette_score") is not None
     ]
     return sum(scores) / len(scores) if scores else None
+
+
+_MIN_TREND_POINTS = 2
+
+# Key metrics to extract from saved evaluation JSONB
+_TREND_METRICS: dict[str, Callable[[dict[str, Any]], float | None]] = {
+    "genre_macro_f1": lambda m: m.get("genre", {}).get("macro_f1"),
+    "cluster_avg_silhouette": _avg_cluster_silhouette,
+    "pipeline_success_rate": lambda m: m.get("pipeline", {}).get("success_rate"),
+    "overall_quality_score": lambda m: m.get("summary", {}).get("overall_quality_score"),
+}
 
 
 class GetMetricsUsecase:
@@ -153,7 +156,7 @@ class GetMetricsUsecase:
         data_points: list[dict[str, Any]], days: int, current: float
     ) -> float | None:
         """Compute relative change over the given window."""
-        if len(data_points) < 2:
+        if len(data_points) < _MIN_TREND_POINTS:
             return None
 
         now = data_points[-1]["timestamp"]

@@ -93,7 +93,7 @@ def test_load_config_enabled_subject_scoped_defaults(
     monkeypatch.setenv("CERT_SUBJECT", "recap-evaluator")
     cfg = load_config("recap-evaluator")
     assert cfg.provisioner == "pki-agent-recap-evaluator"
-    assert cfg.password_file == "/run/secrets/pki-agent-recap-evaluator-jwk"
+    assert cfg.password_file == "/run/secrets/pki-agent-recap-evaluator-jwk"  # noqa: S105 - test fixture value, not a credential
 
 
 def test_load_config_distinct_subjects_do_not_share_identity(

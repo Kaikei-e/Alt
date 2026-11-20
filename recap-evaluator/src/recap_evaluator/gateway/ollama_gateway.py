@@ -179,7 +179,7 @@ JSON評価結果:"""
                 result_data = response.json()
                 return self._parse_geval_response(result_data.get("response", ""))
         except httpx.HTTPStatusError as e:
-            logger.error("Ollama HTTP error", status_code=e.response.status_code)
+            logger.exception("Ollama HTTP error", status_code=e.response.status_code)
             return GEvalResult(
                 coherence=0,
                 consistency=0,
@@ -188,7 +188,7 @@ JSON評価結果:"""
                 error=f"HTTP error: {e.response.status_code}",
             )
         except httpx.TimeoutException:
-            logger.error("Ollama request timeout")
+            logger.exception("Ollama request timeout")
             return GEvalResult(
                 coherence=0,
                 consistency=0,
@@ -220,7 +220,8 @@ JSON評価結果:"""
     def _parse_readability_response(self, response_text: str) -> float:
         json_match = re.search(r"\{[^{}]*\}", response_text, re.DOTALL)
         if not json_match:
-            raise ValueError(f"No JSON found in readability response: {response_text!r}")
+            msg = f"No JSON found in readability response: {response_text!r}"
+            raise ValueError(msg)
         data = json.loads(json_match.group())
         return float(data["score"])
 
@@ -292,7 +293,8 @@ JSON評価結果:"""
                     model=self._model,
                     available_models=models,
                 )
-            return True
         except httpx.HTTPError, json.JSONDecodeError, ValueError:
             logger.exception("Ollama health check failed")
             return False
+        else:
+            return True

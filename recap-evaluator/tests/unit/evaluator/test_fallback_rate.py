@@ -6,11 +6,11 @@ from recap_evaluator.evaluator.fallback_rate import FallbackRateEvaluator
 
 
 class TestFallbackRateEvaluator:
-    def test_zero_outputs_returns_zero(self):
+    def test_zero_outputs_returns_zero(self) -> None:
         evaluator = FallbackRateEvaluator()
         assert evaluator.compute([]) == 0.0
 
-    def test_all_healthy_outputs_returns_zero(self):
+    def test_all_healthy_outputs_returns_zero(self) -> None:
         evaluator = FallbackRateEvaluator()
         outputs = [
             {"body_json": {"metadata": {"is_degraded": False, "model": "gemma3-4b"}}},
@@ -18,7 +18,7 @@ class TestFallbackRateEvaluator:
         ]
         assert evaluator.compute(outputs) == 0.0
 
-    def test_all_degraded_returns_one(self):
+    def test_all_degraded_returns_one(self) -> None:
         evaluator = FallbackRateEvaluator()
         outputs = [
             {"body_json": {"metadata": {"is_degraded": True, "model": "gemma3-4b"}}},
@@ -26,7 +26,7 @@ class TestFallbackRateEvaluator:
         ]
         assert evaluator.compute(outputs) == pytest.approx(1.0)
 
-    def test_low_evidence_extractive_counted_as_fallback(self):
+    def test_low_evidence_extractive_counted_as_fallback(self) -> None:
         evaluator = FallbackRateEvaluator()
         outputs = [
             {"body_json": {"metadata": {"model": "low-evidence-extractive"}}},
@@ -34,7 +34,7 @@ class TestFallbackRateEvaluator:
         ]
         assert evaluator.compute(outputs) == pytest.approx(0.5)
 
-    def test_missing_metadata_counts_as_healthy(self):
+    def test_missing_metadata_counts_as_healthy(self) -> None:
         evaluator = FallbackRateEvaluator()
         outputs = [
             {"body_json": {}},

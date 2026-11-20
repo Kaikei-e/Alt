@@ -1,5 +1,6 @@
 """Integration tests for full evaluation flow: handler → usecase → mock gateway."""
 
+from http import HTTPStatus
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -29,20 +30,7 @@ from tests.fixtures.job_data import (
 )
 
 
-@pytest.fixture
-def integration_app():
-    """Build full app with mock gateways but real usecases/evaluators."""
-    settings = Settings(
-        recap_db_dsn="postgres://test:test@localhost/test",
-        ollama_concurrency=2,
-        geval_sample_size=5,
-        evaluation_thread_pool_size=2,
-        enable_scheduler=False,
-    )
-    thresholds = AlertThresholds()
-    weights = EvaluatorWeights()
-
-    # Mock gateways
+def _build_mock_db() -> AsyncMock:
     mock_db = AsyncMock()
     mock_pool = AsyncMock()
     mock_pool.fetchval.return_value = 1
@@ -61,10 +49,10 @@ def integration_app():
     mock_db.fetch_evaluation_history.return_value = []
     mock_db.fetch_evaluation_by_id.return_value = None
     mock_db.save_evaluation_run.return_value = None
+    return mock_db
 
-    mock_recap_worker = AsyncMock()
-    mock_recap_worker.fetch_latest_genre_evaluation.return_value = SAMPLE_GENRE_API_RESPONSE
 
+def _build_mock_ollama() -> AsyncMock:
     mock_ollama = AsyncMock()
     batch_result = AsyncMock()
     batch_result.avg_coherence = 4.0
@@ -74,12 +62,16 @@ def integration_app():
     batch_result.avg_overall = 4.075
     batch_result.success_count = 1
     mock_ollama.evaluate_batch.return_value = batch_result
+    return mock_ollama
 
-    # Real evaluators with mock dependencies
-    genre_eval = GenreEvaluator(mock_recap_worker, mock_db, thresholds)
-    cluster_eval = ClusterEvaluator(mock_db, thresholds)
 
-    # Use mocked sub-evaluators for summary to avoid model loading
+def _build_mock_summary_eval(
+    mock_ollama: AsyncMock,
+    mock_db: AsyncMock,
+    settings: Settings,
+    thresholds: AlertThresholds,
+    weights: EvaluatorWeights,
+) -> SummaryEvaluator:
     mock_rouge = MagicMock()
     mock_rouge.compute_batch.return_value = {
         "rouge_1_f1": 0.45,
@@ -98,7 +90,7 @@ def integration_app():
     fr.hallucination_score = 0.25
     mock_faith.detect_batch.return_value = [fr]
 
-    summary_eval = SummaryEvaluator(
+    return SummaryEvaluator(
         mock_ollama,
         mock_db,
         settings,
@@ -108,9 +100,31 @@ def integration_app():
         bertscore=mock_bertscore,
         faithfulness=mock_faith,
     )
+
+
+@pytest.fixture
+def integration_app() -> FastAPI:
+    """Build full app with mock gateways but real usecases/evaluators."""
+    settings = Settings(
+        recap_db_dsn="postgres://test:test@localhost/test",
+        ollama_concurrency=2,
+        geval_sample_size=5,
+        evaluation_thread_pool_size=2,
+        enable_scheduler=False,
+    )
+    thresholds = AlertThresholds()
+    weights = EvaluatorWeights()
+
+    mock_db = _build_mock_db()
+    mock_recap_worker = AsyncMock()
+    mock_recap_worker.fetch_latest_genre_evaluation.return_value = SAMPLE_GENRE_API_RESPONSE
+    mock_ollama = _build_mock_ollama()
+
+    genre_eval = GenreEvaluator(mock_recap_worker, mock_db, thresholds)
+    cluster_eval = ClusterEvaluator(mock_db, thresholds)
+    summary_eval = _build_mock_summary_eval(mock_ollama, mock_db, settings, thresholds, weights)
     pipeline_eval = PipelineEvaluator(mock_db, thresholds)
 
-    # Real usecases
     run_eval_uc = RunEvaluationUsecase(
         genre_eval, cluster_eval, summary_eval, pipeline_eval, mock_db
     )
@@ -132,23 +146,23 @@ def integration_app():
 
 
 @pytest.fixture
-def integration_client(integration_app):
+def integration_client(integration_app: FastAPI) -> TestClient:
     return TestClient(integration_app)
 
 
 class TestFullEvaluationFlow:
-    def test_health_check(self, integration_client):
+    def test_health_check(self, integration_client: TestClient) -> None:
         resp = integration_client.get("/health")
-        assert resp.status_code == 200
+        assert resp.status_code == HTTPStatus.OK
         assert resp.json()["status"] == "healthy"
 
-    def test_run_full_evaluation_end_to_end(self, integration_client):
+    def test_run_full_evaluation_end_to_end(self, integration_client: TestClient) -> None:
         resp = integration_client.post(
             "/api/v1/evaluations/run",
             json={"window_days": 7},
         )
 
-        assert resp.status_code == 200
+        assert resp.status_code == HTTPStatus.OK
         data = resp.json()
         assert data["evaluation_type"] == "full"
         assert data["overall_alert_level"] in ["ok", "warn", "critical"]
@@ -159,21 +173,21 @@ class TestFullEvaluationFlow:
         assert data["summary_metrics"] is not None
         assert data["pipeline_metrics"] is not None
 
-    def test_latest_metrics_end_to_end(self, integration_client):
+    def test_latest_metrics_end_to_end(self, integration_client: TestClient) -> None:
         resp = integration_client.get("/api/v1/metrics/latest")
 
-        assert resp.status_code == 200
+        assert resp.status_code == HTTPStatus.OK
         data = resp.json()
         assert data["genre_macro_f1"] is not None
         assert data["pipeline_success_rate"] is not None
 
-    def test_summary_endpoint_returns_5_new_axes(self, integration_client):
+    def test_summary_endpoint_returns_5_new_axes(self, integration_client: TestClient) -> None:
         resp = integration_client.post(
             "/api/v1/evaluations/summary",
             json={"window_days": 7, "sample_per_job": 3},
         )
 
-        assert resp.status_code == 200
+        assert resp.status_code == HTTPStatus.OK
         data = resp.json()
         expected_axes = (
             "fallback_rate",
@@ -185,13 +199,15 @@ class TestFullEvaluationFlow:
         missing = [k for k in expected_axes if k not in data]
         assert not missing, f"summary_metrics missing expected axes: {missing}"
 
-    def test_run_evaluation_includes_5_new_axes_in_summary_metrics(self, integration_client):
+    def test_run_evaluation_includes_5_new_axes_in_summary_metrics(
+        self, integration_client: TestClient
+    ) -> None:
         resp = integration_client.post(
             "/api/v1/evaluations/run",
             json={"window_days": 7},
         )
 
-        assert resp.status_code == 200
+        assert resp.status_code == HTTPStatus.OK
         summary = resp.json().get("summary_metrics")
         assert summary is not None, "summary_metrics missing from full evaluation run"
         expected_axes = (

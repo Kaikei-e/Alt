@@ -1,9 +1,11 @@
 """Tests for SummaryEvaluator."""
 
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
+from uuid import uuid4
 
 import pytest
 
+from recap_evaluator.config import AlertThresholds, EvaluatorWeights, Settings
 from recap_evaluator.domain.models import AlertLevel, SummaryMetrics
 from recap_evaluator.evaluator.summary_evaluator import SummaryEvaluator
 from tests.fixtures.job_data import SAMPLE_ARTICLE, SAMPLE_OUTPUT
@@ -15,7 +17,7 @@ ALL_AXES = frozenset({"geval", "bertscore", "faithfulness", "rouge"})
 
 
 @pytest.fixture
-def mock_rouge():
+def mock_rouge() -> MagicMock:
     rouge = MagicMock()
     rouge.compute_batch.return_value = {
         "rouge_1_f1": 0.45,
@@ -27,7 +29,7 @@ def mock_rouge():
 
 
 @pytest.fixture
-def mock_bertscore():
+def mock_bertscore() -> MagicMock:
     bs = MagicMock()
     bs.evaluate_batch.return_value = {
         "mean_precision": 0.72,
@@ -39,7 +41,7 @@ def mock_bertscore():
 
 
 @pytest.fixture
-def mock_faithfulness_evaluator():
+def mock_faithfulness_evaluator() -> MagicMock:
     fe = MagicMock()
     result = MagicMock()
     result.faithfulness_score = 0.75
@@ -49,16 +51,16 @@ def mock_faithfulness_evaluator():
 
 
 @pytest.fixture
-def summary_evaluator(
-    mock_db,
-    mock_ollama,
-    mock_settings,
-    alert_thresholds,
-    evaluator_weights,
-    mock_rouge,
-    mock_bertscore,
-    mock_faithfulness_evaluator,
-):
+def summary_evaluator(  # noqa: PLR0913 — pytest fixture dependency injection
+    mock_db: AsyncMock,
+    mock_ollama: AsyncMock,
+    mock_settings: Settings,
+    alert_thresholds: AlertThresholds,
+    evaluator_weights: EvaluatorWeights,
+    mock_rouge: MagicMock,
+    mock_bertscore: MagicMock,
+    mock_faithfulness_evaluator: MagicMock,
+) -> SummaryEvaluator:
     return SummaryEvaluator(
         ollama=mock_ollama,
         db=mock_db,
@@ -72,27 +74,27 @@ def summary_evaluator(
 
 
 class TestSummaryEvaluator:
-    async def test_evaluate_batch_returns_metrics(self, summary_evaluator, mock_db):
+    async def test_evaluate_batch_returns_metrics(
+        self, summary_evaluator: SummaryEvaluator, mock_db: AsyncMock
+    ) -> None:
         mock_db.fetch_outputs.return_value = [SAMPLE_OUTPUT]
         mock_db.fetch_job_articles.return_value = [SAMPLE_ARTICLE]
-
-        from uuid import uuid4
 
         result = await summary_evaluator.evaluate_batch([uuid4()])
 
         assert isinstance(result, SummaryMetrics)
         assert result.sample_count > 0
 
-    async def test_evaluate_batch_empty_outputs(self, summary_evaluator, mock_db):
+    async def test_evaluate_batch_empty_outputs(
+        self, summary_evaluator: SummaryEvaluator, mock_db: AsyncMock
+    ) -> None:
         mock_db.fetch_outputs.return_value = []
-
-        from uuid import uuid4
 
         result = await summary_evaluator.evaluate_batch([uuid4()])
 
         assert result.sample_count == 0
 
-    def test_calculate_composite_score(self, summary_evaluator):
+    def test_calculate_composite_score(self, summary_evaluator: SummaryEvaluator) -> None:
         """Composite score is a weighted average (default EvaluatorWeights:
         geval=0.40, bertscore=0.25, faithfulness=0.25, rouge_l=0.10).
 
@@ -114,7 +116,7 @@ class TestSummaryEvaluator:
 
         assert score == pytest.approx(0.715, abs=0.001)
 
-    def test_determine_alert_level_ok(self, summary_evaluator):
+    def test_determine_alert_level_ok(self, summary_evaluator: SummaryEvaluator) -> None:
         metrics = SummaryMetrics(
             coherence=4.5,
             consistency=4.0,
@@ -128,7 +130,9 @@ class TestSummaryEvaluator:
 
         assert level == AlertLevel.OK
 
-    def test_determine_alert_level_critical_on_high_hallucination(self, summary_evaluator):
+    def test_determine_alert_level_critical_on_high_hallucination(
+        self, summary_evaluator: SummaryEvaluator
+    ) -> None:
         metrics = SummaryMetrics(
             coherence=2.5,
             consistency=2.5,
@@ -144,7 +148,9 @@ class TestSummaryEvaluator:
 
         assert level == AlertLevel.CRITICAL
 
-    def test_determine_alert_level_critical_when_judge_measured_nothing(self, summary_evaluator):
+    def test_determine_alert_level_critical_when_judge_measured_nothing(
+        self, summary_evaluator: SummaryEvaluator
+    ) -> None:
         """An unreachable judge leaves every G-Eval axis at 0.0. Those zeros
         mean "not measured", not "measured as perfect", so a sampled batch
         with no successful judgement is itself a critical condition.
@@ -156,8 +162,11 @@ class TestSummaryEvaluator:
         assert level == AlertLevel.CRITICAL
 
     async def test_evaluate_batch_does_not_inflate_score_when_an_axis_dies(
-        self, summary_evaluator, mock_db, mock_bertscore
-    ):
+        self,
+        summary_evaluator: SummaryEvaluator,
+        mock_db: AsyncMock,
+        mock_bertscore: MagicMock,
+    ) -> None:
         """A dead 25 % axis must not make the composite read *better*.
 
         Re-normalizing over the surviving axes turns an outage into a score
@@ -169,8 +178,6 @@ class TestSummaryEvaluator:
         mock_db.fetch_job_articles.return_value = [SAMPLE_ARTICLE]
         mock_bertscore.evaluate_batch.side_effect = RuntimeError("model not loaded")
 
-        from uuid import uuid4
-
         result = await summary_evaluator.evaluate_batch([uuid4()])
 
         # 0.40*((4.075-1)/4) + 0.25*0.75 + 0.10*0.38, bertscore contributing 0
@@ -178,8 +185,12 @@ class TestSummaryEvaluator:
         assert result.alert_level == AlertLevel.WARN
 
     async def test_evaluate_batch_criticals_when_half_the_weight_is_unmeasured(
-        self, summary_evaluator, mock_db, mock_bertscore, mock_faithfulness_evaluator
-    ):
+        self,
+        summary_evaluator: SummaryEvaluator,
+        mock_db: AsyncMock,
+        mock_bertscore: MagicMock,
+        mock_faithfulness_evaluator: MagicMock,
+    ) -> None:
         """Meta-test: losing 50 % of the weighted axes must trip CRITICAL.
 
         Under the survivors-only normalization the same batch scored 0.691 —
@@ -190,14 +201,14 @@ class TestSummaryEvaluator:
         mock_bertscore.evaluate_batch.side_effect = RuntimeError("model not loaded")
         mock_faithfulness_evaluator.detect_batch.side_effect = RuntimeError("NLI down")
 
-        from uuid import uuid4
-
         result = await summary_evaluator.evaluate_batch([uuid4()])
 
         assert result.overall_quality_score == pytest.approx(0.3455, abs=0.001)
         assert result.alert_level == AlertLevel.CRITICAL
 
-    def test_calculate_composite_score_keeps_missing_weight_in_denominator(self, summary_evaluator):
+    def test_calculate_composite_score_keeps_missing_weight_in_denominator(
+        self, summary_evaluator: SummaryEvaluator
+    ) -> None:
         """An unmeasured axis contributes nothing and is still paid for.
 
         Same metrics as test_calculate_composite_score minus the G-Eval axis:
@@ -217,8 +228,11 @@ class TestSummaryEvaluator:
         assert score == pytest.approx(0.415, abs=0.001)
 
     async def test_evaluate_batch_alerts_when_geval_returns_all_zeros(
-        self, summary_evaluator, mock_db, mock_ollama
-    ):
+        self,
+        summary_evaluator: SummaryEvaluator,
+        mock_db: AsyncMock,
+        mock_ollama: AsyncMock,
+    ) -> None:
         batch_result = mock_ollama.evaluate_batch.return_value
         batch_result.success_count = 0
         batch_result.avg_coherence = 0.0
@@ -228,8 +242,6 @@ class TestSummaryEvaluator:
         batch_result.avg_overall = 0.0
         mock_db.fetch_outputs.return_value = [SAMPLE_OUTPUT]
         mock_db.fetch_job_articles.return_value = [SAMPLE_ARTICLE]
-
-        from uuid import uuid4
 
         result = await summary_evaluator.evaluate_batch([uuid4()])
 

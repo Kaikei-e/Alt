@@ -4,18 +4,20 @@ import pytest
 
 from recap_evaluator.evaluator.redundancy import RedundancyEvaluator
 
+MAX_LOW_REDUNDANCY_SCORE = 0.3
+
 
 class TestRedundancyEvaluator:
-    def test_single_bullet_has_zero_redundancy(self):
+    def test_single_bullet_has_zero_redundancy(self) -> None:
         evaluator = RedundancyEvaluator()
         score = evaluator.compute(["The cat sat on the mat."])
         assert score == 0.0
 
-    def test_empty_bullets_returns_zero(self):
+    def test_empty_bullets_returns_zero(self) -> None:
         evaluator = RedundancyEvaluator()
         assert evaluator.compute([]) == 0.0
 
-    def test_identical_bullets_have_high_redundancy(self):
+    def test_identical_bullets_have_high_redundancy(self) -> None:
         evaluator = RedundancyEvaluator()
         bullets = [
             "The quick brown fox jumps over the lazy dog.",
@@ -24,7 +26,7 @@ class TestRedundancyEvaluator:
         score = evaluator.compute(bullets)
         assert score == pytest.approx(1.0, abs=0.05)
 
-    def test_different_bullets_have_low_redundancy(self):
+    def test_different_bullets_have_low_redundancy(self) -> None:
         evaluator = RedundancyEvaluator()
         bullets = [
             "The cat sat on the mat.",
@@ -32,9 +34,9 @@ class TestRedundancyEvaluator:
             "Birds fly above the trees.",
         ]
         score = evaluator.compute(bullets)
-        assert score < 0.3
+        assert score < MAX_LOW_REDUNDANCY_SCORE
 
-    def test_two_bullets_produces_single_pair_score(self):
+    def test_two_bullets_produces_single_pair_score(self) -> None:
         evaluator = RedundancyEvaluator()
         bullets = [
             "We saw clouds above mountains.",

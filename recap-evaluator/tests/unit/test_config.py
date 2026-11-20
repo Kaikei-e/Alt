@@ -8,6 +8,8 @@ DSN internally, matching the pattern already used by recap-worker and
 recap-db-migrator in the same compose file.
 """
 
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
@@ -15,7 +17,7 @@ from recap_evaluator.config import Settings
 
 
 class TestSettingsRecapDbDsn:
-    def test_recap_db_dsn_env_var_passthrough(self, monkeypatch):
+    def test_recap_db_dsn_env_var_passthrough(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """An explicitly provided RECAP_DB_DSN (tests/local dev) wins as-is."""
         monkeypatch.delenv("RECAP_DB_PASSWORD", raising=False)
         monkeypatch.delenv("RECAP_DB_PASSWORD_FILE", raising=False)
@@ -25,7 +27,9 @@ class TestSettingsRecapDbDsn:
 
         assert settings.recap_db_dsn == "postgres://explicit:dsn@host:5432/db"
 
-    def test_builds_dsn_from_password_file(self, tmp_path, monkeypatch):
+    def test_builds_dsn_from_password_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """RECAP_DB_PASSWORD_FILE (Docker secret path) is read and combined
         with host/port/user/name into a DSN — password never touches the
         environment directly."""
@@ -44,7 +48,7 @@ class TestSettingsRecapDbDsn:
 
         assert settings.recap_db_dsn == ("postgres://recap_user:s3cr3t@recap-db:5432/recap")
 
-    def test_raises_when_no_dsn_and_no_password(self, monkeypatch):
+    def test_raises_when_no_dsn_and_no_password(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Missing both RECAP_DB_DSN and a password source must fail fast at
         startup (CLAUDE.md rule 9) rather than silently building a DSN with
         no credentials."""

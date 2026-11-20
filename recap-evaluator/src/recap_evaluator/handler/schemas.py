@@ -1,6 +1,7 @@
 """Pydantic schemas for API requests and responses."""
 
 from datetime import datetime
+from typing import Self
 
 from pydantic import BaseModel, Field
 
@@ -54,7 +55,7 @@ class GenreMetricsResponse(BaseModel):
     support: int
 
     @classmethod
-    def from_domain(cls, m: GenreMetrics) -> "GenreMetricsResponse":
+    def from_domain(cls, m: GenreMetrics) -> Self:
         return cls(
             genre=m.genre,
             tp=m.tp,
@@ -80,7 +81,7 @@ class GenreEvaluationResponse(BaseModel):
     per_genre: list[GenreMetricsResponse] = Field(default_factory=list)
 
     @classmethod
-    def from_domain(cls, r: GenreEvaluationResult) -> "GenreEvaluationResponse":
+    def from_domain(cls, r: GenreEvaluationResult) -> Self:
         return cls(
             macro_precision=round(r.macro_precision, 4),
             macro_recall=round(r.macro_recall, 4),
@@ -111,7 +112,7 @@ class ClusterMetricsResponse(BaseModel):
     v_measure: float | None = None
 
     @classmethod
-    def from_domain(cls, m: ClusterMetrics) -> "ClusterMetricsResponse":
+    def from_domain(cls, m: ClusterMetrics) -> Self:
         return cls(
             silhouette_score=(
                 round(m.silhouette_score, 4) if m.silhouette_score is not None else None
@@ -156,7 +157,7 @@ class SummaryMetricsResponse(BaseModel):
     alert_level: str
 
     @classmethod
-    def from_domain(cls, m: SummaryMetrics) -> "SummaryMetricsResponse":
+    def from_domain(cls, m: SummaryMetrics) -> Self:
         return cls(
             coherence=round(m.coherence, 3),
             consistency=round(m.consistency, 3),
@@ -194,7 +195,7 @@ class PipelineMetricsResponse(BaseModel):
     alert_level: str
 
     @classmethod
-    def from_domain(cls, m: PipelineMetrics) -> "PipelineMetricsResponse":
+    def from_domain(cls, m: PipelineMetrics) -> Self:
         return cls(
             total_jobs=m.total_jobs,
             completed_jobs=m.completed_jobs,

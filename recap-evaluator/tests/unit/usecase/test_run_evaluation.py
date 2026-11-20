@@ -17,7 +17,7 @@ from tests.fixtures.job_data import SAMPLE_JOB, SAMPLE_JOB_2
 
 
 @pytest.fixture
-def mock_genre_eval():
+def mock_genre_eval() -> AsyncMock:
     m = AsyncMock()
     m.fetch_latest_evaluation.return_value = GenreEvaluationResult(
         macro_f1=0.82, alert_level=AlertLevel.OK
@@ -26,14 +26,14 @@ def mock_genre_eval():
 
 
 @pytest.fixture
-def mock_cluster_eval():
+def mock_cluster_eval() -> AsyncMock:
     m = AsyncMock()
     m.evaluate_batch.return_value = {}
     return m
 
 
 @pytest.fixture
-def mock_summary_eval():
+def mock_summary_eval() -> AsyncMock:
     m = AsyncMock()
     m.evaluate_batch.return_value = SummaryMetrics(
         overall_quality_score=0.7, alert_level=AlertLevel.OK
@@ -42,7 +42,7 @@ def mock_summary_eval():
 
 
 @pytest.fixture
-def mock_pipeline_eval():
+def mock_pipeline_eval() -> AsyncMock:
     m = AsyncMock()
     m.evaluate_batch.return_value = PipelineMetrics(success_rate=0.95, alert_level=AlertLevel.OK)
     return m
@@ -50,8 +50,12 @@ def mock_pipeline_eval():
 
 @pytest.fixture
 def run_evaluation_uc(
-    mock_genre_eval, mock_cluster_eval, mock_summary_eval, mock_pipeline_eval, mock_db
-):
+    mock_genre_eval: AsyncMock,
+    mock_cluster_eval: AsyncMock,
+    mock_summary_eval: AsyncMock,
+    mock_pipeline_eval: AsyncMock,
+    mock_db: AsyncMock,
+) -> RunEvaluationUsecase:
     return RunEvaluationUsecase(
         genre_evaluator=mock_genre_eval,
         cluster_evaluator=mock_cluster_eval,
@@ -62,20 +66,25 @@ def run_evaluation_uc(
 
 
 class TestRunEvaluationUsecase:
-    async def test_execute_full_evaluation(self, run_evaluation_uc, mock_db):
-        mock_db.fetch_recent_jobs.return_value = [SAMPLE_JOB, SAMPLE_JOB_2]
+    async def test_execute_full_evaluation(
+        self, run_evaluation_uc: RunEvaluationUsecase, mock_db: AsyncMock
+    ) -> None:
+        expected_jobs = [SAMPLE_JOB, SAMPLE_JOB_2]
+        mock_db.fetch_recent_jobs.return_value = expected_jobs
 
         run = await run_evaluation_uc.execute(window_days=7)
 
         assert run.evaluation_type == EvaluationType.FULL
-        assert len(run.job_ids) == 2
+        assert len(run.job_ids) == len(expected_jobs)
         assert run.genre_metrics is not None
         assert run.summary_metrics is not None
         assert run.pipeline_metrics is not None
         assert run.overall_alert_level == AlertLevel.OK
         mock_db.save_evaluation_run.assert_called_once()
 
-    async def test_execute_saves_metrics_structure(self, run_evaluation_uc, mock_db):
+    async def test_execute_saves_metrics_structure(
+        self, run_evaluation_uc: RunEvaluationUsecase, mock_db: AsyncMock
+    ) -> None:
         mock_db.fetch_recent_jobs.return_value = [SAMPLE_JOB]
 
         await run_evaluation_uc.execute(window_days=7)
@@ -88,8 +97,12 @@ class TestRunEvaluationUsecase:
         assert "pipeline" in metrics
 
     async def test_execute_no_jobs_found(
-        self, run_evaluation_uc, mock_db, mock_genre_eval, mock_summary_eval
-    ):
+        self,
+        run_evaluation_uc: RunEvaluationUsecase,
+        mock_db: AsyncMock,
+        mock_genre_eval: AsyncMock,
+        mock_summary_eval: AsyncMock,
+    ) -> None:
         mock_db.fetch_recent_jobs.return_value = []
 
         run = await run_evaluation_uc.execute()
@@ -101,8 +114,13 @@ class TestRunEvaluationUsecase:
         mock_summary_eval.evaluate_batch.assert_not_called()
 
     async def test_execute_propagates_critical_alert(
-        self, mock_genre_eval, mock_cluster_eval, mock_summary_eval, mock_pipeline_eval, mock_db
-    ):
+        self,
+        mock_genre_eval: AsyncMock,
+        mock_cluster_eval: AsyncMock,
+        mock_summary_eval: AsyncMock,
+        mock_pipeline_eval: AsyncMock,
+        mock_db: AsyncMock,
+    ) -> None:
         mock_pipeline_eval.evaluate_batch.return_value = PipelineMetrics(
             success_rate=0.5, alert_level=AlertLevel.CRITICAL
         )
@@ -120,8 +138,13 @@ class TestRunEvaluationUsecase:
         assert run.overall_alert_level == AlertLevel.CRITICAL
 
     async def test_cluster_critical_propagates_to_overall(
-        self, mock_genre_eval, mock_cluster_eval, mock_summary_eval, mock_pipeline_eval, mock_db
-    ):
+        self,
+        mock_genre_eval: AsyncMock,
+        mock_cluster_eval: AsyncMock,
+        mock_summary_eval: AsyncMock,
+        mock_pipeline_eval: AsyncMock,
+        mock_db: AsyncMock,
+    ) -> None:
         mock_cluster_eval.evaluate_batch.return_value = {
             "technology": ClusterMetrics(silhouette_score=0.05, alert_level=AlertLevel.CRITICAL),
         }
@@ -137,7 +160,9 @@ class TestRunEvaluationUsecase:
 
         assert run.overall_alert_level == AlertLevel.CRITICAL
 
-    async def test_execute_exclude_dimensions(self, run_evaluation_uc, mock_db):
+    async def test_execute_exclude_dimensions(
+        self, run_evaluation_uc: RunEvaluationUsecase, mock_db: AsyncMock
+    ) -> None:
         mock_db.fetch_recent_jobs.return_value = [SAMPLE_JOB]
 
         run = await run_evaluation_uc.execute(

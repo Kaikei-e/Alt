@@ -12,6 +12,7 @@ from recap_evaluator.infra.pki.config import MODE_ENABLED, Config, load_config
 from recap_evaluator.infra.pki.ctx import CancelledError, Ctx
 from recap_evaluator.infra.pki.manager import Issuer, Manager, NopObserver, Observer
 from recap_evaluator.infra.pki.metrics import PromObserver
+from recap_evaluator.infra.pki.native_issuer import NativeStepCAIssuer
 from recap_evaluator.infra.pki.ops import OpsHandle, start_ops
 
 logger = logging.getLogger(__name__)
@@ -23,7 +24,7 @@ _DEFAULT_ISSUE_TIMEOUT = 15.0
 class Handle:
     """Running enrollment loop + ops listener, stopped on process shutdown."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 — explicit keyword-only dependency bundle for enrollment handle
         self,
         ctx: Ctx,
         thread: threading.Thread,
@@ -58,9 +59,8 @@ class Handle:
                 closer()
         self._thread.join(timeout=self._join_timeout)
         if self._thread.is_alive():
-            raise RuntimeError(
-                "pki: enrollment loop did not stop within join deadline; in-flight write was not abandoned"
-            )
+            msg = "pki: enrollment loop did not stop within join deadline; in-flight write was not abandoned"
+            raise RuntimeError(msg)
         if self._ops is not None:
             self._ops.aclose_sync()
 
@@ -102,8 +102,6 @@ def start_with_observer(
     )
     minted = issuer
     if minted is None:
-        from recap_evaluator.infra.pki.native_issuer import NativeStepCAIssuer
-
         minted = NativeStepCAIssuer(
             ca_url=cfg.ca_url,
             root_file=cfg.root_file,
