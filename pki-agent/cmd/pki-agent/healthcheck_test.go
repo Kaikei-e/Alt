@@ -12,7 +12,7 @@ import (
 // listen opens an ephemeral TCP listener and returns its :port string (with leading colon).
 func listen(t *testing.T) (string, net.Listener) {
 	t.Helper()
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,14 +33,14 @@ func TestRunHealthcheck_MetricsAlive_NoProxy(t *testing.T) {
 	defer srv.Close()
 	metricsAddr := strings.TrimPrefix(srv.URL, "http://")
 
-	if err := runHealthcheck(metricsAddr, ""); err != nil {
+	if err := runHealthcheck(t.Context(), metricsAddr, ""); err != nil {
 		t.Fatalf("want nil, got %v", err)
 	}
 }
 
 // TestRunHealthcheck_MetricsDead: /healthz 5xx or unreachable must fail fast.
 func TestRunHealthcheck_MetricsDead(t *testing.T) {
-	if err := runHealthcheck("127.0.0.1:1", ""); err == nil {
+	if err := runHealthcheck(t.Context(), "127.0.0.1:1", ""); err == nil {
 		t.Fatal("want error when metrics unreachable, got nil")
 	}
 }
@@ -57,7 +57,7 @@ func TestRunHealthcheck_ProxyAlive(t *testing.T) {
 	proxyAddr, ln := listen(t)
 	defer func() { _ = ln.Close() }()
 
-	if err := runHealthcheck(metricsAddr, proxyAddr); err != nil {
+	if err := runHealthcheck(t.Context(), metricsAddr, proxyAddr); err != nil {
 		t.Fatalf("want nil with alive proxy, got %v", err)
 	}
 }
@@ -80,7 +80,7 @@ func TestRunHealthcheck_ProxyDead(t *testing.T) {
 	_, port, _ := net.SplitHostPort(addr)
 	proxyAddr := ":" + port
 
-	err := runHealthcheck(metricsAddr, proxyAddr)
+	err := runHealthcheck(t.Context(), metricsAddr, proxyAddr)
 	if err == nil {
 		t.Fatal("want error when proxy listener dead, got nil")
 	}
@@ -105,7 +105,7 @@ func TestRunHealthcheck_ProxyColonOnly(t *testing.T) {
 	if !strings.HasPrefix(proxyAddr, ":") {
 		t.Fatalf("test expected bare :port, got %q", proxyAddr)
 	}
-	if err := runHealthcheck(metricsAddr, proxyAddr); err != nil {
+	if err := runHealthcheck(t.Context(), metricsAddr, proxyAddr); err != nil {
 		t.Fatalf("want nil for :port dial, got %v", err)
 	}
 }

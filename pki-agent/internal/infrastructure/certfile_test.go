@@ -85,7 +85,7 @@ func TestCertFile_Load_Missing(t *testing.T) {
 func TestCertFile_Load_Corrupt(t *testing.T) {
 	dir := t.TempDir()
 	cert := filepath.Join(dir, "svc-cert.pem")
-	if err := os.WriteFile(cert, []byte("not a pem"), 0o444); err != nil {
+	if err := os.WriteFile(cert, []byte("not a pem"), 0o400); err != nil {
 		t.Fatal(err)
 	}
 	cf := &CertFile{CertPath: cert, KeyPath: filepath.Join(dir, "k")}
@@ -101,6 +101,7 @@ func TestCertFile_MarkRotated(t *testing.T) {
 	if err := cf.MarkRotated(context.Background(), time.Unix(1700000000, 0)); err != nil {
 		t.Fatal(err)
 	}
+	// #nosec G304 -- reading test marker file in t.TempDir()
 	content, err := os.ReadFile(filepath.Join(dir, "rotated.marker"))
 	if err != nil {
 		t.Fatal(err)
@@ -175,7 +176,7 @@ func TestCertFile_WriteAtomic_NoPartialOnError(t *testing.T) {
 	// the point is that no half-written file is ever visible at either path.
 	dir := t.TempDir()
 	keyDir := filepath.Join(dir, "key-is-a-dir")
-	if err := os.Mkdir(keyDir, 0o755); err != nil {
+	if err := os.Mkdir(keyDir, 0o750); err != nil {
 		t.Fatal(err)
 	}
 	cf := &CertFile{CertPath: filepath.Join(dir, "svc-cert.pem"), KeyPath: keyDir}
@@ -207,6 +208,7 @@ func TestCertFile_Write_KeyFailureLeavesPreviousCertIntact(t *testing.T) {
 	cert2, key2 := newSelfSignedPEM(t)
 	cf.ChownRequested = true
 	cf.chown = func(name string, _, _ int) error {
+		// #nosec G304 -- name is temp file path passed to test chown hook in t.TempDir()
 		b, err := os.ReadFile(name)
 		if err == nil && bytes.Equal(b, key2) {
 			return errors.New("chown EPERM on key")
