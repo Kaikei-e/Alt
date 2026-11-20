@@ -145,7 +145,7 @@ def run_sql_query(
     params: dict[str, int] | None = None,
 ) -> list[dict[str, Any]]:
     """Dockerコンテナ内でSQLクエリを実行し、JSON形式で結果を取得"""
-    cmd = _build_psql_cmd(container, user, db, params)
+    cmd = [*_build_psql_cmd(container, user, db, params), "-v", "ON_ERROR_STOP=1"]
 
     try:
         result = subprocess.run(  # noqa: S603 -- docker resolved via shutil.which with fixed compose psql args
