@@ -1,6 +1,7 @@
 package mqhub
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"testing"
@@ -550,7 +551,7 @@ func TestProtoEventToDomain(t *testing.T) {
 		assert.Equal(t, domain.EventType("ArticleCreated"), domainEvent.EventType)
 		assert.Equal(t, "alt-backend", domainEvent.Source)
 		assert.Equal(t, now.Unix(), domainEvent.CreatedAt.Unix())
-		assert.JSONEq(t, `{"article_id": "123"}`, string(domainEvent.Payload))
+		assert.True(t, bytes.Equal([]byte(`{"article_id": "123"}`), domainEvent.Payload), "payload must pass through byte-for-byte")
 		assert.Equal(t, "abc123", domainEvent.Metadata["trace_id"])
 	})
 
