@@ -1,6 +1,6 @@
 module github.com/alt-rss/alt-backend/sidecar-proxy
 
-go 1.27.1
+go 1.27.4
 
 require github.com/miekg/dns v1.1.72
 

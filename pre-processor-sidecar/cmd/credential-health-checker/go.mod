@@ -1,6 +1,6 @@
 module credential-health-checker
 
-go 1.27.1
+go 1.27.4
 
 require (
 	k8s.io/apimachinery v0.36.2

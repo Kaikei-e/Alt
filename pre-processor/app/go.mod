@@ -1,6 +1,6 @@
 module pre-processor
 
-go 1.27.1
+go 1.27.4
 
 require (
 	codeberg.org/readeck/go-readability/v2 v2.1.2

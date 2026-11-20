@@ -1,6 +1,6 @@
 module alt/gen/proto
 
-go 1.27.1
+go 1.27.4
 
 require (
 	connectrpc.com/connect v1.20.0

@@ -1,6 +1,6 @@
 module github.com/alt-project/altctl
 
-go 1.27.1
+go 1.27.4
 
 require (
 	github.com/fatih/color v1.19.0
