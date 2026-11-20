@@ -16,6 +16,8 @@ on:
       - ".github/workflows/pki-agent-go.yaml"
       - ".github/workflows/reusable-test-go.yaml"
       - ".github/workflows/reusable-go-quality-gates.yaml"
+      - ".golangci.yml"
+      - "scripts/lint/**"
       - "!**/CLAUDE.md"
       - "!**/AGENTS.md"
       - "!**/README.md"
@@ -26,6 +28,8 @@ on:
       - ".github/workflows/pki-agent-go.yaml"
       - ".github/workflows/reusable-test-go.yaml"
       - ".github/workflows/reusable-go-quality-gates.yaml"
+      - ".golangci.yml"
+      - "scripts/lint/**"
       - "!**/CLAUDE.md"
       - "!**/AGENTS.md"
       - "!**/README.md"
@@ -54,5 +58,4 @@ jobs:
     uses: ./.github/workflows/reusable-go-quality-gates.yaml
     with:
       working-directory: "pki-agent"
-      lint-only-new: true
       upload-sarif: true

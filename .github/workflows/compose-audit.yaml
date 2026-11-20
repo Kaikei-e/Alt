@@ -1,28 +1,5 @@
-# compose-audit — protect production deploys from the failure class that
-# stranded alt-butterfly-facade on 2026-04-20 (release-deploy run 24643555145,
-# deploy job exit 1 with "has no healthcheck configured" from a
-# `depends_on: condition: service_healthy` target).
-#
-# The precise trigger: compose rejects `up -d --wait --no-deps <svc>` when
-# any service in the matrix has a `depends_on.<other>.condition:
-# service_healthy` entry whose target lacks a `healthcheck` block. The
-# already-running dependency cannot be inspected for health, and compose
-# fails loudly. The release-deploy deploy step then aborts before cascade
-# / smoke / record-deployment, leaving containers stranded mid-recreate.
-#
-# This workflow enumerates every `service_healthy` edge across
-# compose/compose.yaml (the full production include chain) and fails if
-# any target is missing `healthcheck`. Running it on every push to main
-# turns the latent regression (caught only at deploy time against prod)
-# into a fast PR / trunk-push gate.
-#
-# Scope note: the audit is intentionally narrow. Long-running services
-# that are NOT the target of a `service_healthy` edge are NOT required
-# to have healthchecks here — some rask-log-forwarder sidecars and
-# prometheus exporters do not participate in the compose-up dependency
-# graph and their absence does not abort `up --wait`. A broader "every
-# long-running service needs a healthcheck" audit is out of scope; this
-# one targets only the abort-triggering subset.
+# compose-audit — run static compose / PKI / ops-surface / LKAL-kisage audits
+# through the single static-check entry point (`./scripts/lint/run.sh compose`).
 
 name: compose-audit
 
@@ -32,6 +9,8 @@ on:
     paths:
       - 'compose/**.yaml'
       - 'compose/**.yml'
+      - 'scripts/lint/**'
+      - 'scripts/compose-healthcheck-audit.py'
       - 'scripts/compose-port-audit.py'
       - 'scripts/compose-netns-cascade-audit.py'
       - 'scripts/compose-file-bind-audit.py'
@@ -133,6 +112,8 @@ on:
     paths:
       - 'compose/**.yaml'
       - 'compose/**.yml'
+      - 'scripts/lint/**'
+      - 'scripts/compose-healthcheck-audit.py'
       - 'scripts/compose-port-audit.py'
       - 'scripts/compose-netns-cascade-audit.py'
       - 'scripts/compose-file-bind-audit.py'
@@ -239,406 +220,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  healthcheck-invariant:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Test Compose installer offline
-        run: python3 -m unittest discover -s tests/scripts -p test_ci_install_compose.py
-
-      - name: Install the Compose build production renders with
-        run: ./scripts/ci-install-compose.sh
-
-      - name: Stage a dummy .env so compose config resolves
-        run: |
-          # compose/*.yaml uses ${MEILISEARCH_HOST}, ${GHCR_OWNER}, etc.
-          # A minimal dummy .env satisfies the interpolation without
-          # reading prod secrets (the runner has none anyway).
-          # DOCKER_GROUP_ID was historically required by logging.yaml before the
-          # socket proxy migration; kept here as placeholder for environment compatibility.
-          # KRATOS_COOKIE_DOMAIN uses `${VAR?}`: empty is a valid value, unset
-          # fails the render. TRUSTED_PROXY_CIDRS uses `${VAR:?}`: unset or
-          # empty fails the render, `none` is its explicit "trust no hop".
-          {
-            echo 'DOCKER_GROUP_ID=0'
-            echo 'KRATOS_COOKIE_DOMAIN='
-            echo 'TRUSTED_PROXY_CIDRS=none'
-          } > .env
-
-      - name: Assert every service_healthy target has a healthcheck
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import subprocess, sys, yaml
-          proc = subprocess.run(
-              ["docker", "compose", "--env-file", ".env", "-f", "compose/compose.yaml", "config"],
-              capture_output=True, text=True,
-          )
-          if proc.returncode != 0:
-              sys.stderr.write(proc.stderr or proc.stdout or "compose config failed\n")
-              sys.exit(proc.returncode)
-          cfg = yaml.safe_load(proc.stdout)
-          services = cfg.get("services", {})
-          violations = []
-          for name, svc in services.items():
-              deps = svc.get("depends_on") or {}
-              if not isinstance(deps, dict):
-                  # Short-form `depends_on: [a, b]` does not specify
-                  # `service_healthy`, so no abort risk; skip.
-                  continue
-              for dep_name, dep_cfg in deps.items():
-                  if not isinstance(dep_cfg, dict):
-                      continue
-                  if dep_cfg.get("condition") != "service_healthy":
-                      continue
-                  target = services.get(dep_name)
-                  if target is None:
-                      violations.append(f"{name} -> {dep_name} (target service not defined)")
-                      continue
-                  if target.get("healthcheck") is None:
-                      violations.append(
-                          f"{name} depends_on.{dep_name}.condition=service_healthy "
-                          f"but {dep_name} has no healthcheck"
-                      )
-          if violations:
-              print("::error::service_healthy edges with missing target healthcheck:")
-              for v in violations:
-                  print(f"  - {v}")
-              print(
-                  "::notice::Add a `healthcheck:` block to each target service, "
-                  "or drop the `condition: service_healthy` if the dependency is "
-                  "start-only. See compose/recap.yaml recap-subworker for a "
-                  "Python urllib.request reference pattern."
-              )
-              sys.exit(1)
-          print(f"OK: {len(services)} services checked, 0 violations")
-          PY
-
-  loopback-port-invariant:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Pin the port audit logic
-        run: python3 scripts/tests/test-compose-port-audit.py
-
-      - name: Install the Compose build production renders with
-        run: ./scripts/ci-install-compose.sh
-
-      - name: Stage a dummy .env so compose config resolves
-        # Several services carry `env_file: ../.env`, and compose config
-        # refuses to resolve when the file is absent. On a developer host
-        # .env is a symlink to the canonical config, which a public runner
-        # has no equivalent of — same dummy as the job above.
-        run: printf 'DOCKER_GROUP_ID=0\nKRATOS_COOKIE_DOMAIN=\nTRUSTED_PROXY_CIDRS=none\n' > .env
-
-      - name: Assert every published port is loopback-bound
-        run: python3 scripts/compose-port-audit.py --overlays
-
-  netns-cascade-invariant:
-    # Wave 4 retired `network_mode: service:X` for pki-agent. This job
-    # asserts the forbidden topology stays gone: zero pki-agent sidecars
-    # share a parent netns, and the cascade script has no NETNS_SIDECARS
-    # array to drift. Re-adding a netns sidecar fails this job. No .env
-    # or docker needed: the audit reads the compose files.
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Pin the audit parsers
-        run: python3 scripts/tests/test-compose-netns-cascade-audit.py
-
-      - name: Assert zero forbidden netns-sharing pki sidecars
-        run: python3 scripts/compose-netns-cascade-audit.py
-
-  pki-wave4-invariant:
-    # Every parent owns its enrollment in-process; compose declares zero
-    # pki-agent workloads. Dual writers, shared root secrets, and a silent
-    # in-process series drop all fail this job. The recovery runbook test
-    # is an executed python3 step (YAML `run:`), not a comment/string pin.
-    # No live stack.
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Install PyYAML
-        run: pip install --quiet 'pyyaml==6.*'
-
-      - name: Pin Wave 4 PKI acceptance (Go cohort + Pattern B)
-        run: python3 scripts/tests/test-pki-wave4-acceptance.py
-
-      - name: Pin subject-scoped provisioner bootstrap mapping
-        run: python3 scripts/tests/test-pki-subject-scoped-provisioners.py
-
-      - name: Pin pki-agent recovery runbook against compose
-        run: python3 scripts/tests/test-pki-agent-recovery-runbook.py
-
-      - name: Preserve current certificate writers during legacy retirement
-        run: python3 scripts/tests/test-retire-pki-writers.py
-
-      - name: Pin health-deep listener matrix
-        run: python3 scripts/tests/test-health-deep-contract.py
-
-      - name: Pin P2 documentation contracts
-        run: python3 scripts/tests/test-p2-doc-contracts.py
-
-  deploy-cutover-invariant:
-    # ADR-000978: leftover pki-agent-* in project=alt are dual writers.
-    # deploy.sh must stop/rm them with exact labels and a zero docker ps
-    # gate before any PKI_ENROLLMENT=enabled parent up. Cascade is a
-    # retired tombstone. No live stack; docker is stubbed in the tests.
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Pin leftover sweep before parent up
-        run: bash tests/scripts/test_deploy.sh
-
-      - name: Pin retired cascade tombstone
-        run: bash tests/scripts/test_cascade_pki_sidecars.sh
-
-  interpolation-invariant:
-    # An unset `${VAR}` renders as an empty string and only warns on stderr,
-    # so an incomplete env file reaches production as a service configured
-    # with "" (PM-2026-048: a wrong Meilisearch key ran for 24 hours).
-    # scripts/check-compose-variables.sh gates the deploy against the host's
-    # real .env; this job runs the same gate against .env.template, so the
-    # template stays a complete render input instead of drifting behind
-    # compose/ until the next operator sets up a host from it.
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Install the Compose build production renders with
-        run: ./scripts/ci-install-compose.sh
-
-      - name: Stage .env.template as the render input
-        run: |
-          # compose/compose.yaml is a pure `include:` aggregator and every
-          # included file interpolates against the .env in its own directory,
-          # so the template must be staged at compose/.env as well — a
-          # top-level `--env-file` does not reach the includes. Root .env is
-          # separately required because services carry `env_file: ../.env`.
-          # DOCKER_GROUP_ID was historically derived from the host
-          # (scripts/get-docker-gid.sh); staged here for environment compatibility.
-          { cat .env.template; echo; echo 'DOCKER_GROUP_ID=0'; } > .env
-          cp .env compose/.env
-
-      - name: Assert .env.template resolves every interpolation variable
-        run: ./scripts/check-compose-variables.sh
-
-  file-bind-invariant:
-    # PM-2026-036: short-syntax file binds create empty directories when
-    # the host source is missing. Wave 1 converted production mounts to
-    # configs: or long-syntax bind + create_host_path: false. This job
-    # fails on any remaining unguarded file / socket / artefact-directory
-    # bind. Parser tests must stay green either way. No .env or docker needed.
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Install PyYAML
-        run: pip install --quiet 'pyyaml==6.*'
-
-      - name: Pin the file-bind parser
-        run: python3 scripts/tests/test-compose-file-bind-audit.py
-
-      - name: Assert production compose has 0 unguarded file binds
-        run: python3 scripts/compose-file-bind-audit.py
-
-  init-edge-invariant:
-    # PM-2026-037: service_completed_successfully onto restart: "no" is
-    # skipped by rolling up --no-deps. Wave 1b moved two chown-only
-    # inits onto pre_start; remaining one-shots stay on the allowlist.
-    # A new edge without a baseline row fails.
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Install PyYAML
-        run: pip install --quiet 'pyyaml==6.*'
-
-      - name: Pin the init-edge parser
-        run: python3 scripts/tests/test-compose-init-edge-audit.py
-
-      - name: Pin Wave 1b pre_start chown hooks
-        run: python3 scripts/tests/test-compose-pre-start-audit.py
-
-      - name: Assert one-shot SCS edges match the ops-surface allowlist
-        run: python3 scripts/compose-init-edge-audit.py
-
-      - name: Assert the two chown-only inits are pre_start on the consumer
-        run: python3 scripts/compose-pre-start-audit.py
-
-  ops-surface-invariant:
-    # P2-14 budget: compose is the source of long-running names (82
-    # declared with zero pki-agent workload sidecars; default render 77,
-    # full 82). scripts/ops-surface-inventory.yaml holds only
-    # class/kind/exception metadata. F1–F5 freeze accidental OSU (16) and
-    # require offset_of or a dated exception before a new long-running
-    # unit lands.
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Install PyYAML
-        run: pip install --quiet 'pyyaml==6.*'
-
-      - name: Pin the inventory parser
-        run: python3 scripts/tests/test-compose-ops-surface-audit.py
-
-      - name: Assert production compose inventory and P2-14 budget hold
-        run: python3 scripts/compose-ops-surface-audit.py
-
-  restart-policy-invariant:
-    # PM-2026-023 / ADR-000703: a long-running service without a restart policy
-    # (or with restart: "no") stays absent indefinitely after stopping or
-    # container removal. Every long-running service in the production compose
-    # chain must declare a non-"no" restart policy; ephemeral one-shots and
-    # profiled opt-in services are exempt.
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Install PyYAML
-        run: pip install --quiet 'pyyaml==6.*'
-
-      - name: Pin the restart-policy parser
-        run: python3 scripts/tests/test-compose-restart-policy-audit.py
-
-      - name: Assert every long-running service declares a restart policy
-        run: python3 scripts/compose-restart-policy-audit.py
-
-  compose-feature-gate:
-    # Records whether this runner's Compose can host pre_start / whether
-    # the committed operator-host probe still says create_host_path:false
-    # is real. No live docker probe here (avoids pulling alpine); the
-    # operator-host measurement is scripts/compose-feature-gate.report.json.
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Pin the version / report parser
-        run: python3 scripts/tests/test-compose-feature-gate.py
-
-      - name: Validate the committed operator-host gate report
-        run: python3 scripts/compose-feature-gate.py --gate-report
-
-  wiring-invariant:
-    # scripts/tests/test_compose_wiring.sh: the raw-YAML network and identity
-    # checks, plus the rendered config, where `${VAR:-default}` and env_file
-    # overrides decide which host a caller dials. A stale template entry that
-    # sends a caller around its auth proxy, a Redis URL without its ACL user,
-    # or a config-mounted entrypoint without the exec bit fails here instead of
-    # at the next deploy. Renders against .env.template plus the two values
-    # the dummy .env above carries; nothing is printed from the render.
-    # The same job pins scripts/check-env-overrides.py, which applies the
-    # deploy/host-prereqs.yaml env rules to a host .env, and runs the Redis
-    # ACL loader (docker/redis/entrypoint.sh) and kratos entrypoint against
-    # fixtures via test-group1-security.py.
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Install PyYAML
-        run: pip install --quiet 'pyyaml==6.*'
-
-      - name: Install the Compose build production renders with
-        run: ./scripts/ci-install-compose.sh
-
-      - name: Stage .env.template as the render input
-        # Services carry `env_file: ../.env`, so the template is staged there
-        # and the same file is the --env-file.
-        run: |
-          { cat .env.template; echo; echo 'DOCKER_GROUP_ID=0'; echo 'KRATOS_COOKIE_DOMAIN='; } > .env
-
-      - name: Assert compose wiring (raw and rendered)
-        env:
-          COMPOSE_ENV_FILE: .env
-        run: bash scripts/tests/test_compose_wiring.sh
-
-      - name: Pin production upstream wiring and env-template drift
-        run: python3 scripts/tests/test-compose-prod-env-wiring.py
-
-      - name: Pin knowledge-sovereign compose tuning knobs
-        run: python3 scripts/tests/test-compose-sovereign-knobs.py
-
-      - name: Pin recap-evaluator bearer wiring
-        run: python3 scripts/tests/test-recap-evaluator-auth-wiring.py
-
-      - name: Pin the host .env override checker
-        run: python3 scripts/tests/test-check-env-overrides.py
-
-      - name: Pin Redis roles, the ACL loader and the group-1 security wiring
-        run: python3 scripts/tests/test-group1-security.py
-
-  reachability-invariant:
-    # Compose DNS answers a service name only on the networks it joined. A URL
-    # a service declares for a compose host it shares no network with fails
-    # at connect time, after deploy, on whichever path dials it first.
-    # Values that only arrive through the shared env_file are listed without
-    # failing: every env_file service receives them and few read them.
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Install PyYAML
-        run: pip install --quiet 'pyyaml==6.*'
-
-      - name: Pin the reachability audit logic
-        run: python3 scripts/tests/test-compose-reachability-audit.py
-
-      - name: Install the Compose build production renders with
-        run: ./scripts/ci-install-compose.sh
-
-      - name: Stage .env.template as the render input
-        run: |
-          { cat .env.template; echo; echo 'DOCKER_GROUP_ID=0'; echo 'KRATOS_COOKIE_DOMAIN='; } > .env
-
-      - name: Assert every declared compose-host URL shares a network with its caller
-        run: python3 scripts/compose-reachability-audit.py --env-file .env
-
-  kisage-env-invariant:
+  compose-audit:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -646,14 +228,23 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
         with:
-          go-version: "1.27.3"
-          check-latest: true
+          python-version: "3.14"
 
       - name: Install PyYAML
         run: pip install --quiet 'pyyaml==6.*'
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version: "1.27.4"
+          check-latest: true
+          cache: false
+
+      - name: Install the Compose build production renders with
+        run: ./scripts/ci-install-compose.sh
 
       - name: Provision pinned official lkal and kisage v0.1.2 binaries
         run: |
@@ -662,17 +253,7 @@ jobs:
           test -x "$HOME/.local/bin/lkal"
           test -x "$HOME/.local/bin/kisage"
 
-      - name: Check deploy/desired-env.lkal syntax with official lkal CLI
-        run: lkal check --json deploy/desired-env.lkal
-
-      - name: Verify deploy/desired-env.lkal lockstep and ADR-000982 floor
-        run: python3 scripts/kisage-env.py verify
-
-      - name: Run kisage & LKAL acceptance and isolation suite
-        run: python3 scripts/tests/test-kisage-env.py
-
-      - name: Assert every rag-orchestrator mTLS caller is allowlisted
-        run: python3 scripts/tests/test-rag-orchestrator-callers.py
-
-      - name: Run clean-checkout & host-config audit regression tests
-        run: python3 -m unittest discover -s tests/scripts -p 'test_kisage_clean_checkout.py'
+      - name: Run compose static checks
+        env:
+          TARGET: compose
+        run: ./scripts/lint/run.sh "$TARGET"

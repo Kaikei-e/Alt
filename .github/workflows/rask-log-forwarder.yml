@@ -5,6 +5,7 @@ on:
     paths:
       - 'rask-log-forwarder/**'
       - 'compose/logging.yaml'
+      - 'scripts/lint/**'
       - '.github/workflows/rask-log-forwarder.yml'
       - '.github/workflows/reusable-test-rust.yaml'
       - '!**/CLAUDE.md'
@@ -15,6 +16,7 @@ on:
     paths:
       - 'rask-log-forwarder/**'
       - 'compose/logging.yaml'
+      - 'scripts/lint/**'
       - '.github/workflows/rask-log-forwarder.yml'
       - '.github/workflows/reusable-test-rust.yaml'
       - '!**/CLAUDE.md'

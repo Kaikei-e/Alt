@@ -114,7 +114,9 @@ jobs:
         run: npm ci --no-audit --no-fund
 
       - name: Check
-        run: bash e2e/playwright/_lib/check-suites.sh
+        env:
+          TARGET: e2e
+        run: ./scripts/lint/run.sh "$TARGET"
 
       - name: Check staging authentication fixtures offline
         run: |

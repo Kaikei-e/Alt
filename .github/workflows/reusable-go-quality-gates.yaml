@@ -12,11 +12,6 @@ on:
         required: false
         type: string
         default: ""
-      lint-only-new:
-        description: "Show only new lint issues on PRs"
-        required: false
-        type: boolean
-        default: true
       upload-sarif:
         description: "Upload SARIF files to Code Scanning"
         required: false
@@ -45,42 +40,9 @@ jobs:
           persist-credentials: false
           sparse-checkout: |
             ${{ inputs.working-directory }}
+            scripts/lint
           sparse-checkout-cone-mode: true
           fetch-depth: 2 # 変更差分だけで十分 (workflow_dispatch での HEAD~1 参照にも対応)
-
-      # --- Mask sensitive information ---
-      - name: Mask sensitive paths and user info
-        run: |
-          echo "::group::Masking Configuration"
-
-          mask_if_nonempty() {
-            if [ -n "$1" ]; then
-              echo "::add-mask::$1"
-            fi
-          }
-
-          # Mask Runner Identity
-          mask_if_nonempty "$(hostname)"
-          mask_if_nonempty "$(whoami)"
-
-          # Mask Absolute Paths
-          mask_if_nonempty "$HOME"
-          mask_if_nonempty "$GITHUB_WORKSPACE"
-          mask_if_nonempty "$RUNNER_TEMP"
-
-          # Mask Git PII
-          if command -v git >/dev/null 2>&1; then
-            mask_if_nonempty "$(git log -1 --pretty=format:'%an')"
-            mask_if_nonempty "$(git log -1 --pretty=format:'%ae')"
-            mask_if_nonempty "$(git log -1 --pretty=format:'%cn')"
-            mask_if_nonempty "$(git log -1 --pretty=format:'%ce')"
-          fi
-
-          # Store paths in environment for later use (preserving original logic)
-          echo "GITHUB_WORKSPACE=${{ github.workspace }}" >> "$GITHUB_ENV"
-          echo "RUNNER_TEMP=${{ runner.temp }}" >> "$GITHUB_ENV"
-
-          echo "::endgroup::"
 
       - name: Set up Go
         id: setup-go
@@ -90,164 +52,29 @@ jobs:
           go-version-file: ${{ inputs.go-version == '' && format('{0}/go.mod', inputs.working-directory) || '' }}
           check-latest: true
           cache: true
-          cache-dependency-path: ${{ format('{0}/go.sum', inputs.working-directory) }}
+          cache-dependency-path: ${{ hashFiles(format('{0}/go.sum', inputs.working-directory)) != '' && format('{0}/go.sum', inputs.working-directory) || format('{0}/go.mod', inputs.working-directory) }}
 
-      - name: Go env (diag)
-        env:
-          WORKING_DIRECTORY: ${{ inputs.working-directory }}
-        run: |
-          go env
-          echo "pwd=$(pwd)"
-          echo "module dir=$WORKING_DIRECTORY"
-
-      # --- Baseline quality gates (速い順に) ---
-      - name: fmt check
-        working-directory: ${{ inputs.working-directory }}
-        run: |
-          # swallow-ok: grep -v exits 1 when zero unformatted files remain; checked on next line
-          files=$(gofmt -l . | grep -v '^gen/' | grep -v '^$' || true)
-          if [ -n "$files" ]; then
-            printf '::error title=gofmt::Run gofmt -w on these files:%%0A%s\n' "${files//$'\n'/%0A}"
-            exit 1
-          fi
-
-      - name: go vet
-        working-directory: ${{ inputs.working-directory }}
-        run: go vet ./...
-
-      # --- Lint (golangci-lint v2系 / アクション v8) ---
-      # v8 の公式アクション推奨。v2 では out-format が変わったため、注釈はProblem Matcherに任せる。
-      #
-      # PR では action 標準の only-new-issues が GitHub の patch API 経由で diff を取得するが、
-      # この API は 20000 行を超える diff を拒否する (HttpError: too_large)。巨大リファクタの PR
-      # では patch 取得に失敗してフィルタが無効化され、ツリー全体を lint して既存の指摘を一斉に
-      # 噴出させてしまう。そのため PR では golangci-lint ネイティブの git ベース --new-from-rev
-      # (行数上限なし) で「変更行の新規指摘」だけを対象にする。push は従来どおり action 標準。
-      - name: Fetch base ref for new-issue detection
-        if: github.event_name == 'pull_request' && inputs.lint-only-new
-        env:
-          BASE_REF: ${{ github.base_ref }}
-        run: git fetch --no-tags --depth=1 origin "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
-
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a  # v9.3.0
-        env:
-          GOFLAGS: "-buildvcs=false"  # sparse-checkout + shallow clone では VCS 情報取得不可
-        with:
-          version: v2.14.0
-          install-mode: goinstall
-          working-directory: ${{ inputs.working-directory }}
-          # PR と workflow_dispatch は --new-from-rev で自前フィルタするので action 側の only-new-issues は push のみ有効化。
-          only-new-issues: ${{ github.event_name == 'push' && inputs.lint-only-new }}
-          args: ${{ (github.event_name == 'pull_request' && inputs.lint-only-new && format('--new-from-rev=origin/{0}', github.base_ref)) || (github.event_name == 'workflow_dispatch' && inputs.lint-only-new && '--new-from-rev=HEAD~1') || '' }}
-
-      # --- Security: gosec → SARIF で Code Scanning に載せる ---
-      # Pinned tool versions cached in ~/go/bin to skip recompilation on repeat runs.
-      - name: Cache Go security tools
-        id: cache-go-tools
+      # Tools using go/packages must be built by the same Go toolchain that loads the packages.
+      - name: Cache Go lint tools
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
-          path: ~/go/bin
-          # Tools using go/packages must be built by the same Go toolchain that loads the packages.
-          key: go-tools-${{ runner.os }}-go-${{ steps.setup-go.outputs.go-version }}-gosec-v2.28.0-govulncheck-v1.6.0
+          path: ~/.cache/alt-lint
+          key: alt-lint-go-${{ runner.os }}-go-${{ steps.setup-go.outputs.go-version }}-golangci-v2.14.0-gosec-v2.30.0-govulncheck-v1.6.0
 
-      - name: Install gosec
-        if: steps.cache-go-tools.outputs.cache-hit != 'true'
-        run: go install github.com/securego/gosec/v2/cmd/gosec@v2.28.0
-
-      - name: Run gosec (SARIF)
-        working-directory: ${{ inputs.working-directory }}
-        run: |
-          mkdir -p ./_reports
-          # Mask paths in gosec output by redirecting stderr and filtering
-          # Note: ::add-mask:: already masks these values in logs, but we also filter here for extra safety
-          # protobuf-gen-go uses unsafe, so G103 on gen/ trees is noise. Scoped to
-          # directories literally named "gen": -exclude-generated would skip every
-          # file carrying a "Code generated" header from ALL rules (including
-          # scaffolded-then-hand-maintained ones), and a bare -exclude-dir=gen is
-          # substring-matched by gosec ("agent" would match too).
-          (gosec -severity high -confidence high -exclude-dir='(^|/)gen(/|$)' -fmt sarif -out ./_reports/gosec.sarif ./... 2>&1 | \
-            sed "s|${GITHUB_WORKSPACE}|***|g" | \
-            sed "s|${RUNNER_TEMP}|***|g" | \
-            sed "s|/home/runner|***|g" | \
-            sed "s|${USER}|***|g" | \
-            sed "s|$(whoami)|***|g") || true  # swallow-ok: gosec exits 1 on findings; SARIF existence and issue_count are gated below
-          if [ ! -s ./_reports/gosec.sarif ]; then
-            echo "::error title=gosec::gosec did not produce ./_reports/gosec.sarif"
-            exit 1
-          fi
-          issue_count=$(jq '[.runs[]?.results[]?] | length' ./_reports/gosec.sarif)
-          if [ "$issue_count" -gt 0 ]; then
-            jq -r '.runs[]?.results[]? | "::error file=\(.locations[0].physicalLocation.artifactLocation.uri // "unknown"),line=\(.locations[0].physicalLocation.region.startLine // 1),title=gosec \(.ruleId)::\(.message.text)"' ./_reports/gosec.sarif
-            exit 1
-          fi
-
-      - name: Fix SARIF (gosec) - remove fixes field
-        working-directory: ${{ inputs.working-directory }}
-        run: |
-          # Remove fixes field from SARIF output (not needed for OSS projects)
-          # This fixes gosec's invalid fixes.artifactChanges (null instead of array) issue
-          if [ -f ./_reports/gosec.sarif ]; then
-            # Remove fixes field from all results to avoid schema validation errors
-            jq '.runs[].results[] |= del(.fixes)' ./_reports/gosec.sarif > ./_reports/gosec.sarif.tmp && \
-            mv ./_reports/gosec.sarif.tmp ./_reports/gosec.sarif
-          fi
+      - name: Run Go quality gates
+        env:
+          PROJECT_DIR: ${{ inputs.working-directory }}
+        run: ./scripts/lint/run.sh "$PROJECT_DIR"
 
       - name: Upload SARIF (gosec)
-        if: ${{ inputs.upload-sarif }}
+        if: ${{ always() && inputs.upload-sarif && hashFiles(format('{0}/_reports/gosec.sarif', inputs.working-directory)) != '' }}
         uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066  # v4.39.3
         with:
           sarif_file: ${{ inputs.working-directory }}/_reports/gosec.sarif
           category: gosec
 
-      # --- Security: govulncheck → SARIF（Code Scanning 連携） ---
-      - name: Install govulncheck
-        if: steps.cache-go-tools.outputs.cache-hit != 'true'
-        run: go install golang.org/x/vuln/cmd/govulncheck@v1.6.0
-
-      - name: Prepare reports directory
-        working-directory: ${{ inputs.working-directory }}
-        run: mkdir -p ./_reports
-
-      - name: Govulncheck (SARIF)
-        working-directory: ${{ inputs.working-directory }}
-        run: |
-          # Ensure _reports directory exists (defensive check)
-          mkdir -p ./_reports
-          # In -format=sarif mode govulncheck exits 0 regardless of finding count and
-          # only exits non-zero on a tool or build error.
-          if ! govulncheck -format=sarif ./... > ./_reports/govulncheck.sarif 2>./_reports/govulncheck.stderr; then
-            if [ -s ./_reports/govulncheck.stderr ]; then
-              sed -e "s|${GITHUB_WORKSPACE}|***|g" \
-                -e "s|${RUNNER_TEMP}|***|g" \
-                -e "s|/home/runner|***|g" \
-                -e "s|${USER}|***|g" \
-                -e "s|$(whoami)|***|g" ./_reports/govulncheck.stderr >&2
-            fi
-            echo "::error title=govulncheck::govulncheck execution failed"
-            exit 1
-          fi
-          # Mask paths in stderr output for logs
-          if [ -s ./_reports/govulncheck.stderr ]; then
-            sed -e "s|${GITHUB_WORKSPACE}|***|g" \
-              -e "s|${RUNNER_TEMP}|***|g" \
-              -e "s|/home/runner|***|g" \
-              -e "s|${USER}|***|g" \
-              -e "s|$(whoami)|***|g" ./_reports/govulncheck.stderr
-          fi
-          if [ ! -s ./_reports/govulncheck.sarif ]; then
-            echo "::error title=govulncheck::govulncheck did not produce a non-empty ./_reports/govulncheck.sarif"
-            exit 1
-          fi
-          # Deduplicate stacks in SARIF results (govulncheck can emit duplicate stack objects,
-          # violating SARIF 2.1.0 uniqueItems on runs[].results[].stacks during upload-sarif validation)
-          jq '(.runs[]?.results[]?.stacks | select(type == "array")) |= unique' ./_reports/govulncheck.sarif > ./_reports/govulncheck.sarif.tmp && \
-            mv ./_reports/govulncheck.sarif.tmp ./_reports/govulncheck.sarif
-          # Clean up stderr file
-          rm -f ./_reports/govulncheck.stderr
-
       - name: Upload SARIF (govulncheck)
-        if: ${{ inputs.upload-sarif }}
+        if: ${{ always() && inputs.upload-sarif && hashFiles(format('{0}/_reports/govulncheck.sarif', inputs.working-directory)) != '' }}
         uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066  # v4.39.3
         with:
           sarif_file: ${{ inputs.working-directory }}/_reports/govulncheck.sarif

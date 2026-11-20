@@ -1,18 +1,14 @@
 name: Reusable Deno Test Workflow
 
-# The Deno services (auth-token-manager, alt-perf) had no CI at all. This is
-# the minimum honest gate: `deno test` type-checks every module it pulls in,
-# so it catches both broken types and failing assertions. Formatting and
-# linting are opt-in per caller because the two services differ in how much
-# existing debt they carry — see each caller's NOTE.
+# Runs static checks (`lint` job via `./scripts/lint/run.sh`) and unit tests
+# (`test-deno` job via `deno test`) as independent jobs using the Deno version
+# pinned in each service's `.dvmrc`, so lint failures surface without blocking
+# unit test reporting.
 
 on:
   workflow_call:
     inputs:
       working-directory:
-        required: true
-        type: string
-      deno-version:
         required: true
         type: string
       sparse-checkout:
@@ -22,16 +18,6 @@ on:
         required: false
         type: string
         default: "deno test --allow-all"
-      check-fmt:
-        description: "Run `deno fmt --check`. Off where the service still has unformatted files."
-        required: false
-        type: boolean
-        default: false
-      check-lint:
-        description: "Run `deno lint`. Off where the service still has lint findings."
-        required: false
-        type: boolean
-        default: false
 
   workflow_dispatch:
 
@@ -39,6 +25,31 @@ permissions:
   contents: read
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout (sparse)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          sparse-checkout: |
+            ${{ inputs.sparse-checkout }}
+            scripts/lint
+          sparse-checkout-cone-mode: true
+
+      - name: Set up Deno
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed  # v2.0.5
+        with:
+          deno-version-file: ${{ inputs.working-directory }}/.dvmrc
+
+      - name: Lint
+        env:
+          PROJECT_DIR: ${{ inputs.working-directory }}
+        run: ./scripts/lint/run.sh "$PROJECT_DIR"
+
   test-deno:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -61,7 +72,7 @@ jobs:
       - name: Set up Deno
         uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed  # v2.0.5
         with:
-          deno-version: ${{ inputs.deno-version }}
+          deno-version-file: ${{ inputs.working-directory }}/.dvmrc
 
       - name: Deno env (diagnostics)
         run: |
@@ -72,11 +83,3 @@ jobs:
         env:
           TEST_COMMAND: ${{ inputs.test-command }}
         run: eval "$TEST_COMMAND"
-
-      - name: Format check
-        if: ${{ inputs.check-fmt }}
-        run: deno fmt --check
-
-      - name: Lint
-        if: ${{ inputs.check-lint }}
-        run: deno lint

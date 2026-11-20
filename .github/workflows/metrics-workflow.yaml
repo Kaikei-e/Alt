@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - "metrics/**"
+      - "scripts/lint/**"
       - ".github/workflows/metrics-workflow.yaml"
       - ".github/workflows/reusable-test-python.yaml"
       - "!**/CLAUDE.md"
@@ -16,6 +17,7 @@ on:
       - main
     paths:
       - "metrics/**"
+      - "scripts/lint/**"
       - ".github/workflows/metrics-workflow.yaml"
       - ".github/workflows/reusable-test-python.yaml"
       - "!**/CLAUDE.md"
@@ -51,31 +53,20 @@ jobs:
       sparse-checkout: metrics
       job-type: lint
 
-  typecheck:
-    name: Type Check
-    uses: ./.github/workflows/reusable-test-python.yaml
-    with:
-      working-directory: metrics
-      python-version: "3.14"
-      sparse-checkout: metrics
-      job-type: typecheck
-
   quality-gate:
     name: Quality Gate
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    needs: [test, lint, typecheck]
+    needs: [test, lint]
     if: always()
     steps:
       - name: Check all jobs passed
         run: |
           if [[ "${{ needs.test.result }}" != "success" ]] || \
-             [[ "${{ needs.lint.result }}" != "success" ]] || \
-             [[ "${{ needs.typecheck.result }}" != "success" ]]; then
+             [[ "${{ needs.lint.result }}" != "success" ]]; then
             echo "::error::Quality gate failed"
             echo "Test: ${{ needs.test.result }}"
             echo "Lint: ${{ needs.lint.result }}"
-            echo "Type Check: ${{ needs.typecheck.result }}"
             exit 1
           fi
           echo "All quality checks passed!"

@@ -81,44 +81,19 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version: "1.27.4"
+          check-latest: true
+          cache: false
+
       - name: Install PyYAML
         # ubuntu-latest ships python3 but not PyYAML. Pin to the 6.x line so
         # supply-chain drift is bounded.
         run: pip install --quiet 'pyyaml==6.*'
 
-      - name: Run workflow script unit tests
-        run: python3 -m unittest discover -s .github/workflows/scripts -p "test_*.py"
-
-      - name: Reject pull_request_target and workflow_run (grep, defence in depth)
-        shell: bash
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          violations=0
-          for f in .github/workflows/*.yml .github/workflows/*.yaml; do
-            # swallow-ok: grep exits 1 when nothing matches; result is checked on next line
-            matches=$(grep -nE '^[[:space:]]*(pull_request_target|workflow_run)[[:space:]]*:' "$f" || true)
-            if [ -n "$matches" ]; then
-              while IFS= read -r line; do
-                ln="${line%%:*}"
-                echo "::error file=$f,line=$ln::Forbidden trigger — 'pull_request_target' and 'workflow_run' run with elevated trust and must not be introduced (ADR-000763 security hardening)."
-              done <<< "$matches"
-              violations=$((violations + 1))
-            fi
-          done
-          if [ "$violations" -gt 0 ]; then
-            echo "FAIL: $violations workflow file(s) use forbidden triggers (grep check)."
-            exit 1
-          fi
-          echo "OK: grep check clean."
-
-      - name: Structural check (PyYAML — authoritative)
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 .github/workflows/scripts/workflow-safety-check.py
-
-      - name: Run actionlint (without shellcheck)
-        uses: docker://rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
-        with:
-          args: -shellcheck=
+      - name: Run repository lint
+        env:
+          TARGET: repo
+        run: ./scripts/lint/run.sh "$TARGET"

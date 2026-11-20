@@ -12,6 +12,68 @@ on:
         type: string
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Read Rust toolchain channel
+        id: toolchain
+        env:
+          WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        run: |
+          dir="$WORKING_DIRECTORY"
+          toolchain_file=""
+          while [ -n "$dir" ] && [ "$dir" != "." ]; do
+            if [ -f "$dir/rust-toolchain.toml" ]; then
+              toolchain_file="$dir/rust-toolchain.toml"
+              break
+            fi
+            dir=$(dirname "$dir")
+          done
+          if [ -z "$toolchain_file" ] && [ -f "rust-toolchain.toml" ]; then
+            toolchain_file="rust-toolchain.toml"
+          fi
+          if [ -z "$toolchain_file" ]; then
+            echo "Failed to find rust-toolchain.toml for $WORKING_DIRECTORY" >&2
+            exit 1
+          fi
+          channel=$(sed -n 's/^[[:space:]]*channel[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$toolchain_file" | head -n 1)
+          if [ -z "$channel" ]; then
+            echo "Failed to read channel from $toolchain_file" >&2
+            exit 1
+          fi
+          echo "channel=$channel" >> "$GITHUB_OUTPUT"
+
+      # GitHub-hosted runner: dtolnay/rust-toolchain を使用
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4  # 2026-07-16
+        with:
+          toolchain: ${{ steps.toolchain.outputs.channel }}
+          components: clippy, rustfmt
+
+      - name: Rust version info
+        run: |
+          rustc --version
+          cargo --version
+
+      # GitHub-hosted runner: Swatinem/rust-cache を使用（推奨）
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0  # v2.9.3
+        with:
+          workspaces: ${{ inputs.working-directory }}
+          shared-key: ${{ inputs.coverage-flags }}
+          cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Lint and format check
+        env:
+          PROJECT_DIR: ${{ inputs.working-directory }}
+        run: ./scripts/lint/run.sh "$PROJECT_DIR"
+
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -22,11 +84,28 @@ jobs:
 
       - name: Read Rust toolchain channel
         id: toolchain
-        working-directory: ${{ inputs.working-directory }}
+        env:
+          WORKING_DIRECTORY: ${{ inputs.working-directory }}
         run: |
-          channel=$(sed -n 's/^channel *= *"\([^"]*\)".*/\1/p' rust-toolchain.toml)
+          dir="$WORKING_DIRECTORY"
+          toolchain_file=""
+          while [ -n "$dir" ] && [ "$dir" != "." ]; do
+            if [ -f "$dir/rust-toolchain.toml" ]; then
+              toolchain_file="$dir/rust-toolchain.toml"
+              break
+            fi
+            dir=$(dirname "$dir")
+          done
+          if [ -z "$toolchain_file" ] && [ -f "rust-toolchain.toml" ]; then
+            toolchain_file="rust-toolchain.toml"
+          fi
+          if [ -z "$toolchain_file" ]; then
+            echo "Failed to find rust-toolchain.toml for $WORKING_DIRECTORY" >&2
+            exit 1
+          fi
+          channel=$(sed -n 's/^[[:space:]]*channel[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$toolchain_file" | head -n 1)
           if [ -z "$channel" ]; then
-            echo "Failed to read channel from rust-toolchain.toml" >&2
+            echo "Failed to read channel from $toolchain_file" >&2
             exit 1
           fi
           echo "channel=$channel" >> "$GITHUB_OUTPUT"
@@ -36,13 +115,11 @@ jobs:
         uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4  # 2026-07-16
         with:
           toolchain: ${{ steps.toolchain.outputs.channel }}
-          components: clippy
 
       - name: Rust version info
         run: |
           rustc --version
           cargo --version
-          cargo clippy --version
 
       # GitHub-hosted runner: Swatinem/rust-cache を使用（推奨）
       - name: Cache Rust dependencies
@@ -58,12 +135,6 @@ jobs:
         run: |
           # rustc が dep-info (.d) を書き込むディレクトリが存在しない場合に備えて事前作成しておく
           mkdir -p target/release/deps
-
-      - name: Run clippy
-        working-directory: ${{ inputs.working-directory }}
-        run: |
-          cargo clippy --all-targets --all-features -- -D warnings
-        continue-on-error: false
 
       - name: Run unit tests
         working-directory: ${{ inputs.working-directory }}

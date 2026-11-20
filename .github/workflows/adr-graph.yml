@@ -12,6 +12,7 @@ on:
       - ".claude/skills/adr-preflight/**"
       - "scripts/agent-harness/adr_supersede_gate.py"
       - "scripts/tests/test-adr-supersede-gate.py"
+      - "scripts/lint/**"
       - ".github/workflows/adr-graph.yml"
   pull_request:
     paths:
@@ -20,6 +21,7 @@ on:
       - ".claude/skills/adr-preflight/**"
       - "scripts/agent-harness/adr_supersede_gate.py"
       - "scripts/tests/test-adr-supersede-gate.py"
+      - "scripts/lint/**"
       - ".github/workflows/adr-graph.yml"
   workflow_dispatch:
 
@@ -49,42 +51,20 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         if: steps.cache-docdag.outputs.cache-hit != 'true'
         with:
-          go-version: "1.27.1"  # DocDag v0.4.0+ declares go 1.27
+          go-version: "1.27.4"  # DocDag v0.4.0+ declares go 1.27
       - name: Install DocDag
         run: |
           echo "$HOME/go/bin" >> "$GITHUB_PATH"
           if [ ! -x "$HOME/go/bin/docdag" ]; then
             go install "github.com/Kaikei-e/DocDag/cmd/docdag@${DOCDAG_VERSION}"
           fi
-      - name: Fetch base branch
+      - name: Fetch origin/main
+        run: git fetch --no-tags origin main
+      - name: Run ADR graph checks
         env:
-          BASE_REF: ${{ github.base_ref || 'main' }}
-        run: git fetch --no-tags origin "$BASE_REF"
-      - name: Corpus check
-        env:
-          BASE_REF: ${{ github.base_ref || 'main' }}
-        # Annotates the diff inline; GitHub renders at most ten per step.
-        run: docdag validate --format github --immutable-since "origin/$BASE_REF"
-      - name: Supersede body-reference gate
-        env:
-          BASE_REF: ${{ github.base_ref || 'main' }}
-        run: python3 scripts/agent-harness/adr_supersede_gate.py --base "origin/$BASE_REF"
-      - name: Config lint
-        # docdag.yaml itself: contradictory, vacuous or duplicated rules fail the job.
-        run: docdag lint --strict --format github
+          TARGET: adr
+        run: ./scripts/lint/run.sh "$TARGET"
       - name: ADR preflight gate tests
         run: python3 .claude/skills/adr-preflight/scripts/test_adr_preflight.py
       - name: ADR supersede gate tests
         run: python3 scripts/tests/test-adr-supersede-gate.py
-      - name: Full report
-        if: always()
-        # The complete finding list, past the ten-annotation cap. Reporting only:
-        # the gate above is what fails the job, so a finding must not abort the fence.
-        run: |
-          {
-            echo '## docdag validate'
-            echo '```'
-            # swallow-ok: reporting-only step; the Corpus check step above is the gate
-            docdag validate || true
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"

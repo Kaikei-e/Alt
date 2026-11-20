@@ -24,6 +24,7 @@ on:
       - 'c2quay.yml'
       - '.github/generated/alt-deploy-service-paths.js'
       - 'compose/**'
+      - 'scripts/lint/**'
   push:
     branches: [main]
     paths:
@@ -38,6 +39,7 @@ on:
       - 'c2quay.yml'
       - '.github/generated/alt-deploy-service-paths.js'
       - 'compose/**'
+      - 'scripts/lint/**'
 
 permissions:
   contents: read
@@ -63,16 +65,10 @@ jobs:
       - name: Install PyYAML
         run: pip install --no-cache-dir pyyaml
 
-      - name: Verify registry artifacts are in sync
-        run: python3 scripts/regen-service-registry.py --check
-
-      - name: "Verify every GHCR-built service declares image: in production compose"
-        # Prevents the failure mode where only `build:` is set, making
-        # `docker compose pull` a no-op on pull-deploy hosts and leaving the
-        # running container on a stale local image. Incident: 2026-04-19,
-        # Acolyte citation fix deployed code but container kept the pre-fix
-        # `alt-acolyte-orchestrator:latest` local build.
-        run: python3 scripts/compose-image-audit.py
+      - name: Run registry lint
+        env:
+          TARGET: registry
+        run: ./scripts/lint/run.sh "$TARGET"
 
       - name: Pin the compose image audit logic
         run: python3 scripts/tests/test-compose-image-audit.py

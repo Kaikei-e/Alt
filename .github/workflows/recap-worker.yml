@@ -6,6 +6,7 @@ on:
     paths:
       - "recap-worker/**"
       - "compose/recap.yaml"
+      - "scripts/lint/**"
       - ".github/workflows/recap-worker.yml"
       - "!**/CLAUDE.md"
       - "!**/AGENTS.md"
@@ -15,6 +16,7 @@ on:
     paths:
       - "recap-worker/**"
       - "compose/recap.yaml"
+      - "scripts/lint/**"
       - ".github/workflows/recap-worker.yml"
       - "!**/CLAUDE.md"
       - "!**/AGENTS.md"
@@ -30,6 +32,55 @@ permissions:
   actions: read
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Read Rust toolchain channel
+        id: toolchain
+        working-directory: recap-worker
+        run: |
+          channel=$(sed -n 's/^channel *= *"\([^"]*\)".*/\1/p' rust-toolchain.toml)
+          if [ -z "$channel" ]; then
+            echo "Failed to read channel from rust-toolchain.toml" >&2
+            exit 1
+          fi
+          echo "channel=$channel" >> "$GITHUB_OUTPUT"
+
+      # GitHub-hosted runner: dtolnay/rust-toolchain を使用
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4  # 2026-07-16
+        with:
+          toolchain: ${{ steps.toolchain.outputs.channel }}
+          components: clippy, rustfmt
+
+      # GitHub-hosted runner: Swatinem/rust-cache を使用
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0  # v2.9.3
+        with:
+          workspaces: recap-worker/recap-worker
+          shared-key: recap-worker
+          cache-on-failure: true
+
+      - name: Rust version info
+        run: |
+          rustc --version
+          cargo --version
+
+      - name: Lint and format check
+        env:
+          PROJECT_DIR: recap-worker/recap-worker
+        run: ./scripts/lint/run.sh "$PROJECT_DIR"
+
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -59,7 +110,6 @@ jobs:
         uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4  # 2026-07-16
         with:
           toolchain: ${{ steps.toolchain.outputs.channel }}
-          components: clippy
 
       # GitHub-hosted runner: Swatinem/rust-cache を使用
       - name: Cache Rust dependencies
@@ -73,13 +123,6 @@ jobs:
         run: |
           rustc --version
           cargo --version
-          cargo clippy --version
-
-      - name: Run clippy
-        working-directory: recap-worker/recap-worker
-        run: |
-          cargo clippy --all-targets --all-features -- -D warnings
-        continue-on-error: false
 
       - name: Run unit tests
         working-directory: recap-worker/recap-worker

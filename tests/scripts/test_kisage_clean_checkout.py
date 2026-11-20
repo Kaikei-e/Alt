@@ -66,6 +66,8 @@ def materialize_clean_tracked_worktree(dst_root: pathlib.Path) -> None:
     ]
     if "tests/scripts/test_kisage_clean_checkout.py" not in rel_paths:
         rel_paths.append("tests/scripts/test_kisage_clean_checkout.py")
+    if "scripts/lint/compose.sh" not in rel_paths:
+        rel_paths.append("scripts/lint/compose.sh")
     for rel in rel_paths:
         if rel in TRACKED_EXACT or rel.startswith(TRACKED_PREFIXES):
             src = REPO_ROOT / rel

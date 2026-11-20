@@ -1,0 +1,90 @@
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+  relative-path-mode: cfg
+
+linters:
+  enable:
+    # Existing baseline linters
+    - errcheck
+    - govet
+    - staticcheck
+    - ineffassign
+    - unused
+    - gosec
+    # Rollout wave linters
+    - nilerr
+    - errorlint
+    - bodyclose
+    - noctx
+    - sqlclosecheck
+    - rowserrcheck
+    - spancheck
+    - exhaustive
+    - protogetter
+    - testifylint
+    - sloglint
+    # Event-time / reprojection safety guard for knowledge-sovereign projectors
+    - forbidigo
+
+  settings:
+    exhaustive:
+      default-signifies-exhaustive: true
+
+    forbidigo:
+      analyze-types: true
+      forbid:
+        - pattern: '^time\.(Now|Since|Until)$'
+          msg: "Projectors must be reproject-safe: derive time from the event's OccurredAt (ADR-000468, ADR-000447)."
+        - pattern: '(^|\.)GetLatest[A-Z][A-Za-z0-9_]*$'
+          msg: "Projectors must be reproject-safe: read the version id carried in the event payload instead of GetLatest* calls (ADR-000468, ADR-000447)."
+
+  exclusions:
+    generated: lax
+    rules:
+      # Proto generated files
+      - path: '\.pb\.go$'
+        linters:
+          - all
+      # Connect-RPC generated files
+      - path: '\.connect\.go$'
+        linters:
+          - all
+      # OpenAPI generated files
+      - path: 'server\.gen\.go$'
+        linters:
+          - all
+      # PKI tests mint disposable certs, talk to a fake CA, and (when
+      # PKI_NATIVE_LIVE_CA=1) launch docker. gosec's credential/path/subprocess
+      # rules fire on those fixtures; production code in internal/pki stays covered.
+      - path: 'internal/pki/.*_test\.go$'
+        linters:
+          - gosec
+      # Tests need literal dummy tokens and DSNs to exercise auth and config
+      # parsing; G101 cannot tell them from real credentials. Production code
+      # stays covered.
+      - path: '_test\.go$'
+        linters:
+          - gosec
+        text: 'G101'
+      # Scope forbidigo exclusively to non-test files in Knowledge Home / Trail
+      # projector packages (matching scripts/agent-harness/guard_event_time.py).
+      - path-except: '^knowledge-sovereign/app/usecase/(knowledge_home_projector|knowledge_trail_projector)/[^/]+\.go$'
+        linters:
+          - forbidigo
+      - path: '_test\.go$'
+        linters:
+          - forbidigo
+
+formatters:
+  enable:
+    - goimports
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+severity:
+  default: error

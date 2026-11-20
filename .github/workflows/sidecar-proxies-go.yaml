@@ -13,6 +13,9 @@ on:
       - 'docker/inference-proxy/**'
       - '.github/workflows/sidecar-proxies-go.yaml'
       - '.github/workflows/reusable-test-go.yaml'
+      - '.github/workflows/reusable-go-quality-gates.yaml'
+      - '.golangci.yml'
+      - 'scripts/lint/**'
       - '!**/CLAUDE.md'
       - '!**/AGENTS.md'
       - '!**/README.md'
@@ -25,6 +28,9 @@ on:
       - 'docker/inference-proxy/**'
       - '.github/workflows/sidecar-proxies-go.yaml'
       - '.github/workflows/reusable-test-go.yaml'
+      - '.github/workflows/reusable-go-quality-gates.yaml'
+      - '.golangci.yml'
+      - 'scripts/lint/**'
       - '!**/CLAUDE.md'
       - '!**/AGENTS.md'
       - '!**/README.md'
@@ -45,6 +51,15 @@ jobs:
       use-local-persistent-cache: false
       sparse-checkout: 'alt-backend/sidecar-proxy'
 
+  quality-sidecar-proxy:
+    permissions:
+      contents: read
+      security-events: write
+    uses: ./.github/workflows/reusable-go-quality-gates.yaml
+    with:
+      working-directory: 'alt-backend/sidecar-proxy'
+      upload-sarif: true
+
   readonly-proxy:
     permissions:
       contents: read
@@ -54,6 +69,15 @@ jobs:
       coverage-flags: 'readonly-proxy'
       use-local-persistent-cache: false
       sparse-checkout: 'docker/readonly-proxy'
+
+  quality-readonly-proxy:
+    permissions:
+      contents: read
+      security-events: write
+    uses: ./.github/workflows/reusable-go-quality-gates.yaml
+    with:
+      working-directory: 'docker/readonly-proxy'
+      upload-sarif: true
 
   otel-relay:
     permissions:
@@ -65,6 +89,17 @@ jobs:
       use-local-persistent-cache: false
       sparse-checkout: 'docker/otel-relay'
 
+  quality-otel-relay:
+    permissions:
+      contents: read
+      security-events: write
+    uses: ./.github/workflows/reusable-go-quality-gates.yaml
+    with:
+      working-directory: 'docker/otel-relay'
+      # Explicit go-version retained alongside docker/otel-relay/go.mod.
+      go-version: '1.27.4'
+      upload-sarif: true
+
   inference-proxy:
     permissions:
       contents: read
@@ -74,3 +109,41 @@ jobs:
       coverage-flags: 'inference-proxy'
       use-local-persistent-cache: false
       sparse-checkout: 'docker/inference-proxy'
+
+  quality-inference-proxy:
+    permissions:
+      contents: read
+      security-events: write
+    uses: ./.github/workflows/reusable-go-quality-gates.yaml
+    with:
+      working-directory: 'docker/inference-proxy'
+      upload-sarif: true
+
+  quality-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs:
+      - sidecar-proxy
+      - quality-sidecar-proxy
+      - readonly-proxy
+      - quality-readonly-proxy
+      - otel-relay
+      - quality-otel-relay
+      - inference-proxy
+      - quality-inference-proxy
+    if: always()
+    steps:
+      - name: Check all jobs passed
+        run: |
+          if [ "${{ needs.sidecar-proxy.result }}" != "success" ] || \
+             [ "${{ needs.quality-sidecar-proxy.result }}" != "success" ] || \
+             [ "${{ needs.readonly-proxy.result }}" != "success" ] || \
+             [ "${{ needs.quality-readonly-proxy.result }}" != "success" ] || \
+             [ "${{ needs.otel-relay.result }}" != "success" ] || \
+             [ "${{ needs.quality-otel-relay.result }}" != "success" ] || \
+             [ "${{ needs.inference-proxy.result }}" != "success" ] || \
+             [ "${{ needs.quality-inference-proxy.result }}" != "success" ]; then
+            echo "One or more quality gates failed"
+            exit 1
+          fi
+          echo "All quality gates passed"
