@@ -31,6 +31,7 @@ from collections.abc import AsyncIterator, Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 # Limit MPS memory cache to reduce memory pressure on shared Apple Silicon GPU memory
 os.environ.setdefault("PYTORCH_MPS_HIGH_WATERMARK_RATIO", "0.0")
@@ -40,9 +41,10 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sentence_transformers import CrossEncoder
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s"
-)
+if TYPE_CHECKING:
+    from sentence_transformers.base.modality_types import PairInput
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger("rerank_server")
 
 # Detect device: prefer MPS (Apple Silicon), fallback to CPU
@@ -89,18 +91,15 @@ _COMMIT_SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 
 # The character class keeps a repo id from escaping RERANK_MODEL_CACHE_ROOT
 # when the cache dir is derived from it below.
-_HF_REPO_ID_PATTERN = re.compile(
-    r"^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$"
-)
+_HF_REPO_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 
 def _resolve_model() -> str:
     """Read RERANK_MODEL, rejecting anything that is not a plain HF repo id."""
     model = os.environ.get("RERANK_MODEL", DEFAULT_MODEL).strip()
     if not _HF_REPO_ID_PATTERN.match(model):
-        raise ValueError(
-            f"RERANK_MODEL={model!r} is not a Hugging Face repo id of the form 'org/name'"
-        )
+        msg = f"RERANK_MODEL={model!r} is not a Hugging Face repo id of the form 'org/name'"
+        raise ValueError(msg)
     return model
 
 
@@ -110,13 +109,11 @@ def _resolve_model_revision(model: str) -> str:
     if not revision:
         revision = MODEL_REVISIONS.get(model, "")
         if not revision:
-            raise ValueError(
-                f"RERANK_MODEL_REVISION is required for unlisted model {model!r}"
-            )
+            msg = f"RERANK_MODEL_REVISION is required for unlisted model {model!r}"
+            raise ValueError(msg)
     if not _COMMIT_SHA_PATTERN.match(revision):
-        raise ValueError(
-            f"RERANK_MODEL_REVISION={revision!r} is not a full 40-character commit sha"
-        )
+        msg = f"RERANK_MODEL_REVISION={revision!r} is not a full 40-character commit sha"
+        raise ValueError(msg)
     return revision
 
 
@@ -130,7 +127,7 @@ def _resolve_model_dir(model: str) -> str:
     if explicit:
         return explicit
     cache_root = os.environ.get("RERANK_MODEL_CACHE_ROOT", "/models")
-    return str(Path(cache_root, f"{model.split('/')[-1]}-onnx"))
+    return str(Path(cache_root, f"{model.rsplit('/', maxsplit=1)[-1]}-onnx"))
 
 
 # Backend selection: "torch" preserves the MPS/CUDA path used for local
@@ -181,9 +178,7 @@ def _default_max_candidates() -> int:
 # rejected up front rather than timing out halfway through. Derived rather than
 # hard-coded so that raising RERANK_SERVER_TIMEOUT cannot silently leave the two
 # knobs contradicting each other.
-MAX_CANDIDATES = int(
-    os.environ.get("RERANK_MAX_CANDIDATES", str(_default_max_candidates()))
-)
+MAX_CANDIDATES = int(os.environ.get("RERANK_MAX_CANDIDATES", str(_default_max_candidates())))
 MAX_CANDIDATE_LENGTH = int(os.environ.get("RERANK_MAX_CANDIDATE_LENGTH", "4000"))
 MAX_TOP_K = MAX_CANDIDATES
 
@@ -202,12 +197,10 @@ _inference_semaphore = asyncio.Semaphore(1)
 # Routing every inference job through this single-worker executor instead
 # guarantees at most one predict() call runs at a time regardless: an
 # orphaned job just keeps the next one queued behind it.
-_inference_executor = ThreadPoolExecutor(
-    max_workers=1, thread_name_prefix="rerank-inference"
-)
+_inference_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="rerank-inference")
 
 
-class InferenceDeadlineExceeded(RuntimeError):
+class InferenceDeadlineError(RuntimeError):
     """The request's deadline passed before the remaining chunks could be scored."""
 
 
@@ -230,11 +223,10 @@ def _predict_sync(
     with torch.inference_mode():
         for start in range(0, len(order), RERANK_CHUNK_SIZE):
             if time.monotonic() >= deadline:
-                raise InferenceDeadlineExceeded(
-                    f"deadline passed after {start}/{len(order)} candidates"
-                )
+                msg = f"deadline passed after {start}/{len(order)} candidates"
+                raise InferenceDeadlineError(msg)
             indices = order[start : start + RERANK_CHUNK_SIZE]
-            chunk = [pairs[i] for i in indices]
+            chunk: list[PairInput] = [pairs[i] for i in indices]
             if RERANK_BACKEND == "onnx":
                 chunk_scores = model.predict(chunk, batch_size=RERANK_BATCH_SIZE)
             else:
@@ -250,9 +242,7 @@ class RerankRequest(BaseModel):
 
     model_config = ConfigDict(strict=True, frozen=True)
 
-    query: str = Field(
-        ..., max_length=4096, description="The query to rank candidates against"
-    )
+    query: str = Field(..., max_length=4096, description="The query to rank candidates against")
     candidates: list[str] = Field(..., description="List of candidate texts to rank")
     model: str | None = Field(
         None, description="Model name; must match the server's RERANK_MODEL when given"
@@ -268,26 +258,27 @@ class RerankRequest(BaseModel):
     @classmethod
     def _validate_candidates(cls, candidates: list[str]) -> list[str]:
         if len(candidates) > MAX_CANDIDATES:
-            raise ValueError(
+            msg = (
                 f"too many candidates: {len(candidates)} exceeds "
                 f"RERANK_MAX_CANDIDATES={MAX_CANDIDATES}; a larger list cannot be "
                 f"scored within RERANK_SERVER_TIMEOUT={SERVER_TIMEOUT_SECONDS}s"
             )
+            raise ValueError(msg)
         for candidate in candidates:
             if len(candidate) > MAX_CANDIDATE_LENGTH:
-                raise ValueError(
-                    f"candidate exceeds max length of {MAX_CANDIDATE_LENGTH} characters"
-                )
+                msg = f"candidate exceeds max length of {MAX_CANDIDATE_LENGTH} characters"
+                raise ValueError(msg)
         return candidates
 
     @field_validator("model")
     @classmethod
     def _validate_model(cls, model: str | None) -> str | None:
         if model is not None and model != RERANK_MODEL:
-            raise ValueError(
+            msg = (
                 f"unsupported model {model!r}; this server serves {RERANK_MODEL!r} "
                 f"(set via RERANK_MODEL)"
             )
+            raise ValueError(msg)
         return model
 
 
@@ -307,9 +298,7 @@ class RerankResponse(BaseModel):
 
     results: list[RerankResult] = Field(..., description="Ranked results")
     model: str = Field(..., description="Model used for reranking")
-    processing_time_ms: float | None = Field(
-        None, description="Processing time in milliseconds"
-    )
+    processing_time_ms: float | None = Field(None, description="Processing time in milliseconds")
 
 
 class HealthResponse(BaseModel):
@@ -348,9 +337,11 @@ def _load_torch_model() -> CrossEncoder:
         device=DEVICE,
         model_kwargs={"dtype": "float16"},
     )
-    model.model.eval()
-    for param in model.model.parameters():
-        param.requires_grad = False
+    backbone = model.model
+    if backbone is not None:
+        backbone.eval()
+        for param in backbone.parameters():
+            param.requires_grad = False
     return model
 
 
@@ -405,7 +396,9 @@ def _export_quantized_onnx_model(model_dir: str) -> None:
     Saves the full model (config/tokenizer) plus the quantized ONNX file into
     `model_dir` so subsequent restarts can load directly without re-exporting.
     """
-    from sentence_transformers.backend import export_dynamic_quantized_onnx_model
+    from sentence_transformers.backend import (  # noqa: PLC0415 - heavy model dependency loaded on first use
+        export_dynamic_quantized_onnx_model,
+    )
 
     logger.info(
         "Exporting quantized ONNX model %s to %s (one-time; downloads the base model)",
@@ -413,9 +406,7 @@ def _export_quantized_onnx_model(model_dir: str) -> None:
         model_dir,
     )
     with _onnx_export_tmpdir():
-        export_model = CrossEncoder(
-            RERANK_MODEL, revision=RERANK_MODEL_REVISION, backend="onnx"
-        )
+        export_model = CrossEncoder(RERANK_MODEL, revision=RERANK_MODEL_REVISION, backend="onnx")
         export_model.save_pretrained(model_dir)
         export_dynamic_quantized_onnx_model(export_model, "avx2", model_dir)
     logger.info("Quantized ONNX export complete")
@@ -464,7 +455,7 @@ async def _load_model(app: FastAPI) -> None:
     loader = _load_onnx_model if RERANK_BACKEND == "onnx" else _load_torch_model
     try:
         model = await asyncio.to_thread(loader)
-    except (OSError, ValueError, RuntimeError, ImportError):
+    except OSError, ValueError, RuntimeError, ImportError:
         logger.exception(
             "rerank_model_load_failed model=%s backend=%s (health stays 503)",
             RERANK_MODEL,
@@ -475,19 +466,17 @@ async def _load_model(app: FastAPI) -> None:
     logger.info("rerank_model_loaded model=%s backend=%s", RERANK_MODEL, RERANK_BACKEND)
 
 
-DEFAULT_INFERENCE_TOKEN_FILE = "/run/secrets/inference_service_token"
+DEFAULT_INFERENCE_TOKEN_FILE = Path("/run/secrets/inference_service_token")
 MIN_INFERENCE_TOKEN_LEN = 16
 
 # RFC 6750 b64token alphabet: ALPHA / DIGIT / "-" / "." / "_" / "~" / "+" / "/" with optional trailing "="
-import re as _re  # noqa: E402
-
-_RFC6750_B64TOKEN = _re.compile(r"^[A-Za-z0-9\-._~+/]+=*\Z")
+_RFC6750_B64TOKEN = re.compile(r"^[A-Za-z0-9\-._~+/]+=*\Z")
 
 
 class InferenceAuthConfig:
     """Authentication configuration for inference endpoints."""
 
-    def __init__(self, token: str | None, enabled: bool):
+    def __init__(self, token: str | None, enabled: bool) -> None:
         self.token = token
         self.enabled = enabled
 
@@ -503,55 +492,54 @@ def load_inference_auth_config() -> InferenceAuthConfig:
     if auth_mode == "disabled":
         return InferenceAuthConfig(token=None, enabled=False)
 
-    token_file = os.environ.get("INFERENCE_SERVICE_TOKEN_FILE", "").strip()
-    if not token_file:
-        token_file = DEFAULT_INFERENCE_TOKEN_FILE
+    token_file_env = os.environ.get("INFERENCE_SERVICE_TOKEN_FILE", "").strip()
+    token_path = Path(token_file_env) if token_file_env else DEFAULT_INFERENCE_TOKEN_FILE
 
-    if not os.path.isfile(token_file):
-        raise RuntimeError(
-            f"INFERENCE_SERVICE_TOKEN_FILE '{token_file}' does not exist. "
+    if not token_path.is_file():
+        msg = (
+            f"INFERENCE_SERVICE_TOKEN_FILE '{token_path}' does not exist. "
             "Set INFERENCE_SERVICE_AUTH=disabled to disable authentication."
         )
+        raise RuntimeError(msg)
     try:
-        with open(token_file, "r", encoding="utf-8") as f:
+        with token_path.open(encoding="utf-8") as f:
             raw = f.read()
     except UnicodeDecodeError:
-        raise RuntimeError(
-            f"INFERENCE_SERVICE_TOKEN_FILE '{token_file}' contains invalid encoding"
-        ) from None
+        msg = f"INFERENCE_SERVICE_TOKEN_FILE '{token_path}' contains invalid encoding"
+        raise RuntimeError(msg) from None
     except OSError as exc:
-        raise RuntimeError(
-            f"Failed to read INFERENCE_SERVICE_TOKEN_FILE '{token_file}': {exc}"
-        ) from exc
+        msg = f"Failed to read INFERENCE_SERVICE_TOKEN_FILE '{token_path}': {exc}"
+        raise RuntimeError(msg) from exc
 
     token_val = raw.rstrip("\r\n")
     if not token_val:
-        raise RuntimeError(
-            f"Inference token from '{token_file}' is empty. "
+        msg = (
+            f"Inference token from '{token_path}' is empty. "
             "A non-empty token is required when INFERENCE_SERVICE_AUTH is not disabled."
         )
+        raise RuntimeError(msg)
 
     if len(token_val) < MIN_INFERENCE_TOKEN_LEN:
-        raise RuntimeError(
-            f"Inference token from '{token_file}' is too short ({len(token_val)} chars). "
+        msg = (
+            f"Inference token from '{token_path}' is too short ({len(token_val)} chars). "
             f"Minimum required length is {MIN_INFERENCE_TOKEN_LEN} characters."
         )
+        raise RuntimeError(msg)
 
     if not _RFC6750_B64TOKEN.match(token_val):
-        raise RuntimeError(
-            f"INFERENCE_SERVICE_TOKEN_FILE '{token_file}' contains characters "
+        msg = (
+            f"INFERENCE_SERVICE_TOKEN_FILE '{token_path}' contains characters "
             "outside the RFC 6750 b64token alphabet "
             "(allowed: A-Z a-z 0-9 - . _ ~ + / =)"
         )
+        raise RuntimeError(msg)
 
     return InferenceAuthConfig(token=token_val, enabled=True)
 
 
 async def require_inference_token(request: Request) -> None:
     """Enforce constant-time bearer authentication for inference endpoints."""
-    auth_config: InferenceAuthConfig | None = getattr(
-        request.app.state, "auth_config", None
-    )
+    auth_config: InferenceAuthConfig | None = getattr(request.app.state, "auth_config", None)
     if auth_config is None:
         auth_config = load_inference_auth_config()
 
@@ -643,7 +631,7 @@ async def rerank(req: RerankRequest, request: Request) -> RerankResponse:
                 scores = await loop.run_in_executor(
                     _inference_executor, _predict_sync, model, pairs, deadline
                 )
-    except (TimeoutError, InferenceDeadlineExceeded) as exc:
+    except (TimeoutError, InferenceDeadlineError) as exc:
         logger.warning(
             "rerank_timeout model=%s candidates=%d chunks=%d batch_size=%d "
             "elapsed_ms=%.1f budget_ms=%.1f",
@@ -654,9 +642,7 @@ async def rerank(req: RerankRequest, request: Request) -> RerankResponse:
             (time.perf_counter() - start) * 1000,
             SERVER_TIMEOUT_SECONDS * 1000,
         )
-        raise HTTPException(
-            status_code=504, detail="Rerank inference timed out"
-        ) from exc
+        raise HTTPException(status_code=504, detail="Rerank inference timed out") from exc
 
     results = _rank(scores, req.top_k)
     elapsed_ms = (time.perf_counter() - start) * 1000
@@ -673,9 +659,7 @@ async def rerank(req: RerankRequest, request: Request) -> RerankResponse:
         SERVER_TIMEOUT_SECONDS * 1000,
     )
 
-    return RerankResponse(
-        results=results, model=RERANK_MODEL, processing_time_ms=elapsed_ms
-    )
+    return RerankResponse(results=results, model=RERANK_MODEL, processing_time_ms=elapsed_ms)
 
 
 def _rank(scores: Sequence[float], top_k: int | None) -> list[RerankResult]:
@@ -683,9 +667,7 @@ def _rank(scores: Sequence[float], top_k: int | None) -> list[RerankResult]:
     indexed_scores = sorted(enumerate(scores), key=lambda pair: pair[1], reverse=True)
     if top_k is not None and top_k > 0:
         indexed_scores = indexed_scores[:top_k]
-    return [
-        RerankResult(index=idx, score=float(score)) for idx, score in indexed_scores
-    ]
+    return [RerankResult(index=idx, score=float(score)) for idx, score in indexed_scores]
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -719,4 +701,4 @@ async def root() -> RootResponse:
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8080)
+    uvicorn.run(app, host="0.0.0.0", port=8080)  # noqa: S104 - container service intentionally binds all interfaces
