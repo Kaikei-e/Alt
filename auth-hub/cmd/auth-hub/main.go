@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -25,9 +26,10 @@ import (
 	"auth-hub/utils/logger"
 	"auth-hub/utils/otel"
 
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
-	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
+	echootel "github.com/labstack/echo-otel/v5"
+	"github.com/labstack/echo/v5"
+	"github.com/labstack/echo/v5/middleware"
+	otelapi "go.opentelemetry.io/otel"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/time/rate"
 )
@@ -70,6 +72,40 @@ func configureTrustedProxies(ctx context.Context, e *echo.Echo, cfg *config.Conf
 	log.InfoContext(ctx, "trusted_proxy_cidrs_configured", "trusted_proxy_cidrs", formatted)
 }
 
+// newRequestLoggerMiddleware builds the Echo request logger middleware that emits
+// structured JSON logs via the Echo context logger while skipping /health.
+func newRequestLoggerMiddleware() echo.MiddlewareFunc {
+	return middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
+		Skipper: func(c *echo.Context) bool {
+			path := c.Request().URL.Path
+			return path == "/health"
+		},
+		LogStatus:   true,
+		LogURI:      true,
+		LogMethod:   true,
+		LogLatency:  true,
+		HandleError: true,
+		LogValuesFunc: func(c *echo.Context, v middleware.RequestLoggerValues) error {
+			rctx := c.Request().Context()
+			if v.Error == nil {
+				c.Logger().InfoContext(rctx, "request completed",
+					"method", v.Method,
+					"uri", v.URI,
+					"status", v.Status,
+					"latency_ms", v.Latency.Milliseconds())
+			} else {
+				c.Logger().ErrorContext(rctx, "request failed",
+					"method", v.Method,
+					"uri", v.URI,
+					"status", v.Status,
+					"latency_ms", v.Latency.Milliseconds(),
+					"error", v.Error.Error())
+			}
+			return nil
+		},
+	})
+}
+
 func main() {
 	// Handle healthcheck subcommand (for Docker healthcheck in distroless image)
 	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
@@ -92,7 +128,7 @@ func main() {
 	}
 
 	// Initialize structured logger
-	logger.Init(otelCfg.Enabled)
+	appLog := logger.Init(otelCfg.Enabled)
 
 	// Load configuration
 	cfg, err := config.Load()
@@ -157,51 +193,26 @@ func main() {
 
 	// Setup Echo server
 	e := echo.New()
-	e.HideBanner = true
-	e.HidePort = true
+	e.Logger = appLog
 
-	configureTrustedProxies(ctx, e, cfg, slog.Default())
+	configureTrustedProxies(ctx, e, cfg, appLog)
 
 	// Security middleware
 	e.Use(appmiddleware.SecurityHeaders())
 
 	// OpenTelemetry tracing
 	if otelCfg.Enabled {
-		e.Use(otelecho.Middleware(otelCfg.ServiceName, otelecho.WithSkipper(appmiddleware.OTelSkipper)))
+		e.Use(echootel.NewMiddlewareWithConfig(echootel.Config{
+			ServerName:     otelCfg.ServiceName,
+			Skipper:        appmiddleware.OTelSkipper,
+			TracerProvider: otelapi.GetTracerProvider(),
+			Propagators:    otelapi.GetTextMapPropagator(),
+		}))
 		e.Use(appmiddleware.OTelStatusMiddleware())
 	}
 
 	// Request logging
-	e.Use(middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
-		Skipper: func(c echo.Context) bool {
-			path := c.Request().URL.Path
-			return path == "/health"
-		},
-		LogStatus:   true,
-		LogURI:      true,
-		LogError:    true,
-		LogMethod:   true,
-		LogLatency:  true,
-		HandleError: true,
-		LogValuesFunc: func(c echo.Context, v middleware.RequestLoggerValues) error {
-			rctx := c.Request().Context()
-			if v.Error == nil {
-				slog.InfoContext(rctx, "request completed",
-					"method", v.Method,
-					"uri", v.URI,
-					"status", v.Status,
-					"latency_ms", v.Latency.Milliseconds())
-			} else {
-				slog.ErrorContext(rctx, "request failed",
-					"method", v.Method,
-					"uri", v.URI,
-					"status", v.Status,
-					"latency_ms", v.Latency.Milliseconds(),
-					"error", v.Error.Error())
-			}
-			return nil
-		},
-	}))
+	e.Use(newRequestLoggerMiddleware())
 
 	e.Use(middleware.Recover())
 
@@ -324,8 +335,9 @@ func main() {
 	plaintextHandler := buildPlaintextHandler(e, devPlaintextAllowed && !frontendTLSEnabled)
 
 	plaintextServer := &http.Server{
-		Addr:    address,
-		Handler: plaintextHandler,
+		Addr:              address,
+		Handler:           plaintextHandler,
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 
 	g.Go(func() error {
@@ -423,17 +435,28 @@ func main() {
 
 // runHealthcheck performs a health check against the local server.
 func runHealthcheck() error {
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8888"
+	portStr := os.Getenv("PORT")
+	if portStr == "" {
+		portStr = "8888"
+	}
+	portNum, err := strconv.Atoi(portStr)
+	if err != nil || portNum < 1 || portNum > 65535 {
+		return fmt.Errorf("invalid PORT %q", portStr)
 	}
 
+	healthURL := fmt.Sprintf("http://127.0.0.1:%d/health", portNum)
+	// #nosec G704 -- PORT is operator-configured and validated as integer 1..65535 targeting 127.0.0.1
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, healthURL, nil)
+	if err != nil {
+		return fmt.Errorf("build request failed: %w", err)
+	}
 	client := &http.Client{Timeout: 2 * time.Second}
-	resp, err := client.Get(fmt.Sprintf("http://127.0.0.1:%s/health", port))
+	// #nosec G704 -- request URL targets 127.0.0.1 with validated TCP port 1..65535
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("health endpoint returned status: %d", resp.StatusCode)

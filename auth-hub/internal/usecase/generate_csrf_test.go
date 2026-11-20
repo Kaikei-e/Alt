@@ -15,25 +15,25 @@ import (
 
 // mockCSRFGenerator implements domain.CSRFTokenGenerator for testing.
 type mockCSRFGenerator struct {
-	token string
-	err   error
+	issued string
+	err    error
 }
 
 func (m *mockCSRFGenerator) Generate(_ string) (string, error) {
-	return m.token, m.err
+	return m.issued, m.err
 }
 
 func TestGenerateCSRF_Success(t *testing.T) {
 	validator := &mockValidator{
 		identity: &domain.Identity{UserID: "user-123"},
 	}
-	csrf := &mockCSRFGenerator{token: "csrf-token-abc"}
+	csrf := &mockCSRFGenerator{issued: "csrf-token-abc"}
 	logger := slog.Default()
 
 	uc := NewGenerateCSRF(validator, csrf, logger)
 	token, err := uc.Execute(context.Background(), "ory_kratos_session=sess-123", "sess-123")
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "csrf-token-abc", token)
 	assert.True(t, validator.called)
 }
@@ -47,7 +47,7 @@ func TestGenerateCSRF_EmptyCookie(t *testing.T) {
 	token, err := uc.Execute(context.Background(), "", "")
 
 	assert.Empty(t, token)
-	assert.True(t, errors.Is(err, domain.ErrSessionNotFound))
+	assert.ErrorIs(t, err, domain.ErrSessionNotFound)
 }
 
 func TestGenerateCSRF_InvalidSession(t *testing.T) {
@@ -59,7 +59,7 @@ func TestGenerateCSRF_InvalidSession(t *testing.T) {
 	token, err := uc.Execute(context.Background(), "ory_kratos_session=invalid", "invalid")
 
 	assert.Empty(t, token)
-	assert.True(t, errors.Is(err, domain.ErrAuthFailed))
+	assert.ErrorIs(t, err, domain.ErrAuthFailed)
 }
 
 func TestGenerateCSRF_PropagatesUpstreamErrors(t *testing.T) {
@@ -83,15 +83,15 @@ func TestGenerateCSRF_PropagatesUpstreamErrors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			validator := &mockValidator{err: tt.validatorErr}
-			csrf := &mockCSRFGenerator{token: "unused"}
+			csrf := &mockCSRFGenerator{issued: "unused"}
 			uc := NewGenerateCSRF(validator, csrf, slog.Default())
 
 			token, err := uc.Execute(context.Background(), "ory_kratos_session=sess-123", "sess-123")
 
 			require.Error(t, err)
 			assert.Empty(t, token)
-			assert.True(t, errors.Is(err, tt.wantTarget))
-			assert.False(t, errors.Is(err, domain.ErrAuthFailed))
+			require.ErrorIs(t, err, tt.wantTarget)
+			assert.NotErrorIs(t, err, domain.ErrAuthFailed)
 		})
 	}
 }
@@ -107,7 +107,7 @@ func TestGenerateCSRF_EmptySessionID(t *testing.T) {
 	token, err := uc.Execute(context.Background(), "other=value", "")
 
 	assert.Empty(t, token)
-	assert.True(t, errors.Is(err, domain.ErrSessionNotFound))
+	assert.ErrorIs(t, err, domain.ErrSessionNotFound)
 }
 
 func TestGenerateCSRF_GeneratorError(t *testing.T) {
@@ -121,5 +121,5 @@ func TestGenerateCSRF_GeneratorError(t *testing.T) {
 	token, err := uc.Execute(context.Background(), "ory_kratos_session=sess-123", "sess-123")
 
 	assert.Empty(t, token)
-	assert.True(t, errors.Is(err, domain.ErrCSRFSecretMissing))
+	assert.ErrorIs(t, err, domain.ErrCSRFSecretMissing)
 }

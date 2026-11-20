@@ -10,7 +10,7 @@ import (
 
 	"auth-hub/config"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -39,11 +39,11 @@ func serveInternal(t *testing.T, mw echo.MiddlewareFunc, header string) int {
 
 	e := echo.New()
 	e.Use(mw)
-	e.GET("/internal/system-user", func(c echo.Context) error {
+	e.GET("/internal/system-user", func(c *echo.Context) error {
 		return c.String(http.StatusOK, "ok")
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/internal/system-user", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/internal/system-user", nil)
 	if header != "" {
 		req.Header.Set("X-Internal-Auth", header)
 	}

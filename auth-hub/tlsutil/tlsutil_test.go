@@ -97,12 +97,12 @@ func TestLoadServerConfig_WithAllowedPeers_AcceptsAndRejectsPeers(t *testing.T) 
 	require.NotNil(t, cfg.VerifyConnection)
 
 	allowedPeer := makePeerCert(t, "alt-backend", "alt-backend")
-	assert.NoError(t, cfg.VerifyConnection(tls.ConnectionState{
+	require.NoError(t, cfg.VerifyConnection(tls.ConnectionState{
 		PeerCertificates: []*x509.Certificate{allowedPeer},
 	}))
 
 	unlistedPeer := makePeerCert(t, "rogue-service", "rogue-service")
-	assert.Error(t, cfg.VerifyConnection(tls.ConnectionState{
+	require.Error(t, cfg.VerifyConnection(tls.ConnectionState{
 		PeerCertificates: []*x509.Certificate{unlistedPeer},
 	}))
 

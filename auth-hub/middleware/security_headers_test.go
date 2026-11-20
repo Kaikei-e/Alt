@@ -5,18 +5,18 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestSecurityHeaders_SetsAllHeaders(t *testing.T) {
 	e := echo.New()
 	e.Use(SecurityHeaders())
-	e.GET("/test", func(c echo.Context) error {
+	e.GET("/test", func(c *echo.Context) error {
 		return c.String(http.StatusOK, "ok")
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -33,11 +33,11 @@ func TestSecurityHeaders_SetsAllHeaders(t *testing.T) {
 func TestSecurityHeaders_DoesNotBlockRequest(t *testing.T) {
 	e := echo.New()
 	e.Use(SecurityHeaders())
-	e.POST("/test", func(c echo.Context) error {
+	e.POST("/test", func(c *echo.Context) error {
 		return c.String(http.StatusCreated, "created")
 	})
 
-	req := httptest.NewRequest(http.MethodPost, "/test", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/test", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 

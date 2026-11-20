@@ -10,18 +10,19 @@ import (
 	"auth-hub/internal/domain"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // mockTokenIssuer implements domain.TokenIssuer for testing.
 type mockTokenIssuer struct {
-	token           string
+	issued          string
 	err             error
 	issuedSessionID string
 }
 
 func (m *mockTokenIssuer) IssueBackendToken(_ *domain.Identity, sessionID string) (string, error) {
 	m.issuedSessionID = sessionID
-	return m.token, m.err
+	return m.issued, m.err
 }
 
 func TestGetSession_CacheHit(t *testing.T) {
@@ -35,13 +36,13 @@ func TestGetSession_CacheHit(t *testing.T) {
 		CreatedAt: createdAt,
 	})
 	validator := &mockValidator{}
-	tokenIssuer := &mockTokenIssuer{token: "jwt-token-123"}
+	tokenIssuer := &mockTokenIssuer{issued: "jwt-token-123"}
 	logger := slog.Default()
 
 	uc := NewGetSession(validator, cache, tokenIssuer, logger)
 	result, err := uc.Execute(context.Background(), "cookie-abc")
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "user-123", result.UserID)
 	assert.Equal(t, "tenant-123", result.TenantID)
 	assert.Equal(t, "test@example.com", result.Email)
@@ -62,13 +63,13 @@ func TestGetSession_CacheMiss(t *testing.T) {
 			CreatedAt: createdAt,
 		},
 	}
-	tokenIssuer := &mockTokenIssuer{token: "jwt-new-token"}
+	tokenIssuer := &mockTokenIssuer{issued: "jwt-new-token"}
 	logger := slog.Default()
 
 	uc := NewGetSession(validator, cache, tokenIssuer, logger)
 	result, err := uc.Execute(context.Background(), "session-xyz")
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "user-456", result.UserID)
 	assert.Equal(t, "user-456", result.TenantID) // Single-tenant
 	assert.Equal(t, "jwt-new-token", result.BackendToken)
@@ -85,14 +86,14 @@ func TestGetSession_CacheMiss(t *testing.T) {
 func TestGetSession_KratosError(t *testing.T) {
 	cache := newMockCache()
 	validator := &mockValidator{err: domain.ErrAuthFailed}
-	tokenIssuer := &mockTokenIssuer{token: "unused"}
+	tokenIssuer := &mockTokenIssuer{issued: "unused"}
 	logger := slog.Default()
 
 	uc := NewGetSession(validator, cache, tokenIssuer, logger)
 	result, err := uc.Execute(context.Background(), "bad-session")
 
 	assert.Nil(t, result)
-	assert.True(t, errors.Is(err, domain.ErrAuthFailed))
+	assert.ErrorIs(t, err, domain.ErrAuthFailed)
 }
 
 func TestGetSession_AdminRole_CacheMiss(t *testing.T) {
@@ -104,13 +105,13 @@ func TestGetSession_AdminRole_CacheMiss(t *testing.T) {
 			Role:   "admin",
 		},
 	}
-	tokenIssuer := &mockTokenIssuer{token: "jwt-admin-token"}
+	tokenIssuer := &mockTokenIssuer{issued: "jwt-admin-token"}
 	logger := slog.Default()
 
 	uc := NewGetSession(validator, cache, tokenIssuer, logger)
 	result, err := uc.Execute(context.Background(), "admin-session")
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "admin", result.Role)
 	assert.Equal(t, "jwt-admin-token", result.BackendToken)
 
@@ -129,13 +130,13 @@ func TestGetSession_AdminRole_CacheHit(t *testing.T) {
 		Role:     "admin",
 	})
 	validator := &mockValidator{}
-	tokenIssuer := &mockTokenIssuer{token: "jwt-admin-cached"}
+	tokenIssuer := &mockTokenIssuer{issued: "jwt-admin-cached"}
 	logger := slog.Default()
 
 	uc := NewGetSession(validator, cache, tokenIssuer, logger)
 	result, err := uc.Execute(context.Background(), "admin-session")
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "admin", result.Role)
 	assert.False(t, validator.called)
 }
@@ -149,13 +150,13 @@ func TestGetSession_EmptyRole_DefaultsToUser(t *testing.T) {
 			Role:   "",
 		},
 	}
-	tokenIssuer := &mockTokenIssuer{token: "jwt-default-role"}
+	tokenIssuer := &mockTokenIssuer{issued: "jwt-default-role"}
 	logger := slog.Default()
 
 	uc := NewGetSession(validator, cache, tokenIssuer, logger)
 	result, err := uc.Execute(context.Background(), "session-norole")
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "user", result.Role)
 }
 
@@ -174,13 +175,13 @@ func TestGetSession_CacheMiss_SessionIDIsKratosSessionID(t *testing.T) {
 			SessionID: "9f3c1b2a-0000-4d5e-8f1a-2b3c4d5e6f70",
 		},
 	}
-	tokenIssuer := &mockTokenIssuer{token: "jwt-new-token"}
+	tokenIssuer := &mockTokenIssuer{issued: "jwt-new-token"}
 	logger := slog.Default()
 
 	uc := NewGetSession(validator, cache, tokenIssuer, logger)
 	result, err := uc.Execute(context.Background(), rawCookie)
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "9f3c1b2a-0000-4d5e-8f1a-2b3c4d5e6f70", result.SessionID)
 	assert.NotEqual(t, rawCookie, result.SessionID, "the raw session cookie must never leave in the response body")
 	assert.Equal(t, "9f3c1b2a-0000-4d5e-8f1a-2b3c4d5e6f70", tokenIssuer.issuedSessionID,
@@ -204,13 +205,13 @@ func TestGetSession_CacheHit_SessionIDIsKratosSessionID(t *testing.T) {
 		SessionID: "9f3c1b2a-0000-4d5e-8f1a-2b3c4d5e6f70",
 	})
 	validator := &mockValidator{}
-	tokenIssuer := &mockTokenIssuer{token: "jwt-token-123"}
+	tokenIssuer := &mockTokenIssuer{issued: "jwt-token-123"}
 	logger := slog.Default()
 
 	uc := NewGetSession(validator, cache, tokenIssuer, logger)
 	result, err := uc.Execute(context.Background(), rawCookie)
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "9f3c1b2a-0000-4d5e-8f1a-2b3c4d5e6f70", result.SessionID)
 	assert.NotEqual(t, rawCookie, result.SessionID, "the raw session cookie must never leave in the response body")
 	assert.Equal(t, "9f3c1b2a-0000-4d5e-8f1a-2b3c4d5e6f70", tokenIssuer.issuedSessionID,
@@ -233,5 +234,5 @@ func TestGetSession_TokenGenerationError(t *testing.T) {
 	result, err := uc.Execute(context.Background(), "session-abc")
 
 	assert.Nil(t, result)
-	assert.True(t, errors.Is(err, domain.ErrTokenGeneration))
+	assert.ErrorIs(t, err, domain.ErrTokenGeneration)
 }

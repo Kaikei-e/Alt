@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"golang.org/x/time/rate"
 )
 
@@ -161,7 +161,7 @@ var directIPExtractor = NewTrustedProxyIPExtractor(nil)
 // Middleware returns an Echo middleware that enforces the rate limit.
 func (rl *RateLimiter) Middleware() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+		return func(c *echo.Context) error {
 			var ip string
 			if c.Echo() != nil && c.Echo().IPExtractor != nil {
 				ip = c.RealIP()

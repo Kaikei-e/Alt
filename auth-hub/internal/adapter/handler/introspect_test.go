@@ -23,7 +23,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/time/rate"
@@ -59,7 +59,7 @@ func TestHandleIntrospectToken(t *testing.T) {
 	// Separate cache invalidation limiter (10 req/min = 1/6 req/s, burst 3)
 	internalRL := middleware.NewRateLimiter(10.0/60.0, 3)
 	internalGroup := e.Group("/internal", internalRL.Middleware())
-	internalGroup.POST("/session/invalidate", func(c echo.Context) error {
+	internalGroup.POST("/session/invalidate", func(c *echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]bool{"ok": true})
 	})
 
@@ -75,7 +75,7 @@ func TestHandleIntrospectToken(t *testing.T) {
 
 	setupRequest := func(cn string, token string, hasTLS bool) *httptest.ResponseRecorder {
 		body := `{"token":"` + token + `"}`
-		req := httptest.NewRequest(http.MethodPost, "/internal/token/introspect", strings.NewReader(body))
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/internal/token/introspect", strings.NewReader(body))
 		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 
 		if hasTLS {
@@ -135,7 +135,7 @@ func TestHandleIntrospectToken(t *testing.T) {
 		serviceIP := "10.244.0.15:54321"
 		for i := 0; i < 10; i++ {
 			body := `{"token":"` + validToken + `"}`
-			req := httptest.NewRequest(http.MethodPost, "/internal/token/introspect", strings.NewReader(body))
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/internal/token/introspect", strings.NewReader(body))
 			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 			req.RemoteAddr = serviceIP
 			req.TLS = &tls.ConnectionState{
@@ -168,7 +168,7 @@ func TestHandleIntrospectToken(t *testing.T) {
 		serviceIP := "10.244.1.20:41234"
 		for i := 0; i < 5; i++ {
 			body := `{"token":"` + validToken + `"}`
-			req := httptest.NewRequest(http.MethodPost, "/internal/token/introspect", strings.NewReader(body))
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/internal/token/introspect", strings.NewReader(body))
 			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 			req.RemoteAddr = serviceIP
 			req.TLS = &tls.ConnectionState{
@@ -185,7 +185,7 @@ func TestHandleIntrospectToken(t *testing.T) {
 
 		// 6th request exhausts burst -> 429
 		body := `{"token":"` + validToken + `"}`
-		req := httptest.NewRequest(http.MethodPost, "/internal/token/introspect", strings.NewReader(body))
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/internal/token/introspect", strings.NewReader(body))
 		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 		req.RemoteAddr = serviceIP
 		req.TLS = &tls.ConnectionState{
@@ -203,7 +203,7 @@ func TestHandleIntrospectToken(t *testing.T) {
 	t.Run("separate cache invalidate limiter retains 10/min burst 3", func(t *testing.T) {
 		serviceIP := "10.244.2.30:52345"
 		for i := 0; i < 3; i++ {
-			req := httptest.NewRequest(http.MethodPost, "/internal/session/invalidate", strings.NewReader(`{"cookie":"c"}`))
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/internal/session/invalidate", strings.NewReader(`{"cookie":"c"}`))
 			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 			req.RemoteAddr = serviceIP
 			rec := httptest.NewRecorder()
@@ -212,7 +212,7 @@ func TestHandleIntrospectToken(t *testing.T) {
 		}
 
 		// 4th immediate request must be 429
-		req4 := httptest.NewRequest(http.MethodPost, "/internal/session/invalidate", strings.NewReader(`{"cookie":"c"}`))
+		req4 := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/internal/session/invalidate", strings.NewReader(`{"cookie":"c"}`))
 		req4.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 		req4.RemoteAddr = serviceIP
 		rec4 := httptest.NewRecorder()
@@ -253,7 +253,7 @@ func TestInternalHandler_HandleIntrospectToken(t *testing.T) {
 		h := NewInternalHandler(nil, nil, introspectUC)
 
 		body := `{"token":"active-token"}`
-		req := httptest.NewRequest(http.MethodPost, "/internal/token/introspect", strings.NewReader(body))
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/internal/token/introspect", strings.NewReader(body))
 		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
@@ -287,7 +287,7 @@ func TestInternalHandler_HandleIntrospectToken(t *testing.T) {
 		h := NewInternalHandler(nil, nil, introspectUC)
 
 		body := `{"token":"invalid-token"}`
-		req := httptest.NewRequest(http.MethodPost, "/internal/token/introspect", strings.NewReader(body))
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/internal/token/introspect", strings.NewReader(body))
 		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)

@@ -8,7 +8,7 @@ import (
 	"auth-hub/internal/domain"
 	"auth-hub/internal/usecase"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 // ValidateHandler handles /validate endpoint for nginx auth_request.
@@ -29,7 +29,7 @@ func NewValidateHandler(uc *usecase.ValidateSession, token domain.TokenIssuer) *
 }
 
 // Handle processes the /validate endpoint.
-func (h *ValidateHandler) Handle(c echo.Context) error {
+func (h *ValidateHandler) Handle(c *echo.Context) error {
 	cookie, err := c.Cookie("ory_kratos_session")
 	if err != nil {
 		return echo.NewHTTPError(http.StatusUnauthorized, "session cookie not found")

@@ -3,14 +3,14 @@ package middleware
 import (
 	"net/http"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"go.opentelemetry.io/otel/codes"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 	"go.opentelemetry.io/otel/trace"
 )
 
 // OTelSkipper excludes health check and metrics endpoints from generating OTel trace spans.
-func OTelSkipper(c echo.Context) bool {
+func OTelSkipper(c *echo.Context) bool {
 	if c == nil || c.Request() == nil || c.Request().URL == nil {
 		return false
 	}
@@ -27,10 +27,10 @@ func OTelSkipper(c echo.Context) bool {
 // - 1xx, 2xx, 3xx, 4xx: StatusCode = Unset (normal operation or client error)
 // - 5xx: StatusCode = Error (server error)
 //
-// This middleware should be used AFTER otelecho.Middleware which creates the span.
+// This middleware should be used AFTER echootel middleware which creates the span.
 func OTelStatusMiddleware() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+		return func(c *echo.Context) error {
 			// Execute the handler
 			err := next(c)
 
@@ -41,7 +41,7 @@ func OTelStatusMiddleware() echo.MiddlewareFunc {
 			}
 
 			// Get response status
-			status := c.Response().Status
+			_, status := echo.ResolveResponseStatus(c.Response(), err)
 
 			// Set HTTP semantic convention attributes
 			span.SetAttributes(

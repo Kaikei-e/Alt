@@ -73,7 +73,7 @@ func TestLoad_InternalAuthSecret_HasNoDefault(t *testing.T) {
 	t.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
 	t.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
 	t.Setenv("TRUSTED_PROXY_CIDRS", "172.18.0.0/16")
-	os.Unsetenv("INTERNAL_AUTH_SECRET")
+	require.NoError(t, os.Unsetenv("INTERNAL_AUTH_SECRET"))
 
 	_, err := Load()
 

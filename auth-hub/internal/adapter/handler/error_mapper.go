@@ -6,7 +6,7 @@ import (
 
 	"auth-hub/internal/domain"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 // mapDomainError converts a domain error into an appropriate echo.HTTPError.

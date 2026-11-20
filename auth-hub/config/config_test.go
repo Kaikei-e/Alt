@@ -53,44 +53,34 @@ func TestLoad(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		setupEnv    func()
-		cleanupEnv  func()
+		setupEnv    func(t *testing.T)
 		expected    *Config
 		wantErr     bool
 		errContains string
 	}{
 		{
 			name: "default configuration when no env vars set (missing CSRF_SECRET)",
-			setupEnv: func() {
-				os.Unsetenv("KRATOS_URL")
-				os.Unsetenv("PORT")
-				os.Unsetenv("CACHE_TTL")
-				os.Unsetenv("CSRF_SECRET")
-				os.Unsetenv("BACKEND_TOKEN_SIGNING_KEY_FILE")
-				os.Unsetenv("INTERNAL_AUTH_SECRET")
+			setupEnv: func(t *testing.T) {
+				require.NoError(t, os.Unsetenv("KRATOS_URL"))
+				require.NoError(t, os.Unsetenv("PORT"))
+				require.NoError(t, os.Unsetenv("CACHE_TTL"))
+				require.NoError(t, os.Unsetenv("CSRF_SECRET"))
+				require.NoError(t, os.Unsetenv("BACKEND_TOKEN_SIGNING_KEY_FILE"))
+				require.NoError(t, os.Unsetenv("INTERNAL_AUTH_SECRET"))
 			},
-			cleanupEnv:  func() {},
 			expected:    nil,
 			wantErr:     true,
 			errContains: "CSRF_SECRET is required",
 		},
 		{
 			name: "custom configuration from environment variables",
-			setupEnv: func() {
-				os.Setenv("KRATOS_URL", "http://custom-kratos:4444")
-				os.Setenv("PORT", "9999")
-				os.Setenv("CACHE_TTL", "30s")
-				os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
-				os.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
-				os.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
-			},
-			cleanupEnv: func() {
-				os.Unsetenv("KRATOS_URL")
-				os.Unsetenv("PORT")
-				os.Unsetenv("CACHE_TTL")
-				os.Unsetenv("CSRF_SECRET")
-				os.Unsetenv("BACKEND_TOKEN_SIGNING_KEY_FILE")
-				os.Unsetenv("INTERNAL_AUTH_SECRET")
+			setupEnv: func(t *testing.T) {
+				t.Setenv("KRATOS_URL", "http://custom-kratos:4444")
+				t.Setenv("PORT", "9999")
+				t.Setenv("CACHE_TTL", "30s")
+				t.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
+				t.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
+				t.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
 			},
 			expected: &Config{
 				KratosURL:  "http://custom-kratos:4444",
@@ -102,11 +92,8 @@ func TestLoad(t *testing.T) {
 		},
 		{
 			name: "invalid cache TTL format returns error",
-			setupEnv: func() {
-				os.Setenv("CACHE_TTL", "invalid")
-			},
-			cleanupEnv: func() {
-				os.Unsetenv("CACHE_TTL")
+			setupEnv: func(t *testing.T) {
+				t.Setenv("CACHE_TTL", "invalid")
 			},
 			expected:    nil,
 			wantErr:     true,
@@ -114,19 +101,13 @@ func TestLoad(t *testing.T) {
 		},
 		{
 			name: "partial configuration with defaults",
-			setupEnv: func() {
-				os.Setenv("KRATOS_URL", "http://localhost:4433")
-				os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
-				os.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
-				os.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
-				os.Unsetenv("PORT")
-				os.Unsetenv("CACHE_TTL")
-			},
-			cleanupEnv: func() {
-				os.Unsetenv("KRATOS_URL")
-				os.Unsetenv("CSRF_SECRET")
-				os.Unsetenv("BACKEND_TOKEN_SIGNING_KEY_FILE")
-				os.Unsetenv("INTERNAL_AUTH_SECRET")
+			setupEnv: func(t *testing.T) {
+				t.Setenv("KRATOS_URL", "http://localhost:4433")
+				t.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
+				t.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
+				t.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
+				require.NoError(t, os.Unsetenv("PORT"))
+				require.NoError(t, os.Unsetenv("CACHE_TTL"))
 			},
 			expected: &Config{
 				KratosURL:  "http://localhost:4433",
@@ -138,17 +119,11 @@ func TestLoad(t *testing.T) {
 		},
 		{
 			name: "INTROSPECT_RATE_LIMIT=NaN is rejected",
-			setupEnv: func() {
-				os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
-				os.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
-				os.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
-				os.Setenv("INTROSPECT_RATE_LIMIT", "NaN")
-			},
-			cleanupEnv: func() {
-				os.Unsetenv("CSRF_SECRET")
-				os.Unsetenv("BACKEND_TOKEN_SIGNING_KEY_FILE")
-				os.Unsetenv("INTERNAL_AUTH_SECRET")
-				os.Unsetenv("INTROSPECT_RATE_LIMIT")
+			setupEnv: func(t *testing.T) {
+				t.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
+				t.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
+				t.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
+				t.Setenv("INTROSPECT_RATE_LIMIT", "NaN")
 			},
 			expected:    nil,
 			wantErr:     true,
@@ -156,17 +131,11 @@ func TestLoad(t *testing.T) {
 		},
 		{
 			name: "INTROSPECT_RATE_LIMIT=+Inf is rejected",
-			setupEnv: func() {
-				os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
-				os.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
-				os.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
-				os.Setenv("INTROSPECT_RATE_LIMIT", "+Inf")
-			},
-			cleanupEnv: func() {
-				os.Unsetenv("CSRF_SECRET")
-				os.Unsetenv("BACKEND_TOKEN_SIGNING_KEY_FILE")
-				os.Unsetenv("INTERNAL_AUTH_SECRET")
-				os.Unsetenv("INTROSPECT_RATE_LIMIT")
+			setupEnv: func(t *testing.T) {
+				t.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
+				t.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
+				t.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
+				t.Setenv("INTROSPECT_RATE_LIMIT", "+Inf")
 			},
 			expected:    nil,
 			wantErr:     true,
@@ -174,17 +143,11 @@ func TestLoad(t *testing.T) {
 		},
 		{
 			name: "INTROSPECT_RATE_LIMIT=-Inf is rejected",
-			setupEnv: func() {
-				os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
-				os.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
-				os.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
-				os.Setenv("INTROSPECT_RATE_LIMIT", "-Inf")
-			},
-			cleanupEnv: func() {
-				os.Unsetenv("CSRF_SECRET")
-				os.Unsetenv("BACKEND_TOKEN_SIGNING_KEY_FILE")
-				os.Unsetenv("INTERNAL_AUTH_SECRET")
-				os.Unsetenv("INTROSPECT_RATE_LIMIT")
+			setupEnv: func(t *testing.T) {
+				t.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
+				t.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
+				t.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
+				t.Setenv("INTROSPECT_RATE_LIMIT", "-Inf")
 			},
 			expected:    nil,
 			wantErr:     true,
@@ -192,17 +155,11 @@ func TestLoad(t *testing.T) {
 		},
 		{
 			name: "INTROSPECT_RATE_LIMIT=20.0 is accepted",
-			setupEnv: func() {
-				os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
-				os.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
-				os.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
-				os.Setenv("INTROSPECT_RATE_LIMIT", "20.0")
-			},
-			cleanupEnv: func() {
-				os.Unsetenv("CSRF_SECRET")
-				os.Unsetenv("BACKEND_TOKEN_SIGNING_KEY_FILE")
-				os.Unsetenv("INTERNAL_AUTH_SECRET")
-				os.Unsetenv("INTROSPECT_RATE_LIMIT")
+			setupEnv: func(t *testing.T) {
+				t.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
+				t.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
+				t.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
+				t.Setenv("INTROSPECT_RATE_LIMIT", "20.0")
 			},
 			expected: &Config{
 				KratosURL:           "http://kratos:4433",
@@ -217,20 +174,19 @@ func TestLoad(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tt.setupEnv()
-			defer tt.cleanupEnv()
+			tt.setupEnv(t)
 
 			got, err := Load()
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				if tt.errContains != "" {
 					assert.Contains(t, err.Error(), tt.errContains)
 				}
 				return
 			}
 
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.NotNil(t, got)
 			assert.Equal(t, tt.expected.KratosURL, got.KratosURL)
 			assert.Equal(t, tt.expected.Port, got.Port)
@@ -498,149 +454,104 @@ func TestLoad_TrustedProxyCIDRs(t *testing.T) {
 func TestLoad_KratosAdminURL_Default(t *testing.T) {
 	keyFile, _ := writeEd25519SigningKeyFile(t)
 	t.Setenv("TRUSTED_PROXY_CIDRS", "172.18.0.0/16")
-	os.Unsetenv("KRATOS_ADMIN_URL")
-	os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
-	os.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
-	os.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
-	defer func() {
-		os.Unsetenv("CSRF_SECRET")
-		os.Unsetenv("BACKEND_TOKEN_SIGNING_KEY_FILE")
-		os.Unsetenv("INTERNAL_AUTH_SECRET")
-	}()
+	require.NoError(t, os.Unsetenv("KRATOS_ADMIN_URL"))
+	t.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
+	t.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
+	t.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
 
 	cfg, err := Load()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "http://kratos-admin:4434", cfg.KratosAdminURL)
 }
 
 func TestLoad_KratosAdminURL_EnvOverride(t *testing.T) {
 	keyFile, _ := writeEd25519SigningKeyFile(t)
 	t.Setenv("TRUSTED_PROXY_CIDRS", "172.18.0.0/16")
-	os.Setenv("KRATOS_ADMIN_URL", "http://custom-kratos-admin:4434")
-	os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
-	os.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
-	os.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
-	defer func() {
-		os.Unsetenv("KRATOS_ADMIN_URL")
-		os.Unsetenv("CSRF_SECRET")
-		os.Unsetenv("BACKEND_TOKEN_SIGNING_KEY_FILE")
-		os.Unsetenv("INTERNAL_AUTH_SECRET")
-	}()
+	t.Setenv("KRATOS_ADMIN_URL", "http://custom-kratos-admin:4434")
+	t.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
+	t.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
+	t.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
 
 	cfg, err := Load()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "http://custom-kratos-admin:4434", cfg.KratosAdminURL)
 }
 
 func TestLoad_ValidateRateLimit_Default(t *testing.T) {
 	keyFile, _ := writeEd25519SigningKeyFile(t)
 	t.Setenv("TRUSTED_PROXY_CIDRS", "172.18.0.0/16")
-	os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
-	os.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
-	os.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
-	defer func() {
-		os.Unsetenv("CSRF_SECRET")
-		os.Unsetenv("BACKEND_TOKEN_SIGNING_KEY_FILE")
-		os.Unsetenv("INTERNAL_AUTH_SECRET")
-		os.Unsetenv("VALIDATE_RATE_LIMIT")
-	}()
+	t.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
+	t.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
+	t.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
+	require.NoError(t, os.Unsetenv("VALIDATE_RATE_LIMIT"))
 
 	cfg, err := Load()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.InDelta(t, 100.0/60.0, cfg.ValidateRateLimit, 0.001)
 }
 
 func TestLoad_ValidateRateLimit_EnvOverride(t *testing.T) {
 	keyFile, _ := writeEd25519SigningKeyFile(t)
 	t.Setenv("TRUSTED_PROXY_CIDRS", "172.18.0.0/16")
-	os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
-	os.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
-	os.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
-	os.Setenv("VALIDATE_RATE_LIMIT", "50.0")
-	defer func() {
-		os.Unsetenv("CSRF_SECRET")
-		os.Unsetenv("BACKEND_TOKEN_SIGNING_KEY_FILE")
-		os.Unsetenv("INTERNAL_AUTH_SECRET")
-		os.Unsetenv("VALIDATE_RATE_LIMIT")
-	}()
+	t.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
+	t.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
+	t.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
+	t.Setenv("VALIDATE_RATE_LIMIT", "50.0")
 
 	cfg, err := Load()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.InDelta(t, 50.0, cfg.ValidateRateLimit, 0.001)
 }
 
 func TestLoad_ValidateRateLimit_Invalid(t *testing.T) {
 	keyFile, _ := writeEd25519SigningKeyFile(t)
 	t.Setenv("TRUSTED_PROXY_CIDRS", "172.18.0.0/16")
-	os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
-	os.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
-	os.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
-	os.Setenv("VALIDATE_RATE_LIMIT", "not-a-number")
-	defer func() {
-		os.Unsetenv("CSRF_SECRET")
-		os.Unsetenv("BACKEND_TOKEN_SIGNING_KEY_FILE")
-		os.Unsetenv("INTERNAL_AUTH_SECRET")
-		os.Unsetenv("VALIDATE_RATE_LIMIT")
-	}()
+	t.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
+	t.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
+	t.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
+	t.Setenv("VALIDATE_RATE_LIMIT", "not-a-number")
 
 	_, err := Load()
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid VALIDATE_RATE_LIMIT")
 }
 
 func TestLoad_CSRFRateLimit_Default(t *testing.T) {
 	keyFile, _ := writeEd25519SigningKeyFile(t)
 	t.Setenv("TRUSTED_PROXY_CIDRS", "172.18.0.0/16")
-	os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
-	os.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
-	os.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
-	defer func() {
-		os.Unsetenv("CSRF_SECRET")
-		os.Unsetenv("BACKEND_TOKEN_SIGNING_KEY_FILE")
-		os.Unsetenv("INTERNAL_AUTH_SECRET")
-		os.Unsetenv("CSRF_RATE_LIMIT")
-	}()
+	t.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
+	t.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
+	t.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
+	require.NoError(t, os.Unsetenv("CSRF_RATE_LIMIT"))
 
 	cfg, err := Load()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.InDelta(t, 100.0, cfg.CSRFRateLimit, 0.001)
 }
 
 func TestLoad_CSRFRateLimit_EnvOverride(t *testing.T) {
 	keyFile, _ := writeEd25519SigningKeyFile(t)
 	t.Setenv("TRUSTED_PROXY_CIDRS", "172.18.0.0/16")
-	os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
-	os.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
-	os.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
-	os.Setenv("CSRF_RATE_LIMIT", "50.0")
-	defer func() {
-		os.Unsetenv("CSRF_SECRET")
-		os.Unsetenv("BACKEND_TOKEN_SIGNING_KEY_FILE")
-		os.Unsetenv("INTERNAL_AUTH_SECRET")
-		os.Unsetenv("CSRF_RATE_LIMIT")
-	}()
+	t.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
+	t.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
+	t.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
+	t.Setenv("CSRF_RATE_LIMIT", "50.0")
 
 	cfg, err := Load()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.InDelta(t, 50.0, cfg.CSRFRateLimit, 0.001)
 }
 
 func TestLoad_CSRFRateLimit_Invalid(t *testing.T) {
 	keyFile, _ := writeEd25519SigningKeyFile(t)
 	t.Setenv("TRUSTED_PROXY_CIDRS", "172.18.0.0/16")
-	os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
-	os.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
-	os.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
-	os.Setenv("CSRF_RATE_LIMIT", "not-a-number")
-	defer func() {
-		os.Unsetenv("CSRF_SECRET")
-		os.Unsetenv("BACKEND_TOKEN_SIGNING_KEY_FILE")
-		os.Unsetenv("INTERNAL_AUTH_SECRET")
-		os.Unsetenv("CSRF_RATE_LIMIT")
-	}()
+	t.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
+	t.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
+	t.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
+	t.Setenv("CSRF_RATE_LIMIT", "not-a-number")
 
 	_, err := Load()
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid CSRF_RATE_LIMIT")
 }
 
@@ -854,12 +765,12 @@ func TestConfig_Validate(t *testing.T) {
 			err := tt.config.Validate()
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				if tt.errContains != "" {
 					assert.Contains(t, err.Error(), tt.errContains)
 				}
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}
 		})
 	}
@@ -871,89 +782,60 @@ func TestConfig_BoundedSessionCacheAndJWT(t *testing.T) {
 	t.Setenv("TRUSTED_PROXY_CIDRS", "172.18.0.0/16")
 
 	t.Run("Load caps CACHE_TTL to 60s", func(t *testing.T) {
-		os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
-		os.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
-		os.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
-		os.Setenv("CACHE_TTL", "10m")
-		defer func() {
-			os.Unsetenv("CSRF_SECRET")
-			os.Unsetenv("BACKEND_TOKEN_SIGNING_KEY_FILE")
-			os.Unsetenv("INTERNAL_AUTH_SECRET")
-			os.Unsetenv("CACHE_TTL")
-		}()
+		t.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
+		t.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
+		t.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
+		t.Setenv("CACHE_TTL", "10m")
 
 		cfg, err := Load()
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, 60*time.Second, cfg.CacheTTL, "CACHE_TTL must be capped to <= 60s")
 	})
 
 	t.Run("default CacheTTL is 60s", func(t *testing.T) {
-		os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
-		os.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
-		os.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
-		os.Unsetenv("CACHE_TTL")
-		defer func() {
-			os.Unsetenv("CSRF_SECRET")
-			os.Unsetenv("BACKEND_TOKEN_SIGNING_KEY_FILE")
-			os.Unsetenv("INTERNAL_AUTH_SECRET")
-		}()
+		t.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
+		t.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
+		t.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
+		require.NoError(t, os.Unsetenv("CACHE_TTL"))
 
 		cfg, err := Load()
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, 60*time.Second, cfg.CacheTTL, "Default CacheTTL must be 60s")
 	})
 
 	t.Run("Load caps BACKEND_TOKEN_TTL to 5m", func(t *testing.T) {
-		os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
-		os.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
-		os.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
-		os.Setenv("BACKEND_TOKEN_TTL", "30m")
-		defer func() {
-			os.Unsetenv("CSRF_SECRET")
-			os.Unsetenv("BACKEND_TOKEN_SIGNING_KEY_FILE")
-			os.Unsetenv("INTERNAL_AUTH_SECRET")
-			os.Unsetenv("BACKEND_TOKEN_TTL")
-		}()
+		t.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
+		t.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
+		t.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
+		t.Setenv("BACKEND_TOKEN_TTL", "30m")
 
 		cfg, err := Load()
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, 5*time.Minute, cfg.BackendTokenTTL, "BACKEND_TOKEN_TTL must be capped to <= 5m")
 	})
 
 	t.Run("default BackendTokenTTL is 5m", func(t *testing.T) {
-		os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
-		os.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
-		os.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
-		os.Unsetenv("BACKEND_TOKEN_TTL")
-		os.Unsetenv("JWT_ISSUER_TTL")
-		defer func() {
-			os.Unsetenv("CSRF_SECRET")
-			os.Unsetenv("BACKEND_TOKEN_SIGNING_KEY_FILE")
-			os.Unsetenv("INTERNAL_AUTH_SECRET")
-		}()
+		t.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
+		t.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
+		t.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
+		require.NoError(t, os.Unsetenv("BACKEND_TOKEN_TTL"))
+		require.NoError(t, os.Unsetenv("JWT_ISSUER_TTL"))
 
 		cfg, err := Load()
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, 5*time.Minute, cfg.BackendTokenTTL, "Default BackendTokenTTL must be 5m")
 	})
 
 	t.Run("Load clamps CacheTTL when JWT_ISSUER_TTL is smaller than CACHE_TTL", func(t *testing.T) {
-		os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
-		os.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
-		os.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
-		os.Setenv("CACHE_TTL", "60s")
-		os.Unsetenv("BACKEND_TOKEN_TTL")
-		os.Setenv("JWT_ISSUER_TTL", "15s")
-		defer func() {
-			os.Unsetenv("CSRF_SECRET")
-			os.Unsetenv("BACKEND_TOKEN_SIGNING_KEY_FILE")
-			os.Unsetenv("INTERNAL_AUTH_SECRET")
-			os.Unsetenv("CACHE_TTL")
-			os.Unsetenv("JWT_ISSUER_TTL")
-		}()
+		t.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
+		t.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
+		t.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
+		t.Setenv("CACHE_TTL", "60s")
+		require.NoError(t, os.Unsetenv("BACKEND_TOKEN_TTL"))
+		t.Setenv("JWT_ISSUER_TTL", "15s")
 
 		cfg, err := Load()
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, 15*time.Second, cfg.BackendTokenTTL)
 		assert.Equal(t, 15*time.Second, cfg.CacheTTL, "CacheTTL must be clamped to jwt_issuer_ttl when jwt_issuer_ttl < cache_ttl")
 	})
@@ -972,56 +854,176 @@ func TestConfig_BoundedSessionCacheAndJWT(t *testing.T) {
 			}
 		}
 
-		assert.NoError(t, baseCfg().Validate())
+		require.NoError(t, baseCfg().Validate())
 
 		c := baseCfg()
 		c.CacheTTL = 61 * time.Second
 		err := c.Validate()
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "CACHE_TTL cannot exceed 60s")
 
 		c = baseCfg()
 		c.BackendTokenTTL = 0
 		err = c.Validate()
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "BACKEND_TOKEN_TTL must be positive")
 
 		c = baseCfg()
 		c.BackendTokenTTL = 6 * time.Minute
 		err = c.Validate()
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "BACKEND_TOKEN_TTL cannot exceed 5m")
 
 		c = baseCfg()
 		c.IntrospectRateLimit = -1
 		err = c.Validate()
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "INTROSPECT_RATE_LIMIT cannot be negative")
 
 		c = baseCfg()
 		c.IntrospectBurst = -1
 		err = c.Validate()
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "INTROSPECT_BURST cannot be negative")
 	})
 
 	t.Run("introspect rate limit env parsing", func(t *testing.T) {
-		os.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
-		os.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
-		os.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
-		os.Setenv("INTROSPECT_RATE_LIMIT", "25.5")
-		os.Setenv("INTROSPECT_BURST", "150")
-		defer func() {
-			os.Unsetenv("CSRF_SECRET")
-			os.Unsetenv("BACKEND_TOKEN_SIGNING_KEY_FILE")
-			os.Unsetenv("INTERNAL_AUTH_SECRET")
-			os.Unsetenv("INTROSPECT_RATE_LIMIT")
-			os.Unsetenv("INTROSPECT_BURST")
-		}()
+		t.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
+		t.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyFile)
+		t.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
+		t.Setenv("INTROSPECT_RATE_LIMIT", "25.5")
+		t.Setenv("INTROSPECT_BURST", "150")
 
 		cfg, err := Load()
-		assert.NoError(t, err)
-		assert.Equal(t, 25.5, cfg.IntrospectRateLimit)
+		require.NoError(t, err)
+		assert.InDelta(t, 25.5, cfg.IntrospectRateLimit, 0.001)
 		assert.Equal(t, 150, cfg.IntrospectBurst)
+	})
+}
+
+func marshalTestEd25519PEM(t *testing.T) ([]byte, ed25519.PrivateKey) {
+	t.Helper()
+	priv := generateTestEd25519Key(t)
+	der, err := x509.MarshalPKCS8PrivateKey(priv)
+	require.NoError(t, err)
+	return pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}), priv
+}
+
+func TestLoad_ConfigFileSafety(t *testing.T) {
+	t.Run("reads absolute secret and key files preserving trailing-newline trimming", func(t *testing.T) {
+		dir := t.TempDir()
+		root, err := os.OpenRoot(dir)
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = root.Close() })
+
+		keyBytes, priv := marshalTestEd25519PEM(t)
+		require.NoError(t, root.WriteFile("backend_token_signing_key", append(keyBytes, '\n'), 0o600))
+		keyWithNewline := filepath.Join(dir, "backend_token_signing_key")
+
+		csrfVal := "this-is-a-valid-csrf-secret-that-is-at-least-32-chars"
+		require.NoError(t, root.WriteFile("csrf_secret", []byte(csrfVal+"\n"), 0o600))
+		csrfFile := filepath.Join(dir, "csrf_secret")
+
+		internalVal := "this-is-a-distinct-internal-auth-secret-32-chars"
+		require.NoError(t, root.WriteFile("auth_hub_internal_secret", []byte(internalVal+"\n"), 0o600))
+		internalFile := filepath.Join(dir, "auth_hub_internal_secret")
+
+		require.NoError(t, os.Unsetenv("CSRF_SECRET"))
+		require.NoError(t, os.Unsetenv("INTERNAL_AUTH_SECRET"))
+		t.Setenv("CSRF_SECRET_FILE", csrfFile)
+		t.Setenv("INTERNAL_AUTH_SECRET_FILE", internalFile)
+		t.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyWithNewline)
+		t.Setenv("TRUSTED_PROXY_CIDRS", "172.18.0.0/16")
+
+		cfg, err := Load()
+		require.NoError(t, err)
+		assert.Equal(t, csrfVal, cfg.CSRFSecret)
+		assert.Equal(t, internalVal, cfg.InternalAuthSecret)
+		assert.True(t, priv.Equal(cfg.BackendTokenSigningKey))
+	})
+
+	t.Run("rejects path containing dotdot without leaking file content", func(t *testing.T) {
+		baseDir := t.TempDir()
+		baseRoot, err := os.OpenRoot(baseDir)
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = baseRoot.Close() })
+
+		subDir := filepath.Join(baseDir, "sub")
+		require.NoError(t, os.MkdirAll(subDir, 0o700))
+
+		keyBytes, _ := marshalTestEd25519PEM(t)
+		require.NoError(t, baseRoot.WriteFile("outside-key.pem", keyBytes, 0o600))
+
+		validKeyFile, _ := writeEd25519SigningKeyFile(t)
+		dotdotKey := subDir + string(filepath.Separator) + ".." + string(filepath.Separator) + "outside-key.pem"
+
+		t.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
+		t.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
+		t.Setenv("TRUSTED_PROXY_CIDRS", "172.18.0.0/16")
+		t.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", dotdotKey)
+
+		_, err = Load()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "BACKEND_TOKEN_SIGNING_KEY_FILE")
+		assert.NotContains(t, err.Error(), "BEGIN PRIVATE KEY")
+
+		secretContent := "unique-csrf-secret-content-must-not-appear-in-error-12345"
+		require.NoError(t, baseRoot.WriteFile("outside-csrf.txt", []byte(secretContent+"\n"), 0o600))
+
+		dotdotCSRF := subDir + string(filepath.Separator) + ".." + string(filepath.Separator) + "outside-csrf.txt"
+		require.NoError(t, os.Unsetenv("CSRF_SECRET"))
+		t.Setenv("CSRF_SECRET_FILE", dotdotCSRF)
+		t.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", validKeyFile)
+
+		_, err = Load()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "CSRF_SECRET")
+		assert.NotContains(t, err.Error(), secretContent)
+	})
+
+	t.Run("rejects symlink pointing outside secret directory", func(t *testing.T) {
+		outsideDir := t.TempDir()
+		outsideRoot, err := os.OpenRoot(outsideDir)
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = outsideRoot.Close() })
+
+		secretsDir := t.TempDir()
+
+		keyBytes, _ := marshalTestEd25519PEM(t)
+		require.NoError(t, outsideRoot.WriteFile("outside-key.pem", keyBytes, 0o600))
+		outsideKey := filepath.Join(outsideDir, "outside-key.pem")
+
+		keyLink := filepath.Join(secretsDir, "backend_token_signing_key")
+		require.NoError(t, os.Symlink(outsideKey, keyLink))
+
+		t.Setenv("CSRF_SECRET", "this-is-a-valid-csrf-secret-that-is-at-least-32-chars")
+		t.Setenv("INTERNAL_AUTH_SECRET", "this-is-a-distinct-internal-auth-secret-32-chars")
+		t.Setenv("TRUSTED_PROXY_CIDRS", "172.18.0.0/16")
+		t.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", keyLink)
+
+		_, err = Load()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "BACKEND_TOKEN_SIGNING_KEY_FILE")
+		assert.NotContains(t, err.Error(), "BEGIN PRIVATE KEY")
+
+		secretContent := "outside-symlink-csrf-secret-value-at-least-32-chars"
+		require.NoError(t, outsideRoot.WriteFile("outside-csrf.txt", []byte(secretContent+"\n"), 0o600))
+		outsideCSRF := filepath.Join(outsideDir, "outside-csrf.txt")
+
+		csrfLink := filepath.Join(secretsDir, "csrf_secret")
+		require.NoError(t, os.Symlink(outsideCSRF, csrfLink))
+
+		_, err = readConfigFile(csrfLink)
+		require.Error(t, err)
+
+		validKeyFile, _ := writeEd25519SigningKeyFile(t)
+		require.NoError(t, os.Unsetenv("CSRF_SECRET"))
+		t.Setenv("CSRF_SECRET_FILE", csrfLink)
+		t.Setenv("BACKEND_TOKEN_SIGNING_KEY_FILE", validKeyFile)
+
+		_, err = Load()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "CSRF_SECRET")
+		assert.NotContains(t, err.Error(), secretContent)
 	})
 }

@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -17,7 +18,7 @@ import (
 	"auth-hub/internal/usecase"
 
 	jwtlib "github.com/golang-jwt/jwt/v5"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -59,8 +60,8 @@ func TestA01_Handler_InvalidateThenSession(t *testing.T) {
 
 	// Step 1: GET /session — must succeed, returning a real JWT.
 	t.Run("step1_session_succeeds", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/session", nil)
-		req.AddCookie(&http.Cookie{Name: "ory_kratos_session", Value: rawCookie})
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/session", nil)
+		req.AddCookie(&http.Cookie{Name: "ory_kratos_session", Value: rawCookie, Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode})
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
 
@@ -95,8 +96,8 @@ func TestA01_Handler_InvalidateThenSession(t *testing.T) {
 	validator.revoke(fullCookie)
 
 	t.Run("step2_invalidate_succeeds", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/session/invalidate", nil)
-		req.AddCookie(&http.Cookie{Name: "ory_kratos_session", Value: rawCookie})
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/session/invalidate", nil)
+		req.AddCookie(&http.Cookie{Name: "ory_kratos_session", Value: rawCookie, Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode})
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
 
@@ -113,8 +114,8 @@ func TestA01_Handler_InvalidateThenSession(t *testing.T) {
 	// Step 3: GET /session — must fail because cache was purged
 	// and Kratos reports the session revoked.
 	t.Run("step3_session_rejected_after_invalidation", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/session", nil)
-		req.AddCookie(&http.Cookie{Name: "ory_kratos_session", Value: rawCookie})
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/session", nil)
+		req.AddCookie(&http.Cookie{Name: "ory_kratos_session", Value: rawCookie, Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode})
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
 
@@ -122,7 +123,8 @@ func TestA01_Handler_InvalidateThenSession(t *testing.T) {
 		require.Error(t, err, "A01: revoked session must fail at handler level")
 
 		// Echo returns an HTTPError for 401.
-		he, ok := err.(*echo.HTTPError)
+		he := &echo.HTTPError{}
+		ok := errors.As(err, &he)
 		require.True(t, ok)
 		assert.Equal(t, http.StatusUnauthorized, he.Code)
 	})
@@ -139,28 +141,30 @@ func TestA01_Handler_InvalidateNon2xxHandling(t *testing.T) {
 	h := NewSessionHandler(nil, invalidateUC)
 
 	t.Run("missing_cookie_returns_401", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/session/invalidate", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/session/invalidate", nil)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
 
 		err := h.HandleInvalidate(c)
 		require.Error(t, err)
 
-		he, ok := err.(*echo.HTTPError)
+		he := &echo.HTTPError{}
+		ok := errors.As(err, &he)
 		require.True(t, ok)
 		assert.Equal(t, http.StatusUnauthorized, he.Code)
 	})
 
 	t.Run("empty_cookie_value_returns_401", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/session/invalidate", nil)
-		req.AddCookie(&http.Cookie{Name: "ory_kratos_session", Value: ""})
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/session/invalidate", nil)
+		req.AddCookie(&http.Cookie{Name: "ory_kratos_session", Value: "", Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode})
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
 
 		err := h.HandleInvalidate(c)
 		require.Error(t, err)
 
-		he, ok := err.(*echo.HTTPError)
+		he := &echo.HTTPError{}
+		ok := errors.As(err, &he)
 		require.True(t, ok)
 		assert.Equal(t, http.StatusUnauthorized, he.Code)
 	})

@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
-	"errors"
 	"log/slog"
 	"testing"
 	"time"
@@ -64,7 +63,7 @@ func TestRevocationAttack_RevokedSessionRejectedWithinCacheTTL(t *testing.T) {
 	validator.identities[fullCookie] = userIdentity
 
 	cache := newMockCache()
-	tokenIssuer := &mockTokenIssuer{token: "jwt-token-active"}
+	tokenIssuer := &mockTokenIssuer{issued: "jwt-token-active"}
 
 	getUC := NewGetSession(validator, cache, tokenIssuer, logger)
 	validateUC := NewValidateSession(validator, cache, logger)
@@ -85,7 +84,7 @@ func TestRevocationAttack_RevokedSessionRejectedWithinCacheTTL(t *testing.T) {
 	// VULNERABILITY DEMONSTRATION (without invalidation):
 	// An attacker would still get a valid response because of the cache:
 	resStolen, err := getUC.Execute(ctx, rawCookie)
-	assert.NoError(t, err, "Without cache invalidation, stolen cookie still succeeds from cache")
+	require.NoError(t, err, "Without cache invalidation, stolen cookie still succeeds from cache")
 	assert.NotNil(t, resStolen)
 
 	// Step 3: Authenticated logout invalidation is invoked on auth-hub
@@ -97,13 +96,13 @@ func TestRevocationAttack_RevokedSessionRejectedWithinCacheTTL(t *testing.T) {
 	// Step 4: Attacker tries to use the revoked session within what would have been the cache TTL
 	// Must fail-closed because cache was purged and Kratos reports session revoked!
 	_, errAfterInvalidation := getUC.Execute(ctx, rawCookie)
-	assert.Error(t, errAfterInvalidation, "Revoked session must be rejected after logout cache invalidation")
-	assert.True(t, errors.Is(errAfterInvalidation, domain.ErrAuthFailed))
+	require.Error(t, errAfterInvalidation, "Revoked session must be rejected after logout cache invalidation")
+	require.ErrorIs(t, errAfterInvalidation, domain.ErrAuthFailed)
 
 	// Also verify ValidateSession rejects the revoked cookie
 	_, valErr := validateUC.Execute(ctx, rawCookie)
-	assert.Error(t, valErr, "ValidateSession must reject revoked session after invalidation")
-	assert.True(t, errors.Is(valErr, domain.ErrAuthFailed))
+	require.Error(t, valErr, "ValidateSession must reject revoked session after invalidation")
+	assert.ErrorIs(t, valErr, domain.ErrAuthFailed)
 }
 
 // TestBackendToken_MaxLifespanFiveMinutes verifies that issued backend JWTs

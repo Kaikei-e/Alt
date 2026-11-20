@@ -1,7 +1,6 @@
 package token
 
 import (
-	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -18,7 +17,7 @@ func TestHMACCSRFGenerator_Generate(t *testing.T) {
 	gen := NewHMACCSRFGenerator(testCSRFSecret)
 
 	token, err := gen.Generate("session-123")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotEmpty(t, token)
 	assert.Contains(t, token, ".")
 }
@@ -52,7 +51,7 @@ func TestHMACCSRFGenerator_EmptySecret(t *testing.T) {
 
 	token, err := gen.Generate("session-123")
 	assert.Empty(t, token)
-	assert.True(t, errors.Is(err, domain.ErrCSRFSecretMissing))
+	assert.ErrorIs(t, err, domain.ErrCSRFSecretMissing)
 }
 
 func TestHMACCSRFGenerator_Validate_OK(t *testing.T) {
@@ -75,7 +74,7 @@ func TestHMACCSRFGenerator_Validate_Expired(t *testing.T) {
 
 	gen.now = func() time.Time { return time.Unix(1_700_000_020, 0) }
 	err = gen.Validate("session-123", token)
-	assert.True(t, errors.Is(err, domain.ErrCSRFTokenExpired))
+	assert.ErrorIs(t, err, domain.ErrCSRFTokenExpired)
 }
 
 func TestHMACCSRFGenerator_Validate_WrongSession(t *testing.T) {
@@ -85,11 +84,11 @@ func TestHMACCSRFGenerator_Validate_WrongSession(t *testing.T) {
 	token, err := gen.Generate("session-123")
 	require.NoError(t, err)
 	err = gen.Validate("other-session", token)
-	assert.True(t, errors.Is(err, domain.ErrCSRFTokenInvalid))
+	assert.ErrorIs(t, err, domain.ErrCSRFTokenInvalid)
 }
 
 func TestHMACCSRFGenerator_Validate_Malformed(t *testing.T) {
 	gen := NewHMACCSRFGenerator(testCSRFSecret)
 	err := gen.Validate("session-123", "not-a-token")
-	assert.True(t, errors.Is(err, domain.ErrCSRFTokenInvalid))
+	assert.ErrorIs(t, err, domain.ErrCSRFTokenInvalid)
 }

@@ -3,7 +3,7 @@ package middleware
 import (
 	"net/http"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 // RequireMTLS enforces that a request arrived over a TLS connection with
@@ -11,7 +11,7 @@ import (
 // against being exposed on the frontend server-only TLS listener or plaintext.
 func RequireMTLS() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+		return func(c *echo.Context) error {
 			tlsState := c.Request().TLS
 			if tlsState == nil || len(tlsState.VerifiedChains) == 0 || len(tlsState.VerifiedChains[0]) == 0 {
 				return echo.NewHTTPError(http.StatusForbidden, "mTLS required")
@@ -25,7 +25,7 @@ func RequireMTLS() echo.MiddlewareFunc {
 // Common Name is in the allowed list.
 func RequireMTLSPeer(allowedCNs []string) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+		return func(c *echo.Context) error {
 			tlsState := c.Request().TLS
 			if tlsState == nil || len(tlsState.VerifiedChains) == 0 || len(tlsState.VerifiedChains[0]) == 0 {
 				return echo.NewHTTPError(http.StatusForbidden, "mTLS required")

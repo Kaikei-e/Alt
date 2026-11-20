@@ -6,7 +6,7 @@ import (
 
 	"auth-hub/internal/usecase"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 // SessionHandler handles /session endpoint returning JSON for the frontend.
@@ -44,7 +44,7 @@ type sessionResponse struct {
 }
 
 // Handle processes the /session endpoint and returns JSON.
-func (h *SessionHandler) Handle(c echo.Context) error {
+func (h *SessionHandler) Handle(c *echo.Context) error {
 	cookie, err := c.Cookie("ory_kratos_session")
 	if err != nil {
 		return echo.NewHTTPError(http.StatusUnauthorized, "session cookie not found")
@@ -76,7 +76,7 @@ func (h *SessionHandler) Handle(c echo.Context) error {
 
 // HandleInvalidate processes POST /session/invalidate.
 // Requires presenting the session cookie being invalidated (authenticated invalidation).
-func (h *SessionHandler) HandleInvalidate(c echo.Context) error {
+func (h *SessionHandler) HandleInvalidate(c *echo.Context) error {
 	cookie, err := c.Cookie("ory_kratos_session")
 	if err != nil || cookie == nil || cookie.Value == "" {
 		return echo.NewHTTPError(http.StatusUnauthorized, "session cookie not found")
