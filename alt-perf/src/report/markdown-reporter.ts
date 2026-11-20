@@ -101,7 +101,11 @@ export function generateMarkdownReport(report: PerformanceReport): string {
       const authBadge = route.requiresAuth ? " 🔒" : "";
       const status = statusEmoji(route.passed, route.status);
       lines.push(
-        `| ${route.path}${authBadge} | ${formatMetric(route.vitals.lcp.value)} | ${formatMetric(route.vitals.inp.value)} | ${formatMetric(route.vitals.cls.value, "")} | ${formatMetric(route.vitals.fcp.value)} | ${formatMetric(route.vitals.ttfb.value)} | ${route.score} | ${status} |`
+        `| ${route.path}${authBadge} | ${formatMetric(route.vitals.lcp.value)} | ${
+          formatMetric(route.vitals.inp.value)
+        } | ${formatMetric(route.vitals.cls.value, "")} | ${
+          formatMetric(route.vitals.fcp.value)
+        } | ${formatMetric(route.vitals.ttfb.value)} | ${route.score} | ${status} |`,
       );
     }
     lines.push("");
@@ -118,7 +122,9 @@ export function generateMarkdownReport(report: PerformanceReport): string {
     for (const route of failedRoutes) {
       const issues = analyzeIssues(route);
       for (const issue of issues) {
-        lines.push(`| ${route.path} | ${route.device} | ${issue.metric} | ${issue.value} | ${issue.threshold} |`);
+        lines.push(
+          `| ${route.path} | ${route.device} | ${issue.metric} | ${issue.value} | ${issue.threshold} |`,
+        );
       }
     }
     lines.push("");
@@ -128,9 +134,13 @@ export function generateMarkdownReport(report: PerformanceReport): string {
   if (skippedRoutes.length > 0) {
     lines.push("## Skipped Routes");
     lines.push("");
-    lines.push(`> ${skippedRoutes.length} routes were skipped due to missing authentication credentials.`);
+    lines.push(
+      `> ${skippedRoutes.length} routes were skipped due to missing authentication credentials.`,
+    );
     lines.push(">");
-    lines.push("> Set `PERF_TEST_EMAIL` and `PERF_TEST_PASSWORD` environment variables to measure these routes.");
+    lines.push(
+      "> Set `PERF_TEST_EMAIL` and `PERF_TEST_PASSWORD` environment variables to measure these routes.",
+    );
     lines.push("");
 
     // Group by device
@@ -142,7 +152,11 @@ export function generateMarkdownReport(report: PerformanceReport): string {
     }
 
     for (const [device, paths] of skippedByDevice) {
-      lines.push(`**${device}:** ${paths.slice(0, 5).join(", ")}${paths.length > 5 ? ` ... and ${paths.length - 5} more` : ""}`);
+      lines.push(
+        `**${device}:** ${paths.slice(0, 5).join(", ")}${
+          paths.length > 5 ? ` ... and ${paths.length - 5} more` : ""
+        }`,
+      );
     }
     lines.push("");
   }
@@ -180,7 +194,9 @@ export function generateMarkdownReport(report: PerformanceReport): string {
 /**
  * Analyze issues for a failed route
  */
-function analyzeIssues(route: RouteMeasurement): Array<{ metric: string; value: string; threshold: string }> {
+function analyzeIssues(
+  route: RouteMeasurement,
+): Array<{ metric: string; value: string; threshold: string }> {
   const issues: Array<{ metric: string; value: string; threshold: string }> = [];
   const thresholds = DEFAULT_THRESHOLDS.vitals;
 
@@ -244,7 +260,7 @@ export function printMarkdownReport(report: PerformanceReport): void {
  */
 export async function saveMarkdownReport(
   report: PerformanceReport,
-  filepath: string
+  filepath: string,
 ): Promise<void> {
   const content = generateMarkdownReport(report);
   await Deno.writeTextFile(filepath, content);

@@ -1,14 +1,14 @@
 /**
  * Flow command - execute user flow tests
  */
-import type { PerfConfig, FlowConfig, FlowStep } from "../config/schema.ts";
+import type { FlowConfig, FlowStep, PerfConfig } from "../config/schema.ts";
 import { createBrowserManager, type Page } from "../browser/astral.ts";
 import { getAuthCookies } from "../auth/kratos-session.ts";
 import { createWebVitalsCollector } from "../measurement/vitals.ts";
-import type { PerformanceReport, FlowResult, FlowStepResult } from "../report/types.ts";
+import type { FlowResult, FlowStepResult, PerformanceReport } from "../report/types.ts";
 import { printCliReport } from "../report/cli-reporter.ts";
-import { saveJsonReport, printJsonReport } from "../report/json-reporter.ts";
-import { info, error, debug, section } from "../utils/logger.ts";
+import { printJsonReport, saveJsonReport } from "../report/json-reporter.ts";
+import { debug, error, info, section } from "../utils/logger.ts";
 
 interface FlowOptions {
   output?: string;
@@ -23,7 +23,7 @@ interface FlowOptions {
 async function executeStep(
   page: Page,
   step: FlowStep,
-  baseUrl: string
+  baseUrl: string,
 ): Promise<FlowStepResult> {
   const startTime = performance.now();
   const result: FlowStepResult = {
@@ -132,7 +132,7 @@ async function executeStep(
 async function executeFlow(
   flow: FlowConfig,
   config: PerfConfig,
-  options: FlowOptions
+  options: FlowOptions,
 ): Promise<FlowResult> {
   const browser = createBrowserManager({
     headless: options.headless ?? true,

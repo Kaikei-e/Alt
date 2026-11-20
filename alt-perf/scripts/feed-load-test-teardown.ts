@@ -374,7 +374,7 @@ export async function preflightDatabaseOwnership(
   dbService: string,
   dbUser: string,
   dbName: string,
-  dryRun: boolean,
+  _dryRun: boolean,
   execSQL: ExecSQLFn = defaultExecSQL,
 ): Promise<{ ok: boolean; reason?: string }> {
   if (manifest.articles.length === 0 && manifest.feeds.length === 0) {
@@ -406,7 +406,7 @@ export async function preflightDatabaseOwnership(
         return { ok: false, reason: "Failed to query current articles in DB during preflight." };
       }
 
-      let rows: any[];
+      let rows: unknown;
       try {
         const out = res.stdout.trim().split("\n").pop() || "[]";
         rows = JSON.parse(out);
@@ -418,9 +418,13 @@ export async function preflightDatabaseOwnership(
         return { ok: false, reason: "Articles preflight did not return an array" };
       }
 
-      const seenIds = new Set();
-      for (const row of rows) {
-        if (!row || !row.id || typeof row.id !== "string") {
+      const seenIds = new Set<string>();
+      for (const item of rows) {
+        if (!item || typeof item !== "object") {
+          return { ok: false, reason: "Null or missing ID in article row" };
+        }
+        const row = item as { id?: unknown; user_id?: unknown };
+        if (!row.id || typeof row.id !== "string") {
           return { ok: false, reason: "Null or missing ID in article row" };
         }
         if (seenIds.has(row.id)) {
@@ -428,7 +432,7 @@ export async function preflightDatabaseOwnership(
         }
         seenIds.add(row.id);
 
-        if (!row.user_id || !ownedUserIds.has(row.user_id)) {
+        if (typeof row.user_id !== "string" || !row.user_id || !ownedUserIds.has(row.user_id)) {
           return {
             ok: false,
             reason:
@@ -465,7 +469,7 @@ export async function preflightDatabaseOwnership(
         return { ok: false, reason: "Failed to query current feeds in DB during preflight." };
       }
 
-      let rows: any[];
+      let rows: unknown;
       try {
         const out = res.stdout.trim().split("\n").pop() || "[]";
         rows = JSON.parse(out);
@@ -477,9 +481,20 @@ export async function preflightDatabaseOwnership(
         return { ok: false, reason: "Feeds preflight did not return an array" };
       }
 
-      const seenIds = new Set();
-      for (const row of rows) {
-        if (!row || !row.id || typeof row.id !== "string") {
+      const seenIds = new Set<string>();
+      for (const item of rows) {
+        if (!item || typeof item !== "object") {
+          return { ok: false, reason: "Null or missing ID in feed row" };
+        }
+        const row = item as {
+          id?: unknown;
+          url?: unknown;
+          sub_users?: unknown;
+          article_users?: unknown;
+          favorite_users?: unknown;
+          read_status_users?: unknown;
+        };
+        if (!row.id || typeof row.id !== "string") {
           return { ok: false, reason: "Null or missing ID in feed row" };
         }
         if (seenIds.has(row.id)) return { ok: false, reason: `Duplicate row for feed ${row.id}` };
@@ -494,10 +509,10 @@ export async function preflightDatabaseOwnership(
           };
         }
 
-        const checkForeignUsers = (users: any, label: string) => {
+        const checkForeignUsers = (users: unknown, label: string) => {
           if (Array.isArray(users)) {
             for (const uid of users) {
-              if (uid && !ownedUserIds.has(uid)) {
+              if (uid && (typeof uid !== "string" || !ownedUserIds.has(uid))) {
                 return {
                   ok: false,
                   reason: `Foreign ${label} dependency detected on feed ${row.id} by user ${uid}`,

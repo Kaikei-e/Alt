@@ -21,11 +21,11 @@ deno task fmt && deno task lint && deno task check
 
 ## Core Web Vitals Targets
 
-| Metric | Good | Poor |
-|--------|------|------|
-| LCP | < 2.5s | > 4.0s |
-| INP | < 200ms | > 500ms |
-| CLS | < 0.1 | > 0.25 |
+| Metric | Good    | Poor    |
+| ------ | ------- | ------- |
+| LCP    | < 2.5s  | > 4.0s  |
+| INP    | < 200ms | > 500ms |
+| CLS    | < 0.1   | > 0.25  |
 
 ## TDD Workflow
 
@@ -54,7 +54,9 @@ docker compose -f compose/compose.yaml -p alt run --rm k6 run /scripts/scenarios
 
 ## Critical Rules
 
-1. **Web Vitals Injection**: Inject a hand-written `PerformanceObserver` script (not the `web-vitals` npm library) for measurement
+1. **Web Vitals Injection**: Inject a hand-written `PerformanceObserver` script (not the
+   `web-vitals` npm library) for measurement
 2. **Authenticated Tests**: Manage Kratos sessions for protected routes
 3. **Output Formats**: Support both JSON and CLI output
-4. **K6 Endpoint Safety**: Only whitelist endpoints in `k6/helpers/endpoints.js` — never add external-API-calling endpoints
+4. **K6 Endpoint Safety**: Only whitelist endpoints in `k6/helpers/endpoints.js` — never add
+   external-API-calling endpoints

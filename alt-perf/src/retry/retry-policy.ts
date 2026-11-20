@@ -80,7 +80,7 @@ export class RetryExecutor<T> {
    */
   async execute(
     operation: () => Promise<T>,
-    onRetry?: (context: RetryContext) => void
+    onRetry?: (context: RetryContext) => void,
   ): Promise<RetryResult<T>> {
     const startTime = performance.now();
     const errors: Error[] = [];
@@ -145,7 +145,7 @@ export class RetryExecutor<T> {
       (retryable) =>
         errorName === retryable ||
         errorName.includes(retryable) ||
-        error.message.includes(retryable)
+        error.message.includes(retryable),
     );
   }
 
@@ -154,8 +154,8 @@ export class RetryExecutor<T> {
    */
   private calculateDelay(attempt: number): number {
     // Exponential backoff: baseDelay * (multiplier ^ (attempt - 1))
-    const exponentialDelay =
-      this.policy.baseDelayMs * Math.pow(this.policy.backoffMultiplier, attempt - 1);
+    const exponentialDelay = this.policy.baseDelayMs *
+      Math.pow(this.policy.backoffMultiplier, attempt - 1);
 
     // Cap at maxDelay
     const cappedDelay = Math.min(exponentialDelay, this.policy.maxDelayMs);
@@ -178,7 +178,7 @@ export class RetryExecutor<T> {
  * Create a retry executor with the given policy
  */
 export function createRetryExecutor<T>(
-  policy: RetryPolicy = DEFAULT_RETRY_POLICY
+  policy: RetryPolicy = DEFAULT_RETRY_POLICY,
 ): RetryExecutor<T> {
   return new RetryExecutor<T>(policy);
 }
@@ -189,7 +189,7 @@ export function createRetryExecutor<T>(
  */
 export function withRetry<T>(
   operation: () => Promise<T>,
-  policy?: Partial<RetryPolicy>
+  policy?: Partial<RetryPolicy>,
 ): Promise<RetryResult<T>> {
   const mergedPolicy = { ...DEFAULT_RETRY_POLICY, ...policy };
   const executor = new RetryExecutor<T>(mergedPolicy);

@@ -5,7 +5,7 @@
  */
 import { parseArgs } from "@std/cli/parse-args";
 import { bold, cyan, dim, green, red, yellow } from "./src/utils/colors.ts";
-import { configureLogger, error, info, section, shutdownLogger } from "./src/utils/logger.ts";
+import { configureLogger, error, info, shutdownLogger } from "./src/utils/logger.ts";
 import { loadConfig } from "./src/config/loader.ts";
 import { runScan } from "./src/commands/scan.ts";
 import { runFlow } from "./src/commands/flow.ts";
@@ -51,7 +51,17 @@ interface CliOptions {
 // Parse command line arguments
 function parseCliArgs(): { command: string; options: CliOptions } {
   const args = parseArgs(Deno.args, {
-    string: ["config", "output", "device", "route", "format", "warmup", "runs", "duration", "concurrency"],
+    string: [
+      "config",
+      "output",
+      "device",
+      "route",
+      "format",
+      "warmup",
+      "runs",
+      "duration",
+      "concurrency",
+    ],
     boolean: ["help", "version", "json", "verbose", "headless"],
     default: {
       config: "./config",

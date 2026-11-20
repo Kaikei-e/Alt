@@ -2,14 +2,12 @@
  * Retry policy unit tests
  * TDD: These tests define the expected behavior of the retry mechanism
  */
-import { assertEquals, assertRejects } from "@std/assert";
-import { describe, it, beforeEach } from "@std/testing/bdd";
-import { spy, stub, restore } from "@std/testing/mock";
+import { assertEquals } from "@std/assert";
+import { describe, it } from "@std/testing/bdd";
 import {
-  RetryExecutor,
   DEFAULT_RETRY_POLICY,
+  RetryExecutor,
   type RetryPolicy,
-  type RetryResult,
 } from "../../src/retry/retry-policy.ts";
 
 describe("RetryExecutor", () => {

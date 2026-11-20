@@ -71,7 +71,7 @@ export class ArtifactManager {
   constructor(config: Partial<ArtifactConfig> = {}) {
     this.config = { ...DEFAULT_ARTIFACT_CONFIG, ...config };
     this.screenshotCapture = new ScreenshotCapture(
-      join(this.config.baseDir, "screenshots")
+      join(this.config.baseDir, "screenshots"),
     );
     this.traceCapture = new TraceCapture(join(this.config.baseDir, "traces"));
   }
@@ -144,11 +144,9 @@ export class ArtifactManager {
     page: unknown,
     testName: string,
     success: boolean,
-    options: { route?: string; device?: string } = {}
+    options: { route?: string; device?: string } = {},
   ): Promise<void> {
-    const shouldCapture = success
-      ? this.config.captureOnSuccess
-      : this.config.captureOnFailure;
+    const shouldCapture = success ? this.config.captureOnSuccess : this.config.captureOnFailure;
 
     if (!shouldCapture) return;
 
@@ -158,7 +156,7 @@ export class ArtifactManager {
       try {
         const result = await this.screenshotCapture.capture(
           page as import("@astral/astral").Page,
-          `${testName}_${suffix}`
+          `${testName}_${suffix}`,
         );
         this.registerArtifact({
           type: "screenshot",
@@ -177,8 +175,7 @@ export class ArtifactManager {
    * Clean up old artifacts based on retention policy
    */
   async cleanup(): Promise<number> {
-    const cutoffTime =
-      Date.now() - this.config.retentionDays * 24 * 60 * 60 * 1000;
+    const cutoffTime = Date.now() - this.config.retentionDays * 24 * 60 * 60 * 1000;
     let removedCount = 0;
 
     debug("Cleaning up artifacts", {
@@ -274,7 +271,7 @@ export class ArtifactManager {
  * Create an artifact manager instance
  */
 export function createArtifactManager(
-  config?: Partial<ArtifactConfig>
+  config?: Partial<ArtifactConfig>,
 ): ArtifactManager {
   return new ArtifactManager(config);
 }

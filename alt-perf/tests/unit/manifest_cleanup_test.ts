@@ -53,9 +53,7 @@ import {
 } from "../../scripts/manifest.ts";
 import {
   generateCryptoRandomPassword,
-  getDeterministicPassword,
   loadExactRunCredentials,
-  loadExistingCredentials,
   persistCredentialIncremental,
 } from "../../scripts/feed-load-test-setup.ts";
 import {
@@ -167,7 +165,10 @@ describe("incremental journal", () => {
     const p = manifestPath(tmpDir, "jrn-001");
     await writeManifestAtomic(m, p);
 
-    const rec = makeIdentity({ kratosId: "11111111-1111-1111-1111-111111111111", email: "loadtest-0001@test.alt.local" });
+    const rec = makeIdentity({
+      kratosId: "11111111-1111-1111-1111-111111111111",
+      email: "loadtest-0001@test.alt.local",
+    });
     await journalIdentity(m, p, rec);
 
     const read = await readManifest(p);
@@ -184,12 +185,18 @@ describe("incremental journal", () => {
     await journalIdentity(
       m,
       p,
-      makeIdentity({ kratosId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", email: "loadtest-0001@test.alt.local" }),
+      makeIdentity({
+        kratosId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        email: "loadtest-0001@test.alt.local",
+      }),
     );
     await journalIdentity(
       m,
       p,
-      makeIdentity({ kratosId: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", email: "loadtest-0002@test.alt.local" }),
+      makeIdentity({
+        kratosId: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+        email: "loadtest-0002@test.alt.local",
+      }),
     );
 
     const read = await readManifest(p);
@@ -387,17 +394,26 @@ describe("interrupted setup recovery", () => {
     await journalIdentity(
       m,
       p,
-      makeIdentity({ kratosId: "44444444-4444-4444-4444-444444444444", email: "loadtest-0000@test.alt.local" }),
+      makeIdentity({
+        kratosId: "44444444-4444-4444-4444-444444444444",
+        email: "loadtest-0000@test.alt.local",
+      }),
     );
     await journalIdentity(
       m,
       p,
-      makeIdentity({ kratosId: "55555555-5555-5555-5555-555555555555", email: "loadtest-0001@test.alt.local" }),
+      makeIdentity({
+        kratosId: "55555555-5555-5555-5555-555555555555",
+        email: "loadtest-0001@test.alt.local",
+      }),
     );
     await journalIdentity(
       m,
       p,
-      makeIdentity({ kratosId: "66666666-6666-6666-6666-666666666666", email: "loadtest-0002@test.alt.local" }),
+      makeIdentity({
+        kratosId: "66666666-6666-6666-6666-666666666666",
+        email: "loadtest-0002@test.alt.local",
+      }),
     );
 
     // "Process dies here" — read manifest from disk
@@ -728,7 +744,10 @@ describe("mismatch0actions: Kratos identity preflight failure aborts with 0 muta
     let sqlCalls = 0;
 
     // 1. Missing marker
-    const mockFetchMissing = (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+    const mockFetchMissing = (
+      _input: string | URL | Request,
+      init?: RequestInit,
+    ): Promise<Response> => {
       const method = init?.method || "GET";
       if (method === "DELETE") {
         deleteFetchCalls++;
@@ -747,7 +766,11 @@ describe("mismatch0actions: Kratos identity preflight failure aborts with 0 muta
       throw new Error("execSQL must NOT be called on preflight failure!");
     };
 
-    const preflight1 = await preflightKratosIdentities(m, "http://mock-kratos", mockFetchMissing as typeof fetch);
+    const preflight1 = await preflightKratosIdentities(
+      m,
+      "http://mock-kratos",
+      mockFetchMissing as typeof fetch,
+    );
     assertEquals(preflight1.ok, false);
     assertEquals(preflight1.reason?.includes("metadata run_id"), true);
 
@@ -765,7 +788,10 @@ describe("mismatch0actions: Kratos identity preflight failure aborts with 0 muta
     assertEquals(sqlCalls, 0);
 
     // 2. Foreign marker
-    const mockFetchForeign = (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+    const mockFetchForeign = (
+      _input: string | URL | Request,
+      init?: RequestInit,
+    ): Promise<Response> => {
       const method = init?.method || "GET";
       if (method === "DELETE") {
         deleteFetchCalls++;
@@ -782,7 +808,11 @@ describe("mismatch0actions: Kratos identity preflight failure aborts with 0 muta
       );
     };
 
-    const preflight2 = await preflightKratosIdentities(m, "http://mock-kratos", mockFetchForeign as typeof fetch);
+    const preflight2 = await preflightKratosIdentities(
+      m,
+      "http://mock-kratos",
+      mockFetchForeign as typeof fetch,
+    );
     assertEquals(preflight2.ok, false);
     assertEquals(preflight2.reason?.includes("other-foreign-run"), true);
 
@@ -848,11 +878,23 @@ describe("dbpreflightforeign: currently foreign article/shared subscribed feeds 
       // Return JSON array for articles preflight
       return Promise.resolve({
         success: true,
-        stdout: JSON.stringify([{ id: artId, user_id: foreignUser, url: "https://example.com/art" }]),
+        stdout: JSON.stringify([{
+          id: artId,
+          user_id: foreignUser,
+          url: "https://example.com/art",
+        }]),
       });
     };
 
-    const dbPreflight = await preflightDatabaseOwnership(m, ["docker"], "db", "user", "alt", false, mockExecSQL);
+    const dbPreflight = await preflightDatabaseOwnership(
+      m,
+      ["docker"],
+      "db",
+      "user",
+      "alt",
+      false,
+      mockExecSQL,
+    );
     assertEquals(dbPreflight.ok, false);
     assertEquals(dbPreflight.reason?.includes("Foreign article owner detected"), true);
 
@@ -1120,8 +1162,16 @@ describe("randomprivatecredentials: crypto random passwords and private credenti
     const runId = "exact-run-123";
     const journalPath = credentialsPath(tmpDir, runId);
 
-    const user1 = { email: "loadtest-0001@test.alt.local", password: generateCryptoRandomPassword(), userId: "u1" };
-    const user2 = { email: "loadtest-0002@test.alt.local", password: generateCryptoRandomPassword(), userId: "u2" };
+    const user1 = {
+      email: "loadtest-0001@test.alt.local",
+      password: generateCryptoRandomPassword(),
+      userId: "u1",
+    };
+    const user2 = {
+      email: "loadtest-0002@test.alt.local",
+      password: generateCryptoRandomPassword(),
+      userId: "u2",
+    };
 
     await persistCredentialIncremental(journalPath, user1);
     await persistCredentialIncremental(journalPath, user2);

@@ -15,7 +15,7 @@ export function generateJsonReport(report: PerformanceReport): string {
  */
 export async function saveJsonReport(
   report: PerformanceReport,
-  filePath: string
+  filePath: string,
 ): Promise<void> {
   const jsonContent = generateJsonReport(report);
   await Deno.writeTextFile(filePath, jsonContent);

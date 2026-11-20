@@ -136,7 +136,7 @@ export class KratosSessionManager {
 
       // Extract CSRF token
       const csrfNode = flow.ui.nodes.find(
-        (n) => n.attributes.name === "csrf_token"
+        (n) => n.attributes.name === "csrf_token",
       );
       const csrfToken = csrfNode?.attributes.value || "";
 

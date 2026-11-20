@@ -1,18 +1,12 @@
-import { assertEquals, assertRejects, assertStringIncludes } from "jsr:@std/assert@^1.0.0";
+import { assertEquals, assertRejects } from "jsr:@std/assert@^1.0.0";
 import { afterEach, beforeEach, describe, it } from "jsr:@std/testing@^1.0.0/bdd";
 import { join } from "jsr:@std/path@^1.0.0";
 import {
   createUser,
-  loadExactRunCredentials,
   persistCredentialIncremental,
   runSetup,
 } from "../../scripts/feed-load-test-setup.ts";
-import {
-  createManifest,
-  currentManifestPath,
-  manifestPath,
-  readManifest,
-} from "../../scripts/manifest.ts";
+import { createManifest, manifestPath, readManifest } from "../../scripts/manifest.ts";
 
 let tmpDir: string;
 
@@ -93,26 +87,28 @@ describe("setup credential intent and crash recovery", () => {
     let mockFetchCalls = 0;
 
     // We will simulate 409 and returning an owned identity
-    const mockFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const mockFetch = (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       mockFetchCalls++;
       const url = input.toString();
       const method = init?.method || "GET";
 
       if (method === "POST" && url.includes("/admin/identities")) {
-        return new Response(null, { status: 409 });
+        return Promise.resolve(new Response(null, { status: 409 }));
       }
       if (method === "GET" && url.includes("credentials_identifier=")) {
         // Return existing identity owned by this run
-        return new Response(
-          JSON.stringify([{
-            id: "11111111-1111-1111-1111-111111111111",
-            traits: { email: "loadtest-0000@test.alt.local" },
-            metadata_admin: { run_id: runId, intent_nonce: "fake-nonce" },
-          }]),
-          { status: 200 },
+        return Promise.resolve(
+          new Response(
+            JSON.stringify([{
+              id: "11111111-1111-1111-1111-111111111111",
+              traits: { email: "loadtest-0000@test.alt.local" },
+              metadata_admin: { run_id: runId, intent_nonce: "fake-nonce" },
+            }]),
+            { status: 200 },
+          ),
         );
       }
-      return new Response(null, { status: 500 });
+      return Promise.resolve(new Response(null, { status: 500 }));
     };
 
     // First attempt: simulate that intent was written, but API creation failed or we crashed
@@ -144,23 +140,25 @@ describe("setup credential intent and crash recovery", () => {
     const m2 = createManifest("run2", "feed-load-test-setup");
     const c2Path = join(tmpDir, `run-credentials-run2.json`);
 
-    const mockFetch2 = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const mockFetch2 = (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = input.toString();
       const method = init?.method || "GET";
       if (method === "POST" && url.includes("/admin/identities")) {
-        return new Response(null, { status: 409 });
+        return Promise.resolve(new Response(null, { status: 409 }));
       }
       if (method === "GET" && url.includes("credentials_identifier=")) {
-        return new Response(
-          JSON.stringify([{
-            id: "22222222-2222-2222-2222-222222222222",
-            traits: { email: "loadtest-0000@test.alt.local" },
-            metadata_admin: { run_id: "run2", intent_nonce: "other-nonce" },
-          }]),
-          { status: 200 },
+        return Promise.resolve(
+          new Response(
+            JSON.stringify([{
+              id: "22222222-2222-2222-2222-222222222222",
+              traits: { email: "loadtest-0000@test.alt.local" },
+              metadata_admin: { run_id: "run2", intent_nonce: "other-nonce" },
+            }]),
+            { status: 200 },
+          ),
         );
       }
-      return new Response(null, { status: 500 });
+      return Promise.resolve(new Response(null, { status: 500 }));
     };
 
     // DO NOT write intent this time. It should fail closed!

@@ -2,8 +2,10 @@
 // Unit and functional verification of AuthHub JWT validation for K6 load testing.
 
 import assert from "node:assert";
+import { Buffer } from "node:buffer";
 import fs from "node:fs";
 import path from "node:path";
+import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -26,8 +28,10 @@ async function run() {
   globalThis.__ENV = globalThis.__ENV || {};
   console.log("Starting AuthHub JWT and k6 helper verification...");
 
-  const { getAuthHeaders, validateAuthHubToken, validateCohortTokenAtInit } = await import("../helpers/auth.js");
-  const { decodeJWT } = await import("../helpers/jwt.js");
+  const { getAuthHeaders, validateAuthHubToken, validateCohortTokenAtInit } = await import(
+    "../helpers/auth.js"
+  );
+  await import("../helpers/jwt.js");
 
   const validUserId = "11111111-1111-4111-a111-111111111111";
   const validTenantId = "22222222-2222-4222-a222-222222222222";
@@ -161,7 +165,10 @@ async function run() {
 
   // 10. Negative: Mismatched tenant_id throws
   {
-    const wrongTenantToken = makeToken({ ...baseClaims, tenant_id: "44444444-4444-4444-a444-444444444444" });
+    const wrongTenantToken = makeToken({
+      ...baseClaims,
+      tenant_id: "44444444-4444-4444-a444-444444444444",
+    });
     assert.throws(() => {
       validateAuthHubToken(wrongTenantToken, validConfig);
     }, /tenant_id claim mismatch/i);
@@ -215,11 +222,11 @@ async function run() {
     const scenarioContent = fs.readFileSync(scenarioPath, "utf-8");
     assert.ok(
       !scenarioContent.includes("generateJWT"),
-      "feed-read-3000vu.js must not import or call generateJWT"
+      "feed-read-3000vu.js must not import or call generateJWT",
     );
     assert.ok(
       scenarioContent.includes("getAuthHeaders"),
-      "feed-read-3000vu.js must import getAuthHeaders"
+      "feed-read-3000vu.js must import getAuthHeaders",
     );
     console.log("✓ feed-read-3000vu.js clean of generateJWT and uses getAuthHeaders");
 
@@ -229,7 +236,7 @@ async function run() {
       const initPart = src.split("export default function")[0];
       assert.ok(
         initPart.includes("validateAuthHubToken("),
-        `${name} must validate the pre-minted token at module init time`
+        `${name} must validate the pre-minted token at module init time`,
       );
     }
     console.log("✓ Whitelist scenarios validate token at init time");
@@ -308,26 +315,35 @@ async function run() {
     const scenarioContent = fs.readFileSync(scenarioPath, "utf-8");
 
     // Verify exported cohort constants
-    const cohortDurMatch = scenarioContent.match(/export\s+const\s+COHORT_DURATION_SECONDS\s*=\s*(\d+)/);
+    const cohortDurMatch = scenarioContent.match(
+      /export\s+const\s+COHORT_DURATION_SECONDS\s*=\s*(\d+)/,
+    );
     assert.ok(cohortDurMatch, "COHORT_DURATION_SECONDS must be exported");
     const cohortDuration = parseInt(cohortDurMatch[1], 10);
-    assert.ok(cohortDuration <= 180, `COHORT_DURATION_SECONDS (${cohortDuration}s) must be <= 180s`);
+    assert.ok(
+      cohortDuration <= 180,
+      `COHORT_DURATION_SECONDS (${cohortDuration}s) must be <= 180s`,
+    );
 
-    const reqRemMatch = scenarioContent.match(/export\s+const\s+REQUIRED_REMAINING_SECONDS\s*=\s*([^\n;]+)/);
+    const reqRemMatch = scenarioContent.match(
+      /export\s+const\s+REQUIRED_REMAINING_SECONDS\s*=\s*([^\n;]+)/,
+    );
     assert.ok(reqRemMatch, "REQUIRED_REMAINING_SECONDS must be exported");
 
     // Extract stages block
     const stagesMatch = scenarioContent.match(/stages:\s*\[([\s\S]*?)\]/);
     assert.ok(stagesMatch, "options.scenarios.feed_read must define stages");
-    const stageLines = stagesMatch[1].match(/\{\s*duration:\s*["']([^"']+)["'],\s*target:\s*(\d+)\s*\}/g);
+    const stageLines = stagesMatch[1].match(
+      /\{\s*duration:\s*["']([^"']+)["'],\s*target:\s*(\d+)\s*\}/g,
+    );
     assert.ok(stageLines && stageLines.length > 0, "Stages must contain duration and target");
 
-    function parseDurationSec(durStr) {
+    const parseDurationSec = (durStr) => {
       const m = durStr.match(/^(\d+)(s|m)$/);
       if (!m) throw new Error("Unknown duration format: " + durStr);
       const val = parseInt(m[1], 10);
       return m[2] === "m" ? val * 60 : val;
-    }
+    };
 
     let totalStageSec = 0;
     let peakVU = 0;
@@ -349,23 +365,30 @@ async function run() {
     const totalBudgetSec = totalStageSec + gracefulSec;
 
     assert.strictEqual(peakVU, 3000, "Scenario peak must reach exactly 3000 VU");
-    assert.ok(totalBudgetSec <= 180, `Total scenario duration + gracefulRampDown (${totalBudgetSec}s) must be <= 180s budget`);
-    assert.ok(peakAchievedAtSec < totalBudgetSec, `Peak 3000 VU must be reached before total budget ends (${peakAchievedAtSec}s < ${totalBudgetSec}s)`);
-    console.log(`✓ Scenario stages: sum=${totalStageSec}s + graceful=${gracefulSec}s = ${totalBudgetSec}s <= 180s; peak 3000 VU achieved at ${peakAchievedAtSec}s`);
+    assert.ok(
+      totalBudgetSec <= 180,
+      `Total scenario duration + gracefulRampDown (${totalBudgetSec}s) must be <= 180s budget`,
+    );
+    assert.ok(
+      peakAchievedAtSec < totalBudgetSec,
+      `Peak 3000 VU must be reached before total budget ends (${peakAchievedAtSec}s < ${totalBudgetSec}s)`,
+    );
+    console.log(
+      `✓ Scenario stages: sum=${totalStageSec}s + graceful=${gracefulSec}s = ${totalBudgetSec}s <= 180s; peak 3000 VU achieved at ${peakAchievedAtSec}s`,
+    );
   }
 
   console.log("All AuthHub JWT tests passed!");
 }
 
 run().catch((err) => {
-  const category =
-    err instanceof assert.AssertionError
-      ? "AssertionError"
-      : err instanceof TypeError
-      ? "TypeError"
-      : err instanceof RangeError
-      ? "RangeError"
-      : "ExecutionError";
+  const category = err instanceof assert.AssertionError
+    ? "AssertionError"
+    : err instanceof TypeError
+    ? "TypeError"
+    : err instanceof RangeError
+    ? "RangeError"
+    : "ExecutionError";
   console.error("Test failed:", category);
   process.exit(1);
 });

@@ -32,7 +32,11 @@ import { check, sleep } from "k6";
 import { SharedArray } from "k6/data";
 import { Counter, Trend } from "k6/metrics";
 import { getConfig } from "../helpers/config.js";
-import { getAuthHeaders, validateCohortTokenAtInit, validateFixtureTokenAtInit } from "../helpers/auth.js";
+import {
+  getAuthHeaders,
+  validateCohortTokenAtInit,
+  validateFixtureTokenAtInit,
+} from "../helpers/auth.js";
 import { handleSummary } from "../helpers/summary.js";
 
 // ---------------------------------------------------------------------------

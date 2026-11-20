@@ -45,7 +45,7 @@ load:
 
   # Maximum acceptable error rate (0-1)
   errorRate:
-    max: 0.01  # 1%
+    max: 0.01 # 1%
 
   # Minimum throughput (requests per second)
   throughput:

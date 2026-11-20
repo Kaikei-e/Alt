@@ -5,10 +5,9 @@
 import { assertEquals } from "@std/assert";
 import { describe, it } from "@std/testing/bdd";
 import {
-  getRating,
   calculateScore,
+  getRating,
   identifyBottlenecks,
-  type VitalRating,
   type WebVitalsResult,
 } from "../../src/measurement/vitals.ts";
 
@@ -142,7 +141,12 @@ describe("Web Vitals Module", () => {
         timestamp: Date.now(),
       };
       const bottlenecks = identifyBottlenecks(vitals);
-      assertEquals(bottlenecks.some((b) => b.toLowerCase().includes("lcp") || b.toLowerCase().includes("contentful")), true);
+      assertEquals(
+        bottlenecks.some((b) =>
+          b.toLowerCase().includes("lcp") || b.toLowerCase().includes("contentful")
+        ),
+        true,
+      );
       assertEquals(bottlenecks.length, 1);
     });
 
@@ -156,7 +160,12 @@ describe("Web Vitals Module", () => {
         timestamp: Date.now(),
       };
       const bottlenecks = identifyBottlenecks(vitals);
-      assertEquals(bottlenecks.some((b) => b.toLowerCase().includes("inp") || b.toLowerCase().includes("interaction")), true);
+      assertEquals(
+        bottlenecks.some((b) =>
+          b.toLowerCase().includes("inp") || b.toLowerCase().includes("interaction")
+        ),
+        true,
+      );
     });
 
     it("should identify CLS bottleneck", () => {
@@ -169,7 +178,12 @@ describe("Web Vitals Module", () => {
         timestamp: Date.now(),
       };
       const bottlenecks = identifyBottlenecks(vitals);
-      assertEquals(bottlenecks.some((b) => b.toLowerCase().includes("cls") || b.toLowerCase().includes("layout")), true);
+      assertEquals(
+        bottlenecks.some((b) =>
+          b.toLowerCase().includes("cls") || b.toLowerCase().includes("layout")
+        ),
+        true,
+      );
     });
 
     it("should identify FCP bottleneck", () => {
@@ -182,7 +196,12 @@ describe("Web Vitals Module", () => {
         timestamp: Date.now(),
       };
       const bottlenecks = identifyBottlenecks(vitals);
-      assertEquals(bottlenecks.some((b) => b.toLowerCase().includes("fcp") || b.toLowerCase().includes("first")), true);
+      assertEquals(
+        bottlenecks.some((b) =>
+          b.toLowerCase().includes("fcp") || b.toLowerCase().includes("first")
+        ),
+        true,
+      );
     });
 
     it("should identify TTFB bottleneck", () => {
@@ -195,7 +214,12 @@ describe("Web Vitals Module", () => {
         timestamp: Date.now(),
       };
       const bottlenecks = identifyBottlenecks(vitals);
-      assertEquals(bottlenecks.some((b) => b.toLowerCase().includes("ttfb") || b.toLowerCase().includes("byte")), true);
+      assertEquals(
+        bottlenecks.some((b) =>
+          b.toLowerCase().includes("ttfb") || b.toLowerCase().includes("byte")
+        ),
+        true,
+      );
     });
 
     it("should identify multiple bottlenecks", () => {

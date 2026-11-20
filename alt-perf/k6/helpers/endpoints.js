@@ -31,9 +31,20 @@ export const AUTH_ENDPOINTS = [
   { method: "GET", path: "/v1/feeds/stats/detailed", name: "feeds-stats-detailed", group: "stats" },
   { method: "GET", path: "/v1/feeds/stats/trends", name: "feeds-stats-trends", group: "stats" },
   // Search (POST - requires CSRF token)
-  { method: "POST", path: "/v1/feeds/search", name: "feeds-search", group: "search", requiresCsrf: true },
+  {
+    method: "POST",
+    path: "/v1/feeds/search",
+    name: "feeds-search",
+    group: "search",
+    requiresCsrf: true,
+  },
   // Articles
-  { method: "GET", path: "/v1/articles/by-tag?tag_name=technology", name: "articles-by-tag", group: "articles" },
+  {
+    method: "GET",
+    path: "/v1/articles/by-tag?tag_name=technology",
+    name: "articles-by-tag",
+    group: "articles",
+  },
   // Morning Letter
   { method: "GET", path: "/v1/morning-letter/updates", name: "morning-letter", group: "feeds" },
 ];

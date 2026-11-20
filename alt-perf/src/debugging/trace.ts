@@ -5,7 +5,7 @@
 import type { Page } from "@astral/astral";
 import { ensureDir } from "@std/fs";
 import { join } from "@std/path";
-import { debug, warn, info } from "../utils/logger.ts";
+import { debug, info, warn } from "../utils/logger.ts";
 
 /**
  * Trace capture options
@@ -115,7 +115,7 @@ export class TraceCapture {
               memoryDumpConfig: {},
             },
             bufferUsageReportingInterval: mergedOptions.bufferUsageReportingInterval,
-          }
+          },
         );
       } else {
         // Fallback: use page tracing if available
@@ -145,7 +145,9 @@ export class TraceCapture {
 
     // Generate filename
     const sanitizedName = name.replace(/[^a-zA-Z0-9-_]/g, "_");
-    const filename = `${this.traceCount.toString().padStart(3, "0")}_${sanitizedName}_${timestamp}.json`;
+    const filename = `${
+      this.traceCount.toString().padStart(3, "0")
+    }_${sanitizedName}_${timestamp}.json`;
     const filepath = join(this.outputDir, filename);
 
     debug("Stopping trace", { name, filepath });
@@ -213,7 +215,7 @@ export class TraceCapture {
     page: Page,
     operation: () => Promise<T>,
     name: string,
-    options?: Partial<TraceOptions>
+    options?: Partial<TraceOptions>,
   ): Promise<{ result: T; trace: TraceResult }> {
     await this.startTrace(page, options);
 

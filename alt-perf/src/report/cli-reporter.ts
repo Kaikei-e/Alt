@@ -1,19 +1,25 @@
 /**
  * CLI report generator with colored output
  */
-import type { PerformanceReport, RouteMeasurement, FlowResult, LoadTestResult, RouteStatus } from "./types.ts";
+import type {
+  FlowResult,
+  LoadTestResult,
+  PerformanceReport,
+  RouteMeasurement,
+  RouteStatus,
+} from "./types.ts";
 import type { VitalRating } from "../measurement/vitals.ts";
 import {
   bold,
+  cyan,
   dim,
   green,
-  red,
-  yellow,
-  cyan,
   horizontalLine,
   ratingColor,
+  red,
   scoreColor,
   SYMBOLS,
+  yellow,
 } from "../utils/colors.ts";
 
 /**
@@ -89,9 +95,13 @@ function printSummary(report: PerformanceReport): void {
   console.log(`  Passed: ${green(summary.passedRoutes.toString())}`);
   console.log(`  Failed: ${red(summary.failedRoutes.toString())}`);
   if (summary.skippedRoutes > 0) {
-    console.log(`  Skipped: ${yellow(summary.skippedRoutes.toString())} (auth routes - no credentials)`);
+    console.log(
+      `  Skipped: ${yellow(summary.skippedRoutes.toString())} (auth routes - no credentials)`,
+    );
   }
-  console.log(`  Score: ${colorFn(summary.overallScore.toString())}/100 (based on measured routes)`);
+  console.log(
+    `  Score: ${colorFn(summary.overallScore.toString())}/100 (based on measured routes)`,
+  );
   console.log("");
 }
 
@@ -141,7 +151,9 @@ function printRouteDetails(routes: RouteMeasurement[]): void {
   if (skippedRoutes.length > 0) {
     console.log("");
     console.log(bold("Skipped Routes:"));
-    console.log(dim(`  (${skippedRoutes.length} routes skipped - authentication credentials not configured)`));
+    console.log(
+      dim(`  (${skippedRoutes.length} routes skipped - authentication credentials not configured)`),
+    );
     console.log("");
 
     // Group by device and list paths compactly
@@ -166,7 +178,11 @@ function printRouteDetails(routes: RouteMeasurement[]): void {
       }
     }
     console.log("");
-    console.log(dim("  To measure these routes, set PERF_TEST_EMAIL and PERF_TEST_PASSWORD environment variables."));
+    console.log(
+      dim(
+        "  To measure these routes, set PERF_TEST_EMAIL and PERF_TEST_PASSWORD environment variables.",
+      ),
+    );
     console.log(horizontalLine());
   }
 }
@@ -192,7 +208,9 @@ function printFlowResults(flows: FlowResult[]): void {
       for (const step of flow.steps) {
         const stepStatus = step.success ? green(SYMBOLS.pass) : red(SYMBOLS.fail);
         const target = step.target ? dim(` (${step.target})`) : "";
-        console.log(`       ${stepStatus} ${step.action}${target} - ${formatDuration(step.duration)}`);
+        console.log(
+          `       ${stepStatus} ${step.action}${target} - ${formatDuration(step.duration)}`,
+        );
       }
     }
 
@@ -219,7 +237,13 @@ function printLoadTestResults(loadTests: LoadTestResult[]): void {
     console.log(`  Total Requests: ${loadTest.totalRequests}`);
     console.log(`  Successful: ${green(loadTest.successfulRequests.toString())}`);
     console.log(`  Failed: ${red(loadTest.failedRequests.toString())}`);
-    console.log(`  Error Rate: ${loadTest.errorRate > 0.01 ? red((loadTest.errorRate * 100).toFixed(2) + "%") : green((loadTest.errorRate * 100).toFixed(2) + "%")}`);
+    console.log(
+      `  Error Rate: ${
+        loadTest.errorRate > 0.01
+          ? red((loadTest.errorRate * 100).toFixed(2) + "%")
+          : green((loadTest.errorRate * 100).toFixed(2) + "%")
+      }`,
+    );
     console.log(`  Throughput: ${loadTest.throughput.toFixed(2)} req/s`);
     console.log("");
     console.log(bold("  Response Times:"));
@@ -291,7 +315,9 @@ export function printCompactSummary(report: PerformanceReport): void {
 
   console.log("");
   console.log(
-    `${statusIcon} ${summary.passedRoutes}/${summary.totalRoutes} routes passed | Score: ${scoreColor$(summary.overallScore.toString())}/100`
+    `${statusIcon} ${summary.passedRoutes}/${summary.totalRoutes} routes passed | Score: ${
+      scoreColor$(summary.overallScore.toString())
+    }/100`,
   );
   console.log("");
 }

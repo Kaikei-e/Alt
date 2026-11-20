@@ -1,12 +1,8 @@
 /**
  * Browser automation wrapper using Astral (Deno-native Puppeteer)
  */
-import { launch, type Browser, type Page } from "@astral/astral";
-import {
-  DEFAULT_DEVICE_PROFILE,
-  DEVICE_PROFILES,
-  type DeviceProfile,
-} from "../config/schema.ts";
+import { type Browser, launch, type Page } from "@astral/astral";
+import { DEFAULT_DEVICE_PROFILE, DEVICE_PROFILES, type DeviceProfile } from "../config/schema.ts";
 import { debug, info, warn } from "../utils/logger.ts";
 
 export interface BrowserOptions {
@@ -86,7 +82,7 @@ export class BrowserManager {
    */
   async createPage(
     deviceName: string = "desktop-chrome",
-    cookies?: SessionCookie[]
+    cookies?: SessionCookie[],
   ): Promise<Page> {
     const browser = this.browser ?? await this.launch();
 
@@ -103,17 +99,12 @@ export class BrowserManager {
 
     // Set cookies if provided — Secure / scheme / port follow base URL.
     if (cookies && cookies.length > 0) {
-      const baseUrl =
-        this.options.baseUrl ||
+      const baseUrl = this.options.baseUrl ||
         Deno.env.get("PERF_BASE_URL") ||
         "http://localhost";
       const parsed = new URL(baseUrl);
       const isSecure = parsed.protocol === "https:";
-      const sourcePort = parsed.port
-        ? Number(parsed.port)
-        : isSecure
-        ? 443
-        : 80;
+      const sourcePort = parsed.port ? Number(parsed.port) : isSecure ? 443 : 80;
 
       await page.setCookies(
         cookies.map((cookie) => ({
@@ -133,7 +124,7 @@ export class BrowserManager {
             | "Secure"
             | "NonSecure",
           sourcePort,
-        }))
+        })),
       );
       debug("Cookies set", { count: cookies.length, secure: isSecure });
     }
@@ -147,7 +138,7 @@ export class BrowserManager {
   async navigateTo(
     page: Page,
     url: string,
-    options: { waitFor?: string; timeout?: number } = {}
+    options: { waitFor?: string; timeout?: number } = {},
   ): Promise<{ loadTime: number }> {
     const startTime = performance.now();
     const timeout = options.timeout ?? 30000; // Default 30 second timeout
