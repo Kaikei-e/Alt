@@ -68,7 +68,7 @@ def collect_resource_utilization(client: Client, database: str, hours: int) -> l
 
     try:
         result = client.query(query, parameters={"database": database, "hours": hours})
-        data = [ResourceUtilization(**dict(zip(result.column_names, row))) for row in result.result_rows]
+        data = [ResourceUtilization(**dict(zip(result.column_names, row, strict=True))) for row in result.result_rows]
     except ClickHouseError as e:
         log.exception("クエリ実行エラー", query=query[:200])
         raise CollectorError("resource_utilization", str(e)) from e
@@ -116,7 +116,7 @@ def collect_queue_saturation(client: Client, database: str, hours: int) -> list[
 
     try:
         result = client.query(query, parameters={"database": database, "hours": hours})
-        data = [QueueSaturation(**dict(zip(result.column_names, row))) for row in result.result_rows]
+        data = [QueueSaturation(**dict(zip(result.column_names, row, strict=True))) for row in result.result_rows]
     except ClickHouseError as e:
         log.exception("クエリ実行エラー", query=query[:200])
         raise CollectorError("queue_saturation", str(e)) from e

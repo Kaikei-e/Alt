@@ -51,7 +51,7 @@ def collect_http_endpoint_stats(client: Client, database: str, hours: int) -> li
 
     try:
         result = client.query(query, parameters={"database": database, "hours": hours})
-        data = [HttpEndpointStat(**dict(zip(result.column_names, row))) for row in result.result_rows]
+        data = [HttpEndpointStat(**dict(zip(result.column_names, row, strict=True))) for row in result.result_rows]
     except ClickHouseError as e:
         log.exception("クエリ実行エラー", query=query[:200])
         raise CollectorError("http_endpoint_stats", str(e)) from e
@@ -93,7 +93,9 @@ def collect_http_status_distribution(client: Client, database: str, hours: int) 
 
     try:
         result = client.query(query, parameters={"database": database, "hours": hours})
-        data = [HttpStatusDistribution(**dict(zip(result.column_names, row))) for row in result.result_rows]
+        data = [
+            HttpStatusDistribution(**dict(zip(result.column_names, row, strict=True))) for row in result.result_rows
+        ]
     except ClickHouseError as e:
         log.exception("クエリ実行エラー", query=query[:200])
         raise CollectorError("http_status_distribution", str(e)) from e

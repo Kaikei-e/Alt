@@ -49,7 +49,7 @@ def collect_error_types(client: Client, database: str, hours: int) -> list[Error
 
     try:
         result = client.query(query, parameters={"database": database, "hours": hours})
-        data = [ErrorTypeStat(**dict(zip(result.column_names, row))) for row in result.result_rows]
+        data = [ErrorTypeStat(**dict(zip(result.column_names, row, strict=True))) for row in result.result_rows]
     except ClickHouseError as e:
         log.exception("クエリ実行エラー", query=query[:200])
         raise CollectorError("error_types", str(e)) from e
@@ -89,7 +89,7 @@ def collect_recent_errors(client: Client, database: str, hours: int) -> list[Rec
 
     try:
         result = client.query(query, parameters={"database": database, "hours": hours})
-        data = [RecentError(**dict(zip(result.column_names, row))) for row in result.result_rows]
+        data = [RecentError(**dict(zip(result.column_names, row, strict=True))) for row in result.result_rows]
     except ClickHouseError as e:
         log.exception("クエリ実行エラー", query=query[:200])
         raise CollectorError("recent_errors", str(e)) from e
@@ -132,7 +132,9 @@ def collect_log_severity_distribution(client: Client, database: str, hours: int)
 
     try:
         result = client.query(query, parameters={"database": database, "hours": hours})
-        data = [LogSeverityDistribution(**dict(zip(result.column_names, row))) for row in result.result_rows]
+        data = [
+            LogSeverityDistribution(**dict(zip(result.column_names, row, strict=True))) for row in result.result_rows
+        ]
     except ClickHouseError as e:
         log.exception("クエリ実行エラー", query=query[:200])
         raise CollectorError("log_severity_distribution", str(e)) from e
@@ -172,7 +174,7 @@ def collect_log_volume_trends(client: Client, database: str, hours: int) -> list
 
     try:
         result = client.query(query, parameters={"database": database, "hours": hours})
-        data = [LogVolumeTrend(**dict(zip(result.column_names, row))) for row in result.result_rows]
+        data = [LogVolumeTrend(**dict(zip(result.column_names, row, strict=True))) for row in result.result_rows]
     except ClickHouseError as e:
         log.exception("クエリ実行エラー", query=query[:200])
         raise CollectorError("log_volume_trends", str(e)) from e

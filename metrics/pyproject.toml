@@ -64,15 +64,15 @@ select = [
     "PERF",  # perflint
 ]
 ignore = [
-    "S101",   # assert in tests
-    "B905",   # zip strict (ClickHouse rows)
-    "RUF001", # ambiguous unicode chars in strings — intentional Japanese text
-    "RUF002", # ambiguous unicode chars in docstrings — intentional Japanese text
-    "RUF003", # ambiguous unicode chars in comments — intentional Japanese text
+    "E501",
+    "RUF001",
+    "RUF002",
+    "RUF003",
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101", "S105", "S108", "S603", "S110"]  # S105/S108: test passwords/paths
+"tests/**" = ["S101"]
+"test_*.py" = ["S101"]
 
 [tool.pyrefly]
 project-includes = ["src"]

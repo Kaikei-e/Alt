@@ -109,7 +109,7 @@ class TestClickHouseConfig:
         assert c.host == "clickhouse.example.com"
         assert c.port == _CUSTOM_CH_PORT
         assert c.user == "admin"
-        assert c.password == "secret"
+        assert c.password == "secret"  # noqa: S105 - test fixture value, not a credential
         assert c.database == "custom_db"
 
     def test_from_env_reads_password_from_file(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -121,7 +121,7 @@ class TestClickHouseConfig:
         monkeypatch.delenv("APP_CLICKHOUSE_PASSWORD", raising=False)
 
         c = ClickHouseConfig.from_env()
-        assert c.password == "file_password"
+        assert c.password == "file_password"  # noqa: S105 - test fixture value, not a credential
 
     def test_file_password_takes_precedence(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         """_FILEはプレーン環境変数より優先される"""
@@ -132,7 +132,7 @@ class TestClickHouseConfig:
         monkeypatch.setenv("APP_CLICKHOUSE_PASSWORD_FILE", str(secret_file))
 
         c = ClickHouseConfig.from_env()
-        assert c.password == "file_password"
+        assert c.password == "file_password"  # noqa: S105 - test fixture value, not a credential
 
 
 class TestReportConfig:
@@ -148,12 +148,12 @@ class TestReportConfig:
     def test_from_env_with_custom_values(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """環境変数からカスタム値を読み込む"""
         monkeypatch.setenv("METRICS_REPORT_LANGUAGE", "en")
-        monkeypatch.setenv("METRICS_OUTPUT_DIR", "/tmp/reports")
+        monkeypatch.setenv("METRICS_OUTPUT_DIR", "/tmp/reports")  # noqa: S108 - fixture string; nothing is written there
         monkeypatch.setenv("METRICS_INCLUDE_RAW_DATA", "true")
 
         r = ReportConfig.from_env()
         assert r.language == "en"
-        assert r.output_dir == Path("/tmp/reports")
+        assert r.output_dir == Path("/tmp/reports")  # noqa: S108 - fixture string; nothing is written there
         assert r.include_raw_data is True
 
 
