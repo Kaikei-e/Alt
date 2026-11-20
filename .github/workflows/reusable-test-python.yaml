@@ -84,9 +84,9 @@ jobs:
           echo "UV_TOOL_DIR=$TOOL_BASE" >> "$GITHUB_ENV"
 
       # 2) ランナーがエフェメラル等でHOME永続化できない場合は、GitHub Cacheを併用
-      # Skip restoring/saving the multi-hundred-MB ML/PyTorch cache on lint jobs.
+      # Restore uv cache for both test and lint jobs (pyrefly runs with --all-extras).
       - name: Restore uv cache (GitHub Cache)
-        if: ${{ !inputs.use-local-persistent-cache && inputs.job-type == 'test' }}
+        if: ${{ !inputs.use-local-persistent-cache }}
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: |

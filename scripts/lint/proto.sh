@@ -1,8 +1,25 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+readonly BUF_VERSION="1.48.0"
+
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 target="${1:-proto}"
+
+if ! command -v buf >/dev/null 2>&1; then
+  echo "error: required command not found in PATH: buf" >&2
+  exit 1
+fi
+if ! actual_buf_version="$(buf --version 2>&1)"; then
+  echo "error: failed to run 'buf --version': ${actual_buf_version}" >&2
+  exit 1
+fi
+actual_buf_version="${actual_buf_version#v}"
+actual_buf_version="$(tr -d '[:space:]' <<<"$actual_buf_version")"
+if [ "$actual_buf_version" != "$BUF_VERSION" ]; then
+  echo "error: buf version mismatch: expected ${BUF_VERSION}, got '${actual_buf_version}'" >&2
+  exit 1
+fi
 
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
@@ -30,12 +47,14 @@ check_allowlist_drift() {
   local out_dir="$tmp_dir/protovis-out"
   mkdir -p "$out_dir"
 
-  (
-    cd "$repo_root/$target"
-    buf build --exclude-source-info -o "$tmp_dir/descriptor.binpb"
-    cd tools/protovis
-    go run . -desc "$tmp_dir/descriptor.binpb" -root "$out_dir"
-  )
+  if ! env -C "$repo_root/$target" buf build --exclude-source-info -o "$tmp_dir/descriptor.binpb"; then
+    echo "buf build failed." >&2
+    return 1
+  fi
+  if ! env -C "$repo_root/$target/tools/protovis" go run . -desc "$tmp_dir/descriptor.binpb" -root "$out_dir"; then
+    echo "protovis generator failed." >&2
+    return 1
+  fi
 
   local stale=0
   local rel=""

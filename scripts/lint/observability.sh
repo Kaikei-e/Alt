@@ -4,8 +4,29 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$repo_root"
 
-PROM_VERSION="3.1.0"
-AM_VERSION="0.28.1"
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "error: required command not found in PATH: python3" >&2
+  exit 1
+fi
+
+if ! tool_versions_output="$(python3 scripts/observability-compose-tool-images.py --github-output --compose compose/observability.yaml)"; then
+  echo "error: failed to resolve Prometheus/Alertmanager tool versions from compose/observability.yaml" >&2
+  exit 1
+fi
+
+PROM_VERSION=""
+AM_VERSION=""
+while IFS='=' read -r key val; do
+  case "$key" in
+    prometheus) PROM_VERSION="$val" ;;
+    alertmanager) AM_VERSION="$val" ;;
+  esac
+done <<<"$tool_versions_output"
+
+if [ -z "$PROM_VERSION" ] || [ -z "$AM_VERSION" ]; then
+  echo "error: could not resolve concrete Prometheus and Alertmanager versions from compose/observability.yaml (got prometheus='${PROM_VERSION}', alertmanager='${AM_VERSION}')" >&2
+  exit 1
+fi
 
 case "$(uname -s)" in
   Linux) os="linux" ;;
@@ -34,7 +55,7 @@ ensure_tool() {
   fi
   local tmp_dir=""
   tmp_dir="$(mktemp -d)"
-  trap 'rm -rf "$tmp_dir"' RETURN
+  trap 'rm -rf "$tmp_dir"; trap - RETURN' RETURN
 
   local tarball="${tool%tool}-${version}.${os}-${arch}.tar.gz"
   if [ "$tool" = "promtool" ]; then

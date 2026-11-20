@@ -35,13 +35,17 @@ if [ -z "${expected_compose_version}" ]; then
   exit 1
 fi
 
-actual_compose_version="$(docker compose version 2>&1 || true)"
-if [[ "${actual_compose_version}" != *"${expected_compose_version}"* ]]; then
-  echo "ERROR: docker compose version mismatch: expected ${expected_compose_version}, got '${actual_compose_version}'" >&2
+if ! actual_compose_output="$(docker compose version 2>&1)"; then
+  echo "ERROR: failed to query docker compose version: ${actual_compose_output}" >&2
+  exit 1
+fi
+actual_compose_version="$(awk '{print $NF}' <<<"${actual_compose_output}")"
+if [ "${actual_compose_version}" != "${expected_compose_version}" ]; then
+  echo "ERROR: docker compose version mismatch: expected ${expected_compose_version}, got '${actual_compose_output}'" >&2
   exit 1
 fi
 
-if command -v python3 >/dev/null 2>&1 && python3 -c 'import sys, yaml; sys.exit(0 if sys.version_info >= (3, 12) else 1)' >/dev/null 2>&1; then
+if command -v python3 >/dev/null 2>&1 && python3 -c 'import sys, yaml; ver = getattr(yaml, "__version__", ""); sys.exit(0 if sys.version_info >= (3, 12) and ver.split(".", 1)[0] == "6" else 1)' >/dev/null 2>&1; then
   :
 elif command -v uv >/dev/null 2>&1; then
   mkdir -p "${WORK_DIR}/bin"

@@ -15,6 +15,10 @@ case "$target" in
     echo "invalid lint target: $1" >&2
     exit 2
     ;;
+  run|go|python|rust|deno|frontend|check-link-vs-url-naming)
+    echo "invalid lint target '$target': must be a project directory or named target (adr, apparmor, compose, e2e, harness, observability, proto, registry, repo)" >&2
+    exit 2
+    ;;
 esac
 
 detect_marker_kind() {

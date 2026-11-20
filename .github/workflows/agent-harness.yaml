@@ -24,8 +24,10 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Fetch origin/main
-        run: git fetch --no-tags origin main
+      - name: Fetch base branch
+        env:
+          BASE_REF: ${{ github.base_ref || 'main' }}
+        run: git fetch --no-tags origin "$BASE_REF"
 
       - name: Run agent harness tests
         run: python3 scripts/tests/test-agent-harness.py
@@ -39,4 +41,5 @@ jobs:
       - name: Run agent harness checks
         env:
           TARGET: harness
+          LINT_BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || github.event.before }}
         run: ./scripts/lint/run.sh "$TARGET"

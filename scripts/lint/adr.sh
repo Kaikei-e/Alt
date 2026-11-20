@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
+# Optional input: LINT_BASE — git revision overriding the auto-detected base
+# commit (empty or all-zero SHA is treated as unset).
 set -euo pipefail
+
+readonly DOCDAG_VERSION="v0.6.0"
 
 if [ "$#" -gt 1 ] || { [ "$#" -eq 1 ] && [ "$1" != "adr" ]; }; then
   echo "usage: $0 [adr]" >&2
@@ -10,24 +14,50 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 repo_root="$(cd -- "${script_dir}/../.." && pwd -P)"
 cd -- "$repo_root"
 
-for cmd in git docdag python3; do
+for cmd in git docdag go python3; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
     echo "error: required command not found in PATH: $cmd" >&2
     exit 1
   fi
 done
 
+docdag_bin="$(command -v docdag)"
+if ! docdag_mod_info="$(go version -m "$docdag_bin" 2>&1)"; then
+  echo "error: failed to inspect docdag version via 'go version -m ${docdag_bin}': ${docdag_mod_info}" >&2
+  exit 1
+fi
+actual_docdag_version="$(awk '$1 == "mod" && $2 == "github.com/Kaikei-e/DocDag" { print $3; exit }' <<<"$docdag_mod_info")"
+if [ "$actual_docdag_version" != "$DOCDAG_VERSION" ]; then
+  echo "error: docdag version mismatch: expected ${DOCDAG_VERSION}, got '${actual_docdag_version:-unknown}' (${docdag_bin})" >&2
+  exit 1
+fi
+
 resolve_base() {
-  local head_sha origin_main_sha merge_base
+  local head_sha raw_base target_sha merge_base
   if ! head_sha="$(git rev-parse --verify --quiet 'HEAD^{commit}')"; then
     echo "error: cannot resolve HEAD commit" >&2
     return 1
   fi
-  if ! origin_main_sha="$(git rev-parse --verify --quiet 'origin/main^{commit}')"; then
+
+  raw_base="${LINT_BASE:-}"
+  if [ -n "$raw_base" ] && [[ ! "$raw_base" =~ ^0+$ ]]; then
+    if ! target_sha="$(git rev-parse --verify --quiet "${raw_base}^{commit}")"; then
+      echo "error: LINT_BASE '${raw_base}' cannot be resolved to a commit" >&2
+      return 1
+    fi
+    if ! merge_base="$(git merge-base "$target_sha" "$head_sha" 2>/dev/null)" || [ -z "$merge_base" ]; then
+      echo "error: cannot compute merge-base between LINT_BASE '${raw_base}' (${target_sha}) and HEAD (${head_sha}) (shallow clone or unrelated history)" >&2
+      return 1
+    fi
+    printf '%s\n' "$merge_base"
+    return 0
+  fi
+
+  if ! target_sha="$(git rev-parse --verify --quiet 'origin/main^{commit}')"; then
     echo "error: cannot resolve origin/main (fetch full history from origin)" >&2
     return 1
   fi
-  if ! merge_base="$(git merge-base "$head_sha" "$origin_main_sha" 2>/dev/null)" || [ -z "$merge_base" ]; then
+  if ! merge_base="$(git merge-base "$head_sha" "$target_sha" 2>/dev/null)" || [ -z "$merge_base" ]; then
     echo "error: cannot compute merge-base between HEAD and origin/main (shallow clone or unrelated history)" >&2
     return 1
   fi
@@ -41,6 +71,7 @@ resolve_base() {
 }
 
 base="$(resolve_base)"
+echo "==> [adr] LINT_BASE=${LINT_BASE:-<unset>} base=${base}"
 
 rc=0
 status_validate="pass"

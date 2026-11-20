@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# The project's Dockerfile (`FROM oven/bun:<version>`) is the source of truth for
+# the Bun version pin; workflow values (alt-frontend-sv-unit-test.yaml,
+# proto-contract.yaml) must match it.
 set -euo pipefail
 
 if [ "$#" -ne 1 ] || [ -z "$1" ]; then
@@ -20,6 +23,76 @@ if [ ! -d "${project_dir}/node_modules" ]; then
   echo "error: ${project_rel}/node_modules is missing; run \`bun install --frozen-lockfile\` in ${project_rel}" >&2
   exit 1
 fi
+
+for cmd in bun python3; do
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    echo "error: required command not found in PATH: $cmd" >&2
+    exit 1
+  fi
+done
+
+dockerfile="${project_dir}/Dockerfile"
+if [ ! -f "$dockerfile" ]; then
+  echo "error: ${project_rel}/Dockerfile is missing (source of truth for Bun version pin)" >&2
+  exit 1
+fi
+
+bun_pins="$(sed -n 's/^FROM[[:space:]]\{1,\}oven\/bun:\([0-9][0-9.]*\)\(-[^[:space:]]*\)\{0,1\}.*/\1/p' "$dockerfile" | sort -u)"
+if [ -z "$bun_pins" ] || [ "$(wc -l <<<"$bun_pins")" -ne 1 ]; then
+  echo "error: could not parse a single Bun version pin from ${project_rel}/Dockerfile (expected 'FROM oven/bun:<version>')" >&2
+  exit 1
+fi
+expected_bun_version="$bun_pins"
+
+actual_bun_version="$(bun --version | tr -d '[:space:]')"
+if [ "$actual_bun_version" != "$expected_bun_version" ]; then
+  echo "error: bun version mismatch: expected ${expected_bun_version}, got '${actual_bun_version}'" >&2
+  exit 1
+fi
+
+if [ ! -f "${project_dir}/bun.lock" ]; then
+  echo "error: ${project_rel}/bun.lock is missing" >&2
+  exit 1
+fi
+
+python3 - "${project_dir}" "@biomejs/biome" "svelte-check" <<'PY'
+import json
+import pathlib
+import re
+import sys
+
+project_dir = pathlib.Path(sys.argv[1])
+lock_path = project_dir / "bun.lock"
+lock_text = lock_path.read_text(encoding="utf-8")
+
+errors: list[str] = []
+for pkg in sys.argv[2:]:
+    pattern = re.compile(
+        rf'^\s*"{re.escape(pkg)}":\s*\["{re.escape(pkg)}@([^"]+)"',
+        re.MULTILINE,
+    )
+    matches = set(pattern.findall(lock_text))
+    if len(matches) != 1:
+        errors.append(
+            f"error: expected exactly 1 locked version for {pkg} in {lock_path}, found {sorted(matches)}"
+        )
+        continue
+    locked_ver = next(iter(matches))
+    installed_pkg_json = project_dir / "node_modules" / pkg / "package.json"
+    if not installed_pkg_json.is_file():
+        errors.append(f"error: {installed_pkg_json} is missing; run `bun install --frozen-lockfile`")
+        continue
+    installed_data = json.loads(installed_pkg_json.read_text(encoding="utf-8"))
+    installed_ver = installed_data.get("version")
+    if installed_ver != locked_ver:
+        errors.append(
+            f"error: {pkg} version mismatch: bun.lock pins {locked_ver}, node_modules has {installed_ver}"
+        )
+
+if errors:
+    sys.stderr.write("\n".join(errors) + "\n")
+    sys.exit(1)
+PY
 
 cd "$project_dir"
 

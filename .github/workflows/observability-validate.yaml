@@ -114,7 +114,7 @@ jobs:
           # Outside the workspace: the tools are build inputs, not repository
           # content, and nothing should have to gitignore them.
           path: ~/.cache/alt-observability-tools
-          key: observability-tools-${{ runner.os }}-${{ hashFiles('scripts/lint/observability.sh') }}
+          key: observability-tools-${{ runner.os }}-${{ hashFiles('scripts/lint/observability.sh', 'compose/observability.yaml') }}
 
       - name: Validate observability configuration
         env:
