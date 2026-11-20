@@ -89,12 +89,12 @@ func (c *Client) GetArticlesWithTags(ctx context.Context, lastCreatedAt *time.Ti
 	}
 
 	if resp.Msg == nil {
-		return nil, nil, "", fmt.Errorf("ListArticlesWithTagsForward: nil response message")
+		return nil, nil, "", fmt.Errorf("ListArticlesWithTags: nil response message")
 	}
 
 	articles, err := toDriverArticles(resp.Msg.GetArticles())
 	if err != nil {
-		return nil, nil, "", fmt.Errorf("ListArticlesWithTagsForward: %w", err)
+		return nil, nil, "", fmt.Errorf("ListArticlesWithTags: %w", err)
 	}
 
 	var nextCreatedAt *time.Time
