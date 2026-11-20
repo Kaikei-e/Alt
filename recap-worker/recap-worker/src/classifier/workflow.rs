@@ -865,6 +865,23 @@ mod tests {
 
     #[test]
     fn classification_pipeline_new_recovers_when_cargo_manifest_candidate_is_invalid() {
+        use std::sync::{Arc, Mutex};
+
+        #[derive(Clone, Default)]
+        struct TestLogBuf(Arc<Mutex<Vec<u8>>>);
+        impl std::io::Write for TestLogBuf {
+            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                self.0
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .extend_from_slice(buf);
+                Ok(buf.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+
         let _lock = ENV_MUTEX
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -884,7 +901,42 @@ mod tests {
                 ("RECAP_GENRE_MODEL_WEIGHTS", None),
             ],
             || {
-                let pipeline = ClassificationPipeline::new();
+                let buf = TestLogBuf::default();
+                let writer = buf.clone();
+                let subscriber = tracing_subscriber::fmt()
+                    .with_max_level(tracing::Level::INFO)
+                    .without_time()
+                    .with_writer(move || writer.clone())
+                    .finish();
+
+                let pipeline =
+                    tracing::subscriber::with_default(subscriber, ClassificationPipeline::new);
+
+                let expected_candidate =
+                    format!("{manifest_str}/../tests/data/golden_classification.json");
+                let logs = String::from_utf8(
+                    buf.0
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .clone(),
+                )
+                .expect("utf8 logs");
+                assert!(
+                    logs.contains("Failed to load golden dataset from")
+                        && logs.contains(&expected_candidate),
+                    "expected warning for invalid CARGO_MANIFEST_DIR candidate ({expected_candidate}), got: {logs}"
+                );
+
+                // Recovery must fall back to GenreClassifier + FeatureExtractor::fallback() without GraphPropagator.
+                assert!(
+                    pipeline.graph_propagator.is_none(),
+                    "fallback pipeline without a valid golden dataset must leave graph_propagator as None"
+                );
+                assert_eq!(
+                    pipeline.feature_extractor().vocab_len(),
+                    FeatureExtractor::fallback().vocab_len(),
+                    "fallback pipeline must use FeatureExtractor::fallback() vocabulary"
+                );
                 assert!(pipeline.fallback_classifier.is_some());
                 assert!(!pipeline.trained_genres().is_empty());
                 let res = pipeline

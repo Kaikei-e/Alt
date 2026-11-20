@@ -2120,7 +2120,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_batch_daemon_shuts_down_during_scheduled_wait() {
-        use tracing::instrument::WithSubscriber;
+        use chrono::Timelike;
 
         let dao = std::sync::Arc::new(crate::store::dao::mock::MockRecapDao::new());
         let metrics = std::sync::Arc::new(
@@ -2134,14 +2134,17 @@ mod tests {
             metrics,
             std::sync::Arc::new(StubFetchStage {
                 notify: std::sync::Arc::clone(&notify),
-                calls: fetch_calls,
+                calls: std::sync::Arc::clone(&fetch_calls),
                 fail: false,
             }),
             std::sync::Arc::new(StubPersistStage { notify }),
         );
 
         let shutdown = CancellationToken::new();
-        let cadence = DailyCadence::new(JST_TZ, BATCH_HOUR, BATCH_MINUTE).expect("valid cadence");
+        // Schedule ~1 hour ahead in JST so the daemon parks in sleep_or_shutdown.
+        let target_jst = (Utc::now() + chrono::Duration::hours(1)).with_timezone(&JST_TZ);
+        let cadence = DailyCadence::new(JST_TZ, target_jst.hour(), target_jst.minute())
+            .expect("valid cadence");
         let daemon = BatchDaemon::new(
             scheduler,
             cadence,
@@ -2152,42 +2155,23 @@ mod tests {
             shutdown.clone(),
         );
 
-        let buf = DaemonLogBuf::default();
-        let writer = buf.clone();
-        let subscriber = tracing_subscriber::fmt()
-            .with_max_level(tracing::Level::INFO)
-            .without_time()
-            .with_writer(move || writer.clone())
-            .finish();
-
-        let handle = tokio::spawn(daemon.run().with_subscriber(subscriber));
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
-        while tokio::time::Instant::now() < deadline {
-            let snapshot = String::from_utf8(
-                buf.0
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .clone(),
-            )
-            .expect("utf8");
-            if snapshot.contains("scheduled automatic 3-day recap batch") {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(5)).await;
-        }
+        let handle = tokio::spawn(daemon.run());
+        // `tokio/test-util` is not enabled in Cargo.toml, so paused-clock advance is unavailable;
+        // yield briefly (<= 100 ms) so boot hygiene finishes and the task enters the wait select.
+        tokio::time::sleep(Duration::from_millis(25)).await;
+        assert!(
+            !handle.is_finished(),
+            "batch daemon should remain parked in scheduled wait before shutdown"
+        );
 
         shutdown.cancel();
-        handle.await.expect("batch daemon exits during wait");
+        tokio::time::timeout(Duration::from_secs(10), handle)
+            .await
+            .expect("batch daemon shuts down within 10s timeout")
+            .expect("batch daemon exits cleanly during wait");
 
-        let logs = String::from_utf8(
-            buf.0
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .clone(),
-        )
-        .expect("utf8");
-        assert!(logs.contains("shutdown requested during wait, stopping jst batch daemon"));
         assert!(dao.status_transitions().is_empty());
+        assert_eq!(fetch_calls.load(std::sync::atomic::Ordering::SeqCst), 0);
     }
 
     #[tokio::test]

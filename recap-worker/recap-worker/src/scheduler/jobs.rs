@@ -2336,12 +2336,76 @@ mod tests {
         assert!((metrics.jobs_failed.get() - 0.0).abs() < f64::EPSILON);
     }
 
+    fn stub_eval_success_body() -> serde_json::Value {
+        serde_json::json!({
+            "accuracy": 0.9,
+            "macro_precision": 0.9,
+            "macro_recall": 0.9,
+            "macro_f1": 0.9,
+            "micro_precision": 0.9,
+            "micro_recall": 0.9,
+            "micro_f1": 0.9,
+            "per_genre_metrics": {
+                "ai": {
+                    "tp": 9,
+                    "fp": 1,
+                    "fn": 1,
+                    "support": 10,
+                    "precision": 0.9,
+                    "recall": 0.9,
+                    "f1": 0.9
+                }
+            },
+            "total_samples": 10
+        })
+    }
+
+    async fn run_eval_job_case(
+        scheduler: &Scheduler,
+        dao: &crate::store::dao::mock::MockRecapDao,
+        server: &wiremock::MockServer,
+        response: wiremock::ResponseTemplate,
+        expected_total_calls: usize,
+        label: &str,
+    ) -> Uuid {
+        use wiremock::Mock;
+        use wiremock::matchers::{method, path};
+
+        Mock::given(method("POST"))
+            .and(path("/v1/evaluation/genres"))
+            .respond_with(response)
+            .up_to_n_times(1)
+            .expect(1)
+            .mount(server)
+            .await;
+
+        let job_id = Uuid::new_v4();
+        save_stub_dispatch_state(dao, job_id).await;
+        scheduler
+            .run_job(
+                JobContext::new_with_window(job_id, vec!["ai".into()], 7)
+                    .with_stage("dispatch".to_string()),
+            )
+            .await
+            .expect(label);
+
+        let requests = server
+            .received_requests()
+            .await
+            .expect("wiremock records requests");
+        assert_eq!(
+            requests.len(),
+            expected_total_calls,
+            "classification evaluation must be invoked for {label}"
+        );
+        job_id
+    }
+
     #[tokio::test]
     async fn run_job_locked_runs_classification_eval_and_tolerates_eval_errors() {
         use crate::{observability::metrics::Metrics, store::dao::mock::MockRecapDao};
         use prometheus::Registry;
-        use wiremock::matchers::{method, path};
-        use wiremock::{Mock, MockServer, ResponseTemplate};
+        use wiremock::{MockServer, ResponseTemplate};
 
         let server = MockServer::start().await;
         let dao = Arc::new(MockRecapDao::new());
@@ -2355,77 +2419,62 @@ mod tests {
             Some(server.uri()),
         );
 
-        Mock::given(method("POST"))
-            .and(path("/v1/evaluation/genres"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                "accuracy": 0.9,
-                "macro_precision": 0.9,
-                "macro_recall": 0.9,
-                "macro_f1": 0.9,
-                "micro_precision": 0.9,
-                "micro_recall": 0.9,
-                "micro_f1": 0.9,
-                "per_genre_metrics": {
-                    "ai": {
-                        "tp": 9,
-                        "fp": 1,
-                        "fn": 1,
-                        "support": 10,
-                        "precision": 0.9,
-                        "recall": 0.9,
-                        "f1": 0.9
-                    }
-                },
-                "total_samples": 10
-            })))
-            .up_to_n_times(1)
-            .mount(&server)
-            .await;
+        let job_ok = run_eval_job_case(
+            &scheduler,
+            &dao,
+            &server,
+            ResponseTemplate::new(200).set_body_json(stub_eval_success_body()),
+            1,
+            "job with 200 eval should succeed",
+        )
+        .await;
+        let job_401 = run_eval_job_case(
+            &scheduler,
+            &dao,
+            &server,
+            ResponseTemplate::new(401).set_body_string("unauthorized"),
+            2,
+            "401 eval failure must leave completed job Ok",
+        )
+        .await;
+        let job_500 = run_eval_job_case(
+            &scheduler,
+            &dao,
+            &server,
+            ResponseTemplate::new(500).set_body_string("eval down"),
+            3,
+            "500 eval failure must leave completed job Ok",
+        )
+        .await;
 
-        let job_ok = Uuid::new_v4();
-        save_stub_dispatch_state(&dao, job_ok).await;
-        scheduler
-            .run_job(
-                JobContext::new_with_window(job_ok, vec!["ai".into()], 7)
-                    .with_stage("dispatch".to_string()),
-            )
+        // (a) Eval was invoked once per completed job (3 times total) on /v1/evaluation/genres.
+        let requests = server
+            .received_requests()
             .await
-            .expect("job with 200 eval should succeed");
+            .expect("wiremock records requests");
+        assert_eq!(
+            requests.len(),
+            3,
+            "classification evaluation must be invoked once per completed job"
+        );
+        assert!(
+            requests
+                .iter()
+                .all(|req| req.method.as_str() == "POST"
+                    && req.url.path() == "/v1/evaluation/genres"),
+            "all eval requests must POST to /v1/evaluation/genres"
+        );
+        server.verify().await;
 
-        Mock::given(method("POST"))
-            .and(path("/v1/evaluation/genres"))
-            .respond_with(ResponseTemplate::new(401).set_body_string("unauthorized"))
-            .up_to_n_times(1)
-            .mount(&server)
-            .await;
-
-        let job_401 = Uuid::new_v4();
-        save_stub_dispatch_state(&dao, job_401).await;
-        scheduler
-            .run_job(
-                JobContext::new_with_window(job_401, vec!["ai".into()], 7)
-                    .with_stage("dispatch".to_string()),
-            )
-            .await
-            .expect("401 eval failure must leave completed job Ok");
-
-        Mock::given(method("POST"))
-            .and(path("/v1/evaluation/genres"))
-            .respond_with(ResponseTemplate::new(500).set_body_string("eval down"))
-            .up_to_n_times(1)
-            .mount(&server)
-            .await;
-
-        let job_500 = Uuid::new_v4();
-        save_stub_dispatch_state(&dao, job_500).await;
-        scheduler
-            .run_job(
-                JobContext::new_with_window(job_500, vec!["ai".into()], 7)
-                    .with_stage("dispatch".to_string()),
-            )
-            .await
-            .expect("500 eval failure must leave completed job Ok");
-
+        // (b) In the error cases (401, 500), the eval error did not fail the job.
         assert!((metrics.jobs_completed.get() - 3.0).abs() < f64::EPSILON);
+        assert!((metrics.jobs_failed.get() - 0.0).abs() < f64::EPSILON);
+        let completed_jobs: Vec<Uuid> = dao
+            .status_transitions()
+            .into_iter()
+            .filter(|t| t.status == JobStatus::Completed)
+            .map(|t| t.job_id)
+            .collect();
+        assert_eq!(completed_jobs, vec![job_ok, job_401, job_500]);
     }
 }
