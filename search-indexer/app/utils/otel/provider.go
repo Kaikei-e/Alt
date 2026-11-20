@@ -16,7 +16,6 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
-	"go.opentelemetry.io/otel/log/global"
 	"go.opentelemetry.io/otel/propagation"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
@@ -26,6 +25,7 @@ import (
 )
 
 // DefaultRaskIngestTokenFile is the default path to the Rask ingest token secret.
+// #nosec G101 -- filesystem path to Docker secret mount, not a hardcoded credential
 const DefaultRaskIngestTokenFile = "/run/secrets/rask_ingest_token"
 
 // ResolveRaskIngestToken resolves the Bearer token for authenticating OTLP telemetry
@@ -42,7 +42,8 @@ func ResolveRaskIngestToken() (string, error) {
 	if filePath == "" {
 		filePath = DefaultRaskIngestTokenFile
 	}
-	content, err := os.ReadFile(filePath) // #nosec G304 -- trusted operator secret path
+	// #nosec G304 G703 -- filePath comes from operator-configured RASK_INGEST_TOKEN_FILE or DefaultRaskIngestTokenFile, not user input
+	content, err := os.ReadFile(filePath)
 	if err != nil {
 		return "", fmt.Errorf("read RASK_INGEST_TOKEN_FILE %s: %w", filePath, err)
 	}
@@ -140,7 +141,7 @@ func InitProvider(ctx context.Context, cfg Config) (ShutdownFunc, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to init logger provider: %w", err)
 	}
-	global.SetLoggerProvider(loggerProvider)
+	otel.SetLoggerProvider(loggerProvider)
 
 	// Initialize Meter Provider
 	meterProvider, err := initMeterProvider(ctx, cfg, res)

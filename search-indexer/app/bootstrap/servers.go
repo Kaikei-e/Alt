@@ -65,9 +65,14 @@ func newHTTPServer(searchByUserUsecase *usecase.SearchByUserUsecase, otelCfg app
 func newConnectServer(searchByUserUsecase *usecase.SearchByUserUsecase, searchRecapsUsecase *usecase.SearchRecapsUsecase, authUsecase *usecase.AuthUsecase, rlCfg config.RateLimitConfig) *http.Server {
 	handler := connectv2.CreateConnectServer(searchByUserUsecase, searchRecapsUsecase, authUsecase, rlCfg)
 
+	protocols := new(http.Protocols)
+	protocols.SetHTTP1(true)
+	protocols.SetUnencryptedHTTP2(true)
+
 	return &http.Server{
 		Addr:              config.ConnectAddr,
 		Handler:           handler,
+		Protocols:         protocols,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      30 * time.Second,

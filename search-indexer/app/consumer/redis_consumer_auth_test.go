@@ -17,7 +17,7 @@ func TestNewConsumer_RedisPassword(t *testing.T) {
 
 	c, err := NewConsumer(cfg, nil, nil)
 	require.NoError(t, err)
-	defer c.client.Close()
+	t.Cleanup(func() { require.NoError(t, c.client.Close()) })
 
 	assert.Equal(t, "test-secret-password", c.client.Options().Password)
 }

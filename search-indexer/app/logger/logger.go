@@ -7,11 +7,10 @@ import (
 	"strings"
 
 	"go.opentelemetry.io/contrib/bridges/otelslog"
-	"go.opentelemetry.io/otel/log/global"
+	"go.opentelemetry.io/otel"
 )
 
 var Logger *slog.Logger
-var otelEnabled bool
 
 // Init initializes the logger (legacy mode - stdout only)
 func Init() {
@@ -20,7 +19,6 @@ func Init() {
 
 // InitWithOTel initializes the logger with optional OTel support
 func InitWithOTel(enableOTel bool) {
-	otelEnabled = enableOTel
 	level := parseLevel(os.Getenv("LOG_LEVEL"))
 
 	var handler slog.Handler
@@ -70,7 +68,7 @@ func NewMultiHandler(level slog.Level) *MultiHandler {
 	// This properly propagates trace context from the Go context
 	otelHandler := otelslog.NewHandler(
 		"search-indexer",
-		otelslog.WithLoggerProvider(global.GetLoggerProvider()),
+		otelslog.WithLoggerProvider(otel.GetLoggerProvider()),
 	)
 
 	return &MultiHandler{

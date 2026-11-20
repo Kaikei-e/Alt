@@ -48,7 +48,7 @@ func TestHTTPServer_DoesNotExposeAppMetrics(t *testing.T) {
 	srv := newHTTPServer(nil, appOtel.Config{}, config.RateLimitConfig{RequestsPerSecond: 100, Burst: 100},
 		func(context.Context) error { return nil })
 	rec := httptest.NewRecorder()
-	srv.Handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	srv.Handler.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/metrics", nil))
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("/metrics = %d, want 404 (PKI scrape is parent :9110)", rec.Code)
 	}

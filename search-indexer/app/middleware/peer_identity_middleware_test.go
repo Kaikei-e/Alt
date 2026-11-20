@@ -29,7 +29,7 @@ func TestPeerIdentity_AllowedCallerPasses(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/search", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/search", nil)
 	req.TLS = tlsStateWithCN("alt-backend")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -45,7 +45,7 @@ func TestPeerIdentity_DisallowedCallerRejected(t *testing.T) {
 		t.Fatal("handler must not be invoked for disallowed peer")
 	}))
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/search", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/search", nil)
 	req.TLS = tlsStateWithCN("evil-service")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -61,7 +61,7 @@ func TestPeerIdentity_MissingTLSRejected(t *testing.T) {
 		t.Fatal("handler must not be invoked for plaintext request")
 	}))
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/search", nil) // no TLS
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/search", nil) // no TLS
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 
@@ -76,7 +76,7 @@ func TestPeerIdentity_EmptyAllowlistRejectsAll(t *testing.T) {
 		t.Fatal("handler must not be invoked when allowlist is empty")
 	}))
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/search", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/search", nil)
 	req.TLS = tlsStateWithCN("alt-backend")
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -96,7 +96,7 @@ func TestPeerIdentity_ClientHeaderIsOverwritten(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/search", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/search", nil)
 	req.Header.Set(PeerIdentityHeader, "root") // spoofed
 	req.TLS = tlsStateWithCN("alt-backend")
 	rec := httptest.NewRecorder()

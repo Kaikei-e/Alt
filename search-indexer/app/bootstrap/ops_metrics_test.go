@@ -23,7 +23,7 @@ func TestOpsMetricsHandlerIncludesDeepHealth(t *testing.T) {
 	_ = r.Run(context.Background())
 
 	rec := httptest.NewRecorder()
-	opsMetricsHandler(nil).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	opsMetricsHandler(nil).ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/metrics", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}

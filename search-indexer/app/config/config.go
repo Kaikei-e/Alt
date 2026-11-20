@@ -211,6 +211,7 @@ func isBearerToken(token string) bool {
 func getEnvOrDefault(key, defaultValue string) (string, error) {
 	// Check for _FILE suffix
 	if fileValue := os.Getenv(key + "_FILE"); fileValue != "" {
+		// #nosec G304 G703 -- fileValue comes from operator-configured *_FILE env var, not user input
 		content, err := os.ReadFile(fileValue)
 		if err != nil {
 			return "", fmt.Errorf("read secret file for %s (%s_FILE=%q): %w", key, key, fileValue, err)

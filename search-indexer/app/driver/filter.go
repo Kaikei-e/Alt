@@ -32,11 +32,6 @@ func sanitizeFilterValue(value string) string {
 	return b.String()
 }
 
-// escapeMeilisearchValue escapes special characters in Meilisearch filter values.
-func escapeMeilisearchValue(value string) string {
-	return sanitizeFilterValue(value)
-}
-
 // makeSecureSearchFilter creates a secure Meilisearch filter from tags,
 // quoting and escaping each tag value.
 func makeSecureSearchFilter(tags []string) string {

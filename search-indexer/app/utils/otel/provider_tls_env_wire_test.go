@@ -22,9 +22,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/log"
-	"go.opentelemetry.io/otel/log/global"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
@@ -34,10 +34,10 @@ import (
 // counter so we can assert origin ≥ 1 and destination == 0.
 func TestWire_RedirectFail(t *testing.T) {
 	originalTracer := otel.GetTracerProvider()
-	originalLogger := global.GetLoggerProvider()
+	originalLogger := otel.GetLoggerProvider()
 	defer func() {
 		otel.SetTracerProvider(originalTracer)
-		global.SetLoggerProvider(originalLogger)
+		otel.SetLoggerProvider(originalLogger)
 	}()
 
 	var destCount int32
@@ -50,7 +50,7 @@ func TestWire_RedirectFail(t *testing.T) {
 	var originCount int32
 	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&originCount, 1)
-		http.Redirect(w, r, dest.URL+r.URL.Path, http.StatusFound)
+		http.Redirect(w, r, dest.URL, http.StatusFound)
 	}))
 	defer origin.Close()
 
@@ -75,7 +75,7 @@ func TestWire_RedirectFail(t *testing.T) {
 	_, span := tracer.Start(ctx, "wire-redirect-span")
 	span.End()
 
-	logger := global.GetLoggerProvider().Logger("wire-redirect-logger")
+	logger := otel.GetLoggerProvider().Logger("wire-redirect-logger")
 	var rec log.Record
 	logger.Emit(ctx, rec)
 
@@ -88,7 +88,7 @@ func TestWire_RedirectFail(t *testing.T) {
 		t.Errorf("TracerProvider is not sdktrace.TracerProvider")
 	}
 
-	if lp, ok := global.GetLoggerProvider().(*sdklog.LoggerProvider); ok {
+	if lp, ok := otel.GetLoggerProvider().(*sdklog.LoggerProvider); ok {
 		_ = lp.ForceFlush(ctxFlush)
 	} else {
 		t.Errorf("LoggerProvider is not sdklog.LoggerProvider")
@@ -139,9 +139,10 @@ func TestWire_TokenFileLoader_Failures(t *testing.T) {
 		if err != nil {
 			t.Fatalf("cannot create temp file: %v", err)
 		}
-		f.WriteString("valid-file-token-123=\n")
-		f.Close()
-		defer os.Remove(f.Name())
+		_, err = f.WriteString("valid-file-token-123=\n")
+		require.NoError(t, err)
+		require.NoError(t, f.Close())
+		t.Cleanup(func() { require.NoError(t, os.Remove(f.Name())) })
 
 		t.Setenv("RASK_INGEST_TOKEN", "")
 		t.Setenv("RASK_INGEST_TOKEN_FILE", f.Name())
@@ -175,9 +176,10 @@ func TestWire_TokenFileLoader_Failures(t *testing.T) {
 			if err != nil {
 				t.Fatalf("cannot create temp file: %v", err)
 			}
-			f.WriteString(tc.content)
-			f.Close()
-			defer os.Remove(f.Name())
+			_, err = f.WriteString(tc.content)
+			require.NoError(t, err)
+			require.NoError(t, f.Close())
+			t.Cleanup(func() { require.NoError(t, os.Remove(f.Name())) })
 
 			t.Setenv("RASK_INGEST_TOKEN_FILE", f.Name())
 			cfg := Config{Enabled: true, OTLPEndpoint: "http://localhost:4318"}
@@ -300,12 +302,16 @@ func wireNewTLSTestServer(t *testing.T, srvCert tls.Certificate, requireClientAu
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/traces", func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&traceReceived, 1)
-		io.ReadAll(r.Body)
+		if _, err := io.ReadAll(r.Body); err != nil {
+			t.Errorf("read trace body: %v", err)
+		}
 		w.WriteHeader(http.StatusOK)
 	})
 	mux.HandleFunc("/v1/logs", func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&logReceived, 1)
-		io.ReadAll(r.Body)
+		if _, err := io.ReadAll(r.Body); err != nil {
+			t.Errorf("read log body: %v", err)
+		}
 		w.WriteHeader(http.StatusOK)
 	})
 	srv := httptest.NewUnstartedServer(mux)
@@ -322,10 +328,10 @@ func wireNewTLSTestServer(t *testing.T, srvCert tls.Certificate, requireClientAu
 func wireInitAndFlushBothSignals(t *testing.T, srvURL, token string) error {
 	t.Helper()
 	origTracer := otel.GetTracerProvider()
-	origLogger := global.GetLoggerProvider()
+	origLogger := otel.GetLoggerProvider()
 	t.Cleanup(func() {
 		otel.SetTracerProvider(origTracer)
-		global.SetLoggerProvider(origLogger)
+		otel.SetLoggerProvider(origLogger)
 	})
 
 	cfg := Config{
@@ -349,7 +355,7 @@ func wireInitAndFlushBothSignals(t *testing.T, srvURL, token string) error {
 	tracer := otel.Tracer("wire-tls-test-tracer")
 	_, span := tracer.Start(ctx, "tls-span")
 	span.End()
-	logger := global.GetLoggerProvider().Logger("wire-tls-logger")
+	logger := otel.GetLoggerProvider().Logger("wire-tls-logger")
 	var rec log.Record
 	logger.Emit(ctx, rec)
 
@@ -360,7 +366,7 @@ func wireInitAndFlushBothSignals(t *testing.T, srvURL, token string) error {
 			return fmt.Errorf("trace force flush: %w", err)
 		}
 	}
-	if lp, ok := global.GetLoggerProvider().(*sdklog.LoggerProvider); ok {
+	if lp, ok := otel.GetLoggerProvider().(*sdklog.LoggerProvider); ok {
 		if err := lp.ForceFlush(ctxFlush); err != nil {
 			return fmt.Errorf("log force flush: %w", err)
 		}
@@ -406,10 +412,10 @@ func TestWire_TLS_WrongCA(t *testing.T) {
 	t.Setenv("OTEL_EXPORTER_OTLP_CERTIFICATE", wrongCAPath)
 
 	origTracer := otel.GetTracerProvider()
-	origLogger := global.GetLoggerProvider()
+	origLogger := otel.GetLoggerProvider()
 	defer func() {
 		otel.SetTracerProvider(origTracer)
-		global.SetLoggerProvider(origLogger)
+		otel.SetLoggerProvider(origLogger)
 	}()
 
 	cfg := Config{Enabled: true, OTLPEndpoint: srv.URL, IngestToken: "valid-token-123=", ServiceName: "tls-wrongca", SampleRatio: 1.0}
@@ -433,7 +439,7 @@ func TestWire_TLS_WrongCA(t *testing.T) {
 	if tp, ok := otel.GetTracerProvider().(*sdktrace.TracerProvider); ok {
 		flushErr = tp.ForceFlush(ctxFlush)
 	}
-	if lp, ok := global.GetLoggerProvider().(*sdklog.LoggerProvider); ok {
+	if lp, ok := otel.GetLoggerProvider().(*sdklog.LoggerProvider); ok {
 		if e := lp.ForceFlush(ctxFlush); e != nil && flushErr == nil {
 			flushErr = e
 		}
@@ -459,10 +465,10 @@ func TestWire_TLS_ClientRequired_Missing(t *testing.T) {
 	t.Setenv("OTEL_EXPORTER_OTLP_CERTIFICATE", caPath)
 
 	origTracer := otel.GetTracerProvider()
-	origLogger := global.GetLoggerProvider()
+	origLogger := otel.GetLoggerProvider()
 	defer func() {
 		otel.SetTracerProvider(origTracer)
-		global.SetLoggerProvider(origLogger)
+		otel.SetLoggerProvider(origLogger)
 	}()
 
 	cfg := Config{Enabled: true, OTLPEndpoint: srv.URL, IngestToken: "valid-token-123=", ServiceName: "mtls-missing", SampleRatio: 1.0}
@@ -480,7 +486,7 @@ func TestWire_TLS_ClientRequired_Missing(t *testing.T) {
 	tracer := otel.Tracer("mtls-missing")
 	_, span := tracer.Start(ctx, "span")
 	span.End()
-	logger := global.GetLoggerProvider().Logger("logger")
+	logger := otel.GetLoggerProvider().Logger("logger")
 	var rec log.Record
 	logger.Emit(ctx, rec)
 	ctxFlush, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -489,7 +495,7 @@ func TestWire_TLS_ClientRequired_Missing(t *testing.T) {
 	if tp, ok := otel.GetTracerProvider().(*sdktrace.TracerProvider); ok {
 		flushErr = tp.ForceFlush(ctxFlush)
 	}
-	if lp, ok := global.GetLoggerProvider().(*sdklog.LoggerProvider); ok {
+	if lp, ok := otel.GetLoggerProvider().(*sdklog.LoggerProvider); ok {
 		if e := lp.ForceFlush(ctxFlush); e != nil && flushErr == nil {
 			flushErr = e
 		}

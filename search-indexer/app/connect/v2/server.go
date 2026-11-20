@@ -6,8 +6,6 @@ import (
 
 	"connectrpc.com/connect"
 	"connectrpc.com/otelconnect"
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
 	"golang.org/x/time/rate"
 
 	"search-indexer/config"
@@ -53,6 +51,5 @@ func CreateConnectServer(searchByUserUsecase *usecase.SearchByUserUsecase, searc
 	mux.Handle(searchPath, searchServiceHandler)
 	logger.Logger.Info("Registered Connect-RPC SearchService", "path", searchPath)
 
-	// HTTP/2 without TLS (h2c) for internal communication within the compose network.
-	return h2c.NewHandler(mux, &http2.Server{})
+	return mux
 }

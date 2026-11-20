@@ -32,7 +32,6 @@ func (f *fakeAuthHub) IntrospectToken(ctx context.Context, token string) (*port.
 
 type mockSearchEngine struct {
 	searchResult         []domain.SearchDocument
-	searchErr            error
 	searchByUserIDResult []domain.SearchDocument
 	searchByUserIDErr    error
 
@@ -145,7 +144,7 @@ func TestHandler_SearchArticles(t *testing.T) {
 				values.Set("user_id", tt.userID)
 			}
 
-			req := httptest.NewRequest(http.MethodGet, "/v1/search?"+values.Encode(), nil)
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/search?"+values.Encode(), nil)
 			req.Header.Set("Authorization", "Bearer "+tt.userID)
 			rec := httptest.NewRecorder()
 
@@ -174,7 +173,7 @@ func TestHandler_SearchArticles_WithoutUserID_ReturnsBadRequest(t *testing.T) {
 	searchByUserUsecase := usecase.NewSearchByUserUsecase(mock)
 	handler := NewHandler(searchByUserUsecase, usecase.NewAuthUsecase(&fakeAuthHub{}))
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/search?q=iran+oil&limit=50", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/search?q=iran+oil&limit=50", nil)
 	req.Header.Set("Authorization", "Bearer "+"")
 	rec := httptest.NewRecorder()
 
@@ -196,7 +195,7 @@ func TestHandler_SearchArticles_EmptyUserID_ReturnsBadRequest(t *testing.T) {
 	searchByUserUsecase := usecase.NewSearchByUserUsecase(mock)
 	handler := NewHandler(searchByUserUsecase, usecase.NewAuthUsecase(&fakeAuthHub{}))
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/search?q=iran+oil&user_id=&limit=50", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/search?q=iran+oil&user_id=&limit=50", nil)
 	req.Header.Set("Authorization", "Bearer "+"")
 	rec := httptest.NewRecorder()
 
@@ -218,7 +217,7 @@ func TestHandler_SearchArticles_WhitespaceUserID_ReturnsBadRequest(t *testing.T)
 	searchByUserUsecase := usecase.NewSearchByUserUsecase(mock)
 	handler := NewHandler(searchByUserUsecase, usecase.NewAuthUsecase(&fakeAuthHub{}))
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/search?q=iran+oil&user_id=%20%20&limit=50", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/search?q=iran+oil&user_id=%20%20&limit=50", nil)
 	req.Header.Set("Authorization", "Bearer %20%20")
 	rec := httptest.NewRecorder()
 
@@ -240,7 +239,7 @@ func TestHandler_SearchArticles_InvalidQueryControlChar_ReturnsBadRequest(t *tes
 	searchByUserUsecase := usecase.NewSearchByUserUsecase(mock)
 	handler := NewHandler(searchByUserUsecase, usecase.NewAuthUsecase(&fakeAuthHub{}))
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/search?q=a%00b&user_id=user1", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/search?q=a%00b&user_id=user1", nil)
 	req.Header.Set("Authorization", "Bearer user1")
 	rec := httptest.NewRecorder()
 
@@ -270,7 +269,7 @@ func TestHandler_SearchArticles_ResponseHasTotal(t *testing.T) {
 		usecase.NewAuthUsecase(&fakeAuthHub{}),
 	)
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/search?q=test&user_id=u1", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/search?q=test&user_id=u1", nil)
 	req.Header.Set("Authorization", "Bearer "+"u1")
 	rec := httptest.NewRecorder()
 	handler.SearchArticles(rec, req)

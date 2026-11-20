@@ -64,7 +64,7 @@ func (c *Client) GetIndexableGenres(ctx context.Context, since string, limit int
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch indexable genres: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("recap-worker returned status %d", resp.StatusCode)

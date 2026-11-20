@@ -13,6 +13,7 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
+	"github.com/stretchr/testify/require"
 )
 
 type xpendingFailHook struct {
@@ -63,7 +64,7 @@ func TestDeliveryCounts_CoversHighIDMessageBeyondLowIDPELWindow(t *testing.T) {
 
 	ctx := context.Background()
 	rdb := redis.NewClient(&redis.Options{Addr: srv.Addr()})
-	defer rdb.Close()
+	t.Cleanup(func() { require.NoError(t, rdb.Close()) })
 
 	const stream = "alt:events:articles"
 	const group = "search-indexer-group"
@@ -155,7 +156,7 @@ func TestReclaimPending_SkipsMessageWhenDeliveryCountLookupFails(t *testing.T) {
 
 	ctx := context.Background()
 	seedClient := redis.NewClient(&redis.Options{Addr: srv.Addr()})
-	defer seedClient.Close()
+	t.Cleanup(func() { require.NoError(t, seedClient.Close()) })
 
 	msgID := seedStuckPendingMessage(t, ctx, seedClient)
 

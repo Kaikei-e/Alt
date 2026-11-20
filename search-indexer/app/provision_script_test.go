@@ -43,7 +43,7 @@ func runProvisionScript(t *testing.T, env map[string]string, args ...string) pro
 	argsFile := filepath.Join(dir, "args")
 	authFile := filepath.Join(dir, "auth")
 
-	cmd := exec.Command("bash", append([]string{provisionScript}, args...)...) // #nosec G204 -- runs this repo's own script
+	cmd := exec.CommandContext(t.Context(), "bash", append([]string{provisionScript}, args...)...) // #nosec G204 -- runs this repo's own script
 	cmd.Env = []string{
 		"PATH=" + binDir + string(os.PathListSeparator) + os.Getenv("PATH"),
 		"FAKE_REDIS_CLI_ARGS=" + argsFile,

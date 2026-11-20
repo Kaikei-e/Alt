@@ -88,15 +88,22 @@ func (c *Client) GetArticlesWithTags(ctx context.Context, lastCreatedAt *time.Ti
 		return nil, nil, "", fmt.Errorf("ListArticlesWithTags: %w", err)
 	}
 
-	articles := toDriverArticles(resp.Msg.Articles)
+	if resp.Msg == nil {
+		return nil, nil, "", fmt.Errorf("ListArticlesWithTagsForward: nil response message")
+	}
+
+	articles, err := toDriverArticles(resp.Msg.GetArticles())
+	if err != nil {
+		return nil, nil, "", fmt.Errorf("ListArticlesWithTagsForward: %w", err)
+	}
 
 	var nextCreatedAt *time.Time
-	if resp.Msg.NextCreatedAt != nil {
-		t := resp.Msg.NextCreatedAt.AsTime()
+	if resp.Msg.GetNextCreatedAt() != nil {
+		t := resp.Msg.GetNextCreatedAt().AsTime()
 		nextCreatedAt = &t
 	}
 
-	return articles, nextCreatedAt, resp.Msg.NextId, nil
+	return articles, nextCreatedAt, resp.Msg.GetNextId(), nil
 }
 
 // GetArticlesWithTagsForward fetches articles with forward keyset pagination (incremental).
@@ -120,15 +127,22 @@ func (c *Client) GetArticlesWithTagsForward(ctx context.Context, incrementalMark
 		return nil, nil, "", fmt.Errorf("ListArticlesWithTagsForward: %w", err)
 	}
 
-	articles := toDriverArticles(resp.Msg.Articles)
+	if resp.Msg == nil {
+		return nil, nil, "", fmt.Errorf("ListArticlesWithTagsForward: nil response message")
+	}
+
+	articles, err := toDriverArticles(resp.Msg.GetArticles())
+	if err != nil {
+		return nil, nil, "", fmt.Errorf("ListArticlesWithTagsForward: %w", err)
+	}
 
 	var nextCreatedAt *time.Time
-	if resp.Msg.NextCreatedAt != nil {
-		t := resp.Msg.NextCreatedAt.AsTime()
+	if resp.Msg.GetNextCreatedAt() != nil {
+		t := resp.Msg.GetNextCreatedAt().AsTime()
 		nextCreatedAt = &t
 	}
 
-	return articles, nextCreatedAt, resp.Msg.NextId, nil
+	return articles, nextCreatedAt, resp.Msg.GetNextId(), nil
 }
 
 // GetDeletedArticles fetches deleted articles for syncing deletions.
@@ -148,17 +162,24 @@ func (c *Client) GetDeletedArticles(ctx context.Context, lastDeletedAt *time.Tim
 		return nil, nil, fmt.Errorf("ListDeletedArticles: %w", err)
 	}
 
-	deleted := make([]*driver.DeletedArticle, len(resp.Msg.Articles))
-	for i, da := range resp.Msg.Articles {
+	if resp.Msg == nil {
+		return nil, nil, fmt.Errorf("ListDeletedArticles: nil response message")
+	}
+
+	deleted := make([]*driver.DeletedArticle, len(resp.Msg.GetArticles()))
+	for i, da := range resp.Msg.GetArticles() {
+		if da == nil {
+			return nil, nil, fmt.Errorf("ListDeletedArticles: nil deleted article at index %d", i)
+		}
 		deleted[i] = &driver.DeletedArticle{
-			ID:        da.Id,
-			DeletedAt: da.DeletedAt.AsTime(),
+			ID:        da.GetId(),
+			DeletedAt: da.GetDeletedAt().AsTime(),
 		}
 	}
 
 	var nextDeletedAt *time.Time
-	if resp.Msg.NextDeletedAt != nil {
-		t := resp.Msg.NextDeletedAt.AsTime()
+	if resp.Msg.GetNextDeletedAt() != nil {
+		t := resp.Msg.GetNextDeletedAt().AsTime()
 		nextDeletedAt = &t
 	}
 
@@ -175,11 +196,15 @@ func (c *Client) GetLatestCreatedAt(ctx context.Context) (*time.Time, error) {
 		return nil, fmt.Errorf("GetLatestArticleTimestamp: %w", err)
 	}
 
-	if resp.Msg.LatestCreatedAt == nil {
+	if resp.Msg == nil {
+		return nil, fmt.Errorf("GetLatestArticleTimestamp: nil response message")
+	}
+
+	if resp.Msg.GetLatestCreatedAt() == nil {
 		return nil, nil
 	}
 
-	t := resp.Msg.LatestCreatedAt.AsTime()
+	t := resp.Msg.GetLatestCreatedAt().AsTime()
 	return &t, nil
 }
 
@@ -200,42 +225,49 @@ func (c *Client) GetArticleByID(ctx context.Context, articleID string) (*driver.
 		return nil, fmt.Errorf("GetArticleByID: %w", err)
 	}
 
-	if resp.Msg.Article == nil {
+	if resp.Msg == nil {
+		return nil, fmt.Errorf("GetArticleByID: nil response message")
+	}
+
+	if resp.Msg.GetArticle() == nil {
 		return nil, nil
 	}
 
-	return toDriverArticle(resp.Msg.Article), nil
+	return toDriverArticle(resp.Msg.GetArticle()), nil
 }
 
-func toDriverArticles(protos []*datahubv1.ArticleWithTags) []*driver.ArticleWithTags {
+func toDriverArticles(protos []*datahubv1.ArticleWithTags) ([]*driver.ArticleWithTags, error) {
 	articles := make([]*driver.ArticleWithTags, len(protos))
 	for i, p := range protos {
+		if p == nil {
+			return nil, fmt.Errorf("nil article at index %d", i)
+		}
 		articles[i] = toDriverArticle(p)
 	}
-	return articles
+	return articles, nil
 }
 
 func toDriverArticle(p *datahubv1.ArticleWithTags) *driver.ArticleWithTags {
-	tags := make([]driver.TagModel, len(p.Tags))
-	for i, t := range p.Tags {
+	tags := make([]driver.TagModel, len(p.GetTags()))
+	for i, t := range p.GetTags() {
 		tags[i] = driver.TagModel{TagName: t}
 	}
 	// published_at is the article's source publication timestamp and drives
 	// SearchWithDateFilter plus Acolyte's weekly_briefing window. It is unset
 	// when the article row has no published_at, in which case created_at is
 	// the only date the backend can offer.
-	publishedAt := p.CreatedAt.AsTime()
-	if p.PublishedAt != nil {
-		publishedAt = p.PublishedAt.AsTime()
+	publishedAt := p.GetCreatedAt().AsTime()
+	if p.GetPublishedAt() != nil {
+		publishedAt = p.GetPublishedAt().AsTime()
 	}
 	return &driver.ArticleWithTags{
-		ID:          p.Id,
-		Title:       p.Title,
-		Content:     p.Content,
+		ID:          p.GetId(),
+		Title:       p.GetTitle(),
+		Content:     p.GetContent(),
 		Tags:        tags,
-		CreatedAt:   p.CreatedAt.AsTime(),
-		UserID:      p.UserId,
-		Language:    p.Language,
+		CreatedAt:   p.GetCreatedAt().AsTime(),
+		UserID:      p.GetUserId(),
+		Language:    p.GetLanguage(),
 		PublishedAt: publishedAt,
 	}
 }
