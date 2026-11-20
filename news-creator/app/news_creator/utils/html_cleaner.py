@@ -1,7 +1,10 @@
 """HTML cleaning utilities for article content using nh3."""
 
+from __future__ import annotations
+
 import logging
 import re
+from collections.abc import Iterator
 
 import nh3
 
@@ -39,6 +42,41 @@ _HTML_RATIO_THRESHOLD = 0.3
 _HTML_TAG_COUNT_THRESHOLD = 50
 
 
+def _iter_tag_spans(content: str) -> Iterator[tuple[int, int]]:
+    """Yield ``(start, end)`` spans matching ``<[^>]+>`` in a single linear pass."""
+    pos = 0
+    length = len(content)
+    while pos < length:
+        start = content.find("<", pos)
+        if start == -1:
+            break
+        gt = content.find(">", start + 1)
+        if gt == -1:
+            break
+        if gt == start + 1:
+            # Empty "<>" has no inner characters for [^>]+; skip past ">".
+            pos = gt + 1
+            continue
+        yield start, gt + 1
+        pos = gt + 1
+
+
+def _strip_html_tags(content: str) -> str:
+    """Replace each ``<[^>]+>`` span with a single space in linear time."""
+    if "<" not in content:
+        return content
+    parts: list[str] = []
+    last = 0
+    for start, end in _iter_tag_spans(content):
+        parts.append(content[last:start])
+        parts.append(" ")
+        last = end
+    if last == 0:
+        return content
+    parts.append(content[last:])
+    return "".join(parts)
+
+
 def clean_html_content(content: str, article_id: str = "") -> tuple[str, bool]:
     """
     Remove HTML tags and extract text content from HTML using nh3.
@@ -67,9 +105,12 @@ def clean_html_content(content: str, article_id: str = "") -> tuple[str, bool]:
     ]
 
     # Count HTML tags
-    html_tags = re.findall(r"<[^>]+>", content)
-    html_tag_count = len(html_tags)
-    html_ratio = (len("".join(html_tags)) / len(content)) if content else 0.0
+    html_tag_count = 0
+    html_tag_chars = 0
+    for start, end in _iter_tag_spans(content):
+        html_tag_count += 1
+        html_tag_chars += end - start
+    html_ratio = (html_tag_chars / len(content)) if content else 0.0
 
     is_html = any(html_indicators) or (
         html_ratio > _HTML_RATIO_THRESHOLD
@@ -156,7 +197,7 @@ def clean_html_content(content: str, article_id: str = "") -> tuple[str, bool]:
             },
         )
         # Fallback to regex-based cleaning
-        cleaned = re.sub(r"<[^>]+>", " ", content)
+        cleaned = _strip_html_tags(content)
         cleaned = re.sub(r"&[a-zA-Z0-9#]+;", " ", cleaned)
         cleaned = re.sub(r"\s+", " ", cleaned).strip()
         return cleaned, True

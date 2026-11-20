@@ -10,6 +10,10 @@ Covers:
 
 from __future__ import annotations
 
+import time
+
+import pytest
+
 from news_creator.domain.prompt_boundary import (
     DEFAULT_DELIMITER_TAG,
     DELIMITER_INSTRUCTION,
@@ -17,6 +21,9 @@ from news_creator.domain.prompt_boundary import (
     wrap_untrusted_content,
     wrap_untrusted_content_with_report,
 )
+
+ADVERSARIAL_REPETITIONS = 50_000
+MAX_ADVERSARIAL_SECONDS = 2.0
 
 
 class TestSanitizeUntrustedContent:
@@ -201,3 +208,49 @@ class TestBoundaryReport:
         assert report.control_tokens_removed == 1
         assert report.hidden_characters_removed == len("\u200b<!--hidden-->")
         assert report.delimiters_removed == 1
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("", ""),
+        ("plain text", "plain text"),
+        ("a<!--comment-->b", "ab"),
+        ("<!---->", ""),
+        ("<!----->", ""),
+        ("<!-->", "<!-->"),
+        ("<!-->-->", ""),
+        ("before <!-- unclosed", "before <!-- unclosed"),
+        ("<!-- first --> mid <!-- second", " mid <!-- second"),
+        ("<!-- outer <!-- inner --> after", " after"),
+        ("<!-- outer <!-- inner --> mid --> end", " mid --> end"),
+        ("<!-- line1\nline2\r\nline3 -->keep", "keep"),
+        ("日本語<!-- 隠し命令 -->テキスト🎉", "日本語テキスト🎉"),
+        ("<!--\u200bcomment\x00-->visible", "visible"),
+        ("<!--" * 50 + "x", "<!--" * 50 + "x"),
+        ("<!--" * 50 + "-->", ""),
+        ("<!--a-->" * 20, ""),
+    ],
+)
+def test_html_comment_characterization(raw: str, expected: str) -> None:
+    """Pin current HTML comment stripping behavior across ordinary and edge inputs."""
+    assert sanitize_untrusted_content(raw) == expected
+
+
+def test_html_comment_report_characterization() -> None:
+    """Pin removed character counts when closed and unclosed comments mix."""
+    raw = "a<!--hidden-->b<!--unclosed"
+    report = wrap_untrusted_content_with_report(raw)
+    assert report.hidden_characters_removed == len("<!--hidden-->")
+    assert "ab<!--unclosed" in report.text
+
+
+def test_html_comment_strip_linear_on_adversarial_input() -> None:
+    """Adversarial unclosed comment openers must complete in linear time."""
+    payload = "<!--" * ADVERSARIAL_REPETITIONS
+    start = time.perf_counter()
+    cleaned = sanitize_untrusted_content(payload)
+    elapsed = time.perf_counter() - start
+
+    assert cleaned == payload
+    assert elapsed < MAX_ADVERSARIAL_SECONDS

@@ -25,6 +25,54 @@ _COMMON_SHORT_WORDS = frozenset(
     {"the", "and", "or", "but", "in", "on", "at", "to", "for", "of", "with"}
 )
 _MIN_TEXT_LENGTH = 10
+_MIN_URL_REPETITIONS = 3
+_HTTP_PREFIX = "http://"
+_HTTPS_PREFIX = "https://"
+
+
+def _is_url_token(token: str) -> bool:
+    """Return True if token starts with http(s):// followed by at least one char."""
+    if token.startswith(_HTTP_PREFIX):
+        return len(token) > len(_HTTP_PREFIX)
+    if token.startswith(_HTTPS_PREFIX):
+        return len(token) > len(_HTTPS_PREFIX)
+    return False
+
+
+def _find_repeated_urls(text: str) -> list[str]:
+    """Find ``(https?://[^\\s]+)(?:\\s+\\1){2,}`` matches in linear time."""
+    if _HTTP_PREFIX not in text and _HTTPS_PREFIX not in text:
+        return []
+    tokens = re.findall(r"\S+", text)
+    count = len(tokens)
+    if count < _MIN_URL_REPETITIONS:
+        return []
+
+    matches: list[str] = []
+    idx = 0
+    offset = 0
+    while idx + 2 < count:
+        candidate = tokens[idx + 1]
+        head = tokens[idx][offset:] if offset else tokens[idx]
+        if (
+            _is_url_token(candidate)
+            and head.endswith(candidate)
+            and tokens[idx + 2].startswith(candidate)
+        ):
+            matches.append(candidate)
+            end_idx = idx + 2
+            while end_idx < count and tokens[end_idx] == candidate:
+                end_idx += 1
+            if end_idx < count and tokens[end_idx].startswith(candidate):
+                idx = end_idx
+                offset = len(candidate)
+            else:
+                idx = end_idx
+                offset = 0
+            continue
+        idx += 1
+        offset = 0
+    return matches
 
 
 def _apply_rule(
@@ -78,7 +126,7 @@ def detect_repetition(
             )
             logger.debug("Short string repetition detected: %s", filtered_matches[:5])
 
-    url_matches = re.findall(r"(https?://[^\s]+)(?:\s+\1){2,}", text)
+    url_matches = _find_repeated_urls(text)
     if url_matches:
         scores.append(min(1.0, len(url_matches) * 0.3))
         patterns.append(f"URL repetition: {len(url_matches)} patterns found")

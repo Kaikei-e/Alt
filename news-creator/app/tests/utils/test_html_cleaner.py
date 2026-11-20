@@ -1,7 +1,16 @@
 """Tests for HTML cleaner utility."""
 
+from __future__ import annotations
+
+import time
+
+import pytest
+
 from news_creator.utils import html_cleaner
 from news_creator.utils.html_cleaner import clean_html_content
+
+ADVERSARIAL_REPETITIONS = 50_000
+MAX_ADVERSARIAL_SECONDS = 2.0
 
 
 class TestHTMLCleaner:
@@ -135,3 +144,81 @@ class TestHTMLCleaner:
         assert "<article_content>\n" in wrapped
         assert wrapped.endswith("\n</article_content>")
         assert wrapped.count("</article_content>") == 1
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("", ("", False)),
+        ("5 < 10 and 20 > 15", ("5 < 10 and 20 > 15", False)),
+        ("<>" * 60, ("<>" * 60, False)),
+        ("<a <b <c>", ("<a <b <c>", False)),
+        ("<" * 100 + "text", ("<" * 100 + "text", False)),
+        ("<a>" * 50, ("<a>" * 50, False)),
+        ("<a>" * 51, ("", True)),
+        ("<html>\n<body>\n<p\nclass='x'>hi</p>\n</body>\n</html>", ("hi", True)),
+        ("<html><p>日本語テスト🚀</p></html>", ("日本語テスト🚀", True)),
+        ("<" * 100, ("<" * 100, False)),
+    ],
+)
+def test_clean_html_content_characterization(
+    raw: str, expected: tuple[str, bool]
+) -> None:
+    """Pin current HTML detection and cleaning behavior across edge inputs."""
+    assert clean_html_content(raw) == expected
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("<html><body><p>Hello &amp; world</p></body></html>", ("Hello world", True)),
+        (
+            "<html><a <b <c><><!--unclosed日本語",
+            ("<><!--unclosed日本語", True),
+        ),
+        ("<html>" + "<" * 100, ("<" * 100, True)),
+        ("<html><p>line1\nline2</p>&nbsp;日本語</html>", ("line1 line2 日本語", True)),
+        ("<html>" + "<>" * 5 + "x</html>", ("<>" * 5 + "x", True)),
+    ],
+)
+def test_clean_html_fallback_characterization(
+    monkeypatch: pytest.MonkeyPatch, raw: str, expected: tuple[str, bool]
+) -> None:
+    """Pin current regex fallback behavior when nh3.clean fails."""
+
+    def _raise_runtime_error(*_args: object, **_kwargs: object) -> str:
+        msg = "nh3 failure"
+        raise RuntimeError(msg)
+
+    monkeypatch.setattr(html_cleaner.nh3, "clean", _raise_runtime_error)
+    assert clean_html_content(raw) == expected
+
+
+def test_clean_html_content_linear_on_adversarial_openers() -> None:
+    """Adversarial repeated '<' openers must complete in linear time."""
+    payload = "<" * ADVERSARIAL_REPETITIONS
+    start = time.perf_counter()
+    cleaned, was_html = clean_html_content(payload)
+    elapsed = time.perf_counter() - start
+
+    assert (cleaned, was_html) == (payload, False)
+    assert elapsed < MAX_ADVERSARIAL_SECONDS
+
+
+def test_clean_html_fallback_linear_on_adversarial_openers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Fallback HTML stripping must remain linear on repeated '<' openers."""
+
+    def _raise_runtime_error(*_args: object, **_kwargs: object) -> str:
+        msg = "nh3 failure"
+        raise RuntimeError(msg)
+
+    monkeypatch.setattr(html_cleaner.nh3, "clean", _raise_runtime_error)
+    payload = "<!doctype html>" + "<" * ADVERSARIAL_REPETITIONS
+    start = time.perf_counter()
+    cleaned, was_html = clean_html_content(payload)
+    elapsed = time.perf_counter() - start
+
+    assert (cleaned, was_html) == ("<" * ADVERSARIAL_REPETITIONS, True)
+    assert elapsed < MAX_ADVERSARIAL_SECONDS
