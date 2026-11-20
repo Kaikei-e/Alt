@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::env;
 use std::sync::Arc;
 
 use bollard::Docker;
@@ -90,43 +89,90 @@ pub struct ContainerInfo {
     pub group: Option<String>,
 }
 
-#[allow(async_fn_in_trait)]
 pub trait ServiceDiscoveryTrait: Send + Sync {
-    async fn find_container_by_service(
+    /// Finds a running container matching `service_name`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DiscoveryError::DockerError`] if listing containers fails, or
+    /// [`DiscoveryError::ContainerNotFound`] if no matching container exists.
+    fn find_container_by_service(
         &self,
         service_name: &str,
-    ) -> Result<ContainerInfo, DiscoveryError>;
+    ) -> impl std::future::Future<Output = Result<ContainerInfo, DiscoveryError>> + Send;
+
+    /// Determines the target service name from environment or hostname.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DiscoveryError::NoTargetService`] if the hostname cannot be
+    /// read or [`DiscoveryError::InvalidHostname`] if it does not match
+    /// `*-logs`.
     fn get_target_service(&self) -> Result<String, DiscoveryError>;
+
+    /// Extracts the service name from a `*-logs` hostname.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DiscoveryError::InvalidHostname`] if `hostname` does not end
+    /// with `"-logs"` or has an empty service prefix.
     fn detect_target_service_from_hostname(&self, hostname: &str)
     -> Result<String, DiscoveryError>;
 }
 
+type EnvLookup = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
+
 pub struct ServiceDiscovery {
     docker: Docker,
+    env_lookup: EnvLookup,
 }
 
 impl ServiceDiscovery {
+    /// Connects to the Docker daemon using the process environment.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DiscoveryError::EndpointError`] if `DOCKER_HOST` is missing or
+    /// invalid, or [`DiscoveryError::DockerError`] if creating the Docker
+    /// client fails.
     pub fn new() -> Result<Self, DiscoveryError> {
         Self::new_with_env(|k| std::env::var(k).ok())
     }
 
+    /// Connects to the Docker daemon using `lookup` as the sole source of
+    /// environment variables (both `DOCKER_HOST` and `TARGET_SERVICE`).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DiscoveryError::EndpointError`] if `DOCKER_HOST` is missing or
+    /// invalid, or [`DiscoveryError::DockerError`] if creating the Docker
+    /// client fails.
     pub fn new_with_env<F>(lookup: F) -> Result<Self, DiscoveryError>
     where
-        F: Fn(&str) -> Option<String>,
+        F: Fn(&str) -> Option<String> + Send + Sync + 'static,
     {
-        let docker = connect_docker_with(lookup)?;
-        Ok(Self { docker })
+        let env_lookup: EnvLookup = Arc::new(lookup);
+        let docker = connect_docker_with(|k| env_lookup(k))?;
+        Ok(Self { docker, env_lookup })
     }
 
+    /// Connects to the Docker daemon at an explicit `endpoint` URL.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DiscoveryError::EndpointError`] if `endpoint` fails
+    /// validation, or [`DiscoveryError::DockerError`] if creating the Docker
+    /// client fails.
     pub fn from_endpoint(endpoint: &str) -> Result<Self, DiscoveryError> {
-        Self::new_with_env(|k| (k == "DOCKER_HOST").then(|| endpoint.to_string()))
+        let endpoint = endpoint.to_string();
+        Self::new_with_env(move |k| (k == "DOCKER_HOST").then(|| endpoint.clone()))
     }
 }
 
 impl ServiceDiscoveryTrait for ServiceDiscovery {
     fn get_target_service(&self) -> Result<String, DiscoveryError> {
-        // Check environment variable first
-        if let Ok(service) = env::var("TARGET_SERVICE") {
+        // Check injected environment lookup first
+        if let Some(service) = (self.env_lookup)("TARGET_SERVICE") {
             return Ok(service);
         }
 

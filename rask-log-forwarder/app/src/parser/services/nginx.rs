@@ -17,6 +17,7 @@ impl Default for NginxParser {
 }
 
 impl NginxParser {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             fallback_parser: SimplePatternParser::new(),

@@ -44,6 +44,7 @@ pub struct BatchTransmitter {
 }
 
 impl BatchTransmitter {
+    #[must_use]
     pub fn new(client: HttpClient) -> Self {
         Self {
             client,
@@ -51,6 +52,11 @@ impl BatchTransmitter {
         }
     }
 
+    /// Sends `batch` in a single transmission attempt with `retry_count` set to `0`.
+    ///
+    /// # Errors
+    ///
+    /// Propagates any [`TransmissionError`] from [`BatchTransmitter::send_batch_with_retry`].
     pub async fn send_batch(&self, batch: Batch) -> Result<TransmissionResult, TransmissionError> {
         self.send_batch_with_retry(batch, 0).await
     }
@@ -64,6 +70,13 @@ impl BatchTransmitter {
     /// exhausted. Callers that need retries must go through
     /// `ReliabilityManager::send_batch_with_reliability`, not this method
     /// directly.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TransmissionError::SerializationFailed`] if payload serialization or compression
+    /// fails, [`TransmissionError::InvalidResponse`] if the blocking serialization task panics,
+    /// [`TransmissionError::InvalidHeaderValue`] if metadata headers or `ingest_token` are missing
+    /// or invalid, or [`TransmissionError::RequestError`] if sending the HTTP request fails.
     pub async fn send_batch_with_retry(
         &self,
         batch: Batch,
@@ -142,6 +155,12 @@ impl BatchTransmitter {
         })
     }
 
+    /// Serializes `batch` as NDJSON, optionally gzip-compressed.
+    ///
+    /// # Errors
+    ///
+    /// Propagates any [`SerializationError`] from [`BatchSerializer::serialize_compressed`] or
+    /// [`BatchSerializer::serialize_ndjson`].
     pub fn prepare_payload(
         &self,
         batch: &Batch,
@@ -156,6 +175,12 @@ impl BatchTransmitter {
         }
     }
 
+    /// Builds HTTP headers for transmitting `batch`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TransmissionError::InvalidHeaderValue`] if any metadata header, `user_agent`, or
+    /// `ingest_token` cannot be encoded as a header value, or if `ingest_token` is empty.
     pub fn build_headers(
         &self,
         batch: &Batch,
@@ -247,7 +272,11 @@ impl OtlpBatchTransmitter {
     ///
     /// # Arguments
     /// * `client` - HTTP client for making requests
-    /// * `otlp_endpoint` - The OTLP logs endpoint URL (e.g., "http://collector:4318/v1/logs")
+    /// * `otlp_endpoint` - The OTLP logs endpoint URL (e.g., `<http://collector:4318/v1/logs>`)
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TransmissionError::InvalidHeaderValue`] if `otlp_endpoint` is not a valid URL.
     pub fn new(client: HttpClient, otlp_endpoint: &str) -> Result<Self, TransmissionError> {
         let endpoint = otlp_endpoint.parse::<Url>().map_err(|e| {
             TransmissionError::InvalidHeaderValue(format!("Invalid OTLP endpoint URL: {e}"))
@@ -274,11 +303,22 @@ impl OtlpBatchTransmitter {
     }
 
     /// Sends a batch of logs to the OTLP endpoint.
+    ///
+    /// # Errors
+    ///
+    /// Propagates any [`TransmissionError`] from [`OtlpBatchTransmitter::send_batch_with_retry`].
     pub async fn send_batch(&self, batch: Batch) -> Result<TransmissionResult, TransmissionError> {
         self.send_batch_with_retry(batch, 0).await
     }
 
     /// Sends a batch with retry count tracking.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TransmissionError::SerializationFailed`] if OTLP serialization fails,
+    /// [`TransmissionError::InvalidResponse`] if gzip compression fails or the blocking task
+    /// panics, [`TransmissionError::InvalidHeaderValue`] if headers or `ingest_token` are missing
+    /// or invalid, or [`TransmissionError::RequestError`] if sending the HTTP request fails.
     pub async fn send_batch_with_retry(
         &self,
         batch: Batch,

@@ -123,7 +123,6 @@ impl Default for CollectorConfig {
 type EnvLookup = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
 
 pub struct LogCollector {
-    #[allow(dead_code)]
     config: CollectorConfig,
     discovery: discovery::ServiceDiscovery,
     container_info: Option<Arc<discovery::ContainerInfo>>,
@@ -145,15 +144,30 @@ impl std::fmt::Debug for LogCollector {
 }
 
 impl LogCollector {
+    /// Creates a [`LogCollector`] reading environment variables from the
+    /// process environment.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CollectorError::DiscoveryError`] if Docker discovery setup or
+    /// target service resolution fails.
     pub fn new(config: CollectorConfig) -> Result<Self, CollectorError> {
         Self::new_with_env(config, Arc::new(|k| std::env::var(k).ok()))
     }
 
+    /// Creates a [`LogCollector`] using `env_lookup` as the sole source of
+    /// environment variables for service discovery and Docker connections.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CollectorError::DiscoveryError`] if Docker discovery setup or
+    /// target service resolution fails.
     pub fn new_with_env(
         config: CollectorConfig,
         env_lookup: EnvLookup,
     ) -> Result<Self, CollectorError> {
-        let discovery = discovery::ServiceDiscovery::new_with_env(|k| env_lookup(k))?;
+        let env_for_discovery = Arc::clone(&env_lookup);
+        let discovery = discovery::ServiceDiscovery::new_with_env(move |k| env_for_discovery(k))?;
 
         let target_service = if let Some(ref service) = config.target_service {
             service.clone()
@@ -180,10 +194,19 @@ impl LogCollector {
         })
     }
 
+    #[must_use]
     pub fn get_target_service(&self) -> &str {
         &self.target_service
     }
 
+    /// Continuously discovers the target container and streams its Docker logs
+    /// onto `tx` until cancelled or stopped.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CollectorError::DockerError`] on fatal Docker endpoint
+    /// configuration errors, or [`CollectorError::CollectionStopped`] if `tx`
+    /// is closed by the downstream consumer.
     pub async fn start_collection(
         &mut self,
         tx: mpsc::Sender<LogEntry>,
@@ -416,6 +439,7 @@ impl LogCollector {
         }
     }
 
+    #[must_use]
     pub fn get_container_info(&self) -> Option<&discovery::ContainerInfo> {
         self.container_info.as_deref()
     }
@@ -552,7 +576,9 @@ mod reconnect_tests {
                 let bytes = line.as_bytes();
                 let mut frame = Vec::with_capacity(8 + bytes.len());
                 frame.extend_from_slice(&[1, 0, 0, 0]);
-                frame.extend_from_slice(&(bytes.len() as u32).to_be_bytes());
+                // Formatted test log line is under 64 bytes and always fits in `u32`.
+                let len = u32::try_from(bytes.len()).unwrap_or(u32::MAX);
+                frame.extend_from_slice(&len.to_be_bytes());
                 frame.extend_from_slice(bytes);
                 ResponseTemplate::new(200).set_body_bytes(frame)
             }

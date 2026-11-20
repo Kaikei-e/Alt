@@ -1,20 +1,29 @@
-use super::fixture::{EnvGuard, create_token_in_temp_dir};
+use super::fixture::{async_with_isolated_env, create_token_in_temp_dir, with_isolated_env};
 use rask_log_forwarder::app::{
     Config,
     docker::{DockerEnvironment, validate_docker_requirements},
 };
+use serial_test::serial;
 use std::collections::HashMap;
 
 #[test]
+#[serial]
 fn test_docker_environment_detection() {
-    let mut guard = EnvGuard::new();
     let (token_path, _token_dir) = create_token_in_temp_dir("valid-token-for-tests").unwrap();
-    guard.set_var("RASK_INGEST_TOKEN_FILE", &token_path);
-    guard.set_var("HOSTNAME", "nginx-logs");
-    guard.set_var("TARGET_SERVICE", "nginx");
-    guard.set_var("RASK_ENDPOINT", "http://rask-aggregator:9600/v1/aggregate");
+    let token_path_str = token_path.to_string_lossy();
 
-    let docker_env = DockerEnvironment::detect_with(guard.lookup()).unwrap();
+    let docker_env = with_isolated_env(
+        &[
+            ("RASK_INGEST_TOKEN_FILE", Some(&token_path_str)),
+            ("HOSTNAME", Some("nginx-logs")),
+            ("TARGET_SERVICE", Some("nginx")),
+            (
+                "RASK_ENDPOINT",
+                Some("http://rask-aggregator:9600/v1/aggregate"),
+            ),
+        ],
+        || DockerEnvironment::detect().unwrap(),
+    );
 
     assert_eq!(docker_env.hostname, "nginx-logs");
     assert_eq!(docker_env.target_service, Some("nginx".to_string()));
@@ -25,10 +34,10 @@ fn test_docker_environment_detection() {
 }
 
 #[test]
+#[serial]
 fn test_sidecar_configuration() {
-    let mut guard = EnvGuard::new();
     let (token_path, _token_dir) = create_token_in_temp_dir("valid-token-for-tests").unwrap();
-    guard.set_var("RASK_INGEST_TOKEN_FILE", &token_path);
+    let token_path_str = token_path.to_string_lossy();
 
     let docker_env = DockerEnvironment {
         hostname: "alt-backend-logs".to_string(),
@@ -38,7 +47,9 @@ fn test_sidecar_configuration() {
         container_labels: HashMap::new(),
     };
 
-    let config = Config::from_docker_environment_with(&docker_env, guard.lookup()).unwrap();
+    let config = with_isolated_env(&[("RASK_INGEST_TOKEN_FILE", Some(&token_path_str))], || {
+        Config::from_docker_environment(&docker_env).unwrap()
+    });
 
     assert_eq!(config.target_service, Some("alt-backend".to_string()));
     assert_eq!(config.endpoint, "http://rask-aggregator:9600/v1/aggregate");
@@ -141,15 +152,24 @@ fn test_docker_requirements_validation_fails() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_docker_environment_config() {
-    let mut guard = EnvGuard::new();
     let (token_path, _token_dir) = create_token_in_temp_dir("test-token").unwrap();
-    guard.set_var("RASK_INGEST_TOKEN_FILE", &token_path);
-    guard.set_var("HOSTNAME", "nginx-logs");
-    guard.set_var("TARGET_SERVICE", "nginx");
-    guard.set_var("RASK_ENDPOINT", "http://rask-aggregator:9600/v1/aggregate");
+    let token_path_str = token_path.to_string_lossy();
 
-    let config = Config::from_env_with(guard.lookup()).unwrap();
+    let config = async_with_isolated_env(
+        &[
+            ("RASK_INGEST_TOKEN_FILE", Some(&token_path_str)),
+            ("HOSTNAME", Some("nginx-logs")),
+            ("TARGET_SERVICE", Some("nginx")),
+            (
+                "RASK_ENDPOINT",
+                Some("http://rask-aggregator:9600/v1/aggregate"),
+            ),
+        ],
+        async { Config::from_env().unwrap() },
+    )
+    .await;
 
     assert_eq!(config.target_service, Some("nginx".to_string()));
     assert_eq!(config.endpoint, "http://rask-aggregator:9600/v1/aggregate");

@@ -59,6 +59,7 @@ pub struct RetryManager {
 }
 
 impl RetryManager {
+    #[must_use]
     pub fn new(config: RetryConfig) -> Self {
         Self {
             config,
@@ -101,18 +102,21 @@ impl RetryManager {
         }
     }
 
+    #[must_use]
     pub fn should_give_up(&self, batch_id: &str) -> bool {
         self.retry_states
             .get(batch_id)
             .is_none_or(|state| state.attempt_count >= self.config.max_attempts)
     }
 
+    #[must_use]
     pub fn get_attempt_count(&self, batch_id: &str) -> u32 {
         self.retry_states
             .get(batch_id)
             .map_or(0, |state| state.attempt_count)
     }
 
+    #[must_use]
     pub fn is_ready_for_retry(&self, batch_id: &str) -> bool {
         self.retry_states
             .get(batch_id)
@@ -120,20 +124,20 @@ impl RetryManager {
             .is_some_and(|next_time| Instant::now() >= next_time)
     }
 
+    #[must_use]
     pub fn calculate_delay(&self, attempt: u32) -> Duration {
+        // Configured base_delay in ms cannot exceed u64::MAX (~584M years).
+        let base_ms = u64::try_from(self.config.base_delay.as_millis()).unwrap_or(u64::MAX);
         let base_delay = match self.config.strategy {
             RetryStrategy::ExponentialBackoff => match 2_u64.checked_pow(attempt) {
-                Some(multiplier) => {
-                    let base_ms = self.config.base_delay.as_millis() as u64;
-                    Duration::from_millis(base_ms.saturating_mul(multiplier))
-                }
+                Some(multiplier) => Duration::from_millis(base_ms.saturating_mul(multiplier)),
                 // `attempt` is large enough that 2^attempt overflows u64;
                 // the delay would be capped to `max_delay` below anyway.
                 None => self.config.max_delay,
             },
-            RetryStrategy::LinearBackoff => Duration::from_millis(
-                self.config.base_delay.as_millis() as u64 * (attempt as u64 + 1),
-            ),
+            RetryStrategy::LinearBackoff => {
+                Duration::from_millis(base_ms.saturating_mul(u64::from(attempt).saturating_add(1)))
+            }
             RetryStrategy::FixedDelay => self.config.base_delay,
         };
 
@@ -150,17 +154,20 @@ impl RetryManager {
 
     fn apply_jitter(delay: Duration) -> Duration {
         let mut rng = rand::rng();
-        let jitter_factor = rng.random_range(0.5..1.5); // ±50% jitter
-        // Safety: delay is bounded by max_delay (60s default), jitter_factor is 0.5-1.5
-        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-        let jittered_millis = (delay.as_millis() as f64 * jitter_factor) as u64;
-        Duration::from_millis(jittered_millis)
+        let jitter_permille = rng.random_range(500_u64..1500_u64); // ±50% jitter
+        // Delay is capped by max_delay (60s default); saturate to u64::MAX (~584M years).
+        let jittered_millis = delay
+            .as_millis()
+            .saturating_mul(u128::from(jitter_permille))
+            / 1000;
+        Duration::from_millis(u64::try_from(jittered_millis).unwrap_or(u64::MAX))
     }
 
     pub fn remove_retry(&mut self, batch_id: &str) {
         self.retry_states.remove(batch_id);
     }
 
+    #[must_use]
     pub fn get_pending_retries(&self) -> Vec<String> {
         self.retry_states
             .iter()

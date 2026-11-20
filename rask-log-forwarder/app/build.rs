@@ -149,6 +149,7 @@ fn generate_validated_regexes(patterns: &[(&str, &str)]) -> Result<(), Box<dyn s
 
     writeln!(file)?;
     writeln!(file, "/// Pattern name lookup")?;
+    writeln!(file, "#[must_use]")?;
     writeln!(
         file,
         "pub fn get_pattern_name(index: usize) -> Option<&'static str> {{"

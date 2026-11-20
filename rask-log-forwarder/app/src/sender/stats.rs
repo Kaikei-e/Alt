@@ -27,6 +27,7 @@ impl Default for AtomicConnectionStats {
 }
 
 impl AtomicConnectionStats {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             active_connections: AtomicU64::new(0),
@@ -98,6 +99,10 @@ impl AtomicConnectionStats {
     }
 
     /// Calculate success rate (0.0 to 1.0)
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "request counters converted to f64 for success rate ratio"
+    )]
     pub fn success_rate(&self) -> f64 {
         let total = self.total_requests.load(Ordering::Relaxed);
         if total == 0 {
@@ -109,6 +114,10 @@ impl AtomicConnectionStats {
     }
 
     /// Calculate connection reuse rate (0.0 to 1.0)
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "request counters converted to f64 for connection reuse ratio"
+    )]
     pub fn connection_reuse_rate(&self) -> f64 {
         let total = self.total_requests.load(Ordering::Relaxed);
         if total == 0 {
@@ -147,6 +156,11 @@ pub struct ConnectionStatsSnapshot {
 
 impl ConnectionStatsSnapshot {
     /// Calculate success rate from snapshot
+    #[must_use]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "request counters converted to f64 for success rate ratio"
+    )]
     pub fn success_rate(&self) -> f64 {
         if self.total_requests == 0 {
             return 1.0;
@@ -157,6 +171,11 @@ impl ConnectionStatsSnapshot {
     }
 
     /// Calculate connection reuse rate from snapshot
+    #[must_use]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "request counters converted to f64 for connection reuse ratio"
+    )]
     pub fn connection_reuse_rate(&self) -> f64 {
         if self.total_requests == 0 {
             return 0.0;
@@ -166,6 +185,7 @@ impl ConnectionStatsSnapshot {
     }
 
     /// Check if connections are healthy based on error rates
+    #[must_use]
     pub fn is_healthy(&self) -> bool {
         self.success_rate() > 0.95 && // 95% success rate
             self.connection_errors < self.total_requests / 10 // < 10% connection errors
@@ -198,11 +218,11 @@ mod tests {
         let mut handles = vec![];
 
         // Spawn multiple threads to stress test atomic operations
-        for i in 0..10 {
+        for i in 0..10u64 {
             let stats_clone = Arc::clone(&stats);
             let handle = thread::spawn(move || {
-                for j in 0..100 {
-                    stats_clone.record_request((i * 100 + j) as u64);
+                for j in 0..100u64 {
+                    stats_clone.record_request(i * 100 + j);
                     if j % 2 == 0 {
                         stats_clone.record_connection_reuse();
                     }

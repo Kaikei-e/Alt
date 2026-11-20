@@ -3,8 +3,8 @@
 //! This module provides parsers for different service types:
 //! - Nginx (access and error logs)
 //! - Go structured logs (JSON format)
-//! - Python structlog logs (JSONRenderer format)
-//! - Rust tracing logs (tracing_subscriber fmt().json() format)
+//! - Python structlog logs (`JSONRenderer` format)
+//! - Rust tracing logs (`tracing_subscriber` `fmt().json()` format)
 //! - PostgreSQL logs
 //! - Meilisearch logs
 
@@ -60,6 +60,10 @@ pub trait ServiceParser: Send + Sync {
     fn service_type(&self) -> &str;
 
     /// Parse a log message and extract structured data.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParseError`] if the log entry cannot be decoded or fails format validation.
     fn parse_log(&self, log: &str) -> Result<ParsedLogEntry, ParseError>;
 
     /// Priority for auto-detection (higher = tried first).

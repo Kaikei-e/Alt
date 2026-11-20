@@ -24,6 +24,12 @@ pub struct LogSender {
 }
 
 impl LogSender {
+    /// Creates a new [`LogSender`] from `config`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ClientError`] if constructing the underlying [`HttpClient`] fails (invalid
+    /// endpoint URL or HTTP client initialization failure).
     pub fn new(config: ClientConfig) -> Result<Self, ClientError> {
         let client = HttpClient::new(config)?;
         let transmitter = BatchTransmitter::new(client);
@@ -35,6 +41,11 @@ impl LogSender {
         })
     }
 
+    /// Sends a batch of log entries and records transmission metrics.
+    ///
+    /// # Errors
+    ///
+    /// Propagates any [`TransmissionError`] from [`BatchTransmitter::send_batch`].
     pub async fn send_batch(
         &self,
         batch: crate::buffer::Batch,
@@ -68,15 +79,22 @@ impl LogSender {
         result
     }
 
+    #[must_use]
     pub fn metrics(&self) -> PerformanceMetrics {
         self.metrics.snapshot()
     }
 
+    /// Runs a health check against the configured aggregator endpoint.
+    ///
+    /// # Errors
+    ///
+    /// Propagates any [`ClientError`] from [`HttpClient::health_check`].
     pub async fn health_check(&self) -> Result<(), ClientError> {
         self.transmitter.client.health_check().await
     }
 
     /// Expose the underlying HTTP client for protocol-specific transmitters (e.g., OTLP).
+    #[must_use]
     pub fn transmitter_client(&self) -> &HttpClient {
         &self.transmitter.client
     }

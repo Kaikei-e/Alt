@@ -18,14 +18,31 @@ fn calculate_percentile(sorted_samples: &[Duration], percentile: f64) -> Duratio
 
     // Use safer calculation that avoids floating point precision issues
     let len = sorted_samples.len();
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "sample slice length converted to f64 for percentile index computation"
+    )]
     let index_f64 = percentile * (len.saturating_sub(1)) as f64;
+    let target = index_f64.floor();
 
-    // Convert to usize with proper bounds checking
-    // Safety: index_f64 is verified to be finite and non-negative, and is clamped to array bounds
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-    let index = if index_f64.is_finite() && index_f64 >= 0.0 {
-        let index_usize = index_f64.floor() as usize;
-        index_usize.min(len.saturating_sub(1))
+    // Locate largest index <= target via binary search so no float-to-int cast is needed.
+    let index = if target.is_finite() && target >= 0.0 {
+        let mut lo = 0usize;
+        let mut hi = len.saturating_sub(1);
+        while lo < hi {
+            let mid = lo + (hi - lo).div_ceil(2);
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "sample slice index converted to f64 for percentile bound comparison"
+            )]
+            let mid_f64 = mid as f64;
+            if mid_f64 <= target {
+                lo = mid;
+            } else {
+                hi = mid - 1;
+            }
+        }
+        lo
     } else {
         0 // Fallback to first element if floating point calculation fails
     };
@@ -71,6 +88,7 @@ pub struct MetricsCollector {
 }
 
 impl MetricsCollector {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             total_batches: Arc::new(AtomicU64::new(0)),
@@ -98,8 +116,9 @@ impl MetricsCollector {
             .fetch_add(entries_count as u64, Ordering::Relaxed);
         self.total_bytes
             .fetch_add(bytes_sent as u64, Ordering::Relaxed);
-        self.total_latency
-            .fetch_add(latency.as_millis() as u64, Ordering::Relaxed);
+        // Latency in ms cannot exceed u64::MAX (~584M years).
+        let latency_ms = u64::try_from(latency.as_millis()).unwrap_or(u64::MAX);
+        self.total_latency.fetch_add(latency_ms, Ordering::Relaxed);
 
         if success {
             self.successful_transmissions
@@ -126,6 +145,7 @@ impl MetricsCollector {
         }
     }
 
+    #[must_use]
     pub fn snapshot(&self) -> PerformanceMetrics {
         let total_batches = self.total_batches.load(Ordering::Relaxed);
 
@@ -147,13 +167,9 @@ impl MetricsCollector {
 
                     let samples_count = samples.len();
                     if samples_count > 0 {
-                        // Safe division and conversion back to u64 with bounds checking
+                        // Safe division and conversion back to u64; sample latency in ms cannot reach u64::MAX.
                         let avg_millis = total_millis / samples_count as u128;
-                        let avg_millis_u64 = if avg_millis > u64::MAX as u128 {
-                            u64::MAX
-                        } else {
-                            avg_millis as u64
-                        };
+                        let avg_millis_u64 = u64::try_from(avg_millis).unwrap_or(u64::MAX);
                         Duration::from_millis(avg_millis_u64)
                     } else {
                         Duration::ZERO
@@ -170,6 +186,10 @@ impl MetricsCollector {
 
         let compressed = self.compressed_bytes.load(Ordering::Relaxed);
         let uncompressed = self.uncompressed_bytes.load(Ordering::Relaxed);
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "compressed and uncompressed byte counters converted to f64 for compression ratio"
+        )]
         let compression_ratio = if uncompressed > 0 {
             compressed as f64 / uncompressed as f64
         } else {

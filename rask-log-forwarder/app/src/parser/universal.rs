@@ -110,6 +110,7 @@ impl Default for UniversalParser {
 }
 
 impl UniversalParser {
+    #[must_use]
     pub fn new() -> Self {
         let mut registry = super::registry::ServiceParserRegistry::new();
 
@@ -162,11 +163,12 @@ impl UniversalParser {
     }
 
     /// Get access to the internal registry for advanced use cases.
+    #[must_use]
     pub fn registry(&self) -> &super::registry::ServiceParserRegistry {
         &self.registry
     }
 
-    /// Validate input size to prevent DoS attacks and memory exhaustion
+    /// Validate input size to prevent `DoS` attacks and memory exhaustion
     fn validate_input_size(log_bytes: &[u8]) -> Result<(), ParseError> {
         if log_bytes.len() > MAX_LOG_LINE_SIZE {
             return Err(ParseError::InvalidFormat(format!(
@@ -214,6 +216,12 @@ impl UniversalParser {
     /// Enrich a collected `LogEntry`, preserving the Docker frame timestamp
     /// parsed by the collector alongside the demultiplexed `stream` and
     /// `container` metadata.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParseError::InvalidFormat`] if the raw line is empty, contains null bytes, or
+    /// exceeds size limits; [`ParseError::JsonError`] if a Docker JSON wrapper is malformed; or
+    /// propagates any [`ParseError`] from the selected service parser.
     pub fn parse_log_entry(
         &self,
         entry: &crate::collector::LogEntry,
@@ -231,6 +239,12 @@ impl UniversalParser {
     /// reading straight off the Docker API must use this: once bollard has
     /// stripped the frame header the payload alone cannot say whether the
     /// line went to stdout or stderr.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParseError::InvalidFormat`] if `log_bytes` is empty, contains null bytes, or
+    /// exceeds size limits; [`ParseError::JsonError`] if a Docker JSON wrapper is malformed; or
+    /// propagates any [`ParseError`] from the selected service parser.
     pub fn parse_docker_log_with_stream(
         &self,
         log_bytes: &[u8],
@@ -247,6 +261,12 @@ impl UniversalParser {
     /// Pure CPU-bound parsing - no `.await` points, so this is a plain
     /// (non-async) fn rather than paying for a per-line `Future` for no
     /// reason.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParseError::InvalidFormat`] if `log_bytes` is empty, contains null bytes, or
+    /// exceeds size limits; [`ParseError::JsonError`] if a Docker JSON wrapper is malformed; or
+    /// propagates any [`ParseError`] from the selected service parser.
     pub fn parse_docker_log(
         &self,
         log_bytes: &[u8],
@@ -415,6 +435,7 @@ impl UniversalParser {
         })
     }
 
+    #[must_use]
     pub fn parse_batch(
         &self,
         log_lines: Vec<&[u8]>,

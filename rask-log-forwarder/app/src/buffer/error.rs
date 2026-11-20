@@ -153,6 +153,7 @@ pub enum ErrorRecovery {
 }
 
 impl BufferError {
+    #[must_use]
     pub fn is_recoverable(&self) -> bool {
         match self {
             BufferError::BufferFull
@@ -172,6 +173,7 @@ impl BufferError {
         }
     }
 
+    #[must_use]
     pub fn recovery_strategy(&self) -> ErrorRecovery {
         match self {
             BufferError::BufferFull | BufferError::MemoryAllocationFailed { .. } => {
@@ -195,6 +197,7 @@ impl BufferError {
 }
 
 impl MetricsError {
+    #[must_use]
     pub fn is_recoverable(&self) -> bool {
         match self {
             MetricsError::UpdateFailed { .. }
@@ -214,6 +217,7 @@ impl MetricsError {
         }
     }
 
+    #[must_use]
     pub fn recovery_strategy(&self) -> ErrorRecovery {
         match self {
             MetricsError::UpdateFailed { .. } => ErrorRecovery::Skip,
@@ -235,6 +239,7 @@ impl MetricsError {
 }
 
 impl ParseError {
+    #[must_use]
     pub fn is_recoverable(&self) -> bool {
         match self {
             ParseError::EmptyInput
@@ -250,6 +255,7 @@ impl ParseError {
         }
     }
 
+    #[must_use]
     pub fn recovery_strategy(&self) -> ErrorRecovery {
         match self {
             ParseError::EmptyInput
@@ -267,6 +273,11 @@ impl ParseError {
 }
 
 // Helper functions for safe error handling
+/// Runs a buffer operation, retrying once when [`BufferError::recovery_strategy`] is [`ErrorRecovery::Retry`].
+///
+/// # Errors
+///
+/// Propagates the [`BufferError`] returned by `operation` (or by its single retry).
 pub fn safe_buffer_operation<T, F>(mut operation: F) -> Result<T, BufferError>
 where
     F: FnMut() -> Result<T, BufferError>,
@@ -300,6 +311,11 @@ where
     }
 }
 
+/// Runs a metrics operation, retrying once when [`MetricsError::recovery_strategy`] is [`ErrorRecovery::Retry`].
+///
+/// # Errors
+///
+/// Propagates the [`MetricsError`] returned by `operation` (or by its single retry).
 pub fn safe_metrics_operation<T, F>(mut operation: F) -> Result<T, MetricsError>
 where
     F: FnMut() -> Result<T, MetricsError>,
@@ -333,6 +349,11 @@ where
     }
 }
 
+/// Runs a parse operation, retrying once when [`ParseError::recovery_strategy`] is [`ErrorRecovery::Retry`].
+///
+/// # Errors
+///
+/// Propagates the [`ParseError`] returned by `operation` (or by its single retry).
 pub fn safe_parse_operation<T, F>(mut operation: F) -> Result<T, ParseError>
 where
     F: FnMut() -> Result<T, ParseError>,

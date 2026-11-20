@@ -18,7 +18,7 @@ use tokio_util::sync::CancellationToken;
 
 pub struct ReliabilityManager {
     retry_manager: Arc<Mutex<RetryManager>>,
-    /// `None` when ENABLE_DISK_FALLBACK is false. Not a "might not be wired
+    /// `None` when `ENABLE_DISK_FALLBACK` is false. Not a "might not be wired
     /// yet" option: the two states are distinguished by a startup log, and the
     /// disabled branch fails loudly rather than pretending the batch was saved.
     disk_fallback: Option<Arc<Mutex<DiskFallback>>>,
@@ -29,6 +29,12 @@ pub struct ReliabilityManager {
 }
 
 impl ReliabilityManager {
+    /// Creates a new [`ReliabilityManager`] with retry, optional disk fallback, metrics, and health tracking.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `disk_config.enabled` is `true` and [`DiskFallback::new`] fails to
+    /// initialize or scan the fallback directory.
     pub async fn new(
         retry_config: RetryConfig,
         disk_config: DiskConfig,
@@ -74,6 +80,12 @@ impl ReliabilityManager {
         })
     }
 
+    /// Sends `batch` with configured retries, falling back to disk storage if retries are exhausted.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TransmissionError::ClientError`] if all transmission retries fail and either disk
+    /// fallback is disabled or storing the batch to disk fails.
     pub async fn send_batch_with_reliability(&self, batch: Batch) -> Result<(), TransmissionError> {
         let batch_id = batch.id().to_string();
         let entry_count = batch.size();
@@ -252,6 +264,9 @@ impl ReliabilityManager {
     /// policy). Without this, disk fallback is a write-only sink: it
     /// protects against data loss on the wire, but nothing ever reads the
     /// data back out and forwards it on.
+    /// # Errors
+    ///
+    /// Propagates any [`DiskError`] returned by [`DiskFallback::list_stored_batches`].
     pub async fn replay_stored_batches(&self) -> Result<usize, DiskError> {
         // Nothing was ever written when the store is off, so there is nothing
         // to replay. Not a silent skip: construction already logged
@@ -309,6 +324,7 @@ impl ReliabilityManager {
     /// Spawns a periodic task that replays disk-fallback batches, running one
     /// pass immediately so batches persisted before a restart aren't stuck
     /// until the first interval tick. Stops once `cancel_token` is cancelled.
+    #[must_use]
     pub fn start_disk_replay_task(
         self: Arc<Self>,
         interval: Duration,
@@ -334,6 +350,9 @@ impl ReliabilityManager {
     /// period. Without a caller running this, batches that permanently fail
     /// to replay (e.g. the aggregator rejects them with a persistent 4xx)
     /// stay on disk forever and eventually trip `DiskSpaceExceeded`.
+    /// # Errors
+    ///
+    /// Propagates any [`DiskError`] from [`DiskFallback::cleanup_old_batches`].
     pub async fn cleanup_disk_fallback(&self) -> Result<u32, DiskError> {
         // Nothing is stored when the fallback is off, so there is nothing to
         // reap. Construction already logged disk_fallback_disabled.
@@ -358,6 +377,7 @@ impl ReliabilityManager {
     /// retention period, so the `store_batch` disk-usage cap can't be
     /// permanently exhausted by batches that keep failing to replay. Stops
     /// once `cancel_token` is cancelled.
+    #[must_use]
     pub fn start_disk_cleanup_task(
         self: Arc<Self>,
         interval: Duration,
@@ -601,10 +621,10 @@ mod replay_tests {
             .expect("disk cleanup task must not panic");
     }
 
-    /// ENABLE_DISK_FALLBACK=false must actually turn the disk store off.
+    /// `ENABLE_DISK_FALLBACK=false` must actually turn the disk store off.
     /// The flag was parsed into Config and then never read, so every forwarder
     /// kept gzipping batches into its fallback directory regardless — up to
-    /// max_disk_usage per container, on hosts where an operator had explicitly
+    /// `max_disk_usage` per container, on hosts where an operator had explicitly
     /// said no.
     #[tokio::test]
     async fn disk_fallback_is_not_created_when_disabled_in_config() {

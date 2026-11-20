@@ -14,6 +14,7 @@ impl Default for GoStructuredParser {
 }
 
 impl GoStructuredParser {
+    #[must_use]
     pub fn new() -> Self {
         Self
     }
@@ -67,11 +68,12 @@ impl ServiceParser for GoStructuredParser {
                             .and_then(|v| v.as_str())
                             .map(str::to_string);
                         let path = obj.get("path").and_then(|v| v.as_str()).map(str::to_string);
-                        #[allow(clippy::cast_possible_truncation)]
+                        // HTTP status codes are 3-digit values (100..=599), well within u16;
+                        // saturate rather than wrapping or dropping the log record on malformed input.
                         let status_code = obj
                             .get("status")
                             .and_then(serde_json::Value::as_u64)
-                            .map(|n| n as u16);
+                            .map(|n| u16::try_from(n).unwrap_or(u16::MAX));
 
                         let timestamp = obj
                             .get("time")

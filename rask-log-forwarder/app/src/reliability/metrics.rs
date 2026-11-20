@@ -49,7 +49,6 @@ pub struct MetricsSnapshot {
 
 #[derive(Clone)]
 pub struct MetricsCollector {
-    #[allow(dead_code)]
     config: MetricsConfig,
 
     #[cfg(feature = "metrics")]
@@ -57,6 +56,35 @@ pub struct MetricsCollector {
 
     // Internal state
     state: Arc<RwLock<MetricsState>>,
+}
+
+#[cfg(feature = "metrics")]
+fn f64_to_u64_saturating(value: f64) -> u64 {
+    if !value.is_finite() {
+        return if value.is_sign_positive() && !value.is_nan() {
+            u64::MAX
+        } else {
+            0
+        };
+    }
+    if value <= 0.0 {
+        return 0;
+    }
+    let bits = value.to_bits();
+    let exp = (bits >> 52) & 0x7ff;
+    if exp < 1023 {
+        return 0;
+    }
+    if exp >= 1087 {
+        return u64::MAX;
+    }
+    let shift = u32::try_from(exp - 1023).unwrap_or(63);
+    let mantissa = (bits & ((1u64 << 52) - 1)) | (1u64 << 52);
+    if shift <= 52 {
+        mantissa >> (52 - shift)
+    } else {
+        mantissa << (shift - 52)
+    }
 }
 
 struct MetricsState {
@@ -238,7 +266,12 @@ fn empty_metrics_state() -> Arc<RwLock<MetricsState>> {
 }
 
 impl MetricsCollector {
-    /// Memory-safe metrics initialization with zero expect() calls.
+    /// Memory-safe metrics initialization with zero `expect()` calls.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MetricsError::InitializationFailed`] or [`MetricsError::RegistrationFailed`]
+    /// if creating or registering Prometheus metrics fails.
     pub fn new(config: &MetricsConfig) -> Result<Self, MetricsError> {
         #[cfg(feature = "metrics")]
         {
@@ -319,6 +352,10 @@ impl MetricsCollector {
         if let Some(prom) = &self.prometheus {
             let status = if success { "success" } else { "failure" };
             prom.batches_sent.with_label_values(&[status]).inc();
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "entry count converted to f64 for Prometheus counter"
+            )]
             prom.entries_sent.inc_by(entry_count as f64);
 
             let size_range = match entry_count {
@@ -401,6 +438,10 @@ impl MetricsCollector {
     pub fn record_connection_stats(&self, active: usize, _max: usize) {
         #[cfg(feature = "metrics")]
         if let Some(prom) = &self.prometheus {
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "active connection count converted to f64 for Prometheus gauge"
+            )]
             prom.active_connections.set(active as f64);
         }
     }
@@ -408,6 +449,10 @@ impl MetricsCollector {
     pub fn update_memory_usage(&self, bytes: u64) {
         #[cfg(feature = "metrics")]
         if let Some(prom) = &self.prometheus {
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "memory usage bytes converted to f64 for Prometheus gauge"
+            )]
             prom.memory_usage.set(bytes as f64);
         }
     }
@@ -419,27 +464,24 @@ impl MetricsCollector {
             total_batches_sent: state.total_batches_sent,
             successful_batches: state.successful_batches,
             failed_batches: state.failed_batches,
-            // Safety: Prometheus counters/gauges return f64 but contain non-negative integers
-            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
             total_entries_sent: {
                 #[cfg(feature = "metrics")]
                 {
                     self.prometheus
                         .as_ref()
-                        .map_or(0, |p| p.entries_sent.get() as u64)
+                        .map_or(0, |p| f64_to_u64_saturating(p.entries_sent.get()))
                 }
                 #[cfg(not(feature = "metrics"))]
                 {
                     0
                 }
             },
-            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
             disk_fallback_count: {
                 #[cfg(feature = "metrics")]
                 {
                     self.prometheus
                         .as_ref()
-                        .map_or(0, |p| p.disk_fallback_counter.get() as u64)
+                        .map_or(0, |p| f64_to_u64_saturating(p.disk_fallback_counter.get()))
                 }
                 #[cfg(not(feature = "metrics"))]
                 {
@@ -451,26 +493,24 @@ impl MetricsCollector {
             health_check_success: state.health_check_success,
             health_check_failure: state.health_check_failure,
             average_transmission_latency: Duration::ZERO, // Would be calculated from histogram
-            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
             current_memory_usage: {
                 #[cfg(feature = "metrics")]
                 {
                     self.prometheus
                         .as_ref()
-                        .map_or(0, |p| p.memory_usage.get() as u64)
+                        .map_or(0, |p| f64_to_u64_saturating(p.memory_usage.get()))
                 }
                 #[cfg(not(feature = "metrics"))]
                 {
                     0
                 }
             },
-            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
             active_connections: {
                 #[cfg(feature = "metrics")]
                 {
                     self.prometheus
                         .as_ref()
-                        .map_or(0, |p| p.active_connections.get() as u64)
+                        .map_or(0, |p| f64_to_u64_saturating(p.active_connections.get()))
                 }
                 #[cfg(not(feature = "metrics"))]
                 {
@@ -480,6 +520,13 @@ impl MetricsCollector {
         }
     }
 
+    /// Returns the configuration used to initialize this collector.
+    #[must_use]
+    pub fn config(&self) -> &MetricsConfig {
+        &self.config
+    }
+
+    #[must_use]
     pub fn get_metric_name(&self, base_name: &str) -> String {
         match base_name {
             "batches_sent" => "rask_batches_sent_total".to_string(),
@@ -499,6 +546,11 @@ impl MetricsCollector {
         state.health_check_failure = 0;
     }
 
+    /// Encodes registered Prometheus metrics in text exposition format.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MetricsError`] if Prometheus text encoding into the output buffer fails.
     #[cfg(feature = "metrics")]
     pub fn export_metrics(&self) -> Result<String, MetricsError> {
         let Some(prom) = &self.prometheus else {
@@ -513,6 +565,11 @@ impl MetricsCollector {
         Ok(String::from_utf8_lossy(&buffer).to_string())
     }
 
+    /// Returns a placeholder string when the `metrics` feature is disabled.
+    ///
+    /// # Errors
+    ///
+    /// Never fails when the `metrics` feature is disabled.
     #[cfg(not(feature = "metrics"))]
     pub fn export_metrics(&self) -> Result<String, MetricsError> {
         Ok("# Metrics disabled\n".to_string())
@@ -525,14 +582,29 @@ pub struct PrometheusExporter {
 }
 
 impl PrometheusExporter {
+    /// Creates a new [`PrometheusExporter`] wrapping `config` and `collector`.
+    ///
+    /// # Errors
+    ///
+    /// Currently infallible; returns `Result` for exporter initialization compatibility.
     pub fn new(config: MetricsConfig, collector: MetricsCollector) -> Result<Self, MetricsError> {
         Ok(Self { config, collector })
     }
 
+    /// Exports metrics text using the underlying [`MetricsCollector`].
+    ///
+    /// # Errors
+    ///
+    /// Propagates any [`MetricsError`] from [`MetricsCollector::export_metrics`].
     pub fn export_metrics(&self) -> Result<String, MetricsError> {
         self.collector.export_metrics()
     }
 
+    /// Starts the HTTP `/metrics` and `/health` server if `config.enabled` is true.
+    ///
+    /// # Errors
+    ///
+    /// Currently infallible; returns `Result` for server startup error compatibility.
     #[cfg(feature = "metrics")]
     pub async fn start_server(&self) -> Result<(), MetricsError> {
         if !self.config.enabled {
@@ -574,6 +646,11 @@ impl PrometheusExporter {
         Ok(())
     }
 
+    /// Logs that the `metrics` feature is disabled and returns immediately.
+    ///
+    /// # Errors
+    ///
+    /// Never fails when the `metrics` feature is disabled.
     #[cfg(not(feature = "metrics"))]
     pub async fn start_server(&self) -> Result<(), MetricsError> {
         tracing::warn!("Metrics feature is disabled");

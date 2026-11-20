@@ -69,6 +69,14 @@ pub struct ServiceManager {
 }
 
 impl ServiceManager {
+    /// Creates a new [`ServiceManager`], post-processing and validating `config`,
+    /// auto-detecting the target service, and compiling redaction patterns.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ServiceError::ConfigError`] if configuration processing,
+    /// validation, or service auto-detection fails, or
+    /// [`ServiceError::RedactionError`] if compiling redaction regexes fails.
     pub fn new(mut config: Config) -> Result<Self, ServiceError> {
         // Enforce configuration post-processing and validation before any component initialization
         config.post_process()?;
@@ -125,6 +133,13 @@ impl ServiceManager {
         })
     }
 
+    /// Initializes runtime components, spawns the processing loop and
+    /// disk-fallback background tasks, and returns a [`ShutdownHandle`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ServiceError::AlreadyRunning`] if already started, or an error
+    /// if initializing components or signal handlers fails.
     pub async fn start(&mut self) -> Result<ShutdownHandle, ServiceError> {
         if *self.running.read().await {
             return Err(ServiceError::AlreadyRunning);
@@ -175,14 +190,14 @@ impl ServiceManager {
 
         // Periodically resend batches persisted to disk fallback - otherwise
         // disk fallback is a write-only sink that never gets read back out.
-        reliability_manager
+        let replay_task = reliability_manager
             .clone()
             .start_disk_replay_task(DISK_REPLAY_INTERVAL, cancel_token.clone());
 
         // Periodically purge disk-fallback batches past retention - without
         // this, batches that permanently fail to replay never leave disk and
         // eventually exhaust the configured disk-usage cap.
-        reliability_manager
+        let cleanup_task = reliability_manager
             .clone()
             .start_disk_cleanup_task(DISK_CLEANUP_INTERVAL, cancel_token.clone());
 
@@ -211,11 +226,10 @@ impl ServiceManager {
             self.target_service
         );
 
-        Ok(ShutdownHandle::new(
-            shutdown_tx,
-            signal_handler,
-            processing_loop,
-        ))
+        Ok(
+            ShutdownHandle::new(shutdown_tx, signal_handler, processing_loop)
+                .with_background_tasks(vec![replay_task, cleanup_task]),
+        )
     }
 
     async fn initialize_components(&mut self) -> Result<(), ServiceError> {
@@ -296,6 +310,12 @@ impl ServiceManager {
         Ok(())
     }
 
+    /// Creates a [`SignalHandler`] bound to this manager's shutdown channel.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ServiceError::NotInitialized`] if `start` has not initialized
+    /// the shutdown channel.
     pub fn setup_signal_handlers(&self) -> Result<SignalHandler, ServiceError> {
         let shutdown_tx = self
             .shutdown_tx
@@ -306,6 +326,7 @@ impl ServiceManager {
         Ok(SignalHandler::new(shutdown_tx))
     }
 
+    #[must_use]
     pub fn is_initialized(&self) -> bool {
         self.collector.is_some() && self.sender.is_some() && self.reliability_manager.is_some()
     }
@@ -314,6 +335,7 @@ impl ServiceManager {
         *self.running.read().await
     }
 
+    #[must_use]
     pub fn get_target_service(&self) -> &str {
         &self.target_service
     }

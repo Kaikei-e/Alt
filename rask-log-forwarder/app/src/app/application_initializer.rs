@@ -12,11 +12,18 @@ pub struct InitializationResult {
 pub struct ApplicationInitializer;
 
 impl ApplicationInitializer {
+    #[must_use]
     pub fn new() -> Self {
         Self
     }
 
     /// 段階的初期化（失敗時の詳細情報提供）
+    ///
+    /// # Errors
+    ///
+    /// Returns [`InitializationError::LoggingInitFailed`] if initializing the
+    /// tracing subscriber fails, or [`InitializationError::ConfigValidationFailed`]
+    /// if configuration validation fails.
     pub fn initialize(&self, config: &Config) -> Result<InitializationResult, InitializationError> {
         let start_time = std::time::Instant::now();
 
@@ -36,10 +43,9 @@ impl ApplicationInitializer {
         tracing::info!("Application initialization completed in {elapsed:?}");
 
         // Use microseconds to ensure we capture sub-millisecond durations
-        // Convert to milliseconds, ensuring at least 1ms if any time passed
-        // Safety: truncation is acceptable - initialization time won't exceed u64::MAX milliseconds
-        #[allow(clippy::cast_possible_truncation)]
-        let time_ms = (elapsed.as_micros() / 1000) as u64;
+        // Convert to milliseconds, ensuring at least 1ms if any time passed.
+        // Initialization time cannot exceed `u64::MAX` ms (~584 million years) in practice.
+        let time_ms = u64::try_from(elapsed.as_micros() / 1000).unwrap_or(u64::MAX);
         let initialization_time_ms = if time_ms == 0 && elapsed.as_nanos() > 0 {
             1 // At least 1ms if any time passed
         } else {
@@ -61,6 +67,15 @@ impl ApplicationInitializer {
         Ok(())
     }
 
+    /// Validates configuration values and prepares the disk-fallback directory
+    /// when disk fallback is enabled.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`InitializationError::ConfigValidationFailed`] if endpoint,
+    /// batch size, buffer capacity, timing, metrics port, or disk-fallback
+    /// settings are invalid, or if creating/chmodding the fallback directory
+    /// fails.
     pub fn validate_configuration(&self, config: &Config) -> Result<(), InitializationError> {
         // Validate endpoint
         if config.endpoint.is_empty() {
@@ -157,6 +172,7 @@ impl ApplicationInitializer {
     }
 
     /// 設定に基づく初期化戦略の決定
+    #[must_use]
     pub fn determine_initialization_strategy(&self, config: &Config) -> InitializationStrategy {
         if config.target_service.is_none() {
             InitializationStrategy::AutoDetection

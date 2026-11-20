@@ -525,15 +525,15 @@ mod tests {
     }
 
     /// Discovery resolves `rask.group` off the container's labels. An entry
-    /// that reaches the aggregator without it is stored with service_group set
-    /// to the literal "unknown" (adapter/clickhouse/row.rs), so every query or
-    /// Grafana panel that groups by service_group collapses each such service
+    /// that reaches the aggregator without it is stored with `service_group` set
+    /// to the literal `"unknown"` (`adapter/clickhouse/row.rs`), so every query or
+    /// Grafana panel that groups by `service_group` collapses each such service
     /// into one shared bucket.
     ///
-    /// Not a partitioning concern: 001_create_logs_table.sql does partition by
-    /// (service_group, service_name), but entrypoint-wrapper.sh rebuilds the
+    /// Not a partitioning concern: `001_create_logs_table.sql` does partition by
+    /// (`service_group`, `service_name`), but `entrypoint-wrapper.sh` rebuilds the
     /// table as `PARTITION BY toDate(timestamp)` on first boot, leaving
-    /// service_group an ordinary LowCardinality column.
+    /// `service_group` an ordinary `LowCardinality` column.
     #[tokio::test]
     async fn enriched_entries_keep_the_discovered_rask_group() {
         let parser = UniversalParser::new();
@@ -745,7 +745,9 @@ mod tests {
                 let line = b"2024-01-01T00:00:00.000000000Z {\"level\":\"info\",\"msg\":\"pending before collector exit\"}\n";
                 let mut frame = Vec::with_capacity(8 + line.len());
                 frame.extend_from_slice(&[1, 0, 0, 0]);
-                frame.extend_from_slice(&(line.len() as u32).to_be_bytes());
+                // Test payload is a fixed short byte literal whose length fits in `u32`.
+                let len = u32::try_from(line.len()).unwrap_or(u32::MAX);
+                frame.extend_from_slice(&len.to_be_bytes());
                 frame.extend_from_slice(line);
                 ResponseTemplate::new(200).set_body_bytes(frame)
             }

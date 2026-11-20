@@ -7,18 +7,6 @@
     clippy::inconsistent_struct_constructor
 )]
 // Noisy pedantic lints suppressed with justification:
-#![allow(
-    clippy::cast_lossless,            // Infallible casts are clear enough with `as`
-    clippy::cast_possible_truncation, // Safe within realistic value bounds (durations, sizes)
-    clippy::cast_possible_wrap,       // Safe in non-negative contexts
-    clippy::cast_precision_loss,      // Acceptable for metrics/display
-    clippy::cast_sign_loss,           // Safe where values are known non-negative
-    clippy::missing_errors_doc,       // Internal API
-    clippy::missing_panics_doc,       // Internal API
-    clippy::module_name_repetitions,  // e.g. CollectorError in collector module
-    clippy::must_use_candidate,       // Annotated selectively on critical APIs
-    clippy::doc_markdown              // Internal API
-)]
 
 pub mod app;
 pub mod buffer;
@@ -34,11 +22,23 @@ pub use app::{App, Config};
 // Version information
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-// Health check endpoint for Docker
+/// Runs the Docker health check by validating the configuration loaded from the
+/// process environment.
+///
+/// # Errors
+///
+/// Returns an error if loading the configuration from the environment or
+/// validating the loaded configuration fails.
 pub fn health_check() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     health_check_with(|k| std::env::var(k).ok())
 }
 
+/// Runs the Docker health check using the supplied environment lookup closure.
+///
+/// # Errors
+///
+/// Returns an error if loading the configuration from `env` or validating the
+/// loaded configuration fails.
 pub fn health_check_with<F>(env: F) -> Result<(), Box<dyn std::error::Error + Send + Sync>>
 where
     F: Fn(&str) -> Option<String>,

@@ -25,6 +25,12 @@ pub struct App {
 }
 
 impl App {
+    /// Builds an [`App`] from CLI arguments and the process environment.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if configuration loading/validation fails or if
+    /// [`Self::from_config`] fails to initialize the application.
     pub fn from_args<I, T>(args: I) -> Result<Self, Box<dyn std::error::Error + Send + Sync>>
     where
         I: IntoIterator<Item = T>,
@@ -34,19 +40,12 @@ impl App {
         Self::from_config(config)
     }
 
-    pub fn from_args_with_env<I, T, F>(
-        args: I,
-        env: F,
-    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>>
-    where
-        I: IntoIterator<Item = T>,
-        T: Into<std::ffi::OsString> + Clone,
-        F: Fn(&str) -> Option<String>,
-    {
-        let config = Config::from_args_and_env_with(args, env)?;
-        Self::from_config(config)
-    }
-
+    /// Initializes an [`App`] from an already-constructed [`Config`].
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if [`ApplicationInitializer::initialize`] or
+    /// [`ServiceManager::new`] fails.
     pub fn from_config(config: Config) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         // Use the comprehensive ApplicationInitializer for memory-safe initialization
         let initializer = ApplicationInitializer::new();
@@ -73,6 +72,12 @@ impl App {
         Ok(Self { service_manager })
     }
 
+    /// Runs the forwarder service until a shutdown signal is received.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if starting the service manager or waiting for shutdown
+    /// fails.
     pub async fn run(mut self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         // Start the service
         let shutdown_handle = self.service_manager.start().await?;
@@ -104,7 +109,12 @@ pub fn get_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
 
-// Main entry point for the application
+/// Main entry point for the application.
+///
+/// # Errors
+///
+/// Returns an error if the healthcheck subcommand, configuration loading, or
+/// service execution fails.
 pub async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let args: Vec<String> = std::env::args().collect();
 

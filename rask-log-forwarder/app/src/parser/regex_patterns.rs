@@ -10,6 +10,7 @@ pub struct StaticRegexSet {
 }
 
 impl StaticRegexSet {
+    #[must_use]
     pub const fn new(patterns: &'static [(&'static str, &'static str)]) -> Self {
         Self {
             patterns,
@@ -17,6 +18,12 @@ impl StaticRegexSet {
         }
     }
 
+    /// Returns the compiled regex at `index`, compiling all patterns on first access.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RegexError::CompilationFailed`] if any pattern in the set fails to compile,
+    /// or [`RegexError::IndexOutOfBounds`] if `index` is out of range.
     pub fn get(&self, index: usize) -> Result<&Regex, RegexError> {
         let compiled = self.compiled.get_or_init(|| {
             let mut regexes = Vec::with_capacity(self.patterns.len());
@@ -46,6 +53,12 @@ impl StaticRegexSet {
         }
     }
 
+    /// Returns the compiled regex matching `name`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RegexError::PatternNotFound`] if no pattern matches `name`, or
+    /// [`RegexError::CompilationFailed`] if compiling the pattern set fails.
     pub fn get_by_name(&self, name: &str) -> Result<&Regex, RegexError> {
         let index = self
             .patterns
@@ -75,11 +88,17 @@ impl StaticRegexSet {
 pub struct SimplePatternParser;
 
 impl SimplePatternParser {
+    #[must_use]
     pub fn new() -> Self {
         Self
     }
 
     /// Parse ISO 8601 timestamp using string operations
+    ///
+    /// # Errors
+    ///
+    /// Returns `ParseError::InvalidFormat` if `text` is shorter than 19 bytes, lacks date
+    /// separators, or cannot be parsed as RFC 3339 or ISO 8601 naive datetime.
     pub fn parse_timestamp(
         &self,
         text: &str,
@@ -120,6 +139,11 @@ impl SimplePatternParser {
     }
 
     /// Parse nginx access log using string operations
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RegexError::ExecutionFailed`] if `line` does not contain at least six
+    /// whitespace-separated fields, a quoted request line, and trailing status and size tokens.
     pub fn parse_nginx_access<'a>(
         &self,
         line: &'a str,

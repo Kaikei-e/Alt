@@ -31,10 +31,18 @@ impl Default for DockerJsonParser {
 }
 
 impl DockerJsonParser {
+    #[must_use]
     pub fn new() -> Self {
         Self {}
     }
 
+    /// Parses a Docker JSON log line from a [`Bytes`] buffer.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParseError::JsonError`] if `bytes` is not valid JSON, [`ParseError::InvalidFormat`]
+    /// if the JSON root is not an object, or [`ParseError::MissingField`] if `"log"`, `"stream"`,
+    /// or `"time"` is missing or not a string.
     pub fn parse(&self, bytes: &Bytes) -> Result<DockerLogEntry, ParseError> {
         self.parse_slice(bytes)
     }
@@ -44,6 +52,12 @@ impl DockerJsonParser {
     /// `UniversalParser::parse_docker_log`) skip an extra owned-buffer hop
     /// before this method's own (unavoidable, simd-json requires `&mut`)
     /// copy into `data`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParseError::JsonError`] if `bytes` is not valid JSON, [`ParseError::InvalidFormat`]
+    /// if the JSON root is not an object, or [`ParseError::MissingField`] if `"log"`, `"stream"`,
+    /// or `"time"` is missing or not a string.
     pub fn parse_slice(&self, bytes: &[u8]) -> Result<DockerLogEntry, ParseError> {
         // Use SIMD-JSON for fast parsing
         let mut data = bytes.to_vec();
@@ -75,6 +89,7 @@ impl DockerJsonParser {
         Ok(DockerLogEntry { log, stream, time })
     }
 
+    #[must_use]
     pub fn parse_batch(&self, logs: Vec<Bytes>) -> Vec<Result<DockerLogEntry, ParseError>> {
         logs.into_iter().map(|bytes| self.parse(&bytes)).collect()
     }

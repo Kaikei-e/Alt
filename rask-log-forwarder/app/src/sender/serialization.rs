@@ -46,12 +46,20 @@ pub struct BatchSerializer {
 }
 
 impl BatchSerializer {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             forwarder_version: env!("CARGO_PKG_VERSION").to_string(),
         }
     }
 
+    /// Serializes `batch` as newline-delimited JSON.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SerializationError::EmptyBatch`] if `batch` is empty,
+    /// [`SerializationError::JsonError`] if JSON encoding fails, or
+    /// [`SerializationError::IoError`] if writing delimiters or converting to UTF-8 fails.
     pub fn serialize_ndjson(&self, batch: &Batch) -> Result<String, SerializationError> {
         if batch.is_empty() {
             return Err(SerializationError::EmptyBatch);
@@ -79,6 +87,12 @@ impl BatchSerializer {
         })
     }
 
+    /// Serializes `batch` as a JSON array of entries.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SerializationError::EmptyBatch`] if `batch` is empty, or
+    /// [`SerializationError::JsonError`] if JSON encoding fails.
     pub fn serialize_json_array(&self, batch: &Batch) -> Result<String, SerializationError> {
         if batch.is_empty() {
             return Err(SerializationError::EmptyBatch);
@@ -87,6 +101,13 @@ impl BatchSerializer {
         serde_json::to_string(batch.entries()).map_err(SerializationError::JsonError)
     }
 
+    /// Serializes `batch` with a leading metadata JSON line followed by NDJSON entries.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SerializationError::EmptyBatch`] if `batch` is empty,
+    /// [`SerializationError::JsonError`] if JSON encoding fails, or
+    /// [`SerializationError::IoError`] if writing delimiters or converting to UTF-8 fails.
     pub fn serialize_batch_with_metadata(
         &self,
         batch: &Batch,
@@ -128,6 +149,12 @@ impl BatchSerializer {
         })
     }
 
+    /// Serializes and gzip-compresses `batch` in the requested `format`.
+    ///
+    /// # Errors
+    ///
+    /// Propagates any [`SerializationError`] from the format serializer (`EmptyBatch`, `JsonError`,
+    /// or `IoError`) or returns [`SerializationError::IoError`] if gzip compression fails.
     pub fn serialize_compressed(
         &self,
         batch: &Batch,
@@ -172,6 +199,11 @@ impl BatchSerializer {
     }
 
     /// Serialize batch to OTLP protobuf format (uncompressed).
+    ///
+    /// # Errors
+    ///
+    /// Propagates any [`SerializationError`] from `OtlpSerializer::serialize_batch`
+    /// (`EmptyBatch` or `IoError`).
     #[cfg(feature = "otlp")]
     pub fn serialize_otlp(&self, batch: &Batch) -> Result<Vec<u8>, SerializationError> {
         use crate::sender::otlp::OtlpSerializer;
@@ -180,6 +212,7 @@ impl BatchSerializer {
         otlp_serializer.serialize_batch(batch)
     }
 
+    #[must_use]
     pub fn estimate_serialized_size(&self, batch: &Batch) -> usize {
         // Validate batch size to prevent overflow
         let batch_size = batch.size();

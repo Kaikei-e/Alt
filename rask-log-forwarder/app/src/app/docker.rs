@@ -12,17 +12,16 @@ pub struct DockerEnvironment {
 }
 
 impl DockerEnvironment {
+    /// Detects Docker environment settings from process environment variables
+    /// and the system hostname.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ConfigError::EnvError`] if neither `HOSTNAME` nor the system
+    /// hostname can be read as UTF-8.
     pub fn detect() -> Result<Self, ConfigError> {
-        Self::detect_with(|k| env::var(k).ok())
-    }
-
-    pub fn detect_with<F>(lookup: F) -> Result<Self, ConfigError>
-    where
-        F: Fn(&str) -> Option<String>,
-    {
-        let hostname = lookup("HOSTNAME")
-            .ok_or(())
-            .or_else(|()| {
+        let hostname = env::var("HOSTNAME")
+            .or_else(|_| {
                 hostname::get()
                     .map_err(|e| format!("Failed to get hostname: {e}"))?
                     .to_str()
@@ -31,20 +30,20 @@ impl DockerEnvironment {
             })
             .map_err(|e| ConfigError::EnvError(format!("Could not determine hostname: {e}")))?;
 
-        let target_service = lookup("TARGET_SERVICE");
+        let target_service = env::var("TARGET_SERVICE").ok();
 
-        let rask_endpoint = lookup("RASK_ENDPOINT")
-            .unwrap_or_else(|| "http://rask-aggregator:9600/v1/aggregate".to_string());
+        let rask_endpoint = env::var("RASK_ENDPOINT")
+            .unwrap_or_else(|_| "http://rask-aggregator:9600/v1/aggregate".to_string());
 
-        let network_mode = lookup("NETWORK_MODE");
+        let network_mode = env::var("NETWORK_MODE").ok();
 
         // In a real Docker environment, we'd read container labels from the Docker API
         // For now, we'll simulate with environment variables
         let mut container_labels = HashMap::new();
-        if let Some(rask_group) = lookup("RASK_GROUP") {
+        if let Ok(rask_group) = env::var("RASK_GROUP") {
             container_labels.insert("rask.group".to_string(), rask_group);
         }
-        if let Some(compose_service) = lookup("COMPOSE_SERVICE") {
+        if let Ok(compose_service) = env::var("COMPOSE_SERVICE") {
             container_labels.insert("com.docker.compose.service".to_string(), compose_service);
         }
 
@@ -57,6 +56,13 @@ impl DockerEnvironment {
         })
     }
 
+    /// Resolves the target service name from container labels or the `*-logs`
+    /// hostname pattern.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ConfigError::InvalidConfig`] if neither
+    /// `com.docker.compose.service` nor a `*-logs` hostname is present.
     pub fn detect_target_service_from_labels(&self) -> Result<String, ConfigError> {
         // Try Docker Compose service label first
         if let Some(service) = self.container_labels.get("com.docker.compose.service") {
@@ -74,12 +80,14 @@ impl DockerEnvironment {
         ))
     }
 
+    #[must_use]
     pub fn is_sidecar_mode(&self) -> bool {
         self.network_mode
             .as_ref()
             .is_some_and(|mode| mode.starts_with("service:"))
     }
 
+    #[must_use]
     pub fn get_target_service_from_network_mode(&self) -> Option<String> {
         self.network_mode.as_ref().and_then(|mode| {
             if mode.starts_with("service:") {
@@ -92,17 +100,14 @@ impl DockerEnvironment {
 }
 
 impl Config {
+    /// Builds a [`Config`] from a detected [`DockerEnvironment`], reading
+    /// `RASK_INGEST_TOKEN_FILE` from the process environment if unset.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ConfigError`] if post-processing or validation of the
+    /// resulting configuration fails.
     pub fn from_docker_environment(docker_env: &DockerEnvironment) -> Result<Self, ConfigError> {
-        Self::from_docker_environment_with(docker_env, |k| std::env::var(k).ok())
-    }
-
-    pub fn from_docker_environment_with<F>(
-        docker_env: &DockerEnvironment,
-        env: F,
-    ) -> Result<Self, ConfigError>
-    where
-        F: Fn(&str) -> Option<String>,
-    {
         let mut config = Config {
             target_service: docker_env
                 .target_service
@@ -125,7 +130,7 @@ impl Config {
         config.disk_fallback_path = std::path::PathBuf::from("/tmp/rask-fallback");
 
         if config.ingest_token_file.is_none()
-            && let Some(val) = env("RASK_INGEST_TOKEN_FILE")
+            && let Some(val) = std::env::var_os("RASK_INGEST_TOKEN_FILE")
         {
             config.ingest_token_file = Some(std::path::PathBuf::from(val));
         }
@@ -135,13 +140,26 @@ impl Config {
         Ok(config)
     }
 
+    /// Detects the Docker Compose environment and constructs a validated [`Config`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ConfigError`] if Docker environment detection, post-processing,
+    /// or validation fails.
     pub fn for_docker_compose() -> Result<Self, ConfigError> {
         let docker_env = DockerEnvironment::detect()?;
         Self::from_docker_environment(&docker_env)
     }
 }
 
-// Dockerfile configuration validation
+/// Validates Docker-specific configuration requirements such as aggregator
+/// endpoint and disk-fallback directory accessibility.
+///
+/// # Errors
+///
+/// Returns [`ConfigError::InvalidConfig`] if `endpoint` does not reference
+/// `rask-aggregator`, or if disk fallback is enabled with an invalid or
+/// missing parent directory.
 pub fn validate_docker_requirements(config: &Config) -> Result<(), ConfigError> {
     // Ensure endpoint points to aggregator service
     if !config.endpoint.contains("rask-aggregator") {

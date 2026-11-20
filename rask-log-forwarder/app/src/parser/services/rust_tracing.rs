@@ -1,4 +1,4 @@
-//! Rust tracing_subscriber fmt().json() log parser.
+//! Rust `tracing_subscriber` `fmt().json()` log parser.
 //!
 //! Handles the specific format produced by `tracing_subscriber::fmt::layer().json()`:
 //! ```json
@@ -15,7 +15,7 @@ use super::{LogLevel, ParsedLogEntry, ServiceParser};
 use crate::parser::docker::ParseError;
 use serde_json::Value;
 
-/// Parser for Rust tracing_subscriber fmt().json() logs.
+/// Parser for Rust `tracing_subscriber` `fmt().json()` logs.
 pub struct RustTracingParser;
 
 impl Default for RustTracingParser {
@@ -25,6 +25,7 @@ impl Default for RustTracingParser {
 }
 
 impl RustTracingParser {
+    #[must_use]
     pub fn new() -> Self {
         Self
     }

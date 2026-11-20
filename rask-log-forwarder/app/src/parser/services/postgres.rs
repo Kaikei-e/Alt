@@ -14,6 +14,7 @@ impl Default for PostgresParser {
 }
 
 impl PostgresParser {
+    #[must_use]
     pub fn new() -> Self {
         Self
     }

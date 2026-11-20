@@ -10,6 +10,7 @@ pub struct LoggingSystem {
 }
 
 impl LoggingSystem {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             directives: Arc::new(RwLock::new(Vec::new())),
@@ -18,6 +19,11 @@ impl LoggingSystem {
     }
 
     /// 完全メモリセーフなディレクティブ追加
+    ///
+    /// # Errors
+    ///
+    /// Returns [`InitializationError`] if parsing `directive_str` fails with an
+    /// error whose fallback strategy does not recover it.
     pub fn add_directive(&self, directive_str: &str) -> Result<(), InitializationError> {
         match LogDirective::parse(directive_str) {
             Ok(directive) => {
@@ -53,6 +59,10 @@ impl LoggingSystem {
     }
 
     /// 型安全なバッチ追加
+    ///
+    /// # Errors
+    ///
+    /// This method currently never fails and always returns `Ok(())`.
     pub fn add_default_directives(&self) -> Result<(), InitializationError> {
         let default_directives = &[
             ("hyper", LogLevel::Warn),
@@ -72,6 +82,11 @@ impl LoggingSystem {
     }
 
     /// メモリセーフなtracing初期化
+    ///
+    /// # Errors
+    ///
+    /// Returns [`InitializationError::LoggingInitFailed`] if building the
+    /// `EnvFilter` or installing the global tracing subscriber fails.
     pub fn initialize_tracing(&self, default_level: LogLevel) -> Result<(), InitializationError> {
         let filter_string = self.build_filter_string(default_level);
 
@@ -123,6 +138,7 @@ impl LoggingSystem {
     }
 
     /// フィルタ文字列の構築
+    #[must_use]
     pub fn build_filter_string(&self, default_level: LogLevel) -> String {
         let directives = self.directives.read();
 
@@ -143,6 +159,7 @@ impl LoggingSystem {
     }
 
     /// 現在のディレクティブ数を取得（テスト用）
+    #[must_use]
     pub fn directive_count(&self) -> usize {
         self.directives.read().len()
     }
@@ -172,7 +189,12 @@ impl From<ConfigLogLevel> for LogLevel {
     }
 }
 
-// Safe logging setup using the memory-safe logging system
+/// Safe logging setup using the memory-safe logging system.
+///
+/// # Errors
+///
+/// Returns [`InitializationError::LoggingInitFailed`] if the one-time tracing
+/// subscriber setup fails.
 pub fn setup_logging_safe(config_level: ConfigLogLevel) -> Result<(), InitializationError> {
     use std::sync::{Mutex, Once};
 
@@ -338,8 +360,12 @@ mod tests {
                     }
 
                     // Also read frequently
-                    let _ = logging_system.build_filter_string(LogLevel::Info);
-                    let _ = logging_system.directive_count();
+                    assert!(
+                        logging_system
+                            .build_filter_string(LogLevel::Info)
+                            .starts_with("info")
+                    );
+                    assert!(logging_system.directive_count() <= 2000);
                 })
             })
             .collect();

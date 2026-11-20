@@ -9,10 +9,7 @@ use chrono::{DateTime, Utc};
 use simd_json::prelude::{ValueAsObject, ValueAsScalar};
 use simd_json::{OwnedValue, from_slice};
 
-pub struct SimdParser {
-    #[allow(dead_code)]
-    arena: bumpalo::Bump,
-}
+pub struct SimdParser {}
 
 impl Default for SimdParser {
     fn default() -> Self {
@@ -21,12 +18,18 @@ impl Default for SimdParser {
 }
 
 impl SimdParser {
+    #[must_use]
     pub fn new() -> Self {
-        Self {
-            arena: bumpalo::Bump::new(),
-        }
+        Self {}
     }
 
+    /// Parses a Docker JSON log line into a [`LogEntry`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ParseError::InvalidJson`] if `bytes` is not valid JSON, [`ParseError::InvalidFormat`]
+    /// if the JSON root is not an object, [`ParseError::MissingField`] if `"log"` or `"time"` is
+    /// missing, or [`ParseError::InvalidTimestamp`] if `"time"` is not a valid RFC 3339 timestamp.
     pub fn parse_docker_log(&self, bytes: &Bytes) -> Result<LogEntry, ParseError> {
         // Convert Bytes to mutable Vec<u8> for simd_json
         let mut data = bytes.to_vec();
@@ -62,6 +65,13 @@ impl SimdParser {
         })
     }
 
+    /// Parses a Docker JSON log line whose message is an nginx access or error log.
+    ///
+    /// # Errors
+    ///
+    /// Propagates any [`ParseError`] from [`SimdParser::parse_docker_log`], or returns
+    /// [`ParseError::InvalidFormat`] if the message does not match a recognized nginx access or
+    /// error format.
     pub fn parse_nginx_log(&self, bytes: &Bytes) -> Result<NginxLogEntry, ParseError> {
         let log_entry = self.parse_docker_log(bytes)?;
 

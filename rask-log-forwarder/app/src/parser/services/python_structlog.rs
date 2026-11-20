@@ -1,4 +1,4 @@
-//! Python structlog JSONRenderer() log parser.
+//! Python structlog `JSONRenderer()` log parser.
 //!
 //! Handles the specific format produced by `structlog.JSONRenderer()`:
 //! ```json
@@ -12,7 +12,7 @@ use super::{LogLevel, ParsedLogEntry, ServiceParser};
 use crate::parser::docker::ParseError;
 use serde_json::Value;
 
-/// Parser for Python structlog JSONRenderer() logs.
+/// Parser for Python structlog `JSONRenderer()` logs.
 pub struct PythonStructlogParser;
 
 impl Default for PythonStructlogParser {
@@ -22,6 +22,7 @@ impl Default for PythonStructlogParser {
 }
 
 impl PythonStructlogParser {
+    #[must_use]
     pub fn new() -> Self {
         Self
     }

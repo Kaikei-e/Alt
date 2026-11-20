@@ -1,41 +1,66 @@
-use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use tempfile::TempDir;
 
-/// Isolated in-memory environment map for configuration tests (replaces mutating
-/// process-wide `std::env`, which is `unsafe` in Rust 2024).
-pub struct EnvGuard {
-    vars: HashMap<String, String>,
-}
+/// Complete list of environment variables read by `rask-log-forwarder`.
+pub const TRACKED_ENV_VARS: &[&str] = &[
+    "RASK_CONFIG",
+    "RASK_INGEST_TOKEN_FILE",
+    "TARGET_SERVICE",
+    "RASK_ENDPOINT",
+    "BATCH_SIZE",
+    "LOG_LEVEL",
+    "ENABLE_DISK_FALLBACK",
+    "ENABLE_METRICS",
+    "ENABLE_COMPRESSION",
+    "FLUSH_INTERVAL_MS",
+    "BUFFER_CAPACITY",
+    "CONNECTION_TIMEOUT_SECS",
+    "MAX_CONNECTIONS",
+    "MAX_DISK_USAGE_MB",
+    "METRICS_PORT",
+    "DISK_FALLBACK_PATH",
+    "CONFIG_FILE",
+    "PROTOCOL",
+    "OTLP_ENDPOINT",
+    "HOSTNAME",
+    "NETWORK_MODE",
+    "RASK_GROUP",
+    "COMPOSE_SERVICE",
+];
 
-impl EnvGuard {
-    /// Creates an empty `EnvGuard`.
-    pub fn new() -> Self {
-        Self {
-            vars: HashMap::new(),
+fn build_isolated_env<'a>(
+    overrides: &[(&'a str, Option<&'a str>)],
+) -> Vec<(&'a str, Option<&'a str>)> {
+    let mut vars: Vec<(&'a str, Option<&'a str>)> =
+        TRACKED_ENV_VARS.iter().map(|&k| (k, None)).collect();
+    for &(k, v) in overrides {
+        if let Some(slot) = vars.iter_mut().find(|(existing, _)| *existing == k) {
+            slot.1 = v;
+        } else {
+            vars.push((k, v));
         }
     }
+    vars
+}
 
-    /// Sets an environment variable in this isolated map.
-    pub fn set_var<K: Into<String>, V: AsRef<Path>>(&mut self, key: K, val: V) {
-        self.vars
-            .insert(key.into(), val.as_ref().to_string_lossy().into_owned());
-    }
+/// Runs `f` with every tracked environment variable cleared unless explicitly
+/// specified in `overrides`, restoring the original process environment on exit.
+pub fn with_isolated_env<F, R>(overrides: &[(&str, Option<&str>)], f: F) -> R
+where
+    F: FnOnce() -> R,
+{
+    temp_env::with_vars(build_isolated_env(overrides), f)
+}
 
-    /// Removes an environment variable from this isolated map.
-    pub fn remove_var(&mut self, key: &str) {
-        self.vars.remove(key);
-    }
-
-    /// Looks up a variable in this isolated map.
-    pub fn get(&self, key: &str) -> Option<&str> {
-        self.vars.get(key).map(String::as_str)
-    }
-
-    /// Returns a lookup closure suitable for `*_with` configuration entry points.
-    pub fn lookup(&self) -> impl Fn(&str) -> Option<String> + '_ {
-        move |k| self.vars.get(k).cloned()
-    }
+/// Async variant of [`with_isolated_env`] for `#[tokio::test]` bodies.
+pub async fn async_with_isolated_env<Fut>(
+    overrides: &[(&str, Option<&str>)],
+    fut: Fut,
+) -> Fut::Output
+where
+    Fut: std::future::Future,
+{
+    temp_env::async_with_vars(build_isolated_env(overrides), fut).await
 }
 
 /// Creates a temporary bearer token file inside a new, isolated `TempDir`.
@@ -45,6 +70,11 @@ impl EnvGuard {
 /// so that the directory and file remain valid until the `App` or `Config`
 /// constructor has finished reading it. On drop, `tempfile` removes the
 /// isolated folder without deleting any user files.
+///
+/// # Errors
+///
+/// Returns an [`std::io::Error`] if creating the temporary directory or
+/// writing the token file fails.
 pub fn create_token_in_temp_dir(token_content: &str) -> Result<(PathBuf, TempDir), std::io::Error> {
     let dir = TempDir::new()?;
     let path = dir.path().join("ingest_token");

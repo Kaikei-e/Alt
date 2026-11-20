@@ -20,6 +20,10 @@ pub struct RedactionPatterns {
 
 /// Compile every secret-redaction regex once at startup. Any pattern that
 /// fails to compile is propagated as an error rather than skipped.
+///
+/// # Errors
+///
+/// Returns [`regex::Error`] if any built-in redaction pattern fails to compile.
 pub fn compile_patterns() -> Result<RedactionPatterns, regex::Error> {
     Ok(RedactionPatterns {
         query_param: Regex::new(r#"([?&;])([A-Za-z0-9_.\-]+)=([^&\s"'#]*)"#)?,

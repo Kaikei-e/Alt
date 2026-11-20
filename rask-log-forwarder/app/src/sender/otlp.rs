@@ -1,6 +1,6 @@
 //! OTLP (OpenTelemetry Protocol) serialization for log batches.
 //!
-//! This module converts EnrichedLogEntry batches to OTLP protobuf format
+//! This module converts `EnrichedLogEntry` batches to OTLP protobuf format
 //! for transmission to OTLP-compatible log receivers.
 
 use crate::buffer::Batch;
@@ -18,14 +18,15 @@ use std::collections::HashMap;
 /// Instrumentation scope name for rask-log-forwarder
 const SCOPE_NAME: &str = "rask-log-forwarder";
 
-/// OTLP serializer that converts EnrichedLogEntry batches to protobuf format.
+/// OTLP serializer that converts `EnrichedLogEntry` batches to protobuf format.
 #[derive(Clone)]
 pub struct OtlpSerializer {
     forwarder_version: String,
 }
 
 impl OtlpSerializer {
-    /// Creates a new OtlpSerializer.
+    /// Creates a new `OtlpSerializer`.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             forwarder_version: env!("CARGO_PKG_VERSION").to_string(),
@@ -35,6 +36,11 @@ impl OtlpSerializer {
     /// Serializes a batch of log entries to OTLP protobuf format.
     ///
     /// Returns the protobuf-encoded bytes ready for HTTP transmission.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SerializationError::EmptyBatch`] if `batch` has no entries, or
+    /// [`SerializationError::IoError`] if protobuf encoding fails.
     pub fn serialize_batch(&self, batch: &Batch) -> Result<Vec<u8>, SerializationError> {
         if batch.is_empty() {
             return Err(SerializationError::EmptyBatch);
@@ -74,7 +80,7 @@ impl OtlpSerializer {
         grouped
     }
 
-    /// Creates a ResourceLogs message for a group of entries from the same service.
+    /// Creates a `ResourceLogs` message for a group of entries from the same service.
     fn create_resource_logs(
         &self,
         service_name: &str,
@@ -126,13 +132,16 @@ impl OtlpSerializer {
         })
     }
 
-    /// Creates an OTLP LogRecord from an EnrichedLogEntry.
+    /// Creates an OTLP `LogRecord` from an `EnrichedLogEntry`.
     fn create_log_record(entry: &EnrichedLogEntry) -> LogRecord {
         // Parse timestamp to nanoseconds
         let time_unix_nano = Self::parse_timestamp_to_nanos(&entry.timestamp);
+        // SystemTime nanoseconds since UNIX_EPOCH stay within u64 until the year 2554.
         let observed_time_unix_nano = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .map_or(time_unix_nano, |d| d.as_nanos() as u64);
+            .map_or(time_unix_nano, |d| {
+                u64::try_from(d.as_nanos()).unwrap_or(u64::MAX)
+            });
 
         // Map log level to severity number
         let (severity_number, severity_text) = Self::map_log_level(entry.level.as_ref());
@@ -166,7 +175,7 @@ impl OtlpSerializer {
         LogRecord {
             time_unix_nano,
             observed_time_unix_nano,
-            severity_number: severity_number as i32,
+            severity_number: i32::from(severity_number),
             severity_text,
             body,
             attributes,
@@ -178,7 +187,7 @@ impl OtlpSerializer {
         }
     }
 
-    /// Creates log attributes from an EnrichedLogEntry.
+    /// Creates log attributes from an `EnrichedLogEntry`.
     fn create_log_attributes(entry: &EnrichedLogEntry) -> Vec<KeyValue> {
         let mut attrs = vec![
             Self::create_string_kv("log.type", &entry.log_type),
@@ -193,12 +202,17 @@ impl OtlpSerializer {
             attrs.push(Self::create_string_kv("http.target", path));
         }
         if let Some(status_code) = entry.status_code {
-            attrs.push(Self::create_int_kv("http.status_code", status_code as i64));
+            attrs.push(Self::create_int_kv(
+                "http.status_code",
+                i64::from(status_code),
+            ));
         }
         if let Some(response_size) = entry.response_size {
+            // HTTP response sizes in bytes cannot exceed i64::MAX (~8 EiB); saturate instead of wrapping negative.
+            let size_i64 = i64::try_from(response_size).unwrap_or(i64::MAX);
             attrs.push(Self::create_int_kv(
                 "http.response_content_length",
-                response_size as i64,
+                size_i64,
             ));
         }
         if let Some(ref ip) = entry.ip_address {
@@ -211,7 +225,7 @@ impl OtlpSerializer {
         attrs
     }
 
-    /// Creates a string-valued KeyValue.
+    /// Creates a string-valued `KeyValue`.
     fn create_string_kv(key: &str, value: &str) -> KeyValue {
         KeyValue {
             key: key.to_string(),
@@ -222,7 +236,7 @@ impl OtlpSerializer {
         }
     }
 
-    /// Creates an integer-valued KeyValue.
+    /// Creates an integer-valued `KeyValue`.
     fn create_int_kv(key: &str, value: i64) -> KeyValue {
         KeyValue {
             key: key.to_string(),
@@ -233,9 +247,9 @@ impl OtlpSerializer {
         }
     }
 
-    /// Maps LogLevel to OTLP severity number and text.
+    /// Maps `LogLevel` to OTLP severity number and text.
     ///
-    /// OTel severity numbers:
+    /// `OTel` severity numbers:
     /// - 1-4: TRACE
     /// - 5-8: DEBUG
     /// - 9-12: INFO
@@ -255,15 +269,25 @@ impl OtlpSerializer {
 
     /// Parses an RFC3339 timestamp string to nanoseconds since Unix epoch.
     fn parse_timestamp_to_nanos(timestamp: &str) -> u64 {
+        // Post-1970 log timestamps are non-negative; pre-epoch timestamps clamp to 0 (Unix epoch).
         chrono::DateTime::parse_from_rfc3339(timestamp).map_or_else(
             |_| {
                 // Fallback: try parsing without timezone
-                chrono::NaiveDateTime::parse_from_str(timestamp, "%Y-%m-%dT%H:%M:%S%.f")
-                    .map_or(0, |dt| {
-                        dt.and_utc().timestamp_nanos_opt().unwrap_or(0) as u64
-                    })
+                chrono::NaiveDateTime::parse_from_str(timestamp, "%Y-%m-%dT%H:%M:%S%.f").map_or(
+                    0,
+                    |dt| {
+                        dt.and_utc()
+                            .timestamp_nanos_opt()
+                            .and_then(|n| u64::try_from(n).ok())
+                            .unwrap_or(0)
+                    },
+                )
             },
-            |dt| dt.timestamp_nanos_opt().unwrap_or(0) as u64,
+            |dt| {
+                dt.timestamp_nanos_opt()
+                    .and_then(|n| u64::try_from(n).ok())
+                    .unwrap_or(0)
+            },
         )
     }
 }

@@ -14,12 +14,14 @@ impl Default for MeilisearchParser {
 }
 
 impl MeilisearchParser {
+    #[must_use]
     pub fn new() -> Self {
         Self
     }
 
     /// Strip ANSI escape codes from log messages.
     /// Handles sequences like: \x1b[2m, \x1b[0m, \x1b[32m, etc.
+    #[must_use]
     pub fn strip_ansi(input: &str) -> String {
         let mut result = String::with_capacity(input.len());
         let mut chars = input.chars().peekable();

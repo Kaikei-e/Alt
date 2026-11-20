@@ -61,6 +61,7 @@ pub struct HealthMonitor {
 }
 
 impl HealthMonitor {
+    #[must_use]
     pub fn new(config: HealthConfig) -> Self {
         Self {
             config,

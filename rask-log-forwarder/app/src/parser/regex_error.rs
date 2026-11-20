@@ -23,6 +23,7 @@ pub enum RegexError {
 
 impl RegexError {
     /// Runtime fallback strategy for regex failures
+    #[must_use]
     pub fn fallback_strategy(&self) -> FallbackStrategy {
         match self {
             RegexError::CompilationFailed { .. } => FallbackStrategy::UseSimpleParser,

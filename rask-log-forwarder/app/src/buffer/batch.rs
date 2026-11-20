@@ -58,6 +58,7 @@ impl Batch {
         }
     }
 
+    #[must_use]
     pub fn with_id(
         id: String,
         entries: Vec<EnrichedLogEntry>,
@@ -73,34 +74,42 @@ impl Batch {
         }
     }
 
+    #[must_use]
     pub fn id(&self) -> &str {
         &self.id
     }
 
+    #[must_use]
     pub fn size(&self) -> usize {
         self.entries.len()
     }
 
+    #[must_use]
     pub fn entries(&self) -> &[EnrichedLogEntry] {
         &self.entries
     }
 
+    #[must_use]
     pub fn into_entries(self) -> Vec<EnrichedLogEntry> {
         self.entries.to_vec()
     }
 
+    #[must_use]
     pub fn batch_type(&self) -> BatchType {
         self.kind
     }
 
+    #[must_use]
     pub fn created_at(&self) -> Instant {
         self.created_at
     }
 
+    #[must_use]
     pub fn estimated_memory_size(&self) -> usize {
         self.estimated_size
     }
 
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
@@ -130,6 +139,7 @@ struct BatchFormerInner {
 }
 
 impl BatchFormer {
+    #[must_use]
     pub fn new(config: BatchConfig) -> Self {
         let inner = BatchFormerInner {
             pending_entries: VecDeque::new(),
@@ -146,6 +156,11 @@ impl BatchFormer {
         }
     }
 
+    /// Appends `entry` to the pending batch, flushing when size or memory thresholds are met.
+    ///
+    /// # Errors
+    ///
+    /// Returns `BufferError::ConcurrencyError` if acquiring the internal write lock times out.
     pub async fn add_entry(
         &self,
         entry: EnrichedLogEntry,
