@@ -7,7 +7,6 @@ import (
 	"net"
 	"regexp"
 	"strings"
-	"time"
 )
 
 // DomainValidator handles security validation for auto-learned domains
@@ -254,9 +253,7 @@ func (dv *DomainValidator) isPrivateNetwork(domain string) bool {
 	allRanges := append(privateRanges, specialRanges...)
 
 	// DNS解決してIPチェック（簡易実装）
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	ipAddrs, err := net.DefaultResolver.LookupIPAddr(ctx, domain)
+	ipAddrs, err := net.DefaultResolver.LookupIPAddr(context.Background(), domain)
 	if err != nil {
 		// DNS解決失敗は警告だが、ブロックはしない（一時的な問題の可能性）
 		dv.logger.Printf("[DomainValidator] Warning: DNS lookup failed for %s: %v", domain, err)
