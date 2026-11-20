@@ -4,7 +4,6 @@ import (
 	"context"
 	"log/slog"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -118,6 +117,6 @@ func TestOldestPendingAge_ReturnsZeroOnEmptyBacklog(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, time.Duration(0), age)
 	require.NoError(t, mock.ExpectationsWereMet())
-	assert.True(t, strings.Contains(oldestPendingNotificationAgeQuery, "COALESCE"),
+	assert.Contains(t, oldestPendingNotificationAgeQuery, "COALESCE",
 		"an empty backlog must scan as 0 rather than NULL")
 }

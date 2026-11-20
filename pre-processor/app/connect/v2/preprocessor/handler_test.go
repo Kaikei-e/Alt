@@ -2,7 +2,6 @@ package preprocessor_test
 
 import (
 	"context"
-	"io"
 	"log/slog"
 	"testing"
 
@@ -18,7 +17,7 @@ import (
 )
 
 func TestHandler_QueueSummarize_ValidationAndOriginMapping(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	const canonical = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
 
 	t.Run("canonicalizes upper-case UUID and maps user origin", func(t *testing.T) {

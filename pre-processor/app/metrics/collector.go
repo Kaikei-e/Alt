@@ -514,7 +514,7 @@ func (c *Collector) Start(ctx context.Context, errCh chan<- error) error {
 		IdleTimeout:       c.idleTimeout,
 	}
 
-	listener, err := net.Listen("tcp", addr)
+	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", addr)
 	if err != nil {
 		return fmt.Errorf("metrics listener on %s: %w", addr, err)
 	}

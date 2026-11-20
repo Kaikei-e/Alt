@@ -273,8 +273,8 @@ func TestSummarizeQueueWorker_ProcessQueue_ServiceOverloaded(t *testing.T) {
 		err := worker.ProcessQueue(ctx, noRefill)
 
 		// Should return ErrServiceOverloaded
-		assert.Error(t, err)
-		assert.True(t, errors.Is(err, domain.ErrServiceOverloaded),
+		require.Error(t, err)
+		require.ErrorIs(t, err, domain.ErrServiceOverloaded,
 			"should return ErrServiceOverloaded, got: %v", err)
 
 		// Only the first job should be attempted (then backoff kicks in)
@@ -306,7 +306,7 @@ func TestSummarizeQueueWorker_ProcessQueue_ServiceOverloaded(t *testing.T) {
 		)
 
 		err := worker.ProcessQueue(ctx, noRefill)
-		assert.ErrorIs(t, err, domain.ErrServiceOverloaded)
+		require.ErrorIs(t, err, domain.ErrServiceOverloaded)
 		assert.Equal(t, 1, apiRepo.summarizeCalls)
 
 		if assert.Len(t, jobRepo.updateCalls, 3, "first job fails and the 2 unprocessed jobs must be released back to pending") {
@@ -346,17 +346,17 @@ func TestSummarizeQueueWorker_ProcessQueue_ContentTooShort(t *testing.T) {
 
 		err := worker.ProcessQueue(ctx, noRefill)
 
-		assert.NoError(t, err, "should not return error for short content skip")
+		require.NoError(t, err, "should not return error for short content skip")
 		assert.Equal(t, 1, apiRepo.summarizeCalls, "should attempt summarization")
 
 		// Should have 1 UpdateJobStatus call: completed only (running is handled by DequeueJobs)
-		assert.Equal(t, 1, len(jobRepo.updateCalls), "should have completed status update only")
+		assert.Len(t, jobRepo.updateCalls, 1, "should have completed status update only")
 
 		// The call should be completed with skip reason
 		completedCall := jobRepo.updateCalls[0]
 		assert.Equal(t, domain.SummarizeJobStatusCompleted, completedCall.status,
 			"should mark as completed, not dead_letter")
-		assert.Equal(t, "", completedCall.summary, "summary should be empty for skipped jobs")
+		assert.Empty(t, completedCall.summary, "summary should be empty for skipped jobs")
 		assert.Contains(t, completedCall.errorMsg, "skipped: content too short",
 			"should include skip reason")
 	})
@@ -385,7 +385,7 @@ func TestSummarizeQueueWorker_ProcessQueue_ContentTooShort(t *testing.T) {
 
 		err := worker.ProcessQueue(ctx, noRefill)
 
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, 2, apiRepo.summarizeCalls, "should attempt both jobs")
 		assert.Equal(t, 2, articleRepo.findCalls, "should fetch both articles")
 	})
@@ -460,7 +460,7 @@ func TestSummarizeQueueWorker_ProcessQueue_ContextCanceled(t *testing.T) {
 		)
 
 		err := worker.ProcessQueue(ctx, noRefill)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// No jobs should be processed because context was canceled after DequeueJobs,
 		// and all dequeued jobs must be released back to pending.
@@ -493,7 +493,7 @@ func TestSummarizeQueueWorker_ProcessQueue_ContextCanceled(t *testing.T) {
 		)
 
 		err := worker.ProcessQueue(ctx, noRefill)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, 0, articleRepo.findCalls)
 
 		if assert.Len(t, jobRepo.updateCalls, 2, "all dequeued jobs must be released back to pending") {
@@ -527,7 +527,7 @@ func TestSummarizeQueueWorker_ProcessQueue_ContextCanceled(t *testing.T) {
 		)
 
 		err := worker.ProcessQueue(ctx, noRefill)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		assert.Equal(t, 0, articleRepo.findCalls,
 			"no articles should be fetched when context is already canceled")
@@ -576,7 +576,7 @@ func TestSummarizeQueueWorker_RecoverStuckJobs(t *testing.T) {
 		worker := NewSummarizeQueueWorker(jobRepo, nil, nil, nil, testLogger())
 
 		err := worker.ProcessQueue(context.Background(), noRefill)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, 1, jobRepo.recoverCalls, "should call RecoverStuckJobs on first invocation")
 	})
 
@@ -604,7 +604,7 @@ func TestSummarizeQueueWorker_RecoverStuckJobs(t *testing.T) {
 		worker := NewSummarizeQueueWorker(jobRepo, nil, nil, nil, testLogger())
 
 		err := worker.ProcessQueue(context.Background(), noRefill)
-		assert.NoError(t, err, "ProcessQueue should succeed even if recovery fails")
+		require.NoError(t, err, "ProcessQueue should succeed even if recovery fails")
 		assert.Equal(t, 1, jobRepo.recoverCalls)
 	})
 }
@@ -615,7 +615,7 @@ func TestSummarizeQueueWorker_HasPendingJobs(t *testing.T) {
 		worker := NewSummarizeQueueWorker(jobRepo, nil, nil, nil, testLogger())
 
 		hasPending, err := worker.HasPendingJobs(context.Background())
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.False(t, hasPending)
 	})
 
@@ -626,7 +626,7 @@ func TestSummarizeQueueWorker_HasPendingJobs(t *testing.T) {
 		worker := NewSummarizeQueueWorker(jobRepo, nil, nil, nil, testLogger())
 
 		hasPending, err := worker.HasPendingJobs(context.Background())
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.True(t, hasPending)
 	})
 
@@ -635,7 +635,7 @@ func TestSummarizeQueueWorker_HasPendingJobs(t *testing.T) {
 		worker := NewSummarizeQueueWorker(jobRepo, nil, nil, nil, testLogger())
 
 		hasPending, err := worker.HasPendingJobs(context.Background())
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.False(t, hasPending)
 		assert.Contains(t, err.Error(), "db connection failed")
 	})
@@ -672,13 +672,13 @@ func TestSummarizeQueueWorker_ProcessQueue_SummarySaveFailure(t *testing.T) {
 		err := worker.ProcessQueue(ctx, noRefill)
 
 		// ProcessQueue does not propagate individual job errors (only ErrServiceOverloaded)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// summary save was attempted
 		assert.Equal(t, 1, summaryRepo.createCalls, "should attempt to save summary")
 
 		// Job should be marked as failed, NOT completed
-		assert.Equal(t, 1, len(jobRepo.updateCalls), "should have exactly one status update")
+		assert.Len(t, jobRepo.updateCalls, 1, "should have exactly one status update")
 		failedCall := jobRepo.updateCalls[0]
 		assert.Equal(t, domain.SummarizeJobStatusFailed, failedCall.status,
 			"job should be marked as failed when summary save fails, not completed")
@@ -703,11 +703,11 @@ func TestSummarizeQueueWorker_ProcessQueue_SummarySaveFailure(t *testing.T) {
 
 		err := worker.ProcessQueue(ctx, noRefill)
 
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, 1, summaryRepo.createCalls, "should save summary")
 
 		// Job should be marked as completed
-		assert.Equal(t, 1, len(jobRepo.updateCalls), "should have exactly one status update")
+		assert.Len(t, jobRepo.updateCalls, 1, "should have exactly one status update")
 		completedCall := jobRepo.updateCalls[0]
 		assert.Equal(t, domain.SummarizeJobStatusCompleted, completedCall.status,
 			"job should be marked as completed when summary saves successfully")
@@ -731,7 +731,7 @@ func TestSummarizeQueueWorker_ProcessQueue_AtomicDequeue(t *testing.T) {
 		worker := NewSummarizeQueueWorker(jobRepo, articleRepo, apiRepo, summaryRepo, testLogger())
 
 		err := worker.ProcessQueue(ctx, noRefill)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		// Verify no UpdateJobStatus call with "running" status — dequeue handles that atomically
 		for _, call := range jobRepo.updateCalls {
@@ -882,7 +882,7 @@ func TestEnqueueUnsummarizedBatch_EnqueuesViaGuard(t *testing.T) {
 
 		result, err := worker.EnqueueUnsummarizedBatch(ctx, 10)
 
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, 2, result.Found)
 		assert.Equal(t, 2, result.Enqueued)
 		assert.Equal(t, 0, result.Skipped)
@@ -913,7 +913,7 @@ func TestEnqueueUnsummarizedBatch_SkipsSummaryExists(t *testing.T) {
 
 		result, err := worker.EnqueueUnsummarizedBatch(ctx, 10)
 
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, 2, result.Found)
 		assert.Equal(t, 1, result.Enqueued)
 		assert.Equal(t, 1, result.Skipped)
@@ -942,7 +942,7 @@ func TestEnqueueUnsummarizedBatch_SkipsRecentSuccess(t *testing.T) {
 
 		result, err := worker.EnqueueUnsummarizedBatch(ctx, 10)
 
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, 2, result.Found)
 		assert.Equal(t, 1, result.Enqueued)
 		assert.Equal(t, 1, result.Skipped)
@@ -961,7 +961,7 @@ func TestEnqueueUnsummarizedBatch_NoArticles(t *testing.T) {
 
 		result, err := worker.EnqueueUnsummarizedBatch(ctx, 10)
 
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, 0, result.Found)
 		assert.Equal(t, 0, result.Enqueued)
 		assert.Equal(t, 0, result.Skipped)
@@ -990,7 +990,7 @@ func TestEnqueueUnsummarizedBatch_DuplicateHandled(t *testing.T) {
 
 		result, err := worker.EnqueueUnsummarizedBatch(ctx, 10)
 
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, 1, result.Found)
 		assert.Equal(t, 0, result.Enqueued) // duplicate, not counted as enqueued
 		assert.Equal(t, 1, result.Skipped)  // counted as skipped (already in queue)
@@ -1017,7 +1017,7 @@ func TestEnqueueUnsummarizedBatch_HasMore(t *testing.T) {
 
 		result, err := worker.EnqueueUnsummarizedBatch(ctx, 10)
 
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.True(t, result.HasMore)
 	})
 }
@@ -1271,7 +1271,7 @@ func TestEnqueueUnsummarizedBatch_LaterPageErrorKeepsCursor(t *testing.T) {
 
 		_, err := worker.EnqueueUnsummarizedBatch(ctx, 5)
 		require.Error(t, err)
-		assert.ErrorIs(t, err, pageErr)
+		require.ErrorIs(t, err, pageErr)
 
 		result2, err := worker.EnqueueUnsummarizedBatch(ctx, 5)
 		require.NoError(t, err)
@@ -1455,7 +1455,7 @@ func TestSummarizeQueueWorker_ProcessQueue_ContentTooShort_SavesPlaceholder(t *t
 
 		err := worker.ProcessQueue(ctx, noRefill)
 
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, 1, summaryRepo.createCalls, "should save placeholder summary")
 		assert.NotNil(t, summaryRepo.lastSummary, "should have saved a summary")
 		assert.Equal(t, "article-short", summaryRepo.lastSummary.ArticleID)
@@ -1482,10 +1482,10 @@ func TestSummarizeQueueWorker_ProcessQueue_ContentTooShort_SavesPlaceholder(t *t
 
 		err := worker.ProcessQueue(ctx, noRefill)
 
-		assert.NoError(t, err, "should not propagate placeholder save error")
+		require.NoError(t, err, "should not propagate placeholder save error")
 		assert.Equal(t, 1, summaryRepo.createCalls, "should attempt to save placeholder")
 		// Job should still be marked completed
-		assert.Equal(t, 1, len(jobRepo.updateCalls))
+		assert.Len(t, jobRepo.updateCalls, 1)
 		assert.Equal(t, domain.SummarizeJobStatusCompleted, jobRepo.updateCalls[0].status)
 	})
 }
@@ -1508,7 +1508,7 @@ func TestSummarizeQueueWorker_ProcessQueue_ContentTooLong_SavesPlaceholder(t *te
 
 		err := worker.ProcessQueue(ctx, noRefill)
 
-		assert.NoError(t, err, "should not return error for long content")
+		require.NoError(t, err, "should not return error for long content")
 		assert.Equal(t, 1, summaryRepo.createCalls, "should save placeholder summary")
 		assert.NotNil(t, summaryRepo.lastSummary)
 		assert.Equal(t, "article-long", summaryRepo.lastSummary.ArticleID)
@@ -1517,7 +1517,7 @@ func TestSummarizeQueueWorker_ProcessQueue_ContentTooLong_SavesPlaceholder(t *te
 		assert.False(t, summaryRepo.lastSummary.SkipVersioning, "too-long placeholder must preserve default versioning")
 
 		// Should be marked completed, not dead_letter
-		assert.Equal(t, 1, len(jobRepo.updateCalls))
+		assert.Len(t, jobRepo.updateCalls, 1)
 		assert.Equal(t, domain.SummarizeJobStatusCompleted, jobRepo.updateCalls[0].status,
 			"should mark as completed, not dead_letter")
 		assert.Contains(t, jobRepo.updateCalls[0].errorMsg, "content too long")
@@ -1541,7 +1541,7 @@ func TestSummarizeQueueWorker_ProcessQueue_ContentTooLong_SavesPlaceholder(t *te
 
 		err := worker.ProcessQueue(ctx, noRefill)
 
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, 2, apiRepo.summarizeCalls, "should attempt both jobs")
 		assert.Equal(t, 2, summaryRepo.createCalls, "should save summary for both (placeholder + real)")
 	})
@@ -1610,7 +1610,7 @@ func TestSummarizeQueueWorker_ProcessQueue_UpstreamBusy_TriggersBackoff(t *testi
 
 		err := worker.ProcessQueue(ctx, noRefill)
 
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.True(t, errors.Is(err, domain.ErrServiceOverloaded) || errors.Is(err, domain.ErrUpstreamBusy),
 			"upstream busy should trigger backoff, got: %v", err)
 		assert.Equal(t, 1, apiRepo.summarizeCalls,
@@ -1638,7 +1638,7 @@ func TestSummarizeQueueWorker_ProcessQueue_DeadLetterRechecksSummaryExists(t *te
 		_ = worker.ProcessQueue(ctx, noRefill)
 
 		assert.GreaterOrEqual(t, summaryRepo.existsCalls, 1, "should recheck summaryRepo.Exists before dead_letter")
-		assert.Equal(t, 1, len(jobRepo.updateCalls), "should update status exactly once")
+		assert.Len(t, jobRepo.updateCalls, 1, "should update status exactly once")
 		assert.Equal(t, domain.SummarizeJobStatusCompleted, jobRepo.updateCalls[0].status,
 			"should mark as Completed when upstream summary is already persisted")
 	})
@@ -1660,7 +1660,7 @@ func TestSummarizeQueueWorker_ProcessQueue_DeadLetterRechecksSummaryExists(t *te
 
 		_ = worker.ProcessQueue(ctx, noRefill)
 
-		assert.Equal(t, 1, len(jobRepo.updateCalls), "should update status exactly once")
+		assert.Len(t, jobRepo.updateCalls, 1, "should update status exactly once")
 		assert.Equal(t, domain.SummarizeJobStatusFailed, jobRepo.updateCalls[0].status,
 			"should mark as Failed (repository promotes retry-exhausted jobs to the 'failed' terminal status, not dead_letter) when no persisted summary")
 	})
@@ -1685,7 +1685,7 @@ func TestSummarizeQueueWorker_ProcessQueue_UsesConfiguredConcurrency(t *testing.
 
 		err := worker.ProcessQueue(context.Background(), noRefill)
 
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, int32(3), atomic.LoadInt32(&apiRepo.calls))
 		assert.Equal(t, int32(3), atomic.LoadInt32(&apiRepo.maxInFlight),
 			"expected worker to utilize configured concurrency")
@@ -1712,7 +1712,7 @@ func TestSummarizeQueueWorker_ProcessQueue_ContentNotProcessable(t *testing.T) {
 		_ = worker.ProcessQueue(ctx, noRefill)
 
 		assert.Equal(t, 1, apiRepo.summarizeCalls, "should attempt summarization")
-		assert.Equal(t, 1, len(jobRepo.updateCalls), "should update status exactly once")
+		assert.Len(t, jobRepo.updateCalls, 1, "should update status exactly once")
 		assert.Equal(t, domain.SummarizeJobStatusFailed, jobRepo.updateCalls[0].status,
 			"should update status using retry transition (Failed), NOT dead_letter")
 	})
@@ -1736,7 +1736,7 @@ func TestSummarizeQueueWorker_ProcessQueue_ContentNotProcessable(t *testing.T) {
 		_ = worker.ProcessQueue(ctx, noRefill)
 
 		assert.Equal(t, 1, apiRepo.summarizeCalls, "should attempt summarization")
-		assert.Equal(t, 1, len(jobRepo.updateCalls), "should update status exactly once")
+		assert.Len(t, jobRepo.updateCalls, 1, "should update status exactly once")
 		assert.Equal(t, domain.SummarizeJobStatusDeadLetter, jobRepo.updateCalls[0].status,
 			"should mark job as dead_letter when retries are exhausted")
 	})
@@ -1761,7 +1761,7 @@ func TestSummarizeQueueWorker_ProcessQueue_ContentNotProcessable(t *testing.T) {
 
 		assert.Equal(t, 1, apiRepo.summarizeCalls, "should attempt summarization")
 		assert.GreaterOrEqual(t, summaryRepo.existsCalls, 1, "should recheck summaryRepo.Exists before dead_letter")
-		assert.Equal(t, 1, len(jobRepo.updateCalls), "should update status exactly once")
+		assert.Len(t, jobRepo.updateCalls, 1, "should update status exactly once")
 		assert.Equal(t, domain.SummarizeJobStatusCompleted, jobRepo.updateCalls[0].status,
 			"should mark as Completed when upstream summary is already persisted")
 	})

@@ -10,6 +10,7 @@ import (
 	"pre-processor/domain"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // stubSyncArticleRepo mirrors the driver query behind FetchInoreaderArticles
@@ -84,9 +85,9 @@ func TestSyncArticles_DoesNotResyncAlreadySyncedArticles(t *testing.T) {
 		}
 		svc := NewArticleSyncService(articleRepo, testSyncOwnerUserID, testLoggerBackfill())
 
-		assert.NoError(t, svc.SyncArticles(context.Background()))
-		assert.NoError(t, svc.SyncArticles(context.Background()))
-		assert.NoError(t, svc.SyncArticles(context.Background()))
+		require.NoError(t, svc.SyncArticles(context.Background()))
+		require.NoError(t, svc.SyncArticles(context.Background()))
+		require.NoError(t, svc.SyncArticles(context.Background()))
 
 		assert.Equal(t, 2, articleRepo.upsertedCount(), "already-synced articles must not be upserted again")
 		assert.Len(t, articleRepo.sinceValues, 3)
@@ -112,7 +113,7 @@ func TestSyncArticles_PicksUpArticlesArrivingAfterTheWatermark(t *testing.T) {
 		}
 		svc := NewArticleSyncService(articleRepo, testSyncOwnerUserID, testLoggerBackfill())
 
-		assert.NoError(t, svc.SyncArticles(context.Background()))
+		require.NoError(t, svc.SyncArticles(context.Background()))
 
 		articleRepo.available = append(articleRepo.available, &domain.Article{
 			ID:        "inoreader-2",
@@ -123,7 +124,7 @@ func TestSyncArticles_PicksUpArticlesArrivingAfterTheWatermark(t *testing.T) {
 			CreatedAt: now.Add(-1 * time.Minute),
 		})
 
-		assert.NoError(t, svc.SyncArticles(context.Background()))
+		require.NoError(t, svc.SyncArticles(context.Background()))
 
 		assert.Equal(t, 2, articleRepo.upsertedCount())
 		assert.Len(t, articleRepo.upsertBatches, 2)
@@ -136,7 +137,7 @@ func TestSyncArticles_FirstRunLooksBack24Hours(t *testing.T) {
 		articleRepo := &stubSyncArticleRepo{}
 		svc := NewArticleSyncService(articleRepo, testSyncOwnerUserID, testLoggerBackfill())
 
-		assert.NoError(t, svc.SyncArticles(context.Background()))
+		require.NoError(t, svc.SyncArticles(context.Background()))
 
 		assert.Len(t, articleRepo.sinceValues, 1)
 		assert.WithinDuration(t, time.Now().Add(-24*time.Hour), articleRepo.sinceValues[0], time.Minute)
@@ -168,8 +169,8 @@ func TestSyncArticles_WatermarkPassesSkippedArticles(t *testing.T) {
 		}
 		svc := NewArticleSyncService(articleRepo, testSyncOwnerUserID, testLoggerBackfill())
 
-		assert.NoError(t, svc.SyncArticles(context.Background()))
-		assert.NoError(t, svc.SyncArticles(context.Background()))
+		require.NoError(t, svc.SyncArticles(context.Background()))
+		require.NoError(t, svc.SyncArticles(context.Background()))
 
 		assert.Len(t, articleRepo.sinceValues, 2)
 		assert.Equal(t, now.Add(-1*time.Hour), articleRepo.sinceValues[1], "the watermark must cover every scanned row, not only the upserted ones")
@@ -194,8 +195,8 @@ func TestSyncArticles_KeepsWatermarkWhenUpsertFails(t *testing.T) {
 		}
 		svc := NewArticleSyncService(articleRepo, testSyncOwnerUserID, testLoggerBackfill())
 
-		assert.Error(t, svc.SyncArticles(context.Background()))
-		assert.Error(t, svc.SyncArticles(context.Background()))
+		require.Error(t, svc.SyncArticles(context.Background()))
+		require.Error(t, svc.SyncArticles(context.Background()))
 
 		assert.Len(t, articleRepo.sinceValues, 2)
 		assert.True(t, articleRepo.sinceValues[1].Before(now.Add(-2*time.Hour)), "a failed batch must stay inside the next run's window")
@@ -220,7 +221,7 @@ func TestSyncArticles_StampsConfiguredOwnerUserID(t *testing.T) {
 
 	svc := NewArticleSyncService(articleRepo, configuredOwner, testLoggerBackfill())
 
-	assert.NoError(t, svc.SyncArticles(context.Background()))
+	require.NoError(t, svc.SyncArticles(context.Background()))
 	if assert.Len(t, articleRepo.upsertBatches, 1) && assert.Len(t, articleRepo.upsertBatches[0], 1) {
 		assert.Equal(t, configuredOwner, articleRepo.upsertBatches[0][0].UserID)
 	}

@@ -257,7 +257,7 @@ func TestExternalAPIRepository_CheckHealth(t *testing.T) {
 		setRepoTransport(repo, newErrorTransport(errors.New("dial error")))
 
 		err := repo.CheckHealth(context.Background(), testServiceURL)
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "health check request failed")
 	})
 }
@@ -278,7 +278,7 @@ func TestExternalAPIRepository_ContextHandling(t *testing.T) {
 		}
 
 		summary, err := repo.SummarizeArticle(ctx, article, "low")
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Nil(t, summary)
 	})
 
@@ -333,7 +333,7 @@ func TestExternalAPIRepository_EdgeCases(t *testing.T) {
 
 		summary, err := repo.SummarizeArticle(context.Background(), article, "low")
 		// Should handle gracefully (actual behavior depends on driver implementation)
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Nil(t, summary)
 	})
 
@@ -405,7 +405,7 @@ func TestExternalAPIRepository_TableDriven(t *testing.T) {
 				return repo, article
 			},
 			validate: func(t *testing.T, result interface{}, err error) {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Contains(t, err.Error(), "failed to summarize article")
 			},
 		},
@@ -542,7 +542,7 @@ func TestExternalAPIRepository_ErrorScenarios(t *testing.T) {
 		}, 100*time.Millisecond))
 
 		err := repo.CheckHealth(ctx, testServiceURL)
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "health check request failed")
 	})
 

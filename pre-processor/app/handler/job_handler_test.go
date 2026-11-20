@@ -128,7 +128,7 @@ func TestProcessSummarizationBatch_CursorReset(t *testing.T) {
 		}
 
 		err := h.processSummarizationBatch(ctx)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.True(t, mock.resetCalled, "should reset pagination when scan ends with processed items")
 	})
 
@@ -149,7 +149,7 @@ func TestProcessSummarizationBatch_CursorReset(t *testing.T) {
 		}
 
 		err := h.processSummarizationBatch(ctx)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.True(t, mock.resetCalled, "should reset pagination when scan ends even with zero processed")
 	})
 
@@ -170,7 +170,7 @@ func TestProcessSummarizationBatch_CursorReset(t *testing.T) {
 		}
 
 		err := h.processSummarizationBatch(ctx)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.False(t, mock.resetCalled, "should not reset pagination when there are more articles")
 	})
 }
@@ -193,7 +193,7 @@ func TestProcessQualityCheckBatch_CursorReset(t *testing.T) {
 		}
 
 		err := h.processQualityCheckBatch(ctx)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.True(t, mock.resetCalled, "should reset pagination when scan ends even with zero processed")
 	})
 
@@ -214,7 +214,7 @@ func TestProcessQualityCheckBatch_CursorReset(t *testing.T) {
 		}
 
 		err := h.processQualityCheckBatch(ctx)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.False(t, mock.resetCalled, "should not reset pagination when there are more articles")
 	})
 }
@@ -371,7 +371,7 @@ func TestProcessQualityCheckBatch_SkipsWhenSummarizationPending(t *testing.T) {
 		}
 
 		err := h.processQualityCheckBatch(ctx)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.False(t, qcMock.checkCalled, "CheckQuality should not have been called when summarization has pending jobs")
 	})
 
@@ -392,7 +392,7 @@ func TestProcessQualityCheckBatch_SkipsWhenSummarizationPending(t *testing.T) {
 		}
 
 		err := h.processQualityCheckBatch(ctx)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.False(t, qcMock.resetCalled, "should not reset when HasMore=true")
 	})
 
@@ -413,7 +413,7 @@ func TestProcessQualityCheckBatch_SkipsWhenSummarizationPending(t *testing.T) {
 		}
 
 		err := h.processQualityCheckBatch(ctx)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.True(t, qcMock.resetCalled, "should reset pagination since HasMore=false")
 	})
 
@@ -434,7 +434,7 @@ func TestProcessQualityCheckBatch_SkipsWhenSummarizationPending(t *testing.T) {
 		}
 
 		err := h.processQualityCheckBatch(ctx)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	})
 }
 
@@ -452,7 +452,7 @@ func TestProcessSummarizationBatch_DefersWhenQueueHasPendingJobs(t *testing.T) {
 		}
 
 		err := h.processSummarizationBatch(ctx)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, 0, articleRepo.findForSumCalls, "EnqueueUnsummarizedBatch should not be called when queue has pending jobs")
 	})
 
@@ -471,7 +471,7 @@ func TestProcessSummarizationBatch_DefersWhenQueueHasPendingJobs(t *testing.T) {
 		}
 
 		err := h.processSummarizationBatch(ctx)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, 1, articleRepo.findForSumCalls, "should call FindForSummarization via EnqueueUnsummarizedBatch")
 		assert.Equal(t, 1, jobRepo.createJobCalls, "should enqueue article via CreateJob")
 		assert.False(t, mock.summarizeCalled, "SummarizeArticles should NOT be called (enqueue path replaces direct LLM)")
@@ -496,7 +496,7 @@ func TestProcessSummarizationBatch_DefersWhenQueueHasPendingJobs(t *testing.T) {
 		err := h.processSummarizationBatch(ctx)
 		// The fail-open path runs the batch. EnqueueUnsummarizedBatch may return error from FindForSummarization
 		// which is acceptable. The key is that it does not panic and does not call SummarizeArticles.
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.False(t, mock.summarizeCalled, "SummarizeArticles should NOT be called (enqueue path)")
 	})
 
@@ -514,7 +514,7 @@ func TestProcessSummarizationBatch_DefersWhenQueueHasPendingJobs(t *testing.T) {
 		}
 
 		err := h.processSummarizationBatch(ctx)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, 1, articleRepo.findForSumCalls, "should call EnqueueUnsummarizedBatch during force sweep")
 		assert.Equal(t, 1, jobRepo.createJobCalls, "should enqueue article during force sweep")
 	})
@@ -538,7 +538,7 @@ func TestProcessSummarizationBatch_DefersWhenQueueHasPendingJobs(t *testing.T) {
 		}
 
 		err := h.processSummarizationBatch(ctx)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.True(t, mock.summarizeCalled, "SummarizeArticles should be called when queueWorker is nil (fallback)")
 	})
 }

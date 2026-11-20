@@ -51,7 +51,8 @@ func NewClient(baseURL string, tokenPath string, enabled bool) (*Client, error) 
 		return &Client{enabled: false}, nil
 	}
 
-	content, err := os.ReadFile(tokenPath) //nolint:gosec
+	// #nosec G304 -- tokenPath comes from operator-configured MQHUB_AUTH_TOKEN_FILE
+	content, err := os.ReadFile(tokenPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read MQHUB_AUTH_TOKEN_FILE: %w", err)
 	}
@@ -126,6 +127,9 @@ func (c *Client) PublishArticleSummarized(ctx context.Context, payload ArticleSu
 	if err != nil {
 		return "", err
 	}
+	if resp == nil || resp.Msg == nil {
+		return "", fmt.Errorf("mqhub publish: empty response")
+	}
 
-	return resp.Msg.MessageId, nil
+	return resp.Msg.GetMessageId(), nil
 }

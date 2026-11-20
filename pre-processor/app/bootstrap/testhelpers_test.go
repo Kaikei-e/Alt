@@ -1,7 +1,6 @@
 package bootstrap
 
 import (
-	"io"
 	"log/slog"
 	"testing"
 
@@ -14,7 +13,7 @@ import (
 // now transport-layer only.
 func newTestHTTPServer(t *testing.T, _ string) *Dependencies {
 	t.Helper()
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	return &Dependencies{
 		SummarizeHandler: handler.NewSummarizeHandler(nil, nil, nil, nil, logger),
 		Logger:           logger,

@@ -73,28 +73,34 @@ func (r *summaryRepository) FindArticlesWithSummaries(ctx context.Context, curso
 	if err != nil {
 		return nil, nil, fmt.Errorf("FindArticlesWithSummaries: %w", err)
 	}
+	if resp == nil || resp.Msg == nil {
+		return nil, nil, fmt.Errorf("FindArticlesWithSummaries: empty response")
+	}
 
-	results := make([]*domain.ArticleWithSummary, len(resp.Msg.Articles))
-	for i, a := range resp.Msg.Articles {
-		results[i] = &domain.ArticleWithSummary{
-			ArticleID:       a.ArticleId,
-			ArticleContent:  a.ArticleContent,
-			ArticleURL:      a.ArticleUrl,
-			SummaryID:       a.SummaryId,
-			SummaryJapanese: a.SummaryJapanese,
+	results := make([]*domain.ArticleWithSummary, len(resp.Msg.GetArticles()))
+	for i, a := range resp.Msg.GetArticles() {
+		if a == nil {
+			return nil, nil, fmt.Errorf("FindArticlesWithSummaries: nil article at index %d", i)
 		}
-		if a.CreatedAt != nil {
-			results[i].CreatedAt = a.CreatedAt.AsTime()
+		results[i] = &domain.ArticleWithSummary{
+			ArticleID:       a.GetArticleId(),
+			ArticleContent:  a.GetArticleContent(),
+			ArticleURL:      a.GetArticleUrl(),
+			SummaryID:       a.GetSummaryId(),
+			SummaryJapanese: a.GetSummaryJapanese(),
+		}
+		if a.GetCreatedAt() != nil {
+			results[i].CreatedAt = a.GetCreatedAt().AsTime()
 		}
 	}
 
 	var newCursor *domain.Cursor
-	if resp.Msg.NextId != "" {
+	if resp.Msg.GetNextId() != "" {
 		newCursor = &domain.Cursor{
-			LastID: resp.Msg.NextId,
+			LastID: resp.Msg.GetNextId(),
 		}
-		if resp.Msg.NextCreatedAt != nil {
-			t := resp.Msg.NextCreatedAt.AsTime()
+		if resp.Msg.GetNextCreatedAt() != nil {
+			t := resp.Msg.GetNextCreatedAt().AsTime()
 			newCursor.LastCreatedAt = &t
 		}
 	}
@@ -141,5 +147,5 @@ func (r *summaryRepository) Exists(ctx context.Context, articleID string) (bool,
 		return false, fmt.Errorf("CheckArticleSummaryExists: %w", err)
 	}
 
-	return resp.Msg.Exists, nil
+	return resp.Msg.GetExists(), nil
 }

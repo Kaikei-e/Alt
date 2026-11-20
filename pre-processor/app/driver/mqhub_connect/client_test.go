@@ -12,7 +12,7 @@ import (
 
 func TestNewClient_Disabled(t *testing.T) {
 	client, err := NewClient("http://localhost:9500", "", false)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotNil(t, client)
 	assert.False(t, client.IsEnabled())
 }
@@ -25,7 +25,7 @@ func TestNewClient_Enabled(t *testing.T) {
 	defer func() { _ = os.Remove(f.Name()) }()
 
 	client, err := NewClient("http://localhost:9500", f.Name(), true)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotNil(t, client)
 	assert.True(t, client.IsEnabled())
 }
@@ -38,7 +38,7 @@ func TestNewClient_EmptyToken(t *testing.T) {
 	defer func() { _ = os.Remove(f.Name()) }()
 
 	client, err := NewClient("http://localhost:9500", f.Name(), true)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, client)
 	assert.Contains(t, err.Error(), "token is empty")
 }
@@ -47,7 +47,7 @@ func TestPublishArticleSummarized_Disabled(t *testing.T) {
 	client, _ := NewClient("http://localhost:9500", "", false)
 	payload := ArticleSummarizedPayload{}
 	messageID, err := client.PublishArticleSummarized(context.Background(), payload)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Empty(t, messageID)
 }
 

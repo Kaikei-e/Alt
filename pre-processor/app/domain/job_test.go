@@ -9,15 +9,15 @@ import (
 
 func TestSummarizeJobStatusConstants(t *testing.T) {
 	t.Run("should have dead_letter status constant", func(t *testing.T) {
-		assert.Equal(t, SummarizeJobStatus("dead_letter"), SummarizeJobStatusDeadLetter)
+		assert.Equal(t, SummarizeJobStatusDeadLetter, SummarizeJobStatus("dead_letter"))
 	})
 
 	t.Run("should have all expected status constants", func(t *testing.T) {
-		assert.Equal(t, SummarizeJobStatus("pending"), SummarizeJobStatusPending)
-		assert.Equal(t, SummarizeJobStatus("running"), SummarizeJobStatusRunning)
-		assert.Equal(t, SummarizeJobStatus("completed"), SummarizeJobStatusCompleted)
-		assert.Equal(t, SummarizeJobStatus("failed"), SummarizeJobStatusFailed)
-		assert.Equal(t, SummarizeJobStatus("dead_letter"), SummarizeJobStatusDeadLetter)
+		assert.Equal(t, SummarizeJobStatusPending, SummarizeJobStatus("pending"))
+		assert.Equal(t, SummarizeJobStatusRunning, SummarizeJobStatus("running"))
+		assert.Equal(t, SummarizeJobStatusCompleted, SummarizeJobStatus("completed"))
+		assert.Equal(t, SummarizeJobStatusFailed, SummarizeJobStatus("failed"))
+		assert.Equal(t, SummarizeJobStatusDeadLetter, SummarizeJobStatus("dead_letter"))
 	})
 }
 
@@ -92,13 +92,13 @@ func TestSummarizeOrigin(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, SummarizeOriginUser, origin)
 		assert.True(t, origin.IsValid())
-		assert.NoError(t, origin.Validate())
+		require.NoError(t, origin.Validate())
 
 		origin, err = ParseSummarizeOrigin("system")
 		require.NoError(t, err)
 		assert.Equal(t, SummarizeOriginSystem, origin)
 		assert.True(t, origin.IsValid())
-		assert.NoError(t, origin.Validate())
+		require.NoError(t, origin.Validate())
 	})
 
 	t.Run("rejects empty and unknown values", func(t *testing.T) {

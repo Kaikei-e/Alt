@@ -160,11 +160,11 @@ func TestMetricsCollector_RecordMetrics(t *testing.T) {
 
 		assert.Equal(t, int64(1), metrics1.TotalRequests)
 		assert.Equal(t, int64(1), metrics1.SuccessCount)
-		assert.Equal(t, float64(1.0), metrics1.SuccessRate)
+		assert.InDelta(t, float64(1.0), metrics1.SuccessRate, 1e-9)
 
 		assert.Equal(t, int64(1), metrics2.TotalRequests)
 		assert.Equal(t, int64(1), metrics2.FailureCount)
-		assert.Equal(t, float64(0.0), metrics2.SuccessRate)
+		assert.InDelta(t, float64(0.0), metrics2.SuccessRate, 1e-9)
 	})
 
 	t.Run("should handle disabled metrics", func(t *testing.T) {
@@ -209,7 +209,7 @@ func TestMetricsCollector_AggregateMetrics(t *testing.T) {
 		assert.Equal(t, int64(4), aggregate.TotalRequests)
 		assert.Equal(t, int64(3), aggregate.SuccessCount)
 		assert.Equal(t, int64(1), aggregate.FailureCount)
-		assert.Equal(t, float64(0.75), aggregate.SuccessRate)
+		assert.InDelta(t, float64(0.75), aggregate.SuccessRate, 1e-9)
 		assert.Equal(t, 250*time.Millisecond, aggregate.AvgResponseTime)
 		assert.Equal(t, 2, aggregate.ActiveDomains)
 	})
@@ -231,7 +231,7 @@ func TestMetricsCollector_AggregateMetrics(t *testing.T) {
 		assert.Equal(t, int64(0), aggregate.TotalRequests)
 		assert.Equal(t, int64(0), aggregate.SuccessCount)
 		assert.Equal(t, int64(0), aggregate.FailureCount)
-		assert.Equal(t, float64(0.0), aggregate.SuccessRate)
+		assert.InDelta(t, float64(0.0), aggregate.SuccessRate, 1e-9)
 		assert.Equal(t, time.Duration(0), aggregate.AvgResponseTime)
 		assert.Equal(t, 0, aggregate.ActiveDomains)
 	})
@@ -271,7 +271,7 @@ func TestMetricsCollector_ConcurrentAccess(t *testing.T) {
 		assert.Equal(t, int64(concurrency), metrics.TotalRequests)
 		assert.Equal(t, int64(50), metrics.SuccessCount)
 		assert.Equal(t, int64(50), metrics.FailureCount)
-		assert.Equal(t, float64(0.5), metrics.SuccessRate)
+		assert.InDelta(t, float64(0.5), metrics.SuccessRate, 1e-9)
 	})
 }
 
@@ -557,7 +557,9 @@ func TestMetricsCollector_ServesRegisteredExportersOnItsOwnListener(t *testing.T
 	addr := collector.Addr()
 	require.NotEmpty(t, addr)
 
-	resp, err := http.Get(localURL(t, addr, "/metrics/prometheus")) // #nosec G107 -- loopback address of the listener under test
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, localURL(t, addr, "/metrics/prometheus"), nil) // #nosec G107 -- loopback address of the listener under test
+	require.NoError(t, err)
+	resp, err := http.DefaultClient.Do(req) // #nosec G704 -- loopback address of the listener under test
 	require.NoError(t, err)
 	defer func() { require.NoError(t, resp.Body.Close()) }()
 
@@ -584,7 +586,9 @@ func TestMetricsCollector_PrometheusExporterErrorReturns500(t *testing.T) {
 	require.NoError(t, collector.Start(context.Background(), make(chan error, 1)))
 	t.Cleanup(func() { require.NoError(t, collector.Stop(context.Background())) })
 
-	resp, err := http.Get(localURL(t, collector.Addr(), "/metrics/prometheus")) // #nosec G107 -- loopback address of the listener under test
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, localURL(t, collector.Addr(), "/metrics/prometheus"), nil) // #nosec G107 -- loopback address of the listener under test
+	require.NoError(t, err)
+	resp, err := http.DefaultClient.Do(req) // #nosec G704 -- loopback address of the listener under test
 	require.NoError(t, err)
 	defer func() { require.NoError(t, resp.Body.Close()) }()
 	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
@@ -598,7 +602,7 @@ func TestMetricsCollector_StartFailsWhenThePortIsAlreadyBound(t *testing.T) {
 	// Loopback rather than ":0": the test only needs a port that is already
 	// spoken for, and binding every interface on a CI runner is both wider than
 	// necessary and what gosec G102 objects to.
-	taken, err := net.Listen("tcp", "127.0.0.1:0")
+	taken, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	defer func() { require.NoError(t, taken.Close()) }()
 

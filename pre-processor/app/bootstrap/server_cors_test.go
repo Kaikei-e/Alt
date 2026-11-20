@@ -15,7 +15,7 @@ func TestHTTPServer_NoCORSForBrowserOrigins(t *testing.T) {
 	deps := newTestHTTPServer(t, "unit-test-secret")
 	srv := NewHTTPServer(deps, false, "")
 
-	req := httptest.NewRequest(http.MethodOptions, "/api/v1/summarize", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodOptions, "/api/v1/summarize", nil)
 	req.Header.Set("Origin", "https://evil.test")
 	req.Header.Set("Access-Control-Request-Method", "POST")
 	res := httptest.NewRecorder()
@@ -30,7 +30,7 @@ func TestHTTPServer_NoCORSOnSummarizeResponse(t *testing.T) {
 	deps := newTestHTTPServer(t, "unit-test-secret")
 	srv := NewHTTPServer(deps, false, "")
 
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/summarize", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/summarize", nil)
 	req.Header.Set("Origin", "https://evil.test")
 	res := httptest.NewRecorder()
 

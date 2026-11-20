@@ -11,6 +11,7 @@ import (
 	"pre-processor/domain"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const testSyncOwnerUserID = "11111111-2222-4333-8444-555555555555"
@@ -72,7 +73,7 @@ func TestBackfillEmptyFeeds_Success(t *testing.T) {
 
 		err := svc.BackfillEmptyFeeds(context.Background())
 
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Len(t, articleRepo.upsertedArticles, 2)
 		assert.Equal(t, testSyncOwnerUserID, articleRepo.upsertedArticles[0].UserID)
 		assert.Equal(t, testSyncOwnerUserID, articleRepo.upsertedArticles[1].UserID)
@@ -89,7 +90,7 @@ func TestBackfillEmptyFeeds_NoArticles(t *testing.T) {
 
 		err := svc.BackfillEmptyFeeds(context.Background())
 
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Nil(t, articleRepo.upsertedArticles)
 	})
 }
@@ -119,7 +120,7 @@ func TestBackfillEmptyFeeds_SkipsEmptyContent(t *testing.T) {
 
 		err := svc.BackfillEmptyFeeds(context.Background())
 
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Len(t, articleRepo.upsertedArticles, 1)
 		assert.Equal(t, "https://example.com/article1", articleRepo.upsertedArticles[0].URL)
 	})
@@ -143,7 +144,7 @@ func TestBackfillEmptyFeeds_SkipsEmptyTitle(t *testing.T) {
 
 		err := svc.BackfillEmptyFeeds(context.Background())
 
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Nil(t, articleRepo.upsertedArticles)
 	})
 }
@@ -158,7 +159,7 @@ func TestBackfillEmptyFeeds_FetchError(t *testing.T) {
 
 		err := svc.BackfillEmptyFeeds(context.Background())
 
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to fetch inoreader articles for empty feeds")
 	})
 }
@@ -181,7 +182,7 @@ func TestBackfillEmptyFeeds_PreservesFeedID(t *testing.T) {
 
 		err := svc.BackfillEmptyFeeds(context.Background())
 
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Len(t, articleRepo.upsertedArticles, 1)
 		assert.Equal(t, "pre-resolved-feed-uuid", articleRepo.upsertedArticles[0].FeedID)
 	})
@@ -253,8 +254,8 @@ func TestBackfillEmptyFeeds_KeepsCursorWhenUpsertFails(t *testing.T) {
 
 		svc := NewArticleSyncService(articleRepo, testSyncOwnerUserID, testLoggerBackfill())
 
-		assert.Error(t, svc.BackfillEmptyFeeds(context.Background()))
-		assert.Error(t, svc.BackfillEmptyFeeds(context.Background()))
+		require.Error(t, svc.BackfillEmptyFeeds(context.Background()))
+		require.Error(t, svc.BackfillEmptyFeeds(context.Background()))
 
 		assert.Len(t, articleRepo.fetchCursors, 2)
 		assert.True(t, articleRepo.fetchCursors[1].IsZero())

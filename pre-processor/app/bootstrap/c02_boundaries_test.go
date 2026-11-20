@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -23,14 +22,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func makePreProcessorCertRequest(method, path, cn string, body []byte) *http.Request {
+func makePreProcessorCertRequest(t *testing.T, method, path, cn string, body []byte) *http.Request {
+	t.Helper()
 	var bodyReader *bytes.Reader
 	if body != nil {
 		bodyReader = bytes.NewReader(body)
 	} else {
 		bodyReader = bytes.NewReader([]byte{})
 	}
-	req := httptest.NewRequest(method, path, bodyReader)
+	req := httptest.NewRequestWithContext(t.Context(), method, path, bodyReader)
 	if cn != "" {
 		req.TLS = &tls.ConnectionState{
 			PeerCertificates: []*x509.Certificate{
@@ -48,7 +48,7 @@ func TestC02_HTTPServer_Plaintext_Anonymous_Rejection(t *testing.T) {
 
 	// 1. Health endpoints must stay reachable anonymously
 	for _, healthPath := range []string{"/api/v1/health", "/health"} {
-		req := httptest.NewRequest(http.MethodGet, healthPath, nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, healthPath, nil)
 		rec := httptest.NewRecorder()
 		srv.ServeHTTP(rec, req)
 		assert.Equal(t, http.StatusOK, rec.Code, "health endpoint %s must be reachable anonymously", healthPath)
@@ -66,7 +66,7 @@ func TestC02_HTTPServer_Plaintext_Anonymous_Rejection(t *testing.T) {
 	}
 
 	for _, bp := range businessPaths {
-		req := httptest.NewRequest(bp.method, bp.path, strings.NewReader(`{"content":"test"}`))
+		req := httptest.NewRequestWithContext(t.Context(), bp.method, bp.path, strings.NewReader(`{"content":"test"}`))
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
 		srv.ServeHTTP(rec, req)
@@ -80,13 +80,13 @@ func TestC02_ConnectServer_Plaintext_Anonymous_Rejection(t *testing.T) {
 	connectHandler := connectv2.CreateConnectServer(deps.APIRepo, deps.SummaryRepo, deps.ArticleRepo, deps.JobRepo, deps.Logger)
 
 	// 1. Health endpoint stays reachable
-	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health", nil)
 	rec := httptest.NewRecorder()
 	connectHandler.ServeHTTP(rec, req)
 	assert.Equal(t, http.StatusOK, rec.Code, "Connect /health must stay reachable")
 
 	// 2. Connect-RPC business procedure must reject anonymous plaintext callers with 401
-	rpcReq := httptest.NewRequest(http.MethodPost, "/services.preprocessor.v2.PreProcessorService/Summarize", strings.NewReader(`{}`))
+	rpcReq := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/services.preprocessor.v2.PreProcessorService/Summarize", strings.NewReader(`{}`))
 	rpcReq.Header.Set("Content-Type", "application/json")
 	rpcRec := httptest.NewRecorder()
 	connectHandler.ServeHTTP(rpcRec, rpcReq)
@@ -104,7 +104,7 @@ func TestC02_MTLSServer_SafeMux_PeerGated(t *testing.T) {
 	mockArticleRepo := mocks.NewMockArticleRepository(ctrl)
 	mockJobRepo := mocks.NewMockSummarizeJobRepository(ctrl)
 
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	summarizeHandler := handler.NewSummarizeHandler(mockAPIRepo, mockSummaryRepo, mockArticleRepo, mockJobRepo, logger)
 	deps := &Dependencies{
 		APIRepo:          mockAPIRepo,
@@ -123,33 +123,33 @@ func TestC02_MTLSServer_SafeMux_PeerGated(t *testing.T) {
 
 	// 1. Unauthenticated health endpoints stay reachable on :9443 (deep health check removed - no fabricated health)
 	for _, path := range []string{"/health", "/api/v1/health"} {
-		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil)
 		rec := httptest.NewRecorder()
 		safeMux.ServeHTTP(rec, req)
 		assert.Equal(t, http.StatusOK, rec.Code, "%s must be reachable unauthenticated on mTLS mux", path)
 	}
 
 	// 2. Anonymous request (no client cert) to REST and Connect -> 401
-	restAnonReq := httptest.NewRequest(http.MethodPost, "/api/v1/summarize", strings.NewReader(`{"content":"test"}`))
+	restAnonReq := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/summarize", strings.NewReader(`{"content":"test"}`))
 	restAnonReq.Header.Set("Content-Type", "application/json")
 	restAnonRec := httptest.NewRecorder()
 	safeMux.ServeHTTP(restAnonRec, restAnonReq)
 	assert.Equal(t, http.StatusUnauthorized, restAnonRec.Code, "REST on mTLS mux without client cert must return 401")
 
-	connectAnonReq := httptest.NewRequest(http.MethodPost, "/services.preprocessor.v2.PreProcessorService/Summarize", strings.NewReader(`{}`))
+	connectAnonReq := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/services.preprocessor.v2.PreProcessorService/Summarize", strings.NewReader(`{}`))
 	connectAnonReq.Header.Set("Content-Type", "application/json")
 	connectAnonRec := httptest.NewRecorder()
 	safeMux.ServeHTTP(connectAnonRec, connectAnonReq)
 	assert.Equal(t, http.StatusUnauthorized, connectAnonRec.Code, "Connect on mTLS mux without client cert must return 401")
 
 	// 3. Unknown peer (CN="unauthorized-service") -> 403 Forbidden
-	restForbiddenReq := makePreProcessorCertRequest(http.MethodPost, "/api/v1/summarize", "unauthorized-service", []byte(`{"content":"test"}`))
+	restForbiddenReq := makePreProcessorCertRequest(t, http.MethodPost, "/api/v1/summarize", "unauthorized-service", []byte(`{"content":"test"}`))
 	restForbiddenReq.Header.Set("Content-Type", "application/json")
 	restForbiddenRec := httptest.NewRecorder()
 	safeMux.ServeHTTP(restForbiddenRec, restForbiddenReq)
 	assert.Equal(t, http.StatusForbidden, restForbiddenRec.Code, "REST on mTLS mux with unauthorized CN must return 403")
 
-	connectForbiddenReq := makePreProcessorCertRequest(http.MethodPost, "/services.preprocessor.v2.PreProcessorService/Summarize", "unauthorized-service", []byte(`{}`))
+	connectForbiddenReq := makePreProcessorCertRequest(t, http.MethodPost, "/services.preprocessor.v2.PreProcessorService/Summarize", "unauthorized-service", []byte(`{}`))
 	connectForbiddenReq.Header.Set("Content-Type", "application/json")
 	connectForbiddenRec := httptest.NewRecorder()
 	safeMux.ServeHTTP(connectForbiddenRec, connectForbiddenReq)
@@ -177,7 +177,7 @@ func TestC02_MTLSServer_SafeMux_PeerGated(t *testing.T) {
 		Return(nil).
 		Times(1)
 
-	restAllowedReq := makePreProcessorCertRequest(http.MethodPost, "/api/v1/summarize", "alt-backend", []byte(`{"article_id":"test-rest-article"}`))
+	restAllowedReq := makePreProcessorCertRequest(t, http.MethodPost, "/api/v1/summarize", "alt-backend", []byte(`{"article_id":"test-rest-article"}`))
 	restAllowedReq.Header.Set("Content-Type", "application/json")
 	restAllowedRec := httptest.NewRecorder()
 	safeMux.ServeHTTP(restAllowedRec, restAllowedReq)
@@ -205,7 +205,7 @@ func TestC02_MTLSServer_SafeMux_PeerGated(t *testing.T) {
 		Return(nil).
 		Times(1)
 
-	connectAllowedReq := makePreProcessorCertRequest(http.MethodPost, "/services.preprocessor.v2.PreProcessorService/Summarize", "alt-backend", []byte(`{"article_id":"test-connect-article"}`))
+	connectAllowedReq := makePreProcessorCertRequest(t, http.MethodPost, "/services.preprocessor.v2.PreProcessorService/Summarize", "alt-backend", []byte(`{"article_id":"test-connect-article"}`))
 	connectAllowedReq.Header.Set("Content-Type", "application/json")
 	connectAllowedRec := httptest.NewRecorder()
 	safeMux.ServeHTTP(connectAllowedRec, connectAllowedReq)
@@ -214,7 +214,7 @@ func TestC02_MTLSServer_SafeMux_PeerGated(t *testing.T) {
 
 	// 5. 1MiB body limit enforced on mTLS mux REST business route
 	oversized := bytes.Repeat([]byte("a"), 2*1024*1024) // 2 MiB
-	oversizedReq := makePreProcessorCertRequest(http.MethodPost, "/api/v1/summarize", "alt-backend", oversized)
+	oversizedReq := makePreProcessorCertRequest(t, http.MethodPost, "/api/v1/summarize", "alt-backend", oversized)
 	oversizedReq.Header.Set("Content-Type", "application/octet-stream")
 	oversizedRec := httptest.NewRecorder()
 	safeMux.ServeHTTP(oversizedRec, oversizedReq)

@@ -75,7 +75,7 @@ func TestAppContextError_Unwrap(t *testing.T) {
 	)
 
 	unwrapped := err.Unwrap()
-	if unwrapped != cause {
+	if !errors.Is(unwrapped, cause) {
 		t.Errorf("Unwrap() = %v, want %v", unwrapped, cause)
 	}
 

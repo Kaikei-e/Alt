@@ -50,7 +50,7 @@ func TestHTTPClientManager_HardenedTransportFields(t *testing.T) {
 				require.LessOrEqual(t, ot.ResponseHeaderTimeout, 30*time.Second,
 					"ResponseHeaderTimeout must be aggressive (≤30s)")
 			}
-			require.Greater(t, ot.MaxIdleConnsPerHost, 0)
+			require.Positive(t, ot.MaxIdleConnsPerHost)
 			require.Greater(t, ot.IdleConnTimeout, time.Duration(0))
 		})
 	}

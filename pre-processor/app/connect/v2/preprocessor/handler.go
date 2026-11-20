@@ -55,7 +55,7 @@ func (h *Handler) Summarize(
 	ctx context.Context,
 	req *connect.Request[preprocessorv2.SummarizeRequest],
 ) (*connect.Response[preprocessorv2.SummarizeResponse], error) {
-	articleID := req.Msg.ArticleId
+	articleID := req.Msg.GetArticleId()
 
 	// Validate required fields
 	if articleID == "" {
@@ -76,8 +76,8 @@ func (h *Handler) Summarize(
 	// Delegate to shared on-demand summarization usecase
 	result, err := h.onDemand.Summarize(ctx, summarizeuc.SummarizeRequest{
 		ArticleID: articleID,
-		Content:   req.Msg.Content,
-		Title:     req.Msg.Title,
+		Content:   req.Msg.GetContent(),
+		Title:     req.Msg.GetTitle(),
 		Priority:  "high", // UI-triggered requests
 	})
 	if err != nil {
@@ -97,7 +97,7 @@ func (h *Handler) StreamSummarize(
 	req *connect.Request[preprocessorv2.StreamSummarizeRequest],
 	stream *connect.ServerStream[preprocessorv2.StreamSummarizeResponse],
 ) error {
-	articleID := req.Msg.ArticleId
+	articleID := req.Msg.GetArticleId()
 
 	// Validate required fields
 	if articleID == "" {
@@ -116,7 +116,7 @@ func (h *Handler) StreamSummarize(
 	// Resolve article content using shared usecase
 	resolved, err := h.onDemand.ResolveArticle(ctx, summarizeuc.SummarizeRequest{
 		ArticleID: articleID,
-		Content:   req.Msg.Content,
+		Content:   req.Msg.GetContent(),
 	})
 	if err != nil {
 		return mapDomainError(err, articleID)
@@ -205,7 +205,7 @@ func (h *Handler) QueueSummarize(
 	ctx context.Context,
 	req *connect.Request[preprocessorv2.QueueSummarizeRequest],
 ) (*connect.Response[preprocessorv2.QueueSummarizeResponse], error) {
-	articleID := req.Msg.ArticleId
+	articleID := req.Msg.GetArticleId()
 
 	// Validate required fields
 	if articleID == "" {
@@ -259,7 +259,7 @@ func (h *Handler) GetSummarizeStatus(
 	ctx context.Context,
 	req *connect.Request[preprocessorv2.GetSummarizeStatusRequest],
 ) (*connect.Response[preprocessorv2.GetSummarizeStatusResponse], error) {
-	jobID := req.Msg.JobId
+	jobID := req.Msg.GetJobId()
 
 	// Validate required fields
 	if jobID == "" {

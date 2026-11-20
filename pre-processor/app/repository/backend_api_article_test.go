@@ -136,7 +136,7 @@ func TestUpsertArticles_SkipsFeedNotFound(t *testing.T) {
 			return connect.NewResponse(&datahubv1.CreateArticleResponse{ArticleId: "new-id"}), nil
 		},
 		getFeedIDFunc: func(_ context.Context, req *connect.Request[datahubv1.GetFeedIDRequest]) (*connect.Response[datahubv1.GetFeedIDResponse], error) {
-			if req.Msg.FeedUrl == "https://unknown-feed.com" {
+			if req.Msg.GetFeedUrl() == "https://unknown-feed.com" {
 				return nil, connect.NewError(connect.CodeNotFound, errors.New("feed not found"))
 			}
 			return connect.NewResponse(&datahubv1.GetFeedIDResponse{FeedId: "feed-1"}), nil
@@ -273,7 +273,7 @@ func TestUpsertArticles_WithPresetFeedID(t *testing.T) {
 	mock := &mockDataHubClient{
 		createArticleFunc: func(_ context.Context, req *connect.Request[datahubv1.CreateArticleRequest]) (*connect.Response[datahubv1.CreateArticleResponse], error) {
 			createCalled++
-			if req.Msg.FeedId != "preset-feed" {
+			if req.Msg.GetFeedId() != "preset-feed" {
 				return nil, errors.New("expected preset-feed as FeedId")
 			}
 			return connect.NewResponse(&datahubv1.CreateArticleResponse{ArticleId: "new-id"}), nil
@@ -307,8 +307,8 @@ func TestFindForSummarization_Success(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	mock := &mockDataHubClient{
 		listUnsummarizedFunc: func(_ context.Context, req *connect.Request[datahubv1.ListUnsummarizedArticlesRequest]) (*connect.Response[datahubv1.ListUnsummarizedArticlesResponse], error) {
-			if req.Msg.Limit != 10 {
-				t.Errorf("expected limit 10, got %d", req.Msg.Limit)
+			if req.Msg.GetLimit() != 10 {
+				t.Errorf("expected limit 10, got %d", req.Msg.GetLimit())
 			}
 			return connect.NewResponse(&datahubv1.ListUnsummarizedArticlesResponse{
 				Articles: []*datahubv1.UnsummarizedArticle{
@@ -347,10 +347,10 @@ func TestFindForSummarization_WithCursor(t *testing.T) {
 	cursorTime := time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC)
 	mock := &mockDataHubClient{
 		listUnsummarizedFunc: func(_ context.Context, req *connect.Request[datahubv1.ListUnsummarizedArticlesRequest]) (*connect.Response[datahubv1.ListUnsummarizedArticlesResponse], error) {
-			if req.Msg.LastId != "prev-id" {
-				t.Errorf("expected last_id prev-id, got %s", req.Msg.LastId)
+			if req.Msg.GetLastId() != "prev-id" {
+				t.Errorf("expected last_id prev-id, got %s", req.Msg.GetLastId())
 			}
-			if req.Msg.LastCreatedAt == nil {
+			if req.Msg.GetLastCreatedAt() == nil {
 				t.Fatal("expected last_created_at to be set")
 			}
 			return connect.NewResponse(&datahubv1.ListUnsummarizedArticlesResponse{}), nil
@@ -440,8 +440,8 @@ func TestHasUnsummarizedArticles_Error(t *testing.T) {
 func TestGetEmptyFeedID_Found(t *testing.T) {
 	mock := &mockDataHubClient{
 		getEmptyFeedIDFunc: func(_ context.Context, req *connect.Request[datahubv1.GetEmptyFeedIDRequest]) (*connect.Response[datahubv1.GetEmptyFeedIDResponse], error) {
-			if req.Msg.FeedUrl != "http://example.com/feed.xml" {
-				t.Errorf("expected feed_url http://example.com/feed.xml, got %s", req.Msg.FeedUrl)
+			if req.Msg.GetFeedUrl() != "http://example.com/feed.xml" {
+				t.Errorf("expected feed_url http://example.com/feed.xml, got %s", req.Msg.GetFeedUrl())
 			}
 			return connect.NewResponse(&datahubv1.GetEmptyFeedIDResponse{FeedId: "empty-feed-123"}), nil
 		},

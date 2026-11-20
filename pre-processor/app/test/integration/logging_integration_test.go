@@ -245,7 +245,7 @@ func TestLoggingIntegration_PerformanceUnderLoad(t *testing.T) {
 	t.Logf("Generated %d valid log entries out of expected %d", validLogCount, numConcurrent*numOperationsPerGoroutine)
 
 	// Be very lenient with the assertion for this basic test
-	assert.Greater(t, validLogCount, 0, "should generate at least some log entries")
+	assert.Positive(t, validLogCount, "should generate at least some log entries")
 
 	// Basic verification that the test ran without hanging
 	t.Logf("Test completed successfully without hanging")

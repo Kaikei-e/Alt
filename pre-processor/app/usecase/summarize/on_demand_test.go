@@ -137,7 +137,7 @@ func TestOnDemandService_ResolveArticle(t *testing.T) {
 		})
 
 		require.Error(t, err)
-		assert.True(t, errors.Is(err, domain.ErrArticleNotFound))
+		assert.ErrorIs(t, err, domain.ErrArticleNotFound)
 	})
 
 	t.Run("should return error when DB content is empty", func(t *testing.T) {
@@ -154,7 +154,7 @@ func TestOnDemandService_ResolveArticle(t *testing.T) {
 		})
 
 		require.Error(t, err)
-		assert.True(t, errors.Is(err, domain.ErrArticleContentEmpty))
+		assert.ErrorIs(t, err, domain.ErrArticleContentEmpty)
 	})
 }
 

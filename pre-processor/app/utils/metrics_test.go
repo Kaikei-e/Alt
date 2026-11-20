@@ -116,7 +116,7 @@ func TestDurationStats(t *testing.T) {
 
 				stats := NewDurationStats(buckets)
 				assert.NotNil(t, stats)
-				assert.Equal(t, len(buckets), len(stats.buckets))
+				assert.Len(t, stats.buckets, len(buckets))
 			},
 		},
 		{
@@ -150,9 +150,9 @@ func TestDurationStats(t *testing.T) {
 				snapshot := stats.GetStats()
 
 				assert.Equal(t, int64(3), snapshot.Count)
-				assert.Equal(t, float64(20), snapshot.AvgMs) // (10+20+30)/3 = 20
-				assert.Equal(t, float64(10), snapshot.MinMs)
-				assert.Equal(t, float64(30), snapshot.MaxMs)
+				assert.InDelta(t, float64(20), snapshot.AvgMs, 1e-9) // (10+20+30)/3 = 20
+				assert.InDelta(t, float64(10), snapshot.MinMs, 1e-9)
+				assert.InDelta(t, float64(30), snapshot.MaxMs, 1e-9)
 			},
 		},
 		{
@@ -210,11 +210,10 @@ func TestRuntimeMetrics(t *testing.T) {
 				snapshot := collector.Collect()
 
 				assert.True(t, snapshot.Timestamp.After(time.Now().Add(-time.Second)))
-				assert.Greater(t, snapshot.Goroutines, 0)
+				assert.Positive(t, snapshot.Goroutines)
 				assert.Greater(t, snapshot.MemAllocMB, 0.0)
 				assert.Greater(t, snapshot.MemSysMB, 0.0)
 				assert.GreaterOrEqual(t, snapshot.MemHeapMB, 0.0)
-				assert.GreaterOrEqual(t, snapshot.GCCount, uint32(0))
 			},
 		},
 		{
@@ -361,7 +360,7 @@ func TestPerformanceReporter(t *testing.T) {
 				assert.True(t, report.Timestamp.After(time.Now().Add(-time.Second)))
 				assert.Equal(t, int64(1), report.Metrics.ArticlesProcessed)
 				assert.Equal(t, int64(1), report.Metrics.FeedsProcessed)
-				assert.Greater(t, report.Runtime.Goroutines, 0)
+				assert.Positive(t, report.Runtime.Goroutines)
 			},
 		},
 		{

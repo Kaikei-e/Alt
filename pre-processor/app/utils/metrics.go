@@ -471,7 +471,7 @@ func (s *Span) SetAttributes(attrs ...interface{}) {
 		return
 	}
 
-	for i := 0; i < len(attrs); i += 2 {
+	for i := 0; i+1 < len(attrs); i += 2 {
 		key, ok := attrs[i].(string)
 		if ok {
 			s.attributes[key] = attrs[i+1]

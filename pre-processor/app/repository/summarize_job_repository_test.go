@@ -2,10 +2,8 @@ package repository
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -50,7 +48,7 @@ func TestSummarizeJobRepository_CreateJob(t *testing.T) {
 
 		jobID, err := repo.CreateJob(context.Background(), "test-article-id", domain.SummarizeOriginSystem)
 
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Empty(t, jobID)
 	})
 
@@ -59,7 +57,7 @@ func TestSummarizeJobRepository_CreateJob(t *testing.T) {
 
 		jobID, err := repo.CreateJob(context.Background(), "", domain.SummarizeOriginSystem)
 
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "article ID cannot be empty")
 		assert.Empty(t, jobID)
 	})
@@ -105,7 +103,7 @@ func TestSummarizeJobRepository_HasRecentSuccessfulJob(t *testing.T) {
 
 		exists, err := repo.HasRecentSuccessfulJob(context.Background(), "test-article-id", time.Now().Add(-time.Hour))
 
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.False(t, exists)
 	})
 
@@ -114,7 +112,7 @@ func TestSummarizeJobRepository_HasRecentSuccessfulJob(t *testing.T) {
 
 		exists, err := repo.HasRecentSuccessfulJob(context.Background(), "", time.Now().Add(-time.Hour))
 
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "article ID cannot be empty")
 		assert.False(t, exists)
 	})
@@ -126,7 +124,7 @@ func TestSummarizeJobRepository_HasInFlightJob(t *testing.T) {
 
 		exists, err := repo.HasInFlightJob(context.Background(), "test-article-id", time.Now().Add(-10*time.Minute))
 
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.False(t, exists)
 	})
 
@@ -135,7 +133,7 @@ func TestSummarizeJobRepository_HasInFlightJob(t *testing.T) {
 
 		exists, err := repo.HasInFlightJob(context.Background(), "", time.Now().Add(-10*time.Minute))
 
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "article ID cannot be empty")
 		assert.False(t, exists)
 	})
@@ -154,7 +152,7 @@ func TestSummarizeJobRepository_HasDeadLetterJob(t *testing.T) {
 
 		exists, err := repo.HasDeadLetterJob(context.Background(), "test-article-id")
 
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.False(t, exists)
 	})
 
@@ -163,7 +161,7 @@ func TestSummarizeJobRepository_HasDeadLetterJob(t *testing.T) {
 
 		exists, err := repo.HasDeadLetterJob(context.Background(), "")
 
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "article ID cannot be empty")
 		assert.False(t, exists)
 	})
@@ -229,7 +227,7 @@ func TestSummarizeJobRepository_HasRecentFailedJob(t *testing.T) {
 
 		exists, err := repo.HasRecentFailedJob(context.Background(), "test-article-id", time.Now().Add(-time.Hour))
 
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.False(t, exists)
 	})
 
@@ -238,7 +236,7 @@ func TestSummarizeJobRepository_HasRecentFailedJob(t *testing.T) {
 
 		exists, err := repo.HasRecentFailedJob(context.Background(), "", time.Now().Add(-time.Hour))
 
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "article ID cannot be empty")
 		assert.False(t, exists)
 	})
@@ -288,7 +286,7 @@ func TestSummarizeJobRepository_GetJob(t *testing.T) {
 
 		job, err := repo.GetJob(context.Background(), "test-job-id")
 
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Nil(t, job)
 	})
 
@@ -297,7 +295,7 @@ func TestSummarizeJobRepository_GetJob(t *testing.T) {
 
 		job, err := repo.GetJob(context.Background(), "")
 
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "job ID cannot be empty")
 		assert.Nil(t, job)
 	})
@@ -312,9 +310,9 @@ func TestSummarizeJobRepository_GetJob(t *testing.T) {
 
 		job, err := repo.GetJob(context.Background(), jobID)
 
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Nil(t, job)
-		assert.True(t, errors.Is(err, domain.ErrJobNotFound), "expected err to satisfy errors.Is(err, domain.ErrJobNotFound), got: %v", err)
+		require.ErrorIs(t, err, domain.ErrJobNotFound, "expected err to satisfy errors.Is(err, domain.ErrJobNotFound), got: %v", err)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -353,7 +351,7 @@ func TestSummarizeJobRepository_UpdateJobStatus(t *testing.T) {
 
 		err := repo.UpdateJobStatus(context.Background(), "", domain.SummarizeJobStatusRunning, "", "")
 
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "job ID cannot be empty")
 	})
 
@@ -408,7 +406,7 @@ func TestSummarizeJobRepository_GetPendingJobs(t *testing.T) {
 
 		jobs, err := repo.GetPendingJobs(context.Background(), 10)
 
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Nil(t, jobs)
 	})
 
@@ -417,13 +415,13 @@ func TestSummarizeJobRepository_GetPendingJobs(t *testing.T) {
 
 		jobs, err := repo.GetPendingJobs(context.Background(), 0)
 
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "limit must be positive")
 		assert.Nil(t, jobs)
 	})
 
 	t.Run("should query pending jobs oldest first", func(t *testing.T) {
-		assert.True(t, strings.Contains(getPendingJobsQuery, "ORDER BY created_at ASC"),
+		assert.Contains(t, getPendingJobsQuery, "ORDER BY created_at ASC",
 			"pending jobs should be dequeued oldest-first to avoid backlog starvation")
 	})
 
@@ -454,7 +452,7 @@ func TestSummarizeJobRepository_DequeueJobs(t *testing.T) {
 
 		jobs, err := repo.DequeueJobs(context.Background(), 10)
 
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Nil(t, jobs)
 	})
 
@@ -463,7 +461,7 @@ func TestSummarizeJobRepository_DequeueJobs(t *testing.T) {
 
 		jobs, err := repo.DequeueJobs(context.Background(), 0)
 
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "limit must be positive")
 		assert.Nil(t, jobs)
 	})
@@ -473,7 +471,7 @@ func TestSummarizeJobRepository_DequeueJobs(t *testing.T) {
 
 		jobs, err := repo.DequeueJobs(context.Background(), -1)
 
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "limit must be positive")
 		assert.Nil(t, jobs)
 	})
@@ -505,7 +503,7 @@ func TestSummarizeJobRepository_RecoverStuckJobs(t *testing.T) {
 
 		recovered, err := repo.RecoverStuckJobs(context.Background())
 
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Equal(t, int64(0), recovered)
 	})
 
@@ -522,7 +520,7 @@ func TestSummarizeJobRepository_InvalidateCompletedJobSummary(t *testing.T) {
 
 		err := repo.InvalidateCompletedJobSummary(context.Background(), "")
 
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "article ID cannot be empty")
 	})
 
@@ -548,7 +546,7 @@ func TestSummarizeJobRepository_CountInvalidatedCompletedJobs(t *testing.T) {
 
 		count, err := repo.CountInvalidatedCompletedJobs(context.Background(), "")
 
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "article ID cannot be empty")
 		assert.Equal(t, 0, count)
 	})
@@ -558,7 +556,7 @@ func TestSummarizeJobRepository_CountInvalidatedCompletedJobs(t *testing.T) {
 
 		count, err := repo.CountInvalidatedCompletedJobs(context.Background(), "test-article-id")
 
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Equal(t, 0, count)
 	})
 

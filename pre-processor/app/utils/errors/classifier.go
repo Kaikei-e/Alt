@@ -45,10 +45,13 @@ func IsRetryable(err error) bool {
 	if errors.As(err, &opNetErr) {
 		if opNetErr.Err != nil {
 			// Check for specific syscall errors
-			if errno, ok := opNetErr.Err.(syscall.Errno); ok {
+			var errno syscall.Errno
+			if errors.As(opNetErr.Err, &errno) {
 				switch errno {
 				case syscall.ECONNREFUSED, syscall.ECONNRESET, syscall.ETIMEDOUT:
 					return true
+				default:
+					// Other syscall errors fall through to OpError.Timeout().
 				}
 			}
 		}

@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -505,7 +504,7 @@ func TestJudgeTemplate(t *testing.T) {
 
 // TestConstants verifies critical constants
 func TestConstants(t *testing.T) {
-	assert.Greater(t, lowScoreThreshold, 0, "lowScoreThreshold should be positive")
+	assert.Positive(t, lowScoreThreshold, "lowScoreThreshold should be positive")
 	assert.LessOrEqual(t, lowScoreThreshold, 30, "lowScoreThreshold should be <= 30")
 	assert.NotEmpty(t, modelName, "modelName should not be empty")
 	assert.NotEmpty(t, qualityCheckerAPIURL, "qualityCheckerAPIURL should not be empty")
@@ -863,11 +862,11 @@ func TestJudgeArticleQualityContentBoundary(t *testing.T) {
 // to prevent double-templating when buildJudgePrompt already wraps the prompt in Gemma chat template tokens.
 func TestScoreSummaryRequestIncludesRawTrue(t *testing.T) {
 	var receivedPayload judgePrompt
+	decodeErrCh := make(chan error, 1)
 
 	withMockTransport(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Decode the request body to inspect the payload
-		err := json.NewDecoder(r.Body).Decode(&receivedPayload)
-		require.NoError(t, err, "Should decode request body")
+		decodeErrCh <- json.NewDecoder(r.Body).Decode(&receivedPayload)
 
 		response := ollamaResponse{
 			Response: "<score>8</score>",
@@ -884,6 +883,12 @@ func TestScoreSummaryRequestIncludesRawTrue(t *testing.T) {
 	ctx := context.Background()
 	_, err := scoreSummary(ctx, "Test prompt")
 	require.NoError(t, err)
+	select {
+	case decodeErr := <-decodeErrCh:
+		require.NoError(t, decodeErr, "Should decode request body")
+	default:
+		t.Fatal("mock transport handler was not called")
+	}
 
 	assert.True(t, receivedPayload.Raw, "Request payload must include raw:true to prevent Ollama from double-applying chat template")
 	assert.Equal(t, modelName, receivedPayload.Model, "Model name should match")
@@ -893,7 +898,7 @@ func TestScoreSummaryRequestIncludesRawTrue(t *testing.T) {
 // TestMaxQualityCheckContentLengthConstant tests the constant value
 func TestMaxQualityCheckContentLengthConstant(t *testing.T) {
 	assert.Equal(t, 20_000, maxQualityCheckContentLength, "maxQualityCheckContentLength should be 20,000")
-	assert.Greater(t, maxQualityCheckContentLength, 0, "maxQualityCheckContentLength should be positive")
+	assert.Positive(t, maxQualityCheckContentLength, "maxQualityCheckContentLength should be positive")
 }
 
 // TestIsPlaceholderSummary tests the domain.IsPlaceholderSummary predicate.
@@ -1221,11 +1226,12 @@ func TestJudgeArticleQualityPostsGemma4TemplatedPrompt(t *testing.T) {
 			receivedPath    string
 			receivedPayload judgePrompt
 		)
+		decodeErrCh := make(chan error, 1)
 
 		withMockTransport(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			receivedMethod = r.Method
 			receivedPath = r.URL.Path
-			require.NoError(t, json.NewDecoder(r.Body).Decode(&receivedPayload))
+			decodeErrCh <- json.NewDecoder(r.Body).Decode(&receivedPayload)
 
 			response := ollamaResponse{
 				Response: "<score>8</score>",
@@ -1247,6 +1253,12 @@ func TestJudgeArticleQualityPostsGemma4TemplatedPrompt(t *testing.T) {
 
 		err := JudgeArticleQuality(context.Background(), nil, nil, article)
 		require.NoError(t, err)
+		select {
+		case decodeErr := <-decodeErrCh:
+			require.NoError(t, decodeErr)
+		default:
+			t.Fatal("mock transport handler was not called")
+		}
 
 		assert.Equal(t, http.MethodPost, receivedMethod)
 		assert.Equal(t, "/api/generate", receivedPath)
@@ -1273,9 +1285,10 @@ func TestJudgeArticleQualityPostsGemma4TemplatedPrompt(t *testing.T) {
 
 	t.Run("strips_injected_turn_and_think_tokens_from_article_and_summary", func(t *testing.T) {
 		var receivedPayload judgePrompt
+		decodeErrCh := make(chan error, 1)
 
 		withMockTransport(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			require.NoError(t, json.NewDecoder(r.Body).Decode(&receivedPayload))
+			decodeErrCh <- json.NewDecoder(r.Body).Decode(&receivedPayload)
 
 			response := ollamaResponse{
 				Response: "<score>8</score>",
@@ -1297,6 +1310,12 @@ func TestJudgeArticleQualityPostsGemma4TemplatedPrompt(t *testing.T) {
 
 		err := JudgeArticleQuality(context.Background(), nil, nil, article)
 		require.NoError(t, err)
+		select {
+		case decodeErr := <-decodeErrCh:
+			require.NoError(t, decodeErr)
+		default:
+			t.Fatal("mock transport handler was not called")
+		}
 
 		assert.True(t, strings.HasPrefix(receivedPayload.Prompt, "<|turn>system\n"))
 		assert.True(t, strings.HasSuffix(receivedPayload.Prompt, "<|turn>model\n"))
@@ -1379,7 +1398,7 @@ func TestQualityChecker_SharesNewsCreatorLimiterWithSummarizerAtMinInterval(t *t
 		}, &http.Client{})
 	})
 
-	sumLogger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	sumLogger := slog.New(slog.DiscardHandler)
 	payload := driver.ArticlePayload{
 		ID:      "test-qc-pacing",
 		Content: strings.Repeat("Valid content for shared limiter test. ", 10),

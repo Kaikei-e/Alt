@@ -66,9 +66,9 @@ func Run(ctx context.Context) error {
 	// Start servers. errCh is buffered so a failing listener never blocks on
 	// send even if multiple servers fail before waitForShutdown starts reading.
 	errCh := make(chan error, 4)
-	httpServer := NewHTTPServer(deps, otelCfg.Enabled, otelCfg.ServiceName)
-	StartHTTPServer(httpServer, log, errCh)
-	connectServers := StartConnectServer(deps, errCh, httpServer)
+	echoServer := NewHTTPServer(deps, otelCfg.Enabled, otelCfg.ServiceName)
+	httpServer := StartHTTPServer(echoServer, log, errCh)
+	connectServers := StartConnectServer(deps, errCh, echoServer)
 
 	// The metrics listener is separate from the API listener on purpose, and
 	// it is where the notification-outbox relay's gauges are exposed. A bind

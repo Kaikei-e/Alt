@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func testArticlesLanguageLogger() *slog.Logger {
@@ -34,7 +35,7 @@ func TestArticlesLanguageRepo_FetchUndArticles_RejectsNilPool(t *testing.T) {
 func TestArticlesLanguageRepo_UpdateLanguageBulk_EmptyInputIsNoop(t *testing.T) {
 	repo := NewArticlesLanguageRepo(nil, testArticlesLanguageLogger())
 	updated, err := repo.UpdateLanguageBulk(context.Background(), nil)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, 0, updated)
 }
 

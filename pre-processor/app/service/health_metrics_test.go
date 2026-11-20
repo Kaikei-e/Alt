@@ -65,9 +65,9 @@ func TestHealthMetricsCollector_RecordRequest(t *testing.T) {
 			// Get metrics and validate
 			metrics := collector.GetHealthMetrics(ctx)
 
-			assert.Equal(t, tc.expectedErrorRate, metrics.ErrorRate,
+			assert.InDelta(t, tc.expectedErrorRate, metrics.ErrorRate, 1e-9,
 				"error rate should match expected")
-			assert.Equal(t, tc.expectedAvgLatency, metrics.AvgLatency,
+			assert.InDelta(t, tc.expectedAvgLatency, metrics.AvgLatency, 1e-9,
 				"average latency should match expected")
 			assert.Equal(t, uint64(len(tc.requests)), metrics.RequestCount,
 				"request count should match")
@@ -130,7 +130,7 @@ func TestHealthMetricsCollector_SLACompliance(t *testing.T) {
 
 			// Verify calculated SLA value
 			calculatedSLA := collector.calculateSLACompliance()
-			assert.Equal(t, tc.expectedSLA, calculatedSLA,
+			assert.InDelta(t, tc.expectedSLA, calculatedSLA, 1e-9,
 				"calculated SLA should match expected")
 		})
 	}
@@ -268,7 +268,7 @@ func TestHealthMetricsCollector_Alerts(t *testing.T) {
 			// Check for alerts
 			alerts := collector.CheckAlerts(ctx)
 
-			assert.Equal(t, tc.expectedAlerts, len(alerts),
+			assert.Len(t, alerts, tc.expectedAlerts,
 				"should have expected number of alerts")
 
 			// Verify alert levels
@@ -301,7 +301,7 @@ func TestHealthMetricsCollector_ExtendedMetrics(t *testing.T) {
 	// Verify basic metrics are included
 	assert.Equal(t, uint64(2), extendedMetrics.RequestCount,
 		"request count should be included")
-	assert.Equal(t, 150.0, extendedMetrics.AvgLatency,
+	assert.InDelta(t, 150.0, extendedMetrics.AvgLatency, 1e-9,
 		"average latency should be calculated correctly")
 
 	// Verify extended fields are present
@@ -346,8 +346,8 @@ func TestHealthMetricsCollector_ResetMetrics(t *testing.T) {
 	assert.Equal(t, uint64(0), resetMetrics.RequestCount, "request count should be reset")
 	assert.Equal(t, uint64(0), resetMetrics.SuccessCount, "success count should be reset")
 	assert.Equal(t, uint64(0), resetMetrics.FailureCount, "failure count should be reset")
-	assert.Equal(t, 0.0, resetMetrics.ErrorRate, "error rate should be reset")
-	assert.Equal(t, 0.0, resetMetrics.AvgLatency, "average latency should be reset")
+	assert.InDelta(t, 0.0, resetMetrics.ErrorRate, 1e-9, "error rate should be reset")
+	assert.InDelta(t, 0.0, resetMetrics.AvgLatency, 1e-9, "average latency should be reset")
 }
 
 func TestHealthMetricsCollector_ConcurrentAccess(t *testing.T) {

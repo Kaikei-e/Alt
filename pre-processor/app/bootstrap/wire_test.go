@@ -430,7 +430,10 @@ func TestProductionTLSFactoryWire_NegativeCases(t *testing.T) {
 		defer cancel()
 
 		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, server.URL, nil)
-		_, err = client.Do(req)
+		resp, err := client.Do(req)
+		if resp != nil {
+			_ = resp.Body.Close()
+		}
 		require.Error(t, err, "request against server with untrusted CA must fail TLS handshake")
 	})
 
@@ -469,7 +472,10 @@ func TestProductionTLSFactoryWire_NegativeCases(t *testing.T) {
 		defer cancel()
 
 		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, server.URL, nil)
-		_, err = client.Do(req)
+		resp, err := client.Do(req)
+		if resp != nil {
+			_ = resp.Body.Close()
+		}
 		require.Error(t, err, "request with mismatched SAN hostname must fail TLS handshake")
 	})
 

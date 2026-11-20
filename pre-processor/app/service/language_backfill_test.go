@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"testing"
 	"time"
@@ -60,7 +59,7 @@ func (r *fakeRepo) UpdateLanguageBulk(ctx context.Context, updates []repository.
 }
 
 func silentLogger() *slog.Logger {
-	return slog.New(slog.NewTextHandler(io.Discard, nil))
+	return slog.New(slog.DiscardHandler)
 }
 
 func TestLanguageBackfiller_DryRunDoesNotUpdate(t *testing.T) {

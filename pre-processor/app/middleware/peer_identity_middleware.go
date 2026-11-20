@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 // PeerIdentityHeader is the header downstream handlers use to read the
@@ -87,7 +87,7 @@ func (m *PeerIdentityMiddleware) Require(next http.Handler) http.Handler {
 // EchoMiddleware returns an Echo middleware func enforcing peer identity.
 func (m *PeerIdentityMiddleware) EchoMiddleware() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+		return func(c *echo.Context) error {
 			req := c.Request()
 			if req.TLS == nil || len(req.TLS.PeerCertificates) == 0 {
 				m.logger.WarnContext(req.Context(), "peer_identity: missing mTLS client cert", "path", req.URL.Path)

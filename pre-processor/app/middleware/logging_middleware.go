@@ -5,14 +5,14 @@ package middleware
 import (
 	"time"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 
 	"pre-processor/utils/logger"
 )
 
 func LoggingMiddleware(contextLogger *logger.ContextLogger) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+		return func(c *echo.Context) error {
 			req := c.Request()
 			res := c.Response()
 
@@ -47,13 +47,20 @@ func LoggingMiddleware(contextLogger *logger.ContextLogger) echo.MiddlewareFunc 
 			// Calculate duration
 			duration := time.Since(start)
 
+			var status int
+			var size int64
+			if resp, uErr := echo.UnwrapResponse(res); uErr == nil {
+				status = resp.Status
+				size = resp.Size
+			}
+
 			// Log request completion with updated fields
 			completionLog := contextLogger.WithContext(ctx).With(
 				"log_type", "access", // Change to access log type
 				"method", req.Method,
 				"path", req.URL.Path,
-				"status_code", res.Status,
-				"response_size", res.Size,
+				"status_code", status,
+				"response_size", size,
 				"ip_address", c.RealIP(),
 				"user_agent", req.UserAgent(),
 				"fields.duration_ms", duration.Milliseconds(),

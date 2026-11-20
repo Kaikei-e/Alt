@@ -5,10 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 
 	"pre-processor/domain"
@@ -17,7 +19,7 @@ import (
 	apperrors "pre-processor/utils/errors"
 
 	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -191,7 +193,7 @@ func TestSummarizeHandler_HandleSummarize(t *testing.T) {
 			jsonBody, err := json.Marshal(tc.requestBody)
 			require.NoError(t, err)
 
-			req := httptest.NewRequest(http.MethodPost, "/api/v1/summarize", bytes.NewReader(jsonBody))
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/summarize", bytes.NewReader(jsonBody))
 			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 			rec := httptest.NewRecorder()
 			c := e.NewContext(req, rec)
@@ -233,7 +235,7 @@ func TestSummarizeHandler_InvalidJSON(t *testing.T) {
 	h := handler.NewSummarizeHandler(mockAPIRepo, mockSummaryRepo, mockArticleRepo, nil, testLoggerSummarize())
 
 	e := echo.New()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/summarize", bytes.NewReader([]byte("invalid json")))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/summarize", bytes.NewReader([]byte("invalid json")))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
@@ -300,7 +302,7 @@ func TestSummarizeHandler_DuplicateRequestPrevention(t *testing.T) {
 			"content":    "Test content for duplicate test",
 			"article_id": articleID,
 		})
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/summarize", bytes.NewReader(jsonBody))
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/summarize", bytes.NewReader(jsonBody))
 		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
@@ -316,7 +318,7 @@ func TestSummarizeHandler_DuplicateRequestPrevention(t *testing.T) {
 		"content":    "Test content for duplicate test",
 		"article_id": articleID,
 	})
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/summarize", bytes.NewReader(jsonBody))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/summarize", bytes.NewReader(jsonBody))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
@@ -353,11 +355,10 @@ func httpStatusOf(t *testing.T, err error) int {
 	if errors.As(err, &appErr) {
 		return appErr.HTTPStatusCode()
 	}
-	var echoErr *echo.HTTPError
-	if errors.As(err, &echoErr) {
-		return echoErr.Code
+	if code := echo.StatusCode(err); code != 0 {
+		return code
 	}
-	t.Fatalf("error %v (%T) is neither *apperrors.AppContextError nor *echo.HTTPError", err, err)
+	t.Fatalf("error %v (%T) is neither *apperrors.AppContextError nor echo.HTTPStatusCoder", err, err)
 	return 0
 }
 
@@ -434,7 +435,7 @@ func TestSummarizeHandler_HandleSummarizeQueue(t *testing.T) {
 			requestBody:  map[string]interface{}{"article_id": testArticleID, "origin": "user"},
 			expectedCode: http.StatusAccepted,
 			validateResp: func(t *testing.T, resp map[string]interface{}) {
-				assert.Equal(t, "", resp["job_id"])
+				assert.Empty(t, resp["job_id"])
 				assert.Equal(t, "skipped", resp["status"])
 				assert.Contains(t, resp["message"], "summary_exists")
 			},
@@ -531,7 +532,7 @@ func TestSummarizeHandler_HandleSummarizeQueue(t *testing.T) {
 			jsonBody, err := json.Marshal(tc.requestBody)
 			require.NoError(t, err)
 
-			req := httptest.NewRequest(http.MethodPost, "/api/v1/summarize/queue", bytes.NewReader(jsonBody))
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/summarize/queue", bytes.NewReader(jsonBody))
 			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 			rec := httptest.NewRecorder()
 			c := e.NewContext(req, rec)
@@ -662,11 +663,10 @@ func TestSummarizeHandler_HandleSummarizeStatus(t *testing.T) {
 			h := handler.NewSummarizeHandler(mockAPIRepo, mockSummaryRepo, mockArticleRepo, mockJobRepo, testLoggerSummarize())
 
 			e := echo.New()
-			req := httptest.NewRequest(http.MethodGet, "/api/v1/summarize/status/"+tc.jobIDParam, nil)
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/summarize/status/"+tc.jobIDParam, nil)
 			rec := httptest.NewRecorder()
 			c := e.NewContext(req, rec)
-			c.SetParamNames("job_id")
-			c.SetParamValues(tc.jobIDParam)
+			c.SetPathValues(echo.PathValues{{Name: "job_id", Value: tc.jobIDParam}})
 
 			err := h.HandleSummarizeStatus(c)
 
@@ -684,4 +684,53 @@ func TestSummarizeHandler_HandleSummarizeStatus(t *testing.T) {
 			tc.validateResp(t, response)
 		})
 	}
+}
+
+func TestSummarizeHandler_HandleStreamSummarize_FlushesSSE(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockAPIRepo := mocks.NewMockExternalAPIRepository(ctrl)
+	mockSummaryRepo := mocks.NewMockSummaryRepository(ctrl)
+	mockArticleRepo := mocks.NewMockArticleRepository(ctrl)
+
+	const articleID = "stream-sse-test-1"
+	const ssePayload = "data: chunk1\n\ndata: chunk2\n\n"
+
+	mockArticleRepo.EXPECT().
+		FindByID(gomock.Any(), articleID).
+		Return(&domain.Article{
+			ID:      articleID,
+			UserID:  "user-1",
+			Content: "Article content for SSE streaming",
+			Title:   "Stream Title",
+		}, nil).
+		Times(1)
+
+	mockAPIRepo.EXPECT().
+		StreamSummarizeArticle(gomock.Any(), gomock.Any(), "high").
+		Return(io.NopCloser(strings.NewReader(ssePayload)), nil).
+		Times(1)
+
+	h := handler.NewSummarizeHandler(mockAPIRepo, mockSummaryRepo, mockArticleRepo, nil, testLoggerSummarize())
+
+	e := echo.New()
+	e.POST("/api/v1/summarize/stream", h.HandleStreamSummarize)
+
+	body, err := json.Marshal(map[string]string{
+		"article_id": articleID,
+		"content":    "Article content for SSE streaming",
+	})
+	require.NoError(t, err)
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/summarize/stream", bytes.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.True(t, rec.Flushed, "SSE stream must flush through Echo v5 Response wrapper")
+	assert.Contains(t, rec.Header().Get(echo.HeaderContentType), "text/event-stream")
+	assert.Equal(t, ssePayload, rec.Body.String())
 }

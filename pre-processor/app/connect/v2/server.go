@@ -7,9 +7,6 @@ import (
 
 	"os"
 
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
-
 	"pre-processor/connect/v2/preprocessor"
 	preprocessorv2connect "pre-processor/gen/proto/services/preprocessor/v2/preprocessorv2connect"
 	"pre-processor/middleware"
@@ -42,6 +39,6 @@ func CreateConnectServer(
 	mux.Handle(path, peer.Require(serviceHandler))
 	logger.Info("Registered Connect-RPC PreProcessorService", "path", path)
 
-	// Support HTTP/2 without TLS (h2c) for internal communication
-	return h2c.NewHandler(mux, &http2.Server{})
+	// Unencrypted HTTP/2 (h2c) is configured on http.Server.Protocols in bootstrap.
+	return mux
 }
