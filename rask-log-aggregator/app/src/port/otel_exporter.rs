@@ -1,4 +1,4 @@
-//! OTelExporter trait for OpenTelemetry log and trace export.
+//! `OTelExporter` trait for OpenTelemetry log and trace export.
 //!
 //! This trait enables dependency injection for testability,
 //! allowing unit tests to use mock implementations.

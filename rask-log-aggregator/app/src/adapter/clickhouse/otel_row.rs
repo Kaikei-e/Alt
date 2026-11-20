@@ -1,13 +1,20 @@
-// Nanosecond timestamps (u64) intentionally cast to i64 for ClickHouse.
-// This won't overflow until year 2262.
-#![allow(clippy::cast_possible_wrap)]
+// Nanosecond timestamps (u64) are converted to i64 for ClickHouse DateTime64(9).
+// Timestamps above i64::MAX (year 2262) saturate to i64::MAX.
 
 use crate::adapter::clickhouse::convert::{hashmap_to_vec, string_to_fixed_bytes};
 use crate::domain::{OTelLog, OTelTrace};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-/// ClickHouse row structure for otel_logs table
+/// Converts a `u64` nanosecond timestamp to `i64` for `ClickHouse` `DateTime64(9)`.
+///
+/// Nanosecond Unix timestamps cannot reach `2^63` until year 2262; any
+/// out-of-range input saturates to `i64::MAX` instead of wrapping negative.
+fn timestamp_to_i64(ts: u64) -> i64 {
+    i64::try_from(ts).unwrap_or(i64::MAX)
+}
+
+/// `ClickHouse` row structure for `otel_logs` table
 /// Uses FixedString-compatible byte arrays for TraceId/SpanId
 #[derive(clickhouse::Row, Serialize, Deserialize, Clone, Debug)]
 pub struct OTelLogRow {
@@ -46,8 +53,8 @@ pub struct OTelLogRow {
 impl From<OTelLog> for OTelLogRow {
     fn from(log: OTelLog) -> Self {
         Self {
-            timestamp: log.timestamp as i64,
-            observed_timestamp: log.observed_timestamp as i64,
+            timestamp: timestamp_to_i64(log.timestamp),
+            observed_timestamp: timestamp_to_i64(log.observed_timestamp),
             trace_id: string_to_fixed_bytes::<32>(&log.trace_id),
             span_id: string_to_fixed_bytes::<16>(&log.span_id),
             trace_flags: log.trace_flags,
@@ -69,7 +76,7 @@ impl From<OTelLog> for OTelLogRow {
     }
 }
 
-/// ClickHouse row structure for otel_traces table
+/// `ClickHouse` row structure for `otel_traces` table
 #[derive(clickhouse::Row, Serialize, Deserialize, Clone, Debug)]
 pub struct OTelTraceRow {
     #[serde(rename = "Timestamp")]
@@ -121,7 +128,7 @@ impl From<OTelTrace> for OTelTraceRow {
         let events_timestamp: Vec<i64> = trace
             .events_nested
             .iter()
-            .map(|e| e.timestamp as i64)
+            .map(|e| timestamp_to_i64(e.timestamp))
             .collect();
         let events_name: Vec<String> = trace.events_nested.iter().map(|e| e.name.clone()).collect();
         let events_attributes: Vec<Vec<(String, String)>> = trace
@@ -153,7 +160,7 @@ impl From<OTelTrace> for OTelTraceRow {
             .collect();
 
         Self {
-            timestamp: trace.timestamp as i64,
+            timestamp: timestamp_to_i64(trace.timestamp),
             trace_id: string_to_fixed_bytes::<32>(&trace.trace_id),
             span_id: string_to_fixed_bytes::<16>(&trace.span_id),
             parent_span_id: string_to_fixed_bytes::<16>(&trace.parent_span_id),
@@ -308,7 +315,7 @@ mod tests {
         let trace = create_test_otel_trace();
         let row = OTelTraceRow::from(trace.clone());
 
-        assert_eq!(row.timestamp, trace.timestamp as i64);
+        assert_eq!(row.timestamp, i64::try_from(trace.timestamp).unwrap());
         assert_eq!(row.trace_state, trace.trace_state);
         assert_eq!(row.span_name, trace.span_name);
         assert_eq!(row.span_kind, SpanKind::Server as i8);
@@ -592,5 +599,28 @@ mod tests {
         assert_eq!(row.links_trace_id.len(), 1);
         assert_eq!(row.links_trace_id[0], "11111111111111111111111111111111");
         assert_eq!(row.links_span_id[0], "2222222222222222");
+    }
+
+    #[test]
+    fn test_out_of_range_timestamps_saturate_to_i64_max() {
+        let first_overflow = u64::try_from(i64::MAX).unwrap() + 1;
+
+        let mut log = create_test_otel_log();
+        log.timestamp = u64::MAX;
+        log.observed_timestamp = first_overflow;
+        let log_row = OTelLogRow::from(log);
+        assert_eq!(log_row.timestamp, i64::MAX);
+        assert_eq!(log_row.observed_timestamp, i64::MAX);
+
+        let mut trace = create_test_otel_trace();
+        trace.timestamp = u64::MAX;
+        trace.events_nested = vec![SpanEvent {
+            timestamp: first_overflow + 41,
+            name: "overflow".to_string(),
+            attributes: HashMap::new(),
+        }];
+        let trace_row = OTelTraceRow::from(trace);
+        assert_eq!(trace_row.timestamp, i64::MAX);
+        assert_eq!(trace_row.events_timestamp, vec![i64::MAX]);
     }
 }

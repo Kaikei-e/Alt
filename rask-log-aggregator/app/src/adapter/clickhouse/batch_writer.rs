@@ -1,6 +1,6 @@
-//! Channel-based batch buffering for ClickHouse writes.
+//! Channel-based batch buffering for `ClickHouse` writes.
 //!
-//! Instead of each HTTP request immediately creating a ClickHouse inserter,
+//! Instead of each HTTP request immediately creating a `ClickHouse` inserter,
 //! rows are sent through bounded `mpsc` channels to a background task that
 //! aggregates batches and writes them periodically.
 
@@ -20,15 +20,15 @@ use tracing::{debug, error, info, warn};
 /// Channel capacity for each row type.
 const CHANNEL_CAPACITY: usize = 1024;
 
-/// How often the background task flushes to ClickHouse (seconds).
+/// How often the background task flushes to `ClickHouse` (seconds).
 const FLUSH_INTERVAL_SECS: u64 = 5;
 
 /// Maximum rows per batch flush.
 const MAX_BATCH_SIZE: usize = 5000;
 
 /// Maximum number of attempts (including the first) to flush a single batch
-/// to ClickHouse before handing the batch back to the caller. With
-/// `retry_backoff` this spans just over 60s, so a whole ClickHouse restart
+/// to `ClickHouse` before handing the batch back to the caller. With
+/// `retry_backoff` this spans just over 60s, so a whole `ClickHouse` restart
 /// (10-30s) is ridden out inside a single flush. On the ack-gated log path
 /// the effective budget is bounded by the caller's request timeout (once the
 /// caller disconnects, remaining retries for its batch are aborted), and
@@ -44,7 +44,7 @@ const MAX_FLUSH_ATTEMPTS: u32 = 12;
 /// unattempted.
 const SHUTDOWN_FLUSH_ATTEMPTS: u32 = 2;
 
-/// ClickHouse inserter configuration
+/// `ClickHouse` inserter configuration
 const INSERTER_SEND_TIMEOUT: Duration = Duration::from_secs(10);
 const INSERTER_END_TIMEOUT: Duration = Duration::from_secs(10);
 const INSERTER_MAX_BYTES: u64 = 50_000_000;
@@ -52,16 +52,16 @@ const INSERTER_MAX_ROWS: u64 = 10_000;
 
 /// Delay before the second flush attempt; doubles on each further failure.
 ///
-/// Avoids hammering a ClickHouse instance that is already struggling (e.g.
+/// Avoids hammering a `ClickHouse` instance that is already struggling (e.g.
 /// mid-restart) with back-to-back retries at the same rate the previous
 /// attempt just failed at.
 const INITIAL_RETRY_BACKOFF: Duration = Duration::from_millis(250);
 
 /// Ceiling for the exponential backoff, so late attempts still probe often
-/// enough to notice ClickHouse coming back.
+/// enough to notice `ClickHouse` coming back.
 const MAX_RETRY_BACKOFF: Duration = Duration::from_secs(10);
 
-/// Resolves once the batch it travelled with is durably in ClickHouse, or with
+/// Resolves once the batch it travelled with is durably in `ClickHouse`, or with
 /// the error that stopped it. The ingest handler awaits this before it answers,
 /// so a 2xx means the rows are written and the forwarder may drop its copy.
 type LogAck = oneshot::Sender<Result<(), AggregatorError>>;
@@ -69,7 +69,7 @@ type LogAck = oneshot::Sender<Result<(), AggregatorError>>;
 /// A single caller's log batch paired with its durability ack.
 type LogBatch = (Vec<LogRow>, LogAck);
 
-/// Batch writer that buffers rows through channels before writing to ClickHouse.
+/// Batch writer that buffers rows through channels before writing to `ClickHouse`.
 ///
 /// Implements both `LogExporter` and `OTelExporter`. Handlers send rows
 /// through bounded channels; a background task drains and flushes them.
@@ -307,7 +307,7 @@ async fn flush_logs(client: &Client, batches: &mut Vec<LogBatch>, max_attempts: 
 }
 
 /// The sink-generic half of `flush_logs`, so the ack contract can be exercised
-/// against a failing write without a ClickHouse connection.
+/// against a failing write without a `ClickHouse` connection.
 async fn flush_logs_via<S: FlushSink<LogRow>>(
     sink: &S,
     batches: &mut Vec<LogBatch>,
@@ -413,7 +413,7 @@ async fn flush_rows<T: clickhouse::Row + RowOwned + RowWrite + serde::Serialize>
 }
 
 /// Destination for a batch flush. Exists so `flush_with_retry` can be
-/// exercised in tests without a real ClickHouse connection.
+/// exercised in tests without a real `ClickHouse` connection.
 trait FlushSink<T> {
     async fn write(&self, rows: &[T]) -> Result<(), AggregatorError>;
 }
@@ -823,7 +823,7 @@ mod tests {
     // =========================================================================
 
     /// Test double for `FlushSink`, driven by a plain synchronous closure so
-    /// tests can inject failures without a real ClickHouse connection.
+    /// tests can inject failures without a real `ClickHouse` connection.
     struct MockSink<F> {
         write_fn: F,
     }
@@ -959,7 +959,7 @@ mod tests {
         );
     }
 
-    /// A ClickHouse restart takes 10-30s. A retry budget that expires in
+    /// A `ClickHouse` restart takes 10-30s. A retry budget that expires in
     /// under a second turns every restart into total log loss for the whole
     /// downtime window.
     #[tokio::test(start_paused = true)]
@@ -1014,7 +1014,7 @@ mod tests {
         );
     }
 
-    /// A 200 from the aggregate handler must mean the rows are in ClickHouse.
+    /// A 200 from the aggregate handler must mean the rows are in `ClickHouse`.
     /// `export_batch` used to resolve Ok as soon as the rows were queued on the
     /// in-process channel, so the forwarder dropped its only copy while the
     /// batch was still sitting in `log_buf` - and a SIGKILL in that window lost
@@ -1210,7 +1210,7 @@ mod tests {
     }
 
     /// `Inserter::write` opens the HTTP connection lazily, so an unreachable
-    /// ClickHouse fails there rather than at `end()`. Counting those as
+    /// `ClickHouse` fails there rather than at `end()`. Counting those as
     /// per-row serialization drops made `write_batch` return Ok having sent
     /// nothing - which cleared the buffer in `flush_with_retry`, so the retry
     /// ladder, the disk fallback and the durability ack all sat behind a write

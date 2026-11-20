@@ -14,10 +14,18 @@ use tokio_util::sync::CancellationToken;
 ///
 /// Kept comfortably under Docker Compose's default `stop_grace_period`
 /// (10s) so the process exits itself — logging what happened — instead of
-/// being SIGKILLed mid-flush with no trace of the loss.
+/// being `SIGKILLed` mid-flush with no trace of the loss.
 const FLUSH_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(8);
 
 /// Application entry point. Initializes tracing, configuration, and starts servers.
+///
+/// # Errors
+///
+/// Returns [`AggregatorError::Healthcheck`] if invoked with the `healthcheck`
+/// argument and the probe fails, [`AggregatorError::Config`] if loading or
+/// validating configuration fails, or [`AggregatorError::Bind`],
+/// [`AggregatorError::Server`], or [`AggregatorError::Export`] if starting or
+/// running the HTTP servers fails.
 pub async fn run() -> Result<(), AggregatorError> {
     // Handle healthcheck subcommand (for Docker healthcheck in distroless image).
     // Tracing is not fully configured yet; install a minimal stderr subscriber so
@@ -75,7 +83,7 @@ pub async fn run() -> Result<(), AggregatorError> {
 
 /// Await the `BatchWriter` flush loop's `JoinHandle`, bounded by `timeout`.
 ///
-/// The flush loop's shutdown branch can legitimately take a while (ClickHouse
+/// The flush loop's shutdown branch can legitimately take a while (`ClickHouse`
 /// retries with their own send/end timeouts), but it must never be allowed to
 /// run past the container's stop grace period: an unbounded await here means
 /// Docker SIGKILLs the process mid-flush, losing the drained-but-unwritten

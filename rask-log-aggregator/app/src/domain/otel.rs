@@ -1,7 +1,7 @@
-//! OpenTelemetry domain models for ClickHouse storage
+//! OpenTelemetry domain models for `ClickHouse` storage
 //!
 //! These models represent the OpenTelemetry Log and Trace data models
-//! in a format suitable for storage in ClickHouse.
+//! in a format suitable for storage in `ClickHouse`.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -9,8 +9,8 @@ use std::sync::Arc;
 
 /// OpenTelemetry Log Record
 ///
-/// Represents a single log entry following the OTel Log Data Model.
-/// See: https://opentelemetry.io/docs/specs/otel/logs/data-model/
+/// Represents a single log entry following the `OTel` Log Data Model.
+/// See: <https://opentelemetry.io/docs/specs/otel/logs/data-model/>
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OTelLog {
     /// Timestamp when the event occurred (nanoseconds since Unix epoch)
@@ -31,7 +31,7 @@ pub struct OTelLog {
     /// Severity text (e.g., "INFO", "ERROR")
     pub severity_text: String,
 
-    /// Severity number (1-24, see OTel spec)
+    /// Severity number (1-24, see `OTel` spec)
     pub severity_number: u8,
 
     /// Log body (message)
@@ -90,8 +90,8 @@ pub struct SpanLink {
 
 /// OpenTelemetry Trace Span
 ///
-/// Represents a single span following the OTel Trace Data Model.
-/// See: https://opentelemetry.io/docs/specs/otel/trace/api/#span
+/// Represents a single span following the `OTel` Trace Data Model.
+/// See: <https://opentelemetry.io/docs/specs/otel/trace/api/#span>
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OTelTrace {
     /// Start timestamp (nanoseconds since Unix epoch)

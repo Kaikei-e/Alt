@@ -154,7 +154,7 @@ mod tests {
     use opentelemetry_proto::tonic::trace::v1::{ResourceSpans, ScopeSpans, Span};
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
-    /// Mock OTelExporter for testing
+    /// Mock `OTelExporter` for testing
     struct MockOTelExporter {
         logs_count: AtomicUsize,
         traces_count: AtomicUsize,

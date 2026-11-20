@@ -141,7 +141,7 @@ mod tests {
 
     /// The 200 this handler returns is a durability ack: rask-log-forwarder
     /// drops its only copy of the batch on any 2xx. Claiming a completed
-    /// ClickHouse write for rows the export port has merely taken makes an
+    /// `ClickHouse` write for rows the export port has merely taken makes an
     /// unrecoverable loss (SIGKILL before the batch is flushed) look like a
     /// clean success in the log.
     #[tokio::test]

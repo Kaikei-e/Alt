@@ -35,6 +35,12 @@ impl std::fmt::Debug for Settings {
 
 impl Settings {
     /// Validates the settings and returns an error if invalid.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AggregatorError::Config`] if `clickhouse_host` is empty or
+    /// whitespace-only, or if `clickhouse_port`, `http_port`, or
+    /// `otlp_http_port` is `0`.
     pub fn validate(&self) -> Result<(), AggregatorError> {
         validate_host(&self.clickhouse_host)?;
         validate_port(self.clickhouse_port)?;
@@ -106,6 +112,13 @@ where
 }
 
 /// Load configuration using the provided environment variable lookup function.
+///
+/// # Errors
+///
+/// Returns [`AggregatorError::Config`] if a required variable is missing, a
+/// port value fails to parse as `u16`, `APP_CLICKHOUSE_PASSWORD_FILE` or the
+/// ingest token file cannot be read or fails validation, or [`Settings::validate`]
+/// rejects the resulting values.
 pub fn get_configuration_from_lookup<F>(lookup: F) -> Result<Settings, AggregatorError>
 where
     F: Fn(&str) -> Result<String, env::VarError>,
@@ -148,6 +161,12 @@ where
     Ok(settings)
 }
 
+/// Load and validate application configuration from process environment variables.
+///
+/// # Errors
+///
+/// Returns [`AggregatorError::Config`] for any missing, unreadable, or
+/// invalid configuration reported by [`get_configuration_from_lookup`].
 pub fn get_configuration() -> Result<Settings, AggregatorError> {
     get_configuration_from_lookup(|name| env::var(name))
 }

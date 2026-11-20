@@ -2,7 +2,7 @@
 //!
 //! This module provides:
 //! - OTLP HTTP/protobuf receiver endpoints
-//! - OTel Log/Trace Data Model to ClickHouse schema conversion
+//! - `OTel` Log/Trace Data Model to `ClickHouse` schema conversion
 
 pub mod converter;
 pub mod receiver;

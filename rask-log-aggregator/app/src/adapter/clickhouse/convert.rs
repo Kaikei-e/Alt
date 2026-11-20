@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-/// Convert string to fixed-size byte array for FixedString columns
+/// Convert string to fixed-size byte array for `FixedString` columns
 /// Pads with zeros if shorter, truncates if longer
 #[must_use]
 pub fn string_to_fixed_bytes<const N: usize>(s: &str) -> [u8; N] {
@@ -18,7 +18,7 @@ pub fn string_to_fixed_bytes<const N: usize>(s: &str) -> [u8; N] {
     result
 }
 
-/// Convert HashMap to Vec for ClickHouse Map type
+/// Convert `HashMap` to Vec for `ClickHouse` Map type
 #[must_use]
 pub fn hashmap_to_vec<S: ::std::hash::BuildHasher>(
     map: HashMap<String, String, S>,
