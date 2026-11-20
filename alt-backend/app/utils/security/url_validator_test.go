@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestMain(m *testing.M) {
@@ -207,7 +208,7 @@ func TestURLSecurityValidator_ValidateForRSSFeed(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			err := validator.ValidateForRSSFeed(tt.url)
 			if tt.wantErr {
-				assert.Error(t, err, "Expected error for URL: %s", tt.url)
+				require.Error(t, err, "Expected error for URL: %s", tt.url)
 				if tt.errMsg != "" {
 					assert.Contains(t, err.Error(), tt.errMsg, "Error message should contain: %s", tt.errMsg)
 				}
@@ -266,7 +267,7 @@ func TestURLSecurityValidator_ValidateParsedRSSURL(t *testing.T) {
 
 	t.Run("rejects userinfo", func(t *testing.T) {
 		u, err := url.Parse("http://admin:secret@example.com/feed.xml")
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		err = v.ValidateParsedRSSURL(u)
 		assert.EqualError(t, err, "userinfo not allowed in URL")
 	})
@@ -279,9 +280,9 @@ func TestURLSecurityValidator_ValidateParsedRSSURL(t *testing.T) {
 			"https://example.com:8443/feed.xml",
 		} {
 			u, err := url.Parse(raw)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			err = v.ValidateParsedRSSURL(u)
-			assert.EqualError(t, err, "port not allowed")
+			require.EqualError(t, err, "port not allowed")
 		}
 
 		// Allowed ports (empty, 80, 443) for public domain (mock via allowlist to avoid external DNS)
@@ -310,14 +311,14 @@ func TestURLSecurityValidator_ValidateParsedRSSURL(t *testing.T) {
 			"http://198.18.0.1/feed.xml",
 		} {
 			u, err := url.Parse(raw)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Error(t, v.ValidateParsedRSSURL(u))
 		}
 	})
 
 	t.Run("disallowed scheme gopher", func(t *testing.T) {
 		u, err := url.Parse("gopher://example.com")
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		err = v.ValidateParsedRSSURL(u)
 		assert.EqualError(t, err, "only HTTP and HTTPS schemes allowed")
 	})

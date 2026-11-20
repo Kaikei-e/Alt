@@ -2,6 +2,7 @@ package knowledge_home
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -64,7 +65,8 @@ func TestStreamKnowledgeHomeUpdates_FeatureFlagDisabled(t *testing.T) {
 	err := handler.streamFlagGuard(ctx)
 	require.Error(t, err)
 
-	connectErr, ok := err.(*connect.Error)
+	connectErr := &connect.Error{}
+	ok := errors.As(err, &connectErr)
 	require.True(t, ok)
 	assert.Equal(t, connect.CodePermissionDenied, connectErr.Code())
 }
@@ -76,7 +78,8 @@ func TestStreamKnowledgeHomeUpdates_Unauthenticated(t *testing.T) {
 	err := handler.streamFlagGuard(context.Background())
 	require.Error(t, err)
 
-	connectErr, ok := err.(*connect.Error)
+	connectErr := &connect.Error{}
+	ok := errors.As(err, &connectErr)
 	require.True(t, ok)
 	assert.Equal(t, connect.CodeUnauthenticated, connectErr.Code())
 }
@@ -95,7 +98,8 @@ func TestHandler_StreamKnowledgeHomeUpdates_InvalidLensID(t *testing.T) {
 	err := handler.StreamKnowledgeHomeUpdates(testUserContext(), req, nil)
 	require.Error(t, err)
 
-	connectErr, ok := err.(*connect.Error)
+	connectErr := &connect.Error{}
+	ok := errors.As(err, &connectErr)
 	require.True(t, ok)
 	assert.Equal(t, connect.CodeInvalidArgument, connectErr.Code())
 }
@@ -155,8 +159,8 @@ func TestHighWaterMark_BelowThreshold_IndividualEvents(t *testing.T) {
 
 	for _, e := range coalesced {
 		resp := buildStreamResponse(e)
-		assert.Equal(t, "item_added", resp.EventType)
-		assert.NotNil(t, resp.Item)
+		assert.Equal(t, "item_added", resp.GetEventType())
+		assert.NotNil(t, resp.GetItem())
 	}
 }
 
@@ -215,11 +219,11 @@ func TestEnrichRecallChangedUpdate_ReplacesMinimalPayloadWhenCandidateResolved(t
 
 	handler.enrichRecallChangedUpdate(context.Background(), userID, update)
 
-	require.NotNil(t, update.RecallChange)
-	assert.Equal(t, "article:"+articleID.String(), update.RecallChange.ItemKey)
-	assert.Equal(t, 0.91, update.RecallChange.RecallScore)
-	require.NotNil(t, update.RecallChange.Item)
-	assert.Equal(t, "Recovered title", update.RecallChange.Item.Title)
+	require.NotNil(t, update.GetRecallChange())
+	assert.Equal(t, "article:"+articleID.String(), update.GetRecallChange().GetItemKey())
+	assert.InDelta(t, 0.91, update.GetRecallChange().GetRecallScore(), 1e-9)
+	require.NotNil(t, update.GetRecallChange().GetItem())
+	assert.Equal(t, "Recovered title", update.GetRecallChange().GetItem().GetTitle())
 }
 
 // testAuthInterceptor injects a user context for httptest-based streaming tests.
@@ -314,7 +318,7 @@ func TestStreamKnowledgeHomeUpdates_SendsImmediateHeartbeat(t *testing.T) {
 	elapsed := time.Since(started)
 
 	msg := stream.Msg()
-	assert.Equal(t, "heartbeat", msg.EventType, "first message should be a heartbeat")
-	assert.NotEmpty(t, msg.OccurredAt, "heartbeat should have occurred_at timestamp")
+	assert.Equal(t, "heartbeat", msg.GetEventType(), "first message should be a heartbeat")
+	assert.NotEmpty(t, msg.GetOccurredAt(), "heartbeat should have occurred_at timestamp")
 	assert.Less(t, elapsed, 2*time.Second, "first message should arrive within 2s, not after 5-10s ticker delay")
 }

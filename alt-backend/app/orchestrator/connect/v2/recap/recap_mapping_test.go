@@ -87,15 +87,15 @@ func TestDomainToProto_TableDriven(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			res3 := domainToProtoThreeDays(tt.input)
 			require.NotNil(t, res3)
-			assert.Equal(t, tt.input.JobID, res3.JobId)
-			assert.Len(t, res3.Genres, tt.expected)
+			assert.Equal(t, tt.input.JobID, res3.GetJobId())
+			assert.Len(t, res3.GetGenres(), tt.expected)
 			if tt.input.SurfaceStatus != nil {
-				require.NotNil(t, res3.SurfaceStatus)
-				assert.Equal(t, tt.input.SurfaceStatus.GeneratedAt, res3.SurfaceStatus.GeneratedAt)
-				require.Len(t, res3.SurfaceStatus.DegradationReasons, 1)
-				assert.Equal(t, "extractive_genres", res3.SurfaceStatus.DegradationReasons[0].Code)
+				require.NotNil(t, res3.GetSurfaceStatus())
+				assert.Equal(t, tt.input.SurfaceStatus.GeneratedAt, res3.GetSurfaceStatus().GetGeneratedAt())
+				require.Len(t, res3.GetSurfaceStatus().GetDegradationReasons(), 1)
+				assert.Equal(t, "extractive_genres", res3.GetSurfaceStatus().GetDegradationReasons()[0].GetCode())
 			} else {
-				assert.Nil(t, res3.SurfaceStatus)
+				assert.Nil(t, res3.GetSurfaceStatus())
 			}
 		})
 	}
@@ -200,24 +200,24 @@ func TestDomainToProtoTopicCards_TableDriven(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			protoResp := domainToProtoTopicCards(tt.input)
 			require.NotNil(t, protoResp)
-			assert.Len(t, protoResp.Cards, tt.expectedCards)
+			assert.Len(t, protoResp.GetCards(), tt.expectedCards)
 			if tt.hasJob {
-				assert.NotNil(t, protoResp.Job)
-				assert.Equal(t, tt.input.Job.JobID, protoResp.Job.JobId)
+				assert.NotNil(t, protoResp.GetJob())
+				assert.Equal(t, tt.input.Job.JobID, protoResp.GetJob().GetJobId())
 			} else {
-				assert.Nil(t, protoResp.Job)
+				assert.Nil(t, protoResp.GetJob())
 			}
 			if tt.hasSurfaceStatus {
-				require.NotNil(t, protoResp.SurfaceStatus)
-				assert.Equal(t, tt.input.SurfaceStatus.GeneratedAt, protoResp.SurfaceStatus.GeneratedAt)
-				require.NotNil(t, protoResp.SurfaceStatus.LatestRun)
-				assert.Equal(t, tt.input.SurfaceStatus.LatestRun.JobID, protoResp.SurfaceStatus.LatestRun.JobId)
-				assert.Equal(t, tt.runStatus, protoResp.SurfaceStatus.LatestRun.Status)
-				assert.Equal(t, tt.input.SurfaceStatus.LatestRun.KickedAt, protoResp.SurfaceStatus.LatestRun.KickedAt)
-				assert.Equal(t, tt.input.SurfaceStatus.LatestRun.UpdatedAt, protoResp.SurfaceStatus.LatestRun.UpdatedAt)
-				assert.Len(t, protoResp.SurfaceStatus.DegradationReasons, len(tt.input.SurfaceStatus.DegradationReasons))
+				require.NotNil(t, protoResp.GetSurfaceStatus())
+				assert.Equal(t, tt.input.SurfaceStatus.GeneratedAt, protoResp.GetSurfaceStatus().GetGeneratedAt())
+				require.NotNil(t, protoResp.GetSurfaceStatus().GetLatestRun())
+				assert.Equal(t, tt.input.SurfaceStatus.LatestRun.JobID, protoResp.GetSurfaceStatus().GetLatestRun().GetJobId())
+				assert.Equal(t, tt.runStatus, protoResp.GetSurfaceStatus().GetLatestRun().GetStatus())
+				assert.Equal(t, tt.input.SurfaceStatus.LatestRun.KickedAt, protoResp.GetSurfaceStatus().GetLatestRun().GetKickedAt())
+				assert.Equal(t, tt.input.SurfaceStatus.LatestRun.UpdatedAt, protoResp.GetSurfaceStatus().GetLatestRun().GetUpdatedAt())
+				assert.Len(t, protoResp.GetSurfaceStatus().GetDegradationReasons(), len(tt.input.SurfaceStatus.DegradationReasons))
 			} else {
-				assert.Nil(t, protoResp.SurfaceStatus)
+				assert.Nil(t, protoResp.GetSurfaceStatus())
 			}
 		})
 	}
@@ -264,10 +264,10 @@ func TestClusterDraftToProto_TableDriven(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			res := clusterDraftToProto(tt.input)
 			require.NotNil(t, res)
-			assert.Equal(t, tt.wantDraft, res.DraftId)
-			assert.Len(t, res.Genres, 1)
-			assert.Len(t, res.Genres[0].Clusters, 1)
-			assert.Len(t, res.Genres[0].Clusters[0].RepresentativeArticles, 1)
+			assert.Equal(t, tt.wantDraft, res.GetDraftId())
+			assert.Len(t, res.GetGenres(), 1)
+			assert.Len(t, res.GetGenres()[0].GetClusters(), 1)
+			assert.Len(t, res.GetGenres()[0].GetClusters()[0].GetRepresentativeArticles(), 1)
 		})
 	}
 }
@@ -303,8 +303,8 @@ func TestRecapSearchResultsToProto_TableDriven(t *testing.T) {
 			protoItems := recapSearchResultsToProto(tt.input)
 			assert.Len(t, protoItems, tt.expected)
 			if tt.expected > 0 {
-				assert.Equal(t, tt.input[0].JobID, protoItems[0].JobId)
-				assert.Equal(t, tt.input[0].Genre, protoItems[0].Genre)
+				assert.Equal(t, tt.input[0].JobID, protoItems[0].GetJobId())
+				assert.Equal(t, tt.input[0].Genre, protoItems[0].GetGenre())
 			}
 		})
 	}

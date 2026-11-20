@@ -3,6 +3,7 @@ package middleware
 import (
 	"crypto/ed25519"
 	"crypto/rand"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -13,7 +14,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/require"
 )
 
@@ -67,7 +68,7 @@ func testAuthConfig() config.AuthConfig {
 func TestRequireAuth_SetsUserContext(t *testing.T) {
 	e := echo.New()
 	userID := uuid.New().String()
-	req := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/feeds", nil)
 	jwtToken := issueTestJWT(t, userID, "user@example.com", "admin", "session-token")
 	req.Header.Set(backendTokenHeader, jwtToken)
 	res := httptest.NewRecorder()
@@ -76,7 +77,7 @@ func TestRequireAuth_SetsUserContext(t *testing.T) {
 	cfg := testAuthConfig()
 	middleware := NewAuthMiddleware(nil, cfg)
 	called := false
-	h := middleware.RequireAuth()(func(c echo.Context) error {
+	h := middleware.RequireAuth()(func(c *echo.Context) error {
 		called = true
 
 		user, err := domain.GetUserFromContext(c.Request().Context())
@@ -97,47 +98,49 @@ func TestRequireAuth_SetsUserContext(t *testing.T) {
 
 func TestRequireAuth_MissingJWT(t *testing.T) {
 	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/feeds", nil)
 	// No JWT token
 	res := httptest.NewRecorder()
 	c := e.NewContext(req, res)
 
 	cfg := testAuthConfig()
 	middleware := NewAuthMiddleware(nil, cfg)
-	h := middleware.RequireAuth()(func(c echo.Context) error {
+	h := middleware.RequireAuth()(func(c *echo.Context) error {
 		return c.NoContent(http.StatusOK)
 	})
 
 	err := h(c)
 	require.Error(t, err)
-	httpErr, ok := err.(*echo.HTTPError)
+	httpErr := &echo.HTTPError{}
+	ok := errors.As(err, &httpErr)
 	require.True(t, ok)
 	require.Equal(t, http.StatusUnauthorized, httpErr.Code)
 }
 
 func TestRequireAuth_InvalidJWT(t *testing.T) {
 	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/feeds", nil)
 	req.Header.Set(backendTokenHeader, "invalid-jwt-token")
 	res := httptest.NewRecorder()
 	c := e.NewContext(req, res)
 
 	cfg := testAuthConfig()
 	middleware := NewAuthMiddleware(nil, cfg)
-	h := middleware.RequireAuth()(func(c echo.Context) error {
+	h := middleware.RequireAuth()(func(c *echo.Context) error {
 		return c.NoContent(http.StatusOK)
 	})
 
 	err := h(c)
 	require.Error(t, err)
-	httpErr, ok := err.(*echo.HTTPError)
+	httpErr := &echo.HTTPError{}
+	ok := errors.As(err, &httpErr)
 	require.True(t, ok)
 	require.Equal(t, http.StatusUnauthorized, httpErr.Code)
 }
 
 func TestRequireAuth_SharedSecretOnlyFails(t *testing.T) {
 	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/feeds", nil)
 	userID := uuid.New().String()
 	tenantID := uuid.New().String()
 	req.Header.Set(userIDHeader, userID)
@@ -150,20 +153,21 @@ func TestRequireAuth_SharedSecretOnlyFails(t *testing.T) {
 
 	cfg := testAuthConfig()
 	middleware := NewAuthMiddleware(nil, cfg)
-	h := middleware.RequireAuth()(func(c echo.Context) error {
+	h := middleware.RequireAuth()(func(c *echo.Context) error {
 		return c.NoContent(http.StatusOK)
 	})
 
 	err := h(c)
 	require.Error(t, err)
-	httpErr, ok := err.(*echo.HTTPError)
+	httpErr := &echo.HTTPError{}
+	ok := errors.As(err, &httpErr)
 	require.True(t, ok)
 	require.Equal(t, http.StatusUnauthorized, httpErr.Code)
 }
 
 func TestOptionalAuth_AllowsUnauthenticatedRequests(t *testing.T) {
 	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/v1/articles", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/articles", nil)
 	// No auth headers at all
 	res := httptest.NewRecorder()
 	c := e.NewContext(req, res)
@@ -171,7 +175,7 @@ func TestOptionalAuth_AllowsUnauthenticatedRequests(t *testing.T) {
 	cfg := testAuthConfig()
 	middleware := NewAuthMiddleware(nil, cfg)
 	called := false
-	h := middleware.OptionalAuth()(func(c echo.Context) error {
+	h := middleware.OptionalAuth()(func(c *echo.Context) error {
 		called = true
 		_, err := domain.GetUserFromContext(c.Request().Context())
 		require.Error(t, err)
@@ -186,7 +190,7 @@ func TestOptionalAuth_AllowsUnauthenticatedRequests(t *testing.T) {
 // V-005: Test that OptionalAuth rejects requests with identity headers but no valid JWT
 func TestOptionalAuth_RejectsUntrustedAuthHeaders(t *testing.T) {
 	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/v1/articles", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/articles", nil)
 	// Attacker sends auth headers but no valid JWT
 	userID := uuid.New().String()
 	tenantID := uuid.New().String()
@@ -201,7 +205,7 @@ func TestOptionalAuth_RejectsUntrustedAuthHeaders(t *testing.T) {
 	cfg := testAuthConfig()
 	middleware := NewAuthMiddleware(nil, cfg)
 	called := false
-	h := middleware.OptionalAuth()(func(c echo.Context) error {
+	h := middleware.OptionalAuth()(func(c *echo.Context) error {
 		called = true
 		// Should NOT have user context - treated as anonymous
 		_, err := domain.GetUserFromContext(c.Request().Context())
@@ -218,7 +222,7 @@ func TestOptionalAuth_RejectsUntrustedAuthHeaders(t *testing.T) {
 func TestOptionalAuth_AcceptsValidJWT(t *testing.T) {
 	e := echo.New()
 	userID := uuid.New().String()
-	req := httptest.NewRequest(http.MethodGet, "/v1/articles", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/articles", nil)
 	jwtToken := issueTestJWT(t, userID, "user@example.com", "user", "session-123")
 	req.Header.Set(backendTokenHeader, jwtToken)
 	res := httptest.NewRecorder()
@@ -227,7 +231,7 @@ func TestOptionalAuth_AcceptsValidJWT(t *testing.T) {
 	cfg := testAuthConfig()
 	middleware := NewAuthMiddleware(nil, cfg)
 	called := false
-	h := middleware.OptionalAuth()(func(c echo.Context) error {
+	h := middleware.OptionalAuth()(func(c *echo.Context) error {
 		called = true
 		// Should have user context
 		user, err := domain.GetUserFromContext(c.Request().Context())
@@ -244,7 +248,7 @@ func TestOptionalAuth_AcceptsValidJWT(t *testing.T) {
 // V-005: Test that OptionalAuth with invalid JWT is treated as anonymous
 func TestOptionalAuth_InvalidJWTTreatedAsAnonymous(t *testing.T) {
 	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/v1/articles", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/articles", nil)
 	req.Header.Set(backendTokenHeader, "invalid-jwt-token")
 	res := httptest.NewRecorder()
 	c := e.NewContext(req, res)
@@ -252,7 +256,7 @@ func TestOptionalAuth_InvalidJWTTreatedAsAnonymous(t *testing.T) {
 	cfg := testAuthConfig()
 	middleware := NewAuthMiddleware(nil, cfg)
 	called := false
-	h := middleware.OptionalAuth()(func(c echo.Context) error {
+	h := middleware.OptionalAuth()(func(c *echo.Context) error {
 		called = true
 		// Should NOT have user context - treated as anonymous
 		_, err := domain.GetUserFromContext(c.Request().Context())
@@ -268,7 +272,7 @@ func TestOptionalAuth_InvalidJWTTreatedAsAnonymous(t *testing.T) {
 // V-005: Test that requests without any headers are anonymous
 func TestOptionalAuth_NoHeadersIsAnonymous(t *testing.T) {
 	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/v1/articles", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/articles", nil)
 	// No headers at all
 	res := httptest.NewRecorder()
 	c := e.NewContext(req, res)
@@ -276,7 +280,7 @@ func TestOptionalAuth_NoHeadersIsAnonymous(t *testing.T) {
 	cfg := testAuthConfig()
 	middleware := NewAuthMiddleware(nil, cfg)
 	called := false
-	h := middleware.OptionalAuth()(func(c echo.Context) error {
+	h := middleware.OptionalAuth()(func(c *echo.Context) error {
 		called = true
 		_, err := domain.GetUserFromContext(c.Request().Context())
 		require.Error(t, err, "user context should not be set for anonymous request")
@@ -295,7 +299,7 @@ func TestRequireAuth_UsesTenantIDClaim(t *testing.T) {
 	e := echo.New()
 	userID := uuid.New().String()
 	tenantID := uuid.New().String()
-	req := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/feeds", nil)
 	jwtToken := issueTestJWTWithTenant(t, userID, "u@example.com", "user", "s-1", tenantID)
 	req.Header.Set(backendTokenHeader, jwtToken)
 	res := httptest.NewRecorder()
@@ -304,7 +308,7 @@ func TestRequireAuth_UsesTenantIDClaim(t *testing.T) {
 	cfg := testAuthConfig()
 	mw := NewAuthMiddleware(nil, cfg)
 	called := false
-	h := mw.RequireAuth()(func(c echo.Context) error {
+	h := mw.RequireAuth()(func(c *echo.Context) error {
 		called = true
 		user, err := domain.GetUserFromContext(c.Request().Context())
 		require.NoError(t, err)
@@ -321,7 +325,7 @@ func TestRequireAuth_UsesTenantIDClaim(t *testing.T) {
 func TestRequireAuth_MissingTenantIDRejectedWith401(t *testing.T) {
 	e := echo.New()
 	userID := uuid.New().String()
-	req := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/feeds", nil)
 	// Explicitly pass empty tenant_id
 	jwtToken := issueTestJWTWithTenant(t, userID, "u@example.com", "user", "s-1", "")
 	req.Header.Set(backendTokenHeader, jwtToken)
@@ -330,12 +334,13 @@ func TestRequireAuth_MissingTenantIDRejectedWith401(t *testing.T) {
 
 	cfg := testAuthConfig()
 	mw := NewAuthMiddleware(nil, cfg)
-	h := mw.RequireAuth()(func(c echo.Context) error {
+	h := mw.RequireAuth()(func(c *echo.Context) error {
 		return c.NoContent(http.StatusOK)
 	})
 	err := h(c)
 	require.Error(t, err)
-	httpErr, ok := err.(*echo.HTTPError)
+	httpErr := &echo.HTTPError{}
+	ok := errors.As(err, &httpErr)
 	require.True(t, ok)
 	require.Equal(t, http.StatusUnauthorized, httpErr.Code)
 }
@@ -344,7 +349,7 @@ func TestRequireAuth_MissingTenantIDRejectedWith401(t *testing.T) {
 func TestRequireAuth_NonUUIDTenantIDRejectedWith401(t *testing.T) {
 	e := echo.New()
 	userID := uuid.New().String()
-	req := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/feeds", nil)
 	jwtToken := issueTestJWTWithTenant(t, userID, "u@example.com", "user", "s-1", "not-a-uuid")
 	req.Header.Set(backendTokenHeader, jwtToken)
 	res := httptest.NewRecorder()
@@ -352,12 +357,13 @@ func TestRequireAuth_NonUUIDTenantIDRejectedWith401(t *testing.T) {
 
 	cfg := testAuthConfig()
 	mw := NewAuthMiddleware(nil, cfg)
-	h := mw.RequireAuth()(func(c echo.Context) error {
+	h := mw.RequireAuth()(func(c *echo.Context) error {
 		return c.NoContent(http.StatusOK)
 	})
 	err := h(c)
 	require.Error(t, err)
-	httpErr, ok := err.(*echo.HTTPError)
+	httpErr := &echo.HTTPError{}
+	ok := errors.As(err, &httpErr)
 	require.True(t, ok)
 	require.Equal(t, http.StatusUnauthorized, httpErr.Code)
 }
@@ -366,7 +372,7 @@ func TestRequireAuth_NonUUIDTenantIDRejectedWith401(t *testing.T) {
 func TestRequireAuth_NilTenantIDRejectedWith401(t *testing.T) {
 	e := echo.New()
 	userID := uuid.New().String()
-	req := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/feeds", nil)
 	jwtToken := issueTestJWTWithTenant(t, userID, "u@example.com", "user", "s-1", uuid.Nil.String())
 	req.Header.Set(backendTokenHeader, jwtToken)
 	res := httptest.NewRecorder()
@@ -374,12 +380,13 @@ func TestRequireAuth_NilTenantIDRejectedWith401(t *testing.T) {
 
 	cfg := testAuthConfig()
 	mw := NewAuthMiddleware(nil, cfg)
-	h := mw.RequireAuth()(func(c echo.Context) error {
+	h := mw.RequireAuth()(func(c *echo.Context) error {
 		return c.NoContent(http.StatusOK)
 	})
 	err := h(c)
 	require.Error(t, err)
-	httpErr, ok := err.(*echo.HTTPError)
+	httpErr := &echo.HTTPError{}
+	ok := errors.As(err, &httpErr)
 	require.True(t, ok)
 	require.Equal(t, http.StatusUnauthorized, httpErr.Code)
 }
@@ -389,7 +396,7 @@ func TestRequireAuth_NilTenantIDRejectedWith401(t *testing.T) {
 func TestOptionalAuth_InvalidTenantIDTreatedAsAnonymous(t *testing.T) {
 	e := echo.New()
 	userID := uuid.New().String()
-	req := httptest.NewRequest(http.MethodGet, "/v1/articles", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/articles", nil)
 	jwtToken := issueTestJWTWithTenant(t, userID, "u@example.com", "user", "s-1", "not-a-uuid")
 	req.Header.Set(backendTokenHeader, jwtToken)
 	res := httptest.NewRecorder()
@@ -398,7 +405,7 @@ func TestOptionalAuth_InvalidTenantIDTreatedAsAnonymous(t *testing.T) {
 	cfg := testAuthConfig()
 	mw := NewAuthMiddleware(nil, cfg)
 	called := false
-	h := mw.OptionalAuth()(func(c echo.Context) error {
+	h := mw.OptionalAuth()(func(c *echo.Context) error {
 		called = true
 		_, err := domain.GetUserFromContext(c.Request().Context())
 		require.Error(t, err, "no user context should be attached when tenant_id is invalid")
@@ -413,7 +420,7 @@ func TestOptionalAuth_InvalidTenantIDTreatedAsAnonymous(t *testing.T) {
 // identity and must not result in uuid.Nil being accepted as a real user.
 func TestRequireAuth_NonUUIDSubjectRejectedWith401(t *testing.T) {
 	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/feeds", nil)
 	// Craft a JWT with a valid signature but a non-UUID subject.
 	jwtToken := issueTestJWT(t, "not-a-uuid", "user@example.com", "user", "session-token")
 	req.Header.Set(backendTokenHeader, jwtToken)
@@ -423,14 +430,15 @@ func TestRequireAuth_NonUUIDSubjectRejectedWith401(t *testing.T) {
 	cfg := testAuthConfig()
 	mw := NewAuthMiddleware(nil, cfg)
 	called := false
-	h := mw.RequireAuth()(func(c echo.Context) error {
+	h := mw.RequireAuth()(func(c *echo.Context) error {
 		called = true
 		return c.NoContent(http.StatusOK)
 	})
 
 	err := h(c)
 	require.Error(t, err)
-	httpErr, ok := err.(*echo.HTTPError)
+	httpErr := &echo.HTTPError{}
+	ok := errors.As(err, &httpErr)
 	require.True(t, ok)
 	require.Equal(t, http.StatusUnauthorized, httpErr.Code)
 	require.False(t, called, "handler must not run when subject is not a UUID")
@@ -441,7 +449,7 @@ func TestRequireAuth_NonUUIDSubjectRejectedWith401(t *testing.T) {
 // would give access to rows that happen to carry the zero UUID.
 func TestRequireAuth_NilUUIDSubjectRejectedWith401(t *testing.T) {
 	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/feeds", nil)
 	jwtToken := issueTestJWT(t, uuid.Nil.String(), "user@example.com", "user", "session-token")
 	req.Header.Set(backendTokenHeader, jwtToken)
 	res := httptest.NewRecorder()
@@ -450,14 +458,15 @@ func TestRequireAuth_NilUUIDSubjectRejectedWith401(t *testing.T) {
 	cfg := testAuthConfig()
 	mw := NewAuthMiddleware(nil, cfg)
 	called := false
-	h := mw.RequireAuth()(func(c echo.Context) error {
+	h := mw.RequireAuth()(func(c *echo.Context) error {
 		called = true
 		return c.NoContent(http.StatusOK)
 	})
 
 	err := h(c)
 	require.Error(t, err)
-	httpErr, ok := err.(*echo.HTTPError)
+	httpErr := &echo.HTTPError{}
+	ok := errors.As(err, &httpErr)
 	require.True(t, ok)
 	require.Equal(t, http.StatusUnauthorized, httpErr.Code)
 	require.False(t, called, "handler must not run when subject is the nil UUID")
@@ -467,7 +476,7 @@ func TestRequireAuth_NilUUIDSubjectRejectedWith401(t *testing.T) {
 func TestRequireAdmin_AdminPasses(t *testing.T) {
 	e := echo.New()
 	userID := uuid.New().String()
-	req := httptest.NewRequest(http.MethodGet, "/v1/dashboard/metrics", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/dashboard/metrics", nil)
 	jwtToken := issueTestJWT(t, userID, "admin@example.com", string(domain.UserRoleAdmin), "session-a")
 	req.Header.Set(backendTokenHeader, jwtToken)
 	res := httptest.NewRecorder()
@@ -476,7 +485,7 @@ func TestRequireAdmin_AdminPasses(t *testing.T) {
 	cfg := testAuthConfig()
 	mw := NewAuthMiddleware(nil, cfg)
 	called := false
-	chain := mw.RequireAuth()(mw.RequireAdmin()(func(c echo.Context) error {
+	chain := mw.RequireAuth()(mw.RequireAdmin()(func(c *echo.Context) error {
 		called = true
 		return c.NoContent(http.StatusOK)
 	}))
@@ -488,7 +497,7 @@ func TestRequireAdmin_AdminPasses(t *testing.T) {
 func TestRequireAdmin_NonAdminRejectedWith403(t *testing.T) {
 	e := echo.New()
 	userID := uuid.New().String()
-	req := httptest.NewRequest(http.MethodGet, "/v1/dashboard/metrics", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/dashboard/metrics", nil)
 	jwtToken := issueTestJWT(t, userID, "user@example.com", string(domain.UserRoleUser), "session-u")
 	req.Header.Set(backendTokenHeader, jwtToken)
 	res := httptest.NewRecorder()
@@ -497,13 +506,14 @@ func TestRequireAdmin_NonAdminRejectedWith403(t *testing.T) {
 	cfg := testAuthConfig()
 	mw := NewAuthMiddleware(nil, cfg)
 	called := false
-	chain := mw.RequireAuth()(mw.RequireAdmin()(func(c echo.Context) error {
+	chain := mw.RequireAuth()(mw.RequireAdmin()(func(c *echo.Context) error {
 		called = true
 		return c.NoContent(http.StatusOK)
 	}))
 	err := chain(c)
 	require.Error(t, err)
-	httpErr, ok := err.(*echo.HTTPError)
+	httpErr := &echo.HTTPError{}
+	ok := errors.As(err, &httpErr)
 	require.True(t, ok)
 	require.Equal(t, http.StatusForbidden, httpErr.Code)
 	require.False(t, called)
@@ -515,18 +525,19 @@ func TestRequireAdmin_NonAdminRejectedWith403(t *testing.T) {
 // treated as unauthorized, not forbidden.
 func TestRequireAdmin_NoUserContextRejectedWith401(t *testing.T) {
 	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/v1/dashboard/metrics", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/dashboard/metrics", nil)
 	res := httptest.NewRecorder()
 	c := e.NewContext(req, res)
 
 	cfg := testAuthConfig()
 	mw := NewAuthMiddleware(nil, cfg)
-	h := mw.RequireAdmin()(func(c echo.Context) error {
+	h := mw.RequireAdmin()(func(c *echo.Context) error {
 		return c.NoContent(http.StatusOK)
 	})
 	err := h(c)
 	require.Error(t, err)
-	httpErr, ok := err.(*echo.HTTPError)
+	httpErr := &echo.HTTPError{}
+	ok := errors.As(err, &httpErr)
 	require.True(t, ok)
 	require.Equal(t, http.StatusUnauthorized, httpErr.Code)
 }
@@ -536,7 +547,7 @@ func TestRequireAdmin_NoUserContextRejectedWith401(t *testing.T) {
 // but identity cannot be constructed safely, so downstream must see no user.
 func TestOptionalAuth_NonUUIDSubjectTreatedAsAnonymous(t *testing.T) {
 	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/v1/articles", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/articles", nil)
 	jwtToken := issueTestJWT(t, "not-a-uuid", "user@example.com", "user", "session-token")
 	req.Header.Set(backendTokenHeader, jwtToken)
 	res := httptest.NewRecorder()
@@ -545,7 +556,7 @@ func TestOptionalAuth_NonUUIDSubjectTreatedAsAnonymous(t *testing.T) {
 	cfg := testAuthConfig()
 	mw := NewAuthMiddleware(nil, cfg)
 	called := false
-	h := mw.OptionalAuth()(func(c echo.Context) error {
+	h := mw.OptionalAuth()(func(c *echo.Context) error {
 		called = true
 		_, err := domain.GetUserFromContext(c.Request().Context())
 		require.Error(t, err, "no user context should be attached when subject is not a UUID")
@@ -576,21 +587,22 @@ func TestRequireAuth_MissingExpClaimRejectedWith401(t *testing.T) {
 	signed, err := token.SignedString(testBackendTokenPrivateKey)
 	require.NoError(t, err)
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/feeds", nil)
 	req.Header.Set(backendTokenHeader, signed)
 	res := httptest.NewRecorder()
 	c := e.NewContext(req, res)
 
 	mw := NewAuthMiddleware(nil, testAuthConfig())
 	called := false
-	h := mw.RequireAuth()(func(c echo.Context) error {
+	h := mw.RequireAuth()(func(c *echo.Context) error {
 		called = true
 		return c.NoContent(http.StatusOK)
 	})
 
 	err = h(c)
 	require.Error(t, err)
-	httpErr, ok := err.(*echo.HTTPError)
+	httpErr := &echo.HTTPError{}
+	ok := errors.As(err, &httpErr)
 	require.True(t, ok)
 	require.Equal(t, http.StatusUnauthorized, httpErr.Code)
 	require.False(t, called)
@@ -617,13 +629,13 @@ func TestRequireAuth_UsesTokenExpClaimNot24HourFallback(t *testing.T) {
 	signed, err := token.SignedString(testBackendTokenPrivateKey)
 	require.NoError(t, err)
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/feeds", nil)
 	req.Header.Set(backendTokenHeader, signed)
 	res := httptest.NewRecorder()
 	c := e.NewContext(req, res)
 
 	mw := NewAuthMiddleware(nil, testAuthConfig())
-	h := mw.RequireAuth()(func(c echo.Context) error {
+	h := mw.RequireAuth()(func(c *echo.Context) error {
 		user, err := domain.GetUserFromContext(c.Request().Context())
 		require.NoError(t, err)
 		require.True(t, user.ExpiresAt.Equal(exp), "ExpiresAt must match JWT exp claim, got %v want %v", user.ExpiresAt, exp)

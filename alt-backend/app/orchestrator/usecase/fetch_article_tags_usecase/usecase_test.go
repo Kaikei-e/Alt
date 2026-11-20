@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 func init() {
@@ -55,7 +56,7 @@ func TestFetchArticleTagsUsecase_Execute_Success(t *testing.T) {
 	result, err := usecase.Execute(context.Background(), articleID)
 
 	// Assert
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.Len(t, result, 2)
 	assert.Equal(t, "Technology", result[0].TagName)
@@ -72,7 +73,7 @@ func TestFetchArticleTagsUsecase_Execute_EmptyArticleID(t *testing.T) {
 	result, err := usecase.Execute(context.Background(), "")
 
 	// Assert
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, result)
 	assert.Contains(t, err.Error(), "article_id must not be empty")
 }
@@ -89,9 +90,9 @@ func TestFetchArticleTagsUsecase_Execute_EmptyResult(t *testing.T) {
 	result, err := usecase.Execute(context.Background(), articleID)
 
 	// Assert
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotNil(t, result)
-	assert.Len(t, result, 0)
+	assert.Empty(t, result)
 	mockPort.AssertExpectations(t)
 }
 
@@ -108,7 +109,7 @@ func TestFetchArticleTagsUsecase_Execute_DatabaseError(t *testing.T) {
 	result, err := usecase.Execute(context.Background(), articleID)
 
 	// Assert
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, result)
 	assert.Contains(t, err.Error(), "database connection failed")
 	mockPort.AssertExpectations(t)

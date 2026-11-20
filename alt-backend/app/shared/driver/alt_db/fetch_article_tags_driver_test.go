@@ -59,19 +59,19 @@ func TestFetchArticleTagsForUser_RejectsMissingUser(t *testing.T) {
 
 	tags, err := repo.FetchArticleTagsForUser(context.Background(), articleID, nil)
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "user")
+	require.ErrorContains(t, err, "user")
 	assert.Nil(t, tags)
 
 	nilUUID := uuid.Nil
 	tags, err = repo.FetchArticleTagsForUser(context.Background(), articleID, &nilUUID)
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "user")
+	require.ErrorContains(t, err, "user")
 	assert.Nil(t, tags)
 
 	ctxWithUser := domain.SetUserContext(context.Background(), &domain.UserContext{UserID: uuid.New()})
 	tags, err = repo.FetchArticleTagsForUser(ctxWithUser, articleID, nil)
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "user")
+	require.ErrorContains(t, err, "user")
 	assert.Nil(t, tags)
 
 	require.NoError(t, mock.ExpectationsWereMet())

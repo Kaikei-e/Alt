@@ -113,6 +113,14 @@ func ValidateBackendConfig(cfg *Config) error {
 	if cfg.ReadingQueue.TTLHours <= 0 {
 		return fmt.Errorf("backend config: READING_QUEUE_TTL_HOURS is required and must be a positive integer (got %d)", cfg.ReadingQueue.TTLHours)
 	}
+	if len(cfg.Server.CORSAllowedOrigins) == 0 {
+		return fmt.Errorf("backend config: CORS_ALLOWED_ORIGINS must contain at least one origin")
+	}
+	for _, origin := range cfg.Server.CORSAllowedOrigins {
+		if strings.TrimSpace(origin) == "" {
+			return fmt.Errorf("backend config: CORS_ALLOWED_ORIGINS contains an empty origin entry")
+		}
+	}
 	return nil
 }
 

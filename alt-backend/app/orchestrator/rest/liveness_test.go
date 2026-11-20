@@ -6,12 +6,12 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 func TestRestHandleLiveness_DoesNotClaimDatabase(t *testing.T) {
 	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/v1/health", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/health", nil)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 

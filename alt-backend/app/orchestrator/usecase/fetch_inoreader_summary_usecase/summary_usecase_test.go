@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
 
@@ -94,8 +95,8 @@ func TestFetchInoreaderSummaryUsecase_Execute_Success(t *testing.T) {
 			if tt.wantErr {
 				assert.Error(t, err)
 			} else {
-				assert.NoError(t, err)
-				assert.Equal(t, len(tt.want), len(result))
+				require.NoError(t, err)
+				assert.Len(t, result, len(tt.want))
 
 				for i, expected := range tt.want {
 					if i < len(result) {
@@ -190,7 +191,7 @@ func TestFetchInoreaderSummaryUsecase_Execute_PortError(t *testing.T) {
 	usecase := NewFetchInoreaderSummaryUsecase(mockPort)
 	result, err := usecase.Execute(context.Background(), urls)
 
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, result)
 }
 
@@ -381,10 +382,10 @@ func TestFetchInoreaderSummaryUsecase_PinnedURLValidation(t *testing.T) {
 			}
 
 			parsed, err := url.Parse(tt.rawURL)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 
 			err = uc.isAllowedURL(parsed)
-			assert.Error(t, err)
+			require.Error(t, err)
 			assert.Equal(t, tt.wantMsg, err.Error())
 		})
 	}

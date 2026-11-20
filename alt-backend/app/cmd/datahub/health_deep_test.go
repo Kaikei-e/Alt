@@ -21,7 +21,7 @@ func TestDataHubProvider_DeepHealthPassEnvelope(t *testing.T) {
 	h := dataHubHandler(cheapHealthMux(), newDeepHealthHandler(func(context.Context) error { return nil }))
 
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health/deep", nil))
+	h.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health/deep", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}
@@ -46,7 +46,7 @@ func TestDataHubProvider_DeepHealthFailIs503(t *testing.T) {
 	}))
 
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health/deep", nil))
+	h.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health/deep", nil))
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want 503", rec.Code)
 	}
@@ -69,13 +69,13 @@ func TestDataHubProvider_CheapHealthStays200WhenDeepFails(t *testing.T) {
 	}))
 
 	deep := httptest.NewRecorder()
-	h.ServeHTTP(deep, httptest.NewRequest(http.MethodGet, "/health/deep", nil))
+	h.ServeHTTP(deep, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health/deep", nil))
 	if deep.Code != http.StatusServiceUnavailable {
 		t.Fatalf("deep = %d, want 503", deep.Code)
 	}
 
 	cheap := httptest.NewRecorder()
-	h.ServeHTTP(cheap, httptest.NewRequest(http.MethodGet, "/health", nil))
+	h.ServeHTTP(cheap, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health", nil))
 	if cheap.Code != http.StatusOK {
 		t.Fatalf("cheap /health = %d, want 200", cheap.Code)
 	}
@@ -89,7 +89,7 @@ func TestDataHubProvider_ConsumerPingAgainstDeepContract(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health/deep", nil))
+	h.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health/deep", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("provider /health/deep = %d, want 200", rec.Code)
 	}

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSimpleCircuitBreaker_InitialState(t *testing.T) {
@@ -26,7 +27,7 @@ func TestSimpleCircuitBreaker_SuccessfulExecution(t *testing.T) {
 		return nil
 	})
 
-	assert.NoError(t, err, "Successful operation should not return error")
+	require.NoError(t, err, "Successful operation should not return error")
 	assert.Equal(t, StateClosed, cb.GetState(), "State should remain Closed after success")
 	assert.Equal(t, 0, cb.GetFailureCount(), "Failure count should remain 0 after success")
 }
@@ -45,7 +46,7 @@ func TestSimpleCircuitBreaker_FailureHandling(t *testing.T) {
 		return errors.New("test failure")
 	})
 
-	assert.Error(t, err, "Failed operation should return error")
+	require.Error(t, err, "Failed operation should return error")
 	assert.Equal(t, StateClosed, cb.GetState(), "State should remain Closed after single failure")
 	assert.Equal(t, 1, cb.GetFailureCount(), "Failure count should be 1")
 }
@@ -64,7 +65,7 @@ func TestSimpleCircuitBreaker_OpenOnMultipleFailures(t *testing.T) {
 		err := cb.Execute(ctx, func() error {
 			return errors.New("test failure")
 		})
-		assert.Error(t, err, "Failed operation should return error")
+		require.Error(t, err, "Failed operation should return error")
 	}
 
 	assert.Equal(t, StateOpen, cb.GetState(), "State should be Open after threshold failures")
@@ -81,9 +82,9 @@ func TestSimpleCircuitBreaker_RejectRequestsWhenOpen(t *testing.T) {
 	ctx := context.Background()
 
 	// Trigger Open state
-	cb.Execute(ctx, func() error {
+	require.Error(t, cb.Execute(ctx, func() error {
 		return errors.New("test failure")
-	})
+	}))
 
 	assert.Equal(t, StateOpen, cb.GetState(), "State should be Open")
 
@@ -92,7 +93,7 @@ func TestSimpleCircuitBreaker_RejectRequestsWhenOpen(t *testing.T) {
 		return nil
 	})
 
-	assert.Error(t, err, "Should reject requests when Open")
+	require.Error(t, err, "Should reject requests when Open")
 	assert.Contains(t, err.Error(), "circuit breaker is open", "Error should indicate circuit breaker is open")
 }
 
@@ -106,9 +107,9 @@ func TestSimpleCircuitBreaker_HalfOpenTransition(t *testing.T) {
 	ctx := context.Background()
 
 	// Trigger Open state
-	cb.Execute(ctx, func() error {
+	require.Error(t, cb.Execute(ctx, func() error {
 		return errors.New("test failure")
-	})
+	}))
 
 	assert.Equal(t, StateOpen, cb.GetState(), "State should be Open")
 
@@ -122,7 +123,7 @@ func TestSimpleCircuitBreaker_HalfOpenTransition(t *testing.T) {
 		return nil
 	})
 
-	assert.NoError(t, err, "Successful operation in Half-Open should work")
+	require.NoError(t, err, "Successful operation in Half-Open should work")
 	assert.Equal(t, StateClosed, cb.GetState(), "State should transition to Closed after success in Half-Open")
 }
 
@@ -136,9 +137,9 @@ func TestSimpleCircuitBreaker_HalfOpenFailure(t *testing.T) {
 	ctx := context.Background()
 
 	// Trigger Open state
-	cb.Execute(ctx, func() error {
+	require.Error(t, cb.Execute(ctx, func() error {
 		return errors.New("test failure")
-	})
+	}))
 
 	// Wait for reset timeout
 	time.Sleep(60 * time.Millisecond)
@@ -148,7 +149,7 @@ func TestSimpleCircuitBreaker_HalfOpenFailure(t *testing.T) {
 		return errors.New("test failure in half-open")
 	})
 
-	assert.Error(t, err, "Failed operation in Half-Open should return error")
+	require.Error(t, err, "Failed operation in Half-Open should return error")
 	assert.Equal(t, StateOpen, cb.GetState(), "State should transition back to Open after failure in Half-Open")
 }
 
@@ -164,10 +165,10 @@ func TestSimpleCircuitBreaker_ConcurrentRequestLimiting(t *testing.T) {
 	// Start a long-running operation
 	done := make(chan bool)
 	go func() {
-		cb.Execute(ctx, func() error {
+		assert.NoError(t, cb.Execute(ctx, func() error {
 			time.Sleep(100 * time.Millisecond) // Long operation
 			return nil
-		})
+		}))
 		done <- true
 	}()
 
@@ -179,7 +180,7 @@ func TestSimpleCircuitBreaker_ConcurrentRequestLimiting(t *testing.T) {
 		return nil
 	})
 
-	assert.Error(t, err, "Should reject concurrent requests beyond limit")
+	require.Error(t, err, "Should reject concurrent requests beyond limit")
 	assert.Contains(t, err.Error(), "too many concurrent requests", "Error should indicate concurrent request limit")
 
 	// Wait for first operation to complete
@@ -196,9 +197,9 @@ func TestSimpleCircuitBreaker_Reset(t *testing.T) {
 	ctx := context.Background()
 
 	// Trigger Open state
-	cb.Execute(ctx, func() error {
+	require.Error(t, cb.Execute(ctx, func() error {
 		return errors.New("test failure")
-	})
+	}))
 
 	assert.Equal(t, StateOpen, cb.GetState(), "State should be Open")
 	assert.Equal(t, 1, cb.GetFailureCount(), "Failure count should be 1")
@@ -214,7 +215,7 @@ func TestSimpleCircuitBreaker_Reset(t *testing.T) {
 func TestDefaultCircuitBreakerConfig(t *testing.T) {
 	config := DefaultCircuitBreakerConfig()
 
-	assert.Greater(t, config.FailureThreshold, 0, "Failure threshold should be positive")
+	assert.Positive(t, config.FailureThreshold, "Failure threshold should be positive")
 	assert.Greater(t, config.ResetTimeout, time.Duration(0), "Reset timeout should be positive")
-	assert.Greater(t, config.MaxConcurrentRequests, 0, "Max concurrent requests should be positive")
+	assert.Positive(t, config.MaxConcurrentRequests, "Max concurrent requests should be positive")
 }

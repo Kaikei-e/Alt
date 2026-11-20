@@ -66,7 +66,7 @@ func (h *Handler) ResolveBranch(
 		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 	msg := req.Msg
-	if err := h.resolveUsecase.Execute(ctx, user.UserID, user.TenantID, msg.BranchKey, msg.Resolution, msg.ClientResolutionId, msg.DismissReason); err != nil {
+	if err := h.resolveUsecase.Execute(ctx, user.UserID, user.TenantID, msg.GetBranchKey(), msg.GetResolution(), msg.GetClientResolutionId(), msg.GetDismissReason()); err != nil {
 		if errors.Is(err, resolve_trail_branch_usecase.ErrInvalidRequest) {
 			return nil, connect.NewError(connect.CodeInvalidArgument, err)
 		}
@@ -89,7 +89,7 @@ func (h *Handler) EmitTrailOutcome(
 		panic("knowledge_trail.Handler: EmitTrailOutcome reached with unwired emit usecase (DI gap)")
 	}
 	msg := req.Msg
-	if err := h.emitUsecase.Execute(ctx, user.UserID, user.TenantID, msg.BranchKey, msg.ItemKey, msg.DwellMs); err != nil {
+	if err := h.emitUsecase.Execute(ctx, user.UserID, user.TenantID, msg.GetBranchKey(), msg.GetItemKey(), msg.GetDwellMs()); err != nil {
 		if errors.Is(err, emit_trail_outcome_usecase.ErrInvalidRequest) {
 			return nil, connect.NewError(connect.CodeInvalidArgument, err)
 		}
@@ -110,10 +110,10 @@ func (h *Handler) GetTrail(
 
 	cursor := ""
 	if req.Msg.Cursor != nil {
-		cursor = *req.Msg.Cursor
+		cursor = req.Msg.GetCursor()
 	}
 
-	result, err := h.getTrailUsecase.Execute(ctx, user.UserID, cursor, int(req.Msg.Limit), req.Msg.FilterTags)
+	result, err := h.getTrailUsecase.Execute(ctx, user.UserID, cursor, int(req.Msg.GetLimit()), req.Msg.GetFilterTags())
 	if err != nil {
 		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "GetTrail")
 	}
@@ -148,7 +148,7 @@ func (h *Handler) SearchTrail(
 		panic("knowledge_trail.Handler: SearchTrail reached with unwired search usecase (DI gap)")
 	}
 	msg := req.Msg
-	result, err := h.searchUsecase.Execute(ctx, user.UserID, msg.Query, int(msg.Limit))
+	result, err := h.searchUsecase.Execute(ctx, user.UserID, msg.GetQuery(), int(msg.GetLimit()))
 	if err != nil {
 		if errors.Is(err, search_trail_usecase.ErrInvalidRequest) {
 			return nil, connect.NewError(connect.CodeInvalidArgument, err)
@@ -180,7 +180,7 @@ func (h *Handler) GetItemBranches(
 		panic("knowledge_trail.Handler: GetItemBranches reached with unwired item-branches usecase (DI gap)")
 	}
 	msg := req.Msg
-	branches, err := h.itemBranchesUsecase.Execute(ctx, user.UserID, msg.ItemKey, int(msg.Limit))
+	branches, err := h.itemBranchesUsecase.Execute(ctx, user.UserID, msg.GetItemKey(), int(msg.GetLimit()))
 	if err != nil {
 		if errors.Is(err, get_item_branches_usecase.ErrInvalidRequest) {
 			return nil, connect.NewError(connect.CodeInvalidArgument, err)

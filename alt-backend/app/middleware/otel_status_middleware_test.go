@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
@@ -42,7 +42,7 @@ func TestOTelStatusMiddleware_2xxResponse_StatusUnset(t *testing.T) {
 	e := echo.New()
 	tracer := otel.Tracer("test")
 
-	req := httptest.NewRequest(http.MethodGet, "/api/test", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/test", nil)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
@@ -52,7 +52,7 @@ func TestOTelStatusMiddleware_2xxResponse_StatusUnset(t *testing.T) {
 	defer span.End()
 
 	middleware := OTelStatusMiddleware()
-	handler := func(c echo.Context) error {
+	handler := func(c *echo.Context) error {
 		return c.String(http.StatusOK, "success")
 	}
 
@@ -87,7 +87,7 @@ func TestOTelStatusMiddleware_4xxResponse_StatusUnset(t *testing.T) {
 	e := echo.New()
 	tracer := otel.Tracer("test")
 
-	req := httptest.NewRequest(http.MethodGet, "/api/notfound", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/notfound", nil)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
@@ -96,7 +96,7 @@ func TestOTelStatusMiddleware_4xxResponse_StatusUnset(t *testing.T) {
 	defer span.End()
 
 	middleware := OTelStatusMiddleware()
-	handler := func(c echo.Context) error {
+	handler := func(c *echo.Context) error {
 		return c.String(http.StatusNotFound, "not found")
 	}
 
@@ -130,7 +130,7 @@ func TestOTelStatusMiddleware_5xxResponse_StatusError(t *testing.T) {
 	e := echo.New()
 	tracer := otel.Tracer("test")
 
-	req := httptest.NewRequest(http.MethodGet, "/api/error", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/error", nil)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
@@ -139,7 +139,7 @@ func TestOTelStatusMiddleware_5xxResponse_StatusError(t *testing.T) {
 	defer span.End()
 
 	middleware := OTelStatusMiddleware()
-	handler := func(c echo.Context) error {
+	handler := func(c *echo.Context) error {
 		return c.String(http.StatusInternalServerError, "internal error")
 	}
 
@@ -174,7 +174,7 @@ func TestOTelStatusMiddleware_5xxWithError_RecordsError(t *testing.T) {
 	e := echo.New()
 	tracer := otel.Tracer("test")
 
-	req := httptest.NewRequest(http.MethodGet, "/api/error", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/error", nil)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
@@ -185,7 +185,7 @@ func TestOTelStatusMiddleware_5xxWithError_RecordsError(t *testing.T) {
 	testErr := errors.New("database connection failed")
 
 	middleware := OTelStatusMiddleware()
-	handler := func(c echo.Context) error {
+	handler := func(c *echo.Context) error {
 		c.Response().WriteHeader(http.StatusInternalServerError)
 		return testErr
 	}
@@ -215,12 +215,12 @@ func TestOTelStatusMiddleware_5xxWithError_RecordsError(t *testing.T) {
 func TestOTelStatusMiddleware_NoSpanInContext(t *testing.T) {
 	e := echo.New()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/test", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/test", nil)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
 	middleware := OTelStatusMiddleware()
-	handler := func(c echo.Context) error {
+	handler := func(c *echo.Context) error {
 		return c.String(http.StatusOK, "success")
 	}
 
@@ -237,7 +237,7 @@ func TestOTelStatusMiddleware_ServiceUnavailable(t *testing.T) {
 	e := echo.New()
 	tracer := otel.Tracer("test")
 
-	req := httptest.NewRequest(http.MethodGet, "/api/busy", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/busy", nil)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
@@ -246,7 +246,7 @@ func TestOTelStatusMiddleware_ServiceUnavailable(t *testing.T) {
 	defer span.End()
 
 	middleware := OTelStatusMiddleware()
-	handler := func(c echo.Context) error {
+	handler := func(c *echo.Context) error {
 		return c.String(http.StatusServiceUnavailable, "service unavailable")
 	}
 

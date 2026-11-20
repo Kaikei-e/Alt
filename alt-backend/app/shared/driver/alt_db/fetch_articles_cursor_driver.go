@@ -133,7 +133,7 @@ func (r *ArticleRepository) FetchArticlesWithCursorForUser(ctx context.Context, 
 			&tags,
 		)
 		if err != nil {
-			if err == pgx.ErrNoRows {
+			if errors.Is(err, pgx.ErrNoRows) {
 				logger.Logger.InfoContext(ctx, "no articles found", "user_id", user.UserID)
 				return articles, nil
 			}

@@ -33,7 +33,7 @@ func (r *ArticleRepository) CreateArticleInternal(ctx context.Context, params Cr
 	if err != nil {
 		return "", false, fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	// 1. Check existing content length
 	existingLen, err := r.getArticleContentLength(ctx, tx, params.URL, params.UserID)

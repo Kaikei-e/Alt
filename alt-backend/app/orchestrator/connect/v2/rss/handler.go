@@ -56,12 +56,12 @@ func (h *Handler) RegisterRSSFeed(
 	}
 
 	// Validate URL
-	if strings.TrimSpace(req.Msg.Url) == "" {
+	if strings.TrimSpace(req.Msg.GetUrl()) == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("url is required"))
 	}
 
-	parsedURL, err := url.Parse(req.Msg.Url)
+	parsedURL, err := url.Parse(req.Msg.GetUrl())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("invalid URL format: %w", err))
@@ -74,7 +74,7 @@ func (h *Handler) RegisterRSSFeed(
 	}
 
 	// Call usecase
-	if err := h.container.RegisterFeedsUsecase.Execute(ctx, req.Msg.Url); err != nil {
+	if err := h.container.RegisterFeedsUsecase.Execute(ctx, req.Msg.GetUrl()); err != nil {
 		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "RegisterRSSFeed")
 	}
 
@@ -135,12 +135,12 @@ func (h *Handler) DeleteRSSFeedLink(
 	}
 
 	// Validate ID
-	if strings.TrimSpace(req.Msg.Id) == "" {
+	if strings.TrimSpace(req.Msg.GetId()) == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("id is required"))
 	}
 
-	linkID, err := uuid.Parse(req.Msg.Id)
+	linkID, err := uuid.Parse(req.Msg.GetId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("invalid feed link ID: %w", err))
@@ -169,13 +169,13 @@ func (h *Handler) RegisterFavoriteFeed(
 
 	// Validate URL (no SSRF check needed — this handler only does a DB lookup by URL,
 	// it does not make external requests)
-	if strings.TrimSpace(req.Msg.Url) == "" {
+	if strings.TrimSpace(req.Msg.GetUrl()) == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("url is required"))
 	}
 
 	// Call usecase
-	if err := h.container.RegisterFavoriteFeedUsecase.Execute(ctx, req.Msg.Url); err != nil {
+	if err := h.container.RegisterFavoriteFeedUsecase.Execute(ctx, req.Msg.GetUrl()); err != nil {
 		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "RegisterFavoriteFeed")
 	}
 
@@ -225,12 +225,12 @@ func (h *Handler) RemoveFavoriteFeed(
 		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 
-	if strings.TrimSpace(req.Msg.Url) == "" {
+	if strings.TrimSpace(req.Msg.GetUrl()) == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("url is required"))
 	}
 
-	if err := h.container.RemoveFavoriteFeedUsecase.Execute(ctx, req.Msg.Url); err != nil {
+	if err := h.container.RemoveFavoriteFeedUsecase.Execute(ctx, req.Msg.GetUrl()); err != nil {
 		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "RemoveFavoriteFeed")
 	}
 

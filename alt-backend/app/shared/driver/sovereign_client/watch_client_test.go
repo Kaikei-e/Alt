@@ -10,6 +10,7 @@ import (
 
 	sovereignv1 "alt/gen/proto/services/sovereign/v1"
 	"alt/gen/proto/services/sovereign/v1/sovereignv1connect"
+
 	"connectrpc.com/connect"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -29,7 +30,7 @@ func (m *mockWatchHandler) WatchProjectorEvents(
 ) error {
 	m.mu.Lock()
 	m.authHeader = req.Header().Get("Authorization")
-	m.projectorName = req.Msg.ProjectorName
+	m.projectorName = req.Msg.GetProjectorName()
 	m.mu.Unlock()
 
 	return stream.Send(&sovereignv1.WatchProjectorEventsResponse{

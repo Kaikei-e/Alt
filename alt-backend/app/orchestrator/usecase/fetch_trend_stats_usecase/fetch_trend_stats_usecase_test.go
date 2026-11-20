@@ -10,6 +10,7 @@ import (
 	"alt/utils/logger"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func init() {
@@ -54,9 +55,9 @@ func TestFetchTrendStatsUsecase_Execute_Success(t *testing.T) {
 	usecase := NewFetchTrendStatsUsecase(mockPort)
 	result, err := usecase.Execute(context.Background(), "24h")
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotNil(t, result)
-	assert.Equal(t, 2, len(result.DataPoints))
+	assert.Len(t, result.DataPoints, 2)
 	assert.Equal(t, "hourly", result.Granularity)
 	assert.Equal(t, "24h", result.Window)
 }
@@ -70,7 +71,7 @@ func TestFetchTrendStatsUsecase_Execute_PortError(t *testing.T) {
 	usecase := NewFetchTrendStatsUsecase(mockPort)
 	result, err := usecase.Execute(context.Background(), "24h")
 
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, result)
 	assert.Contains(t, err.Error(), "failed to fetch trend stats")
 }
@@ -90,9 +91,9 @@ func TestFetchTrendStatsUsecase_Execute_EmptyResult(t *testing.T) {
 	usecase := NewFetchTrendStatsUsecase(mockPort)
 	result, err := usecase.Execute(context.Background(), "4h")
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotNil(t, result)
-	assert.Equal(t, 0, len(result.DataPoints))
+	assert.Empty(t, result.DataPoints)
 }
 
 func TestFetchTrendStatsUsecase_Execute_AllWindows(t *testing.T) {
@@ -114,7 +115,7 @@ func TestFetchTrendStatsUsecase_Execute_AllWindows(t *testing.T) {
 			usecase := NewFetchTrendStatsUsecase(mockPort)
 			result, err := usecase.Execute(context.Background(), window)
 
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.NotNil(t, result)
 			assert.Equal(t, window, result.Window)
 		})

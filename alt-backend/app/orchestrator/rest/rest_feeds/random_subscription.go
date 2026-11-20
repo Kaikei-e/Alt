@@ -7,7 +7,7 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 // RandomFeedResponse represents the response for the random subscription endpoint.
@@ -25,7 +25,7 @@ type RandomFeedData struct {
 
 // RestHandleFetchRandomSubscription returns a random feed from the user's subscriptions.
 func RestHandleFetchRandomSubscription(container *di.ApplicationComponents) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		ctx := c.Request().Context()
 
 		logger.Logger.InfoContext(ctx, "fetching random subscription")

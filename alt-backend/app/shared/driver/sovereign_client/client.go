@@ -245,8 +245,8 @@ func (c *Client) ApplyProjectionMutation(ctx context.Context, mutation knowledge
 	if err != nil {
 		return fmt.Errorf("sovereign ApplyProjectionMutation(%s): %w", mutation.MutationType, err)
 	}
-	if !resp.Msg.Success {
-		return fmt.Errorf("sovereign ApplyProjectionMutation(%s): %s", mutation.MutationType, resp.Msg.ErrorMessage)
+	if !resp.Msg.GetSuccess() {
+		return fmt.Errorf("sovereign ApplyProjectionMutation(%s): %s", mutation.MutationType, resp.Msg.GetErrorMessage())
 	}
 	return nil
 }
@@ -266,8 +266,8 @@ func (c *Client) ApplyRecallMutation(ctx context.Context, mutation knowledge_sov
 	if err != nil {
 		return fmt.Errorf("sovereign ApplyRecallMutation(%s): %w", mutation.MutationType, err)
 	}
-	if !resp.Msg.Success {
-		return fmt.Errorf("sovereign ApplyRecallMutation(%s): %s", mutation.MutationType, resp.Msg.ErrorMessage)
+	if !resp.Msg.GetSuccess() {
+		return fmt.Errorf("sovereign ApplyRecallMutation(%s): %s", mutation.MutationType, resp.Msg.GetErrorMessage())
 	}
 	return nil
 }
@@ -287,8 +287,8 @@ func (c *Client) ApplyCurationMutation(ctx context.Context, mutation knowledge_s
 	if err != nil {
 		return fmt.Errorf("sovereign ApplyCurationMutation(%s): %w", mutation.MutationType, err)
 	}
-	if !resp.Msg.Success {
-		return fmt.Errorf("sovereign ApplyCurationMutation(%s): %s", mutation.MutationType, resp.Msg.ErrorMessage)
+	if !resp.Msg.GetSuccess() {
+		return fmt.Errorf("sovereign ApplyCurationMutation(%s): %s", mutation.MutationType, resp.Msg.GetErrorMessage())
 	}
 	return nil
 }

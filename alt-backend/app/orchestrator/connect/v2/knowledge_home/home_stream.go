@@ -27,8 +27,8 @@ func (h *Handler) StreamKnowledgeHomeUpdates(
 
 	var lensIDPtr *uuid.UUID
 	var lensIDStr string
-	if req.Msg.LensId != nil && *req.Msg.LensId != "" {
-		parsedLensID, err := parseUUID(*req.Msg.LensId, "lens_id")
+	if req.Msg.LensId != nil && req.Msg.GetLensId() != "" {
+		parsedLensID, err := parseUUID(req.Msg.GetLensId(), "lens_id")
 		if err != nil {
 			return err
 		}
@@ -304,7 +304,7 @@ func (h *Handler) enrichRecallChangedUpdate(
 	userID uuid.UUID,
 	update *knowledgehomev1.StreamKnowledgeHomeUpdatesResponse,
 ) {
-	if update == nil || update.EventType != "recall_changed" || update.RecallChange == nil || h.recallRailUsecase == nil {
+	if update == nil || update.GetEventType() != "recall_changed" || update.GetRecallChange() == nil || h.recallRailUsecase == nil {
 		return
 	}
 
@@ -315,7 +315,7 @@ func (h *Handler) enrichRecallChangedUpdate(
 	}
 
 	for _, candidate := range candidates {
-		if candidate.ItemKey == update.RecallChange.ItemKey {
+		if candidate.ItemKey == update.GetRecallChange().GetItemKey() {
 			update.RecallChange = convertRecallCandidateToProto(candidate)
 			return
 		}

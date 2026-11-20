@@ -23,11 +23,11 @@ func (h *Handler) FetchArticlesCursor(
 		return nil, err
 	}
 
-	limit := clampPageLimit(req.Msg.Limit, 20, maxArticlesPageSize)
+	limit := clampPageLimit(req.Msg.GetLimit(), 20, maxArticlesPageSize)
 
 	var cursor *time.Time
-	if req.Msg.Cursor != nil && *req.Msg.Cursor != "" {
-		parsed, err := time.Parse(time.RFC3339, *req.Msg.Cursor)
+	if req.Msg.Cursor != nil && req.Msg.GetCursor() != "" {
+		parsed, err := time.Parse(time.RFC3339, req.Msg.GetCursor())
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInvalidArgument,
 				fmt.Errorf("invalid cursor format, expected RFC3339: %w", err))

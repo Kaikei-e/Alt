@@ -202,7 +202,7 @@ func (io_Discard) Write(p []byte) (int, error) { return len(p), nil }
 
 func mounted(t *testing.T, mux *http.ServeMux, path string) bool {
 	t.Helper()
-	_, pattern := mux.Handler(httptest.NewRequest(http.MethodPost, path, nil))
+	_, pattern := mux.Handler(httptest.NewRequestWithContext(t.Context(), http.MethodPost, path, nil))
 	return pattern != ""
 }
 
@@ -302,7 +302,7 @@ func TestSetupOperatorConnectHandlers_RejectsUnauthenticatedRequests(t *testing.
 	path := "/alt.knowledge_home.v1.KnowledgeHomeAdminService/GetProjectionHealth"
 
 	t.Run("missing Authorization header", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader("{}"))
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, path, strings.NewReader("{}"))
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, req)
@@ -312,7 +312,7 @@ func TestSetupOperatorConnectHandlers_RejectsUnauthenticatedRequests(t *testing.
 	})
 
 	t.Run("wrong bearer token", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader("{}"))
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, path, strings.NewReader("{}"))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Authorization", "Bearer wrong-token")
 		rec := httptest.NewRecorder()
@@ -334,7 +334,7 @@ func TestSetupOperatorConnectHandlers_Disabled_SkipsAuthCheck(t *testing.T) {
 	mux := http.NewServeMux()
 	SetupOperatorConnectHandlers(mux, container, cfg, logger, "", false)
 
-	req := httptest.NewRequest(http.MethodPost,
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost,
 		"/alt.knowledge_home.v1.KnowledgeHomeAdminService/GetProjectionHealth",
 		strings.NewReader("{}"))
 	req.Header.Set("Content-Type", "application/json")
@@ -385,7 +385,7 @@ func TestSetupConnectHandlers_RequiresUserJWTOnAllPublicServices(t *testing.T) {
 
 	for _, path := range publicServicePaths {
 		t.Run(path+"/unauthenticated", func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodPost, path, strings.NewReader("{}"))
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, path, strings.NewReader("{}"))
 			req.Header.Set("Content-Type", "application/json")
 			rec := httptest.NewRecorder()
 			mux.ServeHTTP(rec, req)
@@ -395,7 +395,7 @@ func TestSetupConnectHandlers_RequiresUserJWTOnAllPublicServices(t *testing.T) {
 		})
 
 		t.Run(path+"/authenticated_passes_auth_interceptor", func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodPost, path, strings.NewReader("{}"))
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, path, strings.NewReader("{}"))
 			req.Header.Set("Content-Type", "application/json")
 			req.Header.Set("X-Alt-Backend-Token", validToken)
 			rec := httptest.NewRecorder()
@@ -442,13 +442,13 @@ func TestCreateConnectServer_RejectsOversizedRequestMessage(t *testing.T) {
 	t.Run("streaming RPC rejects oversized message with resource_exhausted", func(t *testing.T) {
 		payload := []byte(oversized)
 		frame := make([]byte, 5+len(payload))
-		frame[1] = byte(len(payload) >> 24)
-		frame[2] = byte(len(payload) >> 16)
-		frame[3] = byte(len(payload) >> 8)
-		frame[4] = byte(len(payload))
+		frame[1] = byte((len(payload) >> 24) & 0xff)
+		frame[2] = byte((len(payload) >> 16) & 0xff)
+		frame[3] = byte((len(payload) >> 8) & 0xff)
+		frame[4] = byte(len(payload) & 0xff)
 		copy(frame[5:], payload)
 
-		req := httptest.NewRequest(
+		req := httptest.NewRequestWithContext(t.Context(),
 			http.MethodPost,
 			"/alt.feeds.v2.FeedService/StreamSummarize",
 			strings.NewReader(string(frame)),
@@ -465,7 +465,7 @@ func TestCreateConnectServer_RejectsOversizedRequestMessage(t *testing.T) {
 
 	t.Run("unary RPC rejects oversized message with resource_exhausted", func(t *testing.T) {
 		body := `{"query":"` + strings.Repeat("q", 3*1024*1024) + `"}`
-		req := httptest.NewRequest(
+		req := httptest.NewRequestWithContext(t.Context(),
 			http.MethodPost,
 			"/alt.feeds.v2.FeedService/SearchFeeds",
 			strings.NewReader(body),
@@ -486,7 +486,7 @@ func TestCreateOperatorConnectServer_RejectsOversizedRequestMessage(t *testing.T
 	srv := CreateOperatorConnectServer(container, cfg, logger, "test-operator-token", true)
 
 	body := "{" + strings.Repeat(" ", 3*1024*1024) + "}"
-	req := httptest.NewRequest(
+	req := httptest.NewRequestWithContext(t.Context(),
 		http.MethodPost,
 		"/alt.knowledge_home.v1.KnowledgeHomeAdminService/GetFeatureFlags",
 		strings.NewReader(body),

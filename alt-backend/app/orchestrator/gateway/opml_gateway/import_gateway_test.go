@@ -173,5 +173,5 @@ func TestFillMissingExportTitles(t *testing.T) {
 	res := fillMissingExportTitles(links)
 	assert.Equal(t, "example.com", res[0].Title)
 	assert.Equal(t, "Custom Title", res[1].Title)
-	assert.Equal(t, "", res[2].Title)
+	assert.Empty(t, res[2].Title)
 }

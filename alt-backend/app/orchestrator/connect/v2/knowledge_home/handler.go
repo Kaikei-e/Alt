@@ -127,9 +127,10 @@ func convertHomeItemToProto(item domain.KnowledgeHomeItem) *knowledgehomev1.Know
 
 	if item.PrimaryRefID != nil {
 		refID := item.PrimaryRefID.String()
-		if item.ItemType == "article" {
+		switch item.ItemType {
+		case "article":
 			protoItem.ArticleId = &refID
-		} else if item.ItemType == "recap_anchor" {
+		case "recap_anchor":
 			protoItem.RecapId = &refID
 		}
 	}

@@ -84,11 +84,18 @@ func WaitForCondition(t *testing.T, timeout time.Duration, condition func() bool
 	}
 }
 
+type testContextKey string
+
+const (
+	testNameKey  testContextKey = "test_name"
+	requestIDKey testContextKey = "request_id"
+)
+
 // CreateTestContext creates a context with test-specific values
 func CreateTestContext(t *testing.T) context.Context {
 	ctx := context.Background()
-	ctx = context.WithValue(ctx, "test_name", t.Name())
-	ctx = context.WithValue(ctx, "request_id", fmt.Sprintf("test-%d", time.Now().UnixNano()))
+	ctx = context.WithValue(ctx, testNameKey, t.Name())
+	ctx = context.WithValue(ctx, requestIDKey, fmt.Sprintf("test-%d", time.Now().UnixNano()))
 	return ctx
 }
 
@@ -283,7 +290,7 @@ func GenerateMockRSSFeedXML(itemCount int) string {
         <link>http://mock.example.com</link>`)
 
 	for i := 0; i < itemCount; i++ {
-		builder.WriteString(fmt.Sprintf(`
+		fmt.Fprintf(&builder, `
         <item>
             <title>Mock Article %d</title>
             <description><![CDATA[This is mock article number %d with some <strong>HTML content</strong>.]]></description>
@@ -291,7 +298,7 @@ func GenerateMockRSSFeedXML(itemCount int) string {
             <pubDate>%s</pubDate>
         </item>`,
 			i+1, i+1, i+1,
-			time.Now().Add(-time.Duration(i)*time.Hour).Format(time.RFC1123Z)))
+			time.Now().Add(-time.Duration(i)*time.Hour).Format(time.RFC1123Z))
 	}
 
 	builder.WriteString(`

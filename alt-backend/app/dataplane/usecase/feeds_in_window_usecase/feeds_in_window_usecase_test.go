@@ -317,6 +317,6 @@ func TestFeedsInWindowUsecase_Execute_PropagatesRepoError(t *testing.T) {
 
 	res, err := usecase.Execute(context.Background(), Input{From: from, To: to, Page: 1, PageSize: 500})
 	require.Error(t, err)
-	assert.ErrorIs(t, err, repoErr)
+	require.ErrorIs(t, err, repoErr)
 	assert.Nil(t, res)
 }

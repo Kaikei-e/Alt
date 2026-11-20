@@ -10,10 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/mmcdole/gofeed"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // MockRSSFeedFetcher for testing
@@ -368,30 +367,6 @@ func TestDefaultRSSFeedFetcher_ConvertToProxyURL_URLConstruction(t *testing.T) {
 	}
 }
 
-// capturePgxIface captures the arguments passed to Begin/Exec for verifying sanitized URLs.
-type capturePgxIface struct {
-	beginErr   error
-	execArgs   []interface{} // captured from the first Exec call on the tx
-	execCalled bool
-}
-
-func (c *capturePgxIface) Query(_ context.Context, _ string, _ ...interface{}) (pgx.Rows, error) {
-	return nil, nil
-}
-func (c *capturePgxIface) QueryRow(_ context.Context, _ string, _ ...interface{}) pgx.Row {
-	return nil
-}
-func (c *capturePgxIface) Exec(_ context.Context, _ string, _ ...interface{}) (pgconn.CommandTag, error) {
-	return pgconn.CommandTag{}, nil
-}
-func (c *capturePgxIface) BeginTx(_ context.Context, _ pgx.TxOptions) (pgx.Tx, error) {
-	return nil, c.beginErr
-}
-func (c *capturePgxIface) Close() {}
-func (c *capturePgxIface) Begin(_ context.Context) (pgx.Tx, error) {
-	return nil, c.beginErr
-}
-
 func TestRegisterFeedGateway_RegisterFeedLink_StripsTrackingParams(t *testing.T) {
 	logger.InitLogger()
 
@@ -428,7 +403,7 @@ func TestRegisterFeedGateway_RegisterFeedLink_StripsTrackingParams(t *testing.T)
 
 			err := gateway.RegisterFeedLink(context.Background(), tt.input)
 
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, []string{tt.want}, store.gotLinks)
 		})
 	}

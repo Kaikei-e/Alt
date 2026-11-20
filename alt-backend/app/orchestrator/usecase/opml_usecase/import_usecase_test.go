@@ -112,7 +112,7 @@ func TestImportOPMLUsecase_Execute_InvalidXML(t *testing.T) {
 	usecase := NewImportOPMLUsecase(mockPort)
 	result, err := usecase.Execute(context.Background(), []byte("not valid xml"))
 
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, result)
 	assert.Contains(t, err.Error(), "parse OPML")
 }
@@ -170,7 +170,7 @@ func TestImportOPMLUsecase_Execute_PortError(t *testing.T) {
 	usecase := NewImportOPMLUsecase(mockPort)
 	result, err := usecase.Execute(context.Background(), opmlXML)
 
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, result)
 }
 

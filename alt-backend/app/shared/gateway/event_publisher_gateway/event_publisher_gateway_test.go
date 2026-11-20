@@ -3,7 +3,6 @@ package event_publisher_gateway
 import (
 	"context"
 	"encoding/json"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -54,7 +53,7 @@ func newTestGateway(t *testing.T, enabled bool) (*EventPublisherGateway, *record
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	client := mqhub_connect.NewClient(srv.URL, enabled)
 	return NewEventPublisherGateway(client, logger), handler
 }

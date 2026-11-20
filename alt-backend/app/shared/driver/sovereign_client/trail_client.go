@@ -29,15 +29,15 @@ func (c *Client) GetTrailFootprints(ctx context.Context, userID uuid.UUID, curso
 		return nil, nil, nil, "", false, fmt.Errorf("sovereign GetTrailFootprints: %w", err)
 	}
 
-	footprints := make([]domain.TrailFootprint, len(resp.Msg.Footprints))
-	for i, pb := range resp.Msg.Footprints {
+	footprints := make([]domain.TrailFootprint, len(resp.Msg.GetFootprints()))
+	for i, pb := range resp.Msg.GetFootprints() {
 		footprints[i] = protoToTrailFootprint(pb)
 	}
 
-	branches := protoToTrailBranches(resp.Msg.Branches)
-	episodes := protoToTrailEpisodes(resp.Msg.Episodes)
+	branches := protoToTrailBranches(resp.Msg.GetBranches())
+	episodes := protoToTrailEpisodes(resp.Msg.GetEpisodes())
 
-	return footprints, branches, episodes, resp.Msg.NextCursor, resp.Msg.HasMore, nil
+	return footprints, branches, episodes, resp.Msg.GetNextCursor(), resp.Msg.GetHasMore(), nil
 }
 
 // SearchTrailFootprints narrows the derived episode spine to episodes
@@ -62,7 +62,7 @@ func (c *Client) SearchTrailFootprints(ctx context.Context, userID uuid.UUID, it
 		return nil, nil, fmt.Errorf("sovereign GetTrailFootprints (search): %w", err)
 	}
 
-	return protoToTrailEpisodes(resp.Msg.Episodes), protoToTrailBranches(resp.Msg.Branches), nil
+	return protoToTrailEpisodes(resp.Msg.GetEpisodes()), protoToTrailBranches(resp.Msg.GetBranches()), nil
 }
 
 // GetTrailBranchesForAnchor fetches the user's open branches anchored on one
@@ -80,5 +80,5 @@ func (c *Client) GetTrailBranchesForAnchor(ctx context.Context, userID uuid.UUID
 	if err != nil {
 		return nil, fmt.Errorf("sovereign GetTrailBranchesForAnchor: %w", err)
 	}
-	return protoToTrailBranches(resp.Msg.Branches), nil
+	return protoToTrailBranches(resp.Msg.GetBranches()), nil
 }

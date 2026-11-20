@@ -181,8 +181,8 @@ func TestBarnesHutVsNaive_Accuracy(t *testing.T) {
 }
 
 // newDeterministicRNG is a simple helper for tests
-func newDeterministicRNG(seed int64) *deterministicRNG {
-	return &deterministicRNG{state: uint64(seed)}
+func newDeterministicRNG(seed uint64) *deterministicRNG {
+	return &deterministicRNG{state: seed}
 }
 
 type deterministicRNG struct {

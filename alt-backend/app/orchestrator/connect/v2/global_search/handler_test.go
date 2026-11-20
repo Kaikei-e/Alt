@@ -3,7 +3,6 @@ package global_search
 import (
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"testing"
 	"time"
@@ -64,7 +63,7 @@ func (s *stubTagSearchPort) SearchTagsByPrefix(_ context.Context, prefix string,
 }
 
 func testLogger() *slog.Logger {
-	return slog.New(slog.NewTextHandler(io.Discard, nil))
+	return slog.New(slog.DiscardHandler)
 }
 
 func authenticatedCtx(userID uuid.UUID) context.Context {
@@ -203,10 +202,10 @@ func TestSearchEverything_MapsArticlesRecapsAndTagsSections(t *testing.T) {
 	require.NotNil(t, resp)
 
 	msg := resp.Msg
-	assert.Equal(t, "golang", msg.Query)
-	assert.Empty(t, msg.DegradedSections)
-	_, parseErr := time.Parse(time.RFC3339, msg.SearchedAt)
-	assert.NoError(t, parseErr, "SearchedAt must be formatted as RFC3339")
+	assert.Equal(t, "golang", msg.GetQuery())
+	assert.Empty(t, msg.GetDegradedSections())
+	_, parseErr := time.Parse(time.RFC3339, msg.GetSearchedAt())
+	require.NoError(t, parseErr, "SearchedAt must be formatted as RFC3339")
 
 	// Verify port arguments
 	assert.Equal(t, userID.String(), articlePort.lastUserID)
@@ -216,43 +215,43 @@ func TestSearchEverything_MapsArticlesRecapsAndTagsSections(t *testing.T) {
 	assert.Equal(t, userID.String(), tagPort.lastUserID)
 
 	// Verify ArticleSection mapping
-	require.NotNil(t, msg.ArticleSection)
-	assert.Equal(t, int64(12), msg.ArticleSection.EstimatedTotal)
-	assert.True(t, msg.ArticleSection.HasMore)
-	require.Len(t, msg.ArticleSection.Hits, 2)
-	assert.Equal(t, "art-1", msg.ArticleSection.Hits[0].Id)
-	assert.Equal(t, "Observability in Go", msg.ArticleSection.Hits[0].Title)
-	assert.Equal(t, "OpenTelemetry tracing patterns", msg.ArticleSection.Hits[0].Snippet)
-	assert.Equal(t, "https://example.com/art-1", msg.ArticleSection.Hits[0].Link)
-	assert.Equal(t, []string{"go", "otel"}, msg.ArticleSection.Hits[0].Tags)
-	assert.Equal(t, []string{"title", "content"}, msg.ArticleSection.Hits[0].MatchedFields)
-	assert.Empty(t, msg.ArticleSection.Hits[1].Tags)
-	assert.Empty(t, msg.ArticleSection.Hits[1].MatchedFields)
+	require.NotNil(t, msg.GetArticleSection())
+	assert.Equal(t, int64(12), msg.GetArticleSection().GetEstimatedTotal())
+	assert.True(t, msg.GetArticleSection().GetHasMore())
+	require.Len(t, msg.GetArticleSection().GetHits(), 2)
+	assert.Equal(t, "art-1", msg.GetArticleSection().GetHits()[0].GetId())
+	assert.Equal(t, "Observability in Go", msg.GetArticleSection().GetHits()[0].GetTitle())
+	assert.Equal(t, "OpenTelemetry tracing patterns", msg.GetArticleSection().GetHits()[0].GetSnippet())
+	assert.Equal(t, "https://example.com/art-1", msg.GetArticleSection().GetHits()[0].GetLink())
+	assert.Equal(t, []string{"go", "otel"}, msg.GetArticleSection().GetHits()[0].GetTags())
+	assert.Equal(t, []string{"title", "content"}, msg.GetArticleSection().GetHits()[0].GetMatchedFields())
+	assert.Empty(t, msg.GetArticleSection().GetHits()[1].GetTags())
+	assert.Empty(t, msg.GetArticleSection().GetHits()[1].GetMatchedFields())
 
 	// Verify RecapSection mapping
-	require.NotNil(t, msg.RecapSection)
-	assert.Equal(t, int64(2), msg.RecapSection.EstimatedTotal)
-	assert.False(t, msg.RecapSection.HasMore)
-	require.Len(t, msg.RecapSection.Hits, 2)
-	assert.Equal(t, "recap-1", msg.RecapSection.Hits[0].Id)
-	assert.Equal(t, "job-99", msg.RecapSection.Hits[0].JobId)
-	assert.Equal(t, "software_engineering", msg.RecapSection.Hits[0].Genre)
-	assert.Equal(t, "Weekly Go ecosystem highlights", msg.RecapSection.Hits[0].Summary)
-	assert.Equal(t, []string{"golang", "connectrpc"}, msg.RecapSection.Hits[0].TopTerms)
-	assert.Equal(t, []string{"backend"}, msg.RecapSection.Hits[0].Tags)
-	assert.Equal(t, int32(7), msg.RecapSection.Hits[0].WindowDays)
-	assert.Equal(t, "2026-10-20T00:00:00Z", msg.RecapSection.Hits[0].ExecutedAt)
-	assert.Empty(t, msg.RecapSection.Hits[1].TopTerms)
-	assert.Empty(t, msg.RecapSection.Hits[1].Tags)
+	require.NotNil(t, msg.GetRecapSection())
+	assert.Equal(t, int64(2), msg.GetRecapSection().GetEstimatedTotal())
+	assert.False(t, msg.GetRecapSection().GetHasMore())
+	require.Len(t, msg.GetRecapSection().GetHits(), 2)
+	assert.Equal(t, "recap-1", msg.GetRecapSection().GetHits()[0].GetId())
+	assert.Equal(t, "job-99", msg.GetRecapSection().GetHits()[0].GetJobId())
+	assert.Equal(t, "software_engineering", msg.GetRecapSection().GetHits()[0].GetGenre())
+	assert.Equal(t, "Weekly Go ecosystem highlights", msg.GetRecapSection().GetHits()[0].GetSummary())
+	assert.Equal(t, []string{"golang", "connectrpc"}, msg.GetRecapSection().GetHits()[0].GetTopTerms())
+	assert.Equal(t, []string{"backend"}, msg.GetRecapSection().GetHits()[0].GetTags())
+	assert.Equal(t, int32(7), msg.GetRecapSection().GetHits()[0].GetWindowDays())
+	assert.Equal(t, "2026-10-20T00:00:00Z", msg.GetRecapSection().GetHits()[0].GetExecutedAt())
+	assert.Empty(t, msg.GetRecapSection().GetHits()[1].GetTopTerms())
+	assert.Empty(t, msg.GetRecapSection().GetHits()[1].GetTags())
 
 	// Verify TagSection mapping
-	require.NotNil(t, msg.TagSection)
-	assert.Equal(t, int64(2), msg.TagSection.Total)
-	require.Len(t, msg.TagSection.Hits, 2)
-	assert.Equal(t, "golang", msg.TagSection.Hits[0].TagName)
-	assert.Equal(t, int32(42), msg.TagSection.Hits[0].ArticleCount)
-	assert.Equal(t, "opentelemetry", msg.TagSection.Hits[1].TagName)
-	assert.Equal(t, int32(15), msg.TagSection.Hits[1].ArticleCount)
+	require.NotNil(t, msg.GetTagSection())
+	assert.Equal(t, int64(2), msg.GetTagSection().GetTotal())
+	require.Len(t, msg.GetTagSection().GetHits(), 2)
+	assert.Equal(t, "golang", msg.GetTagSection().GetHits()[0].GetTagName())
+	assert.Equal(t, int32(42), msg.GetTagSection().GetHits()[0].GetArticleCount())
+	assert.Equal(t, "opentelemetry", msg.GetTagSection().GetHits()[1].GetTagName())
+	assert.Equal(t, int32(15), msg.GetTagSection().GetHits()[1].GetArticleCount())
 }
 
 func TestSearchEverything_PartialFailure_ReturnsDegradedSections(t *testing.T) {
@@ -284,12 +283,12 @@ func TestSearchEverything_PartialFailure_ReturnsDegradedSections(t *testing.T) {
 
 	require.NoError(t, err)
 	require.NotNil(t, resp)
-	assert.Equal(t, []string{"articles"}, resp.Msg.DegradedSections)
-	assert.Nil(t, resp.Msg.ArticleSection)
-	require.NotNil(t, resp.Msg.RecapSection)
-	assert.Len(t, resp.Msg.RecapSection.Hits, 1)
-	require.NotNil(t, resp.Msg.TagSection)
-	assert.Len(t, resp.Msg.TagSection.Hits, 1)
+	assert.Equal(t, []string{"articles"}, resp.Msg.GetDegradedSections())
+	assert.Nil(t, resp.Msg.GetArticleSection())
+	require.NotNil(t, resp.Msg.GetRecapSection())
+	assert.Len(t, resp.Msg.GetRecapSection().GetHits(), 1)
+	require.NotNil(t, resp.Msg.GetTagSection())
+	assert.Len(t, resp.Msg.GetTagSection().GetHits(), 1)
 }
 
 func TestSearchEverything_AllSectionsFail_ReturnsInternalError(t *testing.T) {

@@ -38,9 +38,9 @@ func TestFetchArticleContentResponse_Construction(t *testing.T) {
 		ArticleId: articleID,
 	}
 
-	assert.Equal(t, "https://example.com/article", resp.Url)
-	assert.Equal(t, "Test Content", resp.Content)
-	assert.Equal(t, articleID, resp.ArticleId)
+	assert.Equal(t, "https://example.com/article", resp.GetUrl())
+	assert.Equal(t, "Test Content", resp.GetContent())
+	assert.Equal(t, articleID, resp.GetArticleId())
 }
 
 func TestArchiveArticleResponse_Construction(t *testing.T) {
@@ -48,7 +48,7 @@ func TestArchiveArticleResponse_Construction(t *testing.T) {
 		Message: "article archived",
 	}
 
-	assert.Equal(t, "article archived", resp.Message)
+	assert.Equal(t, "article archived", resp.GetMessage())
 }
 
 func TestArticleItem_Construction(t *testing.T) {
@@ -63,12 +63,12 @@ func TestArticleItem_Construction(t *testing.T) {
 		Tags:        []string{"tag1", "tag2"},
 	}
 
-	assert.Equal(t, id, item.Id)
-	assert.Equal(t, "Test Title", item.Title)
-	assert.Equal(t, "https://example.com/article", item.Url)
-	assert.Equal(t, "Test Content", item.Content)
-	assert.Equal(t, published, item.PublishedAt)
-	assert.Len(t, item.Tags, 2)
+	assert.Equal(t, id, item.GetId())
+	assert.Equal(t, "Test Title", item.GetTitle())
+	assert.Equal(t, "https://example.com/article", item.GetUrl())
+	assert.Equal(t, "Test Content", item.GetContent())
+	assert.Equal(t, published, item.GetPublishedAt())
+	assert.Len(t, item.GetTags(), 2)
 }
 
 func TestFetchArticlesCursorResponse_Construction(t *testing.T) {
@@ -91,10 +91,10 @@ func TestFetchArticlesCursorResponse_Construction(t *testing.T) {
 		HasMore:    true,
 	}
 
-	assert.Len(t, resp.Data, 1)
-	assert.Equal(t, id, resp.Data[0].Id)
+	assert.Len(t, resp.GetData(), 1)
+	assert.Equal(t, id, resp.GetData()[0].GetId())
 	assert.NotNil(t, resp.NextCursor)
-	assert.True(t, resp.HasMore)
+	assert.True(t, resp.GetHasMore())
 }
 
 func TestFetchArticlesCursorResponse_Empty(t *testing.T) {
@@ -104,9 +104,9 @@ func TestFetchArticlesCursorResponse_Empty(t *testing.T) {
 		HasMore:    false,
 	}
 
-	assert.Empty(t, resp.Data)
+	assert.Empty(t, resp.GetData())
 	assert.Nil(t, resp.NextCursor)
-	assert.False(t, resp.HasMore)
+	assert.False(t, resp.GetHasMore())
 }
 
 // =============================================================================
@@ -138,9 +138,9 @@ func TestFetchArticleContentRequest_Validation(t *testing.T) {
 			}
 
 			if tt.wantErr {
-				assert.Empty(t, req.Url)
+				assert.Empty(t, req.GetUrl())
 			} else {
-				assert.NotEmpty(t, req.Url)
+				assert.NotEmpty(t, req.GetUrl())
 			}
 		})
 	}
@@ -182,9 +182,9 @@ func TestArchiveArticleRequest_Validation(t *testing.T) {
 			}
 
 			if tt.wantErr {
-				assert.Empty(t, req.FeedUrl)
+				assert.Empty(t, req.GetFeedUrl())
 			} else {
-				assert.NotEmpty(t, req.FeedUrl)
+				assert.NotEmpty(t, req.GetFeedUrl())
 			}
 		})
 	}
@@ -263,10 +263,10 @@ func TestConvertArticlesToProto(t *testing.T) {
 	protoArticles := convertArticlesToProto(articles)
 
 	assert.Len(t, protoArticles, 2)
-	assert.Equal(t, "Test Article 1", protoArticles[0].Title)
-	assert.Equal(t, "https://example.com/1", protoArticles[0].Url)
-	assert.Len(t, protoArticles[0].Tags, 2)
-	assert.Equal(t, "Test Article 2", protoArticles[1].Title)
+	assert.Equal(t, "Test Article 1", protoArticles[0].GetTitle())
+	assert.Equal(t, "https://example.com/1", protoArticles[0].GetUrl())
+	assert.Len(t, protoArticles[0].GetTags(), 2)
+	assert.Equal(t, "Test Article 2", protoArticles[1].GetTitle())
 }
 
 func TestConvertArticlesToProto_EmptyList(t *testing.T) {

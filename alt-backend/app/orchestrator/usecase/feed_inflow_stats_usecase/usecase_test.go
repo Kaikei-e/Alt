@@ -105,7 +105,7 @@ func TestFeedInflowStatsUsecase_Execute(t *testing.T) {
 		assert.Equal(t, int64(0), stats[1].InflowCount)
 		assert.Equal(t, int64(0), stats[1].ReadCount)
 		assert.Equal(t, int64(0), stats[1].OpenedCountLegacy)
-		assert.Equal(t, 0.0, stats[1].ReadRate)
+		assert.InDelta(t, 0.0, stats[1].ReadRate, 1e-9)
 	})
 
 	t.Run("skips article batch resolution when no reading sources exist", func(t *testing.T) {
@@ -119,7 +119,7 @@ func TestFeedInflowStatsUsecase_Execute(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, stats, 1)
 		assert.Equal(t, 0, inflowPort.batchCalls)
-		assert.Equal(t, 0.0, stats[0].ReadRate)
+		assert.InDelta(t, 0.0, stats[0].ReadRate, 1e-9)
 	})
 
 	t.Run("propagates sovereign error without silent fallback", func(t *testing.T) {
@@ -156,7 +156,7 @@ func TestFeedInflowStatsUsecase_Execute(t *testing.T) {
 		require.Len(t, stats, 1)
 		assert.Equal(t, int64(0), stats[0].ReadCount)
 		assert.Equal(t, int64(2), stats[0].OpenedCountLegacy)
-		assert.Equal(t, 0.0, stats[0].ReadRate)
+		assert.InDelta(t, 0.0, stats[0].ReadRate, 1e-9)
 	})
 
 	t.Run("panics when required ports are nil", func(t *testing.T) {

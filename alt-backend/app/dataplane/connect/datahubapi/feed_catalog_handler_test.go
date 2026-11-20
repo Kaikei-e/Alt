@@ -31,8 +31,8 @@ func TestGetFeedID_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if resp.Msg.FeedId != "feed-123" {
-		t.Errorf("expected feed_id feed-123, got %s", resp.Msg.FeedId)
+	if resp.Msg.GetFeedId() != "feed-123" {
+		t.Errorf("expected feed_id feed-123, got %s", resp.Msg.GetFeedId())
 	}
 }
 
@@ -102,17 +102,17 @@ func TestListFeedURLs_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(resp.Msg.Feeds) != 2 {
-		t.Fatalf("expected 2 feeds, got %d", len(resp.Msg.Feeds))
+	if len(resp.Msg.GetFeeds()) != 2 {
+		t.Fatalf("expected 2 feeds, got %d", len(resp.Msg.GetFeeds()))
 	}
-	if resp.Msg.Feeds[0].FeedId != "f1" {
-		t.Errorf("expected first feed_id f1, got %s", resp.Msg.Feeds[0].FeedId)
+	if resp.Msg.GetFeeds()[0].GetFeedId() != "f1" {
+		t.Errorf("expected first feed_id f1, got %s", resp.Msg.GetFeeds()[0].GetFeedId())
 	}
-	if !resp.Msg.HasMore {
+	if !resp.Msg.GetHasMore() {
 		t.Error("expected has_more to be true")
 	}
-	if resp.Msg.NextCursor != "f2" {
-		t.Errorf("expected next_cursor f2, got %s", resp.Msg.NextCursor)
+	if resp.Msg.GetNextCursor() != "f2" {
+		t.Errorf("expected next_cursor f2, got %s", resp.Msg.GetNextCursor())
 	}
 }
 
@@ -134,8 +134,8 @@ func TestGetEmptyFeedID_Found(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if resp.Msg.FeedId != "empty-feed-123" {
-		t.Errorf("expected feed_id empty-feed-123, got %s", resp.Msg.FeedId)
+	if resp.Msg.GetFeedId() != "empty-feed-123" {
+		t.Errorf("expected feed_id empty-feed-123, got %s", resp.Msg.GetFeedId())
 	}
 }
 
@@ -155,8 +155,8 @@ func TestGetEmptyFeedID_NotFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if resp.Msg.FeedId != "" {
-		t.Errorf("expected empty feed_id, got %s", resp.Msg.FeedId)
+	if resp.Msg.GetFeedId() != "" {
+		t.Errorf("expected empty feed_id, got %s", resp.Msg.GetFeedId())
 	}
 }
 

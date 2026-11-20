@@ -26,11 +26,11 @@ func (h *Handler) FetchArticleContent(
 		return nil, err
 	}
 
-	if req.Msg.Url == "" {
+	if req.Msg.GetUrl() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("url is required"))
 	}
 
-	parsedURL, err := url.Parse(req.Msg.Url)
+	parsedURL, err := url.Parse(req.Msg.GetUrl())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid URL format: %w", err))
 	}
@@ -40,7 +40,7 @@ func (h *Handler) FetchArticleContent(
 	}
 
 	// Call usecase
-	forceRefresh := req.Msg.ForceRefresh != nil && *req.Msg.ForceRefresh
+	forceRefresh := req.Msg.ForceRefresh != nil && req.Msg.GetForceRefresh()
 	content, articleID, ogImageURL, err := h.deps.Article.FetchCompliantArticleWithRefresh(ctx, parsedURL, *user, forceRefresh)
 	if err != nil {
 		if upstreamErr := isUpstreamFetchWinner(err); upstreamErr != nil {
@@ -98,11 +98,11 @@ func (h *Handler) ArchiveArticle(
 		return nil, err
 	}
 
-	if req.Msg.FeedUrl == "" {
+	if req.Msg.GetFeedUrl() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("feed_url is required"))
 	}
 
-	parsedURL, err := url.Parse(req.Msg.FeedUrl)
+	parsedURL, err := url.Parse(req.Msg.GetFeedUrl())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid URL format: %w", err))
 	}
@@ -116,7 +116,7 @@ func (h *Handler) ArchiveArticle(
 		Title: "",
 	}
 	if req.Msg.Title != nil {
-		input.Title = *req.Msg.Title
+		input.Title = req.Msg.GetTitle()
 	}
 
 	if err := h.deps.ArchiveArticle.Execute(ctx, input); err != nil {

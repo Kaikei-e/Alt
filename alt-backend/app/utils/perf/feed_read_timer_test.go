@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
-	"os"
 	"testing"
 	"time"
 
@@ -20,7 +19,9 @@ func setupTestTracer(t *testing.T) *tracetest.InMemoryExporter {
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter))
 	otel.SetTracerProvider(tp)
 	t.Cleanup(func() {
-		tp.Shutdown(context.Background())
+		if err := tp.Shutdown(context.Background()); err != nil {
+			t.Errorf("shutdown test tracer: %v", err)
+		}
 	})
 	return exporter
 }
@@ -131,8 +132,7 @@ func TestFeedReadTimer_Log_EmitsStructuredFields(t *testing.T) {
 func TestFeedReadTimer_Disabled_ReturnsNoOp(t *testing.T) {
 	exporter := setupTestTracer(t)
 
-	os.Setenv("FEED_READ_PERF_ENABLED", "false")
-	defer os.Unsetenv("FEED_READ_PERF_ENABLED")
+	t.Setenv("FEED_READ_PERF_ENABLED", "false")
 
 	timer := NewFeedReadTimer("GetUnreadFeeds")
 	ctx := context.Background()

@@ -42,11 +42,11 @@ func (c *Client) GetKnowledgeHomeItems(ctx context.Context, userID uuid.UUID, cu
 		return nil, "", false, fmt.Errorf("sovereign GetKnowledgeHomeItems: %w", err)
 	}
 
-	items := make([]domain.KnowledgeHomeItem, len(resp.Msg.Items))
-	for i, pb := range resp.Msg.Items {
+	items := make([]domain.KnowledgeHomeItem, len(resp.Msg.GetItems()))
+	for i, pb := range resp.Msg.GetItems() {
 		items[i] = protoToHomeItem(pb)
 	}
-	return items, resp.Msg.NextCursor, resp.Msg.HasMore, nil
+	return items, resp.Msg.GetNextCursor(), resp.Msg.GetHasMore(), nil
 }
 
 func (c *Client) GetTodayDigest(ctx context.Context, userID uuid.UUID, date time.Time) (domain.TodayDigest, error) {
@@ -62,7 +62,7 @@ func (c *Client) GetTodayDigest(ctx context.Context, userID uuid.UUID, date time
 		return domain.TodayDigest{}, fmt.Errorf("sovereign GetTodayDigest: %w", err)
 	}
 
-	return protoToTodayDigest(resp.Msg.Digest, userID, date), nil
+	return protoToTodayDigest(resp.Msg.GetDigest(), userID, date), nil
 }
 
 func (c *Client) GetRecallCandidates(ctx context.Context, userID uuid.UUID, limit int) ([]domain.RecallCandidate, error) {
@@ -75,8 +75,8 @@ func (c *Client) GetRecallCandidates(ctx context.Context, userID uuid.UUID, limi
 	if err != nil {
 		return nil, fmt.Errorf("sovereign GetRecallCandidates: %w", err)
 	}
-	candidates := make([]domain.RecallCandidate, len(resp.Msg.Candidates))
-	for i, pb := range resp.Msg.Candidates {
+	candidates := make([]domain.RecallCandidate, len(resp.Msg.GetCandidates()))
+	for i, pb := range resp.Msg.GetCandidates() {
 		candidates[i] = protoToRecallCandidate(pb)
 	}
 	return candidates, nil
@@ -90,8 +90,8 @@ func (c *Client) ListDistinctUserIDs(ctx context.Context) ([]uuid.UUID, error) {
 	if err != nil {
 		return nil, fmt.Errorf("sovereign ListDistinctUserIDs: %w", err)
 	}
-	ids := make([]uuid.UUID, len(resp.Msg.UserIds))
-	for i, s := range resp.Msg.UserIds {
+	ids := make([]uuid.UUID, len(resp.Msg.GetUserIds()))
+	for i, s := range resp.Msg.GetUserIds() {
 		ids[i] = parseUUID(s)
 	}
 	return ids, nil
@@ -107,7 +107,7 @@ func (c *Client) CountNeedToKnowItems(ctx context.Context, userID uuid.UUID, dat
 	if err != nil {
 		return 0, fmt.Errorf("sovereign CountNeedToKnowItems: %w", err)
 	}
-	return int(resp.Msg.Count), nil
+	return int(resp.Msg.GetCount()), nil
 }
 
 func (c *Client) GetProjectionFreshness(ctx context.Context, projectorName string) (*time.Time, error) {
@@ -120,9 +120,9 @@ func (c *Client) GetProjectionFreshness(ctx context.Context, projectorName strin
 	if err != nil {
 		return nil, fmt.Errorf("sovereign GetProjectionFreshness: %w", err)
 	}
-	if !resp.Msg.Found || resp.Msg.UpdatedAt == nil {
+	if !resp.Msg.GetFound() || resp.Msg.GetUpdatedAt() == nil {
 		return nil, nil
 	}
-	t := resp.Msg.UpdatedAt.AsTime()
+	t := resp.Msg.GetUpdatedAt().AsTime()
 	return &t, nil
 }

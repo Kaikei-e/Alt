@@ -67,7 +67,7 @@ func TestFetchArticlesCursor_RoundTripKeepsSubSecondPrecision(t *testing.T) {
 
 	page1, err := handler.FetchArticlesCursor(ctx, connect.NewRequest(&articlesv2.FetchArticlesCursorRequest{Limit: 1}))
 	require.NoError(t, err)
-	require.True(t, page1.Msg.HasMore)
+	require.True(t, page1.Msg.GetHasMore())
 	require.NotNil(t, page1.Msg.NextCursor)
 
 	_, err = handler.FetchArticlesCursor(ctx, connect.NewRequest(&articlesv2.FetchArticlesCursorRequest{
@@ -104,7 +104,7 @@ func TestFetchArticlesByTag_RoundTripKeepsSubSecondPrecision(t *testing.T) {
 		Limit:   1,
 	}))
 	require.NoError(t, err)
-	require.True(t, page1.Msg.HasMore)
+	require.True(t, page1.Msg.GetHasMore())
 	require.NotNil(t, page1.Msg.NextCursor)
 
 	_, err = handler.FetchArticlesByTag(ctx, connect.NewRequest(&articlesv2.FetchArticlesByTagRequest{

@@ -189,6 +189,7 @@ func (cb *SimpleCircuitBreaker) onSuccess() {
 		// Successful execution in Half-Open transitions back to Closed
 		cb.state = StateClosed
 		cb.failureCount = 0
+	case StateOpen:
 	}
 }
 
@@ -208,5 +209,6 @@ func (cb *SimpleCircuitBreaker) onFailure() {
 	case StateHalfOpen:
 		// Failure in Half-Open immediately transitions back to Open
 		cb.state = StateOpen
+	case StateOpen:
 	}
 }

@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 // L-002: clamp helpers protect dashboard usecases from query-string DoS.
@@ -65,7 +65,7 @@ func registerDashboardRoutes(v1 *echo.Group, container *di.ApplicationComponents
 }
 
 func handleGetMetrics(usecase *dashboard_usecase.DashboardMetricsUsecase) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		metricType := c.QueryParam("type")
 		rawWindow, _ := strconv.ParseInt(c.QueryParam("window"), 10, 64)
 		windowSeconds := clampWindowSeconds(rawWindow, dashboardWindowDefault, dashboardWindowMax)
@@ -83,7 +83,7 @@ func handleGetMetrics(usecase *dashboard_usecase.DashboardMetricsUsecase) echo.H
 }
 
 func handleGetOverview(usecase *dashboard_usecase.DashboardMetricsUsecase) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		rawWindow, _ := strconv.ParseInt(c.QueryParam("window"), 10, 64)
 		windowSeconds := clampWindowSeconds(rawWindow, dashboardWindowDefault, dashboardWindowMax)
 		rawLimit, _ := strconv.ParseInt(c.QueryParam("limit"), 10, 64)
@@ -100,7 +100,7 @@ func handleGetOverview(usecase *dashboard_usecase.DashboardMetricsUsecase) echo.
 }
 
 func handleGetLogs(usecase *dashboard_usecase.DashboardMetricsUsecase) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		rawWindow, _ := strconv.ParseInt(c.QueryParam("window"), 10, 64)
 		windowSeconds := clampWindowSeconds(rawWindow, dashboardWindowDefault, dashboardWindowMax)
 		// L-002: previously defaulted to 2000 with no ceiling; bound it.
@@ -118,7 +118,7 @@ func handleGetLogs(usecase *dashboard_usecase.DashboardMetricsUsecase) echo.Hand
 }
 
 func handleGetJobs(usecase *dashboard_usecase.DashboardMetricsUsecase) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		rawWindow, _ := strconv.ParseInt(c.QueryParam("window"), 10, 64)
 		windowSeconds := clampWindowSeconds(rawWindow, dashboardWindowDefault, dashboardWindowMax)
 		rawLimit, _ := strconv.ParseInt(c.QueryParam("limit"), 10, 64)
@@ -135,7 +135,7 @@ func handleGetJobs(usecase *dashboard_usecase.DashboardMetricsUsecase) echo.Hand
 }
 
 func handleGetRecapJobs(usecase dashboard_usecase.GetRecapJobsUsecase) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		rawWindow, _ := strconv.ParseInt(c.QueryParam("window"), 10, 64)
 		windowSeconds := clampWindowSeconds(rawWindow, dashboardWindowDefault, dashboardWindowMax)
 		rawLimit, _ := strconv.ParseInt(c.QueryParam("limit"), 10, 64)

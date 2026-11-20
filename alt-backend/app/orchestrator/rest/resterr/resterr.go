@@ -6,11 +6,11 @@ import (
 	stderrors "errors"
 	"net/http"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 // BuildAppContextError enriches an error with REST layer context and request metadata.
-func BuildAppContextError(c echo.Context, err error, layer string, operation string) *errors.AppContextError {
+func BuildAppContextError(c *echo.Context, err error, layer string, operation string) *errors.AppContextError {
 	var appContextErr *errors.AppContextError
 	var appErr *errors.AppError
 	if stderrors.As(err, &appContextErr) {
@@ -65,7 +65,7 @@ func BuildAppContextError(c echo.Context, err error, layer string, operation str
 }
 
 // HandleErrorWithLayer converts errors to appropriate HTTP responses using enhanced error handling for a given layer.
-func HandleErrorWithLayer(c echo.Context, err error, layer string, operation string) error {
+func HandleErrorWithLayer(c *echo.Context, err error, layer string, operation string) error {
 	enrichedErr := BuildAppContextError(c, err, layer, operation)
 
 	// Log the full error details (internal only - never sent to client)
@@ -86,19 +86,19 @@ func HandleErrorWithLayer(c echo.Context, err error, layer string, operation str
 // HandleError converts errors to appropriate HTTP responses using enhanced error handling for the "rest" layer.
 // IMPORTANT: This function ensures internal error details are NEVER exposed to clients.
 // All error messages are sanitized using SafeMessage() before being returned.
-func HandleError(c echo.Context, err error, operation string) error {
+func HandleError(c *echo.Context, err error, operation string) error {
 	return HandleErrorWithLayer(c, err, "rest", operation)
 }
 
 // HandleFeedError converts errors to appropriate HTTP responses using enhanced error handling for the "rest_feeds" layer.
 // IMPORTANT: This function ensures internal error details are NEVER exposed to clients.
 // All error messages are sanitized using SafeMessage() before being returned.
-func HandleFeedError(c echo.Context, err error, operation string) error {
+func HandleFeedError(c *echo.Context, err error, operation string) error {
 	return HandleErrorWithLayer(c, err, "rest_feeds", operation)
 }
 
 // HandleValidationError handles validation errors
-func HandleValidationError(c echo.Context, message string, field string, value interface{}) error {
+func HandleValidationError(c *echo.Context, message string, field string, value interface{}) error {
 	ctx := c.Request().Context()
 	logger.Logger.WarnContext(ctx, "Validation error", "message", message, "field", field, "value", value)
 	return c.JSON(http.StatusBadRequest, map[string]interface{}{

@@ -340,7 +340,7 @@ func TestMarkSummaryVersionSupersededReportsPrevious(t *testing.T) {
 			UserId:       testStatsUser,
 		}))
 	require.NoError(t, err)
-	require.NotNil(t, resp.Msg.PreviousVersion)
+	require.NotNil(t, resp.Msg.GetPreviousVersion())
 	assert.Equal(t, testPrevID, resp.Msg.GetPreviousVersion().GetSummaryVersionId())
 	assert.Equal(t, "the older summary", resp.Msg.GetPreviousVersion().GetSummaryText())
 
@@ -362,7 +362,7 @@ func TestMarkSummaryVersionSupersededFirstVersion(t *testing.T) {
 			UserId:       testStatsUser,
 		}))
 	require.NoError(t, err)
-	assert.Nil(t, resp.Msg.PreviousVersion,
+	assert.Nil(t, resp.Msg.GetPreviousVersion(),
 		"an article's first version supersedes nothing, and that must not arrive as a zero value")
 }
 
@@ -542,7 +542,7 @@ func TestMarkTagSetVersionSupersededFirstVersion(t *testing.T) {
 			NewVersionId: testTagSetVerID,
 		}))
 	require.NoError(t, err)
-	assert.Nil(t, resp.Msg.PreviousVersion)
+	assert.Nil(t, resp.Msg.GetPreviousVersion())
 }
 
 func TestGetTagSetVersionByID(t *testing.T) {

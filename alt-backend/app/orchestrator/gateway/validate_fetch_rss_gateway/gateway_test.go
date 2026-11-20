@@ -6,7 +6,6 @@ import (
 	"alt/utils/resilience"
 	"context"
 	"errors"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -178,9 +177,9 @@ func TestValidateAndFetchRSSGateway_SecurityValidation(t *testing.T) {
 		t.Run("should block "+tt.url, func(t *testing.T) {
 			_, err := gw.ValidateAndFetch(context.Background(), tt.url)
 
-			assert.Error(t, err)
-			assert.True(t,
-				strings.Contains(err.Error(), tt.expectedError),
+			require.Error(t, err)
+			assert.Contains(t,
+				err.Error(), tt.expectedError,
 				"Error for %s should contain %q, got: %s", tt.url, tt.expectedError, err.Error())
 		})
 	}
@@ -209,7 +208,7 @@ func TestValidateAndFetchRSSGateway_FetchErrors(t *testing.T) {
 
 			_, err := gw.ValidateAndFetch(context.Background(), "https://example.com/feed.xml")
 
-			assert.Error(t, err)
+			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.expectedError)
 		})
 	}
@@ -262,7 +261,7 @@ func TestValidateAndFetchRSSGateway_Metrics(t *testing.T) {
 	// Failed fetch
 	fetcher.setError("https://fail.com/feed.xml", errors.New("no such host"))
 	_, err = gw.ValidateAndFetch(context.Background(), "https://fail.com/feed.xml")
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	assert.Equal(t, int64(1), metrics.GetSuccessfulRequests())
 	assert.Equal(t, int64(1), metrics.GetFailedRequests())
@@ -316,7 +315,7 @@ func TestValidateAndFetchRSSGateway_Singleflight_DeduplicatesConcurrentFetches(t
 
 	// All requests should succeed
 	for i, err := range errs {
-		assert.NoError(t, err, "request %d failed", i)
+		require.NoError(t, err, "request %d failed", i)
 	}
 
 	// All should get the same result

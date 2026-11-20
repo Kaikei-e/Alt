@@ -3,6 +3,7 @@ package prometheus_client
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -77,7 +78,8 @@ func TestClient_Query_ServerError_Classified(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected error")
 	}
-	cerr, ok := err.(*QueryError)
+	cerr := &QueryError{}
+	ok := errors.As(err, &cerr)
 	if !ok {
 		t.Fatalf("want *QueryError got %T: %v", err, err)
 	}
@@ -95,7 +97,8 @@ func TestClient_Query_BadData_Classified(t *testing.T) {
 	c, _ := New(Config{URL: srv.URL, Timeout: 500 * time.Millisecond})
 
 	_, err := c.QueryInstant(context.Background(), `up`, time.Now())
-	cerr, ok := err.(*QueryError)
+	cerr := &QueryError{}
+	ok := errors.As(err, &cerr)
 	if !ok {
 		t.Fatalf("want *QueryError got %T", err)
 	}
@@ -115,7 +118,8 @@ func TestClient_Query_TimeoutIsClassified(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected timeout")
 	}
-	cerr, ok := err.(*QueryError)
+	cerr := &QueryError{}
+	ok := errors.As(err, &cerr)
 	if !ok {
 		t.Fatalf("want *QueryError got %T: %v", err, err)
 	}

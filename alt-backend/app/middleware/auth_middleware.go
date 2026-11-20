@@ -12,7 +12,7 @@ import (
 	"alt/utils/authcontext"
 
 	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 // Header constants for authentication.
@@ -24,13 +24,6 @@ const (
 	userEmailHeader = "X-Alt-User-Email"
 	userRoleHeader  = "X-Alt-User-Role"
 	sessionIDHeader = "X-Alt-Session-Id"
-)
-
-// Authentication error types.
-var (
-	errMissingHeaders = errors.New("missing authentication headers")
-	errInvalidUserID  = errors.New("invalid user identifier")
-	errInvalidTenant  = errors.New("invalid tenant identifier")
 )
 
 // AuthMiddleware validates JWT tokens provided by the edge proxy or frontend.
@@ -53,7 +46,7 @@ func NewAuthMiddleware(logger *slog.Logger, cfg config.AuthConfig) *AuthMiddlewa
 // RequireAuth ensures that a valid JWT token is present before allowing the request to proceed.
 func (m *AuthMiddleware) RequireAuth() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+		return func(c *echo.Context) error {
 			jwtUserCtx, err := m.jwtMiddleware.validateJWT(c)
 			if err != nil {
 				return echo.NewHTTPError(http.StatusUnauthorized, "invalid authentication")
@@ -127,7 +120,7 @@ func (m *AuthMiddleware) RequireAuth() echo.MiddlewareFunc {
 // V-005 Security: If a JWT token is present but invalid, the request continues as anonymous.
 func (m *AuthMiddleware) OptionalAuth() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+		return func(c *echo.Context) error {
 			// Check if JWT token is present
 			if c.Request().Header.Get(backendTokenHeader) != "" {
 				if jwtUserCtx, err := m.jwtMiddleware.validateJWT(c); err == nil {
@@ -214,7 +207,7 @@ func (m *AuthMiddleware) OptionalAuth() echo.MiddlewareFunc {
 // Returns 401 when no user context is attached, 403 when the user is not admin.
 func (m *AuthMiddleware) RequireAdmin() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+		return func(c *echo.Context) error {
 			user, err := domain.GetUserFromContext(c.Request().Context())
 			if err != nil || user == nil {
 				return echo.NewHTTPError(http.StatusUnauthorized, "authentication required")
@@ -234,7 +227,7 @@ func (m *AuthMiddleware) RequireAdmin() echo.MiddlewareFunc {
 	}
 }
 
-func (m *AuthMiddleware) attachContext(c echo.Context, user *domain.UserContext) {
+func (m *AuthMiddleware) attachContext(c *echo.Context, user *domain.UserContext) {
 	ctx := domain.SetUserContext(c.Request().Context(), user)
 	if token := c.Request().Header.Get(backendTokenHeader); token != "" {
 		ctx = authcontext.WithJWT(ctx, token)
@@ -301,7 +294,7 @@ func parseRole(raw string) domain.UserRole {
 
 // hasAuthHeaders checks if any authentication identity headers are present.
 // V-005: This is used to detect if someone is trying to inject identity headers.
-func (m *AuthMiddleware) hasAuthHeaders(c echo.Context) bool {
+func (m *AuthMiddleware) hasAuthHeaders(c *echo.Context) bool {
 	h := c.Request().Header
 	return h.Get(userIDHeader) != "" ||
 		h.Get(tenantIDHeader) != "" ||

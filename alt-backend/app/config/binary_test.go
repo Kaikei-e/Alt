@@ -12,11 +12,12 @@ func baseConfig() *Config {
 	return &Config{
 		AppEnv: "development",
 		Server: ServerConfig{
-			Port:         9000,
-			ConnectPort:  9101,
-			ReadTimeout:  300 * time.Second,
-			WriteTimeout: 300 * time.Second,
-			IdleTimeout:  120 * time.Second,
+			Port:               9000,
+			ConnectPort:        9101,
+			ReadTimeout:        300 * time.Second,
+			WriteTimeout:       300 * time.Second,
+			IdleTimeout:        120 * time.Second,
+			CORSAllowedOrigins: []string{"http://localhost:3000"},
 		},
 		SearchIndexer: SearchIndexerConfig{ConnectURL: "http://search-indexer:9301"},
 		PreProcessor:  PreProcessorConfig{URL: "http://pre-processor:9200", ConnectURL: "http://pre-processor:9202"},
@@ -425,6 +426,10 @@ func TestValidateBinaryConfig(t *testing.T) {
 			mutate: func(c *Config) { c.ReadingQueue.TTLHours = 0 }, wantErr: "READING_QUEUE_TTL_HOURS"},
 		{name: "backend rejects negative reading queue ttl hours", validate: ValidateBackendConfig,
 			mutate: func(c *Config) { c.ReadingQueue.TTLHours = -5 }, wantErr: "READING_QUEUE_TTL_HOURS"},
+		{name: "backend rejects empty cors allowed origins", validate: ValidateBackendConfig,
+			mutate: func(c *Config) { c.Server.CORSAllowedOrigins = nil }, wantErr: "CORS_ALLOWED_ORIGINS"},
+		{name: "backend rejects blank cors allowed origin entry", validate: ValidateBackendConfig,
+			mutate: func(c *Config) { c.Server.CORSAllowedOrigins = []string{"http://localhost:3000", ""} }, wantErr: "CORS_ALLOWED_ORIGINS"},
 
 		{name: "harvester accepts a complete config without backend token key", validate: ValidateHarvesterConfig,
 			verifyKeyValue: new(string), mutate: func(c *Config) { c.ReadingQueue = ReadingQueueConfig{} }},

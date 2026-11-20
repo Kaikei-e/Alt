@@ -109,10 +109,10 @@ func TestAltDBRepository_SearchFeedsByTitle(t *testing.T) {
 			results, err := repo.SearchFeedsByTitle(context.Background(), tt.query, tt.userID)
 
 			if tt.expectedError {
-				assert.Error(t, err)
+				require.Error(t, err)
 
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.Len(t, results, tt.expectedCount)
 			}
 

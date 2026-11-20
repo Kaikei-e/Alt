@@ -67,7 +67,7 @@ func (r *OutboxRepository) FetchAndLockPendingOutboxEvents(ctx context.Context, 
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	rows, err := tx.Query(ctx, claimOutboxBatchQuery, limit)
 	if err != nil {

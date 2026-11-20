@@ -43,8 +43,8 @@ func TestGetFeedIDByURL_NotFound(t *testing.T) {
 
 	_, err = repo.GetFeedIDByURL(context.Background(), "https://nonexistent.com/rss")
 	require.Error(t, err)
-	assert.ErrorIs(t, err, ErrFeedNotFoundByURL, "Should return ErrFeedNotFoundByURL for missing feeds")
-	assert.NotErrorIs(t, err, pgx.ErrNoRows, "Should not expose pgx.ErrNoRows")
+	require.ErrorIs(t, err, ErrFeedNotFoundByURL, "Should return ErrFeedNotFoundByURL for missing feeds")
+	require.NotErrorIs(t, err, pgx.ErrNoRows, "Should not expose pgx.ErrNoRows")
 
 	require.NoError(t, mock.ExpectationsWereMet())
 }
@@ -63,7 +63,7 @@ func TestGetFeedIDByURL_DatabaseError(t *testing.T) {
 
 	_, err = repo.GetFeedIDByURL(context.Background(), "https://example.com/rss")
 	require.Error(t, err)
-	assert.NotErrorIs(t, err, ErrFeedNotFoundByURL, "Should not return ErrFeedNotFoundByURL for DB errors")
+	require.NotErrorIs(t, err, ErrFeedNotFoundByURL, "Should not return ErrFeedNotFoundByURL for DB errors")
 	assert.Contains(t, err.Error(), "error getting feed ID by URL")
 
 	require.NoError(t, mock.ExpectationsWereMet())

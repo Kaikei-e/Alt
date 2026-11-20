@@ -61,9 +61,11 @@ func ogpImageWarmerJobFn(fetcher ogpUnwarmedFetcher, warmer imageWarmer) func(ct
 
 		warmed := 0
 		for _, u := range urls {
-			if ctx.Err() != nil {
+			select {
+			case <-ctx.Done():
 				slog.InfoContext(ctx, "OGP image warmer: context cancelled, stopping early", "warmed", warmed)
 				return nil
+			default:
 			}
 			if u == "" {
 				continue

@@ -1,6 +1,7 @@
 package di_test
 
 import (
+	"errors"
 	"os/exec"
 	"strings"
 	"testing"
@@ -103,10 +104,12 @@ func TestBinaryDependencyGraphs_DatabaseIsDataHubOnly(t *testing.T) {
 func packageDeps(t *testing.T, pkg string) map[string]bool {
 	t.Helper()
 
-	out, err := exec.Command("go", "list", "-deps", pkg).Output()
+	// #nosec G204 -- pkg is a constant module path from test table
+	out, err := exec.CommandContext(t.Context(), "go", "list", "-deps", pkg).Output()
 	if err != nil {
 		var stderr string
-		if ee, ok := err.(*exec.ExitError); ok {
+		ee := &exec.ExitError{}
+		if errors.As(err, &ee) {
 			stderr = string(ee.Stderr)
 		}
 		t.Fatalf("go list -deps %s: %v\n%s", pkg, err, stderr)

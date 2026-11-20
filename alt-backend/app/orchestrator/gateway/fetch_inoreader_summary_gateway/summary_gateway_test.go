@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // mockDatabase implements the Database interface for testing
@@ -115,8 +116,8 @@ func TestInoreaderSummaryGateway_FetchSummariesByURLs_Success(t *testing.T) {
 			if tt.wantErr {
 				assert.Error(t, err)
 			} else {
-				assert.NoError(t, err)
-				assert.Equal(t, len(tt.want), len(result))
+				require.NoError(t, err)
+				assert.Len(t, result, len(tt.want))
 
 				for i, expectedSummary := range tt.want {
 					if i < len(result) {
@@ -150,7 +151,7 @@ func TestInoreaderSummaryGateway_FetchSummariesByURLs_DatabaseError(t *testing.T
 	result, err := gateway.FetchSummariesByURLs(context.Background(), urls)
 
 	// Assert
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, result)
 }
 

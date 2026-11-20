@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 )
@@ -61,7 +62,8 @@ func (g *CSRFTokenGateway) ValidateToken(ctx context.Context, token string) (boo
 	expiration, err := g.driver.GetToken(ctx, token)
 	if err != nil {
 		// Token not found or driver error - consider invalid
-		return false, nil
+		slog.WarnContext(ctx, "csrf_token_gateway: get token failed", "error", err)
+		return false, nil //nolint:nilerr // missing or unreadable CSRF token is treated as invalid token
 	}
 
 	// Check if token is expired

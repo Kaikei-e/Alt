@@ -80,8 +80,8 @@ func TestCatalog_ReturnsEntries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Catalog: %v", err)
 	}
-	if len(res.Msg.Entries) != 1 || res.Msg.Entries[0].Key != string(domain.MetricAvailability) {
-		t.Fatalf("unexpected entries: %+v", res.Msg.Entries)
+	if len(res.Msg.GetEntries()) != 1 || res.Msg.GetEntries()[0].GetKey() != string(domain.MetricAvailability) {
+		t.Fatalf("unexpected entries: %+v", res.Msg.GetEntries())
 	}
 }
 
@@ -97,14 +97,14 @@ func TestSnapshot_ReturnsMetrics(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Snapshot: %v", err)
 	}
-	if len(res.Msg.Metrics) != 1 || res.Msg.Metrics[0].Key != string(domain.MetricAvailability) {
-		t.Fatalf("unexpected metrics: %+v", res.Msg.Metrics)
+	if len(res.Msg.GetMetrics()) != 1 || res.Msg.GetMetrics()[0].GetKey() != string(domain.MetricAvailability) {
+		t.Fatalf("unexpected metrics: %+v", res.Msg.GetMetrics())
 	}
-	if len(res.Msg.Metrics[0].Series) != 1 {
-		t.Fatalf("expected 1 series, got %d", len(res.Msg.Metrics[0].Series))
+	if len(res.Msg.GetMetrics()[0].GetSeries()) != 1 {
+		t.Fatalf("expected 1 series, got %d", len(res.Msg.GetMetrics()[0].GetSeries()))
 	}
-	if res.Msg.Metrics[0].Series[0].Labels["job"] != "alt-backend" {
-		t.Fatalf("unexpected labels: %+v", res.Msg.Metrics[0].Series[0].Labels)
+	if res.Msg.GetMetrics()[0].GetSeries()[0].GetLabels()["job"] != "alt-backend" {
+		t.Fatalf("unexpected labels: %+v", res.Msg.GetMetrics()[0].GetSeries()[0].GetLabels())
 	}
 }
 
@@ -138,8 +138,8 @@ func TestWatch_StreamsAndStopsOnCancel(t *testing.T) {
 		t.Fatalf("expected first frame: %v", stream.Err())
 	}
 	msg := stream.Msg()
-	if len(msg.Metrics) != 1 {
-		t.Fatalf("expected 1 metric, got %d", len(msg.Metrics))
+	if len(msg.GetMetrics()) != 1 {
+		t.Fatalf("expected 1 metric, got %d", len(msg.GetMetrics()))
 	}
 	cancel()
 	// Expect EOF or canceled soon.

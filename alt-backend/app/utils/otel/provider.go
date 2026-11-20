@@ -15,7 +15,6 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
-	"go.opentelemetry.io/otel/log/global"
 	"go.opentelemetry.io/otel/propagation"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	"go.opentelemetry.io/otel/sdk/resource"
@@ -123,7 +122,7 @@ func InitProviderWithMetrics(ctx context.Context, cfg Config) (*InitResult, erro
 	if err != nil {
 		return nil, fmt.Errorf("failed to init logger provider: %w", err)
 	}
-	global.SetLoggerProvider(loggerProvider)
+	otel.SetLoggerProvider(loggerProvider)
 
 	// Initialize Meter Provider with Prometheus exporter
 	meterProvider, metricsHandler, err := InitMeterProvider()

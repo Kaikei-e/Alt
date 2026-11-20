@@ -68,9 +68,15 @@ func TestConnectPreProcessorClient_QueueSummarize_SendsExplicitOrigin(t *testing
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			var receivedBody map[string]string
+			decodeErrCh := make(chan error, 1)
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, "/services.preprocessor.v2.PreProcessorService/QueueSummarize", r.URL.Path)
-				require.NoError(t, json.NewDecoder(r.Body).Decode(&receivedBody))
+				decodeErr := json.NewDecoder(r.Body).Decode(&receivedBody)
+				decodeErrCh <- decodeErr
+				if decodeErr != nil {
+					http.Error(w, decodeErr.Error(), http.StatusBadRequest)
+					return
+				}
 				w.Header().Set("Content-Type", "application/json")
 				_, _ = w.Write([]byte(`{"jobId":"job-1","status":"pending","message":"queued"}`))
 			}))
@@ -79,6 +85,7 @@ func TestConnectPreProcessorClient_QueueSummarize_SendsExplicitOrigin(t *testing
 			client := NewConnectPreProcessorClientWithHTTPClient(server.URL, server.Client())
 			jobID, err := client.QueueSummarize(context.Background(), "art-1", "title", tc.origin)
 			require.NoError(t, err)
+			require.NoError(t, <-decodeErrCh)
 			assert.Equal(t, "job-1", jobID)
 			assert.Equal(t, tc.expectedOrigin, receivedBody["origin"])
 		})

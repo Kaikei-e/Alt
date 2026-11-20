@@ -8,11 +8,11 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 func RestHandleFetchSingleFeed(container *di.ApplicationComponents, cfg *config.Config) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		// Authenticated user-scoped feed responses must never be stored in shared caches.
 		c.Response().Header().Set("Cache-Control", "private, no-cache")
 		c.Response().Header().Set("ETag", `"single-feed"`)
@@ -26,7 +26,7 @@ func RestHandleFetchSingleFeed(container *di.ApplicationComponents, cfg *config.
 }
 
 func RestHandleFetchFeedsList(container *di.ApplicationComponents, cfg *config.Config) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		// Authenticated user-scoped feed responses must never be stored in shared caches.
 		c.Response().Header().Set("Cache-Control", "private, no-cache")
 		c.Response().Header().Set("ETag", `"feeds-list"`)
@@ -43,7 +43,7 @@ func RestHandleFetchFeedsList(container *di.ApplicationComponents, cfg *config.C
 }
 
 func RestHandleFetchFeedsLimit(container *di.ApplicationComponents, cfg *config.Config) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		limit, err := strconv.Atoi(c.Param("limit"))
 		if err != nil {
 			return HandleValidationError(c, "Invalid limit parameter", "limit", c.Param("limit"))
@@ -69,7 +69,7 @@ func RestHandleFetchFeedsLimit(container *di.ApplicationComponents, cfg *config.
 }
 
 func RestHandleFetchFeedsPage(container *di.ApplicationComponents) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		ctx := c.Request().Context()
 		page, err := strconv.Atoi(c.Param("page"))
 		if err != nil {
@@ -99,7 +99,7 @@ func RestHandleFetchFeedsPage(container *di.ApplicationComponents) echo.HandlerF
 }
 
 func RestHandleFetchUnreadFeedsCursor(container *di.ApplicationComponents) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		ctx := c.Request().Context()
 		// Parse query parameters
 		limitStr := c.QueryParam("limit")
@@ -195,7 +195,7 @@ func RestHandleFetchUnreadFeedsCursor(container *di.ApplicationComponents) echo.
 }
 
 func RestHandleFetchReadFeedsCursor(container *di.ApplicationComponents) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		ctx := c.Request().Context()
 		// Parse query parameters - 既存パターンと同じ
 		limitStr := c.QueryParam("limit")
@@ -262,7 +262,7 @@ func RestHandleFetchReadFeedsCursor(container *di.ApplicationComponents) echo.Ha
 }
 
 func RestHandleFetchFavoriteFeedsCursor(container *di.ApplicationComponents) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		ctx := c.Request().Context()
 		limitStr := c.QueryParam("limit")
 		cursorStr := c.QueryParam("cursor")

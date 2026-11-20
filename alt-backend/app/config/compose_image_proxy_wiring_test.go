@@ -67,6 +67,7 @@ func parseEnvironment(node *yaml.Node) (map[string]string, error) {
 		if err := node.Decode(&env); err != nil {
 			return nil, err
 		}
+	default:
 	}
 	return env, nil
 }
@@ -225,8 +226,14 @@ func TestComposeAltBackendDefinitionsAreEnumerated(t *testing.T) {
 		t.Fatalf("no compose files found in %s; glob is broken", composeDir)
 	}
 
+	composeRoot, err := os.OpenRoot(composeDir)
+	if err != nil {
+		t.Fatalf("open root %s: %v", composeDir, err)
+	}
+	defer func() { _ = composeRoot.Close() }()
+
 	for _, path := range entries {
-		raw, err := os.ReadFile(path)
+		raw, err := composeRoot.ReadFile(filepath.Base(path))
 		if err != nil {
 			t.Fatalf("read %s: %v", path, err)
 		}

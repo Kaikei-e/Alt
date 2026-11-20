@@ -66,7 +66,7 @@ func TestTagSearchGateway_WrapsTheSourceError(t *testing.T) {
 
 	section, err := gw.SearchTagsByPrefix(context.Background(), "ai", testUserID, 10)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, cause)
+	require.ErrorIs(t, err, cause)
 	assert.Nil(t, section)
 }
 

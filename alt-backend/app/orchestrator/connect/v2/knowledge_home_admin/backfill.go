@@ -25,18 +25,18 @@ func (h *Handler) EmitArticleUrlBackfill(
 	ctx context.Context,
 	req *connect.Request[knowledgehomev1.EmitArticleUrlBackfillRequest],
 ) (*connect.Response[knowledgehomev1.EmitArticleUrlBackfillResponse], error) {
-	max := int(req.Msg.MaxArticles)
+	max := int(req.Msg.GetMaxArticles())
 	if max < 0 {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("max_articles must be non-negative"))
 	}
 
-	res, err := h.urlBackfillUsecase.Emit(ctx, max, req.Msg.DryRun)
+	res, err := h.urlBackfillUsecase.Emit(ctx, max, req.Msg.GetDryRun())
 	if err != nil {
 		h.logger.ErrorContext(ctx, "failed to emit article url backfill",
 			"error", err,
 			"max_articles", max,
-			"dry_run", req.Msg.DryRun,
+			"dry_run", req.Msg.GetDryRun(),
 		)
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("emit article url backfill: %w", err))
 	}
@@ -47,7 +47,7 @@ func (h *Handler) EmitArticleUrlBackfill(
 		"skipped_blocked_scheme", res.SkippedBlockedScheme,
 		"skipped_duplicate", res.SkippedDuplicate,
 		"more_remaining", res.MoreRemaining,
-		"dry_run", req.Msg.DryRun,
+		"dry_run", req.Msg.GetDryRun(),
 	)
 
 	return connect.NewResponse(convertEmitArticleUrlBackfillResponse(res)), nil
@@ -58,7 +58,7 @@ func (h *Handler) TriggerBackfill(
 	ctx context.Context,
 	req *connect.Request[knowledgehomev1.TriggerBackfillRequest],
 ) (*connect.Response[knowledgehomev1.TriggerBackfillResponse], error) {
-	version := int(req.Msg.ProjectionVersion)
+	version := int(req.Msg.GetProjectionVersion())
 	if version <= 0 {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("projection_version must be positive"))
@@ -84,7 +84,7 @@ func (h *Handler) PauseBackfill(
 	ctx context.Context,
 	req *connect.Request[knowledgehomev1.PauseBackfillRequest],
 ) (*connect.Response[knowledgehomev1.PauseBackfillResponse], error) {
-	jobID, err := uuid.Parse(req.Msg.JobId)
+	jobID, err := uuid.Parse(req.Msg.GetJobId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("invalid job_id: %w", err))
@@ -103,7 +103,7 @@ func (h *Handler) ResumeBackfill(
 	ctx context.Context,
 	req *connect.Request[knowledgehomev1.ResumeBackfillRequest],
 ) (*connect.Response[knowledgehomev1.ResumeBackfillResponse], error) {
-	jobID, err := uuid.Parse(req.Msg.JobId)
+	jobID, err := uuid.Parse(req.Msg.GetJobId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("invalid job_id: %w", err))
@@ -122,7 +122,7 @@ func (h *Handler) GetBackfillStatus(
 	ctx context.Context,
 	req *connect.Request[knowledgehomev1.GetBackfillStatusRequest],
 ) (*connect.Response[knowledgehomev1.GetBackfillStatusResponse], error) {
-	jobID, err := uuid.Parse(req.Msg.JobId)
+	jobID, err := uuid.Parse(req.Msg.GetJobId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("invalid job_id: %w", err))

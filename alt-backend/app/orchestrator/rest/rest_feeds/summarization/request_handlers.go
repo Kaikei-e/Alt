@@ -9,12 +9,12 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 // RestHandleSummarizeFeed proxies a request to the pre-processor and persists the result.
 func RestHandleSummarizeFeed(container *di.ApplicationComponents, cfg *config.Config) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		ctx := c.Request().Context()
 
 		// Get user context for saving summary
@@ -79,7 +79,7 @@ func RestHandleSummarizeFeed(container *di.ApplicationComponents, cfg *config.Co
 
 // RestHandleSummarizeFeedQueue enqueues a summarization job when no cached summary exists.
 func RestHandleSummarizeFeedQueue(container *di.ApplicationComponents, cfg *config.Config) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		ctx := c.Request().Context()
 		var req struct {
 			FeedURL string `json:"feed_url" validate:"required"`

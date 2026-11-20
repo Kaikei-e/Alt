@@ -33,7 +33,7 @@ func TestInsertSubscription_ForeignKeyViolationReturnsErrFeedNotFound(t *testing
 
 	err = repo.InsertSubscription(context.Background(), userID, feedLinkID)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, domain.ErrFeedNotFound)
+	require.ErrorIs(t, err, domain.ErrFeedNotFound)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -52,7 +52,7 @@ func TestInsertSubscription_DatabaseFailureIsNotErrFeedNotFound(t *testing.T) {
 
 	err = repo.InsertSubscription(context.Background(), userID, feedLinkID)
 	require.Error(t, err)
-	assert.NotErrorIs(t, err, domain.ErrFeedNotFound)
+	require.NotErrorIs(t, err, domain.ErrFeedNotFound)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -135,7 +135,7 @@ func TestSetSubscriptionDailyCap(t *testing.T) {
 
 		err = repo.SetSubscriptionDailyCap(context.Background(), userID, linkID, &capVal)
 		require.Error(t, err)
-		assert.ErrorIs(t, err, domain.ErrFeedNotFound)
+		require.ErrorIs(t, err, domain.ErrFeedNotFound)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 

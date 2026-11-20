@@ -176,7 +176,7 @@ func (u *GetKnowledgeHomeUsecase) Execute(ctx context.Context, userID uuid.UUID,
 		return nil, err
 	}
 	if itemsErr != nil && digestErr != nil {
-		return nil, fmt.Errorf("get knowledge home: items unavailable: %w; digest unavailable: %v", itemsErr, digestErr)
+		return nil, fmt.Errorf("get knowledge home: items unavailable: %w; digest unavailable: %w", itemsErr, digestErr)
 	}
 
 	// Enrich items with trending tag hotspots

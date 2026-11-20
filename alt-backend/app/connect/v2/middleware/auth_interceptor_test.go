@@ -126,7 +126,7 @@ func TestValidateToken_MissingTenantIDClaim_Fails(t *testing.T) {
 	_, err := a.validateToken(tokenStr)
 
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, errInvalidClaims),
+	assert.ErrorIs(t, err, errInvalidClaims,
 		"missing tenant_id claim must be rejected (fail-closed); got %v", err)
 }
 
@@ -141,7 +141,7 @@ func TestValidateToken_InvalidTenantIDFormat_Fails(t *testing.T) {
 	_, err := a.validateToken(tokenStr)
 
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, errInvalidClaims),
+	assert.ErrorIs(t, err, errInvalidClaims,
 		"malformed tenant_id claim must be rejected; got %v", err)
 }
 

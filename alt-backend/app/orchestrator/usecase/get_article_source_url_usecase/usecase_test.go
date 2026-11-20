@@ -65,7 +65,7 @@ func TestGetArticleSourceURL_MalformedUUID_InvalidArgument(t *testing.T) {
 
 	_, err := uc.Execute(context.Background(), "not-a-uuid", uuid.New())
 	require.Error(t, err)
-	require.True(t, errors.Is(err, ErrInvalidArgument))
+	require.ErrorIs(t, err, ErrInvalidArgument)
 	// Driver must NOT have been called when the input is malformed.
 	require.Empty(t, stub.gotArticleID, "lookup must short-circuit on malformed UUID")
 }
@@ -76,7 +76,7 @@ func TestGetArticleSourceURL_LookupReturnsEmpty_NotFound(t *testing.T) {
 
 	_, err := uc.Execute(context.Background(), uuid.New().String(), uuid.New())
 	require.Error(t, err)
-	require.True(t, errors.Is(err, ErrNotFound))
+	require.ErrorIs(t, err, ErrNotFound)
 }
 
 func TestGetArticleSourceURL_LookupReturnsError_Wrapped(t *testing.T) {
@@ -86,7 +86,7 @@ func TestGetArticleSourceURL_LookupReturnsError_Wrapped(t *testing.T) {
 
 	_, err := uc.Execute(context.Background(), uuid.New().String(), uuid.New())
 	require.Error(t, err)
-	require.True(t, errors.Is(err, wantInner), "underlying driver error must remain wrap-traceable")
+	require.ErrorIs(t, err, wantInner, "underlying driver error must remain wrap-traceable")
 }
 
 func TestGetArticleSourceURL_TenantScopeIsolation(t *testing.T) {
@@ -123,8 +123,8 @@ func TestValidateArticleID(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			err := validateArticleID(tt.articleID)
 			if tt.wantErr {
-				assert.Error(t, err)
-				assert.ErrorIs(t, err, ErrInvalidArgument)
+				require.Error(t, err)
+				require.ErrorIs(t, err, ErrInvalidArgument)
 			} else {
 				assert.NoError(t, err)
 			}

@@ -13,6 +13,7 @@ import (
 
 	sovereignv1 "alt/gen/proto/services/sovereign/v1"
 	"alt/gen/proto/services/sovereign/v1/sovereignv1connect"
+
 	"connectrpc.com/connect"
 
 	"github.com/google/uuid"
@@ -32,9 +33,9 @@ func (m *mockSovereignHandler) ApplyProjectionMutation(
 	_ context.Context,
 	req *connect.Request[sovereignv1.ApplyProjectionMutationRequest],
 ) (*connect.Response[sovereignv1.ApplyProjectionMutationResponse], error) {
-	m.lastMutationType = req.Msg.MutationType
-	m.lastEntityID = req.Msg.EntityId
-	m.lastPayload = req.Msg.Payload
+	m.lastMutationType = req.Msg.GetMutationType()
+	m.lastEntityID = req.Msg.GetEntityId()
+	m.lastPayload = req.Msg.GetPayload()
 	if m.returnErr != nil {
 		var connectErr *connect.Error
 		if errors.As(m.returnErr, &connectErr) {
@@ -49,9 +50,9 @@ func (m *mockSovereignHandler) ApplyRecallMutation(
 	_ context.Context,
 	req *connect.Request[sovereignv1.ApplyRecallMutationRequest],
 ) (*connect.Response[sovereignv1.ApplyRecallMutationResponse], error) {
-	m.lastMutationType = req.Msg.MutationType
-	m.lastEntityID = req.Msg.EntityId
-	m.lastPayload = req.Msg.Payload
+	m.lastMutationType = req.Msg.GetMutationType()
+	m.lastEntityID = req.Msg.GetEntityId()
+	m.lastPayload = req.Msg.GetPayload()
 	if m.returnErr != nil {
 		return nil, connect.NewError(connect.CodeInternal, m.returnErr)
 	}
@@ -62,8 +63,8 @@ func (m *mockSovereignHandler) ApplyCurationMutation(
 	_ context.Context,
 	req *connect.Request[sovereignv1.ApplyCurationMutationRequest],
 ) (*connect.Response[sovereignv1.ApplyCurationMutationResponse], error) {
-	m.lastMutationType = req.Msg.MutationType
-	m.lastEntityID = req.Msg.EntityId
+	m.lastMutationType = req.Msg.GetMutationType()
+	m.lastEntityID = req.Msg.GetEntityId()
 	if m.returnErr != nil {
 		return nil, connect.NewError(connect.CodeInternal, m.returnErr)
 	}
@@ -197,17 +198,17 @@ func TestClient_DisabledReturnsErrSovereignDisabled(t *testing.T) {
 	err := client.ApplyProjectionMutation(context.Background(), knowledge_sovereign_port.ProjectionMutation{
 		MutationType: "upsert_home_item",
 	})
-	assert.ErrorIs(t, err, ErrSovereignDisabled)
+	require.ErrorIs(t, err, ErrSovereignDisabled)
 
 	err = client.ApplyRecallMutation(context.Background(), knowledge_sovereign_port.RecallMutation{
 		MutationType: "snooze_candidate",
 	})
-	assert.ErrorIs(t, err, ErrSovereignDisabled)
+	require.ErrorIs(t, err, ErrSovereignDisabled)
 
 	err = client.ApplyCurationMutation(context.Background(), knowledge_sovereign_port.CurationMutation{
 		MutationType: "dismiss_curation",
 	})
-	assert.ErrorIs(t, err, ErrSovereignDisabled)
+	require.ErrorIs(t, err, ErrSovereignDisabled)
 }
 
 // Finding [11]: AppendKnowledgeEvent (read_client.go) is the only mutator on
@@ -223,7 +224,7 @@ func TestClient_AppendKnowledgeEvent_DisabledReturnsErrSovereignDisabled(t *test
 		EventID:   uuid.New(),
 		EventType: domain.EventArticleCreated,
 	})
-	assert.ErrorIs(t, err, ErrSovereignDisabled)
+	require.ErrorIs(t, err, ErrSovereignDisabled)
 	assert.Zero(t, seq)
 }
 
@@ -237,13 +238,13 @@ func TestClient_DisabledWriteMethodsReturnErrSovereignDisabled(t *testing.T) {
 	client := NewClient("http://unused", false)
 	ctx := context.Background()
 
-	assert.ErrorIs(t, client.AppendRecallSignal(ctx, domain.RecallSignal{SignalID: uuid.New()}), ErrSovereignDisabled)
-	assert.ErrorIs(t, client.AppendKnowledgeUserEvent(ctx, domain.KnowledgeUserEvent{UserEventID: uuid.New()}), ErrSovereignDisabled)
-	assert.ErrorIs(t, client.CreateLens(ctx, domain.KnowledgeLens{LensID: uuid.New()}), ErrSovereignDisabled)
-	assert.ErrorIs(t, client.CreateLensVersion(ctx, domain.KnowledgeLensVersion{LensVersionID: uuid.New()}), ErrSovereignDisabled)
-	assert.ErrorIs(t, client.SelectCurrentLens(ctx, domain.KnowledgeCurrentLens{UserID: uuid.New()}), ErrSovereignDisabled)
-	assert.ErrorIs(t, client.ClearCurrentLens(ctx, uuid.New()), ErrSovereignDisabled)
-	assert.ErrorIs(t, client.ArchiveLens(ctx, uuid.New()), ErrSovereignDisabled)
+	require.ErrorIs(t, client.AppendRecallSignal(ctx, domain.RecallSignal{SignalID: uuid.New()}), ErrSovereignDisabled)
+	require.ErrorIs(t, client.AppendKnowledgeUserEvent(ctx, domain.KnowledgeUserEvent{UserEventID: uuid.New()}), ErrSovereignDisabled)
+	require.ErrorIs(t, client.CreateLens(ctx, domain.KnowledgeLens{LensID: uuid.New()}), ErrSovereignDisabled)
+	require.ErrorIs(t, client.CreateLensVersion(ctx, domain.KnowledgeLensVersion{LensVersionID: uuid.New()}), ErrSovereignDisabled)
+	require.ErrorIs(t, client.SelectCurrentLens(ctx, domain.KnowledgeCurrentLens{UserID: uuid.New()}), ErrSovereignDisabled)
+	require.ErrorIs(t, client.ClearCurrentLens(ctx, uuid.New()), ErrSovereignDisabled)
+	require.ErrorIs(t, client.ArchiveLens(ctx, uuid.New()), ErrSovereignDisabled)
 }
 
 func TestNewClient_SkipsHealthProbeWhenDisabled(t *testing.T) {
@@ -438,7 +439,7 @@ func TestGetLens_MapsPermissionDeniedAndNotFoundToErrLensNotFound(t *testing.T) 
 			lens, err := client.GetLens(context.Background(), uuid.New())
 			require.Error(t, err)
 			assert.Nil(t, lens)
-			assert.ErrorIs(t, err, domain.ErrLensNotFound)
+			require.ErrorIs(t, err, domain.ErrLensNotFound)
 			var connectErr *connect.Error
 			require.ErrorAs(t, err, &connectErr)
 			assert.Equal(t, code, connectErr.Code())
@@ -456,7 +457,7 @@ func TestGetLens_MapsPermissionDeniedAndNotFoundToErrLensNotFound(t *testing.T) 
 		lens, err := client.GetLens(context.Background(), uuid.New())
 		require.Error(t, err)
 		assert.Nil(t, lens)
-		assert.NotErrorIs(t, err, domain.ErrLensNotFound)
+		require.NotErrorIs(t, err, domain.ErrLensNotFound)
 		var connectErr *connect.Error
 		require.ErrorAs(t, err, &connectErr)
 		assert.Equal(t, connect.CodeUnavailable, connectErr.Code())

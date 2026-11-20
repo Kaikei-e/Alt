@@ -40,7 +40,7 @@ func TestPushDeliveryBacklogAgeQueryCountsSendingRows(t *testing.T) {
 	// now() is the transaction start time, so inside a long transaction it
 	// would understate the age by however long that transaction had been open.
 	require.Contains(t, pushDeliveryBacklogAgeQuery, "clock_timestamp()")
-	require.False(t, strings.Contains(pushDeliveryBacklogAgeQuery, " now()"),
+	require.NotContains(t, pushDeliveryBacklogAgeQuery, " now()",
 		"the age must be read from clock_timestamp(), not the transaction clock")
 
 	// An empty queue makes MIN() NULL; without COALESCE the scan fails and the

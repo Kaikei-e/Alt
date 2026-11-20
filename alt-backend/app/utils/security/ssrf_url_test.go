@@ -51,7 +51,7 @@ func TestSSRFValidator_BasicValidation(t *testing.T) {
 			err = validator.ValidateURL(context.Background(), u)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.expectedErr)
 			} else {
 				assert.NoError(t, err)
@@ -98,7 +98,7 @@ func TestSSRFValidator_MetadataEndpoints(t *testing.T) {
 			err = validator.ValidateURL(context.Background(), u)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Contains(t, err.Error(), "METADATA_ENDPOINT_BLOCKED")
 			} else {
 				assert.NoError(t, err)
@@ -145,7 +145,7 @@ func TestSSRFValidator_InternalDomains(t *testing.T) {
 			err = validator.ValidateURL(context.Background(), u)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Contains(t, err.Error(), "INTERNAL_DOMAIN_BLOCKED")
 			} else {
 				assert.NoError(t, err)
@@ -216,7 +216,7 @@ func TestSSRFValidator_PathTraversal(t *testing.T) {
 			err = validator.ValidateURL(context.Background(), u)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.errorType)
 			} else {
 				assert.NoError(t, err)
@@ -268,7 +268,7 @@ func TestSSRFValidator_PortValidation(t *testing.T) {
 			err = validator.ValidateURL(context.Background(), u)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Contains(t, err.Error(), "PORT_BLOCKED")
 			} else {
 				assert.NoError(t, err)
@@ -313,7 +313,7 @@ func TestSSRFValidator_UnicodeValidation(t *testing.T) {
 			err = validator.ValidateURL(context.Background(), u)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.errorType)
 			} else {
 				assert.NoError(t, err)
@@ -329,7 +329,7 @@ func TestSSRFValidator_TestingMode(t *testing.T) {
 	require.NoError(t, err)
 
 	err = validator.ValidateURL(context.Background(), u)
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	validator.SetTestingMode(true)
 

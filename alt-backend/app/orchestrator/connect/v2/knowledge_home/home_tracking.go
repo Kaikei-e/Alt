@@ -26,23 +26,23 @@ func (h *Handler) TrackHomeItemsSeen(
 		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 
-	if len(req.Msg.ItemKeys) == 0 {
+	if len(req.Msg.GetItemKeys()) == 0 {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("item_keys is required"))
 	}
 
 	if h.metrics != nil {
 		h.metrics.TrackingReceivedTotal.Add(ctx, 1)
-		h.metrics.ItemsExposed.Add(ctx, int64(len(req.Msg.ItemKeys)))
+		h.metrics.ItemsExposed.Add(ctx, int64(len(req.Msg.GetItemKeys())))
 		if h.metrics.Snapshot != nil {
 			h.metrics.Snapshot.RecordTrackingReceived()
-			for range len(req.Msg.ItemKeys) {
+			for range len(req.Msg.GetItemKeys()) {
 				h.metrics.Snapshot.RecordItemExposed()
 			}
 		}
 	}
 
-	if err := h.trackSeenUsecase.Execute(ctx, user.UserID, user.TenantID, req.Msg.ItemKeys, req.Msg.ExposureSessionId); err != nil {
+	if err := h.trackSeenUsecase.Execute(ctx, user.UserID, user.TenantID, req.Msg.GetItemKeys(), req.Msg.GetExposureSessionId()); err != nil {
 		if h.metrics != nil {
 			h.metrics.TrackingFailedTotal.Add(ctx, 1)
 			if h.metrics.Snapshot != nil {
@@ -72,18 +72,18 @@ func (h *Handler) TrackHomeAction(
 		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 
-	if req.Msg.ActionType == "" {
+	if req.Msg.GetActionType() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("action_type is required"))
 	}
-	if req.Msg.ItemKey == "" {
+	if req.Msg.GetItemKey() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("item_key is required"))
 	}
 
 	var metadataJSON string
 	if req.Msg.MetadataJson != nil {
-		metadataJSON = *req.Msg.MetadataJson
+		metadataJSON = req.Msg.GetMetadataJson()
 	}
 
 	// ADR-000913 §D-9 — TrackHomeAction absorbs the legacy
@@ -91,7 +91,7 @@ func (h *Handler) TrackHomeAction(
 	// recall actions through the deprecated RPC; new clients send them
 	// through here. dispatch order: snooze/dismiss → recall usecases,
 	// everything else → trackActionUsecase.
-	switch req.Msg.ActionType {
+	switch req.Msg.GetActionType() {
 	case "snooze":
 		if h.recallSnoozeUsecase == nil {
 			return nil, connect.NewError(connect.CodeUnimplemented,
@@ -110,7 +110,7 @@ func (h *Handler) TrackHomeAction(
 				}
 			}
 		}
-		if err := h.recallSnoozeUsecase.Execute(ctx, user.UserID, user.TenantID, req.Msg.ItemKey, snoozeHours); err != nil {
+		if err := h.recallSnoozeUsecase.Execute(ctx, user.UserID, user.TenantID, req.Msg.GetItemKey(), snoozeHours); err != nil {
 			if errors.Is(err, recall_snooze_usecase.ErrInvalidSnoozeHours) {
 				return nil, connect.NewError(connect.CodeInvalidArgument, err)
 			}
@@ -121,11 +121,11 @@ func (h *Handler) TrackHomeAction(
 			return nil, connect.NewError(connect.CodeUnimplemented,
 				fmt.Errorf("recall dismiss is not enabled on this deployment"))
 		}
-		if err := h.recallDismissUsecase.Execute(ctx, user.UserID, user.TenantID, req.Msg.ItemKey); err != nil {
+		if err := h.recallDismissUsecase.Execute(ctx, user.UserID, user.TenantID, req.Msg.GetItemKey()); err != nil {
 			return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "TrackHomeAction.dismiss_recall")
 		}
 	default:
-		if err := h.trackActionUsecase.Execute(ctx, user.UserID, user.TenantID, req.Msg.ActionType, req.Msg.ItemKey, metadataJSON); err != nil {
+		if err := h.trackActionUsecase.Execute(ctx, user.UserID, user.TenantID, req.Msg.GetActionType(), req.Msg.GetItemKey(), metadataJSON); err != nil {
 			if errors.Is(err, track_home_action_usecase.ErrInvalidActionType) {
 				return nil, connect.NewError(connect.CodeInvalidArgument, err)
 			}
@@ -134,7 +134,7 @@ func (h *Handler) TrackHomeAction(
 	}
 
 	if h.metrics != nil {
-		switch req.Msg.ActionType {
+		switch req.Msg.GetActionType() {
 		case "open", "open_recap", "open_search":
 			h.metrics.ItemsOpened.Add(ctx, 1)
 			if h.metrics.Snapshot != nil {

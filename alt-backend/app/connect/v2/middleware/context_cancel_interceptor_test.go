@@ -40,7 +40,7 @@ func TestUnary_Error_NoCancel_PassThrough(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if err != origErr {
+	if !errors.Is(err, origErr) {
 		t.Fatalf("expected original error %v, got %v", origErr, err)
 	}
 }
@@ -122,7 +122,7 @@ func TestStreaming_Error_NoCancel_PassThrough(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	if err != origErr {
+	if !errors.Is(err, origErr) {
 		t.Fatalf("expected original error %v, got %v", origErr, err)
 	}
 }

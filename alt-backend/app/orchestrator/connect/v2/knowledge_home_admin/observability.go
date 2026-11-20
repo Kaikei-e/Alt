@@ -60,18 +60,18 @@ func (h *Handler) RunProjectionAudit(
 	ctx context.Context,
 	req *connect.Request[knowledgehomev1.RunProjectionAuditRequest],
 ) (*connect.Response[knowledgehomev1.RunProjectionAuditResponse], error) {
-	if req.Msg.ProjectionName == "" {
+	if req.Msg.GetProjectionName() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("projection_name is required"))
 	}
-	if req.Msg.ProjectionVersion == "" {
+	if req.Msg.GetProjectionVersion() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("projection_version is required"))
 	}
-	sampleSize := int(req.Msg.SampleSize)
+	sampleSize := int(req.Msg.GetSampleSize())
 	if sampleSize <= 0 {
 		sampleSize = 100
 	}
 
-	audit, err := h.auditUsecase.RunProjectionAudit(ctx, req.Msg.ProjectionName, req.Msg.ProjectionVersion, sampleSize)
+	audit, err := h.auditUsecase.RunProjectionAudit(ctx, req.Msg.GetProjectionName(), req.Msg.GetProjectionVersion(), sampleSize)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "failed to run projection audit", "error", err)
 		return nil, connect.NewError(connect.CodeInternal, fmt.Errorf("run projection audit: %w", err))

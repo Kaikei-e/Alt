@@ -36,7 +36,6 @@ type SharedCache[K comparable, V any] struct {
 type cacheEntry[V any] struct {
 	value      V
 	storedAt   time.Time
-	version    int64
 	refreshing int32
 }
 

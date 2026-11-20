@@ -660,6 +660,7 @@ func TestClient_Send_RejectionNeverLeaksTheCapabilityURL(t *testing.T) {
 		w.WriteHeader(http.StatusBadRequest)
 		// A hostile-shaped response: the service quotes the request line and
 		// the credentials it was given straight back at us.
+		// #nosec G705 -- test httptest server echoes request data to verify scrubbing
 		_, _ = io.WriteString(w, "rejected POST "+r.URL.String()+" with Authorization "+sentAuthorization)
 	}))
 	defer server.Close()

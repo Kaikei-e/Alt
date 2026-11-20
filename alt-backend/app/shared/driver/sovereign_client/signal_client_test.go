@@ -61,7 +61,7 @@ func TestAppendKnowledgeUserEvent_PreservesUpstreamCodeThroughWrap(t *testing.T)
 		"the driver wrap must keep the upstream Connect code reachable")
 
 	var connectErr *connect.Error
-	require.True(t, errors.As(err, &connectErr))
+	require.ErrorAs(t, err, &connectErr)
 	require.Equal(t, "dedupe_key is required", connectErr.Message(),
 		"the upstream message must survive the wrap so the caller bug stays findable")
 }

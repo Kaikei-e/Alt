@@ -80,7 +80,7 @@ func TestExecute_EmptyQueryIsInvalidRequest(t *testing.T) {
 
 		_, err := uc.Execute(context.Background(), uuid.New(), q, 20)
 		require.Error(t, err, "query %q must be rejected", q)
-		assert.ErrorIs(t, err, ErrInvalidRequest)
+		require.ErrorIs(t, err, ErrInvalidRequest)
 		assert.Zero(t, searchPort.calls, "an invalid request must not reach the search port")
 		assert.Zero(t, trailPort.calls, "an invalid request must not reach the trail port")
 	}

@@ -3,7 +3,6 @@ package recap
 import (
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"testing"
 	"time"
@@ -88,9 +87,9 @@ func TestHandler_SearchRecapsByTag(t *testing.T) {
 
 		require.NoError(t, err)
 		require.NotNil(t, resp)
-		assert.Len(t, resp.Msg.Results, 1)
-		assert.Equal(t, "job-001", resp.Msg.Results[0].JobId)
-		assert.Equal(t, "AI chip developments", resp.Msg.Results[0].Summary)
+		assert.Len(t, resp.Msg.GetResults(), 1)
+		assert.Equal(t, "job-001", resp.Msg.GetResults()[0].GetJobId())
+		assert.Equal(t, "AI chip developments", resp.Msg.GetResults()[0].GetSummary())
 
 		// SearchRecapsByTag should NOT be called when query is provided
 		mockUsecase.AssertNotCalled(t, "SearchRecapsByTag")
@@ -125,8 +124,8 @@ func TestHandler_SearchRecapsByTag(t *testing.T) {
 
 		require.NoError(t, err)
 		require.NotNil(t, resp)
-		assert.Len(t, resp.Msg.Results, 1)
-		assert.Equal(t, "job-002", resp.Msg.Results[0].JobId)
+		assert.Len(t, resp.Msg.GetResults(), 1)
+		assert.Equal(t, "job-002", resp.Msg.GetResults()[0].GetJobId())
 
 		mockUsecase.AssertNotCalled(t, "SearchRecapsByTag")
 		mockUsecase.AssertExpectations(t)
@@ -158,8 +157,8 @@ func TestHandler_SearchRecapsByTag(t *testing.T) {
 
 		require.NoError(t, err)
 		require.NotNil(t, resp)
-		assert.Len(t, resp.Msg.Results, 1)
-		assert.Equal(t, "job-003", resp.Msg.Results[0].JobId)
+		assert.Len(t, resp.Msg.GetResults(), 1)
+		assert.Equal(t, "job-003", resp.Msg.GetResults()[0].GetJobId())
 
 		mockUsecase.AssertNotCalled(t, "SearchRecapsByQuery")
 		mockUsecase.AssertExpectations(t)
@@ -175,7 +174,8 @@ func TestHandler_SearchRecapsByTag(t *testing.T) {
 		_, err := handler.SearchRecapsByTag(ctx, req)
 
 		require.Error(t, err)
-		connectErr, ok := err.(*connect.Error)
+		connectErr := &connect.Error{}
+		ok := errors.As(err, &connectErr)
 		require.True(t, ok)
 		assert.Equal(t, connect.CodeInvalidArgument, connectErr.Code())
 
@@ -211,7 +211,7 @@ func TestHandler_SearchRecapsByTag(t *testing.T) {
 
 		require.NoError(t, err)
 		require.NotNil(t, resp)
-		assert.Len(t, resp.Msg.Results, 1)
+		assert.Len(t, resp.Msg.GetResults(), 1)
 
 		mockUsecase.AssertNotCalled(t, "SearchRecapsByQuery")
 		mockUsecase.AssertExpectations(t)
@@ -225,14 +225,15 @@ func TestHandler_SearchRecapsByTag(t *testing.T) {
 		_, err := handler.SearchRecapsByTag(context.Background(), req)
 
 		require.Error(t, err)
-		connectErr, ok := err.(*connect.Error)
+		connectErr := &connect.Error{}
+		ok := errors.As(err, &connectErr)
 		require.True(t, ok)
 		assert.Equal(t, connect.CodeUnauthenticated, connectErr.Code())
 	})
 }
 
 func TestHandler_GetTopicCards(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 
 	t.Run("unauthenticated - returns CodeUnauthenticated", func(t *testing.T) {
 		mockUsecase := new(MockRecapUsecase)
@@ -242,7 +243,8 @@ func TestHandler_GetTopicCards(t *testing.T) {
 		_, err := handler.GetTopicCards(context.Background(), req)
 
 		require.Error(t, err)
-		connectErr, ok := err.(*connect.Error)
+		connectErr := &connect.Error{}
+		ok := errors.As(err, &connectErr)
 		require.True(t, ok)
 		assert.Equal(t, connect.CodeUnauthenticated, connectErr.Code())
 	})
@@ -308,32 +310,32 @@ func TestHandler_GetTopicCards(t *testing.T) {
 
 		require.NoError(t, err)
 		require.NotNil(t, resp)
-		require.NotNil(t, resp.Msg.Job)
-		assert.Equal(t, "11111111-1111-1111-1111-111111111111", resp.Msg.Job.JobId)
-		assert.Equal(t, "cards-v0.2", resp.Msg.Job.ParamsVersion)
-		assert.False(t, resp.Msg.Job.Degraded)
-		require.Len(t, resp.Msg.Cards, 1)
-		card := resp.Msg.Cards[0]
-		assert.Equal(t, "22222222-2222-2222-2222-222222222222", card.Id)
-		assert.Equal(t, int32(1), card.Rank)
-		assert.Equal(t, "新モデル発表", card.HeadlineJa)
+		require.NotNil(t, resp.Msg.GetJob())
+		assert.Equal(t, "11111111-1111-1111-1111-111111111111", resp.Msg.GetJob().GetJobId())
+		assert.Equal(t, "cards-v0.2", resp.Msg.GetJob().GetParamsVersion())
+		assert.False(t, resp.Msg.GetJob().GetDegraded())
+		require.Len(t, resp.Msg.GetCards(), 1)
+		card := resp.Msg.GetCards()[0]
+		assert.Equal(t, "22222222-2222-2222-2222-222222222222", card.GetId())
+		assert.Equal(t, int32(1), card.GetRank())
+		assert.Equal(t, "新モデル発表", card.GetHeadlineJa())
 		require.NotNil(t, card.ContinuesCardId)
-		assert.Equal(t, continuesCardID, *card.ContinuesCardId)
+		assert.Equal(t, continuesCardID, card.GetContinuesCardId())
 		require.NotNil(t, card.WhyJa)
-		assert.Equal(t, whyJa, *card.WhyJa)
+		assert.Equal(t, whyJa, card.GetWhyJa())
 		require.NotNil(t, card.Genre)
-		assert.Equal(t, genre, *card.Genre)
-		require.Len(t, card.Sources, 1)
-		assert.Equal(t, int32(1), card.Sources[0].N)
-		assert.Equal(t, "example.com", card.Sources[0].Host)
-		require.NotNil(t, card.Sources[0].PubDate)
-		assert.Equal(t, pubDate, *card.Sources[0].PubDate)
-		require.NotNil(t, resp.Msg.SurfaceStatus)
-		require.NotNil(t, resp.Msg.SurfaceStatus.LatestRun)
-		assert.Equal(t, "11111111-1111-1111-1111-111111111111", resp.Msg.SurfaceStatus.LatestRun.JobId)
-		assert.Equal(t, "completed", resp.Msg.SurfaceStatus.LatestRun.Status)
-		assert.Equal(t, "2026-09-22T17:00:00Z", resp.Msg.SurfaceStatus.LatestRun.KickedAt)
-		assert.Equal(t, "2026-09-22T17:05:00Z", resp.Msg.SurfaceStatus.LatestRun.UpdatedAt)
+		assert.Equal(t, genre, card.GetGenre())
+		require.Len(t, card.GetSources(), 1)
+		assert.Equal(t, int32(1), card.GetSources()[0].GetN())
+		assert.Equal(t, "example.com", card.GetSources()[0].GetHost())
+		require.NotNil(t, card.GetSources()[0].PubDate)
+		assert.Equal(t, pubDate, card.GetSources()[0].GetPubDate())
+		require.NotNil(t, resp.Msg.GetSurfaceStatus())
+		require.NotNil(t, resp.Msg.GetSurfaceStatus().GetLatestRun())
+		assert.Equal(t, "11111111-1111-1111-1111-111111111111", resp.Msg.GetSurfaceStatus().GetLatestRun().GetJobId())
+		assert.Equal(t, "completed", resp.Msg.GetSurfaceStatus().GetLatestRun().GetStatus())
+		assert.Equal(t, "2026-09-22T17:00:00Z", resp.Msg.GetSurfaceStatus().GetLatestRun().GetKickedAt())
+		assert.Equal(t, "2026-09-22T17:05:00Z", resp.Msg.GetSurfaceStatus().GetLatestRun().GetUpdatedAt())
 
 		mockUsecase.AssertExpectations(t)
 	})
@@ -355,9 +357,9 @@ func TestHandler_GetTopicCards(t *testing.T) {
 
 		require.NoError(t, err)
 		require.NotNil(t, resp)
-		assert.Nil(t, resp.Msg.Job)
-		assert.Empty(t, resp.Msg.Cards)
-		assert.Nil(t, resp.Msg.SurfaceStatus)
+		assert.Nil(t, resp.Msg.GetJob())
+		assert.Empty(t, resp.Msg.GetCards())
+		assert.Nil(t, resp.Msg.GetSurfaceStatus())
 
 		mockUsecase.AssertExpectations(t)
 	})

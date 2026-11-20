@@ -20,7 +20,7 @@ import (
 	"alt/utils/logger"
 
 	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -164,7 +164,7 @@ func TestCursorFeedHandlers_SetPrivateNoCacheHeader(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodGet, tt.target, nil)
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, tt.target, nil)
 			rec := httptest.NewRecorder()
 			c := e.NewContext(req, rec)
 
@@ -234,12 +234,11 @@ func TestFeedFetchHandlers_SetPrivateNoCacheHeader(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodGet, tt.target, nil)
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, tt.target, nil)
 			rec := httptest.NewRecorder()
 			c := e.NewContext(req, rec)
 			if tt.paramKey != "" {
-				c.SetParamNames(tt.paramKey)
-				c.SetParamValues(tt.paramValue)
+				c.SetPathValues(echo.PathValues{{Name: tt.paramKey, Value: tt.paramValue}})
 			}
 
 			err := tt.handler(c)
@@ -345,7 +344,7 @@ func TestRestHandleFetchReadAndFavoriteFeedsCursor_UsesSortKeyTime(t *testing.T)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req1 := httptest.NewRequest(http.MethodGet, tt.baseURL+"?limit=1", nil)
+			req1 := httptest.NewRequestWithContext(t.Context(), http.MethodGet, tt.baseURL+"?limit=1", nil)
 			rec1 := httptest.NewRecorder()
 			c1 := e.NewContext(req1, rec1)
 
@@ -361,7 +360,7 @@ func TestRestHandleFetchReadAndFavoriteFeedsCursor_UsesSortKeyTime(t *testing.T)
 			assert.Equal(t, "Feed A", body1.Data[0]["title"])
 			assert.Equal(t, t9.Format(time.RFC3339Nano), body1.NextCursor)
 
-			req2 := httptest.NewRequest(http.MethodGet, tt.baseURL+"?limit=1&cursor="+url.QueryEscape(body1.NextCursor), nil)
+			req2 := httptest.NewRequestWithContext(t.Context(), http.MethodGet, tt.baseURL+"?limit=1&cursor="+url.QueryEscape(body1.NextCursor), nil)
 			rec2 := httptest.NewRecorder()
 			c2 := e.NewContext(req2, rec2)
 
@@ -428,7 +427,7 @@ func TestRestHandleFetchReadAndFavoriteFeedsCursor_MissingCursorAtReturnsError(t
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodGet, tt.target, nil)
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, tt.target, nil)
 			rec := httptest.NewRecorder()
 			c := e.NewContext(req, rec)
 
@@ -460,11 +459,10 @@ func TestRestHandleFetchFeedTagsByID_RejectsMalformedUUID(t *testing.T) {
 	handler := RestHandleFetchFeedTagsByID(container)
 	e := echo.New()
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/feeds/not-a-uuid/tags", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/feeds/not-a-uuid/tags", nil)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
-	c.SetParamNames("id")
-	c.SetParamValues("not-a-uuid")
+	c.SetPathValues(echo.PathValues{{Name: "id", Value: "not-a-uuid"}})
 
 	require.NoError(t, handler(c))
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
@@ -492,11 +490,10 @@ func TestRestHandleFetchFeedTagsByID_CursorRoundTripKeepsSubSecondPrecision(t *t
 	e := echo.New()
 	feedID := uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa").String()
 
-	req1 := httptest.NewRequest(http.MethodGet, "/v1/feeds/"+feedID+"/tags?limit=1", nil)
+	req1 := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/feeds/"+feedID+"/tags?limit=1", nil)
 	rec1 := httptest.NewRecorder()
 	c1 := e.NewContext(req1, rec1)
-	c1.SetParamNames("id")
-	c1.SetParamValues(feedID)
+	c1.SetPathValues(echo.PathValues{{Name: "id", Value: feedID}})
 
 	require.NoError(t, handler(c1))
 	require.Equal(t, http.StatusOK, rec1.Code)
@@ -507,11 +504,10 @@ func TestRestHandleFetchFeedTagsByID_CursorRoundTripKeepsSubSecondPrecision(t *t
 	require.NoError(t, json.Unmarshal(rec1.Body.Bytes(), &body1))
 	require.NotEmpty(t, body1.NextCursor)
 
-	req2 := httptest.NewRequest(http.MethodGet, "/v1/feeds/"+feedID+"/tags?limit=1&cursor="+url.QueryEscape(body1.NextCursor), nil)
+	req2 := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/feeds/"+feedID+"/tags?limit=1&cursor="+url.QueryEscape(body1.NextCursor), nil)
 	rec2 := httptest.NewRecorder()
 	c2 := e.NewContext(req2, rec2)
-	c2.SetParamNames("id")
-	c2.SetParamValues(feedID)
+	c2.SetPathValues(echo.PathValues{{Name: "id", Value: feedID}})
 
 	require.NoError(t, handler(c2))
 	require.Equal(t, http.StatusOK, rec2.Code)
@@ -520,11 +516,10 @@ func TestRestHandleFetchFeedTagsByID_CursorRoundTripKeepsSubSecondPrecision(t *t
 		"cursor %q became %q", ts.Format(time.RFC3339Nano), stub.lastCursor.Format(time.RFC3339Nano))
 
 	wholeSec := time.Date(2026, time.March, 2, 10, 0, 0, 0, time.UTC)
-	req3 := httptest.NewRequest(http.MethodGet, "/v1/feeds/"+feedID+"/tags?limit=1&cursor="+url.QueryEscape(wholeSec.Format(time.RFC3339)), nil)
+	req3 := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/feeds/"+feedID+"/tags?limit=1&cursor="+url.QueryEscape(wholeSec.Format(time.RFC3339)), nil)
 	rec3 := httptest.NewRecorder()
 	c3 := e.NewContext(req3, rec3)
-	c3.SetParamNames("id")
-	c3.SetParamValues(feedID)
+	c3.SetPathValues(echo.PathValues{{Name: "id", Value: feedID}})
 
 	require.NoError(t, handler(c3))
 	require.Equal(t, http.StatusOK, rec3.Code)

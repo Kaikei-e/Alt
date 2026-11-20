@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -65,7 +65,7 @@ func BenchmarkDOSProtectionMiddleware(b *testing.B) {
 			// Create Echo instance with DOS protection middleware
 			e := echo.New()
 			e.Use(middleware.DOSProtectionMiddleware(context.Background(), middleware.ConvertConfigDOSProtection(bm.config)))
-			e.GET("/v1/test", func(c echo.Context) error {
+			e.GET("/v1/test", func(c *echo.Context) error {
 				return c.String(http.StatusOK, "OK")
 			})
 
@@ -75,7 +75,7 @@ func BenchmarkDOSProtectionMiddleware(b *testing.B) {
 			b.RunParallel(func(pb *testing.PB) {
 				ipIndex := 0
 				for pb.Next() {
-					req := httptest.NewRequest(http.MethodGet, "/v1/test", nil)
+					req := httptest.NewRequestWithContext(b.Context(), http.MethodGet, "/v1/test", nil)
 					req.RemoteAddr = fmt.Sprintf("192.168.1.%d:12345", ipIndex%bm.numIPs+1)
 					rec := httptest.NewRecorder()
 					e.ServeHTTP(rec, req)
@@ -97,7 +97,7 @@ func TestDOSProtectionConcurrency(t *testing.T) {
 
 	e := echo.New()
 	e.Use(middleware.DOSProtectionMiddleware(context.Background(), middleware.ConvertConfigDOSProtection(config)))
-	e.GET("/v1/test", func(c echo.Context) error {
+	e.GET("/v1/test", func(c *echo.Context) error {
 		return c.String(http.StatusOK, "OK")
 	})
 
@@ -114,7 +114,7 @@ func TestDOSProtectionConcurrency(t *testing.T) {
 			defer wg.Done()
 
 			for j := 0; j < requestsPerGoroutine; j++ {
-				req := httptest.NewRequest(http.MethodGet, "/v1/test", nil)
+				req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/test", nil)
 				req.RemoteAddr = fmt.Sprintf("192.168.%d.%d:12345", goroutineID%10, j%10)
 				rec := httptest.NewRecorder()
 				e.ServeHTTP(rec, req)
@@ -135,8 +135,8 @@ func TestDOSProtectionConcurrency(t *testing.T) {
 	t.Logf("Status code distribution: %+v", statusCodes)
 
 	// Should have both successful and rate-limited requests
-	assert.Greater(t, statusCodes[200], 0, "Should have some successful requests")
-	assert.Greater(t, statusCodes[429], 0, "Should have some rate-limited requests")
+	assert.Positive(t, statusCodes[200], "Should have some successful requests")
+	assert.Positive(t, statusCodes[429], "Should have some rate-limited requests")
 
 	// Total should match expected
 	total := statusCodes[200] + statusCodes[429]
@@ -154,7 +154,7 @@ func TestDOSProtectionMemoryUsage(t *testing.T) {
 
 	e := echo.New()
 	e.Use(middleware.DOSProtectionMiddleware(context.Background(), middleware.ConvertConfigDOSProtection(config)))
-	e.GET("/v1/test", func(c echo.Context) error {
+	e.GET("/v1/test", func(c *echo.Context) error {
 		return c.String(http.StatusOK, "OK")
 	})
 
@@ -163,7 +163,7 @@ func TestDOSProtectionMemoryUsage(t *testing.T) {
 
 	start := time.Now()
 	for i := 0; i < numIPs; i++ {
-		req := httptest.NewRequest(http.MethodGet, "/v1/test", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/test", nil)
 		req.RemoteAddr = fmt.Sprintf("192.168.%d.%d:12345", i/255, i%255)
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, req)
@@ -199,7 +199,7 @@ func TestDOSProtectionCircuitBreakerPerformance(t *testing.T) {
 
 	// Handler that fails initially then succeeds
 	requestCount := 0
-	e.GET("/v1/test", func(c echo.Context) error {
+	e.GET("/v1/test", func(c *echo.Context) error {
 		requestCount++
 		if requestCount <= 5 {
 			return echo.NewHTTPError(http.StatusInternalServerError, "Service error")
@@ -209,7 +209,7 @@ func TestDOSProtectionCircuitBreakerPerformance(t *testing.T) {
 
 	// First 5 requests should fail, triggering circuit breaker
 	for i := 0; i < 5; i++ {
-		req := httptest.NewRequest(http.MethodGet, "/v1/test", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/test", nil)
 		req.RemoteAddr = "192.168.1.1:12345"
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, req)
@@ -221,7 +221,7 @@ func TestDOSProtectionCircuitBreakerPerformance(t *testing.T) {
 	const numBlockedRequests = 100
 
 	for i := 0; i < numBlockedRequests; i++ {
-		req := httptest.NewRequest(http.MethodGet, "/v1/test", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/test", nil)
 		req.RemoteAddr = "192.168.1.1:12345"
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, req)
@@ -278,7 +278,7 @@ func TestDOSProtectionScalability(t *testing.T) {
 
 			e := echo.New()
 			e.Use(middleware.DOSProtectionMiddleware(context.Background(), middleware.ConvertConfigDOSProtection(config)))
-			e.GET("/v1/test", func(c echo.Context) error {
+			e.GET("/v1/test", func(c *echo.Context) error {
 				return c.String(http.StatusOK, "OK")
 			})
 
@@ -289,7 +289,7 @@ func TestDOSProtectionScalability(t *testing.T) {
 				ip := fmt.Sprintf("192.168.%d.%d", i/255, i%255)
 
 				for j := 0; j < tt.requestsPerIP; j++ {
-					req := httptest.NewRequest(http.MethodGet, "/v1/test", nil)
+					req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/test", nil)
 					req.RemoteAddr = ip + ":12345"
 					rec := httptest.NewRecorder()
 					e.ServeHTTP(rec, req)
@@ -322,7 +322,7 @@ func TestDOSProtectionMemoryLeakPrevention(t *testing.T) {
 
 	e := echo.New()
 	e.Use(middleware.DOSProtectionMiddleware(context.Background(), middleware.ConvertConfigDOSProtection(config)))
-	e.GET("/v1/test", func(c echo.Context) error {
+	e.GET("/v1/test", func(c *echo.Context) error {
 		return c.String(http.StatusOK, "OK")
 	})
 
@@ -334,14 +334,14 @@ func TestDOSProtectionMemoryLeakPrevention(t *testing.T) {
 		ip := fmt.Sprintf("192.168.%d.%d", i/255, i%255)
 
 		// First request succeeds
-		req := httptest.NewRequest(http.MethodGet, "/v1/test", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/test", nil)
 		req.RemoteAddr = ip + ":12345"
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, req)
 		assert.Equal(t, http.StatusOK, rec.Code)
 
 		// Second request gets rate limited
-		req = httptest.NewRequest(http.MethodGet, "/v1/test", nil)
+		req = httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/test", nil)
 		req.RemoteAddr = ip + ":12345"
 		rec = httptest.NewRecorder()
 		e.ServeHTTP(rec, req)
@@ -352,7 +352,7 @@ func TestDOSProtectionMemoryLeakPrevention(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	// Test that system still works after potential cleanup with a fresh IP
-	req := httptest.NewRequest(http.MethodGet, "/v1/test", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/test", nil)
 	req.RemoteAddr = "10.0.0.1:12345"
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)

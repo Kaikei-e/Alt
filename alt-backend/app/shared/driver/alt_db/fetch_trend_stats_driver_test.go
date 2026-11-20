@@ -38,7 +38,7 @@ func TestFetchTrendStats_ZeroUserRefused(t *testing.T) {
 	repo := &DashboardRepository{pool: nil}
 
 	_, err := repo.FetchTrendStatsForUser(context.Background(), uuid.Nil, "24h")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "authentication required")
 }
 
@@ -50,7 +50,7 @@ func TestFetchTrendStats_UnsupportedWindowRefused(t *testing.T) {
 	repo := &DashboardRepository{pool: nil}
 
 	_, err := repo.FetchTrendStatsForUser(context.Background(), statsTestUserID, "90d")
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unsupported window")
 }
 
@@ -76,7 +76,7 @@ func TestParseWindow(t *testing.T) {
 			if tt.wantErr {
 				assert.Error(t, err)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.Equal(t, tt.wantSeconds, seconds)
 				assert.Equal(t, tt.wantGran, granularity)
 			}
@@ -114,7 +114,7 @@ func TestBuildTrendQuery(t *testing.T) {
 				assert.Error(t, err)
 				return
 			}
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			for _, want := range tt.wantContain {
 				assert.Contains(t, query, want)
 			}
@@ -137,7 +137,7 @@ func TestBuildTrendQuery_InvalidGranularity(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := buildTrendQuery(tt.granularity)
-			assert.Error(t, err)
+			require.Error(t, err)
 			assert.Contains(t, err.Error(), "invalid granularity")
 		})
 	}

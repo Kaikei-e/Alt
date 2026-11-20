@@ -74,7 +74,7 @@ func TestSummaryVersionOptionalsStayAbsent(t *testing.T) {
 	assert.Nil(t, msg.SupersededBy)
 	// A zero generated_at stays absent rather than becoming 1970, which would
 	// sort first in any ordering by it.
-	assert.Nil(t, msg.GeneratedAt)
+	assert.Nil(t, msg.GetGeneratedAt())
 
 	back, err := summaryVersionFromProto(msg)
 	require.NoError(t, err)
@@ -209,5 +209,5 @@ func TestTrendWindowToProto(t *testing.T) {
 func TestTrendGranularityFromProto(t *testing.T) {
 	assert.Equal(t, "hourly", trendGranularityFromProto(datahubv1.TrendGranularity_TREND_GRANULARITY_HOURLY))
 	assert.Equal(t, "daily", trendGranularityFromProto(datahubv1.TrendGranularity_TREND_GRANULARITY_DAILY))
-	assert.Equal(t, "", trendGranularityFromProto(datahubv1.TrendGranularity_TREND_GRANULARITY_UNSPECIFIED))
+	assert.Empty(t, trendGranularityFromProto(datahubv1.TrendGranularity_TREND_GRANULARITY_UNSPECIFIED))
 }

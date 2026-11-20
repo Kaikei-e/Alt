@@ -162,7 +162,7 @@ func SecureHTTPClientWithConfigAndResolver(cfg *HTTPConfig, resolver IPResolver)
 				var err error
 				addrs, err = resolver.LookupIPAddr(ctx, host)
 				if err != nil {
-					return nil, fmt.Errorf("%w for %s: %v", ErrLookupFailed, host, err)
+					return nil, fmt.Errorf("%w for %s: %w", ErrLookupFailed, host, err)
 				}
 				if len(addrs) == 0 {
 					return nil, fmt.Errorf("%w for %s: no addresses found", ErrLookupFailed, host)

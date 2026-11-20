@@ -176,6 +176,6 @@ func TestPropagatesDataHubErrors(t *testing.T) {
 
 	head, err := gw.FetchArticleHeadByArticleID(context.Background(), "a1")
 	require.Error(t, err)
-	assert.ErrorIs(t, err, sentinel)
+	require.ErrorIs(t, err, sentinel)
 	assert.Nil(t, head)
 }

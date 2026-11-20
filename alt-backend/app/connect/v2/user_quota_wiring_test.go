@@ -35,7 +35,7 @@ func TestSetupConnectHandlers_WiresUserQuotaLimiterBeforeUsecase(t *testing.T) {
 	// 1st call consumes the single token (reaching the nil MorningLetterUsecase and panicking).
 	func() {
 		defer func() { _ = recover() }()
-		req1 := httptest.NewRequest(http.MethodPost, morningletterv2connect.MorningLetterServiceStreamChatProcedure, strings.NewReader("\x00\x00\x00\x00\x02{}"))
+		req1 := httptest.NewRequestWithContext(t.Context(), http.MethodPost, morningletterv2connect.MorningLetterServiceStreamChatProcedure, strings.NewReader("\x00\x00\x00\x00\x02{}"))
 		req1.Header.Set("Content-Type", "application/connect+json")
 		req1.Header.Set("X-Alt-Backend-Token", token)
 		mux.ServeHTTP(httptest.NewRecorder(), req1)
@@ -43,7 +43,7 @@ func TestSetupConnectHandlers_WiresUserQuotaLimiterBeforeUsecase(t *testing.T) {
 
 	// 2nd call for the same user must be rejected by the quota interceptor (resource_exhausted end-of-stream error)
 	// before reaching MorningLetterUsecase (no panic).
-	req2 := httptest.NewRequest(http.MethodPost, morningletterv2connect.MorningLetterServiceStreamChatProcedure, strings.NewReader("\x00\x00\x00\x00\x02{}"))
+	req2 := httptest.NewRequestWithContext(t.Context(), http.MethodPost, morningletterv2connect.MorningLetterServiceStreamChatProcedure, strings.NewReader("\x00\x00\x00\x00\x02{}"))
 	req2.Header.Set("Content-Type", "application/connect+json")
 	req2.Header.Set("X-Alt-Backend-Token", token)
 	rec2 := httptest.NewRecorder()
@@ -72,7 +72,7 @@ func TestSetupConnectHandlers_GatesRetrieveContext(t *testing.T) {
 
 	t.Run("RetrieveContext", func(t *testing.T) {
 		call := func() *httptest.ResponseRecorder {
-			req := httptest.NewRequest(http.MethodPost, augurv2connect.AugurServiceRetrieveContextProcedure, strings.NewReader(`{"query":"ai"}`))
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, augurv2connect.AugurServiceRetrieveContextProcedure, strings.NewReader(`{"query":"ai"}`))
 			req.Header.Set("Content-Type", "application/json")
 			req.Header.Set("X-Alt-Backend-Token", token)
 			rec := httptest.NewRecorder()

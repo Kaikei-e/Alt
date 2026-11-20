@@ -116,7 +116,7 @@ func TestSSRFValidator_PrivateIPRanges(t *testing.T) {
 			err = validator.ValidateURL(context.Background(), u)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				if tt.errorType != "" {
 					assert.Contains(t, err.Error(), tt.errorType)
 				}

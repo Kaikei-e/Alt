@@ -73,7 +73,7 @@ func TestFetchFeedTagsGateway_WrapsTheSourceError(t *testing.T) {
 
 	tags, err := g.FetchFeedTags(context.Background(), uuid.New().String(), nil, 20)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, cause)
+	require.ErrorIs(t, err, cause)
 	assert.Nil(t, tags)
 }
 

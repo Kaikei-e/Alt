@@ -3,6 +3,7 @@ package image_proxy_gateway
 import (
 	"context"
 	"encoding/binary"
+	"math"
 	"runtime"
 	"testing"
 	"time"
@@ -89,12 +90,14 @@ func writeSimpleSymbol(w *lsbWriter, symbol uint32) {
 
 func wrapWebPLossless(vp8l []byte) []byte {
 	pad := len(vp8l) % 2
-	riffSize := uint32(4 + 8 + len(vp8l) + pad)
+	vp8lLen := uint32(min(len(vp8l), math.MaxUint32-13))
+	// #nosec G115 -- pad is 0 or 1
+	riffSize := 4 + 8 + vp8lLen + uint32(pad)
 	out := make([]byte, 0, 12+8+len(vp8l)+pad)
 	out = append(out, 'R', 'I', 'F', 'F')
 	out = binary.LittleEndian.AppendUint32(out, riffSize)
 	out = append(out, 'W', 'E', 'B', 'P', 'V', 'P', '8', 'L')
-	out = binary.LittleEndian.AppendUint32(out, uint32(len(vp8l)))
+	out = binary.LittleEndian.AppendUint32(out, vp8lLen)
 	out = append(out, vp8l...)
 	if pad == 1 {
 		out = append(out, 0)
@@ -112,7 +115,7 @@ func (w *lsbWriter) write(val, n uint32) {
 	w.bits |= (val & (1<<n - 1)) << w.n
 	w.n += n
 	for w.n >= 8 {
-		w.buf = append(w.buf, byte(w.bits))
+		w.buf = append(w.buf, byte(w.bits&0xff))
 		w.bits >>= 8
 		w.n -= 8
 	}
@@ -120,7 +123,7 @@ func (w *lsbWriter) write(val, n uint32) {
 
 func (w *lsbWriter) flush() []byte {
 	if w.n > 0 {
-		w.buf = append(w.buf, byte(w.bits))
+		w.buf = append(w.buf, byte(w.bits&0xff))
 	}
 	return w.buf
 }

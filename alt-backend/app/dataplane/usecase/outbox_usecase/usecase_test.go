@@ -126,7 +126,7 @@ func TestMarkProcessedRejectsNonTerminalStatus(t *testing.T) {
 
 			err := uc.MarkProcessed(context.Background(), "e1", tt.status, "")
 			require.Error(t, err)
-			assert.ErrorIs(t, err, ErrNotTerminalStatus)
+			require.ErrorIs(t, err, ErrNotTerminalStatus)
 			assert.Empty(t, port.markCalls, "the write must not reach the database")
 		})
 	}
@@ -200,7 +200,7 @@ func TestPruneRejectsNonPositiveRetention(t *testing.T) {
 
 			_, err := uc.Prune(context.Background(), tt.retention)
 			require.Error(t, err)
-			assert.ErrorIs(t, err, ErrInvalidRetention)
+			require.ErrorIs(t, err, ErrInvalidRetention)
 			assert.Zero(t, port.prunedOlder, "the delete must not reach the database")
 		})
 	}

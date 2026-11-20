@@ -51,9 +51,9 @@ func TestConvertFeedsToProto_IDPriority(t *testing.T) {
 			assert.Len(t, result, 1)
 			if tt.expectUUID {
 				// UUID v4 format: 8-4-4-4-12 hex chars
-				assert.Regexp(t, `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`, result[0].Id)
+				assert.Regexp(t, `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`, result[0].GetId())
 			} else {
-				assert.Equal(t, tt.expectedID, result[0].Id)
+				assert.Equal(t, tt.expectedID, result[0].GetId())
 			}
 		})
 	}
@@ -73,8 +73,8 @@ func TestConvertFeedsToProto_DuplicateLinksUniqueIDs(t *testing.T) {
 
 	ids := make(map[string]bool)
 	for _, item := range result {
-		assert.False(t, ids[item.Id], "duplicate ID found: %s", item.Id)
-		ids[item.Id] = true
+		assert.False(t, ids[item.GetId()], "duplicate ID found: %s", item.GetId())
+		ids[item.GetId()] = true
 	}
 }
 
@@ -129,7 +129,7 @@ func TestGetUnreadFeeds_CursorRoundTripKeepsSubSecondPrecision(t *testing.T) {
 
 	page1, err := handler.GetUnreadFeeds(ctx, connect.NewRequest(&feedsv2.GetUnreadFeedsRequest{Limit: 1}))
 	require.NoError(t, err)
-	require.True(t, page1.Msg.HasMore)
+	require.True(t, page1.Msg.GetHasMore())
 	require.NotNil(t, page1.Msg.NextCursor)
 
 	_, err = handler.GetUnreadFeeds(ctx, connect.NewRequest(&feedsv2.GetUnreadFeedsRequest{
@@ -222,18 +222,18 @@ func TestGetReadFeeds_CursorUsesReadAtAndReturnsPage2(t *testing.T) {
 
 	page1, err := handler.GetReadFeeds(ctx, connect.NewRequest(&feedsv2.GetReadFeedsRequest{Limit: 1}))
 	require.NoError(t, err)
-	require.Len(t, page1.Msg.Data, 1)
-	assert.Equal(t, "Feed A", page1.Msg.Data[0].Title)
+	require.Len(t, page1.Msg.GetData(), 1)
+	assert.Equal(t, "Feed A", page1.Msg.GetData()[0].GetTitle())
 	require.NotNil(t, page1.Msg.NextCursor)
-	assert.Equal(t, t9.Format(time.RFC3339Nano), *page1.Msg.NextCursor)
+	assert.Equal(t, t9.Format(time.RFC3339Nano), page1.Msg.GetNextCursor())
 
 	page2, err := handler.GetReadFeeds(ctx, connect.NewRequest(&feedsv2.GetReadFeedsRequest{
 		Limit:  1,
 		Cursor: page1.Msg.NextCursor,
 	}))
 	require.NoError(t, err)
-	require.Len(t, page2.Msg.Data, 1)
-	assert.Equal(t, "Feed B", page2.Msg.Data[0].Title)
+	require.Len(t, page2.Msg.GetData(), 1)
+	assert.Equal(t, "Feed B", page2.Msg.GetData()[0].GetTitle())
 }
 
 func TestGetFavoriteFeeds_CursorUsesFavoriteCreatedAtAndReturnsPage2(t *testing.T) {
@@ -272,18 +272,18 @@ func TestGetFavoriteFeeds_CursorUsesFavoriteCreatedAtAndReturnsPage2(t *testing.
 
 	page1, err := handler.GetFavoriteFeeds(ctx, connect.NewRequest(&feedsv2.GetFavoriteFeedsRequest{Limit: 1}))
 	require.NoError(t, err)
-	require.Len(t, page1.Msg.Data, 1)
-	assert.Equal(t, "Feed A", page1.Msg.Data[0].Title)
+	require.Len(t, page1.Msg.GetData(), 1)
+	assert.Equal(t, "Feed A", page1.Msg.GetData()[0].GetTitle())
 	require.NotNil(t, page1.Msg.NextCursor)
-	assert.Equal(t, t9.Format(time.RFC3339Nano), *page1.Msg.NextCursor)
+	assert.Equal(t, t9.Format(time.RFC3339Nano), page1.Msg.GetNextCursor())
 
 	page2, err := handler.GetFavoriteFeeds(ctx, connect.NewRequest(&feedsv2.GetFavoriteFeedsRequest{
 		Limit:  1,
 		Cursor: page1.Msg.NextCursor,
 	}))
 	require.NoError(t, err)
-	require.Len(t, page2.Msg.Data, 1)
-	assert.Equal(t, "Feed B", page2.Msg.Data[0].Title)
+	require.Len(t, page2.Msg.GetData(), 1)
+	assert.Equal(t, "Feed B", page2.Msg.GetData()[0].GetTitle())
 }
 
 type fakeFeedTagStore struct {
@@ -403,8 +403,8 @@ func TestGetFeedTags_CursorRoundTripKeepsSubSecondPrecision(t *testing.T) {
 		Limit:  1,
 	}))
 	require.NoError(t, err)
-	require.Len(t, page1.Msg.Tags, 1)
-	nextCursor := page1.Msg.Tags[0].CreatedAt
+	require.Len(t, page1.Msg.GetTags(), 1)
+	nextCursor := page1.Msg.GetTags()[0].GetCreatedAt()
 
 	_, err = handler.GetFeedTags(ctx, connect.NewRequest(&feedsv2.GetFeedTagsRequest{
 		FeedId: feedID,

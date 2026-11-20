@@ -309,7 +309,7 @@ func (g *FetchArticleGateway) FetchArticleContents(ctx context.Context, articleU
 	reader := bufio.NewReader(limitedBody)
 	// Try to peek up to 1024 bytes; EOF can be acceptable when the body is shorter
 	peek, err := reader.Peek(1024)
-	if err != nil && err != io.EOF && err != bufio.ErrBufferFull {
+	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, bufio.ErrBufferFull) {
 		if isUpstreamUnreachable(err) {
 			return nil, &domain.UpstreamFetchError{URL: parsedURL.String(), Cause: err}
 		}

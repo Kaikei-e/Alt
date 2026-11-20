@@ -116,13 +116,21 @@ func BenchmarkConcurrentDatabaseOperations(b *testing.B) {
 			// Mix of different operations
 			switch b.N % 4 {
 			case 0:
-				db.InsertFeed(ctx, "Title", "Description", "http://example.com", time.Now())
+				if err := db.InsertFeed(ctx, "Title", "Description", "http://example.com", time.Now()); err != nil {
+					b.Error(err)
+				}
 			case 1:
-				db.SelectFeeds(ctx, 10)
+				if _, err := db.SelectFeeds(ctx, 10); err != nil {
+					b.Error(err)
+				}
 			case 2:
-				db.UpdateFeedStatus(ctx, 1, "read")
+				if err := db.UpdateFeedStatus(ctx, 1, "read"); err != nil {
+					b.Error(err)
+				}
 			case 3:
-				db.CountFeeds(ctx)
+				if _, err := db.CountFeeds(ctx); err != nil {
+					b.Error(err)
+				}
 			}
 		}
 	})

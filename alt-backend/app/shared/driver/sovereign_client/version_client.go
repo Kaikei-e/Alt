@@ -21,10 +21,10 @@ func (c *Client) GetActiveProjectionVersion(ctx context.Context) (*domain.Knowle
 	if err != nil {
 		return nil, fmt.Errorf("sovereign GetActiveProjectionVersion: %w", err)
 	}
-	if resp.Msg.Version == nil {
+	if resp.Msg.GetVersion() == nil {
 		return nil, nil
 	}
-	return protoToProjectionVersion(resp.Msg.Version), nil
+	return protoToProjectionVersion(resp.Msg.GetVersion()), nil
 }
 
 func (c *Client) ListProjectionVersions(ctx context.Context) ([]domain.KnowledgeProjectionVersion, error) {
@@ -35,8 +35,8 @@ func (c *Client) ListProjectionVersions(ctx context.Context) ([]domain.Knowledge
 	if err != nil {
 		return nil, fmt.Errorf("sovereign ListProjectionVersions: %w", err)
 	}
-	versions := make([]domain.KnowledgeProjectionVersion, len(resp.Msg.Versions))
-	for i, v := range resp.Msg.Versions {
+	versions := make([]domain.KnowledgeProjectionVersion, len(resp.Msg.GetVersions()))
+	for i, v := range resp.Msg.GetVersions() {
 		versions[i] = *protoToProjectionVersion(v)
 	}
 	return versions, nil
@@ -78,7 +78,7 @@ func (c *Client) GetProjectionCheckpoint(ctx context.Context, projectorName stri
 	if err != nil {
 		return 0, fmt.Errorf("sovereign GetProjectionCheckpoint: %w", err)
 	}
-	return resp.Msg.LastEventSeq, nil
+	return resp.Msg.GetLastEventSeq(), nil
 }
 
 func (c *Client) UpdateProjectionCheckpoint(ctx context.Context, projectorName string, lastSeq int64) error {
@@ -102,10 +102,10 @@ func (c *Client) GetProjectionLag(ctx context.Context) (time.Duration, error) {
 	if err != nil {
 		return 0, fmt.Errorf("sovereign GetProjectionLag: %w", err)
 	}
-	if resp.Msg.LagSeconds < 0 {
+	if resp.Msg.GetLagSeconds() < 0 {
 		return time.Duration(-1), nil
 	}
-	return time.Duration(resp.Msg.LagSeconds * float64(time.Second)), nil
+	return time.Duration(resp.Msg.GetLagSeconds() * float64(time.Second)), nil
 }
 
 func (c *Client) GetProjectionAge(ctx context.Context) (time.Duration, error) {
@@ -116,10 +116,10 @@ func (c *Client) GetProjectionAge(ctx context.Context) (time.Duration, error) {
 	if err != nil {
 		return 0, fmt.Errorf("sovereign GetProjectionAge: %w", err)
 	}
-	if resp.Msg.AgeSeconds < 0 {
+	if resp.Msg.GetAgeSeconds() < 0 {
 		return time.Duration(-1), nil
 	}
-	return time.Duration(resp.Msg.AgeSeconds * float64(time.Second)), nil
+	return time.Duration(resp.Msg.GetAgeSeconds() * float64(time.Second)), nil
 }
 
 // === Port interface aliases ===

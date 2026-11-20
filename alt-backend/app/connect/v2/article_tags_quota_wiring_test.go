@@ -99,8 +99,9 @@ func newTagWiredMux(t *testing.T, fx *tagFixture, budget, inFlight int) *http.Se
 	return mux
 }
 
-func postUnary(mux *http.ServeMux, token, procedure, body string) *httptest.ResponseRecorder {
-	req := httptest.NewRequest(http.MethodPost, procedure, strings.NewReader(body))
+func postUnary(t *testing.T, mux *http.ServeMux, token, procedure, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, procedure, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Alt-Backend-Token", token)
 	rec := httptest.NewRecorder()
@@ -108,9 +109,10 @@ func postUnary(mux *http.ServeMux, token, procedure, body string) *httptest.Resp
 	return rec
 }
 
-func postStream(mux *http.ServeMux, token, procedure, body string) *httptest.ResponseRecorder {
-	req := httptest.NewRequest(http.MethodPost, procedure,
-		strings.NewReader(fmt.Sprintf("\x00\x00\x00\x00%c%s", rune(len(body)), body)))
+func postStream(t *testing.T, mux *http.ServeMux, token, procedure, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, procedure,
+		strings.NewReader(fmt.Sprintf("\x00\x00\x00\x00%c%s", byte(len(body)&0xff), body)))
 	req.Header.Set("Content-Type", "application/connect+json")
 	req.Header.Set("X-Alt-Backend-Token", token)
 	rec := httptest.NewRecorder()
@@ -127,7 +129,7 @@ func TestArticleTagGeneration_FetchArticleTagsConnectIsBoundedByBudget(t *testin
 
 	refused := 0
 	for i := 0; i < 6; i++ {
-		rec := postUnary(mux, token, articlesv2connect.ArticleServiceFetchArticleTagsProcedure, articleBody())
+		rec := postUnary(t, mux, token, articlesv2connect.ArticleServiceFetchArticleTagsProcedure, articleBody())
 		if rec.Code == http.StatusTooManyRequests {
 			refused++
 			assert.NotEmpty(t, rec.Header().Get("Retry-After"))
@@ -146,7 +148,7 @@ func TestArticleTagGeneration_StreamArticleTagsIsBoundedByBudget(t *testing.T) {
 
 	refused := 0
 	for i := 0; i < 6; i++ {
-		rec := postStream(mux, token, articlesv2connect.ArticleServiceStreamArticleTagsProcedure, articleBody())
+		rec := postStream(t, mux, token, articlesv2connect.ArticleServiceStreamArticleTagsProcedure, articleBody())
 		if strings.Contains(rec.Body.String(), "resource_exhausted") {
 			refused++
 		}
@@ -162,7 +164,7 @@ func TestArticleTagGeneration_FetchRandomFeedFallsBackToStoredTags(t *testing.T)
 
 	withGenerated := 0
 	for i := 0; i < 6; i++ {
-		rec := postUnary(mux, token, articlesv2connect.ArticleServiceFetchRandomFeedProcedure, `{}`)
+		rec := postUnary(t, mux, token, articlesv2connect.ArticleServiceFetchRandomFeedProcedure, `{}`)
 		require.Equal(t, http.StatusOK, rec.Code, "a refused generation must not fail the feed")
 		if strings.Contains(rec.Body.String(), "generated") {
 			withGenerated++
@@ -181,16 +183,16 @@ func TestArticleTagGeneration_StoredReadsConsumeNothing(t *testing.T) {
 		id := uuid.NewString()
 		fx.stored[id] = true
 		body := fmt.Sprintf(`{"articleId":%q}`, id)
-		stream := postStream(mux, token, articlesv2connect.ArticleServiceStreamArticleTagsProcedure, body)
+		stream := postStream(t, mux, token, articlesv2connect.ArticleServiceStreamArticleTagsProcedure, body)
 		assert.NotContains(t, stream.Body.String(), "resource_exhausted")
 		assert.Contains(t, stream.Body.String(), "stored")
-		unary := postUnary(mux, token, articlesv2connect.ArticleServiceFetchArticleTagsProcedure, body)
+		unary := postUnary(t, mux, token, articlesv2connect.ArticleServiceFetchArticleTagsProcedure, body)
 		assert.Equal(t, http.StatusOK, unary.Code)
 	}
 	assert.Equal(t, int32(0), fx.generations.Load())
 
 	// The single token is still there for a real miss.
-	rec := postUnary(mux, token, articlesv2connect.ArticleServiceFetchArticleTagsProcedure, articleBody())
+	rec := postUnary(t, mux, token, articlesv2connect.ArticleServiceFetchArticleTagsProcedure, articleBody())
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Equal(t, int32(1), fx.generations.Load())
 }
@@ -201,7 +203,7 @@ func TestArticleTagGeneration_SlotIsReleasedAfterGeneratorFailure(t *testing.T) 
 	token := issueTestBackendToken(t)
 
 	for i := 0; i < 5; i++ {
-		rec := postUnary(mux, token, articlesv2connect.ArticleServiceFetchArticleTagsProcedure, articleBody())
+		rec := postUnary(t, mux, token, articlesv2connect.ArticleServiceFetchArticleTagsProcedure, articleBody())
 		assert.Equal(t, http.StatusOK, rec.Code, "call %d: a failed generation must free the single slot", i)
 	}
 }

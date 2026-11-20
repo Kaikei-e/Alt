@@ -180,7 +180,7 @@ func TestBuildArticleCreatedKnowledgeEvent(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ev, err := buildArticleCreatedKnowledgeEvent(tt.payload, tt.now)
 			if tt.wantSkip {
-				assert.ErrorIs(t, err, errSkipInvalidUserID)
+				require.ErrorIs(t, err, errSkipInvalidUserID)
 				assert.Nil(t, ev)
 				return
 			}

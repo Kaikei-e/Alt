@@ -4,6 +4,7 @@ import (
 	"alt/domain"
 	"alt/utils/errors"
 	"context"
+	stderrors "errors"
 	"io"
 	"net"
 	"net/http"
@@ -120,7 +121,7 @@ func TestImageFetchGateway_FetchImage_SSRF_PrivateNetworks(t *testing.T) {
 
 			got, err := gateway.FetchImage(context.Background(), testURL, domain.NewImageFetchOptions())
 
-			assert.Error(t, err)
+			require.Error(t, err)
 			assert.Nil(t, got)
 			// The implementation now uses connection-time validation for enhanced security
 			// Accept either the expected error or other security-related errors
@@ -136,7 +137,8 @@ func TestImageFetchGateway_FetchImage_SSRF_PrivateNetworks(t *testing.T) {
 					t.Errorf("Expected error to contain '%s', but got: %s", tt.expectedErr, err.Error())
 				}
 			}
-			if appErr, ok := err.(*errors.AppContextError); ok {
+			appErr := &errors.AppContextError{}
+			if stderrors.As(err, &appErr) {
 				// Allow both validation and external API errors since blocking can happen at different layers
 				assert.True(t, appErr.Code == "VALIDATION_ERROR" || appErr.Code == "EXTERNAL_API_ERROR")
 			}
@@ -172,7 +174,7 @@ func TestImageFetchGateway_FetchImage_SSRF_Advanced(t *testing.T) {
 			// Using FetchImage directly to test production validation logic
 			got, err := gateway.FetchImage(context.Background(), testURL, domain.NewImageFetchOptions())
 
-			assert.Error(t, err)
+			require.Error(t, err)
 			assert.Nil(t, got)
 			// Accept either the expected error or other security-related errors
 			if !strings.Contains(err.Error(), tt.expectedErr) {
@@ -187,7 +189,8 @@ func TestImageFetchGateway_FetchImage_SSRF_Advanced(t *testing.T) {
 					t.Errorf("Expected error to contain '%s', but got: %s", tt.expectedErr, err.Error())
 				}
 			}
-			if appErr, ok := err.(*errors.AppContextError); ok {
+			appErr := &errors.AppContextError{}
+			if stderrors.As(err, &appErr) {
 				// Allow both validation and external API errors since blocking can happen at different layers
 				assert.True(t, appErr.Code == "VALIDATION_ERROR" || appErr.Code == "EXTERNAL_API_ERROR")
 			}
@@ -251,7 +254,7 @@ func TestImageFetchGateway_FetchImage_IntegerOverflow(t *testing.T) {
 
 			// We expect this to fail due to size limit, but not due to integer overflow
 			if tt.shouldFail {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Nil(t, got)
 			}
 			// The key assertion is that we didn't panic during execution
@@ -381,7 +384,7 @@ func TestImageFetchGateway_ProductionSSRFValidation(t *testing.T) {
 
 			got, err := gateway.FetchImage(context.Background(), u, domain.NewImageFetchOptions())
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Nil(t, got)
 				if tt.expectedErrMessage != "" && err != nil {
 					assert.Contains(t, err.Error(), tt.expectedErrMessage)
@@ -394,7 +397,7 @@ func TestImageFetchGateway_ProductionSSRFValidation(t *testing.T) {
 						strings.Contains(err.Error(), "access to private networks not allowed")) {
 					t.Skip("Skipping due to DNS resolution failure in test environment")
 				}
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.NotNil(t, got)
 			}
 		})
@@ -407,13 +410,13 @@ func TestNewImageFetchGateway_RedirectDisabled(t *testing.T) {
 	gateway := NewImageFetchGateway(client)
 
 	// Create a test request to verify redirect behavior
-	req, err := http.NewRequest("GET", "https://example.com/redirect", nil)
+	req, err := http.NewRequestWithContext(t.Context(), "GET", "https://example.com/redirect", nil)
 	require.NoError(t, err)
 
 	// Test that CheckRedirect function is set and returns an error
 	if client.CheckRedirect != nil {
 		err = client.CheckRedirect(req, []*http.Request{})
-		assert.Error(t, err)
+		require.Error(t, err)
 		assert.Contains(t, err.Error(), "redirects not allowed for security reasons")
 	} else {
 		t.Log("CheckRedirect might be handled internally by secure client")
@@ -519,7 +522,7 @@ func TestImageFetchGateway_TOCTOUAttacks(t *testing.T) {
 			got, err := gateway.FetchImage(context.Background(), testURL, domain.NewImageFetchOptions())
 
 			// Verify that TOCTOU attacks are blocked
-			assert.Error(t, err)
+			require.Error(t, err)
 			if strings.Contains(err.Error(), "TOCTOU attack detected") ||
 				strings.Contains(err.Error(), "TOCTOU_ATTACK_BLOCKED") ||
 				strings.Contains(err.Error(), "DNS resolution failed") ||
@@ -668,7 +671,7 @@ func TestImageFetchGateway_IPv6Variations(t *testing.T) {
 			got, err := gateway.FetchImage(context.Background(), testURL, domain.NewImageFetchOptions())
 
 			// Verify that IPv6 variation attacks are blocked
-			assert.Error(t, err)
+			require.Error(t, err)
 			if strings.Contains(err.Error(), "access to private networks not allowed") ||
 				strings.Contains(err.Error(), "DNS_REBINDING_BLOCKED") ||
 				strings.Contains(err.Error(), "DNS rebinding attack detected") {
@@ -733,7 +736,7 @@ func TestImageFetchGateway_AdditionalMetadataEndpoints(t *testing.T) {
 			got, err := gateway.FetchImage(context.Background(), testURL, domain.NewImageFetchOptions())
 
 			// Verify metadata endpoints are blocked
-			assert.Error(t, err)
+			require.Error(t, err)
 			assert.Nil(t, got)
 			if strings.Contains(err.Error(), "access to private networks not allowed") ||
 				strings.Contains(err.Error(), "DNS_REBINDING_BLOCKED") ||

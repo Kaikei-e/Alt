@@ -15,15 +15,15 @@ import (
 )
 
 func (h *Handler) ListArticlesWithTags(ctx context.Context, req *connect.Request[datahubv1.ListArticlesWithTagsRequest]) (*connect.Response[datahubv1.ListArticlesWithTagsResponse], error) {
-	limit := clampLimit(int(req.Msg.Limit))
+	limit := clampLimit(int(req.Msg.GetLimit()))
 
 	var lastCreatedAt *time.Time
-	if req.Msg.LastCreatedAt != nil {
-		t := req.Msg.LastCreatedAt.AsTime()
+	if req.Msg.GetLastCreatedAt() != nil {
+		t := req.Msg.GetLastCreatedAt().AsTime()
 		lastCreatedAt = &t
 	}
 
-	articles, nextCreatedAt, nextID, err := h.listArticles.ListArticlesWithTags(ctx, lastCreatedAt, req.Msg.LastId, limit)
+	articles, nextCreatedAt, nextID, err := h.listArticles.ListArticlesWithTags(ctx, lastCreatedAt, req.Msg.GetLastId(), limit)
 	if err != nil {
 		h.logger.Error("ListArticlesWithTags failed", "error", err)
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to list articles"))
@@ -41,17 +41,17 @@ func (h *Handler) ListArticlesWithTags(ctx context.Context, req *connect.Request
 }
 
 func (h *Handler) ListArticlesWithTagsForward(ctx context.Context, req *connect.Request[datahubv1.ListArticlesWithTagsForwardRequest]) (*connect.Response[datahubv1.ListArticlesWithTagsForwardResponse], error) {
-	limit := clampLimit(int(req.Msg.Limit))
+	limit := clampLimit(int(req.Msg.GetLimit()))
 
-	incrementalMark := req.Msg.IncrementalMark.AsTime()
+	incrementalMark := req.Msg.GetIncrementalMark().AsTime()
 
 	var lastCreatedAt *time.Time
-	if req.Msg.LastCreatedAt != nil {
-		t := req.Msg.LastCreatedAt.AsTime()
+	if req.Msg.GetLastCreatedAt() != nil {
+		t := req.Msg.GetLastCreatedAt().AsTime()
 		lastCreatedAt = &t
 	}
 
-	articles, nextCreatedAt, nextID, err := h.listArticlesForward.ListArticlesWithTagsForward(ctx, &incrementalMark, lastCreatedAt, req.Msg.LastId, limit)
+	articles, nextCreatedAt, nextID, err := h.listArticlesForward.ListArticlesWithTagsForward(ctx, &incrementalMark, lastCreatedAt, req.Msg.GetLastId(), limit)
 	if err != nil {
 		h.logger.Error("ListArticlesWithTagsForward failed", "error", err)
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to list articles forward"))
@@ -69,11 +69,11 @@ func (h *Handler) ListArticlesWithTagsForward(ctx context.Context, req *connect.
 }
 
 func (h *Handler) ListDeletedArticles(ctx context.Context, req *connect.Request[datahubv1.ListDeletedArticlesRequest]) (*connect.Response[datahubv1.ListDeletedArticlesResponse], error) {
-	limit := clampLimit(int(req.Msg.Limit))
+	limit := clampLimit(int(req.Msg.GetLimit()))
 
 	var lastDeletedAt *time.Time
-	if req.Msg.LastDeletedAt != nil {
-		t := req.Msg.LastDeletedAt.AsTime()
+	if req.Msg.GetLastDeletedAt() != nil {
+		t := req.Msg.GetLastDeletedAt().AsTime()
 		lastDeletedAt = &t
 	}
 
@@ -117,11 +117,11 @@ func (h *Handler) GetLatestArticleTimestamp(ctx context.Context, _ *connect.Requ
 }
 
 func (h *Handler) GetArticleByID(ctx context.Context, req *connect.Request[datahubv1.GetArticleByIDRequest]) (*connect.Response[datahubv1.GetArticleByIDResponse], error) {
-	if req.Msg.ArticleId == "" {
+	if req.Msg.GetArticleId() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("article_id is required"))
 	}
 
-	article, err := h.getArticleByID.GetArticleByID(ctx, req.Msg.ArticleId)
+	article, err := h.getArticleByID.GetArticleByID(ctx, req.Msg.GetArticleId())
 	if err != nil {
 		// search-indexer reads NotFound as "the row is gone", skips the
 		// article and ACKs the message. A pool exhaustion or a transient DB
@@ -130,7 +130,7 @@ func (h *Handler) GetArticleByID(ctx context.Context, req *connect.Request[datah
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, connect.NewError(connect.CodeNotFound, errors.New("article not found"))
 		}
-		h.logger.Error("GetArticleByID failed", "article_id", req.Msg.ArticleId, "error", err)
+		h.logger.Error("GetArticleByID failed", "article_id", req.Msg.GetArticleId(), "error", err)
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to get article"))
 	}
 
@@ -143,11 +143,11 @@ func (h *Handler) GetArticleContent(ctx context.Context, req *connect.Request[da
 	if h.getArticleContent == nil {
 		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("not yet implemented"))
 	}
-	if req.Msg.ArticleId == "" {
+	if req.Msg.GetArticleId() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("article_id is required"))
 	}
 
-	content, err := h.getArticleContent.GetArticleContent(ctx, req.Msg.ArticleId)
+	content, err := h.getArticleContent.GetArticleContent(ctx, req.Msg.GetArticleId())
 	if err != nil {
 		h.logger.Error("GetArticleContent failed", "error", err)
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to get article content"))

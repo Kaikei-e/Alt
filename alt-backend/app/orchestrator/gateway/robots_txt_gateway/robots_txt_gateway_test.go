@@ -119,7 +119,7 @@ func TestRobotsTxtGateway_FetchRobotsTxt_InvalidDomain(t *testing.T) {
 	result, err := gateway.FetchRobotsTxt(ctx, "192.168.1.1", "http")
 
 	// Should error due to SSRF protection
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, result)
 }
 
@@ -159,7 +159,10 @@ func TestRobotsTxtGateway_ReusesFactoryTransportAndGuardedDialer(t *testing.T) {
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://"+testHost+"/robots.txt", nil)
 	require.NoError(t, err)
 
-	_, err = gateway.httpClient.Do(req)
+	resp, err := gateway.httpClient.Do(req)
+	if resp != nil {
+		defer func() { _ = resp.Body.Close() }()
+	}
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "destination not allowed", "must be blocked by factory's guarded dialer")
 	assert.NotContains(t, err.Error(), "10.0.0.1", "must not leak private IP")
@@ -222,6 +225,6 @@ func TestRobotsTxtGateway_FetchRobotsTxt_CapsResponseSizeAt512KB(t *testing.T) {
 	result, err := gateway.FetchRobotsTxt(context.Background(), "93.184.216.34", "https")
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	assert.Equal(t, maxRobotsTxtBytes, len(result.Content))
+	assert.Len(t, result.Content, maxRobotsTxtBytes)
 	assert.Contains(t, result.DisallowPaths, "/private/")
 }

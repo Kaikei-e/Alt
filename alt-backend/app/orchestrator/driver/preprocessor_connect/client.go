@@ -148,7 +148,7 @@ func (c *ConnectPreProcessorClient) Summarize(ctx context.Context, content, arti
 	if err != nil {
 		return "", err
 	}
-	return resp.Msg.Summary, nil
+	return resp.Msg.GetSummary(), nil
 }
 
 // StreamSummarize performs streaming article summarization via Connect-RPC.
@@ -179,7 +179,7 @@ func (c *ConnectPreProcessorClient) QueueSummarize(ctx context.Context, articleI
 	if err != nil {
 		return "", err
 	}
-	return resp.Msg.JobId, nil
+	return resp.Msg.GetJobId(), nil
 }
 
 // GetSummarizeStatus checks the status of a summarization job via Connect-RPC.
@@ -191,11 +191,11 @@ func (c *ConnectPreProcessorClient) GetSummarizeStatus(ctx context.Context, jobI
 		return nil, err
 	}
 	return &SummarizeStatus{
-		JobID:        resp.Msg.JobId,
-		Status:       resp.Msg.Status,
-		Summary:      resp.Msg.Summary,
-		ErrorMessage: resp.Msg.ErrorMessage,
-		ArticleID:    resp.Msg.ArticleId,
+		JobID:        resp.Msg.GetJobId(),
+		Status:       resp.Msg.GetStatus(),
+		Summary:      resp.Msg.GetSummary(),
+		ErrorMessage: resp.Msg.GetErrorMessage(),
+		ArticleID:    resp.Msg.GetArticleId(),
 	}, nil
 }
 
@@ -222,12 +222,12 @@ func (a *streamAdapter) Read(p []byte) (n int, err error) {
 	}
 
 	msg := a.stream.Msg()
-	if msg.IsFinal {
+	if msg.GetIsFinal() {
 		return 0, io.EOF
 	}
 
 	// Copy chunk to output buffer
-	chunk := []byte(msg.Chunk)
+	chunk := []byte(msg.GetChunk())
 	n = copy(p, chunk)
 	if n < len(chunk) {
 		a.buf = chunk[n:]

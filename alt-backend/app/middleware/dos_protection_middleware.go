@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 // DOSProtectionConfig defines configuration for DoS protection middleware
@@ -129,7 +129,7 @@ func DOSProtectionMiddleware(ctx context.Context, config DOSProtectionConfig) ec
 	}()
 
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+		return func(c *echo.Context) error {
 			ctx := c.Request().Context()
 
 			// Skip whitelisted paths
@@ -166,7 +166,7 @@ func DOSProtectionMiddleware(ctx context.Context, config DOSProtectionConfig) ec
 			if breakers != nil {
 				if err != nil {
 					// Check if it's a server error (5xx)
-					if he, ok := err.(*echo.HTTPError); ok && he.Code >= 500 {
+					if code := echo.StatusCode(err); code >= 500 {
 						breakers.recordFailure(clientIP)
 					} else {
 						// Client errors (4xx) should not affect circuit breaker
@@ -244,11 +244,14 @@ func (cb *circuitBreaker) recordSuccess() {
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
 
-	if cb.state == circuitHalfOpen {
+	switch cb.state {
+	case circuitHalfOpen:
 		cb.state = circuitClosed
 		cb.failures = 0
-	} else if cb.state == circuitClosed {
+	case circuitClosed:
 		cb.failures = 0
+	case circuitOpen:
+		// Stay open until cooldown expires.
 	}
 }
 

@@ -264,7 +264,7 @@ func TestGetLatestTagSetVersion_ReturnsNewestUnsupersededRow(t *testing.T) {
 	require.Equal(t, userID, got.UserID)
 	require.Equal(t, generatedAt, got.GeneratedAt)
 	require.Equal(t, "tag-generator", got.Generator)
-	require.Equal(t, tagsJSON, []byte(got.TagsJSON))
+	require.JSONEq(t, string(tagsJSON), string(got.TagsJSON))
 	require.Nil(t, got.SupersededBy)
 
 	require.NoError(t, mock.ExpectationsWereMet())

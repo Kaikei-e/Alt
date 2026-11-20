@@ -22,9 +22,8 @@ func (m *mockUnwarmedFetcher) FetchUnwarmedOgImageURLs(ctx context.Context, limi
 
 // mockImageWarmer implements imageWarmer for testing.
 type mockImageWarmer struct {
-	mu      sync.Mutex
-	warmed  []string
-	failFor map[string]bool // URLs that should "fail" (WarmCache is fire-and-forget, so we just track calls)
+	mu     sync.Mutex
+	warmed []string
 }
 
 func (m *mockImageWarmer) WarmCache(ctx context.Context, imageURL string) {

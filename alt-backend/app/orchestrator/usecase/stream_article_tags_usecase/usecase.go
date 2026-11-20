@@ -7,6 +7,7 @@ import (
 	"alt/orchestrator/port/fetch_article_tags_port"
 	"context"
 	"errors"
+	"log/slog"
 )
 
 // TagsResult holds the result of tag fetching with source info.
@@ -53,7 +54,8 @@ func (u *StreamArticleTagsUsecase) Execute(ctx context.Context, articleID string
 			return nil, err
 		}
 		if err != nil {
-			return &TagsResult{Tags: []*domain.FeedTag{}, IsCached: false}, nil
+			slog.WarnContext(ctx, "stream_article_tags_usecase: tag generation failed, returning empty tags", "article_id", articleID, "error", err)
+			return &TagsResult{Tags: []*domain.FeedTag{}, IsCached: false}, nil //nolint:nilerr // non-quota/auth tag generation errors degrade to empty tags
 		}
 		return &TagsResult{Tags: tags, IsCached: false}, nil
 	}

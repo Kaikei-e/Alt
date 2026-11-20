@@ -19,7 +19,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -99,7 +99,7 @@ func TestHandleSummarizeFeed(t *testing.T) {
 			}
 			ctx := domain.SetUserContext(context.Background(), userCtx)
 
-			req := httptest.NewRequest(http.MethodPost, "/v1/feeds/summarize", bytes.NewReader(jsonBody))
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/feeds/summarize", bytes.NewReader(jsonBody))
 			req = req.WithContext(ctx)
 			req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 			rec := httptest.NewRecorder()
@@ -111,7 +111,7 @@ func TestHandleSummarizeFeed(t *testing.T) {
 
 			if tc.wantErr {
 				// For error cases, Echo returns HTTPError
-				assert.Error(t, err)
+				require.Error(t, err)
 				if tc.errorContains != "" {
 					assert.Contains(t, err.Error(), tc.errorContains)
 				}
@@ -197,7 +197,7 @@ func TestHandleSummarizeFeedStream_ArticleIDScope(t *testing.T) {
 		jsonBody, err := json.Marshal(body)
 		require.NoError(t, err)
 
-		req := httptest.NewRequest(http.MethodPost, "/v1/feeds/summarize/stream", bytes.NewReader(jsonBody))
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/feeds/summarize/stream", bytes.NewReader(jsonBody))
 		req = req.WithContext(domain.SetUserContext(context.Background(), userCtx))
 		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 		rec := httptest.NewRecorder()
@@ -236,6 +236,34 @@ func TestHandleSummarizeFeedStream_ArticleIDScope(t *testing.T) {
 			"title":    "Caller Title",
 		})
 		assert.Equal(t, http.StatusOK, rec.Code)
+		assert.True(t, rec.Flushed, "SSE response must be flushed to httptest.ResponseRecorder")
+		assert.Contains(t, rec.Body.String(), "data: streamed summary")
 		assert.Equal(t, []string{"22222222-2222-4222-8222-222222222222"}, repo.savedSummaryIDs)
+	})
+
+	t.Run("streaming through echo ServeHTTP flushes SSE events", func(t *testing.T) {
+		repo := &stubStreamArticleRepo{savedID: "33333333-3333-4333-8333-333333333333"}
+		e := echo.New()
+		container := &di.ApplicationComponents{
+			SummarizeArticleUsecase: summarize_article_usecase.NewUsecase(repo, &stubStreamPreProcessor{}, nil),
+		}
+		e.POST("/v1/feeds/summarize/stream", summarization.RestHandleSummarizeFeedStream(container, cfg))
+
+		jsonBody, err := json.Marshal(map[string]any{
+			"feed_url": "https://example.com/stream-echo",
+			"content":  "content to stream",
+			"title":    "Echo Stream",
+		})
+		require.NoError(t, err)
+
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v1/feeds/summarize/stream", bytes.NewReader(jsonBody))
+		req = req.WithContext(domain.SetUserContext(context.Background(), userCtx))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusOK, rec.Code)
+		assert.True(t, rec.Flushed, "SSE stream through Echo ServeHTTP must flush ResponseRecorder")
+		assert.Contains(t, rec.Body.String(), "data: streamed summary")
 	})
 }

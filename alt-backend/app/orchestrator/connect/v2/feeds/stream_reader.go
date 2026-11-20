@@ -2,6 +2,7 @@ package feeds
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -196,7 +197,7 @@ func (h *Handler) streamAndCaptureWithHeartbeat(
 	}
 	heartbeatTicker.Stop()
 
-	if first.err != nil && first.err != io.EOF && first.n == 0 {
+	if first.err != nil && !errors.Is(first.err, io.EOF) && first.n == 0 {
 		return "", first.err
 	}
 
@@ -210,7 +211,7 @@ func (h *Handler) streamAndCaptureWithHeartbeat(
 		combinedReader = preProcessorStream
 	}
 
-	if first.err == io.EOF {
+	if errors.Is(first.err, io.EOF) {
 		combinedReader = strings.NewReader(string(first.buf[:first.n]))
 	}
 

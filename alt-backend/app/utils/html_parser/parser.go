@@ -4,6 +4,7 @@ import (
 	"compress/gzip"
 	"context"
 	"io"
+	"log/slog"
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
@@ -37,14 +38,15 @@ func fallbackText(r io.Reader) string {
 }
 
 // extractPTagsFromReader extracts p tags from a non-gzip reader.
-func extractPTagsFromReader(_ context.Context, r io.Reader) ([]string, error) {
+func extractPTagsFromReader(ctx context.Context, r io.Reader) ([]string, error) {
 	policy := bluemonday.NewPolicy()
 	policy.AllowElements("p", "a", "strong", "em")
 	cleaned := policy.SanitizeReader(r)
 
 	doc, err := goquery.NewDocumentFromReader(cleaned)
 	if err != nil {
-		return []string{fallbackText(cleaned)}, nil
+		slog.WarnContext(ctx, "html_parser: goquery parse failed, using fallback text", "error", err)
+		return []string{fallbackText(cleaned)}, nil //nolint:nilerr // malformed HTML falls back to plain-text extraction
 	}
 	return doc.Find("p").
 		Map(func(_ int, s *goquery.Selection) string {
@@ -128,6 +130,8 @@ func stripCore(r io.Reader) string {
 			if depthSkip == 0 { // script/style 内はスキップ
 				b.Write(z.Text())
 			}
+
+		case html.SelfClosingTagToken, html.CommentToken, html.DoctypeToken:
 		}
 	}
 }

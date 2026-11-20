@@ -36,7 +36,7 @@ func (r *TagRepository) UpsertArticleTags(ctx context.Context, articleID string,
 	if err != nil {
 		return 0, fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	batch := &pgx.Batch{}
 	for _, tag := range tags {
@@ -90,7 +90,7 @@ func (r *TagRepository) BatchUpsertArticleTags(ctx context.Context, items []Batc
 	if err != nil {
 		return 0, fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	br := tx.SendBatch(ctx, batch)
 	for i := 0; i < totalTags; i++ {

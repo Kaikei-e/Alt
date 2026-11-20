@@ -10,6 +10,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -26,8 +27,8 @@ import (
 	"alt/shared/driver/datahub_client"
 	altotel "alt/utils/otel"
 
-	"github.com/labstack/echo/v4"
-	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
+	echootel "github.com/labstack/echo-otel/v5"
+	"github.com/labstack/echo/v5"
 )
 
 const serviceName = "alt-backend"
@@ -165,7 +166,7 @@ func main() {
 	opsSrv := bootstrap.NewOpsServer(opsAddr, bootstrap.NewOpsHandler(serviceName, rt.MetricsHandler, bootstrap.WithDeepHealth(deep.Handler())), cfg)
 
 	sup := bootstrap.NewSupervisor(log)
-	sup.AddServer("rest", func() error { return e.StartServer(restSrv) }, e.Shutdown)
+	sup.AddServer("rest", restSrv.ListenAndServe, restSrv.Shutdown)
 	sup.AddServer("connect", connectSrv.ListenAndServe, connectSrv.Shutdown)
 	sup.AddServer("operator", operatorSrv.ListenAndServe, operatorSrv.Shutdown)
 	sup.AddServer("ops", opsSrv.ListenAndServe, opsSrv.Shutdown)
@@ -206,21 +207,44 @@ func runHealthcheck() {
 // absent.hurl asserts the 404 that this omission produces.
 func newRESTEcho(container *di.ApplicationComponents, cfg *config.Config, otelEnabled bool) *echo.Echo {
 	e := echo.New()
-	e.HideBanner = true
-	e.HidePort = false
 
 	if otelEnabled {
-		e.Use(otelecho.Middleware(serviceName))
+		e.Use(echootel.NewMiddlewareWithConfig(echootel.Config{
+			ServerName: serviceName,
+		}))
 		e.Use(middleware.OTelStatusMiddleware())
 	}
 
 	// Preserve the original status code: the default handler turned a 401 into
 	// a 404, which made an expired session look like a missing route.
-	e.HTTPErrorHandler = func(err error, c echo.Context) {
-		if he, ok := err.(*echo.HTTPError); ok {
+	e.HTTPErrorHandler = func(c *echo.Context, err error) {
+		if r, _ := echo.UnwrapResponse(c.Response()); r != nil && r.Committed {
+			return
+		}
+		var detailErr interface{ ErrorDetail() any }
+		if errors.As(err, &detailErr) {
+			code := echo.StatusCode(err)
+			if code == 0 {
+				code = http.StatusInternalServerError
+			}
+			_ = c.JSON(code, map[string]interface{}{
+				"error":  http.StatusText(code),
+				"detail": detailErr.ErrorDetail(),
+			})
+			return
+		}
+		var he *echo.HTTPError
+		if errors.As(err, &he) {
 			_ = c.JSON(he.Code, map[string]interface{}{
 				"error":  http.StatusText(he.Code),
 				"detail": he.Message,
+			})
+			return
+		}
+		if code := echo.StatusCode(err); code != 0 {
+			_ = c.JSON(code, map[string]interface{}{
+				"error":  http.StatusText(code),
+				"detail": err.Error(),
 			})
 			return
 		}

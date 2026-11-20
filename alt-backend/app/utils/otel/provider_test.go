@@ -25,7 +25,6 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/log"
-	"go.opentelemetry.io/otel/log/global"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 
@@ -36,10 +35,10 @@ import (
 
 func TestProvider_InitAndExport(t *testing.T) {
 	originalTracer := otel.GetTracerProvider()
-	originalLogger := global.GetLoggerProvider()
+	originalLogger := otel.GetLoggerProvider()
 	defer func() {
 		otel.SetTracerProvider(originalTracer)
-		global.SetLoggerProvider(originalLogger)
+		otel.SetLoggerProvider(originalLogger)
 	}()
 
 	var traceReqCount, logReqCount int32
@@ -119,7 +118,7 @@ func TestProvider_InitAndExport(t *testing.T) {
 	_, span := tracer.Start(ctx, "test-span")
 	span.End()
 
-	logger := global.GetLoggerProvider().Logger("test-logger")
+	logger := otel.GetLoggerProvider().Logger("test-logger")
 	var rec log.Record
 	logger.Emit(ctx, rec)
 
@@ -134,7 +133,7 @@ func TestProvider_InitAndExport(t *testing.T) {
 		t.Errorf("TracerProvider is not sdktrace.TracerProvider")
 	}
 
-	if lp, ok := global.GetLoggerProvider().(*sdklog.LoggerProvider); ok {
+	if lp, ok := otel.GetLoggerProvider().(*sdklog.LoggerProvider); ok {
 		if err := lp.ForceFlush(ctxFlush); err != nil {
 			t.Errorf("lp.ForceFlush failed: %v", err)
 		}
@@ -165,11 +164,11 @@ func TestProvider_InitAndExport(t *testing.T) {
 	if err := proto.Unmarshal(lastTraceBody, &traceReq); err != nil {
 		t.Fatalf("Failed to decode trace req: %v", err)
 	}
-	if len(traceReq.ResourceSpans) == 0 {
+	if len(traceReq.GetResourceSpans()) == 0 {
 		t.Errorf("Expected non-empty ResourceSpans")
-	} else if len(traceReq.ResourceSpans[0].ScopeSpans) == 0 {
+	} else if len(traceReq.GetResourceSpans()[0].GetScopeSpans()) == 0 {
 		t.Errorf("Expected non-empty ScopeSpans")
-	} else if len(traceReq.ResourceSpans[0].ScopeSpans[0].Spans) == 0 {
+	} else if len(traceReq.GetResourceSpans()[0].GetScopeSpans()[0].GetSpans()) == 0 {
 		t.Errorf("Expected non-empty Spans")
 	}
 
@@ -177,11 +176,11 @@ func TestProvider_InitAndExport(t *testing.T) {
 	if err := proto.Unmarshal(lastLogBody, &logReq); err != nil {
 		t.Fatalf("Failed to decode log req: %v", err)
 	}
-	if len(logReq.ResourceLogs) == 0 {
+	if len(logReq.GetResourceLogs()) == 0 {
 		t.Errorf("Expected non-empty ResourceLogs")
-	} else if len(logReq.ResourceLogs[0].ScopeLogs) == 0 {
+	} else if len(logReq.GetResourceLogs()[0].GetScopeLogs()) == 0 {
 		t.Errorf("Expected non-empty ScopeLogs")
-	} else if len(logReq.ResourceLogs[0].ScopeLogs[0].LogRecords) == 0 {
+	} else if len(logReq.GetResourceLogs()[0].GetScopeLogs()[0].GetLogRecords()) == 0 {
 		t.Errorf("Expected non-empty LogRecords")
 	}
 }
@@ -191,10 +190,10 @@ func TestProvider_InitAndExport(t *testing.T) {
 // counters: origin ≥ 1, destination == 0.
 func TestProvider_RedirectFail(t *testing.T) {
 	originalTracer := otel.GetTracerProvider()
-	originalLogger := global.GetLoggerProvider()
+	originalLogger := otel.GetLoggerProvider()
 	defer func() {
 		otel.SetTracerProvider(originalTracer)
-		global.SetLoggerProvider(originalLogger)
+		otel.SetLoggerProvider(originalLogger)
 	}()
 
 	var destCount int32
@@ -207,7 +206,7 @@ func TestProvider_RedirectFail(t *testing.T) {
 	var originCount int32
 	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&originCount, 1)
-		http.Redirect(w, r, dest.URL+r.URL.Path, http.StatusFound)
+		http.Redirect(w, r, dest.URL, http.StatusFound)
 	}))
 	defer origin.Close()
 
@@ -232,7 +231,7 @@ func TestProvider_RedirectFail(t *testing.T) {
 	_, span := tracer.Start(ctx, "redirect-test-span")
 	span.End()
 
-	logger := global.GetLoggerProvider().Logger("redirect-test-logger")
+	logger := otel.GetLoggerProvider().Logger("redirect-test-logger")
 	var rec log.Record
 	logger.Emit(ctx, rec)
 
@@ -244,7 +243,7 @@ func TestProvider_RedirectFail(t *testing.T) {
 	} else {
 		t.Errorf("TracerProvider is not sdktrace.TracerProvider")
 	}
-	if lp, ok := global.GetLoggerProvider().(*sdklog.LoggerProvider); ok {
+	if lp, ok := otel.GetLoggerProvider().(*sdklog.LoggerProvider); ok {
 		_ = lp.ForceFlush(ctxFlush)
 	} else {
 		t.Errorf("LoggerProvider is not sdklog.LoggerProvider")
@@ -537,10 +536,10 @@ func newTLSTestServer(t *testing.T, srvCert tls.Certificate, requireClientAuth b
 func initAndFlushBothSignals(t *testing.T, srvURL, token string) error {
 	t.Helper()
 	origTracer := otel.GetTracerProvider()
-	origLogger := global.GetLoggerProvider()
+	origLogger := otel.GetLoggerProvider()
 	t.Cleanup(func() {
 		otel.SetTracerProvider(origTracer)
-		global.SetLoggerProvider(origLogger)
+		otel.SetLoggerProvider(origLogger)
 	})
 
 	cfg := Config{
@@ -563,7 +562,7 @@ func initAndFlushBothSignals(t *testing.T, srvURL, token string) error {
 	tracer := otel.Tracer("tls-test-tracer")
 	_, span := tracer.Start(ctx, "tls-span")
 	span.End()
-	logger := global.GetLoggerProvider().Logger("tls-logger")
+	logger := otel.GetLoggerProvider().Logger("tls-logger")
 	var rec log.Record
 	logger.Emit(ctx, rec)
 
@@ -574,7 +573,7 @@ func initAndFlushBothSignals(t *testing.T, srvURL, token string) error {
 			return fmt.Errorf("trace force flush: %w", err)
 		}
 	}
-	if lp, ok := global.GetLoggerProvider().(*sdklog.LoggerProvider); ok {
+	if lp, ok := otel.GetLoggerProvider().(*sdklog.LoggerProvider); ok {
 		if err := lp.ForceFlush(ctxFlush); err != nil {
 			return fmt.Errorf("log force flush: %w", err)
 		}
@@ -620,10 +619,10 @@ func TestProvider_TLS_WrongCA(t *testing.T) {
 	t.Setenv("OTEL_EXPORTER_OTLP_CERTIFICATE", wrongCAPath)
 
 	origTracer := otel.GetTracerProvider()
-	origLogger := global.GetLoggerProvider()
+	origLogger := otel.GetLoggerProvider()
 	defer func() {
 		otel.SetTracerProvider(origTracer)
-		global.SetLoggerProvider(origLogger)
+		otel.SetLoggerProvider(origLogger)
 	}()
 
 	cfg := Config{Enabled: true, OTLPEndpoint: srv.URL, IngestToken: "valid-token-123=", ServiceName: "tls-wrongca"}
@@ -647,7 +646,7 @@ func TestProvider_TLS_WrongCA(t *testing.T) {
 	if tp, ok := otel.GetTracerProvider().(*sdktrace.TracerProvider); ok {
 		flushErr = tp.ForceFlush(ctxFlush)
 	}
-	if lp, ok := global.GetLoggerProvider().(*sdklog.LoggerProvider); ok {
+	if lp, ok := otel.GetLoggerProvider().(*sdklog.LoggerProvider); ok {
 		if e := lp.ForceFlush(ctxFlush); e != nil && flushErr == nil {
 			flushErr = e
 		}
@@ -673,10 +672,10 @@ func TestProvider_TLS_ClientRequired_Missing(t *testing.T) {
 	t.Setenv("OTEL_EXPORTER_OTLP_CERTIFICATE", caPath)
 
 	origTracer := otel.GetTracerProvider()
-	origLogger := global.GetLoggerProvider()
+	origLogger := otel.GetLoggerProvider()
 	defer func() {
 		otel.SetTracerProvider(origTracer)
-		global.SetLoggerProvider(origLogger)
+		otel.SetLoggerProvider(origLogger)
 	}()
 
 	cfg := Config{Enabled: true, OTLPEndpoint: srv.URL, IngestToken: "valid-token-123=", ServiceName: "mtls-missing"}
@@ -694,7 +693,7 @@ func TestProvider_TLS_ClientRequired_Missing(t *testing.T) {
 	tracer := otel.Tracer("mtls-missing")
 	_, span := tracer.Start(ctx, "span")
 	span.End()
-	logger := global.GetLoggerProvider().Logger("logger")
+	logger := otel.GetLoggerProvider().Logger("logger")
 	var rec log.Record
 	logger.Emit(ctx, rec)
 	ctxFlush, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -703,7 +702,7 @@ func TestProvider_TLS_ClientRequired_Missing(t *testing.T) {
 	if tp, ok := otel.GetTracerProvider().(*sdktrace.TracerProvider); ok {
 		flushErr = tp.ForceFlush(ctxFlush)
 	}
-	if lp, ok := global.GetLoggerProvider().(*sdklog.LoggerProvider); ok {
+	if lp, ok := otel.GetLoggerProvider().(*sdklog.LoggerProvider); ok {
 		if e := lp.ForceFlush(ctxFlush); e != nil && flushErr == nil {
 			flushErr = e
 		}

@@ -62,15 +62,6 @@ func (m *mockCompareProjectionsPort) CompareProjections(_ context.Context, _, _ 
 	return m.diff, m.err
 }
 
-type mockGetActiveVersionPort struct {
-	version *domain.KnowledgeProjectionVersion
-	err     error
-}
-
-func (m *mockGetActiveVersionPort) GetActiveVersion(_ context.Context) (*domain.KnowledgeProjectionVersion, error) {
-	return m.version, m.err
-}
-
 type mockActivateVersionPort struct {
 	activated int
 	err       error

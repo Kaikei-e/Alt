@@ -3,7 +3,6 @@ package knowledge_home_admin
 import (
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"testing"
 	"time"
@@ -46,7 +45,7 @@ func (s *stubReprojectUsecase) RollbackReproject(_ context.Context, _ uuid.UUID)
 func newHandlerForReproject(stub ReprojectUsecase) *Handler {
 	return &Handler{
 		reprojectUsecase: stub,
-		logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
+		logger:           slog.New(slog.DiscardHandler),
 	}
 }
 

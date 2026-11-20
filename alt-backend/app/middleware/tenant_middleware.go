@@ -4,13 +4,13 @@ package middleware
 import (
 	"context"
 	"net/http"
-	"strings"
 
 	"alt/domain"
 
-	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
 	"log/slog"
+
+	"github.com/google/uuid"
+	"github.com/labstack/echo/v5"
 )
 
 type TenantMiddleware struct {
@@ -33,7 +33,7 @@ func NewTenantMiddleware(tenantService TenantService, logger *slog.Logger) *Tena
 
 func (m *TenantMiddleware) ExtractTenant() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+		return func(c *echo.Context) error {
 			user, err := domain.GetUserFromContext(c.Request().Context())
 			if err != nil {
 				m.logger.Warn("user context not found in tenant middleware", "error", err)
@@ -75,7 +75,7 @@ func (m *TenantMiddleware) ExtractTenant() echo.MiddlewareFunc {
 
 func (m *TenantMiddleware) RequireTenantAdmin() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+		return func(c *echo.Context) error {
 			user, err := domain.GetUserFromContext(c.Request().Context())
 			if err != nil {
 				return echo.NewHTTPError(http.StatusUnauthorized, "Authentication required")
@@ -96,7 +96,7 @@ func (m *TenantMiddleware) RequireTenantAdmin() echo.MiddlewareFunc {
 
 func (m *TenantMiddleware) CheckTenantLimits() echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
+		return func(c *echo.Context) error {
 			tenant, err := domain.GetTenantFromContext(c.Request().Context())
 			if err != nil {
 				return echo.NewHTTPError(http.StatusForbidden, "Tenant context required")
@@ -115,21 +115,7 @@ func (m *TenantMiddleware) CheckTenantLimits() echo.MiddlewareFunc {
 	}
 }
 
-func (m *TenantMiddleware) checkRequestLimits(c echo.Context, tenant *domain.Tenant) error {
-	path := c.Request().URL.Path
-	method := c.Request().Method
-
-	// フィード作成制限チェック
-	if method == "POST" && strings.Contains(path, "/feeds") {
-		// TODO: 実際の制限チェックロジックを実装
-		// 現在のフィード数を取得して MaxFeeds と比較
-	}
-
-	// ユーザー招待制限チェック
-	if method == "POST" && strings.Contains(path, "/users/invite") {
-		// TODO: 実際の制限チェックロジックを実装
-		// 現在のユーザー数を取得して MaxUsers と比較
-	}
-
+func (m *TenantMiddleware) checkRequestLimits(_ *echo.Context, _ *domain.Tenant) error {
+	// TODO: implement feed creation and user invitation limit checks against tenant quotas.
 	return nil
 }

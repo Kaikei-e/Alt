@@ -38,7 +38,7 @@ func cursorFromProto(ts *timestamppb.Timestamp) *time.Time {
 func tagItemsFromProto(protoTags []*datahubv1.TagItem) []internal_tag_port.TagItem {
 	tags := make([]internal_tag_port.TagItem, len(protoTags))
 	for i, t := range protoTags {
-		tags[i] = internal_tag_port.TagItem{Name: t.Name, Confidence: t.Confidence}
+		tags[i] = internal_tag_port.TagItem{Name: t.GetName(), Confidence: t.GetConfidence()}
 	}
 	return tags
 }

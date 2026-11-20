@@ -131,17 +131,17 @@ func TestConvertFeedsToProto(t *testing.T) {
 
 	require.Len(t, protoFeeds, 2)
 
-	assert.Regexp(t, `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`, protoFeeds[0].Id)
-	assert.Equal(t, "Test Feed 1", protoFeeds[0].Title)
-	assert.Equal(t, "Test Description 1", protoFeeds[0].Description)
-	assert.Equal(t, "https://example.com/feed1", protoFeeds[0].Link)
-	assert.Equal(t, "Author 1", protoFeeds[0].Author)
-	assert.NotEmpty(t, protoFeeds[0].CreatedAt)
-	assert.NotEmpty(t, protoFeeds[0].Published)
+	assert.Regexp(t, `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`, protoFeeds[0].GetId())
+	assert.Equal(t, "Test Feed 1", protoFeeds[0].GetTitle())
+	assert.Equal(t, "Test Description 1", protoFeeds[0].GetDescription())
+	assert.Equal(t, "https://example.com/feed1", protoFeeds[0].GetLink())
+	assert.Equal(t, "Author 1", protoFeeds[0].GetAuthor())
+	assert.NotEmpty(t, protoFeeds[0].GetCreatedAt())
+	assert.NotEmpty(t, protoFeeds[0].GetPublished())
 
-	assert.Regexp(t, `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`, protoFeeds[1].Id)
-	assert.NotEqual(t, protoFeeds[0].Id, protoFeeds[1].Id)
-	assert.Equal(t, "Test Feed 2", protoFeeds[1].Title)
+	assert.Regexp(t, `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`, protoFeeds[1].GetId())
+	assert.NotEqual(t, protoFeeds[0].GetId(), protoFeeds[1].GetId())
+	assert.Equal(t, "Test Feed 2", protoFeeds[1].GetTitle())
 }
 
 func TestConvertFeedsToProto_IsReadField(t *testing.T) {
@@ -168,13 +168,13 @@ func TestConvertFeedsToProto_IsReadField(t *testing.T) {
 	protoFeeds := convertFeedsToProto(feeds)
 
 	require.Len(t, protoFeeds, 2)
-	assert.False(t, protoFeeds[0].IsRead, "First feed should be unread")
-	assert.True(t, protoFeeds[1].IsRead, "Second feed should be read")
+	assert.False(t, protoFeeds[0].GetIsRead(), "First feed should be unread")
+	assert.True(t, protoFeeds[1].GetIsRead(), "Second feed should be read")
 }
 
 func TestConvertFeedsToProto_EmptyList(t *testing.T) {
 	protoFeeds := convertFeedsToProto([]*domain.FeedItem{})
-	assert.Len(t, protoFeeds, 0)
+	assert.Empty(t, protoFeeds)
 	assert.NotNil(t, protoFeeds)
 }
 
@@ -302,8 +302,8 @@ func TestGetAllFeedsResponse_Construction(t *testing.T) {
 		HasMore:    true,
 	}
 
-	assert.Len(t, resp.Data, 2)
-	assert.True(t, resp.HasMore)
+	assert.Len(t, resp.GetData(), 2)
+	assert.True(t, resp.GetHasMore())
 	assert.NotNil(t, resp.NextCursor)
 }
 
@@ -318,8 +318,8 @@ func TestGetUnreadFeedsResponse_Construction(t *testing.T) {
 		HasMore:    true,
 	}
 
-	assert.Len(t, resp.Data, 2)
-	assert.True(t, resp.HasMore)
+	assert.Len(t, resp.GetData(), 2)
+	assert.True(t, resp.GetHasMore())
 	assert.NotNil(t, resp.NextCursor)
 }
 
@@ -334,7 +334,7 @@ func TestSearchFeedsResponse_Construction(t *testing.T) {
 		HasMore:    true,
 	}
 
-	assert.Len(t, resp.Data, 2)
-	assert.True(t, resp.HasMore)
-	assert.Equal(t, int32(20), *resp.NextCursor)
+	assert.Len(t, resp.GetData(), 2)
+	assert.True(t, resp.GetHasMore())
+	assert.Equal(t, int32(20), resp.GetNextCursor())
 }

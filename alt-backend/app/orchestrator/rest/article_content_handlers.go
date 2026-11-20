@@ -15,11 +15,11 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 func handleArchiveArticle(container *di.ApplicationComponents) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		var payload ArchiveArticleRequest
 		if err := c.Bind(&payload); err != nil {
 			return resterr.HandleValidationError(c, "Invalid request format", "body", "malformed JSON")
@@ -53,7 +53,7 @@ func handleArchiveArticle(container *di.ApplicationComponents) echo.HandlerFunc 
 }
 
 func handleFetchArticle(container *di.ApplicationComponents) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		ctx := c.Request().Context()
 		targetURL := c.QueryParam("url")
 		parsedURL, err := validateFetchRequest(c, targetURL)
@@ -86,7 +86,7 @@ func handleFetchArticle(container *di.ApplicationComponents) echo.HandlerFunc {
 	}
 }
 
-func validateFetchRequest(c echo.Context, targetURL string) (*url.URL, error) {
+func validateFetchRequest(c *echo.Context, targetURL string) (*url.URL, error) {
 	if targetURL == "" {
 		return nil, fmt.Errorf("url parameter is required")
 	}
@@ -103,7 +103,7 @@ func validateFetchRequest(c echo.Context, targetURL string) (*url.URL, error) {
 	return parsedURL, nil
 }
 
-func returnArticleResponse(c echo.Context, articleURL *url.URL, content string, articleID string) error {
+func returnArticleResponse(c *echo.Context, articleURL *url.URL, content string, articleID string) error {
 	escapedContent := html_parser.StripTags(content)
 	return c.JSON(http.StatusOK, map[string]string{
 		"url":        articleURL.String(),

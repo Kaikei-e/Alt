@@ -62,10 +62,10 @@ func (h *Handler) GetUnreadFeeds(
 	}
 
 	// Parse and validate limit
-	limit := int(req.Msg.Limit)
+	limit := int(req.Msg.GetLimit())
 	if limit <= 0 {
 		limit = 20 // default
-		if req.Msg.View != nil && *req.Msg.View == "swipe" {
+		if req.Msg.View != nil && req.Msg.GetView() == "swipe" {
 			limit = 1
 		}
 	}
@@ -75,8 +75,8 @@ func (h *Handler) GetUnreadFeeds(
 
 	// Parse cursor if provided
 	var cursor *time.Time
-	if req.Msg.Cursor != nil && *req.Msg.Cursor != "" {
-		parsed, err := time.Parse(time.RFC3339, *req.Msg.Cursor)
+	if req.Msg.Cursor != nil && req.Msg.GetCursor() != "" {
+		parsed, err := time.Parse(time.RFC3339, req.Msg.GetCursor())
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInvalidArgument,
 				fmt.Errorf("invalid cursor format, expected RFC3339: %w", err))
@@ -85,7 +85,7 @@ func (h *Handler) GetUnreadFeeds(
 	}
 
 	// Parse exclude feed link IDs (prefer repeated field, fallback to single)
-	excludeFeedLinkIDs, err := parseExcludeFeedLinkIDs(req.Msg.ExcludeFeedLinkIds, req.Msg.ExcludeFeedLinkId)
+	excludeFeedLinkIDs, err := parseExcludeFeedLinkIDs(req.Msg.GetExcludeFeedLinkIds(), req.Msg.ExcludeFeedLinkId)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
@@ -128,7 +128,7 @@ func (h *Handler) GetAllFeeds(
 	}
 
 	// Parse and validate limit
-	limit := int(req.Msg.Limit)
+	limit := int(req.Msg.GetLimit())
 	if limit <= 0 {
 		limit = 20 // default
 	}
@@ -138,8 +138,8 @@ func (h *Handler) GetAllFeeds(
 
 	// Parse cursor if provided
 	var cursor *time.Time
-	if req.Msg.Cursor != nil && *req.Msg.Cursor != "" {
-		parsed, err := time.Parse(time.RFC3339, *req.Msg.Cursor)
+	if req.Msg.Cursor != nil && req.Msg.GetCursor() != "" {
+		parsed, err := time.Parse(time.RFC3339, req.Msg.GetCursor())
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInvalidArgument,
 				fmt.Errorf("invalid cursor format, expected RFC3339: %w", err))
@@ -148,7 +148,7 @@ func (h *Handler) GetAllFeeds(
 	}
 
 	// Parse exclude feed link IDs (prefer repeated field, fallback to single)
-	excludeFeedLinkIDs, err := parseExcludeFeedLinkIDs(req.Msg.ExcludeFeedLinkIds, req.Msg.ExcludeFeedLinkId)
+	excludeFeedLinkIDs, err := parseExcludeFeedLinkIDs(req.Msg.GetExcludeFeedLinkIds(), req.Msg.ExcludeFeedLinkId)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
@@ -195,7 +195,7 @@ func (h *Handler) GetReadFeeds(
 	}
 
 	// Parse and validate limit
-	limit := int(req.Msg.Limit)
+	limit := int(req.Msg.GetLimit())
 	if limit <= 0 {
 		limit = 32 // default for read feeds
 	}
@@ -205,8 +205,8 @@ func (h *Handler) GetReadFeeds(
 
 	// Parse cursor if provided
 	var cursor *time.Time
-	if req.Msg.Cursor != nil && *req.Msg.Cursor != "" {
-		parsed, err := time.Parse(time.RFC3339, *req.Msg.Cursor)
+	if req.Msg.Cursor != nil && req.Msg.GetCursor() != "" {
+		parsed, err := time.Parse(time.RFC3339, req.Msg.GetCursor())
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInvalidArgument,
 				fmt.Errorf("invalid cursor format, expected RFC3339: %w", err))
@@ -259,7 +259,7 @@ func (h *Handler) GetFavoriteFeeds(
 	}
 
 	// Parse and validate limit
-	limit := int(req.Msg.Limit)
+	limit := int(req.Msg.GetLimit())
 	if limit <= 0 {
 		limit = 20 // default
 	}
@@ -269,8 +269,8 @@ func (h *Handler) GetFavoriteFeeds(
 
 	// Parse cursor if provided
 	var cursor *time.Time
-	if req.Msg.Cursor != nil && *req.Msg.Cursor != "" {
-		parsed, err := time.Parse(time.RFC3339, *req.Msg.Cursor)
+	if req.Msg.Cursor != nil && req.Msg.GetCursor() != "" {
+		parsed, err := time.Parse(time.RFC3339, req.Msg.GetCursor())
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInvalidArgument,
 				fmt.Errorf("invalid cursor format, expected RFC3339: %w", err))
@@ -327,7 +327,7 @@ func (h *Handler) SearchFeeds(
 	}
 
 	// Validate query
-	if req.Msg.Query == "" {
+	if req.Msg.GetQuery() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("query must not be empty"))
 	}
@@ -335,7 +335,7 @@ func (h *Handler) SearchFeeds(
 	// Parse pagination params (offset-based)
 	offset := 0
 	if req.Msg.Cursor != nil {
-		offset = int(*req.Msg.Cursor)
+		offset = int(req.Msg.GetCursor())
 		if offset < 0 {
 			offset = 0
 		}
@@ -343,7 +343,7 @@ func (h *Handler) SearchFeeds(
 
 	limit := 20
 	if req.Msg.Limit != nil {
-		limit = int(*req.Msg.Limit)
+		limit = int(req.Msg.GetLimit())
 		if limit <= 0 {
 			limit = 20
 		}
@@ -354,7 +354,7 @@ func (h *Handler) SearchFeeds(
 
 	// Call usecase with pagination
 	results, hasMore, err := h.deps.FeedSearch.ExecuteWithPagination(
-		ctx, req.Msg.Query, offset, limit)
+		ctx, req.Msg.GetQuery(), offset, limit)
 	if err != nil {
 		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "SearchFeeds")
 	}

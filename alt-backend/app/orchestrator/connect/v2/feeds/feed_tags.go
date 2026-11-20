@@ -29,18 +29,18 @@ func (h *Handler) GetFeedTags(
 		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 
-	if req.Msg.FeedId == "" {
+	if req.Msg.GetFeedId() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("feed_id is required"))
 	}
-	parsedFeedID, err := uuid.Parse(req.Msg.FeedId)
+	parsedFeedID, err := uuid.Parse(req.Msg.GetFeedId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("invalid feed_id: %w", err))
 	}
 	feedID := parsedFeedID.String()
 
-	limit := int(req.Msg.Limit)
+	limit := int(req.Msg.GetLimit())
 	if limit <= 0 {
 		limit = defaultFeedTagsLimit
 	}
@@ -49,8 +49,8 @@ func (h *Handler) GetFeedTags(
 	}
 
 	var cursor *time.Time
-	if req.Msg.Cursor != "" {
-		parsed, err := time.Parse(time.RFC3339Nano, req.Msg.Cursor)
+	if req.Msg.GetCursor() != "" {
+		parsed, err := time.Parse(time.RFC3339Nano, req.Msg.GetCursor())
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInvalidArgument,
 				fmt.Errorf("invalid cursor: %w", err))

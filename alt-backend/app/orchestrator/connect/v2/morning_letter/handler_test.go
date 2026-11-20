@@ -73,17 +73,17 @@ func TestGetLatestLetter_ReturnsLetter(t *testing.T) {
 	resp, err := h.GetLatestLetter(testCtxWithUser(), connect.NewRequest(&morningletterv2.GetLatestLetterRequest{}))
 
 	require.NoError(t, err)
-	letter := resp.Msg.Letter
-	assert.Equal(t, "test-id", letter.Id)
-	assert.Equal(t, "Today's briefing", letter.Body.Lead)
-	assert.Len(t, letter.Body.Sections, 1)
-	assert.Equal(t, "\"test:1\"", letter.Etag)
-	require.NotNil(t, letter.SurfaceStatus)
-	assert.Equal(t, "2026-04-07T06:00:00Z", letter.SurfaceStatus.GeneratedAt)
-	require.NotNil(t, letter.SurfaceStatus.LatestRun)
-	assert.Equal(t, "completed", letter.SurfaceStatus.LatestRun.Status)
-	require.Len(t, letter.SurfaceStatus.DegradationReasons, 1)
-	assert.Equal(t, "placeholder_output", letter.SurfaceStatus.DegradationReasons[0].Code)
+	letter := resp.Msg.GetLetter()
+	assert.Equal(t, "test-id", letter.GetId())
+	assert.Equal(t, "Today's briefing", letter.GetBody().GetLead())
+	assert.Len(t, letter.GetBody().GetSections(), 1)
+	assert.Equal(t, "\"test:1\"", letter.GetEtag())
+	require.NotNil(t, letter.GetSurfaceStatus())
+	assert.Equal(t, "2026-04-07T06:00:00Z", letter.GetSurfaceStatus().GetGeneratedAt())
+	require.NotNil(t, letter.GetSurfaceStatus().GetLatestRun())
+	assert.Equal(t, "completed", letter.GetSurfaceStatus().GetLatestRun().GetStatus())
+	require.Len(t, letter.GetSurfaceStatus().GetDegradationReasons(), 1)
+	assert.Equal(t, "placeholder_output", letter.GetSurfaceStatus().GetDegradationReasons()[0].GetCode())
 }
 
 func TestGetLatestLetter_NotFound(t *testing.T) {
@@ -132,7 +132,7 @@ func TestGetLetterByDate_ReturnsLetter(t *testing.T) {
 	}))
 
 	require.NoError(t, err)
-	assert.Equal(t, "date-id", resp.Msg.Letter.Id)
+	assert.Equal(t, "date-id", resp.Msg.GetLetter().GetId())
 }
 
 func TestGetLetterByDate_EmptyDate(t *testing.T) {
@@ -167,7 +167,7 @@ func TestGetLetterSources_ReturnsFilteredSources(t *testing.T) {
 	}))
 
 	require.NoError(t, err)
-	assert.Len(t, resp.Msg.Sources, 3)
+	assert.Len(t, resp.Msg.GetSources(), 3)
 }
 
 func TestGetLetterSources_EmptyLetterID(t *testing.T) {
@@ -231,7 +231,7 @@ func TestRegenerateLatest_InFlightRunCarriesRetryAfterHeaderOverTheMux(t *testin
 		handler.ServeHTTP(w, r.WithContext(testCtxWithUser()))
 	}))
 
-	req := httptest.NewRequest(http.MethodPost, morningletterv2connect.MorningLetterReadServiceRegenerateLatestProcedure, strings.NewReader("{}"))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, morningletterv2connect.MorningLetterReadServiceRegenerateLatestProcedure, strings.NewReader("{}"))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)

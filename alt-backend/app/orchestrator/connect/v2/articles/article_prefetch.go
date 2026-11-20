@@ -15,6 +15,7 @@ import (
 	"alt/connect/errorhandler"
 	"alt/domain"
 	articlesv2 "alt/gen/proto/alt/articles/v2"
+	"alt/utils/safeconv"
 	"alt/utils/security"
 )
 
@@ -84,7 +85,7 @@ func (h *Handler) BatchPrefetchImages(
 		return nil, err
 	}
 
-	articleIDs := req.Msg.ArticleIds
+	articleIDs := req.Msg.GetArticleIds()
 	if len(articleIDs) == 0 {
 		return connect.NewResponse(&articlesv2.BatchPrefetchImagesResponse{}), nil
 	}
@@ -286,8 +287,8 @@ func (h *Handler) BatchPrefetchArticleContent(
 	return connect.NewResponse(&articlesv2.BatchPrefetchArticleContentResponse{
 		AcceptedCount:        accepted,
 		ShedCount:            shed,
-		RejectedCount:        int32(len(rejections)),
-		SkippedSameHostCount: int32(skippedSameHost),
+		RejectedCount:        safeconv.Int32(len(rejections)),
+		SkippedSameHostCount: safeconv.Int32(skippedSameHost),
 	}), nil
 }
 

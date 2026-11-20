@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 func init() {
@@ -68,7 +69,7 @@ func TestFetchArticlesByTagUsecase_Execute_Success(t *testing.T) {
 	result, err := usecase.Execute(context.Background(), tagID, nil, 20)
 
 	// Assert
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.Len(t, result, 2)
 	assert.Equal(t, expectedArticles[0].Title, result[0].Title)
@@ -98,7 +99,7 @@ func TestFetchArticlesByTagUsecase_Execute_WithCursor(t *testing.T) {
 	result, err := usecase.Execute(context.Background(), tagID, &cursor, 10)
 
 	// Assert
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.Len(t, result, 1)
 	mockPort.AssertExpectations(t)
@@ -113,7 +114,7 @@ func TestFetchArticlesByTagUsecase_Execute_EmptyTagID(t *testing.T) {
 	result, err := usecase.Execute(context.Background(), "", nil, 20)
 
 	// Assert
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, result)
 	assert.Contains(t, err.Error(), "tag_id must not be empty")
 }
@@ -137,7 +138,7 @@ func TestFetchArticlesByTagUsecase_Execute_InvalidLimit(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result, err := usecase.Execute(context.Background(), tagID, nil, tt.limit)
-			assert.Error(t, err)
+			require.Error(t, err)
 			assert.Nil(t, result)
 		})
 	}
@@ -156,7 +157,7 @@ func TestFetchArticlesByTagUsecase_Execute_DatabaseError(t *testing.T) {
 	result, err := usecase.Execute(context.Background(), tagID, nil, 20)
 
 	// Assert
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, result)
 	assert.Contains(t, err.Error(), "database connection failed")
 	mockPort.AssertExpectations(t)
@@ -174,9 +175,9 @@ func TestFetchArticlesByTagUsecase_Execute_EmptyResult(t *testing.T) {
 	result, err := usecase.Execute(context.Background(), tagID, nil, 20)
 
 	// Assert
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotNil(t, result)
-	assert.Len(t, result, 0)
+	assert.Empty(t, result)
 	mockPort.AssertExpectations(t)
 }
 
@@ -210,7 +211,7 @@ func TestFetchArticlesByTagUsecase_ExecuteByTagName_Success(t *testing.T) {
 	result, err := usecase.ExecuteByTagName(context.Background(), tagName, nil, 20)
 
 	// Assert
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.Len(t, result, 2)
 	assert.Equal(t, expectedArticles[0].Title, result[0].Title)
@@ -226,7 +227,7 @@ func TestFetchArticlesByTagUsecase_ExecuteByTagName_EmptyTagName(t *testing.T) {
 	result, err := usecase.ExecuteByTagName(context.Background(), "", nil, 20)
 
 	// Assert
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, result)
 	assert.Contains(t, err.Error(), "tag_name must not be empty")
 }
@@ -250,7 +251,7 @@ func TestFetchArticlesByTagUsecase_ExecuteByTagName_InvalidLimit(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result, err := usecase.ExecuteByTagName(context.Background(), tagName, nil, tt.limit)
-			assert.Error(t, err)
+			require.Error(t, err)
 			assert.Nil(t, result)
 		})
 	}
@@ -279,7 +280,7 @@ func TestFetchArticlesByTagUsecase_ExecuteByTagName_WithCursor(t *testing.T) {
 	result, err := usecase.ExecuteByTagName(context.Background(), tagName, &cursor, 10)
 
 	// Assert
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.Len(t, result, 1)
 	mockPort.AssertExpectations(t)

@@ -12,11 +12,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 func RestHandleFetchFeedDetails(container *di.ApplicationComponents) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		ctx := c.Request().Context()
 		var payload FeedUrlPayload
 		err := c.Bind(&payload)
@@ -46,7 +46,7 @@ func RestHandleFetchFeedDetails(container *di.ApplicationComponents) echo.Handle
 }
 
 func RestHandleFeedStats(container *di.ApplicationComponents, cfg *config.Config) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		ctx := c.Request().Context()
 		// Add caching headers for stats
 		c.Response().Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", int(cfg.Cache.FeedCacheExpiry.Seconds())))
@@ -81,7 +81,7 @@ func RestHandleFeedStats(container *di.ApplicationComponents, cfg *config.Config
 }
 
 func RestHandleDetailedFeedStats(container *di.ApplicationComponents, cfg *config.Config) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		ctx := c.Request().Context()
 		// Add caching headers for stats
 		c.Response().Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", int(cfg.Cache.FeedCacheExpiry.Seconds())))
@@ -176,7 +176,7 @@ func RestHandleDetailedFeedStats(container *di.ApplicationComponents, cfg *confi
 }
 
 func RestHandleFetchFeedTags(container *di.ApplicationComponents) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		ctx := c.Request().Context()
 		// Parse request body
 		var req FeedTagsPayload
@@ -257,7 +257,7 @@ func RestHandleFetchFeedTags(container *di.ApplicationComponents) echo.HandlerFu
 // Returns tags associated with a feed by its ID.
 // Used by Tag Trail feature to fetch tags for a random feed.
 func RestHandleFetchFeedTagsByID(container *di.ApplicationComponents) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		ctx := c.Request().Context()
 
 		// Get feed ID from path parameter

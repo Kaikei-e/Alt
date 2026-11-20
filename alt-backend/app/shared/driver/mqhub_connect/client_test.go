@@ -160,19 +160,28 @@ func TestClient_GenerateTagsTimeoutExceeds30sWhilePublishStaysBounded(t *testing
 	var publishTimeoutHeader string
 	var generateTagsTimeoutHeader string
 
+	marshalErrCh := make(chan error, 4)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/proto")
 		switch r.URL.Path {
 		case mqhubv1connect.MQHubServicePublishProcedure:
 			publishTimeoutHeader = r.Header.Get("Connect-Timeout-Ms")
 			b, err := proto.Marshal(&mqhubv1.PublishResponse{MessageId: "msg-1", Success: true})
-			require.NoError(t, err)
+			if err != nil {
+				marshalErrCh <- err
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write(b)
 		case mqhubv1connect.MQHubServiceGenerateTagsForArticleProcedure:
 			generateTagsTimeoutHeader = r.Header.Get("Connect-Timeout-Ms")
 			b, err := proto.Marshal(&mqhubv1.GenerateTagsForArticleResponse{Success: true, ArticleId: "art-1"})
-			require.NoError(t, err)
+			if err != nil {
+				marshalErrCh <- err
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write(b)
 		default:
@@ -190,6 +199,10 @@ func TestClient_GenerateTagsTimeoutExceeds30sWhilePublishStaysBounded(t *testing
 		FeedID:    "feed-1",
 		TimeoutMs: 60_000,
 	})
+	close(marshalErrCh)
+	for marshalErr := range marshalErrCh {
+		require.NoError(t, marshalErr)
+	}
 	require.NoError(t, err)
 	require.True(t, resp.Success)
 
@@ -206,6 +219,6 @@ func TestClient_GenerateTagsTimeoutExceeds30sWhilePublishStaysBounded(t *testing
 	require.NotEmpty(t, publishTimeoutHeader, "Publish must carry a bounded Connect-Timeout-Ms deadline")
 	publishMs, err := strconv.Atoi(publishTimeoutHeader)
 	require.NoError(t, err)
-	assert.Greater(t, publishMs, 0)
+	assert.Positive(t, publishMs)
 	assert.LessOrEqual(t, publishMs, 30_000, "Publish timeout (%d ms) must remain bounded at <= 30s", publishMs)
 }

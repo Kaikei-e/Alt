@@ -9,7 +9,7 @@ import (
 	"alt/di"
 	"alt/utils/logger"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 // TrendDataPointResponse represents a single data point in the trend chart response
@@ -29,7 +29,7 @@ type TrendStatsResponse struct {
 
 // RestHandleTrendStats handles the trend stats endpoint
 func RestHandleTrendStats(container *di.ApplicationComponents, cfg *config.Config) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		// Get window parameter (default to 24h)
 		window := c.QueryParam("window")
 		if window == "" {

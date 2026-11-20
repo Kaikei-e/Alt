@@ -98,7 +98,7 @@ func TestBatchPrefetchImages_CacheWarmingIsBounded(t *testing.T) {
 		resp, err := handler.BatchPrefetchImages(ctx,
 			connect.NewRequest(&articlesv2.BatchPrefetchImagesRequest{ArticleIds: articleIDs}))
 		require.NoError(t, err)
-		require.Len(t, resp.Msg.Images, idsPerCall,
+		require.Len(t, resp.Msg.GetImages(), idsPerCall,
 			"shedding a warm must not shrink the response the caller asked for")
 	}
 

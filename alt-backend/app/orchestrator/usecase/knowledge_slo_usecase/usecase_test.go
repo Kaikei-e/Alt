@@ -49,7 +49,7 @@ func TestGetSLOStatus(t *testing.T) {
 			}
 		}
 		require.NotNil(t, freshnessSLI, "freshness SLI should be present")
-		assert.Equal(t, float64(30), freshnessSLI.CurrentValue) // 30 seconds
+		assert.InDelta(t, float64(30), freshnessSLI.CurrentValue, 1e-9) // 30 seconds
 		assert.Equal(t, "seconds", freshnessSLI.Unit)
 		assert.Equal(t, domain.SLIStatusMeeting, freshnessSLI.Status) // 30s < 300s target
 	})
@@ -159,8 +159,8 @@ func TestComputeFreshnessSLIResult(t *testing.T) {
 			res := computeFreshnessSLIResult(tt.lag, tt.err)
 			assert.Equal(t, domain.SLIFreshness, res.Name)
 			assert.Equal(t, tt.expectedStatus, res.Status)
-			assert.Equal(t, tt.expectedCurrentVal, res.CurrentValue)
-			assert.Equal(t, tt.expectedConsumedPct, res.ErrorBudgetConsumedPct)
+			assert.InDelta(t, tt.expectedCurrentVal, res.CurrentValue, 1e-9)
+			assert.InDelta(t, tt.expectedConsumedPct, res.ErrorBudgetConsumedPct, 1e-9)
 		})
 	}
 }

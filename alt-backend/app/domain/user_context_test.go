@@ -150,6 +150,6 @@ func TestUserContext_HasPermission(t *testing.T) {
 }
 
 func TestUserRole_Constants(t *testing.T) {
-	assert.Equal(t, UserRole("user"), UserRoleUser)
-	assert.Equal(t, UserRole("admin"), UserRoleAdmin)
+	assert.Equal(t, UserRoleUser, UserRole("user"))
+	assert.Equal(t, UserRoleAdmin, UserRole("admin"))
 }

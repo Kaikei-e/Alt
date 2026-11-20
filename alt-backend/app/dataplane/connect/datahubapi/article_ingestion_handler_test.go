@@ -41,11 +41,11 @@ func TestCheckArticleExists_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !resp.Msg.Exists {
+	if !resp.Msg.GetExists() {
 		t.Error("expected exists to be true")
 	}
-	if resp.Msg.ArticleId != "article-123" {
-		t.Errorf("expected article_id article-123, got %s", resp.Msg.ArticleId)
+	if resp.Msg.GetArticleId() != "article-123" {
+		t.Errorf("expected article_id article-123, got %s", resp.Msg.GetArticleId())
 	}
 }
 
@@ -69,7 +69,7 @@ func TestCheckArticleExists_NotFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if resp.Msg.Exists {
+	if resp.Msg.GetExists() {
 		t.Error("expected exists to be false")
 	}
 }
@@ -116,8 +116,8 @@ func TestCreateArticle_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if resp.Msg.ArticleId != "new-article-id" {
-		t.Errorf("expected article_id new-article-id, got %s", resp.Msg.ArticleId)
+	if resp.Msg.GetArticleId() != "new-article-id" {
+		t.Errorf("expected article_id new-article-id, got %s", resp.Msg.GetArticleId())
 	}
 }
 
@@ -221,8 +221,8 @@ func TestCreateArticle_PublishesArticleCreatedEvent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if resp.Msg.ArticleId != "new-article-id" {
-		t.Errorf("expected article_id new-article-id, got %s", resp.Msg.ArticleId)
+	if resp.Msg.GetArticleId() != "new-article-id" {
+		t.Errorf("expected article_id new-article-id, got %s", resp.Msg.GetArticleId())
 	}
 }
 
@@ -294,8 +294,8 @@ func TestCreateArticle_WiredButDisabledPublisherPublishesNothing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if resp.Msg.ArticleId != "article-1" {
-		t.Errorf("expected article_id article-1, got %s", resp.Msg.ArticleId)
+	if resp.Msg.GetArticleId() != "article-1" {
+		t.Errorf("expected article_id article-1, got %s", resp.Msg.GetArticleId())
 	}
 	if len(publisher.created) != 0 {
 		t.Errorf("expected no publish while disabled, got %d", len(publisher.created))
@@ -337,8 +337,8 @@ func TestCreateArticle_EventPublishFailureDoesNotFailRPC(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error despite publish failure, got: %v", err)
 	}
-	if resp.Msg.ArticleId != "article-2" {
-		t.Errorf("expected article_id article-2, got %s", resp.Msg.ArticleId)
+	if resp.Msg.GetArticleId() != "article-2" {
+		t.Errorf("expected article_id article-2, got %s", resp.Msg.GetArticleId())
 	}
 }
 
@@ -388,8 +388,8 @@ func TestCreateArticle_PublishesArticleUpdatedEventForUpsert(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if resp.Msg.ArticleId != "existing-article-id" {
-		t.Errorf("expected article_id existing-article-id, got %s", resp.Msg.ArticleId)
+	if resp.Msg.GetArticleId() != "existing-article-id" {
+		t.Errorf("expected article_id existing-article-id, got %s", resp.Msg.GetArticleId())
 	}
 }
 
@@ -425,8 +425,8 @@ func TestCreateArticle_EventPublisherDisabled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if resp.Msg.ArticleId != "article-3" {
-		t.Errorf("expected article_id article-3, got %s", resp.Msg.ArticleId)
+	if resp.Msg.GetArticleId() != "article-3" {
+		t.Errorf("expected article_id article-3, got %s", resp.Msg.GetArticleId())
 	}
 }
 
@@ -456,8 +456,8 @@ func TestCreateArticle_AppendsKnowledgeEvent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if resp.Msg.ArticleId != "new-article-id" {
-		t.Errorf("expected article_id new-article-id, got %s", resp.Msg.ArticleId)
+	if resp.Msg.GetArticleId() != "new-article-id" {
+		t.Errorf("expected article_id new-article-id, got %s", resp.Msg.GetArticleId())
 	}
 
 	// Knowledge event should have been appended

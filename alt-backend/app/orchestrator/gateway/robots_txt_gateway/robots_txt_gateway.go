@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -175,11 +176,7 @@ func parseRobotsTxt(content string) *parseResult {
 			continue
 		}
 
-		// Reset user agent block on Allow directive or new section
-		if strings.HasPrefix(strings.ToLower(line), "allow:") {
-			// Continue processing but don't reset
-			continue
-		}
+		// Allow directives do not reset the current user-agent block.
 	}
 
 	result.CrawlDelay = maxCrawlDelay
@@ -206,7 +203,8 @@ func (g *RobotsTxtGateway) IsPathAllowed(ctx context.Context, targetURL *url.URL
 		// Let's rely on the fact that if FetchRobotsTxt returns error, it's likely a fetch failure.
 		// If robots.txt doesn't exist (404), FetchRobotsTxt currently returns struct with 404 status.
 		// We need to check that status.
-		return true, nil
+		slog.WarnContext(ctx, "robots_txt_gateway: fetch failed, allowing by default", "host", targetURL.Hostname(), "error", err)
+		return true, nil //nolint:nilerr // fail-open (allow) when robots.txt cannot be fetched, as documented above
 	}
 
 	return evaluateRobotsAccess(robots.StatusCode, robots.Content, targetURL.Path, userAgent), nil

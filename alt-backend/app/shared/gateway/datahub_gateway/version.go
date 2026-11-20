@@ -102,7 +102,7 @@ func (g *VersionGateway) MarkSummaryVersionSuperseded(ctx context.Context, artic
 	// Absent, not zero. The caller emits SummarySuperseded only when a previous
 	// version existed, so an empty message here would announce that a summary
 	// nobody wrote had been replaced.
-	if resp.Msg.PreviousVersion == nil {
+	if resp.Msg.GetPreviousVersion() == nil {
 		return nil, nil
 	}
 	prev, convErr := summaryVersionFromProto(resp.Msg.GetPreviousVersion())
@@ -175,7 +175,7 @@ func (g *VersionGateway) MarkTagSetVersionSuperseded(ctx context.Context, articl
 		return nil, fmt.Errorf("mark tag set versions superseded for article %s: %w", articleID, err)
 	}
 
-	if resp.Msg.PreviousVersion == nil {
+	if resp.Msg.GetPreviousVersion() == nil {
 		return nil, nil
 	}
 	prev, convErr := tagSetVersionFromProto(resp.Msg.GetPreviousVersion())

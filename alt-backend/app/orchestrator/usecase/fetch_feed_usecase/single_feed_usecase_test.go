@@ -6,6 +6,7 @@ import (
 	"alt/utils/errors"
 	"alt/utils/logger"
 	"context"
+	stderrors "errors"
 	"fmt"
 	"reflect"
 	"testing"
@@ -206,11 +207,13 @@ func TestFetchSingleFeedUsecase_Execute(t *testing.T) {
 				if tt.errorType != "" {
 					switch tt.errorType {
 					case "AppContextError":
-						if _, ok := err.(*errors.AppContextError); !ok {
+						appContextError := &errors.AppContextError{}
+						if !stderrors.As(err, &appContextError) {
 							t.Errorf("Expected AppContextError, got %T", err)
 						}
 					case "UnknownError":
-						if appErr, ok := err.(*errors.AppContextError); ok {
+						appErr := &errors.AppContextError{}
+						if stderrors.As(err, &appErr) {
 							if appErr.Code != "UNKNOWN_ERROR" {
 								t.Errorf("Expected UNKNOWN_ERROR code, got %v", appErr.Code)
 							}
@@ -221,7 +224,8 @@ func TestFetchSingleFeedUsecase_Execute(t *testing.T) {
 				}
 
 				// Verify usecase context is added to AppContextError
-				if appErr, ok := err.(*errors.AppContextError); ok {
+				appErr := &errors.AppContextError{}
+				if stderrors.As(err, &appErr) {
 					if appErr.Layer != "usecase" {
 						t.Errorf("Expected layer to be 'usecase', got %s", appErr.Layer)
 					}
@@ -342,7 +346,8 @@ func TestFetchSingleFeedUsecase_Execute_LoggerNilCase(t *testing.T) {
 	}
 
 	// Verify it's an AppContextError
-	if appErr, ok := err.(*errors.AppContextError); ok {
+	appErr := &errors.AppContextError{}
+	if stderrors.As(err, &appErr) {
 		t.Logf("Success: Got expected AppContextError: %s", appErr.Message)
 	} else {
 		t.Errorf("Expected AppContextError, got %T", err)

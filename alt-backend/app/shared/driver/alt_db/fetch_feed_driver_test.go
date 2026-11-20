@@ -170,14 +170,14 @@ func TestBuildExcludeClauseMultiple(t *testing.T) {
 	t.Run("NilSlice_ReturnsEmpty", func(t *testing.T) {
 		args := []any{20, uuid.New()}
 		clause, resultArgs := buildExcludeClauseMultiple(args, nil)
-		require.Equal(t, "", clause)
+		require.Empty(t, clause)
 		require.Len(t, resultArgs, 2)
 	})
 
 	t.Run("EmptySlice_ReturnsEmpty", func(t *testing.T) {
 		args := []any{20, uuid.New()}
 		clause, resultArgs := buildExcludeClauseMultiple(args, []uuid.UUID{})
-		require.Equal(t, "", clause)
+		require.Empty(t, clause)
 		require.Len(t, resultArgs, 2)
 	})
 

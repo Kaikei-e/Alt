@@ -39,7 +39,7 @@ func TestRequirePeerProcedure_DefaultAllowlist_FullInventory(t *testing.T) {
 
 				t.Run(testName, func(t *testing.T) {
 					invoked = false
-					req := httptest.NewRequest(http.MethodPost, path, nil)
+					req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, path, nil)
 					req.TLS = &tls.ConnectionState{
 						VerifiedChains: [][]*x509.Certificate{
 							{
@@ -252,7 +252,7 @@ func TestRequirePeerProcedure_Denials(t *testing.T) {
 				}))
 			}
 
-			req := httptest.NewRequest(http.MethodPost, tt.path, nil)
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, tt.path, nil)
 			if tt.hasTLS {
 				req.TLS = &tls.ConnectionState{
 					VerifiedChains: [][]*x509.Certificate{
@@ -512,7 +512,7 @@ func TestRequirePeerProcedure_ExactPeerAllowlist(t *testing.T) {
 			}
 
 			for _, proc := range want {
-				req := httptest.NewRequest(http.MethodPost, "/services.datahub.v1.DataHubService/"+proc, nil)
+				req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/services.datahub.v1.DataHubService/"+proc, nil)
 				req.TLS = &tls.ConnectionState{
 					VerifiedChains: [][]*x509.Certificate{{{Subject: pkix.Name{CommonName: peer}}}},
 				}
@@ -524,7 +524,7 @@ func TestRequirePeerProcedure_ExactPeerAllowlist(t *testing.T) {
 			}
 
 			for _, proc := range tc.denied {
-				req := httptest.NewRequest(http.MethodPost, "/services.datahub.v1.DataHubService/"+proc, nil)
+				req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/services.datahub.v1.DataHubService/"+proc, nil)
 				req.TLS = &tls.ConnectionState{
 					VerifiedChains: [][]*x509.Certificate{{{Subject: pkix.Name{CommonName: peer}}}},
 				}
@@ -575,7 +575,7 @@ func TestRequirePeerProcedure_RecapWorkerArticleBatchScope(t *testing.T) {
 	}))
 
 	newRecapReq := func(proc string) *http.Request {
-		req := httptest.NewRequest(http.MethodPost, "/services.datahub.v1.DataHubService/"+proc, nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/services.datahub.v1.DataHubService/"+proc, nil)
 		req.TLS = &tls.ConnectionState{
 			VerifiedChains: [][]*x509.Certificate{{{Subject: pkix.Name{CommonName: "recap-worker"}}}},
 		}

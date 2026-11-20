@@ -69,10 +69,10 @@ func TestStreamSummarizeResponse_Construction(t *testing.T) {
 		FullSummary: &summary,
 	}
 
-	assert.Equal(t, articleID, cachedResp.ArticleId)
-	assert.True(t, cachedResp.IsCached)
-	assert.True(t, cachedResp.IsFinal)
-	assert.Equal(t, summary, *cachedResp.FullSummary)
+	assert.Equal(t, articleID, cachedResp.GetArticleId())
+	assert.True(t, cachedResp.GetIsCached())
+	assert.True(t, cachedResp.GetIsFinal())
+	assert.Equal(t, summary, cachedResp.GetFullSummary())
 
 	chunkText := "This is a chunk"
 	chunkResp := &feedsv2.StreamSummarizeResponse{
@@ -82,9 +82,9 @@ func TestStreamSummarizeResponse_Construction(t *testing.T) {
 		IsCached:  false,
 	}
 
-	assert.Equal(t, chunkText, chunkResp.Chunk)
-	assert.False(t, chunkResp.IsFinal)
-	assert.False(t, chunkResp.IsCached)
+	assert.Equal(t, chunkText, chunkResp.GetChunk())
+	assert.False(t, chunkResp.GetIsFinal())
+	assert.False(t, chunkResp.GetIsCached())
 }
 
 type trackingUpstreamBody struct {
@@ -214,8 +214,8 @@ func TestStreamSummarize_EarlyReturnClosesUpstreamAndCancelsStreamCtx(t *testing
 			defer cancelReq()
 
 			payload := `{"articleId":"art-1","forceRefresh":true}`
-			framed := append([]byte{0, 0, 0, 0, byte(len(payload))}, []byte(payload)...)
-			httpReq := httptest.NewRequest(
+			framed := append([]byte{0, 0, 0, 0, byte(len(payload) & 0xff)}, []byte(payload)...)
+			httpReq := httptest.NewRequestWithContext(t.Context(),
 				http.MethodPost,
 				feedsv2connect.FeedServiceStreamSummarizeProcedure,
 				strings.NewReader(string(framed)),

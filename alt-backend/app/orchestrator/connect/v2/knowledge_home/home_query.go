@@ -54,7 +54,7 @@ func (h *Handler) GetKnowledgeHome(
 			fmt.Errorf("knowledge home is not enabled for this user"))
 	}
 
-	limit := int(req.Msg.Limit)
+	limit := int(req.Msg.GetLimit())
 	if limit <= 0 {
 		limit = 20
 	}
@@ -64,12 +64,12 @@ func (h *Handler) GetKnowledgeHome(
 
 	var cursor string
 	if req.Msg.Cursor != nil {
-		cursor = *req.Msg.Cursor
+		cursor = req.Msg.GetCursor()
 	}
 
 	date := time.Now()
-	if req.Msg.Date != nil && *req.Msg.Date != "" {
-		parsed, err := time.Parse("2006-01-02", *req.Msg.Date)
+	if req.Msg.Date != nil && req.Msg.GetDate() != "" {
+		parsed, err := time.Parse("2006-01-02", req.Msg.GetDate())
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInvalidArgument,
 				fmt.Errorf("invalid date format, expected YYYY-MM-DD: %w", err))
@@ -78,8 +78,8 @@ func (h *Handler) GetKnowledgeHome(
 	}
 
 	var lensID *uuid.UUID
-	if req.Msg.LensId != nil && *req.Msg.LensId != "" {
-		parsedLensID, err := parseUUID(*req.Msg.LensId, "lens_id")
+	if req.Msg.LensId != nil && req.Msg.GetLensId() != "" {
+		parsedLensID, err := parseUUID(req.Msg.GetLensId(), "lens_id")
 		if err != nil {
 			return nil, err
 		}

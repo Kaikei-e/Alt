@@ -10,11 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 func RestHandleMarkFeedAsRead(container *di.ApplicationComponents) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		ctx := c.Request().Context()
 		var readStatus ReadStatus
 		err := c.Bind(&readStatus)
@@ -42,7 +42,7 @@ func RestHandleMarkFeedAsRead(container *di.ApplicationComponents) echo.HandlerF
 }
 
 func RestHandleRegisterFavoriteFeed(container *di.ApplicationComponents) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		ctx := c.Request().Context()
 		var payload RssFeedLink
 		if err := c.Bind(&payload); err != nil {
@@ -87,7 +87,7 @@ func RestHandleRegisterFavoriteFeed(container *di.ApplicationComponents) echo.Ha
 }
 
 func RestHandleUnreadCount(container *di.ApplicationComponents) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		ctx := c.Request().Context()
 		sinceStr := c.QueryParam("since")
 		var since time.Time

@@ -32,7 +32,8 @@ func TestHandler_GetKnowledgeHome_Unauthenticated(t *testing.T) {
 	_, err := handler.GetKnowledgeHome(context.Background(), req)
 	require.Error(t, err)
 
-	connectErr, ok := err.(*connect.Error)
+	connectErr := &connect.Error{}
+	ok := errors.As(err, &connectErr)
 	require.True(t, ok)
 	assert.Equal(t, connect.CodeUnauthenticated, connectErr.Code())
 }
@@ -54,7 +55,8 @@ func TestHandler_GetKnowledgeHome_FlagDisabled(t *testing.T) {
 	_, err := handler.GetKnowledgeHome(ctx, req)
 	require.Error(t, err)
 
-	connectErr, ok := err.(*connect.Error)
+	connectErr := &connect.Error{}
+	ok := errors.As(err, &connectErr)
 	require.True(t, ok)
 	assert.Equal(t, connect.CodePermissionDenied, connectErr.Code())
 }
@@ -75,10 +77,10 @@ func TestHandler_GetKnowledgeHome_FlagEnabled(t *testing.T) {
 
 	resp, err := handler.GetKnowledgeHome(ctx, req)
 	require.NoError(t, err)
-	assert.Len(t, resp.Msg.Items, 1)
-	assert.True(t, resp.Msg.HasMore)
+	assert.Len(t, resp.Msg.GetItems(), 1)
+	assert.True(t, resp.Msg.GetHasMore())
 	require.NotNil(t, resp.Msg.ServiceQuality)
-	assert.Equal(t, "full", *resp.Msg.ServiceQuality)
+	assert.Equal(t, "full", resp.Msg.GetServiceQuality())
 }
 
 func TestHandler_GetKnowledgeHome_NilFlagPort(t *testing.T) {
@@ -93,7 +95,7 @@ func TestHandler_GetKnowledgeHome_NilFlagPort(t *testing.T) {
 
 	resp, err := handler.GetKnowledgeHome(ctx, req)
 	require.NoError(t, err)
-	assert.Len(t, resp.Msg.Items, 1)
+	assert.Len(t, resp.Msg.GetItems(), 1)
 }
 
 func TestHandler_GetKnowledgeHome_SummaryStateMapping(t *testing.T) {
@@ -132,11 +134,11 @@ func TestHandler_GetKnowledgeHome_SummaryStateMapping(t *testing.T) {
 
 	resp, err := handler.GetKnowledgeHome(ctx, req)
 	require.NoError(t, err)
-	require.Len(t, resp.Msg.Items, 3)
+	require.Len(t, resp.Msg.GetItems(), 3)
 
-	assert.Equal(t, "ready", resp.Msg.Items[0].SummaryState)
-	assert.Equal(t, "pending", resp.Msg.Items[1].SummaryState)
-	assert.Equal(t, "missing", resp.Msg.Items[2].SummaryState)
+	assert.Equal(t, "ready", resp.Msg.GetItems()[0].GetSummaryState())
+	assert.Equal(t, "pending", resp.Msg.GetItems()[1].GetSummaryState())
+	assert.Equal(t, "missing", resp.Msg.GetItems()[2].GetSummaryState())
 }
 
 func TestHandler_GetKnowledgeHome_NeedToKnowCountFromDigest(t *testing.T) {
@@ -167,7 +169,7 @@ func TestHandler_GetKnowledgeHome_NeedToKnowCountFromDigest(t *testing.T) {
 	require.NoError(t, err)
 
 	// Should use digest value (7), NOT page-scan count (1)
-	assert.Equal(t, int32(7), resp.Msg.TodayDigest.NeedToKnowCount,
+	assert.Equal(t, int32(7), resp.Msg.GetTodayDigest().GetNeedToKnowCount(),
 		"Should use backend-authoritative count from digest, not page scan")
 }
 
@@ -188,8 +190,8 @@ func TestHandler_GetKnowledgeHome_FreshnessMapping(t *testing.T) {
 	resp, err := handler.GetKnowledgeHome(ctx, req)
 	require.NoError(t, err)
 
-	assert.Equal(t, "stale", resp.Msg.TodayDigest.DigestFreshness)
-	assert.NotEmpty(t, resp.Msg.TodayDigest.LastProjectedAt)
+	assert.Equal(t, "stale", resp.Msg.GetTodayDigest().GetDigestFreshness())
+	assert.NotEmpty(t, resp.Msg.GetTodayDigest().GetLastProjectedAt())
 }
 
 func TestHandler_GetKnowledgeHome_ServiceQualityDegraded(t *testing.T) {
@@ -203,8 +205,8 @@ func TestHandler_GetKnowledgeHome_ServiceQualityDegraded(t *testing.T) {
 	resp, err := handler.GetKnowledgeHome(ctx, req)
 	require.NoError(t, err)
 	require.NotNil(t, resp.Msg.ServiceQuality)
-	assert.True(t, resp.Msg.DegradedMode)
-	assert.Equal(t, "degraded", *resp.Msg.ServiceQuality)
+	assert.True(t, resp.Msg.GetDegradedMode())
+	assert.Equal(t, "degraded", resp.Msg.GetServiceQuality())
 }
 
 func TestHandler_GetKnowledgeHome_WithMetrics_DoesNotPanic(t *testing.T) {
@@ -236,9 +238,9 @@ func TestHandler_GetKnowledgeHome_WithMetrics_DoesNotPanic(t *testing.T) {
 	ctx := testUserContext()
 	resp, err := handler.GetKnowledgeHome(ctx, connect.NewRequest(&knowledgehomev1.GetKnowledgeHomeRequest{Limit: 20}))
 	require.NoError(t, err)
-	assert.Len(t, resp.Msg.Items, 1)
+	assert.Len(t, resp.Msg.GetItems(), 1)
 	require.NotNil(t, resp.Msg.ServiceQuality)
-	assert.Equal(t, "full", *resp.Msg.ServiceQuality)
+	assert.Equal(t, "full", resp.Msg.GetServiceQuality())
 }
 
 func TestHandler_GetKnowledgeHome_ServiceQualityFallback(t *testing.T) {
@@ -253,7 +255,7 @@ func TestHandler_GetKnowledgeHome_ServiceQualityFallback(t *testing.T) {
 	resp, err := handler.GetKnowledgeHome(ctx, req)
 	require.NoError(t, err)
 	require.NotNil(t, resp.Msg.ServiceQuality)
-	assert.Equal(t, "fallback", *resp.Msg.ServiceQuality)
+	assert.Equal(t, "fallback", resp.Msg.GetServiceQuality())
 }
 
 func TestHandler_GetKnowledgeHome_BothReadModelsFail_ReturnsInternalError(t *testing.T) {
@@ -269,7 +271,8 @@ func TestHandler_GetKnowledgeHome_BothReadModelsFail_ReturnsInternalError(t *tes
 	_, err := handler.GetKnowledgeHome(ctx, req)
 	require.Error(t, err)
 
-	connectErr, ok := err.(*connect.Error)
+	connectErr := &connect.Error{}
+	ok := errors.As(err, &connectErr)
 	require.True(t, ok)
 	assert.Equal(t, connect.CodeInternal, connectErr.Code())
 }

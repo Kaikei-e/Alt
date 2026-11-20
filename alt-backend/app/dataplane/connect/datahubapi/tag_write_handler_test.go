@@ -58,11 +58,11 @@ func TestBatchUpsertArticleTags_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !resp.Msg.Success {
+	if !resp.Msg.GetSuccess() {
 		t.Error("expected success to be true")
 	}
-	if resp.Msg.TotalUpserted != 3 {
-		t.Errorf("expected total_upserted 3, got %d", resp.Msg.TotalUpserted)
+	if resp.Msg.GetTotalUpserted() != 3 {
+		t.Errorf("expected total_upserted 3, got %d", resp.Msg.GetTotalUpserted())
 	}
 }
 

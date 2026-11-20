@@ -2,6 +2,7 @@ package knowledge_home
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"testing"
 	"time"
@@ -178,9 +179,9 @@ func TestConvertHomeItemToProto_LinkMapping(t *testing.T) {
 			WhyReasons:   []domain.WhyReason{{Code: "new_unread"}},
 		}
 		proto := convertHomeItemToProto(item)
-		assert.Equal(t, "https://example.com/article", proto.Url)
+		assert.Equal(t, "https://example.com/article", proto.GetUrl())
 		require.NotNil(t, proto.ArticleId)
-		assert.Equal(t, refID.String(), *proto.ArticleId)
+		assert.Equal(t, refID.String(), proto.GetArticleId())
 	})
 
 	t.Run("article without link", func(t *testing.T) {
@@ -195,7 +196,7 @@ func TestConvertHomeItemToProto_LinkMapping(t *testing.T) {
 			WhyReasons:   []domain.WhyReason{{Code: "new_unread"}},
 		}
 		proto := convertHomeItemToProto(item)
-		assert.Empty(t, proto.Url)
+		assert.Empty(t, proto.GetUrl())
 	})
 
 	t.Run("recap anchor has no link", func(t *testing.T) {
@@ -209,7 +210,7 @@ func TestConvertHomeItemToProto_LinkMapping(t *testing.T) {
 			WhyReasons:   []domain.WhyReason{{Code: "in_weekly_recap"}},
 		}
 		proto := convertHomeItemToProto(item)
-		assert.Empty(t, proto.Url)
+		assert.Empty(t, proto.GetUrl())
 		require.NotNil(t, proto.RecapId)
 	})
 }
@@ -228,12 +229,12 @@ func TestConvertHomeItemToProto_SupersedeInfo(t *testing.T) {
 			WhyReasons:      []domain.WhyReason{{Code: "new_unread"}},
 		}
 		proto := convertHomeItemToProto(item)
-		require.NotNil(t, proto.SupersedeInfo)
-		assert.Equal(t, "summary_updated", proto.SupersedeInfo.State)
-		require.NotNil(t, proto.SupersedeInfo.PreviousSummaryExcerpt)
-		assert.Equal(t, "Old summary text", *proto.SupersedeInfo.PreviousSummaryExcerpt)
-		assert.Empty(t, proto.SupersedeInfo.PreviousTags)
-		assert.Empty(t, proto.SupersedeInfo.PreviousWhyCodes)
+		require.NotNil(t, proto.GetSupersedeInfo())
+		assert.Equal(t, "summary_updated", proto.GetSupersedeInfo().GetState())
+		require.NotNil(t, proto.GetSupersedeInfo().PreviousSummaryExcerpt)
+		assert.Equal(t, "Old summary text", proto.GetSupersedeInfo().GetPreviousSummaryExcerpt())
+		assert.Empty(t, proto.GetSupersedeInfo().GetPreviousTags())
+		assert.Empty(t, proto.GetSupersedeInfo().GetPreviousWhyCodes())
 	})
 
 	t.Run("tags_updated with previous tags", func(t *testing.T) {
@@ -249,9 +250,9 @@ func TestConvertHomeItemToProto_SupersedeInfo(t *testing.T) {
 			WhyReasons:      []domain.WhyReason{{Code: "new_unread"}},
 		}
 		proto := convertHomeItemToProto(item)
-		require.NotNil(t, proto.SupersedeInfo)
-		assert.Equal(t, "tags_updated", proto.SupersedeInfo.State)
-		assert.Equal(t, []string{"go", "rust"}, proto.SupersedeInfo.PreviousTags)
+		require.NotNil(t, proto.GetSupersedeInfo())
+		assert.Equal(t, "tags_updated", proto.GetSupersedeInfo().GetState())
+		assert.Equal(t, []string{"go", "rust"}, proto.GetSupersedeInfo().GetPreviousTags())
 	})
 
 	t.Run("reason_updated with previous why codes", func(t *testing.T) {
@@ -267,9 +268,9 @@ func TestConvertHomeItemToProto_SupersedeInfo(t *testing.T) {
 			WhyReasons:      []domain.WhyReason{{Code: "new_unread"}},
 		}
 		proto := convertHomeItemToProto(item)
-		require.NotNil(t, proto.SupersedeInfo)
-		assert.Equal(t, "reason_updated", proto.SupersedeInfo.State)
-		assert.Equal(t, []string{"new_unread", "tag_hotspot"}, proto.SupersedeInfo.PreviousWhyCodes)
+		require.NotNil(t, proto.GetSupersedeInfo())
+		assert.Equal(t, "reason_updated", proto.GetSupersedeInfo().GetState())
+		assert.Equal(t, []string{"new_unread", "tag_hotspot"}, proto.GetSupersedeInfo().GetPreviousWhyCodes())
 	})
 
 	t.Run("no supersede state", func(t *testing.T) {
@@ -281,7 +282,7 @@ func TestConvertHomeItemToProto_SupersedeInfo(t *testing.T) {
 			WhyReasons: []domain.WhyReason{{Code: "new_unread"}},
 		}
 		proto := convertHomeItemToProto(item)
-		assert.Nil(t, proto.SupersedeInfo)
+		assert.Nil(t, proto.GetSupersedeInfo())
 	})
 }
 
@@ -319,7 +320,8 @@ func TestHandler_TrackHomeAction_Validation(t *testing.T) {
 			_, err := handler.TrackHomeAction(context.Background(), req)
 			require.Error(t, err)
 
-			connectErr, ok := err.(*connect.Error)
+			connectErr := &connect.Error{}
+			ok := errors.As(err, &connectErr)
 			require.True(t, ok)
 			// Without user context, it's unauthenticated first
 			assert.Equal(t, connect.CodeUnauthenticated, connectErr.Code())
@@ -363,8 +365,8 @@ func TestHandler_GetKnowledgeHome_RunsRecallRailConcurrently(t *testing.T) {
 
 	require.NoError(t, err)
 	require.NotNil(t, resp)
-	assert.Len(t, resp.Msg.Items, 1)
-	assert.Len(t, resp.Msg.RecallCandidates, 1)
+	assert.Len(t, resp.Msg.GetItems(), 1)
+	assert.Len(t, resp.Msg.GetRecallCandidates(), 1)
 	assert.Less(t, elapsed, 85*time.Millisecond,
 		"recallRailUsecase must run concurrently with getHomeUsecase rather than sequentially after it")
 }

@@ -2,7 +2,6 @@ package augur
 
 import (
 	"context"
-	"io"
 	"log/slog"
 	"testing"
 	"time"
@@ -30,7 +29,7 @@ func timeFar() time.Time { return time.Now().Add(24 * time.Hour) }
 // (the original behaviour) caused every turn to spawn a brand-new
 // conversation row, fragmenting the user's history.
 func TestSanitizeMetaEvent_PreservesConversationID(t *testing.T) {
-	h := NewHandler(nil, nil, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+	h := NewHandler(nil, nil, slog.New(slog.DiscardHandler))
 
 	in := &augurv2.StreamChatResponse{
 		Kind: "meta",
@@ -47,10 +46,10 @@ func TestSanitizeMetaEvent_PreservesConversationID(t *testing.T) {
 	out := h.sanitizeMetaEvent(in)
 	meta := out.GetMeta()
 	if assert.NotNil(t, meta, "sanitized event must still carry MetaPayload") {
-		assert.Equal(t, "11111111-2222-3333-4444-555555555555", meta.ConversationId,
+		assert.Equal(t, "11111111-2222-3333-4444-555555555555", meta.GetConversationId(),
 			"conversation_id must round-trip through sanitization")
-		assert.Len(t, meta.Citations, 1, "citations array must be preserved")
-		assert.Equal(t, "https://example.com", meta.Citations[0].Url)
+		assert.Len(t, meta.GetCitations(), 1, "citations array must be preserved")
+		assert.Equal(t, "https://example.com", meta.GetCitations()[0].GetUrl())
 	}
 }
 
@@ -63,7 +62,7 @@ func TestSanitizeMetaEvent_PreservesConversationID(t *testing.T) {
 // meta citations are what the FE falls back to whenever the stream ends
 // without a done event, so the dead links are permanent, not transient.
 func TestSanitizeMetaEvent_PreservesCitationKindAndRefID(t *testing.T) {
-	h := NewHandler(nil, nil, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+	h := NewHandler(nil, nil, slog.New(slog.DiscardHandler))
 
 	in := &augurv2.StreamChatResponse{
 		Kind: "meta",
@@ -86,10 +85,10 @@ func TestSanitizeMetaEvent_PreservesCitationKindAndRefID(t *testing.T) {
 	out := h.sanitizeMetaEvent(in)
 	meta := out.GetMeta()
 	require.NotNil(t, meta, "sanitized event must still carry MetaPayload")
-	require.Len(t, meta.Citations, 1, "citations array must be preserved")
-	assert.Equal(t, augurv2.CitationKind_CITATION_KIND_ARTICLE, meta.Citations[0].Kind,
+	require.Len(t, meta.GetCitations(), 1, "citations array must be preserved")
+	assert.Equal(t, augurv2.CitationKind_CITATION_KIND_ARTICLE, meta.GetCitations()[0].GetKind(),
 		"citation kind must survive sanitization; UNSPECIFIED renders as a dead link")
-	assert.Equal(t, "6b5bbd85-ed4a-4812-95f1-22f2d181437a", meta.Citations[0].RefId,
+	assert.Equal(t, "6b5bbd85-ed4a-4812-95f1-22f2d181437a", meta.GetCitations()[0].GetRefId(),
 		"citation ref_id must survive sanitization; it is the /articles/<id> target")
 }
 
@@ -107,11 +106,11 @@ func TestSanitizeMetaEvent_PreservesCitationKindAndRefID(t *testing.T) {
 // would otherwise vanish on meta events while surviving on delta / done /
 // error — the same asymmetric, hard-to-diagnose shape as the citation bug.
 func TestSanitizeMetaEvent_CarriesEveryField(t *testing.T) {
-	h := NewHandler(nil, nil, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+	h := NewHandler(nil, nil, slog.New(slog.DiscardHandler))
 
 	meta := &augurv2.MetaPayload{}
 	populateEveryField(t, meta.ProtoReflect())
-	require.NotEmpty(t, meta.Citations, "guard must populate the repeated citations field")
+	require.NotEmpty(t, meta.GetCitations(), "guard must populate the repeated citations field")
 
 	// The payload oneof is set here rather than by the walk: its members are
 	// mutually exclusive, so populating each in turn would leave only the last
@@ -120,7 +119,7 @@ func TestSanitizeMetaEvent_CarriesEveryField(t *testing.T) {
 		Payload: &augurv2.StreamChatResponse_Meta{Meta: meta},
 	}
 	populateEveryField(t, in.ProtoReflect())
-	require.NotEmpty(t, in.Kind, "guard must populate the envelope's non-oneof fields")
+	require.NotEmpty(t, in.GetKind(), "guard must populate the envelope's non-oneof fields")
 
 	want := proto.Clone(in).(*augurv2.StreamChatResponse)
 	out := h.sanitizeMetaEvent(in)
@@ -137,7 +136,7 @@ func TestSanitizeMetaEvent_CarriesEveryField(t *testing.T) {
 // "why not just return event?" is a tempting simplification — this test is
 // what says no.
 func TestSanitizeMetaEvent_ReturnsDeepCopy(t *testing.T) {
-	h := NewHandler(nil, nil, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+	h := NewHandler(nil, nil, slog.New(slog.DiscardHandler))
 
 	in := &augurv2.StreamChatResponse{
 		Kind: "meta",
@@ -266,7 +265,7 @@ func TestGetConversation_PassesThroughCodeNotFound(t *testing.T) {
 		GetConversation(gomock.Any(), gomock.Any()).
 		Return(nil, connect.NewError(connect.CodeNotFound, nil))
 
-	h := NewHandler(nil, mockPort, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+	h := NewHandler(nil, mockPort, slog.New(slog.DiscardHandler))
 	resp, err := h.GetConversation(authedCtx(), connect.NewRequest(&augurv2.GetConversationRequest{
 		Id: uuid.NewString(),
 	}))
@@ -289,7 +288,7 @@ func TestListConversations_PassesThroughCodeNotFound(t *testing.T) {
 		ListConversations(gomock.Any(), gomock.Any()).
 		Return(nil, connect.NewError(connect.CodeNotFound, nil))
 
-	h := NewHandler(nil, mockPort, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+	h := NewHandler(nil, mockPort, slog.New(slog.DiscardHandler))
 	resp, err := h.ListConversations(authedCtx(), connect.NewRequest(&augurv2.ListConversationsRequest{}))
 
 	require.Error(t, err)
@@ -310,7 +309,7 @@ func TestDeleteConversation_PassesThroughCodeNotFound(t *testing.T) {
 		DeleteConversation(gomock.Any(), gomock.Any()).
 		Return(nil, connect.NewError(connect.CodeNotFound, nil))
 
-	h := NewHandler(nil, mockPort, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+	h := NewHandler(nil, mockPort, slog.New(slog.DiscardHandler))
 	resp, err := h.DeleteConversation(authedCtx(), connect.NewRequest(&augurv2.DeleteConversationRequest{
 		Id: uuid.NewString(),
 	}))
@@ -333,7 +332,7 @@ func TestGetConversation_NonNotFoundStillWrapsAsInternal(t *testing.T) {
 		GetConversation(gomock.Any(), gomock.Any()).
 		Return(nil, connect.NewError(connect.CodeUnavailable, nil))
 
-	h := NewHandler(nil, mockPort, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+	h := NewHandler(nil, mockPort, slog.New(slog.DiscardHandler))
 	resp, err := h.GetConversation(authedCtx(), connect.NewRequest(&augurv2.GetConversationRequest{
 		Id: uuid.NewString(),
 	}))
@@ -359,7 +358,7 @@ func (s *stubRetrieveContextUsecase) Execute(ctx context.Context, query string, 
 
 func TestRetrieveContext_Unauthenticated_Rejected(t *testing.T) {
 	stubUC := &stubRetrieveContextUsecase{}
-	h := NewHandler(stubUC, nil, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+	h := NewHandler(stubUC, nil, slog.New(slog.DiscardHandler))
 
 	resp, err := h.RetrieveContext(context.Background(), connect.NewRequest(&augurv2.RetrieveContextRequest{
 		Query: "test query",
@@ -377,7 +376,7 @@ func TestRetrieveContext_Authenticated_ForwardsUserID(t *testing.T) {
 			{Title: "relevant knowledge", URL: "https://example.com", Score: 0.95},
 		},
 	}
-	h := NewHandler(stubUC, nil, slog.New(slog.NewJSONHandler(io.Discard, nil)))
+	h := NewHandler(stubUC, nil, slog.New(slog.DiscardHandler))
 
 	ctx := authedCtx()
 	user, err := domain.GetUserFromContext(ctx)
@@ -392,8 +391,8 @@ func TestRetrieveContext_Authenticated_ForwardsUserID(t *testing.T) {
 	assert.Equal(t, "test query", stubUC.capturedQuery)
 	assert.Equal(t, user.UserID.String(), stubUC.capturedUserID,
 		"authenticated user_id must be forwarded to RetrieveContext usecase")
-	require.Len(t, resp.Msg.Contexts, 1)
-	assert.Equal(t, "relevant knowledge", resp.Msg.Contexts[0].Title)
+	require.Len(t, resp.Msg.GetContexts(), 1)
+	assert.Equal(t, "relevant knowledge", resp.Msg.GetContexts()[0].GetTitle())
 }
 
 func TestExtractLastUserQuery(t *testing.T) {

@@ -57,7 +57,9 @@ func TestNewConfig_WithDefaults(t *testing.T) {
 
 			// Set test environment variables
 			for key, value := range tt.envVars {
-				os.Setenv(key, value)
+				if err := os.Setenv(key, value); err != nil {
+					t.Fatalf("setenv %s: %v", key, err)
+				}
 			}
 			defer clearTestEnv()
 
@@ -141,7 +143,9 @@ func TestNewConfig_WithEnvironmentOverrides(t *testing.T) {
 
 			// Set test environment variables
 			for key, value := range tt.envVars {
-				os.Setenv(key, value)
+				if err := os.Setenv(key, value); err != nil {
+					t.Fatalf("setenv %s: %v", key, err)
+				}
 			}
 			defer clearTestEnv()
 
@@ -191,7 +195,9 @@ func TestConfigValidation(t *testing.T) {
 
 			// Set test environment variables
 			for key, value := range tt.envVars {
-				os.Setenv(key, value)
+				if err := os.Setenv(key, value); err != nil {
+					t.Fatalf("setenv %s: %v", key, err)
+				}
 			}
 			defer clearTestEnv()
 
@@ -224,7 +230,9 @@ func clearTestEnv() {
 	}
 
 	for _, env := range envVars {
-		os.Unsetenv(env)
+		if err := os.Unsetenv(env); err != nil {
+			panic(err)
+		}
 	}
 }
 

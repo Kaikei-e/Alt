@@ -41,10 +41,10 @@ func (c *Client) GetReprojectRun(ctx context.Context, runID uuid.UUID) (*domain.
 		return nil, fmt.Errorf("sovereign GetReprojectRun: %w", err)
 	}
 
-	if resp.Msg.Run == nil {
+	if resp.Msg.GetRun() == nil {
 		return nil, nil
 	}
-	run := protoToReprojectRun(resp.Msg.Run)
+	run := protoToReprojectRun(resp.Msg.GetRun())
 	return &run, nil
 }
 
@@ -75,8 +75,8 @@ func (c *Client) ListReprojectRuns(ctx context.Context, statusFilter string, lim
 		return nil, fmt.Errorf("sovereign ListReprojectRuns: %w", err)
 	}
 
-	runs := make([]domain.ReprojectRun, 0, len(resp.Msg.Runs))
-	for _, pb := range resp.Msg.Runs {
+	runs := make([]domain.ReprojectRun, 0, len(resp.Msg.GetRuns()))
+	for _, pb := range resp.Msg.GetRuns() {
 		runs = append(runs, protoToReprojectRun(pb))
 	}
 	return runs, nil
@@ -95,17 +95,17 @@ func (c *Client) CompareProjections(ctx context.Context, fromVersion, toVersion 
 		return nil, fmt.Errorf("sovereign CompareProjections: %w", err)
 	}
 
-	s := resp.Msg.Summary
+	s := resp.Msg.GetSummary()
 	if s == nil {
 		return nil, nil
 	}
 	return &domain.ReprojectDiffSummary{
-		FromItemCount:  int64(s.FromCount),
-		ToItemCount:    int64(s.ToCount),
-		FromAvgScore:   s.FromAvgScore,
-		ToAvgScore:     s.ToAvgScore,
-		FromEmptyCount: int64(s.FromEmptySummary),
-		ToEmptyCount:   int64(s.ToEmptySummary),
+		FromItemCount:  int64(s.GetFromCount()),
+		ToItemCount:    int64(s.GetToCount()),
+		FromAvgScore:   s.GetFromAvgScore(),
+		ToAvgScore:     s.GetToAvgScore(),
+		FromEmptyCount: int64(s.GetFromEmptySummary()),
+		ToEmptyCount:   int64(s.GetToEmptySummary()),
 	}, nil
 }
 
@@ -144,18 +144,18 @@ func (c *Client) ListProjectionAudits(ctx context.Context, projectionName string
 		return nil, fmt.Errorf("sovereign ListProjectionAudits: %w", err)
 	}
 
-	audits := make([]domain.ProjectionAudit, 0, len(resp.Msg.Audits))
-	for _, pb := range resp.Msg.Audits {
+	audits := make([]domain.ProjectionAudit, 0, len(resp.Msg.GetAudits()))
+	for _, pb := range resp.Msg.GetAudits() {
 		a := domain.ProjectionAudit{
-			AuditID:           parseUUID(pb.AuditId),
-			ProjectionName:    pb.ProjectionName,
-			ProjectionVersion: pb.ProjectionVersion,
-			SampleSize:        int(pb.SampleSize),
-			MismatchCount:     int(pb.MismatchCount),
-			DetailsJSON:       json.RawMessage(pb.DetailsJson),
+			AuditID:           parseUUID(pb.GetAuditId()),
+			ProjectionName:    pb.GetProjectionName(),
+			ProjectionVersion: pb.GetProjectionVersion(),
+			SampleSize:        int(pb.GetSampleSize()),
+			MismatchCount:     int(pb.GetMismatchCount()),
+			DetailsJSON:       json.RawMessage(pb.GetDetailsJson()),
 		}
-		if pb.CheckedAt != nil {
-			a.CheckedAt = pb.CheckedAt.AsTime()
+		if pb.GetCheckedAt() != nil {
+			a.CheckedAt = pb.GetCheckedAt().AsTime()
 		}
 		audits = append(audits, a)
 	}
@@ -203,34 +203,34 @@ func protoToReprojectRun(pb *sovereignv1.ReprojectRun) domain.ReprojectRun {
 		return domain.ReprojectRun{}
 	}
 	run := domain.ReprojectRun{
-		ReprojectRunID:    parseUUID(pb.ReprojectRunId),
-		ProjectionName:    pb.ProjectionName,
-		FromVersion:       pb.FromVersion,
-		ToVersion:         pb.ToVersion,
-		InitiatedBy:       parseUUIDPtr(pb.InitiatedBy),
-		Mode:              pb.Mode,
-		Status:            pb.Status,
-		CheckpointPayload: json.RawMessage(pb.CheckpointPayload),
-		StatsJSON:         json.RawMessage(pb.StatsJson),
-		DiffSummaryJSON:   json.RawMessage(pb.DiffSummaryJson),
+		ReprojectRunID:    parseUUID(pb.GetReprojectRunId()),
+		ProjectionName:    pb.GetProjectionName(),
+		FromVersion:       pb.GetFromVersion(),
+		ToVersion:         pb.GetToVersion(),
+		InitiatedBy:       parseUUIDPtr(pb.GetInitiatedBy()),
+		Mode:              pb.GetMode(),
+		Status:            pb.GetStatus(),
+		CheckpointPayload: json.RawMessage(pb.GetCheckpointPayload()),
+		StatsJSON:         json.RawMessage(pb.GetStatsJson()),
+		DiffSummaryJSON:   json.RawMessage(pb.GetDiffSummaryJson()),
 	}
-	if pb.CreatedAt != nil {
-		run.CreatedAt = pb.CreatedAt.AsTime()
+	if pb.GetCreatedAt() != nil {
+		run.CreatedAt = pb.GetCreatedAt().AsTime()
 	}
-	if pb.RangeStart != nil {
-		t := pb.RangeStart.AsTime()
+	if pb.GetRangeStart() != nil {
+		t := pb.GetRangeStart().AsTime()
 		run.RangeStart = &t
 	}
-	if pb.RangeEnd != nil {
-		t := pb.RangeEnd.AsTime()
+	if pb.GetRangeEnd() != nil {
+		t := pb.GetRangeEnd().AsTime()
 		run.RangeEnd = &t
 	}
-	if pb.StartedAt != nil {
-		t := pb.StartedAt.AsTime()
+	if pb.GetStartedAt() != nil {
+		t := pb.GetStartedAt().AsTime()
 		run.StartedAt = &t
 	}
-	if pb.FinishedAt != nil {
-		t := pb.FinishedAt.AsTime()
+	if pb.GetFinishedAt() != nil {
+		t := pb.GetFinishedAt().AsTime()
 		run.FinishedAt = &t
 	}
 	return run

@@ -3,7 +3,6 @@ package bootstrap
 import (
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"os"
 	"sync"
@@ -13,7 +12,7 @@ import (
 )
 
 func testLogger() *slog.Logger {
-	return slog.New(slog.NewTextHandler(io.Discard, nil))
+	return slog.New(slog.DiscardHandler)
 }
 
 // The supervisor replaces main.go's serverExit channel. A server that returns

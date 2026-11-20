@@ -10,7 +10,6 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
-	"io"
 	"log/slog"
 	"math/big"
 	"net"
@@ -82,7 +81,7 @@ func TestResolveRAGOrchestratorURL_DefaultsToHTTPS(t *testing.T) {
 }
 
 func TestNewRAGHTTPClient_HTTPSWithoutMTLSFiles_ReturnsError(t *testing.T) {
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 
 	t.Run("unset MTLS env vars", func(t *testing.T) {
 		t.Setenv("MTLS_CERT_FILE", "")
@@ -91,8 +90,8 @@ func TestNewRAGHTTPClient_HTTPSWithoutMTLSFiles_ReturnsError(t *testing.T) {
 
 		_, err := newRAGHTTPClient("https://rag-orchestrator:9010", logger)
 		require.Error(t, err)
-		assert.ErrorContains(t, err, "MTLS_CERT_FILE")
-		assert.ErrorContains(t, err, "MTLS_KEY_FILE")
+		require.ErrorContains(t, err, "MTLS_CERT_FILE")
+		require.ErrorContains(t, err, "MTLS_KEY_FILE")
 		assert.ErrorContains(t, err, "MTLS_CA_FILE")
 	})
 
@@ -103,7 +102,7 @@ func TestNewRAGHTTPClient_HTTPSWithoutMTLSFiles_ReturnsError(t *testing.T) {
 
 		_, err := newRAGHTTPClient("https://rag-orchestrator:9010", logger)
 		require.Error(t, err)
-		assert.ErrorContains(t, err, "build mTLS client")
+		require.ErrorContains(t, err, "build mTLS client")
 		assert.ErrorIs(t, err, os.ErrNotExist)
 	})
 
@@ -115,7 +114,7 @@ func TestNewRAGHTTPClient_HTTPSWithoutMTLSFiles_ReturnsError(t *testing.T) {
 }
 
 func TestNewRAGHTTPClient_HTTPSWithValidMTLSFiles_ReturnsMTLSClient(t *testing.T) {
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	certPath, keyPath, caPath := writeTestPKI(t, t.TempDir())
 
 	t.Setenv("MTLS_CERT_FILE", certPath)
@@ -149,7 +148,7 @@ func TestNewRAGHTTPClient_PlainHTTP_LogsWarningAndSucceedsWithoutMTLS(t *testing
 }
 
 func TestNewRAGClient_EndToEndMTLSAndBearerAuth(t *testing.T) {
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	dir := t.TempDir()
 	certPath, keyPath, caPath := writeTestPKI(t, dir)
 
@@ -230,7 +229,7 @@ func TestLoadDBPassword_ErrorCases(t *testing.T) {
 
 		_, err := loadDBPassword()
 		require.Error(t, err)
-		assert.ErrorContains(t, err, "read DB_PASSWORD_FILE")
+		require.ErrorContains(t, err, "read DB_PASSWORD_FILE")
 		assert.ErrorIs(t, err, os.ErrNotExist)
 	})
 

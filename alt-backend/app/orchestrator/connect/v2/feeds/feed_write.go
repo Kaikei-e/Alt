@@ -28,13 +28,13 @@ func (h *Handler) MarkAsRead(
 	}
 
 	// Validate article_url
-	if req.Msg.ArticleUrl == "" {
+	if req.Msg.GetArticleUrl() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("article_url is required"))
 	}
 
 	// Parse URL
-	articleURL, err := url.Parse(req.Msg.ArticleUrl)
+	articleURL, err := url.Parse(req.Msg.GetArticleUrl())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("invalid article_url: %w", err))
@@ -45,17 +45,17 @@ func (h *Handler) MarkAsRead(
 		// Map domain errors to appropriate HTTP status codes
 		if errors.Is(err, domain.ErrFeedNotFound) {
 			h.logger.InfoContext(ctx, "feed not found for mark as read",
-				"article_url", req.Msg.ArticleUrl,
+				"article_url", req.Msg.GetArticleUrl(),
 				"error", err)
 			return nil, connect.NewError(connect.CodeNotFound,
-				fmt.Errorf("feed not found: %s", req.Msg.ArticleUrl))
+				fmt.Errorf("feed not found: %s", req.Msg.GetArticleUrl()))
 		}
 
 		// All other errors are internal server errors
 		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "MarkAsRead")
 	}
 
-	h.logger.InfoContext(ctx, "feed marked as read", "article_url", req.Msg.ArticleUrl)
+	h.logger.InfoContext(ctx, "feed marked as read", "article_url", req.Msg.GetArticleUrl())
 
 	return connect.NewResponse(&feedsv2.MarkAsReadResponse{
 		Message: "Feed read status updated",
@@ -72,12 +72,12 @@ func (h *Handler) Subscribe(
 		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 
-	if req.Msg.FeedLinkId == "" {
+	if req.Msg.GetFeedLinkId() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("feed_link_id is required"))
 	}
 
-	feedLinkID, err := uuid.Parse(req.Msg.FeedLinkId)
+	feedLinkID, err := uuid.Parse(req.Msg.GetFeedLinkId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("invalid feed_link_id: %w", err))
@@ -102,12 +102,12 @@ func (h *Handler) Unsubscribe(
 		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 
-	if req.Msg.FeedLinkId == "" {
+	if req.Msg.GetFeedLinkId() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("feed_link_id is required"))
 	}
 
-	feedLinkID, err := uuid.Parse(req.Msg.FeedLinkId)
+	feedLinkID, err := uuid.Parse(req.Msg.GetFeedLinkId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("invalid feed_link_id: %w", err))
@@ -136,12 +136,12 @@ func (h *Handler) SetSubscriptionDailyCap(
 		return nil, connect.NewError(connect.CodeUnauthenticated, nil)
 	}
 
-	if req.Msg.FeedLinkId == "" {
+	if req.Msg.GetFeedLinkId() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("feed_link_id is required"))
 	}
 
-	feedLinkID, err := uuid.Parse(req.Msg.FeedLinkId)
+	feedLinkID, err := uuid.Parse(req.Msg.GetFeedLinkId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			fmt.Errorf("invalid feed_link_id: %w", err))
@@ -160,7 +160,7 @@ func (h *Handler) SetSubscriptionDailyCap(
 	if err := h.deps.SetSubscriptionDailyCap.Execute(ctx, userCtx.UserID, feedLinkID, dailyCap); err != nil {
 		if errors.Is(err, domain.ErrFeedNotFound) {
 			return nil, connect.NewError(connect.CodeNotFound,
-				fmt.Errorf("subscription not found: %s", req.Msg.FeedLinkId))
+				fmt.Errorf("subscription not found: %s", req.Msg.GetFeedLinkId()))
 		}
 		return nil, errorhandler.HandleUpstreamError(ctx, h.logger, err, "SetSubscriptionDailyCap")
 	}

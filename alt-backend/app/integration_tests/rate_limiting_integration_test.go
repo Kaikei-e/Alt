@@ -59,9 +59,9 @@ func TestRateLimitingIntegration(t *testing.T) {
 			minDuration := tt.expectedDuration - tolerance
 			maxDuration := tt.expectedDuration + tolerance
 
-			assert.True(t, actualDuration >= minDuration,
+			assert.GreaterOrEqual(t, actualDuration, minDuration,
 				"Duration %v should be at least %v", actualDuration, minDuration)
-			assert.True(t, actualDuration <= maxDuration,
+			assert.LessOrEqual(t, actualDuration, maxDuration,
 				"Duration %v should be at most %v", actualDuration, maxDuration)
 		})
 	}
@@ -155,6 +155,6 @@ func TestRateLimitingContextCancellation(t *testing.T) {
 	err2 := rateLimiter.WaitForHost(ctx2, "http://example.com")
 	duration := time.Since(start)
 
-	assert.Error(t, err2, "Context should have been cancelled due to timeout")
+	require.Error(t, err2, "Context should have been cancelled due to timeout")
 	assert.Less(t, duration, 1*time.Second, "Should have returned quickly due to context cancellation")
 }

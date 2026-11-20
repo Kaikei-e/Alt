@@ -9,6 +9,7 @@ import (
 	"alt/mocks"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
 
@@ -35,6 +36,6 @@ func TestGetRecapJobs(t *testing.T) {
 		Return(expectedJobs, nil)
 
 	jobs, err := usecase.Execute(ctx, 3600, 100)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, expectedJobs, jobs)
 }

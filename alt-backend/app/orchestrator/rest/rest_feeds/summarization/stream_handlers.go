@@ -13,12 +13,12 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 // RestHandleSummarizeFeedStream streams a summary from the pre-processor via SSE.
 func RestHandleSummarizeFeedStream(container *di.ApplicationComponents, cfg *config.Config) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		startTime := time.Now()
 		var req FeedSummarizePayload
 		ctx := c.Request().Context()
@@ -97,7 +97,7 @@ func RestHandleSummarizeFeedStream(container *di.ApplicationComponents, cfg *con
 	}
 }
 
-func setStreamingHeaders(c echo.Context) {
+func setStreamingHeaders(c *echo.Context) {
 	c.Response().Header().Set(echo.HeaderContentType, "text/event-stream; charset=utf-8")
 	c.Response().Header().Set(echo.HeaderCacheControl, "no-cache")
 	c.Response().Header().Set(echo.HeaderConnection, "keep-alive")
@@ -105,7 +105,7 @@ func setStreamingHeaders(c echo.Context) {
 	c.Response().WriteHeader(http.StatusOK)
 }
 
-func streamCachedSummary(ctx context.Context, c echo.Context, summary, articleID string) error {
+func streamCachedSummary(ctx context.Context, c *echo.Context, summary, articleID string) error {
 	setStreamingHeaders(c)
 
 	cleanSummary := parseSSESummary(summary)
@@ -115,17 +115,17 @@ func streamCachedSummary(ctx context.Context, c echo.Context, summary, articleID
 		return err
 	}
 
-	if _, err := fmt.Fprintf(c.Response().Writer, "data: %s\n\n", jsonSummary); err != nil {
+	if _, err := fmt.Fprintf(c.Response(), "data: %s\n\n", jsonSummary); err != nil {
 		logger.Logger.ErrorContext(ctx, "Failed to write existing summary to stream", "error", err)
 		return err
 	}
-	c.Response().Flush()
+	_ = http.NewResponseController(c.Response()).Flush()
 
 	logger.Logger.InfoContext(ctx, "Existing summary streamed from cache", "article_id", articleID)
 	return nil
 }
 
-func streamAndCapture(ctx context.Context, c echo.Context, articleID string, stream io.Reader) (string, error) {
+func streamAndCapture(ctx context.Context, c *echo.Context, articleID string, stream io.Reader) (string, error) {
 	var buf bytes.Buffer
 	tee := io.TeeReader(stream, &buf)
 
@@ -147,11 +147,11 @@ func streamAndCapture(ctx context.Context, c echo.Context, articleID string, str
 				logger.Logger.DebugContext(ctx, "Stream chunk flushed", "article_id", articleID, "chunk_size", n, "read_attempts", readAttempts)
 			}
 
-			if _, wErr := c.Response().Writer.Write(responseBuf[:n]); wErr != nil {
+			if _, wErr := c.Response().Write(responseBuf[:n]); wErr != nil {
 				logger.Logger.ErrorContext(ctx, "Failed to write to response stream", "error", wErr, "article_id", articleID, "bytes_written", bytesWritten)
 				return "", wErr
 			}
-			c.Response().Flush()
+			_ = http.NewResponseController(c.Response()).Flush()
 		}
 
 		if err != nil {

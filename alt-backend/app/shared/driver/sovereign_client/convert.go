@@ -40,22 +40,22 @@ func timeToProto(t time.Time) *timestamppb.Timestamp {
 
 func protoToTrailFootprint(pb *sovereignv1.TrailFootprint) domain.TrailFootprint {
 	fp := domain.TrailFootprint{
-		FootprintKey:    pb.FootprintKey,
-		Verb:            pb.Verb,
-		ItemKey:         pb.ItemKey,
-		Title:           pb.Title,
-		Excerpt:         pb.Excerpt,
-		Tags:            pb.Tags,
-		Note:            pb.Note,
-		SourceEventType: pb.SourceEventType,
-		Wear:            pb.Wear,
-		ContactCount:    int(pb.ContactCount),
+		FootprintKey:    pb.GetFootprintKey(),
+		Verb:            pb.GetVerb(),
+		ItemKey:         pb.GetItemKey(),
+		Title:           pb.GetTitle(),
+		Excerpt:         pb.GetExcerpt(),
+		Tags:            pb.GetTags(),
+		Note:            pb.GetNote(),
+		SourceEventType: pb.GetSourceEventType(),
+		Wear:            pb.GetWear(),
+		ContactCount:    int(pb.GetContactCount()),
 	}
-	if pb.OccurredAt != nil {
-		fp.OccurredAt = pb.OccurredAt.AsTime()
+	if pb.GetOccurredAt() != nil {
+		fp.OccurredAt = pb.GetOccurredAt().AsTime()
 	}
-	if pb.FirstOccurredAt != nil {
-		fp.FirstOccurredAt = pb.FirstOccurredAt.AsTime()
+	if pb.GetFirstOccurredAt() != nil {
+		fp.FirstOccurredAt = pb.GetFirstOccurredAt().AsTime()
 	}
 	return fp
 }
@@ -66,32 +66,32 @@ func protoToTrailFootprint(pb *sovereignv1.TrailFootprint) domain.TrailFootprint
 func protoToTrailBranches(pbs []*sovereignv1.TrailBranch) []domain.TrailBranch {
 	branches := make([]domain.TrailBranch, len(pbs))
 	for i, pb := range pbs {
-		refs := make([]domain.TrailEvidenceRef, len(pb.EvidenceRefs))
-		for j, r := range pb.EvidenceRefs {
-			refs[j] = domain.TrailEvidenceRef{RefID: r.RefId, Label: r.Label, Kind: r.Kind}
+		refs := make([]domain.TrailEvidenceRef, len(pb.GetEvidenceRefs()))
+		for j, r := range pb.GetEvidenceRefs() {
+			refs[j] = domain.TrailEvidenceRef{RefID: r.GetRefId(), Label: r.GetLabel(), Kind: r.GetKind()}
 		}
 		branches[i] = domain.TrailBranch{
-			BranchKey:     pb.BranchKey,
-			AnchorItemKey: pb.AnchorItemKey,
-			RelationKind:  pb.RelationKind,
-			Why:           pb.Why,
+			BranchKey:     pb.GetBranchKey(),
+			AnchorItemKey: pb.GetAnchorItemKey(),
+			RelationKind:  pb.GetRelationKind(),
+			Why:           pb.GetWhy(),
 			EvidenceRefs:  refs,
-			Confidence:    pb.Confidence,
-			TargetItemKey: pb.TargetItemKey,
-			TargetTitle:   pb.TargetTitle,
+			Confidence:    pb.GetConfidence(),
+			TargetItemKey: pb.GetTargetItemKey(),
+			TargetTitle:   pb.GetTargetTitle(),
 		}
 	}
 	return branches
 }
 
 func protoToTrailEpisode(pb *sovereignv1.TrailEpisode) domain.TrailEpisode {
-	epFootprints := make([]domain.TrailFootprint, len(pb.Footprints))
-	for j, fpb := range pb.Footprints {
+	epFootprints := make([]domain.TrailFootprint, len(pb.GetFootprints()))
+	for j, fpb := range pb.GetFootprints() {
 		epFootprints[j] = protoToTrailFootprint(fpb)
 	}
 	return domain.TrailEpisode{
-		EpisodeKey: pb.EpisodeKey,
-		Wear:       pb.Wear,
+		EpisodeKey: pb.GetEpisodeKey(),
+		Wear:       pb.GetWear(),
 		// ThumbnailURL is left "" here: enrichment happens at the usecase
 		// layer, keyed by the representative article id (D29).
 		Footprints: epFootprints,
@@ -112,23 +112,23 @@ func protoToTodayDigest(d *sovereignv1.TodayDigest, fallbackUserID uuid.UUID, fa
 	if d == nil {
 		return domain.TodayDigest{UserID: fallbackUserID, DigestDate: fallbackDate, UpdatedAt: time.Now()}
 	}
-	digestDate, _ := time.Parse("2006-01-02", d.DigestDate)
+	digestDate, _ := time.Parse("2006-01-02", d.GetDigestDate())
 	result := domain.TodayDigest{
-		UserID:               parseUUID(d.UserId),
+		UserID:               parseUUID(d.GetUserId()),
 		DigestDate:           digestDate,
-		NewArticles:          int(d.NewArticles),
-		SummarizedArticles:   int(d.SummarizedArticles),
-		UnsummarizedArticles: int(d.UnsummarizedArticles),
-		TopTags:              d.TopTags,
-		WeeklyRecapAvailable: d.WeeklyRecapAvailable,
-		NeedToKnowCount:      int(d.NeedToKnowCount),
-		DigestFreshness:      d.DigestFreshness,
+		NewArticles:          int(d.GetNewArticles()),
+		SummarizedArticles:   int(d.GetSummarizedArticles()),
+		UnsummarizedArticles: int(d.GetUnsummarizedArticles()),
+		TopTags:              d.GetTopTags(),
+		WeeklyRecapAvailable: d.GetWeeklyRecapAvailable(),
+		NeedToKnowCount:      int(d.GetNeedToKnowCount()),
+		DigestFreshness:      d.GetDigestFreshness(),
 	}
-	if d.UpdatedAt != nil {
-		result.UpdatedAt = d.UpdatedAt.AsTime()
+	if d.GetUpdatedAt() != nil {
+		result.UpdatedAt = d.GetUpdatedAt().AsTime()
 	}
-	if d.LastProjectedAt != nil {
-		t := d.LastProjectedAt.AsTime()
+	if d.GetLastProjectedAt() != nil {
+		t := d.GetLastProjectedAt().AsTime()
 		result.LastProjectedAt = &t
 	}
 	return result
@@ -136,29 +136,29 @@ func protoToTodayDigest(d *sovereignv1.TodayDigest, fallbackUserID uuid.UUID, fa
 
 func protoToRecallCandidate(pb *sovereignv1.RecallCandidate) domain.RecallCandidate {
 	cand := domain.RecallCandidate{
-		UserID:            parseUUID(pb.UserId),
-		ItemKey:           pb.ItemKey,
-		RecallScore:       pb.RecallScore,
-		ProjectionVersion: int(pb.ProjectionVersion),
+		UserID:            parseUUID(pb.GetUserId()),
+		ItemKey:           pb.GetItemKey(),
+		RecallScore:       pb.GetRecallScore(),
+		ProjectionVersion: int(pb.GetProjectionVersion()),
 	}
-	if pb.UpdatedAt != nil {
-		cand.UpdatedAt = pb.UpdatedAt.AsTime()
+	if pb.GetUpdatedAt() != nil {
+		cand.UpdatedAt = pb.GetUpdatedAt().AsTime()
 	}
-	if pb.NextSuggestAt != nil {
-		t := pb.NextSuggestAt.AsTime()
+	if pb.GetNextSuggestAt() != nil {
+		t := pb.GetNextSuggestAt().AsTime()
 		cand.NextSuggestAt = &t
 	}
-	if pb.FirstEligibleAt != nil {
-		t := pb.FirstEligibleAt.AsTime()
+	if pb.GetFirstEligibleAt() != nil {
+		t := pb.GetFirstEligibleAt().AsTime()
 		cand.FirstEligibleAt = &t
 	}
-	for _, r := range pb.Reasons {
+	for _, r := range pb.GetReasons() {
 		cand.Reasons = append(cand.Reasons, domain.RecallReason{
-			Type: r.Type, Description: r.Description, SourceItemKey: r.SourceItemKey,
+			Type: r.GetType(), Description: r.GetDescription(), SourceItemKey: r.GetSourceItemKey(),
 		})
 	}
-	if pb.Item != nil {
-		item := protoToHomeItem(pb.Item)
+	if pb.GetItem() != nil {
+		item := protoToHomeItem(pb.GetItem())
 		cand.Item = &item
 	}
 	return cand
@@ -168,50 +168,50 @@ func protoToRecallCandidate(pb *sovereignv1.RecallCandidate) domain.RecallCandid
 
 func protoToHomeItem(pb *sovereignv1.KnowledgeHomeItem) domain.KnowledgeHomeItem {
 	item := domain.KnowledgeHomeItem{
-		UserID:            parseUUID(pb.UserId),
-		TenantID:          parseUUID(pb.TenantId),
-		ItemKey:           pb.ItemKey,
-		ItemType:          pb.ItemType,
-		PrimaryRefID:      parseUUIDPtr(pb.PrimaryRefId),
-		Title:             pb.Title,
-		SummaryExcerpt:    pb.SummaryExcerpt,
-		Tags:              pb.Tags,
-		Score:             pb.Score,
-		ProjectionVersion: int(pb.ProjectionVersion),
-		SummaryState:      pb.SummaryState,
-		SupersedeState:    pb.SupersedeState,
-		PreviousRefJSON:   pb.PreviousRefJson,
-		URL:               pb.Url,
+		UserID:            parseUUID(pb.GetUserId()),
+		TenantID:          parseUUID(pb.GetTenantId()),
+		ItemKey:           pb.GetItemKey(),
+		ItemType:          pb.GetItemType(),
+		PrimaryRefID:      parseUUIDPtr(pb.GetPrimaryRefId()),
+		Title:             pb.GetTitle(),
+		SummaryExcerpt:    pb.GetSummaryExcerpt(),
+		Tags:              pb.GetTags(),
+		Score:             pb.GetScore(),
+		ProjectionVersion: int(pb.GetProjectionVersion()),
+		SummaryState:      pb.GetSummaryState(),
+		SupersedeState:    pb.GetSupersedeState(),
+		PreviousRefJSON:   pb.GetPreviousRefJson(),
+		URL:               pb.GetUrl(),
 	}
-	if pb.GeneratedAt != nil {
-		item.GeneratedAt = pb.GeneratedAt.AsTime()
+	if pb.GetGeneratedAt() != nil {
+		item.GeneratedAt = pb.GetGeneratedAt().AsTime()
 	}
-	if pb.UpdatedAt != nil {
-		item.UpdatedAt = pb.UpdatedAt.AsTime()
+	if pb.GetUpdatedAt() != nil {
+		item.UpdatedAt = pb.GetUpdatedAt().AsTime()
 	}
-	if pb.FreshnessAt != nil {
-		t := pb.FreshnessAt.AsTime()
+	if pb.GetFreshnessAt() != nil {
+		t := pb.GetFreshnessAt().AsTime()
 		item.FreshnessAt = &t
 	}
-	if pb.PublishedAt != nil {
-		t := pb.PublishedAt.AsTime()
+	if pb.GetPublishedAt() != nil {
+		t := pb.GetPublishedAt().AsTime()
 		item.PublishedAt = &t
 	}
-	if pb.LastInteractedAt != nil {
-		t := pb.LastInteractedAt.AsTime()
+	if pb.GetLastInteractedAt() != nil {
+		t := pb.GetLastInteractedAt().AsTime()
 		item.LastInteractedAt = &t
 	}
-	if pb.DismissedAt != nil {
-		t := pb.DismissedAt.AsTime()
+	if pb.GetDismissedAt() != nil {
+		t := pb.GetDismissedAt().AsTime()
 		item.DismissedAt = &t
 	}
-	if pb.SupersededAt != nil {
-		t := pb.SupersededAt.AsTime()
+	if pb.GetSupersededAt() != nil {
+		t := pb.GetSupersededAt().AsTime()
 		item.SupersededAt = &t
 	}
-	for _, r := range pb.WhyReasons {
+	for _, r := range pb.GetWhyReasons() {
 		item.WhyReasons = append(item.WhyReasons, domain.WhyReason{
-			Code: r.Code, RefID: r.RefId, Tag: r.Tag,
+			Code: r.GetCode(), RefID: r.GetRefId(), Tag: r.GetTag(),
 		})
 	}
 	return item
@@ -223,22 +223,22 @@ func protoToEvents(pbs []*sovereignv1.KnowledgeEvent) []domain.KnowledgeEvent {
 	events := make([]domain.KnowledgeEvent, len(pbs))
 	for i, pb := range pbs {
 		events[i] = domain.KnowledgeEvent{
-			EventID:       parseUUID(pb.EventId),
-			EventSeq:      pb.EventSeq,
-			TenantID:      parseUUID(pb.TenantId),
-			UserID:        parseUUIDPtr(pb.UserId),
-			ActorType:     pb.ActorType,
-			ActorID:       pb.ActorId,
-			EventType:     pb.EventType,
-			AggregateType: pb.AggregateType,
-			AggregateID:   pb.AggregateId,
-			CorrelationID: parseUUIDPtr(pb.CorrelationId),
-			CausationID:   parseUUIDPtr(pb.CausationId),
-			DedupeKey:     pb.DedupeKey,
-			Payload:       json.RawMessage(pb.Payload),
+			EventID:       parseUUID(pb.GetEventId()),
+			EventSeq:      pb.GetEventSeq(),
+			TenantID:      parseUUID(pb.GetTenantId()),
+			UserID:        parseUUIDPtr(pb.GetUserId()),
+			ActorType:     pb.GetActorType(),
+			ActorID:       pb.GetActorId(),
+			EventType:     pb.GetEventType(),
+			AggregateType: pb.GetAggregateType(),
+			AggregateID:   pb.GetAggregateId(),
+			CorrelationID: parseUUIDPtr(pb.GetCorrelationId()),
+			CausationID:   parseUUIDPtr(pb.GetCausationId()),
+			DedupeKey:     pb.GetDedupeKey(),
+			Payload:       json.RawMessage(pb.GetPayload()),
 		}
-		if pb.OccurredAt != nil {
-			events[i].OccurredAt = pb.OccurredAt.AsTime()
+		if pb.GetOccurredAt() != nil {
+			events[i].OccurredAt = pb.GetOccurredAt().AsTime()
 		}
 	}
 	return events
@@ -276,15 +276,15 @@ func domainEventToProto(e domain.KnowledgeEvent) *sovereignv1.KnowledgeEvent {
 
 func protoToProjectionVersion(pb *sovereignv1.ProjectionVersion) *domain.KnowledgeProjectionVersion {
 	v := &domain.KnowledgeProjectionVersion{
-		Version:     int(pb.Version),
-		Description: pb.Description,
-		Status:      pb.Status,
+		Version:     int(pb.GetVersion()),
+		Description: pb.GetDescription(),
+		Status:      pb.GetStatus(),
 	}
-	if pb.CreatedAt != nil {
-		v.CreatedAt = pb.CreatedAt.AsTime()
+	if pb.GetCreatedAt() != nil {
+		v.CreatedAt = pb.GetCreatedAt().AsTime()
 	}
-	if pb.ActivatedAt != nil {
-		t := pb.ActivatedAt.AsTime()
+	if pb.GetActivatedAt() != nil {
+		t := pb.GetActivatedAt().AsTime()
 		v.ActivatedAt = &t
 	}
 	return v

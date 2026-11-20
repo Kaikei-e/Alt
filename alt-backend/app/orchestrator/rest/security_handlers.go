@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 const maxCSPReportBodyBytes = 16 * 1024
@@ -30,7 +30,7 @@ func registerSecurityRoutes(e *echo.Echo, container *di.ApplicationComponents) {
 	e.POST("/security/csp-report", handleCSPReport)
 }
 
-func handleCSPReport(c echo.Context) error {
+func handleCSPReport(c *echo.Context) error {
 	ctx := c.Request().Context()
 	c.Request().Body = http.MaxBytesReader(c.Response(), c.Request().Body, maxCSPReportBodyBytes)
 	bodyBytes, err := io.ReadAll(c.Request().Body)
@@ -65,7 +65,7 @@ func handleCSPReport(c echo.Context) error {
 	return c.NoContent(http.StatusNoContent)
 }
 
-func restHandleLiveness(c echo.Context) error {
+func restHandleLiveness(c *echo.Context) error {
 	c.Response().Header().Set("Cache-Control", "public, max-age=30")
 	return c.JSON(http.StatusOK, map[string]string{
 		"status": "healthy",

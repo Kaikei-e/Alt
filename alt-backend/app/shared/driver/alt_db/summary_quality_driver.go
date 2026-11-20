@@ -2,6 +2,7 @@ package alt_db
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -34,7 +35,7 @@ func (r *SummaryRepository) CheckArticleSummaryExists(ctx context.Context, artic
 	var summaryID string
 	err := r.pool.QueryRow(ctx, query, articleID).Scan(&summaryID)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return false, "", nil
 		}
 		return false, "", fmt.Errorf("check article summary exists: %w", err)

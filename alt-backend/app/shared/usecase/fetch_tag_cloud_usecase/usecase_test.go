@@ -206,8 +206,12 @@ func TestFetchTagCloudUsecase_Cache(t *testing.T) {
 
 		usecase := NewFetchTagCloudUsecase(port, 30*time.Minute)
 
-		usecase.Execute(ctx, 300)
-		usecase.Execute(ctx, 100) // Different limit
+		if _, _, err := usecase.Execute(ctx, 300); err != nil {
+			t.Fatalf("Execute(300) failed: %v", err)
+		}
+		if _, _, err := usecase.Execute(ctx, 100); err != nil { // Different limit
+			t.Fatalf("Execute(100) failed: %v", err)
+		}
 
 		if port.callCount.Load() != 2 {
 			t.Errorf("different limit should bypass cache, got %d port calls", port.callCount.Load())
@@ -226,9 +230,13 @@ func TestFetchTagCloudUsecase_Cache(t *testing.T) {
 		usecase.maxStale = 1 * time.Millisecond
 		usecase.now = func() time.Time { return currentTime }
 
-		usecase.Execute(ctx, 300)
+		if _, _, err := usecase.Execute(ctx, 300); err != nil {
+			t.Fatalf("Execute(300) failed: %v", err)
+		}
 		currentTime = currentTime.Add(5 * time.Millisecond)
-		usecase.Execute(ctx, 300)
+		if _, _, err := usecase.Execute(ctx, 300); err != nil {
+			t.Fatalf("Execute(300) after expiry failed: %v", err)
+		}
 
 		if port.callCount.Load() != 2 {
 			t.Errorf("expired cache should refetch, got %d port calls", port.callCount.Load())

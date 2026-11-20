@@ -222,9 +222,9 @@ func TestAugurAdapter_UpsertArticle_MissingUserID_FailsLoudly(t *testing.T) {
 			})
 
 			require.Error(t, err)
-			assert.True(t, errors.Is(err, rag_integration_port.ErrMissingUserID),
+			require.ErrorIs(t, err, rag_integration_port.ErrMissingUserID,
 				"error must wrap ErrMissingUserID, got: %v", err)
-			assert.False(t, errors.Is(err, rag_integration_port.ErrRagUpsertTransient),
+			assert.NotErrorIs(t, err, rag_integration_port.ErrRagUpsertTransient,
 				"missing user_id must be a permanent rejection, never classified as transient")
 		})
 	}
@@ -290,7 +290,7 @@ func TestAugurAdapter_RetrieveContext_RejectsBlankUserID(t *testing.T) {
 
 			require.Error(t, err)
 			assert.Nil(t, contexts)
-			assert.True(t, errors.Is(err, rag_integration_port.ErrMissingUserID),
+			assert.ErrorIs(t, err, rag_integration_port.ErrMissingUserID,
 				"error must wrap ErrMissingUserID, got: %v", err)
 		})
 	}
@@ -422,7 +422,7 @@ func TestAugurAdapter_Answer_StreamResourceCleanup(t *testing.T) {
 		default:
 			t.Fatal("expected response body to be closed on non-200 status")
 		}
-		assert.Greater(t, tracked.bytesRead.Load(), int64(0), "expected non-200 response body to be drained before closing")
+		assert.Positive(t, tracked.bytesRead.Load(), "expected non-200 response body to be drained before closing")
 	})
 
 	t.Run("streaming goroutine exits and closes body when consumer stops reading and cancels ctx", func(t *testing.T) {

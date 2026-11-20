@@ -26,7 +26,7 @@ func TestRunner_CriticalFailIs503(t *testing.T) {
 	})
 
 	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health/deep", nil))
+	r.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health/deep", nil))
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want 503", rec.Code)
 	}
@@ -54,7 +54,7 @@ func TestRunner_NonCriticalFailIs200Warn(t *testing.T) {
 	})
 
 	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health/deep", nil))
+	r.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health/deep", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}
@@ -85,7 +85,7 @@ func TestRunner_PassIs200(t *testing.T) {
 	})
 
 	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health/deep", nil))
+	r.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health/deep", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}
@@ -99,7 +99,7 @@ func TestRunner_PassIs200(t *testing.T) {
 }
 
 func TestRunner_DoesNotLeakProbeSecrets(t *testing.T) {
-	//nolint:gosec // G101: leak-assertion fixture, not a live credential
+	// #nosec G101 -- leak-assertion fixture, not a live credential
 	secret := "postgres://alt:hunter2@db.internal:5432/alt?sslmode=disable /var/lib/secret peer=svc-backend panic stack"
 	r := NewRunner(Config{
 		Service: "alt-backend",
@@ -114,7 +114,7 @@ func TestRunner_DoesNotLeakProbeSecrets(t *testing.T) {
 	})
 
 	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health/deep", nil))
+	r.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health/deep", nil))
 	got := rec.Body.String()
 	if strings.Contains(got, secret) || strings.Contains(got, "hunter2") ||
 		strings.Contains(got, "postgres://") || strings.Contains(got, "/var/lib") ||
@@ -254,7 +254,7 @@ func TestHandler_JSONContentType(t *testing.T) {
 		CacheTTL: 2 * time.Second,
 	})
 	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health/deep", nil))
+	r.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health/deep", nil))
 	if ct := rec.Header().Get("Content-Type"); ct != "application/json" {
 		t.Errorf("Content-Type = %q", ct)
 	}

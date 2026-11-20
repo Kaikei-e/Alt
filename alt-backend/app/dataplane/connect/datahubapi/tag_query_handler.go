@@ -192,15 +192,15 @@ func (h *Handler) ListUntaggedArticles(ctx context.Context, req *connect.Request
 		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("not yet implemented"))
 	}
 
-	limit := clampLimit(int(req.Msg.Limit))
+	limit := clampLimit(int(req.Msg.GetLimit()))
 
 	var lastCreatedAt *time.Time
-	if req.Msg.LastCreatedAt != nil {
-		t := req.Msg.LastCreatedAt.AsTime()
+	if req.Msg.GetLastCreatedAt() != nil {
+		t := req.Msg.GetLastCreatedAt().AsTime()
 		lastCreatedAt = &t
 	}
 
-	articles, nextCreatedAt, nextID, totalCount, err := h.listUntaggedArticles.ListUntaggedArticles(ctx, lastCreatedAt, req.Msg.LastId, limit)
+	articles, nextCreatedAt, nextID, totalCount, err := h.listUntaggedArticles.ListUntaggedArticles(ctx, lastCreatedAt, req.Msg.GetLastId(), limit)
 	if err != nil {
 		h.logger.Error("ListUntaggedArticles failed", "error", err)
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to list untagged articles"))
@@ -283,7 +283,7 @@ const maxBatchGetTagsArticleIDs = 1000
 
 // FetchTagCloud returns tag cloud data for topic exploration.
 func (h *Handler) FetchTagCloud(ctx context.Context, req *connect.Request[datahubv1.FetchTagCloudRequest]) (*connect.Response[datahubv1.FetchTagCloudResponse], error) {
-	limit := int(req.Msg.Limit)
+	limit := int(req.Msg.GetLimit())
 	if limit <= 0 {
 		limit = 300
 	}
@@ -329,7 +329,7 @@ func (h *Handler) FetchArticlesByTag(ctx context.Context, req *connect.Request[d
 		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("FetchArticlesByTag not configured"))
 	}
 
-	tagName := req.Msg.TagName
+	tagName := req.Msg.GetTagName()
 	if tagName == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("tag_name is required"))
 	}
@@ -343,7 +343,7 @@ func (h *Handler) FetchArticlesByTag(ctx context.Context, req *connect.Request[d
 		ExpiresAt: time.Now().Add(time.Hour),
 	})
 
-	limit := int(req.Msg.Limit)
+	limit := int(req.Msg.GetLimit())
 	if limit <= 0 {
 		limit = 20
 	}

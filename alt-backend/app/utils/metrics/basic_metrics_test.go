@@ -161,7 +161,7 @@ func TestBasicMetricsCollector_GetSuccessRate(t *testing.T) {
 			}
 
 			rate := collector.GetSuccessRate()
-			assert.Equal(t, tt.expectedRate, rate, "Success rate should match expected")
+			assert.InDelta(t, tt.expectedRate, rate, 1e-9, "Success rate should match expected")
 		})
 	}
 }
@@ -203,6 +203,6 @@ func TestBasicMetricsCollector_GetSnapshot(t *testing.T) {
 	assert.Equal(t, int64(3), snapshot.TotalRequests, "Snapshot should capture total requests")
 	assert.Equal(t, int64(2), snapshot.SuccessfulRequests, "Snapshot should capture successful requests")
 	assert.Equal(t, int64(1), snapshot.FailedRequests, "Snapshot should capture failed requests")
-	assert.Equal(t, 2.0/3.0, snapshot.SuccessRate, "Snapshot should capture success rate")
+	assert.InDelta(t, 2.0/3.0, snapshot.SuccessRate, 1e-9, "Snapshot should capture success rate")
 	assert.Equal(t, 200*time.Millisecond, snapshot.AverageResponseTime, "Snapshot should capture average response time")
 }

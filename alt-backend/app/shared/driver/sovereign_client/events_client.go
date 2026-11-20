@@ -23,7 +23,7 @@ func (c *Client) ListKnowledgeEventsSince(ctx context.Context, afterSeq int64, l
 	if err != nil {
 		return nil, fmt.Errorf("sovereign ListKnowledgeEventsSince: %w", err)
 	}
-	return protoToEvents(resp.Msg.Events), nil
+	return protoToEvents(resp.Msg.GetEvents()), nil
 }
 
 func (c *Client) ListKnowledgeEventsSinceForUser(ctx context.Context, tenantID, userID uuid.UUID, afterSeq int64, limit int) ([]domain.KnowledgeEvent, error) {
@@ -39,7 +39,7 @@ func (c *Client) ListKnowledgeEventsSinceForUser(ctx context.Context, tenantID, 
 	if err != nil {
 		return nil, fmt.Errorf("sovereign ListKnowledgeEventsSinceForUser: %w", err)
 	}
-	return protoToEvents(resp.Msg.Events), nil
+	return protoToEvents(resp.Msg.GetEvents()), nil
 }
 
 func (c *Client) GetLatestKnowledgeEventSeqForUser(ctx context.Context, tenantID, userID uuid.UUID) (int64, error) {
@@ -53,7 +53,7 @@ func (c *Client) GetLatestKnowledgeEventSeqForUser(ctx context.Context, tenantID
 	if err != nil {
 		return 0, fmt.Errorf("sovereign GetLatestEventSeqForUser: %w", err)
 	}
-	return resp.Msg.EventSeq, nil
+	return resp.Msg.GetEventSeq(), nil
 }
 
 // AreArticlesVisibleInLens implements knowledge_event_port.IsArticleVisibleInLensPort.
@@ -93,8 +93,8 @@ func (c *Client) AreArticlesVisibleInLens(ctx context.Context, tenantID, userID 
 		return nil, fmt.Errorf("sovereign AreArticlesVisibleInLens: %w", err)
 	}
 
-	out := make(map[uuid.UUID]bool, len(resp.Msg.Visibility))
-	for idStr, visible := range resp.Msg.Visibility {
+	out := make(map[uuid.UUID]bool, len(resp.Msg.GetVisibility()))
+	for idStr, visible := range resp.Msg.GetVisibility() {
 		id, parseErr := uuid.Parse(idStr)
 		if parseErr != nil {
 			continue

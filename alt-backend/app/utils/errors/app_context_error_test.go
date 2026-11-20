@@ -75,7 +75,7 @@ func TestAppContextError_Unwrap(t *testing.T) {
 	}
 
 	got := appContextError.Unwrap()
-	if got != cause {
+	if !errors.Is(got, cause) {
 		t.Errorf("AppContextError.Unwrap() = %v, want %v", got, cause)
 	}
 }
@@ -174,7 +174,7 @@ func TestNewAppContextError(t *testing.T) {
 	if appErr.Operation != "TestOperation" {
 		t.Errorf("NewAppContextError().Operation = %v, want %v", appErr.Operation, "TestOperation")
 	}
-	if appErr.Cause != cause {
+	if !errors.Is(appErr.Cause, cause) {
 		t.Errorf("NewAppContextError().Cause = %v, want %v", appErr.Cause, cause)
 	}
 	if appErr.Context == nil {

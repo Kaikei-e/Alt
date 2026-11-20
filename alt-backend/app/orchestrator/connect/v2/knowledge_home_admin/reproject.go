@@ -18,30 +18,30 @@ func (h *Handler) StartReproject(
 	ctx context.Context,
 	req *connect.Request[knowledgehomev1.StartReprojectRequest],
 ) (*connect.Response[knowledgehomev1.StartReprojectResponse], error) {
-	if req.Msg.Mode == "" {
+	if req.Msg.GetMode() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("mode is required"))
 	}
-	if req.Msg.FromVersion == "" || req.Msg.ToVersion == "" {
+	if req.Msg.GetFromVersion() == "" || req.Msg.GetToVersion() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("from_version and to_version are required"))
 	}
 
 	var rangeStart, rangeEnd *time.Time
-	if req.Msg.RangeStart != nil && *req.Msg.RangeStart != "" {
-		t, err := time.Parse(time.RFC3339, *req.Msg.RangeStart)
+	if req.Msg.RangeStart != nil && req.Msg.GetRangeStart() != "" {
+		t, err := time.Parse(time.RFC3339, req.Msg.GetRangeStart())
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid range_start: %w", err))
 		}
 		rangeStart = &t
 	}
-	if req.Msg.RangeEnd != nil && *req.Msg.RangeEnd != "" {
-		t, err := time.Parse(time.RFC3339, *req.Msg.RangeEnd)
+	if req.Msg.RangeEnd != nil && req.Msg.GetRangeEnd() != "" {
+		t, err := time.Parse(time.RFC3339, req.Msg.GetRangeEnd())
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid range_end: %w", err))
 		}
 		rangeEnd = &t
 	}
 
-	run, err := h.reprojectUsecase.StartReproject(ctx, req.Msg.Mode, req.Msg.FromVersion, req.Msg.ToVersion, rangeStart, rangeEnd)
+	run, err := h.reprojectUsecase.StartReproject(ctx, req.Msg.GetMode(), req.Msg.GetFromVersion(), req.Msg.GetToVersion(), rangeStart, rangeEnd)
 	if err != nil {
 		// A missing executor is a fact about the deployment, not a fault in
 		// this request. Internal would read as transient and invite a retry
@@ -65,7 +65,7 @@ func (h *Handler) GetReprojectStatus(
 	ctx context.Context,
 	req *connect.Request[knowledgehomev1.GetReprojectStatusRequest],
 ) (*connect.Response[knowledgehomev1.GetReprojectStatusResponse], error) {
-	runID, err := uuid.Parse(req.Msg.ReprojectRunId)
+	runID, err := uuid.Parse(req.Msg.GetReprojectRunId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid reproject_run_id: %w", err))
 	}
@@ -88,9 +88,9 @@ func (h *Handler) ListReprojectRuns(
 ) (*connect.Response[knowledgehomev1.ListReprojectRunsResponse], error) {
 	var statusFilter string
 	if req.Msg.StatusFilter != nil {
-		statusFilter = *req.Msg.StatusFilter
+		statusFilter = req.Msg.GetStatusFilter()
 	}
-	limit := int(req.Msg.Limit)
+	limit := int(req.Msg.GetLimit())
 	if limit <= 0 {
 		limit = 20
 	}
@@ -116,7 +116,7 @@ func (h *Handler) CompareReproject(
 	ctx context.Context,
 	req *connect.Request[knowledgehomev1.CompareReprojectRequest],
 ) (*connect.Response[knowledgehomev1.CompareReprojectResponse], error) {
-	runID, err := uuid.Parse(req.Msg.ReprojectRunId)
+	runID, err := uuid.Parse(req.Msg.GetReprojectRunId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid reproject_run_id: %w", err))
 	}
@@ -137,7 +137,7 @@ func (h *Handler) SwapReproject(
 	ctx context.Context,
 	req *connect.Request[knowledgehomev1.SwapReprojectRequest],
 ) (*connect.Response[knowledgehomev1.SwapReprojectResponse], error) {
-	runID, err := uuid.Parse(req.Msg.ReprojectRunId)
+	runID, err := uuid.Parse(req.Msg.GetReprojectRunId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid reproject_run_id: %w", err))
 	}
@@ -155,7 +155,7 @@ func (h *Handler) RollbackReproject(
 	ctx context.Context,
 	req *connect.Request[knowledgehomev1.RollbackReprojectRequest],
 ) (*connect.Response[knowledgehomev1.RollbackReprojectResponse], error) {
-	runID, err := uuid.Parse(req.Msg.ReprojectRunId)
+	runID, err := uuid.Parse(req.Msg.GetReprojectRunId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid reproject_run_id: %w", err))
 	}

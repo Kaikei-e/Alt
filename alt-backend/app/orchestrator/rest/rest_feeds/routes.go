@@ -8,7 +8,7 @@ import (
 	summarizationpkg "alt/orchestrator/rest/rest_feeds/summarization"
 	"alt/utils/logger"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 func RegisterFeedRoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg *config.Config) {

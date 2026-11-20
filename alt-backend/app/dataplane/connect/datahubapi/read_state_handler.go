@@ -8,6 +8,7 @@ import (
 
 	"alt/domain"
 	datahubv1 "alt/gen/proto/services/datahub/v1"
+	"alt/utils/safeconv"
 
 	"connectrpc.com/connect"
 	"github.com/google/uuid"
@@ -119,7 +120,7 @@ func (h *Handler) GetAllReadFeedIDs(ctx context.Context, req *connect.Request[da
 
 	var since *time.Time
 	if req.Msg.Since != nil {
-		parsed, err := time.Parse(time.RFC3339, *req.Msg.Since)
+		parsed, err := time.Parse(time.RFC3339, req.Msg.GetSince())
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("since must be RFC3339: %w", err))
 		}
@@ -172,7 +173,7 @@ func (h *Handler) ListSubscriptions(ctx context.Context, req *connect.Request[da
 			IsSubscribed: s.IsSubscribed,
 		}
 		if s.DailyCap != nil {
-			v := int32(*s.DailyCap)
+			v := safeconv.Int32(*s.DailyCap)
 			sub.DailyCap = &v
 		}
 		// subscribedAt is sent only for a followed link. The query coalesces

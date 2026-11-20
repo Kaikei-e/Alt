@@ -6,7 +6,6 @@ import (
 	"alt/utils/authcontext"
 	"crypto/ed25519"
 	"crypto/rand"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -14,7 +13,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -50,7 +49,7 @@ func issueReproTestJWT(t *testing.T, userID, email string) string {
 func TestAuthMiddleware_Bypass(t *testing.T) {
 	// Setup
 	e := echo.New()
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	cfg := config.AuthConfig{
 		BackendTokenPublicKey: reproTestPubKey,
 		BackendTokenIssuer:    "auth-hub",
@@ -59,13 +58,13 @@ func TestAuthMiddleware_Bypass(t *testing.T) {
 	authMiddleware := middleware.NewAuthMiddleware(logger, cfg)
 
 	// Define a protected route
-	e.GET("/protected", func(c echo.Context) error {
+	e.GET("/protected", func(c *echo.Context) error {
 		return c.String(http.StatusOK, "Secret Data")
 	}, authMiddleware.RequireAuth())
 
 	// Case 1: No headers - should fail
 	t.Run("Missing Headers", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/protected", nil)
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, req)
 		assert.Equal(t, http.StatusUnauthorized, rec.Code)
@@ -73,7 +72,7 @@ func TestAuthMiddleware_Bypass(t *testing.T) {
 
 	// Case 2: Arbitrary headers WITHOUT JWT - should fail
 	t.Run("Arbitrary Headers Without JWT", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/protected", nil)
 		req.Header.Set("X-Alt-User-Id", "123e4567-e89b-12d3-a456-426614174000")
 		req.Header.Set("X-Alt-Tenant-Id", "123e4567-e89b-12d3-a456-426614174000")
 		rec := httptest.NewRecorder()
@@ -83,7 +82,7 @@ func TestAuthMiddleware_Bypass(t *testing.T) {
 
 	// Case 3: Shared secret only (no JWT) - should fail
 	t.Run("Shared Secret Only Without JWT", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/protected", nil)
 		req.Header.Set("X-Alt-User-Id", "123e4567-e89b-12d3-a456-426614174000")
 		req.Header.Set("X-Alt-Tenant-Id", "123e4567-e89b-12d3-a456-426614174000")
 		req.Header.Set("X-Alt-Shared-Secret", "any-secret-value")
@@ -94,7 +93,7 @@ func TestAuthMiddleware_Bypass(t *testing.T) {
 
 	// Case 4: Valid JWT - should succeed
 	t.Run("Valid JWT Grants Access", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/protected", nil)
 		jwtToken := issueReproTestJWT(t, "123e4567-e89b-12d3-a456-426614174000", "user@example.com")
 		req.Header.Set("X-Alt-Backend-Token", jwtToken)
 		rec := httptest.NewRecorder()
@@ -105,7 +104,7 @@ func TestAuthMiddleware_Bypass(t *testing.T) {
 
 func TestAuthMiddleware_PropagatesJWTToAuthContext(t *testing.T) {
 	e := echo.New()
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	cfg := config.AuthConfig{
 		BackendTokenPublicKey: reproTestPubKey,
 		BackendTokenIssuer:    "auth-hub",
@@ -114,13 +113,13 @@ func TestAuthMiddleware_PropagatesJWTToAuthContext(t *testing.T) {
 	authMiddleware := middleware.NewAuthMiddleware(logger, cfg)
 
 	var gotRequireToken, gotOptionalToken string
-	e.GET("/require", func(c echo.Context) error {
+	e.GET("/require", func(c *echo.Context) error {
 		tok, _ := authcontext.JWTFromContext(c.Request().Context())
 		gotRequireToken = tok
 		return c.NoContent(http.StatusOK)
 	}, authMiddleware.RequireAuth())
 
-	e.GET("/optional", func(c echo.Context) error {
+	e.GET("/optional", func(c *echo.Context) error {
 		tok, _ := authcontext.JWTFromContext(c.Request().Context())
 		gotOptionalToken = tok
 		return c.NoContent(http.StatusOK)
@@ -128,14 +127,14 @@ func TestAuthMiddleware_PropagatesJWTToAuthContext(t *testing.T) {
 
 	jwtToken := issueReproTestJWT(t, "123e4567-e89b-12d3-a456-426614174000", "user@example.com")
 
-	req1 := httptest.NewRequest(http.MethodGet, "/require", nil)
+	req1 := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/require", nil)
 	req1.Header.Set("X-Alt-Backend-Token", jwtToken)
 	rec1 := httptest.NewRecorder()
 	e.ServeHTTP(rec1, req1)
 	require.Equal(t, http.StatusOK, rec1.Code)
 	assert.Equal(t, jwtToken, gotRequireToken)
 
-	req2 := httptest.NewRequest(http.MethodGet, "/optional", nil)
+	req2 := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/optional", nil)
 	req2.Header.Set("X-Alt-Backend-Token", jwtToken)
 	rec2 := httptest.NewRecorder()
 	e.ServeHTTP(rec2, req2)

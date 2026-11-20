@@ -39,7 +39,7 @@ func TestGetLatestLetter_Success(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/v1/morning/letters/latest", r.URL.Path)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(body)
+		assert.NoError(t, json.NewEncoder(w).Encode(body))
 	}))
 	defer server.Close()
 
@@ -92,7 +92,7 @@ func TestGetLetterByDate_Success(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/v1/morning/letters/2026-04-07", r.URL.Path)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(body)
+		assert.NoError(t, json.NewEncoder(w).Encode(body))
 	}))
 	defer server.Close()
 
@@ -167,7 +167,7 @@ func TestGetLetterSources_WithSources(t *testing.T) {
 		assert.Contains(t, r.URL.Path, "/v1/morning/letters/")
 		assert.Contains(t, r.URL.Path, "/sources")
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(apiSources)
+		assert.NoError(t, json.NewEncoder(w).Encode(apiSources))
 	}))
 	defer server.Close()
 
@@ -183,7 +183,8 @@ func TestGetLetterSources_WithSources(t *testing.T) {
 func TestGetLetterSources_Empty(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte("[]"))
+		_, err := w.Write([]byte("[]"))
+		assert.NoError(t, err)
 	}))
 	defer server.Close()
 

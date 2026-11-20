@@ -22,6 +22,7 @@ package redis_slot_store
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -103,7 +104,8 @@ func (s *Store) AcquireSlot(ctx context.Context, key, owner string, ttl time.Dur
 		// The slot is somebody else's; we simply could not read how long is
 		// left. Report no hint rather than an error — the caller already knows
 		// it has to wait, and a full interval is its safe default.
-		return false, 0, nil
+		slog.WarnContext(ctx, "redis_slot_store: PTTL failed, omitting retry hint", "key", fullKey, "error", err)
+		return false, 0, nil //nolint:nilerr // PTTL failure only omits retry hint; caller falls back to full interval
 	}
 	if remaining < 0 {
 		// -1 (no expiry) and -2 (key gone) both mean "no usable hint". The key

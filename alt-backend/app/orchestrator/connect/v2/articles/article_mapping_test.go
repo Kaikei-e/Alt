@@ -178,11 +178,11 @@ func TestConvertTagTrailArticlesToProto(t *testing.T) {
 
 	proto := convertTagTrailArticlesToProto(articles)
 	require.Len(t, proto, 1)
-	assert.Equal(t, "art-1", proto[0].Id)
-	assert.Equal(t, "Title 1", proto[0].Title)
-	assert.Equal(t, "https://example.com/1", proto[0].Link)
-	assert.Equal(t, "Feed 1", proto[0].FeedTitle)
-	assert.Equal(t, now.Format(time.RFC3339), proto[0].PublishedAt)
+	assert.Equal(t, "art-1", proto[0].GetId())
+	assert.Equal(t, "Title 1", proto[0].GetTitle())
+	assert.Equal(t, "https://example.com/1", proto[0].GetLink())
+	assert.Equal(t, "Feed 1", proto[0].GetFeedTitle())
+	assert.Equal(t, now.Format(time.RFC3339), proto[0].GetPublishedAt())
 }
 
 func TestConvertTagCloudItemsToProto(t *testing.T) {
@@ -199,12 +199,12 @@ func TestConvertTagCloudItemsToProto(t *testing.T) {
 
 	proto := convertTagCloudItemsToProto(items)
 	require.Len(t, proto, 1)
-	assert.Equal(t, "golang", proto[0].TagName)
-	assert.Equal(t, int32(42), proto[0].ArticleCount)
-	assert.Equal(t, float32(1.5), proto[0].PositionX)
-	assert.Equal(t, float32(2.5), proto[0].PositionY)
-	assert.Equal(t, float32(3.5), proto[0].PositionZ)
-	assert.Equal(t, int32(2), proto[0].ClusterId)
+	assert.Equal(t, "golang", proto[0].GetTagName())
+	assert.Equal(t, int32(42), proto[0].GetArticleCount())
+	assert.InDelta(t, float32(1.5), proto[0].GetPositionX(), 1e-6)
+	assert.InDelta(t, float32(2.5), proto[0].GetPositionY(), 1e-6)
+	assert.InDelta(t, float32(3.5), proto[0].GetPositionZ(), 1e-6)
+	assert.Equal(t, int32(2), proto[0].GetClusterId())
 }
 
 func TestConvertTagCloudEdgesToProto(t *testing.T) {
@@ -218,9 +218,9 @@ func TestConvertTagCloudEdgesToProto(t *testing.T) {
 
 	proto := convertTagCloudEdgesToProto(edges)
 	require.Len(t, proto, 1)
-	assert.Equal(t, int32(0), proto[0].SourceIndex)
-	assert.Equal(t, int32(2), proto[0].TargetIndex)
-	assert.InDelta(t, float32(0.75), proto[0].Weight, 1e-6)
+	assert.Equal(t, int32(0), proto[0].GetSourceIndex())
+	assert.Equal(t, int32(2), proto[0].GetTargetIndex())
+	assert.InDelta(t, float32(0.75), proto[0].GetWeight(), 1e-6)
 }
 
 type stubTagCloudPort struct {
@@ -280,13 +280,13 @@ func TestFetchTagCloudHandler_ReturnsClustersAndEdges(t *testing.T) {
 
 	resp, err := handler.FetchTagCloud(createAuthContext(), connect.NewRequest(&articlesv2.FetchTagCloudRequest{Limit: 300}))
 	require.NoError(t, err)
-	require.Len(t, resp.Msg.Tags, 12)
+	require.Len(t, resp.Msg.GetTags(), 12)
 
-	clusterByTag := make(map[string]int32, len(resp.Msg.Tags))
-	for _, tag := range resp.Msg.Tags {
-		assert.GreaterOrEqual(t, tag.ClusterId, int32(1))
-		assert.LessOrEqual(t, tag.ClusterId, int32(8))
-		clusterByTag[tag.TagName] = tag.ClusterId
+	clusterByTag := make(map[string]int32, len(resp.Msg.GetTags()))
+	for _, tag := range resp.Msg.GetTags() {
+		assert.GreaterOrEqual(t, tag.GetClusterId(), int32(1))
+		assert.LessOrEqual(t, tag.GetClusterId(), int32(8))
+		clusterByTag[tag.GetTagName()] = tag.GetClusterId()
 	}
 
 	distinctClusters := make(map[int32]struct{}, len(cliques))
@@ -300,14 +300,14 @@ func TestFetchTagCloudHandler_ReturnsClustersAndEdges(t *testing.T) {
 	}
 	assert.Len(t, distinctClusters, 3)
 
-	require.Len(t, resp.Msg.Edges, 18)
-	assert.InDelta(t, float32(1.0), resp.Msg.Edges[0].Weight, 1e-6)
-	for _, e := range resp.Msg.Edges {
-		assert.GreaterOrEqual(t, e.SourceIndex, int32(0))
-		assert.Less(t, e.SourceIndex, e.TargetIndex)
-		assert.Less(t, int(e.TargetIndex), len(resp.Msg.Tags))
-		assert.Greater(t, e.Weight, float32(0))
-		assert.LessOrEqual(t, e.Weight, float32(1.0))
+	require.Len(t, resp.Msg.GetEdges(), 18)
+	assert.InDelta(t, float32(1.0), resp.Msg.GetEdges()[0].GetWeight(), 1e-6)
+	for _, e := range resp.Msg.GetEdges() {
+		assert.GreaterOrEqual(t, e.GetSourceIndex(), int32(0))
+		assert.Less(t, e.GetSourceIndex(), e.GetTargetIndex())
+		assert.Less(t, int(e.GetTargetIndex()), len(resp.Msg.GetTags()))
+		assert.Greater(t, e.GetWeight(), float32(0))
+		assert.LessOrEqual(t, e.GetWeight(), float32(1.0))
 	}
 }
 
@@ -335,8 +335,8 @@ func TestConvertInoreaderSummariesToProto(t *testing.T) {
 
 	proto := convertInoreaderSummariesToProto(summaries)
 	require.Len(t, proto, 2)
-	assert.Equal(t, "Summary 1", proto[0].Title)
-	assert.Equal(t, "Author X", proto[0].Author)
-	assert.Equal(t, "ino-1", proto[0].SourceId)
-	assert.Equal(t, "", proto[1].Author)
+	assert.Equal(t, "Summary 1", proto[0].GetTitle())
+	assert.Equal(t, "Author X", proto[0].GetAuthor())
+	assert.Equal(t, "ino-1", proto[0].GetSourceId())
+	assert.Empty(t, proto[1].GetAuthor())
 }

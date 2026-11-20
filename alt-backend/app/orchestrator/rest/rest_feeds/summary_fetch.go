@@ -11,11 +11,11 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 func RestHandleFetchInoreaderSummary(container *di.ApplicationComponents) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		ctx := c.Request().Context()
 		var req FeedSummaryRequest
 		if err := c.Bind(&req); err != nil {
@@ -105,7 +105,7 @@ func RestHandleFetchInoreaderSummary(container *di.ApplicationComponents) echo.H
 // handleFetchArticleSummary handles article summary fetch requests
 // It fetches summaries from alt-db if available, or generates them via news-creator
 func RestHandleFetchArticleSummary(container *di.ApplicationComponents, cfg *config.Config) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		ctx := c.Request().Context()
 
 		// Get user context for saving summary

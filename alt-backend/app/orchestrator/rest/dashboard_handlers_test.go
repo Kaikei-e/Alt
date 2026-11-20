@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/labstack/echo/v4"
-	echomiddleware "github.com/labstack/echo/v4/middleware"
+	"github.com/labstack/echo/v5"
+	echomiddleware "github.com/labstack/echo/v5/middleware"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -74,7 +74,7 @@ func TestDashboardRoutes_Unauthenticated_Returns401(t *testing.T) {
 			v1 := e.Group("/v1")
 			registerDashboardRoutes(v1, &di.ApplicationComponents{}, testAuthCfg())
 
-			req := httptest.NewRequest(http.MethodGet, rt.target, nil)
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, rt.target, nil)
 			rec := httptest.NewRecorder()
 			e.ServeHTTP(rec, req)
 
@@ -94,7 +94,7 @@ func TestDashboardRoutes_NonAdminUserContext_Returns403(t *testing.T) {
 			v1 := e.Group("/v1")
 			registerDashboardRoutes(v1, &di.ApplicationComponents{}, testAuthCfg())
 
-			req := httptest.NewRequest(http.MethodGet, rt.target, nil)
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, rt.target, nil)
 			req.Header.Set("X-Alt-Backend-Token", userToken)
 			rec := httptest.NewRecorder()
 			e.ServeHTTP(rec, req)
@@ -112,7 +112,7 @@ func TestDashboardRoutes_NonAdminUserContext_Returns403(t *testing.T) {
 			dashboard.GET("/jobs", handleGetJobs(nil))
 			dashboard.GET("/recap_jobs", handleGetRecapJobs(nil))
 
-			req := httptest.NewRequest(http.MethodGet, rt.target, nil)
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, rt.target, nil)
 			rec := httptest.NewRecorder()
 			e.ServeHTTP(rec, req)
 
@@ -154,7 +154,7 @@ func TestDashboardRoutes_AdminRole_SucceedsAcrossAll5Routes(t *testing.T) {
 	adminToken := signRESTTestToken(t, domain.UserRoleAdmin)
 
 	t.Run("GET /v1/dashboard/metrics", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/v1/dashboard/metrics?type=cpu&window=3600&limit=100", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/dashboard/metrics?type=cpu&window=3600&limit=100", nil)
 		req.Header.Set("X-Alt-Backend-Token", adminToken)
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, req)
@@ -164,7 +164,7 @@ func TestDashboardRoutes_AdminRole_SucceedsAcrossAll5Routes(t *testing.T) {
 	})
 
 	t.Run("GET /v1/dashboard/overview", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/v1/dashboard/overview?window=3600&limit=50", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/dashboard/overview?window=3600&limit=50", nil)
 		req.Header.Set("X-Alt-Backend-Token", adminToken)
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, req)
@@ -174,7 +174,7 @@ func TestDashboardRoutes_AdminRole_SucceedsAcrossAll5Routes(t *testing.T) {
 	})
 
 	t.Run("GET /v1/dashboard/logs", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/v1/dashboard/logs?window=3600&limit=50", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/dashboard/logs?window=3600&limit=50", nil)
 		req.Header.Set("X-Alt-Backend-Token", adminToken)
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, req)
@@ -184,7 +184,7 @@ func TestDashboardRoutes_AdminRole_SucceedsAcrossAll5Routes(t *testing.T) {
 	})
 
 	t.Run("GET /v1/dashboard/jobs", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/v1/dashboard/jobs?window=3600&limit=50", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/dashboard/jobs?window=3600&limit=50", nil)
 		req.Header.Set("X-Alt-Backend-Token", adminToken)
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, req)
@@ -194,7 +194,7 @@ func TestDashboardRoutes_AdminRole_SucceedsAcrossAll5Routes(t *testing.T) {
 	})
 
 	t.Run("GET /v1/dashboard/recap_jobs", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/v1/dashboard/recap_jobs?window=3600&limit=50", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/dashboard/recap_jobs?window=3600&limit=50", nil)
 		req.Header.Set("X-Alt-Backend-Token", adminToken)
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, req)

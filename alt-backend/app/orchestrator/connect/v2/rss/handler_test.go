@@ -10,6 +10,7 @@ import (
 	"connectrpc.com/connect"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	rssv2 "alt/gen/proto/alt/rss/v2"
@@ -19,6 +20,7 @@ import (
 	"alt/mocks"
 	"alt/orchestrator/usecase/register_favorite_feed_usecase"
 	"alt/orchestrator/usecase/subscription_usecase"
+	"alt/utils/safeconv"
 )
 
 func createAuthContext() context.Context {
@@ -44,7 +46,7 @@ func TestRegisterRSSFeedResponse_Construction(t *testing.T) {
 		Message: "RSS feed link registered",
 	}
 
-	assert.Equal(t, "RSS feed link registered", resp.Message)
+	assert.Equal(t, "RSS feed link registered", resp.GetMessage())
 }
 
 func TestRSSFeedLink_Construction(t *testing.T) {
@@ -54,8 +56,8 @@ func TestRSSFeedLink_Construction(t *testing.T) {
 		Url: "https://example.com/feed.xml",
 	}
 
-	assert.Equal(t, id, link.Id)
-	assert.Equal(t, "https://example.com/feed.xml", link.Url)
+	assert.Equal(t, id, link.GetId())
+	assert.Equal(t, "https://example.com/feed.xml", link.GetUrl())
 }
 
 func TestRSSFeedLink_ConstructionWithHealth(t *testing.T) {
@@ -69,12 +71,12 @@ func TestRSSFeedLink_ConstructionWithHealth(t *testing.T) {
 		IsActive:            true,
 	}
 
-	assert.Equal(t, id, link.Id)
-	assert.Equal(t, "https://example.com/feed.xml", link.Url)
-	assert.Equal(t, "warning", link.HealthStatus)
-	assert.Equal(t, int32(2), link.ConsecutiveFailures)
-	assert.Equal(t, "connection timeout", link.LastFailureReason)
-	assert.True(t, link.IsActive)
+	assert.Equal(t, id, link.GetId())
+	assert.Equal(t, "https://example.com/feed.xml", link.GetUrl())
+	assert.Equal(t, "warning", link.GetHealthStatus())
+	assert.Equal(t, int32(2), link.GetConsecutiveFailures())
+	assert.Equal(t, "connection timeout", link.GetLastFailureReason())
+	assert.True(t, link.GetIsActive())
 }
 
 func TestListRSSFeedLinksResponse_Construction(t *testing.T) {
@@ -100,14 +102,14 @@ func TestListRSSFeedLinksResponse_Construction(t *testing.T) {
 		},
 	}
 
-	assert.Len(t, resp.Links, 2)
-	assert.Equal(t, id1, resp.Links[0].Id)
-	assert.Equal(t, "https://example.com/feed1.xml", resp.Links[0].Url)
-	assert.Equal(t, "healthy", resp.Links[0].HealthStatus)
-	assert.Equal(t, id2, resp.Links[1].Id)
-	assert.Equal(t, "https://example.com/feed2.xml", resp.Links[1].Url)
-	assert.Equal(t, "error", resp.Links[1].HealthStatus)
-	assert.Equal(t, int32(5), resp.Links[1].ConsecutiveFailures)
+	assert.Len(t, resp.GetLinks(), 2)
+	assert.Equal(t, id1, resp.GetLinks()[0].GetId())
+	assert.Equal(t, "https://example.com/feed1.xml", resp.GetLinks()[0].GetUrl())
+	assert.Equal(t, "healthy", resp.GetLinks()[0].GetHealthStatus())
+	assert.Equal(t, id2, resp.GetLinks()[1].GetId())
+	assert.Equal(t, "https://example.com/feed2.xml", resp.GetLinks()[1].GetUrl())
+	assert.Equal(t, "error", resp.GetLinks()[1].GetHealthStatus())
+	assert.Equal(t, int32(5), resp.GetLinks()[1].GetConsecutiveFailures())
 }
 
 func TestListRSSFeedLinksResponse_Empty(t *testing.T) {
@@ -115,8 +117,8 @@ func TestListRSSFeedLinksResponse_Empty(t *testing.T) {
 		Links: []*rssv2.RSSFeedLink{},
 	}
 
-	assert.Empty(t, resp.Links)
-	assert.NotNil(t, resp.Links)
+	assert.Empty(t, resp.GetLinks())
+	assert.NotNil(t, resp.GetLinks())
 }
 
 func TestDeleteRSSFeedLinkResponse_Construction(t *testing.T) {
@@ -124,7 +126,7 @@ func TestDeleteRSSFeedLinkResponse_Construction(t *testing.T) {
 		Message: "Feed unsubscribed",
 	}
 
-	assert.Equal(t, "Feed unsubscribed", resp.Message)
+	assert.Equal(t, "Feed unsubscribed", resp.GetMessage())
 }
 
 func TestRegisterFavoriteFeedResponse_Construction(t *testing.T) {
@@ -132,7 +134,7 @@ func TestRegisterFavoriteFeedResponse_Construction(t *testing.T) {
 		Message: "favorite feed registered",
 	}
 
-	assert.Equal(t, "favorite feed registered", resp.Message)
+	assert.Equal(t, "favorite feed registered", resp.GetMessage())
 }
 
 // =============================================================================
@@ -164,9 +166,9 @@ func TestRegisterRSSFeedRequest_Validation(t *testing.T) {
 			}
 
 			if tt.wantErr {
-				assert.Empty(t, req.Url)
+				assert.Empty(t, req.GetUrl())
 			} else {
-				assert.NotEmpty(t, req.Url)
+				assert.NotEmpty(t, req.GetUrl())
 			}
 		})
 	}
@@ -197,9 +199,9 @@ func TestDeleteRSSFeedLinkRequest_Validation(t *testing.T) {
 			}
 
 			if tt.wantErr {
-				assert.Empty(t, req.Id)
+				assert.Empty(t, req.GetId())
 			} else {
-				assert.NotEmpty(t, req.Id)
+				assert.NotEmpty(t, req.GetId())
 			}
 		})
 	}
@@ -230,9 +232,9 @@ func TestRegisterFavoriteFeedRequest_Validation(t *testing.T) {
 			}
 
 			if tt.wantErr {
-				assert.Empty(t, req.Url)
+				assert.Empty(t, req.GetUrl())
 			} else {
-				assert.NotEmpty(t, req.Url)
+				assert.NotEmpty(t, req.GetUrl())
 			}
 		})
 	}
@@ -260,19 +262,19 @@ func TestFeedLinkWithHealthToProto_Conversion(t *testing.T) {
 		Id:                  domainLink.ID.String(),
 		Url:                 domainLink.URL,
 		HealthStatus:        string(domainLink.GetHealthStatus()),
-		ConsecutiveFailures: int32(domainLink.Availability.ConsecutiveFailures),
+		ConsecutiveFailures: safeconv.Int32(domainLink.Availability.ConsecutiveFailures),
 		IsActive:            domainLink.Availability.IsActive,
 	}
 	if domainLink.Availability.LastFailureReason != nil {
 		protoLink.LastFailureReason = *domainLink.Availability.LastFailureReason
 	}
 
-	assert.Equal(t, id.String(), protoLink.Id)
-	assert.Equal(t, "https://example.com/feed.xml", protoLink.Url)
-	assert.Equal(t, "warning", protoLink.HealthStatus)
-	assert.Equal(t, int32(2), protoLink.ConsecutiveFailures)
-	assert.True(t, protoLink.IsActive)
-	assert.Equal(t, "connection timeout", protoLink.LastFailureReason)
+	assert.Equal(t, id.String(), protoLink.GetId())
+	assert.Equal(t, "https://example.com/feed.xml", protoLink.GetUrl())
+	assert.Equal(t, "warning", protoLink.GetHealthStatus())
+	assert.Equal(t, int32(2), protoLink.GetConsecutiveFailures())
+	assert.True(t, protoLink.GetIsActive())
+	assert.Equal(t, "connection timeout", protoLink.GetLastFailureReason())
 }
 
 func TestFeedLinkWithHealthToProto_NilAvailability(t *testing.T) {
@@ -288,9 +290,9 @@ func TestFeedLinkWithHealthToProto_NilAvailability(t *testing.T) {
 		HealthStatus: string(domainLink.GetHealthStatus()),
 	}
 
-	assert.Equal(t, "unknown", protoLink.HealthStatus)
-	assert.Equal(t, int32(0), protoLink.ConsecutiveFailures)
-	assert.False(t, protoLink.IsActive)
+	assert.Equal(t, "unknown", protoLink.GetHealthStatus())
+	assert.Equal(t, int32(0), protoLink.GetConsecutiveFailures())
+	assert.False(t, protoLink.GetIsActive())
 }
 
 func TestFeedLinksWithHealthToProto_Conversion(t *testing.T) {
@@ -316,17 +318,17 @@ func TestFeedLinksWithHealthToProto_Conversion(t *testing.T) {
 			HealthStatus: string(link.GetHealthStatus()),
 		}
 		if link.Availability != nil {
-			protoLink.ConsecutiveFailures = int32(link.Availability.ConsecutiveFailures)
+			protoLink.ConsecutiveFailures = safeconv.Int32(link.Availability.ConsecutiveFailures)
 			protoLink.IsActive = link.Availability.IsActive
 		}
 		protoLinks = append(protoLinks, protoLink)
 	}
 
 	assert.Len(t, protoLinks, 2)
-	assert.Equal(t, id1.String(), protoLinks[0].Id)
-	assert.Equal(t, "healthy", protoLinks[0].HealthStatus)
-	assert.Equal(t, id2.String(), protoLinks[1].Id)
-	assert.Equal(t, "unknown", protoLinks[1].HealthStatus)
+	assert.Equal(t, id1.String(), protoLinks[0].GetId())
+	assert.Equal(t, "healthy", protoLinks[0].GetHealthStatus())
+	assert.Equal(t, id2.String(), protoLinks[1].GetId())
+	assert.Equal(t, "unknown", protoLinks[1].GetHealthStatus())
 }
 
 // =============================================================================
@@ -382,7 +384,7 @@ func TestRandomSubscription_Unauthenticated(t *testing.T) {
 	h := newTestHandler(t, &di.ApplicationComponents{})
 	_, err := h.RandomSubscription(context.Background(),
 		connect.NewRequest(&rssv2.RandomSubscriptionRequest{}))
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Equal(t, connect.CodeUnauthenticated, connect.CodeOf(err))
 }
 
@@ -390,7 +392,7 @@ func TestRandomSubscription_NoUsecase_Unimplemented(t *testing.T) {
 	h := newTestHandler(t, &di.ApplicationComponents{})
 	_, err := h.RandomSubscription(createAuthContext(),
 		connect.NewRequest(&rssv2.RandomSubscriptionRequest{}))
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Equal(t, connect.CodeUnimplemented, connect.CodeOf(err))
 }
 
@@ -403,7 +405,7 @@ func TestRegisterFavoriteFeed_EmptyURL(t *testing.T) {
 	})
 
 	_, err := h.RegisterFavoriteFeed(ctx, req)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 }
 
@@ -416,7 +418,7 @@ func TestRegisterFavoriteFeed_WhitespaceURL(t *testing.T) {
 	})
 
 	_, err := h.RegisterFavoriteFeed(ctx, req)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 }
 
@@ -429,7 +431,7 @@ func TestRegisterFavoriteFeed_Unauthenticated(t *testing.T) {
 	})
 
 	_, err := h.RegisterFavoriteFeed(ctx, req)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Equal(t, connect.CodeUnauthenticated, connect.CodeOf(err))
 }
 
@@ -461,8 +463,8 @@ func TestRegisterFavoriteFeed_Success(t *testing.T) {
 	})
 
 	resp, err := h.RegisterFavoriteFeed(ctx, req)
-	assert.NoError(t, err)
-	assert.Equal(t, "favorite feed registered", resp.Msg.Message)
+	require.NoError(t, err)
+	assert.Equal(t, "favorite feed registered", resp.Msg.GetMessage())
 }
 
 func TestRegisterFavoriteFeed_UsecaseError(t *testing.T) {
@@ -496,7 +498,7 @@ func TestDeleteRSSFeedLink_Success(t *testing.T) {
 
 	ctx := createAuthContext()
 	userCtx, err := domain.GetUserFromContext(ctx)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	feedLinkID := uuid.New()
 	mockPort := mocks.NewMockSubscriptionPort(ctrl)
@@ -513,8 +515,8 @@ func TestDeleteRSSFeedLink_Success(t *testing.T) {
 	})
 
 	resp, err := h.DeleteRSSFeedLink(ctx, req)
-	assert.NoError(t, err)
-	assert.Equal(t, "Feed unsubscribed", resp.Msg.Message)
+	require.NoError(t, err)
+	assert.Equal(t, "Feed unsubscribed", resp.Msg.GetMessage())
 }
 
 func TestDeleteRSSFeedLink_InvalidID(t *testing.T) {
@@ -525,6 +527,6 @@ func TestDeleteRSSFeedLink_InvalidID(t *testing.T) {
 	})
 
 	_, err := h.DeleteRSSFeedLink(createAuthContext(), req)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 }

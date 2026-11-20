@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -33,7 +34,8 @@ func ResolveRedisPassword(logger *slog.Logger) (string, error) {
 		return "", fmt.Errorf("REDIS_PASSWORD_FILE is set but empty; set REDIS_AUTH=disabled to run with redis auth disabled explicitly")
 	}
 
-	content, err := os.ReadFile(trimmedPath)
+	// #nosec G304 -- path comes from operator-configured REDIS_PASSWORD_FILE env var
+	content, err := os.ReadFile(filepath.Clean(trimmedPath))
 	if err != nil {
 		logger.Error("redis_password_file_read_failed", "file", trimmedPath, "error", err)
 		return "", fmt.Errorf("read REDIS_PASSWORD_FILE %s: %w", trimmedPath, err)
@@ -73,7 +75,8 @@ func resolveCoordinationRedisPassword(coordinationRedisURL string) (string, erro
 				logger.Error("redis_password_file_empty", "env", envVar)
 				return "", fmt.Errorf("%s is set but empty; set REDIS_AUTH=disabled to run with redis auth disabled explicitly", envVar)
 			}
-			content, err := os.ReadFile(trimmedPath)
+			// #nosec G304 -- path comes from operator-configured coordination redis password file env var
+			content, err := os.ReadFile(filepath.Clean(trimmedPath))
 			if err != nil {
 				logger.Error("redis_password_file_read_failed", "file", trimmedPath, "error", err)
 				return "", fmt.Errorf("read %s %s: %w", envVar, trimmedPath, err)

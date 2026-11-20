@@ -8,8 +8,6 @@ import (
 
 	"alt/domain"
 	"alt/mocks"
-
-	"github.com/google/uuid"
 )
 
 // インターフェース契約のテスト
@@ -101,39 +99,4 @@ func TestFetchFeedsPortContract(t *testing.T) {
 func TestFetchFeedsPortImplementation(t *testing.T) {
 	// モックの実装があることを確認
 	var _ FetchFeedsPort = (*mocks.MockFetchFeedsPort)(nil)
-}
-
-// テスト用の簡単なモック実装
-type mockFetchFeedsPort struct{}
-
-func (m *mockFetchFeedsPort) FetchFeeds(ctx context.Context, link string) ([]*domain.FeedItem, error) {
-	return nil, nil
-}
-
-func (m *mockFetchFeedsPort) FetchFeedsList(ctx context.Context) ([]*domain.FeedItem, error) {
-	return nil, nil
-}
-
-func (m *mockFetchFeedsPort) FetchFeedsListLimit(ctx context.Context, offset int) ([]*domain.FeedItem, error) {
-	return nil, nil
-}
-
-func (m *mockFetchFeedsPort) FetchFeedsListPage(ctx context.Context, page int) ([]*domain.FeedItem, error) {
-	return nil, nil
-}
-
-func (m *mockFetchFeedsPort) FetchFeedsListCursor(ctx context.Context, cursor *time.Time, limit int, excludeFeedLinkIDs []uuid.UUID) ([]*domain.FeedItem, error) {
-	return nil, nil
-}
-
-func (m *mockFetchFeedsPort) FetchUnreadFeedsListCursor(ctx context.Context, cursor *time.Time, limit int, excludeFeedLinkIDs []uuid.UUID) ([]*domain.FeedItem, error) {
-	return nil, nil
-}
-
-func (m *mockFetchFeedsPort) FetchReadFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*domain.FeedItem, error) {
-	return nil, nil
-}
-
-func (m *mockFetchFeedsPort) FetchFavoriteFeedsListCursor(ctx context.Context, cursor *time.Time, limit int) ([]*domain.FeedItem, error) {
-	return nil, nil
 }

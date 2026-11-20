@@ -167,15 +167,16 @@ func TestImageFetchUsecase_Execute(t *testing.T) {
 			got, err := usecase.Execute(context.Background(), tt.rawURL, tt.options)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				if tt.errCode != "" {
-					if appErr, ok := err.(*errors.AppContextError); ok {
+					appErr := &errors.AppContextError{}
+					if stderrors.As(err, &appErr) {
 						assert.Equal(t, tt.errCode, appErr.Code)
 					}
 				}
 				assert.Nil(t, got)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				require.NotNil(t, got)
 				assert.Equal(t, tt.want.URL, got.URL)
 				assert.Equal(t, tt.want.ContentType, got.ContentType)
@@ -200,7 +201,7 @@ func TestImageFetchUsecase_Execute_ContextCancellation(t *testing.T) {
 
 	got, err := usecase.Execute(ctx, "https://9to5mac.com/image.jpg", nil)
 
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, got)
 	assert.Contains(t, err.Error(), "context canceled")
 }

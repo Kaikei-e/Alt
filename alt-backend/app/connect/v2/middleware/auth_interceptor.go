@@ -19,6 +19,7 @@ import (
 )
 
 const (
+	// #nosec G101 -- HTTP header name constant, not a credential
 	backendTokenHeader = "X-Alt-Backend-Token"
 )
 
@@ -137,7 +138,7 @@ func (a *AuthInterceptor) validateToken(tokenStr string) (*domain.UserContext, e
 	}, jwt.WithExpirationRequired(), jwt.WithValidMethods([]string{jwt.SigningMethodEdDSA.Alg()}))
 
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", errInvalidToken, err)
+		return nil, fmt.Errorf("%w: %w", errInvalidToken, err)
 	}
 
 	if !parsed.Valid {

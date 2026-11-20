@@ -13,7 +13,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 )
 
 func registerImageRoutes(v1 *echo.Group, container *di.ApplicationComponents, cfg config.AuthConfig) {
@@ -26,7 +26,7 @@ func registerImageRoutes(v1 *echo.Group, container *di.ApplicationComponents, cf
 }
 
 func handleImageFetch(container *di.ApplicationComponents) echo.HandlerFunc {
-	return func(c echo.Context) error {
+	return func(c *echo.Context) error {
 		var req ImageFetchRequest
 		if err := c.Bind(&req); err != nil {
 			return resterr.HandleValidationError(c, "Invalid request format", "body", "malformed JSON")

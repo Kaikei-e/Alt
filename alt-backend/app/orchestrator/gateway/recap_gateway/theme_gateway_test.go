@@ -47,19 +47,21 @@ func TestRecapGateway_GetTheme(t *testing.T) {
 			},
 		}
 
+		encodeErrCh := make(chan error, 1)
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			assert.Equal(t, http.MethodGet, r.Method)
 			assert.Equal(t, "/v1/themes/"+themeID.String(), r.URL.Path)
 			assert.Equal(t, userID.String(), r.URL.Query().Get("user_id"))
 			assert.False(t, r.URL.Query().Has("version"))
 			w.Header().Set("Content-Type", "application/json")
-			require.NoError(t, json.NewEncoder(w).Encode(payload))
+			encodeErrCh <- json.NewEncoder(w).Encode(payload)
 		}))
 		defer srv.Close()
 
 		gw := NewRecapGatewayWithConfig(nil, srv.URL)
 		got, err := gw.GetTheme(context.Background(), userID, themeID, nil)
 		require.NoError(t, err)
+		require.NoError(t, <-encodeErrCh)
 		require.NotNil(t, got)
 		assert.Equal(t, themeID.String(), got.ThemeID)
 		assert.Equal(t, "Systems Architecture", got.Title)

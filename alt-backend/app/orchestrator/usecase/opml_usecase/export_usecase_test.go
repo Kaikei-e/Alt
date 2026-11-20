@@ -72,7 +72,7 @@ func TestExportOPMLUsecase_Execute_PortError(t *testing.T) {
 	usecase := NewExportOPMLUsecase(mockPort)
 	result, err := usecase.Execute(context.Background())
 
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, result)
 	assert.Contains(t, err.Error(), "fetch feed links for export")
 }

@@ -13,7 +13,7 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -93,11 +93,10 @@ func newTestContainer(
 
 func TestHandleImageProxy_DeadlineExceeded_Returns504(t *testing.T) {
 	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/v1/images/proxy/sig/url", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/images/proxy/sig/url", nil)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
-	c.SetParamNames("sig", "url")
-	c.SetParamValues("testsig", "dGVzdA")
+	c.SetPathValues(echo.PathValues{{Name: "sig", Value: "testsig"}, {Name: "url", Value: "dGVzdA"}})
 
 	// Use a fetcher that returns DeadlineExceeded to simulate timeout
 	container := newTestContainer(
@@ -117,11 +116,10 @@ func TestHandleImageProxy_DeadlineExceeded_Returns504(t *testing.T) {
 
 func TestHandleImageProxy_FetchError_Returns502(t *testing.T) {
 	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/v1/images/proxy/sig/url", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/images/proxy/sig/url", nil)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
-	c.SetParamNames("sig", "url")
-	c.SetParamValues("testsig", "dGVzdA")
+	c.SetPathValues(echo.PathValues{{Name: "sig", Value: "testsig"}, {Name: "url", Value: "dGVzdA"}})
 
 	container := newTestContainer(
 		&stubSigner{verifyURL: "https://example.com/image.jpg"},
@@ -140,11 +138,10 @@ func TestHandleImageProxy_FetchError_Returns502(t *testing.T) {
 
 func TestHandleImageProxy_SignatureError_Returns403(t *testing.T) {
 	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/v1/images/proxy/sig/url", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/images/proxy/sig/url", nil)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
-	c.SetParamNames("sig", "url")
-	c.SetParamValues("badsig", "dGVzdA")
+	c.SetPathValues(echo.PathValues{{Name: "sig", Value: "badsig"}, {Name: "url", Value: "dGVzdA"}})
 
 	container := newTestContainer(
 		&stubSigner{verifyErr: fmt.Errorf("invalid")},
@@ -162,11 +159,10 @@ func TestHandleImageProxy_SignatureError_Returns403(t *testing.T) {
 
 func TestHandleImageProxy_RateLimitError_Returns429(t *testing.T) {
 	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/v1/images/proxy/sig/url", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/images/proxy/sig/url", nil)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
-	c.SetParamNames("sig", "url")
-	c.SetParamValues("testsig", "dGVzdA")
+	c.SetPathValues(echo.PathValues{{Name: "sig", Value: "testsig"}, {Name: "url", Value: "dGVzdA"}})
 
 	container := newTestContainer(
 		&stubSigner{verifyURL: "https://cdn.example.com/image.jpg"},
@@ -185,11 +181,10 @@ func TestHandleImageProxy_RateLimitError_Returns429(t *testing.T) {
 
 func TestHandleImageProxy_CacheControl_7Day(t *testing.T) {
 	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/v1/images/proxy/sig/url", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/images/proxy/sig/url", nil)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
-	c.SetParamNames("sig", "url")
-	c.SetParamValues("testsig", "dGVzdA")
+	c.SetPathValues(echo.PathValues{{Name: "sig", Value: "testsig"}, {Name: "url", Value: "dGVzdA"}})
 
 	container := newTestContainer(
 		&stubSigner{verifyURL: "https://example.com/image.jpg"},

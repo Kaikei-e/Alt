@@ -447,7 +447,7 @@ type userScopedArticleReader struct {
 func (r *userScopedArticleReader) FetchArticleByID(ctx context.Context, _ string) (*domain.ArticleContent, error) {
 	u, err := domain.GetUserFromContext(ctx)
 	if err != nil || u.UserID != r.ownerID {
-		return nil, nil
+		return nil, nil //nolint:nilerr // stub returns (nil, nil) when caller lacks matching user context
 	}
 	return r.article, nil
 }

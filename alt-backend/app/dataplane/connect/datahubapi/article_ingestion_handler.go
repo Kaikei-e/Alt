@@ -22,14 +22,14 @@ func (h *Handler) CheckArticleExists(ctx context.Context, req *connect.Request[d
 	if h.checkArticleExists == nil {
 		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("not yet implemented"))
 	}
-	if req.Msg.Url == "" {
+	if req.Msg.GetUrl() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("url is required"))
 	}
-	if req.Msg.FeedId == "" {
+	if req.Msg.GetFeedId() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("feed_id is required"))
 	}
 
-	exists, articleID, err := h.checkArticleExists.CheckArticleExists(ctx, req.Msg.Url, req.Msg.FeedId)
+	exists, articleID, err := h.checkArticleExists.CheckArticleExists(ctx, req.Msg.GetUrl(), req.Msg.GetFeedId())
 	if err != nil {
 		h.logger.Error("CheckArticleExists failed", "error", err)
 		return nil, connect.NewError(connect.CodeInternal, errors.New("failed to check article existence"))
@@ -45,10 +45,10 @@ func (h *Handler) CreateArticle(ctx context.Context, req *connect.Request[datahu
 	if h.createArticle == nil {
 		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("not yet implemented"))
 	}
-	if req.Msg.Url == "" {
+	if req.Msg.GetUrl() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("url is required"))
 	}
-	if req.Msg.FeedId == "" {
+	if req.Msg.GetFeedId() == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("feed_id is required"))
 	}
 
@@ -56,7 +56,7 @@ func (h *Handler) CreateArticle(ctx context.Context, req *connect.Request[datahu
 	// unparseable one used to mean the ArticleCreated event was quietly not
 	// built. It is not an event-only concern: articles.user_id is UUID NOT
 	// NULL, so a request without a usable one has no row to write either.
-	userID, err := uuid.Parse(req.Msg.UserId)
+	userID, err := uuid.Parse(req.Msg.GetUserId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument,
 			errors.New("user_id is required and must be a UUID"))
@@ -75,19 +75,19 @@ func (h *Handler) CreateArticle(ctx context.Context, req *connect.Request[datahu
 	// needs CreateArticleParams to hold a *time.Time and the ON CONFLICT to
 	// COALESCE it — the port, the gateway and the driver rather than this
 	// handler.
-	publishedAtOrZero := timeOrZero(req.Msg.PublishedAt)
+	publishedAtOrZero := timeOrZero(req.Msg.GetPublishedAt())
 	var publishedAt *time.Time
 	if !publishedAtOrZero.IsZero() {
 		publishedAt = &publishedAtOrZero
 	}
 
 	articleID, created, err := h.createArticle.CreateArticle(ctx, internal_article_port.CreateArticleParams{
-		Title:       req.Msg.Title,
-		URL:         req.Msg.Url,
-		Content:     req.Msg.Content,
-		FeedID:      req.Msg.FeedId,
-		UserID:      req.Msg.UserId,
-		Language:    req.Msg.Language,
+		Title:       req.Msg.GetTitle(),
+		URL:         req.Msg.GetUrl(),
+		Content:     req.Msg.GetContent(),
+		FeedID:      req.Msg.GetFeedId(),
+		UserID:      req.Msg.GetUserId(),
+		Language:    req.Msg.GetLanguage(),
 		PublishedAt: publishedAtOrZero,
 	})
 	if err != nil {
@@ -115,11 +115,11 @@ func (h *Handler) CreateArticle(ctx context.Context, req *connect.Request[datahu
 		if created {
 			if pubErr := h.eventPublisher.PublishArticleCreated(ctx, event_publisher_port.ArticleCreatedEvent{
 				ArticleID:   articleID,
-				UserID:      req.Msg.UserId,
-				FeedID:      req.Msg.FeedId,
-				Title:       req.Msg.Title,
-				URL:         req.Msg.Url,
-				Content:     req.Msg.Content,
+				UserID:      req.Msg.GetUserId(),
+				FeedID:      req.Msg.GetFeedId(),
+				Title:       req.Msg.GetTitle(),
+				URL:         req.Msg.GetUrl(),
+				Content:     req.Msg.GetContent(),
 				PublishedAt: publishedAtOrZero,
 			}); pubErr != nil {
 				h.logger.Warn("failed to publish ArticleCreated event (non-fatal)",
@@ -128,11 +128,11 @@ func (h *Handler) CreateArticle(ctx context.Context, req *connect.Request[datahu
 			}
 		} else if pubErr := h.eventPublisher.PublishArticleUpdated(ctx, event_publisher_port.ArticleUpdatedEvent{
 			ArticleID:   articleID,
-			UserID:      req.Msg.UserId,
-			FeedID:      req.Msg.FeedId,
-			Title:       req.Msg.Title,
-			URL:         req.Msg.Url,
-			Content:     req.Msg.Content,
+			UserID:      req.Msg.GetUserId(),
+			FeedID:      req.Msg.GetFeedId(),
+			Title:       req.Msg.GetTitle(),
+			URL:         req.Msg.GetUrl(),
+			Content:     req.Msg.GetContent(),
 			PublishedAt: publishedAtOrZero,
 		}); pubErr != nil {
 			h.logger.Warn("failed to publish ArticleUpdated event (non-fatal)",
@@ -198,10 +198,10 @@ func (h *Handler) appendArticleCreated(
 	// broke the projector.
 	payload, err := json.Marshal(domain.ArticleCreatedPayload{
 		ArticleID:   articleID,
-		Title:       msg.Title,
+		Title:       msg.GetTitle(),
 		PublishedAt: publishedAtWire,
 		TenantID:    userID.String(),
-		URL:         msg.Url,
+		URL:         msg.GetUrl(),
 	})
 	if err != nil {
 		h.logger.Error("failed to marshal knowledge ArticleCreated payload",
