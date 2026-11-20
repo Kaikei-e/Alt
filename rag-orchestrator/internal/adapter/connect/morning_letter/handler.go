@@ -84,9 +84,9 @@ func (h *Handler) StreamChat(
 
 	// Extract last user message as query
 	var query string
-	for i := len(req.Msg.Messages) - 1; i >= 0; i-- {
-		if req.Msg.Messages[i].Role == "user" {
-			query = req.Msg.Messages[i].Content
+	for i := len(req.Msg.GetMessages()) - 1; i >= 0; i-- {
+		if req.Msg.GetMessages()[i].GetRole() == "user" {
+			query = req.Msg.GetMessages()[i].GetContent()
 			break
 		}
 	}
@@ -97,7 +97,7 @@ func (h *Handler) StreamChat(
 	}
 
 	// Get time window (default 24 hours, max 168 hours = 7 days)
-	withinHours := int(req.Msg.WithinHours)
+	withinHours := int(req.Msg.GetWithinHours())
 	if withinHours <= 0 {
 		withinHours = 24
 	}
@@ -167,7 +167,8 @@ func (h *Handler) StreamChat(
 					Since: since.Format(time.RFC3339),
 					Until: now.Format(time.RFC3339),
 				},
-				ArticlesScanned: int32(min(len(articles), 1<<31-1)), //nolint:gosec // safe: articles count never exceeds int32 max
+				// #nosec G115 -- safe: articles count never exceeds int32 max
+				ArticlesScanned: int32(min(len(articles), 1<<31-1)),
 			},
 		},
 	}
@@ -334,16 +335,16 @@ func formatLetterAsContext(doc *domain.MorningLetterDoc) string {
 	var sb strings.Builder
 	sb.WriteString("<morning_letter>\n")
 	if doc.Lead != "" {
-		sb.WriteString(fmt.Sprintf("## Lead\n%s\n\n", escapeMorningLetterDelim(doc.Lead)))
+		fmt.Fprintf(&sb, "## Lead\n%s\n\n", escapeMorningLetterDelim(doc.Lead))
 	}
 	for _, s := range doc.Sections {
 		title := s.Title
 		if title == "" {
 			title = s.Key
 		}
-		sb.WriteString(fmt.Sprintf("## %s\n", escapeMorningLetterDelim(title)))
+		fmt.Fprintf(&sb, "## %s\n", escapeMorningLetterDelim(title))
 		for _, b := range s.Bullets {
-			sb.WriteString(fmt.Sprintf("- %s\n", escapeMorningLetterDelim(b)))
+			fmt.Fprintf(&sb, "- %s\n", escapeMorningLetterDelim(b))
 		}
 		sb.WriteString("\n")
 	}

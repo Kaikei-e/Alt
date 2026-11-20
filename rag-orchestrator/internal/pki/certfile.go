@@ -52,14 +52,14 @@ func (c *CertFile) loadPair() (*x509.Certificate, error) {
 		if isNotExist(err) {
 			return nil, ErrCertNotFound
 		}
-		return nil, fmt.Errorf("%w: %v", ErrCertParseFailed, err)
+		return nil, fmt.Errorf("%w: %w", ErrCertParseFailed, err)
 	}
 	keyPEM, err := readRegularNoFollow(c.KeyPath, maxRootPEMBytes)
 	if err != nil {
 		if isNotExist(err) {
 			return nil, fmt.Errorf("%w: key missing", ErrCertParseFailed)
 		}
-		return nil, fmt.Errorf("%w: %v", ErrCertParseFailed, err)
+		return nil, fmt.Errorf("%w: %w", ErrCertParseFailed, err)
 	}
 	if _, err := tls.X509KeyPair(raw, keyPEM); err != nil {
 		return nil, fmt.Errorf("%w: cert/key pair mismatch", ErrCertParseFailed)
@@ -70,7 +70,7 @@ func (c *CertFile) loadPair() (*x509.Certificate, error) {
 	}
 	cert, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrCertParseFailed, err)
+		return nil, fmt.Errorf("%w: %w", ErrCertParseFailed, err)
 	}
 	return cert, nil
 }
@@ -81,7 +81,7 @@ func (c *CertFile) recoverInstall() error {
 		if isNotExist(err) {
 			return nil
 		}
-		return fmt.Errorf("%w: read pair journal: %v", ErrCertParseFailed, err)
+		return fmt.Errorf("%w: read pair journal: %w", ErrCertParseFailed, err)
 	}
 	certPEM, certErr := readRegularNoFollow(c.CertPath, maxRootPEMBytes)
 	keyPEM, keyErr := readRegularNoFollow(c.KeyPath, maxRootPEMBytes)
@@ -92,7 +92,7 @@ func (c *CertFile) recoverInstall() error {
 		}
 	}
 	if err := c.installKeyPEM(journalPEM); err != nil {
-		return fmt.Errorf("%w: restore pair journal: %v", ErrCertParseFailed, err)
+		return fmt.Errorf("%w: restore pair journal: %w", ErrCertParseFailed, err)
 	}
 	_ = os.Remove(c.journalPath())
 	return nil
@@ -150,7 +150,7 @@ func (c *CertFile) Write(_ context.Context, certPEM, keyPEM []byte) error {
 	}
 	if err := renameFile(certTmp, c.CertPath); err != nil {
 		if rerr := c.restoreJournaledKey(); rerr != nil {
-			return fmt.Errorf("pki: rename cert: %w (rollback: %v)", err, rerr)
+			return fmt.Errorf("pki: rename cert: %w (rollback: %w)", err, rerr)
 		}
 		return fmt.Errorf("pki: rename cert: %w", err)
 	}
@@ -166,7 +166,7 @@ func (c *CertFile) Write(_ context.Context, certPEM, keyPEM []byte) error {
 	}
 	if _, err := tls.X509KeyPair(certOnDisk, keyOnDisk); err != nil {
 		if rerr := c.restoreJournaledKey(); rerr != nil {
-			return fmt.Errorf("pki: installed cert/key pair mismatch: %w (rollback: %v)", err, rerr)
+			return fmt.Errorf("pki: installed cert/key pair mismatch: %w (rollback: %w)", err, rerr)
 		}
 		return fmt.Errorf("pki: installed cert/key pair mismatch: %w", err)
 	}

@@ -28,7 +28,8 @@ func NewConnectRecapSearchClient(client recapv2connect.RecapServiceClient, logge
 func (c *ConnectRecapSearchClient) SearchRecapsByTag(ctx context.Context, tagName string, limit int) ([]domain.RecapSearchResult, error) {
 	req := connect.NewRequest(&recapv2.SearchRecapsByTagRequest{
 		TagName: tagName,
-		Limit:   int32(min(limit, math.MaxInt32)), //nolint:gosec // value clamped to MaxInt32
+		// #nosec G115 -- value clamped to MaxInt32
+		Limit: int32(min(limit, math.MaxInt32)),
 	})
 
 	resp, err := c.client.SearchRecapsByTag(ctx, req)
@@ -36,8 +37,8 @@ func (c *ConnectRecapSearchClient) SearchRecapsByTag(ctx context.Context, tagNam
 		return nil, fmt.Errorf("SearchRecapsByTag RPC failed: %w", err)
 	}
 
-	results := make([]domain.RecapSearchResult, 0, len(resp.Msg.Results))
-	for _, r := range resp.Msg.Results {
+	results := make([]domain.RecapSearchResult, 0, len(resp.Msg.GetResults()))
+	for _, r := range resp.Msg.GetResults() {
 		results = append(results, domain.RecapSearchResult{
 			Genre:    r.GetGenre(),
 			Summary:  r.GetSummary(),

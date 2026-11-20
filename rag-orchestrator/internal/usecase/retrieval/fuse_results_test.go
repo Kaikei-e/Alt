@@ -2,7 +2,6 @@ package retrieval_test
 
 import (
 	"context"
-	"io"
 	"log/slog"
 	"testing"
 	"time"
@@ -56,7 +55,7 @@ func (m *MockRagChunkRepository) SearchWithinArticles(ctx context.Context, query
 }
 
 func TestFuseResults_SingleQuery_NoExpansion(t *testing.T) {
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	mockRepo := new(MockRagChunkRepository)
 
 	chunkID := uuid.New()
@@ -90,7 +89,7 @@ func TestFuseResults_SingleQuery_NoExpansion(t *testing.T) {
 }
 
 func TestFuseResults_WithExpandedQueries(t *testing.T) {
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	mockRepo := new(MockRagChunkRepository)
 
 	originalChunkID := uuid.New()
@@ -137,7 +136,7 @@ func TestFuseResults_WithExpandedQueries(t *testing.T) {
 }
 
 func TestFuseResults_WithBM25Fusion(t *testing.T) {
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	mockRepo := new(MockRagChunkRepository)
 
 	chunkID := uuid.New()
@@ -178,7 +177,7 @@ func TestFuseResults_WithBM25Fusion(t *testing.T) {
 }
 
 func TestFuseResults_SearchError(t *testing.T) {
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	mockRepo := new(MockRagChunkRepository)
 
 	testUUID := uuid.New()
@@ -198,12 +197,12 @@ func TestFuseResults_SearchError(t *testing.T) {
 	mockRepo.On("Search", mock.Anything, mock.Anything, 50, testUUID).Return(nil, assert.AnError)
 
 	err := retrieval.FuseResults(context.Background(), sc, mockRepo, nil, false, logger)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to search chunks")
 }
 
 func TestFuseResults_NilEmbedding_BM25OnlyDegraded(t *testing.T) {
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	mockRepo := new(MockRagChunkRepository)
 
 	bm25ChunkID := uuid.New()
@@ -238,7 +237,7 @@ func TestFuseResults_NilEmbedding_BM25OnlyDegraded(t *testing.T) {
 }
 
 func TestFuseResults_NilEmbedding_NoBM25_EmptyResult(t *testing.T) {
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	mockRepo := new(MockRagChunkRepository)
 
 	testUUID := uuid.New()
@@ -262,7 +261,7 @@ func TestFuseResults_NilEmbedding_NoBM25_EmptyResult(t *testing.T) {
 }
 
 func TestFuseResults_DeduplicatesExpandedHits(t *testing.T) {
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	mockRepo := new(MockRagChunkRepository)
 
 	sharedChunkID := uuid.New()
@@ -303,7 +302,7 @@ func TestFuseResults_DeduplicatesExpandedHits(t *testing.T) {
 }
 
 func TestFuseResults_ExpandedHits_DeterministicTieBreakByHitIdentity(t *testing.T) {
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	mockRepo := new(MockRagChunkRepository)
 
 	chunkA := uuid.MustParse("11111111-1111-1111-1111-111111111111")

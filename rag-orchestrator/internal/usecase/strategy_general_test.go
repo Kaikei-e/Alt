@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 func TestGeneralStrategy_Name(t *testing.T) {
@@ -31,7 +32,7 @@ func TestGeneralStrategy_DelegatesToRetrieve(t *testing.T) {
 		usecase.RetrieveContextInput{Query: "latest news"},
 		usecase.QueryIntent{IntentType: usecase.IntentGeneral, UserQuestion: "latest news"},
 	)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Len(t, out.Contexts, 1)
 	mockRetrieve.AssertExpectations(t)
 }

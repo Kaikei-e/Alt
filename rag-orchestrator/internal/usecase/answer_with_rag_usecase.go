@@ -527,59 +527,57 @@ func (u *answerWithRAGUsecase) generateAnswerWithRetries(
 	currentAnswer := (*LLMAnswer)(nil)
 	currentFlags := []string(nil)
 
-	for {
-		generationStart := time.Now()
-		u.logger.Info("llm_generation_started",
-			slog.String("request_id", requestID),
-			slog.String("retrieval_set_id", currentPromptData.retrievalSetID),
-			slog.String("profile", profile.name),
-			slog.Int("attempt", retryCount+1))
+	generationStart := time.Now()
+	u.logger.Info("llm_generation_started",
+		slog.String("request_id", requestID),
+		slog.String("retrieval_set_id", currentPromptData.retrievalSetID),
+		slog.String("profile", profile.name),
+		slog.Int("attempt", retryCount+1))
 
-		resp, err := u.llmClient.Chat(ctx, currentPromptData.messages, currentPromptData.maxTokens)
-		if err != nil {
-			return currentPromptData, nil, currentFlags, retryCount, false, fmt.Errorf("generation failed: %w", err)
-		}
-
-		generationDuration := time.Since(generationStart)
-		u.logger.Info("llm_generation_completed",
-			slog.String("request_id", requestID),
-			slog.String("profile", profile.name),
-			slog.Int("attempt", retryCount+1),
-			slog.Int("response_length", len(resp.Text)),
-			slog.Int64("generation_ms", generationDuration.Milliseconds()))
-
-		parsedAnswer, err := u.validator.Validate(resp.Text, currentPromptData.contexts)
-		if err != nil {
-			return currentPromptData, nil, currentFlags, retryCount, false, fmt.Errorf("validation failed: %w", err)
-		}
-
-		u.logger.Info("validation_completed",
-			slog.String("request_id", requestID),
-			slog.String("profile", profile.name),
-			slog.Int("attempt", retryCount+1),
-			slog.Bool("is_fallback", parsedAnswer.Fallback),
-			slog.Int("citations_count", len(parsedAnswer.Citations)))
-
-		if parsedAnswer.Fallback {
-			return currentPromptData, parsedAnswer, currentFlags, retryCount, false, nil
-		}
-
-		qualityFlags := AssessAnswerQuality(
-			parsedAnswer.Answer, input.Query, parsedAnswer.Citations, currentPromptData.intentType, currentPromptData.expandedQueries,
-		)
-		currentAnswer = parsedAnswer
-		currentFlags = qualityFlags
-
-		if len(qualityFlags) > 0 {
-			u.logger.Info("answer_quality_flags",
-				slog.String("request_id", requestID),
-				slog.String("profile", profile.name),
-				slog.Int("attempt", retryCount+1),
-				slog.Any("flags", qualityFlags))
-		}
-
-		return u.retryValidatedAnswer(ctx, input, currentPromptData, currentAnswer, currentFlags, profile, requestID, retryCount)
+	resp, err := u.llmClient.Chat(ctx, currentPromptData.messages, currentPromptData.maxTokens)
+	if err != nil {
+		return currentPromptData, nil, currentFlags, retryCount, false, fmt.Errorf("generation failed: %w", err)
 	}
+
+	generationDuration := time.Since(generationStart)
+	u.logger.Info("llm_generation_completed",
+		slog.String("request_id", requestID),
+		slog.String("profile", profile.name),
+		slog.Int("attempt", retryCount+1),
+		slog.Int("response_length", len(resp.Text)),
+		slog.Int64("generation_ms", generationDuration.Milliseconds()))
+
+	parsedAnswer, err := u.validator.Validate(resp.Text, currentPromptData.contexts)
+	if err != nil {
+		return currentPromptData, nil, currentFlags, retryCount, false, fmt.Errorf("validation failed: %w", err)
+	}
+
+	u.logger.Info("validation_completed",
+		slog.String("request_id", requestID),
+		slog.String("profile", profile.name),
+		slog.Int("attempt", retryCount+1),
+		slog.Bool("is_fallback", parsedAnswer.Fallback),
+		slog.Int("citations_count", len(parsedAnswer.Citations)))
+
+	if parsedAnswer.Fallback {
+		return currentPromptData, parsedAnswer, currentFlags, retryCount, false, nil
+	}
+
+	qualityFlags := AssessAnswerQuality(
+		parsedAnswer.Answer, input.Query, parsedAnswer.Citations, currentPromptData.intentType, currentPromptData.expandedQueries,
+	)
+	currentAnswer = parsedAnswer
+	currentFlags = qualityFlags
+
+	if len(qualityFlags) > 0 {
+		u.logger.Info("answer_quality_flags",
+			slog.String("request_id", requestID),
+			slog.String("profile", profile.name),
+			slog.Int("attempt", retryCount+1),
+			slog.Any("flags", qualityFlags))
+	}
+
+	return u.retryValidatedAnswer(ctx, input, currentPromptData, currentAnswer, currentFlags, profile, requestID, retryCount)
 }
 
 func (u *answerWithRAGUsecase) retryValidatedAnswer(

@@ -660,7 +660,8 @@ func loadSecret(envKey, fileEnvKey string) (string, error) {
 	}
 
 	if filePath, ok := os.LookupEnv(fileEnvKey); ok {
-		content, err := os.ReadFile(filePath) //nolint:gosec // G304: path from trusted env var
+		// #nosec G304 G703 -- path from trusted env var
+		content, err := os.ReadFile(filePath)
 		if err != nil {
 			return "", fmt.Errorf("config: read %s %s: %w", fileEnvKey, filePath, err)
 		}

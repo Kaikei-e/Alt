@@ -17,19 +17,26 @@ import (
 )
 
 func TestOllamaEmbedder_Encode_Success(t *testing.T) {
+	decodeErrCh := make(chan error, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/api/embed", r.URL.Path)
 
 		var req embedRequest
 		err := json.NewDecoder(r.Body).Decode(&req)
-		require.NoError(t, err)
+		decodeErrCh <- err
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		assert.Equal(t, "test-model", req.Model)
 		assert.Equal(t, []string{"hello world"}, req.Input)
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(embedResponse{
+		if err := json.NewEncoder(w).Encode(embedResponse{
 			Embeddings: [][]float32{{0.1, 0.2, 0.3}},
-		})
+		}); err != nil {
+			t.Errorf("encode embed response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -37,6 +44,7 @@ func TestOllamaEmbedder_Encode_Success(t *testing.T) {
 
 	vecs, err := embedder.Encode(context.Background(), []string{"hello world"})
 	require.NoError(t, err)
+	require.NoError(t, <-decodeErrCh)
 	assert.Len(t, vecs, 1)
 	assert.Equal(t, []float32{0.1, 0.2, 0.3}, vecs[0])
 }
@@ -107,7 +115,9 @@ func TestOllamaEmbedder_Encode_ContextCancelled(t *testing.T) {
 func TestOllamaEmbedder_Encode_DecodeFailure(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte("invalid json"))
+		if _, err := w.Write([]byte("invalid json")); err != nil {
+			t.Errorf("write invalid json response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -123,7 +133,7 @@ func TestOllamaEmbedder_Encode_DecodeFailure(t *testing.T) {
 // document version and re-triggers indexing without anyone remembering to
 // bump a constant.
 func TestOllamaEmbedder_Version(t *testing.T) {
-	assert.Equal(t, domain.EmbedderVersion("my-model"), NewOllamaEmbedder("http://localhost", "my-model", 10, nil, "").Version(), "")
+	assert.Equal(t, domain.EmbedderVersion("my-model"), NewOllamaEmbedder("http://localhost", "my-model", 10, nil, "").Version())
 	assert.NotEqual(t,
 		NewOllamaEmbedder("http://localhost", "my-model", 10, nil, "").Version(),
 		NewOllamaEmbedder("http://localhost", "other-model", 10, nil, "").Version(),

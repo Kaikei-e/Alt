@@ -3,7 +3,6 @@ package usecase_test
 import (
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"testing"
 
@@ -32,7 +31,7 @@ func countDone(events []usecase.StreamEvent) (int, *usecase.AnswerWithRAGOutput)
 }
 
 func newDoneInvariantUsecase(retrieve *mockRetrieveContextUsecase, llm *mockLLMClient) usecase.AnswerWithRAGUsecase {
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	return usecase.NewAnswerWithRAGUsecase(
 		retrieve, usecase.NewXMLPromptBuilder(), llm, usecase.NewOutputValidator(0),
 		10, 512, 6000, "alpha-v1", "ja", logger,
@@ -63,7 +62,7 @@ func TestDoneInvariant_EmptyQuery(t *testing.T) {
 	count, payload := countDone(events)
 	assert.Equal(t, 1, count, "exactly one Done must be emitted on empty-query rejection")
 	if assert.NotNil(t, payload, "Done payload must be a non-nil *AnswerWithRAGOutput") {
-		assert.Equal(t, "", payload.Answer, "Done.Answer must be empty for hard validation failure")
+		assert.Empty(t, payload.Answer, "Done.Answer must be empty for hard validation failure")
 	}
 }
 
@@ -84,7 +83,7 @@ func TestDoneInvariant_BuildPromptFailure(t *testing.T) {
 	count, payload := countDone(events)
 	assert.Equal(t, 1, count, "exactly one Done must be emitted on buildPrompt failure")
 	if assert.NotNil(t, payload, "Done payload must be *AnswerWithRAGOutput") {
-		assert.Equal(t, "", payload.Answer, "Done.Answer must be empty when no deltas were produced")
+		assert.Empty(t, payload.Answer, "Done.Answer must be empty when no deltas were produced")
 		assert.True(t, payload.Fallback, "Done.Fallback must be true when fallback path was taken")
 	}
 

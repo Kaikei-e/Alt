@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -16,7 +15,7 @@ import (
 	"rag-orchestrator/internal/domain"
 	"rag-orchestrator/internal/usecase"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -49,11 +48,11 @@ func TestCandidateSimilarity_Success(t *testing.T) {
 			},
 		},
 	}
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	handler := rag_http.NewHandler(nil, nil, nil, nil, nil, logger, rag_http.WithCandidateSimilarity(stub))
 
 	body := bytes.NewBufferString(`{"seed_article_id":"seed-1","candidate_article_ids":["cand-1","cand-2","cand-3"],"representation":"chunk_mean","user_id":"` + testUserID + `"}`)
-	req := httptest.NewRequest(http.MethodPost, "/internal/rag/candidate-similarity", body)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/internal/rag/candidate-similarity", body)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
@@ -69,7 +68,7 @@ func TestCandidateSimilarity_Success(t *testing.T) {
 	var resp map[string]any
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	assert.Equal(t, true, resp["seed_indexed"])
-	assert.Equal(t, float64(1), resp["candidates_without_embedding"])
+	assert.InDelta(t, float64(1), resp["candidates_without_embedding"], 1e-9)
 	results, ok := resp["results"].([]any)
 	require.True(t, ok)
 	require.Len(t, results, 2)
@@ -84,11 +83,11 @@ func TestCandidateSimilarity_AcceptsUserIDHeaderAndExplicitFalseFlag(t *testing.
 			Results:                    []domain.CandidateSimilarityItem{},
 		},
 	}
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	handler := rag_http.NewHandler(nil, nil, nil, nil, nil, logger, rag_http.WithCandidateSimilarity(stub))
 
 	body := bytes.NewBufferString(`{"seed_article_id":"seed-1","candidate_article_ids":["cand-1"],"representation":"first_chunk"}`)
-	req := httptest.NewRequest(http.MethodPost, "/internal/rag/candidate-similarity", body)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/internal/rag/candidate-similarity", body)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Alt-User-Id", testUserID)
 	rec := httptest.NewRecorder()
@@ -104,7 +103,7 @@ func TestCandidateSimilarity_AcceptsUserIDHeaderAndExplicitFalseFlag(t *testing.
 
 func TestCandidateSimilarity_ValidationErrorsReturn400(t *testing.T) {
 	e := echo.New()
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 
 	oversize := make([]string, domain.MaxCandidateSimilarityArticles+1)
 	for i := range oversize {
@@ -157,7 +156,7 @@ func TestCandidateSimilarity_ValidationErrorsReturn400(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			handler := rag_http.NewHandler(nil, nil, nil, nil, nil, logger, rag_http.WithCandidateSimilarity(tc.uc))
-			req := httptest.NewRequest(http.MethodPost, "/internal/rag/candidate-similarity", bytes.NewBufferString(tc.body))
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/internal/rag/candidate-similarity", bytes.NewBufferString(tc.body))
 			req.Header.Set("Content-Type", "application/json")
 			rec := httptest.NewRecorder()
 			c := e.NewContext(req, rec)
@@ -173,11 +172,11 @@ func TestCandidateSimilarity_InternalErrorHidesDetails(t *testing.T) {
 	stub := &stubCandidateSimilarityUsecase{
 		err: errors.New("pq: secret internal sql error"),
 	}
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	handler := rag_http.NewHandler(nil, nil, nil, nil, nil, logger, rag_http.WithCandidateSimilarity(stub))
 
 	body := bytes.NewBufferString(`{"seed_article_id":"seed-1","candidate_article_ids":["cand-1"],"representation":"first_chunk","user_id":"` + testUserID + `"}`)
-	req := httptest.NewRequest(http.MethodPost, "/internal/rag/candidate-similarity", body)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/internal/rag/candidate-similarity", body)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
@@ -189,11 +188,11 @@ func TestCandidateSimilarity_InternalErrorHidesDetails(t *testing.T) {
 
 func TestCandidateSimilarity_UnwiredUsecasePanics(t *testing.T) {
 	e := echo.New()
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	handler := rag_http.NewHandler(nil, nil, nil, nil, nil, logger)
 
 	body := bytes.NewBufferString(`{"seed_article_id":"seed-1","candidate_article_ids":["cand-1"],"representation":"first_chunk","user_id":"` + testUserID + `"}`)
-	req := httptest.NewRequest(http.MethodPost, "/internal/rag/candidate-similarity", body)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/internal/rag/candidate-similarity", body)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)

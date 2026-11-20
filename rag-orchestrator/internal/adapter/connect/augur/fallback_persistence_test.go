@@ -43,7 +43,7 @@ func newFallbackStreamHarness(t *testing.T) *fallbackStreamHarness {
 	mockAnswer := new(MockAnswerWithRAGUsecase)
 	mockRetrieve := new(MockRetrieveContextUsecase)
 	mockConv := new(MockAugurConversationUsecase)
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 
 	userID := uuid.New()
 	conv := &domain.AugurConversation{
@@ -175,7 +175,7 @@ func TestStreamChat_FallbackStaysTerminalForTheClient(t *testing.T) {
 
 	var kinds []string
 	for stream.Receive() {
-		kinds = append(kinds, stream.Msg().Kind)
+		kinds = append(kinds, stream.Msg().GetKind())
 	}
 
 	select {
@@ -372,7 +372,7 @@ func TestStreamChat_ClientCancelOnFallback_PersistsFallbackTurnAndNotNormalTurn(
 
 	sawFallback := false
 	for stream.Receive() {
-		if stream.Msg().Kind == "fallback" {
+		if stream.Msg().GetKind() == "fallback" {
 			sawFallback = true
 			cancel()
 			break
@@ -438,7 +438,7 @@ func TestStreamChat_SendFailureOnFallback_PersistsFallbackTurnAndNotNormalTurn(t
 	mockAnswer := new(MockAnswerWithRAGUsecase)
 	mockRetrieve := new(MockRetrieveContextUsecase)
 	mockConv := new(MockAugurConversationUsecase)
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 
 	userID := uuid.New()
 	conv := &domain.AugurConversation{
@@ -523,7 +523,7 @@ func TestStreamChat_SendFailureOnFallback_PersistsFallbackTurnAndNotNormalTurn(t
 
 	sawDelta := false
 	for stream.Receive() {
-		if stream.Msg().Kind == "delta" {
+		if stream.Msg().GetKind() == "delta" {
 			sawDelta = true
 			break
 		}

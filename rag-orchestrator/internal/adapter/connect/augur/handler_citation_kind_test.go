@@ -29,11 +29,11 @@ func TestHandler_ConvertCitationsToProtoCitations_PopulatesArticleKindAndRefID(t
 
 	out := h.convertCitationsToProtoCitations(in)
 	assert.Len(t, out, 1)
-	assert.Equal(t, augurv2.CitationKind_CITATION_KIND_ARTICLE, out[0].Kind)
-	assert.Equal(t, articleID, out[0].RefId)
-	assert.Equal(t, "Grounded Source", out[0].Title)
-	assert.Equal(t, "https://example.test/posts/grounded", out[0].Url)
-	assert.Equal(t, "2026-05-26T10:00:00Z", out[0].PublishedAt)
+	assert.Equal(t, augurv2.CitationKind_CITATION_KIND_ARTICLE, out[0].GetKind())
+	assert.Equal(t, articleID, out[0].GetRefId())
+	assert.Equal(t, "Grounded Source", out[0].GetTitle())
+	assert.Equal(t, "https://example.test/posts/grounded", out[0].GetUrl())
+	assert.Equal(t, "2026-05-26T10:00:00Z", out[0].GetPublishedAt())
 }
 
 // When ArticleID is empty the citation is still allowed to surface as a WEB
@@ -46,8 +46,8 @@ func TestHandler_ConvertCitationsToProtoCitations_FallsBackToWebKind(t *testing.
 	}
 	out := h.convertCitationsToProtoCitations(in)
 	assert.Len(t, out, 1)
-	assert.Equal(t, augurv2.CitationKind_CITATION_KIND_WEB, out[0].Kind)
-	assert.Equal(t, "", out[0].RefId)
+	assert.Equal(t, augurv2.CitationKind_CITATION_KIND_WEB, out[0].GetKind())
+	assert.Empty(t, out[0].GetRefId())
 }
 
 // Garbage in (URL is a UUID, ArticleID empty) must NOT silently become a WEB
@@ -60,8 +60,8 @@ func TestHandler_ConvertCitationsToProtoCitations_NeitherArticleNorWeb_StaysUnsp
 	}
 	out := h.convertCitationsToProtoCitations(in)
 	assert.Len(t, out, 1)
-	assert.Equal(t, augurv2.CitationKind_CITATION_KIND_UNSPECIFIED, out[0].Kind)
-	assert.Equal(t, "", out[0].RefId)
+	assert.Equal(t, augurv2.CitationKind_CITATION_KIND_UNSPECIFIED, out[0].GetKind())
+	assert.Empty(t, out[0].GetRefId())
 }
 
 // Defence-in-depth: even if the upstream emitter regresses and ships a Title
@@ -80,5 +80,5 @@ func TestHandler_ConvertCitationsToProtoCitations_SanitizesUUIDTitle(t *testing.
 	}
 	out := h.convertCitationsToProtoCitations(in)
 	assert.Len(t, out, 1)
-	assert.Equal(t, "", out[0].Title, "UUID-only Title must be stripped so the FE can fall back to the URL domain")
+	assert.Empty(t, out[0].GetTitle(), "UUID-only Title must be stripped so the FE can fall back to the URL domain")
 }

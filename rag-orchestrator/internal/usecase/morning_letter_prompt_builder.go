@@ -54,14 +54,14 @@ func (b *xmlMorningLetterPromptBuilder) Build(input MorningLetterPromptInput) ([
 	sysSb.WriteString("あなたは優秀なニュースアナリストです。最近のニュース記事を分析し、重要なトピックを特定・要約してください。\n\n")
 
 	sysSb.WriteString("### タスク\n")
-	sysSb.WriteString(fmt.Sprintf("過去%d時間のニュースを分析し、最も重要なトピックを特定してください。\n", hoursWindow))
+	fmt.Fprintf(&sysSb, "過去%d時間のニュースを分析し、最も重要なトピックを特定してください。\n", hoursWindow)
 	jst := time.FixedZone("JST", 9*3600)
-	sysSb.WriteString(fmt.Sprintf("分析期間: %s 〜 %s\n\n",
+	fmt.Fprintf(&sysSb, "分析期間: %s 〜 %s\n\n",
 		input.Since.In(jst).Format("2006-01-02 15:04 MST"),
-		input.Until.In(jst).Format("2006-01-02 15:04 MST")))
+		input.Until.In(jst).Format("2006-01-02 15:04 MST"))
 
 	sysSb.WriteString("### 指示\n")
-	sysSb.WriteString(fmt.Sprintf("1. コンテキストから最大%d個の重要トピックを特定する\n", topicLimit))
+	fmt.Fprintf(&sysSb, "1. コンテキストから最大%d個の重要トピックを特定する\n", topicLimit)
 	sysSb.WriteString("2. 各トピックについて以下を提供する:\n")
 	sysSb.WriteString("   - トピック名（2-5語）\n")
 	sysSb.WriteString("   - 一行の見出し\n")
@@ -102,10 +102,10 @@ func (b *xmlMorningLetterPromptBuilder) Build(input MorningLetterPromptInput) ([
 	userSb.WriteString("### コンテキスト（最近のニュース）\n")
 	for i, ctx := range input.Contexts {
 		index := i + 1
-		userSb.WriteString(fmt.Sprintf("<context index=\"%d\" title=%q", index,
-			escapeContextTags(runeTruncate(ctx.Title, retrievedTitleRuneLimit))))
+		fmt.Fprintf(&userSb, "<context index=\"%d\" title=%q", index,
+			escapeContextTags(runeTruncate(ctx.Title, retrievedTitleRuneLimit)))
 		if ctx.PublishedAt != "" {
-			userSb.WriteString(fmt.Sprintf(" published=%q", escapeContextTags(ctx.PublishedAt)))
+			fmt.Fprintf(&userSb, " published=%q", escapeContextTags(ctx.PublishedAt))
 		}
 		userSb.WriteString(">\n")
 		userSb.WriteString(escapeContextTags(ctx.ChunkText))
@@ -115,7 +115,7 @@ func (b *xmlMorningLetterPromptBuilder) Build(input MorningLetterPromptInput) ([
 	userSb.WriteString("### クエリ\n")
 	userSb.WriteString(input.Query)
 	if input.Locale != "" {
-		userSb.WriteString(fmt.Sprintf("\n(言語: %s)", input.Locale))
+		fmt.Fprintf(&userSb, "\n(言語: %s)", input.Locale)
 	}
 	userSb.WriteString("\n\n")
 	userSb.WriteString(morningLetterSandwich)

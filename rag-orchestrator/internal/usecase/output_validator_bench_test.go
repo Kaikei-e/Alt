@@ -46,7 +46,7 @@ func BenchmarkOutputValidator_WithCitations(b *testing.B) {
 		if i > 0 {
 			citationsJSON.WriteString(",")
 		}
-		citationsJSON.WriteString(fmt.Sprintf(`{"chunk_id":"%s","reason":"relevant"}`, chunkIDs[i].String()))
+		fmt.Fprintf(&citationsJSON, `{"chunk_id":"%s","reason":"relevant"}`, chunkIDs[i].String())
 	}
 	citationsJSON.WriteString("]")
 

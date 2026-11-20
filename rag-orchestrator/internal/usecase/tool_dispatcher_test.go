@@ -2,7 +2,6 @@ package usecase
 
 import (
 	"context"
-	"io"
 	"log/slog"
 	"sync"
 	"testing"
@@ -36,7 +35,7 @@ func (t *mockTool) Execute(_ context.Context, params map[string]string) (*domain
 
 func TestExecutePlan_OverwritesUserIDFromContext(t *testing.T) {
 	toolA := &mockTool{name: "tool_a", result: &domain.ToolResult{Data: "result_a", Success: true}}
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	dispatcher := NewToolDispatcher(map[string]domain.Tool{"tool_a": toolA}, logger)
 
 	plan := &domain.ToolPlan{
@@ -60,7 +59,7 @@ func TestExecutePlan_OverwritesUserIDFromContext(t *testing.T) {
 
 func TestDispatch_TemporalIntent_SelectsDateRangeTool(t *testing.T) {
 	dateTool := &mockTool{name: "date_range_filter", result: &domain.ToolResult{Data: "filtered", Success: true}}
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	dispatcher := NewToolDispatcher(map[string]domain.Tool{"date_range_filter": dateTool}, logger)
 
 	intent := QueryIntent{IntentType: IntentTemporal, UserQuestion: "最近のAIニュース"}
@@ -76,7 +75,7 @@ func TestDispatch_TemporalIntent_SelectsDateRangeTool(t *testing.T) {
 
 func TestDispatch_GeneralIntent_NoToolsSelected(t *testing.T) {
 	dateTool := &mockTool{name: "date_range_filter", result: &domain.ToolResult{Data: "filtered", Success: true}}
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	dispatcher := NewToolDispatcher(map[string]domain.Tool{"date_range_filter": dateTool}, logger)
 
 	intent := QueryIntent{IntentType: IntentGeneral, UserQuestion: "AI技術のトレンド"}
@@ -89,7 +88,7 @@ func TestDispatch_GeneralIntent_NoToolsSelected(t *testing.T) {
 
 func TestDispatch_ToolError_LogsAndContinues(t *testing.T) {
 	failTool := &mockTool{name: "date_range_filter", result: nil, err: context.DeadlineExceeded}
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	dispatcher := NewToolDispatcher(map[string]domain.Tool{"date_range_filter": failTool}, logger)
 
 	intent := QueryIntent{IntentType: IntentTemporal, UserQuestion: "最近のニュース"}
@@ -103,7 +102,7 @@ func TestDispatch_ToolError_LogsAndContinues(t *testing.T) {
 
 func TestDispatch_ComparisonIntent_SelectsTagSearchTool(t *testing.T) {
 	tagTool := &mockTool{name: "tag_search", result: &domain.ToolResult{Data: "tags", Success: true}}
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	dispatcher := NewToolDispatcher(map[string]domain.Tool{"tag_search": tagTool}, logger)
 
 	intent := QueryIntent{IntentType: IntentComparison, UserQuestion: "RustとGoの違い"}
@@ -116,7 +115,7 @@ func TestDispatch_ComparisonIntent_SelectsTagSearchTool(t *testing.T) {
 
 func TestSelectTools_ArticleScopedRelatedArticles_ReturnsRelatedArticlesTool(t *testing.T) {
 	relatedTool := &mockTool{name: "related_articles", result: &domain.ToolResult{Data: "Related articles:\n- Article A\n", Success: true}}
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	dispatcher := NewToolDispatcher(map[string]domain.Tool{"related_articles": relatedTool}, logger)
 
 	intent := QueryIntent{
@@ -139,7 +138,7 @@ func TestSelectTools_ArticleScopedRelatedArticles_ReturnsRelatedArticlesTool(t *
 func TestExecutePlan_ParallelExecution(t *testing.T) {
 	toolA := &mockTool{name: "tool_a", result: &domain.ToolResult{Data: "result_a", Success: true}}
 	toolB := &mockTool{name: "tool_b", result: &domain.ToolResult{Data: "result_b", Success: true}}
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	dispatcher := NewToolDispatcher(map[string]domain.Tool{"tool_a": toolA, "tool_b": toolB}, logger)
 
 	plan := &domain.ToolPlan{
@@ -186,7 +185,7 @@ func TestExecutePlan_Dependencies_Sequential(t *testing.T) {
 			mu.Unlock()
 		},
 	}
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	dispatcher := NewToolDispatcher(map[string]domain.Tool{"tool_a": toolA, "tool_b": toolB}, logger)
 
 	plan := &domain.ToolPlan{
@@ -215,7 +214,7 @@ func TestExecutePlan_Dependencies_Sequential(t *testing.T) {
 func TestExecutePlan_ToolFailure_ContinuesOthers(t *testing.T) {
 	failTool := &mockTool{name: "fail_tool", result: nil, err: context.DeadlineExceeded}
 	goodTool := &mockTool{name: "good_tool", result: &domain.ToolResult{Data: "ok", Success: true}}
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	dispatcher := NewToolDispatcher(map[string]domain.Tool{"fail_tool": failTool, "good_tool": goodTool}, logger)
 
 	plan := &domain.ToolPlan{
@@ -238,7 +237,7 @@ func TestExecutePlan_ToolFailure_ContinuesOthers(t *testing.T) {
 }
 
 func TestExecutePlan_UnknownTool_Skipped(t *testing.T) {
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	dispatcher := NewToolDispatcher(map[string]domain.Tool{}, logger)
 
 	plan := &domain.ToolPlan{
@@ -258,7 +257,7 @@ func TestExecutePlan_UnknownTool_Skipped(t *testing.T) {
 
 func TestSelectTools_ArticleScopedDetail_ReturnsNil(t *testing.T) {
 	relatedTool := &mockTool{name: "related_articles", result: &domain.ToolResult{Data: "data", Success: true}}
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	dispatcher := NewToolDispatcher(map[string]domain.Tool{"related_articles": relatedTool}, logger)
 
 	intent := QueryIntent{
@@ -274,7 +273,7 @@ func TestSelectTools_ArticleScopedDetail_ReturnsNil(t *testing.T) {
 }
 
 func TestToolDefinitions_UsesToolSpecificSchema(t *testing.T) {
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	dispatcher := NewToolDispatcher(map[string]domain.Tool{
 		"tag_cloud_explore": &mockTool{name: "tag_cloud_explore"},
 		"articles_by_tag":   &mockTool{name: "articles_by_tag"},

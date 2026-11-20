@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -22,12 +21,12 @@ func (s *stubHealthPinger) Ping(context.Context) error {
 }
 
 func TestNewHealthMux_ServesHealthReadyAndMetrics(t *testing.T) {
-	log := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	log := slog.New(slog.DiscardHandler)
 	pinger := &stubHealthPinger{}
 	mux := newHealthMux(pinger, log)
 
 	t.Run("/healthz returns 200", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/healthz", nil)
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, req)
 
@@ -37,7 +36,7 @@ func TestNewHealthMux_ServesHealthReadyAndMetrics(t *testing.T) {
 
 	t.Run("/readyz returns 200 when pinger succeeds", func(t *testing.T) {
 		pinger.err = nil
-		req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/readyz", nil)
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, req)
 
@@ -47,7 +46,7 @@ func TestNewHealthMux_ServesHealthReadyAndMetrics(t *testing.T) {
 
 	t.Run("/readyz returns 503 when pinger fails", func(t *testing.T) {
 		pinger.err = errors.New("db unreachable")
-		req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/readyz", nil)
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, req)
 
@@ -56,7 +55,7 @@ func TestNewHealthMux_ServesHealthReadyAndMetrics(t *testing.T) {
 	})
 
 	t.Run("/metrics returns 200 with Prometheus payload", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/metrics", nil)
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, req)
 

@@ -82,7 +82,7 @@ func TestRunOfflineEval_BaselineKnownFailures(t *testing.T) {
 		}
 	}
 
-	assert.Greater(t, report.FailCount, 0)
+	assert.Positive(t, report.FailCount)
 	assert.Greater(t, report.Metrics.BM25ZeroRate, 0.0)
 }
 
@@ -115,7 +115,11 @@ func TestSaveReport_WritesValidJSON(t *testing.T) {
 	err := SaveReport(report, path)
 	require.NoError(t, err)
 
-	data, err := os.ReadFile(path)
+	root, err := os.OpenRoot(tmpDir)
+	require.NoError(t, err)
+	defer func() { _ = root.Close() }()
+
+	data, err := root.ReadFile("report.json")
 	require.NoError(t, err)
 	assert.Contains(t, string(data), "test failure")
 }

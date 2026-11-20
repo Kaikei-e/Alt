@@ -384,10 +384,8 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 				slog.String("retrieval_set_id", promptData.retrievalSetID),
 				slog.Any("flags", qualityFlags))
 		}
-		finalAnswerText := parsedAnswer.Answer
 		if answerBuilder.Len() > 0 {
-			finalAnswerText = strings.TrimSpace(answerBuilder.String())
-			parsedAnswer.Answer = finalAnswerText
+			parsedAnswer.Answer = strings.TrimSpace(answerBuilder.String())
 		}
 
 		if parsedAnswer.Fallback {
@@ -418,8 +416,7 @@ func (u *answerWithRAGUsecase) Stream(ctx context.Context, input AnswerWithRAGIn
 		}
 		promptData = finalPromptData
 		parsedAnswer = finalAnswer
-		qualityFlags = finalFlags
-		finalAnswerText = strings.TrimSpace(parsedAnswer.Answer)
+		finalAnswerText := strings.TrimSpace(parsedAnswer.Answer)
 
 		// Build Final Output (Hydration)
 		finalCitations := u.buildCitations(promptData.contexts, parsedAnswer.Citations)

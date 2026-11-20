@@ -2,7 +2,6 @@ package usecase_test
 
 import (
 	"context"
-	"io"
 	"log/slog"
 	"strings"
 	"testing"
@@ -35,7 +34,7 @@ func TestExecute_WithQueryPlanner_UsesResolvedQuery(t *testing.T) {
 	mockRetrieve := new(mockRetrieveContextUsecase)
 	mockLLM := new(mockLLMClient)
 	mockQP := new(mockQueryPlannerPort)
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	// QueryPlanner returns a plan with resolved_query
 	mockQP.On("PlanQuery", mock.Anything, mock.MatchedBy(func(input domain.QueryPlannerInput) bool {
@@ -102,7 +101,7 @@ func TestExecute_WithQueryPlanner_UsesResolvedQuery(t *testing.T) {
 		UserID: testPlannerUserID,
 	})
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotNil(t, output)
 	assert.False(t, output.Fallback)
 	assert.Contains(t, output.Answer, "供給制約")
@@ -121,7 +120,7 @@ func TestExecute_WithQueryPlanner_PropagatesPlannedIntentToStrategy(t *testing.T
 	mockLLM := new(mockLLMClient)
 	mockQP := new(mockQueryPlannerPort)
 	mockStrategy := &mockRetrievalStrategy{name: "causal-custom"}
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	chunkID := uuid.New()
 	mockQP.On("PlanQuery", mock.Anything, mock.Anything).Return(&domain.QueryPlan{
@@ -174,7 +173,7 @@ func TestExecute_WithQueryPlanner_PropagatesPlannedIntentToStrategy(t *testing.T
 		UserID: testPlannerUserID,
 	})
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotNil(t, output)
 	assert.False(t, output.Fallback)
 	assert.Contains(t, output.Answer, "供給制約")
@@ -185,7 +184,7 @@ func TestExecute_WithQueryPlanner_ClarificationSkipsRetrieval(t *testing.T) {
 	mockRetrieve := new(mockRetrieveContextUsecase)
 	mockLLM := new(mockLLMClient)
 	mockQP := new(mockQueryPlannerPort)
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	mockQP.On("PlanQuery", mock.Anything, mock.Anything).Return(&domain.QueryPlan{
 		ResolvedQuery:    "",
@@ -248,7 +247,7 @@ func TestExecute_WithQueryPlanner_ClarificationSkipsRetrieval_NonStreaming(t *te
 	mockRetrieve := new(mockRetrieveContextUsecase)
 	mockLLM := new(mockLLMClient)
 	mockQP := new(mockQueryPlannerPort)
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	mockQP.On("PlanQuery", mock.Anything, mock.Anything).Return(&domain.QueryPlan{
 		ResolvedQuery:    "",
@@ -296,7 +295,7 @@ func TestExecute_WithQueryPlanner_NilRetrievalReturnsFallbackInsteadOfPanic(t *t
 	mockLLM := new(mockLLMClient)
 	mockQP := new(mockQueryPlannerPort)
 	mockStrategy := &mockRetrievalStrategy{name: "causal-custom"}
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	mockQP.On("PlanQuery", mock.Anything, mock.Anything).Return(&domain.QueryPlan{
 		ResolvedQuery:   "物流危機の背景要因",
@@ -326,7 +325,7 @@ func TestExecute_WithQueryPlanner_NilRetrievalReturnsFallbackInsteadOfPanic(t *t
 		UserID: testPlannerUserID,
 	})
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotNil(t, output)
 	assert.True(t, output.Fallback)
 	assert.Contains(t, output.Reason, "no context returned")
@@ -347,7 +346,7 @@ func TestExecute_WithQueryPlanner_TemporalIntentDispatchesDateRangeFilterTool(t 
 	mockRetrieve := new(mockRetrieveContextUsecase)
 	mockLLM := new(mockLLMClient)
 	mockQP := new(mockQueryPlannerPort)
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	chunkID := uuid.New()
 	mockQP.On("PlanQuery", mock.Anything, mock.Anything).Return(&domain.QueryPlan{

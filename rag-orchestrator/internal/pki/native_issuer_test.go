@@ -731,7 +731,7 @@ func TestNativeStepCAIssuer_ReusedOTTRejectedByCA(t *testing.T) {
 		t.Fatal(err)
 	}
 	first := ca.lastSign()
-	req, err := http.NewRequest(http.MethodPost, iss.CAURL+"/sign", bytes.NewReader(first.Body))
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, iss.CAURL+"/sign", bytes.NewReader(first.Body))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -766,7 +766,7 @@ func TestNativeStepCAIssuer_ExpiredOTTRejectedByCA(t *testing.T) {
 	}
 	csrPEM := mustCSRPEM(t, "alt-backend")
 	body, _ := json.Marshal(map[string]string{"csr": csrPEM, "ott": raw})
-	req, err := http.NewRequest(http.MethodPost, iss.CAURL+"/sign", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, iss.CAURL+"/sign", bytes.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
 	}

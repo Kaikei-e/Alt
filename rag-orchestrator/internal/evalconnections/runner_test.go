@@ -197,7 +197,7 @@ func TestSampleRunner_EndToEndWithFakes(t *testing.T) {
 			Summaries: summaries,
 		})
 		require.NoError(t, err)
-		assert.Greater(t, encoder.calls, 0)
+		assert.Positive(t, encoder.calls)
 
 		keyFile, err := os.Open(res.KeyPath)
 		require.NoError(t, err)

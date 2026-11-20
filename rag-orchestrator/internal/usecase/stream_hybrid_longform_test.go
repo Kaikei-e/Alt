@@ -2,7 +2,6 @@ package usecase_test
 
 import (
 	"context"
-	"io"
 	"log/slog"
 	"strings"
 	"testing"
@@ -27,7 +26,7 @@ func setupHybridLongFormTest(t *testing.T) (*mockRetrieveContextUsecase, *mockLL
 	t.Helper()
 	mockRetrieve := new(mockRetrieveContextUsecase)
 	mockLLM := new(mockLLMClient)
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	uc := usecase.NewAnswerWithRAGUsecase(
 		mockRetrieve,

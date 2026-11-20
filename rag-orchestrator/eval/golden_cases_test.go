@@ -51,7 +51,7 @@ func TestGoldenSet_EveryCategoryIsExercised(t *testing.T) {
 		present[c.Category]++
 	}
 	for _, category := range KnownCategories {
-		assert.Greater(t, present[category], 0, "category %q has no case", category)
+		assert.Positive(t, present[category], "category %q has no case", category)
 	}
 }
 

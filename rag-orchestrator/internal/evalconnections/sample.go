@@ -121,8 +121,10 @@ func ParseSummariesTSV(r io.Reader) (map[string]string, error) {
 }
 
 func newSeededRNG(seed int64) *rand.Rand {
-	u := uint64(seed)                                     //nolint:gosec // only the bit pattern seeds the generator
-	return rand.New(rand.NewPCG(u, u^defaultSeedMixMask)) //nolint:gosec // a reproducible sample needs a seeded generator, not a secret
+	// #nosec G115 -- only the bit pattern seeds the generator
+	u := uint64(seed)
+	// #nosec G404 -- a reproducible sample needs a seeded generator, not a secret
+	return rand.New(rand.NewPCG(u, u^defaultSeedMixMask))
 }
 
 // SelectSamplePairs deterministically selects 48 unique unordered article pairs:

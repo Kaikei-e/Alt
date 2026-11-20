@@ -18,7 +18,7 @@ import (
 func TestNewHybridSearchRepository_ImplementsInterface(t *testing.T) {
 	// Verify that the constructor returns the correct interface.
 	// Cannot call methods without a real DB, but we verify the type.
-	var _ domain.HybridSearcher = NewHybridSearchRepository(nil, 60)
+	var _ = NewHybridSearchRepository(nil, 60)
 }
 
 func TestNewHybridSearchRepository_DefaultRRFK(t *testing.T) {

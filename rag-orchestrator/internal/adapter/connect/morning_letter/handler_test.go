@@ -2,7 +2,6 @@ package morning_letter_test
 
 import (
 	"context"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -54,7 +53,7 @@ func (m *mockArticleClient) GetRecentArticles(ctx context.Context, withinHours i
 func TestMorningLetterHandler_StreamChat_Unauthenticated(t *testing.T) {
 	mockArticle := new(mockArticleClient)
 	mockAnswer := new(mockAnswerWithRAGUsecase)
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 
 	handler := morning_letter.NewHandler(mockArticle, mockAnswer, nil, logger)
 
@@ -103,7 +102,7 @@ func TestMorningLetterHandler_StreamChat_Unauthenticated(t *testing.T) {
 func TestMorningLetterHandler_StreamChat_PassesUserID(t *testing.T) {
 	mockArticle := new(mockArticleClient)
 	mockAnswer := new(mockAnswerWithRAGUsecase)
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 
 	handler := morning_letter.NewHandler(mockArticle, mockAnswer, nil, logger)
 
@@ -143,20 +142,20 @@ func TestMorningLetterHandler_StreamChat_PassesUserID(t *testing.T) {
 	// First event is meta event sent by handler
 	require.True(t, stream.Receive())
 	metaResp := stream.Msg()
-	assert.Equal(t, "meta", metaResp.Kind)
+	assert.Equal(t, "meta", metaResp.GetKind())
 
 	// Second event is delta
 	require.True(t, stream.Receive())
 	deltaResp := stream.Msg()
-	assert.Equal(t, "delta", deltaResp.Kind)
+	assert.Equal(t, "delta", deltaResp.GetKind())
 
 	// Third event is done
 	require.True(t, stream.Receive())
 	doneResp := stream.Msg()
-	assert.Equal(t, "done", doneResp.Kind)
+	assert.Equal(t, "done", doneResp.GetKind())
 
 	assert.False(t, stream.Receive())
-	assert.NoError(t, stream.Err())
+	require.NoError(t, stream.Err())
 
 	mockAnswer.AssertExpectations(t)
 }

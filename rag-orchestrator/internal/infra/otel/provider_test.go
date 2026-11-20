@@ -13,7 +13,6 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/log"
-	"go.opentelemetry.io/otel/log/global"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 
@@ -24,10 +23,10 @@ import (
 
 func TestProvider_InitAndExport(t *testing.T) {
 	originalTracer := otel.GetTracerProvider()
-	originalLogger := global.GetLoggerProvider()
+	originalLogger := otel.GetLoggerProvider()
 	defer func() {
 		otel.SetTracerProvider(originalTracer)
-		global.SetLoggerProvider(originalLogger)
+		otel.SetLoggerProvider(originalLogger)
 	}()
 
 	var traceReqCount, logReqCount int32
@@ -98,7 +97,7 @@ func TestProvider_InitAndExport(t *testing.T) {
 	_, span := tracer.Start(ctx, "test-span")
 	span.End()
 
-	logger := global.GetLoggerProvider().Logger("test-logger")
+	logger := otel.GetLoggerProvider().Logger("test-logger")
 	var rec log.Record
 	logger.Emit(ctx, rec)
 
@@ -113,7 +112,7 @@ func TestProvider_InitAndExport(t *testing.T) {
 		t.Errorf("TracerProvider is not sdktrace.TracerProvider")
 	}
 
-	if lp, ok := global.GetLoggerProvider().(*sdklog.LoggerProvider); ok {
+	if lp, ok := otel.GetLoggerProvider().(*sdklog.LoggerProvider); ok {
 		if err := lp.ForceFlush(ctxFlush); err != nil {
 			t.Fatalf("flush telemetry: %v", err)
 		}
@@ -144,11 +143,11 @@ func TestProvider_InitAndExport(t *testing.T) {
 	if err := proto.Unmarshal(lastTraceBody, &traceReq); err != nil {
 		t.Fatalf("Failed to decode trace req: %v", err)
 	}
-	if len(traceReq.ResourceSpans) == 0 {
+	if len(traceReq.GetResourceSpans()) == 0 {
 		t.Errorf("Expected non-empty ResourceSpans")
-	} else if len(traceReq.ResourceSpans[0].ScopeSpans) == 0 {
+	} else if len(traceReq.GetResourceSpans()[0].GetScopeSpans()) == 0 {
 		t.Errorf("Expected non-empty ScopeSpans")
-	} else if len(traceReq.ResourceSpans[0].ScopeSpans[0].Spans) == 0 {
+	} else if len(traceReq.GetResourceSpans()[0].GetScopeSpans()[0].GetSpans()) == 0 {
 		t.Errorf("Expected non-empty Spans")
 	}
 
@@ -156,21 +155,21 @@ func TestProvider_InitAndExport(t *testing.T) {
 	if err := proto.Unmarshal(lastLogBody, &logReq); err != nil {
 		t.Fatalf("Failed to decode log req: %v", err)
 	}
-	if len(logReq.ResourceLogs) == 0 {
+	if len(logReq.GetResourceLogs()) == 0 {
 		t.Errorf("Expected non-empty ResourceLogs")
-	} else if len(logReq.ResourceLogs[0].ScopeLogs) == 0 {
+	} else if len(logReq.GetResourceLogs()[0].GetScopeLogs()) == 0 {
 		t.Errorf("Expected non-empty ScopeLogs")
-	} else if len(logReq.ResourceLogs[0].ScopeLogs[0].LogRecords) == 0 {
+	} else if len(logReq.GetResourceLogs()[0].GetScopeLogs()[0].GetLogRecords()) == 0 {
 		t.Errorf("Expected non-empty LogRecords")
 	}
 }
 
 func TestProvider_RedirectFail(t *testing.T) {
 	originalTracer := otel.GetTracerProvider()
-	originalLogger := global.GetLoggerProvider()
+	originalLogger := otel.GetLoggerProvider()
 	defer func() {
 		otel.SetTracerProvider(originalTracer)
-		global.SetLoggerProvider(originalLogger)
+		otel.SetLoggerProvider(originalLogger)
 	}()
 
 	var reqCount int32

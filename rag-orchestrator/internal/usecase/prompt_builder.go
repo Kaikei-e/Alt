@@ -206,6 +206,8 @@ func (b *XMLPromptBuilder) writeFollowUpRules(sb *strings.Builder, input PromptI
 		sb.WriteString("- **主張の根拠となる具体的なパッセージを引用付きで返すこと**\n")
 	case SubIntentSummaryRefresh:
 		sb.WriteString("- **簡潔な要約を提供すること。前回の回答との重複は許容**\n")
+	case SubIntentNone:
+		// No sub-intent-specific follow-up guidance.
 	}
 	sb.WriteString("\n")
 }
@@ -298,6 +300,8 @@ func (b *XMLPromptBuilder) writeFullInstructions(sb *strings.Builder, input Prom
 		sb.WriteString("- 1つの側面だけに偏らず、バランスよく複数の視点を提供すること\n")
 		sb.WriteString("- コンテキストに情報が不十分な側面は「この側面については情報が限定的です」と明記\n")
 		sb.WriteString("- 回答は1200文字以上で、具体的な事実・データ・事例を含むこと\n\n")
+	case IntentGeneral, IntentArticleScoped:
+		// General and article-scoped queries use the base instructions without extra intent sections.
 	}
 
 	// Sub-intent-specific instructions for article-scoped queries
@@ -354,6 +358,8 @@ func (b *XMLPromptBuilder) writeFullInstructions(sb *strings.Builder, input Prom
 		sb.WriteString("- 重要なポイントを簡潔にまとめること\n")
 		sb.WriteString("- 前回の回答と重複しても構わない（ユーザーが要約を求めている）\n")
 		sb.WriteString("- **簡潔さを優先し、5-7ポイントに絞ること**\n\n")
+	case SubIntentNone:
+		// No sub-intent-specific instructions.
 	}
 }
 

@@ -169,7 +169,7 @@ func caPool(t *testing.T, caPath string) *x509.CertPool {
 // startRealWireTLSServer binds the production *http.Server to a real TCP wire listener.
 func startRealWireTLSServer(t *testing.T, srv *http.Server) string {
 	t.Helper()
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("failed to listen on real wire: %v", err)
 	}
@@ -218,7 +218,11 @@ func TestProductionTLSServer_RequireAndVerifyClientCert(t *testing.T) {
 		Timeout: 5 * time.Second,
 	}
 
-	resp, err := client.Get("https://" + addr + "/healthz")
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "https://"+addr+"/healthz", nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatalf("request with valid mTLS client cert failed over real wire: %v", err)
 	}
@@ -254,7 +258,14 @@ func TestProductionTLSServer_NoCertRejected(t *testing.T) {
 		},
 		Timeout: 5 * time.Second,
 	}
-	_, err = noCertClient.Get("https://" + addr + "/healthz")
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "https://"+addr+"/healthz", nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	resp, err := noCertClient.Do(req)
+	if resp != nil {
+		_ = resp.Body.Close()
+	}
 	if err == nil {
 		t.Fatal("expected TLS handshake error for client without cert; got nil")
 	}
@@ -295,7 +306,14 @@ func TestProductionTLSServer_WrongCA(t *testing.T) {
 		},
 		Timeout: 5 * time.Second,
 	}
-	_, err = wrongCAClient.Get("https://" + addr + "/healthz")
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "https://"+addr+"/healthz", nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	resp, err := wrongCAClient.Do(req)
+	if resp != nil {
+		_ = resp.Body.Close()
+	}
 	if err == nil {
 		t.Fatal("expected TLS error for client cert from wrong CA; got nil")
 	}
@@ -335,7 +353,14 @@ func TestProductionTLSServer_WrongHostname(t *testing.T) {
 		Timeout: 5 * time.Second,
 	}
 
-	_, err = wrongHostClient.Get("https://" + addr + "/healthz")
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "https://"+addr+"/healthz", nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	resp, err := wrongHostClient.Do(req)
+	if resp != nil {
+		_ = resp.Body.Close()
+	}
 	if err == nil {
 		t.Fatal("expected TLS hostname verification error for wrong ServerName; got nil")
 	}
@@ -368,7 +393,7 @@ func TestProductionTLSServer_MissingCertStartupFailure(t *testing.T) {
 func TestHealthPort9012_PublicHealthOnly_NeverBusinessRPC(t *testing.T) {
 	healthSrv := newHealthServer("127.0.0.1:0", nil, nil)
 
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("failed to listen on real wire for health server: %v", err)
 	}

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -135,8 +136,8 @@ func extractTenantID(headers interface{ Get(string) string }) (id uuid.UUID, ok 
 // Used to derive a conversation title when minting a new conversation.
 func firstUserMessage(msgs []*augurv2.ChatMessage) string {
 	for _, m := range msgs {
-		if m.Role == "user" && strings.TrimSpace(m.Content) != "" {
-			return m.Content
+		if m.GetRole() == "user" && strings.TrimSpace(m.GetContent()) != "" {
+			return m.GetContent()
 		}
 	}
 	return ""
@@ -162,9 +163,9 @@ func (h *Handler) StreamChat(
 	// Extract last user message as query and build conversation history
 	var query string
 	var conversationHistory []domain.Message
-	for i := len(req.Msg.Messages) - 1; i >= 0; i-- {
-		if req.Msg.Messages[i].Role == "user" && query == "" {
-			query = req.Msg.Messages[i].Content
+	for i := len(req.Msg.GetMessages()) - 1; i >= 0; i-- {
+		if req.Msg.GetMessages()[i].GetRole() == "user" && query == "" {
+			query = req.Msg.GetMessages()[i].GetContent()
 		}
 	}
 
@@ -178,7 +179,7 @@ func (h *Handler) StreamChat(
 
 	// Resolve persisted conversation row. Zero UUID = new conversation.
 	var requestedConvID uuid.UUID
-	if raw := strings.TrimSpace(req.Msg.ConversationId); raw != "" {
+	if raw := strings.TrimSpace(req.Msg.GetConversationId()); raw != "" {
 		parsed, parseErr := uuid.Parse(raw)
 		if parseErr != nil {
 			return connect.NewError(connect.CodeInvalidArgument, parseErr)
@@ -186,7 +187,7 @@ func (h *Handler) StreamChat(
 		requestedConvID = parsed
 	}
 
-	firstMsg := firstUserMessage(req.Msg.Messages)
+	firstMsg := firstUserMessage(req.Msg.GetMessages())
 	if firstMsg == "" {
 		firstMsg = query
 	}
@@ -206,7 +207,7 @@ func (h *Handler) StreamChat(
 
 	// Build conversation history (all messages except the last user message)
 	// Limit to last 6 messages (3 turns) for efficiency
-	allMsgs := req.Msg.Messages
+	allMsgs := req.Msg.GetMessages()
 	if len(allMsgs) > 1 {
 		var fallbackContents map[string]struct{}
 		// Reloaded conversations carry persisted fallback prose as ordinary assistant messages; strip them before windowing.
@@ -228,17 +229,17 @@ func (h *Handler) StreamChat(
 
 		filtered := make([]domain.Message, 0, len(allMsgs)-1)
 		for _, msg := range allMsgs[:len(allMsgs)-1] {
-			if msg.Role != "user" && msg.Role != "assistant" {
+			if msg.GetRole() != "user" && msg.GetRole() != "assistant" {
 				continue
 			}
-			if msg.Role == "assistant" {
-				if _, isFallback := fallbackContents[msg.Content]; isFallback {
+			if msg.GetRole() == "assistant" {
+				if _, isFallback := fallbackContents[msg.GetContent()]; isFallback {
 					continue
 				}
 			}
 			filtered = append(filtered, domain.Message{
-				Role:    msg.Role,
-				Content: msg.Content,
+				Role:    msg.GetRole(),
+				Content: msg.GetContent(),
 			})
 		}
 		start := 0
@@ -260,7 +261,7 @@ func (h *Handler) StreamChat(
 
 	// Derive thread ID for the in-memory ConversationStore (separate from
 	// persisted conversation id — it feeds RAG context continuity, not history).
-	threadID := deriveThreadID(userID, req.Msg.Messages)
+	threadID := deriveThreadID(userID, req.Msg.GetMessages())
 
 	// Build input for AnswerWithRAGUsecase
 	locale := detectLocale(query)
@@ -377,8 +378,8 @@ loop:
 				// Echo the persisted id on every meta event the usecase emits.
 				if meta := protoEvent.GetMeta(); meta != nil {
 					meta.ConversationId = conv.ID.String()
-					if len(meta.Citations) > 0 {
-						lastCitations = citationsFromProto(meta.Citations)
+					if len(meta.GetCitations()) > 0 {
+						lastCitations = citationsFromProto(meta.GetCitations())
 					}
 				}
 				if err := stream.Send(protoEvent); err != nil {
@@ -435,7 +436,7 @@ func (h *Handler) persistAssistantTurn(
 		fallbackReason = output.Reason
 	}
 
-	if strings.TrimSpace(done.Answer) == "" {
+	if strings.TrimSpace(done.GetAnswer()) == "" {
 		if !isFallback {
 			reason := "done event produced no answer text"
 			if output != nil && output.Reason != "" {
@@ -452,15 +453,15 @@ func (h *Handler) persistAssistantTurn(
 	flushCtx, flushCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer flushCancel()
 
-	citations := citationsFromProto(done.Citations)
-	related := citationsFromProto(done.RelatedCitations)
+	citations := citationsFromProto(done.GetCitations())
+	related := citationsFromProto(done.GetRelatedCitations())
 
 	var err error
 	if isFallback {
 		err = h.conversationUsecase.AppendFallbackAssistantTurn(
-			flushCtx, conv.ID, done.Answer, citations, related, fallbackCode, fallbackReason)
+			flushCtx, conv.ID, done.GetAnswer(), citations, related, fallbackCode, fallbackReason)
 	} else {
-		err = h.conversationUsecase.AppendAssistantTurn(flushCtx, conv.ID, done.Answer, citations, related)
+		err = h.conversationUsecase.AppendAssistantTurn(flushCtx, conv.ID, done.GetAnswer(), citations, related)
 	}
 	if err != nil {
 		h.logger.Error("failed to persist assistant turn",
@@ -757,11 +758,11 @@ func citationsFromProto(cs []*augurv2.Citation) []domain.AugurCitation {
 	out := make([]domain.AugurCitation, 0, len(cs))
 	for _, c := range cs {
 		out = append(out, domain.AugurCitation{
-			URL:         c.Url,
-			Title:       c.Title,
-			PublishedAt: c.PublishedAt,
-			Kind:        domainCitationKind(c.Kind),
-			RefID:       c.RefId,
+			URL:         c.GetUrl(),
+			Title:       c.GetTitle(),
+			PublishedAt: c.GetPublishedAt(),
+			Kind:        domainCitationKind(c.GetKind()),
+			RefID:       c.GetRefId(),
 		})
 	}
 	return out
@@ -830,7 +831,7 @@ func (h *Handler) RetrieveContext(
 		ctx = authcontext.WithJWT(ctx, jwtToken)
 	}
 
-	query := req.Msg.Query
+	query := req.Msg.GetQuery()
 	if query == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("query is required"))
 	}
@@ -840,7 +841,7 @@ func (h *Handler) RetrieveContext(
 
 	h.logger.Info("retrieving context",
 		slog.String("query", truncateForLog(query, 100)),
-		slog.Int("limit", int(req.Msg.Limit)))
+		slog.Int("limit", int(req.Msg.GetLimit())))
 
 	input := usecase.RetrieveContextInput{
 		Query:  query,
@@ -863,7 +864,7 @@ func (h *Handler) RetrieveContext(
 		})
 	}
 
-	limit := int(req.Msg.Limit)
+	limit := int(req.Msg.GetLimit())
 	if limit > 0 && limit < len(contexts) {
 		contexts = contexts[:limit]
 	}
@@ -883,10 +884,10 @@ func (h *Handler) ListConversations(
 		return nil, connect.NewError(connect.CodeUnauthenticated, err)
 	}
 
-	limit := int(req.Msg.PageSize)
+	limit := int(req.Msg.GetPageSize())
 	var afterActivity *time.Time
 	var afterID *uuid.UUID
-	if token := strings.TrimSpace(req.Msg.PageToken); token != "" {
+	if token := strings.TrimSpace(req.Msg.GetPageToken()); token != "" {
 		ts, id, ok := decodePageToken(token)
 		if !ok {
 			return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid page_token"))
@@ -904,13 +905,19 @@ func (h *Handler) ListConversations(
 		Conversations: make([]*augurv2.ConversationSummary, 0, len(summaries)),
 	}
 	for _, s := range summaries {
+		msgCount := s.MessageCount
+		if msgCount < 0 {
+			msgCount = 0
+		} else if msgCount > math.MaxInt32 {
+			msgCount = math.MaxInt32
+		}
 		resp.Conversations = append(resp.Conversations, &augurv2.ConversationSummary{
 			Id:                 s.ID.String(),
 			Title:              sanitizeUTF8(s.Title),
 			CreatedAt:          timestamppb.New(s.CreatedAt),
 			LastActivityAt:     timestamppb.New(s.LastActivityAt),
 			LastMessagePreview: sanitizeUTF8(s.LastMessagePreview),
-			MessageCount:       int32(s.MessageCount),
+			MessageCount:       int32(msgCount),
 		})
 	}
 	if len(summaries) > 0 && len(summaries) == limit {
@@ -929,7 +936,7 @@ func (h *Handler) GetConversation(
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, err)
 	}
-	convID, err := uuid.Parse(strings.TrimSpace(req.Msg.Id))
+	convID, err := uuid.Parse(strings.TrimSpace(req.Msg.GetId()))
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
@@ -971,7 +978,7 @@ func (h *Handler) DeleteConversation(
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, err)
 	}
-	convID, err := uuid.Parse(strings.TrimSpace(req.Msg.Id))
+	convID, err := uuid.Parse(strings.TrimSpace(req.Msg.GetId()))
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
@@ -1028,8 +1035,8 @@ func truncateForLog(s string, maxRunes int) string {
 // collide on the same ConversationStore thread (data isolation).
 func deriveThreadID(userID uuid.UUID, messages []*augurv2.ChatMessage) string {
 	for _, msg := range messages {
-		if msg.Role == "user" && msg.Content != "" {
-			hash := sha256.Sum256([]byte(userID.String() + msg.Content))
+		if msg.GetRole() == "user" && msg.GetContent() != "" {
+			hash := sha256.Sum256([]byte(userID.String() + msg.GetContent()))
 			return fmt.Sprintf("thread-%x", hash[:8])
 		}
 	}

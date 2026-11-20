@@ -2,7 +2,6 @@ package usecase_test
 
 import (
 	"context"
-	"io"
 	"log/slog"
 	"testing"
 
@@ -11,17 +10,18 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 func TestTopicDeepDiveStrategy_Name(t *testing.T) {
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	strategy := usecase.NewTopicDeepDiveStrategy(nil, logger)
 	assert.Equal(t, "topic_deep_dive", strategy.Name())
 }
 
 func TestTopicDeepDiveStrategy_DelegatesToRetrieve(t *testing.T) {
 	mockRetrieve := new(mockRetrieveContextUsecase)
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	strategy := usecase.NewTopicDeepDiveStrategy(mockRetrieve, logger)
 
 	chunkID := uuid.New()
@@ -35,7 +35,7 @@ func TestTopicDeepDiveStrategy_DelegatesToRetrieve(t *testing.T) {
 		usecase.RetrieveContextInput{Query: "詳しく教えて"},
 		usecase.QueryIntent{IntentType: usecase.IntentTopicDeepDive, UserQuestion: "詳しく教えて"},
 	)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Len(t, out.Contexts, 1)
 	mockRetrieve.AssertExpectations(t)
 }

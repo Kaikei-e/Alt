@@ -223,7 +223,7 @@ func runCase(client augurv2connect.AugurServiceClient, gc eval.GoldenCase, logge
 	var fullAnswer string
 	for stream.Receive() {
 		resp := stream.Msg()
-		switch resp.Kind {
+		switch resp.GetKind() {
 		case "delta":
 			delta := resp.GetDelta()
 			if delta != "" {
@@ -231,21 +231,21 @@ func runCase(client augurv2connect.AugurServiceClient, gc eval.GoldenCase, logge
 			}
 		case "done":
 			if d := resp.GetDone(); d != nil {
-				if d.Answer != "" {
-					fullAnswer = d.Answer
+				if d.GetAnswer() != "" {
+					fullAnswer = d.GetAnswer()
 				}
-				for _, c := range d.Citations {
-					result.CitedTitles = append(result.CitedTitles, c.Title)
-					result.CitedArticleIDs = append(result.CitedArticleIDs, c.RefId)
+				for _, c := range d.GetCitations() {
+					result.CitedTitles = append(result.CitedTitles, c.GetTitle())
+					result.CitedArticleIDs = append(result.CitedArticleIDs, c.GetRefId())
 				}
-				result.CitationCount = len(d.Citations)
-				result.IntentClassified = d.Intent
+				result.CitationCount = len(d.GetCitations())
+				result.IntentClassified = d.GetIntent()
 			}
 		case "meta":
 			if m := resp.GetMeta(); m != nil {
-				for _, c := range m.Citations {
-					result.RetrievedTitles = append(result.RetrievedTitles, c.Title)
-					result.RetrievedArticleIDs = append(result.RetrievedArticleIDs, c.RefId)
+				for _, c := range m.GetCitations() {
+					result.RetrievedTitles = append(result.RetrievedTitles, c.GetTitle())
+					result.RetrievedArticleIDs = append(result.RetrievedArticleIDs, c.GetRefId())
 				}
 			}
 		case "fallback":

@@ -18,6 +18,7 @@ import (
 
 func TestRerankerClient_Rerank_Success(t *testing.T) {
 	// Setup mock server
+	decodeErrCh := make(chan error, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
 		assert.Equal(t, "/v1/rerank", r.URL.Path)
@@ -25,10 +26,14 @@ func TestRerankerClient_Rerank_Success(t *testing.T) {
 
 		var req RerankRequest
 		err := json.NewDecoder(r.Body).Decode(&req)
-		require.NoError(t, err)
+		decodeErrCh <- err
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 
 		assert.Equal(t, "test query", req.Query)
-		assert.Equal(t, 3, len(req.Candidates))
+		assert.Len(t, req.Candidates, 3)
 		assert.Equal(t, "bge-reranker-v2-m3", req.Model)
 
 		// Return reranked results (index 1 has highest score)
@@ -57,15 +62,16 @@ func TestRerankerClient_Rerank_Success(t *testing.T) {
 
 	results, err := client.Rerank(context.Background(), "test query", candidates)
 	require.NoError(t, err)
+	require.NoError(t, <-decodeErrCh)
 
 	assert.Len(t, results, 3)
 	// Results should be in order returned by server (chunk-2 first with highest score)
 	assert.Equal(t, "chunk-2", results[0].ID)
-	assert.Equal(t, float32(0.95), results[0].Score)
+	assert.InDelta(t, float32(0.95), results[0].Score, 1e-6)
 	assert.Equal(t, "chunk-1", results[1].ID)
-	assert.Equal(t, float32(0.85), results[1].Score)
+	assert.InDelta(t, float32(0.85), results[1].Score, 1e-6)
 	assert.Equal(t, "chunk-3", results[2].ID)
-	assert.Equal(t, float32(0.75), results[2].Score)
+	assert.InDelta(t, float32(0.75), results[2].Score, 1e-6)
 }
 
 func TestRerankerClient_Rerank_EmptyCandidates(t *testing.T) {
@@ -92,7 +98,7 @@ func TestRerankerClient_Rerank_ServerError(t *testing.T) {
 	}
 
 	results, err := client.Rerank(context.Background(), "test query", candidates)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, results)
 	assert.Contains(t, err.Error(), "500")
 }
@@ -115,7 +121,7 @@ func TestRerankerClient_Rerank_Timeout(t *testing.T) {
 	defer cancel()
 
 	results, err := client.Rerank(ctx, "test query", candidates)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, results)
 }
 
@@ -141,7 +147,7 @@ func TestRerankerClient_Rerank_InvalidIndex(t *testing.T) {
 	}
 
 	results, err := client.Rerank(context.Background(), "test query", candidates)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Nil(t, results)
 	assert.Contains(t, err.Error(), "invalid result index")
 }

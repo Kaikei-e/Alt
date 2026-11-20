@@ -41,7 +41,11 @@ func TestNewOpsHandler_ServesPrivateRegistryOnly(t *testing.T) {
 	srv := httptest.NewServer(NewOpsHandler(reg))
 	t.Cleanup(srv.Close)
 
-	resp, err := http.Get(srv.URL + "/metrics")
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL+"/metrics", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}

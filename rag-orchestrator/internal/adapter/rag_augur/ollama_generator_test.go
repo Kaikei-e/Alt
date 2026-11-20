@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -12,7 +11,7 @@ import (
 )
 
 func TestBuildOptions_GemmaModel(t *testing.T) {
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 	gen := NewOllamaGenerator("http://localhost:11434", "gemma4-e4b-rag", 100, testLogger, "")
 	opts := gen.buildOptions(2048)
 
@@ -33,7 +32,7 @@ func TestBuildOptions_GemmaModel(t *testing.T) {
 }
 
 func TestBuildOptions_SwallowModel(t *testing.T) {
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 	gen := NewOllamaGenerator("http://localhost:11434", "swallow-8b-rag", 100, testLogger, "")
 	opts := gen.buildOptions(4096)
 
@@ -46,7 +45,7 @@ func TestBuildOptions_SwallowModel(t *testing.T) {
 }
 
 func TestGetThinkParam_Gemma4ReturnsTrue(t *testing.T) {
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 	gen := NewOllamaGenerator("http://localhost:11434", "gemma4-e4b-rag", 100, testLogger, "")
 	result := gen.getThinkParam(4096)
 
@@ -56,7 +55,7 @@ func TestGetThinkParam_Gemma4ReturnsTrue(t *testing.T) {
 }
 
 func TestGetThinkParam_Gemma3ReturnsNil(t *testing.T) {
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 	gen := NewOllamaGenerator("http://localhost:11434", "gemma3-4b", 100, testLogger, "")
 	result := gen.getThinkParam(4096)
 
@@ -66,7 +65,7 @@ func TestGetThinkParam_Gemma3ReturnsNil(t *testing.T) {
 }
 
 func TestGetThinkParam_SwallowReturnsNil(t *testing.T) {
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 	gen := NewOllamaGenerator("http://localhost:11434", "swallow-8b-rag", 100, testLogger, "")
 	result := gen.getThinkParam(4096)
 
@@ -76,7 +75,7 @@ func TestGetThinkParam_SwallowReturnsNil(t *testing.T) {
 }
 
 func TestGetThinkParam_Qwen3ReturnsFalse(t *testing.T) {
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 	gen := NewOllamaGenerator("http://localhost:11434", "qwen3-8b", 100, testLogger, "")
 	result := gen.getThinkParam(4096)
 
@@ -111,7 +110,7 @@ func TestOllamaGeneratorGenerate_StreamAggregatesContent(t *testing.T) {
 	}))
 	defer server.Close()
 
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 	gen := NewOllamaGenerator(server.URL, "test-model", 100, testLogger, "")
 	resp, err := gen.Generate(context.Background(), "prompt", 1000)
 	if err != nil {
@@ -132,7 +131,7 @@ func TestOllamaGeneratorGenerate_StreamAggregatesContent(t *testing.T) {
 }
 
 func TestBuildOptions_GemmaModel_DisablesRepeatPenalty(t *testing.T) {
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 	gen := NewOllamaGenerator("http://localhost:11434", "gemma4-e4b-12k", 100, testLogger, "")
 	opts := gen.buildOptions(2048)
 
@@ -157,7 +156,7 @@ func TestOllamaGenerator_RefusesRedirect(t *testing.T) {
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 	gen := NewOllamaGenerator(server.URL, "test-model", 5, testLogger, "secret")
 	_, err := gen.Generate(context.Background(), "test", 100)
 	if err == nil {

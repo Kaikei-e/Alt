@@ -3,7 +3,6 @@ package usecase_test
 import (
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"rag-orchestrator/internal/domain"
 	"rag-orchestrator/internal/usecase"
@@ -47,7 +46,7 @@ func TestMorningLetterUsecase_Execute_Success(t *testing.T) {
 	mockRetrieveUC := new(mockRetrieveContextUsecase) // Reuse from answer_with_rag_usecase_test.go
 	mockPromptBuilder := new(MockMorningLetterPromptBuilder)
 	mockLLM := new(mockLLMClient) // Reuse from answer_with_rag_usecase_test.go
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	uc := usecase.NewMorningLetterUsecase(
 		mockArticleClient,
@@ -147,7 +146,7 @@ func TestMorningLetterUsecase_Execute_NoArticles(t *testing.T) {
 	mockRetrieveUC := new(mockRetrieveContextUsecase)
 	mockPromptBuilder := new(MockMorningLetterPromptBuilder)
 	mockLLM := new(mockLLMClient)
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	uc := usecase.NewMorningLetterUsecase(
 		mockArticleClient,
@@ -182,7 +181,7 @@ func TestMorningLetterUsecase_Execute_ArticleClientError(t *testing.T) {
 	mockRetrieveUC := new(mockRetrieveContextUsecase)
 	mockPromptBuilder := new(MockMorningLetterPromptBuilder)
 	mockLLM := new(mockLLMClient)
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	uc := usecase.NewMorningLetterUsecase(
 		mockArticleClient,
@@ -214,7 +213,7 @@ func TestMorningLetterUsecase_Execute_DefaultValues(t *testing.T) {
 	mockRetrieveUC := new(mockRetrieveContextUsecase)
 	mockPromptBuilder := new(MockMorningLetterPromptBuilder)
 	mockLLM := new(mockLLMClient)
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	uc := usecase.NewMorningLetterUsecase(
 		mockArticleClient,
@@ -251,7 +250,7 @@ func TestMorningLetterUsecase_Execute_MaxLimits(t *testing.T) {
 	mockRetrieveUC := new(mockRetrieveContextUsecase)
 	mockPromptBuilder := new(MockMorningLetterPromptBuilder)
 	mockLLM := new(mockLLMClient)
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	uc := usecase.NewMorningLetterUsecase(
 		mockArticleClient,
@@ -287,7 +286,7 @@ func TestMorningLetterUsecase_Execute_MaxTokensPassedToLLM(t *testing.T) {
 	mockRetrieveUC := new(mockRetrieveContextUsecase)
 	mockPromptBuilder := new(MockMorningLetterPromptBuilder)
 	mockLLM := new(mockLLMClient)
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	customMaxTokens := 6144
 	uc := usecase.NewMorningLetterUsecase(
@@ -362,7 +361,7 @@ func TestMorningLetterUsecase_Execute_ContextTokenLimiting(t *testing.T) {
 	mockRetrieveUC := new(mockRetrieveContextUsecase)
 	mockPromptBuilder := new(MockMorningLetterPromptBuilder)
 	mockLLM := new(mockLLMClient)
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	uc := usecase.NewMorningLetterUsecase(
 		mockArticleClient,
@@ -436,7 +435,7 @@ func TestMorningLetterUsecase_MaxTokensDefaultsWhenZero(t *testing.T) {
 	mockRetrieveUC := new(mockRetrieveContextUsecase)
 	mockPromptBuilder := new(MockMorningLetterPromptBuilder)
 	mockLLM := new(mockLLMClient)
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	// Pass 0 -> should default to 4096
 	uc := usecase.NewMorningLetterUsecase(
@@ -499,7 +498,7 @@ func TestMorningLetterUsecase_Execute_EnrichesArticleRefsFromPositionalIndices(t
 	mockRetrieveUC := new(mockRetrieveContextUsecase)
 	mockPromptBuilder := new(MockMorningLetterPromptBuilder)
 	mockLLM := new(mockLLMClient)
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	uc := usecase.NewMorningLetterUsecase(
 		mockArticleClient,
@@ -600,7 +599,7 @@ func TestMorningLetterUsecase_Execute_UserScoping(t *testing.T) {
 	mockRetrieveUC := new(mockRetrieveContextUsecase)
 	mockPromptBuilder := new(MockMorningLetterPromptBuilder)
 	mockLLM := new(mockLLMClient)
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	uc := usecase.NewMorningLetterUsecase(
 		mockArticleClient,
@@ -617,7 +616,7 @@ func TestMorningLetterUsecase_Execute_UserScoping(t *testing.T) {
 
 	// Empty UserID
 	_, err := uc.Execute(ctx, usecase.MorningLetterInput{Query: "test", UserID: ""})
-	assert.ErrorIs(t, err, usecase.ErrEmptyUserID)
+	require.ErrorIs(t, err, usecase.ErrEmptyUserID)
 
 	// Invalid UserID
 	_, err = uc.Execute(ctx, usecase.MorningLetterInput{Query: "test", UserID: "not-a-uuid"})

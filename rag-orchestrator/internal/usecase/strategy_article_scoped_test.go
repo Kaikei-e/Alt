@@ -2,7 +2,6 @@ package usecase_test
 
 import (
 	"context"
-	"io"
 	"log/slog"
 	"testing"
 	"time"
@@ -13,10 +12,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 func testLogger() *slog.Logger {
-	return slog.New(slog.NewJSONHandler(io.Discard, nil))
+	return slog.New(slog.DiscardHandler)
 }
 
 var (
@@ -61,9 +61,9 @@ func TestArticleScopedStrategy_Success(t *testing.T) {
 	}
 
 	output, err := strategy.Retrieve(ctx, usecase.RetrieveContextInput{Query: "test", UserID: testOwnerIDStr}, intent)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Len(t, output.Contexts, 2)
-	assert.Equal(t, float32(1.0), output.Contexts[0].Score)
+	assert.InDelta(t, float32(1.0), output.Contexts[0].Score, 1e-6)
 	assert.Equal(t, "Test Article", output.Contexts[0].Title)
 	assert.Equal(t, "https://example.com/article", output.Contexts[0].URL)
 	assert.Equal(t, 3, output.Contexts[0].DocumentVersion)
@@ -140,7 +140,7 @@ func TestArticleScopedStrategy_VersionMismatch(t *testing.T) {
 
 	intent := usecase.QueryIntent{IntentType: usecase.IntentArticleScoped, ArticleID: "art-1"}
 	output, err := strategy.Retrieve(ctx, usecase.RetrieveContextInput{Query: "test", UserID: testOwnerIDStr}, intent)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, 2, output.Contexts[0].DocumentVersion)
 	assert.Equal(t, "Current Title", output.Contexts[0].Title)
 
@@ -213,7 +213,7 @@ func TestArticleScopedStrategy_FollowUpReranksChunksByRelevance(t *testing.T) {
 	}
 
 	output, err := strategy.Retrieve(ctx, input, intent)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Len(t, output.Contexts, 4)
 
 	// With conversation history present, chunks should be reranked by relevance.
@@ -281,7 +281,7 @@ func TestArticleScopedStrategy_FollowUpCrossLanguageTranslates(t *testing.T) {
 	}
 
 	output, err := strategy.Retrieve(ctx, input, intent)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Len(t, output.Contexts, 3)
 
 	// After translation, BM25 should match English terms and produce varying scores
@@ -331,10 +331,10 @@ func TestArticleScopedStrategy_FollowUpNoExpanderFallsBack(t *testing.T) {
 	}
 
 	output, err := strategy.Retrieve(ctx, input, intent)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	// Without expander, BM25 won't match → scores fallback to 1.0
 	for _, ctx := range output.Contexts {
-		assert.Equal(t, float32(1.0), ctx.Score,
+		assert.InDelta(t, float32(1.0), ctx.Score, 1e-6,
 			"without expander, cross-language should fall back to 1.0")
 	}
 }
@@ -369,8 +369,8 @@ func TestArticleScopedStrategy_FirstTurnKeepsOriginalOrder(t *testing.T) {
 		ConversationHistory: nil,
 	}
 	output, err := strategy.Retrieve(ctx, input, intent)
-	assert.NoError(t, err)
-	assert.Equal(t, float32(1.0), output.Contexts[0].Score)
+	require.NoError(t, err)
+	assert.InDelta(t, float32(1.0), output.Contexts[0].Score, 1e-6)
 	assert.Equal(t, "Chunk A", output.Contexts[0].ChunkText)
 	assert.Equal(t, "Chunk B", output.Contexts[1].ChunkText)
 }
@@ -399,7 +399,7 @@ func TestArticleScopedStrategy_ChunkOrdering(t *testing.T) {
 
 	intent := usecase.QueryIntent{IntentType: usecase.IntentArticleScoped, ArticleID: "ordered"}
 	output, err := strategy.Retrieve(ctx, usecase.RetrieveContextInput{Query: "test", UserID: testOwnerIDStr}, intent)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Len(t, output.Contexts, 3)
 	assert.Equal(t, "Chunk 0", output.Contexts[0].ChunkText)
 	assert.Equal(t, "Chunk 1", output.Contexts[1].ChunkText)
@@ -415,11 +415,11 @@ func TestArticleScopedStrategy_UserScoping(t *testing.T) {
 
 	// Empty UserID
 	_, err := strategy.Retrieve(ctx, usecase.RetrieveContextInput{Query: "test", UserID: ""}, intent)
-	assert.ErrorIs(t, err, usecase.ErrEmptyUserID)
+	require.ErrorIs(t, err, usecase.ErrEmptyUserID)
 
 	// Invalid UserID
 	_, err = strategy.Retrieve(ctx, usecase.RetrieveContextInput{Query: "test", UserID: "not-a-uuid"}, intent)
-	assert.ErrorIs(t, err, usecase.ErrInvalidUserID)
+	require.ErrorIs(t, err, usecase.ErrInvalidUserID)
 
 	// Unowned document (doc.UserID is nil)
 	versionID := uuid.New()
@@ -430,7 +430,7 @@ func TestArticleScopedStrategy_UserScoping(t *testing.T) {
 		CurrentVersionID: &versionID,
 	}, nil)
 	_, err = strategy.Retrieve(ctx, usecase.RetrieveContextInput{Query: "test", UserID: testOwnerIDStr}, usecase.QueryIntent{IntentType: usecase.IntentArticleScoped, ArticleID: "art-unowned"})
-	assert.ErrorIs(t, err, usecase.ErrArticleNotIndexed)
+	require.ErrorIs(t, err, usecase.ErrArticleNotIndexed)
 
 	// Wrong owner
 	otherUser := uuid.New()

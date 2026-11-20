@@ -46,7 +46,7 @@ func (t *TagSearchTool) Execute(ctx context.Context, params map[string]string) (
 		if i >= 5 {
 			break
 		}
-		sb.WriteString(fmt.Sprintf("- %s: %s\n", hit.Title, truncateStr(hit.Content, 200)))
+		fmt.Fprintf(&sb, "- %s: %s\n", hit.Title, truncateStr(hit.Content, 200))
 	}
 
 	return &domain.ToolResult{Data: sb.String(), Success: true}, nil

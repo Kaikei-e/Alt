@@ -122,7 +122,7 @@ func TestSanitizeHTML(t *testing.T) {
 	})
 
 	t.Run("empty string returns empty", func(t *testing.T) {
-		assert.Equal(t, "", domain.SanitizeHTML(""))
+		assert.Empty(t, domain.SanitizeHTML(""))
 	})
 
 	t.Run("script and style tags are dropped entirely", func(t *testing.T) {

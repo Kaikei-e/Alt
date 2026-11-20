@@ -1,13 +1,12 @@
 package middleware
 
 import (
-	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -15,7 +14,7 @@ import (
 const testValidToken = "rag-secret-token-for-test-at-least-24-bytes"
 
 func TestAPIAuthMiddleware_Echo(t *testing.T) {
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 
 	tests := []struct {
 		name           string
@@ -124,11 +123,11 @@ func TestAPIAuthMiddleware_Echo(t *testing.T) {
 			mw := NewAPIAuthMiddleware(tc.token, tc.enabled, logger)
 			e.Use(mw.EchoMiddleware())
 
-			e.Any("/*", func(c echo.Context) error {
+			e.Any("/*", func(c *echo.Context) error {
 				return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
 			})
 
-			req := httptest.NewRequest(http.MethodPost, tc.path, nil)
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, tc.path, nil)
 			if tc.authHeader != "" {
 				req.Header.Set("Authorization", tc.authHeader)
 			}
@@ -145,7 +144,7 @@ func TestAPIAuthMiddleware_Echo(t *testing.T) {
 }
 
 func TestAPIAuthMiddleware_WrapHandler(t *testing.T) {
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	mw := NewAPIAuthMiddleware(testValidToken, true, logger)
 
 	backend := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -156,21 +155,21 @@ func TestAPIAuthMiddleware_WrapHandler(t *testing.T) {
 	handler := mw.WrapHandler(backend)
 
 	// Missing token
-	req := httptest.NewRequest(http.MethodPost, "/services.augur.v2.AugurService/StreamChat", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/services.augur.v2.AugurService/StreamChat", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 	assert.JSONEq(t, `{"error":"unauthorized"}`, rec.Body.String())
 
 	// Wrong token
-	req = httptest.NewRequest(http.MethodPost, "/services.augur.v2.AugurService/StreamChat", nil)
+	req = httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/services.augur.v2.AugurService/StreamChat", nil)
 	req.Header.Set("Authorization", "Bearer invalid-token")
 	rec = httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 
 	// Valid token
-	req = httptest.NewRequest(http.MethodPost, "/services.augur.v2.AugurService/StreamChat", nil)
+	req = httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/services.augur.v2.AugurService/StreamChat", nil)
 	req.Header.Set("Authorization", "Bearer "+testValidToken)
 	rec = httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -178,7 +177,7 @@ func TestAPIAuthMiddleware_WrapHandler(t *testing.T) {
 	assert.Equal(t, "ok", rec.Body.String())
 
 	// Exempt path
-	req = httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	req = httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/healthz", nil)
 	rec = httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 	assert.Equal(t, http.StatusOK, rec.Code)

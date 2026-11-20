@@ -72,9 +72,9 @@ func (t *TagCloudExploreTool) Execute(ctx context.Context, params map[string]str
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Related tags for '%s':\n", topic))
+	fmt.Fprintf(&sb, "Related tags for '%s':\n", topic)
 	for _, tag := range matched {
-		sb.WriteString(fmt.Sprintf("- %s (%d articles)\n", tag.TagName, tag.ArticleCount))
+		fmt.Fprintf(&sb, "- %s (%d articles)\n", tag.TagName, tag.ArticleCount)
 	}
 
 	return &domain.ToolResult{

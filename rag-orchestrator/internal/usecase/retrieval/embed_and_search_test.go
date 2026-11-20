@@ -3,7 +3,6 @@ package retrieval_test
 import (
 	"context"
 	"fmt"
-	"io"
 	"log/slog"
 	"testing"
 
@@ -66,7 +65,7 @@ func (m *MockHybridSearcher) SearchNeighbors(ctx context.Context, queryVector []
 }
 
 func TestEmbedAndSearch_NilEmbedding_SkipsVectorSearch_RunsBM25(t *testing.T) {
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	mockEncoder := new(MockVectorEncoder)
 	mockBM25 := new(MockBM25Searcher)
 	mockChunkRepo := new(MockRagChunkRepository)
@@ -98,7 +97,7 @@ func TestEmbedAndSearch_NilEmbedding_SkipsVectorSearch_RunsBM25(t *testing.T) {
 }
 
 func TestEmbedAndSearch_NilEmbedding_NoBM25Searcher_NoError(t *testing.T) {
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	mockEncoder := new(MockVectorEncoder)
 	mockChunkRepo := new(MockRagChunkRepository)
 
@@ -121,7 +120,7 @@ func TestEmbedAndSearch_NilEmbedding_NoBM25Searcher_NoError(t *testing.T) {
 }
 
 func TestEmbedAndSearch_WithEmbedding_RunsVectorSearch(t *testing.T) {
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	mockEncoder := new(MockVectorEncoder)
 	mockChunkRepo := new(MockRagChunkRepository)
 
@@ -148,7 +147,7 @@ func TestEmbedAndSearch_WithEmbedding_RunsVectorSearch(t *testing.T) {
 }
 
 func TestEmbedAndSearch_BM25UsesExpandedQueries(t *testing.T) {
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	mockEncoder := new(MockVectorEncoder)
 	mockBM25 := new(MockBM25Searcher)
 	mockChunkRepo := new(MockRagChunkRepository)
@@ -190,7 +189,7 @@ func TestEmbedAndSearch_BM25UsesExpandedQueries(t *testing.T) {
 }
 
 func TestEmbedAndSearch_BM25ExcludesTagQueries_AndPreservesPlannerQueries(t *testing.T) {
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	mockEncoder := new(MockVectorEncoder)
 	mockBM25 := new(MockBM25Searcher)
 	mockChunkRepo := new(MockRagChunkRepository)
@@ -244,7 +243,7 @@ func TestEmbedAndSearch_BM25ExcludesTagQueries_AndPreservesPlannerQueries(t *tes
 }
 
 func TestEmbedAndSearch_BM25ExpandedDeduplicatesResults(t *testing.T) {
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	mockEncoder := new(MockVectorEncoder)
 	mockBM25 := new(MockBM25Searcher)
 	mockChunkRepo := new(MockRagChunkRepository)
@@ -278,7 +277,7 @@ func TestEmbedAndSearch_BM25ExpandedDeduplicatesResults(t *testing.T) {
 }
 
 func TestEmbedAndSearch_VectorSearchFails_ReturnsError(t *testing.T) {
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	mockEncoder := new(MockVectorEncoder)
 	mockChunkRepo := new(MockRagChunkRepository)
 
@@ -296,12 +295,12 @@ func TestEmbedAndSearch_VectorSearchFails_ReturnsError(t *testing.T) {
 	mockChunkRepo.On("Search", mock.Anything, queryVec, 50, testUUID).Return(nil, fmt.Errorf("db connection lost"))
 
 	err := retrieval.EmbedAndSearch(context.Background(), sc, mockEncoder, nil, nil, mockChunkRepo, false, 50, logger)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to search original query")
 }
 
 func TestEmbedAndSearch_HybridSearcher_UsedInsteadOfBM25AndVector(t *testing.T) {
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	mockEncoder := new(MockVectorEncoder)
 	mockHybrid := new(MockHybridSearcher)
 	mockChunkRepo := new(MockRagChunkRepository)
@@ -335,7 +334,7 @@ func TestEmbedAndSearch_HybridSearcher_SkippedWhenCandidateArticlesScoped(t *tes
 	// HybridSearcher has no SearchWithinArticles-equivalent, so candidate-scoped
 	// retrieval (e.g. Morning Letter) must fall back to plain chunk-repo search
 	// rather than silently ignoring the requested article scope.
-	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	mockEncoder := new(MockVectorEncoder)
 	mockHybrid := new(MockHybridSearcher)
 	mockChunkRepo := new(MockRagChunkRepository)

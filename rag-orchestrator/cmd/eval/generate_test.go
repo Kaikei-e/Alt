@@ -47,7 +47,7 @@ func TestDetectLanguage(t *testing.T) {
 }
 
 func TestSummarizeLanguages(t *testing.T) {
-	assert.Equal(t, "", summarizeLanguages(map[string]bool{}))
+	assert.Empty(t, summarizeLanguages(map[string]bool{}))
 	assert.Equal(t, "ja", summarizeLanguages(map[string]bool{"ja": true}))
 	assert.Equal(t, "en", summarizeLanguages(map[string]bool{"en": true}))
 	assert.Equal(t, eval.LanguageMixed, summarizeLanguages(map[string]bool{"ja": true, "en": true}))

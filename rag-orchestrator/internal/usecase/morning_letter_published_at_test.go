@@ -2,7 +2,6 @@ package usecase_test
 
 import (
 	"context"
-	"io"
 	"log/slog"
 	"rag-orchestrator/internal/domain"
 	"rag-orchestrator/internal/usecase"
@@ -27,7 +26,7 @@ func TestMorningLetterUsecase_Execute_BoostsAndCitesByArticlePublishedAt(t *test
 	mockRetrieveUC := new(mockRetrieveContextUsecase)
 	mockPromptBuilder := new(MockMorningLetterPromptBuilder)
 	mockLLM := new(mockLLMClient)
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	uc := usecase.NewMorningLetterUsecase(
 		mockArticleClient,
@@ -142,7 +141,7 @@ func TestMorningLetterUsecase_Execute_DoesNotBoostUnknownPublishedAt(t *testing.
 	mockRetrieveUC := new(mockRetrieveContextUsecase)
 	mockPromptBuilder := new(MockMorningLetterPromptBuilder)
 	mockLLM := new(mockLLMClient)
-	testLogger := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	testLogger := slog.New(slog.DiscardHandler)
 
 	uc := usecase.NewMorningLetterUsecase(
 		mockArticleClient,

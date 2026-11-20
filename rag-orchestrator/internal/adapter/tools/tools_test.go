@@ -8,6 +8,7 @@ import (
 	"rag-orchestrator/internal/domain"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // --- TagSearchTool ---
@@ -41,7 +42,7 @@ func TestTagSearchTool_Execute_Success(t *testing.T) {
 	ctx := domain.WithUserID(context.Background(), "00000000-0000-0000-0000-000000000001")
 
 	result, err := tool.Execute(ctx, map[string]string{"query": "Rust"})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.True(t, result.Success)
 	assert.Contains(t, result.Data, "Rust")
 }
@@ -52,7 +53,7 @@ func TestTagSearchTool_Execute_Empty(t *testing.T) {
 	ctx := domain.WithUserID(context.Background(), "00000000-0000-0000-0000-000000000001")
 
 	result, err := tool.Execute(ctx, map[string]string{"query": "nonexistent"})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.True(t, result.Success)
 	assert.Equal(t, "no results", result.Data)
 }
@@ -68,7 +69,7 @@ func TestTagSearchTool_Execute_PrefersContextUserIDOverParams(t *testing.T) {
 		"query":   "Rust",
 		"user_id": "forged-victim-user",
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.True(t, result.Success)
 	assert.Equal(t, "authenticated-user", client.lastUserID)
 }
@@ -83,7 +84,7 @@ func TestTagSearchTool_Execute_RejectsParamsOnlyUserID(t *testing.T) {
 		"query":   "Rust",
 		"user_id": "forged-victim-user",
 	})
-	assert.Error(t, err)
+	require.Error(t, err)
 	if result != nil {
 		assert.False(t, result.Success)
 	}
@@ -107,7 +108,7 @@ func TestDateRangeFilterTool_Execute(t *testing.T) {
 	ctx := domain.WithUserID(context.Background(), "00000000-0000-0000-0000-000000000001")
 
 	result, err := tool.Execute(ctx, map[string]string{"query": "最近のAIニュース"})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.True(t, result.Success)
 }
 
@@ -122,7 +123,7 @@ func TestDateRangeFilterTool_Execute_PrefersContextUserIDOverParams(t *testing.T
 		"query":   "最近のAIニュース",
 		"user_id": "forged-victim-user",
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.True(t, result.Success)
 	assert.Equal(t, "authenticated-user", client.lastUserID)
 }
@@ -137,7 +138,7 @@ func TestDateRangeFilterTool_Execute_RejectsParamsOnlyUserID(t *testing.T) {
 		"query":   "最近のAIニュース",
 		"user_id": "forged-victim-user",
 	})
-	assert.Error(t, err)
+	require.Error(t, err)
 	if result != nil {
 		assert.False(t, result.Success)
 	}
@@ -157,7 +158,7 @@ func TestRelatedArticlesTool_Execute_PrefersContextUserIDOverParams(t *testing.T
 		"query":   "AI",
 		"user_id": "forged-victim-user",
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.True(t, result.Success)
 	assert.Equal(t, "authenticated-user", client.lastUserID)
 }
@@ -172,7 +173,7 @@ func TestRelatedArticlesTool_Execute_RejectsParamsOnlyUserID(t *testing.T) {
 		"query":   "AI",
 		"user_id": "forged-victim-user",
 	})
-	assert.Error(t, err)
+	require.Error(t, err)
 	if result != nil {
 		assert.False(t, result.Success)
 	}

@@ -191,7 +191,7 @@ func TestLoad_RAGRetrievalParameters_Defaults(t *testing.T) {
 	assert.Equal(t, 50, cfg.RAG.SearchLimit, "searchLimit should default to 50")
 	assert.Equal(t, 5, cfg.RAG.QuotaOriginal, "quotaOriginal should default to 5")
 	assert.Equal(t, 5, cfg.RAG.QuotaExpanded, "quotaExpanded should default to 5")
-	assert.Equal(t, 60.0, cfg.RAG.RRFK, "rrfK should default to 60.0")
+	assert.InDelta(t, 60.0, cfg.RAG.RRFK, 1e-9, "rrfK should default to 60.0")
 }
 
 func TestLoad_RAGRetrievalParameters_FromEnv(t *testing.T) {
@@ -206,7 +206,7 @@ func TestLoad_RAGRetrievalParameters_FromEnv(t *testing.T) {
 	assert.Equal(t, 100, cfg.RAG.SearchLimit)
 	assert.Equal(t, 7, cfg.RAG.QuotaOriginal)
 	assert.Equal(t, 3, cfg.RAG.QuotaExpanded)
-	assert.Equal(t, 50.0, cfg.RAG.RRFK)
+	assert.InDelta(t, 50.0, cfg.RAG.RRFK, 1e-9)
 }
 
 func TestLoad_TemporalBoostParameters_Defaults(t *testing.T) {
@@ -222,9 +222,9 @@ func TestLoad_TemporalBoostParameters_Defaults(t *testing.T) {
 
 	cfg := Load()
 
-	assert.Equal(t, float32(1.3), cfg.Temporal.Boost6h)
-	assert.Equal(t, float32(1.15), cfg.Temporal.Boost12h)
-	assert.Equal(t, float32(1.05), cfg.Temporal.Boost18h)
+	assert.InDelta(t, float32(1.3), cfg.Temporal.Boost6h, 1e-6)
+	assert.InDelta(t, float32(1.15), cfg.Temporal.Boost12h, 1e-6)
+	assert.InDelta(t, float32(1.05), cfg.Temporal.Boost18h, 1e-6)
 }
 
 func TestLoad_TemporalBoostParameters_FromEnv(t *testing.T) {
@@ -235,9 +235,9 @@ func TestLoad_TemporalBoostParameters_FromEnv(t *testing.T) {
 
 	cfg := Load()
 
-	assert.Equal(t, float32(1.5), cfg.Temporal.Boost6h)
-	assert.Equal(t, float32(1.25), cfg.Temporal.Boost12h)
-	assert.Equal(t, float32(1.1), cfg.Temporal.Boost18h)
+	assert.InDelta(t, float32(1.5), cfg.Temporal.Boost6h, 1e-6)
+	assert.InDelta(t, float32(1.25), cfg.Temporal.Boost12h, 1e-6)
+	assert.InDelta(t, float32(1.1), cfg.Temporal.Boost18h, 1e-6)
 }
 
 func TestGetEnvFloat64(t *testing.T) {
@@ -277,7 +277,7 @@ func TestGetEnvFloat64(t *testing.T) {
 			}
 
 			result := getEnvFloat64("TEST_FLOAT", tt.fallback)
-			assert.Equal(t, tt.expected, result)
+			assert.InDelta(t, tt.expected, result, 1e-9)
 		})
 	}
 }
@@ -309,7 +309,7 @@ func TestGetEnvFloat32(t *testing.T) {
 			t.Setenv("TEST_FLOAT32", tt.envValue)
 
 			result := getEnvFloat32("TEST_FLOAT32", tt.fallback)
-			assert.Equal(t, tt.expected, result)
+			assert.InDelta(t, tt.expected, result, 1e-6)
 		})
 	}
 }
@@ -343,7 +343,7 @@ func TestDBConfig_DSN(t *testing.T) {
 		SSLMode:  "disable",
 	}
 
-	expected := "postgres://testuser:testpass@localhost:5432/testdb?sslmode=disable"
+	expected := "postgres://" + db.User + ":" + db.Password + "@localhost:5432/testdb?sslmode=disable"
 	assert.Equal(t, expected, db.DSN())
 }
 

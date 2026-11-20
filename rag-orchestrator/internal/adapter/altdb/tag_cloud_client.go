@@ -37,7 +37,8 @@ func (c *DataHubTagCloudClient) FetchTagCloud(ctx context.Context, userID string
 		return nil, errors.New("FetchTagCloud: user id is required")
 	}
 	req := connect.NewRequest(&datahubv1.FetchTagCloudRequest{
-		Limit:  int32(min(limit, math.MaxInt32)), //nolint:gosec // value clamped to MaxInt32
+		// #nosec G115 -- value clamped to MaxInt32
+		Limit:  int32(min(limit, math.MaxInt32)),
 		UserId: &userID,
 	})
 

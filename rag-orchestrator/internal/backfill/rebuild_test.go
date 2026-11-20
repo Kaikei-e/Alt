@@ -3,7 +3,6 @@ package backfill
 import (
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"sync"
 	"sync/atomic"
@@ -177,7 +176,7 @@ func (s *stubVersionState) set(articleID string, st VersionState) {
 }
 
 func rebuildTestLogger() *slog.Logger {
-	return slog.New(slog.NewJSONHandler(io.Discard, nil))
+	return slog.New(slog.DiscardHandler)
 }
 
 func testTarget() RebuildTarget {
@@ -253,7 +252,7 @@ func TestNewRebuildEngine_FailsFastOnIncompleteConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			engine, err := NewRebuildEngine(jobs, tt.indexers, state, tt.cfg, rebuildTestLogger())
-			assert.Error(t, err, "incomplete rebuild config must fail at construction")
+			require.Error(t, err, "incomplete rebuild config must fail at construction")
 			assert.Nil(t, engine)
 		})
 	}

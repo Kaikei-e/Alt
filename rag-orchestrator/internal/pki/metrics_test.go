@@ -84,7 +84,7 @@ func gather(t *testing.T, reg prometheus.Gatherer) string {
 	t.Helper()
 	rec := httptest.NewRecorder()
 	promhttp.HandlerFor(reg, promhttp.HandlerOpts{}).ServeHTTP(
-		rec, httptest.NewRequest(http.MethodGet, "/metrics", nil),
+		rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/metrics", nil),
 	)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("metrics status %d", rec.Code)

@@ -7,7 +7,7 @@ import (
 	"os"
 
 	"go.opentelemetry.io/contrib/bridges/otelslog"
-	"go.opentelemetry.io/otel/log/global"
+	"go.opentelemetry.io/otel"
 )
 
 // New creates a basic JSON logger (legacy mode - stdout only)
@@ -52,7 +52,7 @@ func NewMultiHandler(level slog.Level) *MultiHandler {
 	// This properly propagates trace context from the Go context
 	otelHandler := otelslog.NewHandler(
 		"rag-orchestrator",
-		otelslog.WithLoggerProvider(global.GetLoggerProvider()),
+		otelslog.WithLoggerProvider(otel.GetLoggerProvider()),
 	)
 
 	return &MultiHandler{

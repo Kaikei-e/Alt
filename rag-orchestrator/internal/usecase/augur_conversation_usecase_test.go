@@ -167,7 +167,7 @@ func TestEnsureConversation_TruncatesLongTitles(t *testing.T) {
 	conv, err := uc.EnsureConversation(context.Background(), uuid.New(), uuid.Nil, long)
 	require.NoError(t, err)
 	runes := []rune(conv.Title)
-	assert.Equal(t, 81, len(runes), "expected 80 runes plus ellipsis")
+	assert.Len(t, runes, 81, "expected 80 runes plus ellipsis")
 	assert.Equal(t, '…', runes[len(runes)-1])
 }
 
@@ -227,7 +227,7 @@ func TestAppendTurns_PersistsInOrder(t *testing.T) {
 func TestAppendTurns_RejectsEmptyContent(t *testing.T) {
 	uc := NewAugurConversationUsecase(newFakeAugurRepo(), nil)
 	err := uc.AppendUserTurn(context.Background(), uuid.New(), "   \n\t ")
-	assert.Error(t, err)
+	require.Error(t, err)
 	err = uc.AppendAssistantTurn(context.Background(), uuid.New(), "   \n\t ", nil, nil)
 	assert.Error(t, err)
 }

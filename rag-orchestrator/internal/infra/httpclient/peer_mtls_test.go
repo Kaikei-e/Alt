@@ -219,7 +219,9 @@ func TestNewPeerMTLSClient_HandshakesWithMTLSOnlyListener(t *testing.T) {
 	}, 5*time.Second)
 	require.NoError(t, err)
 
-	resp, err := client.Get(srv.URL + "/v1/search")
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, srv.URL+"/v1/search", nil)
+	require.NoError(t, err)
+	resp, err := client.Do(req)
 	require.NoError(t, err)
 	require.NoError(t, resp.Body.Close())
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
