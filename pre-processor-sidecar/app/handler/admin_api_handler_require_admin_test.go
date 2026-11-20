@@ -60,7 +60,7 @@ func TestRequireAdmin_MissingAuthorization_Returns401(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	req := httptest.NewRequest(http.MethodPost, "/admin/trigger/article-fetch", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/admin/trigger/article-fetch", nil)
 	req.Header.Set("X-Forwarded-Proto", "https")
 	recorder := httptest.NewRecorder()
 
@@ -79,7 +79,7 @@ func TestRequireAdmin_InvalidToken_Returns401(t *testing.T) {
 		called = true
 	})
 
-	req := httptest.NewRequest(http.MethodPost, "/admin/trigger/article-fetch", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/admin/trigger/article-fetch", nil)
 	req.Header.Set("X-Forwarded-Proto", "https")
 	req.Header.Set("Authorization", "Bearer bad-token")
 	recorder := httptest.NewRecorder()
@@ -99,7 +99,7 @@ func TestRequireAdmin_InsufficientPermissions_Returns403(t *testing.T) {
 		called = true
 	})
 
-	req := httptest.NewRequest(http.MethodPost, "/admin/trigger/article-fetch", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/admin/trigger/article-fetch", nil)
 	req.Header.Set("X-Forwarded-Proto", "https")
 	req.Header.Set("Authorization", "Bearer some-token")
 	recorder := httptest.NewRecorder()
@@ -119,7 +119,7 @@ func TestRequireAdmin_RateLimited_Returns429(t *testing.T) {
 		called = true
 	})
 
-	req := httptest.NewRequest(http.MethodPost, "/admin/trigger/article-fetch", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/admin/trigger/article-fetch", nil)
 	req.Header.Set("X-Forwarded-Proto", "https")
 	req.Header.Set("Authorization", "Bearer some-token")
 	recorder := httptest.NewRecorder()
@@ -140,7 +140,7 @@ func TestRequireAdmin_ValidRequest_CallsNext(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	req := httptest.NewRequest(http.MethodPost, "/admin/trigger/article-fetch", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/admin/trigger/article-fetch", nil)
 	req.Header.Set("X-Forwarded-Proto", "https")
 	req.Header.Set("Authorization", "Bearer good-token")
 	recorder := httptest.NewRecorder()
@@ -160,7 +160,7 @@ func TestRequireAdmin_UntrustedProxyHeaders_IgnoresXForwardedProtoAndIP(t *testi
 		called = true
 	})
 
-	req := httptest.NewRequest(http.MethodPost, "/admin/trigger/article-fetch", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/admin/trigger/article-fetch", nil)
 	req.RemoteAddr = "198.51.100.7:12345"
 	req.Header.Set("X-Forwarded-Proto", "https")
 	req.Header.Set("X-Forwarded-For", "203.0.113.99")
@@ -183,7 +183,7 @@ func TestRequireAdmin_HTTPRequired_Returns400(t *testing.T) {
 		called = true
 	})
 
-	req := httptest.NewRequest(http.MethodPost, "/admin/trigger/article-fetch", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/admin/trigger/article-fetch", nil)
 	recorder := httptest.NewRecorder()
 
 	wrapped(recorder, req)

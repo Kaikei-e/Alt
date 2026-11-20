@@ -248,7 +248,9 @@ func (h *AdminAPIHandler) HandleRefreshTokenUpdate(w http.ResponseWriter, r *htt
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(response)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		h.logger.Error("Failed to encode token status response", "error", err)
+	}
 
 	h.metricsCollector.IncrementAdminAPIRequest("POST", "/admin/oauth2/refresh-token", "success")
 
@@ -327,7 +329,9 @@ func (h *AdminAPIHandler) HandleTokenStatus(w http.ResponseWriter, r *http.Reque
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(response)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		h.logger.Error("Failed to encode token status response", "error", err)
+	}
 
 	h.metricsCollector.IncrementAdminAPIRequest("GET", "/admin/oauth2/status", "success")
 }
@@ -427,7 +431,9 @@ func (h *AdminAPIHandler) respondWithError(w http.ResponseWriter, errorCode, mes
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	json.NewEncoder(w).Encode(response)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		h.logger.Error("Failed to encode error response", "error", err)
+	}
 }
 
 // extractBearerToken はAuthorizationヘッダーからBearerトークンを抽出

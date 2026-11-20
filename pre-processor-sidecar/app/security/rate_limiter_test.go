@@ -145,9 +145,10 @@ func TestMemoryRateLimiter_GetAllClientsStats(t *testing.T) {
 	// Find stats by client IP
 	var client6Stats, client7Stats *ClientStats
 	for i := range allStats {
-		if allStats[i].ClientIP == "192.168.1.6" {
+		switch allStats[i].ClientIP {
+		case "192.168.1.6":
 			client6Stats = &allStats[i]
-		} else if allStats[i].ClientIP == "192.168.1.7" {
+		case "192.168.1.7":
 			client7Stats = &allStats[i]
 		}
 	}
@@ -382,7 +383,7 @@ func TestMemoryRateLimiter_EdgeCases(t *testing.T) {
 		limiter.RecordRequest("", "/api")
 
 		stats := limiter.GetClientStats("")
-		assert.Equal(t, "", stats.ClientIP)
+		assert.Empty(t, stats.ClientIP)
 		assert.Equal(t, 1, stats.RequestsInLastHour)
 	})
 

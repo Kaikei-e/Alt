@@ -29,7 +29,7 @@ func (c *fakeClock) advance(d time.Duration) {
 }
 
 func newTestLogger() *slog.Logger {
-	return slog.New(slog.NewTextHandler(io.Discard, nil))
+	return slog.New(slog.DiscardHandler)
 }
 
 // TestRemoteTokenService_GetValidToken_Returns_ErrTokenUnavailable_On_404 asserts that

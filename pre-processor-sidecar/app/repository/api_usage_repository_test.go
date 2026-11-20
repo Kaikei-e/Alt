@@ -74,7 +74,7 @@ func TestGetTodaysUsage_NotFound(t *testing.T) {
 	mock.ExpectQuery(selectTodaysUsageQuery).WillReturnError(pgx.ErrNoRows)
 
 	usage, err := repo.GetTodaysUsage(context.Background())
-	assert.ErrorIs(t, err, ErrNoUsageRecordToday)
+	require.ErrorIs(t, err, ErrNoUsageRecordToday)
 	assert.Nil(t, usage)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
@@ -91,8 +91,8 @@ func TestGetTodaysUsage_QueryFailureIsNotMissingRow(t *testing.T) {
 
 	usage, err := repo.GetTodaysUsage(context.Background())
 	assert.Nil(t, usage)
-	assert.ErrorIs(t, err, queryErr)
-	assert.NotErrorIs(t, err, ErrNoUsageRecordToday)
+	require.ErrorIs(t, err, queryErr)
+	require.NotErrorIs(t, err, ErrNoUsageRecordToday)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -132,6 +132,6 @@ func TestUpdateUsageRecord_NotFound(t *testing.T) {
 		WillReturnResult(pgxmock.NewResult("UPDATE", 0))
 
 	err := repo.UpdateUsageRecord(context.Background(), usage)
-	assert.Error(t, err)
+	require.Error(t, err)
 	require.NoError(t, mock.ExpectationsWereMet())
 }

@@ -8,7 +8,6 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
-	"io/ioutil"
 	"log/slog"
 	"os"
 	"strings"
@@ -61,6 +60,7 @@ func NewKubernetesAuthenticator(logger *slog.Logger) *KubernetesAuthenticator {
 		logger = slog.Default()
 	}
 
+	// #nosec G101 -- standard Kubernetes ServiceAccount file paths, not credentials
 	auth := &KubernetesAuthenticator{
 		logger:        logger,
 		tokenPath:     "/var/run/secrets/kubernetes.io/serviceaccount/token",
@@ -92,7 +92,7 @@ func NewKubernetesAuthenticator(logger *slog.Logger) *KubernetesAuthenticator {
 // initialize は認証器を初期化
 func (ka *KubernetesAuthenticator) initialize() error {
 	// 名前空間を読み取り
-	if namespaceBytes, err := ioutil.ReadFile(ka.namespacePath); err == nil {
+	if namespaceBytes, err := os.ReadFile(ka.namespacePath); err == nil {
 		ka.namespace = strings.TrimSpace(string(namespaceBytes))
 	} else {
 		ka.logger.Warn("Could not read namespace file", "path", ka.namespacePath, "error", err)
@@ -100,7 +100,7 @@ func (ka *KubernetesAuthenticator) initialize() error {
 	}
 
 	// CA証明書を読み取り
-	caBytes, err := ioutil.ReadFile(ka.caPath)
+	caBytes, err := os.ReadFile(ka.caPath)
 	if err != nil {
 		return fmt.Errorf("failed to read CA certificate: %w", err)
 	}
@@ -180,7 +180,7 @@ func (ka *KubernetesAuthenticator) ValidateKubernetesServiceAccountToken(tokenSt
 	}
 
 	// 期限切れ確認
-	if claims.ExpiresAt != nil && claims.ExpiresAt.Time.Before(time.Now()) {
+	if claims.ExpiresAt != nil && claims.ExpiresAt.Before(time.Now()) {
 		return nil, fmt.Errorf("token has expired")
 	}
 
@@ -332,7 +332,7 @@ func (ka *KubernetesAuthenticator) isDevelopmentEnvironment() bool {
 
 // GetCurrentServiceAccount は現在のServiceAccount情報を取得
 func (ka *KubernetesAuthenticator) GetCurrentServiceAccount() (*ServiceAccountInfo, error) {
-	tokenBytes, err := ioutil.ReadFile(ka.tokenPath)
+	tokenBytes, err := os.ReadFile(ka.tokenPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read service account token: %w", err)
 	}

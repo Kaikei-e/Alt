@@ -478,6 +478,7 @@ func getEnvOrDefaultFloat(key string, defaultValue float64) float64 {
 // Exported for use in health checks and other packages
 func GetSecretOrEnv(fileEnv, env string) string {
 	if filePath := os.Getenv(fileEnv); filePath != "" {
+		// #nosec G304 G703 -- filePath comes from trusted *_FILE environment variable for Docker secrets
 		if content, err := os.ReadFile(filePath); err == nil {
 			return strings.TrimSpace(string(content))
 		}

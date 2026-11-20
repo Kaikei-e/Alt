@@ -10,11 +10,12 @@ import (
 	"testing"
 	"time"
 
+	"pre-processor-sidecar/models"
+	"pre-processor-sidecar/repository"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"pre-processor-sidecar/models"
-	"pre-processor-sidecar/repository"
 )
 
 // MockTokenRepository is a mock implementation of OAuth2TokenRepository

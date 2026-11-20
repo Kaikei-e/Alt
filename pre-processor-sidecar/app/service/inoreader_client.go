@@ -443,7 +443,7 @@ func (c *InoreaderClient) parseArticleDataFromStruct(item driver.InoreaderArticl
 	// Phase 1: Extract article content using structured Summary field
 	var content string
 	var contentLength int
-	var contentType string = "html"
+	contentType := "html"
 
 	// Phase 2: Enhanced content logging with structured data
 	c.logger.Debug("Processing article content",

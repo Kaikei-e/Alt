@@ -33,9 +33,11 @@ func TestCircuitBreakerIntegration_BasicFlow(t *testing.T) {
 
 	// Test failure leading to circuit open
 	for i := 0; i < 3; i++ {
-		cb.Execute(ctx, func(ctx context.Context) error {
+		if err := cb.Execute(ctx, func(ctx context.Context) error {
 			return errors.New("simulated failure")
-		})
+		}); err == nil {
+			t.Fatalf("Expected simulated failure on attempt %d", i)
+		}
 	}
 
 	// Circuit should be open now
@@ -49,7 +51,7 @@ func TestCircuitBreakerIntegration_BasicFlow(t *testing.T) {
 		return nil
 	})
 
-	if err != utils.ErrCircuitBreakerOpen {
+	if !errors.Is(err, utils.ErrCircuitBreakerOpen) {
 		t.Errorf("Expected ErrCircuitBreakerOpen, got %v", err)
 	}
 
@@ -67,15 +69,19 @@ func TestCircuitBreakerIntegration_Statistics(t *testing.T) {
 	failureOps := 3
 
 	for i := 0; i < successOps; i++ {
-		cb.Execute(ctx, func(ctx context.Context) error {
+		if err := cb.Execute(ctx, func(ctx context.Context) error {
 			return nil
-		})
+		}); err != nil {
+			t.Fatalf("Unexpected error on success op %d: %v", i, err)
+		}
 	}
 
 	for i := 0; i < failureOps; i++ {
-		cb.Execute(ctx, func(ctx context.Context) error {
+		if err := cb.Execute(ctx, func(ctx context.Context) error {
 			return errors.New("test failure")
-		})
+		}); err == nil {
+			t.Fatalf("Expected error on failure op %d", i)
+		}
 	}
 
 	stats := cb.GetStats()

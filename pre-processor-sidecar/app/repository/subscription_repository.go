@@ -57,7 +57,11 @@ func (r *PostgreSQLSubscriptionRepository) SaveSubscriptions(ctx context.Context
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	defer func() {
+		if rollbackErr := tx.Rollback(ctx); rollbackErr != nil && !errors.Is(rollbackErr, pgx.ErrTxClosed) {
+			r.logger.Warn("Failed to rollback transaction", "error", rollbackErr)
+		}
+	}()
 
 	// Upsert statement (INSERT ... ON CONFLICT DO UPDATE).
 	// pgx caches prepared statements automatically per connection, so we issue

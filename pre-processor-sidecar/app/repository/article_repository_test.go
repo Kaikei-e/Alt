@@ -10,12 +10,13 @@ import (
 	"testing"
 	"time"
 
+	"pre-processor-sidecar/models"
+
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/pashagolub/pgxmock/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"pre-processor-sidecar/models"
 )
 
 func newTestRepo(t *testing.T) (*PostgreSQLArticleRepository, pgxmock.PgxPoolIface) {

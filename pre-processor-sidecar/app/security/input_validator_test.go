@@ -4,6 +4,7 @@
 package security
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -60,9 +61,10 @@ func TestValidateTokenUpdateRequest_MissingRefreshToken(t *testing.T) {
 	}
 
 	err := validator.ValidateTokenUpdateRequest(req)
-	assert.Error(t, err)
+	require.Error(t, err)
 
-	validationErr, ok := err.(*ValidationError)
+	validationErr := &ValidationError{}
+	ok := errors.As(err, &validationErr)
 	require.True(t, ok)
 	assert.Equal(t, "refresh_token", validationErr.Field)
 	assert.Contains(t, validationErr.Message, "required")
@@ -110,7 +112,7 @@ func TestValidateRefreshToken(t *testing.T) {
 			err := validator.validateRefreshToken(tc.token)
 
 			if tc.expectError {
-				assert.Error(t, err)
+				require.Error(t, err)
 				if tc.errorMsg != "" {
 					assert.Contains(t, err.Error(), tc.errorMsg)
 				}
@@ -155,7 +157,7 @@ func TestValidateClientID(t *testing.T) {
 			err := validator.validateClientID(tc.clientID)
 
 			if tc.expectError {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Contains(t, err.Error(), tc.errorMsg)
 			} else {
 				assert.NoError(t, err)
@@ -205,7 +207,7 @@ func TestValidateClientSecret(t *testing.T) {
 			err := validator.validateClientSecret(tc.secret)
 
 			if tc.expectError {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Contains(t, err.Error(), tc.errorMsg)
 			} else {
 				assert.NoError(t, err)
@@ -231,7 +233,7 @@ func TestCheckSQLInjection(t *testing.T) {
 	for _, input := range maliciousInputs {
 		t.Run("sql_injection_"+input[:min(10, len(input))], func(t *testing.T) {
 			err := validator.checkSQLInjection("test_field", input)
-			assert.Error(t, err)
+			require.Error(t, err)
 			if err != nil {
 				assert.Contains(t, err.Error(), "SQL injection")
 			}
@@ -266,7 +268,7 @@ func TestCheckXSS(t *testing.T) {
 	for _, input := range maliciousInputs {
 		t.Run("xss_"+input[:min(10, len(input))], func(t *testing.T) {
 			err := validator.checkXSS("test_field", input)
-			assert.Error(t, err)
+			require.Error(t, err)
 			if err != nil {
 				assert.Contains(t, err.Error(), "XSS")
 			}
@@ -293,7 +295,7 @@ func TestCheckPathTraversal(t *testing.T) {
 	for _, input := range maliciousInputs {
 		t.Run("path_traversal_"+input[:min(10, len(input))], func(t *testing.T) {
 			err := validator.checkPathTraversal("test_field", input)
-			assert.Error(t, err)
+			require.Error(t, err)
 			if err != nil {
 				assert.Contains(t, err.Error(), "path traversal")
 			}
@@ -348,7 +350,7 @@ func TestCheckDangerousBytes(t *testing.T) {
 			err := validator.checkDangerousBytes("test_field", tc.input)
 
 			if tc.expectError {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Contains(t, err.Error(), tc.errorMsg)
 			} else {
 				assert.NoError(t, err)
@@ -468,13 +470,13 @@ func TestValidateAndSanitizeInput(t *testing.T) {
 			result, err := validator.ValidateAndSanitizeInput(tc.input, tc.fieldName)
 
 			if tc.expectError {
-				assert.Error(t, err)
+				require.Error(t, err)
 				if tc.errorMsg != "" && err != nil {
 					assert.Contains(t, err.Error(), tc.errorMsg)
 				}
 				assert.Empty(t, result)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.Len(t, result, tc.expectedLen)
 			}
 		})

@@ -232,7 +232,7 @@ func (s *InoreaderService) FetchSubscriptions(ctx context.Context) ([]*models.Su
 
 	if err != nil {
 		// Check if circuit breaker is open
-		if err == utils.ErrCircuitBreakerOpen {
+		if errors.Is(err, utils.ErrCircuitBreakerOpen) {
 			s.logger.Warn("Circuit breaker is open, rejecting subscription request")
 			// TDD Phase 3 - REFACTOR: Log circuit breaker rejection
 			s.monitor.LogAPIRequest(ctx, "GET", "/subscription/list", 503, time.Since(startTime), err)
@@ -315,7 +315,7 @@ func (s *InoreaderService) FetchStreamContents(ctx context.Context, streamID, co
 
 	if err != nil {
 		// Check if circuit breaker is open
-		if err == utils.ErrCircuitBreakerOpen {
+		if errors.Is(err, utils.ErrCircuitBreakerOpen) {
 			s.logger.Warn("Circuit breaker is open, rejecting stream contents request",
 				"stream_id", streamID)
 			return nil, "", fmt.Errorf("service temporarily unavailable: %w", err)

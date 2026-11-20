@@ -59,7 +59,7 @@ func TestTimezoneHandling(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Set timezone environment variable
-			os.Setenv("TZ", tt.timezone)
+			t.Setenv("TZ", tt.timezone)
 
 			// Create rotator
 			rotator := NewSubscriptionRotator(slog.Default())
@@ -71,9 +71,6 @@ func TestTimezoneHandling(t *testing.T) {
 			shouldReset := rotator.shouldResetDaily(tt.mockTime)
 
 			assert.Equal(t, tt.expectedShouldReset, shouldReset, tt.description)
-
-			// Clean up
-			os.Unsetenv("TZ")
 		})
 	}
 }
@@ -81,8 +78,7 @@ func TestTimezoneHandling(t *testing.T) {
 // TestDailyRotationReset tests the full daily rotation reset process
 func TestDailyRotationReset(t *testing.T) {
 	// Set JST timezone
-	os.Setenv("TZ", "Asia/Tokyo")
-	defer os.Unsetenv("TZ")
+	t.Setenv("TZ", "Asia/Tokyo")
 
 	rotator := NewSubscriptionRotator(slog.Default())
 
@@ -114,8 +110,7 @@ func TestDailyRotationReset(t *testing.T) {
 
 // TestTimezoneInfo tests the timezone information reporting
 func TestTimezoneInfo(t *testing.T) {
-	os.Setenv("TZ", "Asia/Tokyo")
-	defer os.Unsetenv("TZ")
+	t.Setenv("TZ", "Asia/Tokyo")
 
 	rotator := NewSubscriptionRotator(slog.Default())
 
@@ -164,13 +159,12 @@ func TestEnvironmentTimezoneSettings(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Clean environment first
-			os.Unsetenv("TZ")
-
-			// Set test environment
+			// Set test environment or ensure TZ is unset
 			if tt.envTZ != "" {
-				os.Setenv("TZ", tt.envTZ)
-				defer os.Unsetenv("TZ")
+				t.Setenv("TZ", tt.envTZ)
+			} else {
+				t.Setenv("TZ", "")
+				require.NoError(t, os.Unsetenv("TZ"))
 			}
 
 			// Create rotator
@@ -199,15 +193,7 @@ func mustLoadLocation(name string) *time.Location {
 // TestSubscriptionCompletionLogic tests that subscriptions are properly marked as complete
 func TestSubscriptionCompletionLogic(t *testing.T) {
 	// Set MAX_DAILY_ROTATIONS=1 to maintain original test expectations
-	originalEnv := os.Getenv("MAX_DAILY_ROTATIONS")
-	defer func() {
-		if originalEnv != "" {
-			os.Setenv("MAX_DAILY_ROTATIONS", originalEnv)
-		} else {
-			os.Unsetenv("MAX_DAILY_ROTATIONS")
-		}
-	}()
-	os.Setenv("MAX_DAILY_ROTATIONS", "1")
+	t.Setenv("MAX_DAILY_ROTATIONS", "1")
 
 	rotator := NewSubscriptionRotator(slog.Default())
 

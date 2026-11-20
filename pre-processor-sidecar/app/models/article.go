@@ -115,7 +115,7 @@ func NewArticleFromAPI(inoreaderItem InoreaderItem, subscriptionID uuid.UUID) *A
 	// Phase 1: Extract content from summary.content field
 	var content string
 	var contentLength int
-	var contentType string = "html"
+	contentType := "html"
 
 	if inoreaderItem.Summary.Content != "" {
 		content = inoreaderItem.Summary.Content

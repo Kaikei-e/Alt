@@ -15,15 +15,8 @@ import (
 
 func TestNewSubscriptionRotator(t *testing.T) {
 	// Clear environment variable to test defaults
-	originalEnv := os.Getenv("ROTATION_INTERVAL_MINUTES")
-	defer func() {
-		if originalEnv != "" {
-			os.Setenv("ROTATION_INTERVAL_MINUTES", originalEnv)
-		} else {
-			os.Unsetenv("ROTATION_INTERVAL_MINUTES")
-		}
-	}()
-	os.Unsetenv("ROTATION_INTERVAL_MINUTES")
+	t.Setenv("ROTATION_INTERVAL_MINUTES", "")
+	require.NoError(t, os.Unsetenv("ROTATION_INTERVAL_MINUTES"))
 
 	logger := slog.Default()
 	rotator := NewSubscriptionRotator(logger)
@@ -42,7 +35,7 @@ func TestLoadSubscriptions(t *testing.T) {
 
 	// Test empty subscriptions
 	err := rotator.LoadSubscriptions(ctx, []uuid.UUID{})
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no subscriptions provided")
 
 	// Test loading valid subscriptions
@@ -53,8 +46,8 @@ func TestLoadSubscriptions(t *testing.T) {
 	}
 
 	err = rotator.LoadSubscriptions(ctx, subs)
-	assert.NoError(t, err)
-	assert.Equal(t, len(subs), len(rotator.subscriptions))
+	require.NoError(t, err)
+	assert.Len(t, rotator.subscriptions, len(subs))
 
 	// Verify all UUIDs are present (order may be different due to shuffle)
 	for _, originalSub := range subs {
@@ -71,15 +64,7 @@ func TestLoadSubscriptions(t *testing.T) {
 
 func TestGetNextSubscription(t *testing.T) {
 	// Set MAX_DAILY_ROTATIONS=1 to maintain original test behavior
-	originalEnv := os.Getenv("MAX_DAILY_ROTATIONS")
-	defer func() {
-		if originalEnv != "" {
-			os.Setenv("MAX_DAILY_ROTATIONS", originalEnv)
-		} else {
-			os.Unsetenv("MAX_DAILY_ROTATIONS")
-		}
-	}()
-	os.Setenv("MAX_DAILY_ROTATIONS", "1")
+	t.Setenv("MAX_DAILY_ROTATIONS", "1")
 
 	rotator := NewSubscriptionRotator(slog.Default())
 	ctx := context.Background()
@@ -143,15 +128,7 @@ func TestDailyReset(t *testing.T) {
 
 func TestGetStats(t *testing.T) {
 	// Set MAX_DAILY_ROTATIONS=1 to maintain original test expectations
-	originalEnv := os.Getenv("MAX_DAILY_ROTATIONS")
-	defer func() {
-		if originalEnv != "" {
-			os.Setenv("MAX_DAILY_ROTATIONS", originalEnv)
-		} else {
-			os.Unsetenv("MAX_DAILY_ROTATIONS")
-		}
-	}()
-	os.Setenv("MAX_DAILY_ROTATIONS", "1")
+	t.Setenv("MAX_DAILY_ROTATIONS", "1")
 
 	rotator := NewSubscriptionRotator(slog.Default())
 	ctx := context.Background()
@@ -179,15 +156,8 @@ func TestGetStats(t *testing.T) {
 
 func TestIsReadyForNext(t *testing.T) {
 	// Clear environment to ensure default 30-minute interval
-	originalEnv := os.Getenv("ROTATION_INTERVAL_MINUTES")
-	defer func() {
-		if originalEnv != "" {
-			os.Setenv("ROTATION_INTERVAL_MINUTES", originalEnv)
-		} else {
-			os.Unsetenv("ROTATION_INTERVAL_MINUTES")
-		}
-	}()
-	os.Unsetenv("ROTATION_INTERVAL_MINUTES")
+	t.Setenv("ROTATION_INTERVAL_MINUTES", "")
+	require.NoError(t, os.Unsetenv("ROTATION_INTERVAL_MINUTES"))
 
 	rotator := NewSubscriptionRotator(slog.Default())
 
@@ -230,15 +200,7 @@ func TestSetInterval(t *testing.T) {
 
 func TestGetProcessingStatus(t *testing.T) {
 	// Set MAX_DAILY_ROTATIONS=1 to maintain original test expectations
-	originalEnv := os.Getenv("MAX_DAILY_ROTATIONS")
-	defer func() {
-		if originalEnv != "" {
-			os.Setenv("MAX_DAILY_ROTATIONS", originalEnv)
-		} else {
-			os.Unsetenv("MAX_DAILY_ROTATIONS")
-		}
-	}()
-	os.Setenv("MAX_DAILY_ROTATIONS", "1")
+	t.Setenv("MAX_DAILY_ROTATIONS", "1")
 
 	rotator := NewSubscriptionRotator(slog.Default())
 	ctx := context.Background()
@@ -300,22 +262,14 @@ func TestRotatorConcurrency(t *testing.T) {
 
 	// Verify state is consistent
 	stats := rotator.GetStats()
-	assert.True(t, stats.ProcessedToday >= 0)
-	assert.True(t, stats.ProcessedToday <= 10)
+	assert.GreaterOrEqual(t, stats.ProcessedToday, 0)
+	assert.LessOrEqual(t, stats.ProcessedToday, 10)
 }
 
 // Test for daily rotation completion logic with MAX_DAILY_ROTATIONS=2
 func TestHasCompletedDailyRotationWithTwoRotations(t *testing.T) {
 	// Set environment variable for MAX_DAILY_ROTATIONS=2
-	originalEnv := os.Getenv("MAX_DAILY_ROTATIONS")
-	defer func() {
-		if originalEnv != "" {
-			os.Setenv("MAX_DAILY_ROTATIONS", originalEnv)
-		} else {
-			os.Unsetenv("MAX_DAILY_ROTATIONS")
-		}
-	}()
-	os.Setenv("MAX_DAILY_ROTATIONS", "2")
+	t.Setenv("MAX_DAILY_ROTATIONS", "2")
 
 	rotator := NewSubscriptionRotator(slog.Default())
 	ctx := context.Background()
@@ -424,15 +378,7 @@ func TestBatchProcessingCapacityValidation(t *testing.T) {
 // Test 24-hour simulation with realistic timing
 func TestTwentyFourHourSimulation(t *testing.T) {
 	// Set environment variable for MAX_DAILY_ROTATIONS=2
-	originalEnv := os.Getenv("MAX_DAILY_ROTATIONS")
-	defer func() {
-		if originalEnv != "" {
-			os.Setenv("MAX_DAILY_ROTATIONS", originalEnv)
-		} else {
-			os.Unsetenv("MAX_DAILY_ROTATIONS")
-		}
-	}()
-	os.Setenv("MAX_DAILY_ROTATIONS", "2")
+	t.Setenv("MAX_DAILY_ROTATIONS", "2")
 
 	rotator := NewSubscriptionRotator(slog.Default())
 	ctx := context.Background()
@@ -547,15 +493,8 @@ func TestConfigurableIntervalFromEnvironment(t *testing.T) {
 	// Test default interval (30 minutes)
 	t.Run("default_interval", func(t *testing.T) {
 		// Clear environment variable
-		originalEnv := os.Getenv("ROTATION_INTERVAL_MINUTES")
-		defer func() {
-			if originalEnv != "" {
-				os.Setenv("ROTATION_INTERVAL_MINUTES", originalEnv)
-			} else {
-				os.Unsetenv("ROTATION_INTERVAL_MINUTES")
-			}
-		}()
-		os.Unsetenv("ROTATION_INTERVAL_MINUTES")
+		t.Setenv("ROTATION_INTERVAL_MINUTES", "")
+		require.NoError(t, os.Unsetenv("ROTATION_INTERVAL_MINUTES"))
 
 		rotator := NewSubscriptionRotator(slog.Default())
 		assert.Equal(t, 30, rotator.intervalMinutes, "Default interval should be 30 minutes")
@@ -563,32 +502,14 @@ func TestConfigurableIntervalFromEnvironment(t *testing.T) {
 
 	// Test custom interval from environment
 	t.Run("custom_interval_from_env", func(t *testing.T) {
-		originalEnv := os.Getenv("ROTATION_INTERVAL_MINUTES")
-		defer func() {
-			if originalEnv != "" {
-				os.Setenv("ROTATION_INTERVAL_MINUTES", originalEnv)
-			} else {
-				os.Unsetenv("ROTATION_INTERVAL_MINUTES")
-			}
-		}()
-
 		// Test 25 minute interval
-		os.Setenv("ROTATION_INTERVAL_MINUTES", "25")
+		t.Setenv("ROTATION_INTERVAL_MINUTES", "25")
 		rotator := NewSubscriptionRotator(slog.Default())
 		assert.Equal(t, 25, rotator.intervalMinutes, "Should use environment variable interval")
 	})
 
 	// Test invalid environment values
 	t.Run("invalid_env_values", func(t *testing.T) {
-		originalEnv := os.Getenv("ROTATION_INTERVAL_MINUTES")
-		defer func() {
-			if originalEnv != "" {
-				os.Setenv("ROTATION_INTERVAL_MINUTES", originalEnv)
-			} else {
-				os.Unsetenv("ROTATION_INTERVAL_MINUTES")
-			}
-		}()
-
 		cases := []struct {
 			name     string
 			envValue string
@@ -602,7 +523,7 @@ func TestConfigurableIntervalFromEnvironment(t *testing.T) {
 
 		for _, tc := range cases {
 			t.Run(tc.name, func(t *testing.T) {
-				os.Setenv("ROTATION_INTERVAL_MINUTES", tc.envValue)
+				t.Setenv("ROTATION_INTERVAL_MINUTES", tc.envValue)
 				rotator := NewSubscriptionRotator(slog.Default())
 				assert.Equal(t, tc.expected, rotator.intervalMinutes,
 					"Invalid environment value should fallback to default")
@@ -613,17 +534,8 @@ func TestConfigurableIntervalFromEnvironment(t *testing.T) {
 
 // Test timing calculations with configurable interval
 func TestTimingCalculationsWithConfigurableInterval(t *testing.T) {
-	originalEnv := os.Getenv("ROTATION_INTERVAL_MINUTES")
-	defer func() {
-		if originalEnv != "" {
-			os.Setenv("ROTATION_INTERVAL_MINUTES", originalEnv)
-		} else {
-			os.Unsetenv("ROTATION_INTERVAL_MINUTES")
-		}
-	}()
-
 	// Test with 30-minute interval
-	os.Setenv("ROTATION_INTERVAL_MINUTES", "30")
+	t.Setenv("ROTATION_INTERVAL_MINUTES", "30")
 	rotator := NewSubscriptionRotator(slog.Default())
 	ctx := context.Background()
 
@@ -642,7 +554,7 @@ func TestTimingCalculationsWithConfigurableInterval(t *testing.T) {
 
 	// Simulate time passing (less than 30 minutes)
 	rotator.mu.Lock()
-	for uuid, _ := range rotator.lastProcessed {
+	for uuid := range rotator.lastProcessed {
 		rotator.lastProcessed[uuid] = beforeTime.Add(-25 * time.Minute)
 		break
 	}
@@ -651,7 +563,7 @@ func TestTimingCalculationsWithConfigurableInterval(t *testing.T) {
 
 	// Simulate 30+ minutes passing
 	rotator.mu.Lock()
-	for uuid, _ := range rotator.lastProcessed {
+	for uuid := range rotator.lastProcessed {
 		rotator.lastProcessed[uuid] = beforeTime.Add(-35 * time.Minute)
 		break
 	}
@@ -662,24 +574,9 @@ func TestTimingCalculationsWithConfigurableInterval(t *testing.T) {
 // Test that the env-configured interval and daily rotation budget hold for a
 // realistic subscription count
 func TestEnvConfiguredIntervalAndDailyBudget(t *testing.T) {
-	originalRotationEnv := os.Getenv("ROTATION_INTERVAL_MINUTES")
-	originalDailyEnv := os.Getenv("MAX_DAILY_ROTATIONS")
-	defer func() {
-		if originalRotationEnv != "" {
-			os.Setenv("ROTATION_INTERVAL_MINUTES", originalRotationEnv)
-		} else {
-			os.Unsetenv("ROTATION_INTERVAL_MINUTES")
-		}
-		if originalDailyEnv != "" {
-			os.Setenv("MAX_DAILY_ROTATIONS", originalDailyEnv)
-		} else {
-			os.Unsetenv("MAX_DAILY_ROTATIONS")
-		}
-	}()
-
-	os.Setenv("ROTATION_INTERVAL_MINUTES", "30")
+	t.Setenv("ROTATION_INTERVAL_MINUTES", "30")
 	// Set to 2 rotations per day (matching production config)
-	os.Setenv("MAX_DAILY_ROTATIONS", "2")
+	t.Setenv("MAX_DAILY_ROTATIONS", "2")
 	rotator := NewSubscriptionRotator(slog.Default())
 
 	// Verify interval matches expected value
@@ -722,15 +619,7 @@ func validateRotationConfiguration(subscriptions, maxDaily, batchSize, intervalM
 // This test verifies the fix for the bug where second daily rotation cycle doesn't start
 func TestDailyResetCurrentIndex(t *testing.T) {
 	// Set MAX_DAILY_ROTATIONS=2 for this test
-	originalEnv := os.Getenv("MAX_DAILY_ROTATIONS")
-	defer func() {
-		if originalEnv != "" {
-			os.Setenv("MAX_DAILY_ROTATIONS", originalEnv)
-		} else {
-			os.Unsetenv("MAX_DAILY_ROTATIONS")
-		}
-	}()
-	os.Setenv("MAX_DAILY_ROTATIONS", "2")
+	t.Setenv("MAX_DAILY_ROTATIONS", "2")
 
 	rotator := NewSubscriptionRotator(slog.Default())
 	ctx := context.Background()
@@ -798,15 +687,7 @@ func TestDailyResetCurrentIndex(t *testing.T) {
 // This integration test verifies that all 46 subscriptions can be processed twice per day (92 total)
 func TestProduction46SubscriptionsTwiceDaily(t *testing.T) {
 	// Set MAX_DAILY_ROTATIONS=2 for production scenario
-	originalEnv := os.Getenv("MAX_DAILY_ROTATIONS")
-	defer func() {
-		if originalEnv != "" {
-			os.Setenv("MAX_DAILY_ROTATIONS", originalEnv)
-		} else {
-			os.Unsetenv("MAX_DAILY_ROTATIONS")
-		}
-	}()
-	os.Setenv("MAX_DAILY_ROTATIONS", "2")
+	t.Setenv("MAX_DAILY_ROTATIONS", "2")
 
 	rotator := NewSubscriptionRotator(slog.Default())
 	ctx := context.Background()

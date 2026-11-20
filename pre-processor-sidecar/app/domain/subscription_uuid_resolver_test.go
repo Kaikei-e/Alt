@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 // MockSubscriptionAutoCreator はSubscriptionAutoCreatorのモック
@@ -296,10 +297,10 @@ func TestSubscriptionUUIDResolver_ResolveArticleUUIDs(t *testing.T) {
 
 			// Assert error
 			if tt.expectedError != nil {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Equal(t, tt.expectedError.Error(), err.Error())
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}
 
 			// Assert result
@@ -309,7 +310,7 @@ func TestSubscriptionUUIDResolver_ResolveArticleUUIDs(t *testing.T) {
 				assert.Equal(t, tt.expectedResult.AutoCreatedCount, result.AutoCreatedCount)
 				assert.Equal(t, tt.expectedResult.UnknownCount, result.UnknownCount)
 				assert.Equal(t, tt.expectedResult.TotalProcessed, result.TotalProcessed)
-				assert.Equal(t, len(tt.expectedResult.Errors), len(result.Errors))
+				assert.Len(t, result.Errors, len(tt.expectedResult.Errors))
 
 				// Assert specific errors
 				for i, expectedError := range tt.expectedResult.Errors {
@@ -361,8 +362,8 @@ func TestSubscriptionMapping_ThreadSafety(t *testing.T) {
 	<-done
 
 	// Verify final state
-	assert.True(t, mapping.Size() >= 0)
-	assert.True(t, mapping.Size() <= 100)
+	assert.GreaterOrEqual(t, mapping.Size(), 0)
+	assert.LessOrEqual(t, mapping.Size(), 100)
 }
 
 func TestSubscriptionUUIDResolver_validateArticleForResolution(t *testing.T) {
@@ -400,7 +401,7 @@ func TestSubscriptionUUIDResolver_validateArticleForResolution(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			err := resolver.validateArticleForResolution(tt.article)
 			if tt.expectedErr != nil {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Equal(t, tt.expectedErr, err)
 			} else {
 				assert.NoError(t, err)

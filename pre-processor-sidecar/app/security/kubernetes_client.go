@@ -51,7 +51,7 @@ func NewKubernetesAuthManager(logger *slog.Logger) (*KubernetesAuthManager, erro
 // GetKubernetesClientset returns the Kubernetes clientset
 func (m *KubernetesAuthManager) GetKubernetesClientset() (kubernetes.Interface, error) {
 	if m.clientset == nil {
-		return nil, fmt.Errorf("Kubernetes clientset not initialized")
+		return nil, fmt.Errorf("kubernetes clientset not initialized")
 	}
 	return m.clientset, nil
 }
@@ -62,7 +62,7 @@ func (m *KubernetesAuthManager) TestConnectivity(ctx context.Context) error {
 	version, err := m.clientset.Discovery().ServerVersion()
 	if err != nil {
 		m.logger.Error("Kubernetes API connectivity test failed", "error", err)
-		return fmt.Errorf("Kubernetes API connectivity test failed: %w", err)
+		return fmt.Errorf("kubernetes API connectivity test failed: %w", err)
 	}
 
 	m.logger.Info("Kubernetes API connectivity confirmed",

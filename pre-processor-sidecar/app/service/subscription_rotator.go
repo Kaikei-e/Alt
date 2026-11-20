@@ -5,9 +5,10 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
 	"log/slog"
-	"math/rand"
+	"math/big"
 	"os"
 	"strconv"
 	"sync"
@@ -243,9 +244,15 @@ func (sr *SubscriptionRotator) shuffleSubscriptions() {
 		return
 	}
 
-	rand.Shuffle(len(sr.subscriptions), func(i, j int) {
+	for i := len(sr.subscriptions) - 1; i > 0; i-- {
+		n, err := rand.Int(rand.Reader, big.NewInt(int64(i+1)))
+		if err != nil {
+			sr.logger.Warn("Failed to generate random index for shuffle, stopping shuffle early", "error", err)
+			break
+		}
+		j := int(n.Int64())
 		sr.subscriptions[i], sr.subscriptions[j] = sr.subscriptions[j], sr.subscriptions[i]
-	})
+	}
 
 	sr.logger.Debug("Shuffled subscription order for fair distribution",
 		"total_subscriptions", len(sr.subscriptions))
@@ -382,7 +389,13 @@ func (sr *SubscriptionRotator) generateRandomStartingIndex() {
 		return
 	}
 
-	sr.startingIndex = rand.Intn(len(sr.subscriptions))
+	n, err := rand.Int(rand.Reader, big.NewInt(int64(len(sr.subscriptions))))
+	if err != nil {
+		sr.logger.Warn("Failed to generate random starting index, defaulting to 0", "error", err)
+		sr.startingIndex = 0
+		return
+	}
+	sr.startingIndex = int(n.Int64())
 	sr.logger.Info("Generated random starting index",
 		"starting_index", sr.startingIndex,
 		"total_subscriptions", len(sr.subscriptions))

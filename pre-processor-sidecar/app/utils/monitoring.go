@@ -4,6 +4,7 @@ package utils
 import (
 	"context"
 	"log/slog"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -273,7 +274,7 @@ func (m *Monitor) RecordAPIRequestMetric(method, endpoint string, statusCode int
 	statusLabels := map[string]string{
 		"method":      method,
 		"endpoint":    endpoint,
-		"status_code": string(rune(statusCode + 48)), // Convert to string
+		"status_code": strconv.Itoa(statusCode),
 	}
 	m.RecordCounter("api_response_status_total", 1, statusLabels)
 }

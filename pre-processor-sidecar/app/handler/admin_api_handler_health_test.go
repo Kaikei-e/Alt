@@ -6,7 +6,6 @@ package handler
 
 import (
 	"encoding/json"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -29,7 +28,7 @@ type fakeHealthClock struct{ now time.Time }
 func (c *fakeHealthClock) Now() time.Time { return c.now }
 
 func newHealthTestLogger() *slog.Logger {
-	return slog.New(slog.NewTextHandler(io.Discard, nil))
+	return slog.New(slog.DiscardHandler)
 }
 
 // healthResponse mirrors the JSON shape we promise for /admin/health.
@@ -55,7 +54,7 @@ func TestHandleHealth_Ok_When_FreshAndTokenAvailable(t *testing.T) {
 	h := NewHealthHandler(provider, &fakeHealthClock{now: now}, 1800, newHealthTestLogger())
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/admin/health", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/admin/health", nil)
 	h.HandleHealth(rec, req)
 
 	if rec.Code != http.StatusOK {
@@ -98,7 +97,7 @@ func TestHandleHealth_Degraded_When_StaleFetch(t *testing.T) {
 	h := NewHealthHandler(provider, &fakeHealthClock{now: now}, 1800, newHealthTestLogger())
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/admin/health", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/admin/health", nil)
 	h.HandleHealth(rec, req)
 
 	if rec.Code != http.StatusOK {
@@ -135,7 +134,7 @@ func TestHandleHealth_Degraded_When_TokenUnavailable(t *testing.T) {
 	h := NewHealthHandler(provider, &fakeHealthClock{now: now}, 1800, newHealthTestLogger())
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/admin/health", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/admin/health", nil)
 	h.HandleHealth(rec, req)
 
 	if rec.Code != http.StatusOK {
@@ -163,7 +162,7 @@ func TestHandleHealth_RejectsNonGet(t *testing.T) {
 	h := NewHealthHandler(provider, &fakeHealthClock{now: now}, 1800, newHealthTestLogger())
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/admin/health", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/admin/health", nil)
 	h.HandleHealth(rec, req)
 
 	if rec.Code != http.StatusMethodNotAllowed {

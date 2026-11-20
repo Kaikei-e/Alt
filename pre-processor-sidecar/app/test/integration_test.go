@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestInoreaderIntegration_SubscriptionFetch(t *testing.T) {
@@ -53,7 +54,7 @@ func TestUUIDResolutionPipeline(t *testing.T) {
 		// Test UUID parsing
 		uuidStr := testUUID.String()
 		parsedUUID, err := uuid.Parse(uuidStr)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, testUUID, parsedUUID)
 
 		t.Logf("UUID処理テスト成功: %s", testUUID)
@@ -63,11 +64,4 @@ func TestUUIDResolutionPipeline(t *testing.T) {
 		// Phase 2 implementation - full pipeline testing
 		t.Skip("Phase 2 implementation - full pipeline integration pending")
 	})
-}
-
-// Test helper functions simplified - using basic mocks instead
-
-func getTestAccessToken() string {
-	// Return mock token for testing instead of real env token
-	return "mock_test_token_12345"
 }

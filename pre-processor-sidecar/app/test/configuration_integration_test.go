@@ -2,7 +2,6 @@
 package test
 
 import (
-	"os"
 	"testing"
 	"time"
 
@@ -14,8 +13,6 @@ import (
 
 // TestConfigurationIntegration tests the complete configuration management system
 func TestConfigurationIntegration(t *testing.T) {
-	// Backup original environment
-	originalEnv := make(map[string]string)
 	testEnvVars := map[string]string{
 		"SERVICE_NAME":                      "pre-processor-sidecar",
 		"SERVICE_VERSION":                   "2.0.0",
@@ -40,25 +37,10 @@ func TestConfigurationIntegration(t *testing.T) {
 		"PRE_PROCESSOR_SIDECAR_DB_USER":     "pre_processor_sidecar_user",
 	}
 
-	for key := range testEnvVars {
-		originalEnv[key] = os.Getenv(key)
-	}
-
-	// Set test environment variables
+	// Set test environment variables (t.Setenv restores original values on cleanup)
 	for key, value := range testEnvVars {
-		os.Setenv(key, value)
+		t.Setenv(key, value)
 	}
-
-	// Restore original environment after test
-	defer func() {
-		for key := range testEnvVars {
-			if originalValue, exists := originalEnv[key]; exists {
-				os.Setenv(key, originalValue)
-			} else {
-				os.Unsetenv(key)
-			}
-		}
-	}()
 
 	// Load configuration
 	cfg, err := config.LoadConfig()

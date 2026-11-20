@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 // MockSubscriptionRepository はSubscriptionRepositoryのモック
@@ -238,12 +239,12 @@ func TestArticleUUIDResolutionUseCase_ResolveArticleUUIDs(t *testing.T) {
 				// Build mapping first
 				mapping, err := useCase.buildSubscriptionMapping(ctx)
 				if tt.subscriptionRepoError != nil {
-					assert.Error(t, err)
+					require.Error(t, err)
 					mockRepo.AssertExpectations(t)
 					return
 				}
 
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.NotNil(t, mapping)
 				assert.Equal(t, len(tt.subscriptions), mapping.Size())
 
@@ -257,7 +258,7 @@ func TestArticleUUIDResolutionUseCase_ResolveArticleUUIDs(t *testing.T) {
 				// Test error case
 				ctx := context.Background()
 				_, err := useCase.buildSubscriptionMapping(ctx)
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Contains(t, err.Error(), "failed to fetch subscriptions for mapping")
 			}
 
@@ -334,10 +335,10 @@ func TestSubscriptionAutoCreatorAdapter_AutoCreateSubscription(t *testing.T) {
 
 			// Assert
 			if tt.expectedError {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Equal(t, uuid.Nil, resultUUID)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.NotEqual(t, uuid.Nil, resultUUID)
 			}
 

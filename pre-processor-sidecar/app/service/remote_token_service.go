@@ -71,7 +71,7 @@ func (s *RemoteTokenService) GetValidToken(ctx context.Context) (*models.OAuth2T
 		s.logger.Error("Failed to fetch token from remote service", "error", err)
 		s.recordFailure()
 		if errors.Is(err, repository.ErrTokenNotFound) {
-			return nil, fmt.Errorf("%w: %v", ErrTokenUnavailable, err)
+			return nil, fmt.Errorf("%w: %w", ErrTokenUnavailable, err)
 		}
 		return nil, fmt.Errorf("remote token fetch failed: %w", err)
 	}
