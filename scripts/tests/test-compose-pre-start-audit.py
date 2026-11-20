@@ -12,6 +12,7 @@ Run:
 
 from __future__ import annotations
 
+import contextlib
 import importlib.util
 import os
 import pathlib
@@ -25,32 +26,39 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
-from compose_include import production_services  # noqa: E402
+from compose_include import production_services  # noqa: E402 - needs the sys.path entry added above
 
 spec = importlib.util.spec_from_file_location(
     "pre_start_audit", SCRIPTS / "compose-pre-start-audit.py"
 )
-assert spec is not None and spec.loader is not None
+assert spec is not None
+assert spec.loader is not None
 audit = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(audit)
 
-PASS = 0
-FAIL = 0
+
+class _Results:
+    def __init__(self) -> None:
+        self.passed = 0
+        self.failed = 0
+
+
+RESULTS = _Results()
 LIVE_TIMEOUT = 60
+CERT_DIR_MODE = 0o750
 ALPINE_CANDIDATES = ("alpine:3.21", "alpine:3.20", "alpine:latest")
 
 
-def check(name, condition):
-    global PASS, FAIL
+def check(name: str, condition: bool) -> None:
     if condition:
-        print(f"  PASS  {name}")
-        PASS += 1
+        sys.stdout.write(f"  PASS  {name}\n")
+        RESULTS.passed += 1
     else:
-        print(f"  FAIL  {name}")
-        FAIL += 1
+        sys.stdout.write(f"  FAIL  {name}\n")
+        RESULTS.failed += 1
 
 
-print("is_chown_hook")
+sys.stdout.write("is_chown_hook\n")
 HOOK = {
     "image": "alpine:3.21",
     "user": "0:0",
@@ -125,7 +133,7 @@ check(
     ),
 )
 
-print("audit_wave4_pki_cert_hooks")
+sys.stdout.write("audit_wave4_pki_cert_hooks\n")
 
 
 def _pki_hook(uid_gid: str) -> dict:
@@ -157,7 +165,7 @@ check(
     any("dual writer" in v and "pki-agent-alt-backend" in v for v in dual_found),
 )
 
-print("audit_migrated_chown_hooks")
+sys.stdout.write("audit_migrated_chown_hooks\n")
 GREEN = {
     "news-creator-backend": {
         "restart": "unless-stopped",
@@ -204,7 +212,7 @@ check(
     any("depends_on" in v and "news-creator-volume-init" in v for v in legacy_found),
 )
 
-print("production pin")
+sys.stdout.write("production pin\n")
 prod = production_services()
 prod_found = audit.audit_migrated_chown_hooks(prod)
 check("production Wave 1b chown hooks are pre_start", prod_found == [])
@@ -219,12 +227,20 @@ for sidecar in (spec["removed_sidecar"] for spec in audit.WAVE4_PKI_CERT_HOOKS.v
     check(f"{sidecar} is gone (no dual writer)", sidecar not in prod)
 
 
+def _docker_bin() -> str:
+    docker = shutil.which("docker")
+    if docker is None:
+        msg = "docker executable not found on PATH"
+        raise FileNotFoundError(msg)
+    return docker
+
+
 def _which_alpine() -> str | None:
     docker = shutil.which("docker")
     if docker is None:
         return None
     for image in ALPINE_CANDIDATES:
-        proc = subprocess.run(
+        proc = subprocess.run(  # noqa: S603 - fixed argv built in this test
             [docker, "image", "inspect", image],
             capture_output=True,
             text=True,
@@ -240,7 +256,7 @@ def _compose_supports_pre_start() -> bool:
     docker = shutil.which("docker")
     if docker is None:
         return False
-    proc = subprocess.run(
+    proc = subprocess.run(  # noqa: S603 - fixed argv built in this test
         [docker, "compose", "version"],
         capture_output=True,
         text=True,
@@ -251,20 +267,26 @@ def _compose_supports_pre_start() -> bool:
         return False
     text = (proc.stdout or proc.stderr or "").strip()
     try:
-        spec = importlib.util.spec_from_file_location(
+        gate_spec = importlib.util.spec_from_file_location(
             "feature_gate", SCRIPTS / "compose-feature-gate.py"
         )
-        assert spec is not None and spec.loader is not None
-        gate = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(gate)
+        assert gate_spec is not None
+        assert gate_spec.loader is not None
+        gate = importlib.util.module_from_spec(gate_spec)
+        gate_spec.loader.exec_module(gate)
         return gate.pre_start_supported(gate.parse_compose_version(text))
     except (ValueError, AssertionError):
         return False
 
 
-def _compose(project: str, compose_file: pathlib.Path, *args: str, timeout: int = LIVE_TIMEOUT):
-    return subprocess.run(
-        ["docker", "compose", "-p", project, "-f", str(compose_file), *args],
+def _compose(
+    project: str,
+    compose_file: pathlib.Path,
+    *args: str,
+    timeout: int = LIVE_TIMEOUT,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(  # noqa: S603 - fixed argv built in this test
+        [_docker_bin(), "compose", "-p", project, "-f", str(compose_file), *args],
         capture_output=True,
         text=True,
         check=False,
@@ -273,18 +295,16 @@ def _compose(project: str, compose_file: pathlib.Path, *args: str, timeout: int 
 
 
 def _down(project: str, compose_file: pathlib.Path) -> None:
-    try:
+    with contextlib.suppress(subprocess.TimeoutExpired, FileNotFoundError, OSError):
         _compose(project, compose_file, "down", "-v", "--remove-orphans", timeout=30)
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
-        pass
 
 
-print("live isolated pre_start fixtures")
+sys.stdout.write("live isolated pre_start fixtures\n")
 alpine = _which_alpine()
 if not _compose_supports_pre_start():
-    print("  SKIP  host Compose is below 5.4.0; not running live pre_start")
+    sys.stdout.write("  SKIP  host Compose is below 5.4.0; not running live pre_start\n")
 elif alpine is None:
-    print("  SKIP  no local alpine image; not pulling")
+    sys.stdout.write("  SKIP  no local alpine image; not pulling\n")
 else:
     marker = f"pre-start-ran-{int(time.time())}"
     with tempfile.TemporaryDirectory(
@@ -350,10 +370,12 @@ services:
                 hook_ran,
             )
             if not hook_ran:
-                print(f"    detail: exit={up_ok.returncode} {combined_ok.strip()[-400:]}")
+                sys.stdout.write(
+                    f"    detail: exit={up_ok.returncode} {combined_ok.strip()[-400:]}\n"
+                )
         except subprocess.TimeoutExpired:
             check("up --no-deps --force-recreate runs pre_start", False)
-            print("    detail: timed out after 60s")
+            sys.stdout.write("    detail: timed out after 60s\n")
         finally:
             _down("alt-wave1b-prestart-ok", ok_file)
 
@@ -368,9 +390,9 @@ services:
                 "probe",
             )
             combined_fail = (up_fail.stdout or "") + (up_fail.stderr or "")
-            running = subprocess.run(
+            running = subprocess.run(  # noqa: S603 - fixed argv built in this test
                 [
-                    "docker",
+                    _docker_bin(),
                     "compose",
                     "-p",
                     "alt-wave1b-prestart-fail",
@@ -391,18 +413,18 @@ services:
                 up_fail.returncode != 0 and not started,
             )
             if up_fail.returncode == 0:
-                print(f"    detail: {combined_fail.strip()[-400:]}")
+                sys.stdout.write(f"    detail: {combined_fail.strip()[-400:]}\n")
         except subprocess.TimeoutExpired:
             check("hook failure prevents service start", False)
-            print("    detail: timed out after 60s")
+            sys.stdout.write("    detail: timed out after 60s\n")
         finally:
             _down("alt-wave1b-prestart-fail", fail_file)
 
-print("live isolated Wave 4 cert-volume pre_start")
+sys.stdout.write("live isolated Wave 4 cert-volume pre_start\n")
 if not _compose_supports_pre_start():
-    print("  SKIP  host Compose is below 5.4.0; not running live pre_start")
+    sys.stdout.write("  SKIP  host Compose is below 5.4.0; not running live pre_start\n")
 elif alpine is None:
-    print("  SKIP  no local alpine image; not pulling")
+    sys.stdout.write("  SKIP  no local alpine image; not pulling\n")
 else:
     with tempfile.TemporaryDirectory(
         prefix="alt-wave4-pki-prestart-", ignore_cleanup_errors=True
@@ -449,10 +471,11 @@ services:
             mode1 = stat1.st_mode & 0o777
             check(
                 "up --no-deps --force-recreate chowns cert dir to 0750",
-                up1.returncode == 0 and mode1 == 0o750,
+                up1.returncode == 0 and mode1 == CERT_DIR_MODE,
             )
             if up1.returncode != 0:
-                print(f"    detail: {(up1.stdout or '') + (up1.stderr or '')}".strip()[-400:])
+                detail = f"    detail: {(up1.stdout or '') + (up1.stderr or '')}".strip()[-400:]
+                sys.stdout.write(f"{detail}\n")
             up2 = _compose(
                 "alt-wave4-pki-prestart",
                 compose_file,
@@ -465,7 +488,7 @@ services:
             mode2 = certs.stat().st_mode & 0o777
             check(
                 "second --force-recreate is idempotent (still 0750)",
-                up2.returncode == 0 and mode2 == 0o750,
+                up2.returncode == 0 and mode2 == CERT_DIR_MODE,
             )
         except subprocess.TimeoutExpired:
             check("up --no-deps --force-recreate chowns cert dir to 0750", False)
@@ -476,9 +499,9 @@ services:
             # Restore host ownership so TemporaryDirectory cleanup can unlink it.
             uid = os.getuid()
             gid = os.getgid()
-            subprocess.run(
+            subprocess.run(  # noqa: S603 - fixed argv built in this test
                 [
-                    "docker",
+                    _docker_bin(),
                     "run",
                     "--rm",
                     "-v",
@@ -494,5 +517,5 @@ services:
                 timeout=30,
             )
 
-print(f"\n{PASS} passed, {FAIL} failed")
-sys.exit(1 if FAIL else 0)
+sys.stdout.write(f"\n{RESULTS.passed} passed, {RESULTS.failed} failed\n")
+sys.exit(1 if RESULTS.failed else 0)

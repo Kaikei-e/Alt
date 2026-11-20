@@ -16,6 +16,7 @@ Run:
 from __future__ import annotations
 
 import importlib.util
+import json
 import pathlib
 import sys
 
@@ -23,35 +24,43 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
+from compose_include import production_services  # noqa: E402 - needs the sys.path entry added above
+
 spec = importlib.util.spec_from_file_location(
     "init_edge_audit", SCRIPTS / "compose-init-edge-audit.py"
 )
-assert spec is not None and spec.loader is not None
+assert spec is not None
+assert spec.loader is not None
 audit = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(audit)
 
-PASS = 0
-FAIL = 0
+
+class _Results:
+    def __init__(self) -> None:
+        self.passed = 0
+        self.failed = 0
 
 
-def check(name, condition):
-    global PASS, FAIL
+RESULTS = _Results()
+
+
+def check(name: str, condition: bool) -> None:
     if condition:
-        print(f"  PASS  {name}")
-        PASS += 1
+        sys.stdout.write(f"  PASS  {name}\n")
+        RESULTS.passed += 1
     else:
-        print(f"  FAIL  {name}")
-        FAIL += 1
+        sys.stdout.write(f"  FAIL  {name}\n")
+        RESULTS.failed += 1
 
 
-print("restart_is_no")
+sys.stdout.write("restart_is_no\n")
 check("explicit no", audit.restart_is_no({"restart": "no"}))
 check("quoted no", audit.restart_is_no({"restart": '"no"'}))
 check("omitted defaults to no", audit.restart_is_no({}))
 check("unless-stopped is not no", not audit.restart_is_no({"restart": "unless-stopped"}))
 check("always is not no", not audit.restart_is_no({"restart": "always"}))
 
-print("init_edges")
+sys.stdout.write("init_edges\n")
 SERVICES = {
     "migrate": {"restart": "no"},
     "alt-data-hub": {
@@ -82,7 +91,7 @@ check(
     ],
 )
 
-print("audit_init_edges")
+sys.stdout.write("audit_init_edges\n")
 allow = {"alt-data-hub -> migrate", "kratos -> kratos-migrate"}
 check(
     "matching allowlist is clean",
@@ -101,24 +110,19 @@ check(
 
 NO_RESTART_TARGET = {
     "migrate": {},  # omitted restart = no
-    "alt-data-hub": {
-        "depends_on": {"migrate": {"condition": "service_completed_successfully"}}
-    },
+    "alt-data-hub": {"depends_on": {"migrate": {"condition": "service_completed_successfully"}}},
 }
 check(
     "omitted restart on the SCS target still counts as a one-shot edge",
     audit.init_edges(NO_RESTART_TARGET) == [("alt-data-hub", "migrate")],
 )
 
-print("production allowlist pin")
-from compose_include import production_services  # noqa: E402
-import json  # noqa: E402
+sys.stdout.write("production allowlist pin\n")
+EXPECTED_EDGE_COUNT = 24
 
 PROD = production_services()
 PROD_EDGES = [audit.edge_key(c, t) for c, t in audit.init_edges(PROD)]
-BASELINE = json.loads(
-    (SCRIPTS / "ops-surface-baseline.json").read_text(encoding="utf-8")
-)
+BASELINE = json.loads((SCRIPTS / "ops-surface-baseline.json").read_text(encoding="utf-8"))
 ALLOW = BASELINE["init_edges_allowlist"]
 EXPECTED_24 = [
     "acolyte-orchestrator -> acolyte-db-migrator",
@@ -148,12 +152,12 @@ EXPECTED_24 = [
 ]
 check(
     "production has exactly 24 one-shot SCS edges (sovereign and evaluator enroll in-process)",
-    len(PROD_EDGES) == 24 and len(ALLOW) == 24,
+    len(PROD_EDGES) == EXPECTED_EDGE_COUNT and len(ALLOW) == EXPECTED_EDGE_COUNT,
 )
 check(
     "production edges match the exact 24 allowlist pairs",
     PROD_EDGES == EXPECTED_24 and ALLOW == EXPECTED_24,
 )
 
-print(f"\n{PASS} passed, {FAIL} failed")
-sys.exit(1 if FAIL else 0)
+sys.stdout.write(f"\n{RESULTS.passed} passed, {RESULTS.failed} failed\n")
+sys.exit(1 if RESULTS.failed else 0)

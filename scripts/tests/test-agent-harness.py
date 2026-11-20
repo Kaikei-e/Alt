@@ -9,12 +9,13 @@ from __future__ import annotations
 
 import importlib.util
 import json
-import os
 import pathlib
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
+import types
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 HARNESS_DIR = ROOT / "scripts" / "agent-harness"
@@ -23,24 +24,36 @@ EVENT_TIME_SCRIPT = HARNESS_DIR / "guard_event_time.py"
 OPS_COMMANDS_SCRIPT = HARNESS_DIR / "guard_ops_commands.py"
 SELFCHECK_SCRIPT = HARNESS_DIR / "harness_selfcheck.py"
 
-PASS = 0
-FAIL = 0
+GIT_BIN = shutil.which("git")
+assert GIT_BIN is not None, "git executable not found in PATH"
+
+BLOCKED_RC = 2
+USAGE_RC = 2
+
+
+class _Results:
+    def __init__(self) -> None:
+        self.passed = 0
+        self.failed = 0
+
+
+RESULTS = _Results()
 
 
 def check(name: str, condition: bool, detail: str = "") -> None:
-    global PASS, FAIL
     if condition:
-        print(f"  PASS  {name}")
-        PASS += 1
+        sys.stdout.write(f"  PASS  {name}\n")
+        RESULTS.passed += 1
     else:
         suffix = f" ({detail})" if detail else ""
-        print(f"  FAIL  {name}{suffix}")
-        FAIL += 1
+        sys.stdout.write(f"  FAIL  {name}{suffix}\n")
+        RESULTS.failed += 1
 
 
-def load_module(name: str, path: pathlib.Path):
+def load_module(name: str, path: pathlib.Path) -> types.ModuleType:
     spec = importlib.util.spec_from_file_location(name, path)
-    assert spec is not None and spec.loader is not None, f"missing module: {path}"
+    assert spec is not None, f"missing module: {path}"
+    assert spec.loader is not None, f"missing module: {path}"
     mod = importlib.util.module_from_spec(spec)
     sys.modules[name] = mod
     spec.loader.exec_module(mod)
@@ -57,7 +70,7 @@ def run_script(
 ) -> subprocess.CompletedProcess[str]:
     cmd = [sys.executable, str(script), *(args or [])]
     if stdin_bytes is not None:
-        raw_res = subprocess.run(
+        raw_res = subprocess.run(  # noqa: S603 - fixed argv built in this test
             cmd,
             input=stdin_bytes,
             capture_output=True,
@@ -70,7 +83,7 @@ def run_script(
             stdout=raw_res.stdout.decode("utf-8", errors="replace"),
             stderr=raw_res.stderr.decode("utf-8", errors="replace"),
         )
-    return subprocess.run(
+    return subprocess.run(  # noqa: S603 - fixed argv built in this test
         cmd,
         input=stdin_text,
         capture_output=True,
@@ -135,8 +148,9 @@ def bash_payload(command: str, tool_name: str = "Bash") -> str:
 
 
 def git(repo: pathlib.Path, *args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ["git", "-C", str(repo), *args],
+    assert GIT_BIN is not None
+    return subprocess.run(  # noqa: S603 - fixed argv built in this test
+        [GIT_BIN, "-C", str(repo), *args],
         capture_output=True,
         text=True,
         check=True,
@@ -160,10 +174,14 @@ def write_and_track(repo: pathlib.Path, rel_path: str, content: str = "") -> pat
 
 def build_clean_selfcheck_repo(repo: pathlib.Path) -> pathlib.Path:
     init_git_repo(repo)
-    write_and_track(repo, "scripts/agent-harness/guard_protected_paths.py", "#!/usr/bin/env python3\n")
+    write_and_track(
+        repo, "scripts/agent-harness/guard_protected_paths.py", "#!/usr/bin/env python3\n"
+    )
     write_and_track(repo, "scripts/agent-harness/guard_event_time.py", "#!/usr/bin/env python3\n")
     write_and_track(repo, "scripts/agent-harness/guard_ops_commands.py", "#!/usr/bin/env python3\n")
-    write_and_track(repo, ".claude/skills/adr-preflight/scripts/adr_preflight.py", "#!/usr/bin/env python3\n")
+    write_and_track(
+        repo, ".claude/skills/adr-preflight/scripts/adr_preflight.py", "#!/usr/bin/env python3\n"
+    )
     write_and_track(
         repo,
         "knowledge-sovereign/app/usecase/knowledge_home_projector/projector.go",
@@ -179,7 +197,7 @@ def build_clean_selfcheck_repo(repo: pathlib.Path) -> pathlib.Path:
     write_and_track(
         repo,
         ".claude/rules/paths.md",
-        "---\npaths:\n  - \"alt-backend/**/*.go\"\n  - \"alt-frontend-sv/src/routes/(app)/*.{svelte,ts}\"\n---\nRule body\n",
+        '---\npaths:\n  - "alt-backend/**/*.go"\n  - "alt-frontend-sv/src/routes/(app)/*.{svelte,ts}"\n---\nRule body\n',
     )
     hooks_cfg = {
         "hooks": {
@@ -218,10 +236,7 @@ def build_clean_selfcheck_repo(repo: pathlib.Path) -> pathlib.Path:
     write_and_track(repo, ".codex/hooks.json", json.dumps(hooks_cfg, indent=2) + "\n")
 
     shared = (
-        "# Shared\n"
-        "<!-- shared:core:start -->\n"
-        "Never skip verification.\n"
-        "<!-- shared:core:end -->\n"
+        "# Shared\n<!-- shared:core:start -->\nNever skip verification.\n<!-- shared:core:end -->\n"
     )
     write_and_track(repo, "CLAUDE.md", shared)
     write_and_track(repo, "AGENTS.md", shared)
@@ -278,7 +293,7 @@ selfcheck_mod = load_module("harness_selfcheck", SELFCHECK_SCRIPT)
 # ---------------------------------------------------------------------------
 # 1. Protected paths tests (SPEC 1)
 # ---------------------------------------------------------------------------
-print("protected_paths: allow & block rules across Write / Edit / apply_patch")
+sys.stdout.write("protected_paths: allow & block rules across Write / Edit / apply_patch\n")
 
 PROTECTED_BLOCK_CASES = [
     ".env",
@@ -305,14 +320,24 @@ PROTECTED_ALLOW_CASES = [
 
 for path in PROTECTED_BLOCK_CASES:
     res_w = run_script(PROTECTED_SCRIPT, stdin_text=claude_write(path))
-    check(f"Write blocks {path}", res_w.returncode == 2 and path in res_w.stderr, res_w.stderr)
+    check(
+        f"Write blocks {path}",
+        res_w.returncode == BLOCKED_RC and path in res_w.stderr,
+        res_w.stderr,
+    )
 
     res_e = run_script(PROTECTED_SCRIPT, stdin_text=claude_edit(path))
-    check(f"Edit blocks {path}", res_e.returncode == 2 and path in res_e.stderr, res_e.stderr)
+    check(
+        f"Edit blocks {path}", res_e.returncode == BLOCKED_RC and path in res_e.stderr, res_e.stderr
+    )
 
     patch = f"*** Begin Patch\n*** Update File: {path}\n@@\n+x=1\n*** End Patch\n"
     res_p = run_script(PROTECTED_SCRIPT, stdin_text=codex_patch(patch))
-    check(f"apply_patch blocks {path}", res_p.returncode == 2 and path in res_p.stderr, res_p.stderr)
+    check(
+        f"apply_patch blocks {path}",
+        res_p.returncode == BLOCKED_RC and path in res_p.stderr,
+        res_p.stderr,
+    )
 
 for path in PROTECTED_ALLOW_CASES:
     res_w = run_script(PROTECTED_SCRIPT, stdin_text=claude_write(path))
@@ -333,9 +358,9 @@ mixed_patch = (
     "*** End Patch\n"
 )
 res_mixed = run_script(PROTECTED_SCRIPT, stdin_text=codex_patch(mixed_patch))
-check("apply_patch Move to secrets/ blocks", res_mixed.returncode == 2, res_mixed.stderr)
+check("apply_patch Move to secrets/ blocks", res_mixed.returncode == BLOCKED_RC, res_mixed.stderr)
 
-print("protected_paths: migrations tracked vs untracked")
+sys.stdout.write("protected_paths: migrations tracked vs untracked\n")
 with tempfile.TemporaryDirectory() as tmp:
     repo = init_git_repo(pathlib.Path(tmp))
     tracked_mig = write_and_track(repo, "db/migrations/001_init.sql", "CREATE TABLE t (id INT);\n")
@@ -346,19 +371,29 @@ with tempfile.TemporaryDirectory() as tmp:
     for label, payload in [
         ("Write", claude_write(str(tracked_mig))),
         ("Edit", claude_edit(str(tracked_mig))),
-        ("apply_patch", codex_patch("*** Begin Patch\n*** Update File: db/migrations/001_init.sql\n@@\n+ALTER TABLE t;\n*** End Patch\n")),
+        (
+            "apply_patch",
+            codex_patch(
+                "*** Begin Patch\n*** Update File: db/migrations/001_init.sql\n@@\n+ALTER TABLE t;\n*** End Patch\n"
+            ),
+        ),
     ]:
         res = run_script(PROTECTED_SCRIPT, stdin_text=payload, cwd=repo)
         check(
             f"{label} blocks tracked migration",
-            res.returncode == 2 and "atlas" in res.stderr.lower(),
+            res.returncode == BLOCKED_RC and "atlas" in res.stderr.lower(),
             res.stderr,
         )
 
     for label, payload in [
         ("Write", claude_write(str(untracked_mig))),
         ("Edit", claude_edit(str(untracked_mig))),
-        ("apply_patch", codex_patch("*** Begin Patch\n*** Add File: db/migrations/002_new.sql\n+CREATE TABLE u (id INT);\n*** End Patch\n")),
+        (
+            "apply_patch",
+            codex_patch(
+                "*** Begin Patch\n*** Add File: db/migrations/002_new.sql\n+CREATE TABLE u (id INT);\n*** End Patch\n"
+            ),
+        ),
     ]:
         res = run_script(PROTECTED_SCRIPT, stdin_text=payload, cwd=repo)
         check(f"{label} allows untracked migration", res.returncode == 0, res.stderr)
@@ -368,15 +403,23 @@ with tempfile.TemporaryDirectory() as tmp:
         stdin_text=claude_write(str(untracked_nonexistent_parent)),
         cwd=repo,
     )
-    check("Write allows untracked migration in new migrations dir", res_new_dir.returncode == 0, res_new_dir.stderr)
+    check(
+        "Write allows untracked migration in new migrations dir",
+        res_new_dir.returncode == 0,
+        res_new_dir.stderr,
+    )
 
 with tempfile.TemporaryDirectory() as non_git_tmp:
     non_git_mig = pathlib.Path(non_git_tmp) / "db" / "migrations" / "001_init.sql"
     non_git_mig.parent.mkdir(parents=True, exist_ok=True)
     res_nongit = run_script(PROTECTED_SCRIPT, stdin_text=claude_write(str(non_git_mig)))
-    check("migration outside git repo blocks fail-closed", res_nongit.returncode == 2, res_nongit.stderr)
+    check(
+        "migration outside git repo blocks fail-closed",
+        res_nongit.returncode == BLOCKED_RC,
+        res_nongit.stderr,
+    )
 
-print("protected_paths: fail-closed and other tools")
+sys.stdout.write("protected_paths: fail-closed and other tools\n")
 FAIL_CLOSED_INPUTS = [
     ("empty stdin", ""),
     ("invalid json", "{bad"),
@@ -384,13 +427,20 @@ FAIL_CLOSED_INPUTS = [
     ("json scalar", '"hello"'),
     ("empty object", "{}"),
     ("Edit without path", json.dumps({"tool_name": "Edit", "tool_input": {"new_string": "x"}})),
-    ("Write with blank path", json.dumps({"tool_name": "Write", "tool_input": {"file_path": "   "}})),
+    (
+        "Write with blank path",
+        json.dumps({"tool_name": "Write", "tool_input": {"file_path": "   "}}),
+    ),
     ("NotebookEdit without path", json.dumps({"tool_name": "NotebookEdit", "tool_input": {}})),
     ("apply_patch without envelope", codex_patch("just plain text")),
 ]
 for label, raw in FAIL_CLOSED_INPUTS:
     res = run_script(PROTECTED_SCRIPT, stdin_text=raw)
-    check(f"protected_paths fail-closed on {label}", res.returncode == 2 and "payload" in res.stderr.lower(), res.stderr)
+    check(
+        f"protected_paths fail-closed on {label}",
+        res.returncode == BLOCKED_RC and "payload" in res.stderr.lower(),
+        res.stderr,
+    )
 
 res_other = run_script(
     PROTECTED_SCRIPT,
@@ -401,7 +451,7 @@ check("protected_paths allows other tool_name", res_other.returncode == 0, res_o
 # ---------------------------------------------------------------------------
 # 2. Event-time guard tests (SPEC 2)
 # ---------------------------------------------------------------------------
-print("event_time: GUARDED_GLOBS, wall-clock, GetLatest, comments, exemptions")
+sys.stdout.write("event_time: GUARDED_GLOBS, wall-clock, GetLatest, comments, exemptions\n")
 check(
     "GUARDED_GLOBS matches spec",
     event_time_mod.GUARDED_GLOBS
@@ -426,14 +476,18 @@ for call_name, snippet in [
         res_w = run_script(EVENT_TIME_SCRIPT, stdin_text=claude_write(target, snippet))
         check(
             f"Write blocks {call_name} in {pathlib.Path(target).name}",
-            res_w.returncode == 2
+            res_w.returncode == BLOCKED_RC
             and "ADR-000468" in res_w.stderr
             and "ADR-000447" in res_w.stderr
             and "OccurredAt" in res_w.stderr,
             res_w.stderr,
         )
         res_e = run_script(EVENT_TIME_SCRIPT, stdin_text=claude_edit(target, "x := 1", snippet))
-        check(f"Edit blocks {call_name} in {pathlib.Path(target).name}", res_e.returncode == 2, res_e.stderr)
+        check(
+            f"Edit blocks {call_name} in {pathlib.Path(target).name}",
+            res_e.returncode == BLOCKED_RC,
+            res_e.stderr,
+        )
 
 # Allowed cases
 res_test_go = run_script(
@@ -456,7 +510,11 @@ res_comment = run_script(
         "t := ev.OccurredAt // instead of time.Since(x)\n",
     ),
 )
-check("allows wall-clock/GetLatest in Go line comments", res_comment.returncode == 0, res_comment.stderr)
+check(
+    "allows wall-clock/GetLatest in Go line comments",
+    res_comment.returncode == 0,
+    res_comment.stderr,
+)
 
 res_edit_old_only = run_script(
     EVENT_TIME_SCRIPT,
@@ -472,7 +530,11 @@ patch_clean_guarded = (
     "*** End Patch\n"
 )
 res_p_ok = run_script(EVENT_TIME_SCRIPT, stdin_text=codex_patch(patch_clean_guarded))
-check("apply_patch allows time.Now in unguarded while touching clean guarded", res_p_ok.returncode == 0, res_p_ok.stderr)
+check(
+    "apply_patch allows time.Now in unguarded while touching clean guarded",
+    res_p_ok.returncode == 0,
+    res_p_ok.stderr,
+)
 
 # apply_patch touching one unguarded (clean) and one guarded (with GetLatestState) -> block
 patch_bad_guarded = (
@@ -482,11 +544,19 @@ patch_bad_guarded = (
     "*** End Patch\n"
 )
 res_p_bad = run_script(EVENT_TIME_SCRIPT, stdin_text=codex_patch(patch_bad_guarded))
-check("apply_patch blocks GetLatestState in guarded file", res_p_bad.returncode == 2, res_p_bad.stderr)
+check(
+    "apply_patch blocks GetLatestState in guarded file",
+    res_p_bad.returncode == BLOCKED_RC,
+    res_p_bad.stderr,
+)
 
 for label, raw in FAIL_CLOSED_INPUTS:
     res = run_script(EVENT_TIME_SCRIPT, stdin_text=raw)
-    check(f"event_time fail-closed on {label}", res.returncode == 2 and "payload" in res.stderr.lower(), res.stderr)
+    check(
+        f"event_time fail-closed on {label}",
+        res.returncode == BLOCKED_RC and "payload" in res.stderr.lower(),
+        res.stderr,
+    )
 
 res_et_other = run_script(
     EVENT_TIME_SCRIPT,
@@ -497,14 +567,16 @@ check("event_time allows other tool_name", res_et_other.returncode == 0, res_et_
 # ---------------------------------------------------------------------------
 # 3. Selfcheck tests (SPEC 3)
 # ---------------------------------------------------------------------------
-print("harness_selfcheck: clean fixture and H1..H9 fixtures")
+sys.stdout.write("harness_selfcheck: clean fixture and H1..H9 fixtures\n")
 
 with tempfile.TemporaryDirectory() as tmp:
     repo = build_clean_selfcheck_repo(pathlib.Path(tmp))
     res_clean = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
     check(
         "clean fixture exits 0 and notes absent .claude/settings.json",
-        res_clean.returncode == 0 and "settings.json" in res_clean.stdout and "not checked" in res_clean.stdout.lower(),
+        res_clean.returncode == 0
+        and "settings.json" in res_clean.stdout
+        and "not checked" in res_clean.stdout.lower(),
         res_clean.stdout + res_clean.stderr,
     )
 
@@ -512,7 +584,9 @@ with tempfile.TemporaryDirectory() as tmp:
     hook_lines = [ln for ln in res_hook_ok.stdout.splitlines() if ln.strip()]
     check(
         "--hook clean prints exactly one OK line and exits 0",
-        res_hook_ok.returncode == 0 and len(hook_lines) == 1 and hook_lines[0].startswith("agent_harness_selfcheck: OK"),
+        res_hook_ok.returncode == 0
+        and len(hook_lines) == 1
+        and hook_lines[0].startswith("agent_harness_selfcheck: OK"),
         res_hook_ok.stdout,
     )
 
@@ -542,7 +616,11 @@ with tempfile.TemporaryDirectory() as tmp:
         },
     )
     res_clean_claude = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
-    check("clean fixture with .claude/settings.json exits 0", res_clean_claude.returncode == 0, res_clean_claude.stdout)
+    check(
+        "clean fixture with .claude/settings.json exits 0",
+        res_clean_claude.returncode == 0,
+        res_clean_claude.stdout,
+    )
 
 # H1: CLAUDE_TOOL_INPUT / CLAUDE_FILE_PATHS
 with tempfile.TemporaryDirectory() as tmp:
@@ -571,7 +649,10 @@ with tempfile.TemporaryDirectory() as tmp:
     repo = build_clean_selfcheck_repo(pathlib.Path(tmp))
     cfg = json.loads((repo / ".codex" / "hooks.json").read_text(encoding="utf-8"))
     cfg["hooks"]["PreToolUse"][0]["hooks"].append(
-        {"type": "command", "command": 'python3 "$(git rev-parse --show-toplevel)/scripts/does_not_exist.py"'}
+        {
+            "type": "command",
+            "command": 'python3 "$(git rev-parse --show-toplevel)/scripts/does_not_exist.py"',
+        }
     )
     (repo / ".codex" / "hooks.json").write_text(json.dumps(cfg), encoding="utf-8")
     res = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
@@ -670,7 +751,11 @@ with tempfile.TemporaryDirectory() as tmp:
     )
     git(repo, "commit", "-m", "only test file remains")
     res = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
-    check("H5 detected when only _test.go exists", res.returncode == 1 and "H5 " in res.stdout, res.stdout)
+    check(
+        "H5 detected when only _test.go exists",
+        res.returncode == 1 and "H5 " in res.stdout,
+        res.stdout,
+    )
 
 # H6: .claude/rules paths entry matches no tracked file
 with tempfile.TemporaryDirectory() as tmp:
@@ -678,7 +763,7 @@ with tempfile.TemporaryDirectory() as tmp:
     write_and_track(
         repo,
         ".claude/rules/dead.md",
-        "---\npaths:\n  - \"nonexistent-dir/**/*.{go,py}\"\n---\nDead rule\n",
+        '---\npaths:\n  - "nonexistent-dir/**/*.{go,py}"\n---\nDead rule\n',
     )
     git(repo, "commit", "-m", "add dead rule")
     res = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
@@ -692,7 +777,9 @@ with tempfile.TemporaryDirectory() as tmp:
         encoding="utf-8",
     )
     res = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
-    check("H7 detected on mismatched block", res.returncode == 1 and "H7 " in res.stdout, res.stdout)
+    check(
+        "H7 detected on mismatched block", res.returncode == 1 and "H7 " in res.stdout, res.stdout
+    )
 
 # H8: CLAUDE.md > 200 lines or AGENTS.md > 32768 bytes
 with tempfile.TemporaryDirectory() as tmp:
@@ -700,26 +787,34 @@ with tempfile.TemporaryDirectory() as tmp:
     base_claude = (repo / "CLAUDE.md").read_text(encoding="utf-8")
     (repo / "CLAUDE.md").write_text(base_claude + ("line\n" * 205), encoding="utf-8")
     res = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
-    check("H8 detected on CLAUDE.md > 200 lines", res.returncode == 1 and "H8 " in res.stdout, res.stdout)
+    check(
+        "H8 detected on CLAUDE.md > 200 lines",
+        res.returncode == 1 and "H8 " in res.stdout,
+        res.stdout,
+    )
 
 with tempfile.TemporaryDirectory() as tmp:
     repo = build_clean_selfcheck_repo(pathlib.Path(tmp))
     base_agents = (repo / "AGENTS.md").read_text(encoding="utf-8")
     (repo / "AGENTS.md").write_text(base_agents + ("x" * 33000), encoding="utf-8")
     res = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
-    check("H8 detected on AGENTS.md > 32768 bytes", res.returncode == 1 and "H8 " in res.stdout, res.stdout)
+    check(
+        "H8 detected on AGENTS.md > 32768 bytes",
+        res.returncode == 1 and "H8 " in res.stdout,
+        res.stdout,
+    )
 
 # H9: .agents/skills entry does not resolve to dir with SKILL.md
 with tempfile.TemporaryDirectory() as tmp:
     repo = build_clean_selfcheck_repo(pathlib.Path(tmp))
-    os.symlink(str(repo / "does-not-exist"), str(repo / ".agents" / "skills" / "broken-skill"))
+    (repo / ".agents" / "skills" / "broken-skill").symlink_to(repo / "does-not-exist")
     res = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
     check("H9 detected on broken symlink", res.returncode == 1 and "H9 " in res.stdout, res.stdout)
 
 # ---------------------------------------------------------------------------
 # 4. Selfcheck H10 fixtures (failure-pattern catalog consistency)
 # ---------------------------------------------------------------------------
-print("harness_selfcheck: H10 catalog fixtures")
+sys.stdout.write("harness_selfcheck: H10 catalog fixtures\n")
 
 PATTERNS_REL = ".claude/skills/failure-pattern-review/references/patterns.md"
 SKILL_REL = ".claude/skills/failure-pattern-review/SKILL.md"
@@ -803,7 +898,10 @@ with tempfile.TemporaryDirectory() as tmp:
     lines = h10_findings(res.stdout)
     check(
         "H10 detects missing patterns.md",
-        res.returncode == 1 and len(lines) == 1 and "patterns.md" in lines[0] and "missing" in lines[0],
+        res.returncode == 1
+        and len(lines) == 1
+        and "patterns.md" in lines[0]
+        and "missing" in lines[0],
         res.stdout,
     )
     res_hook = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo), "--hook"])
@@ -825,7 +923,10 @@ with tempfile.TemporaryDirectory() as tmp:
     lines = h10_findings(res.stdout)
     check(
         "H10 detects missing SKILL.md",
-        res.returncode == 1 and len(lines) == 1 and "SKILL.md" in lines[0] and "missing" in lines[0],
+        res.returncode == 1
+        and len(lines) == 1
+        and "SKILL.md" in lines[0]
+        and "missing" in lines[0],
         res.stdout,
     )
 
@@ -880,7 +981,9 @@ with tempfile.TemporaryDirectory() as tmp:
     lines = h10_findings(res.stdout)
     check(
         "H10 detects bad heading format",
-        res.returncode == 1 and len(lines) == 1 and "invalid section heading '## FP-1 Bad'" in lines[0],
+        res.returncode == 1
+        and len(lines) == 1
+        and "invalid section heading '## FP-1 Bad'" in lines[0],
         res.stdout,
     )
 
@@ -894,15 +997,16 @@ with tempfile.TemporaryDirectory() as tmp:
         + "\n"
         + make_fp_section("FP-02", "Second", "PM-2026-031")
     )
-    s_fp00 = (
-        "# Skill\n\n## 経路表\n\n| A | B |\n|---|---|\n| a | FP-00 |\n| b | FP-01 |\n| c | FP-02 |\n"
-    )
+    s_fp00 = "# Skill\n\n## 経路表\n\n| A | B |\n|---|---|\n| a | FP-00 |\n| b | FP-01 |\n| c | FP-02 |\n"
     repo = build_h10_catalog_repo(pathlib.Path(tmp), patterns_text=p_fp00, skill_text=s_fp00)
     res = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
     lines = h10_findings(res.stdout)
     check(
         "H10 rejects FP-00 section",
-        res.returncode == 1 and len(lines) == 1 and "FP-00" in lines[0] and "start at FP-01" in lines[0],
+        res.returncode == 1
+        and len(lines) == 1
+        and "FP-00" in lines[0]
+        and "start at FP-01" in lines[0],
         res.stdout,
     )
 
@@ -919,7 +1023,9 @@ with tempfile.TemporaryDirectory() as tmp:
     lines = h10_findings(res.stdout)
     check(
         "H10 detects title range mismatch (prefix trap)",
-        res.returncode == 1 and len(lines) == 1 and "first-line title must contain 'FP-01 〜 FP-02'" in lines[0],
+        res.returncode == 1
+        and len(lines) == 1
+        and "first-line title must contain 'FP-01 〜 FP-02'" in lines[0],
         res.stdout,
     )
 
@@ -927,7 +1033,9 @@ with tempfile.TemporaryDirectory() as tmp:
 with tempfile.TemporaryDirectory() as tmp:
     p_miss_lead = (
         "# 失敗の型（FP-01 〜 FP-02）\n\n"
-        + make_fp_section("FP-01", "First", "ADR-000928").replace("**問い.**\n1. Is it checked?\n\n", "")
+        + make_fp_section("FP-01", "First", "ADR-000928").replace(
+            "**問い.**\n1. Is it checked?\n\n", ""
+        )
         + "\n"
         + make_fp_section("FP-02", "Second", "PM-2026-031")
     )
@@ -936,7 +1044,9 @@ with tempfile.TemporaryDirectory() as tmp:
     lines = h10_findings(res.stdout)
     check(
         "H10 detects missing lead-in",
-        res.returncode == 1 and len(lines) == 1 and "FP-01 is missing lead-in **問い.**" in lines[0],
+        res.returncode == 1
+        and len(lines) == 1
+        and "FP-01 is missing lead-in **問い.**" in lines[0],
         res.stdout,
     )
 
@@ -956,7 +1066,9 @@ with tempfile.TemporaryDirectory() as tmp:
     lines = h10_findings(res.stdout)
     check(
         "H10 detects duplicate lead-in",
-        res.returncode == 1 and len(lines) == 1 and "FP-01 contains lead-in **機構.** 2 times" in lines[0],
+        res.returncode == 1
+        and len(lines) == 1
+        and "FP-01 contains lead-in **機構.** 2 times" in lines[0],
         res.stdout,
     )
 
@@ -998,7 +1110,10 @@ with tempfile.TemporaryDirectory() as tmp:
     lines = h10_findings(res.stdout)
     check(
         "H10 detects missing ADR precedent file adjacent to Japanese text",
-        res.returncode == 1 and len(lines) == 1 and "ADR-000999" in lines[0] and "docs/ADR/000999.md" in lines[0],
+        res.returncode == 1
+        and len(lines) == 1
+        and "ADR-000999" in lines[0]
+        and "docs/ADR/000999.md" in lines[0],
         res.stdout,
     )
 
@@ -1029,7 +1144,10 @@ with tempfile.TemporaryDirectory() as tmp:
     lines = h10_findings(res.stdout)
     check(
         "H10 detects duplicate PM precedent file",
-        res.returncode == 1 and len(lines) == 1 and "PM-2026-031" in lines[0] and "multiple" in lines[0],
+        res.returncode == 1
+        and len(lines) == 1
+        and "PM-2026-031" in lines[0]
+        and "multiple" in lines[0],
         res.stdout,
     )
 
@@ -1046,7 +1164,10 @@ with tempfile.TemporaryDirectory() as tmp:
     lines = h10_findings(res.stdout)
     check(
         "H10 detects abbreviated precedent id in 先例",
-        res.returncode == 1 and len(lines) == 1 and "999" in lines[0] and "full" in lines[0].lower(),
+        res.returncode == 1
+        and len(lines) == 1
+        and "999" in lines[0]
+        and "full" in lines[0].lower(),
         res.stdout,
     )
 
@@ -1054,7 +1175,9 @@ with tempfile.TemporaryDirectory() as tmp:
 with tempfile.TemporaryDirectory() as tmp:
     p_path = (
         "# 失敗の型（FP-01 〜 FP-02）\n\n"
-        + make_fp_section("FP-01", "First", "ADR-000928", "`python3 scripts/no_such_tool.py verify`")
+        + make_fp_section(
+            "FP-01", "First", "ADR-000928", "`python3 scripts/no_such_tool.py verify`"
+        )
         + "\n"
         + make_fp_section("FP-02", "Second", "PM-2026-031")
     )
@@ -1091,7 +1214,9 @@ with tempfile.TemporaryDirectory() as tmp:
 
 # H10 rule 6a: SKILL.md routing table references non-existent FP id (adjacent to Japanese)
 with tempfile.TemporaryDirectory() as tmp:
-    s_extra = "# Skill\n\n## 経路表\n\n| A | B |\n|---|---|\n| a | FP-01 |\n| b | FP-02, FP-99と他 |\n"
+    s_extra = (
+        "# Skill\n\n## 経路表\n\n| A | B |\n|---|---|\n| a | FP-01 |\n| b | FP-02, FP-99と他 |\n"
+    )
     repo = build_h10_catalog_repo(pathlib.Path(tmp), skill_text=s_extra)
     res = run_script(SELFCHECK_SCRIPT, args=["--root", str(repo)])
     lines = h10_findings(res.stdout)
@@ -1109,18 +1234,17 @@ with tempfile.TemporaryDirectory() as tmp:
     lines = h10_findings(res.stdout)
     check(
         "H10 detects patterns.md section missing from SKILL.md table",
-        res.returncode == 1 and len(lines) == 1 and "FP-02" in lines[0] and "does not appear" in lines[0],
+        res.returncode == 1
+        and len(lines) == 1
+        and "FP-02" in lines[0]
+        and "does not appear" in lines[0],
         res.stdout,
     )
 
 # Real repository check: require clean exit 0 and zero findings.
-print("harness_selfcheck: real repository check")
+sys.stdout.write("harness_selfcheck: real repository check\n")
 res_real = run_script(SELFCHECK_SCRIPT, args=["--root", str(ROOT)])
-finding_lines = [
-    ln
-    for ln in res_real.stdout.splitlines()
-    if re.match(r"^H\d+ ", ln)
-]
+finding_lines = [ln for ln in res_real.stdout.splitlines() if re.match(r"^H\d+ ", ln)]
 check(
     "real repo exits 0 with no findings",
     res_real.returncode == 0 and finding_lines == [],
@@ -1130,14 +1254,36 @@ check(
 # ---------------------------------------------------------------------------
 # 5. Ops commands guard tests (O1..O4, G1..G5, negatives, unreadable)
 # ---------------------------------------------------------------------------
-print("guard_ops_commands: O1..O4 ask rules, G1..G5, negatives, and unreadable payloads")
+sys.stdout.write(
+    "guard_ops_commands: O1..O4 ask rules, G1..G5, negatives, and unreadable payloads\n"
+)
 
 OPS_ASK_CASES = [
     # O1: prune, volume/image/network rm|remove, rmi, buildx prune
-    ("O1 system prune with global flag", "docker --context default system prune -af", "O1", "PM-2026-054"),
-    ("O1 image prune after chained cmd", "docker ps && sudo docker image prune -a -f", "O1", "PM-2026-054"),
-    ("O1 volume rm and rmi", "docker volume rm old_certs; docker rmi alt-backend:old", "O1", "PM-2026-046"),
-    ("O1 image rm with env", "DOCKER_HOST=unix:///var/run/docker.sock docker image rm myimg", "O1", "PM-2026-054"),
+    (
+        "O1 system prune with global flag",
+        "docker --context default system prune -af",
+        "O1",
+        "PM-2026-054",
+    ),
+    (
+        "O1 image prune after chained cmd",
+        "docker ps && sudo docker image prune -a -f",
+        "O1",
+        "PM-2026-054",
+    ),
+    (
+        "O1 volume rm and rmi",
+        "docker volume rm old_certs; docker rmi alt-backend:old",
+        "O1",
+        "PM-2026-046",
+    ),
+    (
+        "O1 image rm with env",
+        "DOCKER_HOST=unix:///var/run/docker.sock docker image rm myimg",
+        "O1",
+        "PM-2026-054",
+    ),
     ("O1 network prune", "docker network prune -f", "O1", "PM-2026-046"),
     ("O1 builder prune", "docker builder prune --all", "O1", "PM-2026-054"),
     ("O1 G2 docker network rm", "docker network rm alt-net", "O1", "PM-2026-046"),
@@ -1147,34 +1293,99 @@ OPS_ASK_CASES = [
     ("O1 G1 sh -c double quotes", 'sh -c "docker system prune -af"', "O1", "PM-2026-054"),
     # O2: rm, stop, kill, container rm|remove|stop|kill, compose stop|kill
     ("O2 docker rm with flag", "docker -l debug rm -f pki-agent", "O2", "PM-2026-028"),
-    ("O2 chained docker container stop", "echo checking && docker container stop -t 5 alt-backend", "O2", "PM-2026-028"),
+    (
+        "O2 chained docker container stop",
+        "echo checking && docker container stop -t 5 alt-backend",
+        "O2",
+        "PM-2026-028",
+    ),
     ("O2 docker kill", "sudo -E docker kill alt-data-hub", "O2", "PM-2026-054"),
     ("O2 docker container rm", "docker container rm alt-backend", "O2", "PM-2026-028"),
     ("O2 G2 docker container remove", "docker container remove alt-backend", "O2", "PM-2026-028"),
-    ("O2 G2 docker compose stop", "docker compose -f compose/compose.yaml -p alt stop alt-backend", "O2", "PM-2026-028"),
+    (
+        "O2 G2 docker compose stop",
+        "docker compose -f compose/compose.yaml -p alt stop alt-backend",
+        "O2",
+        "PM-2026-028",
+    ),
     ("O2 G2 docker compose kill", "docker compose kill alt-backend", "O2", "PM-2026-028"),
-    ("O2 G1 for loop", "for c in $(docker ps -aq --filter name=alt-staging-); do docker rm -f $c; done", "O2", "PM-2026-028"),
-    ("O2 G1 while read loop", "while read c; do docker stop $c; done < ids.txt", "O2", "PM-2026-028"),
-    ("O2 G1 pipe xargs -r", "docker ps -q --filter name=alt-staging- | xargs -r docker rm -f", "O2", "PM-2026-028"),
+    (
+        "O2 G1 for loop",
+        "for c in $(docker ps -aq --filter name=alt-staging-); do docker rm -f $c; done",
+        "O2",
+        "PM-2026-028",
+    ),
+    (
+        "O2 G1 while read loop",
+        "while read c; do docker stop $c; done < ids.txt",
+        "O2",
+        "PM-2026-028",
+    ),
+    (
+        "O2 G1 pipe xargs -r",
+        "docker ps -q --filter name=alt-staging- | xargs -r docker rm -f",
+        "O2",
+        "PM-2026-028",
+    ),
     ("O2 G1 bare xargs", "xargs docker rm", "O2", "PM-2026-028"),
     ("O2 G1 braces block", "{ docker rm x; }", "O2", "PM-2026-028"),
     ("O2 G1 command substitution in double quotes", 'echo "$(docker rm x)"', "O2", "PM-2026-028"),
     ("O2 G1 sudo -iu root", "sudo -iu root docker rm x", "O2", "PM-2026-028"),
     # O3: docker compose / docker-compose up|down|rm on prod, default, or unresolved ($) project
-    ("O3 compose up with -f and default project", "docker compose -f compose/compose.yaml up -d alt-backend", "O3", "PM-2026-001"),
-    ("O3 compose down with -p alt", "docker compose -f compose/compose.yaml -p alt down", "O3", "PM-2026-005"),
-    ("O3 compose rm with COMPOSE_PROJECT_NAME=alt", "COMPOSE_PROJECT_NAME=alt docker-compose rm -f", "O3", "PM-2026-001"),
-    ("O3 chained compose up --project-name alt", "git status || docker compose --project-name alt up -d", "O3", "PM-2026-005"),
+    (
+        "O3 compose up with -f and default project",
+        "docker compose -f compose/compose.yaml up -d alt-backend",
+        "O3",
+        "PM-2026-001",
+    ),
+    (
+        "O3 compose down with -p alt",
+        "docker compose -f compose/compose.yaml -p alt down",
+        "O3",
+        "PM-2026-005",
+    ),
+    (
+        "O3 compose rm with COMPOSE_PROJECT_NAME=alt",
+        "COMPOSE_PROJECT_NAME=alt docker-compose rm -f",
+        "O3",
+        "PM-2026-001",
+    ),
+    (
+        "O3 chained compose up --project-name alt",
+        "git status || docker compose --project-name alt up -d",
+        "O3",
+        "PM-2026-005",
+    ),
     ("O3 G1 if then fi", "if true; then docker compose -p alt down; fi", "O3", "PM-2026-001"),
     ("O3 G1 bash -c single quotes", "bash -c 'docker compose -p alt down'", "O3", "PM-2026-001"),
     ("O3 G1 time prefix", "time docker compose -p alt down", "O3", "PM-2026-001"),
     ("O3 G3 -p $PROJ", "docker compose -p $PROJ down", "O3", "PM-2026-001"),
-    ("O3 G3 -p $COMPOSE_PROJECT_NAME", 'docker compose -p "$COMPOSE_PROJECT_NAME" up -d', "O3", "PM-2026-001"),
+    (
+        "O3 G3 -p $COMPOSE_PROJECT_NAME",
+        'docker compose -p "$COMPOSE_PROJECT_NAME" up -d',
+        "O3",
+        "PM-2026-001",
+    ),
     # O4: docker compose ... up with --build or --force-recreate on O3 project
     ("O4 compose up --build", "docker compose up --build -d alt-backend", "O4", "PM-2026-031"),
-    ("O4 compose -f -p alt up --force-recreate", "docker compose -f compose/compose.yaml -p alt up -d --no-deps --force-recreate alt-backend", "O4", "PM-2026-031"),
-    ("O4 chained docker-compose up --build", "echo start\nCOMPOSE_PROJECT_NAME=alt docker-compose -f compose/compose.yaml up --build -d", "O4", "PM-2026-031"),
-    ("O4 G1 timeout prefix", "timeout 300 docker compose -f compose/compose.yaml -p alt up -d --build alt-backend", "O4", "PM-2026-031"),
+    (
+        "O4 compose -f -p alt up --force-recreate",
+        "docker compose -f compose/compose.yaml -p alt up -d --no-deps --force-recreate alt-backend",
+        "O4",
+        "PM-2026-031",
+    ),
+    (
+        "O4 chained docker-compose up --build",
+        "echo start\nCOMPOSE_PROJECT_NAME=alt docker-compose -f compose/compose.yaml up --build -d",
+        "O4",
+        "PM-2026-031",
+    ),
+    (
+        "O4 G1 timeout prefix",
+        "timeout 300 docker compose -f compose/compose.yaml -p alt up -d --build alt-backend",
+        "O4",
+        "PM-2026-031",
+    ),
     ("O4 G1 nohup background", "nohup docker compose -p alt up -d --build &", "O4", "PM-2026-031"),
 ]
 
@@ -1231,18 +1442,53 @@ OPS_ALLOW_CASES = [
     ("read-only compose config", bash_payload("docker compose -f compose/compose.yaml config")),
     ("read-only compose ps", bash_payload("docker compose -f compose/compose.yaml -p alt ps")),
     ("read-only compose logs", bash_payload("docker compose -p alt logs -f alt-backend")),
-    ("different project -p alt-test", bash_payload("docker compose -f compose/compose.yaml -p alt-test up --build -d")),
-    ("different project -p after subcmd", bash_payload("docker compose -f compose/compose.yaml up --build -d -p alt-test")),
-    ("different project --project-name=e2e", bash_payload("docker compose --project-name=e2e down")),
-    ("different project COMPOSE_PROJECT_NAME=staging", bash_payload("COMPOSE_PROJECT_NAME=staging docker compose up --force-recreate -d")),
-    ("cli -p overrides COMPOSE_PROJECT_NAME=alt", bash_payload("COMPOSE_PROJECT_NAME=alt docker compose -p test-proj up -d")),
+    (
+        "different project -p alt-test",
+        bash_payload("docker compose -f compose/compose.yaml -p alt-test up --build -d"),
+    ),
+    (
+        "different project -p after subcmd",
+        bash_payload("docker compose -f compose/compose.yaml up --build -d -p alt-test"),
+    ),
+    (
+        "different project --project-name=e2e",
+        bash_payload("docker compose --project-name=e2e down"),
+    ),
+    (
+        "different project COMPOSE_PROJECT_NAME=staging",
+        bash_payload("COMPOSE_PROJECT_NAME=staging docker compose up --force-recreate -d"),
+    ),
+    (
+        "cli -p overrides COMPOSE_PROJECT_NAME=alt",
+        bash_payload("COMPOSE_PROJECT_NAME=alt docker compose -p test-proj up -d"),
+    ),
     ("different project compose stop", bash_payload("docker compose -p alt-test stop alt-backend")),
-    ("words inside echo double quotes", bash_payload('echo "docker system prune -af && docker compose up --build"')),
-    ("words inside git commit message", bash_payload("git commit -m 'PM-2026-031: never run docker compose up --build -d alt-backend'")),
-    ("G5 argv echo with semicolon", json.dumps({"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": ["echo", "a; docker rm x"]}})),
+    (
+        "words inside echo double quotes",
+        bash_payload('echo "docker system prune -af && docker compose up --build"'),
+    ),
+    (
+        "words inside git commit message",
+        bash_payload(
+            "git commit -m 'PM-2026-031: never run docker compose up --build -d alt-backend'"
+        ),
+    ),
+    (
+        "G5 argv echo with semicolon",
+        json.dumps(
+            {
+                "hook_event_name": "PreToolUse",
+                "tool_name": "Bash",
+                "tool_input": {"command": ["echo", "a; docker rm x"]},
+            }
+        ),
+    ),
     ("empty command", bash_payload("")),
     ("whitespace command", bash_payload("   \n  ")),
-    ("non-shell tool payload", json.dumps({"tool_name": "Read", "tool_input": {"file_path": ".env"}})),
+    (
+        "non-shell tool payload",
+        json.dumps({"tool_name": "Read", "tool_input": {"file_path": ".env"}}),
+    ),
 ]
 
 for label, raw_stdin in OPS_ALLOW_CASES:
@@ -1260,7 +1506,11 @@ OPS_UNREADABLE_CASES: list[tuple[str, str | None, bytes | None]] = [
     ("empty object", "{}", None),
     ("Bash missing tool_input", json.dumps({"tool_name": "Bash"}), None),
     ("Bash missing command", json.dumps({"tool_name": "Bash", "tool_input": {}}), None),
-    ("Bash non-string command", json.dumps({"tool_name": "Bash", "tool_input": {"command": 42}}), None),
+    (
+        "Bash non-string command",
+        json.dumps({"tool_name": "Bash", "tool_input": {"command": 42}}),
+        None,
+    ),
     ("G4 invalid UTF-8 bytes", None, b"\xff\xfe"),
     ("G4 deeply nested JSON", ("[" * 2000) + ("]" * 2000), None),
 ]
@@ -1281,7 +1531,11 @@ for label, raw_stdin, raw_bytes in OPS_UNREADABLE_CASES:
         and hook_out.get("permissionDecision") == "ask"
         and ("unreadable" in reason.lower() or "could not be analysed" in reason.lower())
     )
-    check(f"ops unreadable asks on {label}", ok, f"rc={res.returncode} out={res.stdout!r} err={res.stderr!r}")
+    check(
+        f"ops unreadable asks on {label}",
+        ok,
+        f"rc={res.returncode} out={res.stdout!r} err={res.stderr!r}",
+    )
 
 # --on-match deny mode tests (O1..O4, unreadable, benign, default ask, unknown arg)
 OPS_DENY_RULE_CASES = [
@@ -1314,7 +1568,9 @@ for expected_rule, cmd in OPS_DENY_RULE_CASES:
 
     res_default = run_script(OPS_COMMANDS_SCRIPT, stdin_text=bash_payload(cmd))
     parsed_default = json.loads(res_default.stdout) if res_default.stdout.strip() else {}
-    hook_default = parsed_default.get("hookSpecificOutput", {}) if isinstance(parsed_default, dict) else {}
+    hook_default = (
+        parsed_default.get("hookSpecificOutput", {}) if isinstance(parsed_default, dict) else {}
+    )
     check(
         f"ops default mode still asks on {expected_rule}",
         res_default.returncode == 0
@@ -1359,9 +1615,9 @@ res_bad_flag = run_script(
 )
 check(
     "ops unknown --on-match exits 2 with usage on stderr",
-    res_bad_flag.returncode == 2 and "usage" in res_bad_flag.stderr.lower(),
+    res_bad_flag.returncode == USAGE_RC and "usage" in res_bad_flag.stderr.lower(),
     f"rc={res_bad_flag.returncode} out={res_bad_flag.stdout!r} err={res_bad_flag.stderr!r}",
 )
 
-print(f"\n{PASS} passed, {FAIL} failed")
-sys.exit(1 if FAIL else 0)
+sys.stdout.write(f"\n{RESULTS.passed} passed, {RESULTS.failed} failed\n")
+sys.exit(1 if RESULTS.failed else 0)

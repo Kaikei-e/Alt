@@ -19,24 +19,33 @@ from __future__ import annotations
 import importlib.util
 import pathlib
 import re
+import shutil
 import subprocess
 import sys
 
-ROOT =pathlib.Path(__file__).resolve().parents[2]
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-from compose_include import load_yaml, production_compose_files  # noqa: E402
-import safe_log  # noqa: E402
-from safe_log import check  # noqa: E402
+import safe_log  # noqa: E402 - needs the sys.path entry added above
+from safe_log import check  # noqa: E402 - needs the sys.path entry added above
+
+from compose_include import (  # noqa: E402 - needs the sys.path entry added above
+    load_yaml,
+    production_compose_files,
+)
 
 safe_log.reset()
+
+GIT = shutil.which("git")
+assert GIT is not None, "git executable not found in PATH"
 
 spec = importlib.util.spec_from_file_location(
     "netns_cascade_audit", ROOT / "scripts" / "compose-netns-cascade-audit.py"
 )
-assert spec is not None and spec.loader is not None, "audit script not importable"
+assert spec is not None, "audit script not importable"
+assert spec.loader is not None, "audit script loader missing"
 audit = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(audit)
 
@@ -179,8 +188,10 @@ INPROCESS = {
     },
 }
 
+EXPECTED_INPROCESS_COUNT = 16
+MIN_VOLUME_PARTS = 2
 INPROCESS_PARENTS = tuple(INPROCESS)
-assert len(INPROCESS_PARENTS) == 16
+assert len(INPROCESS_PARENTS) == EXPECTED_INPROCESS_COUNT
 
 PATTERN_B_PARENTS = (
     "tag-generator",
@@ -260,21 +271,27 @@ def volume_entries(svc: dict) -> list[str]:
     return out
 
 
-def volume_is_ro(entry: str, source: str, target: str) -> bool:
+def _parse_volume_entry(entry: str) -> tuple[str, str, str] | None:
     parts = entry.split(":")
-    if len(parts) < 2:
+    if len(parts) < MIN_VOLUME_PARTS:
+        return None
+    mode = parts[2] if len(parts) > MIN_VOLUME_PARTS else "rw"
+    return parts[0], parts[1], mode
+
+
+def volume_is_ro(entry: str, source: str, target: str) -> bool:
+    parsed = _parse_volume_entry(entry)
+    if parsed is None:
         return False
-    src, dst = parts[0], parts[1]
-    mode = parts[2] if len(parts) > 2 else "rw"
+    src, dst, mode = parsed
     return src == source and dst == target and mode == "ro"
 
 
 def volume_is_rw(entry: str, source: str, target: str) -> bool:
-    parts = entry.split(":")
-    if len(parts) < 2:
+    parsed = _parse_volume_entry(entry)
+    if parsed is None:
         return False
-    src, dst = parts[0], parts[1]
-    mode = parts[2] if len(parts) > 2 else "rw"
+    src, dst, mode = parsed
     return src == source and dst == target and mode != "ro"
 
 
@@ -293,8 +310,8 @@ def git_tracked_files() -> set[str]:
     # The index, not the disk: on the operator host `secrets/` is a symlink to
     # the live secret store, so the provisioner passwords legitimately exist
     # there. What must never happen is that one gets committed.
-    out = subprocess.run(
-        ["git", "-C", str(ROOT), "ls-files", "-z"],
+    out = subprocess.run(  # noqa: S603 - fixed argv built in this test
+        [GIT, "-C", str(ROOT), "ls-files", "-z"],
         capture_output=True,
         check=True,
     ).stdout
@@ -302,13 +319,12 @@ def git_tracked_files() -> set[str]:
 
 
 def production_secrets() -> dict[str, dict]:
-    secrets: dict[str, dict] = {}
-    for path in production_compose_files():
-        data = load_yaml(path)
-        for name, spec in (data.get("secrets") or {}).items():
-            if isinstance(spec, dict):
-                secrets[name] = spec
-    return secrets
+    return {
+        name: spec
+        for path in production_compose_files()
+        for name, spec in (load_yaml(path).get("secrets") or {}).items()
+        if isinstance(spec, dict)
+    }
 
 
 def hook_command_text(hook: dict) -> str:
@@ -341,7 +357,7 @@ def published_ports(svc: dict) -> str:
     return " ".join(str(p) for p in ports)
 
 
-print("zero pki-agent workload sidecars")
+sys.stdout.write("zero pki-agent workload sidecars\n")
 
 services = audit.production_services()
 pki_agents = sorted(name for name in services if name.startswith("pki-agent-"))
@@ -366,7 +382,7 @@ check(
     "pki-agent/scripts/bootstrap-pki-provisioner.sh still creates one JWK named pki-agent",
 )
 
-print("zero network_mode: service: pki sidecars")
+sys.stdout.write("zero network_mode: service: pki sidecars\n")
 
 netns = audit.netns_sidecars(services)
 pki_netns = {name: parent for name, parent in netns.items() if name.startswith("pki-agent-")}
@@ -376,7 +392,7 @@ check(
     f"forbidden netns-sharing pki sidecars: {pki_netns!r}",
 )
 
-print("Pattern B inbound TLS stays in the parent")
+sys.stdout.write("Pattern B inbound TLS stays in the parent\n")
 
 for parent in PATTERN_B_PARENTS:
     parent_svc = services.get(parent) or {}
@@ -411,7 +427,7 @@ for parent in PATTERN_B_PARENTS:
         f"ports={parent_svc.get('ports')!r}",
     )
 
-print("16 in-process parents (final compose cutover)")
+sys.stdout.write("16 in-process parents (final compose cutover)\n")
 
 secrets = production_secrets()
 tracked_files = git_tracked_files()
@@ -603,8 +619,7 @@ check(
 ca_workloads = {
     name
     for name, svc in services.items()
-    if name not in {"step-ca", "step-ca-bootstrap"}
-    and "step_ca_root_password" in secret_names(svc)
+    if name not in {"step-ca", "step-ca-bootstrap"} and "step_ca_root_password" in secret_names(svc)
 }
 check(
     "shared step_ca_root_password is confined to step-ca, not workloads",
@@ -624,16 +639,15 @@ check(
     f"{sorted(shared_prov)}",
 )
 
-print("observability: parent :9110, no sidecar :9510, preserve non-PKI scrapes")
+sys.stdout.write("observability: parent :9110, no sidecar :9510, preserve non-PKI scrapes\n")
 
 prom_cfg = load_yaml(ROOT / "observability" / "prometheus" / "prometheus.yml")
-rules_cfg = load_yaml(
-    ROOT / "observability" / "prometheus" / "rules" / "pki-agent-alerts.yml"
-)
+rules_cfg = load_yaml(ROOT / "observability" / "prometheus" / "rules" / "pki-agent-alerts.yml")
 obs_spec = importlib.util.spec_from_file_location(
     "obs_audit", ROOT / "scripts" / "observability-config-audit.py"
 )
-assert obs_spec is not None and obs_spec.loader is not None
+assert obs_spec is not None
+assert obs_spec.loader is not None
 obs_audit = importlib.util.module_from_spec(obs_spec)
 obs_spec.loader.exec_module(obs_audit)
 pki_violations = obs_audit.audit_pki_ops_surface(prom_cfg, rules_cfg)
@@ -649,9 +663,9 @@ for job in prom_cfg.get("scrape_configs") or []:
     for block in job.get("static_configs") or []:
         if not isinstance(block, dict):
             continue
-        for target in block.get("targets") or []:
-            if isinstance(target, str):
-                all_targets.append(target)
+        all_targets.extend(
+            target for target in (block.get("targets") or []) if isinstance(target, str)
+        )
 
 check(
     "prometheus scrape_configs have no pki-agent job or pki-agent targets",
@@ -700,9 +714,8 @@ check(
 )
 check(
     "recovery runbook does not add a plaintext fallback",
-    "plaintext fallback" not in runbook.lower()
-    and "InsecureSkipVerify" not in runbook,
+    "plaintext fallback" not in runbook.lower() and "InsecureSkipVerify" not in runbook,
 )
 
-print(f"\n{safe_log.PASS} passed, {safe_log.FAIL} failed")
+sys.stdout.write(f"\n{safe_log.PASS} passed, {safe_log.FAIL} failed\n")
 sys.exit(1 if safe_log.FAIL else 0)

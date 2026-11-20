@@ -24,25 +24,31 @@ sys.path.insert(0, str(SCRIPTS))
 spec = importlib.util.spec_from_file_location(
     "file_bind_audit", SCRIPTS / "compose-file-bind-audit.py"
 )
-assert spec is not None and spec.loader is not None
+assert spec is not None
+assert spec.loader is not None
 audit = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(audit)
 
-PASS = 0
-FAIL = 0
+
+class _Results:
+    def __init__(self) -> None:
+        self.passed = 0
+        self.failed = 0
 
 
-def check(name, condition):
-    global PASS, FAIL
+RESULTS = _Results()
+
+
+def check(name: str, condition: bool) -> None:
     if condition:
-        print(f"  PASS  {name}")
-        PASS += 1
+        sys.stdout.write(f"  PASS  {name}\n")
+        RESULTS.passed += 1
     else:
-        print(f"  FAIL  {name}")
-        FAIL += 1
+        sys.stdout.write(f"  FAIL  {name}\n")
+        RESULTS.failed += 1
 
 
-print("file_bind_violations")
+sys.stdout.write("file_bind_violations\n")
 
 SHORT_FILE = {
     "prometheus": {
@@ -150,10 +156,11 @@ EXTENSIONLESS = {
         ]
     }
 }
+EXPECTED_SSH_VIOLATIONS = 2
 found = audit.file_bind_violations(EXTENSIONLESS, pathlib.Path("/compose"))
 check(
     "extensionless ssh key and known_hosts short binds are file binds",
-    len(found) == 2,
+    len(found) == EXPECTED_SSH_VIOLATIONS,
 )
 
 with tempfile.TemporaryDirectory() as tmp:
@@ -201,7 +208,7 @@ check(
     audit.file_bind_violations(ARTEFACT_LONG_OK, pathlib.Path("/compose")) == [],
 )
 
-print("security artifact lifecycle guards")
+sys.stdout.write("security artifact lifecycle guards\n")
 for source, target in [
     ("/host/dev-key.pub", "/etc/plecto/.plecto/dev-key.pub"),
     ("/host/signed-filter", "/etc/plecto/artifacts/stale-chunk-heal"),
@@ -209,23 +216,28 @@ for source, target in [
 ]:
     check(
         f"missing security payload {target} cannot be auto-created by short syntax",
-        bool(audit.file_bind_violations(
-            {"svc": {"volumes": [f"{source}:{target}:ro"]}},
-            pathlib.Path("/compose"),
-        )),
+        bool(
+            audit.file_bind_violations(
+                {"svc": {"volumes": [f"{source}:{target}:ro"]}},
+                pathlib.Path("/compose"),
+            )
+        ),
     )
-    mount = {"type": "bind", "source": source, "target": target,
-             "read_only": True, "bind": {"create_host_path": False}}
+    mount = {
+        "type": "bind",
+        "source": source,
+        "target": target,
+        "read_only": True,
+        "bind": {"create_host_path": False},
+    }
     check(
         f"guarded security payload {target} is accepted",
-        audit.file_bind_violations({"svc": {"volumes": [mount]}},
-                                   pathlib.Path("/compose")) == [],
+        audit.file_bind_violations({"svc": {"volumes": [mount]}}, pathlib.Path("/compose")) == [],
     )
     mount["bind"] = {}
     check(
         f"security payload {target} without explicit guard is rejected",
-        bool(audit.file_bind_violations({"svc": {"volumes": [mount]}},
-                                       pathlib.Path("/compose"))),
+        bool(audit.file_bind_violations({"svc": {"volumes": [mount]}}, pathlib.Path("/compose"))),
     )
 
 CONFIGS_ONLY = {
@@ -244,7 +256,7 @@ check(
     audit.file_bind_violations(CONFIGS_ONLY, pathlib.Path("/compose")) == [],
 )
 
-print("ephemeral_source_violations")
+sys.stdout.write("ephemeral_source_violations\n")
 
 # The deploy job checks Alt out fresh into the runner workspace, so a bind
 # whose source is a repo-relative path only holds what git tracks. A
@@ -357,9 +369,7 @@ check(
     == [],
 )
 
-NAMED_VOLUME = {
-    "recap-subworker": {"volumes": ["recap_subworker_certs:/certs"]}
-}
+NAMED_VOLUME = {"recap-subworker": {"volumes": ["recap_subworker_certs:/certs"]}}
 check(
     "named volume is not a source path",
     audit.ephemeral_source_violations(
@@ -368,7 +378,7 @@ check(
     == [],
 )
 
-print("host prerequisite manifest")
+sys.stdout.write("host prerequisite manifest\n")
 
 # A host-path bind is something the deploy host must provide before compose
 # can start the service. 2026-10-02: several were added with nothing that
@@ -389,14 +399,16 @@ CH_BACKUP_BIND = {
     "bind": {"create_host_path": False},
 }
 HOST_SERVICES = {
-    "plecto-proxy": {"volumes": [PLECTO_KEY_BIND, "../plecto/manifest.toml:/etc/plecto/manifest.toml:ro"]},
+    "plecto-proxy": {
+        "volumes": [PLECTO_KEY_BIND, "../plecto/manifest.toml:/etc/plecto/manifest.toml:ro"]
+    },
     "clickhouse": {"volumes": [CH_BACKUP_BIND, "clickhouse_data:/var/lib/clickhouse"]},
     "restic-backup": {"volumes": [CH_BACKUP_BIND]},
 }
 
 
-def host_entry(**overrides):
-    entry = {
+def host_entry(**overrides: object) -> dict[str, object]:
+    entry: dict[str, object] = {
         "id": "plecto-public-key",
         "env": "PLECTO_PUBLIC_KEY_HOST_PATH",
         "path": "/var/lib/alt-plecto/dev-key.pub",
@@ -405,7 +417,11 @@ def host_entry(**overrides):
         "mode": "0644",
         "create_host_path": False,
         "mounts": [
-            {"service": "plecto-proxy", "target": "/etc/plecto/.plecto/dev-key.pub", "read_only": True}
+            {
+                "service": "plecto-proxy",
+                "target": "/etc/plecto/.plecto/dev-key.pub",
+                "read_only": True,
+            }
         ],
         "provision": "install -D -m 0644 key /var/lib/alt-plecto/dev-key.pub",
     }
@@ -429,7 +445,10 @@ CH_ENTRY = {
 }
 
 
-def path_violations(services, entries):
+def path_violations(
+    services: dict[str, object],
+    entries: list[dict[str, object]],
+) -> list[str]:
     mounts = audit.host_path_mounts(services.items())
     return audit.host_path_violations(mounts, {"host_paths": entries})
 
@@ -483,7 +502,9 @@ check(
                 "owner": "999:999",
                 "mode": "0700",
                 "create_host_path": True,
-                "mounts": [{"service": "recap-worker", "target": "/opt/rustbert-cache", "read_only": False}],
+                "mounts": [
+                    {"service": "recap-worker", "target": "/opt/rustbert-cache", "read_only": False}
+                ],
                 "provision": "install -d -o 999 -g 999 -m 0700 /opt/rustbert-cache",
             }
         ],
@@ -493,7 +514,8 @@ check(
 check(
     "repo-relative binds and named volumes need no manifest entry",
     path_violations(
-        {"svc": {"volumes": ["../plecto:/etc/plecto:ro", "named:/data", "/tmp"]}}, []
+        {"svc": {"volumes": ["../plecto:/etc/plecto:ro", "named:/data", "/tmp"]}},  # noqa: S108 - test fixture value
+        [],
     )
     == [],
 )
@@ -514,12 +536,14 @@ SOCKET_ENTRY = {
     "owner": "0:984",
     "mode": "0660",
     "create_host_path": False,
-    "mounts": [{"service": "docker-socket-proxy-ro", "target": "/var/run/docker.sock", "read_only": True}],
+    "mounts": [
+        {"service": "docker-socket-proxy-ro", "target": "/var/run/docker.sock", "read_only": True}
+    ],
     "provision": "Docker Engine creates it",
 }
 
 
-def socket_services(user):
+def socket_services(user: str) -> dict[str, dict[str, object]]:
     return {
         "docker-socket-proxy-ro": {
             "user": user,
@@ -538,7 +562,8 @@ def socket_services(user):
 
 check(
     "a socket consumer whose user: gid matches the declared socket group is clean",
-    audit.socket_group_violations(socket_services("65534:984"), {"host_paths": [SOCKET_ENTRY]}) == [],
+    audit.socket_group_violations(socket_services("65534:984"), {"host_paths": [SOCKET_ENTRY]})
+    == [],
 )
 check(
     "a socket consumer hardcoding a different gid than the declared socket group is a violation",
@@ -552,7 +577,9 @@ check(
 
 GPU_SERVICES = {
     "news-creator-backend": {
-        "deploy": {"resources": {"reservations": {"devices": [{"driver": "nvidia", "count": "all"}]}}}
+        "deploy": {
+            "resources": {"reservations": {"devices": [{"driver": "nvidia", "count": "all"}]}}
+        }
     },
     "irodori-tts": {"runtime": "nvidia"},
     "alt-backend": {},
@@ -561,7 +588,11 @@ check(
     "declared GPU services matching compose are clean",
     audit.gpu_violations(
         GPU_SERVICES,
-        {"host_facts": {"nvidia_container_runtime": {"services": ["irodori-tts", "news-creator-backend"]}}},
+        {
+            "host_facts": {
+                "nvidia_container_runtime": {"services": ["irodori-tts", "news-creator-backend"]}
+            }
+        },
     )
     == [],
 )
@@ -593,7 +624,8 @@ check(
 )
 check(
     "required_env matching compose is clean",
-    audit.required_env_violations([COMPOSE_TEXT], {"required_env": ["MUST_SET", "POSTGRES_USER"]}) == [],
+    audit.required_env_violations([COMPOSE_TEXT], {"required_env": ["MUST_SET", "POSTGRES_USER"]})
+    == [],
 )
 found = audit.required_env_violations([COMPOSE_TEXT], {"required_env": ["MUST_SET", "STALE_KEY"]})
 check(
@@ -603,13 +635,21 @@ check(
 
 ENV_FILE_ENTRIES = [
     (pathlib.Path("/repo/compose"), "alt-backend", {"env_file": ["../.env"]}),
-    (pathlib.Path("/repo/compose"), "restic-backup", {"env_file": ["../scripts/backup/alt-backup.env"]}),
+    (
+        pathlib.Path("/repo/compose"),
+        "restic-backup",
+        {"env_file": ["../scripts/backup/alt-backup.env"]},
+    ),
     (pathlib.Path("/repo/compose"), "tracked", {"env_file": "../config/tracked.env"}),
-    (pathlib.Path("/repo/compose"), "optional", {"env_file": [{"path": "../optional.env", "required": False}]}),
+    (
+        pathlib.Path("/repo/compose"),
+        "optional",
+        {"env_file": [{"path": "../optional.env", "required": False}]},
+    ),
 ]
 
 
-def ignored_env(path):
+def ignored_env(path: pathlib.Path) -> bool:
     return path.name in {".env", "alt-backup.env", "optional.env"}
 
 
@@ -617,7 +657,12 @@ check(
     "gitignored env_files declared in the manifest are clean",
     audit.env_file_violations(
         ENV_FILE_ENTRIES,
-        {"env_files": [{"path": ".env", "provision": "x"}, {"path": "scripts/backup/alt-backup.env", "provision": "x"}]},
+        {
+            "env_files": [
+                {"path": ".env", "provision": "x"},
+                {"path": "scripts/backup/alt-backup.env", "provision": "x"},
+            ]
+        },
         is_ignored=ignored_env,
         repo_root=pathlib.Path("/repo"),
     )
@@ -631,19 +676,20 @@ found = audit.env_file_violations(
 )
 check(
     "an undeclared gitignored env_file and a stale declared one are both violations",
-    any("scripts/backup/alt-backup.env" in v for v in found) and any("gone.env" in v for v in found),
+    any("scripts/backup/alt-backup.env" in v for v in found)
+    and any("gone.env" in v for v in found),
 )
 
-print("production")
+sys.stdout.write("production\n")
 prod = audit.audit_production()
 check("production compose has 0 unguarded file binds", prod == [])
 ephemeral = audit.audit_production_sources()
 check("production compose has 0 gitignored bind sources", ephemeral == [])
 for v in ephemeral:
-    print(f"    leftover: {v}")
+    sys.stdout.write(f"    leftover: {v}\n")
 if prod:
     for v in prod:
-        print(f"    leftover: {v}")
+        sys.stdout.write(f"    leftover: {v}\n")
 
 restic_ssh_sources = []
 for _path, name, svc in audit.iter_production_services():
@@ -673,15 +719,16 @@ check(
     "ClickHouse and Restic share one guarded writable native-backup directory",
     set(shared_backup_mounts) == {"clickhouse", "restic-backup"}
     and len({m.get("source") for m in shared_backup_mounts.values()}) == 1
-    and all(not m.get("read_only", False)
-            and (m.get("bind") or {}).get("create_host_path") is False
-            for m in shared_backup_mounts.values()),
+    and all(
+        not m.get("read_only", False) and (m.get("bind") or {}).get("create_host_path") is False
+        for m in shared_backup_mounts.values()
+    ),
 )
 
 prereqs = audit.audit_host_prereqs()
 check("production compose matches deploy/host-prereqs.yaml", prereqs == [])
 for v in prereqs:
-    print(f"    leftover: {v}")
+    sys.stdout.write(f"    leftover: {v}\n")
 
-print(f"\n{PASS} passed, {FAIL} failed")
-sys.exit(1 if FAIL else 0)
+sys.stdout.write(f"\n{RESULTS.passed} passed, {RESULTS.failed} failed\n")
+sys.exit(1 if RESULTS.failed else 0)

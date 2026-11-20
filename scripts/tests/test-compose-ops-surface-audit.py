@@ -21,31 +21,41 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
-from compose_include import OverrideLoader  # noqa: E402
-import yaml  # noqa: E402
+import yaml  # noqa: E402 - needs the sys.path entry added above
+
+from compose_include import (  # noqa: E402 - needs the sys.path entry added above
+    OverrideLoader,
+    production_services,
+)
 
 spec = importlib.util.spec_from_file_location(
     "ops_surface_audit", SCRIPTS / "compose-ops-surface-audit.py"
 )
-assert spec is not None and spec.loader is not None
+assert spec is not None
+assert spec.loader is not None
 audit = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(audit)
 
-PASS = 0
-FAIL = 0
+
+class _Results:
+    def __init__(self) -> None:
+        self.passed = 0
+        self.failed = 0
 
 
-def check(name, condition):
-    global PASS, FAIL
+RESULTS = _Results()
+
+
+def check(name: str, condition: bool) -> None:
     if condition:
-        print(f"  PASS  {name}")
-        PASS += 1
+        sys.stdout.write(f"  PASS  {name}\n")
+        RESULTS.passed += 1
     else:
-        print(f"  FAIL  {name}")
-        FAIL += 1
+        sys.stdout.write(f"  FAIL  {name}\n")
+        RESULTS.failed += 1
 
 
-print("networks are not services")
+sys.stdout.write("networks are not services\n")
 FRAGMENT = """
 networks:
   backup-docker-proxy:
@@ -62,14 +72,15 @@ services:
       migrate:
         condition: service_completed_successfully
 """
-data = yaml.load(FRAGMENT, Loader=OverrideLoader)
+data = yaml.load(FRAGMENT, Loader=OverrideLoader)  # noqa: S506 - OverrideLoader subclasses SafeLoader
 services = data["services"]
 check(
     "backup-docker-proxy is a network, not a service key",
-    "backup-docker-proxy" not in services and set(services) == {"restic-backup", "migrate", "alt-backend"},
+    "backup-docker-proxy" not in services
+    and set(services) == {"restic-backup", "migrate", "alt-backend"},
 )
 
-print("classify_services")
+sys.stdout.write("classify_services\n")
 classified = audit.classify_services(services)
 check(
     "profiled backup is not long-running",
@@ -101,7 +112,7 @@ check(
     audit.classify_services(OMITTED_MIGRATOR)["ephemeral"] == ["rag-db-migrator"],
 )
 
-print("drift")
+sys.stdout.write("drift\n")
 current = audit.inventory(services)
 baseline = {
     "counts": {
@@ -125,12 +136,12 @@ check(
     any("new-sidecar" in v for v in audit.drift(audit.inventory(grown), baseline)),
 )
 
-print("P2-14 budget fitness functions (F1–F5)")
+sys.stdout.write("P2-14 budget fitness functions (F1–F5)\n")
 TODAY = __import__("datetime").date(2026, 8, 18)
 
 
-def _meta(class_, kind, **extra):
-    row = {"class": class_, "kind": kind}
+def _meta(class_: str, kind: str, **extra: object) -> dict[str, object]:
+    row: dict[str, object] = {"class": class_, "kind": kind}
     row.update(extra)
     return row
 
@@ -164,7 +175,13 @@ BUDGET_BASELINE = {
 }
 
 
-def _budget(services=None, units=None, baseline=None, accidental=1, long_running=3):
+def _budget(
+    services: dict[str, object] | None = None,
+    units: dict[str, object] | None = None,
+    baseline: dict[str, object] | None = None,
+    accidental: int = 1,
+    long_running: int = 3,
+) -> list[str]:
     return audit.budget_violations(
         services if services is not None else BUDGET_SERVICES,
         units if units is not None else BUDGET_UNITS,
@@ -175,14 +192,14 @@ def _budget(services=None, units=None, baseline=None, accidental=1, long_running
     )
 
 
-def _has(prefix, name, found):
+def _has(prefix: str, name: str, found: list[str]) -> bool:
     return any(v.startswith(prefix) and name in v for v in found)
 
 
 clean = _budget()
 check("seeded fixture holds the budget", clean == [])
 
-print("F1 inventory closed")
+sys.stdout.write("F1 inventory closed\n")
 missing_units = dict(BUDGET_UNITS)
 del missing_units["pki-agent-alt-backend"]
 f1 = _budget(units=missing_units)
@@ -197,7 +214,7 @@ check(
     _has("F1:", "ghost", _budget(units=stale_units)),
 )
 
-print("F2 accidental OSU non-increasing")
+sys.stdout.write("F2 accidental OSU non-increasing\n")
 example_svc = dict(BUDGET_SERVICES)
 example_svc["example"] = {"restart": "always"}
 example_svc["pki-agent-example"] = {
@@ -253,7 +270,7 @@ check(
     not any(v.startswith("F2:") for v in f2_exc),
 )
 
-print("F3 new long-running unit needs offset or exception")
+sys.stdout.write("F3 new long-running unit needs offset or exception\n")
 check(
     "F3: pki-agent-example without offset_of or exception fails",
     _has("F3:", "pki-agent-example", f2),
@@ -267,9 +284,7 @@ offset_services["pki-agent-example"] = {
 offset_units = {
     "alt-backend": _meta("essential", "app"),
     "pki-agent-alt-backend": _meta("accidental", "sidecar-cert"),
-    "pki-agent-example": _meta(
-        "accidental", "sidecar-cert", offset_of="prometheus"
-    ),
+    "pki-agent-example": _meta("accidental", "sidecar-cert", offset_of="prometheus"),
     "migrate": _meta("ephemeral", "ephemeral"),
 }
 f3_offset = _budget(
@@ -283,9 +298,7 @@ check(
     not any(v.startswith("F3:") for v in f3_offset),
 )
 still_there = dict(example_units)
-still_there["pki-agent-example"] = _meta(
-    "accidental", "sidecar-cert", offset_of="prometheus"
-)
+still_there["pki-agent-example"] = _meta("accidental", "sidecar-cert", offset_of="prometheus")
 f3_live_offset = _budget(
     services=example_svc,
     units=still_there,
@@ -302,7 +315,7 @@ check(
     not any(v.startswith("F3:") for v in f2_exc),
 )
 
-print("F4 expired exception")
+sys.stdout.write("F4 expired exception\n")
 expired = dict(BUDGET_UNITS)
 expired["pki-agent-alt-backend"] = _meta(
     "accidental",
@@ -336,7 +349,7 @@ check(
     not any(v.startswith("F4:") for v in _budget(units=live_exc)),
 )
 
-print("F5 sidecar parent")
+sys.stdout.write("F5 sidecar parent\n")
 orphan_logs = dict(BUDGET_SERVICES)
 orphan_logs["ghost-logs"] = {
     "restart": "unless-stopped",
@@ -368,7 +381,7 @@ check(
     not any(v.startswith("F5:") for v in clean),
 )
 
-print("sidecar_parent")
+sys.stdout.write("sidecar_parent\n")
 check(
     "CERT_SUBJECT list env yields the cert parent",
     audit.sidecar_parent(
@@ -397,7 +410,7 @@ check(
     == "plecto-proxy",
 )
 
-print("pki-agent-example PR shape")
+sys.stdout.write("pki-agent-example PR shape\n")
 # Compose-only add, no inventory row, no baseline row: F1 + F3 (and F2
 # once classified). This is the merge-blocker the budget exists to be.
 pr_services = dict(BUDGET_SERVICES)
@@ -415,9 +428,16 @@ check(
     _has("F3:", "pki-agent-example", pr_found),
 )
 
-print("production inventory pin")
+sys.stdout.write("production inventory pin\n")
+EXPECTED_ACCIDENTAL_OSU = 16
+EXPECTED_LONG_RUNNING_OSU = 67
+FROZEN_LONG_RUNNING_CAP = 63
+EXPECTED_DECLARED_TOTAL = 82
+EXPECTED_EPHEMERAL_ONESHOTS = 10
+EXPECTED_DEFAULT_RENDER_COUNT = 77
+STALE_RENDER_COUNT = 87
+
 PROD_INV = audit.load_units_inventory(SCRIPTS / "ops-surface-inventory.yaml")
-from compose_include import production_services  # noqa: E402
 
 prod_services = production_services()
 prod_baseline = audit.load_baseline(SCRIPTS / "ops-surface-baseline.json")
@@ -437,34 +457,35 @@ for name in prod_classified["long_running"]:
     osu_class[cls] = osu_class.get(cls, 0) + 1
 check(
     "production accidental OSU is 16 (log forwarders only; no cert-writer sidecars)",
-    osu_class.get("accidental") == 16 and PROD_INV["accidental_osu_baseline"] == 16,
+    osu_class.get("accidental") == EXPECTED_ACCIDENTAL_OSU
+    and PROD_INV["accidental_osu_baseline"] == EXPECTED_ACCIDENTAL_OSU,
 )
 check(
     "production long-running OSU stays at frozen cap 63 plus four security boundaries",
-    len(prod_classified["long_running"]) == 67
-    and PROD_INV["long_running_osu_baseline"] == 63,
+    len(prod_classified["long_running"]) == EXPECTED_LONG_RUNNING_OSU
+    and PROD_INV["long_running_osu_baseline"] == FROZEN_LONG_RUNNING_CAP,
 )
 check(
     "declared total is 82 (sovereign and evaluator cert writers moved in-process)",
-    len(prod_services) == 82 and prod_baseline["counts"]["declared_total"] == 82,
+    len(prod_services) == EXPECTED_DECLARED_TOTAL
+    and prod_baseline["counts"]["declared_total"] == EXPECTED_DECLARED_TOTAL,
 )
 check(
     "Wave 1b reduced ephemeral oneshots to 10",
-    len(prod_classified["ephemeral"]) == 10
-    and prod_baseline["counts"]["ephemeral"] == 10,
+    len(prod_classified["ephemeral"]) == EXPECTED_EPHEMERAL_ONESHOTS
+    and prod_baseline["counts"]["ephemeral"] == EXPECTED_EPHEMERAL_ONESHOTS,
 )
 prod_inv = audit.inventory(prod_services)
 check(
     "production default render count is declared_total - profiled (77)",
-    prod_inv["counts"].get("compose_config_default_profiles") == 77
-    and prod_inv["counts"]["declared_total"]
-    - len(prod_inv["profiled"])
-    == 77,
+    prod_inv["counts"].get("compose_config_default_profiles") == EXPECTED_DEFAULT_RENDER_COUNT
+    and prod_inv["counts"]["declared_total"] - len(prod_inv["profiled"])
+    == EXPECTED_DEFAULT_RENDER_COUNT,
 )
 check(
     "production full render count is declared_total (82)",
-    prod_inv["counts"].get("compose_config_full_profiles") == 82
-    and prod_inv["counts"]["declared_total"] == 82,
+    prod_inv["counts"].get("compose_config_full_profiles") == EXPECTED_DECLARED_TOTAL
+    and prod_inv["counts"]["declared_total"] == EXPECTED_DECLARED_TOTAL,
 )
 check(
     "baseline discrepancy default/full match the computed render counts (not a stale 87)",
@@ -473,13 +494,13 @@ check(
     and prod_baseline.get("discrepancy", {}).get("compose_config_full_profiles")
     == prod_inv["counts"].get("compose_config_full_profiles")
     and prod_baseline.get("discrepancy", {}).get("compose_config_default_profiles")
-    != 87,
+    != STALE_RENDER_COUNT,
 )
 stale_render = dict(prod_baseline)
 stale_render["discrepancy"] = dict(prod_baseline.get("discrepancy") or {})
-stale_render["discrepancy"]["compose_config_default_profiles"] = 87
+stale_render["discrepancy"]["compose_config_default_profiles"] = STALE_RENDER_COUNT
 stale_render["counts"] = dict(prod_inv["counts"])
-stale_render["counts"]["compose_config_default_profiles"] = 87
+stale_render["counts"]["compose_config_default_profiles"] = STALE_RENDER_COUNT
 check(
     "drift fails a stale hardcoded default render count of 87",
     any(
@@ -488,7 +509,7 @@ check(
     ),
 )
 
-print("*-logs / sidecar-* reclassification cannot drop accidental OSU")
+sys.stdout.write("*-logs / sidecar-* reclassification cannot drop accidental OSU\n")
 reclass_svc = dict(BUDGET_SERVICES)
 reclass_svc["alt-backend-logs"] = {
     "restart": "unless-stopped",
@@ -522,8 +543,7 @@ reclass_found = _budget(
 check(
     "F1: *-logs reclassified as essential/app is refused",
     any(
-        v.startswith("F1:") and "alt-backend-logs" in v and "accidental" in v
-        for v in reclass_found
+        v.startswith("F1:") and "alt-backend-logs" in v and "accidental" in v for v in reclass_found
     ),
 )
 sidecar_ess = dict(BUDGET_UNITS)
@@ -531,14 +551,12 @@ sidecar_ess["pki-agent-alt-backend"] = _meta("essential", "sidecar-cert")
 check(
     "F1: sidecar-* kind with class essential is refused",
     any(
-        v.startswith("F1:")
-        and "pki-agent-alt-backend" in v
-        and "accidental" in v
+        v.startswith("F1:") and "pki-agent-alt-backend" in v and "accidental" in v
         for v in _budget(units=sidecar_ess)
     ),
 )
 
-print("--write-baseline must not expand the init-edge allowlist or skip F1–F5")
+sys.stdout.write("--write-baseline must not expand the init-edge allowlist or skip F1–F5\n")
 existing_allow = ["alt-backend -> migrate"]
 grown_live = ["alt-backend -> migrate", "new-app -> new-init"]
 preserved, growth = audit.init_edges_allowlist_update(existing_allow, grown_live)
@@ -583,14 +601,13 @@ check(
     "--write-baseline preserves the 24-edge allowlist and writes computed 77/82",
     ok_found == []
     and ok_payload is not None
-    and ok_payload["init_edges_allowlist"]
-    == prod_baseline["init_edges_allowlist"]
+    and ok_payload["init_edges_allowlist"] == prod_baseline["init_edges_allowlist"]
     and (ok_payload.get("discrepancy") or {}).get("compose_config_default_profiles")
-    == 77
+    == EXPECTED_DEFAULT_RENDER_COUNT
     and (ok_payload.get("discrepancy") or {}).get("compose_config_full_profiles")
-    == 82
+    == EXPECTED_DECLARED_TOTAL
     and (ok_payload.get("counts") or {}).get("compose_config_default_profiles")
-    == 77,
+    == EXPECTED_DEFAULT_RENDER_COUNT,
 )
 check(
     "--write-baseline note states the computed profiled count, not a hardcoded one",
@@ -599,5 +616,5 @@ check(
     in (ok_payload.get("discrepancy") or {}).get("compose_config_note", ""),
 )
 
-print(f"\n{PASS} passed, {FAIL} failed")
-sys.exit(1 if FAIL else 0)
+sys.stdout.write(f"\n{RESULTS.passed} passed, {RESULTS.failed} failed\n")
+sys.exit(1 if RESULTS.failed else 0)

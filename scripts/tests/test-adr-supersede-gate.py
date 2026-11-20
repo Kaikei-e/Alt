@@ -16,31 +16,44 @@ import importlib.util
 import io
 import os
 import pathlib
+import shutil
 import subprocess
 import sys
 import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 GATE_PATH = ROOT / "scripts" / "agent-harness" / "adr_supersede_gate.py"
+GIT_BIN = shutil.which("git")
+assert GIT_BIN is not None, "git executable not found in PATH"
+
+WIDENED_FINDING_COUNT = 54
+LIST_FORM_FINDING_COUNT = 2
+USAGE_EXIT_CODE = 2
 
 spec = importlib.util.spec_from_file_location("adr_supersede_gate", GATE_PATH)
-assert spec is not None and spec.loader is not None
+assert spec is not None
+assert spec.loader is not None
 gate = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(gate)
 
-PASS = 0
-FAIL = 0
+
+class _Results:
+    def __init__(self) -> None:
+        self.passed = 0
+        self.failed = 0
+
+
+RESULTS = _Results()
 
 
 def check(name: str, condition: bool, detail: str = "") -> None:
-    global PASS, FAIL
     if condition:
-        print(f"  PASS  {name}")
-        PASS += 1
+        sys.stdout.write(f"  PASS  {name}\n")
+        RESULTS.passed += 1
     else:
         suffix = f" ({detail})" if detail else ""
-        print(f"  FAIL  {name}{suffix}")
-        FAIL += 1
+        sys.stdout.write(f"  FAIL  {name}{suffix}\n")
+        RESULTS.failed += 1
 
 
 def git_env() -> dict[str, str]:
@@ -57,8 +70,9 @@ def git_env() -> dict[str, str]:
 
 
 def run_git(repo: pathlib.Path, *args: str) -> str:
-    res = subprocess.run(
-        ["git", "-C", str(repo), *args],
+    assert GIT_BIN is not None
+    res = subprocess.run(  # noqa: S603 - fixed argv built in this test
+        [GIT_BIN, "-C", str(repo), *args],
         env=git_env(),
         capture_output=True,
         text=True,
@@ -106,7 +120,7 @@ def invoke_gate(repo: pathlib.Path, base: str) -> tuple[int, str, str]:
     return rc, stdout_buf.getvalue(), stderr_buf.getvalue()
 
 
-print("1. new ADR superseding one named ADR passes")
+sys.stdout.write("1. new ADR superseding one named ADR passes\n")
 with tempfile.TemporaryDirectory() as td:
     repo = init_repo(pathlib.Path(td))
     write_adr(repo, "000001", "", "# ADR-000001\n\nInitial.")
@@ -128,7 +142,7 @@ with tempfile.TemporaryDirectory() as td:
         out,
     )
 
-print("2. new ADR superseding an unnamed ADR reports one finding")
+sys.stdout.write("2. new ADR superseding an unnamed ADR reports one finding\n")
 with tempfile.TemporaryDirectory() as td:
     repo = init_repo(pathlib.Path(td))
     write_adr(repo, "000001", "", "# ADR-000001\n\nInitial.")
@@ -153,7 +167,9 @@ with tempfile.TemporaryDirectory() as td:
     check("exact finding message present", expected_finding in out, out)
     check("summary reports 1 ADR", "1" in out and "000001" in out, out)
 
-print("3. 2026-10-24 shape: 6 named -> widened to 60 without body change = 54 findings")
+sys.stdout.write(
+    "3. 2026-10-24 shape: 6 named -> widened to 60 without body change = 54 findings\n"
+)
 with tempfile.TemporaryDirectory() as td:
     repo = init_repo(pathlib.Path(td))
     base_ids = [f"{i:06d}" for i in range(1, 7)]
@@ -176,14 +192,18 @@ with tempfile.TemporaryDirectory() as td:
     ]
     summary_lines = [line for line in out.splitlines() if line.startswith("Summary:")]
     check("exit code is 1", rc == 1, f"rc={rc}")
-    check("exactly 54 findings", len(finding_lines) == 54, f"got {len(finding_lines)}")
+    check(
+        "exactly 54 findings",
+        len(finding_lines) == WIDENED_FINDING_COUNT,
+        f"got {len(finding_lines)}",
+    )
     check(
         "summary line reports 54",
         len(summary_lines) == 1 and "54" in summary_lines[0],
         f"summary={summary_lines!r}",
     )
 
-print("4. existing edge at base not named in body produces no finding")
+sys.stdout.write("4. existing edge at base not named in body produces no finding\n")
 with tempfile.TemporaryDirectory() as td:
     repo = init_repo(pathlib.Path(td))
     write_adr(repo, "000010", "", "# ADR-000010\n\nOld.")
@@ -208,7 +228,7 @@ with tempfile.TemporaryDirectory() as td:
     check("exit code is 0", rc == 0, f"rc={rc}, out={out!r}")
     check("summary reports 0", "0" in out and "Summary:" in out, out)
 
-print("5. inline list and block list forms, quoted, bare, and wikilink entries")
+sys.stdout.write("5. inline list and block list forms, quoted, bare, and wikilink entries\n")
 with tempfile.TemporaryDirectory() as td:
     repo = init_repo(pathlib.Path(td))
     for i in range(1, 9):
@@ -226,23 +246,21 @@ with tempfile.TemporaryDirectory() as td:
     write_adr(
         repo,
         "000101",
-        "supersedes:\n  - 000005\n  - \"000006\"\n  - \"[[000007]]\"\n  - [[000008]]",
+        'supersedes:\n  - 000005\n  - "000006"\n  - "[[000007]]"\n  - [[000008]]',
         "# ADR-000101\n\nReplaces [[000005]], [[000006]], [[000007]]. Missing 8.",
     )
     rc, out, err = invoke_gate(repo, base_rev)
-    finding_lines = [
-        line for line in out.splitlines() if " adds supersedes: " in line
-    ]
+    finding_lines = [line for line in out.splitlines() if " adds supersedes: " in line]
     check("exit code is 1", rc == 1, f"rc={rc}")
     check(
         "only unnamed 000004 and 000008 reported",
-        len(finding_lines) == 2
+        len(finding_lines) == LIST_FORM_FINDING_COUNT
         and any("000100 adds supersedes: 000004" in ln for ln in finding_lines)
         and any("000101 adds supersedes: 000008" in ln for ln in finding_lines),
         f"findings={finding_lines!r}",
     )
 
-print("6. [[DST|label]] in body counts as a reference")
+sys.stdout.write("6. [[DST|label]] in body counts as a reference\n")
 with tempfile.TemporaryDirectory() as td:
     repo = init_repo(pathlib.Path(td))
     write_adr(repo, "000224", "", "# ADR-000224\n\nOld.")
@@ -259,14 +277,14 @@ with tempfile.TemporaryDirectory() as td:
     rc, out, err = invoke_gate(repo, base_rev)
     check("exit code is 0", rc == 0, f"rc={rc}, out={out!r}")
 
-print("7. unknown base revision exits 2 (CLI subprocess check)")
+sys.stdout.write("7. unknown base revision exits 2 (CLI subprocess check)\n")
 with tempfile.TemporaryDirectory() as td:
     repo = init_repo(pathlib.Path(td))
     write_adr(repo, "000001", "", "# ADR-000001\n\nBase.")
     run_git(repo, "add", ".")
     run_git(repo, "commit", "-m", "base")
 
-    res = subprocess.run(
+    res = subprocess.run(  # noqa: S603 - fixed argv built in this test
         [
             sys.executable,
             str(GATE_PATH),
@@ -277,13 +295,14 @@ with tempfile.TemporaryDirectory() as td:
         ],
         capture_output=True,
         text=True,
+        check=False,
     )
-    check("exit code is 2", res.returncode == 2, f"rc={res.returncode}")
+    check("exit code is 2", res.returncode == USAGE_EXIT_CODE, f"rc={res.returncode}")
     check(
         "clear message on unknown rev",
         bool((res.stderr + res.stdout).strip()),
         f"out={res.stdout!r}, err={res.stderr!r}",
     )
 
-print(f"\n{PASS} passed, {FAIL} failed")
-sys.exit(1 if FAIL else 0)
+sys.stdout.write(f"\n{RESULTS.passed} passed, {RESULTS.failed} failed\n")
+sys.exit(1 if RESULTS.failed else 0)

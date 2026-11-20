@@ -22,7 +22,8 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "compose-reachability-audit.py"
 
 spec = importlib.util.spec_from_file_location("reachability_audit", SCRIPT)
-assert spec is not None and spec.loader is not None
+assert spec is not None
+assert spec.loader is not None
 audit = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(audit)
 
@@ -60,13 +61,11 @@ def triples(cfg: dict) -> list[tuple[str, str, str]]:
 
 
 class FindingsTests(unittest.TestCase):
-    def test_caller_without_a_shared_network_is_flagged(self):
-        self.assertEqual(
-            triples(INTERNAL_ONLY),
-            [("rag-orchestrator", "EMBEDDER_EXTERNAL", "knowledge-embedder-local")],
-        )
+    def test_caller_without_a_shared_network_is_flagged(self) -> None:
+        got = triples(INTERNAL_ONLY)
+        assert got == [("rag-orchestrator", "EMBEDDER_EXTERNAL", "knowledge-embedder-local")], got
 
-    def test_caller_sharing_a_network_is_clean(self):
+    def test_caller_sharing_a_network_is_clean(self) -> None:
         cfg = load(
             """
 services:
@@ -78,9 +77,10 @@ services:
     networks: [alt-network, embedding-raw-network]
 """
         )
-        self.assertEqual(triples(cfg), [])
+        got = triples(cfg)
+        assert got == [], got
 
-    def test_list_form_environment_is_read(self):
+    def test_list_form_environment_is_read(self) -> None:
         cfg = load(
             """
 services:
@@ -92,9 +92,10 @@ services:
     networks: [back]
 """
         )
-        self.assertEqual(triples(cfg), [("caller", "BACKEND_URL", "backend")])
+        got = triples(cfg)
+        assert got == [("caller", "BACKEND_URL", "backend")], got
 
-    def test_unknown_and_loopback_hosts_are_not_compose_services(self):
+    def test_unknown_and_loopback_hosts_are_not_compose_services(self) -> None:
         cfg = load(
             """
 services:
@@ -107,9 +108,10 @@ services:
       UNSET: null
 """
         )
-        self.assertEqual(triples(cfg), [])
+        got = triples(cfg)
+        assert got == [], got
 
-    def test_values_without_a_scheme_are_not_urls(self):
+    def test_values_without_a_scheme_are_not_urls(self) -> None:
         cfg = load(
             """
 services:
@@ -122,9 +124,10 @@ services:
     networks: [back]
 """
         )
-        self.assertEqual(triples(cfg), [])
+        got = triples(cfg)
+        assert got == [], got
 
-    def test_every_url_in_a_comma_separated_list_is_checked(self):
+    def test_every_url_in_a_comma_separated_list_is_checked(self) -> None:
         cfg = load(
             """
 services:
@@ -138,9 +141,10 @@ services:
     networks: [back]
 """
         )
-        self.assertEqual(triples(cfg), [("caller", "PEERS", "far")])
+        got = triples(cfg)
+        assert got == [("caller", "PEERS", "far")], got
 
-    def test_userinfo_does_not_hide_the_host(self):
+    def test_userinfo_does_not_hide_the_host(self) -> None:
         cfg = load(
             """
 services:
@@ -152,9 +156,10 @@ services:
     networks: [back]
 """
         )
-        self.assertEqual(triples(cfg), [("caller", "REDIS_URL", "redis-streams")])
+        got = triples(cfg)
+        assert got == [("caller", "REDIS_URL", "redis-streams")], got
 
-    def test_alias_resolves_only_on_the_network_that_declares_it(self):
+    def test_alias_resolves_only_on_the_network_that_declares_it(self) -> None:
         cfg = load(
             """
 services:
@@ -171,9 +176,10 @@ services:
         aliases: [back-alias]
 """
         )
-        self.assertEqual(triples(cfg), [("caller", "PRIVATE", "back-alias")])
+        got = triples(cfg)
+        assert got == [("caller", "PRIVATE", "back-alias")], got
 
-    def test_container_name_resolves_like_the_service_name(self):
+    def test_container_name_resolves_like_the_service_name(self) -> None:
         cfg = load(
             """
 services:
@@ -186,9 +192,10 @@ services:
     networks: [back]
 """
         )
-        self.assertEqual(triples(cfg), [("caller", "TARGET", "target-container")])
+        got = triples(cfg)
+        assert got == [("caller", "TARGET", "target-container")], got
 
-    def test_network_mode_service_shares_the_parent_networks(self):
+    def test_network_mode_service_shares_the_parent_networks(self) -> None:
         cfg = load(
             """
 services:
@@ -205,9 +212,10 @@ services:
     networks: [back]
 """
         )
-        self.assertEqual(triples(cfg), [("sidecar", "FAR", "far")])
+        got = triples(cfg)
+        assert got == [("sidecar", "FAR", "far")], got
 
-    def test_network_mode_host_resolves_no_service_names(self):
+    def test_network_mode_host_resolves_no_service_names(self) -> None:
         cfg = load(
             """
 services:
@@ -219,9 +227,10 @@ services:
     networks: [front]
 """
         )
-        self.assertEqual(triples(cfg), [("caller", "TARGET", "target")])
+        got = triples(cfg)
+        assert got == [("caller", "TARGET", "target")], got
 
-    def test_a_callee_inside_another_netns_has_no_name_of_its_own(self):
+    def test_a_callee_inside_another_netns_has_no_name_of_its_own(self) -> None:
         cfg = load(
             """
 services:
@@ -236,9 +245,10 @@ services:
     network_mode: service:parent
 """
         )
-        self.assertEqual(triples(cfg), [("caller", "SIDECAR", "sidecar")])
+        got = triples(cfg)
+        assert got == [("caller", "SIDECAR", "sidecar")], got
 
-    def test_service_without_networks_joins_default(self):
+    def test_service_without_networks_joins_default(self) -> None:
         cfg = load(
             """
 services:
@@ -248,9 +258,10 @@ services:
   target: {}
 """
         )
-        self.assertEqual(triples(cfg), [])
+        got = triples(cfg)
+        assert got == [], got
 
-    def test_networks_compare_by_resolved_name(self):
+    def test_networks_compare_by_resolved_name(self) -> None:
         cfg = load(
             """
 services:
@@ -267,9 +278,10 @@ networks:
     name: alt_shared
 """
         )
-        self.assertEqual(triples(cfg), [])
+        got = triples(cfg)
+        assert got == [], got
 
-    def test_extra_hosts_entry_is_not_a_dns_lookup(self):
+    def test_extra_hosts_entry_is_not_a_dns_lookup(self) -> None:
         cfg = load(
             """
 services:
@@ -283,9 +295,10 @@ services:
     networks: [back]
 """
         )
-        self.assertEqual(triples(cfg), [])
+        got = triples(cfg)
+        assert got == [], got
 
-    def test_findings_are_sorted_and_unique(self):
+    def test_findings_are_sorted_and_unique(self) -> None:
         cfg = load(
             """
 services:
@@ -302,46 +315,69 @@ services:
     networks: [back]
 """
         )
-        self.assertEqual(
-            triples(cfg),
-            [("alpha", "A", "far"), ("zeta", "A", "far"), ("zeta", "B", "far")],
-        )
+        got = triples(cfg)
+        assert got == [("alpha", "A", "far"), ("zeta", "A", "far"), ("zeta", "B", "far")], got
 
 
 class RenderTests(unittest.TestCase):
-    def render_argv(self, *args) -> list[str]:
-        completed = subprocess.CompletedProcess(args=[], returncode=0, stdout=json.dumps({"services": {}}), stderr="")
+    def render_argv(self, *args: object) -> list[str]:
+        completed = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout=json.dumps({"services": {}}), stderr=""
+        )
         with mock.patch.object(audit.subprocess, "run", return_value=completed) as run:
-            self.assertEqual(audit.render(pathlib.Path("compose/compose.yaml"), pathlib.Path(".env.template"), *args), {"services": {}})
+            rendered = audit.render(
+                pathlib.Path("compose/compose.yaml"), pathlib.Path(".env.template"), *args
+            )
+            assert rendered == {"services": {}}, rendered
         return run.call_args.args[0]
 
-    def test_render_uses_the_env_file_and_the_deploy_profiles(self):
+    def test_render_uses_the_env_file_and_the_deploy_profiles(self) -> None:
         argv = self.render_argv()
-        self.assertEqual(argv[:2], ["docker", "compose"])
-        self.assertEqual(argv[argv.index("--env-file") + 1], ".env.template")
-        self.assertEqual(argv[argv.index("-f") + 1], "compose/compose.yaml")
-        self.assertNotIn("--profile", argv)
-        self.assertEqual(argv[-3:], ["config", "--format", "json"])
+        assert argv[:2] == ["docker", "compose"], argv
+        assert argv[argv.index("--env-file") + 1] == ".env.template", argv
+        assert argv[argv.index("-f") + 1] == "compose/compose.yaml", argv
+        assert "--profile" not in argv, argv
+        assert argv[-3:] == ["config", "--format", "json"], argv
 
-    def test_render_adds_requested_profiles(self):
+    def test_render_adds_requested_profiles(self) -> None:
         argv = self.render_argv(["tts", "perf"])
-        self.assertEqual([argv[i + 1] for i, arg in enumerate(argv) if arg == "--profile"], ["tts", "perf"])
-        self.assertEqual(argv[-3:], ["config", "--format", "json"])
+        profiles = [argv[i + 1] for i, arg in enumerate(argv) if arg == "--profile"]
+        assert profiles == ["tts", "perf"], profiles
+        assert argv[-3:] == ["config", "--format", "json"], argv
 
-    def test_uninterpolated_render_keeps_env_file_out_of_environment(self):
+    def test_uninterpolated_render_keeps_env_file_out_of_environment(self) -> None:
         argv = self.render_argv(None, False)
-        self.assertEqual(argv[-4:], ["config", "--no-interpolate", "--format", "json"])
+        assert argv[-4:] == ["config", "--no-interpolate", "--format", "json"], argv
 
-    def test_render_failure_raises_with_the_exit_code(self):
-        completed = subprocess.CompletedProcess(args=[], returncode=15, stdout="", stderr="env file .env not found")
-        with mock.patch.object(audit.subprocess, "run", return_value=completed):
-            with self.assertRaises(audit.RenderError) as raised:
-                audit.render(pathlib.Path("compose/compose.yaml"), pathlib.Path(".env.template"))
-        self.assertEqual(raised.exception.returncode, 15)
+    def test_render_passes_repo_root_as_cwd(self) -> None:
+        completed = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout=json.dumps({"services": {}}), stderr=""
+        )
+        stage = pathlib.Path("/tmp/stage-root")  # noqa: S108 - test fixture value
+        with mock.patch.object(audit.subprocess, "run", return_value=completed) as run:
+            audit.render(
+                stage / "compose" / "compose.yaml",
+                stage / ".env",
+                repo_root=stage,
+            )
+        cwd = run.call_args.kwargs.get("cwd")
+        assert cwd == stage, cwd
+
+    def test_render_failure_raises_with_the_exit_code(self) -> None:
+        expected_rc = 15
+        completed = subprocess.CompletedProcess(
+            args=[], returncode=expected_rc, stdout="", stderr="env file .env not found"
+        )
+        with (
+            mock.patch.object(audit.subprocess, "run", return_value=completed),
+            self.assertRaises(audit.RenderError) as raised,  # noqa: PT027 - unittest runner; pytest is not a dependency of this file
+        ):
+            audit.render(pathlib.Path("compose/compose.yaml"), pathlib.Path(".env.template"))
+        assert raised.exception.returncode == expected_rc, raised.exception.returncode
 
 
 class OriginTests(unittest.TestCase):
-    def test_declared_keys_read_both_environment_forms(self):
+    def test_declared_keys_read_both_environment_forms(self) -> None:
         raw = load(
             """
 services:
@@ -355,13 +391,14 @@ services:
   bare: {}
 """
         )
-        self.assertEqual(audit.declared_keys(raw), {"listed": {"A", "B"}, "mapped": {"C"}, "bare": set()})
+        got = audit.declared_keys(raw)
+        assert got == {"listed": {"A", "B"}, "mapped": {"C"}, "bare": set()}, got
 
-    def test_split_separates_declared_from_env_file_variables(self):
+    def test_split_separates_declared_from_env_file_variables(self) -> None:
         found = [audit.Finding("svc", "DECLARED", "h"), audit.Finding("svc", "INJECTED", "h")]
         own, shared = audit.split_by_origin(found, {"svc": {"DECLARED"}})
-        self.assertEqual(own, [audit.Finding("svc", "DECLARED", "h")])
-        self.assertEqual(shared, [audit.Finding("svc", "INJECTED", "h")])
+        assert own == [audit.Finding("svc", "DECLARED", "h")], own
+        assert shared == [audit.Finding("svc", "INJECTED", "h")], shared
 
 
 # What `docker compose config` renders when two callers carry env_file: the
@@ -402,18 +439,22 @@ class MainTests(unittest.TestCase):
     def run_main(self, cfg: dict, raw: dict | None = None) -> tuple[int, str]:
         out, err = io.StringIO(), io.StringIO()
         renders = [cfg, cfg if raw is None else raw]
-        with mock.patch.object(audit, "render", side_effect=renders), redirect_stdout(out), redirect_stderr(err):
+        with (
+            mock.patch.object(audit, "render", side_effect=renders),
+            redirect_stdout(out),
+            redirect_stderr(err),
+        ):
             code = audit.main([])
         return code, out.getvalue() + err.getvalue()
 
-    def test_declared_variable_fails_while_env_file_variable_is_reported(self):
+    def test_declared_variable_fails_while_env_file_variable_is_reported(self) -> None:
         code, output = self.run_main(ENV_FILE_RENDERED, ENV_FILE_RAW)
-        self.assertEqual(code, 1)
-        self.assertIn("reader\tEMBED_URL\tbackend", output)
-        self.assertIn("SHARED_URL\tbackend\t2", output)
-        self.assertNotIn("http://", output)
+        assert code == 1, output
+        assert "reader\tEMBED_URL\tbackend" in output, output
+        assert "SHARED_URL\tbackend\t2" in output, output
+        assert "http://" not in output, output
 
-    def test_env_file_only_findings_do_not_fail(self):
+    def test_env_file_only_findings_do_not_fail(self) -> None:
         raw = load(
             """
 services:
@@ -426,11 +467,11 @@ services:
 """
         )
         code, output = self.run_main(ENV_FILE_RENDERED, raw)
-        self.assertEqual(code, 0)
-        self.assertIn("EMBED_URL\tbackend\t1", output)
-        self.assertIn("SHARED_URL\tbackend\t2", output)
+        assert code == 0, output
+        assert "EMBED_URL\tbackend\t1" in output, output
+        assert "SHARED_URL\tbackend\t2" in output, output
 
-    def test_findings_exit_one_and_print_only_service_variable_host(self):
+    def test_findings_exit_one_and_print_only_service_variable_host(self) -> None:
         cfg = load(
             """
 services:
@@ -443,21 +484,27 @@ services:
 """
         )
         code, output = self.run_main(cfg)
-        self.assertEqual(code, 1)
-        self.assertIn("caller", output)
-        self.assertIn("DATABASE_URL", output)
-        self.assertIn("db", output)
+        assert code == 1, output
+        assert "caller" in output, output
+        assert "DATABASE_URL" in output, output
+        assert "db" in output, output
         for leaked in ("s3cret-value", "postgres://", "5432", "sslmode"):
-            self.assertNotIn(leaked, output)
+            assert leaked not in output, output
 
-    def test_clean_config_exits_zero(self):
-        code, _ = self.run_main({"services": {"a": {"networks": ["n"]}}})
-        self.assertEqual(code, 0)
+    def test_clean_config_exits_zero(self) -> None:
+        code, output = self.run_main({"services": {"a": {"networks": ["n"]}}})
+        assert code == 0, output
 
-    def test_render_failure_exits_two(self):
+    def test_render_failure_exits_two(self) -> None:
+        render_error_exit_code = 2
         out, err = io.StringIO(), io.StringIO()
-        with mock.patch.object(audit, "render", side_effect=audit.RenderError("boom", 15)), redirect_stdout(out), redirect_stderr(err):
-            self.assertEqual(audit.main([]), 2)
+        with (
+            mock.patch.object(audit, "render", side_effect=audit.RenderError("boom", 15)),
+            redirect_stdout(out),
+            redirect_stderr(err),
+        ):
+            rc = audit.main([])
+            assert rc == render_error_exit_code, rc
 
 
 if __name__ == "__main__":

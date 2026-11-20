@@ -21,37 +21,49 @@ from collections.abc import Callable
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from compose_include import load_yaml, production_compose_files, production_services  # noqa: E402
+from compose_include import (  # noqa: E402 - needs the sys.path entry added above
+    load_yaml,
+    production_compose_files,
+    production_services,
+)
 
 MANIFEST = ROOT / "deploy" / "host-prereqs.yaml"
 
 # The host .env checker owns the dead-value rules; the templates must pass the
 # same rules the alt-deploy host preflight applies to a production .env.
-_spec = importlib.util.spec_from_file_location("check_env_overrides", ROOT / "scripts" / "check-env-overrides.py")
-assert _spec is not None and _spec.loader is not None
+_spec = importlib.util.spec_from_file_location(
+    "check_env_overrides", ROOT / "scripts" / "check-env-overrides.py"
+)
+assert _spec is not None
+assert _spec.loader is not None
 overrides = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(overrides)
 
-PASS = 0
-FAIL = 0
+
+class _Results:
+    def __init__(self) -> None:
+        self.passed = 0
+        self.failed = 0
+
+
+RESULTS = _Results()
 
 INTERP_DEFAULT = re.compile(r"^\$\{(?P<var>[A-Za-z_][A-Za-z0-9_]*):?-(?P<default>[^}]*)\}$")
 
 
 def check(name: str, condition: Callable[[], bool]) -> None:
-    global PASS, FAIL
     try:
         ok = bool(condition())
-    except Exception as exc:
-        print(f"  FAIL  {name} ({type(exc).__name__}: {exc})")
-        FAIL += 1
+    except Exception as exc:  # noqa: BLE001 - test check wrapper converts unexpected errors into FAIL
+        sys.stdout.write(f"  FAIL  {name} ({type(exc).__name__}: {exc})\n")
+        RESULTS.failed += 1
         return
     if ok:
-        print(f"  PASS  {name}")
-        PASS += 1
+        sys.stdout.write(f"  PASS  {name}\n")
+        RESULTS.passed += 1
     else:
-        print(f"  FAIL  {name}")
-        FAIL += 1
+        sys.stdout.write(f"  FAIL  {name}\n")
+        RESULTS.failed += 1
 
 
 def env_map(svc: dict) -> dict[str, str]:
@@ -96,18 +108,23 @@ acolyte = env_map(services["acolyte-orchestrator"])
 search_indexer = services["search-indexer"]
 pre_processor = services["pre-processor"]
 
-print("alt-backend upstreams (the clients refuse non-https and exit the process)")
+sys.stdout.write("alt-backend upstreams (the clients refuse non-https and exit the process)\n")
 for var, want in (
     ("SEARCH_INDEXER_CONNECT_URL", "https://search-indexer:9443"),
     ("PRE_PROCESSOR_URL", "https://pre-processor:9443"),
     ("PRE_PROCESSOR_CONNECT_URL", "https://pre-processor:9443"),
 ):
-    check(f"alt-backend {var} is {want}", lambda var=var, want=want: effective(backend.get(var, "")) == want)
+    check(
+        f"alt-backend {var} is {want}",
+        lambda var=var, want=want: effective(backend.get(var, "")) == want,
+    )
 for name, svc in (("search-indexer", search_indexer), ("pre-processor", pre_processor)):
     check(
         f"{name} serves mTLS on :9443",
-        lambda svc=svc: env_map(svc).get("MTLS_PORT") == "9443"
-        and effective(env_map(svc).get("MTLS_LISTEN", "")) == "true",
+        lambda svc=svc: (
+            env_map(svc).get("MTLS_PORT") == "9443"
+            and effective(env_map(svc).get("MTLS_LISTEN", "")) == "true"
+        ),
     )
     check(f"{name} admits the alt-backend leaf", lambda svc=svc: "alt-backend" in peers(svc))
 check(
@@ -115,7 +132,7 @@ check(
     lambda: all(backend.get(k) for k in ("MTLS_CERT_FILE", "MTLS_KEY_FILE", "MTLS_CA_FILE")),
 )
 
-print("acolyte-orchestrator search (search-indexer :9300 is health-only)")
+sys.stdout.write("acolyte-orchestrator search (search-indexer :9300 is health-only)\n")
 check(
     "acolyte SEARCH_INDEXER_URL defaults to https://search-indexer:9443",
     lambda: effective(acolyte.get("SEARCH_INDEXER_URL", "")) == "https://search-indexer:9443",
@@ -129,20 +146,23 @@ check(
     lambda: "acolyte-orchestrator" in peers(search_indexer),
 )
 
-print("alt-butterfly-facade never calls auth-hub")
+sys.stdout.write("alt-butterfly-facade never calls auth-hub\n")
 check(
     "alt-butterfly-facade carries no AUTH_HUB_INTERNAL_URL (the BFF has no auth-hub client)",
     lambda: "AUTH_HUB_INTERNAL_URL" not in env_map(services["alt-butterfly-facade"]),
 )
 
-print("kratos cookie domain: empty is host-only, unset is a misconfiguration")
+sys.stdout.write("kratos cookie domain: empty is host-only, unset is a misconfiguration\n")
 for name in ("kratos", "kratos-migrate"):
     check(
         f"{name} requires KRATOS_COOKIE_DOMAIN to be set (empty allowed)",
-        lambda name=name: re.fullmatch(
-            r"\$\{KRATOS_COOKIE_DOMAIN\?[^}]+\}",
-            env_map(services[name]).get("KRATOS_COOKIE_DOMAIN", ""),
-        ) is not None,
+        lambda name=name: (
+            re.fullmatch(
+                r"\$\{KRATOS_COOKIE_DOMAIN\?[^}]+\}",
+                env_map(services[name]).get("KRATOS_COOKIE_DOMAIN", ""),
+            )
+            is not None
+        ),
     )
 
 defaults = compose_defaults()
@@ -151,51 +171,63 @@ required_env = manifest.get("required_env") or []
 rules = overrides.load_rules(MANIFEST)
 compose_text = "\n".join(path.read_text(encoding="utf-8") for path in production_compose_files())
 
-print("deploy/host-prereqs.yaml env rules stay in lockstep with compose")
+sys.stdout.write("deploy/host-prereqs.yaml env rules stay in lockstep with compose\n")
 check(
     "https-only-upstream covers exactly the keys compose defaults to an https URL",
-    lambda: set(rules.keys_for("https-only-upstream"))
-    == {k for k, ds in defaults.items() if any(d.startswith("https://") for d in ds)},
+    lambda: (
+        set(rules.keys_for("https-only-upstream"))
+        == {k for k, ds in defaults.items() if any(d.startswith("https://") for d in ds)}
+    ),
 )
 check(
     "every production service that sets MTLS_ALLOWED_PEERS uses an interpolated, manifest-declared key",
-    lambda: not [
-        name
-        for name, svc in services.items()
-        if "MTLS_ALLOWED_PEERS" in env_map(svc)
-        # alt-butterfly-facade's :9443 listener is closed by default, so its
-        # allowlist default (${ALT_BUTTERFLY_FACADE_MTLS_ALLOWED_PEERS:-}) is
-        # intentionally empty and not declared in env_allowlists.
-        # recap-worker's list is `disabled` by default for the same reason: its
-        # callers still use the plaintext listener.
-        and not (
-            name == "alt-butterfly-facade"
-            and env_map(svc)["MTLS_ALLOWED_PEERS"] == "${ALT_BUTTERFLY_FACADE_MTLS_ALLOWED_PEERS:-}"
-        )
-        and not (
-            name == "recap-worker"
-            and env_map(svc)["MTLS_ALLOWED_PEERS"] == "${RECAP_WORKER_MTLS_ALLOWED_PEERS:-disabled}"
-        )
-        and (
-            (m := INTERP_DEFAULT.match(env_map(svc)["MTLS_ALLOWED_PEERS"])) is None
-            or m.group("var") not in rules.allowlists
-        )
-    ],
+    lambda: (
+        not [
+            name
+            for name, svc in services.items()
+            if "MTLS_ALLOWED_PEERS" in env_map(svc)
+            # alt-butterfly-facade's :9443 listener is closed by default, so its
+            # allowlist default (${ALT_BUTTERFLY_FACADE_MTLS_ALLOWED_PEERS:-}) is
+            # intentionally empty and not declared in env_allowlists.
+            # recap-worker's list is `disabled` by default for the same reason: its
+            # callers still use the plaintext listener.
+            and not (
+                name == "alt-butterfly-facade"
+                and env_map(svc)["MTLS_ALLOWED_PEERS"]
+                == "${ALT_BUTTERFLY_FACADE_MTLS_ALLOWED_PEERS:-}"
+            )
+            and not (
+                name == "recap-worker"
+                and env_map(svc)["MTLS_ALLOWED_PEERS"]
+                == "${RECAP_WORKER_MTLS_ALLOWED_PEERS:-disabled}"
+            )
+            and (
+                (m := INTERP_DEFAULT.match(env_map(svc)["MTLS_ALLOWED_PEERS"])) is None
+                or m.group("var") not in rules.allowlists
+            )
+        ]
+    ),
 )
 check(
     "env_allowlists require exactly the peers of every non-empty compose allowlist default",
-    lambda: {k: set(v) for k, v in rules.allowlists.items()}
-    == {
-        k: {p for d in ds for p in d.split(",") if p}
-        for k, ds in defaults.items()
-        if k.endswith("ALLOWED_PEERS") and any(d not in ("", "disabled") for d in ds)
-    },
+    lambda: (
+        {k: set(v) for k, v in rules.allowlists.items()}
+        == {
+            k: {p for d in ds for p in d.split(",") if p}
+            for k, ds in defaults.items()
+            if k.endswith("ALLOWED_PEERS") and any(d not in ("", "disabled") for d in ds)
+        }
+    ),
 )
 check(
     "retired_env keys are not interpolated by production compose",
-    lambda: not [
-        k for k in rules.retired_keys() if re.search(r"\$\{" + re.escape(k) + r"\b", compose_text)
-    ],
+    lambda: (
+        not [
+            k
+            for k in rules.retired_keys()
+            if re.search(r"\$\{" + re.escape(k) + r"\b", compose_text)
+        ]
+    ),
 )
 check(
     "every key a dead_env_values rule names is a compose `${VAR:-default}`",
@@ -203,23 +235,28 @@ check(
 )
 check(
     "no compose default trips a dead_env_values rule",
-    lambda: not [f for k, ds in defaults.items() for d in ds for f in overrides.evaluate({k: d}, rules)],
+    lambda: (
+        not [f for k, ds in defaults.items() for d in ds for f in overrides.evaluate({k: d}, rules)]
+    ),
 )
 
 for template in (".env.template", ".env.example", "compose/.env.example"):
     values = overrides.parse_env_file((ROOT / template).read_text(encoding="utf-8"))
-    print(f"{template} does not override compose with dead values")
+    sys.stdout.write(f"{template} does not override compose with dead values\n")
     check(
         f"{template} trips no deploy/host-prereqs.yaml env rule (scripts/check-env-overrides.py)",
         lambda values=values: overrides.evaluate(values, rules) == [],
     )
     if template == "compose/.env.example":
         continue
-    check(f"{template} declares KRATOS_COOKIE_DOMAIN", lambda values=values: "KRATOS_COOKIE_DOMAIN" in values)
+    check(
+        f"{template} declares KRATOS_COOKIE_DOMAIN",
+        lambda values=values: "KRATOS_COOKIE_DOMAIN" in values,
+    )
     check(
         f"{template} declares every deploy/host-prereqs.yaml required_env key",
         lambda values=values: not [key for key in required_env if key not in values],
     )
 
-print(f"\n{PASS} passed, {FAIL} failed")
-sys.exit(1 if FAIL else 0)
+sys.stdout.write(f"\n{RESULTS.passed} passed, {RESULTS.failed} failed\n")
+sys.exit(1 if RESULTS.failed else 0)

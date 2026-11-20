@@ -29,25 +29,31 @@ SCRIPTS = ROOT / "scripts"
 spec = importlib.util.spec_from_file_location(
     "synthetic_probes_audit", SCRIPTS / "synthetic-probes-audit.py"
 )
-assert spec is not None and spec.loader is not None
+assert spec is not None
+assert spec.loader is not None
 audit = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = audit
 spec.loader.exec_module(audit)
 
-PASS = 0
-FAIL = 0
+
+class _Results:
+    def __init__(self) -> None:
+        self.passed = 0
+        self.failed = 0
+
+
+_RESULTS = _Results()
 
 
 def check(name: str, condition: bool, detail: str = "") -> None:
-    global PASS, FAIL
     if condition:
-        print(f"  PASS  {name}")
-        PASS += 1
+        sys.stdout.write(f"  PASS  {name}\n")
+        _RESULTS.passed += 1
         return
-    print(f"  FAIL  {name}")
+    sys.stdout.write(f"  FAIL  {name}\n")
     if detail:
-        print(f"        {detail}")
-    FAIL += 1
+        sys.stdout.write(f"        {detail}\n")
+    _RESULTS.failed += 1
 
 
 def has_violation(violations: list[str], *needles: str) -> bool:
@@ -182,7 +188,7 @@ def good_spec() -> dict:
     }
 
 
-print("catalog from the live tree")
+sys.stdout.write("catalog from the live tree\n")
 live_catalog = audit.load_catalog(ROOT)
 check(
     "Plecto exposes Kratos under /ory/",
@@ -220,7 +226,7 @@ check(
     in live_catalog.rpcs.get("alt.knowledge_home.v1.KnowledgeHomeService", set()),
 )
 
-print("auditor rejects the H3/M8/M9 defect classes")
+sys.stdout.write("auditor rejects the H3/M8/M9 defect classes\n")
 cat = catalog()
 
 whoami = good_spec()
@@ -246,15 +252,12 @@ check(
 )
 
 unknown_rpc = good_spec()
-unknown_rpc["probes"][3]["url"] = (
-    "{{EDGE_BASE_URL}}/api/v2/alt.search.v2.SearchService/Search"
-)
+unknown_rpc["probes"][3]["url"] = "{{EDGE_BASE_URL}}/api/v2/alt.search.v2.SearchService/Search"
 v = audit.audit(unknown_rpc, cat)
 check(
     "H3 SearchService/Search is unknown (live RPC is SearchArticles)",
-    has_violation(v, "Search") and (
-        has_violation(v, "unknown") or has_violation(v, "SearchArticles")
-    ),
+    has_violation(v, "Search")
+    and (has_violation(v, "unknown") or has_violation(v, "SearchArticles")),
     "\n".join(v),
 )
 
@@ -328,7 +331,7 @@ check(
 )
 
 secret = good_spec()
-secret["probes"][0]["auth"]["password"] = "hunter2-not-a-placeholder"
+secret["probes"][0]["auth"]["password"] = "hunter2-not-a-placeholder"  # noqa: S105 - test fixture value
 v = audit.audit(secret, cat)
 check(
     "placeholders contain no secrets",
@@ -347,11 +350,11 @@ check(
     "\n".join(v),
 )
 
-print("canonical spec is accepted")
+sys.stdout.write("canonical spec is accepted\n")
 v = audit.audit(good_spec(), cat)
 check("good spec has no violations", v == [], "\n".join(v))
 
-print("live observability/synthetic/probes.yaml")
+sys.stdout.write("live observability/synthetic/probes.yaml\n")
 live_doc = audit.load_probes(ROOT / "observability" / "synthetic" / "probes.yaml")
 check("live spec parses as a mapping", isinstance(live_doc, dict))
 live_v = audit.audit(live_doc, live_catalog)
@@ -361,12 +364,11 @@ check(
     "\n".join(live_v),
 )
 
-print("per-journey heartbeat / BFF observation contract")
+sys.stdout.write("per-journey heartbeat / BFF observation contract\n")
 heartbeat = (live_doc or {}).get("heartbeat") if isinstance(live_doc, dict) else None
 check(
     "live spec declares provider-independent heartbeat metric",
-    isinstance(heartbeat, dict)
-    and heartbeat.get("metric") == "alt_synthetic_probe_result",
+    isinstance(heartbeat, dict) and heartbeat.get("metric") == "alt_synthetic_probe_result",
     f"got {heartbeat!r}",
 )
 check(
@@ -386,9 +388,7 @@ check(
 )
 
 probes_by_id = {
-    str(p.get("id")): p
-    for p in ((live_doc or {}).get("probes") or [])
-    if isinstance(p, dict)
+    str(p.get("id")): p for p in ((live_doc or {}).get("probes") or []) if isinstance(p, dict)
 }
 check(
     "login_session sets bff_observation false",
@@ -408,9 +408,8 @@ login_bff["probes"][0]["bff_observation"] = True
 v = audit.audit(login_bff, cat)
 check(
     "auditor rejects login bff_observation true (Kratos whoami skips BFF)",
-    has_violation(v, "login") and (
-        has_violation(v, "bff") or has_violation(v, "kratos") or has_violation(v, "whoami")
-    ),
+    has_violation(v, "login")
+    and (has_violation(v, "bff") or has_violation(v, "kratos") or has_violation(v, "whoami")),
     "\n".join(v),
 )
 
@@ -423,9 +422,9 @@ check(
     "\n".join(v),
 )
 
-rules = (
-    ROOT / "observability" / "prometheus" / "rules" / "user-journey-slo-alerts.yml"
-).read_text(encoding="utf-8")
+rules = (ROOT / "observability" / "prometheus" / "rules" / "user-journey-slo-alerts.yml").read_text(
+    encoding="utf-8"
+)
 rules_v = audit.audit_no_observation_rules(rules)
 check(
     "SLO rules no-observation contract is clean",
@@ -433,7 +432,7 @@ check(
     "\n".join(rules_v),
 )
 generic_up = (
-    "up{job=~\"synthetic|blackbox-synthetic\"} or vector(0)\n"
+    'up{job=~"synthetic|blackbox-synthetic"} or vector(0)\n'
     "and on() (alt:synthetic:probes:activated == 1)\n"
 )
 check(
@@ -441,5 +440,5 @@ check(
     has_violation(audit.audit_no_observation_rules(generic_up), "up{job"),
 )
 
-print(f"\n{PASS} passed, {FAIL} failed")
-sys.exit(1 if FAIL else 0)
+sys.stdout.write(f"\n{_RESULTS.passed} passed, {_RESULTS.failed} failed\n")
+sys.exit(1 if _RESULTS.failed else 0)

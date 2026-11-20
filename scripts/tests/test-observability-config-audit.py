@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import copy
 import importlib.util
-import os
 import pathlib
 import sys
 import tempfile
@@ -28,30 +27,40 @@ sys.path.insert(0, str(SCRIPTS))
 spec = importlib.util.spec_from_file_location(
     "obs_audit", SCRIPTS / "observability-config-audit.py"
 )
-assert spec is not None and spec.loader is not None
+assert spec is not None
+assert spec.loader is not None
 audit = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(audit)
 
-PASS = 0
-FAIL = 0
+PKI_INPROCESS_PARENT_COUNT = 16
 
 
-def check(name, condition):
-    global PASS, FAIL
+class _Results:
+    def __init__(self) -> None:
+        self.passed = 0
+        self.failed = 0
+
+
+RESULTS = _Results()
+
+
+def check(name: str, condition: bool) -> None:
     if condition:
-        print(f"  PASS  {name}")
-        PASS += 1
+        sys.stdout.write(f"  PASS  {name}\n")
+        RESULTS.passed += 1
     else:
-        print(f"  FAIL  {name}")
-        FAIL += 1
+        sys.stdout.write(f"  FAIL  {name}\n")
+        RESULTS.failed += 1
 
 
-def reset_audit():
+def reset_audit() -> None:
     audit.errors.clear()
     audit.warnings.clear()
 
 
-def write_tree(host: pathlib.Path, compose_body: str, *, am: bool = True, prom: bool = True) -> None:
+def write_tree(
+    host: pathlib.Path, compose_body: str, *, am: bool = True, prom: bool = True
+) -> None:
     (host / "compose").mkdir(parents=True, exist_ok=True)
     (host / "observability" / "alertmanager").mkdir(parents=True, exist_ok=True)
     (host / "observability" / "prometheus").mkdir(parents=True, exist_ok=True)
@@ -102,7 +111,7 @@ services:
       - ../observability/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
 """
 
-print("parse_file_attachments")
+sys.stdout.write("parse_file_attachments\n")
 
 with tempfile.TemporaryDirectory() as tmp:
     host = pathlib.Path(tmp)
@@ -126,8 +135,8 @@ with tempfile.TemporaryDirectory() as tmp:
     check(
         "container_to_host resolves configs: target to the file: source",
         host_cfg is not None
-        and os.path.abspath(host_cfg)
-        == os.path.abspath(str(host / "observability/alertmanager/alertmanager.yml")),
+        and pathlib.Path(host_cfg).resolve()
+        == (host / "observability/alertmanager/alertmanager.yml").resolve(),
     )
 
 with tempfile.TemporaryDirectory() as tmp:
@@ -140,11 +149,11 @@ with tempfile.TemporaryDirectory() as tmp:
     check(
         "short-syntax bind mount is still a valid attachment",
         host_cfg is not None
-        and os.path.abspath(host_cfg)
-        == os.path.abspath(str(host / "observability/alertmanager/alertmanager.yml")),
+        and pathlib.Path(host_cfg).resolve()
+        == (host / "observability/alertmanager/alertmanager.yml").resolve(),
     )
 
-print("audit_alertmanager")
+sys.stdout.write("audit_alertmanager\n")
 
 with tempfile.TemporaryDirectory() as tmp:
     host = pathlib.Path(tmp)
@@ -174,7 +183,10 @@ with tempfile.TemporaryDirectory() as tmp:
     audit.audit_alertmanager(str(host), mounts)
     check(
         "wrong configs: target is a violation",
-        any("alertmanager.yml" in e and "/etc/alertmanager/alertmanager.yml" in e for e in audit.errors),
+        any(
+            "alertmanager.yml" in e and "/etc/alertmanager/alertmanager.yml" in e
+            for e in audit.errors
+        ),
     )
 
 with tempfile.TemporaryDirectory() as tmp:
@@ -230,7 +242,7 @@ with tempfile.TemporaryDirectory() as tmp:
     present = audit.audit_alertmanager(str(host), mounts)
     check("legacy short-syntax bind of the yml is still clean", present and not audit.errors)
 
-print("production")
+sys.stdout.write("production\n")
 reset_audit()
 prod_compose = str(ROOT / "compose" / "observability.yaml")
 prod_mounts = audit.parse_mounts(prod_compose)
@@ -240,32 +252,30 @@ am_host = audit.container_to_host(
 prom_host = audit.container_to_host(
     "/etc/prometheus/prometheus.yml", prod_mounts.get("prometheus") or []
 )
-grafana_host = audit.container_to_host(
-    "/etc/grafana/grafana.ini", prod_mounts.get("grafana") or []
-)
+grafana_host = audit.container_to_host("/etc/grafana/grafana.ini", prod_mounts.get("grafana") or [])
 check(
     "production alertmanager attaches observability/alertmanager/alertmanager.yml",
     am_host is not None
-    and os.path.abspath(am_host)
-    == os.path.abspath(str(ROOT / "observability/alertmanager/alertmanager.yml")),
+    and pathlib.Path(am_host).resolve()
+    == (ROOT / "observability/alertmanager/alertmanager.yml").resolve(),
 )
 check(
     "production prometheus attaches observability/prometheus/prometheus.yml",
     prom_host is not None
-    and os.path.abspath(prom_host)
-    == os.path.abspath(str(ROOT / "observability/prometheus/prometheus.yml")),
+    and pathlib.Path(prom_host).resolve()
+    == (ROOT / "observability/prometheus/prometheus.yml").resolve(),
 )
 check(
     "production grafana attaches observability/grafana/grafana.ini",
     grafana_host is not None
-    and os.path.abspath(grafana_host)
-    == os.path.abspath(str(ROOT / "observability/grafana/grafana.ini")),
+    and pathlib.Path(grafana_host).resolve()
+    == (ROOT / "observability/grafana/grafana.ini").resolve(),
 )
 reset_audit()
 audit.audit_alertmanager(str(ROOT), prod_mounts)
 check("production audit_alertmanager is clean", not audit.errors)
 
-print("pki ops YAML surface")
+sys.stdout.write("pki ops YAML surface\n")
 
 prom = audit.load_yaml(str(ROOT / "observability/prometheus/prometheus.yml"))
 rules = audit.load_yaml(str(ROOT / "observability/prometheus/rules/pki-agent-alerts.yml"))
@@ -343,7 +353,7 @@ check(
 check(
     "knowledge-sovereign and recap-evaluator are pinned in-process parents",
     {"knowledge-sovereign", "recap-evaluator"} <= set(audit.PKI_INPROCESS_PARENTS)
-    and len(audit.PKI_INPROCESS_PARENTS) == 16,
+    and len(audit.PKI_INPROCESS_PARENTS) == PKI_INPROCESS_PARENT_COUNT,
 )
 check(
     "knowledge-sovereign's :9110 job is distinct from its :9501 app job",
@@ -359,5 +369,5 @@ check(
     any("exactly 16" in v for v in audit.audit_pki_ops_surface(prom, fleet14)),
 )
 
-print(f"\n{PASS} passed, {FAIL} failed")
-sys.exit(1 if FAIL else 0)
+sys.stdout.write(f"\n{RESULTS.passed} passed, {RESULTS.failed} failed\n")
+sys.exit(1 if RESULTS.failed else 0)

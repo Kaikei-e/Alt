@@ -24,41 +24,53 @@ SCRIPT = ROOT / "scripts" / "check-env-overrides.py"
 MANIFEST = ROOT / "deploy" / "host-prereqs.yaml"
 
 spec = importlib.util.spec_from_file_location("check_env_overrides", SCRIPT)
-assert spec is not None and spec.loader is not None
+assert spec is not None
+assert spec.loader is not None
 checker = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(checker)
 
-PASS = 0
-FAIL = 0
+
+class _Results:
+    def __init__(self) -> None:
+        self.passed = 0
+        self.failed = 0
+
+
+RESULTS = _Results()
 
 
 def check(name: str, condition: bool, detail: str = "") -> None:
-    global PASS, FAIL
     if condition:
-        print(f"  PASS  {name}")
-        PASS += 1
+        sys.stdout.write(f"  PASS  {name}\n")
+        RESULTS.passed += 1
     else:
-        print(f"  FAIL  {name}" + (f" ({detail})" if detail else ""))
-        FAIL += 1
+        suffix = f" ({detail})" if detail else ""
+        sys.stdout.write(f"  FAIL  {name}{suffix}\n")
+        RESULTS.failed += 1
 
 
-def pairs(findings) -> set[tuple[str, str, str]]:
+def pairs(findings: list[object]) -> set[tuple[str, str, str]]:
     return {(f.severity, f.key, f.rule) for f in findings}
 
 
-def run_cli(*env_texts: str, extra_args: tuple[str, ...] = ()) -> subprocess.CompletedProcess:
+def run_cli(*env_texts: str, extra_args: tuple[str, ...] = ()) -> subprocess.CompletedProcess[str]:
     with tempfile.TemporaryDirectory() as tmp:
         args = [sys.executable, str(SCRIPT)]
         for i, text in enumerate(env_texts):
             path = pathlib.Path(tmp) / f"host-{i}.env"
             path.write_text(text, encoding="utf-8")
             args += ["--env-file", str(path)]
-        return subprocess.run([*args, *extra_args], capture_output=True, text=True, check=False)
+        return subprocess.run(  # noqa: S603 - fixed argv built in this test
+            [*args, *extra_args],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
 
 
 rules = checker.load_rules(MANIFEST)
 
-print("parse_env_file")
+sys.stdout.write("parse_env_file\n")
 parsed = checker.parse_env_file(
     "\n".join(
         [
@@ -90,7 +102,7 @@ check(
     repr(parsed),
 )
 
-print("manifest rules")
+sys.stdout.write("manifest rules\n")
 check(
     "rule ids are unique across retired_env and dead_env_values",
     len(rules.rule_ids()) == len(set(rules.rule_ids())),
@@ -105,7 +117,7 @@ check(
     <= set(rules.allowlists.get("AUTH_HUB_MTLS_ALLOWED_PEERS", ())),
 )
 
-print("evaluate: the pre-rollout host .env")
+sys.stdout.write("evaluate: the pre-rollout host .env\n")
 STALE = {
     "AUTH_HUB_INTERNAL_URL": "http://auth-hub:8888",
     "OLLAMA_EMBED_URL": "http://knowledge-embedder-local:11434",
@@ -129,9 +141,13 @@ expected = {
     ("warning", "AUGUR_EXTERNAL", "rag-orchestrator-pinned-upstreams"),
     ("warning", "QUERY_EXPANSION_URL", "rag-orchestrator-pinned-upstreams"),
 }
-check("flags every stale override with its rule", found == expected, f"missing={expected - found} extra={found - expected}")
+check(
+    "flags every stale override with its rule",
+    found == expected,
+    f"missing={expected - found} extra={found - expected}",
+)
 
-print("evaluate: overrides that still work")
+sys.stdout.write("evaluate: overrides that still work\n")
 CURRENT = {
     "AUTH_HUB_INTERNAL_URL": "https://auth-hub:8443",
     "OLLAMA_EMBED_URL": "http://embedding-proxy:11436",
@@ -163,7 +179,7 @@ check(
     == {("error", "ACOLYTE_SEARCH_URL", "https-only-upstream")},
 )
 
-print("CLI: prints key names and rule ids, never values")
+sys.stdout.write("CLI: prints key names and rule ids, never values\n")
 MARKED = "\n".join(
     [
         "AUTH_HUB_INTERNAL_URL=http://auth-hub:8888/leak-marker-a1",
@@ -208,20 +224,28 @@ check(
     f"rc={clean.returncode}",
 )
 
-both = run_cli("AUTH_HUB_INTERNAL_URL=https://auth-hub:8443\n", "EMBEDDER_EXTERNAL=http://knowledge-embedder-local:11434\n")
+both = run_cli(
+    "AUTH_HUB_INTERNAL_URL=https://auth-hub:8443\n",
+    "EMBEDDER_EXTERNAL=http://knowledge-embedder-local:11434\n",
+)
 check(
     "checks every --env-file it is given",
     both.returncode == 1 and "EMBEDDER_EXTERNAL" in both.stdout,
     f"rc={both.returncode}",
 )
 
-missing = subprocess.run(
+MISSING_FILE_EXIT_CODE = 2
+missing = subprocess.run(  # noqa: S603 - fixed argv built in this test
     [sys.executable, str(SCRIPT), "--env-file", str(ROOT / "does-not-exist.env")],
     capture_output=True,
     text=True,
     check=False,
 )
-check("exits 2 when the env file is missing", missing.returncode == 2, f"rc={missing.returncode}")
+check(
+    "exits 2 when the env file is missing",
+    missing.returncode == MISSING_FILE_EXIT_CODE,
+    f"rc={missing.returncode}",
+)
 
-print(f"\n{PASS} passed, {FAIL} failed")
-sys.exit(1 if FAIL else 0)
+sys.stdout.write(f"\n{RESULTS.passed} passed, {RESULTS.failed} failed\n")
+sys.exit(1 if RESULTS.failed else 0)

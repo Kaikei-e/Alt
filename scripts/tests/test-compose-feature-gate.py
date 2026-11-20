@@ -22,32 +22,35 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
-spec = importlib.util.spec_from_file_location(
-    "feature_gate", SCRIPTS / "compose-feature-gate.py"
-)
-assert spec is not None and spec.loader is not None
+spec = importlib.util.spec_from_file_location("feature_gate", SCRIPTS / "compose-feature-gate.py")
+assert spec is not None
+assert spec.loader is not None
 gate = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(gate)
 
-PASS = 0
-FAIL = 0
+
+class _Results:
+    def __init__(self) -> None:
+        self.passed = 0
+        self.failed = 0
 
 
-def check(name, condition):
-    global PASS, FAIL
+RESULTS = _Results()
+
+
+def check(name: str, condition: bool) -> None:
     if condition:
-        print(f"  PASS  {name}")
-        PASS += 1
+        sys.stdout.write(f"  PASS  {name}\n")
+        RESULTS.passed += 1
     else:
-        print(f"  FAIL  {name}")
-        FAIL += 1
+        sys.stdout.write(f"  FAIL  {name}\n")
+        RESULTS.failed += 1
 
 
-print("parse_compose_version")
+sys.stdout.write("parse_compose_version\n")
 check(
     "strips v and desktop suffix",
-    gate.parse_compose_version("Docker Compose version v5.0.0-desktop.1")
-    == (5, 0, 0),
+    gate.parse_compose_version("Docker Compose version v5.0.0-desktop.1") == (5, 0, 0),
 )
 check(
     "plain v5.4.0",
@@ -58,13 +61,13 @@ check(
     gate.parse_compose_version("Docker Compose version v2.29.1") == (2, 29, 1),
 )
 
-print("pre_start_supported")
+sys.stdout.write("pre_start_supported\n")
 check("5.0.0 is below the floor", not gate.pre_start_supported((5, 0, 0)))
 check("5.3.0 is below the floor", not gate.pre_start_supported((5, 3, 0)))
 check("5.4.0 is the floor", gate.pre_start_supported((5, 4, 0)))
 check("5.5.0 is above the floor", gate.pre_start_supported((5, 5, 0)))
 
-print("gate_report")
+sys.stdout.write("gate_report\n")
 report = gate.gate_report(
     "Docker Compose version v5.0.0-desktop.1",
     live={
@@ -82,7 +85,10 @@ report = gate.gate_report(
         },
     },
 )
-check("records the raw version string", report["compose_version"] == "Docker Compose version v5.0.0-desktop.1")
+check(
+    "records the raw version string",
+    report["compose_version"] == "Docker Compose version v5.0.0-desktop.1",
+)
 check("pre_start_ok is false on 5.0.0", report["pre_start"]["ok"] is False)
 check(
     "create_host_path is not reported as a no-op when the live probe refused",
@@ -120,10 +126,8 @@ check(
     is False,
 )
 
-print("committed_report_violations")
-COMMITTED = json.loads(
-    (SCRIPTS / "compose-feature-gate.report.json").read_text(encoding="utf-8")
-)
+sys.stdout.write("committed_report_violations\n")
+COMMITTED = json.loads((SCRIPTS / "compose-feature-gate.report.json").read_text(encoding="utf-8"))
 unprobed = gate.gate_report("Docker Compose version v5.5.0", live=None)
 check(
     "committed operator-host report holds the 5.4/5.5 contract",
@@ -152,10 +156,7 @@ corrupt_chp = json.loads(json.dumps(COMMITTED))
 corrupt_chp["create_host_path_false"]["ok"] = False
 check(
     "create_host_path_false.ok false is refused",
-    any(
-        "create_host_path_false.ok" in v
-        for v in gate.committed_report_violations(corrupt_chp)
-    ),
+    any("create_host_path_false.ok" in v for v in gate.committed_report_violations(corrupt_chp)),
 )
 corrupt_noop = json.loads(json.dumps(COMMITTED))
 corrupt_noop["create_host_path_false"]["noop"] = True
@@ -185,10 +186,15 @@ def _gate_cli(report_path: pathlib.Path | None) -> subprocess.CompletedProcess[s
     cmd = [sys.executable, str(SCRIPTS / "compose-feature-gate.py"), "--gate-report"]
     if report_path is not None:
         cmd.extend(["--committed-report", str(report_path)])
-    return subprocess.run(cmd, capture_output=True, text=True, check=False)
+    return subprocess.run(  # noqa: S603 - fixed argv built in this test
+        cmd,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
 
 
-print("--gate-report CLI")
+sys.stdout.write("--gate-report CLI\n")
 cli_ok = _gate_cli(SCRIPTS / "compose-feature-gate.report.json")
 check(
     "CLI exits 0 on the committed operator-host report",
@@ -217,5 +223,5 @@ with tempfile.TemporaryDirectory(prefix="alt-gate-") as raw:
         cli_noop.returncode != 0,
     )
 
-print(f"\n{PASS} passed, {FAIL} failed")
-sys.exit(1 if FAIL else 0)
+sys.stdout.write(f"\n{RESULTS.passed} passed, {RESULTS.failed} failed\n")
+sys.exit(1 if RESULTS.failed else 0)

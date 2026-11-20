@@ -21,8 +21,14 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 RUNBOOK = ROOT / "docs" / "runbooks" / "health-deep-contract.md"
 ADR = ROOT / "docs" / "ADR" / "000980.md"
 
-PASS = 0
-FAIL = 0
+
+class _Results:
+    def __init__(self) -> None:
+        self.passed = 0
+        self.failed = 0
+
+
+_RESULTS = _Results()
 
 HOST_DEEP = {
     "news-creator": "127.0.0.1:11434/health/deep",
@@ -36,18 +42,17 @@ GENERIC_HOST_9110_DEEP = re.compile(
 
 
 def check(name: str, condition: bool, detail: str = "") -> None:
-    global PASS, FAIL
     if condition:
-        print(f"  PASS  {name}")
-        PASS += 1
+        sys.stdout.write(f"  PASS  {name}\n")
+        _RESULTS.passed += 1
         return
-    print(f"  FAIL  {name}")
+    sys.stdout.write(f"  FAIL  {name}\n")
     if detail:
-        print(f"        {detail}")
-    FAIL += 1
+        sys.stdout.write(f"        {detail}\n")
+    _RESULTS.failed += 1
 
 
-print("health-deep contract listener matrix")
+sys.stdout.write("health-deep contract listener matrix\n")
 
 md = RUNBOOK.read_text(encoding="utf-8")
 adr = ADR.read_text(encoding="utf-8")
@@ -85,7 +90,9 @@ for service in ("news-creator", "recap-subworker", "search-indexer"):
 check(
     "runbook states PKI ops :9110 does not serve /health/deep for app-listener services",
     (
-        "does not serve" in md.lower() or "serve しない" in md or "serves しない" in md
+        "does not serve" in md.lower()
+        or "serve しない" in md
+        or "serves しない" in md
         or "404" in md
         or "PKI ops" in md
     )
@@ -139,5 +146,5 @@ check(
     "do not claim unpublished PKI ops :9110 universally serves /health/deep",
 )
 
-print(f"\n{PASS} passed, {FAIL} failed")
-sys.exit(1 if FAIL else 0)
+sys.stdout.write(f"\n{_RESULTS.passed} passed, {_RESULTS.failed} failed\n")
+sys.exit(1 if _RESULTS.failed else 0)

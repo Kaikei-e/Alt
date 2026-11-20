@@ -18,31 +18,38 @@ Exit 0 on green, non-zero on red.
 import importlib.util
 import pathlib
 import sys
+from collections.abc import Callable
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 spec = importlib.util.spec_from_file_location(
     "netns_cascade_audit", ROOT / "scripts" / "compose-netns-cascade-audit.py"
 )
-assert spec is not None and spec.loader is not None, "audit script not importable"
+assert spec is not None, "audit script not importable"
+assert spec.loader is not None, "audit script not importable"
 audit = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(audit)
 
-PASS = 0
-FAIL = 0
+
+class _Results:
+    def __init__(self) -> None:
+        self.passed = 0
+        self.failed = 0
 
 
-def check(name, condition):
-    global PASS, FAIL
+RESULTS = _Results()
+
+
+def check(name: str, condition: bool) -> None:
     if condition:
-        print(f"  PASS  {name}")
-        PASS += 1
+        sys.stdout.write(f"  PASS  {name}\n")
+        RESULTS.passed += 1
     else:
-        print(f"  FAIL  {name}")
-        FAIL += 1
+        sys.stdout.write(f"  FAIL  {name}\n")
+        RESULTS.failed += 1
 
 
-def raises(fn):
+def raises(fn: Callable[[], object]) -> bool:
     try:
         fn()
     except SystemExit:
@@ -50,7 +57,7 @@ def raises(fn):
     return False
 
 
-print("parse_cascade_rows")
+sys.stdout.write("parse_cascade_rows\n")
 
 ARRAY = """\
 # compose_service : sidecar_container_name : parent_container_name
@@ -104,7 +111,7 @@ check(
     raises(lambda: audit.parse_cascade_rows('NETNS_SIDECARS=(\n  "a:b"\n)\n')),
 )
 
-print("netns_sidecars")
+sys.stdout.write("netns_sidecars\n")
 
 SERVICES = {
     "pki-agent-tag-generator": {"network_mode": "service:tag-generator"},
@@ -122,7 +129,7 @@ check(
     },
 )
 
-print("container_name")
+sys.stdout.write("container_name\n")
 
 NAMED = {
     "news-creator": {"container_name": "news-creator"},
@@ -139,11 +146,10 @@ check(
 )
 check(
     "a sidecar inherits the derived form from the pki-agent anchor",
-    audit.container_name("pki-agent-tag-generator", NAMED)
-    == "alt-pki-agent-tag-generator-1",
+    audit.container_name("pki-agent-tag-generator", NAMED) == "alt-pki-agent-tag-generator-1",
 )
 
-print("production Wave 4: zero forbidden netns pki sidecars")
+sys.stdout.write("production Wave 4: zero forbidden netns pki sidecars\n")
 
 prod_violations = audit.audit()
 check(
@@ -152,12 +158,12 @@ check(
 )
 if prod_violations:
     for item in prod_violations:
-        print(f"        {item}")
+        sys.stdout.write(f"        {item}\n")
 cascade_text = audit.CASCADE_SCRIPT.read_text(encoding="utf-8")
 check(
     "retired cascade script has no NETNS_SIDECARS array",
     audit.parse_cascade_rows(cascade_text) == [],
 )
 
-print(f"\n{PASS} passed, {FAIL} failed")
-sys.exit(1 if FAIL else 0)
+sys.stdout.write(f"\n{RESULTS.passed} passed, {RESULTS.failed} failed\n")
+sys.exit(1 if RESULTS.failed else 0)

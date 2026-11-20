@@ -22,24 +22,30 @@ SCRIPTS = ROOT / "scripts"
 spec = importlib.util.spec_from_file_location(
     "compose_tool_images", SCRIPTS / "observability-compose-tool-images.py"
 )
-assert spec is not None and spec.loader is not None
+assert spec is not None
+assert spec.loader is not None
 mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mod)
 
-PASS = 0
-FAIL = 0
+
+class _Results:
+    def __init__(self) -> None:
+        self.passed = 0
+        self.failed = 0
+
+
+_RESULTS = _Results()
 
 
 def check(name: str, condition: bool, detail: str = "") -> None:
-    global PASS, FAIL
     if condition:
-        print(f"  PASS  {name}")
-        PASS += 1
+        sys.stdout.write(f"  PASS  {name}\n")
+        _RESULTS.passed += 1
         return
-    print(f"  FAIL  {name}")
+    sys.stdout.write(f"  FAIL  {name}\n")
     if detail:
-        print(f"        {detail}")
-    FAIL += 1
+        sys.stdout.write(f"        {detail}\n")
+    _RESULTS.failed += 1
 
 
 def parse(text: str, *, require_am: bool = True) -> tuple[dict[str, str] | None, str]:
@@ -54,7 +60,7 @@ def parse(text: str, *, require_am: bool = True) -> tuple[dict[str, str] | None,
         path.unlink(missing_ok=True)
 
 
-print("compose tool images (PyYAML, comments cannot select versions)")
+sys.stdout.write("compose tool images (PyYAML, comments cannot select versions)\n")
 
 comment_trap = textwrap.dedent(
     """\
@@ -70,8 +76,16 @@ comment_trap = textwrap.dedent(
 got, err = parse(comment_trap)
 check("commented v9.9.9 / latest do not win", got is not None, err)
 if got:
-    check("prometheus version is 3.1.0 from the mapping", got["prometheus_version"] == "3.1.0", str(got))
-    check("alertmanager version is 0.28.1 from the mapping", got["alertmanager_version"] == "0.28.1", str(got))
+    check(
+        "prometheus version is 3.1.0 from the mapping",
+        got["prometheus_version"] == "3.1.0",
+        str(got),
+    )
+    check(
+        "alertmanager version is 0.28.1 from the mapping",
+        got["alertmanager_version"] == "0.28.1",
+        str(got),
+    )
     check(
         "full prometheus image is pinned",
         got["prometheus_image"] == "prom/prometheus:v3.1.0",
@@ -107,9 +121,7 @@ unpinned, err = parse(
 )
 check("unpinned prometheus image fails", unpinned is None, err)
 
-prod = mod.parse_tool_images(
-    ROOT / "compose" / "observability.yaml", require_alertmanager=True
-)
+prod = mod.parse_tool_images(ROOT / "compose" / "observability.yaml", require_alertmanager=True)
 check("production prometheus is v3.1.0", prod["prometheus_version"] == "3.1.0", str(prod))
 check("production alertmanager is v0.28.1", prod["alertmanager_version"] == "0.28.1", str(prod))
 
@@ -142,5 +154,5 @@ check(
     "comments cannot select versions if the parser loads the YAML mapping",
 )
 
-print(f"\n{PASS} passed, {FAIL} failed")
-sys.exit(1 if FAIL else 0)
+sys.stdout.write(f"\n{_RESULTS.passed} passed, {_RESULTS.failed} failed\n")
+sys.exit(1 if _RESULTS.failed else 0)

@@ -17,8 +17,15 @@ import sys
 import yaml
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-PASS = 0
-FAIL = 0
+
+
+class _Results:
+    def __init__(self) -> None:
+        self.passed = 0
+        self.failed = 0
+
+
+_RESULTS = _Results()
 
 DEAD_SIDECAR_ALERTS = {
     "PkiAgentCertExpirySoon",
@@ -31,15 +38,14 @@ DEAD_SIDECAR_ALERTS = {
 
 
 def check(name: str, condition: bool, detail: str = "") -> None:
-    global PASS, FAIL
     if condition:
-        print(f"  PASS  {name}")
-        PASS += 1
+        sys.stdout.write(f"  PASS  {name}\n")
+        _RESULTS.passed += 1
         return
-    print(f"  FAIL  {name}")
+    sys.stdout.write(f"  FAIL  {name}\n")
     if detail:
-        print(f"        {detail}")
-    FAIL += 1
+        sys.stdout.write(f"        {detail}\n")
+    _RESULTS.failed += 1
 
 
 def load(path: pathlib.Path) -> object:
@@ -61,7 +67,7 @@ def _comment_only_invocation(text: str, command: str) -> bool:
     return mentioned and not executed
 
 
-print("SLO evaluator / inhibit / CI contract")
+sys.stdout.write("SLO evaluator / inhibit / CI contract\n")
 
 am = load(ROOT / "observability" / "alertmanager" / "alertmanager.yml")
 inhibits = am.get("inhibit_rules") or []
@@ -69,7 +75,10 @@ page_ticket = [
     r
     for r in inhibits
     if isinstance(r, dict)
-    and any("severity=~\"page" in str(m) or "severity=~'page" in str(m) for m in (r.get("source_matchers") or []))
+    and any(
+        'severity=~"page' in str(m) or "severity=~'page" in str(m)
+        for m in (r.get("source_matchers") or [])
+    )
 ]
 check("page→ticket inhibit rule exists", len(page_ticket) == 1, f"got {len(page_ticket)}")
 equal = page_ticket[0].get("equal") if page_ticket else []
@@ -80,7 +89,12 @@ check(
 )
 
 grafana_kh = load(
-    ROOT / "observability" / "grafana" / "provisioning" / "alerting" / "knowledge-home-slo-rules.yaml"
+    ROOT
+    / "observability"
+    / "grafana"
+    / "provisioning"
+    / "alerting"
+    / "knowledge-home-slo-rules.yaml"
 )
 g_groups = (grafana_kh or {}).get("groups") or []
 g_rules = [rule for g in g_groups for rule in (g.get("rules") or [])]
@@ -228,5 +242,5 @@ check(
     "login heartbeat must not false-page BFF login no-observation",
 )
 
-print(f"\n{PASS} passed, {FAIL} failed")
-sys.exit(1 if FAIL else 0)
+sys.stdout.write(f"\n{_RESULTS.passed} passed, {_RESULTS.failed} failed\n")
+sys.exit(1 if _RESULTS.failed else 0)

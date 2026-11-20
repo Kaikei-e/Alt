@@ -20,11 +20,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from compose_include import load_yaml, production_compose_files  # noqa: E402
+from compose_include import (  # noqa: E402 - needs the sys.path entry added above
+    load_yaml,
+    production_compose_files,
+)
 
-SECRET = "evaluator_api_token"
+SECRET = "evaluator_api_token"  # noqa: S105 - test fixture value
 SECRET_PATH = f"/run/secrets/{SECRET}"
-TOKEN_ENV = "EVALUATOR_API_TOKEN_FILE"
+TOKEN_ENV = "EVALUATOR_API_TOKEN_FILE"  # noqa: S105 - test fixture value
 EVALUATOR = "recap-evaluator"
 
 
@@ -57,27 +60,29 @@ class RecapEvaluatorAuthWiring(unittest.TestCase):
     def test_secret_is_declared_in_base(self) -> None:
         base = load_yaml(ROOT / "compose" / "base.yaml")
         spec = (base.get("secrets") or {}).get(SECRET)
-        self.assertIsNotNone(spec, f"compose/base.yaml must declare {SECRET}")
-        self.assertEqual(spec.get("file"), f"../secrets/{SECRET}.txt")
+        assert spec is not None, f"compose/base.yaml must declare {SECRET}"
+        actual_file = spec.get("file")
+        assert actual_file == f"../secrets/{SECRET}.txt", f"got {actual_file!r}"
 
     def test_evaluator_mounts_the_token(self) -> None:
         svc = self.services[EVALUATOR]
-        self.assertIn(SECRET, secret_names(svc))
-        self.assertEqual(environment(svc).get(TOKEN_ENV), SECRET_PATH)
+        mounted = secret_names(svc)
+        assert SECRET in mounted, f"secrets={sorted(mounted)!r}"
+        actual_token_env = environment(svc).get(TOKEN_ENV)
+        assert actual_token_env == SECRET_PATH, f"{TOKEN_ENV}={actual_token_env!r}"
 
     def test_evaluator_reads_the_same_env_name(self) -> None:
         source = (
             ROOT / "recap-evaluator" / "src" / "recap_evaluator" / "infra" / "bearer_auth.py"
         ).read_text(encoding="utf-8")
-        self.assertIn(f'"{TOKEN_ENV}"', source)
-        self.assertIn(f'"{SECRET_PATH}"', source)
+        assert f'"{TOKEN_ENV}"' in source, f"missing {TOKEN_ENV} in bearer_auth.py"
+        assert f'"{SECRET_PATH}"' in source, f"missing {SECRET_PATH} in bearer_auth.py"
 
     def test_no_production_service_disables_evaluator_auth(self) -> None:
         for name, svc in self.services.items():
             with self.subTest(service=name):
-                self.assertNotEqual(
-                    environment(svc).get("EVALUATOR_AUTH", "").strip().lower(), "disabled"
-                )
+                auth_mode = environment(svc).get("EVALUATOR_AUTH", "").strip().lower()
+                assert auth_mode != "disabled", f"{name}: EVALUATOR_AUTH={auth_mode!r}"
 
     def test_every_evaluator_caller_carries_the_token(self) -> None:
         callers = [
@@ -89,8 +94,10 @@ class RecapEvaluatorAuthWiring(unittest.TestCase):
         for name in callers:
             with self.subTest(caller=name):
                 svc = self.services[name]
-                self.assertIn(SECRET, secret_names(svc))
-                self.assertEqual(environment(svc).get(TOKEN_ENV), SECRET_PATH)
+                mounted = secret_names(svc)
+                assert SECRET in mounted, f"{name}: secrets={sorted(mounted)!r}"
+                actual_token_env = environment(svc).get(TOKEN_ENV)
+                assert actual_token_env == SECRET_PATH, f"{name}: {TOKEN_ENV}={actual_token_env!r}"
 
 
 if __name__ == "__main__":
