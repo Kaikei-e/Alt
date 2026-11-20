@@ -50,7 +50,7 @@ func TestInferenceProxyHealthcheck_Non200(t *testing.T) {
 }
 
 func TestInferenceProxyHealthcheck_ConnectionRefused(t *testing.T) {
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	listener, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("failed to listen: %v", err)
 	}

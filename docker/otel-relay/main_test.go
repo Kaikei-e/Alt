@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"html"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -23,7 +24,9 @@ func writeTokenFile(t *testing.T, content string) string {
 	if _, err := f.WriteString(content); err != nil {
 		t.Fatal(err)
 	}
-	f.Close()
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
 	return f.Name()
 }
 
@@ -123,13 +126,13 @@ func TestParseAndNormalizeTargetURL(t *testing.T) {
 		{"http://host:4318/v1/metrics", true, ""},
 		{"http://host:4318/other", true, ""},
 		{"ftp://bad-scheme.example", true, ""},
-		{"http://user@host:4318", true, ""}, // userinfo not allowed
-		{"http://host:4318?q=1", true, ""},  // query not allowed
-		{"http://host:4318?", true, ""},     // forcequery not allowed
-		{"http://host:4318#frag", true, ""}, // fragment not allowed
-		{"/only/path", true, ""},            // no scheme/host
-		{"http://", true, ""},               // empty host
-		{"http://:4318", true, ""},          // empty hostname
+		{"http://user@host:4318", true, ""},               // userinfo not allowed
+		{"http://host:4318?q=1", true, ""},                // query not allowed
+		{"http://host:4318?", true, ""},                   // forcequery not allowed
+		{"http://host:4318#frag", true, ""},               // fragment not allowed
+		{"/only/path", true, ""},                          // no scheme/host
+		{"http://", true, ""},                             // empty host
+		{"http://:4318", true, ""},                        // empty hostname
 		{"http://collector:4318/%76%31/traces", true, ""}, // encoded path strict reject
 	}
 	for _, tc := range cases {
@@ -191,7 +194,7 @@ func TestLoadToken_EmptyPath(t *testing.T) {
 func TestHealthzGET(t *testing.T) {
 	mux := newMux(&server{token: "tok", targetURL: "http://unused", client: newClient()})
 	rr := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/healthz", nil)
 	mux.ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {
 		t.Errorf("GET /healthz status = %d, want 200", rr.Code)
@@ -205,7 +208,7 @@ func TestHealthzGET(t *testing.T) {
 func TestHealthzPOSTNotAllowed(t *testing.T) {
 	mux := newMux(&server{token: "tok", targetURL: "http://unused", client: newClient()})
 	rr := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/healthz", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/healthz", nil)
 	mux.ServeHTTP(rr, req)
 	if rr.Code != http.StatusMethodNotAllowed {
 		t.Errorf("POST /healthz status = %d, want 405", rr.Code)
@@ -220,7 +223,7 @@ func TestTracesHandler_ForwardsExactPathAndBody(t *testing.T) {
 	mux := newMux(relay)
 
 	payload := []byte("protobuf-binary-payload")
-	req := httptest.NewRequest(http.MethodPost, "/v1/traces", bytes.NewReader(payload))
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/v1/traces", bytes.NewReader(payload))
 	req.Header.Set("Content-Type", "application/x-protobuf")
 
 	rr := httptest.NewRecorder()
@@ -245,7 +248,7 @@ func TestTracesHandler_InjectsRelayBearerToken(t *testing.T) {
 	relay := buildRelay(t, "relay-secret-token", origin.URL)
 	mux := newMux(relay)
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/traces", bytes.NewReader([]byte("body")))
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/v1/traces", bytes.NewReader([]byte("body")))
 	// Forge an incoming Authorization — must NOT be forwarded.
 	req.Header.Set("Authorization", "Bearer attacker-forged-token")
 
@@ -262,7 +265,7 @@ func TestTracesHandler_ForgedAuthNotPassedThrough(t *testing.T) {
 	relay := buildRelay(t, "good-tok", origin.URL)
 	mux := newMux(relay)
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/traces", bytes.NewReader([]byte("x")))
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/v1/traces", bytes.NewReader([]byte("x")))
 	req.Header.Set("Authorization", "Bearer evil")
 
 	rr := httptest.NewRecorder()
@@ -288,7 +291,7 @@ func TestTracesHandler_OversizeBody_Returns413_NoUpstreamHit(t *testing.T) {
 
 	// 5 MiB + 1 byte — just over the limit
 	oversizeBody := bytes.Repeat([]byte("x"), maxBodyBytes+1)
-	req := httptest.NewRequest(http.MethodPost, "/v1/traces", bytes.NewReader(oversizeBody))
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/v1/traces", bytes.NewReader(oversizeBody))
 
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
@@ -307,7 +310,7 @@ func TestTracesHandler_ExactMaxBody_Passes(t *testing.T) {
 	mux := newMux(relay)
 
 	exactBody := bytes.Repeat([]byte("x"), maxBodyBytes)
-	req := httptest.NewRequest(http.MethodPost, "/v1/traces", bytes.NewReader(exactBody))
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/v1/traces", bytes.NewReader(exactBody))
 
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
@@ -330,7 +333,7 @@ func TestTracesHandler_RedirectNotFollowed(t *testing.T) {
 	relay := buildRelay(t, "tok", origin.URL)
 	mux := newMux(relay)
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/traces", bytes.NewReader([]byte("data")))
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/v1/traces", bytes.NewReader([]byte("data")))
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
 
@@ -365,7 +368,7 @@ func TestTracesHandler_ContextCanceled_UpstreamContextDone(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel immediately — context is already done
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/traces", bytes.NewReader([]byte("data")))
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/v1/traces", bytes.NewReader([]byte("data")))
 	req = req.WithContext(ctx)
 
 	rr := httptest.NewRecorder()
@@ -381,7 +384,7 @@ func TestTracesHandler_ContextCanceled_UpstreamContextDone(t *testing.T) {
 
 func TestTracesHandler_GETNotAllowed(t *testing.T) {
 	mux := newMux(&server{token: "tok", targetURL: "http://unused", client: newClient()})
-	req := httptest.NewRequest(http.MethodGet, "/v1/traces", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/v1/traces", nil)
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
 	if rr.Code != http.StatusMethodNotAllowed {
@@ -395,7 +398,7 @@ func TestArbitraryPathsReturn404(t *testing.T) {
 	mux := newMux(&server{token: "tok", targetURL: "http://unused", client: newClient()})
 	paths := []string{"/", "/v1/metrics", "/admin", "/v1/traces/extra", "/health"}
 	for _, p := range paths {
-		req := httptest.NewRequest(http.MethodGet, p, nil)
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, p, nil)
 		rr := httptest.NewRecorder()
 		mux.ServeHTTP(rr, req)
 		if rr.Code != http.StatusNotFound {
@@ -412,7 +415,7 @@ func TestTracesHandler_PropagatesUpstreamStatus(t *testing.T) {
 		relay := buildRelay(t, "tok", origin.URL)
 		mux := newMux(relay)
 
-		req := httptest.NewRequest(http.MethodPost, "/v1/traces", bytes.NewReader([]byte("data")))
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/v1/traces", bytes.NewReader([]byte("data")))
 		rr := httptest.NewRecorder()
 		mux.ServeHTTP(rr, req)
 
@@ -429,7 +432,9 @@ func TestErrorBodyDoesNotExposeToken(t *testing.T) {
 	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Echo the Authorization header back in the body — relay must not forward this.
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("auth=" + r.Header.Get("Authorization")))
+		if _, err := w.Write([]byte("auth=" + html.EscapeString(r.Header.Get("Authorization")))); err != nil {
+			t.Errorf("write error: %v", err)
+		}
 	}))
 	t.Cleanup(origin.Close)
 
@@ -442,7 +447,7 @@ func TestErrorBodyDoesNotExposeToken(t *testing.T) {
 	relayBad := &server{token: token, targetURL: closedServer.URL + "/v1/traces", client: newClient()}
 	muxBad := newMux(relayBad)
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/traces", bytes.NewReader([]byte("data")))
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/v1/traces", bytes.NewReader([]byte("data")))
 	rr := httptest.NewRecorder()
 	muxBad.ServeHTTP(rr, req)
 
@@ -486,7 +491,7 @@ func TestTracesHandler_BothBaseAndCompleteEndpointForwarding(t *testing.T) {
 			mux := newMux(relay)
 
 			payload := []byte("valid-binary-trace-record")
-			req := httptest.NewRequest(http.MethodPost, "/v1/traces", bytes.NewReader(payload))
+			req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/v1/traces", bytes.NewReader(payload))
 			req.Header.Set("Content-Type", "application/x-protobuf")
 
 			rr := httptest.NewRecorder()
@@ -513,7 +518,7 @@ func TestTracesHandler_BothBaseAndCompleteEndpointForwarding(t *testing.T) {
 
 			// Oversize body must return 413 and send ZERO hits upstream
 			oversizeBody := bytes.Repeat([]byte("x"), maxBodyBytes+1)
-			reqOver := httptest.NewRequest(http.MethodPost, "/v1/traces", bytes.NewReader(oversizeBody))
+			reqOver := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/v1/traces", bytes.NewReader(oversizeBody))
 			rrOver := httptest.NewRecorder()
 			mux.ServeHTTP(rrOver, reqOver)
 
@@ -535,7 +540,7 @@ func TestHealthz_BeforeTokenAndNoTokenRequired(t *testing.T) {
 	relay := &server{token: "", targetURL: "http://unreachable.invalid", client: newClient()}
 	mux := newMux(relay)
 
-	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/healthz", nil)
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
 

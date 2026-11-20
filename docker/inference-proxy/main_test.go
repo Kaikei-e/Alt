@@ -43,7 +43,11 @@ func TestProxy_StripAuth_And_Forwarding(t *testing.T) {
 	defer proxyServer.Close()
 
 	// 1. /health — unauthenticated, upstream hit count must stay at 0.
-	resp, err := http.Get(proxyServer.URL + "/health")
+	healthReq, err := http.NewRequestWithContext(t.Context(), http.MethodGet, proxyServer.URL+"/health", nil)
+	if err != nil {
+		t.Fatalf("Create health request failed: %v", err)
+	}
+	resp, err := http.DefaultClient.Do(healthReq)
 	if err != nil {
 		t.Fatalf("Health check failed: %v", err)
 	}
@@ -56,7 +60,11 @@ func TestProxy_StripAuth_And_Forwarding(t *testing.T) {
 	}
 
 	// 2. Missing auth — upstream must not be hit.
-	resp, err = http.Get(proxyServer.URL + "/api/tags")
+	missingReq, err := http.NewRequestWithContext(t.Context(), http.MethodGet, proxyServer.URL+"/api/tags", nil)
+	if err != nil {
+		t.Fatalf("Create missing-auth request failed: %v", err)
+	}
+	resp, err = http.DefaultClient.Do(missingReq)
 	if err != nil {
 		t.Fatalf("Request failed: %v", err)
 	}
@@ -69,7 +77,7 @@ func TestProxy_StripAuth_And_Forwarding(t *testing.T) {
 	}
 
 	// 3. Bad auth — upstream must not be hit.
-	req, _ := http.NewRequest("GET", proxyServer.URL+"/api/tags", nil)
+	req, _ := http.NewRequestWithContext(t.Context(), "GET", proxyServer.URL+"/api/tags", nil)
 	req.Header.Set("Authorization", "Bearer wrong-token")
 	resp, err = http.DefaultClient.Do(req)
 	if err != nil {
@@ -84,7 +92,7 @@ func TestProxy_StripAuth_And_Forwarding(t *testing.T) {
 	}
 
 	// 4. Valid auth — must hit upstream exactly once and strip Authorization header.
-	req, _ = http.NewRequest("GET", proxyServer.URL+"/api/tags", nil)
+	req, _ = http.NewRequestWithContext(t.Context(), "GET", proxyServer.URL+"/api/tags", nil)
 	req.Header.Set("Authorization", "Bearer "+expectedToken)
 	resp, err = http.DefaultClient.Do(req)
 	if err != nil {
@@ -136,7 +144,7 @@ func TestProxy_AllowedAndDisallowedRoutes(t *testing.T) {
 
 	for _, tc := range allowed {
 		atomic.StoreInt64(&upstreamHits, 0)
-		req, _ := http.NewRequest(tc.method, proxyServer.URL+tc.path, bytes.NewReader([]byte(`{}`)))
+		req, _ := http.NewRequestWithContext(t.Context(), tc.method, proxyServer.URL+tc.path, bytes.NewReader([]byte(`{}`)))
 		req.Header.Set("Authorization", "Bearer "+expectedToken)
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
@@ -168,7 +176,7 @@ func TestProxy_AllowedAndDisallowedRoutes(t *testing.T) {
 
 	for _, tc := range disallowed {
 		atomic.StoreInt64(&upstreamHits, 0)
-		req, _ := http.NewRequest(tc.method, proxyServer.URL+tc.path, bytes.NewReader([]byte(`{}`)))
+		req, _ := http.NewRequestWithContext(t.Context(), tc.method, proxyServer.URL+tc.path, bytes.NewReader([]byte(`{}`)))
 		req.Header.Set("Authorization", "Bearer "+expectedToken)
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
@@ -207,7 +215,7 @@ func TestProxy_BodyBound(t *testing.T) {
 
 	// Under limit — upstream must be reached exactly once.
 	smallBody := bytes.Repeat([]byte("a"), int(limit))
-	req, _ := http.NewRequest("POST", proxyServer.URL+"/api/generate", bytes.NewReader(smallBody))
+	req, _ := http.NewRequestWithContext(t.Context(), "POST", proxyServer.URL+"/api/generate", bytes.NewReader(smallBody))
 	req.Header.Set("Authorization", "Bearer "+expectedToken)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -224,7 +232,7 @@ func TestProxy_BodyBound(t *testing.T) {
 	// Over limit — upstream must receive zero bytes and zero hits.
 	atomic.StoreInt64(&upstreamHits, 0)
 	bigBody := bytes.Repeat([]byte("b"), int(limit)+1)
-	req, _ = http.NewRequest("POST", proxyServer.URL+"/api/generate", bytes.NewReader(bigBody))
+	req, _ = http.NewRequestWithContext(t.Context(), "POST", proxyServer.URL+"/api/generate", bytes.NewReader(bigBody))
 	req.Header.Set("Authorization", "Bearer "+expectedToken)
 	resp, err = http.DefaultClient.Do(req)
 	if err != nil {
@@ -257,7 +265,7 @@ func TestProxy_UpstreamResponseHeaderTimeout_Over(t *testing.T) {
 	proxyServer := httptest.NewServer(handler)
 	defer proxyServer.Close()
 
-	req, _ := http.NewRequest("GET", proxyServer.URL+"/api/tags", nil)
+	req, _ := http.NewRequestWithContext(t.Context(), "GET", proxyServer.URL+"/api/tags", nil)
 	req.Header.Set("Authorization", "Bearer "+expectedToken)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -286,7 +294,7 @@ func TestProxy_UpstreamResponseHeaderTimeout_Within(t *testing.T) {
 	proxyServer := httptest.NewServer(handler)
 	defer proxyServer.Close()
 
-	req, _ := http.NewRequest("GET", proxyServer.URL+"/api/tags", nil)
+	req, _ := http.NewRequestWithContext(t.Context(), "GET", proxyServer.URL+"/api/tags", nil)
 	req.Header.Set("Authorization", "Bearer "+expectedToken)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -341,7 +349,7 @@ func TestProxy_SlowStream_NotKilledByWriteTimeout(t *testing.T) {
 	proxyServer := httptest.NewServer(handler)
 	defer proxyServer.Close()
 
-	req, _ := http.NewRequest("GET", proxyServer.URL+"/api/tags", nil)
+	req, _ := http.NewRequestWithContext(t.Context(), "GET", proxyServer.URL+"/api/tags", nil)
 	req.Header.Set("Authorization", "Bearer "+expectedToken)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -430,24 +438,36 @@ func TestProxy_SlowUpload_ReadTimeout_ExpiresBeforeUpstream(t *testing.T) {
 	handler := NewProxyHandler(targetURL, expectedToken, 5*time.Second, DefaultMaxRequestBodyBytes)
 
 	// Start a real server with a tight ReadTimeout (50ms)
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("net.Listen failed: %v", err)
 	}
-	defer ln.Close()
+	defer func() {
+		if err := ln.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+			t.Errorf("ln.Close failed: %v", err)
+		}
+	}()
 
 	server := NewServer(ln.Addr().String(), handler, 50*time.Millisecond)
 	go func() {
 		_ = server.Serve(ln)
 	}()
-	defer server.Close()
+	defer func() {
+		if err := server.Close(); err != nil {
+			t.Errorf("server.Close failed: %v", err)
+		}
+	}()
 
 	// Connect with raw TCP socket to simulate slowloris / slow-upload
-	conn, err := net.Dial("tcp", ln.Addr().String())
+	conn, err := (&net.Dialer{}).DialContext(t.Context(), "tcp", ln.Addr().String())
 	if err != nil {
 		t.Fatalf("Dial failed: %v", err)
 	}
-	defer conn.Close()
+	defer func() {
+		if err := conn.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+			t.Errorf("conn.Close failed: %v", err)
+		}
+	}()
 
 	// Send valid HTTP headers specifying a 1000-byte body
 	header := fmt.Sprintf("POST /api/generate HTTP/1.1\r\nHost: %s\r\nAuthorization: Bearer %s\r\nContent-Length: 1000\r\n\r\n",
@@ -527,7 +547,7 @@ func TestProxy_BodyReadError_Mocked(t *testing.T) {
 	handler := NewProxyHandler(targetURL, expectedToken, 5*time.Second, DefaultMaxRequestBodyBytes)
 
 	// Send request with an io.Reader that fails mid-read
-	req := httptest.NewRequest("POST", "/api/generate", &mockErrorReader{
+	req := httptest.NewRequestWithContext(t.Context(), "POST", "/api/generate", &mockErrorReader{
 		data: []byte("partial data"),
 		err:  errors.New("simulated read failure"),
 	})
@@ -537,7 +557,11 @@ func TestProxy_BodyReadError_Mocked(t *testing.T) {
 	handler.ServeHTTP(w, req)
 
 	resp := w.Result()
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Errorf("resp.Body.Close failed: %v", err)
+		}
+	}()
 
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("Expected 400 Bad Request on body read error, got %d", resp.StatusCode)
@@ -560,23 +584,35 @@ func TestProxy_TruncatedChunk_Rejection(t *testing.T) {
 	targetURL, _ := url.Parse(upstream.URL)
 	handler := NewProxyHandler(targetURL, expectedToken, 5*time.Second, DefaultMaxRequestBodyBytes)
 
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("net.Listen failed: %v", err)
 	}
-	defer ln.Close()
+	defer func() {
+		if err := ln.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+			t.Errorf("ln.Close failed: %v", err)
+		}
+	}()
 
 	server := NewServer(ln.Addr().String(), handler, 5*time.Second)
 	go func() {
 		_ = server.Serve(ln)
 	}()
-	defer server.Close()
+	defer func() {
+		if err := server.Close(); err != nil {
+			t.Errorf("server.Close failed: %v", err)
+		}
+	}()
 
-	conn, err := net.Dial("tcp", ln.Addr().String())
+	conn, err := (&net.Dialer{}).DialContext(t.Context(), "tcp", ln.Addr().String())
 	if err != nil {
 		t.Fatalf("net.Dial failed: %v", err)
 	}
-	defer conn.Close()
+	defer func() {
+		if err := conn.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+			t.Errorf("conn.Close failed: %v", err)
+		}
+	}()
 
 	// Send HTTP request with chunked transfer encoding, but truncate the chunk before finishing
 	header := fmt.Sprintf("POST /api/generate HTTP/1.1\r\nHost: %s\r\nAuthorization: Bearer %s\r\nTransfer-Encoding: chunked\r\n\r\n",
@@ -594,5 +630,87 @@ func TestProxy_TruncatedChunk_Rejection(t *testing.T) {
 
 	if h := atomic.LoadInt64(&upstreamHits); h != 0 {
 		t.Fatalf("Upstream hit count must be 0 on truncated chunk body, got %d", h)
+	}
+}
+
+// TestProxy_ForwardingHeadersAndURLParity verifies that the Rewrite-based
+// ReverseProxy forwards the exact same upstream-visible request fields as the
+// prior NewSingleHostReverseProxy + Director implementation:
+//   - Host matches targetURL.Host
+//   - X-Forwarded-For appends client IP to any inbound X-Forwarded-For
+//   - X-Forwarded-Host and X-Forwarded-Proto are not synthesized when absent
+//   - Path and query are preserved
+//   - Custom headers are preserved
+func TestProxy_ForwardingHeadersAndURLParity(t *testing.T) {
+	expectedToken := "test-secret-token"
+
+	type captured struct {
+		host            string
+		xForwardedFor   string
+		xForwardedHost  string
+		xForwardedProto string
+		pathAndQuery    string
+		customHeader    string
+	}
+	var got captured
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = captured{
+			host:            r.Host,
+			xForwardedFor:   r.Header.Get("X-Forwarded-For"),
+			xForwardedHost:  r.Header.Get("X-Forwarded-Host"),
+			xForwardedProto: r.Header.Get("X-Forwarded-Proto"),
+			pathAndQuery:    r.URL.RequestURI(),
+			customHeader:    r.Header.Get("X-Custom-Header"),
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+
+	targetURL, err := url.Parse(upstream.URL)
+	if err != nil {
+		t.Fatalf("Parse url failed: %v", err)
+	}
+
+	handler := NewProxyHandler(targetURL, expectedToken, 5*time.Second, DefaultMaxRequestBodyBytes)
+	proxyServer := httptest.NewServer(handler)
+	defer proxyServer.Close()
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, proxyServer.URL+"/api/generate?stream=true&model=qwen", bytes.NewReader([]byte(`{}`)))
+	if err != nil {
+		t.Fatalf("NewRequestWithContext failed: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+expectedToken)
+	req.Header.Set("X-Forwarded-For", "203.0.113.10")
+	req.Header.Set("X-Custom-Header", "custom-val")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("Expected 200 OK, got %d", resp.StatusCode)
+	}
+
+	t.Logf("captured upstream request: %+v", got)
+
+	if got.host != targetURL.Host {
+		t.Errorf("Host = %q, want %q", got.host, targetURL.Host)
+	}
+	if got.xForwardedFor != "203.0.113.10, 127.0.0.1" {
+		t.Errorf("X-Forwarded-For = %q, want %q", got.xForwardedFor, "203.0.113.10, 127.0.0.1")
+	}
+	if got.xForwardedHost != "" {
+		t.Errorf("X-Forwarded-Host = %q, want empty", got.xForwardedHost)
+	}
+	if got.xForwardedProto != "" {
+		t.Errorf("X-Forwarded-Proto = %q, want empty", got.xForwardedProto)
+	}
+	if got.pathAndQuery != "/api/generate?stream=true&model=qwen" {
+		t.Errorf("path+query = %q, want %q", got.pathAndQuery, "/api/generate?stream=true&model=qwen")
+	}
+	if got.customHeader != "custom-val" {
+		t.Errorf("X-Custom-Header = %q, want %q", got.customHeader, "custom-val")
 	}
 }

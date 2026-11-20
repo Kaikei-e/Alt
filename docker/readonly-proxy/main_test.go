@@ -70,7 +70,7 @@ func TestIsAllowed(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		req := httptest.NewRequest(tt.method, tt.path, nil)
+		req := httptest.NewRequestWithContext(t.Context(), tt.method, tt.path, nil)
 		got := isAllowed(req)
 		if got != tt.want {
 			t.Errorf("isAllowed(%s %s) = %v, want %v", tt.method, tt.path, got, tt.want)
@@ -157,7 +157,7 @@ func TestWireProxyForwardHits(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			hitsBefore := atomic.LoadInt64(&upstreamHits)
 
-			req, err := http.NewRequest(tt.method, proxyServer.URL+tt.path, nil)
+			req, err := http.NewRequestWithContext(t.Context(), tt.method, proxyServer.URL+tt.path, nil)
 			if err != nil {
 				t.Fatalf("failed to create request: %v", err)
 			}
@@ -263,7 +263,11 @@ func TestLogsAreScopedToProjectAndOptedInContainers(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			before := len(seen())
-			resp, err := http.Get(proxy.URL + tt.path)
+			req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, proxy.URL+tt.path, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			resp, err := http.DefaultClient.Do(req)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -291,7 +295,11 @@ func TestContainerListIsForcedToProject(t *testing.T) {
 	defer proxy.Close()
 
 	spoof := url.Values{"filters": {`{"label":["com.docker.compose.project=other"]}`}, "all": {"1"}}
-	resp, err := http.Get(proxy.URL + "/containers/json?" + spoof.Encode())
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, proxy.URL+"/containers/json?"+spoof.Encode(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -330,13 +338,13 @@ func TestHealthcheck(t *testing.T) {
 	defer server.Close()
 
 	hostPort := strings.TrimPrefix(server.URL, "http://")
-	code := runHealthcheck(hostPort)
+	code := runHealthcheck(t.Context(), hostPort)
 	if code != 0 {
 		t.Errorf("runHealthcheck on healthy server got %d, want 0", code)
 	}
 
 	// 2. Running against an unreachable address -> exit code 1
-	badCode := runHealthcheck("127.0.0.1:59999")
+	badCode := runHealthcheck(t.Context(), "127.0.0.1:59999")
 	if badCode != 1 {
 		t.Errorf("runHealthcheck on unreachable server got %d, want 1", badCode)
 	}
@@ -382,7 +390,7 @@ func TestLogsAllowedFailsClosed(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := logsAllowed(tt.client, tt.base, scopedID, "alt"); got != tt.want {
+			if got := logsAllowed(t.Context(), tt.client, tt.base, scopedID, "alt"); got != tt.want {
 				t.Errorf("logsAllowed = %v, want %v", got, tt.want)
 			}
 		})
@@ -403,7 +411,11 @@ func TestLogsRefusedWhenLookupFails(t *testing.T) {
 	proxy := httptest.NewServer(newProxyHandler(upstreamURL, upstream.Client().Transport, "alt"))
 	defer proxy.Close()
 
-	resp, err := http.Get(proxy.URL + "/containers/" + scopedID + "/logs")
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, proxy.URL+"/containers/"+scopedID+"/logs", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
