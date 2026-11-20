@@ -13,7 +13,7 @@ require (
 	github.com/labstack/echo-otel/v5 v5.0.0
 	github.com/labstack/echo/v5 v5.4.6
 	github.com/microcosm-cc/bluemonday v1.0.27
-	github.com/pact-foundation/pact-go/v2 v2.5.1
+	github.com/pact-foundation/pact-go/v2 v2.9.1
 	github.com/pashagolub/pgxmock/v5 v5.1.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/client_model v0.6.2
@@ -57,6 +57,7 @@ require (
 	github.com/spf13/afero v1.15.0 // indirect
 	github.com/spf13/cobra v1.10.2 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
+	github.com/ulikunitz/xz v0.5.17 // indirect
 	github.com/yuin/gopher-lua v1.1.2 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.47.0 // indirect
@@ -70,6 +71,6 @@ require (
 	golang.org/x/time v0.15.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260928230214-8a89bd6388cc // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260928230214-8a89bd6388cc // indirect
-	google.golang.org/grpc v1.83.2 // indirect
+	google.golang.org/grpc v1.85.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

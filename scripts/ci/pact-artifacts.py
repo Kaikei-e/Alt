@@ -16,9 +16,9 @@ PACT_STANDALONE_URL = "https://github.com/pact-foundation/pact-standalone/releas
 # SHA256 derived after verifying official SHA1 ba65cba9607f8c636ea6abff65539ac5766ad48d
 PACT_STANDALONE_SHA256 = "6a48f4c00049dbb5f246c04caac166aaeab20745f5a4c416112520105fb84c2d"
 
-LIBPACT_FFI_URL = "https://github.com/pact-foundation/pact-reference/releases/download/libpact_ffi-v0.4.28/libpact_ffi-linux-x86_64.so.gz"
-# Official SHA256 from https://github.com/pact-foundation/pact-reference/releases/expanded_assets/libpact_ffi-v0.4.28
-LIBPACT_FFI_SHA256 = "73053bd1b3219e7012ec1f7ee0cc7bbb94a07bb44249d8f4002be0ba4bddbd4e"
+LIBPACT_FFI_URL = "https://github.com/pact-foundation/pact-reference/releases/download/libpact_ffi-v0.5.12/libpact_ffi-linux-x86_64.so.gz"
+# Official SHA256 from https://github.com/pact-foundation/pact-reference/releases/expanded_assets/libpact_ffi-v0.5.12
+LIBPACT_FFI_SHA256 = "b2a985ae39646fb103a2592862e6d86291a28de6b1e109bd6a77bd8032cf3336"
 
 MAX_DOWNLOAD_ATTEMPTS = 3
 INITIAL_BACKOFF_SECONDS = 5.0
