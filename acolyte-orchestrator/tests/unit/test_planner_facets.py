@@ -7,6 +7,8 @@ import pytest
 from acolyte.port.llm_provider import LLMResponse
 from acolyte.usecase.graph.nodes.planner_node import PlannerNode
 
+EXPECTED_OUTLINE_SECTION_COUNT = 3
+
 
 def _xml_plan(queries: dict[str, list[str]], reasoning: str = "plan") -> str:
     """Build XML plan response for testing."""
@@ -42,7 +44,7 @@ async def test_planner_returns_search_queries_per_section() -> None:
     node = PlannerNode(llm)
     result = await node({"brief": {"topic": "AI semiconductor supply chain"}})
 
-    assert len(result["outline"]) == 3
+    assert len(result["outline"]) == EXPECTED_OUTLINE_SECTION_COUNT
     analysis = next(s for s in result["outline"] if s["key"] == "analysis")
     assert analysis["search_queries"] == ["AI market size 2026", "semiconductor demand forecast"]
 

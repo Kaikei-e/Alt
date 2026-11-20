@@ -1,7 +1,5 @@
 """Atomic cert/key install with journal recovery and pair checks."""
 
-# ruff: noqa: TRY003
-
 from __future__ import annotations
 
 import json
@@ -25,6 +23,8 @@ from tests.unit.infra.pki.helpers import self_signed_pem
 SUBJECT = "acolyte-orchestrator"
 NB = datetime.now(tz=UTC) - timedelta(minutes=1)
 NA = NB + timedelta(hours=1)
+CERT_FILE_MODE = 0o444
+KEY_FILE_MODE = 0o400
 
 
 def _spki(cert_pem: bytes) -> bytes:
@@ -36,8 +36,8 @@ def test_certfile_write_and_load(tmp_path: Path) -> None:
     files = CertFile(str(tmp_path / "svc-cert.pem"), str(tmp_path / "svc-key.pem"))
     cert, key = self_signed_pem(SUBJECT, NB, NA)
     files.write(cert, key)
-    assert files.cert_path.stat().st_mode & 0o777 == 0o444
-    assert files.key_path.stat().st_mode & 0o777 == 0o400
+    assert files.cert_path.stat().st_mode & 0o777 == CERT_FILE_MODE
+    assert files.key_path.stat().st_mode & 0o777 == KEY_FILE_MODE
     loaded = files.load()
     assert loaded.subject.rfc4514_string() == f"CN={SUBJECT}"
 
@@ -80,7 +80,8 @@ def test_write_rolls_back_when_cert_rename_fails(tmp_path: Path, monkeypatch: py
 
     def _boom(src: Path, dst: Path) -> None:
         if dst == files.cert_path and src.name.startswith(".pki-enroll-"):
-            raise OSError("injected cert rename failure")
+            msg = "injected cert rename failure"
+            raise OSError(msg)
         real(src, dst)
 
     monkeypatch.setattr(certfile_mod, "atomic_replace", _boom)

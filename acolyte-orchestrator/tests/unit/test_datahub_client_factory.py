@@ -17,6 +17,8 @@ import pytest
 from acolyte.driver.datahub_client import DataHubClientFactory
 from acolyte.gen.proto.services.datahub.v1.datahub_connect import DataHubServiceClient
 
+EXPECTED_REBUILT_CLIENT_COUNT = 2
+
 
 class _RecordingFactory(DataHubClientFactory):
     """Counts rebuilds without touching TLS — the real _build needs a
@@ -65,7 +67,7 @@ def test_a_rotated_leaf_triggers_a_rebuild(tmp_path: Path) -> None:
 
     second = factory.get()
     assert second is not first
-    assert factory.builds == 2
+    assert factory.builds == EXPECTED_REBUILT_CLIENT_COUNT
 
 
 def test_a_failed_rebuild_keeps_serving_the_previous_client(tmp_path: Path) -> None:

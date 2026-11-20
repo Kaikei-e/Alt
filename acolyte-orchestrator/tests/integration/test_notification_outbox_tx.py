@@ -76,6 +76,53 @@ async def _row_counts(conn: psycopg.AsyncConnection[Any], run_id: UUID, dedupe_k
     return run_row[0], outbox_row[0]
 
 
+async def _insert_and_complete_in_tx(
+    conn: psycopg.AsyncConnection[Any],
+    gw: PostgresJobGateway,
+    report_id: UUID,
+    run_id: UUID,
+    dedupe_key: str,
+) -> None:
+    async with conn.transaction():
+        await conn.execute(
+            "INSERT INTO reports (report_id, title, report_type, user_id) VALUES (%s, %s, %s, %s)",
+            [report_id, "tx proof", "weekly_briefing", _OWNER],
+        )
+        await conn.execute(
+            "INSERT INTO report_runs (run_id, report_id, target_version_no, run_status) VALUES (%s, %s, %s, 'running')",
+            [run_id, report_id, 1],
+        )
+
+        await gw.complete_run(run_id)
+
+        completed, enqueued = await _row_counts(conn, run_id, dedupe_key)
+        assert completed == 1
+        assert enqueued == 1
+
+        payload_cur = await conn.execute(
+            "SELECT payload, occurred_at, state, attempts, user_id FROM notification_outbox WHERE dedupe_key = %s",
+            [dedupe_key],
+        )
+        payload_row = await payload_cur.fetchone()
+        assert payload_row is not None
+        payload, occurred_at, state, attempts, recipient = payload_row
+        assert payload == {"kind": "acolyte_report_ready", "url": f"/acolyte/reports/{report_id}"}
+        assert state == "pending"
+        assert attempts == 0
+        assert recipient == _OWNER
+
+        finished_cur = await conn.execute(
+            "SELECT finished_at FROM report_runs WHERE run_id = %s",
+            [run_id],
+        )
+        finished_row = await finished_cur.fetchone()
+        assert finished_row is not None
+        # Business time, not a second clock read at INSERT time.
+        assert occurred_at == finished_row[0]
+
+        raise _RollbackError
+
+
 @pytest.mark.asyncio
 async def test_completion_and_notification_commit_or_vanish_together() -> None:
     report_id = uuid4()
@@ -86,45 +133,7 @@ async def test_completion_and_notification_commit_or_vanish_together() -> None:
         gw = PostgresJobGateway(_SingleConnectionPool(conn), notifications_enabled=True)  # type: ignore[arg-type]
 
         with pytest.raises(_RollbackError):
-            async with conn.transaction():
-                await conn.execute(
-                    "INSERT INTO reports (report_id, title, report_type, user_id) VALUES (%s, %s, %s, %s)",
-                    [report_id, "tx proof", "weekly_briefing", _OWNER],
-                )
-                await conn.execute(
-                    "INSERT INTO report_runs (run_id, report_id, target_version_no, run_status) "
-                    "VALUES (%s, %s, %s, 'running')",
-                    [run_id, report_id, 1],
-                )
-
-                await gw.complete_run(run_id)
-
-                completed, enqueued = await _row_counts(conn, run_id, dedupe_key)
-                assert completed == 1
-                assert enqueued == 1
-
-                payload_cur = await conn.execute(
-                    "SELECT payload, occurred_at, state, attempts, user_id FROM notification_outbox WHERE dedupe_key = %s",
-                    [dedupe_key],
-                )
-                payload_row = await payload_cur.fetchone()
-                assert payload_row is not None
-                payload, occurred_at, state, attempts, recipient = payload_row
-                assert payload == {"kind": "acolyte_report_ready", "url": f"/acolyte/reports/{report_id}"}
-                assert state == "pending"
-                assert attempts == 0
-                assert recipient == _OWNER
-
-                finished_cur = await conn.execute(
-                    "SELECT finished_at FROM report_runs WHERE run_id = %s",
-                    [run_id],
-                )
-                finished_row = await finished_cur.fetchone()
-                assert finished_row is not None
-                # Business time, not a second clock read at INSERT time.
-                assert occurred_at == finished_row[0]
-
-                raise _RollbackError
+            await _insert_and_complete_in_tx(conn, gw, report_id, run_id, dedupe_key)
 
         completed, enqueued = await _row_counts(conn, run_id, dedupe_key)
         assert completed == 0

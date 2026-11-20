@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from acolyte.domain.query_variant import generate_query_variants
 
+MAX_QUERY_VARIANTS = 3
+
 
 def _facet(
     *,
@@ -88,7 +90,7 @@ class TestGenerateQueryVariants:
         facet = _facet(must_have_terms=["AI", "market", "trends"])
         variants = generate_query_variants(facet, "AI market analysis", _brief())
 
-        assert len(variants) <= 3
+        assert len(variants) <= MAX_QUERY_VARIANTS
 
     def test_always_has_primary(self) -> None:
         """Should always produce at least a primary variant."""

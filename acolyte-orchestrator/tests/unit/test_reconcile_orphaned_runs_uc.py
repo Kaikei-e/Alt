@@ -86,7 +86,7 @@ async def test_execute_fails_every_orphaned_running_run() -> None:
 
     count = await uc.execute()
 
-    assert count == 2
+    assert count == len(jobs.running)
     failed_ids = {run_id for run_id, _code, _msg in jobs.failed}
     assert failed_ids == {run_a.run_id, run_b.run_id}
     assert all(code == "orphaned_after_restart" for _run_id, code, _msg in jobs.failed)

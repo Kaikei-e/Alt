@@ -721,14 +721,14 @@ class CriticNode:
             if all_detections:
                 raw_fms = critique.get("failure_modes", [])
                 existing_fms: list[dict] = list(raw_fms) if isinstance(raw_fms, list) else []  # type: ignore[arg-type]
-                for d in all_detections:
-                    existing_fms.append(
-                        {
-                            "mode": d.mode.value,
-                            "section": d.section_key,
-                            "description": d.description,
-                        }
-                    )
+                existing_fms.extend(
+                    {
+                        "mode": d.mode.value,
+                        "section": d.section_key,
+                        "description": d.description,
+                    }
+                    for d in all_detections
+                )
                 critique["failure_modes"] = existing_fms
 
         # Build claim-level feedbacks from detections + paragraph status

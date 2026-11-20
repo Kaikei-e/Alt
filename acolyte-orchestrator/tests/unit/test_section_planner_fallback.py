@@ -12,6 +12,9 @@ from acolyte.usecase.graph.nodes.section_planner_node import (
     _deterministic_es_claims,
 )
 
+MAX_NUMERIC_SEED_INDEX = 2
+CUSTOM_MAX_CLAIMS = 3
+
 
 def _make_facts(n: int = 3, *, with_numeric: bool = False) -> list[dict]:
     facts = []
@@ -24,7 +27,7 @@ def _make_facts(n: int = 3, *, with_numeric: bool = False) -> list[dict]:
             "verbatim_quote": f"Quote from article {i}",
             "confidence": 0.9 - i * 0.1,
         }
-        if with_numeric and i <= 2:
+        if with_numeric and i <= MAX_NUMERIC_SEED_INDEX:
             fact["data_type"] = "statistic"
             fact["numeric_facts"] = [f"{i * 10}%"]
         facts.append(fact)
@@ -39,7 +42,7 @@ def _make_analysis_claims(n: int = 3) -> list[dict]:
             "claim_type": "factual",
             "evidence_ids": [f"art-{i}"],
             "supporting_quotes": [f"Quote {i}"],
-            "numeric_facts": [f"{i * 10}%"] if i <= 2 else [],
+            "numeric_facts": [f"{i * 10}%"] if i <= MAX_NUMERIC_SEED_INDEX else [],
             "novelty_against": [],
             "must_cite": True,
         }
@@ -174,8 +177,8 @@ def test_analysis_fallback_empty_when_no_facts() -> None:
 def test_analysis_fallback_respects_max_claims() -> None:
     """Honour the section's max_claims budget."""
     facts = _make_facts(10)
-    result = _deterministic_analysis_claims(facts, max_claims=3)
-    assert len(result) == 3
+    result = _deterministic_analysis_claims(facts, max_claims=CUSTOM_MAX_CLAIMS)
+    assert len(result) == CUSTOM_MAX_CLAIMS
 
 
 def test_deterministic_synthesis_prefers_source_diversity() -> None:

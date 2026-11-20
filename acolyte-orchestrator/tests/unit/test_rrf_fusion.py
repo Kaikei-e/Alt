@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from acolyte.domain.fusion import RRFFusion, ScoredHit
 
+EXPECTED_TIE_BREAK_RESULT_COUNT = 2
+
 
 def _hit(article_id: str, score: float = 0.0, source: str = "lexical") -> ScoredHit:
     return ScoredHit(
@@ -25,7 +27,7 @@ class TestRRFFusion:
         fusion = RRFFusion(k=60)
         hits = [_hit("a", 0.9), _hit("b", 0.7), _hit("c", 0.5)]
         result = fusion.fuse([hits])
-        assert len(result) == 3
+        assert len(result) == len(hits)
         assert result[0].article_id == "a"
         assert result[1].article_id == "b"
         assert result[2].article_id == "c"
@@ -72,7 +74,7 @@ class TestRRFFusion:
         list2 = [_hit("b", 0.5, "broad")]
 
         result = fusion.fuse([list1, list2])
-        assert len(result) == 2
+        assert len(result) == EXPECTED_TIE_BREAK_RESULT_COUNT
         # Same RRF score (1/(60+1) each), so "a" wins by higher max_score (0.9 > 0.5)
         assert result[0].article_id == "a"
         assert result[1].article_id == "b"

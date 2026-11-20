@@ -12,6 +12,10 @@ from acolyte.port.llm_provider import LLMResponse
 from acolyte.usecase.graph.nodes.writer_node import WriterNode
 from acolyte.usecase.graph.state import PlannedClaimDict, ReportGenerationState, SectionParagraphDict
 
+ANALYSIS_NUM_PREDICT = 1200
+CONCLUSION_NUM_PREDICT = 1500
+ES_NUM_PREDICT = 600
+
 
 class FakeLLM:
     """Fake LLM that tracks call kwargs for assertion."""
@@ -66,7 +70,7 @@ def _make_state(
 @pytest.mark.asyncio
 async def test_analysis_paragraph_uses_role_num_predict() -> None:
     """Analysis role uses paragraph_num_predict_analysis from settings."""
-    settings = Settings(paragraph_num_predict_analysis=1200)
+    settings = Settings(paragraph_num_predict_analysis=ANALYSIS_NUM_PREDICT)
     llm = FakeLLM()
     node = WriterNode(llm, settings=settings)  # type: ignore[unexpected-keyword]
     state = _make_state(section_role="analysis")
@@ -74,13 +78,13 @@ async def test_analysis_paragraph_uses_role_num_predict() -> None:
     await node(state)
 
     assert len(llm.calls) == 1
-    assert llm.calls[0]["num_predict"] == 1200
+    assert llm.calls[0]["num_predict"] == ANALYSIS_NUM_PREDICT
 
 
 @pytest.mark.asyncio
 async def test_conclusion_paragraph_uses_higher_num_predict() -> None:
     """Conclusion role uses paragraph_num_predict_conclusion (higher for synthesis)."""
-    settings = Settings(paragraph_num_predict_conclusion=1500)
+    settings = Settings(paragraph_num_predict_conclusion=CONCLUSION_NUM_PREDICT)
     llm = FakeLLM()
     node = WriterNode(llm, settings=settings)  # type: ignore[unexpected-keyword]
     state = _make_state(section_key="conclusion", section_role="conclusion")
@@ -88,13 +92,13 @@ async def test_conclusion_paragraph_uses_higher_num_predict() -> None:
     await node(state)
 
     assert len(llm.calls) == 1
-    assert llm.calls[0]["num_predict"] == 1500
+    assert llm.calls[0]["num_predict"] == CONCLUSION_NUM_PREDICT
 
 
 @pytest.mark.asyncio
 async def test_es_uses_llm_first_with_role_num_predict() -> None:
     """Executive summary is LLM-first and uses paragraph_num_predict_es from settings."""
-    settings = Settings(paragraph_num_predict_es=600)
+    settings = Settings(paragraph_num_predict_es=ES_NUM_PREDICT)
     llm = FakeLLM()
     node = WriterNode(llm, settings=settings)  # type: ignore[unexpected-keyword]
     state = _make_state(section_key="executive_summary", section_role="executive_summary")
@@ -102,7 +106,7 @@ async def test_es_uses_llm_first_with_role_num_predict() -> None:
     result = await node(state)
 
     assert len(llm.calls) == 1
-    assert llm.calls[0]["num_predict"] == 600
+    assert llm.calls[0]["num_predict"] == ES_NUM_PREDICT
     # Body comes from the LLM response
     assert result["sections"]["executive_summary"] == "Generated paragraph."
 

@@ -43,7 +43,9 @@ class PostgresJobGateway:
                 [report_id, target_version_no],
             )
             r = await cur.fetchone()
-            assert r is not None
+            if r is None:
+                msg = f"INSERT INTO report_runs RETURNING returned no row for report_id={report_id}"
+                raise RuntimeError(msg)
             run = ReportRun(
                 run_id=r[0],
                 report_id=r[1],
@@ -233,7 +235,9 @@ class PostgresJobGateway:
                 [worker_id, job_id],
             )
             claim_row = await claim_cur.fetchone()
-            assert claim_row is not None
+            if claim_row is None:
+                msg = f"UPDATE report_jobs RETURNING returned no row for job_id={job_id}"
+                raise RuntimeError(msg)
             claimed_at = claim_row[0]
 
             return ReportJob(

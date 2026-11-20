@@ -8,8 +8,10 @@ rejected at handshake and never reaches the app.
 from __future__ import annotations
 
 import json
+import shutil
 import ssl
 import subprocess
+from http import HTTPStatus
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -30,12 +32,19 @@ if TYPE_CHECKING:
     from starlette.requests import Request
 
 
+def _openssl_bin() -> str:
+    openssl = shutil.which("openssl")
+    if openssl is None:
+        pytest.fail("openssl is required for TLS tests")
+    return openssl
+
+
 def _write_ca(dir_path: Path, name: str) -> tuple[Path, Path]:
     cert_path = dir_path / f"{name}-ca-cert.pem"
     key_path = dir_path / f"{name}-ca-key.pem"
-    subprocess.run(
+    subprocess.run(  # noqa: S603 - fixed argv built in this test
         [
-            "openssl",
+            _openssl_bin(),
             "req",
             "-x509",
             "-newkey",
@@ -60,9 +69,10 @@ def _write_signed_leaf(dir_path: Path, cn: str, ca_cert: Path, ca_key: Path) -> 
     key_path = dir_path / f"{cn}-key.pem"
     csr_path = dir_path / f"{cn}.csr"
     cert_path = dir_path / f"{cn}-cert.pem"
-    subprocess.run(
+    openssl = _openssl_bin()
+    subprocess.run(  # noqa: S603 - fixed argv built in this test
         [
-            "openssl",
+            openssl,
             "req",
             "-new",
             "-newkey",
@@ -80,9 +90,9 @@ def _write_signed_leaf(dir_path: Path, cn: str, ca_cert: Path, ca_key: Path) -> 
         check=True,
         capture_output=True,
     )
-    subprocess.run(
+    subprocess.run(  # noqa: S603 - fixed argv built in this test
         [
-            "openssl",
+            openssl,
             "x509",
             "-req",
             "-in",
@@ -147,7 +157,7 @@ async def test_spoofed_peer_header_is_ignored_for_tls_client(tmp_path: Path) -> 
                 f"https://127.0.0.1:{port}/echo",
                 headers={PEER_IDENTITY_HEADER: "spoofed-root"},
             )
-        assert resp.status_code == 200
+        assert resp.status_code == HTTPStatus.OK
         body = resp.json()
         assert body["peer"] == "alt-backend"
         assert body["header"] == "alt-backend"

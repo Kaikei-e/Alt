@@ -115,10 +115,7 @@ class ChecklistEvaluator:
         all_text = "\n".join(sections.values())
 
         # Check for meta-statements
-        found_meta = []
-        for pattern in META_PATTERNS:
-            if re.search(re.escape(pattern), all_text, re.IGNORECASE):
-                found_meta.append(pattern)
+        found_meta = [pattern for pattern in META_PATTERNS if re.search(re.escape(pattern), all_text, re.IGNORECASE)]
 
         items.append(
             ChecklistItem(

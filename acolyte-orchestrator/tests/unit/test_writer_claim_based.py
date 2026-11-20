@@ -11,6 +11,8 @@ from acolyte.port.llm_provider import LLMResponse
 from acolyte.usecase.graph.nodes.writer_node import WriterNode
 from acolyte.usecase.graph.state import PlannedClaimDict, ReportGenerationState
 
+EXPECTED_CLAIM_CITATION_COUNT = 2
+
 
 class FakeLLM:
     def __init__(self, text: str = "Generated claim-based section.") -> None:
@@ -268,7 +270,7 @@ async def test_writer_multiple_evidence_ids_produce_multiple_citations() -> None
 
     result = await node(state)
     citations = result["section_citations"]["analysis"]
-    assert len(citations) == 2
+    assert len(citations) == EXPECTED_CLAIM_CITATION_COUNT
     assert citations[0]["source_id"] == "art-1"
     assert citations[1]["source_id"] == "art-2"
 

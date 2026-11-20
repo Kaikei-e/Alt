@@ -26,6 +26,10 @@ from acolyte.usecase.relay_notifications_uc import RelayNotificationsUsecase
 
 _AGE_FIELD = "notification_outbox_oldest_pending_age_seconds"
 _TICK_FIELD = "notification_outbox_last_tick_timestamp_seconds"
+SAMPLE_ATTEMPT_COUNT = 3
+EXPECTED_TICK_COUNT = 2
+MIN_LOOP_TICK_CALLS = 3
+EXPECTED_MAX_ATTEMPTS = 8
 
 if TYPE_CHECKING:
     from collections.abc import MutableMapping, Sequence
@@ -114,7 +118,7 @@ async def test_claim_uses_the_configured_worker_id_and_batch_size() -> None:
 
 @pytest.mark.asyncio
 async def test_a_failed_forward_is_rescheduled_with_its_attempt_count() -> None:
-    row = _pending(attempts=3)
+    row = _pending(attempts=SAMPLE_ATTEMPT_COUNT)
     outbox = _FakeOutbox([[row]])
     forwarder = _FakeForwarder(fail_with=RuntimeError("data-hub unavailable"))
 
@@ -125,7 +129,7 @@ async def test_a_failed_forward_is_rescheduled_with_its_attempt_count() -> None:
     assert len(failures) == 1
     notification_id, attempts, error = failures[0]  # type: ignore[misc]
     assert notification_id == row.notification_id
-    assert attempts == 3
+    assert attempts == SAMPLE_ATTEMPT_COUNT
     assert "data-hub unavailable" in error
     assert not any(name == "forwarded" for name, _ in outbox.events)
 
@@ -171,7 +175,7 @@ async def test_both_signals_are_emitted_every_tick_including_the_empty_ones() ->
     # thing an operator can see, which makes a wedged relay look healthy — so a
     # tick that moved nothing still has to say so.
     ticks = _tick_events(logs)
-    assert len(ticks) == 2
+    assert len(ticks) == EXPECTED_TICK_COUNT
     assert [entry[_AGE_FIELD] for entry in ticks] == [0.0, 0.0]
     assert all(isinstance(entry[_TICK_FIELD], float) for entry in ticks)
     assert ticks[0][_TICK_FIELD] > 0
@@ -224,16 +228,16 @@ async def test_the_loop_survives_a_failing_tick_and_keeps_going() -> None:
     task = asyncio.create_task(relay.run_forever(interval_seconds=0.0))
     for _ in range(200):
         await asyncio.sleep(0)
-        if outbox.calls >= 3:
+        if outbox.calls >= MIN_LOOP_TICK_CALLS:
             break
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
 
-    assert outbox.calls >= 3
+    assert outbox.calls >= MIN_LOOP_TICK_CALLS
 
 
 def test_max_attempts_is_the_domain_constant_not_a_local_number() -> None:
     # The relay hands the row's attempt count back to the outbox and lets the
     # gateway apply the death rule, so there is exactly one place to change it.
-    assert MAX_ATTEMPTS == 8
+    assert MAX_ATTEMPTS == EXPECTED_MAX_ATTEMPTS

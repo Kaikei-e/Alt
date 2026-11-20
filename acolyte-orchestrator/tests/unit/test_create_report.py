@@ -11,6 +11,8 @@ from acolyte.domain.brief import ReportBrief
 from acolyte.domain.report import ChangeItem, Report, ReportSection, ReportVersion, SectionVersion
 from acolyte.usecase.create_report_uc import CreateReportUsecase
 
+EXPECTED_CREATED_REPORT_COUNT = 2
+
 
 class FakeReportRepo:
     def __init__(self) -> None:
@@ -113,4 +115,4 @@ async def test_create_multiple_reports() -> None:
     assert r1.report_id != r2.report_id
     assert r1.user_id == user_id
     assert r2.user_id == user_id
-    assert len(repo.reports) == 2
+    assert len(repo.reports) == EXPECTED_CREATED_REPORT_COUNT

@@ -10,6 +10,11 @@ from pydantic import BaseModel
 from acolyte.port.llm_provider import LLMProviderError, LLMResponse, LLMTimeoutError
 from acolyte.usecase.graph.llm_parse import generate_validated
 
+EXPECTED_RETRY_CALL_COUNT = 2
+EXPLICIT_NUM_PREDICT = 512
+BASE_NUM_PREDICT = 2000
+ESCALATED_NUM_PREDICT = 2500
+
 
 class SampleOutput(BaseModel):
     reasoning: str
@@ -43,7 +48,7 @@ async def test_invalid_json_retries_once() -> None:
     llm = FakeLLMForParse([invalid, valid])
     result = await generate_validated(llm, "prompt", SampleOutput, retries=1)
     assert result.reasoning == "retry ok"
-    assert llm._call_count == 2
+    assert llm._call_count == EXPECTED_RETRY_CALL_COUNT
 
 
 @pytest.mark.asyncio
@@ -87,9 +92,9 @@ async def test_passes_format_and_kwargs() -> None:
             return LLMResponse(text=valid, model="fake")
 
     llm = CaptureLLM()
-    await generate_validated(llm, "prompt", SampleOutput, temperature=0, num_predict=512)
+    await generate_validated(llm, "prompt", SampleOutput, temperature=0, num_predict=EXPLICIT_NUM_PREDICT)
     assert llm.captured_kwargs["temperature"] == 0
-    assert llm.captured_kwargs["num_predict"] == 512
+    assert llm.captured_kwargs["num_predict"] == EXPLICIT_NUM_PREDICT
     assert "output_schema" in llm.captured_kwargs
 
 
@@ -115,7 +120,7 @@ async def test_generate_exception_retries_and_succeeds() -> None:
     llm = ErrorThenSuccessLLM(TimeoutError("ReadTimeout"), valid)
     result = await generate_validated(llm, "prompt", SampleOutput, retries=1)
     assert result.reasoning == "recovered"
-    assert llm._call_count == 2
+    assert llm._call_count == EXPECTED_RETRY_CALL_COUNT
 
 
 @pytest.mark.asyncio
@@ -137,7 +142,7 @@ async def test_generate_llm_provider_error_retries_and_succeeds() -> None:
     llm = ErrorThenSuccessLLM(LLMProviderError("upstream 500 error"), valid)
     result = await generate_validated(llm, "prompt", SampleOutput, retries=1)
     assert result.reasoning == "recovered from provider error"
-    assert llm._call_count == 2
+    assert llm._call_count == EXPECTED_RETRY_CALL_COUNT
 
 
 @pytest.mark.asyncio
@@ -184,10 +189,10 @@ async def test_detects_truncation_and_increases_budget() -> None:
     )
     llm = TruncationLLM([truncated, valid])
 
-    result = await generate_validated(llm, "prompt", SampleOutput, num_predict=2000, temperature=0)
+    result = await generate_validated(llm, "prompt", SampleOutput, num_predict=BASE_NUM_PREDICT, temperature=0)
 
     assert result.reasoning == "ok"
-    assert llm.calls[1]["num_predict"] == 2500  # 2000 * 1.25
+    assert llm.calls[1]["num_predict"] == ESCALATED_NUM_PREDICT  # 2000 * 1.25
 
 
 @pytest.mark.asyncio
@@ -201,10 +206,10 @@ async def test_does_not_increase_budget_on_non_truncation() -> None:
     )
     llm = TruncationLLM([bad_json, valid])
 
-    result = await generate_validated(llm, "prompt", SampleOutput, num_predict=2000, temperature=0)
+    result = await generate_validated(llm, "prompt", SampleOutput, num_predict=BASE_NUM_PREDICT, temperature=0)
 
     assert result.reasoning == "ok"
-    assert llm.calls[1]["num_predict"] == 2000  # unchanged
+    assert llm.calls[1]["num_predict"] == BASE_NUM_PREDICT  # unchanged
 
 
 @pytest.mark.asyncio
@@ -218,11 +223,11 @@ async def test_budget_increase_bounded_once() -> None:
         llm,
         "prompt",
         SampleOutput,
-        num_predict=2000,
+        num_predict=BASE_NUM_PREDICT,
         temperature=0,
         fallback=fallback,
     )
 
     assert result.reasoning == "fallback"
     # Second call should have 2500, not 3125
-    assert llm.calls[1]["num_predict"] == 2500
+    assert llm.calls[1]["num_predict"] == ESCALATED_NUM_PREDICT

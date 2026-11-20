@@ -21,6 +21,8 @@ from acolyte.usecase.graph.nodes.writer_node import WriterNode
 from acolyte.usecase.graph.report_graph import build_report_graph
 from tests.conftest import TEST_USER_ID
 
+PLANNER_NUM_PREDICT = 1024
+
 # --- Fakes ---
 
 
@@ -582,7 +584,7 @@ async def test_planner_uses_num_predict_1024() -> None:
 
     planner_calls = [c for c in llm._calls if "plan" in c["prompt"].lower() or "query" in c["prompt"].lower()]
     assert len(planner_calls) >= 1
-    assert planner_calls[0]["num_predict"] == 1024
+    assert planner_calls[0]["num_predict"] == PLANNER_NUM_PREDICT
 
 
 @pytest.mark.asyncio

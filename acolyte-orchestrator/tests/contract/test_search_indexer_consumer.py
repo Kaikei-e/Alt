@@ -20,6 +20,7 @@ Run with:
 from __future__ import annotations
 
 import json
+from http import HTTPStatus
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -38,6 +39,7 @@ PACT_DIR = Path(__file__).resolve().parent.parent.parent.parent / "pacts"
 USER_JWT = "pact-header.pact-claims.pact-signature"
 USER_JWT_MATCHER = match.regex(USER_JWT, regex=r"^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$")
 USER_JWT_HEADERS = {"x-alt-backend-token": USER_JWT}
+EXPECTED_MULTI_HIT_COUNT = 2
 
 
 @pytest.fixture(scope="module")
@@ -160,12 +162,13 @@ def test_search_articles(pact_server: str) -> None:
         },
         headers=USER_JWT_HEADERS,
     )
-    assert resp.status_code == 200
+    assert resp.status_code == HTTPStatus.OK
     data = resp.json()
     assert "hits" in data
-    assert len(data["hits"]) >= 2
+    assert len(data["hits"]) >= EXPECTED_MULTI_HIT_COUNT
     languages = {hit["language"] for hit in data["hits"]}
-    assert "en" in languages and "ja" in languages
+    assert "en" in languages
+    assert "ja" in languages
     for hit in data["hits"]:
         assert "id" in hit
         assert "title" in hit
@@ -190,7 +193,7 @@ def test_search_articles_with_date_window(pact_server: str) -> None:
         },
         headers=USER_JWT_HEADERS,
     )
-    assert resp.status_code == 200
+    assert resp.status_code == HTTPStatus.OK
     data = resp.json()
     assert data["hits"], "date-bounded search must still return matches inside the window"
     for hit in data["hits"]:
@@ -208,6 +211,6 @@ def test_search_articles_empty_results(pact_server: str) -> None:
         },
         headers=USER_JWT_HEADERS,
     )
-    assert resp.status_code == 200
+    assert resp.status_code == HTTPStatus.OK
     data = resp.json()
     assert data["hits"] == []

@@ -9,6 +9,9 @@ from evaluation.metrics import (
     lang_mix_ratio,
 )
 
+_EXPECTED_PARTIAL_PRECISION = 0.5
+_EXPECTED_JUDGE_SCORE = 0.87
+
 
 class TestExtractShortIds:
     def test_returns_unique_short_ids_in_order(self) -> None:
@@ -36,7 +39,7 @@ class TestCitationPrecision:
         body = "[S1] and [S2]."
         source_map = {"S1": {"source_id": "a"}, "S2": {"source_id": "z"}}
         gold = {"a", "b"}
-        assert citation_precision(body, source_map, gold) == 0.5
+        assert citation_precision(body, source_map, gold) == _EXPECTED_PARTIAL_PRECISION
 
     def test_no_citations_yields_none(self) -> None:
         body = "No citations."
@@ -83,14 +86,14 @@ class TestLangMixRatio:
 class TestFaithfulness:
     def test_judge_returns_score(self) -> None:
         def fake_judge(prompt: str) -> float:
-            return 0.87
+            return _EXPECTED_JUDGE_SCORE
 
         score = faithfulness(
             body="Claim supported [S1].",
             evidence_by_short_id={"S1": "evidence text"},
             judge=fake_judge,
         )
-        assert score == 0.87
+        assert score == _EXPECTED_JUDGE_SCORE
 
     def test_skips_when_no_citations(self) -> None:
         def fake_judge(prompt: str) -> float:

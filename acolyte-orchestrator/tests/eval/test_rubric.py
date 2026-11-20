@@ -12,6 +12,12 @@ from acolyte.gateway.ollama_gw import OllamaGateway
 from acolyte.port.llm_provider import LLMResponse
 from acolyte.usecase.eval.rubric_evaluator import RubricEvaluator
 
+TWO_OF_THREE_MIN_SCORE = 0.5
+TWO_OF_THREE_MAX_SCORE = 0.8
+RUBRIC_DIMENSION_COUNT = 2
+EXPECTED_TURN_OPEN_COUNT = 3
+EXPECTED_TURN_CLOSE_COUNT = 2
+
 
 class FakeLLM:
     def __init__(self) -> None:
@@ -45,7 +51,7 @@ async def test_factual_consistency_scores_supported_claims(evaluator: RubricEval
     evidence = [{"id": "art-1", "title": "AI Market"}, {"id": "art-2", "title": "NVIDIA"}]
     result = await evaluator.evaluate_factual_consistency(sections, evidence)
     # 2/3 claims supported → ~0.67
-    assert 0.5 < result.score < 0.8
+    assert TWO_OF_THREE_MIN_SCORE < result.score < TWO_OF_THREE_MAX_SCORE
 
 
 @pytest.mark.asyncio
@@ -54,7 +60,7 @@ async def test_citation_association_measures_sourced_claims(evaluator: RubricEva
     evidence = [{"id": "art-1"}, {"id": "art-2"}]
     result = await evaluator.evaluate_citation_association(sections, evidence)
     # 2/3 claims have source_id → ~0.67
-    assert 0.5 < result.score < 0.8
+    assert TWO_OF_THREE_MIN_SCORE < result.score < TWO_OF_THREE_MAX_SCORE
 
 
 @pytest.mark.asyncio
@@ -79,7 +85,7 @@ async def test_full_evaluate_returns_dimensions(evaluator: RubricEvaluator) -> N
     sections = {"summary": "AI market analysis content."}
     evidence = [{"id": "art-1", "title": "AI"}]
     result = await evaluator.evaluate(sections, evidence)
-    assert len(result) == 2
+    assert len(result) == RUBRIC_DIMENSION_COUNT
     assert all(d.protocol == "rubric" for d in result)
 
 
@@ -117,6 +123,6 @@ async def test_rubric_evaluator_posts_gemma_templated_prompt_to_api_generate() -
     assert prompt.startswith("<|turn>system\n")
     assert "<|turn>user\n" in prompt
     assert prompt.endswith("<|turn>model\n")
-    assert prompt.count("<|turn>") == 3
-    assert prompt.count("<turn|>") == 2
+    assert prompt.count("<|turn>") == EXPECTED_TURN_OPEN_COUNT
+    assert prompt.count("<turn|>") == EXPECTED_TURN_CLOSE_COUNT
     assert "<|think|>" not in prompt

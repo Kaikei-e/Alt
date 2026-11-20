@@ -52,7 +52,7 @@ def test_load_config_enabled_subject_scoped_defaults(monkeypatch: pytest.MonkeyP
     monkeypatch.setenv("CERT_SUBJECT", "acolyte-orchestrator")
     cfg = load_config("acolyte-orchestrator")
     assert cfg.provisioner == "pki-agent-acolyte-orchestrator"
-    assert cfg.password_file == "/run/secrets/pki-agent-acolyte-orchestrator-jwk"
+    assert cfg.password_file == "/run/secrets/pki-agent-acolyte-orchestrator-jwk"  # noqa: S105 - test fixture value, not a credential
 
 
 def test_load_config_distinct_subjects_do_not_share_identity(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -8,6 +8,7 @@ score is Meilisearch _rankingScore (0.0-1.0).
 
 from __future__ import annotations
 
+from http import HTTPStatus
 from unittest.mock import patch
 
 import httpx
@@ -19,6 +20,11 @@ from acolyte.gateway.memory_content_store import MemoryContentStore
 from acolyte.gateway.search_indexer_gw import SearchIndexerGateway
 from acolyte.port.evidence_provider import EvidenceProviderError, EvidenceStatusError
 from tests.conftest import TEST_USER_ID
+
+EXPECTED_DEFAULT_HIT_COUNT = 2
+FIRST_HIT_SCORE = 0.85
+SECOND_HIT_SCORE = 0.42
+EXPECTED_STUB_WARNING_COUNT = 2
 
 
 @pytest.fixture
@@ -70,7 +76,7 @@ async def test_search_articles_returns_metadata_only(
         gw = SearchIndexerGateway(client, settings, content_store)
         hits = await gw.search_articles("AI trends", limit=10, user_id=TEST_USER_ID)
 
-    assert len(hits) == 2
+    assert len(hits) == EXPECTED_DEFAULT_HIT_COUNT
     assert hits[0].article_id == "art-1"
     assert hits[0].title == "Test Article about AI"
     assert hits[0].tags == ["AI", "technology"]
@@ -118,8 +124,8 @@ async def test_search_articles_extracts_score(settings: Settings, content_store:
             json={
                 "query": "AI",
                 "hits": [
-                    {"id": "a1", "title": "T1", "content": "C1", "tags": [], "score": 0.85},
-                    {"id": "a2", "title": "T2", "content": "C2", "tags": [], "score": 0.42},
+                    {"id": "a1", "title": "T1", "content": "C1", "tags": [], "score": FIRST_HIT_SCORE},
+                    {"id": "a2", "title": "T2", "content": "C2", "tags": [], "score": SECOND_HIT_SCORE},
                 ],
             },
         )
@@ -129,8 +135,8 @@ async def test_search_articles_extracts_score(settings: Settings, content_store:
         gw = SearchIndexerGateway(client, settings, content_store)
         hits = await gw.search_articles("AI", limit=10, user_id=TEST_USER_ID)
 
-    assert hits[0].score == 0.85
-    assert hits[1].score == 0.42
+    assert hits[0].score == FIRST_HIT_SCORE
+    assert hits[1].score == SECOND_HIT_SCORE
 
 
 @pytest.mark.asyncio
@@ -226,7 +232,7 @@ async def test_stub_methods_emit_warning_once(
             await gw.fetch_article_metadata(["a2"])
 
     # One warning per stub method, not per call
-    assert warn.call_count == 2
+    assert warn.call_count == EXPECTED_STUB_WARNING_COUNT
     event_methods = {c.kwargs.get("method") for c in warn.call_args_list}
     assert event_methods == {"search_recaps", "fetch_article_metadata"}
 
@@ -235,13 +241,13 @@ async def test_stub_methods_emit_warning_once(
 async def test_search_articles_raises_evidence_status_error(
     settings: Settings, content_store: MemoryContentStore
 ) -> None:
-    transport = httpx.MockTransport(lambda req: httpx.Response(502, text="Bad Gateway"))
+    transport = httpx.MockTransport(lambda req: httpx.Response(HTTPStatus.BAD_GATEWAY, text="Bad Gateway"))
     async with httpx.AsyncClient(transport=transport, base_url="http://fake:9300") as client:
         gw = SearchIndexerGateway(client, settings, content_store)
         with pytest.raises(EvidenceStatusError) as exc_info:
             await gw.search_articles("query", user_id=TEST_USER_ID)
 
-    assert exc_info.value.status_code == 502
+    assert exc_info.value.status_code == HTTPStatus.BAD_GATEWAY
     assert "Bad Gateway" in exc_info.value.response_text
 
 

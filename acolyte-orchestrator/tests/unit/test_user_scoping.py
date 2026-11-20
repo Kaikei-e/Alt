@@ -135,7 +135,7 @@ async def test_start_run_scoped_to_owner() -> None:
     assert run.report_id == report.report_id
 
     # Other user gets ValueError (which maps to NotFound in handler)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="not found"):
         await uc.execute(report.report_id, user_id=other_id)
 
 
@@ -151,7 +151,7 @@ async def test_rerun_section_scoped_to_owner() -> None:
     uc = RerunSectionUsecase(repo, llm, generation_slot=nullcontext())
 
     # Other user gets ValueError (which maps to NotFound in handler)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="not found"):
         await uc.execute(report.report_id, "sec1", user_id=other_id)
 
 
@@ -287,11 +287,11 @@ async def test_stream_run_progress_scoped_to_owner() -> None:
     service = AcolyteConnectService(Settings(), repo, jobs)
 
     ctx_other = make_request_ctx("StreamRunProgress", user_id=other_id)
+    agen = service.stream_run_progress(
+        acolyte_pb2.StreamRunProgressRequest(run_id=str(run.run_id)),
+        ctx=ctx_other,
+    )
     with pytest.raises(ConnectError) as exc_info:
-        agen = service.stream_run_progress(
-            acolyte_pb2.StreamRunProgressRequest(run_id=str(run.run_id)),
-            ctx=ctx_other,
-        )
         await anext(agen)
     assert exc_info.value.code == Code.NOT_FOUND
 
@@ -332,7 +332,7 @@ async def test_resume_pipeline_derives_owner_from_report(tmp_path: Path) -> None
     settings = Settings(
         checkpoint_enabled=False,
         backend_token_verify_key_file=str(key_file),
-        backend_token_verification="enabled",
+        backend_token_verification="enabled",  # noqa: S106 - test fixture value, not a credential
     )
     service = AcolyteConnectService(settings, repo, jobs, graph=graph)
 
@@ -359,7 +359,7 @@ async def test_resume_pipeline_rejects_a_token_signed_by_another_key(tmp_path: P
     settings = Settings(
         checkpoint_enabled=False,
         backend_token_verify_key_file=str(key_file),
-        backend_token_verification="enabled",
+        backend_token_verification="enabled",  # noqa: S106 - test fixture value, not a credential
     )
     service = AcolyteConnectService(settings, repo, jobs, graph=graph)
 
@@ -397,7 +397,7 @@ async def test_resume_pipeline_refuses_null_owner_report(tmp_path: Path) -> None
     settings = Settings(
         checkpoint_enabled=False,
         backend_token_verify_key_file=str(key_file),
-        backend_token_verification="enabled",
+        backend_token_verification="enabled",  # noqa: S106 - test fixture value, not a credential
     )
     service = AcolyteConnectService(settings, repo, jobs)
     with pytest.raises(ConnectError) as exc_info:
@@ -411,7 +411,7 @@ async def test_resume_pipeline_refuses_null_owner_report(tmp_path: Path) -> None
 def test_disabled_mode_dev_user_resolution() -> None:
     # Valid UUID
     settings = Settings(
-        backend_token_verification="disabled",
+        backend_token_verification="disabled",  # noqa: S106 - test fixture value, not a credential
         user_identity_dev_user_id="00000000-0000-0000-0000-000000000001",
     )
     dev_uid = settings.resolve_dev_user_id()
@@ -419,7 +419,7 @@ def test_disabled_mode_dev_user_resolution() -> None:
 
     # Empty UUID when disabled raises RuntimeError
     settings_empty = Settings(
-        backend_token_verification="disabled",
+        backend_token_verification="disabled",  # noqa: S106 - test fixture value, not a credential
         user_identity_dev_user_id="",
     )
     with pytest.raises(RuntimeError, match="USER_IDENTITY_DEV_USER_ID must be set"):

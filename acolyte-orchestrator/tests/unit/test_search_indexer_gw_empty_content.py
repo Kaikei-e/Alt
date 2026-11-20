@@ -15,6 +15,8 @@ from acolyte.gateway.memory_content_store import MemoryContentStore
 from acolyte.gateway.search_indexer_gw import SearchIndexerGateway
 from tests.conftest import TEST_USER_ID
 
+EXPECTED_EMPTY_HIT_WARNING_COUNT = 2
+
 
 @pytest.fixture
 def settings() -> Settings:
@@ -84,7 +86,7 @@ async def test_search_articles_warns_once_per_empty_hit(settings: Settings, cont
     warn_events = [
         e for e in logs if e.get("log_level") == "warning" and e.get("event") == "search_articles_empty_content"
     ]
-    assert len(warn_events) == 2
+    assert len(warn_events) == EXPECTED_EMPTY_HIT_WARNING_COUNT
     assert {e.get("article_id") for e in warn_events} == {"a1", "a3"}
     assert await content_store.fetch("a2") == "real content here"
 

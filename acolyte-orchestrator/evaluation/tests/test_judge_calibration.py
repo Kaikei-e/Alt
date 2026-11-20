@@ -22,6 +22,8 @@ import pytest
 from evaluation.judges.mock import MockRubricJudge
 
 _ALLOWED = {0.0, 0.25, 0.5, 0.75, 1.0}
+_MIN_CALIBRATION_CASES = 10
+_MAX_MOCK_AGREEMENTS = 7
 
 
 @pytest.fixture
@@ -40,7 +42,7 @@ def test_calibration_dataset_has_enough_entries(calibration_path: Path) -> None:
         if line.strip() and not line.startswith("#")
     ]
     # ADR-000778 plan specifies at least 10 calibration cases.
-    assert len(lines) >= 10, f"expected ≥ 10 entries, found {len(lines)}"
+    assert len(lines) >= _MIN_CALIBRATION_CASES, f"expected ≥ {_MIN_CALIBRATION_CASES} entries, found {len(lines)}"
 
 
 def test_calibration_dataset_entries_are_well_formed(calibration_path: Path) -> None:
@@ -48,15 +50,18 @@ def test_calibration_dataset_entries_are_well_formed(calibration_path: Path) -> 
         if not raw.strip() or raw.startswith("#"):
             continue
         entry = json.loads(raw)
-        assert "body" in entry and isinstance(entry["body"], str)
-        assert "evidence" in entry and isinstance(entry["evidence"], dict)
+        assert "body" in entry
+        assert isinstance(entry["body"], str)
+        assert "evidence" in entry
+        assert isinstance(entry["evidence"], dict)
         assert "expected_score" in entry
         assert entry["expected_score"] in _ALLOWED, f"expected_score {entry['expected_score']!r} is not a rubric bin"
         # Each evidence mapping must have at least one [Sn]-keyed quote.
         assert entry["evidence"], "evidence must be non-empty"
         for short_id, quote in entry["evidence"].items():
             assert short_id.startswith("S"), f"bad short_id: {short_id!r}"
-            assert isinstance(quote, str) and quote.strip()
+            assert isinstance(quote, str)
+            assert quote.strip()
 
 
 def test_calibration_dataset_covers_each_rubric_bin(calibration_path: Path) -> None:
@@ -90,5 +95,5 @@ def test_mock_judge_disagrees_with_rubric(calibration_path: Path) -> None:
     # With 5 evenly-spaced bins and a fixed 0.5 mock, agreement is 1/5 at
     # uniform distribution — our dataset has more bins than 0.5 so the
     # mock cannot reach the calibration threshold of 7/10.
-    assert total >= 10
-    assert agreements < 7, "mock judge hit 70% agreement with rubric; this should be impossible"
+    assert total >= _MIN_CALIBRATION_CASES
+    assert agreements < _MAX_MOCK_AGREEMENTS, "mock judge hit 70% agreement with rubric; this should be impossible"

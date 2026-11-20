@@ -184,10 +184,8 @@ def _format_claims(claims: list[dict], *, header: str = "計画済み分析ポ�
     lines = [header]
     for i, claim in enumerate(claims, 1):
         lines.append(f"{i}. [{claim.get('claim_type', 'factual')}] {neutralize_evidence_text(str(claim['claim']))}")
-        for q in claim.get("supporting_quotes", []):
-            lines.append(f'   根拠: "{neutralize_evidence_text(str(q))}"')
-        for n in claim.get("numeric_facts", []):
-            lines.append(f"   数値: {neutralize_evidence_line(str(n))}")
+        lines.extend(f'   根拠: "{neutralize_evidence_text(str(q))}"' for q in claim.get("supporting_quotes", []))
+        lines.extend(f"   数値: {neutralize_evidence_line(str(n))}" for n in claim.get("numeric_facts", []))
         eids = claim.get("evidence_ids", [])
         if eids:
             lines.append(f"   出典: {', '.join(eids)}")

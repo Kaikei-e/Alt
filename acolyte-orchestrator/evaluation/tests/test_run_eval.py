@@ -14,6 +14,10 @@ from evaluation.dataset import EvalCase
 from evaluation.generators.recorded_fixture import RecordedFixtureGenerator, slugify
 from evaluation.run_eval import _aggregate, _build_generator, _dataset_digest, run
 
+_STUB_JUDGE_SCORE = 0.75
+_EXPECTED_AGGREGATE_CASES = 2
+_SHA256_HEX_LENGTH = 64
+
 
 def _fake_gen(case: EvalCase) -> tuple[str, dict, dict, dict]:
     return (
@@ -50,10 +54,10 @@ def test_run_invokes_judge_when_supplied() -> None:
 
     def judge(prompt: str) -> float:
         judge_calls.append(prompt)
-        return 0.75
+        return _STUB_JUDGE_SCORE
 
     results = run([_case()], _fake_gen, judge=judge)
-    assert results[0]["faithfulness"] == 0.75
+    assert results[0]["faithfulness"] == _STUB_JUDGE_SCORE
     assert judge_calls, "judge should have been called"
 
 
@@ -71,12 +75,12 @@ def test_aggregate_computes_means_only_over_non_null() -> None:
     summary = _aggregate(
         [
             {"citation_precision": 1.0, "faithfulness": None, "lang_mix_ratio": {"en": 0.5}},
-            {"citation_precision": None, "faithfulness": 0.75, "lang_mix_ratio": {"en": 0.25}},
+            {"citation_precision": None, "faithfulness": _STUB_JUDGE_SCORE, "lang_mix_ratio": {"en": 0.25}},
         ]
     )
-    assert summary["cases"] == 2
+    assert summary["cases"] == _EXPECTED_AGGREGATE_CASES
     assert summary["citation_precision_mean"] == 1.0
-    assert summary["faithfulness_mean"] == 0.75
+    assert summary["faithfulness_mean"] == _STUB_JUDGE_SCORE
     assert summary["lang_en_share_mean"] == pytest.approx(0.375)
 
 
@@ -85,7 +89,7 @@ def test_dataset_digest_is_deterministic(tmp_path: Path) -> None:
     path.write_text("line\n")
     digest = _dataset_digest(path)
     assert digest == _dataset_digest(path)
-    assert len(digest) == 64
+    assert len(digest) == _SHA256_HEX_LENGTH
 
 
 def test_build_generator_scaffold_raises_on_call() -> None:

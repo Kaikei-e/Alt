@@ -2,6 +2,8 @@
 
 from acolyte.domain.source_map import SourceMap
 
+EXPECTED_REGISTERED_ENTRY_COUNT = 2
+
 
 class TestSourceMap:
     def test_register_returns_short_id(self) -> None:
@@ -46,7 +48,7 @@ class TestSourceMap:
         sm.register("a", "A")
         sm.register("b", "B")
         entries = sm.all_entries()
-        assert len(entries) == 2
+        assert len(entries) == EXPECTED_REGISTERED_ENTRY_COUNT
         assert entries[0].short_id == "S1"
         assert entries[1].short_id == "S2"
 

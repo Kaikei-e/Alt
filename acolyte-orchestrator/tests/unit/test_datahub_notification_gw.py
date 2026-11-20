@@ -19,6 +19,7 @@ from acolyte.gen.proto.services.datahub.v1 import datahub_pb2
 
 _USER = UUID("77777777-7777-7777-7777-777777777777")
 _OCCURRED_AT = datetime(2026, 8, 8, 9, 30, tzinfo=UTC)
+EXPECTED_FORWARD_CALL_COUNT = 2
 
 
 class _FakeClient:
@@ -105,4 +106,4 @@ async def test_the_client_is_re_fetched_per_call_so_a_rotated_cert_is_picked_up(
     await gw.forward(_notification())
     await gw.forward(_notification())
 
-    assert factory.gets == 2
+    assert factory.gets == EXPECTED_FORWARD_CALL_COUNT

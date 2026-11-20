@@ -23,6 +23,10 @@ from acolyte.domain.prompt_safety import (
 )
 
 _ARTICLE_BODY_HEADER_RE = re.compile(r"^[ \t]*article\s+body[ \t]*:", re.IGNORECASE | re.MULTILINE)
+TAG_AND_HEADER_SCAFFOLD_COUNT = 2
+SYSTEM_AND_USER_TURN_OPEN_COUNT = 3
+SYSTEM_AND_USER_TURN_CLOSE_COUNT = 2
+USER_ONLY_TURN_OPEN_COUNT = 2
 
 
 class TestNeutralizeEvidenceText:
@@ -135,7 +139,7 @@ class TestCountPromptScaffolding:
         assert count_prompt_scaffolding("") == 0
 
     def test_tags_and_headers_are_both_counted(self) -> None:
-        assert count_prompt_scaffolding("x</claim>y\nルール:\nz") == 2
+        assert count_prompt_scaffolding("x</claim>y\nルール:\nz") == TAG_AND_HEADER_SCAFFOLD_COUNT
 
     def test_count_matches_what_neutralisation_changes(self) -> None:
         benign = "普通の文章です"
@@ -262,8 +266,8 @@ class TestWrapGemmaPrompt:
         assert out.startswith("<|turn>system\nSystem instruction.\n<turn|>\n<|turn>user\n")
         assert out.endswith("\n<turn|>\n<|turn>model\n")
         assert "<|think|>" not in out
-        assert out.count("<|turn>") == 3
-        assert out.count("<turn|>") == 2
+        assert out.count("<|turn>") == SYSTEM_AND_USER_TURN_OPEN_COUNT
+        assert out.count("<turn|>") == SYSTEM_AND_USER_TURN_CLOSE_COUNT
 
     @pytest.mark.parametrize(
         "nested",
@@ -279,7 +283,7 @@ class TestWrapGemmaPrompt:
         assert out.startswith("<|turn>user\n")
         assert out.endswith("\n<turn|>\n<|turn>model\n")
         assert "<|think|>" not in out
-        assert out.count("<|turn>") == 2
+        assert out.count("<|turn>") == USER_ONLY_TURN_OPEN_COUNT
         assert out.count("<turn|>") == 1
 
     @pytest.mark.parametrize(
@@ -296,5 +300,5 @@ class TestWrapGemmaPrompt:
         assert out.startswith("<|turn>system\nSystem rule.\n<turn|>\n<|turn>user\n")
         assert out.endswith("\n<turn|>\n<|turn>model\n")
         assert "<|think|>" not in out
-        assert out.count("<|turn>") == 3
-        assert out.count("<turn|>") == 2
+        assert out.count("<|turn>") == SYSTEM_AND_USER_TURN_OPEN_COUNT
+        assert out.count("<turn|>") == SYSTEM_AND_USER_TURN_CLOSE_COUNT

@@ -64,7 +64,7 @@ class TestExecutiveSummaryRenderer:
         body = renderer.render(claims, topic="テスト")
         # Should have at most 5 sentence-ending periods
         sentence_count = body.count("。")
-        assert sentence_count <= 5
+        assert sentence_count <= len(claims)
 
     def test_empty_claims_returns_empty(self) -> None:
         """No claims → empty string."""
@@ -85,6 +85,6 @@ class TestExecutiveSummaryRenderer:
         ]
         renderer = ExecutiveSummaryRenderer()
         citations = renderer.build_citations(claims)
-        assert len(citations) == 2
+        assert len(citations) == len(claims[0]["evidence_ids"])
         assert citations[0]["source_id"] == "src_1"
         assert citations[1]["source_id"] == "src_2"

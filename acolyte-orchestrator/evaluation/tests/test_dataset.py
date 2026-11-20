@@ -6,11 +6,13 @@ from pathlib import Path
 
 from evaluation.dataset import EvalCase, load_cases
 
+_MIN_BASELINE_CASES = 3
+
 
 def test_loads_baseline_dataset() -> None:
     path = Path(__file__).resolve().parents[1] / "datasets" / "baseline.jsonl"
     cases = load_cases(path)
-    assert len(cases) >= 3
+    assert len(cases) >= _MIN_BASELINE_CASES
     first = cases[0]
     assert isinstance(first, EvalCase)
     assert first.topic

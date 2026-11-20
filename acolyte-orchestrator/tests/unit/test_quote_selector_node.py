@@ -10,6 +10,11 @@ from acolyte.port.llm_provider import LLMResponse
 from acolyte.usecase.graph.nodes.quote_selector_node import QuoteSelectorNode
 from acolyte.usecase.graph.state import ReportGenerationState
 
+MIN_REMAINING_ARTICLE_QUOTES = 2
+MAX_QUOTES_PER_ARTICLE = 3
+MAX_QUOTE_CHAR_LEN = 200
+MAX_QUOTE_SELECTOR_NUM_PREDICT = 1024
+
 
 class FakeLLM:
     def __init__(self, response_text: str = "") -> None:
@@ -107,7 +112,7 @@ async def test_one_article_failure_doesnt_stop_others() -> None:
     result = await node(state)
 
     # art-1 and art-3 should have quotes; art-2 uses fallback
-    assert len(result["selected_quotes"]) >= 2
+    assert len(result["selected_quotes"]) >= MIN_REMAINING_ARTICLE_QUOTES
 
 
 @pytest.mark.asyncio
@@ -172,7 +177,7 @@ async def test_heuristic_newline_heavy_article() -> None:
     )
     result = await node(state)
     quotes = result["selected_quotes"]
-    assert 1 <= len(quotes) <= 3
+    assert 1 <= len(quotes) <= MAX_QUOTES_PER_ARTICLE
     assert len(llm.calls) == 0
 
 
@@ -205,7 +210,7 @@ async def test_heuristic_quote_count_capped() -> None:
     )
     result = await node(state)
     quotes = result["selected_quotes"]
-    assert len(quotes) <= 3
+    assert len(quotes) <= MAX_QUOTES_PER_ARTICLE
 
 
 @pytest.mark.asyncio
@@ -221,7 +226,7 @@ async def test_heuristic_quote_length_capped() -> None:
     result = await node(state)
     assert result["selected_quotes"], "heuristic must select at least one quote for a long body"
     for q in result["selected_quotes"]:
-        assert len(q["text"]) <= 200
+        assert len(q["text"]) <= MAX_QUOTE_CHAR_LEN
 
 
 @pytest.mark.asyncio
@@ -387,7 +392,7 @@ async def test_num_predict_is_small() -> None:
     )
     await node(state)
 
-    assert llm.calls[0]["num_predict"] <= 1024
+    assert llm.calls[0]["num_predict"] <= MAX_QUOTE_SELECTOR_NUM_PREDICT
 
 
 @pytest.mark.asyncio

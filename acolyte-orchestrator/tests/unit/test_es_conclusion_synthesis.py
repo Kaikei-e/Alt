@@ -22,6 +22,9 @@ from acolyte.usecase.graph.nodes.section_planner_node import (
 from acolyte.usecase.graph.nodes.writer_node import WriterNode
 from acolyte.usecase.graph.state import PlannedClaimDict, ReportGenerationState
 
+MAX_NUMERIC_CLAIM_INDEX = 2
+MAX_PRIOR_ANALYSIS_CONTEXT_CHARS = 500
+
 
 class FakeLLM:
     """Returns pre-configured response text and captures prompts."""
@@ -43,7 +46,7 @@ def _make_analysis_claims(n: int = 3) -> list[dict]:
             "claim_type": "factual",
             "evidence_ids": [f"art-{i}"],
             "supporting_quotes": [f"Quote from article {i}"],
-            "numeric_facts": [f"{i * 10}%"] if i <= 2 else [],
+            "numeric_facts": [f"{i * 10}%"] if i <= MAX_NUMERIC_CLAIM_INDEX else [],
             "novelty_against": [],
             "must_cite": True,
         }
@@ -386,7 +389,9 @@ async def test_writer_conclusion_context_is_truncated() -> None:
         start = prompt.index("<prior_analysis>") + len("<prior_analysis>")
         end = prompt.index("</prior_analysis>")
         analysis_context = prompt[start:end]
-        assert len(analysis_context) <= 500, f"Analysis context should be ≤500 chars, got {len(analysis_context)}"
+        assert len(analysis_context) <= MAX_PRIOR_ANALYSIS_CONTEXT_CHARS, (
+            f"Analysis context should be ≤{MAX_PRIOR_ANALYSIS_CONTEXT_CHARS} chars, got {len(analysis_context)}"
+        )
 
 
 # ---------------------------------------------------------------------------

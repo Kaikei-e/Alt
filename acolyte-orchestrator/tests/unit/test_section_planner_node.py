@@ -7,6 +7,9 @@ import pytest
 from acolyte.port.llm_provider import LLMResponse
 from acolyte.usecase.graph.nodes.section_planner_node import SectionPlannerNode
 
+MIN_SECTION_PLAN_NUM_PREDICT = 4096
+ANALYSIS_AND_CONCLUSION_CALL_COUNT = 2
+
 
 def _make_claim(
     claim: str = "test claim",
@@ -97,7 +100,7 @@ async def test_planner_produces_claim_plans() -> None:
     result = await node(state)
     assert "claim_plans" in result
     assert "analysis" in result["claim_plans"]
-    assert len(result["claim_plans"]["analysis"]) == 2
+    assert len(result["claim_plans"]["analysis"]) == len(claims)
     assert result["claim_plans"]["analysis"][0]["claim"] == "AI market grew 20%"
 
 
@@ -272,7 +275,7 @@ async def test_planner_uses_larger_num_predict_so_section_plan_does_not_truncate
 
     await node(state)
     assert llm.kwargs_list
-    assert llm.kwargs_list[0].get("num_predict", 0) >= 4096
+    assert llm.kwargs_list[0].get("num_predict", 0) >= MIN_SECTION_PLAN_NUM_PREDICT
 
 
 @pytest.mark.asyncio
@@ -471,7 +474,7 @@ async def test_conclusion_planner_receives_analysis_claims_not_facts() -> None:
 
     await node(state)
     # Conclusion prompt should reference analysis claims, not raw extracted facts
-    assert len(llm.prompts) == 2
+    assert len(llm.prompts) == ANALYSIS_AND_CONCLUSION_CALL_COUNT
     conclusion_prompt = llm.prompts[1]  # second call is for conclusion
     assert "AI adoption is accelerating" in conclusion_prompt
     assert "Raw fact from extractor" not in conclusion_prompt

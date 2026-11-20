@@ -11,6 +11,10 @@ from acolyte.usecase.eval.checklist_evaluator import ChecklistEvaluator
 from acolyte.usecase.eval.eval_runner import EvalRunner
 from acolyte.usecase.eval.rubric_evaluator import RubricEvaluator
 
+CHECKLIST_DIMENSION_COUNT = 3
+CHECKLIST_AND_RUBRIC_DIMENSION_COUNT = 5
+HALF_COVERAGE_SCORE = 0.5
+
 
 class FakeLLM:
     async def generate(self, prompt: str, **kwargs: object) -> LLMResponse:
@@ -39,7 +43,7 @@ async def test_eval_runner_checklist_only() -> None:
         outline=[{"key": "summary", "title": "Summary"}],
     )
     assert result.report_id == "r-1"
-    assert len(result.dimensions) == 3  # task_fulfillment, coverage, presentation
+    assert len(result.dimensions) == CHECKLIST_DIMENSION_COUNT  # task_fulfillment, coverage, presentation
     assert all(d.protocol == "checklist" for d in result.dimensions)
     assert 0.0 <= result.overall_score <= 1.0
 
@@ -58,7 +62,7 @@ async def test_eval_runner_with_rubric() -> None:
         scope={"topic": "AI market"},
         outline=[{"key": "summary", "title": "Summary"}],
     )
-    assert len(result.dimensions) == 5  # 3 checklist + 2 rubric
+    assert len(result.dimensions) == CHECKLIST_AND_RUBRIC_DIMENSION_COUNT  # 3 checklist + 2 rubric
     assert result.evaluated_at is not None
 
 
@@ -97,7 +101,7 @@ async def test_coverage_excludes_section_generated_items() -> None:
         scope={"topic": "AI"},
         outline=[{"key": "summary", "title": "Summary"}],
     )
-    assert result.dimension_map["coverage"] == 0.5
+    assert result.dimension_map["coverage"] == HALF_COVERAGE_SCORE
     tf = next(d for d in result.dimensions if d.name == "task_fulfillment")
     names = [i["name"] for i in tf.details["items"]]
     assert any(n.startswith("section_generated:") for n in names)

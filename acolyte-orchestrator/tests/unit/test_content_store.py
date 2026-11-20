@@ -4,6 +4,8 @@ import pytest
 
 from acolyte.gateway.memory_content_store import MemoryContentStore
 
+EXCESS_ARTICLE_INSERT_COUNT = 3000
+
 
 @pytest.mark.asyncio
 async def test_store_and_fetch() -> None:
@@ -71,6 +73,6 @@ async def test_store_lru_access_refreshes_recency() -> None:
 async def test_default_construction_is_bounded() -> None:
     """Default construction (no explicit max_size) must still cap growth."""
     store = MemoryContentStore()
-    for i in range(3000):
+    for i in range(EXCESS_ARTICLE_INSERT_COUNT):
         await store.store(f"art-{i}", f"body-{i}")
-    assert len(store) < 3000
+    assert len(store) < EXCESS_ARTICLE_INSERT_COUNT

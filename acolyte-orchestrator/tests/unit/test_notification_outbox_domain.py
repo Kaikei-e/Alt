@@ -26,6 +26,7 @@ from acolyte.domain.notification import (
 
 _RUN_ID = UUID("11111111-1111-1111-1111-111111111111")
 _REPORT_ID = UUID("22222222-2222-2222-2222-222222222222")
+EXPECTED_MAX_ATTEMPTS = 8
 
 
 def test_dedupe_key_is_derived_from_the_run_not_the_attempt() -> None:
@@ -64,7 +65,7 @@ def test_backoff_ceiling_doubles_per_attempt_until_the_cap() -> None:
 
 
 def test_max_attempts_is_eight_and_exhaustion_is_inclusive() -> None:
-    assert MAX_ATTEMPTS == 8
+    assert MAX_ATTEMPTS == EXPECTED_MAX_ATTEMPTS
     assert is_exhausted(7) is False
     assert is_exhausted(8) is True
     assert is_exhausted(9) is True

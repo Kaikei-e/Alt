@@ -8,6 +8,7 @@ Run with:
 """
 
 import json
+from http import HTTPStatus
 from pathlib import Path
 
 import httpx
@@ -73,9 +74,10 @@ def test_generate_text() -> None:
 
     with pact.serve() as srv:
         resp = httpx.post(f"{srv.url}/api/v1/summarize", json=request_body)
-        assert resp.status_code == 200
+        assert resp.status_code == HTTPStatus.OK
         data = resp.json()
-        assert isinstance(data["summary"], str) and data["summary"]
+        assert isinstance(data["summary"], str)
+        assert data["summary"]
         assert isinstance(data["model"], str)
         assert isinstance(data["completion_tokens"], int)
 
@@ -105,9 +107,10 @@ def test_generate_text_with_streaming_disabled() -> None:
 
     with pact.serve() as srv:
         resp = httpx.post(f"{srv.url}/api/v1/summarize", json=request_body)
-        assert resp.status_code == 200
+        assert resp.status_code == HTTPStatus.OK
         data = resp.json()
-        assert isinstance(data["summary"], str) and data["summary"]
+        assert isinstance(data["summary"], str)
+        assert data["summary"]
         assert data["success"] is True
 
     pact.write_file(str(PACT_DIR), overwrite=True)

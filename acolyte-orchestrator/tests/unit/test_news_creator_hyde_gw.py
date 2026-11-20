@@ -9,6 +9,9 @@ import pytest
 from acolyte.gateway.news_creator_hyde_gw import NewsCreatorHyDEGenerator
 from acolyte.port.llm_provider import LLMResponse
 
+GEMMA4_OFFICIAL_TOP_P = 0.95
+GEMMA4_OFFICIAL_TOP_K = 64
+
 
 class _FakeLLM:
     def __init__(self, *, text: str = "", delay: float = 0.0, raise_exc: Exception | None = None) -> None:
@@ -80,8 +83,8 @@ async def test_generator_forwards_gemma4_official_sampler() -> None:
     assert len(fake.calls) == 1
     call = fake.calls[0]
     assert call.get("temperature") == 1.0
-    assert call.get("top_p") == 0.95
-    assert call.get("top_k") == 64
+    assert call.get("top_p") == GEMMA4_OFFICIAL_TOP_P
+    assert call.get("top_k") == GEMMA4_OFFICIAL_TOP_K
     assert call.get("think") is False
 
 

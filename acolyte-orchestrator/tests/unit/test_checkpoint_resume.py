@@ -20,6 +20,7 @@ from acolyte.usecase.graph.nodes.quote_selector_node import QuoteSelectorNode, s
 from acolyte.usecase.graph.state import ReportGenerationState
 
 _fail_once_tracker: dict[str, int] = {"node_a": 0, "node_b": 0}
+EXPECTED_RETRY_CALL_COUNT = 2
 
 
 class ResumeState(TypedDict, total=False):
@@ -93,7 +94,7 @@ async def test_pipeline_resumes_from_checkpoint_after_failure() -> None:
     # node_a was NOT called again (resumed from checkpoint)
     assert _fail_once_tracker["node_a"] == 1  # still 1, not 2
     # node_b was called again (retry after failure)
-    assert _fail_once_tracker["node_b"] == 2
+    assert _fail_once_tracker["node_b"] == EXPECTED_RETRY_CALL_COUNT
 
     # Verify final state has node_b's output (completed successfully)
     final_state = await graph.aget_state(config)  # type: ignore[missing-attribute]

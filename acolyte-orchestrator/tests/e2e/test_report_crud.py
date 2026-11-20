@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from http import HTTPStatus
 
 from starlette.testclient import TestClient
 
@@ -14,7 +15,7 @@ def test_create_report_returns_report_id(client: TestClient) -> None:
         content=json.dumps({"title": "Weekly AI Briefing", "reportType": "weekly_briefing"}),
         headers={"Content-Type": "application/json"},
     )
-    assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
+    assert resp.status_code == HTTPStatus.OK, f"Expected 200, got {resp.status_code}: {resp.text}"
     data = resp.json()
     assert "reportId" in data
     assert len(data["reportId"]) > 0
@@ -28,7 +29,7 @@ def test_list_reports_returns_created_report(client: TestClient) -> None:
         content=json.dumps({"title": "Test Report", "reportType": "market_analysis"}),
         headers={"Content-Type": "application/json"},
     )
-    assert create_resp.status_code == 200
+    assert create_resp.status_code == HTTPStatus.OK
 
     # List should include it
     list_resp = client.post(
@@ -36,7 +37,7 @@ def test_list_reports_returns_created_report(client: TestClient) -> None:
         content=json.dumps({"limit": 10}),
         headers={"Content-Type": "application/json"},
     )
-    assert list_resp.status_code == 200, f"Expected 200, got {list_resp.status_code}: {list_resp.text}"
+    assert list_resp.status_code == HTTPStatus.OK, f"Expected 200, got {list_resp.status_code}: {list_resp.text}"
     data = list_resp.json()
     assert "reports" in data
     assert len(data["reports"]) >= 1
@@ -60,7 +61,7 @@ def test_get_report_returns_details(client: TestClient) -> None:
         content=json.dumps({"reportId": report_id}),
         headers={"Content-Type": "application/json"},
     )
-    assert get_resp.status_code == 200
+    assert get_resp.status_code == HTTPStatus.OK
     data = get_resp.json()
     assert data["report"]["title"] == "Detail Test"
     # proto3: int default 0 is omitted from JSON, so currentVersion may be absent

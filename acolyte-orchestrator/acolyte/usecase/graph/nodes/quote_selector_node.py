@@ -237,15 +237,15 @@ class QuoteSelectorNode:
         work_items: list[dict] = []
         for section_key, items in curated_by_section.items():
             query_list = section_queries_map.get(section_key, [section_key])
-            for item in items:
-                work_items.append(
-                    {
-                        "section_key": section_key,
-                        "section_queries": list(query_list),
-                        "source_id": item.get("id", ""),
-                        "source_title": item.get("title", ""),
-                    }
-                )
+            work_items.extend(
+                {
+                    "section_key": section_key,
+                    "section_queries": list(query_list),
+                    "source_id": item.get("id", ""),
+                    "source_title": item.get("title", ""),
+                }
+                for item in items
+            )
         return work_items
 
     async def _select_quotes(  # noqa: PLR0913 — each param is a distinct data source for the heuristic→LLM→fallback chain, not a cohesive group

@@ -14,6 +14,8 @@ import pytest
 
 import main as main_module
 
+CONFIGURED_RELAY_INTERVAL_S = 1.5
+
 
 def test_producer_and_relay_share_one_enabled_decision() -> None:
     assert main_module._job_queue._notifications_enabled == (main_module._relay_config is not None)
@@ -45,7 +47,7 @@ async def test_lifespan_runs_the_relay_loop_and_stops_it(monkeypatch: pytest.Mon
 
     class _FakeRelay:
         async def run_forever(self, interval_seconds: float) -> None:
-            assert interval_seconds == 1.5
+            assert interval_seconds == CONFIGURED_RELAY_INTERVAL_S
             started.set()
             try:
                 await asyncio.Event().wait()
@@ -54,7 +56,7 @@ async def test_lifespan_runs_the_relay_loop_and_stops_it(monkeypatch: pytest.Mon
                 raise
 
     class _FakeConfig:
-        interval_seconds = 1.5
+        interval_seconds = CONFIGURED_RELAY_INTERVAL_S
 
     monkeypatch.setattr(main_module, "_relay", _FakeRelay())
     monkeypatch.setattr(main_module, "_relay_config", _FakeConfig())

@@ -10,6 +10,8 @@ from acolyte.domain.section_contract import (
     SectionContract,
 )
 
+DEFAULT_SECTION_MAX_CLAIMS = 7
+
 
 def test_section_contract_defaults() -> None:
     """Construct with required fields only; assert all new fields have sensible defaults."""
@@ -22,7 +24,7 @@ def test_section_contract_defaults() -> None:
     assert contract.must_include_data_types == []
     assert contract.min_citations == 0
     assert contract.novelty_against == []
-    assert contract.max_claims == 7
+    assert contract.max_claims == DEFAULT_SECTION_MAX_CLAIMS
     assert contract.query_facets == []
     assert contract.synthesis_only is False
 
@@ -57,7 +59,7 @@ def test_section_contract_backward_compat_from_dict() -> None:
     assert contract.key == "overview"
     assert contract.synthesis_only is False
     assert contract.min_citations == 0
-    assert contract.max_claims == 7
+    assert contract.max_claims == DEFAULT_SECTION_MAX_CLAIMS
 
 
 def test_role_contract_defaults_covers_all_roles() -> None:

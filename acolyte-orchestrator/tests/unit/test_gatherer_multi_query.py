@@ -12,6 +12,8 @@ from acolyte.port.evidence_provider import ArticleHit, RecapHit
 from acolyte.usecase.graph.nodes.gatherer_node import GathererNode
 from tests.conftest import TEST_USER_ID
 
+MIN_PER_SECTION_SEARCH_CALLS = 2
+
 
 class FakeEvidence:
     """Returns pre-configured articles per query keyword."""
@@ -70,12 +72,12 @@ async def test_gatherer_uses_per_section_queries() -> None:
     result = await node(state)
 
     # Should have called search for each query
-    assert len(evidence.search_calls) >= 2
+    assert len(evidence.search_calls) >= MIN_PER_SECTION_SEARCH_CALLS
     assert any("market" in q for q in evidence.search_calls)
     assert any("chip" in q for q in evidence.search_calls)
 
     # Evidence should be present
-    assert len(result["evidence"]) >= 2
+    assert len(result["evidence"]) >= len(articles_by_query)
 
 
 @pytest.mark.asyncio

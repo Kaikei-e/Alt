@@ -10,6 +10,12 @@ from acolyte.domain.quote_selection import FactNormalizerOutput
 from acolyte.port.llm_provider import LLMResponse
 from acolyte.usecase.graph.nodes.fact_normalizer_node import FactNormalizerNode
 
+EXPECTED_BATCH_FACT_COUNT = 3
+CONFIGURED_FACT_NUM_PREDICT = 512
+EXPECTED_PARTIAL_FAILURE_TOTAL = 3
+ROUND_ROBIN_TOTAL_CAP = 4
+ROUND_ROBIN_PER_SECTION_CAP = 2
+
 
 @dataclass
 class FakeSettings:
@@ -106,7 +112,7 @@ async def test_processes_all_quotes() -> None:
         "selected_quotes": [{"text": f"quote {i}", "source_id": f"art-{i}", "source_title": f"T{i}"} for i in range(3)],
     }
     result = await node(state)
-    assert len(result["extracted_facts"]) == 3
+    assert len(result["extracted_facts"]) == EXPECTED_BATCH_FACT_COUNT
 
 
 @pytest.mark.asyncio
@@ -121,7 +127,7 @@ async def test_empty_quotes_produces_empty() -> None:
 async def test_num_predict_from_node_config() -> None:
     """FactNormalizer must use fact_num_predict from settings."""
     llm = FakeLLM(_normalize_response("fact"))
-    settings = FakeSettings(fact_num_predict=512)
+    settings = FakeSettings(fact_num_predict=CONFIGURED_FACT_NUM_PREDICT)
     node = FactNormalizerNode(llm, settings)
 
     state = {
@@ -129,7 +135,7 @@ async def test_num_predict_from_node_config() -> None:
     }
     await node(state)
 
-    assert llm.calls[0]["num_predict"] == 512
+    assert llm.calls[0]["num_predict"] == CONFIGURED_FACT_NUM_PREDICT
 
 
 @pytest.mark.asyncio
@@ -156,7 +162,7 @@ async def test_partial_failure_preserves_successes() -> None:
     result = await node(state)
 
     facts = result["extracted_facts"]
-    assert len(facts) == 3
+    assert len(facts) == EXPECTED_PARTIAL_FAILURE_TOTAL
     fallback_facts = [f for f in facts if f["is_fallback"] is True]
     assert len(fallback_facts) == 1
     assert fallback_facts[0]["claim"] == "quote 2"
@@ -245,7 +251,7 @@ async def test_fallback_fact_same_shape_as_llm_fact() -> None:
 async def test_total_cap_uses_round_robin_across_sections() -> None:
     """When quotes exceed max_facts_total, cap with section round-robin, not raw slice."""
     llm = FakeLLM(_normalize_response("fact", "medium", "quote"))
-    settings = FakeSettings(max_facts_total=4)
+    settings = FakeSettings(max_facts_total=ROUND_ROBIN_TOTAL_CAP)
     node = FactNormalizerNode(llm, settings)
 
     # 3 quotes from section A, 3 from section B
@@ -262,7 +268,7 @@ async def test_total_cap_uses_round_robin_across_sections() -> None:
     result = await node(state)
 
     facts = result["extracted_facts"]
-    assert len(facts) == 4
+    assert len(facts) == ROUND_ROBIN_TOTAL_CAP
     # Round-robin: should have 2 from sec_a and 2 from sec_b
     section_keys_in_prompts = []
     for call in llm.calls:
@@ -273,8 +279,8 @@ async def test_total_cap_uses_round_robin_across_sections() -> None:
                 break
     sec_a_count = section_keys_in_prompts.count("sec_a")
     sec_b_count = section_keys_in_prompts.count("sec_b")
-    assert sec_a_count == 2
-    assert sec_b_count == 2
+    assert sec_a_count == ROUND_ROBIN_PER_SECTION_CAP
+    assert sec_b_count == ROUND_ROBIN_PER_SECTION_CAP
 
 
 @pytest.mark.asyncio
