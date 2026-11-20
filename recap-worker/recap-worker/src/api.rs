@@ -350,6 +350,10 @@ mod tests {
     }
 
     fn write_test_mtls_files(dir: &std::path::Path) -> (String, String, String) {
+        #[expect(
+            clippy::let_underscore_must_use,
+            reason = "CryptoProvider::install_default returns Err if another test already installed the default provider"
+        )]
         let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
         let ca_params = rcgen::CertificateParams::new(vec!["alt-ca".to_string()]).expect("ca");
         let ca_key = rcgen::KeyPair::generate().expect("ca key");
@@ -600,6 +604,10 @@ mod tests {
             ExtendedKeyUsagePurpose, IsCa, Issuer, KeyPair, KeyUsagePurpose, SanType,
         };
 
+        #[expect(
+            clippy::let_underscore_must_use,
+            reason = "CryptoProvider::install_default returns Err if another test already installed the default provider"
+        )]
         let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
         let mut ca_params = CertificateParams::new(Vec::<String>::new()).expect("ca params");
         ca_params.distinguished_name = DistinguishedName::new();
@@ -768,7 +776,9 @@ mod tests {
             .expect("bind plain");
         let plain_addr = plain_listener.local_addr().expect("plain local_addr");
         let plain_task = tokio::spawn(async move {
-            let _ = axum::serve(plain_listener, plain_app).await;
+            axum::serve(plain_listener, plain_app)
+                .await
+                .expect("plain serve");
         });
 
         let mut root_store = rustls::RootCertStore::empty();
@@ -828,6 +838,6 @@ mod tests {
 
         mtls_handle.shutdown();
         plain_task.abort();
-        let _ = mtls_task.await;
+        mtls_task.await.expect("mtls server task");
     }
 }

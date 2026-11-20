@@ -304,25 +304,30 @@ impl StageExecutor<'_> {
     ) -> Result<()> {
         if let Err(e) = self.save_state_inner(job_id, stage, state_data).await {
             let error_msg = format!("{e:#}");
-            let _ = self
+            if let Err(record_err) = self
                 .orchestrator
                 .recap_dao()
                 .insert_failed_task(job_id, stage, None, Some(&error_msg))
-                .await;
+                .await
+            {
+                tracing::warn!(
+                    error = ?record_err,
+                    job_id = %job_id,
+                    stage = %stage,
+                    "failed to record failed task after stage state save error"
+                );
+            }
             return Err(e).with_context(|| format!("failed to save {stage} stage state"));
         }
         Ok(())
     }
 
-    async fn save_state_inner<T: serde::Serialize>(
+    async fn persist_stage_checkpoint(
         &self,
         job_id: Uuid,
         stage: &str,
-        state_data: &T,
+        state_json: &serde_json::Value,
     ) -> Result<()> {
-        let state_json =
-            serde_json::to_value(state_data).context("failed to serialize stage state")?;
-
         tracing::debug!(
             %job_id,
             %stage,
@@ -331,9 +336,12 @@ impl StageExecutor<'_> {
 
         self.orchestrator
             .recap_dao()
-            .save_stage_state(job_id, stage, &state_json)
-            .await?;
+            .save_stage_state(job_id, stage, state_json)
+            .await
+            .map_err(Into::into)
+    }
 
+    async fn mark_stage_running(&self, job_id: Uuid, stage: &str) -> Result<()> {
         tracing::debug!(
             %job_id,
             %stage,
@@ -355,7 +363,10 @@ impl StageExecutor<'_> {
             %stage,
             "stage state saved and job status updated successfully"
         );
+        Ok(())
+    }
 
+    async fn log_stage_completed(&self, job_id: Uuid, stage: &str) {
         // Log stage completion
         if let Err(e) = self
             .orchestrator
@@ -370,6 +381,21 @@ impl StageExecutor<'_> {
                 "failed to insert stage log"
             );
         }
+    }
+
+    async fn save_state_inner<T: serde::Serialize>(
+        &self,
+        job_id: Uuid,
+        stage: &str,
+        state_data: &T,
+    ) -> Result<()> {
+        let state_json =
+            serde_json::to_value(state_data).context("failed to serialize stage state")?;
+
+        self.persist_stage_checkpoint(job_id, stage, &state_json)
+            .await?;
+        self.mark_stage_running(job_id, stage).await?;
+        self.log_stage_completed(job_id, stage).await;
 
         Ok(())
     }

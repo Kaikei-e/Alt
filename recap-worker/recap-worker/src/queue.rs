@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 use crate::clients::subworker::SubworkerClient;
@@ -286,16 +286,38 @@ impl ClassificationJobQueue {
 
         // Take ownership of workers to await them
         let workers = {
+            #[expect(
+                clippy::unwrap_used,
+                reason = "mutex poisoning means another thread panicked while holding the lock"
+            )]
             let mut workers_guard = self.workers.lock().unwrap();
             std::mem::take(&mut *workers_guard)
         };
 
         // Wait for all workers to finish
         for worker in workers {
-            let _ = worker.await;
+            await_worker_shutdown(worker).await;
         }
 
         info!("all classification queue workers stopped");
+    }
+}
+
+async fn await_worker_shutdown(worker: JoinHandle<Result<()>>) {
+    match worker.await {
+        Ok(Ok(())) => {}
+        Ok(Err(err)) => {
+            warn!(
+                error = %err,
+                "classification queue worker exited with error during shutdown"
+            );
+        }
+        Err(err) => {
+            warn!(
+                error = %err,
+                "classification queue worker task failed during shutdown"
+            );
+        }
     }
 }
 
@@ -423,10 +445,10 @@ mod tests {
             "error should reference the failed chunk_idx (1): {message}"
         );
 
-        let _ = sqlx::query("DELETE FROM classification_job_queue WHERE recap_job_id = $1")
+        sqlx::query("DELETE FROM classification_job_queue WHERE recap_job_id = $1")
             .bind(recap_job_id)
             .execute(&pool)
-            .await;
+            .await?;
         Ok(())
     }
 
@@ -487,7 +509,7 @@ mod tests {
 
         let jobs = store.get_jobs_by_recap_job(recap_job_id).await?;
         let drop_sql = format!("DROP SCHEMA IF EXISTS {schema} CASCADE;");
-        let _ = pool.execute(sqlx::AssertSqlSafe(drop_sql)).await;
+        pool.execute(sqlx::AssertSqlSafe(drop_sql)).await?;
 
         assert!(
             crate::clients::subworker::is_subworker_auth_error(&err),
@@ -599,7 +621,7 @@ mod tests {
         queue.shutdown().await;
 
         let drop_sql = format!("DROP SCHEMA IF EXISTS {schema} CASCADE;");
-        let _ = pool.execute(sqlx::AssertSqlSafe(drop_sql)).await;
+        pool.execute(sqlx::AssertSqlSafe(drop_sql)).await?;
 
         assert!(
             queue
@@ -667,7 +689,7 @@ mod tests {
         writer.await.expect("writer task");
 
         let drop_sql = format!("DROP SCHEMA IF EXISTS {schema} CASCADE;");
-        let _ = pool.execute(sqlx::AssertSqlSafe(drop_sql)).await;
+        pool.execute(sqlx::AssertSqlSafe(drop_sql)).await?;
 
         assert!(
             crate::clients::subworker::is_subworker_auth_error(&err),
@@ -748,7 +770,7 @@ mod tests {
             .await;
 
         let drop_sql = format!("DROP SCHEMA IF EXISTS {schema} CASCADE;");
-        let _ = pool.execute(sqlx::AssertSqlSafe(drop_sql)).await;
+        pool.execute(sqlx::AssertSqlSafe(drop_sql)).await?;
 
         let results = results.expect("fresh enqueue must clear stale auth_failures and succeed");
         assert_eq!(results.len(), 1);
@@ -866,7 +888,7 @@ mod tests {
         drop(listener);
 
         let drop_sql = format!("DROP SCHEMA IF EXISTS {schema} CASCADE;");
-        let _ = pool.execute(sqlx::AssertSqlSafe(drop_sql)).await;
+        pool.execute(sqlx::AssertSqlSafe(drop_sql)).await?;
 
         assert!(
             crate::clients::subworker::is_subworker_auth_error(&err),

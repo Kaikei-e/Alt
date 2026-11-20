@@ -225,8 +225,12 @@ pub fn preprocess_documents(bodies: &[String]) -> (usize, Vec<ProcessedDocument>
             crate::clients::SubworkerClient::new("http://localhost:18002", 3, None).unwrap_or_else(
                 |_| {
                     // Fallback: create with minimal config if URL parsing fails
+                    #[expect(
+                        clippy::expect_used,
+                        reason = "hardcoded loopback URL is valid by construction and benchmark helper has no Result return"
+                    )]
                     crate::clients::SubworkerClient::new("http://127.0.0.1:18002", 3, None)
-                        .expect("failed to create subworker client")
+                        .expect("hardcoded loopback URL is valid by construction and benchmark helper has no Result return")
                 },
             ),
         );
@@ -238,12 +242,17 @@ pub fn preprocess_documents(bodies: &[String]) -> (usize, Vec<ProcessedDocument>
                 // If no runtime is available, create a new one
                 let article_clone2 = article.clone();
                 let subworker_clone2 = Arc::clone(&subworker);
-                tokio::runtime::Runtime::new()
-                    .expect("failed to create tokio runtime")
-                    .block_on(crate::pipeline::preprocess::preprocess_article(
-                        article_clone2,
-                        subworker_clone2,
-                    ))
+                #[expect(
+                    clippy::expect_used,
+                    reason = "synchronous benchmark helper has no Result return and cannot proceed without a Tokio runtime"
+                )]
+                let runtime = tokio::runtime::Runtime::new().expect(
+                    "synchronous benchmark helper has no Result return and cannot proceed without a Tokio runtime",
+                );
+                runtime.block_on(crate::pipeline::preprocess::preprocess_article(
+                    article_clone2,
+                    subworker_clone2,
+                ))
             },
             |handle| {
                 handle.block_on(crate::pipeline::preprocess::preprocess_article(

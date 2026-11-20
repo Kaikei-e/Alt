@@ -103,6 +103,10 @@ impl FakeCa {
         self: &Arc<Self>,
         versions: &[&'static rustls::SupportedProtocolVersion],
     ) -> (String, PathBuf) {
+        #[expect(
+            clippy::let_underscore_must_use,
+            reason = "install_default is idempotent and returns Err if already installed in test process"
+        )]
         let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
         let ca_der = pem_first_cert(&self.ca_cert_pem).expect("ca der");
         let server_der = pem_first_cert(&self.server_cert_pem).expect("server der");
@@ -151,6 +155,10 @@ impl FakeCa {
                         let peer = peer.clone();
                         async move { state.handle(req, peer).await }
                     });
+                    #[expect(
+                        clippy::let_underscore_must_use,
+                        reason = "test server connection may terminate early when client disconnects or times out"
+                    )]
                     let _ = http1::Builder::new().serve_connection(io, svc).await;
                 });
             }
@@ -174,8 +182,7 @@ impl FakeCa {
         let body = req
             .collect()
             .await
-            .map(http_body_util::Collected::to_bytes)
-            .unwrap_or_default();
+            .map_or_else(|_| Bytes::new(), http_body_util::Collected::to_bytes);
         self.seen
             .lock()
             .await
@@ -241,6 +248,10 @@ impl FakeCa {
             tokio::time::sleep(self.sign_delay).await;
         }
         if let Some(rx) = self.block_sign.lock().await.as_mut() {
+            #[expect(
+                clippy::let_underscore_must_use,
+                reason = "test gate unblocks whether sender fires or is dropped"
+            )]
             let _ = rx.await;
         }
         if self.malformed_sign.load(Ordering::SeqCst) {
@@ -690,6 +701,10 @@ async fn timeout() {
         )
         .await
         .expect_err("timeout");
+    #[expect(
+        clippy::let_underscore_must_use,
+        reason = "server task may already have dropped rx after timeout"
+    )]
     let _ = tx.send(());
     assert!(
         start.elapsed() < Duration::from_millis(1500),
@@ -722,6 +737,10 @@ async fn canceled() {
         err.is_canceled() || err.to_string().contains("cancel"),
         "{err}"
     );
+    #[expect(
+        clippy::let_underscore_must_use,
+        reason = "server task may already have dropped rx after cancellation"
+    )]
     let _ = tx.send(());
 }
 

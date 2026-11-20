@@ -245,24 +245,11 @@ pub fn parse_eval_report_args(args: &[String]) -> Result<EvalReportCliArgs, Stri
                         .map_err(|e| format!("invalid --window UUID: {e}"))?,
                 );
             }
-            s if s.starts_with("--window=") => {
-                let val = &s["--window=".len()..];
-                window_id = Some(
-                    uuid::Uuid::parse_str(val)
-                        .map_err(|e| format!("invalid --window UUID: {e}"))?,
-                );
-            }
             "--k" => {
                 i += 1;
                 let val = args
                     .get(i)
                     .ok_or_else(|| "--k requires a value".to_string())?;
-                k = val
-                    .parse::<usize>()
-                    .map_err(|e| format!("invalid --k value: {e}"))?;
-            }
-            s if s.starts_with("--k=") => {
-                let val = &s["--k=".len()..];
                 k = val
                     .parse::<usize>()
                     .map_err(|e| format!("invalid --k value: {e}"))?;
@@ -279,17 +266,26 @@ pub fn parse_eval_report_args(args: &[String]) -> Result<EvalReportCliArgs, Stri
                 }
                 format.clone_from(val);
             }
-            s if s.starts_with("--format=") => {
-                let val = &s["--format=".len()..];
-                if val != "json" && val != "markdown" {
-                    return Err(format!(
-                        "invalid --format: must be 'json' or 'markdown', got '{val}'"
-                    ));
-                }
-                format = val.to_string();
-            }
             other => {
-                return Err(format!("unknown argument: '{other}'"));
+                if let Some(val) = other.strip_prefix("--window=") {
+                    window_id = Some(
+                        uuid::Uuid::parse_str(val)
+                            .map_err(|e| format!("invalid --window UUID: {e}"))?,
+                    );
+                } else if let Some(val) = other.strip_prefix("--k=") {
+                    k = val
+                        .parse::<usize>()
+                        .map_err(|e| format!("invalid --k value: {e}"))?;
+                } else if let Some(val) = other.strip_prefix("--format=") {
+                    if val != "json" && val != "markdown" {
+                        return Err(format!(
+                            "invalid --format: must be 'json' or 'markdown', got '{val}'"
+                        ));
+                    }
+                    format = val.to_string();
+                } else {
+                    return Err(format!("unknown argument: '{other}'"));
+                }
             }
         }
         i += 1;
@@ -342,27 +338,11 @@ pub fn parse_eval_replay_args(args: &[String]) -> Result<EvalReplayCliArgs, Stri
                         .with_timezone(&chrono::Utc),
                 );
             }
-            s if s.starts_with("--from=") => {
-                let val = &s["--from=".len()..];
-                from = Some(
-                    chrono::DateTime::parse_from_rfc3339(val)
-                        .map_err(|e| format!("invalid --from RFC3339 timestamp: {e}"))?
-                        .with_timezone(&chrono::Utc),
-                );
-            }
             "--to" => {
                 i += 1;
                 let val = args
                     .get(i)
                     .ok_or_else(|| "--to requires a value".to_string())?;
-                to = Some(
-                    chrono::DateTime::parse_from_rfc3339(val)
-                        .map_err(|e| format!("invalid --to RFC3339 timestamp: {e}"))?
-                        .with_timezone(&chrono::Utc),
-                );
-            }
-            s if s.starts_with("--to=") => {
-                let val = &s["--to=".len()..];
                 to = Some(
                     chrono::DateTime::parse_from_rfc3339(val)
                         .map_err(|e| format!("invalid --to RFC3339 timestamp: {e}"))?
@@ -375,10 +355,6 @@ pub fn parse_eval_replay_args(args: &[String]) -> Result<EvalReplayCliArgs, Stri
                     .get(i)
                     .ok_or_else(|| "--params-version requires a value".to_string())?;
                 params_version = Some(val.clone());
-            }
-            s if s.starts_with("--params-version=") => {
-                let val = &s["--params-version=".len()..];
-                params_version = Some(val.to_string());
             }
             "--param" => {
                 i += 1;
@@ -393,27 +369,39 @@ pub fn parse_eval_replay_args(args: &[String]) -> Result<EvalReplayCliArgs, Stri
                 }
                 param_overrides.push((key.trim().to_string(), value.to_string()));
             }
-            s if s.starts_with("--param=") => {
-                let val = &s["--param=".len()..];
-                let (key, value) = val
-                    .split_once('=')
-                    .ok_or_else(|| format!("invalid --param '{val}': expected key=value"))?;
-                if key.trim().is_empty() {
-                    return Err(format!("invalid --param '{val}': key cannot be empty"));
-                }
-                param_overrides.push((key.trim().to_string(), value.to_string()));
-            }
             "--generate" => {
                 generate = true;
             }
-            s if s.starts_with("--generate=") => {
-                let val = &s["--generate=".len()..];
-                generate = val
-                    .parse::<bool>()
-                    .map_err(|e| format!("invalid --generate boolean '{val}': {e}"))?;
-            }
             other => {
-                return Err(format!("unknown argument: '{other}'"));
+                if let Some(val) = other.strip_prefix("--from=") {
+                    from = Some(
+                        chrono::DateTime::parse_from_rfc3339(val)
+                            .map_err(|e| format!("invalid --from RFC3339 timestamp: {e}"))?
+                            .with_timezone(&chrono::Utc),
+                    );
+                } else if let Some(val) = other.strip_prefix("--to=") {
+                    to = Some(
+                        chrono::DateTime::parse_from_rfc3339(val)
+                            .map_err(|e| format!("invalid --to RFC3339 timestamp: {e}"))?
+                            .with_timezone(&chrono::Utc),
+                    );
+                } else if let Some(val) = other.strip_prefix("--params-version=") {
+                    params_version = Some(val.to_string());
+                } else if let Some(val) = other.strip_prefix("--param=") {
+                    let (key, value) = val
+                        .split_once('=')
+                        .ok_or_else(|| format!("invalid --param '{val}': expected key=value"))?;
+                    if key.trim().is_empty() {
+                        return Err(format!("invalid --param '{val}': key cannot be empty"));
+                    }
+                    param_overrides.push((key.trim().to_string(), value.to_string()));
+                } else if let Some(val) = other.strip_prefix("--generate=") {
+                    generate = val
+                        .parse::<bool>()
+                        .map_err(|e| format!("invalid --generate boolean '{val}': {e}"))?;
+                } else {
+                    return Err(format!("unknown argument: '{other}'"));
+                }
             }
         }
         i += 1;

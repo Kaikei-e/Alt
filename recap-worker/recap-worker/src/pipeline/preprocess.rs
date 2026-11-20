@@ -105,10 +105,11 @@ impl PreprocessStage for TextPreprocessStage {
 
             let task = tokio::spawn(async move {
                 // セマフォで同時実行数を制限
+                #[expect(clippy::expect_used, reason = "private semaphore is never closed")]
                 let _permit = semaphore
                     .acquire()
                     .await
-                    .expect("semaphore should not be closed");
+                    .expect("private semaphore is never closed");
 
                 preprocess_article(article, subworker).await
             });
@@ -334,8 +335,13 @@ fn tokenize_latin_like(text: &str) -> Vec<String> {
     results
 }
 
+#[expect(
+    clippy::expect_used,
+    reason = "compile-time literal regex is valid by construction"
+)]
 static NON_WORD_BOUNDARY: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^[\p{Punctuation}\p{Symbol}]+|[\p{Punctuation}\p{Symbol}]+$").unwrap()
+    Regex::new(r"^[\p{Punctuation}\p{Symbol}]+|[\p{Punctuation}\p{Symbol}]+$")
+        .expect("compile-time literal regex is valid by construction")
 });
 
 /// Drop the zero-width code points that make a string's display width differ
@@ -619,7 +625,10 @@ mod tests {
                 ] {
                     // A panic here aborts the process in release; failing the
                     // test is the point.
-                    let _ = clean_html(&body);
+                    assert!(
+                        clean_html(&body).is_ok(),
+                        "clean_html failed for offset {n}: {body}"
+                    );
                 }
             }
         }

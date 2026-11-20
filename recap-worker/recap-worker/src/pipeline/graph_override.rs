@@ -19,41 +19,52 @@ pub(crate) struct GraphOverrideSettings {
 }
 
 impl GraphOverrideSettings {
-    /// Load from database first, fallback to YAML if not found.
-    pub(crate) async fn load_with_fallback(dao: &dyn RecapDao) -> Result<Self, GraphOverrideError> {
+    fn parse_db_settings(config_json: serde_json::Value) -> Option<Self> {
+        tracing::debug!("found config in database, parsing JSON");
+        match serde_json::from_value::<GraphOverrideSettings>(config_json) {
+            Ok(settings) => {
+                tracing::info!(
+                    graph_margin = ?settings.graph_margin,
+                    weighted_tie_break_margin = ?settings.weighted_tie_break_margin,
+                    tag_confidence_gate = ?settings.tag_confidence_gate,
+                    boost_threshold = ?settings.boost_threshold,
+                    tag_count_threshold = ?settings.tag_count_threshold,
+                    "loaded graph override settings from database"
+                );
+                Some(settings)
+            }
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    "failed to parse database config JSON, falling back to YAML"
+                );
+                None
+            }
+        }
+    }
+
+    async fn try_load_from_db(dao: &dyn RecapDao) -> Option<Self> {
         tracing::debug!("attempting to load graph override settings from database");
         match dao.get_latest_worker_config("graph_override").await {
-            Ok(Some(config_json)) => {
-                tracing::debug!("found config in database, parsing JSON");
-                match serde_json::from_value::<GraphOverrideSettings>(config_json) {
-                    Ok(settings) => {
-                        tracing::info!(
-                            graph_margin = ?settings.graph_margin,
-                            weighted_tie_break_margin = ?settings.weighted_tie_break_margin,
-                            tag_confidence_gate = ?settings.tag_confidence_gate,
-                            boost_threshold = ?settings.boost_threshold,
-                            tag_count_threshold = ?settings.tag_count_threshold,
-                            "loaded graph override settings from database"
-                        );
-                        return Ok(settings);
-                    }
-                    Err(e) => {
-                        tracing::warn!(
-                            error = %e,
-                            "failed to parse database config JSON, falling back to YAML"
-                        );
-                    }
-                }
-            }
+            Ok(Some(config_json)) => Self::parse_db_settings(config_json),
             Ok(None) => {
                 tracing::debug!("no config found in database, falling back to YAML");
+                None
             }
             Err(e) => {
                 tracing::warn!(
                     error = %e,
                     "failed to query database for config, falling back to YAML"
                 );
+                None
             }
+        }
+    }
+
+    /// Load from database first, fallback to YAML if not found.
+    pub(crate) async fn load_with_fallback(dao: &dyn RecapDao) -> Result<Self, GraphOverrideError> {
+        if let Some(settings) = Self::try_load_from_db(dao).await {
+            return Ok(settings);
         }
 
         // Fallback to YAML

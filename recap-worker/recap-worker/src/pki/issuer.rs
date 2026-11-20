@@ -165,6 +165,10 @@ impl NativeStepCAIssuer {
         identity: Option<(Vec<CertificateDer<'static>>, PrivateKeyDer<'static>)>,
     ) -> Result<reqwest::Client, PkiError> {
         require_https(&self.ca_url)?;
+        #[expect(
+            clippy::let_underscore_must_use,
+            reason = "install_default is idempotent and returns Err if already installed"
+        )]
         let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
         let pem = read_regular_no_follow(Path::new(&self.root_file), MAX_ROOT_PEM_BYTES)?;
         let mut roots = RootCertStore::empty();
@@ -784,6 +788,10 @@ fn spki_from_public_pem(pem: &str) -> Result<Vec<u8>, PkiError> {
 }
 
 fn assert_pair_usable(cert_pem: &[u8], key_pem: &[u8]) -> Result<(), PkiError> {
+    #[expect(
+        clippy::let_underscore_must_use,
+        reason = "install_default is idempotent and returns Err if already installed"
+    )]
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     let certs = rustls_pemfile::certs(&mut &cert_pem[..])
         .collect::<Result<Vec<_>, _>>()

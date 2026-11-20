@@ -133,11 +133,17 @@ struct JapaneseTokenizer {
 
 impl JapaneseTokenizer {
     fn new() -> Self {
+        #[expect(
+            clippy::expect_used,
+            reason = "literal regex pattern is valid by construction"
+        )]
+        let fallback_word_re =
+            Regex::new(r"[^\p{L}\p{N}]+").expect("literal regex pattern is valid by construction");
         Self {
             lindera: LinderaAdapter::new(),
             // #[cfg(feature = "with-sudachi")]
             // sudachi: SudachiAdapter::new(),  // Disabled: sudachi crate not available on crates.io
-            fallback_word_re: Regex::new(r"[^\p{L}\p{N}]+").expect("compile fallback regex"),
+            fallback_word_re,
         }
     }
 
@@ -268,9 +274,13 @@ struct FallbackTokenizer {
 
 impl FallbackTokenizer {
     fn new() -> Self {
-        Self {
-            split_re: Regex::new(r"[^\p{L}\p{N}]+").expect("compile fallback pattern"),
-        }
+        #[expect(
+            clippy::expect_used,
+            reason = "literal regex pattern is valid by construction"
+        )]
+        let split_re =
+            Regex::new(r"[^\p{L}\p{N}]+").expect("literal regex pattern is valid by construction");
+        Self { split_re }
     }
 
     fn tokenize(&self, text: &str) -> Vec<String> {

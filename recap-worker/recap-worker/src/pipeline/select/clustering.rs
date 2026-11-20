@@ -90,21 +90,12 @@ pub(crate) async fn subcluster_others(
 }
 
 /// Split large genres into subgenres when the article count exceeds the threshold.
-#[allow(clippy::too_many_lines)]
 pub(crate) async fn subcluster_large_genres(
     embedding_service: Option<&Arc<dyn Embedder>>,
     subgenre_config: &SubgenreConfig,
     assignments: Vec<GenreAssignment>,
 ) -> anyhow::Result<Vec<GenreAssignment>> {
-    // Group assignments by primary genre
-    let mut by_genre: HashMap<String, Vec<GenreAssignment>> = HashMap::new();
-    for assignment in assignments {
-        let genre = assignment
-            .primary_genre()
-            .map_or("other".to_string(), ToString::to_string);
-        by_genre.entry(genre).or_default().push(assignment);
-    }
-
+    let by_genre = group_assignments_by_genre(assignments);
     let mut result = Vec::new();
 
     for (genre, mut genre_assignments) in by_genre {
@@ -122,95 +113,8 @@ pub(crate) async fn subcluster_large_genres(
             .min(subgenre_config.max_k)
             .max(2); // At least 2 clusters
 
-        // Use embedding-based clustering if available
         if let Some(service) = embedding_service {
-            let texts: Vec<String> = genre_assignments
-                .iter()
-                .map(|a| {
-                    let title = a.article.title.as_deref().unwrap_or("");
-                    let body = a
-                        .article
-                        .sentences
-                        .iter()
-                        .take(3)
-                        .cloned()
-                        .collect::<Vec<_>>()
-                        .join(" ");
-                    format!("{title}\n{body}")
-                })
-                .collect();
-
-            if let Ok(embeddings) =
-                encode_batched(service.as_ref(), &texts, EMBEDDING_REQUEST_BATCH_SIZE).await
-            {
-                if embeddings.len() == genre_assignments.len() {
-                    let kmeans = MiniBatchKMeans::new(
-                        &embeddings,
-                        k,
-                        MINI_BATCH_KMEANS_MAX_ITERATIONS,
-                        MINI_BATCH_KMEANS_BATCH_SIZE,
-                    );
-
-                    // Count articles per cluster so tiny MiniBatchKMeans
-                    // clusters (e.g. 1 article) do not inherit a subgenre
-                    // label — they would later trip the clustering client's
-                    // `MIN_FALLBACK_DOCUMENTS` guard and skip summary
-                    // generation entirely.
-                    let mut cluster_counts: HashMap<usize, usize> = HashMap::new();
-                    for &cluster_id in &kmeans.assignments {
-                        *cluster_counts.entry(cluster_id).or_insert(0) += 1;
-                    }
-
-                    let mut labeled = 0usize;
-                    let mut kept_parent = 0usize;
-                    for (i, &cluster_id) in kmeans.assignments.iter().enumerate() {
-                        let Some(assignment) = genre_assignments.get_mut(i) else {
-                            continue;
-                        };
-                        let count = cluster_counts.get(&cluster_id).copied().unwrap_or(0);
-                        if count < MIN_SUB_CLUSTER_SIZE {
-                            // Article stays in the parent genre bucket; the
-                            // downstream clustering stage handles it as part
-                            // of the larger parent corpus instead of a
-                            // single-article island.
-                            kept_parent += 1;
-                            continue;
-                        }
-                        // Format: base_001, base_002, etc. (1-indexed)
-                        let subgenre = format!("{}_{:03}", genre, cluster_id + 1);
-                        // Insert at index 0 to make it primary
-                        assignment.genres.insert(0, subgenre.clone());
-                        assignment.genre_scores.insert(subgenre.clone(), 100);
-                        assignment.genre_confidence.insert(subgenre, 1.0);
-                        labeled += 1;
-                    }
-
-                    tracing::info!(
-                        genre = %genre,
-                        original_count = n,
-                        k,
-                        labeled,
-                        kept_parent,
-                        tiny_cluster_count = cluster_counts
-                            .values()
-                            .filter(|&&c| c < MIN_SUB_CLUSTER_SIZE)
-                            .count(),
-                        "split large genre into subgenres"
-                    );
-                } else {
-                    tracing::warn!(
-                        genre = %genre,
-                        expected = genre_assignments.len(),
-                        got = embeddings.len(),
-                        "embedding count mismatch, skipping subgenre split"
-                    );
-                }
-            } else {
-                tracing::warn!(
-                    genre = %genre,
-                    "failed to embed articles for subgenre split, keeping original genre"
-                );
-            }
+            genre_assignments = split_large_genre(service, &genre, genre_assignments, k).await;
         } else {
             tracing::warn!(
                 genre = %genre,
@@ -223,4 +127,128 @@ pub(crate) async fn subcluster_large_genres(
     }
 
     Ok(result)
+}
+
+fn group_assignments_by_genre(
+    assignments: Vec<GenreAssignment>,
+) -> HashMap<String, Vec<GenreAssignment>> {
+    let mut by_genre: HashMap<String, Vec<GenreAssignment>> = HashMap::new();
+    for assignment in assignments {
+        let genre = assignment
+            .primary_genre()
+            .map_or("other".to_string(), ToString::to_string);
+        by_genre.entry(genre).or_default().push(assignment);
+    }
+    by_genre
+}
+
+fn build_subcluster_texts(assignments: &[GenreAssignment]) -> Vec<String> {
+    assignments
+        .iter()
+        .map(|a| {
+            let title = a.article.title.as_deref().unwrap_or("");
+            let body = a
+                .article
+                .sentences
+                .iter()
+                .take(3)
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(" ");
+            format!("{title}\n{body}")
+        })
+        .collect()
+}
+
+async fn split_large_genre(
+    service: &Arc<dyn Embedder>,
+    genre: &str,
+    mut genre_assignments: Vec<GenreAssignment>,
+    k: usize,
+) -> Vec<GenreAssignment> {
+    let texts = build_subcluster_texts(&genre_assignments);
+    let Ok(embeddings) =
+        encode_batched(service.as_ref(), &texts, EMBEDDING_REQUEST_BATCH_SIZE).await
+    else {
+        tracing::warn!(
+            genre = %genre,
+            "failed to embed articles for subgenre split, keeping original genre"
+        );
+        return genre_assignments;
+    };
+
+    if embeddings.len() != genre_assignments.len() {
+        tracing::warn!(
+            genre = %genre,
+            expected = genre_assignments.len(),
+            got = embeddings.len(),
+            "embedding count mismatch, skipping subgenre split"
+        );
+        return genre_assignments;
+    }
+
+    apply_subgenre_labels(genre, &mut genre_assignments, &embeddings, k);
+    genre_assignments
+}
+
+fn apply_subgenre_labels(
+    genre: &str,
+    genre_assignments: &mut [GenreAssignment],
+    embeddings: &[Vec<f32>],
+    k: usize,
+) {
+    let n = genre_assignments.len();
+    let kmeans = MiniBatchKMeans::new(
+        embeddings,
+        k,
+        MINI_BATCH_KMEANS_MAX_ITERATIONS,
+        MINI_BATCH_KMEANS_BATCH_SIZE,
+    );
+
+    // Count articles per cluster so tiny MiniBatchKMeans
+    // clusters (e.g. 1 article) do not inherit a subgenre
+    // label — they would later trip the clustering client's
+    // `MIN_FALLBACK_DOCUMENTS` guard and skip summary
+    // generation entirely.
+    let mut cluster_counts: HashMap<usize, usize> = HashMap::new();
+    for &cluster_id in &kmeans.assignments {
+        *cluster_counts.entry(cluster_id).or_insert(0) += 1;
+    }
+
+    let mut labeled = 0usize;
+    let mut kept_parent = 0usize;
+    for (i, &cluster_id) in kmeans.assignments.iter().enumerate() {
+        let Some(assignment) = genre_assignments.get_mut(i) else {
+            continue;
+        };
+        let count = cluster_counts.get(&cluster_id).copied().unwrap_or(0);
+        if count < MIN_SUB_CLUSTER_SIZE {
+            // Article stays in the parent genre bucket; the
+            // downstream clustering stage handles it as part
+            // of the larger parent corpus instead of a
+            // single-article island.
+            kept_parent += 1;
+            continue;
+        }
+        // Format: base_001, base_002, etc. (1-indexed)
+        let subgenre = format!("{}_{:03}", genre, cluster_id + 1);
+        // Insert at index 0 to make it primary
+        assignment.genres.insert(0, subgenre.clone());
+        assignment.genre_scores.insert(subgenre.clone(), 100);
+        assignment.genre_confidence.insert(subgenre, 1.0);
+        labeled += 1;
+    }
+
+    tracing::info!(
+        genre = %genre,
+        original_count = n,
+        k,
+        labeled,
+        kept_parent,
+        tiny_cluster_count = cluster_counts
+            .values()
+            .filter(|&&c| c < MIN_SUB_CLUSTER_SIZE)
+            .count(),
+        "split large genre into subgenres"
+    );
 }

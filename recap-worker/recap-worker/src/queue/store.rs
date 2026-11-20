@@ -435,10 +435,11 @@ mod tests {
     }
 
     async fn cleanup(pool: &PgPool, recap_job_id: Uuid) {
-        let _ = sqlx::query("DELETE FROM classification_job_queue WHERE recap_job_id = $1")
+        sqlx::query("DELETE FROM classification_job_queue WHERE recap_job_id = $1")
             .bind(recap_job_id)
             .execute(pool)
-            .await;
+            .await
+            .expect("cleanup classification_job_queue test rows");
     }
 
     /// Reproduces the double-pick race directly: `pick_next_job` must be a

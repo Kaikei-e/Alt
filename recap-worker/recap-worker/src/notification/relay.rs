@@ -91,6 +91,11 @@ pub(crate) struct NotificationRelay {
     config: RelayConfig,
 }
 
+enum RelaySleepOutcome {
+    Continue,
+    Exit,
+}
+
 impl NotificationRelay {
     pub(crate) fn new(
         pool: PgPool,
@@ -117,32 +122,46 @@ impl NotificationRelay {
             "notification_outbox_relay_enabled"
         );
 
+        let batch_size = usize::try_from(self.config.batch_size).unwrap_or(usize::MAX);
         loop {
             if cancel.is_cancelled() {
                 info!("shutdown requested, stopping notification outbox relay");
                 return;
             }
 
-            let forwarded = match self.tick().await {
-                Ok(forwarded) => forwarded,
-                Err(e) => {
-                    error!(error = %e, "notification outbox relay tick failed");
-                    0
-                }
-            };
+            let forwarded = self.run_tick_or_log().await;
 
             // A tick that moved a full batch probably has more waiting, so
             // only idle when the batch came back short.
-            if forwarded >= usize::try_from(self.config.batch_size).unwrap_or(usize::MAX) {
+            if forwarded >= batch_size {
                 continue;
             }
 
-            tokio::select! {
-                () = tokio::time::sleep(self.config.poll_interval) => {}
-                () = cancel.cancelled() => {
-                    info!("shutdown requested, stopping notification outbox relay");
-                    return;
-                }
+            if matches!(
+                self.wait_for_next_poll_or_cancel(&cancel).await,
+                RelaySleepOutcome::Exit
+            ) {
+                return;
+            }
+        }
+    }
+
+    async fn run_tick_or_log(&self) -> usize {
+        match self.tick().await {
+            Ok(forwarded) => forwarded,
+            Err(e) => {
+                error!(error = %e, "notification outbox relay tick failed");
+                0
+            }
+        }
+    }
+
+    async fn wait_for_next_poll_or_cancel(&self, cancel: &CancellationToken) -> RelaySleepOutcome {
+        tokio::select! {
+            () = tokio::time::sleep(self.config.poll_interval) => RelaySleepOutcome::Continue,
+            () = cancel.cancelled() => {
+                info!("shutdown requested, stopping notification outbox relay");
+                RelaySleepOutcome::Exit
             }
         }
     }
@@ -185,19 +204,7 @@ impl NotificationRelay {
         // being reclaimed after a crash that followed its last claim. It has
         // no attempts left to spend, so end it rather than calling again.
         if row.attempts > self.config.max_attempts {
-            NotificationOutboxDao::mark_dead(
-                &self.pool,
-                row.id,
-                "attempts exhausted before a successful forward",
-            )
-            .await?;
-            warn!(
-                notification_id = %row.id,
-                dedupe_key = %row.dedupe_key,
-                attempts = row.attempts,
-                "notification outbox row reclaimed with no attempts left; marking dead"
-            );
-            return Ok(false);
+            return self.mark_reclaimed_exhausted(row).await;
         }
 
         let expires_at = row.occurred_at
@@ -218,43 +225,74 @@ impl NotificationRelay {
 
         match outcome {
             Ok(outcome) => {
-                NotificationOutboxDao::mark_forwarded(&self.pool, row.id).await?;
-                info!(
-                    notification_id = %row.id,
-                    dedupe_key = %row.dedupe_key,
-                    delivery_count = outcome.delivery_count,
-                    superseded_count = outcome.superseded_count,
-                    "forwarded notification to alt-data-hub"
-                );
-                Ok(true)
+                self.record_forward_success(row, outcome.delivery_count, outcome.superseded_count)
+                    .await
             }
-            Err(e) => {
-                let last_error = format!("{e:#}");
-                if row.attempts >= self.config.max_attempts {
-                    NotificationOutboxDao::mark_dead(&self.pool, row.id, &last_error).await?;
-                    error!(
-                        notification_id = %row.id,
-                        dedupe_key = %row.dedupe_key,
-                        attempts = row.attempts,
-                        error = %last_error,
-                        "notification outbox row exhausted its attempts; marking dead"
-                    );
-                } else {
-                    let delay = self.config.backoff_delay_seconds(row.attempts);
-                    NotificationOutboxDao::reschedule(&self.pool, row.id, &last_error, delay)
-                        .await?;
-                    warn!(
-                        notification_id = %row.id,
-                        dedupe_key = %row.dedupe_key,
-                        attempts = row.attempts,
-                        retry_in_seconds = delay,
-                        error = %last_error,
-                        "failed to forward notification; rescheduled"
-                    );
-                }
-                Ok(false)
-            }
+            Err(e) => self.record_forward_failure(row, &e).await,
         }
+    }
+
+    async fn mark_reclaimed_exhausted(&self, row: &ClaimedNotification) -> Result<bool> {
+        NotificationOutboxDao::mark_dead(
+            &self.pool,
+            row.id,
+            "attempts exhausted before a successful forward",
+        )
+        .await?;
+        warn!(
+            notification_id = %row.id,
+            dedupe_key = %row.dedupe_key,
+            attempts = row.attempts,
+            "notification outbox row reclaimed with no attempts left; marking dead"
+        );
+        Ok(false)
+    }
+
+    async fn record_forward_success(
+        &self,
+        row: &ClaimedNotification,
+        delivery_count: i32,
+        superseded_count: i32,
+    ) -> Result<bool> {
+        NotificationOutboxDao::mark_forwarded(&self.pool, row.id).await?;
+        info!(
+            notification_id = %row.id,
+            dedupe_key = %row.dedupe_key,
+            delivery_count,
+            superseded_count,
+            "forwarded notification to alt-data-hub"
+        );
+        Ok(true)
+    }
+
+    async fn record_forward_failure(
+        &self,
+        row: &ClaimedNotification,
+        err: &anyhow::Error,
+    ) -> Result<bool> {
+        let last_error = format!("{err:#}");
+        if row.attempts >= self.config.max_attempts {
+            NotificationOutboxDao::mark_dead(&self.pool, row.id, &last_error).await?;
+            error!(
+                notification_id = %row.id,
+                dedupe_key = %row.dedupe_key,
+                attempts = row.attempts,
+                error = %last_error,
+                "notification outbox row exhausted its attempts; marking dead"
+            );
+        } else {
+            let delay = self.config.backoff_delay_seconds(row.attempts);
+            NotificationOutboxDao::reschedule(&self.pool, row.id, &last_error, delay).await?;
+            warn!(
+                notification_id = %row.id,
+                dedupe_key = %row.dedupe_key,
+                attempts = row.attempts,
+                retry_in_seconds = delay,
+                error = %last_error,
+                "failed to forward notification; rescheduled"
+            );
+        }
+        Ok(false)
     }
 
     /// Both gauges, every tick. See the comment on their registration.
@@ -642,5 +680,209 @@ mod tests {
             "a two-hour-old backlog entry must show up as ~7200s, got {age}"
         );
         Ok(())
+    }
+
+    #[derive(Clone, Default)]
+    struct LogBufWriter(Arc<std::sync::Mutex<Vec<u8>>>);
+
+    impl std::io::Write for LogBufWriter {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    fn lazy_unreachable_pool() -> PgPool {
+        PgPoolOptions::new()
+            .max_connections(1)
+            .acquire_timeout(Duration::from_millis(20))
+            .connect_lazy("postgres://recap:recap@127.0.0.1:1/recap")
+            .expect("lazy pool builds")
+    }
+
+    #[tokio::test]
+    async fn run_exits_immediately_when_cancelled_before_first_tick() {
+        use tracing::instrument::WithSubscriber;
+
+        let metrics = test_metrics();
+        let client = Arc::new(
+            crate::clients::datahub::DataHubClient::new(
+                "http://127.0.0.1:1",
+                Duration::from_millis(50),
+                Duration::from_millis(50),
+            )
+            .expect("client builds"),
+        );
+        let relay = NotificationRelay::new(
+            lazy_unreachable_pool(),
+            client,
+            Arc::clone(&metrics),
+            "relay-cancel-test".to_string(),
+            RelayConfig::default(),
+        );
+
+        let cancel = CancellationToken::new();
+        cancel.cancel();
+
+        let buf = LogBufWriter::default();
+        let writer = buf.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::INFO)
+            .without_time()
+            .with_writer(move || writer.clone())
+            .finish();
+
+        relay.run(cancel).with_subscriber(subscriber).await;
+
+        assert!(
+            (metrics.notification_outbox_last_tick_timestamp.get() - 0.0).abs() < f64::EPSILON,
+            "pre-cancelled relay must exit before running tick()"
+        );
+        let logs = String::from_utf8(
+            buf.0
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .clone(),
+        )
+        .expect("utf8");
+        assert!(logs.contains("notification_outbox_relay_enabled"));
+        assert!(logs.contains("shutdown requested, stopping notification outbox relay"));
+    }
+
+    #[tokio::test]
+    async fn run_cancels_during_poll_sleep_after_failing_tick() {
+        use tracing::instrument::WithSubscriber;
+
+        let metrics = test_metrics();
+        let client = Arc::new(
+            crate::clients::datahub::DataHubClient::new(
+                "http://127.0.0.1:1",
+                Duration::from_millis(50),
+                Duration::from_millis(50),
+            )
+            .expect("client builds"),
+        );
+        let config = RelayConfig {
+            poll_interval: Duration::from_secs(10),
+            ..RelayConfig::default()
+        };
+        let relay = NotificationRelay::new(
+            lazy_unreachable_pool(),
+            client,
+            Arc::clone(&metrics),
+            "relay-sleep-cancel".to_string(),
+            config,
+        );
+
+        let cancel = CancellationToken::new();
+        let task_cancel = cancel.clone();
+        let buf = LogBufWriter::default();
+        let writer = buf.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::INFO)
+            .without_time()
+            .with_writer(move || writer.clone())
+            .finish();
+
+        let handle = tokio::spawn(async move {
+            relay.run(task_cancel).with_subscriber(subscriber).await;
+        });
+
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+        while metrics.notification_outbox_last_tick_timestamp.get() <= 0.0
+            && tokio::time::Instant::now() < deadline
+        {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        assert!(
+            metrics.notification_outbox_last_tick_timestamp.get() > 0.0,
+            "first failing tick must publish last_tick_timestamp"
+        );
+
+        cancel.cancel();
+        handle.await.expect("relay task exits on cancel");
+
+        let logs = String::from_utf8(
+            buf.0
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .clone(),
+        )
+        .expect("utf8");
+        assert!(logs.contains("notification outbox relay tick failed"));
+        assert!(logs.contains("shutdown requested, stopping notification outbox relay"));
+    }
+
+    #[tokio::test]
+    async fn run_continues_loop_after_failing_ticks() {
+        use tracing::instrument::WithSubscriber;
+
+        let metrics = test_metrics();
+        let client = Arc::new(
+            crate::clients::datahub::DataHubClient::new(
+                "http://127.0.0.1:1",
+                Duration::from_millis(50),
+                Duration::from_millis(50),
+            )
+            .expect("client builds"),
+        );
+        let config = RelayConfig {
+            poll_interval: Duration::from_millis(10),
+            ..RelayConfig::default()
+        };
+        let relay = NotificationRelay::new(
+            lazy_unreachable_pool(),
+            client,
+            metrics,
+            "relay-loop-continue".to_string(),
+            config,
+        );
+
+        let cancel = CancellationToken::new();
+        let task_cancel = cancel.clone();
+        let buf = LogBufWriter::default();
+        let writer = buf.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::INFO)
+            .without_time()
+            .with_writer(move || writer.clone())
+            .finish();
+
+        let handle = tokio::spawn(async move {
+            relay.run(task_cancel).with_subscriber(subscriber).await;
+        });
+
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+        let mut fail_logs = 0usize;
+        while tokio::time::Instant::now() < deadline {
+            let snapshot = String::from_utf8(
+                buf.0
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .clone(),
+            )
+            .expect("utf8");
+            fail_logs = snapshot
+                .matches("notification outbox relay tick failed")
+                .count();
+            if fail_logs >= 2 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+
+        cancel.cancel();
+        handle.await.expect("relay task exits cleanly");
+        assert!(
+            fail_logs >= 2,
+            "relay loop must keep running after failing ticks, saw {fail_logs} error logs"
+        );
     }
 }

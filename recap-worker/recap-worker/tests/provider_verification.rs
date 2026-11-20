@@ -61,6 +61,21 @@ struct Evidence<'a> {
     interactions_skipped: usize,
 }
 
+fn fixture_uuid(s: &str) -> Uuid {
+    Uuid::parse_str(s).unwrap_or_else(|e| panic!("fixture uuid {s:?}: {e}"))
+}
+
+fn fixture_utc(s: &str) -> DateTime<Utc> {
+    DateTime::parse_from_rfc3339(s)
+        .unwrap_or_else(|e| panic!("fixture timestamp {s:?}: {e}"))
+        .with_timezone(&Utc)
+}
+
+fn fixture_date(year: i32, month: u32, day: u32) -> NaiveDate {
+    NaiveDate::from_ymd_opt(year, month, day)
+        .unwrap_or_else(|| panic!("fixture date {year:04}-{month:02}-{day:02}"))
+}
+
 fn evidence_document(evidence: &Evidence<'_>, run_id: &str, provider_version: &str) -> Value {
     json!({
         "schema": EVIDENCE_SCHEMA,
@@ -80,14 +95,18 @@ fn evidence_document(evidence: &Evidence<'_>, run_id: &str, provider_version: &s
 fn write_evidence_to(dir: &FsPath, doc: &Value) -> PathBuf {
     let path = dir.join(format!(
         "{}__{}.json",
-        doc["provider"].as_str().expect("provider"),
-        doc["consumer"].as_str().expect("consumer"),
+        doc["provider"]
+            .as_str()
+            .unwrap_or_else(|| panic!("provider")),
+        doc["consumer"]
+            .as_str()
+            .unwrap_or_else(|| panic!("consumer")),
     ));
     std::fs::create_dir_all(dir)
         .unwrap_or_else(|e| panic!("failed to create evidence dir {}: {e}", dir.display()));
     std::fs::write(
         &path,
-        serde_json::to_vec_pretty(doc).expect("evidence is serializable"),
+        serde_json::to_vec_pretty(doc).unwrap_or_else(|e| panic!("evidence is serializable: {e}")),
     )
     .unwrap_or_else(|e| panic!("failed to write evidence {}: {e}", path.display()));
     path
@@ -134,16 +153,18 @@ impl ThemeReadDao for VerificationThemesDao {
         theme_id: Uuid,
         version: Option<i32>,
     ) -> Result<Option<ThemeVersionDetail>, String> {
-        let current = self.provider_state.read().unwrap().clone();
+        let current = self
+            .provider_state
+            .read()
+            .unwrap_or_else(|e| panic!("provider_state lock poisoned: {e}"))
+            .clone();
         match current.as_deref() {
             Some("no theme exists for the user") => Ok(None),
             Some("a theme exists for the user") => {
-                let article_id = Uuid::parse_str("33333333-3333-3333-3333-333333333333").unwrap();
-                let created_at = DateTime::parse_from_rfc3339("2026-11-18T08:00:00Z")
-                    .unwrap()
-                    .with_timezone(&Utc);
+                let article_id = fixture_uuid("33333333-3333-3333-3333-333333333333");
+                let created_at = fixture_utc("2026-11-18T08:00:00Z");
                 Ok(Some(ThemeVersionDetail {
-                    version_id: Uuid::parse_str("66666666-6666-6666-6666-666666666666").unwrap(),
+                    version_id: fixture_uuid("66666666-6666-6666-6666-666666666666"),
                     theme_id,
                     version: version.unwrap_or(2),
                     latest_version: 2,
@@ -188,16 +209,18 @@ impl ThemeReadDao for VerificationThemesDao {
         _user_id: Uuid,
         _theme_id: Uuid,
     ) -> Result<Vec<ThemeVersionSummary>, String> {
-        let current = self.provider_state.read().unwrap().clone();
+        let current = self
+            .provider_state
+            .read()
+            .unwrap_or_else(|e| panic!("provider_state lock poisoned: {e}"))
+            .clone();
         match current.as_deref() {
             Some("no theme exists for the user") => Ok(Vec::new()),
             Some("a theme exists for the user") => Ok(vec![ThemeVersionSummary {
-                version_id: Uuid::parse_str("66666666-6666-6666-6666-666666666666").unwrap(),
+                version_id: fixture_uuid("66666666-6666-6666-6666-666666666666"),
                 version: 2,
                 title: "Systems Architecture".to_string(),
-                created_at: DateTime::parse_from_rfc3339("2026-11-18T08:00:00Z")
-                    .unwrap()
-                    .with_timezone(&Utc),
+                created_at: fixture_utc("2026-11-18T08:00:00Z"),
                 article_count: 5,
             }]),
             Some(unknown) => {
@@ -211,7 +234,11 @@ impl ThemeReadDao for VerificationThemesDao {
 #[async_trait::async_trait]
 impl CardsDao for VerificationCardsDao {
     async fn get_latest_completed_cards_job(&self) -> Result<Option<PreviousCardsJobMeta>, String> {
-        let current = self.provider_state.read().unwrap().clone();
+        let current = self
+            .provider_state
+            .read()
+            .unwrap_or_else(|e| panic!("provider_state lock poisoned: {e}"))
+            .clone();
         match current.as_deref() {
             Some("no cards job exists") => Ok(None),
             Some(
@@ -219,16 +246,10 @@ impl CardsDao for VerificationCardsDao {
                 | "a completed cards job whose card has no genre and no why"
                 | "a failed topic cards run is newer than the latest completed run",
             ) => Ok(Some(PreviousCardsJobMeta {
-                job_id: Uuid::parse_str("11111111-2222-3333-4444-555555555555").unwrap(),
-                kicked_at: DateTime::parse_from_rfc3339("2026-09-22T17:00:00Z")
-                    .unwrap()
-                    .with_timezone(&Utc),
-                from_ts: DateTime::parse_from_rfc3339("2026-09-19T17:00:00Z")
-                    .unwrap()
-                    .with_timezone(&Utc),
-                to_ts: DateTime::parse_from_rfc3339("2026-09-22T17:00:00Z")
-                    .unwrap()
-                    .with_timezone(&Utc),
+                job_id: fixture_uuid("11111111-2222-3333-4444-555555555555"),
+                kicked_at: fixture_utc("2026-09-22T17:00:00Z"),
+                from_ts: fixture_utc("2026-09-19T17:00:00Z"),
+                to_ts: fixture_utc("2026-09-22T17:00:00Z"),
                 params_version: "cards-v0.2".to_string(),
             })),
             Some(unknown) => {
@@ -239,17 +260,21 @@ impl CardsDao for VerificationCardsDao {
     }
 
     async fn get_cards_for_job(&self, job_id: Uuid) -> Result<Vec<RecapCard>, String> {
-        let current = self.provider_state.read().unwrap().clone();
+        let current = self
+            .provider_state
+            .read()
+            .unwrap_or_else(|e| panic!("provider_state lock poisoned: {e}"))
+            .clone();
         match current.as_deref() {
             Some("no cards job exists") => Ok(Vec::new()),
             Some(
                 "a completed cards job with cards exists"
                 | "a failed topic cards run is newer than the latest completed run",
             ) => Ok(vec![RecapCard {
-                id: Uuid::parse_str("22222222-3333-4444-5555-666666666666").unwrap(),
+                id: fixture_uuid("22222222-3333-4444-5555-666666666666"),
                 job_id,
                 rank: 1,
-                story_id: Uuid::parse_str("33333333-4444-5555-6666-777777777777").unwrap(),
+                story_id: fixture_uuid("33333333-4444-5555-6666-777777777777"),
                 continues_card_id: None,
                 merged_from: None,
                 headline_ja: "日本のAIスタートアップが新モデルを発表".to_string(),
@@ -257,9 +282,7 @@ impl CardsDao for VerificationCardsDao {
                     .to_string(),
                 why_ja: Some("日本語処理の効率化が期待される。[1]".to_string()),
                 genre: Some("Technology".to_string()),
-                member_feed_ids: vec![
-                    Uuid::parse_str("44444444-5555-6666-7777-888888888888").unwrap(),
-                ],
+                member_feed_ids: vec![fixture_uuid("44444444-5555-6666-7777-888888888888")],
                 sources: json!([
                     {
                         "feed_id": "44444444-5555-6666-7777-888888888888",
@@ -274,16 +297,14 @@ impl CardsDao for VerificationCardsDao {
                 scores: json!({}),
                 gates: json!({}),
                 generation: json!({}),
-                created_at: DateTime::parse_from_rfc3339("2026-09-22T17:05:00Z")
-                    .unwrap()
-                    .with_timezone(&Utc),
+                created_at: fixture_utc("2026-09-22T17:05:00Z"),
             }]),
             Some("a completed cards job whose card has no genre and no why") => {
                 Ok(vec![RecapCard {
-                    id: Uuid::parse_str("22222222-3333-4444-5555-666666666666").unwrap(),
+                    id: fixture_uuid("22222222-3333-4444-5555-666666666666"),
                     job_id,
                     rank: 1,
-                    story_id: Uuid::parse_str("33333333-4444-5555-6666-777777777777").unwrap(),
+                    story_id: fixture_uuid("33333333-4444-5555-6666-777777777777"),
                     continues_card_id: None,
                     merged_from: None,
                     headline_ja: "日本のAIスタートアップが新モデルを発表".to_string(),
@@ -291,9 +312,7 @@ impl CardsDao for VerificationCardsDao {
                         .to_string(),
                     why_ja: None,
                     genre: None,
-                    member_feed_ids: vec![
-                        Uuid::parse_str("44444444-5555-6666-7777-888888888888").unwrap(),
-                    ],
+                    member_feed_ids: vec![fixture_uuid("44444444-5555-6666-7777-888888888888")],
                     sources: json!([
                         {
                             "feed_id": "44444444-5555-6666-7777-888888888888",
@@ -308,9 +327,7 @@ impl CardsDao for VerificationCardsDao {
                     scores: json!({}),
                     gates: json!({}),
                     generation: json!({}),
-                    created_at: DateTime::parse_from_rfc3339("2026-09-22T17:05:00Z")
-                        .unwrap()
-                        .with_timezone(&Utc),
+                    created_at: fixture_utc("2026-09-22T17:05:00Z"),
                 }])
             }
             Some(unknown) => {
@@ -321,7 +338,11 @@ impl CardsDao for VerificationCardsDao {
     }
 
     async fn get_job_stats(&self, job_id: Uuid) -> Result<Option<RecapCardJobStats>, String> {
-        let current = self.provider_state.read().unwrap().clone();
+        let current = self
+            .provider_state
+            .read()
+            .unwrap_or_else(|e| panic!("provider_state lock poisoned: {e}"))
+            .clone();
         match current.as_deref() {
             Some("no cards job exists") => Ok(None),
             Some(
@@ -344,9 +365,7 @@ impl CardsDao for VerificationCardsDao {
                 params_version: "cards-v0.2".to_string(),
                 embed_cache_hits: 0,
                 embed_cache_misses: 0,
-                created_at: DateTime::parse_from_rfc3339("2026-09-22T17:05:00Z")
-                    .unwrap()
-                    .with_timezone(&Utc),
+                created_at: fixture_utc("2026-09-22T17:05:00Z"),
             })),
             Some(unknown) => {
                 panic!("unrecognised provider state in VerificationCardsDao: {unknown}")
@@ -356,32 +375,28 @@ impl CardsDao for VerificationCardsDao {
     }
 
     async fn get_latest_cards_run(&self) -> Result<Option<LatestCardsRun>, String> {
-        let current = self.provider_state.read().unwrap().clone();
+        let current = self
+            .provider_state
+            .read()
+            .unwrap_or_else(|e| panic!("provider_state lock poisoned: {e}"))
+            .clone();
         match current.as_deref() {
             Some("no cards job exists") => Ok(None),
             Some(
                 "a completed cards job with cards exists"
                 | "a completed cards job whose card has no genre and no why",
             ) => Ok(Some(LatestCardsRun {
-                job_id: Uuid::parse_str("11111111-2222-3333-4444-555555555555").unwrap(),
+                job_id: fixture_uuid("11111111-2222-3333-4444-555555555555"),
                 status: "completed".to_string(),
-                kicked_at: DateTime::parse_from_rfc3339("2026-09-22T17:00:00Z")
-                    .unwrap()
-                    .with_timezone(&Utc),
-                updated_at: DateTime::parse_from_rfc3339("2026-09-22T17:05:00Z")
-                    .unwrap()
-                    .with_timezone(&Utc),
+                kicked_at: fixture_utc("2026-09-22T17:00:00Z"),
+                updated_at: fixture_utc("2026-09-22T17:05:00Z"),
             })),
             Some("a failed topic cards run is newer than the latest completed run") => {
                 Ok(Some(LatestCardsRun {
-                    job_id: Uuid::parse_str("99999999-8888-7777-6666-555555555555").unwrap(),
+                    job_id: fixture_uuid("99999999-8888-7777-6666-555555555555"),
                     status: "failed".to_string(),
-                    kicked_at: DateTime::parse_from_rfc3339("2026-09-23T17:00:00Z")
-                        .unwrap()
-                        .with_timezone(&Utc),
-                    updated_at: DateTime::parse_from_rfc3339("2026-09-23T17:05:00Z")
-                        .unwrap()
-                        .with_timezone(&Utc),
+                    kicked_at: fixture_utc("2026-09-23T17:00:00Z"),
+                    updated_at: fixture_utc("2026-09-23T17:05:00Z"),
                 }))
             }
             Some(unknown) => {
@@ -392,18 +407,18 @@ impl CardsDao for VerificationCardsDao {
     }
 
     async fn get_job_updated_at(&self, _job_id: Uuid) -> Result<Option<DateTime<Utc>>, String> {
-        let current = self.provider_state.read().unwrap().clone();
+        let current = self
+            .provider_state
+            .read()
+            .unwrap_or_else(|e| panic!("provider_state lock poisoned: {e}"))
+            .clone();
         match current.as_deref() {
             Some("no cards job exists") => Ok(None),
             Some(
                 "a completed cards job with cards exists"
                 | "a completed cards job whose card has no genre and no why"
                 | "a failed topic cards run is newer than the latest completed run",
-            ) => Ok(Some(
-                DateTime::parse_from_rfc3339("2026-09-22T17:05:00Z")
-                    .unwrap()
-                    .with_timezone(&Utc),
-            )),
+            ) => Ok(Some(fixture_utc("2026-09-22T17:05:00Z"))),
             Some(unknown) => {
                 panic!("unrecognised provider state in VerificationCardsDao: {unknown}")
             }
@@ -580,19 +595,11 @@ impl MorningLetterReadDao for MorningLetterFixtureDao {
 fn three_day_recap_fixture_for_state(state_name: Option<&str>) -> ThreeDayRecapFixtureDao {
     match state_name {
         Some("a completed 3-day recap job with one extractive genre exists") | None => {
-            let job_id = Uuid::parse_str("11111111-2222-3333-4444-555555555555").unwrap();
-            let started_at = DateTime::parse_from_rfc3339("2026-09-22T17:00:00Z")
-                .unwrap()
-                .with_timezone(&Utc);
-            let window_start = DateTime::parse_from_rfc3339("2026-09-19T17:00:00Z")
-                .unwrap()
-                .with_timezone(&Utc);
-            let window_end = DateTime::parse_from_rfc3339("2026-09-22T17:05:00Z")
-                .unwrap()
-                .with_timezone(&Utc);
-            let published_at = DateTime::parse_from_rfc3339("2026-09-22T10:00:00Z")
-                .unwrap()
-                .with_timezone(&Utc);
+            let job_id = fixture_uuid("11111111-2222-3333-4444-555555555555");
+            let started_at = fixture_utc("2026-09-22T17:00:00Z");
+            let window_start = fixture_utc("2026-09-19T17:00:00Z");
+            let window_end = fixture_utc("2026-09-22T17:05:00Z");
+            let published_at = fixture_utc("2026-09-22T10:00:00Z");
             ThreeDayRecapFixtureDao {
                 job_id,
                 started_at,
@@ -649,21 +656,14 @@ fn morning_letter_fixture_for_state(
     } else {
         json!({})
     };
-    let recap_job_id = Uuid::parse_str("11111111-2222-3333-4444-555555555555").unwrap();
-    let created_at = DateTime::parse_from_rfc3339("2026-09-22T06:00:00Z")
-        .unwrap()
-        .with_timezone(&Utc);
-    let win_start = DateTime::parse_from_rfc3339("2026-09-19T06:00:00Z")
-        .unwrap()
-        .with_timezone(&Utc);
-    let win_end = DateTime::parse_from_rfc3339("2026-09-22T06:00:00Z")
-        .unwrap()
-        .with_timezone(&Utc);
-    let target_date =
-        target_date_override.unwrap_or_else(|| NaiveDate::from_ymd_opt(2026, 4, 15).unwrap());
+    let recap_job_id = fixture_uuid("11111111-2222-3333-4444-555555555555");
+    let created_at = fixture_utc("2026-09-22T06:00:00Z");
+    let win_start = fixture_utc("2026-09-19T06:00:00Z");
+    let win_end = fixture_utc("2026-09-22T06:00:00Z");
+    let target_date = target_date_override.unwrap_or_else(|| fixture_date(2026, 4, 15));
 
     MorningLetterFixtureDao {
-        id: Uuid::parse_str("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee").unwrap(),
+        id: fixture_uuid("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"),
         target_date,
         edition_timezone: "Asia/Tokyo".to_string(),
         source_recap_job_id: Some(recap_job_id),
@@ -719,7 +719,10 @@ fn stub_router_with_state(state: StubState) -> Router {
                             .get("state")
                             .and_then(|v| v.as_str())
                             .map(ToString::to_string);
-                        *state.provider_state.write().unwrap() = name;
+                        *state
+                            .provider_state
+                            .write()
+                            .unwrap_or_else(|e| panic!("provider_state lock poisoned: {e}")) = name;
                         axum::http::StatusCode::OK
                     }
                 }
@@ -779,11 +782,13 @@ fn stub_router_with_state(state: StubState) -> Router {
                 move || {
                     let state = state.clone();
                     async move {
-                        let current = state.provider_state.read().unwrap().clone();
+                        let current = state
+                            .provider_state
+                            .read()
+                            .unwrap_or_else(|e| panic!("provider_state lock poisoned: {e}"))
+                            .clone();
                         let fixture = morning_letter_fixture_for_state(current.as_deref(), None);
-                        let now = DateTime::parse_from_rfc3339("2026-09-22T07:00:00Z")
-                            .unwrap()
-                            .with_timezone(&Utc);
+                        let now = fixture_utc("2026-09-22T07:00:00Z");
                         get_latest_morning_letter_impl(&fixture, chrono::Duration::hours(3), now)
                             .await
                     }
@@ -797,13 +802,15 @@ fn stub_router_with_state(state: StubState) -> Router {
                 move |Path(date): Path<String>| {
                     let state = state.clone();
                     async move {
-                        let current = state.provider_state.read().unwrap().clone();
+                        let current = state
+                            .provider_state
+                            .read()
+                            .unwrap_or_else(|e| panic!("provider_state lock poisoned: {e}"))
+                            .clone();
                         let parsed_date = NaiveDate::parse_from_str(&date, "%Y-%m-%d").ok();
                         let fixture =
                             morning_letter_fixture_for_state(current.as_deref(), parsed_date);
-                        let now = DateTime::parse_from_rfc3339("2026-09-22T07:00:00Z")
-                            .unwrap()
-                            .with_timezone(&Utc);
+                        let now = fixture_utc("2026-09-22T07:00:00Z");
                         get_morning_letter_by_date_impl(
                             &fixture,
                             &date,
@@ -823,11 +830,13 @@ fn stub_router_with_state(state: StubState) -> Router {
                 move || {
                     let state = state.clone();
                     async move {
-                        let current = state.provider_state.read().unwrap().clone();
+                        let current = state
+                            .provider_state
+                            .read()
+                            .unwrap_or_else(|e| panic!("provider_state lock poisoned: {e}"))
+                            .clone();
                         let fixture = three_day_recap_fixture_for_state(current.as_deref());
-                        let now = DateTime::parse_from_rfc3339("2026-09-22T18:00:00Z")
-                            .unwrap()
-                            .with_timezone(&Utc);
+                        let now = fixture_utc("2026-09-22T18:00:00Z");
                         get_3days_recap_impl(&fixture, chrono::Duration::hours(30), now).await
                     }
                 }
@@ -843,9 +852,7 @@ fn stub_router_with_state(state: StubState) -> Router {
                         let dao = VerificationCardsDao {
                             provider_state: state.provider_state.clone(),
                         };
-                        let now = DateTime::parse_from_rfc3339("2026-09-22T18:00:00Z")
-                            .unwrap()
-                            .with_timezone(&Utc);
+                        let now = fixture_utc("2026-09-22T18:00:00Z");
                         get_topic_cards_with_clock(&dao, chrono::Duration::hours(30), now).await
                     }
                 }
@@ -871,10 +878,16 @@ fn stub_router_with_state(state: StubState) -> Router {
 
 async fn start_stub_server() -> SocketAddr {
     let router = stub_router();
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .unwrap_or_else(|e| panic!("failed to bind stub server: {e}"));
+    let addr = listener
+        .local_addr()
+        .unwrap_or_else(|e| panic!("failed to read stub local_addr: {e}"));
     tokio::spawn(async move {
-        axum::serve(listener, router).await.unwrap();
+        axum::serve(listener, router)
+            .await
+            .unwrap_or_else(|e| panic!("stub server failed: {e}"));
     });
     // Give the listener a moment to accept connections.
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
@@ -951,7 +964,9 @@ fn assert_shape_matches(actual: &Value, expected: &Value, path: &str) {
 }
 
 fn request_path_with_query(req: &Value) -> String {
-    let base = req["path"].as_str().unwrap();
+    let base = req["path"]
+        .as_str()
+        .unwrap_or_else(|| panic!("pact request missing string path: {req}"));
     let Some(query_obj) = req.get("query").and_then(|q| q.as_object()) else {
         return base.to_string();
     };
@@ -1122,6 +1137,10 @@ mod evidence_tests {
         let dao = VerificationCardsDao {
             provider_state: Arc::new(RwLock::new(Some("bogus state".to_string()))),
         };
+        #[expect(
+            clippy::let_underscore_must_use,
+            reason = "call is expected to panic via #[should_panic]; Result is unreachable"
+        )]
         let _ = dao.get_latest_completed_cards_job().await;
     }
 

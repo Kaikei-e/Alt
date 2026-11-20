@@ -38,13 +38,22 @@ pub fn extract_host(url_str: &str) -> String {
         .to_string()
 }
 
+#[expect(
+    clippy::expect_used,
+    reason = "compile-time literal regex is valid by construction"
+)]
 static LINK_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\[([^\]]+)\](?:\([^\)]*\)|\[[^\]]*\])").expect("valid link regex")
+    Regex::new(r"\[([^\]]+)\](?:\([^\)]*\)|\[[^\]]*\])")
+        .expect("compile-time literal regex is valid by construction")
 });
 
+#[expect(
+    clippy::expect_used,
+    reason = "compile-time literal regex is valid by construction"
+)]
 static FOOTNOTE_MARKER_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\s*\[\s*(?:\d+|n)\s*\](?P<punct>[\.,;:!?。、！？])|\[\s*(?:\d+|n)\s*\]")
-        .expect("valid footnote regex")
+        .expect("compile-time literal regex is valid by construction")
 });
 
 fn strip_line_prefixes(text: &str) -> String {

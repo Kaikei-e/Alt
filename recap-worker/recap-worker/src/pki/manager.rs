@@ -92,7 +92,7 @@ impl Manager {
                 Err(err) if err.is_canceled() => return Err(err),
                 Err(err) => last = Some(err),
             }
-            let err = last.as_ref().map(ToString::to_string).unwrap_or_default();
+            let err = last.as_ref().map_or_else(String::new, ToString::to_string);
             self.observer.on_retry(i, &err);
             error!(
                 subject = %self.cfg.subject,
@@ -111,7 +111,7 @@ impl Manager {
         }
         Err(PkiError::other(format!(
             "enroll failed after {attempts} attempts: {}",
-            last.map(|e| e.to_string()).unwrap_or_default()
+            last.map_or_else(String::new, |e| e.to_string())
         )))
     }
 
@@ -570,6 +570,10 @@ mod tests {
 
     #[tokio::test]
     async fn tick_atomic_write_visible_to_rustls_reloader() {
+        #[expect(
+            clippy::let_underscore_must_use,
+            reason = "install_default is idempotent and returns Err if already installed in test process"
+        )]
         let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
         let nb = ts(1_755_475_200);
         let iss = FakeIssuer::new(nb, Duration::from_secs(3600));

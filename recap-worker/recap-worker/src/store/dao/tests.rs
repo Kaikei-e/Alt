@@ -1357,18 +1357,18 @@ async fn test_delete_old_jobs_preserves_card_snapshots() -> anyhow::Result<()> {
     );
 
     // Clean up
-    let _ = sqlx::query("DELETE FROM recap_card_snapshots WHERE job_id = $1")
+    sqlx::query("DELETE FROM recap_card_snapshots WHERE job_id = $1")
         .bind(preserved_job_id)
         .execute(&pool)
-        .await;
-    let _ = sqlx::query("DELETE FROM recap_jobs WHERE job_id = $1")
+        .await?;
+    sqlx::query("DELETE FROM recap_jobs WHERE job_id = $1")
         .bind(preserved_job_id)
         .execute(&pool)
-        .await;
-    let _ = sqlx::query("DELETE FROM recap_jobs WHERE job_id = $1")
+        .await?;
+    sqlx::query("DELETE FROM recap_jobs WHERE job_id = $1")
         .bind(old_job_id)
         .execute(&pool)
-        .await;
+        .await?;
 
     Ok(())
 }
@@ -1441,15 +1441,15 @@ async fn test_delete_old_jobs_preserves_card_rejections_without_snapshot() -> an
         "job referenced in recap_card_rejections without snapshot must be preserved"
     );
 
-    let _ = sqlx::query("DELETE FROM recap_card_rejections WHERE id = $1")
+    sqlx::query("DELETE FROM recap_card_rejections WHERE id = $1")
         .bind(rejection_id)
         .execute(&pool)
-        .await;
-    let _ = sqlx::query("DELETE FROM recap_jobs WHERE job_id IN ($1, $2)")
+        .await?;
+    sqlx::query("DELETE FROM recap_jobs WHERE job_id IN ($1, $2)")
         .bind(rejected_job_id)
         .bind(old_job_id)
         .execute(&pool)
-        .await;
+        .await?;
 
     Ok(())
 }

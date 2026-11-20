@@ -326,43 +326,63 @@ impl SubworkerClient {
             "classification job created"
         );
 
-        if body.status == "running" {
-            info!(
-                job_id = %job_id,
-                run_id = body.run_id,
-                "starting classification run polling"
-            );
-            let results = self.poll_classification_run(body.run_id).await?;
-            info!(
-                job_id = %job_id,
-                run_id = body.run_id,
-                result_count = results.len(),
-                "classification run polling completed"
-            );
-            Ok(results)
-        } else if body.status == "succeeded" {
-            info!(
-                job_id = %job_id,
-                run_id = body.run_id,
-                result_count = body.results.as_ref().map_or(0, Vec::len),
-                "classification job already completed"
-            );
-            Ok(body.results.unwrap_or_default())
-        } else {
-            error!(
-                job_id = %job_id,
-                run_id = body.run_id,
-                status = %body.status,
-                error_message = %body.error_message.as_deref().unwrap_or(""),
-                "classification run finished with non-success status"
-            );
-            Err(anyhow!(
-                "classification run {} finished with status {}: {}",
-                body.run_id,
-                body.status,
-                body.error_message.unwrap_or_default()
-            ))
+        match body.status.as_str() {
+            "running" => self.poll_running_classification(job_id, body.run_id).await,
+            "succeeded" => Ok(Self::log_and_extract_succeeded_results(job_id, body)),
+            _ => Err(Self::non_success_classification_error(job_id, body)),
         }
+    }
+
+    async fn poll_running_classification(
+        &self,
+        job_id: Uuid,
+        run_id: i64,
+    ) -> Result<Vec<ClassificationResult>> {
+        info!(
+            job_id = %job_id,
+            run_id,
+            "starting classification run polling"
+        );
+        let results = self.poll_classification_run(run_id).await?;
+        info!(
+            job_id = %job_id,
+            run_id,
+            result_count = results.len(),
+            "classification run polling completed"
+        );
+        Ok(results)
+    }
+
+    fn log_and_extract_succeeded_results(
+        job_id: Uuid,
+        body: ClassificationJobResponse,
+    ) -> Vec<ClassificationResult> {
+        info!(
+            job_id = %job_id,
+            run_id = body.run_id,
+            result_count = body.results.as_ref().map_or(0, Vec::len),
+            "classification job already completed"
+        );
+        body.results.unwrap_or_default()
+    }
+
+    fn non_success_classification_error(
+        job_id: Uuid,
+        body: ClassificationJobResponse,
+    ) -> anyhow::Error {
+        error!(
+            job_id = %job_id,
+            run_id = body.run_id,
+            status = %body.status,
+            error_message = %body.error_message.as_deref().unwrap_or(""),
+            "classification run finished with non-success status"
+        );
+        anyhow!(
+            "classification run {} finished with status {}: {}",
+            body.run_id,
+            body.status,
+            body.error_message.unwrap_or_default()
+        )
     }
 
     pub(crate) async fn poll_classification_run(
@@ -668,5 +688,269 @@ mod tests {
         assert!(chain.contains("401 Unauthorized"));
         assert!(!chain.contains("failed to parse classify-runs response"));
         server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn classify_chunk_sends_expected_request_and_returns_immediate_succeeded_results() {
+        use wiremock::matchers::{body_json, header};
+
+        let server = MockServer::start().await;
+        let job_id = Uuid::new_v4();
+        let expected_idem_key = format!("{job_id}-chunk-2");
+
+        Mock::given(method("POST"))
+            .and(path("/v1/classify-runs"))
+            .and(header("x-alt-job-id", job_id.to_string().as_str()))
+            .and(header("idempotency-key", expected_idem_key.as_str()))
+            .and(body_json(serde_json::json!({
+                "texts": ["article body one"]
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "run_id": 7,
+                "job_id": job_id.to_string(),
+                "status": "succeeded",
+                "result_count": 1,
+                "results": [{
+                    "top_genre": "ai",
+                    "confidence": 0.9,
+                    "scores": { "ai": 0.9 }
+                }]
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = SubworkerClient::new(server.uri(), 10, None).expect("client should build");
+        let results = client
+            .classify_chunk(job_id, vec!["article body one".to_string()], 2)
+            .await
+            .expect("immediate succeeded response should return results");
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].top_genre, "ai");
+        assert!((results[0].confidence - 0.9_f32).abs() < 1e-5);
+        server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn classify_chunk_immediate_succeeded_with_null_results_returns_empty_vec() {
+        let server = MockServer::start().await;
+        let job_id = Uuid::new_v4();
+
+        Mock::given(method("POST"))
+            .and(path("/v1/classify-runs"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "run_id": 8,
+                "job_id": job_id.to_string(),
+                "status": "succeeded",
+                "result_count": 0,
+                "results": null
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = SubworkerClient::new(server.uri(), 10, None).expect("client should build");
+        let results = client
+            .classify_chunk(job_id, vec!["article".to_string()], 0)
+            .await
+            .expect("succeeded with null results should return empty vec");
+
+        assert!(results.is_empty());
+        server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn classify_chunk_polls_when_status_is_running_until_succeeded() {
+        let server = MockServer::start().await;
+        let job_id = Uuid::new_v4();
+
+        Mock::given(method("POST"))
+            .and(path("/v1/classify-runs"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "run_id": 42,
+                "job_id": job_id.to_string(),
+                "status": "running",
+                "result_count": 0
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(path("/v1/classify-runs/42"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "run_id": 42,
+                "job_id": job_id.to_string(),
+                "status": "succeeded",
+                "result_count": 1,
+                "results": [{
+                    "top_genre": "tech",
+                    "confidence": 0.85,
+                    "scores": { "tech": 0.85 }
+                }]
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = SubworkerClient::new(server.uri(), 10, None).expect("client should build");
+        let results = client
+            .classify_chunk(job_id, vec!["article".to_string()], 0)
+            .await
+            .expect("running then succeeded poll should return results");
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].top_genre, "tech");
+        server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn classify_chunk_propagates_error_when_polled_run_fails() {
+        let server = MockServer::start().await;
+        let job_id = Uuid::new_v4();
+
+        Mock::given(method("POST"))
+            .and(path("/v1/classify-runs"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "run_id": 43,
+                "job_id": job_id.to_string(),
+                "status": "running",
+                "result_count": 0
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(path("/v1/classify-runs/43"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "run_id": 43,
+                "job_id": job_id.to_string(),
+                "status": "failed",
+                "result_count": 0,
+                "error_message": "worker crashed"
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = SubworkerClient::new(server.uri(), 10, None).expect("client should build");
+        let err = client
+            .classify_chunk(job_id, vec!["article".to_string()], 0)
+            .await
+            .expect_err("failed poll must propagate error");
+
+        let chain = format!("{err:#}");
+        assert!(chain.contains("worker crashed"));
+        server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn classify_chunk_fails_on_immediate_failed_and_unknown_status() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let server = MockServer::start().await;
+        let job_id = Uuid::new_v4();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let calls_clone = Arc::clone(&calls);
+        let job_id_str = job_id.to_string();
+
+        Mock::given(method("POST"))
+            .and(path("/v1/classify-runs"))
+            .respond_with(move |_: &wiremock::Request| {
+                let idx = calls_clone.fetch_add(1, Ordering::SeqCst);
+                if idx == 0 {
+                    ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                        "run_id": 11,
+                        "job_id": job_id_str,
+                        "status": "failed",
+                        "result_count": 0,
+                        "error_message": "bad input"
+                    }))
+                } else {
+                    ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                        "run_id": 12,
+                        "job_id": job_id_str,
+                        "status": "queued",
+                        "result_count": 0
+                    }))
+                }
+            })
+            .expect(2)
+            .mount(&server)
+            .await;
+
+        let client = SubworkerClient::new(server.uri(), 10, None).expect("client should build");
+
+        let err_failed = client
+            .classify_chunk(job_id, vec!["a".to_string()], 0)
+            .await
+            .expect_err("immediate failed status must error");
+        assert!(format!("{err_failed:#}").contains("finished with status failed: bad input"));
+
+        let err_unknown = client
+            .classify_chunk(job_id, vec!["a".to_string()], 1)
+            .await
+            .expect_err("unknown status must error");
+        assert!(format!("{err_unknown:#}").contains("finished with status queued: "));
+        server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn classify_chunk_rejects_invalid_json_and_handles_403_400_500() {
+        let server = MockServer::start().await;
+        let client = SubworkerClient::new(server.uri(), 10, None).expect("client should build");
+
+        Mock::given(method("POST"))
+            .and(path("/v1/classify-runs"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("not-json"))
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+        let err_json = client
+            .classify_chunk(Uuid::new_v4(), vec!["a".to_string()], 0)
+            .await
+            .expect_err("invalid json must fail");
+        assert!(format!("{err_json:#}").contains("failed to parse classify-runs response"));
+
+        Mock::given(method("POST"))
+            .and(path("/v1/classify-runs"))
+            .respond_with(ResponseTemplate::new(403).set_body_string("forbidden"))
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+        let err_403 = client
+            .classify_chunk(Uuid::new_v4(), vec!["a".to_string()], 0)
+            .await
+            .expect_err("403 must fail");
+        assert!(is_subworker_auth_error(&err_403));
+
+        Mock::given(method("POST"))
+            .and(path("/v1/classify-runs"))
+            .respond_with(ResponseTemplate::new(400).set_body_string("bad request"))
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+        let err_400 = client
+            .classify_chunk(Uuid::new_v4(), vec!["a".to_string()], 0)
+            .await
+            .expect_err("400 must fail");
+        assert!(!is_subworker_auth_error(&err_400));
+        assert!(format!("{err_400:#}").contains("400 Bad Request"));
+
+        Mock::given(method("POST"))
+            .and(path("/v1/classify-runs"))
+            .respond_with(ResponseTemplate::new(500).set_body_string("server error"))
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+        let err_500 = client
+            .classify_chunk(Uuid::new_v4(), vec!["a".to_string()], 0)
+            .await
+            .expect_err("500 must fail");
+        assert!(!is_subworker_auth_error(&err_500));
+        assert!(format!("{err_500:#}").contains("500 Internal Server Error"));
     }
 }

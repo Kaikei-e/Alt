@@ -527,8 +527,191 @@ pub(crate) async fn get_3days_recap(State(state): State<AppState>) -> impl IntoR
     get_3days_recap_impl(&state, budget, chrono::Utc::now()).await
 }
 
+struct GenreClusterStats {
+    top_terms: Vec<String>,
+    total_article_count: i32,
+    deduped_links: Vec<EvidenceLinkResponse>,
+    duplicates_removed: usize,
+}
+
+type RecapHttpError = (StatusCode, String);
+
+fn recap_error_response((status, error): RecapHttpError) -> axum::response::Response {
+    (status, Json(ErrorResponse { error })).into_response()
+}
+
+async fn fetch_latest_3days_job(
+    dao: &impl RecapReadDao,
+    label: &str,
+) -> Result<RecapJob, RecapHttpError> {
+    match dao.get_latest_completed_job(3).await {
+        Ok(Some(job)) => Ok(job),
+        Ok(None) => {
+            info!("No completed {} recap found", label);
+            Err((StatusCode::NOT_FOUND, format!("No {} recap found", label)))
+        }
+        Err(e) => {
+            error!("Failed to fetch latest job: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to fetch recap data".to_string(),
+            ))
+        }
+    }
+}
+
+async fn fetch_job_genres(
+    dao: &impl RecapReadDao,
+    job_id: uuid::Uuid,
+) -> Result<Vec<GenreWithSummary>, RecapHttpError> {
+    dao.get_genres_by_job(job_id).await.map_err(|e| {
+        error!("Failed to fetch genres for job {}: {}", job_id, e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to fetch genre data".to_string(),
+        )
+    })
+}
+
+async fn fetch_job_clusters(
+    dao: &impl RecapReadDao,
+    job_id: uuid::Uuid,
+) -> Result<std::collections::HashMap<String, Vec<ClusterWithEvidence>>, RecapHttpError> {
+    let cluster_query_start = Instant::now();
+    let clusters_by_genre = dao.get_clusters_by_job(job_id).await.map_err(|e| {
+        error!("Failed to fetch clusters for job {}: {}", job_id, e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to fetch cluster data".to_string(),
+        )
+    })?;
+    dao.observe_cluster_query_duration(cluster_query_start.elapsed().as_secs_f64());
+    Ok(clusters_by_genre)
+}
+
+fn collect_genre_cluster_stats(clusters: &[ClusterWithEvidence]) -> GenreClusterStats {
+    // トップターム、記事数、クラスター数を集計
+    let mut all_top_terms = Vec::new();
+    let mut total_article_count = 0;
+    let mut evidence_links = Vec::new();
+
+    for cluster in clusters {
+        // top_termsを収集
+        if let Some(terms) = &cluster.top_terms {
+            all_top_terms.extend(terms.iter().cloned());
+        }
+
+        // 記事数をカウント
+        #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+        {
+            total_article_count += cluster.evidence.len() as i32;
+        }
+
+        // Evidence Links（最初の5件程度）
+        for evidence in cluster.evidence.iter().take(5) {
+            evidence_links.push(EvidenceLinkResponse {
+                article_id: evidence.article_id.clone(),
+                title: evidence.title.clone(),
+                source_url: evidence.source_url.clone(),
+                published_at: evidence.published_at.to_rfc3339(),
+                lang: evidence
+                    .lang
+                    .clone()
+                    .unwrap_or_else(|| "unknown".to_string()),
+            });
+        }
+    }
+
+    // 重複除去して最大5個のトップタームを取得
+    all_top_terms.sort();
+    all_top_terms.dedup();
+    all_top_terms.truncate(10);
+
+    let before = evidence_links.len();
+    let deduped_links = dedupe_evidence_links(evidence_links);
+    let duplicates_removed = before.saturating_sub(deduped_links.len());
+
+    GenreClusterStats {
+        top_terms: all_top_terms,
+        total_article_count,
+        deduped_links,
+        duplicates_removed,
+    }
+}
+
+async fn fetch_genre_references(
+    dao: &impl RecapReadDao,
+    job_id: uuid::Uuid,
+    genre_name: &str,
+) -> (Option<Vec<ReferenceResponse>>, bool) {
+    // Extract references from body_json
+    match dao.get_recap_output_body_json(job_id, genre_name).await {
+        Ok(Some(body_json)) => {
+            let is_degraded = is_body_json_degraded(&body_json);
+            (extract_references_from_body_json(&body_json), is_degraded)
+        }
+        Ok(None) => (None, false),
+        Err(e) => {
+            // Log warning but don't fail the request
+            tracing::warn!("Failed to fetch body_json for genre {}: {}", genre_name, e);
+            (None, false)
+        }
+    }
+}
+
+async fn build_genre_responses(
+    dao: &impl RecapReadDao,
+    job_id: uuid::Uuid,
+    genres: Vec<GenreWithSummary>,
+    clusters_by_genre: &mut std::collections::HashMap<String, Vec<ClusterWithEvidence>>,
+) -> (Vec<RecapGenreResponse>, usize) {
+    let mut degraded_genres = 0usize;
+    let mut genre_responses = Vec::new();
+    for genre in genres {
+        let clusters = clusters_by_genre
+            .remove(&genre.genre_name)
+            .unwrap_or_default();
+
+        let stats = collect_genre_cluster_stats(&clusters);
+        if stats.duplicates_removed > 0 {
+            dao.inc_evidence_duplicates(stats.duplicates_removed);
+        }
+
+        let (references, is_degraded) =
+            fetch_genre_references(dao, job_id, &genre.genre_name).await;
+        if is_degraded {
+            degraded_genres += 1;
+        }
+
+        let summary_raw = genre.summary_ja.as_deref().unwrap_or_default();
+        genre_responses.push(RecapGenreResponse {
+            genre: genre.genre_name.clone(),
+            summary: normalize_summary_text(summary_raw),
+            top_terms: stats.top_terms,
+            article_count: stats.total_article_count,
+            #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+            cluster_count: clusters.len() as i32,
+            evidence_links: stats.deduped_links,
+            bullets: extract_bullets_from_payload(summary_raw),
+            references,
+        });
+    }
+    (genre_responses, degraded_genres)
+}
+
+async fn fetch_latest_three_day_run(
+    dao: &impl RecapReadDao,
+) -> Result<Option<SurfaceRun>, RecapHttpError> {
+    dao.get_latest_three_day_recap_run().await.map_err(|e| {
+        error!("Failed to fetch latest 3-day recap run: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to fetch recap data".to_string(),
+        )
+    })
+}
+
 /// 3日間Recapデータを取得する
-#[allow(clippy::too_many_lines)]
 async fn get_3days_recap_response(
     dao: &impl RecapReadDao,
     freshness_budget: chrono::Duration,
@@ -538,165 +721,30 @@ async fn get_3days_recap_response(
     info!("Fetching latest {} recap", label);
     let handler_start = Instant::now();
 
-    let job = match dao.get_latest_completed_job(3).await {
-        Ok(Some(job)) => job,
-        Ok(None) => {
-            info!("No completed {} recap found", label);
-            return (
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse {
-                    error: format!("No {} recap found", label),
-                }),
-            )
-                .into_response();
-        }
-        Err(e) => {
-            error!("Failed to fetch latest job: {}", e);
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Failed to fetch recap data".to_string(),
-                }),
-            )
-                .into_response();
-        }
+    let job = match fetch_latest_3days_job(dao, label).await {
+        Ok(job) => job,
+        Err(err) => return recap_error_response(err),
     };
 
     // ジャンルデータを取得
-    let genres = match dao.get_genres_by_job(job.job_id).await {
+    let genres = match fetch_job_genres(dao, job.job_id).await {
         Ok(genres) => genres,
-        Err(e) => {
-            error!("Failed to fetch genres for job {}: {}", job.job_id, e);
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Failed to fetch genre data".to_string(),
-                }),
-            )
-                .into_response();
-        }
+        Err(err) => return recap_error_response(err),
     };
 
-    let cluster_query_start = Instant::now();
-    let mut clusters_by_genre = match dao.get_clusters_by_job(job.job_id).await {
+    let mut clusters_by_genre = match fetch_job_clusters(dao, job.job_id).await {
         Ok(map) => map,
-        Err(e) => {
-            error!("Failed to fetch clusters for job {}: {}", job.job_id, e);
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Failed to fetch cluster data".to_string(),
-                }),
-            )
-                .into_response();
-        }
+        Err(err) => return recap_error_response(err),
     };
-    dao.observe_cluster_query_duration(cluster_query_start.elapsed().as_secs_f64());
 
     // レスポンス構築
     let total_genres = genres.len();
-    let mut degraded_genres = 0usize;
-    let mut genre_responses = Vec::new();
-    for genre in genres {
-        let clusters = clusters_by_genre
-            .remove(&genre.genre_name)
-            .unwrap_or_default();
+    let (genre_responses, degraded_genres) =
+        build_genre_responses(dao, job.job_id, genres, &mut clusters_by_genre).await;
 
-        // トップターム、記事数、クラスター数を集計
-        let mut all_top_terms = Vec::new();
-        let mut total_article_count = 0;
-        let mut evidence_links = Vec::new();
-
-        for cluster in &clusters {
-            // top_termsを収集
-            if let Some(terms) = &cluster.top_terms {
-                all_top_terms.extend(terms.iter().cloned());
-            }
-
-            // 記事数をカウント
-            #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
-            {
-                total_article_count += cluster.evidence.len() as i32;
-            }
-
-            // Evidence Links（最初の5件程度）
-            for evidence in cluster.evidence.iter().take(5) {
-                evidence_links.push(EvidenceLinkResponse {
-                    article_id: evidence.article_id.clone(),
-                    title: evidence.title.clone(),
-                    source_url: evidence.source_url.clone(),
-                    published_at: evidence.published_at.to_rfc3339(),
-                    lang: evidence
-                        .lang
-                        .clone()
-                        .unwrap_or_else(|| "unknown".to_string()),
-                });
-            }
-        }
-
-        // 重複除去して最大5個のトップタームを取得
-        all_top_terms.sort();
-        all_top_terms.dedup();
-        all_top_terms.truncate(10);
-
-        let deduped_links = {
-            let before = evidence_links.len();
-            let deduped = dedupe_evidence_links(evidence_links);
-            let removed = before.saturating_sub(deduped.len());
-            if removed > 0 {
-                dao.inc_evidence_duplicates(removed);
-            }
-            deduped
-        };
-
-        // Extract references from body_json
-        let references = match dao
-            .get_recap_output_body_json(job.job_id, &genre.genre_name)
-            .await
-        {
-            Ok(Some(body_json)) => {
-                if is_body_json_degraded(&body_json) {
-                    degraded_genres += 1;
-                }
-                extract_references_from_body_json(&body_json)
-            }
-            Ok(None) => None,
-            Err(e) => {
-                // Log warning but don't fail the request
-                tracing::warn!(
-                    "Failed to fetch body_json for genre {}: {}",
-                    genre.genre_name,
-                    e
-                );
-                None
-            }
-        };
-
-        genre_responses.push(RecapGenreResponse {
-            genre: genre.genre_name.clone(),
-            summary: normalize_summary_text(genre.summary_ja.as_deref().unwrap_or_default()),
-            top_terms: all_top_terms,
-            article_count: total_article_count,
-            #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
-            cluster_count: clusters.len() as i32,
-            evidence_links: deduped_links,
-            bullets: extract_bullets_from_payload(genre.summary_ja.as_deref().unwrap_or_default()),
-            references,
-        });
-    }
-
-    let latest_run = match dao.get_latest_three_day_recap_run().await {
+    let latest_run = match fetch_latest_three_day_run(dao).await {
         Ok(run) => run,
-        Err(e) => {
-            error!("Failed to fetch latest 3-day recap run: {}", e);
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Failed to fetch recap data".to_string(),
-                }),
-            )
-                .into_response();
-        }
+        Err(err) => return recap_error_response(err),
     };
     let surface_status = Some(build_surface_status(
         job.window_end,
@@ -2356,44 +2404,12 @@ pub(crate) struct RegenerateLatestRequest {
     pub edition_timezone: Option<String>,
 }
 
-pub(crate) async fn regenerate_morning_letter_impl(
-    scheduler: &crate::scheduler::Scheduler,
+async fn fetch_regenerated_morning_letter_response(
     dao: &impl MorningLetterReadDao,
+    letter_id: uuid::Uuid,
     freshness_budget: chrono::Duration,
     now: chrono::DateTime<chrono::Utc>,
 ) -> axum::response::Response {
-    use crate::scheduler::JobContext;
-
-    let Some(permit) = scheduler.try_acquire_morning_permit() else {
-        return (
-            StatusCode::CONFLICT,
-            Json(ErrorResponse {
-                error: "Morning Letter regeneration is already in progress".to_string(),
-            }),
-        )
-            .into_response();
-    };
-
-    let job_id = uuid::Uuid::new_v4();
-    // Morning regenerate: tag the row with trigger_source='morning' so a
-    // later crash can't cause boot-time find_resumable_job to mis-resume
-    // this as a full batch Recap pipeline.
-    let context = JobContext::new_morning_update(job_id);
-
-    let letter_id = match scheduler.run_morning_update_locked(context, permit).await {
-        Ok(id) => id,
-        Err(e) => {
-            error!(job_id = %job_id, "morning regenerate pipeline failed: {}", e);
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Morning Letter regeneration failed".to_string(),
-                }),
-            )
-                .into_response();
-        }
-    };
-
     match dao.get_morning_letter_by_id(letter_id).await {
         Ok(Some(letter)) => {
             let surface_status = match build_morning_letter_surface_status(
@@ -2442,6 +2458,47 @@ pub(crate) async fn regenerate_morning_letter_impl(
                 .into_response()
         }
     }
+}
+
+pub(crate) async fn regenerate_morning_letter_impl(
+    scheduler: &crate::scheduler::Scheduler,
+    dao: &impl MorningLetterReadDao,
+    freshness_budget: chrono::Duration,
+    now: chrono::DateTime<chrono::Utc>,
+) -> axum::response::Response {
+    use crate::scheduler::JobContext;
+
+    let Some(permit) = scheduler.try_acquire_morning_permit() else {
+        return (
+            StatusCode::CONFLICT,
+            Json(ErrorResponse {
+                error: "Morning Letter regeneration is already in progress".to_string(),
+            }),
+        )
+            .into_response();
+    };
+
+    let job_id = uuid::Uuid::new_v4();
+    // Morning regenerate: tag the row with trigger_source='morning' so a
+    // later crash can't cause boot-time find_resumable_job to mis-resume
+    // this as a full batch Recap pipeline.
+    let context = JobContext::new_morning_update(job_id);
+
+    let letter_id = match scheduler.run_morning_update_locked(context, permit).await {
+        Ok(id) => id,
+        Err(e) => {
+            error!(job_id = %job_id, "morning regenerate pipeline failed: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: "Morning Letter regeneration failed".to_string(),
+                }),
+            )
+                .into_response();
+        }
+    };
+
+    fetch_regenerated_morning_letter_response(dao, letter_id, freshness_budget, now).await
 }
 
 /// POST /v1/morning/letters/regenerate

@@ -276,6 +276,10 @@ fn init_tracer(endpoint: &str) -> Result<SdkTracer> {
     global::set_tracer_provider(tracer_provider.clone());
     // Retain our own typed handle too — `global::set_tracer_provider` only
     // stores it behind `dyn TracerProvider`, which can't be shut down.
+    #[expect(
+        clippy::let_underscore_must_use,
+        reason = "do_init runs inside TRACING_INIT_RESULT OnceLock, and tracing subscriber is not yet initialized here"
+    )]
     let _ = TRACER_PROVIDER.set(tracer_provider);
 
     Ok(tracer)
@@ -572,9 +576,17 @@ mod tests {
         tracer.in_span("test-recap-span", |_cx| {});
 
         // Because redirect policy is none, 307 is treated as error and not followed
+        #[expect(
+            clippy::let_underscore_must_use,
+            reason = "307 redirect rejection causes export failure, which is expected and intentionally ignored here"
+        )]
         let _ = provider.force_flush();
 
         // Ensure shutdown is clean and bounded
+        #[expect(
+            clippy::let_underscore_must_use,
+            reason = "flush during shutdown may report the expected 307 export error"
+        )]
         let _ = provider.shutdown();
 
         // Exactly 1 original request was sent to /v1/traces with Bearer token

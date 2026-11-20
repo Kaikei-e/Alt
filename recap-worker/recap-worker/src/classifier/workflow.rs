@@ -129,17 +129,7 @@ impl Default for ClassificationPipeline {
 }
 
 impl ClassificationPipeline {
-    /// デフォルトのGolden Datasetパスからパイプラインを初期化する。
-    /// Golden Datasetが見つからない場合は、既存のGenreClassifierにフォールバックする。
-    ///
-    /// # Note
-    /// Dockerfileと同じように、`/app/data/golden_classification.json` に配置されていることを前提とします。
-    /// 開発環境では `tests/data/golden_classification.json` も試行します。
-    ///
-    /// # Returns
-    /// 常に成功する（フォールバック処理により）
-    #[must_use]
-    pub fn new() -> Self {
+    fn try_load_default_golden_dataset() -> Option<Self> {
         // Dockerfileと同じパスを優先（本番環境）
         let default_path = Path::new("/app/data/golden_classification.json");
         if default_path.exists() {
@@ -149,7 +139,7 @@ impl ClassificationPipeline {
                         "ClassificationPipeline initialized from {}",
                         default_path.display()
                     );
-                    return pipeline;
+                    return Some(pipeline);
                 }
                 Err(e) => {
                     tracing::warn!(
@@ -160,7 +150,10 @@ impl ClassificationPipeline {
                 }
             }
         }
+        None
+    }
 
+    fn try_load_dev_golden_dataset() -> Option<Self> {
         // 開発環境用: tests/data/golden_classification.json を試行
         let dev_candidates = vec![
             // CARGO_MANIFEST_DIRからの相対パス（ビルド時）
@@ -182,7 +175,7 @@ impl ClassificationPipeline {
                             "ClassificationPipeline initialized from {}",
                             path.display()
                         );
-                        return pipeline;
+                        return Some(pipeline);
                     }
                     Err(e) => {
                         tracing::warn!(
@@ -194,7 +187,10 @@ impl ClassificationPipeline {
                 }
             }
         }
+        None
+    }
 
+    fn fallback_without_golden_dataset() -> Self {
         // Golden Datasetが見つからない場合は、既存のGenreClassifierにフォールバック
         // ログは1回だけ出力（静的変数で制御）
         static WARNED: std::sync::Once = std::sync::Once::new();
@@ -217,14 +213,27 @@ impl ClassificationPipeline {
         }
     }
 
-    /// Golden Datasetからパイプラインを初期化する。
+    /// デフォルトのGolden Datasetパスからパイプラインを初期化する。
+    /// Golden Datasetが見つからない場合は、既存のGenreClassifierにフォールバックする。
     ///
-    /// # Arguments
-    /// * `golden_dataset_path` - Golden Dataset JSONファイルのパス
+    /// # Note
+    /// Dockerfileと同じように、`/app/data/golden_classification.json` に配置されていることを前提とします。
+    /// 開発環境では `tests/data/golden_classification.json` も試行します。
     ///
-    /// # Errors
-    /// ファイルの読み込みやパースに失敗した場合にエラーを返す。
-    pub fn from_golden_dataset(golden_dataset_path: &Path) -> Result<Self> {
+    /// # Returns
+    /// 常に成功する（フォールバック処理により）
+    #[must_use]
+    pub fn new() -> Self {
+        if let Some(pipeline) = Self::try_load_default_golden_dataset() {
+            return pipeline;
+        }
+        if let Some(pipeline) = Self::try_load_dev_golden_dataset() {
+            return pipeline;
+        }
+        Self::fallback_without_golden_dataset()
+    }
+
+    fn load_golden_items(golden_dataset_path: &Path) -> Result<Vec<GoldenItem>> {
         // Golden Datasetをロード
         let content = fs::read_to_string(golden_dataset_path).with_context(|| {
             format!(
@@ -234,29 +243,33 @@ impl ClassificationPipeline {
         })?;
 
         // 新しいスキーマ（items配列あり）とレガシースキーマ（直接配列）の両方に対応
-        let golden_items: Vec<GoldenItem> =
-            if let Ok(root) = serde_json::from_str::<GoldenDatasetRoot>(&content) {
-                root.items
-            } else {
-                // レガシー形式：直接配列としてパース
-                serde_json::from_str(&content)
-                    .context("failed to parse golden dataset JSON (legacy format)")?
-            };
+        if let Ok(root) = serde_json::from_str::<GoldenDatasetRoot>(&content) {
+            Ok(root.items)
+        } else {
+            // レガシー形式：直接配列としてパース
+            serde_json::from_str(&content)
+                .context("failed to parse golden dataset JSON (legacy format)")
+        }
+    }
 
-        let token_pipeline = TokenPipeline::new();
-
-        // 1. すべての記事をトークン化してコーパスを構築
+    fn tokenize_golden_corpus(
+        golden_items: &[GoldenItem],
+        token_pipeline: &TokenPipeline,
+    ) -> Vec<Vec<String>> {
         let mut tokenized_corpus = Vec::new();
-        for item in &golden_items {
+        for item in golden_items {
             let language = ClassificationLanguage::Unknown;
             let content = item.content();
             let normalized = token_pipeline.preprocess(&content, "", language);
             tokenized_corpus.push(normalized.tokens);
         }
+        tokenized_corpus
+    }
 
+    fn build_corpus_feature_extractor(tokenized_corpus: &[Vec<String>]) -> FeatureExtractor {
         // 2. 動的にFeatureExtractorを構築（語彙サイズ1000）
         let vocab_size = 1000;
-        let feature_extractor = FeatureExtractor::build_from_corpus(&tokenized_corpus, vocab_size);
+        let feature_extractor = FeatureExtractor::build_from_corpus(tokenized_corpus, vocab_size);
         let actual_vocab_len = feature_extractor.vocab_len();
         tracing::info!(
             "FeatureExtractor built from corpus: vocab_size={} (requested={})",
@@ -275,14 +288,14 @@ impl ClassificationPipeline {
             feature_dim
         );
 
-        // 4. Golden Datasetから特徴ベクトルを抽出
-        let (labeled_articles, stats) =
-            Self::extract_feature_vectors(&golden_items, &tokenized_corpus, &feature_extractor);
+        feature_extractor
+    }
 
+    fn log_feature_extraction_stats(total_articles: usize, stats: &FeatureExtractionStats) {
         // ログ出力: Golden Dataset特徴抽出統計
         tracing::info!(
             "Golden Dataset feature extraction: total_articles={}, zero_norm_count={}, avg_tfidf_norm={:.4}, avg_bm25_norm={:.4}, avg_embedding_norm={:.4}",
-            golden_items.len(),
+            total_articles,
             stats.zero_vector_count,
             stats.avg_tfidf_norm,
             stats.avg_bm25_norm,
@@ -293,20 +306,20 @@ impl ClassificationPipeline {
             tracing::warn!(
                 "Golden Dataset: {} out of {} articles have zero-norm feature vectors",
                 stats.zero_vector_count,
-                golden_items.len()
+                total_articles
             );
         } else {
             tracing::info!(
                 "Golden Dataset: all {} articles have non-zero feature vectors",
-                golden_items.len()
+                total_articles
             );
         }
+    }
 
-        // 5. CentroidClassifier Removed
-
+    fn build_graph_propagator(labeled_articles: &[Article]) -> GraphPropagator {
         // Initialize GraphPropagator with lower threshold
         let mut graph_propagator = GraphPropagator::new(0.5); // エッジ構築用閾値
-        if let Err(e) = graph_propagator.build_graph(&labeled_articles, &HashSet::new()) {
+        if let Err(e) = graph_propagator.build_graph(labeled_articles, &HashSet::new()) {
             tracing::warn!("Failed to build GraphPropagator: {}", e);
         } else {
             tracing::info!(
@@ -315,29 +328,34 @@ impl ClassificationPipeline {
                 graph_propagator.graph_stats().1
             );
         }
+        graph_propagator
+    }
+
+    /// Golden Datasetからパイプラインを初期化する。
+    ///
+    /// # Arguments
+    /// * `golden_dataset_path` - Golden Dataset JSONファイルのパス
+    ///
+    /// # Errors
+    /// ファイルの読み込みやパースに失敗した場合にエラーを返す。
+    pub fn from_golden_dataset(golden_dataset_path: &Path) -> Result<Self> {
+        let golden_items = Self::load_golden_items(golden_dataset_path)?;
+        let token_pipeline = TokenPipeline::new();
+
+        // 1. すべての記事をトークン化してコーパスを構築
+        let tokenized_corpus = Self::tokenize_golden_corpus(&golden_items, &token_pipeline);
+        let feature_extractor = Self::build_corpus_feature_extractor(&tokenized_corpus);
+
+        // 4. Golden Datasetから特徴ベクトルを抽出
+        let (labeled_articles, stats) =
+            Self::extract_feature_vectors(&golden_items, &tokenized_corpus, &feature_extractor);
+        Self::log_feature_extraction_stats(golden_items.len(), &stats);
+
+        // 5. CentroidClassifier Removed
+        let graph_propagator = Self::build_graph_propagator(&labeled_articles);
 
         Ok(Self {
             graph_propagator: Some(graph_propagator),
-            // fallback_classifier: Some(GenreClassifier::new_default()), // REMOVED: Specified in line above?
-            // Oh wait, duplicate field error was in struct usage?
-            // "field fallback_classifier specified more than once"
-            // Let's see lines 249-253 in original view:
-            // 249:             centroid_classifier: Some(centroid_classifier),
-            // 250:             graph_propagator: Some(graph_propagator),
-            // 251:             fallback_classifier: None,
-            // 252:             feature_extractor,
-            // 253:             token_pipeline: TokenPipeline::new(),
-            // I replaced lines 226-255.
-            // My replacement was:
-            // ...
-            // Ok(Self {
-            //    graph_propagator: Some(graph_propagator),
-            //    fallback_classifier: None,
-            //    fallback_classifier: Some(GenreClassifier::new_default()),
-            //    feature_extractor,
-            //    token_pipeline: TokenPipeline::new(),
-            // })
-            // Yes, I duplicated it blindly. I should remove one.
             fallback_classifier: Some(GenreClassifier::new_default()),
             feature_extractor,
             token_pipeline: TokenPipeline::new(),
@@ -551,14 +569,7 @@ impl ClassificationPipeline {
         }
     }
 
-    /// Rescue Pass（Graph Label Propagation）で分類を試みる。
-    fn try_rescue_pass(
-        article_id: &str,
-        content: &str,
-        all_articles: &[Article],
-        feature_vector: &crate::classification::FeatureVector,
-        sample_count: usize,
-    ) -> Result<Option<String>> {
+    fn prepare_rescue_candidates(article_id: &str, all_articles: &[Article]) -> HashSet<String> {
         // Centroid Classifierで候補に絞るロジックを廃止し、全記事を候補とする
         let mut centroid_candidates = HashSet::new();
         for article in all_articles {
@@ -584,6 +595,43 @@ impl ClassificationPipeline {
             );
         }
 
+        centroid_candidates
+    }
+
+    fn log_rescue_pass_outcome(
+        article_id: &str,
+        propagated_genre: Option<&String>,
+        sample_count: usize,
+    ) -> Option<String> {
+        if let Some(genre) = propagated_genre {
+            if sample_count < 10 {
+                tracing::info!(
+                    "ClassificationPipeline Rescue Pass: article_id={}, genre={}",
+                    article_id,
+                    genre
+                );
+            }
+            return Some(genre.clone());
+        }
+        if sample_count < 10 {
+            tracing::warn!(
+                "ClassificationPipeline Rescue Pass failed: article_id={}, falling back to 'other'",
+                article_id
+            );
+        }
+        None
+    }
+
+    /// Rescue Pass（Graph Label Propagation）で分類を試みる。
+    fn try_rescue_pass(
+        article_id: &str,
+        content: &str,
+        all_articles: &[Article],
+        feature_vector: &crate::classification::FeatureVector,
+        sample_count: usize,
+    ) -> Result<Option<String>> {
+        let centroid_candidates = Self::prepare_rescue_candidates(article_id, all_articles);
+
         // 現在の記事も追加
         let current_article = Article {
             id: article_id.to_string(),
@@ -600,33 +648,66 @@ impl ClassificationPipeline {
         propagator.build_graph(&all_articles_with_current, &centroid_candidates)?;
         let propagated_labels = propagator.propagate_labels();
 
-        // 伝播されたラベルを確認
-        if let Some(genre) = propagated_labels.get(article_id) {
-            if sample_count < 10 {
-                tracing::info!(
-                    "ClassificationPipeline Rescue Pass: article_id={}, genre={}",
-                    article_id,
-                    genre
-                );
-            }
-            return Ok(Some(genre.clone()));
-        }
-        if sample_count < 10 {
-            tracing::warn!(
-                "ClassificationPipeline Rescue Pass failed: article_id={}, falling back to 'other'",
-                article_id
-            );
-        }
-        Ok(None)
+        Ok(Self::log_rescue_pass_outcome(
+            article_id,
+            propagated_labels.get(article_id),
+            sample_count,
+        ))
     }
 
     /// 学習済みのジャンル一覧を取得する。
     #[must_use]
     pub fn trained_genres(&self) -> Vec<String> {
-        self.fallback_classifier
-            .as_ref()
-            .map(crate::classification::GenreClassifier::known_genres)
-            .unwrap_or_default()
+        self.fallback_classifier.as_ref().map_or_else(
+            Vec::new,
+            crate::classification::GenreClassifier::known_genres,
+        )
+    }
+
+    fn log_rescue_attempt(sample_count: usize) {
+        let attempt_count = RESCUE_ATTEMPT_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        // Sample attempts: first 10, then every 100
+        #[allow(clippy::manual_is_multiple_of)]
+        if sample_count < 10 || (attempt_count + 1) % 100 == 0 {
+            tracing::info!(
+                "CentroidClassifier: no matches, attempting Rescue Pass (GraphPropagator) [attempts={}]",
+                attempt_count + 1
+            );
+        }
+    }
+
+    fn record_rescue_prediction(
+        prediction: Option<(String, f32)>,
+        scores: &mut HashMap<String, f32>,
+        ranking: &mut Vec<(String, f32)>,
+        sample_count: usize,
+    ) {
+        if let Some((rescued_genre, score)) = prediction {
+            let success_count =
+                RESCUE_SUCCESS_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+            tracing::info!(
+                "Rescue Pass successful: genre='{}', score={:.4} [successes={}]",
+                rescued_genre,
+                score,
+                success_count + 1
+            );
+            scores.insert(rescued_genre.clone(), score);
+            ranking.push((rescued_genre, score));
+        } else {
+            let fail_count = RESCUE_FAIL_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+            // Sample failures: first 10, then every 10
+            // We want to see failures to debug "no evidence" issues, but not flood logs if 100% fail.
+            #[allow(clippy::manual_is_multiple_of)]
+            if sample_count < 10 || (fail_count + 1) % 10 == 0 {
+                tracing::info!(
+                    "Rescue Pass failed: no neighbors found [failures={}]",
+                    fail_count + 1
+                );
+            }
+        }
     }
 
     /// predictメソッド内でRescue Passを試行する（ログのサンプリング付き）。
@@ -637,56 +718,22 @@ impl ClassificationPipeline {
         ranking: &mut Vec<(String, f32)>,
         sample_count: usize,
     ) {
-        if let Some(ref propagator) = self.graph_propagator {
-            let attempt_count =
-                RESCUE_ATTEMPT_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let Some(ref propagator) = self.graph_propagator else {
+            return;
+        };
 
-            // Sample attempts: first 10, then every 100
-            #[allow(clippy::manual_is_multiple_of)]
-            if sample_count < 10 || (attempt_count + 1) % 100 == 0 {
-                tracing::info!(
-                    "CentroidClassifier: no matches, attempting Rescue Pass (GraphPropagator) [attempts={}]",
-                    attempt_count + 1
-                );
-            }
+        Self::log_rescue_attempt(sample_count);
 
-            // k=5, static thresholds since Centroid is gone
-            let mut thresholds = HashMap::new();
-            if let Some(_fallback) = &self.fallback_classifier {
-                // Use default threshold from GenreClassifier as base?
-                // Just use 0.5 for now as a safe bet for Rescue
-                thresholds.insert("default".to_string(), 0.5);
-            }
-
-            if let Some((rescued_genre, score)) =
-                propagator.predict_by_neighbors(feature_vector, 5, &thresholds)
-            {
-                let success_count =
-                    RESCUE_SUCCESS_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-
-                tracing::info!(
-                    "Rescue Pass successful: genre='{}', score={:.4} [successes={}]",
-                    rescued_genre,
-                    score,
-                    success_count + 1
-                );
-                scores.insert(rescued_genre.clone(), score);
-                ranking.push((rescued_genre, score));
-            } else {
-                let fail_count =
-                    RESCUE_FAIL_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-
-                // Sample failures: first 10, then every 10
-                // We want to see failures to debug "no evidence" issues, but not flood logs if 100% fail.
-                #[allow(clippy::manual_is_multiple_of)]
-                if sample_count < 10 || (fail_count + 1) % 10 == 0 {
-                    tracing::info!(
-                        "Rescue Pass failed: no neighbors found [failures={}]",
-                        fail_count + 1
-                    );
-                }
-            }
+        // k=5, static thresholds since Centroid is gone
+        let mut thresholds = HashMap::new();
+        if self.fallback_classifier.is_some() {
+            // Use default threshold from GenreClassifier as base?
+            // Just use 0.5 for now as a safe bet for Rescue
+            thresholds.insert("default".to_string(), 0.5);
         }
+
+        let prediction = propagator.predict_by_neighbors(feature_vector, 5, &thresholds);
+        Self::record_rescue_prediction(prediction, scores, ranking, sample_count);
     }
 
     /// 既存のGenreClassifierインターフェースに合わせたpredictメソッド。
@@ -758,5 +805,97 @@ impl ClassificationPipeline {
         }
 
         anyhow::bail!("GenreClassifier is not available")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::ENV_MUTEX;
+    use tempfile::TempDir;
+
+    #[test]
+    fn classification_pipeline_new_initializes_from_cargo_manifest_dir_candidate() {
+        let _lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let temp = TempDir::new().expect("tempdir");
+        let manifest_dir = temp.path().join("crate");
+        let data_dir = temp.path().join("tests").join("data");
+        fs::create_dir_all(&manifest_dir).expect("create manifest dir");
+        fs::create_dir_all(&data_dir).expect("create tests/data dir");
+
+        let golden_path = data_dir.join("golden_classification.json");
+        let golden_json = serde_json::json!([
+            {
+                "id": "g1",
+                "content_en": "Artificial intelligence and neural networks.",
+                "expected_genres": ["ai"]
+            },
+            {
+                "id": "g2",
+                "content_ja": "クラウドとAPI開発の技術。",
+                "expected_genres": ["tech"]
+            }
+        ]);
+        fs::write(&golden_path, golden_json.to_string()).expect("write golden dataset");
+
+        let manifest_str = manifest_dir.to_str().expect("utf8 manifest path");
+        temp_env::with_vars(
+            [
+                ("CARGO_MANIFEST_DIR", Some(manifest_str)),
+                ("RECAP_GENRE_MODEL_WEIGHTS", None),
+            ],
+            || {
+                let pipeline = ClassificationPipeline::new();
+                assert!(pipeline.graph_propagator.is_some());
+                assert!(pipeline.fallback_classifier.is_some());
+                assert!(!pipeline.trained_genres().is_empty());
+                let res = pipeline
+                    .predict(
+                        "AI update",
+                        "Machine learning models advance.",
+                        ClassificationLanguage::English,
+                    )
+                    .expect("predict succeeds");
+                assert!(!res.top_genres.is_empty());
+            },
+        );
+    }
+
+    #[test]
+    fn classification_pipeline_new_recovers_when_cargo_manifest_candidate_is_invalid() {
+        let _lock = ENV_MUTEX
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let temp = TempDir::new().expect("tempdir");
+        let manifest_dir = temp.path().join("crate");
+        let data_dir = temp.path().join("tests").join("data");
+        fs::create_dir_all(&manifest_dir).expect("create manifest dir");
+        fs::create_dir_all(&data_dir).expect("create tests/data dir");
+
+        let golden_path = data_dir.join("golden_classification.json");
+        fs::write(&golden_path, "not valid json").expect("write invalid golden dataset");
+
+        let manifest_str = manifest_dir.to_str().expect("utf8 manifest path");
+        temp_env::with_vars(
+            [
+                ("CARGO_MANIFEST_DIR", Some(manifest_str)),
+                ("RECAP_GENRE_MODEL_WEIGHTS", None),
+            ],
+            || {
+                let pipeline = ClassificationPipeline::new();
+                assert!(pipeline.fallback_classifier.is_some());
+                assert!(!pipeline.trained_genres().is_empty());
+                let res = pipeline
+                    .predict(
+                        "Cloud API",
+                        "Software architecture and deployment.",
+                        ClassificationLanguage::English,
+                    )
+                    .expect("predict succeeds");
+                assert!(!res.top_genres.is_empty());
+            },
+        );
     }
 }

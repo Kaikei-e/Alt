@@ -13,6 +13,10 @@ impl DailyCadence {
         Ok(Self { tz, target })
     }
 
+    pub(crate) fn target(&self) -> NaiveTime {
+        self.target
+    }
+
     pub(crate) fn next_run_from(&self, now: DateTime<Utc>) -> DateTime<Utc> {
         let localized_now = now.with_timezone(&self.tz);
         let mut date = localized_now.date_naive();
@@ -30,9 +34,13 @@ impl DailyCadence {
     }
 }
 
+#[expect(
+    clippy::expect_used,
+    reason = "wall-clock NaiveDate never reaches chrono::NaiveDate::MAX (+262142-12-31)"
+)]
 fn advance_day(date: NaiveDate) -> NaiveDate {
     date.succ_opt()
-        .expect("date should remain representable when advancing")
+        .expect("wall-clock NaiveDate never reaches chrono::NaiveDate::MAX (+262142-12-31)")
 }
 
 #[cfg(test)]

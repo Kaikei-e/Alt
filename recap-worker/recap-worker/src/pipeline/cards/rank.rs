@@ -187,10 +187,14 @@ fn determine_novelty_and_continuation(
         }
 
         let best = matches[0];
+        #[expect(
+            clippy::expect_used,
+            reason = "match_ranked_continuations only returns ids from previous_cards"
+        )]
         let nearest = previous_cards
             .iter()
             .find(|c| c.id == best.id)
-            .expect("matched id must exist in previous_cards");
+            .expect("match_ranked_continuations only returns ids from previous_cards");
         let merged = if matches.len() > 1 {
             Some(matches[1..].iter().map(|m| m.id).collect::<Vec<Uuid>>())
         } else {
@@ -216,9 +220,9 @@ fn score_cluster(
         .filter_map(|id| ctx.item_by_id.get(id).copied())
         .collect();
 
-    if member_items.is_empty() {
+    let Some((first_item, rest_items)) = member_items.split_first() else {
         return Ok(None);
-    }
+    };
 
     let fingerprint = compute_cluster_fingerprint(&cluster.member_ids);
 
@@ -234,11 +238,9 @@ fn score_cluster(
         return Ok(None);
     };
 
-    let newest_pub_date = member_items
+    let newest_pub_date = rest_items
         .iter()
-        .map(|it| it.pub_date)
-        .max()
-        .expect("member_items is non-empty");
+        .fold(first_item.pub_date, |acc, it| acc.max(it.pub_date));
 
     let mut cluster_host_counts: HashMap<String, usize> = HashMap::new();
     let mut genre_counts: HashMap<String, usize> = HashMap::new();

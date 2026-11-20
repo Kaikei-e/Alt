@@ -145,7 +145,9 @@ pub(crate) fn render_registry(registry: &Registry) -> String {
     let encoder = TextEncoder::new();
     let families = registry.gather();
     let mut buf = Vec::new();
-    let _ = encoder.encode(&families, &mut buf);
+    if let Err(err) = encoder.encode(&families, &mut buf) {
+        tracing::warn!(error = %err, "pki_metrics_encode_failed");
+    }
     String::from_utf8(buf).unwrap_or_default()
 }
 

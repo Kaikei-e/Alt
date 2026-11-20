@@ -1,17 +1,18 @@
 use std::env;
 use std::path::PathBuf;
-use std::process;
 
 use anyhow::{Context, Result, anyhow, bail};
 use recap_worker::replay::{ReplayConfig, replay_genre_pipeline};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let config = parse_args()?;
+    let Some(config) = parse_args()? else {
+        return Ok(());
+    };
     replay_genre_pipeline(config).await
 }
 
-fn parse_args() -> Result<ReplayConfig> {
+fn parse_args() -> Result<Option<ReplayConfig>> {
     let mut dataset = None;
     let mut dsn = None;
     let mut graph_window = None;
@@ -51,7 +52,7 @@ fn parse_args() -> Result<ReplayConfig> {
             }
             "--help" => {
                 print_usage();
-                process::exit(0);
+                return Ok(None);
             }
             _ => {
                 bail!("unknown argument: {}", arg);
@@ -66,14 +67,14 @@ fn parse_args() -> Result<ReplayConfig> {
     let graph_window = graph_window.unwrap_or_else(|| "7d".to_string());
     let graph_ttl_seconds = graph_ttl_seconds.unwrap_or(900);
 
-    Ok(ReplayConfig {
+    Ok(Some(ReplayConfig {
         dataset,
         dsn,
         graph_window,
         graph_ttl_seconds,
         require_tags,
         dry_run,
-    })
+    }))
 }
 
 fn print_usage() {

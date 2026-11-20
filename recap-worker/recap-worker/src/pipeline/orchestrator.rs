@@ -87,7 +87,6 @@ pub(crate) struct PipelineBuilder {
 
 impl PipelineOrchestrator {
     /// Create a new pipeline orchestrator with default stage implementations.
-    #[allow(clippy::too_many_lines)]
     pub(crate) async fn new(
         config: Arc<Config>,
         subworker: SubworkerClient,
@@ -97,7 +96,88 @@ impl PipelineOrchestrator {
         metrics: Arc<Metrics>,
     ) -> Result<Self> {
         let mtls_paths = MtlsPaths::from_env().context("mTLS env configuration (fail-closed)")?;
+        let alt_backend_client = Self::build_alt_backend_client(&config, mtls_paths.as_ref())?;
+        let tag_generator_client = Self::build_tag_generator_client(&config, mtls_paths.as_ref())?;
 
+        let retry_config = RetryConfig {
+            max_attempts: config.http_max_retries(),
+            base_delay_ms: config.http_backoff_base_ms(),
+            max_delay_ms: config.http_backoff_cap_ms(),
+        };
+        let subworker_client = Arc::new(subworker);
+        let cpu_count = num_cpus::get();
+        let max_concurrent = (cpu_count * 3) / 2;
+
+        let embedding_service = Self::init_embedding_service(&config).await?;
+        let genre_stage = Self::build_genre_stage(
+            &config,
+            &subworker_client,
+            &classification_queue,
+            &recap_dao,
+            &metrics,
+        )
+        .await?;
+
+        let config_for_dispatch = Arc::clone(&config);
+        let tag_generator_for_persist = tag_generator_client.clone();
+        // Tag fetches moved to alt-backend per ADR-000241 / ADR-000397.
+        // tag_generator_client is retained only for the extract-tags
+        // surface used by the persist stage.
+        let _ = tag_generator_client;
+        let sovereign_client = Self::build_sovereign_client(&config);
+
+        PipelineBuilder::new(config.clone())
+            .with_fetch_stage(Arc::new(AltBackendFetchStage::new(
+                alt_backend_client,
+                Arc::clone(&recap_dao),
+                retry_config,
+            )))
+            .with_preprocess_stage(Arc::new(TextPreprocessStage::new(
+                max_concurrent.max(2),
+                Arc::clone(&recap_dao),
+                Arc::clone(&subworker_client),
+            )))
+            .with_dedup_stage(Arc::new(HashDedupStage::new(cpu_count.max(2), 0.8, 100)))
+            .with_genre_stage(genre_stage)
+            .with_select_stage(Arc::new(SummarySelectStage::new(
+                embedding_service.clone(),
+                config.min_documents_per_genre(),
+                config.coherence_similarity_threshold(),
+                Some(Arc::clone(&recap_dao)),
+                Some(Arc::clone(&subworker_client)),
+                SubgenreConfig::new(
+                    config.subgenre_max_docs_per_genre(),
+                    config.subgenre_target_docs_per_subgenre(),
+                    config.subgenre_max_k(),
+                ),
+            )))
+            .with_dispatch_stage(Arc::new(MlLlmDispatchStage::new(
+                Arc::clone(&subworker_client),
+                news_creator,
+                Arc::clone(&recap_dao),
+                max_concurrent,
+                config_for_dispatch,
+            )))
+            .with_persist_stage(Arc::new(
+                persist::FinalSectionPersistStage::new(
+                    Arc::clone(&recap_dao),
+                    tag_generator_for_persist,
+                )
+                .with_sovereign(sovereign_client),
+            ))
+            .with_metrics(metrics)
+            .build(
+                Arc::clone(&recap_dao),
+                subworker_client,
+                Arc::clone(&classification_queue),
+                embedding_service,
+            )
+    }
+
+    fn build_alt_backend_client(
+        config: &Config,
+        mtls_paths: Option<&MtlsPaths>,
+    ) -> Result<Arc<AltBackendClient>> {
         let alt_backend_url = if mtls_paths.is_some() {
             std::env::var("ALT_BACKEND_MTLS_URL")
                 .unwrap_or_else(|_| config.alt_backend_base_url().to_string())
@@ -109,72 +189,69 @@ impl PipelineOrchestrator {
             connect_timeout: config.alt_backend_connect_timeout(),
             total_timeout: config.alt_backend_total_timeout(),
         };
-        let alt_backend_client = Arc::new(
-            if let Some(paths) = mtls_paths.as_ref() {
-                let client = mtls::build_mtls_client(
-                    paths,
-                    alt_backend_config.connect_timeout,
-                    alt_backend_config.total_timeout,
-                )
-                .context("failed to build alt-backend mTLS client (fail-closed)")?;
-                AltBackendClient::new_with_client(alt_backend_config, client)
-            } else {
-                AltBackendClient::new(alt_backend_config)
-            }
-            .context("failed to create alt-backend client")?,
-        );
+        let client = if let Some(paths) = mtls_paths {
+            let http_client = mtls::build_mtls_client(
+                paths,
+                alt_backend_config.connect_timeout,
+                alt_backend_config.total_timeout,
+            )
+            .context("failed to build alt-backend mTLS client (fail-closed)")?;
+            AltBackendClient::new_with_client(alt_backend_config, http_client)
+        } else {
+            AltBackendClient::new(alt_backend_config)
+        }
+        .context("failed to create alt-backend client")?;
+        Ok(Arc::new(client))
+    }
 
+    fn build_tag_generator_client(
+        config: &Config,
+        mtls_paths: Option<&MtlsPaths>,
+    ) -> Result<Option<Arc<TagGeneratorClient>>> {
         // Tag-generator wiring (CLAUDE.md rule 8 / .claude/rules/di-wiring.md):
         // `tag_generator_enabled()` is the only legitimate "intentionally
         // disabled" path. When enabled, a construction failure propagates as
         // a startup error instead of degrading to `None` — silently
         // swallowing it would make "DI forgot to wire" indistinguishable
         // from "intentionally disabled" (this was the exact HIGH finding).
-        let tag_generator_client: Option<Arc<TagGeneratorClient>> =
-            if config.tag_generator_enabled() {
-                let tag_generator_url = if mtls_paths.is_some() {
-                    std::env::var("TAG_GENERATOR_MTLS_URL")
-                        .unwrap_or_else(|_| config.tag_generator_base_url().to_string())
-                } else {
-                    config.tag_generator_base_url().to_string()
-                };
-                let tag_generator_config = crate::clients::tag_generator::TagGeneratorConfig {
-                    base_url: tag_generator_url,
-                    connect_timeout: config.tag_generator_connect_timeout(),
-                    total_timeout: config.tag_generator_total_timeout(),
-                };
-                let client = if let Some(paths) = mtls_paths.as_ref() {
-                    let http_client = mtls::build_mtls_client(
-                        paths,
-                        tag_generator_config.connect_timeout,
-                        tag_generator_config.total_timeout,
-                    )
-                    .context("failed to build tag-generator mTLS client (fail-closed)")?;
-                    TagGeneratorClient::new_with_client(tag_generator_config, http_client)
-                } else {
-                    TagGeneratorClient::new(tag_generator_config)
-                }
-                .context("failed to create tag-generator client")?;
-                tracing::info!(
-                    "tag_generator_enabled: semantic tag extraction wired for persist stage"
-                );
-                Some(Arc::new(client))
-            } else {
-                tracing::warn!(
-                    "tag_generator_disabled: TAG_GENERATOR_ENABLED=false — semantic tag \
-                     extraction will not run for persisted summaries"
-                );
-                None
-            };
-        let retry_config = RetryConfig {
-            max_attempts: config.http_max_retries(),
-            base_delay_ms: config.http_backoff_base_ms(),
-            max_delay_ms: config.http_backoff_cap_ms(),
-        };
-        let subworker_client = Arc::new(subworker);
-        let cpu_count = num_cpus::get();
-        let max_concurrent = (cpu_count * 3) / 2;
+        if !config.tag_generator_enabled() {
+            tracing::warn!(
+                "tag_generator_disabled: TAG_GENERATOR_ENABLED=false — semantic tag \
+                 extraction will not run for persisted summaries"
+            );
+            return Ok(None);
+        }
 
+        let tag_generator_url = if mtls_paths.is_some() {
+            std::env::var("TAG_GENERATOR_MTLS_URL")
+                .unwrap_or_else(|_| config.tag_generator_base_url().to_string())
+        } else {
+            config.tag_generator_base_url().to_string()
+        };
+        let tag_generator_config = crate::clients::tag_generator::TagGeneratorConfig {
+            base_url: tag_generator_url,
+            connect_timeout: config.tag_generator_connect_timeout(),
+            total_timeout: config.tag_generator_total_timeout(),
+        };
+        let client = if let Some(paths) = mtls_paths {
+            let http_client = mtls::build_mtls_client(
+                paths,
+                tag_generator_config.connect_timeout,
+                tag_generator_config.total_timeout,
+            )
+            .context("failed to build tag-generator mTLS client (fail-closed)")?;
+            TagGeneratorClient::new_with_client(tag_generator_config, http_client)
+        } else {
+            TagGeneratorClient::new(tag_generator_config)
+        }
+        .context("failed to create tag-generator client")?;
+        tracing::info!("tag_generator_enabled: semantic tag extraction wired for persist stage");
+        Ok(Some(Arc::new(client)))
+    }
+
+    async fn init_embedding_service(
+        config: &Config,
+    ) -> Result<Option<Arc<dyn crate::pipeline::embedding::Embedder>>> {
         let embedding_policy = if config.embedding_required() {
             crate::pipeline::embedding::EmbeddingAvailability::Required
         } else {
@@ -212,7 +289,7 @@ impl PipelineOrchestrator {
                  Large genres cannot be split into subgenres."
             );
         }
-        let embedding_service: Option<Arc<dyn crate::pipeline::embedding::Embedder>> =
+        Ok(
             crate::pipeline::embedding::require_or_degrade(embedding_init, embedding_policy)
                 .context(
                     "embedding service init failed while \
@@ -223,117 +300,68 @@ impl PipelineOrchestrator {
                 .map(|s| {
                     tracing::info!("Embedding service initialized successfully (AllMiniLmL12V2)");
                     Arc::new(s) as Arc<dyn crate::pipeline::embedding::Embedder>
-                });
+                }),
+        )
+    }
 
+    async fn build_genre_stage(
+        config: &Config,
+        subworker_client: &Arc<SubworkerClient>,
+        classification_queue: &Arc<ClassificationJobQueue>,
+        recap_dao: &Arc<dyn RecapDao>,
+        metrics: &Arc<Metrics>,
+    ) -> Result<Arc<dyn GenreStage>> {
         use crate::pipeline::genre_remote::RemoteGenreStage;
         let coarse_stage = Arc::new(RemoteGenreStage::new(
-            Arc::clone(&subworker_client),
-            Arc::clone(&classification_queue),
+            Arc::clone(subworker_client),
+            Arc::clone(classification_queue),
         ));
         let rollout = RefineRollout::new(config.genre_refine_rollout_pct());
-        let genre_stage: Arc<dyn GenreStage> = if config.genre_refine_enabled() {
-            // デフォルト設定でRefineConfigを初期化（実行時に動的に更新される）
-            let refine_config = RefineConfig::new(config.genre_refine_require_tags());
-            let graph_loader = Arc::new(DbTagLabelGraphSource::new(
-                Arc::clone(&recap_dao),
-                config.tag_label_graph_window().to_string(),
-                config.tag_label_graph_ttl(),
-            ));
-            graph_loader
-                .preload()
-                .await
-                .context("failed to preload tag label graph cache")?;
-            let graph_source: Arc<dyn TagLabelGraphSource> = graph_loader;
-            let refine_engine = Arc::new(DefaultRefineEngine::new(refine_config, graph_source));
-            Arc::new(TwoStageGenreStage::new(
-                Arc::clone(&coarse_stage) as Arc<dyn GenreStage>,
-                refine_engine,
-                Arc::clone(&recap_dao),
-                config.genre_refine_require_tags(),
-                rollout.clone(),
-                Arc::clone(&metrics),
-            ))
-        } else {
-            coarse_stage as Arc<dyn GenreStage>
-        };
+        if !config.genre_refine_enabled() {
+            return Ok(coarse_stage as Arc<dyn GenreStage>);
+        }
 
-        let min_documents_per_genre = config.min_documents_per_genre();
-        let coherence_similarity_threshold = config.coherence_similarity_threshold();
-        let subgenre_max_docs_per_genre = config.subgenre_max_docs_per_genre();
-        let subgenre_target_docs_per_subgenre = config.subgenre_target_docs_per_subgenre();
-        let subgenre_max_k = config.subgenre_max_k();
+        // デフォルト設定でRefineConfigを初期化（実行時に動的に更新される）
+        let refine_config = RefineConfig::new(config.genre_refine_require_tags());
+        let graph_loader = Arc::new(DbTagLabelGraphSource::new(
+            Arc::clone(recap_dao),
+            config.tag_label_graph_window().to_string(),
+            config.tag_label_graph_ttl(),
+        ));
+        graph_loader
+            .preload()
+            .await
+            .context("failed to preload tag label graph cache")?;
+        let graph_source: Arc<dyn TagLabelGraphSource> = graph_loader;
+        let refine_engine = Arc::new(DefaultRefineEngine::new(refine_config, graph_source));
+        Ok(Arc::new(TwoStageGenreStage::new(
+            Arc::clone(&coarse_stage) as Arc<dyn GenreStage>,
+            refine_engine,
+            Arc::clone(recap_dao),
+            config.genre_refine_require_tags(),
+            rollout,
+            Arc::clone(metrics),
+        )))
+    }
 
-        let config_for_dispatch = Arc::clone(&config);
-        let tag_generator_for_persist = tag_generator_client.clone();
-        // Tag fetches moved to alt-backend per ADR-000241 / ADR-000397.
-        // tag_generator_client is retained only for the extract-tags
-        // surface used by the persist stage.
-        let _ = tag_generator_client;
-
+    fn build_sovereign_client(config: &Config) -> Option<Arc<KnowledgeSovereignClient>> {
         // Knowledge Sovereign client wiring (Wave 4-B, ADR-000905 §PR-C2).
         // Config validation already enforced the contract: a URL is present
         // exactly when RECAP_KNOWLEDGE_EMIT=true, together with the owner id
         // pair. A client that cannot be built at that point is a broken
         // deployment, so it panics instead of degrading to a producer that
         // reports success while never emitting.
-        let sovereign_client: Option<Arc<KnowledgeSovereignClient>> =
-            config.knowledge_sovereign_url().map(|url| {
-                let token = config.knowledge_sovereign_token().map(ToString::to_string);
-                match KnowledgeSovereignClient::new(url, token) {
-                    Ok(client) => Arc::new(client),
-                    Err(err) => panic!(
-                        "RECAP_KNOWLEDGE_EMIT=true but the knowledge-sovereign \
-                             client cannot be built from RECAP_KNOWLEDGE_SOVEREIGN_URL \
-                             ({err:#}); refusing to run with emission silently disabled"
-                    ),
-                }
-            });
-        PipelineBuilder::new(config)
-            .with_fetch_stage(Arc::new(AltBackendFetchStage::new(
-                alt_backend_client,
-                Arc::clone(&recap_dao),
-                retry_config,
-            )))
-            .with_preprocess_stage(Arc::new(TextPreprocessStage::new(
-                max_concurrent.max(2),
-                Arc::clone(&recap_dao),
-                Arc::clone(&subworker_client),
-            )))
-            .with_dedup_stage(Arc::new(HashDedupStage::new(cpu_count.max(2), 0.8, 100)))
-            .with_genre_stage(genre_stage)
-            .with_select_stage(Arc::new(SummarySelectStage::new(
-                embedding_service.clone(),
-                min_documents_per_genre,
-                coherence_similarity_threshold,
-                Some(Arc::clone(&recap_dao)),
-                Some(Arc::clone(&subworker_client)),
-                SubgenreConfig::new(
-                    subgenre_max_docs_per_genre,
-                    subgenre_target_docs_per_subgenre,
-                    subgenre_max_k,
+        config.knowledge_sovereign_url().map(|url| {
+            let token = config.knowledge_sovereign_token().map(ToString::to_string);
+            match KnowledgeSovereignClient::new(url, token) {
+                Ok(client) => Arc::new(client),
+                Err(err) => panic!(
+                    "RECAP_KNOWLEDGE_EMIT=true but the knowledge-sovereign \
+                     client cannot be built from RECAP_KNOWLEDGE_SOVEREIGN_URL \
+                     ({err:#}); refusing to run with emission silently disabled"
                 ),
-            )))
-            .with_dispatch_stage(Arc::new(MlLlmDispatchStage::new(
-                Arc::clone(&subworker_client),
-                news_creator,
-                Arc::clone(&recap_dao),
-                max_concurrent,
-                config_for_dispatch,
-            )))
-            .with_persist_stage(Arc::new(
-                persist::FinalSectionPersistStage::new(
-                    Arc::clone(&recap_dao),
-                    tag_generator_for_persist,
-                )
-                .with_sovereign(sovereign_client),
-            ))
-            .with_metrics(metrics)
-            .build(
-                Arc::clone(&recap_dao),
-                subworker_client,
-                Arc::clone(&classification_queue),
-                embedding_service,
-            )
+            }
+        })
     }
 
     #[cfg(test)]
@@ -356,33 +384,11 @@ impl PipelineOrchestrator {
         self.prepare_pipeline().await;
 
         let executor = executor::StageExecutor::new(self);
-        let fetched = executor.execute_fetch_stage(job, resume_stage_idx).await?;
-        let preprocessed = executor
-            .execute_preprocess_stage(job, resume_stage_idx, fetched)
+        let selected = self
+            .run_pre_evidence_stages(&executor, job, resume_stage_idx)
             .await?;
-        let deduplicated = executor
-            .execute_dedup_stage(job, resume_stage_idx, preprocessed)
-            .await?;
-        let genre_bundle = executor
-            .execute_genre_stage(job, resume_stage_idx, deduplicated)
-            .await?;
-        let selected = executor
-            .execute_select_stage(job, resume_stage_idx, genre_bundle)
-            .await?;
-        let evidence_bundle =
-            executor::StageExecutor::build_evidence_bundle(job, resume_stage_idx, selected)?;
-        // evidence ステージの状態遷移を記録（実際の状態保存は不要だが、Status History への記録が必要）
-        if resume_stage_idx <= 5 {
-            executor
-                .record_stage_transition(job.job_id, PipelineStage::Evidence.as_ref())
-                .await?;
-        }
-        let dispatched = executor
-            .execute_dispatch_stage(job, resume_stage_idx, evidence_bundle)
-            .await?;
-
-        let persisted = executor
-            .execute_persist_stage(job, resume_stage_idx, dispatched)
+        let persisted = self
+            .run_post_select_stages(&executor, job, resume_stage_idx, selected)
             .await?;
 
         tracing::debug!(
@@ -394,8 +400,57 @@ impl PipelineOrchestrator {
         Ok(persisted)
     }
 
+    async fn run_pre_evidence_stages(
+        &self,
+        executor: &executor::StageExecutor<'_>,
+        job: &JobContext,
+        resume_stage_idx: usize,
+    ) -> Result<executor::StageInput<super::select::SelectedSummary>> {
+        let fetched = executor.execute_fetch_stage(job, resume_stage_idx).await?;
+        let preprocessed = executor
+            .execute_preprocess_stage(job, resume_stage_idx, fetched)
+            .await?;
+        let deduplicated = executor
+            .execute_dedup_stage(job, resume_stage_idx, preprocessed)
+            .await?;
+        let genre_bundle = executor
+            .execute_genre_stage(job, resume_stage_idx, deduplicated)
+            .await?;
+        executor
+            .execute_select_stage(job, resume_stage_idx, genre_bundle)
+            .await
+    }
+
+    async fn run_post_select_stages(
+        &self,
+        executor: &executor::StageExecutor<'_>,
+        job: &JobContext,
+        resume_stage_idx: usize,
+        selected: executor::StageInput<super::select::SelectedSummary>,
+    ) -> Result<persist::PersistResult> {
+        let evidence_bundle =
+            executor::StageExecutor::build_evidence_bundle(job, resume_stage_idx, selected)?;
+        // evidence ステージの状態遷移を記録（実際の状態保存は不要だが、Status History への記録が必要）
+        if resume_stage_idx <= 5 {
+            executor
+                .record_stage_transition(job.job_id, PipelineStage::Evidence.as_ref())
+                .await?;
+        }
+        let dispatched = executor
+            .execute_dispatch_stage(job, resume_stage_idx, evidence_bundle)
+            .await?;
+        executor
+            .execute_persist_stage(job, resume_stage_idx, dispatched)
+            .await
+    }
+
     /// パイプライン実行前の初期化処理（グラフ更新と設定読み込み）
     async fn prepare_pipeline(&self) {
+        self.maybe_refresh_graph().await;
+        self.reload_graph_overrides().await;
+    }
+
+    async fn maybe_refresh_graph(&self) {
         // グラフ最新化（失敗してもパイプラインは続行）
         if self.config.recap_pre_refresh_graph_enabled() {
             if let Err(err) = self.refresh_graph_before_pipeline().await {
@@ -405,7 +460,9 @@ impl PipelineOrchestrator {
                 );
             }
         }
+    }
 
+    async fn reload_graph_overrides(&self) {
         // 設定を再読み込みしてGenreStageを更新
         let overrides_result =
             GraphOverrideSettings::load_with_fallback(self.recap_dao.as_ref()).await;
@@ -959,7 +1016,10 @@ mod new_tests {
 
         let job = JobContext::new(uuid::Uuid::new_v4(), vec!["ai".to_string()])
             .with_stage("evidence".to_string());
-        let _ = pipeline.execute(&job).await;
+        assert!(
+            pipeline.execute(&job).await.is_err(),
+            "mock dao has no saved select state"
+        );
 
         assert!(prepare_called.load(std::sync::atomic::Ordering::SeqCst));
         assert_eq!(

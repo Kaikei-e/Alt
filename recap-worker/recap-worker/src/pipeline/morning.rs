@@ -133,13 +133,10 @@ impl MorningPipeline {
         })
     }
 
-    pub(crate) async fn execute_update(
+    async fn fetch_and_dedup(
         &self,
         job: &JobContext,
-        now: chrono::DateTime<chrono::Utc>,
-    ) -> Result<(Uuid, chrono::DateTime<chrono::Utc>)> {
-        tracing::info!(job_id = %job.job_id, "starting morning update pipeline");
-
+    ) -> Result<crate::pipeline::dedup::DeduplicatedCorpus> {
         let fetched = self.fetch.fetch(job).await?;
         // `fetch` just created the `recap_jobs` row (schema default
         // `status='pending'`). Advance it so the dashboard shows the tick in
@@ -158,66 +155,43 @@ impl MorningPipeline {
             tracing::warn!(job_id = %job.job_id, error = %e, "failed to mark morning update job running");
         }
         let preprocessed = self.preprocess.preprocess(job, fetched).await?;
-        let deduplicated = self.dedup.deduplicate(job, preprocessed).await?;
+        self.dedup.deduplicate(job, preprocessed).await
+    }
 
-        // Build groups and collect article metadata for Morning Letter generation
-        let mut groups = Vec::new();
-        let mut group_articles: HashMap<Uuid, Vec<RepresentativeSentence>> = HashMap::new();
-
-        for article in &deduplicated.articles {
-            let group_id = Uuid::new_v4();
-
-            if let Ok(article_id) = Uuid::parse_str(&article.id) {
-                groups.push((group_id, article_id, true));
-                let repr = RepresentativeSentence {
-                    text: article.title.clone().unwrap_or_default(),
-                    published_at: article.published_at.map(|dt| dt.to_rfc3339()),
-                    source_url: article.source_url.clone(),
-                    article_id: Some(article.id.clone()),
-                    is_centroid: true,
-                };
-                group_articles.entry(group_id).or_default().push(repr);
-                for dup_id_str in &article.duplicates {
-                    if let Ok(dup_id) = Uuid::parse_str(dup_id_str) {
-                        groups.push((group_id, dup_id, false));
-                    }
-                }
-            } else {
-                tracing::warn!(article_id = %article.id, "skipping non-uuid article id");
-            }
-        }
-
+    async fn persist_overnight_groups(
+        &self,
+        job_id: Uuid,
+        groups: &[(Uuid, Uuid, bool)],
+    ) -> Result<()> {
         if !groups.is_empty() {
-            self.recap_dao.save_morning_article_groups(&groups).await?;
-            tracing::info!(job_id = %job.job_id, groups_count = groups.len(), "persisted morning article groups");
+            self.recap_dao.save_morning_article_groups(groups).await?;
+            tracing::info!(job_id = %job_id, groups_count = groups.len(), "persisted morning article groups");
         }
+        Ok(())
+    }
+
+    pub(crate) async fn execute_update(
+        &self,
+        job: &JobContext,
+        now: chrono::DateTime<chrono::Utc>,
+    ) -> Result<(Uuid, chrono::DateTime<chrono::Utc>)> {
+        tracing::info!(job_id = %job.job_id, "starting morning update pipeline");
+
+        let deduplicated = self.fetch_and_dedup(job).await?;
+        let (groups, overnight_groups) = build_overnight_groups(&deduplicated.articles);
+
+        self.persist_overnight_groups(job.job_id, &groups).await?;
 
         let recap_ctx = self.load_recap_context(job, now).await;
 
-        let overnight_groups: Vec<MorningLetterGroupInput> = group_articles
-            .into_iter()
-            .map(|(group_id, articles)| MorningLetterGroupInput { group_id, articles })
-            .collect();
-        let overnight_groups = cap_overnight_groups_for_prompt(overnight_groups);
-
         let target_date = edition_target_date(now);
         let edition_timezone = "Asia/Tokyo".to_string();
-
-        // Cap recap context to fit the LLM prompt budget — once the
-        // grounding flow ships every genre's full prose, the prompt
-        // overflows the 8k context window and the LLM degenerates into
-        // a malformed JSON repetition that the Pydantic validator rejects.
-        let capped_recap_summaries = recap_ctx
-            .summaries
-            .map(cap_recap_inputs_for_prompt)
-            .filter(|s| !s.is_empty());
-
-        let request = MorningLetterGenerateRequest {
-            target_date: target_date.clone(),
-            edition_timezone: edition_timezone.clone(),
-            recap_summaries: capped_recap_summaries,
+        let request = build_morning_letter_request(
+            &target_date,
+            &edition_timezone,
+            recap_ctx.summaries,
             overnight_groups,
-        };
+        );
 
         let ml_response = self
             .news_creator_client
@@ -258,79 +232,8 @@ impl MorningPipeline {
         let recap_result = self.recap_dao.get_latest_completed_job(3).await;
         match recap_result {
             Ok(Some(recap_job)) => {
-                let window_days = {
-                    let duration = recap_job.window_end - recap_job.window_start;
-                    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-                    {
-                        duration.num_days().max(1) as u32
-                    }
-                };
-                let is_stale_input = now > recap_job.window_end + freshness_budget;
-                match self.recap_dao.get_genres_by_job(recap_job.job_id).await {
-                    Ok(genres) => {
-                        // news-creator requires each recap to have at least
-                        // one bullet (Pydantic `min_length=1`). Drop empties
-                        // so 422 validation errors never reach the LLM path.
-                        let inputs: Vec<_> = genres
-                            .iter()
-                            .filter_map(|g| {
-                                let (title, bullets) = extract_title_and_bullets_from_genre(g);
-                                if bullets.is_empty() {
-                                    tracing::debug!(
-                                        genre = %g.genre_name,
-                                        "dropping recap summary with no bullets"
-                                    );
-                                    return None;
-                                }
-                                Some(MorningLetterRecapInput {
-                                    genre: g.genre_name.clone(),
-                                    title,
-                                    bullets,
-                                    window_days,
-                                })
-                            })
-                            .collect();
-                        tracing::info!(
-                            job_id = %job.job_id, recap_job_id = %recap_job.job_id,
-                            genre_count = genres.len(), is_stale_input, "loaded recap summaries for morning letter"
-                        );
-                        if inputs.is_empty() {
-                            RecapContext {
-                                summaries: None,
-                                source_job_id: Some(recap_job.job_id),
-                                is_degraded: true,
-                                degradation_reason: Some("recap_unavailable"),
-                                window_days: Some(window_days),
-                            }
-                        } else if is_stale_input {
-                            RecapContext {
-                                summaries: Some(inputs),
-                                source_job_id: Some(recap_job.job_id),
-                                is_degraded: true,
-                                degradation_reason: Some("stale_recap_input"),
-                                window_days: Some(window_days),
-                            }
-                        } else {
-                            RecapContext {
-                                summaries: Some(inputs),
-                                source_job_id: Some(recap_job.job_id),
-                                is_degraded: false,
-                                degradation_reason: None,
-                                window_days: Some(window_days),
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        tracing::warn!(job_id = %job.job_id, error = %e, "failed to load recap genres, degraded mode");
-                        RecapContext {
-                            summaries: None,
-                            source_job_id: Some(recap_job.job_id),
-                            is_degraded: true,
-                            degradation_reason: Some("recap_unavailable"),
-                            window_days: Some(window_days),
-                        }
-                    }
-                }
+                self.load_recap_context_for_job(job, &recap_job, now, freshness_budget)
+                    .await
             }
             Ok(None) => {
                 tracing::info!(job_id = %job.job_id, "no completed recap found, morning letter will be degraded");
@@ -339,6 +242,67 @@ impl MorningPipeline {
             Err(e) => {
                 tracing::warn!(job_id = %job.job_id, error = %e, "failed to query recap jobs, degraded mode");
                 RecapContext::degraded("recap_unavailable")
+            }
+        }
+    }
+
+    async fn load_recap_context_for_job(
+        &self,
+        job: &JobContext,
+        recap_job: &crate::store::models::RecapJob,
+        now: chrono::DateTime<chrono::Utc>,
+        freshness_budget: chrono::Duration,
+    ) -> RecapContext {
+        let window_days = {
+            let duration = recap_job.window_end - recap_job.window_start;
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            {
+                duration.num_days().max(1) as u32
+            }
+        };
+        let is_stale_input = now > recap_job.window_end + freshness_budget;
+        match self.recap_dao.get_genres_by_job(recap_job.job_id).await {
+            Ok(genres) => {
+                let inputs = build_recap_inputs(&genres, window_days);
+                tracing::info!(
+                    job_id = %job.job_id, recap_job_id = %recap_job.job_id,
+                    genre_count = genres.len(), is_stale_input, "loaded recap summaries for morning letter"
+                );
+                if inputs.is_empty() {
+                    RecapContext {
+                        summaries: None,
+                        source_job_id: Some(recap_job.job_id),
+                        is_degraded: true,
+                        degradation_reason: Some("recap_unavailable"),
+                        window_days: Some(window_days),
+                    }
+                } else if is_stale_input {
+                    RecapContext {
+                        summaries: Some(inputs),
+                        source_job_id: Some(recap_job.job_id),
+                        is_degraded: true,
+                        degradation_reason: Some("stale_recap_input"),
+                        window_days: Some(window_days),
+                    }
+                } else {
+                    RecapContext {
+                        summaries: Some(inputs),
+                        source_job_id: Some(recap_job.job_id),
+                        is_degraded: false,
+                        degradation_reason: None,
+                        window_days: Some(window_days),
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!(job_id = %job.job_id, error = %e, "failed to load recap genres, degraded mode");
+                RecapContext {
+                    summaries: None,
+                    source_job_id: Some(recap_job.job_id),
+                    is_degraded: true,
+                    degradation_reason: Some("recap_unavailable"),
+                    window_days: Some(window_days),
+                }
             }
         }
     }
@@ -403,6 +367,93 @@ impl MorningPipeline {
         }
         Ok((persisted_letter_id, created_at))
     }
+}
+
+fn build_overnight_groups(
+    articles: &[crate::pipeline::dedup::DeduplicatedArticle],
+) -> (Vec<(Uuid, Uuid, bool)>, Vec<MorningLetterGroupInput>) {
+    // Build groups and collect article metadata for Morning Letter generation
+    let mut groups = Vec::new();
+    let mut group_articles: HashMap<Uuid, Vec<RepresentativeSentence>> = HashMap::new();
+
+    for article in articles {
+        let group_id = Uuid::new_v4();
+
+        if let Ok(article_id) = Uuid::parse_str(&article.id) {
+            groups.push((group_id, article_id, true));
+            let repr = RepresentativeSentence {
+                text: article.title.clone().unwrap_or_default(),
+                published_at: article.published_at.map(|dt| dt.to_rfc3339()),
+                source_url: article.source_url.clone(),
+                article_id: Some(article.id.clone()),
+                is_centroid: true,
+            };
+            group_articles.entry(group_id).or_default().push(repr);
+            for dup_id_str in &article.duplicates {
+                if let Ok(dup_id) = Uuid::parse_str(dup_id_str) {
+                    groups.push((group_id, dup_id, false));
+                }
+            }
+        } else {
+            tracing::warn!(article_id = %article.id, "skipping non-uuid article id");
+        }
+    }
+
+    let overnight_groups: Vec<MorningLetterGroupInput> = group_articles
+        .into_iter()
+        .map(|(group_id, articles)| MorningLetterGroupInput { group_id, articles })
+        .collect();
+    (groups, cap_overnight_groups_for_prompt(overnight_groups))
+}
+
+fn build_morning_letter_request(
+    target_date: &str,
+    edition_timezone: &str,
+    summaries: Option<Vec<MorningLetterRecapInput>>,
+    overnight_groups: Vec<MorningLetterGroupInput>,
+) -> MorningLetterGenerateRequest {
+    // Cap recap context to fit the LLM prompt budget — once the
+    // grounding flow ships every genre's full prose, the prompt
+    // overflows the 8k context window and the LLM degenerates into
+    // a malformed JSON repetition that the Pydantic validator rejects.
+    let capped_recap_summaries = summaries
+        .map(cap_recap_inputs_for_prompt)
+        .filter(|s| !s.is_empty());
+
+    MorningLetterGenerateRequest {
+        target_date: target_date.to_string(),
+        edition_timezone: edition_timezone.to_string(),
+        recap_summaries: capped_recap_summaries,
+        overnight_groups,
+    }
+}
+
+fn build_recap_inputs(
+    genres: &[GenreWithSummary],
+    window_days: u32,
+) -> Vec<MorningLetterRecapInput> {
+    // news-creator requires each recap to have at least
+    // one bullet (Pydantic `min_length=1`). Drop empties
+    // so 422 validation errors never reach the LLM path.
+    genres
+        .iter()
+        .filter_map(|g| {
+            let (title, bullets) = extract_title_and_bullets_from_genre(g);
+            if bullets.is_empty() {
+                tracing::debug!(
+                    genre = %g.genre_name,
+                    "dropping recap summary with no bullets"
+                );
+                return None;
+            }
+            Some(MorningLetterRecapInput {
+                genre: g.genre_name.clone(),
+                title,
+                bullets,
+                window_days,
+            })
+        })
+        .collect()
 }
 
 /// Sentinel revision value used on the in-memory `MorningLetter` before persistence;
@@ -798,7 +849,7 @@ fn extract_title_and_bullets(summary_ja: Option<&str>) -> (String, Vec<String>) 
     let bullets = summary_obj
         .get("bullets")
         .and_then(serde_json::Value::as_array)
-        .map(|arr| {
+        .map_or_else(Vec::new, |arr| {
             arr.iter()
                 .filter_map(|v| match v {
                     serde_json::Value::String(s) => {
@@ -818,14 +869,18 @@ fn extract_title_and_bullets(summary_ja: Option<&str>) -> (String, Vec<String>) 
                     _ => None,
                 })
                 .collect()
-        })
-        .unwrap_or_default();
+        });
 
     (title, bullets)
 }
 
 fn edition_target_date(now: chrono::DateTime<chrono::Utc>) -> String {
-    let jst = chrono::FixedOffset::east_opt(9 * 3600).expect("valid JST offset");
+    #[expect(
+        clippy::expect_used,
+        reason = "9 * 3600 seconds (+09:00 JST) is within FixedOffset bounds"
+    )]
+    let jst = chrono::FixedOffset::east_opt(9 * 3600)
+        .expect("9 * 3600 seconds (+09:00 JST) is within FixedOffset bounds");
     now.with_timezone(&jst).format("%Y-%m-%d").to_string()
 }
 

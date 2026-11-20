@@ -87,17 +87,7 @@ struct ScoredAssignment<'a> {
 impl EvidenceBundle {
     /// GenreBundleから証拠コーパスを構築する。
     pub(crate) fn from_genre_bundle(job_id: Uuid, bundle: GenreBundle) -> Self {
-        // ジャンルごとに記事をグループ化
-        let mut genre_groups: HashMap<String, Vec<&GenreAssignment>> = HashMap::new();
-
-        for assignment in &bundle.assignments {
-            for genre in &assignment.genres {
-                genre_groups
-                    .entry(genre.clone())
-                    .or_default()
-                    .push(assignment);
-            }
-        }
+        let genre_groups = group_assignments_by_genre(&bundle.assignments);
 
         let total_genres = genre_groups.len();
         info!(
@@ -115,62 +105,7 @@ impl EvidenceBundle {
         let mut completed_genres = 0usize;
 
         for (genre, assignments) in &genre_groups {
-            let n_g = assignments.len();
-
-            // 記事スコアリングとランキング
-            let mut scored_assignments: Vec<ScoredAssignment> = assignments
-                .iter()
-                .map(|&a| {
-                    let score = calculate_score(a, genre, now, assignments);
-                    ScoredAssignment {
-                        assignment: a,
-                        score,
-                    }
-                })
-                .collect();
-
-            // スコア順に降順ソート
-            scored_assignments.sort_by(|a, b| {
-                b.score
-                    .partial_cmp(&a.score)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            });
-
-            // 重複除外
-            let deduplicated = deduplicate_assignments(scored_assignments);
-
-            // 動的な最小件数設定
-            let min_docs = if genre == "other" {
-                5
-            } else {
-                let computed_f64 = (n_g as f64 * 0.2).ceil().max(0.0);
-                // computed_f64は既に非負（.max(0.0)で保証）かつusize::MAX以下であることを確認済み
-                let computed = if computed_f64 <= usize::MAX as f64 && computed_f64 >= 0.0 {
-                    // f64をfloor()で整数に丸めてからi64に変換し、usizeに変換（符号損失を回避）
-                    let value_i64 = computed_f64.floor() as i64;
-                    usize::try_from(value_i64).unwrap_or(0)
-                } else {
-                    usize::MAX
-                };
-                computed.clamp(3, 20)
-            };
-
-            // 上位N件を選択
-            let selected: Vec<&GenreAssignment> = deduplicated
-                .into_iter()
-                .take(min_docs)
-                .map(|sa| sa.assignment)
-                .collect();
-
-            if selected.len() < 3 {
-                warn!(
-                    "Evidence corpus: genre '{}' has only {} articles (minimum recommended: 3)",
-                    genre,
-                    selected.len()
-                );
-            }
-
-            let corpus = build_corpus_for_genre(genre, &selected);
+            let corpus = build_genre_corpus(genre, assignments, now);
 
             completed_genres += 1;
             info!(
@@ -237,6 +172,78 @@ impl EvidenceBundle {
             .map(|c| c.metadata.character_count)
             .sum()
     }
+}
+
+fn group_assignments_by_genre(
+    assignments: &[GenreAssignment],
+) -> HashMap<String, Vec<&GenreAssignment>> {
+    let mut genre_groups: HashMap<String, Vec<&GenreAssignment>> = HashMap::new();
+    for assignment in assignments {
+        for genre in &assignment.genres {
+            genre_groups
+                .entry(genre.clone())
+                .or_default()
+                .push(assignment);
+        }
+    }
+    genre_groups
+}
+
+fn dynamic_min_docs(genre: &str, n_g: usize) -> usize {
+    if genre == "other" {
+        return 5;
+    }
+    let computed_f64 = (n_g as f64 * 0.2).ceil().max(0.0);
+    // computed_f64は既に非負（.max(0.0)で保証）かつusize::MAX以下であることを確認済み
+    let computed = if computed_f64 <= usize::MAX as f64 && computed_f64 >= 0.0 {
+        // f64をfloor()で整数に丸めてからi64に変換し、usizeに変換（符号損失を回避）
+        let value_i64 = computed_f64.floor() as i64;
+        usize::try_from(value_i64).unwrap_or(0)
+    } else {
+        usize::MAX
+    };
+    computed.clamp(3, 20)
+}
+
+fn build_genre_corpus(
+    genre: &str,
+    assignments: &[&GenreAssignment],
+    now: DateTime<Utc>,
+) -> EvidenceCorpus {
+    let mut scored_assignments: Vec<ScoredAssignment> = assignments
+        .iter()
+        .map(|&a| {
+            let score = calculate_score(a, genre, now, assignments);
+            ScoredAssignment {
+                assignment: a,
+                score,
+            }
+        })
+        .collect();
+
+    scored_assignments.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    let deduplicated = deduplicate_assignments(scored_assignments);
+    let min_docs = dynamic_min_docs(genre, assignments.len());
+    let selected: Vec<&GenreAssignment> = deduplicated
+        .into_iter()
+        .take(min_docs)
+        .map(|sa| sa.assignment)
+        .collect();
+
+    if selected.len() < 3 {
+        warn!(
+            "Evidence corpus: genre '{}' has only {} articles (minimum recommended: 3)",
+            genre,
+            selected.len()
+        );
+    }
+
+    build_corpus_for_genre(genre, &selected)
 }
 
 fn calculate_score(
