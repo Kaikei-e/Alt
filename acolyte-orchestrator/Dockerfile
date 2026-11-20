@@ -1,6 +1,6 @@
-FROM ghcr.io/astral-sh/uv:0.11.0 AS uv
+FROM ghcr.io/astral-sh/uv:0.13.9 AS uv
 
-FROM python:3.14-slim@sha256:b877e50bd90de10af8d82c57a022fc2e0dc731c5320d762a27986facfc3355c1 AS builder
+FROM python:3.15-slim@sha256:65a65fc7b30b06cb6df4930fd4650697cb23f4c2698ab81fc87e4b031bc36928 AS builder
 
 COPY --from=uv /uv /usr/local/bin/uv
 
@@ -17,7 +17,7 @@ COPY acolyte/ ./acolyte/
 # Install project
 RUN uv sync --frozen --no-dev --no-editable
 
-FROM python:3.14-slim@sha256:b877e50bd90de10af8d82c57a022fc2e0dc731c5320d762a27986facfc3355c1
+FROM python:3.15-slim@sha256:65a65fc7b30b06cb6df4930fd4650697cb23f4c2698ab81fc87e4b031bc36928
 
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
