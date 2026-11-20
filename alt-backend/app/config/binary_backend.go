@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 	"strings"
 )
@@ -117,9 +118,38 @@ func ValidateBackendConfig(cfg *Config) error {
 		return fmt.Errorf("backend config: CORS_ALLOWED_ORIGINS must contain at least one origin")
 	}
 	for _, origin := range cfg.Server.CORSAllowedOrigins {
-		if strings.TrimSpace(origin) == "" {
-			return fmt.Errorf("backend config: CORS_ALLOWED_ORIGINS contains an empty origin entry")
+		if err := validateCORSOrigin(origin); err != nil {
+			return err
 		}
+	}
+	return nil
+}
+
+// validateCORSOrigin enforces echo/v5 CORS middleware's exact-origin contract
+// at config validation time so malformed entries fail startup rather than
+// panicking in RegisterRoutes or silently never matching.
+func validateCORSOrigin(origin string) error {
+	if strings.TrimSpace(origin) == "" {
+		return fmt.Errorf("backend config: CORS_ALLOWED_ORIGINS contains an empty origin entry")
+	}
+	if strings.Contains(origin, "*") {
+		return fmt.Errorf("backend config: CORS_ALLOWED_ORIGINS entry %q contains '*': wildcard patterns are not supported by the CORS middleware in use", origin)
+	}
+	if strings.TrimSpace(origin) != origin {
+		return fmt.Errorf("backend config: CORS_ALLOWED_ORIGINS entry %q must not have leading or trailing whitespace", origin)
+	}
+	u, err := url.Parse(origin)
+	if err != nil {
+		return fmt.Errorf("backend config: CORS_ALLOWED_ORIGINS entry %q is not a valid origin: %w", origin, err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("backend config: CORS_ALLOWED_ORIGINS entry %q must use http or https scheme", origin)
+	}
+	if u.Host == "" || u.User != nil || u.Opaque != "" {
+		return fmt.Errorf("backend config: CORS_ALLOWED_ORIGINS entry %q must be of the form scheme://host[:port]", origin)
+	}
+	if u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
+		return fmt.Errorf("backend config: CORS_ALLOWED_ORIGINS entry %q must not contain a path, trailing slash, query, or fragment", origin)
 	}
 	return nil
 }

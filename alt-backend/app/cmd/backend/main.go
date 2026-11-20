@@ -25,10 +25,12 @@ import (
 	"alt/middleware"
 	"alt/orchestrator/rest"
 	"alt/shared/driver/datahub_client"
+	"alt/utils/logger"
 	altotel "alt/utils/otel"
 
 	echootel "github.com/labstack/echo-otel/v5"
 	"github.com/labstack/echo/v5"
+	echomiddleware "github.com/labstack/echo/v5/middleware"
 )
 
 const serviceName = "alt-backend"
@@ -107,7 +109,7 @@ func main() {
 	otelEnabled := altotel.ConfigFromEnv().Enabled
 
 	// ---- Listener 1: browser-facing REST ----
-	e := newRESTEcho(container, cfg, otelEnabled)
+	e := newRESTEcho(container, cfg, otelEnabled, log)
 	rest.RegisterRoutes(ctx, e, container, cfg, trustedProxies...)
 	restSrv := bootstrap.NewRESTServer(fmt.Sprintf(":%d", cfg.Server.Port), e, cfg)
 
@@ -205,8 +207,10 @@ func runHealthcheck() {
 // binaries each exposed metrics somewhere different. It now lives on the ops
 // listener alone, and e2e/hurl/alt-backend/03-topology-internal-surface-
 // absent.hurl asserts the 404 that this omission produces.
-func newRESTEcho(container *di.ApplicationComponents, cfg *config.Config, otelEnabled bool) *echo.Echo {
+func newRESTEcho(container *di.ApplicationComponents, cfg *config.Config, otelEnabled bool, log *slog.Logger) *echo.Echo {
 	e := echo.New()
+	e.Logger = log
+	contextLogger := logger.NewContextLogger(log)
 
 	if otelEnabled {
 		e.Use(echootel.NewMiddlewareWithConfig(echootel.Config{
@@ -218,6 +222,22 @@ func newRESTEcho(container *di.ApplicationComponents, cfg *config.Config, otelEn
 	// Preserve the original status code: the default handler turned a 401 into
 	// a 404, which made an expired session look like a missing route.
 	e.HTTPErrorHandler = func(c *echo.Context, err error) {
+		var panicErr *echomiddleware.PanicStackError
+		if errors.As(err, &panicErr) {
+			req := c.Request()
+			ctx := req.Context()
+			contextLogger.WithContext(ctx).ErrorContext(ctx, "panic recovered",
+				"method", req.Method,
+				"path", req.URL.Path,
+				"panic", panicErr.Err,
+				"stack", string(panicErr.Stack),
+			)
+			if r, _ := echo.UnwrapResponse(c.Response()); r != nil && r.Committed {
+				return
+			}
+			_ = c.JSON(http.StatusInternalServerError, map[string]interface{}{"error": "internal_error"})
+			return
+		}
 		if r, _ := echo.UnwrapResponse(c.Response()); r != nil && r.Committed {
 			return
 		}
@@ -242,9 +262,26 @@ func newRESTEcho(container *di.ApplicationComponents, cfg *config.Config, otelEn
 			return
 		}
 		if code := echo.StatusCode(err); code != 0 {
+			req := c.Request()
+			ctx := req.Context()
+			if code >= http.StatusInternalServerError {
+				contextLogger.WithContext(ctx).ErrorContext(ctx, "http status error",
+					"method", req.Method,
+					"path", req.URL.Path,
+					"status", code,
+					"error", err,
+				)
+			} else {
+				contextLogger.WithContext(ctx).WarnContext(ctx, "http status error",
+					"method", req.Method,
+					"path", req.URL.Path,
+					"status", code,
+					"error", err,
+				)
+			}
 			_ = c.JSON(code, map[string]interface{}{
 				"error":  http.StatusText(code),
-				"detail": err.Error(),
+				"detail": http.StatusText(code),
 			})
 			return
 		}
