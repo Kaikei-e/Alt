@@ -36,9 +36,11 @@ import json
 import os
 import sys
 import urllib.parse
-from typing import Any
+from typing import Any, NamedTuple
 
 REQUEST_TIMEOUT_SECONDS = 30
+HTTP_OK = 200
+HTTP_NOT_FOUND = 404
 _DEFAULT_PORTS = {"http": 80, "https": 443}
 
 
@@ -54,78 +56,79 @@ def _redact(text: str, secrets: tuple[str, ...]) -> str:
     return out
 
 
-def _origin(
-    parsed: urllib.parse.SplitResult, *, pair: str
-) -> tuple[str, str, int]:
+def _origin(parsed: urllib.parse.SplitResult, *, pair: str) -> tuple[str, str, int]:
     scheme = parsed.scheme.lower()
     if scheme not in _DEFAULT_PORTS:
-        raise BridgePublishError(
-            f"Unsupported scheme in broker URL for {pair}: {parsed.scheme!r}"
-        )
+        msg = f"Unsupported scheme in broker URL for {pair}: {parsed.scheme!r}"
+        raise BridgePublishError(msg)
     if parsed.username is not None or parsed.password is not None:
-        raise BridgePublishError(
-            f"Refusing broker URL containing userinfo for {pair}"
-        )
+        msg = f"Refusing broker URL containing userinfo for {pair}"
+        raise BridgePublishError(msg)
     host = (parsed.hostname or "").lower()
     if not host:
-        raise BridgePublishError(
-            f"Invalid broker URL (missing host) for {pair}: {parsed.geturl()}"
-        )
+        msg = f"Invalid broker URL (missing host) for {pair}: {parsed.geturl()}"
+        raise BridgePublishError(msg)
     try:
         port = parsed.port if parsed.port is not None else _DEFAULT_PORTS[scheme]
     except ValueError as exc:
-        raise BridgePublishError(
-            f"Invalid port in broker URL for {pair}: {parsed.geturl()}"
-        ) from exc
+        msg = f"Invalid port in broker URL for {pair}: {parsed.geturl()}"
+        raise BridgePublishError(msg) from exc
     return (scheme, host, port)
 
 
-def _open_connection(
-    origin: tuple[str, str, int], timeout: int
-) -> http.client.HTTPConnection:
+def _open_connection(origin: tuple[str, str, int], timeout: int) -> http.client.HTTPConnection:
     scheme, host, port = origin
     if scheme == "http":
         return http.client.HTTPConnection(host, port, timeout=timeout)
     return http.client.HTTPSConnection(host, port, timeout=timeout)
 
 
+class _BrokerEndpoint(NamedTuple):
+    base_origin: tuple[str, str, int]
+    headers: dict[str, str]
+    pair: str
+    timeout: int = REQUEST_TIMEOUT_SECONDS
+
+
+class _BridgePayload(NamedTuple):
+    endpoint: _BrokerEndpoint
+    versions_url: str
+    provider_version: str
+    implementation: str
+    verifier_version: str
+    success: bool
+
+
 def _request(
-    base_origin: tuple[str, str, int],
+    endpoint: _BrokerEndpoint,
     method: str,
     url: str,
-    headers: dict[str, str],
     body: bytes | None = None,
     *,
-    pair: str,
-    timeout: int = REQUEST_TIMEOUT_SECONDS,
+    extra_headers: dict[str, str] | None = None,
 ) -> tuple[int, bytes]:
     target = urllib.parse.urlsplit(url)
     # Refuse to send basic-auth credentials if a broker link points at a
     # different origin or carries userinfo (audit F-004).
-    target_origin = _origin(target, pair=pair)
-    if target_origin != base_origin:
-        raise BridgePublishError(
-            f"Refusing to follow cross-origin broker URL for {pair}: {url}"
-        )
+    target_origin = _origin(target, pair=endpoint.pair)
+    if target_origin != endpoint.base_origin:
+        msg = f"Refusing to follow cross-origin broker URL for {endpoint.pair}: {url}"
+        raise BridgePublishError(msg)
     path = target.path or "/"
     if target.query:
         path = f"{path}?{target.query}"
 
-    conn = _open_connection(base_origin, timeout)
+    headers = {**endpoint.headers, **(extra_headers or {}), "Connection": "close"}
+    conn = _open_connection(endpoint.base_origin, endpoint.timeout)
     try:
-        conn.request(
-            method,
-            path,
-            body=body,
-            headers={**headers, "Connection": "close"},
-        )
+        conn.request(method, path, body=body, headers=headers)
         resp = conn.getresponse()
         data = resp.read()
-        return resp.status, data
     except (http.client.HTTPException, OSError) as exc:
-        raise BridgePublishError(
-            f"HTTP {method} failed for {pair} at {url}: {exc}"
-        ) from exc
+        msg = f"HTTP {method} failed for {endpoint.pair} at {url}: {exc}"
+        raise BridgePublishError(msg) from exc
+    else:
+        return resp.status, data
     finally:
         conn.close()
 
@@ -134,98 +137,90 @@ def _load_stdin() -> dict[str, Any]:
     try:
         doc = json.loads(sys.stdin.read())
     except (OSError, json.JSONDecodeError) as exc:
-        raise BridgePublishError(f"Invalid bridge input JSON: {exc}") from exc
+        msg = f"Invalid bridge input JSON: {exc}"
+        raise BridgePublishError(msg) from exc
     if not isinstance(doc, dict):
-        raise BridgePublishError("Bridge input JSON must be an object")
+        msg = "Bridge input JSON must be an object"
+        raise BridgePublishError(msg)
     return doc
 
 
-def publish_bridge(
-    doc: dict[str, Any],
-    password: str,
-    *,
-    timeout: int = REQUEST_TIMEOUT_SECONDS,
-) -> dict[str, int]:
+def _parse_bridge_payload(doc: dict[str, Any], password: str, *, timeout: int) -> _BridgePayload:
     broker_base_url = str(doc.get("broker_base_url") or "").rstrip("/")
     broker_username = str(doc.get("broker_username") or "")
     bridge = doc.get("bridge")
     if not isinstance(bridge, dict):
-        raise BridgePublishError("Bridge input JSON requires a 'bridge' object")
+        msg = "Bridge input JSON requires a 'bridge' object"
+        raise BridgePublishError(msg)
 
     provider = str(bridge.get("provider") or "")
     consumer = str(bridge.get("consumer") or "")
     provider_version = str(bridge.get("provider_version") or "")
     evidence = bridge.get("evidence")
     if not isinstance(evidence, dict):
-        raise BridgePublishError(
-            "Bridge input JSON requires a 'bridge.evidence' object"
-        )
+        msg = "Bridge input JSON requires a 'bridge.evidence' object"
+        raise BridgePublishError(msg)
 
     implementation = str(evidence.get("implementation") or "")
     verifier_version = str(evidence.get("verifier_version") or "unknown")
     success = evidence.get("result") == "passed"
 
     pair = f"{consumer} → {provider}"
-    if (
-        not broker_base_url
-        or not broker_username
-        or not provider
-        or not consumer
-        or not provider_version
-        or not implementation
+    if not all(
+        (broker_base_url, broker_username, provider, consumer, provider_version, implementation)
     ):
-        raise BridgePublishError(f"Missing required bridge fields for {pair}")
+        msg = f"Missing required bridge fields for {pair}"
+        raise BridgePublishError(msg)
 
     base_origin = _origin(urllib.parse.urlsplit(broker_base_url), pair=pair)
-    b64_auth = base64.b64encode(
-        f"{broker_username}:{password}".encode("utf-8")
-    ).decode("ascii")
+    b64_auth = base64.b64encode(f"{broker_username}:{password}".encode()).decode("ascii")
     base_headers = {
         "Authorization": f"Basic {b64_auth}",
         "Accept": "application/hal+json, application/json",
     }
-
-    versions_url = (
-        f"{broker_base_url}/pacts/provider/{provider}"
-        f"/consumer/{consumer}/versions"
+    endpoint = _BrokerEndpoint(
+        base_origin=base_origin, headers=base_headers, pair=pair, timeout=timeout
+    )
+    versions_url = f"{broker_base_url}/pacts/provider/{provider}/consumer/{consumer}/versions"
+    return _BridgePayload(
+        endpoint=endpoint,
+        versions_url=versions_url,
+        provider_version=provider_version,
+        implementation=implementation,
+        verifier_version=verifier_version,
+        success=success,
     )
 
-    status, raw_versions = _request(
-        base_origin,
-        "GET",
-        versions_url,
-        base_headers,
-        pair=pair,
-        timeout=timeout,
-    )
-    if status == 404:
-        raise BridgePublishError(
-            f"No pact on the broker for {pair} ({versions_url}), "
+
+def _fetch_pact_version_urls(endpoint: _BrokerEndpoint, versions_url: str) -> list[str]:
+    status, raw_versions = _request(endpoint, "GET", versions_url)
+    if status == HTTP_NOT_FOUND:
+        msg = (
+            f"No pact on the broker for {endpoint.pair} ({versions_url}), "
             "but bridge_registry declares one. Either the consumer has "
             "never published this pact, or the row outlived the contract "
             "and should be deleted from bridge_registry."
         )
-    if status != 200:
-        raise BridgePublishError(
-            f"Failed to list pact versions for {pair} at {versions_url}: "
-            f"HTTP {status}"
-        )
+        raise BridgePublishError(msg)
+    if status != HTTP_OK:
+        msg = f"Failed to list pact versions for {endpoint.pair} at {versions_url}: HTTP {status}"
+        raise BridgePublishError(msg)
 
     try:
         versions_doc = json.loads(raw_versions.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise BridgePublishError(
-            f"Malformed JSON from {versions_url} for {pair}: {exc}"
-        ) from exc
+        msg = f"Malformed JSON from {versions_url} for {endpoint.pair}: {exc}"
+        raise BridgePublishError(msg) from exc
 
     pacts = ((versions_doc.get("_embedded") or {}).get("pacts")) or []
     if not isinstance(pacts, list) or len(pacts) == 0:
-        raise BridgePublishError(
-            f"No pact on the broker for {pair} ({versions_url}), "
+        msg = (
+            f"No pact on the broker for {endpoint.pair} ({versions_url}), "
             "but bridge_registry declares one. Either the consumer has "
             "never published this pact, or the row outlived the contract "
             "and should be deleted from bridge_registry."
         )
+        raise BridgePublishError(msg)
 
     pact_version_urls: list[str] = []
     for pact in pacts:
@@ -235,37 +230,34 @@ def publish_bridge(
             .get("href")
         )
         if not isinstance(href, str) or not href:
-            raise BridgePublishError(
+            msg = (
                 f"Missing _links.self.href in pact version entry for "
-                f"{pair} at {versions_url}"
+                f"{endpoint.pair} at {versions_url}"
             )
+            raise BridgePublishError(msg)
         pact_version_urls.append(href)
+    return pact_version_urls
 
+
+def _collect_publish_targets(
+    endpoint: _BrokerEndpoint, pact_version_urls: list[str], versions_url: str
+) -> list[str]:
     publish_targets: list[str] = []
     for detail_url in pact_version_urls:
-        detail_status, raw_detail = _request(
-            base_origin,
-            "GET",
-            detail_url,
-            base_headers,
-            pair=pair,
-            timeout=timeout,
-        )
-        if detail_status != 200:
-            raise BridgePublishError(
-                f"Failed to fetch pact version details for {pair} at "
+        detail_status, raw_detail = _request(endpoint, "GET", detail_url)
+        if detail_status != HTTP_OK:
+            msg = (
+                f"Failed to fetch pact version details for {endpoint.pair} at "
                 f"{detail_url}: HTTP {detail_status}"
             )
+            raise BridgePublishError(msg)
         try:
             detail_doc = json.loads(raw_detail.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise BridgePublishError(
-                f"Malformed JSON from {detail_url} for {pair}: {exc}"
-            ) from exc
+            msg = f"Malformed JSON from {detail_url} for {endpoint.pair}: {exc}"
+            raise BridgePublishError(msg) from exc
 
-        links = (
-            detail_doc.get("_links") if isinstance(detail_doc, dict) else None
-        ) or {}
+        links = (detail_doc.get("_links") if isinstance(detail_doc, dict) else None) or {}
         pub_link = links.get("pb:publish-verification-results")
         if isinstance(pub_link, dict):
             pub_href = pub_link.get("href")
@@ -273,42 +265,52 @@ def publish_bridge(
                 publish_targets.append(pub_href)
 
     if len(publish_targets) == 0:
-        raise BridgePublishError(
-            f"No publish-verification-results URL resolved for {pair} "
+        msg = (
+            f"No publish-verification-results URL resolved for {endpoint.pair} "
             f"({versions_url}). Broker response schema may have changed "
             "or consumer has never been published."
         )
+        raise BridgePublishError(msg)
+    return publish_targets
+
+
+def publish_bridge(
+    doc: dict[str, Any],
+    password: str,
+    *,
+    timeout: int = REQUEST_TIMEOUT_SECONDS,
+) -> dict[str, int]:
+    payload = _parse_bridge_payload(doc, password, timeout=timeout)
+    pact_version_urls = _fetch_pact_version_urls(payload.endpoint, payload.versions_url)
+    publish_targets = _collect_publish_targets(
+        payload.endpoint, pact_version_urls, payload.versions_url
+    )
 
     post_body = json.dumps(
         {
-            "success": success,
-            "providerApplicationVersion": provider_version,
+            "success": payload.success,
+            "providerApplicationVersion": payload.provider_version,
             "verifiedBy": {
-                "implementation": implementation,
-                "version": verifier_version,
+                "implementation": payload.implementation,
+                "version": payload.verifier_version,
             },
         }
     ).encode("utf-8")
-    post_headers = {
-        **base_headers,
-        "Content-Type": "application/json",
-    }
 
     for publish_url in publish_targets:
         post_status, _ = _request(
-            base_origin,
+            payload.endpoint,
             "POST",
             publish_url,
-            post_headers,
             body=post_body,
-            pair=pair,
-            timeout=timeout,
+            extra_headers={"Content-Type": "application/json"},
         )
         if post_status not in (200, 201):
-            raise BridgePublishError(
-                f"Failed to publish verification record for {pair} at "
+            msg = (
+                f"Failed to publish verification record for {payload.endpoint.pair} at "
                 f"{publish_url}: HTTP {post_status}"
             )
+            raise BridgePublishError(msg)
 
     return {
         "pact_versions": len(pact_version_urls),
@@ -334,9 +336,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         doc = _load_stdin()
         username = str(doc.get("broker_username") or "")
-        b64_secret = base64.b64encode(
-            f"{username}:{password}".encode("utf-8")
-        ).decode("ascii")
+        b64_secret = base64.b64encode(f"{username}:{password}".encode()).decode("ascii")
         secrets = (password, b64_secret)
     except BridgePublishError as exc:
         sys.stderr.write(f"{_redact(str(exc), (password,))}\n")

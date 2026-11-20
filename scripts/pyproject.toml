@@ -20,5 +20,53 @@ build-backend = "hatchling.build"
 packages = ["."]
 include = ["*.py"]
 
+[dependency-groups]
+dev = [
+  "ruff>=0.15.20,<0.16",
+]
+
 [tool.uv]
 constraint-dependencies = ["certifi>=2026.10.19", "urllib3>=2.8.0"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+exclude = [".git", "__pycache__", ".venv", "build", "dist"]
+
+[tool.ruff.lint]
+select = [
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # pyflakes
+    "I",     # isort
+    "B",     # flake8-bugbear
+    "C4",    # flake8-comprehensions
+    "UP",    # pyupgrade
+    "S",     # bandit (security)
+    "N",     # pep8-naming
+    "ANN",   # annotations
+    "PTH",   # use-pathlib
+    "BLE",   # blind-except
+    "ASYNC", # async best practices
+    "TRY",   # tryceratops
+    "SIM",   # simplify
+    "RUF",   # ruff-specific
+    "PL",    # pylint
+    "DTZ",   # flake8-datetimez
+    "PT",    # flake8-pytest-style
+    "LOG",   # flake8-logging
+    "G",     # flake8-logging-format
+    "T20",   # flake8-print
+    "A",     # flake8-builtins
+    "RET",   # flake8-return
+    "PERF",  # perflint
+]
+ignore = [
+    "E501",   # line too long (handled by ruff format)
+    "RUF001", # ambiguous unicode chars — intentional full-width Japanese punctuation
+    "RUF002", # ambiguous unicode chars in docstrings — intentional Japanese text
+    "RUF003", # ambiguous unicode chars in comments — intentional Japanese text
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"] # pytest uses bare assert

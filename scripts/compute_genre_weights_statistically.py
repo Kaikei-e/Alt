@@ -19,16 +19,18 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import re
+import sys
 from collections import Counter
 from pathlib import Path
 
 import psycopg2
 import psycopg2.extras
-import math
 
 # 既存の特徴量語彙（拡張セット）
+PLURAL_TOKEN_MIN_LEN = 3
 FEATURE_VOCAB = [
     "人工知能",
     "自動運転",
@@ -50,60 +52,250 @@ FEATURE_VOCAB = [
     "economy",
     "business",
     # Art & Culture
-    "art", "arts", "artistic", "painting", "sculpture", "museum", "gallery",
-    "philosophy", "philosophical", "aesthetics", "heritage", "literature",
-    "アート", "美術", "芸術", "絵画", "彫刻", "美術館", "哲学", "美学", "文学",
+    "art",
+    "arts",
+    "artistic",
+    "painting",
+    "sculpture",
+    "museum",
+    "gallery",
+    "philosophy",
+    "philosophical",
+    "aesthetics",
+    "heritage",
+    "literature",
+    "アート",
+    "美術",
+    "芸術",
+    "絵画",
+    "彫刻",
+    "美術館",
+    "哲学",
+    "美学",
+    "文学",
     # Developer Insights
-    "developer", "engineering", "programming", "coding", "backend", "frontend",
-    "devops", "infrastructure", "architecture", "api design",
-    "開発者", "エンジニア", "プログラミング", "コーディング", "インフラ", "アーキテクチャ",
+    "developer",
+    "engineering",
+    "programming",
+    "coding",
+    "backend",
+    "frontend",
+    "devops",
+    "infrastructure",
+    "architecture",
+    "api design",
+    "開発者",
+    "エンジニア",
+    "プログラミング",
+    "コーディング",
+    "インフラ",
+    "アーキテクチャ",
     # Pro IT Media
-    "enterprise", "enterprise software", "it infrastructure", "data center",
-    "cloud computing", "saas", "paas", "iaas", "cio", "cto",
-    "エンタープライズ", "ITインフラ", "データセンター", "クラウドコンピューティング",
+    "enterprise",
+    "enterprise software",
+    "it infrastructure",
+    "data center",
+    "cloud computing",
+    "saas",
+    "paas",
+    "iaas",
+    "cio",
+    "cto",
+    "エンタープライズ",
+    "ITインフラ",
+    "データセンター",
+    "クラウドコンピューティング",
     # Consumer Tech
-    "smartphone", "tablet", "laptop", "gadget", "device", "consumer electronics",
-    "mobile", "ios", "android", "apple", "google", "samsung", "review",
-    "スマートフォン", "タブレット", "ガジェット", "デバイス", "モバイル",
+    "smartphone",
+    "tablet",
+    "laptop",
+    "gadget",
+    "device",
+    "consumer electronics",
+    "mobile",
+    "ios",
+    "android",
+    "apple",
+    "google",
+    "samsung",
+    "review",
+    "スマートフォン",
+    "タブレット",
+    "ガジェット",
+    "デバイス",
+    "モバイル",
     # Global Politics
-    "international", "global", "world news", "diplomacy", "foreign policy",
-    "election", "government", "parliament", "congress", "senate", "president",
-    "prime minister", "united nations", "nato", "eu",
-    "国際", "世界", "外交", "選挙", "政府", "国会", "大統領", "首相", "国連",
+    "international",
+    "global",
+    "world news",
+    "diplomacy",
+    "foreign policy",
+    "election",
+    "government",
+    "parliament",
+    "congress",
+    "senate",
+    "president",
+    "prime minister",
+    "united nations",
+    "nato",
+    "eu",
+    "国際",
+    "世界",
+    "外交",
+    "選挙",
+    "政府",
+    "国会",
+    "大統領",
+    "首相",
+    "国連",
     # Environment Policy
-    "environmental policy", "climate policy", "carbon neutral", "net zero",
-    "renewable energy policy", "green policy", "sustainability policy",
-    "environmental regulation", "climate action",
-    "環境政策", "気候政策", "カーボンニュートラル", "再生可能エネルギー政策", "環境規制",
+    "environmental policy",
+    "climate policy",
+    "carbon neutral",
+    "net zero",
+    "renewable energy policy",
+    "green policy",
+    "sustainability policy",
+    "environmental regulation",
+    "climate action",
+    "環境政策",
+    "気候政策",
+    "カーボンニュートラル",
+    "再生可能エネルギー政策",
+    "環境規制",
     # Society & Justice
-    "social justice", "human rights", "civil rights", "equality", "discrimination",
-    "justice", "court", "law", "legal", "lawsuit", "trial", "sentence", "prison",
-    "社会正義", "人権", "市民権", "平等", "差別", "司法", "裁判", "法", "法律", "訴訟",
+    "social justice",
+    "human rights",
+    "civil rights",
+    "equality",
+    "discrimination",
+    "justice",
+    "court",
+    "law",
+    "legal",
+    "lawsuit",
+    "trial",
+    "sentence",
+    "prison",
+    "社会正義",
+    "人権",
+    "市民権",
+    "平等",
+    "差別",
+    "司法",
+    "裁判",
+    "法",
+    "法律",
+    "訴訟",
     # Travel & Lifestyle
-    "travel", "tourism", "vacation", "trip", "journey", "destination", "hotel",
-    "resort", "airline", "flight", "cruise", "adventure",
-    "旅行", "観光", "バケーション", "旅", "目的地", "ホテル", "リゾート", "フライト",
+    "travel",
+    "tourism",
+    "vacation",
+    "trip",
+    "journey",
+    "destination",
+    "hotel",
+    "resort",
+    "airline",
+    "flight",
+    "cruise",
+    "adventure",
+    "旅行",
+    "観光",
+    "バケーション",
+    "旅",
+    "目的地",
+    "ホテル",
+    "リゾート",
+    "フライト",
     # Security Policy
-    "security policy", "cybersecurity policy", "data protection", "privacy policy",
-    "gdpr", "compliance", "security regulation", "cyber defense", "threat intelligence",
-    "セキュリティ政策", "サイバーセキュリティ政策", "データ保護", "プライバシー政策",
+    "security policy",
+    "cybersecurity policy",
+    "data protection",
+    "privacy policy",
+    "gdpr",
+    "compliance",
+    "security regulation",
+    "cyber defense",
+    "threat intelligence",
+    "セキュリティ政策",
+    "サイバーセキュリティ政策",
+    "データ保護",
+    "プライバシー政策",
     # Business & Finance
-    "finance", "financial", "banking", "investment", "stock market", "trading",
-    "gdp", "inflation", "monetary policy", "fiscal policy",
-    "金融", "財務", "銀行", "投資", "株式市場", "取引", "経済", "GDP", "インフレ",
+    "finance",
+    "financial",
+    "banking",
+    "investment",
+    "stock market",
+    "trading",
+    "gdp",
+    "inflation",
+    "monetary policy",
+    "fiscal policy",
+    "金融",
+    "財務",
+    "銀行",
+    "投資",
+    "株式市場",
+    "取引",
+    "経済",
+    "GDP",
+    "インフレ",
     # AI Research
-    "ai research", "machine learning research", "deep learning research",
-    "neural network research", "nlp research", "computer vision research",
-    "ai paper", "arxiv", "conference", "academic", "research paper",
-    "AI研究", "機械学習研究", "深層学習研究", "ニューラルネットワーク研究", "研究論文", "学術",
+    "ai research",
+    "machine learning research",
+    "deep learning research",
+    "neural network research",
+    "nlp research",
+    "computer vision research",
+    "ai paper",
+    "arxiv",
+    "conference",
+    "academic",
+    "research paper",
+    "AI研究",
+    "機械学習研究",
+    "深層学習研究",
+    "ニューラルネットワーク研究",
+    "研究論文",
+    "学術",
     # AI Policy
-    "ai policy", "ai regulation", "ai ethics", "ai governance", "ai safety",
-    "ai alignment", "responsible ai", "ai legislation",
-    "AI政策", "AI規制", "AI倫理", "AIガバナンス", "AI安全性", "責任あるAI",
+    "ai policy",
+    "ai regulation",
+    "ai ethics",
+    "ai governance",
+    "ai safety",
+    "ai alignment",
+    "responsible ai",
+    "ai legislation",
+    "AI政策",
+    "AI規制",
+    "AI倫理",
+    "AIガバナンス",
+    "AI安全性",
+    "責任あるAI",
     # Games & Puzzles
-    "game", "gaming", "puzzle", "crossword", "sudoku", "video game", "console",
-    "playstation", "xbox", "nintendo", "esports", "gaming industry",
-    "ゲーム", "パズル", "クロスワード", "数独", "ビデオゲーム", "コンソール", "eスポーツ",
+    "game",
+    "gaming",
+    "puzzle",
+    "crossword",
+    "sudoku",
+    "video game",
+    "console",
+    "playstation",
+    "xbox",
+    "nintendo",
+    "esports",
+    "gaming industry",
+    "ゲーム",
+    "パズル",
+    "クロスワード",
+    "数独",
+    "ビデオゲーム",
+    "コンソール",
+    "eスポーツ",
 ]
 FEATURE_VOCAB = list(dict.fromkeys(FEATURE_VOCAB))
 EMBEDDING_DIM = 6
@@ -194,8 +386,7 @@ def tokenize_text(text: str) -> list[str]:
     # 日本語と英語の両方に対応
     text_lower = text.lower()
     # 空白、句読点で分割
-    tokens = re.findall(r'\b\w+\b|[ぁ-んァ-ヶー一-龯]+', text_lower)
-    return tokens
+    return re.findall(r"\b\w+\b|[ぁ-んァ-ヶー一-龯]+", text_lower)
 
 
 def expand_tokens(tokens: list[str]) -> list[str]:
@@ -204,7 +395,7 @@ def expand_tokens(tokens: list[str]) -> list[str]:
     for token in tokens:
         expanded.append(token)
         # 英語の複数形処理
-        if token.endswith("s") and len(token) > 3:
+        if token.endswith("s") and len(token) > PLURAL_TOKEN_MIN_LEN:
             expanded.append(token[:-1])
     return expanded
 
@@ -295,10 +486,7 @@ def compute_tfidf_weights(
     idf_values: list[float] = []
     for term in FEATURE_VOCAB:
         docs_with_term = sum(1 for g in GENRES if feature_counts[g][term] > 0)
-        if docs_with_term > 0:
-            idf = 1.0 + math.log((total_docs + 1) / (docs_with_term + 1))
-        else:
-            idf = 1.0
+        idf = 1.0 + math.log((total_docs + 1) / (docs_with_term + 1)) if docs_with_term > 0 else 1.0
         idf_values.append(idf)
 
     for genre in GENRES:
@@ -356,10 +544,8 @@ def compute_bias(genre_totals: Counter) -> list[float]:
     return bias
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="統計的にジャンル分類器の重み付けを計算"
-    )
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="統計的にジャンル分類器の重み付けを計算")
     parser.add_argument(
         "--recap-dsn",
         default=os.getenv("RECAP_DB_DSN"),
@@ -393,41 +579,26 @@ def main() -> None:
         action="store_true",
         help="詳細なログを出力",
     )
+    return parser.parse_args()
 
-    args = parser.parse_args()
 
-    if not args.recap_dsn:
-        print("Error: --recap-dsn または RECAP_DB_DSN 環境変数が必要です")
-        return
-
-    if not args.alt_dsn:
-        print("Error: --alt-dsn または ALT_DB_DSN 環境変数が必要です")
-        return
-
-    print(f"学習結果を取得中（過去{args.days}日）...")
-    learning_results = fetch_learning_results(args.recap_dsn, args.days)
-    print(f"取得した学習結果: {len(learning_results)}件")
-
-    if not learning_results:
-        print("Error: 学習結果が取得できませんでした")
-        return
-
-    print("記事のタイトルと本文を取得中...")
+def _build_training_samples(
+    learning_results: list[dict], alt_dsn: str, *, verbose: bool
+) -> list[dict]:
+    """学習結果に記事本文を結合してトークン化済みサンプルを構築する"""
+    sys.stdout.write("記事のタイトルと本文を取得中...\n")
     samples = []
-    # サンプル数を制限（処理時間を短縮）
-    max_samples = min(10000, len(learning_results))  # 最大10,000件まで処理
+    max_samples = min(10000, len(learning_results))
     if len(learning_results) > max_samples:
-        print(f"  サンプル数が多いため、最初の{max_samples}件のみ処理します")
+        sys.stdout.write(f"  サンプル数が多いため、最初の{max_samples}件のみ処理します\n")
 
     limited_results = learning_results[:max_samples]
     article_ids = [str(result["article_id"]) for result in limited_results]
-    articles_by_id = fetch_article_contents(args.alt_dsn, article_ids)
+    articles_by_id = fetch_article_contents(alt_dsn, article_ids)
 
     for i, result in enumerate(limited_results):
-        if args.verbose and (i + 1) % 100 == 0:
-            print(f"  処理中: {i + 1}/{min(max_samples, len(learning_results))}")
-        elif (i + 1) % 1000 == 0:
-            print(f"  処理中: {i + 1}/{min(max_samples, len(learning_results))}")
+        if (verbose and (i + 1) % 100 == 0) or (i + 1) % 1000 == 0:
+            sys.stdout.write(f"  処理中: {i + 1}/{min(max_samples, len(learning_results))}\n")
 
         article_id = str(result["article_id"])
         article = articles_by_id.get(article_id)
@@ -438,41 +609,46 @@ def main() -> None:
             combined_text = f"{title} {content}"
             tokens = tokenize_text(combined_text)
 
-            samples.append({
-                "genre": result["genre"],
-                "confidence": float(result.get("confidence", 0.0)),
-                "tokens": tokens,
-                "text": combined_text.lower(),
-                "title": title,
-            })
+            samples.append(
+                {
+                    "genre": result["genre"],
+                    "confidence": float(result.get("confidence", 0.0)),
+                    "tokens": tokens,
+                    "text": combined_text.lower(),
+                    "title": title,
+                }
+            )
 
-    print(f"有効なサンプル数: {len(samples)}件")
+    sys.stdout.write(f"有効なサンプル数: {len(samples)}件\n")
+    return samples
 
-    # ジャンル別のサンプル数を確認
+
+def _print_genre_distribution(samples: list[dict], min_samples: int) -> None:
+    """ジャンル別のサンプル件数を表示し、最小サンプル数未満のジャンルに警告を出す"""
     genre_counts = Counter(s["genre"].lower() for s in samples)
-    print("\nジャンル別サンプル数:")
+    sys.stdout.write("\nジャンル別サンプル数:\n")
     for genre in GENRES:
         count = genre_counts.get(genre, 0)
-        if count < args.min_samples:
-            print(f"  {genre:20s}: {count:4d}件 (警告: 最小サンプル数未満)")
+        if count < min_samples:
+            sys.stdout.write(f"  {genre:20s}: {count:4d}件 (警告: 最小サンプル数未満)\n")
         else:
-            print(f"  {genre:20s}: {count:4d}件")
+            sys.stdout.write(f"  {genre:20s}: {count:4d}件\n")
 
-    # 特徴量カウントを構築
-    print("\n特徴量を計算中...")
+
+def _compute_and_save_weights(samples: list[dict], output_path: Path) -> None:
+    """特徴量からTF-IDF/Embedding重みとバイアスを計算してJSON出力する"""
+    sys.stdout.write("\n特徴量を計算中...\n")
     feature_counts, genre_totals = build_feature_counts(samples)
 
-    # 重み付けを計算
-    print("TF-IDF重み付けを計算中...")
+    sys.stdout.write("TF-IDF重み付けを計算中...\n")
     tfidf_weights, idf_values = compute_tfidf_weights(feature_counts, genre_totals)
 
-    print("Embedding重み付けを計算中...")
+    sys.stdout.write("Embedding重み付けを計算中...\n")
     embedding_weights = compute_embedding_weights(feature_counts)
 
-    print("バイアスを計算中...")
+    sys.stdout.write("バイアスを計算中...\n")
     bias = compute_bias(genre_totals)
 
-    # 結果をJSON形式で出力
     weights = {
         "_comment": "統計的に計算されたジャンル分類器の重み付け。recap_genre_learning_resultsテーブルから取得したデータに基づく。",
         "feature_dim": len(FEATURE_VOCAB),
@@ -488,17 +664,40 @@ def main() -> None:
         "average_doc_len": 320.0,
     }
 
-    args.output.write_text(
+    output_path.write_text(
         json.dumps(weights, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
 
-    print(f"\n重み付けを {args.output} に保存しました")
-    print(f"  特徴量次元: {len(FEATURE_VOCAB)}")
-    print(f"  Embedding次元: {EMBEDDING_DIM}")
-    print(f"  ジャンル数: {len(GENRES)}")
+    sys.stdout.write(f"\n重み付けを {output_path} に保存しました\n")
+    sys.stdout.write(f"  特徴量次元: {len(FEATURE_VOCAB)}\n")
+    sys.stdout.write(f"  Embedding次元: {EMBEDDING_DIM}\n")
+    sys.stdout.write(f"  ジャンル数: {len(GENRES)}\n")
+
+
+def main() -> None:
+    args = _parse_args()
+
+    if not args.recap_dsn:
+        sys.stdout.write("Error: --recap-dsn または RECAP_DB_DSN 環境変数が必要です\n")
+        return
+
+    if not args.alt_dsn:
+        sys.stdout.write("Error: --alt-dsn または ALT_DB_DSN 環境変数が必要です\n")
+        return
+
+    sys.stdout.write(f"学習結果を取得中（過去{args.days}日）...\n")
+    learning_results = fetch_learning_results(args.recap_dsn, args.days)
+    sys.stdout.write(f"取得した学習結果: {len(learning_results)}件\n")
+
+    if not learning_results:
+        sys.stdout.write("Error: 学習結果が取得できませんでした\n")
+        return
+
+    samples = _build_training_samples(learning_results, args.alt_dsn, verbose=args.verbose)
+    _print_genre_distribution(samples, args.min_samples)
+    _compute_and_save_weights(samples, args.output)
 
 
 if __name__ == "__main__":
     main()
-

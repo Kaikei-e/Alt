@@ -27,9 +27,9 @@ from typing import NamedTuple
 
 try:
     import yaml
-except ImportError:  # pragma: no cover - CI and the deploy host install it
+except ImportError as exc:  # pragma: no cover - CI and the deploy host install it
     sys.stderr.write("check-env-overrides: PyYAML is required (pip install pyyaml)\n")
-    raise SystemExit(2)
+    raise SystemExit(2) from exc
 
 MANIFEST_PATH = Path(__file__).resolve().parent.parent / "deploy" / "host-prereqs.yaml"
 
@@ -73,7 +73,9 @@ class Rules(NamedTuple):
         return ALLOWLIST_REASONS.get(rule_id, "")
 
     def keys_for(self, rule_id: str) -> list[str]:
-        return next((list(r["keys"]) for r in (*self.retired, *self.dead) if r["id"] == rule_id), [])
+        return next(
+            (list(r["keys"]) for r in (*self.retired, *self.dead) if r["id"] == rule_id), []
+        )
 
     def retired_keys(self) -> list[str]:
         return [key for rule in self.retired for key in rule["keys"]]
@@ -82,7 +84,7 @@ class Rules(NamedTuple):
         return {key for rule in self.dead for key in rule["keys"] if key != ANY_KEY}
 
 
-def _str_list(value) -> bool:
+def _str_list(value: object) -> bool:
     return isinstance(value, list) and bool(value) and all(isinstance(v, str) and v for v in value)
 
 
@@ -94,19 +96,28 @@ def load_rules(manifest_path: Path = MANIFEST_PATH) -> Rules:
     for rule in (*retired, *dead):
         label = rule.get("id") if isinstance(rule, dict) else rule
         if not isinstance(rule, dict) or not isinstance(rule.get("id"), str):
-            raise ValueError(f"env rule {label!r}: needs a string id")
+            msg = f"env rule {label!r}: needs a string id"
+            raise ValueError(msg)  # noqa: TRY004 — main() catches ValueError
         if not _str_list(rule.get("keys")):
-            raise ValueError(f"env rule {label}: keys must be a non-empty list of names")
+            msg = f"env rule {label}: keys must be a non-empty list of names"
+            raise ValueError(msg)
         if not isinstance(rule.get("reason"), str) or not rule["reason"].strip():
-            raise ValueError(f"env rule {label}: reason is empty")
+            msg = f"env rule {label}: reason is empty"
+            raise ValueError(msg)
     for rule in dead:
         matchers = [m for m in MATCHERS if m in rule]
         if len(matchers) != 1 or not _str_list(rule[matchers[0]]):
-            raise ValueError(f"dead_env_values {rule['id']}: needs exactly one of {', '.join(MATCHERS)} as a list")
+            msg = f"dead_env_values {rule['id']}: needs exactly one of {', '.join(MATCHERS)} as a list"
+            raise ValueError(msg)
     allowlists: dict[str, tuple[str, ...]] = {}
     for entry in manifest.get("env_allowlists") or []:
-        if not isinstance(entry, dict) or not isinstance(entry.get("key"), str) or not _str_list(entry.get("required")):
-            raise ValueError(f"env_allowlists entry {entry!r}: needs key and a non-empty required list")
+        if (
+            not isinstance(entry, dict)
+            or not isinstance(entry.get("key"), str)
+            or not _str_list(entry.get("required"))
+        ):
+            msg = f"env_allowlists entry {entry!r}: needs key and a non-empty required list"
+            raise ValueError(msg)
         allowlists[entry["key"]] = tuple(entry["required"])
     return Rules(tuple(retired), tuple(dead), allowlists)
 
@@ -119,7 +130,7 @@ def parse_env_file(text: str) -> dict[str, str]:
         if not line or line.startswith("#"):
             continue
         if line.startswith("export "):
-            line = line[len("export "):].lstrip()
+            line = line[len("export ") :].lstrip()
         key, sep, value = line.partition("=")
         key = key.strip()
         if not sep or not _KEY.fullmatch(key):
@@ -140,7 +151,9 @@ def _endpoints(value: str) -> list[tuple[str | None, str, str | None]]:
         m = _ENDPOINT.match(token) if token else None
         if m:
             scheme = m.group("scheme")
-            found.append((scheme.lower() if scheme else None, m.group("host").lower(), m.group("port")))
+            found.append(
+                (scheme.lower() if scheme else None, m.group("host").lower(), m.group("port"))
+            )
     return found
 
 
@@ -148,7 +161,9 @@ def _is_dead(value: str, rule: dict) -> bool:
     endpoints = _endpoints(value)
     if "deny_hosts" in rule:
         deny = {h.lower() for h in rule["deny_hosts"]}
-        return any(host in deny or (port and f"{host}:{port}" in deny) for _, host, port in endpoints)
+        return any(
+            host in deny or (port and f"{host}:{port}" in deny) for _, host, port in endpoints
+        )
     if "require_hosts" in rule:
         allowed = {h.lower() for h in rule["require_hosts"]}
         return not endpoints or any(host not in allowed for _, host, _ in endpoints)
@@ -179,15 +194,19 @@ def evaluate(env: dict[str, str], rules: Rules) -> list[Finding]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--env-file", action="append", required=True, type=Path, help="host env file (repeatable)")
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument(
+        "--env-file", action="append", required=True, type=Path, help="host env file (repeatable)"
+    )
     parser.add_argument("--manifest", type=Path, default=MANIFEST_PATH, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
 
     try:
         rules = load_rules(args.manifest)
     except (OSError, ValueError, yaml.YAMLError) as exc:
-        print(f"check-env-overrides: cannot load rules from {args.manifest}: {exc}", file=sys.stderr)
+        sys.stderr.write(f"check-env-overrides: cannot load rules from {args.manifest}: {exc}\n")
         return 2
 
     errors = warnings = 0
@@ -196,25 +215,27 @@ def main(argv: list[str] | None = None) -> int:
         try:
             env = parse_env_file(path.read_text(encoding="utf-8"))
         except OSError as exc:
-            print(f"check-env-overrides: cannot read {path}: {exc.strerror}", file=sys.stderr)
+            sys.stderr.write(f"check-env-overrides: cannot read {path}: {exc.strerror}\n")
             return 2
         except UnicodeDecodeError:
-            print(f"check-env-overrides: {path} is not UTF-8 text", file=sys.stderr)
+            sys.stderr.write(f"check-env-overrides: {path} is not UTF-8 text\n")
             return 2
         findings = evaluate(env, rules)
-        print(f"{path}: {len(env)} keys checked")
+        sys.stdout.write(f"{path}: {len(env)} keys checked\n")
         for finding in findings:
-            print(f"  {finding.severity:<7}  {finding.key}  {finding.rule}")
+            sys.stdout.write(f"  {finding.severity:<7}  {finding.key}  {finding.rule}\n")
             triggered.add(finding.rule)
         errors += sum(f.severity == "error" for f in findings)
         warnings += sum(f.severity == "warning" for f in findings)
 
     if triggered:
-        print("\nrules (deploy/host-prereqs.yaml):")
+        sys.stdout.write("\nrules (deploy/host-prereqs.yaml):\n")
         for rule_id in sorted(triggered):
-            print(f"  {rule_id}: {' '.join(rules.reason(rule_id).split())}")
-        print("\nDelete each listed key so compose's own value applies, or correct it deliberately.")
-    print(f"\n{errors} error(s), {warnings} warning(s)")
+            sys.stdout.write(f"  {rule_id}: {' '.join(rules.reason(rule_id).split())}\n")
+        sys.stdout.write(
+            "\nDelete each listed key so compose's own value applies, or correct it deliberately.\n"
+        )
+    sys.stdout.write(f"\n{errors} error(s), {warnings} warning(s)\n")
     return 1 if errors else 0
 
 

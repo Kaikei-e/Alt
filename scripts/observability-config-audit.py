@@ -32,13 +32,15 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import glob
 import json
 import os
 import re
 import sys
+from pathlib import Path
 
 import yaml
+
+SHORT_VOL_PARTS_MIN = 2
 
 COMPOSE_FILE = "compose/observability.yaml"
 PROMETHEUS_CONFIG = "observability/prometheus/prometheus.yml"
@@ -61,12 +63,55 @@ def warn(msg: str) -> None:
     warnings.append(msg)
 
 
-def load_yaml(path: str) -> object:
-    with open(path, encoding="utf-8") as handle:
+def load_yaml(path: str | Path) -> object:
+    with Path(path).open(encoding="utf-8") as handle:
         return yaml.safe_load(handle)
 
 
-def parse_mounts(compose_path: str) -> dict[str, list[tuple[str, str]]]:
+def _parse_compose_configs(cfg: dict, compose_dir: Path) -> dict[str, str]:
+    config_files: dict[str, str] = {}
+    for name, spec in (cfg.get("configs") or {}).items():
+        if not isinstance(spec, dict):
+            continue
+        file_path = spec.get("file")
+        if isinstance(file_path, str) and file_path:
+            config_files[name] = os.path.normpath(compose_dir / file_path)
+    return config_files
+
+
+def _parse_service_mounts(
+    svc: dict, compose_dir: Path, config_files: dict[str, str]
+) -> list[tuple[str, str]]:
+    entries: list[tuple[str, str]] = []
+    for vol in svc.get("volumes") or []:
+        if not isinstance(vol, str):
+            continue
+        parts = vol.split(":")
+        if len(parts) < SHORT_VOL_PARTS_MIN:
+            continue
+        source, target = parts[0], parts[1]
+        # Named volumes have no path separator and no leading dot.
+        if not source.startswith((".", "/")):
+            continue
+        entries.append((os.path.normpath(compose_dir / source), target))
+    for item in svc.get("configs") or []:
+        if isinstance(item, str):
+            source_name, target = item, f"/{item}"
+        elif isinstance(item, dict):
+            source_name = item.get("source")
+            if not isinstance(source_name, str) or not source_name:
+                continue
+            raw_target = item.get("target")
+            target = raw_target if isinstance(raw_target, str) and raw_target else f"/{source_name}"
+        else:
+            continue
+        host = config_files.get(source_name)
+        if host is not None:
+            entries.append((host, target))
+    return entries
+
+
+def parse_mounts(compose_path: str | Path) -> dict[str, list[tuple[str, str]]]:
     """Map each service to its [(host_abs_path, container_path)] file attachments.
 
     Covers short-syntax bind mounts and Compose `configs:` with `file:`.
@@ -74,64 +119,25 @@ def parse_mounts(compose_path: str) -> dict[str, list[tuple[str, str]]]:
     why the deploy pipeline can hand the same tree to two different working
     directories and get two different mount sources.
     """
-    compose_dir = os.path.dirname(os.path.abspath(compose_path))
+    compose_dir = Path(os.path.normpath(Path(compose_path).absolute())).parent
     cfg = load_yaml(compose_path) or {}
-    config_files: dict[str, str] = {}
-    for name, spec in (cfg.get("configs") or {}).items():
-        if not isinstance(spec, dict):
-            continue
-        file_path = spec.get("file")
-        if isinstance(file_path, str) and file_path:
-            config_files[name] = os.path.normpath(os.path.join(compose_dir, file_path))
-
-    mounts: dict[str, list[tuple[str, str]]] = {}
-    for name, svc in (cfg.get("services") or {}).items():
-        if not isinstance(svc, dict):
-            continue
-        entries: list[tuple[str, str]] = []
-        for vol in svc.get("volumes") or []:
-            if not isinstance(vol, str):
-                continue
-            parts = vol.split(":")
-            if len(parts) < 2:
-                continue
-            source, target = parts[0], parts[1]
-            # Named volumes have no path separator and no leading dot.
-            if not source.startswith((".", "/")):
-                continue
-            entries.append(
-                (os.path.normpath(os.path.join(compose_dir, source)), target)
-            )
-        for item in svc.get("configs") or []:
-            if isinstance(item, str):
-                source_name, target = item, f"/{item}"
-            elif isinstance(item, dict):
-                source_name = item.get("source")
-                if not isinstance(source_name, str) or not source_name:
-                    continue
-                raw_target = item.get("target")
-                target = raw_target if isinstance(raw_target, str) and raw_target else f"/{source_name}"
-            else:
-                continue
-            host = config_files.get(source_name)
-            if host is None:
-                continue
-            entries.append((host, target))
-        mounts[name] = entries
-    return mounts
+    config_files = _parse_compose_configs(cfg, compose_dir)
+    return {
+        name: _parse_service_mounts(svc, compose_dir, config_files)
+        for name, svc in (cfg.get("services") or {}).items()
+        if isinstance(svc, dict)
+    }
 
 
-def container_to_host(
-    container_path: str, service_mounts: list[tuple[str, str]]
-) -> str | None:
+def container_to_host(container_path: str, service_mounts: list[tuple[str, str]]) -> str | None:
     """Translate a container path to its host path via the longest mount match."""
     best: tuple[int, str] | None = None
-    for host, target in service_mounts:
-        target = target.rstrip("/") or "/"
+    for host, raw_target in service_mounts:
+        target = raw_target.rstrip("/") or "/"
         if container_path == target:
             candidate = host
         elif container_path.startswith(target + "/"):
-            candidate = os.path.join(host, container_path[len(target) + 1 :])
+            candidate = str(Path(host) / container_path[len(target) + 1 :])
         else:
             continue
         if best is None or len(target) > best[0]:
@@ -147,13 +153,23 @@ def audit_attached_file(
     root: str,
 ) -> None:
     """Fail unless `service` attaches `expected_rel` exactly at `container_path`."""
-    expected = os.path.join(root, expected_rel)
+    expected = Path(root) / expected_rel
     host_cfg = container_to_host(container_path, mounts.get(service, []))
-    if host_cfg is None or os.path.abspath(host_cfg) != os.path.abspath(expected):
+    if host_cfg is None or os.path.normpath(Path(host_cfg).absolute()) != os.path.normpath(
+        expected.absolute()
+    ):
         fail(
             f"{COMPOSE_FILE}: {service} does not attach {expected_rel} "
             f"at {container_path} (bind mount or configs:)"
         )
+
+
+def _glob_path_pattern(pattern: str) -> list[Path]:
+    p = Path(pattern)
+    if p.is_absolute():
+        anchor = Path(p.anchor)
+        return list(anchor.glob(str(p.relative_to(anchor))))
+    return list(Path().glob(pattern))
 
 
 def audit_prometheus_rule_glob(root: str, mounts: dict[str, list[tuple[str, str]]]) -> None:
@@ -162,7 +178,7 @@ def audit_prometheus_rule_glob(root: str, mounts: dict[str, list[tuple[str, str]
         fail(f"{COMPOSE_FILE}: service 'prometheus' has no bind mounts")
         return
 
-    cfg = load_yaml(os.path.join(root, PROMETHEUS_CONFIG)) or {}
+    cfg = load_yaml(Path(root) / PROMETHEUS_CONFIG) or {}
     rule_globs = cfg.get("rule_files") or []
     if not rule_globs:
         fail(f"{PROMETHEUS_CONFIG}: no rule_files configured — no rule ever loads")
@@ -179,19 +195,17 @@ def audit_prometheus_rule_glob(root: str, mounts: dict[str, list[tuple[str, str]
                 f"silently absent"
             )
             continue
-        hits = glob.glob(host_pattern)
+        hits = _glob_path_pattern(host_pattern)
         if not hits:
             fail(
                 f"{PROMETHEUS_CONFIG}: rule_files entry {pattern!r} resolves to host "
                 f"pattern {os.path.relpath(host_pattern, root)!r} which matches no file"
             )
-        matched.update(os.path.abspath(h) for h in hits)
+        matched.update(os.path.normpath(h.absolute()) for h in hits)
 
-    rules_dir = os.path.join(root, PROMETHEUS_RULES_DIR)
+    rules_dir = Path(root) / PROMETHEUS_RULES_DIR
     on_disk = {
-        os.path.abspath(p)
-        for ext in ("*.yml", "*.yaml")
-        for p in glob.glob(os.path.join(rules_dir, ext))
+        os.path.normpath(p.absolute()) for ext in ("*.yml", "*.yaml") for p in rules_dir.glob(ext)
     }
     for orphan in sorted(on_disk - matched):
         fail(
@@ -199,7 +213,7 @@ def audit_prometheus_rule_glob(root: str, mounts: dict[str, list[tuple[str, str]
             f"not matched by any rule_files glob — it will never be evaluated"
         )
 
-    tests_dir = os.path.abspath(os.path.join(root, PROMETHEUS_TESTS_DIR))
+    tests_dir = os.path.normpath((Path(root) / PROMETHEUS_TESTS_DIR).absolute())
     for leaked in sorted(m for m in matched if m.startswith(tests_dir + os.sep)):
         fail(
             f"{os.path.relpath(leaked, root)}: a promtool test file is matched by a "
@@ -209,9 +223,9 @@ def audit_prometheus_rule_glob(root: str, mounts: dict[str, list[tuple[str, str]
 
 
 def audit_alertmanager(root: str, mounts: dict[str, list[tuple[str, str]]]) -> bool:
-    config_path = os.path.join(root, ALERTMANAGER_CONFIG)
+    config_path = Path(root) / ALERTMANAGER_CONFIG
     declared = "alertmanager" in mounts
-    exists = os.path.isfile(config_path)
+    exists = config_path.is_file()
 
     if not exists and not declared:
         warn(
@@ -244,7 +258,7 @@ def audit_alertmanager(root: str, mounts: dict[str, list[tuple[str, str]]]) -> b
         root,
     )
 
-    prom_cfg = load_yaml(os.path.join(root, PROMETHEUS_CONFIG)) or {}
+    prom_cfg = load_yaml(Path(root) / PROMETHEUS_CONFIG) or {}
     targets = [
         target
         for am in (prom_cfg.get("alerting") or {}).get("alertmanagers") or []
@@ -259,16 +273,7 @@ def audit_alertmanager(root: str, mounts: dict[str, list[tuple[str, str]]]) -> b
     return True
 
 
-def audit_grafana(root: str, mounts: dict[str, list[tuple[str, str]]]) -> tuple[int, int]:
-    provisioning_root = os.path.join(root, GRAFANA_PROVISIONING_DIR)
-    provisioning_files = sorted(
-        p
-        for ext in ("*.yaml", "*.yml")
-        for p in glob.glob(os.path.join(provisioning_root, "**", ext), recursive=True)
-    )
-    if not provisioning_files:
-        fail(f"{GRAFANA_PROVISIONING_DIR}/: no provisioning files found")
-
+def _collect_grafana_provider_paths(root: str, provisioning_files: list[Path]) -> list[str]:
     dashboard_provider_paths: list[str] = []
     for path in provisioning_files:
         rel = os.path.relpath(path, root)
@@ -290,9 +295,13 @@ def audit_grafana(root: str, mounts: dict[str, list[tuple[str, str]]]) -> tuple[
             path_opt = (provider.get("options") or {}).get("path")
             if path_opt:
                 dashboard_provider_paths.append(path_opt)
+    return dashboard_provider_paths
 
-    grafana_mounts = mounts.get("grafana", [])
-    for container_path in dashboard_provider_paths:
+
+def _check_grafana_provider_mounts(
+    root: str, provider_paths: list[str], grafana_mounts: list[tuple[str, str]]
+) -> None:
+    for container_path in provider_paths:
         host_path = container_to_host(container_path, grafana_mounts)
         if host_path is None:
             fail(
@@ -300,20 +309,32 @@ def audit_grafana(root: str, mounts: dict[str, list[tuple[str, str]]]) -> tuple[
                 f"{container_path!r} is not bind-mounted by the grafana service in "
                 f"{COMPOSE_FILE} — the provider loads zero dashboards"
             )
-        elif not os.path.isdir(host_path):
+        elif not Path(host_path).is_dir():
             fail(
                 f"{GRAFANA_PROVISIONING_DIR}/: dashboard provider path "
                 f"{container_path!r} maps to {os.path.relpath(host_path, root)!r}, "
                 f"which is not a directory"
             )
 
-    dashboards_dir = os.path.join(root, GRAFANA_DASHBOARDS_DIR)
-    dashboards = sorted(glob.glob(os.path.join(dashboards_dir, "*.json")))
+
+def audit_grafana(root: str, mounts: dict[str, list[tuple[str, str]]]) -> tuple[int, int]:
+    provisioning_root = Path(root) / GRAFANA_PROVISIONING_DIR
+    provisioning_files = sorted(
+        p for ext in ("*.yaml", "*.yml") for p in provisioning_root.rglob(ext)
+    )
+    if not provisioning_files:
+        fail(f"{GRAFANA_PROVISIONING_DIR}/: no provisioning files found")
+
+    provider_paths = _collect_grafana_provider_paths(root, provisioning_files)
+    _check_grafana_provider_mounts(root, provider_paths, mounts.get("grafana", []))
+
+    dashboards_dir = Path(root) / GRAFANA_DASHBOARDS_DIR
+    dashboards = sorted(dashboards_dir.glob("*.json"))
     uids: dict[str, str] = {}
     for path in dashboards:
         rel = os.path.relpath(path, root)
         try:
-            with open(path, encoding="utf-8") as handle:
+            with path.open(encoding="utf-8") as handle:
                 doc = json.load(handle)
         except json.JSONDecodeError as exc:
             fail(f"{rel}: not valid JSON (line {exc.lineno}, col {exc.colno}: {exc.msg})")
@@ -331,8 +352,7 @@ def audit_grafana(root: str, mounts: dict[str, list[tuple[str, str]]]) -> tuple[
             uids[uid] = rel
 
     stray = sorted(
-        os.path.relpath(p, root)
-        for p in glob.glob(os.path.join(root, "observability/grafana/*.json"))
+        os.path.relpath(p, root) for p in (Path(root) / "observability/grafana").glob("*.json")
     )
     for path in stray:
         warn(
@@ -348,7 +368,7 @@ def count_prometheus_rules(root: str) -> tuple[int, int, list[str]]:
     rules = 0
     names: list[str] = []
     for ext in ("*.yml", "*.yaml"):
-        for path in sorted(glob.glob(os.path.join(root, PROMETHEUS_RULES_DIR, ext))):
+        for path in sorted((Path(root) / PROMETHEUS_RULES_DIR).glob(ext)):
             doc = load_yaml(path) or {}
             for group in doc.get("groups") or []:
                 groups += 1
@@ -422,11 +442,7 @@ def _alert_exprs(rules_cfg: object) -> dict[str, str]:
 def _scrape_jobs(prom_cfg: object) -> list[dict]:
     if not isinstance(prom_cfg, dict):
         return []
-    out: list[dict] = []
-    for job in prom_cfg.get("scrape_configs") or []:
-        if isinstance(job, dict):
-            out.append(job)
-    return out
+    return [job for job in prom_cfg.get("scrape_configs") or [] if isinstance(job, dict)]
 
 
 def _job_targets(job: dict) -> list[str]:
@@ -434,22 +450,14 @@ def _job_targets(job: dict) -> list[str]:
     for block in job.get("static_configs") or []:
         if not isinstance(block, dict):
             continue
-        for target in block.get("targets") or []:
-            if isinstance(target, str):
-                targets.append(target)
+        targets.extend(target for target in block.get("targets") or [] if isinstance(target, str))
     return targets
 
 
-def audit_pki_ops_surface(prom_cfg: object, rules_cfg: object) -> list[str]:
-    """Pin the always-on in-process PKI ops scrapes and absence/fleet/ops-down alerts.
-
-    Parses loaded YAML documents only. Comments in the source file cannot
-    satisfy these checks.
-    """
+def _collect_pki_ops_jobs(prom_cfg: object) -> tuple[dict[str, tuple[str, str]], list[str]]:
     violations: list[str] = []
-    jobs = _scrape_jobs(prom_cfg)
     ops_by_host: dict[str, tuple[str, str]] = {}
-    for job in jobs:
+    for job in _scrape_jobs(prom_cfg):
         name = job.get("job_name")
         if name == "pki-agent" or (isinstance(name, str) and name.startswith("pki-agent")):
             violations.append(f"scrape job {name!r} is a leftover pki-agent sidecar")
@@ -467,46 +475,29 @@ def audit_pki_ops_surface(prom_cfg: object, rules_cfg: object) -> list[str]:
                 violations.append(f":9110 target {target!r} has no job_name")
                 continue
             if path != "/metrics":
-                violations.append(
-                    f"{name} target {target} metrics_path is {path!r}, want /metrics"
-                )
+                violations.append(f"{name} target {target} metrics_path is {path!r}, want /metrics")
             ops_by_host[host] = (name, path)
+    return ops_by_host, violations
 
-    expected_hosts = set(PKI_INPROCESS_PARENTS)
-    got_hosts = set(ops_by_host)
-    for host in sorted(expected_hosts - got_hosts):
-        violations.append(f"missing {host}:9110 scrape target")
-    for host in sorted(got_hosts - expected_hosts):
-        violations.append(f"unexpected :9110 scrape host {host}")
-    for host, (job_name, _) in sorted(ops_by_host.items()):
-        want = PKI_OPS_JOBS.get(host)
-        if want and job_name != want:
-            violations.append(
-                f"{host}:9110 job_name is {job_name!r}, want {want!r}"
-            )
-    want_jobs = {PKI_OPS_JOBS[h] for h in expected_hosts if h in PKI_OPS_JOBS}
-    got_jobs = {name for name, _ in ops_by_host.values()}
-    for job_name in sorted(want_jobs - got_jobs):
-        violations.append(f"missing PKI ops job_name {job_name!r}")
 
-    exprs = _alert_exprs(rules_cfg)
+def _audit_pki_alert_exprs(
+    exprs: dict[str, str], want_jobs: set[str], expected_hosts: set[str]
+) -> list[str]:
+    violations: list[str] = []
     absent_expr = exprs.get("PkiEnrollmentWorkloadMetricsAbsent", "")
     absent_subjects = ABSENT_SUBJECT_RE.findall(absent_expr)
     if set(absent_subjects) != expected_hosts:
         missing = sorted(expected_hosts - set(absent_subjects))
         extra = sorted(set(absent_subjects) - expected_hosts)
         violations.append(
-            "PkiEnrollmentWorkloadMetricsAbsent subjects "
-            f"missing={missing} extra={extra}"
+            f"PkiEnrollmentWorkloadMetricsAbsent subjects missing={missing} extra={extra}"
         )
     if len(absent_subjects) != len(set(absent_subjects)):
         violations.append("PkiEnrollmentWorkloadMetricsAbsent repeats a subject")
 
     fleet = "".join(exprs.get("PkiEnrollmentFleetIncomplete", "").split())
     if "count(countby(subject)(pki_enrollment_healthy))" not in fleet:
-        violations.append(
-            "PkiEnrollmentFleetIncomplete must count unique subjects, not raw series"
-        )
+        violations.append("PkiEnrollmentFleetIncomplete must count unique subjects, not raw series")
     if "orvector(0)" not in fleet:
         violations.append(
             "PkiEnrollmentFleetIncomplete must use `or vector(0)` so all-absent fires"
@@ -520,7 +511,7 @@ def audit_pki_ops_surface(prom_cfg: object, rules_cfg: object) -> list[str]:
     ops_down = exprs.get("PkiEnrollmentOpsDown", "")
     matcher = JOB_MATCHER_RE.search(ops_down)
     if matcher is None:
-        violations.append("PkiEnrollmentOpsDown must select up{{job=~\"...\"}} for every PKI ops job")
+        violations.append('PkiEnrollmentOpsDown must select up{{job=~"..."}} for every PKI ops job')
     else:
         listed = [part for part in matcher.group(1).split("|") if part]
         if set(listed) != want_jobs:
@@ -536,7 +527,11 @@ def audit_pki_ops_surface(prom_cfg: object, rules_cfg: object) -> list[str]:
         violations.append(
             "PkiEnrollmentRenewalFailing must use `unless on(subject)` so absent/zero success still fires"
         )
+    return violations
 
+
+def _audit_retired_pki_agent_alerts(rules_cfg: object, exprs: dict[str, str]) -> list[str]:
+    violations: list[str] = []
     sidecar_alerts = {
         "PkiAgentCertExpirySoon",
         "PkiAgentCertExpired",
@@ -553,11 +548,7 @@ def audit_pki_ops_surface(prom_cfg: object, rules_cfg: object) -> list[str]:
             + " (leftover detection is the Docker-label gate)"
         )
     if isinstance(rules_cfg, dict):
-        names = [
-            g.get("name")
-            for g in (rules_cfg.get("groups") or [])
-            if isinstance(g, dict)
-        ]
+        names = [g.get("name") for g in (rules_cfg.get("groups") or []) if isinstance(g, dict)]
         if "pki_agent_cert_lifecycle" in names:
             violations.append(
                 "pki_agent_cert_lifecycle group must not exist; live alerts are in-process"
@@ -565,19 +556,51 @@ def audit_pki_ops_surface(prom_cfg: object, rules_cfg: object) -> list[str]:
     return violations
 
 
+def audit_pki_ops_surface(prom_cfg: object, rules_cfg: object) -> list[str]:
+    """Pin the always-on in-process PKI ops scrapes and absence/fleet/ops-down alerts.
+
+    Parses loaded YAML documents only. Comments in the source file cannot
+    satisfy these checks.
+    """
+    ops_by_host, violations = _collect_pki_ops_jobs(prom_cfg)
+
+    expected_hosts = set(PKI_INPROCESS_PARENTS)
+    got_hosts = set(ops_by_host)
+    violations.extend(
+        f"missing {host}:9110 scrape target" for host in sorted(expected_hosts - got_hosts)
+    )
+    violations.extend(
+        f"unexpected :9110 scrape host {host}" for host in sorted(got_hosts - expected_hosts)
+    )
+    for host, (job_name, _) in sorted(ops_by_host.items()):
+        want = PKI_OPS_JOBS.get(host)
+        if want and job_name != want:
+            violations.append(f"{host}:9110 job_name is {job_name!r}, want {want!r}")
+    want_jobs = {PKI_OPS_JOBS[h] for h in expected_hosts if h in PKI_OPS_JOBS}
+    got_jobs = {name for name, _ in ops_by_host.values()}
+    violations.extend(
+        f"missing PKI ops job_name {job_name!r}" for job_name in sorted(want_jobs - got_jobs)
+    )
+
+    exprs = _alert_exprs(rules_cfg)
+    violations.extend(_audit_pki_alert_exprs(exprs, want_jobs, expected_hosts))
+    violations.extend(_audit_retired_pki_agent_alerts(rules_cfg, exprs))
+    return violations
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--repo-root",
-        default=os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."),
+        default=str(Path(__file__).absolute().parent.parent),
         help="repository root (default: parent of this script's directory)",
     )
     args = parser.parse_args()
-    root = os.path.abspath(args.repo_root)
+    root = os.path.normpath(Path(args.repo_root).absolute())
 
-    compose_path = os.path.join(root, COMPOSE_FILE)
-    if not os.path.isfile(compose_path):
-        print(f"::error::{COMPOSE_FILE} not found under {root}")
+    compose_path = Path(root) / COMPOSE_FILE
+    if not compose_path.is_file():
+        sys.stdout.write(f"::error::{COMPOSE_FILE} not found under {root}\n")
         return 1
 
     mounts = parse_mounts(compose_path)
@@ -599,29 +622,31 @@ def main() -> int:
         root,
     )
     group_count, rule_count, group_names = count_prometheus_rules(root)
-    prom_cfg = load_yaml(os.path.join(root, PROMETHEUS_CONFIG))
-    rules_cfg = load_yaml(os.path.join(root, PROMETHEUS_RULES_DIR, "pki-agent-alerts.yml"))
+    prom_cfg = load_yaml(Path(root) / PROMETHEUS_CONFIG)
+    rules_cfg = load_yaml(Path(root) / PROMETHEUS_RULES_DIR / "pki-agent-alerts.yml")
     for msg in audit_pki_ops_surface(prom_cfg, rules_cfg):
         fail(msg)
 
     for msg in warnings:
-        print(f"::warning::{msg}")
+        sys.stdout.write(f"::warning::{msg}\n")
     for msg in errors:
-        print(f"::error::{msg}")
+        sys.stdout.write(f"::error::{msg}\n")
 
-    print("")
-    print("observability config summary (on disk):")
-    print(f"  prometheus rule groups : {group_count}")
-    print(f"  prometheus rules       : {rule_count}")
-    print(f"  rule group names       : {', '.join(sorted(group_names)) or '(none)'}")
-    print(f"  grafana provisioning   : {provisioning_count} file(s)")
-    print(f"  grafana dashboards     : {dashboard_count} file(s)")
-    print(f"  alertmanager config    : {'present' if alertmanager_present else 'absent'}")
+    sys.stdout.write("\n")
+    sys.stdout.write("observability config summary (on disk):\n")
+    sys.stdout.write(f"  prometheus rule groups : {group_count}\n")
+    sys.stdout.write(f"  prometheus rules       : {rule_count}\n")
+    sys.stdout.write(f"  rule group names       : {', '.join(sorted(group_names)) or '(none)'}\n")
+    sys.stdout.write(f"  grafana provisioning   : {provisioning_count} file(s)\n")
+    sys.stdout.write(f"  grafana dashboards     : {dashboard_count} file(s)\n")
+    sys.stdout.write(
+        f"  alertmanager config    : {'present' if alertmanager_present else 'absent'}\n"
+    )
 
     if errors:
-        print(f"\nFAIL: {len(errors)} structural violation(s)")
+        sys.stdout.write(f"\nFAIL: {len(errors)} structural violation(s)\n")
         return 1
-    print("\nOK: structural audit clean")
+    sys.stdout.write("\nOK: structural audit clean\n")
     return 0
 
 

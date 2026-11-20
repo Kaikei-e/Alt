@@ -14,6 +14,7 @@ Usage:
 
 Uses only the standard library so CI can invoke it without any env setup.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -52,16 +53,14 @@ def load_registry() -> dict[str, Any]:
     with REGISTRY.open() as f:
         data = yaml.safe_load(f)
     if not isinstance(data, dict) or "services" not in data:
-        raise SystemExit(f"{REGISTRY}: missing top-level `services` list")
+        msg = f"{REGISTRY}: missing top-level `services` list"
+        raise SystemExit(msg)
     return data
 
 
 def pacticipants(registry: dict[str, Any]) -> list[dict[str, Any]]:
     """Services that go through the Pact gate (local + external)."""
-    return [
-        s for s in registry["services"]
-        if s.get("kind") in ("pacticipant", "external")
-    ]
+    return [s for s in registry["services"] if s.get("kind") in ("pacticipant", "external")]
 
 
 def local_pacticipants(registry: dict[str, Any]) -> list[dict]:
@@ -76,15 +75,13 @@ def runtime_services(registry: dict[str, Any]) -> list[dict]:
 
 def local_build_services(registry: dict[str, Any]) -> list[dict]:
     """Services that have a Dockerfile in this repo (pacticipant + runtime)."""
-    return [
-        s for s in registry["services"]
-        if s.get("kind") in ("pacticipant", "runtime")
-    ]
+    return [s for s in registry["services"] if s.get("kind") in ("pacticipant", "runtime")]
 
 
 # ---------------------------------------------------------------------------
 # Renderers
 # ---------------------------------------------------------------------------
+
 
 def build_spec(service: dict[str, Any]) -> dict[str, Any]:
     """Resolve a service's build inputs, applying the name-derived defaults.
@@ -122,11 +119,9 @@ def render_docker_build_block(registry: dict[str, Any]) -> str:
     """
     lines = ["          SERVICES=("]
     lines.append("            # --- 13 Pact pacticipants (mirrors c2quay.yml) ---")
-    for s in local_pacticipants(registry):
-        lines.append(f'            "{s["name"]}"')
+    lines.extend(f'            "{s["name"]}"' for s in local_pacticipants(registry))
     lines.append("            # --- Additional runtime services used by compose ---")
-    for s in runtime_services(registry):
-        lines.append(f'            "{s["name"]}"')
+    lines.extend(f'            "{s["name"]}"' for s in runtime_services(registry))
     lines.append("          )")
 
     specs = {s["name"]: build_spec(s) for s in local_build_services(registry)}
@@ -134,8 +129,8 @@ def render_docker_build_block(registry: dict[str, Any]) -> str:
     lines.append("")
     lines.append("          # Build inputs per service. BUILD_DIR doubles as the")
     lines.append("          # change-detection prefix, so several services can share one")
-    lines.append("          # source directory. An empty BUILD_DOCKERFILE means \"discover")
-    lines.append("          # it under BUILD_DIR\"; an empty BUILD_BINARY means no")
+    lines.append('          # source directory. An empty BUILD_DOCKERFILE means "discover')
+    lines.append('          # it under BUILD_DIR"; an empty BUILD_BINARY means no')
     lines.append("          # --build-arg BINARY. Defaults reproduce the historical")
     lines.append("          # name-is-the-directory rule.")
     for var, key in (
@@ -168,9 +163,7 @@ def render_c2quay_block(registry: dict[str, Any]) -> str:
         name = s["name"]
         pad = " " * (width - len(name))
         if s.get("kind") == "external":
-            out.append(
-                f"      {name}:{pad} {{ pacticipant: {name}, gate_only: true }}"
-            )
+            out.append(f"      {name}:{pad} {{ pacticipant: {name}, gate_only: true }}")
         else:
             out.append(f"      {name}:{pad} {{ pacticipant: {name} }}")
     return "\n".join(out) + "\n"
@@ -207,8 +200,7 @@ def render_alt_deploy_service_paths(registry: dict[str, Any]) -> str:
             f"    'e2e/playwright/{name}/',",
             f"    'e2e/fixtures/{name}/',",
         ]
-        for cf in compose_files:
-            lines.append(f"    'compose/{cf}',")
+        lines.extend(f"    'compose/{cf}'," for cf in compose_files)
         lines.append("  ],")
         out.extend(lines)
     out.append("};")
@@ -218,6 +210,7 @@ def render_alt_deploy_service_paths(registry: dict[str, Any]) -> str:
 # ---------------------------------------------------------------------------
 # Patchers (for in-place files with sentinel markers)
 # ---------------------------------------------------------------------------
+
 
 def patch_between_sentinels(
     path: Path,
@@ -238,11 +231,12 @@ def patch_between_sentinels(
     )
     m = pat.search(text)
     if not m:
-        raise SystemExit(
+        msg = (
             f"{path}: sentinel markers not found.\n"
             f"  Expected '{begin_marker}' and '{end_marker}' on their own lines.\n"
             f"  Initialize the block manually, then rerun this script."
         )
+        raise SystemExit(msg)
     begin_indent, end_indent = m.group(1), m.group(2)
     replacement = f"{begin_indent}{begin_marker}\n{new_body}{end_indent}{end_marker}"
     return pat.sub(replacement, text, count=1)
@@ -268,6 +262,7 @@ def write_alt_deploy_snippet(registry: dict[str, Any]) -> tuple[Path, str]:
 # CLI
 # ---------------------------------------------------------------------------
 
+
 def diff(path: Path, new_text: str) -> str:
     old = path.read_text() if path.exists() else ""
     if old == new_text:
@@ -285,10 +280,10 @@ def diff(path: Path, new_text: str) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group(required=True)
-    mode.add_argument("--check", action="store_true",
-                      help="exit 1 if generated files are out of date")
-    mode.add_argument("--write", action="store_true",
-                      help="rewrite generated files in place")
+    mode.add_argument(
+        "--check", action="store_true", help="exit 1 if generated files are out of date"
+    )
+    mode.add_argument("--write", action="store_true", help="rewrite generated files in place")
     args = parser.parse_args()
 
     registry = load_registry()
@@ -303,7 +298,7 @@ def main() -> int:
         for path, new_text in outputs:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(new_text)
-            print(f"wrote {path.relative_to(ROOT)}")
+            sys.stdout.write(f"wrote {path.relative_to(ROOT)}\n")
         return 0
 
     drift = False
@@ -311,12 +306,14 @@ def main() -> int:
         d = diff(path, new_text)
         if d:
             drift = True
-            print(d, end="")
-            print(f"::error file={path.relative_to(ROOT)}::drifts from services.yaml; "
-                  f"run scripts/regen-service-registry.py --write")
+            sys.stdout.write(d)
+            sys.stdout.write(
+                f"::error file={path.relative_to(ROOT)}::drifts from services.yaml; "
+                f"run scripts/regen-service-registry.py --write\n"
+            )
     if drift:
         return 1
-    print("services registry is in sync.")
+    sys.stdout.write("services registry is in sync.\n")
     return 0
 
 

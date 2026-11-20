@@ -5,34 +5,45 @@ recap-dbのデータをMarkdownファイルに書き出すスクリプト
 
 from __future__ import annotations
 
+import json
 import os
 import sys
-import json
-from datetime import datetime, timezone
+import traceback
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Tuple
+from typing import Any, TextIO
 
 try:
     import psycopg2
     from psycopg2 import sql
     from psycopg2.extras import RealDictCursor
 except ImportError:
-    print("psycopg2が必要です。インストールしてください: pip install psycopg2-binary")
+    sys.stdout.write("psycopg2が必要です。インストールしてください: pip install psycopg2-binary\n")
     sys.exit(1)
 
 
-ALLOWED_EXPORT_TABLES = frozenset({
-    "recap_jobs",
-    "recap_job_articles",
-    "recap_preprocess_metrics",
-    "recap_subworker_runs",
-    "recap_subworker_clusters",
-    "recap_subworker_sentences",
-    "recap_subworker_diagnostics",
-    "recap_sections",
-    "recap_final_sections",
-    "recap_outputs",
-})
+ALLOWED_EXPORT_TABLES = frozenset(
+    {
+        "recap_jobs",
+        "recap_job_articles",
+        "recap_preprocess_metrics",
+        "recap_subworker_runs",
+        "recap_subworker_clusters",
+        "recap_subworker_sentences",
+        "recap_subworker_diagnostics",
+        "recap_sections",
+        "recap_final_sections",
+        "recap_outputs",
+    }
+)
+
+
+ORDER_BY_TOKEN_MAX = 2
+VALUE_PREVIEW_MAX_LEN = 200
+SUMMARY_LEN_MIN = 220
+SUMMARY_LEN_MAX = 1200
+BAD_QUALITY_MAX = 0.45
+GOOD_QUALITY_MIN = 0.7
 
 
 def _build_order_by(order_by: str) -> sql.Composable:
@@ -40,13 +51,15 @@ def _build_order_by(order_by: str) -> sql.Composable:
     parts = []
     for raw in order_by.split(","):
         tokens = raw.strip().split()
-        if not tokens or len(tokens) > 2:
-            raise ValueError(f"Invalid ORDER BY clause: {order_by!r}")
+        if not tokens or len(tokens) > ORDER_BY_TOKEN_MAX:
+            msg = f"Invalid ORDER BY clause: {order_by!r}"
+            raise ValueError(msg)
         column = sql.Identifier(tokens[0])
-        if len(tokens) == 2:
+        if len(tokens) == ORDER_BY_TOKEN_MAX:
             direction = tokens[1].upper()
             if direction not in ("ASC", "DESC"):
-                raise ValueError(f"Invalid ORDER BY direction: {tokens[1]!r}")
+                msg = f"Invalid ORDER BY direction: {tokens[1]!r}"
+                raise ValueError(msg)
             parts.append(sql.SQL("{} {}").format(column, sql.SQL(direction)))
         else:
             parts.append(sql.SQL("{}").format(column))
@@ -59,15 +72,21 @@ def load_env_vars() -> dict[str, str]:
     env_vars = {}
 
     if env_file.exists():
-        with open(env_file, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
+        with env_file.open(encoding="utf-8") as f:
+            for raw_line in f:
+                line = raw_line.strip()
                 if line and not line.startswith("#") and "=" in line:
                     key, value = line.split("=", 1)
                     env_vars[key.strip()] = value.strip().strip('"').strip("'")
 
     # 環境変数で上書き
-    for key in ["RECAP_DB_HOST", "RECAP_DB_PORT", "RECAP_DB_USER", "RECAP_DB_PASSWORD", "RECAP_DB_NAME"]:
+    for key in [
+        "RECAP_DB_HOST",
+        "RECAP_DB_PORT",
+        "RECAP_DB_USER",
+        "RECAP_DB_PASSWORD",
+        "RECAP_DB_NAME",
+    ]:
         if key in os.environ:
             env_vars[key] = os.environ[key]
 
@@ -86,20 +105,16 @@ def get_db_connection() -> psycopg2.extensions.connection:
 
     try:
         conn = psycopg2.connect(
-            host=host,
-            port=port,
-            user=user,
-            password=password,
-            dbname=dbname,
-            connect_timeout=10
+            host=host, port=port, user=user, password=password, dbname=dbname, connect_timeout=10
         )
-        return conn
     except psycopg2.Error as e:
-        print(f"データベース接続エラー: {e}")
+        sys.stdout.write(f"データベース接続エラー: {e}\n")
         sys.exit(1)
+    else:
+        return conn
 
 
-def format_value(value: Any) -> str:
+def format_value(value: object) -> str:
     """値をMarkdown形式にフォーマット"""
     if value is None:
         return "*NULL*"
@@ -109,20 +124,18 @@ def format_value(value: Any) -> str:
         return f"```json\n{json.dumps(value, ensure_ascii=False, indent=2)}\n```"
     if isinstance(value, list):
         return f"```json\n{json.dumps(value, ensure_ascii=False, indent=2)}\n```"
-    if isinstance(value, str) and len(value) > 200:
-        return f"```\n{value[:200]}...\n```"
+    if isinstance(value, str) and len(value) > VALUE_PREVIEW_MAX_LEN:
+        return f"```\n{value[:VALUE_PREVIEW_MAX_LEN]}...\n```"
     return str(value)
 
 
 def export_table_to_md(
-    cursor: RealDictCursor,
-    table_name: str,
-    md_file: Any,
-    order_by: str | None = None
+    cursor: RealDictCursor, table_name: str, md_file: TextIO, order_by: str | None = None
 ) -> int:
     """テーブルのデータをMarkdown形式でエクスポート"""
     if table_name not in ALLOWED_EXPORT_TABLES:
-        raise ValueError(f"Table not in export allowlist: {table_name!r}")
+        msg = f"Table not in export allowlist: {table_name!r}"
+        raise ValueError(msg)
 
     query = sql.SQL("SELECT * FROM {}").format(sql.Identifier(table_name))
     if order_by:
@@ -180,23 +193,20 @@ def score_summary_quality(
         length = len(stripped)
         if length == 0:
             components.append(0.0)
-        elif length < 220:
-            components.append(min(1.0, length / 220.0))
-        elif length > 1200:
-            components.append(max(0.0, 1.0 - (length - 1200) / 1200.0))
+        elif length < SUMMARY_LEN_MIN:
+            components.append(min(1.0, length / float(SUMMARY_LEN_MIN)))
+        elif length > SUMMARY_LEN_MAX:
+            components.append(max(0.0, 1.0 - (length - SUMMARY_LEN_MAX) / float(SUMMARY_LEN_MAX)))
         else:
             components.append(1.0)
 
         # JSONゴミが混入している場合は減点
-        if stripped.startswith("{") or stripped.count("\"") > length * 0.15:
+        if stripped.startswith("{") or stripped.count('"') > length * 0.15:
             components.append(0.0)
     else:
         components.append(0.0)
 
-    if not components:
-        base_score = 0.0
-    else:
-        base_score = sum(components) / len(components)
+    base_score = 0.0 if not components else sum(components) / len(components)
 
     if status != "succeeded":
         base_score *= 0.4
@@ -225,17 +235,13 @@ def normalize_bullets(raw: str | list[dict[str, Any | None]]) -> list[dict[str, 
     if raw is None:
         return []
     if isinstance(raw, list):
-        return [
-            bullet for bullet in raw if isinstance(bullet, dict) and bullet.get("text")
-        ]
+        return [bullet for bullet in raw if isinstance(bullet, dict) and bullet.get("text")]
     try:
         parsed = json.loads(raw)
     except (TypeError, json.JSONDecodeError):
         return []
     if isinstance(parsed, list):
-        return [
-            bullet for bullet in parsed if isinstance(bullet, dict) and bullet.get("text")
-        ]
+        return [bullet for bullet in parsed if isinstance(bullet, dict) and bullet.get("text")]
     return []
 
 
@@ -266,7 +272,7 @@ def collect_golden_runs(cursor: RealDictCursor, limit_per_bucket: int = 20) -> d
     )
     rows = cursor.fetchall()
 
-    candidates: list[Tuple[float, dict[str, Any]]] = []
+    candidates: list[tuple[float, dict[str, Any]]] = []
     for row in rows:
         response = row["response_payload"] or {}
         diagnostics = response.get("diagnostics") or {}
@@ -310,14 +316,12 @@ def collect_golden_runs(cursor: RealDictCursor, limit_per_bucket: int = 20) -> d
 
     sorted_by_quality = sorted(candidates, key=lambda item: item[0])
     bad_examples = [
-        item[1]
-        for item in sorted_by_quality[:limit_per_bucket]
-        if item[0] <= 0.45
+        item[1] for item in sorted_by_quality[:limit_per_bucket] if item[0] <= BAD_QUALITY_MAX
     ]
     good_examples = [
         item[1]
         for item in reversed(sorted_by_quality[-limit_per_bucket:])
-        if item[0] >= 0.7
+        if item[0] >= GOOD_QUALITY_MIN
     ]
 
     return {
@@ -325,6 +329,95 @@ def collect_golden_runs(cursor: RealDictCursor, limit_per_bucket: int = 20) -> d
         "bad": bad_examples,
         "total_candidates": len(candidates),
     }
+
+
+def _write_table_list(cursor: RealDictCursor, md_file: TextIO) -> None:
+    """公開テーブル一覧をMarkdownへ書き出す"""
+    cursor.execute("""
+        SELECT table_name
+        FROM information_schema.tables
+        WHERE table_schema = 'public'
+        AND table_type = 'BASE TABLE'
+        ORDER BY table_name
+    """)
+    tables = [row["table_name"] for row in cursor.fetchall()]
+
+    md_file.write("## テーブル一覧\n\n")
+    for table in tables:
+        md_file.write(f"- `{table}`\n")
+    md_file.write("\n---\n\n")
+
+
+def _export_core_tables(cursor: RealDictCursor, md_file: TextIO) -> int:
+    """常設8テーブルをMarkdownへ書き出し、合計レコード数を返す"""
+    core_tables: tuple[tuple[int, str, str | None], ...] = (
+        (1, "recap_jobs", "kicked_at DESC"),
+        (2, "recap_job_articles", "id DESC"),
+        (3, "recap_preprocess_metrics", None),
+        (4, "recap_subworker_runs", "started_at DESC"),
+        (5, "recap_subworker_clusters", "run_id, cluster_id"),
+        (6, "recap_subworker_sentences", "cluster_row_id, id"),
+        (7, "recap_subworker_diagnostics", None),
+        (8, "recap_sections", None),
+    )
+    total_records = 0
+    for section_num, table_name, order_by in core_tables:
+        md_file.write(f"## {section_num}. {table_name}\n\n")
+        total_records += export_table_to_md(cursor, table_name, md_file, order_by)
+    return total_records
+
+
+def _export_optional_tables(cursor: RealDictCursor, md_file: TextIO) -> int:
+    """存在する場合のみ追加テーブルをMarkdownへ書き出し、合計レコード数を返す"""
+    total_records = 0
+
+    cursor.execute("""
+        SELECT EXISTS (
+            SELECT FROM information_schema.tables
+            WHERE table_schema = 'public'
+            AND table_name = 'recap_final_sections'
+        )
+    """)
+    if cursor.fetchone()["exists"]:
+        md_file.write("## 9. recap_final_sections\n\n")
+        total_records += export_table_to_md(
+            cursor, "recap_final_sections", md_file, "created_at DESC"
+        )
+
+    cursor.execute("""
+        SELECT EXISTS (
+            SELECT FROM information_schema.tables
+            WHERE table_schema = 'public'
+            AND table_name = 'recap_outputs'
+        )
+    """)
+    if cursor.fetchone()["exists"]:
+        md_file.write("## 10. recap_outputs\n\n")
+        total_records += export_table_to_md(cursor, "recap_outputs", md_file, "created_at DESC")
+
+    return total_records
+
+
+def _write_golden_runs(cursor: RealDictCursor, golden_output_path: Path) -> dict[str, Any]:
+    """ゴールデンセットをJSONへ書き出し、ペイロードを返す"""
+    golden_payload = collect_golden_runs(cursor)
+    golden_payload["generated_at"] = datetime.now(UTC).isoformat()
+    golden_payload["criteria"] = {
+        "good_threshold": 0.7,
+        "bad_threshold": 0.45,
+        "quality_components": [
+            "1 - noise_ratio",
+            "cluster_count/6",
+            "total_sentences/800",
+            "bullet_count/4",
+            "summary_length",
+        ],
+    }
+
+    with golden_output_path.open("w", encoding="utf-8") as golden_file:
+        json.dump(golden_payload, golden_file, ensure_ascii=False, indent=2, default=str)
+
+    return golden_payload
 
 
 def export_recap_db_to_md(output_file: str = "recap_db_export.md") -> None:
@@ -338,115 +431,36 @@ def export_recap_db_to_md(output_file: str = "recap_db_export.md") -> None:
     resources_dir.mkdir(parents=True, exist_ok=True)
     golden_output_path = resources_dir / "golden_runs.json"
 
-    total_records = 0
-
     try:
-        with open(output_path, "w", encoding="utf-8") as md_file:
+        with output_path.open("w", encoding="utf-8") as md_file:
             md_file.write("# Recap Database Export\n\n")
-            md_file.write(f"**エクスポート日時**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+            md_file.write(
+                f"**エクスポート日時**: {datetime.now().astimezone().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+            )
             md_file.write("---\n\n")
 
-            # テーブル一覧を取得
-            cursor.execute("""
-                SELECT table_name
-                FROM information_schema.tables
-                WHERE table_schema = 'public'
-                AND table_type = 'BASE TABLE'
-                ORDER BY table_name
-            """)
-            tables = [row["table_name"] for row in cursor.fetchall()]
+            _write_table_list(cursor, md_file)
 
-            md_file.write("## テーブル一覧\n\n")
-            for table in tables:
-                md_file.write(f"- `{table}`\n")
-            md_file.write("\n---\n\n")
-
-            # 各テーブルのデータをエクスポート
-            # recap_jobs
-            md_file.write("## 1. recap_jobs\n\n")
-            total_records += export_table_to_md(cursor, "recap_jobs", md_file, "kicked_at DESC")
-
-            # recap_job_articles
-            md_file.write("## 2. recap_job_articles\n\n")
-            total_records += export_table_to_md(cursor, "recap_job_articles", md_file, "id DESC")
-
-            # recap_preprocess_metrics
-            md_file.write("## 3. recap_preprocess_metrics\n\n")
-            total_records += export_table_to_md(cursor, "recap_preprocess_metrics", md_file)
-
-            # recap_subworker_runs
-            md_file.write("## 4. recap_subworker_runs\n\n")
-            total_records += export_table_to_md(cursor, "recap_subworker_runs", md_file, "started_at DESC")
-
-            # recap_subworker_clusters
-            md_file.write("## 5. recap_subworker_clusters\n\n")
-            total_records += export_table_to_md(cursor, "recap_subworker_clusters", md_file, "run_id, cluster_id")
-
-            # recap_subworker_sentences
-            md_file.write("## 6. recap_subworker_sentences\n\n")
-            total_records += export_table_to_md(cursor, "recap_subworker_sentences", md_file, "cluster_row_id, id")
-
-            # recap_subworker_diagnostics
-            md_file.write("## 7. recap_subworker_diagnostics\n\n")
-            total_records += export_table_to_md(cursor, "recap_subworker_diagnostics", md_file)
-
-            # recap_sections
-            md_file.write("## 8. recap_sections\n\n")
-            total_records += export_table_to_md(cursor, "recap_sections", md_file)
-
-            # recap_final_sections (存在する場合)
-            cursor.execute("""
-                SELECT EXISTS (
-                    SELECT FROM information_schema.tables
-                    WHERE table_schema = 'public'
-                    AND table_name = 'recap_final_sections'
-                )
-            """)
-            if cursor.fetchone()["exists"]:
-                md_file.write("## 9. recap_final_sections\n\n")
-                total_records += export_table_to_md(cursor, "recap_final_sections", md_file, "created_at DESC")
-
-            # recap_outputs (存在する場合)
-            cursor.execute("""
-                SELECT EXISTS (
-                    SELECT FROM information_schema.tables
-                    WHERE table_schema = 'public'
-                    AND table_name = 'recap_outputs'
-                )
-            """)
-            if cursor.fetchone()["exists"]:
-                md_file.write("## 10. recap_outputs\n\n")
-                total_records += export_table_to_md(cursor, "recap_outputs", md_file, "created_at DESC")
+            total_records = _export_core_tables(cursor, md_file)
+            total_records += _export_optional_tables(cursor, md_file)
 
             md_file.write("---\n\n")
             md_file.write(f"**合計レコード数**: {total_records}\n\n")
-            md_file.write(f"**エクスポート完了**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            md_file.write(
+                f"**エクスポート完了**: {datetime.now().astimezone().strftime('%Y-%m-%d %H:%M:%S')}\n"
+            )
 
-        golden_payload = collect_golden_runs(cursor)
-        golden_payload["generated_at"] = datetime.now(timezone.utc).isoformat()
-        golden_payload["criteria"] = {
-            "good_threshold": 0.7,
-            "bad_threshold": 0.45,
-            "quality_components": [
-                "1 - noise_ratio",
-                "cluster_count/6",
-                "total_sentences/800",
-                "bullet_count/4",
-                "summary_length",
-            ],
-        }
+        golden_payload = _write_golden_runs(cursor, golden_output_path)
 
-        with open(golden_output_path, "w", encoding="utf-8") as golden_file:
-            json.dump(golden_payload, golden_file, ensure_ascii=False, indent=2, default=str)
-
-        print(f"✓ エクスポート完了: {output_path}")
-        print(f"  合計レコード数: {total_records}")
-        print(f"✓ ゴールデンセット出力: {golden_output_path}")
-        print(f"  良例: {len(golden_payload.get('good', []))} / 悪例: {len(golden_payload.get('bad', []))}")
+        sys.stdout.write(f"✓ エクスポート完了: {output_path}\n")
+        sys.stdout.write(f"  合計レコード数: {total_records}\n")
+        sys.stdout.write(f"✓ ゴールデンセット出力: {golden_output_path}\n")
+        sys.stdout.write(
+            f"  良例: {len(golden_payload.get('good', []))} / 悪例: {len(golden_payload.get('bad', []))}\n"
+        )
 
     except (psycopg2.Error, OSError, ValueError) as e:
-        print(f"エラーが発生しました: {e}", file=sys.stderr)
-        import traceback
+        sys.stderr.write(f"エラーが発生しました: {e}\n")
         traceback.print_exc(file=sys.stderr)
         sys.exit(1)
     finally:
@@ -457,4 +471,3 @@ def export_recap_db_to_md(output_file: str = "recap_db_export.md") -> None:
 if __name__ == "__main__":
     output_file = sys.argv[1] if len(sys.argv) > 1 else "recap_db_export.md"
     export_recap_db_to_md(output_file)
-

@@ -61,7 +61,7 @@ class Finding(NamedTuple):
 
 
 class RenderError(RuntimeError):
-    def __init__(self, message: str, returncode: int):
+    def __init__(self, message: str, returncode: int) -> None:
         super().__init__(message)
         self.returncode = returncode
 
@@ -71,6 +71,7 @@ def render(
     env_file: Path,
     profiles: list[str] | None = None,
     interpolate: bool = True,
+    repo_root: Path = REPO_ROOT,
 ) -> dict:
     cmd = ["docker", "compose", "--env-file", str(env_file), "-f", str(compose_file)]
     for profile in profiles or []:
@@ -80,7 +81,7 @@ def render(
         # Leaves env_file unmerged, so `environment` holds only declared keys.
         cmd += ["--no-interpolate"]
     cmd += ["--format", "json"]
-    proc = subprocess.run(cmd, capture_output=True, text=True, cwd=REPO_ROOT)
+    proc = subprocess.run(cmd, capture_output=True, text=True, cwd=repo_root, check=False)  # noqa: S603 -- fixed `docker compose` CLI resolved from PATH (patched in unit tests)
     if proc.returncode != 0:
         raise RenderError(proc.stderr or "docker compose config failed", proc.returncode)
     return json.loads(proc.stdout)
@@ -116,7 +117,7 @@ def caller_networks(cfg: dict, name: str, seen: frozenset[str] = frozenset()) ->
     service = cfg["services"][name]
     mode = service.get("network_mode")
     if mode:
-        parent = mode[len("service:"):] if mode.startswith("service:") else None
+        parent = mode[len("service:") :] if mode.startswith("service:") else None
         if parent in cfg["services"] and parent not in seen:
             return caller_networks(cfg, parent, seen | {name})
         return frozenset()
@@ -188,20 +189,31 @@ def split_by_origin(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--env-file", type=Path, default=REPO_ROOT / ".env.template")
-    parser.add_argument("-f", "--file", type=Path, default=REPO_ROOT / "compose" / "compose.yaml")
+    parser.add_argument("--repo-root", type=Path, default=REPO_ROOT)
+    parser.add_argument("--env-file", type=Path, default=None)
+    parser.add_argument("-f", "--file", type=Path, default=None)
     parser.add_argument(
-        "--profile", action="append", default=[],
+        "--profile",
+        action="append",
+        default=[],
         help="also activate this compose profile (repeatable); the default is what deploy renders",
     )
     args = parser.parse_args(argv)
+    compose_file = (
+        args.file if args.file is not None else args.repo_root / "compose" / "compose.yaml"
+    )
+    env_file = args.env_file if args.env_file is not None else args.repo_root / ".env.template"
 
     try:
-        cfg = render(args.file, args.env_file, args.profile)
-        raw = render(args.file, args.env_file, args.profile, interpolate=False)
+        cfg = render(compose_file, env_file, args.profile, repo_root=args.repo_root)
+        raw = render(
+            compose_file, env_file, args.profile, interpolate=False, repo_root=args.repo_root
+        )
     except RenderError as error:
-        print(f"compose-reachability-audit: docker compose config exited {error.returncode}", file=sys.stderr)
-        print(str(error).rstrip(), file=sys.stderr)
+        sys.stderr.write(
+            f"compose-reachability-audit: docker compose config exited {error.returncode}\n"
+        )
+        sys.stderr.write(f"{str(error).rstrip()}\n")
         return 2
 
     own, shared = split_by_origin(findings(cfg), declared_keys(raw))
@@ -210,19 +222,25 @@ def main(argv: list[str] | None = None) -> int:
         receivers: dict[tuple[str, str], int] = defaultdict(int)
         for finding in shared:
             receivers[(finding.variable, finding.host)] += 1
-        print("compose-reachability-audit: shared env_file values some receivers cannot reach (not failing):")
-        print("variable\thost\tservices")
+        sys.stdout.write(
+            "compose-reachability-audit: shared env_file values some receivers cannot reach (not failing):\n"
+        )
+        sys.stdout.write("variable\thost\tservices\n")
         for (variable, host), count in sorted(receivers.items()):
-            print(f"{variable}\t{host}\t{count}")
+            sys.stdout.write(f"{variable}\t{host}\t{count}\n")
 
     if not own:
-        print(f"compose-reachability-audit: {len(cfg.get('services', {}))} services, every declared compose-host URL shares a network")
+        sys.stdout.write(
+            f"compose-reachability-audit: {len(cfg.get('services', {}))} services, every declared compose-host URL shares a network\n"
+        )
         return 0
 
-    print(f"compose-reachability-audit: {len(own)} declared URL(s) name a service the caller shares no network with:")
-    print("service\tvariable\thost")
+    sys.stdout.write(
+        f"compose-reachability-audit: {len(own)} declared URL(s) name a service the caller shares no network with:\n"
+    )
+    sys.stdout.write("service\tvariable\thost\n")
     for finding in own:
-        print(f"{finding.service}\t{finding.variable}\t{finding.host}")
+        sys.stdout.write(f"{finding.service}\t{finding.variable}\t{finding.host}\n")
     return 1
 
 

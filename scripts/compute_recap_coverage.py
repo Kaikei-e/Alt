@@ -1,10 +1,11 @@
+import argparse
 import json
 import os
-import argparse
+import shutil
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 import psycopg2
@@ -13,24 +14,24 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 
-def load_env_vars() -> Dict[str, str]:
-    env_file = Path('.env')
-    env_vars: Dict[str, str] = {}
+def load_env_vars() -> dict[str, str]:
+    env_file = Path(".env")
+    env_vars: dict[str, str] = {}
 
     if env_file.exists():
         for raw in env_file.read_text().splitlines():
             line = raw.strip()
-            if not line or line.startswith('#') or '=' not in line:
+            if not line or line.startswith("#") or "=" not in line:
                 continue
-            key, value = line.split('=', 1)
+            key, value = line.split("=", 1)
             env_vars[key.strip()] = value.strip().strip('"').strip("'")
 
     for key in [
-        'RECAP_DB_HOST',
-        'RECAP_DB_PORT',
-        'RECAP_DB_USER',
-        'RECAP_DB_PASSWORD',
-        'RECAP_DB_NAME',
+        "RECAP_DB_HOST",
+        "RECAP_DB_PORT",
+        "RECAP_DB_USER",
+        "RECAP_DB_PASSWORD",
+        "RECAP_DB_NAME",
     ]:
         if key in os.environ:
             env_vars[key] = os.environ[key]
@@ -41,31 +42,31 @@ def load_env_vars() -> Dict[str, str]:
 def connect_db() -> psycopg2.extensions.connection:
     cfg = load_env_vars()
     # デフォルトはlocalhost（Docker外で実行する場合）
-    host = cfg.get('RECAP_DB_HOST', 'localhost')
-    port = cfg.get('RECAP_DB_PORT', '5435')  # デフォルトを5435に変更
-    user = cfg.get('RECAP_DB_USER', 'recap_user')
-    password = cfg.get('RECAP_DB_PASSWORD', '')
-    dbname = cfg.get('RECAP_DB_NAME', 'recap')
+    host = cfg.get("RECAP_DB_HOST", "localhost")
+    port = cfg.get("RECAP_DB_PORT", "5435")  # デフォルトを5435に変更
+    user = cfg.get("RECAP_DB_USER", "recap_user")
+    password = cfg.get("RECAP_DB_PASSWORD", "")
+    dbname = cfg.get("RECAP_DB_NAME", "recap")
 
     # secretsからパスワードを読み込む
     if not password:
         script_dir = Path(__file__).parent
         repo_root = script_dir.parent
-        secret_path = repo_root / 'secrets' / 'recap_db_password.txt'
+        secret_path = repo_root / "secrets" / "recap_db_password.txt"
         if secret_path.exists():
             password = secret_path.read_text().strip()
 
     # Dockerコンテナ内で実行される場合はrecap-dbを使用
     # それ以外の場合はlocalhost:5435を使用
-    if host == 'recap-db':
+    if host == "recap-db":
         # Dockerコンテナ内で実行される場合
-        port = cfg.get('RECAP_DB_PORT', '5432')
-    elif host == 'localhost' or host == '127.0.0.1':
+        port = cfg.get("RECAP_DB_PORT", "5432")
+    elif host in {"localhost", "127.0.0.1"}:
         # ローカルで実行される場合（RECAP_DB_PORT 優先）
-        port = cfg.get('RECAP_DB_PORT', '5435')
+        port = cfg.get("RECAP_DB_PORT", "5435")
     else:
         # 環境変数で指定された場合
-        port = cfg.get('RECAP_DB_PORT', port)
+        port = cfg.get("RECAP_DB_PORT", port)
 
     return psycopg2.connect(
         host=host,
@@ -77,7 +78,7 @@ def connect_db() -> psycopg2.extensions.connection:
     )
 
 
-def normalize_bullets(raw: Any) -> List[str]:
+def normalize_bullets(raw: object) -> list[str]:
     if raw is None:
         return []
     if isinstance(raw, str):
@@ -87,14 +88,14 @@ def normalize_bullets(raw: Any) -> List[str]:
             return [raw]
         return normalize_bullets(parsed)
     if isinstance(raw, list):
-        bullets: List[str] = []
+        bullets: list[str] = []
         for entry in raw:
             if isinstance(entry, dict):
-                text = entry.get('text') or entry.get('content')
+                text = entry.get("text") or entry.get("content")
                 if isinstance(text, str):
                     bullets.append(text.strip())
-                elif isinstance(entry.get('detail'), str):
-                    bullets.append(entry['detail'].strip())
+                elif isinstance(entry.get("detail"), str):
+                    bullets.append(entry["detail"].strip())
             elif isinstance(entry, str):
                 bullets.append(entry.strip())
         return [b for b in bullets if b]
@@ -103,7 +104,7 @@ def normalize_bullets(raw: Any) -> List[str]:
     return []
 
 
-def fetch_job_outputs(conn, job_id: str) -> List[Dict[str, Any]]:
+def fetch_job_outputs(conn: psycopg2.extensions.connection, job_id: str) -> list[dict[str, Any]]:
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute(
             """
@@ -112,12 +113,12 @@ def fetch_job_outputs(conn, job_id: str) -> List[Dict[str, Any]]:
             WHERE job_id = %(job)s
             ORDER BY genre
             """,
-            {'job': job_id},
+            {"job": job_id},
         )
         return cur.fetchall()
 
 
-def fetch_run_id(conn, job_id: str, genre: str) -> Optional[int]:
+def fetch_run_id(conn: psycopg2.extensions.connection, job_id: str, genre: str) -> int | None:
     with conn.cursor() as cur:
         cur.execute(
             """
@@ -127,13 +128,15 @@ def fetch_run_id(conn, job_id: str, genre: str) -> Optional[int]:
             ORDER BY id DESC
             LIMIT 1
             """,
-            {'job': job_id, 'genre': genre},
+            {"job": job_id, "genre": genre},
         )
         row = cur.fetchone()
         return row[0] if row else None
 
 
-def fetch_centroid_sentences(conn, run_id: int, limit: int = 200) -> List[str]:
+def fetch_centroid_sentences(
+    conn: psycopg2.extensions.connection, run_id: int, limit: int = 200
+) -> list[str]:
     with conn.cursor() as cur:
         cur.execute(
             """
@@ -153,18 +156,18 @@ def fetch_centroid_sentences(conn, run_id: int, limit: int = 200) -> List[str]:
                 LIMIT 1
             ) s ON TRUE
             """,
-            {'run_id': run_id, 'limit': limit},
+            {"run_id": run_id, "limit": limit},
         )
         sentences = [row[0].strip() for row in cur.fetchall() if row and row[0]]
     return list(dict.fromkeys(sentences))
 
 
-def compute_coverage(bullets: List[str], centroids: List[str]) -> float:
+def compute_coverage(bullets: list[str], centroids: list[str]) -> float:
     if not bullets or not centroids:
         return 0.0
 
     texts = bullets + centroids
-    vectorizer = TfidfVectorizer(analyzer='char_wb', ngram_range=(2, 4), max_features=2048)
+    vectorizer = TfidfVectorizer(analyzer="char_wb", ngram_range=(2, 4), max_features=2048)
     tfidf = vectorizer.fit_transform(texts)
     bullet_matrix = tfidf[: len(bullets)]
     centroid_matrix = tfidf[len(bullets) :]
@@ -176,15 +179,15 @@ def compute_coverage(bullets: List[str], centroids: List[str]) -> float:
     return float(np.mean(max_similarity))
 
 
-def compute_job_metrics(conn, job_id: str) -> Dict[str, Any]:
+def compute_job_metrics(conn: psycopg2.extensions.connection, job_id: str) -> dict[str, Any]:
     outputs = fetch_job_outputs(conn, job_id)
-    per_genre: List[Dict[str, Any]] = []
+    per_genre: list[dict[str, Any]] = []
     total_bullets = 0
     total_centroids = 0
 
     for row in outputs:
-        genre = row['genre']
-        bullets = normalize_bullets(row['bullets_ja'])
+        genre = row["genre"]
+        bullets = normalize_bullets(row["bullets_ja"])
         total_bullets += len(bullets)
         run_id = fetch_run_id(conn, job_id, genre)
         if run_id is None:
@@ -194,10 +197,10 @@ def compute_job_metrics(conn, job_id: str) -> Dict[str, Any]:
         coverage = compute_coverage(bullets, centroids)
         per_genre.append(
             {
-                'genre': genre,
-                'coverage': coverage,
-                'bullets': len(bullets),
-                'centroids': len(centroids),
+                "genre": genre,
+                "coverage": coverage,
+                "bullets": len(bullets),
+                "centroids": len(centroids),
             }
         )
 
@@ -207,26 +210,26 @@ def compute_job_metrics(conn, job_id: str) -> Dict[str, Any]:
         min_coverage = 0.0
         max_coverage = 0.0
     else:
-        coverages = [g['coverage'] for g in per_genre]
+        coverages = [g["coverage"] for g in per_genre]
         avg_coverage = float(np.mean(coverages))
         std_coverage = float(np.std(coverages)) if len(coverages) > 1 else 0.0
         min_coverage = float(np.min(coverages))
         max_coverage = float(np.max(coverages))
 
     return {
-        'job_id': job_id,
-        'genre_results': per_genre,
-        'avg_coverage': avg_coverage,
-        'std_coverage': std_coverage,
-        'min_coverage': min_coverage,
-        'max_coverage': max_coverage,
-        'total_genres': len(per_genre),
-        'total_bullets': total_bullets,
-        'total_centroids': total_centroids,
+        "job_id": job_id,
+        "genre_results": per_genre,
+        "avg_coverage": avg_coverage,
+        "std_coverage": std_coverage,
+        "min_coverage": min_coverage,
+        "max_coverage": max_coverage,
+        "total_genres": len(per_genre),
+        "total_bullets": total_bullets,
+        "total_centroids": total_centroids,
     }
 
 
-def get_recent_jobs(conn, limit: int = 2) -> List[Tuple[str, str]]:
+def get_recent_jobs(conn: psycopg2.extensions.connection, limit: int = 2) -> list[tuple[str, str]]:
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute(
             """
@@ -235,12 +238,12 @@ def get_recent_jobs(conn, limit: int = 2) -> List[Tuple[str, str]]:
             ORDER BY kicked_at DESC
             LIMIT %(limit)s
             """,
-            {'limit': limit},
+            {"limit": limit},
         )
-        return [(row['job_id'], row['kicked_at'].isoformat()) for row in cur.fetchall()]
+        return [(row["job_id"], row["kicked_at"].isoformat()) for row in cur.fetchall()]
 
 
-def check_job_exists(conn, job_id: str) -> Optional[Dict[str, Any]]:
+def check_job_exists(conn: psycopg2.extensions.connection, job_id: str) -> dict[str, Any] | None:
     """指定されたJob IDが存在するか確認"""
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute(
@@ -249,13 +252,13 @@ def check_job_exists(conn, job_id: str) -> Optional[Dict[str, Any]]:
             FROM recap_jobs
             WHERE job_id = %(job_id)s
             """,
-            {'job_id': job_id},
+            {"job_id": job_id},
         )
         row = cur.fetchone()
         return dict(row) if row else None
 
 
-def get_job_status_summary(conn, job_id: str) -> Dict[str, Any]:
+def get_job_status_summary(conn: psycopg2.extensions.connection, job_id: str) -> dict[str, Any]:
     """Jobのステータスサマリを取得"""
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute(
@@ -268,10 +271,12 @@ def get_job_status_summary(conn, job_id: str) -> Dict[str, Any]:
             WHERE job_id = %(job_id)s
             GROUP BY status
             """,
-            {'job_id': job_id},
+            {"job_id": job_id},
         )
-        status_counts = {row['status']: {'count': row['count'], 'genre_count': row['genre_count']}
-                        for row in cur.fetchall()}
+        status_counts = {
+            row["status"]: {"count": row["count"], "genre_count": row["genre_count"]}
+            for row in cur.fetchall()
+        }
 
         cur.execute(
             """
@@ -279,9 +284,9 @@ def get_job_status_summary(conn, job_id: str) -> Dict[str, Any]:
             FROM recap_subworker_runs
             WHERE job_id = %(job_id)s
             """,
-            {'job_id': job_id},
+            {"job_id": job_id},
         )
-        total_genres = cur.fetchone()['total_genres'] if cur.rowcount > 0 else 0
+        total_genres = cur.fetchone()["total_genres"] if cur.rowcount > 0 else 0
 
         cur.execute(
             """
@@ -289,18 +294,20 @@ def get_job_status_summary(conn, job_id: str) -> Dict[str, Any]:
             FROM recap_outputs
             WHERE job_id = %(job_id)s
             """,
-            {'job_id': job_id},
+            {"job_id": job_id},
         )
-        output_count = cur.fetchone()['output_count'] if cur.rowcount > 0 else 0
+        output_count = cur.fetchone()["output_count"] if cur.rowcount > 0 else 0
 
         return {
-            'status_counts': status_counts,
-            'total_genres': total_genres,
-            'output_count': output_count,
+            "status_counts": status_counts,
+            "total_genres": total_genres,
+            "output_count": output_count,
         }
 
 
-def get_preprocess_metrics(conn, job_id: str) -> Optional[Dict[str, Any]]:
+def get_preprocess_metrics(
+    conn: psycopg2.extensions.connection, job_id: str
+) -> dict[str, Any] | None:
     """前処理メトリクスを取得"""
     with conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute(
@@ -309,16 +316,131 @@ def get_preprocess_metrics(conn, job_id: str) -> Optional[Dict[str, Any]]:
             FROM recap_preprocess_metrics
             WHERE job_id = %(job_id)s
             """,
-            {'job_id': job_id},
+            {"job_id": job_id},
         )
         row = cur.fetchone()
         return dict(row) if row else None
 
 
+def _evaluate_verify_jobs(
+    conn: psycopg2.extensions.connection, jobs: list[tuple[str, Any]]
+) -> dict[str, Any]:
+    """検証モードで各Jobのステータス・前処理・カバレッジメトリクスを評価する"""
+    sys.stdout.write("\n[2] 各Jobの詳細評価\n")
+    sys.stdout.write("=" * 80 + "\n")
+    results: dict[str, Any] = {}
+    jobs_to_evaluate = [
+        ("latest" if i == 0 else f"previous-{i}", job_id)
+        for i, (job_id, _kicked_at) in enumerate(jobs)
+    ]
+
+    for label, job_id in jobs_to_evaluate:
+        sys.stdout.write(f"\n--- {label.upper()}: {job_id[:8]}... ---\n")
+        status_summary = get_job_status_summary(conn, job_id)
+        sys.stdout.write(f"ステータス分布: {status_summary['status_counts']}\n")
+        sys.stdout.write(f"総ジャンル数: {status_summary['total_genres']}\n")
+        sys.stdout.write(f"出力ジャンル数: {status_summary['output_count']}\n")
+
+        preprocess = get_preprocess_metrics(conn, job_id)
+        if preprocess:
+            sys.stdout.write(
+                f"前処理: 取得={preprocess['total_articles_fetched']}, "
+                f"処理={preprocess['articles_processed']}\n"
+            )
+
+        metrics = compute_job_metrics(conn, job_id)
+        job_kicked_at = next((ka for jid, ka in jobs if jid == job_id), "N/A")
+        metrics["kicked_at"] = job_kicked_at
+        results[job_id] = {
+            "label": label,
+            "status_summary": status_summary,
+            "preprocess": preprocess,
+            "metrics": metrics,
+        }
+
+        sys.stdout.write("\nカバレッジメトリクス:\n")
+        sys.stdout.write(f"  平均: {metrics['avg_coverage']:.4f}\n")
+        sys.stdout.write(f"  標準偏差: {metrics['std_coverage']:.4f}\n")
+        sys.stdout.write(f"  最小値: {metrics['min_coverage']:.4f}\n")
+        sys.stdout.write(f"  最大値: {metrics['max_coverage']:.4f}\n")
+        sys.stdout.write(f"  ジャンル数: {metrics['total_genres']}\n")
+
+        sys.stdout.write("\nジャンル別カバレッジ:\n")
+        sorted_genres = sorted(metrics["genre_results"], key=lambda x: x["coverage"], reverse=True)
+        for g in sorted_genres:
+            sys.stdout.write(
+                f"  {g['genre']}: {g['coverage']:.4f} "
+                f"(bullets={g['bullets']}, centroids={g['centroids']})\n"
+            )
+
+    return results
+
+
+def _save_verification_results(results: dict[str, Any]) -> None:
+    """検証結果をタイムスタンプ付きJSONと最新スナップショットへ保存する"""
+    output_dir = Path(__file__).parent / "reports"
+    output_dir.mkdir(exist_ok=True)
+    timestamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S")
+    output_file = output_dir / f"recap_verification_results_{timestamp}.json"
+    with output_file.open("w", encoding="utf-8") as f:
+        json.dump(results, f, indent=2, ensure_ascii=False, default=str)
+    sys.stdout.write(f"\n結果を保存しました: {output_file}\n")
+
+    latest_link = output_dir / "recap_verification_results.json"
+    if latest_link.exists() or latest_link.is_symlink():
+        latest_link.unlink()
+    shutil.copy(output_file, latest_link)
+    sys.stdout.write(f"最新結果を更新: {latest_link}\n")
+
+
+def _run_verify_mode(conn: psycopg2.extensions.connection, num_jobs: int) -> None:
+    """検証モード: 最新N件のJobを評価してJSON保存する"""
+    sys.stdout.write("=" * 80 + "\n")
+    sys.stdout.write("Recap評価レポート - 最新Jobの評価\n")
+    sys.stdout.write(f"実行日時: {datetime.now().astimezone().strftime('%Y-%m-%d %H:%M:%S')}\n")
+    sys.stdout.write("=" * 80 + "\n")
+
+    sys.stdout.write(f"\n[1] 最新{num_jobs}件のJobを取得\n")
+    sys.stdout.write("-" * 80 + "\n")
+    jobs = get_recent_jobs(conn, limit=num_jobs)
+    sys.stdout.write(f"取得Job数: {len(jobs)}\n")
+    for job_id, kicked_at in jobs:
+        sys.stdout.write(f"  Job {job_id[:8]}... kicked_at={kicked_at}\n")
+
+    results = _evaluate_verify_jobs(conn, jobs)
+    _save_verification_results(results)
+
+
+def _run_summary_mode(conn: psycopg2.extensions.connection) -> None:
+    """通常モード: 最新のJobのカバレッジを表示する"""
+    jobs = get_recent_jobs(conn)
+    results = []
+    for job_id, kicked_at in jobs:
+        metrics = compute_job_metrics(conn, job_id)
+        metrics["kicked_at"] = kicked_at
+        results.append(metrics)
+
+    for res in results:
+        sys.stdout.write(f"Job {res['job_id']} kicked_at {res['kicked_at']}\n")
+        sys.stdout.write(f"  Genres covered: {res['total_genres']}\n")
+        sys.stdout.write(f"  Average coverage (TF-IDF): {res['avg_coverage']:.4f}\n")
+        sys.stdout.write(f"  Std deviation: {res['std_coverage']:.4f}\n")
+        sys.stdout.write(f"  Min: {res['min_coverage']:.4f}, Max: {res['max_coverage']:.4f}\n")
+        sys.stdout.write(
+            f"  Bullets: {res['total_bullets']}, Centroids: {res['total_centroids']}\n"
+        )
+        for genre_info in sorted(res["genre_results"], key=lambda g: g["coverage"], reverse=True):
+            coverage = genre_info["coverage"]
+            sys.stdout.write(
+                f"    {genre_info['genre']} -> coverage={coverage:.4f} bullets={genre_info['bullets']} centroids={genre_info['centroids']}\n"
+            )
+        sys.stdout.write("\n")
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description='Compute recap coverage metrics')
-    parser.add_argument('--verify', '-v', action='store_true', help='Verification mode')
-    parser.add_argument('--jobs', type=int, default=5, help='Number of recent jobs to evaluate')
+    parser = argparse.ArgumentParser(description="Compute recap coverage metrics")
+    parser.add_argument("--verify", "-v", action="store_true", help="Verification mode")
+    parser.add_argument("--jobs", type=int, default=5, help="Number of recent jobs to evaluate")
     args = parser.parse_args()
     verify_mode = args.verify
     num_jobs = args.jobs
@@ -326,114 +448,12 @@ def main() -> None:
     conn = connect_db()
     try:
         if verify_mode:
-            # 検証モード: 最新のJobを評価
-            print("=" * 80)
-            print("Recap評価レポート - 最新Jobの評価")
-            print(f"実行日時: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-            print("=" * 80)
-
-            # 最新の完了済みJobを取得
-            print(f"\n[1] 最新{num_jobs}件のJobを取得")
-            print("-" * 80)
-            jobs = get_recent_jobs(conn, limit=num_jobs)
-            print(f"取得Job数: {len(jobs)}")
-            for job_id, kicked_at in jobs:
-                print(f"  Job {job_id[:8]}... kicked_at={kicked_at}")
-
-            # 各Jobの詳細評価
-            print("\n[2] 各Jobの詳細評価")
-            print("=" * 80)
-            results = {}
-            jobs_to_evaluate = []
-
-            # 最新Jobを追加（最新はlatest、それ以外はprevious-N）
-            for i, (job_id, kicked_at) in enumerate(jobs):
-                label = 'latest' if i == 0 else f'previous-{i}'
-                jobs_to_evaluate.append((label, job_id))
-
-            for label, job_id in jobs_to_evaluate:
-                print(f"\n--- {label.upper()}: {job_id[:8]}... ---")
-                status_summary = get_job_status_summary(conn, job_id)
-                print(f"ステータス分布: {status_summary['status_counts']}")
-                print(f"総ジャンル数: {status_summary['total_genres']}")
-                print(f"出力ジャンル数: {status_summary['output_count']}")
-
-                preprocess = get_preprocess_metrics(conn, job_id)
-                if preprocess:
-                    print(f"前処理: 取得={preprocess['total_articles_fetched']}, "
-                          f"処理={preprocess['articles_processed']}")
-
-                metrics = compute_job_metrics(conn, job_id)
-                # jobs_to_evaluateのlabelと一緒にkicked_atも取得できるよう修正
-                job_kicked_at = next((ka for jid, ka in jobs if jid == job_id), 'N/A')
-                metrics['kicked_at'] = job_kicked_at
-                results[job_id] = {
-                    'label': label,
-                    'status_summary': status_summary,
-                    'preprocess': preprocess,
-                    'metrics': metrics
-                }
-
-                print(f"\nカバレッジメトリクス:")
-                print(f"  平均: {metrics['avg_coverage']:.4f}")
-                print(f"  標準偏差: {metrics['std_coverage']:.4f}")
-                print(f"  最小値: {metrics['min_coverage']:.4f}")
-                print(f"  最大値: {metrics['max_coverage']:.4f}")
-                print(f"  ジャンル数: {metrics['total_genres']}")
-
-                print(f"\nジャンル別カバレッジ:")
-                sorted_genres = sorted(
-                    metrics['genre_results'],
-                    key=lambda x: x['coverage'],
-                    reverse=True
-                )
-                for g in sorted_genres:
-                    print(f"  {g['genre']}: {g['coverage']:.4f} "
-                          f"(bullets={g['bullets']}, centroids={g['centroids']})")
-
-            # 結果をJSONで保存（タイムスタンプ付き）
-            output_dir = Path(__file__).parent / 'reports'
-            output_dir.mkdir(exist_ok=True)
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            output_file = output_dir / f'recap_verification_results_{timestamp}.json'
-            with open(output_file, 'w', encoding='utf-8') as f:
-                json.dump(results, f, indent=2, ensure_ascii=False, default=str)
-            print(f"\n結果を保存しました: {output_file}")
-
-            # 最新結果へのシンボリックリンクも更新
-            latest_link = output_dir / 'recap_verification_results.json'
-            if latest_link.exists() or latest_link.is_symlink():
-                latest_link.unlink()
-            # シンボリックリンクではなく実ファイルとしてコピー（互換性のため）
-            import shutil
-            shutil.copy(output_file, latest_link)
-            print(f"最新結果を更新: {latest_link}")
-
+            _run_verify_mode(conn, num_jobs)
         else:
-            # 通常モード: 最新のJobを表示
-            jobs = get_recent_jobs(conn)
-            results = []
-            for job_id, kicked_at in jobs:
-                metrics = compute_job_metrics(conn, job_id)
-                metrics['kicked_at'] = kicked_at
-                results.append(metrics)
-
-            for res in results:
-                print(f"Job {res['job_id']} kicked_at {res['kicked_at']}")
-                print(f"  Genres covered: {res['total_genres']}")
-                print(f"  Average coverage (TF-IDF): {res['avg_coverage']:.4f}")
-                print(f"  Std deviation: {res['std_coverage']:.4f}")
-                print(f"  Min: {res['min_coverage']:.4f}, Max: {res['max_coverage']:.4f}")
-                print(f"  Bullets: {res['total_bullets']}, Centroids: {res['total_centroids']}")
-                for genre_info in sorted(res['genre_results'], key=lambda g: g['coverage'], reverse=True):
-                    coverage = genre_info['coverage']
-                    print(
-                        f"    {genre_info['genre']} -> coverage={coverage:.4f} bullets={genre_info['bullets']} centroids={genre_info['centroids']}"
-                    )
-                print()
+            _run_summary_mode(conn)
     finally:
         conn.close()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

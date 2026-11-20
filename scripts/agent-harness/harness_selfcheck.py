@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -22,11 +23,10 @@ BAD_ENV_VARS: tuple[str, ...] = ("CLAUDE_TOOL_INPUT", "CLAUDE_FILE_PATHS")
 REPO_SCRIPT_REF_RE = re.compile(
     r"(?:\$CLAUDE_PROJECT_DIR|\$\{CLAUDE_PROJECT_DIR\}|\$\(git rev-parse --show-toplevel\))/([^\s'\"]+)"
 )
-SHARED_MARKER_RE = re.compile(
-    r"^\s*<!--\s*shared:([A-Za-z0-9_.-]+):(start|end)\s*-->\s*$"
-)
+SHARED_MARKER_RE = re.compile(r"^\s*<!--\s*shared:([A-Za-z0-9_.-]+):(start|end)\s*-->\s*$")
 MAX_CLAUDE_MD_LINES = 200
 MAX_AGENTS_MD_BYTES = 32768
+QUOTED_MIN_LEN = 2
 FAILURE_PATTERNS_REL = ".claude/skills/failure-pattern-review/references/patterns.md"
 FAILURE_SKILL_REL = ".claude/skills/failure-pattern-review/SKILL.md"
 REQUIRED_FP_LEADINS: tuple[str, ...] = (
@@ -49,9 +49,7 @@ ABBREV_PRECEDENT_RE = re.compile(
 REPO_PATH_TOKEN_RE = re.compile(
     r"(?<![A-Za-z0-9_./-])((?:scripts|\.github|\.claude/skills)/[^\s`'\"()（）,、。]+)"
 )
-LEADIN_BREAK_RE = re.compile(
-    r"\*\*(?:機構|先例|問い|確認コマンド|機械的に見ているもの)\.\*\*"
-)
+LEADIN_BREAK_RE = re.compile(r"\*\*(?:機構|先例|問い|確認コマンド|機械的に見ているもの)\.\*\*")
 
 
 @dataclass(frozen=True)
@@ -61,9 +59,17 @@ class Finding:
     message: str
 
 
+def _git_executable() -> str:
+    git_bin = shutil.which("git")
+    if git_bin is None:
+        msg = "git executable not found on PATH"
+        raise FileNotFoundError(msg)
+    return git_bin
+
+
 def _resolve_default_root() -> Path:
-    res = subprocess.run(
-        ["git", "rev-parse", "--show-toplevel"],
+    res = subprocess.run(  # noqa: S603 -- git resolved via shutil.which with explicit args
+        [_git_executable(), "rev-parse", "--show-toplevel"],
         capture_output=True,
         text=True,
         check=False,
@@ -74,8 +80,8 @@ def _resolve_default_root() -> Path:
 
 
 def _git_ls_files(root: Path) -> list[str]:
-    res = subprocess.run(
-        ["git", "-C", str(root), "ls-files", "-z"],
+    res = subprocess.run(  # noqa: S603 -- git resolved via shutil.which with explicit args
+        [_git_executable(), "-C", str(root), "ls-files", "-z"],
         capture_output=True,
         check=False,
     )
@@ -85,8 +91,8 @@ def _git_ls_files(root: Path) -> list[str]:
     return [entry for entry in raw.split("\x00") if entry]
 
 
-def _iter_hook_objects_with_matchers(entries: Any) -> list[tuple[Any, dict[str, Any]]]:
-    result: list[tuple[Any, dict[str, Any]]] = []
+def _iter_hook_objects_with_matchers(entries: object) -> list[tuple[object, dict[str, Any]]]:
+    result: list[tuple[object, dict[str, Any]]] = []
     if not isinstance(entries, list):
         return result
     for group in entries:
@@ -95,15 +101,13 @@ def _iter_hook_objects_with_matchers(entries: Any) -> list[tuple[Any, dict[str, 
         matcher = group.get("matcher")
         nested = group.get("hooks")
         if isinstance(nested, list):
-            for hook in nested:
-                if isinstance(hook, dict):
-                    result.append((matcher, hook))
+            result.extend((matcher, hook) for hook in nested if isinstance(hook, dict))
         elif "type" in group or "command" in group:
             result.append((matcher, group))
     return result
 
 
-def _matcher_matches_tool(matcher: Any, tool_name: str) -> bool:
+def _matcher_matches_tool(matcher: object, tool_name: str) -> bool:
     if matcher is None:
         return True
     if not isinstance(matcher, str):
@@ -117,9 +121,7 @@ def _matcher_matches_tool(matcher: Any, tool_name: str) -> bool:
         return pat == tool_name
 
 
-def _load_hook_config(
-    path: Path, rel_label: str, findings: list[Finding]
-) -> dict[str, Any] | None:
+def _load_hook_config(path: Path, rel_label: str, findings: list[Finding]) -> dict[str, Any] | None:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
@@ -178,36 +180,35 @@ def _check_hook_file(
                     if _matcher_matches_tool(matcher, "Bash"):
                         codex_bash_ops_found = True
 
-            for var in BAD_ENV_VARS:
-                if var in cmd_str:
-                    findings.append(
-                        Finding(
-                            "H1",
-                            rel_label,
-                            f"hook command references non-existent {var}; read JSON from stdin instead",
-                        )
-                    )
-
-            for match in REPO_SCRIPT_REF_RE.finditer(cmd_str):
-                rel_script = match.group(1)
-                if not (root / rel_script).exists():
-                    findings.append(
-                        Finding(
-                            "H2",
-                            rel_label,
-                            f"hook command references missing repo script '{rel_script}'",
-                        )
-                    )
-
-    for required_guard in ("guard_protected_paths.py", "guard_event_time.py"):
-        if not any(required_guard in cmd for cmd in pre_tool_commands):
-            findings.append(
+            findings.extend(
                 Finding(
-                    "H4",
+                    "H1",
                     rel_label,
-                    f"PreToolUse hooks do not reference {required_guard}",
+                    f"hook command references non-existent {var}; read JSON from stdin instead",
                 )
+                for var in BAD_ENV_VARS
+                if var in cmd_str
             )
+
+            findings.extend(
+                Finding(
+                    "H2",
+                    rel_label,
+                    f"hook command references missing repo script '{match.group(1)}'",
+                )
+                for match in REPO_SCRIPT_REF_RE.finditer(cmd_str)
+                if not (root / match.group(1)).exists()
+            )
+
+    findings.extend(
+        Finding(
+            "H4",
+            rel_label,
+            f"PreToolUse hooks do not reference {required_guard}",
+        )
+        for required_guard in ("guard_protected_paths.py", "guard_event_time.py")
+        if not any(required_guard in cmd for cmd in pre_tool_commands)
+    )
 
     if not is_claude and not codex_bash_ops_found:
         findings.append(
@@ -296,7 +297,7 @@ def _matches_rule_glob(pattern: str, tracked_files: list[str]) -> bool:
 
 def _strip_yaml_quotes(raw: str) -> str:
     val = raw.strip()
-    if len(val) >= 2 and val[0] == val[-1] and val[0] in ('"', "'"):
+    if len(val) >= QUOTED_MIN_LEN and val[0] == val[-1] and val[0] in ('"', "'"):
         return val[1:-1]
     # Strip trailing unquoted YAML comment if present.
     if " #" in val:
@@ -316,28 +317,46 @@ def _split_inline_yaml_list(inner: str) -> list[str]:
             buf.append(ch)
             if ch == in_quote and (i == 0 or inner[i - 1] != "\\"):
                 in_quote = None
+        elif ch in ('"', "'"):
+            in_quote = ch
+            buf.append(ch)
+        elif ch == "{":
+            brace_depth += 1
+            buf.append(ch)
+        elif ch == "}":
+            brace_depth = max(0, brace_depth - 1)
+            buf.append(ch)
+        elif ch == "," and brace_depth == 0:
+            token = _strip_yaml_quotes("".join(buf))
+            if token:
+                items.append(token)
+            buf = []
         else:
-            if ch in ('"', "'"):
-                in_quote = ch
-                buf.append(ch)
-            elif ch == "{":
-                brace_depth += 1
-                buf.append(ch)
-            elif ch == "}":
-                brace_depth = max(0, brace_depth - 1)
-                buf.append(ch)
-            elif ch == "," and brace_depth == 0:
-                token = _strip_yaml_quotes("".join(buf))
-                if token:
-                    items.append(token)
-                buf = []
-            else:
-                buf.append(ch)
+            buf.append(ch)
         i += 1
     tail = _strip_yaml_quotes("".join(buf))
     if tail:
         items.append(tail)
     return items
+
+
+def _parse_block_yaml_list(fm_lines: list[str], start_idx: int) -> tuple[list[str], int]:
+    items: list[str] = []
+    j = start_idx
+    while j < len(fm_lines):
+        sub = fm_lines[j]
+        if not sub.strip() or sub.lstrip().startswith("#"):
+            j += 1
+            continue
+        if not sub[0].isspace():
+            break
+        m_item = re.match(r"^\s*-\s+(.*)$", sub)
+        if m_item is not None:
+            item = _strip_yaml_quotes(m_item.group(1))
+            if item:
+                items.append(item)
+        j += 1
+    return items, j - 1
 
 
 def _extract_frontmatter_paths(text: str) -> list[str]:
@@ -364,21 +383,8 @@ def _extract_frontmatter_paths(text: str) -> list[str]:
             elif rest:
                 paths.append(_strip_yaml_quotes(rest))
             else:
-                j = i + 1
-                while j < len(fm_lines):
-                    sub = fm_lines[j]
-                    if not sub.strip() or sub.lstrip().startswith("#"):
-                        j += 1
-                        continue
-                    if not sub[0].isspace():
-                        break
-                    m_item = re.match(r"^\s*-\s+(.*)$", sub)
-                    if m_item is not None:
-                        item = _strip_yaml_quotes(m_item.group(1))
-                        if item:
-                            paths.append(item)
-                    j += 1
-                i = j - 1
+                items, i = _parse_block_yaml_list(fm_lines, i + 1)
+                paths.extend(items)
         i += 1
     return paths
 
@@ -414,42 +420,39 @@ def _extract_shared_blocks(
                 else:
                     open_name = name
                     open_start_offset = line_end
+            elif open_name is None:
+                findings.append(
+                    Finding(
+                        "H7",
+                        rel_label,
+                        f"unexpected shared block end marker for '{name}'",
+                    )
+                )
+            elif open_name != name:
+                findings.append(
+                    Finding(
+                        "H7",
+                        rel_label,
+                        f"mismatched shared block end '{name}' (expected '{open_name}')",
+                    )
+                )
+                open_name = None
+            elif name in blocks:
+                findings.append(
+                    Finding(
+                        "H7",
+                        rel_label,
+                        f"duplicate shared block '{name}'",
+                    )
+                )
+                open_name = None
             else:
-                if open_name is None:
-                    findings.append(
-                        Finding(
-                            "H7",
-                            rel_label,
-                            f"unexpected shared block end marker for '{name}'",
-                        )
-                    )
-                elif open_name != name:
-                    findings.append(
-                        Finding(
-                            "H7",
-                            rel_label,
-                            f"mismatched shared block end '{name}' (expected '{open_name}')",
-                        )
-                    )
-                    open_name = None
-                elif name in blocks:
-                    findings.append(
-                        Finding(
-                            "H7",
-                            rel_label,
-                            f"duplicate shared block '{name}'",
-                        )
-                    )
-                    open_name = None
-                else:
-                    blocks[name] = raw[open_start_offset:offset]
-                    open_name = None
+                blocks[name] = raw[open_start_offset:offset]
+                open_name = None
         offset = line_end
 
     if open_name is not None:
-        findings.append(
-            Finding("H7", rel_label, f"unclosed shared block '{open_name}'")
-        )
+        findings.append(Finding("H7", rel_label, f"unclosed shared block '{open_name}'"))
     return blocks
 
 
@@ -466,33 +469,12 @@ def _non_fenced_lines(lines: list[str]) -> list[tuple[int, str]]:
     return result
 
 
-def _check_failure_pattern_catalog(
-    root: Path, findings: list[Finding]
-) -> None:
-    """H10: verify failure-pattern catalog structure, precedents, paths, and routing table."""
-    patterns_path = root / FAILURE_PATTERNS_REL
-    skill_path = root / FAILURE_SKILL_REL
-
-    if not patterns_path.is_file():
-        findings.append(
-            Finding("H10", FAILURE_PATTERNS_REL, f"{FAILURE_PATTERNS_REL} is missing")
-        )
-        if not skill_path.is_file():
-            findings.append(
-                Finding("H10", FAILURE_SKILL_REL, f"{FAILURE_SKILL_REL} is missing")
-            )
-        return
-
-    patterns_text = patterns_path.read_text(encoding="utf-8", errors="replace")
-    lines = patterns_text.splitlines()
-    non_fence_lines = _non_fenced_lines(lines)
-
+def _parse_fp_sections(
+    lines: list[str], non_fence_lines: list[tuple[int, str]], findings: list[Finding]
+) -> list[tuple[int, str, int, int]]:
     all_h2: list[tuple[int, str]] = [
-        (idx, line)
-        for idx, line in non_fence_lines
-        if H2_HEADING_RE.match(line) is not None
+        (idx, line) for idx, line in non_fence_lines if H2_HEADING_RE.match(line) is not None
     ]
-
     parsed_sections: list[tuple[int, str, int, int]] = []
     for pos, (idx, line) in enumerate(all_h2):
         end_idx = all_h2[pos + 1][0] if pos + 1 < len(all_h2) else len(lines)
@@ -508,143 +490,121 @@ def _check_failure_pattern_catalog(
             continue
         nn_str = m.group(1)
         parsed_sections.append((int(nn_str), nn_str, idx, end_idx))
+    return parsed_sections
 
-    if not parsed_sections:
-        findings.append(
-            Finding(
-                "H10",
-                FAILURE_PATTERNS_REL,
-                "no '## FP-NN <name>' sections found",
-            )
-        )
-    else:
-        seen_nums: set[int] = set()
-        prev_num = 0
-        out_of_order_reported = False
-        for num, nn_str, _, _ in parsed_sections:
-            if num < 1:
-                findings.append(
-                    Finding(
-                        "H10",
-                        FAILURE_PATTERNS_REL,
-                        f"invalid section number 'FP-{nn_str}' (numbering must start at FP-01)",
-                    )
-                )
-                continue
-            if num in seen_nums:
-                findings.append(
-                    Finding(
-                        "H10",
-                        FAILURE_PATTERNS_REL,
-                        f"duplicate section 'FP-{nn_str}'",
-                    )
-                )
-            else:
-                seen_nums.add(num)
-            if num < prev_num and not out_of_order_reported:
-                findings.append(
-                    Finding(
-                        "H10",
-                        FAILURE_PATTERNS_REL,
-                        f"section 'FP-{nn_str}' is out of order",
-                    )
-                )
-                out_of_order_reported = True
-            prev_num = num
 
-        if seen_nums:
-            for expected_num in range(1, max(seen_nums) + 1):
-                if expected_num not in seen_nums:
-                    findings.append(
-                        Finding(
-                            "H10",
-                            FAILURE_PATTERNS_REL,
-                            f"missing section 'FP-{expected_num:02d}' (sections must be contiguous from FP-01)",
-                        )
-                    )
-
-        last_nn = parsed_sections[-1][1]
-        expected_range = f"FP-01 \u301c FP-{last_nn}"
-        first_line = lines[0] if lines else ""
-        title_range_re = re.compile(
-            rf"(?<![A-Za-z0-9-]){re.escape(expected_range)}(?![0-9])"
-        )
-        if title_range_re.search(first_line) is None:
+def _check_fp_section_sequence(
+    lines: list[str], parsed_sections: list[tuple[int, str, int, int]], findings: list[Finding]
+) -> None:
+    seen_nums: set[int] = set()
+    prev_num = 0
+    out_of_order_reported = False
+    for num, nn_str, _, _ in parsed_sections:
+        if num < 1:
             findings.append(
                 Finding(
                     "H10",
                     FAILURE_PATTERNS_REL,
-                    f"first-line title must contain '{expected_range}'",
+                    f"invalid section number 'FP-{nn_str}' (numbering must start at FP-01)",
                 )
             )
-
-        for _, nn_str, start_idx, end_idx in parsed_sections:
-            body_text = "\n".join(
-                ln for idx, ln in non_fence_lines if start_idx < idx < end_idx
+            continue
+        if num in seen_nums:
+            findings.append(
+                Finding("H10", FAILURE_PATTERNS_REL, f"duplicate section 'FP-{nn_str}'")
             )
-            positions: list[tuple[int, str]] = []
-            all_counts_ok = True
-            for leadin in REQUIRED_FP_LEADINS:
-                matches = [
-                    m.start() for m in re.finditer(re.escape(leadin), body_text)
-                ]
-                if not matches:
-                    findings.append(
-                        Finding(
-                            "H10",
-                            FAILURE_PATTERNS_REL,
-                            f"FP-{nn_str} is missing lead-in {leadin}",
-                        )
-                    )
-                    all_counts_ok = False
-                elif len(matches) > 1:
-                    findings.append(
-                        Finding(
-                            "H10",
-                            FAILURE_PATTERNS_REL,
-                            f"FP-{nn_str} contains lead-in {leadin} {len(matches)} times (expected 1)",
-                        )
-                    )
-                    all_counts_ok = False
-                else:
-                    positions.append((matches[0], leadin))
-            if all_counts_ok and [
-                leadin for _, leadin in sorted(positions)
-            ] != list(REQUIRED_FP_LEADINS):
+        else:
+            seen_nums.add(num)
+        if num < prev_num and not out_of_order_reported:
+            findings.append(
+                Finding("H10", FAILURE_PATTERNS_REL, f"section 'FP-{nn_str}' is out of order")
+            )
+            out_of_order_reported = True
+        prev_num = num
+
+    if seen_nums:
+        findings.extend(
+            Finding(
+                "H10",
+                FAILURE_PATTERNS_REL,
+                f"missing section 'FP-{expected_num:02d}' (sections must be contiguous from FP-01)",
+            )
+            for expected_num in range(1, max(seen_nums) + 1)
+            if expected_num not in seen_nums
+        )
+
+    last_nn = parsed_sections[-1][1]
+    expected_range = f"FP-01 \u301c FP-{last_nn}"
+    first_line = lines[0] if lines else ""
+    title_range_re = re.compile(rf"(?<![A-Za-z0-9-]){re.escape(expected_range)}(?![0-9])")
+    if title_range_re.search(first_line) is None:
+        findings.append(
+            Finding(
+                "H10",
+                FAILURE_PATTERNS_REL,
+                f"first-line title must contain '{expected_range}'",
+            )
+        )
+
+
+def _check_fp_section_leadins(
+    non_fence_lines: list[tuple[int, str]],
+    parsed_sections: list[tuple[int, str, int, int]],
+    findings: list[Finding],
+) -> None:
+    for _, nn_str, start_idx, end_idx in parsed_sections:
+        body_text = "\n".join(ln for idx, ln in non_fence_lines if start_idx < idx < end_idx)
+        positions: list[tuple[int, str]] = []
+        all_counts_ok = True
+        for leadin in REQUIRED_FP_LEADINS:
+            matches = [m.start() for m in re.finditer(re.escape(leadin), body_text)]
+            if not matches:
+                findings.append(
+                    Finding("H10", FAILURE_PATTERNS_REL, f"FP-{nn_str} is missing lead-in {leadin}")
+                )
+                all_counts_ok = False
+            elif len(matches) > 1:
                 findings.append(
                     Finding(
                         "H10",
                         FAILURE_PATTERNS_REL,
-                        f"FP-{nn_str} lead-ins are out of order",
+                        f"FP-{nn_str} contains lead-in {leadin} {len(matches)} times (expected 1)",
                     )
                 )
+                all_counts_ok = False
+            else:
+                positions.append((matches[0], leadin))
+        if all_counts_ok and [leadin for _, leadin in sorted(positions)] != list(
+            REQUIRED_FP_LEADINS
+        ):
+            findings.append(
+                Finding("H10", FAILURE_PATTERNS_REL, f"FP-{nn_str} lead-ins are out of order")
+            )
 
-            senrei_pos = body_text.find("**先例.**")
-            if senrei_pos != -1:
-                after_senrei = body_text[senrei_pos + len("**先例.**") :]
-                next_leadin = LEADIN_BREAK_RE.search(after_senrei)
-                senrei_block = (
-                    after_senrei[: next_leadin.start()]
-                    if next_leadin is not None
-                    else after_senrei
+        senrei_pos = body_text.find("**先例.**")
+        if senrei_pos != -1:
+            after_senrei = body_text[senrei_pos + len("**先例.**") :]
+            next_leadin = LEADIN_BREAK_RE.search(after_senrei)
+            senrei_block = (
+                after_senrei[: next_leadin.start()] if next_leadin is not None else after_senrei
+            )
+            findings.extend(
+                Finding(
+                    "H10",
+                    FAILURE_PATTERNS_REL,
+                    f"FP-{nn_str} 先例 contains abbreviated id '{abbrev_m.group(1)}'; write each ADR/PM id in full",
                 )
-                for abbrev_m in ABBREV_PRECEDENT_RE.finditer(senrei_block):
-                    findings.append(
-                        Finding(
-                            "H10",
-                            FAILURE_PATTERNS_REL,
-                            f"FP-{nn_str} 先例 contains abbreviated id '{abbrev_m.group(1)}'; write each ADR/PM id in full",
-                        )
-                    )
+                for abbrev_m in ABBREV_PRECEDENT_RE.finditer(senrei_block)
+            )
 
+
+def _check_fp_precedents_and_paths(root: Path, patterns_text: str, findings: list[Finding]) -> None:
     for digits in dict.fromkeys(ADR_PRECEDENT_RE.findall(patterns_text)):
         adr_rel = f"docs/ADR/{digits}.md"
         if not (root / adr_rel).is_file():
             findings.append(
                 Finding(
-                    "H10",
-                    FAILURE_PATTERNS_REL,
-                    f"precedent ADR-{digits} has no file {adr_rel}",
+                    "H10", FAILURE_PATTERNS_REL, f"precedent ADR-{digits} has no file {adr_rel}"
                 )
             )
 
@@ -677,9 +637,7 @@ def _check_failure_pattern_catalog(
     seen_candidates: set[str] = set()
     for m in REPO_PATH_TOKEN_RE.finditer(patterns_text):
         candidate = m.group(1).rstrip(".,;:")
-        if any(ch in candidate for ch in "<>*"):
-            continue
-        if candidate in seen_candidates:
+        if any(ch in candidate for ch in "<>*") or candidate in seen_candidates:
             continue
         seen_candidates.add(candidate)
         if not (root / candidate).exists():
@@ -691,11 +649,11 @@ def _check_failure_pattern_catalog(
                 )
             )
 
+
+def _extract_routing_data_rows(skill_path: Path, findings: list[Finding]) -> list[str] | None:
     if not skill_path.is_file():
-        findings.append(
-            Finding("H10", FAILURE_SKILL_REL, f"{FAILURE_SKILL_REL} is missing")
-        )
-        return
+        findings.append(Finding("H10", FAILURE_SKILL_REL, f"{FAILURE_SKILL_REL} is missing"))
+        return None
 
     skill_lines = skill_path.read_text(encoding="utf-8", errors="replace").splitlines()
     skill_non_fence = _non_fenced_lines(skill_lines)
@@ -710,10 +668,8 @@ def _check_failure_pattern_catalog(
             break
 
     if route_start is None:
-        findings.append(
-            Finding("H10", FAILURE_SKILL_REL, "missing '## 経路表' heading")
-        )
-        return
+        findings.append(Finding("H10", FAILURE_SKILL_REL, "missing '## 経路表' heading"))
+        return None
 
     route_lines = [
         ln.strip()
@@ -737,6 +693,15 @@ def _check_failure_pattern_catalog(
                 "no routing table rows found under '## 経路表'",
             )
         )
+        return None
+    return data_rows
+
+
+def _check_fp_routing_table(
+    skill_path: Path, parsed_sections: list[tuple[int, str, int, int]], findings: list[Finding]
+) -> None:
+    data_rows = _extract_routing_data_rows(skill_path, findings)
+    if data_rows is None:
         return
 
     table_fps: list[str] = []
@@ -750,31 +715,59 @@ def _check_failure_pattern_catalog(
 
     pattern_fps = list(dict.fromkeys(f"FP-{nn_str}" for _, nn_str, _, _ in parsed_sections))
     pattern_fp_set = set(pattern_fps)
-    for fp_id in table_fps:
-        if fp_id not in pattern_fp_set:
-            findings.append(
-                Finding(
-                    "H10",
-                    FAILURE_SKILL_REL,
-                    f"routing table references '{fp_id}' which has no section in patterns.md",
-                )
+    findings.extend(
+        Finding(
+            "H10",
+            FAILURE_SKILL_REL,
+            f"routing table references '{fp_id}' which has no section in patterns.md",
+        )
+        for fp_id in table_fps
+        if fp_id not in pattern_fp_set
+    )
+    findings.extend(
+        Finding(
+            "H10",
+            FAILURE_SKILL_REL,
+            f"section '{fp_id}' in patterns.md does not appear in '## 経路表'",
+        )
+        for fp_id in pattern_fps
+        if fp_id not in seen_table_fps
+    )
+
+
+def _check_failure_pattern_catalog(root: Path, findings: list[Finding]) -> None:
+    """H10: verify failure-pattern catalog structure, precedents, paths, and routing table."""
+    patterns_path = root / FAILURE_PATTERNS_REL
+    skill_path = root / FAILURE_SKILL_REL
+
+    if not patterns_path.is_file():
+        findings.append(Finding("H10", FAILURE_PATTERNS_REL, f"{FAILURE_PATTERNS_REL} is missing"))
+        if not skill_path.is_file():
+            findings.append(Finding("H10", FAILURE_SKILL_REL, f"{FAILURE_SKILL_REL} is missing"))
+        return
+
+    patterns_text = patterns_path.read_text(encoding="utf-8", errors="replace")
+    lines = patterns_text.splitlines()
+    non_fence_lines = _non_fenced_lines(lines)
+    parsed_sections = _parse_fp_sections(lines, non_fence_lines, findings)
+
+    if not parsed_sections:
+        findings.append(
+            Finding(
+                "H10",
+                FAILURE_PATTERNS_REL,
+                "no '## FP-NN <name>' sections found",
             )
-    for fp_id in pattern_fps:
-        if fp_id not in seen_table_fps:
-            findings.append(
-                Finding(
-                    "H10",
-                    FAILURE_SKILL_REL,
-                    f"section '{fp_id}' in patterns.md does not appear in '## 経路表'",
-                )
-            )
+        )
+    else:
+        _check_fp_section_sequence(lines, parsed_sections, findings)
+        _check_fp_section_leadins(non_fence_lines, parsed_sections, findings)
+
+    _check_fp_precedents_and_paths(root, patterns_text, findings)
+    _check_fp_routing_table(skill_path, parsed_sections, findings)
 
 
-def run_selfcheck(root: Path) -> tuple[list[Finding], dict[str, Any]]:
-    findings: list[Finding] = []
-    tracked_files = _git_ls_files(root)
-
-    # H1-H4: .codex/hooks.json (tracked) & .claude/settings.json (when present)
+def _check_hooks_pair(root: Path, findings: list[Finding]) -> tuple[bool, int, int | str]:
     codex_path = root / ".codex" / "hooks.json"
     codex_hooks_count = 0
     if codex_path.is_file():
@@ -784,9 +777,7 @@ def run_selfcheck(root: Path) -> tuple[list[Finding], dict[str, Any]]:
                 root, ".codex/hooks.json", cfg, is_claude=False, findings=findings
             )
     else:
-        findings.append(
-            Finding("H4", ".codex/hooks.json", ".codex/hooks.json is missing")
-        )
+        findings.append(Finding("H4", ".codex/hooks.json", ".codex/hooks.json is missing"))
 
     claude_path = root / ".claude" / "settings.json"
     claude_present = claude_path.is_file()
@@ -797,85 +788,60 @@ def run_selfcheck(root: Path) -> tuple[list[Finding], dict[str, Any]]:
             claude_hooks_count = _check_hook_file(
                 root, ".claude/settings.json", cfg, is_claude=True, findings=findings
             )
+    return claude_present, codex_hooks_count, claude_hooks_count
 
-    # H5: guard_event_time.GUARDED_GLOBS matches at least one tracked non-test file
-    non_test_tracked = [f for f in tracked_files if not f.endswith("_test.go")]
-    for pat in guard_event_time.GUARDED_GLOBS:
-        rx = _glob_to_regex(pat)
-        if not any(rx.match(f) for f in non_test_tracked):
-            findings.append(
-                Finding(
-                    "H5",
-                    "scripts/agent-harness/guard_event_time.py",
-                    f"GUARDED_GLOBS entry '{pat}' matches no tracked non-test file",
-                )
-            )
 
-    # H6: .claude/rules frontmatter paths: entries match at least one tracked file
-    rules_dir = root / ".claude" / "rules"
-    if rules_dir.is_dir():
-        for rule_file in sorted(rules_dir.rglob("*.md")):
-            rel_rule = rule_file.relative_to(root).as_posix()
-            text = rule_file.read_text(encoding="utf-8", errors="replace")
-            for pat in _extract_frontmatter_paths(text):
-                if not _matches_rule_glob(pat, tracked_files):
-                    findings.append(
-                        Finding(
-                            "H6",
-                            rel_rule,
-                            f"paths entry '{pat}' matches no tracked file",
-                        )
-                    )
-
-    # H7: shared blocks between CLAUDE.md and AGENTS.md
+def _check_shared_blocks_h7(root: Path, findings: list[Finding]) -> int:
     claude_blocks = _extract_shared_blocks(root / "CLAUDE.md", "CLAUDE.md", findings)
     agents_blocks = _extract_shared_blocks(root / "AGENTS.md", "AGENTS.md", findings)
+    if claude_blocks is None or agents_blocks is None:
+        return 0
+    all_names = sorted(set(claude_blocks) | set(agents_blocks))
+    if not all_names:
+        findings.append(
+            Finding(
+                "H7",
+                "CLAUDE.md",
+                "no shared blocks (<!-- shared:NAME:start/end -->) found in CLAUDE.md and AGENTS.md",
+            )
+        )
+        return 0
+
     shared_block_count = 0
-    if claude_blocks is not None and agents_blocks is not None:
-        all_names = sorted(set(claude_blocks) | set(agents_blocks))
-        if not all_names:
+    for name in all_names:
+        if name not in agents_blocks:
+            findings.append(
+                Finding(
+                    "H7",
+                    "AGENTS.md",
+                    f"shared block '{name}' exists in CLAUDE.md but is missing from AGENTS.md",
+                )
+            )
+        elif name not in claude_blocks:
             findings.append(
                 Finding(
                     "H7",
                     "CLAUDE.md",
-                    "no shared blocks (<!-- shared:NAME:start/end -->) found in CLAUDE.md and AGENTS.md",
+                    f"shared block '{name}' exists in AGENTS.md but is missing from CLAUDE.md",
+                )
+            )
+        elif claude_blocks[name] != agents_blocks[name]:
+            findings.append(
+                Finding(
+                    "H7",
+                    "AGENTS.md",
+                    f"shared block '{name}' differs between CLAUDE.md and AGENTS.md",
                 )
             )
         else:
-            for name in all_names:
-                if name not in agents_blocks:
-                    findings.append(
-                        Finding(
-                            "H7",
-                            "AGENTS.md",
-                            f"shared block '{name}' exists in CLAUDE.md but is missing from AGENTS.md",
-                        )
-                    )
-                elif name not in claude_blocks:
-                    findings.append(
-                        Finding(
-                            "H7",
-                            "CLAUDE.md",
-                            f"shared block '{name}' exists in AGENTS.md but is missing from CLAUDE.md",
-                        )
-                    )
-                elif claude_blocks[name] != agents_blocks[name]:
-                    findings.append(
-                        Finding(
-                            "H7",
-                            "AGENTS.md",
-                            f"shared block '{name}' differs between CLAUDE.md and AGENTS.md",
-                        )
-                    )
-                else:
-                    shared_block_count += 1
+            shared_block_count += 1
+    return shared_block_count
 
-    # H8: root CLAUDE.md <= 200 lines, AGENTS.md <= 32768 bytes
+
+def _check_doc_sizes_and_skills(root: Path, findings: list[Finding]) -> None:
     claude_md = root / "CLAUDE.md"
     if claude_md.is_file():
-        line_count = len(
-            claude_md.read_text(encoding="utf-8", errors="replace").splitlines()
-        )
+        line_count = len(claude_md.read_text(encoding="utf-8", errors="replace").splitlines())
         if line_count > MAX_CLAUDE_MD_LINES:
             findings.append(
                 Finding(
@@ -897,7 +863,6 @@ def run_selfcheck(root: Path) -> tuple[list[Finding], dict[str, Any]]:
                 )
             )
 
-    # H9: .agents/skills entries must resolve to a directory containing SKILL.md
     skills_dir = root / ".agents" / "skills"
     if skills_dir.is_dir():
         for entry in sorted(skills_dir.iterdir(), key=lambda p: p.name):
@@ -910,6 +875,49 @@ def run_selfcheck(root: Path) -> tuple[list[Finding], dict[str, Any]]:
                         "entry under .agents/skills does not resolve to a directory containing SKILL.md",
                     )
                 )
+
+
+def run_selfcheck(root: Path) -> tuple[list[Finding], dict[str, Any]]:
+    findings: list[Finding] = []
+    tracked_files = _git_ls_files(root)
+
+    # H1-H4: .codex/hooks.json (tracked) & .claude/settings.json (when present)
+    claude_present, codex_hooks_count, claude_hooks_count = _check_hooks_pair(root, findings)
+
+    # H5: guard_event_time.GUARDED_GLOBS matches at least one tracked non-test file
+    non_test_tracked = [f for f in tracked_files if not f.endswith("_test.go")]
+    for pat in guard_event_time.GUARDED_GLOBS:
+        rx = _glob_to_regex(pat)
+        if not any(rx.match(f) for f in non_test_tracked):
+            findings.append(
+                Finding(
+                    "H5",
+                    "scripts/agent-harness/guard_event_time.py",
+                    f"GUARDED_GLOBS entry '{pat}' matches no tracked non-test file",
+                )
+            )
+
+    # H6: .claude/rules frontmatter paths: entries match at least one tracked file
+    rules_dir = root / ".claude" / "rules"
+    if rules_dir.is_dir():
+        for rule_file in sorted(rules_dir.rglob("*.md")):
+            rel_rule = rule_file.relative_to(root).as_posix()
+            text = rule_file.read_text(encoding="utf-8", errors="replace")
+            findings.extend(
+                Finding(
+                    "H6",
+                    rel_rule,
+                    f"paths entry '{pat}' matches no tracked file",
+                )
+                for pat in _extract_frontmatter_paths(text)
+                if not _matches_rule_glob(pat, tracked_files)
+            )
+
+    # H7: shared blocks between CLAUDE.md and AGENTS.md
+    shared_block_count = _check_shared_blocks_h7(root, findings)
+
+    # H8-H9: root CLAUDE.md / AGENTS.md limits and .agents/skills targets
+    _check_doc_sizes_and_skills(root, findings)
 
     # H10: failure-pattern catalog consistency and precedent existence
     _check_failure_pattern_catalog(root, findings)
@@ -940,36 +948,36 @@ def main(argv: list[str] | None = None) -> int:
     if args.hook:
         if findings:
             ids = ", ".join(f.finding_id for f in findings)
-            print(
+            sys.stdout.write(
                 f"agent_harness_selfcheck_FAILED: {len(findings)} finding(s): {ids} "
-                "run python3 scripts/agent-harness/harness_selfcheck.py"
+                "run python3 scripts/agent-harness/harness_selfcheck.py\n"
             )
         else:
-            print(
+            sys.stdout.write(
                 "agent_harness_selfcheck: OK "
                 f"(codex_hooks={meta['codex_hooks']}, "
                 f"claude_hooks={meta['claude_hooks']}, "
                 f"guarded_globs={meta['guarded_globs']}, "
-                f"shared_blocks={meta['shared_blocks']})"
+                f"shared_blocks={meta['shared_blocks']})\n"
             )
         return 0
 
     if not meta["claude_present"]:
-        print(
-            "NOTE: Claude hooks were not checked because .claude/settings.json is absent."
+        sys.stdout.write(
+            "NOTE: Claude hooks were not checked because .claude/settings.json is absent.\n"
         )
 
     if findings:
         for finding in findings:
-            print(f"{finding.finding_id} {finding.path}: {finding.message}")
+            sys.stdout.write(f"{finding.finding_id} {finding.path}: {finding.message}\n")
         return 1
 
-    print(
+    sys.stdout.write(
         "agent_harness_selfcheck: OK "
         f"(codex_hooks={meta['codex_hooks']}, "
         f"claude_hooks={meta['claude_hooks']}, "
         f"guarded_globs={meta['guarded_globs']}, "
-        f"shared_blocks={meta['shared_blocks']})"
+        f"shared_blocks={meta['shared_blocks']})\n"
     )
     return 0
 

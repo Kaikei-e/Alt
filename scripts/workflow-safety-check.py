@@ -50,14 +50,14 @@ Checks:
      `uses: ./.github/workflows/<file>` at job level, without a later `!`
      negation excluding them.
 """
+
 from __future__ import annotations
 
-from collections.abc import Mapping
-import glob
 import json
-import os
 import re
 import sys
+from collections.abc import Iterator, Mapping
+from pathlib import Path
 from typing import Any
 
 import yaml
@@ -81,15 +81,14 @@ TEMPLATE_EXPR_RE = re.compile(re.escape(GHA_EXPR_OPEN) + r"(.*?)}}", re.S)
 # The project name and the gating env var are duplicated from
 # alt-frontend-sv/vitest.config.ts on purpose: this check exists precisely
 # to detect the two sides drifting apart, so it must not import them.
-FRONTEND_PACKAGE_JSON = os.path.join("alt-frontend-sv", "package.json")
+FRONTEND_PACKAGE_JSON = Path("alt-frontend-sv") / "package.json"
 CLIENT_PROJECT_NAME = "client"
 BROWSER_ENV_VAR = "VITEST_BROWSER"
+MAX_SCRIPT_EXPANSION_DEPTH = 3
 
 # `bun run x`, `npm run x`, `pnpm run x`, `yarn run x` — the indirection a
 # workflow step uses to reach a package.json script.
-RUN_SCRIPT_RE = re.compile(
-    r"\b(?:bun|bunx|npm|pnpm|yarn)\s+run\s+([A-Za-z0-9:_.-]+)"
-)
+RUN_SCRIPT_RE = re.compile(r"\b(?:bun|bunx|npm|pnpm|yarn)\s+run\s+([A-Za-z0-9:_.-]+)")
 # Leading `FOO=bar BAZ=qux cmd ...` inline environment assignments.
 INLINE_ENV_RE = re.compile(r"\b([A-Z_][A-Z0-9_]*)=(\S+)")
 # `--project=client` and `--project client` both select a project.
@@ -184,7 +183,7 @@ def required_workflow_paths(path: str, doc: Mapping[str, Any]) -> list[str]:
     return required
 
 
-def extract_labels(runs_on):
+def extract_labels(runs_on: object) -> tuple[list[str], bool]:
     """Return (labels, had_expression) for any runs-on shape."""
     if runs_on is None:
         return [], False
@@ -216,7 +215,7 @@ def extract_labels(runs_on):
     return [], False
 
 
-def is_pinned(uses):
+def is_pinned(uses: str) -> bool:
     """True for local actions, SHA-pinned repos, and digest-pinned images."""
     if uses.startswith("./"):
         return True
@@ -230,8 +229,8 @@ def is_image_digest_pinned(image: object) -> bool:
     if not isinstance(image, str):
         return False
     stripped = image.strip()
-    return bool(stripped) and not stripped.startswith("@") and bool(
-        DOCKER_DIGEST_RE.search(stripped)
+    return (
+        bool(stripped) and not stripped.startswith("@") and bool(DOCKER_DIGEST_RE.search(stripped))
     )
 
 
@@ -245,16 +244,16 @@ def has_valid_timeout(job: Mapping[str, Any]) -> bool:
     return timeout > 0
 
 
-def load_frontend_scripts():
+def load_frontend_scripts() -> dict[str, str] | None:
     """Return alt-frontend-sv's package.json `scripts`, or None if missing."""
     try:
-        with open(FRONTEND_PACKAGE_JSON) as fh:
+        with FRONTEND_PACKAGE_JSON.open() as fh:
             return json.load(fh).get("scripts", {}) or {}
     except (OSError, ValueError):
         return None
 
 
-def expand_run_scripts(command, scripts, depth=0):
+def expand_run_scripts(command: str, scripts: Mapping[str, str], depth: int = 0) -> str:
     """Inline `bun run <script>` bodies so the real vitest flags are visible.
 
     A workflow step never spells the vitest invocation out; it says
@@ -262,7 +261,7 @@ def expand_run_scripts(command, scripts, depth=0):
     indirection is what makes the check notice a script being renamed or
     hollowed out, not just the job being deleted.
     """
-    if depth > 3:
+    if depth > MAX_SCRIPT_EXPANSION_DEPTH:
         return command
     expanded = command
     for name in RUN_SCRIPT_RE.findall(command):
@@ -272,7 +271,7 @@ def expand_run_scripts(command, scripts, depth=0):
     return expanded
 
 
-def collects_client_project(command, inherited_env):
+def collects_client_project(command: str, inherited_env: Mapping[str, str]) -> bool:
     """True if `command` runs vitest in a way that collects the client project.
 
     Mirrors vitest.config.ts: the project exists only when VITEST_BROWSER is
@@ -298,7 +297,7 @@ def collects_client_project(command, inherited_env):
     return False
 
 
-def is_disabled(node):
+def is_disabled(node: object) -> bool:
     """True if a job/step is switched off or cannot fail the build.
 
     `continue-on-error: true` and `if: false` are the two ways to keep a
@@ -312,7 +311,9 @@ def is_disabled(node):
     return str(node.get("if", "")).strip().lower() in ("false", "${{ false }}")
 
 
-def iter_run_steps(doc):
+def iter_run_steps(
+    doc: Mapping[str, Any],
+) -> Iterator[tuple[str, str, dict[str, str], bool]]:
     """Yield (job_name, command, env, blocking) for every `run:` step."""
     workflow_env = doc.get("env") if isinstance(doc.get("env"), dict) else {}
     for job_name, job in (doc.get("jobs") or {}).items():
@@ -321,17 +322,10 @@ def iter_run_steps(doc):
         job_env = job.get("env") if isinstance(job.get("env"), dict) else {}
         job_blocking = not is_disabled(job)
         for step in job.get("steps") or []:
-            if not isinstance(step, dict) or not isinstance(
-                step.get("run"), str
-            ):
+            if not isinstance(step, dict) or not isinstance(step.get("run"), str):
                 continue
-            step_env = (
-                step.get("env") if isinstance(step.get("env"), dict) else {}
-            )
-            env = {
-                str(k): str(v)
-                for k, v in {**workflow_env, **job_env, **step_env}.items()
-            }
+            step_env = step.get("env") if isinstance(step.get("env"), dict) else {}
+            env = {str(k): str(v) for k, v in {**workflow_env, **job_env, **step_env}.items()}
             yield (
                 job_name,
                 step["run"],
@@ -340,78 +334,65 @@ def iter_run_steps(doc):
             )
 
 
-def _check_workflow_doc_details(
-    path: str, doc: Mapping[str, Any]
+def _extract_trigger_names(triggers: object) -> set[str]:
+    if isinstance(triggers, dict):
+        return set(triggers.keys())
+    if isinstance(triggers, list):
+        return set(triggers)
+    if isinstance(triggers, str):
+        return {triggers}
+    return set()
+
+
+def _check_trigger_paths_filters(
+    path: str, doc: Mapping[str, Any], triggers: object
 ) -> tuple[list[str], int]:
-    """Return (errors, failure_count) for a parsed workflow dict."""
+    if not isinstance(triggers, dict):
+        return [], 0
     errors: list[str] = []
     bad = 0
-
-    triggers = doc.get(True)
-    if triggers is None:
-        triggers = doc.get("on", {})
-
-    trigger_names: set[str] = set()
-    if isinstance(triggers, dict):
-        trigger_names = set(triggers.keys())
-    elif isinstance(triggers, list):
-        trigger_names = set(triggers)
-    elif isinstance(triggers, str):
-        trigger_names = {triggers}
-
-    # Rule 1 (authoritative) — forbidden trigger names.
-    used = trigger_names & FORBIDDEN_TRIGGERS
-    if used:
-        for t in sorted(used):
-            errors.append(
-                f"::error file={path}::workflow uses forbidden trigger "
-                f"{t!r} (ADR-000763 security hardening)."
-            )
-        bad += 1
-
-    # Rule 8 & Rule 11 — every literal (or non-glob prefix) entry in
-    # on.push.paths / on.pull_request.paths resolves to an existing
-    # file or directory, and every paths: filter matches the workflow's
-    # own file and every local reusable workflow it calls at job level.
     required_paths = required_workflow_paths(path, doc)
-    if isinstance(triggers, dict):
-        for trig_name in ("push", "pull_request"):
-            trig_cfg = triggers.get(trig_name)
-            if not isinstance(trig_cfg, dict):
+    for trig_name in ("push", "pull_request"):
+        trig_cfg = triggers.get(trig_name)
+        if not isinstance(trig_cfg, dict):
+            continue
+        paths_list = trig_cfg.get("paths")
+        if not isinstance(paths_list, list):
+            continue
+        for raw_entry in paths_list:
+            if not isinstance(raw_entry, str):
                 continue
-            paths_list = trig_cfg.get("paths")
-            if not isinstance(paths_list, list):
-                continue
-            for raw_entry in paths_list:
-                if not isinstance(raw_entry, str):
-                    continue
-                if UNSUPPORTED_PATH_GLOB_RE.search(raw_entry) is not None:
-                    errors.append(
-                        f"::error file={path}::on.{trig_name}.paths "
-                        f"entry {raw_entry!r} uses unsupported glob "
-                        f"pattern character ('?', '+', or '['); use "
-                        f"only literal paths, '*', and '**'."
-                    )
-                    bad += 1
-                target = resolve_path_filter_target(raw_entry)
-                if not os.path.exists(target):
-                    errors.append(
-                        f"::error file={path}::on.{trig_name}.paths "
-                        f"entry {raw_entry!r} resolves to missing "
-                        f"path {target!r}."
-                    )
-                    bad += 1
-            for req_path in required_paths:
-                if not paths_filter_matches(paths_list, req_path):
-                    errors.append(
-                        f"::error file={path}::on.{trig_name}.paths "
-                        f"does not match {req_path!r} (workflows using "
-                        f"`paths:` must trigger on their own file and "
-                        f"every local reusable workflow they call)."
-                    )
-                    bad += 1
+            if UNSUPPORTED_PATH_GLOB_RE.search(raw_entry) is not None:
+                errors.append(
+                    f"::error file={path}::on.{trig_name}.paths "
+                    f"entry {raw_entry!r} uses unsupported glob "
+                    f"pattern character ('?', '+', or '['); use "
+                    f"only literal paths, '*', and '**'."
+                )
+                bad += 1
+            target = resolve_path_filter_target(raw_entry)
+            if not Path(target).exists():
+                errors.append(
+                    f"::error file={path}::on.{trig_name}.paths "
+                    f"entry {raw_entry!r} resolves to missing "
+                    f"path {target!r}."
+                )
+                bad += 1
+        for req_path in required_paths:
+            if not paths_filter_matches(paths_list, req_path):
+                errors.append(
+                    f"::error file={path}::on.{trig_name}.paths "
+                    f"does not match {req_path!r} (workflows using "
+                    f"`paths:` must trigger on their own file and "
+                    f"every local reusable workflow they call)."
+                )
+                bad += 1
+    return errors, bad
 
-    # Rule 2, Rule 9, Rule 10 — runner labels, job timeouts, and container/service digests.
+
+def _check_jobs_runners_and_images(path: str, doc: Mapping[str, Any]) -> tuple[list[str], int]:
+    errors: list[str] = []
+    bad = 0
     for job_name, job in (doc.get("jobs") or {}).items():
         if not isinstance(job, dict):
             continue
@@ -427,9 +408,7 @@ def _check_workflow_doc_details(
                 f"self-hosted runner)."
             )
             bad += 1
-        elif not labels or not all(
-            GITHUB_HOSTED_LABEL_RE.match(label) for label in labels
-        ):
+        elif not labels or not all(GITHUB_HOSTED_LABEL_RE.match(label) for label in labels):
             errors.append(
                 f"::error file={path}::job {job_name!r} runs on "
                 f"{labels!r}. Only static GitHub-hosted labels are "
@@ -453,11 +432,7 @@ def _check_workflow_doc_details(
             container_img = (
                 container
                 if isinstance(container, str)
-                else (
-                    container.get("image")
-                    if isinstance(container, dict)
-                    else None
-                )
+                else (container.get("image") if isinstance(container, dict) else None)
             )
             if not is_image_digest_pinned(container_img):
                 errors.append(
@@ -473,11 +448,7 @@ def _check_workflow_doc_details(
                 svc_img = (
                     svc_cfg
                     if isinstance(svc_cfg, str)
-                    else (
-                        svc_cfg.get("image")
-                        if isinstance(svc_cfg, dict)
-                        else None
-                    )
+                    else (svc_cfg.get("image") if isinstance(svc_cfg, dict) else None)
                 )
                 if not is_image_digest_pinned(svc_img):
                     errors.append(
@@ -486,17 +457,12 @@ def _check_workflow_doc_details(
                         f"@sha256: digest."
                     )
                     bad += 1
+    return errors, bad
 
-    # Rule 4 — GITHUB_TOKEN scope declared in the file.
-    if "permissions" not in doc:
-        errors.append(
-            f"::error file={path}::workflow has no top-level "
-            f"`permissions:` block. Declare it (`contents: read` unless "
-            f"a job needs more) so the token scope does not depend on "
-            f"the repository default."
-        )
-        bad += 1
 
+def _check_steps_security(path: str, doc: Mapping[str, Any]) -> tuple[list[str], int]:
+    errors: list[str] = []
+    bad = 0
     for job_name, job in (doc.get("jobs") or {}).items():
         if not isinstance(job, dict):
             continue
@@ -508,11 +474,7 @@ def _check_workflow_doc_details(
                 # Rule 5 — checkout must not leave the token behind.
                 if uses.startswith("actions/checkout@"):
                     with_ = step.get("with")
-                    persist = (
-                        with_.get("persist-credentials")
-                        if isinstance(with_, dict)
-                        else None
-                    )
+                    persist = with_.get("persist-credentials") if isinstance(with_, dict) else None
                     if persist is not False:
                         errors.append(
                             f"::error file={path}::job {job_name!r} checks "
@@ -545,6 +507,53 @@ def _check_workflow_doc_details(
                             f"in the shell."
                         )
                         bad += 1
+    return errors, bad
+
+
+def _check_workflow_doc_details(path: str, doc: Mapping[str, Any]) -> tuple[list[str], int]:
+    """Return (errors, failure_count) for a parsed workflow dict."""
+    errors: list[str] = []
+    bad = 0
+
+    triggers = doc.get(True)
+    if triggers is None:
+        triggers = doc.get("on", {})
+
+    trigger_names = _extract_trigger_names(triggers)
+
+    # Rule 1 (authoritative) — forbidden trigger names.
+    used = trigger_names & FORBIDDEN_TRIGGERS
+    if used:
+        errors.extend(
+            f"::error file={path}::workflow uses forbidden trigger "
+            f"{t!r} (ADR-000763 security hardening)."
+            for t in sorted(used)
+        )
+        bad += 1
+
+    # Rule 8 & Rule 11 — path filters resolve and cover own + called reusable workflows.
+    path_errors, path_bad = _check_trigger_paths_filters(path, doc, triggers)
+    errors.extend(path_errors)
+    bad += path_bad
+
+    # Rule 2, Rule 9, Rule 10 — runner labels, job timeouts, and container/service digests.
+    job_errors, job_bad = _check_jobs_runners_and_images(path, doc)
+    errors.extend(job_errors)
+    bad += job_bad
+
+    # Rule 4 — GITHUB_TOKEN scope declared in the file.
+    if "permissions" not in doc:
+        errors.append(
+            f"::error file={path}::workflow has no top-level "
+            f"`permissions:` block. Declare it (`contents: read` unless "
+            f"a job needs more) so the token scope does not depend on "
+            f"the repository default."
+        )
+        bad += 1
+
+    step_errors, step_bad = _check_steps_security(path, doc)
+    errors.extend(step_errors)
+    bad += step_bad
 
     return errors, bad
 
@@ -555,11 +564,30 @@ def check_workflow_doc(path: str, doc: Mapping[str, Any]) -> list[str]:
     return errors
 
 
+def _record_client_vitest_runners(
+    path: str,
+    doc: Mapping[str, Any],
+    frontend_scripts: dict[str, str] | None,
+    client_project_runners: list[str],
+) -> None:
+    if frontend_scripts is None:
+        return
+    triggers = doc.get(True)
+    if triggers is None:
+        triggers = doc.get("on", {})
+    if not (_extract_trigger_names(triggers) & {"push", "pull_request"}):
+        return
+    for job_name, command, env, blocking in iter_run_steps(doc):
+        if not blocking:
+            continue
+        resolved = expand_run_scripts(command, frontend_scripts)
+        if collects_client_project(resolved, env):
+            client_project_runners.append(f"{path}::{job_name}")
+
+
 def main() -> int:
-    files = sorted(
-        glob.glob(".github/workflows/*.yml")
-        + glob.glob(".github/workflows/*.yaml")
-    )
+    workflows_dir = Path(".github/workflows")
+    files = sorted(str(p) for ext in ("*.yml", "*.yaml") for p in workflows_dir.glob(ext))
 
     bad = 0
     # Check 3 is repo-wide, not per-file: one job anywhere has to run it.
@@ -567,65 +595,40 @@ def main() -> int:
     client_project_runners: list[str] = []
 
     for path in files:
-        with open(path) as fh:
+        with Path(path).open() as fh:
             try:
                 doc = yaml.safe_load(fh)
             except yaml.YAMLError as e:
-                print(
-                    f"::error file={path}::failed to parse YAML: {e}",
-                    file=sys.stderr,
-                )
+                sys.stderr.write(f"::error file={path}::failed to parse YAML: {e}\n")
                 bad += 1
                 continue
 
         if not isinstance(doc, dict):
             continue
 
-        # PyYAML parses the `on:` key as Python True (YAML 1.1 boolean quirk).
-        triggers = doc.get(True)
-        if triggers is None:
-            triggers = doc.get("on", {})
-
-        trigger_names: set[str] = set()
-        if isinstance(triggers, dict):
-            trigger_names = set(triggers.keys())
-        elif isinstance(triggers, list):
-            trigger_names = set(triggers)
-        elif isinstance(triggers, str):
-            trigger_names = {triggers}
-
         # Rule 3 (collection pass) — record jobs that run the client vitest
         # project. Only automatically-triggered workflows count: a job that
         # exists but has to be launched by hand protects nobody, which is
         # the same class of bug as a project that is never collected.
-        if frontend_scripts is not None and (
-            trigger_names & {"push", "pull_request"}
-        ):
-            for job_name, command, env, blocking in iter_run_steps(doc):
-                if not blocking:
-                    continue
-                resolved = expand_run_scripts(command, frontend_scripts)
-                if collects_client_project(resolved, env):
-                    client_project_runners.append(f"{path}::{job_name}")
+        _record_client_vitest_runners(path, doc, frontend_scripts, client_project_runners)
 
         errors, file_bad = _check_workflow_doc_details(path, doc)
         for error in errors:
-            print(error, file=sys.stderr)
+            sys.stderr.write(f"{error}\n")
         bad += file_bad
 
     # Rule 3 (assertion pass) — repo-wide, so it runs after every file.
     if frontend_scripts is None:
-        print(
+        sys.stderr.write(
             f"::error::cannot read {FRONTEND_PACKAGE_JSON}, so the check that "
             f"alt-frontend-sv's {CLIENT_PROJECT_NAME!r} vitest project is "
             f"actually run cannot be evaluated. If the frontend moved or was "
             f"removed, update this script — do not let the check pass "
-            f"vacuously.",
-            file=sys.stderr,
+            f"vacuously.\n"
         )
         bad += 1
     elif not client_project_runners:
-        print(
+        sys.stderr.write(
             f"::error::no push/pull_request-triggered job runs alt-frontend-sv's "
             f"{CLIENT_PROJECT_NAME!r} vitest project. Those are the "
             f"src/**/*.svelte.{{test,spec}}.ts component specs; without a job "
@@ -634,24 +637,21 @@ def main() -> int:
             f"are collected zero times while CI still reports green. Restore "
             f"the job (see alt-frontend-sv-unit-test.yaml) rather than "
             f"deleting this check. `continue-on-error` and `if: false` steps "
-            f"deliberately do not count.",
-            file=sys.stderr,
+            f"deliberately do not count.\n"
         )
         bad += 1
 
     if bad:
         return 1
-    print(
+    sys.stdout.write(
         "OK: no forbidden triggers, GitHub-hosted labels only, permissions "
         "declared, checkouts credential-free, no untrusted context in run "
         "bodies, every action SHA-pinned, path filters resolve (rule 8) and "
         "match own and called reusable workflows (rule 11), every "
-        "container/service image digest-pinned, and job timeouts declared."
+        "container/service image digest-pinned, and job timeouts declared.\n"
     )
-    print(
-        "OK: client vitest project is run by "
-        + ", ".join(sorted(client_project_runners))
-        + "."
+    sys.stdout.write(
+        "OK: client vitest project is run by " + ", ".join(sorted(client_project_runners)) + ".\n"
     )
     return 0
 

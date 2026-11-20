@@ -6,29 +6,42 @@
 from __future__ import annotations
 
 import os
-import sys
 import re
+import sys
+import traceback
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
+
+SUMMARY_MIN_LEN = 50
+SUMMARY_SHORT_LEN = 100
+SUMMARY_MAX_LEN = 2000
+QUOTE_RATIO_MAX = 0.15
+UNIQUE_WORD_RATIO_MIN = 0.3
+TITLE_OVERLAP_MIN = 0.1
+MAX_NEWLINES = 10
+QUERY_PREVIEW_LEN = 50
+SCORE_LOW_MAX = 50
+SCORE_HIGH_MIN = 70
+CONTENT_PREVIEW_LEN = 500
 
 try:
     import psycopg2
     from psycopg2.extras import RealDictCursor
 except ImportError:
-    print("psycopg2が必要です。インストールしてください: pip install psycopg2-binary")
+    sys.stdout.write("psycopg2が必要です。インストールしてください: pip install psycopg2-binary\n")
     sys.exit(1)
 
 
-def load_env_vars() -> Dict[str, str]:
+def load_env_vars() -> dict[str, str]:
     """環境変数または.envファイルからデータベース接続情報を読み込む"""
     env_file = Path(__file__).parent.parent / ".env"
     env_vars = {}
 
     if env_file.exists():
-        with open(env_file, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
+        with env_file.open(encoding="utf-8") as f:
+            for raw_line in f:
+                line = raw_line.strip()
                 if line and not line.startswith("#") and "=" in line:
                     key, value = line.split("=", 1)
                     env_vars[key.strip()] = value.strip().strip('"').strip("'")
@@ -57,20 +70,16 @@ def get_db_connection() -> psycopg2.extensions.connection:
 
     try:
         conn = psycopg2.connect(
-            host=host,
-            port=port,
-            user=user,
-            password=password,
-            dbname=dbname,
-            connect_timeout=10
+            host=host, port=port, user=user, password=password, dbname=dbname, connect_timeout=10
         )
-        return conn
     except psycopg2.Error as e:
-        print(f"データベース接続エラー: {e}")
+        sys.stdout.write(f"データベース接続エラー: {e}\n")
         sys.exit(1)
+    else:
+        return conn
 
 
-def fetch_recent_summaries(cursor: RealDictCursor, limit: int = 30) -> List[Dict[str, Any]]:
+def fetch_recent_summaries(cursor: RealDictCursor, limit: int = 30) -> list[dict[str, Any]]:
     """直近の日本語サマリーを取得"""
     query = """
         SELECT
@@ -96,23 +105,21 @@ def fetch_recent_summaries(cursor: RealDictCursor, limit: int = 30) -> List[Dict
 
 
 def evaluate_summary_quality(
-    summary: str,
-    article_title: Optional[str],
-    article_content: Optional[str]
-) -> Dict[str, Any]:
+    summary: str, article_title: str | None, article_content: str | None
+) -> dict[str, Any]:
     """サマリーの品質を評価"""
     issues = []
     score = 100.0
 
     # 文字数チェック
     summary_length = len(summary.strip())
-    if summary_length < 50:
+    if summary_length < SUMMARY_MIN_LEN:
         issues.append(f"サマリーが短すぎます（{summary_length}文字）")
         score -= 30.0
-    elif summary_length < 100:
+    elif summary_length < SUMMARY_SHORT_LEN:
         issues.append(f"サマリーがやや短いです（{summary_length}文字）")
         score -= 10.0
-    elif summary_length > 2000:
+    elif summary_length > SUMMARY_MAX_LEN:
         issues.append(f"サマリーが長すぎます（{summary_length}文字）")
         score -= 20.0
 
@@ -124,7 +131,7 @@ def evaluate_summary_quality(
 
     # 引用符が多すぎる（JSONの可能性）
     quote_ratio = summary.count('"') / max(len(summary), 1)
-    if quote_ratio > 0.15:
+    if quote_ratio > QUOTE_RATIO_MAX:
         issues.append("引用符が多すぎます（JSONデータの可能性）")
         score -= 30.0
 
@@ -132,29 +139,29 @@ def evaluate_summary_quality(
     words = summary.split()
     if len(words) > 0:
         unique_ratio = len(set(words)) / len(words)
-        if unique_ratio < 0.3:
+        if unique_ratio < UNIQUE_WORD_RATIO_MIN:
             issues.append("同じ単語の繰り返しが多すぎます")
             score -= 20.0
 
     # 元記事との整合性チェック（可能な場合）
     if article_title and article_content:
-        title_words = set(re.findall(r'\w+', article_title.lower()))
-        summary_words = set(re.findall(r'\w+', summary.lower()))
+        title_words = set(re.findall(r"\w+", article_title.lower()))
+        summary_words = set(re.findall(r"\w+", summary.lower()))
 
         # タイトルとサマリーの関連性が低い場合
         if len(title_words) > 0:
             overlap = len(title_words & summary_words) / len(title_words)
-            if overlap < 0.1:
+            if overlap < TITLE_OVERLAP_MIN:
                 issues.append("元記事のタイトルとサマリーの関連性が低い可能性があります")
                 score -= 15.0
 
     # 不完全な文章（句読点で終わっていない）
-    if summary.strip() and not summary.strip()[-1] in ['。', '！', '？', '.', '!', '?']:
+    if summary.strip() and summary.strip()[-1] not in ["。", "！", "？", ".", "!", "?"]:
         issues.append("サマリーが句読点で終わっていません")
         score -= 5.0
 
     # 空白や改行が多すぎる
-    if summary.count('\n') > 10:
+    if summary.count("\n") > MAX_NEWLINES:
         issues.append("改行が多すぎます")
         score -= 10.0
 
@@ -168,7 +175,7 @@ def evaluate_summary_quality(
     }
 
 
-def search_web_for_verification(title: Optional[str], url: Optional[str]) -> Optional[Dict[str, Any]]:
+def search_web_for_verification(title: str | None, url: str | None) -> dict[str, Any] | None:
     """Web検索で情報を確認（必要時）。
 
     TODO: 実際の Web 検索 API は未配線。現状は検索クエリを返すスタブ。
@@ -176,7 +183,7 @@ def search_web_for_verification(title: Optional[str], url: Optional[str]) -> Opt
     if not title:
         return None
 
-    search_query = title[:50] if len(title) > 50 else title
+    search_query = title[:QUERY_PREVIEW_LEN] if len(title) > QUERY_PREVIEW_LEN else title
     return {
         "search_query": search_query,
         "note": "Web検索は手動で実行してください",
@@ -184,18 +191,8 @@ def search_web_for_verification(title: Optional[str], url: Optional[str]) -> Opt
     }
 
 
-def generate_report(
-    summaries: List[Dict[str, Any]],
-    output_file: Optional[str] = None
-) -> str:
-    """品質評価レポートを生成"""
-    report_lines = []
-    report_lines.append("# 日本語サマリー品質評価レポート\n\n")
-    report_lines.append(f"**生成日時**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
-    report_lines.append(f"**評価対象**: {len(summaries)}件\n\n")
-    report_lines.append("---\n\n")
-
-    # 統計情報
+def _append_quality_stats(report_lines: list[str], summaries: list[dict[str, Any]]) -> None:
+    """統計情報セクションをレポート行リストへ追加する"""
     total_score = 0.0
     low_quality_count = 0
     medium_quality_count = 0
@@ -206,9 +203,9 @@ def generate_report(
         score = quality.get("score", 0.0)
         total_score += score
 
-        if score < 50:
+        if score < SCORE_LOW_MAX:
             low_quality_count += 1
-        elif score < 70:
+        elif score < SCORE_HIGH_MIN:
             medium_quality_count += 1
         else:
             high_quality_count += 1
@@ -222,67 +219,79 @@ def generate_report(
     report_lines.append(f"- **低品質（50点未満）**: {low_quality_count}件\n\n")
     report_lines.append("---\n\n")
 
-    # 各サマリーの詳細
-    report_lines.append("## サマリー詳細\n\n")
 
-    for idx, summary_data in enumerate(summaries, 1):
-        report_lines.append(f"### {idx}. サマリー #{summary_data.get('summary_id', 'N/A')}\n\n")
+def _append_single_summary(report_lines: list[str], idx: int, summary_data: dict[str, Any]) -> None:
+    """1件分のサマリー詳細をレポート行リストへ追加する"""
+    report_lines.append(f"### {idx}. サマリー #{summary_data.get('summary_id', 'N/A')}\n\n")
+    report_lines.append(f"**記事ID**: `{summary_data.get('article_id', 'N/A')}`\n\n")
+    report_lines.append(f"**記事タイトル**: {summary_data.get('article_title', 'N/A')}\n\n")
+    report_lines.append(f"**作成日時**: {summary_data.get('created_at', 'N/A')}\n\n")
 
-        report_lines.append(f"**記事ID**: `{summary_data.get('article_id', 'N/A')}`\n\n")
-        report_lines.append(f"**記事タイトル**: {summary_data.get('article_title', 'N/A')}\n\n")
-        report_lines.append(f"**作成日時**: {summary_data.get('created_at', 'N/A')}\n\n")
+    if summary_data.get("article_url"):
+        report_lines.append(f"**記事URL**: {summary_data.get('article_url')}\n\n")
 
-        if summary_data.get('article_url'):
-            report_lines.append(f"**記事URL**: {summary_data.get('article_url')}\n\n")
+    quality = summary_data.get("quality", {})
+    score = quality.get("score", 0.0)
+    issues = quality.get("issues", [])
 
-        quality = summary_data.get("quality", {})
-        score = quality.get("score", 0.0)
-        issues = quality.get("issues", [])
+    score_emoji = "🟢" if score >= SCORE_HIGH_MIN else "🟡" if score >= SCORE_LOW_MAX else "🔴"
+    report_lines.append(f"**品質スコア**: {score_emoji} {score}/100\n\n")
 
-        # 品質スコア
-        score_emoji = "🟢" if score >= 70 else "🟡" if score >= 50 else "🔴"
-        report_lines.append(f"**品質スコア**: {score_emoji} {score}/100\n\n")
+    if issues:
+        report_lines.append("**問題点**:\n\n")
+        report_lines.extend(f"- ⚠️ {issue}\n" for issue in issues)
+        report_lines.append("\n")
 
-        if issues:
-            report_lines.append("**問題点**:\n\n")
-            for issue in issues:
-                report_lines.append(f"- ⚠️ {issue}\n")
-            report_lines.append("\n")
+    summary_text = summary_data.get("summary_japanese", "")
+    report_lines.append("**サマリー本文**:\n\n")
+    report_lines.append("```\n")
+    report_lines.append(summary_text)
+    report_lines.append("\n```\n\n")
 
-        # サマリー本文
-        summary_text = summary_data.get("summary_japanese", "")
-        report_lines.append("**サマリー本文**:\n\n")
+    if summary_data.get("article_content"):
+        content = summary_data.get("article_content", "")
+        preview = (
+            content[:CONTENT_PREVIEW_LEN] + "..." if len(content) > CONTENT_PREVIEW_LEN else content
+        )
+        report_lines.append("**元記事の内容（プレビュー）**:\n\n")
         report_lines.append("```\n")
-        report_lines.append(summary_text)
+        report_lines.append(preview)
         report_lines.append("\n```\n\n")
 
-        # 元記事の内容（最初の500文字）
-        if summary_data.get("article_content"):
-            content = summary_data.get("article_content", "")
-            preview = content[:500] + "..." if len(content) > 500 else content
-            report_lines.append("**元記事の内容（プレビュー）**:\n\n")
-            report_lines.append("```\n")
-            report_lines.append(preview)
-            report_lines.append("\n```\n\n")
+    report_lines.append("---\n\n")
 
-        report_lines.append("---\n\n")
+
+def generate_report(summaries: list[dict[str, Any]], output_file: str | None = None) -> str:
+    """品質評価レポートを生成"""
+    report_lines = []
+    report_lines.append("# 日本語サマリー品質評価レポート\n\n")
+    report_lines.append(
+        f"**生成日時**: {datetime.now().astimezone().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+    )
+    report_lines.append(f"**評価対象**: {len(summaries)}件\n\n")
+    report_lines.append("---\n\n")
+
+    _append_quality_stats(report_lines, summaries)
+
+    report_lines.append("## サマリー詳細\n\n")
+    for idx, summary_data in enumerate(summaries, 1):
+        _append_single_summary(report_lines, idx, summary_data)
 
     report_text = "".join(report_lines)
 
-    # ファイルに保存
     if output_file:
         output_path = Path(__file__).parent / "reports" / output_file
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(output_path, "w", encoding="utf-8") as f:
+        with output_path.open("w", encoding="utf-8") as f:
             f.write(report_text)
-        print(f"✓ レポートを保存しました: {output_path}")
+        sys.stdout.write(f"✓ レポートを保存しました: {output_path}\n")
 
     return report_text
 
 
 def main() -> None:
     """メイン処理"""
-    print("日本語サマリー品質確認を開始します...")
+    sys.stdout.write("日本語サマリー品質確認を開始します...\n")
 
     # データベース接続
     conn = get_db_connection()
@@ -290,60 +299,59 @@ def main() -> None:
 
     try:
         # 直近30件のサマリーを取得
-        print("データベースからサマリーを取得中...")
+        sys.stdout.write("データベースからサマリーを取得中...\n")
         summaries = fetch_recent_summaries(cursor, limit=30)
 
         if not summaries:
-            print("サマリーが見つかりませんでした。")
+            sys.stdout.write("サマリーが見つかりませんでした。\n")
             return
 
-        print(f"✓ {len(summaries)}件のサマリーを取得しました。")
+        sys.stdout.write(f"✓ {len(summaries)}件のサマリーを取得しました。\n")
 
         # 品質評価
-        print("品質評価を実行中...")
+        sys.stdout.write("品質評価を実行中...\n")
         for summary_data in summaries:
             quality = evaluate_summary_quality(
                 summary=summary_data.get("summary_japanese", ""),
                 article_title=summary_data.get("article_title"),
-                article_content=summary_data.get("article_content")
+                article_content=summary_data.get("article_content"),
             )
             summary_data["quality"] = quality
 
         # 品質が低いサマリーについてWeb検索（必要時）
         low_quality_summaries = [
-            s for s in summaries
-            if s.get("quality", {}).get("score", 100) < 50
+            s for s in summaries if s.get("quality", {}).get("score", 100) < SCORE_LOW_MAX
         ]
 
         if low_quality_summaries:
-            print(f"\n⚠️ 品質が低いサマリーが{len(low_quality_summaries)}件見つかりました。")
-            print("Web検索による情報収集を実行中...")
+            sys.stdout.write(
+                f"\n⚠️ 品質が低いサマリーが{len(low_quality_summaries)}件見つかりました。\n"
+            )
+            sys.stdout.write("Web検索による情報収集を実行中...\n")
 
             for summary_data in low_quality_summaries:
                 # Web検索は後で実装（必要に応じて）
                 web_info = search_web_for_verification(
-                    title=summary_data.get("article_title"),
-                    url=summary_data.get("article_url")
+                    title=summary_data.get("article_title"), url=summary_data.get("article_url")
                 )
                 if web_info:
                     summary_data["web_verification"] = web_info
 
         # レポート生成
-        print("\nレポートを生成中...")
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        sys.stdout.write("\nレポートを生成中...\n")
+        timestamp = datetime.now().astimezone().strftime("%Y%m%d_%H%M%S")
         report_file = f"japanese_summaries_quality_report_{timestamp}.md"
         report_text = generate_report(summaries, output_file=report_file)
 
         # コンソールにも表示
-        print("\n" + "="*80)
-        print(report_text)
-        print("="*80)
+        sys.stdout.write("\n" + "=" * 80 + "\n")
+        sys.stdout.write(f"{report_text}\n")
+        sys.stdout.write("=" * 80 + "\n")
 
-        print(f"\n✓ 処理が完了しました。")
+        sys.stdout.write("\n✓ 処理が完了しました。\n")
 
-    except Exception as e:
-        print(f"エラーが発生しました: {e}")
-        import traceback
+    except Exception as e:  # noqa: BLE001 — top-level CLI boundary prints traceback before DB cleanup and exit
+        sys.stdout.write(f"エラーが発生しました: {e}\n")
         traceback.print_exc()
         sys.exit(1)
     finally:
@@ -353,4 +361,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

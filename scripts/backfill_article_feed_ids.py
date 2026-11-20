@@ -15,6 +15,7 @@ Usage:
 
 import os
 import sys
+
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
@@ -37,13 +38,16 @@ def get_db_connection() -> "psycopg2.extensions.connection":
     """Create and return a database connection."""
     try:
         conn = psycopg2.connect(DATABASE_URL, connect_timeout=10)
-        return conn
     except psycopg2.Error as e:
-        print(f"Error connecting to database: {e}", file=sys.stderr)
+        sys.stderr.write(f"Error connecting to database: {e}\n")
         sys.exit(1)
+    else:
+        return conn
 
 
-def backfill_feed_ids(conn: "psycopg2.extensions.connection", batch_size: int = 1000) -> dict[str, int]:
+def backfill_feed_ids(
+    conn: "psycopg2.extensions.connection", batch_size: int = 1000
+) -> dict[str, int]:
     """
     Update feed_id for articles where feed_id is NULL and article.url matches feed.link.
 
@@ -68,10 +72,12 @@ def backfill_feed_ids(conn: "psycopg2.extensions.connection", batch_size: int = 
             stats["total_articles_with_null_feed_id"] = cursor.fetchone()["count"]
 
             if stats["total_articles_with_null_feed_id"] == 0:
-                print("No articles with NULL feed_id found. Nothing to update.")
+                sys.stdout.write("No articles with NULL feed_id found. Nothing to update.\n")
                 return stats
 
-            print(f"Found {stats['total_articles_with_null_feed_id']} articles with NULL feed_id")
+            sys.stdout.write(
+                f"Found {stats['total_articles_with_null_feed_id']} articles with NULL feed_id\n"
+            )
 
             # Process articles in batches using keyset pagination.
             #
@@ -112,7 +118,9 @@ def backfill_feed_ids(conn: "psycopg2.extensions.connection", batch_size: int = 
                 if not articles:
                     break
 
-                print(f"Processing batch of {len(articles)} articles after id={last_seen_id}...")
+                sys.stdout.write(
+                    f"Processing batch of {len(articles)} articles after id={last_seen_id}...\n"
+                )
 
                 article_ids = [a["id"] for a in articles]
                 cursor.execute(
@@ -138,7 +146,7 @@ def backfill_feed_ids(conn: "psycopg2.extensions.connection", batch_size: int = 
 
                 # Commit after each batch
                 conn.commit()
-                print(f"  Updated {updated_count} articles in this batch")
+                sys.stdout.write(f"  Updated {updated_count} articles in this batch\n")
 
                 last_seen_id = articles[-1]["id"]
 
@@ -158,7 +166,7 @@ def backfill_feed_ids(conn: "psycopg2.extensions.connection", batch_size: int = 
             stats["articles_with_matching_feed"] = cursor.fetchone()["matched"]
 
     except psycopg2.Error as e:
-        print(f"Database error: {e}", file=sys.stderr)
+        sys.stderr.write(f"Database error: {e}\n")
         conn.rollback()
         sys.exit(1)
 
@@ -167,29 +175,33 @@ def backfill_feed_ids(conn: "psycopg2.extensions.connection", batch_size: int = 
 
 def main() -> None:
     """Main execution function."""
-    print("=" * 60)
-    print("Backfilling article feed_ids from matching feed links")
-    print("=" * 60)
-    print()
+    sys.stdout.write("=" * 60 + "\n")
+    sys.stdout.write("Backfilling article feed_ids from matching feed links\n")
+    sys.stdout.write("=" * 60 + "\n")
+    sys.stdout.write("\n")
 
     conn = get_db_connection()
     try:
         stats = backfill_feed_ids(conn)
 
-        print()
-        print("=" * 60)
-        print("Update Summary:")
-        print("=" * 60)
-        print(f"Total articles with NULL feed_id: {stats['total_articles_with_null_feed_id']}")
-        print(f"Articles updated: {stats['articles_updated']}")
-        print(f"Articles without matching feed: {stats['articles_without_match']}")
-        print(f"Total articles with matching feed: {stats['articles_with_matching_feed']}")
-        print("=" * 60)
+        sys.stdout.write("\n")
+        sys.stdout.write("=" * 60 + "\n")
+        sys.stdout.write("Update Summary:\n")
+        sys.stdout.write("=" * 60 + "\n")
+        sys.stdout.write(
+            f"Total articles with NULL feed_id: {stats['total_articles_with_null_feed_id']}\n"
+        )
+        sys.stdout.write(f"Articles updated: {stats['articles_updated']}\n")
+        sys.stdout.write(f"Articles without matching feed: {stats['articles_without_match']}\n")
+        sys.stdout.write(
+            f"Total articles with matching feed: {stats['articles_with_matching_feed']}\n"
+        )
+        sys.stdout.write("=" * 60 + "\n")
 
         if stats["articles_updated"] > 0:
-            print(f"\n✓ Successfully updated {stats['articles_updated']} articles")
+            sys.stdout.write(f"\n✓ Successfully updated {stats['articles_updated']} articles\n")
         else:
-            print("\n⚠ No articles were updated")
+            sys.stdout.write("\n⚠ No articles were updated\n")
 
     finally:
         conn.close()
@@ -197,4 +209,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

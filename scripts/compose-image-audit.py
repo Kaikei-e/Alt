@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+import types
 from pathlib import Path
 
 _SCRIPTS = Path(__file__).resolve().parent
@@ -71,11 +72,12 @@ BUILD_ONLY_ALLOWLIST: dict[str, str] = {
 }
 
 
-def _load_ops_surface():  # type: ignore[no-untyped-def]
-    spec = importlib.util.spec_from_file_location(
-        "compose_ops_surface_audit", _SCRIPTS / "compose-ops-surface-audit.py"
-    )
-    assert spec is not None and spec.loader is not None
+def _load_ops_surface() -> types.ModuleType:
+    path = _SCRIPTS / "compose-ops-surface-audit.py"
+    spec = importlib.util.spec_from_file_location("compose_ops_surface_audit", path)
+    if spec is None or spec.loader is None:
+        msg = f"cannot load {path}"
+        raise RuntimeError(msg)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -105,7 +107,7 @@ def ghcr_name(image: object) -> str | None:
     """`<x>` of a ghcr.io/${GHCR_OWNER:-kaikei-e}/alt-<x>:<tag> image, else None."""
     if not isinstance(image, str) or not image.startswith(GHCR_PREFIX):
         return None
-    return image[len(GHCR_PREFIX):].split(":", 1)[0]
+    return image[len(GHCR_PREFIX) :].split(":", 1)[0]
 
 
 def audit_services(
@@ -173,9 +175,7 @@ def audit_pki_workload_fleet(path: Path) -> list[str]:
         return []
     data = load_yaml(path)
     leftovers = [
-        name
-        for name in (data.get("services") or {})
-        if str(name).startswith("pki-agent-")
+        name for name in (data.get("services") or {}) if str(name).startswith("pki-agent-")
     ]
     if leftovers:
         return [
@@ -188,7 +188,8 @@ def audit_pki_workload_fleet(path: Path) -> list[str]:
 def collect_violations() -> list[str]:
     registry = load_registry()
     if not registry:
-        raise SystemExit("services.yaml yielded no pacticipant/runtime entries")
+        msg = "services.yaml yielded no pacticipant/runtime entries"
+        raise SystemExit(msg)
     long_running = long_running_services(production_services())
 
     audited: dict[str, dict] = {}
@@ -216,10 +217,10 @@ def main() -> int:
             sys.stderr.write(f"  - {v}\n")
         return 1
 
-    print(
+    sys.stdout.write(
         f"compose-image-audit OK — {len(production_compose_files())} compose "
         f"fragment(s), {len(load_registry())} GHCR-registered service(s), "
-        f"{len(BUILD_ONLY_ALLOWLIST)} allowlisted build-only service(s) verified."
+        f"{len(BUILD_ONLY_ALLOWLIST)} allowlisted build-only service(s) verified.\n"
     )
     return 0
 

@@ -9,6 +9,7 @@ Operations:
 import argparse
 import re
 import sys
+from dataclasses import dataclass, field
 from pathlib import Path
 
 ADR_DIR = Path(__file__).resolve().parent.parent / "docs" / "ADR"
@@ -28,25 +29,15 @@ EXCLUDED_SECTION_RE = re.compile(
 
 # Patterns for ADR references in Related sections
 # (A) `ADR-000139 (タイトル)` or `ADR-139 (タイトル)`
-PATTERN_A = re.compile(
-    r"ADR[- ]0*(\d+)\s*\(([^)]+)\)"
-)
+PATTERN_A = re.compile(r"ADR[- ]0*(\d+)\s*\(([^)]+)\)")
 # (B) `[ADR-029: タイトル](./000029.md)` or `[ADR 98: タイトル](000098.md)`
-PATTERN_B = re.compile(
-    r"\[ADR[- ]0*(\d+):?\s*([^\]]+)\]\(\.?/?0*\d+\.md\)"
-)
+PATTERN_B = re.compile(r"\[ADR[- ]0*(\d+):?\s*([^\]]+)\]\(\.?/?0*\d+\.md\)")
 # (C) `**ADR-265**: タイトル` or `**ADR-000265**: タイトル`
-PATTERN_C = re.compile(
-    r"\*\*ADR[- ]0*(\d+)\*\*:?\s*(.*)"
-)
+PATTERN_C = re.compile(r"\*\*ADR[- ]0*(\d+)\*\*:?\s*(.*)")
 # (D) `ADR-167: タイトル` or `ADR 093: タイトル` (colon separator, no parens/bold/link)
-PATTERN_D = re.compile(
-    r"ADR[- ]0*(\d+):\s*(.*)"
-)
+PATTERN_D = re.compile(r"ADR[- ]0*(\d+):\s*(.*)")
 # (E) `ADR-000139` or `ADR-139` standalone (no title after)
-PATTERN_E = re.compile(
-    r"ADR[- ]0*(\d+)$"
-)
+PATTERN_E = re.compile(r"ADR[- ]0*(\d+)$")
 
 
 def add_aliases(content: str, adr_num: int) -> str | None:
@@ -95,6 +86,55 @@ def add_aliases(content: str, adr_num: int) -> str | None:
     return "\n".join(lines)
 
 
+def _update_related_section_state(
+    stripped: str, in_related_section: bool, related_section_level: int
+) -> tuple[bool, int, bool]:
+    """Update Related section tracking state for a stripped line.
+
+    Returns (in_related_section, related_section_level, is_header_consumed).
+    """
+    if stripped.startswith("### ") or stripped.startswith("## "):
+        header_level = 3 if stripped.startswith("### ") else 2
+        if EXCLUDED_SECTION_RE.match(stripped):
+            return False, related_section_level, True
+        if RELATED_SECTION_RE.match(stripped):
+            return True, header_level, True
+        if in_related_section and header_level <= related_section_level:
+            return False, related_section_level, True
+    return in_related_section, related_section_level, False
+
+
+def _convert_rest_to_wikilink(rest: str) -> str | None:
+    """Convert an ADR reference bullet body into [[000NNN]] wikilink format."""
+    if m := PATTERN_B.search(rest):
+        num = int(m.group(1))
+        title = m.group(2).strip()
+        after = rest[m.end() :].strip()
+        return f"[[{num:06d}]] {title} {after}".rstrip() if after else f"[[{num:06d}]] {title}"
+
+    if m := PATTERN_C.search(rest):
+        num = int(m.group(1))
+        title = m.group(2).strip().rstrip("*").strip()
+        return f"[[{num:06d}]] {title}"
+
+    if m := PATTERN_A.search(rest):
+        num = int(m.group(1))
+        title = m.group(2).strip()
+        after = rest[m.end() :].strip()
+        return f"[[{num:06d}]] {title} {after}".rstrip() if after else f"[[{num:06d}]] {title}"
+
+    if m := PATTERN_D.search(rest):
+        num = int(m.group(1))
+        title = m.group(2).strip()
+        return f"[[{num:06d}]] {title}"
+
+    if m := PATTERN_E.search(rest.strip()):
+        num = int(m.group(1))
+        return f"[[{num:06d}]]"
+
+    return None
+
+
 def convert_related_links(content: str) -> str | None:
     """Convert ADR references in Related sections to wikilinks. Returns modified content or None."""
     lines = content.split("\n")
@@ -105,20 +145,11 @@ def convert_related_links(content: str) -> str | None:
     for i, line in enumerate(lines):
         stripped = line.strip()
 
-        # Check for section headers (## or ###)
-        if stripped.startswith("### ") or stripped.startswith("## "):
-            header_level = 3 if stripped.startswith("### ") else 2
-            if EXCLUDED_SECTION_RE.match(stripped):
-                in_related_section = False
-                continue
-            if RELATED_SECTION_RE.match(stripped):
-                in_related_section = True
-                related_section_level = header_level
-                continue
-            # Any header at same or higher level ends the related section
-            if in_related_section and header_level <= related_section_level:
-                in_related_section = False
-                continue
+        in_related_section, related_section_level, consumed = _update_related_section_state(
+            stripped, in_related_section, related_section_level
+        )
+        if consumed:
+            continue
 
         if not in_related_section:
             continue
@@ -136,56 +167,9 @@ def convert_related_links(content: str) -> str | None:
         if not bullet_match:
             continue
         bullet_prefix = bullet_match.group(1)
-        rest = line[len(bullet_prefix):]
+        rest = line[len(bullet_prefix) :]
 
-        new_rest = None
-
-        # Try Pattern B first (markdown links) - most specific
-        m = PATTERN_B.search(rest)
-        if m:
-            num = int(m.group(1))
-            title = m.group(2).strip()
-            padded = f"{num:06d}"
-            after = rest[m.end():].strip()
-            new_rest = f"[[{padded}]] {title} {after}".rstrip() if after else f"[[{padded}]] {title}"
-
-        # Try Pattern C (bold ADR)
-        if new_rest is None:
-            m = PATTERN_C.search(rest)
-            if m:
-                num = int(m.group(1))
-                title = m.group(2).strip()
-                padded = f"{num:06d}"
-                # Remove trailing bold markers if present
-                title = title.rstrip("*").strip()
-                new_rest = f"[[{padded}]] {title}"
-
-        # Try Pattern A (parenthetical)
-        if new_rest is None:
-            m = PATTERN_A.search(rest)
-            if m:
-                num = int(m.group(1))
-                title = m.group(2).strip()
-                padded = f"{num:06d}"
-                after = rest[m.end():].strip()
-                new_rest = f"[[{padded}]] {title} {after}".rstrip() if after else f"[[{padded}]] {title}"
-
-        # Try Pattern D (colon separator)
-        if new_rest is None:
-            m = PATTERN_D.search(rest)
-            if m:
-                num = int(m.group(1))
-                title = m.group(2).strip()
-                padded = f"{num:06d}"
-                new_rest = f"[[{padded}]] {title}"
-
-        # Try Pattern E (standalone ADR number, no title)
-        if new_rest is None:
-            m = PATTERN_E.search(rest.strip())
-            if m:
-                num = int(m.group(1))
-                padded = f"{num:06d}"
-                new_rest = f"[[{padded}]]"
+        new_rest = _convert_rest_to_wikilink(rest)
 
         if new_rest is not None:
             new_line = bullet_prefix + new_rest
@@ -198,70 +182,114 @@ def convert_related_links(content: str) -> str | None:
     return None
 
 
-def process_files(dry_run: bool = False, aliases_only: bool = False, links_only: bool = False):
+@dataclass(frozen=True)
+class _MigrationOptions:
+    """Options controlling ADR migration behavior."""
+
+    dry_run: bool = False
+    aliases_only: bool = False
+    links_only: bool = False
+
+
+@dataclass
+class _MigrationSummary:
+    """Counters and errors accumulated across processed ADR files."""
+
+    alias_count: int = 0
+    link_file_count: int = 0
+    link_ref_count: int = 0
+    errors: list[str] = field(default_factory=list)
+
+
+def _apply_aliases_step(
+    filename: str, content: str, adr_num: int, summary: _MigrationSummary, *, dry_run: bool
+) -> str:
+    """Apply frontmatter alias insertion and update summary counters."""
+    result = add_aliases(content, adr_num)
+    if result is None:
+        return content
+    summary.alias_count += 1
+    if dry_run:
+        sys.stdout.write(
+            f"[aliases] {filename}: would add aliases [ADR-{adr_num}, ADR-{adr_num:06d}]\n"
+        )
+    return result
+
+
+def _apply_links_step(
+    filename: str, content: str, summary: _MigrationSummary, *, dry_run: bool
+) -> str:
+    """Apply Related-section wikilink conversion and update summary counters."""
+    result = convert_related_links(content)
+    if result is None:
+        return content
+    old_lines = content.split("\n")
+    new_lines = result.split("\n")
+    ref_count = sum(1 for a, b in zip(old_lines, new_lines, strict=True) if a != b)
+    summary.link_file_count += 1
+    summary.link_ref_count += ref_count
+    if dry_run:
+        sys.stdout.write(f"[links]   {filename}: would convert {ref_count} references\n")
+        for a, b in zip(old_lines, new_lines, strict=True):
+            if a != b:
+                sys.stdout.write(f"          - {a.strip()}\n")
+                sys.stdout.write(f"          + {b.strip()}\n")
+    return result
+
+
+def _process_single_file(
+    path: Path, summary: _MigrationSummary, options: _MigrationOptions
+) -> None:
+    """Process one ADR file, updating summary counts and writing if changed."""
+    filename = path.name
+    num_match = re.match(r"^0*(\d+)\.md$", filename)
+    if not num_match:
+        return
+    adr_num = int(num_match.group(1))
+
+    try:
+        content = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as e:
+        summary.errors.append(f"ERROR reading {filename}: {e}")
+        return
+
+    original = content
+
+    if not options.links_only:
+        content = _apply_aliases_step(filename, content, adr_num, summary, dry_run=options.dry_run)
+
+    if not options.aliases_only:
+        content = _apply_links_step(filename, content, summary, dry_run=options.dry_run)
+
+    if content != original and not options.dry_run:
+        path.write_text(content, encoding="utf-8")
+
+
+def _print_migration_summary(summary: _MigrationSummary, *, dry_run: bool) -> None:
+    """Write migration totals and any read errors to stdout."""
+    sys.stdout.write(f"\n{'[DRY RUN] ' if dry_run else ''}Summary:\n")
+    sys.stdout.write(f"  Aliases added: {summary.alias_count} files\n")
+    sys.stdout.write(
+        f"  Links converted: {summary.link_ref_count} references in {summary.link_file_count} files\n"
+    )
+    if summary.errors:
+        sys.stdout.write(f"  Errors: {len(summary.errors)}\n")
+        for e in summary.errors:
+            sys.stdout.write(f"    {e}\n")
+
+
+def process_files(
+    dry_run: bool = False, aliases_only: bool = False, links_only: bool = False
+) -> None:
     """Process all ADR files."""
     adr_files = sorted(ADR_DIR.glob("0*.md"))
-
-    alias_count = 0
-    link_file_count = 0
-    link_ref_count = 0
-    errors = []
+    options = _MigrationOptions(dry_run=dry_run, aliases_only=aliases_only, links_only=links_only)
+    summary = _MigrationSummary()
 
     for path in adr_files:
-        filename = path.name
-        # Extract ADR number from filename (e.g., 000139.md -> 139)
-        num_match = re.match(r"^0*(\d+)\.md$", filename)
-        if not num_match:
-            continue
-        adr_num = int(num_match.group(1))
+        _process_single_file(path, summary, options)
 
-        try:
-            content = path.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError) as e:
-            errors.append(f"ERROR reading {filename}: {e}")
-            continue
-
-        original = content
-
-        # Step 1: Add aliases
-        if not links_only:
-            result = add_aliases(content, adr_num)
-            if result is not None:
-                content = result
-                alias_count += 1
-                if dry_run:
-                    print(f"[aliases] {filename}: would add aliases [ADR-{adr_num}, ADR-{adr_num:06d}]")
-
-        # Step 2: Convert related links
-        if not aliases_only:
-            result = convert_related_links(content)
-            if result is not None:
-                # Count converted references
-                old_lines = content.split("\n")
-                new_lines = result.split("\n")
-                ref_count = sum(1 for a, b in zip(old_lines, new_lines) if a != b)
-                link_file_count += 1
-                link_ref_count += ref_count
-                content = result
-                if dry_run:
-                    print(f"[links]   {filename}: would convert {ref_count} references")
-                    for a, b in zip(old_lines, new_lines):
-                        if a != b:
-                            print(f"          - {a.strip()}")
-                            print(f"          + {b.strip()}")
-
-        # Write if changed
-        if content != original and not dry_run:
-            path.write_text(content, encoding="utf-8")
-
-    # Summary
-    print(f"\n{'[DRY RUN] ' if dry_run else ''}Summary:")
-    print(f"  Aliases added: {alias_count} files")
-    print(f"  Links converted: {link_ref_count} references in {link_file_count} files")
-    if errors:
-        print(f"  Errors: {len(errors)}")
-        for e in errors:
-            print(f"    {e}")
+    _print_migration_summary(summary, dry_run=dry_run)
 
 
 def main() -> None:
@@ -272,15 +300,15 @@ def main() -> None:
     group.add_argument("--links-only", action="store_true", help="Only convert related links")
     args = parser.parse_args()
 
-    print(f"ADR directory: {ADR_DIR}")
-    print(f"Mode: {'dry-run' if args.dry_run else 'live'}")
+    sys.stdout.write(f"ADR directory: {ADR_DIR}\n")
+    sys.stdout.write(f"Mode: {'dry-run' if args.dry_run else 'live'}\n")
     if args.aliases_only:
-        print("Operation: aliases only")
+        sys.stdout.write("Operation: aliases only\n")
     elif args.links_only:
-        print("Operation: links only")
+        sys.stdout.write("Operation: links only\n")
     else:
-        print("Operation: aliases + links")
-    print()
+        sys.stdout.write("Operation: aliases + links\n")
+    sys.stdout.write("\n")
 
     process_files(dry_run=args.dry_run, aliases_only=args.aliases_only, links_only=args.links_only)
 

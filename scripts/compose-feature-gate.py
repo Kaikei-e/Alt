@@ -23,12 +23,14 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
 PRE_START_MIN = (5, 4, 0)
+COMPOSE_VERSION_PARTS = 3
 VERSION_RE = re.compile(r"v?(\d+)\.(\d+)\.(\d+)")
 COMMITTED_REPORT = Path(__file__).resolve().parent / "compose-feature-gate.report.json"
 
@@ -36,12 +38,60 @@ COMMITTED_REPORT = Path(__file__).resolve().parent / "compose-feature-gate.repor
 def parse_compose_version(text: str) -> tuple[int, int, int]:
     match = VERSION_RE.search(text)
     if match is None:
-        raise ValueError(f"cannot parse compose version from {text!r}")
+        msg = f"cannot parse compose version from {text!r}"
+        raise ValueError(msg)
     return int(match.group(1)), int(match.group(2)), int(match.group(3))
 
 
 def pre_start_supported(version: tuple[int, int, int]) -> bool:
     return version >= PRE_START_MIN
+
+
+def _compose_version_tuple_violations(report: dict) -> list[str]:
+    raw_tuple = report.get("compose_version_tuple")
+    if not isinstance(raw_tuple, list) or len(raw_tuple) != COMPOSE_VERSION_PARTS:
+        return ["compose_version_tuple missing"]
+    try:
+        version = (int(raw_tuple[0]), int(raw_tuple[1]), int(raw_tuple[2]))
+    except (TypeError, ValueError):
+        return ["compose_version_tuple is not three integers"]
+    if version < PRE_START_MIN:
+        return [f"compose_version_tuple {list(version)} is below 5.4.0"]
+    return []
+
+
+def _pre_start_violations(report: dict) -> list[str]:
+    pre = report.get("pre_start")
+    if not isinstance(pre, dict):
+        return ["pre_start missing"]
+    found: list[str] = []
+    if pre.get("ok") is not True:
+        found.append("pre_start.ok is not true")
+    live = pre.get("live")
+    if live is None:
+        found.append("pre_start.live is null (unprobed); refuse --gate-report")
+    elif not isinstance(live, dict):
+        found.append("pre_start.live is not an object")
+    elif live.get("supported") is not True:
+        found.append("pre_start.live.supported is not true")
+    return found
+
+
+def _create_host_path_violations(report: dict) -> list[str]:
+    chp = report.get("create_host_path_false")
+    if not isinstance(chp, dict):
+        return ["create_host_path_false missing"]
+    found: list[str] = []
+    if chp.get("ok") is not True:
+        found.append("create_host_path_false.ok is not true")
+    if chp.get("noop") is not False:
+        found.append("create_host_path_false.noop is not false")
+    found.extend(
+        f"create_host_path_false.{key} missing (unprobed live=null)"
+        for key in ("missing_file", "missing_directory")
+        if not isinstance(chp.get(key), dict)
+    )
+    return found
 
 
 def committed_report_violations(report: object) -> list[str]:
@@ -54,46 +104,9 @@ def committed_report_violations(report: object) -> list[str]:
     """
     if not isinstance(report, dict):
         return ["report is not a JSON object"]
-    found: list[str] = []
-    raw_tuple = report.get("compose_version_tuple")
-    if not isinstance(raw_tuple, list) or len(raw_tuple) != 3:
-        found.append("compose_version_tuple missing")
-    else:
-        try:
-            version = (int(raw_tuple[0]), int(raw_tuple[1]), int(raw_tuple[2]))
-        except (TypeError, ValueError):
-            found.append("compose_version_tuple is not three integers")
-        else:
-            if version < PRE_START_MIN:
-                found.append(
-                    f"compose_version_tuple {list(version)} is below 5.4.0"
-                )
-    pre = report.get("pre_start")
-    if not isinstance(pre, dict):
-        found.append("pre_start missing")
-    else:
-        if pre.get("ok") is not True:
-            found.append("pre_start.ok is not true")
-        live = pre.get("live")
-        if live is None:
-            found.append("pre_start.live is null (unprobed); refuse --gate-report")
-        elif not isinstance(live, dict):
-            found.append("pre_start.live is not an object")
-        elif live.get("supported") is not True:
-            found.append("pre_start.live.supported is not true")
-    chp = report.get("create_host_path_false")
-    if not isinstance(chp, dict):
-        found.append("create_host_path_false missing")
-    else:
-        if chp.get("ok") is not True:
-            found.append("create_host_path_false.ok is not true")
-        if chp.get("noop") is not False:
-            found.append("create_host_path_false.noop is not false")
-        for key in ("missing_file", "missing_directory"):
-            if not isinstance(chp.get(key), dict):
-                found.append(
-                    f"create_host_path_false.{key} missing (unprobed live=null)"
-                )
+    found = _compose_version_tuple_violations(report)
+    found.extend(_pre_start_violations(report))
+    found.extend(_create_host_path_violations(report))
     return found
 
 
@@ -110,8 +123,7 @@ def gate_report(
             None
             if by_version
             else (
-                f"Compose {version_text} is below 5.4.0; `pre_start` is "
-                "rejected at validation time"
+                f"Compose {version_text} is below 5.4.0; `pre_start` is rejected at validation time"
             )
         )
         # Without a live probe, do not claim create_host_path works.
@@ -126,9 +138,7 @@ def gate_report(
         file_p = live.get("create_host_path_false_missing_file") or {}
         dir_p = live.get("create_host_path_false_missing_directory") or {}
         refuses = bool(file_p.get("refuses")) and bool(dir_p.get("refuses"))
-        created = bool(file_p.get("created_empty_dir")) or bool(
-            dir_p.get("created_empty_dir")
-        )
+        created = bool(file_p.get("created_empty_dir")) or bool(dir_p.get("created_empty_dir"))
         chp = {
             "ok": refuses and not created,
             "noop": (not refuses) or created,
@@ -150,9 +160,17 @@ def gate_report(
     }
 
 
+def _docker_executable() -> str:
+    docker_bin = shutil.which("docker")
+    if docker_bin is None:
+        msg = "docker executable not found on PATH"
+        raise SystemExit(msg)
+    return docker_bin
+
+
 def _compose_version_text() -> str:
-    proc = subprocess.run(
-        ["docker", "compose", "version"],
+    proc = subprocess.run(  # noqa: S603 -- docker resolved via shutil.which with fixed args
+        [_docker_executable(), "compose", "version"],
         capture_output=True,
         text=True,
         check=False,
@@ -163,8 +181,8 @@ def _compose_version_text() -> str:
 
 
 def _run_compose(project: str, compose_file: Path, *args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ["docker", "compose", "-p", project, "-f", str(compose_file), *args],
+    return subprocess.run(  # noqa: S603 -- docker resolved via shutil.which with explicit subcommand args
+        [_docker_executable(), "compose", "-p", project, "-f", str(compose_file), *args],
         capture_output=True,
         text=True,
         check=False,
@@ -216,9 +234,7 @@ volumes:
 
 def _probe_create_host_path(tmpdir: Path, kind: str) -> dict:
     project = f"alt-wave0-chp-{kind}"
-    missing = tmpdir / f"missing-{kind}" / (
-        "missing.conf" if kind == "file" else "missing-dir"
-    )
+    missing = tmpdir / f"missing-{kind}" / ("missing.conf" if kind == "file" else "missing-dir")
     missing.parent.mkdir(parents=True, exist_ok=True)
     if missing.exists():
         if missing.is_dir():
@@ -270,12 +286,8 @@ def run_live_probes() -> dict:
         tmpdir = Path(raw)
         return {
             "pre_start_up_no_deps": _probe_pre_start(tmpdir),
-            "create_host_path_false_missing_file": _probe_create_host_path(
-                tmpdir, "file"
-            ),
-            "create_host_path_false_missing_directory": _probe_create_host_path(
-                tmpdir, "dir"
-            ),
+            "create_host_path_false_missing_file": _probe_create_host_path(tmpdir, "file"),
+            "create_host_path_false_missing_directory": _probe_create_host_path(tmpdir, "dir"),
         }
 
 

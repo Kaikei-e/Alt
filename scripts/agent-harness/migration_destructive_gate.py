@@ -26,6 +26,7 @@ from __future__ import annotations
 import argparse
 import pathlib
 import re
+import shutil
 import subprocess
 import sys
 
@@ -78,8 +79,12 @@ UPDATE_SET_NULL_RE = re.compile(
 
 
 def _run_git(cwd: pathlib.Path, *args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ["git", "-C", str(cwd), *args],
+    git_bin = shutil.which("git")
+    if git_bin is None:
+        msg = "git executable not found on PATH"
+        raise FileNotFoundError(msg)
+    return subprocess.run(  # noqa: S603 -- git resolved via shutil.which with explicit args
+        [git_bin, "-C", str(cwd), *args],
         capture_output=True,
         text=True,
         check=False,
@@ -92,6 +97,118 @@ def is_migration_sql(rel_path: str) -> bool:
         return False
     parts = pathlib.PurePosixPath(rel_path).parts
     return "migrations" in parts[:-1]
+
+
+def _scan_line_comment(text: str, out: list[str], start: int) -> tuple[int, int | None]:
+    n = len(text)
+    out[start] = " "
+    out[start + 1] = " "
+    i = start + 2
+    while i < n and text[i] != "\n":
+        out[i] = " "
+        i += 1
+    raw_comment = text[start:i].strip()
+    ok_match = DESTRUCTIVE_OK_RE.match(raw_comment)
+    ok_offset = (
+        start if ok_match is not None and len(ok_match.group(1).strip()) >= MIN_REASON_LEN else None
+    )
+    return i, ok_offset
+
+
+def _scan_block_comment(text: str, out: list[str], start: int) -> int:
+    n = len(text)
+    out[start] = " "
+    out[start + 1] = " "
+    i = start + 2
+    depth = 1
+    while i < n and depth > 0:
+        if text[i] == "/" and i + 1 < n and text[i + 1] == "*":
+            out[i] = " "
+            out[i + 1] = " "
+            depth += 1
+            i += 2
+        elif text[i] == "*" and i + 1 < n and text[i + 1] == "/":
+            out[i] = " "
+            out[i + 1] = " "
+            depth -= 1
+            i += 2
+        else:
+            if text[i] != "\n":
+                out[i] = " "
+            i += 1
+    return i
+
+
+def _scan_dollar_block(
+    text: str, out: list[str], start: int
+) -> tuple[int, tuple[int, int, int, str] | None]:
+    tag_match = DOLLAR_TAG_RE.match(text, start)
+    if tag_match is None:
+        return start + 1, None
+    tag = tag_match.group(0)
+    body_start = tag_match.end()
+    close_idx = text.find(tag, body_start)
+    if close_idx == -1:
+        return body_start, None
+    outer_end = close_idx + len(tag)
+    for j in range(start, outer_end):
+        if text[j] != "\n":
+            out[j] = " "
+    return outer_end, (start, outer_end, body_start, text[body_start:close_idx])
+
+
+def _scan_escaped_string(text: str, out: list[str], start: int) -> int:
+    n = len(text)
+    i = start + 2
+    while i < n:
+        if text[i] == "\\" and i + 1 < n:
+            if text[i] != "\n":
+                out[i] = " "
+            if text[i + 1] != "\n":
+                out[i + 1] = " "
+            i += 2
+        elif text[i] == "'":
+            if i + 1 < n and text[i + 1] == "'":
+                out[i] = " "
+                out[i + 1] = " "
+                i += 2
+                continue
+            return i + 1
+        else:
+            if text[i] != "\n":
+                out[i] = " "
+            i += 1
+    return i
+
+
+def _scan_single_quoted(text: str, out: list[str], start: int) -> int:
+    n = len(text)
+    i = start + 1
+    while i < n:
+        if text[i] == "'":
+            if i + 1 < n and text[i + 1] == "'":
+                out[i] = " "
+                out[i + 1] = " "
+                i += 2
+                continue
+            return i + 1
+        if text[i] != "\n":
+            out[i] = " "
+        i += 1
+    return i
+
+
+def _scan_double_quoted(text: str, start: int) -> int:
+    n = len(text)
+    i = start + 1
+    while i < n:
+        if text[i] == '"':
+            if i + 1 < n and text[i + 1] == '"':
+                i += 2
+                continue
+            return i + 1
+        i += 1
+    return i
 
 
 def _scan_sql(
@@ -116,126 +233,33 @@ def _scan_sql(
 
     while i < n:
         ch = text[i]
-        # Line comment: -- ... \n
         if ch == "-" and i + 1 < n and text[i + 1] == "-":
-            comment_start = i
-            out[i] = " "
-            out[i + 1] = " "
-            i += 2
-            while i < n and text[i] != "\n":
-                out[i] = " "
-                i += 1
-            raw_comment = text[comment_start:i].strip()
-            ok_match = DESTRUCTIVE_OK_RE.match(raw_comment)
-            if (
-                ok_match is not None
-                and len(ok_match.group(1).strip()) >= MIN_REASON_LEN
-            ):
-                ok_comment_offsets.append(comment_start)
+            i, ok_offset = _scan_line_comment(text, out, i)
+            if ok_offset is not None:
+                ok_comment_offsets.append(ok_offset)
             continue
-
-        # Block comment: /* ... */ (supports nesting)
         if ch == "/" and i + 1 < n and text[i + 1] == "*":
-            out[i] = " "
-            out[i + 1] = " "
-            i += 2
-            depth = 1
-            while i < n and depth > 0:
-                if text[i] == "/" and i + 1 < n and text[i + 1] == "*":
-                    out[i] = " "
-                    out[i + 1] = " "
-                    depth += 1
-                    i += 2
-                elif text[i] == "*" and i + 1 < n and text[i + 1] == "/":
-                    out[i] = " "
-                    out[i + 1] = " "
-                    depth -= 1
-                    i += 2
-                else:
-                    if text[i] != "\n":
-                        out[i] = " "
-                    i += 1
+            i = _scan_block_comment(text, out, i)
             continue
-
-        # Dollar-quoted body: $$...$$ or $tag$...$tag$
-        if ch == "$":
-            tag_match = DOLLAR_TAG_RE.match(text, i)
-            if tag_match is not None:
-                tag = tag_match.group(0)
-                body_start = tag_match.end()
-                close_idx = text.find(tag, body_start)
-                if close_idx != -1:
-                    outer_end = close_idx + len(tag)
-                    for j in range(i, outer_end):
-                        if text[j] != "\n":
-                            out[j] = " "
-                    dollar_blocks.append(
-                        (i, outer_end, body_start, text[body_start:close_idx])
-                    )
-                    i = outer_end
-                    continue
-                i = body_start
-                continue
-
-        # E'...' string literal with backslash escapes
+        if ch == "$" and DOLLAR_TAG_RE.match(text, i) is not None:
+            i, block = _scan_dollar_block(text, out, i)
+            if block is not None:
+                dollar_blocks.append(block)
+            continue
         if (
             ch in ("e", "E")
             and i + 1 < n
             and text[i + 1] == "'"
             and (i == 0 or not (text[i - 1].isalnum() or text[i - 1] in ("_", "$")))
         ):
-            i += 2
-            while i < n:
-                if text[i] == "\\" and i + 1 < n:
-                    if text[i] != "\n":
-                        out[i] = " "
-                    if text[i + 1] != "\n":
-                        out[i + 1] = " "
-                    i += 2
-                elif text[i] == "'":
-                    if i + 1 < n and text[i + 1] == "'":
-                        out[i] = " "
-                        out[i + 1] = " "
-                        i += 2
-                        continue
-                    i += 1
-                    break
-                else:
-                    if text[i] != "\n":
-                        out[i] = " "
-                    i += 1
+            i = _scan_escaped_string(text, out, i)
             continue
-
-        # Standard single-quoted string literal: '...' with '' escape
         if ch == "'":
-            i += 1
-            while i < n:
-                if text[i] == "'":
-                    if i + 1 < n and text[i + 1] == "'":
-                        out[i] = " "
-                        out[i + 1] = " "
-                        i += 2
-                        continue
-                    i += 1
-                    break
-                if text[i] != "\n":
-                    out[i] = " "
-                i += 1
+            i = _scan_single_quoted(text, out, i)
             continue
-
-        # Double-quoted identifier: "..." with "" escape
         if ch == '"':
-            i += 1
-            while i < n:
-                if text[i] == '"':
-                    if i + 1 < n and text[i + 1] == '"':
-                        i += 2
-                        continue
-                    i += 1
-                    break
-                i += 1
+            i = _scan_double_quoted(text, i)
             continue
-
         if ch == ";":
             semicolons.append(i)
         i += 1
@@ -298,29 +322,37 @@ def _statement_findings(
         for m in ALTER_DROP_COLUMN_RE.finditer(stmt):
             matched_drop_positions.add(m.start())
             findings.append((line_of(m.start()), "DROP COLUMN"))
-        for m in ALTER_USING_NULL_RE.finditer(stmt):
-            findings.append((line_of(m.start()), "ALTER COLUMN ... TYPE ... USING NULL"))
-        for m in ALTER_MODIFY_TTL_RE.finditer(stmt):
-            findings.append((line_of(m.start()), "MODIFY TTL"))
-        for m in ALTER_CH_DELETE_RE.finditer(stmt):
-            findings.append((line_of(m.start()), "ALTER TABLE ... DELETE"))
+        findings.extend(
+            (line_of(m.start()), "ALTER COLUMN ... TYPE ... USING NULL")
+            for m in ALTER_USING_NULL_RE.finditer(stmt)
+        )
+        findings.extend(
+            (line_of(m.start()), "MODIFY TTL") for m in ALTER_MODIFY_TTL_RE.finditer(stmt)
+        )
+        findings.extend(
+            (line_of(m.start()), "ALTER TABLE ... DELETE")
+            for m in ALTER_CH_DELETE_RE.finditer(stmt)
+        )
 
-    for m in DROP_CASCADE_RE.finditer(stmt):
-        if m.start() not in matched_drop_positions:
-            findings.append((line_of(m.start()), "DROP ... CASCADE"))
+    findings.extend(
+        (line_of(m.start()), "DROP ... CASCADE")
+        for m in DROP_CASCADE_RE.finditer(stmt)
+        if m.start() not in matched_drop_positions
+    )
 
-    for m in TRUNCATE_RE.finditer(stmt):
-        findings.append((line_of(m.start()), "TRUNCATE"))
+    findings.extend((line_of(m.start()), "TRUNCATE") for m in TRUNCATE_RE.finditer(stmt))
 
-    for m in DELETE_FROM_RE.finditer(stmt):
-        if not _has_where_after(stmt, m.start(), len("DELETE")):
-            findings.append((line_of(m.start()), "DELETE FROM without WHERE"))
+    findings.extend(
+        (line_of(m.start()), "DELETE FROM without WHERE")
+        for m in DELETE_FROM_RE.finditer(stmt)
+        if not _has_where_after(stmt, m.start(), len("DELETE"))
+    )
 
-    for m in UPDATE_SET_NULL_RE.finditer(stmt):
-        if not _has_where_after(stmt, m.start(), len("UPDATE")):
-            findings.append(
-                (line_of(m.start()), "UPDATE ... SET ... = NULL without WHERE")
-            )
+    findings.extend(
+        (line_of(m.start()), "UPDATE ... SET ... = NULL without WHERE")
+        for m in UPDATE_SET_NULL_RE.finditer(stmt)
+        if not _has_where_after(stmt, m.start(), len("UPDATE"))
+    )
 
     return findings
 
@@ -373,53 +405,45 @@ def check_migration_text(rel_path: str, text: str) -> list[str]:
     ]
 
 
-def _resolve_git_context(
-    base_rev: str, root_dir: pathlib.Path
-) -> tuple[pathlib.Path, str] | int:
+def _resolve_git_context(base_rev: str, root_dir: pathlib.Path) -> tuple[pathlib.Path, str] | int:
     if not root_dir.is_dir():
-        print(f"error: repository root does not exist: {root_dir}", file=sys.stderr)
+        sys.stderr.write(f"error: repository root does not exist: {root_dir}\n")
         return 2
     if not base_rev or base_rev.startswith("-"):
-        print(f"error: invalid base revision: {base_rev!r}", file=sys.stderr)
+        sys.stderr.write(f"error: invalid base revision: {base_rev!r}\n")
         return 2
 
     top_res = _run_git(root_dir, "rev-parse", "--show-toplevel")
     if top_res.returncode != 0:
-        print(
-            f"error: {root_dir} is not inside a git repository: {top_res.stderr.strip()}",
-            file=sys.stderr,
+        sys.stderr.write(
+            f"error: {root_dir} is not inside a git repository: {top_res.stderr.strip()}\n"
         )
         return 2
     repo_root = pathlib.Path(top_res.stdout.strip()).resolve()
 
-    rev_res = _run_git(
-        repo_root, "rev-parse", "--verify", "--quiet", f"{base_rev}^{{commit}}"
-    )
+    rev_res = _run_git(repo_root, "rev-parse", "--verify", "--quiet", f"{base_rev}^{{commit}}")
     if rev_res.returncode != 0:
-        print(f"error: unknown base revision: {base_rev}", file=sys.stderr)
+        sys.stderr.write(f"error: unknown base revision: {base_rev}\n")
         return 2
 
     mb_res = _run_git(repo_root, "merge-base", base_rev, "HEAD")
     if mb_res.returncode != 0 or not mb_res.stdout.strip():
-        print(
+        sys.stderr.write(
             f"error: cannot compute merge-base between {base_rev} and HEAD: "
-            f"{mb_res.stderr.strip()}",
-            file=sys.stderr,
+            f"{mb_res.stderr.strip()}\n"
         )
         return 2
     return repo_root, mb_res.stdout.strip()
 
 
-def _added_migration_paths(
-    repo_root: pathlib.Path, merge_base: str
-) -> list[str] | int:
+def _added_migration_paths(repo_root: pathlib.Path, merge_base: str) -> list[str] | int:
     ls_cur = _run_git(repo_root, "ls-files", "-z")
     if ls_cur.returncode != 0:
-        print(f"error: git ls-files failed: {ls_cur.stderr.strip()}", file=sys.stderr)
+        sys.stderr.write(f"error: git ls-files failed: {ls_cur.stderr.strip()}\n")
         return 2
     ls_base = _run_git(repo_root, "ls-tree", "-r", "-z", "--name-only", merge_base)
     if ls_base.returncode != 0:
-        print(f"error: git ls-tree failed: {ls_base.stderr.strip()}", file=sys.stderr)
+        sys.stderr.write(f"error: git ls-tree failed: {ls_base.stderr.strip()}\n")
         return 2
 
     current = {p for p in ls_cur.stdout.split("\0") if p}
@@ -450,21 +474,21 @@ def run_gate(base_rev: str, root_dir: pathlib.Path) -> int:
 
     if findings:
         for finding in findings:
-            print(finding)
-        print(
+            sys.stdout.write(f"{finding}\n")
+        sys.stdout.write(
             "\nAdd a '-- destructive-ok: <at least 20 chars explaining the backfill "
             "command, completion query, or why no data is lost>' comment line directly "
-            "above or inside each flagged statement."
+            "above or inside each flagged statement.\n"
         )
         return 1
 
     if checked == 0:
-        print(f"OK: no migration files added relative to merge base {merge_base}")
+        sys.stdout.write(f"OK: no migration files added relative to merge base {merge_base}\n")
         return 0
 
-    print(
+    sys.stdout.write(
         f"OK: checked {checked} added migration file(s) relative to merge base "
-        f"{merge_base}, 0 findings"
+        f"{merge_base}, 0 findings\n"
     )
     return 0
 

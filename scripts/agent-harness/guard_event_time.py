@@ -51,9 +51,7 @@ def _glob_to_regex(pattern: str) -> re.Pattern[str]:
     return re.compile("".join(out))
 
 
-_GUARDED_REGEXES: tuple[re.Pattern[str], ...] = tuple(
-    _glob_to_regex(pat) for pat in GUARDED_GLOBS
-)
+_GUARDED_REGEXES: tuple[re.Pattern[str], ...] = tuple(_glob_to_regex(pat) for pat in GUARDED_GLOBS)
 
 
 def is_guarded_path(raw_path: str) -> bool:
@@ -88,12 +86,11 @@ def strip_go_line_comments(text: str) -> str:
                     escaped = True
                 elif ch == '"':
                     in_double = False
-            else:
-                if ch == '"':
-                    in_double = True
-                elif ch == "/" and i + 1 < n and line[i + 1] == "/":
-                    cut_at = i
-                    break
+            elif ch == '"':
+                in_double = True
+            elif ch == "/" and i + 1 < n and line[i + 1] == "/":
+                cut_at = i
+                break
             i += 1
         stripped_lines.append(line if cut_at is None else line[:cut_at])
     return "\n".join(stripped_lines)
@@ -131,7 +128,7 @@ def main() -> int:
             )
 
     if violations:
-        print("\n".join(violations), file=sys.stderr)
+        sys.stderr.write("\n".join(violations) + "\n")
         return 2
     return 0
 
