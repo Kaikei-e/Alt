@@ -11,7 +11,9 @@ import (
 	"time"
 
 	"pre-processor/handler"
+	apperrors "pre-processor/utils/errors"
 
+	"github.com/labstack/echo/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel"
@@ -130,4 +132,49 @@ func TestStartHTTPServer_ConfigAndShutdown(t *testing.T) {
 		t.Fatalf("unexpected server error: %v", err)
 	default:
 	}
+}
+
+type writeHeaderSpy struct {
+	*httptest.ResponseRecorder
+	writeHeaderCalls int
+}
+
+func (s *writeHeaderSpy) WriteHeader(code int) {
+	s.writeHeaderCalls++
+	s.ResponseRecorder.WriteHeader(code)
+}
+
+func TestNewHTTPServer_RequestLogger_AppContextErrorLogsActualStatusAndSingleResponse(t *testing.T) {
+	var logBuf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	deps := &Dependencies{
+		SummarizeHandler: handler.NewSummarizeHandler(nil, nil, nil, nil, logger),
+		Logger:           logger,
+	}
+	srv := NewHTTPServer(deps, false, "")
+	srv.GET("/test-validation-err", func(c *echo.Context) error {
+		return apperrors.NewValidationContextError("article_id is required", "handler", "Test", "Op", nil)
+	})
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test-validation-err", nil)
+	spy := &writeHeaderSpy{ResponseRecorder: httptest.NewRecorder()}
+	srv.ServeHTTP(spy, req)
+
+	require.Equal(t, http.StatusBadRequest, spy.Code)
+	assert.Equal(t, 1, spy.writeHeaderCalls, "error response must be written exactly once")
+
+	var found map[string]any
+	for _, line := range bytes.Split(bytes.TrimSpace(logBuf.Bytes()), []byte("\n")) {
+		if len(line) == 0 {
+			continue
+		}
+		var entry map[string]any
+		require.NoError(t, json.Unmarshal(line, &entry))
+		if entry["msg"] == "HTTP request completed" {
+			found = entry
+			break
+		}
+	}
+	require.NotNil(t, found, "expected 'HTTP request completed' log entry, got: %s", logBuf.String())
+	assert.InDelta(t, float64(http.StatusBadRequest), found["status"], 0)
 }

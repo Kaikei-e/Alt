@@ -48,9 +48,6 @@ func (r *feedRepository) GetUnprocessedFeeds(ctx context.Context, cursor *domain
 
 	urls := make([]*url.URL, 0, len(resp.Msg.GetFeeds()))
 	for _, f := range resp.Msg.GetFeeds() {
-		if f == nil || f.GetUrl() == "" {
-			continue
-		}
 		parsedURL, err := url.Parse(f.GetUrl())
 		if err != nil {
 			continue

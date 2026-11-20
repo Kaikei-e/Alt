@@ -3,12 +3,14 @@
 package middleware
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/labstack/echo/v5"
@@ -388,4 +390,101 @@ func TestCustomHTTPErrorHandler_ResponseNotCommitted(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Errorf("status should remain %d when response is committed, got %d", http.StatusOK, rec.Code)
 	}
+}
+
+type statusCoderError struct {
+	status int
+	msg    string
+}
+
+func (e *statusCoderError) Error() string   { return e.msg }
+func (e *statusCoderError) StatusCode() int { return e.status }
+
+func TestCustomHTTPErrorHandler_HTTPStatusCoder_DoesNotLeakAndPreservesSentinelBodies(t *testing.T) {
+	t.Run("non-HTTPError statusCoder sends status text and logs original error", func(t *testing.T) {
+		var logBuf bytes.Buffer
+		logger := slog.New(slog.NewJSONHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+		e := echo.New()
+		e.HTTPErrorHandler = CustomHTTPErrorHandler(logger)
+
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/", nil)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		origErr := &statusCoderError{
+			status: http.StatusBadRequest,
+			msg:    "internal parse error: strconv.Atoi parsing \"abc\": invalid syntax",
+		}
+		e.HTTPErrorHandler(c, origErr)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+		}
+		if strings.Contains(rec.Body.String(), "internal parse error") {
+			t.Fatalf("response leaked internal error: %s", rec.Body.String())
+		}
+		var resp apperrors.SecureHTTPResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("failed to unmarshal response: %v", err)
+		}
+		if resp.Error.Message != http.StatusText(http.StatusBadRequest) {
+			t.Errorf("message = %q, want %q", resp.Error.Message, http.StatusText(http.StatusBadRequest))
+		}
+		var logEntry map[string]any
+		if err := json.Unmarshal(bytes.TrimSpace(logBuf.Bytes()), &logEntry); err != nil {
+			t.Fatalf("failed to unmarshal log entry %q: %v", logBuf.String(), err)
+		}
+		if logEntry["message"] != origErr.msg {
+			t.Errorf("expected original error %q in server logs, got %v", origErr.msg, logEntry["message"])
+		}
+	})
+
+	t.Run("sentinel 404/405/413 bodies remain byte-identical", func(t *testing.T) {
+		sentinels := []struct {
+			name     string
+			err      error
+			wantCode int
+			wantBody string
+		}{
+			{
+				name:     "404",
+				err:      echo.ErrNotFound,
+				wantCode: http.StatusNotFound,
+				wantBody: "{\"error\":{\"code\":\"HTTP_ERROR\",\"message\":\"Not Found\"}}\n",
+			},
+			{
+				name:     "405",
+				err:      echo.ErrMethodNotAllowed,
+				wantCode: http.StatusMethodNotAllowed,
+				wantBody: "{\"error\":{\"code\":\"HTTP_ERROR\",\"message\":\"Method Not Allowed\"}}\n",
+			},
+			{
+				name:     "413",
+				err:      echo.ErrStatusRequestEntityTooLarge,
+				wantCode: http.StatusRequestEntityTooLarge,
+				wantBody: "{\"error\":{\"code\":\"HTTP_ERROR\",\"message\":\"Request Entity Too Large\"}}\n",
+			},
+		}
+
+		for _, tc := range sentinels {
+			t.Run(tc.name, func(t *testing.T) {
+				logger := slog.New(slog.DiscardHandler)
+				e := echo.New()
+				e.HTTPErrorHandler = CustomHTTPErrorHandler(logger)
+
+				req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil)
+				rec := httptest.NewRecorder()
+				c := e.NewContext(req, rec)
+
+				e.HTTPErrorHandler(c, tc.err)
+
+				if rec.Code != tc.wantCode {
+					t.Errorf("status = %d, want %d", rec.Code, tc.wantCode)
+				}
+				if rec.Body.String() != tc.wantBody {
+					t.Errorf("body = %q, want %q", rec.Body.String(), tc.wantBody)
+				}
+			})
+		}
+	})
 }

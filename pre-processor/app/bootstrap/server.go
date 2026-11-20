@@ -50,10 +50,11 @@ func NewHTTPServer(deps *Dependencies, otelEnabled bool, otelServiceName string)
 			path := c.Request().URL.Path
 			return path == "/health" || path == "/api/v1/health"
 		},
-		LogMethod:  true,
-		LogURI:     true,
-		LogStatus:  true,
-		LogLatency: true,
+		HandleError: true,
+		LogMethod:   true,
+		LogURI:      true,
+		LogStatus:   true,
+		LogLatency:  true,
 		LogValuesFunc: func(c *echo.Context, v middleware.RequestLoggerValues) error {
 			ctx := c.Request().Context()
 			deps.Logger.InfoContext(ctx, "HTTP request completed",

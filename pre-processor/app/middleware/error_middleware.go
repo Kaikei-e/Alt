@@ -65,15 +65,11 @@ func CustomHTTPErrorHandler(logger *slog.Logger) echo.HTTPErrorHandler {
 			if msg == "" {
 				msg = "An error occurred"
 			}
-			response = buildHTTPErrorResponse(logger, requestID, status, msg)
+			response = buildHTTPErrorResponse(logger, requestID, status, msg, msg)
 
 		case errors.As(err, &statusCoder) && statusCoder.StatusCode() != 0:
 			status = statusCoder.StatusCode()
-			msg := err.Error()
-			if msg == "" {
-				msg = http.StatusText(status)
-			}
-			response = buildHTTPErrorResponse(logger, requestID, status, msg)
+			response = buildHTTPErrorResponse(logger, requestID, status, http.StatusText(status), err.Error())
 
 		default:
 			// Unknown error type - treat as internal error
@@ -104,9 +100,9 @@ func CustomHTTPErrorHandler(logger *slog.Logger) echo.HTTPErrorHandler {
 	}
 }
 
-func buildHTTPErrorResponse(logger *slog.Logger, requestID string, status int, msg string) apperrors.SecureHTTPResponse {
+func buildHTTPErrorResponse(logger *slog.Logger, requestID string, status int, clientMsg, logMsg string) apperrors.SecureHTTPResponse {
 	// For 5xx errors, hide the actual message
-	safeMsg := msg
+	safeMsg := clientMsg
 	if status >= 500 {
 		safeMsg = "An unexpected error occurred. Please try again later."
 	}
@@ -114,7 +110,7 @@ func buildHTTPErrorResponse(logger *slog.Logger, requestID string, status int, m
 	logger.Warn("HTTP error",
 		"request_id", requestID,
 		"status", status,
-		"message", msg,
+		"message", logMsg,
 	)
 
 	return apperrors.SecureHTTPResponse{
