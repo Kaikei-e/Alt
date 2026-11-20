@@ -47,7 +47,7 @@ use super::manager::Issuer;
 use x509_parser::prelude::{FromDer, X509Certificate};
 
 const DEFAULT_ISSUE_TIMEOUT: Duration = Duration::from_secs(15);
-const OTT_LIFETIME: Duration = Duration::from_secs(5 * 60);
+const OTT_LIFETIME: Duration = Duration::from_mins(5);
 
 pub(crate) const MAX_RESPONSE_BYTES: u64 = 2 << 20;
 pub(crate) const MAX_PROVISIONER_PAGES: usize = 20;

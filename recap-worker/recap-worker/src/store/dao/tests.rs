@@ -2,8 +2,6 @@
 //!
 //! These tests require a DATABASE_URL environment variable to run.
 
-#![allow(dead_code)]
-
 use super::JobStatus;
 use super::compat::RecapDao;
 use super::impls::UnifiedDao;

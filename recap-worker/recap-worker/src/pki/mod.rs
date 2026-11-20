@@ -1,5 +1,3 @@
-#![allow(clippy::duration_suboptimal_units)]
-
 pub(crate) mod certfile;
 pub(crate) mod config;
 pub(crate) mod error;

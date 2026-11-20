@@ -196,11 +196,7 @@ impl Issuer for StickyIssuer {
         }
         self.writes.fetch_add(1, Ordering::SeqCst);
         let nb = self.inner_nb;
-        Ok(self_signed_pem(
-            subject,
-            nb,
-            nb + Duration::from_secs(24 * 3600),
-        ))
+        Ok(self_signed_pem(subject, nb, nb + Duration::from_hours(24)))
     }
 }
 
@@ -331,11 +327,7 @@ impl Issuer for StubNow {
         _sans: &[String],
     ) -> Result<(Vec<u8>, Vec<u8>), PkiError> {
         let nb = SystemTime::now();
-        Ok(self_signed_pem(
-            subject,
-            nb,
-            nb + Duration::from_secs(24 * 3600),
-        ))
+        Ok(self_signed_pem(subject, nb, nb + Duration::from_hours(24)))
     }
 }
 

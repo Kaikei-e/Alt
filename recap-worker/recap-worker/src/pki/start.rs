@@ -241,11 +241,7 @@ mod tests {
             _sans: &[String],
         ) -> Result<(Vec<u8>, Vec<u8>), PkiError> {
             let nb = std::time::SystemTime::now();
-            Ok(self_signed_pem(
-                subject,
-                nb,
-                nb + Duration::from_secs(24 * 3600),
-            ))
+            Ok(self_signed_pem(subject, nb, nb + Duration::from_hours(24)))
         }
     }
 

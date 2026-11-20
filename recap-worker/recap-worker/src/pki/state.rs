@@ -66,7 +66,7 @@ mod tests {
     #[test]
     fn classify_remaining_table() {
         let nb = ts(1_000_000);
-        let na = nb + Duration::from_secs(24 * 3600);
+        let na = nb + Duration::from_hours(24);
         let cases = [
             (
                 "fresh at start",
@@ -75,17 +75,17 @@ mod tests {
             ),
             (
                 "fresh just before threshold",
-                nb + Duration::from_secs(15 * 3600),
+                nb + Duration::from_hours(15),
                 State::Fresh,
             ),
             (
                 "near_expiry at 2/3",
-                nb + Duration::from_secs(16 * 3600),
+                nb + Duration::from_hours(16),
                 State::NearExpiry,
             ),
             (
                 "near_expiry past threshold",
-                nb + Duration::from_secs(20 * 3600),
+                nb + Duration::from_hours(20),
                 State::NearExpiry,
             ),
             ("expired at not_after", na, State::Expired),

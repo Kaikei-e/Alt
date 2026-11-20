@@ -8,7 +8,7 @@ pub const MODE_ENABLED: &str = "enabled";
 pub const MODE_DISABLED: &str = "disabled";
 
 const DEFAULT_RENEW_AT: f64 = 0.66;
-const DEFAULT_TICK: Duration = Duration::from_secs(5 * 60);
+const DEFAULT_TICK: Duration = Duration::from_mins(5);
 const DEFAULT_BACKOFF: Duration = Duration::from_secs(1);
 const DEFAULT_RETRIES: u32 = 5;
 
