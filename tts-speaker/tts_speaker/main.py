@@ -12,20 +12,20 @@ from pydantic import ValidationError
 from tts_speaker.app import create_app
 from tts_speaker.config.settings import Settings
 from tts_speaker.driver.irodori_http_driver import IrodoriHttpDriver
-from tts_speaker.gateway.irodori_gateway import IrodoriGateway
+from tts_speaker.gateway.irodori_gateway import IrodoriGateway, RetryConfig
 from tts_speaker.infra.peer_identity import (
     PeerIdentityMiddleware,
     allowed_peers_from_env,
 )
-from tts_speaker.usecase.synthesize_usecase import SynthesizeUsecase
+from tts_speaker.usecase.synthesize_usecase import SynthesisConfig, SynthesizeUsecase
 
 logger = logging.getLogger(__name__)
 
 try:
     settings = Settings()
-except ValidationError as e:
+except ValidationError:
     logging.basicConfig(level=logging.INFO)
-    logger.error("Configuration validation failed: %s", e)
+    logger.exception("Configuration validation failed")
     sys.exit(1)
 
 logging.basicConfig(
@@ -69,16 +69,20 @@ gateway = IrodoriGateway(
     driver=driver,
     model_name=settings.irodori_model_name,
     voice_id=settings.tts_voice_id,
-    max_attempts=settings.irodori_max_attempts,
-    backoff_seconds=settings.irodori_retry_backoff_seconds,
+    retry=RetryConfig(
+        max_attempts=settings.irodori_max_attempts,
+        backoff_seconds=settings.irodori_retry_backoff_seconds,
+    ),
 )
 usecase = SynthesizeUsecase(
     synthesizer=gateway,
-    max_chunk_chars=settings.tts_max_chunk_chars,
-    max_text_chars=settings.tts_max_text_chars,
-    chunk_gap_ms=settings.tts_chunk_gap_ms,
-    queue_timeout_seconds=settings.tts_queue_timeout_seconds,
-    default_speed=settings.tts_default_speed,
+    config=SynthesisConfig(
+        max_chunk_chars=settings.tts_max_chunk_chars,
+        max_text_chars=settings.tts_max_text_chars,
+        chunk_gap_ms=settings.tts_chunk_gap_ms,
+        queue_timeout_seconds=settings.tts_queue_timeout_seconds,
+        default_speed=settings.tts_default_speed,
+    ),
 )
 
 

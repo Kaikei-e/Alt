@@ -8,6 +8,7 @@ import os
 import shutil
 import ssl
 import subprocess
+import tempfile
 import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -15,14 +16,18 @@ from urllib.parse import urlparse
 
 import pytest
 from cryptography import x509
+from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 
 from tts_speaker.infra.pki.certfile import CertFile
 from tts_speaker.infra.pki.config import MODE_ENABLED, Config
 from tts_speaker.infra.pki.ctx import Ctx
 from tts_speaker.infra.pki.manager import Manager
-from tts_speaker.infra.pki.native_issuer import NativeStepCAIssuer
+from tts_speaker.infra.pki.native_issuer import NativeStepCAIssuer, _assert_sans, _verify_chain
 from tts_speaker.infra.pki.state import State
+
+_HTTP_NOT_FOUND = 404
+_HTTP_CLIENT_ERROR_MIN = 400
 
 LIVE_CA_IMAGE = "smallstep/step-ca:0.30.2"
 LIVE_CA_CONTAINER = "alt-pki-native-itest-tts-speaker"
@@ -45,6 +50,57 @@ def _docker(*args: str, timeout: float = 30) -> str:
     if result.returncode != 0:
         raise RuntimeError(result.stdout + result.stderr)
     return result.stdout + result.stderr
+
+
+def _verify_manager_lifecycle(
+    tmp_path: Path,
+    iss: NativeStepCAIssuer,
+    rekey_pair: tuple[bytes, bytes],
+    leaf2: x509.Certificate,
+    ctx: Ctx,
+) -> None:
+    rekey_cert, rekey_key = rekey_pair
+    root_file = Path(iss.root_file)
+    files = CertFile(str(tmp_path / "svc-cert.pem"), str(tmp_path / "svc-key.pem"))
+    now_holder = {"t": datetime.now(UTC)}
+    mgr = Manager(
+        Config(
+            mode=MODE_ENABLED,
+            subject=LIVE_SUBJECT,
+            sans=(LIVE_SUBJECT,),
+            cert_path=str(files.cert_path),
+            key_path=str(files.key_path),
+            ca_url=iss.ca_url,
+            root_file=iss.root_file,
+            provisioner=LIVE_PROVISIONER,
+            password_file=iss.password_file,
+            renew_at_fraction=0.66,
+        ),
+        iss,
+        files,
+        now=lambda: now_holder["t"],
+    )
+    files.write(rekey_cert, rekey_key)
+    near = leaf2.not_valid_before_utc + (leaf2.not_valid_after_utc - leaf2.not_valid_before_utc) * 3 / 4
+    now_holder["t"] = near
+    state = mgr.tick(ctx)
+    assert state in {State.FRESH, State.NEAR_EXPIRY}
+    after_rekey = Path(files.cert_path).read_bytes()
+    leaf3 = _must_live_leaf(after_rekey, Path(files.key_path).read_bytes(), root_file)
+    assert leaf2.public_bytes(serialization.Encoding.DER) != leaf3.public_bytes(serialization.Encoding.DER)
+
+    now_holder["t"] = leaf3.not_valid_after_utc + timedelta(minutes=1)
+    mgr.tick(ctx)
+    after_expire = Path(files.cert_path).read_bytes()
+    _must_live_leaf(after_expire, Path(files.key_path).read_bytes(), root_file)
+    assert after_expire != leaf3.public_bytes(serialization.Encoding.PEM)
+
+    Path(files.cert_path).unlink()
+    Path(files.key_path).unlink()
+    now_holder["t"] = datetime.now(UTC)
+    mgr.tick(ctx)
+    after_missing = Path(files.cert_path).read_bytes()
+    _must_live_leaf(after_missing, Path(files.key_path).read_bytes(), root_file)
 
 
 @pytest.mark.skipif(
@@ -104,55 +160,9 @@ def test_native_step_ca_issuer_disposable_live_ca(tmp_path: Path) -> None:
         leaf1 = _must_live_leaf(cert_pem, key_pem, root_file)
         rekey_cert, rekey_key = iss.rekey(ctx, cert_pem, key_pem, LIVE_SUBJECT, [LIVE_SUBJECT])
         leaf2 = _must_live_leaf(rekey_cert, rekey_key, root_file)
-        assert leaf1.public_bytes(
-            encoding=__import__("cryptography").hazmat.primitives.serialization.Encoding.DER
-        ) != leaf2.public_bytes(encoding=__import__("cryptography").hazmat.primitives.serialization.Encoding.DER)
+        assert leaf1.public_bytes(serialization.Encoding.DER) != leaf2.public_bytes(serialization.Encoding.DER)
         assert not _public_key_equal(leaf1, leaf2)
-
-        files = CertFile(str(tmp_path / "svc-cert.pem"), str(tmp_path / "svc-key.pem"))
-        now_holder = {"t": datetime.now(UTC)}
-        mgr = Manager(
-            Config(
-                mode=MODE_ENABLED,
-                subject=LIVE_SUBJECT,
-                sans=(LIVE_SUBJECT,),
-                cert_path=str(files.cert_path),
-                key_path=str(files.key_path),
-                ca_url=ca_url,
-                root_file=str(root_file),
-                provisioner=LIVE_PROVISIONER,
-                password_file=str(password_file),
-                renew_at_fraction=0.66,
-            ),
-            iss,
-            files,
-            now=lambda: now_holder["t"],
-        )
-        files.write(rekey_cert, rekey_key)
-        near = leaf2.not_valid_before_utc + (leaf2.not_valid_after_utc - leaf2.not_valid_before_utc) * 3 / 4
-        now_holder["t"] = near
-        state = mgr.tick(ctx)
-        assert state in {State.FRESH, State.NEAR_EXPIRY}
-        after_rekey = Path(files.cert_path).read_bytes()
-        leaf3 = _must_live_leaf(after_rekey, Path(files.key_path).read_bytes(), root_file)
-        assert leaf2.public_bytes(
-            __import__("cryptography").hazmat.primitives.serialization.Encoding.DER
-        ) != leaf3.public_bytes(__import__("cryptography").hazmat.primitives.serialization.Encoding.DER)
-
-        now_holder["t"] = leaf3.not_valid_after_utc + timedelta(minutes=1)
-        mgr.tick(ctx)
-        after_expire = Path(files.cert_path).read_bytes()
-        _must_live_leaf(after_expire, Path(files.key_path).read_bytes(), root_file)
-        assert after_expire != leaf3.public_bytes(
-            __import__("cryptography").hazmat.primitives.serialization.Encoding.PEM
-        )
-
-        Path(files.cert_path).unlink()
-        Path(files.key_path).unlink()
-        now_holder["t"] = datetime.now(UTC)
-        mgr.tick(ctx)
-        after_missing = Path(files.cert_path).read_bytes()
-        _must_live_leaf(after_missing, Path(files.key_path).read_bytes(), root_file)
+        _verify_manager_lifecycle(tmp_path, iss, (rekey_cert, rekey_key), leaf2, ctx)
     finally:
         subprocess.run(["docker", "rm", "-f", LIVE_CA_CONTAINER], check=False, capture_output=True)
         subprocess.run(
@@ -259,10 +269,10 @@ def _wait_provisioner_http(ca_url: str, root_file: Path, deadline: float) -> Non
                     body = resp.read()
                 finally:
                     conn.close()
-                if resp.status == 404:
+                if resp.status == _HTTP_NOT_FOUND:
                     continue
                 last = f"status={resp.status} bytes={len(body)}"
-                if resp.status >= 400:
+                if resp.status >= _HTTP_CLIENT_ERROR_MIN:
                     continue
                 payload = json.loads(body.decode("utf-8"))
                 for item in payload.get("provisioners") or []:
@@ -278,10 +288,6 @@ def _wait_provisioner_http(ca_url: str, root_file: Path, deadline: float) -> Non
 
 
 def _must_live_leaf(cert_pem: bytes, key_pem: bytes, root_file: Path) -> x509.Certificate:
-    import tempfile
-
-    from cryptography.hazmat.primitives import serialization
-
     with (
         tempfile.NamedTemporaryFile(delete=False) as cf,
         tempfile.NamedTemporaryFile(delete=False) as kf,
@@ -297,7 +303,6 @@ def _must_live_leaf(cert_pem: bytes, key_pem: bytes, root_file: Path) -> x509.Ce
     leaf = x509.load_pem_x509_certificate(cert_pem)
     cn = leaf.subject.get_attributes_for_oid(x509.oid.NameOID.COMMON_NAME)[0].value
     assert cn == LIVE_SUBJECT
-    from tts_speaker.infra.pki.native_issuer import _assert_sans, _verify_chain
 
     _assert_sans(leaf, [LIVE_SUBJECT])
     root = x509.load_pem_x509_certificate(root_file.read_bytes())

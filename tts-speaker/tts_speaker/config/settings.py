@@ -51,21 +51,25 @@ class Settings(BaseSettings):
     def _validate_voice(cls, v: str) -> str:
         stripped = v.strip()
         if stripped.lower() in ("", "none", "no-ref", "text-only") or not _VOICE_ID_RE.fullmatch(stripped):
-            raise ValueError(
+            msg = (
                 f"Reference voice ID is required, must match [A-Za-z0-9_-]{{1,64}}, and cannot be disallowed; got '{v}'"
             )
+            raise ValueError(msg)
         return stripped
 
     @model_validator(mode="after")
     def validate_and_load_api_key(self) -> Self:
         file_path = self.irodori_api_key_file
         if not file_path.is_file():
-            raise ValueError(f"API key file does not exist or is not a file: {file_path}")
+            msg = f"API key file does not exist or is not a file: {file_path}"
+            raise ValueError(msg)
         try:
             content = file_path.read_text(encoding="utf-8").strip()
         except OSError as e:
-            raise ValueError(f"Failed to read API key file: {e}") from e
+            msg = f"Failed to read API key file: {e}"
+            raise ValueError(msg) from e
         if not content:
-            raise ValueError("API key file is empty")
+            msg = "API key file is empty"
+            raise ValueError(msg)
         self._irodori_api_key = SecretStr(content)
         return self

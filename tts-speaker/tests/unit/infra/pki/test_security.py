@@ -38,7 +38,7 @@ from tts_speaker.infra.pki.config import (
     ProvisionerPageLimitError,
     RedirectError,
     ResponseTooLargeError,
-    UnsupportedIssuerAlgorithm,
+    UnsupportedIssuerAlgorithmError,
     load_config,
 )
 from tts_speaker.infra.pki.ctx import CancelledError, Ctx
@@ -491,8 +491,9 @@ def test_start_uses_private_registry_and_ops(tmp_path: Path, monkeypatch: pytest
     assert handle.ops_addr is not None
     assert handle.registry is not DEFAULT_REGISTRY
     try:
+        http_ok = 200
         with urllib.request.urlopen(f"http://{handle.ops_addr}/health", timeout=2) as health:  # nosec B310
-            assert health.status == 200
+            assert health.status == http_ok
             assert b"tts-speaker" in health.read()
         with urllib.request.urlopen(f"http://{handle.ops_addr}/metrics", timeout=2) as metrics:  # nosec B310
             body = metrics.read().decode()
@@ -524,7 +525,8 @@ def test_stop_during_http_closes_connections(tmp_path: Path) -> None:
     iss.close_idle_connections()
     thread.join(timeout=5)
     assert thread.is_alive() is False
-    assert done and isinstance(done[0], CancelledError)
+    assert done
+    assert isinstance(done[0], CancelledError)
     if ca.block_sign is not None:
         ca.block_sign.set()
     ca.close()
@@ -587,7 +589,9 @@ def test_stop_during_write_does_not_abandon(tmp_path: Path) -> None:
 
 
 def test_pbes2_constant_is_step_ca_default() -> None:
-    assert STEP_CA_PBES2_P2C == 600_000
+    actual_p2c = STEP_CA_PBES2_P2C
+    expected_p2c = 600_000
+    assert actual_p2c == expected_p2c
     assert os.path.exists("/proc/self/fd")
 
 
@@ -685,7 +689,7 @@ def test_ed25519_directly_signed_chain_cannot_bypass_policy() -> None:
     leaf_key = ec.generate_private_key(ec.SECP256R1())
     ed_key = ed25519.Ed25519PrivateKey.generate()
     leaf, ca_cert = _leaf_and_ca(ed_key, leaf_key, None, "ed25519.example")
-    with pytest.raises(UnsupportedIssuerAlgorithm, match="unsupported issuer algorithm"):
+    with pytest.raises(UnsupportedIssuerAlgorithmError, match="unsupported issuer algorithm"):
         _verify_chain(leaf, [ca_cert], [], ["ed25519.example"])
 
 

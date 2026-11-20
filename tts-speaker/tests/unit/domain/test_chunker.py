@@ -19,9 +19,10 @@ def test_short_sentences_packed_greedily() -> None:
 
 def test_sentence_split_punctuation() -> None:
     text = "こんにちは！元気ですか？はい、元気です。そうですか！"
-    chunks = split_into_chunks(text, max_chars=20)
+    max_chars = 20
+    chunks = split_into_chunks(text, max_chars=max_chars)
     for c in chunks:
-        assert len(c) <= 20
+        assert len(c) <= max_chars
         assert len(c) > 0
 
 
@@ -38,8 +39,9 @@ def test_long_sentence_split_by_comma() -> None:
     clause1 = "これは非常に長い文章の前半部分であって、"
     clause2 = "読点によって適切に分割されるべき後半部分です。"
     long_sentence = clause1 + clause2
+    expected_chunks = 2
     chunks = split_into_chunks(long_sentence, max_chars=len(clause2))
-    assert len(chunks) == 2
+    assert len(chunks) == expected_chunks
     assert chunks[0] == clause1
     assert chunks[1] == clause2
 
@@ -48,13 +50,15 @@ def test_comma_clause_longer_than_max_is_hard_split() -> None:
     clause1 = "あ" * 30 + "、"
     clause2 = "い" * 10
     long_sentence = clause1 + clause2
-    chunks = split_into_chunks(long_sentence, max_chars=20)
-    assert len(chunks) == 3
+    max_chars = 20
+    expected_chunks = 3
+    chunks = split_into_chunks(long_sentence, max_chars=max_chars)
+    assert len(chunks) == expected_chunks
     assert chunks[0] == "あ" * 20
     assert chunks[1] == "あ" * 10 + "、"
     assert chunks[2] == "い" * 10
     for c in chunks:
-        assert len(c) <= 20
+        assert len(c) <= max_chars
 
 
 def test_chunks_without_alphanumeric_dropped() -> None:
@@ -66,8 +70,10 @@ def test_chunks_without_alphanumeric_dropped() -> None:
 def test_hard_split_without_punctuation() -> None:
     # Text longer than max_chars with no punctuation
     text = "あ" * 150
-    chunks = split_into_chunks(text, max_chars=50)
-    assert len(chunks) == 3
+    max_chars = 50
+    expected_chunks = len(text) // max_chars
+    chunks = split_into_chunks(text, max_chars=max_chars)
+    assert len(chunks) == expected_chunks
     assert chunks[0] == "あ" * 50
     assert chunks[1] == "あ" * 50
     assert chunks[2] == "あ" * 50
@@ -76,10 +82,11 @@ def test_hard_split_without_punctuation() -> None:
 def test_invariants_1000_char_no_punctuation() -> None:
     text = "あ" * 1000
     max_chars = 100
+    expected_chunks = len(text) // max_chars
     chunks = split_into_chunks(text, max_chars=max_chars)
-    assert len(chunks) == 10
+    assert len(chunks) == expected_chunks
     for chunk in chunks:
-        assert len(chunk) == 100
+        assert len(chunk) == max_chars
     assert "".join(chunks) == text
 
 

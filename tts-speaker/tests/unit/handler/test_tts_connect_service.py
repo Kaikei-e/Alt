@@ -55,9 +55,11 @@ async def _async_error(exc: Exception) -> AsyncIterator[ChunkAudio]:
 
 
 async def test_synthesize_stream_single_chunk(sample_wav_bytes: bytes) -> None:
+    sample_rate = 48000
+    duration_seconds = 0.1
     mock_usecase = AsyncMock(spec=SynthesizeUsecase)
     mock_usecase.stream.return_value = _async_iter(
-        [ChunkAudio(wav=sample_wav_bytes, sample_rate=48000, duration_seconds=0.1)]
+        [ChunkAudio(wav=sample_wav_bytes, sample_rate=sample_rate, duration_seconds=duration_seconds)]
     )
 
     service = TTSConnectService(usecase=mock_usecase)
@@ -69,27 +71,26 @@ async def test_synthesize_stream_single_chunk(sample_wav_bytes: bytes) -> None:
     resp = responses[0]
     assert isinstance(resp, SynthesizeStreamResponse)
     assert resp.audio_wav == sample_wav_bytes
-    assert resp.sample_rate == 48000
-    assert pytest.approx(resp.duration_seconds, abs=0.01) == 0.1
+    assert resp.sample_rate == sample_rate
+    assert pytest.approx(resp.duration_seconds, abs=0.01) == duration_seconds
     mock_usecase.stream.assert_called_once_with("hello", speed=1.2)
 
 
 async def test_synthesize_stream_multiple_chunks(sample_wav_bytes: bytes) -> None:
+    chunks = [
+        ChunkAudio(wav=sample_wav_bytes, sample_rate=48000, duration_seconds=0.1),
+        ChunkAudio(wav=sample_wav_bytes, sample_rate=48000, duration_seconds=0.2),
+        ChunkAudio(wav=sample_wav_bytes, sample_rate=48000, duration_seconds=0.1),
+    ]
     mock_usecase = AsyncMock(spec=SynthesizeUsecase)
-    mock_usecase.stream.return_value = _async_iter(
-        [
-            ChunkAudio(wav=sample_wav_bytes, sample_rate=48000, duration_seconds=0.1),
-            ChunkAudio(wav=sample_wav_bytes, sample_rate=48000, duration_seconds=0.2),
-            ChunkAudio(wav=sample_wav_bytes, sample_rate=48000, duration_seconds=0.1),
-        ]
-    )
+    mock_usecase.stream.return_value = _async_iter(chunks)
 
     service = TTSConnectService(usecase=mock_usecase)
     request = SynthesizeStreamRequest(text="長文テスト")
     ctx = _make_context()
 
     responses = [resp async for resp in service.synthesize_stream(request, ctx)]
-    assert len(responses) == 3
+    assert len(responses) == len(chunks)
     assert all(isinstance(r, SynthesizeStreamResponse) for r in responses)
     assert responses[1].duration_seconds == pytest.approx(0.2, abs=0.01)
     mock_usecase.stream.assert_called_once_with("長文テスト", speed=None)

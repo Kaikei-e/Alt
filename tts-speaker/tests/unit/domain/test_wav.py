@@ -7,15 +7,19 @@ import pytest
 from tts_speaker.domain.errors import AudioFormatError
 from tts_speaker.domain.wav import append_silence, wav_info
 
+_SAMPLE_RATE_HZ = 48000
+_DURATION_100MS_S = 0.1
+_DURATION_200MS_S = 0.2
+
 
 def test_wav_info_valid(sample_wav_bytes: bytes, sample_wav_bytes_2: bytes) -> None:
     sr, duration = wav_info(sample_wav_bytes)
-    assert sr == 48000
-    assert pytest.approx(duration, abs=0.01) == 0.1
+    assert sr == _SAMPLE_RATE_HZ
+    assert pytest.approx(duration, abs=0.01) == _DURATION_100MS_S
 
     sr2, duration2 = wav_info(sample_wav_bytes_2)
-    assert sr2 == 48000
-    assert pytest.approx(duration2, abs=0.01) == 0.2
+    assert sr2 == _SAMPLE_RATE_HZ
+    assert pytest.approx(duration2, abs=0.01) == _DURATION_200MS_S
 
 
 def test_wav_info_corrupt() -> None:

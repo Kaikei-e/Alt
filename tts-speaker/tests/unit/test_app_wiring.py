@@ -6,7 +6,7 @@ import json
 import struct
 import sys
 import urllib.request
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 from unittest.mock import AsyncMock
 
@@ -18,7 +18,13 @@ from tts_speaker.domain.errors import UpstreamUnavailableError
 from tts_speaker.infra.peer_identity import PeerIdentityMiddleware
 from tts_speaker.infra.pki.ops import start_ops
 from tts_speaker.port.speech_synthesizer_port import SpeechSynthesizerPort
-from tts_speaker.usecase.synthesize_usecase import ChunkAudio, SynthesizeUsecase
+from tts_speaker.usecase.synthesize_usecase import ChunkAudio, SynthesisConfig, SynthesizeUsecase
+
+_HTTP_OK = 200
+_HTTP_UNAUTHORIZED = 401
+_SAMPLE_RATE_HZ = 48000
+_EOS_FRAME_FLAG = 2
+_EXPECTED_THREE_CHUNKS = 3
 
 
 def _encode_connect_frame(payload: dict) -> bytes:
@@ -44,7 +50,7 @@ async def _async_chunks(chunks: list[ChunkAudio]) -> AsyncIterator[ChunkAudio]:
 
 
 @pytest.fixture(autouse=True)
-def clean_main_module():
+def clean_main_module() -> Iterator[None]:
     sys.modules.pop("tts_speaker.main", None)
     yield
     sys.modules.pop("tts_speaker.main", None)
@@ -77,7 +83,7 @@ def test_main_peer_identity_strict_plaintext_returns_401(
         headers={"Content-Type": "application/connect+json", "Connect-Protocol-Version": "1"},
         content=_encode_connect_frame({"text": "hello"}),
     )
-    assert resp.status_code == 401
+    assert resp.status_code == _HTTP_UNAUTHORIZED
     assert resp.text == "unauthenticated peer"
 
 
@@ -120,7 +126,7 @@ def test_peer_identity_strict_plaintext_unauthenticated(
         headers={"Content-Type": "application/connect+json", "Connect-Protocol-Version": "1"},
         content=_encode_connect_frame({"text": "hello"}),
     )
-    assert resp.status_code == 401
+    assert resp.status_code == _HTTP_UNAUTHORIZED
     assert resp.text == "unauthenticated peer"
 
 
@@ -141,7 +147,7 @@ def test_peer_identity_strict_plaintext_health_behavior(
 
     client = TestClient(app, raise_server_exceptions=False)
     resp = client.get("/health")
-    assert resp.status_code == 200
+    assert resp.status_code == _HTTP_OK
 
 
 def test_peer_identity_strict_with_allowed_peer_from_sidecar(
@@ -167,7 +173,7 @@ def test_peer_identity_strict_with_allowed_peer_from_sidecar(
                 "Connect-Protocol-Version": "1",
             },
         )
-        assert resp.status_code == 200
+        assert resp.status_code == _HTTP_OK
         assert resp.headers["content-type"] == "application/connect+json"
 
 
@@ -177,7 +183,7 @@ def test_ops_listener_health_endpoint() -> None:
     try:
         url = f"http://{handle.addr}/health"
         with urllib.request.urlopen(url, timeout=2.0) as resp:  # noqa: S310 # nosec B310
-            assert resp.status == 200
+            assert resp.status == _HTTP_OK
             body = resp.read().decode("utf-8")
             assert '"status": "healthy"' in body
             assert '"service": "tts-speaker"' in body
@@ -205,18 +211,18 @@ def test_in_process_connect_streaming_3_chunks(sample_wav_bytes: bytes) -> None:
         content=_encode_connect_frame({"text": "文1。文2。文3。"}),
     )
 
-    assert resp.status_code == 200
+    assert resp.status_code == _HTTP_OK
     assert resp.headers.get("content-type") == "application/connect+json"
 
     frames = _decode_connect_frames(resp.content)
     # 3 data frames (flag 0) + 1 end-of-stream frame (flag 2)
     data_frames = [f for f in frames if f[0] == 0]
-    end_frames = [f for f in frames if f[0] == 2]
+    end_frames = [f for f in frames if f[0] == _EOS_FRAME_FLAG]
 
-    assert len(data_frames) == 3
+    assert len(data_frames) == _EXPECTED_THREE_CHUNKS
     for _, payload in data_frames:
         assert "audioWav" in payload
-        assert payload.get("sampleRate") == 48000
+        assert payload.get("sampleRate") == _SAMPLE_RATE_HZ
         assert payload.get("durationSeconds") == pytest.approx(0.1, abs=0.01)
 
     assert len(end_frames) == 1
@@ -235,13 +241,13 @@ def test_in_process_connect_streaming_invalid_speed_yields_invalid_argument() ->
         content=_encode_connect_frame({"text": "test", "speed": 2.0}),
     )
 
-    assert resp.status_code == 200
+    assert resp.status_code == _HTTP_OK
     assert resp.headers.get("content-type") == "application/connect+json"
 
     frames = _decode_connect_frames(resp.content)
     assert len(frames) == 1
     flag, payload = frames[0]
-    assert flag == 2  # end-of-stream frame
+    assert flag == _EOS_FRAME_FLAG  # end-of-stream frame
     assert "error" in payload
     assert payload["error"].get("code") == "invalid_argument"
 
@@ -263,11 +269,13 @@ async def test_client_abort_cancels_upstream_work_and_releases_lock(sample_wav_b
 
     uc = SynthesizeUsecase(
         synthesizer=FakeSynthesizer(),
-        max_chunk_chars=10,
-        max_text_chars=5000,
-        chunk_gap_ms=200,
-        queue_timeout_seconds=60.0,
-        default_speed=1.25,
+        config=SynthesisConfig(
+            max_chunk_chars=10,
+            max_text_chars=5000,
+            chunk_gap_ms=200,
+            queue_timeout_seconds=60.0,
+            default_speed=1.25,
+        ),
     )
     app = create_app(usecase=uc)
     app.add_middleware(PeerIdentityMiddleware, allowed=[], strict=False)
@@ -286,9 +294,8 @@ async def test_client_abort_cancels_upstream_work_and_releases_lock(sample_wav_b
         return {"type": "http.disconnect"}
 
     async def send(msg: dict) -> None:
-        if msg["type"] == "http.response.body" and msg.get("body"):
-            if not disconnect.is_set():
-                disconnect.set()
+        if msg["type"] == "http.response.body" and msg.get("body") and not disconnect.is_set():
+            disconnect.set()
 
     scope = {
         "type": "http",
@@ -323,11 +330,13 @@ async def test_queued_request_client_disconnected_never_acquires_lock(sample_wav
 
     uc = SynthesizeUsecase(
         synthesizer=FakeSynthesizer(),
-        max_chunk_chars=10,
-        max_text_chars=5000,
-        chunk_gap_ms=200,
-        queue_timeout_seconds=60.0,
-        default_speed=1.25,
+        config=SynthesisConfig(
+            max_chunk_chars=10,
+            max_text_chars=5000,
+            chunk_gap_ms=200,
+            queue_timeout_seconds=60.0,
+            default_speed=1.25,
+        ),
     )
     app = create_app(usecase=uc)
     app.add_middleware(PeerIdentityMiddleware, allowed=[], strict=False)
@@ -382,7 +391,8 @@ def test_in_process_connect_streaming_upstream_failure_after_first_chunk(sample_
 
     async def mock_stream(text: str, speed: float | None = None) -> AsyncIterator[ChunkAudio]:
         yield ChunkAudio(wav=sample_wav_bytes, sample_rate=48000, duration_seconds=0.1)
-        raise UpstreamUnavailableError("upstream down after first chunk")
+        msg = "upstream down after first chunk"
+        raise UpstreamUnavailableError(msg)
 
     mock_usecase = AsyncMock(spec=SynthesizeUsecase)
     mock_usecase.stream.side_effect = mock_stream
@@ -396,12 +406,12 @@ def test_in_process_connect_streaming_upstream_failure_after_first_chunk(sample_
         content=_encode_connect_frame({"text": "文1。文2。"}),
     )
 
-    assert resp.status_code == 200
+    assert resp.status_code == _HTTP_OK
     assert resp.headers.get("content-type") == "application/connect+json"
 
     frames = _decode_connect_frames(resp.content)
     data_frames = [f for f in frames if f[0] == 0]
-    end_frames = [f for f in frames if f[0] == 2]
+    end_frames = [f for f in frames if f[0] == _EOS_FRAME_FLAG]
 
     assert len(data_frames) == 1
     assert "audioWav" in data_frames[0][1]
@@ -428,11 +438,13 @@ async def test_outer_cancellation_cancels_synthesizer_and_releases_lock(sample_w
 
     uc = SynthesizeUsecase(
         synthesizer=SlowFakeSynthesizer(),
-        max_chunk_chars=10,
-        max_text_chars=5000,
-        chunk_gap_ms=200,
-        queue_timeout_seconds=60.0,
-        default_speed=1.25,
+        config=SynthesisConfig(
+            max_chunk_chars=10,
+            max_text_chars=5000,
+            chunk_gap_ms=200,
+            queue_timeout_seconds=60.0,
+            default_speed=1.25,
+        ),
     )
     app = create_app(usecase=uc)
     app.add_middleware(PeerIdentityMiddleware, allowed=[], strict=False)
@@ -486,7 +498,8 @@ async def test_watcher_exception_is_reraised_not_treated_as_disconnect() -> None
     app = create_app(usecase=mock_usecase)
 
     async def faulty_receive() -> dict:
-        raise RuntimeError("simulated watcher failure")
+        msg = "simulated watcher failure"
+        raise RuntimeError(msg)
 
     async def send(msg: dict) -> None:
         pass

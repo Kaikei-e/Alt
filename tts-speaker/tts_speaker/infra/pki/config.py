@@ -53,7 +53,7 @@ class PKIConfigError(PkiError):
     """Invalid enrollment configuration."""
 
 
-class UnsupportedIssuerAlgorithm(PkiError):
+class UnsupportedIssuerAlgorithmError(PkiError):
     """Issuer public key algorithm is not accepted by WebPKI PolicyBuilder."""
 
 
@@ -114,8 +114,9 @@ def _get_env(environ: Mapping[str, str], key: str, fallback: str) -> str:
     if _has(environ, file_key):
         file_ref = environ.get(file_key, "")
         if not str(file_ref).strip():
-            raise PkiError(f"pki: {file_key} is empty")
-        from tts_speaker.infra.pki.filesafe import (
+            msg = f"pki: {file_key} is empty"
+            raise PkiError(msg)
+        from tts_speaker.infra.pki.filesafe import (  # noqa: PLC0415 - breaks circular import with filesafe
             MAX_ENV_FILE_BYTES,
             read_regular_no_follow,
         )
@@ -123,12 +124,15 @@ def _get_env(environ: Mapping[str, str], key: str, fallback: str) -> str:
         try:
             raw = read_regular_no_follow(str(file_ref), MAX_ENV_FILE_BYTES)
         except FileNotFoundError as err:
-            raise PkiError(f"pki: read {file_key}") from err
+            msg = f"pki: read {file_key}"
+            raise PkiError(msg) from err
         except PkiError as err:
-            raise PkiError(f"pki: read {file_key}: {err}") from err
+            msg = f"pki: read {file_key}: {err}"
+            raise PkiError(msg) from err
         text = raw.decode("utf-8").strip()
         if not text:
-            raise PkiError(f"pki: {file_key} is empty")
+            msg = f"pki: {file_key} is empty"
+            raise PkiError(msg)
         return text
     if _has(environ, key):
         return environ[key]
@@ -152,7 +156,8 @@ def load_config(service_name: str, environ: Mapping[str, str] | None = None) -> 
         try:
             renew_at = float(renew_raw)
         except ValueError as err:
-            raise PKIConfigError(f"pki: RENEW_AT_FRACTION: {err}") from err
+            msg = f"pki: RENEW_AT_FRACTION: {err}"
+            raise PKIConfigError(msg) from err
 
     tick = DEFAULT_TICK_SECONDS
     tick_raw = _get_env(env, "PKI_ENROLLMENT_TICK_INTERVAL", "")
@@ -182,25 +187,27 @@ def load_config(service_name: str, environ: Mapping[str, str] | None = None) -> 
 
 def _require_inbound_mtls(env: Mapping[str, str]) -> None:
     if not _has(env, "INBOUND_MTLS"):
-        raise PKIConfigError("pki: PKI_ENROLLMENT=enabled requires INBOUND_MTLS=true")
+        msg = "pki: PKI_ENROLLMENT=enabled requires INBOUND_MTLS=true"
+        raise PKIConfigError(msg)
     raw = env["INBOUND_MTLS"].strip().lower()
     if raw not in {"true", "1", "on"}:
-        raise PKIConfigError(f"pki: PKI_ENROLLMENT=enabled requires INBOUND_MTLS=true (got {env['INBOUND_MTLS']!r})")
+        msg = f"pki: PKI_ENROLLMENT=enabled requires INBOUND_MTLS=true (got {env['INBOUND_MTLS']!r})"
+        raise PKIConfigError(msg)
 
 
 def _load_enrollment_mode(env: Mapping[str, str]) -> str:
     if _has(env, "PKI_ENROLLMENT_FILE"):
         raw = _get_env(env, "PKI_ENROLLMENT", "").strip().lower()
         if raw not in {MODE_ENABLED, MODE_DISABLED}:
-            raise PKIConfigError(f"pki: PKI_ENROLLMENT={raw!r} must be {MODE_ENABLED!r} or {MODE_DISABLED!r}")
+            msg = f"pki: PKI_ENROLLMENT={raw!r} must be {MODE_ENABLED!r} or {MODE_DISABLED!r}"
+            raise PKIConfigError(msg)
         return raw
     if not _has(env, "PKI_ENROLLMENT"):
         return MODE_DISABLED
     mode = env["PKI_ENROLLMENT"].strip().lower()
     if mode not in {MODE_ENABLED, MODE_DISABLED}:
-        raise PKIConfigError(
-            f"pki: PKI_ENROLLMENT={env['PKI_ENROLLMENT']!r} must be {MODE_ENABLED!r} or {MODE_DISABLED!r}"
-        )
+        msg = f"pki: PKI_ENROLLMENT={env['PKI_ENROLLMENT']!r} must be {MODE_ENABLED!r} or {MODE_DISABLED!r}"
+        raise PKIConfigError(msg)
     return mode
 
 
@@ -224,47 +231,52 @@ def _parse_duration_seconds(raw: str) -> float:
             try:
                 return float(magnitude) * multiplier
             except ValueError as err:
-                raise PKIConfigError(f"pki: PKI_ENROLLMENT_TICK_INTERVAL: {err}") from err
+                msg = f"pki: PKI_ENROLLMENT_TICK_INTERVAL: {err}"
+                raise PKIConfigError(msg) from err
     try:
         return float(text)
     except ValueError as err:
-        raise PKIConfigError(f"pki: PKI_ENROLLMENT_TICK_INTERVAL: {err}") from err
+        msg = f"pki: PKI_ENROLLMENT_TICK_INTERVAL: {err}"
+        raise PKIConfigError(msg) from err
 
 
 def require_https(raw: str) -> None:
     parsed = urlparse(raw)
     if parsed.scheme != "https" or not parsed.hostname:
-        raise InsecureCAURLError(f"pki: STEP_CA_URL must use https (got {raw!r})")
+        msg = f"pki: STEP_CA_URL must use https (got {raw!r})"
+        raise InsecureCAURLError(msg)
 
 
 def _validate(cfg: Config) -> None:
     if not cfg.subject:
-        raise PKIConfigError("pki: CERT_SUBJECT is required")
+        msg = "pki: CERT_SUBJECT is required"
+        raise PKIConfigError(msg)
     if not 0.0 < cfg.renew_at_fraction < 1.0:
-        raise PKIConfigError(f"pki: RENEW_AT_FRACTION must be in (0,1), got {cfg.renew_at_fraction}")
+        msg = f"pki: RENEW_AT_FRACTION must be in (0,1), got {cfg.renew_at_fraction}"
+        raise PKIConfigError(msg)
     if cfg.mode != MODE_ENABLED:
         return
     if cfg.provisioner in {"pki-agent", ""}:
-        raise SharedProvisionerError(
-            f"pki: shared provisioner pki-agent is forbidden for in-process enrollment (got {cfg.provisioner!r})"
-        )
+        msg = f"pki: shared provisioner pki-agent is forbidden for in-process enrollment (got {cfg.provisioner!r})"
+        raise SharedProvisionerError(msg)
     want_prov = provisioner_name(cfg.subject)
     if cfg.provisioner != want_prov:
-        raise PkiError(f"pki: provisioner {cfg.provisioner!r} must be exactly {want_prov!r}")
+        msg = f"pki: provisioner {cfg.provisioner!r} must be exactly {want_prov!r}"
+        raise PkiError(msg)
     if "step_ca_root_password" in cfg.password_file:
-        raise SharedRootSecretError(
-            f"pki: provisioner password file must not be the shared step_ca_root_password secret (got {cfg.password_file!r})"
+        msg = (
+            "pki: provisioner password file must not be the shared step_ca_root_password secret "
+            f"(got {cfg.password_file!r})"
         )
+        raise SharedRootSecretError(msg)
     want_base = provisioner_password_basename(cfg.subject)
     if Path(cfg.password_file).name != want_base:
-        raise PkiError(
-            f"pki: provisioner password file basename {Path(cfg.password_file).name!r} must be exactly {want_base!r}"
-        )
+        msg = f"pki: provisioner password file basename {Path(cfg.password_file).name!r} must be exactly {want_base!r}"
+        raise PkiError(msg)
     cleaned = os.path.normpath(cfg.password_file)
     if str(Path(cleaned).parent) == "/run/secrets" and cleaned != provisioner_password_file(cfg.subject):
-        raise PkiError(
-            f"pki: provisioner password file {cfg.password_file!r} must be {provisioner_password_file(cfg.subject)!r}"
-        )
+        msg = f"pki: provisioner password file {cfg.password_file!r} must be {provisioner_password_file(cfg.subject)!r}"
+        raise PkiError(msg)
     required = (
         ("CERT_PATH", cfg.cert_path),
         ("KEY_PATH", cfg.key_path),
@@ -274,5 +286,6 @@ def _validate(cfg: Config) -> None:
     )
     for name, value in required:
         if not value.strip():
-            raise PKIConfigError(f"pki: {name} is required when PKI_ENROLLMENT=enabled")
+            msg = f"pki: {name} is required when PKI_ENROLLMENT=enabled"
+            raise PKIConfigError(msg)
     require_https(cfg.ca_url)

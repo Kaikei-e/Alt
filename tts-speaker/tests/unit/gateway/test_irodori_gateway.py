@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Awaitable, Callable
 from unittest.mock import AsyncMock
 
 import httpx
@@ -11,10 +12,16 @@ from tts_speaker.domain.errors import (
     UpstreamUnavailableError,
 )
 from tts_speaker.driver.irodori_http_driver import IrodoriHttpDriver
-from tts_speaker.gateway.irodori_gateway import IrodoriGateway
+from tts_speaker.gateway.irodori_gateway import IrodoriGateway, RetryConfig
+
+SleepRecorder = tuple[Callable[[float], Awaitable[None]], list[float]]
+_EXPECTED_THREE_ATTEMPTS = 3
+_EXPECTED_TWO_ATTEMPTS = 2
+_HTTP_BAD_REQUEST = 400
+_MAX_DETAIL_LEN = 200
 
 
-async def test_exact_payload_structure(fake_sleep_recorder) -> None:
+async def test_exact_payload_structure(fake_sleep_recorder: SleepRecorder) -> None:
     fake_sleep, _ = fake_sleep_recorder
     mock_driver = AsyncMock(spec=IrodoriHttpDriver)
     mock_driver.post_speech.return_value = httpx.Response(
@@ -27,8 +34,7 @@ async def test_exact_payload_structure(fake_sleep_recorder) -> None:
         driver=mock_driver,
         model_name="irodori-tts",
         voice_id="speaker_test",
-        max_attempts=3,
-        backoff_seconds=1.0,
+        retry=RetryConfig(max_attempts=3, backoff_seconds=1.0),
         sleep=fake_sleep,
     )
 
@@ -47,7 +53,7 @@ async def test_exact_payload_structure(fake_sleep_recorder) -> None:
     )
 
 
-async def test_audio_format_error_on_non_wav_content_type(fake_sleep_recorder) -> None:
+async def test_audio_format_error_on_non_wav_content_type(fake_sleep_recorder: SleepRecorder) -> None:
     fake_sleep, _ = fake_sleep_recorder
     mock_driver = AsyncMock(spec=IrodoriHttpDriver)
     mock_driver.post_speech.return_value = httpx.Response(
@@ -60,8 +66,7 @@ async def test_audio_format_error_on_non_wav_content_type(fake_sleep_recorder) -
         driver=mock_driver,
         model_name="irodori-tts",
         voice_id="v1",
-        max_attempts=3,
-        backoff_seconds=1.0,
+        retry=RetryConfig(max_attempts=3, backoff_seconds=1.0),
         sleep=fake_sleep,
     )
 
@@ -69,7 +74,7 @@ async def test_audio_format_error_on_non_wav_content_type(fake_sleep_recorder) -
         await gateway.synthesize_chunk("テスト", speed=1.0)
 
 
-async def test_retry_schedule_5xx_exhausts_attempts(fake_sleep_recorder) -> None:
+async def test_retry_schedule_5xx_exhausts_attempts(fake_sleep_recorder: SleepRecorder) -> None:
     fake_sleep, delays = fake_sleep_recorder
     mock_driver = AsyncMock(spec=IrodoriHttpDriver)
     mock_driver.post_speech.return_value = httpx.Response(
@@ -82,20 +87,19 @@ async def test_retry_schedule_5xx_exhausts_attempts(fake_sleep_recorder) -> None
         driver=mock_driver,
         model_name="irodori-tts",
         voice_id="v1",
-        max_attempts=3,
-        backoff_seconds=1.0,
+        retry=RetryConfig(max_attempts=_EXPECTED_THREE_ATTEMPTS, backoff_seconds=1.0),
         sleep=fake_sleep,
     )
 
     with pytest.raises(UpstreamUnavailableError):
         await gateway.synthesize_chunk("テスト", speed=1.0)
 
-    assert mock_driver.post_speech.call_count == 3
+    assert mock_driver.post_speech.call_count == _EXPECTED_THREE_ATTEMPTS
     # Retry schedule: attempt 1 fails -> sleep 1.0 * 2^0 = 1.0; attempt 2 fails -> sleep 1.0 * 2^1 = 2.0
     assert delays == [1.0, 2.0]
 
 
-async def test_retry_schedule_transport_error(fake_sleep_recorder) -> None:
+async def test_retry_schedule_transport_error(fake_sleep_recorder: SleepRecorder) -> None:
     fake_sleep, delays = fake_sleep_recorder
     mock_driver = AsyncMock(spec=IrodoriHttpDriver)
     mock_driver.post_speech.side_effect = httpx.ConnectError("Connection refused")
@@ -104,19 +108,18 @@ async def test_retry_schedule_transport_error(fake_sleep_recorder) -> None:
         driver=mock_driver,
         model_name="irodori-tts",
         voice_id="v1",
-        max_attempts=3,
-        backoff_seconds=1.0,
+        retry=RetryConfig(max_attempts=_EXPECTED_THREE_ATTEMPTS, backoff_seconds=1.0),
         sleep=fake_sleep,
     )
 
     with pytest.raises(UpstreamUnavailableError):
         await gateway.synthesize_chunk("テスト", speed=1.0)
 
-    assert mock_driver.post_speech.call_count == 3
+    assert mock_driver.post_speech.call_count == _EXPECTED_THREE_ATTEMPTS
     assert delays == [1.0, 2.0]
 
 
-async def test_retry_succeeds_on_second_attempt(fake_sleep_recorder) -> None:
+async def test_retry_succeeds_on_second_attempt(fake_sleep_recorder: SleepRecorder) -> None:
     fake_sleep, delays = fake_sleep_recorder
     mock_driver = AsyncMock(spec=IrodoriHttpDriver)
     mock_driver.post_speech.side_effect = [
@@ -128,18 +131,17 @@ async def test_retry_succeeds_on_second_attempt(fake_sleep_recorder) -> None:
         driver=mock_driver,
         model_name="irodori-tts",
         voice_id="v1",
-        max_attempts=3,
-        backoff_seconds=1.0,
+        retry=RetryConfig(max_attempts=3, backoff_seconds=1.0),
         sleep=fake_sleep,
     )
 
     result = await gateway.synthesize_chunk("テスト", speed=1.0)
     assert result == b"RIFF-WAV"
-    assert mock_driver.post_speech.call_count == 2
+    assert mock_driver.post_speech.call_count == _EXPECTED_TWO_ATTEMPTS
     assert delays == [1.0]
 
 
-async def test_401_raises_upstream_auth_error_no_retry(fake_sleep_recorder) -> None:
+async def test_401_raises_upstream_auth_error_no_retry(fake_sleep_recorder: SleepRecorder) -> None:
     fake_sleep, delays = fake_sleep_recorder
     mock_driver = AsyncMock(spec=IrodoriHttpDriver)
     mock_driver.post_speech.return_value = httpx.Response(401, content=b"Unauthorized")
@@ -148,8 +150,7 @@ async def test_401_raises_upstream_auth_error_no_retry(fake_sleep_recorder) -> N
         driver=mock_driver,
         model_name="irodori-tts",
         voice_id="v1",
-        max_attempts=3,
-        backoff_seconds=1.0,
+        retry=RetryConfig(max_attempts=3, backoff_seconds=1.0),
         sleep=fake_sleep,
     )
 
@@ -161,7 +162,9 @@ async def test_401_raises_upstream_auth_error_no_retry(fake_sleep_recorder) -> N
 
 
 @pytest.mark.parametrize("status_code", [400, 404, 422])
-async def test_other_4xx_raises_upstream_rejected_error_no_retry(fake_sleep_recorder, status_code: int) -> None:
+async def test_other_4xx_raises_upstream_rejected_error_no_retry(
+    fake_sleep_recorder: SleepRecorder, status_code: int
+) -> None:
     fake_sleep, delays = fake_sleep_recorder
     mock_driver = AsyncMock(spec=IrodoriHttpDriver)
     mock_driver.post_speech.return_value = httpx.Response(status_code, content=b"Client error detail")
@@ -170,8 +173,7 @@ async def test_other_4xx_raises_upstream_rejected_error_no_retry(fake_sleep_reco
         driver=mock_driver,
         model_name="irodori-tts",
         voice_id="v1",
-        max_attempts=3,
-        backoff_seconds=1.0,
+        retry=RetryConfig(max_attempts=3, backoff_seconds=1.0),
         sleep=fake_sleep,
     )
 
@@ -184,32 +186,31 @@ async def test_other_4xx_raises_upstream_rejected_error_no_retry(fake_sleep_reco
     assert delays == []
 
 
-async def test_upstream_rejected_error_detail_truncated_to_200_chars(fake_sleep_recorder) -> None:
+async def test_upstream_rejected_error_detail_truncated_to_200_chars(fake_sleep_recorder: SleepRecorder) -> None:
     fake_sleep, delays = fake_sleep_recorder
     long_body = "x" * 500
     mock_driver = AsyncMock(spec=IrodoriHttpDriver)
-    mock_driver.post_speech.return_value = httpx.Response(400, text=long_body)
+    mock_driver.post_speech.return_value = httpx.Response(_HTTP_BAD_REQUEST, text=long_body)
 
     gateway = IrodoriGateway(
         driver=mock_driver,
         model_name="irodori-tts",
         voice_id="v1",
-        max_attempts=3,
-        backoff_seconds=1.0,
+        retry=RetryConfig(max_attempts=3, backoff_seconds=1.0),
         sleep=fake_sleep,
     )
 
     with pytest.raises(UpstreamRejectedError) as exc_info:
         await gateway.synthesize_chunk("テスト", speed=1.0)
 
-    assert exc_info.value.status_code == 400
-    assert len(exc_info.value.detail) == 200
-    assert exc_info.value.detail == "x" * 200
+    assert exc_info.value.status_code == _HTTP_BAD_REQUEST
+    assert len(exc_info.value.detail) == _MAX_DETAIL_LEN
+    assert exc_info.value.detail == "x" * _MAX_DETAIL_LEN
     assert mock_driver.post_speech.call_count == 1
     assert delays == []
 
 
-async def test_error_message_never_contains_api_key(fake_sleep_recorder) -> None:
+async def test_error_message_never_contains_api_key(fake_sleep_recorder: SleepRecorder) -> None:
     api_key_secret = "super-confidential-api-key-999"
     fake_sleep, _ = fake_sleep_recorder
     mock_driver = AsyncMock(spec=IrodoriHttpDriver)
@@ -219,8 +220,7 @@ async def test_error_message_never_contains_api_key(fake_sleep_recorder) -> None
         driver=mock_driver,
         model_name="irodori-tts",
         voice_id="v1",
-        max_attempts=1,
-        backoff_seconds=1.0,
+        retry=RetryConfig(max_attempts=1, backoff_seconds=1.0),
         sleep=fake_sleep,
     )
 
@@ -231,7 +231,7 @@ async def test_error_message_never_contains_api_key(fake_sleep_recorder) -> None
 
 
 @pytest.mark.parametrize("status_code", [408, 429])
-async def test_retry_schedule_408_and_429(fake_sleep_recorder, status_code: int) -> None:
+async def test_retry_schedule_408_and_429(fake_sleep_recorder: SleepRecorder, status_code: int) -> None:
     fake_sleep, delays = fake_sleep_recorder
     mock_driver = AsyncMock(spec=IrodoriHttpDriver)
     mock_driver.post_speech.return_value = httpx.Response(
@@ -244,19 +244,18 @@ async def test_retry_schedule_408_and_429(fake_sleep_recorder, status_code: int)
         driver=mock_driver,
         model_name="irodori-tts",
         voice_id="v1",
-        max_attempts=3,
-        backoff_seconds=1.0,
+        retry=RetryConfig(max_attempts=_EXPECTED_THREE_ATTEMPTS, backoff_seconds=1.0),
         sleep=fake_sleep,
     )
 
     with pytest.raises(UpstreamUnavailableError):
         await gateway.synthesize_chunk("テスト", speed=1.0)
 
-    assert mock_driver.post_speech.call_count == 3
+    assert mock_driver.post_speech.call_count == _EXPECTED_THREE_ATTEMPTS
     assert delays == [1.0, 2.0]
 
 
-async def test_read_timeout_raises_immediately_no_retry(fake_sleep_recorder) -> None:
+async def test_read_timeout_raises_immediately_no_retry(fake_sleep_recorder: SleepRecorder) -> None:
     fake_sleep, delays = fake_sleep_recorder
     mock_driver = AsyncMock(spec=IrodoriHttpDriver)
     read_timeout = httpx.ReadTimeout("Read timeout past deadline")
@@ -266,8 +265,7 @@ async def test_read_timeout_raises_immediately_no_retry(fake_sleep_recorder) -> 
         driver=mock_driver,
         model_name="irodori-tts",
         voice_id="v1",
-        max_attempts=3,
-        backoff_seconds=1.0,
+        retry=RetryConfig(max_attempts=3, backoff_seconds=1.0),
         sleep=fake_sleep,
     )
 
@@ -279,7 +277,7 @@ async def test_read_timeout_raises_immediately_no_retry(fake_sleep_recorder) -> 
     assert delays == []
 
 
-async def test_transport_error_chains_from_err(fake_sleep_recorder) -> None:
+async def test_transport_error_chains_from_err(fake_sleep_recorder: SleepRecorder) -> None:
     fake_sleep, _ = fake_sleep_recorder
     mock_driver = AsyncMock(spec=IrodoriHttpDriver)
     connect_error = httpx.ConnectError("Connection refused")
@@ -289,8 +287,7 @@ async def test_transport_error_chains_from_err(fake_sleep_recorder) -> None:
         driver=mock_driver,
         model_name="irodori-tts",
         voice_id="v1",
-        max_attempts=1,
-        backoff_seconds=1.0,
+        retry=RetryConfig(max_attempts=1, backoff_seconds=1.0),
         sleep=fake_sleep,
     )
 
@@ -301,7 +298,9 @@ async def test_transport_error_chains_from_err(fake_sleep_recorder) -> None:
 
 
 @pytest.mark.parametrize("status_code", [301, 302, 307])
-async def test_3xx_raises_upstream_rejected_error_no_retry(fake_sleep_recorder, status_code: int) -> None:
+async def test_3xx_raises_upstream_rejected_error_no_retry(
+    fake_sleep_recorder: SleepRecorder, status_code: int
+) -> None:
     fake_sleep, delays = fake_sleep_recorder
     mock_driver = AsyncMock(spec=IrodoriHttpDriver)
     mock_driver.post_speech.return_value = httpx.Response(status_code, content=b"Redirected")
@@ -310,8 +309,7 @@ async def test_3xx_raises_upstream_rejected_error_no_retry(fake_sleep_recorder, 
         driver=mock_driver,
         model_name="irodori-tts",
         voice_id="v1",
-        max_attempts=3,
-        backoff_seconds=1.0,
+        retry=RetryConfig(max_attempts=3, backoff_seconds=1.0),
         sleep=fake_sleep,
     )
 
@@ -324,7 +322,7 @@ async def test_3xx_raises_upstream_rejected_error_no_retry(fake_sleep_recorder, 
 
 
 @pytest.mark.parametrize("content_type", ["audio/wav", "audio/x-wav", "audio/wave", "audio/wav; charset=utf-8"])
-async def test_accepted_content_types(fake_sleep_recorder, content_type: str) -> None:
+async def test_accepted_content_types(fake_sleep_recorder: SleepRecorder, content_type: str) -> None:
     fake_sleep, _ = fake_sleep_recorder
     mock_driver = AsyncMock(spec=IrodoriHttpDriver)
     mock_driver.post_speech.return_value = httpx.Response(
@@ -337,8 +335,7 @@ async def test_accepted_content_types(fake_sleep_recorder, content_type: str) ->
         driver=mock_driver,
         model_name="irodori-tts",
         voice_id="v1",
-        max_attempts=1,
-        backoff_seconds=1.0,
+        retry=RetryConfig(max_attempts=1, backoff_seconds=1.0),
         sleep=fake_sleep,
     )
 
@@ -346,7 +343,9 @@ async def test_accepted_content_types(fake_sleep_recorder, content_type: str) ->
     assert result == b"RIFF..."
 
 
-async def test_upstream_failure_logs_warning(fake_sleep_recorder, caplog: pytest.LogCaptureFixture) -> None:
+async def test_upstream_failure_logs_warning(
+    fake_sleep_recorder: SleepRecorder, caplog: pytest.LogCaptureFixture
+) -> None:
     fake_sleep, _ = fake_sleep_recorder
     mock_driver = AsyncMock(spec=IrodoriHttpDriver)
     mock_driver.post_speech.return_value = httpx.Response(500, content=b"Internal server error")
@@ -355,14 +354,12 @@ async def test_upstream_failure_logs_warning(fake_sleep_recorder, caplog: pytest
         driver=mock_driver,
         model_name="irodori-tts",
         voice_id="v1",
-        max_attempts=1,
-        backoff_seconds=1.0,
+        retry=RetryConfig(max_attempts=1, backoff_seconds=1.0),
         sleep=fake_sleep,
     )
 
-    with caplog.at_level(logging.WARNING):
-        with pytest.raises(UpstreamUnavailableError):
-            await gateway.synthesize_chunk("テスト", speed=1.0)
+    with caplog.at_level(logging.WARNING), pytest.raises(UpstreamUnavailableError):
+        await gateway.synthesize_chunk("テスト", speed=1.0)
 
     warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
     assert len(warnings) >= 1

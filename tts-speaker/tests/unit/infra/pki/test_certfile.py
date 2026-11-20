@@ -13,6 +13,9 @@ from cryptography.x509.oid import NameOID
 
 from tts_speaker.infra.pki.certfile import CertFile, CertNotFoundError, CertParseError
 
+_CERT_MODE = 0o444
+_KEY_MODE = 0o400
+
 
 def new_self_signed_pem(cn: str, nb: datetime, na: datetime) -> tuple[bytes, bytes]:
     key = ec.generate_private_key(ec.SECP256R1())
@@ -41,8 +44,8 @@ def test_certfile_write_and_load(tmp_path: Path) -> None:
     nb = datetime.now(UTC) - timedelta(minutes=1)
     cert, key = new_self_signed_pem("tts-speaker", nb, nb + timedelta(hours=1))
     cf.write(cert, key)
-    assert (tmp_path / "svc-cert.pem").stat().st_mode & 0o777 == 0o444
-    assert (tmp_path / "svc-key.pem").stat().st_mode & 0o777 == 0o400
+    assert (tmp_path / "svc-cert.pem").stat().st_mode & 0o777 == _CERT_MODE
+    assert (tmp_path / "svc-key.pem").stat().st_mode & 0o777 == _KEY_MODE
     loaded = cf.load()
     assert loaded.common_name == "tts-speaker"
 
@@ -66,7 +69,7 @@ def test_certfile_write_leaves_no_temp_on_success(tmp_path: Path) -> None:
     assert leftovers == []
 
 
-class _SimulatedCrash(Exception):
+class _SimulatedCrashError(Exception):
     """Stands in for a process crash between dest key and dest cert rename."""
 
 
@@ -95,7 +98,8 @@ def test_certfile_second_rename_failure_restores_old_key(tmp_path: Path, monkeyp
     def boom(self: Path, target: Path | str, *args: object, **kwargs: object) -> Path:
         dest = Path(target)
         if dest == Path(cf.cert_path) and self.name.startswith(".pki-enroll-"):
-            raise OSError("injected second rename failure")
+            msg = "injected second rename failure"
+            raise OSError(msg)
         return orig(self, dest, *args, **kwargs)
 
     monkeypatch.setattr(Path, "replace", boom)
@@ -121,11 +125,12 @@ def test_certfile_crash_between_renames_recovers_on_restart(tmp_path: Path, monk
         dest = Path(target)
         result = orig(self, dest, *args, **kwargs)
         if dest == Path(cf.key_path) and self.name.startswith(".pki-enroll-"):
-            raise _SimulatedCrash("crash after key rename")
+            msg = "crash after key rename"
+            raise _SimulatedCrashError(msg)
         return result
 
     monkeypatch.setattr(Path, "replace", crash_after_key)
-    with pytest.raises(_SimulatedCrash):
+    with pytest.raises(_SimulatedCrashError):
         cf.write(new_cert, new_key)
     monkeypatch.setattr(Path, "replace", orig)
     restarted = CertFile(str(cf.cert_path), str(cf.key_path))

@@ -5,6 +5,9 @@ import wave
 
 from tts_speaker.domain.errors import AudioFormatError
 
+_MONO_CHANNELS = 1
+_PCM_16BIT_SAMPWIDTH = 2
+
 
 def wav_info(wav: bytes) -> tuple[int, float]:
     """Validate 16-bit mono PCM WAV bytes and return (sample_rate, duration_seconds)."""
@@ -17,20 +20,27 @@ def wav_info(wav: bytes) -> tuple[int, float]:
             nframes = wf.getnframes()
             frames = wf.readframes(nframes)
     except (wave.Error, EOFError) as e:
-        raise AudioFormatError(f"Corrupt WAV data: {e}") from e
+        msg = f"Corrupt WAV data: {e}"
+        raise AudioFormatError(msg) from e
 
-    if nchannels != 1:
-        raise AudioFormatError(f"Expected mono (1 channel), got {nchannels}")
-    if sampwidth != 2:
-        raise AudioFormatError(f"Expected 16-bit PCM (sampwidth == 2), got {sampwidth}")
+    if nchannels != _MONO_CHANNELS:
+        msg = f"Expected mono (1 channel), got {nchannels}"
+        raise AudioFormatError(msg)
+    if sampwidth != _PCM_16BIT_SAMPWIDTH:
+        msg = f"Expected 16-bit PCM (sampwidth == 2), got {sampwidth}"
+        raise AudioFormatError(msg)
     if comptype != "NONE":
-        raise AudioFormatError(f"Expected uncompressed PCM, got {comptype}")
+        msg = f"Expected uncompressed PCM, got {comptype}"
+        raise AudioFormatError(msg)
     if framerate <= 0:
-        raise AudioFormatError("Invalid framerate in WAV")
+        msg = "Invalid framerate in WAV"
+        raise AudioFormatError(msg)
     if nframes <= 0:
-        raise AudioFormatError("WAV contains no audio frames")
+        msg = "WAV contains no audio frames"
+        raise AudioFormatError(msg)
     if len(frames) != nframes * nchannels * sampwidth:
-        raise AudioFormatError("WAV data size does not match frame count")
+        msg = "WAV data size does not match frame count"
+        raise AudioFormatError(msg)
 
     duration = nframes / float(framerate)
     return framerate, duration
@@ -47,19 +57,20 @@ def append_silence(wav: bytes, ms: int) -> bytes:
             nframes = wf.getnframes()
             frames = wf.readframes(nframes)
     except (wave.Error, EOFError) as e:
-        raise AudioFormatError(f"Corrupt WAV segment: {e}") from e
+        msg = f"Corrupt WAV segment: {e}"
+        raise AudioFormatError(msg) from e
 
-    if sampwidth != 2:
-        raise AudioFormatError(f"Expected sampwidth == 2, got {sampwidth}")
+    if sampwidth != _PCM_16BIT_SAMPWIDTH:
+        msg = f"Expected sampwidth == 2, got {sampwidth}"
+        raise AudioFormatError(msg)
     if nframes <= 0:
-        raise AudioFormatError("WAV contains no audio frames")
+        msg = "WAV contains no audio frames"
+        raise AudioFormatError(msg)
     if len(frames) != nframes * nchannels * sampwidth:
-        raise AudioFormatError("WAV data size does not match frame count")
+        msg = "WAV data size does not match frame count"
+        raise AudioFormatError(msg)
 
-    if ms <= 0:
-        gap_frames = 0
-    else:
-        gap_frames = int(framerate * (ms / 1000.0))
+    gap_frames = 0 if ms <= 0 else int(framerate * (ms / 1000.0))
 
     gap_bytes = b"\x00" * (gap_frames * nchannels * sampwidth)
 
@@ -74,6 +85,7 @@ def append_silence(wav: bytes, ms: int) -> bytes:
             if gap_bytes:
                 out_wf.writeframes(gap_bytes)
     except (wave.Error, EOFError) as e:
-        raise AudioFormatError(f"Failed to write WAV with trailing silence: {e}") from e
+        msg = f"Failed to write WAV with trailing silence: {e}"
+        raise AudioFormatError(msg) from e
 
     return out_buf.getvalue()

@@ -2,6 +2,7 @@
 
 import io
 import wave
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from unittest.mock import AsyncMock
 
@@ -28,7 +29,7 @@ def create_synthetic_wav(
 
 
 @pytest.fixture
-def make_wav():
+def make_wav() -> Callable[..., bytes]:
     """Factory fixture for creating synthetic WAV audio bytes."""
     return create_synthetic_wav
 
@@ -62,7 +63,7 @@ def empty_api_key_file(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def fake_sleep_recorder():
+def fake_sleep_recorder() -> tuple[Callable[[float], Awaitable[None]], list[float]]:
     """Fixture providing a mock sleep function that records sleep intervals."""
     delays: list[float] = []
 

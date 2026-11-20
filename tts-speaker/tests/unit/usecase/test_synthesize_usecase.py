@@ -16,17 +16,24 @@ from tts_speaker.domain.errors import (
 )
 from tts_speaker.domain.wav import wav_info
 from tts_speaker.port.speech_synthesizer_port import SpeechSynthesizerPort
-from tts_speaker.usecase.synthesize_usecase import ChunkAudio, SynthesizeUsecase
+from tts_speaker.usecase.synthesize_usecase import ChunkAudio, SynthesisConfig, SynthesizeUsecase
+
+_SAMPLE_RATE_HZ = 48000
+_DURATION_100MS = 0.1
+_DURATION_300MS = 0.3
+_EXPECTED_TWO_CHUNKS = 2
 
 
 async def test_empty_text_raises_error(mock_synthesizer: AsyncMock) -> None:
     usecase = SynthesizeUsecase(
         synthesizer=mock_synthesizer,
-        max_chunk_chars=100,
-        max_text_chars=5000,
-        chunk_gap_ms=200,
-        queue_timeout_seconds=600.0,
-        default_speed=1.25,
+        config=SynthesisConfig(
+            max_chunk_chars=100,
+            max_text_chars=5000,
+            chunk_gap_ms=200,
+            queue_timeout_seconds=600.0,
+            default_speed=1.25,
+        ),
     )
     with pytest.raises(EmptyTextError):
         async for _ in usecase.stream(""):
@@ -44,11 +51,13 @@ async def test_empty_text_raises_error(mock_synthesizer: AsyncMock) -> None:
 async def test_text_too_long_raises_error(mock_synthesizer: AsyncMock) -> None:
     usecase = SynthesizeUsecase(
         synthesizer=mock_synthesizer,
-        max_chunk_chars=100,
-        max_text_chars=10,
-        chunk_gap_ms=200,
-        queue_timeout_seconds=600.0,
-        default_speed=1.25,
+        config=SynthesisConfig(
+            max_chunk_chars=100,
+            max_text_chars=10,
+            chunk_gap_ms=200,
+            queue_timeout_seconds=600.0,
+            default_speed=1.25,
+        ),
     )
     with pytest.raises(TextTooLongError):
         async for _ in usecase.stream("This is longer than 10 characters"):
@@ -59,19 +68,21 @@ async def test_successful_synthesis_single_chunk(mock_synthesizer: AsyncMock, sa
     mock_synthesizer.synthesize_chunk.return_value = sample_wav_bytes
     usecase = SynthesizeUsecase(
         synthesizer=mock_synthesizer,
-        max_chunk_chars=100,
-        max_text_chars=5000,
-        chunk_gap_ms=200,
-        queue_timeout_seconds=600.0,
-        default_speed=1.25,
+        config=SynthesisConfig(
+            max_chunk_chars=100,
+            max_text_chars=5000,
+            chunk_gap_ms=200,
+            queue_timeout_seconds=600.0,
+            default_speed=1.25,
+        ),
     )
     chunks = [chunk async for chunk in usecase.stream("こんにちは", speed=1.2)]
     assert len(chunks) == 1
     chunk = chunks[0]
     assert isinstance(chunk, ChunkAudio)
     assert chunk.wav == sample_wav_bytes
-    assert chunk.sample_rate == 48000
-    assert pytest.approx(chunk.duration_seconds, abs=0.01) == 0.1
+    assert chunk.sample_rate == _SAMPLE_RATE_HZ
+    assert pytest.approx(chunk.duration_seconds, abs=0.01) == _DURATION_100MS
     mock_synthesizer.synthesize_chunk.assert_called_once_with("こんにちは", speed=1.2)
 
 
@@ -81,16 +92,18 @@ async def test_successful_synthesis_multiple_chunks_in_order(
     mock_synthesizer.synthesize_chunk.return_value = sample_wav_bytes
     usecase = SynthesizeUsecase(
         synthesizer=mock_synthesizer,
-        max_chunk_chars=10,
-        max_text_chars=5000,
-        chunk_gap_ms=200,
-        queue_timeout_seconds=600.0,
-        default_speed=1.25,
+        config=SynthesisConfig(
+            max_chunk_chars=10,
+            max_text_chars=5000,
+            chunk_gap_ms=200,
+            queue_timeout_seconds=600.0,
+            default_speed=1.25,
+        ),
     )
     text = "吾輩は猫である。名前はまだ無い。"
     speed = 1.3
     chunks = [chunk async for chunk in usecase.stream(text, speed=speed)]
-    assert len(chunks) == 2
+    assert len(chunks) == _EXPECTED_TWO_CHUNKS
     assert all(isinstance(c, ChunkAudio) for c in chunks)
     assert mock_synthesizer.synthesize_chunk.call_args_list == [
         call("吾輩は猫である。", speed=speed),
@@ -104,33 +117,37 @@ async def test_trailing_silence_appended_to_all_except_last_chunk(
     mock_synthesizer.synthesize_chunk.return_value = sample_wav_bytes
     usecase = SynthesizeUsecase(
         synthesizer=mock_synthesizer,
-        max_chunk_chars=10,
-        max_text_chars=5000,
-        chunk_gap_ms=200,
-        queue_timeout_seconds=600.0,
-        default_speed=1.25,
+        config=SynthesisConfig(
+            max_chunk_chars=10,
+            max_text_chars=5000,
+            chunk_gap_ms=200,
+            queue_timeout_seconds=600.0,
+            default_speed=1.25,
+        ),
     )
     text = "吾輩は猫である。名前はまだ無い。"
     chunks = [chunk async for chunk in usecase.stream(text, speed=1.0)]
-    assert len(chunks) == 2
+    assert len(chunks) == _EXPECTED_TWO_CHUNKS
 
     # Chunk 0 (not last) should have 200ms silence appended -> 0.1 + 0.2 = 0.3s
-    assert pytest.approx(wav_info(chunks[0].wav)[1], abs=0.01) == 0.3
-    assert pytest.approx(chunks[0].duration_seconds, abs=0.01) == 0.3
+    assert pytest.approx(wav_info(chunks[0].wav)[1], abs=0.01) == _DURATION_300MS
+    assert pytest.approx(chunks[0].duration_seconds, abs=0.01) == _DURATION_300MS
 
     # Chunk 1 (last) should NOT have trailing silence -> 0.1s
-    assert pytest.approx(wav_info(chunks[1].wav)[1], abs=0.01) == 0.1
-    assert pytest.approx(chunks[1].duration_seconds, abs=0.01) == 0.1
+    assert pytest.approx(wav_info(chunks[1].wav)[1], abs=0.01) == _DURATION_100MS
+    assert pytest.approx(chunks[1].duration_seconds, abs=0.01) == _DURATION_100MS
 
 
 async def test_lock_wait_timeout_raises_synthesis_busy_error(mock_synthesizer: AsyncMock) -> None:
     usecase = SynthesizeUsecase(
         synthesizer=mock_synthesizer,
-        max_chunk_chars=100,
-        max_text_chars=5000,
-        chunk_gap_ms=200,
-        queue_timeout_seconds=0.01,
-        default_speed=1.25,
+        config=SynthesisConfig(
+            max_chunk_chars=100,
+            max_text_chars=5000,
+            chunk_gap_ms=200,
+            queue_timeout_seconds=0.01,
+            default_speed=1.25,
+        ),
     )
     await usecase._lock.acquire()
     try:
@@ -145,11 +162,13 @@ async def test_port_error_propagates(mock_synthesizer: AsyncMock) -> None:
     mock_synthesizer.synthesize_chunk.side_effect = UpstreamUnavailableError("upstream down")
     usecase = SynthesizeUsecase(
         synthesizer=mock_synthesizer,
-        max_chunk_chars=100,
-        max_text_chars=5000,
-        chunk_gap_ms=200,
-        queue_timeout_seconds=600.0,
-        default_speed=1.25,
+        config=SynthesisConfig(
+            max_chunk_chars=100,
+            max_text_chars=5000,
+            chunk_gap_ms=200,
+            queue_timeout_seconds=600.0,
+            default_speed=1.25,
+        ),
     )
     with pytest.raises(UpstreamUnavailableError, match="upstream down"):
         async for _ in usecase.stream("こんにちは"):
@@ -171,11 +190,13 @@ async def test_concurrent_streams_do_not_interleave(sample_wav_bytes: bytes) -> 
     synthesizer = SlowSynthesizer()
     usecase = SynthesizeUsecase(
         synthesizer=synthesizer,
-        max_chunk_chars=10,
-        max_text_chars=5000,
-        chunk_gap_ms=200,
-        queue_timeout_seconds=600.0,
-        default_speed=1.25,
+        config=SynthesisConfig(
+            max_chunk_chars=10,
+            max_text_chars=5000,
+            chunk_gap_ms=200,
+            queue_timeout_seconds=600.0,
+            default_speed=1.25,
+        ),
     )
 
     req_a = "reqA:文1。reqA:文2。"
@@ -204,11 +225,13 @@ async def test_default_speed_used_when_speed_is_none(mock_synthesizer: AsyncMock
     mock_synthesizer.synthesize_chunk.return_value = sample_wav_bytes
     usecase = SynthesizeUsecase(
         synthesizer=mock_synthesizer,
-        max_chunk_chars=100,
-        max_text_chars=5000,
-        chunk_gap_ms=200,
-        queue_timeout_seconds=600.0,
-        default_speed=1.25,
+        config=SynthesisConfig(
+            max_chunk_chars=100,
+            max_text_chars=5000,
+            chunk_gap_ms=200,
+            queue_timeout_seconds=600.0,
+            default_speed=1.25,
+        ),
     )
     chunks = [c async for c in usecase.stream("こんにちは", speed=None)]
     assert len(chunks) == 1
@@ -219,11 +242,13 @@ async def test_default_speed_used_when_speed_omitted(mock_synthesizer: AsyncMock
     mock_synthesizer.synthesize_chunk.return_value = sample_wav_bytes
     usecase = SynthesizeUsecase(
         synthesizer=mock_synthesizer,
-        max_chunk_chars=100,
-        max_text_chars=5000,
-        chunk_gap_ms=200,
-        queue_timeout_seconds=600.0,
-        default_speed=1.25,
+        config=SynthesisConfig(
+            max_chunk_chars=100,
+            max_text_chars=5000,
+            chunk_gap_ms=200,
+            queue_timeout_seconds=600.0,
+            default_speed=1.25,
+        ),
     )
     chunks = [c async for c in usecase.stream("こんにちは")]
     assert len(chunks) == 1
@@ -234,15 +259,17 @@ async def test_default_speed_forwarded_to_all_chunks(mock_synthesizer: AsyncMock
     mock_synthesizer.synthesize_chunk.return_value = sample_wav_bytes
     usecase = SynthesizeUsecase(
         synthesizer=mock_synthesizer,
-        max_chunk_chars=10,
-        max_text_chars=5000,
-        chunk_gap_ms=200,
-        queue_timeout_seconds=600.0,
-        default_speed=1.25,
+        config=SynthesisConfig(
+            max_chunk_chars=10,
+            max_text_chars=5000,
+            chunk_gap_ms=200,
+            queue_timeout_seconds=600.0,
+            default_speed=1.25,
+        ),
     )
     text = "吾輩は猫である。名前はまだ無い。"
     chunks = [c async for c in usecase.stream(text, speed=None)]
-    assert len(chunks) == 2
+    assert len(chunks) == _EXPECTED_TWO_CHUNKS
     assert mock_synthesizer.synthesize_chunk.call_args_list == [
         call("吾輩は猫である。", speed=1.25),
         call("名前はまだ無い。", speed=1.25),
@@ -253,11 +280,13 @@ async def test_explicit_speed_overrides_default_speed(mock_synthesizer: AsyncMoc
     mock_synthesizer.synthesize_chunk.return_value = sample_wav_bytes
     usecase = SynthesizeUsecase(
         synthesizer=mock_synthesizer,
-        max_chunk_chars=100,
-        max_text_chars=5000,
-        chunk_gap_ms=200,
-        queue_timeout_seconds=600.0,
-        default_speed=1.25,
+        config=SynthesisConfig(
+            max_chunk_chars=100,
+            max_text_chars=5000,
+            chunk_gap_ms=200,
+            queue_timeout_seconds=600.0,
+            default_speed=1.25,
+        ),
     )
     chunks = [c async for c in usecase.stream("こんにちは", speed=0.8)]
     assert len(chunks) == 1
@@ -274,11 +303,13 @@ async def test_zero_frame_wav_raises_audio_format_error(mock_synthesizer: AsyncM
     mock_synthesizer.synthesize_chunk.return_value = buf.getvalue()
     usecase = SynthesizeUsecase(
         synthesizer=mock_synthesizer,
-        max_chunk_chars=10,
-        max_text_chars=5000,
-        chunk_gap_ms=200,
-        queue_timeout_seconds=600.0,
-        default_speed=1.25,
+        config=SynthesisConfig(
+            max_chunk_chars=10,
+            max_text_chars=5000,
+            chunk_gap_ms=200,
+            queue_timeout_seconds=600.0,
+            default_speed=1.25,
+        ),
     )
     with pytest.raises(AudioFormatError):
         async for _ in usecase.stream("こんにちは"):

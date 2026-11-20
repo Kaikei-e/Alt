@@ -1,6 +1,9 @@
 import re
 import unicodedata
 
+_MIN_ACRONYM_LENGTH = 2
+_MAX_ACRONYM_LENGTH = 6
+
 LETTER_MAP: dict[str, str] = {
     "A": "エー",
     "B": "ビー",
@@ -43,7 +46,7 @@ def normalize_for_tts(text: str) -> str:
         word = match.group(0)
         if len(word) == 1:
             return LETTER_MAP.get(word.upper(), word)
-        if 2 <= len(word) <= 6 and word.isupper():
+        if _MIN_ACRONYM_LENGTH <= len(word) <= _MAX_ACRONYM_LENGTH and word.isupper():
             return "".join(LETTER_MAP.get(c, c) for c in word)
         return word
 

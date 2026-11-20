@@ -3,6 +3,7 @@
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 
 import httpx
 
@@ -18,6 +19,19 @@ from tts_speaker.port.speech_synthesizer_port import SpeechSynthesizerPort
 logger = logging.getLogger(__name__)
 
 _ACCEPTED_CONTENT_TYPES = {"audio/wav", "audio/x-wav", "audio/wave"}
+_HTTP_OK = 200
+_HTTP_REDIRECT_MIN = 300
+_HTTP_CLIENT_ERROR_MIN = 400
+_HTTP_UNAUTHORIZED = 401
+_HTTP_SERVER_ERROR_MIN = 500
+
+
+@dataclass(frozen=True, slots=True)
+class RetryConfig:
+    """Retry policy configuration for upstream calls."""
+
+    max_attempts: int
+    backoff_seconds: float
 
 
 class IrodoriGateway(SpeechSynthesizerPort):
@@ -28,15 +42,14 @@ class IrodoriGateway(SpeechSynthesizerPort):
         driver: IrodoriHttpDriver,
         model_name: str,
         voice_id: str,
-        max_attempts: int,
-        backoff_seconds: float,
+        retry: RetryConfig,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ) -> None:
         self._driver = driver
         self._model_name = model_name
         self._voice_id = voice_id
-        self._max_attempts = max_attempts
-        self._backoff_seconds = backoff_seconds
+        self._max_attempts = retry.max_attempts
+        self._backoff_seconds = retry.backoff_seconds
         self._sleep = sleep
 
     async def synthesize_chunk(self, text: str, speed: float) -> bytes:
@@ -59,7 +72,8 @@ class IrodoriGateway(SpeechSynthesizerPort):
                     attempt,
                     self._max_attempts,
                 )
-                raise UpstreamUnavailableError("Upstream read timeout; service busy past deadline") from err
+                msg = "Upstream read timeout; service busy past deadline"
+                raise UpstreamUnavailableError(msg) from err
             except httpx.TransportError as err:
                 logger.warning(
                     "Upstream TTS failure attempt %d/%d: transport error %s",
@@ -70,15 +84,15 @@ class IrodoriGateway(SpeechSynthesizerPort):
                 if attempt < self._max_attempts:
                     await self._sleep(self._backoff_seconds * (2 ** (attempt - 1)))
                     continue
-                raise UpstreamUnavailableError(
-                    f"Upstream TTS service unavailable after {self._max_attempts} attempts: transport error"
-                ) from err
+                msg = f"Upstream TTS service unavailable after {self._max_attempts} attempts: transport error"
+                raise UpstreamUnavailableError(msg) from err
 
-            if response.status_code == 200:
+            if response.status_code == _HTTP_OK:
                 raw_ct = response.headers.get("content-type", "")
                 content_type = raw_ct.split(";")[0].strip()
                 if content_type not in _ACCEPTED_CONTENT_TYPES:
-                    raise AudioFormatError(f"Unexpected content type from upstream: {raw_ct}")
+                    msg = f"Unexpected content type from upstream: {raw_ct}"
+                    raise AudioFormatError(msg)
                 return response.content
 
             logger.warning(
@@ -89,23 +103,25 @@ class IrodoriGateway(SpeechSynthesizerPort):
                 response.text[:200],
             )
 
-            if 300 <= response.status_code < 400:
+            if _HTTP_REDIRECT_MIN <= response.status_code < _HTTP_CLIENT_ERROR_MIN:
                 raise UpstreamRejectedError(status_code=response.status_code, detail=response.text[:200])
 
-            if response.status_code == 401:
-                raise UpstreamAuthError("Upstream authentication failed (401 Unauthorized)")
+            if response.status_code == _HTTP_UNAUTHORIZED:
+                msg = "Upstream authentication failed (401 Unauthorized)"
+                raise UpstreamAuthError(msg)
 
-            if response.status_code in (408, 429) or response.status_code >= 500:
+            if response.status_code in (408, 429) or response.status_code >= _HTTP_SERVER_ERROR_MIN:
                 if attempt < self._max_attempts:
                     await self._sleep(self._backoff_seconds * (2 ** (attempt - 1)))
                     continue
-                raise UpstreamUnavailableError(
-                    f"Upstream server error ({response.status_code}) after {self._max_attempts} attempts"
-                )
+                msg = f"Upstream server error ({response.status_code}) after {self._max_attempts} attempts"
+                raise UpstreamUnavailableError(msg)
 
-            if 400 <= response.status_code < 500:
+            if _HTTP_CLIENT_ERROR_MIN <= response.status_code < _HTTP_SERVER_ERROR_MIN:
                 raise UpstreamRejectedError(status_code=response.status_code, detail=response.text[:200])
 
-            raise UpstreamUnavailableError(f"Unexpected status code from upstream: {response.status_code}")
+            msg = f"Unexpected status code from upstream: {response.status_code}"
+            raise UpstreamUnavailableError(msg)
 
-        raise UpstreamUnavailableError(f"Upstream TTS service unavailable after {self._max_attempts} attempts")
+        msg = f"Upstream TTS service unavailable after {self._max_attempts} attempts"
+        raise UpstreamUnavailableError(msg)
