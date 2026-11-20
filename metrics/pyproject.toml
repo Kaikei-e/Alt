@@ -36,8 +36,40 @@ line-length = 120
 src = ["src"]
 
 [tool.ruff.lint]
-select = ["E", "W", "F", "I", "B", "C4", "UP", "S"]
-ignore = ["S101", "B905"]  # B905: zip strict (ClickHouse rows)
+select = [
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # pyflakes
+    "I",     # isort
+    "B",     # flake8-bugbear
+    "UP",    # pyupgrade
+    "SIM",   # simplify
+    "N",     # pep8-naming
+    "ANN",   # annotations
+    "S",     # bandit (security)
+    "PTH",   # use-pathlib
+    "C4",    # flake8-comprehensions
+    "BLE",   # blind-except
+    "ASYNC", # async best practices
+    "TRY",   # tryceratops
+    "RUF",   # ruff-specific
+    "PL",    # pylint
+    "DTZ",   # flake8-datetimez
+    "PT",    # flake8-pytest-style
+    "LOG",   # flake8-logging
+    "G",     # flake8-logging-format
+    "T20",   # flake8-print
+    "A",     # flake8-builtins
+    "RET",   # flake8-return
+    "PERF",  # perflint
+]
+ignore = [
+    "S101",   # assert in tests
+    "B905",   # zip strict (ClickHouse rows)
+    "RUF001", # ambiguous unicode chars in strings — intentional Japanese text
+    "RUF002", # ambiguous unicode chars in docstrings — intentional Japanese text
+    "RUF003", # ambiguous unicode chars in comments — intentional Japanese text
+]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "S105", "S108", "S603", "S110"]  # S105/S108: test passwords/paths

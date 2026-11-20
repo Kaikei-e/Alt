@@ -9,17 +9,23 @@ from alt_metrics.config import HealthThresholds
 from alt_metrics.models import (
     AnalysisResult,
     ApiPerformanceStats,
-    Bottleneck,
     ErrorBudgetResult,
-    ErrorSpan,
     ErrorTypeStat,
-    HttpStatusDistribution,
     LogVolumeTrend,
-    ServiceDependency,
     ServiceHealth,
     ServiceStat,
-    SloViolation,
 )
+
+HEALTH_SCORE_HEALTHY = 90
+HEALTH_SCORE_WARNING = 70
+HEALTH_SCORE_DEGRADED = 50
+
+_BUDGET_CRITICAL_PCT = 80
+_BUDGET_WARNING_PCT = 50
+_DEP_MIN_CALLS = 10
+_DEP_ERROR_RATE_THRESHOLD = 0.05
+_MIN_TREND_POINTS = 2
+_LOG_SPIKE_MULTIPLIER = 2
 
 
 def calculate_health_score(
@@ -80,14 +86,13 @@ def calculate_health_score(
 
 def get_health_status(score: int) -> str:
     """スコアから日本語ステータスラベルを取得"""
-    if score >= 90:
+    if score >= HEALTH_SCORE_HEALTHY:
         return "正常"
-    elif score >= 70:
+    if score >= HEALTH_SCORE_WARNING:
         return "警告"
-    elif score >= 50:
+    if score >= HEALTH_SCORE_DEGRADED:
         return "劣化"
-    else:
-        return "危険"
+    return "危険"
 
 
 def get_health_status_emoji(status: str) -> str:
@@ -135,9 +140,9 @@ def calculate_error_budget(
     status: Literal["healthy", "warning", "critical", "exceeded"]
     if is_exceeded:
         status = "exceeded"
-    elif consumption_pct >= 80:
+    elif consumption_pct >= _BUDGET_CRITICAL_PCT:
         status = "critical"
-    elif consumption_pct >= 50:
+    elif consumption_pct >= _BUDGET_WARNING_PCT:
         status = "warning"
     else:
         status = "healthy"
@@ -219,21 +224,16 @@ def analyze_health(
     warnings = list(result.warnings)
     recommendations = list(result.recommendations)
 
-    for svc in service_health:
-        if svc.health_score < 50:
-            critical_issues.append(
-                f"**{svc.name}** が危険な状態です (スコア: {svc.health_score})。"
-                f"エラー率: {svc.error_rate}%、p95レイテンシ: {svc.p95_latency_ms}ms"
-            )
+    critical_issues.extend(
+        f"**{svc.name}** が危険な状態です (スコア: {svc.health_score})。"
+        f"エラー率: {svc.error_rate}%、p95レイテンシ: {svc.p95_latency_ms}ms"
+        for svc in service_health
+        if svc.health_score < HEALTH_SCORE_DEGRADED
+    )
 
     _collect_warnings(
+        result=result,
         service_health=service_health,
-        bottlenecks=result.bottlenecks,
-        http_status_distribution=result.http_status_distribution,
-        slo_violations=result.slo_violations,
-        error_spans=result.error_spans,
-        service_dependencies=result.service_dependencies,
-        log_volume_trends=result.log_volume_trends,
         thresholds=thresholds,
         critical_issues=critical_issues,
         warnings=warnings,
@@ -260,13 +260,8 @@ def analyze_health(
 
 def _collect_warnings(
     *,
+    result: AnalysisResult,
     service_health: list[ServiceHealth],
-    bottlenecks: list[Bottleneck],
-    http_status_distribution: list[HttpStatusDistribution],
-    slo_violations: list[SloViolation],
-    error_spans: list[ErrorSpan],
-    service_dependencies: list[ServiceDependency],
-    log_volume_trends: list[LogVolumeTrend],
     thresholds: HealthThresholds,
     critical_issues: list[str],
     warnings: list[str],
@@ -277,58 +272,69 @@ def _collect_warnings(
         names = ", ".join(s.name for s in high_error_services[:3])
         warnings.append(f"エラー率が高いサービス (>{thresholds.error_rate_warning}%): {names}")
 
-    if bottlenecks:
-        top_bottleneck = bottlenecks[0]
+    if result.bottlenecks:
+        top_bottleneck = result.bottlenecks[0]
         warnings.append(
             f"パフォーマンスボトルネック: {top_bottleneck.service}/{top_bottleneck.operation} "
             f"(p95: {top_bottleneck.p95_ms}ms, 合計時間: {top_bottleneck.total_time_sec}秒)"
         )
 
-    high_5xx_services = [s for s in http_status_distribution if s.error_5xx_rate > 1]
-    if high_5xx_services:
-        for svc in high_5xx_services[:3]:
-            warnings.append(
-                f"HTTP 5xxエラー率が高い: {svc.service} ({svc.error_5xx_rate}% / {svc.total_requests}リクエスト)"
-            )
+    high_5xx_services = [s for s in result.http_status_distribution if s.error_5xx_rate > 1]
+    warnings.extend(
+        f"HTTP 5xxエラー率が高い: {svc.service} ({svc.error_5xx_rate}% / {svc.total_requests}リクエスト)"
+        for svc in high_5xx_services[:3]
+    )
 
-    if slo_violations:
-        violation_count = len(slo_violations)
-        affected_services = {v.service for v in slo_violations}
+    if result.slo_violations:
+        violation_count = len(result.slo_violations)
+        affected_services = {v.service for v in result.slo_violations}
         critical_issues.append(
             f"SLO違反を検出: {violation_count}期間でエラー率 >{thresholds.slo_error_rate_threshold}% "
             f"({len(affected_services)}サービスに影響)"
         )
 
-    if error_spans:
-        top_error_span = error_spans[0]
+    if result.error_spans:
+        top_error_span = result.error_spans[0]
         warnings.append(
             f"トレースエラー検出: {top_error_span.service}の{top_error_span.operation} ({top_error_span.error_count}件)"
         )
 
-    high_error_deps = [d for d in service_dependencies if d.call_count > 10 and (d.error_count / d.call_count) > 0.05]
-    if high_error_deps:
-        for dep in high_error_deps[:2]:
-            error_pct = round(dep.error_count / dep.call_count * 100, 1)
-            warnings.append(
-                f"サービス間呼び出しエラー率が高い: {dep.caller} → {dep.callee} "
-                f"({error_pct}%エラー、{dep.call_count}呼び出し)"
-            )
+    high_error_deps = [
+        d
+        for d in result.service_dependencies
+        if d.call_count > _DEP_MIN_CALLS and (d.error_count / d.call_count) > _DEP_ERROR_RATE_THRESHOLD
+    ]
+    for dep in high_error_deps[:2]:
+        error_pct = round(dep.error_count / dep.call_count * 100, 1)
+        warnings.append(
+            f"サービス間呼び出しエラー率が高い: {dep.caller} → {dep.callee} "
+            f"({error_pct}%エラー、{dep.call_count}呼び出し)"
+        )
 
-    if log_volume_trends:
-        service_volumes: dict[str, list[int]] = {}
-        for trend in log_volume_trends:
-            if trend.service:
-                service_volumes.setdefault(trend.service, []).append(trend.log_count)
+    _collect_log_volume_spike_warnings(result.log_volume_trends, warnings)
 
-        for svc, volumes in service_volumes.items():
-            if len(volumes) >= 2:
-                recent = volumes[0]
-                previous = volumes[1]
-                if previous > 0 and recent > previous * 2:
-                    warnings.append(
-                        f"ログ量スパイク検出: {svc} "
-                        f"({recent}件 vs 前時間{previous}件、{round(recent / previous, 1)}倍増加)"
-                    )
+
+def _collect_log_volume_spike_warnings(
+    log_volume_trends: list[LogVolumeTrend],
+    warnings: list[str],
+) -> None:
+    """ログ量トレンドから急増スパイク警告を収集"""
+    if not log_volume_trends:
+        return
+
+    service_volumes: dict[str, list[int]] = {}
+    for trend in log_volume_trends:
+        if trend.service:
+            service_volumes.setdefault(trend.service, []).append(trend.log_count)
+
+    for svc, volumes in service_volumes.items():
+        if len(volumes) >= _MIN_TREND_POINTS:
+            recent = volumes[0]
+            previous = volumes[1]
+            if previous > 0 and recent > previous * _LOG_SPIKE_MULTIPLIER:
+                warnings.append(
+                    f"ログ量スパイク検出: {svc} ({recent}件 vs 前時間{previous}件、{round(recent / previous, 1)}倍増加)"
+                )
 
 
 def _collect_recommendations(

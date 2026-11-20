@@ -58,11 +58,12 @@ def collect_api_performance(client: Client, database: str, hours: int) -> list[A
     try:
         result = client.query(query, parameters={"database": database, "hours": hours})
         data = [ApiPerformanceStats(**dict(zip(result.column_names, row))) for row in result.result_rows]
-        log.info("データ収集完了", count=len(data))
-        return data
     except ClickHouseError as e:
         log.exception("クエリ実行エラー", query=query[:200])
         raise CollectorError("api_performance", str(e)) from e
+    else:
+        log.info("データ収集完了", count=len(data))
+        return data
 
 
 def collect_bottlenecks(client: Client, database: str, hours: int) -> list[Bottleneck]:
@@ -101,11 +102,12 @@ def collect_bottlenecks(client: Client, database: str, hours: int) -> list[Bottl
     try:
         result = client.query(query, parameters={"database": database, "hours": hours})
         data = [Bottleneck(**dict(zip(result.column_names, row))) for row in result.result_rows]
-        log.info("データ収集完了", count=len(data))
-        return data
     except ClickHouseError as e:
         log.exception("クエリ実行エラー", query=query[:200])
         raise CollectorError("bottlenecks", str(e)) from e
+    else:
+        log.info("データ収集完了", count=len(data))
+        return data
 
 
 def collect_span_type_stats(client: Client, database: str, hours: int) -> list[SpanTypeStat]:
@@ -141,11 +143,12 @@ def collect_span_type_stats(client: Client, database: str, hours: int) -> list[S
     try:
         result = client.query(query, parameters={"database": database, "hours": hours})
         data = [SpanTypeStat(**dict(zip(result.column_names, row))) for row in result.result_rows]
-        log.info("データ収集完了", count=len(data))
-        return data
     except ClickHouseError as e:
         log.exception("クエリ実行エラー", query=query[:200])
         raise CollectorError("span_type_stats", str(e)) from e
+    else:
+        log.info("データ収集完了", count=len(data))
+        return data
 
 
 def collect_error_spans(client: Client, database: str, hours: int) -> list[ErrorSpan]:
@@ -183,11 +186,12 @@ def collect_error_spans(client: Client, database: str, hours: int) -> list[Error
     try:
         result = client.query(query, parameters={"database": database, "hours": hours})
         data = [ErrorSpan(**dict(zip(result.column_names, row))) for row in result.result_rows]
-        log.info("データ収集完了", count=len(data))
-        return data
     except ClickHouseError as e:
         log.exception("クエリ実行エラー", query=query[:200])
         raise CollectorError("error_spans", str(e)) from e
+    else:
+        log.info("データ収集完了", count=len(data))
+        return data
 
 
 def collect_service_dependencies(client: Client, database: str, hours: int) -> list[ServiceDependency]:
@@ -227,8 +231,9 @@ def collect_service_dependencies(client: Client, database: str, hours: int) -> l
     try:
         result = client.query(query, parameters={"database": database, "hours": hours})
         data = [ServiceDependency(**dict(zip(result.column_names, row))) for row in result.result_rows]
-        log.info("データ収集完了", count=len(data))
-        return data
     except ClickHouseError as e:
         log.exception("クエリ実行エラー", query=query[:200])
         raise CollectorError("service_dependencies", str(e)) from e
+    else:
+        log.info("データ収集完了", count=len(data))
+        return data

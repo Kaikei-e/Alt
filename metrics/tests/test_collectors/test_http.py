@@ -31,18 +31,19 @@ class TestCollectHttpEndpointStats:
             "status_4xx",
             "status_5xx",
         ]
-        mock_client.query.return_value.result_rows = [
+        rows = [
             ("alt-backend", "/api/feeds", 1000, 50.0, 100.0, 1024, 0.5, 990, 5, 5),
             ("alt-backend", "/api/health", 500, 10.0, 20.0, 256, 0.0, 500, 0, 0),
         ]
+        mock_client.query.return_value.result_rows = rows
 
         result = collect_http_endpoint_stats(mock_client, "rask_logs", 24)
 
-        assert len(result) == 2
+        assert len(result) == len(rows)
         assert all(isinstance(row, HttpEndpointStat) for row in result)
         assert result[0].route == "/api/feeds"
-        assert result[0].request_count == 1000
-        assert result[0].p95_duration_ms == 100.0
+        assert result[0].request_count == rows[0][2]
+        assert result[0].p95_duration_ms == rows[0][4]
         assert result[1].error_rate == 0.0
 
     def test_empty_result_returns_empty_list(self) -> None:
@@ -71,7 +72,7 @@ class TestCollectHttpEndpointStats:
         mock_client = MagicMock()
         mock_client.query.side_effect = ValueError("unexpected bug")
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="unexpected bug"):
             collect_http_endpoint_stats(mock_client, "rask_logs", 24)
 
     def test_query_uses_correct_parameters(self) -> None:
@@ -101,18 +102,19 @@ class TestCollectHttpStatusDistribution:
             "status_5xx",
             "error_5xx_rate",
         ]
-        mock_client.query.return_value.result_rows = [
+        rows = [
             ("alt-backend", 10000, 9500, 100, 300, 100, 1.0),
             ("auth-hub", 5000, 4800, 50, 100, 50, 1.0),
         ]
+        mock_client.query.return_value.result_rows = rows
 
         result = collect_http_status_distribution(mock_client, "rask_logs", 24)
 
-        assert len(result) == 2
+        assert len(result) == len(rows)
         assert all(isinstance(row, HttpStatusDistribution) for row in result)
         assert result[0].service == "alt-backend"
-        assert result[0].total_requests == 10000
-        assert result[0].status_5xx == 100
+        assert result[0].total_requests == rows[0][1]
+        assert result[0].status_5xx == rows[0][5]
         assert result[0].error_5xx_rate == 1.0
 
     def test_empty_result_returns_empty_list(self) -> None:

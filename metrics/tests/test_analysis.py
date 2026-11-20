@@ -1,10 +1,11 @@
 """analysis.py のテスト"""
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 import pytest
 
 from alt_metrics.analysis import (
+    HEALTH_SCORE_DEGRADED,
     analyze_health,
     calculate_health_score,
     get_health_status,
@@ -12,6 +13,18 @@ from alt_metrics.analysis import (
 )
 from alt_metrics.config import HealthThresholds
 from alt_metrics.models import AnalysisResult, ApiPerformanceStats
+
+_PERFECT_SCORE = 100
+_PENALTY_ERR_CRITICAL = 40
+_PENALTY_ERR_HIGH = 25
+_PENALTY_ERR_WARNING = 10
+_PENALTY_ERR_MINOR = 5
+_PENALTY_LAT_CRITICAL = 30
+_PENALTY_LAT_HIGH = 20
+_PENALTY_LAT_WARNING = 10
+_PENALTY_LAT_MINOR = 5
+_PENALTY_GAP_CRITICAL = 30
+_PENALTY_GAP_WARNING = 15
 
 
 class TestCalculateHealthScore:
@@ -29,7 +42,7 @@ class TestCalculateHealthScore:
             log_gap_minutes=0.0,
             thresholds=thresholds,
         )
-        assert score == 100
+        assert score == _PERFECT_SCORE
 
     def test_critical_error_rate_reduces_score_by_40(self, thresholds: HealthThresholds) -> None:
         """エラー率が10%超の場合、40点減点"""
@@ -39,7 +52,7 @@ class TestCalculateHealthScore:
             log_gap_minutes=0.0,
             thresholds=thresholds,
         )
-        assert score == 60
+        assert score == _PERFECT_SCORE - _PENALTY_ERR_CRITICAL
 
     def test_high_error_rate_reduces_score_by_25(self, thresholds: HealthThresholds) -> None:
         """エラー率が5%超の場合、25点減点"""
@@ -49,7 +62,7 @@ class TestCalculateHealthScore:
             log_gap_minutes=0.0,
             thresholds=thresholds,
         )
-        assert score == 75
+        assert score == _PERFECT_SCORE - _PENALTY_ERR_HIGH
 
     def test_warning_error_rate_reduces_score_by_10(self, thresholds: HealthThresholds) -> None:
         """エラー率が1%超の場合、10点減点"""
@@ -59,7 +72,7 @@ class TestCalculateHealthScore:
             log_gap_minutes=0.0,
             thresholds=thresholds,
         )
-        assert score == 90
+        assert score == _PERFECT_SCORE - _PENALTY_ERR_WARNING
 
     def test_minor_error_rate_reduces_score_by_5(self, thresholds: HealthThresholds) -> None:
         """エラー率が0.5%超の場合、5点減点"""
@@ -69,7 +82,7 @@ class TestCalculateHealthScore:
             log_gap_minutes=0.0,
             thresholds=thresholds,
         )
-        assert score == 95
+        assert score == _PERFECT_SCORE - _PENALTY_ERR_MINOR
 
     def test_critical_latency_reduces_score_by_30(self, thresholds: HealthThresholds) -> None:
         """レイテンシが10秒超の場合、30点減点"""
@@ -79,7 +92,7 @@ class TestCalculateHealthScore:
             log_gap_minutes=0.0,
             thresholds=thresholds,
         )
-        assert score == 70
+        assert score == _PERFECT_SCORE - _PENALTY_LAT_CRITICAL
 
     def test_high_latency_reduces_score_by_20(self, thresholds: HealthThresholds) -> None:
         """レイテンシが5秒超の場合、20点減点"""
@@ -89,7 +102,7 @@ class TestCalculateHealthScore:
             log_gap_minutes=0.0,
             thresholds=thresholds,
         )
-        assert score == 80
+        assert score == _PERFECT_SCORE - _PENALTY_LAT_HIGH
 
     def test_warning_latency_reduces_score_by_10(self, thresholds: HealthThresholds) -> None:
         """レイテンシが1秒超の場合、10点減点"""
@@ -99,7 +112,7 @@ class TestCalculateHealthScore:
             log_gap_minutes=0.0,
             thresholds=thresholds,
         )
-        assert score == 90
+        assert score == _PERFECT_SCORE - _PENALTY_LAT_WARNING
 
     def test_minor_latency_reduces_score_by_5(self, thresholds: HealthThresholds) -> None:
         """レイテンシが500ms超の場合、5点減点"""
@@ -109,7 +122,7 @@ class TestCalculateHealthScore:
             log_gap_minutes=0.0,
             thresholds=thresholds,
         )
-        assert score == 95
+        assert score == _PERFECT_SCORE - _PENALTY_LAT_MINOR
 
     def test_critical_log_gap_reduces_score_by_30(self, thresholds: HealthThresholds) -> None:
         """ログ欠落が10分超の場合、30点減点"""
@@ -119,7 +132,7 @@ class TestCalculateHealthScore:
             log_gap_minutes=15.0,  # > 10分
             thresholds=thresholds,
         )
-        assert score == 70
+        assert score == _PERFECT_SCORE - _PENALTY_GAP_CRITICAL
 
     def test_warning_log_gap_reduces_score_by_15(self, thresholds: HealthThresholds) -> None:
         """ログ欠落が5分超の場合、15点減点"""
@@ -129,7 +142,7 @@ class TestCalculateHealthScore:
             log_gap_minutes=7.0,  # > 5分
             thresholds=thresholds,
         )
-        assert score == 85
+        assert score == _PERFECT_SCORE - _PENALTY_GAP_WARNING
 
     def test_multiple_issues_accumulate(self, thresholds: HealthThresholds) -> None:
         """複数の問題は累積して減点"""
@@ -166,7 +179,7 @@ class TestCalculateHealthScore:
             log_gap_minutes=0.0,
             thresholds=custom,
         )
-        assert score == 100
+        assert score == _PERFECT_SCORE
 
     def test_default_thresholds_when_none(self) -> None:
         """閾値がNoneの場合はデフォルト値を使用"""
@@ -176,7 +189,7 @@ class TestCalculateHealthScore:
             log_gap_minutes=0.0,
             thresholds=None,
         )
-        assert score == 60
+        assert score == _PERFECT_SCORE - _PENALTY_ERR_CRITICAL
 
 
 class TestGetHealthStatus:
@@ -257,6 +270,7 @@ class TestAnalyzeHealthServiceLatencyAggregation:
         """同一サービスの複数エンドポイントがある場合、最後の行ではなく最大p95を採用する"""
         # ClickHouseはp95降順で返すため、後続行ほどp95が小さい。
         # 素朴なdict内包表記だと最後に処理された（=最小の）p95で上書きされてしまう。
+        slow_p95_ms = 9000.0
         result = self._make_result(
             [
                 ApiPerformanceStats(
@@ -265,7 +279,7 @@ class TestAnalyzeHealthServiceLatencyAggregation:
                     request_count=10,
                     avg_ms=100.0,
                     p50_ms=90.0,
-                    p95_ms=9000.0,
+                    p95_ms=slow_p95_ms,
                     p99_ms=9500.0,
                     max_ms=9800.0,
                     error_spans=0,
@@ -287,10 +301,11 @@ class TestAnalyzeHealthServiceLatencyAggregation:
         result = analyze_health(result)
 
         assert len(result.service_health) == 1
-        assert result.service_health[0].p95_latency_ms == 9000.0
+        assert result.service_health[0].p95_latency_ms == slow_p95_ms
 
     def test_single_endpoint_service_uses_its_p95(self) -> None:
         """エンドポイントが1つの場合はそのままp95を使う"""
+        expected_p95_ms = 200.0
         result = self._make_result(
             [
                 ApiPerformanceStats(
@@ -299,7 +314,7 @@ class TestAnalyzeHealthServiceLatencyAggregation:
                     request_count=100,
                     avg_ms=50.0,
                     p50_ms=40.0,
-                    p95_ms=200.0,
+                    p95_ms=expected_p95_ms,
                     p99_ms=500.0,
                     max_ms=600.0,
                     error_spans=0,
@@ -309,7 +324,7 @@ class TestAnalyzeHealthServiceLatencyAggregation:
 
         result = analyze_health(result)
 
-        assert result.service_health[0].p95_latency_ms == 200.0
+        assert result.service_health[0].p95_latency_ms == expected_p95_ms
 
     def test_no_api_performance_data_defaults_to_zero(self) -> None:
         """api_performanceが空の場合はp95レイテンシ0として扱う"""
@@ -340,7 +355,7 @@ class TestAnalyzeHealthIssuesWarningsRecommendations:
 
         result = analyze_health(result)
 
-        assert result.service_health[0].health_score < 50
+        assert result.service_health[0].health_score < HEALTH_SCORE_DEGRADED
         assert any("auth-hub" in issue for issue in result.critical_issues)
 
     def test_high_error_rate_generates_warning(self) -> None:
@@ -370,7 +385,7 @@ class TestAnalyzeHealthIssuesWarningsRecommendations:
             slo_violations=[
                 {
                     "service": "alt-backend",
-                    "time_bucket": datetime(2026, 1, 19, 12, 0, 0),
+                    "time_bucket": datetime(2026, 1, 19, 12, 0, 0, tzinfo=UTC),
                     "error_rate_pct": 5.0,
                     "sample_count": 100,
                 },
@@ -466,4 +481,4 @@ class TestAnalyzeHealthIssuesWarningsRecommendations:
 
         assert result.critical_issues == []
         assert result.warnings == []
-        assert result.overall_health_score == 100
+        assert result.overall_health_score == _PERFECT_SCORE

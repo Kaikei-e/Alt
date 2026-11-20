@@ -27,19 +27,20 @@ class TestCollectResourceUtilization:
             "p95_utilization",
             "sample_count",
         ]
-        mock_client.query.return_value.result_rows = [
+        rows = [
             ("alt-backend", "cpu", 45.5, 85.0, 75.0, 1000),
             ("alt-backend", "memory", 60.0, 78.0, 72.0, 1000),
             ("auth-hub", "cpu", 30.0, 65.0, 55.0, 800),
         ]
+        mock_client.query.return_value.result_rows = rows
 
         result = collect_resource_utilization(mock_client, "rask_logs", 24)
 
-        assert len(result) == 3
+        assert len(result) == len(rows)
         assert all(isinstance(row, ResourceUtilization) for row in result)
         assert result[0].service == "alt-backend"
         assert result[0].resource_type == "cpu"
-        assert result[0].avg_utilization == 45.5
+        assert result[0].avg_utilization == rows[0][2]
         assert result[1].resource_type == "memory"
 
     def test_empty_result_returns_empty_list(self) -> None:
@@ -67,7 +68,7 @@ class TestCollectResourceUtilization:
         mock_client = MagicMock()
         mock_client.query.side_effect = ValueError("unexpected bug")
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="unexpected bug"):
             collect_resource_utilization(mock_client, "rask_logs", 24)
 
     def test_query_uses_correct_parameters(self) -> None:
@@ -95,19 +96,20 @@ class TestCollectQueueSaturation:
             "max_wait_time_ms",
             "p95_wait_time_ms",
         ]
-        mock_client.query.return_value.result_rows = [
+        rows = [
             ("pre-processor", "feed_queue", 50.0, 500, 200.0),
             ("tag-generator", "tag_queue", 30.0, 200, 100.0),
         ]
+        mock_client.query.return_value.result_rows = rows
 
         result = collect_queue_saturation(mock_client, "rask_logs", 24)
 
-        assert len(result) == 2
+        assert len(result) == len(rows)
         assert all(isinstance(row, QueueSaturation) for row in result)
         assert result[0].queue_name == "feed_queue"
-        assert result[0].avg_wait_time_ms == 50.0
-        assert result[0].max_wait_time_ms == 500
-        assert result[1].p95_wait_time_ms == 100.0
+        assert result[0].avg_wait_time_ms == rows[0][2]
+        assert result[0].max_wait_time_ms == rows[0][3]
+        assert result[1].p95_wait_time_ms == rows[1][4]
 
     def test_empty_result_returns_empty_list(self) -> None:
         """空の結果は空リストを返す"""
@@ -134,5 +136,5 @@ class TestCollectQueueSaturation:
         mock_client = MagicMock()
         mock_client.query.side_effect = ValueError("unexpected bug")
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="unexpected bug"):
             collect_queue_saturation(mock_client, "rask_logs", 24)

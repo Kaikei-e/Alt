@@ -19,11 +19,10 @@ def main() -> int:
 
     if args.command == "analyze":
         return cmd_analyze(args)
-    elif args.command == "validate":
+    if args.command == "validate":
         return cmd_validate(args)
-    else:
-        parser.print_help()
-        return 0
+    parser.print_help()
+    return 0
 
 
 if __name__ == "__main__":

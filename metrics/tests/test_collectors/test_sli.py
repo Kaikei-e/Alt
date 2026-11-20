@@ -1,6 +1,6 @@
 """collectors/sli.py のテスト"""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 import pytest
@@ -26,18 +26,19 @@ class TestCollectSliTrends:
             "metric",
             "value",
         ]
-        mock_client.query.return_value.result_rows = [
-            (datetime(2026, 1, 19, 12, 0, 0), "alt-backend", "error_rate", 0.005),
-            (datetime(2026, 1, 19, 12, 0, 0), "alt-backend", "log_throughput", 1000.0),
-            (datetime(2026, 1, 19, 11, 55, 0), "auth-hub", "error_rate", 0.01),
+        rows = [
+            (datetime(2026, 1, 19, 12, 0, 0, tzinfo=UTC), "alt-backend", "error_rate", 0.005),
+            (datetime(2026, 1, 19, 12, 0, 0, tzinfo=UTC), "alt-backend", "log_throughput", 1000.0),
+            (datetime(2026, 1, 19, 11, 55, 0, tzinfo=UTC), "auth-hub", "error_rate", 0.01),
         ]
+        mock_client.query.return_value.result_rows = rows
 
         result = collect_sli_trends(mock_client, "rask_logs", 24)
 
-        assert len(result) == 3
+        assert len(result) == len(rows)
         assert all(isinstance(row, SliTrend) for row in result)
         assert result[0].metric == "error_rate"
-        assert result[0].value == 0.005
+        assert result[0].value == rows[0][3]
         assert result[1].metric == "log_throughput"
 
     def test_empty_result_returns_empty_list(self) -> None:
@@ -66,7 +67,7 @@ class TestCollectSliTrends:
         mock_client = MagicMock()
         mock_client.query.side_effect = ValueError("unexpected bug")
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="unexpected bug"):
             collect_sli_trends(mock_client, "rask_logs", 24)
 
     def test_query_uses_correct_parameters(self) -> None:
@@ -93,18 +94,19 @@ class TestCollectSloViolations:
             "error_rate_pct",
             "sample_count",
         ]
-        mock_client.query.return_value.result_rows = [
-            ("auth-hub", datetime(2026, 1, 19, 12, 0, 0), 2.5, 100),
-            ("alt-backend", datetime(2026, 1, 19, 11, 55, 0), 1.5, 200),
+        rows = [
+            ("auth-hub", datetime(2026, 1, 19, 12, 0, 0, tzinfo=UTC), 2.5, 100),
+            ("alt-backend", datetime(2026, 1, 19, 11, 55, 0, tzinfo=UTC), 1.5, 200),
         ]
+        mock_client.query.return_value.result_rows = rows
 
         result = collect_slo_violations(mock_client, "rask_logs", 24, 1.0)
 
-        assert len(result) == 2
+        assert len(result) == len(rows)
         assert all(isinstance(row, SloViolation) for row in result)
         assert result[0].service == "auth-hub"
-        assert result[0].error_rate_pct == 2.5
-        assert result[1].sample_count == 200
+        assert result[0].error_rate_pct == rows[0][2]
+        assert result[1].sample_count == rows[1][3]
 
     def test_empty_result_when_no_violations(self) -> None:
         """違反がない場合は空リストを返す"""
@@ -133,20 +135,22 @@ class TestCollectSloViolations:
         mock_client.query.return_value.column_names = []
         mock_client.query.return_value.result_rows = []
 
-        collect_slo_violations(mock_client, "rask_logs", 24, 5.0)
+        threshold_pct = 5.0
+        collect_slo_violations(mock_client, "rask_logs", 24, threshold_pct)
 
         call_kwargs = mock_client.query.call_args.kwargs
         # 5.0% threshold = 0.05 bound parameter
-        assert call_kwargs["parameters"]["error_rate_threshold"] == 0.05
+        assert call_kwargs["parameters"]["error_rate_threshold"] == threshold_pct / 100
 
     def test_default_threshold_is_1_percent(self) -> None:
         """デフォルト閾値は1%"""
         mock_client = MagicMock()
         mock_client.query.return_value.column_names = []
         mock_client.query.return_value.result_rows = []
+        expected_default_ratio = 0.01
 
         collect_slo_violations(mock_client, "rask_logs", 24)
 
         call_kwargs = mock_client.query.call_args.kwargs
         # 1.0% threshold = 0.01 bound parameter
-        assert call_kwargs["parameters"]["error_rate_threshold"] == 0.01
+        assert call_kwargs["parameters"]["error_rate_threshold"] == expected_default_ratio

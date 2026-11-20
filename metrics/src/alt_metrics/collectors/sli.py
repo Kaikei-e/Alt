@@ -46,11 +46,12 @@ def collect_sli_trends(client: Client, database: str, hours: int) -> list[SliTre
     try:
         result = client.query(query, parameters={"database": database, "hours": hours})
         data = [SliTrend(**dict(zip(result.column_names, row))) for row in result.result_rows]
-        log.info("データ収集完了", count=len(data))
-        return data
     except ClickHouseError as e:
         log.exception("クエリ実行エラー", query=query[:200])
         raise CollectorError("sli_trends", str(e)) from e
+    else:
+        log.info("データ収集完了", count=len(data))
+        return data
 
 
 def collect_slo_violations(
@@ -102,8 +103,9 @@ def collect_slo_violations(
             },
         )
         data = [SloViolation(**dict(zip(result.column_names, row))) for row in result.result_rows]
-        log.info("データ収集完了", count=len(data))
-        return data
     except ClickHouseError as e:
         log.exception("クエリ実行エラー", query=query[:200])
         raise CollectorError("slo_violations", str(e)) from e
+    else:
+        log.info("データ収集完了", count=len(data))
+        return data
