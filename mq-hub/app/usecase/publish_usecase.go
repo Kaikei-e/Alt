@@ -4,6 +4,7 @@ package usecase
 import (
 	"context"
 	"errors"
+	"math"
 	"time"
 
 	"mq-hub/domain"
@@ -112,7 +113,7 @@ func (u *PublishUsecase) PublishBatch(ctx context.Context, stream domain.StreamK
 		return &PublishBatchResult{
 			MessageIDs:   nil,
 			SuccessCount: 0,
-			FailureCount: int32(batchSize),
+			FailureCount: int32(min(batchSize, math.MaxInt32)),
 		}, domain.ErrInvalidStreamKey
 	}
 
@@ -122,7 +123,7 @@ func (u *PublishUsecase) PublishBatch(ctx context.Context, stream domain.StreamK
 		return &PublishBatchResult{
 			MessageIDs:   nil,
 			SuccessCount: 0,
-			FailureCount: int32(batchSize),
+			FailureCount: int32(min(batchSize, math.MaxInt32)),
 		}, ErrBatchTooLarge
 	}
 
@@ -144,8 +145,8 @@ func (u *PublishUsecase) PublishBatch(ctx context.Context, stream domain.StreamK
 		}
 		return &PublishBatchResult{
 			MessageIDs:   messageIDs,
-			SuccessCount: int32(batchSize - len(partialErr.Failures)),
-			FailureCount: int32(len(partialErr.Failures)),
+			SuccessCount: int32(min(max(batchSize-len(partialErr.Failures), 0), math.MaxInt32)),
+			FailureCount: int32(min(len(partialErr.Failures), math.MaxInt32)),
 			Errors:       publishErrors,
 		}, partialErr
 	}
@@ -156,14 +157,14 @@ func (u *PublishUsecase) PublishBatch(ctx context.Context, stream domain.StreamK
 		return &PublishBatchResult{
 			MessageIDs:   nil,
 			SuccessCount: 0,
-			FailureCount: int32(batchSize),
+			FailureCount: int32(min(batchSize, math.MaxInt32)),
 		}, err
 	}
 
 	metrics.RecordBatchPublish(stream.String(), "success", batchSize, duration)
 	return &PublishBatchResult{
 		MessageIDs:   messageIDs,
-		SuccessCount: int32(len(messageIDs)),
+		SuccessCount: int32(min(len(messageIDs), math.MaxInt32)),
 		FailureCount: 0,
 	}, nil
 }

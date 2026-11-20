@@ -176,8 +176,8 @@ func TestRedisDriver_PublishBatch_PartialFailure(t *testing.T) {
 		driver, err := NewRedisDriver(mr.Addr())
 		require.NoError(t, err)
 		defer func() {
-			driver.Close()
-			mr.Close()
+			defer mr.Close()
+			require.NoError(t, driver.Close())
 		}()
 
 		driver.client.AddHook(&pipelinePartialFailHook{failEventID: "evt-1"})
@@ -214,8 +214,8 @@ func TestRedisDriver_Publish_WithMaxLen(t *testing.T) {
 		})
 		require.NoError(t, err)
 		defer func() {
-			driver.Close()
-			mr.Close()
+			defer mr.Close()
+			require.NoError(t, driver.Close())
 		}()
 
 		hook := &xaddCaptureHook{}
@@ -244,8 +244,8 @@ func TestRedisDriver_Publish_WithMaxLen(t *testing.T) {
 		driver, err := NewRedisDriver(mr.Addr())
 		require.NoError(t, err)
 		defer func() {
-			driver.Close()
-			mr.Close()
+			defer mr.Close()
+			require.NoError(t, driver.Close())
 		}()
 
 		ctx := context.Background()
@@ -274,8 +274,8 @@ func TestRedisDriver_PublishBatch_WithMaxLen(t *testing.T) {
 		})
 		require.NoError(t, err)
 		defer func() {
-			driver.Close()
-			mr.Close()
+			defer mr.Close()
+			require.NoError(t, driver.Close())
 		}()
 
 		hook := &xaddCaptureHook{}
@@ -393,7 +393,7 @@ func TestRedisDriver_Ping(t *testing.T) {
 		mr := NewMiniredis(t)
 		driver, err := NewRedisDriver(mr.Addr())
 		require.NoError(t, err)
-		defer driver.Close()
+		defer func() { require.NoError(t, driver.Close()) }()
 
 		mr.Close()
 		ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
@@ -487,8 +487,8 @@ func TestRedisDriver_Expire(t *testing.T) {
 		driver, err := NewRedisDriver(mr.Addr())
 		require.NoError(t, err)
 		defer func() {
-			driver.Close()
-			mr.Close()
+			defer mr.Close()
+			require.NoError(t, driver.Close())
 		}()
 
 		ctx := context.Background()
@@ -526,8 +526,8 @@ func setupTestDriver(t *testing.T) (*RedisDriver, func()) {
 	require.NoError(t, err)
 
 	cleanup := func() {
-		driver.Close()
-		mr.Close()
+		defer mr.Close()
+		require.NoError(t, driver.Close())
 	}
 
 	return driver, cleanup
@@ -538,7 +538,7 @@ func TestNewRedisDriverWithOptions_Password(t *testing.T) {
 		Password: "test-secret-password",
 	})
 	require.NoError(t, err)
-	defer driver.Close()
+	defer func() { require.NoError(t, driver.Close()) }()
 
 	assert.Equal(t, "test-secret-password", driver.client.Options().Password)
 }
@@ -548,7 +548,7 @@ func TestNewRedisDriverWithURLAndOptions_Password(t *testing.T) {
 		Password: "test-secret-password-url",
 	})
 	require.NoError(t, err)
-	defer driver.Close()
+	defer func() { require.NoError(t, driver.Close()) }()
 
 	assert.Equal(t, "test-secret-password-url", driver.client.Options().Password)
 }

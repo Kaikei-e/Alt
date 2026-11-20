@@ -122,6 +122,7 @@ func ResolveAuthToken(logger *slog.Logger) (string, error) {
 			return "", fmt.Errorf("MQHUB_AUTH_TOKEN_FILE is set but empty")
 		}
 
+		// #nosec G304 -- trimmedPath comes from service MQHUB_AUTH_TOKEN_FILE configuration
 		content, err := os.ReadFile(trimmedPath)
 		if err != nil {
 			logger.Error("mqhub_auth_token_file_read_failed", "file", trimmedPath, "error", err)
@@ -195,6 +196,7 @@ func ResolveRedisPassword(logger *slog.Logger) (string, error) {
 		return "", fmt.Errorf("REDIS_PASSWORD_FILE is set but empty; set REDIS_AUTH=disabled to run with redis auth disabled explicitly")
 	}
 
+	// #nosec G304 -- trimmedPath comes from service REDIS_PASSWORD_FILE configuration
 	content, err := os.ReadFile(trimmedPath)
 	if err != nil {
 		logger.Error("redis_password_file_read_failed", "file", trimmedPath, "error", err)

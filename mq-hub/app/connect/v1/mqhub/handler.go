@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"math"
 	"time"
 
 	"connectrpc.com/connect"
@@ -35,7 +36,7 @@ func NewHandlerWithGenerateTags(publishUsecase *usecase.PublishUsecase, generate
 
 // Publish sends a single event to a Redis Stream.
 func (h *Handler) Publish(ctx context.Context, req *connect.Request[mqhubv1.PublishRequest]) (*connect.Response[mqhubv1.PublishResponse], error) {
-	protoEvent := req.Msg.Event
+	protoEvent := req.Msg.GetEvent()
 	if protoEvent == nil {
 		return connect.NewResponse(&mqhubv1.PublishResponse{
 			Success: false,
@@ -44,7 +45,7 @@ func (h *Handler) Publish(ctx context.Context, req *connect.Request[mqhubv1.Publ
 
 	event := protoEventToDomain(protoEvent)
 
-	result, err := h.publishUsecase.Publish(ctx, domain.StreamKey(req.Msg.Stream), event)
+	result, err := h.publishUsecase.Publish(ctx, domain.StreamKey(req.Msg.GetStream()), event)
 	if err != nil {
 		return connect.NewResponse(&mqhubv1.PublishResponse{
 			Success: false,
@@ -59,24 +60,24 @@ func (h *Handler) Publish(ctx context.Context, req *connect.Request[mqhubv1.Publ
 
 // PublishBatch sends multiple events to a Redis Stream.
 func (h *Handler) PublishBatch(ctx context.Context, req *connect.Request[mqhubv1.PublishBatchRequest]) (*connect.Response[mqhubv1.PublishBatchResponse], error) {
-	events := make([]*domain.Event, len(req.Msg.Events))
-	for i, protoEvent := range req.Msg.Events {
+	events := make([]*domain.Event, len(req.Msg.GetEvents()))
+	for i, protoEvent := range req.Msg.GetEvents() {
 		events[i] = protoEventToDomain(protoEvent)
 	}
 
-	result, err := h.publishUsecase.PublishBatch(ctx, domain.StreamKey(req.Msg.Stream), events)
+	result, err := h.publishUsecase.PublishBatch(ctx, domain.StreamKey(req.Msg.GetStream()), events)
 	var partialErr *domain.PartialPublishError
 	if err != nil && !errors.As(err, &partialErr) {
 		return connect.NewResponse(&mqhubv1.PublishBatchResponse{
 			SuccessCount: 0,
-			FailureCount: int32(len(events)),
+			FailureCount: int32(min(len(events), math.MaxInt32)),
 		}), mapPublishErr(err)
 	}
 
 	protoErrors := make([]*mqhubv1.PublishError, len(result.Errors))
 	for i, e := range result.Errors {
 		protoErrors[i] = &mqhubv1.PublishError{
-			Index:        int32(e.Index),
+			Index:        int32(min(max(e.Index, 0), math.MaxInt32)),
 			ErrorMessage: e.ErrorMessage,
 		}
 	}
@@ -114,13 +115,13 @@ func mapPublishErr(err error) error {
 func (h *Handler) CreateConsumerGroup(ctx context.Context, req *connect.Request[mqhubv1.CreateConsumerGroupRequest]) (*connect.Response[mqhubv1.CreateConsumerGroupResponse], error) {
 	err := h.publishUsecase.CreateConsumerGroup(
 		ctx,
-		domain.StreamKey(req.Msg.Stream),
-		domain.ConsumerGroup(req.Msg.Group),
-		req.Msg.StartId,
+		domain.StreamKey(req.Msg.GetStream()),
+		domain.ConsumerGroup(req.Msg.GetGroup()),
+		req.Msg.GetStartId(),
 	)
 	if err != nil {
 		slog.ErrorContext(ctx, "create consumer group failed",
-			"stream", req.Msg.Stream, "group", req.Msg.Group, "error", err)
+			"stream", req.Msg.GetStream(), "group", req.Msg.GetGroup(), "error", err)
 		if errors.Is(err, domain.ErrInvalidStreamKey) || errors.Is(err, domain.ErrInvalidConsumerGroup) {
 			return connect.NewResponse(&mqhubv1.CreateConsumerGroupResponse{
 				Success: false,
@@ -141,7 +142,7 @@ func (h *Handler) CreateConsumerGroup(ctx context.Context, req *connect.Request[
 
 // GetStreamInfo returns information about a stream.
 func (h *Handler) GetStreamInfo(ctx context.Context, req *connect.Request[mqhubv1.GetStreamInfoRequest]) (*connect.Response[mqhubv1.GetStreamInfoResponse], error) {
-	info, err := h.publishUsecase.GetStreamInfo(ctx, domain.StreamKey(req.Msg.Stream))
+	info, err := h.publishUsecase.GetStreamInfo(ctx, domain.StreamKey(req.Msg.GetStream()))
 	if err != nil {
 		return nil, mapPublishErr(err)
 	}
@@ -184,17 +185,17 @@ func protoEventToDomain(protoEvent *mqhubv1.Event) *domain.Event {
 	}
 
 	createdAt := time.Now()
-	if protoEvent.CreatedAt != nil {
-		createdAt = protoEvent.CreatedAt.AsTime()
+	if protoEvent.GetCreatedAt() != nil {
+		createdAt = protoEvent.GetCreatedAt().AsTime()
 	}
 
 	return &domain.Event{
-		EventID:   protoEvent.EventId,
-		EventType: domain.EventType(protoEvent.EventType),
-		Source:    protoEvent.Source,
+		EventID:   protoEvent.GetEventId(),
+		EventType: domain.EventType(protoEvent.GetEventType()),
+		Source:    protoEvent.GetSource(),
 		CreatedAt: createdAt,
-		Payload:   protoEvent.Payload,
-		Metadata:  protoEvent.Metadata,
+		Payload:   protoEvent.GetPayload(),
+		Metadata:  protoEvent.GetMetadata(),
 	}
 }
 
@@ -203,29 +204,32 @@ func (h *Handler) GenerateTagsForArticle(ctx context.Context, req *connect.Reque
 	if h.generateTagsUsecase == nil {
 		return nil, connect.NewError(connect.CodeUnimplemented, errors.New("tag generation not configured"))
 	}
+	if req.Msg == nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("request message is required"))
+	}
 
 	ucReq := &usecase.GenerateTagsRequest{
-		ArticleID: req.Msg.ArticleId,
-		Title:     req.Msg.Title,
-		Content:   req.Msg.Content,
-		FeedID:    req.Msg.FeedId,
-		TimeoutMs: req.Msg.TimeoutMs,
+		ArticleID: req.Msg.GetArticleId(),
+		Title:     req.Msg.GetTitle(),
+		Content:   req.Msg.GetContent(),
+		FeedID:    req.Msg.GetFeedId(),
+		TimeoutMs: req.Msg.GetTimeoutMs(),
 	}
 
 	result, err := h.generateTagsUsecase.GenerateTagsForArticle(ctx, ucReq)
 	if err != nil {
 		slog.ErrorContext(ctx, "generate tags for article failed",
-			"article_id", req.Msg.ArticleId, "error", err)
+			"article_id", req.Msg.GetArticleId(), "error", err)
 		if errors.Is(err, domain.ErrReplyTimeout) {
 			return connect.NewResponse(&mqhubv1.GenerateTagsForArticleResponse{
 				Success:      false,
-				ArticleId:    req.Msg.ArticleId,
+				ArticleId:    req.Msg.GetArticleId(),
 				ErrorMessage: "tag generation timeout",
 			}), connect.NewError(connect.CodeDeadlineExceeded, errors.New("tag generation timeout"))
 		}
 		return connect.NewResponse(&mqhubv1.GenerateTagsForArticleResponse{
 			Success:      false,
-			ArticleId:    req.Msg.ArticleId,
+			ArticleId:    req.Msg.GetArticleId(),
 			ErrorMessage: "tag generation failed",
 		}), connect.NewError(connect.CodeUnavailable, errors.New("tag generation failed"))
 	}

@@ -61,7 +61,11 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("connect to Redis: %w", err)
 	}
-	defer redisDriver.Close()
+	defer func() {
+		if err := redisDriver.Close(); err != nil {
+			slog.WarnContext(ctx, "failed to close Redis driver", "error", err)
+		}
+	}()
 
 	// go-redis connects lazily, so a successful constructor call above does
 	// not mean Redis is actually reachable. Ping now so a dead Redis fails

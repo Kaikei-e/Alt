@@ -11,8 +11,8 @@ import (
 
 func TestResolveAuthToken(t *testing.T) {
 	t.Run("missing both file and env returns error naming MQHUB_AUTH_TOKEN_FILE", func(t *testing.T) {
-		os.Unsetenv("MQHUB_AUTH_TOKEN_FILE")
-		os.Unsetenv("MQHUB_AUTH_TOKEN")
+		require.NoError(t, os.Unsetenv("MQHUB_AUTH_TOKEN_FILE"))
+		require.NoError(t, os.Unsetenv("MQHUB_AUTH_TOKEN"))
 		_, err := ResolveAuthToken(nil)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "MQHUB_AUTH_TOKEN_FILE")
@@ -83,7 +83,7 @@ func TestResolveAuthToken(t *testing.T) {
 	})
 
 	t.Run("valid token from env var fallback succeeds", func(t *testing.T) {
-		os.Unsetenv("MQHUB_AUTH_TOKEN_FILE")
+		require.NoError(t, os.Unsetenv("MQHUB_AUTH_TOKEN_FILE"))
 		t.Setenv("MQHUB_AUTH_TOKEN", "mqhub-valid-bearer-token-from-env")
 
 		token, err := ResolveAuthToken(nil)

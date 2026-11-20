@@ -97,8 +97,8 @@ func TestHandler_Publish(t *testing.T) {
 		resp, err := handler.Publish(ctx, req)
 
 		require.NoError(t, err)
-		assert.Equal(t, "1234567890123-0", resp.Msg.MessageId)
-		assert.True(t, resp.Msg.Success)
+		assert.Equal(t, "1234567890123-0", resp.Msg.GetMessageId())
+		assert.True(t, resp.Msg.GetSuccess())
 		mockPort.AssertExpectations(t)
 	})
 
@@ -117,7 +117,7 @@ func TestHandler_Publish(t *testing.T) {
 		resp, err := handler.Publish(ctx, req)
 
 		require.Error(t, err)
-		assert.False(t, resp.Msg.Success)
+		assert.False(t, resp.Msg.GetSuccess())
 		assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
 	})
 
@@ -144,7 +144,7 @@ func TestHandler_Publish(t *testing.T) {
 		resp, err := handler.Publish(ctx, req)
 
 		require.Error(t, err)
-		assert.False(t, resp.Msg.Success)
+		assert.False(t, resp.Msg.GetSuccess())
 		// Redis/driver failures must map to Unavailable, not the generic
 		// CodeUnknown, so callers can distinguish "retry me" from a bad
 		// request (see mapPublishErr).
@@ -185,9 +185,9 @@ func TestHandler_PublishBatch(t *testing.T) {
 		resp, err := handler.PublishBatch(ctx, req)
 
 		require.NoError(t, err)
-		assert.Len(t, resp.Msg.MessageIds, 2)
-		assert.Equal(t, int32(2), resp.Msg.SuccessCount)
-		assert.Equal(t, int32(0), resp.Msg.FailureCount)
+		assert.Len(t, resp.Msg.GetMessageIds(), 2)
+		assert.Equal(t, int32(2), resp.Msg.GetSuccessCount())
+		assert.Equal(t, int32(0), resp.Msg.GetFailureCount())
 		mockPort.AssertExpectations(t)
 	})
 
@@ -216,8 +216,8 @@ func TestHandler_PublishBatch(t *testing.T) {
 		resp, err := handler.PublishBatch(ctx, req)
 
 		require.Error(t, err)
-		assert.Equal(t, int32(0), resp.Msg.SuccessCount)
-		assert.Equal(t, int32(1), resp.Msg.FailureCount)
+		assert.Equal(t, int32(0), resp.Msg.GetSuccessCount())
+		assert.Equal(t, int32(1), resp.Msg.GetFailureCount())
 		assert.Equal(t, connect.CodeUnavailable, connect.CodeOf(err))
 		mockPort.AssertExpectations(t)
 	})
@@ -255,12 +255,12 @@ func TestHandler_PublishBatch(t *testing.T) {
 		require.Error(t, err)
 		assert.Equal(t, connect.CodeUnavailable, connect.CodeOf(err))
 		require.NotNil(t, resp)
-		assert.Equal(t, []string{"123-0", ""}, resp.Msg.MessageIds)
-		assert.Equal(t, int32(1), resp.Msg.SuccessCount)
-		assert.Equal(t, int32(1), resp.Msg.FailureCount)
-		require.Len(t, resp.Msg.Errors, 1)
-		assert.Equal(t, int32(1), resp.Msg.Errors[0].Index)
-		assert.Equal(t, "connection reset", resp.Msg.Errors[0].ErrorMessage)
+		assert.Equal(t, []string{"123-0", ""}, resp.Msg.GetMessageIds())
+		assert.Equal(t, int32(1), resp.Msg.GetSuccessCount())
+		assert.Equal(t, int32(1), resp.Msg.GetFailureCount())
+		require.Len(t, resp.Msg.GetErrors(), 1)
+		assert.Equal(t, int32(1), resp.Msg.GetErrors()[0].GetIndex())
+		assert.Equal(t, "connection reset", resp.Msg.GetErrors()[0].GetErrorMessage())
 		mockPort.AssertExpectations(t)
 	})
 
@@ -286,8 +286,8 @@ func TestHandler_PublishBatch(t *testing.T) {
 		// InvalidArgument so it is not classified alongside retryable
 		// Unavailable failures.
 		assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
-		assert.Equal(t, int32(0), resp.Msg.SuccessCount)
-		assert.Equal(t, int32(2), resp.Msg.FailureCount)
+		assert.Equal(t, int32(0), resp.Msg.GetSuccessCount())
+		assert.Equal(t, int32(2), resp.Msg.GetFailureCount())
 		mockPort.AssertNotCalled(t, "PublishBatch")
 	})
 }
@@ -312,8 +312,8 @@ func TestHandler_CreateConsumerGroup(t *testing.T) {
 		resp, err := handler.CreateConsumerGroup(ctx, req)
 
 		require.NoError(t, err)
-		assert.True(t, resp.Msg.Success)
-		assert.Equal(t, "consumer group created", resp.Msg.Message)
+		assert.True(t, resp.Msg.GetSuccess())
+		assert.Equal(t, "consumer group created", resp.Msg.GetMessage())
 		mockPort.AssertExpectations(t)
 	})
 
@@ -336,7 +336,7 @@ func TestHandler_CreateConsumerGroup(t *testing.T) {
 		resp, err := handler.CreateConsumerGroup(ctx, req)
 
 		require.Error(t, err)
-		assert.False(t, resp.Msg.Success)
+		assert.False(t, resp.Msg.GetSuccess())
 		mockPort.AssertExpectations(t)
 	})
 }
@@ -373,13 +373,13 @@ func TestHandler_GetStreamInfo(t *testing.T) {
 		resp, err := handler.GetStreamInfo(ctx, req)
 
 		require.NoError(t, err)
-		assert.Equal(t, int64(100), resp.Msg.Length)
-		assert.Equal(t, int64(5), resp.Msg.RadixTreeKeys)
-		assert.Equal(t, int64(10), resp.Msg.RadixTreeNodes)
-		assert.Equal(t, "123-0", resp.Msg.FirstEntryId)
-		assert.Equal(t, "123-99", resp.Msg.LastEntryId)
-		assert.Len(t, resp.Msg.Groups, 1)
-		assert.Equal(t, string(domain.ConsumerGroupPreProcessor), resp.Msg.Groups[0].Name)
+		assert.Equal(t, int64(100), resp.Msg.GetLength())
+		assert.Equal(t, int64(5), resp.Msg.GetRadixTreeKeys())
+		assert.Equal(t, int64(10), resp.Msg.GetRadixTreeNodes())
+		assert.Equal(t, "123-0", resp.Msg.GetFirstEntryId())
+		assert.Equal(t, "123-99", resp.Msg.GetLastEntryId())
+		assert.Len(t, resp.Msg.GetGroups(), 1)
+		assert.Equal(t, string(domain.ConsumerGroupPreProcessor), resp.Msg.GetGroups()[0].GetName())
 		mockPort.AssertExpectations(t)
 	})
 
@@ -416,8 +416,8 @@ func TestHandler_HealthCheck(t *testing.T) {
 		resp, err := handler.HealthCheck(ctx, req)
 
 		require.NoError(t, err)
-		assert.True(t, resp.Msg.Healthy)
-		assert.Equal(t, "connected", resp.Msg.RedisStatus)
+		assert.True(t, resp.Msg.GetHealthy())
+		assert.Equal(t, "connected", resp.Msg.GetRedisStatus())
 		mockPort.AssertExpectations(t)
 	})
 
@@ -435,13 +435,28 @@ func TestHandler_HealthCheck(t *testing.T) {
 		resp, err := handler.HealthCheck(ctx, req)
 
 		require.NoError(t, err)
-		assert.False(t, resp.Msg.Healthy)
-		assert.Equal(t, "connection refused", resp.Msg.RedisStatus)
+		assert.False(t, resp.Msg.GetHealthy())
+		assert.Equal(t, "connection refused", resp.Msg.GetRedisStatus())
 		mockPort.AssertExpectations(t)
 	})
 }
 
 func TestHandler_GenerateTagsForArticle(t *testing.T) {
+	t.Run("returns invalid argument when request message is nil", func(t *testing.T) {
+		mockPort := new(MockStreamPort)
+		uc := usecase.NewPublishUsecase(mockPort)
+		genUc := usecase.NewGenerateTagsUsecase(mockPort)
+		handler := NewHandlerWithGenerateTags(uc, genUc)
+
+		req := connect.NewRequest((*mqhubv1.GenerateTagsForArticleRequest)(nil))
+
+		_, err := handler.GenerateTagsForArticle(t.Context(), req)
+
+		require.Error(t, err)
+		assert.Equal(t, connect.CodeInvalidArgument, connect.CodeOf(err))
+		mockPort.AssertNotCalled(t, "Publish")
+	})
+
 	t.Run("returns unimplemented when usecase is nil", func(t *testing.T) {
 		mockPort := new(MockStreamPort)
 		uc := usecase.NewPublishUsecase(mockPort)
@@ -508,11 +523,11 @@ func TestHandler_GenerateTagsForArticle(t *testing.T) {
 		resp, err := handler.GenerateTagsForArticle(ctx, req)
 
 		require.NoError(t, err)
-		assert.True(t, resp.Msg.Success)
-		assert.Equal(t, "article-123", resp.Msg.ArticleId)
-		assert.Len(t, resp.Msg.Tags, 2)
-		assert.Equal(t, "technology", resp.Msg.Tags[0].Name)
-		assert.InDelta(t, 0.95, float64(resp.Msg.Tags[0].Confidence), 0.01)
+		assert.True(t, resp.Msg.GetSuccess())
+		assert.Equal(t, "article-123", resp.Msg.GetArticleId())
+		assert.Len(t, resp.Msg.GetTags(), 2)
+		assert.Equal(t, "technology", resp.Msg.GetTags()[0].GetName())
+		assert.InDelta(t, 0.95, float64(resp.Msg.GetTags()[0].GetConfidence()), 0.01)
 		mockPort.AssertExpectations(t)
 	})
 }
@@ -535,7 +550,7 @@ func TestProtoEventToDomain(t *testing.T) {
 		assert.Equal(t, domain.EventType("ArticleCreated"), domainEvent.EventType)
 		assert.Equal(t, "alt-backend", domainEvent.Source)
 		assert.Equal(t, now.Unix(), domainEvent.CreatedAt.Unix())
-		assert.Equal(t, []byte(`{"article_id": "123"}`), domainEvent.Payload)
+		assert.JSONEq(t, `{"article_id": "123"}`, string(domainEvent.Payload))
 		assert.Equal(t, "abc123", domainEvent.Metadata["trace_id"])
 	})
 

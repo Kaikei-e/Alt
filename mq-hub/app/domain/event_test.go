@@ -116,9 +116,9 @@ func TestEvent_Validate(t *testing.T) {
 
 func TestEventType_Constants(t *testing.T) {
 	// Verify event type constants are defined correctly
-	assert.Equal(t, EventType("ArticleCreated"), EventTypeArticleCreated)
-	assert.Equal(t, EventType("SummarizeRequested"), EventTypeSummarizeRequested)
-	assert.Equal(t, EventType("ArticleSummarized"), EventTypeArticleSummarized)
-	assert.Equal(t, EventType("TagsGenerated"), EventTypeTagsGenerated)
-	assert.Equal(t, EventType("IndexArticle"), EventTypeIndexArticle)
+	assert.Equal(t, EventTypeArticleCreated, EventType("ArticleCreated"))
+	assert.Equal(t, EventTypeSummarizeRequested, EventType("SummarizeRequested"))
+	assert.Equal(t, EventTypeArticleSummarized, EventType("ArticleSummarized"))
+	assert.Equal(t, EventTypeTagsGenerated, EventType("TagsGenerated"))
+	assert.Equal(t, EventTypeIndexArticle, EventType("IndexArticle"))
 }
