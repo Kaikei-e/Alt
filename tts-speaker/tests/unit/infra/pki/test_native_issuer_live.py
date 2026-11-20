@@ -33,15 +33,22 @@ LIVE_CA_IMAGE = "smallstep/step-ca:0.30.2"
 LIVE_CA_CONTAINER = "alt-pki-native-itest-tts-speaker"
 LIVE_CA_NETWORK = "alt-pki-native-itest-tts-speaker-net"
 LIVE_CA_HOST_PORT = "19012"
-LIVE_CA_PASSWORD = "itest-only"
-LIVE_JWK_PASSWORD = "itest-jwk-tts-speaker"
+LIVE_CA_PASSWORD = "itest-only"  # noqa: S105 - test fixture value, not a credential
+LIVE_JWK_PASSWORD = "itest-jwk-tts-speaker"  # noqa: S105 - test fixture value, not a credential
 LIVE_PROVISIONER = "pki-agent-tts-speaker"
 LIVE_SUBJECT = "tts-speaker"
 
 
+def _docker_bin() -> str:
+    docker_bin = shutil.which("docker")
+    if docker_bin is None:
+        pytest.fail("docker is required for the live gate")
+    return docker_bin
+
+
 def _docker(*args: str, timeout: float = 30) -> str:
-    result = subprocess.run(
-        ["docker", *args],
+    result = subprocess.run(  # noqa: S603 - fixed docker CLI argv in live test
+        [_docker_bin(), *args],
         check=False,
         capture_output=True,
         text=True,
@@ -109,13 +116,16 @@ def _verify_manager_lifecycle(
 )
 def test_native_step_ca_issuer_disposable_live_ca(tmp_path: Path) -> None:
     """PKI_NATIVE_LIVE_CA=1 pytest tests/unit/pki/test_native_issuer_live.py -q  (60s, always cleanup)."""
-    if shutil.which("docker") is None:
-        pytest.fail("docker is required for the live gate")
+    docker_bin = _docker_bin()
     deadline = time.monotonic() + 50
     try:
-        subprocess.run(["docker", "rm", "-f", LIVE_CA_CONTAINER], check=False, capture_output=True)
-        subprocess.run(
-            ["docker", "network", "rm", LIVE_CA_NETWORK],
+        subprocess.run(  # noqa: S603 - fixed docker CLI argv in live test
+            [docker_bin, "rm", "-f", LIVE_CA_CONTAINER],
+            check=False,
+            capture_output=True,
+        )
+        subprocess.run(  # noqa: S603 - fixed docker CLI argv in live test
+            [docker_bin, "network", "rm", LIVE_CA_NETWORK],
             check=False,
             capture_output=True,
         )
@@ -164,20 +174,25 @@ def test_native_step_ca_issuer_disposable_live_ca(tmp_path: Path) -> None:
         assert not _public_key_equal(leaf1, leaf2)
         _verify_manager_lifecycle(tmp_path, iss, (rekey_cert, rekey_key), leaf2, ctx)
     finally:
-        subprocess.run(["docker", "rm", "-f", LIVE_CA_CONTAINER], check=False, capture_output=True)
-        subprocess.run(
-            ["docker", "network", "rm", LIVE_CA_NETWORK],
+        subprocess.run(  # noqa: S603 - fixed docker CLI argv in live test
+            [docker_bin, "rm", "-f", LIVE_CA_CONTAINER],
+            check=False,
+            capture_output=True,
+        )
+        subprocess.run(  # noqa: S603 - fixed docker CLI argv in live test
+            [docker_bin, "network", "rm", LIVE_CA_NETWORK],
             check=False,
             capture_output=True,
         )
 
 
 def _wait_live_ca_root(dest: Path, deadline: float) -> None:
+    docker_bin = _docker_bin()
     last = ""
     while time.monotonic() < deadline:
-        probe = subprocess.run(
+        probe = subprocess.run(  # noqa: S603 - fixed docker CLI argv in live test
             [
-                "docker",
+                docker_bin,
                 "exec",
                 LIVE_CA_CONTAINER,
                 "test",
@@ -189,9 +204,9 @@ def _wait_live_ca_root(dest: Path, deadline: float) -> None:
             text=True,
         )
         if probe.returncode == 0:
-            subprocess.run(
+            subprocess.run(  # noqa: S603 - fixed docker CLI argv in live test
                 [
-                    "docker",
+                    docker_bin,
                     "cp",
                     f"{LIVE_CA_CONTAINER}:/home/step/certs/root_ca.crt",
                     str(dest),
@@ -202,8 +217,8 @@ def _wait_live_ca_root(dest: Path, deadline: float) -> None:
             return
         last = probe.stderr
         time.sleep(0.2)
-    logs = subprocess.run(
-        ["docker", "logs", LIVE_CA_CONTAINER],
+    logs = subprocess.run(  # noqa: S603 - fixed docker CLI argv in live test
+        [docker_bin, "logs", LIVE_CA_CONTAINER],
         check=False,
         capture_output=True,
         text=True,
@@ -212,6 +227,7 @@ def _wait_live_ca_root(dest: Path, deadline: float) -> None:
 
 
 def _add_live_jwk_provisioner(deadline: float) -> None:
+    docker_bin = _docker_bin()
     script = f"""set -euo pipefail
 printf '%s\\n' {LIVE_JWK_PASSWORD!r} > /tmp/pki-agent-tts-speaker-jwk
 chmod 400 /tmp/pki-agent-tts-speaker-jwk
@@ -220,17 +236,17 @@ step ca provisioner add {LIVE_PROVISIONER!r} --type JWK --create \\
   --ca-config /home/step/config/ca.json
 kill -HUP 1
 """
-    subprocess.run(
-        ["docker", "exec", LIVE_CA_CONTAINER, "sh", "-c", script],
+    subprocess.run(  # noqa: S603 - fixed docker CLI argv in live test
+        [docker_bin, "exec", LIVE_CA_CONTAINER, "sh", "-c", script],
         check=True,
         capture_output=True,
         text=True,
         timeout=20,
     )
     while time.monotonic() < deadline:
-        listed = subprocess.run(
+        listed = subprocess.run(  # noqa: S603 - fixed docker CLI argv in live test
             [
-                "docker",
+                docker_bin,
                 "exec",
                 LIVE_CA_CONTAINER,
                 "step",

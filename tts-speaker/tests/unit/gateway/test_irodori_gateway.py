@@ -211,7 +211,7 @@ async def test_upstream_rejected_error_detail_truncated_to_200_chars(fake_sleep_
 
 
 async def test_error_message_never_contains_api_key(fake_sleep_recorder: SleepRecorder) -> None:
-    api_key_secret = "super-confidential-api-key-999"
+    api_key_secret = "super-confidential-api-key-999"  # noqa: S105 - test fixture value, not a credential
     fake_sleep, _ = fake_sleep_recorder
     mock_driver = AsyncMock(spec=IrodoriHttpDriver)
     mock_driver.post_speech.side_effect = httpx.ConnectError(f"Failed connecting with {api_key_secret}")

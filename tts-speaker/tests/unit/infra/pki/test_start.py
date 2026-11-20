@@ -54,7 +54,7 @@ def test_start_with_enabled_enrolls_and_stops(tmp_path: Path, caplog: pytest.Log
         ca_url="https://127.0.0.1:1",
         root_file=str(tmp_path / "root.pem"),
         provisioner="pki-agent-tts-speaker",
-        password_file="/run/secrets/pki-agent-tts-speaker-jwk",
+        password_file="/run/secrets/pki-agent-tts-speaker-jwk",  # noqa: S106 - test fixture value, not a credential
         renew_at_fraction=0.66,
         tick_interval=3600,
         retry_attempts=1,
@@ -100,7 +100,7 @@ def test_ops_bind_failure_does_not_strand_renewal_thread(monkeypatch: pytest.Mon
         ca_url="https://127.0.0.1:1",
         root_file=str(tmp_path / "root.pem"),
         provisioner="pki-agent-tts-speaker",
-        password_file="/run/secrets/pki-agent-tts-speaker-jwk",
+        password_file="/run/secrets/pki-agent-tts-speaker-jwk",  # noqa: S106 - test fixture value, not a credential
         renew_at_fraction=0.66,
         tick_interval=3600,
         retry_attempts=1,

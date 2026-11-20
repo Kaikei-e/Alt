@@ -94,7 +94,7 @@ def _cfg(tmp_path: Path) -> Config:
         ca_url="https://127.0.0.1:1",
         root_file=str(tmp_path / "root.pem"),
         provisioner="pki-agent-tts-speaker",
-        password_file="/run/secrets/pki-agent-tts-speaker-jwk",
+        password_file="/run/secrets/pki-agent-tts-speaker-jwk",  # noqa: S106 - test fixture value, not a credential
         renew_at_fraction=0.66,
         retry_attempts=3,
         retry_backoff=0.001,

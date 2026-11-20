@@ -31,8 +31,8 @@ def _write_leaf(dir_path: Path, cn: str, days: int) -> tuple[Path, Path, Path]:
     """Self-signed leaf used as both server cert and trust anchor."""
     cert_path = dir_path / f"{cn}-{days}d-cert.pem"
     key_path = dir_path / f"{cn}-{days}d-key.pem"
-    subprocess.run(
-        [
+    subprocess.run(  # noqa: S603 - fixed openssl argv in test
+        [  # noqa: S607 - fixed tool resolved from PATH
             "openssl",
             "req",
             "-x509",
@@ -67,7 +67,7 @@ def _atomic_replace(dest: Path, src: Path) -> None:
 def _not_after_from_der(der: bytes) -> str:
     pem = ssl.DER_cert_to_PEM_cert(der)
     out = subprocess.run(
-        ["openssl", "x509", "-noout", "-enddate"],
+        ["openssl", "x509", "-noout", "-enddate"],  # noqa: S607 - fixed tool resolved from PATH
         input=pem,
         check=True,
         capture_output=True,

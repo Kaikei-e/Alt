@@ -42,7 +42,9 @@ class _OpsHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         path = self.path.split("?", 1)[0]
         server = self.server
-        assert isinstance(server, _OpsHTTPServer)
+        if not isinstance(server, _OpsHTTPServer):
+            msg = "unexpected HTTP server type"
+            raise TypeError(msg)
         if path == "/health":
             body = json.dumps({"status": "healthy", "service": server.service_name}).encode()
             self.send_response(200)

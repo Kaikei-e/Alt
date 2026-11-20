@@ -741,7 +741,7 @@ def test_rejects_shared_provisioner() -> None:
         ca_url="https://127.0.0.1:1",
         root_file="/dev/null",
         provisioner="pki-agent",
-        password_file="/run/secrets/pki-agent-tts-speaker-jwk",
+        password_file="/run/secrets/pki-agent-tts-speaker-jwk",  # noqa: S106 - test fixture value, not a credential
     )
     with pytest.raises(SharedProvisionerError):
         iss.issue(Ctx(), SUBJECT, [SUBJECT])
