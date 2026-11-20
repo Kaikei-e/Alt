@@ -13,10 +13,17 @@ from __future__ import annotations
 
 import asyncio
 import time
-
-import pytest
+from typing import TYPE_CHECKING
+from unittest.mock import AsyncMock, MagicMock
 
 from utilizer import web
+
+if TYPE_CHECKING:
+    import pytest
+
+_MIN_TEXT_CONTENT_USAGES = 2
+_EXPECTED_CPU_PERCENT = 42.0
+_TICKER_ITERATIONS = 20
 
 
 # ---------------------------------------------------------------------------
@@ -38,7 +45,7 @@ async def test_dashboard_html_builds_process_rows_via_dom_api_not_innerhtml() ->
     # Rows/cards must instead be built with the DOM API and textContent.
     assert "createElement('tr')" in script
     assert "createElement('td')" in script
-    assert script.count("textContent") >= 2
+    assert script.count("textContent") >= _MIN_TEXT_CONTENT_USAGES
     # HTTPS pages must use wss://; plain http keeps ws://.
     assert "window.location.protocol === 'https:' ? 'wss:' : 'ws:'" in script
 
@@ -98,7 +105,7 @@ async def test_collect_snapshot_offloads_blocking_calls_to_worker_threads(
 
     async def ticker() -> None:
         nonlocal tick_count
-        for _ in range(20):
+        for _ in range(_TICKER_ITERATIONS):
             await asyncio.sleep(0.01)
             tick_count += 1
 
@@ -106,8 +113,8 @@ async def test_collect_snapshot_offloads_blocking_calls_to_worker_threads(
     _, snapshot = await asyncio.gather(ticker(), web.collect_snapshot())
     elapsed = time.monotonic() - start
 
-    assert snapshot.cpu.percent == 42.0
-    assert tick_count == 20
+    assert snapshot.cpu.percent == _EXPECTED_CPU_PERCENT
+    assert tick_count == _TICKER_ITERATIONS
     # The ticker's 20 x 10ms sleeps (~0.2s) must interleave with the 0.3s
     # blocking call instead of running after it: if `get_cpu_info` were
     # called synchronously on the event loop (no asyncio.to_thread), the
@@ -119,8 +126,6 @@ async def test_collect_snapshot_offloads_blocking_calls_to_worker_threads(
 async def test_websocket_endpoint_uses_hmac_compare_digest_for_token(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from unittest.mock import AsyncMock, MagicMock
-
     monkeypatch.setattr(web, "WEB_TOKEN", "secret-token-123")
     ws = MagicMock()
     ws.query_params = {"token": "wrong-token"}
