@@ -1,6 +1,7 @@
 """Tests for utils.py's pure helper functions."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -38,7 +39,7 @@ class TestFilterFrameByWindow:
         assert result.equals(df)
 
     def test_filters_rows_outside_window(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        fixed_now = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+        fixed_now = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
         monkeypatch.setattr(utils, "now_utc", lambda: fixed_now)
 
         df = pd.DataFrame(
@@ -57,15 +58,18 @@ class TestFilterFrameByWindow:
         assert result.iloc[0]["value"] == 1
 
     def test_unparseable_timestamps_are_dropped(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        fixed_now = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+        fixed_now = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
         monkeypatch.setattr(utils, "now_utc", lambda: fixed_now)
 
-        df = pd.DataFrame({"timestamp": ["not-a-date", fixed_now.isoformat()], "value": [1, 2]})
+        valid_value = 2
+        df = pd.DataFrame(
+            {"timestamp": ["not-a-date", fixed_now.isoformat()], "value": [1, valid_value]}
+        )
 
         result = utils.filter_frame_by_window(df, "timestamp", 3600)
 
         assert len(result) == 1
-        assert result.iloc[0]["value"] == 2
+        assert result.iloc[0]["value"] == valid_value
 
 
 class TestReadSecret:
@@ -75,7 +79,9 @@ class TestReadSecret:
 
         assert utils._read_secret("SOME_SECRET") == "plain-value"
 
-    def test_file_variant_takes_precedence(self, monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    def test_file_variant_takes_precedence(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
         secret_file = tmp_path / "secret.txt"
         secret_file.write_text("file-value\n")
         monkeypatch.setenv("SOME_SECRET", "plain-value")

@@ -1,5 +1,5 @@
-
 import streamlit as st
+
 from utils import fetch_recent_activity
 
 

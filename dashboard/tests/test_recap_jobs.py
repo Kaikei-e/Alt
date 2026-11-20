@@ -5,7 +5,9 @@ from streamlit.testing.v1 import AppTest
 
 def _render_with_stubbed_fetch() -> AppTest:
     def render() -> None:
-        from tabs import recap_jobs
+        from tabs import (  # noqa: PLC0415 - AppTest.from_function executes body in isolated scope
+            recap_jobs,
+        )
 
         recap_jobs.fetch_table_or_warn = lambda *a, **k: None
         recap_jobs.render_recap_jobs(4 * 3600)

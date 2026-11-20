@@ -4,7 +4,7 @@ from urllib.parse import quote
 import streamlit as st
 import streamlit.components.v1 as components
 
-from .system_monitor_sse_client import generate_sse_client_js
+from .system_monitor_sse_client import SseClientConfig, generate_sse_client_js
 
 
 def _resolve_sse_token(provided_token: str | None = None) -> str | None:
@@ -50,12 +50,14 @@ def render_system_monitor(window_seconds: int | None = None) -> None:
         sse_path = f"{sse_path}?token={quote(token)}"
 
     sse_client_js = generate_sse_client_js(
-        sse_host=sse_host,
-        sse_port=sse_port,
-        sse_protocol=sse_protocol,
-        sse_path=sse_path,
-        timeout_seconds=10,
-        max_reconnect_attempts=5,
+        SseClientConfig(
+            sse_host=sse_host,
+            sse_port=sse_port,
+            sse_protocol=sse_protocol,
+            sse_path=sse_path,
+            timeout_seconds=10,
+            max_reconnect_attempts=5,
+        )
     )
 
     html_code = (

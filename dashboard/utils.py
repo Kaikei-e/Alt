@@ -1,7 +1,8 @@
 import logging
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import SupportsFloat, SupportsIndex
 
 import pandas as pd
 import streamlit as st
@@ -40,10 +41,11 @@ def _build_db_uri() -> str:
 
     password = _read_secret("RECAP_DB_PASSWORD")
     if not password:
-        raise RuntimeError(
+        msg = (
             "RECAP_DB_DSN or RECAP_DB_PASSWORD/RECAP_DB_PASSWORD_FILE must be "
             "set; no default database credential is provided."
         )
+        raise RuntimeError(msg)
 
     host = os.getenv("RECAP_DB_HOST", "recap-db")
     port = os.getenv("RECAP_DB_PORT", "5432")
@@ -64,7 +66,7 @@ TIME_WINDOWS = {
 
 
 def now_utc() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 # --- Database Connection ---
@@ -77,24 +79,38 @@ def _interval_params(window_seconds: int) -> dict[str, int]:
     return {"window_seconds": max(window_seconds, 0)}
 
 
+def _is_missing(value: object) -> bool:
+    return bool(pd.isna(value))  # pyrefly: ignore[no-matching-overload] - pandas stubs do not accept object
+
+
+def _coerce_float(value: object) -> float | None:
+    if isinstance(value, (int, float, str, bytes, bytearray, SupportsFloat, SupportsIndex)):
+        try:
+            return float(value)
+        except ValueError, TypeError:
+            return None
+    return None
+
+
 def safe_int(value: object, default: int = 0) -> int:
     """Safely convert a value to integer, handling NaN and None."""
-    if pd.isna(value) or value is None:
+    if _is_missing(value) or value is None:
+        return default
+    numeric = _coerce_float(value)
+    if numeric is None:
         return default
     try:
-        return int(float(value))  # type: ignore[arg-type]
-    except (ValueError, TypeError):
+        return int(numeric)
+    except ValueError, TypeError:
         return default
 
 
 def safe_float(value: object, default: float = 0.0) -> float:
     """Safely convert a value to float, handling NaN and None."""
-    if pd.isna(value) or value is None:
+    if _is_missing(value) or value is None:
         return default
-    try:
-        return float(value)  # type: ignore[arg-type]
-    except (ValueError, TypeError):
-        return default
+    numeric = _coerce_float(value)
+    return default if numeric is None else numeric
 
 
 def fetch_table_or_warn(
@@ -123,9 +139,7 @@ def fetch_table_or_warn(
 
 
 # --- Data Fetching ---
-def fetch_metrics(
-    metric_type: str, window_seconds: int, limit: int = 500
-) -> pd.DataFrame:
+def fetch_metrics(metric_type: str, window_seconds: int, limit: int = 500) -> pd.DataFrame:
     """Fetch metrics filtered by a time window."""
     engine = get_engine()
     query = text(
@@ -195,9 +209,7 @@ def fetch_recent_activity(window_seconds: int, limit: int = 200) -> pd.DataFrame
     return df
 
 
-def filter_frame_by_window(
-    df: pd.DataFrame, column: str, window_seconds: int
-) -> pd.DataFrame:
+def filter_frame_by_window(df: pd.DataFrame, column: str, window_seconds: int) -> pd.DataFrame:
     """Fallback filter for data sources without SQL time filtering (e.g., sqlite logs)."""
     if df.empty or column not in df.columns:
         return df
