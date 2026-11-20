@@ -196,6 +196,14 @@ def run_helper(
     )
 
 
+def _redact_request_for_log(req: dict[str, Any]) -> dict[str, Any]:
+    redacted = dict(req)
+    auth = redacted.get("auth")
+    if auth is not None:
+        redacted["auth"] = f"<redacted len={len(str(auth))}>"
+    return redacted
+
+
 def assert_no_password_leak(
     label: str,
     proc: subprocess.CompletedProcess[str],
@@ -204,10 +212,11 @@ def assert_no_password_leak(
     combined = (proc.stdout or "") + (proc.stderr or "")
     b64_token = EXPECTED_AUTH.split(" ", 1)[1]
     secrets = (BROKER_PASS, b64_token, *extra_secrets)
+    leaked_count = sum(1 for s in secrets if s and s in combined)
     check(
         f"{label}: password never appears in stdout/stderr",
-        all(s not in combined for s in secrets if s),
-        combined,
+        leaked_count == 0,
+        f"leaked_secret_count={leaked_count} output_len={len(combined)} (<redacted>)",
     )
 
 
@@ -352,11 +361,17 @@ def check_happy_path() -> None:
             and len(client_ports) == EXPECTED_REQUEST_COUNT,
             f"distinct client ports={len(client_ports)} for {len(broker.state.requests)} requests",
         )
+        auth_statuses = [
+            f"matched(len={len(r['auth'])})"
+            if r["auth"] == EXPECTED_AUTH
+            else f"mismatch(present={r['auth'] is not None}, len={len(r['auth'] or '')})"
+            for r in broker.state.requests
+        ]
         check(
             "every request carries the Basic Authorization header",
             len(broker.state.requests) == EXPECTED_REQUEST_COUNT
             and all(r["auth"] == EXPECTED_AUTH for r in broker.state.requests),
-            repr([r["auth"] for r in broker.state.requests]),
+            f"expected=Basic(<redacted>, len={len(EXPECTED_AUTH)}) got={auth_statuses}",
         )
 
         post_requests = [r for r in broker.state.requests if r["method"] == "POST"]
@@ -375,7 +390,7 @@ def check_happy_path() -> None:
                 r["content_type"] == "application/json" and r["body"] == expected_body
                 for r in post_requests
             ),
-            repr(post_requests),
+            repr([_redact_request_for_log(r) for r in post_requests]),
         )
 
         try:
@@ -429,7 +444,7 @@ def check_defaults_and_missing_password() -> None:
                     "version": "unknown",
                 },
             },
-            repr(post_requests),
+            repr([_redact_request_for_log(r) for r in post_requests]),
         )
         assert_no_password_leak("verifier_version default", proc)
 
