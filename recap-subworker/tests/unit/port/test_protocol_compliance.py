@@ -5,38 +5,39 @@ from __future__ import annotations
 import numpy as np
 
 from recap_subworker.port.embedder import EmbedderPort
+from tests.conftest import FakeClusterer, HashEmbedder
 
 
 class TestEmbedderPortCompliance:
     """Verify the HashEmbedder fixture satisfies EmbedderPort protocol."""
 
-    def test_hash_embedder_is_embedder_port(self, fake_embedder):
+    def test_hash_embedder_is_embedder_port(self, fake_embedder: HashEmbedder) -> None:
         assert isinstance(fake_embedder, EmbedderPort)
 
-    def test_encode_returns_ndarray(self, fake_embedder):
+    def test_encode_returns_ndarray(self, fake_embedder: HashEmbedder) -> None:
         result = fake_embedder.encode(["hello", "world"])
         assert isinstance(result, np.ndarray)
         assert result.shape == (2, 64)
 
-    def test_warmup_returns_int(self, fake_embedder):
+    def test_warmup_returns_int(self, fake_embedder: HashEmbedder) -> None:
         count = fake_embedder.warmup(["test"])
         assert isinstance(count, int)
         assert count == 1
 
-    def test_close_is_callable(self, fake_embedder):
+    def test_close_is_callable(self, fake_embedder: HashEmbedder) -> None:
         fake_embedder.close()  # should not raise
 
 
 class TestFakeClustererShape:
     """Verify FakeClusterer returns correct shapes."""
 
-    def test_cluster_returns_correct_labels(self, fake_clusterer):
+    def test_cluster_returns_correct_labels(self, fake_clusterer: FakeClusterer) -> None:
         emb = np.random.randn(10, 64).astype(np.float32)
         result = fake_clusterer.cluster(emb, min_cluster_size=3, min_samples=2)
         assert result.labels.shape == (10,)
         assert result.probabilities.shape == (10,)
 
-    def test_optimize_delegates_to_cluster(self, fake_clusterer):
+    def test_optimize_delegates_to_cluster(self, fake_clusterer: FakeClusterer) -> None:
         emb = np.random.randn(10, 64).astype(np.float32)
         result = fake_clusterer.optimize_clustering(
             emb,

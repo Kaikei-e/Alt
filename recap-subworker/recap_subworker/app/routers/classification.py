@@ -1,12 +1,13 @@
 import asyncio
 import time
+from typing import Annotated
 
 import structlog
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from ...services.classifier import GenreClassifierService
-from ..deps import get_classifier_dep
+from ..deps import get_classifier_dep, get_settings
 
 logger = structlog.get_logger(__name__)
 router = APIRouter()
@@ -38,8 +39,8 @@ class ClassificationResponse(BaseModel):
 @router.post("/classify", response_model=ClassificationResponse)
 async def classify_texts(
     request: ClassificationRequest,
-    classifier: GenreClassifierService = Depends(get_classifier_dep),
-):
+    classifier: Annotated[GenreClassifierService, Depends(get_classifier_dep)],
+) -> ClassificationResponse:
     start_time = time.time()
     total_texts = len(request.texts)
 
@@ -51,8 +52,6 @@ async def classify_texts(
         else None,
         multi_label=request.multi_label,
     )
-
-    from ..deps import get_settings
 
     settings = get_settings()
     overrides = settings.genre_threshold_overrides_parsed

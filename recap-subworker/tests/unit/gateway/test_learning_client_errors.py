@@ -22,7 +22,8 @@ async def test_asyncio_timeout_is_translated_to_domain_error() -> None:
     class _NeverRespondTransport(httpx.AsyncBaseTransport):
         async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
             await asyncio.sleep(60)
-            raise AssertionError("transport should have been cancelled")
+            msg = "transport should have been cancelled"
+            raise AssertionError(msg)
 
     client = LearningClient.create(
         "http://recap-worker/learning",

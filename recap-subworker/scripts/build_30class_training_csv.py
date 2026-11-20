@@ -14,10 +14,18 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from collections import Counter
 from pathlib import Path
 
 import pandas as pd
+
+
+class GoldenDatasetNotFoundError(FileNotFoundError):
+    """Raised when golden_classification.json cannot be found."""
+
+    def __init__(self, path: Path) -> None:
+        super().__init__(f"golden_classification.json not found at {path}")
 
 
 def _load_golden(path: Path) -> list[dict]:
@@ -28,8 +36,8 @@ def _load_golden(path: Path) -> list[dict]:
 def _load_silver(path: Path) -> list[dict]:
     rows: list[dict] = []
     with path.open() as f:
-        for line in f:
-            line = line.strip()
+        for raw_line in f:
+            line = raw_line.strip()
             if not line:
                 continue
             rows.append(json.loads(line))
@@ -98,31 +106,31 @@ def main() -> None:
     pairs: list[tuple[str, str]] = []
     if golden_path.is_file():
         gold_pairs = _golden_to_pairs(_load_golden(golden_path), args.min_content_chars)
-        print(f"golden: {len(gold_pairs)} rows")
+        sys.stdout.write(f"golden: {len(gold_pairs)} rows\n")
         pairs.extend(gold_pairs)
     else:
-        raise FileNotFoundError(f"golden_classification.json not found at {golden_path}")
+        raise GoldenDatasetNotFoundError(golden_path)
 
     for silver_path in (silver_ja, silver_en):
         if silver_path.is_file():
             sp = _silver_to_pairs(_load_silver(silver_path), args.min_content_chars)
-            print(f"{silver_path.name}: {len(sp)} rows")
+            sys.stdout.write(f"{silver_path.name}: {len(sp)} rows\n")
             pairs.extend(sp)
 
     if args.include_silver_v0 and silver_v0.is_file():
         sp = _silver_to_pairs(_load_silver(silver_v0), args.min_content_chars)
-        print(f"{silver_v0.name}: {len(sp)} rows")
+        sys.stdout.write(f"{silver_v0.name}: {len(sp)} rows\n")
         pairs.extend(sp)
 
     df = pd.DataFrame(pairs, columns=["content", "genre"]).dropna(subset=["content", "genre"])
     before = len(df)
     df = df.drop_duplicates(subset=["content", "genre"])
-    print(f"dropped {before - len(df)} exact duplicates")
+    sys.stdout.write(f"dropped {before - len(df)} exact duplicates\n")
 
     counts = Counter(df["genre"])
-    print(f"\ntotal rows: {len(df)}  unique genres: {len(counts)}")
+    sys.stdout.write(f"\ntotal rows: {len(df)}  unique genres: {len(counts)}\n")
     for genre, count in counts.most_common():
-        print(f"  {genre}: {count}")
+        sys.stdout.write(f"  {genre}: {count}\n")
 
     missing = sorted(
         {
@@ -160,12 +168,12 @@ def main() -> None:
         - set(counts.keys())
     )
     if missing:
-        print(f"\nWARNING: missing canonical genres: {missing}")
+        sys.stdout.write(f"\nWARNING: missing canonical genres: {missing}\n")
 
     output = args.output or (root / "data" / "training_data_30class.csv")
     output.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(output, index=False)
-    print(f"\nwrote {output} ({len(df)} rows)")
+    sys.stdout.write(f"\nwrote {output} ({len(df)} rows)\n")
 
 
 if __name__ == "__main__":

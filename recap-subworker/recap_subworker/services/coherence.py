@@ -28,7 +28,14 @@ except ImportError:
     Dictionary = None
     GENSIM_AVAILABLE = False
 
+try:
+    from janome.tokenizer import Tokenizer as JanomeTokenizer
+except ImportError:
+    JanomeTokenizer = None
+
 logger = structlog.get_logger(__name__)
+_MIN_ENGLISH_WORD_EXCLUDED_LEN = 2
+_MIN_TOPIC_WORDS = 2
 
 # Simple English stopwords list
 ENGLISH_STOPWORDS = {
@@ -171,7 +178,7 @@ class TopicCoherenceEvaluator:
         self,
         coherence_type: CoherenceType = CoherenceType.C_V,
         top_n_words: int = 10,
-    ):
+    ) -> None:
         """Initialize the coherence evaluator.
 
         Args:
@@ -204,24 +211,23 @@ class TopicCoherenceEvaluator:
         if lang == "ja":
             # For Japanese, use simple character-based tokenization
             # or integrate with existing tokenizer
-            try:
-                from janome.tokenizer import Tokenizer
-
-                tokenizer = Tokenizer()
-                tokens = [
+            if JanomeTokenizer is not None:
+                tokenizer = JanomeTokenizer()
+                return [
                     token.surface.lower()
                     for token in tokenizer.tokenize(text)
                     if len(token.surface) > 1  # Skip single chars
                 ]
-                return tokens
-            except ImportError:
-                # Fallback: simple splitting
-                return [w for w in re.findall(r"\w+", text.lower()) if len(w) > 1]
-        else:
-            # English tokenization
-            words = re.findall(r"\b[a-zA-Z]+\b", text.lower())
-            # Remove stopwords
-            return [w for w in words if w not in ENGLISH_STOPWORDS and len(w) > 2]
+            # Fallback: simple splitting
+            return [w for w in re.findall(r"\w+", text.lower()) if len(w) > 1]
+        # English tokenization
+        words = re.findall(r"\b[a-zA-Z]+\b", text.lower())
+        # Remove stopwords
+        return [
+            w
+            for w in words
+            if w not in ENGLISH_STOPWORDS and len(w) > _MIN_ENGLISH_WORD_EXCLUDED_LEN
+        ]
 
     def _extract_topic_words(
         self,
@@ -246,9 +252,7 @@ class TopicCoherenceEvaluator:
 
         # Count word frequencies
         word_counts = Counter(all_tokens)
-        top_words = [word for word, _ in word_counts.most_common(top_n)]
-
-        return top_words
+        return [word for word, _ in word_counts.most_common(top_n)]
 
     def compute_coherence(
         self,
@@ -272,12 +276,15 @@ class TopicCoherenceEvaluator:
             ValueError: If clusters or texts is empty.
         """
         if not clusters:
-            raise ValueError("clusters cannot be empty")
+            msg = "clusters cannot be empty"
+            raise ValueError(msg)
         if not texts:
-            raise ValueError("texts cannot be empty")
+            msg = "texts cannot be empty"
+            raise ValueError(msg)
 
         if not GENSIM_AVAILABLE:
-            raise RuntimeError("gensim is not installed. Install with: pip install gensim")
+            msg = "gensim is not installed. Install with: pip install gensim"
+            raise RuntimeError(msg)
 
         logger.info(
             "Computing topic coherence",
@@ -286,8 +293,9 @@ class TopicCoherenceEvaluator:
             coherence_type=self.coherence_type.value,
         )
 
-        assert Dictionary is not None  # guarded by GENSIM_AVAILABLE check above
-        assert CoherenceModel is not None  # guarded by GENSIM_AVAILABLE check above
+        if Dictionary is None or CoherenceModel is None:
+            msg = "gensim is not installed. Install with: pip install gensim"
+            raise RuntimeError(msg)
 
         # Tokenize all texts for the reference corpus
         tokenized_texts = [self._tokenize(text, lang=lang) for text in texts]
@@ -316,7 +324,7 @@ class TopicCoherenceEvaluator:
                 cluster_texts, top_n=self.top_n_words, lang=lang
             )
 
-            if len(topic_words) < 2:
+            if len(topic_words) < _MIN_TOPIC_WORDS:
                 logger.warning(
                     "Insufficient topic words",
                     cluster_id=cluster_id,
@@ -345,7 +353,7 @@ class TopicCoherenceEvaluator:
                     num_docs=len(cluster_texts),
                 )
 
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 - per-cluster coherence fallback; records 0.0 on gensim errors
                 logger.warning(
                     "Error computing cluster coherence",
                     cluster_id=cluster_id,
@@ -403,15 +411,19 @@ class TopicCoherenceEvaluator:
             CoherenceResult with coherence scores.
         """
         if not topics:
-            raise ValueError("topics cannot be empty")
+            msg = "topics cannot be empty"
+            raise ValueError(msg)
         if not texts:
-            raise ValueError("texts cannot be empty")
+            msg = "texts cannot be empty"
+            raise ValueError(msg)
 
         if not GENSIM_AVAILABLE:
-            raise RuntimeError("gensim is not installed. Install with: pip install gensim")
+            msg = "gensim is not installed. Install with: pip install gensim"
+            raise RuntimeError(msg)
 
-        assert Dictionary is not None  # guarded by GENSIM_AVAILABLE check above
-        assert CoherenceModel is not None  # guarded by GENSIM_AVAILABLE check above
+        if Dictionary is None or CoherenceModel is None:
+            msg = "gensim is not installed. Install with: pip install gensim"
+            raise RuntimeError(msg)
 
         # Tokenize all texts
         tokenized_texts = [self._tokenize(text, lang=lang) for text in texts]
@@ -423,7 +435,7 @@ class TopicCoherenceEvaluator:
         per_cluster_coherence: dict[int, float] = {}
 
         for i, topic_words in enumerate(topics):
-            if len(topic_words) < 2:
+            if len(topic_words) < _MIN_TOPIC_WORDS:
                 per_cluster_coherence[i] = 0.0
                 continue
 
@@ -435,7 +447,7 @@ class TopicCoherenceEvaluator:
                     coherence=self.coherence_type.value,
                 )
                 per_cluster_coherence[i] = cm.get_coherence()
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 - per-topic coherence fallback; records 0.0 on gensim errors
                 logger.warning("Error computing coherence", topic_id=i, error=str(e))
                 per_cluster_coherence[i] = 0.0
 

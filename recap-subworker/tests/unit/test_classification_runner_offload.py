@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import threading
 from unittest.mock import MagicMock
 
@@ -13,7 +14,7 @@ from recap_subworker.services.classification_runner import ClassificationRunner
 
 
 @pytest.mark.asyncio
-async def test_classification_runner_predict_batch_offloads_acquire_pool():
+async def test_classification_runner_predict_batch_offloads_acquire_pool() -> None:
     """_acquire_pool must execute on a worker thread, not on the event loop thread."""
     loop_thread_id = threading.get_ident()
     called_thread_id = None
@@ -26,7 +27,7 @@ async def test_classification_runner_predict_batch_offloads_acquire_pool():
     fake_async_result.get.return_value = [{"label": "test", "score": 0.99}]
     fake_pool.apply_async.return_value = fake_async_result
 
-    def fake_acquire_pool():
+    def fake_acquire_pool() -> MagicMock:
         nonlocal called_thread_id
         called_thread_id = threading.get_ident()
         return fake_pool
@@ -44,7 +45,7 @@ async def test_classification_runner_predict_batch_offloads_acquire_pool():
 
 
 @pytest.mark.asyncio
-async def test_classification_runner_predict_batch_offloads_task_lifecycle_and_result_get():
+async def test_classification_runner_predict_batch_offloads_task_lifecycle_and_result_get() -> None:
     """Task acquire, result waiting, and task finish must all run off the event loop thread."""
     loop_thread_id = threading.get_ident()
     acquire_thread_id = None
@@ -57,7 +58,7 @@ async def test_classification_runner_predict_batch_offloads_task_lifecycle_and_r
     fake_pool = MagicMock()
     fake_async_result = MagicMock()
 
-    def fake_get(timeout):
+    def fake_get(timeout: float | None = None) -> list[dict[str, object]]:
         nonlocal get_thread_id
         get_thread_id = threading.get_ident()
         return [{"label": "test", "score": 0.99}]
@@ -68,7 +69,7 @@ async def test_classification_runner_predict_batch_offloads_task_lifecycle_and_r
     orig_acquire = getattr(runner, "_acquire_pool", None)
     orig_finish = runner._finish_task
 
-    def fake_acquire():
+    def fake_acquire() -> MagicMock:
         nonlocal acquire_thread_id
         acquire_thread_id = threading.get_ident()
         runner._pool = fake_pool
@@ -76,7 +77,7 @@ async def test_classification_runner_predict_batch_offloads_task_lifecycle_and_r
             return orig_acquire()
         return fake_pool
 
-    def fake_finish():
+    def fake_finish() -> None:
         nonlocal finish_thread_id
         finish_thread_id = threading.get_ident()
         return orig_finish()
@@ -105,7 +106,7 @@ async def test_classification_runner_predict_batch_offloads_task_lifecycle_and_r
 
 
 @pytest.mark.asyncio
-async def test_cancellation_during_slow_acquire_leaves_active_tasks_zero():
+async def test_cancellation_during_slow_acquire_leaves_active_tasks_zero() -> None:
     """Cancellation during slow acquire leaves _active_tasks at 0 after acquire completes."""
     settings = Settings()
     runner = ClassificationRunner(settings)
@@ -118,7 +119,7 @@ async def test_cancellation_during_slow_acquire_leaves_active_tasks_zero():
     fake_async_result.get.return_value = [{"label": "test", "score": 0.99}]
     fake_pool.apply_async.return_value = fake_async_result
 
-    def slow_acquire():
+    def slow_acquire() -> MagicMock:
         acquire_started.set()
         acquire_proceed.wait(timeout=5.0)
         with runner._lock:
@@ -156,7 +157,7 @@ async def test_cancellation_during_slow_acquire_leaves_active_tasks_zero():
 
 
 @pytest.mark.asyncio
-async def test_cancellation_during_running_job_keeps_active_tasks_until_job_completes():
+async def test_cancellation_during_running_job_keeps_active_tasks_until_job_completes() -> None:
     """Cancelling predict_batch while async_result.get is blocked must keep _active_tasks == 1
     and must not schedule idle pool shutdown until the underlying job finishes.
     """
@@ -169,7 +170,7 @@ async def test_cancellation_during_running_job_keeps_active_tasks_until_job_comp
     fake_pool = MagicMock()
     fake_async_result = MagicMock()
 
-    def blocking_get(timeout):
+    def blocking_get(timeout: float | None = None) -> list[dict[str, object]]:
         get_started.set()
         get_proceed.wait(timeout=5.0)
         return [{"label": "test", "score": 0.99}]
@@ -213,7 +214,7 @@ async def test_cancellation_during_running_job_keeps_active_tasks_until_job_comp
         runner._cancel_idle_timer()
 
 
-def test_idle_timer_cannot_close_pool_between_ensure_and_increment():
+def test_idle_timer_cannot_close_pool_between_ensure_and_increment() -> None:
     """_acquire_pool ensures pool, cancels timer, and increments active tasks under single lock hold."""
     settings = Settings()
     runner = ClassificationRunner(settings)
@@ -221,7 +222,7 @@ def test_idle_timer_cannot_close_pool_between_ensure_and_increment():
     fake_pool = MagicMock()
     lock_held_during_ensure = False
 
-    def fake_ensure():
+    def fake_ensure() -> MagicMock:
         nonlocal lock_held_during_ensure
         lock_held_during_ensure = runner._lock.locked()
         runner._pool = fake_pool
@@ -232,7 +233,7 @@ def test_idle_timer_cannot_close_pool_between_ensure_and_increment():
     timer_cancelled = False
     timer_mock = MagicMock()
 
-    def fake_cancel():
+    def fake_cancel() -> None:
         nonlocal timer_cancelled
         timer_cancelled = True
 
@@ -248,7 +249,7 @@ def test_idle_timer_cannot_close_pool_between_ensure_and_increment():
     assert runner._active_tasks == 1
 
 
-def test_shutdown_returns_within_timeout_when_idle_timer_scheduled():
+def test_shutdown_returns_within_timeout_when_idle_timer_scheduled() -> None:
     """shutdown() must not deadlock with self._lock when an idle timer is scheduled."""
     settings = Settings()
     runner = ClassificationRunner(settings)
@@ -265,8 +266,6 @@ def test_shutdown_returns_within_timeout_when_idle_timer_scheduled():
     finally:
         idle_timer.cancel()
         if t.is_alive() and runner._lock.locked():
-            try:
+            with contextlib.suppress(RuntimeError):
                 runner._lock.release()
-            except RuntimeError:
-                pass
             t.join(timeout=0.5)

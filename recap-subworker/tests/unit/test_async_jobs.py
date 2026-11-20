@@ -2,36 +2,46 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Never, cast
 from uuid import UUID, uuid4
 
 import pytest
 
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from recap_subworker.app.main import sweep_orphaned_runs
 from recap_subworker.services.async_jobs import (
+    CANCELLED_ADMIN_JOB_MESSAGE,
     AdminJobService,
     ConcurrentAdminJobError,
 )
 
 
 class FakeSession:
-    def __init__(self):
+    def __init__(self) -> None:
         self.commits = 0
         self.rollbacks = 0
 
-    async def commit(self):
+    async def commit(self) -> None:
         self.commits += 1
 
-    async def rollback(self):
+    async def rollback(self) -> None:
         self.rollbacks += 1
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> FakeSession:
         return self
 
-    async def __aexit__(self, *args, **kwargs):
+    async def __aexit__(
+        self,
+        *args: object,
+        **kwargs: object,
+    ) -> bool:
         return False
 
 
 class FakeDAO:
-    def __init__(self, session):
+    def __init__(self, session: FakeSession) -> None:
         self.session = session
         self.jobs: dict[str, dict] = {}
         self.running_flag = False
@@ -42,7 +52,14 @@ class FakeDAO:
             return True
         return any(job["kind"] == kind and job["status"] == "running" for job in self.jobs.values())
 
-    async def insert_admin_job(self, job_id: UUID, kind: str, status: str, payload, started_at):
+    async def insert_admin_job(
+        self,
+        job_id: UUID,
+        kind: str,
+        status: str,
+        payload: object,
+        started_at: datetime,
+    ) -> UUID:
         self.jobs[str(job_id)] = {
             "job_id": job_id,
             "kind": kind,
@@ -59,8 +76,8 @@ class FakeDAO:
         self,
         job_id: UUID,
         status: str,
-        finished_at=None,
-        result=None,
+        finished_at: datetime | None = None,
+        result: object = None,
         error: str | None = None,
     ) -> None:
         job = self.jobs.get(str(job_id))
@@ -73,7 +90,7 @@ class FakeDAO:
     async def fail_orphaned_admin_jobs(
         self,
         error_message: str,
-        finished_at=None,
+        finished_at: datetime | None = None,
     ) -> int:
         self.orphan_sweeps.append(error_message)
         swept = 0
@@ -86,42 +103,46 @@ class FakeDAO:
         return swept
 
 
-@pytest.fixture
-def fake_settings():
-    class S:
-        graph_build_max_concurrency = 1
-        graph_build_windows = "7"
-        graph_build_max_tags = 6
-        graph_build_min_confidence = 0.3
-        graph_build_min_support = 3
-        graph_build_enabled = True
-        learning_snapshot_days = 7
-        learning_auto_detect_genres = True
-        learning_cluster_genres = ""
-        learning_graph_margin = 0.15
-        learning_bayes_enabled = False
-        learning_bayes_iterations = 30
-        learning_bayes_seed = 42
-        learning_bayes_min_samples = 100
-        recap_worker_learning_url = "http://localhost:9005/admin/genre-learning"
-        learning_request_timeout_seconds = 5.0
+class _FakeSettings:
+    graph_build_max_concurrency = 1
+    graph_build_windows = "7"
+    graph_build_max_tags = 6
+    graph_build_min_confidence = 0.3
+    graph_build_min_support = 3
+    graph_build_enabled = True
+    learning_snapshot_days = 7
+    learning_auto_detect_genres = True
+    learning_cluster_genres = ""
+    learning_graph_margin = 0.15
+    learning_bayes_enabled = False
+    learning_bayes_iterations = 30
+    learning_bayes_seed = 42
+    learning_bayes_min_samples = 100
+    recap_worker_learning_url = "http://localhost:9005/admin/genre-learning"
+    learning_request_timeout_seconds = 5.0
 
-    return S()
+
+@pytest.fixture
+def fake_settings() -> _FakeSettings:
+    return _FakeSettings()
 
 
 @pytest.mark.asyncio
-async def test_enqueue_graph_job_creates_job(monkeypatch, fake_settings):
+async def test_enqueue_graph_job_creates_job(
+    monkeypatch: pytest.MonkeyPatch, fake_settings: _FakeSettings
+) -> None:
     fake_session = FakeSession()
     fake_dao = FakeDAO(fake_session)
 
-    async def fake_session_factory():
-        return fake_session
-
     class _Wrapper:
-        async def __aenter__(self):
+        async def __aenter__(self) -> FakeSession:
             return fake_session
 
-        async def __aexit__(self, *args, **kwargs):
+        async def __aexit__(
+            self,
+            *args: object,
+            **kwargs: object,
+        ) -> bool:
             return False
 
     # Patch DAO and schedule to avoid background execution
@@ -136,8 +157,8 @@ async def test_enqueue_graph_job_creates_job(monkeypatch, fake_settings):
     )
 
     service = AdminJobService(
-        settings=fake_settings,
-        session_factory=lambda: _Wrapper(),
+        settings=fake_settings,  # type: ignore[arg-type]
+        session_factory=cast("async_sessionmaker[AsyncSession]", _Wrapper),
         learning_client=None,  # not used in this test
     )
 
@@ -149,16 +170,22 @@ async def test_enqueue_graph_job_creates_job(monkeypatch, fake_settings):
 
 
 @pytest.mark.asyncio
-async def test_enqueue_graph_job_rejects_when_running(monkeypatch, fake_settings):
+async def test_enqueue_graph_job_rejects_when_running(
+    monkeypatch: pytest.MonkeyPatch, fake_settings: _FakeSettings
+) -> None:
     fake_session = FakeSession()
     fake_dao = FakeDAO(fake_session)
     fake_dao.running_flag = True
 
     class _Wrapper:
-        async def __aenter__(self):
+        async def __aenter__(self) -> FakeSession:
             return fake_session
 
-        async def __aexit__(self, *args, **kwargs):
+        async def __aexit__(
+            self,
+            *args: object,
+            **kwargs: object,
+        ) -> bool:
             return False
 
     monkeypatch.setattr(
@@ -169,8 +196,8 @@ async def test_enqueue_graph_job_rejects_when_running(monkeypatch, fake_settings
     )
 
     service = AdminJobService(
-        settings=fake_settings,
-        session_factory=lambda: _Wrapper(),
+        settings=fake_settings,  # type: ignore[arg-type]
+        session_factory=cast("async_sessionmaker[AsyncSession]", _Wrapper),
         learning_client=None,
     )
 
@@ -180,8 +207,8 @@ async def test_enqueue_graph_job_rejects_when_running(monkeypatch, fake_settings
 
 @pytest.mark.asyncio
 async def test_shutdown_marks_cancelled_graph_job_failed_and_allows_new_enqueue(
-    monkeypatch, fake_settings
-):
+    monkeypatch: pytest.MonkeyPatch, fake_settings: _FakeSettings
+) -> None:
     fake_session = FakeSession()
     fake_dao = FakeDAO(fake_session)
 
@@ -190,15 +217,15 @@ async def test_shutdown_marks_cancelled_graph_job_failed_and_allows_new_enqueue(
     )
 
     service = AdminJobService(
-        settings=fake_settings,
-        session_factory=lambda: fake_session,
+        settings=fake_settings,  # type: ignore[arg-type]
+        session_factory=cast("async_sessionmaker[AsyncSession]", lambda: fake_session),
         learning_client=None,
     )
 
     started = asyncio.Event()
     never_set = asyncio.Event()
 
-    async def _blocking_graph_build():
+    async def _blocking_graph_build() -> dict[str, object]:
         started.set()
         await never_set.wait()
         return {}
@@ -211,7 +238,7 @@ async def test_shutdown_marks_cancelled_graph_job_failed_and_allows_new_enqueue(
 
     assert fake_dao.jobs[str(first_job_id)]["status"] == "failed"
 
-    async def _fast_graph_build():
+    async def _fast_graph_build() -> dict[str, object]:
         return {"edge_counts": {}, "total_edges": 0}
 
     monkeypatch.setattr(service, "_run_graph_build", _fast_graph_build)
@@ -222,8 +249,8 @@ async def test_shutdown_marks_cancelled_graph_job_failed_and_allows_new_enqueue(
 
 @pytest.mark.asyncio
 async def test_shutdown_marks_cancelled_learning_job_failed_and_allows_new_enqueue(
-    monkeypatch, fake_settings
-):
+    monkeypatch: pytest.MonkeyPatch, fake_settings: _FakeSettings
+) -> None:
     fake_session = FakeSession()
     fake_dao = FakeDAO(fake_session)
 
@@ -232,15 +259,15 @@ async def test_shutdown_marks_cancelled_learning_job_failed_and_allows_new_enque
     )
 
     service = AdminJobService(
-        settings=fake_settings,
-        session_factory=lambda: fake_session,
+        settings=fake_settings,  # type: ignore[arg-type]
+        session_factory=cast("async_sessionmaker[AsyncSession]", lambda: fake_session),
         learning_client=None,
     )
 
     started = asyncio.Event()
     never_set = asyncio.Event()
 
-    async def _blocking_learning():
+    async def _blocking_learning() -> dict[str, object]:
         started.set()
         await never_set.wait()
         return {}
@@ -253,7 +280,7 @@ async def test_shutdown_marks_cancelled_learning_job_failed_and_allows_new_enque
 
     assert fake_dao.jobs[str(first_job_id)]["status"] == "failed"
 
-    async def _fast_learning():
+    async def _fast_learning() -> dict[str, object]:
         return {"recap_worker_status": 200}
 
     monkeypatch.setattr(service, "_run_learning", _fast_learning)
@@ -263,7 +290,9 @@ async def test_shutdown_marks_cancelled_learning_job_failed_and_allows_new_enque
 
 
 @pytest.mark.asyncio
-async def test_enqueue_sweeps_orphaned_running_admin_jobs(monkeypatch, fake_settings):
+async def test_enqueue_sweeps_orphaned_running_admin_jobs(
+    monkeypatch: pytest.MonkeyPatch, fake_settings: _FakeSettings
+) -> None:
     fake_session = FakeSession()
     fake_dao = FakeDAO(fake_session)
     orphan_id = uuid4()
@@ -283,8 +312,8 @@ async def test_enqueue_sweeps_orphaned_running_admin_jobs(monkeypatch, fake_sett
     )
 
     service = AdminJobService(
-        settings=fake_settings,
-        session_factory=lambda: fake_session,
+        settings=fake_settings,  # type: ignore[arg-type]
+        session_factory=cast("async_sessionmaker[AsyncSession]", lambda: fake_session),
         learning_client=None,
     )
 
@@ -296,9 +325,7 @@ async def test_enqueue_sweeps_orphaned_running_admin_jobs(monkeypatch, fake_sett
 
 
 @pytest.mark.asyncio
-async def test_startup_sweep_fails_orphaned_admin_jobs(monkeypatch):
-    from recap_subworker.app.main import sweep_orphaned_runs
-
+async def test_startup_sweep_fails_orphaned_admin_jobs(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_session = FakeSession()
     fake_dao = FakeDAO(fake_session)
     orphan_id = uuid4()
@@ -324,9 +351,9 @@ async def test_startup_sweep_fails_orphaned_admin_jobs(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_empty_exception_message_is_not_mislabeled_as_cancelled(monkeypatch, fake_settings):
-    from recap_subworker.services.async_jobs import CANCELLED_ADMIN_JOB_MESSAGE
-
+async def test_empty_exception_message_is_not_mislabeled_as_cancelled(
+    monkeypatch: pytest.MonkeyPatch, fake_settings: _FakeSettings
+) -> None:
     fake_session = FakeSession()
     fake_dao = FakeDAO(fake_session)
     monkeypatch.setattr(
@@ -334,12 +361,12 @@ async def test_empty_exception_message_is_not_mislabeled_as_cancelled(monkeypatc
     )
 
     service = AdminJobService(
-        settings=fake_settings,
-        session_factory=lambda: fake_session,
+        settings=fake_settings,  # type: ignore[arg-type]
+        session_factory=cast("async_sessionmaker[AsyncSession]", lambda: fake_session),
         learning_client=None,
     )
 
-    async def _timeout_graph():
+    async def _timeout_graph() -> Never:
         raise TimeoutError()
 
     monkeypatch.setattr(service, "_run_graph_build", _timeout_graph)

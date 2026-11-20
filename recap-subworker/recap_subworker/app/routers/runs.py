@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import cast
+from typing import Annotated, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
@@ -41,13 +41,13 @@ def _record_to_response(record: RunRecord) -> ClusterJobResponse:
 
 
 @router.post("/runs", response_model=ClusterJobResponse, status_code=status.HTTP_202_ACCEPTED)
-async def create_run(
+async def create_run(  # noqa: PLR0913 - FastAPI route; parameters are injected dependencies
     payload: ClusterJobPayload,
-    job_id_header: str = Header(..., alias="X-Alt-Job-Id"),
-    genre: str = Header(..., alias="X-Alt-Genre"),
-    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
-    settings: Settings = Depends(get_settings_dep),
-    submit_uc: SubmitRunUsecase = Depends(get_submit_run_usecase_dep),
+    job_id_header: Annotated[str, Header(alias="X-Alt-Job-Id")],
+    genre: Annotated[str, Header(alias="X-Alt-Genre")],
+    settings: Annotated[Settings, Depends(get_settings_dep)],
+    submit_uc: Annotated[SubmitRunUsecase, Depends(get_submit_run_usecase_dep)],
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> ClusterJobResponse:
     try:
         job_id = UUID(job_id_header)
@@ -76,7 +76,7 @@ async def create_run(
 @router.get("/runs/{run_id}", response_model=ClusterJobResponse)
 async def get_run(
     run_id: int,
-    get_uc: GetRunUsecase = Depends(get_get_run_usecase_dep),
+    get_uc: Annotated[GetRunUsecase, Depends(get_get_run_usecase_dep)],
 ) -> ClusterJobResponse:
     record = await get_uc.execute(run_id)
     if not record:

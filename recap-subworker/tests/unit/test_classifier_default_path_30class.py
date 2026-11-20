@@ -17,12 +17,17 @@ also satisfy the ADR-000835 stage-3 cardinality validator at baseline 30.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import joblib
 import numpy as np
 import pytest
 from sklearn.linear_model import LogisticRegression
+
+from recap_subworker.infra.config import Settings
+
+CANONICAL_JA_GENRE_COUNT = 30
 
 
 def _fit_tiny_model(n_classes: int) -> LogisticRegression:
@@ -34,8 +39,6 @@ def _fit_tiny_model(n_classes: int) -> LogisticRegression:
 
 def test_default_genre_classifier_model_path_targets_ja_30class_artefact() -> None:
     """The default points at the 30-class JA joblib, not the legacy unsuffixed one."""
-    from recap_subworker.infra.config import Settings
-
     settings = Settings.model_construct()
     default = Settings.model_fields["genre_classifier_model_path"].default
     assert default.endswith("_ja.joblib"), (
@@ -48,8 +51,6 @@ def test_default_genre_classifier_model_path_targets_ja_30class_artefact() -> No
 
 def test_default_classifier_path_exists_and_has_30_classes() -> None:
     """The default must resolve to a real, loadable, 30-class joblib in the repo tree."""
-    from recap_subworker.infra.config import Settings
-
     default = Settings.model_fields["genre_classifier_model_path"].default
     repo_root = Path(__file__).resolve().parents[2]
     artefact = repo_root / default
@@ -63,21 +64,17 @@ def test_default_classifier_path_exists_and_has_30_classes() -> None:
     model = joblib.load(artefact)
     classes = getattr(model, "classes_", None)
     assert classes is not None, f"loaded artefact has no classes_ attribute: {artefact}"
-    assert len(classes) == 30, (
+    assert len(classes) == CANONICAL_JA_GENRE_COUNT, (
         f"expected 30-class classifier at default path {artefact}, got {len(classes)}"
     )
 
 
 def test_default_path_clears_baseline_cardinality_30(tmp_path: Path) -> None:
     """A 30-class default joblib must satisfy the bumped baseline of 30."""
-    import json
-
-    from recap_subworker.infra.config import Settings
-
     model_path = tmp_path / "genre_classifier_ja.joblib"
-    joblib.dump(_fit_tiny_model(30), model_path)
+    joblib.dump(_fit_tiny_model(CANONICAL_JA_GENRE_COUNT), model_path)
     thresholds = tmp_path / "genre_thresholds_ja.json"
-    thresholds.write_text(json.dumps({f"class_{i}": 0.5 for i in range(30)}))
+    thresholds.write_text(json.dumps({f"class_{i}": 0.5 for i in range(CANONICAL_JA_GENRE_COUNT)}))
 
     settings = Settings(  # type: ignore[arg-type]
         classification_backend="joblib",
@@ -88,16 +85,14 @@ def test_default_path_clears_baseline_cardinality_30(tmp_path: Path) -> None:
         genre_thresholds_path_en="",
         tfidf_vectorizer_path_ja="",
         tfidf_vectorizer_path_en="",
-        genre_baseline_cardinality=30,
+        genre_baseline_cardinality=CANONICAL_JA_GENRE_COUNT,
     )
-    assert settings.genre_baseline_cardinality == 30
+    assert settings.genre_baseline_cardinality == CANONICAL_JA_GENRE_COUNT
 
 
 def test_default_baseline_cardinality_is_30() -> None:
     """The ``genre_baseline_cardinality`` field default must be 30 once the 30-class model is canonical."""
-    from recap_subworker.infra.config import Settings
-
     default = Settings.model_fields["genre_baseline_cardinality"].default
-    assert default == 30, (
+    assert default == CANONICAL_JA_GENRE_COUNT, (
         f"genre_baseline_cardinality default must be 30 — see ADR-000835 stage 3. got {default}"
     )

@@ -55,12 +55,17 @@ class AdminJobManager:
             job = await self._queue.get()
             job.started_at = datetime.now(UTC)
             job.status = "running"
+            if job._fn is None:
+                msg = "job function missing"
+                job.status = "failed"
+                job.error = msg
+                job.finished_at = datetime.now(UTC)
+                self._queue.task_done()
+                raise RuntimeError(msg)
             try:
-                if job._fn is None:
-                    raise RuntimeError("job function missing")
                 job.result = await job._fn()
                 job.status = "succeeded"
-            except Exception as exc:  # pragma: no cover - runtime safety
+            except Exception as exc:  # noqa: BLE001 - worker loop boundary; records failure and keeps worker alive  # pragma: no cover - runtime safety
                 self._log.error(
                     "admin_job.failed", job_id=str(job.job_id), kind=job.kind, error=str(exc)
                 )

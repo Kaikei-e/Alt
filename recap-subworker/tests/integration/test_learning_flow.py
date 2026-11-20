@@ -3,18 +3,31 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Iterator
+from http import HTTPStatus
+from typing import Never
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from recap_subworker.app import deps as app_deps
 from recap_subworker.app.main import create_app
+from recap_subworker.infra.config import Settings
+from recap_subworker.services.async_jobs import ConcurrentAdminJobError
+from recap_subworker.services.learning_scheduler import LearningScheduler
 
 pytestmark = pytest.mark.usefixtures("stub_startup_sweep")
 
 
+class _AlreadyRunningJobError(ConcurrentAdminJobError):
+    def __init__(self) -> None:
+        super().__init__("learning job already running")
+
+
 @pytest.fixture
-def client():
+def client() -> Iterator[TestClient]:
     """Create a test client with the lifespan active (needed for app.state.container)."""
     app = create_app()
     with TestClient(app) as test_client:
@@ -22,7 +35,7 @@ def client():
 
 
 @pytest.mark.asyncio
-async def test_learning_endpoint_integration(client):
+async def test_learning_endpoint_integration(client: TestClient) -> None:
     """`/admin/learning` enqueues a background job and returns immediately.
 
     It delegates to the same AdminJobService as `/admin/learning-jobs`
@@ -31,37 +44,32 @@ async def test_learning_endpoint_integration(client):
     """
     response = client.post("/admin/learning")
 
-    assert response.status_code == 202
+    assert response.status_code == HTTPStatus.ACCEPTED
     assert response.json() == {"job_id": "stub-job"}
 
 
 @pytest.mark.asyncio
-async def test_learning_endpoint_conflict_when_already_running(client):
+async def test_learning_endpoint_conflict_when_already_running(client: TestClient) -> None:
     """A concurrent learning job surfaces as 409, not a silently accepted 202."""
-    from recap_subworker.app import deps as app_deps
-    from recap_subworker.services.async_jobs import ConcurrentAdminJobError
 
     class _ConflictingAdminJobService:
-        async def enqueue_learning_job(self):
-            raise ConcurrentAdminJobError("learning job already running")
+        async def enqueue_learning_job(self) -> Never:
+            raise _AlreadyRunningJobError
 
-    client.app.dependency_overrides[app_deps.get_admin_job_service_dep] = lambda: (
-        _ConflictingAdminJobService()
-    )
+    app = client.app
+    assert isinstance(app, FastAPI)
+    app.dependency_overrides[app_deps.get_admin_job_service_dep] = _ConflictingAdminJobService
     try:
         response = client.post("/admin/learning")
     finally:
-        del client.app.dependency_overrides[app_deps.get_admin_job_service_dep]
+        del app.dependency_overrides[app_deps.get_admin_job_service_dep]
 
-    assert response.status_code == 409
+    assert response.status_code == HTTPStatus.CONFLICT
 
 
 @pytest.mark.asyncio
-async def test_learning_scheduler_integration():
+async def test_learning_scheduler_integration() -> None:
     """Test that learning scheduler integrates with services correctly."""
-    from recap_subworker.infra.config import Settings
-    from recap_subworker.services.learning_scheduler import LearningScheduler
-
     settings = Settings(
         learning_cluster_genres="society_justice,art_culture",
         learning_graph_margin=0.15,

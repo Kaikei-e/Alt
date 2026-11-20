@@ -12,7 +12,8 @@ def sliding_batches[T](items: Sequence[T], batch_size: int) -> Iterator[Sequence
     """Yield slices of *items* with at most *batch_size* elements."""
 
     if batch_size <= 0:
-        raise ValueError("batch_size must be > 0")
+        msg = "batch_size must be > 0"
+        raise ValueError(msg)
     for index in range(0, len(items), batch_size):
         yield items[index : index + batch_size]
 

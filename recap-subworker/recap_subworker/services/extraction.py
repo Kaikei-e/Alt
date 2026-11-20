@@ -7,6 +7,7 @@ import trafilatura
 logging.getLogger("trafilatura").setLevel(logging.CRITICAL)
 
 _LOGGER = structlog.get_logger(__name__)
+_MIN_HTML_LENGTH = 10
 
 
 class ContentExtractor:
@@ -24,7 +25,7 @@ class ContentExtractor:
             Extracted text content or empty string if extraction fails
         """
         # Improved validation: check for empty, whitespace-only, or too short content
-        if not html or not html.strip() or len(html.strip()) < 10:
+        if not html or not html.strip() or len(html.strip()) < _MIN_HTML_LENGTH:
             return ""
 
         try:
@@ -32,7 +33,6 @@ class ContentExtractor:
             text = trafilatura.extract(
                 html, include_comments=include_comments, include_tables=False, no_fallback=False
             )
-            return text if text else ""
         except (ValueError, TypeError, RuntimeError) as exc:
             # Fallback logic exists in the worker; log at debug so extraction
             # failure rate stays observable without spamming at higher levels.
@@ -42,3 +42,5 @@ class ContentExtractor:
                 error_type=type(exc).__name__,
             )
             return ""
+        else:
+            return text if text else ""

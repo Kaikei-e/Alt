@@ -9,18 +9,19 @@ import threading
 import time
 from collections.abc import Sequence
 
+import structlog
+
 from ..domain.models import EvidenceRequest, EvidenceResponse, WarmupResponse
 from ..infra.config import Settings
 from . import pipeline_worker
+
+logger = structlog.get_logger(__name__)
 
 
 class PipelineTaskRunner:
     """Dispatcher that executes evidence runs inside a dedicated process pool."""
 
     def __init__(self, settings: Settings) -> None:
-        import structlog
-
-        logger = structlog.get_logger(__name__)
         self._settings = settings
         ctx = multiprocessing.get_context("spawn")
 
@@ -44,13 +45,12 @@ class PipelineTaskRunner:
 
     def _verify_worker_initialization(self) -> None:
         """Verify that worker processes are initialized correctly with a timeout."""
-        import structlog
-
-        logger = structlog.get_logger(__name__)
         timeout = self._settings.pipeline_worker_init_timeout_seconds
 
         # Try a simple warmup to verify workers are ready
-        assert self._pool is not None, "Pool must be initialized before verification"
+        if self._pool is None:
+            msg = "Pool must be initialized before verification"
+            raise RuntimeError(msg)
         try:
             future = self._pool.apply_async(pipeline_worker.warmup, ([]))
             future.get(timeout=timeout)
@@ -59,27 +59,27 @@ class PipelineTaskRunner:
                 timeout_seconds=timeout,
             )
         except Exception as exc:
-            logger.error(
+            logger.exception(
                 "pipeline worker pool initialization failed",
                 error=str(exc),
                 error_type=type(exc).__name__,
                 timeout_seconds=timeout,
-                exc_info=True,
             )
             # Clean up failed pool
             try:
                 if self._pool is not None:
                     self._pool.terminate()
                     self._pool.join()
-            except Exception:
-                pass
-            raise RuntimeError(
-                f"Failed to initialize pipeline worker pool within {timeout}s"
-            ) from exc
+            except Exception as cleanup_exc:  # noqa: BLE001 - best-effort pool termination on init failure
+                logger.debug("failed to terminate pipeline pool", error=str(cleanup_exc))
+            msg = f"Failed to initialize pipeline worker pool within {timeout}s"
+            raise RuntimeError(msg) from exc
 
     async def run(self, request: EvidenceRequest) -> EvidenceResponse:
         """Execute the evidence pipeline in a worker process."""
-        assert self._pool is not None, "Pool is not initialized"
+        if self._pool is None:
+            msg = "Pool is not initialized"
+            raise RuntimeError(msg)
         payload = request.model_dump(mode="json")
         # Use apply_async for non-blocking execution, then wrap the AsyncResult in asyncio
         async_result = self._pool.apply_async(pipeline_worker.run_pipeline, (payload,))
@@ -95,7 +95,9 @@ class PipelineTaskRunner:
 
     async def warmup(self, samples: Sequence[str] | None = None) -> WarmupResponse:
         """Warmup the pipeline in a worker process."""
-        assert self._pool is not None, "Pool is not initialized"
+        if self._pool is None:
+            msg = "Pool is not initialized"
+            raise RuntimeError(msg)
         # Use apply_async for non-blocking execution, then wrap the AsyncResult in asyncio
         async_result = self._pool.apply_async(pipeline_worker.warmup, (list(samples or []),))
         # Wait for the result in an executor to avoid blocking the event loop.
@@ -110,9 +112,6 @@ class PipelineTaskRunner:
 
         This ensures worker processes are properly cleaned up to prevent memory leaks.
         """
-        import structlog
-
-        logger = structlog.get_logger(__name__)
         logger.info("shutting down PipelineTaskRunner")
 
         if self._pool is None:
@@ -126,7 +125,7 @@ class PipelineTaskRunner:
             shutdown_timeout = 30.0
             start_time = time.time()
 
-            def wait_for_completion():
+            def wait_for_completion() -> None:
                 self._pool.join()
 
             wait_thread = threading.Thread(target=wait_for_completion, daemon=True)
@@ -147,7 +146,7 @@ class PipelineTaskRunner:
                     "process pool shutdown complete",
                     elapsed_seconds=elapsed,
                 )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - best-effort pool shutdown; must not raise
             logger.warning(
                 "error during process pool shutdown",
                 error=str(exc),
@@ -158,8 +157,8 @@ class PipelineTaskRunner:
             try:
                 self._pool.terminate()
                 self._pool.join()
-            except Exception:
-                pass
+            except Exception as cleanup_exc:  # noqa: BLE001 - best-effort pool termination on shutdown error
+                logger.debug("failed to terminate pipeline pool", error=str(cleanup_exc))
         finally:
             self._pool = None
 

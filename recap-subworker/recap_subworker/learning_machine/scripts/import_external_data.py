@@ -1,14 +1,18 @@
 import argparse
 import json
 import logging
+import sys
+import tarfile
+import urllib.request
 from pathlib import Path
+from urllib.parse import urlparse
 
 # Ensure transformers/datasets are installed
 try:
     from datasets import load_dataset
 except ImportError:
-    print("Please install 'datasets' library: uv add datasets")
-    exit(1)
+    sys.stdout.write("Please install 'datasets' library: uv add datasets\n")
+    sys.exit(1)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -45,11 +49,18 @@ LIVEDOOR_MAP = {
     "topic-news": "society_demographics",  # Soft news/Social processing
 }
 
-import tarfile
-import urllib.request
+
+_MIN_LIVEDOOR_ARCHIVE_PARTS = 3
+_MIN_LIVEDOOR_ARTICLE_LINES = 3
 
 
-def import_livedoor(output_path: Path):
+def _ensure_http_scheme(url: str) -> None:
+    if urlparse(url).scheme not in {"http", "https"}:
+        msg = f"Unsupported URL scheme for {url}"
+        raise ValueError(msg)
+
+
+def import_livedoor(output_path: Path) -> None:
     logger.info("Downloading/Loading Livedoor News Corpus Manually...")
 
     url = "https://www.rondhuit.com/download/ldcc-20140209.tar.gz"
@@ -58,11 +69,12 @@ def import_livedoor(output_path: Path):
     tar_path = cache_dir / "ldcc-20140209.tar.gz"
 
     if not tar_path.exists():
-        logger.info(f"Downloading from {url}...")
+        logger.info("Downloading from %s...", url)
         try:
-            urllib.request.urlretrieve(url, tar_path)
-        except Exception as e:
-            logger.error(f"Download failed: {e}")
+            _ensure_http_scheme(url)
+            urllib.request.urlretrieve(url, tar_path)  # noqa: S310  # scheme validated to http/https
+        except Exception:  # CLI script logs download failure and exits cleanly
+            logger.exception("Download failed")
             return
 
     articles = []
@@ -79,7 +91,7 @@ def import_livedoor(output_path: Path):
 
                 # Path format: text/dokujo-tsushin/dokujo-tsushin-4778030.txt
                 parts = member.name.split("/")
-                if len(parts) < 3:
+                if len(parts) < _MIN_LIVEDOOR_ARCHIVE_PARTS:
                     continue
 
                 cat_name = parts[1]  # e.g. dokujo-tsushin
@@ -100,7 +112,7 @@ def import_livedoor(output_path: Path):
                         # Timestamp
                         # Title
                         # Body...
-                        if len(lines) > 3:
+                        if len(lines) > _MIN_LIVEDOOR_ARTICLE_LINES:
                             url_line = lines[0]
                             time_line = lines[1]
                             title_line = lines[2]
@@ -119,22 +131,22 @@ def import_livedoor(output_path: Path):
                                 }
                             )
                             mapped += 1
-                    except Exception as e:
-                        logger.warning(f"Error reading file {member.name}: {e}")
+                    except (UnicodeDecodeError, ValueError) as e:
+                        logger.warning("Error reading file %s: %s", member.name, e)
 
-    except Exception as e:
-        logger.error(f"Error processing tar file: {e}")
+    except Exception:  # CLI script logs tar processing failure and exits cleanly
+        logger.exception("Error processing tar file")
         return
 
-    logger.info(f"Livedoor: Mapped {mapped}, Skipped {skipped}")
+    logger.info("Livedoor: Mapped %d, Skipped %d", mapped, skipped)
 
     # Save append
-    with open(output_path, "a", encoding="utf-8") as f:
+    with output_path.open("a", encoding="utf-8") as f:
         for a in articles:
             f.write(json.dumps(a, ensure_ascii=False) + "\n")
 
 
-def import_ag_news(output_path: Path):
+def import_ag_news(output_path: Path) -> None:
     """Import AG News dataset (English news classification)."""
     logger.info("Loading AG News dataset from HuggingFace...")
     try:
@@ -142,7 +154,7 @@ def import_ag_news(output_path: Path):
 
         # AG News has 4 classes: World, Sports, Business, Sci/Tech
         # Map to our genres (approximate mapping)
-        AG_NEWS_MAP = {
+        ag_news_map = {
             0: "society_demographics",  # World
             1: "sports",  # Sports
             2: "economics_macro",  # Business
@@ -152,7 +164,7 @@ def import_ag_news(output_path: Path):
         articles = []
         for item in dataset:
             label_id = item["label"]
-            mapped_genre = AG_NEWS_MAP.get(label_id, "society_demographics")
+            mapped_genre = ag_news_map.get(label_id, "society_demographics")
             articles.append(
                 {
                     "source": "ag_news",
@@ -166,17 +178,17 @@ def import_ag_news(output_path: Path):
                 }
             )
 
-        logger.info(f"AG News: Mapped {len(articles)} articles")
+        logger.info("AG News: Mapped %d articles", len(articles))
 
         # Append to file
-        with open(output_path, "a", encoding="utf-8") as f:
+        with output_path.open("a", encoding="utf-8") as f:
             for a in articles:
                 f.write(json.dumps(a, ensure_ascii=False) + "\n")
-    except Exception as e:
-        logger.error(f"Failed to import AG News: {e}")
+    except Exception:  # CLI script logs AG News failure and exits cleanly
+        logger.exception("Failed to import AG News")
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--include_ag_news", action="store_true", help="Include AG News English dataset"
@@ -187,15 +199,14 @@ def main():
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Clear file
-    with open(output_path, "w") as f:
-        pass
+    output_path.write_text("", encoding="utf-8")
 
     import_livedoor(output_path)
 
     if args.include_ag_news:
         import_ag_news(output_path)
 
-    logger.info(f"Saved external data to {output_path}")
+    logger.info("Saved external data to %s", output_path)
 
 
 if __name__ == "__main__":

@@ -85,8 +85,9 @@ class Manager:
                     return
                 last = RuntimeError(f"pki: enroll left state {state}")
             except CancelledError as exc:
-                raise CancelledError("pki: enroll canceled: canceled") from exc
-            except Exception as exc:
+                msg = "pki: enroll canceled: canceled"
+                raise CancelledError(msg) from exc
+            except Exception as exc:  # noqa: BLE001  # retry loop must catch any issuer/IO failure before failing after max attempts
                 last = exc
             self.observer.on_retry(i, last)
             logger.error(
@@ -102,7 +103,8 @@ class Manager:
             while time.monotonic() < deadline:
                 ctx.raise_if_cancelled()
                 time.sleep(min(0.05, deadline - time.monotonic()))
-        raise RuntimeError(f"pki: enroll failed after {attempts} attempts: {last}") from last
+        msg = f"pki: enroll failed after {attempts} attempts: {last}"
+        raise RuntimeError(msg) from last
 
     def tick(self, ctx: Ctx) -> State:
         ctx.raise_if_cancelled()
@@ -116,13 +118,9 @@ class Manager:
         state = classify_remaining(cert.not_before, cert.not_after, now, self.cfg.renew_at_fraction)
         remaining = (cert.not_after - now).total_seconds()
         self.observer.on_classified(state, remaining)
-        if state is State.FRESH:
-            return state
         if state is State.NEAR_EXPIRY:
             rekey = getattr(self.issuer, "rekey", None)
-            if callable(rekey):
-                return self._rekey(ctx)
-            return self._issue(ctx, "near_expiry")
+            return self._rekey(ctx) if callable(rekey) else self._issue(ctx, "near_expiry")
         if state is State.EXPIRED:
             return self._issue(ctx, "expired")
         return state
@@ -142,24 +140,26 @@ class Manager:
             raise
         except Exception as exc:
             self.observer.on_renewed(False)
-            logger.error(
+            logger.error(  # noqa: TRY400  # structured error log before re-raise
                 "pki_enrollment_failed subject=%s reason=%s error=%s",
                 self.cfg.subject,
                 reason,
                 exc,
             )
-            raise RuntimeError(f"pki: issue cert: {exc}") from exc
+            msg = f"pki: issue cert: {exc}"
+            raise RuntimeError(msg) from exc
         try:
             self.files.write(cert_pem, key_pem)
         except OSError as exc:
             self.observer.on_renewed(False)
-            logger.error(
+            logger.error(  # noqa: TRY400  # structured error log before re-raise
                 "pki_enrollment_failed subject=%s reason=%s error=%s",
                 self.cfg.subject,
                 reason,
                 exc,
             )
-            raise RuntimeError(f"pki: write cert: {exc}") from exc
+            msg = f"pki: write cert: {exc}"
+            raise RuntimeError(msg) from exc
         self.observer.on_renewed(True)
         return self._classified_after_write()
 
@@ -175,7 +175,8 @@ class Manager:
             key_pem = read_regular_no_follow(str(self.files.key_path), MAX_ROOT_PEM_BYTES)
         except OSError as exc:
             self.observer.on_renewed(False)
-            raise RuntimeError(f"pki: read cert for rekey: {exc}") from exc
+            msg = f"pki: read cert for rekey: {exc}"
+            raise RuntimeError(msg) from exc
         rekey = self.issuer.rekey  # type: ignore[attr-defined]
         try:
             new_cert, new_key = rekey(ctx, cert_pem, key_pem, self.cfg.subject, list(self.cfg.sans))
@@ -184,22 +185,24 @@ class Manager:
             raise
         except Exception as exc:
             self.observer.on_renewed(False)
-            logger.error(
+            logger.error(  # noqa: TRY400  # structured error log before re-raise
                 "pki_enrollment_failed subject=%s reason=near_expiry error=%s",
                 self.cfg.subject,
                 exc,
             )
-            raise RuntimeError(f"pki: rekey cert: {exc}") from exc
+            msg = f"pki: rekey cert: {exc}"
+            raise RuntimeError(msg) from exc
         try:
             self.files.write(new_cert, new_key)
         except OSError as exc:
             self.observer.on_renewed(False)
-            logger.error(
+            logger.error(  # noqa: TRY400  # structured error log before re-raise
                 "pki_enrollment_failed subject=%s reason=near_expiry error=%s",
                 self.cfg.subject,
                 exc,
             )
-            raise RuntimeError(f"pki: write rekeyed cert: {exc}") from exc
+            msg = f"pki: write rekeyed cert: {exc}"
+            raise RuntimeError(msg) from exc
         self.observer.on_renewed(True)
         return self._classified_after_write()
 
@@ -207,9 +210,11 @@ class Manager:
         try:
             cert = self.files.load()
         except CertNotFoundError as exc:
-            raise RuntimeError("pki: written cert/key pair is not loadable") from exc
+            msg = "pki: written cert/key pair is not loadable"
+            raise RuntimeError(msg) from exc
         except CertParseError as rec:
-            raise RuntimeError("pki: written cert/key pair is not loadable") from rec
+            msg = "pki: written cert/key pair is not loadable"
+            raise RuntimeError(msg) from rec
         state = classify_remaining(
             cert.not_before, cert.not_after, self.now(), self.cfg.renew_at_fraction
         )

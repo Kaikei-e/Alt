@@ -29,7 +29,8 @@ def test_serve_app_fail_fast_skips_listener(monkeypatch: pytest.MonkeyPatch) -> 
 
     def fake_start(name: str) -> None:
         del name
-        raise RuntimeError("pki: enroll failed after 1 attempts")
+        msg = "pki: enroll failed after 1 attempts"
+        raise RuntimeError(msg)
 
     def fake_after(**kwargs: object) -> None:
         del kwargs

@@ -1,5 +1,7 @@
 """Tests for path validation utilities."""
 
+from pathlib import Path
+
 import pytest
 
 from recap_subworker.infra.path_validation import require_existing_path, validate_path
@@ -8,7 +10,7 @@ from recap_subworker.infra.path_validation import require_existing_path, validat
 class TestValidatePath:
     """Tests for validate_path() - CodeQL py/path-injection sanitizer."""
 
-    def test_absolute_path_within_allowed_dir(self, tmp_path):
+    def test_absolute_path_within_allowed_dir(self, tmp_path: Path) -> None:
         base = tmp_path / "data"
         base.mkdir()
         target = base / "file.json"
@@ -17,7 +19,7 @@ class TestValidatePath:
         result = validate_path(str(target), base_dirs=[base])
         assert result == target.resolve()
 
-    def test_relative_path_resolved_against_first_base(self, tmp_path):
+    def test_relative_path_resolved_against_first_base(self, tmp_path: Path) -> None:
         base = tmp_path / "data"
         base.mkdir()
         target = base / "file.json"
@@ -26,7 +28,7 @@ class TestValidatePath:
         result = validate_path("file.json", base_dirs=[base])
         assert result == target.resolve()
 
-    def test_subdirectory_path(self, tmp_path):
+    def test_subdirectory_path(self, tmp_path: Path) -> None:
         base = tmp_path / "data"
         sub = base / "sub"
         sub.mkdir(parents=True)
@@ -36,7 +38,7 @@ class TestValidatePath:
         result = validate_path(str(target), base_dirs=[base])
         assert result == target.resolve()
 
-    def test_multiple_base_dirs_second_matches(self, tmp_path):
+    def test_multiple_base_dirs_second_matches(self, tmp_path: Path) -> None:
         base1 = tmp_path / "data"
         base1.mkdir()
         base2 = tmp_path / "resources"
@@ -47,28 +49,28 @@ class TestValidatePath:
         result = validate_path(str(target), base_dirs=[base1, base2])
         assert result == target.resolve()
 
-    def test_path_equals_base_dir(self, tmp_path):
+    def test_path_equals_base_dir(self, tmp_path: Path) -> None:
         base = tmp_path / "data"
         base.mkdir()
 
         result = validate_path(str(base), base_dirs=[base])
         assert result == base.resolve()
 
-    def test_rejects_path_traversal(self, tmp_path):
+    def test_rejects_path_traversal(self, tmp_path: Path) -> None:
         base = tmp_path / "data"
         base.mkdir()
 
         with pytest.raises(ValueError, match="not within allowed directories"):
             validate_path("../../../etc/passwd", base_dirs=[base])
 
-    def test_rejects_absolute_path_outside(self, tmp_path):
+    def test_rejects_absolute_path_outside(self, tmp_path: Path) -> None:
         base = tmp_path / "data"
         base.mkdir()
 
         with pytest.raises(ValueError, match="not within allowed directories"):
             validate_path("/etc/passwd", base_dirs=[base])
 
-    def test_rejects_prefix_attack(self, tmp_path):
+    def test_rejects_prefix_attack(self, tmp_path: Path) -> None:
         """Ensure /app/data-evil doesn't match /app/data."""
         base = tmp_path / "data"
         base.mkdir()
@@ -80,7 +82,7 @@ class TestValidatePath:
         with pytest.raises(ValueError, match="not within allowed directories"):
             validate_path(str(target), base_dirs=[base])
 
-    def test_rejects_symlink_escaping(self, tmp_path):
+    def test_rejects_symlink_escaping(self, tmp_path: Path) -> None:
         """Symlinks pointing outside allowed dirs should be rejected."""
         base = tmp_path / "data"
         base.mkdir()
@@ -95,11 +97,11 @@ class TestValidatePath:
         with pytest.raises(ValueError, match="not within allowed directories"):
             validate_path(str(link), base_dirs=[base])
 
-    def test_empty_base_dirs_raises(self):
+    def test_empty_base_dirs_raises(self) -> None:
         with pytest.raises(ValueError, match="No base directories configured"):
             validate_path("file.json", base_dirs=[])
 
-    def test_defaults_to_allowed_base_dirs(self):
+    def test_defaults_to_allowed_base_dirs(self) -> None:
         """Using default base_dirs rejects paths outside ALLOWED_BASE_DIRS."""
         with pytest.raises(ValueError, match="not within allowed directories"):
             validate_path("/etc/passwd")
@@ -108,7 +110,7 @@ class TestValidatePath:
 class TestRequireExistingPath:
     """require_existing_path: allow-list + exists in one CodeQL-visible guard."""
 
-    def test_returns_path_when_file_exists(self, tmp_path):
+    def test_returns_path_when_file_exists(self, tmp_path: Path) -> None:
         base = tmp_path / "data"
         base.mkdir()
         target = base / "file.json"
@@ -117,7 +119,7 @@ class TestRequireExistingPath:
         result = require_existing_path(str(target), base_dirs=[base])
         assert result == target.resolve()
 
-    def test_raises_file_not_found_when_missing(self, tmp_path):
+    def test_raises_file_not_found_when_missing(self, tmp_path: Path) -> None:
         base = tmp_path / "data"
         base.mkdir()
         missing = base / "missing.json"
@@ -125,7 +127,7 @@ class TestRequireExistingPath:
         with pytest.raises(FileNotFoundError):
             require_existing_path(str(missing), base_dirs=[base])
 
-    def test_relative_path_resolved_against_first_base(self, tmp_path):
+    def test_relative_path_resolved_against_first_base(self, tmp_path: Path) -> None:
         base = tmp_path / "data"
         base.mkdir()
         target = base / "file.json"
@@ -134,7 +136,7 @@ class TestRequireExistingPath:
         result = require_existing_path("file.json", base_dirs=[base])
         assert result == target.resolve()
 
-    def test_subdirectory_path(self, tmp_path):
+    def test_subdirectory_path(self, tmp_path: Path) -> None:
         base = tmp_path / "data"
         sub = base / "sub"
         sub.mkdir(parents=True)
@@ -144,7 +146,7 @@ class TestRequireExistingPath:
         result = require_existing_path(str(target), base_dirs=[base])
         assert result == target.resolve()
 
-    def test_multiple_base_dirs_second_matches(self, tmp_path):
+    def test_multiple_base_dirs_second_matches(self, tmp_path: Path) -> None:
         base1 = tmp_path / "data"
         base1.mkdir()
         base2 = tmp_path / "resources"
@@ -155,28 +157,28 @@ class TestRequireExistingPath:
         result = require_existing_path(str(target), base_dirs=[base1, base2])
         assert result == target.resolve()
 
-    def test_path_equals_base_dir(self, tmp_path):
+    def test_path_equals_base_dir(self, tmp_path: Path) -> None:
         base = tmp_path / "data"
         base.mkdir()
 
         result = require_existing_path(str(base), base_dirs=[base])
         assert result == base.resolve()
 
-    def test_rejects_path_traversal(self, tmp_path):
+    def test_rejects_path_traversal(self, tmp_path: Path) -> None:
         base = tmp_path / "data"
         base.mkdir()
 
         with pytest.raises(ValueError, match="not within allowed directories"):
             require_existing_path("../../../etc/passwd", base_dirs=[base])
 
-    def test_rejects_path_outside_allowlist(self, tmp_path):
+    def test_rejects_path_outside_allowlist(self, tmp_path: Path) -> None:
         base = tmp_path / "data"
         base.mkdir()
 
         with pytest.raises(ValueError, match="not within allowed directories"):
             require_existing_path("/etc/passwd", base_dirs=[base])
 
-    def test_rejects_prefix_attack(self, tmp_path):
+    def test_rejects_prefix_attack(self, tmp_path: Path) -> None:
         """Ensure /app/data-evil doesn't match /app/data even when the evil path exists."""
         base = tmp_path / "data"
         base.mkdir()
@@ -188,7 +190,7 @@ class TestRequireExistingPath:
         with pytest.raises(ValueError, match="not within allowed directories"):
             require_existing_path(str(target), base_dirs=[base])
 
-    def test_rejects_symlink_escaping(self, tmp_path):
+    def test_rejects_symlink_escaping(self, tmp_path: Path) -> None:
         """Symlinks pointing outside allowed dirs should be rejected."""
         base = tmp_path / "data"
         base.mkdir()
@@ -203,11 +205,11 @@ class TestRequireExistingPath:
         with pytest.raises(ValueError, match="not within allowed directories"):
             require_existing_path(str(link), base_dirs=[base])
 
-    def test_empty_base_dirs_raises(self):
+    def test_empty_base_dirs_raises(self) -> None:
         with pytest.raises(ValueError, match="No base directories configured"):
             require_existing_path("file.json", base_dirs=[])
 
-    def test_defaults_to_allowed_base_dirs(self):
+    def test_defaults_to_allowed_base_dirs(self) -> None:
         """Using default base_dirs rejects paths outside ALLOWED_BASE_DIRS."""
         with pytest.raises(ValueError, match="not within allowed directories"):
             require_existing_path("/etc/passwd")

@@ -39,6 +39,9 @@ import pytest
 import structlog.testing
 from sklearn.linear_model import LogisticRegression
 
+from recap_subworker.domain.errors import ConfigValidationError
+from recap_subworker.services.classifier import GenreClassifierService
+
 
 def _runtime_sklearn_minor() -> str:
     full = importlib.metadata.version("scikit-learn")
@@ -102,8 +105,6 @@ def _make_embedder(
 class TestEmbeddingFingerprintMatch:
     def test_sentence_transformers_bge_m3_matches_sidecar(self, tiny_model: Path) -> None:
         """Sidecar BGE-M3 + runtime sentence-transformers BGE-M3 → no raise."""
-        from recap_subworker.services.classifier import GenreClassifierService
-
         _write_meta(tiny_model, embedding_model_id="BAAI/bge-m3")
         embedder = _make_embedder(
             backend="sentence-transformers",
@@ -122,8 +123,6 @@ class TestEmbeddingFingerprintMatch:
 
     def test_ollama_bge_m3_matches_sidecar_via_alias(self, tiny_model: Path) -> None:
         """Sidecar ``BAAI/bge-m3`` ↔ Ollama tag ``bge-m3`` is canonical-equivalent."""
-        from recap_subworker.services.classifier import GenreClassifierService
-
         _write_meta(tiny_model, embedding_model_id="BAAI/bge-m3")
         embedder = _make_embedder(
             backend="ollama-remote",
@@ -139,8 +138,6 @@ class TestEmbeddingFingerprintMatch:
 
     def test_ollama_bge_m3_with_tag_suffix_matches(self, tiny_model: Path) -> None:
         """``bge-m3:latest`` (Ollama tag) is the same artefact as ``BAAI/bge-m3``."""
-        from recap_subworker.services.classifier import GenreClassifierService
-
         _write_meta(tiny_model, embedding_model_id="BAAI/bge-m3")
         embedder = _make_embedder(
             backend="ollama-remote",
@@ -158,9 +155,6 @@ class TestEmbeddingFingerprintMatch:
 class TestEmbeddingFingerprintMismatch:
     def test_ollama_mxbai_against_bge_m3_sidecar_raises(self, tiny_model: Path) -> None:
         """The exact production drift that caused the 2026-04-14..30 outage."""
-        from recap_subworker.domain.errors import ConfigValidationError
-        from recap_subworker.services.classifier import GenreClassifierService
-
         _write_meta(tiny_model, embedding_model_id="BAAI/bge-m3")
         embedder = _make_embedder(
             backend="ollama-remote",
@@ -179,9 +173,6 @@ class TestEmbeddingFingerprintMismatch:
 
     def test_sentence_transformers_e5_against_bge_m3_sidecar_raises(self, tiny_model: Path) -> None:
         """A different sentence-transformers identity than training is also drift."""
-        from recap_subworker.domain.errors import ConfigValidationError
-        from recap_subworker.services.classifier import GenreClassifierService
-
         _write_meta(tiny_model, embedding_model_id="BAAI/bge-m3")
         embedder = _make_embedder(
             backend="sentence-transformers",
@@ -197,8 +188,6 @@ class TestEmbeddingFingerprintMismatch:
 
     def test_drift_flag_downgrades_to_warning(self, tiny_model: Path) -> None:
         """``allow_embedding_drift=True`` keeps the boot path green."""
-        from recap_subworker.services.classifier import GenreClassifierService
-
         _write_meta(tiny_model, embedding_model_id="BAAI/bge-m3")
         embedder = _make_embedder(
             backend="ollama-remote",
@@ -231,8 +220,6 @@ class TestEmbeddingFingerprintMismatch:
 class TestEmbeddingFingerprintTolerance:
     def test_legacy_sidecar_without_embedding_id_warns(self, tiny_model: Path) -> None:
         """Pre-ADR-000835 sidecars omit ``embedding_model_id``."""
-        from recap_subworker.services.classifier import GenreClassifierService
-
         _write_meta(tiny_model, embedding_model_id="")
         embedder = _make_embedder(
             backend="ollama-remote",
@@ -255,8 +242,6 @@ class TestEmbeddingFingerprintTolerance:
 
     def test_hash_backend_bypasses_guard(self, tiny_model: Path) -> None:
         """``hash`` backend is the deterministic dev embedder; never compare."""
-        from recap_subworker.services.classifier import GenreClassifierService
-
         _write_meta(tiny_model, embedding_model_id="BAAI/bge-m3")
         embedder = _make_embedder(backend="hash")
 

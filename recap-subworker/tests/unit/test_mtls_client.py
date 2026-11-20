@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import os
+import shutil
 import ssl
+import subprocess
 import tempfile
 from pathlib import Path
 
@@ -20,13 +22,15 @@ from recap_subworker.app.infra.mtls_client import (
 
 def _write_test_identity(dir_path: Path, cn: str) -> tuple[Path, Path]:
     """Generate a throwaway self-signed cert + key PEM pair via openssl."""
-    import subprocess
-
+    openssl = shutil.which("openssl")
+    if openssl is None:
+        msg = "openssl binary is required on PATH"
+        raise FileNotFoundError(msg)
     cert_path = dir_path / f"{cn}-cert.pem"
     key_path = dir_path / f"{cn}-key.pem"
-    subprocess.run(
+    subprocess.run(  # noqa: S603 - invokes system openssl resolved via shutil.which with test paths
         [
-            "openssl",
+            openssl,
             "req",
             "-x509",
             "-newkey",
@@ -47,12 +51,12 @@ def _write_test_identity(dir_path: Path, cn: str) -> tuple[Path, Path]:
     return cert_path, key_path
 
 
-def test_mtls_enforced_false_by_default():
+def test_mtls_enforced_false_by_default() -> None:
     os.environ.pop("MTLS_ENFORCE", None)
     assert not mtls_enforced()
 
 
-def test_mtls_enforced_true_when_env_set():
+def test_mtls_enforced_true_when_env_set() -> None:
     os.environ["MTLS_ENFORCE"] = "true"
     try:
         assert mtls_enforced()
@@ -60,12 +64,12 @@ def test_mtls_enforced_true_when_env_set():
         os.environ.pop("MTLS_ENFORCE", None)
 
 
-def test_build_ssl_context_none_when_not_enforced():
+def test_build_ssl_context_none_when_not_enforced() -> None:
     os.environ.pop("MTLS_ENFORCE", None)
     assert build_ssl_context() is None
 
 
-def test_build_ssl_context_fails_closed_when_paths_missing():
+def test_build_ssl_context_fails_closed_when_paths_missing() -> None:
     os.environ["MTLS_ENFORCE"] = "true"
     for v in ("MTLS_CERT_FILE", "MTLS_KEY_FILE", "MTLS_CA_FILE"):
         os.environ.pop(v, None)
@@ -76,7 +80,7 @@ def test_build_ssl_context_fails_closed_when_paths_missing():
         os.environ.pop("MTLS_ENFORCE", None)
 
 
-def test_build_ssl_context_fails_closed_when_cert_unreadable():
+def test_build_ssl_context_fails_closed_when_cert_unreadable() -> None:
     # FileNotFoundError, ssl.SSLError, OSError are all OSError-subclass;
     # one base-class match keeps the type checker happy across pyrefly
     # versions.
@@ -86,14 +90,14 @@ def test_build_ssl_context_fails_closed_when_cert_unreadable():
         os.environ["MTLS_KEY_FILE"] = ca.name
         os.environ["MTLS_CA_FILE"] = ca.name
         try:
-            with pytest.raises(OSError):
+            with pytest.raises(OSError, match=r"no certificate|No such file"):
                 build_ssl_context()
         finally:
             for v in ("MTLS_ENFORCE", "MTLS_CERT_FILE", "MTLS_KEY_FILE", "MTLS_CA_FILE"):
                 os.environ.pop(v, None)
 
 
-def test_ssl_context_reloader_reloads_on_mtime_advance(tmp_path):
+def test_ssl_context_reloader_reloads_on_mtime_advance(tmp_path: Path) -> None:
     cert, key = _write_test_identity(tmp_path, "initial")
     ctx = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
     ctx.load_cert_chain(certfile=str(cert), keyfile=str(key))
@@ -112,7 +116,7 @@ def test_ssl_context_reloader_reloads_on_mtime_advance(tmp_path):
     assert reloader.maybe_reload() is False
 
 
-def test_ssl_context_reloader_swallows_transient_error(tmp_path):
+def test_ssl_context_reloader_swallows_transient_error(tmp_path: Path) -> None:
     cert, key = _write_test_identity(tmp_path, "fallback")
     ctx = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
     ctx.load_cert_chain(certfile=str(cert), keyfile=str(key))
@@ -125,13 +129,13 @@ def test_ssl_context_reloader_swallows_transient_error(tmp_path):
     assert reloader.maybe_reload() is False
 
 
-def test_watch_cert_rotation_cancels_cleanly(tmp_path):
+def test_watch_cert_rotation_cancels_cleanly(tmp_path: Path) -> None:
     cert, key = _write_test_identity(tmp_path, "watch")
     ctx = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
     ctx.load_cert_chain(certfile=str(cert), keyfile=str(key))
     reloader = SslContextReloader(ctx, str(cert), str(key))
 
-    async def runner():
+    async def runner() -> None:
         task = asyncio.create_task(watch_cert_rotation(reloader, interval_seconds=60.0))
         await asyncio.sleep(0)
         task.cancel()

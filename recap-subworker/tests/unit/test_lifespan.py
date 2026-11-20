@@ -7,22 +7,37 @@ via an ``@asynccontextmanager`` lifespan, and that shutdown invokes
 
 from __future__ import annotations
 
-from unittest.mock import patch
+from collections.abc import Callable
+from unittest.mock import AsyncMock, patch
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from structlog.testing import capture_logs
+
+from recap_subworker.app.container import ServiceContainer
+from recap_subworker.app.main import create_app
+from recap_subworker.infra.loop_watchdog import LoopWatchdog
 
 pytestmark = pytest.mark.usefixtures("stub_startup_sweep")
 
 
-@pytest.fixture
-def app_factory():
-    from recap_subworker.app.main import create_app
+class _WatchdogStopError(RuntimeError):
+    def __init__(self) -> None:
+        super().__init__("watchdog task failed")
 
+
+class _WatchdogArmError(RuntimeError):
+    def __init__(self) -> None:
+        super().__init__("arm failure")
+
+
+@pytest.fixture
+def app_factory() -> Callable[[], FastAPI]:
     return create_app
 
 
-def test_lifespan_binds_container_to_app_state(app_factory) -> None:
+def test_lifespan_binds_container_to_app_state(app_factory: Callable[[], FastAPI]) -> None:
     app = app_factory()
     with TestClient(app):
         container = getattr(app.state, "container", None)
@@ -31,13 +46,11 @@ def test_lifespan_binds_container_to_app_state(app_factory) -> None:
         assert container.settings is not None
 
 
-def test_lifespan_shutdown_disposes_database_engine(app_factory) -> None:
+def test_lifespan_shutdown_disposes_database_engine(app_factory: Callable[[], FastAPI]) -> None:
     """ServiceContainer.shutdown() must be invoked on lifespan shutdown."""
-    from recap_subworker.app.container import ServiceContainer
-
     calls: list[str] = []
 
-    async def _fake_shutdown(self) -> None:
+    async def _fake_shutdown(self: object) -> None:
         calls.append("shutdown")
 
     with patch.object(ServiceContainer, "shutdown", _fake_shutdown):
@@ -47,7 +60,7 @@ def test_lifespan_shutdown_disposes_database_engine(app_factory) -> None:
         assert calls == ["shutdown"], "ServiceContainer.shutdown must run on lifespan exit"
 
 
-def test_separate_apps_have_independent_containers(app_factory) -> None:
+def test_separate_apps_have_independent_containers(app_factory: Callable[[], FastAPI]) -> None:
     """Two TestClients backed by separate ``create_app()`` instances must
     not share the same ServiceContainer (no module-level leakage).
     """
@@ -60,14 +73,14 @@ def test_separate_apps_have_independent_containers(app_factory) -> None:
         assert container_a is not container_b
 
 
-def test_lifespan_binds_deep_health_runner(app_factory) -> None:
+def test_lifespan_binds_deep_health_runner(app_factory: Callable[[], FastAPI]) -> None:
     app = app_factory()
     with TestClient(app):
         runner = getattr(app.state, "deep_health_runner", None)
         assert runner is not None, "app.state.deep_health_runner must be set by lifespan"
 
 
-def test_lifespan_binds_admin_auth_to_app_state(app_factory) -> None:
+def test_lifespan_binds_admin_auth_to_app_state(app_factory: Callable[[], FastAPI]) -> None:
     app = app_factory()
     with TestClient(app):
         admin_auth = getattr(app.state, "admin_auth", None)
@@ -75,7 +88,7 @@ def test_lifespan_binds_admin_auth_to_app_state(app_factory) -> None:
 
 
 def test_lifespan_fails_fast_when_admin_auth_enabled_without_token(
-    app_factory, monkeypatch
+    app_factory: Callable[[], FastAPI], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """CLAUDE.md rule 9: a forgotten ADMIN_TOKEN_FILE must abort startup,
     never silently serve /admin/* and /v1/runs unauthenticated."""
@@ -86,17 +99,17 @@ def test_lifespan_fails_fast_when_admin_auth_enabled_without_token(
         pass
 
 
-def test_separate_apps_have_independent_deep_health_runners(app_factory) -> None:
+def test_separate_apps_have_independent_deep_health_runners(
+    app_factory: Callable[[], FastAPI],
+) -> None:
     app_a = app_factory()
     app_b = app_factory()
     with TestClient(app_a), TestClient(app_b):
         assert app_a.state.deep_health_runner is not app_b.state.deep_health_runner
 
 
-def test_lifespan_invokes_orphan_sweep_on_startup(app_factory) -> None:
+def test_lifespan_invokes_orphan_sweep_on_startup(app_factory: Callable[[], FastAPI]) -> None:
     """Lifespan must sweep orphaned runs on startup before serving requests."""
-    from unittest.mock import AsyncMock, patch
-
     mock_sweep = AsyncMock(return_value=0)
     with patch("recap_subworker.app.main.sweep_orphaned_runs", mock_sweep):
         app = app_factory()
@@ -105,32 +118,27 @@ def test_lifespan_invokes_orphan_sweep_on_startup(app_factory) -> None:
         mock_sweep.assert_awaited_once()
 
 
-def test_lifespan_raises_when_sweep_fails(app_factory) -> None:
+def test_lifespan_raises_when_sweep_fails(app_factory: Callable[[], FastAPI]) -> None:
     """A sweep failure at startup must stay loud: propagate out of lifespan."""
-    from unittest.mock import AsyncMock, patch
-
     mock_sweep = AsyncMock(side_effect=RuntimeError("db connection failed"))
     with patch("recap_subworker.app.main.sweep_orphaned_runs", mock_sweep):
         app = app_factory()
-        with pytest.raises(RuntimeError, match="db connection failed"):
-            with TestClient(app):
-                pass
+        with pytest.raises(RuntimeError, match="db connection failed"), TestClient(app):
+            pass
 
 
-def test_lifespan_watchdog_stop_failure_does_not_skip_container_shutdown(app_factory) -> None:
+def test_lifespan_watchdog_stop_failure_does_not_skip_container_shutdown(
+    app_factory: Callable[[], FastAPI],
+) -> None:
     """stop() must not let a task exception skip container.shutdown()."""
-    from unittest.mock import AsyncMock, patch
-    from recap_subworker.app.container import ServiceContainer
-    from recap_subworker.infra.loop_watchdog import LoopWatchdog
-
     shutdown_called = False
 
-    async def _fake_shutdown(self) -> None:
+    async def _fake_shutdown(self: object) -> None:
         nonlocal shutdown_called
         shutdown_called = True
 
-    async def _failing_stop(self) -> None:
-        raise RuntimeError("watchdog task failed")
+    async def _failing_stop(self: object) -> None:
+        raise _WatchdogStopError
 
     with (
         patch.object(LoopWatchdog, "start", lambda self: None),
@@ -139,22 +147,19 @@ def test_lifespan_watchdog_stop_failure_does_not_skip_container_shutdown(app_fac
         patch("recap_subworker.app.main.sweep_orphaned_runs", AsyncMock(return_value=0)),
     ):
         app = app_factory()
-        with pytest.raises(RuntimeError, match="watchdog task failed"):
-            with TestClient(app):
-                pass
+        with pytest.raises(RuntimeError, match="watchdog task failed"), TestClient(app):
+            pass
         assert shutdown_called, "container.shutdown() must run even if watchdog.stop() raises"
 
 
-def test_lifespan_starts_and_stops_loop_watchdog(app_factory) -> None:
+def test_lifespan_starts_and_stops_loop_watchdog(app_factory: Callable[[], FastAPI]) -> None:
     """Lifespan must start the loop watchdog on boot and stop it on shutdown."""
-    from recap_subworker.infra.loop_watchdog import LoopWatchdog
-
     events: list[str] = []
 
-    def _fake_start(self) -> None:
+    def _fake_start(self: object) -> None:
         events.append("start")
 
-    async def _fake_stop(self) -> None:
+    async def _fake_stop(self: object) -> None:
         events.append("stop")
 
     with (
@@ -167,37 +172,37 @@ def test_lifespan_starts_and_stops_loop_watchdog(app_factory) -> None:
         assert "stop" in events, "LoopWatchdog.stop must run on lifespan shutdown"
 
 
-def test_lifespan_does_not_log_watchdog_enabled_if_first_arm_fails(app_factory) -> None:
+def test_lifespan_does_not_log_watchdog_enabled_if_first_arm_fails(
+    app_factory: Callable[[], FastAPI],
+) -> None:
     """If first arm raises, LoopWatchdog.start() raises loudly and loop_watchdog_enabled is not logged."""
-    from structlog.testing import capture_logs
-    from recap_subworker.infra.loop_watchdog import LoopWatchdog
 
-    def _failing_start(self) -> None:
-        raise RuntimeError("arm failure")
+    def _failing_start(self: object) -> None:
+        raise _WatchdogArmError
 
     with capture_logs() as cap_logs:
         with patch.object(LoopWatchdog, "start", _failing_start):
             app = app_factory()
-            with pytest.raises(RuntimeError, match="arm failure"):
-                with TestClient(app):
-                    pass
+            with pytest.raises(RuntimeError, match="arm failure"), TestClient(app):
+                pass
         events = [log.get("event") for log in cap_logs]
         assert "loop_watchdog_enabled" not in events
 
 
-def test_lifespan_sweep_runs_before_container_bound_to_app_state(app_factory) -> None:
+def test_lifespan_sweep_runs_before_container_bound_to_app_state(
+    app_factory: Callable[[], FastAPI],
+) -> None:
     """The startup sweep must run before app.state.container is assigned."""
     container_visible_during_sweep: bool | None = None
 
-    async def _fake_sweep(session_factory) -> int:
+    async def _fake_sweep(session_factory: object) -> int:
         nonlocal container_visible_during_sweep
         container_visible_during_sweep = getattr(app.state, "container", None) is not None
         return 0
 
     app = app_factory()
-    with patch("recap_subworker.app.main.sweep_orphaned_runs", _fake_sweep):
-        with TestClient(app):
-            pass
+    with patch("recap_subworker.app.main.sweep_orphaned_runs", _fake_sweep), TestClient(app):
+        pass
 
     assert container_visible_during_sweep is False, (
         "app.state.container must not be set while sweep_orphaned_runs is running"

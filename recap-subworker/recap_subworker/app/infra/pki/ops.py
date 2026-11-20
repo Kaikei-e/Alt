@@ -36,13 +36,19 @@ class _OpsHTTPServer(ThreadingHTTPServer):
 
 
 class _OpsHandler(BaseHTTPRequestHandler):
-    def log_message(self, format: str, *args: object) -> None:
+    def log_message(
+        self,
+        format: str,  # noqa: A002  # BaseHTTPRequestHandler.log_message override signature
+        *args: object,
+    ) -> None:
         _ = (format, args)
 
     def do_GET(self) -> None:
         path = self.path.split("?", 1)[0]
         server = self.server
-        assert isinstance(server, _OpsHTTPServer)
+        if not isinstance(server, _OpsHTTPServer):
+            msg = "expected _OpsHTTPServer"
+            raise TypeError(msg)
         if path == "/health":
             body = json.dumps({"status": "healthy", "service": server.service_name}).encode()
             self.send_response(200)
@@ -93,7 +99,7 @@ def start_ops(
 ) -> OpsHandle:
     addr = listen if listen is not None else ops_listen_addr()
     if addr.startswith(":"):
-        host, port_s = "0.0.0.0", addr[1:]
+        host, port_s = "0.0.0.0", addr[1:]  # noqa: S104  # ops listener binds all interfaces when configured as :port
     elif ":" in addr:
         host, port_s = addr.rsplit(":", 1)
     else:

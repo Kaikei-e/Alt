@@ -16,7 +16,8 @@ class LRUCache[K: Hashable, V]:
 
     def __init__(self, capacity: int) -> None:
         if capacity < 0:
-            raise ValueError("capacity must be non-negative")
+            msg = "capacity must be non-negative"
+            raise ValueError(msg)
         self._capacity = capacity
         self._store: OrderedDict[K, V] = OrderedDict()
         self._lock = Lock()

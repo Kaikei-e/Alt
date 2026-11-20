@@ -8,11 +8,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from recap_subworker.infra.config import Settings
+from recap_subworker.services.genre_learning import (
+    GenreLearningResult,
+    GenreLearningSummary,
+)
 from recap_subworker.services.learning_scheduler import LearningScheduler
 
 
 @pytest.fixture
-def mock_settings():
+def mock_settings() -> MagicMock:
     """Create a mock Settings object."""
     settings = MagicMock(spec=Settings)
     settings.learning_cluster_genres = "society_justice,art_culture"
@@ -32,13 +36,13 @@ def mock_settings():
 
 
 @pytest.fixture
-def scheduler(mock_settings):
+def scheduler(mock_settings: MagicMock) -> LearningScheduler:
     """Create a LearningScheduler instance."""
     return LearningScheduler(mock_settings, interval_hours=0.01)  # Short interval for testing
 
 
 @pytest.mark.asyncio
-async def test_scheduler_start_stop(scheduler):
+async def test_scheduler_start_stop(scheduler: LearningScheduler) -> None:
     """Test starting and stopping the scheduler."""
     assert not scheduler._running
     assert scheduler._task is None
@@ -52,7 +56,7 @@ async def test_scheduler_start_stop(scheduler):
 
 
 @pytest.mark.asyncio
-async def test_scheduler_start_idempotent(scheduler):
+async def test_scheduler_start_idempotent(scheduler: LearningScheduler) -> None:
     """Test that starting scheduler multiple times is idempotent."""
     await scheduler.start()
     task1 = scheduler._task
@@ -64,7 +68,7 @@ async def test_scheduler_start_idempotent(scheduler):
 
 
 @pytest.mark.asyncio
-async def test_scheduler_execute_learning_success(mock_settings):
+async def test_scheduler_execute_learning_success(mock_settings: MagicMock) -> None:
     """Test successful execution of learning task."""
     scheduler = LearningScheduler(mock_settings, interval_hours=0.01)
 
@@ -72,14 +76,17 @@ async def test_scheduler_execute_learning_success(mock_settings):
     mock_session = AsyncMock()
 
     class _Ctx:
-        async def __aenter__(self):
+        async def __aenter__(self) -> AsyncMock:
             return mock_session
 
-        async def __aexit__(self, *args, **kwargs):
+        async def __aexit__(
+            self,
+            *args: object,
+            **kwargs: object,
+        ) -> bool:
             return False
 
-    mock_session_factory = lambda: _Ctx()
-    scheduler._db_resources = MagicMock(session_factory=mock_session_factory)
+    scheduler._db_resources = MagicMock(session_factory=_Ctx)
 
     # Mock database query result
     mock_result = MagicMock()
@@ -105,7 +112,7 @@ async def test_scheduler_execute_learning_success(mock_settings):
 
 
 @pytest.mark.asyncio
-async def test_scheduler_execute_learning_handles_errors(mock_settings):
+async def test_scheduler_execute_learning_handles_errors(mock_settings: MagicMock) -> None:
     """Test that scheduler handles errors gracefully."""
     scheduler = LearningScheduler(mock_settings, interval_hours=0.01)
 
@@ -119,15 +126,16 @@ async def test_scheduler_execute_learning_handles_errors(mock_settings):
 
 
 @pytest.mark.asyncio
-async def test_scheduler_run_loop_executes_periodically(mock_settings):
+async def test_scheduler_run_loop_executes_periodically(mock_settings: MagicMock) -> None:
     """Test that scheduler loop executes tasks periodically."""
     scheduler = LearningScheduler(mock_settings, interval_hours=0.01)
     execution_count = 0
+    target_executions = 2
 
-    async def mock_execute():
+    async def mock_execute() -> None:
         nonlocal execution_count
         execution_count += 1
-        if execution_count >= 2:
+        if execution_count >= target_executions:
             scheduler._running = False  # Stop after 2 executions
 
     scheduler._execute_learning = mock_execute
@@ -135,20 +143,15 @@ async def test_scheduler_run_loop_executes_periodically(mock_settings):
 
     await scheduler._run_loop()
 
-    assert execution_count == 2
+    assert execution_count == target_executions
 
 
 @pytest.mark.asyncio
-async def test_scheduler_build_learning_payload(mock_settings):
+async def test_scheduler_build_learning_payload(mock_settings: MagicMock) -> None:
     """Test building learning payload from result."""
     scheduler = LearningScheduler(mock_settings, interval_hours=0.01)
 
-    from recap_subworker.services.genre_learning import (
-        GenreLearningResult,
-        GenreLearningSummary,
-    )
-
-    summary = GenreLearningSummary(
+    summary_input = GenreLearningSummary(
         total_records=10,
         graph_boost_count=7,
         graph_boost_percentage=70.0,
@@ -160,7 +163,7 @@ async def test_scheduler_build_learning_payload(mock_settings):
     )
 
     result = GenreLearningResult(
-        summary=summary,
+        summary=summary_input,
         entries=[],
         cluster_draft=None,
     )
@@ -169,10 +172,10 @@ async def test_scheduler_build_learning_payload(mock_settings):
 
     summary = payload["summary"]
     assert isinstance(summary, dict)
-    assert summary["total_records"] == 10
+    assert summary["total_records"] == summary_input.total_records
     graph_override = payload["graph_override"]
     assert isinstance(graph_override, dict)
-    assert graph_override["graph_margin"] == 0.15
+    assert graph_override["graph_margin"] == summary_input.graph_margin_reference
     assert "metadata" in payload
     metadata = payload["metadata"]
     assert isinstance(metadata, dict)
@@ -180,7 +183,7 @@ async def test_scheduler_build_learning_payload(mock_settings):
 
 
 @pytest.mark.asyncio
-async def test_scheduler_cancellation(mock_settings):
+async def test_scheduler_cancellation(mock_settings: MagicMock) -> None:
     """Test that scheduler handles cancellation gracefully."""
     scheduler = LearningScheduler(mock_settings, interval_hours=0.01)
 

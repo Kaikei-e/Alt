@@ -11,19 +11,35 @@ import pytest
 from recap_subworker.services.genre_learning import (
     ClusterBuilder,
     GenreLearningService,
+    _prepare_dataframe_from_entries,
     build_graph_boost_snapshot_entries,
+    run_bayes_optimization,
 )
 
+EXPECTED_SAMPLE_COUNT = 2
+GRAPH_BOOST_PERCENTAGE = 50.0
+MIN_BAYES_SAMPLES = 100
+GRAPH_MARGIN_REF = 0.15
+TOP_BOOST_FIRST = 0.2
+TAG_COUNT_FIRST = 2
+TOTAL_SUMMARY_RECORDS = 3
+GRAPH_BOOST_RECORDS = 2
+FULL_TAG_COVERAGE_PCT = 100.0
+GRAPH_MARGIN_MIN = 0.05
+GRAPH_MARGIN_MAX = 0.25
+BOOST_THRESHOLD_MAX = 5.0
+TAG_COUNT_THRESHOLD_MAX = 10
+SMALL_DATASET_MAX_ROWS = 200
+
 
 @pytest.fixture
-def mock_session():
+def mock_session() -> AsyncMock:
     """Create a mock async session."""
-    session = AsyncMock()
-    return session
+    return AsyncMock()
 
 
 @pytest.fixture
-def sample_rows():
+def sample_rows() -> list[dict[str, object]]:
     """Sample rows from recap_genre_learning_results."""
     job_id = uuid4()
     return [
@@ -70,7 +86,9 @@ def sample_rows():
 
 
 @pytest.mark.asyncio
-async def test_fetch_snapshot_rows(mock_session, sample_rows):
+async def test_fetch_snapshot_rows(
+    mock_session: AsyncMock, sample_rows: list[dict[str, object]]
+) -> None:
     """Test fetching snapshot rows from database."""
     # Mock the database query result
     mock_result = MagicMock()
@@ -78,15 +96,17 @@ async def test_fetch_snapshot_rows(mock_session, sample_rows):
     mock_execute = AsyncMock(return_value=mock_result)
     mock_session.execute = mock_execute
 
-    service = GenreLearningService(mock_session, graph_margin=0.15)
+    service = GenreLearningService(mock_session, graph_margin=GRAPH_MARGIN_REF)
     rows = await service.fetch_snapshot_rows(days=7, limit=100)
 
-    assert len(rows) == 2
+    assert len(rows) == len(sample_rows)
     mock_execute.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_generate_learning_result(mock_session, sample_rows):
+async def test_generate_learning_result(
+    mock_session: AsyncMock, sample_rows: list[dict[str, object]]
+) -> None:
     """Test generating a complete learning result."""
     # Mock database query
     mock_result = MagicMock()
@@ -96,16 +116,16 @@ async def test_generate_learning_result(mock_session, sample_rows):
 
     service = GenreLearningService(
         mock_session,
-        graph_margin=0.15,
+        graph_margin=GRAPH_MARGIN_REF,
         cluster_genres=["society_justice", "art_culture"],
         bayes_enabled=False,  # Disable Bayes for small sample test
     )
     result = await service.generate_learning_result()
 
-    assert result.summary.total_records == 2
+    assert result.summary.total_records == len(sample_rows)
     assert result.summary.graph_boost_count == 1
-    assert result.summary.graph_boost_percentage == 50.0
-    assert len(result.entries) == 2
+    assert result.summary.graph_boost_percentage == GRAPH_BOOST_PERCENTAGE
+    assert len(result.entries) == len(sample_rows)
     assert result.entries[0]["strategy"] == "graph_boost"
     assert result.entries[1]["strategy"] == "weighted_score"
     assert result.summary.boost_threshold_reference is None
@@ -113,37 +133,38 @@ async def test_generate_learning_result(mock_session, sample_rows):
 
 
 @pytest.mark.asyncio
-async def test_generate_learning_result_with_bayes_optimization(mock_session):
+async def test_generate_learning_result_with_bayes_optimization(
+    mock_session: AsyncMock,
+) -> None:
     """Test generating learning result with Bayes optimization enabled."""
     # Create enough sample rows for Bayes optimization
     job_id = uuid4()
-    sample_rows: list[dict[str, object]] = []
-    for i in range(150):
-        sample_rows.append(
-            {
-                "job_id": job_id,
-                "article_id": f"article-{i}",
-                "created_at": datetime.now(UTC),
-                "coarse_candidates": [
-                    {
-                        "score": 0.8 + (i % 10) * 0.01,
-                        "graph_boost": 0.1 + (i % 5) * 0.05 if i % 2 == 0 else 0.0,
-                        "genre": "society_justice",
-                    },
+    sample_rows: list[dict[str, object]] = [
+        {
+            "job_id": job_id,
+            "article_id": f"article-{i}",
+            "created_at": datetime.now(UTC),
+            "coarse_candidates": [
+                {
+                    "score": 0.8 + (i % 10) * 0.01,
+                    "graph_boost": 0.1 + (i % 5) * 0.05 if i % 2 == 0 else 0.0,
+                    "genre": "society_justice",
+                },
+            ],
+            "refine_decision": {
+                "final_genre": "society_justice",
+                "strategy": "graph_boost" if i % 2 == 0 else "weighted_score",
+                "confidence": 0.8 + (i % 10) * 0.02,
+            },
+            "tag_profile": {
+                "top_tags": [
+                    {"label": f"tag-{i % 5}", "confidence": 0.9},
                 ],
-                "refine_decision": {
-                    "final_genre": "society_justice",
-                    "strategy": "graph_boost" if i % 2 == 0 else "weighted_score",
-                    "confidence": 0.8 + (i % 10) * 0.02,
-                },
-                "tag_profile": {
-                    "top_tags": [
-                        {"label": f"tag-{i % 5}", "confidence": 0.9},
-                    ],
-                    "entropy": 1.5 + (i % 10) * 0.1,
-                },
-            }
-        )
+                "entropy": 1.5 + (i % 10) * 0.1,
+            },
+        }
+        for i in range(150)
+    ]
 
     # Mock database query
     mock_result = MagicMock()
@@ -153,40 +174,40 @@ async def test_generate_learning_result_with_bayes_optimization(mock_session):
 
     service = GenreLearningService(
         mock_session,
-        graph_margin=0.15,
+        graph_margin=GRAPH_MARGIN_REF,
         cluster_genres=["society_justice"],
         bayes_enabled=True,
         bayes_iterations=10,  # Reduced for faster tests
-        bayes_min_samples=100,
+        bayes_min_samples=MIN_BAYES_SAMPLES,
     )
     result = await service.generate_learning_result()
 
-    assert result.summary.total_records >= 100
+    assert result.summary.total_records >= MIN_BAYES_SAMPLES
     # Bayes optimization should have run
     assert result.summary.boost_threshold_reference is not None
     assert result.summary.tag_count_threshold_reference is not None
     assert result.summary.accuracy_estimate is not None
-    assert result.summary.graph_margin_reference != 0.15  # Should be optimized
+    assert result.summary.graph_margin_reference != GRAPH_MARGIN_REF  # Should be optimized
 
 
-def test_build_graph_boost_snapshot_entries(sample_rows):
+def test_build_graph_boost_snapshot_entries(sample_rows: list[dict[str, object]]) -> None:
     """Test building snapshot entries from raw rows."""
-    entries = build_graph_boost_snapshot_entries(sample_rows, graph_margin=0.15)
+    entries = build_graph_boost_snapshot_entries(sample_rows, graph_margin=GRAPH_MARGIN_REF)
 
-    assert len(entries) == 2
+    assert len(entries) == len(sample_rows)
     assert entries[0]["job_id"] == str(sample_rows[0]["job_id"])
     assert entries[0]["article_id"] == "article-1"
     assert entries[0]["strategy"] == "graph_boost"
     assert entries[0]["margin"] > 0
-    assert entries[0]["top_boost"] == 0.2
-    assert entries[0]["tag_count"] == 2
+    assert entries[0]["top_boost"] == TOP_BOOST_FIRST
+    assert entries[0]["tag_count"] == TAG_COUNT_FIRST
     assert entries[0]["graph_boost_available"] is True
 
     assert entries[1]["strategy"] == "weighted_score"
     assert entries[1]["tag_count"] == 1
 
 
-def test_cluster_builder_builds_clusters():
+def test_cluster_builder_builds_clusters() -> None:
     """Test ClusterBuilder generates cluster drafts."""
     entries = [
         {
@@ -212,7 +233,7 @@ def test_cluster_builder_builds_clusters():
     assert draft["genres"][0]["cluster_count"] > 0
 
 
-def test_cluster_builder_returns_none_for_insufficient_samples():
+def test_cluster_builder_returns_none_for_insufficient_samples() -> None:
     """Test ClusterBuilder returns None when samples are insufficient."""
     entries = [
         {
@@ -234,7 +255,7 @@ def test_cluster_builder_returns_none_for_insufficient_samples():
     assert draft is None
 
 
-def test_summarize_entries():
+def test_summarize_entries() -> None:
     """Test summarizing entries into GenreLearningSummary."""
     entries = [
         {
@@ -260,93 +281,77 @@ def test_summarize_entries():
         },
     ]
 
-    service = GenreLearningService(AsyncMock(), graph_margin=0.15)
+    service = GenreLearningService(AsyncMock(), graph_margin=GRAPH_MARGIN_REF)
     summary = service._summarize_entries(entries)
 
-    assert summary.total_records == 3
-    assert summary.graph_boost_count == 2
+    assert summary.total_records == TOTAL_SUMMARY_RECORDS
+    assert summary.graph_boost_count == GRAPH_BOOST_RECORDS
     assert summary.graph_boost_percentage == pytest.approx(66.67, abs=0.01)
     assert summary.avg_margin is not None
     assert summary.avg_top_boost is not None
     assert summary.avg_confidence is not None
-    assert summary.tag_coverage_pct == 100.0
-    assert summary.graph_margin_reference == 0.15
+    assert summary.tag_coverage_pct == FULL_TAG_COVERAGE_PCT
+    assert summary.graph_margin_reference == GRAPH_MARGIN_REF
 
 
-def test_bayes_optimization_with_sufficient_samples():
+def test_bayes_optimization_with_sufficient_samples() -> None:
     """Test that Bayes optimization runs when sufficient samples are available."""
-
-    from recap_subworker.services.genre_learning import (
-        _prepare_dataframe_from_entries,
-        run_bayes_optimization,
-    )
-
     # Create sample entries with enough data
-    entries = []
-    for i in range(150):
-        entries.append(
-            {
-                "strategy": "graph_boost" if i % 2 == 0 else "weighted_score",
-                "margin": 0.15 + (i % 10) * 0.01,
-                "top_boost": 0.1 + (i % 5) * 0.05 if i % 2 == 0 else 0.0,
-                "tag_count": 2 + (i % 5),
-                "confidence": 0.8 + (i % 10) * 0.02,
-            }
-        )
+    entries = [
+        {
+            "strategy": "graph_boost" if i % 2 == 0 else "weighted_score",
+            "margin": 0.15 + (i % 10) * 0.01,
+            "top_boost": 0.1 + (i % 5) * 0.05 if i % 2 == 0 else 0.0,
+            "tag_count": 2 + (i % 5),
+            "confidence": 0.8 + (i % 10) * 0.02,
+        }
+        for i in range(150)
+    ]
 
     df = _prepare_dataframe_from_entries(entries)
-    assert len(df) >= 100
+    assert len(df) >= MIN_BAYES_SAMPLES
 
     best_params, train_accuracy, test_accuracy = run_bayes_optimization(df, iterations=10, seed=42)
 
-    assert best_params.graph_margin >= 0.05
-    assert best_params.graph_margin <= 0.25
+    assert best_params.graph_margin >= GRAPH_MARGIN_MIN
+    assert best_params.graph_margin <= GRAPH_MARGIN_MAX
     assert best_params.boost_threshold >= 0.0
-    assert best_params.boost_threshold <= 5.0
+    assert best_params.boost_threshold <= BOOST_THRESHOLD_MAX
     assert best_params.tag_count_threshold >= 0
-    assert best_params.tag_count_threshold <= 10
+    assert best_params.tag_count_threshold <= TAG_COUNT_THRESHOLD_MAX
     assert 0.0 <= train_accuracy <= 1.0
     assert 0.0 <= test_accuracy <= 1.0
     # Test accuracy should be available (sufficient samples for train/test split)
     assert test_accuracy is not None
 
 
-def test_bayes_optimization_with_zero_boost():
+def test_bayes_optimization_with_zero_boost() -> None:
     """Test that Bayes optimization handles zero boost values correctly."""
-
-    from recap_subworker.services.genre_learning import (
-        _prepare_dataframe_from_entries,
-        run_bayes_optimization,
-    )
-
     # Create entries with all top_boost = 0
-    entries = []
-    for i in range(150):
-        entries.append(
-            {
-                "strategy": "graph_boost" if i % 2 == 0 else "weighted_score",
-                "margin": 0.15 + (i % 10) * 0.01,
-                "top_boost": 0.0,  # All zeros
-                "tag_count": 2 + (i % 5),
-                "confidence": 0.8 + (i % 10) * 0.02,
-            }
-        )
+    entries = [
+        {
+            "strategy": "graph_boost" if i % 2 == 0 else "weighted_score",
+            "margin": 0.15 + (i % 10) * 0.01,
+            "top_boost": 0.0,  # All zeros
+            "tag_count": 2 + (i % 5),
+            "confidence": 0.8 + (i % 10) * 0.02,
+        }
+        for i in range(150)
+    ]
 
     df = _prepare_dataframe_from_entries(entries)
     best_params, train_accuracy, test_accuracy = run_bayes_optimization(df, iterations=10, seed=42)
 
     # boost_threshold should still be optimized, but will be ignored in objective
     assert best_params.boost_threshold >= 0.0
-    assert best_params.graph_margin >= 0.05
+    assert best_params.graph_margin >= GRAPH_MARGIN_MIN
     assert best_params.tag_count_threshold >= 0
     assert 0.0 <= train_accuracy <= 1.0
     assert 0.0 <= test_accuracy <= 1.0
 
 
-def test_prepare_dataframe_from_entries():
+def test_prepare_dataframe_from_entries() -> None:
     """Test DataFrame preparation from entries."""
-    from recap_subworker.services.genre_learning import _prepare_dataframe_from_entries
-
     entries = [
         {
             "strategy": "graph_boost",
@@ -363,7 +368,7 @@ def test_prepare_dataframe_from_entries():
     ]
 
     df = _prepare_dataframe_from_entries(entries)
-    assert len(df) == 2
+    assert len(df) == EXPECTED_SAMPLE_COUNT
     assert "label" in df.columns
     assert df["label"].dtype == bool
     assert (df["label"] == (df["strategy"] == "graph_boost")).all()
@@ -372,68 +377,56 @@ def test_prepare_dataframe_from_entries():
     assert df["tag_count"].dtype == int
 
 
-def test_bayes_optimization_with_small_dataset():
+def test_bayes_optimization_with_small_dataset() -> None:
     """Test that Bayes optimization handles small datasets gracefully."""
-    from recap_subworker.services.genre_learning import (
-        _prepare_dataframe_from_entries,
-        run_bayes_optimization,
-    )
-
     # Create a small dataset (< 200 samples)
-    entries = []
-    for i in range(50):
-        entries.append(
-            {
-                "strategy": "graph_boost" if i % 2 == 0 else "weighted_score",
-                "margin": 0.15 + (i % 10) * 0.01,
-                "top_boost": 0.1 + (i % 5) * 0.05 if i % 2 == 0 else 0.0,
-                "tag_count": 2 + (i % 5),
-                "confidence": 0.8 + (i % 10) * 0.02,
-            }
-        )
+    entries = [
+        {
+            "strategy": "graph_boost" if i % 2 == 0 else "weighted_score",
+            "margin": 0.15 + (i % 10) * 0.01,
+            "top_boost": 0.1 + (i % 5) * 0.05 if i % 2 == 0 else 0.0,
+            "tag_count": 2 + (i % 5),
+            "confidence": 0.8 + (i % 10) * 0.02,
+        }
+        for i in range(50)
+    ]
 
     df = _prepare_dataframe_from_entries(entries)
-    assert len(df) < 200  # Below threshold for train/test split
+    assert len(df) < SMALL_DATASET_MAX_ROWS  # Below threshold for train/test split
 
     best_params, train_accuracy, test_accuracy = run_bayes_optimization(df, iterations=5, seed=42)
 
     # Should still return valid parameters
-    assert best_params.graph_margin >= 0.05
-    assert best_params.graph_margin <= 0.25
+    assert best_params.graph_margin >= GRAPH_MARGIN_MIN
+    assert best_params.graph_margin <= GRAPH_MARGIN_MAX
     assert 0.0 <= train_accuracy <= 1.0
     assert 0.0 <= test_accuracy <= 1.0
     # For small datasets, test_accuracy equals train_accuracy (backward compatibility)
     assert test_accuracy == train_accuracy
 
 
-def test_bayes_optimization_train_test_split():
+def test_bayes_optimization_train_test_split() -> None:
     """Test that train/test split works correctly for large datasets."""
-    from recap_subworker.services.genre_learning import (
-        _prepare_dataframe_from_entries,
-        run_bayes_optimization,
-    )
-
     # Create a large dataset (>= 200 samples)
-    entries = []
-    for i in range(300):
-        entries.append(
-            {
-                "strategy": "graph_boost" if i % 2 == 0 else "weighted_score",
-                "margin": 0.15 + (i % 10) * 0.01,
-                "top_boost": 0.1 + (i % 5) * 0.05 if i % 2 == 0 else 0.0,
-                "tag_count": 2 + (i % 5),
-                "confidence": 0.8 + (i % 10) * 0.02,
-            }
-        )
+    entries = [
+        {
+            "strategy": "graph_boost" if i % 2 == 0 else "weighted_score",
+            "margin": 0.15 + (i % 10) * 0.01,
+            "top_boost": 0.1 + (i % 5) * 0.05 if i % 2 == 0 else 0.0,
+            "tag_count": 2 + (i % 5),
+            "confidence": 0.8 + (i % 10) * 0.02,
+        }
+        for i in range(300)
+    ]
 
     df = _prepare_dataframe_from_entries(entries)
-    assert len(df) >= 200  # Above threshold for train/test split
+    assert len(df) >= SMALL_DATASET_MAX_ROWS  # Above threshold for train/test split
 
     best_params, train_accuracy, test_accuracy = run_bayes_optimization(df, iterations=10, seed=42)
 
     # Should return valid parameters
-    assert best_params.graph_margin >= 0.05
-    assert best_params.graph_margin <= 0.25
+    assert best_params.graph_margin >= GRAPH_MARGIN_MIN
+    assert best_params.graph_margin <= GRAPH_MARGIN_MAX
     assert 0.0 <= train_accuracy <= 1.0
     assert 0.0 <= test_accuracy <= 1.0
     # For large datasets, test_accuracy should be independent from train_accuracy

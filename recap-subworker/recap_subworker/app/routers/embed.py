@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from typing import Annotated
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -14,6 +15,7 @@ from ..deps import get_embed_service_dep
 logger = structlog.get_logger(__name__)
 
 router = APIRouter()
+_MAX_EMBED_TEXTS = 256
 
 
 class EmbedRequest(BaseModel):
@@ -32,19 +34,22 @@ class EmbedRequest(BaseModel):
     @classmethod
     def validate_texts(cls, v: list[str]) -> list[str]:
         if not v:
-            raise ValueError("texts must contain at least 1 item")
-        if len(v) > 256:
-            raise ValueError("texts must not exceed 256 items (payload exceeds batch size limit)")
+            msg = "texts must contain at least 1 item"
+            raise ValueError(msg)
+        if len(v) > _MAX_EMBED_TEXTS:
+            msg = "texts must not exceed 256 items (payload exceeds batch size limit)"
+            raise ValueError(msg)
         for idx, text in enumerate(v):
             if not text or not text.strip():
-                raise ValueError(f"text at index {idx} must not be empty or whitespace")
+                msg = f"text at index {idx} must not be empty or whitespace"
+                raise ValueError(msg)
         return v
 
 
 @router.post("/embed", response_model=EmbedResponse)
 async def embed_texts(
     request: EmbedRequest,
-    service: EmbedService = Depends(get_embed_service_dep),
+    service: Annotated[EmbedService, Depends(get_embed_service_dep)],
 ) -> EmbedResponse:
     """Generate sentence embeddings for 1..256 texts."""
     try:
@@ -54,13 +59,15 @@ async def embed_texts(
             normalize=request.normalize,
         )
     except EmbedderError as exc:
-        logger.error("embedder backend failed during text embedding", error=str(exc))
+        logger.error(  # noqa: TRY400  # structured error field without traceback
+            "embedder backend failed during text embedding", error=str(exc)
+        )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail={"reason": "Embedding service unavailable"},
         ) from exc
     except Exception as exc:
-        logger.error("unexpected error during text embedding", error=str(exc))
+        logger.exception("unexpected error during text embedding", error=str(exc))
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail={"reason": "Embedding service unavailable"},

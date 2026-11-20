@@ -10,13 +10,14 @@ Implements quality verification gates:
 from __future__ import annotations
 
 import re
-from collections.abc import Sequence
-from typing import Any, Literal
+from collections.abc import Iterable, Sequence
+from typing import Literal, Protocol
 from uuid import UUID
 
 import numpy as np
 import structlog
 from pydantic import BaseModel, Field
+from sudachipy import dictionary, tokenizer
 
 from .embed_service import (
     EmbedderError,
@@ -63,6 +64,16 @@ WHY_HINT_CUES: tuple[str, ...] = (
 )
 
 NON_CONTENT_POS: frozenset[str] = frozenset({"助詞", "助動詞", "補助記号", "記号", "空白"})
+_MIN_POS_PARTS = 2
+
+
+class _SudachiToken(Protocol):
+    def surface(self) -> str: ...
+    def part_of_speech(self) -> Sequence[str]: ...
+
+
+class _SudachiTokenizer(Protocol):
+    def tokenize(self, text: str, mode: object = ...) -> Iterable[_SudachiToken]: ...
 
 
 class VerifySentenceInput(BaseModel):
@@ -252,8 +263,8 @@ def check_why_hint_present(
 
 def calculate_specificity(
     text: str,
-    tokenizer_obj: Any,
-    split_mode: Any,
+    tokenizer_obj: _SudachiTokenizer | None,
+    split_mode: object,
 ) -> tuple[int, int, int, float]:
     """Calculate entity and number specificity density using Sudachi.
 
@@ -270,7 +281,8 @@ def calculate_specificity(
         return 0, 0, 0, 0.0
 
     if tokenizer_obj is None:
-        raise TokenizerUnavailableError("Sudachi tokenizer instance is required; failing closed.")
+        msg = "Sudachi tokenizer instance is required; failing closed."
+        raise TokenizerUnavailableError(msg)
 
     tokens = tokenizer_obj.tokenize(text, split_mode)
     proper_nouns = 0
@@ -282,8 +294,8 @@ def calculate_specificity(
         if not surface.strip():
             continue
         pos = t.part_of_speech()
-        is_proper = len(pos) >= 2 and pos[0] == "名詞" and pos[1] == "固有名詞"
-        is_num_pos = len(pos) >= 2 and pos[0] == "名詞" and pos[1] == "数詞"
+        is_proper = len(pos) >= _MIN_POS_PARTS and pos[0] == "名詞" and pos[1] == "固有名詞"
+        is_num_pos = len(pos) >= _MIN_POS_PARTS and pos[0] == "名詞" and pos[1] == "数詞"
         has_digit = bool(re.search(r"\d", surface))
         is_num = is_num_pos or has_digit
 
@@ -293,9 +305,8 @@ def calculate_specificity(
         elif is_num:
             numbers += 1
             content_tokens += 1
-        else:
-            if pos[0] not in NON_CONTENT_POS:
-                content_tokens += 1
+        elif pos[0] not in NON_CONTENT_POS:
+            content_tokens += 1
 
     density = (proper_nouns + numbers) / max(content_tokens, 1)
     return proper_nouns, numbers, content_tokens, round(float(density), 4)
@@ -347,15 +358,12 @@ class CardVerifierService:
         self.embed_service = embed_service
         self.filler_phrases = list(filler_phrases)
         try:
-            from sudachipy import dictionary, tokenizer
-
             self._tokenizer = dictionary.Dictionary().create()
             self._split_mode = tokenizer.Tokenizer.SplitMode.C
         except Exception as exc:
-            logger.error("sudachi tokenizer initialization failed", error=str(exc))
-            raise TokenizerUnavailableError(
-                f"Sudachi dictionary or tokenizer unavailable: {exc}"
-            ) from exc
+            logger.error("sudachi tokenizer initialization failed", error=str(exc))  # noqa: TRY400 - expected failure boundary; wraps and re-raises domain error
+            msg = f"Sudachi dictionary or tokenizer unavailable: {exc}"
+            raise TokenizerUnavailableError(msg) from exc
 
     def verify_card(self, request: VerifyCardRequest) -> VerifyCardResponse:
         """Verify card sentences against cited items.
@@ -366,8 +374,9 @@ class CardVerifierService:
         try:
             model_ident = self.embed_service.resolve_model_identity()
         except Exception as exc:
-            logger.error("failed to resolve embedder model identity", error=str(exc))
-            raise BackendEmbeddingError(f"Embedding backend identity error: {exc}") from exc
+            logger.error("failed to resolve embedder model identity", error=str(exc))  # noqa: TRY400 - expected failure boundary; wraps and re-raises domain error
+            msg = f"Embedding backend identity error: {exc}"
+            raise BackendEmbeddingError(msg) from exc
 
         sentence_texts = [s.text for s in request.sentences]
         item_texts = [f"{item.title} — {item.lede}" for item in request.items]
@@ -377,16 +386,16 @@ class CardVerifierService:
             try:
                 embed_res = self.embed_service.embed(all_texts, normalize=True)
             except Exception as exc:
-                logger.error("embedding backend failed during card verification", error=str(exc))
-                raise BackendEmbeddingError(f"Embedding backend failed: {exc}") from exc
+                logger.error("embedding backend failed during card verification", error=str(exc))  # noqa: TRY400 - expected failure boundary; wraps and re-raises domain error
+                msg = f"Embedding backend failed: {exc}"
+                raise BackendEmbeddingError(msg) from exc
         else:
             dim = getattr(self.embed_service.embedder, "dim", None) or getattr(
                 self.embed_service.embedder, "dimension", None
             )
             if dim is None or int(dim) <= 0:
-                raise UnresolvableDimensionError(
-                    "Embedder backend did not report embedding dimension."
-                )
+                msg = "Embedder backend did not report embedding dimension."
+                raise UnresolvableDimensionError(msg)
             embed_res = EmbedResponse(
                 model=model_ident,
                 dim=int(dim),

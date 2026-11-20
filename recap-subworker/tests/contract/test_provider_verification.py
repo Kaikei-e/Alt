@@ -28,6 +28,7 @@ import socket
 import threading
 import time
 import urllib.request
+from http import HTTPStatus
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -96,7 +97,9 @@ RECAP_WORKER_PACT = PACT_DIR / "recap-worker-recap-subworker.json"
 # /v1/runs and GET /v1/runs/{run_id} (recap-worker/recap-worker/src/clients/
 # subworker_contract.rs). recap-worker sends this via SubworkerClient's
 # admin token; recap-subworker verifies it via require_admin_token.
-_PROVIDER_ADMIN_TOKEN = "test-recap-subworker-token-42"
+_PROVIDER_ADMIN_TOKEN = "test-recap-subworker-token-42"  # noqa: S105 - test fixture value, not a credential
+DEFAULT_EMBED_DIM = 1024
+CUSTOM_EMBED_DIM = 512
 
 
 def _get_free_port() -> int:
@@ -195,8 +198,11 @@ class _FakeEvaluationService:
     """Stands in for `EvaluationService` in evaluation routes."""
 
     def evaluate(
-        self, golden_data_path: Path, language: str | None = None, **kwargs: Any
-    ) -> dict[str, Any]:
+        self,
+        golden_data_path: Path,
+        language: str | None = None,
+        **kwargs: object,
+    ) -> dict[str, object]:
         return {
             "accuracy": 0.91,
             "accuracy_ci": {"point": 0.91, "lower": 0.85, "upper": 0.95, "width": 0.10},
@@ -403,7 +409,7 @@ def _patch_evaluation_path_validator(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(scope="module")
-def provider_url():
+def provider_url() -> tuple[str, int]:
     """Start the provider server on a free port for all tests in this module."""
     port = _get_free_port()
     app = _create_provider_app()
@@ -418,14 +424,14 @@ def provider_url():
     base_url = f"http://127.0.0.1:{port}"
     for _ in range(100):
         try:
-            urllib.request.urlopen(f"{base_url}/openapi.json")
+            urllib.request.urlopen(f"{base_url}/openapi.json")  # noqa: S310 - fixed local http://127.0.0.1 test server URL
             break
-        except Exception:
+        except OSError:
             time.sleep(0.05)
     else:
         pytest.fail("Provider server did not start")
 
-    yield base_url, port
+    return base_url, port
 
 
 def _configure_verifier(
@@ -502,7 +508,7 @@ def _configure_verifier(
     not PACT_BROKER_URL and not RECAP_WORKER_PACT.exists(),
     reason=f"No Broker URL and pact file not found: {RECAP_WORKER_PACT}",
 )
-def test_verify_recap_worker_contract(provider_url: tuple[str, int]):
+def test_verify_recap_worker_contract(provider_url: tuple[str, int]) -> None:
     """Verify recap-subworker satisfies recap-worker's contract."""
     base_url, port = provider_url
 
@@ -518,7 +524,7 @@ def test_verify_recap_worker_contract(provider_url: tuple[str, int]):
     verifier.verify()
 
 
-def test_provider_app_embed_injectable_fake_embedder():
+def test_provider_app_embed_injectable_fake_embedder() -> None:
     """Verify that a custom fake embedder can be injected into the provider test app."""
     auth_headers = {"Authorization": f"Bearer {_PROVIDER_ADMIN_TOKEN}"}
 
@@ -530,22 +536,22 @@ def test_provider_app_embed_injectable_fake_embedder():
         json={"texts": ["Example headline 1"], "normalize": True},
         headers=auth_headers,
     )
-    assert res_default.status_code == 200
-    assert res_default.json()["dim"] == 1024
+    assert res_default.status_code == HTTPStatus.OK
+    assert res_default.json()["dim"] == DEFAULT_EMBED_DIM
 
     # 2. Injected custom fake embedder emits 512-dim vectors
-    custom_app = _create_provider_app(embedder=HashEmbedder(dim=512))
+    custom_app = _create_provider_app(embedder=HashEmbedder(dim=CUSTOM_EMBED_DIM))
     custom_client = TestClient(custom_app)
     res_custom = custom_client.post(
         "/v1/embed",
         json={"texts": ["Example headline 1"], "normalize": True},
         headers=auth_headers,
     )
-    assert res_custom.status_code == 200
-    assert res_custom.json()["dim"] == 512
+    assert res_custom.status_code == HTTPStatus.OK
+    assert res_custom.json()["dim"] == CUSTOM_EMBED_DIM
 
 
-def test_provider_app_cluster_stories_endpoint():
+def test_provider_app_cluster_stories_endpoint() -> None:
     """Verify provider test app hosts /v1/cluster-stories successfully."""
     app = _create_provider_app()
     client = TestClient(app)
@@ -563,13 +569,13 @@ def test_provider_app_cluster_stories_endpoint():
         },
         headers={"Authorization": f"Bearer {_PROVIDER_ADMIN_TOKEN}"},
     )
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     data = response.json()
     assert len(data["clusters"]) == 1
     assert data["clusters"][0]["member_ids"] == ["11111111-1111-1111-1111-111111111111"]
 
 
-def test_provider_app_verify_endpoint():
+def test_provider_app_verify_endpoint() -> None:
     """Verify provider test app hosts /v1/verify successfully."""
     app = _create_provider_app()
     client = TestClient(app)
@@ -598,7 +604,7 @@ def test_provider_app_verify_endpoint():
         },
         headers={"Authorization": f"Bearer {_PROVIDER_ADMIN_TOKEN}"},
     )
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     data = response.json()
     assert len(data["sentences"]) == 1
     assert data["sentences"][0]["idx"] == 0
@@ -612,7 +618,7 @@ def test_provider_app_verify_endpoint():
     assert data["embedding"]["model"] == "hash-fake"
 
 
-def test_provider_app_endpoints_reject_unauthenticated():
+def test_provider_app_endpoints_reject_unauthenticated() -> None:
     """Verify that embed, cluster-stories, and verify reject unauthenticated requests."""
     app = _create_provider_app()
     client = TestClient(app)
@@ -622,7 +628,7 @@ def test_provider_app_endpoints_reject_unauthenticated():
         "/v1/embed",
         json={"texts": ["Example"], "normalize": True},
     )
-    assert res_embed.status_code == 401
+    assert res_embed.status_code == HTTPStatus.UNAUTHORIZED
 
     # 2. /v1/cluster-stories
     res_cluster = client.post(
@@ -637,7 +643,7 @@ def test_provider_app_endpoints_reject_unauthenticated():
             ],
         },
     )
-    assert res_cluster.status_code == 401
+    assert res_cluster.status_code == HTTPStatus.UNAUTHORIZED
 
     # 3. /v1/verify
     res_verify = client.post(
@@ -650,40 +656,40 @@ def test_provider_app_endpoints_reject_unauthenticated():
             "items": [],
         },
     )
-    assert res_verify.status_code == 401
+    assert res_verify.status_code == HTTPStatus.UNAUTHORIZED
 
     # 4. /v1/classify-runs (POST and GET)
     res_classify_post = client.post(
         "/v1/classify-runs",
         json={"texts": ["Example"]},
     )
-    assert res_classify_post.status_code == 401
+    assert res_classify_post.status_code == HTTPStatus.UNAUTHORIZED
     res_classify_get = client.get("/v1/classify-runs/42")
-    assert res_classify_get.status_code == 401
+    assert res_classify_get.status_code == HTTPStatus.UNAUTHORIZED
 
     # 5. /v1/classify/coarse
     res_coarse = client.post(
         "/v1/classify/coarse",
         json={"text": "Example"},
     )
-    assert res_coarse.status_code == 401
+    assert res_coarse.status_code == HTTPStatus.UNAUTHORIZED
 
     # 6. /v1/extract
     res_extract = client.post(
         "/v1/extract",
         json={"html": "<p>Body</p>", "include_comments": False},
     )
-    assert res_extract.status_code == 401
+    assert res_extract.status_code == HTTPStatus.UNAUTHORIZED
 
     # 7. /v1/evaluation/genres
     res_eval = client.post(
         "/v1/evaluation/genres",
         json={"use_bootstrap": True, "n_bootstrap": 1000},
     )
-    assert res_eval.status_code == 401
+    assert res_eval.status_code == HTTPStatus.UNAUTHORIZED
 
 
-def test_provider_states_card_pipeline_states_registered():
+def test_provider_states_card_pipeline_states_registered() -> None:
     """Verify that provider states endpoint accepts embedding, clustering, verification, extract, and evaluation states."""
     app = _create_provider_app()
     client = TestClient(app)
@@ -698,13 +704,13 @@ def test_provider_states_card_pipeline_states_registered():
         "the evaluation service is ready",
     ]:
         res = client.post("/_pact/provider-states", json={"state": state, "action": "setup"})
-        assert res.status_code == 200
+        assert res.status_code == HTTPStatus.OK
         assert res.json() == {"status": "ok"}
 
 
 def test_create_provider_app_does_not_permanently_replace_require_existing_path(
     monkeypatch: pytest.MonkeyPatch,
-):
+) -> None:
     """Verify _create_provider_app does not mutate evaluation_mod.require_existing_path."""
     monkeypatch.undo()
     assert evaluation_mod.require_existing_path is require_existing_path

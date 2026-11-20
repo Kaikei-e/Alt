@@ -8,6 +8,7 @@ has spread to five or more services.
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import ssl
 from pathlib import Path
@@ -15,6 +16,8 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     pass
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def mtls_enforced() -> bool:
@@ -106,5 +109,6 @@ async def watch_cert_rotation(
             reloader.maybe_reload()
         except asyncio.CancelledError:
             raise
-        except Exception:
+        except Exception as exc:  # noqa: BLE001  # keep background cert rotation watcher alive on transient errors
+            _LOGGER.debug("cert rotation check failed: %s", exc)
             continue

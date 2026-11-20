@@ -9,28 +9,29 @@ import pytest
 
 from recap_subworker.app.container import ServiceContainer
 from recap_subworker.infra.config import Settings
+from recap_subworker.services.story_clusterer import StoryClustererService
 
 
 class TestServiceContainerForTesting:
-    def test_for_testing_injects_embedder(self):
+    def test_for_testing_injects_embedder(self) -> None:
         settings = Settings(model_id="fake", allow_embedding_drift=True)
         fake_emb = MagicMock()
         container = ServiceContainer.for_testing(settings, embedder=fake_emb)
         assert container.embedder is fake_emb
 
-    def test_for_testing_injects_clusterer(self):
+    def test_for_testing_injects_clusterer(self) -> None:
         settings = Settings(model_id="fake", allow_embedding_drift=True)
         fake_clust = MagicMock()
         container = ServiceContainer.for_testing(settings, clusterer=fake_clust)
         assert container.clusterer_gateway is fake_clust
 
-    def test_for_testing_injects_pipeline(self):
+    def test_for_testing_injects_pipeline(self) -> None:
         settings = Settings(model_id="fake", allow_embedding_drift=True)
         fake_pipe = MagicMock()
         container = ServiceContainer.for_testing(settings, pipeline=fake_pipe)
         assert container.pipeline is fake_pipe
 
-    def test_for_testing_injects_run_manager(self):
+    def test_for_testing_injects_run_manager(self) -> None:
         settings = Settings(model_id="fake", allow_embedding_drift=True)
         fake_rm = MagicMock()
         container = ServiceContainer.for_testing(settings, run_manager=fake_rm)
@@ -44,7 +45,7 @@ class TestServiceContainerEvaluationService:
     singleton so the default (no per-request weights override) path loads
     those models once per process."""
 
-    def test_evaluation_service_is_memoized(self):
+    def test_evaluation_service_is_memoized(self) -> None:
         settings = Settings(model_id="fake", allow_embedding_drift=True)
         container = ServiceContainer(settings)
 
@@ -53,7 +54,7 @@ class TestServiceContainerEvaluationService:
 
         assert first is second
 
-    def test_evaluation_service_uses_settings_derived_weight_paths(self, tmp_path: Path):
+    def test_evaluation_service_uses_settings_derived_weight_paths(self, tmp_path: Path) -> None:
         ja_path = str(tmp_path / "ja.joblib")
         en_path = str(tmp_path / "en.joblib")
         settings = Settings(
@@ -73,7 +74,7 @@ class TestServiceContainerEvaluationService:
 class TestServiceContainerNewServices:
     """Verify embed_service, story_clusterer_service, and card_verifier_service properties."""
 
-    def test_embed_service_is_memoized(self):
+    def test_embed_service_is_memoized(self) -> None:
         settings = Settings(model_id="fake", allow_embedding_drift=True)
         container = ServiceContainer(settings)
         first = container.embed_service
@@ -81,15 +82,14 @@ class TestServiceContainerNewServices:
         assert first is second
         assert first.embedder is container.embedder
 
-    def test_story_clusterer_service_property(self):
+    def test_story_clusterer_service_property(self) -> None:
         settings = Settings(model_id="fake", allow_embedding_drift=True)
         container = ServiceContainer(settings)
         svc = container.story_clusterer_service
-        from recap_subworker.services.story_clusterer import StoryClustererService
 
         assert isinstance(svc, StoryClustererService)
 
-    def test_card_verifier_service_is_memoized(self):
+    def test_card_verifier_service_is_memoized(self) -> None:
         settings = Settings(model_id="fake", allow_embedding_drift=True)
         container = ServiceContainer(settings)
         first = container.card_verifier_service
@@ -100,13 +100,13 @@ class TestServiceContainerNewServices:
 
 class TestServiceContainerShutdown:
     @pytest.mark.asyncio
-    async def test_shutdown_when_nothing_initialized(self):
+    async def test_shutdown_when_nothing_initialized(self) -> None:
         settings = Settings(model_id="fake", allow_embedding_drift=True)
         container = ServiceContainer(settings)
         await container.shutdown()  # Should not raise
 
     @pytest.mark.asyncio
-    async def test_shutdown_calls_run_manager_shutdown(self):
+    async def test_shutdown_calls_run_manager_shutdown(self) -> None:
         settings = Settings(model_id="fake", allow_embedding_drift=True)
         mock_rm = AsyncMock()
         container = ServiceContainer.for_testing(settings, run_manager=mock_rm)
@@ -114,7 +114,7 @@ class TestServiceContainerShutdown:
         mock_rm.shutdown.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_shutdown_handles_run_manager_error(self):
+    async def test_shutdown_handles_run_manager_error(self) -> None:
         settings = Settings(model_id="fake", allow_embedding_drift=True)
         mock_rm = AsyncMock()
         mock_rm.shutdown.side_effect = RuntimeError("boom")

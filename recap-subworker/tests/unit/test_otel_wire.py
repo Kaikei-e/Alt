@@ -20,14 +20,25 @@ import os
 import subprocess
 import sys
 import threading
+from collections.abc import Iterator
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
 from typing import Any, cast
 
 import pytest
 from opentelemetry.proto.collector.logs.v1.logs_service_pb2 import ExportLogsServiceRequest
 from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
 
-_FAKE_TOKEN = "ValidRaskIngestToken1234567890abcdefgh"
+from recap_subworker.infra.otel import OTelConfig, init_otel_provider
+
+_FAKE_TOKEN = "ValidRaskIngestToken1234567890abcdefgh"  # noqa: S105 - test fixture value, not a credential
+
+
+class _ChildProcessError(RuntimeError):
+    def __init__(self, returncode: int, stdout: str, stderr: str) -> None:
+        super().__init__(
+            f"Child process failed (code {returncode}):\nSTDOUT: {stdout}\nSTDERR: {stderr}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -46,7 +57,7 @@ class _WireHTTPServer(HTTPServer):
 class _CollectingHandler(BaseHTTPRequestHandler):
     """Captures every POST: path, Authorization, Content-Type, Content-Encoding, body."""
 
-    def do_POST(self):
+    def do_POST(self) -> None:
         length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(length)
         cast(_WireHTTPServer, self.server).requests.append(
@@ -63,14 +74,18 @@ class _CollectingHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b"")
 
-    def log_message(self, format: str, *args: Any) -> None:
+    def log_message(
+        self,
+        format: str,  # noqa: A002  # BaseHTTPRequestHandler.log_message override signature
+        *args: object,
+    ) -> None:
         pass
 
 
 class _RedirectHandler(BaseHTTPRequestHandler):
     """Returns 307 for every POST; directs to destination server base."""
 
-    def do_POST(self):
+    def do_POST(self) -> None:
         cast(_WireHTTPServer, self.server).requests.append(self.path)
         dest_base = getattr(self.server, "destination_base", "http://127.0.0.1:1")
         if self.path == "/v1/traces":
@@ -83,23 +98,33 @@ class _RedirectHandler(BaseHTTPRequestHandler):
         self.send_header("Location", f"{dest_base}{dest_path}")
         self.end_headers()
 
-    def log_message(self, format: str, *args: Any) -> None:
+    def log_message(
+        self,
+        format: str,  # noqa: A002  # BaseHTTPRequestHandler.log_message override signature
+        *args: object,
+    ) -> None:
         pass
 
 
 class _DestinationHandler(BaseHTTPRequestHandler):
     """Destination server: should receive ZERO requests when redirect guard is active."""
 
-    def do_POST(self):
+    def do_POST(self) -> None:
         cast(_WireHTTPServer, self.server).hit_count += 1
         self.send_response(200)
         self.end_headers()
 
-    def log_message(self, format: str, *args: Any) -> None:
+    def log_message(
+        self,
+        format: str,  # noqa: A002  # BaseHTTPRequestHandler.log_message override signature
+        *args: object,
+    ) -> None:
         pass
 
 
-def _start_server(handler_cls, **extra_attrs):
+def _start_server(
+    handler_cls: type[BaseHTTPRequestHandler], **extra_attrs: object
+) -> tuple[_WireHTTPServer, threading.Thread]:
     srv = _WireHTTPServer(("127.0.0.1", 0), handler_cls)
     srv.requests = []
     for k, v in extra_attrs.items():
@@ -114,31 +139,31 @@ def _start_server(handler_cls, **extra_attrs):
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture()
-def rask_token_file(tmp_path):
+@pytest.fixture
+def rask_token_file(tmp_path: Path) -> Path:
     f = tmp_path / "rask_ingest_token"
     f.write_text(_FAKE_TOKEN)
     return f
 
 
-@pytest.fixture()
-def otlp_server():
+@pytest.fixture
+def otlp_server() -> Iterator[_WireHTTPServer]:
     srv, thread = _start_server(_CollectingHandler)
     yield srv
     srv.shutdown()
     thread.join(timeout=5)
 
 
-@pytest.fixture()
-def redirect_server():
+@pytest.fixture
+def redirect_server() -> Iterator[_WireHTTPServer]:
     srv, thread = _start_server(_RedirectHandler)
     yield srv
     srv.shutdown()
     thread.join(timeout=5)
 
 
-@pytest.fixture()
-def destination_server():
+@pytest.fixture
+def destination_server() -> Iterator[_WireHTTPServer]:
     srv, thread = _start_server(_DestinationHandler, hit_count=0)
     yield srv
     srv.shutdown()
@@ -198,16 +223,15 @@ finally:
     if extra_env:
         env.update(extra_env)
 
-    res = subprocess.run(
+    res = subprocess.run(  # noqa: S603 - invokes isolated test subprocess via sys.executable
         [sys.executable, "-c", code],
         env=env,
         capture_output=True,
         text=True,
+        check=False,
     )
     if res.returncode != 0:
-        raise RuntimeError(
-            f"Child process failed (code {res.returncode}):\nSTDOUT: {res.stdout}\nSTDERR: {res.stderr}"
-        )
+        raise _ChildProcessError(res.returncode, res.stdout, res.stderr)
 
 
 def _decode_spans(body: bytes, content_encoding: str | None) -> list[str]:
@@ -234,7 +258,9 @@ def _decode_logs(body: bytes, content_encoding: str | None) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def test_init_otel_provider_sends_bearer_to_traces_and_logs(rask_token_file, otlp_server):
+def test_init_otel_provider_sends_bearer_to_traces_and_logs(
+    rask_token_file: Path, otlp_server: _WireHTTPServer
+) -> None:
     """init_otel_provider wires Bearer token and emits decoded span + log records."""
     endpoint = f"http://127.0.0.1:{otlp_server.server_port}"
     _run_client_in_subprocess(
@@ -267,8 +293,10 @@ def test_init_otel_provider_sends_bearer_to_traces_and_logs(rask_token_file, otl
 
 
 def test_redirect_307_hits_destination_zero_times(
-    rask_token_file, redirect_server, destination_server
-):
+    rask_token_file: Path,
+    redirect_server: _WireHTTPServer,
+    destination_server: _WireHTTPServer,
+) -> None:
     """307 redirect: positive origin receives BOTH routes before distinct redirect dest 0."""
     dest_base = f"http://127.0.0.1:{destination_server.server_port}"
     redirect_server.destination_base = dest_base
@@ -291,7 +319,9 @@ def test_redirect_307_hits_destination_zero_times(
     )
 
 
-def test_separate_trace_log_compression_no_cross_contamination(rask_token_file, otlp_server):
+def test_separate_trace_log_compression_no_cross_contamination(
+    rask_token_file: Path, otlp_server: _WireHTTPServer
+) -> None:
     """Separate trace/log compression env preserves correct body/header decode (no contamination)."""
     endpoint = f"http://127.0.0.1:{otlp_server.server_port}"
 
@@ -353,10 +383,10 @@ def test_separate_trace_log_compression_no_cross_contamination(rask_token_file, 
     assert "log-gzip-subworker" in logs2
 
 
-def test_missing_or_invalid_token_file_raises_when_enabled(tmp_path, monkeypatch):
+def test_missing_or_invalid_token_file_raises_when_enabled(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Missing or invalid token file with OTEL_ENABLED=true raises RuntimeError fail-closed."""
-    from recap_subworker.infra.otel import OTelConfig, init_otel_provider
-
     monkeypatch.setenv("OTEL_ENABLED", "true")
     monkeypatch.setenv("OTEL_SERVICE_NAME", "recap-subworker-err-test")
 
@@ -375,10 +405,8 @@ def test_missing_or_invalid_token_file_raises_when_enabled(tmp_path, monkeypatch
     assert bad_val not in str(exc_info.value), "Secret leaked in exception message"
 
 
-def test_disabled_returns_noop_without_token_file(monkeypatch):
+def test_disabled_returns_noop_without_token_file(monkeypatch: pytest.MonkeyPatch) -> None:
     """OTEL_ENABLED=false does not read file and returns no-op shutdown."""
-    from recap_subworker.infra.otel import OTelConfig, init_otel_provider
-
     monkeypatch.setenv("OTEL_ENABLED", "false")
     monkeypatch.delenv("RASK_INGEST_TOKEN_FILE", raising=False)
 

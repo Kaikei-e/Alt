@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from prometheus_client import Counter, Gauge, Histogram
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from ..infra.config import Settings
+
+if TYPE_CHECKING:
+    from fastapi import FastAPI
 
 # Module-level singleton to avoid lru_cache issues with unhashable Settings
 _instrumentator: Instrumentator | None = None
@@ -13,13 +18,13 @@ _instrumentator: Instrumentator | None = None
 
 def get_instrumentator(settings: Settings) -> Instrumentator:
     """Create or return the shared Instrumentator instance."""
-    global _instrumentator
+    global _instrumentator  # noqa: PLW0603  # process-level Prometheus instrumentator singleton
     if _instrumentator is None:
         _instrumentator = Instrumentator()
     return _instrumentator
 
 
-def setup_metrics(app, settings: Settings) -> None:
+def setup_metrics(app: FastAPI, settings: Settings) -> None:
     """Attach Prometheus instrumentation to the FastAPI app."""
 
     instrumentator = get_instrumentator(settings)

@@ -67,28 +67,32 @@ class StoryClusterParams(BaseModel):
     @classmethod
     def validate_threshold(cls, v: float) -> float:
         if math.isnan(v) or v <= 0.0 or v > 1.0:
-            raise ValueError("threshold must be in (0, 1]")
+            msg = "threshold must be in (0, 1]"
+            raise ValueError(msg)
         return v
 
     @field_validator("linkage")
     @classmethod
     def validate_linkage(cls, v: str) -> str:
         if v not in VALID_LINKAGES:
-            raise ValueError(f"unknown linkage: '{v}'. Must be one of {sorted(VALID_LINKAGES)}")
+            msg = f"unknown linkage: '{v}'. Must be one of {sorted(VALID_LINKAGES)}"
+            raise ValueError(msg)
         return v
 
     @field_validator("time_decay_per_day")
     @classmethod
     def validate_time_decay(cls, v: float) -> float:
         if math.isnan(v) or v < 0.0:
-            raise ValueError("time_decay_per_day must be >= 0")
+            msg = "time_decay_per_day must be >= 0"
+            raise ValueError(msg)
         return v
 
     @field_validator("min_cluster_size")
     @classmethod
     def validate_min_cluster_size(cls, v: int) -> int:
         if v < 1:
-            raise ValueError("min_cluster_size must be >= 1")
+            msg = "min_cluster_size must be >= 1"
+            raise ValueError(msg)
         return v
 
     @field_validator("min_cluster_size_by_language")
@@ -99,7 +103,8 @@ class StoryClusterParams(BaseModel):
         if v is not None:
             for lang, size in v.items():
                 if size < 1:
-                    raise ValueError(f"min_cluster_size for '{lang}' must be >= 1")
+                    msg = f"min_cluster_size for '{lang}' must be >= 1"
+                    raise ValueError(msg)
         return v
 
 
@@ -119,20 +124,24 @@ class ClusterStoriesRequest(BaseModel):
     @classmethod
     def validate_items(cls, items: list[ClusterStoryItem]) -> list[ClusterStoryItem]:
         if not items:
-            raise ValueError("items must contain at least 1 item")
+            msg = "items must contain at least 1 item"
+            raise ValueError(msg)
 
         expected_dim = len(items[0].embedding)
         if expected_dim == 0:
-            raise ValueError("embedding dimension must be greater than 0")
+            msg = "embedding dimension must be greater than 0"
+            raise ValueError(msg)
 
         for idx, item in enumerate(items):
             if len(item.embedding) != expected_dim:
-                raise ValueError(
+                msg = (
                     f"embedding dimension mismatch at index {idx}: expected {expected_dim}, "
                     f"got {len(item.embedding)}"
                 )
+                raise ValueError(msg)
             if not all(math.isfinite(x) for x in item.embedding):
-                raise ValueError(f"embedding at index {idx} contains non-finite values")
+                msg = f"embedding at index {idx} contains non-finite values"
+                raise ValueError(msg)
 
         return items
 

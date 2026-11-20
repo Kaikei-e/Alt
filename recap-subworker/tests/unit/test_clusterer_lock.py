@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import concurrent.futures
 import threading
 import time
 from unittest.mock import patch
@@ -12,8 +13,10 @@ from recap_subworker.infra.config import Settings
 from recap_subworker.services import clusterer as clusterer_module
 from recap_subworker.services.clusterer import Clusterer
 
+EXPECTED_SECOND_CALL_COUNT = 2
 
-def test_native_clustering_lock_exists():
+
+def test_native_clustering_lock_exists() -> None:
     """Module-level _NATIVE_CLUSTERING_LOCK must exist and be a threading.Lock."""
     assert hasattr(clusterer_module, "_NATIVE_CLUSTERING_LOCK"), (
         "clusterer module must define _NATIVE_CLUSTERING_LOCK"
@@ -21,7 +24,7 @@ def test_native_clustering_lock_exists():
     assert isinstance(clusterer_module._NATIVE_CLUSTERING_LOCK, type(threading.Lock()))
 
 
-def test_concurrent_clustering_calls_never_overlap():
+def test_concurrent_clustering_calls_never_overlap() -> None:
     """Two concurrent calls through the lock-guarded section must never overlap."""
     settings = Settings()
     settings.enable_umap_force = False
@@ -35,7 +38,9 @@ def test_concurrent_clustering_calls_never_overlap():
     max_concurrent = 0
     lock_stats = threading.Lock()
 
-    def fake_run_with_timeout(func, timeout_seconds, *args, **kwargs):
+    def fake_run_with_timeout(
+        func: object, timeout_seconds: float, *args: object, **kwargs: object
+    ) -> tuple[np.ndarray, np.ndarray]:
         nonlocal active_count, max_concurrent
         with lock_stats:
             active_count += 1
@@ -45,30 +50,32 @@ def test_concurrent_clustering_calls_never_overlap():
             active_count -= 1
         return np.zeros(20, dtype=int), np.ones(20, dtype=float)
 
-    with patch.object(clusterer, "_run_with_timeout", side_effect=fake_run_with_timeout):
-        with patch.object(clusterer, "_calculate_dbcv", return_value=0.5):
-            with patch.object(clusterer, "_calculate_silhouette", return_value=0.5):
-                t1 = threading.Thread(
-                    target=clusterer.cluster,
-                    args=(embeddings,),
-                    kwargs={"min_cluster_size": 2, "min_samples": 1},
-                )
-                t2 = threading.Thread(
-                    target=clusterer.cluster,
-                    args=(embeddings,),
-                    kwargs={"min_cluster_size": 2, "min_samples": 1},
-                )
-                t1.start()
-                t2.start()
-                t1.join()
-                t2.join()
+    with (
+        patch.object(clusterer, "_run_with_timeout", side_effect=fake_run_with_timeout),
+        patch.object(clusterer, "_calculate_dbcv", return_value=0.5),
+        patch.object(clusterer, "_calculate_silhouette", return_value=0.5),
+    ):
+        t1 = threading.Thread(
+            target=clusterer.cluster,
+            args=(embeddings,),
+            kwargs={"min_cluster_size": 2, "min_samples": 1},
+        )
+        t2 = threading.Thread(
+            target=clusterer.cluster,
+            args=(embeddings,),
+            kwargs={"min_cluster_size": 2, "min_samples": 1},
+        )
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
 
     assert max_concurrent == 1, (
         f"Native clustering calls overlapped! max_concurrent was {max_concurrent}"
     )
 
 
-def test_timed_out_guarded_call_releases_lock():
+def test_timed_out_guarded_call_releases_lock() -> None:
     """A timed-out guarded call releases the lock so the next call proceeds."""
     settings = Settings()
     settings.enable_umap_force = False
@@ -80,16 +87,18 @@ def test_timed_out_guarded_call_releases_lock():
     embeddings = np.random.rand(20, 5)
 
     # Simulate timeout in call 1 (returns None from _run_with_timeout, triggers fallback)
-    with patch.object(clusterer, "_run_with_timeout", return_value=None):
-        with patch.object(
+    with (
+        patch.object(clusterer, "_run_with_timeout", return_value=None),
+        patch.object(
             clusterer,
             "_fallback_minibatch_kmeans",
             return_value=(np.zeros(20, dtype=int), np.ones(20, dtype=float)),
-        ):
-            with patch.object(clusterer, "_calculate_dbcv", return_value=None):
-                with patch.object(clusterer, "_calculate_silhouette", return_value=None):
-                    res1 = clusterer.cluster(embeddings, min_cluster_size=2, min_samples=1)
-                    assert res1.used_fallback is True
+        ),
+        patch.object(clusterer, "_calculate_dbcv", return_value=None),
+        patch.object(clusterer, "_calculate_silhouette", return_value=None),
+    ):
+        res1 = clusterer.cluster(embeddings, min_cluster_size=2, min_samples=1)
+        assert res1.used_fallback is True
 
     # Lock must be released immediately after call 1 finishes
     lock = getattr(clusterer_module, "_NATIVE_CLUSTERING_LOCK", None)
@@ -97,18 +106,20 @@ def test_timed_out_guarded_call_releases_lock():
     assert not lock.locked(), "Lock remained acquired after timed-out call"
 
     # Call 2 proceeds and succeeds without blocking
-    with patch.object(
-        clusterer,
-        "_run_with_timeout",
-        return_value=(np.zeros(20, dtype=int), np.ones(20, dtype=float)),
+    with (
+        patch.object(
+            clusterer,
+            "_run_with_timeout",
+            return_value=(np.zeros(20, dtype=int), np.ones(20, dtype=float)),
+        ),
+        patch.object(clusterer, "_calculate_dbcv", return_value=0.5),
+        patch.object(clusterer, "_calculate_silhouette", return_value=0.5),
     ):
-        with patch.object(clusterer, "_calculate_dbcv", return_value=0.5):
-            with patch.object(clusterer, "_calculate_silhouette", return_value=0.5):
-                res2 = clusterer.cluster(embeddings, min_cluster_size=2, min_samples=1)
-                assert res2.used_fallback is False
+        res2 = clusterer.cluster(embeddings, min_cluster_size=2, min_samples=1)
+        assert res2.used_fallback is False
 
 
-def test_lock_wait_logging():
+def test_lock_wait_logging() -> None:
     """Log at debug when waiting for lock, and at info if wait exceeds 1 s."""
     settings = Settings()
     settings.enable_umap_force = False
@@ -125,15 +136,17 @@ def test_lock_wait_logging():
     lock.acquire()
     thread_finished = threading.Event()
 
-    def run_cluster():
-        with patch.object(
-            clusterer,
-            "_run_with_timeout",
-            return_value=(np.zeros(20, dtype=int), np.ones(20, dtype=float)),
+    def run_cluster() -> None:
+        with (
+            patch.object(
+                clusterer,
+                "_run_with_timeout",
+                return_value=(np.zeros(20, dtype=int), np.ones(20, dtype=float)),
+            ),
+            patch.object(clusterer, "_calculate_dbcv", return_value=0.5),
+            patch.object(clusterer, "_calculate_silhouette", return_value=0.5),
         ):
-            with patch.object(clusterer, "_calculate_dbcv", return_value=0.5):
-                with patch.object(clusterer, "_calculate_silhouette", return_value=0.5):
-                    clusterer.cluster(embeddings, min_cluster_size=2, min_samples=1)
+            clusterer.cluster(embeddings, min_cluster_size=2, min_samples=1)
         thread_finished.set()
 
     with (
@@ -143,7 +156,7 @@ def test_lock_wait_logging():
         calls = []
         real_monotonic = time.monotonic
 
-        def fake_monotonic():
+        def fake_monotonic() -> float:
             val = real_monotonic() + len(calls) * 1.5
             calls.append(val)
             return val
@@ -161,7 +174,7 @@ def test_lock_wait_logging():
         mock_info.assert_called()
 
 
-def test_abandoned_hdbscan_forces_fallback_until_completed():
+def test_abandoned_hdbscan_forces_fallback_until_completed() -> None:
     """While an abandoned HDBSCAN future runs, next calls skip HDBSCAN and use fallback."""
     settings = Settings()
     settings.enable_umap_force = False
@@ -177,16 +190,16 @@ def test_abandoned_hdbscan_forces_fallback_until_completed():
     fake_proceed_event = threading.Event()
 
     class FakeHDBSCAN:
-        def __init__(self, **kwargs):
+        def __init__(self, **kwargs: object) -> None:
             pass
 
-        def fit(self, X):
+        def fit(self, features: np.ndarray) -> FakeHDBSCAN:
             nonlocal hdbscan_call_count
             hdbscan_call_count += 1
             fake_running_event.set()
             fake_proceed_event.wait()
-            self.labels_ = np.zeros(len(X), dtype=int)
-            self.probabilities_ = np.ones(len(X), dtype=float)
+            self.labels_ = np.zeros(len(features), dtype=int)
+            self.probabilities_ = np.ones(len(features), dtype=float)
             return self
 
     with (
@@ -213,7 +226,7 @@ def test_abandoned_hdbscan_forces_fallback_until_completed():
             assert hdbscan_call_count == 1, (
                 "HDBSCAN was invoked while abandoned HDBSCAN future was still running"
             )
-            assert mock_fallback.call_count == 2
+            assert mock_fallback.call_count == EXPECTED_SECOND_CALL_COUNT
             warning_calls = [
                 c
                 for c in mock_warning.call_args_list
@@ -228,19 +241,17 @@ def test_abandoned_hdbscan_forces_fallback_until_completed():
             # Call 3: Now that abandoned HDBSCAN is done, HDBSCAN is used again
             res3 = clusterer.cluster(embeddings, min_cluster_size=2, min_samples=1)
             assert res3.used_fallback is False
-            assert hdbscan_call_count == 2
+            assert hdbscan_call_count == EXPECTED_SECOND_CALL_COUNT
         finally:
             fake_proceed_event.set()
 
 
-def test_abandoned_future_cleared_by_done_callback():
+def test_abandoned_future_cleared_by_done_callback() -> None:
     """Setting an abandoned future marks it running; done-callback clears it."""
-    import concurrent.futures
-
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
     proceed = threading.Event()
 
-    def task():
+    def task() -> str:
         proceed.wait()
         return "done"
 
@@ -262,14 +273,14 @@ def test_abandoned_future_cleared_by_done_callback():
         executor.shutdown(wait=True)
 
 
-def test_abandoned_future_tracked_for_differently_named_function():
+def test_abandoned_future_tracked_for_differently_named_function() -> None:
     """_run_with_timeout tracks abandoned future even when func.__name__ does not contain 'hdbscan'."""
     settings = Settings()
     clusterer = Clusterer(settings)
 
     proceed_event = threading.Event()
 
-    def custom_algorithm_worker():
+    def custom_algorithm_worker() -> tuple[np.ndarray, np.ndarray]:
         proceed_event.wait(timeout=5.0)
         return np.zeros(10, dtype=int), np.ones(10, dtype=float)
 

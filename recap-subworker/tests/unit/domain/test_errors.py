@@ -24,7 +24,7 @@ from recap_subworker.domain.errors import (
 
 
 class TestErrorHierarchy:
-    def test_all_errors_inherit_from_subworker_error(self):
+    def test_all_errors_inherit_from_subworker_error(self) -> None:
         errors = [
             PipelineError(),
             EvidenceProcessingError(),
@@ -46,43 +46,45 @@ class TestErrorHierarchy:
         for err in errors:
             assert isinstance(err, SubworkerError)
 
-    def test_pipeline_hierarchy(self):
+    def test_pipeline_hierarchy(self) -> None:
         assert isinstance(EvidenceProcessingError(), PipelineError)
         assert isinstance(WarmupError(), PipelineError)
         assert isinstance(InsufficientDataError(), PipelineError)
 
-    def test_clustering_hierarchy(self):
+    def test_clustering_hierarchy(self) -> None:
         assert isinstance(ClusteringTimeoutError(10), ClusteringError)
         assert isinstance(InvalidEmbeddingsError(), ClusteringError)
 
-    def test_embedding_hierarchy(self):
+    def test_embedding_hierarchy(self) -> None:
         assert isinstance(ModelNotLoadedError(), EmbeddingError)
         assert isinstance(OllamaConnectionError("http://localhost", "err"), EmbeddingError)
 
-    def test_classification_hierarchy(self):
+    def test_classification_hierarchy(self) -> None:
         assert isinstance(ModelArtifactNotFoundError("/path"), ClassificationError)
 
-    def test_repository_hierarchy(self):
+    def test_repository_hierarchy(self) -> None:
         assert isinstance(RunNotFoundError(1), RepositoryError)
 
 
 class TestSpecificErrors:
-    def test_clustering_timeout_stores_seconds(self):
-        err = ClusteringTimeoutError(timeout_seconds=60)
-        assert err.timeout_seconds == 60
+    def test_clustering_timeout_stores_seconds(self) -> None:
+        expected_timeout = 60
+        err = ClusteringTimeoutError(timeout_seconds=expected_timeout)
+        assert err.timeout_seconds == expected_timeout
         assert "60s" in str(err)
 
-    def test_ollama_connection_stores_url(self):
+    def test_ollama_connection_stores_url(self) -> None:
         err = OllamaConnectionError(url="http://ollama:11434", detail="refused")
         assert err.url == "http://ollama:11434"
         assert "refused" in str(err)
 
-    def test_model_artifact_stores_path(self):
+    def test_model_artifact_stores_path(self) -> None:
         err = ModelArtifactNotFoundError(path="/models/genre.pkl")
         assert err.path == "/models/genre.pkl"
         assert "/models/genre.pkl" in str(err)
 
-    def test_run_not_found_stores_id(self):
-        err = RunNotFoundError(run_id=99)
-        assert err.run_id == 99
+    def test_run_not_found_stores_id(self) -> None:
+        expected_run_id = 99
+        err = RunNotFoundError(run_id=expected_run_id)
+        assert err.run_id == expected_run_id
         assert "99" in str(err)

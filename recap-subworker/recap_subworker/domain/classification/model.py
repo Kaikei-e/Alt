@@ -18,6 +18,8 @@ from .features import (
     FeatureVector,
 )
 
+SAFE_WEIGHTS_DIR = "/app/resources"
+
 # Default weights (embedded in Rust code)
 DEFAULT_WEIGHTS_JSON = """{
   "feature_dim": 19,
@@ -38,14 +40,13 @@ class GenreClassifier:
         self,
         weights_path: str | None = None,
         weights_data: dict | None = None,
-    ):
+    ) -> None:
         """初期化。
 
         Args:
             weights_path: 重みファイルのパス（オプション）
             weights_data: 重みデータの辞書（オプション、weights_pathより優先）
         """
-        SAFE_WEIGHTS_DIR = "/app/resources"
         if weights_data is None:
             if weights_path is None:
                 # 環境変数から取得を試みる
@@ -60,9 +61,11 @@ class GenreClassifier:
                 try:
                     resolved_path = validate_path(str(weights_path), base_dirs=safe_dirs)
                 except ValueError as exc:
-                    raise ValueError(f"weights_path '{weights_path}' is not allowed.") from exc
+                    msg = f"weights_path '{weights_path}' is not allowed."
+                    raise ValueError(msg) from exc
                 if not resolved_path.exists():
-                    raise ValueError(f"Weights file does not exist: {weights_path}")
+                    msg = f"Weights file does not exist: {weights_path}"
+                    raise ValueError(msg)
                 with resolved_path.open(encoding="utf-8") as f:
                     weights_data = json.load(f)
             else:
@@ -95,39 +98,37 @@ class GenreClassifier:
     def _validate_weights(self, weights: dict) -> None:
         """重みデータを検証。"""
         if not weights.get("tfidf_weights") or len(weights["tfidf_weights"]) == 0:
-            raise ValueError(
-                "tfidf_weights is empty. Please provide a valid weights file via RECAP_GENRE_MODEL_WEIGHTS environment variable or weights_path parameter."
-            )
+            msg = "tfidf_weights is empty. Please provide a valid weights file via RECAP_GENRE_MODEL_WEIGHTS environment variable or weights_path parameter."
+            raise ValueError(msg)
         if len(weights["tfidf_weights"]) != len(weights["genres"]):
-            raise ValueError(
-                f"tfidf weight matrix row count mismatch: expected {len(weights['genres'])} rows (one per genre), got {len(weights['tfidf_weights'])} rows"
-            )
+            msg = f"tfidf weight matrix row count mismatch: expected {len(weights['genres'])} rows (one per genre), got {len(weights['tfidf_weights'])} rows"
+            raise ValueError(msg)
         if not weights.get("embedding_weights") or len(weights["embedding_weights"]) == 0:
-            raise ValueError(
-                "embedding_weights is empty. Please provide a valid weights file via RECAP_GENRE_MODEL_WEIGHTS environment variable or weights_path parameter."
-            )
+            msg = "embedding_weights is empty. Please provide a valid weights file via RECAP_GENRE_MODEL_WEIGHTS environment variable or weights_path parameter."
+            raise ValueError(msg)
         if len(weights["embedding_weights"]) != len(weights["genres"]):
-            raise ValueError(
-                f"embedding weight matrix row count mismatch: expected {len(weights['genres'])} rows (one per genre), got {len(weights['embedding_weights'])} rows"
-            )
+            msg = f"embedding weight matrix row count mismatch: expected {len(weights['genres'])} rows (one per genre), got {len(weights['embedding_weights'])} rows"
+            raise ValueError(msg)
         for row in weights["tfidf_weights"]:
             if len(row) != weights["feature_dim"]:
-                raise ValueError("tfidf weight row length mismatch")
+                msg = "tfidf weight row length mismatch"
+                raise ValueError(msg)
         for row in weights["embedding_weights"]:
             if len(row) != weights["embedding_dim"]:
-                raise ValueError("embedding weight row length mismatch")
+                msg = "embedding weight row length mismatch"
+                raise ValueError(msg)
         if not weights.get("bias") or len(weights["bias"]) == 0:
-            raise ValueError(
-                "bias is empty. Please provide a valid weights file via RECAP_GENRE_MODEL_WEIGHTS environment variable or weights_path parameter."
-            )
+            msg = "bias is empty. Please provide a valid weights file via RECAP_GENRE_MODEL_WEIGHTS environment variable or weights_path parameter."
+            raise ValueError(msg)
         if len(weights["bias"]) != len(weights["genres"]):
-            raise ValueError(
-                f"bias length mismatch: expected {len(weights['genres'])} values (one per genre), got {len(weights['bias'])} values"
-            )
+            msg = f"bias length mismatch: expected {len(weights['genres'])} values (one per genre), got {len(weights['bias'])} values"
+            raise ValueError(msg)
         if weights.get("feature_vocab") and len(weights["feature_vocab"]) != weights["feature_dim"]:
-            raise ValueError("feature vocab length mismatch")
+            msg = "feature vocab length mismatch"
+            raise ValueError(msg)
         if weights.get("feature_idf") and len(weights["feature_idf"]) != weights["feature_dim"]:
-            raise ValueError("feature idf length mismatch")
+            msg = "feature idf length mismatch"
+            raise ValueError(msg)
 
     def predict(self, features: FeatureVector) -> list[tuple[str, float]]:
         """特徴ベクトルからジャンルを予測。
@@ -139,11 +140,11 @@ class GenreClassifier:
             ジャンルとスコアのペアのリスト（スコア降順）
         """
         if len(features.tfidf) != self.feature_dim:
-            raise ValueError(
-                f"feature dimension mismatch: expected {self.feature_dim}, got {len(features.tfidf)}"
-            )
+            msg = f"feature dimension mismatch: expected {self.feature_dim}, got {len(features.tfidf)}"
+            raise ValueError(msg)
         if len(features.embedding) != EMBEDDING_DIM:
-            raise ValueError("embedding dimension mismatch")
+            msg = "embedding dimension mismatch"
+            raise ValueError(msg)
 
         # NumPy配列に変換
         tfidf_vec = np.array(features.tfidf)

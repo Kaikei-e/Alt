@@ -48,20 +48,20 @@ CANONICAL_GENRES = [
     "mobility_automotive",
     "consumer_products",
 ]
+EXPECTED_CLASS_COUNT = 30
 
 
 @pytest.fixture
 def tiny_30class_csv(tmp_path: Path) -> Path:
     """25 rows × 30 classes = 750 rows, minimum viable for stratify + cv=3."""
-    rows = []
-    for genre in CANONICAL_GENRES:
-        for i in range(25):
-            rows.append(
-                {
-                    "content": f"{genre} article fragment {i} " * 20,
-                    "genre": genre,
-                }
-            )
+    rows = [
+        {
+            "content": f"{genre} article fragment {i} " * 20,
+            "genre": genre,
+        }
+        for genre in CANONICAL_GENRES
+        for i in range(25)
+    ]
     csv = tmp_path / "training_data_30class.csv"
     pd.DataFrame(rows).to_csv(csv, index=False)
     return csv
@@ -89,7 +89,9 @@ def test_train_smoke_produces_30_class_artefacts(
         "--output-dir",
         str(out_dir),
     ]
-    result = subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=600)
+    result = subprocess.run(  # noqa: S603 - invokes sys.executable -m train with test-controlled paths
+        cmd, check=False, capture_output=True, text=True, timeout=600
+    )
 
     assert result.returncode == 0, (
         f"train.py exited {result.returncode}\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
@@ -113,7 +115,7 @@ def test_train_smoke_produces_30_class_artefacts(
         assert path.is_file(), f"missing artefact: {path}"
 
     model = joblib.load(model_path)
-    assert len(model.classes_) == 30
+    assert len(model.classes_) == EXPECTED_CLASS_COUNT
 
     meta = json.loads(meta_path.read_text())
     for field in (
@@ -127,4 +129,4 @@ def test_train_smoke_produces_30_class_artefacts(
     ):
         assert field in meta, f"missing meta field: {field}"
     assert meta["language"] == "ja"
-    assert len(meta["classes"]) == 30
+    assert len(meta["classes"]) == EXPECTED_CLASS_COUNT

@@ -4,7 +4,9 @@ from collections.abc import Callable
 
 import numpy as np
 from scipy import stats
+from scipy.stats import chi2_contingency
 from statsmodels.stats.contingency_tables import mcnemar
+from statsmodels.stats.power import TTestPower
 
 
 def calculate_confidence_interval(
@@ -51,7 +53,8 @@ def compare_models_mcnemar(
         (統計量, p値, 混同行列) のタプル
     """
     if len(results_model_a) != len(results_model_b):
-        raise ValueError("Results lists must have the same length")
+        msg = "Results lists must have the same length"
+        raise ValueError(msg)
 
     # 混同行列を構築
     # a: モデルAが正しく、モデルBが間違っている
@@ -135,7 +138,8 @@ def bootstrap_confidence_interval(
         # Bias-corrected and accelerated (BCa) bootstrap
         lower, upper = _bca_bootstrap_interval(data, bootstrap_stats, original_stat, confidence)
     else:
-        raise ValueError(f"Unknown method: {method}")
+        msg = f"Unknown method: {method}"
+        raise ValueError(msg)
 
     return (original_stat, lower, upper)
 
@@ -188,7 +192,7 @@ def _bca_bootstrap_interval(
     z_alpha_2 = stats.norm.ppf(alpha / 2)
     z_1_minus_alpha_2 = stats.norm.ppf(1 - alpha / 2)
 
-    def bca_percentile(z):
+    def bca_percentile(z: float) -> float:
         num = z0 + z
         denom = 1 - a * (z0 + z)
         if denom == 0 or not np.isfinite(denom):
@@ -267,8 +271,6 @@ def calculate_statistical_power(
     Returns:
         検出力（0-1の範囲）
     """
-    from statsmodels.stats.power import TTestPower
-
     power_analysis = TTestPower()
     if test_type == "two_sided":
         power = power_analysis.power(effect_size, sample_size, alpha, alternative="two-sided")
@@ -295,8 +297,6 @@ def calculate_required_sample_size(
     Returns:
         必要なサンプルサイズ
     """
-    from statsmodels.stats.power import TTestPower
-
     power_analysis = TTestPower()
     if test_type == "two_sided":
         n = power_analysis.solve_power(
@@ -327,8 +327,7 @@ def cohens_d(group1: np.ndarray, group2: np.ndarray) -> float:
     if pooled_std == 0:
         return 0.0
 
-    d = (np.mean(group1) - np.mean(group2)) / pooled_std
-    return d
+    return (np.mean(group1) - np.mean(group2)) / pooled_std
 
 
 def cramers_v(confusion_matrix: np.ndarray) -> float:
@@ -340,8 +339,6 @@ def cramers_v(confusion_matrix: np.ndarray) -> float:
     Returns:
         Cramér's V（0-1の範囲）
     """
-    from scipy.stats import chi2_contingency
-
     n = np.sum(confusion_matrix)
     if n == 0:
         return 0.0
@@ -360,11 +357,8 @@ def cramers_v(confusion_matrix: np.ndarray) -> float:
     filtered_cm = confusion_matrix[non_zero_rows][:, non_zero_cols]
 
     # フィルタリング後のサイズをチェック
-    if filtered_cm.size == 0:
-        return 0.0
-
     min_dim = min(filtered_cm.shape) - 1
-    if min_dim <= 0:
+    if filtered_cm.size == 0 or min_dim <= 0:
         return 0.0
 
     try:
@@ -391,7 +385,8 @@ def wilcoxon_signed_rank_test(group1: np.ndarray, group2: np.ndarray) -> tuple[f
         (統計量, p値) のタプル
     """
     if len(group1) != len(group2):
-        raise ValueError("Groups must have the same length for paired test")
+        msg = "Groups must have the same length for paired test"
+        raise ValueError(msg)
 
     statistic, pvalue = stats.wilcoxon(group1, group2)
     return (statistic, pvalue)
@@ -428,5 +423,4 @@ def bonferroni_correction(pvalues: list[float], alpha: float = 0.05) -> list[flo
     if n == 0:
         return []
 
-    corrected_pvalues = [min(p * n, 1.0) for p in pvalues]
-    return corrected_pvalues
+    return [min(p * n, 1.0) for p in pvalues]

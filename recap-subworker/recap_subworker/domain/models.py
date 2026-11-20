@@ -8,6 +8,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
 
 RunStatusLiteral = Literal["running", "succeeded", "partial", "failed"]
+MIN_PARAGRAPH_LENGTH = 30
 
 
 # Classification models
@@ -69,8 +70,9 @@ class ClusterDocument(BaseModel):
     @classmethod
     def _validate_paragraphs(cls, value: list[str]) -> list[str]:
         cleaned = [paragraph.strip() for paragraph in value if paragraph and paragraph.strip()]
-        if not cleaned or any(len(paragraph) < 30 for paragraph in cleaned):
-            raise ValueError("paragraph text must be at least 30 characters")
+        if not cleaned or any(len(paragraph) < MIN_PARAGRAPH_LENGTH for paragraph in cleaned):
+            msg = "paragraph text must be at least 30 characters"
+            raise ValueError(msg)
         return cleaned
 
 

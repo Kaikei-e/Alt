@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+from collections.abc import Iterable
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse, urlunparse
 
+import structlog
 from pydantic import AliasChoices, Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -18,6 +22,62 @@ from recap_subworker.infra.embedding_identity import (
 )
 
 _INFERENCE_TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9._~+/-]+={0,2}$")
+
+
+def _load_declared_classifier_classes(model_file: Path) -> Iterable[object] | None:
+    """Return declared class labels from sidecar metadata or pickled model."""
+    meta_file = model_file.with_suffix(".meta.json")
+    if meta_file.is_file():
+        try:
+            meta_payload = json.loads(meta_file.read_text())
+            if isinstance(meta_payload, dict) and isinstance(meta_payload.get("classes"), list):
+                return meta_payload["classes"]
+        except OSError, json.JSONDecodeError:
+            pass
+
+    import pickle  # noqa: PLC0415  # defer heavy joblib/pickle load unless sidecar metadata is missing
+
+    try:
+        import joblib  # noqa: PLC0415  # defer heavy joblib load unless sidecar metadata is missing
+
+        model = joblib.load(model_file)
+    except (
+        OSError,
+        ValueError,
+        EOFError,
+        ImportError,
+        KeyError,
+        TypeError,
+        AttributeError,
+        pickle.UnpicklingError,
+    ):
+        return None
+    return getattr(model, "classes_", None)
+
+
+def _load_thresholds_keys(thresholds_file: Path) -> set[str] | None:
+    """Return covered class names from a thresholds JSON object, or None if unreadable."""
+    try:
+        payload = json.loads(thresholds_file.read_text())
+    except OSError, json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    return set(payload.keys())
+
+
+def _load_sidecar_embedding_model_id(meta_path: Path) -> str | None:
+    """Return non-empty embedding_model_id from classifier sidecar JSON, or None."""
+    try:
+        payload = json.loads(meta_path.read_text())
+    except FileNotFoundError, IsADirectoryError, PermissionError, json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    sidecar_id = payload.get("embedding_model_id")
+    if not isinstance(sidecar_id, str) or not sidecar_id:
+        return None
+    return sidecar_id
 
 
 class Settings(BaseSettings):
@@ -37,19 +97,16 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def inject_db_password(self) -> Settings:
         # If RECAP_SUBWORKER_DB_PASSWORD_FILE is set, read password from that file
-        import os
-        from pathlib import Path
-
         password_file = os.getenv("RECAP_SUBWORKER_DB_PASSWORD_FILE")
         if password_file and not self.recap_db_password:
             try:
                 password = Path(password_file).read_text(encoding="utf-8").strip()
             except OSError as exc:
-                raise ValueError(
-                    f"RECAP_SUBWORKER_DB_PASSWORD_FILE {password_file} not found or unreadable: {exc}"
-                ) from exc
+                msg = f"RECAP_SUBWORKER_DB_PASSWORD_FILE {password_file} not found or unreadable: {exc}"
+                raise ValueError(msg) from exc
             if not password:
-                raise ValueError(f"RECAP_SUBWORKER_DB_PASSWORD_FILE {password_file} is empty")
+                msg = f"RECAP_SUBWORKER_DB_PASSWORD_FILE {password_file} is empty"
+                raise ValueError(msg)
             self.recap_db_password = SecretStr(password)
 
         if self.recap_db_password and self.recap_db_password.get_secret_value():
@@ -89,17 +146,16 @@ class Settings(BaseSettings):
         try:
             parsed = json.loads(raw_overrides)
         except json.JSONDecodeError as exc:
-            raise ValueError(
-                f"genre_subworker_threshold_overrides must be valid JSON: {exc}"
-            ) from exc
+            msg = f"genre_subworker_threshold_overrides must be valid JSON: {exc}"
+            raise ValueError(msg) from exc
         if not isinstance(parsed, dict):
-            raise ValueError("genre_subworker_threshold_overrides must be a JSON object")
+            msg = "genre_subworker_threshold_overrides must be a JSON object"
+            raise ValueError(msg)  # noqa: TRY004  # Pydantic validator contract uses ValueError
         try:
             self.genre_threshold_overrides_parsed = {str(k): float(v) for k, v in parsed.items()}
         except (TypeError, ValueError) as exc:
-            raise ValueError(
-                f"genre_subworker_threshold_overrides values must be numeric: {exc}"
-            ) from exc
+            msg = f"genre_subworker_threshold_overrides values must be numeric: {exc}"
+            raise ValueError(msg) from exc
 
         return self
 
@@ -114,11 +170,6 @@ class Settings(BaseSettings):
         if self.model_backend != "ollama-remote":
             return self
 
-        import os
-        from pathlib import Path
-
-        import structlog
-
         logger = structlog.get_logger(__name__)
 
         if os.getenv("INFERENCE_AUTH", "").strip().lower() == "disabled":
@@ -131,21 +182,23 @@ class Settings(BaseSettings):
 
         token_file = os.getenv("INFERENCE_SERVICE_TOKEN_FILE", "").strip()
         if not token_file:
-            raise ValueError(
+            msg = (
                 "model_backend='ollama-remote' requires INFERENCE_SERVICE_TOKEN_FILE "
                 "or INFERENCE_AUTH=disabled"
             )
+            raise ValueError(msg)
 
         try:
             token = Path(token_file).read_text(encoding="utf-8").strip()
         except OSError as exc:
-            raise ValueError(
-                f"Inference token file {token_file} not found or unreadable: {exc}"
-            ) from exc
+            msg = f"Inference token file {token_file} not found or unreadable: {exc}"
+            raise ValueError(msg) from exc
         if not token:
-            raise ValueError(f"Inference token file {token_file} is empty")
+            msg = f"Inference token file {token_file} is empty"
+            raise ValueError(msg)
         if not _INFERENCE_TOKEN_PATTERN.match(token):
-            raise ValueError(f"Invalid token format in {token_file}")
+            msg = f"Invalid token format in {token_file}"
+            raise ValueError(msg)
 
         self.inference_service_token = SecretStr(token)
         logger.info("inference_auth_enabled", token_file=token_file)
@@ -155,8 +208,6 @@ class Settings(BaseSettings):
     def _validate_learning_machine_artifacts(self) -> Settings:
         if self.classification_backend != "learning_machine":
             return self
-
-        from pathlib import Path
 
         ja_ok = (
             bool(self.learning_machine_student_ja_dir)
@@ -168,11 +219,12 @@ class Settings(BaseSettings):
         )
 
         if not (ja_ok or en_ok):
-            raise ValueError(
+            msg = (
                 "learning_machine artifacts missing: "
                 f"tried ja={self.learning_machine_student_ja_dir}, "
                 f"en={self.learning_machine_student_en_dir}"
             )
+            raise ValueError(msg)
         return self
 
     @model_validator(mode="after")
@@ -186,8 +238,6 @@ class Settings(BaseSettings):
         # container crashes visibly at boot instead.
         if self.classification_backend != "joblib":
             return self
-
-        from pathlib import Path
 
         joblib_paths = (
             "genre_classifier_model_path",
@@ -233,8 +283,6 @@ class Settings(BaseSettings):
         if self.genre_baseline_cardinality <= 0:
             return self
 
-        from pathlib import Path
-
         fields_to_check = (
             "genre_classifier_model_path_ja",
             "genre_classifier_model_path_en",
@@ -263,10 +311,10 @@ class Settings(BaseSettings):
                     classes = None
 
             if classes is None:
-                import pickle
+                import pickle  # noqa: PLC0415  # defer heavy joblib/pickle load unless sidecar metadata is missing
 
                 try:
-                    import joblib
+                    import joblib  # noqa: PLC0415  # defer heavy joblib load unless sidecar metadata is missing
 
                     model = joblib.load(path)
                 except (
@@ -291,12 +339,13 @@ class Settings(BaseSettings):
                 continue
             cardinality = len(classes)
             if cardinality < self.genre_baseline_cardinality:
-                raise ValueError(
+                msg = (
                     f"{field_name}: classifier classes_ cardinality {cardinality} "
                     f"< baseline {self.genre_baseline_cardinality}. "
                     "Model is collapsed or not retrained for the canonical "
                     "30-genre taxonomy. See ADR-000835 stage 3."
                 )
+                raise ValueError(msg)
         return self
 
     @model_validator(mode="after")
@@ -315,8 +364,6 @@ class Settings(BaseSettings):
         if self.classification_backend != "joblib":
             return self
 
-        from pathlib import Path
-
         classifier_path: str | None = getattr(self, "genre_classifier_model_path_ja", None)
         thresholds_path: str | None = getattr(self, "genre_thresholds_path_ja", None)
         if not classifier_path or not thresholds_path:
@@ -330,59 +377,22 @@ class Settings(BaseSettings):
             # compare against — skip silently rather than double-firing.
             return self
 
-        classes = None
-        meta_file = model_file.with_suffix(".meta.json")
-        if meta_file.is_file():
-            try:
-                meta_payload = json.loads(meta_file.read_text())
-                if isinstance(meta_payload, dict) and isinstance(meta_payload.get("classes"), list):
-                    classes = meta_payload["classes"]
-            except OSError, json.JSONDecodeError:
-                classes = None
-
-        if classes is None:
-            import pickle
-
-            try:
-                import joblib
-
-                model = joblib.load(model_file)
-            except (
-                OSError,
-                ValueError,
-                EOFError,
-                ImportError,
-                KeyError,
-                TypeError,
-                AttributeError,
-                pickle.UnpicklingError,
-            ):
-                return self
-
-            classes = getattr(model, "classes_", None)
-
-        if classes is None:
+        classes = _load_declared_classifier_classes(model_file)
+        covered = _load_thresholds_keys(thresholds_file) if classes is not None else None
+        if classes is None or covered is None:
             return self
 
-        try:
-            thresholds_payload = json.loads(thresholds_file.read_text())
-        except OSError, json.JSONDecodeError:
-            return self
-
-        if not isinstance(thresholds_payload, dict):
-            return self
-
-        covered = set(thresholds_payload.keys())
         declared = {str(c) for c in classes}
         missing = sorted(declared - covered)
         if missing:
-            raise ValueError(
-                "genre_thresholds_path_ja: threshold coverage gap — classifier "
+            msg = (
+                "genre_thresholds_path_ja: threshold coverage gap — classifier "  # noqa: S608  # error message text, not SQL
                 f"declares {len(declared)} classes but {len(missing)} have no "
                 f"threshold entry: {missing}. Update {thresholds_file} so every "
                 "class in classes_ has a threshold (or set classification_backend "
                 "to a non-joblib value to bypass)."
             )
+            raise ValueError(msg)
         return self
 
     @model_validator(mode="after")
@@ -402,44 +412,23 @@ class Settings(BaseSettings):
         identity at boot time so the deploy fails-closed instead of shipping
         degraded predictions.
         """
-        if self.classification_backend != "joblib":
+        if self.classification_backend != "joblib" or self.allow_embedding_drift:
             return self
-        if self.allow_embedding_drift:
-            return self
-
-        from pathlib import Path
 
         classifier_path: str | None = getattr(self, "genre_classifier_model_path_ja", None)
         if not classifier_path:
             return self
 
         meta_path = Path(classifier_path).with_suffix(".meta.json")
-        try:
-            payload_text = meta_path.read_text()
-        except FileNotFoundError, IsADirectoryError, PermissionError:
-            # Missing sidecar is the responsibility of
-            # GenreClassifierService._load_sidecar_metadata which warns; do
-            # not double-fire here.
-            return self
-        try:
-            payload = json.loads(payload_text)
-        except json.JSONDecodeError:
-            return self
-        if not isinstance(payload, dict):
-            return self
-        sidecar_id = payload.get("embedding_model_id")
-        if not isinstance(sidecar_id, str) or not sidecar_id:
-            # Legacy sidecar predating ADR-000835 stage 3.
-            return self
-
-        runtime_id = self._effective_runtime_embedder_identity()
-        if runtime_id is None:
+        sidecar_id = _load_sidecar_embedding_model_id(meta_path)
+        runtime_id = self._effective_runtime_embedder_identity() if sidecar_id else None
+        if not sidecar_id or runtime_id is None:
             return self
 
         if canonicalize_embedding_id(sidecar_id) == canonicalize_embedding_id(runtime_id):
             return self
 
-        raise ValueError(
+        msg = (
             f"{meta_path}: embedding_model_id mismatch — sidecar={sidecar_id!r} "
             f"runtime={runtime_id!r} (model_backend={self.model_backend}). The "
             "classifier head was trained against a different encoder than the "
@@ -450,6 +439,7 @@ class Settings(BaseSettings):
             "retrain the classifier on the current encoder, or set "
             "RECAP_SUBWORKER_ALLOW_EMBEDDING_DRIFT=true to override."
         )
+        raise ValueError(msg)
 
     def _effective_runtime_embedder_identity(self) -> str | None:
         """Return the runtime embedder identity for the configured backend.
@@ -602,7 +592,7 @@ class Settings(BaseSettings):
         ),
     )
     http_host: str = Field(
-        "0.0.0.0",
+        "0.0.0.0",  # noqa: S104  # container HTTP server binds all interfaces
         description="Bind host for the HTTP server",
         validation_alias=AliasChoices("HOST", "RECAP_SUBWORKER_HOST"),
     )
@@ -1127,11 +1117,12 @@ class Settings(BaseSettings):
         The watchdog must not preempt the HDBSCAN timeout fallback.
         """
         if self.loop_watchdog_timeout_seconds <= self.hdbscan_timeout_seconds:
-            raise ValueError(
+            msg = (
                 f"loop_watchdog_timeout_seconds ({self.loop_watchdog_timeout_seconds}) "
                 f"must be greater than hdbscan_timeout_seconds ({self.hdbscan_timeout_seconds}): "
                 "the watchdog must not preempt the HDBSCAN timeout fallback."
             )
+            raise ValueError(msg)
         return self
 
     @property
@@ -1148,9 +1139,10 @@ class Settings(BaseSettings):
             for genre, value in parsed.items():
                 if isinstance(value, (int, float)) and 0.0 <= float(value) <= 1.0:
                     result[str(genre)] = float(value)
-            return result
         except json.JSONDecodeError, ValueError, TypeError:
             return {}
+        else:
+            return result
 
 
 @lru_cache(maxsize=1)

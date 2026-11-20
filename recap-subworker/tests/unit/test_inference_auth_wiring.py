@@ -13,7 +13,7 @@ import json
 import threading
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 
 import pytest
 from pydantic import ValidationError
@@ -22,8 +22,9 @@ from structlog.testing import capture_logs
 from recap_subworker.app.container import ServiceContainer
 from recap_subworker.infra.config import Settings
 from recap_subworker.services import classification_worker, evaluation, pipeline_worker
+from recap_subworker.services.embedder import Embedder
 
-TOKEN = "recap-subworker-wired-token="
+TOKEN = "recap-subworker-wired-token="  # noqa: S105 - test fixture value, not a credential
 
 
 @pytest.fixture
@@ -44,7 +45,11 @@ def embed_server() -> Iterator[tuple[str, list[str | None]]]:
             self.end_headers()
             self.wfile.write(encoded)
 
-        def log_message(self, format: str, *args: Any) -> None:
+        def log_message(
+            self,
+            format: str,  # noqa: A002  # BaseHTTPRequestHandler.log_message override signature
+            *args: object,
+        ) -> None:
             pass
 
     server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
@@ -224,10 +229,11 @@ class TestEmbedderConstructionSitesSendBearer:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         url, received_auth = embed_server
-        built: dict[str, Any] = {}
+        built: dict[str, Embedder] = {}
 
-        def _capture_classifier(**kwargs: Any) -> object:
-            built.update(kwargs)
+        def _capture_classifier(*, embedder: Embedder, **kwargs: object) -> object:
+            del kwargs
+            built["embedder"] = embedder
             return object()
 
         monkeypatch.setattr(classification_worker, "_CLASSIFIER", None)

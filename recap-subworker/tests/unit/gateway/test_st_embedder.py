@@ -14,7 +14,7 @@ class TestStEmbedderGatewayProtocol:
     we test with a mock-based approach.
     """
 
-    def _make_mock_gateway(self):
+    def _make_mock_gateway(self) -> MagicMock:
         """Create a mock that satisfies EmbedderPort."""
         gateway = MagicMock()
         gateway.encode.return_value = np.zeros((2, 64), dtype=np.float32)
@@ -22,17 +22,18 @@ class TestStEmbedderGatewayProtocol:
         gateway.close.return_value = None
         return gateway
 
-    def test_encode_returns_ndarray(self):
+    def test_encode_returns_ndarray(self) -> None:
         gw = self._make_mock_gateway()
         result = gw.encode(["hello", "world"])
         assert isinstance(result, np.ndarray)
         assert result.shape == (2, 64)
 
-    def test_warmup_returns_int(self):
+    def test_warmup_returns_int(self) -> None:
+        expected_warmup_count = 2
         gw = self._make_mock_gateway()
-        assert gw.warmup(["test"]) == 2
+        assert gw.warmup(["test"]) == expected_warmup_count
 
-    def test_close_callable(self):
+    def test_close_callable(self) -> None:
         gw = self._make_mock_gateway()
         gw.close()
         gw.close.assert_called_once()

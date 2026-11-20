@@ -1,8 +1,8 @@
 import logging
-import os
 import tarfile
 import urllib.request
 from pathlib import Path
+from urllib.parse import urlparse
 
 import pandas as pd
 
@@ -11,6 +11,7 @@ DATA_DIR = Path("data")
 LIVEDOOR_URL = "https://www.rondhuit.com/download/ldcc-20140209.tar.gz"
 LIVEDOOR_DIR = DATA_DIR / "text"
 EXTERNAL_OUTPUT_PATH = DATA_DIR / "external_data.csv"
+_LIVEDOOR_HEADER_LINES = 2
 
 # Livedoor Mapping
 # Categories:
@@ -50,19 +51,22 @@ def extract_tar_under_dir(tar_path: Path, dest_dir: Path) -> None:
         tar.extractall(path=dest, filter="data")
 
 
-def download_livedoor():
+def download_livedoor() -> None:
     if not LIVEDOOR_DIR.exists():
         logger.info("Downloading Livedoor News Corpus...")
         tar_path = DATA_DIR / "ldcc.tar.gz"
-        urllib.request.urlretrieve(LIVEDOOR_URL, tar_path)
+        if urlparse(LIVEDOOR_URL).scheme not in {"http", "https"}:
+            msg = f"Unsupported URL scheme for {LIVEDOOR_URL}"
+            raise ValueError(msg)
+        urllib.request.urlretrieve(LIVEDOOR_URL, tar_path)  # noqa: S310  # scheme validated to http/https
         logger.info("Extracting...")
         extract_tar_under_dir(tar_path, DATA_DIR)
-        os.remove(tar_path)
+        tar_path.unlink()
     else:
         logger.info("Livedoor data already exists.")
 
 
-def process_livedoor():
+def process_livedoor() -> list[dict[str, str]]:
     rows = []
     if not LIVEDOOR_DIR.exists():
         return rows
@@ -79,25 +83,27 @@ def process_livedoor():
             if file_path.name == "LICENSE.txt":
                 continue
             try:
-                with open(file_path, encoding="utf-8") as f:
+                with file_path.open(encoding="utf-8") as f:
                     lines = f.readlines()
                     # Skip header lines (url, time) - usually first 2 lines
-                    if len(lines) > 2:
-                        content = "".join(lines[2:]).strip()
+                    if len(lines) > _LIVEDOOR_HEADER_LINES:
+                        content = "".join(lines[_LIVEDOOR_HEADER_LINES:]).strip()
                         if content:
                             rows.append({"content": content, "genre": genre})
-            except Exception as e:
-                logger.info(f"Error reading {file_path}: {e}")
-    logger.info(f"Processed {len(rows)} Livedoor articles.")
+            except (OSError, UnicodeDecodeError) as e:
+                logger.info("Error reading %s: %s", file_path, e)
+    logger.info("Processed %d Livedoor articles.", len(rows))
     return rows
 
 
-def process_ag_news():
+def process_ag_news() -> list[dict[str, str]]:
     logger.info("Loading AG News...")
     # Lazy import (the package is heavy), but deliberately outside the try:
     # a missing or broken `datasets` install must fail loudly, not degrade to
     # a Japanese-only training corpus.
-    from datasets import load_dataset
+    from datasets import (  # noqa: PLC0415  # defer heavy datasets import until AG News processing
+        load_dataset,
+    )
 
     try:
         dataset = load_dataset("ag_news", split="train")  # 120k samples
@@ -123,14 +129,15 @@ def process_ag_news():
             if all(c >= limit for c in counts.values()):
                 break
 
-        logger.info(f"Processed {len(rows)} AG News articles.")
-        return rows
-    except Exception as e:
-        logger.info(f"Error processing AG News: {e}")
+        logger.info("Processed %d AG News articles.", len(rows))
+    except Exception as e:  # noqa: BLE001  # HuggingFace dataset download/parse may raise arbitrary library errors
+        logger.info("Error processing AG News: %s", e)
         return []
+    else:
+        return rows
 
 
-def main():
+def main() -> None:
     DATA_DIR.mkdir(exist_ok=True)
 
     # 1. Livedoor
@@ -145,7 +152,7 @@ def main():
     df = pd.DataFrame(all_rows)
 
     if not df.empty:
-        logger.info(f"Saving {len(df)} external samples to {EXTERNAL_OUTPUT_PATH}")
+        logger.info("Saving %d external samples to %s", len(df), EXTERNAL_OUTPUT_PATH)
         df.to_csv(EXTERNAL_OUTPUT_PATH, index=False)
         logger.info(df["genre"].value_counts())
     else:

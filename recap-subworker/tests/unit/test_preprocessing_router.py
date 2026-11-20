@@ -14,7 +14,10 @@ Reference: docs/plan/20260706largerepocodereview.md
 from __future__ import annotations
 
 import asyncio
+import inspect
 import time
+from collections.abc import Sequence
+from http import HTTPStatus
 
 import httpx
 import numpy as np
@@ -61,7 +64,7 @@ class _BlockingCoarseClassifier:
 class _BlockingEmbedder:
     """Fake embedder whose encode() blocks synchronously."""
 
-    def encode(self, texts):
+    def encode(self, texts: Sequence[str]) -> np.ndarray:
         time.sleep(_BLOCK_SECONDS)
         return np.zeros((len(texts), 4), dtype=np.float32)
 
@@ -82,12 +85,14 @@ class _FakeClusterResult:
 class _BlockingClustererGateway:
     """Fake clusterer gateway whose subcluster_other() blocks synchronously."""
 
-    def subcluster_other(self, embeddings, token_counts=None):
+    def subcluster_other(
+        self, embeddings: np.ndarray, token_counts: Sequence[int] | None = None
+    ) -> _FakeClusterResult:
         time.sleep(_BLOCK_SECONDS)
         return _FakeClusterResult(embeddings.shape[0])
 
 
-async def _concurrent_elapsed(app, requests: list[tuple[str, dict]]) -> float:
+async def _concurrent_elapsed(app: FastAPI, requests: list[tuple[str, dict[str, object]]]) -> float:
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
         start = time.monotonic()
@@ -96,7 +101,7 @@ async def _concurrent_elapsed(app, requests: list[tuple[str, dict]]) -> float:
         )
         elapsed = time.monotonic() - start
     for response in responses:
-        assert response.status_code == 200, response.text
+        assert response.status_code == HTTPStatus.OK, response.text
     return elapsed
 
 
@@ -104,7 +109,7 @@ async def _concurrent_elapsed(app, requests: list[tuple[str, dict]]) -> float:
 async def test_extract_offloads_blocking_call_to_thread() -> None:
     """Two concurrent /v1/extract calls must overlap, not serialize."""
     app = _build_app()
-    app.dependency_overrides[deps.get_content_extractor_dep] = lambda: _BlockingExtractor()
+    app.dependency_overrides[deps.get_content_extractor_dep] = _BlockingExtractor
     app.dependency_overrides[deps.get_extract_semaphore_dep] = lambda: asyncio.Semaphore(2)
 
     elapsed = await _concurrent_elapsed(
@@ -128,7 +133,7 @@ async def test_extract_offloads_blocking_call_to_thread() -> None:
 async def test_classify_coarse_offloads_blocking_call_to_thread() -> None:
     """Two concurrent /v1/classify/coarse calls must overlap, not serialize."""
     app = _build_app()
-    app.dependency_overrides[deps.get_coarse_classifier_dep] = lambda: _BlockingCoarseClassifier()
+    app.dependency_overrides[deps.get_coarse_classifier_dep] = _BlockingCoarseClassifier
 
     elapsed = await _concurrent_elapsed(
         app,
@@ -148,8 +153,8 @@ async def test_classify_coarse_offloads_blocking_call_to_thread() -> None:
 async def test_cluster_other_offloads_blocking_calls_to_thread() -> None:
     """Two concurrent /v1/cluster/other calls must overlap, not serialize."""
     app = _build_app()
-    app.dependency_overrides[deps.get_embedder_dep] = lambda: _BlockingEmbedder()
-    app.dependency_overrides[deps.get_clusterer_gateway_dep] = lambda: _BlockingClustererGateway()
+    app.dependency_overrides[deps.get_embedder_dep] = _BlockingEmbedder
+    app.dependency_overrides[deps.get_clusterer_gateway_dep] = _BlockingClustererGateway
 
     elapsed = await _concurrent_elapsed(
         app,
@@ -173,10 +178,6 @@ def test_cluster_other_uses_di_wired_clusterer_gateway() -> None:
     """`/v1/cluster/other` must resolve its clusterer via the DI-wired
     container gateway (deps.get_clusterer_gateway_dep), not construct a
     fresh `Clusterer(settings)` per request."""
-    import inspect
-
-    from recap_subworker.app.routers import preprocessing
-
     source = inspect.getsource(preprocessing)
     assert "Clusterer(settings)" not in source
     assert "get_clusterer_gateway_dep" in source

@@ -15,10 +15,12 @@ from sudachipy import dictionary, tokenizer
 
 from recap_subworker.domain.errors import ConfigValidationError
 from recap_subworker.infra.embedding_identity import canonicalize_embedding_id
+from recap_subworker.infra.telemetry import CLASSIFIER_TOP_GENRE_TOTAL
 
 from .embedder import Embedder
 
 logger = structlog.get_logger(__name__)
+_MIN_VERSION_PARTS = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,7 +76,7 @@ class ClassifierMetadata:
 
 def _minor(version: str) -> str:
     parts = version.split(".")
-    if len(parts) < 2:
+    if len(parts) < _MIN_VERSION_PARTS:
         return version
     return f"{parts[0]}.{parts[1]}"
 
@@ -155,12 +157,13 @@ def _guard_metadata_against_runtime(
     except importlib.metadata.PackageNotFoundError:
         runtime_sklearn = None
     if runtime_sklearn is not None and _minor(runtime_sklearn) != _minor(metadata.sklearn_version):
-        raise ConfigValidationError(
+        msg = (
             f"sklearn_version mismatch: sidecar={metadata.sklearn_version} "
             f"runtime={runtime_sklearn} (minor precision). Retrain the "
             "classifier on the current runtime — ADR-000835 stage 3 "
             "requires fail-closed behaviour here."
         )
+        raise ConfigValidationError(msg)
 
     if embedder is None:
         return
@@ -195,7 +198,7 @@ def _guard_metadata_against_runtime(
         )
         return
 
-    raise ConfigValidationError(
+    msg = (
         "embedding_model_id mismatch: sidecar="
         f"{sidecar_id!r} runtime={runtime_id!r} "
         f"(backend={embedder.config.backend}). The classifier head was "
@@ -208,14 +211,15 @@ def _guard_metadata_against_runtime(
         "set RECAP_SUBWORKER_ALLOW_EMBEDDING_DRIFT=true to override "
         "(predictions will remain degraded)."
     )
+    raise ConfigValidationError(msg)
 
 
 class SudachiTokenizer:
-    def __init__(self, mode="C"):
+    def __init__(self, mode: str = "C") -> None:
         self.mode_str = mode
         self._init_tokenizer()
 
-    def _init_tokenizer(self):
+    def _init_tokenizer(self) -> None:
         self.tokenizer = dictionary.Dictionary().create()
         if self.mode_str == "A":
             self.mode = tokenizer.Tokenizer.SplitMode.A
@@ -224,16 +228,16 @@ class SudachiTokenizer:
         else:
             self.mode = tokenizer.Tokenizer.SplitMode.C
 
-    def tokenize(self, text):
+    def tokenize(self, text: str) -> list[str]:
         return [m.surface() for m in self.tokenizer.tokenize(text, self.mode)]
 
-    def __call__(self, text):
+    def __call__(self, text: str) -> list[str]:
         return self.tokenize(text)
 
-    def __getstate__(self):
+    def __getstate__(self) -> dict[str, str]:
         return {"mode_str": self.mode_str}
 
-    def __setstate__(self, state):
+    def __setstate__(self, state: dict[str, str]) -> None:
         self.mode_str = state["mode_str"]
         self._init_tokenizer()
 
@@ -245,7 +249,7 @@ class GenreClassifierService:
         embedder: Embedder,
         vectorizer_path: str | None = None,
         thresholds_path: str | None = None,
-    ):
+    ) -> None:
         self.embedder = embedder
         self.model_path = Path(model_path)
 
@@ -271,82 +275,74 @@ class GenreClassifierService:
         self.model_metadata: ClassifierMetadata | None = None
         self._lock = Lock()
 
-    def _ensure_model(self, threshold_overrides: dict[str, float] | None = None):
+    def _load_optional_preprocessors(self) -> None:
+        if self.tfidf_path.exists():
+            self.tfidf = joblib.load(self.tfidf_path)
+            # Fix: Re-attach tokenizer as it might be lost during pickling or require re-initialization
+            self.tfidf.tokenizer = SudachiTokenizer()
+            logger.info("TF-IDF vectorizer loaded with re-attached tokenizer")
+        else:
+            logger.warning("TF-IDF vectorizer not found, will use embeddings only if model allows")
+
+        if self.svd_path.exists():
+            self.svd = joblib.load(self.svd_path)
+            logger.info("TF-IDF SVD loaded", n_components=self.svd.n_components)
+        else:
+            logger.warning("TF-IDF SVD not found, will use raw TF-IDF features")
+
+        if self.scaler_path.exists():
+            self.scaler = joblib.load(self.scaler_path)
+            logger.info("Feature scaler loaded")
+        else:
+            logger.warning("Feature scaler not found, will use unnormalized features")
+
+    def _load_base_thresholds(self) -> None:
+        if self.thresholds_path.exists():
+            with self.thresholds_path.open() as f:
+                self.thresholds = json.load(f)
+            logger.info("Base thresholds loaded", count=len(self.thresholds))
+        else:
+            self.thresholds = {}
+            logger.warning("Thresholds not found, using default 0.5")
+
+    def _load_model_and_artifacts(self) -> None:
+        # is_file() rejects both the missing-file case and the
+        # docker file-scoped bind-mount case where the host
+        # source is missing and the target has been replaced
+        # with an empty directory.
+        if not self.model_path.is_file():
+            msg = f"Model not found at {self.model_path}"
+            raise FileNotFoundError(msg)
+
+        logger.info("Loading classification artifacts", model_path=str(self.model_path))
+        metadata = _load_sidecar_metadata(self.model_path)
+        if metadata is not None:
+            _guard_metadata_against_runtime(metadata, self.embedder)
+        self.model_metadata = metadata
+
+        self.model = joblib.load(self.model_path)
+        self._load_optional_preprocessors()
+        self._load_base_thresholds()
+
+    def _ensure_model(self, threshold_overrides: dict[str, float] | None = None) -> None:
         # Double-checked locking pattern: check outside lock first for performance
         if self.model is None:
             with self._lock:
                 # Check again inside lock to avoid race condition
                 if self.model is None:
-                    # is_file() rejects both the missing-file case and the
-                    # docker file-scoped bind-mount case where the host
-                    # source is missing and the target has been replaced
-                    # with an empty directory.
-                    if not self.model_path.is_file():
-                        raise FileNotFoundError(f"Model not found at {self.model_path}")
-
-                    logger.info("Loading classification artifacts", model_path=str(self.model_path))
-                    metadata = _load_sidecar_metadata(self.model_path)
-                    if metadata is not None:
-                        _guard_metadata_against_runtime(metadata, self.embedder)
-                    self.model_metadata = metadata
-
-                    self.model = joblib.load(self.model_path)
-
-                    if self.tfidf_path.exists():
-                        self.tfidf = joblib.load(self.tfidf_path)
-                        # Fix: Re-attach tokenizer as it might be lost during pickling or require re-initialization
-                        self.tfidf.tokenizer = SudachiTokenizer()
-                        logger.info("TF-IDF vectorizer loaded with re-attached tokenizer")
-                    else:
-                        logger.warning(
-                            "TF-IDF vectorizer not found, will use embeddings only if model allows"
-                        )
-
-                    # Load SVD for TF-IDF dimensionality reduction
-                    if self.svd_path.exists():
-                        self.svd = joblib.load(self.svd_path)
-                        logger.info("TF-IDF SVD loaded", n_components=self.svd.n_components)
-                    else:
-                        logger.warning("TF-IDF SVD not found, will use raw TF-IDF features")
-
-                    # Load feature scaler for normalization
-                    if self.scaler_path.exists():
-                        self.scaler = joblib.load(self.scaler_path)
-                        logger.info("Feature scaler loaded")
-                    else:
-                        logger.warning("Feature scaler not found, will use unnormalized features")
-
-                    # Load base thresholds
-                    if self.thresholds_path.exists():
-                        with self.thresholds_path.open() as f:
-                            self.thresholds = json.load(f)
-                        logger.info("Base thresholds loaded", count=len(self.thresholds))
-                    else:
-                        self.thresholds = {}
-                        logger.warning("Thresholds not found, using default 0.5")
+                    self._load_model_and_artifacts()
 
         # Apply overrides if provided (can change at runtime even if model is loaded)
         # This part is safe to run outside lock since model/thresholds are already initialized
         # but we ensure thresholds is not None before copying
         if self.thresholds is None:
-            # This should not happen if initialization completed, but add safety check
             with self._lock:
                 if self.thresholds is None:
-                    # Fallback: ensure thresholds is at least an empty dict
                     self.thresholds = {}
 
+        self.current_thresholds = self.thresholds.copy()
         if threshold_overrides:
-            # Make sure we don't mutate the base thresholds permanently if we were to support dynamic updates better
-            # But for now, simple update is fine or just used during lookup.
-            # Actually, better to store overrides separately or merge effectively.
-            # For this scope, let's update simple dict if it's safe.
-            # But _ensure_model is usually called once or lazily.
-            # If overrides change, we might need to refresh.
-            # Let's assume passed overrides are always current.
-            self.current_thresholds = self.thresholds.copy()
             self.current_thresholds.update(threshold_overrides)
-        else:
-            self.current_thresholds = self.thresholds.copy()
 
         if self.model is None:  # Should be loaded by now
             logger.info("Classification model and artifacts loaded")
@@ -361,15 +357,163 @@ class GenreClassifierService:
         Empty / missing ``top_genre`` entries are dropped to avoid leaking
         catch-all labels into the registry.
         """
-        try:
-            from recap_subworker.infra.telemetry import CLASSIFIER_TOP_GENRE_TOTAL
-        except ImportError:
-            return
         for entry in results:
             label = entry.get("top_genre")
             if not isinstance(label, str) or not label:
                 continue
             CLASSIFIER_TOP_GENRE_TOTAL.labels(genre=label).inc()
+
+    def _select_model_features(
+        self, embeddings: np.ndarray, combined_features: np.ndarray
+    ) -> np.ndarray:
+        expected_features = getattr(self.model, "n_features_in_", None)
+        if not expected_features:
+            return combined_features
+        if expected_features == combined_features.shape[1]:
+            return combined_features
+        if expected_features == embeddings.shape[1]:
+            logger.warning(
+                "Model expects fewer features than generated. Using embeddings only.",
+                expected=expected_features,
+                got=combined_features.shape[1],
+            )
+            return embeddings
+        logger.error(
+            "Feature dimension mismatch",
+            expected=expected_features,
+            got_combined=combined_features.shape[1],
+            got_embeddings=embeddings.shape[1],
+        )
+        return combined_features
+
+    def _build_hybrid_features(self, texts: list[str], embeddings: np.ndarray) -> np.ndarray:
+        if not self.tfidf:
+            return embeddings
+
+        tfidf_start = time.time()
+        tfidf_features = self.tfidf.transform(texts)  # Original texts for TF-IDF
+
+        if self.svd is not None:
+            tfidf_reduced = self.svd.transform(tfidf_features)
+            combined_features = np.hstack((embeddings, tfidf_reduced))
+            logger.debug("Applied SVD to TF-IDF features", reduced_dim=tfidf_reduced.shape[1])
+        else:
+            combined_features = np.hstack((embeddings, tfidf_features.toarray()))
+
+        if self.scaler is not None:
+            combined_features = self.scaler.transform(combined_features)
+            logger.debug("Applied feature scaling")
+
+        logger.info("TF-IDF extraction completed", seconds=round(time.time() - tfidf_start, 2))
+        return self._select_model_features(embeddings, combined_features)
+
+    def _predict_probabilities(
+        self, features: np.ndarray, embeddings: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray]:
+        if self.model is None:
+            msg = "Model must be loaded before prediction"
+            raise RuntimeError(msg)
+        try:
+            probs_batch = self.model.predict_proba(features)
+        except ValueError as e:
+            msg = str(e)
+            if "expecting" in msg and str(embeddings.shape[1]) in msg:
+                logger.warning(
+                    "ValueError during prediction, retrying with embeddings only", error=msg
+                )
+                probs_batch = self.model.predict_proba(embeddings)
+            else:
+                raise
+        return probs_batch, self.model.classes_
+
+    def _build_prediction_entry(
+        self,
+        probs: np.ndarray,
+        classes: np.ndarray,
+        *,
+        multi_label: bool,
+        top_k: int,
+    ) -> dict[str, Any]:
+        scores = {cls: float(prob) for cls, prob in zip(classes, probs, strict=False)}
+        candidates = [
+            {"genre": cls, "score": score, "threshold": threshold}
+            for cls, score in scores.items()
+            if score >= (threshold := self.current_thresholds.get(cls, 0.5))
+        ]
+        candidates.sort(key=lambda x: x["score"], reverse=True)
+
+        if candidates:
+            top_match = candidates[0]
+            return {
+                "top_genre": top_match["genre"],
+                "confidence": top_match["score"],
+                "scores": scores,
+                "candidates": candidates[:top_k],
+                "below_threshold": False,
+            }
+
+        idx = int(np.argmax(probs))
+        top_genre = classes[idx]
+        confidence = float(probs[idx])
+        if multi_label:
+            logger.debug(
+                "No genre passed threshold in multi-label mode",
+                top_genre=top_genre,
+                confidence=confidence,
+            )
+            final_candidates = [
+                {
+                    "genre": top_genre,
+                    "score": confidence,
+                    "threshold": self.current_thresholds.get(top_genre, 0.5),
+                }
+            ]
+        else:
+            logger.debug(
+                "No genre passed threshold, using highest score",
+                top_genre=top_genre,
+                confidence=confidence,
+                threshold=self.current_thresholds.get(top_genre, 0.5),
+            )
+            final_candidates = candidates[:top_k]
+
+        return {
+            "top_genre": top_genre,
+            "confidence": confidence,
+            "scores": scores,
+            "candidates": final_candidates,
+            "below_threshold": True,
+        }
+
+    def _emit_diagnostic_histogram(
+        self, probs_batch: np.ndarray, classes: np.ndarray, total_texts: int
+    ) -> None:
+        try:
+            per_genre_probs: dict[str, list[float]] = {}
+            for probs in probs_batch:
+                for cls, prob in zip(classes, probs, strict=False):
+                    per_genre_probs.setdefault(str(cls), []).append(float(prob))
+            histogram = {
+                cls: {
+                    "mean": float(np.mean(values)),
+                    "max": float(np.max(values)),
+                    "p90": float(np.quantile(values, 0.9)),
+                    "count_above_threshold": int(
+                        sum(1 for v in values if v >= self.current_thresholds.get(cls, 0.5))
+                    ),
+                }
+                for cls, values in per_genre_probs.items()
+            }
+            logger.info(
+                "classifier proba histogram",
+                total_texts=total_texts,
+                thresholds_file=str(self.thresholds_path)
+                if getattr(self, "thresholds_path", None)
+                else None,
+                histogram=histogram,
+            )
+        except Exception as exc:  # noqa: BLE001 - diagnostic histogram emission must not fail batch prediction
+            logger.warning("failed to emit classifier diagnostic histogram", error=str(exc))
 
     def predict_batch(
         self,
@@ -403,7 +547,6 @@ class GenreClassifierService:
 
         input_texts = [f"passage: {t}" for t in texts]
 
-        # 1. Embeddings
         embed_start = time.time()
         embeddings = self.embedder.encode(input_texts)
         embed_elapsed = time.time() - embed_start
@@ -416,156 +559,16 @@ class GenreClassifierService:
         if len(embeddings) == 0:
             return []
 
-        # 2. TF-IDF with optional SVD reduction and scaling
-        features = embeddings
-        if self.tfidf:
-            tfidf_start = time.time()
-            tfidf_features = self.tfidf.transform(texts)  # Original texts for TF-IDF
+        features = self._build_hybrid_features(texts, embeddings)
 
-            # Apply SVD if available (dimensionality reduction)
-            if self.svd is not None:
-                tfidf_reduced = self.svd.transform(tfidf_features)
-                combined_features = np.hstack((embeddings, tfidf_reduced))
-                logger.debug("Applied SVD to TF-IDF features", reduced_dim=tfidf_reduced.shape[1])
-            else:
-                combined_features = np.hstack((embeddings, tfidf_features.toarray()))
-
-            # Apply scaler if available (feature normalization)
-            if self.scaler is not None:
-                combined_features = self.scaler.transform(combined_features)
-                logger.debug("Applied feature scaling")
-
-            logger.info("TF-IDF extraction completed", seconds=round(time.time() - tfidf_start, 2))
-
-            # Check what the model expects
-            expected_features = getattr(self.model, "n_features_in_", None)
-            if expected_features:
-                if expected_features == combined_features.shape[1]:
-                    features = combined_features
-                elif expected_features == embeddings.shape[1]:
-                    logger.warning(
-                        "Model expects fewer features than generated. Using embeddings only.",
-                        expected=expected_features,
-                        got=combined_features.shape[1],
-                    )
-                    features = embeddings
-                else:
-                    logger.error(
-                        "Feature dimension mismatch",
-                        expected=expected_features,
-                        got_combined=combined_features.shape[1],
-                        got_embeddings=embeddings.shape[1],
-                    )
-                    # Fallback to combined and let it crash or raise clear error?
-                    # If we are here, probably crash is inevitable or we try combined.
-                    features = combined_features
-            else:
-                features = combined_features
-
-        # 3. Predict Probabilities
-        assert self.model is not None, "Model must be loaded before prediction"
         predict_start = time.time()
-        try:
-            probs_batch = self.model.predict_proba(features)
-        except ValueError as e:
-            # Fallback for "X has Y features, but expects Z" if generic check failed
-            msg = str(e)
-            if "expecting" in msg and str(embeddings.shape[1]) in msg:
-                logger.warning(
-                    "ValueError during prediction, retrying with embeddings only", error=msg
-                )
-                probs_batch = self.model.predict_proba(embeddings)
-            else:
-                raise e
+        probs_batch, classes = self._predict_probabilities(features, embeddings)
         predict_elapsed = time.time() - predict_start
-        classes = self.model.classes_
 
-        # 4. Apply Thresholds
-        results = []
-        for probs in probs_batch:
-            scores = {cls: float(prob) for cls, prob in zip(classes, probs, strict=False)}
-
-            # Find candidate classes that pass threshold
-            candidates = []
-            for cls, score in scores.items():
-                threshold = self.current_thresholds.get(cls, 0.5)
-                if score >= threshold:
-                    candidates.append({"genre": cls, "score": score, "threshold": threshold})
-
-            # Sort candidates by score descending
-            candidates.sort(key=lambda x: x["score"], reverse=True)
-
-            if multi_label:
-                # In multi-label mode, return top_k candidates that passed threshold
-                if candidates:
-                    top_match = candidates[0]
-                    top_genre = top_match["genre"]
-                    confidence = top_match["score"]
-                    final_candidates = candidates[:top_k]
-                    below_threshold = False
-                else:
-                    # Fallback: Use highest scoring genre (argmax) when no candidate passes threshold
-                    idx = int(np.argmax(probs))
-                    top_genre = classes[idx]
-                    confidence = float(probs[idx])
-                    # Include the highest scoring genre as a candidate for transparency
-                    final_candidates = [
-                        {
-                            "genre": top_genre,
-                            "score": confidence,
-                            "threshold": self.current_thresholds.get(top_genre, 0.5),
-                        }
-                    ]
-                    below_threshold = True
-
-                    logger.debug(
-                        "No genre passed threshold in multi-label mode",
-                        top_genre=top_genre,
-                        confidence=confidence,
-                    )
-
-                results.append(
-                    {
-                        "top_genre": top_genre,
-                        "confidence": confidence,
-                        "scores": scores,
-                        "candidates": final_candidates,
-                        "below_threshold": below_threshold,
-                    }
-                )
-
-            else:
-                # Single label mode (backward compatible logic)
-                if candidates:
-                    top_match = candidates[0]
-                    top_genre = top_match["genre"]
-                    confidence = top_match["score"]
-                    below_threshold = False
-                else:
-                    # Fallback: Use highest scoring genre (argmax) when no candidate passes threshold
-                    # This improves recall while maintaining interpretability
-                    idx = int(np.argmax(probs))
-                    top_genre = classes[idx]
-                    confidence = float(probs[idx])
-                    below_threshold = True
-
-                    # Log when falling back to highest score
-                    logger.debug(
-                        "No genre passed threshold, using highest score",
-                        top_genre=top_genre,
-                        confidence=confidence,
-                        threshold=self.current_thresholds.get(top_genre, 0.5),
-                    )
-
-                results.append(
-                    {
-                        "top_genre": top_genre,
-                        "confidence": confidence,
-                        "scores": scores,
-                        "candidates": candidates[:top_k],
-                        "below_threshold": below_threshold,  # Flag for downstream handling
-                    }
-                )
+        results = [
+            self._build_prediction_entry(probs, classes, multi_label=multi_label, top_k=top_k)
+            for probs in probs_batch
+        ]
 
         logger.info(
             "Batch prediction completed",
@@ -574,32 +577,5 @@ class GenreClassifierService:
         )
 
         self._record_top_genres(results)
-
-        try:
-            per_genre_probs: dict[str, list[float]] = {}
-            for probs in probs_batch:
-                for cls, prob in zip(classes, probs, strict=False):
-                    per_genre_probs.setdefault(str(cls), []).append(float(prob))
-            histogram = {
-                cls: {
-                    "mean": float(np.mean(values)),
-                    "max": float(np.max(values)),
-                    "p90": float(np.quantile(values, 0.9)),
-                    "count_above_threshold": int(
-                        sum(1 for v in values if v >= self.current_thresholds.get(cls, 0.5))
-                    ),
-                }
-                for cls, values in per_genre_probs.items()
-            }
-            logger.info(
-                "classifier proba histogram",
-                total_texts=total_texts,
-                thresholds_file=str(self.thresholds_path)
-                if getattr(self, "thresholds_path", None)
-                else None,
-                histogram=histogram,
-            )
-        except Exception as exc:
-            logger.warning("failed to emit classifier diagnostic histogram", error=str(exc))
-
+        self._emit_diagnostic_histogram(probs_batch, classes, total_texts)
         return results

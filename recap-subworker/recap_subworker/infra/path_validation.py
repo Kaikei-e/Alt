@@ -38,7 +38,8 @@ def validate_path(user_path: str, base_dirs: list[Path] | None = None) -> Path:
         base_dirs = ALLOWED_BASE_DIRS
 
     if not base_dirs:
-        raise ValueError("No base directories configured for path validation")
+        msg = "No base directories configured for path validation"
+        raise ValueError(msg)
 
     normalized = os.path.normpath(user_path)
 
@@ -61,9 +62,8 @@ def validate_path(user_path: str, base_dirs: list[Path] | None = None) -> Path:
         except ValueError:
             continue
 
-    raise ValueError(
-        f"Path '{user_path}' is not within allowed directories: {[str(d) for d in base_dirs]}"
-    )
+    msg = f"Path '{user_path}' is not within allowed directories: {[str(d) for d in base_dirs]}"
+    raise ValueError(msg)
 
 
 def require_existing_path(user_path: str, base_dirs: list[Path] | None = None) -> Path:
@@ -78,7 +78,8 @@ def require_existing_path(user_path: str, base_dirs: list[Path] | None = None) -
         base_dirs = ALLOWED_BASE_DIRS
 
     if not base_dirs:
-        raise ValueError("No base directories configured for path validation")
+        msg = "No base directories configured for path validation"
+        raise ValueError(msg)
 
     # Lexical allow-list (raises ValueError if the path escapes).
     validate_path(user_path, base_dirs)
@@ -102,17 +103,15 @@ def require_existing_path(user_path: str, base_dirs: list[Path] | None = None) -
             continue
 
     if matched_base is None:
-        raise ValueError(
-            f"Path '{user_path}' is not within allowed directories: {[str(d) for d in base_dirs]}"
-        )
+        msg = f"Path '{user_path}' is not within allowed directories: {[str(d) for d in base_dirs]}"
+        raise ValueError(msg)
 
     # Official sanitizer (docs): prefix-check THEN use the same variable.
     # commonpath above already blocked prefix attacks (/app/data-evil);
     # startswith(matched_base) is the exact barrier CodeQL models.
     if not real_path.startswith(matched_base):
-        raise ValueError(
-            f"Path '{user_path}' is not within allowed directories: {[str(d) for d in base_dirs]}"
-        )
+        msg = f"Path '{user_path}' is not within allowed directories: {[str(d) for d in base_dirs]}"
+        raise ValueError(msg)
 
     safe_path = real_path
     if not os.path.exists(safe_path):  # noqa: PTH110

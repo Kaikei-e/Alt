@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+import http.client
 import json
 import ssl
+import tempfile
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from datetime import UTC, datetime, timedelta
+from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import pytest
 from cryptography import x509
@@ -18,17 +22,43 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 from jwcrypto import jwk, jwt
+from jwcrypto.jwa import default_max_pbkdf2_iterations
 
 from recap_subworker.app.infra.pki.config import PkiError, SharedProvisionerError
 from recap_subworker.app.infra.pki.ctx import CancelledError, Ctx
 from recap_subworker.app.infra.pki.native_issuer import (
     NativeStepCAIssuer,
+    _create_csr,
     decrypt_provisioner_jwk,
     encrypt_step_ca_provisioner_jwk,
 )
 
 SUBJECT = "recap-subworker"
 PROVISIONER = "pki-agent-recap-subworker"
+EXPECTED_ISSUE_COUNT = 2
+MAX_ELAPSED_TIMEOUT_SECONDS = 1.5
+
+
+class _OttValidationError(ValueError):
+    @classmethod
+    def wrong_issuer(cls) -> _OttValidationError:
+        return cls("wrong issuer")
+
+    @classmethod
+    def wrong_audience(cls) -> _OttValidationError:
+        return cls("wrong audience")
+
+    @classmethod
+    def expired_ott(cls) -> _OttValidationError:
+        return cls("expired ott")
+
+    @classmethod
+    def missing_jti(cls) -> _OttValidationError:
+        return cls("missing jti")
+
+    @classmethod
+    def reused_ott(cls) -> _OttValidationError:
+        return cls("reused ott")
 
 
 class RecordedReq:
@@ -115,7 +145,11 @@ class FakeStepCA:
         ca = self
 
         class Handler(BaseHTTPRequestHandler):
-            def log_message(self, format: str, *args: object) -> None:
+            def log_message(
+                self,
+                format: str,  # noqa: A002  # BaseHTTPRequestHandler.log_message override signature
+                *args: object,
+            ) -> None:
                 del format, args
 
             def do_GET(self) -> None:
@@ -284,24 +318,28 @@ class FakeStepCA:
             raise ValueError(str(exc)) from exc
         claims = json.loads(token.claims)
         if claims.get("iss") != self.provisioner:
-            raise ValueError("wrong issuer")
+            raise _OttValidationError.wrong_issuer()
         aud = claims.get("aud")
         auds = aud if isinstance(aud, list) else [aud]
         if not any("/1.0/sign" in str(a) for a in auds):
-            raise ValueError("wrong audience")
+            raise _OttValidationError.wrong_audience()
         exp = claims.get("exp")
         if self.reject_expired and exp is not None and datetime.now(UTC).timestamp() > float(exp):
-            raise ValueError("expired ott")
+            raise _OttValidationError.expired_ott()
         jti = claims.get("jti")
         if not jti:
-            raise ValueError("missing jti")
+            raise _OttValidationError.missing_jti()
         with self.mu:
             if self.reject_reuse and jti in self.used_jti:
-                raise ValueError("reused ott")
+                raise _OttValidationError.reused_ott()
             self.used_jti.add(str(jti))
         return claims
 
-    def _sign_csr(self, csr: x509.CertificateSigningRequest, mutate: Any) -> x509.Certificate:
+    def _sign_csr(
+        self,
+        csr: x509.CertificateSigningRequest,
+        mutate: Callable[[_MutateCert], None] | None,
+    ) -> x509.Certificate:
         try:
             san = csr.extensions.get_extension_for_class(x509.SubjectAlternativeName)
             dns = list(san.value)
@@ -461,8 +499,8 @@ def ca_and_issuer(tmp_path: Path) -> Iterator[tuple[FakeStepCA, NativeStepCAIssu
 def test_issue_success(ca_and_issuer: tuple[FakeStepCA, NativeStepCAIssuer]) -> None:
     ca, iss = ca_and_issuer
     cert_pem, key_pem = iss.issue(Ctx(), SUBJECT, [SUBJECT])
-    assert cert_pem and key_pem
-    import tempfile
+    assert cert_pem
+    assert key_pem
 
     with (
         tempfile.NamedTemporaryFile(delete=False) as cf,
@@ -482,7 +520,8 @@ def test_issue_success(ca_and_issuer: tuple[FakeStepCA, NativeStepCAIssuer]) -> 
     assert got.method == "POST"
     assert got.path == "/sign"
     body = json.loads(got.body)
-    assert body["ott"] and body["csr"]
+    assert body["ott"]
+    assert body["csr"]
     pub = jwk.JWK.from_json(ca.jwk.export_public())
     token = jwt.JWT(key=pub, jwt=body["ott"])
     claims = json.loads(token.claims)
@@ -512,7 +551,9 @@ def test_mints_distinct_otts(tmp_path: Path) -> None:
                 ott = json.loads(rec.body)["ott"]
                 token = jwt.JWT(key=pub, jwt=ott)
                 jtis.append(json.loads(token.claims)["jti"])
-        assert len(jtis) == 2 and jtis[0] and jtis[0] != jtis[1]
+        assert len(jtis) == EXPECTED_ISSUE_COUNT
+        assert jtis[0]
+        assert jtis[0] != jtis[1]
     finally:
         ca.close()
 
@@ -525,8 +566,6 @@ def test_reused_ott_rejected_by_ca(tmp_path: Path) -> None:
         first = ca.last_sign()
         assert first is not None
         ctx = ssl.create_default_context(cafile=iss.root_file)
-        import http.client
-        from urllib.parse import urlparse
 
         parsed = urlparse(iss.ca_url)
         host = parsed.hostname
@@ -534,7 +573,7 @@ def test_reused_ott_rejected_by_ca(tmp_path: Path) -> None:
         conn = http.client.HTTPSConnection(host, parsed.port, context=ctx, timeout=5)
         conn.request("POST", "/sign", body=first.body, headers={"Content-Type": "application/json"})
         resp = conn.getresponse()
-        assert resp.status >= 400
+        assert resp.status >= HTTPStatus.BAD_REQUEST
         conn.close()
     finally:
         ca.close()
@@ -558,12 +597,9 @@ def test_expired_ott_rejected_by_ca(tmp_path: Path) -> None:
         }
         token = jwt.JWT(header=header, claims=claims)
         token.make_signed_token(ca.jwk)
-        from recap_subworker.app.infra.pki.native_issuer import _create_csr
 
         csr_pem, _key = _create_csr(SUBJECT, [SUBJECT])
         body = json.dumps({"csr": csr_pem, "ott": token.serialize()}).encode()
-        import http.client
-        from urllib.parse import urlparse
 
         parsed = urlparse(iss.ca_url)
         ctx = ssl.create_default_context(cafile=iss.root_file)
@@ -572,7 +608,7 @@ def test_expired_ott_rejected_by_ca(tmp_path: Path) -> None:
         conn = http.client.HTTPSConnection(host, parsed.port, context=ctx, timeout=5)
         conn.request("POST", "/sign", body=body, headers={"Content-Type": "application/json"})
         resp = conn.getresponse()
-        assert resp.status >= 400
+        assert resp.status >= HTTPStatus.BAD_REQUEST
         conn.close()
     finally:
         ca.close()
@@ -644,7 +680,7 @@ def test_timeout(tmp_path: Path) -> None:
         start = time.monotonic()
         with pytest.raises((TimeoutError, OSError, RuntimeError, CancelledError, PkiError)):
             iss.issue(Ctx(timeout=1), SUBJECT, [SUBJECT])
-        assert time.monotonic() - start < 1.5
+        assert time.monotonic() - start < MAX_ELAPSED_TIMEOUT_SECONDS
     finally:
         ca.close()
 
@@ -660,7 +696,7 @@ def test_canceled(tmp_path: Path) -> None:
         try:
             iss.issue(ctx, SUBJECT, [SUBJECT])
             done.append(None)
-        except BaseException as exc:
+        except BaseException as exc:  # noqa: BLE001 - capture worker thread exception to assert cancellation
             done.append(exc)
 
     try:
@@ -724,7 +760,7 @@ def test_rejects_shared_provisioner() -> None:
         ca_url="https://127.0.0.1:1",
         root_file="/dev/null",
         provisioner="pki-agent",
-        password_file="/run/secrets/pki-agent-recap-subworker-jwk",
+        password_file="/run/secrets/pki-agent-recap-subworker-jwk",  # noqa: S106 - test fixture path, not a credential
     )
     with pytest.raises(SharedProvisionerError):
         iss.issue(Ctx(), SUBJECT, [SUBJECT])
@@ -736,7 +772,6 @@ def test_rekey_uses_client_cert(tmp_path: Path) -> None:
     try:
         cert_pem, key_pem = iss.issue(Ctx(), SUBJECT, [SUBJECT])
         new_cert, new_key = iss.rekey(Ctx(), cert_pem, key_pem, SUBJECT, [SUBJECT])
-        import tempfile
 
         with (
             tempfile.NamedTemporaryFile(delete=False) as cf,
@@ -776,8 +811,6 @@ def test_decrypt_provisioner_jwk_wrong_password() -> None:
 
 def test_unwraps_step_ca_pbes2_iteration_count() -> None:
     """step-ca encrypts provisioner JWKs with p2c=600000; the global cap must not stick."""
-    from jwcrypto.jwa import default_max_pbkdf2_iterations
-
     before = default_max_pbkdf2_iterations
     key = jwk.JWK.generate(kty="EC", crv="P-256")
     password = b"itest-jwk-recap-subworker"

@@ -23,8 +23,8 @@ def _have_uv() -> bool:
 
 @pytest.mark.skipif(not _have_uv(), reason="uv not installed on this machine")
 def test_ruff_passes_on_production_package() -> None:
-    result = subprocess.run(
-        ["uv", "run", "ruff", "check", str(PACKAGE_DIR)],
+    result = subprocess.run(  # noqa: S603 - fixed argv list invoking uv ruff check on PACKAGE_DIR
+        ["uv", "run", "ruff", "check", str(PACKAGE_DIR)],  # noqa: S607 - uv is intentionally resolved from PATH
         check=False,
         capture_output=True,
         text=True,
@@ -36,7 +36,7 @@ def test_ruff_passes_on_production_package() -> None:
 @pytest.mark.skipif(not _have_uv(), reason="uv not installed on this machine")
 def test_pyrefly_passes_on_project() -> None:
     result = subprocess.run(
-        ["uv", "run", "pyrefly", "check", "."],
+        ["uv", "run", "pyrefly", "check", "."],  # noqa: S607 - uv is intentionally resolved from PATH
         check=False,
         capture_output=True,
         text=True,

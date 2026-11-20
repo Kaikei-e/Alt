@@ -35,9 +35,15 @@ from ..infra.logging import configure_logging
 from ..infra.loop_watchdog import LoopWatchdog
 from ..infra.telemetry import setup_metrics
 from ..services.async_jobs import ORPHANED_ADMIN_JOB_MESSAGE, _utcnow
+from ..services.card_verifier import DEFAULT_FILLER_PHRASES
 from ..services.run_manager import ORPHANED_RUN_MESSAGE, SessionFactory
 from .container import ServiceContainer
 from .infra.admin_auth import load_admin_auth_config, require_admin_token
+from .infra.peer_identity import (
+    PeerIdentityMiddleware,
+    allowed_peers_from_env,
+    strict_from_env,
+)
 from .routers import (
     admin,
     classification,
@@ -181,8 +187,6 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     # unauthenticated or 500-ing per request (CLAUDE.md rule 9).
     app.state.admin_auth = load_admin_auth_config()
 
-    from ..services.card_verifier import DEFAULT_FILLER_PHRASES
-
     effective_phrases = (
         [p.strip() for p in settings.filler_phrases.split(",") if p.strip()]
         if getattr(settings, "filler_phrases", None)
@@ -244,12 +248,6 @@ def create_app() -> FastAPI:
     app.add_middleware(RequestSizeLimitMiddleware, max_bytes=settings.max_request_body_bytes)
 
     # peer-identity capture for mTLS audit (ADR-000737).
-    from recap_subworker.app.infra.peer_identity import (
-        PeerIdentityMiddleware,
-        allowed_peers_from_env,
-        strict_from_env,
-    )
-
     app.add_middleware(
         PeerIdentityMiddleware,
         allowed=allowed_peers_from_env(),

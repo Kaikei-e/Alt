@@ -14,11 +14,11 @@ import secrets
 import ssl
 import threading
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from email.utils import parseaddr
-from typing import Any
+from typing import Any, Protocol, cast
 from urllib.parse import urlparse, urlunparse
 
 from cryptography import x509
@@ -67,6 +67,16 @@ _PBES2_ALG = "PBES2-HS256+A128KW"
 _PBES2_ENC = "A256GCM"
 _PBES2_LOCK = threading.Lock()
 _ALLOWED_JWE_HEADER_KEYS = frozenset({"alg", "enc", "p2c", "p2s", "kid", "typ", "cty"})
+_HTTP_REDIRECT_MIN = 300
+_HTTP_CLIENT_ERROR_MIN = 400
+_HTTP_SERVER_ERROR_MIN = 500
+_JWE_COMPACT_PARTS = 5
+
+
+class _PeerChainSocket(Protocol):
+    def get_verified_chain(self) -> list[bytes | str] | None: ...
+
+    def getpeercert(self, binary_form: bool = ...) -> bytes | None: ...
 
 
 @dataclass
@@ -111,12 +121,14 @@ class NativeStepCAIssuer:
         try:
             resp = self._post_json(ctx, "/sign", {"csr": csr_pem, "ott": ott}, client_cert=None)
         except CancelledError as exc:
-            raise CancelledError("pki: sign: canceled") from exc
+            msg = "pki: sign: canceled"
+            raise CancelledError(msg) from exc
         except (OSError, PkiError, http.client.HTTPException) as exc:
             ctx.raise_if_cancelled()
             if isinstance(exc, PkiError):
                 raise
-            raise PkiError(f"pki: sign: {exc}") from exc
+            msg = f"pki: sign: {exc}"
+            raise PkiError(msg) from exc
         return self._validate_and_encode(subject, names, resp, key)
 
     def rekey(
@@ -130,23 +142,23 @@ class NativeStepCAIssuer:
         try:
             resp = self._post_json(ctx, "/rekey", {"csr": csr_pem}, client_cert=(cert_pem, key_pem))
         except CancelledError as exc:
-            raise CancelledError("pki: rekey: canceled") from exc
+            msg = "pki: rekey: canceled"
+            raise CancelledError(msg) from exc
         except (OSError, PkiError, http.client.HTTPException) as exc:
             ctx.raise_if_cancelled()
             if isinstance(exc, PkiError):
                 raise
-            raise PkiError(f"pki: rekey: {exc}") from exc
+            msg = f"pki: rekey: {exc}"
+            raise PkiError(msg) from exc
         return self._validate_and_encode(subject, names, resp, key)
 
     def _guard_provisioner(self) -> None:
         if self.provisioner in {"pki-agent", ""}:
-            raise SharedProvisionerError(
-                f"pki: shared provisioner pki-agent is forbidden for in-process enrollment (got {self.provisioner!r})"
-            )
+            msg = f"pki: shared provisioner pki-agent is forbidden for in-process enrollment (got {self.provisioner!r})"
+            raise SharedProvisionerError(msg)
         if "step_ca_root_password" in self.password_file:
-            raise SharedRootSecretError(
-                f"pki: provisioner password file must not be the shared step_ca_root_password secret (got {self.password_file!r})"
-            )
+            msg = f"pki: provisioner password file must not be the shared step_ca_root_password secret (got {self.password_file!r})"
+            raise SharedRootSecretError(msg)
 
     def _request_timeout(self, ctx: Ctx) -> float:
         duration = self.timeout if self.timeout > 0 else DEFAULT_ISSUE_TIMEOUT
@@ -182,21 +194,21 @@ class NativeStepCAIssuer:
         status, _body, _chain = self._http.request(
             ctx,
             ssl_ctx,
-            self.ca_url,
-            "GET",
-            "/health",
+            _HTTPRequest(base=self.ca_url, method="GET", path="/health"),
             timeout=self._request_timeout(ctx),
         )
-        if status >= 300:
+        if status >= _HTTP_REDIRECT_MIN:
             raise _classify_ca_status(status)
         try:
             certs = x509.load_pem_x509_certificates(
                 read_regular_no_follow(self.root_file, MAX_ROOT_PEM_BYTES)
             )
         except (OSError, ValueError, PkiError, FileNotFoundError) as err:
-            raise PkiError("pki: health: missing verified TLS chain") from err
+            msg = "pki: health: missing verified TLS chain"
+            raise PkiError(msg) from err
         if not certs:
-            raise PkiError("pki: health: empty verified TLS chain")
+            msg = "pki: health: empty verified TLS chain"
+            raise PkiError(msg)
         return hashlib.sha256(certs[-1].public_bytes(Encoding.DER)).hexdigest()
 
     def _load_provisioner_jwk(self, ctx: Ctx, ssl_ctx: ssl.SSLContext, password: bytearray) -> JWK:
@@ -209,17 +221,16 @@ class NativeStepCAIssuer:
             status, body, _chain = self._http.request(
                 ctx,
                 ssl_ctx,
-                self.ca_url,
-                "GET",
-                path,
+                _HTTPRequest(base=self.ca_url, method="GET", path=path),
                 timeout=self._request_timeout(ctx),
             )
-            if status >= 300:
+            if status >= _HTTP_REDIRECT_MIN:
                 raise _classify_ca_status(status)
             try:
                 payload = json.loads(body)
             except json.JSONDecodeError as err:
-                raise PkiError("pki: decode provisioners") from err
+                msg = "pki: decode provisioners"
+                raise PkiError(msg) from err
             for item in payload.get("provisioners") or []:
                 if str(item.get("type", "")).upper() != "JWK":
                     continue
@@ -237,10 +248,10 @@ class NativeStepCAIssuer:
             if not cursor:
                 if last_decrypt is not None:
                     raise last_decrypt
-                raise PkiError(
-                    f"pki: jwk provisioner {self.provisioner!r} not found (or password is wrong)"
-                )
-        raise ProvisionerPageLimitError("pki: provisioner listing exceeded page cap")
+                msg = f"pki: jwk provisioner {self.provisioner!r} not found (or password is wrong)"
+                raise PkiError(msg)
+        msg = "pki: provisioner listing exceeded page cap"
+        raise ProvisionerPageLimitError(msg)
 
     def _post_json(
         self,
@@ -254,30 +265,36 @@ class NativeStepCAIssuer:
         status, body, _chain = self._http.request(
             ctx,
             ssl_ctx,
-            self.ca_url,
-            "POST",
-            path,
-            body=raw,
-            headers={"Content-Type": "application/json"},
+            _HTTPRequest(
+                base=self.ca_url,
+                method="POST",
+                path=path,
+                body=raw,
+                headers={"Content-Type": "application/json"},
+            ),
             timeout=self._request_timeout(ctx),
         )
-        if status >= 300:
+        if status >= _HTTP_REDIRECT_MIN:
             raise _classify_ca_status(status)
         try:
             parsed = json.loads(body)
         except json.JSONDecodeError as err:
-            raise PkiError("pki: decode sign response") from err
+            msg = "pki: decode sign response"
+            raise PkiError(msg) from err
         if not isinstance(parsed, dict):
-            raise PkiError("pki: decode sign response")
+            msg = "pki: decode sign response"
+            raise PkiError(msg)
         return parsed
 
     def _ssl_context(self, client_cert: tuple[bytes, bytes] | None = None) -> ssl.SSLContext:
         try:
             data = read_regular_no_follow(self.root_file, MAX_ROOT_PEM_BYTES)
         except FileNotFoundError as err:
-            raise PkiError("pki: read CA root") from err
+            msg = "pki: read CA root"
+            raise PkiError(msg) from err
         except PkiError as err:
-            raise PkiError("pki: read CA root") from err
+            msg = "pki: read CA root"
+            raise PkiError(msg) from err
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
         ctx.minimum_version = ssl.TLSVersion.TLSv1_3
         ctx.check_hostname = True
@@ -285,7 +302,8 @@ class NativeStepCAIssuer:
         try:
             ctx.load_verify_locations(cadata=data.decode("ascii"))
         except (ValueError, ssl.SSLError, UnicodeDecodeError) as err:
-            raise PkiError(f"pki: parse CA root {self.root_file!r}: no certificates") from err
+            msg = f"pki: parse CA root {self.root_file!r}: no certificates"
+            raise PkiError(msg) from err
         if client_cert is not None:
             _load_client_chain(ctx, client_cert[0], client_cert[1])
         return ctx
@@ -299,24 +317,29 @@ class NativeStepCAIssuer:
     ) -> tuple[bytes, bytes]:
         crt = str(resp.get("crt") or "").strip()
         if not crt:
-            raise PkiError("pki: empty sign response")
+            msg = "pki: empty sign response"
+            raise PkiError(msg)
         try:
             leaf = x509.load_pem_x509_certificate(crt.encode("utf-8"))
         except ValueError as err:
-            raise PkiError("pki: parse issued cert") from err
+            msg = "pki: parse issued cert"
+            raise PkiError(msg) from err
         cn = leaf.subject.get_attributes_for_oid(NameOID.COMMON_NAME)
         cn_value = cn[0].value if cn else ""
         if cn_value != subject:
-            raise PkiError(f"pki: issued CN {cn_value!r} does not match subject {subject!r}")
+            msg = f"pki: issued CN {cn_value!r} does not match subject {subject!r}"
+            raise PkiError(msg)
         _assert_sans(leaf, sans)
         _public_key_matches(leaf, key)
         try:
             root_pem = read_regular_no_follow(self.root_file, MAX_ROOT_PEM_BYTES)
             roots = x509.load_pem_x509_certificates(root_pem)
         except (OSError, ValueError, PkiError) as err:
-            raise PkiError("pki: load pinned CA root") from err
+            msg = "pki: load pinned CA root"
+            raise PkiError(msg) from err
         if not roots:
-            raise PkiError(f"pki: parse CA root {self.root_file!r}: no certificates")
+            msg = f"pki: parse CA root {self.root_file!r}: no certificates"
+            raise PkiError(msg)
         intermediates: list[x509.Certificate] = []
         chain_pems: list[str] = []
         raw_chain = resp.get("certChain") or []
@@ -329,11 +352,38 @@ class NativeStepCAIssuer:
             try:
                 parsed = x509.load_pem_x509_certificate(pem_str.encode("utf-8"))
             except ValueError as err:
-                raise PkiError("pki: parse issued chain") from err
+                msg = "pki: parse issued chain"
+                raise PkiError(msg) from err
             if parsed.public_bytes(Encoding.DER) != leaf.public_bytes(Encoding.DER):
                 intermediates.append(parsed)
         _verify_chain(leaf, roots, intermediates, sans)
         return _encode_issued(leaf, intermediates, key)
+
+
+@dataclass(frozen=True, slots=True)
+class _HTTPRequest:
+    base: str
+    method: str
+    path: str
+    body: bytes | None = None
+    headers: dict[str, str] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _AttemptTarget:
+    ssl_ctx: ssl.SSLContext
+    host: str
+    port: int
+
+
+def _parse_https_target(base: str) -> tuple[str, int]:
+    require_https(base)
+    parsed = urlparse(base)
+    host = parsed.hostname or ""
+    if not host:
+        msg = "pki: STEP_CA_URL missing host"
+        raise PkiError(msg)
+    return host, parsed.port or 443
 
 
 class _CancelableHTTP:
@@ -348,81 +398,101 @@ class _CancelableHTTP:
             with contextlib.suppress(OSError):
                 conn.close()
 
+    def _send_once(
+        self,
+        ctx: Ctx,
+        target: _AttemptTarget,
+        req: _HTTPRequest,
+        slice_timeout: float,
+    ) -> tuple[int, bytes, list[bytes]]:
+        conn = http.client.HTTPSConnection(
+            target.host, target.port, context=target.ssl_ctx, timeout=slice_timeout
+        )
+        with self._lock:
+            self._conns.append(conn)
+        try:
+            conn.request(req.method, req.path, body=req.body, headers=req.headers or {})
+            resp = conn.getresponse()
+            _reject_redirect(resp.status)
+            data = _read_capped(resp)
+            chain = _extract_peer_chain(cast("_PeerChainSocket | None", conn.sock))
+        except ssl.SSLError as exc:
+            if ctx.cancelled():
+                msg = "canceled"
+                raise CancelledError(msg) from exc
+            msg = "pki: ca request"
+            raise PkiError(msg) from exc
+        else:
+            return resp.status, data, chain
+        finally:
+            with contextlib.suppress(OSError):
+                conn.close()
+            with self._lock:
+                if conn in self._conns:
+                    self._conns.remove(conn)
+
     def request(
         self,
         ctx: Ctx,
         ssl_ctx: ssl.SSLContext,
-        base: str,
-        method: str,
-        path: str,
-        body: bytes | None = None,
-        headers: dict[str, str] | None = None,
+        req: _HTTPRequest,
         timeout: float = DEFAULT_ISSUE_TIMEOUT,
     ) -> tuple[int, bytes, list[bytes]]:
         ctx.raise_if_cancelled()
-        require_https(base)
-        parsed = urlparse(base)
-        host = parsed.hostname or ""
-        if not host:
-            raise PkiError("pki: STEP_CA_URL missing host")
-        port = parsed.port or 443
+        host, port = _parse_https_target(req.base)
+        target = _AttemptTarget(ssl_ctx=ssl_ctx, host=host, port=port)
         deadline = time.monotonic() + timeout
         last_exc: BaseException | None = None
         while time.monotonic() < deadline:
             ctx.raise_if_cancelled()
             slice_timeout = min(0.2, max(0.05, deadline - time.monotonic()))
-            conn = http.client.HTTPSConnection(host, port, context=ssl_ctx, timeout=slice_timeout)
-            with self._lock:
-                self._conns.append(conn)
             try:
-                conn.request(method, path, body=body, headers=headers or {})
-                resp = conn.getresponse()
-                if 300 <= resp.status < 400:
-                    raise RedirectError("pki: refusing HTTP redirect to step-ca")
-                data = _read_capped(resp)
-                chain: list[bytes] = []
-                sock = conn.sock
-                if sock is not None:
-                    raw_chain = sock.get_verified_chain()
-                    if raw_chain:
-                        for item in raw_chain:
-                            if isinstance(item, str):
-                                chain.append(ssl.PEM_cert_to_DER_cert(item))
-                            else:
-                                chain.append(item)
-                    elif peer := sock.getpeercert(binary_form=True):
-                        chain.append(peer)
-                return resp.status, data, chain
+                return self._send_once(ctx, target, req, slice_timeout)
             except RedirectError:
                 raise
             except ResponseTooLargeError:
                 raise
+            except CancelledError:
+                raise
             except TimeoutError as exc:
                 last_exc = exc
                 ctx.raise_if_cancelled()
-                continue
-            except ssl.SSLError as exc:
-                if ctx.cancelled():
-                    raise CancelledError("canceled") from exc
-                raise PkiError("pki: ca request") from exc
             except (OSError, http.client.HTTPException) as exc:
                 if ctx.cancelled():
-                    raise CancelledError("canceled") from exc
+                    msg = "canceled"
+                    raise CancelledError(msg) from exc
                 last_exc = exc
                 if time.monotonic() >= deadline:
-                    raise PkiError("pki: ca request") from exc
+                    msg = "pki: ca request"
+                    raise PkiError(msg) from exc
                 ctx.raise_if_cancelled()
-                continue
-            finally:
-                with contextlib.suppress(OSError):
-                    conn.close()
-                with self._lock:
-                    if conn in self._conns:
-                        self._conns.remove(conn)
         ctx.raise_if_cancelled()
         if last_exc is not None:
             raise last_exc
-        raise TimeoutError("pki: http timed out")
+        msg = "pki: http timed out"
+        raise TimeoutError(msg)
+
+
+def _reject_redirect(status: int) -> None:
+    if _HTTP_REDIRECT_MIN <= status < _HTTP_CLIENT_ERROR_MIN:
+        msg = "pki: refusing HTTP redirect to step-ca"
+        raise RedirectError(msg)
+
+
+def _extract_peer_chain(sock: _PeerChainSocket | None) -> list[bytes]:
+    chain: list[bytes] = []
+    if sock is None:
+        return chain
+    raw_chain = sock.get_verified_chain()
+    if raw_chain:
+        for item in raw_chain:
+            if isinstance(item, str):
+                chain.append(ssl.PEM_cert_to_DER_cert(item))
+            else:
+                chain.append(item)
+    elif peer := sock.getpeercert(binary_form=True):
+        chain.append(peer)
+    return chain
 
 
 def _read_capped(resp: http.client.HTTPResponse) -> bytes:
@@ -430,7 +500,8 @@ def _read_capped(resp: http.client.HTTPResponse) -> bytes:
     if cl is not None:
         try:
             if int(cl) > MAX_RESPONSE_BYTES:
-                raise ResponseTooLargeError("pki: CA response exceeded size cap")
+                msg = "pki: CA response exceeded size cap"
+                raise ResponseTooLargeError(msg)
         except ValueError:
             pass
     buf = bytearray()
@@ -440,7 +511,8 @@ def _read_capped(resp: http.client.HTTPResponse) -> bytes:
             break
         buf.extend(chunk)
         if len(buf) > MAX_RESPONSE_BYTES:
-            raise ResponseTooLargeError("pki: CA response exceeded size cap")
+            msg = "pki: CA response exceeded size cap"
+            raise ResponseTooLargeError(msg)
     return bytes(buf)
 
 
@@ -450,7 +522,8 @@ def _anonymous_fd(name: str) -> int:
     if callable(create):
         fd = create(name, getattr(os, "MFD_CLOEXEC", 1))
         if not isinstance(fd, int) or fd < 0:
-            raise PkiError("pki: anonymous secret fd unavailable")
+            msg = "pki: anonymous secret fd unavailable"
+            raise PkiError(msg)
         return fd
     libc = ctypes.CDLL("libc.so.6", use_errno=True)
     libc.memfd_create.argtypes = [ctypes.c_char_p, ctypes.c_uint]
@@ -459,7 +532,8 @@ def _anonymous_fd(name: str) -> int:
     if fd >= 0:
         return fd
     err = ctypes.get_errno()
-    raise PkiError("pki: anonymous secret fd unavailable") from OSError(err, os.strerror(err))
+    msg = "pki: anonymous secret fd unavailable"
+    raise PkiError(msg) from OSError(err, os.strerror(err))
 
 
 def _load_client_chain(ctx: ssl.SSLContext, cert_pem: bytes, key_pem: bytes) -> None:
@@ -552,33 +626,37 @@ def _join_url(base: str, path: str) -> str:
 
 
 def _classify_ca_status(status: int) -> PkiError:
-    if 300 <= status < 400:
+    if _HTTP_REDIRECT_MIN <= status < _HTTP_CLIENT_ERROR_MIN:
         return RedirectError("pki: refusing HTTP redirect to step-ca")
-    if 400 <= status < 500:
+    if _HTTP_CLIENT_ERROR_MIN <= status < _HTTP_SERVER_ERROR_MIN:
         return CARejectedError(f"pki: CA rejected the request (status {status})")
-    if status >= 500:
+    if status >= _HTTP_SERVER_ERROR_MIN:
         return CAUnavailableError(f"pki: CA unavailable (status {status})")
     return PkiError(f"pki: CA rejected the request (status {status})")
 
 
 def _parse_jwe_protected_header(encrypted_key: str) -> dict[str, Any]:
     if len(encrypted_key.encode("utf-8")) > MAX_JWE_COMPACT_BYTES:
-        raise PkiError("pki: provisioner JWE exceeded size cap")
+        msg = "pki: provisioner JWE exceeded size cap"
+        raise PkiError(msg)
     parts = encrypted_key.split(".")
-    if len(parts) != 5:
-        raise PkiError("pki: malformed provisioner jwe")
+    if len(parts) != _JWE_COMPACT_PARTS:
+        msg = "pki: malformed provisioner jwe"
+        raise PkiError(msg)
     raw = parts[0].encode("ascii")
     padded = raw + b"=" * ((4 - len(raw) % 4) % 4)
     try:
         header = json.loads(base64.urlsafe_b64decode(padded))
     except (ValueError, json.JSONDecodeError) as err:
-        raise PkiError("pki: malformed provisioner jwe header") from err
+        msg = "pki: malformed provisioner jwe header"
+        raise PkiError(msg) from err
     if not isinstance(header, dict):
-        raise PkiError("pki: malformed provisioner jwe header")
+        msg = "pki: malformed provisioner jwe header"
+        raise PkiError(msg)
     return header
 
 
-def _with_step_ca_pbes2_budget[T](fn: Any) -> Any:
+def _with_step_ca_pbes2_budget[T](fn: Callable[[], T]) -> T:
     with _PBES2_LOCK:
         previous = jwa.default_max_pbkdf2_iterations
         jwa.default_max_pbkdf2_iterations = max(previous, STEP_CA_PBES2_P2C)
@@ -591,14 +669,18 @@ def _with_step_ca_pbes2_budget[T](fn: Any) -> Any:
 def decrypt_provisioner_jwk(encrypted_key: str, password: bytes) -> JWK:
     header = _parse_jwe_protected_header(encrypted_key)
     if "zip" in header:
-        raise PkiError("pki: unexpected provisioner JWE zip")
+        msg = "pki: unexpected provisioner JWE zip"
+        raise PkiError(msg)
     unknown = set(header) - _ALLOWED_JWE_HEADER_KEYS
     if unknown:
-        raise PkiError(f"pki: unexpected provisioner JWE header {sorted(unknown)}")
+        msg = f"pki: unexpected provisioner JWE header {sorted(unknown)}"
+        raise PkiError(msg)
     if header.get("alg") != _PBES2_ALG or header.get("enc") != _PBES2_ENC:
-        raise PkiError("pki: unexpected provisioner JWE alg/enc")
+        msg = "pki: unexpected provisioner JWE alg/enc"
+        raise PkiError(msg)
     if header.get("p2c") != STEP_CA_PBES2_P2C:
-        raise PkiError("pki: unexpected provisioner JWE p2c")
+        msg = "pki: unexpected provisioner JWE p2c"
+        raise PkiError(msg)
 
     def _decrypt() -> JWK:
         token = jwe.JWE()
@@ -606,7 +688,8 @@ def decrypt_provisioner_jwk(encrypted_key: str, password: bytes) -> JWK:
         token.decrypt(jwk.JWK.from_password(password.decode("utf-8")))
         payload = token.payload
         if len(payload) > MAX_JWK_JSON_BYTES:
-            raise PkiError("pki: decrypted provisioner JWK exceeded size cap")
+            msg = "pki: decrypted provisioner JWK exceeded size cap"
+            raise PkiError(msg)
         return JWK.from_json(payload.decode("utf-8"))
 
     try:
@@ -614,7 +697,8 @@ def decrypt_provisioner_jwk(encrypted_key: str, password: bytes) -> JWK:
     except PkiError:
         raise
     except (JWException, UnicodeDecodeError, ValueError) as err:
-        raise PkiError("pki: decrypt provisioner jwk") from err
+        msg = "pki: decrypt provisioner jwk"
+        raise PkiError(msg) from err
 
 
 def encrypt_step_ca_provisioner_jwk(key: JWK, password: str) -> str:
@@ -626,7 +710,8 @@ def encrypt_step_ca_provisioner_jwk(key: JWK, password: str) -> str:
         token.add_recipient(jwk.JWK.from_password(password))
         compact = str(token.serialize(compact=True))
         if len(compact.encode("utf-8")) > MAX_JWE_COMPACT_BYTES:
-            raise PkiError("pki: provisioner JWE exceeded size cap")
+            msg = "pki: provisioner JWE exceeded size cap"
+            raise PkiError(msg)
         return compact
 
     return _with_step_ca_pbes2_budget(_encrypt)
@@ -643,26 +728,32 @@ def _assert_sans(cert: x509.Certificate, sans: Sequence[str]) -> None:
     except x509.ExtensionNotFound as err:
         if not (want_dns or want_ip or want_email or want_uri):
             return
-        raise PkiError("pki: issued cert missing SAN") from err
+        msg = "pki: issued cert missing SAN"
+        raise PkiError(msg) from err
     got_dns = [item.lower() for item in have.get_values_for_type(x509.DNSName)]
     got_ip = list(have.get_values_for_type(x509.IPAddress))
     got_email = [item.lower() for item in have.get_values_for_type(x509.RFC822Name)]
     got_uri = list(have.get_values_for_type(x509.UniformResourceIdentifier))
     if sorted(got_dns) != sorted(item.lower() for item in want_dns):
-        raise PkiError(f"pki: issued DNS SAN set mismatch: got {got_dns!r} want {list(want_dns)!r}")
+        msg = f"pki: issued DNS SAN set mismatch: got {got_dns!r} want {list(want_dns)!r}"
+        raise PkiError(msg)
     if {str(g) for g in got_ip} != {str(w) for w in want_ip}:
-        raise PkiError("pki: issued IP SAN set mismatch")
+        msg = "pki: issued IP SAN set mismatch"
+        raise PkiError(msg)
     if sorted(got_email) != sorted(item.lower() for item in want_email):
-        raise PkiError("pki: issued email SAN set mismatch")
+        msg = "pki: issued email SAN set mismatch"
+        raise PkiError(msg)
     if sorted(got_uri) != sorted(want_uri):
-        raise PkiError("pki: issued URI SAN set mismatch")
+        msg = "pki: issued URI SAN set mismatch"
+        raise PkiError(msg)
 
 
 def _public_key_matches(leaf: x509.Certificate, key: ec.EllipticCurvePrivateKey) -> None:
     leaf_spki = leaf.public_key().public_bytes(Encoding.DER, PublicFormat.SubjectPublicKeyInfo)
     csr_spki = key.public_key().public_bytes(Encoding.DER, PublicFormat.SubjectPublicKeyInfo)
     if leaf_spki != csr_spki:
-        raise PkiError("pki: issued leaf public key does not match CSR key")
+        msg = "pki: issued leaf public key does not match CSR key"
+        raise PkiError(msg)
 
 
 def _verify_chain(
@@ -675,12 +766,14 @@ def _verify_chain(
         eku = leaf.extensions.get_extension_for_class(x509.ExtendedKeyUsage)
         usages = list(eku.value)
     except x509.ExtensionNotFound as err:
-        raise PkiError("pki: issued chain does not verify against pinned CA root") from err
+        msg = "pki: issued chain does not verify against pinned CA root"
+        raise PkiError(msg) from err
     if (
         ExtendedKeyUsageOID.SERVER_AUTH not in usages
         or ExtendedKeyUsageOID.CLIENT_AUTH not in usages
     ):
-        raise PkiError("pki: issued chain does not verify against pinned CA root")
+        msg = "pki: issued chain does not verify against pinned CA root"
+        raise PkiError(msg)
     builder = PolicyBuilder().store(Store(list(roots)))
     dns, ips, _, _ = split_sans(sans)
     try:
@@ -691,10 +784,12 @@ def _verify_chain(
         else:
             builder.build_client_verifier().verify(leaf, list(intermediates))
     except (VerificationError, ValueError, TypeError) as err:
-        msg = str(err)
-        if "Forbidden public key algorithm" in msg or "Ed25519" in msg:
-            raise UnsupportedIssuerAlgorithm("pki: unsupported issuer algorithm") from err
-        raise PkiError("pki: issued chain does not verify against pinned CA root") from err
+        err_msg = str(err)
+        if "Forbidden public key algorithm" in err_msg or "Ed25519" in err_msg:
+            msg = "pki: unsupported issuer algorithm"
+            raise UnsupportedIssuerAlgorithm(msg) from err
+        msg = "pki: issued chain does not verify against pinned CA root"
+        raise PkiError(msg) from err
 
 
 def _encode_issued(
@@ -724,12 +819,16 @@ def _read_provisioner_password(path: str) -> bytearray:
     try:
         raw = read_regular_no_follow(path, MAX_PASSWORD_BYTES)
     except FileNotFoundError as err:
-        raise PkiError("pki: provisioner password file") from err
+        msg = "pki: provisioner password file"
+        raise PkiError(msg) from err
     except PkiError as err:
         if "exceeds" in str(err):
-            raise PasswordTooLargeError("pki: provisioner password file exceeded size cap") from err
-        raise PkiError("pki: provisioner password file") from err
+            msg = "pki: provisioner password file exceeded size cap"
+            raise PasswordTooLargeError(msg) from err
+        msg = "pki: provisioner password file"
+        raise PkiError(msg) from err
     password = bytearray(raw.strip())
     if not password:
-        raise PkiError(f"pki: provisioner password file {path!r} is empty")
+        msg = f"pki: provisioner password file {path!r} is empty"
+        raise PkiError(msg)
     return password

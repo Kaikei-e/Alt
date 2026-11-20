@@ -6,9 +6,29 @@ import asyncio
 
 import pytest
 from pydantic import ValidationError
+from structlog.testing import capture_logs
 
 from recap_subworker.infra.config import Settings
 from recap_subworker.infra.loop_watchdog import LoopWatchdog
+
+MIN_INITIAL_AND_REARM_CALLS = 2
+TEST_WATCHDOG_TIMEOUT_SECONDS = 60.0
+EXPECTED_REARM_SLEEP_SECONDS = TEST_WATCHDOG_TIMEOUT_SECONDS / 4
+DEFAULT_WATCHDOG_SECONDS = 360
+DEFAULT_HDBSCAN_SECONDS = 300
+MIN_WATCHDOG_SECONDS = 31
+MAX_WATCHDOG_SECONDS = 900
+CUSTOM_WATCHDOG_SECONDS = 400
+
+
+class _TimerArmError(RuntimeError):
+    @classmethod
+    def rearm_failed(cls) -> _TimerArmError:
+        return cls("re-arm timer failed")
+
+    @classmethod
+    def first_arm_failed(cls) -> _TimerArmError:
+        return cls("first arm failed")
 
 
 @pytest.mark.asyncio
@@ -28,7 +48,7 @@ async def test_watchdog_rearms_on_schedule() -> None:
         await asyncio.sleep(0)
 
     watchdog = LoopWatchdog(
-        timeout_seconds=60.0,
+        timeout_seconds=TEST_WATCHDOG_TIMEOUT_SECONDS,
         arm_fn=fake_arm,
         cancel_fn=fake_cancel,
         sleep_fn=fake_sleep,
@@ -38,9 +58,11 @@ async def test_watchdog_rearms_on_schedule() -> None:
     await asyncio.sleep(0.01)
     await watchdog.stop()
 
-    assert len(arm_calls) >= 2, "arm must be called initially and after sleep"
-    assert arm_calls[0] == 60.0
-    assert sleep_calls[0] == 15.0, "re-arm interval must be timeout / 4"
+    assert len(arm_calls) >= MIN_INITIAL_AND_REARM_CALLS, (
+        "arm must be called initially and after sleep"
+    )
+    assert arm_calls[0] == TEST_WATCHDOG_TIMEOUT_SECONDS
+    assert sleep_calls[0] == EXPECTED_REARM_SLEEP_SECONDS, "re-arm interval must be timeout / 4"
 
 
 @pytest.mark.asyncio
@@ -69,8 +91,8 @@ async def test_watchdog_stopping_loop_means_no_further_rearm() -> None:
         await sleep_event.wait()
 
     watchdog = LoopWatchdog(
-        timeout_seconds=60.0,
-        arm_fn=lambda t: arm_calls.append(t),
+        timeout_seconds=TEST_WATCHDOG_TIMEOUT_SECONDS,
+        arm_fn=arm_calls.append,
         cancel_fn=lambda: None,
         sleep_fn=controlled_sleep,
     )
@@ -87,20 +109,20 @@ async def test_watchdog_stopping_loop_means_no_further_rearm() -> None:
 
 def test_watchdog_settings_default() -> None:
     s = Settings()
-    assert s.loop_watchdog_timeout_seconds == 360
-    assert s.hdbscan_timeout_seconds == 300
+    assert s.loop_watchdog_timeout_seconds == DEFAULT_WATCHDOG_SECONDS
+    assert s.hdbscan_timeout_seconds == DEFAULT_HDBSCAN_SECONDS
     assert s.loop_watchdog_timeout_seconds > s.hdbscan_timeout_seconds
 
 
 def test_watchdog_settings_valid_range() -> None:
-    s = Settings(loop_watchdog_timeout_seconds=360)
-    assert s.loop_watchdog_timeout_seconds == 360
+    s = Settings(loop_watchdog_timeout_seconds=DEFAULT_WATCHDOG_SECONDS)
+    assert s.loop_watchdog_timeout_seconds == DEFAULT_WATCHDOG_SECONDS
 
-    s_min = Settings(loop_watchdog_timeout_seconds=31, hdbscan_timeout_seconds=30)
-    assert s_min.loop_watchdog_timeout_seconds == 31
+    s_min = Settings(loop_watchdog_timeout_seconds=MIN_WATCHDOG_SECONDS, hdbscan_timeout_seconds=30)
+    assert s_min.loop_watchdog_timeout_seconds == MIN_WATCHDOG_SECONDS
 
-    s_max = Settings(loop_watchdog_timeout_seconds=900)
-    assert s_max.loop_watchdog_timeout_seconds == 900
+    s_max = Settings(loop_watchdog_timeout_seconds=MAX_WATCHDOG_SECONDS)
+    assert s_max.loop_watchdog_timeout_seconds == MAX_WATCHDOG_SECONDS
 
 
 def test_watchdog_settings_out_of_range_fails(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -116,9 +138,11 @@ def test_watchdog_settings_out_of_range_fails(monkeypatch: pytest.MonkeyPatch) -
 
 
 def test_watchdog_settings_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("RECAP_SUBWORKER_LOOP_WATCHDOG_TIMEOUT_SECONDS", "400")
+    monkeypatch.setenv(
+        "RECAP_SUBWORKER_LOOP_WATCHDOG_TIMEOUT_SECONDS", str(CUSTOM_WATCHDOG_SECONDS)
+    )
     s = Settings()
-    assert s.loop_watchdog_timeout_seconds == 400
+    assert s.loop_watchdog_timeout_seconds == CUSTOM_WATCHDOG_SECONDS
 
 
 def test_watchdog_settings_removed_alias_not_used(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -126,7 +150,9 @@ def test_watchdog_settings_removed_alias_not_used(monkeypatch: pytest.MonkeyPatc
     monkeypatch.delenv("RECAP_SUBWORKER_LOOP_WATCHDOG_TIMEOUT_SECONDS", raising=False)
     monkeypatch.setenv("RECAP_LOOP_WATCHDOG_TIMEOUT_SECONDS", "450")
     s = Settings()
-    assert s.loop_watchdog_timeout_seconds == 360, "removed alias must not configure the setting"
+    assert s.loop_watchdog_timeout_seconds == DEFAULT_WATCHDOG_SECONDS, (
+        "removed alias must not configure the setting"
+    )
 
 
 def test_watchdog_timeout_must_exceed_hdbscan_timeout() -> None:
@@ -137,15 +163,16 @@ def test_watchdog_timeout_must_exceed_hdbscan_timeout() -> None:
     with pytest.raises(ValidationError, match="preempt the HDBSCAN timeout fallback"):
         Settings(loop_watchdog_timeout_seconds=200, hdbscan_timeout_seconds=300)
 
-    s = Settings(loop_watchdog_timeout_seconds=360, hdbscan_timeout_seconds=300)
-    assert s.loop_watchdog_timeout_seconds == 360
-    assert s.hdbscan_timeout_seconds == 300
+    s = Settings(
+        loop_watchdog_timeout_seconds=DEFAULT_WATCHDOG_SECONDS,
+        hdbscan_timeout_seconds=DEFAULT_HDBSCAN_SECONDS,
+    )
+    assert s.loop_watchdog_timeout_seconds == DEFAULT_WATCHDOG_SECONDS
+    assert s.hdbscan_timeout_seconds == DEFAULT_HDBSCAN_SECONDS
 
 
 @pytest.mark.asyncio
 async def test_watchdog_arm_failure_does_not_cancel_and_emits_critical_log() -> None:
-    from structlog.testing import capture_logs
-
     cancel_calls: list[str] = []
     arm_count = 0
 
@@ -153,7 +180,7 @@ async def test_watchdog_arm_failure_does_not_cancel_and_emits_critical_log() -> 
         nonlocal arm_count
         arm_count += 1
         if arm_count > 1:
-            raise RuntimeError("re-arm timer failed")
+            raise _TimerArmError.rearm_failed()
 
     def fake_cancel() -> None:
         cancel_calls.append("cancel")
@@ -207,7 +234,7 @@ async def test_watchdog_first_arm_raising_makes_start_raise() -> None:
     cancel_calls: list[str] = []
 
     def failing_arm(timeout: float) -> None:
-        raise RuntimeError("first arm failed")
+        raise _TimerArmError.first_arm_failed()
 
     watchdog = LoopWatchdog(
         timeout_seconds=60.0,

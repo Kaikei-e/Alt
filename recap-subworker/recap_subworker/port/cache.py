@@ -3,10 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Hashable
-from typing import Protocol, TypeVar, runtime_checkable
-
-K = TypeVar("K", bound=Hashable, contravariant=True)
-V = TypeVar("V", covariant=True)
+from typing import Protocol, runtime_checkable
 
 
 @runtime_checkable

@@ -62,7 +62,7 @@ class SummarizationMetrics(BaseModel):
 
 
 class EvaluationService:
-    def __init__(
+    def __init__(  # noqa: PLR0913 - constructor injection of model paths and evaluation config; callers outside services/
         self,
         weights_path: str | None = None,
         weights_ja_path: str | None = None,
@@ -167,6 +167,180 @@ class EvaluationService:
         kept_labels = [list(lbl) for lbl in labels_series[mask].tolist()]
         return kept_texts, kept_labels
 
+    @staticmethod
+    def _load_golden_items(
+        golden_data_path: str | Path, language: str | None
+    ) -> list[dict[str, Any]]:
+        """Validate path, load golden JSON items, and optionally filter by language."""
+        if isinstance(golden_data_path, Path):
+            golden_path = golden_data_path  # 既にバリデーション済み
+        else:
+            golden_path = validate_path(golden_data_path)  # defense-in-depth
+        # codeql[py/path-injection] -- validate_path applies realpath + allow-list; Path inputs are pre-validated by the router
+        if not golden_path.exists():
+            msg = f"Golden data not found: {golden_path}"
+            raise FileNotFoundError(msg)
+
+        # codeql[py/path-injection] -- path already validated above
+        with golden_path.open() as f:
+            data = json.load(f)
+
+        items = data["items"] if isinstance(data, dict) and "items" in data else data
+        if not language:
+            return items
+
+        content_field = "content_ja" if language == "ja" else "content_en"
+        if language in {"ja", "en"}:
+            filtered_items = [
+                item
+                for item in items
+                if isinstance(item.get(content_field), str) and item.get(content_field, "").strip()
+            ]
+        else:
+            filtered_items = []
+        logger.info(
+            "Filtered golden items by language",
+            item_count=len(filtered_items),
+            language=language,
+        )
+        return filtered_items
+
+    @staticmethod
+    def _normalize_golden_dataframe(
+        items: list[dict[str, Any]], language: str | None
+    ) -> pd.DataFrame:
+        """Build golden DataFrame and normalize text/labels column names."""
+        df = pd.DataFrame(items)
+        if "text" not in df.columns:
+            text_candidates = (
+                ["content_ja"]
+                if language == "ja"
+                else ["content_en"]
+                if language == "en"
+                else ["content_ja", "content"]
+            )
+            for col in text_candidates:
+                if col in df.columns:
+                    df.rename(columns={col: "text"}, inplace=True)
+                    break
+
+        if "expected_genres" in df.columns and "labels" not in df.columns:
+            df.rename(columns={"expected_genres": "labels"}, inplace=True)
+        if "genres" in df.columns:
+            df.rename(columns={"genres": "labels"}, inplace=True)
+
+        if "labels" not in df.columns or "text" not in df.columns:
+            msg = f"Golden data must contain 'text' and 'labels' fields. Available: {df.columns.tolist()}"
+            raise ValueError(msg)
+        return df
+
+    def _resolve_classifier(self, language: str | None) -> GenreClassifierService:
+        """Select the classifier for the requested language or raise ValueError."""
+        if language == "ja":
+            classifier = self.classifier_ja
+        elif language == "en":
+            classifier = self.classifier_en
+        else:
+            classifier = self.classifier_default or self.classifier_ja
+
+        if not classifier:
+            msg = "No classifier available for language: " + str(language)
+            raise ValueError(msg)
+        return classifier
+
+    @staticmethod
+    def _build_evaluation_results(
+        metrics: ClassificationMetrics,
+        classes: np.ndarray,
+        total_samples: int,
+    ) -> dict[str, Any]:
+        """Assemble base classification metrics and per-genre breakdown."""
+        results: dict[str, Any] = {
+            "accuracy": metrics.accuracy,
+            "macro_precision": metrics.macro_precision,
+            "macro_recall": metrics.macro_recall,
+            "macro_f1": metrics.macro_f1,
+            "micro_precision": metrics.micro_precision,
+            "micro_recall": metrics.micro_recall,
+            "micro_f1": metrics.micro_f1,
+            "per_genre_metrics": {},
+            "confusion_matrix": {},  # TODO if needed
+            "total_samples": total_samples,
+            "total_tp": 0,
+            "total_fp": 0,
+            "total_fn": 0,
+        }
+        for genre in classes:
+            if genre in metrics.per_genre:
+                m = metrics.per_genre[genre]
+                results["per_genre_metrics"][genre] = {
+                    "precision": m["precision"],
+                    "recall": m["recall"],
+                    "f1": m["f1-score"],
+                    "support": m["support"],
+                    "tp": 0,
+                    "fp": 0,
+                    "fn": 0,  # TODO: calculate these if strictly needed for UI
+                    "threshold": 0.5,  # Default
+                }
+        return results
+
+    @staticmethod
+    def _apply_confidence_intervals(
+        results: dict[str, Any],
+        metrics: ClassificationMetrics,
+        n_obs: int,
+        *,
+        use_bootstrap: bool,
+    ) -> None:
+        """Populate Wilson score CI and macro metrics onto results in-place."""
+        if use_bootstrap and proportion_confint:
+            count_correct = int(metrics.accuracy * n_obs)
+            lower, upper = proportion_confint(count_correct, n_obs, alpha=0.05, method="wilson")
+            results["accuracy_ci"] = {
+                "point": metrics.accuracy,
+                "lower": lower,
+                "upper": upper,
+                "width": upper - lower,
+            }
+            results["macro_metrics"] = {
+                "precision": 0.0,
+                "precision_ci": {"point": 0, "lower": 0, "upper": 0},
+                "recall": 0.0,
+                "recall_ci": {"point": 0, "lower": 0, "upper": 0},
+                "f1": metrics.macro_f1,
+                "f1_ci": {
+                    "point": metrics.macro_f1,
+                    "lower": metrics.macro_f1,
+                    "upper": metrics.macro_f1,
+                },
+            }
+            return
+
+        results["accuracy_ci"] = {
+            "point": metrics.accuracy,
+            "lower": metrics.accuracy,
+            "upper": metrics.accuracy,
+            "width": 0.0,
+        }
+
+    @staticmethod
+    def _compute_confusion_matrix(
+        y_true_labels: list[list[str]],
+        predictions: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Compute top-1 confusion matrix, returning empty dict on failure."""
+        try:
+            y_true_single = [labels[0] if labels else "other" for labels in y_true_labels]
+            y_pred_single = [p.get("top_genre", "other") for p in predictions]
+            unique_labels = sorted(set(y_true_single) | set(y_pred_single))
+            cm = confusion_matrix(y_true_single, y_pred_single, labels=unique_labels)
+        except Exception as e:  # noqa: BLE001 - confusion matrix is diagnostic; failure must not abort evaluation
+            logger.warning("Failed to generate confusion matrix", error=str(e))
+            return {}
+        else:
+            return {"labels": unique_labels, "matrix": cm.tolist()}
+
     def evaluate(
         self,
         golden_data_path: str | Path,
@@ -198,77 +372,11 @@ class EvaluationService:
         )
         n_folds = self.n_folds if n_folds is None else n_folds
 
-        # Validate path to prevent path traversal attacks
-        if isinstance(golden_data_path, Path):
-            golden_path = golden_data_path  # 既にバリデーション済み
-        else:
-            golden_path = validate_path(golden_data_path)  # defense-in-depth
-        # codeql[py/path-injection] -- validate_path applies realpath + allow-list; Path inputs are pre-validated by the router
-        if not golden_path.exists():
-            raise FileNotFoundError(f"Golden data not found: {golden_path}")
+        items = self._load_golden_items(golden_data_path, language)
+        df = self._normalize_golden_dataframe(items, language)
 
-        # Load Golden Data
-        # codeql[py/path-injection] -- path already validated above
-        with golden_path.open() as f:
-            data = json.load(f)
-
-        # Handle wrapper structure
-        items = data["items"] if isinstance(data, dict) and "items" in data else data
-
-        # Filter by language if specified
-        if language:
-            filtered_items = []
-            for item in items:
-                # Check content_ja/content_en - MUST have non-empty content for the language
-                if language == "ja":
-                    content = item.get("content_ja")
-                    if content and isinstance(content, str) and content.strip():
-                        filtered_items.append(item)
-                elif language == "en":
-                    content = item.get("content_en")
-                    if content and isinstance(content, str) and content.strip():
-                        filtered_items.append(item)
-            items = filtered_items
-            logger.info(
-                "Filtered golden items by language",
-                item_count=len(items),
-                language=language,
-            )
-
-        # Expecting data format: list of {"text": "...", "labels": ["genre1", "genre2"]}
-        # Or {"text": ..., "genres": ...}
-
-        df = pd.DataFrame(items)
-
-        # Map typical field names from our golden set
-        # Handle language-specific content fields
-        if language == "ja" and "content_ja" in df.columns:
-            if "text" not in df.columns:
-                df.rename(columns={"content_ja": "text"}, inplace=True)
-        elif language == "en" and "content_en" in df.columns:
-            if "text" not in df.columns:
-                df.rename(columns={"content_en": "text"}, inplace=True)
-        elif "content_ja" in df.columns and "text" not in df.columns:
-            # Default to Japanese if both exist
-            df.rename(columns={"content_ja": "text"}, inplace=True)
-        elif "content" in df.columns and "text" not in df.columns:
-            df.rename(columns={"content": "text"}, inplace=True)
-
-        if "expected_genres" in df.columns and "labels" not in df.columns:
-            df.rename(columns={"expected_genres": "labels"}, inplace=True)
-
-        if "genres" in df.columns:
-            df.rename(columns={"genres": "labels"}, inplace=True)
-
-        if "labels" not in df.columns or "text" not in df.columns:
-            raise ValueError(
-                f"Golden data must contain 'text' and 'labels' fields. Available: {df.columns.tolist()}"
-            )
-
-        # Prepare X and y_true, dropping rows whose `text` is NaN/None/empty
-        # so sklearn's TfidfVectorizer does not raise on the whole batch.
         total_rows = len(df)
-        X, y_true_labels = self._prepare_evaluation_inputs(df)
+        X, y_true_labels = self._prepare_evaluation_inputs(df)  # noqa: N806 - ML feature matrix convention
         dropped_rows = total_rows - len(X)
         if dropped_rows:
             logger.warning(
@@ -277,134 +385,22 @@ class EvaluationService:
                 kept_rows=len(X),
             )
 
-        # MultiLabelBinarizer for metrics
         mlb = MultiLabelBinarizer()
         y_true_bin = mlb.fit_transform(y_true_labels)
         classes = mlb.classes_
 
-        if language == "ja":
-            classifier = self.classifier_ja
-        elif language == "en":
-            classifier = self.classifier_en
-        else:
-            classifier = self.classifier_default or self.classifier_ja
-
-        if not classifier:
-            raise ValueError("No classifier available for language: " + str(language))
-
-        # Predict
-        # Use predict_batch from GenreClassifierService
-        # It accepts threshold_overrides, etc. We use defaults for now.
+        classifier = self._resolve_classifier(language)
         logger.info("Starting evaluation prediction", count=len(X), language=language)
         predictions = classifier.predict_batch(X, multi_label=True)
 
-        # Extract predicted labels
-        # predictions[i]["candidates"] contains list of {"genre": str, "score": float, ...} for all pass-threshold genres
-        y_pred_labels = []
-        for p in predictions:
-            # candidates are sorted by score.
-            # In multi-label, we take all candidates.
-            pred_genres = [c["genre"] for c in p.get("candidates", [])]
-            y_pred_labels.append(pred_genres)
-
+        y_pred_labels = [[c["genre"] for c in p.get("candidates", [])] for p in predictions]
         y_pred_bin = mlb.transform(y_pred_labels)
-
-        # Calculate Metrics
-        # Re-use evaluate_classification for standard metrics
         metrics = self.evaluate_classification(y_true_bin, y_pred_bin, target_names=list(classes))
 
-        # Construct full result dict similar to what router expects
-        # Router expects: accuracy, macro_f1, per_genre_metrics, etc.
-        # plus CI intervals if requested (bootstrap).
+        results = self._build_evaluation_results(metrics, classes, len(X))
+        self._apply_confidence_intervals(results, metrics, len(X), use_bootstrap=use_bootstrap)
+        results["confusion_matrix"] = self._compute_confusion_matrix(y_true_labels, predictions)
 
-        results: dict[str, Any] = {
-            "accuracy": metrics.accuracy,
-            "macro_precision": metrics.macro_precision,
-            "macro_recall": metrics.macro_recall,
-            "macro_f1": metrics.macro_f1,
-            "micro_precision": metrics.micro_precision,
-            "micro_recall": metrics.micro_recall,
-            "micro_f1": metrics.micro_f1,
-            "per_genre_metrics": {},
-            "confusion_matrix": {},  # TODO if needed
-            "total_samples": len(X),
-            "total_tp": 0,
-            "total_fp": 0,
-            "total_fn": 0,
-        }
-
-        # Detail per genre
-        # metrics.per_genre has structure from classification_report: {genre: {'precision': ..., 'recall': ..., 'f1-score': ..., 'support': ...}}
-        for genre in classes:
-            if genre in metrics.per_genre:
-                m = metrics.per_genre[genre]
-                results["per_genre_metrics"][genre] = {
-                    "precision": m["precision"],
-                    "recall": m["recall"],
-                    "f1": m["f1-score"],
-                    "support": m["support"],
-                    "tp": 0,
-                    "fp": 0,
-                    "fn": 0,  # TODO: calculate these if strictly needed for UI
-                    "threshold": 0.5,  # Default
-                }
-
-        # Bootstrap for CI (Simplistic version) -> SWITCHING to Wilson Score Interval for Accuracy
-        if use_bootstrap and proportion_confint:
-            # Calculate CI for accuracy using Wilson score interval
-            count_correct = int(metrics.accuracy * len(X))
-            n_obs = len(X)
-            lower, upper = proportion_confint(count_correct, n_obs, alpha=0.05, method="wilson")
-            width = upper - lower
-
-            results["accuracy_ci"] = {
-                "point": metrics.accuracy,
-                "lower": lower,
-                "upper": upper,
-                "width": width,
-            }
-
-            # For Macro F1, analytic CI is complex. We stick to point estimate or simple bootstrap if really needed.
-            # User specifically asked for Accuracy CI to not be width 0.
-            results["macro_metrics"] = {
-                "precision": 0.0,
-                "precision_ci": {"point": 0, "lower": 0, "upper": 0},
-                "recall": 0.0,
-                "recall_ci": {"point": 0, "lower": 0, "upper": 0},
-                "f1": metrics.macro_f1,
-                "f1_ci": {
-                    "point": metrics.macro_f1,
-                    "lower": metrics.macro_f1,
-                    "upper": metrics.macro_f1,
-                },
-            }
-        else:
-            results["accuracy_ci"] = {
-                "point": metrics.accuracy,
-                "lower": metrics.accuracy,
-                "upper": metrics.accuracy,
-                "width": 0.0,
-            }
-
-        # Confusion Matrix (Top-1 approximation)
-        try:
-            # Ground Truth: Take first label or 'other'
-            y_true_single = [labels[0] if labels else "other" for labels in y_true_labels]
-
-            # Prediction: Use 'top_genre' from predictions
-            y_pred_single = [p.get("top_genre", "other") for p in predictions]
-
-            # Compute Matrix
-            # Use sorted unique labels from both true and pred to cover all cases
-            unique_labels = sorted(set(y_true_single) | set(y_pred_single))
-            cm = confusion_matrix(y_true_single, y_pred_single, labels=unique_labels)
-
-            results["confusion_matrix"] = {"labels": unique_labels, "matrix": cm.tolist()}
-        except Exception as e:
-            logger.warning("Failed to generate confusion matrix", error=str(e))
-            results["confusion_matrix"] = {}
-
-        # Cross-Validation
         if use_cross_validation and n_folds > 1:
             try:
                 logger.info("Starting Cross-Validation", n_folds=n_folds)
@@ -415,7 +411,6 @@ class EvaluationService:
             except Exception:
                 logger.exception("Cross-validation failed")
 
-        # Add language metadata if filtered
         if language:
             results["language"] = language
 
@@ -433,7 +428,7 @@ class EvaluationService:
             try:
                 lang_results = self.evaluate(golden_data_path, language=lang)
                 results[lang] = lang_results
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 - per-language failure is recorded in result dict rather than aborting other languages
                 logger.warning(
                     "Failed to evaluate for language",
                     lang=lang,
@@ -503,8 +498,9 @@ class EvaluationService:
             logger.warning("DeepEval not available. Skipping LLM-based summary evaluation.")
             return metrics
 
-        assert LLMTestCase is not None  # guarded by DEEPEVAL_AVAILABLE check above
-        assert FaithfulnessMetric is not None  # guarded by DEEPEVAL_AVAILABLE check above
+        if LLMTestCase is None or FaithfulnessMetric is None:
+            msg = "DeepEval is not available"
+            raise RuntimeError(msg)
 
         try:
             test_case = LLMTestCase(
@@ -520,7 +516,7 @@ class EvaluationService:
             metrics.brevity = len(generated_summary) / (len(source_text) + 1)
 
         except Exception as e:
-            logger.error("Error during summary evaluation", error=str(e))
+            logger.exception("Error during summary evaluation", error=str(e))
 
         return metrics
 
@@ -567,7 +563,7 @@ class EvaluationService:
         mlb.fit(y_true_labels)
 
         for fold, (train_index, test_index) in enumerate(skf.split(features, y_single), start=1):
-            X_train, X_test = features[train_index], features[test_index]
+            X_train, X_test = features[train_index], features[test_index]  # noqa: N806 - ML feature matrix convention
             y_train_single = y_single[train_index]
 
             # True labels for this fold (Test) - Multi-label
@@ -615,7 +611,7 @@ class EvaluationService:
             macro_f1s.append(macro_f)
             micro_f1s.append(micro_f)
 
-            logger.info(f"Fold {fold} finished", accuracy=acc, macro_f1=macro_f)
+            logger.info("Fold finished", fold=fold, accuracy=acc, macro_f1=macro_f)
 
         return {
             "cv_accuracy": {"mean": float(np.mean(accuracies)), "std": float(np.std(accuracies))},

@@ -36,16 +36,15 @@ class ThresholdResult:
 
 def load_golden_data(golden_path: Path) -> list[dict]:
     """Load golden dataset."""
-    with open(golden_path) as f:
-        data = json.load(f)
-    return data
+    with golden_path.open() as f:
+        return json.load(f)
 
 
 def load_current_thresholds(thresholds_path: Path) -> dict[str, float]:
     """Load current thresholds."""
     if not thresholds_path.exists():
         return {}
-    with open(thresholds_path) as f:
+    with thresholds_path.open() as f:
         return json.load(f)
 
 
@@ -57,9 +56,9 @@ def compute_metrics_at_threshold(
     """Compute precision, recall, F1 at a given threshold."""
     predictions = [s >= threshold for s in scores]
 
-    tp = sum(1 for p, l in zip(predictions, labels) if p and l)
-    fp = sum(1 for p, l in zip(predictions, labels) if p and not l)
-    fn = sum(1 for p, l in zip(predictions, labels) if not p and l)
+    tp = sum(1 for pred, label in zip(predictions, labels, strict=True) if pred and label)
+    fp = sum(1 for pred, label in zip(predictions, labels, strict=True) if pred and not label)
+    fn = sum(1 for pred, label in zip(predictions, labels, strict=True) if not pred and label)
 
     precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
     recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
@@ -189,27 +188,27 @@ def analyze_thresholds(
 
 def print_analysis(results: list[ThresholdResult]) -> None:
     """Print analysis results in a formatted table."""
-    print("\n" + "=" * 100)
-    print("THRESHOLD ANALYSIS RESULTS")
-    print("=" * 100)
-    print(
+    sys.stdout.write("\n" + "=" * 100 + "\n")
+    sys.stdout.write("THRESHOLD ANALYSIS RESULTS\n")
+    sys.stdout.write("=" * 100 + "\n")
+    sys.stdout.write(
         f"{'Genre':<25} {'Curr Th':>8} {'Opt Th':>8} "
         f"{'Curr P':>7} {'Opt P':>7} "
         f"{'Curr R':>7} {'Opt R':>7} "
-        f"{'Curr F1':>8} {'Opt F1':>8} {'Δ F1':>7}"
+        f"{'Curr F1':>8} {'Opt F1':>8} {'Δ F1':>7}\n"
     )
-    print("-" * 100)
+    sys.stdout.write("-" * 100 + "\n")
 
     for r in results:
         delta_f1 = r.f1_at_optimal - r.f1_at_current
-        print(
+        sys.stdout.write(
             f"{r.genre:<25} {r.current_threshold:>8.3f} {r.optimal_threshold:>8.3f} "
             f"{r.precision_at_current:>7.3f} {r.precision_at_optimal:>7.3f} "
             f"{r.recall_at_current:>7.3f} {r.recall_at_optimal:>7.3f} "
-            f"{r.f1_at_current:>8.3f} {r.f1_at_optimal:>8.3f} {delta_f1:>+7.3f}"
+            f"{r.f1_at_current:>8.3f} {r.f1_at_optimal:>8.3f} {delta_f1:>+7.3f}\n"
         )
 
-    print("=" * 100)
+    sys.stdout.write("=" * 100 + "\n")
 
 
 def generate_new_thresholds(
@@ -219,14 +218,14 @@ def generate_new_thresholds(
     """Generate and save new thresholds file."""
     new_thresholds = {r.genre: r.optimal_threshold for r in results}
 
-    with open(output_path, "w") as f:
+    with output_path.open("w") as f:
         json.dump(new_thresholds, f, indent=2, ensure_ascii=False)
 
-    print(f"\nNew thresholds saved to: {output_path}")
+    sys.stdout.write(f"\nNew thresholds saved to: {output_path}\n")
     return new_thresholds
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="Tune genre classification thresholds")
     parser.add_argument(
         "--golden",
@@ -268,31 +267,28 @@ def main():
 
     # Check golden dataset exists
     if not args.golden.exists():
-        print(f"Error: Golden dataset not found at {args.golden}")
-        print("Run evaluation first to generate predictions with scores.")
+        sys.stdout.write(f"Error: Golden dataset not found at {args.golden}\n")
+        sys.stdout.write("Run evaluation first to generate predictions with scores.\n")
         sys.exit(1)
 
     # Load data
-    print(f"Loading golden dataset from: {args.golden}")
+    sys.stdout.write(f"Loading golden dataset from: {args.golden}\n")
     golden_data = load_golden_data(args.golden)
-    print(f"Loaded {len(golden_data)} entries")
+    sys.stdout.write(f"Loaded {len(golden_data)} entries\n")
 
-    print(f"Loading current thresholds from: {args.thresholds}")
+    sys.stdout.write(f"Loading current thresholds from: {args.thresholds}\n")
     current_thresholds = load_current_thresholds(args.thresholds)
-    print(f"Loaded thresholds for {len(current_thresholds)} genres")
+    sys.stdout.write(f"Loaded thresholds for {len(current_thresholds)} genres\n")
 
     # Analyze
-    print(f"\nOptimizing for: {args.metric} (min recall: {args.min_recall})")
+    sys.stdout.write(f"\nOptimizing for: {args.metric} (min recall: {args.min_recall})\n")
     results = analyze_thresholds(golden_data, current_thresholds, args.metric, args.min_recall)
 
     # Print results
     print_analysis(results)
 
     # Generate new thresholds
-    if args.apply:
-        output_path = args.thresholds  # Overwrite current
-    else:
-        output_path = args.output
+    output_path = args.thresholds if args.apply else args.output
 
     generate_new_thresholds(results, output_path)
 
@@ -302,12 +298,12 @@ def main():
     avg_current_recall = sum(r.recall_at_current for r in results) / len(results) if results else 0
     avg_optimal_recall = sum(r.recall_at_optimal for r in results) / len(results) if results else 0
 
-    print("\nSUMMARY:")
-    print(f"  Average Current F1:  {avg_current_f1:.3f}")
-    print(f"  Average Optimal F1:  {avg_optimal_f1:.3f}")
-    print(f"  Average Current Recall: {avg_current_recall:.3f}")
-    print(f"  Average Optimal Recall: {avg_optimal_recall:.3f}")
-    print(f"  Expected Improvement: {avg_optimal_f1 - avg_current_f1:+.3f} F1")
+    sys.stdout.write("\nSUMMARY:\n")
+    sys.stdout.write(f"  Average Current F1:  {avg_current_f1:.3f}\n")
+    sys.stdout.write(f"  Average Optimal F1:  {avg_optimal_f1:.3f}\n")
+    sys.stdout.write(f"  Average Current Recall: {avg_current_recall:.3f}\n")
+    sys.stdout.write(f"  Average Optimal Recall: {avg_optimal_recall:.3f}\n")
+    sys.stdout.write(f"  Expected Improvement: {avg_optimal_f1 - avg_current_f1:+.3f} F1\n")
 
 
 if __name__ == "__main__":

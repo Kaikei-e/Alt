@@ -23,7 +23,7 @@ _DEFAULT_ISSUE_TIMEOUT = 15.0
 class Handle:
     """Running enrollment loop + ops listener, stopped on process shutdown."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - constructor injection of collaborators
         self,
         ctx: Ctx,
         thread: threading.Thread,
@@ -54,9 +54,8 @@ class Handle:
                 closer()
         self._thread.join(timeout=self._join_timeout)
         if self._thread.is_alive():
-            raise RuntimeError(
-                "pki: enrollment loop did not stop within join deadline; in-flight write was not abandoned"
-            )
+            msg = "pki: enrollment loop did not stop within join deadline; in-flight write was not abandoned"
+            raise RuntimeError(msg)
         if self._ops is not None:
             self._ops.aclose_sync()
 
@@ -98,7 +97,9 @@ def start_with_observer(
     )
     minted = issuer
     if minted is None:
-        from recap_subworker.app.infra.pki.native_issuer import NativeStepCAIssuer
+        from recap_subworker.app.infra.pki.native_issuer import (  # noqa: PLC0415  # defer native issuer import unless enrollment is active with default issuer
+            NativeStepCAIssuer,
+        )
 
         minted = NativeStepCAIssuer(
             ca_url=cfg.ca_url,

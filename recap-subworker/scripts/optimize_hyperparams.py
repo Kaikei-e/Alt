@@ -49,21 +49,25 @@ def load_training_data(data_path: Path, min_samples: int = 20) -> tuple[pd.Serie
     # Filter out rare classes
     counts = df["genre"].value_counts()
     valid_genres = counts[counts >= min_samples].index
-    print(f"Filtering genres with >= {min_samples} samples. Kept: {len(valid_genres)}")
+    sys.stdout.write(f"Filtering genres with >= {min_samples} samples. Kept: {len(valid_genres)}\n")
     df = df[df["genre"].isin(valid_genres)]
 
     return df["content"], df["genre"]
 
 
+OVERFIT_GAP_WARNING_THRESHOLD = 0.10
+TARGET_CV_F1_MIN = 0.70
+
+
 def create_objective(
-    X: pd.Series,
+    texts: pd.Series,
     y: pd.Series,
     n_folds: int = 5,
 ) -> Callable[..., Any]:
     """Create Optuna objective function.
 
     Args:
-        X: Training content
+        texts: Training content
         y: Training labels
         n_folds: Number of CV folds
 
@@ -73,7 +77,7 @@ def create_objective(
 
     def objective(trial: optuna.Trial) -> float:
         # Hyperparameters to optimize
-        C = trial.suggest_float("C", 0.001, 10.0, log=True)
+        reg_c = trial.suggest_float("C", 0.001, 10.0, log=True)
         max_features = trial.suggest_int("max_features", 500, 3000, step=500)
         svd_components = trial.suggest_int("svd_components", 50, 300, step=50)
         min_df = trial.suggest_int("min_df", 1, 5)
@@ -94,7 +98,7 @@ def create_objective(
 
         # Logistic Regression with regularization
         clf = LogisticRegression(
-            C=C,
+            C=reg_c,
             max_iter=1000,
             solver="lbfgs",
             class_weight="balanced",
@@ -117,12 +121,16 @@ def create_objective(
         try:
             scores = cross_val_score(
                 pipeline,
-                X,
+                texts,
                 y,
                 cv=cv,
                 scoring="f1_macro",
                 n_jobs=-1,
             )
+        except (ValueError, RuntimeError, np.linalg.LinAlgError) as e:
+            sys.stdout.write(f"Trial failed: {e}\n")
+            return 0.0
+        else:
             mean_score = scores.mean()
             std_score = scores.std()
 
@@ -131,10 +139,6 @@ def create_objective(
             trial.set_user_attr("cv_scores", scores.tolist())
 
             return mean_score
-
-        except Exception as e:
-            print(f"Trial failed: {e}")
-            return 0.0
 
     return objective
 
@@ -158,9 +162,9 @@ def optimize_hyperparams(
     Returns:
         Dictionary with best parameters and results
     """
-    print(f"Loading data from {data_path}...")
-    X, y = load_training_data(data_path, min_samples)
-    print(f"Loaded {len(X)} samples with {y.nunique()} genres")
+    sys.stdout.write(f"Loading data from {data_path}...\n")
+    texts, y = load_training_data(data_path, min_samples)
+    sys.stdout.write(f"Loaded {len(texts)} samples with {y.nunique()} genres\n")
 
     # Create study with TPE sampler (default Bayesian optimization)
     sampler = optuna.samplers.TPESampler(seed=42)
@@ -171,10 +175,10 @@ def optimize_hyperparams(
     )
 
     # Create objective
-    objective = create_objective(X, y, n_folds)
+    objective = create_objective(texts, y, n_folds)
 
     # Optimize
-    print(f"\nStarting optimization with {n_trials} trials...")
+    sys.stdout.write(f"\nStarting optimization with {n_trials} trials...\n")
     study.optimize(
         objective,
         n_trials=n_trials,
@@ -188,10 +192,10 @@ def optimize_hyperparams(
     best_params = best_trial.params
 
     # Calculate train/test gap with best params
-    print("\nValidating best parameters...")
-    train_score, test_score, gap = validate_train_test_gap(X, y, best_params, n_folds)
+    sys.stdout.write("\nValidating best parameters...\n")
+    train_score, test_score, gap = validate_train_test_gap(texts, y, best_params, n_folds)
 
-    results = {
+    return {
         "best_params": best_params,
         "best_cv_f1": best_trial.value,
         "cv_std": best_trial.user_attrs.get("cv_std", 0),
@@ -201,15 +205,13 @@ def optimize_hyperparams(
         "train_test_gap": gap,
         "n_trials": n_trials,
         "n_folds": n_folds,
-        "n_samples": len(X),
+        "n_samples": len(texts),
         "n_genres": y.nunique(),
     }
 
-    return results
-
 
 def validate_train_test_gap(
-    X: pd.Series,
+    texts: pd.Series,
     y: pd.Series,
     params: dict,
     n_folds: int = 5,
@@ -217,7 +219,7 @@ def validate_train_test_gap(
     """Validate train/test gap to check for overfitting.
 
     Args:
-        X: Training content
+        texts: Training content
         y: Training labels
         params: Best hyperparameters
         n_folds: Number of CV folds
@@ -257,22 +259,22 @@ def validate_train_test_gap(
     train_scores = []
     test_scores = []
 
-    for train_idx, test_idx in cv.split(X, y):
-        X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
+    for train_idx, test_idx in cv.split(texts, y):
+        x_train, x_test = texts.iloc[train_idx], texts.iloc[test_idx]
         y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
 
-        pipeline.fit(X_train, y_train)
+        pipeline.fit(x_train, y_train)
 
         # Train score
-        y_train_pred = pipeline.predict(X_train)
+        y_train_pred = pipeline.predict(x_train)
         train_scores.append(f1_score(y_train, y_train_pred, average="macro"))
 
         # Test score
-        y_test_pred = pipeline.predict(X_test)
+        y_test_pred = pipeline.predict(x_test)
         test_scores.append(f1_score(y_test, y_test_pred, average="macro"))
 
-    train_mean = np.mean(train_scores)
-    test_mean = np.mean(test_scores)
+    train_mean = float(np.mean(train_scores))
+    test_mean = float(np.mean(test_scores))
     gap = train_mean - test_mean
 
     return train_mean, test_mean, gap
@@ -280,39 +282,39 @@ def validate_train_test_gap(
 
 def print_results(results: dict) -> None:
     """Print optimization results."""
-    print("\n" + "=" * 60)
-    print("OPTIMIZATION RESULTS")
-    print("=" * 60)
+    sys.stdout.write("\n" + "=" * 60 + "\n")
+    sys.stdout.write("OPTIMIZATION RESULTS\n")
+    sys.stdout.write("=" * 60 + "\n")
 
-    print("\nBest Hyperparameters:")
+    sys.stdout.write("\nBest Hyperparameters:\n")
     for param, value in results["best_params"].items():
         if isinstance(value, float):
-            print(f"  {param}: {value:.6f}")
+            sys.stdout.write(f"  {param}: {value:.6f}\n")
         else:
-            print(f"  {param}: {value}")
+            sys.stdout.write(f"  {param}: {value}\n")
 
-    print("\nCross-Validation Results:")
-    print(f"  Mean Macro F1: {results['best_cv_f1']:.4f}")
-    print(f"  Std: {results['cv_std']:.4f}")
-    print(f"  Fold Scores: {[f'{s:.4f}' for s in results['cv_scores']]}")
+    sys.stdout.write("\nCross-Validation Results:\n")
+    sys.stdout.write(f"  Mean Macro F1: {results['best_cv_f1']:.4f}\n")
+    sys.stdout.write(f"  Std: {results['cv_std']:.4f}\n")
+    sys.stdout.write(f"  Fold Scores: {[f'{s:.4f}' for s in results['cv_scores']]}\n")
 
-    print("\nOverfitting Analysis:")
-    print(f"  Train F1: {results['train_f1']:.4f}")
-    print(f"  Test F1: {results['test_f1']:.4f}")
-    print(f"  Train/Test Gap: {results['train_test_gap']:.4f}")
+    sys.stdout.write("\nOverfitting Analysis:\n")
+    sys.stdout.write(f"  Train F1: {results['train_f1']:.4f}\n")
+    sys.stdout.write(f"  Test F1: {results['test_f1']:.4f}\n")
+    sys.stdout.write(f"  Train/Test Gap: {results['train_test_gap']:.4f}\n")
 
-    if results["train_test_gap"] < 0.10:
-        print("  Status: OK (gap < 0.10)")
+    if results["train_test_gap"] < OVERFIT_GAP_WARNING_THRESHOLD:
+        sys.stdout.write("  Status: OK (gap < 0.10)\n")
     else:
-        print("  Status: WARNING - potential overfitting (gap >= 0.10)")
+        sys.stdout.write("  Status: WARNING - potential overfitting (gap >= 0.10)\n")
 
-    print("\nDataset Info:")
-    print(f"  Samples: {results['n_samples']}")
-    print(f"  Genres: {results['n_genres']}")
-    print("=" * 60)
+    sys.stdout.write("\nDataset Info:\n")
+    sys.stdout.write(f"  Samples: {results['n_samples']}\n")
+    sys.stdout.write(f"  Genres: {results['n_genres']}\n")
+    sys.stdout.write("=" * 60 + "\n")
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="Optimize genre classification hyperparameters with Optuna"
     )
@@ -357,7 +359,7 @@ def main():
 
     # Check data file exists
     if not args.data.exists():
-        print(f"Error: Training data not found at {args.data}")
+        sys.stdout.write(f"Error: Training data not found at {args.data}\n")
         sys.exit(1)
 
     # Run optimization
@@ -373,16 +375,21 @@ def main():
     print_results(results)
 
     # Save results
-    with open(args.output, "w") as f:
+    with args.output.open("w") as f:
         json.dump(results, f, indent=2)
-    print(f"\nResults saved to: {args.output}")
+    sys.stdout.write(f"\nResults saved to: {args.output}\n")
 
     # Return success/failure based on targets
-    if results["best_cv_f1"] >= 0.70 and results["train_test_gap"] < 0.10:
-        print("\nSUCCESS: Targets met (CV F1 >= 0.70, gap < 0.10)")
+    if (
+        results["best_cv_f1"] >= TARGET_CV_F1_MIN
+        and results["train_test_gap"] < OVERFIT_GAP_WARNING_THRESHOLD
+    ):
+        sys.stdout.write("\nSUCCESS: Targets met (CV F1 >= 0.70, gap < 0.10)\n")
         sys.exit(0)
     else:
-        print("\nNOTE: Targets not yet met. Consider more trials or data augmentation.")
+        sys.stdout.write(
+            "\nNOTE: Targets not yet met. Consider more trials or data augmentation.\n"
+        )
         sys.exit(0)  # Still exit 0 since optimization completed
 
 

@@ -24,6 +24,14 @@ import pytest
 import structlog.testing
 from sklearn.linear_model import LogisticRegression
 
+from recap_subworker.domain.errors import ConfigValidationError
+from recap_subworker.services.classifier import (
+    ClassifierMetadata,
+    GenreClassifierService,
+)
+
+FEATURE_DIM = 4
+
 
 def _runtime_sklearn_minor() -> str:
     full = importlib.metadata.version("scikit-learn")
@@ -58,7 +66,7 @@ def _write_meta(model_path: Path, **overrides: object) -> Path:
         "trained_at": "2026-04-23T12:00:00+00:00",
         "language": "ja",
         "classes": [f"c{i}" for i in range(3)],
-        "feature_dim": 4,
+        "feature_dim": FEATURE_DIM,
         "source_data_sha256": "0" * 64,
         "embedding_model_id": "BAAI/bge-m3",
         "device": "cuda",
@@ -72,11 +80,6 @@ class TestSidecarMetadataHappyPath:
     def test_metadata_exposed_as_frozen_dataclass(
         self, tiny_model: Path, mock_embedder: MagicMock
     ) -> None:
-        from recap_subworker.services.classifier import (
-            ClassifierMetadata,
-            GenreClassifierService,
-        )
-
         _write_meta(tiny_model)
 
         service = GenreClassifierService(str(tiny_model), mock_embedder)
@@ -84,7 +87,7 @@ class TestSidecarMetadataHappyPath:
 
         assert isinstance(service.model_metadata, ClassifierMetadata)
         assert service.model_metadata.language == "ja"
-        assert service.model_metadata.feature_dim == 4
+        assert service.model_metadata.feature_dim == FEATURE_DIM
         assert service.model_metadata.classes == ("c0", "c1", "c2")
 
 
@@ -92,9 +95,6 @@ class TestSidecarMetadataVersionGuard:
     def test_sklearn_minor_mismatch_raises(
         self, tiny_model: Path, mock_embedder: MagicMock
     ) -> None:
-        from recap_subworker.domain.errors import ConfigValidationError
-        from recap_subworker.services.classifier import GenreClassifierService
-
         # Construct a version that cannot match current runtime minor
         _write_meta(tiny_model, sklearn_version="0.24.0")
 
@@ -109,8 +109,6 @@ class TestSidecarMetadataMissing:
         tiny_model: Path,
         mock_embedder: MagicMock,
     ) -> None:
-        from recap_subworker.services.classifier import GenreClassifierService
-
         service = GenreClassifierService(str(tiny_model), mock_embedder)
         # GenreClassifierService logs via structlog, whose default
         # PrintLoggerFactory bypasses stdlib logging entirely — caplog never

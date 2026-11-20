@@ -14,6 +14,7 @@ import asyncio
 import re
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Any, ClassVar
 
 import structlog
 
@@ -62,8 +63,6 @@ class GEvalResult:
 
     def to_dict(self) -> dict:
         """Convert to dictionary representation."""
-        from typing import Any
-
         result: dict[str, Any] = {
             "coherence": self.coherence,
             "consistency": self.consistency,
@@ -188,7 +187,7 @@ class GEvalEvaluator:
         >>> print(f"Average score: {result.average:.2f}")
     """
 
-    DEFAULT_DIMENSIONS = [
+    DEFAULT_DIMENSIONS: ClassVar[list[EvaluationDimension]] = [
         EvaluationDimension.COHERENCE,
         EvaluationDimension.CONSISTENCY,
         EvaluationDimension.FLUENCY,
@@ -201,7 +200,7 @@ class GEvalEvaluator:
         llm_client: object | None = None,
         model_name: str = "gpt-4",
         temperature: float = 0.0,
-    ):
+    ) -> None:
         """Initialize the G-Eval evaluator.
 
         Args:
@@ -317,11 +316,12 @@ class GEvalEvaluator:
                 yet.
         """
         if self.llm_client is None:
-            raise RuntimeError(
+            msg = (
                 "GEvalEvaluator has no llm_client configured; G-Eval cannot "
                 "score without a real LLM judge. Configure llm_client "
                 "explicitly, or patch _call_llm with a test double in tests."
             )
+            raise RuntimeError(msg)
 
         # Actual implementation would call the LLM here
         # This depends on the specific LLM client being used
@@ -355,16 +355,15 @@ class GEvalEvaluator:
                 dimension=dimension.value,
                 score=score,
             )
-
-            return score, explanation
-
-        except Exception as e:
-            logger.error(
+        except Exception as e:  # noqa: BLE001 - dimension evaluation boundary; returns fallback score on any LLM/parse failure
+            logger.error(  # noqa: TRY400 - expected fallback path in asyncio.gather; error recorded in result
                 "Error evaluating dimension",
                 dimension=dimension.value,
                 error=str(e),
             )
             return 3.0, f"Error: {e!s}"
+        else:
+            return score, explanation
 
     async def evaluate(
         self,
@@ -433,9 +432,8 @@ class GEvalEvaluator:
             ValueError: If summaries and sources have different lengths.
         """
         if len(summaries) != len(sources):
-            raise ValueError(
-                f"Mismatched lengths: {len(summaries)} summaries vs {len(sources)} sources"
-            )
+            msg = f"Mismatched lengths: {len(summaries)} summaries vs {len(sources)} sources"
+            raise ValueError(msg)
 
         tasks = [
             self.evaluate(summary, source, include_explanations)

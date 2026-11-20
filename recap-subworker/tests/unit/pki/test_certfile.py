@@ -36,13 +36,17 @@ def new_self_signed_pem(cn: str, nb: datetime, na: datetime) -> tuple[bytes, byt
     return cert_pem, key_pem
 
 
+CERT_FILE_MODE = 0o444
+KEY_FILE_MODE = 0o400
+
+
 def test_certfile_write_and_load(tmp_path: Path) -> None:
     cf = CertFile(str(tmp_path / "svc-cert.pem"), str(tmp_path / "svc-key.pem"))
     nb = datetime.now(UTC) - timedelta(minutes=1)
     cert, key = new_self_signed_pem("recap-subworker", nb, nb + timedelta(hours=1))
     cf.write(cert, key)
-    assert (tmp_path / "svc-cert.pem").stat().st_mode & 0o777 == 0o444
-    assert (tmp_path / "svc-key.pem").stat().st_mode & 0o777 == 0o400
+    assert (tmp_path / "svc-cert.pem").stat().st_mode & 0o777 == CERT_FILE_MODE
+    assert (tmp_path / "svc-key.pem").stat().st_mode & 0o777 == KEY_FILE_MODE
     loaded = cf.load()
     assert loaded.common_name == "recap-subworker"
 
@@ -99,7 +103,8 @@ def test_certfile_second_rename_failure_restores_old_key(
     def boom(self: Path, target: Path | str, *args: object, **kwargs: object) -> Path:
         dest = Path(target)
         if dest == Path(cf.cert_path) and self.name.startswith(".pki-enroll-"):
-            raise OSError("injected second rename failure")
+            msg = "injected second rename failure"
+            raise OSError(msg)
         return orig(self, dest, *args, **kwargs)
 
     monkeypatch.setattr(Path, "replace", boom)
@@ -127,7 +132,8 @@ def test_certfile_crash_between_renames_recovers_on_restart(
         dest = Path(target)
         result = orig(self, dest, *args, **kwargs)
         if dest == Path(cf.key_path) and self.name.startswith(".pki-enroll-"):
-            raise _SimulatedCrashError("crash after key rename")
+            msg = "crash after key rename"
+            raise _SimulatedCrashError(msg)
         return result
 
     monkeypatch.setattr(Path, "replace", crash_after_key)

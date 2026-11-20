@@ -22,7 +22,7 @@ def _make_doc(article_id: str = "art-1") -> ClusterDocument:
 
 
 class TestClusterJobPayloadSecurity:
-    def test_extra_fields_rejected(self):
+    def test_extra_fields_rejected(self) -> None:
         params = ClusterJobParams(
             max_sentences_total=200,
             umap_n_components=25,
@@ -36,7 +36,7 @@ class TestClusterJobPayloadSecurity:
                 evil_field="injected",  # type: ignore[call-arg]
             )
 
-    def test_documents_max_length(self):
+    def test_documents_max_length(self) -> None:
         """Documents list must not exceed 5000 items."""
         params = ClusterJobParams(
             max_sentences_total=200,
@@ -45,15 +45,16 @@ class TestClusterJobPayloadSecurity:
             mmr_lambda=0.35,
         )
         # This should work (under limit)
+        expected_docs = 3
         payload = ClusterJobPayload(
             params=params,
-            documents=[_make_doc(article_id=f"art-{i}") for i in range(3)],
+            documents=[_make_doc(article_id=f"art-{i}") for i in range(expected_docs)],
         )
-        assert len(payload.documents) == 3
+        assert len(payload.documents) == expected_docs
 
 
 class TestEvidenceRequestSecurity:
-    def test_extra_fields_rejected(self):
+    def test_extra_fields_rejected(self) -> None:
         with pytest.raises(ValidationError, match="extra"):
             EvidenceRequest(
                 job_id="test",
@@ -62,14 +63,14 @@ class TestEvidenceRequestSecurity:
                 sneaky="bad",  # type: ignore[call-arg]
             )
 
-    def test_documents_max_length_field_exists(self):
+    def test_documents_max_length_field_exists(self) -> None:
         """EvidenceRequest.documents has max_length=5000."""
         field = EvidenceRequest.model_fields["documents"]
         assert field.metadata is not None or field.json_schema_extra is not None
 
 
 class TestClusterDocumentSecurity:
-    def test_extra_fields_rejected(self):
+    def test_extra_fields_rejected(self) -> None:
         with pytest.raises(ValidationError, match="extra"):
             ClusterDocument(
                 article_id="art-1",
@@ -77,7 +78,7 @@ class TestClusterDocumentSecurity:
                 malicious="payload",  # type: ignore[call-arg]
             )
 
-    def test_article_id_max_length(self):
+    def test_article_id_max_length(self) -> None:
         with pytest.raises(ValidationError):
             ClusterDocument(
                 article_id="a" * 200,

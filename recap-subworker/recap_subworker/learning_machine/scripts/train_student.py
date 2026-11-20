@@ -2,67 +2,66 @@ import argparse
 import json
 import logging
 import os
+import random
+import shutil
+import subprocess
 import sys
 from pathlib import Path
+from typing import TypedDict
 
 import yaml
 
 
-# CUDAライブラリのパスを動的に検出して設定（CUDA検出を確実にするため）
-def _setup_cuda_library_path():
-    """動的にCUDAライブラリのパスを検出してLD_LIBRARY_PATHに追加"""
-    existing_paths = os.environ.get("LD_LIBRARY_PATH", "").split(":")
-    existing_paths = [p for p in existing_paths if p]  # 空文字列を除去
+def _append_if_exists(candidates: list[str], path: Path) -> None:
+    path_str = str(path)
+    if path.exists() and path_str not in candidates:
+        candidates.append(path_str)
 
-    # 検出するパスの候補
-    candidate_paths = []
+
+def _discover_ldconfig_cuda_dirs(candidates: list[str]) -> None:
+    try:
+        ldconfig_bin = shutil.which("ldconfig")
+        if ldconfig_bin:
+            result = subprocess.run(  # noqa: S603  # fixed ldconfig binary resolved via shutil.which
+                [ldconfig_bin, "-p"], capture_output=True, text=True, timeout=5, check=False
+            )
+            if result.returncode == 0:
+                for line in result.stdout.split("\n"):
+                    if "cuda" in line.lower() and "=>" in line:
+                        lib_path = line.split("=>")[-1].strip()
+                        if lib_path:
+                            _append_if_exists(candidates, Path(lib_path).parent)
+    except (OSError, subprocess.SubprocessError) as exc:
+        logging.getLogger(__name__).debug("ldconfig lookup skipped: %s", exc)
+
+
+# CUDAライブラリのパスを動的に検出して設定（CUDA検出を確実にするため）
+def _setup_cuda_library_path() -> None:
+    """動的にCUDAライブラリのパスを検出してLD_LIBRARY_PATHに追加"""
+    existing_paths = [p for p in os.environ.get("LD_LIBRARY_PATH", "").split(":") if p]
+    candidate_paths: list[str] = []
 
     # 1. /usr/local/cuda* 配下を検索
-    if os.path.exists("/usr/local"):
-        for item in os.listdir("/usr/local"):
-            cuda_path = os.path.join("/usr/local", item)
-            if item.startswith("cuda") and os.path.isdir(cuda_path):
-                targets_lib = os.path.join(cuda_path, "targets", "x86_64-linux", "lib")
-                if os.path.exists(targets_lib):
-                    candidate_paths.append(targets_lib)
+    usr_local = Path("/usr/local")
+    if usr_local.exists():
+        for cuda_path in usr_local.iterdir():
+            if cuda_path.name.startswith("cuda") and cuda_path.is_dir():
+                _append_if_exists(candidate_paths, cuda_path / "targets" / "x86_64-linux" / "lib")
 
     # 2. /usr/local/cuda のシンボリックリンクを確認
-    cuda_link = "/usr/local/cuda"
-    if os.path.exists(cuda_link):
-        targets_lib = os.path.join(cuda_link, "targets", "x86_64-linux", "lib")
-        if os.path.exists(targets_lib) and targets_lib not in candidate_paths:
-            candidate_paths.append(targets_lib)
+    _append_if_exists(candidate_paths, Path("/usr/local/cuda") / "targets" / "x86_64-linux" / "lib")
 
     # 3. システム標準パス
-    system_paths = [
-        "/usr/lib/x86_64-linux-gnu",
-        "/usr/lib64",
-    ]
-    for path in system_paths:
-        if os.path.exists(path) and path not in candidate_paths:
-            candidate_paths.append(path)
+    for path in (Path("/usr/lib/x86_64-linux-gnu"), Path("/usr/lib64")):
+        _append_if_exists(candidate_paths, path)
 
     # 4. ldconfigで検出されたCUDAライブラリのパスを確認
-    try:
-        import subprocess
-
-        result = subprocess.run(["ldconfig", "-p"], capture_output=True, text=True, timeout=5)
-        if result.returncode == 0:
-            for line in result.stdout.split("\n"):
-                if "cuda" in line.lower() and "=>" in line:
-                    lib_path = line.split("=>")[-1].strip()
-                    if lib_path:
-                        dir_path = os.path.dirname(lib_path)
-                        if os.path.exists(dir_path) and dir_path not in candidate_paths:
-                            candidate_paths.append(dir_path)
-    except Exception:
-        pass  # ldconfigが使えない場合はスキップ
+    _discover_ldconfig_cuda_dirs(candidate_paths)
 
     # 存在するパスを追加
-    new_paths = []
-    for path in candidate_paths:
-        if os.path.exists(path) and path not in existing_paths:
-            new_paths.append(path)
+    new_paths = [
+        path for path in candidate_paths if Path(path).exists() and path not in existing_paths
+    ]
 
     if new_paths:
         current_ld_path = os.environ.get("LD_LIBRARY_PATH", "")
@@ -72,17 +71,28 @@ def _setup_cuda_library_path():
 
 _setup_cuda_library_path()
 
-import random
+from dataclasses import dataclass  # noqa: E402  # import after CUDA LD_LIBRARY_PATH setup
 
-import numpy as np
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from sklearn.metrics import f1_score
-from sklearn.model_selection import train_test_split
-from torch.optim import AdamW
-from torch.utils.data import DataLoader, Dataset
-from transformers import get_linear_schedule_with_warmup
+import numpy as np  # noqa: E402  # import after CUDA LD_LIBRARY_PATH setup
+import torch  # noqa: E402  # import after CUDA LD_LIBRARY_PATH setup
+import torch.nn.functional as F  # noqa: E402, N812  # PyTorch functional convention; import after CUDA LD_LIBRARY_PATH setup
+from sklearn.metrics import f1_score  # noqa: E402  # import after CUDA LD_LIBRARY_PATH setup
+from sklearn.model_selection import (  # noqa: E402  # import after CUDA LD_LIBRARY_PATH setup
+    train_test_split,
+)
+from torch import nn  # noqa: E402  # import after CUDA LD_LIBRARY_PATH setup
+from torch.optim import AdamW  # noqa: E402  # import after CUDA LD_LIBRARY_PATH setup
+from torch.optim.lr_scheduler import (  # noqa: E402  # import after CUDA LD_LIBRARY_PATH setup
+    LambdaLR,
+)
+from torch.utils.data import (  # noqa: E402  # import after CUDA LD_LIBRARY_PATH setup
+    DataLoader,
+    Dataset,
+)
+from transformers import (  # noqa: E402  # import after CUDA LD_LIBRARY_PATH setup
+    PreTrainedTokenizerBase,
+    get_linear_schedule_with_warmup,
+)
 
 # Path setup
 current_dir = Path(__file__).resolve().parent
@@ -90,36 +100,51 @@ project_root = current_dir.parent.parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from recap_subworker.learning_machine.student.model import StudentDistilBERT
+from recap_subworker.learning_machine.student.model import (  # noqa: E402  # import after CUDA LD_LIBRARY_PATH and sys.path setup
+    StudentDistilBERT,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+class _DistillationItem(TypedDict):
+    text: str
+    label: int
+    logits: list[float] | None
+    lang: str | None
+
+
 class DistillationDataset(Dataset):
-    def __init__(self, items, tokenizer, num_labels: int, max_length: int = 256):
+    def __init__(
+        self,
+        items: list[_DistillationItem],
+        tokenizer: PreTrainedTokenizerBase,
+        num_labels: int,
+        max_length: int = 256,
+    ) -> None:
         self.items = items
         self.tokenizer = tokenizer
         self.num_labels = num_labels
         self.max_length = max_length
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.items)
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
         item = self.items[idx]
         text = str(item["text"])
         label = item["label"]
 
         # Logits for distillation (if available)
         teacher_logits = item.get("logits")
-        has_Teacher = False
+        has_teacher_logits = False
         if teacher_logits:
-            teacher_logits = torch.tensor(teacher_logits, dtype=torch.float)
-            has_Teacher = True
+            teacher_logits_tensor = torch.tensor(teacher_logits, dtype=torch.float)
+            has_teacher_logits = True
         else:
             # If no logits, use dummy of correct shape
-            teacher_logits = torch.zeros(self.num_labels, dtype=torch.float)
+            teacher_logits_tensor = torch.zeros(self.num_labels, dtype=torch.float)
 
         encoding = self.tokenizer(
             text,
@@ -136,23 +161,23 @@ class DistillationDataset(Dataset):
             "input_ids": encoding["input_ids"].flatten(),
             "attention_mask": encoding["attention_mask"].flatten(),
             "labels": torch.tensor(label, dtype=torch.long),
-            "teacher_logits": teacher_logits,
-            "has_teacher": torch.tensor(1 if has_Teacher else 0, dtype=torch.long),
+            "teacher_logits": teacher_logits_tensor,
+            "has_teacher": torch.tensor(1 if has_teacher_logits else 0, dtype=torch.long),
         }
 
 
 def load_genres(path: Path) -> list[str]:
-    with open(path) as f:
+    with path.open() as f:
         data = yaml.safe_load(f)
         return data.get("genres", [])
 
 
-def load_jsonl(path: Path, label2id: dict) -> list[dict]:
-    data = []
+def load_jsonl(path: Path, label2id: dict[str, int]) -> list[_DistillationItem]:
+    data: list[_DistillationItem] = []
     skipped = 0
     if not path.exists():
         return []
-    with open(path, encoding="utf-8") as f:
+    with path.open(encoding="utf-8") as f:
         for line in f:
             if line.strip():
                 try:
@@ -186,7 +211,19 @@ def load_jsonl(path: Path, label2id: dict) -> list[dict]:
     return data
 
 
-def main():
+@dataclass
+class _StudentTrainingBundle:
+    student: StudentDistilBERT
+    train_loader: DataLoader
+    val_loader: DataLoader
+    optimizer: AdamW
+    scheduler: LambdaLR
+    ce_loss: nn.CrossEntropyLoss
+    kl_loss: nn.KLDivLoss
+    output_path: Path
+
+
+def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--epochs", type=int, default=None, help="Number of epochs (default: language-specific)"
@@ -241,47 +278,39 @@ def main():
         default=None,
         help="Base model name (default: Japanese DistilBERT for ja, distilbert-base-uncased for en)",
     )
-    args = parser.parse_args()
+    return parser.parse_args()
 
+
+def _apply_language_defaults_and_seed(args: argparse.Namespace) -> None:
     # Language-specific defaults
     if args.language == "ja":
         # Japanese defaults (optimized for better macro F1 - Experiment 2 best: 0.8461)
-        default_epochs = 10
-        default_batch_size = 16
-        default_lr = 2e-5
-        default_alpha = 0.3  # Hard label focused (best from experiments)
-        default_temperature = 2.0
-        default_weight_decay = 0.01
-        default_warmup_steps = 100
-        default_max_length = 256
+        defaults = {
+            "epochs": 10,
+            "batch_size": 16,
+            "lr": 2e-5,
+            "alpha": 0.3,
+            "temperature": 2.0,
+            "weight_decay": 0.01,
+            "warmup_steps": 100,
+            "max_length": 256,
+        }
     else:  # en
         # English defaults (current working well)
-        default_epochs = 5
-        default_batch_size = 32
-        default_lr = 3e-5
-        default_alpha = 0.5
-        default_temperature = 2.0
-        default_weight_decay = 0.01
-        default_warmup_steps = 0
-        default_max_length = 256
+        defaults = {
+            "epochs": 5,
+            "batch_size": 32,
+            "lr": 3e-5,
+            "alpha": 0.5,
+            "temperature": 2.0,
+            "weight_decay": 0.01,
+            "warmup_steps": 0,
+            "max_length": 256,
+        }
 
-    # Apply defaults if not specified
-    if args.epochs is None:
-        args.epochs = default_epochs
-    if args.batch_size is None:
-        args.batch_size = default_batch_size
-    if args.lr is None:
-        args.lr = default_lr
-    if args.alpha is None:
-        args.alpha = default_alpha
-    if args.temperature is None:
-        args.temperature = default_temperature
-    if args.weight_decay is None:
-        args.weight_decay = default_weight_decay
-    if args.warmup_steps is None:
-        args.warmup_steps = default_warmup_steps
-    if args.max_length is None:
-        args.max_length = default_max_length
+    for key, value in defaults.items():
+        if getattr(args, key) is None:
+            setattr(args, key, value)
 
     # Set random seed for reproducibility
     random.seed(args.seed)
@@ -290,45 +319,49 @@ def main():
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(args.seed)
 
-    logger.info(f"Random seed set to: {args.seed}")
+    logger.info("Random seed set to: %s", args.seed)
     logger.info(
-        f"Language-specific defaults (language={args.language}): "
-        f"epochs={args.epochs}, batch_size={args.batch_size}, lr={args.lr}, "
-        f"alpha={args.alpha}, temperature={args.temperature}, "
-        f"weight_decay={args.weight_decay}, warmup_steps={args.warmup_steps}, "
-        f"max_length={args.max_length}"
+        "Language-specific defaults (language=%s): "
+        "epochs=%s, batch_size=%s, lr=%s, alpha=%s, temperature=%s, "
+        "weight_decay=%s, warmup_steps=%s, max_length=%s",
+        args.language,
+        args.epochs,
+        args.batch_size,
+        args.lr,
+        args.alpha,
+        args.temperature,
+        args.weight_decay,
+        args.warmup_steps,
+        args.max_length,
     )
 
-    # Set default output_dir based on language
-    if args.output_dir is None:
-        args.output_dir = f"recap_subworker/learning_machine/artifacts/student/v0_{args.language}"
 
+def _resolve_device() -> torch.device:
     # GPU確認と詳細ログ
     if torch.cuda.is_available():
         device = torch.device("cuda")
         gpu_name = torch.cuda.get_device_name(0)
         gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3  # GB
         logger.info(
-            f"GPU detected and will be used - Device: {device}, "
-            f"GPU: {gpu_name}, Memory: {round(gpu_memory, 2)}GB, "
-            f"CUDA: {torch.version.cuda}"
+            "GPU detected and will be used - Device: %s, GPU: %s, Memory: %.2fGB, CUDA: %s",
+            device,
+            gpu_name,
+            gpu_memory,
+            torch.version.cuda,
         )
-    else:
-        device = torch.device("cpu")
-        logger.warning(f"CUDA not available, using CPU. Training will be slow! Device: {device}")
+        return device
+    device = torch.device("cpu")
+    logger.warning("CUDA not available, using CPU. Training will be slow! Device: %s", device)
+    return device
 
-    # Load Genres
-    taxonomy_path = Path("recap_subworker/learning_machine/taxonomy/genres.yaml")
-    genres = load_genres(taxonomy_path)
-    label2id = {g: i for i, g in enumerate(genres)}
-    num_labels = len(genres)
 
-    # Load Data
+def _load_student_splits(
+    args: argparse.Namespace, label2id: dict[str, int]
+) -> tuple[list[_DistillationItem], list[_DistillationItem]]:
     gold_data = load_jsonl(Path("recap_subworker/learning_machine/data/gold_seed.jsonl"), label2id)
     silver_ext = load_jsonl(
         Path("recap_subworker/learning_machine/data/silver_external.jsonl"), label2id
     )
-    # Load language-specific pseudo labels
     silver_pseudo_path = Path(
         f"recap_subworker/learning_machine/data/silver_teacher_v0_{args.language}.jsonl"
     )
@@ -340,38 +373,41 @@ def main():
     silver_pseudo = [item for item in silver_pseudo if item.get("lang") == args.language]
 
     logger.info(
-        f"Data (language={args.language}): Gold={len(gold_data)}, SilverExt={len(silver_ext)}, Pseudo={len(silver_pseudo)}"
+        "Data (language=%s): Gold=%d, SilverExt=%d, Pseudo=%d",
+        args.language,
+        len(gold_data),
+        len(silver_ext),
+        len(silver_pseudo),
     )
-
-    # Validation uses ONLY Gold (and maybe a slice of silver if gold is too small, but aim for Gold)
-    # Since Gold is small (60), we might need CrossValid, but here Stratified Split of combined?
-    # NO. Validation set MUST be trustworthy.
-    # Split Gold: 30 validation, 30 train. (Tiny!)
-    # Or use ALL gold for valid? But then Student sees no gold in train.
-    # Standard: Use Gold for Valid/Test only?
-    # Given the goal is "Teacher -> Student", Student learns from Teacher (Pseudo + External).
-    # Gold is primarily for EVALUATION.
-    # Let's use 50% Gold for Val.
 
     gold_train, gold_val = train_test_split(gold_data, test_size=0.5, random_state=args.seed)
 
     train_items = gold_train + silver_ext + silver_pseudo
     val_items = gold_val
 
-    logger.info(f"Train Set: {len(train_items)} (Gold: {len(gold_train)})")
-    logger.info(f"Val Set (Gold Only): {len(val_items)}")
+    logger.info("Train Set: %d (Gold: %d)", len(train_items), len(gold_train))
+    logger.info("Val Set (Gold Only): %d", len(val_items))
+    return train_items, val_items
 
-    # Model
+
+def _setup_student_training(
+    args: argparse.Namespace,
+    train_items: list[_DistillationItem],
+    val_items: list[_DistillationItem],
+    num_labels: int,
+    device: torch.device,
+) -> _StudentTrainingBundle:
+    if args.output_dir is None:
+        args.output_dir = f"recap_subworker/learning_machine/artifacts/student/v0_{args.language}"
+
     if args.model_name:
         model_name = args.model_name
-    else:
-        # Default models based on language
-        if args.language == "ja":
-            model_name = "line-corporation/line-distilbert-base-japanese"
-        else:  # en
-            model_name = "distilbert-base-uncased"
+    elif args.language == "ja":
+        model_name = "line-corporation/line-distilbert-base-japanese"
+    else:  # en
+        model_name = "distilbert-base-uncased"
 
-    logger.info(f"Using model: {model_name} for language: {args.language}")
+    logger.info("Using model: %s for language: %s", model_name, args.language)
     student = StudentDistilBERT(model_name, num_labels)
     student.to(device)
 
@@ -394,113 +430,145 @@ def main():
     ce_loss = nn.CrossEntropyLoss()
     kl_loss = nn.KLDivLoss(reduction="batchmean")
 
-    best_f1 = 0.0
     output_path = Path(args.output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
-    for epoch in range(args.epochs):
-        student.train()
-        total_loss = 0
+    return _StudentTrainingBundle(
+        student=student,
+        train_loader=train_loader,
+        val_loader=val_loader,
+        optimizer=optimizer,
+        scheduler=scheduler,
+        ce_loss=ce_loss,
+        kl_loss=kl_loss,
+        output_path=output_path,
+    )
 
-        # GPU使用状況の確認（最初のバッチのみ）
-        if epoch == 0 and torch.cuda.is_available():
-            torch.cuda.reset_peak_memory_stats()
-            initial_memory = torch.cuda.memory_allocated(0) / 1024**3
-            logger.info(f"Initial GPU memory usage: {initial_memory:.2f} GB")
 
-        for batch_idx, batch in enumerate(train_loader):
-            optimizer.zero_grad()
+def _train_one_epoch(
+    bundle: _StudentTrainingBundle,
+    args: argparse.Namespace,
+    device: torch.device,
+    epoch: int,
+) -> float:
+    bundle.student.train()
+    total_loss = 0.0
 
-            input_ids = batch["input_ids"].to(device)
-            attention_mask = batch["attention_mask"].to(device)
-            labels = batch["labels"].to(device)
-            teacher_logits = batch["teacher_logits"].to(device)
-            has_teacher = batch["has_teacher"].to(device)
+    # GPU使用状況の確認（最初のバッチのみ）
+    if epoch == 0 and torch.cuda.is_available():
+        torch.cuda.reset_peak_memory_stats()
+        initial_memory = torch.cuda.memory_allocated(0) / 1024**3
+        logger.info("Initial GPU memory usage: %.2f GB", initial_memory)
 
-            # 最初のバッチでGPU使用を確認
-            if epoch == 0 and batch_idx == 0 and torch.cuda.is_available():
-                logger.info(
-                    f"First batch on GPU - Input shape: {input_ids.shape}, "
-                    f"Device: {input_ids.device}"
-                )
+    for batch_idx, batch in enumerate(bundle.train_loader):
+        bundle.optimizer.zero_grad()
 
+        input_ids = batch["input_ids"].to(device)
+        attention_mask = batch["attention_mask"].to(device)
+        labels = batch["labels"].to(device)
+        teacher_logits = batch["teacher_logits"].to(device)
+        has_teacher = batch["has_teacher"].to(device)
+
+        # 最初のバッチでGPU使用を確認
+        if epoch == 0 and batch_idx == 0 and torch.cuda.is_available():
+            logger.info(
+                "First batch on GPU - Input shape: %s, Device: %s",
+                input_ids.shape,
+                input_ids.device,
+            )
+
+        outputs = bundle.student(input_ids, attention_mask)
+        student_logits = outputs.logits
+
+        # 1. Hard Loss
+        loss_ce = bundle.ce_loss(student_logits, labels)
+
+        # 2. Soft Loss (Distillation)
+        loss_distill = torch.tensor(0.0, device=device)
+        mask = has_teacher.bool()
+        if mask.any():
+            s_log = F.log_softmax(student_logits[mask] / args.temperature, dim=-1)
+            t_prob = F.softmax(teacher_logits[mask] / args.temperature, dim=-1)
+            loss_distill = bundle.kl_loss(s_log, t_prob) * (args.temperature**2)
+
+        loss = args.alpha * loss_distill + (1.0 - args.alpha) * loss_ce if mask.any() else loss_ce
+
+        loss.backward()
+        bundle.optimizer.step()
+        bundle.scheduler.step()
+        total_loss += loss.item()
+
+        # 最初のエポックの最初のバッチでGPUメモリ使用量を確認
+        if epoch == 0 and batch_idx == 0 and torch.cuda.is_available():
+            peak_memory = torch.cuda.max_memory_allocated(0) / 1024**3
+            current_memory = torch.cuda.memory_allocated(0) / 1024**3
+            logger.info(
+                "GPU memory after first batch - Peak: %.2fGB, Current: %.2fGB",
+                peak_memory,
+                current_memory,
+            )
+
+    return total_loss / len(bundle.train_loader)
+
+
+def _evaluate_student(
+    student: StudentDistilBERT, val_loader: DataLoader, device: torch.device
+) -> tuple[float, float]:
+    student.eval()
+    preds = []
+    true_lbls = []
+
+    for batch in val_loader:
+        input_ids = batch["input_ids"].to(device)
+        attention_mask = batch["attention_mask"].to(device)
+        lbl = batch["labels"].to(device)
+
+        with torch.no_grad():
             outputs = student(input_ids, attention_mask)
-            student_logits = outputs.logits
 
-            # 1. Hard Loss
-            loss_ce = ce_loss(student_logits, labels)
+        pred = torch.argmax(outputs.logits, dim=1).cpu().numpy()
+        preds.extend(pred)
+        true_lbls.extend(lbl.cpu().numpy())
 
-            # 2. Soft Loss (Distillation)
-            # Only apply where we have teacher logits
-            loss_distill = torch.tensor(0.0, device=device)
-            # Find indices where has_teacher=1
-            # But DistillationDataset fills dummy zeros if no teacher.
-            # We assume pseudo-labeled data has logits. External has NOT. Gold has NOT.
-            # So mixing is tricky in batch efficiently?
-            # Masked select?
+    val_f1_macro = f1_score(true_lbls, preds, average="macro")
+    val_f1_weighted = f1_score(true_lbls, preds, average="weighted")
+    return val_f1_macro, val_f1_weighted
 
-            # Global soft loss if we ignore mask? No, comparing to zeros is bad.
-            # Only compute KL if has_teacher mask is active?
-            # Mask out non-teacher items?
-            mask = has_teacher.bool()
-            if mask.any():
-                # Filter
-                s_log = F.log_softmax(student_logits[mask] / args.temperature, dim=-1)
-                t_prob = F.softmax(teacher_logits[mask] / args.temperature, dim=-1)
-                loss_distill = kl_loss(s_log, t_prob) * (args.temperature**2)
 
-            if mask.any():
-                # Weighted Sum
-                loss = args.alpha * loss_distill + (1.0 - args.alpha) * loss_ce
-            else:
-                loss = loss_ce  # Only hard labels
+def main() -> None:
+    args = _parse_args()
+    _apply_language_defaults_and_seed(args)
+    device = _resolve_device()
 
-            loss.backward()
-            optimizer.step()
-            scheduler.step()
-            total_loss += loss.item()
+    # Load Genres
+    taxonomy_path = Path("recap_subworker/learning_machine/taxonomy/genres.yaml")
+    genres = load_genres(taxonomy_path)
+    label2id = {g: i for i, g in enumerate(genres)}
+    num_labels = len(genres)
 
-            # 最初のエポックの最初のバッチでGPUメモリ使用量を確認
-            if epoch == 0 and batch_idx == 0 and torch.cuda.is_available():
-                peak_memory = torch.cuda.max_memory_allocated(0) / 1024**3
-                current_memory = torch.cuda.memory_allocated(0) / 1024**3
-                logger.info(
-                    f"GPU memory after first batch - "
-                    f"Peak: {round(peak_memory, 2)}GB, Current: {round(current_memory, 2)}GB"
-                )
+    # Load Data
+    train_items, val_items = _load_student_splits(args, label2id)
+    bundle = _setup_student_training(args, train_items, val_items, num_labels, device)
 
-        avg_train_loss = total_loss / len(train_loader)
-
-        # Validation on Gold
-        student.eval()
-        preds = []
-        true_lbls = []
-
-        for batch in val_loader:
-            input_ids = batch["input_ids"].to(device)
-            attention_mask = batch["attention_mask"].to(device)
-            lbl = batch["labels"].to(device)
-
-            with torch.no_grad():
-                outputs = student(input_ids, attention_mask)
-
-            pred = torch.argmax(outputs.logits, dim=1).cpu().numpy()
-            preds.extend(pred)
-            true_lbls.extend(lbl.cpu().numpy())
-
-        val_f1_macro = f1_score(true_lbls, preds, average="macro")
-        val_f1_weighted = f1_score(true_lbls, preds, average="weighted")
+    best_f1 = 0.0
+    for epoch in range(args.epochs):
+        avg_train_loss = _train_one_epoch(bundle, args, device, epoch)
+        val_f1_macro, val_f1_weighted = _evaluate_student(bundle.student, bundle.val_loader, device)
         logger.info(
-            f"Epoch {epoch + 1} | Loss: {avg_train_loss:.4f} | Val Macro F1: {val_f1_macro:.4f} | Val Weighted F1: {val_f1_weighted:.4f}"
+            "Epoch %d | Loss: %.4f | Val Macro F1: %.4f | Val Weighted F1: %.4f",
+            epoch + 1,
+            avg_train_loss,
+            val_f1_macro,
+            val_f1_weighted,
         )
 
         # Use macro F1 as the primary metric for model selection
         if val_f1_macro >= best_f1:
             best_f1 = val_f1_macro
-            student.save_pretrained(str(output_path))
-            logger.info(f"New best model saved (Macro F1: {best_f1:.4f})")
+            bundle.student.save_pretrained(str(bundle.output_path))
+            logger.info("New best model saved (Macro F1: %.4f)", best_f1)
 
-    logger.info(f"Student training finished. Best Macro F1: {best_f1:.4f}")
+    logger.info("Student training finished. Best Macro F1: %.4f", best_f1)
 
 
 if __name__ == "__main__":

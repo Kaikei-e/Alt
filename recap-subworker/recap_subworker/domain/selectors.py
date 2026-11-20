@@ -63,7 +63,7 @@ def _prune_duplicates_faiss(embeddings: np.ndarray, threshold: float) -> tuple[l
     Inner product of normalized vectors equals cosine similarity.
     """
     try:
-        import faiss
+        import faiss  # noqa: PLC0415 - heavy native library loaded only when N >= _FAISS_THRESHOLD_N
     except ImportError:
         _LOGGER.warning("faiss not available, falling back to brute-force dedup")
         return _prune_duplicates_brute(embeddings, threshold)
@@ -80,7 +80,7 @@ def _prune_duplicates_faiss(embeddings: np.ndarray, threshold: float) -> tuple[l
 
     # range_search returns all pairs with similarity >= threshold
     # FAISS range_search uses radius as a lower bound for IP
-    lims, _D, I = index.range_search(emb, threshold)  # noqa: E741  # FAISS convention: I = indices
+    lims, _distances, neighbor_indices = index.range_search(emb, threshold)
 
     keep = np.ones(n, dtype=bool)
     removed = 0
@@ -91,7 +91,7 @@ def _prune_duplicates_faiss(embeddings: np.ndarray, threshold: float) -> tuple[l
         # Neighbors of i with similarity >= threshold
         start, end = int(lims[i]), int(lims[i + 1])
         for k in range(start, end):
-            j = int(I[k])
+            j = int(neighbor_indices[k])
             # Only remove later items (j > i) to maintain deterministic order
             if j > i and keep[j]:
                 keep[j] = False

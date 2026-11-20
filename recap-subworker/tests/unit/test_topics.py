@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from pathlib import Path
+
 import pytest
 
 from recap_subworker.domain import stopwords, topics
 
 
 @pytest.fixture(autouse=True)
-def _reset_stopword_cache(monkeypatch):
+def _reset_stopword_cache(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     monkeypatch.delenv("RECAP_SUBWORKER_STOPWORDS_EXTRA", raising=False)
     monkeypatch.delenv("RECAP_SUBWORKER_STOPWORDS_FILE", raising=False)
     stopwords.get_stopwords.cache_clear()
@@ -16,7 +19,7 @@ def _reset_stopword_cache(monkeypatch):
     stopwords.get_stopwords.cache_clear()
 
 
-def test_extract_topics_filters_common_noise():
+def test_extract_topics_filters_common_noise() -> None:
     corpus = [
         "And for her demonstration we outline the policy launch",
         "New product launch highlights AI roadmap and research.",
@@ -33,7 +36,9 @@ def test_extract_topics_filters_common_noise():
     assert any(term in {"policy", "launch"} for term in first_cluster)
 
 
-def test_get_stopwords_supports_env_extensions(monkeypatch, tmp_path):
+def test_get_stopwords_supports_env_extensions(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     extra_file = tmp_path / "stopwords.txt"
     extra_file.write_text("widget\n# comment line\n", encoding="utf-8")
 
@@ -46,7 +51,7 @@ def test_get_stopwords_supports_env_extensions(monkeypatch, tmp_path):
     assert "widget" in terms
 
 
-def test_extract_topics_filters_real_world_noise():
+def test_extract_topics_filters_real_world_noise() -> None:
     """Test filtering of noise terms found in actual Recap data."""
     # Based on actual data from response.json
     # AI genre had: ["ai", "and", "for", "her", "with"]
@@ -71,7 +76,7 @@ def test_extract_topics_filters_real_world_noise():
     assert found_informative, "No informative terms found in results"
 
 
-def test_extract_topics_filters_news_domain_stopwords():
+def test_extract_topics_filters_news_domain_stopwords() -> None:
     """Test filtering of news domain-specific stopwords."""
     corpus = [
         "According to sources, officials said the announcement was made",
@@ -88,7 +93,7 @@ def test_extract_topics_filters_news_domain_stopwords():
         assert stopword not in first_cluster, f"Found news domain stopword: {stopword}"
 
 
-def test_get_stopwords_includes_nltk_and_news_domain():
+def test_get_stopwords_includes_nltk_and_news_domain() -> None:
     """Test that stopwords include NLTK and news domain words."""
     stopwords.get_stopwords.cache_clear()
     terms = stopwords.get_stopwords()
@@ -111,7 +116,7 @@ def test_get_stopwords_includes_nltk_and_news_domain():
     assert "been" in terms
 
 
-def test_extract_topics_filters_alphanumeric_mixed_strings():
+def test_extract_topics_filters_alphanumeric_mixed_strings() -> None:
     """Test filtering of alphanumeric mixed strings like '11novemberfor', '000 avoidable'."""
     corpus = [
         "The product has 100 parameters and 11novemberfor testing",
@@ -141,7 +146,7 @@ def test_extract_topics_filters_alphanumeric_mixed_strings():
     assert found_informative, "No informative terms found in results"
 
 
-def test_extract_topics_filters_numeric_ngrams():
+def test_extract_topics_filters_numeric_ngrams() -> None:
     """Test filtering of ngrams containing numbers like '11 lowest', '00 jumpe'."""
     corpus = [
         "The system shows 11 lowest values and 00 jumpe errors",
@@ -163,7 +168,7 @@ def test_extract_topics_filters_numeric_ngrams():
     assert found_informative, "No informative terms found in results"
 
 
-def test_is_informative_rejects_alphanumeric_mixed():
+def test_is_informative_rejects_alphanumeric_mixed() -> None:
     """Test that _is_informative rejects alphanumeric mixed strings."""
     stopword_set = stopwords.get_stopwords()
 
@@ -184,7 +189,7 @@ def test_is_informative_rejects_alphanumeric_mixed():
     assert not topics._is_informative("11", stopword_set)
 
 
-def test_extract_topics_filters_web_and_code_noise():
+def test_extract_topics_filters_web_and_code_noise() -> None:
     """Web/code terms like 'url', 'http', 'self', 'null' should be stopwords."""
     corpus = [
         "url url http https www com self data none true false null class def return import",
@@ -221,7 +226,7 @@ def test_extract_topics_filters_web_and_code_noise():
         assert noise not in first_cluster, f"Found web/code noise: {noise}"
 
 
-def test_stopwords_include_web_tech_terms():
+def test_stopwords_include_web_tech_terms() -> None:
     """Stopword set should include web and programming terms."""
     stopwords.get_stopwords.cache_clear()
     terms = stopwords.get_stopwords()
@@ -247,7 +252,7 @@ def test_stopwords_include_web_tech_terms():
         assert term in terms, f"Missing web/tech stopword: {term}"
 
 
-def test_extract_topics_handles_single_corpus():
+def test_extract_topics_handles_single_corpus() -> None:
     """Single-cluster corpus must not fail with max_df < min_df in TfidfVectorizer."""
     corpus = ["New product launch highlights artificial intelligence roadmap and research."]
 

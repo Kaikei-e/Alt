@@ -13,6 +13,7 @@ Usage:
 
 import argparse
 import hashlib
+import sys
 from pathlib import Path
 
 import pandas as pd
@@ -22,10 +23,10 @@ def compute_content_hash(text: str) -> str:
     """Compute hash of text content for deduplication."""
     # Normalize whitespace and compute hash
     normalized = " ".join(text.split()).lower()
-    return hashlib.md5(normalized.encode()).hexdigest()
+    return hashlib.md5(normalized.encode(), usedforsecurity=False).hexdigest()
 
 
-def main():
+def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Merge original and augmented training data")
     parser.add_argument(
         "--original",
@@ -70,69 +71,110 @@ def main():
         default=42,
         help="Random seed for sampling",
     )
+    return parser.parse_args()
 
-    args = parser.parse_args()
 
-    # Load original data
-    print(f"Loading original data from {args.original}...")
-    orig_df = pd.read_csv(args.original)
-    orig_df = orig_df.dropna(subset=["content", "genre"])
-    orig_df["is_augmented"] = False
-    orig_df["augmentation_method"] = "original"
-
-    print(f"Original samples: {len(orig_df)}")
-
-    # Load augmented data
-    print("\nLoading augmented data...")
+def _load_augmented(paths: list[Path]) -> list[pd.DataFrame]:
+    sys.stdout.write("\nLoading augmented data...\n")
     aug_dfs = []
-    for path in args.augmented:
+    for path in paths:
         if path.exists():
             df = pd.read_csv(path)
             df["is_augmented"] = True
             if "augmentation_method" not in df.columns:
                 df["augmentation_method"] = "unknown"
             aug_dfs.append(df)
-            print(f"  Loaded {len(df)} samples from {path}")
+            sys.stdout.write(f"  Loaded {len(df)} samples from {path}\n")
         else:
-            print(f"  WARNING: {path} not found")
+            sys.stdout.write(f"  WARNING: {path} not found\n")
+    return aug_dfs
 
+
+def _deduplicate_df(combined_df: pd.DataFrame) -> pd.DataFrame:
+    sys.stdout.write("\nDeduplicating...\n")
+    initial_count = len(combined_df)
+    combined_df["content_hash"] = combined_df["content"].apply(compute_content_hash)
+    # Keep first occurrence (prioritize original over augmented)
+    combined_df = combined_df.sort_values("is_augmented")
+    combined_df = combined_df.drop_duplicates(subset=["content_hash"], keep="first")
+    combined_df = combined_df.drop(columns=["content_hash"])
+    removed = initial_count - len(combined_df)
+    sys.stdout.write(f"  Removed {removed} duplicates\n")
+    return combined_df
+
+
+def _balance_classes(
+    combined_df: pd.DataFrame,
+    max_samples_per_genre: int | None,
+    min_samples_per_genre: int | None,
+    seed: int,
+) -> pd.DataFrame:
+    sys.stdout.write("\nBalancing classes...\n")
+    balanced_dfs = []
+    for genre in combined_df["genre"].unique():
+        genre_df = combined_df[combined_df["genre"] == genre]
+        current_count = len(genre_df)
+
+        if max_samples_per_genre and current_count > max_samples_per_genre:
+            orig_samples = genre_df[~genre_df["is_augmented"]]
+            aug_samples = genre_df[genre_df["is_augmented"]]
+
+            if len(orig_samples) >= max_samples_per_genre:
+                sampled = orig_samples.sample(n=max_samples_per_genre, random_state=seed)
+            else:
+                aug_needed = max_samples_per_genre - len(orig_samples)
+                aug_sampled = (
+                    aug_samples.sample(n=aug_needed, random_state=seed)
+                    if len(aug_samples) > aug_needed
+                    else aug_samples
+                )
+                sampled = pd.concat([orig_samples, aug_sampled])
+
+            balanced_dfs.append(sampled)
+            sys.stdout.write(f"  {genre}: {current_count} -> {len(sampled)} (downsampled)\n")
+        elif min_samples_per_genre and current_count < min_samples_per_genre:
+            balanced_dfs.append(genre_df)
+            sys.stdout.write(
+                f"  {genre}: {current_count} (below minimum {min_samples_per_genre})\n"
+            )
+        else:
+            balanced_dfs.append(genre_df)
+
+    return pd.concat(balanced_dfs, ignore_index=True)
+
+
+def main() -> None:
+    args = _parse_args()
+
+    # Load original data
+    sys.stdout.write(f"Loading original data from {args.original}...\n")
+    orig_df = pd.read_csv(args.original)
+    orig_df = orig_df.dropna(subset=["content", "genre"])
+    orig_df["is_augmented"] = False
+    orig_df["augmentation_method"] = "original"
+
+    sys.stdout.write(f"Original samples: {len(orig_df)}\n")
+
+    aug_dfs = _load_augmented(args.augmented)
     if not aug_dfs:
-        print("WARNING: No augmented data files found. Using only original data.")
+        sys.stdout.write("WARNING: No augmented data files found. Using only original data.\n")
         merged_df = orig_df[["content", "genre"]].copy()
         merged_df.to_csv(args.output, index=False)
-        print(f"Saved to {args.output}")
+        sys.stdout.write(f"Saved to {args.output}\n")
         return
 
     aug_df = pd.concat(aug_dfs, ignore_index=True)
-    print(f"Total augmented samples: {len(aug_df)}")
+    sys.stdout.write(f"Total augmented samples: {len(aug_df)}\n")
 
-    # Combine original and augmented
-    # Keep only essential columns
     orig_subset = orig_df[["content", "genre", "is_augmented", "augmentation_method"]].copy()
     aug_subset = aug_df[["content", "genre", "is_augmented", "augmentation_method"]].copy()
-
     combined_df = pd.concat([orig_subset, aug_subset], ignore_index=True)
-    print(f"\nCombined samples: {len(combined_df)}")
+    sys.stdout.write(f"\nCombined samples: {len(combined_df)}\n")
 
-    # Deduplication
     if args.deduplicate:
-        print("\nDeduplicating...")
-        initial_count = len(combined_df)
+        combined_df = _deduplicate_df(combined_df)
 
-        # Compute hashes
-        combined_df["content_hash"] = combined_df["content"].apply(compute_content_hash)
-
-        # Keep first occurrence (prioritize original over augmented)
-        # Sort so originals come first
-        combined_df = combined_df.sort_values("is_augmented")
-        combined_df = combined_df.drop_duplicates(subset=["content_hash"], keep="first")
-        combined_df = combined_df.drop(columns=["content_hash"])
-
-        removed = initial_count - len(combined_df)
-        print(f"  Removed {removed} duplicates")
-
-    # Print current distribution
-    print("\nCurrent genre distribution:")
+    sys.stdout.write("\nCurrent genre distribution:\n")
     for genre, count in combined_df["genre"].value_counts().items():
         orig_count = len(
             combined_df[(combined_df["genre"] == genre) & (~combined_df["is_augmented"])]
@@ -140,72 +182,31 @@ def main():
         aug_count = len(
             combined_df[(combined_df["genre"] == genre) & (combined_df["is_augmented"])]
         )
-        print(f"  {genre}: {count} (orig: {orig_count}, aug: {aug_count})")
+        sys.stdout.write(f"  {genre}: {count} (orig: {orig_count}, aug: {aug_count})\n")
 
-    # Balance classes if specified
     if args.max_samples_per_genre or args.min_samples_per_genre:
-        print("\nBalancing classes...")
+        combined_df = _balance_classes(
+            combined_df, args.max_samples_per_genre, args.min_samples_per_genre, args.seed
+        )
 
-        balanced_dfs = []
-        for genre in combined_df["genre"].unique():
-            genre_df = combined_df[combined_df["genre"] == genre]
-            current_count = len(genre_df)
-
-            if args.max_samples_per_genre and current_count > args.max_samples_per_genre:
-                # Downsample, prioritizing original samples
-                orig_samples = genre_df[~genre_df["is_augmented"]]
-                aug_samples = genre_df[genre_df["is_augmented"]]
-
-                if len(orig_samples) >= args.max_samples_per_genre:
-                    # Only use originals
-                    sampled = orig_samples.sample(
-                        n=args.max_samples_per_genre, random_state=args.seed
-                    )
-                else:
-                    # Use all originals + sample from augmented
-                    aug_needed = args.max_samples_per_genre - len(orig_samples)
-                    if len(aug_samples) > aug_needed:
-                        aug_sampled = aug_samples.sample(n=aug_needed, random_state=args.seed)
-                    else:
-                        aug_sampled = aug_samples
-                    sampled = pd.concat([orig_samples, aug_sampled])
-
-                balanced_dfs.append(sampled)
-                print(f"  {genre}: {current_count} -> {len(sampled)} (downsampled)")
-
-            elif args.min_samples_per_genre and current_count < args.min_samples_per_genre:
-                # Not enough samples, use all available
-                balanced_dfs.append(genre_df)
-                print(f"  {genre}: {current_count} (below minimum {args.min_samples_per_genre})")
-
-            else:
-                balanced_dfs.append(genre_df)
-
-        combined_df = pd.concat(balanced_dfs, ignore_index=True)
-
-    # Shuffle
     combined_df = combined_df.sample(frac=1, random_state=args.seed).reset_index(drop=True)
-
-    # Final output (keep only content and genre for training)
     final_df = combined_df[["content", "genre"]].copy()
 
-    print("\n=== Final Dataset ===")
-    print(f"Total samples: {len(final_df)}")
-    print(f"Original: {len(combined_df[~combined_df['is_augmented']])}")
-    print(f"Augmented: {len(combined_df[combined_df['is_augmented']])}")
+    sys.stdout.write("\n=== Final Dataset ===\n")
+    sys.stdout.write(f"Total samples: {len(final_df)}\n")
+    sys.stdout.write(f"Original: {len(combined_df[~combined_df['is_augmented']])}\n")
+    sys.stdout.write(f"Augmented: {len(combined_df[combined_df['is_augmented']])}\n")
 
-    print("\nFinal genre distribution:")
+    sys.stdout.write("\nFinal genre distribution:\n")
     for genre, count in final_df["genre"].value_counts().items():
-        print(f"  {genre}: {count}")
+        sys.stdout.write(f"  {genre}: {count}\n")
 
-    # Save
     final_df.to_csv(args.output, index=False)
-    print(f"\nSaved to {args.output}")
+    sys.stdout.write(f"\nSaved to {args.output}\n")
 
-    # Also save detailed version with augmentation metadata
     detailed_output = args.output.with_suffix(".detailed.csv")
     combined_df.to_csv(detailed_output, index=False)
-    print(f"Saved detailed version to {detailed_output}")
+    sys.stdout.write(f"Saved detailed version to {detailed_output}\n")
 
 
 if __name__ == "__main__":

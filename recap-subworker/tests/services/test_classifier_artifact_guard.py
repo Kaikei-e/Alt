@@ -10,6 +10,7 @@ later. Keep the guard tight at the load site too.
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -26,7 +27,7 @@ def mock_embedder() -> MagicMock:
 
 class TestModelPathGuard:
     def test_directory_at_model_path_raises_filenotfound(
-        self, mock_embedder: MagicMock, tmp_path
+        self, mock_embedder: MagicMock, tmp_path: Path
     ) -> None:
         # Reproduces the docker file-scoped bind-mount footgun: the target
         # path exists but is an empty directory, so Path.exists() is True
@@ -41,7 +42,9 @@ class TestModelPathGuard:
 
         assert str(stub) in str(exc_info.value)
 
-    def test_missing_path_raises_filenotfound(self, mock_embedder: MagicMock, tmp_path) -> None:
+    def test_missing_path_raises_filenotfound(
+        self, mock_embedder: MagicMock, tmp_path: Path
+    ) -> None:
         missing = tmp_path / "never_created.joblib"
 
         service = GenreClassifierService(str(missing), mock_embedder)

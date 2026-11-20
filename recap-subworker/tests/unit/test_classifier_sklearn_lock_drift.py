@@ -38,7 +38,8 @@ def _locked_scikit_learn_version() -> str:
     for package in lock["package"]:
         if package["name"] == "scikit-learn":
             return str(package["version"])
-    raise AssertionError("scikit-learn package entry not found in uv.lock")
+    msg = "scikit-learn package entry not found in uv.lock"
+    raise AssertionError(msg)
 
 
 def _minor(version: str) -> str:

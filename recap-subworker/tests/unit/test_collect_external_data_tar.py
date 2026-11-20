@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import io
+import sys
 import tarfile
 from pathlib import Path
 
 import pytest
 
+from recap_subworker.infra.classifier import collect_external_data
 from recap_subworker.infra.classifier.collect_external_data import extract_tar_under_dir
 
 
@@ -78,10 +80,6 @@ class TestProcessAgNewsFailsLoudOnBrokenDatasetsInstall:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """A broken `datasets` install must not degrade to a Japanese-only corpus."""
-        import sys
-
-        from recap_subworker.infra.classifier import collect_external_data
-
         monkeypatch.setitem(sys.modules, "datasets", None)
 
         with pytest.raises(ImportError):

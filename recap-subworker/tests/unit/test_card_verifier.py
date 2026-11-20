@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from http import HTTPStatus
+from typing import Never
 
 import numpy as np
 import pytest
 from fastapi import FastAPI
 from starlette.testclient import TestClient
+from sudachipy import dictionary
 
 from recap_subworker.app import deps
 from recap_subworker.app.routers import verify
@@ -22,6 +25,26 @@ from recap_subworker.services.card_verifier import (
     match_fillers,
 )
 from recap_subworker.services.embed_service import EmbedService
+
+MIN_FILLER_MATCHES = 3
+EXPECTED_KANJI_PROPER_NOUNS = 2
+MIN_KANJI_TOKENS = 5
+EXPECTED_BEST_REF = 2
+
+
+class _MockBackendFailureError(RuntimeError):
+    def __init__(self) -> None:
+        super().__init__("Ollama embedding service connection refused (mocked failure)")
+
+
+class _CorruptedDictionaryError(RuntimeError):
+    def __init__(self) -> None:
+        super().__init__("Sudachi dictionary corrupted or missing")
+
+
+class _StubTokenizerUnavailableError(TokenizerUnavailableError):
+    def __init__(self) -> None:
+        super().__init__("Sudachi dictionary unavailable")
 
 
 class _SyntheticEmbedder:
@@ -46,7 +69,7 @@ class _SyntheticEmbedder:
 
     def encode(self, sentences: Sequence[str]) -> np.ndarray:
         if self.fail:
-            raise RuntimeError("Ollama embedding service connection refused (mocked failure)")
+            raise _MockBackendFailureError
         arr = np.zeros((len(sentences), self.default_dim), dtype=np.float32)
         for i, s in enumerate(sentences):
             if s in self.vectors:
@@ -67,17 +90,17 @@ class _SyntheticEmbedder:
 # ============================================================================
 
 
-def test_filler_matcher_detects_speculative_phrases():
+def test_filler_matcher_detects_speculative_phrases() -> None:
     """Verify that match_fillers identifies speculation phrases in sentence text."""
     text = "今後の動向が注目されるとともに、今後の発展が期待される。"
     matched = match_fillers(text)
     assert "注目される" in matched
     assert "期待される" in matched
     assert "今後の動向" in matched
-    assert len(matched) >= 3
+    assert len(matched) >= MIN_FILLER_MATCHES
 
 
-def test_filler_matcher_passes_on_plain_factual_text():
+def test_filler_matcher_passes_on_plain_factual_text() -> None:
     """Verify that match_fillers returns empty list for plain factual statements."""
     text = "当社は昨日、新しいデータベース管理ツールを正式にリリースした。"
     matched = match_fillers(text)
@@ -89,7 +112,7 @@ def test_filler_matcher_passes_on_plain_factual_text():
 # ============================================================================
 
 
-def test_specificity_counts_japanese_sentence_with_proper_noun_and_number():
+def test_specificity_counts_japanese_sentence_with_proper_noun_and_number() -> None:
     """Verify specificity counts on a synthetic brand and number with non-tautological literal checks."""
     service = CardVerifierService(embed_service=EmbedService(embedder=_SyntheticEmbedder()))
     text = "山田商事は2024年に最新AIを発表した。"
@@ -100,14 +123,17 @@ def test_specificity_counts_japanese_sentence_with_proper_noun_and_number():
     )
 
     # 山田 (1 proper noun) + 2024 (1 number) out of 8 content tokens
-    assert proper_nouns == 1
-    assert numbers == 1
-    assert tokens == 8
+    expected_proper_nouns = 1
+    expected_numbers = 1
+    expected_tokens = 8
+    assert proper_nouns == expected_proper_nouns
+    assert numbers == expected_numbers
+    assert tokens == expected_tokens
     # Non-tautological literal check: (1 + 1) / 8 = 0.25
-    assert density == 0.25
+    assert density == (expected_proper_nouns + expected_numbers) / expected_tokens
 
 
-def test_specificity_japanese_script_proper_noun_proves_sudachi():
+def test_specificity_japanese_script_proper_noun_proves_sudachi() -> None:
     """Verify that Japanese-script proper nouns (e.g. 大阪, 日本銀行) are recognized via Sudachi."""
     service = CardVerifierService(embed_service=EmbedService(embedder=_SyntheticEmbedder()))
     text = "大阪の日本銀行は100億円の資金供給を発表した。"
@@ -118,13 +144,13 @@ def test_specificity_japanese_script_proper_noun_proves_sudachi():
     )
 
     # 大阪 and 日本銀行 are Kanji proper nouns that regex cannot detect
-    assert proper_nouns == 2  # 大阪, 日本銀行
+    assert proper_nouns == EXPECTED_KANJI_PROPER_NOUNS  # 大阪, 日本銀行
     assert numbers >= 1  # 100
-    assert tokens >= 5
+    assert tokens >= MIN_KANJI_TOKENS
     assert density > 0.0
 
 
-def test_specificity_empty_text():
+def test_specificity_empty_text() -> None:
     """Verify specificity on empty or whitespace text returns zeros."""
     service = CardVerifierService(embed_service=EmbedService(embedder=_SyntheticEmbedder()))
     proper_nouns, numbers, tokens, density = calculate_specificity(
@@ -138,12 +164,16 @@ def test_specificity_empty_text():
     assert density == 0.0
 
 
-def test_card_verifier_raises_when_tokenizer_unavailable(monkeypatch):
+def test_card_verifier_raises_when_tokenizer_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Verify CardVerifierService fails closed when Sudachi dictionary fails to load."""
-    from sudachipy import dictionary
 
-    def _fail_create(*args, **kwargs):
-        raise RuntimeError("Sudachi dictionary corrupted or missing")
+    def _fail_create(
+        *args: object,
+        **kwargs: object,
+    ) -> Never:
+        raise _CorruptedDictionaryError
 
     monkeypatch.setattr(dictionary.Dictionary, "create", _fail_create)
 
@@ -158,7 +188,7 @@ def test_card_verifier_raises_when_tokenizer_unavailable(monkeypatch):
 # ============================================================================
 
 
-def test_attribution_identical_vectors_pass():
+def test_attribution_identical_vectors_pass() -> None:
     """Verify that identical sentence and item vectors yield cosine 1.0 and pass."""
     sentence_vec = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32)
     item_vec_map = {1: np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32)}
@@ -175,7 +205,7 @@ def test_attribution_identical_vectors_pass():
     assert attr_pass is True
 
 
-def test_attribution_orthogonal_vectors_fail():
+def test_attribution_orthogonal_vectors_fail() -> None:
     """Verify that orthogonal vectors yield cosine 0.0 and fail when threshold is 0.55."""
     sentence_vec = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32)
     item_vec_map = {1: np.array([0.0, 1.0, 0.0, 0.0], dtype=np.float32)}
@@ -192,7 +222,7 @@ def test_attribution_orthogonal_vectors_fail():
     assert attr_pass is False
 
 
-def test_attribution_empty_refs_fail():
+def test_attribution_empty_refs_fail() -> None:
     """Verify that empty refs produce max_cos 0.0, best_n None, and pass False."""
     sentence_vec = np.array([1.0, 0.0], dtype=np.float32)
     item_vec_map = {1: np.array([1.0, 0.0], dtype=np.float32)}
@@ -209,7 +239,7 @@ def test_attribution_empty_refs_fail():
     assert attr_pass is False
 
 
-def test_attribution_selects_best_matching_ref():
+def test_attribution_selects_best_matching_ref() -> None:
     """Verify attribution picks the ref with maximum cosine similarity."""
     sentence_vec = np.array([1.0, 0.0], dtype=np.float32)
     item_vec_map = {
@@ -226,7 +256,7 @@ def test_attribution_selects_best_matching_ref():
     )
 
     assert max_cos == pytest.approx(0.9, abs=1e-3)
-    assert best_n == 2
+    assert best_n == EXPECTED_BEST_REF
     assert attr_pass is True
 
 
@@ -235,7 +265,7 @@ def test_attribution_selects_best_matching_ref():
 # ============================================================================
 
 
-def test_why_hint_present_with_digits_and_cues():
+def test_why_hint_present_with_digits_and_cues() -> None:
     """Verify why_hint_present is True when cited items contain result cues."""
     sentences = [
         VerifySentenceInput(
@@ -255,7 +285,7 @@ def test_why_hint_present_with_digits_and_cues():
     assert check_why_hint_present(sentences, items) is True
 
 
-def test_why_hint_present_fallback_all_items_when_no_why_sentences():
+def test_why_hint_present_fallback_all_items_when_no_why_sentences() -> None:
     """Verify why_hint_present checks all items if no why sentences exist."""
     sentences = [
         VerifySentenceInput(
@@ -275,7 +305,7 @@ def test_why_hint_present_fallback_all_items_when_no_why_sentences():
     assert check_why_hint_present(sentences, items) is True
 
 
-def test_why_hint_absent_when_no_cues():
+def test_why_hint_absent_when_no_cues() -> None:
     """Verify why_hint_present is False when items lack any result/numerical cues."""
     sentences = [
         VerifySentenceInput(
@@ -310,7 +340,7 @@ def _build_app(embedder: _SyntheticEmbedder | None = None) -> FastAPI:
     return app
 
 
-def test_verify_router_200_shape():
+def test_verify_router_200_shape() -> None:
     """Verify POST /v1/verify returns 200 with the exact contract shape."""
     vectors = {
         "AIモデルが新たに発表された。": [1.0, 0.0, 0.0, 0.0],
@@ -342,7 +372,7 @@ def test_verify_router_200_shape():
     }
 
     response = client.post("/v1/verify", json=request_payload)
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     data = response.json()
 
     # Response structure verification
@@ -377,7 +407,7 @@ def test_verify_router_200_shape():
     assert data["embedding"]["identity"] == "bge-m3"
 
 
-def test_verify_router_502_on_backend_failure():
+def test_verify_router_502_on_backend_failure() -> None:
     """Verify POST /v1/verify returns 502 with a JSON reason when the backend fails."""
     app = _build_app(_SyntheticEmbedder(fail=True))
     client = TestClient(app)
@@ -405,18 +435,18 @@ def test_verify_router_502_on_backend_failure():
     }
 
     response = client.post("/v1/verify", json=request_payload)
-    assert response.status_code == 502
+    assert response.status_code == HTTPStatus.BAD_GATEWAY
     data = response.json()
     assert "detail" in data
     assert "reason" in data["detail"]
     assert data["detail"]["reason"] == "Embedding service unavailable"
 
 
-def test_verify_router_502_on_unresolvable_identity():
+def test_verify_router_502_on_unresolvable_identity() -> None:
     """Verify POST /v1/verify returns 502 when embedder model identity cannot be resolved."""
 
     class _AnonymousEmbedder:
-        def encode(self, texts):
+        def encode(self, texts: Sequence[str]) -> np.ndarray:
             return np.ones((len(texts), 4), dtype=np.float32)
 
     app = _build_app(_AnonymousEmbedder())  # type: ignore[arg-type]
@@ -445,21 +475,21 @@ def test_verify_router_502_on_unresolvable_identity():
     }
 
     response = client.post("/v1/verify", json=request_payload)
-    assert response.status_code == 502
+    assert response.status_code == HTTPStatus.BAD_GATEWAY
     data = response.json()
     assert "detail" in data
     assert "reason" in data["detail"]
     assert data["detail"]["reason"] == "Embedding service unavailable"
 
 
-def test_verify_router_502_on_tokenizer_unavailable():
+def test_verify_router_502_on_tokenizer_unavailable() -> None:
     """Verify POST /v1/verify returns 502 when tokenizer is unavailable."""
     app = FastAPI()
     app.include_router(verify.router, prefix="/v1")
 
     class _FailingVerifier:
-        def verify_card(self, request):
-            raise TokenizerUnavailableError("Sudachi dictionary unavailable")
+        def verify_card(self, request: object) -> Never:
+            raise _StubTokenizerUnavailableError
 
     app.dependency_overrides[deps.get_card_verifier_service_dep] = _FailingVerifier
     client = TestClient(app)
@@ -473,12 +503,12 @@ def test_verify_router_502_on_tokenizer_unavailable():
     }
 
     response = client.post("/v1/verify", json=request_payload)
-    assert response.status_code == 502
+    assert response.status_code == HTTPStatus.BAD_GATEWAY
     data = response.json()
     assert data["detail"]["reason"] == "Tokenizer service unavailable"
 
 
-def test_verify_router_422_on_unsupported_language():
+def test_verify_router_422_on_unsupported_language() -> None:
     """Verify POST /v1/verify returns 422 when language is not 'ja'."""
     app = _build_app(_SyntheticEmbedder())
     client = TestClient(app)
@@ -492,16 +522,16 @@ def test_verify_router_422_on_unsupported_language():
     }
 
     response = client.post("/v1/verify", json=request_payload)
-    assert response.status_code == 422
+    assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
 
 
-def test_verify_router_502_on_unresolvable_dimension():
+def test_verify_router_502_on_unresolvable_dimension() -> None:
     """Verify POST /v1/verify returns 502 when embedder dimension cannot be resolved on empty input."""
 
     class _NoDimEmbedder:
         model_id = "test-model"
 
-        def encode(self, texts):
+        def encode(self, texts: Sequence[str]) -> np.ndarray:
             return np.zeros((len(texts), 0), dtype=np.float32)
 
     app = _build_app(_NoDimEmbedder())  # type: ignore[arg-type]
@@ -516,7 +546,7 @@ def test_verify_router_502_on_unresolvable_dimension():
     }
 
     response = client.post("/v1/verify", json=request_payload)
-    assert response.status_code == 502
+    assert response.status_code == HTTPStatus.BAD_GATEWAY
     data = response.json()
     assert data["detail"]["reason"] == "Embedding service unavailable"
 
@@ -530,7 +560,7 @@ def test_verify_router_502_on_unresolvable_dimension():
     "kind",
     ["key_point", "timeline", "what_changed", "open_question"],
 )
-def test_verify_router_accepts_theme_kinds_and_verifies_like_what(kind: str):
+def test_verify_router_accepts_theme_kinds_and_verifies_like_what(kind: str) -> None:
     """Verify POST /v1/verify accepts theme sentence kinds and runs attribution, filler, and specificity."""
     vectors = {
         "山田商事は2026年11月に新製品を公開した。": [1.0, 0.0, 0.0, 0.0],
@@ -569,9 +599,9 @@ def test_verify_router_accepts_theme_kinds_and_verifies_like_what(kind: str):
     }
 
     response = client.post("/v1/verify", json=request_payload)
-    assert response.status_code == 200
+    assert response.status_code == HTTPStatus.OK
     data = response.json()
-    assert len(data["sentences"]) == 2
+    assert len(data["sentences"]) == len(request_payload["sentences"])
 
     s0 = data["sentences"][0]
     assert s0["idx"] == 0
@@ -593,7 +623,7 @@ def test_verify_router_accepts_theme_kinds_and_verifies_like_what(kind: str):
     assert s1["filler"]["pass"] is False
 
 
-def test_verify_router_422_on_unknown_kind():
+def test_verify_router_422_on_unknown_kind() -> None:
     """Verify POST /v1/verify returns 422 when sentence kind is unknown."""
     app = _build_app(_SyntheticEmbedder())
     client = TestClient(app)
@@ -620,10 +650,10 @@ def test_verify_router_422_on_unknown_kind():
     }
 
     response = client.post("/v1/verify", json=request_payload)
-    assert response.status_code == 422
+    assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
 
 
-def test_why_hint_present_does_not_count_new_theme_kinds():
+def test_why_hint_present_does_not_count_new_theme_kinds() -> None:
     """Verify new theme kinds do not contribute refs to why_hint_present."""
     sentences = [
         VerifySentenceInput(

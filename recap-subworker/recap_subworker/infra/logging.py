@@ -128,14 +128,14 @@ def clear_context() -> None:
 class DBLogHandler(logging.Handler):
     """Logs error records to the database."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self.engine: Engine | None = None
         settings = get_settings()
         # Use sync engine for logging to avoid async context issues in signal handlers/shutdown
         try:
             self.engine = create_engine(settings.db_url_sync)
-        except Exception:
+        except Exception:  # noqa: BLE001  # logger initialization must never crash the process
             # Fallback if DB config is invalid, don't crash logger init
             self.engine = None
             sys.stderr.write("Failed to initialize DB engine for logging\n")
@@ -177,7 +177,7 @@ class DBLogHandler(logging.Handler):
                 )
                 conn.commit()
 
-        except Exception:
+        except Exception:  # noqa: BLE001  # logging handler emit must never raise into caller
             self.handleError(record)
 
 
@@ -191,7 +191,7 @@ def configure_logging(level: str) -> None:
     Args:
         level: Log level string (DEBUG, INFO, WARN, ERROR)
     """
-    global _otel_shutdown
+    global _otel_shutdown  # noqa: PLW0603  # process-wide OTel shutdown hook set once on configure_logging
 
     # Initialize OpenTelemetry provider first
     otel_config = OTelConfig()
@@ -200,10 +200,12 @@ def configure_logging(level: str) -> None:
     # Instrument stdlib logging with OTel (set_logging_format=False preserves structlog formatting)
     if otel_config.enabled:
         try:
-            from opentelemetry.instrumentation.logging import LoggingInstrumentor
+            from opentelemetry.instrumentation.logging import (  # noqa: PLC0415  # defer OTel instrumentor import unless OTel is enabled
+                LoggingInstrumentor,
+            )
 
             LoggingInstrumentor().instrument(set_logging_format=False)  # pyrefly: ignore[missing-attribute]
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001  # OTel instrumentation failure must not prevent logging setup
             sys.stderr.write(f"Failed to initialize OTel LoggingInstrumentor: {e}\n")
 
     logging.basicConfig(level=getattr(logging, level.upper(), logging.INFO))
@@ -225,7 +227,7 @@ def configure_logging(level: str) -> None:
         listener.start()
         logging.getLogger().addHandler(queue_handler)
         atexit.register(listener.stop)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001  # DB log handler failure must not prevent logging setup
         sys.stderr.write(f"Failed to add DBLogHandler: {e}\n")
 
     structlog.configure(
@@ -251,6 +253,5 @@ def configure_logging(level: str) -> None:
 
 def shutdown_logging() -> None:
     """Shutdown OTel provider and cleanup resources."""
-    global _otel_shutdown
     if _otel_shutdown:
         _otel_shutdown()

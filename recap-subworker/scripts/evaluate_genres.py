@@ -4,26 +4,25 @@
 import argparse
 import json
 import sys
+import traceback
 from pathlib import Path
 
 # プロジェクトルートをパスに追加
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from recap_subworker.services.evaluation import EvaluationService
+from recap_subworker.services.evaluation import (  # noqa: E402 - import after sys.path setup
+    EvaluationService,
+)
+
+CV_STD_WARNING_THRESHOLD = 0.03
+OVERFIT_GAP_WARNING_THRESHOLD = 0.10
 
 
-def format_report(results: dict) -> str:
-    """評価結果をMarkdown形式でフォーマット。"""
-
-    lines = []
-    lines.append("# Genre Classification Evaluation Report\n")
-
-    # サマリー
+def _append_summary_lines(lines: list[str], results: dict) -> None:
     lines.append("## Summary\n")
     lines.append(f"- **Total Samples**: {results['total_samples']}")
 
-    # Accuracy with CI
     acc_ci = results.get("accuracy_ci", {})
     if "width" in acc_ci:
         lines.append(
@@ -38,7 +37,6 @@ def format_report(results: dict) -> str:
             f"(95% CI)"
         )
 
-    # Macro metrics with CI
     if "macro_precision" in results and isinstance(results["macro_precision"], dict):
         macro_prec = results["macro_precision"]
         macro_rec = results["macro_recall"]
@@ -60,25 +58,21 @@ def format_report(results: dict) -> str:
         lines.append(f"- **Macro Recall**: {results.get('macro_recall', 0):.4f}")
         lines.append(f"- **Macro F1**: {results.get('macro_f1', 0):.4f}")
 
-    # Micro metrics
     lines.append(f"- **Micro Precision**: {results.get('micro_precision', 0):.4f}")
     lines.append(f"- **Micro Recall**: {results.get('micro_recall', 0):.4f}")
     lines.append(f"- **Micro F1**: {results.get('micro_f1', 0):.4f}")
 
-    # 統合スコア
     if "integrated_score" in results:
         integrated = results["integrated_score"]
         lines.append(f"- **Integrated Score**: {integrated.get('score', 0):.4f}")
         lines.append("")
 
-    # 効果サイズ
     if "effect_size" in results:
         effect = results["effect_size"]
         lines.append("## Effect Size\n")
         lines.append(f"- **Cramér's V**: {effect.get('cramers_v', 0):.4f}")
         lines.append("")
 
-    # 統計的検出力
     if "statistical_power" in results:
         power_info = results["statistical_power"]
         lines.append("## Statistical Power Analysis\n")
@@ -93,7 +87,8 @@ def format_report(results: dict) -> str:
             )
         lines.append("")
 
-    # Cross-Validation結果
+
+def _append_cv_and_gap_lines(lines: list[str], results: dict) -> None:
     if "cv_accuracy" in results:
         lines.append("## Cross-Validation Results\n")
         cv_acc = results["cv_accuracy"]
@@ -108,15 +103,13 @@ def format_report(results: dict) -> str:
         )
         lines.append(f"- **Number of Folds**: {results.get('n_folds', 0)}")
 
-        # CV std check (stability indicator)
         cv_std = cv_macro.get("std", 0)
-        if cv_std < 0.03:
+        if cv_std < CV_STD_WARNING_THRESHOLD:
             lines.append(f"- **Stability**: OK (CV std {cv_std:.4f} < 0.03)")
         else:
             lines.append(f"- **Stability**: WARNING - high variance (CV std {cv_std:.4f} >= 0.03)")
         lines.append("")
 
-    # Train/Test Gap (Overfitting Indicator)
     if "train_test_gap" in results:
         lines.append("## Overfitting Analysis\n")
         train_f1 = results.get("train_f1", 0)
@@ -125,13 +118,14 @@ def format_report(results: dict) -> str:
         lines.append(f"- **Train Macro F1**: {train_f1:.4f}")
         lines.append(f"- **Test Macro F1**: {test_f1:.4f}")
         lines.append(f"- **Train/Test Gap**: {gap:.4f}")
-        if gap < 0.10:
+        if gap < OVERFIT_GAP_WARNING_THRESHOLD:
             lines.append("- **Status**: OK (gap < 0.10)")
         else:
             lines.append("- **Status**: WARNING - potential overfitting (gap >= 0.10)")
         lines.append("")
 
-    # ジャンル別メトリクス
+
+def _append_per_genre_lines(lines: list[str], results: dict) -> None:
     lines.append("## Per-Genre Metrics\n")
     lines.append(
         "| Genre | Precision | Precision CI | Recall | Recall CI | F1 | Support | Warning |"
@@ -164,24 +158,31 @@ def format_report(results: dict) -> str:
         )
     lines.append("")
 
-    # 混同行列
+
+def _append_confusion_matrix_lines(lines: list[str], results: dict) -> None:
     lines.append("## Confusion Matrix\n")
     cm = results.get("confusion_matrix", {})
     labels = cm.get("labels", [])
     matrix = cm.get("matrix", [])
 
     if labels and matrix:
-        # ヘッダー
         header = "| | " + " | ".join(labels) + " |"
         lines.append(header)
         lines.append("|" + "---|" * (len(labels) + 1))
 
-        # 各行
         for i, label in enumerate(labels):
             row = f"| {label} | " + " | ".join(str(matrix[i][j]) for j in range(len(labels))) + " |"
             lines.append(row)
         lines.append("")
 
+
+def format_report(results: dict) -> str:
+    """評価結果をMarkdown形式でフォーマット。"""
+    lines: list[str] = ["# Genre Classification Evaluation Report\n"]
+    _append_summary_lines(lines, results)
+    _append_cv_and_gap_lines(lines, results)
+    _append_per_genre_lines(lines, results)
+    _append_confusion_matrix_lines(lines, results)
     return "\n".join(lines)
 
 
@@ -209,7 +210,7 @@ def format_report_by_language(results: dict) -> str:
     return "\n".join(lines)
 
 
-def main():
+def main() -> None:
     """メイン関数。"""
     parser = argparse.ArgumentParser(description="Evaluate genre classification on golden dataset")
     parser.add_argument(
@@ -318,25 +319,23 @@ def main():
 
         # 出力
         if args.output:
-            with open(args.output, "w", encoding="utf-8") as f:
+            with Path(args.output).open("w", encoding="utf-8") as f:
                 f.write(report)
-            print(f"Report written to {args.output}")
+            sys.stdout.write(f"Report written to {args.output}\n")
         else:
-            print(report)
+            sys.stdout.write(f"{report}\n")
 
         # JSON形式でも出力（デバッグ用）
         if args.output:
             json_output = args.output.replace(".md", ".json")
             if json_output == args.output:
                 json_output = args.output + ".json"
-            with open(json_output, "w", encoding="utf-8") as f:
+            with Path(json_output).open("w", encoding="utf-8") as f:
                 json.dump(results, f, indent=2, ensure_ascii=False)
-            print(f"JSON results written to {json_output}")
+            sys.stdout.write(f"JSON results written to {json_output}\n")
 
-    except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
-        import traceback
-
+    except (OSError, ValueError, RuntimeError, KeyError, TypeError) as e:
+        sys.stderr.write(f"Error: {e}\n")
         traceback.print_exc()
         sys.exit(1)
 

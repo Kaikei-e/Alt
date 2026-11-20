@@ -55,13 +55,17 @@ CANONICAL_GENRES = {
 }
 
 
+MIN_VERSION_PARTS = 2
+EXPECTED_CARDINALITY = 30
+
+
 def _runtime_minor(pkg: str) -> str:
     try:
         version = importlib.metadata.version(pkg)
     except importlib.metadata.PackageNotFoundError:
         return "unknown"
     parts = version.split(".")
-    return f"{parts[0]}.{parts[1]}" if len(parts) >= 2 else version
+    return f"{parts[0]}.{parts[1]}" if len(parts) >= MIN_VERSION_PARTS else version
 
 
 def main() -> int:
@@ -79,15 +83,15 @@ def main() -> int:
     svd_path = root / "tfidf_svd.joblib"
     scaler_path = root / "feature_scaler.joblib"
 
-    errors: list[str] = []
-
-    for path in (model_path, meta_path, thresholds_path, vectorizer_path, svd_path, scaler_path):
-        if not path.is_file():
-            errors.append(f"missing: {path}")
+    errors: list[str] = [
+        f"missing: {path}"
+        for path in (model_path, meta_path, thresholds_path, vectorizer_path, svd_path, scaler_path)
+        if not path.is_file()
+    ]
 
     if errors:
         for e in errors:
-            print(f"FAIL: {e}")
+            sys.stdout.write(f"FAIL: {e}\n")
         return 1
 
     model = joblib.load(model_path)
@@ -102,18 +106,20 @@ def main() -> int:
     sidecar_sklearn = ".".join(meta["sklearn_version"].split(".")[:2])
     version_ok = runtime_sklearn == sidecar_sklearn
 
-    print(f"model_path:         {model_path}")
-    print(f"cardinality:        {cardinality}")
-    print(f"missing canonical:  {missing}")
-    print(f"extras:             {extras}")
-    print(f"sidecar sklearn:    {meta['sklearn_version']}  (runtime minor: {runtime_sklearn})")
-    print(f"sidecar transformers: {meta['transformers_version']}")
-    print(f"sidecar trained_at: {meta['trained_at']}")
-    print(f"sidecar source sha: {meta['source_data_sha256'][:16]}...")
-    print(f"feature_dim:        {meta['feature_dim']}")
+    sys.stdout.write(f"model_path:         {model_path}\n")
+    sys.stdout.write(f"cardinality:        {cardinality}\n")
+    sys.stdout.write(f"missing canonical:  {missing}\n")
+    sys.stdout.write(f"extras:             {extras}\n")
+    sys.stdout.write(
+        f"sidecar sklearn:    {meta['sklearn_version']}  (runtime minor: {runtime_sklearn})\n"
+    )
+    sys.stdout.write(f"sidecar transformers: {meta['transformers_version']}\n")
+    sys.stdout.write(f"sidecar trained_at: {meta['trained_at']}\n")
+    sys.stdout.write(f"sidecar source sha: {meta['source_data_sha256'][:16]}...\n")
+    sys.stdout.write(f"feature_dim:        {meta['feature_dim']}\n")
 
-    verdict_ok = cardinality == 30 and not missing and version_ok
-    print(f"\nVERDICT: {'PASS' if verdict_ok else 'FAIL'}")
+    verdict_ok = cardinality == EXPECTED_CARDINALITY and not missing and version_ok
+    sys.stdout.write(f"\nVERDICT: {'PASS' if verdict_ok else 'FAIL'}\n")
     return 0 if verdict_ok else 2
 
 

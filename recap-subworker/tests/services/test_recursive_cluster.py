@@ -6,9 +6,12 @@ import pytest
 from recap_subworker.infra.config import Settings
 from recap_subworker.services.clusterer import Clusterer
 
+CLUSTER_1_SIZE = 10
+MIN_SPLIT_CLUSTERS = 2
+
 
 @pytest.fixture
-def mock_settings():
+def mock_settings() -> MagicMock:
     settings = MagicMock(spec=Settings)
     settings.hdbscan_min_cluster_size = 5
     settings.hdbscan_min_samples = 2
@@ -28,11 +31,11 @@ def mock_settings():
 
 
 @pytest.fixture
-def clusterer(mock_settings):
+def clusterer(mock_settings: MagicMock) -> Clusterer:
     return Clusterer(mock_settings)
 
 
-def test_recursive_cluster_splits_large_cluster(clusterer):
+def test_recursive_cluster_splits_large_cluster(clusterer: Clusterer) -> None:
     # Setup: 20 points
     # Cluster 0: 10 points, each 20 tokens => 200 total > 100 limit
     # Cluster 1: 10 points, each 5 tokens => 50 total < 100 limit
@@ -64,7 +67,7 @@ def test_recursive_cluster_splits_large_cluster(clusterer):
 
     # Assertions
     # Cluster 1 should be untouched (label 1, count 10)
-    assert np.sum(new_labels == 1) == 10
+    assert np.sum(new_labels == 1) == CLUSTER_1_SIZE
 
     # Cluster 0 should be split.
     # It originally had 10 items.
@@ -73,16 +76,16 @@ def test_recursive_cluster_splits_large_cluster(clusterer):
     c0_new_labels = new_labels[0:10]
     unique_c0_labels = np.unique(c0_new_labels)
 
-    assert len(unique_c0_labels) >= 2, "Cluster 0 should have been split"
+    assert len(unique_c0_labels) >= MIN_SPLIT_CLUSTERS, "Cluster 0 should have been split"
     assert 0 in unique_c0_labels, "Original label 0 should persist for one half"
     # The new label should be > 1
-    assert any(l > 1 for l in unique_c0_labels)
+    assert any(label > 1 for label in unique_c0_labels)
 
     # Probabilities for split items should be 1.0
     assert np.all(new_probs[0:10] == 1.0)
 
 
-def test_recursive_cluster_respects_disable(clusterer):
+def test_recursive_cluster_respects_disable(clusterer: Clusterer) -> None:
     clusterer.settings.clustering_recursive_enabled = False
 
     embeddings = np.random.rand(20, 2)
@@ -95,7 +98,7 @@ def test_recursive_cluster_respects_disable(clusterer):
     assert np.array_equal(new_labels, labels)
 
 
-def test_recursive_cluster_min_size(clusterer):
+def test_recursive_cluster_min_size(clusterer: Clusterer) -> None:
     # Cluster size 4 < min_split_size 5
     # Even if tokens are huge, it shouldn't split
     clusterer.settings.clustering_min_split_size = 5

@@ -10,11 +10,16 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import structlog
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from ..db.dao import AdminJobRecord, SubworkerDAO
 from ..infra.config import Settings
 from ..infra.telemetry import ADMIN_JOB_DURATION_SECONDS, ADMIN_JOB_STATUS_TOTAL
-from ..services.genre_learning import GenreLearningService, build_learning_payload
+from ..services.genre_learning import (
+    GenreLearningResult,
+    GenreLearningService,
+    build_learning_payload,
+)
 from ..services.learning_client import LearningClient
 from ..services.tag_label_graph_builder import TagLabelGraphBuilder
 
@@ -39,7 +44,7 @@ class AdminJobService:
     def __init__(
         self,
         settings: Settings,
-        session_factory,
+        session_factory: async_sessionmaker[AsyncSession],
         learning_client: LearningClient | None,
     ) -> None:
         self._settings = settings
@@ -78,7 +83,8 @@ class AdminJobService:
             dao = SubworkerDAO(session)
             if await dao.has_running_admin_job("graph"):
                 await session.rollback()
-                raise ConcurrentAdminJobError("graph job already running")
+                msg = "graph job already running"
+                raise ConcurrentAdminJobError(msg)
             await dao.insert_admin_job(
                 job_id=job_id,
                 kind="graph",
@@ -99,7 +105,8 @@ class AdminJobService:
             dao = SubworkerDAO(session)
             if await dao.has_running_admin_job("learning"):
                 await session.rollback()
-                raise ConcurrentAdminJobError("learning job already running")
+                msg = "learning job already running"
+                raise ConcurrentAdminJobError(msg)
             await dao.insert_admin_job(
                 job_id=job_id,
                 kind="learning",
@@ -161,7 +168,7 @@ class AdminJobService:
         except asyncio.CancelledError as exc:
             await self._mark_failure(job_id, "graph", exc, started)
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - background job boundary; marks DB failure instead of crashing task
             await self._mark_failure(job_id, "graph", exc, started)
 
     async def _execute_learning_job(self, job_id: UUID) -> None:
@@ -182,7 +189,7 @@ class AdminJobService:
         except asyncio.CancelledError as exc:
             await self._mark_failure(job_id, "learning", exc, started)
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - background job boundary; marks DB failure instead of crashing task
             await self._mark_failure(job_id, "learning", exc, started)
 
     async def _run_graph_build(self) -> dict[str, Any]:
@@ -222,7 +229,8 @@ class AdminJobService:
             )
             payload = self._build_learning_payload(learning_result)
             if self._learning_client is None:
-                raise RuntimeError("learning_client is required for learning jobs")
+                msg = "learning_client is required for learning jobs"
+                raise RuntimeError(msg)
             response = await self._learning_client.send_learning_payload(payload)
             result: dict[str, Any] = {
                 "recap_worker_status": response.status_code,
@@ -234,13 +242,13 @@ class AdminJobService:
             try:
                 if response.headers.get("content-type", "").startswith("application/json"):
                     result["recap_worker_response"] = response.json()
-            except Exception:
+            except ValueError as exc:
                 # ignore parse errors; status_code is sufficient
-                pass
+                LOGGER.debug("ignoring non-json learning response", error=str(exc))
             await session.commit()
             return result
 
-    def _build_learning_service(self, session) -> GenreLearningService:
+    def _build_learning_service(self, session: AsyncSession) -> GenreLearningService:
         should_auto_detect = (
             self._settings.learning_auto_detect_genres
             or not self._settings.learning_cluster_genres.strip()
@@ -267,7 +275,7 @@ class AdminJobService:
             tag_label_graph_window="7d",
         )
 
-    def _build_learning_payload(self, result) -> dict[str, Any]:
+    def _build_learning_payload(self, result: GenreLearningResult) -> dict[str, Any]:
         """Delegates to the shared builder used by LearningScheduler so the
         payload shape can't drift between the two callers."""
         return build_learning_payload(result, now=_utcnow())

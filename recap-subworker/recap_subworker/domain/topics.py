@@ -5,12 +5,16 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 from functools import lru_cache
+from typing import TYPE_CHECKING
 
 import numpy as np
 import structlog
 from sklearn.feature_extraction.text import TfidfVectorizer
 
 from .stopwords import get_stopwords
+
+if TYPE_CHECKING:
+    from spacy.language import Language
 
 logger = structlog.get_logger(__name__)
 
@@ -26,7 +30,7 @@ try:
     import spacy
 
     SPACY_AVAILABLE = True
-except ImportError, Exception:
+except ImportError, Exception:  # noqa: BLE001 - spacy 3.x uses pydantic.v1 which fails on Python 3.14+
     # spacy 3.x uses pydantic.v1 internally, which is incompatible with Python 3.14+
     # (PEP 649 deferred annotations). Catch broadly until spacy migrates to pydantic v2.
     SPACY_AVAILABLE = False
@@ -34,6 +38,7 @@ except ImportError, Exception:
 
 _TOKEN_SPLIT_RE = re.compile(r"[^\w']+")
 _ALLOWED_SHORT_TOKENS = {"ai", "vr", "uk", "us", "eu", "ux"}
+_SHORT_TOKEN_MAX_LEN = 2
 # Pattern to detect alphanumeric mixed strings (digits and letters together)
 _ALPHANUMERIC_MIXED_PATTERN = re.compile(r"\d.*[a-zA-Z]|[a-zA-Z].*\d")
 
@@ -53,14 +58,13 @@ def _get_nltk_tokenizer() -> Callable[[str], list[str]] | None:
 
 
 @lru_cache(maxsize=1)
-def _get_spacy_nlp():
+def _get_spacy_nlp() -> Language | None:
     """Lazy load spaCy model for token validation."""
     if not SPACY_AVAILABLE or spacy is None:
         return None
     try:
         # Try to load the English model
-        nlp = spacy.load("en_core_web_sm", disable=["parser", "ner"])
-        return nlp
+        return spacy.load("en_core_web_sm", disable=["parser", "ner"])
     except OSError:
         # Model not installed, return None (will use fallback)
         return None
@@ -82,6 +86,30 @@ def _is_simple_alpha_phrase(text: str) -> bool:
     return all(not (part and not part.isalpha()) for part in re.split(r"[\s-]+", text))
 
 
+def _passes_spacy_check(term: str) -> bool:
+    """Return False if spaCy flags mixed alphanumeric or numeric sub-tokens."""
+    nlp = _get_spacy_nlp()
+    if nlp is None:
+        return True
+    try:
+        doc = nlp(term)
+        if doc:
+            # Reject if any token mixes digits and letters.
+            if any(tok.is_alnum and not tok.is_alpha and not tok.is_digit for tok in doc):
+                return False
+            # Reject if spaCy identifies numeric components inside phrases.
+            if any(tok.text.isdigit() or _has_alphanumeric_mixed(tok.text) for tok in doc):
+                return False
+    except (RuntimeError, ValueError, TypeError) as exc:
+        # If spaCy fails, fall back to regex validation only.
+        logger.debug(
+            "spacy_validation_failed",
+            error=str(exc),
+            error_type=type(exc).__name__,
+        )
+    return True
+
+
 def _is_informative(term: str, stopwords: set[str]) -> bool:
     """Check if a term is informative and should be included.
 
@@ -92,45 +120,21 @@ def _is_informative(term: str, stopwords: set[str]) -> bool:
     4. Stopword and length checks
     """
     stripped = term.strip()
-    if not stripped:
-        return False
-
-    # Stage 1: Basic digit check
-    if stripped.isdigit():
-        return False
-
-    # Stage 2: Regex-based alphanumeric mixed detection
-    if _has_alphanumeric_mixed(stripped):
+    if not stripped or stripped.isdigit() or _has_alphanumeric_mixed(stripped):
         return False
 
     # Stage 3: spaCy validation (high-precision check) - only when necessary
-    if not _is_simple_alpha_phrase(stripped):
-        nlp = _get_spacy_nlp()
-        if nlp is not None:
-            try:
-                doc = nlp(stripped)
-                if doc:
-                    # Reject if any token mixes digits and letters.
-                    if any(tok.is_alnum and not tok.is_alpha and not tok.is_digit for tok in doc):
-                        return False
-                    # Reject if spaCy identifies numeric components inside phrases.
-                    if any(tok.text.isdigit() or _has_alphanumeric_mixed(tok.text) for tok in doc):
-                        return False
-            except (RuntimeError, ValueError, TypeError) as exc:
-                # If spaCy fails, fall back to regex validation only.
-                logger.debug(
-                    "spacy_validation_failed",
-                    error=str(exc),
-                    error_type=type(exc).__name__,
-                )
+    if not _is_simple_alpha_phrase(stripped) and not _passes_spacy_check(stripped):
+        return False
 
     # Stage 4: Token-based validation
     tokens = _tokenize_feature(stripped)
-    if not tokens:
+    if not tokens or all(token in stopwords for token in tokens):
         return False
-    if all(token in stopwords for token in tokens):
-        return False
-    return not all(len(token) <= 2 and token not in _ALLOWED_SHORT_TOKENS for token in tokens)
+    return not all(
+        len(token) <= _SHORT_TOKEN_MAX_LEN and token not in _ALLOWED_SHORT_TOKENS
+        for token in tokens
+    )
 
 
 def extract_topics(

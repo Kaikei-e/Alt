@@ -19,41 +19,54 @@ from sklearn.decomposition import TruncatedSVD
 
 from recap_subworker.infra.classifier.train import clamp_svd_components
 
+DEFAULT_SVD_COMPONENTS = 200
+SMALL_VOCAB_FEATURES = 120
+SMALL_SAMPLE_COUNT = 80
+BOUNDARY_FEATURES = 50
+
 
 def test_clamp_keeps_requested_when_rank_is_large_enough() -> None:
-    assert clamp_svd_components(200, n_samples=800, n_features=1000) == 200
+    assert clamp_svd_components(DEFAULT_SVD_COMPONENTS, n_samples=800, n_features=1000) == (
+        DEFAULT_SVD_COMPONENTS
+    )
 
 
 def test_clamp_to_n_features_when_vocabulary_is_smaller() -> None:
-    assert clamp_svd_components(200, n_samples=600, n_features=120) == 120
+    assert clamp_svd_components(
+        DEFAULT_SVD_COMPONENTS, n_samples=600, n_features=SMALL_VOCAB_FEATURES
+    ) == (SMALL_VOCAB_FEATURES)
 
 
 def test_clamp_to_n_samples_when_samples_are_the_rank_limit() -> None:
-    assert clamp_svd_components(200, n_samples=80, n_features=1000) == 80
+    assert clamp_svd_components(
+        DEFAULT_SVD_COMPONENTS, n_samples=SMALL_SAMPLE_COUNT, n_features=1000
+    ) == (SMALL_SAMPLE_COUNT)
 
 
 def test_clamp_allows_n_components_equal_to_n_features() -> None:
     """sklearn 1.8 randomized SVD accepts n_components == n_features."""
-    assert clamp_svd_components(50, n_samples=100, n_features=50) == 50
+    assert clamp_svd_components(BOUNDARY_FEATURES, n_samples=100, n_features=BOUNDARY_FEATURES) == (
+        BOUNDARY_FEATURES
+    )
 
 
 def test_clamp_rejects_fewer_than_two_features() -> None:
     with pytest.raises(ValueError, match="at least 2"):
-        clamp_svd_components(200, n_samples=100, n_features=1)
+        clamp_svd_components(DEFAULT_SVD_COMPONENTS, n_samples=100, n_features=1)
 
 
 def test_clamp_rejects_non_positive_request() -> None:
     with pytest.raises(ValueError, match=">= 1"):
-        clamp_svd_components(0, n_samples=100, n_features=50)
+        clamp_svd_components(0, n_samples=100, n_features=BOUNDARY_FEATURES)
 
 
 def test_clamped_rank_fits_truncated_svd() -> None:
     """The value we would pass to TruncatedSVD must be accepted by sklearn 1.8."""
     rng = np.random.default_rng(0)
     n_samples, n_features = 30, 12
-    requested = 200
+    requested = DEFAULT_SVD_COMPONENTS
     n_components = clamp_svd_components(requested, n_samples=n_samples, n_features=n_features)
-    X = csr_matrix(rng.random((n_samples, n_features)))
+    X = csr_matrix(rng.random((n_samples, n_features)))  # noqa: N806 - ML matrix convention
     svd = TruncatedSVD(n_components=n_components, random_state=0)
     transformed = svd.fit_transform(X)
     assert transformed.shape == (n_samples, n_features)

@@ -18,16 +18,20 @@ CERT_DIR_PERM = 0o750
 
 def assert_trusted_parent(path: str) -> None:
     if not path:
-        raise PkiError("pki: empty path")
+        msg = "pki: empty path"
+        raise PkiError(msg)
     directory = str(Path(path).parent)
     try:
         info = os.lstat(directory)
     except OSError as err:
-        raise PkiError(f"pki: lstat parent of {path!r}") from err
+        msg = f"pki: lstat parent of {path!r}"
+        raise PkiError(msg) from err
     if stat.S_ISLNK(info.st_mode):
-        raise PkiError(f"pki: parent directory of {path!r} is a symlink")
+        msg = f"pki: parent directory of {path!r} is a symlink"
+        raise PkiError(msg)
     if not stat.S_ISDIR(info.st_mode):
-        raise PkiError(f"pki: parent of {path!r} is not a directory")
+        msg = f"pki: parent of {path!r} is not a directory"
+        raise PkiError(msg)
 
 
 def assert_trusted_dest(path: str) -> None:
@@ -37,9 +41,11 @@ def assert_trusted_dest(path: str) -> None:
     except FileNotFoundError:
         return
     except OSError as err:
-        raise PkiError(f"pki: lstat {path!r}") from err
+        msg = f"pki: lstat {path!r}"
+        raise PkiError(msg) from err
     if stat.S_ISLNK(info.st_mode):
-        raise PkiError(f"pki: {path!r} is a symlink")
+        msg = f"pki: {path!r} is a symlink"
+        raise PkiError(msg)
 
 
 def mkdir_trusted(path: str, mode: int = CERT_DIR_PERM) -> None:
@@ -55,37 +61,46 @@ def read_regular_no_follow(path: str, max_bytes: int) -> bytes:
     directory = str(target.parent)
     base = target.name
     if base in {".", ".."} or os.sep in base:
-        raise PkiError(f"pki: invalid basename for {path!r}")
+        msg = f"pki: invalid basename for {path!r}"
+        raise PkiError(msg)
     flags_dir = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
     try:
         dir_fd = os.open(directory, flags_dir)
     except OSError as err:
         if err.errno == errno.ELOOP:
-            raise PkiError(f"pki: parent directory of {path!r} is a symlink") from err
-        raise PkiError(f"pki: open parent of {path!r}") from err
+            msg = f"pki: parent directory of {path!r} is a symlink"
+            raise PkiError(msg) from err
+        msg = f"pki: open parent of {path!r}"
+        raise PkiError(msg) from err
     try:
         flags = os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
         try:
             fd = os.open(base, flags, dir_fd=dir_fd)
         except OSError as err:
             if err.errno == errno.ELOOP:
-                raise PkiError(f"pki: {path!r} is a symlink") from err
+                msg = f"pki: {path!r} is a symlink"
+                raise PkiError(msg) from err
             if err.errno == errno.ENOENT:
                 raise FileNotFoundError(path) from err
-            raise PkiError(f"pki: open {path!r}") from err
+            msg = f"pki: open {path!r}"
+            raise PkiError(msg) from err
     finally:
         os.close(dir_fd)
     try:
         info = os.fstat(fd)
         if not stat.S_ISREG(info.st_mode):
-            raise PkiError(f"pki: {path!r} is not a regular file")
+            msg = f"pki: {path!r} is not a regular file"
+            raise PkiError(msg)
         if info.st_mode & 0o002:
-            raise PkiError(f"pki: {path!r} is world-writable")
+            msg = f"pki: {path!r} is world-writable"
+            raise PkiError(msg)
         if info.st_size > max_bytes:
-            raise PkiError(f"pki: {path!r} exceeds {max_bytes}-byte cap")
+            msg = f"pki: {path!r} exceeds {max_bytes}-byte cap"
+            raise PkiError(msg)
         raw = os.read(fd, max_bytes + 1)
         if len(raw) > max_bytes:
-            raise PkiError(f"pki: {path!r} exceeds {max_bytes}-byte cap")
+            msg = f"pki: {path!r} exceeds {max_bytes}-byte cap"
+            raise PkiError(msg)
         return raw
     finally:
         os.close(fd)

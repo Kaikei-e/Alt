@@ -11,6 +11,9 @@ from ..learning_machine.student.model import StudentDistilBERT
 
 logger = structlog.get_logger(__name__)
 
+_JP_RATIO_THRESHOLD = 0.1
+_EN_RATIO_THRESHOLD = 0.3
+
 
 def detect_language_simple(text: str, min_chars: int = 50) -> str:
     """Simple language detection for Japanese/English.
@@ -64,14 +67,12 @@ def detect_language_simple(text: str, min_chars: int = 50) -> str:
 
     # Decision logic: if Japanese characters present and ratio > 0.1, classify as Japanese
     # Otherwise, if English characters present, classify as English
-    if has_japanese and jp_ratio > 0.1:
+    if has_japanese and jp_ratio > _JP_RATIO_THRESHOLD:
         return "ja"
-    elif has_english and en_ratio > 0.3:
+    if has_english and en_ratio > _EN_RATIO_THRESHOLD:
         return "en"
-    elif has_japanese:
-        return "ja"  # Fallback: if Japanese chars exist, prefer Japanese
-    elif has_english:
-        return "en"  # Fallback: if English chars exist, prefer English
+    if has_japanese or has_english:
+        return "ja" if has_japanese else "en"
 
     return "unknown"
 
@@ -85,7 +86,7 @@ class LearningMachineStudentClassifier:
         student_en_dir: str | None = None,
         taxonomy_path: str | None = None,
         device: str = "cpu",
-    ):
+    ) -> None:
         """Initialize the classifier with language-specific student models.
 
         Args:
@@ -104,7 +105,8 @@ class LearningMachineStudentClassifier:
             taxonomy_path = "recap_subworker/learning_machine/taxonomy/genres.yaml"
         taxonomy_path_obj = Path(taxonomy_path)
         if not taxonomy_path_obj.exists():
-            raise FileNotFoundError(f"Taxonomy file not found: {taxonomy_path}")
+            msg = f"Taxonomy file not found: {taxonomy_path}"
+            raise FileNotFoundError(msg)
 
         with taxonomy_path_obj.open(encoding="utf-8") as f:
             taxonomy_data = yaml.safe_load(f)
@@ -113,7 +115,7 @@ class LearningMachineStudentClassifier:
         self.label2id = {g: i for i, g in enumerate(self.genres)}
         self.num_labels = len(self.genres)
 
-        logger.info(f"Loaded taxonomy with {self.num_labels} genres")
+        logger.info("Loaded taxonomy", num_labels=self.num_labels)
 
         # Load models
         self.model_ja: StudentDistilBERT | None = None
@@ -128,11 +130,11 @@ class LearningMachineStudentClassifier:
                     )
                     self.model_ja.to(self.device)
                     self.model_ja.eval()
-                    logger.info(f"Loaded Japanese model from {student_ja_dir}")
+                    logger.info("Loaded Japanese model", student_ja_dir=student_ja_dir)
                 except Exception as e:
-                    logger.error(f"Failed to load Japanese model: {e}")
+                    logger.exception("Failed to load Japanese model", error=str(e))
             else:
-                logger.warning(f"Japanese model directory not found: {student_ja_dir}")
+                logger.warning("Japanese model directory not found", student_ja_dir=student_ja_dir)
 
         if student_en_dir:
             en_path = Path(student_en_dir)
@@ -143,14 +145,40 @@ class LearningMachineStudentClassifier:
                     )
                     self.model_en.to(self.device)
                     self.model_en.eval()
-                    logger.info(f"Loaded English model from {student_en_dir}")
+                    logger.info("Loaded English model", student_en_dir=student_en_dir)
                 except Exception as e:
-                    logger.error(f"Failed to load English model: {e}")
+                    logger.exception("Failed to load English model", error=str(e))
             else:
-                logger.warning(f"English model directory not found: {student_en_dir}")
+                logger.warning("English model directory not found", student_en_dir=student_en_dir)
 
         if self.model_ja is None and self.model_en is None:
-            raise RuntimeError("At least one model (JA or EN) must be loaded")
+            msg = "At least one model (JA or EN) must be loaded"
+            raise RuntimeError(msg)
+
+    def _group_texts_by_language(
+        self, texts: list[str]
+    ) -> tuple[list[str], list[int], list[str], list[int], list[str], list[int]]:
+        """Group texts and original indices into JA, EN, and fallback buckets."""
+        lang_detections = [detect_language_simple(text) for text in texts]
+        ja_texts: list[str] = []
+        en_texts: list[str] = []
+        unknown_texts: list[str] = []
+        ja_indices: list[int] = []
+        en_indices: list[int] = []
+        unknown_indices: list[int] = []
+
+        for i, (text, lang) in enumerate(zip(texts, lang_detections, strict=False)):
+            if lang == "ja" and self.model_ja is not None:
+                ja_texts.append(text)
+                ja_indices.append(i)
+            elif lang == "en" and self.model_en is not None:
+                en_texts.append(text)
+                en_indices.append(i)
+            else:
+                unknown_texts.append(text)
+                unknown_indices.append(i)
+
+        return ja_texts, ja_indices, en_texts, en_indices, unknown_texts, unknown_indices
 
     def predict_batch(
         self,
@@ -173,60 +201,28 @@ class LearningMachineStudentClassifier:
         if not texts:
             return []
 
-        # Detect language for each text
-        lang_detections = [detect_language_simple(text) for text in texts]
-
-        # Group texts by language
-        ja_texts = []
-        en_texts = []
-        unknown_texts = []
-        ja_indices = []
-        en_indices = []
-        unknown_indices = []
-
-        for i, (text, lang) in enumerate(zip(texts, lang_detections, strict=False)):
-            if lang == "ja" and self.model_ja is not None:
-                ja_texts.append(text)
-                ja_indices.append(i)
-            elif lang == "en" and self.model_en is not None:
-                en_texts.append(text)
-                en_indices.append(i)
-            else:
-                # Unknown or no model available - use fallback
-                unknown_texts.append(text)
-                unknown_indices.append(i)
+        ja_texts, ja_indices, en_texts, en_indices, unknown_texts, unknown_indices = (
+            self._group_texts_by_language(texts)
+        )
 
         # Run inference for each language group
         results: list[dict[str, Any] | None] = [None] * len(texts)
 
-        # Japanese predictions
-        if ja_texts and self.model_ja:
-            ja_results = self._predict_with_model(
-                self.model_ja, ja_texts, multi_label, top_k, threshold_overrides
-            )
-            for idx, result in zip(ja_indices, ja_results, strict=False):
-                results[idx] = result
-
-        # English predictions
-        if en_texts and self.model_en:
-            en_results = self._predict_with_model(
-                self.model_en, en_texts, multi_label, top_k, threshold_overrides
-            )
-            for idx, result in zip(en_indices, en_results, strict=False):
-                results[idx] = result
-
-        # Unknown/fallback: use Japanese model if available, otherwise English
-        if unknown_texts:
-            fallback_model = self.model_ja if self.model_ja else self.model_en
-            if fallback_model:
-                fallback_results = self._predict_with_model(
-                    fallback_model, unknown_texts, multi_label, top_k, threshold_overrides
+        for bucket_texts, bucket_indices, model in (
+            (ja_texts, ja_indices, self.model_ja),
+            (en_texts, en_indices, self.model_en),
+            (unknown_texts, unknown_indices, self.model_ja or self.model_en),
+        ):
+            if not bucket_texts:
+                continue
+            if model is not None:
+                bucket_results = self._predict_with_model(
+                    model, bucket_texts, multi_label, top_k, threshold_overrides
                 )
-                for idx, result in zip(unknown_indices, fallback_results, strict=False):
+                for idx, result in zip(bucket_indices, bucket_results, strict=False):
                     results[idx] = result
             else:
-                # No model available - return empty predictions
-                for idx in unknown_indices:
+                for idx in bucket_indices:
                     results[idx] = {
                         "top_genre": None,
                         "confidence": 0.0,

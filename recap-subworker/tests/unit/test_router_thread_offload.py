@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+from collections.abc import Sequence
 from unittest.mock import MagicMock
 
 import pytest
@@ -10,6 +11,7 @@ import pytest
 from recap_subworker.app.routers import admin, evidence
 from recap_subworker.domain.models import (
     EvidenceBudget,
+    EvidenceRequest,
     EvidenceResponse,
     WarmupResponse,
 )
@@ -17,14 +19,14 @@ from tests.conftest import make_evidence_request
 
 
 @pytest.mark.asyncio
-async def test_evidence_cluster_runs_off_event_loop_thread():
+async def test_evidence_cluster_runs_off_event_loop_thread() -> None:
     """In inprocess mode (runner=None), pipeline.run must execute on a worker thread."""
     loop_thread_id = threading.get_ident()
     called_thread_id = None
 
     fake_pipeline = MagicMock()
 
-    def fake_run(payload):
+    def fake_run(payload: EvidenceRequest) -> EvidenceResponse:
         nonlocal called_thread_id
         called_thread_id = threading.get_ident()
         return EvidenceResponse(
@@ -53,14 +55,14 @@ async def test_evidence_cluster_runs_off_event_loop_thread():
 
 
 @pytest.mark.asyncio
-async def test_admin_warmup_runs_off_event_loop_thread():
+async def test_admin_warmup_runs_off_event_loop_thread() -> None:
     """In inprocess mode (runner=None), pipeline.warmup must execute on a worker thread."""
     loop_thread_id = threading.get_ident()
     called_thread_id = None
 
     fake_pipeline = MagicMock()
 
-    def fake_warmup(samples=None):
+    def fake_warmup(samples: Sequence[str] | None = None) -> WarmupResponse:
         nonlocal called_thread_id
         called_thread_id = threading.get_ident()
         return WarmupResponse(

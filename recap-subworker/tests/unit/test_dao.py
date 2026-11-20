@@ -16,12 +16,14 @@ from recap_subworker.db.dao import (
     SubworkerDAO,
 )
 
+EXPECTED_INSERTED_RUN_ID = 99
+
 
 @pytest.mark.asyncio
-async def test_insert_run_returns_generated_id():
+async def test_insert_run_returns_generated_id() -> None:
     session = AsyncMock()
     result = MagicMock()
-    result.scalar_one.return_value = 99
+    result.scalar_one.return_value = EXPECTED_INSERTED_RUN_ID
     session.execute.return_value = result
     dao = SubworkerDAO(session)
 
@@ -29,12 +31,12 @@ async def test_insert_run_returns_generated_id():
         NewRun(job_id=uuid4(), genre="ai", status="running", request_payload={})
     )
 
-    assert run_id == 99
+    assert run_id == EXPECTED_INSERTED_RUN_ID
     session.execute.assert_awaited()
 
 
 @pytest.mark.asyncio
-async def test_find_run_by_idempotency_returns_record():
+async def test_find_run_by_idempotency_returns_record() -> None:
     job_id = uuid4()
     session = AsyncMock()
     # `.first` must be a plain (non-async) MagicMock: AsyncMock cascades
@@ -64,11 +66,12 @@ async def test_find_run_by_idempotency_returns_record():
 
 
 @pytest.mark.asyncio
-async def test_insert_clusters_inserts_sentences():
+async def test_insert_clusters_inserts_sentences() -> None:
     session = AsyncMock()
     cluster_result = MagicMock()
     cluster_result.scalar_one.return_value = 7
-    session.execute.side_effect = [cluster_result, MagicMock()]
+    execute_results = [cluster_result, MagicMock()]
+    session.execute.side_effect = execute_results
     dao = SubworkerDAO(session)
     cluster = PersistedCluster(
         cluster_id=0,
@@ -90,13 +93,13 @@ async def test_insert_clusters_inserts_sentences():
 
     await dao.insert_clusters(42, [cluster])
 
-    assert session.execute.await_count == 2
+    assert session.execute.await_count == len(execute_results)
     first_stmt = session.execute.await_args_list[0].args[0]
     assert "recap_subworker_clusters" in str(first_stmt)
 
 
 @pytest.mark.asyncio
-async def test_upsert_diagnostics_uses_conflict_update():
+async def test_upsert_diagnostics_uses_conflict_update() -> None:
     session = AsyncMock()
     dao = SubworkerDAO(session)
 
@@ -108,7 +111,7 @@ async def test_upsert_diagnostics_uses_conflict_update():
 
 
 @pytest.mark.asyncio
-async def test_upsert_run_diagnostics_uses_conflict_update():
+async def test_upsert_run_diagnostics_uses_conflict_update() -> None:
     session = AsyncMock()
     dao = SubworkerDAO(session)
 
@@ -128,16 +131,17 @@ async def test_upsert_run_diagnostics_uses_conflict_update():
 
 
 @pytest.mark.asyncio
-async def test_fail_orphaned_runs_updates_every_running_row():
+async def test_fail_orphaned_runs_updates_every_running_row() -> None:
     session = AsyncMock()
     result = MagicMock()
-    result.all = MagicMock(return_value=[(1,), (2,)])
+    running_rows = [(1,), (2,)]
+    result.all = MagicMock(return_value=running_rows)
     session.execute.return_value = result
     dao = SubworkerDAO(session)
 
     swept = await dao.fail_orphaned_runs("orphaned by restart")
 
-    assert swept == 2
+    assert swept == len(running_rows)
     stmt = session.execute.await_args.args[0]
     compiled = stmt.compile()
     assert "UPDATE recap_subworker_runs SET status" in str(compiled)
@@ -148,16 +152,17 @@ async def test_fail_orphaned_runs_updates_every_running_row():
 
 
 @pytest.mark.asyncio
-async def test_fail_orphaned_admin_jobs_updates_every_running_row():
+async def test_fail_orphaned_admin_jobs_updates_every_running_row() -> None:
     session = AsyncMock()
     result = MagicMock()
-    result.all = MagicMock(return_value=[(uuid4(),), (uuid4(),)])
+    running_rows = [(uuid4(),), (uuid4(),)]
+    result.all = MagicMock(return_value=running_rows)
     session.execute.return_value = result
     dao = SubworkerDAO(session)
 
     swept = await dao.fail_orphaned_admin_jobs("admin job orphaned by restart")
 
-    assert swept == 2
+    assert swept == len(running_rows)
     stmt = session.execute.await_args.args[0]
     compiled = stmt.compile()
     assert "UPDATE admin_jobs SET status" in str(compiled)
@@ -168,7 +173,7 @@ async def test_fail_orphaned_admin_jobs_updates_every_running_row():
 
 
 @pytest.mark.asyncio
-async def test_mark_run_failure_only_updates_running_run():
+async def test_mark_run_failure_only_updates_running_run() -> None:
     session = AsyncMock()
     result = MagicMock()
     result.all = MagicMock(return_value=[])

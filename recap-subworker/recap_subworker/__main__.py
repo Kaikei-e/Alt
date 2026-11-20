@@ -5,7 +5,7 @@ from typing import Final
 
 from recap_subworker.app.infra.inbound_server import serve_app
 
-DEFAULT_HOST: Final[str] = "0.0.0.0"
+DEFAULT_HOST: Final[str] = "0.0.0.0"  # noqa: S104  # container HTTP server binds all interfaces
 DEFAULT_PORT: Final[int] = 8002
 
 

@@ -2,67 +2,67 @@ import argparse
 import json
 import logging
 import os
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
 import yaml
 
+_MIN_JA_CHAR_RATIO = 0.1
+_MIN_EN_CHAR_RATIO = 0.3
+
+
+def _append_if_exists(candidates: list[str], path: Path) -> None:
+    path_str = str(path)
+    if path.exists() and path_str not in candidates:
+        candidates.append(path_str)
+
+
+def _discover_ldconfig_cuda_dirs(candidates: list[str]) -> None:
+    try:
+        ldconfig_bin = shutil.which("ldconfig")
+        if ldconfig_bin:
+            result = subprocess.run(  # noqa: S603  # fixed ldconfig binary resolved via shutil.which
+                [ldconfig_bin, "-p"], capture_output=True, text=True, timeout=5, check=False
+            )
+            if result.returncode == 0:
+                for line in result.stdout.split("\n"):
+                    if "cuda" in line.lower() and "=>" in line:
+                        lib_path = line.split("=>")[-1].strip()
+                        if lib_path:
+                            _append_if_exists(candidates, Path(lib_path).parent)
+    except (OSError, subprocess.SubprocessError) as exc:
+        logging.getLogger(__name__).debug("ldconfig lookup skipped: %s", exc)
+
 
 # CUDAライブラリのパスを動的に検出して設定（CUDA検出を確実にするため）
-def _setup_cuda_library_path():
+def _setup_cuda_library_path() -> None:
     """動的にCUDAライブラリのパスを検出してLD_LIBRARY_PATHに追加"""
-    existing_paths = os.environ.get("LD_LIBRARY_PATH", "").split(":")
-    existing_paths = [p for p in existing_paths if p]  # 空文字列を除去
-
-    # 検出するパスの候補
-    candidate_paths = []
+    existing_paths = [p for p in os.environ.get("LD_LIBRARY_PATH", "").split(":") if p]
+    candidate_paths: list[str] = []
 
     # 1. /usr/local/cuda* 配下を検索
-    if os.path.exists("/usr/local"):
-        for item in os.listdir("/usr/local"):
-            cuda_path = os.path.join("/usr/local", item)
-            if item.startswith("cuda") and os.path.isdir(cuda_path):
-                targets_lib = os.path.join(cuda_path, "targets", "x86_64-linux", "lib")
-                if os.path.exists(targets_lib):
-                    candidate_paths.append(targets_lib)
+    usr_local = Path("/usr/local")
+    if usr_local.exists():
+        for cuda_path in usr_local.iterdir():
+            if cuda_path.name.startswith("cuda") and cuda_path.is_dir():
+                _append_if_exists(candidate_paths, cuda_path / "targets" / "x86_64-linux" / "lib")
 
     # 2. /usr/local/cuda のシンボリックリンクを確認
-    cuda_link = "/usr/local/cuda"
-    if os.path.exists(cuda_link):
-        targets_lib = os.path.join(cuda_link, "targets", "x86_64-linux", "lib")
-        if os.path.exists(targets_lib) and targets_lib not in candidate_paths:
-            candidate_paths.append(targets_lib)
+    _append_if_exists(candidate_paths, Path("/usr/local/cuda") / "targets" / "x86_64-linux" / "lib")
 
     # 3. システム標準パス
-    system_paths = [
-        "/usr/lib/x86_64-linux-gnu",
-        "/usr/lib64",
-    ]
-    for path in system_paths:
-        if os.path.exists(path) and path not in candidate_paths:
-            candidate_paths.append(path)
+    for path in (Path("/usr/lib/x86_64-linux-gnu"), Path("/usr/lib64")):
+        _append_if_exists(candidate_paths, path)
 
     # 4. ldconfigで検出されたCUDAライブラリのパスを確認
-    try:
-        import subprocess
-
-        result = subprocess.run(["ldconfig", "-p"], capture_output=True, text=True, timeout=5)
-        if result.returncode == 0:
-            for line in result.stdout.split("\n"):
-                if "cuda" in line.lower() and "=>" in line:
-                    lib_path = line.split("=>")[-1].strip()
-                    if lib_path:
-                        dir_path = os.path.dirname(lib_path)
-                        if os.path.exists(dir_path) and dir_path not in candidate_paths:
-                            candidate_paths.append(dir_path)
-    except Exception:
-        pass  # ldconfigが使えない場合はスキップ
+    _discover_ldconfig_cuda_dirs(candidate_paths)
 
     # 存在するパスを追加
-    new_paths = []
-    for path in candidate_paths:
-        if os.path.exists(path) and path not in existing_paths:
-            new_paths.append(path)
+    new_paths = [
+        path for path in candidate_paths if Path(path).exists() and path not in existing_paths
+    ]
 
     if new_paths:
         current_ld_path = os.environ.get("LD_LIBRARY_PATH", "")
@@ -72,9 +72,18 @@ def _setup_cuda_library_path():
 
 _setup_cuda_library_path()
 
-import torch
-from torch.utils.data import DataLoader
-from tqdm import tqdm
+from dataclasses import dataclass  # noqa: E402  # import after CUDA LD_LIBRARY_PATH setup
+
+import numpy as np  # noqa: E402  # import after CUDA LD_LIBRARY_PATH setup
+import torch  # noqa: E402  # import after CUDA LD_LIBRARY_PATH setup
+from torch.utils.data import (  # noqa: E402  # import after CUDA LD_LIBRARY_PATH setup
+    DataLoader,
+    Dataset,
+)
+from tqdm import tqdm  # noqa: E402  # import after CUDA LD_LIBRARY_PATH setup
+from transformers import (  # noqa: E402  # import after CUDA LD_LIBRARY_PATH setup
+    PreTrainedTokenizerBase,
+)
 
 # Path setup
 current_dir = Path(__file__).resolve().parent
@@ -82,25 +91,26 @@ project_root = current_dir.parent.parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-# We can use a simpler dataset class for inference
-from torch.utils.data import Dataset
-
-from recap_subworker.learning_machine.teacher.model import TeacherBERT
+from recap_subworker.learning_machine.teacher.model import (  # noqa: E402  # import after CUDA LD_LIBRARY_PATH and sys.path setup
+    TeacherBERT,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
 class InferenceDataset(Dataset):
-    def __init__(self, texts: list[str], tokenizer, max_length: int = 256):
+    def __init__(
+        self, texts: list[str], tokenizer: PreTrainedTokenizerBase, max_length: int = 256
+    ) -> None:
         self.texts = texts
         self.tokenizer = tokenizer
         self.max_length = max_length
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.texts)
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
         text = str(self.texts[idx])
         encoding = self.tokenizer(
             text,
@@ -119,12 +129,50 @@ class InferenceDataset(Dataset):
 
 
 def load_genres(path: Path) -> list[str]:
-    with open(path) as f:
+    with path.open() as f:
         data = yaml.safe_load(f)
         return data.get("genres", [])
 
 
-def main():
+def _is_japanese_char(char: str) -> bool:
+    return (
+        "\u3040" <= char <= "\u309f" or "\u30a0" <= char <= "\u30ff" or "\u4e00" <= char <= "\u9faf"
+    )
+
+
+# Simple language detection function (same as in learning_machine_classifier)
+def detect_language_simple(text: str, min_chars: int = 50) -> str:
+    """Simple language detection for Japanese/English."""
+    if len(text) < min_chars:
+        return "unknown"
+    jp_chars = sum(1 for char in text if _is_japanese_char(char))
+    en_chars = sum(1 for char in text if char.isascii() and char.isalpha())
+    total_chars = sum(1 for c in text if c.isalnum() or _is_japanese_char(c))
+    if total_chars == 0:
+        return "unknown"
+    jp_ratio = jp_chars / total_chars
+    en_ratio = en_chars / total_chars
+    if jp_chars > 0 and jp_ratio > _MIN_JA_CHAR_RATIO:
+        return "ja"
+    if en_chars > 0 and en_ratio > _MIN_EN_CHAR_RATIO:
+        return "en"
+    if jp_chars > 0:
+        return "ja"
+    return "en" if en_chars > 0 else "unknown"
+
+
+@dataclass
+class _PseudoLabelStats:
+    conf_array: np.ndarray
+    margin_array: np.ndarray
+    percentiles: dict[str, float]
+    selection_method: str
+    effective_threshold: object
+    pseudo_labeled: list[dict]
+    candidate_items: list[dict]
+
+
+def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument(
@@ -191,132 +239,86 @@ def main():
         help="Maximum pseudo-labels per class (for class balance)",
     )
     args = parser.parse_args()
-
-    # Set defaults based on language
     if args.model_dir is None:
         args.model_dir = f"recap_subworker/learning_machine/artifacts/teacher/v0_{args.language}"
     if args.output_path is None:
         args.output_path = (
             f"recap_subworker/learning_machine/data/silver_teacher_v0_{args.language}.jsonl"
         )
+    return args
 
+
+def _resolve_device() -> torch.device:
     # GPU確認と詳細ログ
     if torch.cuda.is_available():
         device = torch.device("cuda")
         gpu_name = torch.cuda.get_device_name(0)
         gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3  # GB
         logger.info(
-            f"GPU detected and will be used for pseudo-labeling - Device: {device}, "
-            f"GPU: {gpu_name}, Memory: {round(gpu_memory, 2)}GB, "
-            f"CUDA: {torch.version.cuda}"
+            "GPU detected and will be used for pseudo-labeling - Device: %s, "
+            "GPU: %s, Memory: %.2fGB, CUDA: %s",
+            device,
+            gpu_name,
+            gpu_memory,
+            torch.version.cuda,
         )
-    else:
-        device = torch.device("cpu")
-        logger.warning(
-            f"CUDA not available, using CPU. Pseudo-labeling will be slow! Device: {device}"
-        )
+        return device
+    device = torch.device("cpu")
+    logger.warning(
+        "CUDA not available, using CPU. Pseudo-labeling will be slow! Device: %s",
+        device,
+    )
+    return device
 
-    # 1. Load Taxonomy
-    taxonomy_path = Path("recap_subworker/learning_machine/taxonomy/genres.yaml")
-    genres = load_genres(taxonomy_path)
-    # Reconstruct label maps (critical to match training)
-    # Assuming the list order is stable.
-    id2label = dict(enumerate(genres))
-    label2id = {g: i for i, g in enumerate(genres)}
-    num_labels = len(genres)
 
-    # 2. Load Model
-    logger.info(f"Loading model from {args.model_dir}")
-    # Note: TeacherBERT.from_pretrained expects a directory where config/weights are
+def _load_teacher_model(
+    model_dir: str, num_labels: int, device: torch.device
+) -> TeacherBERT | None:
+    logger.info("Loading model from %s", model_dir)
     try:
-        model = TeacherBERT.from_pretrained(args.model_dir, num_labels=num_labels)
+        model = TeacherBERT.from_pretrained(model_dir, num_labels=num_labels)
         model.to(device)
         model.eval()
-    except Exception as e:
-        logger.error(f"Failed to load model: {e}")
-        return
+    except Exception:  # CLI script exits cleanly if teacher model fails to load
+        logger.exception("Failed to load model")
+        return None
+    else:
+        return model
 
-    # 3. Load Data
+
+def _load_and_filter_articles(args: argparse.Namespace) -> list[dict]:
     raw_items = []
-
-    # Simple language detection function (same as in learning_machine_classifier)
-    def detect_language_simple(text: str, min_chars: int = 50) -> str:
-        """Simple language detection for Japanese/English."""
-        if len(text) < min_chars:
-            return "unknown"
-        has_japanese = any(
-            "\u3040" <= char <= "\u309f"  # Hiragana
-            or "\u30a0" <= char <= "\u30ff"  # Katakana
-            or "\u4e00" <= char <= "\u9faf"  # CJK Unified Ideographs
-            for char in text
-        )
-        has_english = any(char.isascii() and char.isalpha() for char in text)
-        jp_chars = sum(
-            1
-            for char in text
-            if "\u3040" <= char <= "\u309f"
-            or "\u30a0" <= char <= "\u30ff"
-            or "\u4e00" <= char <= "\u9faf"
-        )
-        en_chars = sum(1 for char in text if char.isascii() and char.isalpha())
-        total_chars = len(
-            [
-                c
-                for c in text
-                if c.isalnum()
-                or ("\u3040" <= c <= "\u309f")
-                or ("\u30a0" <= c <= "\u30ff")
-                or ("\u4e00" <= c <= "\u9faf")
-            ]
-        )
-        if total_chars == 0:
-            return "unknown"
-        jp_ratio = jp_chars / total_chars if total_chars > 0 else 0
-        en_ratio = en_chars / total_chars if total_chars > 0 else 0
-        if has_japanese and jp_ratio > 0.1:
-            return "ja"
-        elif has_english and en_ratio > 0.3:
-            return "en"
-        elif has_japanese:
-            return "ja"
-        elif has_english:
-            return "en"
-        return "unknown"
-
-    with open(args.input_path, encoding="utf-8") as f:
+    with Path(args.input_path).open(encoding="utf-8") as f:
         for line in f:
             if line.strip():
                 item = json.loads(line)
-                # Detect or use existing lang field
                 if "lang" not in item:
                     content = item.get("content", "") or item.get("text", "")
-                    detected_lang = detect_language_simple(content)
-                    item["lang"] = detected_lang
-
-                # Filter by language
+                    item["lang"] = detect_language_simple(content)
                 if item.get("lang") == args.language:
                     raw_items.append(item)
 
-    logger.info(f"Loaded {len(raw_items)} raw articles (language={args.language}).")
-    if not raw_items:
-        logger.warning("No articles found after language filtering.")
-        return
-
-    # Apply max_items limit if specified (for stats_only mode)
-    if args.max_items and args.max_items < len(raw_items):
+    logger.info("Loaded %d raw articles (language=%s).", len(raw_items), args.language)
+    if raw_items and args.max_items and args.max_items < len(raw_items):
         raw_items = raw_items[: args.max_items]
-        logger.info(f"Limited to {args.max_items} items for distribution estimation.")
+        logger.info("Limited to %d items for distribution estimation.", args.max_items)
+    return raw_items
 
-    # 4. Inference
+
+def _run_inference(
+    model: TeacherBERT,
+    raw_items: list[dict],
+    id2label: dict[int, str],
+    args: argparse.Namespace,
+    device: torch.device,
+) -> tuple[list[dict], list[float], list[float]]:
     texts = [item.get("content", "") for item in raw_items]
     dataset = InferenceDataset(texts, model.tokenizer)
     loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False)
 
-    pseudo_labeled = []
-    all_probs = []
-    confidence_stats = []
-    margin_stats = []
-    candidate_items = []  # Store all items with metadata for selection
+    confidence_stats: list[float] = []
+    margin_stats: list[float] = []
+    candidate_items: list[dict] = []
 
     logger.info("Running inference...")
     with torch.no_grad():
@@ -326,11 +328,8 @@ def main():
 
             outputs = model(input_ids, attention_mask)
             logits = outputs.logits
-            # Apply temperature scaling if specified
             scaled_logits = logits / args.temperature
             probs = torch.softmax(scaled_logits, dim=-1)
-
-            # Move to CPU
             probs_np = probs.cpu().numpy()
 
             start_idx = i * args.batch_size
@@ -343,15 +342,11 @@ def main():
                 pred_id = int(prob_dist.argmax())
                 pred_label = id2label[pred_id]
 
-                # Calculate margin (top1 - top2)
                 sorted_probs = sorted(prob_dist, reverse=True)
                 margin = float(sorted_probs[0] - sorted_probs[1]) if len(sorted_probs) > 1 else 0.0
 
-                # Collect statistics
                 confidence_stats.append(max_prob)
                 margin_stats.append(margin)
-
-                # Store candidate item with metadata
                 candidate_items.append(
                     {
                         "item": raw_items[idx].copy(),
@@ -361,37 +356,21 @@ def main():
                         "logits": logits[j].cpu().tolist(),
                     }
                 )
+    return candidate_items, confidence_stats, margin_stats
 
-    # Calculate statistics and determine selection criteria
-    import numpy as np
 
-    if not confidence_stats:
-        logger.error("No confidence statistics collected!")
-        return
-
-    conf_array = np.array(confidence_stats)
-    margin_array = np.array(margin_stats)
-
-    # Calculate percentiles
-    percentiles = {
-        "p50": np.percentile(conf_array, 50),
-        "p75": np.percentile(conf_array, 75),
-        "p90": np.percentile(conf_array, 90),
-        "p95": np.percentile(conf_array, 95),
-        "p99": np.percentile(conf_array, 99),
-    }
-
-    # Determine selection method
-    selection_method = None
-    effective_threshold = None
-
+def _select_candidates(
+    candidate_items: list[dict],
+    conf_array: np.ndarray,
+    margin_array: np.ndarray,
+    args: argparse.Namespace,
+) -> tuple[np.ndarray, str, object]:
     if args.accept_top_percent:
         selection_method = "top_percent"
-        # Sort by confidence and take top P%
         sorted_indices = np.argsort(conf_array)[::-1]
         n_accept = int(len(candidate_items) * args.accept_top_percent / 100.0)
         selected_indices = sorted_indices[:n_accept]
-        effective_threshold = (
+        effective_threshold: object = (
             conf_array[sorted_indices[n_accept - 1]] if n_accept > 0 else conf_array.max()
         )
     elif args.min_margin is not None:
@@ -403,7 +382,6 @@ def main():
         effective_threshold = args.threshold
         selected_indices = np.where(conf_array >= args.threshold)[0]
     else:
-        # Default: use top 5% if no method specified
         selection_method = "top_percent (default 5%)"
         sorted_indices = np.argsort(conf_array)[::-1]
         n_accept = max(1, int(len(candidate_items) * 5 / 100.0))
@@ -412,9 +390,8 @@ def main():
             conf_array[sorted_indices[n_accept - 1]] if n_accept > 0 else conf_array.max()
         )
 
-    # Apply per-class cap if specified
     if args.per_class_cap:
-        class_counts = {}
+        class_counts: dict[str, int] = {}
         filtered_indices = []
         for idx in selected_indices:
             label = candidate_items[idx]["pred_label"]
@@ -423,102 +400,182 @@ def main():
                 class_counts[label] = class_counts.get(label, 0) + 1
         selected_indices = np.array(filtered_indices)
         logger.info(
-            f"Applied per-class cap ({args.per_class_cap}): {len(selected_indices)} items selected"
+            "Applied per-class cap (%s): %d items selected",
+            args.per_class_cap,
+            len(selected_indices),
         )
 
-    # Build pseudo-labeled items
+    return selected_indices, selection_method, effective_threshold
+
+
+def _build_pseudo_labeled_items(
+    candidate_items: list[dict], selected_indices: np.ndarray, language: str
+) -> list[dict]:
+    pseudo_labeled = []
     for idx in selected_indices:
         candidate = candidate_items[idx]
         item = candidate["item"].copy()
         item["label"] = candidate["pred_label"]
         item["confidence"] = candidate["max_prob"]
         item["margin"] = candidate["margin"]
-        item["source"] = f"teacher_v0_{args.language}_pseudo"
-        item["lang"] = args.language
+        item["source"] = f"teacher_v0_{language}_pseudo"
+        item["lang"] = language
         item["logits"] = candidate["logits"]
         pseudo_labeled.append(item)
+    return pseudo_labeled
 
-    # Log comprehensive statistics
+
+def _log_pseudo_label_statistics(stats: _PseudoLabelStats) -> None:
     logger.info("=" * 80)
     logger.info("Confidence Distribution Statistics")
     logger.info("=" * 80)
-    logger.info(f"Mean: {conf_array.mean():.4f}")
-    logger.info(f"Median: {np.median(conf_array):.4f}")
-    logger.info(f"Std: {conf_array.std():.4f}")
-    logger.info(f"Min: {conf_array.min():.4f}, Max: {conf_array.max():.4f}")
+    logger.info("Mean: %.4f", stats.conf_array.mean())
+    logger.info("Median: %.4f", np.median(stats.conf_array))
+    logger.info("Std: %.4f", stats.conf_array.std())
+    logger.info("Min: %.4f, Max: %.4f", stats.conf_array.min(), stats.conf_array.max())
     logger.info(
-        f"Percentiles - p50: {percentiles['p50']:.4f}, p75: {percentiles['p75']:.4f}, "
-        f"p90: {percentiles['p90']:.4f}, p95: {percentiles['p95']:.4f}, p99: {percentiles['p99']:.4f}"
+        "Percentiles - p50: %.4f, p75: %.4f, p90: %.4f, p95: %.4f, p99: %.4f",
+        stats.percentiles["p50"],
+        stats.percentiles["p75"],
+        stats.percentiles["p90"],
+        stats.percentiles["p95"],
+        stats.percentiles["p99"],
     )
     logger.info("")
     logger.info("Margin Statistics (top1 - top2)")
     logger.info(
-        f"Mean: {margin_array.mean():.4f}, Median: {np.median(margin_array):.4f}, "
-        f"Max: {margin_array.max():.4f}, Min: {margin_array.min():.4f}"
+        "Mean: %.4f, Median: %.4f, Max: %.4f, Min: %.4f",
+        stats.margin_array.mean(),
+        np.median(stats.margin_array),
+        stats.margin_array.max(),
+        stats.margin_array.min(),
     )
     logger.info("")
     logger.info("Selection Method & Estimates")
-    logger.info(f"Method: {selection_method}")
-    logger.info(f"Effective threshold: {effective_threshold}")
+    logger.info("Method: %s", stats.selection_method)
+    logger.info("Effective threshold: %s", stats.effective_threshold)
     logger.info(
-        f"Selected: {len(pseudo_labeled)}/{len(candidate_items)} ({len(pseudo_labeled) / len(candidate_items) * 100:.1f}%)"
+        "Selected: %d/%d (%.1f%%)",
+        len(stats.pseudo_labeled),
+        len(stats.candidate_items),
+        len(stats.pseudo_labeled) / len(stats.candidate_items) * 100,
     )
 
-    # Estimate for different thresholds
     logger.info("")
     logger.info("Estimated counts for different thresholds:")
     for thresh in [0.3, 0.5, 0.7, 0.85, 0.9]:
-        count = np.sum(conf_array >= thresh)
+        count = np.sum(stats.conf_array >= thresh)
         logger.info(
-            f"  threshold >= {thresh}: {count} items ({count / len(conf_array) * 100:.1f}%)"
+            "  threshold >= %s: %d items (%.1f%%)",
+            thresh,
+            count,
+            count / len(stats.conf_array) * 100,
         )
 
-    # Estimate for different top-percent
     logger.info("")
     logger.info("Estimated counts for different top-percent:")
     for pct in [1, 5, 10, 20]:
-        n_est = max(1, int(len(candidate_items) * pct / 100.0))
-        thresh_est = np.percentile(conf_array, 100 - pct)
-        logger.info(f"  top {pct}%: ~{n_est} items (threshold ~{thresh_est:.4f})")
+        n_est = max(1, int(len(stats.candidate_items) * pct / 100.0))
+        thresh_est = np.percentile(stats.conf_array, 100 - pct)
+        logger.info("  top %d%%: ~%d items (threshold ~%.4f)", pct, n_est, thresh_est)
 
-    # Estimate for different margins
     logger.info("")
     logger.info("Estimated counts for different margins:")
     for margin_val in [0.05, 0.1, 0.15, 0.2]:
-        count = np.sum(margin_array >= margin_val)
+        count = np.sum(stats.margin_array >= margin_val)
         logger.info(
-            f"  margin >= {margin_val}: {count} items ({count / len(margin_array) * 100:.1f}%)"
+            "  margin >= %s: %d items (%.1f%%)",
+            margin_val,
+            count,
+            count / len(stats.margin_array) * 100,
         )
 
     logger.info("=" * 80)
 
-    # Class distribution
-    if pseudo_labeled:
-        class_dist = {}
-        for item in pseudo_labeled:
+    if stats.pseudo_labeled:
+        class_dist: dict[str, int] = {}
+        for item in stats.pseudo_labeled:
             label = item["label"]
             class_dist[label] = class_dist.get(label, 0) + 1
         logger.info("Class distribution (top 10):")
         sorted_classes = sorted(class_dist.items(), key=lambda x: x[1], reverse=True)
         for label, count in sorted_classes[:10]:
-            logger.info(f"  {label}: {count} items")
+            logger.info("  %s: %d items", label, count)
 
-    # If stats_only, exit here
+
+def _save_pseudo_labels(output_path: Path, pseudo_labeled: list[dict], raw_count: int) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", encoding="utf-8") as f:
+        for item in pseudo_labeled:
+            f.write(json.dumps(item, ensure_ascii=False) + "\n")
+
+    logger.info("Generated %d pseudo-labels", len(pseudo_labeled))
+    logger.info("Ratio: %.1f%%", (len(pseudo_labeled) / raw_count) * 100)
+    logger.info("Saved to: %s", output_path)
+
+
+def main() -> None:
+    args = _parse_args()
+    device = _resolve_device()
+
+    # 1. Load Taxonomy
+    taxonomy_path = Path("recap_subworker/learning_machine/taxonomy/genres.yaml")
+    genres = load_genres(taxonomy_path)
+    id2label = dict(enumerate(genres))
+    num_labels = len(genres)
+
+    # 2. Load Model
+    model = _load_teacher_model(args.model_dir, num_labels, device)
+    if model is None:
+        return
+
+    # 3. Load Data
+    raw_items = _load_and_filter_articles(args)
+    if not raw_items:
+        logger.warning("No articles found after language filtering.")
+        return
+
+    # 4. Inference
+    candidate_items, confidence_stats, margin_stats = _run_inference(
+        model, raw_items, id2label, args, device
+    )
+    if not confidence_stats:
+        logger.error("No confidence statistics collected!")
+        return
+
+    conf_array = np.array(confidence_stats)
+    margin_array = np.array(margin_stats)
+    percentiles = {
+        "p50": float(np.percentile(conf_array, 50)),
+        "p75": float(np.percentile(conf_array, 75)),
+        "p90": float(np.percentile(conf_array, 90)),
+        "p95": float(np.percentile(conf_array, 95)),
+        "p99": float(np.percentile(conf_array, 99)),
+    }
+
+    selected_indices, selection_method, effective_threshold = _select_candidates(
+        candidate_items, conf_array, margin_array, args
+    )
+    pseudo_labeled = _build_pseudo_labeled_items(candidate_items, selected_indices, args.language)
+
+    _log_pseudo_label_statistics(
+        _PseudoLabelStats(
+            conf_array=conf_array,
+            margin_array=margin_array,
+            percentiles=percentiles,
+            selection_method=selection_method,
+            effective_threshold=effective_threshold,
+            pseudo_labeled=pseudo_labeled,
+            candidate_items=candidate_items,
+        )
+    )
+
     if args.stats_only:
         logger.info("Stats-only mode: exiting without saving pseudo-labels")
         return
 
     # 5. Save
-    output_path = Path(args.output_path)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    with open(output_path, "w", encoding="utf-8") as f:
-        for item in pseudo_labeled:
-            f.write(json.dumps(item, ensure_ascii=False) + "\n")
-
-    logger.info(f"Generated {len(pseudo_labeled)} pseudo-labels")
-    logger.info(f"Ratio: {len(pseudo_labeled) / len(raw_items):.1%}")
-    logger.info(f"Saved to: {output_path}")
+    _save_pseudo_labels(Path(args.output_path), pseudo_labeled, len(raw_items))
 
 
 if __name__ == "__main__":

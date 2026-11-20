@@ -1,3 +1,4 @@
+import time
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -7,9 +8,16 @@ from recap_subworker.domain.models import HDBSCANSettings
 from recap_subworker.infra.config import Settings
 from recap_subworker.services.clusterer import Clusterer, ClusterResult
 
+TARGET_MCS = 10
+BEST_SILHOUETTE = 0.9
+BEST_DBCV = 0.5
+MIN_FALLBACK_CLUSTERS = 2
+MAX_CLUSTERS_SMALL = 3
+MAX_ESTIMATED_CLUSTERS = 50
+
 
 @pytest.fixture
-def mock_settings():
+def mock_settings() -> MagicMock:
     settings = MagicMock(spec=Settings)
     settings.hdbscan_min_cluster_size = 5
     settings.hdbscan_min_samples = 2
@@ -34,11 +42,11 @@ def mock_settings():
 
 
 @pytest.fixture
-def clusterer(mock_settings):
+def clusterer(mock_settings: MagicMock) -> Clusterer:
     return Clusterer(mock_settings)
 
 
-def test_optimize_clustering_defaults(clusterer):
+def test_optimize_clustering_defaults(clusterer: Clusterer) -> None:
     # Mock cluster method to avoid actual heavy computation and just return a dummy result with score
     with patch.object(clusterer, "cluster") as mock_cluster:
         # Side effect: return different scores for different calls
@@ -47,7 +55,9 @@ def test_optimize_clustering_defaults(clusterer):
 
         # Mock result factory
         # Note: optimize_clustering now uses composite score (0.6*silhouette + 0.4*dbcv)
-        def create_result(silhouette_score_val, dbcv_score_val, mcs):
+        def create_result(
+            silhouette_score_val: float, dbcv_score_val: float, mcs: int
+        ) -> ClusterResult:
             return ClusterResult(
                 labels=np.array([]),
                 probabilities=np.array([]),
@@ -57,12 +67,6 @@ def test_optimize_clustering_defaults(clusterer):
                 silhouette_score=silhouette_score_val,
             )
 
-        # Arrange mock to return results.
-        # It's hard to predict exact order so we just make it return a result with the score
-        # based on arguments or just fixed list.
-        # optimize loop: umap_n (3) * umap_comp (1) * mcs (6) * ms (4) ... lots of calls.
-        # Let's just check if it returns the one with best score.
-
         mock_cluster.return_value = create_result(0.5, 0.3, 5)
 
         embeddings = np.random.rand(20, 384)  # 20 points
@@ -71,24 +75,27 @@ def test_optimize_clustering_defaults(clusterer):
         # Composite = 0.6*sil + 0.4*dbcv
         # For mcs=10: 0.6*0.9 + 0.4*0.5 = 0.54 + 0.20 = 0.74
         # For others: 0.6*0.1 + 0.4*0.2 = 0.06 + 0.08 = 0.14
-        def side_effect(*args, **kwargs):
-            mcs = kwargs.get("min_cluster_size")
-            if mcs == 10:
-                return create_result(0.9, 0.5, 10)  # composite = 0.74
-            return create_result(0.1, 0.2, mcs)  # composite = 0.14
+        def side_effect(
+            *args: object,
+            **kwargs: int,
+        ) -> ClusterResult:
+            mcs = kwargs.get("min_cluster_size", 0)
+            if mcs == TARGET_MCS:
+                return create_result(BEST_SILHOUETTE, BEST_DBCV, TARGET_MCS)
+            return create_result(0.1, 0.2, mcs)
 
         mock_cluster.side_effect = side_effect
 
         result = clusterer.optimize_clustering(embeddings)
 
         # Should select the one with highest composite score
-        assert result.silhouette_score == 0.9
-        assert result.dbcv_score == 0.5
-        assert result.params.min_cluster_size == 10
+        assert result.silhouette_score == BEST_SILHOUETTE
+        assert result.dbcv_score == BEST_DBCV
+        assert result.params.min_cluster_size == TARGET_MCS
         assert mock_cluster.call_count > 1
 
 
-def test_optimize_clustering_small_data(clusterer):
+def test_optimize_clustering_small_data(clusterer: Clusterer) -> None:
     embeddings = np.random.rand(5, 384)
     # With 5 points, mcs range [3, 4, 6, 8, 10, 12] should only try 3, 4.
 
@@ -106,22 +113,22 @@ def test_optimize_clustering_small_data(clusterer):
 
         # Verify calls arguments
         for call in mock_cluster.call_args_list:
-            args, kwargs = call
-            assert kwargs["min_cluster_size"] < 5
+            _, kwargs = call
+            assert kwargs["min_cluster_size"] < len(embeddings)
 
 
-def test_subcluster_other_uses_leaf(clusterer):
+def test_subcluster_other_uses_leaf(clusterer: Clusterer) -> None:
     embeddings = np.random.rand(20, 384)
     with patch.object(clusterer, "optimize_clustering") as mock_optimize:
         clusterer.subcluster_other(embeddings)
 
-        args, kwargs = mock_optimize.call_args
+        _, kwargs = mock_optimize.call_args
         assert kwargs["hdbscan_cluster_selection_method"] == "leaf"
         assert kwargs["hdbscan_allow_single_cluster"] is True
         assert kwargs["min_cluster_size_range"] == [3, 4, 5]
 
 
-def test_calculate_dbcv_noise_only(clusterer):
+def test_calculate_dbcv_noise_only(clusterer: Clusterer) -> None:
     """Test DBCV calculation with only noise labels (-1)."""
     embeddings = np.random.rand(10, 5)
     labels = np.full(10, -1, dtype=int)
@@ -129,7 +136,7 @@ def test_calculate_dbcv_noise_only(clusterer):
     assert dbcv is None
 
 
-def test_calculate_dbcv_insufficient_points(clusterer):
+def test_calculate_dbcv_insufficient_points(clusterer: Clusterer) -> None:
     """Test DBCV calculation with less than 2 non-noise points."""
     embeddings = np.random.rand(10, 5)
     labels = np.array([-1, -1, -1, -1, -1, -1, -1, -1, -1, 0], dtype=int)
@@ -137,7 +144,7 @@ def test_calculate_dbcv_insufficient_points(clusterer):
     assert dbcv is None
 
 
-def test_calculate_dbcv_single_cluster(clusterer):
+def test_calculate_dbcv_single_cluster(clusterer: Clusterer) -> None:
     """Test DBCV calculation with only one cluster (all same label)."""
     embeddings = np.random.rand(10, 5)
     labels = np.full(10, 0, dtype=int)
@@ -145,7 +152,7 @@ def test_calculate_dbcv_single_cluster(clusterer):
     assert dbcv is None
 
 
-def test_calculate_dbcv_valid_clusters(clusterer):
+def test_calculate_dbcv_valid_clusters(clusterer: Clusterer) -> None:
     """Test DBCV calculation with valid multiple clusters (smoke test)."""
     # Create 2 distinct clusters
     c1 = np.random.normal(loc=[0, 0, 0, 0, 0], scale=0.1, size=(10, 5))
@@ -160,7 +167,7 @@ def test_calculate_dbcv_valid_clusters(clusterer):
     assert isinstance(dbcv, (int, float))
 
 
-def test_calculate_dbcv_with_noise(clusterer):
+def test_calculate_dbcv_with_noise(clusterer: Clusterer) -> None:
     """Test DBCV calculation with valid clusters and some noise points."""
     # Create 2 distinct clusters + noise
     c1 = np.random.normal(loc=[0, 0, 0, 0, 0], scale=0.1, size=(10, 5))
@@ -175,8 +182,9 @@ def test_calculate_dbcv_with_noise(clusterer):
     assert isinstance(dbcv, (int, float))
 
 
-def test_optimize_clustering_uses_optuna_when_enabled(clusterer):
+def test_optimize_clustering_uses_optuna_when_enabled(clusterer: Clusterer) -> None:
     """Test that Optuna is used when use_bayes_opt is True."""
+    expected_seed = 42
     clusterer.settings.use_bayes_opt = True
     clusterer.settings.bayes_opt_trials = 10
 
@@ -187,35 +195,33 @@ def test_optimize_clustering_uses_optuna_when_enabled(clusterer):
     mock_study.best_params = {"min_cluster_size": 8, "min_samples": 2}
     mock_study.optimize = MagicMock()
     mock_optuna.create_study.return_value = mock_study
-    mock_samplers = MagicMock()
     mock_optuna.samplers.TPESampler = MagicMock()
-    with patch.dict(
-        "sys.modules", {"optuna": mock_optuna, "optuna.samplers": mock_optuna.samplers}
+    with (
+        patch.dict("sys.modules", {"optuna": mock_optuna, "optuna.samplers": mock_optuna.samplers}),
+        patch.object(clusterer, "cluster") as mock_cluster,
     ):
-        # Mock cluster to return a result
-        with patch.object(clusterer, "cluster") as mock_cluster:
-            mock_cluster.return_value = ClusterResult(
-                labels=np.array([0] * 10 + [1] * 10),
-                probabilities=np.ones(20),
-                used_umap=False,
-                params=HDBSCANSettings(min_cluster_size=8, min_samples=2),
-                dbcv_score=0.4,
-                silhouette_score=0.6,
-            )
+        mock_cluster.return_value = ClusterResult(
+            labels=np.array([0] * 10 + [1] * 10),
+            probabilities=np.ones(20),
+            used_umap=False,
+            params=HDBSCANSettings(min_cluster_size=8, min_samples=2),
+            dbcv_score=0.4,
+            silhouette_score=0.6,
+        )
 
-            result = clusterer.optimize_clustering(embeddings)
+        clusterer.optimize_clustering(embeddings)
 
-            # Verify Optuna was called
-            assert mock_optuna.create_study.called
-            assert mock_study.optimize.called
-            # Verify TPESampler with seed was used (imported via from optuna.samplers import TPESampler)
-            assert mock_optuna.samplers.TPESampler.called
-            # Check that seed=42 was passed
-            call_args = mock_optuna.samplers.TPESampler.call_args
-            assert call_args[1].get("seed") == 42 or call_args[0][0] == 42
+        # Verify Optuna was called
+        assert mock_optuna.create_study.called
+        assert mock_study.optimize.called
+        # Verify TPESampler with seed was used (imported via from optuna.samplers import TPESampler)
+        assert mock_optuna.samplers.TPESampler.called
+        # Check that seed=42 was passed
+        call_args = mock_optuna.samplers.TPESampler.call_args
+        assert call_args[1].get("seed") == expected_seed or call_args[0][0] == expected_seed
 
 
-def test_noise_reclustering_disabled(clusterer):
+def test_noise_reclustering_disabled(clusterer: Clusterer) -> None:
     """Test that noise reclustering is skipped when disabled."""
     clusterer.settings.noise_recluster_enabled = False
     clusterer.settings.noise_recluster_min_points = 30
@@ -225,16 +231,18 @@ def test_noise_reclustering_disabled(clusterer):
     embeddings = rng.random((50, 5))
 
     # Mock cluster to return labels with noise
-    with patch.object(clusterer, "_calculate_dbcv", return_value=0.3):
-        with patch.object(clusterer, "_calculate_silhouette", return_value=0.5):
-            result = clusterer.cluster(embeddings, min_cluster_size=5, min_samples=2)
-            # When noise reclustering is disabled, result should be returned as-is
-            # (noise points from HDBSCAN are preserved, not re-assigned)
-            assert result.labels is not None
-            assert len(result.labels) == 50
+    with (
+        patch.object(clusterer, "_calculate_dbcv", return_value=0.3),
+        patch.object(clusterer, "_calculate_silhouette", return_value=0.5),
+    ):
+        result = clusterer.cluster(embeddings, min_cluster_size=5, min_samples=2)
+        # When noise reclustering is disabled, result should be returned as-is
+        # (noise points from HDBSCAN are preserved, not re-assigned)
+        assert result.labels is not None
+        assert len(result.labels) == len(embeddings)
 
 
-def test_noise_reclustering_insufficient_points(clusterer):
+def test_noise_reclustering_insufficient_points(clusterer: Clusterer) -> None:
     """Test that noise reclustering is skipped when noise points < min_points."""
     clusterer.settings.noise_recluster_enabled = True
     clusterer.settings.noise_recluster_min_points = 30
@@ -245,22 +253,22 @@ def test_noise_reclustering_insufficient_points(clusterer):
     embeddings = rng.random((50, 5))
 
     # Mock cluster to return labels with noise
-    with patch.object(clusterer, "_calculate_dbcv", return_value=0.3):
-        with patch.object(clusterer, "_calculate_silhouette", return_value=0.5):
-            result = clusterer.cluster(embeddings, min_cluster_size=5, min_samples=2)
-            # Result should be valid regardless of exact noise count
-            assert result.labels is not None
-            assert len(result.labels) == 50
+    with (
+        patch.object(clusterer, "_calculate_dbcv", return_value=0.3),
+        patch.object(clusterer, "_calculate_silhouette", return_value=0.5),
+    ):
+        result = clusterer.cluster(embeddings, min_cluster_size=5, min_samples=2)
+        # Result should be valid regardless of exact noise count
+        assert result.labels is not None
+        assert len(result.labels) == len(embeddings)
 
 
-def test_noise_reclustering_creates_new_clusters(clusterer):
+def test_noise_reclustering_creates_new_clusters(clusterer: Clusterer) -> None:
     """Test that noise reclustering creates new cluster IDs."""
     clusterer.settings.noise_recluster_enabled = True
     clusterer.settings.noise_recluster_min_points = 30
     clusterer.settings.noise_recluster_max_clusters = 8
 
-    # Create embeddings with many noise points
-    embeddings = np.random.rand(50, 5)
     # Create distinct noise clusters for KMeans to separate
     noise1 = np.random.normal(loc=[0, 0, 0, 0, 0], scale=0.1, size=(20, 5))
     noise2 = np.random.normal(loc=[5, 5, 5, 5, 5], scale=0.1, size=(20, 5))
@@ -275,19 +283,21 @@ def test_noise_reclustering_creates_new_clusters(clusterer):
         mock_clusterer.probabilities_ = np.ones(50)
         mock_hdbscan.return_value = mock_clusterer
 
-        with patch.object(clusterer, "_calculate_dbcv", return_value=0.3):
-            with patch.object(clusterer, "_calculate_silhouette", return_value=0.5):
-                result = clusterer.cluster(embeddings, min_cluster_size=5, min_samples=2)
-                # Some noise points should be reassigned to new cluster IDs
-                # (new IDs should be > max(original labels))
-                max_original = labels.max()
-                new_labels = result.labels
-                # At least some noise points should have new IDs
-                noise_mask = labels == -1
-                reclustered = new_labels[noise_mask]
-                # New IDs should be > max_original (0 in this case)
-                if len(reclustered) > 0:
-                    assert (reclustered > max_original).any() or (reclustered >= 0).all()
+        with (
+            patch.object(clusterer, "_calculate_dbcv", return_value=0.3),
+            patch.object(clusterer, "_calculate_silhouette", return_value=0.5),
+        ):
+            result = clusterer.cluster(embeddings, min_cluster_size=5, min_samples=2)
+            # Some noise points should be reassigned to new cluster IDs
+            # (new IDs should be > max(original labels))
+            max_original = labels.max()
+            new_labels = result.labels
+            # At least some noise points should have new IDs
+            noise_mask = labels == -1
+            reclustered = new_labels[noise_mask]
+            # New IDs should be > max_original (0 in this case)
+            if len(reclustered) > 0:
+                assert (reclustered > max_original).any() or (reclustered >= 0).all()
 
 
 # ============================================================================
@@ -298,7 +308,7 @@ def test_noise_reclustering_creates_new_clusters(clusterer):
 class TestMiniBatchKMeansFallback:
     """Tests for the HDBSCAN timeout and MiniBatchKMeans fallback functionality."""
 
-    def test_fallback_minibatch_kmeans_basic(self, clusterer):
+    def test_fallback_minibatch_kmeans_basic(self, clusterer: Clusterer) -> None:
         """Test that _fallback_minibatch_kmeans produces valid clusters."""
         embeddings = np.random.rand(100, 10)
 
@@ -312,18 +322,20 @@ class TestMiniBatchKMeansFallback:
         # Probabilities should be 1.0 (hard clustering)
         assert (probs == 1.0).all()
         # Should have multiple clusters
-        assert len(set(labels)) >= 2
+        assert len(set(labels)) >= MIN_FALLBACK_CLUSTERS
 
-    def test_fallback_minibatch_kmeans_small_dataset(self, clusterer):
+    def test_fallback_minibatch_kmeans_small_dataset(self, clusterer: Clusterer) -> None:
         """Test fallback with small dataset."""
         embeddings = np.random.rand(10, 5)
 
-        labels, probs = clusterer._fallback_minibatch_kmeans(embeddings, n_clusters=3)
+        labels, _probs = clusterer._fallback_minibatch_kmeans(
+            embeddings, n_clusters=MAX_CLUSTERS_SMALL
+        )
 
         assert labels.shape == (10,)
-        assert len(set(labels)) <= 3
+        assert len(set(labels)) <= MAX_CLUSTERS_SMALL
 
-    def test_fallback_minibatch_kmeans_auto_clusters(self, clusterer):
+    def test_fallback_minibatch_kmeans_auto_clusters(self, clusterer: Clusterer) -> None:
         """Test that cluster count is auto-estimated when not provided."""
         embeddings = np.random.rand(200, 10)
 
@@ -331,25 +343,25 @@ class TestMiniBatchKMeansFallback:
 
         # sqrt(200/2) ≈ 10, capped at 50
         n_clusters = len(set(labels))
-        assert 2 <= n_clusters <= 50
+        assert MIN_FALLBACK_CLUSTERS <= n_clusters <= MAX_ESTIMATED_CLUSTERS
 
-    def test_estimate_optimal_clusters(self, clusterer):
+    def test_estimate_optimal_clusters(self, clusterer: Clusterer) -> None:
         """Test cluster estimation heuristics."""
         # Small dataset
         assert clusterer._estimate_optimal_clusters(50) == max(2, 50 // 10)
 
         # Medium dataset
         est = clusterer._estimate_optimal_clusters(200)
-        assert 2 <= est <= 50
+        assert MIN_FALLBACK_CLUSTERS <= est <= MAX_ESTIMATED_CLUSTERS
 
         # Large dataset
         est = clusterer._estimate_optimal_clusters(5000)
-        assert 2 <= est <= 50
+        assert MIN_FALLBACK_CLUSTERS <= est <= MAX_ESTIMATED_CLUSTERS
 
-    def test_run_with_timeout_success(self, clusterer):
+    def test_run_with_timeout_success(self, clusterer: Clusterer) -> None:
         """Test that _run_with_timeout returns result when function completes."""
 
-        def quick_func():
+        def quick_func() -> tuple[np.ndarray, np.ndarray]:
             return np.array([0, 1, 0]), np.array([1.0, 1.0, 1.0])
 
         result = clusterer._run_with_timeout(quick_func, timeout_seconds=5)
@@ -359,11 +371,10 @@ class TestMiniBatchKMeansFallback:
         np.testing.assert_array_equal(labels, [0, 1, 0])
         np.testing.assert_array_equal(probs, [1.0, 1.0, 1.0])
 
-    def test_run_with_timeout_timeout(self, clusterer):
+    def test_run_with_timeout_timeout(self, clusterer: Clusterer) -> None:
         """Test that _run_with_timeout returns None on timeout."""
-        import time
 
-        def slow_func():
+        def slow_func() -> tuple[np.ndarray, np.ndarray]:
             time.sleep(10)  # Much longer than timeout
             return np.array([0]), np.array([1.0])
 
@@ -372,17 +383,15 @@ class TestMiniBatchKMeansFallback:
 
         assert result is None
 
-    def test_run_with_timeout_does_not_block_caller_on_timeout(self, clusterer):
+    def test_run_with_timeout_does_not_block_caller_on_timeout(self, clusterer: Clusterer) -> None:
         """Regression: `with ThreadPoolExecutor(...) as executor:` calls
         `executor.shutdown(wait=True)` on exit regardless of what happened
         inside, so on timeout the caller used to block until the runaway
         thread actually finished — defeating the point of the timeout.
         `_run_with_timeout` must return promptly instead."""
-        import time
-
         runaway_seconds = 5
 
-        def runaway_func():
+        def runaway_func() -> tuple[np.ndarray, np.ndarray]:
             time.sleep(runaway_seconds)
             return np.array([0]), np.array([1.0])
 
@@ -397,7 +406,7 @@ class TestMiniBatchKMeansFallback:
             "close to the 1s timeout instead of waiting for the thread"
         )
 
-    def test_cluster_uses_fallback_on_timeout(self, clusterer):
+    def test_cluster_uses_fallback_on_timeout(self, clusterer: Clusterer) -> None:
         """Test that cluster() uses MiniBatchKMeans when HDBSCAN times out."""
         # Set very short timeout
         clusterer.settings.hdbscan_timeout_seconds = 1
@@ -406,18 +415,20 @@ class TestMiniBatchKMeansFallback:
         embeddings = np.random.rand(50, 10)
 
         # Mock _run_with_timeout to simulate timeout
-        with patch.object(clusterer, "_run_with_timeout", return_value=None):
-            with patch.object(clusterer, "_fallback_minibatch_kmeans") as mock_fallback:
-                mock_fallback.return_value = (np.array([0] * 25 + [1] * 25), np.ones(50))
+        with (
+            patch.object(clusterer, "_run_with_timeout", return_value=None),
+            patch.object(clusterer, "_fallback_minibatch_kmeans") as mock_fallback,
+        ):
+            mock_fallback.return_value = (np.array([0] * 25 + [1] * 25), np.ones(50))
 
-                result = clusterer.cluster(embeddings, min_cluster_size=5, min_samples=2)
+            result = clusterer.cluster(embeddings, min_cluster_size=5, min_samples=2)
 
-                # Verify fallback was called
-                mock_fallback.assert_called_once()
-                # Verify used_fallback is True
-                assert result.used_fallback is True
+            # Verify fallback was called
+            mock_fallback.assert_called_once()
+            # Verify used_fallback is True
+            assert result.used_fallback is True
 
-    def test_cluster_no_fallback_when_hdbscan_succeeds(self, clusterer):
+    def test_cluster_no_fallback_when_hdbscan_succeeds(self, clusterer: Clusterer) -> None:
         """Test that fallback is not used when HDBSCAN completes in time."""
         clusterer.settings.hdbscan_timeout_seconds = 300
         clusterer.settings.noise_recluster_enabled = False
@@ -436,7 +447,7 @@ class TestMiniBatchKMeansFallback:
             # Verify used_fallback is False
             assert result.used_fallback is False
 
-    def test_cluster_result_has_used_fallback_field(self, clusterer):
+    def test_cluster_result_has_used_fallback_field(self, clusterer: Clusterer) -> None:
         """Test that ClusterResult includes used_fallback field."""
         result = ClusterResult(
             labels=np.array([0, 1]),

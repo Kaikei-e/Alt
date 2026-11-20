@@ -12,10 +12,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from recap_subworker.services.learning_client import LearningClient
+import pytest
+
+from recap_subworker.services.learning_client import LearningClient, validate_weights_path
 
 
-def test_create_attaches_bearer_token_from_admin_token_file(tmp_path: Path, monkeypatch) -> None:
+def test_create_attaches_bearer_token_from_admin_token_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     token_path = tmp_path / "recap_admin_token"
     token_path.write_text("test-recap-worker-admin-token-42\n")
     monkeypatch.delenv("ADMIN_AUTH", raising=False)
@@ -28,7 +32,9 @@ def test_create_attaches_bearer_token_from_admin_token_file(tmp_path: Path, monk
     assert client._client.headers.get("authorization") == "Bearer test-recap-worker-admin-token-42"
 
 
-def test_create_omits_bearer_token_when_admin_auth_disabled(monkeypatch) -> None:
+def test_create_omits_bearer_token_when_admin_auth_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("ADMIN_AUTH", "disabled")
     monkeypatch.delenv("ADMIN_TOKEN_FILE", raising=False)
 
@@ -40,9 +46,6 @@ def test_create_omits_bearer_token_when_admin_auth_disabled(monkeypatch) -> None
 
 
 def test_validate_weights_path_rejects_traversal(tmp_path: Path) -> None:
-    import pytest
-    from recap_subworker.services.learning_client import validate_weights_path
-
     with pytest.raises(ValueError, match="not within allowed directories"):
         validate_weights_path("../../../etc/passwd", base_dirs=[tmp_path])
 
@@ -51,8 +54,6 @@ def test_validate_weights_path_rejects_traversal(tmp_path: Path) -> None:
 
 
 def test_validate_weights_path_accepts_contained_path(tmp_path: Path) -> None:
-    from recap_subworker.services.learning_client import validate_weights_path
-
     resolved = validate_weights_path("weights/model.joblib", base_dirs=[tmp_path])
     assert resolved == (tmp_path / "weights" / "model.joblib").resolve()
     assert validate_weights_path(None, base_dirs=[tmp_path]) is None

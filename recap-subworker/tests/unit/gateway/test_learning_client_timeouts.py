@@ -8,10 +8,18 @@ cancelled deterministically.
 
 from __future__ import annotations
 
+import asyncio
+from typing import Never
+
 import httpx
 import pytest
 
 from recap_subworker.services.learning_client import LearningClient
+
+
+class _TransportNotCancelledError(AssertionError):
+    def __init__(self) -> None:
+        super().__init__("transport should have been cancelled")
 
 
 def test_create_uses_per_stage_httpx_timeout() -> None:
@@ -21,26 +29,30 @@ def test_create_uses_per_stage_httpx_timeout() -> None:
     client = LearningClient.create("http://recap-worker/learning", timeout_seconds=30.0)
     timeout = client._client.timeout
     assert isinstance(timeout, httpx.Timeout)
-    assert timeout.connect is not None and timeout.read is not None
+    assert timeout.connect is not None
+    assert timeout.read is not None
     assert timeout.connect < timeout.read, (
         "connect timeout must be strictly smaller than read timeout to "
         "surface unreachable peers quickly."
     )
-    assert timeout.write is not None and timeout.write > 0
-    assert timeout.pool is not None and timeout.pool > 0
+    assert timeout.write is not None
+    assert timeout.write > 0
+    assert timeout.pool is not None
+    assert timeout.pool > 0
 
 
 @pytest.mark.asyncio
-async def test_send_learning_payload_applies_asyncio_timeout(monkeypatch):
+async def test_send_learning_payload_applies_asyncio_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Invoke the client against a fake transport that never responds;
     the call must raise within the overall asyncio budget instead of
     hanging indefinitely."""
-    import asyncio
 
     class _NeverRespondTransport(httpx.AsyncBaseTransport):
-        async def handle_async_request(self, request):
+        async def handle_async_request(self, request: httpx.Request) -> Never:
             await asyncio.sleep(60)
-            raise AssertionError("transport should have been cancelled")
+            raise _TransportNotCancelledError
 
     client = LearningClient.create(
         "http://recap-worker/learning",

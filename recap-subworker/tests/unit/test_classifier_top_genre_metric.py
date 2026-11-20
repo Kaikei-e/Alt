@@ -16,11 +16,14 @@ from __future__ import annotations
 
 import gc
 import importlib
+from types import ModuleType
 
 import pytest
 
+from recap_subworker.services.classifier import GenreClassifierService
 
-def _fresh_telemetry():
+
+def _fresh_telemetry() -> ModuleType:
     """Return a freshly imported telemetry module so we own the registry."""
     # prometheus_client uses a module-level registry; reload to avoid label
     # bleed between tests within the same process.
@@ -53,8 +56,6 @@ def test_predict_batch_increments_top_genre_counter() -> None:
 
     pre_a = _value("ai_data")
     pre_b = _value("politics_government")
-
-    from recap_subworker.services.classifier import GenreClassifierService
 
     # Build a stub GenreClassifierService instance via __new__ to avoid the
     # heavy embedder/joblib load in unit context. Then exercise the post-
@@ -91,8 +92,6 @@ def test_predict_batch_skips_emit_for_missing_top_genre() -> None:
     """Defensive: missing or empty ``top_genre`` must not raise / leak labels."""
     telemetry = _fresh_telemetry()
     counter = telemetry.CLASSIFIER_TOP_GENRE_TOTAL
-
-    from recap_subworker.services.classifier import GenreClassifierService
 
     service = GenreClassifierService.__new__(GenreClassifierService)
     pre_unknown = counter.labels(genre="unknown")._value.get()  # type: ignore[attr-defined]

@@ -12,6 +12,7 @@ from dataclasses import dataclass
 
 import numpy as np
 import structlog
+from scipy.cluster.hierarchy import fcluster, linkage
 
 from ..domain import selectors, topics
 from ..domain.models import (
@@ -21,6 +22,7 @@ from ..domain.models import (
     CorpusMetadata,
     EvidenceBudget,
     EvidenceCluster,
+    EvidenceConstraints,
     EvidenceRequest,
     EvidenceResponse,
     RepresentativeSentence,
@@ -39,11 +41,23 @@ from ..infra.telemetry import (
     REQUEST_PROCESS_SECONDS,
 )
 from ..port.embedder import EmbedderPort
-from .clusterer import Clusterer
+from .clusterer import Clusterer, ClusterResult
 
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?。！？])\s+")
 _LOGGER = structlog.get_logger(__name__)
 _MIN_DOCUMENTS_PER_GENRE = 3
+_SMALL_CORPUS_SENTENCE_THRESHOLD = 10
+_MEDIUM_CORPUS_SENTENCE_THRESHOLD = 50
+_MIN_CLUSTERS_FOR_MERGE = 2
+_MIN_SENTENCE_CHARS = 2
+_MIN_VECTORS_FOR_PAIRWISE_SIM = 2
+_MIN_COVERAGE_FOR_CONFIDENCE_FILTER = 0.5
+_LOW_CONFIDENCE_THRESHOLD = 0.3
+_LOW_CLASSIFIER_CONFIDENCE = 0.35
+_HIGH_CLASSIFIER_CONFIDENCE = 0.75
+_HIGH_CLASSIFIER_COVERAGE = 0.6
+_MIN_REPRESENTATIVE_CHARS = 20
+_MAX_CODE_SYMBOL_RATIO = 0.3
 
 # URL and email regex patterns
 _URL_PATTERN = re.compile(
@@ -92,7 +106,9 @@ def normalize_text(text: str, enable_sudachi: bool = False) -> str:
     # Step 5: Optional Sudachi preprocessing (for dedup/internal representation only)
     if enable_sudachi:
         try:
-            from .classifier import SudachiTokenizer
+            from .classifier import (  # noqa: PLC0415 - optional Sudachi tokenizer import deferred unless enable_sudachi=True
+                SudachiTokenizer,
+            )
 
             tokenizer = SudachiTokenizer(mode="C")
             # Tokenize and rejoin with spaces (surface form normalization)
@@ -100,7 +116,7 @@ def normalize_text(text: str, enable_sudachi: bool = False) -> str:
             normalized = " ".join(tokens)
         except ImportError:
             _LOGGER.warning("Sudachi not available, skipping morphological normalization")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - optional Sudachi normalization failure falls back to un-tokenized text
             _LOGGER.warning("Sudachi normalization failed", error=str(e))
 
     return normalized.strip()
@@ -132,17 +148,77 @@ class EvidencePipeline:
         self.clusterer = Clusterer(settings)
         self.process_pool = process_pool
 
-    def run(self, request: EvidenceRequest) -> EvidenceResponse:
-        start_time = time.perf_counter()
+    def _bind_request_logger(self, request: EvidenceRequest) -> structlog.stdlib.BoundLogger:
         logger = _LOGGER.bind(job_id=request.job_id, genre=request.genre)
         if request.telemetry:
             if request.telemetry.request_id:
                 logger = logger.bind(request_id=request.telemetry.request_id)
             if request.telemetry.prompt_version:
                 logger = logger.bind(prompt_version=request.telemetry.prompt_version)
+        return logger
+
+    def _select_clustering_ranges(
+        self, count: int
+    ) -> tuple[list[int], list[int | None], list[int | None] | None]:
+        """Select grid search ranges for HDBSCAN and UMAP based on corpus size."""
+        if count < _SMALL_CORPUS_SENTENCE_THRESHOLD:
+            return [3, 4, 5], [1, 2, 3], None
+        if count < _MEDIUM_CORPUS_SENTENCE_THRESHOLD:
+            return [5, 7, 10], [None, 3, 5], [15, 30]
+        return [10, 15, 20], [None, 5], [30, 50]
+
+    def _cluster_sentences(
+        self,
+        sentences: Sequence[SentenceRecord],
+        embeddings: np.ndarray,
+        request: EvidenceRequest,
+        response: EvidenceResponse,
+        logger: structlog.stdlib.BoundLogger,
+    ) -> ClusterResult:
+        classifier_stats = request.metadata.classifier if request.metadata else None
+        cluster_params = self._compute_cluster_params(
+            len(sentences), request.constraints, classifier_stats
+        )
+        logger.info(
+            "pipeline.cluster.start",
+            sentence_count=len(sentences),
+            min_cluster_size=cluster_params[0],
+            min_samples=cluster_params[1],
+        )
+        cluster_start = time.perf_counter()
+
+        if request.genre == "other":
+            token_counts = np.array([s.tokens_estimate for s in sentences], dtype=int)
+            cluster_result = self.clusterer.subcluster_other(embeddings, token_counts=token_counts)
+        else:
+            mcs_range, ms_range, umap_range = self._select_clustering_ranges(len(sentences))
+            cluster_result = self.clusterer.optimize_clustering(
+                embeddings,
+                min_cluster_size_range=mcs_range,
+                min_samples_range=ms_range,
+                umap_n_neighbors_range=umap_range if self.settings.enable_umap_auto else None,
+                token_counts=np.array([s.tokens_estimate for s in sentences], dtype=int),
+            )
+
+        hdbscan_duration = time.perf_counter() - cluster_start
+        HDBSCAN_SECONDS.observe(hdbscan_duration)
+        response.diagnostics.hdbscan_ms = hdbscan_duration * 1000
+
+        # Merge excessive clusters if > 10
+        if cluster_result.labels.size > 0:
+            cluster_result.labels = self._merge_excessive_clusters(
+                cluster_result.labels, embeddings, max_clusters=10
+            )
+            noise = int((cluster_result.labels < 0).sum())
+            response.diagnostics.noise_ratio = noise / float(cluster_result.labels.size)
+
+        return cluster_result
+
+    def run(self, request: EvidenceRequest) -> EvidenceResponse:
+        start_time = time.perf_counter()
+        logger = self._bind_request_logger(request)
         logger.info("pipeline.start", documents=len(request.documents))
-        payload_dict = request.model_dump(mode="json")
-        validate_request(payload_dict)
+        validate_request(request.model_dump(mode="json"))
 
         response = build_response_template(request)
         sentences = self._extract_sentences(request)
@@ -156,7 +232,6 @@ class EvidencePipeline:
             response.diagnostics.partial = True
 
         response.diagnostics.total_sentences = len(sentences)
-
         sentence_texts = [record.text for record in sentences]
         REQUEST_EMBED_SENTENCES.observe(len(sentence_texts))
 
@@ -170,8 +245,6 @@ class EvidencePipeline:
             sentences=len(sentence_texts),
             embedding_ms=response.diagnostics.embedding_ms,
         )
-
-        classifier_stats = request.metadata.classifier if request.metadata else None
 
         dedup_threshold = self._adjust_dedup_threshold(
             request.constraints.dedup_threshold, request.metadata, request.genre
@@ -191,70 +264,7 @@ class EvidencePipeline:
             logger.warning("pipeline.exhausted-after-dedup")
             return response
 
-        cluster_params = self._compute_cluster_params(
-            len(sentences), request.constraints, classifier_stats
-        )
-        logger.info(
-            "pipeline.cluster.start",
-            sentence_count=len(sentences),
-            min_cluster_size=cluster_params[0],
-            min_samples=cluster_params[1],
-        )
-        cluster_start = time.perf_counter()
-        base_mcs, _base_ms = cluster_params
-
-        # Define search range around the heuristic base
-        mcs_range = range(
-            max(2, base_mcs - self.settings.clustering_search_range_mcs_window_lower),
-            base_mcs + self.settings.clustering_search_range_mcs_window_upper,
-        )
-        ms_range: list[int | None] = list(range(1, self.settings.clustering_search_range_ms_max))
-
-        if request.genre == "other":
-            token_counts = np.array([s.tokens_estimate for s in sentences], dtype=int)
-            cluster_result = self.clusterer.subcluster_other(embeddings, token_counts=token_counts)
-        else:
-            # Plan-based parameter selection
-            count = len(sentences)
-            umap_range: list[int | None] | None
-            if count < 10:
-                # Small: No dim reduction (implicit if n_neighbors=None?), min_cluster_size 3-5
-                # The prompt said "No dim reduction". optimize_clustering with umap_n_neighbors_range=None uses default [None] -> No UMAP.
-                mcs_range = [3, 4, 5]
-                ms_range = [1, 2, 3]  # Heuristic
-                umap_range = None
-            elif count < 50:
-                # Medium: n_neighbors 15-30, min_cluster_size 5-10
-                mcs_range = [5, 7, 10]
-                ms_range = [None, 3, 5]
-                umap_range = [15, 30]
-            else:
-                # Large: n_neighbors 30-50, min_cluster_size 10-20
-                mcs_range = [10, 15, 20]
-                ms_range = [None, 5]
-                umap_range = [30, 50]
-
-            cluster_result = self.clusterer.optimize_clustering(
-                embeddings,
-                min_cluster_size_range=mcs_range,
-                min_samples_range=ms_range,
-                umap_n_neighbors_range=umap_range if self.settings.enable_umap_auto else None,
-                token_counts=np.array([s.tokens_estimate for s in sentences], dtype=int),
-            )
-
-        hdbscan_duration = time.perf_counter() - cluster_start
-        HDBSCAN_SECONDS.observe(hdbscan_duration)
-        response.diagnostics.hdbscan_ms = hdbscan_duration * 1000
-
-        # Merge excessive clusters if > 10
-        if cluster_result.labels.size > 0:
-            cluster_result.labels = self._merge_excessive_clusters(
-                cluster_result.labels, embeddings, max_clusters=10
-            )
-
-        if cluster_result.labels.size > 0:
-            noise = int((cluster_result.labels < 0).sum())
-            response.diagnostics.noise_ratio = noise / float(cluster_result.labels.size)
+        cluster_result = self._cluster_sentences(sentences, embeddings, request, response, logger)
 
         unique_labels, cluster_indices = self._group_clusters(cluster_result.labels)
         logger.info(
@@ -267,17 +277,20 @@ class EvidencePipeline:
         logger.info("pipeline.topics.start", corpora=len(corpora))
         top_terms = self._compute_topics(corpora)
         logger.info("pipeline.topics.complete", corpora=len(corpora))
+
+        cluster_specs = [
+            (cluster_id, indices, top_terms[offset] if offset < len(top_terms) else [])
+            for offset, (cluster_id, indices) in enumerate(
+                zip(unique_labels, cluster_indices, strict=False)
+            )
+        ]
         clusters, budget_tokens, rep_indices = self._build_clusters(
             sentences,
             embeddings,
-            unique_labels,
-            cluster_indices,
-            top_terms,
-            request.constraints.max_sentences_per_cluster,
-            request.constraints.mmr_lambda,
+            cluster_specs,
+            request.constraints,
         )
 
-        # Hierarchical Summarization: Select genre-level highlights from cluster representatives
         genre_highlights = self._select_genre_highlights(
             sentences, embeddings, rep_indices, request.constraints.mmr_lambda
         )
@@ -316,13 +329,11 @@ class EvidencePipeline:
         Merge excessive clusters using Ward hierarchical clustering.
         Uses scipy.cluster.hierarchy to merge clusters until count <= max_clusters.
         """
-        from scipy.cluster.hierarchy import fcluster, linkage
-
         unique_labels = sorted(set(labels))
         unique_labels = [lbl for lbl in unique_labels if lbl != -1]  # Ignore noise
 
         # Early return if already within limit or too few clusters
-        if len(unique_labels) <= max_clusters or len(unique_labels) < 2:
+        if len(unique_labels) <= max_clusters or len(unique_labels) < _MIN_CLUSTERS_FOR_MERGE:
             return labels
 
         # Calculate cluster centroids (Ward method uses Euclidean distance)
@@ -338,7 +349,7 @@ class EvidencePipeline:
 
         # Perform Ward hierarchical clustering
         # Ward method minimizes within-cluster variance increase
-        Z = linkage(centroid_matrix, method="ward")
+        Z = linkage(centroid_matrix, method="ward")  # noqa: N806 - scipy linkage matrix convention
 
         # Cut tree to get max_clusters clusters
         # fcluster returns cluster assignments (1-indexed)
@@ -377,7 +388,8 @@ class EvidencePipeline:
         total_documents = len(request.documents)
         classifier_stats = request.metadata.classifier if request.metadata else None
         allow_low_confidence_filter = bool(
-            classifier_stats and classifier_stats.coverage_ratio >= 0.5
+            classifier_stats
+            and classifier_stats.coverage_ratio >= _MIN_COVERAGE_FOR_CONFIDENCE_FILTER
         )
         filter_low_confidence = (
             allow_low_confidence_filter and total_documents > _MIN_DOCUMENTS_PER_GENRE
@@ -388,7 +400,7 @@ class EvidencePipeline:
             if (
                 filter_low_confidence
                 and confidence is not None
-                and confidence < 0.3
+                and confidence < _LOW_CONFIDENCE_THRESHOLD
                 and (total_documents - (skipped_low_confidence + 1)) >= _MIN_DOCUMENTS_PER_GENRE
             ):
                 skipped_low_confidence += 1
@@ -396,7 +408,7 @@ class EvidencePipeline:
             sentence_counter = 0
             for paragraph_idx, paragraph in enumerate(document.paragraphs):
                 for sentence in self._split_paragraph(paragraph):
-                    if len(sentence) < 2:
+                    if len(sentence) < _MIN_SENTENCE_CHARS:
                         continue
                     estimate = self._estimate_tokens(sentence)
                     if accumulated_tokens + estimate > tokens_budget:
@@ -447,7 +459,7 @@ class EvidencePipeline:
     def _compute_cluster_params(
         self,
         sentence_count: int,
-        constraints,
+        constraints: EvidenceConstraints,
         classifier_stats: CorpusClassifierStats | None = None,
     ) -> tuple[int, int]:
         base = max(2, sentence_count // 20)
@@ -455,11 +467,14 @@ class EvidencePipeline:
         min_cluster_size = max(2, min_cluster_size)
         min_samples = constraints.hdbscan_min_samples or max(1, min_cluster_size // 2)
         if classifier_stats:
-            if classifier_stats.avg_confidence < 0.35:
+            if classifier_stats.avg_confidence < _LOW_CLASSIFIER_CONFIDENCE:
                 inferred = max(2, sentence_count // 12)
                 min_cluster_size = max(min_cluster_size, inferred)
                 min_samples = max(1, min_cluster_size // 2)
-            elif classifier_stats.avg_confidence > 0.75 and classifier_stats.coverage_ratio > 0.6:
+            elif (
+                classifier_stats.avg_confidence > _HIGH_CLASSIFIER_CONFIDENCE
+                and classifier_stats.coverage_ratio > _HIGH_CLASSIFIER_COVERAGE
+            ):
                 min_cluster_size = max(2, int(float(min_cluster_size) * 0.75))
                 min_samples = max(1, min_samples - 1)
         return min_cluster_size, min_samples
@@ -491,7 +506,7 @@ class EvidencePipeline:
         Returns:
             Average pairwise cosine similarity, or None if < 2 vectors
         """
-        if cluster_embeddings.shape[0] < 2:
+        if cluster_embeddings.shape[0] < _MIN_VECTORS_FOR_PAIRWISE_SIM:
             return None
 
         # Embeddings are normalized, so dot product is cosine similarity
@@ -541,7 +556,7 @@ class EvidencePipeline:
         Returns:
             True if text is valid for representative sentence, False otherwise
         """
-        if not text or len(text) < 20:
+        if not text or len(text) < _MIN_REPRESENTATIVE_CHARS:
             return False
 
         text_lower = text.lower()
@@ -563,7 +578,7 @@ class EvidencePipeline:
         # Check for excessive code-like symbols (brackets, braces, semicolons, etc.)
         code_symbols = set("{}[]();=<>")
         symbol_count = sum(1 for char in text if char in code_symbols)
-        if len(text) > 0 and symbol_count / len(text) > 0.3:
+        if len(text) > 0 and symbol_count / len(text) > _MAX_CODE_SYMBOL_RATIO:
             return False
 
         # Check for consecutive code-like patterns (e.g., "}){", "});", etc.)
@@ -574,19 +589,16 @@ class EvidencePipeline:
         self,
         sentences: Sequence[SentenceRecord],
         embeddings: np.ndarray,
-        unique_labels: list[int],
-        cluster_indices: list[list[int]],
-        top_terms: list[list[str]],
-        max_sentences_per_cluster: int,
-        mmr_lambda: float,
+        cluster_specs: Sequence[tuple[int, list[int], list[str]]],
+        constraints: EvidenceConstraints,
     ) -> tuple[list[EvidenceCluster], int, list[int]]:
+        max_sentences_per_cluster = constraints.max_sentences_per_cluster
+        mmr_lambda = constraints.mmr_lambda
         clusters: list[EvidenceCluster] = []
         budget_tokens = 0
         used_articles: set[str] = set()
         all_rep_indices: list[int] = []
-        for cluster_offset, (cluster_id, indices) in enumerate(
-            zip(unique_labels, cluster_indices, strict=False)
-        ):
+        for cluster_id, indices, label_terms in cluster_specs:
             cluster_embeddings = embeddings[indices]
 
             # Calculate avg_sim first, then derive adaptive lambda
@@ -600,19 +612,26 @@ class EvidencePipeline:
             representatives: list[RepresentativeSentence] = []
             cluster_article_ids: list[str] = []
 
-            def _push_sentence(sentence_idx: int, *, allow_reuse: bool = False) -> int:
+            def _push_sentence(
+                sentence_idx: int,
+                *,
+                allow_reuse: bool = False,
+                _cluster_id: int = cluster_id,
+                _representatives: list[RepresentativeSentence] = representatives,
+                _cluster_article_ids: list[str] = cluster_article_ids,
+            ) -> int:
                 sentence = sentences[sentence_idx]
                 if not allow_reuse and sentence.article_id in used_articles:
                     return 0
                 # Filter out invalid representative text (too short, code fragments, stack traces)
                 if not self._is_valid_representative_text(sentence.text):
                     return 0
-                pos = len(representatives)
-                representatives.append(
+                pos = len(_representatives)
+                _representatives.append(
                     RepresentativeSentence(
                         text=sentence.text,
                         lang=sentence.lang,
-                        embedding_ref=f"e/{cluster_id}/{pos}",
+                        embedding_ref=f"e/{_cluster_id}/{pos}",
                         reasons=["centrality", "mmr-diversity"],
                         source=RepresentativeSource(
                             source_id=sentence.article_id,
@@ -621,7 +640,7 @@ class EvidencePipeline:
                         ),
                     )
                 )
-                cluster_article_ids.append(sentence.article_id)
+                _cluster_article_ids.append(sentence.article_id)
                 if not allow_reuse:
                     used_articles.add(sentence.article_id)
                 return sentence.tokens_estimate
@@ -654,7 +673,6 @@ class EvidencePipeline:
 
             # avg_sim was already calculated above for lambda adjustment
             # Reuse it here for ClusterStats
-            label_terms = top_terms[cluster_offset] if cluster_offset < len(top_terms) else []
             clusters.append(
                 EvidenceCluster(
                     cluster_id=int(cluster_id),
@@ -763,9 +781,12 @@ class EvidencePipeline:
         # Step 3: Apply classifier-based adjustment (only if genre override didn't apply)
         if metadata and metadata.classifier and genre not in genre_thresholds:
             stats = metadata.classifier
-            if stats.avg_confidence < 0.35:
+            if stats.avg_confidence < _LOW_CLASSIFIER_CONFIDENCE:
                 threshold = min(0.97, threshold + 0.03)
-            elif stats.avg_confidence > 0.75 and stats.coverage_ratio > 0.6:
+            elif (
+                stats.avg_confidence > _HIGH_CLASSIFIER_CONFIDENCE
+                and stats.coverage_ratio > _HIGH_CLASSIFIER_COVERAGE
+            ):
                 threshold = max(0.82, threshold - 0.04)
 
         # Step 4: Clamp to valid range

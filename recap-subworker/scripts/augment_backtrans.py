@@ -17,11 +17,18 @@ Usage:
 import argparse
 import random
 import re
+import sys
 import time
 from pathlib import Path
 
 import httpx
 import pandas as pd
+
+JA_RATIO_THRESHOLD = 0.3
+MIN_BACKTRANS_CHARS = 20
+MIN_LENGTH_RATIO = 0.5
+MAX_LENGTH_RATIO = 2.0
+MIN_SOURCE_CHARS = 50
 
 
 def detect_language(text: str) -> str:
@@ -34,7 +41,7 @@ def detect_language(text: str) -> str:
         return "en"
 
     ja_ratio = ja_chars / total_chars
-    return "ja" if ja_ratio > 0.3 else "en"
+    return "ja" if ja_ratio > JA_RATIO_THRESHOLD else "en"
 
 
 class OllamaBacktranslator:
@@ -46,7 +53,7 @@ class OllamaBacktranslator:
         model: str = "gemma3:4b",
         timeout: float = 60.0,
         rate_limit_delay: float = 1.0,
-    ):
+    ) -> None:
         self.ollama_url = ollama_url.rstrip("/")
         self.model = model
         self.timeout = timeout
@@ -72,8 +79,8 @@ class OllamaBacktranslator:
             response.raise_for_status()
             result = response.json()
             return result.get("response", "").strip()
-        except Exception as e:
-            print(f"Ollama API error: {e}")
+        except (httpx.HTTPError, ValueError) as e:
+            sys.stdout.write(f"Ollama API error: {e}\n")
             return None
 
     def translate_ja_to_en(self, text: str) -> str | None:
@@ -121,14 +128,13 @@ Japanese translation:"""
             if not intermediate:
                 return None
             return self.translate_en_to_ja(intermediate)
-        else:
-            # English -> Japanese -> English
-            intermediate = self.translate_en_to_ja(text)
-            if not intermediate:
-                return None
-            return self.translate_ja_to_en(intermediate)
+        # English -> Japanese -> English
+        intermediate = self.translate_en_to_ja(text)
+        if not intermediate:
+            return None
+        return self.translate_ja_to_en(intermediate)
 
-    def close(self):
+    def close(self) -> None:
         """Close HTTP client."""
         self.client.close()
 
@@ -142,7 +148,7 @@ def validate_backtranslation(original: str, backtranslated: str) -> bool:
     - Not identical to original
     - Minimum length
     """
-    if not backtranslated or len(backtranslated.strip()) < 20:
+    if not backtranslated or len(backtranslated.strip()) < MIN_BACKTRANS_CHARS:
         return False
 
     if backtranslated.strip() == original.strip():
@@ -157,10 +163,10 @@ def validate_backtranslation(original: str, backtranslated: str) -> bool:
     length_ratio = backtrans_len / original_len
 
     # Accept if length is within 0.5x - 2.0x of original
-    return 0.5 <= length_ratio <= 2.0
+    return MIN_LENGTH_RATIO <= length_ratio <= MAX_LENGTH_RATIO
 
 
-def main():
+def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Backtranslation data augmentation for genre classification"
     )
@@ -218,63 +224,30 @@ def main():
         default=42,
         help="Random seed",
     )
+    return parser.parse_args()
 
-    args = parser.parse_args()
-    random.seed(args.seed)
 
-    # Load data
-    print(f"Loading data from {args.input}...")
-    df = pd.read_csv(args.input)
-    df = df.dropna(subset=["content", "genre"])
-
-    print(f"Total samples: {len(df)}")
-
-    # Parse target genres
-    target_genres = [g.strip() for g in args.target_genres.split(",")]
-    print(f"Target genres: {target_genres}")
-
-    # Print current counts
-    print("\nCurrent genre distribution (target genres):")
-    for genre in target_genres:
-        count = len(df[df["genre"] == genre])
-        print(f"  {genre}: {count}")
-
-    # Initialize backtranslator
-    print(f"\nInitializing Ollama backtranslator (model: {args.model})...")
-    translator = OllamaBacktranslator(
-        ollama_url=args.ollama_url,
-        model=args.model,
-        rate_limit_delay=args.rate_limit,
-    )
-
-    # Test connection
-    print("Testing Ollama connection...")
-    test_result = translator.translate_en_to_ja("Hello, this is a test.")
-    if test_result:
-        print(f"Connection OK. Test result: {test_result[:50]}...")
-    else:
-        print("WARNING: Ollama connection test failed. Check if Ollama is running.")
-        translator.close()
-        return
-
-    # Augment target genres
-    augmented_rows = []
-    total_processed = 0
+def _augment_genres(
+    df: pd.DataFrame,
+    target_genres: list[str],
+    translator: OllamaBacktranslator,
+    args: argparse.Namespace,
+) -> tuple[list[dict[str, str]], int]:
+    augmented_rows: list[dict[str, str]] = []
     total_failed = 0
 
     for genre in target_genres:
         genre_df = df[df["genre"] == genre]
 
         if len(genre_df) == 0:
-            print(f"\nSkipping {genre}: no samples")
+            sys.stdout.write(f"\nSkipping {genre}: no samples\n")
             continue
 
-        print(f"\nProcessing {genre} ({len(genre_df)} samples)...")
+        sys.stdout.write(f"\nProcessing {genre} ({len(genre_df)} samples)...\n")
 
-        # Sample if max_samples specified
         if args.max_samples and len(genre_df) > args.max_samples:
             genre_df = genre_df.sample(n=args.max_samples, random_state=args.seed)
-            print(f"  Sampled {args.max_samples} samples")
+            sys.stdout.write(f"  Sampled {args.max_samples} samples\n")
 
         processed = 0
         failed = 0
@@ -283,11 +256,9 @@ def main():
             text = str(row["content"])
             lang = detect_language(text)
 
-            # Skip very short texts
-            if len(text) < 50:
+            if len(text) < MIN_SOURCE_CHARS:
                 continue
 
-            # Generate multiple backtranslations
             for _ in range(args.aug_factor):
                 backtranslated = translator.backtranslate(text, lang)
 
@@ -305,31 +276,72 @@ def main():
                 else:
                     failed += 1
 
-            total_processed += processed
             total_failed += failed
 
-        print(f"  Generated: {processed}, Failed: {failed}")
+        sys.stdout.write(f"  Generated: {processed}, Failed: {failed}\n")
 
-    translator.close()
+    return augmented_rows, total_failed
 
-    # Save results
+
+def _write_output(
+    augmented_rows: list[dict[str, str]],
+    total_failed: int,
+    output_path: Path,
+) -> None:
     if augmented_rows:
         aug_df = pd.DataFrame(augmented_rows)
-        print(f"\nTotal augmented samples: {len(aug_df)}")
-        print(f"Total failed: {total_failed}")
+        sys.stdout.write(f"\nTotal augmented samples: {len(aug_df)}\n")
+        sys.stdout.write(f"Total failed: {total_failed}\n")
 
-        aug_df.to_csv(args.output, index=False)
-        print(f"Saved to {args.output}")
+        aug_df.to_csv(output_path, index=False)
+        sys.stdout.write(f"Saved to {output_path}\n")
 
-        # Print summary
-        print("\nAugmented genre distribution:")
+        sys.stdout.write("\nAugmented genre distribution:\n")
         for genre, count in aug_df["genre"].value_counts().items():
-            print(f"  {genre}: {count}")
+            sys.stdout.write(f"  {genre}: {count}\n")
     else:
-        print("\nNo samples were augmented.")
+        sys.stdout.write("\nNo samples were augmented.\n")
         pd.DataFrame(
             columns=["content", "genre", "augmentation_method", "source_language", "source_genre"]
-        ).to_csv(args.output, index=False)
+        ).to_csv(output_path, index=False)
+
+
+def main() -> None:
+    args = _parse_args()
+    random.seed(args.seed)
+
+    sys.stdout.write(f"Loading data from {args.input}...\n")
+    df = pd.read_csv(args.input)
+    df = df.dropna(subset=["content", "genre"])
+    sys.stdout.write(f"Total samples: {len(df)}\n")
+
+    target_genres = [g.strip() for g in args.target_genres.split(",")]
+    sys.stdout.write(f"Target genres: {target_genres}\n")
+
+    sys.stdout.write("\nCurrent genre distribution (target genres):\n")
+    for genre in target_genres:
+        count = len(df[df["genre"] == genre])
+        sys.stdout.write(f"  {genre}: {count}\n")
+
+    sys.stdout.write(f"\nInitializing Ollama backtranslator (model: {args.model})...\n")
+    translator = OllamaBacktranslator(
+        ollama_url=args.ollama_url,
+        model=args.model,
+        rate_limit_delay=args.rate_limit,
+    )
+
+    sys.stdout.write("Testing Ollama connection...\n")
+    test_result = translator.translate_en_to_ja("Hello, this is a test.")
+    if test_result:
+        sys.stdout.write(f"Connection OK. Test result: {test_result[:50]}...\n")
+    else:
+        sys.stdout.write("WARNING: Ollama connection test failed. Check if Ollama is running.\n")
+        translator.close()
+        return
+
+    augmented_rows, total_failed = _augment_genres(df, target_genres, translator, args)
+    translator.close()
+    _write_output(augmented_rows, total_failed, args.output)
 
 
 if __name__ == "__main__":

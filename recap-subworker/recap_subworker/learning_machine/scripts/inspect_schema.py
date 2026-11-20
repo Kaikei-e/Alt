@@ -2,8 +2,11 @@ import asyncio
 import logging
 import sys
 from pathlib import Path
+from urllib.parse import urlparse, urlunparse
 
-from sqlalchemy import inspect
+from sqlalchemy import Connection, inspect
+from sqlalchemy.engine.interfaces import ReflectedColumn
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import create_async_engine
 
 # Ensure we can import from recap-subworker
@@ -12,7 +15,7 @@ project_root = current_dir.parent.parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from recap_subworker.infra.config import Settings
+from recap_subworker.infra.config import Settings  # noqa: E402  # import after sys.path setup
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -23,13 +26,11 @@ def get_db_url_with_password(settings: Settings) -> str:
     if "recap-db" in db_url:
         db_url = db_url.replace("recap-db", "localhost").replace("5432", "5435")
 
-    from urllib.parse import urlparse, urlunparse
-
     secret_path = project_root.parent / "secrets" / "recap_db_password.txt"
 
     if secret_path.exists():
         try:
-            with open(secret_path) as f:
+            with secret_path.open() as f:
                 password = f.read().strip()
             u = urlparse(db_url)
             if "@" in u.netloc:
@@ -41,12 +42,12 @@ def get_db_url_with_password(settings: Settings) -> str:
                     new_user_pass = f"{user_pass}:{password}"
                 new_netloc = f"{new_user_pass}@{host_port}"
                 db_url = urlunparse((u.scheme, new_netloc, u.path, u.params, u.query, u.fragment))
-        except Exception as e:
-            logger.warning(f"Failed to read password secret: {e}")
+        except Exception as e:  # noqa: BLE001  # secret file read/URL parse is best-effort in local helper
+            logger.warning("Failed to read password secret: %s", e)
     return db_url
 
 
-async def main():
+async def main() -> None:
     settings = Settings()
     db_url = get_db_url_with_password(settings)
     engine = create_async_engine(db_url)
@@ -55,16 +56,16 @@ async def main():
         logger.info("Inspecting columns for 'recap_job_articles'...")
 
         # Note: inspect is synchronous, need run_sync
-        def get_columns(connection):
+        def get_columns(connection: Connection) -> list[ReflectedColumn]:
             inspector = inspect(connection)
             return inspector.get_columns("recap_job_articles")
 
         try:
             columns = await conn.run_sync(get_columns)
             for col in columns:
-                print(f"Column: {col['name']} - Type: {col['type']}")
-        except Exception as e:
-            logger.error(f"Error inspecting table: {e}")
+                sys.stdout.write(f"Column: {col['name']} - Type: {col['type']}\n")
+        except SQLAlchemyError, OSError:
+            logger.exception("Error inspecting table")
 
     await engine.dispose()
 
