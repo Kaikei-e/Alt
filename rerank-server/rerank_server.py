@@ -338,10 +338,12 @@ def _load_torch_model() -> CrossEncoder:
         model_kwargs={"dtype": "float16"},
     )
     backbone = model.model
-    if backbone is not None:
-        backbone.eval()
-        for param in backbone.parameters():
-            param.requires_grad = False
+    if backbone is None:
+        msg = "CrossEncoder model.model backbone is None; cannot set eval mode or freeze parameters"
+        raise RuntimeError(msg)
+    backbone.eval()
+    for param in backbone.parameters():
+        param.requires_grad = False
     return model
 
 
