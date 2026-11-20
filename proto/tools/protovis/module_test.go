@@ -26,7 +26,8 @@ func buildRepoDescriptorSet(t *testing.T) *descriptorpb.FileDescriptorSet {
 	}
 
 	out := filepath.Join(t.TempDir(), "descriptor.binpb")
-	cmd := exec.Command(buf, "build", "--exclude-source-info", "-o", out)
+	// #nosec G204 -- buf is resolved via exec.LookPath("buf") and out is inside t.TempDir().
+	cmd := exec.CommandContext(t.Context(), buf, "build", "--exclude-source-info", "-o", out)
 	cmd.Dir = protoModuleDir
 	if combined, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("buf build: %v\n%s", err, combined)

@@ -2,11 +2,12 @@ package main
 
 import (
 	"bytes"
+	"crypto/rand"
 	"encoding/xml"
 	"fmt"
 	"html"
 	"log"
-	"math/rand"
+	"math/big"
 	"net/http"
 	"os"
 	"regexp"
@@ -16,7 +17,6 @@ import (
 )
 
 var (
-	rng              = rand.New(rand.NewSource(time.Now().UnixNano()))
 	rssDelay         = envInt("MOCK_RSS_DELAY_MS", 150)
 	articleDelay     = envInt("MOCK_ARTICLE_DELAY_MS", 350)
 	delayJitter      = envInt("MOCK_DELAY_JITTER_MS", 75)
@@ -32,7 +32,12 @@ func main() {
 	mux.HandleFunc("/images/", handleImage)
 
 	log.Println("mock-rss-server listening on :8080")
-	if err := http.ListenAndServe(":8080", mux); err != nil {
+	srv := &http.Server{
+		Addr:              ":8080",
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+	if err := srv.ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -55,7 +60,9 @@ func applyDelay(baseMs int) {
 	}
 	jitter := 0
 	if delayJitter > 0 {
-		jitter = rng.Intn(delayJitter + 1)
+		if n, err := rand.Int(rand.Reader, big.NewInt(int64(delayJitter+1))); err == nil {
+			jitter = int(n.Int64())
+		}
 	}
 	time.Sleep(time.Duration(baseMs+jitter) * time.Millisecond)
 }
@@ -69,7 +76,9 @@ func xmlEscape(s string) string {
 func handleHealth(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	fmt.Fprint(w, `{"status":"ok"}`)
+	if _, err := fmt.Fprint(w, `{"status":"ok"}`); err != nil {
+		log.Printf("write health response: %v", err)
+	}
 }
 
 // handleFeed serves /feeds/{id}/rss.xml
@@ -98,17 +107,17 @@ func handleFeed(w http.ResponseWriter, r *http.Request) {
 
 	var items strings.Builder
 	for i := 1; i <= 10; i++ {
-		items.WriteString(fmt.Sprintf(`    <item>
+		fmt.Fprintf(&items, `    <item>
       <title>Feed %s - Article %d</title>
       <link>http://%s/articles/feed-%s/item-%d</link>
       <description>Test article %d for feed %s</description>
       <pubDate>%s</pubDate>
       <guid isPermaLink="true">http://%s/articles/feed-%s/item-%d</guid>
     </item>
-`, safeFeedID, i, safeHost, safeFeedID, i, i, safeFeedID, pubDate, safeHost, safeFeedID, i))
+`, safeFeedID, i, safeHost, safeFeedID, i, i, safeFeedID, pubDate, safeHost, safeFeedID, i)
 	}
 
-	fmt.Fprintf(w, `<?xml version="1.0" encoding="UTF-8"?>
+	if _, err := fmt.Fprintf(w, `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
   <channel>
     <title>Mock Feed %s</title>
@@ -117,7 +126,9 @@ func handleFeed(w http.ResponseWriter, r *http.Request) {
     <lastBuildDate>%s</lastBuildDate>
 %s  </channel>
 </rss>
-`, safeFeedID, safeHost, safeFeedID, safeFeedID, pubDate, items.String())
+`, safeFeedID, safeHost, safeFeedID, safeFeedID, pubDate, items.String()); err != nil {
+		log.Printf("write feed response: %v", err)
+	}
 }
 
 // handleArticle serves /articles/feed-{id}/item-{n} as simple HTML.
@@ -155,7 +166,7 @@ func handleArticle(w http.ResponseWriter, r *http.Request) {
 	safeHost := html.EscapeString(r.Host)
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprintf(w, `<!DOCTYPE html>
+	if _, err := fmt.Fprintf(w, `<!DOCTYPE html>
 <html>
 <head>
   <title>Feed %s - Article %s</title>
@@ -173,7 +184,9 @@ func handleArticle(w http.ResponseWriter, r *http.Request) {
 </article>
 </body>
 </html>
-`, safeFeedID, safeItemNum, safeFeedID, safeItemNum, safeHost, defaultImagePath, safeItemNum, safeFeedID, safeFeedID, safeItemNum, safeFeedID, safeItemNum)
+`, safeFeedID, safeItemNum, safeFeedID, safeItemNum, safeHost, defaultImagePath, safeItemNum, safeFeedID, safeFeedID, safeItemNum, safeFeedID, safeItemNum); err != nil {
+		log.Printf("write article response: %v", err)
+	}
 }
 
 func handleImage(w http.ResponseWriter, r *http.Request) {

@@ -46,6 +46,7 @@ func (e *ViolationError) Error() string {
 // `buf build --exclude-source-info -o <path>`. The set must include imports
 // (never pass --exclude-imports), because protodesc resolves every dependency.
 func LoadDescriptorSet(path string) (*descriptorpb.FileDescriptorSet, error) {
+	// #nosec G304 -- path is a CLI -desc input path or test temp file supplied by the caller.
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read descriptor set %q: %w", path, err)
