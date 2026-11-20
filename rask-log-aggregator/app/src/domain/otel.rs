@@ -220,12 +220,25 @@ mod tests {
         proptest! {
             #[test]
             fn span_kind_from_i32_never_panics(value: i32) {
-                let _ = SpanKind::from(value);
+                let kind = SpanKind::from(value);
+                prop_assert!(matches!(
+                    kind,
+                    SpanKind::Unspecified
+                        | SpanKind::Internal
+                        | SpanKind::Server
+                        | SpanKind::Client
+                        | SpanKind::Producer
+                        | SpanKind::Consumer
+                ));
             }
 
             #[test]
             fn status_code_from_i32_never_panics(value: i32) {
-                let _ = StatusCode::from(value);
+                let status = StatusCode::from(value);
+                prop_assert!(matches!(
+                    status,
+                    StatusCode::Unset | StatusCode::Ok | StatusCode::Error
+                ));
             }
 
             #[test]

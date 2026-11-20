@@ -15,7 +15,7 @@ use std::time::Duration;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 /// Channel capacity for each row type.
 const CHANNEL_CAPACITY: usize = 1024;
@@ -374,11 +374,13 @@ async fn flush_logs_via<S: FlushSink<LogRow>>(
 /// Resolve and clear every parked caller with the same outcome.
 fn settle(batches: &mut Vec<LogBatch>, outcome: &Result<(), AggregatorError>) {
     for (_, ack) in batches.drain(..) {
-        // Err means the caller's request was already cancelled; nothing to do.
-        let _ = ack.send(match outcome {
+        let payload = match outcome {
             Ok(()) => Ok(()),
             Err(e) => Err(AggregatorError::Export(e.to_string())),
-        });
+        };
+        if ack.send(payload).is_err() {
+            debug!("Batch caller disconnected before receiving export ack");
+        }
     }
 }
 

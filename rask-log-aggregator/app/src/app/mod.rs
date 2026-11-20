@@ -23,17 +23,20 @@ pub async fn run() -> Result<(), AggregatorError> {
     // Tracing is not fully configured yet; install a minimal stderr subscriber so
     // failures still go through the tracing facade instead of bare `eprintln!`.
     if std::env::args().nth(1).as_deref() == Some("healthcheck") {
-        let _ = tracing_subscriber::fmt()
+        if let Err(err) = tracing_subscriber::fmt()
             .with_writer(std::io::stderr)
             .with_max_level(::tracing::Level::ERROR)
-            .try_init();
-        match crate::healthcheck().await {
-            Ok(()) => std::process::exit(0),
+            .try_init()
+        {
+            ::tracing::debug!(error = %err, "Healthcheck tracing subscriber already initialized");
+        }
+        return match crate::healthcheck().await {
+            Ok(()) => Ok(()),
             Err(e) => {
                 ::tracing::error!(error = %e, "Healthcheck failed");
-                std::process::exit(1)
+                Err(e.into())
             }
-        }
+        };
     }
 
     tracing::init_tracing();

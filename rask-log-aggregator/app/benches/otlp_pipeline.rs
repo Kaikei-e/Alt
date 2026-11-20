@@ -28,21 +28,24 @@ fn make_attributes(n: usize) -> Vec<KeyValue> {
 
 fn make_log_request(n_logs: usize) -> ExportLogsServiceRequest {
     let records: Vec<LogRecord> = (0..n_logs)
-        .map(|i| LogRecord {
-            time_unix_nano: 1_700_000_000_000_000_000 + i as u64,
-            observed_time_unix_nano: 1_700_000_000_000_000_000 + i as u64,
-            trace_id: vec![0x01; 16],
-            span_id: vec![0x02; 8],
-            flags: 1,
-            severity_text: "INFO".to_string(),
-            severity_number: 9,
-            body: Some(AnyValue {
-                value: Some(any_value::Value::StringValue(format!(
-                    "Log message number {i}"
-                ))),
-            }),
-            attributes: make_attributes(5),
-            ..Default::default()
+        .map(|i| {
+            let offset = u64::try_from(i).unwrap_or(0);
+            LogRecord {
+                time_unix_nano: 1_700_000_000_000_000_000 + offset,
+                observed_time_unix_nano: 1_700_000_000_000_000_000 + offset,
+                trace_id: vec![0x01; 16],
+                span_id: vec![0x02; 8],
+                flags: 1,
+                severity_text: "INFO".to_string(),
+                severity_number: 9,
+                body: Some(AnyValue {
+                    value: Some(any_value::Value::StringValue(format!(
+                        "Log message number {i}"
+                    ))),
+                }),
+                attributes: make_attributes(5),
+                ..Default::default()
+            }
         })
         .collect();
 

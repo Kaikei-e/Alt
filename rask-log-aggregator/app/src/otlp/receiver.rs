@@ -63,9 +63,7 @@ async fn receive_logs_http(State(state): State<OTLPState>, body: Bytes) -> impl 
 
     if log_count == 0 {
         // Return success for empty request
-        let response = ExportLogsServiceResponse::default();
-        let mut buf = Vec::with_capacity(response.encoded_len());
-        let _ = response.encode(&mut buf);
+        let buf = ExportLogsServiceResponse::default().encode_to_vec();
         return (
             StatusCode::OK,
             [(header::CONTENT_TYPE, "application/x-protobuf")],
@@ -85,9 +83,7 @@ async fn receive_logs_http(State(state): State<OTLPState>, body: Bytes) -> impl 
     debug!(count = log_count, "Exported OTLP logs");
 
     // Return success response
-    let response = ExportLogsServiceResponse::default();
-    let mut buf = Vec::with_capacity(response.encoded_len());
-    let _ = response.encode(&mut buf);
+    let buf = ExportLogsServiceResponse::default().encode_to_vec();
 
     (
         StatusCode::OK,
@@ -115,9 +111,7 @@ async fn receive_traces_http(State(state): State<OTLPState>, body: Bytes) -> imp
     let span_count = spans.len();
 
     if span_count == 0 {
-        let response = ExportTraceServiceResponse::default();
-        let mut buf = Vec::with_capacity(response.encoded_len());
-        let _ = response.encode(&mut buf);
+        let buf = ExportTraceServiceResponse::default().encode_to_vec();
         return (
             StatusCode::OK,
             [(header::CONTENT_TYPE, "application/x-protobuf")],
@@ -136,9 +130,7 @@ async fn receive_traces_http(State(state): State<OTLPState>, body: Bytes) -> imp
 
     debug!(count = span_count, "Exported OTLP traces");
 
-    let response = ExportTraceServiceResponse::default();
-    let mut buf = Vec::with_capacity(response.encoded_len());
-    let _ = response.encode(&mut buf);
+    let buf = ExportTraceServiceResponse::default().encode_to_vec();
 
     (
         StatusCode::OK,

@@ -60,17 +60,23 @@ fn validate_port(port: u16) -> Result<(), AggregatorError> {
     Ok(())
 }
 
-/// Read a required environment variable, naming it in the error so a
-/// missing-config failure is diagnosable instead of a bare "not found".
-fn require_env(env_name: &str) -> Result<String, AggregatorError> {
-    env::var(env_name).map_err(|_| {
+/// Read a required environment variable via `lookup`, naming it in the error
+/// so a missing-config failure is diagnosable instead of a bare "not found".
+fn require_env_with<F>(env_name: &str, lookup: &F) -> Result<String, AggregatorError>
+where
+    F: Fn(&str) -> Result<String, env::VarError>,
+{
+    lookup(env_name).map_err(|_| {
         AggregatorError::Config(format!("Missing required environment variable: {env_name}"))
     })
 }
 
-/// Read a required `u16` environment variable, with a default fallback.
-fn env_port_or(env_name: &str, default: u16) -> Result<u16, AggregatorError> {
-    match env::var(env_name) {
+/// Read an optional `u16` environment variable via `lookup`, with a default fallback.
+fn env_port_or_with<F>(env_name: &str, default: u16, lookup: &F) -> Result<u16, AggregatorError>
+where
+    F: Fn(&str) -> Result<String, env::VarError>,
+{
+    match lookup(env_name) {
         Ok(value) => value.parse::<u16>().map_err(|e| {
             AggregatorError::Config(format!("Invalid {env_name} (must be a valid port): {e}"))
         }),
@@ -78,43 +84,50 @@ fn env_port_or(env_name: &str, default: u16) -> Result<u16, AggregatorError> {
     }
 }
 
-/// Read a value from environment variable, with support for _FILE suffix (Docker Secrets)
-fn get_env_or_file(env_name: &str) -> Result<String, AggregatorError> {
+/// Read a value from environment variable via `lookup`, with support for `_FILE` suffix (Docker Secrets).
+fn get_env_or_file_with<F>(env_name: &str, lookup: &F) -> Result<String, AggregatorError>
+where
+    F: Fn(&str) -> Result<String, env::VarError>,
+{
     // First check for _FILE suffix (Docker Secrets support)
     let file_env = format!("{env_name}_FILE");
-    if let Ok(file_path) = env::var(&file_env) {
+    if let Ok(file_path) = lookup(&file_env) {
         return fs::read_to_string(&file_path)
             .map(|content| content.trim().to_string())
             .map_err(|e| AggregatorError::Config(format!("Failed to read {file_env}: {e}")));
     }
 
     // Fallback to standard environment variable
-    require_env(env_name).map_err(|_| {
+    require_env_with(env_name, lookup).map_err(|_| {
         AggregatorError::Config(format!(
             "Missing required environment variable: {env_name} or {file_env}"
         ))
     })
 }
 
-pub fn get_configuration() -> Result<Settings, AggregatorError> {
-    let clickhouse_host = require_env("APP_CLICKHOUSE_HOST")?;
-    let clickhouse_port = require_env("APP_CLICKHOUSE_PORT")?
+/// Load configuration using the provided environment variable lookup function.
+pub fn get_configuration_from_lookup<F>(lookup: F) -> Result<Settings, AggregatorError>
+where
+    F: Fn(&str) -> Result<String, env::VarError>,
+{
+    let clickhouse_host = require_env_with("APP_CLICKHOUSE_HOST", &lookup)?;
+    let clickhouse_port = require_env_with("APP_CLICKHOUSE_PORT", &lookup)?
         .parse::<u16>()
         .map_err(|e| {
             AggregatorError::Config(format!(
                 "Invalid APP_CLICKHOUSE_PORT (must be a valid port): {e}"
             ))
         })?;
-    let clickhouse_user = require_env("APP_CLICKHOUSE_USER")?;
-    let clickhouse_password = get_env_or_file("APP_CLICKHOUSE_PASSWORD")?;
-    let clickhouse_database = require_env("APP_CLICKHOUSE_DATABASE")?;
+    let clickhouse_user = require_env_with("APP_CLICKHOUSE_USER", &lookup)?;
+    let clickhouse_password = get_env_or_file_with("APP_CLICKHOUSE_PASSWORD", &lookup)?;
+    let clickhouse_database = require_env_with("APP_CLICKHOUSE_DATABASE", &lookup)?;
 
     // Server ports with defaults
-    let http_port = env_port_or("HTTP_PORT", 9600)?;
-    let otlp_http_port = env_port_or("OTLP_HTTP_PORT", 4318)?;
+    let http_port = env_port_or_with("HTTP_PORT", 9600, &lookup)?;
+    let otlp_http_port = env_port_or_with("OTLP_HTTP_PORT", 4318, &lookup)?;
 
     // D-02: Load ingest bearer token from file. Fail-fast at startup.
-    let ingest_token_file = env::var("RASK_INGEST_TOKEN_FILE")
+    let ingest_token_file = lookup("RASK_INGEST_TOKEN_FILE")
         .unwrap_or_else(|_| "/run/secrets/rask_ingest_token".to_string());
     let ingest_token = crate::auth::load_ingest_token(&ingest_token_file)?;
 
@@ -135,67 +148,38 @@ pub fn get_configuration() -> Result<Settings, AggregatorError> {
     Ok(settings)
 }
 
+pub fn get_configuration() -> Result<Settings, AggregatorError> {
+    get_configuration_from_lookup(|name| env::var(name))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
+    use std::collections::HashMap;
 
-    /// `require_env`/`env_port_or`/`get_env_or_file` all read `std::env`,
-    /// which is process-global and not safe to mutate/read concurrently
-    /// (`env::set_var`/`remove_var` are `unsafe` as of the 2024-edition std
-    /// library precisely because of this). Cargo runs tests in the same
-    /// process on multiple threads, so every test below acquires this lock
-    /// for its whole body — not just the mutation — to fully serialize
-    /// access instead of merely picking unique variable names, which would
-    /// avoid *assertion* collisions but not the underlying data race.
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
-
-    /// RAII helper: sets an env var for the duration of the guard, restores
-    /// the previous state (unset, in every case these tests need) on drop —
-    /// including on panic — so a failing assertion can't leak state into
-    /// whichever test runs next.
-    struct EnvVarGuard {
-        name: &'static str,
-    }
-
-    impl EnvVarGuard {
-        fn set(name: &'static str, value: &str) -> Self {
-            // SAFETY: caller holds `ENV_LOCK` for the guard's entire
-            // lifetime, so no other thread in this test binary can be
-            // reading or writing the environment concurrently.
-            unsafe { env::set_var(name, value) };
-            Self { name }
+    fn map_lookup<'a>(
+        vars: HashMap<&'a str, &'a str>,
+    ) -> impl Fn(&str) -> Result<String, env::VarError> + 'a {
+        move |name| {
+            vars.get(name)
+                .map(|v| (*v).to_string())
+                .ok_or(env::VarError::NotPresent)
         }
-    }
-
-    impl Drop for EnvVarGuard {
-        fn drop(&mut self) {
-            // SAFETY: see `EnvVarGuard::set`.
-            unsafe { env::remove_var(self.name) };
-        }
-    }
-
-    fn locked() -> std::sync::MutexGuard<'static, ()> {
-        ENV_LOCK
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     #[test]
     fn require_env_returns_value_when_set() {
-        let _lock = locked();
-        let _guard = EnvVarGuard::set("RASK_TEST_REQUIRE_ENV_PRESENT", "hello");
+        let lookup = map_lookup(HashMap::from([("RASK_TEST_REQUIRE_ENV_PRESENT", "hello")]));
 
-        let result = require_env("RASK_TEST_REQUIRE_ENV_PRESENT");
+        let result = require_env_with("RASK_TEST_REQUIRE_ENV_PRESENT", &lookup);
 
         assert_eq!(result.unwrap(), "hello");
     }
 
     #[test]
     fn require_env_errors_and_names_the_variable_when_missing() {
-        let _lock = locked();
-        // Not set by anything in this process; no guard needed.
-        let result = require_env("RASK_TEST_REQUIRE_ENV_DEFINITELY_UNSET");
+        let lookup = map_lookup(HashMap::new());
+        let result = require_env_with("RASK_TEST_REQUIRE_ENV_DEFINITELY_UNSET", &lookup);
 
         let err = result.unwrap_err();
         assert!(
@@ -207,28 +191,26 @@ mod tests {
 
     #[test]
     fn env_port_or_returns_default_when_unset() {
-        let _lock = locked();
-        let result = env_port_or("RASK_TEST_PORT_UNSET", 9600);
+        let lookup = map_lookup(HashMap::new());
+        let result = env_port_or_with("RASK_TEST_PORT_UNSET", 9600, &lookup);
 
         assert_eq!(result.unwrap(), 9600);
     }
 
     #[test]
     fn env_port_or_returns_configured_value_when_set() {
-        let _lock = locked();
-        let _guard = EnvVarGuard::set("RASK_TEST_PORT_SET", "1234");
+        let lookup = map_lookup(HashMap::from([("RASK_TEST_PORT_SET", "1234")]));
 
-        let result = env_port_or("RASK_TEST_PORT_SET", 9600);
+        let result = env_port_or_with("RASK_TEST_PORT_SET", 9600, &lookup);
 
         assert_eq!(result.unwrap(), 1234);
     }
 
     #[test]
     fn env_port_or_errors_on_non_numeric_value() {
-        let _lock = locked();
-        let _guard = EnvVarGuard::set("RASK_TEST_PORT_INVALID", "not-a-port");
+        let lookup = map_lookup(HashMap::from([("RASK_TEST_PORT_INVALID", "not-a-port")]));
 
-        let result = env_port_or("RASK_TEST_PORT_INVALID", 9600);
+        let result = env_port_or_with("RASK_TEST_PORT_INVALID", 9600, &lookup);
 
         let err = result.unwrap_err();
         assert!(
@@ -239,29 +221,27 @@ mod tests {
 
     #[test]
     fn env_port_or_errors_on_out_of_range_value() {
-        let _lock = locked();
         // u16::MAX + 1 : valid integer, invalid port.
-        let _guard = EnvVarGuard::set("RASK_TEST_PORT_OUT_OF_RANGE", "65536");
+        let lookup = map_lookup(HashMap::from([("RASK_TEST_PORT_OUT_OF_RANGE", "65536")]));
 
-        let result = env_port_or("RASK_TEST_PORT_OUT_OF_RANGE", 9600);
+        let result = env_port_or_with("RASK_TEST_PORT_OUT_OF_RANGE", 9600, &lookup);
 
         assert!(result.is_err());
     }
 
     #[test]
     fn get_env_or_file_reads_direct_variable() {
-        let _lock = locked();
-        let _guard = EnvVarGuard::set("RASK_TEST_SECRET_DIRECT", "direct-value");
+        let lookup = map_lookup(HashMap::from([("RASK_TEST_SECRET_DIRECT", "direct-value")]));
 
-        let result = get_env_or_file("RASK_TEST_SECRET_DIRECT");
+        let result = get_env_or_file_with("RASK_TEST_SECRET_DIRECT", &lookup);
 
         assert_eq!(result.unwrap(), "direct-value");
     }
 
     #[test]
     fn get_env_or_file_errors_when_neither_variable_nor_file_is_set() {
-        let _lock = locked();
-        let result = get_env_or_file("RASK_TEST_SECRET_NEITHER_SET");
+        let lookup = map_lookup(HashMap::new());
+        let result = get_env_or_file_with("RASK_TEST_SECRET_NEITHER_SET", &lookup);
 
         let err = result.unwrap_err();
         let msg = err.to_string();
@@ -274,28 +254,30 @@ mod tests {
 
     #[test]
     fn get_env_or_file_reads_from_file_for_docker_secrets_support() {
-        let _lock = locked();
         let temp_dir = tempfile::TempDir::new().unwrap();
         let secret_path = temp_dir.path().join("clickhouse_password");
         // Trailing newline mimics how Docker/Kubernetes secret files are
         // typically written; the value must be trimmed, not compared raw.
         std::fs::write(&secret_path, "s3cret\n").unwrap();
-        let _guard = EnvVarGuard::set("RASK_TEST_SECRET_FILE_FILE", secret_path.to_str().unwrap());
+        let secret_path_str = secret_path.to_str().unwrap();
+        let lookup = map_lookup(HashMap::from([(
+            "RASK_TEST_SECRET_FILE_FILE",
+            secret_path_str,
+        )]));
 
-        let result = get_env_or_file("RASK_TEST_SECRET_FILE");
+        let result = get_env_or_file_with("RASK_TEST_SECRET_FILE", &lookup);
 
         assert_eq!(result.unwrap(), "s3cret");
     }
 
     #[test]
     fn get_env_or_file_errors_when_file_path_does_not_exist() {
-        let _lock = locked();
-        let _guard = EnvVarGuard::set(
+        let lookup = map_lookup(HashMap::from([(
             "RASK_TEST_SECRET_MISSING_FILE_FILE",
             "/nonexistent/path/for/rask/test",
-        );
+        )]));
 
-        let result = get_env_or_file("RASK_TEST_SECRET_MISSING_FILE");
+        let result = get_env_or_file_with("RASK_TEST_SECRET_MISSING_FILE", &lookup);
 
         let err = result.unwrap_err();
         assert!(
@@ -303,6 +285,33 @@ mod tests {
                 .contains("RASK_TEST_SECRET_MISSING_FILE_FILE"),
             "must name the _FILE variable when the referenced file can't be read, got: {err}"
         );
+    }
+
+    #[test]
+    fn get_configuration_from_lookup_reads_all_variables_and_defaults() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let token_path = temp_dir.path().join("ingest_token");
+        std::fs::write(&token_path, "valid-test-token_123\n").unwrap();
+        let token_path_str = token_path.to_str().unwrap();
+
+        let lookup = map_lookup(HashMap::from([
+            ("APP_CLICKHOUSE_HOST", "clickhouse.local"),
+            ("APP_CLICKHOUSE_PORT", "8123"),
+            ("APP_CLICKHOUSE_USER", "rask"),
+            ("APP_CLICKHOUSE_PASSWORD", "pw"),
+            ("APP_CLICKHOUSE_DATABASE", "logs"),
+            ("RASK_INGEST_TOKEN_FILE", token_path_str),
+        ]));
+
+        let settings = get_configuration_from_lookup(lookup).unwrap();
+        assert_eq!(settings.clickhouse_host, "clickhouse.local");
+        assert_eq!(settings.clickhouse_port, 8123);
+        assert_eq!(settings.clickhouse_user, "rask");
+        assert_eq!(settings.clickhouse_password, "pw");
+        assert_eq!(settings.clickhouse_database, "logs");
+        assert_eq!(settings.http_port, 9600);
+        assert_eq!(settings.otlp_http_port, 4318);
+        assert_eq!(settings.ingest_token, "valid-test-token_123");
     }
 
     #[test]
