@@ -6,26 +6,31 @@ external downloads.
 
 import builtins
 import inspect
+import logging
 import os
 import tempfile
 import typing
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
+import structlog
 
-_rask_test_directory: tempfile.TemporaryDirectory[str] | None = None
-_original_rask_token_file: str | None = None
-_original_otel_enabled: str | None = None
+_rask_env_state: dict[str, tempfile.TemporaryDirectory[str] | str | None] = {
+    "directory": None,
+    "token_file": None,
+    "otel_enabled": None,
+}
 
 
 def pytest_configure() -> None:
     """Supply a test-only ingest credential before application imports during collection."""
-    global _rask_test_directory, _original_rask_token_file, _original_otel_enabled
-    _original_rask_token_file = os.environ.get("RASK_INGEST_TOKEN_FILE")
-    _original_otel_enabled = os.environ.get("OTEL_ENABLED")
-    _rask_test_directory = tempfile.TemporaryDirectory(prefix="tag-test-rask-")
-    token_path = Path(_rask_test_directory.name) / "ingest-token"
+    _rask_env_state["token_file"] = os.environ.get("RASK_INGEST_TOKEN_FILE")
+    _rask_env_state["otel_enabled"] = os.environ.get("OTEL_ENABLED")
+    temp_dir = tempfile.TemporaryDirectory(prefix="tag-test-rask-")
+    _rask_env_state["directory"] = temp_dir
+    token_path = Path(temp_dir.name) / "ingest-token"
     token_path.write_text("TestRaskIngestToken1234567890", encoding="utf-8")
     os.environ["RASK_INGEST_TOKEN_FILE"] = str(token_path)
     # Ordinary unit imports must not start background exporters to a real collector.
@@ -35,16 +40,19 @@ def pytest_configure() -> None:
 
 def pytest_unconfigure() -> None:
     """Restore the caller environment and remove the test-only credential."""
-    if _original_rask_token_file is None:
+    orig_token = _rask_env_state["token_file"]
+    if orig_token is None:
         os.environ.pop("RASK_INGEST_TOKEN_FILE", None)
     else:
-        os.environ["RASK_INGEST_TOKEN_FILE"] = _original_rask_token_file
-    if _original_otel_enabled is None:
+        os.environ["RASK_INGEST_TOKEN_FILE"] = str(orig_token)
+    orig_otel = _rask_env_state["otel_enabled"]
+    if orig_otel is None:
         os.environ.pop("OTEL_ENABLED", None)
     else:
-        os.environ["OTEL_ENABLED"] = _original_otel_enabled
-    if _rask_test_directory is not None:
-        _rask_test_directory.cleanup()
+        os.environ["OTEL_ENABLED"] = str(orig_otel)
+    temp_dir = _rask_env_state["directory"]
+    if isinstance(temp_dir, tempfile.TemporaryDirectory):
+        temp_dir.cleanup()
 
 
 def _patch_typing_eval_type_for_pydantic_compat() -> None:
@@ -80,7 +88,7 @@ _patch_typing_eval_type_for_pydantic_compat()
 
 
 @pytest.fixture(scope="session", autouse=True)
-def mock_ml_models():
+def mock_ml_models() -> Iterator[dict[str, MagicMock]]:
     """Mock all ML model classes to avoid requiring actual model downloads in tests."""
 
     # Create mock classes that behave like the real ones
@@ -122,7 +130,7 @@ def mock_ml_models():
 
 
 @pytest.fixture(scope="session", autouse=True)
-def mock_nltk_data():
+def mock_nltk_data() -> Iterator[dict[str, dict[str, list[str]] | Callable[[str, str], list[str]]]]:
     """Mock NLTK data to avoid requiring downloads."""
 
     # Mock stopwords
@@ -178,7 +186,8 @@ def mock_nltk_data():
     mock_stopwords_corpus.words.side_effect = lambda lang="english": mock_stopwords.get(lang, [])
 
     # Mock punkt tokenizer
-    def mock_sent_tokenize(text, language="english"):
+    def mock_sent_tokenize(text: str, language: str = "english") -> list[str]:
+        _ = language
         return text.split(". ") if ". " in text else [text]
 
     with (
@@ -190,7 +199,7 @@ def mock_nltk_data():
 
 
 @pytest.fixture(scope="session", autouse=True)
-def mock_stopword_files():
+def mock_stopword_files() -> Iterator[None]:
     """Mock the stopwords files to avoid file system dependencies."""
 
     ja_stopwords_content = """の
@@ -225,22 +234,21 @@ had
 
     _real_open = builtins.open
 
-    def mock_open_file(filepath, *args, **kwargs):
+    def mock_open_file(filepath: str | os.PathLike[str], *args: object, **kwargs: object) -> object:
         filepath_str = str(filepath)
         if "stopwords_ja.txt" in filepath_str:
             return mock_open(read_data=ja_stopwords_content)(*args, **kwargs)
-        elif "stopwords_en.txt" in filepath_str:
+        if "stopwords_en.txt" in filepath_str:
             return mock_open(read_data=en_stopwords_content)(*args, **kwargs)
-        else:
-            # Fallback to original open for other files
-            return _real_open(filepath, *args, **kwargs)
+        # Fallback to original open for other files
+        return _real_open(filepath, *args, **kwargs)  # type: ignore[call-overload]
 
     with patch("builtins.open", side_effect=mock_open_file):
         yield
 
 
-@pytest.fixture(scope="function")
-def mock_database_connection():
+@pytest.fixture
+def mock_database_connection() -> Iterator[MagicMock]:
     """Mock database connections for testing without DB dependencies."""
     mock_conn = MagicMock()
     mock_cursor = MagicMock()
@@ -253,8 +261,8 @@ def mock_database_connection():
         yield mock_conn
 
 
-@pytest.fixture(scope="function")
-def mock_model_manager():
+@pytest.fixture
+def mock_model_manager() -> MagicMock:
     """Provide a mock model manager for testing."""
     mock_manager = MagicMock()
 
@@ -279,16 +287,16 @@ def mock_model_manager():
     return mock_manager
 
 
-@pytest.fixture(scope="function")
-def mock_language_detection():
+@pytest.fixture
+def mock_language_detection() -> Iterator[MagicMock]:
     """Mock language detection to avoid external dependencies."""
     with patch("langdetect.detect") as mock_detect:
         mock_detect.return_value = "en"  # Default to English
         yield mock_detect
 
 
-@pytest.fixture(scope="function")
-def sample_article_data():
+@pytest.fixture
+def sample_article_data() -> dict[str, str]:
     """Provide sample article data for testing."""
     return {
         "title": "Machine Learning Tutorial",
@@ -297,8 +305,8 @@ def sample_article_data():
     }
 
 
-@pytest.fixture(scope="function")
-def japanese_article_data():
+@pytest.fixture
+def japanese_article_data() -> dict[str, str]:
     """Provide sample Japanese article data for testing."""
     return {
         "title": "機械学習の基礎",
@@ -309,12 +317,8 @@ def japanese_article_data():
 
 # Configure logging for tests
 @pytest.fixture(scope="session", autouse=True)
-def configure_test_logging():
+def configure_test_logging() -> None:
     """Configure logging for tests to avoid noise in test output."""
-    import logging
-
-    import structlog
-
     # Reduce log level for tests
     logging.getLogger().setLevel(logging.WARNING)
 
@@ -331,12 +335,10 @@ def configure_test_logging():
         cache_logger_on_first_use=True,
     )
 
-    yield
-
 
 # Environment setup
 @pytest.fixture(scope="session", autouse=True)
-def test_environment():
+def test_environment() -> Iterator[None]:
     """Set up test environment variables."""
     os.environ["SERVICE_NAME"] = "tag-generator-test"
     os.environ["LOG_LEVEL"] = "WARNING"

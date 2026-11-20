@@ -27,7 +27,7 @@ class TagGeneratorService:
         config: TagGeneratorConfig | None = None,
         article_fetcher: ArticleFetcherPort | None = None,
         tag_inserter: TagInserterPort | None = None,
-    ):
+    ) -> None:
         """Initialize tag generator service with configuration.
 
         ``article_fetcher``/``tag_inserter`` are injected by the composition
@@ -39,7 +39,7 @@ class TagGeneratorService:
         self.config = config or TagGeneratorConfig()
 
         if article_fetcher is None or tag_inserter is None:
-            from tag_generator.driver.connect_client_factory import (
+            from tag_generator.driver.connect_client_factory import (  # noqa: PLC0415 - lazy composition-root fallback when drivers are not injected
                 create_article_fetcher_and_inserter,
             )
 
@@ -72,7 +72,7 @@ class TagGeneratorService:
     # Article processing
     # ------------------------------------------------------------------
 
-    def _process_single_article(self, conn: Any, article: dict[str, Any]) -> bool:
+    def _process_single_article(self, conn: object, article: dict[str, Any]) -> bool:
         """Process a single article for tag extraction and insertion.
 
         Used by StreamEventHandler for real-time event-driven tag generation.
@@ -87,8 +87,8 @@ class TagGeneratorService:
 
         try:
             outcome: TagExtractionOutcome = self.tag_extractor.extract_tags_with_metrics(title, content)
-        except Exception as exc:  # noqa: BLE001 - single-article failure must not abort the batch (see test_should_handle_article_processing_errors)
-            logger.error("Tag extraction failed for article", article_id=article_id, error=str(exc))
+        except Exception as exc:
+            logger.exception("Tag extraction failed for article", article_id=article_id, error=str(exc))
             return False
 
         extraction_result = TagExtractionResult.from_outcome(article_id, outcome)
@@ -102,10 +102,11 @@ class TagGeneratorService:
             success = bool(result.get("success"))
             if not success:
                 logger.warning("Tag upsert failed for article", article_id=article_id)
-            return success
         except Exception as exc:  # pragma: no cover - failure path tested via mocks
-            logger.error("Tag upsert raised exception for article", article_id=article_id, error=str(exc))
+            logger.exception("Tag upsert raised exception for article", article_id=article_id, error=str(exc))
             return False
+        else:
+            return success
 
     # ------------------------------------------------------------------
     # Public service API
@@ -161,12 +162,12 @@ class TagGeneratorService:
             logger.info("Article batch processing completed")
             self._log_batch_summary(batch_stats)
 
-            return batch_stats
-
         except Exception as e:
-            logger.error("Processing cycle failed", error=str(e))
+            logger.exception("Processing cycle failed", error=str(e))
             batch_stats["error"] = str(e)
             batch_stats["success"] = False
+            return batch_stats
+        else:
             return batch_stats
 
     def run_service(self) -> None:

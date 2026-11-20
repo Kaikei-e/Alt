@@ -12,8 +12,10 @@ import json
 from typing import Any, cast
 from unittest.mock import MagicMock
 
+import pytest
 import redis.asyncio as redis
 
+import main as main_mod
 from tag_generator.stream_consumer import ConsumerConfig, StreamConsumer
 from tag_generator.stream_event_handler import TagGeneratorEventHandler
 
@@ -35,7 +37,7 @@ class _RecordingClient:
         self.xadd_attempts = 0
         self.xadd_errors = list(xadd_errors or [])
 
-    async def xreadgroup(self, **kwargs: Any) -> list[Any]:
+    async def xreadgroup(self, **kwargs: object) -> list[Any]:
         del kwargs
         return self.batches.pop(0) if self.batches else []
 
@@ -43,7 +45,7 @@ class _RecordingClient:
         del stream, group
         self.acks.append(message_id)
 
-    async def xadd(self, stream: str, fields: dict[Any, Any], **kwargs: Any) -> str:
+    async def xadd(self, stream: str, fields: dict[Any, Any], **kwargs: object) -> str:
         del fields, kwargs
         self.xadd_attempts += 1
         error = self.xadd_errors.pop(0) if self.xadd_errors else None
@@ -165,19 +167,17 @@ def test_unwired_reply_publisher_leaves_request_unacked() -> None:
     service.tag_extractor.extract_tags_with_metrics.assert_not_called()
 
 
-def test_main_logs_tags_stream_consumer_disabled_when_disabled(monkeypatch) -> None:
+def test_main_logs_tags_stream_consumer_disabled_when_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
     """When the dedicated tags stream consumer is disabled, main() must emit an
     explicit startup log of the disabled wiring state.
     """
-    import main as main_mod
-
     logged_events: list[str] = []
 
     class _FakeLogger:
-        def info(self, event: str, **_kwargs: Any) -> None:
+        def info(self, event: str, **_kwargs: object) -> None:
             logged_events.append(event)
 
-        def error(self, event: str, **_kwargs: Any) -> None:
+        def error(self, event: str, **_kwargs: object) -> None:
             logged_events.append(event)
 
     class _FakeService:

@@ -33,11 +33,13 @@ def _spki(cert_pem: bytes) -> bytes:
 
 
 def test_certfile_write_and_load(tmp_path: Path) -> None:
+    expected_cert_mode = 0o444
+    expected_key_mode = 0o400
     files = CertFile(str(tmp_path / "svc-cert.pem"), str(tmp_path / "svc-key.pem"))
     cert, key = self_signed_pem(SUBJECT, NB, NA)
     files.write(cert, key)
-    assert files.cert_path.stat().st_mode & 0o777 == 0o444
-    assert files.key_path.stat().st_mode & 0o777 == 0o400
+    assert files.cert_path.stat().st_mode & 0o777 == expected_cert_mode
+    assert files.key_path.stat().st_mode & 0o777 == expected_key_mode
     loaded = files.load()
     assert loaded.subject.rfc4514_string() == f"CN={SUBJECT}"
 

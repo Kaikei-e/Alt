@@ -11,6 +11,7 @@ import threading
 import time
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
+from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from ipaddress import ip_address
 from pathlib import Path
@@ -28,6 +29,7 @@ from jwcrypto.jwk import JWK
 
 from tag_generator.infra.pki.config import PkiError, SharedProvisionerError
 from tag_generator.infra.pki.native_issuer import (
+    STEP_CA_PBES2_P2C,
     NativeStepCAIssuer,
     decrypt_provisioner_jwk,
     encrypt_step_ca_provisioner_jwk,
@@ -107,7 +109,7 @@ class FakeStepCA:
         ca = self
 
         class Handler(BaseHTTPRequestHandler):
-            def log_message(self, format: str, *args: object) -> None:
+            def log_message(self, format: str, *args: object) -> None:  # noqa: A002 - overrides BaseHTTPRequestHandler signature
                 _ = (format, args)
 
             def do_GET(self) -> None:
@@ -367,12 +369,14 @@ def issuer(tmp_path: Path) -> Iterator[tuple[NativeStepCAIssuer, FakeStepCA]]:
 async def test_issue_success(issuer: tuple[NativeStepCAIssuer, FakeStepCA]) -> None:
     native, ca = issuer
     cert_pem, key_pem = await native.issue(SUBJECT, [SUBJECT])
-    assert cert_pem and key_pem
+    assert cert_pem
+    assert key_pem
     method, path, body = ca.last_sign()
     assert method == "POST"
     assert path == "/sign"
     payload = json.loads(body)
-    assert payload["ott"] and payload["csr"]
+    assert payload["ott"]
+    assert payload["csr"]
     token = jwt.JWT(key=ca.jwk, jwt=payload["ott"])
     claims = json.loads(token.claims)
     assert claims["iss"] == PROVISIONER
@@ -386,6 +390,7 @@ async def test_issue_success(issuer: tuple[NativeStepCAIssuer, FakeStepCA]) -> N
 @pytest.mark.asyncio
 async def test_mints_distinct_otts(issuer: tuple[NativeStepCAIssuer, FakeStepCA]) -> None:
     native, ca = issuer
+    expected_jti_count = 2
     await native.issue(SUBJECT, [SUBJECT])
     await native.issue(SUBJECT, [SUBJECT])
     jtis: list[str] = []
@@ -395,8 +400,9 @@ async def test_mints_distinct_otts(issuer: tuple[NativeStepCAIssuer, FakeStepCA]
         ott = json.loads(body)["ott"]
         token = jwt.JWT(key=ca.jwk, jwt=ott)
         jtis.append(json.loads(token.claims)["jti"])
-    assert len(jtis) == 2
-    assert jtis[0] and jtis[0] != jtis[1]
+    assert len(jtis) == expected_jti_count
+    assert jtis[0]
+    assert jtis[0] != jtis[1]
 
 
 @pytest.mark.asyncio
@@ -407,7 +413,7 @@ async def test_reused_ott_rejected_by_ca(issuer: tuple[NativeStepCAIssuer, FakeS
     ctx = ssl.create_default_context(cafile=native.root_file)
     async with httpx.AsyncClient(verify=ctx, trust_env=False) as client:
         resp = await client.post(native.ca_url + "/sign", content=body, headers={"Content-Type": "application/json"})
-    assert resp.status_code >= 400
+    assert resp.status_code >= HTTPStatus.BAD_REQUEST
 
 
 @pytest.mark.asyncio
@@ -530,11 +536,12 @@ async def test_timeout(tmp_path: Path) -> None:
     native = NativeStepCAIssuer(
         ca_url=url, root_file=root, provisioner=PROVISIONER, password_file=str(pw), timeout_seconds=3
     )
+    max_elapsed_seconds = 15
     started = time.monotonic()
     try:
         with pytest.raises(PkiError, match="timed out"):
             await native.issue(SUBJECT, [SUBJECT])
-        assert time.monotonic() - started < 15
+        assert time.monotonic() - started < max_elapsed_seconds
     finally:
         ca.close()
 
@@ -613,7 +620,7 @@ def test_unwraps_step_ca_pbes2_iteration_count() -> None:
     from jwcrypto.jwa import default_max_pbkdf2_iterations as after
 
     assert after == before
-    assert after < 600_000
+    assert after < STEP_CA_PBES2_P2C
 
 
 @pytest.mark.asyncio

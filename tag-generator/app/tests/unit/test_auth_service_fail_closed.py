@@ -7,6 +7,8 @@ a fabricated anonymous UserContext (CLAUDE.md rule 8).
 """
 
 import asyncio
+import sys
+from http import HTTPStatus
 
 import pytest
 from fastapi import HTTPException
@@ -17,14 +19,12 @@ import auth_service
 SIDECAR = ("127.0.0.1", 44444)
 
 
-@pytest.fixture()
-def client(monkeypatch: pytest.MonkeyPatch):
-    import sys
-
+@pytest.fixture
+def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.setenv("PEER_IDENTITY_TRUSTED", "on")
     monkeypatch.setenv("MTLS_ALLOWED_PEERS", "recap-worker")
     monkeypatch.delitem(sys.modules, "auth_service", raising=False)
-    from auth_service import app
+    from auth_service import app  # noqa: PLC0415 - re-imports auth_service after monkeypatch sets env vars
 
     return TestClient(
         app,
@@ -36,11 +36,11 @@ def client(monkeypatch: pytest.MonkeyPatch):
 class TestRequireAuthFallbackFailsClosed:
     """Direct unit test of the fallback `require_auth` decorator."""
 
-    def test_async_handler_raises_instead_of_running(self):
+    def test_async_handler_raises_instead_of_running(self) -> None:
         handler_called = False
 
         @auth_service.require_auth(None)
-        async def _protected(user_context=None):
+        async def _protected(user_context: object = None) -> object:
             nonlocal handler_called
             handler_called = True
             return user_context
@@ -48,14 +48,14 @@ class TestRequireAuthFallbackFailsClosed:
         with pytest.raises(HTTPException) as exc_info:
             asyncio.run(_protected())
 
-        assert exc_info.value.status_code == 503
+        assert exc_info.value.status_code == HTTPStatus.SERVICE_UNAVAILABLE
         assert not handler_called
 
-    def test_sync_handler_raises_instead_of_running(self):
+    def test_sync_handler_raises_instead_of_running(self) -> None:
         handler_called = False
 
         @auth_service.require_auth(None)
-        def _protected(user_context=None):
+        def _protected(user_context: object = None) -> object:
             nonlocal handler_called
             handler_called = True
             return user_context
@@ -63,7 +63,7 @@ class TestRequireAuthFallbackFailsClosed:
         with pytest.raises(HTTPException) as exc_info:
             _protected()
 
-        assert exc_info.value.status_code == 503
+        assert exc_info.value.status_code == HTTPStatus.SERVICE_UNAVAILABLE
         assert not handler_called
 
 
@@ -82,7 +82,7 @@ class TestProtectedEndpointsFailClosed:
     FastAPI's own 422 body validation.
     """
 
-    def test_generate_tags_endpoint_fails_closed(self, client):
+    def test_generate_tags_endpoint_fails_closed(self, client: TestClient) -> None:
         resp = client.post(
             "/api/v1/generate-tags",
             json={
@@ -91,11 +91,11 @@ class TestProtectedEndpointsFailClosed:
             },
         )
 
-        assert resp.status_code == 503
+        assert resp.status_code == HTTPStatus.SERVICE_UNAVAILABLE
         # Must never have reached business logic that returns a fabricated identity.
         assert "user_id" not in resp.json()
 
-    def test_generate_tags_endpoint_rejects_even_a_caller_supplied_identity(self, client):
+    def test_generate_tags_endpoint_rejects_even_a_caller_supplied_identity(self, client: TestClient) -> None:
         """Before this fix, `kwargs.setdefault("user_context", ...)` never
         fired here because FastAPI had already bound `user_context` from the
         request body -- so a caller could hand-craft any UserContext
@@ -110,16 +110,16 @@ class TestProtectedEndpointsFailClosed:
             },
         )
 
-        assert resp.status_code == 503
+        assert resp.status_code == HTTPStatus.SERVICE_UNAVAILABLE
         assert "spoofed-admin" not in resp.text
 
-    def test_user_preferences_endpoint_fails_closed(self, client):
+    def test_user_preferences_endpoint_fails_closed(self, client: TestClient) -> None:
         resp = client.request("GET", "/api/v1/user-preferences", json={"user_context": {}})
 
-        assert resp.status_code == 503
+        assert resp.status_code == HTTPStatus.SERVICE_UNAVAILABLE
         assert "user_id" not in resp.json()
 
-    def test_endpoint_returns_401_when_peer_identity_missing(self, client):
+    def test_endpoint_returns_401_when_peer_identity_missing(self, client: TestClient) -> None:
         """Unauthenticated caller without peer identity must be rejected with 401."""
         client.headers.pop("x-alt-peer-identity", None)
         resp = client.post(
@@ -129,4 +129,4 @@ class TestProtectedEndpointsFailClosed:
                 "user_context": {},
             },
         )
-        assert resp.status_code == 401
+        assert resp.status_code == HTTPStatus.UNAUTHORIZED

@@ -6,6 +6,7 @@ Dispatches to language-specific extractors after sanitization and language detec
 import time
 import unicodedata
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -26,9 +27,9 @@ try:
     )
 
     # Alias for outward exposure
-    SentenceTransformer = _SentenceTransformer  # noqa: N816 (keep original casing for patching)
-    KeyBERT = _KeyBERT  # noqa: N816
-    Tagger = _Tagger  # noqa: N816
+    SentenceTransformer = _SentenceTransformer
+    KeyBERT = _KeyBERT
+    Tagger = _Tagger
     structlog.get_logger(__name__).info(
         "ml_dependencies_enabled", detail="fugashi/keybert/sentence-transformers importable"
     )
@@ -63,10 +64,12 @@ from .japanese_extractor import (
     score_candidates_by_frequency,
     score_japanese_candidates_with_keybert,
 )
-from .model_manager import get_model_manager
+from .model_manager import ModelManager, get_model_manager
 from .tag_validator import is_valid_japanese_tag as _shared_is_valid_japanese_tag
 
 logger = structlog.get_logger(__name__)
+
+_LOG_PREVIEW_LEN = 100
 
 
 @dataclass
@@ -92,8 +95,8 @@ class TagExtractor:
         self,
         config: TagExtractionConfig | None = None,
         sanitizer_config: SanitizationConfig | None = None,
-        model_manager: Any | None = None,
-    ):
+        model_manager: ModelManager | None = None,
+    ) -> None:
         self.config = config or TagExtractionConfig()
         self._model_manager = model_manager or get_model_manager()
         self._models_loaded = False
@@ -128,8 +131,8 @@ class TagExtractor:
 
         if not sanitization_result.is_valid or sanitization_result.sanitized_input is None:
             # Log rejected article information for debugging (debug level to reduce log noise)
-            title_preview = title[:100] if len(title) > 100 else title
-            content_preview = content[:100] if len(content) > 100 else content
+            title_preview = title[:_LOG_PREVIEW_LEN] if len(title) > _LOG_PREVIEW_LEN else title
+            content_preview = content[:_LOG_PREVIEW_LEN] if len(content) > _LOG_PREVIEW_LEN else content
             logger.debug(
                 "Input sanitization failed",
                 violations=sanitization_result.violations,
@@ -248,10 +251,9 @@ class TagExtractor:
             fallback_keywords = self._fallback_extraction(raw_text, lang)
             fallback_confidences = {tag: max(0.3, 0.7 - (i * 0.1)) for i, tag in enumerate(fallback_keywords)}
         except Exception as fallback_error:
-            logger.error(
+            logger.exception(
                 "Fallback extraction failed",
                 error=str(fallback_error),
-                exc_info=True,
             )
             if not keywords:
                 raise
@@ -346,10 +348,8 @@ class TagExtractor:
     def _normalize_text(self, text: str, lang: str) -> str:
         """Normalize text based on language."""
         if lang == "ja":
-            normalized = unicodedata.normalize("NFKC", text)
-            return normalized
-        else:
-            return text.lower()
+            return unicodedata.normalize("NFKC", text)
+        return text.lower()
 
     def _is_valid_japanese_tag(self, tag: str) -> bool:
         """Filter out grammatically invalid or low-quality Japanese tags.
@@ -379,7 +379,7 @@ class TagExtractor:
         self._load_stopwords()
         return extract_keywords_japanese(text, self._ja_tagger, self._keybert, self._ja_stopwords, self.config)
 
-    def _make_japanese_analyzer(self):
+    def _make_japanese_analyzer(self) -> Callable[[str], list[str]]:
         """Create a custom analyzer for CountVectorizer that uses Fugashi."""
         return make_japanese_analyzer(self._ja_tagger)
 
@@ -427,7 +427,6 @@ class TagExtractor:
             self._lazy_load_models()
             self._load_stopwords()
             return fallback_japanese(text, self._ja_tagger, self._ja_stopwords, self.config)
-        else:
-            # For English, try tokenization and frequency
-            self._load_stopwords()
-            return fallback_english(text, self._en_stopwords, self.config)
+        # For English, try tokenization and frequency
+        self._load_stopwords()
+        return fallback_english(text, self._en_stopwords, self.config)

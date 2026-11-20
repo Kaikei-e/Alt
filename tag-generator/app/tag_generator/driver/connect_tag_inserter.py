@@ -35,7 +35,7 @@ class ConnectTagInserter:
 
     def upsert_tags(
         self,
-        conn: Any,
+        conn: object,
         article_id: str,
         tags: list[str],
         feed_id: str,
@@ -62,15 +62,16 @@ class ConnectTagInserter:
                 headers=self.auth_headers,
                 timeout_ms=_TIMEOUT_MS,
             )
+        except ConnectError as e:
+            logger.exception("UpsertArticleTags failed", article_id=article_id, error=str(e))
+            return {"success": False, "error": str(e)}
+        else:
             return {
                 "success": resp.success,
                 "upserted_count": resp.upserted_count,
             }
-        except ConnectError as e:
-            logger.error("UpsertArticleTags failed", article_id=article_id, error=str(e))
-            return {"success": False, "error": str(e)}
 
-    def batch_upsert_tags_no_commit(self, conn: Any, article_tags: list[dict[str, Any]]) -> BatchResult:
+    def batch_upsert_tags_no_commit(self, conn: object, article_tags: list[dict[str, Any]]) -> BatchResult:
         """Batch upsert tags via BatchUpsertArticleTags RPC."""
         items: list[datahub_pb2.UpsertArticleTagsRequest] = []
         for entry in article_tags:
@@ -114,7 +115,7 @@ class ConnectTagInserter:
                 message=None,
             )
         except ConnectError as e:
-            logger.error("BatchUpsertArticleTags failed", error=str(e))
+            logger.exception("BatchUpsertArticleTags failed", error=str(e))
             return BatchResult(
                 success=False,
                 processed_articles=0,
@@ -123,6 +124,6 @@ class ConnectTagInserter:
                 message=str(e),
             )
 
-    def batch_upsert_tags_with_comparison(self, conn: Any, article_tags: list[dict[str, Any]]) -> BatchResult:
+    def batch_upsert_tags_with_comparison(self, conn: object, article_tags: list[dict[str, Any]]) -> BatchResult:
         """Batch upsert with comparison — delegates to batch_upsert_tags_no_commit in API mode."""
         return self.batch_upsert_tags_no_commit(conn, article_tags)

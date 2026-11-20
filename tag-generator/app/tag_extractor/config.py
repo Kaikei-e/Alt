@@ -1,6 +1,9 @@
 """Configuration models for tag extraction and ML model management."""
 
 import os
+from collections.abc import Iterable
+from pathlib import Path
+from typing import Protocol
 
 import structlog
 from pydantic import BaseModel, Field, model_validator
@@ -8,6 +11,28 @@ from pydantic import BaseModel, Field, model_validator
 logger = structlog.get_logger(__name__)
 
 EMBEDDING_MODEL_REVISION = "e8f8c211226b894fcb81acc59f3b34ba3efd5f42"
+
+
+class KeyBERTLike(Protocol):
+    """Structural interface for KeyBERT instances and test doubles."""
+
+    def extract_keywords(self, docs: str, **kwargs: object) -> list[tuple[str, float]]: ...
+
+
+class JapaneseTokenLike(Protocol):
+    """Structural interface for Fugashi morphological tokens."""
+
+    @property
+    def surface(self) -> str: ...
+
+    @property
+    def feature(self) -> object: ...
+
+
+class JapaneseTaggerLike(Protocol):
+    """Structural interface for Fugashi Tagger callables."""
+
+    def __call__(self, text: str) -> Iterable[JapaneseTokenLike]: ...
 
 
 class TagExtractionConfig(BaseModel):
@@ -80,14 +105,13 @@ class TagExtractionConfig(BaseModel):
             self.onnx_model_path = os.getenv("TAG_ONNX_MODEL_PATH", "/models/onnx/model.onnx")
 
         # Auto-disable ONNX runtime if model file doesn't exist
-        if self.use_onnx_runtime and self.onnx_model_path is not None:
-            if not os.path.exists(self.onnx_model_path):
-                logger.info(
-                    "ONNX runtime requested but model file not found; disabling ONNX runtime",
-                    model_path=self.onnx_model_path,
-                    use_onnx_runtime=self.use_onnx_runtime,
-                )
-                self.use_onnx_runtime = False
+        if self.use_onnx_runtime and self.onnx_model_path is not None and not Path(self.onnx_model_path).exists():
+            logger.info(
+                "ONNX runtime requested but model file not found; disabling ONNX runtime",
+                model_path=self.onnx_model_path,
+                use_onnx_runtime=self.use_onnx_runtime,
+            )
+            self.use_onnx_runtime = False
 
         # Enable FP16 via environment variable
         if os.getenv("TAG_USE_FP16", "").lower() in ("true", "1", "yes"):

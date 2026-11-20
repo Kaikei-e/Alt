@@ -5,6 +5,7 @@ ABOUTME: Provides JSON output with alt.* prefixed business context attributes.
 
 import json
 import logging
+import os
 import sys
 from datetime import UTC, datetime
 
@@ -62,7 +63,7 @@ class JsonFormatter(logging.Formatter):
     and includes them in the final JSON output.
     """
 
-    def format(self, record):
+    def format(self, record: logging.LogRecord) -> str:
         # These are the standard attributes of a LogRecord that we handle explicitly
         # or want to ignore.
         standard_attrs = {
@@ -94,7 +95,7 @@ class JsonFormatter(logging.Formatter):
         timestamp = None
         if hasattr(record, "timestamp"):
             # Use getattr with type ignore since timestamp is a dynamic attribute added by structlog
-            timestamp_value = getattr(record, "timestamp", None)  # type: ignore[attr-defined]  # noqa: B009
+            timestamp_value = getattr(record, "timestamp", None)  # type: ignore[attr-defined]
             if isinstance(timestamp_value, str):
                 timestamp = timestamp_value
         elif self.datefmt == "iso":
@@ -130,7 +131,7 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(log_record, sort_keys=True, default=str)
 
 
-def setup_logging(enable_otel: bool = True):
+def setup_logging(enable_otel: bool = True) -> None:
     """
     Set up structured logging using structlog, integrated with the standard
     logging library to output JSON. Optionally enables OpenTelemetry log export.
@@ -138,8 +139,6 @@ def setup_logging(enable_otel: bool = True):
     Args:
         enable_otel: Whether to enable OTel log export. Default True.
     """
-    import os
-
     # Define a type for structlog processors
     # Processor = Callable[[Any, str, Any] , Any] # Simplified type for Pyright
 
@@ -190,7 +189,9 @@ def setup_logging(enable_otel: bool = True):
         otel_enabled = os.getenv("OTEL_ENABLED", "true").lower() == "true"
         if otel_enabled:
             try:
-                from tag_generator.infra.otel import get_otel_logging_handler
+                from tag_generator.infra.otel import (  # noqa: PLC0415 - optional OTel dependency imported only when enabled
+                    get_otel_logging_handler,
+                )
 
                 otel_handler = get_otel_logging_handler()
                 if otel_handler is not None:
@@ -205,7 +206,7 @@ def setup_logging(enable_otel: bool = True):
 
     # Ensure every LogRecord has an 'event' attribute for tests that rely on it.
     class _EnsureEvent(logging.Filter):
-        def filter(self, record: logging.LogRecord) -> bool:  # noqa: D401
+        def filter(self, record: logging.LogRecord) -> bool:
             if not hasattr(record, "event"):
                 # Default to the already formatted message
                 record.event = record.getMessage()

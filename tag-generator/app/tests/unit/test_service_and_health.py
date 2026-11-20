@@ -1,5 +1,7 @@
 """Unit tests for TagGeneratorService, HealthMonitor, ProcessingScheduler health checks, and GET /health."""
 
+from http import HTTPStatus
+from typing import Protocol
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -23,22 +25,24 @@ def _make_service(config: TagGeneratorConfig | None = None) -> TagGeneratorServi
 class TestTagGeneratorServiceCycleAndSingleArticle:
     """Tests for TagGeneratorService.run_processing_cycle and _process_single_article."""
 
-    def test_run_processing_cycle_succeeds_when_articles_processed(self):
+    def test_run_processing_cycle_succeeds_when_articles_processed(self) -> None:
         service = _make_service()
+        total_processed = 5
+        successful = 4
         with patch.object(
             service.batch_processor,
             "process_article_batch",
-            return_value={"total_processed": 5, "successful": 4, "failed": 1},
+            return_value={"total_processed": total_processed, "successful": successful, "failed": 1},
         ):
             stats = service.run_processing_cycle()
 
         assert stats["success"] is True
-        assert stats["total_processed"] == 5
-        assert stats["successful"] == 4
+        assert stats["total_processed"] == total_processed
+        assert stats["successful"] == successful
         assert stats["failed"] == 1
         assert stats["error"] is None
 
-    def test_run_processing_cycle_succeeds_when_nothing_to_process(self):
+    def test_run_processing_cycle_succeeds_when_nothing_to_process(self) -> None:
         service = _make_service()
         with patch.object(
             service.batch_processor,
@@ -50,7 +54,7 @@ class TestTagGeneratorServiceCycleAndSingleArticle:
         assert stats["success"] is True
         assert stats["total_processed"] == 0
 
-    def test_run_processing_cycle_succeeds_when_zero_failed_even_if_zero_successful(self):
+    def test_run_processing_cycle_succeeds_when_zero_failed_even_if_zero_successful(self) -> None:
         """When all articles in batch had empty tag extraction (successful=0, failed=0), cycle is still successful."""
         service = _make_service()
         with patch.object(
@@ -62,19 +66,20 @@ class TestTagGeneratorServiceCycleAndSingleArticle:
 
         assert stats["success"] is True
 
-    def test_run_processing_cycle_marks_failure_when_all_processed_articles_failed(self):
+    def test_run_processing_cycle_marks_failure_when_all_processed_articles_failed(self) -> None:
         service = _make_service()
+        batch_size = 2
         with patch.object(
             service.batch_processor,
             "process_article_batch",
-            return_value={"total_processed": 2, "successful": 0, "failed": 2},
+            return_value={"total_processed": batch_size, "successful": 0, "failed": batch_size},
         ):
             stats = service.run_processing_cycle()
 
         assert stats["success"] is False
-        assert stats["failed"] == 2
+        assert stats["failed"] == batch_size
 
-    def test_run_processing_cycle_catches_exception_and_returns_error_dict(self):
+    def test_run_processing_cycle_catches_exception_and_returns_error_dict(self) -> None:
         service = _make_service()
         with patch.object(
             service.batch_processor,
@@ -86,7 +91,7 @@ class TestTagGeneratorServiceCycleAndSingleArticle:
         assert stats["success"] is False
         assert stats["error"] == "datahub unavailable"
 
-    def test_process_single_article_returns_false_without_upsert_when_extraction_empty(self):
+    def test_process_single_article_returns_false_without_upsert_when_extraction_empty(self) -> None:
         service = _make_service()
         empty_outcome = TagExtractionOutcome(
             tags=[],
@@ -105,7 +110,7 @@ class TestTagGeneratorServiceCycleAndSingleArticle:
         assert result is False
         service.tag_inserter.upsert_tags.assert_not_called()  # type: ignore[attr-defined]
 
-    def test_process_single_article_returns_false_when_upsert_reports_failure(self):
+    def test_process_single_article_returns_false_when_upsert_reports_failure(self) -> None:
         service = _make_service()
         outcome = TagExtractionOutcome(
             tags=["ml"],
@@ -130,7 +135,7 @@ class TestTagGeneratorServiceCycleAndSingleArticle:
 class TestHealthMonitorAndSchedulerIntegration:
     """Tests for HealthMonitor diagnostics and ProcessingScheduler health check triggering."""
 
-    def test_perform_health_check_queries_untagged_count_when_empty_cycles_reach_threshold(self):
+    def test_perform_health_check_queries_untagged_count_when_empty_cycles_reach_threshold(self) -> None:
         config = TagGeneratorConfig(max_consecutive_empty_cycles=3, health_check_interval=2)
         fetcher = MagicMock()
         fetcher.count_untagged_articles.return_value = 42
@@ -143,7 +148,7 @@ class TestHealthMonitorAndSchedulerIntegration:
 
         fetcher.count_untagged_articles.assert_called_once_with(None)
 
-    def test_perform_health_check_swallows_diagnostic_fetcher_exception(self):
+    def test_perform_health_check_swallows_diagnostic_fetcher_exception(self) -> None:
         config = TagGeneratorConfig(max_consecutive_empty_cycles=2)
         fetcher = MagicMock()
         fetcher.count_untagged_articles.side_effect = RuntimeError("rpc error")
@@ -156,7 +161,7 @@ class TestHealthMonitorAndSchedulerIntegration:
         monitor.perform_health_check()
         fetcher.count_untagged_articles.assert_called_once_with(None)
 
-    def test_scheduler_run_cycle_triggers_and_marks_health_check_at_interval(self):
+    def test_scheduler_run_cycle_triggers_and_marks_health_check_at_interval(self) -> None:
         config = TagGeneratorConfig(health_check_interval=2, max_consecutive_empty_cycles=5)
         service = _make_service(config)
         scheduler = ProcessingScheduler(service, sleep_fn=MagicMock())
@@ -176,40 +181,50 @@ class TestHealthMonitorAndSchedulerIntegration:
             # Cycle 2: total_cycles=2 >= health_check_interval=2 -> health check runs and marks completion
             scheduler.run_cycle()
             assert spy_hc.call_count == 1
-            assert service.health_monitor.last_health_check_cycle == 2
+            assert service.health_monitor.last_health_check_cycle == config.health_check_interval
+
+
+class _AuthServiceModule(Protocol):
+    _background_service_healthy: bool
+
+    def _mark_consumer_health(self, name: str, healthy: bool) -> None: ...
 
 
 class TestAuthServiceHealthEndpoint:
     """Tests for GET /health liveness reporting in auth_service."""
 
-    @pytest.fixture()
-    def health_client(self, monkeypatch: pytest.MonkeyPatch):
-        import auth_service
+    @pytest.fixture
+    def health_client(self, monkeypatch: pytest.MonkeyPatch) -> tuple[TestClient, _AuthServiceModule]:
+        import auth_service  # noqa: PLC0415 - other tests replace sys.modules["auth_service"]; the current module object must be fetched at call time
 
         monkeypatch.setattr(auth_service, "_background_service_healthy", True)
         monkeypatch.setattr(auth_service, "_consumer_health", {})
         return TestClient(auth_service.app), auth_service
 
-    def test_returns_503_when_background_batch_service_is_unhealthy(self, health_client):
+    def test_returns_503_when_background_batch_service_is_unhealthy(
+        self, health_client: tuple[TestClient, _AuthServiceModule]
+    ) -> None:
         client, auth_service = health_client
         auth_service._background_service_healthy = False
 
         resp = client.get("/health")
 
-        assert resp.status_code == 503
+        assert resp.status_code == HTTPStatus.SERVICE_UNAVAILABLE
         assert "Background tag generation is unhealthy" in resp.json()["detail"]
 
-    def test_returns_503_when_stream_consumer_is_down_and_recovers_to_200(self, health_client):
+    def test_returns_503_when_stream_consumer_is_down_and_recovers_to_200(
+        self, health_client: tuple[TestClient, _AuthServiceModule]
+    ) -> None:
         client, auth_service = health_client
         auth_service._mark_consumer_health("articles", True)
         auth_service._mark_consumer_health("tags", False)
 
         resp_down = client.get("/health")
-        assert resp_down.status_code == 503
+        assert resp_down.status_code == HTTPStatus.SERVICE_UNAVAILABLE
         assert "Stream consumers are down: tags" in resp_down.json()["detail"]
 
         # Once the supervised consumer recovers, /health returns 200 again
         auth_service._mark_consumer_health("tags", True)
         resp_recovered = client.get("/health")
-        assert resp_recovered.status_code == 200
+        assert resp_recovered.status_code == HTTPStatus.OK
         assert resp_recovered.json() == {"status": "healthy", "service": "tag-generator"}

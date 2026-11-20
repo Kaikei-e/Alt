@@ -13,6 +13,7 @@ import tempfile
 import threading
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
+from http import HTTPStatus
 from pathlib import Path
 
 import httpx
@@ -324,10 +325,10 @@ async def test_password_size_cap(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("eku",),
+    "eku",
     [
-        ([ExtendedKeyUsageOID.SERVER_AUTH],),
-        ([ExtendedKeyUsageOID.CLIENT_AUTH],),
+        [ExtendedKeyUsageOID.SERVER_AUTH],
+        [ExtendedKeyUsageOID.CLIENT_AUTH],
     ],
 )
 async def test_rejects_one_sided_eku(tmp_path: Path, eku: list[ObjectIdentifier]) -> None:
@@ -508,9 +509,9 @@ async def test_start_uses_private_registry_and_ops(tmp_path: Path, monkeypatch: 
         async with httpx.AsyncClient() as client:
             health = await client.get(f"http://{handle.ops_addr}/health")
             metrics = await client.get(f"http://{handle.ops_addr}/metrics")
-        assert health.status_code == 200
+        assert health.status_code == HTTPStatus.OK
         assert "tag-generator" in health.text
-        assert metrics.status_code == 200
+        assert metrics.status_code == HTTPStatus.OK
         assert "pki_enrollment_healthy" in metrics.text
         leaked = generate_latest(DEFAULT_REGISTRY).decode()
         assert 'subject="tag-generator"' not in leaked or "pki_enrollment_healthy" not in leaked
@@ -519,5 +520,6 @@ async def test_start_uses_private_registry_and_ops(tmp_path: Path, monkeypatch: 
 
 
 def test_pbes2_constant_is_step_ca_default() -> None:
-    assert STEP_CA_PBES2_P2C == 600_000
+    expected_p2c = 600_000
+    assert expected_p2c == STEP_CA_PBES2_P2C
     assert os.path.exists("/proc/self/fd")

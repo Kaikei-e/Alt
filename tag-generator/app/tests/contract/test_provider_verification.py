@@ -14,6 +14,7 @@ import os
 import socket
 import threading
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -111,7 +112,7 @@ def _create_provider_app() -> FastAPI:
 
 
 @pytest.fixture(scope="module")
-def provider_url():
+def provider_url() -> tuple[str, int]:
     """Start the provider server on a free port for all tests in this module."""
     port = _get_free_port()
     app = _create_provider_app()
@@ -128,12 +129,12 @@ def provider_url():
         try:
             urllib.request.urlopen(f"{base_url}/openapi.json")  # noqa: S310  # nosec B310
             break
-        except Exception:
+        except urllib.error.URLError, OSError:
             time.sleep(0.05)
     else:
         pytest.fail("Provider server did not start")
 
-    yield base_url, port
+    return base_url, port
 
 
 def _configure_verifier(
@@ -210,7 +211,7 @@ def _configure_verifier(
     not PACT_BROKER_URL and not RECAP_WORKER_PACT.exists(),
     reason=f"No Broker URL and pact file not found: {RECAP_WORKER_PACT}",
 )
-def test_verify_recap_worker_contract(provider_url: tuple[str, int]):
+def test_verify_recap_worker_contract(provider_url: tuple[str, int]) -> None:
     """Verify tag-generator satisfies recap-worker's contract."""
     base_url, port = provider_url
 

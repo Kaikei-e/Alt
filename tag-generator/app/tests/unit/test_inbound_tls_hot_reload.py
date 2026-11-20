@@ -35,9 +35,9 @@ def _write_leaf(dir_path: Path, cn: str, days: int) -> tuple[Path, Path, Path]:
     """Self-signed leaf used as both server cert and trust anchor."""
     cert_path = dir_path / f"{cn}-{days}d-cert.pem"
     key_path = dir_path / f"{cn}-{days}d-key.pem"
-    subprocess.run(  # noqa: S603, S607 — test-only openssl
+    subprocess.run(
         [
-            "openssl",  # noqa: S607 — test-only openssl
+            "openssl",
             "req",
             "-x509",
             "-newkey",
@@ -65,13 +65,13 @@ def _write_leaf(dir_path: Path, cn: str, days: int) -> tuple[Path, Path, Path]:
 def _atomic_replace(dest: Path, src: Path) -> None:
     tmp = dest.with_suffix(dest.suffix + ".tmp")
     tmp.write_bytes(src.read_bytes())
-    os.replace(tmp, dest)
+    tmp.replace(dest)
 
 
 def _not_after_from_der(der: bytes) -> str:
     pem = ssl.DER_cert_to_PEM_cert(der)
-    out = subprocess.run(  # noqa: S603, S607
-        ["openssl", "x509", "-noout", "-enddate"],  # noqa: S607
+    out = subprocess.run(
+        ["openssl", "x509", "-noout", "-enddate"],
         input=pem,
         check=True,
         capture_output=True,
@@ -89,11 +89,13 @@ def _handshake_enddate(port: int, client_cert: Path, client_key: Path) -> str:
     ctx.verify_mode = ssl.CERT_NONE
     assert ctx.minimum_version >= ssl.TLSVersion.TLSv1_2
     ctx.load_cert_chain(certfile=str(client_cert), keyfile=str(client_key))
-    with socket.create_connection(("127.0.0.1", port), timeout=5) as sock:
-        with ctx.wrap_socket(sock, server_hostname="localhost") as ssock:
-            der = ssock.getpeercert(binary_form=True)
-            assert der is not None
-            return _not_after_from_der(der)
+    with (
+        socket.create_connection(("127.0.0.1", port), timeout=5) as sock,
+        ctx.wrap_socket(sock, server_hostname="localhost") as ssock,
+    ):
+        der = ssock.getpeercert(binary_form=True)
+        assert der is not None
+        return _not_after_from_der(der)
 
 
 class _TLSServer:
@@ -170,7 +172,7 @@ def test_inbound_handshake_shows_new_not_after_after_atomic_replace(tmp_path: Pa
         second = _handshake_enddate(server.port, client_cert, client_key)
         assert second != first, "inbound handshake must present the rotated NotAfter without restarting the process"
         assert server.thread_ident is not None
-        assert server._thread.is_alive(), "listener thread must survive cert rotation"  # noqa: SLF001
+        assert server._thread.is_alive(), "listener thread must survive cert rotation"
     finally:
         server.close()
 
@@ -202,13 +204,13 @@ def test_inbound_listener_rejects_plaintext(tmp_path: Path) -> None:
 
 
 def test_inbound_ssl_context_fails_closed_on_missing_cert(tmp_path: Path) -> None:
-    cert, key, ca = _write_leaf(tmp_path, "tag-generator", days=1)
+    _cert, key, ca = _write_leaf(tmp_path, "tag-generator", days=1)
     with pytest.raises(RuntimeError, match="cert"):
         build_inbound_ssl_context(str(tmp_path / "missing-cert.pem"), str(key), str(ca))
 
 
 def test_inbound_ssl_context_fails_closed_on_missing_key(tmp_path: Path) -> None:
-    cert, key, ca = _write_leaf(tmp_path, "tag-generator", days=1)
+    cert, _key, ca = _write_leaf(tmp_path, "tag-generator", days=1)
     with pytest.raises(RuntimeError, match="key"):
         build_inbound_ssl_context(str(cert), str(tmp_path / "missing-key.pem"), str(ca))
 
@@ -241,9 +243,11 @@ def test_inbound_listener_rejects_tls12(tmp_path: Path) -> None:
         client.verify_mode = ssl.CERT_NONE
         assert client.minimum_version >= ssl.TLSVersion.TLSv1_2
         client.load_cert_chain(str(cert), str(key))
-        with socket.create_connection(("127.0.0.1", server.port), timeout=5) as sock:
-            with pytest.raises(ssl.SSLError):
-                client.wrap_socket(sock, server_hostname="localhost")
+        with (
+            socket.create_connection(("127.0.0.1", server.port), timeout=5) as sock,
+            pytest.raises(ssl.SSLError),
+        ):
+            client.wrap_socket(sock, server_hostname="localhost")
     finally:
         server.close()
 
@@ -264,9 +268,13 @@ def test_inbound_listener_rejects_untrusted_client_cert(tmp_path: Path) -> None:
         client.load_cert_chain(str(evil_cert), str(evil_key))
         with socket.create_connection(("127.0.0.1", server.port), timeout=5) as sock:
             ssock = client.wrap_socket(sock, server_hostname="localhost")
-            with pytest.raises((ssl.SSLError, OSError, ConnectionResetError, BrokenPipeError)):
+
+            def _send_and_read() -> bytes:
                 ssock.sendall(b"x")
-                ssock.read(1)
+                return ssock.read(1)
+
+            with pytest.raises((ssl.SSLError, OSError, ConnectionResetError, BrokenPipeError)):
+                _send_and_read()
     finally:
         server.close()
 
@@ -308,15 +316,17 @@ def test_inbound_uvicorn_config_reuses_sslcontext(tmp_path: Path) -> None:
 
 
 def test_resolve_inbound_tls_bind_disabled_when_unset() -> None:
+    plaintext_port = 9400
+    default_tls_port = 9443
     bind = resolve_inbound_tls_bind(
         plaintext_host="0.0.0.0",  # noqa: S104  # nosec B104
-        plaintext_port=9400,
+        plaintext_port=plaintext_port,
         environ={},
     )
     assert bind.enabled is False
     assert "unset" in bind.disable_reason
-    assert bind.plaintext_port == 9400
-    assert bind.tls_port == 9443
+    assert bind.plaintext_port == plaintext_port
+    assert bind.tls_port == default_tls_port
 
 
 def test_resolve_inbound_tls_bind_fails_when_enrollment_enabled_and_inbound_unset() -> None:

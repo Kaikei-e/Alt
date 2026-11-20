@@ -42,7 +42,7 @@ class _FakeFetcher:
     def __init__(self, article: dict[str, Any] | None) -> None:
         self.article = article
 
-    def fetch_article_by_id(self, conn: Any, article_id: str) -> dict[str, Any] | None:
+    def fetch_article_by_id(self, conn: object, article_id: str) -> dict[str, Any] | None:
         del conn, article_id
         return dict(self.article) if self.article is not None else None
 
@@ -77,7 +77,7 @@ class _FakeInserter:
 
     def upsert_tags(
         self,
-        conn: Any,
+        conn: object,
         article_id: str,
         tags: list[str],
         feed_id: str,
@@ -95,7 +95,7 @@ class _ScriptedReadClient:
         self.batches = list(batches)
         self.acks: list[str] = []
 
-    async def xreadgroup(self, **kwargs: Any) -> list[Any]:
+    async def xreadgroup(self, **kwargs: object) -> list[Any]:
         del kwargs
         return self.batches.pop(0) if self.batches else []
 
@@ -104,7 +104,11 @@ class _ScriptedReadClient:
         self.acks.append(message_id)
 
 
-def _service(extractor: _FakeExtractor, inserter: _FakeInserter, article: dict[str, Any] | None = ARTICLE):
+def _service(
+    extractor: _FakeExtractor,
+    inserter: _FakeInserter,
+    article: dict[str, Any] | None = ARTICLE,
+) -> TagGeneratorService:
     """Build a TagGeneratorService with fake ports and no ML warmup.
 
     `__init__` loads the real extractor, so the instance is created directly and

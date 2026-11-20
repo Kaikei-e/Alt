@@ -98,7 +98,7 @@ class _UncompressedDataHubClient(DataHubServiceClientSync):
     so they are the paths production sends, not a string this file made up.
     """
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
+    def __init__(self, *args: Any, **kwargs: Any) -> None:  # noqa: ANN401 - forwards constructor arguments to generated client base class
         kwargs.setdefault("send_compression", None)
         super().__init__(*args, **kwargs)
 
@@ -176,6 +176,7 @@ def test_list_untagged_articles_goes_to_the_datahub_namespace() -> None:
 
 def test_count_untagged_articles_reads_total_count() -> None:
     """The scheduler's backlog probe sends limit=1 and binds totalCount only."""
+    expected_total = 42
     pact = _new_pact()
     (
         pact.upon_receiving("a ListUntaggedArticles backlog probe")
@@ -186,7 +187,7 @@ def test_count_untagged_articles_reads_total_count() -> None:
         .with_body(
             {
                 "articles": match.each_like(_article_body(), min=1),
-                "totalCount": match.integer(42),
+                "totalCount": match.integer(expected_total),
             },
             "application/json",
         )
@@ -196,7 +197,7 @@ def test_count_untagged_articles_reads_total_count() -> None:
         fetcher, _ = _drivers(str(srv.url))
         total = fetcher.count_untagged_articles(None)
 
-    assert total == 42
+    assert total == expected_total
 
     pact.write_file(PACT_DIR)
 
@@ -248,6 +249,7 @@ def test_upsert_article_tags_goes_to_the_datahub_namespace() -> None:
             {"name": "rust", "confidence": 0.5},
         ],
     }
+    expected_upserted = len(request_body["tags"])
     (
         pact.upon_receiving("an UpsertArticleTags request for one article")
         .given("the article exists and has no tags")
@@ -257,7 +259,7 @@ def test_upsert_article_tags_goes_to_the_datahub_namespace() -> None:
         .with_body(
             {
                 "success": match.boolean(True),
-                "upsertedCount": match.integer(2),
+                "upsertedCount": match.integer(expected_upserted),
             },
             "application/json",
         )
@@ -276,7 +278,7 @@ def test_upsert_article_tags_goes_to_the_datahub_namespace() -> None:
     # upsert_tags swallows ConnectError into {"success": False, "error": ...},
     # so asserting success is what makes a path mismatch fail the test.
     assert result["success"] is True, f"upsert failed: {result.get('error')}"
-    assert result["upserted_count"] == 2
+    assert result["upserted_count"] == expected_upserted
 
     pact.write_file(PACT_DIR)
 
@@ -298,6 +300,7 @@ def test_batch_upsert_article_tags_goes_to_the_datahub_namespace() -> None:
             },
         ]
     }
+    expected_processed = len(request_body["items"])
     (
         pact.upon_receiving("a BatchUpsertArticleTags request for two articles")
         .given("both articles exist and have no tags")
@@ -307,7 +310,7 @@ def test_batch_upsert_article_tags_goes_to_the_datahub_namespace() -> None:
         .with_body(
             {
                 "success": match.boolean(True),
-                "totalUpserted": match.integer(2),
+                "totalUpserted": match.integer(expected_processed),
             },
             "application/json",
         )
@@ -337,7 +340,7 @@ def test_batch_upsert_article_tags_goes_to_the_datahub_namespace() -> None:
     # ConnectError into success=False, so asserting success is what makes a
     # path mismatch fail the test.
     assert result["success"] is True, f"batch upsert failed: {result['errors']}"
-    assert result["processed_articles"] == 2
+    assert result["processed_articles"] == expected_processed
     assert result["failed_articles"] == 0
 
     pact.write_file(PACT_DIR)

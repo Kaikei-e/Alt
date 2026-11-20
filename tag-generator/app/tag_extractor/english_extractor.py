@@ -2,15 +2,25 @@
 
 import re
 from collections import Counter
-from typing import Any, cast
+from typing import cast
 
 import nltk
 import structlog
 
-from .config import TagExtractionConfig
+from .config import KeyBERTLike, TagExtractionConfig
 from .tag_validator import is_valid_english_tag
 
 logger = structlog.get_logger(__name__)
+
+_SHORT_WORD_LENGTH = 2
+_MIN_PLURAL_BASE_LENGTH = 3
+_MIN_PHRASE_WORDS = 2
+
+
+class _KeyBERTNotInitializedError(RuntimeError):
+    def __init__(self) -> None:
+        super().__init__("KeyBERT not initialized")
+
 
 # Canonical 318-word Glasgow IR stopword set (primary source:
 # https://ir.dcs.gla.ac.uk/resources/linguistic_utils/stop_words; also distributed
@@ -19,34 +29,326 @@ logger = structlog.get_logger(__name__)
 # Vendored directly because scikit-learn belongs to the optional `ml` group rather
 # than core runtime dependencies.
 ENGLISH_STOP_WORDS: frozenset[str] = frozenset(
-    """
-    a about above across after afterwards again against all almost alone along
-    already also although always am among amongst amoungst amount an and another
-    any anyhow anyone anything anyway anywhere are around as at back be became
-    because become becomes becoming been before beforehand behind being below
-    beside besides between beyond bill both bottom but by call can cannot cant
-    co con could couldnt cry de describe detail do done down due during each eg
-    eight either eleven else elsewhere empty enough etc even ever every everyone
-    everything everywhere except few fifteen fifty fill find fire first five for
-    former formerly forty found four from front full further get give go had has
-    hasnt have he hence her here hereafter hereby herein hereupon hers herself
-    him himself his how however hundred i ie if in inc indeed interest into is
-    it its itself keep last latter latterly least less ltd made many may me
-    meanwhile might mill mine more moreover most mostly move much must my
-    myself name namely neither never nevertheless next nine no nobody none
-    noone nor not nothing now nowhere of off often on once one only onto or
-    other others otherwise our ours ourselves out over own part per perhaps
-    please put rather re same see seem seemed seeming seems serious several she
-    should show side since sincere six sixty so some somehow someone something
-    sometime sometimes somewhere still such system take ten than that the their
-    them themselves then thence there thereafter thereby therefore therein
-    thereupon these they thick thin third this those though three through
-    throughout thru thus to together too top toward towards twelve twenty two un
-    under until up upon us very via was we well were what whatever when whence
-    whenever where whereafter whereas whereby wherein whereupon wherever whether
-    which while whither who whoever whole whom whose why will with within
-    without would yet you your yours yourself yourselves
-    """.split()
+    [
+        "a",
+        "about",
+        "above",
+        "across",
+        "after",
+        "afterwards",
+        "again",
+        "against",
+        "all",
+        "almost",
+        "alone",
+        "along",
+        "already",
+        "also",
+        "although",
+        "always",
+        "am",
+        "among",
+        "amongst",
+        "amoungst",
+        "amount",
+        "an",
+        "and",
+        "another",
+        "any",
+        "anyhow",
+        "anyone",
+        "anything",
+        "anyway",
+        "anywhere",
+        "are",
+        "around",
+        "as",
+        "at",
+        "back",
+        "be",
+        "became",
+        "because",
+        "become",
+        "becomes",
+        "becoming",
+        "been",
+        "before",
+        "beforehand",
+        "behind",
+        "being",
+        "below",
+        "beside",
+        "besides",
+        "between",
+        "beyond",
+        "bill",
+        "both",
+        "bottom",
+        "but",
+        "by",
+        "call",
+        "can",
+        "cannot",
+        "cant",
+        "co",
+        "con",
+        "could",
+        "couldnt",
+        "cry",
+        "de",
+        "describe",
+        "detail",
+        "do",
+        "done",
+        "down",
+        "due",
+        "during",
+        "each",
+        "eg",
+        "eight",
+        "either",
+        "eleven",
+        "else",
+        "elsewhere",
+        "empty",
+        "enough",
+        "etc",
+        "even",
+        "ever",
+        "every",
+        "everyone",
+        "everything",
+        "everywhere",
+        "except",
+        "few",
+        "fifteen",
+        "fifty",
+        "fill",
+        "find",
+        "fire",
+        "first",
+        "five",
+        "for",
+        "former",
+        "formerly",
+        "forty",
+        "found",
+        "four",
+        "from",
+        "front",
+        "full",
+        "further",
+        "get",
+        "give",
+        "go",
+        "had",
+        "has",
+        "hasnt",
+        "have",
+        "he",
+        "hence",
+        "her",
+        "here",
+        "hereafter",
+        "hereby",
+        "herein",
+        "hereupon",
+        "hers",
+        "herself",
+        "him",
+        "himself",
+        "his",
+        "how",
+        "however",
+        "hundred",
+        "i",
+        "ie",
+        "if",
+        "in",
+        "inc",
+        "indeed",
+        "interest",
+        "into",
+        "is",
+        "it",
+        "its",
+        "itself",
+        "keep",
+        "last",
+        "latter",
+        "latterly",
+        "least",
+        "less",
+        "ltd",
+        "made",
+        "many",
+        "may",
+        "me",
+        "meanwhile",
+        "might",
+        "mill",
+        "mine",
+        "more",
+        "moreover",
+        "most",
+        "mostly",
+        "move",
+        "much",
+        "must",
+        "my",
+        "myself",
+        "name",
+        "namely",
+        "neither",
+        "never",
+        "nevertheless",
+        "next",
+        "nine",
+        "no",
+        "nobody",
+        "none",
+        "noone",
+        "nor",
+        "not",
+        "nothing",
+        "now",
+        "nowhere",
+        "of",
+        "off",
+        "often",
+        "on",
+        "once",
+        "one",
+        "only",
+        "onto",
+        "or",
+        "other",
+        "others",
+        "otherwise",
+        "our",
+        "ours",
+        "ourselves",
+        "out",
+        "over",
+        "own",
+        "part",
+        "per",
+        "perhaps",
+        "please",
+        "put",
+        "rather",
+        "re",
+        "same",
+        "see",
+        "seem",
+        "seemed",
+        "seeming",
+        "seems",
+        "serious",
+        "several",
+        "she",
+        "should",
+        "show",
+        "side",
+        "since",
+        "sincere",
+        "six",
+        "sixty",
+        "so",
+        "some",
+        "somehow",
+        "someone",
+        "something",
+        "sometime",
+        "sometimes",
+        "somewhere",
+        "still",
+        "such",
+        "system",
+        "take",
+        "ten",
+        "than",
+        "that",
+        "the",
+        "their",
+        "them",
+        "themselves",
+        "then",
+        "thence",
+        "there",
+        "thereafter",
+        "thereby",
+        "therefore",
+        "therein",
+        "thereupon",
+        "these",
+        "they",
+        "thick",
+        "thin",
+        "third",
+        "this",
+        "those",
+        "though",
+        "three",
+        "through",
+        "throughout",
+        "thru",
+        "thus",
+        "to",
+        "together",
+        "too",
+        "top",
+        "toward",
+        "towards",
+        "twelve",
+        "twenty",
+        "two",
+        "un",
+        "under",
+        "until",
+        "up",
+        "upon",
+        "us",
+        "very",
+        "via",
+        "was",
+        "we",
+        "well",
+        "were",
+        "what",
+        "whatever",
+        "when",
+        "whence",
+        "whenever",
+        "where",
+        "whereafter",
+        "whereas",
+        "whereby",
+        "wherein",
+        "whereupon",
+        "wherever",
+        "whether",
+        "which",
+        "while",
+        "whither",
+        "who",
+        "whoever",
+        "whole",
+        "whom",
+        "whose",
+        "why",
+        "will",
+        "with",
+        "within",
+        "without",
+        "would",
+        "yet",
+        "you",
+        "your",
+        "yours",
+        "yourself",
+        "yourselves",
+    ]
 )
 
 _ENGLISH_TOKEN_PATTERN = re.compile(r"[A-Za-z0-9]+(?:[+#._/-][A-Za-z0-9+#]+)*|[A-Za-z][A-Za-z0-9]*(?:\+\+|#)")
@@ -54,7 +356,7 @@ _ENGLISH_TOKEN_PATTERN = re.compile(r"[A-Za-z0-9]+(?:[+#._/-][A-Za-z0-9+#]+)*|[A
 
 def _is_allowed_short_english_term(word: str, source_text: str) -> bool:
     """Allow 2-character single words only when they contain a digit or appear all-caps in source text."""
-    if len(word) != 2:
+    if len(word) != _SHORT_WORD_LENGTH:
         return True
     if any(ch.isdigit() for ch in word):
         return True
@@ -73,7 +375,7 @@ def _is_duplicate_english_keyword(candidate: str, existing: str) -> bool:
         width = len(shorter_words)
         if any(longer_words[i : i + width] == shorter_words for i in range(len(longer_words) - width + 1)):
             return True
-    if len(shorter) >= 3:
+    if len(shorter) >= _MIN_PLURAL_BASE_LENGTH:
         if longer == f"{shorter}s":
             return True
         if shorter.endswith(("s", "x", "z", "ch", "sh")) and longer == f"{shorter}es":
@@ -83,7 +385,7 @@ def _is_duplicate_english_keyword(candidate: str, existing: str) -> bool:
 
 def extract_keywords_english(
     text: str,
-    keybert: Any,
+    keybert: KeyBERTLike | None,
     config: TagExtractionConfig,
     en_stopwords: set[str],
 ) -> tuple[list[str], dict[str, float]]:
@@ -99,7 +401,7 @@ def extract_keywords_english(
         Tuple of (tag_list, tag_confidences_dict)
     """
     if keybert is None:
-        raise RuntimeError("KeyBERT not initialized")
+        raise _KeyBERTNotInitializedError
 
     active_stopwords = set(ENGLISH_STOP_WORDS) | {w.lower() for w in en_stopwords}
     stop_words_arg = sorted(active_stopwords)
@@ -117,7 +419,7 @@ def extract_keywords_english(
     # Separate into phrases and single words, then merge
     all_keywords = []
     seen_words: set[str] = set()
-    min_single_length = max(2, config.min_token_length)
+    min_single_length = max(_SHORT_WORD_LENGTH, config.min_token_length)
     proper_nouns = {
         match.group(1).lower()
         for match in re.finditer(r"(?<=[a-z,;:]\s)([A-Z][A-Za-z0-9+#._-]{1,})(?![A-Za-z0-9])", text)
@@ -128,16 +430,16 @@ def extract_keywords_english(
         phrase = phrase_tuple[0].strip().lower()
         score = phrase_tuple[1]
         words = phrase.split()
-        if len(words) >= 2:
-            # Only keep phrases with high scores or specific patterns
-            if (
-                score >= config.min_score_threshold * 1.5
-                and any(w[0].isupper() for w in phrase_tuple[0].strip().split() if w)
-                and is_valid_english_tag(phrase, stopwords=active_stopwords, min_length=3)
-            ):
-                all_keywords.append((phrase, score))
-                # Mark individual words as seen to avoid duplication
-                seen_words.update(w for w in words if w not in active_stopwords)
+        # Only keep phrases with high scores or specific patterns
+        if (
+            len(words) >= _MIN_PHRASE_WORDS
+            and score >= config.min_score_threshold * 1.5
+            and any(w[0].isupper() for w in phrase_tuple[0].strip().split() if w)
+            and is_valid_english_tag(phrase, stopwords=active_stopwords, min_length=3)
+        ):
+            all_keywords.append((phrase, score))
+            # Mark individual words as seen to avoid duplication
+            seen_words.update(w for w in words if w not in active_stopwords)
 
     # Then add important single words not already in phrases
     for word_tuple in cast(list[tuple[str, float]], all_raw):
@@ -219,10 +521,12 @@ def tokenize_english(
     for token in merged_tokens:
         if not _ENGLISH_TOKEN_PATTERN.fullmatch(token):
             continue
-        is_short_tech_token = len(token) == 2 and (token.isupper() or any(ch.isdigit() or ch in "+#" for ch in token))
-        if len(token) > min_length or (is_short_tech_token and config.min_token_length <= 2):
+        is_short_tech_token = len(token) == _SHORT_WORD_LENGTH and (
+            token.isupper() or any(ch.isdigit() or ch in "+#" for ch in token)
+        )
+        if len(token) > min_length or (is_short_tech_token and config.min_token_length <= _SHORT_WORD_LENGTH):
             normalized = _normalize_text_english(token)
-            effective_min = 2 if is_short_tech_token else min_length
+            effective_min = _SHORT_WORD_LENGTH if is_short_tech_token else min_length
             if is_valid_english_tag(normalized, stopwords=active_stopwords, min_length=effective_min):
                 result.append(normalized)
 

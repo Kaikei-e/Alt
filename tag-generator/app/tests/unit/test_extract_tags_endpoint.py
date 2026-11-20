@@ -4,33 +4,35 @@ Service-to-service endpoint for extracting semantic tags from arbitrary text.
 Used by recap-worker to tag recap genre outputs.
 """
 
+import sys
+import time
+from http import HTTPStatus
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
+from tag_extractor.extract import TagExtractionOutcome
+from tag_extractor.input_sanitizer import _CODE_BLOCK_PATTERN
 
-@pytest.fixture()
-def client(monkeypatch: pytest.MonkeyPatch):
+
+@pytest.fixture
+def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     """Create a test client authenticated as legitimate caller recap-worker."""
-    import sys
-
     monkeypatch.setenv("PEER_IDENTITY_TRUSTED", "on")
     monkeypatch.setenv("MTLS_ALLOWED_PEERS", "recap-worker")
     if "auth_service" in sys.modules:
         del sys.modules["auth_service"]
-    from auth_service import app
+    from auth_service import app  # noqa: PLC0415 - re-imports auth_service after monkeypatch sets env vars
 
     test_client = TestClient(app, client=("127.0.0.1", 44444))
     test_client.headers = {"x-alt-peer-identity": "recap-worker"}  # type: ignore[assignment]
     return test_client
 
 
-@pytest.fixture()
-def mock_tag_extractor():
+@pytest.fixture
+def mock_tag_extractor() -> MagicMock:
     """Mock the background tag service's tag extractor."""
-    from tag_extractor.extract import TagExtractionOutcome
-
     mock_outcome = TagExtractionOutcome(
         tags=["artificial-intelligence", "large-language-model", "gpu-computing"],
         confidence=0.85,
@@ -55,7 +57,7 @@ def mock_tag_extractor():
 class TestExtractTagsEndpoint:
     """Tests for POST /api/v1/extract-tags."""
 
-    def test_success_returns_tags(self, client, mock_tag_extractor):
+    def test_success_returns_tags(self, client: TestClient, mock_tag_extractor: MagicMock) -> None:
         """Valid request returns extracted tags."""
         with patch("auth_service._background_tag_service") as mock_service:
             mock_service.tag_extractor = mock_tag_extractor
@@ -65,7 +67,7 @@ class TestExtractTagsEndpoint:
                 json={"title": "Technology", "content": "AI and LLM are transforming computing with GPU acceleration."},
             )
 
-        assert resp.status_code == 200
+        assert resp.status_code == HTTPStatus.OK
         body = resp.json()
         assert body["success"] is True
         assert "artificial-intelligence" in body["tags"]
@@ -76,10 +78,8 @@ class TestExtractTagsEndpoint:
             "AI and LLM are transforming computing with GPU acceleration.",
         )
 
-    def test_empty_content_returns_empty_tags(self, client):
+    def test_empty_content_returns_empty_tags(self, client: TestClient) -> None:
         """Empty content returns empty tag list."""
-        from tag_extractor.extract import TagExtractionOutcome
-
         empty_outcome = TagExtractionOutcome(
             tags=[],
             confidence=0.0,
@@ -103,12 +103,12 @@ class TestExtractTagsEndpoint:
                 json={"title": "Empty", "content": ""},
             )
 
-        assert resp.status_code == 200
+        assert resp.status_code == HTTPStatus.OK
         body = resp.json()
         assert body["success"] is True
         assert body["tags"] == []
 
-    def test_background_service_not_ready_returns_503(self, client):
+    def test_background_service_not_ready_returns_503(self, client: TestClient) -> None:
         """When background service hasn't initialized yet, returns 503."""
         with patch("auth_service._background_tag_service", None):
             resp = client.post(
@@ -116,9 +116,11 @@ class TestExtractTagsEndpoint:
                 json={"title": "Test", "content": "Some content"},
             )
 
-        assert resp.status_code == 503
+        assert resp.status_code == HTTPStatus.SERVICE_UNAVAILABLE
 
-    def test_offloads_ml_inference_via_asyncio_to_thread(self, client, mock_tag_extractor):
+    def test_offloads_ml_inference_via_asyncio_to_thread(
+        self, client: TestClient, mock_tag_extractor: MagicMock
+    ) -> None:
         """extract_tags_with_metrics is synchronous KeyBERT/SentenceTransformer
         inference; calling it directly inside this async endpoint would block
         the event loop. It must be dispatched via asyncio.to_thread instead of
@@ -135,7 +137,7 @@ class TestExtractTagsEndpoint:
                 json={"title": "Technology", "content": "AI and LLM are transforming computing."},
             )
 
-        assert resp.status_code == 200
+        assert resp.status_code == HTTPStatus.OK
         mock_to_thread.assert_called_once_with(
             mock_tag_extractor.extract_tags_with_metrics,
             "Technology",
@@ -143,7 +145,7 @@ class TestExtractTagsEndpoint:
         )
         mock_tag_extractor.extract_tags_with_metrics.assert_not_called()
 
-    def test_extraction_error_returns_500(self, client):
+    def test_extraction_error_returns_500(self, client: TestClient) -> None:
         """When tag extraction fails, returns 500."""
         mock_extractor = MagicMock()
         mock_extractor.extract_tags_with_metrics.side_effect = RuntimeError("model failed")
@@ -156,34 +158,31 @@ class TestExtractTagsEndpoint:
                 json={"title": "Test", "content": "Some content"},
             )
 
-        assert resp.status_code == 500
+        assert resp.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
 
-    def test_rejects_oversized_title_with_422(self, client):
+    def test_rejects_oversized_title_with_422(self, client: TestClient) -> None:
         """G7-07: Title exceeding 1000 chars is rejected at Pydantic boundary with 422."""
         resp = client.post(
             "/api/v1/extract-tags",
             json={"title": "t" * 1001, "content": "Valid content"},
         )
-        assert resp.status_code == 422
+        assert resp.status_code == HTTPStatus.UNPROCESSABLE_CONTENT
 
-    def test_rejects_oversized_content_with_422(self, client):
+    def test_rejects_oversized_content_with_422(self, client: TestClient) -> None:
         """G7-07: Content exceeding 100,000 chars is rejected at Pydantic boundary with 422."""
         resp = client.post(
             "/api/v1/extract-tags",
             json={"title": "Valid title", "content": "c" * 100_001},
         )
-        assert resp.status_code == 422
+        assert resp.status_code == HTTPStatus.UNPROCESSABLE_CONTENT
 
-    def test_code_block_pattern_unclosed_tag_no_redos(self):
+    def test_code_block_pattern_unclosed_tag_no_redos(self) -> None:
         """G7-07: Unclosed <pre>/<code> tags must be stripped in linear time without backtracking."""
-        import time
-
-        from tag_extractor.input_sanitizer import _CODE_BLOCK_PATTERN
-
         payload = "<pre>" + ("a" * 50_000) + "<pre>" + ("b" * 50_000)
         start = time.perf_counter()
         result = _CODE_BLOCK_PATTERN.sub(" ", payload)
         elapsed = time.perf_counter() - start
+        max_linear_elapsed_seconds = 0.2
         assert result == " "
-        assert elapsed < 0.2
+        assert elapsed < max_linear_elapsed_seconds
         assert _CODE_BLOCK_PATTERN.pattern == r"<(pre|code)\b[^>]*>.*?(?:</\1\s*>|$)"

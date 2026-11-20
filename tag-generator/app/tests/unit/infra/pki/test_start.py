@@ -128,7 +128,7 @@ async def test_ops_bind_failure_does_not_leave_renewal_task(tmp_path: Path, monk
     with socket.create_server(("127.0.0.1", 0)) as taken:
         monkeypatch.setenv("OPS_LISTEN", f"127.0.0.1:{taken.getsockname()[1]}")
         try:
-            with pytest.raises(OSError):
+            with pytest.raises(OSError, match="already in use"):
                 await start_enrollment("tag-generator", environ=environ, issuer=_FakeIssuer(), logger=_Log())
             stranded = [t.get_name() for t in asyncio.all_tasks() if t.get_name() == "pki-enrollment-loop"]
             assert stranded == []

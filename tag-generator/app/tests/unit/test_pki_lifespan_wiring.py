@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
+import threading
 from unittest.mock import AsyncMock
 
 import pytest
 
 import auth_service
+import tag_generator.service as service_mod
+import tag_generator.stream_consumer as stream_consumer_mod
+from tag_generator.stream_consumer import ConsumerConfig, StreamConsumer
 
 
 @pytest.mark.asyncio
@@ -52,13 +57,7 @@ async def test_lifespan_stops_and_awaits_stream_consumers_before_closing_shared_
     """On shutdown, lifespan must signal both stream consumers to stop and await
     their threads before closing TLS/PKI handles and cleaning up tag_service.
     """
-    import asyncio
-    import threading
-
-    import tag_generator.service as service_mod
-    import tag_generator.stream_consumer as stream_consumer_mod
-    from tag_generator.stream_consumer import ConsumerConfig, StreamConsumer
-
+    expected_consumers = 2
     order: list[str] = []
     both_started = threading.Event()
     started_streams: list[str] = []
@@ -72,18 +71,28 @@ async def test_lifespan_stops_and_awaits_stream_consumers_before_closing_shared_
             pass
 
     class _FakeConsumer(StreamConsumer):
+        def __init__(self, config: ConsumerConfig, handler: object) -> None:
+            super().__init__(config, handler)  # type: ignore[arg-type]
+            self._loop: asyncio.AbstractEventLoop | None = None
+            self._stop_event: asyncio.Event | None = None
+
         async def start(self) -> None:
+            self._loop = asyncio.get_running_loop()
+            self._stop_event = asyncio.Event()
+            if self._shutdown:
+                self._stop_event.set()
             started_streams.append(self.config.stream_key)
-            if len(started_streams) >= 2:
+            if len(started_streams) >= expected_consumers:
                 both_started.set()
-            while not self._shutdown:
-                await asyncio.sleep(0.005)
+            await self._stop_event.wait()
             await asyncio.sleep(0.02)
             order.append(f"consumer_awaited:{self.config.stream_key}")
 
         def stop(self) -> None:
             order.append(f"consumer_stop:{self.config.stream_key}")
             super().stop()
+            if self._loop is not None and self._stop_event is not None and not self._loop.is_closed():
+                self._loop.call_soon_threadsafe(self._stop_event.set)
 
     def _make_consumer(config: ConsumerConfig, handler: object) -> _FakeConsumer:
         inst = _FakeConsumer(config, handler)  # type: ignore[arg-type]
@@ -129,7 +138,7 @@ async def test_lifespan_stops_and_awaits_stream_consumers_before_closing_shared_
             started = await asyncio.to_thread(both_started.wait, 2.0)
             assert started, "both stream consumers should start during lifespan"
 
-        assert len(created_consumers) == 2
+        assert len(created_consumers) == expected_consumers
         assert all(c.is_stopped for c in created_consumers)
         assert "consumer_stop:alt:events:articles" in order
         assert "consumer_stop:alt:events:tags" in order

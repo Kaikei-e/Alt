@@ -33,8 +33,16 @@ else:
 logger = structlog.get_logger(__name__)
 
 
-class OnnxRuntimeMissing(ImportError):
+class OnnxRuntimeMissing(ImportError):  # noqa: N818 - public exception name imported by model_manager and tests
     """Raised when ONNX runtime dependencies are not available."""
+
+    def __init__(self) -> None:
+        super().__init__("onnxruntime, transformers, and numpy are required for ONNX embedding support")
+
+
+class _InvalidPoolingError(ValueError):
+    def __init__(self) -> None:
+        super().__init__("Pooling must be 'cls' or 'mean'")
 
 
 @dataclass
@@ -54,13 +62,13 @@ class OnnxEmbeddingModel:
 
     def __init__(self, config: OnnxEmbeddingConfig) -> None:
         if ort is None or AutoTokenizer is None or np is None:
-            raise OnnxRuntimeMissing("onnxruntime, transformers, and numpy are required for ONNX embedding support")
+            raise OnnxRuntimeMissing
         assert np is not None  # For type checker
         assert ort is not None  # For type checker
         assert AutoTokenizer is not None  # For type checker
 
         if config.pooling not in {"cls", "mean"}:
-            raise ValueError("Pooling must be 'cls' or 'mean'")
+            raise _InvalidPoolingError
 
         self._config = config
         self._batch_size_override = self._read_int_env("TAG_ONNX_RUNTIME_BATCH_SIZE")
@@ -107,12 +115,8 @@ class OnnxEmbeddingModel:
             ort_inputs = dict(tokens.items())
 
             hidden_states = self._session.run(None, ort_inputs)[0]
-            if self._config.pooling == "mean":
-                # pyrefly: ignore [missing-attribute]
-                emb = hidden_states.mean(axis=1)
-            else:
-                # pyrefly: ignore [bad-index]
-                emb = hidden_states[:, 0, :]
+            # pyrefly: ignore [missing-attribute, bad-index]
+            emb = hidden_states.mean(axis=1) if self._config.pooling == "mean" else hidden_states[:, 0, :]
 
             embeddings.append(emb)
 

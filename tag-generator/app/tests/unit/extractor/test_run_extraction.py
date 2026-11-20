@@ -4,6 +4,7 @@ Verifies that primary extraction yielding fewer than min_primary_tags
 triggers fallback augmentation, and that merge/dedup/cap logic works.
 """
 
+import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -13,8 +14,8 @@ from tag_extractor.extract import TagExtractor
 from tag_generator.exceptions import ModelLoadError
 
 
-@pytest.fixture()
-def extractor():
+@pytest.fixture
+def extractor() -> TagExtractor:
     """Create a TagExtractor with min_primary_tags=3 and mocked models."""
     config = TagExtractionConfig(
         min_primary_tags=3,
@@ -39,7 +40,7 @@ def extractor():
 class TestRunExtractionFallbackThreshold:
     """Tests for _run_extraction min_primary_tags threshold."""
 
-    def test_no_fallback_when_primary_returns_enough_tags(self, extractor: TagExtractor):
+    def test_no_fallback_when_primary_returns_enough_tags(self, extractor: TagExtractor) -> None:
         """Primary returns >= min_primary_tags → no fallback invoked."""
         primary_tags = ["python", "machine-learning", "nlp"]
         primary_conf = {"python": 0.9, "machine-learning": 0.8, "nlp": 0.7}
@@ -54,7 +55,7 @@ class TestRunExtractionFallbackThreshold:
         assert confidences == primary_conf
         mock_fallback.assert_not_called()
 
-    def test_fallback_invoked_when_primary_returns_one_tag(self, extractor: TagExtractor):
+    def test_fallback_invoked_when_primary_returns_one_tag(self, extractor: TagExtractor) -> None:
         """Primary returns 1 tag (< 3) → fallback invoked, results merged with primary first."""
         primary_tags = ["sapporo"]
         primary_conf = {"sapporo": 0.9}
@@ -69,10 +70,10 @@ class TestRunExtractionFallbackThreshold:
         assert tags[0] == "sapporo"  # Primary tag comes first
         assert "hokkaido" in tags
         assert "japan" in tags
-        assert len(tags) == 5  # 1 primary + 4 fallback
-        assert confidences["sapporo"] == 0.9  # Primary confidence preserved
+        assert len(tags) == len(primary_tags) + len(fallback_tags)  # 1 primary + 4 fallback
+        assert confidences["sapporo"] == primary_conf["sapporo"]  # Primary confidence preserved
 
-    def test_fallback_invoked_when_primary_returns_zero_tags(self, extractor: TagExtractor):
+    def test_fallback_invoked_when_primary_returns_zero_tags(self, extractor: TagExtractor) -> None:
         """Primary returns 0 tags → fallback invoked (existing behaviour preserved)."""
         fallback_tags = ["technology", "software"]
 
@@ -83,9 +84,9 @@ class TestRunExtractionFallbackThreshold:
             tags, confidences = extractor._run_extraction("some text", "en")
 
         assert tags == ["technology", "software"]
-        assert len(confidences) == 2
+        assert len(confidences) == len(fallback_tags)
 
-    def test_merged_results_capped_at_top_keywords(self, extractor: TagExtractor):
+    def test_merged_results_capped_at_top_keywords(self, extractor: TagExtractor) -> None:
         """Primary (2) + fallback (8) merged and capped at top_keywords=10."""
         primary_tags = ["ai", "deep-learning"]
         primary_conf = {"ai": 0.95, "deep-learning": 0.85}
@@ -95,14 +96,14 @@ class TestRunExtractionFallbackThreshold:
             patch.object(extractor, "_extract_keywords_english", return_value=(primary_tags, primary_conf)),
             patch.object(extractor, "_fallback_extraction", return_value=fallback_tags),
         ):
-            tags, confidences = extractor._run_extraction("text about AI", "en")
+            tags, _confidences = extractor._run_extraction("text about AI", "en")
 
         assert len(tags) <= extractor.config.top_keywords
         assert tags[0] == "ai"
         assert tags[1] == "deep-learning"
-        assert len(tags) == 10  # 2 primary + 8 fallback = 10 = top_keywords
+        assert len(tags) == extractor.config.top_keywords  # 2 primary + 8 fallback = 10 = top_keywords
 
-    def test_graceful_degradation_when_fallback_fails(self, extractor: TagExtractor):
+    def test_graceful_degradation_when_fallback_fails(self, extractor: TagExtractor) -> None:
         """Primary returns 1 tag + fallback raises → return the 1 primary tag."""
         primary_tags = ["sapporo"]
         primary_conf = {"sapporo": 0.9}
@@ -116,7 +117,7 @@ class TestRunExtractionFallbackThreshold:
         assert tags == ["sapporo"]
         assert confidences == {"sapporo": 0.9}
 
-    def test_deduplication_between_primary_and_fallback(self, extractor: TagExtractor):
+    def test_deduplication_between_primary_and_fallback(self, extractor: TagExtractor) -> None:
         """Shared tags between primary and fallback → no duplicates, primary confidence kept."""
         primary_tags = ["python", "ml"]
         primary_conf = {"python": 0.9, "ml": 0.8}
@@ -131,9 +132,9 @@ class TestRunExtractionFallbackThreshold:
         assert tags.count("python") == 1
         assert tags.count("ml") == 1
         assert tags == ["python", "ml", "data-science", "tensorflow"]
-        assert confidences["python"] == 0.9  # Primary confidence preserved, not overwritten
+        assert confidences["python"] == primary_conf["python"]  # Primary confidence preserved, not overwritten
 
-    def test_extract_tags_with_metrics_raises_when_model_loader_raises_model_load_error(self):
+    def test_extract_tags_with_metrics_raises_when_model_loader_raises_model_load_error(self) -> None:
         """ModelLoadError from model_manager must propagate out of extract_tags_with_metrics."""
         config = TagExtractionConfig(use_onnx_runtime=False)
         failing_manager = MagicMock()
@@ -147,7 +148,7 @@ class TestRunExtractionFallbackThreshold:
                 "Machine learning and artificial intelligence are transforming software engineering.",
             )
 
-    def test_extract_tags_with_metrics_propagates_unexpected_runtime_error(self):
+    def test_extract_tags_with_metrics_propagates_unexpected_runtime_error(self) -> None:
         """Runtime faults in KeyBERT.extract_keywords (English) must propagate rather than fall back or return []."""
         config = TagExtractionConfig(use_onnx_runtime=False)
         mock_keybert = MagicMock()
@@ -170,10 +171,8 @@ class TestRunExtractionFallbackThreshold:
                 "Machine learning and artificial intelligence are transforming software engineering.",
             )
 
-    def test_extract_tags_with_metrics_propagates_japanese_keybert_runtime_error(self):
+    def test_extract_tags_with_metrics_propagates_japanese_keybert_runtime_error(self) -> None:
         """Runtime faults in KeyBERT.extract_keywords (Japanese) must propagate rather than fall back to frequency."""
-        import sys
-
         if "sklearn" not in sys.modules:
             mock_sklearn = MagicMock()
             sys.modules["sklearn"] = mock_sklearn
@@ -220,7 +219,7 @@ class TestRunExtractionFallbackThreshold:
                 "機械学習は機械学習と人工知能の人工知能による技術革新です。",
             )
 
-    def test_extract_tags_with_metrics_returns_empty_when_text_legitimately_yields_no_tags(self):
+    def test_extract_tags_with_metrics_returns_empty_when_text_legitimately_yields_no_tags(self) -> None:
         """Input that legitimately produces no primary or fallback tags still returns [] without raising."""
         config = TagExtractionConfig(use_onnx_runtime=False)
         mock_keybert = MagicMock()

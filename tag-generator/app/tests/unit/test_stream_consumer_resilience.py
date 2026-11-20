@@ -9,13 +9,17 @@ no way back short of recreating the container.
 
 import asyncio
 import json
+from collections.abc import Callable, Sequence
 from typing import Any, cast
 
 import pytest
 import redis.asyncio as redis
 
+from tag_generator.driver.connect_article_fetcher import _TIMEOUT_MS as FETCH_TIMEOUT_MS
+from tag_generator.driver.connect_tag_inserter import _TIMEOUT_MS as UPSERT_TIMEOUT_MS
 from tag_generator.stream_consumer import (
     ConsumerConfig,
+    Event,
     EventHandler,
     StreamConsumer,
     is_group_already_exists,
@@ -23,10 +27,20 @@ from tag_generator.stream_consumer import (
 )
 
 
+class _RedisConnectionError(redis.ConnectionError):
+    def __init__(self) -> None:
+        super().__init__("Connection refused")
+
+
+class _RedisTimeoutError(redis.TimeoutError):
+    def __init__(self) -> None:
+        super().__init__("Timeout reading from socket")
+
+
 class _FakeClient:
     """Records `xgroup_create` calls and replays a scripted outcome per call."""
 
-    def __init__(self, outcomes: list[Exception | None]) -> None:
+    def __init__(self, outcomes: Sequence[Exception | None]) -> None:
         self.outcomes = list(outcomes)
         self.calls = 0
 
@@ -38,7 +52,7 @@ class _FakeClient:
             raise outcome
 
 
-def _consumer(outcomes: list[Exception | None]) -> tuple[StreamConsumer, _FakeClient]:
+def _consumer(outcomes: Sequence[Exception | None]) -> tuple[StreamConsumer, _FakeClient]:
     consumer = StreamConsumer(ConsumerConfig(enabled=True), handler=EventHandler())
     client = _FakeClient(outcomes)
     consumer.client = cast(redis.Redis, client)
@@ -70,11 +84,12 @@ def test_busygroup_is_recognised_as_already_existing() -> None:
 
 
 def test_retries_until_redis_accepts_the_write() -> None:
-    consumer, client = _consumer([OOM, OOM, None])
+    outcomes = [OOM, OOM, None]
+    consumer, client = _consumer(outcomes)
 
     asyncio.run(consumer._ensure_consumer_group())
 
-    assert client.calls == 3
+    assert client.calls == len(outcomes)
 
 
 def test_existing_group_is_not_retried() -> None:
@@ -97,12 +112,13 @@ def test_permanent_error_fails_immediately() -> None:
 
 def test_gives_up_after_exhausting_attempts() -> None:
     """Retrying forever would hide a Redis that is never coming back."""
-    consumer, client = _consumer([OOM] * 50)
+    max_outcomes = 50
+    consumer, client = _consumer([OOM] * max_outcomes)
 
     with pytest.raises(redis.ResponseError):
         asyncio.run(consumer._ensure_consumer_group())
 
-    assert 1 < client.calls < 50
+    assert 1 < client.calls < max_outcomes
 
 
 class _FakeClientForStart:
@@ -123,7 +139,7 @@ class _FailingGroupCreateClient:
 
     async def xgroup_create(self, *args: object, **kwargs: object) -> None:
         del args, kwargs
-        raise redis.ConnectionError("Connection refused")
+        raise _RedisConnectionError
 
     async def close(self) -> None:
         self.close_calls += 1
@@ -202,8 +218,9 @@ def test_socket_timeout_margin_is_real_and_bounded_at_any_block_timeout(
     passes at the defaults and reintroduces the outage at the last one.
     """
     captured_kwargs: dict[str, Any] = {}
+    max_socket_margin_seconds = 60.0
 
-    def fake_from_url(url: str, **kwargs: Any) -> _FakeClientForStart:
+    def fake_from_url(url: str, **kwargs: object) -> _FakeClientForStart:
         captured_kwargs.update(kwargs)
         return _FakeClientForStart()
 
@@ -217,25 +234,25 @@ def test_socket_timeout_margin_is_real_and_bounded_at_any_block_timeout(
 
     margin = captured_kwargs["socket_timeout"] - block_timeout_ms / 1000
     assert margin >= 1.0, "margin must exceed worst-case reply round-trip jitter"
-    assert margin <= 60.0, "a hung Redis must surface soon after the block window"
+    assert margin <= max_socket_margin_seconds, "a hung Redis must surface soon after the block window"
 
 
 class _BlockRecordingClient:
     """Fake for a full start(): records what XREADGROUP is actually given."""
 
-    def __init__(self, stop: Any) -> None:
+    def __init__(self, stop: Callable[[], None]) -> None:
         self._stop = stop
         self.xreadgroup_kwargs: dict[str, Any] | None = None
 
-    async def xgroup_create(self, *args: Any, **kwargs: Any) -> None:
+    async def xgroup_create(self, *args: object, **kwargs: object) -> None:
         del args, kwargs
 
-    async def xreadgroup(self, **kwargs: Any) -> list[Any]:
+    async def xreadgroup(self, **kwargs: object) -> list[Any]:
         self.xreadgroup_kwargs = kwargs
         self._stop()
         return []
 
-    async def xautoclaim(self, **kwargs: Any) -> tuple[str, list[Any], int]:
+    async def xautoclaim(self, **kwargs: object) -> tuple[str, list[Any], int]:
         del kwargs
         return ("0-0", [], 0)
 
@@ -258,7 +275,7 @@ def test_socket_deadline_clears_the_block_the_server_is_actually_given(
     consumer = StreamConsumer(config, handler=EventHandler())
     client = _BlockRecordingClient(consumer.stop)
 
-    def fake_from_url(url: str, **kwargs: Any) -> _BlockRecordingClient:
+    def fake_from_url(url: str, **kwargs: object) -> _BlockRecordingClient:
         captured_kwargs.update(kwargs)
         client_by_url[url] = client
         return client
@@ -279,7 +296,7 @@ class _ScriptedReadClient:
         self.batches = list(batches)
         self.acks: list[tuple[str, str, str]] = []
 
-    async def xreadgroup(self, **kwargs: Any) -> list[Any]:
+    async def xreadgroup(self, **kwargs: object) -> list[Any]:
         del kwargs
         return self.batches.pop(0) if self.batches else []
 
@@ -289,10 +306,10 @@ class _ScriptedReadClient:
 
 class _RecordingHandler(EventHandler):
     def __init__(self, error: Exception | None = None) -> None:
-        self.events: list[Any] = []
+        self.events: list[Event] = []
         self._error = error
 
-    async def handle_event(self, event: Any) -> None:
+    async def handle_event(self, event: Event) -> None:
         self.events.append(event)
         if self._error is not None:
             raise self._error
@@ -352,7 +369,7 @@ class _ClaimedClient:
         self.acks: list[tuple[str, str, str]] = []
         self._times_delivered = times_delivered
 
-    async def xpending_range(self, *args: Any, **kwargs: Any) -> list[Any]:
+    async def xpending_range(self, *args: object, **kwargs: object) -> list[Any]:
         del args, kwargs
         return [{"times_delivered": self._times_delivered}]
 
@@ -417,12 +434,14 @@ def test_consume_loop_survives_an_error_and_backs_off_once(
     consumer = StreamConsumer(config, handler=EventHandler())
     calls = {"n": 0}
 
+    expected_polls = 2
+
     class _FlakyClient:
-        async def xreadgroup(self, **kwargs: Any) -> list[Any]:
+        async def xreadgroup(self, **kwargs: object) -> list[Any]:
             del kwargs
             calls["n"] += 1
             if calls["n"] == 1:
-                raise redis.TimeoutError("Timeout reading from socket")
+                raise _RedisTimeoutError
             consumer.stop()
             return []
 
@@ -430,7 +449,7 @@ def test_consume_loop_survives_an_error_and_backs_off_once(
 
     asyncio.run(consumer._consume_loop())
 
-    assert calls["n"] == 2, "the loop must poll again after an error"
+    assert calls["n"] == expected_polls, "the loop must poll again after an error"
     assert delays == [1], "exactly one backoff: after the error, not after the idle poll"
 
 
@@ -443,15 +462,12 @@ def test_default_claim_idle_time_exceeds_sequential_batch_rpc_budget(
     UpsertArticleTags, so claim_idle_time_ms must comfortably exceed that
     full-batch budget to prevent _reclaim_loop from stealing in-flight items.
     """
-    from tag_generator.driver.connect_article_fetcher import _TIMEOUT_MS as fetch_timeout_ms
-    from tag_generator.driver.connect_tag_inserter import _TIMEOUT_MS as upsert_timeout_ms
-
     monkeypatch.delenv("CONSUMER_CLAIM_IDLE_TIME_MS", raising=False)
     monkeypatch.delenv("CONSUMER_BATCH_SIZE", raising=False)
     monkeypatch.setenv("REDIS_AUTH", "disabled")
 
     config = ConsumerConfig()
-    per_article_rpc_budget_ms = fetch_timeout_ms + upsert_timeout_ms
+    per_article_rpc_budget_ms = FETCH_TIMEOUT_MS + UPSERT_TIMEOUT_MS
     assert config.claim_idle_time_ms > config.batch_size * per_article_rpc_budget_ms
 
     tags_config = ConsumerConfig.tags_stream_from_env()
@@ -476,7 +492,7 @@ def test_reclaim_loop_exits_promptly_when_stopped(
     consumer = StreamConsumer(config, handler=EventHandler())
 
     class _IdleClaimClient:
-        async def xautoclaim(self, **kwargs: Any) -> tuple[str, list[Any], int]:
+        async def xautoclaim(self, **kwargs: object) -> tuple[str, list[Any], int]:
             del kwargs
             return ("0-0", [], 0)
 

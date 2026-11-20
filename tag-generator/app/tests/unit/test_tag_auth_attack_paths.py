@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import secrets
+import sys
+from http import HTTPStatus
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
+from starlette.types import Receive, Scope, Send
 
 from auth_service import app
 from tag_extractor.extract import TagExtractionOutcome
@@ -18,7 +21,7 @@ SIDECAR = ("127.0.0.1", 44444)
 
 
 @pytest.fixture
-def mock_tag_extractor():
+def mock_tag_extractor() -> MagicMock:
     outcome = TagExtractionOutcome(
         tags=["ai", "ml"],
         confidence=0.9,
@@ -35,18 +38,20 @@ def mock_tag_extractor():
     return extractor
 
 
-def test_anonymous_extract_tags_rejected_before_inference(mock_tag_extractor) -> None:
+def test_anonymous_extract_tags_rejected_before_inference(mock_tag_extractor: MagicMock) -> None:
     """POST /api/v1/extract-tags without peer identity must be rejected with 401 BEFORE inference."""
     with patch("auth_service._background_tag_service") as mock_service:
         mock_service.tag_extractor = mock_tag_extractor
         client = TestClient(app, client=DIRECT)
         resp = client.post("/api/v1/extract-tags", json={"title": "Test", "content": "AI text"})
-        assert resp.status_code == 401
+        assert resp.status_code == HTTPStatus.UNAUTHORIZED
         # Crucial: inference was NOT called
         mock_tag_extractor.extract_tags_with_metrics.assert_not_called()
 
 
-def test_spoofed_peer_header_rejected_before_inference(monkeypatch: pytest.MonkeyPatch, mock_tag_extractor) -> None:
+def test_spoofed_peer_header_rejected_before_inference(
+    monkeypatch: pytest.MonkeyPatch, mock_tag_extractor: MagicMock
+) -> None:
     """Spoofed x-alt-peer-identity header on direct connection must be rejected with 401."""
     monkeypatch.setenv("PEER_IDENTITY_TRUSTED", "off")
     with patch("auth_service._background_tag_service") as mock_service:
@@ -57,11 +62,11 @@ def test_spoofed_peer_header_rejected_before_inference(monkeypatch: pytest.Monke
             json={"title": "Test", "content": "AI text"},
             headers={"x-alt-peer-identity": "recap-worker"},
         )
-        assert resp.status_code == 401
+        assert resp.status_code == HTTPStatus.UNAUTHORIZED
         mock_tag_extractor.extract_tags_with_metrics.assert_not_called()
 
 
-def test_unallowlisted_peer_rejected(monkeypatch: pytest.MonkeyPatch, mock_tag_extractor) -> None:
+def test_unallowlisted_peer_rejected(monkeypatch: pytest.MonkeyPatch, mock_tag_extractor: MagicMock) -> None:
     """Peer not in MTLS_ALLOWED_PEERS must be rejected with 403."""
     monkeypatch.setenv("MTLS_ALLOWED_PEERS", "recap-worker")
     monkeypatch.setenv("PEER_IDENTITY_TRUSTED", "on")
@@ -73,21 +78,19 @@ def test_unallowlisted_peer_rejected(monkeypatch: pytest.MonkeyPatch, mock_tag_e
             json={"title": "Test", "content": "AI text"},
             headers={"x-alt-peer-identity": "unauthorized-svc"},
         )
-        assert resp.status_code == 403
+        assert resp.status_code == HTTPStatus.FORBIDDEN
         mock_tag_extractor.extract_tags_with_metrics.assert_not_called()
 
 
 def test_valid_recap_worker_mtls_passes_without_extra_token(
-    monkeypatch: pytest.MonkeyPatch, mock_tag_extractor
+    monkeypatch: pytest.MonkeyPatch, mock_tag_extractor: MagicMock
 ) -> None:
     """Valid recap-worker identity passes to inference without needing any extra token."""
-    import sys
-
     monkeypatch.setenv("MTLS_ALLOWED_PEERS", "recap-worker")
     monkeypatch.setenv("PEER_IDENTITY_TRUSTED", "on")
     if "auth_service" in sys.modules:
         del sys.modules["auth_service"]
-    from auth_service import app
+    from auth_service import app  # noqa: PLC0415 - re-imports auth_service after monkeypatch sets env vars
 
     with patch("auth_service._background_tag_service") as mock_service:
         mock_service.tag_extractor = mock_tag_extractor
@@ -97,25 +100,23 @@ def test_valid_recap_worker_mtls_passes_without_extra_token(
             json={"title": "Test", "content": "AI text"},
             headers={"x-alt-peer-identity": "recap-worker"},
         )
-        assert resp.status_code == 200
+        assert resp.status_code == HTTPStatus.OK
         assert resp.json()["success"] is True
         assert resp.json()["tags"] == ["ai", "ml"]
         mock_tag_extractor.extract_tags_with_metrics.assert_called_once()
 
 
-def test_in_process_tls_recap_worker_passes(monkeypatch: pytest.MonkeyPatch, mock_tag_extractor) -> None:
+def test_in_process_tls_recap_worker_passes(monkeypatch: pytest.MonkeyPatch, mock_tag_extractor: MagicMock) -> None:
     """Request with TLS client_cn 'recap-worker' in ASGI scope extension passes without extra token."""
-    import sys
-
     monkeypatch.setenv("MTLS_ALLOWED_PEERS", "recap-worker")
     if "auth_service" in sys.modules:
         del sys.modules["auth_service"]
-    from auth_service import app
+    from auth_service import app  # noqa: PLC0415 - re-imports auth_service after monkeypatch sets env vars
 
     with patch("auth_service._background_tag_service") as mock_service:
         mock_service.tag_extractor = mock_tag_extractor
 
-        async def tls_app(scope, receive, send):
+        async def tls_app(scope: Scope, receive: Receive, send: Send) -> None:
             if scope["type"] == "http":
                 scope.setdefault("extensions", {})["tls"] = {"client_cn": "recap-worker"}
             await app(scope, receive, send)
@@ -125,7 +126,7 @@ def test_in_process_tls_recap_worker_passes(monkeypatch: pytest.MonkeyPatch, moc
             "/api/v1/extract-tags",
             json={"title": "Test", "content": "AI text"},
         )
-        assert resp.status_code == 200
+        assert resp.status_code == HTTPStatus.OK
         assert resp.json()["success"] is True
         mock_tag_extractor.extract_tags_with_metrics.assert_called_once()
 
@@ -191,13 +192,13 @@ def test_tag_otel_disabled_does_not_require_token_file(monkeypatch: pytest.Monke
     shutdown()
 
 
-def test_blank_allowlist_denies_tls_peer(monkeypatch: pytest.MonkeyPatch, mock_tag_extractor) -> None:
+def test_blank_allowlist_denies_tls_peer(monkeypatch: pytest.MonkeyPatch, mock_tag_extractor: MagicMock) -> None:
     """TLS request with valid CN but empty MTLS_ALLOWED_PEERS -> 403"""
     monkeypatch.setenv("MTLS_ALLOWED_PEERS", "")
     with patch("auth_service._background_tag_service") as mock_service:
         mock_service.tag_extractor = mock_tag_extractor
 
-        async def tls_app(scope, receive, send):
+        async def tls_app(scope: Scope, receive: Receive, send: Send) -> None:
             if scope["type"] == "http":
                 scope.setdefault("extensions", {})["tls"] = {"client_cn": "recap-worker"}
             await app(scope, receive, send)
@@ -207,11 +208,13 @@ def test_blank_allowlist_denies_tls_peer(monkeypatch: pytest.MonkeyPatch, mock_t
             "/api/v1/extract-tags",
             json={"title": "Test", "content": "AI text"},
         )
-        assert resp.status_code == 403
+        assert resp.status_code == HTTPStatus.FORBIDDEN
         mock_tag_extractor.extract_tags_with_metrics.assert_not_called()
 
 
-def test_blank_allowlist_denies_plaintext_strict_peer(monkeypatch: pytest.MonkeyPatch, mock_tag_extractor) -> None:
+def test_blank_allowlist_denies_plaintext_strict_peer(
+    monkeypatch: pytest.MonkeyPatch, mock_tag_extractor: MagicMock
+) -> None:
     """strict=True, sidecar loopback with valid header, empty allowlist -> 401 or 403"""
     monkeypatch.setenv("MTLS_ALLOWED_PEERS", "")
     monkeypatch.setenv("PEER_IDENTITY_TRUSTED", "on")
@@ -237,7 +240,7 @@ def test_exempt_paths_pass_with_blank_allowlist(monkeypatch: pytest.MonkeyPatch)
     """/health and /metrics pass even with blank allowlist"""
     monkeypatch.setenv("MTLS_ALLOWED_PEERS", "")
 
-    async def tls_app(scope, receive, send):
+    async def tls_app(scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] == "http":
             scope.setdefault("extensions", {})["tls"] = {"client_cn": "some-peer"}
         await app(scope, receive, send)
@@ -245,4 +248,4 @@ def test_exempt_paths_pass_with_blank_allowlist(monkeypatch: pytest.MonkeyPatch)
     client = TestClient(tls_app)
 
     resp_health = client.get("/health")
-    assert resp_health.status_code == 200
+    assert resp_health.status_code == HTTPStatus.OK

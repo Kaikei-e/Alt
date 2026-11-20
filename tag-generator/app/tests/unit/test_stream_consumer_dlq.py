@@ -10,20 +10,20 @@ has to be capped rather than growing until it locks every producer out.
 """
 
 import asyncio
-from typing import Any, cast
+from typing import cast
 
 import redis.asyncio as redis
 
-from tag_generator.stream_consumer import ConsumerConfig, EventHandler, StreamConsumer
+from tag_generator.stream_consumer import _DLQ_MAXLEN, ConsumerConfig, Event, EventHandler, StreamConsumer
 
 OOM = redis.ResponseError("OOM command not allowed when used memory > 'maxmemory'.")
 
 
 class _RecordingHandler(EventHandler):
     def __init__(self) -> None:
-        self.events: list[Any] = []
+        self.events: list[Event] = []
 
-    async def handle_event(self, event: Any) -> None:
+    async def handle_event(self, event: Event) -> None:
         self.events.append(event)
 
 
@@ -44,14 +44,14 @@ class _DlqClient:
         self.xadd_errors = list(xadd_errors or [])
         self.xack_errors = list(xack_errors or [])
         self.xpending_errors = xpending_errors or {}
-        self.xadds: list[tuple[str, dict[str, Any], dict[str, Any]]] = []
+        self.xadds: list[tuple[str, dict[str, object], dict[str, object]]] = []
         self.acks: list[str] = []
 
-    async def xautoclaim(self, **kwargs: Any) -> tuple[str, list[Any], int]:
+    async def xautoclaim(self, **kwargs: object) -> tuple[str, list[tuple[str, dict[str, str]]], int]:
         del kwargs
         return ("0-0", list(self.entries), 0)
 
-    async def xpending_range(self, *args: Any, **kwargs: Any) -> list[Any]:
+    async def xpending_range(self, *args: object, **kwargs: object) -> list[dict[str, int]]:
         del args
         message_id = str(kwargs["min"])
         error = self.xpending_errors.get(message_id)
@@ -59,7 +59,7 @@ class _DlqClient:
             raise error
         return [{"times_delivered": self.times_delivered.get(message_id, 1)}]
 
-    async def xadd(self, name: str, fields: dict[str, Any], **kwargs: Any) -> str:
+    async def xadd(self, name: str, fields: dict[str, object], **kwargs: object) -> str:
         error = self.xadd_errors.pop(0) if self.xadd_errors else None
         if error is not None:
             raise error
@@ -164,4 +164,5 @@ def test_dlq_stream_is_capped() -> None:
     assert stream.endswith(":dlq")
     assert kwargs.get("approximate") is True, "an exact trim on every write is not worth the cost"
     maxlen = kwargs.get("maxlen")
-    assert isinstance(maxlen, int) and 0 < maxlen <= 10_000, "the DLQ must be bounded"
+    assert isinstance(maxlen, int)
+    assert 0 < maxlen <= _DLQ_MAXLEN, "the DLQ must be bounded"

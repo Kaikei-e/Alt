@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 from io import StringIO
 
@@ -8,9 +9,7 @@ import structlog
 from tag_generator.logging_config import add_business_context, setup_logging
 
 
-def test_setup_logging_produces_json_output():
-    import os
-
+def test_setup_logging_produces_json_output() -> None:
     # Redirect stdout to capture log output
     old_stdout = sys.stdout
     sys.stdout = captured_output = StringIO()
@@ -48,41 +47,41 @@ def test_setup_logging_produces_json_output():
 class TestAddBusinessContext:
     """Test ADR 98 business context transformations."""
 
-    def test_renames_article_id_to_alt_format(self):
+    def test_renames_article_id_to_alt_format(self) -> None:
         event_dict = {"event": "test", "article_id": "art-123"}
         result = add_business_context(None, "", event_dict)
 
         assert result["alt.article.id"] == "art-123"
         assert "article_id" not in result
 
-    def test_renames_feed_id_to_alt_format(self):
+    def test_renames_feed_id_to_alt_format(self) -> None:
         event_dict = {"event": "test", "feed_id": "feed-456"}
         result = add_business_context(None, "", event_dict)
 
         assert result["alt.feed.id"] == "feed-456"
         assert "feed_id" not in result
 
-    def test_renames_processing_stage_to_alt_format(self):
+    def test_renames_processing_stage_to_alt_format(self) -> None:
         event_dict = {"event": "test", "processing_stage": "extraction"}
         result = add_business_context(None, "", event_dict)
 
         assert result["alt.processing.stage"] == "extraction"
         assert "processing_stage" not in result
 
-    def test_adds_ai_pipeline_identifier(self):
+    def test_adds_ai_pipeline_identifier(self) -> None:
         event_dict = {"event": "test"}
         result = add_business_context(None, "", event_dict)
 
         assert result["alt.ai.pipeline"] == "tag-extraction"
 
-    def test_preserves_other_fields(self):
+    def test_preserves_other_fields(self) -> None:
         event_dict = {"event": "test", "custom_key": "value", "article_id": "a1"}
         result = add_business_context(None, "", event_dict)
 
         assert result["custom_key"] == "value"
         assert result["alt.article.id"] == "a1"
 
-    def test_all_transforms_together(self):
+    def test_all_transforms_together(self) -> None:
         event_dict = {
             "event": "test",
             "article_id": "art-1",

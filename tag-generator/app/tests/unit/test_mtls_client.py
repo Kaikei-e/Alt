@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ssl
 import tempfile
 
 import pytest
@@ -41,5 +42,5 @@ def test_build_ssl_context_fails_closed_when_cert_unreadable(monkeypatch: pytest
     with tempfile.NamedTemporaryFile() as ca:
         monkeypatch.setenv("MTLS_KEY_FILE", ca.name)
         monkeypatch.setenv("MTLS_CA_FILE", ca.name)
-        with pytest.raises(OSError):
+        with pytest.raises(ssl.SSLError):
             build_ssl_context()

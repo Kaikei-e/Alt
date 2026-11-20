@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import importlib
 import os
+from collections.abc import Iterator
+from http import HTTPStatus
 
 import pytest
 from starlette.applications import Starlette
-from starlette.responses import JSONResponse
+from starlette.requests import Request
+from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 from starlette.testclient import TestClient
 
@@ -25,7 +29,7 @@ SIDECAR = ("127.0.0.1", 44444)
 DIRECT = ("172.18.0.9", 44444)
 
 
-def _echo_peer(request):
+def _echo_peer(request: Request) -> JSONResponse:
     return JSONResponse({"peer": getattr(request.state, "peer_identity", None)})
 
 
@@ -69,77 +73,75 @@ def _build_app(
     return app
 
 
-def test_header_propagated_when_mtls_on():
+def test_header_propagated_when_mtls_on() -> None:
     app = _build_app(verify_client="on")
     with TestClient(app, client=SIDECAR) as client:
         resp = client.get("/echo", headers={PEER_IDENTITY_HEADER: "alt-backend"})
-        assert resp.status_code == 200
+        assert resp.status_code == HTTPStatus.OK
         assert resp.json() == {"peer": "alt-backend"}
 
 
-def test_header_stripped_when_mtls_off():
+def test_header_stripped_when_mtls_off() -> None:
     app = _build_app(verify_client="off")
     with TestClient(app, client=SIDECAR) as client:
         resp = client.get("/echo", headers={PEER_IDENTITY_HEADER: "root"})
-        assert resp.status_code == 200
+        assert resp.status_code == HTTPStatus.OK
         assert resp.json() == {"peer": None}
 
 
-def test_header_stripped_when_trust_unset():
+def test_header_stripped_when_trust_unset() -> None:
     os.environ.pop("PEER_IDENTITY_TRUSTED", None)
     app = Starlette(routes=[Route("/echo", _echo_peer)])
     app.add_middleware(PeerIdentityMiddleware, strict=False, allowed=["alt-backend"])
     with TestClient(app, client=SIDECAR) as client:
         resp = client.get("/echo", headers={PEER_IDENTITY_HEADER: "alt-backend"})
-        assert resp.status_code == 200
+        assert resp.status_code == HTTPStatus.OK
         assert resp.json() == {"peer": None}
 
 
-def test_header_stripped_when_not_from_sidecar():
+def test_header_stripped_when_not_from_sidecar() -> None:
     app = _build_app(verify_client="on")
     with TestClient(app, client=DIRECT) as client:
         resp = client.get("/echo", headers={PEER_IDENTITY_HEADER: "alt-backend"})
-        assert resp.status_code == 200
+        assert resp.status_code == HTTPStatus.OK
         assert resp.json() == {"peer": None}
 
 
-def test_strict_rejects_peer_from_non_sidecar_transport():
+def test_strict_rejects_peer_from_non_sidecar_transport() -> None:
     app = _build_app(allowed=["recap-worker"], strict=True)
     with TestClient(app, client=DIRECT) as client:
         resp = client.get("/echo", headers={PEER_IDENTITY_HEADER: "recap-worker"})
-        assert resp.status_code == 401
+        assert resp.status_code == HTTPStatus.UNAUTHORIZED
 
 
-def test_strict_rejects_missing_peer():
+def test_strict_rejects_missing_peer() -> None:
     app = _build_app(strict=True)
     with TestClient(app, client=SIDECAR) as client:
         resp = client.get("/echo")
-        assert resp.status_code == 401
+        assert resp.status_code == HTTPStatus.UNAUTHORIZED
 
 
-def test_strict_rejects_disallowed_peer():
+def test_strict_rejects_disallowed_peer() -> None:
     app = _build_app(allowed=["recap-worker"], strict=True)
     with TestClient(app, client=SIDECAR) as client:
         resp = client.get("/echo", headers={PEER_IDENTITY_HEADER: "evil-svc"})
-        assert resp.status_code == 403
+        assert resp.status_code == HTTPStatus.FORBIDDEN
 
 
-def test_strict_accepts_allowlisted_peer():
+def test_strict_accepts_allowlisted_peer() -> None:
     app = _build_app(allowed=["recap-worker", "mq-hub"], strict=True)
     with TestClient(app, client=SIDECAR) as client:
         resp = client.get("/echo", headers={PEER_IDENTITY_HEADER: "mq-hub"})
-        assert resp.status_code == 200
+        assert resp.status_code == HTTPStatus.OK
         assert resp.json() == {"peer": "mq-hub"}
 
 
-def test_allowed_peers_from_env(monkeypatch):
+def test_allowed_peers_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("MTLS_ALLOWED_PEERS", " recap-worker , mq-hub , alt-backend")
     assert allowed_peers_from_env() == ["recap-worker", "mq-hub", "alt-backend"]
 
 
-def test_tls_cn_wins_over_spoofed_header():
-    from starlette.requests import Request
-
+def test_tls_cn_wins_over_spoofed_header() -> None:
     os.environ["PEER_IDENTITY_TRUSTED"] = "on"
     scope = {
         "type": "http",
@@ -159,9 +161,7 @@ def test_tls_cn_wins_over_spoofed_header():
     assert resolve_authenticated_peer(Request(scope)) == "recap-worker"
 
 
-def test_tls_cn_is_used_even_when_trust_env_is_off():
-    from starlette.requests import Request
-
+def test_tls_cn_is_used_even_when_trust_env_is_off() -> None:
     os.environ["PEER_IDENTITY_TRUSTED"] = "off"
     scope = {
         "type": "http",
@@ -202,9 +202,7 @@ def test_strict_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_auth_service_wires_strict_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Verify auth_service configures PeerIdentityMiddleware strictness from env."""
-    import importlib
-
-    import auth_service
+    import auth_service  # noqa: PLC0415 - other tests replace sys.modules["auth_service"]; the current module object must be fetched at call time
 
     original_app = auth_service.app
     try:
@@ -225,7 +223,7 @@ def test_tls_peer_allowlisted_passes_even_when_not_strict() -> None:
     app = _build_app(allowed=["recap-worker"], strict=False, tls_cn="recap-worker")
     with TestClient(app, client=DIRECT) as http:
         resp = http.get("/echo")
-        assert resp.status_code == 200
+        assert resp.status_code == HTTPStatus.OK
         assert resp.json() == {"peer": "recap-worker"}
 
 
@@ -234,7 +232,7 @@ def test_tls_peer_not_allowlisted_rejected_even_when_not_strict() -> None:
     app = _build_app(allowed=["recap-worker"], strict=False, tls_cn="impostor")
     with TestClient(app, client=DIRECT) as http:
         resp = http.get("/echo")
-        assert resp.status_code == 403
+        assert resp.status_code == HTTPStatus.FORBIDDEN
         assert resp.text == "peer not allowlisted"
 
 
@@ -244,7 +242,7 @@ def test_tls_peer_empty_cn_rejected_even_when_not_strict(allowed_peers: list[str
     app = _build_app(allowed=allowed_peers, strict=False, tls_cn="")
     with TestClient(app, client=DIRECT) as http:
         resp = http.get("/echo")
-        assert resp.status_code == 403
+        assert resp.status_code == HTTPStatus.FORBIDDEN
         assert resp.text == "peer not allowlisted"
 
 
@@ -253,7 +251,7 @@ def test_tls_peer_empty_cn_cannot_bypass_via_forged_loopback_header() -> None:
     app = _build_app(allowed=["recap-worker"], strict=False, verify_client="on", tls_cn="")
     with TestClient(app, client=SIDECAR) as http:
         resp = http.get("/echo", headers={PEER_IDENTITY_HEADER: "recap-worker"})
-        assert resp.status_code == 403
+        assert resp.status_code == HTTPStatus.FORBIDDEN
         assert resp.text == "peer not allowlisted"
 
 
@@ -262,7 +260,7 @@ def test_tls_disallowed_peer_cannot_bypass_via_forged_loopback_header() -> None:
     app = _build_app(allowed=["recap-worker"], strict=False, verify_client="on", tls_cn="impostor")
     with TestClient(app, client=SIDECAR) as http:
         resp = http.get("/echo", headers={PEER_IDENTITY_HEADER: "recap-worker"})
-        assert resp.status_code == 403
+        assert resp.status_code == HTTPStatus.FORBIDDEN
         assert resp.text == "peer not allowlisted"
 
 
@@ -273,7 +271,7 @@ def test_probes_on_tls_port_exempt_from_allowlist(path: str, cn: str) -> None:
     app = _build_app(allowed=["recap-worker"], strict=False, tls_cn=cn)
     with TestClient(app, client=DIRECT) as http:
         resp = http.get(path)
-        assert resp.status_code == 200
+        assert resp.status_code == HTTPStatus.OK
 
 
 def test_plaintext_origin_without_cert_unaffected_by_tls_allowlist() -> None:
@@ -281,7 +279,7 @@ def test_plaintext_origin_without_cert_unaffected_by_tls_allowlist() -> None:
     app = _build_app(allowed=["recap-worker"], strict=False, verify_client="off")
     with TestClient(app, client=DIRECT) as http:
         resp = http.get("/echo")
-        assert resp.status_code == 200
+        assert resp.status_code == HTTPStatus.OK
         assert resp.json() == {"peer": None}
 
 
@@ -290,7 +288,7 @@ def test_plaintext_origin_rejected_when_strict_true() -> None:
     app = _build_app(allowed=["recap-worker"], strict=True, verify_client="off")
     with TestClient(app, client=DIRECT) as http:
         resp = http.get("/echo")
-        assert resp.status_code == 401
+        assert resp.status_code == HTTPStatus.UNAUTHORIZED
         assert resp.text == "unauthenticated peer"
 
 
@@ -301,7 +299,7 @@ def test_probes_on_plaintext_port_exempt_when_strict_true(path: str, client_addr
     app = _build_app(allowed=["recap-worker"], strict=True, verify_client="off")
     with TestClient(app, client=client_addr) as http:
         resp = http.get(path)
-        assert resp.status_code == 200
+        assert resp.status_code == HTTPStatus.OK
         assert resp.json() == {"peer": None}
 
 
@@ -311,12 +309,10 @@ async def test_raw_asgi_tls_missing_cn_rejected_even_with_forged_loopback_header
     os.environ["PEER_IDENTITY_TRUSTED"] = "on"
     called = False
 
-    async def call_next(r):
+    async def call_next(r: Request) -> Response:
         nonlocal called
         called = True
         return JSONResponse({"peer": getattr(r.state, "peer_identity", None)})
-
-    from starlette.requests import Request
 
     middleware = PeerIdentityMiddleware(None, allowed=["recap-worker"], strict=False)
 
@@ -337,12 +333,12 @@ async def test_raw_asgi_tls_missing_cn_rejected_even_with_forged_loopback_header
     }
 
     resp = await middleware.dispatch(Request(scope), call_next)
-    assert resp.status_code == 403
+    assert resp.status_code == HTTPStatus.FORBIDDEN
     assert not called
 
 
 @pytest.fixture(autouse=True)
-def _reset_env():
+def _reset_env() -> Iterator[None]:
     yield
     os.environ.pop("PEER_IDENTITY_TRUSTED", None)
     os.environ.pop("PEER_IDENTITY_STRICT", None)

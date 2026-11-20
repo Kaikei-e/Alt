@@ -13,8 +13,10 @@ from datetime import UTC, datetime
 from typing import Any
 
 import psycopg2
+import psycopg2.extensions
 import psycopg2.extras
-from psycopg2.extensions import connection as PGConnection
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -143,13 +145,13 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _connect(dsn: str) -> PGConnection:
+def _connect(dsn: str) -> psycopg2.extensions.connection:
     conn = psycopg2.connect(dsn)
     conn.autocommit = False
     return conn
 
 
-def _fetch_learning_rows(conn: PGConnection, days: int) -> list[LearningRow]:
+def _fetch_learning_rows(conn: psycopg2.extensions.connection, days: int) -> list[LearningRow]:
     query = """
         SELECT
             LOWER(COALESCE(refine_decision->>'final_genre', 'other')) AS genre,
@@ -192,7 +194,7 @@ def _ensure_timezone(value: datetime | None) -> datetime:
 
 
 def _upsert_edges(
-    conn: PGConnection,
+    conn: psycopg2.extensions.connection,
     window_label: str,
     edges: Iterable[EdgePayload],
     refresh_ts: datetime,
@@ -200,11 +202,11 @@ def _upsert_edges(
 ) -> int:
     edge_list = list(edges)
     if dry_run:
-        logging.info("[DRY RUN] would upsert %d edges for window %s", len(edge_list), window_label)
+        logger.info("[DRY RUN] would upsert %d edges for window %s", len(edge_list), window_label)
         return len(edge_list)
 
     if not edge_list:
-        logging.warning("No edges generated for %s – keeping previous snapshot intact", window_label)
+        logger.warning("No edges generated for %s – keeping previous snapshot intact", window_label)
         return 0
 
     payloads = [
@@ -242,7 +244,7 @@ def _upsert_edges(
         )
         conn.commit()
 
-    logging.info("Upserted %d edges for window %s", len(edge_list), window_label)
+    logger.info("Upserted %d edges for window %s", len(edge_list), window_label)
     return len(edge_list)
 
 
@@ -254,25 +256,25 @@ def main() -> int:
     )
 
     if not args.dsn:
-        logging.error("RECAP_DB_DSN must be provided via --dsn or environment")
+        logger.error("RECAP_DB_DSN must be provided via --dsn or environment")
         return 1
 
     try:
         windows = [int(item.strip()) for item in args.windows.split(",") if item.strip()]
-    except ValueError as exc:
-        logging.error("Invalid --windows value: %s", exc)
+    except ValueError:
+        logger.exception("Invalid --windows value")
         return 1
 
     if not windows:
-        logging.error("At least one window duration is required")
+        logger.error("At least one window duration is required")
         return 1
 
     conn = _connect(args.dsn)
     try:
         for days in windows:
-            logging.info("Building graph for last %d days", days)
+            logger.info("Building graph for last %d days", days)
             rows = _fetch_learning_rows(conn, days)
-            logging.info("Loaded %d learning rows", len(rows))
+            logger.info("Loaded %d learning rows", len(rows))
             edges = aggregate_tag_edges(
                 rows,
                 max_tags=args.max_tags,

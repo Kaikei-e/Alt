@@ -1,5 +1,6 @@
 """Event handler for tag-generator Redis Streams consumer."""
 
+import asyncio
 import time
 import uuid
 from typing import TYPE_CHECKING
@@ -15,6 +16,21 @@ if TYPE_CHECKING:
     from tag_generator.service import TagGeneratorService
 
 logger = structlog.get_logger(__name__)
+
+
+class _TagUpsertFailedError(RuntimeError):
+    def __init__(self, article_id: str) -> None:
+        super().__init__(f"tag upsert failed for article {article_id}")
+
+
+class _ReplyConsumerNotConfiguredError(RuntimeError):
+    def __init__(self) -> None:
+        super().__init__("stream_consumer is not configured for reply publishing")
+
+
+class _ReplyPublishFailedError(RuntimeError):
+    def __init__(self, reply_to: str) -> None:
+        super().__init__(f"reply publish failed for stream {reply_to}")
 
 
 class TagGeneratorEventHandler(EventHandler):
@@ -75,7 +91,7 @@ class TagGeneratorEventHandler(EventHandler):
             # The service will fetch content from DB and generate tags
             await self._process_article(article_id, feed_id=feed_id)
         except Exception as e:
-            logger.error(
+            logger.exception(
                 "tag_generation_failed",
                 article_id=article_id,
                 error=str(e),
@@ -88,8 +104,6 @@ class TagGeneratorEventHandler(EventHandler):
         This delegates to the TagGeneratorService for the actual processing.
         Uses an executor to run the sync method without blocking the event loop.
         """
-        import asyncio
-
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(
             None,
@@ -150,7 +164,7 @@ class TagGeneratorEventHandler(EventHandler):
             # Retryable: the tags exist, only persisting them failed. Raise so
             # the message stays in the PEL for XAUTOCLAIM redelivery / DLQ
             # instead of being silently dropped.
-            raise RuntimeError(f"tag upsert failed for article {article_id}")
+            raise _TagUpsertFailedError(article_id)
 
         logger.info(
             "article_processed_for_tags",
@@ -188,7 +202,7 @@ class TagGeneratorEventHandler(EventHandler):
                 "stream_consumer_not_configured_for_reply",
                 event_id=event.event_id,
             )
-            raise RuntimeError("stream_consumer is not configured for reply publishing")
+            raise _ReplyConsumerNotConfiguredError
 
         # Validate payload with size limits
         try:
@@ -231,7 +245,7 @@ class TagGeneratorEventHandler(EventHandler):
             tags, inference_ms = await self._generate_tags_inline(article_id, title, content, feed_id)
         except Exception as e:
             elapsed_ms = (time.perf_counter() - start_time) * 1000
-            logger.error(
+            logger.exception(
                 "tag_generation_request_failed",
                 article_id=article_id,
                 error=str(e),
@@ -270,8 +284,6 @@ class TagGeneratorEventHandler(EventHandler):
         Returns:
             Tuple of (tags_list, inference_ms)
         """
-        import asyncio
-
         loop = asyncio.get_running_loop()
 
         def generate_sync() -> tuple[list[dict], float]:
@@ -307,7 +319,7 @@ class TagGeneratorEventHandler(EventHandler):
         """Publish a reply event to the reply stream."""
         if not self.stream_consumer:
             logger.error("cannot_publish_reply_no_consumer")
-            raise RuntimeError("stream_consumer is not configured for reply publishing")
+            raise _ReplyConsumerNotConfiguredError
 
         event_data = {
             "event_id": str(uuid.uuid4()),
@@ -318,7 +330,7 @@ class TagGeneratorEventHandler(EventHandler):
 
         message_id = await self.stream_consumer.publish_reply(reply_to, event_data)
         if not message_id:
-            raise RuntimeError(f"reply publish failed for stream {reply_to}")
+            raise _ReplyPublishFailedError(reply_to)
 
         logger.info(
             "tag_generation_reply_published",

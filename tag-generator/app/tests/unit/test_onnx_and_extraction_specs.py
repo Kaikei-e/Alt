@@ -39,20 +39,23 @@ class _FakeArray:
     def tolist(self) -> list[Any]:
         return self._data
 
-    def __getitem__(self, key: Any) -> _FakeArray:
+    def __getitem__(self, key: object) -> _FakeArray:
         # Supports hidden_states[:, 0, :] for CLS pooling on (batch, seq, hidden_dim)
-        if isinstance(key, tuple) and len(key) == 3 and key[1] == 0:
+        cls_slice_len = 3
+        if isinstance(key, tuple) and len(key) == cls_slice_len and key[1] == 0:
             cls_rows = [seq_rows[0] for seq_rows in self._data]
             return _FakeArray(
                 cls_rows,
                 shape=(len(cls_rows), self.shape[2]),
                 dtype=self.dtype,
             )
-        raise IndexError(f"Unsupported slice key: {key!r}")
+        msg = f"Unsupported slice key: {key!r}"
+        raise IndexError(msg)
 
     def mean(self, axis: int = 1) -> _FakeArray:
         if axis != 1:
-            raise ValueError(f"Unsupported axis: {axis}")
+            msg = f"Unsupported axis: {axis}"
+            raise ValueError(msg)
         dim = self.shape[2]
         averaged: list[list[float]] = []
         for seq_rows in self._data:
@@ -116,7 +119,8 @@ def _build_mock_ort_and_tokenizer(
         return_tensors: str = "np",
     ) -> dict[str, _FakeArray]:
         batch_len = len(batch)
-        seq_len = hidden_states.shape[1] if len(hidden_states.shape) == 3 else 3
+        ndim_3d = 3
+        seq_len = hidden_states.shape[1] if len(hidden_states.shape) == ndim_3d else 3
         ones = [[1] * seq_len for _ in range(batch_len)]
         return {
             "input_ids": _FakeArray(ones, shape=(batch_len, seq_len), dtype="int64"),
@@ -253,10 +257,11 @@ class TestOnnxEmbeddingModel:
         )
 
         # Case 1: TAG_ONNX_RUNTIME_BATCH_SIZE overrides requested batch size
+        override_batch_size = 8
         with (
             patch.dict(
                 os.environ,
-                {"TAG_ONNX_RUNTIME_BATCH_SIZE": "8"},
+                {"TAG_ONNX_RUNTIME_BATCH_SIZE": str(override_batch_size)},
                 clear=False,
             ),
             patch("tag_extractor.onnx_embedder.np", fake_np),
@@ -265,15 +270,18 @@ class TestOnnxEmbeddingModel:
         ):
             os.environ.pop("TAG_ONNX_MAX_BATCH_TOKENS", None)
             model_override = OnnxEmbeddingModel(config)
-            assert model_override._effective_batch_size(16) == 8  # noqa: SLF001
+            assert model_override._effective_batch_size(16) == override_batch_size
 
         # Case 2: TAG_ONNX_MAX_BATCH_TOKENS clamps batch size based on max_length (512 // 256 == 2)
+        max_batch_tokens = 512
+        max_seq_len = 256
+        expected_clamped_batch = max_batch_tokens // max_seq_len
         with (
             patch.dict(
                 os.environ,
                 {
                     "TAG_ONNX_RUNTIME_BATCH_SIZE": "12",
-                    "TAG_ONNX_MAX_BATCH_TOKENS": "512",
+                    "TAG_ONNX_MAX_BATCH_TOKENS": str(max_batch_tokens),
                 },
                 clear=False,
             ),
@@ -282,7 +290,7 @@ class TestOnnxEmbeddingModel:
             patch("tag_extractor.onnx_embedder.AutoTokenizer", mock_tokenizer_cls),
         ):
             model_clamped = OnnxEmbeddingModel(config)
-            assert model_clamped._effective_batch_size(16) == 2  # noqa: SLF001
+            assert model_clamped._effective_batch_size(16) == expected_clamped_batch
 
         # Case 3: Very small TAG_ONNX_MAX_BATCH_TOKENS still clamps to at least 1
         with (
@@ -297,7 +305,7 @@ class TestOnnxEmbeddingModel:
         ):
             os.environ.pop("TAG_ONNX_RUNTIME_BATCH_SIZE", None)
             model_min_one = OnnxEmbeddingModel(config)
-            assert model_min_one._effective_batch_size(16) == 1  # noqa: SLF001
+            assert model_min_one._effective_batch_size(16) == 1
 
     def test_resolve_providers_falls_back_to_cpu_when_requested_unavailable(
         self,
@@ -323,7 +331,7 @@ class TestOnnxEmbeddingModel:
             patch("tag_extractor.onnx_embedder.AutoTokenizer", mock_tokenizer_cls),
         ):
             model = OnnxEmbeddingModel(config)
-            assert model._providers == ["CPUExecutionProvider"]  # noqa: SLF001
+            assert model._providers == ["CPUExecutionProvider"]
             assert model.describe()["providers"] == ["CPUExecutionProvider"]
 
 
@@ -339,15 +347,14 @@ class TestTagExtractorTruncateContent:
         max_len = 100
         # Place sentence boundary at index 85 (> 80% of 100)
         prefix = "a" * 85
-        content = prefix + punct + ("b" * 30)
-        assert len(content) == 116
+        suffix = "b" * 30
+        content = prefix + punct + suffix
+        assert len(content) == len(prefix) + 1 + len(suffix)
 
-        truncated_title, truncated_content = extractor._truncate_content(  # noqa: SLF001
-            "Sample Title", content, max_len
-        )
+        truncated_title, truncated_content = extractor._truncate_content("Sample Title", content, max_len)
 
         assert truncated_title == "Sample Title"
-        assert len(truncated_content) == 86
+        assert len(truncated_content) == len(prefix) + 1
         assert truncated_content == prefix + punct
 
     def test_truncates_at_exact_max_content_length_when_no_boundary_past_80_percent(
@@ -359,12 +366,12 @@ class TestTagExtractorTruncateContent:
         )
         max_len = 100
         # Sentence boundary at index 50 (<= 80% of 100), followed by plain characters
-        content = ("a" * 50) + "." + ("b" * 80)
-        assert len(content) == 131
+        prefix = "a" * 50
+        suffix = "b" * 80
+        content = prefix + "." + suffix
+        assert len(content) == len(prefix) + 1 + len(suffix)
 
-        _, truncated_content = extractor._truncate_content(  # noqa: SLF001
-            "Title", content, max_len
-        )
+        _, truncated_content = extractor._truncate_content("Title", content, max_len)
 
         assert len(truncated_content) == max_len
         assert truncated_content == content[:max_len]
@@ -374,19 +381,18 @@ class TestTagExtractorTruncateContent:
         extractor = TagExtractor(
             config=TagExtractionConfig(use_onnx_runtime=False),
         )
+        max_title_length = 1000
         long_title = "T" * 1250
         short_content = "Short content body."
 
-        truncated_title, truncated_content = extractor._truncate_content(  # noqa: SLF001
-            long_title, short_content, 500
-        )
+        truncated_title, truncated_content = extractor._truncate_content(long_title, short_content, 500)
 
-        assert len(truncated_title) == 1000
-        assert truncated_title == "T" * 1000
+        assert len(truncated_title) == max_title_length
+        assert truncated_title == "T" * max_title_length
         assert truncated_content == short_content
 
 
-def _make_token(surface: str, pos1: str = "名詞", pos2: str = "一般") -> Any:
+def _make_token(surface: str, pos1: str = "名詞", pos2: str = "一般") -> MagicMock:
     """Create a mock Fugashi token with surface and feature.pos1/pos2 attributes."""
     token = MagicMock()
     token.surface = surface
@@ -462,13 +468,13 @@ class TestFallbackJapanese:
         # When ja_tagger raises a runtime fault during analysis, TagExtractor propagates it
         failing_tagger = MagicMock(side_effect=RuntimeError("MeCab dictionary corrupted"))
         extractor = TagExtractor(config=config)
-        extractor._models_loaded = True  # noqa: SLF001
-        extractor._ja_tagger = failing_tagger  # noqa: SLF001
-        extractor._ja_stopwords = set()  # noqa: SLF001
-        extractor._stopwords_loaded = True  # type: ignore[attr-defined]  # noqa: SLF001
+        extractor._models_loaded = True
+        extractor._ja_tagger = failing_tagger
+        extractor._ja_stopwords = set()
+        extractor._stopwords_loaded = True  # type: ignore[attr-defined]
 
         with pytest.raises(RuntimeError, match="MeCab dictionary corrupted"):
-            extractor._run_extraction("日本語のテスト記事本文です", "ja")  # noqa: SLF001
+            extractor._run_extraction("日本語のテスト記事本文です", "ja")
 
 
 class TestOnnxTokenizerRevision:

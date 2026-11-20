@@ -21,6 +21,8 @@ from typing import TYPE_CHECKING, Any, cast
 import structlog
 from pyqwest import SyncClient, SyncHTTPTransport
 
+from tag_generator.driver.connect_article_fetcher import ConnectArticleFetcher
+from tag_generator.driver.connect_tag_inserter import ConnectTagInserter
 from tag_generator.gen.proto.services.datahub.v1.datahub_connect import (
     DataHubServiceClientSync,
 )
@@ -114,11 +116,20 @@ class _ReloadingBackendClient:
         self._key_mtime = km
         logger.info("mtls client reloaded after cert rotation")
 
-    def __getattr__(self, name: str) -> Any:
+    def __getattr__(self, name: str) -> Any:  # noqa: ANN401 - transparent proxy forwarding arbitrary RPC client attributes
         # Only called when `name` is not found via normal lookup, so this
         # never shadows our own attributes (_inner, _cert_file, ...).
         self._maybe_reload()
         return getattr(self._inner, name)
+
+
+class _BackendClientCreationError(RuntimeError):
+    def __init__(self) -> None:
+        super().__init__(
+            "Backend API client could not be created. "
+            "Ensure BACKEND_API_URL is set and the mTLS cert sidecar is "
+            "running. Legacy database mode has been removed."
+        )
 
 
 def create_backend_client() -> tuple[DataHubServiceClientSync, dict[str, str]] | None:
@@ -201,15 +212,8 @@ def create_article_fetcher_and_inserter() -> tuple[ArticleFetcherPort, TagInsert
     """
     result = create_backend_client()
     if result is None:
-        raise RuntimeError(
-            "Backend API client could not be created. "
-            "Ensure BACKEND_API_URL is set and the mTLS cert sidecar is "
-            "running. Legacy database mode has been removed."
-        )
+        raise _BackendClientCreationError
     client, auth_headers = result
-
-    from tag_generator.driver.connect_article_fetcher import ConnectArticleFetcher
-    from tag_generator.driver.connect_tag_inserter import ConnectTagInserter
 
     logger.info("Using backend API mode for article/tag operations")
     return ConnectArticleFetcher(client, auth_headers), ConnectTagInserter(client, auth_headers)

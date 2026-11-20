@@ -12,7 +12,8 @@ Key functions:
 
 import re
 
-# Default maximum tag length (characters)
+# Default tag length bounds (characters)
+DEFAULT_MIN_TAG_LENGTH = 2
 DEFAULT_MAX_TAG_LENGTH = 15
 
 # Verb/auxiliary verb endings that indicate sentence fragments
@@ -58,7 +59,7 @@ def is_valid_japanese_tag(tag: str, max_length: int = DEFAULT_MAX_TAG_LENGTH) ->
         True if the tag is valid, False otherwise
     """
     # Length check
-    if not (2 <= len(tag) <= max_length):
+    if not (DEFAULT_MIN_TAG_LENGTH <= len(tag) <= max_length):
         return False
 
     # Verb/auxiliary verb endings (sentence fragments)
@@ -74,10 +75,16 @@ def is_valid_japanese_tag(tag: str, max_length: int = DEFAULT_MAX_TAG_LENGTH) ->
         return False
 
     # URL/HTML fragments
-    if URL_HTML_FRAGMENTS_PATTERN.fullmatch(tag):
-        return False
+    return not URL_HTML_FRAGMENTS_PATTERN.fullmatch(tag)
 
-    return True
+
+def _has_valid_english_surface(cleaned: str, min_length: int, max_length: int) -> bool:
+    return (
+        min_length <= len(cleaned) <= max_length
+        and any(ch.isalpha() for ch in cleaned)
+        and not NUMBER_ONLY_PATTERN.fullmatch(cleaned)
+        and not URL_HTML_FRAGMENTS_PATTERN.fullmatch(cleaned)
+    )
 
 
 def is_valid_english_tag(
@@ -88,16 +95,7 @@ def is_valid_english_tag(
 ) -> bool:
     """Validate an English single-word or phrase tag candidate."""
     cleaned = tag.strip()
-    if not (min_length <= len(cleaned) <= max_length):
-        return False
-
-    if not any(ch.isalpha() for ch in cleaned):
-        return False
-
-    if NUMBER_ONLY_PATTERN.fullmatch(cleaned):
-        return False
-
-    if URL_HTML_FRAGMENTS_PATTERN.fullmatch(cleaned):
+    if not _has_valid_english_surface(cleaned, min_length, max_length):
         return False
 
     words = cleaned.lower().split()
@@ -107,20 +105,15 @@ def is_valid_english_tag(
     active_stopwords = stopwords or set()
     if len(words) == 1:
         word = words[0]
-        if word in active_stopwords or NUMBER_ONLY_PATTERN.fullmatch(word):
-            return False
-        return True
+        return not (word in active_stopwords or NUMBER_ONLY_PATTERN.fullmatch(word))
 
     # Reject multi-word phrases bounded by stopwords/reporting verbs or composed solely of stopwords/numbers/fragments
     if words[0] in active_stopwords or words[-1] in active_stopwords:
         return False
-    if all(
+    return not all(
         word in active_stopwords or NUMBER_ONLY_PATTERN.fullmatch(word) or URL_HTML_FRAGMENTS_PATTERN.fullmatch(word)
         for word in words
-    ):
-        return False
-
-    return True
+    )
 
 
 def clean_noun_phrase(phrase: str) -> str:

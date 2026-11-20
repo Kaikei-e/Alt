@@ -2,6 +2,7 @@
 Unit tests for GiNZA extractor.
 """
 
+from collections.abc import Iterator
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -17,79 +18,89 @@ from tag_extractor.ginza_extractor import (
 class TestGinzaConfig:
     """Tests for GinzaConfig."""
 
-    def test_default_config(self):
+    def test_default_config(self) -> None:
         """Test default configuration values."""
+        default_max_text_length = 50000
+        default_min_phrase_length = 2
+        default_max_phrase_length = 15
+        default_max_cache_size = 100
         config = GinzaConfig()
         assert config.model_name == "ja_ginza"
-        assert config.max_text_length == 50000
-        assert config.min_phrase_length == 2
-        assert config.max_phrase_length == 15  # Reduced from 30 to prevent sentence fragments
+        assert config.max_text_length == default_max_text_length
+        assert config.min_phrase_length == default_min_phrase_length
+        assert config.max_phrase_length == default_max_phrase_length  # Reduced from 30 to prevent sentence fragments
         assert config.entity_types is None
         assert config.enable_cache is True
-        assert config.max_cache_size == 100
+        assert config.max_cache_size == default_max_cache_size
 
-    def test_custom_config(self):
+    def test_custom_config(self) -> None:
         """Test custom configuration."""
+        min_phrase_length = 3
+        max_phrase_length = 20
         config = GinzaConfig(
             model_name="ja_ginza_electra",
-            min_phrase_length=3,
-            max_phrase_length=20,
+            min_phrase_length=min_phrase_length,
+            max_phrase_length=max_phrase_length,
             entity_types=["PERSON", "ORG"],
         )
         assert config.model_name == "ja_ginza_electra"
-        assert config.min_phrase_length == 3
-        assert config.max_phrase_length == 20
+        assert config.min_phrase_length == min_phrase_length
+        assert config.max_phrase_length == max_phrase_length
         assert config.entity_types == ["PERSON", "ORG"]
 
 
 class TestExtractionResult:
     """Tests for ExtractionResult dataclass."""
 
-    def test_default_values(self):
+    def test_default_values(self) -> None:
         """Test default extraction result values."""
         result = ExtractionResult()
         assert result.items == []
         assert result.scores == {}
         assert result.metadata == {}
 
-    def test_with_values(self):
+    def test_with_values(self) -> None:
         """Test extraction result with values."""
+        items = ["機械学習", "AI"]
+        ml_score = 0.9
+        total_tokens = 100
         result = ExtractionResult(
-            items=["機械学習", "AI"],
-            scores={"機械学習": 0.9, "AI": 0.8},
-            metadata={"total_tokens": 100},
+            items=items,
+            scores={"機械学習": ml_score, "AI": 0.8},
+            metadata={"total_tokens": total_tokens},
         )
-        assert len(result.items) == 2
-        assert result.scores["機械学習"] == 0.9
-        assert result.metadata["total_tokens"] == 100
+        assert len(result.items) == len(items)
+        assert result.scores["機械学習"] == ml_score
+        assert result.metadata["total_tokens"] == total_tokens
 
 
 class TestGinzaExtractor:
     """Tests for GinzaExtractor."""
 
     @pytest.fixture(autouse=True)
-    def reset_singleton(self):
+    def reset_singleton(self) -> Iterator[None]:
         """Reset singleton before each test."""
         GinzaExtractor._instance = None
         yield
         GinzaExtractor._instance = None
 
-    def test_singleton_pattern(self):
+    def test_singleton_pattern(self) -> None:
         """Test that GinzaExtractor follows singleton pattern."""
         extractor1 = GinzaExtractor()
         extractor2 = GinzaExtractor()
         assert extractor1 is extractor2
 
-    def test_initialization(self):
+    def test_initialization(self) -> None:
         """Test extractor initialization."""
-        config = GinzaConfig(min_phrase_length=3)
+        min_phrase_length = 3
+        config = GinzaConfig(min_phrase_length=min_phrase_length)
         extractor = GinzaExtractor(config)
-        assert extractor.config.min_phrase_length == 3
+        assert extractor.config.min_phrase_length == min_phrase_length
         assert extractor._nlp is None
         assert extractor._available is None
 
     @patch("tag_extractor.ginza_extractor.GinzaExtractor._lazy_load_model")
-    def test_is_available_calls_lazy_load(self, mock_load):
+    def test_is_available_calls_lazy_load(self, mock_load: MagicMock) -> None:
         """Test that is_available calls lazy load."""
         mock_load.return_value = True
         extractor = GinzaExtractor()
@@ -97,7 +108,7 @@ class TestGinzaExtractor:
         mock_load.assert_called_once()
         assert result is True
 
-    def test_extract_noun_phrases_without_model(self):
+    def test_extract_noun_phrases_without_model(self) -> None:
         """Test noun phrase extraction returns empty when model unavailable."""
         extractor = GinzaExtractor()
         extractor._available = False
@@ -105,7 +116,7 @@ class TestGinzaExtractor:
         result = extractor.extract_noun_phrases("テスト文章")
         assert result == []
 
-    def test_extract_named_entities_without_model(self):
+    def test_extract_named_entities_without_model(self) -> None:
         """Test NER returns empty when model unavailable."""
         extractor = GinzaExtractor()
         extractor._available = False
@@ -114,7 +125,7 @@ class TestGinzaExtractor:
         assert result == []
 
     @patch("tag_extractor.ginza_extractor.GinzaExtractor._get_doc")
-    def test_extract_noun_phrases_with_mock_doc(self, mock_get_doc):
+    def test_extract_noun_phrases_with_mock_doc(self, mock_get_doc: MagicMock) -> None:
         """Test noun phrase extraction with mocked spaCy doc."""
         # Create mock noun chunks
         mock_chunk1 = MagicMock()
@@ -133,7 +144,7 @@ class TestGinzaExtractor:
         assert "ニューラルネットワーク" in result
 
     @patch("tag_extractor.ginza_extractor.GinzaExtractor._get_doc")
-    def test_extract_named_entities_with_mock_doc(self, mock_get_doc):
+    def test_extract_named_entities_with_mock_doc(self, mock_get_doc: MagicMock) -> None:
         """Test NER with mocked spaCy doc."""
         # Create mock entities
         mock_ent1 = MagicMock()
@@ -154,7 +165,7 @@ class TestGinzaExtractor:
         assert "東京" in result
 
     @patch("tag_extractor.ginza_extractor.GinzaExtractor._get_doc")
-    def test_extract_named_entities_with_type_filter(self, mock_get_doc):
+    def test_extract_named_entities_with_type_filter(self, mock_get_doc: MagicMock) -> None:
         """Test NER with entity type filtering."""
         mock_ent1 = MagicMock()
         mock_ent1.text = "Google"
@@ -178,7 +189,7 @@ class TestGinzaExtractor:
         assert "東京" not in result
 
     @patch("tag_extractor.ginza_extractor.GinzaExtractor._get_doc")
-    def test_deduplication(self, mock_get_doc):
+    def test_deduplication(self, mock_get_doc: MagicMock) -> None:
         """Test that duplicate phrases are removed."""
         mock_chunk1 = MagicMock()
         mock_chunk1.text = "機械学習"
@@ -198,7 +209,7 @@ class TestGinzaExtractor:
         assert "AI" in result
 
     @patch("tag_extractor.ginza_extractor.GinzaExtractor._get_doc")
-    def test_length_filter(self, mock_get_doc):
+    def test_length_filter(self, mock_get_doc: MagicMock) -> None:
         """Test that phrases outside length bounds are filtered."""
         mock_chunk1 = MagicMock()
         mock_chunk1.text = "A"  # Too short
@@ -214,12 +225,13 @@ class TestGinzaExtractor:
         extractor = GinzaExtractor()
         result = extractor.extract_noun_phrases("テスト")
 
+        max_allowed_phrase_length = 30
         assert "A" not in result
         assert "機械学習" in result
-        assert len([r for r in result if len(r) > 30]) == 0
+        assert len([r for r in result if len(r) > max_allowed_phrase_length]) == 0
 
     @patch("tag_extractor.ginza_extractor.GinzaExtractor._get_doc")
-    def test_extract_with_scores(self, mock_get_doc):
+    def test_extract_with_scores(self, mock_get_doc: MagicMock) -> None:
         """Test extraction with scores."""
         mock_chunk = MagicMock()
         mock_chunk.text = "機械学習"
@@ -241,7 +253,7 @@ class TestGinzaExtractor:
         assert len(result.items) > 0
         assert len(result.scores) > 0
 
-    def test_clear_cache(self):
+    def test_clear_cache(self) -> None:
         """Test cache clearing."""
         extractor = GinzaExtractor()
         extractor._cache = {"key": "value"}
@@ -253,20 +265,21 @@ class TestGetGinzaExtractor:
     """Tests for get_ginza_extractor function."""
 
     @pytest.fixture(autouse=True)
-    def reset_singleton(self):
+    def reset_singleton(self) -> Iterator[None]:
         """Reset singleton before each test."""
         GinzaExtractor._instance = None
         yield
         GinzaExtractor._instance = None
 
-    def test_returns_singleton(self):
+    def test_returns_singleton(self) -> None:
         """Test that function returns singleton instance."""
         extractor1 = get_ginza_extractor()
         extractor2 = get_ginza_extractor()
         assert extractor1 is extractor2
 
-    def test_accepts_config(self):
+    def test_accepts_config(self) -> None:
         """Test that function accepts configuration."""
-        config = GinzaConfig(min_phrase_length=5)
+        min_phrase_length = 5
+        config = GinzaConfig(min_phrase_length=min_phrase_length)
         extractor = get_ginza_extractor(config)
-        assert extractor.config.min_phrase_length == 5
+        assert extractor.config.min_phrase_length == min_phrase_length

@@ -12,7 +12,7 @@ from pathlib import Path
 class TestRuffCompliance:
     """Test class to verify ruff compliance."""
 
-    def test_ruff_check_passes(self):
+    def test_ruff_check_passes(self) -> None:
         """Test that all Python files pass ruff linting checks."""
         # Get the app directory path
         app_dir = Path(__file__).parent.parent.parent
@@ -23,12 +23,13 @@ class TestRuffCompliance:
             cwd=app_dir,
             capture_output=True,
             text=True,
+            check=False,
         )
 
         # Assert that ruff check passes (exit code 0)
         assert result.returncode == 0, f"Ruff check failed:\n{result.stdout}\n{result.stderr}"
 
-    def test_ruff_format_check_passes(self):
+    def test_ruff_format_check_passes(self) -> None:
         """Test that all Python files pass ruff formatting checks."""
         # Get the app directory path
         app_dir = Path(__file__).parent.parent.parent
@@ -39,6 +40,7 @@ class TestRuffCompliance:
             cwd=app_dir,
             capture_output=True,
             text=True,
+            check=False,
         )
 
         # Assert that ruff format check passes (exit code 0)

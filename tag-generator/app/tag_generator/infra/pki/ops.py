@@ -36,7 +36,7 @@ class _OpsHTTPServer(ThreadingHTTPServer):
 
 
 class _OpsHandler(BaseHTTPRequestHandler):
-    def log_message(self, format: str, *args: object) -> None:
+    def log_message(self, format: str, *args: object) -> None:  # noqa: A002 - overrides BaseHTTPRequestHandler.log_message parameter name
         _ = (format, args)
 
     def do_GET(self) -> None:

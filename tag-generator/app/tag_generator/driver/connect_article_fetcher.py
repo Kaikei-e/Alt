@@ -39,7 +39,7 @@ class ConnectArticleFetcher:
 
     def fetch_articles(
         self,
-        conn: Any,
+        conn: object,
         last_created_at: str,
         last_id: str,
         custom_batch_size: int | None = None,
@@ -84,7 +84,7 @@ class ConnectArticleFetcher:
 
     def fetch_new_articles(
         self,
-        conn: Any,
+        conn: object,
         last_created_at: str,
         last_id: str,
         custom_batch_size: int | None = None,
@@ -97,7 +97,7 @@ class ConnectArticleFetcher:
         """
         return self.fetch_articles(conn, self._FIRST_PAGE_SENTINEL, "", custom_batch_size)
 
-    def count_untagged_articles(self, conn: Any) -> int:
+    def count_untagged_articles(self, conn: object) -> int:
         """Count untagged articles via ListUntaggedArticles RPC."""
         req = datahub_pb2.ListUntaggedArticlesRequest(limit=1)
         resp = self.client.list_untagged_articles(
@@ -108,7 +108,7 @@ class ConnectArticleFetcher:
         return resp.total_count
 
     def fetch_articles_by_status(
-        self, conn: Any, has_tags: bool = False, limit: int | None = None
+        self, conn: object, has_tags: bool = False, limit: int | None = None
     ) -> list[dict[str, Any]]:
         """Fetch articles by tag status."""
         if has_tags:
@@ -117,14 +117,14 @@ class ConnectArticleFetcher:
 
     def fetch_low_confidence_articles(
         self,
-        conn: Any,
+        conn: object,
         confidence_threshold: float = 0.5,
         limit: int | None = None,
     ) -> list[dict[str, Any]]:
         """Not available via API — returns empty list."""
         return []
 
-    def fetch_article_by_id(self, conn: Any, article_id: str) -> dict[str, Any] | None:
+    def fetch_article_by_id(self, conn: object, article_id: str) -> dict[str, Any] | None:
         """Fetch article by ID via GetArticleContent RPC."""
         try:
             req = datahub_pb2.GetArticleContentRequest(article_id=article_id)
@@ -133,6 +133,13 @@ class ConnectArticleFetcher:
                 headers=self.auth_headers,
                 timeout_ms=_TIMEOUT_MS,
             )
+        except ConnectError as e:
+            if e.code == Code.NOT_FOUND:
+                logger.warning("Article not found via API", article_id=article_id)
+                return None
+            logger.exception("Failed to fetch article by ID via API", article_id=article_id, error=str(e))
+            raise
+        else:
             return {
                 "id": resp.article_id,
                 "title": resp.title,
@@ -141,9 +148,3 @@ class ConnectArticleFetcher:
                 "created_at": "",
                 "feed_id": None,
             }
-        except ConnectError as e:
-            if e.code == Code.NOT_FOUND:
-                logger.warning("Article not found via API", article_id=article_id)
-                return None
-            logger.error("Failed to fetch article by ID via API", article_id=article_id, error=str(e))
-            raise

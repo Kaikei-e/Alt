@@ -84,7 +84,7 @@ def _build_processor(batch_limit: int = 3) -> tuple[BatchProcessor, dict[str, Ma
 class TestProcessArticleBatchStrategyDispatch:
     """Tests for process_article_batch switching between backfill and forward modes."""
 
-    def test_dispatches_to_backfill_when_backfill_not_completed(self):
+    def test_dispatches_to_backfill_when_backfill_not_completed(self) -> None:
         processor, mocks = _build_processor()
         processor.backfill_completed = False
 
@@ -98,7 +98,7 @@ class TestProcessArticleBatchStrategyDispatch:
         mock_bf.assert_called_once_with(None, mocks["cursor_manager"])
         mock_fwd.assert_not_called()
 
-    def test_dispatches_to_forward_when_backfill_completed(self):
+    def test_dispatches_to_forward_when_backfill_completed(self) -> None:
         processor, mocks = _build_processor()
         processor.backfill_completed = True
 
@@ -116,9 +116,10 @@ class TestProcessArticleBatchStrategyDispatch:
 class TestProcessArticleBatchBackfill:
     """Tests for multi-page collection, cursor updates, and completion state in backfill mode."""
 
-    def test_collects_across_multiple_pages_and_caps_at_batch_limit(self):
+    def test_collects_across_multiple_pages_and_caps_at_batch_limit(self) -> None:
         """Backfill fetches pages until batch_limit is reached and updates both cursors."""
-        processor, mocks = _build_processor(batch_limit=3)
+        batch_limit = 3
+        processor, mocks = _build_processor(batch_limit=batch_limit)
         mocks["fetcher"].count_untagged_articles.return_value = 10
 
         page1 = [
@@ -129,15 +130,16 @@ class TestProcessArticleBatchBackfill:
             _article("art-3", datetime(2026, 10, 21, 10, 0, 0, tzinfo=UTC)),
             _article("art-4", "2026-10-20T10:00:00Z"),
         ]
-        mocks["fetcher"].fetch_articles.side_effect = [page1, page2]
+        pages = [page1, page2]
+        mocks["fetcher"].fetch_articles.side_effect = pages
 
         stats = processor.process_article_batch_backfill(None, mocks["cursor_manager"])
 
-        assert stats["total_processed"] == 3
-        assert stats["successful"] == 3
+        assert stats["total_processed"] == batch_limit
+        assert stats["successful"] == batch_limit
         assert stats["failed"] == 0
         assert stats["has_more_pending"] is True
-        assert mocks["fetcher"].fetch_articles.call_count == 2
+        assert mocks["fetcher"].fetch_articles.call_count == len(pages)
 
         # Backward cursor moves to the 3rd article (oldest processed in batch)
         mocks["cursor_manager"].update_cursor_position.assert_called_once_with(
@@ -150,22 +152,23 @@ class TestProcessArticleBatchBackfill:
             "art-1",
         )
 
-    def test_transitions_to_backfill_completed_after_three_consecutive_empty_fetches(self):
+    def test_transitions_to_backfill_completed_after_three_consecutive_empty_fetches(self) -> None:
         """Three consecutive empty fetch_articles calls mark backfill_completed = True."""
         processor, mocks = _build_processor(batch_limit=5)
         mocks["fetcher"].count_untagged_articles.return_value = 5
         mocks["fetcher"].fetch_articles.return_value = []
 
+        empty_fetches_threshold = 3
         for expected_count in (1, 2):
             processor.process_article_batch_backfill(None, mocks["cursor_manager"])
             assert processor.consecutive_empty_backfill_fetches == expected_count
             assert processor.backfill_completed is False
 
         processor.process_article_batch_backfill(None, mocks["cursor_manager"])
-        assert processor.consecutive_empty_backfill_fetches == 3
+        assert processor.consecutive_empty_backfill_fetches == empty_fetches_threshold
         assert processor.backfill_completed is True
 
-    def test_hybrid_mode_merges_forward_stats_when_no_untagged_articles_remain(self):
+    def test_hybrid_mode_merges_forward_stats_when_no_untagged_articles_remain(self) -> None:
         """When hybrid forward pass processes articles and count_untagged_articles is 0,
         backfill returns the forward processing counts instead of zeros."""
         processor, mocks = _build_processor(batch_limit=5)
@@ -173,20 +176,25 @@ class TestProcessArticleBatchBackfill:
         mocks["cursor_manager"].forward_cursor_id = "art-fwd-1"
         mocks["fetcher"].count_untagged_articles.return_value = 0
 
+        expected_forward_processed = 2
         with patch.object(
             processor,
             "process_article_batch_forward",
-            return_value={"total_processed": 2, "successful": 2, "failed": 0},
+            return_value={
+                "total_processed": expected_forward_processed,
+                "successful": expected_forward_processed,
+                "failed": 0,
+            },
         ) as mock_forward:
             stats = processor.process_article_batch_backfill(None, mocks["cursor_manager"])
 
         mock_forward.assert_called_once_with(None, mocks["cursor_manager"], _from_backfill=True)
-        assert stats["total_processed"] == 2
-        assert stats["successful"] == 2
+        assert stats["total_processed"] == expected_forward_processed
+        assert stats["successful"] == expected_forward_processed
         assert stats["failed"] == 0
         assert stats["has_more_pending"] is False
 
-    def test_hybrid_mode_returns_early_when_forward_reaches_batch_limit(self):
+    def test_hybrid_mode_returns_early_when_forward_reaches_batch_limit(self) -> None:
         """When hybrid forward pass fills the entire batch_limit, backfill returns immediately."""
         processor, mocks = _build_processor(batch_limit=2)
         mocks["cursor_manager"].forward_cursor_created_at = "2026-10-23T00:00:00Z"
@@ -203,27 +211,29 @@ class TestProcessArticleBatchBackfill:
 class TestProcessArticlesAsBatchErrors:
     """Tests for per-article extraction exceptions and batch upsert failures."""
 
-    def test_single_article_extraction_exception_increments_failed_and_continues_batch(self):
+    def test_single_article_extraction_exception_increments_failed_and_continues_batch(self) -> None:
         """An exception during one article's tag extraction does not abort the rest of the batch."""
         processor, mocks = _build_processor()
 
         def extract_side_effect(title: str, _content: str) -> _FakeOutcome:
             if "art-bad" in title:
-                raise RuntimeError("corrupted model tensor")
+                msg = "corrupted model tensor"
+                raise RuntimeError(msg)
             return _FakeOutcome()
 
         mocks["extractor"].extract_tags_with_metrics.side_effect = extract_side_effect
 
         articles = [_article("art-ok-1"), _article("art-bad"), _article("art-ok-2")]
+        expected_ok_count = 2
         stats = processor.process_articles_as_batch(None, articles)
 
-        assert stats["total_processed"] == 3
-        assert stats["successful"] == 2
+        assert stats["total_processed"] == len(articles)
+        assert stats["successful"] == expected_ok_count
         assert stats["failed"] == 1
         upserted_batch = mocks["inserter"].batch_upsert_tags_no_commit.call_args[0][1]
         assert [item["article_id"] for item in upserted_batch] == ["art-ok-1", "art-ok-2"]
 
-    def test_batch_upsert_failure_raises_batch_processing_error(self):
+    def test_batch_upsert_failure_raises_batch_processing_error(self) -> None:
         """When batch_upsert_tags_no_commit reports success=False with failed_articles > 0,
         BatchProcessingError is raised."""
         processor, mocks = _build_processor()
