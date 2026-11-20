@@ -7,11 +7,9 @@ from urllib.parse import urlparse
 
 import nh3
 import structlog
-from lxml.etree import LxmlError
 from lxml.html import fromstring
 from pydantic import BaseModel, Field, field_validator
 from readability import Document
-from readability.readability import Unparseable
 
 # Code block pattern for stripping before readability
 _CODE_BLOCK_PATTERN = re.compile(
@@ -440,7 +438,7 @@ class InputSanitizer:
             if len(text) > _MIN_READABILITY_TEXT_LENGTH:
                 return text
 
-        except (LxmlError, Unparseable, ValueError, TypeError, AttributeError, LookupError) as e:
+        except Exception as e:  # noqa: BLE001 - any parser failure falls back to the raw HTML
             logger.warning("readability extraction failed, falling back to raw content", error=str(e))
 
         return html

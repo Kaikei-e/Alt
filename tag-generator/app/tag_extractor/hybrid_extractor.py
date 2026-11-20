@@ -346,7 +346,7 @@ class HybridExtractor:
             for candidate in candidates:
                 candidate.semantic_score = keyword_scores.get(candidate.text, 0.0)
 
-        except (RuntimeError, ValueError, TypeError, AttributeError, KeyError, IndexError, ImportError, OSError) as e:
+        except Exception as e:  # noqa: BLE001 - KeyBERT scoring failure falls back to frequency/position scoring
             logger.warning("KeyBERT scoring failed", error=str(e))
 
     def _compute_combined_scores(self, candidates: list[CandidateTag]) -> None:

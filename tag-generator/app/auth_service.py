@@ -19,9 +19,6 @@ import structlog
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
-import tag_generator.service as _tag_generator_service_mod
-import tag_generator.stream_consumer as _stream_consumer_mod
-from tag_generator.config import TagGeneratorConfig
 from tag_generator.infra.inbound_tls import resolve_inbound_tls_bind, start_inbound_tls_listener
 from tag_generator.infra.peer_identity import (
     PeerIdentityMiddleware,
@@ -30,8 +27,6 @@ from tag_generator.infra.peer_identity import (
     strict_from_env,
 )
 from tag_generator.infra.pki import start_enrollment
-from tag_generator.stream_consumer import ConsumerConfig, supervise
-from tag_generator.stream_event_handler import TagGeneratorEventHandler
 
 try:  # Prefer shared auth client when available
     from alt_auth.client import AuthClient, AuthConfig, UserContext, require_auth  # type: ignore
@@ -334,9 +329,24 @@ def _run_background_tag_generation() -> None:
     """Run tag generation service in background thread."""
     global _background_tag_service, _background_service_healthy  # noqa: PLW0603 - module-level runtime state patched directly in unit tests
     try:
+        from tag_generator.config import (  # noqa: PLC0415 - heavy ML import stays in the background thread so the API binds first and a load failure is reported through /health
+            TagGeneratorConfig,
+        )
+        from tag_generator.service import (  # noqa: PLC0415 - heavy ML import stays in the background thread so the API binds first and a load failure is reported through /health
+            TagGeneratorService,
+        )
+        from tag_generator.stream_consumer import (  # noqa: PLC0415 - heavy ML import stays in the background thread so the API binds first and a load failure is reported through /health
+            ConsumerConfig,
+            StreamConsumer,
+            supervise,
+        )
+        from tag_generator.stream_event_handler import (  # noqa: PLC0415 - heavy ML import stays in the background thread so the API binds first and a load failure is reported through /health
+            TagGeneratorEventHandler,
+        )
+
         logger.info("Starting background tag generation service")
         config = TagGeneratorConfig()
-        _background_tag_service = _tag_generator_service_mod.TagGeneratorService(config)
+        _background_tag_service = TagGeneratorService(config)
 
         # Initialize Redis Streams consumer for on-the-fly tag generation (ADR-168)
         consumer_config = ConsumerConfig.from_env()
@@ -348,7 +358,7 @@ def _run_background_tag_generation() -> None:
                 consumer=consumer_config.consumer_name,
             )
             event_handler = TagGeneratorEventHandler(_background_tag_service)
-            consumer = _stream_consumer_mod.StreamConsumer(consumer_config, event_handler)
+            consumer = StreamConsumer(consumer_config, event_handler)
 
             # Inject stream_consumer into event_handler for reply functionality
             event_handler.stream_consumer = consumer
@@ -385,7 +395,7 @@ def _run_background_tag_generation() -> None:
                 consumer=tags_consumer_config.consumer_name,
             )
             tags_event_handler = TagGeneratorEventHandler(_background_tag_service)
-            tags_consumer = _stream_consumer_mod.StreamConsumer(tags_consumer_config, tags_event_handler)
+            tags_consumer = StreamConsumer(tags_consumer_config, tags_event_handler)
             tags_event_handler.stream_consumer = tags_consumer
 
             def run_tags_consumer() -> None:
@@ -449,9 +459,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # Cleanup
     logger.info("FastAPI lifespan: shutdown phase")
-    for consumer in _stream_consumers:
+    for consumer in tuple(_stream_consumers):
         consumer.stop()
-    for consumer_thread in _consumer_threads:
+    for consumer_thread in tuple(_consumer_threads):
         if consumer_thread.is_alive():
             await asyncio.to_thread(consumer_thread.join, _CONSUMER_SHUTDOWN_TIMEOUT_SECONDS)
     _stream_consumers.clear()

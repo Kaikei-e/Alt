@@ -5,9 +5,8 @@ from collections import OrderedDict
 from typing import TYPE_CHECKING, Any, cast
 
 import structlog
-from connectrpc.errors import ConnectError
 
-from tag_generator.exceptions import BatchProcessingError, ModelLoadError, TagGeneratorError
+from tag_generator.exceptions import BatchProcessingError, ModelLoadError
 
 logger = structlog.get_logger(__name__)
 
@@ -335,7 +334,7 @@ class BatchProcessor:
                     return new_articles_processed, forward_stats
         except ModelLoadError:
             raise
-        except (ConnectError, OSError, RuntimeError, ValueError, KeyError, TypeError, TagGeneratorError) as exc:
+        except Exception as exc:  # noqa: BLE001 - hybrid forward-batch failure must not abort backfill
             logger.warning("Hybrid mode: failed to process new articles, continuing with backfill", error=str(exc))
             return 0, None
         return new_articles_processed, None
@@ -455,7 +454,7 @@ class BatchProcessor:
                         "has_more_pending": False,
                     }
                 return batch_stats
-        except (ConnectError, OSError, RuntimeError, ValueError, KeyError, TypeError, TagGeneratorError) as exc:
+        except Exception as exc:  # noqa: BLE001 - diagnostic untagged-count failure must not abort backfill
             logger.warning("Could not count untagged articles before backfill", error=str(exc))
 
         articles_to_process, last_created_at, last_id = self._collect_backfill_articles(conn, last_created_at, last_id)

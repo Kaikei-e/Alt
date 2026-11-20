@@ -365,3 +365,20 @@ class TestInputSanitizerHTMLReadability:
         assert result.sanitized_input is not None
         # Article text should be preserved, code stripped
         assert "modular architecture" in result.sanitized_input.content.lower()
+
+    def test_readability_recursion_error_falls_back_to_raw_html(
+        self, sanitizer: InputSanitizer, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Deeply nested HTML causing RecursionError must fall back to raw HTML instead of escaping sanitize()."""
+        html_content = "<div><p>Machine learning article content that survives fallback cleanly.</p></div>"
+
+        def _raise_recursion(_html: str) -> object:
+            raise RecursionError
+
+        monkeypatch.setattr("tag_extractor.input_sanitizer.Document", _raise_recursion)
+
+        result = sanitizer.sanitize(title="ML Article", content=html_content)
+
+        assert result.is_valid is True
+        assert result.sanitized_input is not None
+        assert "Machine learning article content" in result.sanitized_input.content

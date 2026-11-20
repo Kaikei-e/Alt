@@ -207,6 +207,30 @@ class TestProcessArticleBatchBackfill:
         assert stats is forward_result
         mocks["fetcher"].count_untagged_articles.assert_not_called()
 
+    def test_hybrid_mode_continues_backfill_on_unexpected_forward_error(self) -> None:
+        """Unexpected non-ModelLoadError errors in hybrid forward pass must not abort backfill."""
+        processor, mocks = _build_processor(batch_limit=2)
+        mocks["cursor_manager"].forward_cursor_created_at = "2026-10-23T00:00:00Z"
+        mocks["cursor_manager"].forward_cursor_id = "art-fwd-1"
+        mocks["fetcher"].count_untagged_articles.return_value = 0
+
+        with patch.object(processor, "process_article_batch_forward", side_effect=AttributeError("unexpected")):
+            stats = processor.process_article_batch_backfill(None, mocks["cursor_manager"])
+
+        assert stats["failed"] == 0
+        mocks["fetcher"].count_untagged_articles.assert_called_once()
+
+    def test_backfill_continues_when_count_untagged_raises_unexpected_error(self) -> None:
+        """Unexpected errors from count_untagged_articles pre-check must not abort backfill."""
+        processor, mocks = _build_processor(batch_limit=2)
+        mocks["fetcher"].count_untagged_articles.side_effect = AttributeError("unexpected")
+        mocks["fetcher"].fetch_articles.return_value = []
+
+        stats = processor.process_article_batch_backfill(None, mocks["cursor_manager"])
+
+        assert stats["failed"] == 0
+        mocks["fetcher"].fetch_articles.assert_called_once()
+
 
 class TestProcessArticlesAsBatchErrors:
     """Tests for per-article extraction exceptions and batch upsert failures."""

@@ -494,3 +494,13 @@ class TestOnnxTokenizerRevision:
         ):
             OnnxEmbeddingModel(config)
         assert mock_tokenizer_cls.from_pretrained.call_args.kwargs["revision"] == revision
+
+
+class TestTagExtractionConfig:
+    """Specifications for TagExtractionConfig env overrides."""
+
+    def test_empty_onnx_model_path_env_disables_onnx_runtime(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("TAG_ONNX_MODEL_PATH", "")
+        config = TagExtractionConfig(use_onnx_runtime=True)
+        assert config.onnx_model_path == ""
+        assert config.use_onnx_runtime is False

@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from tag_extractor.extract import TagExtractionConfig, TagExtractor
+from tag_extractor.japanese_extractor import _extract_proper_noun_compounds
 
 
 class TestExtractCompoundNounsFugashi:
@@ -214,6 +215,34 @@ class TestExtractCompoundJapaneseWords:
         # Check that items found appear in order
         found_items = [r for r in result if r in ["AWS", "API", "SDK"]]
         assert found_items == sorted(found_items, key=text.index)
+
+    def test_proper_noun_chain_breaks_on_non_proper_noun_even_with_connector_surface(
+        self, extractor: TagExtractor
+    ) -> None:
+        """A noun token with non-proper pos2 must end the proper-noun chain even if its surface is a connector."""
+        tokens = [
+            self._make_token("東京", "名詞", "固有名詞"),
+            self._make_token("・", "名詞", "普通名詞"),
+            self._make_token("京都", "名詞", "固有名詞"),
+        ]
+        tagger = MagicMock(return_value=tokens)
+
+        result = _extract_proper_noun_compounds("東京・京都", tagger, extractor.config)
+
+        assert "東京・京都" not in result
+
+    def test_proper_noun_chain_connects_on_non_noun_connector_symbol(self, extractor: TagExtractor) -> None:
+        """A non-noun connector symbol still joins proper nouns."""
+        tokens = [
+            self._make_token("東京", "名詞", "固有名詞"),
+            self._make_token("・", "補助記号", "一般"),
+            self._make_token("大阪", "名詞", "固有名詞"),
+        ]
+        tagger = MagicMock(return_value=tokens)
+
+        result = _extract_proper_noun_compounds("東京・大阪", tagger, extractor.config)
+
+        assert result == ["東京・大阪"]
 
 
 class TestJapaneseKeywordExtraction:

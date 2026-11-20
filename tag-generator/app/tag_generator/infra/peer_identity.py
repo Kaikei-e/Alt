@@ -118,12 +118,12 @@ class PeerIdentityMiddleware(BaseHTTPMiddleware):
 
     def __init__(
         self,
-        app: ASGIApp | None,
+        app: ASGIApp,
         allowed: Iterable[str] | None = None,
         *,
         strict: bool = True,
     ) -> None:
-        super().__init__(app)  # type: ignore[arg-type]
+        super().__init__(app)
         self._allowed = {c for c in (allowed or []) if c}
         self._strict = strict
 

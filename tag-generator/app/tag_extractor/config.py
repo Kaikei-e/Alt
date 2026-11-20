@@ -105,7 +105,11 @@ class TagExtractionConfig(BaseModel):
             self.onnx_model_path = os.getenv("TAG_ONNX_MODEL_PATH", "/models/onnx/model.onnx")
 
         # Auto-disable ONNX runtime if model file doesn't exist
-        if self.use_onnx_runtime and self.onnx_model_path is not None and not Path(self.onnx_model_path).exists():
+        if (
+            self.use_onnx_runtime
+            and self.onnx_model_path is not None
+            and not (bool(self.onnx_model_path) and Path(self.onnx_model_path).exists())
+        ):
             logger.info(
                 "ONNX runtime requested but model file not found; disabling ONNX runtime",
                 model_path=self.onnx_model_path,

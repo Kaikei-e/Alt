@@ -632,3 +632,19 @@ class TestHybridEmbedderRevision:
         ):
             extractor._lazy_load_models()
         assert re.fullmatch(r"[0-9a-f]{40}", fake_st.call_args.kwargs["revision"])
+
+    def test_score_with_keybert_catches_unexpected_exception(self) -> None:
+        """Unexpected KeyBERT/sklearn failures fall back cleanly instead of failing extraction."""
+
+        class _UnexpectedLibraryError(Exception):
+            pass
+
+        extractor = HybridExtractor(HybridConfig(use_ginza=False, use_keybert_scoring=True))
+        mock_kb = MagicMock()
+        mock_kb.extract_keywords.side_effect = _UnexpectedLibraryError("unexpected")
+        extractor._keybert = mock_kb
+        candidates = [CandidateTag(text="AI", source="fugashi")]
+
+        extractor._score_with_keybert("AI text", candidates)
+
+        assert candidates[0].semantic_score == 0.0

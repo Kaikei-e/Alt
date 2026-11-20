@@ -13,6 +13,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 from starlette.testclient import TestClient
+from starlette.types import Receive, Scope, Send
 
 from tag_generator.infra.peer_identity import (
     PEER_IDENTITY_HEADER,
@@ -314,7 +315,10 @@ async def test_raw_asgi_tls_missing_cn_rejected_even_with_forged_loopback_header
         called = True
         return JSONResponse({"peer": getattr(r.state, "peer_identity", None)})
 
-    middleware = PeerIdentityMiddleware(None, allowed=["recap-worker"], strict=False)
+    async def _noop_app(scope: Scope, receive: Receive, send: Send) -> None:
+        return None
+
+    middleware = PeerIdentityMiddleware(_noop_app, allowed=["recap-worker"], strict=False)
 
     scope = {
         "type": "http",

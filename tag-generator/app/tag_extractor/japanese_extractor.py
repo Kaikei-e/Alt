@@ -195,9 +195,12 @@ def _extract_proper_noun_compounds(
             tok = parsed[j]
             tok_pos1 = getattr(tok.feature, "pos1", "")
             tok_pos2 = getattr(tok.feature, "pos2", "")
-            if tok_pos1 in config.japanese_pos_tags and tok_pos2 in _PROPER_NOUN_POS2:
-                compound += tok.surface
-                j += 1
+            if tok_pos1 in config.japanese_pos_tags:
+                if tok_pos2 in _PROPER_NOUN_POS2:
+                    compound += tok.surface
+                    j += 1
+                else:
+                    break
             elif (
                 tok.surface in {"・", "＝", "－"}
                 and j + 1 < len(parsed)

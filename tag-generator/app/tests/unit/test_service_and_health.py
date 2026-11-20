@@ -1,6 +1,9 @@
 """Unit tests for TagGeneratorService, HealthMonitor, ProcessingScheduler health checks, and GET /health."""
 
+import ast
+import sys
 from http import HTTPStatus
+from pathlib import Path
 from typing import Protocol
 from unittest.mock import MagicMock, patch
 
@@ -228,3 +231,32 @@ class TestAuthServiceHealthEndpoint:
         resp_recovered = client.get("/health")
         assert resp_recovered.status_code == HTTPStatus.OK
         assert resp_recovered.json() == {"status": "healthy", "service": "tag-generator"}
+
+
+class TestAuthServiceLazyImports:
+    """Ensure auth_service keeps heavy ML imports inside _run_background_tag_generation."""
+
+    def test_auth_service_has_no_module_level_ml_service_imports(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        auth_service_path = Path(__file__).resolve().parents[2] / "auth_service.py"
+        tree = ast.parse(auth_service_path.read_text(encoding="utf-8"))
+        top_level_modules: set[str] = set()
+        for node in tree.body:
+            if isinstance(node, ast.Import):
+                top_level_modules.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module is not None:
+                top_level_modules.add(node.module)
+
+        deferred_modules = {
+            "tag_generator.service",
+            "tag_generator.config",
+            "tag_generator.stream_consumer",
+            "tag_generator.stream_event_handler",
+        }
+        assert top_level_modules.isdisjoint(deferred_modules)
+
+        monkeypatch.delitem(sys.modules, "auth_service", raising=False)
+        monkeypatch.delitem(sys.modules, "tag_generator.service", raising=False)
+        import auth_service  # noqa: PLC0415 - verify importing auth_service does not import tag_generator.service
+
+        assert auth_service.app is not None
+        assert "tag_generator.service" not in sys.modules

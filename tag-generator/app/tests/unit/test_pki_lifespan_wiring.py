@@ -151,3 +151,74 @@ async def test_lifespan_stops_and_awaits_stream_consumers_before_closing_shared_
     finally:
         for c in created_consumers:
             StreamConsumer.stop(c)
+
+
+@pytest.mark.asyncio
+async def test_lifespan_shutdown_iterates_snapshot_of_consumers_and_threads(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Shutdown must iterate a snapshot of _stream_consumers and _consumer_threads."""
+
+    class _FakePki:
+        async def aclose(self) -> None:
+            pass
+
+    async def _fake_enroll(_service_name: str) -> _FakePki:
+        return _FakePki()
+
+    class _FakeRuntime:
+        async def aclose(self) -> None:
+            pass
+
+    async def _fake_tls(_app: object, _bind: object) -> _FakeRuntime:
+        return _FakeRuntime()
+
+    class _LateConsumer:
+        def __init__(self) -> None:
+            self.stopped = False
+
+        def stop(self) -> None:
+            self.stopped = True
+
+    late_consumer = _LateConsumer()
+
+    class _MutatingConsumer:
+        def stop(self) -> None:
+            auth_service._stream_consumers.append(late_consumer)
+
+    class _LateThread(threading.Thread):
+        def __init__(self) -> None:
+            super().__init__()
+            self.joined = False
+
+        def is_alive(self) -> bool:
+            return True
+
+        def join(self, timeout: float | None = None) -> None:
+            self.joined = True
+
+    late_thread = _LateThread()
+
+    class _MutatingThread(threading.Thread):
+        def is_alive(self) -> bool:
+            auth_service._consumer_threads.append(late_thread)
+            return False
+
+    monkeypatch.setattr(auth_service, "start_enrollment", _fake_enroll)
+    monkeypatch.setattr(auth_service, "start_inbound_tls_listener", _fake_tls)
+    monkeypatch.setattr(auth_service.tag_service, "initialize", AsyncMock())
+    monkeypatch.setattr(auth_service.tag_service, "cleanup", AsyncMock())
+    monkeypatch.setattr(auth_service, "_run_background_tag_generation", lambda: None)
+
+    auth_service._stream_consumers.clear()
+    auth_service._consumer_threads.clear()
+    try:
+        async with auth_service.app.router.lifespan_context(auth_service.app):
+            auth_service._stream_consumers.append(_MutatingConsumer())
+            auth_service._consumer_threads.append(_MutatingThread())
+
+        assert late_consumer.stopped is False
+        assert late_thread.joined is False
+    finally:
+        auth_service._stream_consumers.clear()
+        auth_service._consumer_threads.clear()
