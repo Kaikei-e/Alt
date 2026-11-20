@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -17,8 +18,6 @@ import (
 	"alt-butterfly-facade/internal/pki"
 	"alt-butterfly-facade/internal/server"
 	"alt-butterfly-facade/internal/tlsutil"
-
-	"golang.org/x/net/http2"
 )
 
 // newMTLSBackendTransport builds an HTTP/2 RoundTripper that presents the
@@ -36,8 +35,11 @@ func newMTLSBackendTransport() (http.RoundTripper, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &http2.Transport{
+	var protocols http.Protocols
+	protocols.SetHTTP2(true)
+	return &http.Transport{
 		TLSClientConfig: tlsCfg,
+		Protocols:       &protocols,
 	}, nil
 }
 
@@ -280,16 +282,27 @@ func runHealthcheck() error {
 	if port == "" {
 		port = "9200"
 	}
+	portNum, err := strconv.Atoi(port)
+	if err != nil || portNum < 1 || portNum > 65535 {
+		return fmt.Errorf("invalid BFF_PORT %q", port)
+	}
 
 	client := &http.Client{
 		Timeout: 2 * time.Second,
 	}
 
-	resp, err := client.Get(fmt.Sprintf("http://127.0.0.1:%s/health", port))
+	// #nosec G704 -- target is hardcoded 127.0.0.1 with portNum validated in [1, 65535] via strconv.Atoi.
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, fmt.Sprintf("http://127.0.0.1:%d/health", portNum), nil)
+	if err != nil {
+		return fmt.Errorf("create request failed: %w", err)
+	}
+
+	// #nosec G704 -- target is hardcoded 127.0.0.1 with portNum validated in [1, 65535] via strconv.Atoi.
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("health endpoint returned status: %d", resp.StatusCode)

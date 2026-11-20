@@ -45,7 +45,7 @@ func TestRESTProxyHandler_AppliesRequestTimeout(t *testing.T) {
 		100*time.Millisecond,
 	)
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/feeds", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/feeds", nil)
 	req.Header.Set("X-Alt-Backend-Token", createTestJWT(t))
 	rec := httptest.NewRecorder()
 

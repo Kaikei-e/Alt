@@ -19,14 +19,14 @@ func TestHandler_RecordsStatusFromDownstream(t *testing.T) {
 	})
 	wrapped := m.Handler(inner)
 
-	req := httptest.NewRequest(http.MethodPost, "/alt.feeds.v2.FeedService/GetAllFeeds", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/alt.feeds.v2.FeedService/GetAllFeeds", nil)
 	rec := httptest.NewRecorder()
 	wrapped.ServeHTTP(rec, req)
 
 	assert.Equal(t, http.StatusBadGateway, rec.Code)
-	assert.Equal(t, 1.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneyFeeds, StatusError)))
-	assert.Equal(t, 0.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneyLogin, StatusOK)))
-	assert.Equal(t, 0.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneyLogin, StatusError)))
+	assert.InDelta(t, 1.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneyFeeds, StatusError)), 1e-9)
+	assert.InDelta(t, 0.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneyLogin, StatusOK)), 1e-9)
+	assert.InDelta(t, 0.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneyLogin, StatusError)), 1e-9)
 }
 
 func TestHandler_NilMetricsIsPassthrough(t *testing.T) {
@@ -36,7 +36,7 @@ func TestHandler_NilMetricsIsPassthrough(t *testing.T) {
 		called = true
 		w.WriteHeader(http.StatusNoContent)
 	})
-	m.Handler(inner).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/x", nil))
+	m.Handler(inner).ServeHTTP(httptest.NewRecorder(), httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/x", nil))
 	assert.True(t, called)
 }
 
@@ -51,10 +51,11 @@ func TestHandler_WriteDoesNotHTMLEscapeJSONBodies(t *testing.T) {
 	})
 
 	rec := httptest.NewRecorder()
-	m.Handler(inner).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/alt.feeds.v2.FeedService/GetAllFeeds", nil))
+	m.Handler(inner).ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/alt.feeds.v2.FeedService/GetAllFeeds", nil))
 
 	assert.Equal(t, http.StatusOK, rec.Code)
-	assert.Equal(t, string(jsonBody), rec.Body.String())
+	assert.JSONEq(t, string(jsonBody), rec.Body.String())
+	assert.Contains(t, rec.Body.String(), "<script>alert(1)</script>")
 	assert.Equal(t, "application/json", rec.Result().Header.Get("Content-Type"))
 }
 
@@ -69,7 +70,7 @@ func TestHandler_WritePreservesHandlerContentType(t *testing.T) {
 	})
 
 	rec := httptest.NewRecorder()
-	m.Handler(inner).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/alt.feeds.v2.FeedService/GetAllFeeds", nil))
+	m.Handler(inner).ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/alt.feeds.v2.FeedService/GetAllFeeds", nil))
 
 	assert.Equal(t, wantType, rec.Result().Header.Get("Content-Type"))
 	assert.Equal(t, []byte{0x00, 0x01, 0x02}, rec.Body.Bytes())
@@ -83,7 +84,7 @@ func TestHandler_WriteDoesNotInventContentType(t *testing.T) {
 	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write(body)
 	})
-	req := httptest.NewRequest(http.MethodPost, "/alt.feeds.v2.FeedService/GetAllFeeds", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/alt.feeds.v2.FeedService/GetAllFeeds", nil)
 
 	plain := httptest.NewRecorder()
 	inner.ServeHTTP(plain, req)

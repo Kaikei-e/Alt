@@ -361,14 +361,16 @@ func (cb *CircuitBreaker) RecordFailure(endpoint string) {
 	cb.lastFailure = time.Now()
 
 	var transition *StateTransition
-	if cb.state == StateClosed {
+	switch cb.state {
+	case StateClosed:
 		if cb.consecFailures >= cb.config.FailureThreshold {
 			transition = cb.transitionLocked(StateOpen, endpoint)
 		}
-	} else if cb.state == StateHalfOpen {
+	case StateHalfOpen:
 		// Any failure in half-open state trips the circuit again
 		transition = cb.transitionLocked(StateOpen, endpoint)
 		cb.halfOpenInFlight = 0
+	case StateOpen:
 	}
 
 	cb.mu.Unlock()

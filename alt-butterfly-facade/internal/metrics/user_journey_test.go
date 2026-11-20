@@ -42,9 +42,9 @@ func TestRecord_FeedsOKDoesNotInflateLogin(t *testing.T) {
 
 	m.Record("/alt.feeds.v2.FeedService/GetAllFeeds", http.StatusOK)
 
-	assert.Equal(t, 1.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneyFeeds, StatusOK)))
-	assert.Equal(t, 0.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneyLogin, StatusOK)))
-	assert.Equal(t, 0.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneyLogin, StatusError)))
+	assert.InDelta(t, 1.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneyFeeds, StatusOK)), 1e-9)
+	assert.InDelta(t, 0.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneyLogin, StatusOK)), 1e-9)
+	assert.InDelta(t, 0.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneyLogin, StatusError)), 1e-9)
 }
 
 func TestRecord_Feeds5xxIsFeedsErrorNotLoginOK(t *testing.T) {
@@ -55,9 +55,9 @@ func TestRecord_Feeds5xxIsFeedsErrorNotLoginOK(t *testing.T) {
 	m.Record("/alt.feeds.v2.FeedService/GetAllFeeds", http.StatusGatewayTimeout)
 	m.Record("/alt.feeds.v2.FeedService/GetAllFeeds", http.StatusServiceUnavailable)
 
-	assert.Equal(t, 3.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneyFeeds, StatusError)))
-	assert.Equal(t, 0.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneyLogin, StatusOK)))
-	assert.Equal(t, 0.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneyLogin, StatusError)))
+	assert.InDelta(t, 3.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneyFeeds, StatusError)), 1e-9)
+	assert.InDelta(t, 0.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneyLogin, StatusOK)), 1e-9)
+	assert.InDelta(t, 0.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneyLogin, StatusError)), 1e-9)
 }
 
 func TestRecord_SearchErrorDoesNotCountAsFeeds(t *testing.T) {
@@ -66,9 +66,9 @@ func TestRecord_SearchErrorDoesNotCountAsFeeds(t *testing.T) {
 
 	m.Record("/alt.search.v2.SearchService/Search", http.StatusInternalServerError)
 
-	assert.Equal(t, 1.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneySearch, StatusError)))
-	assert.Equal(t, 0.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneyFeeds, StatusError)))
-	assert.Equal(t, 0.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneyLogin, StatusOK)))
+	assert.InDelta(t, 1.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneySearch, StatusError)), 1e-9)
+	assert.InDelta(t, 0.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneyFeeds, StatusError)), 1e-9)
+	assert.InDelta(t, 0.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneyLogin, StatusOK)), 1e-9)
 }
 
 func TestRecord_UnauthorizedIsLoginAndJourneyError(t *testing.T) {
@@ -78,10 +78,10 @@ func TestRecord_UnauthorizedIsLoginAndJourneyError(t *testing.T) {
 	m.Record("/alt.feeds.v2.FeedService/GetAllFeeds", http.StatusUnauthorized)
 	m.Record("/alt.search.v2.SearchService/Search", http.StatusUnauthorized)
 
-	assert.Equal(t, 2.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneyLogin, StatusError)))
-	assert.Equal(t, 1.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneyFeeds, StatusError)))
-	assert.Equal(t, 1.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneySearch, StatusError)))
-	assert.Equal(t, 0.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneyFeeds, StatusOK)))
+	assert.InDelta(t, 2.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneyLogin, StatusError)), 1e-9)
+	assert.InDelta(t, 1.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneyFeeds, StatusError)), 1e-9)
+	assert.InDelta(t, 1.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneySearch, StatusError)), 1e-9)
+	assert.InDelta(t, 0.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneyFeeds, StatusOK)), 1e-9)
 }
 
 func TestRecord_UnclassifiedSuccessIsNotLogin(t *testing.T) {
@@ -91,9 +91,9 @@ func TestRecord_UnclassifiedSuccessIsNotLogin(t *testing.T) {
 	m.Record("/alt.articles.v2.ArticleService/GetArticle", http.StatusOK)
 	m.Record("/alt.knowledge_home.v1.KnowledgeHomeService/GetKnowledgeHome", http.StatusOK)
 
-	assert.Equal(t, 0.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneyLogin, StatusOK)))
-	assert.Equal(t, 0.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneyFeeds, StatusOK)))
-	assert.Equal(t, 0.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneySearch, StatusOK)))
+	assert.InDelta(t, 0.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneyLogin, StatusOK)), 1e-9)
+	assert.InDelta(t, 0.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneyFeeds, StatusOK)), 1e-9)
+	assert.InDelta(t, 0.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneySearch, StatusOK)), 1e-9)
 }
 
 func TestRecord_SessionPathSuccessIsLoginOKOnly(t *testing.T) {
@@ -103,8 +103,8 @@ func TestRecord_SessionPathSuccessIsLoginOKOnly(t *testing.T) {
 	m.Record("/ory/sessions/whoami", http.StatusOK)
 	m.Record("/sessions/whoami", http.StatusOK)
 
-	assert.Equal(t, 2.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneyLogin, StatusOK)))
-	assert.Equal(t, 0.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneyFeeds, StatusOK)))
+	assert.InDelta(t, 2.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneyLogin, StatusOK)), 1e-9)
+	assert.InDelta(t, 0.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneyFeeds, StatusOK)), 1e-9)
 }
 
 func TestRecord_SessionPathFailureIsLoginError(t *testing.T) {
@@ -114,7 +114,7 @@ func TestRecord_SessionPathFailureIsLoginError(t *testing.T) {
 	m.Record("/ory/sessions/whoami", http.StatusUnauthorized)
 	m.Record("/sessions/whoami", http.StatusBadGateway)
 
-	assert.Equal(t, 2.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneyLogin, StatusError)))
+	assert.InDelta(t, 2.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneyLogin, StatusError)), 1e-9)
 }
 
 func TestNew_DoesNotPrecreateZeroRequestSeries(t *testing.T) {
@@ -145,8 +145,8 @@ func TestClientErrorIsNotSLOError(t *testing.T) {
 	m.Record("/alt.feeds.v2.FeedService/GetAllFeeds", http.StatusBadRequest)
 	m.Record("/alt.feeds.v2.FeedService/GetAllFeeds", http.StatusForbidden)
 
-	assert.Equal(t, 2.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneyFeeds, StatusOK)))
-	assert.Equal(t, 0.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneyFeeds, StatusError)))
+	assert.InDelta(t, 2.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneyFeeds, StatusOK)), 1e-9)
+	assert.InDelta(t, 0.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneyFeeds, StatusError)), 1e-9)
 }
 
 func TestTooManyRequestsIsJourneyError(t *testing.T) {
@@ -155,6 +155,6 @@ func TestTooManyRequestsIsJourneyError(t *testing.T) {
 
 	m.Record("/alt.search.v2.SearchService/Search", http.StatusTooManyRequests)
 
-	assert.Equal(t, 1.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneySearch, StatusError)))
-	assert.Equal(t, 0.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneyLogin, StatusOK)))
+	assert.InDelta(t, 1.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneySearch, StatusError)), 1e-9)
+	assert.InDelta(t, 0.0, testutil.ToFloat64(m.requests.WithLabelValues(JourneyLogin, StatusOK)), 1e-9)
 }

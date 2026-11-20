@@ -55,7 +55,7 @@ func TestBuildServerConfig_ResultingServer_UsesBFFHandler(t *testing.T) {
 	serverCfg := buildServerConfig(cfg, "http://127.0.0.1:1", "http://127.0.0.1:1", "", nil, testPublicKey, "")
 	handler := server.NewServerWithTransport(serverCfg, nil, http.DefaultTransport)
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/bff/stats", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/bff/stats", nil)
 	req.Header.Set("X-Alt-Backend-Token", adminToken(t, testPrivateKey, cfg.BackendTokenIssuer, cfg.BackendTokenAudience))
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)

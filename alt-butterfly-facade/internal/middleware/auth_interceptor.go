@@ -19,6 +19,7 @@ import (
 
 const (
 	// BackendTokenHeader is the header name for the backend authentication token.
+	// #nosec G101 -- HTTP header name constant, not a credential.
 	BackendTokenHeader = "X-Alt-Backend-Token"
 )
 
@@ -91,7 +92,7 @@ func (a *AuthInterceptor) ValidateToken(tokenStr string) (*domain.UserContext, e
 	)
 
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", errInvalidToken, err)
+		return nil, fmt.Errorf("%w: %w", errInvalidToken, err)
 	}
 
 	if !parsed.Valid {

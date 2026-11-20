@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
+	"log/slog"
 	"net/http"
 	"sync"
 	"time"
@@ -154,7 +155,7 @@ func DedupMiddleware(dedup *RequestDeduplicator, userIDExtractor UserIDExtractor
 			var body []byte
 			if r.Body != nil {
 				body, _ = io.ReadAll(r.Body)
-				r.Body.Close()
+				_ = r.Body.Close()
 			}
 
 			// Build dedup key
@@ -199,7 +200,9 @@ func DedupMiddleware(dedup *RequestDeduplicator, userIDExtractor UserIDExtractor
 				if ct := w.Header().Get("Content-Type"); ct != "" {
 					w.Header().Set("Content-Type", ct)
 				}
-				w.Write(result.Body)
+				if _, err := w.Write(result.Body); err != nil {
+					slog.ErrorContext(r.Context(), "dedup response write failed", "error", err)
+				}
 			}
 		})
 	}

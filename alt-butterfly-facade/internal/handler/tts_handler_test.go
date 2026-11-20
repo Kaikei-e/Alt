@@ -2,12 +2,14 @@ package handler
 
 import (
 	"encoding/binary"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewTTSHandler_PanicsWhenEnabledWithNilClient(t *testing.T) {
@@ -36,13 +38,15 @@ func TestDisabledTTSHandler_ExactFrame(t *testing.T) {
 	)
 
 	payload := []byte(`{"error":{"code":"failed_precondition","message":"tts is disabled"}}`)
+	require.LessOrEqual(t, len(payload), math.MaxUint32)
 	expectedBytes := make([]byte, 5+len(payload))
 	expectedBytes[0] = 0x02
+	// #nosec G115 -- bounds-checked against math.MaxUint32 above.
 	binary.BigEndian.PutUint32(expectedBytes[1:5], uint32(len(payload)))
 	copy(expectedBytes[5:], payload)
 
 	t.Run("echoes application/connect+proto content type and writes exact frame", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/alt.tts.v1.TTSService/SynthesizeStream", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/alt.tts.v1.TTSService/SynthesizeStream", nil)
 		req.Header.Set("Content-Type", "application/connect+proto")
 		rec := httptest.NewRecorder()
 
@@ -54,7 +58,7 @@ func TestDisabledTTSHandler_ExactFrame(t *testing.T) {
 	})
 
 	t.Run("echoes application/connect+json content type and writes exact frame", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/alt.tts.v1.TTSService/SynthesizeStream", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/alt.tts.v1.TTSService/SynthesizeStream", nil)
 		req.Header.Set("Content-Type", "application/connect+json")
 		rec := httptest.NewRecorder()
 
@@ -66,7 +70,7 @@ func TestDisabledTTSHandler_ExactFrame(t *testing.T) {
 	})
 
 	t.Run("defaults to application/connect+json when content type is not connect", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/alt.tts.v1.TTSService/SynthesizeStream", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/alt.tts.v1.TTSService/SynthesizeStream", nil)
 		rec := httptest.NewRecorder()
 
 		h.ServeHTTP(rec, req)
@@ -77,7 +81,7 @@ func TestDisabledTTSHandler_ExactFrame(t *testing.T) {
 	})
 
 	t.Run("returns 404 for any path other than /alt.tts.v1.TTSService/SynthesizeStream", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/alt.tts.v1.TTSService/UnrecognizedMethod", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/alt.tts.v1.TTSService/UnrecognizedMethod", nil)
 		rec := httptest.NewRecorder()
 
 		h.ServeHTTP(rec, req)

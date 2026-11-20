@@ -31,12 +31,12 @@ func TestNewConfig_Defaults(t *testing.T) {
 
 func TestNewConfig_FromEnvironment(t *testing.T) {
 	// Set environment variables
-	os.Setenv("BFF_PORT", "8080")
-	os.Setenv("BACKEND_CONNECT_URL", "http://localhost:9101")
-	os.Setenv("BACKEND_TOKEN_ISSUER", "custom-issuer")
-	os.Setenv("BACKEND_TOKEN_AUDIENCE", "custom-audience")
-	os.Setenv("BFF_REQUEST_TIMEOUT", "60s")
-	os.Setenv("BFF_STREAMING_TIMEOUT", "10m")
+	require.NoError(t, os.Setenv("BFF_PORT", "8080"))
+	require.NoError(t, os.Setenv("BACKEND_CONNECT_URL", "http://localhost:9101"))
+	require.NoError(t, os.Setenv("BACKEND_TOKEN_ISSUER", "custom-issuer"))
+	require.NoError(t, os.Setenv("BACKEND_TOKEN_AUDIENCE", "custom-audience"))
+	require.NoError(t, os.Setenv("BFF_REQUEST_TIMEOUT", "60s"))
+	require.NoError(t, os.Setenv("BFF_STREAMING_TIMEOUT", "10m"))
 	defer os.Clearenv()
 
 	cfg := NewConfig()
@@ -50,8 +50,8 @@ func TestNewConfig_FromEnvironment(t *testing.T) {
 }
 
 func TestNewConfig_InvalidDuration_UsesDefault(t *testing.T) {
-	os.Setenv("BFF_REQUEST_TIMEOUT", "invalid")
-	os.Setenv("BFF_STREAMING_TIMEOUT", "also-invalid")
+	require.NoError(t, os.Setenv("BFF_REQUEST_TIMEOUT", "invalid"))
+	require.NoError(t, os.Setenv("BFF_STREAMING_TIMEOUT", "also-invalid"))
 	defer os.Clearenv()
 
 	cfg := NewConfig()
@@ -72,7 +72,7 @@ func TestConfig_LoadBackendTokenVerifyKey_Ed25519(t *testing.T) {
 	require.NoError(t, err)
 	der, err := x509.MarshalPKIXPublicKey(pub)
 	require.NoError(t, err)
-	os.Setenv("BACKEND_TOKEN_VERIFY_KEY_FILE", writeKeyFile(t, "PUBLIC KEY", der))
+	require.NoError(t, os.Setenv("BACKEND_TOKEN_VERIFY_KEY_FILE", writeKeyFile(t, "PUBLIC KEY", der)))
 	defer os.Clearenv()
 
 	cfg := NewConfig()
@@ -87,7 +87,7 @@ func TestConfig_LoadBackendTokenVerifyKey_RSARejected(t *testing.T) {
 	require.NoError(t, err)
 	der, err := x509.MarshalPKIXPublicKey(&rsaKey.PublicKey)
 	require.NoError(t, err)
-	os.Setenv("BACKEND_TOKEN_VERIFY_KEY_FILE", writeKeyFile(t, "PUBLIC KEY", der))
+	require.NoError(t, os.Setenv("BACKEND_TOKEN_VERIFY_KEY_FILE", writeKeyFile(t, "PUBLIC KEY", der)))
 	defer os.Clearenv()
 
 	cfg := NewConfig()
@@ -99,7 +99,7 @@ func TestConfig_LoadBackendTokenVerifyKey_RSARejected(t *testing.T) {
 func TestConfig_LoadBackendTokenVerifyKey_NotPEM(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "key.pem")
 	require.NoError(t, os.WriteFile(path, []byte("not a pem file"), 0o600))
-	os.Setenv("BACKEND_TOKEN_VERIFY_KEY_FILE", path)
+	require.NoError(t, os.Setenv("BACKEND_TOKEN_VERIFY_KEY_FILE", path))
 	defer os.Clearenv()
 
 	cfg := NewConfig()
@@ -109,7 +109,7 @@ func TestConfig_LoadBackendTokenVerifyKey_NotPEM(t *testing.T) {
 }
 
 func TestConfig_LoadBackendTokenVerifyKey_FileNotFound(t *testing.T) {
-	os.Setenv("BACKEND_TOKEN_VERIFY_KEY_FILE", "/nonexistent/path")
+	require.NoError(t, os.Setenv("BACKEND_TOKEN_VERIFY_KEY_FILE", "/nonexistent/path"))
 	defer os.Clearenv()
 
 	cfg := NewConfig()
@@ -134,7 +134,7 @@ func TestConfig_LoadOperatorToken_RequiredWhenInternalURLSet(t *testing.T) {
 	cfg := NewConfig() // BackendInternalConnectURL defaults to http://alt-backend:9102
 	token, enabled, err := cfg.LoadOperatorToken()
 
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Empty(t, token)
 	assert.False(t, enabled)
 }
@@ -142,14 +142,14 @@ func TestConfig_LoadOperatorToken_RequiredWhenInternalURLSet(t *testing.T) {
 func TestConfig_LoadOperatorToken_FromFile(t *testing.T) {
 	tmpFile, err := os.CreateTemp("", "backend_operator_token")
 	require.NoError(t, err)
-	defer os.Remove(tmpFile.Name())
+	t.Cleanup(func() { assert.NoError(t, os.Remove(tmpFile.Name())) })
 
 	_, err = tmpFile.WriteString("a-valid-operator-token-0123\n")
 	require.NoError(t, err)
-	tmpFile.Close()
+	require.NoError(t, tmpFile.Close())
 
 	os.Clearenv()
-	os.Setenv("BACKEND_OPERATOR_TOKEN_FILE", tmpFile.Name())
+	require.NoError(t, os.Setenv("BACKEND_OPERATOR_TOKEN_FILE", tmpFile.Name()))
 	defer os.Clearenv()
 
 	cfg := NewConfig()
@@ -162,7 +162,7 @@ func TestConfig_LoadOperatorToken_FromFile(t *testing.T) {
 
 func TestConfig_LoadOperatorToken_FromEnv(t *testing.T) {
 	os.Clearenv()
-	os.Setenv("BACKEND_OPERATOR_TOKEN", "an-env-supplied-operator-token")
+	require.NoError(t, os.Setenv("BACKEND_OPERATOR_TOKEN", "an-env-supplied-operator-token"))
 	defer os.Clearenv()
 
 	cfg := NewConfig()
@@ -175,7 +175,7 @@ func TestConfig_LoadOperatorToken_FromEnv(t *testing.T) {
 
 func TestConfig_LoadOperatorToken_FileNotFound(t *testing.T) {
 	os.Clearenv()
-	os.Setenv("BACKEND_OPERATOR_TOKEN_FILE", "/nonexistent/path")
+	require.NoError(t, os.Setenv("BACKEND_OPERATOR_TOKEN_FILE", "/nonexistent/path"))
 	defer os.Clearenv()
 
 	cfg := NewConfig()
@@ -187,11 +187,11 @@ func TestConfig_LoadOperatorToken_FileNotFound(t *testing.T) {
 func TestConfig_LoadOperatorToken_EmptyFile(t *testing.T) {
 	tmpFile, err := os.CreateTemp("", "backend_operator_token_empty")
 	require.NoError(t, err)
-	defer os.Remove(tmpFile.Name())
-	tmpFile.Close()
+	t.Cleanup(func() { assert.NoError(t, os.Remove(tmpFile.Name())) })
+	require.NoError(t, tmpFile.Close())
 
 	os.Clearenv()
-	os.Setenv("BACKEND_OPERATOR_TOKEN_FILE", tmpFile.Name())
+	require.NoError(t, os.Setenv("BACKEND_OPERATOR_TOKEN_FILE", tmpFile.Name()))
 	defer os.Clearenv()
 
 	cfg := NewConfig()
@@ -202,7 +202,7 @@ func TestConfig_LoadOperatorToken_EmptyFile(t *testing.T) {
 
 func TestConfig_LoadOperatorToken_DisabledExplicitly(t *testing.T) {
 	os.Clearenv()
-	os.Setenv("BACKEND_OPERATOR_AUTH", "disabled")
+	require.NoError(t, os.Setenv("BACKEND_OPERATOR_AUTH", "disabled"))
 	defer os.Clearenv()
 
 	cfg := NewConfig()
@@ -221,7 +221,7 @@ func TestConfig_LoadOperatorToken_DisabledExplicitly(t *testing.T) {
 // on top of it.
 func TestConfig_LoadOperatorToken_DisabledViaGenericOperatorAuth(t *testing.T) {
 	os.Clearenv()
-	os.Setenv("OPERATOR_AUTH", "disabled")
+	require.NoError(t, os.Setenv("OPERATOR_AUTH", "disabled"))
 	defer os.Clearenv()
 
 	cfg := NewConfig()

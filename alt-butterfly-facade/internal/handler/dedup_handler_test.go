@@ -83,7 +83,7 @@ func TestRequestDeduplicator_Do_SingleRequest(t *testing.T) {
 		}, nil
 	})
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.True(t, executed)
 	assert.Equal(t, []byte("response"), result.Body)
 	assert.Equal(t, http.StatusOK, result.StatusCode)
@@ -189,7 +189,7 @@ func TestRequestDeduplicator_Do_DifferentKeysExecuteSeparately(t *testing.T) {
 		go func(k string) {
 			defer wg.Done()
 			<-start
-			dedup.Do(k, func() (*DedupResult, error) {
+			_, err := dedup.Do(k, func() (*DedupResult, error) {
 				atomic.AddInt32(&executionCount, 1)
 				time.Sleep(10 * time.Millisecond)
 				return &DedupResult{
@@ -198,6 +198,7 @@ func TestRequestDeduplicator_Do_DifferentKeysExecuteSeparately(t *testing.T) {
 					Headers:    make(http.Header),
 				}, nil
 			})
+			assert.NoError(t, err)
 		}(key)
 	}
 
@@ -282,9 +283,10 @@ func TestRequestDeduplicator_Cleanup_RemovesExpiredEntries(t *testing.T) {
 	dedup := NewRequestDeduplicator(50 * time.Millisecond)
 
 	// Execute a request
-	dedup.Do("key1", func() (*DedupResult, error) {
+	_, err := dedup.Do("key1", func() (*DedupResult, error) {
 		return &DedupResult{Body: []byte("test")}, nil
 	})
+	require.NoError(t, err)
 
 	// Do() is synchronous and removes the key from `pending` (what Size()
 	// reports) as soon as it returns, so Size() is already 0 here — it does
@@ -345,7 +347,7 @@ func TestDedupMiddleware_Integration(t *testing.T) {
 		atomic.AddInt32(&callCount, 1)
 		time.Sleep(50 * time.Millisecond)
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("response"))
+		_, _ = w.Write([]byte("response"))
 	})
 
 	// Create middleware
@@ -362,7 +364,7 @@ func TestDedupMiddleware_Integration(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			<-start
-			req := httptest.NewRequest("POST", "/api/test", bytes.NewReader([]byte(`{}`)))
+			req := httptest.NewRequestWithContext(t.Context(), "POST", "/api/test", bytes.NewReader([]byte(`{}`)))
 			rec := httptest.NewRecorder()
 			handler.ServeHTTP(rec, req)
 			assert.Equal(t, http.StatusOK, rec.Code)
@@ -386,14 +388,14 @@ func TestDedupMiddleware_NoDoubleWrite(t *testing.T) {
 	backend := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Test", "1")
 		w.WriteHeader(http.StatusCreated)
-		w.Write([]byte("once"))
+		_, _ = w.Write([]byte("once"))
 	})
 
 	handler := DedupMiddleware(dedup, func(r *http.Request) string {
 		return "user-1"
 	})(backend)
 
-	req := httptest.NewRequest("POST", "/api/test", bytes.NewReader([]byte(`{}`)))
+	req := httptest.NewRequestWithContext(t.Context(), "POST", "/api/test", bytes.NewReader([]byte(`{}`)))
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -421,7 +423,7 @@ func TestDedupMiddleware_PassesThroughNonDedupable(t *testing.T) {
 
 	// GET requests should not be deduplicated
 	for i := 0; i < 3; i++ {
-		req := httptest.NewRequest("GET", "/api/test", nil)
+		req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/test", nil)
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, req)
 	}
@@ -432,11 +434,12 @@ func TestDedupMiddleware_PassesThroughNonDedupable(t *testing.T) {
 
 func TestCreateDedupRequest(t *testing.T) {
 	body := []byte(`{"test": "data"}`)
-	originalReq := httptest.NewRequest("POST", "/api/test", bytes.NewReader(body))
+	originalReq := httptest.NewRequestWithContext(t.Context(), "POST", "/api/test", bytes.NewReader(body))
 	originalReq.Header.Set("Content-Type", "application/json")
 
 	// Read body to simulate it being consumed
-	io.ReadAll(originalReq.Body)
+	_, err := io.ReadAll(originalReq.Body)
+	require.NoError(t, err)
 
 	// Create new request with stored body
 	newReq := CreateDedupRequest(originalReq, body)
@@ -448,6 +451,6 @@ func TestCreateDedupRequest(t *testing.T) {
 
 	// Body should be readable
 	readBody, err := io.ReadAll(newReq.Body)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, body, readBody)
 }

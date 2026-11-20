@@ -10,7 +10,9 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"io"
+	"math"
 	"math/big"
 	"net"
 	"net/http"
@@ -30,8 +32,12 @@ import (
 // createConnectEnvelope builds a 5-byte prefixed Connect streaming envelope:
 // 1 byte flags (0x00 data, 0x02 end-of-stream) + 4 bytes big-endian length + payload.
 func createConnectEnvelope(flag byte, payload []byte) []byte {
+	if len(payload) > math.MaxUint32 {
+		panic("payload exceeds uint32 length")
+	}
 	buf := make([]byte, 5+len(payload))
 	buf[0] = flag
+	// #nosec G115 -- bounds-checked against math.MaxUint32 above.
 	binary.BigEndian.PutUint32(buf[1:5], uint32(len(payload)))
 	copy(buf[5:], payload)
 	return buf
@@ -43,6 +49,7 @@ func createConnectEnvelope(flag byte, payload []byte) []byte {
 // and the bytes arrive unmodified.
 func TestTTSProxy_StreamingPassThrough(t *testing.T) {
 	upstreamDone := make(chan struct{})
+	handlerErrs := make(chan error, 4)
 
 	frame1Payload := []byte(`{"chunk":1,"audio_wav":"Y2h1bmsx"}`)
 	frame2Payload := []byte(`{"chunk":2,"audio_wav":"Y2h1bmsy"}`)
@@ -63,11 +70,16 @@ func TestTTSProxy_StreamingPassThrough(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 
 		flusher, ok := w.(http.Flusher)
-		require.True(t, ok, "upstream must support flushing")
+		if !assert.True(t, ok, "upstream must support flushing") {
+			handlerErrs <- errors.New("upstream does not support flushing")
+			return
+		}
 
 		// Write frame 1 and flush immediately
-		_, err := w.Write(frame1)
-		require.NoError(t, err)
+		if _, err := w.Write(frame1); !assert.NoError(t, err) {
+			handlerErrs <- err
+			return
+		}
 		flusher.Flush()
 
 		// Pause between frame 1 and frame 2 to allow client to read incrementally
@@ -78,8 +90,10 @@ func TestTTSProxy_StreamingPassThrough(t *testing.T) {
 		}
 
 		// Write frame 2 and flush
-		_, err = w.Write(frame2)
-		require.NoError(t, err)
+		if _, err := w.Write(frame2); !assert.NoError(t, err) {
+			handlerErrs <- err
+			return
+		}
 		flusher.Flush()
 
 		select {
@@ -89,8 +103,10 @@ func TestTTSProxy_StreamingPassThrough(t *testing.T) {
 		}
 
 		// Write frame 3 (end-of-stream) and flush
-		_, err = w.Write(frame3)
-		require.NoError(t, err)
+		if _, err := w.Write(frame3); !assert.NoError(t, err) {
+			handlerErrs <- err
+			return
+		}
 		flusher.Flush()
 		close(upstreamDone)
 	}))
@@ -111,7 +127,8 @@ func TestTTSProxy_StreamingPassThrough(t *testing.T) {
 	bffSrv := httptest.NewServer(NewServerWithTransport(cfg, nil, http.DefaultTransport))
 	defer bffSrv.Close()
 
-	req, err := http.NewRequest(
+	req, err := http.NewRequestWithContext(
+		t.Context(),
 		http.MethodPost,
 		bffSrv.URL+"/alt.tts.v1.TTSService/SynthesizeStream",
 		strings.NewReader(`{"text":"こんにちは"}`),
@@ -122,7 +139,7 @@ func TestTTSProxy_StreamingPassThrough(t *testing.T) {
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	assert.Contains(t, resp.Header.Get("Content-Type"), "application/connect+json")
@@ -152,6 +169,10 @@ func TestTTSProxy_StreamingPassThrough(t *testing.T) {
 
 	fullReceived := append(append(f1Header, f1Body...), remainingBytes...)
 	assert.Equal(t, allExpectedBytes, fullReceived, "streaming bytes must arrive completely unmodified")
+	close(handlerErrs)
+	for err := range handlerErrs {
+		require.NoError(t, err)
+	}
 }
 
 // TestTTSProxy_AuthRequired pins requirement 4(b):
@@ -181,7 +202,8 @@ func TestTTSProxy_AuthRequired(t *testing.T) {
 
 	t.Run("missing token", func(t *testing.T) {
 		upstreamCalled = false
-		req, err := http.NewRequest(
+		req, err := http.NewRequestWithContext(
+			t.Context(),
 			http.MethodPost,
 			bffSrv.URL+"/alt.tts.v1.TTSService/SynthesizeStream",
 			strings.NewReader(`{"text":"test"}`),
@@ -191,7 +213,7 @@ func TestTTSProxy_AuthRequired(t *testing.T) {
 
 		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 		assert.False(t, upstreamCalled, "upstream must not be called for missing token")
@@ -199,7 +221,8 @@ func TestTTSProxy_AuthRequired(t *testing.T) {
 
 	t.Run("invalid token", func(t *testing.T) {
 		upstreamCalled = false
-		req, err := http.NewRequest(
+		req, err := http.NewRequestWithContext(
+			t.Context(),
 			http.MethodPost,
 			bffSrv.URL+"/alt.tts.v1.TTSService/SynthesizeStream",
 			strings.NewReader(`{"text":"test"}`),
@@ -210,7 +233,7 @@ func TestTTSProxy_AuthRequired(t *testing.T) {
 
 		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 		assert.False(t, upstreamCalled, "upstream must not be called for invalid token")
@@ -243,7 +266,8 @@ func TestTTSProxy_DisabledMode(t *testing.T) {
 	bffSrv := httptest.NewServer(NewServerWithTransport(cfg, nil, http.DefaultTransport))
 	defer bffSrv.Close()
 
-	req, err := http.NewRequest(
+	req, err := http.NewRequestWithContext(
+		t.Context(),
 		http.MethodPost,
 		bffSrv.URL+"/alt.tts.v1.TTSService/SynthesizeStream",
 		strings.NewReader(`{"text":"test"}`),
@@ -254,7 +278,7 @@ func TestTTSProxy_DisabledMode(t *testing.T) {
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Connect streaming errors return HTTP 200 with application/connect+json
 	// and the error is carried inside the end-of-stream frame.
@@ -285,8 +309,10 @@ func TestTTSProxy_DisabledMode(t *testing.T) {
 
 	// Compare exact expected bytes (N4)
 	expectedPayload := []byte(`{"error":{"code":"failed_precondition","message":"tts is disabled"}}`)
+	require.LessOrEqual(t, len(expectedPayload), math.MaxUint32)
 	expectedEnvelope := make([]byte, 5+len(expectedPayload))
 	expectedEnvelope[0] = 0x02
+	// #nosec G115 -- bounds-checked against math.MaxUint32 above.
 	binary.BigEndian.PutUint32(expectedEnvelope[1:5], uint32(len(expectedPayload)))
 	copy(expectedEnvelope[5:], expectedPayload)
 	fullReceived := append(append([]byte{}, eosHeader...), eosPayload...)
@@ -317,7 +343,8 @@ func TestTTSProxy_UnreachableUpstream(t *testing.T) {
 	bffSrv := httptest.NewServer(NewServerWithTransport(cfg, nil, http.DefaultTransport))
 	defer bffSrv.Close()
 
-	req, err := http.NewRequest(
+	req, err := http.NewRequestWithContext(
+		t.Context(),
 		http.MethodPost,
 		bffSrv.URL+"/alt.tts.v1.TTSService/SynthesizeStream",
 		strings.NewReader(`{"text":"test"}`),
@@ -328,7 +355,7 @@ func TestTTSProxy_UnreachableUpstream(t *testing.T) {
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// S5: assert exactly StatusBadGateway, assert Content-Type is not application/connect+*
 	assert.Equal(t, http.StatusBadGateway, resp.StatusCode)
@@ -455,24 +482,38 @@ func TestTTSProxy_MTLSTransport_StreamsThroughUpstreamRequiringClientCert(t *tes
 	expectedBytes := append(append([]byte{}, frame1...), frame2...)
 
 	upstreamCalled := false
+	handlerErrs := make(chan error, 5)
 	upstream := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		upstreamCalled = true
-		require.NotNil(t, r.TLS, "must be TLS request")
-		require.NotEmpty(t, r.TLS.PeerCertificates, "upstream requires client cert")
+		if !assert.NotNil(t, r.TLS, "must be TLS request") {
+			handlerErrs <- errors.New("missing TLS on upstream request")
+			return
+		}
+		if !assert.NotEmpty(t, r.TLS.PeerCertificates, "upstream requires client cert") {
+			handlerErrs <- errors.New("missing peer certificates on upstream request")
+			return
+		}
 		assert.Equal(t, "alt-butterfly-facade", r.TLS.PeerCertificates[0].Subject.CommonName)
 		assert.Equal(t, "/alt.tts.v1.TTSService/SynthesizeStream", r.URL.Path)
 
 		w.Header().Set("Content-Type", "application/connect+json")
 		w.WriteHeader(http.StatusOK)
 		flusher, ok := w.(http.Flusher)
-		require.True(t, ok)
+		if !assert.True(t, ok) {
+			handlerErrs <- errors.New("upstream writer does not implement http.Flusher")
+			return
+		}
 
-		_, err := w.Write(frame1)
-		require.NoError(t, err)
+		if _, err := w.Write(frame1); !assert.NoError(t, err) {
+			handlerErrs <- err
+			return
+		}
 		flusher.Flush()
 
-		_, err = w.Write(frame2)
-		require.NoError(t, err)
+		if _, err := w.Write(frame2); !assert.NoError(t, err) {
+			handlerErrs <- err
+			return
+		}
 		flusher.Flush()
 	}))
 
@@ -492,7 +533,12 @@ func TestTTSProxy_MTLSTransport_StreamsThroughUpstreamRequiringClientCert(t *tes
 			},
 		},
 	}
-	_, err := noCertClient.Get(upstream.URL)
+	noCertReq, err := http.NewRequestWithContext(t.Context(), http.MethodGet, upstream.URL, nil)
+	require.NoError(t, err)
+	noCertResp, err := noCertClient.Do(noCertReq)
+	if noCertResp != nil {
+		defer func() { _ = noCertResp.Body.Close() }()
+	}
 	require.Error(t, err, "direct dial to upstream without client cert must fail TLS handshake")
 
 	// 2. Build dedicated HTTP/1.1 TTS transport using tlsutil.LoadClientConfig (same as main.go)
@@ -518,7 +564,8 @@ func TestTTSProxy_MTLSTransport_StreamsThroughUpstreamRequiringClientCert(t *tes
 	bffSrv := httptest.NewServer(NewServer(cfg, nil))
 	defer bffSrv.Close()
 
-	req, err := http.NewRequest(
+	req, err := http.NewRequestWithContext(
+		t.Context(),
 		http.MethodPost,
 		bffSrv.URL+"/alt.tts.v1.TTSService/SynthesizeStream",
 		strings.NewReader(`{"text":"hello"}`),
@@ -529,7 +576,7 @@ func TestTTSProxy_MTLSTransport_StreamsThroughUpstreamRequiringClientCert(t *tes
 
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	assert.Contains(t, resp.Header.Get("Content-Type"), "application/connect+json")
@@ -538,4 +585,8 @@ func TestTTSProxy_MTLSTransport_StreamsThroughUpstreamRequiringClientCert(t *tes
 	receivedBytes, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	assert.Equal(t, expectedBytes, receivedBytes, "streamed bytes through mTLS upstream must match exactly")
+	close(handlerErrs)
+	for err := range handlerErrs {
+		require.NoError(t, err)
+	}
 }

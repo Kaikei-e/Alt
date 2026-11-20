@@ -64,7 +64,7 @@ func TestBackendClient_ForwardRequest_Success(t *testing.T) {
 		// Send response
 		w.Header().Set("Content-Type", "application/proto")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("response-body"))
+		_, _ = w.Write([]byte("response-body"))
 	}))
 	defer backend.Close()
 
@@ -87,14 +87,14 @@ func TestBackendClient_ForwardRequest_Success(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 	body, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	require.NoError(t, resp.Body.Close())
 	assert.Equal(t, "response-body", string(body))
 }
 
 func TestBackendClient_ForwardRequest_BackendError(t *testing.T) {
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("internal error"))
+		_, _ = w.Write([]byte("internal error"))
 	}))
 	defer backend.Close()
 
@@ -111,7 +111,7 @@ func TestBackendClient_ForwardRequest_BackendError(t *testing.T) {
 
 	require.NoError(t, err) // No error, just status code
 	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
-	resp.Body.Close()
+	require.NoError(t, resp.Body.Close())
 }
 
 func TestBackendClient_ForwardRequest_Timeout(t *testing.T) {
@@ -129,7 +129,10 @@ func TestBackendClient_ForwardRequest_Timeout(t *testing.T) {
 
 	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, backend.URL+"/test", nil)
 
-	_, err := client.ForwardRequest(req, "token")
+	resp, err := client.ForwardRequest(req, "token")
+	if resp != nil {
+		defer func() { _ = resp.Body.Close() }()
+	}
 
 	assert.Error(t, err)
 }
@@ -159,7 +162,7 @@ func TestBackendClient_ForwardServiceRequest_SetsAuthorizationBearer(t *testing.
 	resp, err := client.ForwardServiceRequest(req, "the-operator-token")
 
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
@@ -187,7 +190,7 @@ func TestBackendClient_ForwardServiceRequest_EmptyToken_NoAuthorizationHeader(t 
 	resp, err := client.ForwardServiceRequest(req, "")
 
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
@@ -218,7 +221,7 @@ func TestBackendClient_ForwardServiceRequest_StripsCallerBackendToken(t *testing
 	resp, err := client.ForwardServiceRequest(req, "the-operator-token")
 
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
@@ -250,11 +253,13 @@ func TestBackendClient_ForwardStreamingRequest(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 
 		flusher, ok := w.(http.Flusher)
-		require.True(t, ok)
+		if !assert.True(t, ok) {
+			return
+		}
 
 		// Send streaming chunks
 		for i := 0; i < 3; i++ {
-			w.Write([]byte("chunk"))
+			_, _ = w.Write([]byte("chunk"))
 			flusher.Flush()
 		}
 	}))
@@ -273,7 +278,7 @@ func TestBackendClient_ForwardStreamingRequest(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Verify the streamed chunks are actually forwarded intact, not just that
 	// the initial response arrived — a regression that buffered/truncated the
@@ -370,6 +375,6 @@ func TestBackendClient_ForwardRESTRequest_StripsSpoofedHeadersAndSetsVerifiedTok
 
 	resp, err := client.ForwardRESTRequest(req, "verified-backend-token")
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }

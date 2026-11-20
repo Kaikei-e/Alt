@@ -195,7 +195,7 @@ func TestCircuitBreaker_Execute_Success(t *testing.T) {
 		return "success", nil
 	})
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "success", result)
 }
 
@@ -208,7 +208,7 @@ func TestCircuitBreaker_Execute_Failure(t *testing.T) {
 	})
 
 	assert.Equal(t, expectedErr, err)
-	assert.Equal(t, "", result)
+	assert.Empty(t, result)
 }
 
 func TestCircuitBreaker_Execute_CircuitOpen(t *testing.T) {
@@ -220,9 +220,10 @@ func TestCircuitBreaker_Execute_CircuitOpen(t *testing.T) {
 
 	// Trip the circuit
 	for i := 0; i < 2; i++ {
-		Execute(cb, testEndpoint, func() (string, error) {
+		_, err := Execute(cb, testEndpoint, func() (string, error) {
 			return "", errors.New("fail")
 		})
+		require.Error(t, err)
 	}
 
 	// Next execution should fail immediately
@@ -230,7 +231,7 @@ func TestCircuitBreaker_Execute_CircuitOpen(t *testing.T) {
 		return "should not execute", nil
 	})
 
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Equal(t, ErrCircuitOpen, err)
 }
 

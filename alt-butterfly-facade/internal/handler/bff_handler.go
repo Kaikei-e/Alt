@@ -281,7 +281,7 @@ func (h *BFFHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var body []byte
 	if r.Body != nil {
 		if r.ContentLength > maxRequestBodyBytes {
-			r.Body.Close()
+			_ = r.Body.Close()
 			h.logError("request body too large", &http.MaxBytesError{Limit: maxRequestBodyBytes})
 			h.handleError(w, http.StatusRequestEntityTooLarge, "Request Entity Too Large", requestID)
 			return
@@ -289,7 +289,7 @@ func (h *BFFHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 		var err error
 		body, err = io.ReadAll(r.Body)
-		r.Body.Close()
+		_ = r.Body.Close()
 		if err != nil {
 			var maxBytesErr *http.MaxBytesError
 			if errors.As(err, &maxBytesErr) {
@@ -360,7 +360,7 @@ func (h *BFFHandler) serveStreaming(w http.ResponseWriter, r *http.Request) {
 		h.handleBackendError(w, err, requestID)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	h.recordOutcome(endpoint, resp.StatusCode, resp.Header)
 
@@ -371,7 +371,9 @@ func (h *BFFHandler) serveStreaming(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(resp.StatusCode)
 		jsonBytes, _ := normalized.ToJSON()
-		w.Write(jsonBytes)
+		if _, writeErr := w.Write(jsonBytes); writeErr != nil {
+			h.logError("failed to write error response", writeErr)
+		}
 		return
 	}
 
@@ -448,7 +450,7 @@ func (h *BFFHandler) executeRequest(r *http.Request, callerCtx context.Context, 
 		}
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Read the response body before charging the breaker. A body that ends
 	// mid-stream is a failed response whatever its status line said, and
@@ -541,7 +543,9 @@ func (h *BFFHandler) writeCachedResponse(w http.ResponseWriter, entry *cache.Cac
 	if ct := w.Header().Get("Content-Type"); ct != "" {
 		w.Header().Set("Content-Type", ct)
 	}
-	w.Write(entry.Response)
+	if _, err := w.Write(entry.Response); err != nil {
+		h.logError("failed to write cached response", err)
+	}
 }
 
 // shouldCacheResponse checks if a response should be cached.
@@ -596,7 +600,10 @@ func (h *BFFHandler) writeResult(w http.ResponseWriter, result *DedupResult) {
 	if ct := w.Header().Get("Content-Type"); ct != "" {
 		w.Header().Set("Content-Type", ct)
 	}
-	w.Write(result.Body)
+	// #nosec G705 -- transparent proxy forwards backend response bytes verbatim with backend Content-Type.
+	if _, err := w.Write(result.Body); err != nil {
+		h.logError("failed to write response", err)
+	}
 }
 
 // handleError handles an error response.
@@ -610,7 +617,9 @@ func (h *BFFHandler) handleError(w http.ResponseWriter, statusCode int, message,
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(statusCode)
 		jsonBytes, _ := normalized.ToJSON()
-		w.Write(jsonBytes)
+		if _, err := w.Write(jsonBytes); err != nil {
+			h.logError("failed to write normalized error response", err)
+		}
 		return
 	}
 
@@ -624,7 +633,9 @@ func (h *BFFHandler) handleBackendError(w http.ResponseWriter, err error, reques
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadGateway)
 		jsonBytes, _ := normalized.ToJSON()
-		w.Write(jsonBytes)
+		if _, writeErr := w.Write(jsonBytes); writeErr != nil {
+			h.logError("failed to write normalized backend error response", writeErr)
+		}
 		return
 	}
 
@@ -655,7 +666,9 @@ func (h *BFFHandler) handleCircuitOpen(w http.ResponseWriter, endpoint, requestI
 	w.Header().Set("X-Request-Id", requestID)
 	w.WriteHeader(http.StatusServiceUnavailable)
 	jsonBytes, _ := connectErr.ToJSON()
-	w.Write(jsonBytes)
+	if _, err := w.Write(jsonBytes); err != nil {
+		h.logError("failed to write circuit open response", err)
+	}
 }
 
 // breakerFor returns the circuit breaker for the endpoint's dependency class.

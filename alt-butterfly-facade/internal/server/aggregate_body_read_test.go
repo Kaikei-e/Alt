@@ -48,7 +48,8 @@ func TestServer_Aggregate_TruncatedBackendBodyIsNotBankedAsSuccess(t *testing.T)
 	}
 	srv := NewServerWithTransport(cfg, nil, http.DefaultTransport)
 
-	req := httptest.NewRequest(
+	req := httptest.NewRequestWithContext(
+		t.Context(),
 		http.MethodPost,
 		"/v1/aggregate",
 		strings.NewReader(`{"queries":["feed_stats"]}`),

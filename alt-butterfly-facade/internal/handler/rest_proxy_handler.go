@@ -78,7 +78,7 @@ func (h *RESTProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Bad Gateway", http.StatusBadGateway)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Copy all response headers except hop-by-hop ones (mirrors
 	// copyRESTHeaders in client.BackendClient, which excludes the same set

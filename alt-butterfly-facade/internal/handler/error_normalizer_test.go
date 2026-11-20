@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNormalizeError_502BadGateway(t *testing.T) {
@@ -197,7 +198,7 @@ func TestNormalizedError_ToJSON(t *testing.T) {
 
 	jsonBytes, err := normalized.ToJSON()
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Contains(t, string(jsonBytes), `"code":"BACKEND_UNAVAILABLE"`)
 	assert.Contains(t, string(jsonBytes), `"message":"Backend service is temporarily unavailable"`)
 	assert.Contains(t, string(jsonBytes), `"is_retryable":true`)
@@ -216,7 +217,7 @@ func TestNormalizedError_ToJSON_OmitsZeroRetryAfter(t *testing.T) {
 
 	jsonBytes, err := normalized.ToJSON()
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotContains(t, string(jsonBytes), `"retry_after"`)
 }
 
