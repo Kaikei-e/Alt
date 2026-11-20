@@ -37,5 +37,5 @@ func (p *Printer) PrintHints(command string) {
 	for i, h := range hints {
 		cmds[i] = "altctl " + h
 	}
-	fmt.Fprintf(p.out, "\nSee also: %s\n", strings.Join(cmds, ", "))
+	_, _ = fmt.Fprintf(p.out, "\nSee also: %s\n", strings.Join(cmds, ", "))
 }

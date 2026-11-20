@@ -114,7 +114,10 @@ func (m *Migrator) Restore(ctx context.Context, opts RestoreOptions) error {
 
 // restoreVolume restores a single volume, dispatching to the appropriate strategy
 func (m *Migrator) restoreVolume(ctx context.Context, spec VolumeSpec, backupDir string, vb VolumeBackup) error {
-	inputPath := filepath.Join(backupDir, vb.Filename)
+	inputPath, err := resolveUnderBase(backupDir, vb.Filename)
+	if err != nil {
+		return fmt.Errorf("volume %s: %w", vb.Name, err)
+	}
 
 	m.logger.Info("restoring volume",
 		"volume", spec.Name,
@@ -202,6 +205,7 @@ func (m *Migrator) stopContainers(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("resolving compose files: %w", err)
 	}
+	// #nosec G204 -- constant binary "docker" with separate compose argv elements; no shell
 	cmd := exec.CommandContext(ctx, "docker", args...)
 	return cmd.Run()
 }
@@ -259,6 +263,7 @@ func (m *Migrator) startDatabaseContainers(ctx context.Context, pgSpecs []Volume
 		if err != nil {
 			return fmt.Errorf("resolving compose files: %w", err)
 		}
+		// #nosec G204 -- constant binary "docker" with separate compose argv elements; no shell
 		cmd := exec.CommandContext(ctx, "docker", args...)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			if msg := strings.TrimSpace(string(out)); msg != "" {
@@ -301,6 +306,7 @@ func (m *Migrator) waitForPostgres(ctx context.Context, spec VolumeSpec) error {
 		lastErr error
 	)
 	for {
+		// #nosec G204 -- constant binary "docker" with separate pg_isready argv elements; no shell
 		out, err := exec.CommandContext(waitCtx, "docker", args...).CombinedOutput()
 		if err == nil {
 			return nil
@@ -370,22 +376,22 @@ func GetBackupSummary(backupDir string) (string, error) {
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Backup: %s\n", filepath.Base(backupDir)))
-	sb.WriteString(fmt.Sprintf("Created: %s\n", manifest.CreatedAt.Format("2006-01-02 15:04:05 MST")))
-	sb.WriteString(fmt.Sprintf("Altctl Version: %s\n", manifest.AltctlVersion))
-	sb.WriteString(fmt.Sprintf("Volumes: %d\n\n", len(manifest.Volumes)))
+	fmt.Fprintf(&sb, "Backup: %s\n", filepath.Base(backupDir))
+	fmt.Fprintf(&sb, "Created: %s\n", manifest.CreatedAt.Format("2006-01-02 15:04:05 MST"))
+	fmt.Fprintf(&sb, "Altctl Version: %s\n", manifest.AltctlVersion)
+	fmt.Fprintf(&sb, "Volumes: %d\n\n", len(manifest.Volumes))
 
 	var totalSize int64
 	for _, v := range manifest.Volumes {
 		totalSize += v.Size
-		sb.WriteString(fmt.Sprintf("  %-30s %10s  %s\n",
+		fmt.Fprintf(&sb, "  %-30s %10s  %s\n",
 			v.Name,
 			FormatSize(v.Size),
 			v.TypeString,
-		))
+		)
 	}
 
-	sb.WriteString(fmt.Sprintf("\nTotal Size: %s\n", FormatSize(totalSize)))
+	fmt.Fprintf(&sb, "\nTotal Size: %s\n", FormatSize(totalSize))
 
 	return sb.String(), nil
 }

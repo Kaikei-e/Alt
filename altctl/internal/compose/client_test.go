@@ -57,7 +57,7 @@ func TestClient_Logs_MultipleServicesSingleInvocation(t *testing.T) {
 
 	projectDir := t.TempDir()
 	composeDir := filepath.Join(projectDir, "compose")
-	if err := os.MkdirAll(composeDir, 0o755); err != nil {
+	if err := os.MkdirAll(composeDir, 0o750); err != nil {
 		t.Fatal(err)
 	}
 
@@ -98,7 +98,7 @@ func TestClient_Logs_NoFilesStillOmitsDashF(t *testing.T) {
 
 	projectDir := t.TempDir()
 	composeDir := filepath.Join(projectDir, "compose")
-	if err := os.MkdirAll(composeDir, 0o755); err != nil {
+	if err := os.MkdirAll(composeDir, 0o750); err != nil {
 		t.Fatal(err)
 	}
 
@@ -117,12 +117,12 @@ func TestClient_Logs_NoFilesStillOmitsDashF(t *testing.T) {
 func TestBuildFileArgs_WithEnvFile(t *testing.T) {
 	projectDir := t.TempDir()
 	composeDir := filepath.Join(projectDir, "compose")
-	if err := os.MkdirAll(composeDir, 0o755); err != nil {
+	if err := os.MkdirAll(composeDir, 0o750); err != nil {
 		t.Fatal(err)
 	}
 
 	envFile := filepath.Join(projectDir, ".env")
-	if err := os.WriteFile(envFile, []byte("DB_HOST=localhost\n"), 0o644); err != nil {
+	if err := os.WriteFile(envFile, []byte("DB_HOST=localhost\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -161,7 +161,7 @@ func TestBuildFileArgs_WithEnvFile(t *testing.T) {
 func TestBuildFileArgs_WithoutEnvFile(t *testing.T) {
 	projectDir := t.TempDir()
 	composeDir := filepath.Join(projectDir, "compose")
-	if err := os.MkdirAll(composeDir, 0o755); err != nil {
+	if err := os.MkdirAll(composeDir, 0o750); err != nil {
 		t.Fatal(err)
 	}
 
@@ -317,7 +317,7 @@ func TestBuildFileArgs_EmptyFiles(t *testing.T) {
 	composeDir := filepath.Join(projectDir, "compose")
 
 	envFile := filepath.Join(projectDir, ".env")
-	if err := os.WriteFile(envFile, []byte("X=1\n"), 0o644); err != nil {
+	if err := os.WriteFile(envFile, []byte("X=1\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 

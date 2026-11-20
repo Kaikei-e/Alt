@@ -70,20 +70,27 @@ func (p *PostgresBackuper) Backup(ctx context.Context, spec VolumeSpec, outputPa
 		spec.DBName,
 	}
 
+	// #nosec G204 -- constant binary "docker" with separate pg_dump argv elements from registry spec; no shell
 	cmd := exec.CommandContext(ctx, "docker", args...)
 
+	// #nosec G304 -- outputPath is backup dir joined with registry-derived dump filename
 	outFile, err := os.OpenFile(outputPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
 		return fmt.Errorf("creating output file: %w", err)
 	}
-	defer outFile.Close()
 
 	cmd.Stdout = outFile
 	cmd.Stderr = &logWriter{logger: p.logger, prefix: "pg_dump stderr"}
 
-	if err := cmd.Run(); err != nil {
-		os.Remove(outputPath)
-		return fmt.Errorf("pg_dump failed for %s: %w", spec.Name, err)
+	runErr := cmd.Run()
+	closeErr := outFile.Close()
+	if runErr != nil {
+		_ = os.Remove(outputPath)
+		return fmt.Errorf("pg_dump failed for %s: %w", spec.Name, runErr)
+	}
+	if closeErr != nil {
+		_ = os.Remove(outputPath)
+		return fmt.Errorf("closing output file: %w", closeErr)
 	}
 
 	info, err := os.Stat(outputPath)
@@ -92,7 +99,7 @@ func (p *PostgresBackuper) Backup(ctx context.Context, spec VolumeSpec, outputPa
 	}
 
 	if info.Size() == 0 {
-		os.Remove(outputPath)
+		_ = os.Remove(outputPath)
 		return fmt.Errorf("pg_dump produced empty file for %s", spec.Name)
 	}
 
@@ -151,13 +158,15 @@ func (p *PostgresBackuper) Restore(ctx context.Context, spec VolumeSpec, inputPa
 		"--single-transaction",
 	}
 
+	// #nosec G204 -- constant binary "docker" with separate pg_restore argv elements from registry spec; no shell
 	cmd := exec.CommandContext(ctx, "docker", args...)
 
+	// #nosec G304 -- inputPath is validated under backupDir by resolveUnderBase
 	inFile, err := os.Open(inputPath)
 	if err != nil {
 		return fmt.Errorf("opening input file: %w", err)
 	}
-	defer inFile.Close()
+	defer func() { _ = inFile.Close() }()
 
 	cmd.Stdin = inFile
 	cmd.Stderr = &logWriter{logger: p.logger, prefix: "pg_restore stderr"}

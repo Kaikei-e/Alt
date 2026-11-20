@@ -50,6 +50,14 @@ func NewExecutor(workDir string, logger *slog.Logger, dryRun bool) *DefaultExecu
 	return e
 }
 
+func (e *DefaultExecutor) newCommand(ctx context.Context, cmd string, args []string) *exec.Cmd {
+	// #nosec G204 -- cmd is caller-supplied binary (production callers pass "docker"); args are separate argv elements without a shell
+	c := exec.CommandContext(ctx, cmd, args...)
+	c.Dir = e.workDir
+	c.Env = e.env
+	return c
+}
+
 // Run executes a command and waits for completion
 func (e *DefaultExecutor) Run(ctx context.Context, cmd string, args []string) error {
 	e.logger.Debug("executing command",
@@ -64,9 +72,7 @@ func (e *DefaultExecutor) Run(ctx context.Context, cmd string, args []string) er
 		return nil
 	}
 
-	c := exec.CommandContext(ctx, cmd, args...)
-	c.Dir = e.workDir
-	c.Env = e.env
+	c := e.newCommand(ctx, cmd, args)
 	c.Stdout = os.Stdout
 	c.Stderr = os.Stderr
 	c.Stdin = os.Stdin
@@ -88,9 +94,7 @@ func (e *DefaultExecutor) RunWithOutput(ctx context.Context, cmd string, args []
 		return nil, nil
 	}
 
-	c := exec.CommandContext(ctx, cmd, args...)
-	c.Dir = e.workDir
-	c.Env = e.env
+	c := e.newCommand(ctx, cmd, args)
 
 	var stdout, stderr bytes.Buffer
 	c.Stdout = &stdout
@@ -116,14 +120,14 @@ func (e *DefaultExecutor) RunWithPipes(ctx context.Context, cmd string, args []s
 		msg := fmt.Sprintf("[dry-run] %s %s", cmd, strings.Join(args, " "))
 		e.logger.Info(msg)
 		if stdout != nil {
-			fmt.Fprintln(stdout, msg)
+			if _, err := fmt.Fprintln(stdout, msg); err != nil {
+				return err
+			}
 		}
 		return nil
 	}
 
-	c := exec.CommandContext(ctx, cmd, args...)
-	c.Dir = e.workDir
-	c.Env = e.env
+	c := e.newCommand(ctx, cmd, args)
 	c.Stdout = stdout
 	c.Stderr = stderr
 	c.Stdin = e.stdin

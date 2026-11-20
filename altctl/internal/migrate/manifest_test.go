@@ -171,7 +171,7 @@ func TestFileChecksum(t *testing.T) {
 
 	// Create test file
 	content := []byte("hello world")
-	if err := os.WriteFile(testFile, content, 0644); err != nil {
+	if err := os.WriteFile(testFile, content, 0o600); err != nil {
 		t.Fatalf("Failed to create test file: %v", err)
 	}
 
@@ -186,7 +186,7 @@ func TestFileChecksum(t *testing.T) {
 
 	// Same content should produce same checksum
 	testFile2 := filepath.Join(tmpDir, "test2.txt")
-	if err := os.WriteFile(testFile2, content, 0644); err != nil {
+	if err := os.WriteFile(testFile2, content, 0o600); err != nil {
 		t.Fatalf("Failed to create test file: %v", err)
 	}
 
@@ -205,13 +205,13 @@ func TestManifest_Verify(t *testing.T) {
 
 	// Create a test file
 	postgresDir := filepath.Join(tmpDir, "postgres")
-	if err := os.MkdirAll(postgresDir, 0755); err != nil {
+	if err := os.MkdirAll(postgresDir, 0o750); err != nil {
 		t.Fatalf("Failed to create directory: %v", err)
 	}
 
 	testFile := filepath.Join(postgresDir, "test.dump")
 	content := []byte("test backup data")
-	if err := os.WriteFile(testFile, content, 0644); err != nil {
+	if err := os.WriteFile(testFile, content, 0o600); err != nil {
 		t.Fatalf("Failed to create test file: %v", err)
 	}
 
@@ -238,12 +238,30 @@ func TestManifest_Verify(t *testing.T) {
 	}
 
 	// Modify file - verify should fail
-	if err := os.WriteFile(testFile, []byte("modified"), 0644); err != nil {
+	if err := os.WriteFile(testFile, []byte("modified"), 0o600); err != nil {
 		t.Fatalf("Failed to modify file: %v", err)
 	}
 
 	if err := m.Verify(tmpDir); err == nil {
 		t.Error("Verify should fail after file modification")
+	}
+}
+
+func TestManifest_Verify_RejectsEscapingFilename(t *testing.T) {
+	for _, badName := range []string{"../outside.dump", "volumes/../../outside.dump", "/etc/passwd", "", "."} {
+		t.Run(badName, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			m := NewManifest("1.0.0")
+			m.AddVolume(VolumeBackup{
+				Name:     "test",
+				Type:     BackupTypePostgreSQL,
+				Filename: badName,
+				Size:     1,
+			})
+			if err := m.Verify(tmpDir); err == nil {
+				t.Errorf("expected Verify to reject escaping/invalid filename %q", badName)
+			}
+		})
 	}
 }
 

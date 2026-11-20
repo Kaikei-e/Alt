@@ -33,11 +33,9 @@ type composeVolumesDoc struct {
 
 // composeFileVolumeNames reads a compose YAML file and returns the keys of
 // its top-level volumes: mapping.
-func composeFileVolumeNames(path string) ([]string, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
+func composeFileVolumeNames(t *testing.T, dir, name string) ([]string, error) {
+	t.Helper()
+	data := readFileIn(t, dir, name)
 	var doc composeVolumesDoc
 	if err := yaml.Unmarshal(data, &doc); err != nil {
 		return nil, err
@@ -105,7 +103,7 @@ func TestVolumeUniverse_EveryDBVolumeIsRegisteredOrExcluded(t *testing.T) {
 		if !strings.HasSuffix(name, ".yaml") && !strings.HasSuffix(name, ".yml") {
 			continue
 		}
-		names, err := composeFileVolumeNames(filepath.Join(dir, name))
+		names, err := composeFileVolumeNames(t, dir, name)
 		if err != nil {
 			t.Fatalf("parsing %s: %v", name, err)
 		}
@@ -157,7 +155,7 @@ func TestExcludedDBVolumes_StillReferencedByCompose(t *testing.T) {
 		if !strings.HasSuffix(name, ".yaml") && !strings.HasSuffix(name, ".yml") {
 			continue
 		}
-		names, err := composeFileVolumeNames(filepath.Join(dir, name))
+		names, err := composeFileVolumeNames(t, dir, name)
 		if err != nil {
 			t.Fatalf("parsing %s: %v", name, err)
 		}

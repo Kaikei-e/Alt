@@ -98,9 +98,9 @@ func (p *Printer) Info(format string, args ...interface{}) {
 		return
 	}
 	if p.useColors {
-		color.New(color.FgCyan).Fprintf(p.out, format+"\n", args...)
+		_, _ = color.New(color.FgCyan).Fprintf(p.out, format+"\n", args...)
 	} else {
-		fmt.Fprintf(p.out, format+"\n", args...)
+		_, _ = fmt.Fprintf(p.out, format+"\n", args...)
 	}
 }
 
@@ -110,9 +110,9 @@ func (p *Printer) Success(format string, args ...interface{}) {
 		return
 	}
 	if p.useColors {
-		color.New(color.FgGreen).Fprintf(p.out, "✓ "+format+"\n", args...)
+		_, _ = color.New(color.FgGreen).Fprintf(p.out, "✓ "+format+"\n", args...)
 	} else {
-		fmt.Fprintf(p.out, "[OK] "+format+"\n", args...)
+		_, _ = fmt.Fprintf(p.out, "[OK] "+format+"\n", args...)
 	}
 }
 
@@ -122,18 +122,18 @@ func (p *Printer) Warning(format string, args ...interface{}) {
 		return
 	}
 	if p.useColors {
-		color.New(color.FgYellow).Fprintf(p.err, "⚠ "+format+"\n", args...)
+		_, _ = color.New(color.FgYellow).Fprintf(p.err, "⚠ "+format+"\n", args...)
 	} else {
-		fmt.Fprintf(p.err, "[WARN] "+format+"\n", args...)
+		_, _ = fmt.Fprintf(p.err, "[WARN] "+format+"\n", args...)
 	}
 }
 
 // Error prints an error message
 func (p *Printer) Error(format string, args ...interface{}) {
 	if p.useColors {
-		color.New(color.FgRed).Fprintf(p.err, "✗ "+format+"\n", args...)
+		_, _ = color.New(color.FgRed).Fprintf(p.err, "✗ "+format+"\n", args...)
 	} else {
-		fmt.Fprintf(p.err, "[ERROR] "+format+"\n", args...)
+		_, _ = fmt.Fprintf(p.err, "[ERROR] "+format+"\n", args...)
 	}
 }
 
@@ -142,7 +142,7 @@ func (p *Printer) Print(format string, args ...interface{}) {
 	if p.quiet {
 		return
 	}
-	fmt.Fprintf(p.out, format+"\n", args...)
+	_, _ = fmt.Fprintf(p.out, format+"\n", args...)
 }
 
 // Header prints a section header
@@ -151,10 +151,10 @@ func (p *Printer) Header(title string) {
 		return
 	}
 	if p.useColors {
-		color.New(color.FgWhite, color.Bold).Fprintf(p.out, "\n%s\n", title)
-		color.New(color.FgWhite).Fprintf(p.out, "%s\n", repeatChar('─', len(title)))
+		_, _ = color.New(color.FgWhite, color.Bold).Fprintf(p.out, "\n%s\n", title)
+		_, _ = color.New(color.FgWhite).Fprintf(p.out, "%s\n", repeatChar('─', len(title)))
 	} else {
-		fmt.Fprintf(p.out, "\n%s\n%s\n", title, repeatChar('-', len(title)))
+		_, _ = fmt.Fprintf(p.out, "\n%s\n%s\n", title, repeatChar('-', len(title)))
 	}
 }
 

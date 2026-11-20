@@ -79,7 +79,7 @@ func (c *SovereignClient) do(req *http.Request, respBody interface{}) error {
 	if err != nil {
 		return fmt.Errorf("request %s %s: %w", req.Method, req.URL.Path, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respData, err := io.ReadAll(resp.Body)
 	if err != nil {

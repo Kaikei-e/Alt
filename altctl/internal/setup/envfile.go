@@ -24,12 +24,14 @@ func CreateEnvFile(projectRoot string, force bool) (bool, error) {
 		}
 	}
 
+	// #nosec G304 -- examplePath joins projectRoot with constant ".env.example"
 	content, err := os.ReadFile(examplePath)
 	if err != nil {
 		return false, fmt.Errorf("reading .env.example: %w", err)
 	}
 
-	if err := os.WriteFile(envPath, content, 0644); err != nil {
+	// #nosec G703 -- envPath joins operator-configured projectRoot with constant ".env"
+	if err := os.WriteFile(envPath, content, 0o600); err != nil {
 		return false, fmt.Errorf("writing .env: %w", err)
 	}
 

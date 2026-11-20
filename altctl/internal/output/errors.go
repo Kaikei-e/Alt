@@ -32,20 +32,20 @@ func (e *CLIError) Error() string {
 // FormatError prints a structured error message to stderr
 func (p *Printer) FormatError(e *CLIError) {
 	if p.useColors {
-		color.New(color.FgRed, color.Bold).Fprintf(p.err, "Error: %s\n", e.Summary)
+		_, _ = color.New(color.FgRed, color.Bold).Fprintf(p.err, "Error: %s\n", e.Summary)
 		if e.Detail != "" {
-			fmt.Fprintf(p.err, "  Cause: %s\n", e.Detail)
+			_, _ = fmt.Fprintf(p.err, "  Cause: %s\n", e.Detail)
 		}
 		if e.Suggestion != "" {
-			color.New(color.FgCyan).Fprintf(p.err, "  Suggestion: %s\n", e.Suggestion)
+			_, _ = color.New(color.FgCyan).Fprintf(p.err, "  Suggestion: %s\n", e.Suggestion)
 		}
 	} else {
-		fmt.Fprintf(p.err, "[ERROR] %s\n", e.Summary)
+		_, _ = fmt.Fprintf(p.err, "[ERROR] %s\n", e.Summary)
 		if e.Detail != "" {
-			fmt.Fprintf(p.err, "  Cause: %s\n", e.Detail)
+			_, _ = fmt.Fprintf(p.err, "  Cause: %s\n", e.Detail)
 		}
 		if e.Suggestion != "" {
-			fmt.Fprintf(p.err, "  Suggestion: %s\n", e.Suggestion)
+			_, _ = fmt.Fprintf(p.err, "  Suggestion: %s\n", e.Suggestion)
 		}
 	}
 }

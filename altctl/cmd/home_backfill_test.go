@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestBackfillTriggerCommand(t *testing.T) {
@@ -16,11 +18,13 @@ func TestBackfillTriggerCommand(t *testing.T) {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{
 			"job": map[string]interface{}{
 				"jobId": "job-1", "status": "pending", "projectionVersion": 2,
 			},
-		})
+		}); err != nil {
+			t.Errorf("encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -52,11 +56,13 @@ func TestBackfillStatusCommand(t *testing.T) {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{
 			"job": map[string]interface{}{
 				"jobId": "job-1", "status": "running", "totalEvents": 1000, "processedEvents": 500,
 			},
-		})
+		}); err != nil {
+			t.Errorf("encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -85,7 +91,7 @@ func TestBackfillStatusCommand_RequiresJobID(t *testing.T) {
 	// this reset TestBackfillStatusCommand's --job-id=job-1 would leak in
 	// and this test would exercise the network path instead of the
 	// required-flag guard.
-	backfillStatusCmd.Flags().Set("job-id", "")
+	require.NoError(t, backfillStatusCmd.Flags().Set("job-id", ""))
 
 	rootCmd.SetArgs([]string{"home", "backfill", "status"})
 	err := rootCmd.Execute()
@@ -116,7 +122,9 @@ func TestBackfillPauseCommand(t *testing.T) {
 			t.Errorf("expected jobId job-1, got %v", body["jobId"])
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{})
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{}); err != nil {
+			t.Errorf("encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -139,7 +147,7 @@ func TestBackfillPauseCommand(t *testing.T) {
 
 func TestBackfillPauseCommand_RequiresJobID(t *testing.T) {
 	setupHomeTest(t)
-	backfillPauseCmd.Flags().Set("job-id", "")
+	require.NoError(t, backfillPauseCmd.Flags().Set("job-id", ""))
 
 	rootCmd.SetArgs([]string{"home", "backfill", "pause"})
 	err := rootCmd.Execute()
@@ -166,7 +174,9 @@ func TestBackfillResumeCommand(t *testing.T) {
 			t.Errorf("expected jobId job-1, got %v", body["jobId"])
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{})
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{}); err != nil {
+			t.Errorf("encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -189,7 +199,7 @@ func TestBackfillResumeCommand(t *testing.T) {
 
 func TestBackfillResumeCommand_RequiresJobID(t *testing.T) {
 	setupHomeTest(t)
-	backfillResumeCmd.Flags().Set("job-id", "")
+	require.NoError(t, backfillResumeCmd.Flags().Set("job-id", ""))
 
 	rootCmd.SetArgs([]string{"home", "backfill", "resume"})
 	err := rootCmd.Execute()

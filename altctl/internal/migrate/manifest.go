@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -107,6 +108,7 @@ func (m *Manifest) Save(path string) error {
 
 // LoadManifest reads a manifest from a file
 func LoadManifest(path string) (*Manifest, error) {
+	// #nosec G304 -- path is operator-supplied backup dir joined with ManifestFilename
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("reading manifest: %w", err)
@@ -120,10 +122,30 @@ func LoadManifest(path string) (*Manifest, error) {
 	return &m, nil
 }
 
+// resolveUnderBase joins relPath onto baseDir and rejects any path that escapes baseDir.
+func resolveUnderBase(baseDir, relPath string) (string, error) {
+	if relPath == "" || filepath.IsAbs(relPath) {
+		return "", fmt.Errorf("invalid relative path %q", relPath)
+	}
+	absBase, err := filepath.Abs(baseDir)
+	if err != nil {
+		return "", fmt.Errorf("resolving base directory: %w", err)
+	}
+	target := filepath.Join(absBase, relPath)
+	rel, err := filepath.Rel(absBase, target)
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("path %q escapes base directory %q", relPath, baseDir)
+	}
+	return target, nil
+}
+
 // Verify checks that all backup files exist and have correct checksums
 func (m *Manifest) Verify(backupDir string) error {
 	for _, v := range m.Volumes {
-		filePath := filepath.Join(backupDir, v.Filename)
+		filePath, err := resolveUnderBase(backupDir, v.Filename)
+		if err != nil {
+			return fmt.Errorf("volume %s: %w", v.Name, err)
+		}
 
 		// Check file exists
 		info, err := os.Stat(filePath)
@@ -157,11 +179,12 @@ func (m *Manifest) Verify(backupDir string) error {
 
 // FileChecksum calculates SHA256 checksum of a file
 func FileChecksum(path string) (string, error) {
+	// #nosec G304 -- path is verified under backupDir by resolveUnderBase or internal backup creation
 	f, err := os.Open(path)
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {

@@ -524,6 +524,7 @@ func CompressBackupDir(ctx context.Context, backupDir string) (string, error) {
 
 	// Create the archive owner-only up front so tar never writes it with a
 	// umask-derived mode; tar truncates and keeps the existing mode.
+	// #nosec G304 -- archivePath derives from operator backupDir + ".tar.gz"
 	archiveFile, err := os.OpenFile(archivePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
 		return "", fmt.Errorf("creating archive: %w", err)
@@ -531,18 +532,19 @@ func CompressBackupDir(ctx context.Context, backupDir string) (string, error) {
 	_ = archiveFile.Close()
 
 	// Create tar.gz using OS tar command for efficiency
+	// #nosec G204 -- constant binary "tar" with separate argv elements; no shell
 	cmd := exec.CommandContext(ctx,
 		"tar", "czf", archivePath,
 		"-C", parentDir,
 		dirName,
 	)
 	if output, err := cmd.CombinedOutput(); err != nil {
-		os.Remove(archivePath)
+		_ = os.Remove(archivePath)
 		return "", fmt.Errorf("tar compression failed: %w\n%s", err, string(output))
 	}
 
 	if err := os.Chmod(archivePath, 0600); err != nil {
-		os.Remove(archivePath)
+		_ = os.Remove(archivePath)
 		return "", fmt.Errorf("setting archive permissions: %w", err)
 	}
 
@@ -552,7 +554,7 @@ func CompressBackupDir(ctx context.Context, backupDir string) (string, error) {
 		return "", fmt.Errorf("archive not found after compression: %w", err)
 	}
 	if archiveInfo.Size() == 0 {
-		os.Remove(archivePath)
+		_ = os.Remove(archivePath)
 		return "", fmt.Errorf("archive is empty")
 	}
 

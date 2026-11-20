@@ -4,14 +4,26 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
+
+func readFileIn(t *testing.T, dir, name string) []byte {
+	t.Helper()
+	root, err := os.OpenRoot(dir)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, root.Close()) })
+	b, err := root.ReadFile(name)
+	require.NoError(t, err)
+	return b
+}
 
 func TestCreateEnvFile_CreatesFromExample(t *testing.T) {
 	dir := t.TempDir()
 
 	// Create .env.example
 	example := "POSTGRES_DB=alt\nPOSTGRES_USER=alt_user\n"
-	if err := os.WriteFile(filepath.Join(dir, ".env.example"), []byte(example), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, ".env.example"), []byte(example), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -23,10 +35,7 @@ func TestCreateEnvFile_CreatesFromExample(t *testing.T) {
 		t.Error("expected created=true")
 	}
 
-	content, err := os.ReadFile(filepath.Join(dir, ".env"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	content := readFileIn(t, dir, ".env")
 	if string(content) != example {
 		t.Errorf("expected .env to match .env.example, got %q", content)
 	}
@@ -36,8 +45,8 @@ func TestCreateEnvFile_SkipsExisting(t *testing.T) {
 	dir := t.TempDir()
 
 	// Create .env.example and existing .env
-	os.WriteFile(filepath.Join(dir, ".env.example"), []byte("NEW=value"), 0644)
-	os.WriteFile(filepath.Join(dir, ".env"), []byte("OLD=value"), 0644)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".env.example"), []byte("NEW=value"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".env"), []byte("OLD=value"), 0o600))
 
 	created, err := CreateEnvFile(dir, false)
 	if err != nil {
@@ -48,7 +57,7 @@ func TestCreateEnvFile_SkipsExisting(t *testing.T) {
 	}
 
 	// Should not overwrite
-	content, _ := os.ReadFile(filepath.Join(dir, ".env"))
+	content := readFileIn(t, dir, ".env")
 	if string(content) != "OLD=value" {
 		t.Error("should not overwrite existing .env")
 	}
@@ -57,8 +66,8 @@ func TestCreateEnvFile_SkipsExisting(t *testing.T) {
 func TestCreateEnvFile_ForceOverwrites(t *testing.T) {
 	dir := t.TempDir()
 
-	os.WriteFile(filepath.Join(dir, ".env.example"), []byte("NEW=value"), 0644)
-	os.WriteFile(filepath.Join(dir, ".env"), []byte("OLD=value"), 0644)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".env.example"), []byte("NEW=value"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".env"), []byte("OLD=value"), 0o600))
 
 	created, err := CreateEnvFile(dir, true)
 	if err != nil {
@@ -68,7 +77,7 @@ func TestCreateEnvFile_ForceOverwrites(t *testing.T) {
 		t.Error("expected created=true with force")
 	}
 
-	content, _ := os.ReadFile(filepath.Join(dir, ".env"))
+	content := readFileIn(t, dir, ".env")
 	if string(content) != "NEW=value" {
 		t.Error("force should overwrite .env")
 	}

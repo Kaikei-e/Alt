@@ -2,12 +2,14 @@ package cmd
 
 import (
 	"bytes"
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/alt-project/altctl/internal/output"
 	"github.com/alt-project/altctl/internal/stack"
+	"github.com/stretchr/testify/require"
 )
 
 // --- levenshtein / closestMatches (pure, no registry needed) ---
@@ -180,7 +182,8 @@ func TestResolveRebuildTargets_UnknownArg(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for unknown target, got nil")
 	}
-	cliErr, ok := err.(*output.CLIError)
+	cliErr := &output.CLIError{}
+	ok := errors.As(err, &cliErr)
 	if !ok {
 		t.Fatalf("expected *output.CLIError, got %T: %v", err, err)
 	}
@@ -199,7 +202,8 @@ func TestResolveRebuildTargets_UnknownArg_SuggestsCloseMatch(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for unknown target, got nil")
 	}
-	cliErr, ok := err.(*output.CLIError)
+	cliErr := &output.CLIError{}
+	ok := errors.As(err, &cliErr)
 	if !ok {
 		t.Fatalf("expected *output.CLIError, got %T: %v", err, err)
 	}
@@ -215,8 +219,8 @@ func setupRebuildTest(t *testing.T) {
 	cfg = testConfig(t, []string{"db", "auth", "core", "workers"})
 	dryRun = true
 	quiet = false
-	rebuildCmd.Flags().Set("no-cache", "false")
-	rebuildCmd.Flags().Set("detach", "false")
+	require.NoError(t, rebuildCmd.Flags().Set("no-cache", "false"))
+	require.NoError(t, rebuildCmd.Flags().Set("detach", "false"))
 }
 
 func TestRebuild_DryRun_SpecificService(t *testing.T) {

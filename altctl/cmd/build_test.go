@@ -3,6 +3,8 @@ package cmd
 import (
 	"bytes"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func setupBuildTest(t *testing.T) {
@@ -10,10 +12,10 @@ func setupBuildTest(t *testing.T) {
 	cfg = testConfig(t, []string{"db", "auth", "core", "workers"})
 	dryRun = true
 	quiet = false
-	buildCmd.Flags().Set("no-deps", "false")
-	buildCmd.Flags().Set("no-cache", "false")
-	buildCmd.Flags().Set("pull", "false")
-	buildCmd.Flags().Set("progress", "auto")
+	require.NoError(t, buildCmd.Flags().Set("no-deps", "false"))
+	require.NoError(t, buildCmd.Flags().Set("no-cache", "false"))
+	require.NoError(t, buildCmd.Flags().Set("pull", "false"))
+	require.NoError(t, buildCmd.Flags().Set("progress", "auto"))
 }
 
 func TestBuild_DefaultStacks(t *testing.T) {

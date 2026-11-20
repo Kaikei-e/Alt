@@ -16,12 +16,14 @@ func TestStorageCommand(t *testing.T) {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{
 			"tables": []map[string]interface{}{
 				{"name": "knowledge_events", "total_size": "1.1 GB", "table_size": "760 MB", "index_size": "340 MB", "row_count": 786652},
 				{"name": "knowledge_home_items", "total_size": "50 MB", "table_size": "40 MB", "index_size": "10 MB", "row_count": 122297},
 			},
-		})
+		}); err != nil {
+			t.Errorf("encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -46,7 +48,9 @@ func TestStorageCommand_NoTables(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"tables": []map[string]interface{}{}})
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{"tables": []map[string]interface{}{}}); err != nil {
+			t.Errorf("encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 

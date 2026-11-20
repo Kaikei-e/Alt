@@ -40,10 +40,10 @@ func main() {
 			os.Exit(cliErr.ExitCode)
 		}
 		if ctx.Err() != nil {
-			os.Stderr.WriteString("\ninterrupted — stack may be partially started; run altctl doctor\n")
+			_, _ = os.Stderr.WriteString("\ninterrupted — stack may be partially started; run altctl doctor\n")
 			os.Exit(output.ExitGeneral)
 		}
-		os.Stderr.WriteString("Error: " + err.Error() + "\n")
+		_, _ = os.Stderr.WriteString("Error: " + err.Error() + "\n")
 		os.Exit(1)
 	}
 }

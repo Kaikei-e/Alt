@@ -36,6 +36,7 @@ type composeFileDoc struct {
 // how base.yaml (shared resources only) and compose.yaml (the include-only
 // aggregate) are distinguished from real stacks.
 func composeFileServices(path string) ([]string, error) {
+	// #nosec G304 -- path is a compose YAML file inside configured composeDir
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("reading compose file %s: %w", path, err)
@@ -74,6 +75,7 @@ type composeIncludeDoc struct {
 // spec also allows `- path: foo.yaml` mappings, which is handled too for
 // robustness even though it isn't exercised today.
 func composeFileIncludes(path string) ([]string, error) {
+	// #nosec G304 -- path is a compose YAML file inside configured composeDir
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("reading compose file %s: %w", path, err)
@@ -96,6 +98,8 @@ func composeFileIncludes(path string) ([]string, error) {
 					out = append(out, item.Content[i+1].Value)
 				}
 			}
+		default:
+			// Ignore non-scalar, non-mapping YAML nodes.
 		}
 	}
 	return out, nil

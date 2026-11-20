@@ -38,7 +38,8 @@ func TestMigrator_Backup_CreatesOnlyOwnerOnlyPathsAndNoArgvSecrets(t *testing.T)
 	argvLog := filepath.Join(t.TempDir(), "argv.log")
 	script := "#!/usr/bin/env sh\necho \"$@\" >> " + argvLog + "\n" +
 		"if [ \"$1\" = \"exec\" ]; then printf 'PGDMP-fake-content'; exit 0; fi\nexit 1\n"
-	if err := os.WriteFile(filepath.Join(binDir, "docker"), []byte(script), 0o755); err != nil {
+	// #nosec G306 -- executable fake docker script for test PATH
+	if err := os.WriteFile(filepath.Join(binDir, "docker"), []byte(script), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", binDir+":"+os.Getenv("PATH"))
@@ -76,10 +77,7 @@ func TestMigrator_Backup_CreatesOnlyOwnerOnlyPathsAndNoArgvSecrets(t *testing.T)
 		}
 	}
 
-	argv, err := os.ReadFile(argvLog)
-	if err != nil {
-		t.Fatal(err)
-	}
+	argv := readFileIn(t, filepath.Dir(argvLog), filepath.Base(argvLog))
 	if strings.Contains(strings.ToLower(string(argv)), "password") || strings.Contains(string(argv), "PGPASS") {
 		t.Errorf("a child process received a credential on its command line:\n%s", argv)
 	}

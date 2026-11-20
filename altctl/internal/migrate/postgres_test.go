@@ -70,7 +70,7 @@ func TestPostgresBackuper_RestoreDryRun(t *testing.T) {
 
 	// Create a dummy file to restore from
 	inputPath := filepath.Join(t.TempDir(), "test.dump")
-	if err := os.WriteFile(inputPath, []byte("test"), 0644); err != nil {
+	if err := os.WriteFile(inputPath, []byte("test"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -239,7 +239,8 @@ func TestPostgresBackuper_Backup_Permissions0700And0600(t *testing.T) {
 	binDir := t.TempDir()
 	fakeDocker := filepath.Join(binDir, "docker")
 	script := "#!/usr/bin/env sh\nprintf 'PGDMP-fake-content'\n"
-	if err := os.WriteFile(fakeDocker, []byte(script), 0o755); err != nil {
+	// #nosec G306 -- executable fake docker script for test PATH
+	if err := os.WriteFile(fakeDocker, []byte(script), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", binDir+":"+os.Getenv("PATH"))
@@ -299,7 +300,8 @@ if [ "$1" = "run" ]; then
 fi
 exit 1
 `
-	if err := os.WriteFile(fakeDocker, []byte(script), 0o755); err != nil {
+	// #nosec G306 -- executable fake docker script for test PATH
+	if err := os.WriteFile(fakeDocker, []byte(script), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", binDir+":"+os.Getenv("PATH"))

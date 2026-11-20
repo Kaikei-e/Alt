@@ -15,7 +15,7 @@ func TestHomeFlagsCommand(t *testing.T) {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{
 			"enableHomePage":      true,
 			"enableTracking":      true,
 			"enableProjectionV2":  false,
@@ -24,7 +24,9 @@ func TestHomeFlagsCommand(t *testing.T) {
 			"enableLens":          true,
 			"enableStreamUpdates": true,
 			"enableSupersedeUx":   false,
-		})
+		}); err != nil {
+			t.Errorf("encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 

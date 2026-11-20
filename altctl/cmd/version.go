@@ -28,8 +28,8 @@ var versionCmd = &cobra.Command{
 		jsonOutput, _ := cmd.Flags().GetBool("json")
 
 		if short {
-			fmt.Fprintln(cmd.OutOrStdout(), version)
-			return nil
+			_, err := fmt.Fprintln(cmd.OutOrStdout(), version)
+			return err
 		}
 
 		if jsonOutput {
@@ -46,11 +46,17 @@ var versionCmd = &cobra.Command{
 		}
 
 		w := cmd.OutOrStdout()
-		fmt.Fprintf(w, "altctl version %s\n", version)
-		fmt.Fprintf(w, "  commit:     %s\n", commit)
-		fmt.Fprintf(w, "  built:      %s\n", buildTime)
-		fmt.Fprintf(w, "  go version: %s\n", runtime.Version())
-		fmt.Fprintf(w, "  platform:   %s/%s\n", runtime.GOOS, runtime.GOARCH)
+		for _, line := range []string{
+			fmt.Sprintf("altctl version %s\n", version),
+			fmt.Sprintf("  commit:     %s\n", commit),
+			fmt.Sprintf("  built:      %s\n", buildTime),
+			fmt.Sprintf("  go version: %s\n", runtime.Version()),
+			fmt.Sprintf("  platform:   %s/%s\n", runtime.GOOS, runtime.GOARCH),
+		} {
+			if _, err := fmt.Fprint(w, line); err != nil {
+				return err
+			}
+		}
 		return nil
 	},
 }

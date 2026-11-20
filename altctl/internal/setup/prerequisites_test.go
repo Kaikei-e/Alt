@@ -5,7 +5,7 @@ import (
 )
 
 func TestCheckPrerequisites_ReturnsResults(t *testing.T) {
-	results := CheckPrerequisites()
+	results := CheckPrerequisites(t.Context())
 
 	if len(results) < 3 {
 		t.Fatalf("expected at least 3 check results, got %d", len(results))

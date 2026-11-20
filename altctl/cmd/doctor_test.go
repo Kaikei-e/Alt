@@ -2,10 +2,12 @@ package cmd
 
 import (
 	"bytes"
+	"errors"
 	"testing"
 
 	"github.com/alt-project/altctl/internal/doctor"
 	"github.com/alt-project/altctl/internal/output"
+	"github.com/stretchr/testify/require"
 )
 
 func setupDoctorTest(t *testing.T) {
@@ -13,8 +15,8 @@ func setupDoctorTest(t *testing.T) {
 	cfg = testConfig(t, []string{"db", "auth", "core", "workers"})
 	dryRun = false
 	quiet = false
-	doctorCmd.Flags().Set("json", "false")
-	doctorCmd.Flags().Set("tail", "30")
+	require.NoError(t, doctorCmd.Flags().Set("json", "false"))
+	require.NoError(t, doctorCmd.Flags().Set("tail", "30"))
 }
 
 // An unknown stack name is rejected before doctor ever shells out to
@@ -72,7 +74,8 @@ func TestDoctorExitError_DockerUnreachable(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected an error when docker is unreachable")
 	}
-	cliErr, ok := err.(*output.CLIError)
+	cliErr := &output.CLIError{}
+	ok := errors.As(err, &cliErr)
 	if !ok {
 		t.Fatalf("expected *output.CLIError, got %T", err)
 	}
@@ -93,7 +96,8 @@ func TestDoctorExitError_ProblemsFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected an error when problems were found")
 	}
-	cliErr, ok := err.(*output.CLIError)
+	cliErr := &output.CLIError{}
+	ok := errors.As(err, &cliErr)
 	if !ok {
 		t.Fatalf("expected *output.CLIError, got %T", err)
 	}

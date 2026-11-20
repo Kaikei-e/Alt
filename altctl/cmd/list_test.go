@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/alt-project/altctl/internal/stack"
+	"github.com/stretchr/testify/require"
 )
 
 func setupListTest(t *testing.T) {
@@ -14,9 +15,9 @@ func setupListTest(t *testing.T) {
 	cfg = testConfig(t, []string{"db", "auth", "core", "workers"})
 	dryRun = false
 	quiet = false
-	listCmd.Flags().Set("services", "false")
-	listCmd.Flags().Set("deps", "false")
-	listCmd.Flags().Set("json", "false")
+	require.NoError(t, listCmd.Flags().Set("services", "false"))
+	require.NoError(t, listCmd.Flags().Set("deps", "false"))
+	require.NoError(t, listCmd.Flags().Set("json", "false"))
 }
 
 func TestList_Default(t *testing.T) {

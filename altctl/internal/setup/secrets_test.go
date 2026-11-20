@@ -139,10 +139,7 @@ func TestDefaultSecretSpecs_MqhubAuthTokenIsRandom(t *testing.T) {
 // provisioner password for, or the instruction silently does nothing.
 func TestPKIBootstrapScript_ProvisionsEveryComposeSubject(t *testing.T) {
 	repoRoot := filepath.Dir(filepath.Dir(repoBaseComposeFile(t)))
-	script, err := os.ReadFile(filepath.Join(repoRoot, PKIBootstrapScript))
-	if err != nil {
-		t.Fatalf("reading %s: %v", PKIBootstrapScript, err)
-	}
+	script := readFileIn(t, repoRoot, PKIBootstrapScript)
 
 	subjects := map[string]bool{}
 	inArray := false
@@ -314,7 +311,7 @@ secrets:
   postgres_password:
     file: ../secrets/postgres_password.txt
 `
-	if err := os.WriteFile(fakeBase, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(fakeBase, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -327,6 +324,22 @@ secrets:
 	}
 }
 
+func TestDeriveSecretSpecs_RejectsInvalidSecretBasename(t *testing.T) {
+	for _, badFile := range []string{"..", ".", "/"} {
+		t.Run(badFile, func(t *testing.T) {
+			fakeBase := filepath.Join(t.TempDir(), "base.yaml")
+			content := "secrets:\n  bad:\n    file: " + badFile + "\n"
+			if err := os.WriteFile(fakeBase, []byte(content), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			_, err := DeriveSecretSpecs(fakeBase)
+			if err == nil || !strings.Contains(err.Error(), "invalid secret file path") {
+				t.Fatalf("expected invalid secret file path error for %q, got %v", badFile, err)
+			}
+		})
+	}
+}
+
 func TestDeriveSecretSpecs_PKIAgentSecretIsPKIProvisioner(t *testing.T) {
 	dir := t.TempDir()
 	fakeBase := filepath.Join(dir, "base.yaml")
@@ -335,7 +348,7 @@ secrets:
   pki-agent-some-new-service-jwk:
     file: ../secrets/pki-agent-some-new-service-jwk.txt
 `
-	if err := os.WriteFile(fakeBase, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(fakeBase, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -376,7 +389,7 @@ func TestDefaultSecretSpecs_ErrorsWhenBaseComposeFileNotFound(t *testing.T) {
 func TestDeriveSecretSpecs_MissingSecretsBlock(t *testing.T) {
 	dir := t.TempDir()
 	fakeBase := filepath.Join(dir, "base.yaml")
-	if err := os.WriteFile(fakeBase, []byte("name: alt\nnetworks:\n  alt-network:\n"), 0644); err != nil {
+	if err := os.WriteFile(fakeBase, []byte("name: alt\nnetworks:\n  alt-network:\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -403,19 +416,13 @@ func TestGenerateSecrets_CreatesFiles(t *testing.T) {
 	}
 
 	// Auto-generated file should have content
-	content, err := os.ReadFile(filepath.Join(dir, "test_password.txt"))
-	if err != nil {
-		t.Fatalf("reading auto-generated secret: %v", err)
-	}
+	content := readFileIn(t, dir, "test_password.txt")
 	if len(content) == 0 {
 		t.Error("auto-generated secret should not be empty")
 	}
 
 	// Optional file should be empty
-	content, err = os.ReadFile(filepath.Join(dir, "test_token.txt"))
-	if err != nil {
-		t.Fatalf("reading optional secret: %v", err)
-	}
+	content = readFileIn(t, dir, "test_token.txt")
 	if len(content) != 0 {
 		t.Error("optional secret should be empty")
 	}
@@ -435,7 +442,7 @@ func TestGenerateSecrets_Idempotent(t *testing.T) {
 	}
 
 	// Read the generated value
-	original, _ := os.ReadFile(filepath.Join(dir, "test_password.txt"))
+	original := readFileIn(t, dir, "test_password.txt")
 
 	// Second run - should skip
 	result, err := GenerateSecrets(dir, specs, false)
@@ -448,7 +455,7 @@ func TestGenerateSecrets_Idempotent(t *testing.T) {
 	}
 
 	// Value should be unchanged
-	after, _ := os.ReadFile(filepath.Join(dir, "test_password.txt"))
+	after := readFileIn(t, dir, "test_password.txt")
 	if string(original) != string(after) {
 		t.Error("idempotent run should not change existing secret")
 	}
@@ -463,7 +470,7 @@ func TestGenerateSecrets_ForceOverwrites(t *testing.T) {
 
 	// First run
 	_, _ = GenerateSecrets(dir, specs, false)
-	original, _ := os.ReadFile(filepath.Join(dir, "test_password.txt"))
+	original := readFileIn(t, dir, "test_password.txt")
 
 	// Force run
 	result, err := GenerateSecrets(dir, specs, true)
@@ -475,7 +482,7 @@ func TestGenerateSecrets_ForceOverwrites(t *testing.T) {
 		t.Errorf("expected 1 created (force), got %d", len(result.Created))
 	}
 
-	after, _ := os.ReadFile(filepath.Join(dir, "test_password.txt"))
+	after := readFileIn(t, dir, "test_password.txt")
 	if string(original) == string(after) {
 		t.Error("force should generate a new value")
 	}
@@ -565,12 +572,13 @@ func TestGenerateSecrets_NeverWritesPKIProvisionerSecret(t *testing.T) {
 // registered in step-ca.
 func TestGenerateSecrets_ForceLeavesNonRandomSecretsAlone(t *testing.T) {
 	dir := t.TempDir()
+	// #nosec G101 -- synthetic test fixture values, not real credentials
 	keep := map[string]string{
 		"hugging_face_token.txt":        "hf_operator_value",
 		"pki-agent-alt-backend-jwk.txt": "registered-provisioner-password",
 	}
 	for name, value := range keep {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(value), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(value), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -583,10 +591,7 @@ func TestGenerateSecrets_ForceLeavesNonRandomSecretsAlone(t *testing.T) {
 		t.Fatalf("GenerateSecrets: %v", err)
 	}
 	for name, want := range keep {
-		got, err := os.ReadFile(filepath.Join(dir, name))
-		if err != nil {
-			t.Fatalf("reading %s: %v", name, err)
-		}
+		got := readFileIn(t, dir, name)
 		if string(got) != want {
 			t.Errorf("%s was rewritten by --force: got %q, want %q", name, got, want)
 		}
@@ -616,9 +621,11 @@ func TestGenerateSecrets_CreatesGroupReadableDirectory(t *testing.T) {
 
 func TestGenerateSecrets_TightensExistingDirectoryTo0750(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "secrets")
+	// #nosec G301 -- test intentionally creates 0755 dir to verify tightening to 0750
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	// #nosec G302 -- test intentionally sets 0755 dir mode to verify tightening to 0750
 	if err := os.Chmod(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -654,7 +661,7 @@ func TestFindPendingSecrets(t *testing.T) {
 		"generated_password.txt":     "random",
 	}
 	for name, value := range files {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(value), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(value), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -689,11 +696,7 @@ func TestFindPendingSecrets(t *testing.T) {
 
 func TestEnvTemplate_NoInsecureKratosLiteralSecrets(t *testing.T) {
 	repoRoot := filepath.Dir(filepath.Dir(repoBaseComposeFile(t)))
-	envTemplatePath := filepath.Join(repoRoot, ".env.template")
-	data, err := os.ReadFile(envTemplatePath)
-	if err != nil {
-		t.Fatalf("reading .env.template: %v", err)
-	}
+	data := readFileIn(t, repoRoot, ".env.template")
 	content := string(data)
 	for _, insecure := range []string{
 		"0123456789abcdef0123456789abcdef",
@@ -710,6 +713,7 @@ func TestKratosEntrypoint_RejectsInsecureOrShortSecrets(t *testing.T) {
 	entrypoint := filepath.Join(repoRoot, "kratos", "entrypoint.sh")
 	templateFile := filepath.Join(repoRoot, "kratos", "kratos_template.yml")
 
+	// #nosec G101 -- synthetic test inputs for Kratos entrypoint secret-rejection tests
 	cases := []struct {
 		name         string
 		cookieSecret string
@@ -778,7 +782,8 @@ func TestKratosEntrypoint_RejectsInsecureOrShortSecrets(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			cmd := exec.Command("/bin/sh", entrypoint, "true")
+			// #nosec G204 -- constant "/bin/sh" running repo kratos/entrypoint.sh without -c shell interpolation
+			cmd := exec.CommandContext(t.Context(), "/bin/sh", entrypoint, "true")
 			cmd.Env = append(os.Environ(),
 				"KRATOS_DB_PASSWORD_FILE="+dbPassFile,
 				"KRATOS_COOKIE_SECRET_FILE="+cookieFile,
@@ -813,10 +818,7 @@ func keyPairSpecs() []SecretSpec {
 
 func readKeyPair(t *testing.T, dir string) (ed25519.PrivateKey, ed25519.PublicKey) {
 	t.Helper()
-	privPEM, err := os.ReadFile(filepath.Join(dir, backendTokenSigningKeyFile))
-	if err != nil {
-		t.Fatalf("read signing key: %v", err)
-	}
+	privPEM := readFileIn(t, dir, backendTokenSigningKeyFile)
 	block, _ := pem.Decode(privPEM)
 	if block == nil || block.Type != "PRIVATE KEY" {
 		t.Fatalf("signing key is not a PKCS#8 PRIVATE KEY PEM block")
@@ -829,10 +831,7 @@ func readKeyPair(t *testing.T, dir string) (ed25519.PrivateKey, ed25519.PublicKe
 	if !ok {
 		t.Fatalf("signing key is %T, want ed25519.PrivateKey", parsed)
 	}
-	pubPEM, err := os.ReadFile(filepath.Join(dir, backendTokenVerifyKeyFile))
-	if err != nil {
-		t.Fatalf("read verify key: %v", err)
-	}
+	pubPEM := readFileIn(t, dir, backendTokenVerifyKeyFile)
 	block, _ = pem.Decode(pubPEM)
 	if block == nil || block.Type != "PUBLIC KEY" {
 		t.Fatalf("verify key is not an SPKI PUBLIC KEY PEM block")
@@ -851,7 +850,7 @@ func readKeyPair(t *testing.T, dir string) (ed25519.PrivateKey, ed25519.PublicKe
 func TestDeriveSecretSpecs_BackendTokenKeyPair(t *testing.T) {
 	fakeBase := filepath.Join(t.TempDir(), "base.yaml")
 	body := "secrets:\n  a:\n    file: ../secrets/" + backendTokenSigningKeyFile + "\n  b:\n    file: ../secrets/" + backendTokenVerifyKeyFile + "\n"
-	if err := os.WriteFile(fakeBase, []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(fakeBase, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	specs, err := DeriveSecretSpecs(fakeBase)
@@ -925,13 +924,13 @@ func TestGenerateSecrets_HalfPresentKeyPairIsAnError(t *testing.T) {
 		t.Run(present, func(t *testing.T) {
 			dir := t.TempDir()
 			path := filepath.Join(dir, present)
-			if err := os.WriteFile(path, []byte("existing"), 0o644); err != nil {
+			if err := os.WriteFile(path, []byte("existing"), 0o600); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := GenerateSecrets(dir, keyPairSpecs(), false); err == nil {
 				t.Fatal("GenerateSecrets succeeded with a half-present key pair")
 			}
-			got, _ := os.ReadFile(path)
+			got := readFileIn(t, dir, present)
 			if string(got) != "existing" {
 				t.Errorf("existing key file was modified: %q", got)
 			}

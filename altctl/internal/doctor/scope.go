@@ -23,6 +23,7 @@ type composeIncludeDoc struct {
 // spec also allows `- path: foo.yaml` mappings, which is handled too for
 // robustness even though it isn't exercised today.
 func readComposeIncludes(path string) ([]string, error) {
+	// #nosec G304 -- path joins configured composeDir with constant aggregate compose filename
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -45,6 +46,8 @@ func readComposeIncludes(path string) ([]string, error) {
 					out = append(out, item.Content[i+1].Value)
 				}
 			}
+		default:
+			// Ignore non-scalar, non-mapping YAML nodes.
 		}
 	}
 	return out, nil

@@ -72,6 +72,7 @@ func runSeed(cmd *cobra.Command, args []string) error {
 	client := newComposeClient()
 
 	// Read seed file and pipe it to psql via docker compose exec
+	// #nosec G304 -- fullPath joins project root with allowlisted seedProfiles entry
 	seedSQL, err := os.ReadFile(fullPath)
 	if err != nil {
 		return fmt.Errorf("reading seed file: %w", err)

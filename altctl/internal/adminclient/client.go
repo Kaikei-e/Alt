@@ -78,7 +78,7 @@ func (c *AdminClient) Call(ctx context.Context, method string, reqBody, respBody
 	if err != nil {
 		return fmt.Errorf("request %s: %w", method, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respData, err := io.ReadAll(resp.Body)
 	if err != nil {
