@@ -97,7 +97,7 @@ def test_consumer_config_from_env_carries_the_resolved_password(
 
     config = ConsumerConfig.from_env()
 
-    assert config.redis_password == "from-env-password"
+    assert config.redis_password == "from-env-password"  # noqa: S105 - test fixture value, not a credential
 
 
 def test_consumer_config_tags_stream_from_env_carries_the_resolved_password(
@@ -110,7 +110,7 @@ def test_consumer_config_tags_stream_from_env_carries_the_resolved_password(
 
     config = ConsumerConfig.tags_stream_from_env()
 
-    assert config.redis_password == "from-tags-env-password"
+    assert config.redis_password == "from-tags-env-password"  # noqa: S105 - test fixture value, not a credential
 
 
 def test_build_redis_client_authenticates_with_the_resolved_password(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -123,10 +123,10 @@ def test_build_redis_client_authenticates_with_the_resolved_password(monkeypatch
 
     monkeypatch.setattr(redis, "from_url", fake_from_url)
 
-    config = ConsumerConfig(enabled=True, redis_password="hunter2")
+    config = ConsumerConfig(enabled=True, redis_password="hunter2")  # noqa: S106 - test fixture value, not a credential
     build_redis_client(config, socket_timeout_seconds=15.0)
 
-    assert captured["password"] == "hunter2"
+    assert captured["password"] == "hunter2"  # noqa: S105 - test fixture value, not a credential
     assert captured["url"] == config.redis_url
 
 

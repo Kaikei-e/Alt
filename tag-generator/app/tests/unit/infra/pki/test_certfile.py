@@ -1,7 +1,5 @@
 """Atomic cert/key install with journal recovery and pair checks."""
 
-# ruff: noqa: TRY003
-
 from __future__ import annotations
 
 import json
@@ -82,7 +80,8 @@ def test_write_rolls_back_when_cert_rename_fails(tmp_path: Path, monkeypatch: py
 
     def _boom(src: Path, dst: Path) -> None:
         if dst == files.cert_path and src.name.startswith(".pki-enroll-"):
-            raise OSError("injected cert rename failure")
+            msg = "injected cert rename failure"
+            raise OSError(msg)
         real(src, dst)
 
     monkeypatch.setattr(certfile_mod, "atomic_replace", _boom)

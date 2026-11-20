@@ -90,7 +90,7 @@ async def test_start_with_enabled_enrolls_and_stops(tmp_path: Path, monkeypatch:
         ca_url="https://127.0.0.1:1",
         root_file=str(tmp_path / "root.pem"),
         provisioner="pki-agent-tag-generator",
-        password_file="/run/secrets/pki-agent-tag-generator-jwk",
+        password_file="/run/secrets/pki-agent-tag-generator-jwk",  # noqa: S106 - test fixture value, not a credential
         renew_at_fraction=0.66,
         tick_interval_seconds=3600,
         retry_backoff_seconds=0.001,

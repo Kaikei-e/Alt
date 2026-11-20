@@ -5,8 +5,6 @@ Run:
 Cleanup is guaranteed (60s budget).
 """
 
-# ruff: noqa: ASYNC221, TRY300, PLR0915
-
 from __future__ import annotations
 
 import os
@@ -36,15 +34,19 @@ LIVE_IMAGE = "smallstep/step-ca:0.30.2"
 LIVE_CONTAINER = "alt-pki-taggen-itest"
 LIVE_NETWORK = "alt-pki-taggen-itest-net"
 LIVE_HOST_PORT = "19011"
-LIVE_CA_PASSWORD = "itest-only"
-LIVE_JWK_PASSWORD = "itest-jwk-tag-generator"
+LIVE_CA_PASSWORD = "itest-only"  # noqa: S105 - test fixture value, not a credential
+LIVE_JWK_PASSWORD = "itest-jwk-tag-generator"  # noqa: S105 - test fixture value, not a credential
 LIVE_PROVISIONER = "pki-agent-tag-generator"
 LIVE_SUBJECT = "tag-generator"
 
 
 def _docker(*args: str, timeout: float = 20) -> str:
-    result = subprocess.run(
-        ["docker", *args],
+    docker = shutil.which("docker")
+    if docker is None:
+        msg = "docker executable not found"
+        raise FileNotFoundError(msg)
+    result = subprocess.run(  # noqa: S603 - fixed argv built in this test
+        [docker, *args],
         check=False,
         capture_output=True,
         text=True,
@@ -56,16 +58,17 @@ def _docker(*args: str, timeout: float = 20) -> str:
 
 
 @pytest.mark.asyncio
-async def test_native_issuer_disposable_live_ca(tmp_path: Path) -> None:
-    if shutil.which("docker") is None:
+async def test_native_issuer_disposable_live_ca(tmp_path: Path) -> None:  # noqa: PLR0915 - sequential end-to-end live CA lifecycle test
+    docker = shutil.which("docker")
+    if docker is None:
         pytest.fail("docker is required for the live gate")
 
-    subprocess.run(["docker", "rm", "-f", LIVE_CONTAINER], check=False, capture_output=True)
-    subprocess.run(["docker", "network", "rm", LIVE_NETWORK], check=False, capture_output=True)
+    subprocess.run([docker, "rm", "-f", LIVE_CONTAINER], check=False, capture_output=True)  # noqa: ASYNC221, S603 - test helper; blocking is acceptable here and fixed argv built in this test
+    subprocess.run([docker, "network", "rm", LIVE_NETWORK], check=False, capture_output=True)  # noqa: ASYNC221, S603 - test helper; blocking is acceptable here and fixed argv built in this test
 
-    def _cleanup() -> None:
-        subprocess.run(["docker", "rm", "-f", LIVE_CONTAINER], check=False, capture_output=True)
-        subprocess.run(["docker", "network", "rm", LIVE_NETWORK], check=False, capture_output=True)
+    def _cleanup(docker_bin: str = docker) -> None:
+        subprocess.run([docker_bin, "rm", "-f", LIVE_CONTAINER], check=False, capture_output=True)  # noqa: S603 - fixed argv built in this test
+        subprocess.run([docker_bin, "network", "rm", LIVE_NETWORK], check=False, capture_output=True)  # noqa: S603 - fixed argv built in this test
 
     watchdog = threading.Timer(60, _cleanup)
     watchdog.daemon = True
@@ -160,10 +163,11 @@ def _wait_root(dest: Path) -> None:
         try:
             _docker("exec", LIVE_CONTAINER, "test", "-f", "/home/step/certs/root_ca.crt")
             _docker("cp", f"{LIVE_CONTAINER}:/home/step/certs/root_ca.crt", str(dest))
-            return
         except RuntimeError as err:
             last = str(err)
             time.sleep(0.2)
+        else:
+            return
     logs = ""
     try:
         logs = _docker("logs", LIVE_CONTAINER)

@@ -52,7 +52,7 @@ def test_load_config_enabled_subject_scoped_defaults(monkeypatch: pytest.MonkeyP
     monkeypatch.setenv("CERT_SUBJECT", "tag-generator")
     cfg = load_config("tag-generator")
     assert cfg.provisioner == "pki-agent-tag-generator"
-    assert cfg.password_file == "/run/secrets/pki-agent-tag-generator-jwk"
+    assert cfg.password_file == "/run/secrets/pki-agent-tag-generator-jwk"  # noqa: S105 - test fixture value, not a credential
 
 
 def test_load_config_distinct_subjects_do_not_share_identity(monkeypatch: pytest.MonkeyPatch) -> None:

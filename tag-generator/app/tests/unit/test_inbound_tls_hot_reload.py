@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import shutil
 import socket
 import ssl
 import subprocess
@@ -31,13 +32,21 @@ from tag_generator.infra.inbound_tls import (
 )
 
 
+def _openssl() -> str:
+    exe = shutil.which("openssl")
+    if exe is None:
+        msg = "openssl executable not found"
+        raise FileNotFoundError(msg)
+    return exe
+
+
 def _write_leaf(dir_path: Path, cn: str, days: int) -> tuple[Path, Path, Path]:
     """Self-signed leaf used as both server cert and trust anchor."""
     cert_path = dir_path / f"{cn}-{days}d-cert.pem"
     key_path = dir_path / f"{cn}-{days}d-key.pem"
-    subprocess.run(
+    subprocess.run(  # noqa: S603 - fixed argv built in this test
         [
-            "openssl",
+            _openssl(),
             "req",
             "-x509",
             "-newkey",
@@ -70,8 +79,8 @@ def _atomic_replace(dest: Path, src: Path) -> None:
 
 def _not_after_from_der(der: bytes) -> str:
     pem = ssl.DER_cert_to_PEM_cert(der)
-    out = subprocess.run(
-        ["openssl", "x509", "-noout", "-enddate"],
+    out = subprocess.run(  # noqa: S603 - fixed argv built in this test
+        [_openssl(), "x509", "-noout", "-enddate"],
         input=pem,
         check=True,
         capture_output=True,

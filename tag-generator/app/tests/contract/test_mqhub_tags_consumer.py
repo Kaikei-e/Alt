@@ -39,7 +39,7 @@ REPLY_TO = "alt:replies:tags:7c9e6679-7425-40de-944b-e07fc1f90ae7"
 # The key shape tag-generator answers; any other reply_to is dropped unanswered,
 # so the pact holds mq-hub to it rather than to "some string".
 REPLY_TO_PATTERN = f"^{_REPLY_STREAM_KEY.pattern}$"
-TEST_REDIS_PASSWORD = "contract-test-redis-password"
+TEST_REDIS_PASSWORD = "contract-test-redis-password"  # noqa: S105 - test fixture value, not a credential
 
 
 @pytest.fixture(autouse=True)

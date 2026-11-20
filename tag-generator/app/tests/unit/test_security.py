@@ -25,22 +25,22 @@ class TestSensitiveDataFilter:
     def test_redacts_password_key(self) -> None:
         event = {"event": "test", "password": "secret123"}
         result = filter_sensitive_data(None, "", event)
-        assert result["password"] == "***REDACTED***"
+        assert result["password"] == "***REDACTED***"  # noqa: S105 - test fixture value, not a credential
 
     def test_redacts_key_containing_password(self) -> None:
         event = {"event": "test", "db_password": "secret123"}
         result = filter_sensitive_data(None, "", event)
-        assert result["db_password"] == "***REDACTED***"
+        assert result["db_password"] == "***REDACTED***"  # noqa: S105 - test fixture value, not a credential
 
     def test_redacts_token_key(self) -> None:
         event = {"event": "test", "auth_token": "tok-abc"}
         result = filter_sensitive_data(None, "", event)
-        assert result["auth_token"] == "***REDACTED***"
+        assert result["auth_token"] == "***REDACTED***"  # noqa: S105 - test fixture value, not a credential
 
     def test_redacts_secret_key(self) -> None:
         event = {"event": "test", "client_secret": "xyz"}
         result = filter_sensitive_data(None, "", event)
-        assert result["client_secret"] == "***REDACTED***"
+        assert result["client_secret"] == "***REDACTED***"  # noqa: S105 - test fixture value, not a credential
 
     def test_redacts_dsn_key(self) -> None:
         event = {"event": "test", "database_dsn": "postgresql://user:pass@host/db"}
@@ -61,7 +61,7 @@ class TestSensitiveDataFilter:
         event = {"event": "test", "API_KEY": "ak-123", "Password": "secret"}
         result = filter_sensitive_data(None, "", event)
         assert result["API_KEY"] == "***REDACTED***"
-        assert result["Password"] == "***REDACTED***"
+        assert result["Password"] == "***REDACTED***"  # noqa: S105 - test fixture value, not a credential
 
     def test_preserves_non_sensitive_keys(self) -> None:
         event = {"event": "test", "article_id": "a-1", "level": "info"}
@@ -88,7 +88,7 @@ class TestSensitiveDataFilter:
         try:
             setup_logging(enable_otel=False)
             logger = structlog.get_logger("security_test")
-            logger.info("db_connect", password="supersecret", host="localhost")
+            logger.info("db_connect", password="supersecret", host="localhost")  # noqa: S106 - test fixture value, not a credential
             output = captured.getvalue()
         finally:
             sys.stdout = old_stdout

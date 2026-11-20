@@ -8,6 +8,7 @@ rejected at handshake and never reaches the app.
 from __future__ import annotations
 
 import json
+import shutil
 import ssl
 import subprocess
 from http import HTTPStatus
@@ -28,12 +29,20 @@ from tag_generator.infra.inbound_tls import (
 from tag_generator.infra.peer_identity import PEER_IDENTITY_HEADER, PeerIdentityMiddleware
 
 
+def _openssl() -> str:
+    exe = shutil.which("openssl")
+    if exe is None:
+        msg = "openssl executable not found"
+        raise FileNotFoundError(msg)
+    return exe
+
+
 def _write_ca(dir_path: Path, name: str) -> tuple[Path, Path]:
     cert_path = dir_path / f"{name}-ca-cert.pem"
     key_path = dir_path / f"{name}-ca-key.pem"
-    subprocess.run(
+    subprocess.run(  # noqa: S603 - fixed argv built in this test
         [
-            "openssl",
+            _openssl(),
             "req",
             "-x509",
             "-newkey",
@@ -58,9 +67,10 @@ def _write_signed_leaf(dir_path: Path, cn: str, ca_cert: Path, ca_key: Path) -> 
     key_path = dir_path / f"{cn}-key.pem"
     csr_path = dir_path / f"{cn}.csr"
     cert_path = dir_path / f"{cn}-cert.pem"
-    subprocess.run(
+    openssl = _openssl()
+    subprocess.run(  # noqa: S603 - fixed argv built in this test
         [
-            "openssl",
+            openssl,
             "req",
             "-new",
             "-newkey",
@@ -78,9 +88,9 @@ def _write_signed_leaf(dir_path: Path, cn: str, ca_cert: Path, ca_key: Path) -> 
         check=True,
         capture_output=True,
     )
-    subprocess.run(
+    subprocess.run(  # noqa: S603 - fixed argv built in this test
         [
-            "openssl",
+            openssl,
             "x509",
             "-req",
             "-in",

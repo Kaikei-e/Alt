@@ -63,9 +63,6 @@ class OnnxEmbeddingModel:
     def __init__(self, config: OnnxEmbeddingConfig) -> None:
         if ort is None or AutoTokenizer is None or np is None:
             raise OnnxRuntimeMissing
-        assert np is not None  # For type checker
-        assert ort is not None  # For type checker
-        assert AutoTokenizer is not None  # For type checker
 
         if config.pooling not in {"cls", "mean"}:
             raise _InvalidPoolingError

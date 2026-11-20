@@ -385,12 +385,14 @@ _instance_lock = threading.Lock()
 
 def get_model_manager() -> ModelManager:
     """Get the shared application-level ModelManager instance."""
-    if _default_instance_holder[0] is None:
+    instance = _default_instance_holder[0]
+    if instance is None:
         with _instance_lock:
-            if _default_instance_holder[0] is None:
-                _default_instance_holder[0] = ModelManager()
-    assert _default_instance_holder[0] is not None
-    return _default_instance_holder[0]
+            instance = _default_instance_holder[0]
+            if instance is None:
+                instance = ModelManager()
+                _default_instance_holder[0] = instance
+    return instance
 
 
 def reset_model_manager() -> None:

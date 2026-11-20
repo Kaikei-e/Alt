@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 from pathlib import Path
 from unittest.mock import patch
@@ -29,8 +30,13 @@ def _write_test_pki(dir_path: Path, cn: str) -> tuple[Path, Path, Path]:
     key_path = dir_path / f"{cn}-key.pem"
     ca_path = dir_path / "ca.pem"
 
+    openssl = shutil.which("openssl")
+    if openssl is None:
+        msg = "openssl executable not found"
+        raise FileNotFoundError(msg)
+
     cmd = [
-        "openssl",
+        openssl,
         "req",
         "-x509",
         "-newkey",
@@ -45,7 +51,7 @@ def _write_test_pki(dir_path: Path, cn: str) -> tuple[Path, Path, Path]:
         "-subj",
         f"/CN={cn}",
     ]
-    subprocess.run(cmd, check=True, capture_output=True)
+    subprocess.run(cmd, check=True, capture_output=True)  # noqa: S603 - fixed argv built in this test
     # For tests, reuse the same cert as CA bundle — the reloading client
     # doesn't validate chain semantics, only that all three files are
     # readable and produce a valid SyncHTTPTransport.

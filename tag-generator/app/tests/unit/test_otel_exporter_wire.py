@@ -31,7 +31,7 @@ from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTrace
 
 from tag_generator.infra.otel import OTelConfig, init_otel_provider
 
-_FAKE_TOKEN = "ValidRaskIngestToken1234567890abcdefgh"
+_FAKE_TOKEN = "ValidRaskIngestToken1234567890abcdefgh"  # noqa: S105 - test fixture value, not a credential
 
 
 class _SubprocessRunError(RuntimeError):
@@ -206,7 +206,7 @@ finally:
     if extra_env:
         env.update(extra_env)
 
-    res = subprocess.run(
+    res = subprocess.run(  # noqa: S603 - fixed argv built in this test
         [sys.executable, "-c", code],
         env=env,
         capture_output=True,
