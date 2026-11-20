@@ -193,3 +193,23 @@ func TestRESTServer_RequestLogger_PreservesV4FieldsAndUsesLogger(t *testing.T) {
 	assert.Equal(t, "198.51.100.7", got.attrs["remote_ip"].String())
 	assert.Equal(t, "req-logger-check-1", got.attrs["request_id"].String())
 }
+
+func TestRESTServer_RequestLogger_HandlesErrorStatusAndSingleWrite(t *testing.T) {
+	capHandler := &capturingSlogHandler{}
+	log := slog.New(capHandler)
+	e := newRESTEcho(&di.ApplicationComponents{}, &config.Config{}, nil, nil, nil, log)
+	e.GET("/test-err", func(c *echo.Context) error {
+		return echo.NewHTTPError(http.StatusBadRequest, "bad request")
+	})
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test-err", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Len(t, capHandler.records, 1)
+	got := capHandler.records[0]
+	assert.Equal(t, slog.LevelError, got.level)
+	assert.Equal(t, "REQUEST_ERROR", got.message)
+	assert.Equal(t, int64(http.StatusBadRequest), got.attrs["status"].Int64())
+}

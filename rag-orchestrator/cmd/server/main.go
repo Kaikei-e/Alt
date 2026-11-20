@@ -220,15 +220,10 @@ func main() {
 			os.Exit(1)
 		}
 	} else {
-		protocols := new(http.Protocols)
-		protocols.SetHTTP1(true)
-		protocols.SetUnencryptedHTTP2(true)
-		connectServer = &http.Server{
-			Addr:              fmt.Sprintf(":%s", cfg.Server.ConnectPort),
-			Handler:           connectHandler,
-			Protocols:         protocols,
-			ReadHeaderTimeout: 10 * time.Second,
-		}
+		connectServer = newPlaintextConnectServer(
+			fmt.Sprintf(":%s", cfg.Server.ConnectPort),
+			connectHandler,
+		)
 	}
 	go func() {
 		log.Info("Starting Connect-RPC server", "addr", connectServer.Addr, "peer_identity_mode", string(cfg.PeerIdentity.Mode))
@@ -377,6 +372,24 @@ func newHealthServer(addr string, pinger HealthPinger, log *slog.Logger) *http.S
 		Addr:              addr,
 		Handler:           newHealthMux(pinger, log),
 		ReadHeaderTimeout: 5 * time.Second,
+	}
+}
+
+func cleartextHTTP2() *http.Protocols {
+	p := new(http.Protocols)
+	p.SetHTTP1(true)
+	p.SetUnencryptedHTTP2(true)
+	return p
+}
+
+// newPlaintextConnectServer constructs the plaintext Connect-RPC server used
+// when PEER_IDENTITY_MODE=disabled.
+func newPlaintextConnectServer(addr string, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		Protocols:         cleartextHTTP2(),
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 }
 

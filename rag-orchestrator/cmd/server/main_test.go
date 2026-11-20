@@ -3,10 +3,14 @@ package main
 import (
 	"context"
 	"errors"
+	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -62,4 +66,52 @@ func TestNewHealthMux_ServesHealthReadyAndMetrics(t *testing.T) {
 		require.Equal(t, http.StatusOK, rec.Code)
 		assert.Contains(t, rec.Body.String(), "go_goroutines")
 	})
+}
+
+func TestPlaintextConnectServer_H2CStreamOutlivesReadHeaderTimeout(t *testing.T) {
+	const (
+		scaledHeaderTimeout = 200 * time.Millisecond
+		chunkCount          = 6
+		chunkInterval       = 100 * time.Millisecond
+		chunk               = "chunk\n"
+	)
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusOK)
+		for range chunkCount {
+			if _, err := io.WriteString(w, chunk); err != nil {
+				return
+			}
+			if flusher, ok := w.(http.Flusher); ok {
+				flusher.Flush()
+			}
+			time.Sleep(chunkInterval)
+		}
+	})
+
+	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+
+	srv := newPlaintextConnectServer(ln.Addr().String(), handler)
+	srv.ReadHeaderTimeout = scaledHeaderTimeout
+
+	go func() { _ = srv.Serve(ln) }()
+	t.Cleanup(func() { _ = srv.Close() })
+
+	p := new(http.Protocols)
+	p.SetUnencryptedHTTP2(true)
+	tr := &http.Transport{Protocols: p}
+	t.Cleanup(tr.CloseIdleConnections)
+
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "http://"+ln.Addr().String()+"/stream", nil)
+	require.NoError(t, err)
+
+	resp, err := tr.RoundTrip(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err, "h2c stream died after %d of %d chunks", strings.Count(string(body), chunk), chunkCount)
+	assert.Equal(t, chunkCount, strings.Count(string(body), chunk))
 }
