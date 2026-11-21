@@ -1,0 +1,23 @@
+id = "C-21"
+title = "gosec silently passes with 0 files scanned on Go 1.27 export-data mismatch"
+category = "scanner-silent-pass"
+language = "go"
+before_file = "before.out"
+after_file = "after.out"
+support_files = ["sample.go", "before.sarif", "after.sarif"]
+evaluation_mode = "after"
+
+[origin]
+branch = "chore/lint-rollout"
+base_commit = "6cae3ef6f"
+files = ["scripts/lint/go.sh"]
+commits = ["89a057347"]
+source_ref = "docs/review/lint-rollout-harness-learnings-2026-11-21.md#2.3"
+notes = "gosec v2.28.0/v2.29.0 could not read Go 1.27 export data and exited green with Files: 0 and empty SARIF while legacy CI swallowed exit codes; fixed in 89a057347 by upgrading gosec to v2.30.0 in scripts/lint/go.sh and subsequently enforced via REPO-02 scripts/lint/canary_audit.py go-verify-scan (acdfc26ab on chore/harness-repo-01-03)."
+
+[detection]
+planned_checks = ["REPO-02"]
+active_checks = ["REPO-02"]
+currently_caught = true
+current_method = "捕捉済み"
+expected_signal = "ZERO-FILE SCAN DETECTED"

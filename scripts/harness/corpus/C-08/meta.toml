@@ -1,0 +1,27 @@
+id = "C-08"
+title = "Hoisting import auth_service to top level collides with direct sys.modules mutation"
+category = "test-isolation-hazard"
+language = "python"
+before_file = "before.py"
+after_file = "after.py"
+support_files = []
+evaluation_mode = "after"
+
+[origin]
+branch = "chore/lint-rollout"
+base_commit = "6cae3ef6f"
+files = [
+  "tag-generator/app/tests/unit/test_peer_identity.py",
+  "tag-generator/app/tests/unit/test_extract_tags_endpoint.py",
+  "tag-generator/app/tests/unit/test_service_and_health.py",
+]
+commits = ["c8c5084a8", "d89ddfb88"]
+source_ref = "docs/review/lint-rollout-harness-learnings-2026-11-21.md#2.1"
+notes = "Fixing PLC0415 by hoisting `import auth_service` to module top level collided with other tests directly mutating sys.modules['auth_service'], passing in isolation and failing only during the full tag-generator suite run."
+
+[detection]
+planned_checks = ["ARCH-06"]
+active_checks = []
+currently_caught = false
+current_method = "全体実行"
+expected_signal = ""

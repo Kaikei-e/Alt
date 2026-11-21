@@ -1,0 +1,8 @@
+Golang errors in file: [sample.go]: could not import fmt (unsupported version: 2)
+
+Summary:
+  Gosec  : 2.29.0
+  Files  : 0
+  Lines  : 0
+  Nosec  : 0
+  Issues : 0

@@ -1,0 +1,26 @@
+id = "C-10"
+title = "Playwright negative-check waitForTimeout replaced with no-op waitForLoadState"
+category = "test-assertion-weakening"
+language = "typescript"
+before_file = "before.ts"
+after_file = "after.ts"
+support_files = []
+evaluation_mode = "diff"
+
+[origin]
+branch = "chore/lint-rollout"
+base_commit = "6cae3ef6f"
+files = [
+  "alt-frontend-sv/tests/e2e/desktop/augur/chat.spec.ts",
+  "alt-frontend-sv/tests/e2e/desktop/feeds/visual-preview-ondemand-og-resolve.spec.ts",
+]
+commits = ["59e4f5d20", "8f0baade6"]
+source_ref = "docs/review/lint-rollout-harness-learnings-2026-11-21.md#2.1"
+notes = "Replacing Playwright waitForTimeout() to silence Biome noPlaywrightWaitForTimeout substituted no-op waitForLoadState('domcontentloaded') on already-loaded pages (6 sites) or unachievable off-viewport assertions, weakening negative must-not-send checks until E2E runs and review caught them."
+
+[detection]
+planned_checks = ["CHECK-01"]
+active_checks = []
+currently_caught = false
+current_method = "E2E 実行"
+expected_signal = ""

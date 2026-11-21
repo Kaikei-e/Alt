@@ -1,0 +1,23 @@
+id = "C-12"
+title = "Generated source output permissions tightened to 0o600/0o750 to appease gosec G301/G306"
+category = "unrequested-behavior-change"
+language = "go"
+before_file = "before.go"
+after_file = "after.go"
+support_files = []
+evaluation_mode = "after"
+
+[origin]
+branch = "chore/lint-rollout"
+base_commit = "6cae3ef6f"
+files = ["proto/tools/protovis/main.go"]
+commits = ["9ab7ac5d3"]
+source_ref = "docs/review/lint-rollout-harness-learnings-2026-11-21.md#2.2"
+notes = "In proto/tools/protovis/main.go (9ab7ac5d3), a mechanical gosec G301/G306 fix narrowed generated source directory and file permissions from 0o755/0o644 to 0o750/0o600; reverted during diff review and guarded with explicit mode justification."
+
+[detection]
+planned_checks = ["ARCH-02", "CHECK-01", "VERIFY-03"]
+active_checks = []
+currently_caught = false
+current_method = "差分読みのみ"
+expected_signal = ""

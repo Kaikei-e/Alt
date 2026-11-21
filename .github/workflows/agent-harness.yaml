@@ -29,6 +29,11 @@ jobs:
           BASE_REF: ${{ github.base_ref || 'main' }}
         run: git fetch --no-tags origin "$BASE_REF"
 
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+        with:
+          python-version: "3.14"
+
       - name: Run agent harness tests
         run: python3 scripts/tests/test-agent-harness.py
 
@@ -37,6 +42,9 @@ jobs:
 
       - name: Run migration destructive gate tests
         run: python3 scripts/tests/test-migration-destructive-gate.py
+
+      - name: Install corpus check tools
+        run: python -m pip install --quiet 'pyrefly==1.1.1'
 
       - name: Run agent harness checks
         env:

@@ -1,0 +1,23 @@
+id = "C-18"
+title = "Making --env-file mandatory breaks deploy.sh callers and --no-env-resolution skips env_file checks"
+category = "unrequested-behavior-change"
+language = "shell"
+before_file = "before.sh"
+after_file = "after.sh"
+support_files = []
+evaluation_mode = "diff"
+
+[origin]
+branch = "chore/lint-rollout"
+base_commit = "6cae3ef6f"
+files = ["scripts/check-compose-variables.sh", "scripts/lint/compose.sh", "scripts/tests/test_compose_wiring.sh"]
+commits = ["89a057347", "4677f658f"]
+source_ref = "docs/review/lint-rollout-harness-learnings-2026-11-21.md#2.2"
+notes = "During compose lint unification (89a057347 / 4677f658f), check-compose-variables.sh was altered to require --env-file (breaking deploy.sh) and pass --no-env-resolution (skipping env_file: target validation); reverted in favor of staging tree in scripts/lint/compose.sh."
+
+[detection]
+planned_checks = ["VERIFY-01"]
+active_checks = []
+currently_caught = false
+current_method = "差分読みのみ"
+expected_signal = ""

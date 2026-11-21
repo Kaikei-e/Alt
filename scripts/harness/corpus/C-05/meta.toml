@@ -1,0 +1,27 @@
+id = "C-05"
+title = "ruff format with py314 target emits PEP 758 unparenthesized except clause breaking Python 3.13"
+category = "autofix-logic-corruption"
+language = "python"
+before_file = "before.py"
+after_file = "after.py"
+support_files = ["before.pyproject.toml", "after.pyproject.toml"]
+evaluation_mode = "after"
+
+[origin]
+branch = "chore/lint-rollout"
+base_commit = "6cae3ef6f"
+files = [
+  "scripts/pyproject.toml",
+  "scripts/tests/test-agent-harness.py",
+  "scripts/compose-feature-gate.py",
+]
+commits = ["fbc9cba22", "a0428c6c5"]
+source_ref = "docs/review/lint-rollout-harness-learnings-2026-11-21.md#2.1"
+notes = "Running ruff format with target-version = py314 on scripts/ stripped parentheses from multi-exception except clauses into PEP 758 syntax, causing SyntaxError under host Python 3.13 and dropping test-agent-harness.py from 226 to 82 passing tests."
+
+[detection]
+planned_checks = ["ARCH-03"]
+active_checks = []
+currently_caught = false
+current_method = "スクリプトのテスト"
+expected_signal = ""

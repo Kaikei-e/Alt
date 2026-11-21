@@ -1,0 +1,23 @@
+id = "C-15"
+title = "Echo v5 BodyLimit migration shifts 1M decimal megabyte to 1 << 20 binary mebibyte"
+category = "unrequested-behavior-change"
+language = "go"
+before_file = "before.go"
+after_file = "after.go"
+support_files = []
+evaluation_mode = "after"
+
+[origin]
+branch = "chore/lint-rollout"
+base_commit = "6cae3ef6f"
+files = ["pre-processor/app/bootstrap/server.go", "pre-processor/app/bootstrap/server_body_limit_test.go"]
+commits = ["8e1979afd"]
+source_ref = "docs/review/lint-rollout-harness-learnings-2026-11-21.md#2.2"
+notes = "In pre-processor/app/bootstrap/server.go (8e1979afd), migrating Echo v4 middleware.BodyLimit(\"1M\") (decimal 1_000_000 bytes) to v5 middleware.BodyLimit(1 << 20) silently increased the limit by 48,576 bytes; fixed with a named decimal constant and boundary test."
+
+[detection]
+planned_checks = ["ARCH-02", "CHECK-01", "VERIFY-01", "VERIFY-03"]
+active_checks = []
+currently_caught = false
+current_method = "境界値テスト"
+expected_signal = ""

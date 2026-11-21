@@ -1,0 +1,23 @@
+id = "C-20"
+title = "Untracked ELF binary left in Go module root by go build"
+category = "worktree-hygiene"
+language = "binary"
+before_file = "before.go"
+after_file = "after.elf"
+support_files = []
+evaluation_mode = "after"
+
+[origin]
+branch = "chore/lint-rollout"
+base_commit = "6cae3ef6f"
+files = ["alt-backend/app/alt-backend"]
+commits = ["worktree-uncommitted"]
+source_ref = "docs/review/lint-rollout-harness-learnings-2026-11-21.md#2.4"
+notes = "Five untracked ELF binaries produced by ad-hoc go build invocations remained in Go module roots outside .gitignore and nearly entered git add; caught by manual host inspection in the worktree before commit."
+
+[detection]
+planned_checks = ["CHECK-06"]
+active_checks = []
+currently_caught = false
+current_method = "ホストの目視"
+expected_signal = ""

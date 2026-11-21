@@ -1,0 +1,23 @@
+id = "C-19"
+title = "Tracked FastAPI router file truncated to 0 bytes during disk-full write"
+category = "worktree-hygiene"
+language = "python"
+before_file = "before.py"
+after_file = "after.py"
+support_files = []
+evaluation_mode = "diff"
+
+[origin]
+branch = "chore/lint-rollout"
+base_commit = "6cae3ef6f"
+files = ["recap-subworker/recap_subworker/app/routers/runs.py"]
+commits = ["worktree-uncommitted"]
+source_ref = "docs/review/lint-rollout-harness-learnings-2026-11-21.md#2.4"
+notes = "When per-conversation build caches exhausted host disk space (13 MB free), writing to tracked recap-subworker/recap_subworker/app/routers/runs.py (2,880 bytes in HEAD) truncated the file to 0 bytes; caught manually in the worktree before commit."
+
+[detection]
+planned_checks = ["CHECK-06"]
+active_checks = []
+currently_caught = false
+current_method = "ホストの手作業"
+expected_signal = ""

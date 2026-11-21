@@ -440,10 +440,14 @@ def _is_generated_py_file(filename: str) -> bool:
 
 
 def list_non_generated_py_files(project_dir: pathlib.Path) -> list[pathlib.Path]:
-    """List non-generated .py files excluding .venv, build, dist, and gen/ directories."""
+    """List non-generated .py files excluding .venv, build, dist, gen/, and harness/corpus/."""
     files: list[pathlib.Path] = []
     for root, dirnames, filenames in project_dir.walk():
-        dirnames[:] = [d for d in dirnames if not _is_excluded_py_dir(d)]
+        dirnames[:] = [
+            d
+            for d in dirnames
+            if not _is_excluded_py_dir(d) and not (root.name == "harness" and d == "corpus")
+        ]
         for fname in filenames:
             if not fname.endswith(".py") or _is_generated_py_file(fname):
                 continue

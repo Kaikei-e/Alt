@@ -1,0 +1,28 @@
+id = "C-22"
+title = "File-top # ruff: noqa: TRY003, PLC0415 blanket suppression without ADR justification"
+category = "blanket-suppression"
+language = "python"
+before_file = "before.py"
+after_file = "after.py"
+support_files = []
+evaluation_mode = "after"
+
+[origin]
+branch = "chore/lint-rollout"
+base_commit = "6cae3ef6f"
+files = [
+  "news-creator/app/news_creator/infra/pki/filesafe.py",
+  "tag-generator/app/tag_generator/infra/pki/filesafe.py",
+  "tts-speaker/tts_speaker/infra/pki/filesafe.py",
+  "acolyte-orchestrator/acolyte/infra/pki/filesafe.py",
+]
+commits = ["b81e70066", "f8ec85e08", "40ef8d770"]
+source_ref = "docs/review/lint-rollout-harness-learnings-2026-11-21.md#2.3"
+notes = "File-top rule-ID blanket suppressions (# ruff: noqa: TRY003, PLC0415) remained across 35 PKI copies and tests after narrowing pyproject.toml ignores; removed in b81e70066/f8ec85e08/40ef8d770 and enforced by REPO-03 check_suppressions.py."
+
+[detection]
+planned_checks = ["REPO-03"]
+active_checks = ["REPO-03"]
+currently_caught = true
+current_method = "捕捉済み"
+expected_signal = "source.broad.missing-adr"

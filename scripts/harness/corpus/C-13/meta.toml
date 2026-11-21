@@ -1,0 +1,23 @@
+id = "C-13"
+title = "Plain-text error response wrapped in html.EscapeString to appease gosec G705"
+category = "unrequested-behavior-change"
+language = "go"
+before_file = "before.go"
+after_file = "after.go"
+support_files = []
+evaluation_mode = "diff"
+
+[origin]
+branch = "chore/lint-rollout"
+base_commit = "6cae3ef6f"
+files = ["alt-backend/sidecar-proxy/pkg/proxy/utils.go"]
+commits = ["1ae0da0c9"]
+source_ref = "docs/review/lint-rollout-harness-learnings-2026-11-21.md#2.2"
+notes = "In alt-backend/sidecar-proxy/pkg/proxy/utils.go (1ae0da0c9), gosec G705 prompted wrapping plain-text error response bodies in html.EscapeString, corrupting error text for non-HTML HTTP clients; reverted to text/plain; charset=utf-8 with X-Content-Type-Options: nosniff."
+
+[detection]
+planned_checks = ["CHECK-01"]
+active_checks = []
+currently_caught = false
+current_method = "差分読みのみ"
+expected_signal = ""

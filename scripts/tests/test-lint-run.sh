@@ -128,6 +128,26 @@ chmod +x "$tmp_bin/python3" "$tmp_bin/docdag" "$tmp_bin/go"
 
 assert_exit_and_err 0 "base=${c2}" "harness.sh unset LINT_BASE falls back to HEAD~1 when HEAD==origin/main" \
   env -u LINT_BASE PATH="$tmp_bin:$PATH" bash "$tmp_git/scripts/lint/harness.sh"
+assert_exit_and_err 0 "stub-python3:scripts/tests/test-corpus.py" "harness.sh runs test-corpus.py" \
+  env -u LINT_BASE PATH="$tmp_bin:$PATH" bash "$tmp_git/scripts/lint/harness.sh"
+
+# Verify harness.sh surfaces CORPUS CAPTURE RATE in summary and fails when test-corpus.py fails
+tmp_corpus_bin="$tmp_repo/stub-corpus-bin"
+mkdir -p "$tmp_corpus_bin"
+cat <<'EOF' >"$tmp_corpus_bin/python3"
+#!/usr/bin/env bash
+if [ "${1:-}" = "scripts/tests/test-corpus.py" ]; then
+  echo "CORPUS CAPTURE RATE: 3/22 (13.6%) [caught=3: C-09,C-21,C-22 | expected-miss=19 | failures=0]"
+  exit "${STUB_CORPUS_RC:-0}"
+fi
+echo "stub-python3:$*"
+EOF
+chmod +x "$tmp_corpus_bin/python3"
+
+assert_exit_and_err 0 "CORPUS CAPTURE RATE: 3/22 (13.6%)" "harness.sh surfaces CORPUS CAPTURE RATE in summary" \
+  env -u LINT_BASE PATH="$tmp_corpus_bin:$PATH" bash "$tmp_git/scripts/lint/harness.sh"
+assert_exit_and_err 1 "corpus                           fail" "harness.sh exits 1 when test-corpus.py fails" \
+  env -u LINT_BASE STUB_CORPUS_RC=1 PATH="$tmp_corpus_bin:$PATH" bash "$tmp_git/scripts/lint/harness.sh"
 assert_exit_and_err 0 "base=${c2}" "harness.sh all-zero LINT_BASE treated as unset" \
   env LINT_BASE="0000000000000000000000000000000000000000" PATH="$tmp_bin:$PATH" bash "$tmp_git/scripts/lint/harness.sh"
 assert_exit_and_err 0 "base=${c1}" "harness.sh valid LINT_BASE overrides computed base" \
@@ -220,6 +240,7 @@ mkdir -p \
   "$tmp_list_repo/proto" \
   "$tmp_list_repo/tools/protovis/gen" \
   "$tmp_list_repo/stopped-using-k8s/legacy" \
+  "$tmp_list_repo/scripts/harness/corpus/C-01" \
   "$tmp_list_repo/alt-butterfly-facade/internal/gen/proto/v1" \
   "$tmp_list_repo/rag-orchestrator/internal/gen/proto/v1" \
   "$tmp_list_repo/other/gen/stub/v1" \
@@ -238,6 +259,8 @@ mkdir -p \
 : >"$tmp_list_repo/tools/protovis/gen/foo.pb.go"
 : >"$tmp_list_repo/stopped-using-k8s/legacy/go.mod"
 : >"$tmp_list_repo/stopped-using-k8s/legacy/main.go"
+: >"$tmp_list_repo/scripts/harness/corpus/C-01/go.mod"
+: >"$tmp_list_repo/scripts/harness/corpus/C-01/before.go"
 : >"$tmp_list_repo/alt-butterfly-facade/internal/gen/proto/go.mod"
 : >"$tmp_list_repo/alt-butterfly-facade/internal/gen/proto/v1/a.pb.go"
 : >"$tmp_list_repo/rag-orchestrator/internal/gen/proto/go.mod"
@@ -268,6 +291,7 @@ assert_exact_stdout 0 "$expected_list" "--list enumerates sorted unique valid ta
 tmp_list_git="$tmp_repo/list-git"
 mkdir -p "$tmp_list_git/scripts/lint" "$tmp_list_git/svc-go" "$tmp_list_git/proto" \
   "$tmp_list_git/node_modules/pkg" "$tmp_list_git/stopped-using-k8s/old" \
+  "$tmp_list_git/scripts/harness/corpus/C-05" \
   "$tmp_list_git/alt-butterfly-facade/internal/gen/proto/v1"
 cp "$RUN_SH" "$tmp_list_git/scripts/lint/run.sh"
 printf '#!/usr/bin/env bash\necho "ran:go:$1"\n' >"$tmp_list_git/scripts/lint/go.sh"
@@ -280,6 +304,7 @@ printf 'node_modules/\n' >"$tmp_list_git/.gitignore"
 : >"$tmp_list_git/node_modules/pkg/go.mod"
 : >"$tmp_list_git/stopped-using-k8s/old/go.mod"
 : >"$tmp_list_git/stopped-using-k8s/old/main.go"
+: >"$tmp_list_git/scripts/harness/corpus/C-05/pyproject.toml"
 : >"$tmp_list_git/alt-butterfly-facade/internal/gen/proto/go.mod"
 : >"$tmp_list_git/alt-butterfly-facade/internal/gen/proto/v1/a.pb.go"
 
@@ -342,11 +367,11 @@ else
       FAILS=$((FAILS + 1))
     fi
   done
-  if grep -q '^stopped-using-k8s' <<<"$real_list"; then
-    echo "FAIL: real repo --list must exclude stopped-using-k8s/**"
+  if grep -q '^stopped-using-k8s' <<<"$real_list" || grep -q '^scripts/harness/corpus' <<<"$real_list"; then
+    echo "FAIL: real repo --list must exclude stopped-using-k8s/** and scripts/harness/corpus/**"
     FAILS=$((FAILS + 1))
   else
-    echo "PASS: real repo --list excludes stopped-using-k8s, generated stubs, and reserved names"
+    echo "PASS: real repo --list excludes stopped-using-k8s, scripts/harness/corpus, generated stubs, and reserved names"
   fi
 fi
 

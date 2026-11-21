@@ -1,0 +1,26 @@
+id = "C-03"
+title = "sloglint autofix replaces capturing test logger with slog.DiscardHandler"
+category = "autofix-logic-corruption"
+language = "go"
+before_file = "before.go"
+after_file = "after.go"
+support_files = []
+evaluation_mode = "diff"
+
+[origin]
+branch = "chore/lint-rollout"
+base_commit = "6cae3ef6f"
+files = [
+  "pre-processor/app/bootstrap/testhelpers_test.go",
+  "pre-processor/app/middleware/error_middleware_test.go",
+]
+commits = ["8e1979afd", "d190b33c4"]
+source_ref = "docs/review/lint-rollout-harness-learnings-2026-11-21.md#2.1"
+notes = "sloglint autofix across Go modules replaced test slog loggers with slog.New(slog.DiscardHandler), silencing log output inspected by test assertions until unit tests failed."
+
+[detection]
+planned_checks = ["EXEC-01", "CHECK-01"]
+active_checks = []
+currently_caught = false
+current_method = "テスト"
+expected_signal = ""
