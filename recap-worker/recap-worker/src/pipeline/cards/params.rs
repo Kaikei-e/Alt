@@ -367,11 +367,11 @@ impl CardsParams {
 }
 
 #[cfg(test)]
-#[allow(clippy::float_cmp)]
 mod tests {
     use super::*;
 
     #[test]
+    #[allow(clippy::float_cmp)]
     fn test_default_params_values() {
         let params = CardsParams::default();
         assert_eq!(params.params_version, DEFAULT_PARAMS_VERSION);
@@ -388,6 +388,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::float_cmp)]
     fn test_with_override_updates_field_and_derives_version_label() {
         let params = CardsParams::default();
         let overridden = params
@@ -406,6 +407,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::float_cmp)]
     fn test_multiple_overrides_sorted_deterministically() {
         let mut params = CardsParams::default();
         params
@@ -508,6 +510,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::float_cmp)]
     fn test_aggregator_hosts_and_weight_overrides() {
         let params = CardsParams::default();
         assert_eq!(params.aggregator_host_weight, 0.5);
@@ -610,6 +613,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::float_cmp)]
     fn test_aggregator_host_weight_validation() {
         let params = CardsParams::default();
 
@@ -708,6 +712,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::float_cmp)]
     fn test_ja_ratio_min_validation() {
         let params = CardsParams::default();
 

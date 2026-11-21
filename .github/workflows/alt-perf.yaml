@@ -6,8 +6,10 @@ on:
     paths:
       - "alt-perf/**"
       - "scripts/lint/**"
+      - ".golangci.yml"
       - ".github/workflows/alt-perf.yaml"
       - ".github/workflows/reusable-test-deno.yaml"
+      - ".github/workflows/reusable-go-quality-gates.yaml"
       - "!**/CLAUDE.md"
       - "!**/AGENTS.md"
       - "!**/README.md"
@@ -16,8 +18,10 @@ on:
     paths:
       - "alt-perf/**"
       - "scripts/lint/**"
+      - ".golangci.yml"
       - ".github/workflows/alt-perf.yaml"
       - ".github/workflows/reusable-test-deno.yaml"
+      - ".github/workflows/reusable-go-quality-gates.yaml"
       - "!**/CLAUDE.md"
       - "!**/AGENTS.md"
       - "!**/README.md"
@@ -47,3 +51,29 @@ jobs:
       working-directory: "alt-perf"
       sparse-checkout: "alt-perf"
       test-command: "deno test --allow-all tests/"
+
+  quality-mock-rss-server:
+    permissions:
+      contents: read
+      security-events: write
+    uses: ./.github/workflows/reusable-go-quality-gates.yaml
+    with:
+      working-directory: "alt-perf/k6/mock-rss-server"
+      upload-sarif: true
+
+  quality-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [test, quality-mock-rss-server]
+    if: always()
+    steps:
+      - name: Check all jobs passed
+        env:
+          TEST_RESULT: ${{ needs.test.result }}
+          MOCK_RSS_QUALITY_RESULT: ${{ needs.quality-mock-rss-server.result }}
+        run: |
+          if [ "$TEST_RESULT" != "success" ] || [ "$MOCK_RSS_QUALITY_RESULT" != "success" ]; then
+            echo "One or more quality gates failed (test=${TEST_RESULT}, quality-mock-rss-server=${MOCK_RSS_QUALITY_RESULT})"
+            exit 1
+          fi
+          echo "All quality gates passed"

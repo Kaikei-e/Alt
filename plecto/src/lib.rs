@@ -11,14 +11,19 @@
 //! images too, which have no self-healing story and must keep their 404 — so the
 //! extension is matched here rather than by the route.
 
-#![allow(clippy::too_many_arguments)]
+// ADR-000902: wit_bindgen::generate! expands Component Model ABI export shims
+// with >7 flattened parameters; scope the allow to the generated bindings module
+// so hand-written filter code stays covered by clippy::too_many_arguments.
+#[allow(clippy::too_many_arguments)]
+mod bindings {
+    wit_bindgen::generate!({
+        path: "wit",
+        world: "filter",
+    });
+}
 
-wit_bindgen::generate!({
-    path: "wit",
-    world: "filter",
-});
-
-use crate::plecto::filter::types::{Header, RequestEdit};
+use crate::bindings::plecto::filter::types::{Header, RequestEdit};
+use crate::bindings::{Guest, HttpRequest, HttpResponse, RequestDecision, ResponseDecision};
 
 struct AltStaleChunkHealFilter;
 
@@ -105,7 +110,7 @@ impl Guest for AltStaleChunkHealFilter {
     }
 }
 
-export!(AltStaleChunkHealFilter);
+bindings::export!(AltStaleChunkHealFilter with_types_in bindings);
 
 #[cfg(test)]
 mod tests {

@@ -26,7 +26,6 @@ mod client;
 // (ADR-000905 §PR-C2). The modules themselves are also exercised by their
 // own #[cfg(test)] suites.
 pub(crate) mod publish;
-#[allow(dead_code)]
 mod snapshot_id;
 
 #[cfg(test)]

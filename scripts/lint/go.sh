@@ -31,7 +31,7 @@ if [ ! -f "${CONFIG_FILE}" ]; then
   exit 1
 fi
 
-for cmd in go jq; do
+for cmd in go jq python3; do
   if ! command -v "${cmd}" >/dev/null 2>&1; then
     echo "ERROR: Required command not found in PATH: ${cmd}" >&2
     exit 1
@@ -68,11 +68,35 @@ cd "${PROJECT_DIR}"
 export GOFLAGS="-buildvcs=false"
 
 overall_rc=0
+status_canary="PASS"
 status_gofmt="PASS"
 status_govet="PASS"
 status_golangci="PASS"
 status_gosec="PASS"
 status_govulncheck="PASS"
+
+CANARY_AUDIT_SCRIPT="${SCRIPT_DIR}/canary_audit.py"
+if [ ! -f "${CANARY_AUDIT_SCRIPT}" ]; then
+  echo "ERROR: Missing canary audit helper: ${CANARY_AUDIT_SCRIPT}" >&2
+  exit 1
+fi
+
+canary_dir="$(mktemp -d "${TMPDIR:-/tmp}/alt-go-canary-XXXXXX")"
+cleanup_canary() {
+  rm -rf "${canary_dir}"
+}
+trap cleanup_canary EXIT
+
+echo "==> [${PROJECT_REL}] canary audit (golangci-lint, gosec)"
+if ! python3 "${CANARY_AUDIT_SCRIPT}" go-canary \
+  --project-dir "${PROJECT_DIR}" \
+  --config "${CONFIG_FILE}" \
+  --golangci-lint-bin "${GOLANGCI_LINT_BIN}" \
+  --gosec-bin "${GOSEC_BIN}" \
+  --work-dir "${canary_dir}"; then
+  exit 1
+fi
+rm -rf "${canary_dir}"
 
 echo "==> [${PROJECT_REL}] gofmt"
 gofmt_out="$(gofmt -l .)"
@@ -125,6 +149,15 @@ if [ ! -s ./_reports/gosec.sarif ]; then
 fi
 jq '(.runs[]?.results[]?) |= del(.fixes)' ./_reports/gosec.sarif > ./_reports/gosec.sarif.tmp
 mv ./_reports/gosec.sarif.tmp ./_reports/gosec.sarif
+
+if ! python3 "${CANARY_AUDIT_SCRIPT}" go-verify-scan \
+  --project-dir "${PROJECT_DIR}" \
+  --gosec-out ./_reports/gosec.out \
+  --gosec-sarif ./_reports/gosec.sarif; then
+  [ -s ./_reports/gosec.out ] && cat ./_reports/gosec.out >&2
+  rm -f ./_reports/gosec.out
+  exit 1
+fi
 
 gosec_issue_count="$(jq '[.runs[]?.results[]?] | length' ./_reports/gosec.sarif)"
 if [ "${gosec_issue_count}" -gt 0 ]; then
@@ -188,6 +221,7 @@ if [ "${govuln_called_count}" -gt 0 ]; then
 fi
 
 echo "==> [${PROJECT_REL}] summary"
+printf '  %-15s %s\n' "canary" "${status_canary}"
 printf '  %-15s %s\n' "gofmt" "${status_gofmt}"
 printf '  %-15s %s\n' "go vet" "${status_govet}"
 printf '  %-15s %s\n' "golangci-lint" "${status_golangci}"

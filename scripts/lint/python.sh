@@ -90,18 +90,98 @@ run_optional_dev_step() {
   esac
 }
 
+canary_audit_script="${script_dir}/canary_audit.py"
+if [[ ! -f "${canary_audit_script}" ]]; then
+  echo "Error: missing canary audit helper: ${canary_audit_script}" >&2
+  exit 1
+fi
+
+work_tmp="$(mktemp -d "${TMPDIR:-/tmp}/alt-py-canary-XXXXXX")"
+cleanup_work_tmp() {
+  rm -rf "${work_tmp}"
+}
+trap cleanup_work_tmp EXIT
+
+bandit_dep_state=""
+bandit_dep_rc=0
+set +e
+bandit_dep_state="$(query_dev_dep bandit)"
+bandit_dep_rc=$?
+set -e
+if [[ $bandit_dep_rc -ne 0 ]]; then
+  echo "error: failed to inspect pyproject.toml for bandit (exit ${bandit_dep_rc})" >&2
+  exit 1
+fi
+case "$bandit_dep_state" in
+  declared)
+    check_bandit="true"
+    bandit_canary_suffix=", bandit"
+    ;;
+  not-declared)
+    check_bandit="false"
+    bandit_canary_suffix=""
+    ;;
+  *)
+    echo "error: unexpected dev-dependency check output for bandit: ${bandit_dep_state}" >&2
+    exit 1
+    ;;
+esac
+
+echo "==> canary audit (ruff${bandit_canary_suffix})"
+if ! uv run --frozen --only-group dev python "${canary_audit_script}" python-canary \
+  --project-dir "${target_dir}" \
+  --work-dir "${work_tmp}/canary" \
+  --check-bandit "${check_bandit}"; then
+  exit 1
+fi
+rm -rf "${work_tmp}/canary"
+steps+=("canary")
+statuses+=("pass")
+
+echo "==> source files check"
+if ! uv run --frozen --only-group dev python "${canary_audit_script}" python-verify-files \
+  --project-dir "${target_dir}"; then
+  exit 1
+fi
+steps+=("source files")
+statuses+=("pass")
+
 run_step "ruff check" uv run --frozen --only-group dev ruff check .
 run_step "ruff format" uv run --frozen --only-group dev ruff format --check .
 
-run_optional_dev_step bandit "bandit" \
-  uv run --frozen --only-group dev bandit -r . -ll -ii -x ./.venv,./node_modules,./.mypy_cache,./.pytest_cache,./.ruff_cache,./build,./dist
+if [[ "$bandit_dep_state" == "declared" ]]; then
+  bandit_out="${work_tmp}/bandit.out"
+  bandit_rc=0
+  echo "==> bandit"
+  steps+=("bandit")
+  set +e
+  uv run --frozen --only-group dev bandit -r . -ll -ii \
+    -x ./.venv,./node_modules,./.mypy_cache,./.pytest_cache,./.ruff_cache,./build,./dist \
+    2>&1 | tee "${bandit_out}"
+  bandit_rc="${PIPESTATUS[0]}"
+  set -e
+  if ! uv run --frozen --only-group dev python "${canary_audit_script}" python-verify-bandit-scan \
+    --project-dir "${target_dir}" \
+    --bandit-out "${bandit_out}"; then
+    exit 1
+  fi
+  if [[ "$bandit_rc" -eq 0 ]]; then
+    statuses+=("pass")
+  else
+    statuses+=("fail (exit ${bandit_rc})")
+    failed=1
+  fi
+else
+  steps+=("bandit")
+  statuses+=("not declared")
+fi
 
 run_optional_dev_step pyrefly "pyrefly" \
   uv run --frozen --all-extras --group dev pyrefly check
 
 if [[ "$project_dir" == "scripts" ]]; then
   shopt -s nullglob
-  helper_tests=(tests/test-*-helpers.py tests/test-genre-report-on-error-stop.py)
+  helper_tests=(tests/test-*-helpers.py tests/test-genre-report-on-error-stop.py tests/test-lint-canary.py)
   shopt -u nullglob
   if [[ ${#helper_tests[@]} -eq 0 ]]; then
     echo "error: no helper tests matched under scripts/tests/" >&2

@@ -1,0 +1,56 @@
+---
+packet_version: "1.0"
+packet_id: "EXAMPLE-TASK-001"
+title: "タスクパケット標準テンプレート"
+owner: "agent-worker"
+scope:
+  target: "scripts"
+  allowed_paths:
+    - "scripts/agent-harness/**"
+  forbidden_paths:
+    - "scripts/lint/run.sh"
+  max_files: 10
+  max_functions: 3
+  allowed_rules:
+    - "S101"
+    - "PTH123"
+  stop_condition: "対象ルールの解消または max_files / max_functions 上限到達時点で Hand-off を作成して終了する"
+execution_policy:
+  foreground_only: true
+  forbid_repo_wide_test_build: true
+  forbid_bulk_autofix: true
+  verification_command: "./scripts/lint/run.sh scripts"
+handoff_requirements:
+  require_modified_files_and_lines: true
+  require_runtime_behavior_impact: true
+  require_change_rationale: true
+---
+
+# タスクパケット: EXAMPLE-TASK-001
+
+## 1. 範囲と作業量制約 (Bounded Scope)
+
+- **対象ターゲット**: `scripts`（`./scripts/lint/run.sh scripts` で決定論的に検証）
+- **編集許可パス**: `scripts/agent-harness/**`（親ディレクトリ参照 `..` および範囲外編集は禁止）
+- **編集禁止パス**: `scripts/lint/run.sh`
+- **作業量上限**: 最大 10 ファイル / 最大 3 関数（時間ではなく作業量で制約する）
+- **対象ルール**: `S101`, `PTH123`（`*` や `ALL` による無制限指定は禁止）
+- **停止条件**: 対象ルールの解消または作業量上限到達時点で Hand-off 報告を作成して終了する。
+
+## 2. 実行・検証手順
+
+- **前景実行のみ許可**: 背景実行（`&` や `nohup`）は禁止。
+- **GUARD-01（危険な一括自動修正の原則禁止）**: `golangci-lint --fix`、`cargo clippy --fix`、`cargo fix`、`ruff check --unsafe-fixes`、`biome check --write --unsafe` などのロジック改変を伴う一括自動修正は禁止。指摘事項は 1 件ずつ手動で修正する。
+- **ホスト側全体ビルド・全体テストの禁止**: リポジトリ全体のビルドや `./scripts/lint/run.sh all` は実行せず、本パケットの検証コマンドのみを実行する。
+
+```bash
+./scripts/lint/run.sh scripts
+```
+
+## 3. Hand-off 記述必須項目
+
+作業完了時または上限到達による停止時、以下 3 項目を必ず構造化して報告する（空欄・`TBD`・`N/A`・`-` 単独は不可）:
+
+1. **修正ファイルと行数**（各ファイルの追加・削除行数、および変更関数数）
+2. **実行時挙動の変更可能性の有無**（`timeout`, `error_message`, `permissions`, `type_conversion`, `default_value`, `control_flow` 等の確認観点と根拠。変更が無い場合も「変更なし」を明示）
+3. **変更理由**（変更が無い場合も「変更なし」を明示）と検証コマンドの実行結果

@@ -67,6 +67,7 @@ on:
       - 'scripts/tests/**'
       - 'scripts/ci/**'
       - 'scripts/lint/**'
+      - '.golangci.yml'
       - 'playbooks/publish-manual-verifications.yml'
       - 'playbooks/_publish-bridge.yml'
       - '!**/CLAUDE.md'
@@ -112,6 +113,7 @@ on:
       - 'scripts/tests/**'
       - 'scripts/ci/**'
       - 'scripts/lint/**'
+      - '.golangci.yml'
       - 'playbooks/publish-manual-verifications.yml'
       - 'playbooks/_publish-bridge.yml'
       - '!**/CLAUDE.md'
@@ -131,7 +133,7 @@ jobs:
   buf-lint-breaking:
     name: Buf Lint & Breaking Change Detection
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -155,7 +157,8 @@ jobs:
       # it is blocking from the first run: "Buf Lint & Breaking Change Detection"
       # is already a required status check, and a separate job would sit
       # non-blocking until branch protection is re-wired.
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+      - id: setup-go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
           go-version: "1.27.4"
           # check-latest matches reusable-test-go: the runner's preinstalled Go
@@ -166,9 +169,20 @@ jobs:
           # Monorepo: no root go.mod, so point the cache at the tool's own sums.
           cache-dependency-path: proto/tools/protovis/go.sum
 
+      - name: Cache Go lint tools
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ~/.cache/alt-lint
+          key: alt-lint-go-${{ runner.os }}-go-${{ steps.setup-go.outputs.go-version }}-golangci-v2.14.0-gosec-v2.30.0-govulncheck-v1.6.0
+
       - name: protovis unit tests
         working-directory: proto/tools/protovis
         run: go test ./...
+
+      - name: protovis lint and quality gates
+        env:
+          TARGET: proto/tools/protovis
+        run: ./scripts/lint/run.sh "$TARGET"
 
       - name: Buf lint, breaking check, and allowlist drift
         env:

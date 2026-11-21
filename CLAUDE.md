@@ -45,6 +45,16 @@ curl http://localhost:9250/health       # BFF
 curl http://localhost:7700/health       # Meilisearch
 ```
 
+### Canonical Lint Gate
+
+All module and repository static checks run through a single entry point (identical to CI):
+
+```bash
+./scripts/lint/run.sh <target>  # Single module dir or named target (e.g. alt-backend/app, repo)
+./scripts/lint/run.sh --list    # List all valid lint targets
+./scripts/lint/run.sh all       # Run every valid target sequentially with PASS/FAIL summary
+```
+
 ## Toolchain
 
 ### LKAL (`lkal`)

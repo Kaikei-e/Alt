@@ -38,6 +38,9 @@
 - Support assets: `compose/compose.yaml` (include stacks), `Makefile`, `scripts/`, `docker/`, `db/`, `.github/`, root `tests/`.
 
 ## Core Tooling & Commands
+- **Canonical lint gate (CI-identical)**
+  - Module or named target: `./scripts/lint/run.sh <target>` (e.g. `./scripts/lint/run.sh alt-backend/app`, `./scripts/lint/run.sh repo`, or `make lint TARGET=<target>`).
+  - Full repository gate: `./scripts/lint/run.sh all` (or `make lint`); list all valid targets with `./scripts/lint/run.sh --list` (or `make lint-list`).
 - **Stack orchestration**
   - Prefer: `docker compose -f compose/compose.yaml -p alt up -d` (see root `CLAUDE.md`).
   - `make up` – Copies `.env.template` → `.env` if needed, builds images, starts Docker Compose.
@@ -143,7 +146,7 @@ These rules and the invariants below are the same text as root `CLAUDE.md`; `scr
 
 ## Delivery Checklist
 - Plan updated; all steps completed or clearly marked.
-- Changes minimal, relevant, and formatted with project tools (`bun run format`, `gofmt`, `ruff`, etc.).
+- Changes minimal, relevant, and verified through the canonical lint gate (`./scripts/lint/run.sh <target>` or `./scripts/lint/run.sh all`).
 - Appropriate tests executed and reported.
 - No Compose/Kubernetes drift—legacy assets under `stopped-using-k8s/` untouched.
 - Final message includes short rationale, file references, test evidence, and suggested next steps when applicable.
