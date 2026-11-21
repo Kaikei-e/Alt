@@ -1413,3 +1413,88 @@ async def test_check_all_marks_failing_target_and_probes_next_on_unlisted_except
     assert status["http://router-a.example:8080"]["consecutive_failures"] == 1
     assert status["http://router-a.example:8080"]["healthy"] is False
     assert status["http://router-b.example:8080"]["healthy"] is True
+
+
+@pytest.mark.parametrize("boot_clock", [0.0, 12.5])
+@pytest.mark.asyncio
+async def test_initial_probe_runs_when_monotonic_clock_is_below_cooldown(
+    monkeypatch: pytest.MonkeyPatch,
+    boot_clock: float,
+) -> None:
+    """Initial probe must run even on freshly booted hosts/runners where time.monotonic() < cooldown_seconds."""
+    expected_reprobe_calls = 2
+    target_ok = RemoteTarget(
+        base_url="http://router-a.example:8080",
+        model="provider-a/model-a:latest",
+        num_ctx=32768,
+    )
+    target_down = RemoteTarget(
+        base_url="http://router-b.example:8080",
+        model="provider-b/model-b:latest",
+        num_ctx=32768,
+    )
+    checker = RemoteHealthChecker(
+        targets=[target_ok, target_down],
+        interval_seconds=30,
+        cooldown_seconds=60,
+        timeout_seconds=10,
+    )
+    assert all(s["last_checked"] == 0.0 for s in checker.status())
+
+    session = _build_session_by_url(
+        {
+            "http://router-a.example:8080/v1/models": _make_response(
+                200,
+                json.dumps({"object": "list", "data": [{"id": target_ok.model}]}),
+            ),
+            "http://router-b.example:8080/v1/models": _make_response(503, "down"),
+        }
+    )
+    checker._session = session
+
+    clock = boot_clock
+    monkeypatch.setattr(
+        "news_creator.gateway.remote_health_checker.time.monotonic", lambda: clock
+    )
+
+    await checker._check_all()
+
+    status_by_url = {s["base_url"]: s for s in checker.status()}
+    assert status_by_url["http://router-a.example:8080"]["healthy"] is True
+    assert status_by_url["http://router-a.example:8080"]["last_checked"] == boot_clock
+    assert status_by_url["http://router-b.example:8080"]["healthy"] is False
+    assert status_by_url["http://router-b.example:8080"]["consecutive_failures"] == 1
+    assert status_by_url["http://router-b.example:8080"]["last_checked"] == boot_clock
+
+    # Before interval (30s) or cooldown (60s) elapses from boot_clock, neither target re-probes
+    clock = boot_clock + 29.0
+    await checker._check_all()
+    assert session.get.call_count == expected_reprobe_calls
+
+    # At boot_clock + 31s, healthy router-a re-probes while unhealthy router-b waits for 60s cooldown
+    clock = boot_clock + 31.0
+    await checker._check_all()
+    assert session.get.call_count == expected_reprobe_calls + 1
+
+
+@pytest.mark.asyncio
+async def test_longest_idle_prefers_never_completed_over_completed_at_monotonic_zero(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A target completed at time.monotonic() == 0.0 must still rank behind never-completed targets."""
+    checker, targets = _make_checker()
+    clock = 0.0
+    monkeypatch.setattr(
+        "news_creator.gateway.remote_health_checker.time.monotonic", lambda: clock
+    )
+
+    await _make_all_healthy(checker, targets)
+    assert all(s["last_completed"] == 0.0 for s in checker.status())
+
+    first = checker.acquire_idle_target(lambda _: True)
+    assert first == targets[0]
+    checker.mark_success(targets[0])
+
+    # Next acquisition at t=0.0 must pick never-completed targets[1], not targets[0]
+    second = checker.acquire_idle_target(lambda _: True)
+    assert second == targets[1]
