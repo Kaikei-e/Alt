@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gzip
 import hashlib
 import http.client
 import importlib
@@ -392,3 +393,180 @@ def test_download_and_verify_retries_mid_read_incomplete_read(tmp_path: Path) ->
     assert [call.args[0] for call in mock_sleep.call_args_list] == [5.0, 10.0]
     with dest_file.open("rb") as f:
         assert f.read() == data
+
+
+def test_ffi_fresh_install_writes_library_stamp_and_no_pact_download(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    payload = b"fake-libpact-ffi-binary-v1"
+    gz_bytes = gzip.compress(payload)
+    pin = hashlib.sha256(gz_bytes).hexdigest()
+
+    home_dir = tmp_path / "home"
+    home_dir.mkdir()
+    work_dir = tmp_path / "workdir"
+    work_dir.mkdir()
+
+    monkeypatch.setenv("HOME", str(home_dir))
+    monkeypatch.chdir(work_dir)
+    monkeypatch.setattr(pact_artifacts, "LIBPACT_FFI_SHA256", pin)
+    monkeypatch.setattr(sys, "argv", ["pact-artifacts.py", "--type", "ffi"])
+
+    with patch("urllib.request.urlopen", return_value=_make_mock_response(gz_bytes)):
+        pact_artifacts.main()
+
+    lib_dir = home_dir / ".pact" / "lib"
+    assert (lib_dir / "libpact_ffi.so").read_bytes() == payload
+    assert (lib_dir / "libpact_ffi.so.sha256").read_text(encoding="utf-8").strip() == pin
+    assert not (work_dir / "pact_download").exists()
+
+
+def test_ffi_skips_download_when_stamp_matches(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    payload = b"existing-pinned-libpact-ffi"
+    pin = "a" * 64
+
+    home_dir = tmp_path / "home"
+    lib_dir = home_dir / ".pact" / "lib"
+    lib_dir.mkdir(parents=True)
+    ffi_so = lib_dir / "libpact_ffi.so"
+    stamp_file = lib_dir / "libpact_ffi.so.sha256"
+    ffi_so.write_bytes(payload)
+    stamp_file.write_text(f"{pin}\n", encoding="utf-8")
+
+    monkeypatch.setenv("HOME", str(home_dir))
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(pact_artifacts, "LIBPACT_FFI_SHA256", pin)
+    monkeypatch.setattr(sys, "argv", ["pact-artifacts.py", "--type", "ffi"])
+
+    with patch(
+        "urllib.request.urlopen",
+        side_effect=AssertionError("urlopen must not be called when stamp matches"),
+    ) as mock_urlopen:
+        pact_artifacts.main()
+
+    mock_urlopen.assert_not_called()
+    assert ffi_so.read_bytes() == payload
+    out = capsys.readouterr().out
+    assert pin[:12] in out
+
+
+def test_ffi_redownloads_when_stamp_differs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    new_payload = b"new-libpact-ffi-binary-v2"
+    gz_bytes = gzip.compress(new_payload)
+    new_pin = hashlib.sha256(gz_bytes).hexdigest()
+
+    home_dir = tmp_path / "home"
+    lib_dir = home_dir / ".pact" / "lib"
+    lib_dir.mkdir(parents=True)
+    ffi_so = lib_dir / "libpact_ffi.so"
+    stamp_file = lib_dir / "libpact_ffi.so.sha256"
+    ffi_so.write_bytes(b"old-libpact-ffi")
+    stamp_file.write_text("0" * 64 + "\n", encoding="utf-8")
+
+    monkeypatch.setenv("HOME", str(home_dir))
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(pact_artifacts, "LIBPACT_FFI_SHA256", new_pin)
+    monkeypatch.setattr(sys, "argv", ["pact-artifacts.py", "--type", "ffi"])
+
+    with patch(
+        "urllib.request.urlopen", return_value=_make_mock_response(gz_bytes)
+    ) as mock_urlopen:
+        pact_artifacts.main()
+
+    assert mock_urlopen.call_count == 1
+    assert ffi_so.read_bytes() == new_payload
+    assert stamp_file.read_text(encoding="utf-8").strip() == new_pin
+
+
+def test_ffi_redownloads_when_stamp_present_but_library_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    payload = b"restored-libpact-ffi"
+    gz_bytes = gzip.compress(payload)
+    pin = hashlib.sha256(gz_bytes).hexdigest()
+
+    home_dir = tmp_path / "home"
+    lib_dir = home_dir / ".pact" / "lib"
+    lib_dir.mkdir(parents=True)
+    stamp_file = lib_dir / "libpact_ffi.so.sha256"
+    stamp_file.write_text(f"{pin}\n", encoding="utf-8")
+
+    monkeypatch.setenv("HOME", str(home_dir))
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(pact_artifacts, "LIBPACT_FFI_SHA256", pin)
+    monkeypatch.setattr(sys, "argv", ["pact-artifacts.py", "--type", "ffi"])
+
+    with patch(
+        "urllib.request.urlopen", return_value=_make_mock_response(gz_bytes)
+    ) as mock_urlopen:
+        pact_artifacts.main()
+
+    assert mock_urlopen.call_count == 1
+    assert (lib_dir / "libpact_ffi.so").read_bytes() == payload
+    assert stamp_file.read_text(encoding="utf-8").strip() == pin
+
+
+def test_ffi_checksum_mismatch_preserves_existing_library_and_stamp(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    old_payload = b"previous-good-lib"
+    old_pin = "1" * 64
+    wrong_pin = "2" * 64
+    bad_gz = gzip.compress(b"unexpected-bytes")
+
+    home_dir = tmp_path / "home"
+    lib_dir = home_dir / ".pact" / "lib"
+    lib_dir.mkdir(parents=True)
+    ffi_so = lib_dir / "libpact_ffi.so"
+    stamp_file = lib_dir / "libpact_ffi.so.sha256"
+    ffi_so.write_bytes(old_payload)
+    stamp_file.write_text(f"{old_pin}\n", encoding="utf-8")
+
+    monkeypatch.setenv("HOME", str(home_dir))
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(pact_artifacts, "LIBPACT_FFI_SHA256", wrong_pin)
+    monkeypatch.setattr(sys, "argv", ["pact-artifacts.py", "--type", "ffi"])
+
+    with patch("urllib.request.urlopen", return_value=_make_mock_response(bad_gz)):
+        with pytest.raises(SystemExit) as exc:
+            pact_artifacts.main()
+        assert exc.value.code != 0
+
+    assert ffi_so.read_bytes() == old_payload
+    assert stamp_file.read_text(encoding="utf-8").strip() == old_pin
+
+
+def test_ffi_corrupt_gzip_preserves_existing_library_and_writes_no_new_stamp(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    old_payload = b"previous-good-lib"
+    old_pin = "1" * 64
+    # Truncated gzip stream that still matches the patched archive checksum
+    corrupt_gz = gzip.compress(b"some-payload-bytes")[:10]
+    corrupt_pin = hashlib.sha256(corrupt_gz).hexdigest()
+
+    home_dir = tmp_path / "home"
+    lib_dir = home_dir / ".pact" / "lib"
+    lib_dir.mkdir(parents=True)
+    ffi_so = lib_dir / "libpact_ffi.so"
+    stamp_file = lib_dir / "libpact_ffi.so.sha256"
+    ffi_so.write_bytes(old_payload)
+    stamp_file.write_text(f"{old_pin}\n", encoding="utf-8")
+
+    monkeypatch.setenv("HOME", str(home_dir))
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(pact_artifacts, "LIBPACT_FFI_SHA256", corrupt_pin)
+    monkeypatch.setattr(sys, "argv", ["pact-artifacts.py", "--type", "ffi"])
+
+    with patch("urllib.request.urlopen", return_value=_make_mock_response(corrupt_gz)):
+        with pytest.raises(SystemExit) as exc:
+            pact_artifacts.main()
+        assert exc.value.code != 0
+
+    assert ffi_so.read_bytes() == old_payload
+    assert stamp_file.read_text(encoding="utf-8").strip() == old_pin
+    assert sorted(p.name for p in lib_dir.iterdir()) == ["libpact_ffi.so", "libpact_ffi.so.sha256"]

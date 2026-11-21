@@ -12,7 +12,8 @@
 #   ./scripts/pact-check.sh --help          # Show help
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_ROOT"
 
 # Self-hosted GitHub Actions runners inherit PATH from the .path file
@@ -20,11 +21,13 @@ cd "$REPO_ROOT"
 # ~/.profile. If Go is installed after the runner was registered, its
 # /usr/local/go/bin is missing. Re-stitch common toolchain paths here so
 # the script works identically from a dev shell and from runsvc.sh.
-for candidate in /usr/local/go/bin /usr/local/bin /home/$USER/.local/bin "$HOME/.cargo/bin" "$HOME/.pyenv/shims"; do
-  if [[ -d "$candidate" ]] && [[ ":$PATH:" != *":$candidate:"* ]]; then
-    PATH="$PATH:$candidate"
-  fi
-done
+if [[ "${PACT_CHECK_NO_PATH_STITCH:-0}" != "1" ]]; then
+  for candidate in /usr/local/go/bin /usr/local/bin "${USER:+/home/$USER/.local/bin}" "$HOME/.cargo/bin" "$HOME/.pyenv/shims"; do
+    if [[ -n "$candidate" ]] && [[ -d "$candidate" ]] && [[ ":$PATH:" != *":$candidate:"* ]]; then
+      PATH="$PATH:$candidate"
+    fi
+  done
+fi
 export PATH
 
 MODE="file"
@@ -232,22 +235,21 @@ skip_step() {
   SKIP=$((SKIP + 1))
 }
 
-# Check FFI library for Go/Rust pact tests. Accept any of:
-#   - already-on-LD_LIBRARY_PATH
-#   - $HOME/.pact/lib (pact-foundation default)
-#   - /usr/local/lib (system install)
+# Provision libpact_ffi at the repository pin so Go contract tests never link
+# against a stale host-installed library (version drift fails at link time).
 check_ffi() {
-  if [[ -n "${LD_LIBRARY_PATH:-}" ]] && ls "${LD_LIBRARY_PATH}"/libpact_ffi.so &>/dev/null; then
-    return 0
+  local ffi_dir="$HOME/.pact/lib"
+  local artifacts_script="$SCRIPT_DIR/ci/pact-artifacts.py"
+  if ! command -v python3 &>/dev/null; then
+    echo "ERROR: go is installed, but python3 is missing — cannot provision pinned libpact_ffi via ${artifacts_script}" >&2
+    return 1
   fi
-  for dir in "$HOME/.pact/lib" /usr/local/lib; do
-    if ls "$dir/libpact_ffi.so" &>/dev/null; then
-      export LD_LIBRARY_PATH="$dir${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-      export CGO_LDFLAGS="-L$dir"
-      return 0
-    fi
-  done
-  return 1
+  if ! python3 "$artifacts_script" --type ffi; then
+    echo "ERROR: failed to provision pinned libpact_ffi via ${artifacts_script}" >&2
+    return 1
+  fi
+  export LD_LIBRARY_PATH="${ffi_dir}${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+  export CGO_LDFLAGS="-L${ffi_dir}"
 }
 
 # ---------- Broker mode setup ----------
@@ -326,7 +328,12 @@ declare -A HAVE=()
 HAVE[go]=0
 HAVE[cargo]=0
 HAVE[uv]=0
-if command -v go &>/dev/null && check_ffi; then HAVE[go]=1; fi
+if [[ "$DRY_RUN" != "true" ]] && command -v go &>/dev/null; then
+  if ! check_ffi; then
+    exit 1
+  fi
+  HAVE[go]=1
+fi
 if command -v cargo &>/dev/null; then HAVE[cargo]=1; fi
 if command -v uv &>/dev/null; then HAVE[uv]=1; fi
 
