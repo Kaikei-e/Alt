@@ -71,15 +71,6 @@ curl http://localhost:7700/health       # Meilisearch
   - Modifying `docs/ADR/**` or `docdag.yaml`: settled ADRs are append-only (`--immutable-since origin/main`); only frontmatter `status: superseded` may be updated on a superseded ADR.
 - **Verify**: `docdag validate && docdag lint --strict` (and `docdag validate --immutable-since origin/main` before finishing any `docs/ADR/` or `docdag.yaml` change).
 
-## Antigravity MCP delegation
-
-Use `antigravity_run` for a separate, bounded investigation or plan. Default to
-`mode: "plan"` and `autonomy: "safe"`; request `accept-edits` only when the
-task explicitly calls for changes. Continue a thread only with the exact
-`conversation_id` returned by the prior call, and keep the same workspace.
-The bridge permits one Antigravity call at a time. Do not ask a delegated turn
-to recursively delegate work or launch this MCP server.
-
 ## Critical Rules
 
 <!-- shared:critical-rules:start -->

@@ -26,7 +26,7 @@ aliases:
 
 # Runbook: `kisage` / `LKAL` Host Environment Reconciliation & Preflight
 
-Operational guide for Alt's bounded `kisage` (`v0.1.2`) and official `lkal` (`v0.1`) pilot covering repository declaration verification, read-only `.env` preflight checks, role boundaries between `agy` workers and the host operator, and stateful rollback.
+Operational guide for Alt's bounded `kisage` (`v0.1.2`) and official `lkal` (`v0.1`) pilot covering repository declaration verification, read-only `.env` preflight checks, role boundaries between AI coding agents and the host operator, and stateful rollback.
 
 ---
 
@@ -60,11 +60,11 @@ python3 scripts/tests/test-kisage-env.py --audit-host-config
 
 ---
 
-## Role Split: `agy` Worker vs. Host Operator
+## Role Split: AI Coding Agent vs. Host Operator
 
 | Actor | Permitted Scope | Prohibited Actions |
 | :--- | :--- | :--- |
-| **`agy` Worker** (AI coding agent / CI) | Edit repository-owned declarations (`deploy/desired-env.lkal`), helper (`scripts/kisage-env.py`), tests (`scripts/tests/test-kisage-env.py`, `tests/scripts/test_kisage_clean_checkout.py`), and docs. Run read-only `verify`, `preflight`, and isolated temp-dir tests. | **Never** edit `.env` or `.kisage/*` directly (guarded on configured operator hosts by `.claude/settings.json` `PreToolUse` hook). Never run automatic `kisage adopt` or `kisage prune`. Never log or print secret values. |
+| **AI coding agent** (or CI) | Edit repository-owned declarations (`deploy/desired-env.lkal`), helper (`scripts/kisage-env.py`), tests (`scripts/tests/test-kisage-env.py`, `tests/scripts/test_kisage_clean_checkout.py`), and docs. Run read-only `verify`, `preflight`, and isolated temp-dir tests. | **Never** edit `.env` or `.kisage/*` directly (guarded on configured operator hosts by `.claude/settings.json` `PreToolUse` hook). Never run automatic `kisage adopt` or `kisage prune`. Never log or print secret values. |
 | **Host Operator** | Owns `.kisage/host.json`, `.kisage/host-env.lkal` (including `/local/*`), `.kisage/state/ownership.json`, live `.env`, and gitignored host-local agent config (`.claude/settings.json`, `.mcp.json`). Executes stateful `kisage plan`, `kisage apply`, `kisage prune`, explicit `kisage explain` + `kisage adopt`, and explicit `audit-host-config`. | Never bypass `K203` (`ModifiedExternally`) or `K206` (`UnownedConflict`) with blind script automation; always inspect `kisage explain` first. |
 
 > **Portable CI vs. Host-Local Structural Audit Scope**:
