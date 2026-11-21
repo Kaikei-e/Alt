@@ -1,0 +1,23 @@
+id = "C-09"
+title = "Renaming log_message parameter format to fmt for Ruff A002 breaks override signature"
+category = "signature-override-drift"
+language = "python"
+before_file = "before.py"
+after_file = "after.py"
+support_files = []
+evaluation_mode = "after"
+
+[origin]
+branch = "chore/lint-rollout"
+base_commit = "6cae3ef6f"
+files = ["recap-subworker/recap_subworker/app/infra/pki/ops.py"]
+commits = ["1ddd55e73"]
+source_ref = "docs/review/lint-rollout-harness-learnings-2026-11-21.md#2.1"
+notes = "Renaming `format: str` to `fmt: str` in _OpsHandler.log_message(BaseHTTPRequestHandler) to satisfy Ruff A002 caused a parameter-name override mismatch caught immediately by pyrefly [bad-override-param-name]."
+
+[detection]
+planned_checks = ["pyrefly"]
+active_checks = ["pyrefly"]
+currently_caught = true
+current_method = "pyrefly"
+expected_signal = "bad-override-param-name"

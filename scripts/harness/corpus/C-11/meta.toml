@@ -1,0 +1,23 @@
+id = "C-11"
+title = "Adding unrequested IdleTimeout: 60s to http.Server while fixing G112 ReadHeaderTimeout"
+category = "unrequested-behavior-change"
+language = "go"
+before_file = "before.go"
+after_file = "after.go"
+support_files = []
+evaluation_mode = "diff"
+
+[origin]
+branch = "chore/lint-rollout"
+base_commit = "6cae3ef6f"
+files = ["auth-hub/cmd/auth-hub/main.go"]
+commits = ["54b218f7a"]
+source_ref = "docs/review/lint-rollout-harness-learnings-2026-11-21.md#2.2"
+notes = "While fixing gosec G112 (ReadHeaderTimeout) on auth-hub's plaintext http.Server in auth-hub/cmd/auth-hub/main.go, an unrequested IdleTimeout of 60s was added; lint and tests passed and only manual diff review caught and removed it before commit 54b218f7a."
+
+[detection]
+planned_checks = ["ARCH-02", "CHECK-01", "VERIFY-03"]
+active_checks = []
+currently_caught = false
+current_method = "差分読みのみ"
+expected_signal = ""

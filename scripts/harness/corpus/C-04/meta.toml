@@ -1,0 +1,26 @@
+id = "C-04"
+title = "protogetter migration turns nil RPC response from fail-fast into silent zero-value success"
+category = "unrequested-behavior-change"
+language = "go"
+before_file = "before.go"
+after_file = "after.go"
+support_files = []
+evaluation_mode = "diff"
+
+[origin]
+branch = "chore/lint-rollout"
+base_commit = "6cae3ef6f"
+files = [
+  "search-indexer/app/driver/backend_api/client.go",
+  "pre-processor/app/driver/mqhub_connect/client.go",
+]
+commits = ["64814fdae", "8e1979afd"]
+source_ref = "docs/review/lint-rollout-harness-learnings-2026-11-21.md#2.1"
+notes = "Replacing direct protobuf field reads with generated Get*() methods under protogetter silently swallowed nil RPC responses as zero values; 14 explicit nil checks had to be added manually after review in search-indexer and pre-processor."
+
+[detection]
+planned_checks = ["ARCH-02", "VERIFY-01"]
+active_checks = []
+currently_caught = false
+current_method = "レビュー観点のみ"
+expected_signal = ""

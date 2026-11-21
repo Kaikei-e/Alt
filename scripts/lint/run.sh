@@ -74,7 +74,7 @@ list_targets() {
     rel_dir="$(dirname "$marker_rel")"
     [ "$rel_dir" != "." ] || continue
     case "$rel_dir" in
-      stopped-using-k8s|stopped-using-k8s/*)
+      stopped-using-k8s|stopped-using-k8s/*|scripts/harness/corpus|scripts/harness/corpus/*)
         continue
         ;;
     esac

@@ -27,8 +27,6 @@ import tokenize
 import tomllib
 from dataclasses import dataclass
 
-import yaml
-
 MIN_REASON_LENGTH = 5
 EXIT_CLEAN = 0
 EXIT_VIOLATIONS = 1
@@ -472,7 +470,7 @@ def load_allowlist(
 def is_excluded_source_path(rel_path: str) -> bool:
     """Return True if a repository-relative path is outside source governance."""
     norm = rel_path.lstrip("./")
-    if norm.startswith("stopped-using-k8s/"):
+    if norm.startswith(("stopped-using-k8s/", "scripts/harness/corpus/")):
         return True
     if norm.endswith((".pb.go", ".connect.go", "server.gen.go", ".md")):
         return True
@@ -670,6 +668,8 @@ def _golangci_rule_allowed(
 
 def check_golangci(rel_path: str, text: str, allowlist: Allowlist) -> list[Violation]:
     """Validate .golangci.yml disables and exclusion rules against the allowlist."""
+    import yaml  # noqa: PLC0415 - lazy import keeps non-YAML checks usable without PyYAML
+
     data = yaml.safe_load(text) or {}
     if not isinstance(data, dict):
         return []
@@ -1514,7 +1514,7 @@ def check_repo(repo_root: pathlib.Path, allowlist_path: pathlib.Path) -> list[Vi
     tracked_files = _git_ls_files(repo_root)
 
     for rel_path in tracked_files:
-        if rel_path.startswith("stopped-using-k8s/"):
+        if rel_path.startswith(("stopped-using-k8s/", "scripts/harness/corpus/")):
             continue
         full_path = repo_root / rel_path
         if not full_path.is_file():

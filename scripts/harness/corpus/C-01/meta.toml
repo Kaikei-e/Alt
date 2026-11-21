@@ -1,0 +1,27 @@
+id = "C-01"
+title = "errorlint autofix drops RHS of && condition (he.Code >= 500)"
+category = "autofix-logic-corruption"
+language = "go"
+before_file = "before.go"
+after_file = "after.go"
+support_files = []
+evaluation_mode = "diff"
+
+[origin]
+branch = "chore/lint-rollout"
+base_commit = "6cae3ef6f"
+files = [
+  "alt-backend/app/middleware/dos_protection_middleware.go",
+  "alt-backend/app/connect/errorhandler/error_handler.go",
+  "alt-backend/app/orchestrator/rest/rest_feeds/summarization/helpers.go",
+]
+commits = ["d8ce79dec"]
+source_ref = "docs/review/lint-rollout-harness-learnings-2026-11-21.md#2.1"
+notes = "golangci-lint --fix (errorlint) rewrote `if he, ok := err.(*echo.HTTPError); ok && he.Code >= 500` to `if errors.As(err, &he)` and silently dropped `&& he.Code >= 500` across three alt-backend files; caught by manual diff review before commit d8ce79dec."
+
+[detection]
+planned_checks = ["CHECK-01", "EXEC-01"]
+active_checks = []
+currently_caught = false
+current_method = "差分読みのみ"
+expected_signal = ""

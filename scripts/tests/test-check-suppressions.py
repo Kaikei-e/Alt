@@ -752,6 +752,7 @@ def test_exclusions_and_cli(checker: types.ModuleType) -> None:
     sys.stdout.write("path exclusions and CLI integration\n")
     for excluded in (
         "stopped-using-k8s/a.go",
+        "scripts/harness/corpus/C-22/after.py",
         "pkg/foo.pb.go",
         "pkg/foo.connect.go",
         "api/server.gen.go",
@@ -776,6 +777,13 @@ def test_exclusions_and_cli(checker: types.ModuleType) -> None:
         al_path = repo / "scripts" / "lint" / "suppression_allowlist.toml"
         al_path.write_text(MINIMAL_ALLOWLIST_TOML, encoding="utf-8")
         (repo / "app.py").write_text("x = 1  # noqa: F401\n", encoding="utf-8")
+        corpus_case = repo / "scripts" / "harness" / "corpus" / "C-22"
+        corpus_case.mkdir(parents=True)
+        (corpus_case / "after.py").write_text("# ruff: noqa: TRY003\nx = 1\n", encoding="utf-8")
+        (corpus_case / "pyproject.toml").write_text(
+            '[tool.ruff.lint]\nignore = ["F401"]\n',
+            encoding="utf-8",
+        )
         run_git(repo, "add", ".")
 
         res_ok = subprocess.run(  # noqa: S603 - fixed argv built in this test
@@ -785,7 +793,7 @@ def test_exclusions_and_cli(checker: types.ModuleType) -> None:
             check=False,
         )
         check(
-            "CLI exits 0 on clean git repo",
+            "CLI exits 0 on clean git repo (ignoring scripts/harness/corpus fixtures)",
             res_ok.returncode == 0,
             res_ok.stdout + res_ok.stderr,
         )

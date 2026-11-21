@@ -1,0 +1,23 @@
+id = "C-17"
+title = "Secret-redaction regex switched to LazyLock<Option<Regex>> with .ok(), silently skipping redaction on compile failure"
+category = "silent-error-swallow"
+language = "rust"
+before_file = "before.rs"
+after_file = "after.rs"
+support_files = []
+evaluation_mode = "after"
+
+[origin]
+branch = "chore/lint-rollout"
+base_commit = "6cae3ef6f"
+files = ["rask-log-forwarder/app/src/domain/redact.rs"]
+commits = ["4a877d2f9", "669bb6fa5"]
+source_ref = "docs/review/lint-rollout-harness-learnings-2026-11-21.md#2.2"
+notes = "In rask-log-forwarder/app/src/domain/redact.rs (4a877d2f9 / 669bb6fa5), removing clippy::unwrap_used introduced LazyLock<Option<Regex>> via Regex::new(...).ok(), silently skipping credential masking on error; replaced with startup-validated Result compilation."
+
+[detection]
+planned_checks = ["ARCH-02", "CHECK-01"]
+active_checks = []
+currently_caught = false
+current_method = "差分読みのみ"
+expected_signal = ""

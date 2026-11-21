@@ -1,0 +1,23 @@
+id = "C-06"
+title = "Priority semaphore refactor drops else: return wait_time, sid"
+category = "control-flow-drop"
+language = "python"
+before_file = "before.py"
+after_file = "after.py"
+support_files = []
+evaluation_mode = "diff"
+
+[origin]
+branch = "chore/lint-rollout"
+base_commit = "6cae3ef6f"
+files = ["news-creator/app/news_creator/gateway/hybrid_priority_semaphore.py"]
+commits = ["6d99f9808"]
+source_ref = "docs/review/lint-rollout-harness-learnings-2026-11-21.md#2.1"
+notes = "Splitting HybridPrioritySemaphore.acquire into private helpers in news-creator accidentally dropped `else: return wait_time, sid`, leaving the normal queued-acquire path falling off the function with None; the typed production version was caught by pyrefly [bad-return] and unit tests, while CHECK-01 targets the structural `else: return` loss directly regardless of return annotations."
+
+[detection]
+planned_checks = ["CHECK-01", "VERIFY-01"]
+active_checks = []
+currently_caught = false
+current_method = "pyrefly・テスト"
+expected_signal = ""

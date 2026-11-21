@@ -1,0 +1,23 @@
+id = "C-14"
+title = "Replacing ReverseProxy.Director with naive Rewrite + SetXForwarded alters X-Forwarded-For semantics"
+category = "unrequested-behavior-change"
+language = "go"
+before_file = "before.go"
+after_file = "after.go"
+support_files = []
+evaluation_mode = "diff"
+
+[origin]
+branch = "chore/lint-rollout"
+base_commit = "6cae3ef6f"
+files = ["docker/inference-proxy/main.go"]
+commits = ["aa50c76ba"]
+source_ref = "docs/review/lint-rollout-harness-learnings-2026-11-21.md#2.2"
+notes = "In docker/inference-proxy/main.go (aa50c76ba), SA1019 migration from httputil.ReverseProxy.Director to Rewrite + pr.SetXForwarded() dropped inbound X-Forwarded-For headers and synthesized X-Forwarded-Host/Proto; pinned with upfront upstream-header characterization tests."
+
+[detection]
+planned_checks = ["CHECK-01", "VERIFY-03"]
+active_checks = []
+currently_caught = false
+current_method = "先行テスト"
+expected_signal = ""

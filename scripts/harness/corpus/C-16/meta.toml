@@ -1,0 +1,23 @@
+id = "C-16"
+title = "Hand-editing DO NOT EDIT oapi-codegen server.gen.go instead of regenerating from OpenAPI spec"
+category = "generated-code-tampering"
+language = "go"
+before_file = "before.go"
+after_file = "after.go"
+support_files = []
+evaluation_mode = "diff"
+
+[origin]
+branch = "chore/lint-rollout"
+base_commit = "6cae3ef6f"
+files = ["rag-orchestrator/internal/adapter/http/openapi/server.gen.go", "rag-orchestrator/internal/adapter/rag_http/openapi/server.gen.go"]
+commits = ["c2814346f"]
+source_ref = "docs/review/lint-rollout-harness-learnings-2026-11-21.md#2.2"
+notes = "In rag-orchestrator Echo v5 migration (c2814346f), generated server.gen.go carrying a DO NOT EDIT header was hand-edited for echo/v5 signatures instead of regenerating with a pinned oapi-codegen v2.7.0, hiding spec drift until full regeneration."
+
+[detection]
+planned_checks = ["CHECK-05", "EXEC-02"]
+active_checks = []
+currently_caught = false
+current_method = "差分読みのみ"
+expected_signal = ""

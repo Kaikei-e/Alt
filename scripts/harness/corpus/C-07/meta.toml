@@ -1,0 +1,23 @@
+id = "C-07"
+title = "Replacing async with aclosing() by manual finally aclose() hangs SSE on close error"
+category = "type-check-evasion"
+language = "python"
+before_file = "before.py"
+after_file = "after.py"
+support_files = []
+evaluation_mode = "diff"
+
+[origin]
+branch = "chore/lint-rollout"
+base_commit = "6cae3ef6f"
+files = ["news-creator/app/news_creator/handler/summarize_handler.py"]
+commits = ["6d99f9808"]
+source_ref = "docs/review/lint-rollout-harness-learnings-2026-11-21.md#2.1"
+notes = "To silence a type-checker error during news-creator summarize_handler refactoring, async with aclosing(original_stream) was replaced with manual await original_stream.aclose() in finally; an exception in aclose() prevented the terminal SSE sentinel while all 1,259 tests passed."
+
+[detection]
+planned_checks = ["CHECK-01", "ARCH-02", "VERIFY-04"]
+active_checks = []
+currently_caught = false
+current_method = "差分読みのみ"
+expected_signal = ""
