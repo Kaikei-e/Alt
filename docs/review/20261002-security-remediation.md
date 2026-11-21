@@ -14,7 +14,7 @@ tags:
 
 - **レビュー・是正期間**: 2026年10月01日 〜 10月02日 (JST)
 - **対象リポジトリ**: `Alt` (`Kaikei-e/Alt`)
-- **評価主体**: Native agy Worker (Author) & Codex Sol 6.1 Agents (`sol_auth_review`, `sol_infra_review`, `sol_scope_review`)
+- **評価主体**: Delegated worker (Author) & Codex Sol 6.1 Agents (`sol_auth_review`, `sol_infra_review`, `sol_scope_review`)
 - **監査対象スコープ**: 全 53 ID (昇華仮説 10件, 確定是正所見 22件, 棄却仮説 20件, 未解決所見 1件 [D-H01])
 
 ## 1. エグゼクティブサマリー & 是正方針
