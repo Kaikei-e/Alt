@@ -59,6 +59,9 @@ run_step "workflow-safety-tests" python3 -m unittest discover -s .github/workflo
 run_step "workflow-forbidden-triggers-grep" check_forbidden_triggers_grep
 run_step "workflow-safety-check" python3 .github/workflows/scripts/workflow-safety-check.py
 run_step "lint-run-tests" bash scripts/tests/test-lint-run.sh
+run_step "lint-canary-tests" python3 scripts/tests/test-lint-canary.py
+run_step "suppression-check-tests" python3 scripts/tests/test-check-suppressions.py
+run_step "suppression-governance" python3 scripts/lint/check_suppressions.py
 
 printf '%s\n' "${summary[@]}"
 exit "$fail"

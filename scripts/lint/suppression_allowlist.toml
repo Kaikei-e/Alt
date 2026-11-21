@@ -1,0 +1,119 @@
+# Frozen allowlist ledger for lint configuration suppressions (REPO-03).
+#
+# Policy:
+# - Existing entries marked `status = "frozen-baseline"` are frozen baselines.
+#   Removing entries or narrowing them (fewer skips, fewer excluded dirs, fewer
+#   linters, or fewer Cargo lint allows) is always permitted.
+# - Adding ANY new suppression entry, expanding an existing entry, or adding a
+#   new service to this ledger requires:
+#     1. `adr = "ADR-NNNNNN"` pointing to an existing docs/ADR/NNNNNN.md file
+#     2. `reason = "..."` (>= 5 non-whitespace characters) explaining why
+#        inline/item-level handling is impossible.
+
+version = 1
+
+[ruff]
+allowed_global_ignores = ["E501", "RUF001", "RUF002", "RUF003"]
+allowed_test_per_file_ignores = ["S101"]
+
+# ---------------------------------------------------------------------------
+# Frozen [tool.bandit] entries in pyproject.toml
+# ---------------------------------------------------------------------------
+
+[[bandit]]
+path = "tag-generator/app/pyproject.toml"
+status = "frozen-baseline"
+reason = "Pre-existing tag-generator bandit baseline (tests, subprocess, bind, and tmp skips)"
+exclude_dirs = ["tests", ".venv", "__pycache__", "*.egg-info", "build", "dist"]
+skips = ["B101", "B404", "B603", "B110", "B104", "B108", "B602"]
+
+[[bandit]]
+path = "tts-speaker/pyproject.toml"
+status = "frozen-baseline"
+reason = "Pre-existing tts-speaker bandit baseline (assert and container bind skips)"
+exclude_dirs = ["tests", ".venv", "__pycache__", "*.egg-info", "build", "dist"]
+skips = ["B101", "B104"]
+
+# ---------------------------------------------------------------------------
+# Frozen .golangci.yml linters.exclusions.rules entries
+# ---------------------------------------------------------------------------
+
+[[golangci_exclusions]]
+config = ".golangci.yml"
+path = '\.pb\.go$'
+linters = ["all"]
+status = "frozen-baseline"
+reason = "Protobuf generated Go files"
+
+[[golangci_exclusions]]
+config = ".golangci.yml"
+path = '\.connect\.go$'
+linters = ["all"]
+status = "frozen-baseline"
+reason = "Connect-RPC generated Go files"
+
+[[golangci_exclusions]]
+config = ".golangci.yml"
+path = 'server\.gen\.go$'
+linters = ["all"]
+status = "frozen-baseline"
+reason = "OpenAPI generated Go server files"
+
+[[golangci_exclusions]]
+config = ".golangci.yml"
+path = 'internal/pki/.*_test\.go$'
+linters = ["gosec"]
+status = "frozen-baseline"
+reason = "PKI tests mint disposable certs and exercise fake/live CA fixtures"
+
+[[golangci_exclusions]]
+config = ".golangci.yml"
+path = '_test\.go$'
+linters = ["gosec"]
+text = "G101"
+status = "frozen-baseline"
+reason = "Unit tests require literal dummy tokens and DSNs for auth and config parsing"
+
+[[golangci_exclusions]]
+config = ".golangci.yml"
+path_except = '^knowledge-sovereign/app/usecase/(knowledge_home_projector|knowledge_trail_projector)/[^/]+\.go$'
+linters = ["forbidigo"]
+status = "frozen-baseline"
+reason = "Scope reproject-safety forbidigo rules exclusively to non-test Knowledge projector files"
+
+[[golangci_exclusions]]
+config = ".golangci.yml"
+path = '_test\.go$'
+linters = ["forbidigo"]
+status = "frozen-baseline"
+reason = "Unit tests may call time.Now() and test helpers outside production projector paths"
+
+# ---------------------------------------------------------------------------
+# Frozen Cargo.toml [lints.*] / [workspace.lints.*] "allow" entries
+# ---------------------------------------------------------------------------
+
+[[cargo_lint_allows]]
+path = "recap-worker/recap-worker/Cargo.toml"
+section = "lints.clippy"
+status = "frozen-baseline"
+reason = "Pre-existing recap-worker pedantic clippy baseline allows migrated from lib.rs"
+allows = [
+    "assert_is_empty",
+    "cast_possible_truncation",
+    "cast_possible_wrap",
+    "cast_precision_loss",
+    "collapsible_if",
+    "doc_markdown",
+    "double_must_use",
+    "explicit_iter_loop",
+    "items_after_statements",
+    "missing_errors_doc",
+    "missing_panics_doc",
+    "module_name_repetitions",
+    "must_use_candidate",
+    "needless_pass_by_value",
+    "option_if_let_else",
+    "or_fun_call",
+    "redundant_closure",
+    "uninlined_format_args",
+]

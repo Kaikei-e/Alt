@@ -143,7 +143,7 @@ func (p *tlsPKI) issueLeaf(t *testing.T, dir, cn string) (certPath, keyPath stri
 
 func writePKIPEM(t *testing.T, path, blockType string, der []byte) {
 	t.Helper()
-	f, err := os.Create(path) // #nosec G304
+	f, err := os.Create(path) // #nosec G304 -- test temp cert path
 	if err != nil {
 		t.Fatalf("create %s: %v", path, err)
 	}
@@ -155,7 +155,7 @@ func writePKIPEM(t *testing.T, path, blockType string, der []byte) {
 
 func caPool(t *testing.T, caPath string) *x509.CertPool {
 	t.Helper()
-	b, err := os.ReadFile(caPath) // #nosec G304
+	b, err := os.ReadFile(caPath) // #nosec G304 -- test temp cert path
 	if err != nil {
 		t.Fatalf("read CA %s: %v", caPath, err)
 	}
@@ -435,7 +435,7 @@ func TestHealthPort9012_PublicHealthOnly_NeverBusinessRPC(t *testing.T) {
 	}
 
 	for _, route := range businessRoutes {
-		resp, err := http.Post(baseURL+route, "application/json", nil) //nolint:noctx
+		resp, err := http.Post(baseURL+route, "application/json", nil) //nolint:noctx // test only
 		if err != nil {
 			t.Fatalf("POST %s failed: %v", route, err)
 		}
