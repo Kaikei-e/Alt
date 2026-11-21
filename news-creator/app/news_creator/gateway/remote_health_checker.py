@@ -59,10 +59,10 @@ class RemoteHealthChecker:
             self._states[target] = {
                 "healthy": False,
                 "busy": False,
-                "last_checked": 0.0,
+                "last_checked": None,
                 "last_healthy": 0.0,
                 "last_assigned": 0.0,
-                "last_completed": 0.0,
+                "last_completed": None,
                 "in_flight_count": 0,
                 "consecutive_failures": 0,
                 "probe_failures": 0,
@@ -94,8 +94,8 @@ class RemoteHealthChecker:
         chosen = min(
             idle_fitting,
             key=lambda target: (
-                self._states[target]["last_completed"] > 0.0,
-                self._states[target]["last_completed"],
+                self._states[target]["last_completed"] is not None,
+                self._states[target]["last_completed"] or 0.0,
                 self._targets.index(target),
             ),
         )
@@ -156,10 +156,16 @@ class RemoteHealthChecker:
                     "num_ctx": target.num_ctx,
                     "healthy": state["healthy"],
                     "busy": state["busy"],
-                    "last_checked": state["last_checked"],
+                    "last_checked": (
+                        0.0 if state["last_checked"] is None else state["last_checked"]
+                    ),
                     "last_healthy": state["last_healthy"],
                     "last_assigned": state["last_assigned"],
-                    "last_completed": state["last_completed"],
+                    "last_completed": (
+                        0.0
+                        if state["last_completed"] is None
+                        else state["last_completed"]
+                    ),
                     "in_flight_count": state["in_flight_count"],
                     "consecutive_failures": state["consecutive_failures"],
                 }
@@ -178,7 +184,10 @@ class RemoteHealthChecker:
         state = self._states[target]
         if now < state["cooldown_until"]:
             return False
-        elapsed = now - state["last_checked"]
+        last_checked = state["last_checked"]
+        if last_checked is None:
+            return True
+        elapsed = now - last_checked
         if state["healthy"]:
             return elapsed >= self._interval_seconds
         return elapsed >= self._effective_cooldown(target)
