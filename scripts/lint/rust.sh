@@ -49,6 +49,11 @@ if [ -z "$expected_channel" ]; then
   exit 1
 fi
 
+declared_targets=()
+while IFS= read -r tgt; do
+  [ -n "$tgt" ] && declared_targets+=("$tgt")
+done < <(sed -n 's/^[[:space:]]*targets[[:space:]]*=[[:space:]]*\[\(.*\)\].*/\1/p' "$toolchain_file" | tr ',' '\n' | sed -n 's/^[[:space:]]*"\([^"]*\)".*/\1/p')
+
 cd -- "$project_dir"
 
 if ! cargo_version_line="$(cargo --version 2>&1)"; then
@@ -76,6 +81,13 @@ if ! cargo clippy --all-targets --all-features -- -D warnings; then
   clippy_status="fail"
   rc=1
 fi
+
+for extra_target in "${declared_targets[@]}"; do
+  if ! cargo clippy --lib --target "$extra_target" --all-features -- -D warnings; then
+    clippy_status="fail"
+    rc=1
+  fi
+done
 
 printf 'rust-lint summary (%s):\n' "$project_rel"
 printf '  fmt: %s\n' "$fmt_status"

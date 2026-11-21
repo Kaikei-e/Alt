@@ -2,24 +2,11 @@
 set -euo pipefail
 
 if [ "$#" -ne 1 ] || [ -z "$1" ]; then
-  echo "usage: run.sh <target>" >&2
+  echo "usage: run.sh <target|--list|all>" >&2
   exit 2
 fi
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-target="${1#./}"
-target="${target%/}"
-
-case "$target" in
-  ""|/*|..|../*|*/..|*/../*)
-    echo "invalid lint target: $1" >&2
-    exit 2
-    ;;
-  run|go|python|rust|deno|frontend|check-link-vs-url-naming)
-    echo "invalid lint target '$target': must be a project directory or named target (adr, apparmor, compose, e2e, harness, observability, proto, registry, repo)" >&2
-    exit 2
-    ;;
-esac
 
 detect_marker_kind() {
   local dir="$1"
@@ -37,6 +24,152 @@ detect_marker_kind() {
     echo "proto"
   fi
 }
+
+is_reserved_script() {
+  case "$1" in
+    run|all|go|python|rust|deno|frontend|check-link-vs-url-naming)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+is_generated_go_stub_module() {
+  local rel="$1"
+  local dir="$repo_root/$rel"
+  case "$rel" in
+    alt-butterfly-facade/internal/gen/proto|rag-orchestrator/internal/gen/proto)
+      return 0
+      ;;
+  esac
+  local any_go=""
+  any_go="$(find "$dir" -type f -name '*.go' -print -quit)"
+  [ -n "$any_go" ] || return 1
+  local non_gen=""
+  non_gen="$(find "$dir" -type f -name '*.go' ! -name '*.pb.go' ! -name '*.connect.go' -print -quit)"
+  [ -z "$non_gen" ]
+}
+
+collect_marker_files() {
+  if [ -e "$repo_root/.git" ] && command -v git >/dev/null 2>&1 && git -C "$repo_root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    git -C "$repo_root" ls-files --cached --others --exclude-standard \
+      | grep -E '(^|/)(go\.mod|Cargo\.toml|pyproject\.toml|deno\.json|bun\.lock|buf\.yaml)$' || true
+  else
+    find "$repo_root" \
+      \( -name .git -o -name node_modules -o -name .venv -o -name target -o -name __pycache__ -o -name .cache -o -name vendor -o -name _reports \) -prune \
+      -o -type f \( -name go.mod -o -name Cargo.toml -o -name pyproject.toml -o -name deno.json -o -name bun.lock -o -name buf.yaml \) -print
+  fi
+}
+
+list_targets() {
+  local -a raw_targets=()
+  local marker_path="" marker_rel="" rel_dir="" marker_kind=""
+
+  while IFS= read -r marker_path; do
+    [ -n "$marker_path" ] || continue
+    marker_rel="${marker_path#"$repo_root"/}"
+    [ -f "$repo_root/$marker_rel" ] || continue
+    rel_dir="$(dirname "$marker_rel")"
+    [ "$rel_dir" != "." ] || continue
+    case "$rel_dir" in
+      stopped-using-k8s|stopped-using-k8s/*)
+        continue
+        ;;
+    esac
+    marker_kind="$(detect_marker_kind "$repo_root/$rel_dir")"
+    [ -n "$marker_kind" ] || continue
+    if [ "$marker_kind" = "go" ] && is_generated_go_stub_module "$rel_dir"; then
+      continue
+    fi
+    if [[ "$rel_dir" != */* ]] && [ -f "$repo_root/scripts/lint/$rel_dir.sh" ] && [ "$marker_kind" != "$rel_dir" ]; then
+      continue
+    fi
+    raw_targets+=("$rel_dir")
+  done < <(collect_marker_files)
+
+  local sh_file="" name=""
+  for sh_file in "$repo_root"/scripts/lint/*.sh; do
+    [ -f "$sh_file" ] || continue
+    name="$(basename "$sh_file" .sh)"
+    if is_reserved_script "$name"; then
+      continue
+    fi
+    if [ -d "$repo_root/$name" ]; then
+      marker_kind="$(detect_marker_kind "$repo_root/$name")"
+      if [ -n "$marker_kind" ] && [ "$marker_kind" != "$name" ]; then
+        continue
+      fi
+    fi
+    raw_targets+=("$name")
+  done
+
+  if [ "${#raw_targets[@]}" -eq 0 ]; then
+    return 0
+  fi
+  printf '%s\n' "${raw_targets[@]}" | LC_ALL=C sort -u
+}
+
+run_all() {
+  local -a targets=()
+  local -a statuses=()
+  mapfile -t targets < <(list_targets)
+  if [ "${#targets[@]}" -eq 0 ]; then
+    echo "no lint targets found" >&2
+    return 1
+  fi
+
+  local overall_rc=0 pass_count=0 fail_count=0 t="" rc=0
+  for t in "${targets[@]}"; do
+    echo "==> [all] running: $t"
+    rc=0
+    set +e
+    bash "$repo_root/scripts/lint/run.sh" "$t"
+    rc=$?
+    set -e
+    if [ "$rc" -eq 0 ]; then
+      statuses+=("PASS")
+      pass_count=$((pass_count + 1))
+    else
+      statuses+=("FAIL")
+      fail_count=$((fail_count + 1))
+      overall_rc=1
+    fi
+  done
+
+  echo ""
+  echo "==> [all] summary (${pass_count} passed, ${fail_count} failed, ${#targets[@]} total)"
+  local i=0
+  for i in "${!targets[@]}"; do
+    printf '  %-4s  %s\n' "${statuses[$i]}" "${targets[$i]}"
+  done
+  return "$overall_rc"
+}
+
+if [ "$1" = "--list" ]; then
+  list_targets
+  exit 0
+fi
+
+if [ "$1" = "all" ]; then
+  run_all
+  exit $?
+fi
+
+target="${1#./}"
+target="${target%/}"
+
+case "$target" in
+  ""|/*|..|../*|*/..|*/../*)
+    echo "invalid lint target: $1" >&2
+    exit 2
+    ;;
+  run|go|python|rust|deno|frontend|check-link-vs-url-naming)
+    echo "invalid lint target '$target': must be a project directory or named target (adr, apparmor, compose, e2e, harness, observability, proto, registry, repo)" >&2
+    exit 2
+    ;;
+esac
 
 kind=""
 if [[ "$target" != */* ]] && [ -f "$repo_root/scripts/lint/$target.sh" ]; then

@@ -71,6 +71,15 @@ TAG_ONNX_DIR := $(TAG_GENERATOR_DIR)/models/onnx
 TAG_ONNX_VENV := $(TAG_GENERATOR_DIR)/.onnx-venv
 TAG_ONNX_MODEL := $(TAG_ONNX_DIR)/model.onnx
 
+# Unified lint / static-analysis gate (same entry point as CI)
+TARGET ?= all
+
+lint:
+	@./scripts/lint/run.sh "$(TARGET)"
+
+lint-list:
+	@./scripts/lint/run.sh --list
+
 # Buf Connect-RPC code generation
 buf-generate:
 	@echo "Generating Connect-RPC code from proto files..."
@@ -78,12 +87,12 @@ buf-generate:
 	@echo "Connect-RPC code generated successfully."
 
 buf-lint:
-	@echo "Linting proto files..."
-	@cd proto && buf lint
+	@echo "Running proto lint gate..."
+	@./scripts/lint/run.sh proto
 
 buf-breaking:
-	@echo "Checking for breaking changes..."
-	@cd proto && buf breaking --against '.git#branch=main'
+	@echo "Running proto lint gate..."
+	@./scripts/lint/run.sh proto
 
 generate-mocks:
 	@echo "Generating GoMock mocks for all interfaces in $(PORT_BASE_DIR)..."
@@ -534,4 +543,4 @@ kisage-verify:
 kisage-preflight:
 	@python3 scripts/kisage-env.py preflight --env-file "$(ENV_FILE)"
 
-.PHONY: clean clean-env generate-mocks dev-ssl-setup dev-ssl-test dev-clean-ssl migrate-hash migrate-validate migrate-status recap-migrate-hash recap-migrate recap-migrate-status acolyte-migrate-hash acolyte-migrate acolyte-migrate-status acolyte-migrate-validate docker-cleanup docker-cleanup-install docker-cleanup-uninstall docker-cleanup-status docker-disk-usage docker-cleanup-memory docker-cleanup-memory-aggressive docker-remove-old-volumes docker-memory-stats prepare-tag-onnx clean-tag-onnx buf-generate buf-lint buf-breaking up-observability down-observability logs-observability observability-validate observability-drift-check observability-reload observability-reload-install observability-reload-uninstall observability-reload-status rust-clean eval-rag check-compose-variables install-c2quay install-lkal install-kisage kisage-verify kisage-preflight
+.PHONY: clean clean-env generate-mocks dev-ssl-setup dev-ssl-test dev-clean-ssl migrate-hash migrate-validate migrate-status recap-migrate-hash recap-migrate recap-migrate-status acolyte-migrate-hash acolyte-migrate acolyte-migrate-status acolyte-migrate-validate docker-cleanup docker-cleanup-install docker-cleanup-uninstall docker-cleanup-status docker-disk-usage docker-cleanup-memory docker-cleanup-memory-aggressive docker-remove-old-volumes docker-memory-stats prepare-tag-onnx clean-tag-onnx lint lint-list buf-generate buf-lint buf-breaking up-observability down-observability logs-observability observability-validate observability-drift-check observability-reload observability-reload-install observability-reload-uninstall observability-reload-status rust-clean eval-rag check-compose-variables install-c2quay install-lkal install-kisage kisage-verify kisage-preflight

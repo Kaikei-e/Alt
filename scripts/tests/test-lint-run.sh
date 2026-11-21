@@ -170,4 +170,294 @@ assert_exit_and_err 1 "cannot compute merge-base" "harness.sh unrelated LINT_BAS
 assert_exit_and_err 1 "cannot compute merge-base" "adr.sh unrelated LINT_BASE exits non-zero" \
   env LINT_BASE="$orphan_sha" PATH="$tmp_bin:$PATH" bash "$tmp_git/scripts/lint/adr.sh"
 
+# --list and all tests
+assert_exit_and_err 2 "usage:" "--list with extra argument exits 2" bash "$RUN_SH" --list extra
+assert_exit_and_err 2 "usage:" "all with extra argument exits 2" bash "$RUN_SH" all extra
+
+assert_exact_stdout() {
+  local expected_rc="$1" expected_out="$2" desc="$3"
+  shift 3
+  local out="" rc=0
+  set +e
+  out="$("$@" 2>&1)"
+  rc=$?
+  set -e
+  if [ "$rc" -ne "$expected_rc" ]; then
+    echo "FAIL: $desc (expected rc=$expected_rc, got rc=$rc, out=$out)"
+    FAILS=$((FAILS + 1))
+    return
+  fi
+  if [ "$out" != "$expected_out" ]; then
+    echo "FAIL: $desc"
+    echo "  expected:"
+    printf '    %s\n' $expected_out
+    echo "  got:"
+    printf '    %s\n' $out
+    FAILS=$((FAILS + 1))
+    return
+  fi
+  echo "PASS: $desc"
+}
+
+# 1. --list on a temporary non-git repository
+tmp_list_repo="$tmp_repo/list-repo"
+mkdir -p "$tmp_list_repo/scripts/lint"
+cp "$RUN_SH" "$tmp_list_repo/scripts/lint/run.sh"
+
+for runner in go rust python deno frontend check-link-vs-url-naming; do
+  printf '#!/usr/bin/env bash\necho "ran:%s:$1"\n' "$runner" >"$tmp_list_repo/scripts/lint/$runner.sh"
+done
+for named in repo e2e proto harness; do
+  printf '#!/usr/bin/env bash\necho "ran:%s:$1"\n' "$named" >"$tmp_list_repo/scripts/lint/$named.sh"
+done
+
+mkdir -p \
+  "$tmp_list_repo/svc-go" \
+  "$tmp_list_repo/nested/svc-rust" \
+  "$tmp_list_repo/svc-py" \
+  "$tmp_list_repo/svc-deno" \
+  "$tmp_list_repo/svc-fe" \
+  "$tmp_list_repo/proto" \
+  "$tmp_list_repo/tools/protovis/gen" \
+  "$tmp_list_repo/stopped-using-k8s/legacy" \
+  "$tmp_list_repo/alt-butterfly-facade/internal/gen/proto/v1" \
+  "$tmp_list_repo/rag-orchestrator/internal/gen/proto/v1" \
+  "$tmp_list_repo/other/gen/stub/v1" \
+  "$tmp_list_repo/npm-only" \
+  "$tmp_list_repo/shadow"
+
+: >"$tmp_list_repo/svc-go/go.mod"
+: >"$tmp_list_repo/svc-go/main.go"
+: >"$tmp_list_repo/nested/svc-rust/Cargo.toml"
+: >"$tmp_list_repo/svc-py/pyproject.toml"
+: >"$tmp_list_repo/svc-deno/deno.json"
+: >"$tmp_list_repo/svc-fe/bun.lock"
+: >"$tmp_list_repo/proto/buf.yaml"
+: >"$tmp_list_repo/tools/protovis/go.mod"
+: >"$tmp_list_repo/tools/protovis/main.go"
+: >"$tmp_list_repo/tools/protovis/gen/foo.pb.go"
+: >"$tmp_list_repo/stopped-using-k8s/legacy/go.mod"
+: >"$tmp_list_repo/stopped-using-k8s/legacy/main.go"
+: >"$tmp_list_repo/alt-butterfly-facade/internal/gen/proto/go.mod"
+: >"$tmp_list_repo/alt-butterfly-facade/internal/gen/proto/v1/a.pb.go"
+: >"$tmp_list_repo/rag-orchestrator/internal/gen/proto/go.mod"
+: >"$tmp_list_repo/rag-orchestrator/internal/gen/proto/v1/a.connect.go"
+: >"$tmp_list_repo/other/gen/stub/go.mod"
+: >"$tmp_list_repo/other/gen/stub/v1/x.pb.go"
+: >"$tmp_list_repo/other/gen/stub/v1/x.connect.go"
+: >"$tmp_list_repo/npm-only/package.json"
+: >"$tmp_list_repo/shadow/go.mod"
+printf '#!/usr/bin/env bash\necho "ran:shadow"\n' >"$tmp_list_repo/scripts/lint/shadow.sh"
+
+expected_list="$(printf '%s\n' \
+  e2e \
+  harness \
+  nested/svc-rust \
+  proto \
+  repo \
+  svc-deno \
+  svc-fe \
+  svc-go \
+  svc-py \
+  tools/protovis)"
+
+assert_exact_stdout 0 "$expected_list" "--list enumerates sorted unique valid targets in non-git temp repo" \
+  env -C /tmp bash "$tmp_list_repo/scripts/lint/run.sh" --list
+
+# 2. --list on a temporary git repository (respects .gitignore and exclusions)
+tmp_list_git="$tmp_repo/list-git"
+mkdir -p "$tmp_list_git/scripts/lint" "$tmp_list_git/svc-go" "$tmp_list_git/proto" \
+  "$tmp_list_git/node_modules/pkg" "$tmp_list_git/stopped-using-k8s/old" \
+  "$tmp_list_git/alt-butterfly-facade/internal/gen/proto/v1"
+cp "$RUN_SH" "$tmp_list_git/scripts/lint/run.sh"
+printf '#!/usr/bin/env bash\necho "ran:go:$1"\n' >"$tmp_list_git/scripts/lint/go.sh"
+printf '#!/usr/bin/env bash\necho "ran:proto:$1"\n' >"$tmp_list_git/scripts/lint/proto.sh"
+printf '#!/usr/bin/env bash\necho "ran:repo:$1"\n' >"$tmp_list_git/scripts/lint/repo.sh"
+printf 'node_modules/\n' >"$tmp_list_git/.gitignore"
+: >"$tmp_list_git/svc-go/go.mod"
+: >"$tmp_list_git/svc-go/main.go"
+: >"$tmp_list_git/proto/buf.yaml"
+: >"$tmp_list_git/node_modules/pkg/go.mod"
+: >"$tmp_list_git/stopped-using-k8s/old/go.mod"
+: >"$tmp_list_git/stopped-using-k8s/old/main.go"
+: >"$tmp_list_git/alt-butterfly-facade/internal/gen/proto/go.mod"
+: >"$tmp_list_git/alt-butterfly-facade/internal/gen/proto/v1/a.pb.go"
+
+git -C "$tmp_list_git" init -b main >/dev/null
+git -C "$tmp_list_git" config user.name "Test"
+git -C "$tmp_list_git" config user.email "test@example.com"
+git -C "$tmp_list_git" add -A
+git -C "$tmp_list_git" commit -m "init" >/dev/null
+
+expected_git_list="$(printf '%s\n' proto repo svc-go)"
+assert_exact_stdout 0 "$expected_git_list" "--list enumerates sorted unique valid targets in git temp repo" \
+  env -C /tmp bash "$tmp_list_git/scripts/lint/run.sh" --list
+
+# 3. --list on the real repository
+real_list_rc=0
+set +e
+real_list="$(bash "$RUN_SH" --list 2>&1)"
+real_list_rc=$?
+set -e
+if [ "$real_list_rc" -ne 0 ]; then
+  echo "FAIL: real repo --list exits 0 (got rc=$real_list_rc, out=$real_list)"
+  FAILS=$((FAILS + 1))
+else
+  sorted_real_list="$(printf '%s\n' "$real_list" | LC_ALL=C sort -u)"
+  if [ "$real_list" != "$sorted_real_list" ]; then
+    echo "FAIL: real repo --list output is not sorted and deduplicated"
+    FAILS=$((FAILS + 1))
+  else
+    echo "PASS: real repo --list is sorted and deduplicated"
+  fi
+
+  for must_have in \
+    alt-backend/app \
+    alt-perf \
+    alt-perf/k6/mock-rss-server \
+    plecto \
+    proto \
+    proto/tools/protovis \
+    adr apparmor compose e2e harness observability registry repo; do
+    if ! grep -qxF -- "$must_have" <<<"$real_list"; then
+      echo "FAIL: real repo --list missing expected target '$must_have'"
+      FAILS=$((FAILS + 1))
+    fi
+  done
+
+  proto_count="$(grep -cxF -- "proto" <<<"$real_list" || true)"
+  if [ "$proto_count" -ne 1 ]; then
+    echo "FAIL: real repo --list expected proto once, got $proto_count"
+    FAILS=$((FAILS + 1))
+  else
+    echo "PASS: real repo --list includes proto exactly once"
+  fi
+
+  for must_not_have in \
+    alt-butterfly-facade/internal/gen/proto \
+    rag-orchestrator/internal/gen/proto \
+    run all go python rust deno frontend check-link-vs-url-naming; do
+    if grep -qxF -- "$must_not_have" <<<"$real_list"; then
+      echo "FAIL: real repo --list must not contain '$must_not_have'"
+      FAILS=$((FAILS + 1))
+    fi
+  done
+  if grep -q '^stopped-using-k8s' <<<"$real_list"; then
+    echo "FAIL: real repo --list must exclude stopped-using-k8s/**"
+    FAILS=$((FAILS + 1))
+  else
+    echo "PASS: real repo --list excludes stopped-using-k8s, generated stubs, and reserved names"
+  fi
+fi
+
+# 4. all subcommand (all pass and partial fail with summary table)
+tmp_all_repo="$tmp_repo/all-repo"
+mkdir -p "$tmp_all_repo/scripts/lint" "$tmp_all_repo/a-go" "$tmp_all_repo/m-py" "$tmp_all_repo/proto" "$tmp_all_repo/z-rust"
+cp "$RUN_SH" "$tmp_all_repo/scripts/lint/run.sh"
+: >"$tmp_all_repo/a-go/go.mod"
+: >"$tmp_all_repo/a-go/main.go"
+: >"$tmp_all_repo/m-py/pyproject.toml"
+: >"$tmp_all_repo/proto/buf.yaml"
+: >"$tmp_all_repo/z-rust/Cargo.toml"
+
+printf '#!/usr/bin/env bash\necho "ran:go:$1"\n' >"$tmp_all_repo/scripts/lint/go.sh"
+printf '#!/usr/bin/env bash\necho "ran:python:$1"\n' >"$tmp_all_repo/scripts/lint/python.sh"
+printf '#!/usr/bin/env bash\necho "ran:rust:$1"\n' >"$tmp_all_repo/scripts/lint/rust.sh"
+printf '#!/usr/bin/env bash\necho "ran:proto:$1"\n' >"$tmp_all_repo/scripts/lint/proto.sh"
+printf '#!/usr/bin/env bash\necho "ran:repo:$1"\n' >"$tmp_all_repo/scripts/lint/repo.sh"
+
+all_pass_rc=0
+set +e
+all_pass_out="$(env -C /tmp bash "$tmp_all_repo/scripts/lint/run.sh" all 2>&1)"
+all_pass_rc=$?
+set -e
+if [ "$all_pass_rc" -ne 0 ]; then
+  echo "FAIL: all exits 0 when every target passes (got rc=$all_pass_rc, out=$all_pass_out)"
+  FAILS=$((FAILS + 1))
+else
+  all_pass_ok=1
+  for expect_pat in \
+    "ran:go:a-go" \
+    "ran:python:m-py" \
+    "ran:proto:proto" \
+    "ran:repo:repo" \
+    "ran:rust:z-rust" \
+    "PASS.*a-go" \
+    "PASS.*m-py" \
+    "PASS.*proto" \
+    "PASS.*repo" \
+    "PASS.*z-rust"; do
+    if ! grep -qE -- "$expect_pat" <<<"$all_pass_out"; then
+      echo "FAIL: all pass output missing pattern '$expect_pat'"
+      all_pass_ok=0
+      FAILS=$((FAILS + 1))
+    fi
+  done
+  if [ "$all_pass_ok" -eq 1 ]; then
+    echo "PASS: all runs every target and prints PASS summary table"
+  fi
+fi
+
+# Partial failure: m-py fails, z-rust after it still runs, exit 1, summary shows PASS and FAIL
+printf '#!/usr/bin/env bash\necho "ran:python:$1"\nexit 1\n' >"$tmp_all_repo/scripts/lint/python.sh"
+all_fail_rc=0
+set +e
+all_fail_out="$(bash "$tmp_all_repo/scripts/lint/run.sh" all 2>&1)"
+all_fail_rc=$?
+set -e
+if [ "$all_fail_rc" -ne 1 ]; then
+  echo "FAIL: all exits 1 when a target fails (got rc=$all_fail_rc, out=$all_fail_out)"
+  FAILS=$((FAILS + 1))
+else
+  all_fail_ok=1
+  for expect_pat in \
+    "ran:go:a-go" \
+    "ran:python:m-py" \
+    "ran:rust:z-rust" \
+    "PASS.*a-go" \
+    "FAIL.*m-py" \
+    "PASS.*proto" \
+    "PASS.*repo" \
+    "PASS.*z-rust"; do
+    if ! grep -qE -- "$expect_pat" <<<"$all_fail_out"; then
+      echo "FAIL: all fail output missing pattern '$expect_pat'"
+      all_fail_ok=0
+      FAILS=$((FAILS + 1))
+    fi
+  done
+  if [ "$all_fail_ok" -eq 1 ]; then
+    echo "PASS: all continues after failure, prints PASS/FAIL summary table, and exits 1"
+  fi
+fi
+
+# rust.sh extra target (e.g. wasm32-unknown-unknown) verification
+tmp_rust_repo="$tmp_repo/rust-target-repo"
+tmp_cargo_bin="$tmp_repo/stub-cargo-bin"
+mkdir -p "$tmp_rust_repo/scripts/lint" "$tmp_rust_repo/wasm-crate" "$tmp_cargo_bin"
+cp "$REPO_ROOT/scripts/lint/rust.sh" "$tmp_rust_repo/scripts/lint/rust.sh"
+printf '[package]\nname = "wasm-crate"\nversion = "0.1.0"\n' >"$tmp_rust_repo/wasm-crate/Cargo.toml"
+printf '[toolchain]\nchannel = "1.99.1"\ntargets = ["wasm32-unknown-unknown"]\n' >"$tmp_rust_repo/wasm-crate/rust-toolchain.toml"
+
+cat <<'EOF' >"$tmp_cargo_bin/cargo"
+#!/usr/bin/env bash
+if [ "${1:-}" = "--version" ]; then
+  echo "cargo 1.99.1 (stub)"
+  exit 0
+fi
+echo "stub-cargo:$*"
+if [ "${STUB_FAIL_WASM:-0}" = "1" ] && [[ "$*" == *"--target wasm32-unknown-unknown"* ]]; then
+  exit 1
+fi
+exit 0
+EOF
+chmod +x "$tmp_cargo_bin/cargo"
+
+assert_exit_and_err 0 "stub-cargo:clippy --lib --target wasm32-unknown-unknown --all-features -- -D warnings" \
+  "rust.sh runs clippy for declared wasm32-unknown-unknown target" \
+  env PATH="$tmp_cargo_bin:$PATH" bash "$tmp_rust_repo/scripts/lint/rust.sh" wasm-crate
+
+assert_exit_and_err 1 "clippy: fail" \
+  "rust.sh fails when declared wasm32-unknown-unknown target clippy fails" \
+  env STUB_FAIL_WASM=1 PATH="$tmp_cargo_bin:$PATH" bash "$tmp_rust_repo/scripts/lint/rust.sh" wasm-crate
+
 exit "$FAILS"
