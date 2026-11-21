@@ -1,0 +1,323 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:alt:agent-harness:task-packet:1.0",
+  "title": "Alt Coding-Agent Task Packet and Handoff Schema",
+  "description": "Machine-verifiable schema for bounded coding-agent task packets and mandatory three-item handoff reports.",
+  "oneOf": [
+    { "$ref": "#/$defs/TaskPacket" },
+    { "$ref": "#/$defs/TaskHandoff" }
+  ],
+  "$defs": {
+    "PacketId": {
+      "type": "string",
+      "description": "Unique non-empty task packet identifier.",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{1,63}$"
+    },
+    "LintTarget": {
+      "type": "string",
+      "description": "Target directory or named lint target accepted by ./scripts/lint/run.sh <target>.",
+      "minLength": 1,
+      "pattern": "^(?!.*\\.\\.)(?!/)[A-Za-z0-9._/-]+$"
+    },
+    "AllowedPath": {
+      "type": "string",
+      "description": "Repository-relative file path or glob pattern; parent traversal (..), unnormalized segments (//, /./), and absolute paths are forbidden.",
+      "minLength": 1,
+      "not": {
+        "pattern": "(?:\\.\\.|^/|//|(?:^|/)\\.(?:/|$)|\\\\)"
+      }
+    },
+    "RepoRelativeFilePath": {
+      "type": "string",
+      "description": "Concrete repository-relative modified file path; parent traversal, unnormalized segments (//, /./, leading ./, trailing /), absolute paths, and glob wildcards are forbidden.",
+      "minLength": 1,
+      "not": {
+        "pattern": "(?:\\.\\.|^/|/$|//|(?:^|/)\\.(?:/|$)|\\\\|[*?])"
+      }
+    },
+    "AllowedRule": {
+      "type": "string",
+      "description": "Explicit lint rule, diagnostic ID, or scoped category. Wildcards (*) and ALL are forbidden.",
+      "minLength": 1,
+      "not": {
+        "pattern": "(?:\\*|^[Aa][Ll][Ll]$|^\\s*$)"
+      }
+    },
+    "NonEmptyString": {
+      "type": "string",
+      "minLength": 1,
+      "not": {
+        "pattern": "^\\s*$"
+      }
+    },
+    "Scope": {
+      "type": "object",
+      "description": "Work-bounded scope constraints. Time-based fields (e.g., timeout_minutes) are forbidden via additionalProperties: false.",
+      "additionalProperties": false,
+      "required": [
+        "target",
+        "allowed_paths",
+        "max_files",
+        "max_functions",
+        "allowed_rules",
+        "stop_condition"
+      ],
+      "properties": {
+        "target": {
+          "description": "Single target or non-empty unique list of targets verified with ./scripts/lint/run.sh <target>.",
+          "oneOf": [
+            { "$ref": "#/$defs/LintTarget" },
+            {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": { "$ref": "#/$defs/LintTarget" }
+            }
+          ]
+        },
+        "allowed_paths": {
+          "type": "array",
+          "description": "Non-empty list of repository-relative paths or globs the agent may edit.",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/AllowedPath" }
+        },
+        "forbidden_paths": {
+          "type": "array",
+          "description": "Optional explicit exclusion globs that must never be edited.",
+          "default": [],
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/AllowedPath" }
+        },
+        "max_files": {
+          "type": "integer",
+          "description": "Maximum number of files allowed to be modified (recommended default: 10, hard cap: 25).",
+          "minimum": 1,
+          "maximum": 25,
+          "default": 10
+        },
+        "max_functions": {
+          "type": "integer",
+          "description": "Maximum number of functions allowed to be modified (recommended default: 3, hard cap: 20).",
+          "minimum": 1,
+          "maximum": 20,
+          "default": 3
+        },
+        "allowed_rules": {
+          "type": "array",
+          "description": "Non-empty explicit list of target rules or categories; wildcards and ALL are forbidden.",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/AllowedRule" }
+        },
+        "stop_condition": {
+          "$ref": "#/$defs/NonEmptyString",
+          "description": "Explicit condition stating when the agent stops and produces a handoff."
+        }
+      }
+    },
+    "ExecutionPolicy": {
+      "type": "object",
+      "description": "Deterministic execution and GUARD-01 safety constraints.",
+      "additionalProperties": false,
+      "required": [
+        "foreground_only",
+        "forbid_repo_wide_test_build",
+        "forbid_bulk_autofix",
+        "verification_command"
+      ],
+      "properties": {
+        "foreground_only": {
+          "const": true,
+          "description": "All commands must run synchronously in the foreground; background '&' is forbidden."
+        },
+        "forbid_repo_wide_test_build": {
+          "type": "boolean",
+          "default": true,
+          "description": "Prevent agents from invoking repo-wide builds or test suites handled by the host."
+        },
+        "forbid_bulk_autofix": {
+          "const": true,
+          "description": "GUARD-01: forbid logic-mutating bulk autofix commands such as golangci-lint --fix, cargo clippy --fix, ruff check --unsafe-fixes, and biome check --write --unsafe."
+        },
+        "verification_command": {
+          "$ref": "#/$defs/NonEmptyString",
+          "description": "Deterministic foreground verification command invoking ./scripts/lint/run.sh <target>."
+        }
+      }
+    },
+    "HandoffRequirements": {
+      "type": "object",
+      "description": "Mandatory three-item handoff requirements enforced on completion.",
+      "additionalProperties": false,
+      "required": [
+        "require_modified_files_and_lines",
+        "require_runtime_behavior_impact",
+        "require_change_rationale"
+      ],
+      "properties": {
+        "require_modified_files_and_lines": {
+          "const": true
+        },
+        "require_runtime_behavior_impact": {
+          "const": true
+        },
+        "require_change_rationale": {
+          "const": true
+        }
+      }
+    },
+    "TaskPacket": {
+      "type": "object",
+      "description": "Canonical work-bounded assignment packet for a coding agent.",
+      "additionalProperties": false,
+      "required": [
+        "packet_version",
+        "packet_id",
+        "scope",
+        "execution_policy",
+        "handoff_requirements"
+      ],
+      "properties": {
+        "packet_version": {
+          "const": "1.0"
+        },
+        "packet_id": {
+          "$ref": "#/$defs/PacketId"
+        },
+        "title": {
+          "$ref": "#/$defs/NonEmptyString"
+        },
+        "owner": {
+          "$ref": "#/$defs/NonEmptyString"
+        },
+        "scope": {
+          "$ref": "#/$defs/Scope"
+        },
+        "execution_policy": {
+          "$ref": "#/$defs/ExecutionPolicy"
+        },
+        "handoff_requirements": {
+          "$ref": "#/$defs/HandoffRequirements"
+        }
+      }
+    },
+    "ModifiedFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "added_lines", "deleted_lines"],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/RepoRelativeFilePath"
+        },
+        "added_lines": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "deleted_lines": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "RuntimeBehaviorImpact": {
+      "type": "object",
+      "description": "Explicit evaluation of potential runtime behavior changes.",
+      "additionalProperties": false,
+      "required": ["has_change", "checked_dimensions", "summary"],
+      "properties": {
+        "has_change": {
+          "type": "boolean"
+        },
+        "checked_dimensions": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/NonEmptyString"
+          },
+          "examples": [
+            [
+              "timeout",
+              "error_message",
+              "permissions",
+              "type_conversion",
+              "default_value",
+              "control_flow"
+            ]
+          ]
+        },
+        "summary": {
+          "$ref": "#/$defs/NonEmptyString",
+          "description": "Non-empty confirmation of runtime impact; must explicitly state evidence or '変更なし' even when has_change is false."
+        }
+      }
+    },
+    "VerificationResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command", "exit_code"],
+      "properties": {
+        "command": {
+          "$ref": "#/$defs/NonEmptyString"
+        },
+        "exit_code": {
+          "type": "integer"
+        },
+        "summary": {
+          "$ref": "#/$defs/NonEmptyString"
+        }
+      }
+    },
+    "TaskHandoff": {
+      "type": "object",
+      "description": "Canonical three-item handoff report produced when bounded task work completes or stops.",
+      "additionalProperties": false,
+      "required": [
+        "packet_id",
+        "status",
+        "modified_files",
+        "modified_functions_count",
+        "runtime_behavior_impact",
+        "rationale",
+        "verification"
+      ],
+      "properties": {
+        "packet_version": {
+          "const": "1.0"
+        },
+        "packet_id": {
+          "$ref": "#/$defs/PacketId"
+        },
+        "commit_sha": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{7,40}$"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["completed", "partial_bounded_stop", "blocked"]
+        },
+        "modified_files": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ModifiedFile"
+          }
+        },
+        "modified_functions_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "runtime_behavior_impact": {
+          "$ref": "#/$defs/RuntimeBehaviorImpact"
+        },
+        "rationale": {
+          "$ref": "#/$defs/NonEmptyString",
+          "description": "Explicit rationale for changes, or explicit '変更なし' when unchanged. Placeholders such as TBD/N/A/- are rejected."
+        },
+        "verification": {
+          "$ref": "#/$defs/VerificationResult"
+        }
+      }
+    }
+  }
+}

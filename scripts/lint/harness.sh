@@ -65,6 +65,8 @@ status_selfcheck="pass"
 status_postmortem="pass"
 status_migration="pass"
 status_guard_branches="pass"
+status_task_packet_templates="pass"
+status_task_packet_tests="pass"
 
 echo "==> [harness] harness_selfcheck.py"
 if ! python3 scripts/agent-harness/harness_selfcheck.py; then
@@ -90,10 +92,24 @@ if ! python3 scripts/tests/test-guard-ops-commands-branches.py; then
   rc=1
 fi
 
+echo "==> [harness] task_packet.py check-templates"
+if ! python3 scripts/agent-harness/task_packet.py check-templates; then
+  status_task_packet_templates="fail"
+  rc=1
+fi
+
+echo "==> [harness] test-task-packet.py"
+if ! python3 scripts/tests/test-task-packet.py; then
+  status_task_packet_tests="fail"
+  rc=1
+fi
+
 echo "==> [harness] summary (base=${base})"
 printf '  %-32s %s\n' "harness_selfcheck" "$status_selfcheck"
 printf '  %-32s %s\n' "postmortem_ledger" "$status_postmortem"
 printf '  %-32s %s\n' "migration_destructive_gate" "$status_migration"
 printf '  %-32s %s\n' "guard_ops_commands_branches" "$status_guard_branches"
+printf '  %-32s %s\n' "task_packet_templates" "$status_task_packet_templates"
+printf '  %-32s %s\n' "task_packet_tests" "$status_task_packet_tests"
 
 exit "$rc"

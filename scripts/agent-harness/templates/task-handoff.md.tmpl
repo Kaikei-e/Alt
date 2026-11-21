@@ -1,0 +1,49 @@
+---
+packet_version: "1.0"
+packet_id: "EXAMPLE-TASK-001"
+status: "completed"
+modified_files:
+  - path: "scripts/agent-harness/example.py"
+    added_lines: 12
+    deleted_lines: 4
+modified_functions_count: 1
+runtime_behavior_impact:
+  has_change: false
+  checked_dimensions:
+    - "timeout"
+    - "error_message"
+    - "permissions"
+    - "type_conversion"
+    - "default_value"
+    - "control_flow"
+  summary: "変更なし（対象ルールの静的リファクタのみを実施し、入出力・例外・タイムアウト・権限・制御フローは不変）"
+rationale: "対象ルール S101/PTH123 の違反解消のため pathlib 置換と明示的エラー処理へ変更。仕様変更なし。"
+verification:
+  command: "./scripts/lint/run.sh scripts"
+  exit_code: 0
+---
+
+# Hand-off 報告: EXAMPLE-TASK-001
+
+## 1. 修正ファイルと行数
+
+| ファイル | 追加行数 | 削除行数 |
+|---|---:|---:|
+| `scripts/agent-harness/example.py` | 12 | 4 |
+
+- 変更関数数: 1（上限 3 以内）
+
+## 2. 実行時挙動の変更可能性の有無
+
+- **変更可能性**: なし（`has_change: false`）
+- **確認観点**: `timeout`, `error_message`, `permissions`, `type_conversion`, `default_value`, `control_flow`
+- **確認根拠**: 変更なし（対象ルールの静的リファクタのみを実施し、入出力・例外・タイムアウト・権限・制御フローは不変）
+
+## 3. 変更理由
+
+- 対象ルール `S101` / `PTH123` の違反解消のため `pathlib` 置換と明示的エラー処理へ変更。仕様変更なし。
+
+## 4. 検証コマンド結果
+
+- 実行コマンド: `./scripts/lint/run.sh scripts`
+- 終了コード: `0`
