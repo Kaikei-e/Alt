@@ -354,6 +354,7 @@ jobs:
       # strands alt-data-hub at verifications=0 and blocks every release.
       - name: pact-check.sh leg-selection guard
         run: ./scripts/tests/test-pact-check-filter.sh
+      - run: ./scripts/tests/test-pact-check-ffi.sh
 
       - name: Install PyYAML and pytest
         run: pip install --quiet 'pyyaml==6.*' 'pytest==8.*'

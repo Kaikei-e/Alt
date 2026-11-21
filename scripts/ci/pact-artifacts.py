@@ -7,9 +7,11 @@ import re
 import shutil
 import sys
 import tarfile
+import tempfile
 import time
 import urllib.error
 import urllib.request
+import zlib
 from pathlib import Path
 
 PACT_STANDALONE_URL = "https://github.com/pact-foundation/pact-standalone/releases/download/v2.4.10/pact-2.4.10-linux-x86_64.tar.gz"
@@ -131,8 +133,48 @@ def extract_ffi(gz_path: str | os.PathLike[str]) -> None:
     lib_dir.mkdir(parents=True, exist_ok=True)
     ffi_so = lib_dir / "libpact_ffi.so"
     sys.stdout.write(f"Extracting libpact_ffi to {ffi_so}...\n")
-    with gzip.open(gz_path, "rb") as f_in, ffi_so.open("wb") as f_out:
-        shutil.copyfileobj(f_in, f_out)
+    with tempfile.NamedTemporaryFile(
+        dir=lib_dir, prefix=".libpact_ffi.so.", suffix=".tmp", delete=False
+    ) as f_out:
+        tmp_path = Path(f_out.name)
+        try:
+            with gzip.open(gz_path, "rb") as f_in:
+                shutil.copyfileobj(f_in, f_out)
+        except (OSError, EOFError, zlib.error) as e:
+            f_out.close()
+            tmp_path.unlink(missing_ok=True)
+            sys.stdout.write(f"Failed to extract libpact_ffi: {e}\n")
+            sys.exit(1)
+    try:
+        tmp_path.chmod(0o644)
+        tmp_path.replace(ffi_so)  # atomic os.replace onto target
+    except OSError as e:
+        tmp_path.unlink(missing_ok=True)
+        sys.stdout.write(f"Failed to install libpact_ffi: {e}\n")
+        sys.exit(1)
+
+
+def install_ffi() -> None:
+    home_dir = Path(os.environ.get("HOME", "."))
+    lib_dir = home_dir / ".pact" / "lib"
+    ffi_so = lib_dir / "libpact_ffi.so"
+    stamp_file = lib_dir / "libpact_ffi.so.sha256"
+
+    if ffi_so.is_file() and stamp_file.is_file():
+        current_stamp = stamp_file.read_text(encoding="utf-8", errors="replace").strip()
+        if current_stamp == LIBPACT_FFI_SHA256:
+            sys.stdout.write(
+                f"libpact_ffi already at the pinned version ({LIBPACT_FFI_SHA256[:12]}...)\n"
+            )
+            return
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        ffi_gz = Path(tmp_dir) / "libpact_ffi.so.gz"
+        download_and_verify(LIBPACT_FFI_URL, LIBPACT_FFI_SHA256, ffi_gz)
+        extract_ffi(ffi_gz)
+
+    stamp_file.write_text(f"{LIBPACT_FFI_SHA256}\n", encoding="utf-8")
+    sys.stdout.write("Artifact 'ffi' downloaded and verified successfully.\n")
 
 
 def main() -> None:
@@ -142,18 +184,14 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    Path("pact_download").mkdir(parents=True, exist_ok=True)
-
     if args.type == "standalone":
+        Path("pact_download").mkdir(parents=True, exist_ok=True)
         standalone_tgz = "pact_download/pact-standalone.tar.gz"
         download_and_verify(PACT_STANDALONE_URL, PACT_STANDALONE_SHA256, standalone_tgz)
         extract_standalone(standalone_tgz)
+        sys.stdout.write(f"Artifact '{args.type}' downloaded and verified successfully.\n")
     elif args.type == "ffi":
-        ffi_gz = "pact_download/libpact_ffi.so.gz"
-        download_and_verify(LIBPACT_FFI_URL, LIBPACT_FFI_SHA256, ffi_gz)
-        extract_ffi(ffi_gz)
-
-    sys.stdout.write(f"Artifact '{args.type}' downloaded and verified successfully.\n")
+        install_ffi()
 
 
 if __name__ == "__main__":
