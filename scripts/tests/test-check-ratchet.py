@@ -29,6 +29,7 @@ import sys
 import tempfile
 import tomllib
 import types
+from collections import Counter
 from unittest import mock
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -38,6 +39,7 @@ RULE_BASELINES_TOML = ROOT / "scripts" / "lint" / "ratchet" / "rule_baselines.to
 GIT_BIN = shutil.which("git")
 assert GIT_BIN is not None, "git executable not found in PATH"
 SAMPLE_MAX_JUDGMENT_RULES = 12
+EXIT_USAGE_ERROR = 2
 
 
 class _Results:
@@ -97,13 +99,24 @@ def run_git(repo: pathlib.Path, *args: str) -> str:
     return res.stdout.strip()
 
 
-def run_cli(*args: str) -> subprocess.CompletedProcess[str]:
+def run_cmd(
+    argv: list[str],
+    *,
+    cwd: pathlib.Path | None = None,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(  # noqa: S603 - fixed argv built in this test
-        [sys.executable, str(SCRIPT), *args],
+        argv,
+        cwd=str(cwd) if cwd is not None else None,
+        env=env,
         capture_output=True,
         text=True,
         check=False,
     )
+
+
+def run_cli(*args: str) -> subprocess.CompletedProcess[str]:
+    return run_cmd([sys.executable, str(SCRIPT), *args])
 
 
 def _create_sample_repo(tmp: pathlib.Path) -> pathlib.Path:
@@ -432,6 +445,456 @@ def test_rule_fingerprint_baseline() -> None:
         )
 
 
+def test_python_nosec_and_spaced_rust_attrs(mod: types.ModuleType) -> None:
+    sys.stdout.write("python_nosec counting and spaced Rust allow/expect attributes\n")
+    py_counts = mod.count_file_suppressions(
+        "svc/app.py",
+        'a = 1  # noqa: S104 - reason  # nosec B104\nb = 2  # nosec B310\nc = "# nosec B608"\n',
+    )
+    check(
+        "count_file_suppressions counts python_noqa and python_nosec (ignoring strings)",
+        py_counts == {"python_noqa": 1, "python_nosec": 2},
+        repr(py_counts),
+    )
+
+    rs_counts = mod.count_file_suppressions(
+        "svc/src/lib.rs",
+        "#![allow(clippy::all)]\n"
+        "#! [allow(dead_code)]\n"
+        "# [allow(unused)]\n"
+        "#[expect(dead_code)]\n"
+        "#![expect(clippy::pedantic)]\n"
+        "#! [expect(unused_variables)]\n"
+        'let s = "# [allow(dead_code)] #[expect(dead_code)]";\n',
+    )
+    check(
+        "count_file_suppressions counts spaced Rust allow and expect (outer + inner)",
+        rs_counts == {"rust_allow": 6},
+        repr(rs_counts),
+    )
+
+
+def test_security_path_traversal_symlink_and_toml_escape(mod: types.ModuleType) -> None:
+    sys.stdout.write("security: path traversal, symlink escape, and TOML escaping\n")
+    with tempfile.TemporaryDirectory() as tmp_str:
+        tmp = pathlib.Path(tmp_str)
+        outside = tmp / "outside.py"
+        outside.write_text("SECRET_LINE = 'leaked'\n", encoding="utf-8")
+
+        repo = tmp / "repo"
+        repo.mkdir()
+        (repo / "sub").mkdir()
+        (repo / "sub" / "link.py").symlink_to(outside)
+        baselines = repo / "rule_baselines.toml"
+        baselines.write_text("version = 1\nfingerprints = []\n", encoding="utf-8")
+
+        for label, bad_path in (
+            ("out-of-repo absolute path", str(outside)),
+            ("parent traversal path", "sub/../../outside.py"),
+            ("symlink escaping repo root", "sub/link.py"),
+        ):
+            findings_path = repo / "bad_findings.json"
+            findings_path.write_text(
+                json.dumps([{"rule": "TRY003", "file": bad_path, "line": 1}]),
+                encoding="utf-8",
+            )
+            res = run_cli(
+                "check-fingerprints",
+                "--repo-root",
+                str(repo),
+                "--baselines-file",
+                str(baselines),
+                "--findings-json",
+                str(findings_path),
+            )
+            check(
+                f"check-fingerprints rejects {label} fail-closed (rc=2)",
+                res.returncode == EXIT_USAGE_ERROR,
+                f"rc={res.returncode} out={res.stdout + res.stderr}",
+            )
+
+        # TOML escaping for backslash, double-quote, and newline
+        tricky_counts: Counter[tuple[str, str, str]] = Counter(
+            {('R"\\1\n', 'pkg/a"b\\c.py', "a" * 64): 1}
+        )
+        rendered = mod.render_rule_baselines_toml(tricky_counts)
+        parsed = tomllib.loads(rendered)
+        entries = parsed.get("fingerprints", [])
+        check(
+            "render_rule_baselines_toml escapes quotes, backslashes, and control chars cleanly",
+            len(entries) == 1
+            and entries[0]["rule"] == 'R"\\1\n'
+            and entries[0]["file"] == 'pkg/a"b\\c.py',
+            repr(parsed),
+        )
+
+
+def test_native_tool_outputs_and_block_new_e2e() -> None:
+    sys.stdout.write("native tool JSON/SARIF parsers and run.sh --policy block-new E2E\n")
+    with tempfile.TemporaryDirectory() as tmp_str:
+        tmp = pathlib.Path(tmp_str)
+        repo = tmp / "repo"
+        (repo / "scripts" / "lint" / "ratchet").mkdir(parents=True)
+        for name in (
+            "run.sh",
+            "python.sh",
+            "go.sh",
+            "rust.sh",
+            "deno.sh",
+            "frontend.sh",
+            "check_ratchet.py",
+            "canary_audit.py",
+            "check_python_versions.py",
+        ):
+            src_tool = ROOT / "scripts" / "lint" / name
+            if src_tool.is_file():
+                shutil.copy2(src_tool, repo / "scripts" / "lint" / name)
+        shutil.copy2(ROOT / ".golangci.yml", repo / ".golangci.yml")
+
+        # Create sample source files across languages
+        (repo / "svc-py").mkdir()
+        (repo / "svc-py" / "pyproject.toml").write_text(
+            '[project]\nname = "svc-py"\nrequires-python = ">=3.13"\n'
+            '[dependency-groups]\ndev = ["ruff>=0.15.0"]\n',
+            encoding="utf-8",
+        )
+        (repo / "svc-py" / "app.py").write_text(
+            "def f() -> None:\n    x = 1\n    y = 2\n", encoding="utf-8"
+        )
+        (repo / "svc-go").mkdir()
+        (repo / "svc-go" / "main.go").write_text(
+            "package main\nfunc f() { _ = 1 }\n", encoding="utf-8"
+        )
+        (repo / "svc-rs" / "src").mkdir(parents=True)
+        (repo / "svc-rs" / "src" / "lib.rs").write_text(
+            "pub fn f(x: i32) -> bool { x == x }\n", encoding="utf-8"
+        )
+        (repo / "svc-deno").mkdir()
+        (repo / "svc-deno" / "mod.ts").write_text("export const x: any = 1;\n", encoding="utf-8")
+        (repo / "svc-fe" / "src").mkdir(parents=True)
+        (repo / "svc-fe" / "src" / "a.ts").write_text(
+            "export function f() {\n  debugger;\n}\n", encoding="utf-8"
+        )
+
+        baselines = repo / "scripts" / "lint" / "ratchet" / "rule_baselines.toml"
+
+        # 1) --golangci-sarif
+        sarif_path = tmp / "golangci.sarif"
+        sarif_path.write_text(
+            json.dumps(
+                {
+                    "version": "2.1.0",
+                    "runs": [
+                        {
+                            "results": [
+                                {
+                                    "ruleId": "gosec",
+                                    "message": {"text": "G402: TLS InsecureSkipVerify"},
+                                    "locations": [
+                                        {
+                                            "physicalLocation": {
+                                                "artifactLocation": {"uri": "main.go"},
+                                                "region": {"startLine": 2},
+                                            }
+                                        }
+                                    ],
+                                }
+                            ]
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        res_go_upd = run_cli(
+            "check-fingerprints",
+            "--repo-root",
+            str(repo),
+            "--project-dir",
+            str(repo / "svc-go"),
+            "--baselines-file",
+            str(baselines),
+            "--golangci-sarif",
+            str(sarif_path),
+            "--update-fingerprints",
+        )
+        res_go_ok = run_cli(
+            "check-fingerprints",
+            "--repo-root",
+            str(repo),
+            "--project-dir",
+            str(repo / "svc-go"),
+            "--baselines-file",
+            str(baselines),
+            "--golangci-sarif",
+            str(sarif_path),
+        )
+        check(
+            "--golangci-sarif parses and matches baselined G402 violation",
+            res_go_upd.returncode == 0 and res_go_ok.returncode == 0,
+            f"upd={res_go_upd.returncode} ok={res_go_ok.returncode} {res_go_ok.stderr}",
+        )
+
+        # 2) --clippy-json (NDJSON)
+        clippy_path = tmp / "clippy.json"
+        clippy_path.write_text(
+            json.dumps(
+                {
+                    "reason": "compiler-message",
+                    "message": {
+                        "code": {"code": "clippy::eq_op"},
+                        "level": "error",
+                        "spans": [{"file_name": "src/lib.rs", "line_start": 1, "is_primary": True}],
+                    },
+                }
+            )
+            + "\n"
+            + json.dumps(
+                {
+                    "reason": "compiler-message",
+                    "message": {"code": None, "level": "error", "spans": []},
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        res_rs_upd = run_cli(
+            "check-fingerprints",
+            "--repo-root",
+            str(repo),
+            "--project-dir",
+            str(repo / "svc-rs"),
+            "--baselines-file",
+            str(baselines),
+            "--clippy-json",
+            str(clippy_path),
+            "--update-fingerprints",
+        )
+        res_rs_ok = run_cli(
+            "check-fingerprints",
+            "--repo-root",
+            str(repo),
+            "--project-dir",
+            str(repo / "svc-rs"),
+            "--baselines-file",
+            str(baselines),
+            "--clippy-json",
+            str(clippy_path),
+        )
+        check(
+            "--clippy-json parses NDJSON compiler-message and matches baseline",
+            res_rs_upd.returncode == 0 and res_rs_ok.returncode == 0,
+            f"upd={res_rs_upd.returncode} ok={res_rs_ok.returncode} {res_rs_ok.stderr}",
+        )
+
+        # 3) --deno-json (with file:// URI)
+        deno_path = tmp / "deno.json"
+        deno_path.write_text(
+            json.dumps(
+                {
+                    "diagnostics": [
+                        {
+                            "code": "no-explicit-any",
+                            "filename": (repo / "svc-deno" / "mod.ts").as_uri(),
+                            "range": {"start": {"line": 1, "col": 16}},
+                        }
+                    ],
+                    "errors": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+        res_deno_upd = run_cli(
+            "check-fingerprints",
+            "--repo-root",
+            str(repo),
+            "--project-dir",
+            str(repo / "svc-deno"),
+            "--baselines-file",
+            str(baselines),
+            "--deno-json",
+            str(deno_path),
+            "--update-fingerprints",
+        )
+        res_deno_ok = run_cli(
+            "check-fingerprints",
+            "--repo-root",
+            str(repo),
+            "--project-dir",
+            str(repo / "svc-deno"),
+            "--baselines-file",
+            str(baselines),
+            "--deno-json",
+            str(deno_path),
+        )
+        check(
+            "--deno-json parses file:// URI diagnostics and matches baseline",
+            res_deno_upd.returncode == 0 and res_deno_ok.returncode == 0,
+            f"upd={res_deno_upd.returncode} ok={res_deno_ok.returncode} {res_deno_ok.stderr}",
+        )
+
+        # 4) --biome-json
+        biome_path = tmp / "biome.json"
+        biome_src = (repo / "svc-fe" / "src" / "a.ts").read_text(encoding="utf-8")
+        biome_path.write_text(
+            json.dumps(
+                {
+                    "diagnostics": [
+                        {
+                            "category": "lint/suspicious/noDebugger",
+                            "location": {
+                                "path": {"file": "src/a.ts"},
+                                "span": [
+                                    biome_src.index("debugger"),
+                                    biome_src.index("debugger") + 8,
+                                ],
+                                "sourceCode": biome_src,
+                            },
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        res_fe_upd = run_cli(
+            "check-fingerprints",
+            "--repo-root",
+            str(repo),
+            "--project-dir",
+            str(repo / "svc-fe"),
+            "--baselines-file",
+            str(baselines),
+            "--biome-json",
+            str(biome_path),
+            "--update-fingerprints",
+        )
+        res_fe_ok = run_cli(
+            "check-fingerprints",
+            "--repo-root",
+            str(repo),
+            "--project-dir",
+            str(repo / "svc-fe"),
+            "--baselines-file",
+            str(baselines),
+            "--biome-json",
+            str(biome_path),
+        )
+        check(
+            "--biome-json parses diagnostics + byte span line and matches baseline",
+            res_fe_upd.returncode == 0 and res_fe_ok.returncode == 0,
+            f"upd={res_fe_upd.returncode} ok={res_fe_ok.returncode} {res_fe_ok.stderr}",
+        )
+        _verify_python_block_new_e2e(tmp, repo, baselines)
+
+
+def _verify_python_block_new_e2e(
+    tmp: pathlib.Path,
+    repo: pathlib.Path,
+    baselines: pathlib.Path,
+) -> None:
+    ruff_json = tmp / "ruff.json"
+    ruff_json.write_text(
+        json.dumps(
+            [
+                {
+                    "code": "F841",
+                    "filename": str(repo / "svc-py" / "app.py"),
+                    "location": {"row": 2, "column": 5},
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    res_py_upd = run_cli(
+        "check-fingerprints",
+        "--repo-root",
+        str(repo),
+        "--project-dir",
+        str(repo / "svc-py"),
+        "--baselines-file",
+        str(baselines),
+        "--ruff-json",
+        str(ruff_json),
+        "--update-fingerprints",
+    )
+    check("--ruff-json baseline seeded", res_py_upd.returncode == 0, res_py_upd.stderr)
+
+    bin_dir = tmp / "stub-bin"
+    bin_dir.mkdir()
+    uv_stub = bin_dir / "uv"
+    uv_stub.write_text(
+        f"#!{sys.executable}\n"
+        "import json, os, pathlib, subprocess, sys\n"
+        "args = sys.argv[1:]\n"
+        "idx = 1 if args and args[0] == 'run' else 0\n"
+        "while idx < len(args) and args[idx].startswith('-'):\n"
+        "    idx += 2 if args[idx] in ('--only-group', '--group') else 1\n"
+        "tool, rest = args[idx], args[idx + 1:]\n"
+        "if tool == 'python':\n"
+        "    sys.exit(subprocess.run([sys.executable, *rest], check=False).returncode)\n"
+        "if tool == 'ruff':\n"
+        "    if rest and rest[0] == 'format':\n"
+        "        sys.exit(0)\n"
+        "    want_json = '--output-format' in rest and 'json' in rest\n"
+        "    for tok in rest[1:]:\n"
+        "        p = pathlib.Path(tok)\n"
+        "        if p.is_file() and 'import os' in p.read_text(encoding='utf-8'):\n"
+        "            sys.stdout.write(f'F401 unused\\n --> {p}:1:8\\n')\n"
+        "            sys.exit(1)\n"
+        "    app_py = (pathlib.Path.cwd() / 'app.py').resolve()\n"
+        "    findings = [{'code': 'F841', 'filename': str(app_py), 'location': {'row': 2, 'column': 5}}]\n"
+        "    if os.environ.get('INJECT_NEW_VIOLATION') == '1':\n"
+        "        findings.append({'code': 'F841', 'filename': str(app_py), 'location': {'row': 3, 'column': 5}})\n"
+        "    if want_json:\n"
+        "        sys.stdout.write(json.dumps(findings))\n"
+        "    else:\n"
+        "        sys.stdout.write('app.py:2:5: F841 unused\\n')\n"
+        "    sys.exit(1)\n"
+        "sys.exit(0)\n",
+        encoding="utf-8",
+    )
+    uv_stub.chmod(0o755)
+    bash_bin = shutil.which("bash")
+    assert bash_bin is not None
+    env = os.environ.copy()
+    env["PATH"] = f"{bin_dir}:{env.get('PATH', '')}"
+
+    res_fix = run_cmd(
+        [bash_bin, str(repo / "scripts" / "lint" / "run.sh"), "svc-py"],
+        cwd=repo,
+        env=env,
+    )
+    check(
+        "run.sh (fix-existing) fails on baselined violation",
+        res_fix.returncode == 1,
+        f"rc={res_fix.returncode} out={res_fix.stdout + res_fix.stderr}",
+    )
+
+    res_bn_pass = run_cmd(
+        [bash_bin, str(repo / "scripts" / "lint" / "run.sh"), "--policy", "block-new", "svc-py"],
+        cwd=repo,
+        env=env,
+    )
+    check(
+        "run.sh --policy block-new passes on baselined violation",
+        res_bn_pass.returncode == 0,
+        f"rc={res_bn_pass.returncode} out={res_bn_pass.stdout + res_bn_pass.stderr}",
+    )
+
+    env_new = dict(env, INJECT_NEW_VIOLATION="1")
+    res_bn_fail = run_cmd(
+        [bash_bin, str(repo / "scripts" / "lint" / "run.sh"), "--policy", "block-new", "svc-py"],
+        cwd=repo,
+        env=env_new,
+    )
+    check(
+        "run.sh --policy block-new fails on new unbaselined violation",
+        res_bn_fail.returncode == 1
+        and "ratchet.new-fingerprint" in (res_bn_fail.stdout + res_bn_fail.stderr),
+        f"rc={res_bn_fail.returncode} out={res_bn_fail.stdout + res_bn_fail.stderr}",
+    )
+
+
 def test_real_repository() -> None:
     sys.stdout.write("real repository verification\n")
     check("suppressions.toml exists", SUPPRESSIONS_TOML.is_file(), str(SUPPRESSIONS_TOML))
@@ -451,6 +914,9 @@ def main() -> int:
     mod = load_ratchet()
     test_counting_and_ratchet(mod)
     test_rule_fingerprint_baseline()
+    test_python_nosec_and_spaced_rust_attrs(mod)
+    test_security_path_traversal_symlink_and_toml_escape(mod)
+    test_native_tool_outputs_and_block_new_e2e()
     test_real_repository()
     sys.stdout.write(f"\n{RESULTS.passed} passed, {RESULTS.failed} failed\n")
     return 1 if RESULTS.failed else 0

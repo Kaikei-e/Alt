@@ -84,19 +84,48 @@ fi
 fmt_status="pass"
 clippy_status="pass"
 rc=0
+lint_policy="${LINT_POLICY:-fix-existing}"
 
 if ! cargo fmt --all -- --check; then
   fmt_status="fail"
   rc=1
 fi
 
-if ! cargo clippy --all-targets --all-features -- -D warnings; then
+run_clippy_checked() {
+  if [ "$lint_policy" != "block-new" ]; then
+    cargo clippy "$@" -- -D warnings
+    return $?
+  fi
+  local clippy_json="" clippy_rc=0
+  clippy_json="$(mktemp "${TMPDIR:-/tmp}/alt-clippy-XXXXXX.json")"
+  set +e
+  cargo clippy "$@" --message-format=json -- -D warnings > "$clippy_json"
+  clippy_rc=$?
+  set -e
+  if [ "$clippy_rc" -eq 0 ]; then
+    rm -f "$clippy_json"
+    return 0
+  fi
+  local fp_rc=0
+  set +e
+  python3 "${script_dir}/check_ratchet.py" check-fingerprints \
+    --repo-root "${repo_root}" \
+    --project-dir "${project_dir}" \
+    --clippy-json "$clippy_json" \
+    --require-findings
+  fp_rc=$?
+  set -e
+  rm -f "$clippy_json"
+  return "$fp_rc"
+}
+
+if ! run_clippy_checked --all-targets --all-features; then
   clippy_status="fail"
   rc=1
 fi
 
 for extra_target in "${declared_targets[@]}"; do
-  if ! cargo clippy --lib --target "$extra_target" --all-features -- -D warnings; then
+  if ! run_clippy_checked --lib --target "$extra_target" --all-features; then
     clippy_status="fail"
     rc=1
   fi

@@ -351,6 +351,20 @@ sys.exit(0)
     return repo, svc, env
 
 
+def _run_py_tool(
+    args: list[str],
+    *,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(  # noqa: S603 - fixed argv running repo lint script in test
+        [sys.executable, *args],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
 def run_go_sh(
     repo: pathlib.Path, target: str, env: dict[str, str]
 ) -> subprocess.CompletedProcess[str]:
@@ -1639,12 +1653,7 @@ check(
 # Group H: 45-target canary coverage ledger verification
 # ---------------------------------------------------------------------------
 sys.stdout.write("H1. 45-target canary coverage ledger (real + negative drift tests)\n")
-res_ledger = subprocess.run(  # noqa: S603 - fixed argv running verify-ledger on real repo
-    [sys.executable, str(CANARY_AUDIT_PY), "verify-ledger", "--repo-root", str(ROOT)],
-    capture_output=True,
-    text=True,
-    check=False,
-)
+res_ledger = _run_py_tool([str(CANARY_AUDIT_PY), "verify-ledger", "--repo-root", str(ROOT)])
 check(
     "real repo verify-ledger exits 0",
     res_ledger.returncode == 0,
@@ -1767,6 +1776,65 @@ with tempfile.TemporaryDirectory() as td:
         res_drift.returncode == 1 and "bandit" in res_drift.stderr,
         f"rc={res_drift.returncode}, stderr={res_drift.stderr!r}",
     )
+
+# ---------------------------------------------------------------------------
+# Group I: Entrypoint canary (entrypoint_canary.py) Go gofmt + CLI tests
+# ---------------------------------------------------------------------------
+sys.stdout.write(
+    "I1. entrypoint_canary.py verifies Go gofmt + G402 and supports --available-only\n"
+)
+ENTRYPOINT_CANARY_PY = LINT_DIR / "entrypoint_canary.py"
+with tempfile.TemporaryDirectory() as td:
+    td_path = pathlib.Path(td)
+    ep_repo, ep_svc, ep_env = build_go_test_repo(td_path)
+    shutil.copy2(RUN_SH, ep_repo / "scripts" / "lint" / "run.sh")
+    shutil.copy2(ENTRYPOINT_CANARY_PY, ep_repo / "scripts" / "lint" / "entrypoint_canary.py")
+    # entrypoint_canary.py targets docker/otel-relay for Go; stage a minimal copy there
+    otel_dir = ep_repo / "docker" / "otel-relay"
+    otel_dir.mkdir(parents=True)
+    shutil.copy2(ep_svc / "go.mod", otel_dir / "go.mod")
+    shutil.copy2(ep_svc / "main.go", otel_dir / "main.go")
+
+    # Stub golangci-lint in build_go_test_repo catches InsecureSkipVerify; real gofmt catches unformatted code
+    res_ep_go = _run_py_tool(
+        [
+            str(ENTRYPOINT_CANARY_PY),
+            "--repo-root",
+            str(ep_repo),
+            "--languages",
+            "go",
+        ],
+        env=ep_env,
+    )
+    check(
+        "entrypoint_canary.py Go case passes and verifies both gofmt and G402",
+        res_ep_go.returncode == 0 and "gofmt" in (res_ep_go.stdout + res_ep_go.stderr).lower(),
+        f"rc={res_ep_go.returncode}, out={res_ep_go.stdout!r}, err={res_ep_go.stderr!r}",
+    )
+
+if BUF_BIN is not None:
+    res_ep_proto = _run_py_tool(
+        [
+            str(ENTRYPOINT_CANARY_PY),
+            "--repo-root",
+            str(ROOT),
+            "--languages",
+            "proto",
+            "--skip-baseline",
+        ]
+    )
+    check(
+        "real entrypoint_canary.py --languages proto --skip-baseline exits 0",
+        res_ep_proto.returncode == 0,
+        f"rc={res_ep_proto.returncode}, out={res_ep_proto.stdout!r}, err={res_ep_proto.stderr!r}",
+    )
+
+res_ep_help = _run_py_tool([str(ENTRYPOINT_CANARY_PY), "--help"])
+check(
+    "entrypoint_canary.py exposes --available-only flag",
+    res_ep_help.returncode == 0 and "--available-only" in res_ep_help.stdout,
+    res_ep_help.stdout + res_ep_help.stderr,
+)
 
 sys.stdout.write(f"\n{RESULTS.passed} passed, {RESULTS.failed} failed\n")
 sys.exit(1 if RESULTS.failed else 0)

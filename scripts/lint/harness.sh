@@ -28,16 +28,25 @@ resolve_base() {
 
   raw_base="${LINT_BASE:-}"
   if [ -n "$raw_base" ] && [[ ! "$raw_base" =~ ^0+$ ]]; then
-    if ! target_sha="$(git rev-parse --verify --quiet "${raw_base}^{commit}")"; then
+    if target_sha="$(git rev-parse --verify --quiet "${raw_base}^{commit}")"; then
+      if ! merge_base="$(git merge-base "$target_sha" "$head_sha" 2>/dev/null)" || [ -z "$merge_base" ]; then
+        echo "error: cannot compute merge-base between LINT_BASE '${raw_base}' (${target_sha}) and HEAD (${head_sha}) (shallow clone or unrelated history)" >&2
+        return 1
+      fi
+      if [ "$merge_base" = "$head_sha" ]; then
+        if ! merge_base="$(git rev-parse --verify --quiet 'HEAD~1^{commit}')"; then
+          echo "error: LINT_BASE '${raw_base}' matches HEAD and HEAD~1 cannot be resolved (shallow clone?)" >&2
+          return 1
+        fi
+      fi
+      printf '%s\n' "$merge_base"
+      return 0
+    fi
+    if [[ ! "$raw_base" =~ ^[0-9a-fA-F]{40}$ ]]; then
       echo "error: LINT_BASE '${raw_base}' cannot be resolved to a commit" >&2
       return 1
     fi
-    if ! merge_base="$(git merge-base "$target_sha" "$head_sha" 2>/dev/null)" || [ -z "$merge_base" ]; then
-      echo "error: cannot compute merge-base between LINT_BASE '${raw_base}' (${target_sha}) and HEAD (${head_sha}) (shallow clone or unrelated history)" >&2
-      return 1
-    fi
-    printf '%s\n' "$merge_base"
-    return 0
+    echo "warn: LINT_BASE '${raw_base}' not found (force-push?); falling back to origin/main / HEAD~1" >&2
   fi
 
   if ! target_sha="$(git rev-parse --verify --quiet 'origin/main^{commit}')"; then
@@ -83,6 +92,7 @@ status_generated_code_tests="pass"
 status_worktree_hygiene="pass"
 status_worktree_hygiene_tests="pass"
 status_canary_ledger="pass"
+status_entrypoint_canary="pass"
 status_corpus="pass"
 corpus_capture_rate=""
 
@@ -188,8 +198,8 @@ if ! python3 scripts/tests/test-suppression-diff-report.py; then
   rc=1
 fi
 
-echo "==> [harness] check_generated_code.py"
-if ! python3 scripts/lint/check_generated_code.py; then
+echo "==> [harness] check_generated_code.py --base ${base}"
+if ! python3 scripts/lint/check_generated_code.py --base "$base"; then
   status_generated_code="fail"
   rc=1
 fi
@@ -215,6 +225,12 @@ fi
 echo "==> [harness] canary_audit.py verify-ledger --repo-root ."
 if ! python3 scripts/lint/canary_audit.py verify-ledger --repo-root .; then
   status_canary_ledger="fail"
+  rc=1
+fi
+
+echo "==> [harness] entrypoint_canary.py --languages proto --skip-baseline"
+if ! python3 scripts/lint/entrypoint_canary.py --languages proto --skip-baseline; then
+  status_entrypoint_canary="fail"
   rc=1
 fi
 
@@ -255,6 +271,7 @@ printf '  %-32s %s\n' "generated_code_tests" "$status_generated_code_tests"
 printf '  %-32s %s\n' "worktree_hygiene" "$status_worktree_hygiene"
 printf '  %-32s %s\n' "worktree_hygiene_tests" "$status_worktree_hygiene_tests"
 printf '  %-32s %s\n' "canary_ledger" "$status_canary_ledger"
+printf '  %-32s %s\n' "entrypoint_canary" "$status_entrypoint_canary"
 printf '  %-32s %s\n' "corpus" "$status_corpus"
 if [ -n "$corpus_capture_rate" ]; then
   printf '  %s\n' "$corpus_capture_rate"

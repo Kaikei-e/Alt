@@ -9,6 +9,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -51,6 +52,8 @@ REPO_PATH_TOKEN_RE = re.compile(
 )
 LEADIN_BREAK_RE = re.compile(r"\*\*(?:機構|先例|問い|確認コマンド|機械的に見ているもの)\.\*\*")
 RULE_LEDGER_REL = ".agents/rules/rule-ledger.md"
+RATCHET_SUPPRESSIONS_REL = "scripts/lint/ratchet/suppressions.toml"
+FILE_LIKE_EXTENSIONS: tuple[str, ...] = (".py", ".sh", ".yml", ".yaml", ".toml", ".md")
 AST_GREP_RULES_REL = Path("scripts") / "lint" / "ast-grep" / "rules"
 RULE_LEDGER_HEADERS: tuple[str, ...] = ("ID", "規則", "強制手段", "由来")
 CORPUS_ID_RE = re.compile(r"(?<![A-Za-z0-9-])(C-\d{2,})(?![0-9])")
@@ -908,14 +911,22 @@ def _check_rule_ledger_enforcement(
         candidate = token.split(maxsplit=1)[0].rstrip(".,;:")
         if "/" in candidate:
             concrete_refs += 1
-            if not (root / candidate).exists():
+            if not (root / candidate).is_file():
                 findings.append(
                     Finding(
                         "H11",
                         RULE_LEDGER_REL,
-                        f"row '{rule_id}' references missing repo path '{candidate}'",
+                        f"row '{rule_id}' references missing or non-file repo path '{candidate}'",
                     )
                 )
+        elif candidate.endswith(FILE_LIKE_EXTENSIONS) and not (root / candidate).is_file():
+            findings.append(
+                Finding(
+                    "H11",
+                    RULE_LEDGER_REL,
+                    f"row '{rule_id}' references missing file token '{candidate}'",
+                )
+            )
 
     if concrete_refs == 0:
         findings.append(
@@ -972,6 +983,42 @@ def _check_rule_ledger_row(
     return False
 
 
+def _cross_check_ratchet_max_judgment(
+    root: Path,
+    max_judgment: int,
+    findings: list[Finding],
+) -> None:
+    ratchet_path = root / RATCHET_SUPPRESSIONS_REL
+    if not ratchet_path.is_file():
+        return
+    try:
+        ratchet_data = tomllib.loads(ratchet_path.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        findings.append(
+            Finding(
+                "H11",
+                RATCHET_SUPPRESSIONS_REL,
+                f"failed to parse {RATCHET_SUPPRESSIONS_REL} for max_judgment_rules cross-check: {exc}",
+            )
+        )
+        return
+    gov = ratchet_data.get("governance")
+    ratchet_max = gov.get("max_judgment_rules") if isinstance(gov, dict) else None
+    if (
+        isinstance(ratchet_max, bool)
+        or not isinstance(ratchet_max, int)
+        or ratchet_max != max_judgment
+    ):
+        findings.append(
+            Finding(
+                "H11",
+                RATCHET_SUPPRESSIONS_REL,
+                f"[governance].max_judgment_rules in {RATCHET_SUPPRESSIONS_REL} ({ratchet_max!r}) "
+                f"does not match {RULE_LEDGER_REL} ({max_judgment})",
+            )
+        )
+
+
 def _check_rule_ledger(root: Path, findings: list[Finding]) -> None:
     """H11: verify .agents/rules/rule-ledger.md structure, references, and judgment ratchet."""
     ledger_path = root / RULE_LEDGER_REL
@@ -1025,6 +1072,7 @@ def _check_rule_ledger(root: Path, findings: list[Finding]) -> None:
                     f"judgment rule count ({judgment_rows}) is below max_judgment_rules ({max_judgment}); lower max_judgment_rules to {judgment_rows} in the same commit",
                 )
             )
+        _cross_check_ratchet_max_judgment(root, max_judgment, findings)
 
 
 def _check_hooks_pair(root: Path, findings: list[Finding]) -> tuple[bool, int, int | str]:

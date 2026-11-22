@@ -130,6 +130,18 @@ assert_exit_and_err 0 "base=${c2}" "harness.sh unset LINT_BASE falls back to HEA
   env -u LINT_BASE PATH="$tmp_bin:$PATH" bash "$tmp_git/scripts/lint/harness.sh"
 assert_exit_and_err 0 "stub-python3:scripts/tests/test-corpus.py" "harness.sh runs test-corpus.py" \
   env -u LINT_BASE PATH="$tmp_bin:$PATH" bash "$tmp_git/scripts/lint/harness.sh"
+assert_exit_and_err 0 "stub-python3:scripts/lint/check_generated_code.py --base ${c2}" \
+  "harness.sh passes --base to check_generated_code.py" \
+  env -u LINT_BASE PATH="$tmp_bin:$PATH" bash "$tmp_git/scripts/lint/harness.sh"
+assert_exit_and_err 0 "stub-python3:scripts/lint/entrypoint_canary.py" \
+  "harness.sh invokes entrypoint_canary.py" \
+  env -u LINT_BASE PATH="$tmp_bin:$PATH" bash "$tmp_git/scripts/lint/harness.sh"
+assert_exit_and_err 0 "base=${c2}" \
+  "harness.sh force-push unreachable 40-hex LINT_BASE falls back to HEAD~1" \
+  env LINT_BASE="1111111111111111111111111111111111111111" PATH="$tmp_bin:$PATH" bash "$tmp_git/scripts/lint/harness.sh"
+assert_exit_and_err 0 "base=${c2}" \
+  "harness.sh LINT_BASE equal to HEAD falls back to HEAD~1" \
+  env LINT_BASE="$c3" PATH="$tmp_bin:$PATH" bash "$tmp_git/scripts/lint/harness.sh"
 
 # Verify harness.sh surfaces CORPUS CAPTURE RATE in summary and fails when test-corpus.py fails
 tmp_corpus_bin="$tmp_repo/stub-corpus-bin"

@@ -238,6 +238,50 @@ def test_working_tree_and_head_diff() -> None:
             and "`lib.rs:2`" in res_head.stdout,
             res_head.stdout + res_head.stderr,
         )
+        _verify_security_and_fail_closed(pathlib.Path(tmp_str), repo, al, base_sha, head_sha)
+
+
+def _verify_security_and_fail_closed(
+    tmp: pathlib.Path,
+    repo: pathlib.Path,
+    al: pathlib.Path,
+    base_sha: str,
+    head_sha: str,
+) -> None:
+    clobber_target = tmp / "clobbered.txt"
+    res_flag_base = run_cli("--repo-root", str(repo), f"--base=--output={clobber_target}")
+    check(
+        "rejects --base starting with '-' (CWE-88) without creating output file",
+        res_flag_base.returncode != 0 and not clobber_target.exists(),
+        f"rc={res_flag_base.returncode} stderr={res_flag_base.stderr}",
+    )
+    res_flag_head = run_cli(
+        "--repo-root", str(repo), "--base", base_sha, f"--head=--output={clobber_target}"
+    )
+    check(
+        "rejects --head starting with '-' (CWE-88) without creating output file",
+        res_flag_head.returncode != 0 and not clobber_target.exists(),
+        f"rc={res_flag_head.returncode} stderr={res_flag_head.stderr}",
+    )
+
+    outside_py = tmp / "outside_secret.py"
+    outside_py.write_text("x = 1  # noqa: S603 -- leaked outside secret\n", encoding="utf-8")
+    (repo / "escape_link.py").symlink_to(outside_py)
+    res_sym = run_cli("--repo-root", str(repo), "--base", head_sha)
+    check(
+        "symlink escaping repo_root is not read in working tree diff",
+        res_sym.returncode == 0 and "leaked outside secret" not in res_sym.stdout,
+        res_sym.stdout + res_sym.stderr,
+    )
+    (repo / "escape_link.py").unlink()
+
+    al.write_text("version = 1\n[[bandit\nbroken toml\n", encoding="utf-8")
+    res_bad_toml = run_cli("--repo-root", str(repo), "--base", head_sha)
+    check(
+        "corrupted working-tree suppression_allowlist.toml fails closed (non-zero)",
+        res_bad_toml.returncode != 0,
+        f"rc={res_bad_toml.returncode} out={res_bad_toml.stdout + res_bad_toml.stderr}",
+    )
 
 
 def main() -> int:

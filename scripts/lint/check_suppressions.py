@@ -20,6 +20,7 @@ import argparse
 import datetime
 import hashlib
 import io
+import json
 import pathlib
 import re
 import shutil
@@ -34,6 +35,7 @@ MIN_REASON_LENGTH = 5
 EXIT_CLEAN = 0
 EXIT_VIOLATIONS = 1
 EXIT_USAGE_ERROR = 2
+FROZEN_BASELINE_MAX_EXPIRES = datetime.date(2027, 5, 22)
 
 LEGACY_RUFF_KEYS = ("ignore", "extend-ignore", "per-file-ignores", "extend-per-file-ignores")
 SOURCE_EXTENSIONS = (".py", ".go", ".rs", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".svelte")
@@ -114,7 +116,14 @@ PY_NOQA_CODES_RE = re.compile(
 )
 PY_TRAILING_BAD_CODE_RE = re.compile(r",\s*(?:ALL|\*)", re.IGNORECASE)
 PY_NOSEC_RE = re.compile(r"#\s*nosec\b(.*)$", re.IGNORECASE)
-PY_NOSEC_B608_RE = re.compile(r"\bB608\b", re.IGNORECASE)
+PY_NOSEC_CODES_RE = re.compile(
+    r"^[\s:]*((?:B\d{3})(?:[\s,]+B\d{3})*)(?=$|[\s#\-—(;:])",
+    re.IGNORECASE,
+)
+PY_NOSEC_SECONDARY_RE = re.compile(
+    r"#\s*(?:noqa|type:\s*ignore|pyright:\s*ignore|pyrefly:\s*ignore)\b.*$",
+    re.IGNORECASE,
+)
 PY_SECONDARY_DIRECTIVE_RE = re.compile(
     r"#\s*(?:nosec|type:\s*ignore|pyright:\s*ignore|pyrefly:\s*ignore)\b.*$",
     re.IGNORECASE,
@@ -143,8 +152,8 @@ GO_NOSEC_RULES_RE = re.compile(
 )
 GO_NOSEC_RULE_ONLY_RE = re.compile(r"^((?:G\d{3}(?:[\s,]+)?)+)(?:\*/)?$")
 
-RUST_INNER_ALLOW_RE = re.compile(r"^#!\[\s*allow\s*\(", re.DOTALL)
-RUST_OUTER_ALLOW_RE = re.compile(r"^#\[\s*allow\s*\(", re.DOTALL)
+RUST_INNER_ALLOW_RE = re.compile(r"^#\s*!\s*\[\s*(?:allow|expect)\s*\(", re.DOTALL)
+RUST_OUTER_ALLOW_RE = re.compile(r"^#\s*\[\s*(?:allow|expect)\s*\(", re.DOTALL)
 
 TS_BIOME_ALL_RE = re.compile(r"\bbiome-ignore-all\b(.*)$", re.DOTALL)
 TS_BIOME_LINE_RE = re.compile(r"\bbiome-ignore\b(?!-all)(.*)$", re.DOTALL)
@@ -349,6 +358,7 @@ def _validate_ledger_metadata(
 
     status = entry.get("status")
     adr = entry.get("adr")
+    adr_valid_existing = False
     if status != "frozen-baseline" and not adr:
         violations.append(
             Violation(
@@ -390,6 +400,21 @@ def _validate_ledger_metadata(
                             f"{label}: {adr} referenced but docs/ADR/{match.group(1)}.md missing",
                         )
                     )
+                else:
+                    adr_valid_existing = True
+    if status == "frozen-baseline" and not adr_valid_existing:
+        raw_expires = entry.get("expires")
+        exp_date = _parse_iso_date(raw_expires) if isinstance(raw_expires, str) else None
+        if exp_date is not None and exp_date > FROZEN_BASELINE_MAX_EXPIRES:
+            violations.append(
+                Violation(
+                    allowlist_rel,
+                    0,
+                    "config.allowlist.expires-extended-without-adr",
+                    f"{label}: frozen-baseline 'expires' ({exp_date.isoformat()}) exceeds ceiling "
+                    f"{FROZEN_BASELINE_MAX_EXPIRES.isoformat()} and requires a valid existing 'adr = \"ADR-NNNNNN\"'",
+                )
+            )
     return violations
 
 
@@ -1107,23 +1132,34 @@ def _python_file_noqa_trailing_reason(rest: str) -> str:
     return stripped
 
 
+def _extract_python_nosec_reason(tail: str) -> str:
+    cleaned = PY_NOSEC_SECONDARY_RE.sub("", tail).strip()
+    cleaned = re.sub(r"^(?:--|—|-|#|:|;|\s)+", "", cleaned).strip()
+    if cleaned.startswith("(") and cleaned.endswith(")"):
+        cleaned = cleaned[1:-1].strip()
+    return cleaned
+
+
 def _check_python_inline_noqa(
     rel_path: str,
     line_no: int,
     rest: str,
     src_line: str,
     state: tuple[dict[PythonNoqaKey, int], Counter[PythonNoqaKey]],
-) -> list[Violation]:
+) -> tuple[list[Violation], str]:
     codes_match = PY_NOQA_CODES_RE.match(rest)
     if not codes_match or PY_TRAILING_BAD_CODE_RE.search(rest):
-        return [
-            Violation(
-                rel_path,
-                line_no,
-                "source.python.noqa-missing-code",
-                "inline '# noqa' must specify concrete rule code(s) (e.g. '# noqa: S603')",
-            )
-        ]
+        return (
+            [
+                Violation(
+                    rel_path,
+                    line_no,
+                    "source.python.noqa-missing-code",
+                    "inline '# noqa' must specify concrete rule code(s) (e.g. '# noqa: S603')",
+                )
+            ],
+            "",
+        )
     codes = tuple(sorted({c.strip().upper() for c in codes_match.group(1).split(",") if c.strip()}))
     tail = rest[codes_match.end(1) :]
     reason = extract_python_noqa_reason(tail)
@@ -1143,6 +1179,55 @@ def _check_python_inline_noqa(
                 )
             )
     violations.extend(check_sql_suppression_reason(rel_path, line_no, codes, reason))
+    return violations, reason
+
+
+@dataclass(frozen=True)
+class _PythonLineLoc:
+    rel_path: str
+    line_no: int
+    src_line: str
+
+
+def _check_python_nosec(
+    loc: _PythonLineLoc,
+    rest: str,
+    shared_reason: str,
+    state: tuple[dict[PythonNoqaKey, int], Counter[PythonNoqaKey]],
+) -> list[Violation]:
+    codes_match = PY_NOSEC_CODES_RE.match(rest)
+    if not codes_match:
+        return [
+            Violation(
+                loc.rel_path,
+                loc.line_no,
+                "source.python.nosec-missing-code",
+                "inline '# nosec' must specify concrete Bandit rule code(s) (e.g. '# nosec B310 -- <reason>')",
+            )
+        ]
+    codes = tuple(
+        sorted({c.upper() for c in re.findall(r"B\d{3}", codes_match.group(1), re.IGNORECASE)})
+    )
+    own_reason = _extract_python_nosec_reason(rest[codes_match.end(1) :])
+    effective_reason = own_reason if _has_sufficient_reason(own_reason) else shared_reason
+    violations: list[Violation] = []
+    baseline, seen_reasonless = state
+    if not _has_sufficient_reason(effective_reason):
+        key: PythonNoqaKey = (loc.rel_path, codes, line_fingerprint_sha256(loc.src_line))
+        seen_reasonless[key] += 1
+        if seen_reasonless[key] > baseline.get(key, 0):
+            violations.append(
+                Violation(
+                    loc.rel_path,
+                    loc.line_no,
+                    "source.python.nosec-missing-reason",
+                    f"inline '# nosec {' '.join(codes)}' requires a reason comment "
+                    f"(e.g. '-- <reason>' or '# <reason>', >= {MIN_REASON_LENGTH} non-space chars)",
+                )
+            )
+    violations.extend(
+        check_sql_suppression_reason(loc.rel_path, loc.line_no, codes, effective_reason)
+    )
     return violations
 
 
@@ -1154,7 +1239,7 @@ def check_python_source(
     today: datetime.date | None = None,
     python_noqa_baseline: dict[PythonNoqaKey, int] | None = None,
 ) -> list[Violation]:
-    """Enforce Python # ruff: noqa, # flake8: noqa, inline # noqa, and SQL # nosec rules."""
+    """Enforce Python # ruff: noqa, # flake8: noqa, inline # noqa, and # nosec rules."""
     comments = _tokenize_python_comments(text)
     lines = text.splitlines()
     comment_by_line = {ln: _strip_comment_delimiters(raw) for ln, raw in comments}
@@ -1177,25 +1262,29 @@ def check_python_source(
             )
             continue
 
+        src_line = lines[line_no - 1] if 1 <= line_no <= len(lines) else raw
+        shared_reason = ""
         inline_match = PY_INLINE_NOQA_RE.search(raw)
         if inline_match:
-            src_line = lines[line_no - 1] if 1 <= line_no <= len(lines) else raw
+            noqa_violations, shared_reason = _check_python_inline_noqa(
+                rel_path,
+                line_no,
+                inline_match.group(1),
+                src_line,
+                (baseline, seen_reasonless),
+            )
+            violations.extend(noqa_violations)
+
+        nosec_match = PY_NOSEC_RE.search(raw)
+        if nosec_match:
             violations.extend(
-                _check_python_inline_noqa(
-                    rel_path,
-                    line_no,
-                    inline_match.group(1),
-                    src_line,
+                _check_python_nosec(
+                    _PythonLineLoc(rel_path, line_no, src_line),
+                    nosec_match.group(1),
+                    shared_reason,
                     (baseline, seen_reasonless),
                 )
             )
-            continue
-
-        nosec_match = PY_NOSEC_RE.search(raw)
-        if nosec_match and PY_NOSEC_B608_RE.search(nosec_match.group(1)):
-            after_b608 = PY_NOSEC_B608_RE.sub("", nosec_match.group(1), count=1)
-            reason = re.sub(r"^(?:--|—|-|#|:|;|\s)+", "", after_b608).strip()
-            violations.extend(check_sql_suppression_reason(rel_path, line_no, ("B608",), reason))
     return violations
 
 
@@ -1456,13 +1545,38 @@ def _skip_rust_char_literal(text: str, pos: int) -> int | None:
     return None
 
 
-def _read_rust_attribute(text: str, pos: int, start_line: int) -> tuple[_RustToken, int, int]:
-    """Read a balanced Rust #[...] or #![...] attribute token."""
+def _match_rust_attr_start(text: str, pos: int) -> tuple[bool, int] | None:
+    """If pos ('#') starts a Rust attribute (allowing optional whitespace), return (is_inner, bracket_pos)."""
     n = len(text)
-    is_inner = pos + 1 < n and text[pos + 1] == "!"
-    i = pos + (2 if is_inner else 1)
+    if pos >= n or text[pos] != "#":
+        return None
+    j = pos + 1
+    while j < n and text[j].isspace():
+        j += 1
+    is_inner = False
+    if j < n and text[j] == "!":
+        is_inner = True
+        j += 1
+        while j < n and text[j].isspace():
+            j += 1
+    if j < n and text[j] == "[":
+        return is_inner, j
+    return None
+
+
+def _read_rust_attribute(
+    text: str,
+    pos: int,
+    start_line: int,
+    *,
+    is_inner: bool,
+    bracket_pos: int,
+) -> tuple[_RustToken, int, int]:
+    """Read a balanced Rust #[...] or #![...] attribute token (supporting whitespace after #/!)."""
+    n = len(text)
+    line = start_line + text.count("\n", pos, bracket_pos)
+    i = bracket_pos
     depth = 0
-    line = start_line
     while i < n:
         ch = text[i]
         if ch == "\n":
@@ -1506,10 +1620,11 @@ def _scan_rust_comment_or_attr(
     if ch == "/" and pos + 1 < n and text[pos + 1] == "*":
         end, nl = _skip_rust_block_comment(text, pos)
         return _RustToken("COMMENT", text[pos:end], line, line + nl), end, line + nl
-    if ch == "#" and (
-        (pos + 1 < n and text[pos + 1] == "[") or (pos + 2 < n and text[pos + 1 : pos + 3] == "![")
-    ):
-        return _read_rust_attribute(text, pos, line)
+    if ch == "#":
+        attr_start = _match_rust_attr_start(text, pos)
+        if attr_start is not None:
+            is_inner, bracket_pos = attr_start
+            return _read_rust_attribute(text, pos, line, is_inner=is_inner, bracket_pos=bracket_pos)
     return None
 
 
@@ -1872,14 +1987,26 @@ def check_source_file(
     return []
 
 
+def _is_safe_repo_file(full_path: pathlib.Path, repo_root: pathlib.Path) -> bool:
+    if full_path.is_symlink():
+        return False
+    try:
+        resolved = full_path.resolve()
+        if not resolved.is_relative_to(repo_root.resolve()):
+            return False
+    except OSError:
+        return False
+    return full_path.is_file()
+
+
 def collect_python_noqa_reasonless(repo_root: pathlib.Path) -> dict[PythonNoqaKey, int]:
-    """Collect all reasonless inline Python '# noqa: CODE' occurrences in the repo."""
+    """Collect all reasonless inline Python '# noqa: CODE' and '# nosec B<NNN>' occurrences."""
     counts: Counter[PythonNoqaKey] = Counter()
     for rel_path in _git_ls_files(repo_root):
         if not rel_path.endswith(".py") or is_excluded_source_path(rel_path):
             continue
         full_path = repo_root / rel_path
-        if not full_path.is_file():
+        if not _is_safe_repo_file(full_path, repo_root):
             continue
         text = full_path.read_text(encoding="utf-8", errors="replace")
         if is_generated_source_text(text):
@@ -1888,42 +2015,76 @@ def collect_python_noqa_reasonless(repo_root: pathlib.Path) -> dict[PythonNoqaKe
         for line_no, raw in _tokenize_python_comments(text):
             if PY_FILE_NOQA_RE.match(raw):
                 continue
+            src_line = lines[line_no - 1] if 1 <= line_no <= len(lines) else raw
+            shared_reason = ""
             inline_match = PY_INLINE_NOQA_RE.search(raw)
-            if not inline_match:
-                continue
-            rest = inline_match.group(1)
-            codes_match = PY_NOQA_CODES_RE.match(rest)
-            if not codes_match or PY_TRAILING_BAD_CODE_RE.search(rest):
-                continue
-            codes = tuple(
-                sorted({c.strip().upper() for c in codes_match.group(1).split(",") if c.strip()})
-            )
-            reason = extract_python_noqa_reason(rest[codes_match.end(1) :])
-            if not _has_sufficient_reason(reason):
-                src_line = lines[line_no - 1] if 1 <= line_no <= len(lines) else raw
-                key: PythonNoqaKey = (rel_path, codes, line_fingerprint_sha256(src_line))
-                counts[key] += 1
+            if inline_match:
+                rest = inline_match.group(1)
+                codes_match = PY_NOQA_CODES_RE.match(rest)
+                if codes_match and not PY_TRAILING_BAD_CODE_RE.search(rest):
+                    codes = tuple(
+                        sorted(
+                            {
+                                c.strip().upper()
+                                for c in codes_match.group(1).split(",")
+                                if c.strip()
+                            }
+                        )
+                    )
+                    shared_reason = extract_python_noqa_reason(rest[codes_match.end(1) :])
+                    if not _has_sufficient_reason(shared_reason):
+                        key: PythonNoqaKey = (rel_path, codes, line_fingerprint_sha256(src_line))
+                        counts[key] += 1
+
+            nosec_match = PY_NOSEC_RE.search(raw)
+            if nosec_match:
+                nosec_rest = nosec_match.group(1)
+                nosec_codes_match = PY_NOSEC_CODES_RE.match(nosec_rest)
+                if nosec_codes_match:
+                    nosec_codes = tuple(
+                        sorted(
+                            {
+                                c.upper()
+                                for c in re.findall(
+                                    r"B\d{3}", nosec_codes_match.group(1), re.IGNORECASE
+                                )
+                            }
+                        )
+                    )
+                    own_reason = _extract_python_nosec_reason(
+                        nosec_rest[nosec_codes_match.end(1) :]
+                    )
+                    effective_reason = (
+                        own_reason if _has_sufficient_reason(own_reason) else shared_reason
+                    )
+                    if not _has_sufficient_reason(effective_reason):
+                        nosec_key: PythonNoqaKey = (
+                            rel_path,
+                            nosec_codes,
+                            line_fingerprint_sha256(src_line),
+                        )
+                        counts[nosec_key] += 1
     return dict(counts)
 
 
 def render_python_noqa_baseline_toml(counts: dict[PythonNoqaKey, int]) -> str:
-    """Serialize frozen reasonless Python # noqa baseline entries to deterministic TOML."""
+    """Serialize frozen reasonless Python # noqa/# nosec baseline entries to deterministic TOML."""
     out = [
-        "# Frozen baseline of pre-existing reasonless Python `# noqa: CODE` occurrences (CHECK-03).",
+        "# Frozen baseline of pre-existing reasonless Python `# noqa: CODE` / `# nosec B<NNN>` occurrences (CHECK-03).",
         "# Auto-generated by `python3 scripts/lint/check_suppressions.py --update-python-noqa-baseline`.",
-        "# New reasonless `# noqa: CODE` lines are rejected; removing existing ones lowers this ledger.",
+        "# New reasonless `# noqa: CODE` / `# nosec B<NNN>` lines are rejected; removing existing ones lowers this ledger.",
         "",
         "version = 1",
         "",
     ]
     for (rel_path, codes, line_sha), count in sorted(counts.items()):
-        codes_toml = ", ".join(f'"{c}"' for c in codes)
+        codes_toml = ", ".join(json.dumps(c, ensure_ascii=False) for c in codes)
         out.extend(
             [
                 "[[entries]]",
-                f'path = "{rel_path}"',
+                f"path = {json.dumps(rel_path, ensure_ascii=False)}",
                 f"codes = [{codes_toml}]",
-                f'line_sha256 = "{line_sha}"',
+                f"line_sha256 = {json.dumps(line_sha, ensure_ascii=False)}",
                 f"count = {count}",
                 "",
             ]
@@ -1960,7 +2121,7 @@ def check_repo(
         if rel_path.startswith(("stopped-using-k8s/", "scripts/harness/corpus/")):
             continue
         full_path = repo_root / rel_path
-        if not full_path.is_file():
+        if not _is_safe_repo_file(full_path, repo_root):
             continue
         name = full_path.name
         if name == "pyproject.toml":

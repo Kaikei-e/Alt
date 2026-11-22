@@ -131,8 +131,23 @@ jobs:
             exit 1
           fi
 
+      - name: Resolve lint base
+        id: lint_base
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            echo "base=origin/${BASE_REF}" >> "$GITHUB_OUTPUT"
+          elif [ -n "$BEFORE_SHA" ] && [[ ! "$BEFORE_SHA" =~ ^0+$ ]] && git cat-file -e "${BEFORE_SHA}^{commit}" 2>/dev/null; then
+            echo "base=${BEFORE_SHA}" >> "$GITHUB_OUTPUT"
+          else
+            echo "base=HEAD~1" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Run repository lint
         env:
           TARGET: repo
-          LINT_BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || github.event.before }}
+          LINT_BASE: ${{ steps.lint_base.outputs.base }}
         run: ./scripts/lint/run.sh "$TARGET"

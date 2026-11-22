@@ -209,6 +209,34 @@ def _check_allowlist_expires_cases(checker: types.ModuleType, repo: pathlib.Path
     _, errs = checker.load_allowlist(boundary_path, repo, today=FIXED_TODAY)
     check("entry with expires == today still passes", errs == [], repr(errs))
 
+    extended_baseline = MINIMAL_ALLOWLIST_TOML.replace(
+        'expires = "2027-05-22"',
+        'expires = "2099-12-31"',
+        1,
+    )
+    extended_path = repo / "extended_baseline.toml"
+    extended_path.write_text(extended_baseline, encoding="utf-8")
+    _, errs = checker.load_allowlist(extended_path, repo, today=FIXED_TODAY)
+    check(
+        "frozen-baseline entry extending expires past 2027-05-22 without ADR fails",
+        "config.allowlist.expires-extended-without-adr" in rules_of(errs),
+        repr(errs),
+    )
+
+    extended_with_adr = MINIMAL_ALLOWLIST_TOML.replace(
+        'status = "frozen-baseline"\nreason = "Pre-existing tag-generator bandit baseline"\nexpires = "2027-05-22"',
+        'status = "frozen-baseline"\nadr = "ADR-000979"\nreason = "Extended via ADR"\nexpires = "2028-05-22"',
+        1,
+    )
+    extended_adr_path = repo / "extended_with_adr.toml"
+    extended_adr_path.write_text(extended_with_adr, encoding="utf-8")
+    _, errs = checker.load_allowlist(extended_adr_path, repo, today=FIXED_TODAY)
+    check(
+        "frozen-baseline entry extending expires past 2027-05-22 WITH valid ADR passes",
+        errs == [],
+        repr(errs),
+    )
+
 
 def test_allowlist_validation(checker: types.ModuleType) -> None:
     sys.stdout.write("allowlist validation\n")
@@ -569,7 +597,47 @@ def test_python_source_checks(checker: types.ModuleType) -> None:
         )
         check(
             "inline # noqa: CODE followed only by # nosec without reason is rejected",
-            rules_of(errs) == {"source.python.noqa-missing-reason"},
+            rules_of(errs)
+            == {"source.python.noqa-missing-reason", "source.python.nosec-missing-reason"},
+            repr(errs),
+        )
+
+        errs = checker.check_python_source(
+            "app/a.py",
+            "x = 1  # nosec\ny = 2  # nosec -- missing code\n",
+            repo,
+            today=FIXED_TODAY,
+        )
+        check_violations(
+            "bare Python # nosec without B<NNN> code is rejected",
+            errs,
+            expected_count=2,
+            expected_rules={"source.python.nosec-missing-code"},
+        )
+
+        errs = checker.check_python_source(
+            "app/a.py",
+            "x = 1  # nosec B310\n",
+            repo,
+            today=FIXED_TODAY,
+        )
+        check(
+            "new reasonless Python # nosec B310 without baseline is rejected",
+            rules_of(errs) == {"source.python.nosec-missing-reason"},
+            repr(errs),
+        )
+
+        errs = checker.check_python_source(
+            "app/a.py",
+            "a = '0.0.0.0'  # noqa: S104 - container bind  # nosec B104\n"
+            "b = '0.0.0.0'  # nosec B104  # noqa: S104 - container bind\n"
+            "c = 1  # nosec B310 -- local health endpoint\n",
+            repo,
+            today=FIXED_TODAY,
+        )
+        check(
+            "Python # nosec B<NNN> with own or shared same-line reason passes",
+            errs == [],
             repr(errs),
         )
 
@@ -785,6 +853,18 @@ def test_sql_suppression_classification(checker: types.ModuleType) -> None:
         check(
             "standalone Python # nosec B608 enforces SQL classification",
             "source.sql.untrusted-boundary-forbidden" in rules_of(errs),
+            repr(errs),
+        )
+
+        errs = checker.check_python_source(
+            "app/db.py",
+            'q = f"SELECT {x}"  # noqa: E501 -- long line  # nosec B608\n',
+            repo,
+            today=FIXED_TODAY,
+        )
+        check(
+            "same-line # noqa: E501 + # nosec B608 enforces SQL classification on B608",
+            {"source.sql.missing-kind", "source.sql.missing-trust-boundary"} <= rules_of(errs),
             repr(errs),
         )
 
@@ -1038,6 +1118,23 @@ pub(crate) mod extra;
             "Rust #[allow(...)] on mod declarations (including cfg/multiline) is rejected",
             errs,
             expected_count=3,
+            expected_rules={"source.broad.missing-adr"},
+        )
+
+        spaced_and_expect_rs = """\
+#! [allow(dead_code)]
+#[expect(dead_code)]
+mod m1 {}
+# [allow(dead_code)]
+mod m2 {}
+#![expect(clippy::too_many_arguments)]
+#! [expect(unused)]
+"""
+        errs = checker.check_rust_source("svc/src/spaced.rs", spaced_and_expect_rs, repo)
+        check_violations(
+            "spaced Rust # [allow]/#! [allow] and #[expect]/#![expect] without ADR are rejected",
+            errs,
+            expected_count=5,
             expected_rules={"source.broad.missing-adr"},
         )
 

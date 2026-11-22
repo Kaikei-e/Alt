@@ -9,6 +9,7 @@ max_judgment_rules = 9
 
 [targets.acolyte-orchestrator]
 python_noqa = 216
+python_nosec = 30
 
 [targets."alt-backend/app"]
 go_nolint = 13
@@ -58,6 +59,7 @@ go_nosec = 2
 
 [targets."news-creator/app"]
 python_noqa = 138
+python_nosec = 7
 
 [targets.pki-agent]
 go_nosec = 18
@@ -84,7 +86,7 @@ go_nosec = 41
 rust_allow = 6
 
 [targets."rask-log-forwarder/app"]
-rust_allow = 12
+rust_allow = 32
 
 [targets.recap-evaluator]
 python_noqa = 36
@@ -93,7 +95,7 @@ python_noqa = 36
 python_noqa = 251
 
 [targets."recap-worker/recap-worker"]
-rust_allow = 309
+rust_allow = 360
 
 [targets.rerank-server]
 python_noqa = 3
@@ -107,6 +109,8 @@ go_nosec = 22
 
 [targets."tag-generator/app"]
 python_noqa = 105
+python_nosec = 8
 
 [targets.tts-speaker]
 python_noqa = 41
+python_nosec = 4

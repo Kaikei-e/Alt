@@ -182,7 +182,38 @@ elif [[ -f "${repo_root}/scripts/lint/run.sh" ]]; then
   exit 1
 fi
 
-run_step "ruff check" uv run --frozen --only-group dev ruff check .
+lint_policy="${LINT_POLICY:-fix-existing}"
+if [[ "$lint_policy" == "block-new" ]]; then
+  ruff_json="${work_tmp}/ruff.json"
+  ruff_rc=0
+  echo "==> ruff check (policy=block-new)"
+  steps+=("ruff check")
+  set +e
+  uv run --frozen --only-group dev ruff check --output-format json . > "${ruff_json}"
+  ruff_rc=$?
+  set -e
+  if [[ "$ruff_rc" -eq 0 ]]; then
+    statuses+=("pass")
+  elif [[ "$ruff_rc" -eq 1 ]]; then
+    if python3 "${script_dir}/check_ratchet.py" check-fingerprints \
+      --repo-root "${repo_root}" \
+      --project-dir "${target_dir}" \
+      --ruff-json "${ruff_json}" \
+      --require-findings; then
+      statuses+=("pass (block-new)")
+    else
+      fp_rc=$?
+      statuses+=("fail (block-new exit ${fp_rc})")
+      failed=1
+    fi
+  else
+    cat "${ruff_json}" >&2 || true
+    statuses+=("fail (ruff exit ${ruff_rc})")
+    failed=1
+  fi
+else
+  run_step "ruff check" uv run --frozen --only-group dev ruff check .
+fi
 run_step "ruff format" uv run --frozen --only-group dev ruff format --check .
 
 if [[ "$bandit_dep_state" == "declared" ]]; then

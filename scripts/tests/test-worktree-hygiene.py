@@ -164,6 +164,26 @@ def test_zero_byte_checks() -> None:
             res_bad.stdout + res_bad.stderr,
         )
 
+        git(repo, "add", "pkg/orphan.py")
+        res_staged_empty = run_hygiene(repo)
+        check(
+            "newly staged non-allowlisted 0-byte file fails with [hygiene.zero-byte-staged]",
+            res_staged_empty.returncode == 1
+            and "[hygiene.zero-byte-staged]" in (res_staged_empty.stdout + res_staged_empty.stderr)
+            and "pkg/orphan.py" in (res_staged_empty.stdout + res_staged_empty.stderr),
+            res_staged_empty.stdout + res_staged_empty.stderr,
+        )
+
+        git(repo, "reset", "HEAD", "--", "pkg/orphan.py")
+        (repo / "pkg/orphan.py").unlink()
+        git(repo, "add", "pkg/sub/__init__.py")
+        res_staged_allowed = run_hygiene(repo)
+        check(
+            "newly staged allowlisted 0-byte file (__init__.py) passes",
+            res_staged_allowed.returncode == 0,
+            res_staged_allowed.stdout + res_staged_allowed.stderr,
+        )
+
 
 def test_binary_artifact_checks() -> None:
     sys.stdout.write("check_worktree_hygiene: binary artifact detection (ELF, Mach-O, PE)\n")

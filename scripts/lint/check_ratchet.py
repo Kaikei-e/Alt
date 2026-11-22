@@ -37,6 +37,7 @@ import tokenize
 import tomllib
 from collections import Counter
 from dataclasses import dataclass
+from urllib.parse import unquote, urlparse
 
 EXIT_CLEAN = 0
 EXIT_VIOLATIONS = 1
@@ -53,9 +54,11 @@ GENERATED_HEADER_LINES = 40
 
 PY_FILE_NOQA_RE = re.compile(r"^#\s*(?:ruff|flake8)\s*:\s*noqa\b", re.IGNORECASE)
 PY_INLINE_NOQA_RE = re.compile(r"#\s*noqa\b", re.IGNORECASE)
+PY_NOSEC_RE = re.compile(r"#\s*nosec\b", re.IGNORECASE)
 GO_NOLINT_RE = re.compile(r"^(?://|/\*)\s*nolint(?::|(?=$|[\s*/]))", re.DOTALL)
 GO_NOSEC_RE = re.compile(r"^(?://|/\*)\s*#nosec\b", re.DOTALL)
-RUST_OUTER_ALLOW_RE = re.compile(r"^#\[\s*allow\s*\(", re.DOTALL)
+GOSEC_MSG_RULE_RE = re.compile(r"^(G\d{3}):")
+RUST_ALLOW_OR_EXPECT_RE = re.compile(r"^#\s*!?\s*\[\s*(?:allow|expect)\s*\(", re.DOTALL)
 TS_BIOME_LINE_RE = re.compile(r"\bbiome-ignore\b(?!-all)")
 TS_DENO_LINE_RE = re.compile(r"\bdeno-lint-ignore\b(?!-file)")
 
@@ -63,6 +66,7 @@ SUPPRESSION_KINDS = (
     "go_nolint",
     "go_nosec",
     "python_noqa",
+    "python_nosec",
     "rust_allow",
     "ts_biome_ignore",
     "ts_deno_ignore",
@@ -201,9 +205,26 @@ def _skip_rust_char_literal(text: str, pos: int) -> int | None:
     return None
 
 
-def _read_rust_outer_attr(text: str, pos: int) -> tuple[str, int]:
+def _match_rust_attr_bracket(text: str, pos: int) -> int | None:
+    """Return index of '[' if pos ('#') starts a Rust outer/inner attribute (with optional spaces)."""
     n = len(text)
-    i = pos + 1
+    if pos >= n or text[pos] != "#":
+        return None
+    j = pos + 1
+    while j < n and text[j].isspace():
+        j += 1
+    if j < n and text[j] == "!":
+        j += 1
+        while j < n and text[j].isspace():
+            j += 1
+    if j < n and text[j] == "[":
+        return j
+    return None
+
+
+def _read_rust_attr(text: str, pos: int, bracket_pos: int) -> tuple[str, int]:
+    n = len(text)
+    i = bracket_pos
     depth = 0
     while i < n:
         ch = text[i]
@@ -222,36 +243,46 @@ def _read_rust_outer_attr(text: str, pos: int) -> tuple[str, int]:
     return text[pos:i], i
 
 
+def _skip_rust_non_attr_token(text: str, pos: int) -> int | None:
+    n = len(text)
+    ch = text[pos]
+    result: int | None = None
+    if ch == "/" and pos + 1 < n and text[pos + 1] == "/":
+        end = text.find("\n", pos)
+        result = n if end == -1 else end
+    elif ch == "/" and pos + 1 < n and text[pos + 1] == "*":
+        result = _skip_rust_block_comment(text, pos)
+    elif ch == '"':
+        result = _skip_quoted(text, pos, '"')
+    elif ch in ("r", "b", "c"):
+        raw_end = _skip_rust_raw_string(text, pos)
+        if raw_end is not None:
+            result = raw_end
+        elif ch in ("b", "c") and pos + 1 < n and text[pos + 1] == '"':
+            result = _skip_quoted(text, pos + 1, '"')
+    elif ch == "'":
+        char_end = _skip_rust_char_literal(text, pos)
+        result = char_end if char_end is not None else pos + 1
+    return result
+
+
 def _count_rust_allows(text: str) -> int:
     count = 0
     n = len(text)
     i = 0
     while i < n:
-        ch = text[i]
-        if ch == "/" and i + 1 < n and text[i + 1] == "/":
-            end = text.find("\n", i)
-            i = n if end == -1 else end
-        elif ch == "/" and i + 1 < n and text[i + 1] == "*":
-            i = _skip_rust_block_comment(text, i)
-        elif ch == '"':
-            i = _skip_quoted(text, i, '"')
-        elif ch in ("r", "b", "c"):
-            raw_end = _skip_rust_raw_string(text, i)
-            if raw_end is not None:
-                i = raw_end
-            elif ch in ("b", "c") and i + 1 < n and text[i + 1] == '"':
-                i = _skip_quoted(text, i + 1, '"')
-            else:
-                i += 1
-        elif ch == "'":
-            char_end = _skip_rust_char_literal(text, i)
-            i = char_end if char_end is not None else i + 1
-        elif ch == "#" and i + 1 < n and text[i + 1] == "[":
-            attr_text, i = _read_rust_outer_attr(text, i)
-            if RUST_OUTER_ALLOW_RE.match(attr_text):
-                count += 1
-        else:
-            i += 1
+        skipped = _skip_rust_non_attr_token(text, i)
+        if skipped is not None:
+            i = skipped
+            continue
+        if text[i] == "#":
+            bracket_pos = _match_rust_attr_bracket(text, i)
+            if bracket_pos is not None:
+                attr_text, i = _read_rust_attr(text, i, bracket_pos)
+                if RUST_ALLOW_OR_EXPECT_RE.match(attr_text):
+                    count += 1
+                continue
+        i += 1
     return count
 
 
@@ -299,7 +330,7 @@ def _scan_ts_comments(text: str, *, is_svelte: bool) -> list[str]:
     return comments
 
 
-def _count_python_noqa(text: str) -> int:
+def _count_python_suppressions(text: str) -> tuple[int, int]:
     try:
         comments = [
             tok.string
@@ -308,9 +339,11 @@ def _count_python_noqa(text: str) -> int:
         ]
     except (tokenize.TokenError, IndentationError):
         comments = [line.lstrip() for line in text.splitlines() if line.lstrip().startswith("#")]
-    return sum(
+    noqa_n = sum(
         1 for raw in comments if not PY_FILE_NOQA_RE.match(raw) and PY_INLINE_NOQA_RE.search(raw)
     )
+    nosec_n = sum(1 for raw in comments if PY_NOSEC_RE.search(raw))
+    return noqa_n, nosec_n
 
 
 def count_file_suppressions(rel_path: str, text: str) -> dict[str, int]:
@@ -319,9 +352,11 @@ def count_file_suppressions(rel_path: str, text: str) -> dict[str, int]:
         return {}
     counts: dict[str, int] = {}
     if rel_path.endswith(".py"):
-        n = _count_python_noqa(text)
-        if n:
-            counts["python_noqa"] = n
+        noqa_n, nosec_n = _count_python_suppressions(text)
+        if noqa_n:
+            counts["python_noqa"] = noqa_n
+        if nosec_n:
+            counts["python_nosec"] = nosec_n
     elif rel_path.endswith(".go"):
         go_comments = _scan_go_comments(text)
         nolint_n = sum(1 for raw in go_comments if GO_NOLINT_RE.match(raw))
@@ -398,6 +433,18 @@ def resolve_target(rel_path: str, directory_targets: list[str]) -> str:
     return best or "repo-root"
 
 
+def _is_safe_repo_file(full_path: pathlib.Path, repo_root: pathlib.Path) -> bool:
+    if full_path.is_symlink():
+        return False
+    try:
+        resolved = full_path.resolve()
+        if not resolved.is_relative_to(repo_root.resolve()):
+            return False
+    except OSError:
+        return False
+    return full_path.is_file()
+
+
 def collect_repo_counts(repo_root: pathlib.Path) -> dict[str, dict[str, int]]:
     """Scan tracked source files and aggregate inline suppression counts per (target, kind)."""
     tracked_files = _git_ls_files(repo_root)
@@ -408,7 +455,7 @@ def collect_repo_counts(repo_root: pathlib.Path) -> dict[str, dict[str, int]]:
         if is_excluded_source_path(rel_path):
             continue
         full_path = repo_root / rel_path
-        if not full_path.is_file():
+        if not _is_safe_repo_file(full_path, repo_root):
             continue
         text = full_path.read_text(encoding="utf-8", errors="replace")
         file_counts = count_file_suppressions(rel_path, text)
@@ -449,11 +496,15 @@ def load_suppressions_toml(
     return recorded, governance
 
 
+def _toml_string(value: str) -> str:
+    """Escape a string as a valid TOML basic string using RFC 8259 JSON escaping."""
+    return json.dumps(value, ensure_ascii=False)
+
+
 def _toml_key_quote(key: str) -> str:
     if re.match(r"^[A-Za-z0-9_-]+$", key):
         return key
-    escaped = key.replace("\\", "\\\\").replace('"', '\\"')
-    return f'"{escaped}"'
+    return _toml_string(key)
 
 
 def render_suppressions_toml(
@@ -478,8 +529,7 @@ def render_suppressions_toml(
             elif isinstance(val, int):
                 lines.append(f"{_toml_key_quote(key)} = {val}")
             elif isinstance(val, str):
-                escaped = val.replace("\\", "\\\\").replace('"', '\\"')
-                lines.append(f'{_toml_key_quote(key)} = "{escaped}"')
+                lines.append(f"{_toml_key_quote(key)} = {_toml_string(val)}")
         lines.append("")
 
     for target in sorted(counts):
@@ -513,14 +563,55 @@ def compare_ratchet_counts(
     return increases, decreases
 
 
-def _resolve_finding_rel_path(raw_file: str, repo_root: pathlib.Path) -> str:
-    p = pathlib.Path(raw_file)
+def _validate_contained_path(full: pathlib.Path, repo_root: pathlib.Path, raw_label: str) -> str:
+    """Fail closed if path is a symlink or escapes repo_root; return repo-relative POSIX path."""
+    repo_resolved = repo_root.resolve()
+    if full.is_symlink():
+        msg = f"finding path must not be a symlink: {raw_label!r}"
+        raise ValueError(msg)
+    resolved = full.resolve()
+    if not resolved.is_relative_to(repo_resolved):
+        msg = f"finding path escapes repository root: {raw_label!r}"
+        raise ValueError(msg)
+    # Also reject symlinks in any intermediate component under repo_root.
+    rel = resolved.relative_to(repo_resolved)
+    cursor = repo_resolved
+    for part in rel.parts:
+        cursor = cursor / part
+        if cursor.is_symlink():
+            msg = f"finding path traverses a symlink: {raw_label!r}"
+            raise ValueError(msg)
+    return rel.as_posix()
+
+
+def _resolve_finding_rel_path(
+    raw_file: str,
+    repo_root: pathlib.Path,
+    project_dir: pathlib.Path | None = None,
+) -> str:
+    if not raw_file or "\x00" in raw_file:
+        msg = f"invalid empty or NUL finding path: {raw_file!r}"
+        raise ValueError(msg)
+    candidate = raw_file
+    if candidate.startswith("file://"):
+        parsed = urlparse(candidate)
+        if parsed.netloc and parsed.netloc != "localhost":
+            msg = f"unsupported non-local file URI in finding path: {raw_file!r}"
+            raise ValueError(msg)
+        candidate = unquote(parsed.path)
+    normalized = candidate.replace("\\", "/")
+    p = pathlib.Path(normalized)
+    if ".." in p.parts:
+        msg = f"finding path must not contain '..': {raw_file!r}"
+        raise ValueError(msg)
     if p.is_absolute():
-        try:
-            return p.resolve().relative_to(repo_root.resolve()).as_posix()
-        except ValueError:
-            return p.as_posix()
-    return raw_file.lstrip("./").replace("\\", "/")
+        return _validate_contained_path(p, repo_root, raw_file)
+    if normalized.startswith("/"):
+        msg = f"finding path must not start with '/': {raw_file!r}"
+        raise ValueError(msg)
+    base_dir = project_dir if project_dir is not None else repo_root
+    full = base_dir / p
+    return _validate_contained_path(full, repo_root, raw_file)
 
 
 def _extract_source_line(
@@ -532,8 +623,16 @@ def _extract_source_line(
 ) -> str:
     if override_line is not None:
         return override_line
+    if not rel_file or "\x00" in rel_file or rel_file.startswith("/"):
+        msg = f"invalid relative finding path: {rel_file!r}"
+        raise ValueError(msg)
+    p = pathlib.PurePosixPath(rel_file)
+    if p.is_absolute() or ".." in p.parts:
+        msg = f"invalid relative finding path: {rel_file!r}"
+        raise ValueError(msg)
+    full = repo_root / rel_file
+    _validate_contained_path(full, repo_root, rel_file)
     if rel_file not in cache:
-        full = repo_root / rel_file
         cache[rel_file] = (
             full.read_text(encoding="utf-8", errors="replace").splitlines()
             if full.is_file()
@@ -545,7 +644,49 @@ def _extract_source_line(
     return ""
 
 
-def load_findings_json(findings_path: pathlib.Path, repo_root: pathlib.Path) -> list[FindingItem]:
+@dataclass
+class _FindingContext:
+    repo_root: pathlib.Path
+    project_dir: pathlib.Path | None
+    line_cache: dict[str, list[str]]
+
+
+@dataclass(frozen=True)
+class _FingerprintRunOpts:
+    repo_root: pathlib.Path
+    input_kind: str
+    input_path: pathlib.Path
+    baselines_path: pathlib.Path
+    project_dir: pathlib.Path | None = None
+    update_fingerprints: bool = False
+    require_findings: bool = False
+
+
+def _build_finding_item(
+    ctx: _FindingContext,
+    rule: str,
+    file_raw: str,
+    line_val: int,
+    override_line: str | None = None,
+) -> FindingItem:
+    rel_file = _resolve_finding_rel_path(file_raw, ctx.repo_root, project_dir=ctx.project_dir)
+    src_line = _extract_source_line(
+        ctx.repo_root, rel_file, line_val, override_line, ctx.line_cache
+    )
+    return FindingItem(
+        rule=rule.strip(),
+        rel_file=rel_file,
+        line=line_val,
+        line_sha256=line_fingerprint_sha256(src_line),
+    )
+
+
+def load_findings_json(
+    findings_path: pathlib.Path,
+    repo_root: pathlib.Path,
+    *,
+    project_dir: pathlib.Path | None = None,
+) -> list[FindingItem]:
     """Load linter findings from Ruff JSON or generic `{rule, file, line}` JSON."""
     raw = json.loads(findings_path.read_text(encoding="utf-8"))
     if isinstance(raw, dict) and isinstance(raw.get("findings"), list):
@@ -556,12 +697,14 @@ def load_findings_json(findings_path: pathlib.Path, repo_root: pathlib.Path) -> 
         msg = "findings JSON must be a list or an object containing a 'findings' list"
         raise TypeError(msg)
 
-    line_cache: dict[str, list[str]] = {}
+    ctx = _FindingContext(repo_root=repo_root, project_dir=project_dir, line_cache={})
     findings: list[FindingItem] = []
     for entry in items_raw:
         if not isinstance(entry, dict):
             continue
         rule = entry.get("rule") or entry.get("code")
+        if rule is None and "filename" in entry and "location" in entry:
+            rule = "syntax-error"
         file_raw = entry.get("file") or entry.get("filename") or entry.get("path")
         line_val = entry.get("line")
         if line_val is None and isinstance(entry.get("location"), dict):
@@ -573,20 +716,214 @@ def load_findings_json(findings_path: pathlib.Path, repo_root: pathlib.Path) -> 
         ):
             msg = f"invalid finding entry (expected rule/code, file/filename, line/location.row): {entry!r}"
             raise TypeError(msg)
-        rel_file = _resolve_finding_rel_path(file_raw, repo_root)
         override_line = entry.get("source_line")
-        src_line = _extract_source_line(
-            repo_root,
-            rel_file,
-            line_val,
-            override_line if isinstance(override_line, str) else None,
-            line_cache,
+        findings.append(
+            _build_finding_item(
+                ctx,
+                rule,
+                file_raw,
+                line_val,
+                override_line if isinstance(override_line, str) else None,
+            )
         )
+    return findings
+
+
+def load_golangci_sarif(
+    sarif_path: pathlib.Path,
+    repo_root: pathlib.Path,
+    *,
+    project_dir: pathlib.Path | None = None,
+) -> list[FindingItem]:
+    """Load findings from golangci-lint / gosec SARIF 2.1.0 output."""
+    raw = json.loads(sarif_path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict) or not isinstance(raw.get("runs"), list):
+        msg = "SARIF payload must be an object with a 'runs' list"
+        raise TypeError(msg)
+
+    ctx = _FindingContext(repo_root=repo_root, project_dir=project_dir, line_cache={})
+    findings: list[FindingItem] = []
+    for run in raw["runs"]:
+        if not isinstance(run, dict):
+            continue
+        for result in run.get("results") or []:
+            if not isinstance(result, dict):
+                continue
+            rule_id = result.get("ruleId")
+            if not isinstance(rule_id, str) or not rule_id.strip():
+                msg = f"SARIF result missing ruleId: {result!r}"
+                raise TypeError(msg)
+            rule = rule_id.strip()
+            if rule == "gosec":
+                msg_text = (
+                    result.get("message", {}).get("text", "")
+                    if isinstance(result.get("message"), dict)
+                    else ""
+                )
+                gosec_match = GOSEC_MSG_RULE_RE.match(str(msg_text).strip())
+                if gosec_match:
+                    rule = gosec_match.group(1)
+            locations = result.get("locations") or []
+            if not isinstance(locations, list) or not locations:
+                msg = f"SARIF result missing locations: {result!r}"
+                raise TypeError(msg)
+            phys = locations[0].get("physicalLocation") if isinstance(locations[0], dict) else None
+            art = phys.get("artifactLocation") if isinstance(phys, dict) else None
+            reg = phys.get("region") if isinstance(phys, dict) else None
+            uri = art.get("uri") if isinstance(art, dict) else None
+            start_line = reg.get("startLine") if isinstance(reg, dict) else None
+            if not isinstance(uri, str) or not isinstance(start_line, int):
+                msg = f"SARIF location missing artifactLocation.uri or region.startLine: {result!r}"
+                raise TypeError(msg)
+            findings.append(_build_finding_item(ctx, rule, uri, start_line))
+    return findings
+
+
+def load_clippy_json(
+    clippy_path: pathlib.Path,
+    repo_root: pathlib.Path,
+    *,
+    project_dir: pathlib.Path | None = None,
+) -> list[FindingItem]:
+    """Load findings from `cargo clippy --message-format=json` NDJSON output."""
+    ctx = _FindingContext(repo_root=repo_root, project_dir=project_dir, line_cache={})
+    findings: list[FindingItem] = []
+    for raw_line in clippy_path.read_text(encoding="utf-8").splitlines():
+        stripped = raw_line.strip()
+        if not stripped or not stripped.startswith("{"):
+            continue
+        obj = json.loads(stripped)
+        if not isinstance(obj, dict) or obj.get("reason") != "compiler-message":
+            continue
+        msg_obj = obj.get("message")
+        if not isinstance(msg_obj, dict):
+            continue
+        level = msg_obj.get("level")
+        if level not in ("error", "warning"):
+            continue
+        spans = msg_obj.get("spans") or []
+        code_obj = msg_obj.get("code")
+        code_val = code_obj.get("code") if isinstance(code_obj, dict) else None
+        if not code_val and not spans:
+            continue
+        rule = str(code_val) if isinstance(code_val, str) and code_val.strip() else "rustc-error"
+        primary = next(
+            (s for s in spans if isinstance(s, dict) and s.get("is_primary")),
+            spans[0] if spans and isinstance(spans[0], dict) else None,
+        )
+        if not isinstance(primary, dict):
+            msg = f"clippy compiler-message missing span: {msg_obj!r}"
+            raise TypeError(msg)
+        file_name = primary.get("file_name")
+        line_start = primary.get("line_start")
+        if not isinstance(file_name, str) or not isinstance(line_start, int):
+            msg = f"clippy span missing file_name or line_start: {primary!r}"
+            raise TypeError(msg)
+        findings.append(_build_finding_item(ctx, rule, file_name, line_start))
+    return findings
+
+
+def load_deno_json(
+    deno_path: pathlib.Path,
+    repo_root: pathlib.Path,
+    *,
+    project_dir: pathlib.Path | None = None,
+) -> list[FindingItem]:
+    """Load findings from `deno lint --json` output."""
+    raw = json.loads(deno_path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        msg = "deno lint JSON must be an object"
+        raise TypeError(msg)
+    parse_errors = raw.get("errors") or []
+    if isinstance(parse_errors, list) and parse_errors:
+        msg = f"deno lint reported {len(parse_errors)} parse/config error(s): {parse_errors[0]!r}"
+        raise ValueError(msg)
+    diagnostics = raw.get("diagnostics") or []
+    if not isinstance(diagnostics, list):
+        msg = "deno lint JSON 'diagnostics' must be a list"
+        raise TypeError(msg)
+
+    ctx = _FindingContext(repo_root=repo_root, project_dir=project_dir, line_cache={})
+    findings: list[FindingItem] = []
+    for diag in diagnostics:
+        if not isinstance(diag, dict):
+            continue
+        code = diag.get("code")
+        filename = diag.get("filename")
+        rng = diag.get("range")
+        start = rng.get("start") if isinstance(rng, dict) else None
+        line_no = start.get("line") if isinstance(start, dict) else None
+        if (
+            not isinstance(code, str)
+            or not isinstance(filename, str)
+            or not isinstance(line_no, int)
+        ):
+            msg = f"invalid deno lint diagnostic: {diag!r}"
+            raise TypeError(msg)
+        findings.append(_build_finding_item(ctx, code, filename, line_no))
+    return findings
+
+
+def _biome_line_from_span(
+    repo_root: pathlib.Path,
+    rel_file: str,
+    location: dict[str, object],
+) -> int:
+    start = location.get("start")
+    if isinstance(start, dict) and isinstance(start.get("line"), int):
+        return int(start["line"])
+    span = location.get("span")
+    if isinstance(span, list) and span and isinstance(span[0], int):
+        offset = max(0, int(span[0]))
+        src_code = location.get("sourceCode")
+        if isinstance(src_code, str):
+            return src_code.encode("utf-8")[:offset].count(b"\n") + 1
+        full = repo_root / rel_file
+        _validate_contained_path(full, repo_root, rel_file)
+        if full.is_file():
+            return full.read_bytes()[:offset].count(b"\n") + 1
+    return 1
+
+
+def load_biome_json(
+    biome_path: pathlib.Path,
+    repo_root: pathlib.Path,
+    *,
+    project_dir: pathlib.Path | None = None,
+) -> list[FindingItem]:
+    """Load findings from `biome lint --reporter=json` output."""
+    raw = json.loads(biome_path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict) or not isinstance(raw.get("diagnostics"), list):
+        msg = "biome JSON must be an object with a 'diagnostics' list"
+        raise TypeError(msg)
+
+    line_cache: dict[str, list[str]] = {}
+    findings: list[FindingItem] = []
+    for diag in raw["diagnostics"]:
+        if not isinstance(diag, dict):
+            continue
+        category = diag.get("category")
+        loc = diag.get("location")
+        if not isinstance(category, str) or not isinstance(loc, dict):
+            continue
+        path_field = loc.get("path")
+        if isinstance(path_field, dict):
+            file_raw = path_field.get("file")
+        elif isinstance(path_field, str):
+            file_raw = path_field
+        else:
+            file_raw = None
+        if not isinstance(file_raw, str) or not file_raw.strip():
+            msg = f"biome diagnostic missing location.path.file: {diag!r}"
+            raise TypeError(msg)
+        rel_file = _resolve_finding_rel_path(file_raw, repo_root, project_dir=project_dir)
+        line_no = _biome_line_from_span(repo_root, rel_file, loc)
+        src_line = _extract_source_line(repo_root, rel_file, line_no, None, line_cache)
         findings.append(
             FindingItem(
-                rule=rule.strip(),
+                rule=category.strip(),
                 rel_file=rel_file,
-                line=line_val,
+                line=line_no,
                 line_sha256=line_fingerprint_sha256(src_line),
             )
         )
@@ -637,9 +974,9 @@ def render_rule_baselines_toml(counts: Counter[FingerprintKey]) -> str:
         lines.extend(
             [
                 "[[fingerprints]]",
-                f'rule = "{rule}"',
-                f'file = "{rel_file}"',
-                f'line_sha256 = "{line_sha}"',
+                f"rule = {_toml_string(rule)}",
+                f"file = {_toml_string(rel_file)}",
+                f"line_sha256 = {_toml_string(line_sha)}",
                 f"count = {count}",
                 "",
             ]
@@ -647,36 +984,53 @@ def render_rule_baselines_toml(counts: Counter[FingerprintKey]) -> str:
     return "\n".join(lines)
 
 
-def _run_fingerprint_mode(
-    repo_root: pathlib.Path,
-    findings_json: pathlib.Path,
-    baselines_path: pathlib.Path,
-    *,
-    update_fingerprints: bool,
-) -> int:
-    if not findings_json.is_file():
-        sys.stderr.write(f"ERROR: findings JSON not found: {findings_json}\n")
-        return EXIT_USAGE_ERROR
+def _load_findings_for_mode(opts: _FingerprintRunOpts) -> list[FindingItem] | None:
+    if not opts.input_path.is_file():
+        sys.stderr.write(f"ERROR: findings report not found: {opts.input_path}\n")
+        return None
+    loaders = {
+        "generic": load_findings_json,
+        "ruff": load_findings_json,
+        "golangci-sarif": load_golangci_sarif,
+        "clippy-json": load_clippy_json,
+        "deno-json": load_deno_json,
+        "biome-json": load_biome_json,
+    }
     try:
-        findings = load_findings_json(findings_json, repo_root)
+        findings = loaders[opts.input_kind](
+            opts.input_path, opts.repo_root, project_dir=opts.project_dir
+        )
     except (ValueError, TypeError, json.JSONDecodeError, OSError) as exc:
-        sys.stderr.write(f"ERROR: failed to load findings JSON: {exc}\n")
+        sys.stderr.write(f"ERROR: failed to load {opts.input_kind} findings: {exc}\n")
+        return None
+    if opts.require_findings and not findings:
+        sys.stderr.write(
+            f"ERROR: {opts.input_kind} report contained 0 parsed findings while linter exited non-zero "
+            f"(fail-closed: refusing to treat unparsed linter failure as clean)\n"
+        )
+        return None
+    return findings
+
+
+def _run_fingerprint_mode(opts: _FingerprintRunOpts) -> int:
+    findings = _load_findings_for_mode(opts)
+    if findings is None:
         return EXIT_USAGE_ERROR
 
     actual_counts: Counter[FingerprintKey] = Counter(
         (f.rule, f.rel_file, f.line_sha256) for f in findings
     )
-    if update_fingerprints:
-        baselines_path.parent.mkdir(parents=True, exist_ok=True)
-        baselines_path.write_text(render_rule_baselines_toml(actual_counts), encoding="utf-8")
+    if opts.update_fingerprints:
+        opts.baselines_path.parent.mkdir(parents=True, exist_ok=True)
+        opts.baselines_path.write_text(render_rule_baselines_toml(actual_counts), encoding="utf-8")
         sys.stdout.write(
-            f"Updated {baselines_path} ({len(actual_counts)} unique fingerprints, "
+            f"Updated {opts.baselines_path} ({len(actual_counts)} unique fingerprints, "
             f"{sum(actual_counts.values())} total findings).\n"
         )
         return EXIT_CLEAN
 
     try:
-        recorded_counts = load_rule_baselines(baselines_path)
+        recorded_counts = load_rule_baselines(opts.baselines_path)
     except (tomllib.TOMLDecodeError, OSError) as exc:
         sys.stderr.write(f"ERROR: failed to load baselines TOML: {exc}\n")
         return EXIT_USAGE_ERROR
@@ -696,7 +1050,7 @@ def _run_fingerprint_mode(
                 f"new {item.rule} violation (sha256={item.line_sha256[:12]})\n"
             )
         sys.stderr.write(
-            f"\nFAIL: {len(new_findings)} new block-new violation(s) not in {baselines_path}.\n"
+            f"\nFAIL: {len(new_findings)} new block-new violation(s) not in {opts.baselines_path}.\n"
         )
         return EXIT_VIOLATIONS
 
@@ -832,7 +1186,49 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         "--findings-json",
         type=pathlib.Path,
         default=None,
-        help="Path to linter findings JSON for block-new fingerprint checking.",
+        help="Path to generic/Ruff findings JSON for block-new fingerprint checking.",
+    )
+    parser.add_argument(
+        "--ruff-json",
+        type=pathlib.Path,
+        default=None,
+        help="Path to `ruff check --output-format json` report.",
+    )
+    parser.add_argument(
+        "--golangci-sarif",
+        type=pathlib.Path,
+        default=None,
+        help="Path to `golangci-lint` / `gosec` SARIF 2.1.0 report.",
+    )
+    parser.add_argument(
+        "--clippy-json",
+        type=pathlib.Path,
+        default=None,
+        help="Path to `cargo clippy --message-format=json` NDJSON report.",
+    )
+    parser.add_argument(
+        "--deno-json",
+        type=pathlib.Path,
+        default=None,
+        help="Path to `deno lint --json` report.",
+    )
+    parser.add_argument(
+        "--biome-json",
+        type=pathlib.Path,
+        default=None,
+        help="Path to `biome lint --reporter=json` report.",
+    )
+    parser.add_argument(
+        "--project-dir",
+        type=pathlib.Path,
+        default=None,
+        help="Optional project directory for resolving project-relative finding paths.",
+    )
+    parser.add_argument(
+        "--require-findings",
+        action="store_true",
+        default=False,
+        help="Fail closed (exit 2) if 0 findings were parsed from the report.",
     )
     parser.add_argument(
         "--baselines-file",
@@ -844,35 +1240,64 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         "--update-fingerprints",
         action="store_true",
         default=False,
-        help="Update rule_baselines.toml from --findings-json (lowers baseline when violations are removed).",
+        help="Update rule_baselines.toml from findings report (lowers baseline when violations are removed).",
     )
     args = parser.parse_args(raw_argv)
     args.submode = submode
     return args
 
 
+def _select_fingerprint_input(args: argparse.Namespace) -> tuple[str, pathlib.Path] | None:
+    candidates: list[tuple[str, pathlib.Path]] = []
+    for kind, path in (
+        ("generic", args.findings_json),
+        ("ruff", args.ruff_json),
+        ("golangci-sarif", args.golangci_sarif),
+        ("clippy-json", args.clippy_json),
+        ("deno-json", args.deno_json),
+        ("biome-json", args.biome_json),
+    ):
+        if path is not None:
+            candidates.append((kind, path))
+    if len(candidates) > 1:
+        msg = "specify at most one findings input flag"
+        raise ValueError(msg)
+    return candidates[0] if candidates else None
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     repo_root: pathlib.Path = args.repo_root.resolve()
 
-    if (
-        args.submode == "check-fingerprints"
-        or args.findings_json is not None
-        or args.update_fingerprints
-    ):
-        if args.findings_json is None:
-            sys.stderr.write("ERROR: --findings-json is required for fingerprint mode\n")
+    try:
+        fp_input = _select_fingerprint_input(args)
+    except ValueError as exc:
+        sys.stderr.write(f"ERROR: {exc}\n")
+        return EXIT_USAGE_ERROR
+
+    if args.submode == "check-fingerprints" or fp_input is not None or args.update_fingerprints:
+        if fp_input is None:
+            sys.stderr.write(
+                "ERROR: one of --findings-json, --ruff-json, --golangci-sarif, "
+                "--clippy-json, --deno-json, or --biome-json is required for fingerprint mode\n"
+            )
             return EXIT_USAGE_ERROR
         baselines_path = (
             args.baselines_file.resolve()
             if args.baselines_file is not None
             else repo_root / "scripts" / "lint" / "ratchet" / "rule_baselines.toml"
         )
+        project_dir = args.project_dir.resolve() if args.project_dir is not None else None
         return _run_fingerprint_mode(
-            repo_root,
-            args.findings_json.resolve(),
-            baselines_path,
-            update_fingerprints=args.update_fingerprints,
+            _FingerprintRunOpts(
+                repo_root=repo_root,
+                input_kind=fp_input[0],
+                input_path=fp_input[1].resolve(),
+                baselines_path=baselines_path,
+                project_dir=project_dir,
+                update_fingerprints=args.update_fingerprints,
+                require_findings=args.require_findings,
+            )
         )
 
     suppressions_path = (
