@@ -24,6 +24,7 @@ allowed_test_per_file_ignores = ["S101"]
 path = "tag-generator/app/pyproject.toml"
 status = "frozen-baseline"
 reason = "Pre-existing tag-generator bandit baseline (tests, subprocess, bind, and tmp skips)"
+expires = "2027-05-22"
 exclude_dirs = ["tests", ".venv", "__pycache__", "*.egg-info", "build", "dist"]
 skips = ["B101", "B404", "B603", "B110", "B104", "B108", "B602"]
 
@@ -31,6 +32,7 @@ skips = ["B101", "B404", "B603", "B110", "B104", "B108", "B602"]
 path = "tts-speaker/pyproject.toml"
 status = "frozen-baseline"
 reason = "Pre-existing tts-speaker bandit baseline (assert and container bind skips)"
+expires = "2027-05-22"
 exclude_dirs = ["tests", ".venv", "__pycache__", "*.egg-info", "build", "dist"]
 skips = ["B101", "B104"]
 
@@ -44,6 +46,7 @@ path = '\.pb\.go$'
 linters = ["all"]
 status = "frozen-baseline"
 reason = "Protobuf generated Go files"
+expires = "2027-05-22"
 
 [[golangci_exclusions]]
 config = ".golangci.yml"
@@ -51,6 +54,7 @@ path = '\.connect\.go$'
 linters = ["all"]
 status = "frozen-baseline"
 reason = "Connect-RPC generated Go files"
+expires = "2027-05-22"
 
 [[golangci_exclusions]]
 config = ".golangci.yml"
@@ -58,6 +62,7 @@ path = 'server\.gen\.go$'
 linters = ["all"]
 status = "frozen-baseline"
 reason = "OpenAPI generated Go server files"
+expires = "2027-05-22"
 
 [[golangci_exclusions]]
 config = ".golangci.yml"
@@ -65,6 +70,7 @@ path = 'internal/pki/.*_test\.go$'
 linters = ["gosec"]
 status = "frozen-baseline"
 reason = "PKI tests mint disposable certs and exercise fake/live CA fixtures"
+expires = "2027-05-22"
 
 [[golangci_exclusions]]
 config = ".golangci.yml"
@@ -73,6 +79,7 @@ linters = ["gosec"]
 text = "G101"
 status = "frozen-baseline"
 reason = "Unit tests require literal dummy tokens and DSNs for auth and config parsing"
+expires = "2027-05-22"
 
 [[golangci_exclusions]]
 config = ".golangci.yml"
@@ -80,6 +87,7 @@ path_except = '^knowledge-sovereign/app/usecase/(knowledge_home_projector|knowle
 linters = ["forbidigo"]
 status = "frozen-baseline"
 reason = "Scope reproject-safety forbidigo rules exclusively to non-test Knowledge projector files"
+expires = "2027-05-22"
 
 [[golangci_exclusions]]
 config = ".golangci.yml"
@@ -87,6 +95,7 @@ path = '_test\.go$'
 linters = ["forbidigo"]
 status = "frozen-baseline"
 reason = "Unit tests may call time.Now() and test helpers outside production projector paths"
+expires = "2027-05-22"
 
 # ---------------------------------------------------------------------------
 # Frozen Cargo.toml [lints.*] / [workspace.lints.*] "allow" entries
@@ -97,6 +106,7 @@ path = "recap-worker/recap-worker/Cargo.toml"
 section = "lints.clippy"
 status = "frozen-baseline"
 reason = "Pre-existing recap-worker pedantic clippy baseline allows migrated from lib.rs"
+expires = "2027-05-22"
 allows = [
     "assert_is_empty",
     "cast_possible_truncation",

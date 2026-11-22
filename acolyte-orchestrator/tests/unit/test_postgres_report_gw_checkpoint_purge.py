@@ -114,7 +114,7 @@ def _service(conn: _FakeConnection) -> AcolyteConnectService:
 
 
 def _deletes_for(conn: _FakeConnection, table: str) -> list[tuple[str, list[Any] | None]]:
-    prefix = f"DELETE FROM {table} "  # noqa: S608 — matches recorded SQL, never executed
+    prefix = f"DELETE FROM {table} "  # noqa: S608 — not-sql (trusted internal test prefix matching recorded SQL, never executed)
     return [(q, p) for q, p in conn.executed if q.startswith(prefix)]
 
 

@@ -14,6 +14,7 @@
 // ADR-000902: wit_bindgen::generate! expands Component Model ABI export shims
 // with >7 flattened parameters; scope the allow to the generated bindings module
 // so hand-written filter code stays covered by clippy::too_many_arguments.
+// expires: 2027-05-22
 #[allow(clippy::too_many_arguments)]
 mod bindings {
     wit_bindgen::generate!({

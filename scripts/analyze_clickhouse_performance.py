@@ -226,7 +226,7 @@ def collect_service_stats(client: Client, database: str, hours: int) -> list[dic
     WHERE timestamp >= now() - INTERVAL %(hours)s HOUR
     GROUP BY service_name
     ORDER BY error_rate DESC, total_logs DESC
-    """  # noqa: S608 — db validated against _IDENTIFIER_RE above
+    """  # noqa: S608 — identifier (trusted allowlist validated against _IDENTIFIER_RE above)
     try:
         result = client.query(query, parameters={"hours": hours})
         return [dict(zip(result.column_names, row, strict=True)) for row in result.result_rows]
@@ -250,7 +250,7 @@ def collect_error_trends(client: Client, database: str, hours: int) -> list[dict
     GROUP BY hour, service_name
     HAVING total_count > 0
     ORDER BY hour DESC, error_count DESC
-    """  # noqa: S608 — db validated against _IDENTIFIER_RE above
+    """  # noqa: S608 — identifier (trusted allowlist validated against _IDENTIFIER_RE above)
     try:
         result = client.query(query, parameters={"hours": hours})
         return [dict(zip(result.column_names, row, strict=True)) for row in result.result_rows]
@@ -280,7 +280,7 @@ def collect_api_performance(client: Client, database: str, hours: int) -> list[d
     HAVING request_count >= 5
     ORDER BY p95_ms DESC
     LIMIT 30
-    """  # noqa: S608 — db validated against _IDENTIFIER_RE above
+    """  # noqa: S608 — identifier (trusted allowlist validated against _IDENTIFIER_RE above)
     try:
         result = client.query(query, parameters={"hours": hours})
         return [dict(zip(result.column_names, row, strict=True)) for row in result.result_rows]
@@ -307,7 +307,7 @@ def collect_bottlenecks(client: Client, database: str, hours: int) -> list[dict[
     HAVING occurrences >= 3
     ORDER BY total_time_sec DESC
     LIMIT 15
-    """  # noqa: S608 — db validated against _IDENTIFIER_RE above
+    """  # noqa: S608 — identifier (trusted allowlist validated against _IDENTIFIER_RE above)
     try:
         result = client.query(query, parameters={"hours": hours})
         return [dict(zip(result.column_names, row, strict=True)) for row in result.result_rows]
@@ -330,7 +330,7 @@ def collect_error_types(client: Client, database: str, hours: int) -> list[dict[
     GROUP BY ServiceName, ExceptionType
     ORDER BY error_count DESC
     LIMIT 20
-    """  # noqa: S608 — db validated against _IDENTIFIER_RE above
+    """  # noqa: S608 — identifier (trusted allowlist validated against _IDENTIFIER_RE above)
     try:
         result = client.query(query, parameters={"hours": hours})
         return [dict(zip(result.column_names, row, strict=True)) for row in result.result_rows]
@@ -353,7 +353,7 @@ def collect_recent_errors(client: Client, database: str, hours: int) -> list[dic
     WHERE Timestamp >= now() - INTERVAL %(hours)s HOUR
     ORDER BY Timestamp DESC
     LIMIT 25
-    """  # noqa: S608 — db validated against _IDENTIFIER_RE above
+    """  # noqa: S608 — identifier (trusted allowlist validated against _IDENTIFIER_RE above)
     try:
         result = client.query(query, parameters={"hours": hours})
         return [dict(zip(result.column_names, row, strict=True)) for row in result.result_rows]
@@ -388,7 +388,7 @@ def collect_http_endpoint_stats(client: Client, database: str, hours: int) -> li
     GROUP BY ServiceName, HttpRoute
     ORDER BY request_count DESC
     LIMIT 30
-    """  # noqa: S608 — db validated against _IDENTIFIER_RE above
+    """  # noqa: S608 — identifier (trusted allowlist validated against _IDENTIFIER_RE above)
     try:
         result = client.query(query, parameters={"hours": hours})
         return [dict(zip(result.column_names, row, strict=True)) for row in result.result_rows]
@@ -415,7 +415,7 @@ def collect_http_status_distribution(
     WHERE Timestamp >= now() - INTERVAL %(hours)s HOUR
     GROUP BY ServiceName
     ORDER BY total_requests DESC
-    """  # noqa: S608 — db validated against _IDENTIFIER_RE above
+    """  # noqa: S608 — identifier (trusted allowlist validated against _IDENTIFIER_RE above)
     try:
         result = client.query(query, parameters={"hours": hours})
         return [dict(zip(result.column_names, row, strict=True)) for row in result.result_rows]
@@ -439,7 +439,7 @@ def collect_span_type_stats(client: Client, database: str, hours: int) -> list[d
     WHERE Timestamp >= now() - INTERVAL %(hours)s HOUR
     GROUP BY ServiceName, SpanKind
     ORDER BY span_count DESC
-    """  # noqa: S608 — db validated against _IDENTIFIER_RE above
+    """  # noqa: S608 — identifier (trusted allowlist validated against _IDENTIFIER_RE above)
     try:
         result = client.query(query, parameters={"hours": hours})
         return [dict(zip(result.column_names, row, strict=True)) for row in result.result_rows]
@@ -465,7 +465,7 @@ def collect_error_spans(client: Client, database: str, hours: int) -> list[dict[
     GROUP BY ServiceName, SpanName, StatusMessage
     ORDER BY error_count DESC
     LIMIT 20
-    """  # noqa: S608 — db validated against _IDENTIFIER_RE above
+    """  # noqa: S608 — identifier (trusted allowlist validated against _IDENTIFIER_RE above)
     try:
         result = client.query(query, parameters={"hours": hours})
         return [dict(zip(result.column_names, row, strict=True)) for row in result.result_rows]
@@ -493,7 +493,7 @@ def collect_service_dependencies(client: Client, database: str, hours: int) -> l
     GROUP BY s1.ServiceName, s2.ServiceName
     ORDER BY call_count DESC
     LIMIT 20
-    """  # noqa: S608 — db validated against _IDENTIFIER_RE above
+    """  # noqa: S608 — identifier (trusted allowlist validated against _IDENTIFIER_RE above)
     try:
         result = client.query(query, parameters={"hours": hours})
         return [dict(zip(result.column_names, row, strict=True)) for row in result.result_rows]
@@ -521,7 +521,7 @@ def collect_log_severity_distribution(
     WHERE Timestamp >= now() - INTERVAL %(hours)s HOUR
     GROUP BY ServiceName
     ORDER BY total_logs DESC
-    """  # noqa: S608 — db validated against _IDENTIFIER_RE above
+    """  # noqa: S608 — identifier (trusted allowlist validated against _IDENTIFIER_RE above)
     try:
         result = client.query(query, parameters={"hours": hours})
         return [dict(zip(result.column_names, row, strict=True)) for row in result.result_rows]
@@ -544,7 +544,7 @@ def collect_log_volume_trends(client: Client, database: str, hours: int) -> list
     WHERE Timestamp >= now() - INTERVAL %(hours)s HOUR
     GROUP BY hour, ServiceName
     ORDER BY hour DESC, log_count DESC
-    """  # noqa: S608 — db validated against _IDENTIFIER_RE above
+    """  # noqa: S608 — identifier (trusted allowlist validated against _IDENTIFIER_RE above)
     try:
         result = client.query(query, parameters={"hours": hours})
         return [dict(zip(result.column_names, row, strict=True)) for row in result.result_rows]
@@ -568,7 +568,7 @@ def collect_sli_trends(client: Client, database: str, hours: int) -> list[dict[s
     GROUP BY time_bucket, ServiceName, Metric
     ORDER BY time_bucket DESC, ServiceName, Metric
     LIMIT 500
-    """  # noqa: S608 — db validated against _IDENTIFIER_RE above
+    """  # noqa: S608 — identifier (trusted allowlist validated against _IDENTIFIER_RE above)
     try:
         result = client.query(query, parameters={"hours": hours})
         return [dict(zip(result.column_names, row, strict=True)) for row in result.result_rows]
@@ -595,7 +595,7 @@ def collect_slo_violations(
     HAVING avg(Value) > %(error_rate_threshold)s
     ORDER BY time_bucket DESC, error_rate_pct DESC
     LIMIT 50
-    """  # noqa: S608 — db validated against _IDENTIFIER_RE above
+    """  # noqa: S608 — identifier (trusted allowlist validated against _IDENTIFIER_RE above)
     try:
         result = client.query(
             query, parameters={"hours": hours, "error_rate_threshold": error_rate_threshold / 100}
