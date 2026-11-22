@@ -22,6 +22,7 @@ type CallArg struct {
 
 type FuncSummary struct {
 	Name              string              `json:"name"`
+	ReceiverKind      string              `json:"receiver_kind,omitempty"`
 	CondOps           map[string]int      `json:"cond_ops"`
 	ReturnCount       int                 `json:"return_count"`
 	DeferCount        int                 `json:"defer_count"`
@@ -48,7 +49,12 @@ func main() {
 
 	summaries := make([]FileSummary, 0, len(os.Args)-1)
 	for _, path := range os.Args[1:] {
-		summaries = append(summaries, analyzeFile(path))
+		summary := analyzeFile(path)
+		if summary.ParseErr != "" {
+			fmt.Fprintf(os.Stderr, "%s: %s\n", path, summary.ParseErr)
+			os.Exit(2)
+		}
+		summaries = append(summaries, summary)
 	}
 
 	enc := json.NewEncoder(os.Stdout)
@@ -103,11 +109,25 @@ func analyzeFile(path string) FileSummary {
 	}
 }
 
+func receiverKind(fn *ast.FuncDecl) string {
+	if fn.Recv == nil || len(fn.Recv.List) == 0 {
+		return ""
+	}
+	if _, ok := unwrapParens(fn.Recv.List[0].Type).(*ast.StarExpr); ok {
+		return "pointer"
+	}
+	return "value"
+}
+
 func funcKey(fset *token.FileSet, fn *ast.FuncDecl) string {
 	if fn.Recv == nil || len(fn.Recv.List) == 0 {
 		return fn.Name.Name
 	}
-	recvType := compactFormat(fset, fn.Recv.List[0].Type)
+	recvExpr := unwrapParens(fn.Recv.List[0].Type)
+	if star, ok := recvExpr.(*ast.StarExpr); ok {
+		recvExpr = unwrapParens(star.X)
+	}
+	recvType := compactFormat(fset, recvExpr)
 	return fmt.Sprintf("(%s).%s", recvType, fn.Name.Name)
 }
 
@@ -229,6 +249,7 @@ func analyzeFunc(
 ) *FuncSummary {
 	summary := &FuncSummary{
 		Name:              key,
+		ReceiverKind:      receiverKind(fn),
 		CondOps:           map[string]int{},
 		HTTPServerConfigs: []map[string]string{},
 		FileModes:         []CallArg{},
@@ -350,6 +371,10 @@ func collectCondOps(expr ast.Expr, ops map[string]int) {
 		}
 		collectCondOps(e.X, ops)
 		collectCondOps(e.Y, ops)
+	case *ast.CallExpr:
+		for _, arg := range e.Args {
+			collectCondOps(arg, ops)
+		}
 	}
 }
 

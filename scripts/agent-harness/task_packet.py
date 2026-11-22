@@ -55,12 +55,18 @@ PLACEHOLDER_STRINGS = frozenset(
         "--",
         "—",
         "todo",
+        "none",
+        "null",
+        "なし",
+        "無し",
         "未記入",
         "未定",
         "xxx",
         "...",
     }
 )
+EXCLUDED_GENERATED_PREFIXES = ("stopped-using-k8s/", "scripts/harness/corpus/")
+SUBPROCESS_TIMEOUT_SECONDS = 60
 
 TIME_FIELD_RE = re.compile(
     r"(?:^|_)(?:timeout|minutes?|seconds?|hours?|duration|deadline|time_limit|time_budget|ttl)(?:$|_)",
@@ -1152,13 +1158,23 @@ def _check_policy_command_match(
     json_path: str,
     issues: list[ValidationIssue],
 ) -> None:
+    explicit_policies = _extract_command_policies(command)
+    if declared_policy == "block-new" and not explicit_policies:
+        issues.append(
+            ValidationIssue(
+                "POLICY_COMMAND_MISMATCH",
+                json_path,
+                "execution_policy.policy='block-new' requires verification command to explicitly "
+                "include '--policy block-new' or 'LINT_POLICY=block-new'",
+            )
+        )
     issues.extend(
         ValidationIssue(
             "POLICY_COMMAND_MISMATCH",
             json_path,
             f"execution_policy.policy={declared_policy!r} conflicts with command policy {explicit!r}",
         )
-        for explicit in _extract_command_policies(command)
+        for explicit in explicit_policies
         if explicit != declared_policy
     )
 
@@ -1185,15 +1201,21 @@ def _repo_rel_is_generated_code(repo_root: Path, rel_path: str) -> bool:
     norm = _normalize_repo_rel_path(rel_path)
     if not norm:
         return False
+    repo_root_resolved = repo_root.resolve()
     disk_path = repo_root / norm
-    if disk_path.is_file() and not disk_path.is_symlink():
+    if (
+        disk_path.is_file()
+        and not disk_path.is_symlink()
+        and disk_path.resolve().is_relative_to(repo_root_resolved)
+    ):
         return _file_has_generated_header(disk_path)
     git_bin = shutil.which("git")
     if git_bin is None or not (repo_root / ".git").exists():
         return False
     res = subprocess.run(  # noqa: S603 -- inspects HEAD file header inside explicit repo_root
-        [git_bin, "-C", str(repo_root), "show", f"HEAD:{norm}"],
+        [git_bin, "-C", str(repo_root), "show", "--end-of-options", f"HEAD:{norm}"],
         capture_output=True,
+        timeout=SUBPROCESS_TIMEOUT_SECONDS,
         check=False,
     )
     if res.returncode != 0 or b"\x00" in res.stdout[:4096]:
@@ -1209,6 +1231,7 @@ def list_generated_forbidden_paths(repo_root: Path) -> list[str]:
         res = subprocess.run(  # noqa: S603 -- lists tracked files inside explicit repo_root
             [git_bin, "-C", str(repo_root), "ls-files", "-z"],
             capture_output=True,
+            timeout=SUBPROCESS_TIMEOUT_SECONDS,
             check=False,
         )
         if res.returncode == 0:
@@ -1224,31 +1247,47 @@ def list_generated_forbidden_paths(repo_root: Path) -> list[str]:
             if p.is_file() and ".git" not in p.parts
         ]
 
+    repo_root_resolved = repo_root.resolve()
     generated: list[str] = []
     for rel in sorted(set(candidates)):
+        if rel.startswith(EXCLUDED_GENERATED_PREFIXES):
+            continue
         full = repo_root / rel
-        if full.is_file() and not full.is_symlink() and _file_has_generated_header(full):
+        if (
+            full.is_file()
+            and not full.is_symlink()
+            and full.resolve().is_relative_to(repo_root_resolved)
+            and _file_has_generated_header(full)
+        ):
             generated.append(rel)
     return generated
 
 
 def _run_behavior_screener_for_base(repo_root: Path, base_commit: str) -> list[dict[str, Any]]:
+    if not base_commit or not base_commit.strip() or base_commit.startswith("-"):
+        msg = f"invalid --base-commit revision: {base_commit!r}"
+        raise DocumentParseError(msg)
     if not SCREENER_SCRIPT_PATH.is_file():
         msg = f"behavior screener script not found: {SCREENER_SCRIPT_PATH}"
         raise DocumentParseError(msg)
-    res = subprocess.run(  # noqa: S603 -- invokes repo-owned behavior_screener.py with fixed argv
-        [
-            sys.executable,
-            str(SCREENER_SCRIPT_PATH),
-            "--repo-root",
-            str(repo_root),
-            "--base",
-            base_commit,
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        res = subprocess.run(  # noqa: S603 -- invokes repo-owned behavior_screener.py with fixed argv
+            [
+                sys.executable,
+                str(SCREENER_SCRIPT_PATH),
+                "--repo-root",
+                str(repo_root),
+                "--base",
+                base_commit,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=SUBPROCESS_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        msg = f"behavior_screener.py timed out after {SUBPROCESS_TIMEOUT_SECONDS}s"
+        raise DocumentParseError(msg) from exc
     if res.returncode != 0:
         msg = f"behavior_screener.py failed (rc={res.returncode}): {res.stderr.strip()}"
         raise DocumentParseError(msg)
@@ -1292,6 +1331,7 @@ def _validate_behavior_candidates(
     issues: list[ValidationIssue],
 ) -> None:
     impact = data.get("runtime_behavior_impact")
+    has_change = impact.get("has_change") if isinstance(impact, dict) else None
     raw_responses = impact.get("candidate_responses", []) if isinstance(impact, dict) else []
     responses: list[tuple[int, dict[str, Any]]] = [
         (idx, item) for idx, item in enumerate(raw_responses) if isinstance(item, dict)
@@ -1299,6 +1339,15 @@ def _validate_behavior_candidates(
 
     for idx, resp in responses:
         if resp.get("disposition") == "intended":
+            if has_change is False:
+                issues.append(
+                    ValidationIssue(
+                        "CONTRADICTORY_BEHAVIOR_IMPACT",
+                        f"$.runtime_behavior_impact.candidate_responses[{idx}].disposition",
+                        "runtime_behavior_impact.has_change=false contradicts candidate response "
+                        "with disposition='intended'",
+                    )
+                )
             test_name = resp.get("test_name")
             if not isinstance(test_name, str) or _is_placeholder(test_name):
                 issues.append(
@@ -1753,6 +1802,11 @@ def _resolve_handoff_paths(
     repo_root: Path | None = Path(args.repo_root) if args.repo_root else REPO_ROOT_DEFAULT
     if repo_root is not None and not repo_root.is_dir():
         return None, f"error: repo root directory not found: {repo_root}\n"
+
+    if args.base_commit is not None and (
+        not args.base_commit.strip() or args.base_commit.startswith("-")
+    ):
+        return None, f"error: invalid --base-commit revision: {args.base_commit!r}\n"
 
     return (handoff_path, packet_path, screener_report_path, repo_root), ""
 

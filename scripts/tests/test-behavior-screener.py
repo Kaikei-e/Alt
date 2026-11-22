@@ -694,6 +694,302 @@ def test_git_diff_mode_and_output_file(tmp: pathlib.Path) -> None:
     )
 
 
+def test_fail_closed_security_and_precision(tmp: pathlib.Path) -> None:
+    sys.stdout.write("\n[7] Fail-closed syntax errors, CWE-88/CWE-59 security, & AST precision\n")
+
+    # 1. Fail-closed on Go syntax error (pair mode -> exit 2)
+    res_go_bad, _ = run_pair(
+        tmp,
+        "broken_syntax.go",
+        "package p\nfunc F() int { return 1 }\n",
+        "package p\nfunc F( { broken syntax\n",
+    )
+    check(
+        "Go syntax error fails closed with exit 2 (not silent 0)",
+        res_go_bad.returncode == EXIT_USAGE,
+        f"rc={res_go_bad.returncode} out={res_go_bad.stdout!r} err={res_go_bad.stderr!r}",
+    )
+
+    # 2. Fail-closed on Python syntax error (pair mode -> exit 2)
+    res_py_bad, _ = run_pair(
+        tmp,
+        "broken_syntax.py",
+        "def f():\n    return 1\n",
+        "def f(:\n    return\n",
+    )
+    check(
+        "Python syntax error fails closed with exit 2 (not silent 0)",
+        res_py_bad.returncode == EXIT_USAGE,
+        f"rc={res_py_bad.returncode} out={res_py_bad.stdout!r} err={res_py_bad.stderr!r}",
+    )
+
+    # 3. Multiline Playwright expect() weakening emits test.expectation_change
+    before_ml_ts = """export async function run(page: any, expect: any) {
+  await expect(
+    page.locator("h1")
+  ).toHaveText("Strict Title");
+}
+"""
+    after_ml_ts = """export async function run(page: any, expect: any) {
+  await expect(
+    page.locator("h1")
+  ).toBeDefined();
+}
+"""
+    res_ml_ts, cands_ml_ts = run_pair(
+        tmp,
+        "ml_playwright.spec.ts",
+        before_ml_ts,
+        after_ml_ts,
+        logical_path="alt-frontend-sv/tests/e2e/chat.spec.ts",
+    )
+    check(
+        "Multiline Playwright expect().toHaveText -> .toBeDefined emits test.expectation_change",
+        res_ml_ts.returncode == EXIT_OK
+        and any(c.get("kind") == "test.expectation_change" for c in cands_ml_ts),
+        f"rc={res_ml_ts.returncode} cands={cands_ml_ts}",
+    )
+
+    # 4. Pure Biome multiline line-wrapping of identical expect() emits 0 candidates
+    before_wrap_ts = """export function run(expect: any, x: any) {
+  expect(foo(x, "Keep  Spaces")).toBe(false);
+}
+"""
+    after_wrap_ts = """export function run(expect: any, x: any) {
+  expect(
+    foo(
+      x,
+      "Keep  Spaces",
+    ),
+  ).toBe(
+    false,
+  );
+}
+"""
+    res_wrap_ts, cands_wrap_ts = run_pair(
+        tmp,
+        "wrap_ts.spec.ts",
+        before_wrap_ts,
+        after_wrap_ts,
+        logical_path="alt-frontend-sv/tests/e2e/wrap.spec.ts",
+    )
+    check(
+        "Pure Biome multiline wrapping of identical expect() emits 0 candidates",
+        res_wrap_ts.returncode == EXIT_OK and len(cands_wrap_ts) == 0,
+        f"rc={res_wrap_ts.returncode} cands={cands_wrap_ts}",
+    )
+
+    # 5. Pure gofmt multiline wrapping of require.Equal emits 0 candidates
+    before_wrap_go = """package p
+import "testing"
+func TestWrap(t *testing.T) {
+    require.Equal(t, a, b)
+}
+"""
+    after_wrap_go = """package p
+import "testing"
+func TestWrap(t *testing.T) {
+    require.Equal(
+        t,
+        a,
+        b,
+    )
+}
+"""
+    res_wrap_go, cands_wrap_go = run_pair(
+        tmp,
+        "wrap_go_test.go",
+        before_wrap_go,
+        after_wrap_go,
+        logical_path="pkg/wrap_test.go",
+    )
+    check(
+        "Pure gofmt multiline wrapping of require.Equal emits 0 candidates",
+        res_wrap_go.returncode == EXIT_OK and len(cands_wrap_go) == 0,
+        f"rc={res_wrap_go.returncode} cands={cands_wrap_go}",
+    )
+
+    # 6. Pure ruff multiline wrapping of Python assert emits 0 candidates
+    before_wrap_py = """def test_wrap():
+    assert compute(a, b) == 42
+"""
+    after_wrap_py = """def test_wrap():
+    assert (
+        compute(
+            a,
+            b,
+        )
+        == 42
+    )
+"""
+    res_wrap_py, cands_wrap_py = run_pair(
+        tmp,
+        "wrap_py_test.py",
+        before_wrap_py,
+        after_wrap_py,
+        logical_path="tests/test_wrap.py",
+    )
+    check(
+        "Pure ruff multiline wrapping of Python assert emits 0 candidates",
+        res_wrap_py.returncode == EXIT_OK and len(cands_wrap_py) == 0,
+        f"rc={res_wrap_py.returncode} cands={cands_wrap_py}",
+    )
+
+    # 7. Python multi-try except narrowing in try #1 while try #2 still catches KeyError
+    before_multi_try = """def multi(x, y):
+    try:
+        a = int(x)
+    except (ValueError, KeyError):
+        a = 0
+    try:
+        b = y["k"]
+    except KeyError:
+        b = 0
+    return a + b
+"""
+    after_multi_try = """def multi(x, y):
+    try:
+        a = int(x)
+    except ValueError:
+        a = 0
+    try:
+        b = y["k"]
+    except KeyError:
+        b = 0
+    return a + b
+"""
+    res_mt, cands_mt = run_pair(tmp, "py_multi_try.py", before_multi_try, after_multi_try)
+    check(
+        "Python multi-try except narrowing in try #1 emits python.except_types_change",
+        res_mt.returncode == EXIT_OK
+        and any(c.get("kind") == "python.except_types_change" for c in cands_mt),
+        f"cands={cands_mt}",
+    )
+
+    # 8. Go call-arg condition operator change: if check(a && b) -> if check(a)
+    before_call_cond = """package p
+func check(v bool) bool { return v }
+func run(a, b bool) int {
+    if check(a && b) {
+        return 1
+    }
+    return 0
+}
+"""
+    after_call_cond = """package p
+func check(v bool) bool { return v }
+func run(a, b bool) int {
+    if check(a) {
+        return 1
+    }
+    return 0
+}
+"""
+    res_cc, cands_cc = run_pair(tmp, "go_call_cond.go", before_call_cond, after_call_cond)
+    check(
+        "Go call-arg condition drop if check(a && b) -> if check(a) emits go.condition_operator_change",
+        res_cc.returncode == EXIT_OK
+        and any(c.get("kind") == "go.condition_operator_change" for c in cands_cc),
+        f"cands={cands_cc}",
+    )
+
+    # 9. Go receiver value -> pointer change still compares body AND flags receiver change
+    before_recv = """package p
+type Server struct{}
+func cleanup() {}
+func (s Server) Foo(a, b bool) int {
+    defer cleanup()
+    if a && b {
+        return 1
+    }
+    return 0
+}
+"""
+    after_recv = """package p
+type Server struct{}
+func cleanup() {}
+func (s *Server) Foo(a, b bool) int {
+    if a {
+        return 1
+    }
+    return 0
+}
+"""
+    res_rv, cands_rv = run_pair(tmp, "go_recv_change.go", before_recv, after_recv)
+    rv_kinds = {c.get("kind") for c in cands_rv}
+    check(
+        "Go receiver Server -> *Server still catches dropped defer, cond op, and receiver change",
+        res_rv.returncode == EXIT_OK
+        and {
+            "go.condition_operator_change",
+            "go.return_or_defer_count_change",
+            "go.receiver_pointer_change",
+        }.issubset(rv_kinds),
+        f"kinds={sorted(rv_kinds)} cands={cands_rv}",
+    )
+
+
+def test_git_diff_security(tmp: pathlib.Path) -> None:
+    sys.stdout.write("\n[8] CWE-88 & CWE-59 security in git diff mode\n")
+    sec_repo = tmp / "sec_repo"
+    sec_repo.mkdir()
+    git_bin = shutil.which("git")
+    assert git_bin is not None
+
+    def git(*gargs: str) -> None:
+        subprocess.run(  # noqa: S603 -- test helper running resolved git binary in temp repo
+            [git_bin, "-C", str(sec_repo), *gargs],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+    git("init", "-q")
+    git("config", "user.email", "test@example.com")
+    git("config", "user.name", "Test User")
+    (sec_repo / "app.py").write_text("def f():\n    return 1\n", encoding="utf-8")
+    git("add", ".")
+    git("commit", "-q", "-m", "base")
+
+    # CWE-88: leading '-' in --base must exit 2 and never write file
+    clobber_path = tmp / "should_not_exist.txt"
+    res_flag_base = run_screener(
+        "--repo-root",
+        str(sec_repo),
+        f"--base=--output={clobber_path}",
+    )
+    check(
+        "CWE-88: leading '-' --base rejected with exit 2 and no side-effect file",
+        res_flag_base.returncode == EXIT_USAGE and not clobber_path.exists(),
+        f"rc={res_flag_base.returncode} err={res_flag_base.stderr!r}",
+    )
+
+    res_flag_head = run_screener(
+        "--repo-root",
+        str(sec_repo),
+        "--base",
+        "HEAD",
+        "--head=--stat",
+    )
+    check(
+        "CWE-88: leading '-' --head rejected with exit 2",
+        res_flag_head.returncode == EXIT_USAGE,
+        f"rc={res_flag_head.returncode} err={res_flag_head.stderr!r}",
+    )
+
+    # CWE-59: symlink in worktree pointing outside repo root fails closed (exit 2)
+    outside_py = tmp / "outside_secret.py"
+    outside_py.write_text("def f():\n    return 2\n", encoding="utf-8")
+    (sec_repo / "app.py").unlink()
+    (sec_repo / "app.py").symlink_to(outside_py)
+    res_symlink = run_screener("--repo-root", str(sec_repo), "--base", "HEAD")
+    check(
+        "CWE-59: symlink in worktree fails closed with exit 2",
+        res_symlink.returncode == EXIT_USAGE,
+        f"rc={res_symlink.returncode} out={res_symlink.stdout!r} err={res_symlink.stderr!r}",
+    )
+
+
 def main() -> int:
     sys.stdout.write("CHECK-01 AST Behavior-Change Screener tests\n")
     test_layout_invariants()
@@ -705,6 +1001,8 @@ def main() -> int:
             test_python_safe_and_changes(tmp)
             test_rust_and_ts_edge_cases(tmp)
             test_git_diff_mode_and_output_file(tmp)
+            test_fail_closed_security_and_precision(tmp)
+            test_git_diff_security(tmp)
 
     sys.stdout.write(f"\nSummary: {RESULTS.passed} passed, {RESULTS.failed} failed\n")
     return EXIT_OK if RESULTS.failed == 0 else EXIT_CANDIDATES

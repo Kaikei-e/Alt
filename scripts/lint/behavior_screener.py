@@ -45,6 +45,7 @@ EXIT_OK = 0
 EXIT_CANDIDATES = 1
 EXIT_USAGE = 2
 PAIR_FILE_COUNT = 2
+SUBPROCESS_TIMEOUT_SECONDS = 60
 
 SCRIPT_DIR = pathlib.Path(__file__).resolve().parent
 GOAST_SOURCE = SCRIPT_DIR / "screener" / "goast" / "main.go"
@@ -79,9 +80,13 @@ EXPECTATION_PATTERNS: dict[str, re.Pattern[str]] = {
         r"\b(?:require|assert)\.\w+\s*\(|\bt\.(?:Fatal|Fatalf|Fatalln|Error|Errorf)\s*\("
     ),
     "python": re.compile(r"^\s*assert\b|\bself\.assert\w+\s*\(|\bpytest\.raises\s*\("),
-    "rust": re.compile(r"\b(?:debug_)?assert(?:_eq|_ne)?!\s*\("),
-    "typescript": re.compile(r"\bexpect\s*\("),
+    "rust": re.compile(r"\b(?:debug_)?assert(?:_eq|_ne)?!\s*[\(\[\{]"),
+    "typescript": re.compile(r"\bexpect(?:\.\w+)?\s*\("),
 }
+CHAIN_MEMBER_RE = re.compile(r"\s*\??\.\s*[A-Za-z_$][A-Za-z0-9_$]*")
+RUST_CHAR_LIT_RE = re.compile(r"^'(?:\\(?:x[0-9A-Fa-f]{2}|u\{[0-9A-Fa-f_]+\}|.)|[^'\\])'")
+OPEN_TO_CLOSE: dict[str, str] = {"(": ")", "[": "]", "{": "}"}
+CLOSE_CHARS = frozenset(OPEN_TO_CLOSE.values())
 
 
 @dataclass(frozen=True)
@@ -159,13 +164,20 @@ def _ensure_goast_binary() -> pathlib.Path:
     tmp_bin = cache_dir / f"goast-{src_hash}.{os.getpid()}.tmp"
     env = dict(os.environ)
     env["GO111MODULE"] = "off"
-    res = subprocess.run(  # noqa: S603 -- compiles repo-owned stdlib Go AST helper
-        [go_bin, "build", "-o", str(tmp_bin), str(GOAST_SOURCE)],
-        capture_output=True,
-        text=True,
-        env=env,
-        check=False,
-    )
+    try:
+        res = subprocess.run(  # noqa: S603 -- compiles repo-owned stdlib Go AST helper
+            [go_bin, "build", "-o", str(tmp_bin), str(GOAST_SOURCE)],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=SUBPROCESS_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        if tmp_bin.exists():
+            tmp_bin.unlink()
+        msg = f"timed out compiling Go AST helper after {SUBPROCESS_TIMEOUT_SECONDS}s"
+        raise ScreenerError(msg) from exc
     if res.returncode != 0:
         if tmp_bin.exists():
             tmp_bin.unlink()
@@ -179,12 +191,17 @@ def _run_goast(
     before_path: pathlib.Path, after_path: pathlib.Path
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     goast_bin = _ensure_goast_binary()
-    res = subprocess.run(  # noqa: S603 -- executes cached repo-owned Go AST binary
-        [str(goast_bin), str(before_path), str(after_path)],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        res = subprocess.run(  # noqa: S603 -- executes cached repo-owned Go AST binary
+            [str(goast_bin), str(before_path), str(after_path)],
+            capture_output=True,
+            text=True,
+            timeout=SUBPROCESS_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        msg = f"goast helper timed out after {SUBPROCESS_TIMEOUT_SECONDS}s"
+        raise ScreenerError(msg) from exc
     if res.returncode != 0:
         msg = f"goast helper failed (rc={res.returncode}): {res.stderr.strip()}"
         raise ScreenerError(msg)
@@ -327,6 +344,19 @@ def _compare_go_function(
             )
         )
 
+    b_recv = str(before_fn.get("receiver_kind", ""))
+    a_recv = str(after_fn.get("receiver_kind", ""))
+    if b_recv != a_recv:
+        candidates.append(
+            _make_candidate(
+                logical_path,
+                func_name,
+                "go.receiver_pointer_change",
+                b_recv or "none",
+                a_recv or "none",
+            )
+        )
+
     return candidates
 
 
@@ -336,8 +366,12 @@ def screen_go(
     logical_path: str,
 ) -> list[Candidate]:
     before_summary, after_summary = _run_goast(before_path, after_path)
-    if before_summary.get("parse_err") or after_summary.get("parse_err"):
-        return []
+    b_err = before_summary.get("parse_err")
+    a_err = after_summary.get("parse_err")
+    if b_err or a_err:
+        detail = b_err or a_err
+        msg = f"failed to parse Go file {logical_path}: {detail}"
+        raise ScreenerError(msg)
 
     before_funcs: dict[str, dict[str, Any]] = before_summary.get("functions", {})
     after_funcs: dict[str, dict[str, Any]] = after_summary.get("functions", {})
@@ -369,7 +403,7 @@ class PyFuncFacts:
     return_count: int
     context_managers: tuple[str, ...]
     finally_hashes: tuple[str, ...]
-    except_types: tuple[str, ...]
+    except_types: tuple[tuple[tuple[str, ...], ...], ...]
 
 
 def _is_docstring_stmt(stmt: ast.stmt) -> bool:
@@ -394,6 +428,12 @@ def _extract_except_names(handler: ast.ExceptHandler) -> list[str]:
     return [ast.unparse(handler.type)]
 
 
+def _fmt_py_except_types(groups: tuple[tuple[tuple[str, ...], ...], ...]) -> str:
+    if not groups:
+        return "none"
+    return "; ".join("try(" + ", ".join("|".join(h) for h in handlers) + ")" for handlers in groups)
+
+
 class _PyFuncCollector:
     def __init__(self) -> None:
         self.if_count = 0
@@ -403,7 +443,7 @@ class _PyFuncCollector:
         self.return_count = 0
         self.context_managers: list[str] = []
         self.finally_hashes: list[str] = []
-        self.except_types: set[str] = set()
+        self.except_types: list[tuple[tuple[str, ...], ...]] = []
 
     def walk_body(self, stmts: list[ast.stmt]) -> None:
         for stmt in stmts:
@@ -414,8 +454,11 @@ class _PyFuncCollector:
             self.try_else_count += 1
         if stmt.finalbody:
             self.finally_hashes.append(_hash_stmt_list(stmt.finalbody))
+        try_handlers = tuple(
+            tuple(sorted(set(_extract_except_names(handler)))) for handler in stmt.handlers
+        )
+        self.except_types.append(try_handlers)
         for handler in stmt.handlers:
-            self.except_types.update(_extract_except_names(handler))
             self.walk_body(handler.body)
         self.walk_body(stmt.body)
         self.walk_body(stmt.orelse)
@@ -458,7 +501,7 @@ class _PyFuncCollector:
             return_count=self.return_count,
             context_managers=tuple(sorted(self.context_managers)),
             finally_hashes=tuple(self.finally_hashes),
-            except_types=tuple(sorted(self.except_types)),
+            except_types=tuple(self.except_types),
         )
 
 
@@ -468,11 +511,17 @@ def _analyze_python_function(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> PyFu
     return collector.to_facts()
 
 
-def _extract_python_functions(source: str) -> dict[str, PyFuncFacts] | None:
+def _extract_python_functions(
+    source: str,
+    *,
+    logical_path: str,
+    role: str,
+) -> dict[str, PyFuncFacts]:
     try:
         tree = ast.parse(source)
-    except SyntaxError:
-        return None
+    except SyntaxError as exc:
+        msg = f"failed to parse Python file {logical_path} ({role}): {exc}"
+        raise ScreenerError(msg) from exc
 
     results: dict[str, PyFuncFacts] = {}
 
@@ -491,10 +540,8 @@ def _extract_python_functions(source: str) -> dict[str, PyFuncFacts] | None:
 
 
 def screen_python(before_src: str, after_src: str, logical_path: str) -> list[Candidate]:
-    before_funcs = _extract_python_functions(before_src)
-    after_funcs = _extract_python_functions(after_src)
-    if before_funcs is None or after_funcs is None:
-        return []
+    before_funcs = _extract_python_functions(before_src, logical_path=logical_path, role="before")
+    after_funcs = _extract_python_functions(after_src, logical_path=logical_path, role="after")
 
     candidates: list[Candidate] = []
     for func_name in sorted(set(before_funcs) & set(after_funcs)):
@@ -562,8 +609,8 @@ def screen_python(before_src: str, after_src: str, logical_path: str) -> list[Ca
                     logical_path,
                     func_name,
                     "python.except_types_change",
-                    ", ".join(bf.except_types) or "none",
-                    ", ".join(af.except_types) or "none",
+                    _fmt_py_except_types(bf.except_types),
+                    _fmt_py_except_types(af.except_types),
                 )
             )
 
@@ -734,39 +781,205 @@ def _is_test_file(logical_path: str, language: str, before_src: str) -> bool:
     return language == "rust" and ("#[test]" in before_src or "#[cfg(test)]" in before_src)
 
 
-def _strip_line_comment(line: str, language: str) -> str:
-    marker = "#" if language == "python" else "//"
-    in_quote: str | None = None
-    escaped = False
-    for idx, ch in enumerate(line):
-        if escaped:
-            escaped = False
+def _scan_rust_raw_string_end(src: str, start: int) -> int | None:
+    prev_is_ident = start > 0 and (src[start - 1].isalnum() or src[start - 1] == "_")
+    if prev_is_ident:
+        return None
+    n = len(src)
+    j = start + 1
+    while j < n and src[j] == "#":
+        j += 1
+    if j >= n or src[j] != '"':
+        return None
+    end_delim = '"' + ("#" * (j - (start + 1)))
+    end_pos = src.find(end_delim, j + 1)
+    return n if end_pos == -1 else end_pos + len(end_delim)
+
+
+def _scan_escaped_quote_end(src: str, start: int, quote: str) -> int:
+    idx = start + 1
+    n = len(src)
+    while idx < n:
+        c = src[idx]
+        if c == "\\":
+            idx += 2
             continue
-        if in_quote is not None:
-            if ch == "\\":
-                escaped = True
-            elif ch == in_quote:
-                in_quote = None
+        if c == quote:
+            return idx + 1
+        idx += 1
+    return n
+
+
+def _scan_string_literal_end(src: str, start: int, language: str) -> int | None:
+    """If a string/char literal starts at `start`, return its exclusive end index."""
+    ch = src[start]
+    if language == "rust":
+        if ch == "r":
+            return _scan_rust_raw_string_end(src, start)
+        if ch == "'":
+            m_char = RUST_CHAR_LIT_RE.match(src[start : start + 16])
+            return start + m_char.end() if m_char is not None else None
+        return _scan_escaped_quote_end(src, start, ch) if ch == '"' else None
+
+    if language == "go" and ch == "`":
+        end_pos = src.find("`", start + 1)
+        return len(src) if end_pos == -1 else end_pos + 1
+
+    valid_quotes = ('"', "'") if language == "go" else ('"', "'", "`")
+    return _scan_escaped_quote_end(src, start, ch) if ch in valid_quotes else None
+
+
+def _strip_c_comments_keep_strings(src: str, language: str) -> str:
+    """Strip C-style comments while preserving string literals verbatim."""
+    out: list[str] = []
+    i = 0
+    n = len(src)
+    rust_nested = language == "rust"
+    while i < n:
+        str_end = _scan_string_literal_end(src, i, language)
+        if str_end is not None:
+            out.append(src[i:str_end])
+            i = str_end
             continue
-        if ch in ('"', "'", "`"):
-            in_quote = ch
-        elif line[idx : idx + len(marker)] == marker:
-            return line[:idx]
-    return line
+        ch = src[i]
+        nxt = src[i + 1] if i + 1 < n else ""
+        if ch == "/" and nxt == "/":
+            nl = src.find("\n", i + 2)
+            i = n if nl == -1 else nl
+        elif ch == "/" and nxt == "*":
+            i = _skip_block_comment(src, i, nested=rust_nested, out=out)
+        else:
+            out.append(ch)
+            i += 1
+    return "".join(out)
+
+
+def _find_balanced_close(src: str, open_idx: int, language: str) -> int:
+    """Return exclusive end index of the balanced delimiter starting at `open_idx`."""
+    stack: list[str] = [OPEN_TO_CLOSE[src[open_idx]]]
+    idx = open_idx + 1
+    n = len(src)
+    while idx < n and stack:
+        str_end = _scan_string_literal_end(src, idx, language)
+        if str_end is not None:
+            idx = str_end
+            continue
+        ch = src[idx]
+        if ch in OPEN_TO_CLOSE:
+            stack.append(OPEN_TO_CLOSE[ch])
+        elif ch in CLOSE_CHARS and stack[-1] == ch:
+            stack.pop()
+        idx += 1
+    return idx
+
+
+def _consume_chained_calls(src: str, pos: int, language: str) -> int:
+    """Consume chained `.prop` / `.method(...)` / `?.method(...)` calls after a closing delimiter."""
+    n = len(src)
+    while pos < n:
+        m_member = CHAIN_MEMBER_RE.match(src, pos)
+        if m_member is None:
+            break
+        pos = m_member.end()
+        scan = pos
+        while scan < n and src[scan].isspace():
+            scan += 1
+        if scan < n and src[scan] in ("(", "["):
+            pos = _find_balanced_close(src, scan, language)
+    return pos
+
+
+def _normalize_code_segment(seg: str) -> str:
+    collapsed = re.sub(r"\s+", " ", seg)
+    collapsed = re.sub(r"\s+([)\],.;])", r"\1", collapsed)
+    collapsed = re.sub(r"([(\[.,])\s+", r"\1", collapsed)
+    return re.sub(r",([)\]])", r"\1", collapsed)
+
+
+def _normalize_expectation_span(span: str, language: str) -> str:
+    """Collapse whitespace/formatting outside string literals while keeping strings verbatim."""
+    parts: list[str] = []
+    buf: list[str] = []
+    i = 0
+    n = len(span)
+    while i < n:
+        str_end = _scan_string_literal_end(span, i, language)
+        if str_end is not None:
+            if buf:
+                parts.append(_normalize_code_segment("".join(buf)))
+                buf = []
+            parts.append(span[i:str_end])
+            i = str_end
+            continue
+        buf.append(span[i])
+        i += 1
+    if buf:
+        parts.append(_normalize_code_segment("".join(buf)))
+    return "".join(parts).strip()
+
+
+def _extract_python_expectations(src: str) -> Counter[str]:
+    tree = ast.parse(src)
+    counts: Counter[str] = Counter()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assert):
+            counts[ast.unparse(node)] += 1
+        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+            func = node.func
+            if isinstance(func.value, ast.Name) and (
+                (func.value.id == "self" and func.attr.startswith("assert"))
+                or (func.value.id == "pytest" and func.attr == "raises")
+            ):
+                counts[ast.unparse(node)] += 1
+    return counts
+
+
+def _string_ranges(src: str, language: str) -> list[tuple[int, int]]:
+    ranges: list[tuple[int, int]] = []
+    i = 0
+    n = len(src)
+    while i < n:
+        str_end = _scan_string_literal_end(src, i, language)
+        if str_end is not None:
+            ranges.append((i, str_end))
+            i = str_end
+        else:
+            i += 1
+    return ranges
+
+
+def _inside_any_range(pos: int, ranges: list[tuple[int, int]]) -> bool:
+    return any(start <= pos < end for start, end in ranges)
 
 
 def _extract_expectation_lines(src: str, language: str) -> Counter[str]:
+    if language == "python":
+        return _extract_python_expectations(src)
     pattern = EXPECTATION_PATTERNS.get(language)
     if pattern is None:
         return Counter()
+
+    clean = _strip_c_comments_keep_strings(src, language)
+    str_spans = _string_ranges(clean, language)
     counts: Counter[str] = Counter()
-    for raw_line in src.splitlines():
-        code_part = _strip_line_comment(raw_line, language).strip()
-        if not code_part:
+    pos = 0
+    n = len(clean)
+    while pos < n:
+        match = pattern.search(clean, pos)
+        if match is None:
+            break
+        if _inside_any_range(match.start(), str_spans):
+            pos = match.end()
             continue
-        if pattern.search(code_part) is not None:
-            normalized = " ".join(code_part.split())
+        open_idx = match.end() - 1
+        end_idx = _find_balanced_close(clean, open_idx, language)
+        if language in ("typescript", "go"):
+            end_idx = _consume_chained_calls(clean, end_idx, language)
+        span = clean[match.start() : end_idx]
+        normalized = _normalize_expectation_span(span, language)
+        if normalized:
             counts[normalized] += 1
+        pos = max(end_idx, match.end())
     return counts
 
 
@@ -838,16 +1051,32 @@ def _run_git(repo_root: pathlib.Path, *git_args: str) -> subprocess.CompletedPro
     if git_bin is None:
         msg = "git executable not found in PATH"
         raise ScreenerError(msg)
-    return subprocess.run(  # noqa: S603 -- runs git with fixed repo_root and explicit args
-        [git_bin, "-C", str(repo_root), *git_args],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        return subprocess.run(  # noqa: S603 -- runs git with fixed repo_root and explicit args
+            [git_bin, "-C", str(repo_root), *git_args],
+            capture_output=True,
+            text=True,
+            timeout=SUBPROCESS_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        msg = f"git command timed out after {SUBPROCESS_TIMEOUT_SECONDS}s"
+        raise ScreenerError(msg) from exc
+
+
+def _validate_git_rev(repo_root: pathlib.Path, rev: str, *, label: str) -> str:
+    if not rev or not rev.strip() or rev.startswith("-"):
+        msg = f"invalid git revision for {label}: {rev!r}"
+        raise ScreenerError(msg)
+    res = _run_git(repo_root, "rev-parse", "--verify", "--end-of-options", f"{rev}^{{commit}}")
+    if res.returncode != 0:
+        msg = f"invalid git revision for {label} ({rev!r}): {res.stderr.strip()}"
+        raise ScreenerError(msg)
+    return res.stdout.strip()
 
 
 def _git_show_file(repo_root: pathlib.Path, rev: str, rel_path: str) -> str | None:
-    res = _run_git(repo_root, "show", f"{rev}:{rel_path}")
+    res = _run_git(repo_root, "show", "--end-of-options", f"{rev}:{rel_path}")
     if res.returncode != 0:
         return None
     return res.stdout
@@ -866,7 +1095,7 @@ def _parse_git_diff_entries(stdout: str) -> list[tuple[str, str]]:
             if idx + 2 < len(tokens):
                 entries.append((tokens[idx + 1], tokens[idx + 2]))
             idx += 3
-        elif status == "M":
+        elif status in ("M", "T"):
             if idx + 1 < len(tokens):
                 rel = tokens[idx + 1]
                 entries.append((rel, rel))
@@ -891,7 +1120,15 @@ def _load_git_pair_texts(
         if after_text is None:
             return None
         return before_text, after_text
+    repo_root_resolved = repo_root.resolve()
     after_disk = repo_root / new_rel
+    if after_disk.is_symlink():
+        msg = f"refusing to read symlink in worktree: {new_rel}"
+        raise ScreenerError(msg)
+    resolved_after = after_disk.resolve()
+    if not resolved_after.is_relative_to(repo_root_resolved):
+        msg = f"worktree path escapes repo root: {new_rel}"
+        raise ScreenerError(msg)
     if not after_disk.is_file():
         return None
     return before_text, after_disk.read_text(encoding="utf-8", errors="replace")
@@ -902,9 +1139,14 @@ def screen_git_diff(
     base_rev: str,
     head_rev: str | None = None,
 ) -> list[Candidate]:
-    diff_args = ["diff", "--name-status", "-z", base_rev]
-    if head_rev is not None:
-        diff_args.append(head_rev)
+    resolved_base = _validate_git_rev(repo_root, base_rev, label="--base")
+    resolved_head = (
+        _validate_git_rev(repo_root, head_rev, label="--head") if head_rev is not None else None
+    )
+    diff_args = ["diff", "--name-status", "-z", resolved_base]
+    if resolved_head is not None:
+        diff_args.append(resolved_head)
+    diff_args.append("--")
     res = _run_git(repo_root, *diff_args)
     if res.returncode != 0:
         msg = f"git diff failed: {res.stderr.strip()}"
@@ -918,7 +1160,7 @@ def screen_git_diff(
             lang = infer_language(new_rel)
             if lang is None:
                 continue
-            texts = _load_git_pair_texts(repo_root, base_rev, head_rev, old_rel, new_rel)
+            texts = _load_git_pair_texts(repo_root, resolved_base, resolved_head, old_rel, new_rel)
             if texts is None:
                 continue
             before_text, after_text = texts
