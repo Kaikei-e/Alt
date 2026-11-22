@@ -38,6 +38,7 @@ verification:
 - **変更可能性**: なし（`has_change: false`）
 - **確認観点**: `timeout`, `error_message`, `permissions`, `type_conversion`, `default_value`, `control_flow`
 - **確認根拠**: 変更なし（対象ルールの静的リファクタのみを実施し、入出力・例外・タイムアウト・権限・制御フローは不変）
+- **CHECK-01 候補応答 (`candidate_responses`)**: 挙動変更候補なし（候補検出時は各候補に対して `intended` + `test_name` または `unintended_reverted` を明示）
 
 ## 3. 変更理由
 

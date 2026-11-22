@@ -10,6 +10,7 @@ from __future__ import annotations
 import copy
 import json
 import pathlib
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -833,6 +834,367 @@ def test_templates_and_cli_utilities(tmp: pathlib.Path) -> None:
         )
 
 
+def _run_git(repo: pathlib.Path, *git_args: str) -> None:
+    git_bin = shutil.which("git")
+    assert git_bin is not None
+    subprocess.run(  # noqa: S603 -- test helper invoking resolved git binary in temp repo
+        [git_bin, "-C", str(repo), *git_args],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_check01_candidate_enforcement(tmp: pathlib.Path) -> None:
+    sys.stdout.write("\n[7] CHECK-01 handoff behavior candidate enforcement\n")
+    pkt_path = write_json(tmp, "c01_packet.json", base_packet())
+
+    candidates = [
+        {
+            "id": "cand-001",
+            "file": "scripts/agent-harness/example.py",
+            "function": "example_fn",
+            "kind": "python.control_flow_return_change",
+            "before": "if=1,return=1",
+            "after": "if=1,return=0",
+        }
+    ]
+    report_path = tmp / "screener_report.json"
+    report_path.write_text(json.dumps(candidates, indent=2), encoding="utf-8")
+    empty_report = tmp / "screener_empty.json"
+    empty_report.write_text("[]\n", encoding="utf-8")
+
+    # 1. Unanswered candidate => UNANSWERED_BEHAVIOR_CANDIDATE
+    ho_unanswered = write_json(tmp, "c01_ho_unanswered.json", base_handoff())
+    res_un = run_cli(
+        "validate-handoff",
+        str(ho_unanswered),
+        "--packet",
+        str(pkt_path),
+        "--screener-report",
+        str(report_path),
+    )
+    check(
+        "rejects unanswered screener candidate with UNANSWERED_BEHAVIOR_CANDIDATE",
+        res_un.returncode == EXIT_INVALID and "UNANSWERED_BEHAVIOR_CANDIDATE" in res_un.stderr,
+        f"rc={res_un.returncode} err={res_un.stderr!r}",
+    )
+
+    # 2. disposition=intended without test_name => MISSING_CANDIDATE_TEST_NAME
+    ho_missing_test = copy.deepcopy(base_handoff())
+    ho_missing_test["runtime_behavior_impact"]["has_change"] = True
+    ho_missing_test["runtime_behavior_impact"]["candidate_responses"] = [
+        {
+            "candidate_id": "cand-001",
+            "file": "scripts/agent-harness/example.py",
+            "function": "example_fn",
+            "kind": "python.control_flow_return_change",
+            "disposition": "intended",
+            "test_name": "TBD",
+            "note": "intentional change",
+        }
+    ]
+    ho_mt_path = write_json(tmp, "c01_ho_missing_test.json", ho_missing_test)
+    res_mt = run_cli(
+        "validate-handoff",
+        str(ho_mt_path),
+        "--packet",
+        str(pkt_path),
+        "--screener-report",
+        str(report_path),
+    )
+    check(
+        "rejects intended candidate with placeholder test_name (MISSING_CANDIDATE_TEST_NAME)",
+        res_mt.returncode == EXIT_INVALID and "MISSING_CANDIDATE_TEST_NAME" in res_mt.stderr,
+        f"rc={res_mt.returncode} err={res_mt.stderr!r}",
+    )
+
+    # 3. disposition=intended with concrete test_name matching by candidate_id => PASS
+    ho_intended_ok = copy.deepcopy(base_handoff())
+    ho_intended_ok["runtime_behavior_impact"]["has_change"] = True
+    ho_intended_ok["runtime_behavior_impact"]["candidate_responses"] = [
+        {
+            "candidate_id": "cand-001",
+            "disposition": "intended",
+            "test_name": "TestExampleReturnPath",
+            "note": "verified by unit test",
+        }
+    ]
+    ho_ok_path = write_json(tmp, "c01_ho_intended_ok.json", ho_intended_ok)
+    res_ok = run_cli(
+        "validate-handoff",
+        str(ho_ok_path),
+        "--packet",
+        str(pkt_path),
+        "--screener-report",
+        str(report_path),
+    )
+    check(
+        "accepts intended candidate with concrete test_name matched by candidate_id",
+        res_ok.returncode == EXIT_OK,
+        res_ok.stderr or res_ok.stdout,
+    )
+
+    # 4. disposition=intended matched by (file, function, kind) => PASS
+    ho_tuple_ok = copy.deepcopy(base_handoff())
+    ho_tuple_ok["runtime_behavior_impact"]["has_change"] = True
+    ho_tuple_ok["runtime_behavior_impact"]["candidate_responses"] = [
+        {
+            "file": "scripts/agent-harness/example.py",
+            "function": "example_fn",
+            "kind": "python.control_flow_return_change",
+            "disposition": "intended",
+            "test_name": "test_example_fn_returns_expected",
+        }
+    ]
+    ho_tuple_path = write_json(tmp, "c01_ho_tuple_ok.json", ho_tuple_ok)
+    res_tuple = run_cli(
+        "validate-handoff",
+        str(ho_tuple_path),
+        "--packet",
+        str(pkt_path),
+        "--screener-report",
+        str(report_path),
+    )
+    check(
+        "accepts intended candidate matched by (file, function, kind)",
+        res_tuple.returncode == EXIT_OK,
+        res_tuple.stderr or res_tuple.stdout,
+    )
+
+    # 5. disposition=unintended_reverted while STILL present => UNREVERTED_UNINTENDED_CANDIDATE
+    ho_unrev = copy.deepcopy(base_handoff())
+    ho_unrev["runtime_behavior_impact"]["candidate_responses"] = [
+        {
+            "candidate_id": "cand-001",
+            "disposition": "unintended_reverted",
+            "note": "claimed reverted",
+        }
+    ]
+    ho_unrev_path = write_json(tmp, "c01_ho_unrev.json", ho_unrev)
+    res_unrev = run_cli(
+        "validate-handoff",
+        str(ho_unrev_path),
+        "--packet",
+        str(pkt_path),
+        "--screener-report",
+        str(report_path),
+    )
+    check(
+        "rejects unintended_reverted when candidate still active (UNREVERTED_UNINTENDED_CANDIDATE)",
+        res_unrev.returncode == EXIT_INVALID
+        and "UNREVERTED_UNINTENDED_CANDIDATE" in res_unrev.stderr,
+        f"rc={res_unrev.returncode} err={res_unrev.stderr!r}",
+    )
+
+    # 6. disposition=unintended_reverted when screener report is empty (really reverted) => PASS
+    res_rev_ok = run_cli(
+        "validate-handoff",
+        str(ho_unrev_path),
+        "--packet",
+        str(pkt_path),
+        "--screener-report",
+        str(empty_report),
+    )
+    check(
+        "accepts unintended_reverted once candidate is absent from active screener report",
+        res_rev_ok.returncode == EXIT_OK,
+        res_rev_ok.stderr or res_rev_ok.stdout,
+    )
+
+    # 7. --base-commit auto-runs behavior_screener.py on a temp git repo
+    git_repo = tmp / "c01_git_repo"
+    git_repo.mkdir()
+    _run_git(git_repo, "init", "-q")
+    _run_git(git_repo, "config", "user.email", "test@example.com")
+    _run_git(git_repo, "config", "user.name", "Test")
+    target_py = git_repo / "scripts" / "agent-harness" / "example.py"
+    target_py.parent.mkdir(parents=True, exist_ok=True)
+    target_py.write_text(
+        "def run(flag):\n    if flag:\n        return 1\n    return 0\n",
+        encoding="utf-8",
+    )
+    _run_git(git_repo, "add", ".")
+    _run_git(git_repo, "commit", "-q", "-m", "base")
+    target_py.write_text("def run(flag):\n    return 0\n", encoding="utf-8")
+
+    res_auto = run_cli(
+        "validate-handoff",
+        str(ho_unanswered),
+        "--packet",
+        str(pkt_path),
+        "--repo-root",
+        str(git_repo),
+        "--base-commit",
+        "HEAD",
+    )
+    check(
+        "validate-handoff --base-commit auto-runs screener and flags unanswered candidate",
+        res_auto.returncode == EXIT_INVALID and "UNANSWERED_BEHAVIOR_CANDIDATE" in res_auto.stderr,
+        f"rc={res_auto.returncode} err={res_auto.stderr!r}",
+    )
+
+
+def test_check02_policy_field(tmp: pathlib.Path) -> None:
+    sys.stdout.write("\n[8] CHECK-02 ExecutionPolicy.policy validation\n")
+
+    # Template includes policy: "fix-existing"
+    tmpl_text = PACKET_TMPL_PATH.read_text(encoding="utf-8")
+    check(
+        'task-packet.md.tmpl declares policy: "fix-existing"',
+        'policy: "fix-existing"' in tmpl_text,
+    )
+
+    p_block = copy.deepcopy(base_packet())
+    p_block["execution_policy"]["policy"] = "block-new"
+    p_block["execution_policy"]["verification_command"] = (
+        "LINT_POLICY=block-new ./scripts/lint/run.sh scripts"
+    )
+    p_block_path = write_json(tmp, "c02_block_ok.json", p_block)
+    res_ok = run_cli("validate-packet", str(p_block_path))
+    check(
+        "accepts policy='block-new' with matching LINT_POLICY=block-new",
+        res_ok.returncode == EXIT_OK,
+        res_ok.stderr or res_ok.stdout,
+    )
+
+    p_bad_enum = copy.deepcopy(base_packet())
+    p_bad_enum["execution_policy"]["policy"] = "allow-all"
+    _assert_packet_rejected(
+        tmp,
+        "rejects invalid execution_policy.policy value",
+        p_bad_enum,
+        "policy",
+    )
+
+    p_mismatch_env = copy.deepcopy(base_packet())
+    p_mismatch_env["execution_policy"]["policy"] = "block-new"
+    p_mismatch_env["execution_policy"]["verification_command"] = (
+        "LINT_POLICY=fix-existing ./scripts/lint/run.sh scripts"
+    )
+    _assert_packet_rejected(
+        tmp,
+        "rejects policy='block-new' with LINT_POLICY=fix-existing (POLICY_COMMAND_MISMATCH)",
+        p_mismatch_env,
+        "POLICY_COMMAND_MISMATCH",
+    )
+
+    p_mismatch_flag = copy.deepcopy(base_packet())
+    p_mismatch_flag["execution_policy"]["policy"] = "block-new"
+    p_mismatch_flag["execution_policy"]["verification_command"] = (
+        "./scripts/lint/run.sh --policy fix-existing scripts"
+    )
+    _assert_packet_rejected(
+        tmp,
+        "rejects policy='block-new' with --policy fix-existing (POLICY_COMMAND_MISMATCH)",
+        p_mismatch_flag,
+        "POLICY_COMMAND_MISMATCH",
+    )
+
+    p_mismatch_rev = copy.deepcopy(base_packet())
+    p_mismatch_rev["execution_policy"]["policy"] = "fix-existing"
+    p_mismatch_rev["execution_policy"]["verification_command"] = (
+        "LINT_POLICY=block-new ./scripts/lint/run.sh scripts"
+    )
+    _assert_packet_rejected(
+        tmp,
+        "rejects policy='fix-existing' with LINT_POLICY=block-new (POLICY_COMMAND_MISMATCH)",
+        p_mismatch_rev,
+        "POLICY_COMMAND_MISMATCH",
+    )
+
+
+def test_check05_generated_code_protection(tmp: pathlib.Path) -> None:
+    sys.stdout.write("\n[9] CHECK-05 dynamic DO NOT EDIT generated code protection\n")
+    repo = tmp / "c05_repo"
+    repo.mkdir()
+    _run_git(repo, "init", "-q")
+    _run_git(repo, "config", "user.email", "test@example.com")
+    _run_git(repo, "config", "user.name", "Test")
+
+    gen_go = repo / "pkg" / "api.pb.go"
+    gen_go.parent.mkdir(parents=True, exist_ok=True)
+    gen_go.write_text(
+        "// Code generated by protoc-gen-go. DO NOT EDIT.\npackage pkg\n",
+        encoding="utf-8",
+    )
+    normal_go = repo / "pkg" / "handler.go"
+    normal_go.write_text("package pkg\nfunc Handle() {}\n", encoding="utf-8")
+    _run_git(repo, "add", ".")
+    _run_git(repo, "commit", "-q", "-m", "init")
+
+    # list-generated-forbidden-paths finds tracked generated files
+    res_list = run_cli(
+        "list-generated-forbidden-paths",
+        "--repo-root",
+        str(repo),
+        "--format",
+        "json",
+    )
+    listed = json.loads(res_list.stdout) if res_list.returncode == EXIT_OK else []
+    check(
+        "list-generated-forbidden-paths returns only generated tracked files",
+        res_list.returncode == EXIT_OK and listed == ["pkg/api.pb.go"],
+        f"rc={res_list.returncode} out={res_list.stdout!r} err={res_list.stderr!r}",
+    )
+
+    pkt = copy.deepcopy(base_packet())
+    pkt["scope"]["allowed_paths"] = ["pkg/**"]
+    pkt_default_path = write_json(tmp, "c05_pkt_default.json", pkt)
+
+    ho_gen = copy.deepcopy(base_handoff())
+    ho_gen["modified_files"] = [{"path": "pkg/api.pb.go", "added_lines": 2, "deleted_lines": 1}]
+    ho_gen_path = write_json(tmp, "c05_ho_gen.json", ho_gen)
+
+    res_block = run_cli(
+        "validate-handoff",
+        str(ho_gen_path),
+        "--packet",
+        str(pkt_default_path),
+        "--repo-root",
+        str(repo),
+    )
+    check(
+        "rejects handoff modifying DO NOT EDIT file with GENERATED_CODE_MODIFIED",
+        res_block.returncode == EXIT_INVALID and "GENERATED_CODE_MODIFIED" in res_block.stderr,
+        f"rc={res_block.returncode} err={res_block.stderr!r}",
+    )
+
+    pkt_allow = copy.deepcopy(pkt)
+    pkt_allow["scope"]["allow_generated_code_edits"] = True
+    pkt_allow_path = write_json(tmp, "c05_pkt_allow.json", pkt_allow)
+    res_allow = run_cli(
+        "validate-handoff",
+        str(ho_gen_path),
+        "--packet",
+        str(pkt_allow_path),
+        "--repo-root",
+        str(repo),
+    )
+    check(
+        "allows generated code edit when scope.allow_generated_code_edits=true",
+        res_allow.returncode == EXIT_OK,
+        res_allow.stderr or res_allow.stdout,
+    )
+
+    ho_normal = copy.deepcopy(base_handoff())
+    ho_normal["modified_files"] = [{"path": "pkg/handler.go", "added_lines": 3, "deleted_lines": 0}]
+    ho_normal_path = write_json(tmp, "c05_ho_normal.json", ho_normal)
+    res_normal = run_cli(
+        "validate-handoff",
+        str(ho_normal_path),
+        "--packet",
+        str(pkt_default_path),
+        "--repo-root",
+        str(repo),
+    )
+    check(
+        "allows normal non-generated file modification under --repo-root",
+        res_normal.returncode == EXIT_OK,
+        res_normal.stderr or res_normal.stdout,
+    )
+
+
 def main() -> int:
     sys.stdout.write("Task Packet specification & validator tests\n")
     test_schema_structure()
@@ -845,6 +1207,9 @@ def main() -> int:
         test_handoff_standalone(tmp)
         test_handoff_rejections_and_cross_validation(tmp)
         test_templates_and_cli_utilities(tmp)
+        test_check01_candidate_enforcement(tmp)
+        test_check02_policy_field(tmp)
+        test_check05_generated_code_protection(tmp)
 
     sys.stdout.write(
         f"\nSummary: {RESULTS.passed} passed, {RESULTS.failed} failed\n",
