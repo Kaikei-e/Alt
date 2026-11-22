@@ -1,0 +1,598 @@
+#!/usr/bin/env python3
+"""Tests for scripts/lint/check_generated_code.py (CHECK-05 / REPO-04).
+
+Covers:
+1. Dynamic `Code generated ... DO NOT EDIT` header discovery (`--list-generated`)
+2. Generator pinning (`scripts/codegen/go.tool.mod`, `proto/buf.gen*.yaml`) and
+   `@latest` elimination audit (`--check-pins`)
+3. Pair tamper detection (`--before` / `--after`) including CORPUS-01 `C-16`
+4. Git diff tamper detection (`--base <rev>`)
+5. Deterministic regeneration drift checks and full repository end-to-end check
+
+Run:
+    python3 scripts/tests/test-check-generated-code.py
+"""
+
+from __future__ import annotations
+
+import importlib.util
+import os
+import pathlib
+import shutil
+import subprocess
+import sys
+import tempfile
+import types
+from collections.abc import Sequence
+from typing import Protocol
+from unittest import mock
+
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+SCRIPT = ROOT / "scripts" / "lint" / "check_generated_code.py"
+C16_DIR = ROOT / "scripts" / "harness" / "corpus" / "C-16"
+GIT_BIN = shutil.which("git")
+assert GIT_BIN is not None, "git executable not found in PATH"
+
+USAGE_EXIT_CODE = 2
+MIN_REPO_GENERATED_FILES = 100
+
+
+class _HasRule(Protocol):
+    @property
+    def rule(self) -> str: ...
+
+
+class _Results:
+    def __init__(self) -> None:
+        self.passed = 0
+        self.failed = 0
+
+
+RESULTS = _Results()
+
+
+def check(name: str, condition: bool, detail: str = "") -> None:
+    if condition:
+        sys.stdout.write(f"  PASS  {name}\n")
+        RESULTS.passed += 1
+    else:
+        suffix = f" ({detail})" if detail else ""
+        sys.stdout.write(f"  FAIL  {name}{suffix}\n")
+        RESULTS.failed += 1
+
+
+def check_violations(
+    name: str,
+    violations: Sequence[_HasRule],
+    expected_count: int,
+    expected_rules: set[str],
+) -> None:
+    actual_rules = {v.rule for v in violations}
+    check(
+        name,
+        len(violations) == expected_count and actual_rules == expected_rules,
+        f"count={len(violations)} rules={actual_rules} violations={violations!r}",
+    )
+
+
+def load_checker() -> types.ModuleType:
+    if not SCRIPT.is_file():
+        sys.stderr.write(f"FAIL: checker script missing: {SCRIPT}\n")
+        sys.exit(1)
+    spec = importlib.util.spec_from_file_location("check_generated_code", SCRIPT)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    with mock.patch.dict(sys.modules, {"check_generated_code": module}):
+        spec.loader.exec_module(module)
+    return module
+
+
+def git_env() -> dict[str, str]:
+    env = os.environ.copy()
+    env.update(
+        {
+            "GIT_AUTHOR_NAME": "Test Author",
+            "GIT_AUTHOR_EMAIL": "test@example.com",
+            "GIT_COMMITTER_NAME": "Test Committer",
+            "GIT_COMMITTER_EMAIL": "test@example.com",
+        }
+    )
+    return env
+
+
+def run_git(repo: pathlib.Path, *args: str) -> str:
+    assert GIT_BIN is not None
+    res = subprocess.run(  # noqa: S603 - fixed argv in test helper
+        [GIT_BIN, "-C", str(repo), *args],
+        env=git_env(),
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return res.stdout.strip()
+
+
+def run_cli(*args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(  # noqa: S603 - fixed python3 invocation
+        [sys.executable, str(SCRIPT), *args],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def make_fixture_repo(tmp: pathlib.Path) -> pathlib.Path:
+    repo = tmp / "repo"
+    repo.mkdir()
+    run_git(repo, "init", "-q")
+
+    (repo / "scripts" / "codegen").mkdir(parents=True)
+    (repo / "scripts" / "codegen" / "go.tool.mod").write_text(
+        "module alt-codegen-tools\n\n"
+        "go 1.27.3\n\n"
+        "tool (\n"
+        "\tgithub.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen\n"
+        "\tgo.uber.org/mock/mockgen\n"
+        ")\n\n"
+        "require (\n"
+        "\tgithub.com/oapi-codegen/oapi-codegen/v2 v2.7.0 // indirect\n"
+        "\tgo.uber.org/mock v0.6.0 // indirect\n"
+        ")\n",
+        encoding="utf-8",
+    )
+
+    (repo / "proto").mkdir(parents=True)
+    (repo / "proto" / "buf.gen.acolyte.yaml").write_text(
+        "version: v2\n"
+        "plugins:\n"
+        "  - remote: buf.build/protocolbuffers/python:v33.5\n"
+        "    out: ../acolyte-orchestrator/acolyte/gen/proto\n"
+        "  - remote: buf.build/connectrpc/python:v0.9.0\n"
+        "    out: ../acolyte-orchestrator/acolyte/gen/proto\n",
+        encoding="utf-8",
+    )
+    return repo
+
+
+def test_dynamic_discovery(mod: types.ModuleType) -> None:
+    sys.stdout.write("== dynamic DO NOT EDIT discovery ==\n")
+    with tempfile.TemporaryDirectory() as tmp_str:
+        repo = make_fixture_repo(pathlib.Path(tmp_str))
+
+        (repo / "pkg").mkdir()
+        (repo / "pkg" / "a_gen.go").write_text(
+            "// Package pkg\n//\n// Code generated by oapi-codegen v2.7.0 DO NOT EDIT.\npackage pkg\n",
+            encoding="utf-8",
+        )
+        (repo / "pkg" / "b_gen.py").write_text(
+            "# Code generated by sync_python_pki.py; DO NOT EDIT.\nX = 1\n",
+            encoding="utf-8",
+        )
+        (repo / "pkg" / "c_gen.ts").write_text(
+            "// Code generated by protovis. DO NOT EDIT.\nexport const x = 1;\n",
+            encoding="utf-8",
+        )
+        (repo / "pkg" / "d_gen.sql").write_text(
+            "-- Code generated by schema-gen. DO NOT EDIT.\nSELECT 1;\n",
+            encoding="utf-8",
+        )
+        (repo / "pkg" / "e_block.css").write_text(
+            "/* Code generated by token-gen. DO NOT EDIT. */\nbody {}\n",
+            encoding="utf-8",
+        )
+        # Header after line 40 must NOT match
+        (repo / "pkg" / "late_header.go").write_text(
+            "package pkg\n" + ("\n" * 42) + "// Code generated by late. DO NOT EDIT.\n",
+            encoding="utf-8",
+        )
+        # Generator source code containing a string literal must NOT match
+        (repo / "pkg" / "generator.go").write_text(
+            'package pkg\nconst hdr = "// Code generated by protovis. DO NOT EDIT."\n',
+            encoding="utf-8",
+        )
+        # Excluded directories must NOT match
+        (repo / "stopped-using-k8s").mkdir()
+        (repo / "stopped-using-k8s" / "old.go").write_text(
+            "// Code generated by old. DO NOT EDIT.\npackage old\n",
+            encoding="utf-8",
+        )
+        (repo / "scripts" / "harness" / "corpus" / "C-99").mkdir(parents=True)
+        (repo / "scripts" / "harness" / "corpus" / "C-99" / "before.go").write_text(
+            "// Code generated by fixture. DO NOT EDIT.\npackage fixture\n",
+            encoding="utf-8",
+        )
+
+        run_git(repo, "add", ".")
+        run_git(repo, "commit", "-q", "-m", "init")
+
+        discovered = mod.discover_generated_files(repo)
+        expected = [
+            "pkg/a_gen.go",
+            "pkg/b_gen.py",
+            "pkg/c_gen.ts",
+            "pkg/d_gen.sql",
+            "pkg/e_block.css",
+        ]
+        check(
+            "discover_generated_files matches comment headers within 40 lines and excludes corpus/k8s/generators",
+            discovered == expected,
+            f"got={discovered}",
+        )
+
+        res = run_cli("--repo-root", str(repo), "--list-generated")
+        check(
+            "--list-generated CLI outputs sorted repo-relative paths",
+            res.returncode == 0 and res.stdout.splitlines() == expected,
+            f"rc={res.returncode} stdout={res.stdout!r} stderr={res.stderr!r}",
+        )
+
+
+def test_pin_and_latest_audit(mod: types.ModuleType) -> None:
+    sys.stdout.write("== generator pin and @latest audit ==\n")
+
+    # 1. Clean baseline
+    with tempfile.TemporaryDirectory() as tmp_str:
+        repo = make_fixture_repo(pathlib.Path(tmp_str))
+        run_git(repo, "add", ".")
+        run_git(repo, "commit", "-q", "-m", "clean")
+        violations = mod.check_pins(repo)
+        check_violations("clean fixture passes --check-pins", violations, 0, set())
+
+    # 2. Missing go.tool.mod
+    with tempfile.TemporaryDirectory() as tmp_str:
+        repo = make_fixture_repo(pathlib.Path(tmp_str))
+        (repo / "scripts" / "codegen" / "go.tool.mod").unlink()
+        violations = mod.check_pins(repo)
+        check_violations(
+            "missing go.tool.mod fails",
+            violations,
+            1,
+            {"codegen.missing-tool-mod"},
+        )
+
+    # 3. Unpinned tool in go.tool.mod (missing require)
+    with tempfile.TemporaryDirectory() as tmp_str:
+        repo = make_fixture_repo(pathlib.Path(tmp_str))
+        (repo / "scripts" / "codegen" / "go.tool.mod").write_text(
+            "module alt-codegen-tools\n\ngo 1.27.3\n\ntool (\n\tgo.uber.org/mock/mockgen\n)\n",
+            encoding="utf-8",
+        )
+        violations = mod.check_pins(repo)
+        check_violations(
+            "go.tool.mod tool missing pinned require fails",
+            violations,
+            1,
+            {"codegen.invalid-tool-mod"},
+        )
+
+    # 4. Unpinned remote plugin in buf.gen*.yaml
+    with tempfile.TemporaryDirectory() as tmp_str:
+        repo = make_fixture_repo(pathlib.Path(tmp_str))
+        (repo / "proto" / "buf.gen.acolyte.yaml").write_text(
+            "version: v2\n"
+            "plugins:\n"
+            "  - remote: buf.build/connectrpc/python\n"
+            "    out: ../out\n"
+            "  - remote: buf.build/protocolbuffers/python:latest\n"
+            "    out: ../out\n",
+            encoding="utf-8",
+        )
+        violations = mod.check_pins(repo)
+        check_violations(
+            "unpinned remote buf plugins fail",
+            violations,
+            2,
+            {"codegen.unpinned-buf-plugin"},
+        )
+
+    # 5. @latest in Makefiles, workflows, scripts, Dockerfiles, runbooks, best_practices
+    with tempfile.TemporaryDirectory() as tmp_str:
+        repo = make_fixture_repo(pathlib.Path(tmp_str))
+        (repo / "Makefile").write_text(
+            "gen:\n\tgo run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest\n",
+            encoding="utf-8",
+        )
+        (repo / ".github" / "workflows").mkdir(parents=True)
+        (repo / ".github" / "workflows" / "ci.yaml").write_text(
+            "jobs:\n  build:\n    steps:\n      - run: go install example.com/tool@latest\n",
+            encoding="utf-8",
+        )
+        # Negative fixture under .github/workflows/scripts/test_*.py must be excluded
+        (repo / ".github" / "workflows" / "scripts").mkdir(parents=True)
+        (repo / ".github" / "workflows" / "scripts" / "test_workflow_safety_check.py").write_text(
+            'FIXTURE = "go install golang.org/x/vuln/cmd/govulncheck@latest"\n',
+            encoding="utf-8",
+        )
+        (repo / "scripts" / "tool.sh").write_text(
+            "#!/usr/bin/env bash\n# install: npx prettier@latest --check .\n",
+            encoding="utf-8",
+        )
+        # Negative fixture under scripts/tests/ must be excluded
+        (repo / "scripts" / "tests").mkdir(parents=True)
+        (repo / "scripts" / "tests" / "test-foo.py").write_text(
+            'SAMPLE = "go install foo@latest"\n',
+            encoding="utf-8",
+        )
+        (repo / "docs" / "best_practices").mkdir(parents=True)
+        (repo / "docs" / "best_practices" / "svelte.md").write_text(
+            "RUN corepack enable && corepack prepare pnpm@latest --activate\n",
+            encoding="utf-8",
+        )
+        # Historical ADR and review docs must be excluded
+        (repo / "docs" / "ADR").mkdir(parents=True)
+        (repo / "docs" / "ADR" / "000001.md").write_text(
+            "go run example.com/old@latest\n",
+            encoding="utf-8",
+        )
+        (repo / "docs" / "review").mkdir(parents=True)
+        (repo / "docs" / "review" / "notes.md").write_text(
+            "Historical anti-pattern: oapi-codegen@latest\n",
+            encoding="utf-8",
+        )
+        (repo / "Dockerfile.dev").write_text(
+            "FROM node:22\nRUN bunx biome@latest check\n",
+            encoding="utf-8",
+        )
+
+        run_git(repo, "add", ".")
+        run_git(repo, "commit", "-q", "-m", "latest violations")
+
+        violations = mod.check_pins(repo)
+        check_violations(
+            "detects @latest across Makefile, workflow, script, Dockerfile, best_practices while ignoring fixtures/ADR/review",
+            violations,
+            5,
+            {"codegen.unpinned-latest"},
+        )
+
+
+def test_pair_and_c16(mod: types.ModuleType) -> None:
+    sys.stdout.write("== pair tamper detection and CORPUS-01 C-16 ==\n")
+    before_c16 = C16_DIR / "before.go"
+    after_c16 = C16_DIR / "after.go"
+    check("C-16 corpus files exist", before_c16.is_file() and after_c16.is_file())
+
+    res_same = run_cli("--before", str(before_c16), "--after", str(before_c16))
+    check(
+        "C-16 before vs before exits 0 (no false positive)",
+        res_same.returncode == 0,
+        f"rc={res_same.returncode} out={res_same.stdout!r} err={res_same.stderr!r}",
+    )
+
+    res_tampered = run_cli("--before", str(before_c16), "--after", str(after_c16))
+    combined = f"{res_tampered.stdout}\n{res_tampered.stderr}"
+    check(
+        "C-16 before vs after exits 1 with codegen.do-not-edit-modified",
+        res_tampered.returncode == 1 and "codegen.do-not-edit-modified" in combined,
+        f"rc={res_tampered.returncode} out={combined!r}",
+    )
+
+    with tempfile.TemporaryDirectory() as tmp_str:
+        tmp = pathlib.Path(tmp_str)
+        # Non-generated file modified -> exit 0
+        plain_before = tmp / "plain_before.go"
+        plain_after = tmp / "plain_after.go"
+        plain_before.write_text("package foo\nfunc A() int { return 1 }\n", encoding="utf-8")
+        plain_after.write_text("package foo\nfunc A() int { return 2 }\n", encoding="utf-8")
+        v_plain = mod.check_pair(plain_before, plain_after)
+        check_violations("non-generated file diff passes", v_plain, 0, set())
+
+        # Stripping DO NOT EDIT header from generated file -> fail
+        gen_before = tmp / "gen_before.go"
+        gen_stripped = tmp / "gen_stripped.go"
+        gen_before.write_text(
+            "// Code generated by oapi-codegen v2.7.0 DO NOT EDIT.\npackage foo\n",
+            encoding="utf-8",
+        )
+        gen_stripped.write_text("package foo\n// edited\n", encoding="utf-8")
+        v_strip = mod.check_pair(gen_before, gen_stripped)
+        check_violations(
+            "stripping DO NOT EDIT header fails",
+            v_strip,
+            1,
+            {"codegen.do-not-edit-modified"},
+        )
+
+
+def test_git_base_diff_tamper(mod: types.ModuleType) -> None:
+    sys.stdout.write("== git --base diff tamper detection ==\n")
+    with tempfile.TemporaryDirectory() as tmp_str:
+        repo = make_fixture_repo(pathlib.Path(tmp_str))
+        (repo / "pkg").mkdir()
+        (repo / "pkg" / "service.go").write_text(
+            "package pkg\ntype Svc interface{}\n", encoding="utf-8"
+        )
+        (repo / "pkg" / "mock_service.go").write_text(
+            "// Code generated by MockGen. DO NOT EDIT.\n"
+            "// Source: pkg/service.go\n"
+            "package pkg\n"
+            "type MockSvc struct{}\n",
+            encoding="utf-8",
+        )
+        (repo / "proto" / "svc.proto").write_text('syntax = "proto3";\n', encoding="utf-8")
+        (repo / "pkg" / "svc.pb.go").write_text(
+            "// Code generated by protoc-gen-go. DO NOT EDIT.\npackage pkg\nvar X = 1\n",
+            encoding="utf-8",
+        )
+        run_git(repo, "add", ".")
+        run_git(repo, "commit", "-q", "-m", "base")
+        base_rev = run_git(repo, "rev-parse", "HEAD")
+
+        # 1. Hand-edit svc.pb.go without touching any .proto or buf.gen*.yaml -> FAIL
+        (repo / "pkg" / "svc.pb.go").write_text(
+            "// Code generated by protoc-gen-go. DO NOT EDIT.\npackage pkg\nvar X = 2\n",
+            encoding="utf-8",
+        )
+        v_tamper = mod.check_git_diff(repo, base_rev=base_rev)
+        check_violations(
+            "--base flags hand-edited .pb.go without proto/config change",
+            v_tamper,
+            1,
+            {"codegen.do-not-edit-modified"},
+        )
+
+        # 2. Also update proto/svc.proto in same diff -> PASS
+        (repo / "proto" / "svc.proto").write_text(
+            'syntax = "proto3";\nmessage Ping {}\n',
+            encoding="utf-8",
+        )
+        v_with_proto = mod.check_git_diff(repo, base_rev=base_rev)
+        check_violations(
+            "--base allows .pb.go update when .proto spec also changed",
+            v_with_proto,
+            0,
+            set(),
+        )
+
+        # Reset and test mock_service.go
+        run_git(repo, "checkout", "--", ".")
+        (repo / "pkg" / "mock_service.go").write_text(
+            "// Code generated by MockGen. DO NOT EDIT.\n"
+            "// Source: pkg/service.go\n"
+            "package pkg\n"
+            "type MockSvc struct{ edited bool }\n",
+            encoding="utf-8",
+        )
+        v_mock_tamper = mod.check_git_diff(repo, base_rev=base_rev)
+        check_violations(
+            "--base flags hand-edited mock without source change",
+            v_mock_tamper,
+            1,
+            {"codegen.do-not-edit-modified"},
+        )
+
+        (repo / "pkg" / "service.go").write_text(
+            "package pkg\ntype Svc interface{ Ping() }\n",
+            encoding="utf-8",
+        )
+        v_mock_ok = mod.check_git_diff(repo, base_rev=base_rev)
+        check_violations(
+            "--base allows mock update when Source file also changed",
+            v_mock_ok,
+            0,
+            set(),
+        )
+
+
+def test_regeneration_drift(mod: types.ModuleType) -> None:
+    sys.stdout.write("== deterministic regeneration drift detection ==\n")
+    with tempfile.TemporaryDirectory() as tmp_str:
+        fake_root = pathlib.Path(tmp_str) / "repo"
+        (fake_root / "scripts" / "codegen").mkdir(parents=True)
+        shutil.copyfile(
+            ROOT / "scripts" / "codegen" / "go.tool.mod",
+            fake_root / "scripts" / "codegen" / "go.tool.mod",
+        )
+        shutil.copyfile(
+            ROOT / "scripts" / "codegen" / "go.tool.sum",
+            fake_root / "scripts" / "codegen" / "go.tool.sum",
+        )
+        (fake_root / "rag-orchestrator" / "spec").mkdir(parents=True)
+        shutil.copyfile(
+            ROOT / "rag-orchestrator" / "go.mod",
+            fake_root / "rag-orchestrator" / "go.mod",
+        )
+        shutil.copyfile(
+            ROOT / "rag-orchestrator" / "spec" / "openapi.yaml",
+            fake_root / "rag-orchestrator" / "spec" / "openapi.yaml",
+        )
+        server_dest = (
+            fake_root
+            / "rag-orchestrator"
+            / "internal"
+            / "adapter"
+            / "rag_http"
+            / "openapi"
+            / "server.gen.go"
+        )
+        server_dest.parent.mkdir(parents=True)
+        server_dest.write_text(
+            "// Code generated by oapi-codegen v2.7.0 DO NOT EDIT.\npackage openapi\n// hand-edited\n",
+            encoding="utf-8",
+        )
+        client_dest = (
+            fake_root
+            / "alt-backend"
+            / "app"
+            / "orchestrator"
+            / "gateway"
+            / "rag_gateway"
+            / "client.gen.go"
+        )
+        client_dest.parent.mkdir(parents=True)
+        shutil.copyfile(
+            ROOT
+            / "alt-backend"
+            / "app"
+            / "orchestrator"
+            / "gateway"
+            / "rag_gateway"
+            / "client.gen.go",
+            client_dest,
+        )
+
+        violations = mod.check_regeneration(fake_root)
+        check_violations(
+            "hand-edited server.gen.go detected by check_regeneration without mutating file",
+            violations,
+            1,
+            {"codegen.drift.openapi"},
+        )
+        check(
+            "check_regeneration does not mutate drifted server.gen.go",
+            "// hand-edited" in server_dest.read_text(encoding="utf-8"),
+        )
+
+
+def test_real_repository() -> None:
+    sys.stdout.write("== real repository end-to-end checks ==\n")
+    res_list = run_cli("--list-generated")
+    listed = res_list.stdout.splitlines()
+    check(
+        "real repo --list-generated finds generated files dynamically (>100)",
+        res_list.returncode == 0
+        and len(listed) > MIN_REPO_GENERATED_FILES
+        and "rag-orchestrator/internal/adapter/rag_http/openapi/server.gen.go" in listed
+        and "alt-backend/app/orchestrator/gateway/rag_gateway/client.gen.go" in listed
+        and "scripts/codegen/sync_go_canonical.py" not in listed,
+        f"rc={res_list.returncode} count={len(listed)}",
+    )
+
+    res_pins = run_cli("--check-pins")
+    check(
+        "real repo --check-pins exits 0",
+        res_pins.returncode == 0,
+        f"rc={res_pins.returncode} out={res_pins.stdout!r} err={res_pins.stderr!r}",
+    )
+
+    res_full = run_cli()
+    check(
+        "real repo full check (pins + regen) exits 0",
+        res_full.returncode == 0,
+        f"rc={res_full.returncode} out={res_full.stdout!r} err={res_full.stderr!r}",
+    )
+
+    res_bad_args = run_cli("--before", str(C16_DIR / "before.go"))
+    check(
+        "--before without --after returns usage error (exit 2)",
+        res_bad_args.returncode == USAGE_EXIT_CODE,
+        f"rc={res_bad_args.returncode}",
+    )
+
+
+def main() -> int:
+    mod = load_checker()
+    test_dynamic_discovery(mod)
+    test_pin_and_latest_audit(mod)
+    test_pair_and_c16(mod)
+    test_git_base_diff_tamper(mod)
+    test_regeneration_drift(mod)
+    test_real_repository()
+
+    sys.stdout.write(f"\nSummary: {RESULTS.passed} passed, {RESULTS.failed} failed\n")
+    return 0 if RESULTS.failed == 0 else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
